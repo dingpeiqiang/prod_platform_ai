@@ -1,0 +1,70 @@
+{
+  "formCode": "sales_order",
+  "formName": "销售订单",
+  "description": "销售订单表单",
+  "entities": [
+    {
+      "entityCode": "customer",
+      "entityName": "客户",
+      "fields": [
+        {
+          "fieldCode": "customer_name",
+          "fieldName": "客户姓名",
+          "fieldType": "input",
+          "required": true,
+          "rules": [
+            {
+              "rule_type": "minLength",
+              "rule_value": 2,
+              "message": "客户姓名至少2个字符"
+            }
+          ]
+        },
+        {
+          "fieldCode": "customer_phone",
+          "fieldName": "客户电话",
+          "fieldType": "input",
+          "required": true,
+          "rules": [
+            {
+              "rule_type": "pattern",
+              "rule_value": "^1[3-9]\\d{9}$",
+              "message": "请输入正确的手机号"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "entityCode": "order",
+      "entityName": "订单",
+      "fields": [
+        {
+          "fieldCode": "order_amount",
+          "fieldName": "订单金额",
+          "fieldType": "number",
+          "required": true,
+          "rules": [
+            {
+              "rule_type": "minimum",
+              "rule_value": 0,
+              "message": "订单金额不能为负数"
+            }
+          ]
+        },
+        {
+          "fieldCode": "order_date",
+          "fieldName": "订单日期",
+          "fieldType": "date",
+          "required": true
+        },
+        {
+          "fieldCode": "remark",
+          "fieldName": "备注",
+          "fieldType": "textarea",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "app": {
+    "name": "AI驱动动态表单底层框架",
+    "version": "2.0.0",
+    "debug": true
+  },
+  "llm": {
+    "enabled": true,
+    "provider": "custom",
+    "model": "minimax-m2.7",
+    "thinking": false,
+    "temperature": 0.3,
+    "maxTokens": 2048,
+    "fallbackToRules": false,
+    "baseUrl": "https://aicp.teamshub.com/openai/api/v1/openai/v1",
+    "apiKey": "cb3a5cb469de1d0820d25a1e6349306dc4482f90",
+    "bufferSize": 20,
+    "flushInterval": 0.05
+  },
+  "features": {
+    "enableHotReload": true,
+    "enableCache": true,
+    "cacheTTL": 3600
+  },
+  "logging": {
+    "level": "DEBUG",
+    "enableConsole": true,
+    "enableFile": false,
+    "filePath": "app/logs/app.log",
+    "llmCallLogger": {
+      "enableConsole": true,
+      "enableFile": false,
+      "enableDetailedRequest": true,
+      "enableDetailedResponse": true,
+      "maxPromptPreview": 500,
+      "maxResponsePreview": 1000,
+      "maxHistory": 1000
+    },
+    "modules": {
+      "llm_service": "DEBUG",
+      "chat_api": "DEBUG",
+      "config_loader": "INFO",
+      "agent_executor": "INFO",
+      "form_service": "INFO",
+      "uvicorn.access": "WARNING",
+      "httpx": "WARNING"
+    }
+  }
+}

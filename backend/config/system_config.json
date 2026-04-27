@@ -1,0 +1,18 @@
+{
+  "recommendation": {
+    "countScoreWeight": 0.4,
+    "userScoreWeight": 0.4,
+    "timeScoreWeight": 0.2,
+    "countScorePerUnit": 0.1,
+    "userScorePerUnit": 0.2,
+    "timeDecayDays": 30,
+    "historyQueryLimit": 1000,
+    "recommendationLimit": 10
+  },
+  "sceneRecognition": {
+    "defaultScene": "generic"
+  },
+  "fieldExtraction": {
+    "separators": ["是", "为", "：", ":", " "]
+  }
+}

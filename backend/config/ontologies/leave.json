@@ -1,0 +1,57 @@
+{
+  "formCode": "leave",
+  "formName": "请假申请",
+  "description": "请假申请表单",
+  "entities": [
+    {
+      "entityCode": "applicant",
+      "entityName": "申请人",
+      "fields": [
+        {
+          "fieldCode": "applicant_name",
+          "fieldName": "申请人姓名",
+          "fieldType": "input",
+          "required": true
+        },
+        {
+          "fieldCode": "department",
+          "fieldName": "部门",
+          "fieldType": "select",
+          "required": true,
+          "options": ["研发部", "销售部", "财务部", "人事部"]
+        }
+      ]
+    },
+    {
+      "entityCode": "leave_info",
+      "entityName": "请假信息",
+      "fields": [
+        {
+          "fieldCode": "leave_type",
+          "fieldName": "请假类型",
+          "fieldType": "select",
+          "required": true,
+          "options": ["事假", "病假", "年假", "婚假"]
+        },
+        {
+          "fieldCode": "start_date",
+          "fieldName": "开始日期",
+          "fieldType": "date",
+          "required": true
+        },
+        {
+          "fieldCode": "end_date",
+          "fieldName": "结束日期",
+          "fieldType": "date",
+          "required": true
+        },
+        {
+          "fieldCode": "reason",
+          "fieldName": "请假原因",
+          "fieldType": "textarea",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

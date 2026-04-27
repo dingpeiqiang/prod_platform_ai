@@ -1,0 +1,38 @@
+{
+  "formCode": "expense",
+  "formName": "费用报销",
+  "description": "费用报销表单",
+  "entities": [
+    {
+      "entityCode": "reimbursement",
+      "entityName": "报销",
+      "fields": [
+        {
+          "fieldCode": "expense_type",
+          "fieldName": "费用类型",
+          "fieldType": "select",
+          "required": true,
+          "options": ["差旅费", "餐饮费", "交通费", "办公费"]
+        },
+        {
+          "fieldCode": "amount",
+          "fieldName": "报销金额",
+          "fieldType": "number",
+          "required": true
+        },
+        {
+          "fieldCode": "expense_date",
+          "fieldName": "费用日期",
+          "fieldType": "date",
+          "required": true
+        },
+        {
+          "fieldCode": "description",
+          "fieldName": "费用说明",
+          "fieldType": "textarea",
+          "required": true
+        }
+      ]
+    }
+  ]
+}
