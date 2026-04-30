@@ -36,9 +36,21 @@
             @change="handleInput(field.fieldCode, $event)"
             value-format="YYYY-MM-DD"
           />
+
+          <el-date-picker
+            v-else-if="field.fieldType === 'datetime'"
+            v-model="localFormData[field.fieldCode]"
+            type="datetime"
+            :disabled="field.disabled"
+            :placeholder="'请选择' + field.fieldName"
+            style="width: 100%"
+            @change="handleInput(field.fieldCode, $event)"
+            value-format="YYYY-MM-DD HH:mm:ss"
+          />
           
+          <!-- select: 有 options 正常渲染，无 options 降级为 input -->
           <el-select
-            v-else-if="field.fieldType === 'select'"
+            v-else-if="field.fieldType === 'select' && hasEnumOptions(field)"
             v-model="localFormData[field.fieldCode]"
             :disabled="field.disabled"
             :placeholder="'请选择' + field.fieldName"
@@ -46,12 +58,60 @@
             @change="handleInput(field.fieldCode, $event)"
           >
             <el-option
-              v-for="option in (field.options || [])"
-              :key="option"
-              :label="option"
-              :value="option"
+              v-for="option in getFieldOptions(field)"
+              :key="getOptionValue(option)"
+              :label="getOptionLabel(option)"
+              :value="getOptionValue(option)"
             />
           </el-select>
+
+          <el-input
+            v-else-if="field.fieldType === 'select' && !hasEnumOptions(field)"
+            v-model="localFormData[field.fieldCode]"
+            :disabled="field.disabled"
+            :placeholder="'请输入' + field.fieldName + '（枚举选项缺失，已自动切换为文本输入）'"
+            @input="handleInput(field.fieldCode, $event)"
+          />
+
+          <!-- radio: 有 options 正常渲染，无 options 降级为 input -->
+          <el-radio-group
+            v-else-if="field.fieldType === 'radio' && hasEnumOptions(field)"
+            v-model="localFormData[field.fieldCode]"
+            :disabled="field.disabled"
+            @change="handleInput(field.fieldCode, $event)"
+          >
+            <el-radio
+              v-for="option in getFieldOptions(field)"
+              :key="getOptionValue(option)"
+              :value="getOptionValue(option)"
+            >
+              {{ getOptionLabel(option) }}
+            </el-radio>
+          </el-radio-group>
+
+          <!-- checkbox: 有 options 正常渲染，无 options 降级为 input -->
+          <el-checkbox-group
+            v-else-if="field.fieldType === 'checkbox' && hasEnumOptions(field)"
+            v-model="localFormData[field.fieldCode]"
+            :disabled="field.disabled"
+            @change="handleInput(field.fieldCode, $event)"
+          >
+            <el-checkbox
+              v-for="option in getFieldOptions(field)"
+              :key="getOptionValue(option)"
+              :label="getOptionLabel(option)"
+              :value="getOptionValue(option)"
+            />
+          </el-checkbox-group>
+
+          <el-input
+            v-else-if="field.fieldType === 'checkbox' && !hasEnumOptions(field)"
+            v-model="localFormData[field.fieldCode]"
+            type="textarea"
+            :disabled="field.disabled"
+            :placeholder="'请输入选项（枚举选项缺失，已切换为文本输入）'"
+            @input="handleInput(field.fieldCode, $event)"
+          />
           
           <el-input
             v-else-if="field.fieldType === 'textarea'"
@@ -62,17 +122,50 @@
             :placeholder="'请输入' + field.fieldName"
             @input="handleInput(field.fieldCode, $event)"
           />
+
+          <el-input
+            v-else-if="field.fieldType === 'email'"
+            v-model="localFormData[field.fieldCode]"
+            :disabled="field.disabled"
+            placeholder="请输入邮箱地址"
+            @input="handleInput(field.fieldCode, $event)"
+          />
+
+          <el-input
+            v-else-if="field.fieldType === 'phone'"
+            v-model="localFormData[field.fieldCode]"
+            :disabled="field.disabled"
+            placeholder="请输入手机号"
+            @input="handleInput(field.fieldCode, $event)"
+          />
+
+          <el-upload
+            v-else-if="field.fieldType === 'file'"
+            :disabled="field.disabled"
+            :auto-upload="false"
+            :on-change="(file) => handleFileChange(field.fieldCode, file)"
+          >
+            <el-button size="small" :disabled="field.disabled">点击上传</el-button>
+          </el-upload>
           
           <div v-if="field.recommend && field.recommend.length > 0" class="recommend-tags">
-            <span class="recommend-label">推荐值：</span>
-            <el-tag
+            <span class="recommend-label">推荐：</span>
+            <el-tooltip
               v-for="(rec, idx) in field.recommend"
               :key="idx"
-              class="recommend-tag"
-              @click="selectRecommend(field.fieldCode, rec)"
+              :content="normalizeRecommend(rec).reason || ''"
+              :disabled="!normalizeRecommend(rec).reason"
+              placement="top"
             >
-              {{ rec }}
-            </el-tag>
+              <el-tag
+                class="recommend-tag"
+                :class="'rec-source-' + normalizeRecommend(rec).source"
+                @click="selectRecommend(field.fieldCode, rec)"
+              >
+                {{ normalizeRecommend(rec).label }}
+                <span v-if="normalizeRecommend(rec).source === 'llm_rule'" class="rec-badge">AI</span>
+              </el-tag>
+            </el-tooltip>
           </div>
         </template>
       </el-form-item>
@@ -91,7 +184,7 @@
 
 <script setup>
 import { ref, watch, reactive } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const props = defineProps({
   schema: {
@@ -142,14 +235,65 @@ const handleInput = (fieldCode, value) => {
   emit('field-change', fieldCode, value)
 }
 
-const selectRecommend = (fieldCode, value) => {
+// 获取字段的选项列表：优先 enumConfig → 其次 options
+const getFieldOptions = (field) => {
+  if (field.enumConfig) {
+    if (field.enumConfig.type === 'static' && Array.isArray(field.enumConfig.options)) {
+      return field.enumConfig.options
+    }
+    // API 枚举暂时返回 fallback，后续可扩展为异步加载
+    if (field.enumConfig.type === 'api') {
+      const fallback = field.enumConfig.api?.fallback
+      if (Array.isArray(fallback)) return fallback
+    }
+  }
+  return field.options || []
+}
+
+// 获取选项的值
+const getOptionValue = (option) => {
+  return option.value
+}
+
+// 获取选项的标签
+const getOptionLabel = (option) => {
+  return option.label
+}
+
+// 判断枚举字段是否有可用选项（用于降级判断）
+const hasEnumOptions = (field) => {
+  return getFieldOptions(field).length > 0
+}
+
+const handleFileChange = (fieldCode, file) => {
+  // 存储文件对象引用
+  localFormData[fieldCode] = file.raw || file
+  emit('field-change', fieldCode, file.raw || file)
+}
+
+const selectRecommend = (fieldCode, rec) => {
+  const value = normalizeRecommend(rec).value
   localFormData[fieldCode] = value
   emit('field-change', fieldCode, value)
 }
 
+// 兼容字符串和对象两种推荐格式
+const normalizeRecommend = (rec) => {
+  if (typeof rec === 'string') {
+    return { value: rec, label: rec, source: 'static', reason: '', confidence: 0 }
+  }
+  return {
+    value: rec.value || '',
+    label: rec.label || rec.value || '',  // ⚠️ 优先使用label，如果没有则用value
+    source: rec.source || 'history',
+    reason: rec.reason || '',
+    confidence: rec.confidence || 0
+  }
+}
+
 const validateForm = () => {
   const errors = []
-  
+
   props.schema.fields.forEach(field => {
     if (field.required) {
       const value = localFormData[field.fieldCode]
@@ -157,31 +301,102 @@ const validateForm = () => {
         errors.push(`${field.fieldName} 是必填项`)
       }
     }
-    
-    if (field.rules && field.rules.length > 0) {
-      field.rules.forEach(rule => {
-        const value = localFormData[field.fieldCode]
-        if (rule.rule_type === 'minLength' && value && value.length < rule.rule_value) {
-          errors.push(rule.message)
+
+    // 通用格式即时校验（与业务无关的格式规则）
+    if (field.fieldType && field.required !== false) {
+      const value = localFormData[field.fieldCode]
+      const isEmpty = value === undefined || value === null || value === ''
+      if (!isEmpty) {
+        if (field.fieldType === 'email') {
+          if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(String(value))) {
+            errors.push(`${field.fieldName} 格式不正确，请输入有效的邮箱地址`)
+          }
         }
-        if (rule.rule_type === 'pattern' && value && !new RegExp(rule.rule_value).test(value)) {
-          errors.push(rule.message)
+        if (field.fieldType === 'phone') {
+          if (!/^1[3-9]\d{9}$/.test(String(value))) {
+            errors.push(`${field.fieldName} 格式不正确，请输入有效的手机号`)
+          }
         }
-        if (rule.rule_type === 'minimum' && value !== undefined && value !== null && Number(value) < rule.rule_value) {
-          errors.push(rule.message)
-        }
-      })
+      }
     }
   })
-  
+
   return errors
+}
+
+const aiValidate = async () => {
+  /**
+   * 调用后端 AI 校验接口，对业务规则进行校验。
+   * 返回 { passed, errors, warnings }
+   */
+  const API_BASE = '/api/v1'
+  const formCode = props.schema.formCode || ''
+
+  try {
+    const response = await fetch(`${API_BASE}/chat/validate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        formCode: formCode,
+        formData: { ...localFormData }
+      })
+    })
+
+    if (!response.ok) {
+      console.warn('[DynamicForm] AI 校验请求失败:', response.status)
+      return { passed: true, errors: [], warnings: [] }
+    }
+
+    const result = await response.json()
+    if (result.success) {
+      return {
+        passed: result.passed !== false,
+        errors: result.errors || [],
+        warnings: result.warnings || []
+      }
+    }
+
+    return { passed: true, errors: [], warnings: [] }
+  } catch (e) {
+    console.warn('[DynamicForm] AI 校验异常:', e)
+    return { passed: true, errors: [], warnings: [] }
+  }
 }
 
 const handleCancel = () => {
   emit('cancel')
 }
 
+// AI 校验结果缓存（用于用户选择"忽略警告继续提交"时跳过重复校验）
+let _lastAiValidation = null
+
 const handleSubmit = async () => {
+  // 预览模式：表单未部署，只做前端校验 + 本地预览
+  if (props.schema._preview) {
+    const errors = validateForm()
+    if (errors.length > 0) {
+      ElMessage.error(errors[0])
+      return
+    }
+    // 预览模式下提交 = 展示填写结果摘要，不上传后端
+    const summaryLines = []
+    for (const field of props.schema.fields) {
+      const val = localFormData[field.fieldCode]
+      if (val !== undefined && val !== null && val !== '') {
+        const displayVal = Array.isArray(val) ? val.join(', ') : String(val)
+        summaryLines.push(`- **${field.fieldName}**: ${displayVal}`)
+      }
+    }
+    ElMessageBox.alert(
+      `<div style="text-align:left;line-height:2">${summaryLines.length ? summaryLines.join('<br>') : '未填写任何内容'}</div>`,
+      '预览 - 表单填写结果',
+      { dangerouslyUseHTMLString: true, title: '👁️ 预览模式' }
+    )
+    return
+  }
+
+  // 正式模式：完整提交流程
+  // 第一步：前端即时校验（必填 + 通用格式）
   const errors = validateForm()
   
   if (errors.length > 0) {
@@ -192,7 +407,52 @@ const handleSubmit = async () => {
   submitting.value = true
   
   try {
-    // 使用相对路径，通过 vite 代理转发
+    // 第二步：AI 业务规则校验（如果上次校验没被缓存跳过）
+    if (!_lastAiValidation) {
+      _lastAiValidation = await aiValidate()
+    }
+    const aiResult = _lastAiValidation
+
+    // 显示 AI 校验 warnings（不阻塞提交）
+    if (aiResult.warnings && aiResult.warnings.length > 0) {
+      aiResult.warnings.forEach(w => {
+        ElMessage.warning({
+          message: `⚠️ ${w.fieldName}: ${w.reason}`,
+          duration: 5000
+        })
+      })
+    }
+
+    // 显示 AI 校验 errors（阻塞提交，但允许用户选择忽略）
+    if (aiResult.errors && aiResult.errors.length > 0) {
+      submitting.value = false
+      
+      // 弹窗展示所有错误，用户可选择"仍然提交"或"返回修改"
+      const errorDetails = aiResult.errors.map(e => `• ${e.fieldName}: ${e.reason}`).join('\n')
+      
+      try {
+        await ElMessageBox.confirm(
+          `AI 校验发现以下问题：\n${errorDetails}\n\n你可以返回修改，或忽略警告继续提交。`,
+          'AI 校验结果',
+          {
+            confirmButtonText: '仍然提交',
+            cancelButtonText: '返回修改',
+            type: 'warning',
+            dangerouslyUseHTMLString: false
+          }
+        )
+        // 用户选择"仍然提交"
+        _lastAiValidation = null  // 清除缓存
+        submitting.value = true
+        // 继续走提交流程
+      } catch {
+        // 用户选择"返回修改"
+        _lastAiValidation = null
+        return
+      }
+    }
+
+    // 第三步：提交表单
     const API_BASE = '/api/v1'
     const url = `${API_BASE}/form/submit`
     
@@ -229,6 +489,7 @@ const handleSubmit = async () => {
     }
     
     if (result.success) {
+      _lastAiValidation = null  // 提交成功，清除缓存
       emit('submit', { ...localFormData }, props.formId)
     } else {
       ElMessage.error(result.message || '提交失败')
@@ -265,10 +526,54 @@ const handleSubmit = async () => {
 .recommend-tag {
   cursor: pointer;
   transition: all 0.3s;
+  position: relative;
 }
 
 .recommend-tag:hover {
-  background: #409eff;
+  transform: translateY(-1px);
+}
+
+/* 按来源区分颜色 */
+.recommend-tag.rec-source-llm_rule {
+  background-color: #f0e6ff;
+  border-color: #a855f7;
+  color: #7c3aed;
+}
+.recommend-tag.rec-source-llm_rule:hover {
+  background-color: #a855f7 !important;
+  color: white !important;
+}
+
+.recommend-tag.rec-source-inference,
+.recommend-tag.rec-source-history {
+  background-color: #e6f4ff;
+  border-color: #409eff;
+  color: #2563eb;
+}
+.recommend-tag.rec-source-inference:hover,
+.recommend-tag.rec-source-history:hover {
+  background-color: #409eff !important;
+  color: white !important;
+}
+
+.recommend-tag.rec-source-static,
+.recommend-tag.rec-source-context {
+  background-color: #f5f5f5;
+  border-color: #c0c4cc;
+  color: #606266;
+}
+.recommend-tag.rec-source-static:hover,
+.recommend-tag.rec-source-context:hover {
+  background-color: #909399 !important;
+  color: white !important;
+}
+
+.rec-badge {
+  font-size: 10px;
+  margin-left: 2px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: #a855f7;
   color: white;
 }
 </style>

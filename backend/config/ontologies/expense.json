@@ -12,25 +12,33 @@
           "fieldName": "费用类型",
           "fieldType": "select",
           "required": true,
-          "options": ["差旅费", "餐饮费", "交通费", "办公费"]
+          "options": [
+            {"value": "差旅费", "label": "差旅费"},
+            {"value": "餐饮费", "label": "餐饮费"},
+            {"value": "交通费", "label": "交通费"},
+            {"value": "办公费", "label": "办公费"}
+          ]
         },
         {
           "fieldCode": "amount",
           "fieldName": "报销金额",
           "fieldType": "number",
-          "required": true
+          "required": true,
+          "ruleDescription": "正数，最小0.01，餐饮费单次不超过5000，差旅费单次不超过50000"
         },
         {
           "fieldCode": "expense_date",
           "fieldName": "费用日期",
           "fieldType": "date",
-          "required": true
+          "required": true,
+          "ruleDescription": "不早于30天前，不晚于当天"
         },
         {
           "fieldCode": "description",
           "fieldName": "费用说明",
           "fieldType": "textarea",
-          "required": true
+          "required": true,
+          "ruleDescription": "10-1000个字符，需说明具体用途"
         }
       ]
     }
