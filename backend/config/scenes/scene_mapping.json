@@ -2,27 +2,80 @@
   "sceneMappings": [
     {
       "sceneCode": "external_api_demo",
-      "keywords": ["外部API", "API演示", "API调用"],
+      "keywords": [
+        "外部API",
+        "API演示",
+        "API调用"
+      ],
       "priority": 15
     },
     {
       "sceneCode": "validation_demo",
-      "keywords": ["校验演示", "校验规则", "校验", "演示"],
+      "keywords": [
+        "校验演示",
+        "校验规则",
+        "校验",
+        "演示"
+      ],
       "priority": 15
     },
     {
       "sceneCode": "sales_order",
-      "keywords": ["销售订单", "销售", "订单", "客户"],
+      "keywords": [
+        "销售订单",
+        "销售",
+        "订单",
+        "客户"
+      ],
       "priority": 10
     },
     {
       "sceneCode": "leave",
-      "keywords": ["请假", "请假申请", "休假"],
+      "keywords": [
+        "请假",
+        "请假申请",
+        "休假"
+      ],
       "priority": 10
     },
     {
       "sceneCode": "expense",
-      "keywords": ["报销", "费用报销", "报销申请"],
+      "keywords": [
+        "报销",
+        "费用报销",
+        "报销申请"
+      ],
+      "priority": 10
+    },
+    {
+      "sceneCode": "tariff_filing",
+      "keywords": [
+        "资费备案",
+        "资费",
+        "备案",
+        "资费申请",
+        "资费标准"
+      ],
+      "priority": 10
+    },
+    {
+      "sceneCode": "tariff_filing_form",
+      "keywords": [
+        "资费备案",
+        "资费公示",
+        "新增资费备案",
+        "修改资费备案",
+        "删除资费备案",
+        "校验资费备案"
+      ],
+      "priority": 10
+    },
+    {
+      "sceneCode": "tariff_filing_publicity",
+      "keywords": [
+        "资费备案公示",
+        "tariff_filing_publicity"
+      ],
       "priority": 10
     }
   ],

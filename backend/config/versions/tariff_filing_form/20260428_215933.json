@@ -1,0 +1,255 @@
+{
+  "id": "20260428_215933",
+  "formCode": "tariff_filing_form",
+  "formName": "资费备案公示表单",
+  "action": "delete",
+  "timestamp": "2026-04-28T21:59:33.022734",
+  "data": {
+    "formCode": "tariff_filing_form",
+    "formName": "资费备案公示表单",
+    "description": "电信运营商资费方案备案公示表单，支持新增、修改、删除、校验四类操作，用于向监管部门报送资费产品信息",
+    "entities": [
+      {
+        "entityCode": "basic_info",
+        "entityName": "基础信息",
+        "fields": [
+          {
+            "fieldCode": "reporter",
+            "fieldName": "备案主体",
+            "fieldType": "input",
+            "required": true,
+            "ruleDescription": "2-100个字符，须为企业全称"
+          },
+          {
+            "fieldCode": "action_type",
+            "fieldName": "操作类型",
+            "fieldType": "select",
+            "required": true,
+            "options": [
+              "A（新增）",
+              "M（修改）",
+              "D（删除）",
+              "C（校验）"
+            ]
+          }
+        ]
+      },
+      {
+        "entityCode": "business_category",
+        "entityName": "业务分类",
+        "fields": [
+          {
+            "fieldCode": "type1",
+            "fieldName": "一级分类",
+            "fieldType": "select",
+            "required": true,
+            "options": [
+              "1（公众）",
+              "2（政企）"
+            ]
+          },
+          {
+            "fieldCode": "type2",
+            "fieldName": "二级分类",
+            "fieldType": "select",
+            "required": true,
+            "options": [
+              "1（套餐）",
+              "2（加装包，不含港澳台和国际）",
+              "3（营销活动）",
+              "4（国际及港澳台加装包）",
+              "5（国内标准资费）",
+              "6（国际及港澳台标准资费）",
+              "7（其他）"
+            ]
+          },
+          {
+            "fieldCode": "name",
+            "fieldName": "资费名称",
+            "fieldType": "input",
+            "required": true,
+            "ruleDescription": "2-100个字符，不能包含特殊符号"
+          },
+          {
+            "fieldCode": "tariff_attr",
+            "fieldName": "资费属性",
+            "fieldType": "select",
+            "required": true,
+            "options": [
+              "1（全国）",
+              "2（省内）",
+              "3（本地）"
+            ]
+          }
+        ]
+      },
+      {
+        "entityCode": "fee_info",
+        "entityName": "资费信息",
+        "fields": [
+          {
+            "fieldCode": "fees",
+            "fieldName": "资费标准",
+            "fieldType": "number",
+            "required": false,
+            "ruleDescription": "正数，最小0，最大999999.99"
+          },
+          {
+            "fieldCode": "fees_unit",
+            "fieldName": "资费单位",
+            "fieldType": "input",
+            "required": false
+          }
+        ]
+      },
+      {
+        "entityCode": "service_content",
+        "entityName": "服务内容",
+        "fields": [
+          {
+            "fieldCode": "call",
+            "fieldName": "语音（分钟）",
+            "fieldType": "number",
+            "required": false,
+            "ruleDescription": "非负整数"
+          },
+          {
+            "fieldCode": "data",
+            "fieldName": "通用流量",
+            "fieldType": "number",
+            "required": false,
+            "ruleDescription": "非负数"
+          },
+          {
+            "fieldCode": "data_unit",
+            "fieldName": "流量单位",
+            "fieldType": "input",
+            "required": false
+          },
+          {
+            "fieldCode": "sms",
+            "fieldName": "短彩信（条）",
+            "fieldType": "number",
+            "required": false,
+            "ruleDescription": "非负整数"
+          },
+          {
+            "fieldCode": "orient_traffic",
+            "fieldName": "定向流量",
+            "fieldType": "number",
+            "required": false,
+            "ruleDescription": "非负数"
+          },
+          {
+            "fieldCode": "orient_traffic_unit",
+            "fieldName": "定向流量单位",
+            "fieldType": "input",
+            "required": false
+          },
+          {
+            "fieldCode": "iptv",
+            "fieldName": "IPTV",
+            "fieldType": "input",
+            "required": false
+          },
+          {
+            "fieldCode": "bandwidth",
+            "fieldName": "带宽",
+            "fieldType": "input",
+            "required": false
+          },
+          {
+            "fieldCode": "rights",
+            "fieldName": "权益",
+            "fieldType": "input",
+            "required": false
+          },
+          {
+            "fieldCode": "other_content",
+            "fieldName": "服务内容",
+            "fieldType": "textarea",
+            "required": false
+          }
+        ]
+      },
+      {
+        "entityCode": "applicable_info",
+        "entityName": "适用信息",
+        "fields": [
+          {
+            "fieldCode": "applicable_people",
+            "fieldName": "适用范围",
+            "fieldType": "textarea",
+            "required": true,
+            "ruleDescription": "5-500个字符"
+          },
+          {
+            "fieldCode": "applicable_area",
+            "fieldName": "适用地区",
+            "fieldType": "input",
+            "required": true,
+            "ruleDescription": "须为有效的省/市/区名称"
+          },
+          {
+            "fieldCode": "valid_period",
+            "fieldName": "有效期限",
+            "fieldType": "input",
+            "required": true,
+            "ruleDescription": "如：12个月、长期有效"
+          },
+          {
+            "fieldCode": "channel",
+            "fieldName": "销售渠道",
+            "fieldType": "input",
+            "required": true
+          },
+          {
+            "fieldCode": "duration",
+            "fieldName": "在网期限",
+            "fieldType": "input",
+            "required": true,
+            "ruleDescription": "如：24个月、无在网期限"
+          },
+          {
+            "fieldCode": "responsibility",
+            "fieldName": "违约责任",
+            "fieldType": "input",
+            "required": true
+          }
+        ]
+      },
+      {
+        "entityCode": "time_info",
+        "entityName": "时间信息",
+        "fields": [
+          {
+            "fieldCode": "online_day",
+            "fieldName": "上线日期",
+            "fieldType": "date",
+            "required": true,
+            "ruleDescription": "不早于当天，下线日期须晚于上线日期"
+          },
+          {
+            "fieldCode": "offline_day",
+            "fieldName": "下线日期",
+            "fieldType": "date",
+            "required": false,
+            "ruleDescription": "须晚于上线日期"
+          }
+        ]
+      },
+      {
+        "entityCode": "others",
+        "entityName": "其他",
+        "fields": [
+          {
+            "fieldCode": "others",
+            "fieldName": "其他说明",
+            "fieldType": "textarea",
+            "required": false
+          }
+        ]
+      }
+    ]
+  }
+}

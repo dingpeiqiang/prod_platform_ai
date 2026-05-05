@@ -57,4 +57,4 @@ echo.
 
 call npm run dev
 
-pause
+REM 脚本结束，不暂停（由 start-all.bat 一键启动时不需要）

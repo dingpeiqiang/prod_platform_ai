@@ -8,6 +8,7 @@ from pathlib import Path
 from app.core.config_loader import config_loader
 from app.services.ontology_service import OntologyService
 from app.scripts.import_history import discover_forms, import_form_data
+from app.services.history_ai_service import export_history_data
 
 # 项目根目录
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -396,3 +397,76 @@ async def upload_and_import(
             logger.info("[config/import/upload] 临时文件已清理")
         except Exception as e:
             logger.warning("[config/import/upload] 清理临时文件失败: %s", e)
+
+
+class ExportRequest(BaseModel):
+    formCode: str
+    format: Optional[str] = "jsonl"
+    startDate: Optional[str] = None
+    endDate: Optional[str] = None
+    userId: Optional[str] = None
+
+
+class ExportResponse(BaseModel):
+    success: bool
+    filename: str
+    content: str
+    contentType: str
+    message: str = ""
+
+
+@router.get("/export/{formCode}")
+async def export_history(
+    formCode: str,
+    format: Optional[str] = "jsonl",
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    user_id: Optional[str] = None
+):
+    """
+    导出历史数据为 JSONL 或 CSV 格式。
+
+    参数：
+    - formCode: 表单编码
+    - format: 导出格式（jsonl / csv）
+    - start_date: 开始日期 (YYYY-MM-DD)
+    - end_date: 结束日期 (YYYY-MM-DD)
+    - user_id: 用户ID筛选
+
+    返回文件流，直接下载。
+    """
+    logger.info("[config/export] 导出历史数据 formCode=%s format=%s", formCode, format)
+
+    db = next(get_db())
+    try:
+        result = export_history_data(
+            form_code=formCode,
+            format=format,
+            start_date=start_date,
+            end_date=end_date,
+            user_id=user_id,
+            db=db
+        )
+
+        if not result.get("success"):
+            raise HTTPException(status_code=404, detail=result.get("message", "导出失败"))
+
+        from fastapi.responses import Response
+        return Response(
+            content=result["content"],
+            media_type=result.get("content_type", "text/plain"),
+            headers={
+                "Content-Disposition": f"attachment; filename*=UTF-8''{result['filename']}"
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("[config/export] 导出异常: %s", e)
+        raise HTTPException(status_code=500, detail=f"导出失败: {str(e)}")
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass

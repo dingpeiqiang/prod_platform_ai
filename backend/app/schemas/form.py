@@ -17,7 +17,7 @@ class FormField(BaseModel):
     disabled: bool = False
     hidden: bool = False
     rules: List[FieldRule] = Field(default_factory=list)
-    recommend: List[str] = Field(default_factory=list)
+    recommend: List[Any] = Field(default_factory=list)  # 兼容字符串和对象: str | {"value","source","reason","confidence"}
     defaultValue: Optional[Any] = None
 
 
@@ -34,6 +34,7 @@ class FormGenerateRequest(BaseModel):
     formCode: Optional[str] = None
     userId: Optional[str] = None
     extractedFields: Optional[Dict[str, Any]] = None  # LLM 已提取的字段值，优先使用
+    fieldRecommendations: Optional[Dict[str, Any]] = None  # 推荐引擎输出（含source/reason/confidence）
 
 
 class FormGenerateResponse(BaseModel):

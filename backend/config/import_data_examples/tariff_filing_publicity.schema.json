@@ -1,0 +1,30 @@
+{
+  "formCode": "tariff_filing_publicity",
+  "formName": "资费备案公示",
+  "description": "电信业务资费备案历史数据（30个字段的复杂表单）",
+  "valueTransform": {
+    "action_type": {
+      "A": "A-新增",
+      "M": "M-修改",
+      "D": "D-删除",
+      "AC": "AC-新增校验"
+    },
+    "type1": {
+      "1": "1-公众",
+      "2": "2-政企"
+    },
+    "type2": {
+      "1": "1-套餐",
+      "2": "2-加装包（不含港澳台和国际）",
+      "3": "3-营销活动",
+      "5": "5-国内标准资费"
+    },
+    "tariff_attr": {
+      "1": "1-全国",
+      "2": "2-省内",
+      "3": "3-本地"
+    }
+  },
+  "userField": "reporter",
+  "_comment": "data.jsonl 每行一个JSON对象，字段编码与本体 tariff_filing_publicity.json 的 fieldCode 一致"
+}

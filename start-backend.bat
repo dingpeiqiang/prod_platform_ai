@@ -43,41 +43,38 @@ if %errorLevel% == 0 (
 echo [OK] 将使用端口: %PORT%
 echo.
 
-echo [4/4] 选择启动模式：
-echo.
-echo    [1] 生产模式（uvicorn，无 reload，日志完整）
-echo    [2] 开发模式（uvicorn --reload，改代码自动重启）
-echo.
-set /p MODE=请输入选项 [1/2，默认1]:
+echo [4/4] 检查启动参数...
+if "%1"=="dev" goto DEV
+if "%1"=="--dev" goto DEV
+if "%1"=="-d" goto DEV
 
-if "%MODE%"=="2" goto DEV
+echo.
+echo [PROD] 启动生产模式（默认）...
+echo    - 如需开发模式，请使用: start-backend.bat dev
+echo.
 
 :PROD
-echo.
-echo [PROD] 启动生产模式...
-echo.
-echo    - API地址:  http://localhost:%PORT%
-echo    - API文档:  http://localhost:%PORT%/docs
-echo    - 模式:     单进程，无自动重载
-echo    - 日志:     终端 + backend\app\logs\app.log
-echo.
 echo ========================================
+echo    API地址:  http://localhost:%PORT%
+echo    API文档:  http://localhost:%PORT%/docs
+echo    模    式: 单进程，无自动重载
+echo    日    志: 终端 + backend\app\logs\app.log
+echo ========================================
+echo.
 python -m uvicorn app.main:app --host 0.0.0.0 --port %PORT% --log-level debug
 goto END
 
 :DEV
-echo.
-echo [DEV] 启动开发模式...
-echo.
-echo    - API地址:  http://localhost:%PORT%
-echo    - API文档:  http://localhost:%PORT%/docs
-echo    - 模式:     自动重载（改代码自动重启）
-echo    - 日志:     查看 backend\app\logs\app.log
-echo.
 echo ========================================
+echo    API地址:  http://localhost:%PORT%
+echo    API文档:  http://localhost:%PORT%/docs
+echo    模    式: 自动重载（修改代码自动重启）
+echo    日    志: 查看 backend\app\logs\app.log
+echo ========================================
+echo.
 set PYTHONUNBUFFERED=1
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port %PORT% --log-level debug
 goto END
 
 :END
-pause
+REM 脚本结束，不暂停（由 start-all.bat 一键启动时不需要）

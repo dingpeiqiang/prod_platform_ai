@@ -57,6 +57,8 @@ for _name in _LOG_MODULES:
 
 # 降低第三方库的日志级别
 logging.getLogger("uvicorn.access").setLevel(logging.INFO)
+logging.getLogger("uvicorn.autodiscover").setLevel(logging.WARNING)
+logging.getLogger("watchfiles.main").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)

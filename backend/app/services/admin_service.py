@@ -1,10 +1,12 @@
 """
 管理模块 Service 层
-负责：表单本体 CRUD、场景关键词管理、配置热重载、AI 配置生成
+负责：表单本体 CRUD、场景关键词管理、配置热重载、AI 配置生成、版本备份与回退
 """
 import json
 import logging
 import os
+import shutil
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
@@ -80,18 +82,37 @@ class AdminService:
         return cls._write_ontology_file(form_code, merged)
 
     @classmethod
-    def delete_ontology(cls, form_code: str) -> Dict[str, Any]:
-        """删除表单本体"""
+    def delete_ontology(cls, form_code: str, auto_backup: bool = True) -> Dict[str, Any]:
+        """删除表单本体（自动备份到版本历史）"""
         existing = config_loader.get_ontology(form_code)
         if existing is None:
             return {"success": False, "message": f"表单 {form_code} 不存在"}
 
+        # 自动备份当前版本
+        backup_info = None
+        if auto_backup:
+            backup_result = cls.create_version(form_code, action="delete")
+            if backup_result.get("success"):
+                backup_info = backup_result.get("version")
+                logger.info("[AdminService] 删除前自动备份 form_code=%s version_id=%s", form_code, backup_info.get("id") if backup_info else "N/A")
+
+        # 删除本体文件
         file_path = _BASE_DIR / "ontologies" / f"{form_code}.json"
         try:
             file_path.unlink()
+
+            # 从场景映射中移除该表单
+            cls._remove_from_scene_mappings(form_code)
+
             config_loader.reload_config("ontologies")
-            logger.info("[AdminService] 删除表单 form_code=%s", form_code)
-            return {"success": True, "message": f"表单 {form_code} 已删除"}
+            config_loader.reload_config("scene_mappings")
+
+            logger.info("[AdminService] 删除表单 form_code=%s (已备份)", form_code)
+            return {
+                "success": True,
+                "message": f"表单 {form_code} 已删除",
+                "backup": backup_info
+            }
         except Exception as e:
             logger.exception("[AdminService] 删除表单失败 form_code=%s: %s", form_code, e)
             return {"success": False, "message": str(e)}
@@ -112,6 +133,160 @@ class AdminService:
         except Exception as e:
             logger.exception("[AdminService] 写入表单配置失败 form_code=%s: %s", form_code, e)
             return {"success": False, "message": str(e)}
+
+    # ────────────────────────────────────────────────────────────────────────
+    # 版本管理（备份、历史、回退）
+    # ────────────────────────────────────────────────────────────────────────
+
+    @classmethod
+    def create_version(cls, form_code: str, action: str = "update") -> Dict[str, Any]:
+        """
+        为指定表单创建版本备份。
+
+        Args:
+            form_code: 表单编码
+            action: 触发版本的操作类型（update/delete/create）
+
+        Returns:
+            {"success": True, "version": {"id": "...", "timestamp": "...", "action": "..."}}
+        """
+        existing = config_loader.get_ontology(form_code)
+        if existing is None:
+            return {"success": False, "message": f"表单 {form_code} 不存在，无法备份"}
+
+        versions_dir = _BASE_DIR / "versions" / form_code
+        versions_dir.mkdir(parents=True, exist_ok=True)
+
+        # 生成版本 ID：时间戳 + 操作类型
+        now = datetime.now()
+        version_id = now.strftime("%Y%m%d_%H%M%S")
+        version_file = versions_dir / f"{version_id}.json"
+
+        # 版本元数据
+        version_meta = {
+            "id": version_id,
+            "formCode": form_code,
+            "formName": existing.get("formName", ""),
+            "action": action,
+            "timestamp": now.isoformat(),
+            "data": existing
+        }
+
+        try:
+            with open(version_file, "w", encoding="utf-8") as f:
+                json.dump(version_meta, f, ensure_ascii=False, indent=2)
+            logger.info("[AdminService] 创建版本 form_code=%s version_id=%s action=%s", form_code, version_id, action)
+            return {"success": True, "version": version_meta}
+        except Exception as e:
+            logger.exception("[AdminService] 创建版本失败 form_code=%s: %s", form_code, e)
+            return {"success": False, "message": str(e)}
+
+    @classmethod
+    def list_versions(cls, form_code: str) -> Dict[str, Any]:
+        """
+        获取指定表单的版本历史列表。
+
+        Returns:
+            {"success": True, "versions": [{"id": "...", "timestamp": "...", "action": "..."}, ...]}
+        """
+        versions_dir = _BASE_DIR / "versions" / form_code
+        if not versions_dir.exists():
+            return {"success": True, "versions": [], "formCode": form_code}
+
+        versions = []
+        for vf in sorted(versions_dir.glob("*.json"), reverse=True):
+            try:
+                with open(vf, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                versions.append({
+                    "id": meta.get("id", vf.stem),
+                    "formCode": meta.get("formCode", form_code),
+                    "formName": meta.get("formName", ""),
+                    "action": meta.get("action", "unknown"),
+                    "timestamp": meta.get("timestamp", ""),
+                })
+            except Exception:
+                logger.warning("[AdminService] 版本文件损坏: %s", vf)
+
+        logger.info("[AdminService] 获取版本列表 form_code=%s count=%d", form_code, len(versions))
+        return {"success": True, "versions": versions, "formCode": form_code}
+
+    @classmethod
+    def get_version(cls, form_code: str, version_id: str) -> Dict[str, Any]:
+        """获取指定版本的完整数据"""
+        version_file = _BASE_DIR / "versions" / form_code / f"{version_id}.json"
+        if not version_file.exists():
+            return {"success": False, "message": f"版本 {version_id} 不存在"}
+
+        try:
+            with open(version_file, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            return {"success": True, "version": meta}
+        except Exception as e:
+            logger.exception("[AdminService] 读取版本失败: %s", e)
+            return {"success": False, "message": str(e)}
+
+    @classmethod
+    def rollback_version(cls, form_code: str, version_id: str) -> Dict[str, Any]:
+        """
+        回退到指定版本。
+
+        流程：
+        1. 备份当前版本（如果存在）
+        2. 从版本文件恢复数据
+        3. 写入本体文件并热重载
+        """
+        # 读取目标版本
+        version_file = _BASE_DIR / "versions" / form_code / f"{version_id}.json"
+        if not version_file.exists():
+            return {"success": False, "message": f"版本 {version_id} 不存在"}
+
+        try:
+            with open(version_file, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            target_data = meta.get("data")
+            if not target_data:
+                return {"success": False, "message": f"版本 {version_id} 数据为空"}
+
+            # 备份当前版本（如果还存在）
+            current = config_loader.get_ontology(form_code)
+            if current is not None:
+                cls.create_version(form_code, action="rollback")
+
+            # 恢复目标版本
+            result = cls._write_ontology_file(form_code, target_data)
+            if result.get("success"):
+                logger.info("[AdminService] 回退成功 form_code=%s → version_id=%s", form_code, version_id)
+                return {
+                    "success": True,
+                    "message": f"已回退到版本 {version_id}",
+                    "data": target_data
+                }
+            else:
+                return result
+
+        except Exception as e:
+            logger.exception("[AdminService] 回退失败 form_code=%s: %s", form_code, e)
+            return {"success": False, "message": str(e)}
+
+    @classmethod
+    def _remove_from_scene_mappings(cls, form_code: str):
+        """从场景映射中移除指定表单的关键词条目"""
+        scene_result = cls.get_scene_mappings()
+        if not scene_result.get("success"):
+            return
+
+        mappings_data = scene_result.get("data", {})
+        scene_mappings = mappings_data.get("sceneMappings", [])
+
+        # 过滤掉该 formCode 的条目
+        original_count = len(scene_mappings)
+        scene_mappings = [m for m in scene_mappings if m.get("formCode") != form_code]
+
+        if len(scene_mappings) < original_count:
+            mappings_data["sceneMappings"] = scene_mappings
+            cls.update_scene_mappings(mappings_data)
+            logger.info("[AdminService] 从场景映射移除 form_code=%s (删除 %d 条)", form_code, original_count - len(scene_mappings))
 
     # ────────────────────────────────────────────────────────────────────────
     # 场景关键词（Scene Mapping）管理
@@ -211,37 +386,167 @@ class AdminService:
           {
             "fieldCode": "字段编码（snake_case）",
             "fieldName": "字段中文名",
-            "fieldType": "字段类型",
+            "fieldType": "字段类型（见下方枚举）",
             "required": true/false,
-            "options": ["选项1", "选项2"]  // 仅 select/radio/checkbox 类型需要
+            "defaultValue": "默认值（可选）",
+            "ruleDescription": "用自然语言描述该字段的填写规则和约束（可选）",
+            "options": ["选项1", "选项2"],
+            "enumConfig": { "type": "static", "options": ["选项1", "选项2"] }
           }
         ]
       }
-    ]
+    ],
+    "submitConfig": {
+      "type": "api",
+      "api": { "url": "", "method": "POST", "timeout": 30, "dataPath": "" }
+    }
   },
   "validationErrors": ["校验问题列表，没有则为空数组"],
   "reply": "对用户的简短回复，说明已生成配置"
 }
 ```
 
-## 字段类型说明
-- input: 单行文本
-- textarea: 多行文本
-- select: 下拉选择（必须提供 options）
-- radio: 单选按钮（必须提供 options）
-- checkbox: 复选框（必须提供 options）
-- date: 日期选择器
-- number: 数字输入
-- email: 邮箱
-- phone: 手机号
+## 字段类型枚举（fieldType）
+
+| fieldType | 说明 | 必须配合属性 |
+|-----------|------|-------------|
+| `input` | 单行文本 | - |
+| `textarea` | 多行文本 | - |
+| `number` | 数字输入 | - |
+| `select` | 下拉选择 | `options` 或 `enumConfig` |
+| `radio` | 单选按钮 | `options` 或 `enumConfig` |
+| `checkbox` | 复选框 | `options` 或 `enumConfig` |
+| `date` | 日期选择器 | - |
+| `datetime` | 日期时间选择器 | - |
+| `email` | 邮箱输入 | - |
+| `phone` | 手机号输入 | - |
+| `file` | 文件上传 | - |
+
+## 枚举配置（enumConfig）
+
+当选项来源需要灵活配置时，使用 `enumConfig` 代替 `options`。二者互斥，有 enumConfig 时优先使用。
+
+### 静态枚举
+```json
+"enumConfig": {
+  "type": "static",
+  "options": ["选项1", "选项2", "选项3"]
+}
+```
+
+### API 动态枚举
+```json
+"enumConfig": {
+  "type": "api",
+  "api": {
+    "url": "https://api.example.com/options",
+    "method": "GET",
+    "headers": { "Authorization": "Bearer ${token}" },
+    "timeout": 10,
+    "dataPath": "data.list",
+    "cacheTTL": 3600,
+    "retryCount": 2,
+    "fallback": ["默认选项1", "默认选项2"]
+  }
+}
+```
+
+**使用原则**：
+- 简单固定选项 → 用 `options` 即可
+- 选项可能动态变化或需要从接口获取 → 用 `enumConfig`
+- API 枚举必须提供 `fallback` 兜底选项
+
+## 校验规则（ruleDescription）说明
+
+每个字段可添加 `ruleDescription` 字段，用**自然语言描述**该字段的填写规则和约束。
+AI 会在用户提交表单时读取这些描述来判断填写是否符合规则。
+
+**规则描述应清晰、具体、可判断**，例如：
+
+| 字段类型 | ruleDescription 示例 |
+|---------|---------------------|
+| 营业执照号 | "15-18位数字和大写字母，统一社会信用代码为18位" |
+| 手机号 | "11位中国大陆手机号，以1开头" |
+| 邮箱 | "标准邮箱格式，如 user@example.com" |
+| 金额 | "正数，最小0.01，最大999999.99" |
+| 日期 | "不早于2024-01-01，不晚于当天" |
+| 身份证号 | "18位身份证号，最后一位可以是X" |
+| 网址 | "以http://或https://开头的合法URL" |
+| 密码 | "至少12位，包含大小写字母和数字" |
+
+**规则描述设计原则**：
+1. 描述应该**具体可量化**，包含明确的数值范围、格式要求
+2. 如果字段没有特殊约束，可以省略 ruleDescription
+3. 通用格式（如手机号、邮箱）可使用 fieldType 代替，无需重复在 ruleDescription 中描述
+4. 业务特有的约束（如"金额不超过合同总额"）务必写入 ruleDescription
+
+## 提交配置（submitConfig）
+
+表单提交目标可配置，默认不设置（系统内部处理）。如需提交到外部 API：
+
+```json
+"submitConfig": {
+  "type": "api",
+  "api": {
+    "url": "https://api.example.com/submit",
+    "method": "POST",
+    "headers": { "Content-Type": "application/json", "X-API-Key": "your-key" },
+    "timeout": 30,
+    "dataPath": ""
+  }
+}
+```
 
 ## 设计原则
 1. 实体分组要合理：如"申请人信息"、"审批信息"、"业务详情"等
 2. 字段命名要语义清晰，使用中文 fieldName
 3. 必填字段要审慎设置，通常核心业务字段设为必填
-4. select/radio/checkbox 必须提供合理的选项列表
+4. **select/radio/checkbox 必须提供 options 或 enumConfig，否则前端无法渲染**
 5. 根据业务常识设计合理的字段，用户描述不清的地方可以自行补充
 6. formCode 必须是 snake_case 格式，不能有空格和特殊字符
+7. **为有业务约束的字段添加 ruleDescription**，用自然语言清晰描述规则
+8. 复杂的选项配置用 enumConfig，简单固定选项用 options
+9. **枚举选项必须基于业务常识设计，至少3个选项，不要用占位符**
+
+### ⚠️ 枚举字段完整性检查（必须遵守）
+
+对于 fieldType 为 `select`、`radio`、`checkbox` 的字段，**必须**满足以下条件之一：
+- 提供 `options` 数组（至少包含3个有业务含义的选项）
+- 提供 `enumConfig` 对象（包含 type 和对应的选项配置）
+
+**正确示例**：
+```json
+{
+  "fieldCode": "contract_type",
+  "fieldName": "合同类型",
+  "fieldType": "select",
+  "required": true,
+  "options": ["固定期限合同", "无固定期限合同", "以完成一定工作任务为期限的合同"]
+}
+```
+
+**错误示例（禁止）**：
+```json
+{
+  "fieldCode": "contract_type",
+  "fieldName": "合同类型",
+  "fieldType": "select",
+  "required": true
+}
+```
+↑ 缺少 options，前端无法渲染下拉框，**这是严重错误**！
+
+**错误示例（禁止）**：
+```json
+{
+  "fieldCode": "priority",
+  "fieldName": "优先级",
+  "fieldType": "select",
+  "required": true,
+  "options": ["选项1", "选项2"]
+}
+```
+↑ 选项没有业务含义，只是占位符，**这也是错误**！
 
 ## 如果用户的描述不足以生成完整配置
 返回：
@@ -296,10 +601,15 @@ class AdminService:
 
             prompt = f"以下是用户与助手的对话记录，请根据最后一条用户消息生成表单配置：\n\n{conversation_text}"
 
-            result_text = llm_service._call_llm(prompt, system_prompt=cls._CONFIG_SYSTEM_PROMPT)
+            # 配置生成的 JSON 输出可能较长（5000-8000 tokens）
+            # 使用 _call_llm_sync_with_reasoning 同时获取模型思考过程
+            result_text, config_reasoning = llm_service._call_llm_sync_with_reasoning(
+                prompt, system_prompt=cls._CONFIG_SYSTEM_PROMPT, max_tokens=8192
+            )
 
             if not result_text:
-                return {"success": False, "reply": "AI 未返回结果，请重试"}
+                logger.error("[AdminService] chat() 调用 LLM 返回为空")
+                return {"success": False, "reply": "AI 未返回结果，请重试", "reasoning": config_reasoning}
 
             # 解析 JSON
             parsed = llm_service._extract_json(result_text)
@@ -321,17 +631,34 @@ class AdminService:
                 if not config_data.get("entities"):
                     validation_errors.append("entities 不能为空")
 
+                # 枚举字段完整性校验：select/radio/checkbox 必须有 options 或 enumConfig
+                enum_field_types = {"select", "radio", "checkbox"}
+                for entity in (config_data.get("entities") or []):
+                    entity_name = entity.get("entityName", entity.get("entityCode", ""))
+                    for field in (entity.get("fields") or []):
+                        ft = field.get("fieldType", "")
+                        fc = field.get("fieldCode", "")
+                        fn = field.get("fieldName", fc)
+                        if ft in enum_field_types:
+                            has_options = bool(field.get("options"))
+                            has_enum_config = bool(field.get("enumConfig"))
+                            if not has_options and not has_enum_config:
+                                validation_errors.append(
+                                    f"字段 {fn}({fc}) 类型为 {ft}，但缺少 options 或 enumConfig，前端无法渲染"
+                                )
+
                 logger.info("[AdminService] 配置生成成功 formCode=%s", config_data.get("formCode"))
                 return {
                     "success": True,
                     "hasConfig": True,
                     "config": config_data,
                     "validationErrors": validation_errors,
-                    "reply": reply
+                    "reply": reply,
+                    "reasoning": config_reasoning
                 }
             else:
                 reply = parsed.get("reply", "请描述您想创建的表单类型。")
-                return {"success": True, "hasConfig": False, "reply": reply}
+                return {"success": True, "hasConfig": False, "reply": reply, "reasoning": config_reasoning}
 
         except Exception as e:
             logger.exception("[AdminService] AI 配置生成失败: %s", e)
@@ -363,19 +690,19 @@ class AdminService:
                 description=description or form_name
             )
 
-            result_text = llm_service._call_llm(prompt)
+            result_text, keywords_reasoning = llm_service._call_llm_sync_with_reasoning(prompt)
             if not result_text:
-                return {"success": True, "keywords": [form_name, form_code]}
+                return {"success": True, "keywords": [form_name, form_code], "reasoning": keywords_reasoning}
 
             parsed = llm_service._extract_json(result_text)
             if parsed and "keywords" in parsed:
                 keywords = parsed["keywords"]
                 if isinstance(keywords, list) and len(keywords) > 0:
                     logger.info("[AdminService] 生成关键词 formCode=%s count=%d", form_code, len(keywords))
-                    return {"success": True, "keywords": keywords}
+                    return {"success": True, "keywords": keywords, "reasoning": keywords_reasoning}
 
             # 解析失败，返回基础关键词
-            return {"success": True, "keywords": [form_name, form_code]}
+            return {"success": True, "keywords": [form_name, form_code], "reasoning": keywords_reasoning}
 
         except Exception as e:
             logger.exception("[AdminService] 关键词生成失败: %s", e)

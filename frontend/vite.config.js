@@ -20,12 +20,20 @@ export default defineConfig({
     strictPort: false,  // 端口被占用时自动尝试下一个
     proxy: {
       '/api': {
-        target: 'http://localhost:6173',
+        target: 'http://localhost:8000',
         changeOrigin: true,
-        rewrite: (path) => path  // 保持路径不变
+        rewrite: (path) => path,
+        configure: (proxy) => {
+          proxy.on('proxyRes', (proxyRes) => {
+            if (proxyRes.headers['content-type']?.includes('text/event-stream')) {
+              proxyRes.headers['cache-control'] = 'no-cache'
+              proxyRes.headers['x-accel-buffering'] = 'no'
+            }
+          })
+        }
       },
       '/ws': {
-        target: 'ws://localhost:6173',
+        target: 'ws://localhost:8000',
         ws: true,
         changeOrigin: true
       }

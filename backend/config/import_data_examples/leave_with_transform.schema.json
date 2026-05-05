@@ -1,0 +1,39 @@
+{
+  "formCode": "leave",
+  "formName": "请假申请",
+  "description": "OA系统历史请假记录（支持枚举值转换）",
+  
+  "valueTransform": {
+    "leave_type": {
+      "annual": "年假",
+      "sick": "病假",
+      "personal": "事假",
+      "marriage": "婚假",
+      "maternity": "产假"
+    },
+    "department": {
+      "tech": "技术部",
+      "sales": "销售部",
+      "hr": "人事部",
+      "finance": "财务部",
+      "marketing": "市场部"
+    },
+    "status": {
+      "approved": "已批准",
+      "pending": "待审批",
+      "rejected": "已拒绝"
+    }
+  },
+  
+  "userField": "applicant_name",
+  
+  "fields": [
+    "applicant_name",
+    "department", 
+    "leave_type",
+    "start_date",
+    "end_date",
+    "reason",
+    "days"
+  ]
+}

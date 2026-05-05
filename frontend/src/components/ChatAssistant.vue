@@ -64,29 +64,6 @@
 
               <!-- AI 消息 -->
               <div v-else class="ai-message">
-                <!-- 模型推理过程 -->
-                <div v-if="msg.modelReasoningText" class="model-reasoning-wrap">
-                  <button class="model-reasoning-toggle" @click="toggleModelReasoning(idx)">
-                    <svg
-                      :style="{ transform: msg.showModelReasoning ? 'rotate(90deg)' : 'rotate(0deg)' }"
-                      width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                      style="transition:transform .2s"
-                    >
-                      <polyline points="9 18 15 12 9 6"/>
-                    </svg>
-                    <span class="model-reasoning-label">
-                      💭 模型思考
-                      <span v-if="!msg.done" class="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
-                    </span>
-                    <span class="model-reasoning-hint">{{ msg.modelReasoningText.length > 100 ? msg.modelReasoningText.slice(0, 100) + '…' : msg.modelReasoningText }}</span>
-                  </button>
-                  <transition name="collapse">
-                    <div v-if="msg.showModelReasoning" class="model-reasoning-body">
-                      <pre class="model-reasoning-text">{{ msg.modelReasoningText }}</pre>
-                    </div>
-                  </transition>
-                </div>
-
                 <!-- 系统步骤折叠区 -->
                 <div v-if="msg.reasoning && msg.reasoning.length" class="reasoning-wrap">
                   <button class="reasoning-toggle" @click="toggleReasoning(idx)">
@@ -101,16 +78,36 @@
                       🔄 处理步骤
                       <span class="reasoning-count">({{ msg.reasoning.length }} 步)</span>
                     </span>
+                    <span v-if="!msg.done" class="thinking-dots"><span/><span/><span/></span>
                   </button>
                   <transition name="collapse">
                     <div v-if="msg.showReasoning" class="reasoning-body">
                       <div
                         v-for="(step, si) in msg.reasoning"
                         :key="si"
-                        :class="['reasoning-step', 'step-' + step.type]"
+                        :class="['reasoning-step', 'step-' + step.type, { 'step-latest': si === msg.latestStepIndex && !msg.done }]"
                       >
                         <span class="step-icon">{{ stepIcon(step.type) }}</span>
                         <span class="step-text">{{ step.content }}</span>
+                        <span v-if="si === msg.latestStepIndex && !msg.done" class="step-loading">
+                          <span/><span/><span/>
+                        </span>
+                        <!-- 该步骤对应的模型推理（内嵌显示） -->
+                        <div v-if="step.reasoning" class="step-reasoning-inline">
+                          <span class="step-reasoning-toggle" @click="step._showReasoning = !step._showReasoning">
+                            <svg
+                              :style="{ transform: step._showReasoning ? 'rotate(90deg)' : 'rotate(0deg)' }"
+                              width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                              style="transition:transform .2s;vertical-align:middle"
+                            ><polyline points="9 18 15 12 9 6"/></svg>
+                            模型思考 ({{ step.reasoning.length }} 字)
+                          </span>
+                          <transition name="collapse">
+                            <div v-if="step._showReasoning" class="step-reasoning-body">
+                              <pre class="step-reasoning-text">{{ step.reasoning }}</pre>
+                            </div>
+                          </transition>
+                        </div>
                       </div>
                     </div>
                   </transition>
@@ -125,7 +122,7 @@
                 <span v-if="!msg.done && (msg.streamText || !msg.reasoning?.length)" class="cursor-blink">▌</span>
 
                 <!-- 流式等待 -->
-                <div v-if="!msg.done && !msg.streamText && !msg.reasoning?.length && !msg.modelReasoningText" class="dots-loading">
+                <div v-if="!msg.done && !msg.streamText && !msg.reasoning?.length" class="dots-loading">
                   <span/><span/><span/>
                 </div>
 
@@ -139,7 +136,32 @@
                   :deploying="msg.configDeploying"
                   @deploy="handleConfigDeploy(msg, $event)"
                   @modify="handleConfigModify(msg)"
+                  @preview="handleConfigPreview($event)"
                   @test="handleConfigTest"
+                />
+
+                <!-- 删除结果面板（组件化） -->
+                <DeleteResultPanel
+                  v-if="msg.deleteFormData"
+                  :formCode="msg.deleteFormData.formCode"
+                  :formName="msg.deleteFormData.formName"
+                  :versionList="msg.versionList"
+                  :loadingVersions="msg.loadingVersions"
+                  :rollingBack="msg.rollingBack"
+                  :rollbackResult="msg.rollbackResult"
+                  @rollback="(v) => handleRollback(msg, v)"
+                  @load-versions="() => loadVersions(msg)"
+                />
+
+                <!-- 历史数据维护面板（组件化） -->
+                <HistoryPanel
+                  v-if="msg.historyData"
+                  :historyData="msg.historyData"
+                  :importing="msg.importing"
+                  :importResult="msg.importResult"
+                  @import="() => handleImportHistory(msg)"
+                  @analyze="() => handleAnalyzeHistory(msg)"
+                  @export="(opts) => handleExportHistory(msg, opts)"
                 />
 
                 <!-- 操作按钮（已移除表单内嵌） -->
@@ -154,7 +176,7 @@
               </div>
             </div>
 
-            <!-- 用户头像 -->
+            <!-- 用户头像（右侧） -->
             <div v-if="msg.role === 'user'" class="avatar user-avatar">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/>
@@ -234,8 +256,89 @@ import { marked } from 'marked'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import FormPanel from './FormPanel.vue'
 import ConfigCard from './ConfigCard.vue'
+// 意图面板组件
+import DeleteResultPanel from './intent-panels/DeleteResultPanel.vue'
+import HistoryPanel from './intent-panels/HistoryPanel.vue'
+// 意图注册器
+import { registerEventHandler, registerPostProcessor, getEventHandler, getPostProcessor } from '../composables/useIntentRegistry.js'
 
 marked.setOptions({ breaks: true, gfm: true })
+
+// ── 意图事件处理器注册 ──────────────────────────────
+// 将 SSE 事件处理逻辑从 handleEvent switch/case 迁移到注册器
+registerEventHandler('config', (data, msg) => {
+  console.log('[SSE] 收到 config 事件, configData:', data.content ? Object.keys(data.content) : null)
+  msg.configData = data.content
+  msg.configDeployed = false
+  msg.configDeploying = false
+  scrollToBottom()
+}, { panel: ConfigCard })
+
+registerEventHandler('delete_form', (data, msg) => {
+  console.log('[SSE] 收到 delete_form 事件', data.content)
+  msg.deleteFormData = data.content
+  msg.showVersionHistory = true
+  scrollToBottom()
+}, { panel: DeleteResultPanel })
+
+registerEventHandler('manage_history', (data, msg) => {
+  const historyPayload = data.data || {}
+  if (!historyPayload.action) {
+    if (historyPayload.qualityScore !== undefined) historyPayload.action = 'analyze'
+    else if (historyPayload.generatedCount !== undefined) historyPayload.action = 'generate'
+    else if (historyPayload.importedCount !== undefined) historyPayload.action = 'import'
+    else if (historyPayload.downloadUrl !== undefined) historyPayload.action = 'export'
+    else if (historyPayload.totalRecords !== undefined) historyPayload.action = 'status'
+    else historyPayload.action = 'status'
+  }
+  if (historyPayload.action === 'export') {
+    // export 不渲染面板，只在气泡里显示下载链接
+    msg._historyRaw = historyPayload
+  } else {
+    msg.historyData = historyPayload
+  }
+  scrollToBottom()
+}, { panel: HistoryPanel })
+
+// ── 意图后处理器注册 ──────────────────────────────
+// SSE 流结束后的意图专属后处理（替代 if/elif 链）
+registerPostProcessor('form_update', async (msg, intentData) => {
+  await updateFormFields(intentData)
+})
+
+registerPostProcessor('delete_form', (msg, intentData) => {
+  msg.content = msg.streamText || ''
+  const deletedCode = intentData?.formCode || msg.deleteFormData?.formCode
+  if (deletedCode && currentFormSchema.value?.formCode === deletedCode) {
+    currentFormId.value = null
+    currentFormSchema.value = null
+  }
+})
+
+registerPostProcessor('manage_history', (msg) => {
+  const hd = msg._historyRaw || msg.historyData
+  if (hd?.action === 'export' && hd.downloadUrl) {
+    msg.content = `文件已准备好导出：${hd.filename}（共${hd.recordCount}条记录）\n点击下载：${hd.downloadUrl}`
+  } else {
+    msg.content = msg.streamText || ''
+  }
+})
+
+registerPostProcessor('configure', (msg) => {
+  msg.content = msg.streamText || ''
+})
+
+registerPostProcessor('form', async (msg, intentData) => {
+  if (intentData?.formCode) {
+    await generateForm({
+      formCode: intentData.formCode,
+      extractedFields: intentData.extractedFields || {},
+      fieldRecommendations: intentData.fieldRecommendations
+    })
+  } else {
+    msg.content = msg.streamText
+  }
+})
 
 const props = defineProps({
   sessionId:    { type: String, required: true },
@@ -331,7 +434,47 @@ const stepIcon = (type) => ({ thinking: '💭', reasoning: '🔍', result: '✅'
 
 const renderMarkdown = (text) => {
   if (!text) return ''
-  return marked.parse(text)
+  let t = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+
+  // 修复 MiniMax 等模型输出不规范的 Markdown 格式
+  // 1. "-费用" → "- 费用"：短横线列表标记后补空格
+  t = t.replace(/^-([^\s\d])/gm, '- $1')
+  t = t.replace(/\n-([^\s\d])/g, '\n- $1')
+  t = t.replace(/ -([^\s\d])/g, ' - $1')
+
+  // 2. 同一行多个 "- xxx" 列表项拆行
+  t = t.replace(/(- [^-]+?)(?=\s- )/g, '$1\n')
+
+  // 3. "2.聊天" → "2. 聊天"：数字编号后补空格
+  t = t.replace(/(\d+\.)(?=[^\s\d])/g, '$1 ')
+
+  // 4. 同一行多个编号拆行
+  t = t.replace(/([^\n])(\d+\.\s)/g, '$1\n$2')
+
+  return marked.parse(t)
+}
+
+/**
+ * 对完整文本做 Markdown 格式规范化（仅在 done/text_end 时调用）
+ * 修复 MiniMax 等模型输出不规范的问题
+ */
+const formatMarkdownText = (raw) => {
+  if (!raw) return raw
+  let t = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+
+  // 1. " -费用" → " - 费用"：空格+短横线后无空格，补空格（让 marked 识别为列表项）
+  t = t.replace(/ (\-)([^\s\d])/g, ' $1 $2')
+
+  // 2. 同一行内多个 "- xxx" 列表项拆行："- A - B" → "- A\n- B"
+  t = t.replace(/(- [^-]+?)(?=\s- )/g, '$1\n')
+
+  // 3. "2.聊天" → "2. 聊天"：数字编号后补空格
+  t = t.replace(/(\d+\.)(?=[^\s\d])/g, '$1 ')
+
+  // 4. 同一行多个编号拆行："...2. xxx3. yyy..." → "...2. xxx\n3. yyy..."
+  t = t.replace(/([^\n])(\d+\. )/g, '$1\n$2')
+
+  return t
 }
 
 const scrollToBottom = (smooth = false) => {
@@ -364,10 +507,6 @@ const resetInput = () => {
 
 const toggleReasoning = (idx) => {
   messages.value[idx].showReasoning = !messages.value[idx].showReasoning
-}
-
-const toggleModelReasoning = (idx) => {
-  messages.value[idx].showModelReasoning = !messages.value[idx].showModelReasoning
 }
 
 const copyText = async (text) => {
@@ -425,8 +564,7 @@ const sendMessage = async () => {
   const aiMsg = {
     id: genId(), role: 'assistant',
     reasoning: [], streamText: '', content: '',
-    modelReasoning: [], modelReasoningText: '',
-    showReasoning: false, showModelReasoning: true,
+    showReasoning: false,
     done: false, type: 'chat'
   }
   messages.value.push(aiMsg)
@@ -450,31 +588,50 @@ const sendMessage = async () => {
 
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
 
+    console.log('[SSE] 流式响应开始, content-type:', resp.headers.get('content-type'))
+
     const reader  = resp.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
     let intentData = null
     let intentType = 'form' // 默认意图类型
+    let eventCount = 0
 
     while (true) {
       const { done, value } = await reader.read()
-      if (done) break
+      if (done) {
+        console.log('[SSE] 流结束, 共处理事件:', eventCount)
+        break
+      }
 
       buffer += decoder.decode(value, { stream: true })
       const frames = buffer.split('\n\n')
       buffer = frames.pop()
 
       for (const frame of frames) {
-        if (!frame.startsWith('data: ')) continue
+        if (!frame.startsWith('data:')) continue
         try {
-          const data = JSON.parse(frame.slice(6))
+          const data = JSON.parse(frame.slice(5).trim())
+          eventCount++
+          if (eventCount <= 3) console.log('[SSE] 事件 #' + eventCount + ':', data.type, data.content?.substring?.(0, 50) || '')
           handleEvent(data, msgIdx)
-          // done 事件携带表单意图数据
-          if (data.type === 'done' && data.isForm && data.intentData) {
-            intentData = data.intentData
-            intentType = data.intentType || 'form' // 提取意图类型
+          // done 事件：优先从 intent 事件（新版）提取，再从 done 本身兼容
+          if (data.type === 'done') {
+            if (intentType) {
+              // 已从 intent 事件提取到 intentType，无需重复处理
+            } else if (data.intentType) {
+              intentType = data.intentType
+            } else if (data.isForm) {
+              intentType = 'form'
+            }
+            if (data.intentData) intentData = data.intentData
           }
-          // result 事件也可能携带意图数据
+          // 新版 intent 事件（统一格式 v2.0）
+          if (data.type === 'intent' && data.intentType) {
+            intentType = data.intentType
+            if (data.data) intentData = data.data
+          }
+          // 旧版 result 事件兼容
           if (data.type === 'result') {
             try {
               const parsed = typeof data.content === 'string' ? JSON.parse(data.content) : data.content
@@ -490,30 +647,14 @@ const sendMessage = async () => {
     const msg = messages.value[msgIdx]
     if (msg) {
       msg.done = true
-      msg.showModelReasoning = !!msg.modelReasoningText
       msg.showReasoning = false
 
-      // 根据 intentType 处理表单
-      if (intentType === 'form_update') {
-        // 更新现有表单字段
-        await updateFormFields(intentData)
-      } else if (intentType === 'configure') {
-        // 配置意图：config 事件已在 handleEvent 中处理
-        // 这里只需要确保消息标记完成
-        msg.content = msg.streamText || ''
-      } else if (intentType === 'form') {
-        // 首次生成表单
-        if (intentData?.formCode) {
-          await generateForm({
-            formCode: intentData.formCode,
-            extractedFields: intentData.extractedFields || {},
-            fieldRecommendations: intentData.fieldRecommendations
-          })
-        } else {
-          msg.content = msg.streamText
-        }
+      // 根据 intentType 后处理（通过注册器分发）
+      const postProcessor = getPostProcessor(intentType)
+      if (postProcessor) {
+        await postProcessor(msg, intentData)
       } else {
-        // 普通聊天
+        // 默认：普通聊天
         msg.content = msg.streamText
       }
     }
@@ -554,15 +695,27 @@ const handleEvent = (data, idx) => {
       const last = msg.reasoning[msg.reasoning.length - 1]
       if (last && last.content === data.content) break
       msg.reasoning.push({ type: 'thinking', content: data.content })
+      // 自动展开思考步骤，让用户看到实时进度
+      msg.showReasoning = true
+      // 标记最新步骤（用于动画效果）
+      msg.latestStepIndex = msg.reasoning.length - 1
       scrollToBottom()
       break
     }
     case 'reasoning': {
-      if (!msg.modelReasoning) {
-        msg.modelReasoning = []
+      // 将模型推理追加到最近的 thinking 步骤（内嵌显示）
+      const steps = msg.reasoning
+      if (steps && steps.length) {
+        const lastThinkingIdx = steps.reduce((acc, s, i) => s.type === 'thinking' ? i : acc, -1)
+        if (lastThinkingIdx >= 0) {
+          const target = steps[lastThinkingIdx]
+          if (!target.reasoning) {
+            target.reasoning = ''
+            target._showReasoning = false
+          }
+          target.reasoning += data.content || ''
+        }
       }
-      msg.modelReasoning.push(data.content)
-      msg.modelReasoningText = msg.modelReasoning.join('')
       scrollToBottom()
       break
     }
@@ -574,14 +727,37 @@ const handleEvent = (data, idx) => {
       scrollToBottom()
       break
     case 'text_end':
+      // 流式结束，对完整文本做一次性格式化（修复模型 Markdown 格式不规范问题）
+      if (msg.streamText && !msg._formatted) {
+        msg.streamText = formatMarkdownText(msg.streamText)
+        msg._formatted = true
+      }
       break
+    case 'intent': {
+      // 新版统一意图事件（v2.0）
+      const { intentType, action, data: intentData } = data
+      const handler = getEventHandler(intentType)
+      if (handler) {
+        handler({ type: intentType, action, content: intentData }, msg)
+      }
+      break
+    }
+    // 以下为旧版事件格式兼容（保留用于未升级的后端）
+    case 'result': {
+      const parsed = typeof data.content === 'string' ? JSON.parse(data.content) : data.content
+      msg.intentResult = parsed
+      break
+    }
     case 'config':
-      // 配置意图：保存配置数据到消息对象
-      msg.configData = data.content
-      msg.configDeployed = false
-      msg.configDeploying = false
-      scrollToBottom()
+    case 'delete_form':
+    case 'manage_history': {
+      // ── 意图事件：通过注册器分发 ──
+      const handler = getEventHandler(data.type)
+      if (handler) {
+        handler(data, msg)
+      }
       break
+    }
     case 'error':
       msg.reasoning.push({ type: 'error', content: data.content })
       break
@@ -590,7 +766,7 @@ const handleEvent = (data, idx) => {
 
 // 生成表单 - 更新右侧面板，不再内嵌在消息中
 const generateForm = async (intentData) => {
-  const { formCode, extractedFields } = intentData
+  const { formCode, extractedFields, fieldRecommendations } = intentData
 
   // 添加系统消息
   messages.value.push({
@@ -601,13 +777,15 @@ const generateForm = async (intentData) => {
 
   try {
     const userInput = `生成${formCode || ''}表单`
+    const body = {
+      userInput, formCode,
+      extractedFields: Object.keys(extractedFields || {}).length ? extractedFields : undefined,
+      fieldRecommendations: fieldRecommendations || undefined
+    }
     const resp = await fetch('/api/v1/form/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userInput, formCode,
-        extractedFields: Object.keys(extractedFields).length ? extractedFields : undefined
-      })
+      body: JSON.stringify(body)
     })
     const result = await resp.json()
 
@@ -717,13 +895,31 @@ const updateFormFields = async (intentData) => {
 }
 
 // 表单提交
-const handleFormSubmit = () => {
+const handleFormSubmit = (formData, formId) => {
+  // 生成提交摘要
+  const schema = currentFormSchema.value
+  let summaryLines = []
+  if (schema && schema.fields) {
+    for (const field of schema.fields) {
+      const val = formData[field.fieldCode]
+      if (val !== undefined && val !== null && val !== '') {
+        const displayVal = Array.isArray(val) ? val.join(', ') : String(val)
+        summaryLines.push(`- **${field.fieldName}**: ${displayVal}`)
+      }
+    }
+  }
+
+  const summary = summaryLines.length > 0
+    ? `提交内容：\n${summaryLines.join('\n')}`
+    : ''
+
   currentFormId.value = ''
   currentFormSchema.value = null
   ElMessage({ message: '表单提交成功！', type: 'success', plain: true })
   messages.value.push({
     id: genId(), role: 'assistant',
-    content: '✅ 表单已成功提交！还有什么我可以帮你的吗？', done: true, type: 'chat'
+    content: `✅ 表单已成功提交！${summary ? '\n\n' + summary : ''}\n\n还有什么我可以帮你的吗？`,
+    done: true, type: 'chat'
   })
   scrollToBottom()
 }
@@ -801,12 +997,215 @@ const handleConfigTest = (formCode) => {
   sendMessage()
 }
 
+/**
+ * 将本体配置（entities/fields）转换为表单 schema（formCode/formName/fields）
+ * 用于预览未部署的配置
+ */
+const convertConfigToSchema = (config) => {
+  const fields = []
+  for (const entity of (config.entities || [])) {
+    for (const field of (entity.fields || [])) {
+      fields.push({
+        fieldCode: field.fieldCode,
+        fieldName: field.fieldName,
+        fieldType: field.fieldType,
+        required: !!field.required,
+        disabled: false,
+        hidden: false,
+        ruleDescription: field.ruleDescription || '',
+        // options / enumConfig
+        ...(field.options ? { options: field.options } : {}),
+        ...(field.enumConfig ? { enumConfig: field.enumConfig } : {}),
+        recommend: [],
+        defaultValue: null
+      })
+    }
+  }
+  return {
+    formCode: config.formCode || '',
+    formName: config.formName || '预览',
+    fields,
+    _preview: true // 标记为预览模式
+  }
+}
+
+const handleConfigPreview = (config) => {
+  const schema = convertConfigToSchema(config)
+  currentFormId.value = `preview_${Date.now()}`
+  currentFormSchema.value = schema
+
+  messages.value.push({
+    id: genId(), role: 'assistant',
+    content: `👁️ 已将「**${config.formName}**」表单加载到右侧面板进行预览，你可以查看字段布局并填写测试。确认无误后点击部署即可正式使用。`,
+    done: true, type: 'chat'
+  })
+  scrollToBottom()
+}
+
 onMounted(() => {
   loadMessages()
   loadFormState()
   scrollToBottom()
   nextTick(() => inputEl.value?.focus())
 })
+
+// ── 版本历史管理 ───────────────────────────────────────────────────────
+const loadVersions = async (msg) => {
+  const formCode = msg.deleteFormData?.formCode || msg.intentData?.formCode
+  if (!formCode) return
+
+  msg.loadingVersions = true
+  try {
+    const resp = await fetch(`/api/v1/chat/form-versions/${encodeURIComponent(formCode)}`)
+    const result = await resp.json()
+    if (result.success && result.versions?.length) {
+      msg.versionList = result.versions
+    } else {
+      msg.versionList = []
+    }
+  } catch (e) {
+    console.error('加载版本列表失败', e)
+    msg.versionList = []
+  } finally {
+    msg.loadingVersions = false
+  }
+}
+
+const handleRollback = async (msg, version) => {
+  const formCode = msg.deleteFormData?.formCode || msg.intentData?.formCode
+  
+  // 二次确认
+  try {
+    await ElMessageBox.confirm(
+      `确定回退到 ${formatVersionTime(version.timestamp)} 的版本？当前版本会自动备份。`,
+      '确认回退',
+      { confirmButtonText: '确定回退', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch { return }
+
+  msg.rollingBack = version.id
+  msg.rollbackResult = null
+
+  try {
+    const resp = await fetch('/api/v1/chat/rollback-form', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ formCode, versionId: version.id })
+    })
+    const result = await resp.json()
+
+    msg.rollbackResult = result
+
+    if (result.success) {
+      ElMessage({ message: `已成功回退到 ${version.id}`, type: 'success', duration: 3000, plain: true })
+      
+      // 添加系统消息
+      messages.value.push({
+        id: genId(), role: 'assistant',
+        content: `🔄 表单「${result.data?.formName || formCode}」已恢复到版本 ${version.id}，现在可以正常使用了。`,
+        done: true, type: 'chat'
+      })
+    } else {
+      ElMessage({ message: result.message || '回退失败', type: 'error', duration: 4000, plain: true })
+    }
+  } catch (e) {
+    console.error('回退失败', e)
+    msg.rollbackResult = { success: false, message: '网络错误' }
+  } finally {
+    msg.rollingBack = null
+  }
+}
+
+// ── 历史数据维护操作 ──
+
+const scoreLevel = (score) => {
+  if (score >= 80) return 'good'
+  if (score >= 60) return 'warn'
+  return 'bad'
+}
+
+const scoreLabel = (score) => {
+  if (score >= 90) return '优秀'
+  if (score >= 70) return '良好'
+  if (score >= 50) return '一般'
+  return '需改善'
+}
+
+const topFieldStats = (fieldStats) => {
+  if (!fieldStats) return {}
+  const entries = Object.entries(fieldStats)
+  // 按不同值数量排序，返回前5个
+  entries.sort((a, b) => (b[1]?.distinctValues || 0) - (a[1]?.distinctValues || 0))
+  return Object.fromEntries(entries.slice(0, 5))
+}
+
+// 从面板按钮触发：分析数据质量
+const handleAnalyzeHistory = async (msg) => {
+  const formCode = msg.historyData?.formCode || msg.intentData?.formCode
+  if (!formCode) return
+  msg.historyData = null
+
+  messages.value.push({ id: genId(), role: 'user', content: `分析一下${msg.historyData?.formName || formCode}的数据质量`, done: true })
+  await sendMessage(`分析一下${msg.historyData?.formName || formCode}的数据质量`)
+}
+
+// 从面板按钮触发：导入数据到数据库
+const handleImportHistory = async (msg) => {
+  const formCode = msg.historyData?.formCode || msg.intentData?.formCode
+  if (!formCode) return
+  msg.importing = true
+  try {
+    const resp = await fetch('/api/v1/chat/history/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ formCode })
+    })
+    const result = await resp.json()
+    msg.importResult = result
+  } catch (e) {
+    msg.importResult = { success: false, message: '导入失败: ' + e.message }
+  } finally {
+    msg.importing = false
+  }
+}
+
+// 从面板按钮触发：导出历史数据
+const handleExportHistory = async (msg, opts) => {
+  const formCode = msg.historyData?.formCode || msg.intentData?.formCode
+  if (!formCode) return
+
+  try {
+    const resp = await fetch(`/api/v1/config/export/${formCode}?format=${opts.format}`)
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: '导出失败' }))
+      ElMessage.error(err.detail || '导出失败')
+      return
+    }
+    const blob = await resp.blob()
+    const disposition = resp.headers.get('Content-Disposition') || ''
+    const filenameMatch = disposition.match(/filename\*?=['"]?(?:UTF-8'')?([^;\n"']+)/i)
+    const filename = filenameMatch ? decodeURIComponent(filenameMatch[1]) : `${formCode}_export.${opts.format}`
+
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    ElMessage.success(`已导出 ${filename}`)
+  } catch (e) {
+    ElMessage.error('导出失败：' + e.message)
+  }
+}
+
+const formatVersionTime = (isoStr) => {
+  if (!isoStr) return ''
+  const d = new Date(isoStr)
+  const pad = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
 </script>
 
 <style scoped>
@@ -950,7 +1349,11 @@ onMounted(() => {
   padding: 4px 0;
 }
 .msg-row.user {
-  flex-direction: row-reverse;
+  justify-content: flex-end;
+}
+.msg-row.user .msg-body {
+  flex: none;
+  max-width: 85%;
 }
 
 /* 头像 */
@@ -976,9 +1379,7 @@ onMounted(() => {
 /* 用户气泡 */
 .bubble.user-bubble {
   display: inline-block;
-  max-width: 70%;
-  float: right;
-  clear: both;
+  max-width: 100%;
   background: #fff;
   color: #1a1a1a;
   padding: 12px 16px;
@@ -994,58 +1395,6 @@ onMounted(() => {
 .ai-message {
   max-width: 90%;
 }
-
-/* 模型推理过程 */
-.model-reasoning-wrap {
-  margin-bottom: 10px;
-  background: linear-gradient(135deg, #f0f9ff, #f8fafc);
-  border: 1px solid #e0f2fe;
-  border-radius: 10px;
-  overflow: hidden;
-}
-.model-reasoning-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 10px 14px;
-  background: none; border: none;
-  cursor: pointer;
-  color: #0369a1;
-  font-size: 13px;
-  font-weight: 500;
-  text-align: left;
-}
-.model-reasoning-toggle:hover { background: rgba(3,105,161,.06); }
-.model-reasoning-label { flex-shrink: 0; display: flex; align-items: center; gap: 4px; }
-.model-reasoning-hint {
-  flex: 1;
-  color: #94a3b8;
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 400;
-  margin-left: 8px;
-}
-.model-reasoning-body {
-  padding: 8px 14px 14px;
-  border-top: 1px solid #e0f2fe;
-  max-height: 300px;
-  overflow-y: auto;
-}
-.model-reasoning-text {
-  margin: 0;
-  font-size: 12.5px;
-  line-height: 1.7;
-  color: #475569;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-}
-.model-reasoning-body::-webkit-scrollbar { width: 4px; }
-.model-reasoning-body::-webkit-scrollbar-track { background: transparent; }
-.model-reasoning-body::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
 
 /* 系统步骤折叠 */
 .reasoning-wrap {
@@ -1081,25 +1430,77 @@ onMounted(() => {
 }
 
 .reasoning-body {
-  padding: 6px 14px 12px;
+  padding: 8px 14px 12px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   border-top: 1px solid #f0f0f0;
 }
 .reasoning-step {
   display: flex;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 6px;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
   font-size: 12.5px;
   line-height: 1.5;
   color: #666;
   background: #fff;
+  animation: stepFadeIn 0.3s ease;
 }
 .reasoning-step.step-result { background: #f0fdf4; color: #16a34a; }
 .reasoning-step.step-error  { background: #fef2f2; color: #dc2626; }
-.step-icon { flex-shrink: 0; }
+.reasoning-step.step-latest { background: #eff6ff; color: #2563eb; }
+.step-icon { flex-shrink: 0; margin-top: 1px; }
+.step-text { flex: 1; min-width: 0; }
+.step-reasoning-inline {
+  flex-basis: 100%;
+  margin-top: 4px;
+  padding-left: 22px;
+  border-top: 1px dashed #ede9fe;
+  padding-top: 6px;
+}
+.step-reasoning-toggle {
+  cursor: pointer; color: #7c3aed; font-size: 12px;
+  display: inline-flex; align-items: center; gap: 4px;
+  user-select: none;
+  transition: color .15s;
+}
+.step-reasoning-toggle:hover { color: #5b21b6; }
+.step-reasoning-body { margin-top: 6px; }
+.step-reasoning-text {
+  font-size: 12px; line-height: 1.65; color: #6b21a8;
+  white-space: pre-wrap; word-break: break-word;
+  background: #f5f3ff; border-radius: 8px; padding: 10px 12px;
+  max-height: 240px; overflow-y: auto;
+  border: 1px solid #ede9fe;
+}
+.step-reasoning-text::-webkit-scrollbar { width: 4px; }
+.step-reasoning-text::-webkit-scrollbar-track { background: transparent; }
+.step-reasoning-text::-webkit-scrollbar-thumb { background: #ddd6fe; border-radius: 2px; }
+.step-loading {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  margin-left: 4px;
+}
+.step-loading span {
+  width: 4px; height: 4px;
+  background: #2563eb;
+  border-radius: 50%;
+  animation: dotPulse 1s infinite;
+}
+.step-loading span:nth-child(2) { animation-delay: 0.15s; }
+.step-loading span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes stepFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes dotPulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50%      { opacity: 1; transform: scale(1.2); }
+}
 
 .collapse-enter-active, .collapse-leave-active {
   transition: max-height .25s ease, opacity .2s ease;
@@ -1371,4 +1772,249 @@ textarea::-webkit-scrollbar-thumb { background: #e0e0e0; border-radius: 2px; }
   .msg-actions { opacity: 1; }
   .input-area { padding: 4px 10px 10px; }
 }
+
+/* ── 删除结果面板 ── */
+.delete-result-panel {
+  margin-top: 8px;
+  padding: 12px 14px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  background: #fef2f2;
+  max-width: 360px;
+}
+.delete-result-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #991b1b;
+  margin-bottom: 4px;
+}
+.delete-result-tip {
+  font-size: 12px;
+  color: #b91c1c;
+  margin: 0 0 10px;
+  opacity: .75;
+}
+.load-versions-btn {
+  font-size: 12px;
+  color: #6366f1;
+  background: none;
+  border: 1px solid #c7d2fe;
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.load-versions-btn:hover { background: #eef2ff; }
+.loading-small { font-size: 12px; color: #888; padding: 4px 0; }
+.version-history { margin-top: 8px; }
+.version-history-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 6px;
+}
+.version-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  background: #fff;
+  border-radius: 6px;
+  margin-bottom: 4px;
+  border: 1px solid #f0f0f0;
+}
+.version-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.version-action {
+  font-size: 12px;
+  font-weight: 500;
+  color: #333;
+}
+.version-time {
+  font-size: 11px;
+  color: #999;
+}
+.rollback-btn {
+  font-size: 11px;
+  color: #6366f1;
+  background: none;
+  border: 1px solid #c7d2fe;
+  border-radius: 5px;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.rollback-btn:hover:not(:disabled) { background: #eef2ff; }
+.rollback-btn:disabled { opacity: .5; cursor: not-allowed; }
+.rollback-result {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.rollback-result.success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+.rollback-result.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+
+/* ── 历史数据维护面板 ── */
+.history-mgmt-panel {
+  margin-top: 8px;
+  padding: 14px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #eff6ff;
+  max-width: 420px;
+}
+.history-mgmt-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #1e40af;
+  margin-bottom: 10px;
+}
+.history-score {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.score-ring {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  border: 3px solid #ccc;
+}
+.score-ring.good { border-color: #22c55e; color: #15803d; }
+.score-ring.warn { border-color: #f59e0b; color: #b45309; }
+.score-ring.bad { border-color: #ef4444; color: #b91c1c; }
+.score-label { font-size: 13px; color: #555; font-weight: 500; }
+.stat-row, .stat-detail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #444;
+  padding: 3px 0;
+}
+.no-data-tip {
+  font-size: 12.5px;
+  color: #b45309;
+  background: #fffbeb;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 8px 0;
+}
+.recommend-list { margin: 10px 0; }
+.recommend-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 6px;
+}
+.recommend-item {
+  font-size: 12.5px;
+  color: #555;
+  padding: 4px 0;
+  line-height: 1.5;
+}
+.gen-data-btn, .import-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+  padding: 7px 14px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all .15s;
+  border: none;
+  font-weight: 500;
+  margin-top: 8px;
+  margin-right: 6px;
+}
+.gen-data-btn {
+  color: #1e40af;
+  background: #dbeafe;
+  border: 1px solid #93c5fd;
+}
+.gen-data-btn:hover { background: #bfdbfe; }
+.gen-data-btn.outline {
+  color: #555;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+}
+.gen-success {
+  font-size: 13px;
+  color: #065f46;
+  font-weight: 600;
+  padding: 8px 0;
+}
+.preview-records { margin: 8px 0; }
+.preview-title { font-size: 11.5px; font-weight: 600; color: #666; margin-bottom: 4px; }
+.preview-records pre {
+  font-size: 11px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 6px 10px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 120px;
+  line-height: 1.35;
+  color: #374151;
+  margin-bottom: 4px;
+}
+.import-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.import-btn.primary {
+  background: linear-gradient(135deg,#3b82f6,#2563eb);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(59,130,246,.25);
+}
+.import-btn.primary:hover:not(:disabled) { opacity: .9; transform: translateY(-1px); }
+.import-btn.primary:disabled { opacity: .5; cursor: not-allowed; }
+.import-btn.secondary {
+  color: #555;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+}
+.import-btn.secondary:hover { background: #e5e7eb; }
+.import-result {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12.5px;
+}
+.import-result.success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+.import-result.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+.import-done {
+  font-size: 13px;
+  color: #065f46;
+  font-weight: 600;
+  padding: 8px 0;
+}
+.field-dist { margin: 8px 0; }
+.dist-title { font-size: 11.5px; font-weight: 600; color: #666; margin-bottom: 4px; }
+.dist-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  padding: 3px 0;
+  color: #555;
+}
+.fc-name { font-family: monospace; color: #333; font-weight: 500; }
+.fc-count { color: #888; font-size: 11.5px; }
 </style>

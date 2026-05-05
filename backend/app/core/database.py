@@ -5,9 +5,12 @@ from .config import get_settings
 
 settings = get_settings()
 
+# 创建数据库引擎，支持 MySQL
 engine = create_engine(
     settings.DATABASE_URL,
-    connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {}
+    pool_pre_ping=True,
+    pool_recycle=3600,
+    echo=settings.DEBUG
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

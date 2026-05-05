@@ -14,6 +14,10 @@ from app.harness.observability.llm_call_logger import (
     log_llm_call_fail
 )
 
+# 复用 provider 模块中的工具类（避免重复）
+from app.services.llm.base import extract_json
+from app.services.llm import ollama_provider, openai_provider, anthropic_provider, minimax_provider
+
 settings = get_settings()
 
 # 结构化日志：只输出关键信息，不打印全量 prompt
@@ -252,6 +256,15 @@ class LLMService:
                 return None
 
             if not content.strip():
+                # Fallback: 模型有时把正式回答放在 thinking 里，content 为空
+                if thinking and thinking.strip():
+                    extracted = self._extract_json(thinking)
+                    if extracted:
+                        logger.info("[Ollama] 🔄 从 thinking 中提取到 JSON，作为 content fallback")
+                        return json.dumps(extracted, ensure_ascii=False)
+                    # thinking 中无 JSON，返回 None 让上层降级处理
+                    logger.info("[Ollama] ⚠️ thinking 中无 JSON 且 content 为空，返回 None（降级处理）")
+                    return None
                 logger.warning("[Ollama] 响应为空! elapsed=%.2fs raw_response=%s",
                               elapsed, _truncate(json.dumps(result, ensure_ascii=False), 500))
                 return None
@@ -584,10 +597,10 @@ class LLMService:
 
                     try:
                         line_text = raw_line.decode('utf-8')
-                        if not line_text.startswith('data: '):
+                        if not line_text.startswith('data:'):
                             continue
 
-                        data_str = line_text[6:].strip()
+                        data_str = line_text[5:].strip()
                         if data_str == '[DONE]':
                             break
 
@@ -747,10 +760,10 @@ class LLMService:
 
                     try:
                         line_text = raw_line.decode('utf-8')
-                        if not line_text.startswith('data: '):
+                        if not line_text.startswith('data:'):
                             continue
 
-                        data_str = line_text[6:].strip()
+                        data_str = line_text[5:].strip()
                         if data_str == '[DONE]':
                             break
 
@@ -846,19 +859,32 @@ class LLMService:
         """
         provider = self.llm_config.get('provider', 'openai')
         if provider == 'ollama':
-            async for text, _ in self._call_ollama_stream(prompt, system_prompt, use_buffer):
+            async for text, _ in ollama_provider.call_stream(
+                self._get_base_url(), self._get_model(),
+                prompt, system_prompt, self.llm_config, use_buffer
+            ):
                 if text:
                     yield text
         elif provider == 'anthropic':
-            async for text, _ in self._call_anthropic_stream(prompt, system_prompt, use_buffer):
+            async for text, _ in anthropic_provider.call_stream(
+                self._get_base_url(), settings.LLM_API_KEY or self.llm_config.get('apiKey'),
+                self._get_model(), prompt, system_prompt, self.llm_config, use_buffer
+            ):
                 if text:
                     yield text
         elif provider == 'custom':
-            async for text, _ in self._call_custom_stream(prompt, system_prompt, use_buffer):
+            async for text, _ in minimax_provider.call_stream(
+                self._get_base_url(), self._get_model(),
+                settings.LLM_API_KEY or self.llm_config.get('apiKey'),
+                prompt, system_prompt, max_tokens=None, llm_config=self.llm_config
+            ):
                 if text:
                     yield text
         else:
-            async for text, _ in self._call_openai_stream(prompt, system_prompt, use_buffer):
+            async for text, _ in openai_provider.call_stream(
+                self._client, self.llm_config.get('model', 'gpt-4'),
+                prompt, system_prompt, self.llm_config, use_buffer
+            ):
                 if text:
                     yield text
     
@@ -867,25 +893,39 @@ class LLMService:
         prompt: str,
         system_prompt: Optional[str] = None,
         use_buffer: bool = True
-    ) -> AsyncGenerator[Tuple[str, Optional[StreamStats]], None]:
+    ) -> AsyncGenerator[Tuple[str, Optional["StreamStats"]], None]:
         """
         统一流式调用入口，返回文本内容和统计信息。
-        
+        通过 provider 子模块分发。
+
         Yields:
             (文本内容, 统计信息) - 统计信息仅在最后一个 yield 时提供
         """
         provider = self.llm_config.get('provider', 'openai')
         if provider == 'ollama':
-            async for item in self._call_ollama_stream(prompt, system_prompt, use_buffer):
+            async for item in ollama_provider.call_stream(
+                self._get_base_url(), self._get_model(),
+                prompt, system_prompt, self.llm_config, use_buffer
+            ):
                 yield item
         elif provider == 'anthropic':
-            async for item in self._call_anthropic_stream(prompt, system_prompt, use_buffer):
+            async for item in anthropic_provider.call_stream(
+                self._get_base_url(), settings.LLM_API_KEY or self.llm_config.get('apiKey'),
+                self._get_model(), prompt, system_prompt, self.llm_config, use_buffer
+            ):
                 yield item
         elif provider == 'custom':
-            async for item in self._call_custom_stream(prompt, system_prompt, use_buffer):
+            async for item in minimax_provider.call_stream(
+                self._get_base_url(), self._get_model(),
+                settings.LLM_API_KEY or self.llm_config.get('apiKey'),
+                prompt, system_prompt, max_tokens=None, llm_config=self.llm_config
+            ):
                 yield item
         else:
-            async for item in self._call_openai_stream(prompt, system_prompt, use_buffer):
+            async for item in openai_provider.call_stream(
+                self._client, self.llm_config.get('model', 'gpt-4'),
+                prompt, system_prompt, self.llm_config, use_buffer
+            ):
                 yield item
 
     # ------------------------------------------------------------------ #
@@ -893,8 +933,13 @@ class LLMService:
     # ------------------------------------------------------------------ #
     #  自定义 API 同步调用                                                #
     # ------------------------------------------------------------------ #
-    def _call_custom(self, prompt: str, system_prompt: Optional[str] = None) -> Optional[str]:
+    def _call_custom(self, prompt: str, system_prompt: Optional[str] = None, max_tokens: Optional[int] = None) -> Optional[str]:
         """调用自定义 API（非流式）
+        
+        Args:
+            prompt: 用户 prompt
+            system_prompt: 系统 prompt
+            max_tokens: 最大输出 token 数，为 None 时使用配置默认值
         
         Returns:
             None if failed, otherwise the response content string.
@@ -932,12 +977,13 @@ class LLMService:
         t0 = time.time()
         
         try:
+            effective_max_tokens = max_tokens if max_tokens is not None else self.llm_config.get('maxTokens', 2048)
             payload = {
                 "stream": False,
                 "messages": messages,
                 "model": model,
                 "temperature": self.llm_config.get('temperature', 0.3),
-                "max_tokens": self.llm_config.get('maxTokens', 2048)
+                "max_tokens": effective_max_tokens
             }
             
             headers = {
@@ -977,8 +1023,14 @@ class LLMService:
             result = response.json()
             logger.debug(f"[Custom]   Raw Response: {json.dumps(result, ensure_ascii=False)[:800]}")
             
-            content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
-            reasoning = result.get('choices', [{}])[0].get('message', {}).get('reasoning', '')
+            content = result.get('choices', [{}])[0].get('message', {}).get('content') or ''
+            reasoning = result.get('choices', [{}])[0].get('message', {}).get('reasoning') or ''
+            finish_reason = result.get('choices', [{}])[0].get('finish_reason', '')
+            
+            # 检测输出是否被 max_tokens 截断
+            if finish_reason == 'length':
+                logger.warning("[Custom] ⚠️ 输出被 max_tokens 截断！finish_reason=length, effective_max_tokens=%d", effective_max_tokens)
+                logger.warning("[Custom]   建议增大 maxTokens 配置或传入更大的 max_tokens 参数")
             
             call_record.elapsed_seconds = elapsed
             call_record.response_content = content
@@ -990,15 +1042,26 @@ class LLMService:
                 logger.info("[Custom] 💭 Reasoning:\n%s", reasoning)
 
             if not content.strip():
-                logger.warning(f"[Custom] ⚠️ 响应内容为空!")
-                logger.warning(f"[Custom]   Raw: {json.dumps(result, ensure_ascii=False)[:500]}")
-                
-                llm_call_logger.complete_call(
-                    response_content="",
-                    token_count=0,
-                    metadata={'empty_response': True, 'has_reasoning': bool(reasoning)}
-                )
-                return None
+                # Fallback: MiniMax M2.7 等模型有时把正式回答放在 reasoning 里，content 为空
+                if reasoning and reasoning.strip():
+                    extracted = self._extract_json(reasoning)
+                    if extracted:
+                        logger.info("[Custom] 🔄 从 reasoning 中提取到 JSON，作为 content fallback")
+                        content = json.dumps(extracted, ensure_ascii=False)
+                    else:
+                        # reasoning 中无 JSON，返回 None 让上层降级处理
+                        logger.info("[Custom] ⚠️ reasoning 中无 JSON 且 content 为空，返回 None（降级处理）")
+                        return None
+                else:
+                    logger.warning(f"[Custom] ⚠️ 响应内容为空!")
+                    logger.warning(f"[Custom]   Raw: {json.dumps(result, ensure_ascii=False)[:500]}")
+                    
+                    llm_call_logger.complete_call(
+                        response_content="",
+                        token_count=0,
+                        metadata={'empty_response': True, 'has_reasoning': bool(reasoning)}
+                    )
+                    return None
 
             logger.info(f"[Custom] ✅ 调用成功!")
             logger.info(f"[Custom]   Elapsed: {elapsed:.3f}s")
@@ -1034,59 +1097,183 @@ class LLMService:
             llm_call_logger.fail_call(e, metadata={'error_category': 'unknown'})
             return None
 
-    # ------------------------------------------------------------------ #
-    def _call_llm_sync(self, prompt: str, system_prompt: Optional[str] = None) -> Optional[str]:
+    def _call_custom_stream_sync(
+        self, prompt: str, system_prompt: Optional[str] = None, max_tokens: Optional[int] = None
+    ) -> Optional[str]:
+        """同步流式调用自定义 API，收集全部内容后返回。
+        
+        使用流式传输绕过 nginx 代理的 read timeout 限制
+        （非流式请求长时间无数据传输会被 nginx 504）。
+        """
+        import uuid
+
         if not self.enabled:
             return None
-        
+
+        base_url = self._get_base_url()
+        model = self._get_model()
+        api_key = settings.LLM_API_KEY or self.llm_config.get('apiKey')
+        messages = self._build_messages(prompt, system_prompt)
+        url = f"{base_url}/chat/completions"
+        effective_max_tokens = max_tokens if max_tokens is not None else self.llm_config.get('maxTokens', 2048)
+
+        payload = {
+            "stream": True,
+            "messages": messages,
+            "model": model,
+            "temperature": self.llm_config.get('temperature', 0.3),
+            "max_tokens": effective_max_tokens
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "token": api_key
+        }
+
+        call_id = str(uuid.uuid4())[:12]
+        logger.info("[Custom-stream-sync] 🚀 开始流式请求 model=%s url=%s max_tokens=%d", model, url, effective_max_tokens)
+        logger.info("[Custom-stream-sync]   Call ID: %s", call_id)
+
+        t0 = time.time()
+        try:
+            resp = requests.post(url, json=payload, headers=headers, stream=True, timeout=300)
+            elapsed_connect = time.time() - t0
+            logger.info("[Custom-stream-sync] 📥 响应 status=%s elapsed=%.1fs", resp.status_code, elapsed_connect)
+
+            if resp.status_code != 200:
+                logger.error("[Custom-stream-sync] HTTP %s: %s", resp.status_code, resp.text[:500])
+                return None
+
+            content_parts = []
+            reasoning_parts = []
+            line_count = 0
+            for raw_line in resp.iter_lines():
+                if not raw_line:
+                    continue
+                line_count += 1
+                try:
+                    line_text = raw_line.decode('utf-8')
+                    # SSE 标准格式: "data: {...}" 或 "data:{...}"（无空格）
+                    if line_text.startswith('data:'):
+                        data_str = line_text[5:].strip()
+                    else:
+                        # 非 SSE 数据行，跳过
+                        if line_count <= 3:
+                            logger.debug("[Custom-stream-sync] 非数据行: %s", line_text[:100])
+                        continue
+                    if data_str == '[DONE]':
+                        break
+                    if data_str == '[DONE]':
+                        break
+                    chunk = json.loads(data_str)
+                    delta = chunk.get('choices', [{}])[0].get('delta', {})
+                    # 收集 reasoning（MiniMax-M2.7）
+                    reasoning = delta.get('reasoning_content', '') or delta.get('reasoning', '')
+                    if reasoning:
+                        reasoning_parts.append(reasoning)
+                    # 收集正文 content
+                    content = delta.get('content', '')
+                    if content:
+                        content_parts.append(content)
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    continue
+
+            elapsed = time.time() - t0
+            result = ''.join(content_parts)
+            reasoning_text = ''.join(reasoning_parts)
+            logger.info(
+                "[Custom-stream-sync] ✅ 完成 elapsed=%.1fs lines=%d chars=%d reasoning_chars=%d",
+                elapsed, line_count, len(result), len(reasoning_text)
+            )
+
+            # Fallback: MiniMax M2.7 等模型有时把正式回答放在 reasoning 里，content 为空
+            if not result.strip() and reasoning_text.strip():
+                extracted = self._extract_json(reasoning_text)
+                if extracted:
+                    logger.info("[Custom-stream-sync] 🔄 从 reasoning 中提取到 JSON，作为 content fallback")
+                    return json.dumps(extracted, ensure_ascii=False)
+                # reasoning 中无 JSON，返回 None 让上层降级处理
+                # 不把 reasoning 原文当 content 返回，否则 JSON 解析必失败
+                logger.info("[Custom-stream-sync] ⚠️ reasoning 中无 JSON 且 content 为空，返回 None（降级处理）")
+                return None
+
+            return result or None
+
+        except requests.exceptions.ConnectionError as e:
+            logger.error("[Custom-stream-sync] 连接失败: %s", e)
+            return None
+        except requests.exceptions.ReadTimeout as e:
+            logger.error("[Custom-stream-sync] 读取超时: %s", e)
+            return None
+        except Exception as e:
+            logger.exception("[Custom-stream-sync] 异常: %s", e)
+            return None
+
+    # ------------------------------------------------------------------ #
+    #  同步调用分发                                                        #
+    # ------------------------------------------------------------------ #
+    def _call_llm_sync(self, prompt: str, system_prompt: Optional[str] = None, max_tokens: Optional[int] = None) -> Optional[str]:
+        if not self.enabled:
+            return None
+
         provider = self.llm_config.get('provider', 'openai')
         if provider == 'ollama':
-            return self._call_ollama(prompt, system_prompt)
+            return ollama_provider.call_sync(
+                self._get_base_url(), self._get_model(),
+                prompt, system_prompt, self.llm_config, max_tokens
+            )
         if provider == 'custom':
-            return self._call_custom(prompt, system_prompt)
-        
+            return minimax_provider.call_stream_sync(
+                self._get_base_url(), self._get_model(),
+                settings.LLM_API_KEY or self.llm_config.get('apiKey'),
+                prompt, system_prompt, max_tokens, self.llm_config
+            )
+
         if not self._client:
             return None
-        
-        try:
-            messages = self._build_messages(prompt, system_prompt)
-            response = self._client.chat.completions.create(
-                model=self.llm_config.get('model', 'gpt-4'),
-                messages=messages,
-                temperature=self.llm_config.get('temperature', 0.3),
-                max_tokens=self.llm_config.get('maxTokens', 2048)
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            logger.error("[OpenAI] 同步调用失败: %s", e)
-            return None
 
-    def _call_llm(self, prompt: str, system_prompt: Optional[str] = None) -> Optional[str]:
-        return self._call_llm_sync(prompt, system_prompt)
+        return openai_provider.call_sync(
+            self._client, self.llm_config.get('model', 'gpt-4'),
+            prompt, system_prompt, self.llm_config, max_tokens
+        )
+
+    def _call_llm(self, prompt: str, system_prompt: Optional[str] = None, max_tokens: Optional[int] = None) -> Optional[str]:
+        return self._call_llm_sync(prompt, system_prompt, max_tokens=max_tokens)
 
     def _call_llm_sync_with_reasoning(
-        self, prompt: str, system_prompt: Optional[str] = None
+        self, prompt: str, system_prompt: Optional[str] = None, max_tokens: Optional[int] = None
     ) -> Tuple[Optional[str], Optional[str]]:
         """
         同步调用 LLM，同时返回 (content, reasoning)。
         reasoning 是模型的思考过程（minimax-m2.7 的 reasoning 字段、DeepSeek-R1 的 reasoning_content 等）。
         保持向后兼容：原有 _call_llm_sync 不受影响。
+        
+        Args:
+            prompt: 用户 prompt
+            system_prompt: 系统 prompt
+            max_tokens: 最大输出 token 数，为 None 时使用配置默认值
         """
         if not self.enabled:
             return None, None
 
         provider = self.llm_config.get('provider', 'openai')
         if provider == 'custom':
-            return self._call_custom_with_reasoning(prompt, system_prompt)
+            return minimax_provider.call_with_reasoning(
+                self._get_base_url(), self._get_model(),
+                settings.LLM_API_KEY or self.llm_config.get('apiKey'),
+                prompt, system_prompt, max_tokens, self.llm_config
+            )
         if provider == 'ollama':
-            return self._call_ollama_with_reasoning(prompt, system_prompt)
+            return ollama_provider.call_with_reasoning(
+                self._get_base_url(), self._get_model(),
+                prompt, system_prompt, self.llm_config, max_tokens
+            )
 
         # OpenAI 兼容（暂不提取 reasoning_content）
-        content = self._call_llm_sync(prompt, system_prompt)
+        content = self._call_llm_sync(prompt, system_prompt, max_tokens=max_tokens)
         return content, None
 
     def _call_custom_with_reasoning(
-        self, prompt: str, system_prompt: Optional[str] = None
+        self, prompt: str, system_prompt: Optional[str] = None, max_tokens: Optional[int] = None
     ) -> Tuple[Optional[str], Optional[str]]:
         """自定义 API 同步调用，同时提取 reasoning"""
         import uuid
@@ -1099,13 +1286,14 @@ class LLMService:
         api_key = settings.LLM_API_KEY or self.llm_config.get('apiKey')
         messages = self._build_messages(prompt, system_prompt)
         url = f"{base_url}/chat/completions"
+        effective_max_tokens = max_tokens if max_tokens is not None else self.llm_config.get('maxTokens', 2048)
 
         payload = {
             "stream": False,
             "messages": messages,
             "model": model,
             "temperature": self.llm_config.get('temperature', 0.3),
-            "max_tokens": self.llm_config.get('maxTokens', 2048)
+            "max_tokens": effective_max_tokens
         }
         headers = {
             "Content-Type": "application/json",
@@ -1129,7 +1317,19 @@ class LLMService:
                 logger.info("[Custom-sync] 💭 Reasoning (%d chars)", len(reasoning))
 
             if not content or not content.strip():
-                return None, reasoning or None
+                # Fallback: MiniMax M2.7 等模型有时把正式回答放在 reasoning 里，content 为空
+                # 尝试从 reasoning 中提取 JSON
+                if reasoning and reasoning.strip():
+                    extracted = self._extract_json(reasoning)
+                    if extracted:
+                        logger.info("[Custom-sync] 🔄 从 reasoning 中提取到 JSON，作为 content fallback")
+                        content = json.dumps(extracted, ensure_ascii=False)
+                        return content, reasoning
+                    # reasoning 中无 JSON，返回 (None, reasoning) 让上层降级处理
+                    # 不把 reasoning 原文当 content 返回，否则 JSON 解析必失败
+                    logger.info("[Custom-sync] ⚠️ reasoning 中无 JSON 且 content 为空，返回 None（降级处理）")
+                    return None, reasoning
+                return None, None
 
             return content, reasoning or None
 
@@ -1138,7 +1338,7 @@ class LLMService:
             return None, None
 
     def _call_ollama_with_reasoning(
-        self, prompt: str, system_prompt: Optional[str] = None
+        self, prompt: str, system_prompt: Optional[str] = None, max_tokens: Optional[int] = None
     ) -> Tuple[Optional[str], Optional[str]]:
         """Ollama 同步调用，同时提取 thinking"""
         if not self.enabled:
@@ -1149,6 +1349,7 @@ class LLMService:
         messages = self._build_messages(prompt, system_prompt)
         url = f"{base_url}/api/chat"
         thinking_enabled = self.llm_config.get('thinking', False)
+        effective_max_tokens = max_tokens if max_tokens is not None else self.llm_config.get('maxTokens', 2048)
         payload = {
             "model": model,
             "messages": messages,
@@ -1156,7 +1357,7 @@ class LLMService:
             "thinking": thinking_enabled,
             "options": {
                 "temperature": self.llm_config.get('temperature', 0.3),
-                "num_predict": self.llm_config.get('maxTokens', 2048)
+                "num_predict": effective_max_tokens
             }
         }
 
@@ -1174,7 +1375,17 @@ class LLMService:
                 logger.info("[Ollama-sync] 💭 Thinking (%d chars)", len(thinking))
 
             if not content or not content.strip():
-                return None, thinking or None
+                # Fallback: 模型有时把正式回答放在 thinking 里，content 为空
+                if thinking and thinking.strip():
+                    extracted = self._extract_json(thinking)
+                    if extracted:
+                        logger.info("[Ollama-sync] 🔄 从 thinking 中提取到 JSON，作为 content fallback")
+                        content = json.dumps(extracted, ensure_ascii=False)
+                        return content, thinking
+                    # thinking 中无 JSON，返回 None 让上层降级处理
+                    logger.info("[Ollama-sync] ⚠️ thinking 中无 JSON 且 content 为空，返回 None（降级处理）")
+                    return None, thinking
+                return None, None
 
             return content, thinking or None
 
@@ -1183,6 +1394,11 @@ class LLMService:
             return None, None
 
     def _extract_json(self, text: str) -> Optional[Dict]:
+        """从 LLM 输出中提取 JSON，支持多种容错策略"""
+        if not text:
+            return None
+
+        # 策略1: 直接解析
         try:
             start = text.find('{')
             end = text.rfind('}') + 1
@@ -1190,7 +1406,88 @@ class LLMService:
                 json_str = text[start:end]
                 return json.loads(json_str)
         except Exception as e:
-            logger.error("JSON extraction failed: %s", e)
+            logger.debug("JSON 直接解析失败: %s", e)
+
+        # 策略2: 替换中文引号为英文引号后再解析
+        try:
+            cleaned = text.replace('\u201c', '"').replace('\u201d', '"').replace('\u2018', "'").replace('\u2019', "'")
+            start = cleaned.find('{')
+            end = cleaned.rfind('}') + 1
+            if start != -1 and end > start:
+                json_str = cleaned[start:end]
+                return json.loads(json_str)
+        except Exception as e:
+            logger.debug("JSON 中文引号替换后解析失败: %s", e)
+
+        # 策略3: 使用 json5 宽松解析（支持尾部逗号、中文引号等）
+        try:
+            import re
+            cleaned = text.replace('\u201c', '"').replace('\u201d', '"')
+            start = cleaned.find('{')
+            end = cleaned.rfind('}') + 1
+            if start != -1 and end > start:
+                json_str = cleaned[start:end]
+                # 修复常见的 LLM JSON 错误：尾部逗号
+                json_str = re.sub(r',\s*([}\]])', r'\1', json_str)
+                return json.loads(json_str)
+        except Exception as e:
+            logger.error("JSON extraction failed (all strategies): %s", e)
+
+        # 策略4: 截断 JSON 括号补全（处理 max_tokens 截断导致的不完整 JSON）
+        try:
+            import re
+            cleaned = text.replace('\u201c', '"').replace('\u201d', '"').replace('\u2018', "'").replace('\u2019', "'")
+            start = cleaned.find('{')
+            if start == -1:
+                return None
+            json_str = cleaned[start:]
+            # 修复尾部逗号
+            json_str = re.sub(r',\s*([}\]])', r'\1', json_str)
+            # 统计未闭合的括号，补全
+            stack = []
+            in_string = False
+            escape_next = False
+            for ch in json_str:
+                if escape_next:
+                    escape_next = False
+                    continue
+                if ch == '\\' and in_string:
+                    escape_next = True
+                    continue
+                if ch == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+                if in_string:
+                    continue
+                if ch in ('{', '['):
+                    stack.append(ch)
+                elif ch == '}' and stack and stack[-1] == '{':
+                    stack.pop()
+                elif ch == ']' and stack and stack[-1] == '[':
+                    stack.pop()
+            # 闭合未完成的字符串
+            if in_string:
+                json_str += '"'
+            # 补全未闭合的括号
+            while stack:
+                opener = stack.pop()
+                if opener == '{':
+                    # 尝试移除最后一个尾部逗号
+                    json_str = json_str.rstrip()
+                    if json_str.endswith(','):
+                        json_str = json_str[:-1]
+                    json_str += '}'
+                elif opener == '[':
+                    json_str = json_str.rstrip()
+                    if json_str.endswith(','):
+                        json_str = json_str[:-1]
+                    json_str += ']'
+            parsed = json.loads(json_str)
+            logger.info("JSON extraction succeeded with bracket-completion strategy")
+            return parsed
+        except Exception as e:
+            logger.warning("JSON bracket-completion strategy also failed: %s", e)
+
         return None
     
     def recognize_intent(self, user_input: str, form_types: List[str]) -> Optional[Dict]:

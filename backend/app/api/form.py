@@ -13,7 +13,7 @@ from app.services.ontology_service import OntologyService
 from app.services.history_service import HistoryService
 from app.services.validation_service import validation_engine
 from app.websocket.manager import manager
-from app.models.form import FormInstance
+from app.models.form import FormInstance, FormTemplate
 from datetime import datetime
 import uuid
 import logging
@@ -33,6 +33,7 @@ async def generate_form(request: FormGenerateRequest, db: Session = Depends(get_
         form_code=request.formCode,
         user_id=request.userId,
         extracted_fields=request.extractedFields,
+        field_recommendations=request.fieldRecommendations,
         db=db
     )
     
@@ -84,6 +85,21 @@ async def submit_form(request: FormSubmitRequest, db: Session = Depends(get_db))
         fields = schema.get("fields", [])
         form_code = schema.get("formCode", "unknown")
         
+        # 查出 template_id（FormService.generate_form 已自动 upsert FormTemplate）
+        template_id = 0
+        try:
+            template = db.query(FormTemplate).filter(
+                FormTemplate.form_code == form_code,
+                FormTemplate.is_active == True
+            ).first()
+            if template:
+                template_id = template.id
+                logger.debug("[form/submit] 查到 template_id=%s form_code=%s", template_id, form_code)
+            else:
+                logger.warning("[form/submit] 未找到 FormTemplate form_code=%s，使用 template_id=0", form_code)
+        except Exception as e:
+            logger.warning("[form/submit] 查询 FormTemplate 失败: %s", e)
+        
         validation_result = validation_engine.validate_form(request.data, fields)
         if not validation_result.valid:
             logger.warning("[form/submit] 校验失败 form_id=%s errors=%s",
@@ -96,7 +112,7 @@ async def submit_form(request: FormSubmitRequest, db: Session = Depends(get_db))
         
         form_instance = FormInstance(
             form_id=request.formId,
-            template_id=0,
+            template_id=template_id,
             data=request.data,
             version=current_version,
             status="submitted",

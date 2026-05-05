@@ -17,10 +17,19 @@ from app.services.agent_executor import AgentExecutor
 from app.services.chat_history_service import ChatHistoryService
 from app.services.recommendation_engine import get_recommendation_engine
 from app.services.admin_service import AdminService
+from app.services.history_ai_service import (
+    analyze_history,
+    apply_generated_data,
+    list_available_data,
+    get_history_summary
+)
 from app.harness.observability.llm_call_logger import (
     get_llm_call_logger,
     CallType
 )
+# 意图处理器注册器 —— 触发所有 handler 装饰器注册
+from app.intent import get_intent_registry
+from app.intent.base import IntentContext
 
 
 logger = logging.getLogger("chat_api")
@@ -33,6 +42,101 @@ def _truncate(text: str, max_len: int = 200) -> str:
     if len(text) <= max_len:
         return text
     return text[:max_len] + "..."
+
+
+def _merge_field_recommendations(
+    llm_recs: Dict[str, Any],
+    engine_recs: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    合并两路 fieldRecommendations：
+    - llm_recs: LLM 意图识别输出，格式 {"field": [{"value","reason"},...], ...}
+      来源 source 标记为 "llm_rule"
+    - engine_recs: 推荐引擎输出，格式 {"field": {"items":[...],"strategyUsed":...}, ...}
+
+    合并策略：LLM 推荐优先保留（source=llm_rule），引擎推荐作为补充追加
+    同一 value 去重，按 value 去重取 LLM 的 reason
+    """
+    merged = {}
+    max_per_field = config_loader.get_system_config().get("smartRecommend", {}).get("maxRecommendationsPerField", 5)
+
+    # ── 先注入 LLM 推荐 ──
+    for field_code, rec_data in llm_recs.items():
+        if isinstance(rec_data, list):
+            merged[field_code] = {
+                "items": [
+                    {**item, "source": item.get("source", "llm_rule")}
+                    for item in rec_data
+                    if isinstance(item, dict) and item.get("value")
+                ],
+                "strategyUsed": ["llm_rule_inference"],
+                "_has_llm": True
+            }
+        elif isinstance(rec_data, dict) and "items" in rec_data:
+            # 兼容已经是引擎格式的情况
+            items = [
+                {**item, "source": item.get("source", "llm_rule")}
+                for item in (rec_data.get("items") or [])
+                if isinstance(item, dict)
+            ]
+            merged[field_code] = {
+                "items": items,
+                "strategyUsed": rec_data.get("strategyUsed", ["llm_rule_inference"]),
+                "_has_llm": True
+            }
+
+    # ── 再叠加推荐引擎结果（去重 + 补充） ──
+    for field_code, rec_data in engine_recs.items():
+        engine_items = []
+        if isinstance(rec_data, dict):
+            engine_items = rec_data.get("items", [])
+        elif isinstance(rec_data, list):
+            engine_items = rec_data
+
+        if not engine_items:
+            continue
+
+        # 收集该字段已有 LLM 推荐的 value 集合
+        existing_values = set()
+        existing_items = merged.get(field_code, {}).get("items", [])
+        for item in existing_items:
+            v = item.get("value") if isinstance(item, dict) else str(item)
+            if v:
+                existing_values.add(v)
+
+        # 追加引擎中不重复的新推荐
+        new_items = []
+        for item in engine_items:
+            if not isinstance(item, dict):
+                item = {"value": str(item), "source": "history"}
+            val = item.get("value", "")
+            if val and val not in existing_values:
+                new_items.append(item)
+                existing_values.add(val)
+
+        if field_code in merged:
+            # 已有 LLM 推荐 → 追加引擎结果
+            merged[field_code]["items"].extend(new_items)
+            strategies = merged[field_code].get("strategyUsed", [])
+            if "engine_history" not in strategies:
+                strategies.append("engine_history")
+        else:
+            # 该字段没有 LLM 推荐 → 直接用引擎结果
+            merged[field_code] = {
+                "items": engine_items[:max_per_field] if not new_items else (engine_items[:max_per_field - len(new_items)] + new_items),
+                "strategyUsed": rec_data.get("strategyUsed", ["engine"]) if isinstance(rec_data, dict) else ["engine"],
+                "_has_llm": False
+            }
+
+    # ── 截断每个字段到 max_per_field ──
+    for field_code in list(merged.keys()):
+        items = merged[field_code].get("items", [])
+        if len(items) > max_per_field:
+            merged[field_code]["items"] = items[:max_per_field]
+        # 清理内部标记
+        merged[field_code].pop("_has_llm", None)
+
+    return merged
 
 
 @dataclass
@@ -109,6 +213,35 @@ def _strip_json_comments(text: str) -> str:
     if text.endswith("```"):
         text = text[:-3]
     return text.strip()
+
+
+def _fix_json_newlines(json_str: str) -> str:
+    """修复 JSON 字符串值中的裸换行符（MiniMax 等模型常见问题）。
+    模型在 JSON 字段值中写入真实换行而非 \\n 转义，导致 json.loads 失败。
+    此函数将字符串值内的裸换行替换为 \\n 转义序列。"""
+    import re
+    result = []
+    in_string = False
+    escape_next = False
+    for ch in json_str:
+        if escape_next:
+            result.append(ch)
+            escape_next = False
+            continue
+        if ch == '\\':
+            result.append(ch)
+            escape_next = True
+            continue
+        if ch == '"' and not escape_next:
+            in_string = not in_string
+            result.append(ch)
+            continue
+        if in_string and ch in '\n\r':
+            # 字符串值内的裸换行 → \\n
+            result.append('\\n')
+        else:
+            result.append(ch)
+    return ''.join(result)
 
 
 def _build_ontologies_info() -> str:
@@ -456,12 +589,12 @@ async def _stream_chat_reply(
         messages_text=messages_text
     )
 
-    yield _thinking("🤖 LLM 正在分析思考..."), None
+    yield _thinking("🤖 正在生成回复..."), None
     logger.info("[stream_chat] 开始流式调用，prompt长度=%d", len(prompt))
 
     # text_start 延迟到首个正文出现时再发，让前端先展示 thinking 折叠区
     final_stats: Optional[StreamStats] = None
-    # 用于拼接跨 chunk 的 thinking 标记
+    # 用于拼接跨 chunk 的 thinking 标记（静默丢弃，不发送到前端）
     _thinking_buf: str = ""
     _in_thinking: bool = False
     _text_started: bool = False   # text_start 是否已发送
@@ -475,21 +608,19 @@ async def _stream_chat_reply(
             continue
 
         # ── 处理 [THINKING]...[/THINKING] 标记 ──────────────────────────
-        # thinking 内容以特殊标记封装，需拆分出来走 thinking 事件通道
+        # thinking 内容是模型内部思考过程，对终端用户无意义，静默丢弃
         remaining = text
         while remaining:
             if _in_thinking:
                 end_idx = remaining.find("[/THINKING]")
                 if end_idx == -1:
-                    # 还在 thinking 区，全部追加到 buf
+                    # 还在 thinking 区，全部追加到 buf（丢弃）
                     _thinking_buf += remaining
                     remaining = ""
                 else:
-                    # 找到结束标记
+                    # 找到结束标记，静默丢弃整个 thinking 块
                     _thinking_buf += remaining[:end_idx]
-                    if _thinking_buf.strip():
-                        yield _thinking(_thinking_buf.strip()), None
-                        logger.debug("[stream_chat] thinking 块: %s", _thinking_buf[:100])
+                    logger.debug("[stream_chat] 丢弃 thinking 块 (%d 字符): %s", len(_thinking_buf), _thinking_buf[:100])
                     _thinking_buf = ""
                     _in_thinking = False
                     remaining = remaining[end_idx + len("[/THINKING]"):]
@@ -517,10 +648,9 @@ async def _stream_chat_reply(
                     remaining = remaining[start_idx + len("[THINKING]"):]
 
     # ── 循环结束后的收尾 ──────────────────────────────────────────────────
-    # 如果还有未完成的 thinking buf（缺少 [/THINKING] 结束标记），也发出去
+    # 未闭合的 thinking 块静默丢弃（模型可能未输出结束标记）
     if _in_thinking and _thinking_buf.strip():
-        yield _thinking(_thinking_buf.strip()), None
-        logger.debug("[stream_chat] 未闭合的 thinking 块: %s", _thinking_buf[:100])
+        logger.debug("[stream_chat] 丢弃未闭合的 thinking 块 (%d 字符)", len(_thinking_buf))
 
     # 如果模型只输出了 thinking 没有正文，补发 text_start/text_end 让前端正常结束
     if not _text_started:
@@ -621,9 +751,23 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                         None, llm_service._call_llm_sync_with_reasoning, intent_prompt
                     )
                     
-                    # 将模型的推理过程传递给前端（如果有）
-                    if intent_reasoning:
-                        yield _reasoning(intent_reasoning)
+                    # 重试逻辑：当 content 为空但 reasoning 有内容时（MiniMax M2.7 等模型常见问题）
+                    # 用简化 prompt 重试一次，强制模型把 JSON 放在 content 中
+                    if not intent_result and intent_reasoning:
+                        logger.info("[chat/stream] 🔄 content 为空但 reasoning 有内容，用简化 prompt 重试一次")
+                        yield _thinking("🔄 模型响应格式异常，正在重试...")
+                        retry_prompt = (
+                            intent_prompt
+                            + "\n\n---\n**重要提醒**：请直接输出 JSON，不要在 JSON 之外输出任何分析文本。"
+                            "你的回答必须是一个合法的 JSON 对象，以 { 开头，以 } 结尾。"
+                        )
+                        intent_result, _ = await loop.run_in_executor(
+                            None, llm_service._call_llm_sync_with_reasoning, retry_prompt
+                        )
+                        if intent_result:
+                            logger.info("[chat/stream] ✅ 重试成功，获得 JSON 响应 (%d chars)", len(intent_result))
+                        else:
+                            logger.info("[chat/stream] ❌ 重试仍然失败，将走降级流程")
                     
                     intent_elapsed = time.time() - _t0
                     stream_stats.intent_elapsed = intent_elapsed
@@ -639,8 +783,14 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                         
                         try:
                             cleaned = _strip_json_comments(intent_result.strip())
+                            # 修复 JSON 字符串值内的裸换行（MiniMax 等模型常见问题）
+                            cleaned = _fix_json_newlines(cleaned)
                             intent_data = json.loads(cleaned)
                             intent_type = intent_data.get("intentType", "chat")
+                            
+                            # 将模型的推理过程传递给前端（仅表单类意图，聊天意图不需要展示推理）
+                            if intent_reasoning and intent_type in ('form', 'form_update', 'configure'):
+                                yield _reasoning(intent_reasoning)
 
                             logger.info("┌" + "─" * 78)
                             logger.info("│ 🔍 意图解析结果")
@@ -651,220 +801,27 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                             logger.info("└" + "─" * 78)
                             yield _thinking(f"✅ 意图识别完成: {intent_type} (耗时 {intent_elapsed:.2f}s)")
 
-                            # ── 表单意图：首次生成 ──────────────────────────────────────
-                            if intent_type == "form":
-                                form_code = intent_data.get("formCode")
-                                form_name = ""
-                                if form_code and form_code in ontologies:
-                                    form_name = ontologies[form_code].get("formName", form_code)
-                                yield _thinking(f"📋 识别到表单类型: {form_name or form_code}")
-
-                                extracted = intent_data.get("extractedFields", {})
-                                if extracted:
-                                    field_details = [f"{k}={v}" for k, v in extracted.items()]
-                                    yield _thinking(f"📝 提取到 {len(extracted)} 个字段:")
-                                    yield _thinking(f"   {', '.join(field_details)}")
-                                else:
-                                    yield _thinking("📝 未提取到具体字段值，将展示空表单供用户填写")
-
-                                confidence = intent_data.get("confidence", 0)
-                                yield _thinking(f"📊 识别置信度: {confidence}")
-
-                                # ── 获取历史推荐数据 ──────────────────────────────────────
-                                try:
-                                    # 获取推荐引擎
-                                    recommendation_engine = get_recommendation_engine()
-
-                                    # 构建对话上下文
-                                    conversation_context = {
-                                        "messages": [
-                                            {"role": msg.role, "content": msg.content}
-                                            for msg in request.messages
-                                        ],
-                                        "extractedFields": extracted,
-                                        "lastUserMessage": last_user_message
-                                    }
-
-                                    # 使用批量推荐
-                                    recommendations_result = recommendation_engine.batch_recommend(
-                                        form_code=form_code,
-                                        extracted_fields=extracted,
-                                        user_input=last_user_message,
-                                        user_id=request.userId,
-                                        conversation_context=conversation_context,
-                                        max_per_field=5,
-                                        db=db
-                                    )
-
-                                    # 整理推荐结果
-                                    all_recommendations = {}
-                                    for field_code, result in recommendations_result.items():
-                                        if result.success and result.recommendations:
-                                            all_recommendations[field_code] = {
-                                                "values": [r.value for r in result.recommendations],
-                                                "source": result.strategy_used,
-                                                "totalCandidates": result.total_candidates,
-                                                "processingTimeMs": result.processing_time_ms
-                                            }
-
-                                    if all_recommendations:
-                                        logger.info(f"[chat/stream] 📚 获取到历史推荐: {all_recommendations}")
-                                        yield _thinking(f"📚 基于历史数据为 {len(all_recommendations)} 个字段生成推荐")
-
-                                        # 将推荐数据添加到 intent_data
-                                        intent_data["fieldRecommendations"] = all_recommendations
-
-                                except Exception as rec_err:
-                                    logger.warning(f"[chat/stream] 获取历史推荐失败: {rec_err}")
-                                # ── 历史推荐获取完成 ──────────────────────────────────────
-
-                                # 发送统计信息
-                                stream_stats.total_elapsed = time.time() - start_time
-                                stream_stats.is_form = True
-                                yield _sse({"type": "stats", "content": stream_stats.to_dict()})
-
-                                yield _sse({"type": "result", "content": intent_result})
-                                yield _sse({"type": "done", "isForm": True, "intentType": "form", "intentData": intent_data})
-                                return
-
-                            # ── 表单更新意图：增量更新字段 ──────────────────────────────────────
-                            elif intent_type == "form_update":
-                                detected_form_code = intent_data.get("detectedFormCode", "")
-                                form_name = ""
-                                if detected_form_code and detected_form_code in ontologies:
-                                    form_name = ontologies[detected_form_code].get("formName", detected_form_code)
-                                yield _thinking(f"🔄 识别到表单更新请求: {form_name or detected_form_code}")
-
-                                extracted = intent_data.get("extractedFields", {})
-                                if extracted:
-                                    field_details = [f"{k}={v}" for k, v in extracted.items()]
-                                    yield _thinking(f"📝 提取到 {len(extracted)} 个待更新字段:")
-                                    yield _thinking(f"   {', '.join(field_details)}")
-                                else:
-                                    yield _thinking("⚠️ 未提取到任何字段值，请检查用户输入")
-
-                                confidence = intent_data.get("confidence", 0)
-                                yield _thinking(f"📊 更新置信度: {confidence}")
-
-                                # 发送统计信息
-                                stream_stats.total_elapsed = time.time() - start_time
-                                stream_stats.is_form = True
-                                yield _sse({"type": "stats", "content": stream_stats.to_dict()})
-
-                                yield _sse({"type": "result", "content": intent_result})
-                                yield _sse({"type": "done", "isForm": True, "intentType": "form_update", "intentData": intent_data})
-                                return
-
-                            # ── 配置意图：AI 对话生成新表单配置 ──────────────────────────────────
-                            elif intent_type == "configure":
-                                suggested_code = intent_data.get("formCode", "")
-                                suggested_name = intent_data.get("formName", "")
-                                yield _thinking(f"🛠️ 识别到新业务配置请求: {suggested_name or suggested_code}")
-                                yield _thinking("📋 正在通过 AI 生成表单配置...")
-
-                                # 构建 AdminService 对话
-                                ai_messages = []
-                                for msg in request.messages:
-                                    ai_messages.append({
-                                        "role": msg.role,
-                                        "content": msg.content
-                                    })
-
-                                # 调用 AdminService.chat 生成配置
-                                loop = asyncio.get_event_loop()
-                                ai_result = await loop.run_in_executor(
-                                    None,
-                                    lambda: AdminService.chat(ai_messages)
-                                )
-
-                                if ai_result.get("success") and ai_result.get("hasConfig"):
-                                    config_data = ai_result.get("config", {})
-                                    validation_errors = ai_result.get("validationErrors", [])
-                                    reply_text = ai_result.get("reply", "")
-
-                                    yield _thinking(f"✅ 配置生成完成: {config_data.get('formName', '')} ({config_data.get('formCode', '')})")
-
-                                    if validation_errors:
-                                        yield _thinking(f"⚠️ 配置校验问题: {'; '.join(validation_errors)}")
-
-                                    # 生成场景关键词
-                                    keywords_result = await loop.run_in_executor(
-                                        None,
-                                        lambda: AdminService.generate_scene_keywords(
-                                            config_data.get("formCode", ""),
-                                            config_data.get("formName", ""),
-                                            config_data.get("description", "")
-                                        )
-                                    )
-
-                                    auto_keywords = []
-                                    if keywords_result.get("success"):
-                                        auto_keywords = keywords_result.get("keywords", [])
-                                        yield _thinking(f"🔑 自动生成 {len(auto_keywords)} 个场景关键词")
-
-                                    # 发送 config 事件（携带完整配置 + 关键词）
-                                    config_payload = {
-                                        "config": config_data,
-                                        "keywords": auto_keywords,
-                                        "validationErrors": validation_errors,
-                                        "reply": reply_text
-                                    }
-
-                                    stream_stats.total_elapsed = time.time() - start_time
-                                    yield _sse({"type": "stats", "content": stream_stats.to_dict()})
-
-                                    yield _sse({"type": "config", "content": config_payload})
-                                    yield _sse({"type": "done", "isForm": False, "intentType": "configure", "intentData": intent_data})
-                                    return
-
-                                elif ai_result.get("success"):
-                                    # AI 回复了但没有生成配置（纯对话）
-                                    reply_text = ai_result.get("reply", "请描述你想创建的表单类型。")
-                                    yield _thinking("💬 AI 正在引导用户描述需求...")
-
-                                    stream_stats.total_elapsed = time.time() - start_time
-                                    yield _sse({"type": "stats", "content": stream_stats.to_dict()})
-
-                                    yield _sse({"type": "text_start"})
-                                    yield _sse({"type": "text", "content": reply_text})
-                                    yield _sse({"type": "text_end"})
-                                    yield _sse({"type": "done", "isForm": False, "intentType": "configure", "intentData": intent_data})
-                                    return
-
-                                else:
-                                    error_msg = ai_result.get("reply", "配置生成失败")
-                                    yield _thinking(f"❌ 配置生成失败: {error_msg}")
-
-                                    stream_stats.total_elapsed = time.time() - start_time
-                                    stream_stats.error = error_msg
-                                    yield _sse({"type": "stats", "content": stream_stats.to_dict()})
-                                    yield _sse({"type": "error", "content": error_msg})
-                                    return
-
-                            # ── 聊天意图，真正流式输出 ──────────────────────────────────────────
-                            elif intent_type == "chat":
-                                yield _thinking("💬 正在生成回复...")
-                                final_llm_stats: Optional[StreamStats] = None
-                                async for chunk, stats in _stream_chat_reply(
-                                    intent_prompt, ontologies_info, messages_text
-                                ):
-                                    if stats is not None:
-                                        final_llm_stats = stats
-                                        continue
-                                    yield chunk
-                                
-                                # 更新统计信息
-                                if final_llm_stats:
-                                    stream_stats.llm_elapsed = final_llm_stats.elapsed
-                                    stream_stats.llm_tokens = final_llm_stats.token_count
-                                    stream_stats.llm_chars = final_llm_stats.char_count
-                                    stream_stats.llm_tps = final_llm_stats.tokens_per_second
-                                
-                                stream_stats.total_elapsed = time.time() - start_time
-                                stream_stats.is_form = False
-                                yield _sse({"type": "stats", "content": stream_stats.to_dict()})
-                                yield _sse({"type": "done", "isForm": False})
-                                return
+                            # ── 意图分发（注册器模式） ──────────────────────────────
+                            # 通过 IntentHandlerRegistry 分发到对应处理器
+                            ctx = IntentContext(
+                                intent_data=intent_data,
+                                intent_result=intent_result,
+                                intent_type=intent_type,
+                                confidence=intent_data.get("confidence", 0),
+                                ontologies=ontologies,
+                                ontologies_info=ontologies_info,
+                                scene_keywords=scene_keywords,
+                                request=request,
+                                db=db,
+                                last_user_message=last_user_message,
+                                messages_text=messages_text,
+                                intent_prompt=intent_prompt,
+                                start_time=start_time,
+                                stream_stats=stream_stats
+                            )
+                            async for chunk in get_intent_registry().dispatch(intent_type, ctx):
+                                yield chunk
+                            return
 
                         except json.JSONDecodeError as e:
                             logger.warning("意图识别 JSON 解析失败: %s  raw=%s", e,
@@ -999,6 +956,266 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
     )
 
 
+# ── AI 表单校验端点 ──────────────────────────────────────────────────────────────
+
+_VALIDATE_SYSTEM_PROMPT = """你是一个严格的表单校验助手。你会收到一组字段的当前值和每个字段的规则描述，你需要逐条判断每个字段的值是否符合规则。
+
+## 判断原则
+1. 严格按规则描述判断，不做额外推断
+2. 如果规则描述为空或不存在，该字段视为通过
+3. 空值且非必填字段，视为通过（必填检查由前端完成）
+4. 判断要确定性，不要模棱两可
+
+## 输出格式
+
+严格以 JSON 格式返回：
+```json
+{
+  "passed": true/false,
+  "errors": [
+    {
+      "fieldCode": "字段编码",
+      "fieldName": "字段名称",
+      "value": "当前值",
+      "ruleDescription": "违反的规则描述",
+      "reason": "具体违反原因，用中文说明"
+    }
+  ],
+  "warnings": [
+    {
+      "fieldCode": "字段编码",
+      "fieldName": "字段名称",
+      "value": "当前值",
+      "ruleDescription": "可能违反的规则描述",
+      "reason": "建议说明"
+    }
+  ]
+}
+```
+
+- `passed`: 是否全部通过（无 error 时为 true）
+- `errors`: 严格违反规则的字段列表（阻塞提交）
+- `warnings`: 可能有问题但不阻塞提交的字段列表
+"""
+
+
+class ValidateRequest(BaseModel):
+    formCode: str
+    formData: Dict[str, Any]
+    ontology: Optional[Dict[str, Any]] = None
+
+
+@router.post("/chat/validate")
+async def validate_form(request: ValidateRequest):
+    """
+    AI 校验表单数据：
+    将字段值 + ruleDescription 发送给 LLM，让 AI 做判断题。
+    返回结构化校验结果（errors / warnings）。
+    """
+    form_code = request.formCode
+    form_data = request.formData
+
+    logger.info("[validate] 收到校验请求 formCode=%s fields=%d", form_code, len(form_data))
+
+    # 获取本体
+    ontology = request.ontology
+    if not ontology:
+        ontology = config_loader.get_ontology(form_code)
+
+    if not ontology:
+        return {"success": False, "message": f"表单 {form_code} 不存在"}
+
+    # 收集所有字段及其规则描述
+    fields_with_rules = []
+    entities = ontology.get("entities", [])
+
+    # 兼容两种结构：entities 分组 和 顶层 fields
+    if entities:
+        for entity in entities:
+            for field in entity.get("fields", []):
+                fields_with_rules.append(field)
+    else:
+        # 顶层 fields 格式（如 tariff_filing.json）
+        for field in ontology.get("fields", []):
+            fields_with_rules.append(field)
+
+    # 构建校验 prompt：把每个有 ruleDescription 的字段列出来
+    check_items = []
+    for field in fields_with_rules:
+        field_code = field.get("fieldCode", "")
+        field_name = field.get("fieldName", "")
+        rule_desc = field.get("ruleDescription", "")
+        field_type = field.get("fieldType", "")
+        value = form_data.get(field_code)
+
+        if not rule_desc:
+            # 没有规则描述的字段，如果值存在则做基本格式提示
+            if value is not None and value != "":
+                check_items.append({
+                    "fieldCode": field_code,
+                    "fieldName": field_name,
+                    "fieldType": field_type,
+                    "value": str(value) if value is not None else "",
+                    "ruleDescription": "无特殊规则"
+                })
+            continue
+
+        check_items.append({
+            "fieldCode": field_code,
+            "fieldName": field_name,
+            "fieldType": field_type,
+            "value": str(value) if value is not None else "",
+            "ruleDescription": rule_desc
+        })
+
+    if not check_items:
+        # 没有任何需要校验的字段
+        return {"success": True, "passed": True, "errors": [], "warnings": []}
+
+    # 构建用户 prompt
+    items_text = "\n".join([
+        f"- 字段: {item['fieldName']}({item['fieldCode']}), 类型: {item['fieldType']}, "
+        f"当前值: \"{item['value']}\", 规则: {item['ruleDescription']}"
+        for item in check_items
+    ])
+
+    user_prompt = f"""请校验以下表单字段是否符合规则描述：
+
+表单编码: {form_code}
+表单名称: {ontology.get('formName', form_code)}
+
+{items_text}
+
+请逐条判断，返回 JSON 格式的校验结果。"""
+
+    try:
+        loop = asyncio.get_event_loop()
+
+        if not llm_service.enabled:
+            # LLM 不可用时，只做基本判断
+            return {
+                "success": True,
+                "passed": True,
+                "errors": [],
+                "warnings": [],
+                "method": "no_llm_skip"
+            }
+
+        result_text, reasoning = await loop.run_in_executor(
+            None,
+            lambda: llm_service._call_llm_sync_with_reasoning(
+                user_prompt,
+                system_prompt=_VALIDATE_SYSTEM_PROMPT,
+                max_tokens=2048
+            )
+        )
+
+        if not result_text:
+            logger.warning("[validate] LLM 返回为空，跳过 AI 校验")
+            return {
+                "success": True,
+                "passed": True,
+                "errors": [],
+                "warnings": [],
+                "method": "llm_empty_skip"
+            }
+
+        # 解析 JSON
+        parsed = llm_service._extract_json(result_text)
+        if not parsed:
+            logger.warning("[validate] AI 校验结果解析失败: %s", result_text[:200])
+            return {
+                "success": True,
+                "passed": True,
+                "errors": [],
+                "warnings": [],
+                "method": "parse_fail_skip"
+            }
+
+        errors = parsed.get("errors", [])
+        warnings = parsed.get("warnings", [])
+        passed = parsed.get("passed", len(errors) == 0)
+
+        logger.info("[validate] 校验完成 passed=%s errors=%d warnings=%d",
+                     passed, len(errors), len(warnings))
+
+        return {
+            "success": True,
+            "passed": passed,
+            "errors": errors,
+            "warnings": warnings,
+            "method": "llm"
+        }
+
+    except Exception as e:
+        logger.exception("[validate] AI 校验异常: %s", e)
+        # 校验异常不阻塞提交
+        return {
+            "success": True,
+            "passed": True,
+            "errors": [],
+            "warnings": [],
+            "method": "error_skip",
+            "error": str(e)
+        }
+
+
+# ── 历史数据维护 API ───────────────────────────────────────────────────────────
+
+class HistoryAnalyzeRequest(BaseModel):
+    formCode: str
+
+
+@router.post("/chat/history/analyze")
+async def analyze_history_endpoint(request: HistoryAnalyzeRequest, db: Session = Depends(get_db)):
+    """分析指定表单的历史数据质量"""
+    form_code = request.formCode.strip()
+    if not form_code:
+        return {"success": False, "message": "formCode 不能为空"}
+
+    logger.info("[history/analyze] 分析数据质量 form_code=%s", form_code)
+
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        None, lambda: analyze_history(form_code, db=db)
+    )
+    return result
+
+
+class HistoryImportRequest(BaseModel):
+    formCode: str
+
+
+@router.post("/chat/history/import")
+async def import_history_endpoint(request: HistoryImportRequest, db: Session = Depends(get_db)):
+    """将 JSONL 数据导入到数据库"""
+    form_code = request.formCode.strip()
+    if not form_code:
+        return {"success": False, "message": "formCode 不能为空"}
+
+    logger.info("[history/import] 导入数据 form_code=%s", form_code)
+
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        None, lambda: apply_generated_data(form_code, db=db)
+    )
+    return result
+
+
+@router.get("/chat/history/list")
+async def list_history_endpoint():
+    """列出可导入的历史数据文件"""
+    result = list_available_data()
+    return {"success": True, "forms": result}
+
+
+@router.get("/chat/history/{form_code}/summary")
+async def history_summary_endpoint(form_code: str, db: Session = Depends(get_db)):
+    """获取表单历史数据简要统计"""
+    result = get_history_summary(form_code, db=db)
+    return result
+
+
 # ── 配置部署端点 ────────────────────────────────────────────────────────────────
 
 class DeployConfigRequest(BaseModel):
@@ -1078,7 +1295,62 @@ async def deploy_config(request: DeployConfigRequest):
         return {"success": False, "message": f"部署失败: {str(e)}"}
 
 
-class SessionListResponse(BaseModel):
+# ── 表单删除端点 ───────────────────────────────────────────────────────────────
+
+class DeleteFormRequest(BaseModel):
+    formCode: str
+
+
+@router.post("/chat/delete-form")
+async def delete_form_endpoint(request: DeleteFormRequest):
+    """删除业务表单（自动备份到版本历史）"""
+    form_code = request.formCode.strip()
+    if not form_code:
+        return {"success": False, "message": "formCode 不能为空"}
+
+    logger.info("[delete-form] 删除表单 form_code=%s", form_code)
+
+    try:
+        result = AdminService.delete_ontology(form_code, auto_backup=True)
+        return result
+    except Exception as e:
+        logger.exception("[delete-form] 删除失败: %s", e)
+        return {"success": False, "message": f"删除失败: {str(e)}"}
+
+
+# ── 版本管理 API ──────────────────────────────────────────────────────────────
+
+@router.get("/chat/form-versions/{form_code}")
+async def list_form_versions(form_code: str):
+    """获取指定表单的版本历史列表"""
+    result = AdminService.list_versions(form_code.strip())
+    return result
+
+
+class RollbackFormRequest(BaseModel):
+    formCode: str
+    versionId: str
+
+
+@router.post("/chat/rollback-form")
+async def rollback_form_endpoint(request: RollbackFormRequest):
+    """回退表单到指定版本"""
+    form_code = request.formCode.strip()
+    version_id = request.versionId.strip()
+    
+    if not form_code:
+        return {"success": False, "message": "formCode 不能为空"}
+    if not version_id:
+        return {"success": False, "message": "versionId 不能为空"}
+
+    logger.info("[rollback-form] 回退 form_code=%s → version_id=%s", form_code, version_id)
+
+    try:
+        result = AdminService.rollback_version(form_code, version_id)
+        return result
+    except Exception as e:
+        logger.exception("[rollback-form] 回退失败: %s", e)
+        return {"success": False, "message": f"回退失败: {str(e)}"}
     sessions: List[Dict[str, Any]]
     total: int
 
@@ -1098,6 +1370,11 @@ class SessionCreateResponse(BaseModel):
 
 class MessageListResponse(BaseModel):
     messages: List[Dict[str, Any]]
+    total: int
+
+
+class SessionListResponse(BaseModel):
+    sessions: List[Dict[str, Any]]
     total: int
 
 

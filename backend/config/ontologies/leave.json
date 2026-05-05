@@ -11,14 +11,21 @@
           "fieldCode": "applicant_name",
           "fieldName": "申请人姓名",
           "fieldType": "input",
-          "required": true
+          "required": true,
+          "ruleDescription": "2-20个字符"
         },
         {
           "fieldCode": "department",
           "fieldName": "部门",
           "fieldType": "select",
           "required": true,
-          "options": ["研发部", "销售部", "财务部", "人事部"]
+          "options": [
+            {"value": "tech", "label": "技术部"},
+            {"value": "sales", "label": "销售部"},
+            {"value": "finance", "label": "财务部"},
+            {"value": "hr", "label": "人事部"},
+            {"value": "marketing", "label": "市场部"}
+          ]
         }
       ]
     },
@@ -31,25 +38,34 @@
           "fieldName": "请假类型",
           "fieldType": "select",
           "required": true,
-          "options": ["事假", "病假", "年假", "婚假"]
+          "options": [
+            {"value": "annual", "label": "年假"},
+            {"value": "sick", "label": "病假"},
+            {"value": "personal", "label": "事假"},
+            {"value": "marriage", "label": "婚假"},
+            {"value": "maternity", "label": "产假"}
+          ]
         },
         {
           "fieldCode": "start_date",
           "fieldName": "开始日期",
           "fieldType": "date",
-          "required": true
+          "required": true,
+          "ruleDescription": "不早于当天前30天，不晚于当天后90天"
         },
         {
           "fieldCode": "end_date",
           "fieldName": "结束日期",
           "fieldType": "date",
-          "required": true
+          "required": true,
+          "ruleDescription": "必须晚于或等于开始日期，且请假天数不超过30天"
         },
         {
           "fieldCode": "reason",
           "fieldName": "请假原因",
           "fieldType": "textarea",
-          "required": true
+          "required": true,
+          "ruleDescription": "5-500个字符"
         }
       ]
     }

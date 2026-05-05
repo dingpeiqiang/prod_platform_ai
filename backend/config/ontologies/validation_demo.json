@@ -12,49 +12,21 @@
           "fieldName": "用户名",
           "fieldType": "input",
           "required": true,
-          "rules": [
-            {
-              "rule_type": "minLength",
-              "rule_value": 3,
-              "message": "用户名至少3个字符"
-            },
-            {
-              "rule_type": "maxLength",
-              "rule_value": 20,
-              "message": "用户名最多20个字符"
-            }
-          ]
+          "ruleDescription": "3-20个字符"
         },
         {
           "fieldCode": "age",
           "fieldName": "年龄",
           "fieldType": "number",
           "required": true,
-          "rules": [
-            {
-              "rule_type": "min",
-              "rule_value": 18,
-              "message": "年龄不能小于18岁"
-            },
-            {
-              "rule_type": "max",
-              "rule_value": 100,
-              "message": "年龄不能超过100岁"
-            }
-          ]
+          "ruleDescription": "18-100之间的整数"
         },
         {
           "fieldCode": "password",
           "fieldName": "密码",
           "fieldType": "input",
           "required": true,
-          "rules": [
-            {
-              "rule_type": "pattern",
-              "rule_value": "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)[a-zA-Z\\d@$!%*?&]{8,}$",
-              "message": "密码必须包含大小写字母和数字，至少8位"
-            }
-          ]
+          "ruleDescription": "至少8位，必须包含大小写字母和数字"
         }
       ]
     },
@@ -65,54 +37,28 @@
         {
           "fieldCode": "email",
           "fieldName": "邮箱",
-          "fieldType": "input",
-          "required": true,
-          "rules": [
-            {
-              "rule_type": "email",
-              "rule_value": null,
-              "message": "请输入有效的邮箱地址"
-            }
-          ]
+          "fieldType": "email",
+          "required": true
         },
         {
           "fieldCode": "phone",
           "fieldName": "手机号",
-          "fieldType": "input",
-          "required": true,
-          "rules": [
-            {
-              "rule_type": "phone",
-              "rule_value": null,
-              "message": "请输入有效的手机号"
-            }
-          ]
+          "fieldType": "phone",
+          "required": true
         },
         {
           "fieldCode": "idCard",
           "fieldName": "身份证号",
           "fieldType": "input",
           "required": false,
-          "rules": [
-            {
-              "rule_type": "idCard",
-              "rule_value": null,
-              "message": "请输入有效的身份证号"
-            }
-          ]
+          "ruleDescription": "18位身份证号，最后一位可以是X"
         },
         {
           "fieldCode": "website",
           "fieldName": "个人网站",
           "fieldType": "input",
           "required": false,
-          "rules": [
-            {
-              "rule_type": "url",
-              "rule_value": null,
-              "message": "请输入有效的URL"
-            }
-          ]
+          "ruleDescription": "以http://或https://开头的合法URL"
         }
       ]
     },
@@ -125,13 +71,6 @@
           "fieldName": "部门",
           "fieldType": "select",
           "required": true,
-          "rules": [
-            {
-              "rule_type": "enum",
-              "rule_value": ["技术部", "产品部", "运营部", "市场部"],
-              "message": "请选择有效的部门"
-            }
-          ],
           "options": ["技术部", "产品部", "运营部", "市场部"]
         },
         {
@@ -139,26 +78,14 @@
           "fieldName": "开始日期",
           "fieldType": "date",
           "required": true,
-          "rules": [
-            {
-              "rule_type": "dateMin",
-              "rule_value": "2024-01-01",
-              "message": "开始日期不能早于2024-01-01"
-            }
-          ]
+          "ruleDescription": "不早于2024-01-01"
         },
         {
           "fieldCode": "endDate",
           "fieldName": "结束日期",
           "fieldType": "date",
           "required": true,
-          "rules": [
-            {
-              "rule_type": "dateMax",
-              "rule_value": "2025-12-31",
-              "message": "结束日期不能晚于2025-12-31"
-            }
-          ]
+          "ruleDescription": "不晚于2025-12-31，且必须晚于开始日期"
         }
       ]
     },
@@ -171,32 +98,14 @@
           "fieldName": "偶数",
           "fieldType": "number",
           "required": true,
-          "rules": [
-            {
-              "rule_type": "custom",
-              "rule_value": {
-                "type": "simple",
-                "condition": "value % 2 == 0"
-              },
-              "message": "请输入偶数"
-            }
-          ]
+          "ruleDescription": "必须是偶数"
         },
         {
           "fieldCode": "strongPassword",
           "fieldName": "强密码",
           "fieldType": "input",
           "required": true,
-          "rules": [
-            {
-              "rule_type": "custom",
-              "rule_value": {
-                "type": "lambda",
-                "code": "lambda x: len(x) >= 12 and any(c.isupper() for c in x) and any(c.islower() for c in x) and any(c.isdigit() for c in x)"
-              },
-              "message": "密码需至少12位，包含大小写字母和数字"
-            }
-          ]
+          "ruleDescription": "至少12位，包含大小写字母和数字"
         }
       ]
     }

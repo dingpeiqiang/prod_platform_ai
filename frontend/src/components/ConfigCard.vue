@@ -74,6 +74,9 @@
         <span v-else>🚀</span>
         {{ deploying ? '部署中...' : '一键部署' }}
       </button>
+      <button class="preview-btn" @click="$emit('preview', config)">
+        👁️ 预览
+      </button>
       <button class="modify-btn" @click="$emit('modify')">
         ✏️ 修改
       </button>
@@ -99,7 +102,7 @@ const props = defineProps({
   deploying:    { type: Boolean, default: false }
 })
 
-defineEmits(['deploy', 'modify', 'test'])
+defineEmits(['deploy', 'modify', 'test', 'preview'])
 
 const collapsedEntities = reactive({})
 
@@ -352,6 +355,20 @@ const toggleEntity = (idx) => {
 .modify-btn:hover {
   border-color: #818cf8;
   color: #6366f1;
+}
+.preview-btn {
+  padding: 10px 20px;
+  background: #fff;
+  border: 1px solid #c7d2fe;
+  border-radius: 10px;
+  font-size: 14px;
+  color: #6366f1;
+  cursor: pointer;
+  transition: all .15s;
+}
+.preview-btn:hover {
+  background: #eef2ff;
+  border-color: #818cf8;
 }
 
 /* 已部署后 */

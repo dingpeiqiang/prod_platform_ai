@@ -1,0 +1,1 @@
+{"formCode": "leave", "formName": "请假申请", "description": "OA系统历史请假记录（每行一个实例）", "fields": ["applicant_name", "department", "leave_type", "start_date", "end_date", "reason", "days"], "_comment": "字段顺序与数据行一一对应，用逗号分隔"}

@@ -36,6 +36,7 @@
             <polyline points="10 9 9 9 8 9"/>
           </svg>
           <span>{{ formTitle || '表单' }}</span>
+          <span v-if="isPreviewMode" class="preview-badge">预览</span>
         </div>
         <div class="panel-actions">
           <el-tag v-if="formId" type="info" size="small" class="form-id-tag">
@@ -122,6 +123,10 @@ const panelStyle = computed(() => {
 
 const formTitle = computed(() => {
   return props.formSchema?.formName || ''
+})
+
+const isPreviewMode = computed(() => {
+  return !!props.formSchema?._preview
 })
 
 const togglePanel = () => {
@@ -314,6 +319,16 @@ onMounted(() => {
 
 .panel-title svg {
   color: #818cf8;
+}
+
+.preview-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: linear-gradient(135deg, #ede9fe, #f5f3ff);
+  color: #7c3aed;
+  border-radius: 10px;
+  font-weight: 500;
+  margin-left: 6px;
 }
 
 .panel-actions {

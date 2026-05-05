@@ -49,41 +49,14 @@
           "fieldName": "用户名",
           "fieldType": "input",
           "required": true,
-          "rules": [
-            {
-              "rule_type": "minLength",
-              "rule_value": 3,
-              "message": "用户名至少3个字符"
-            }
-          ],
-          "validateConfig": {
-            "type": "api",
-            "api": {
-              "url": "https://api.example.com/validate/username",
-              "method": "POST",
-              "timeout": 5,
-              "dataPath": "valid",
-              "cacheTTL": 0
-            },
-            "fallbackValid": true
-          }
+          "ruleDescription": "至少3个字符，仅支持字母、数字和下划线"
         },
         {
           "fieldCode": "idCard",
           "fieldName": "身份证号",
           "fieldType": "input",
           "required": true,
-          "validateConfig": {
-            "type": "api",
-            "api": {
-              "url": "https://api.example.com/validate/idcard",
-              "method": "POST",
-              "timeout": 5,
-              "dataPath": "",
-              "cacheTTL": 0
-            },
-            "fallbackValid": false
-          }
+          "ruleDescription": "18位身份证号，最后一位可以是X"
         }
       ]
     },
@@ -95,13 +68,15 @@
           "fieldCode": "orderNo",
           "fieldName": "订单号",
           "fieldType": "input",
-          "required": true
+          "required": true,
+          "ruleDescription": "订单号格式：ORD-开头，后跟8位数字，如ORD-20240001"
         },
         {
           "fieldCode": "amount",
           "fieldName": "金额",
           "fieldType": "number",
-          "required": true
+          "required": true,
+          "ruleDescription": "正数，最大9999999.99"
         }
       ]
     }

@@ -264,10 +264,13 @@ class RecommendationEngine:
                         all_candidates.append((item.value, item))
                         candidate_scores[item.value] = item.score
 
-            # 去重并排序
-            unique_candidates = {value: item for value, item in all_candidates}.values()
+            # 去重并排序 —— 修复：同一 value 取最高分项（而非最后一个）
+            best_by_value: Dict[str, RecommendationItem] = {}
+            for value, item in all_candidates:
+                if value not in best_by_value or item.score > best_by_value[value].score:
+                    best_by_value[value] = item
             sorted_candidates = sorted(
-                unique_candidates,
+                best_by_value.values(),
                 key=lambda x: x.score,
                 reverse=True
             )
@@ -314,7 +317,11 @@ class RecommendationEngine:
         user_id: Optional[str],
         context: Optional[Dict[str, Any]]
     ) -> List[RecommendationItem]:
-        """基于历史频率的推荐"""
+        """基于历史频率的推荐（含条件关联推断）
+
+        升级点：当 context 中有 extractedFields 时，先按已知字段值过滤历史记录，
+        再统计目标字段分布——实现"根据已知推断未知"的条件概率推荐。
+        """
         if not db:
             return []
 
@@ -337,14 +344,58 @@ class RecommendationEngine:
                 FormInstance.submitted_at.desc()
             ).limit(query_limit).all()
 
+            if not form_instances:
+                return []
+
+            # ── 条件过滤：按已知字段值筛选相似记录 ──
+            extracted_fields = {}
+            if context and isinstance(context, dict):
+                extracted_fields = context.get('extractedFields', {}) or {}
+
+            filtered_instances = form_instances
+            filter_field_count = 0
+
+            if extracted_fields:
+                # 对每条历史记录，检查是否与已提取的字段值匹配
+                matched = []
+                for inst in form_instances:
+                    data = inst.data or {}
+                    match_count = 0
+                    total_checkable = 0
+
+                    for ef_key, ef_val in extracted_fields.items():
+                        ef_val_str = str(ef_val).strip().lower() if ef_val else ""
+                        if not ef_val_str:
+                            continue
+                        total_checkable += 1
+
+                        hist_val = str(data.get(ef_key, "")).strip().lower() if data.get(ef_key) else ""
+                        if hist_val == ef_val_str:
+                            match_count += 1
+                        elif ef_val_str and hist_val and (
+                            ef_val_str in hist_val or hist_val in ef_val_str
+                        ):
+                            # 宽松匹配：包含关系也算部分匹配
+                            match_count += 0.5
+
+                    # 至少匹配 1 个已知字段才保留（或没有可检查的已知字段）
+                    if total_checkable == 0 or (total_checkable > 0 and match_count > 0):
+                        inst._match_score = match_count / max(total_checkable, 1)
+                        matched.append(inst)
+
+                if matched:
+                    filtered_instances = matched
+                    filter_field_count = len(extracted_fields)
+
             # 统计每个值的出现频率
             value_stats = defaultdict(lambda: {
                 'count': 0,
                 'last_used': None,
-                'user_count': 0
+                'user_count': 0,
+                'weighted_sum': 0.0   # 条件过滤时的加权分数
             })
 
-            for instance in form_instances:
+            for instance in filtered_instances:
                 form_data = instance.data or {}
                 if field_code in form_data:
                     value = str(form_data[field_code])
@@ -352,6 +403,11 @@ class RecommendationEngine:
                         value = value.strip()
                         stats = value_stats[value]
                         stats['count'] += 1
+
+                        # 如果做了条件过滤，用 _match_score 加权
+                        match_score = getattr(instance, '_match_score', None)
+                        weight = match_score if match_score is not None else 1.0
+                        stats['weighted_sum'] += weight
 
                         if instance.submitted_at:
                             if not stats['last_used'] or instance.submitted_at > stats['last_used']:
@@ -370,18 +426,31 @@ class RecommendationEngine:
 
                 score = self._calculate_score(stats, now)
 
+                # 推荐原因：区分条件推断和普通频次统计
+                if filter_field_count > 0 and len(form_instances) != len(filtered_instances):
+                    reason = f"基于{len(filtered_instances)}条相似记录推断"
+                    source = "inference"  # 条件推断来源，优先级高于 history
+                    confidence = min(stats['weighted_sum'] / max(len(filtered_instances), 1), 1.0)
+                else:
+                    reason = f"历史填写{stats['count']}次"
+                    source = "history"
+                    confidence = min(stats['count'] / 10.0, 1.0)
+
                 recommendations.append(RecommendationItem(
                     value=value,
                     field_code=field_code,
                     score=score,
-                    source="history",
-                    confidence=min(stats['count'] / 10.0, 1.0),
+                    source=source,
+                    confidence=confidence,
                     match_type="exact",
-                    reason=f"历史填写{stats['count']}次",
+                    reason=reason,
                     metadata={
                         "count": stats['count'],
                         "userCount": stats['user_count'],
-                        "lastUsed": stats['last_used'].isoformat() if stats['last_used'] else None
+                        "lastUsed": stats['last_used'].isoformat() if stats['last_used'] else None,
+                        "filteredCount": len(filtered_instances) if filter_field_count > 0 else None,
+                        "totalCount": len(form_instances),
+                        "filterFieldCount": filter_field_count
                     }
                 ))
 
@@ -665,7 +734,8 @@ class RecommendationEngine:
         user_id: Optional[str] = None,
         conversation_context: Optional[Dict[str, Any]] = None,
         max_per_field: int = 5,
-        db: Optional[Session] = None
+        db: Optional[Session] = None,
+        field_codes: Optional[List[str]] = None
     ) -> Dict[str, RecommendationResult]:
         """
         批量推荐 - 为多个字段生成推荐
@@ -678,13 +748,17 @@ class RecommendationEngine:
             conversation_context: 对话上下文
             max_per_field: 每个字段的最大推荐数
             db: 数据库会话
+            field_codes: 要推荐的目标字段列表（默认为 extracted_fields.keys()，可扩展为全部字段）
 
         Returns:
             Dict[field_code, RecommendationResult]: 每个字段的推荐结果
         """
         results = {}
 
-        for field_code in extracted_fields.keys():
+        # 如果未指定 field_codes，使用已提取字段的 key；否则使用指定列表
+        target_fields = field_codes if field_codes else list(extracted_fields.keys())
+
+        for field_code in target_fields:
             result = self.recommend(
                 form_code=form_code,
                 field_code=field_code,

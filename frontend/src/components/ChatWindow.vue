@@ -15,7 +15,7 @@
             <el-icon v-else><User /></el-icon>
           </div>
           <div class="message-content">
-            <div v-if="msg.text" class="message-text">{{ msg.text }}</div>
+            <div v-if="msg.text" class="message-text" v-html="renderMarkdown(msg.text)"></div>
             <div v-if="msg.form" class="message-form">
               <DynamicForm 
                 :schema="msg.form" 
@@ -51,6 +51,7 @@ import { ElMessage } from 'element-plus'
 import { ChatDotRound, User } from '@element-plus/icons-vue'
 import axios from 'axios'
 import DynamicForm from './DynamicForm.vue'
+import { marked } from 'marked'
 
 const messages = ref([])
 const userInput = ref('')
@@ -210,6 +211,32 @@ const handleFormSubmit = async () => {
   }
 }
 
+const renderMarkdown = (text) => {
+  if (!text) return ''
+  // 配置 marked 选项以提高安全性
+  marked.setOptions({
+    breaks: true,        // 启用换行符转换
+    gfm: true,           // 启用 GitHub Flavored Markdown
+    headerIds: false,    // 不生成标题 ID
+    mangle: false,       // 不转义电子邮件地址
+    sanitize: false      // 不进行 HTML 清理（我们手动处理）
+  })
+  
+  try {
+    // 解析 Markdown 为 HTML
+    let html = marked.parse(text)
+    
+    // 简单的 XSS 防护：移除 script 标签和危险属性
+    html = html.replace(/<script[^>]*>.*?<\/script>/gi, '')
+    html = html.replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')
+    
+    return html
+  } catch (error) {
+    console.error('Markdown 解析错误:', error)
+    return text // 如果解析失败，返回原始文本
+  }
+}
+
 onMounted(() => {
   addMessage('ai', '您好！我是AI表单助手，请告诉我您需要填写什么表单？')
 })
@@ -281,6 +308,35 @@ onUnmounted(() => {
   padding: 12px 16px;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  line-height: 1.6;
+}
+
+.message-text :deep(h1), .message-text :deep(h2), .message-text :deep(h3) {
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+
+.message-text :deep(p) {
+  margin-bottom: 0.8em;
+}
+
+.message-text :deep(ul), .message-text :deep(ol) {
+  margin-left: 1.5em;
+  margin-bottom: 0.8em;
+}
+
+.message-text :deep(code) {
+  background-color: #f0f0f0;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: monospace;
+}
+
+.message-text :deep(pre) {
+  background-color: #f5f5f5;
+  padding: 10px;
+  border-radius: 5px;
+  overflow-x: auto;
 }
 
 .message.user .message-text {
