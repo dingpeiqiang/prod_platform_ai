@@ -171,20 +171,27 @@
 ```json
 {{
   "intentType": "manage_history",
-  "formCode": "表单编码（从已有列表中匹配）",
-  "formName": "表单中文名称",
-  "action": "analyze 或 generate 或 import 或 export 或 status",
+  "formCode": "leave",
+  "formName": "请假申请",
+  "action": "import",
+  "description": "",
   "count": 10,
-  "description": "用户的额外描述（如：多生成一些年假的、分析一下数据质量）",
-  "confidence": 0.9,
-  "reasoning": "简短说明为什么判断为历史数据维护意图"
+  "confidence": 0.95,
+  "reasoning": "用户想将请假申请的历史数据导入系统"
 }}
 ```
+
+**完整示例参考**：
+- "请假申请历史数据导入" → formCode: "leave", action: "import"
+- "分析一下请假的数据质量" → formCode: "leave", action: "analyze"
+- "帮我生成一些请假测试数据" → formCode: "leave", action: "generate", count: 10
+- "导出请假的历史数据" → formCode: "leave", action: "export"
+- "请假有多少历史数据" → formCode: "leave", action: "status"
 
 action 判断规则：
 - **analyze**: 用户想看数据质量、分析问题、检查数据 → "分析一下XX的数据"、"看看数据有没有问题"
 - **generate**: 用户想生成/创建测试数据 → "帮我生成一些XX数据"、"造一些测试数据"、"需要样例数据"
-- **import**: 用户想把已有数据导入系统 → "导入XX的历史数据"、"把XX的数据导进来"
+- **import**: 用户想把已有数据导入系统 → "导入XX的历史数据"、"把XX的数据导进来"、"XX历史数据导入"
 - **export**: 用户想把系统中的数据导出下载 → "导出XX的历史数据"、"下载XX数据"、"把XX数据导出来"、"导出CSV/JSONL"
 - **status**: 用户只是想知道有多少数据 → "XX有多少数据"、"数据够不够"、"查一下XX的记录"
 

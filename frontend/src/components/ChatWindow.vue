@@ -77,7 +77,7 @@ const scrollToBottom = () => {
 }
 
 const connectWebSocket = (fId) => {
-  const wsUrl = `ws://localhost:8000/api/v1/ws/form/${fId}`
+  const wsUrl = `ws://localhost:6173/api/v1/ws/form/${fId}`
   ws.value = new WebSocket(wsUrl)
   
   ws.value.onopen = () => {

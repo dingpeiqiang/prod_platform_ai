@@ -282,7 +282,7 @@ registerEventHandler('delete_form', (data, msg) => {
 }, { panel: DeleteResultPanel })
 
 registerEventHandler('manage_history', (data, msg) => {
-  const historyPayload = data.data || {}
+  const historyPayload = data.content || data.data || {}
   if (!historyPayload.action) {
     if (historyPayload.qualityScore !== undefined) historyPayload.action = 'analyze'
     else if (historyPayload.generatedCount !== undefined) historyPayload.action = 'generate'
