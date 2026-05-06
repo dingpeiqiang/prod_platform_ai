@@ -113,10 +113,20 @@ class ValidationFieldRequest(BaseModel):
     rules: List[Dict[str, Any]]
 
 
+class ValidationIssue(BaseModel):
+    """校验问题项 - 规范化结构"""
+    field: str = ""                           # 字段代码
+    field_name: str = ""                      # 字段中文名
+    error_code: str = "ERR_VAL_RULE_FAIL"     # 错误码（项目错误码体系）
+    level: str = "error"                      # 错误级别：error / warning
+    message: str                              # 错误信息
+
+
 class ValidationFieldResponse(BaseModel):
     success: bool
     valid: bool
     errors: List[str] = Field(default_factory=list)
+    issues: List[ValidationIssue] = Field(default_factory=list)  # 详细问题列表
 
 
 class ValidationFormRequest(BaseModel):
@@ -128,3 +138,5 @@ class ValidationFormResponse(BaseModel):
     success: bool
     valid: bool
     errors: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    issues: List[ValidationIssue] = Field(default_factory=list)  # 详细问题列表（含字段+错误码+级别）

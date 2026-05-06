@@ -114,12 +114,20 @@ def validate_form(form_code: str, form_data: Dict) -> Dict[str, Any]:
     """
     校验表单数据（基于本体的 LLM 智能校验 + 规则引擎校验）
 
-    Args:
-        form_code: 表单类型代码
-        form_data: 表单填写的数据
-
     Returns:
-        校验结果，包含 valid, errors, warnings
+        {
+            "success": bool,
+            "valid": bool,
+            "errors": [str],
+            "warnings": [str],
+            "issues": [{
+                "field": str,
+                "field_name": str,
+                "error_code": str,
+                "level": str,
+                "message": str
+            }]
+        }
     """
     from ..skills.validation_skill import ValidationSkill
 
@@ -149,11 +157,35 @@ def validate_form(form_code: str, form_data: Dict) -> Dict[str, Any]:
     # 2. 规则引擎通过后，再用 LLM 做智能校验
     llm_result = ValidationSkill.validate_with_ontology(form_code, form_data)
 
+    # 3. 合并结果
+    merged_issues = list(rule_result.get("issues", []))
+
+    # LLM 返回的 errors 转为 issues（无 field 上下文，标记 level=error）
+    for err_msg in llm_result.get("errors", []):
+        merged_issues.append({
+            "field": "",
+            "field_name": "",
+            "error_code": "ERR_VAL_RULE_FAIL",
+            "level": "error",
+            "message": err_msg
+        })
+
+    # LLM 返回的 warnings 转为 issues（level=warning）
+    for warn_msg in llm_result.get("warnings", []):
+        merged_issues.append({
+            "field": "",
+            "field_name": "",
+            "error_code": "ERR_VAL_RULE_FAIL",
+            "level": "warning",
+            "message": warn_msg
+        })
+
     return {
         "success": llm_result.get("success", True),
         "valid": llm_result.get("valid", True),
         "errors": llm_result.get("errors", []),
-        "warnings": llm_result.get("warnings", [])
+        "warnings": llm_result.get("warnings", []),
+        "issues": merged_issues
     }
 
 

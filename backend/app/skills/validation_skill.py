@@ -15,41 +15,139 @@ class ValidationSkill:
     """表单校验技能 - 支持规则引擎校验 + LLM 智能校验"""
 
     @classmethod
-    def validate_field(cls, field_value: Any, rules: List[Dict]) -> Dict[str, Any]:
+    def validate_field(
+        cls,
+        field_value: Any,
+        rules: List[Dict],
+        field_code: str = "",
+        field_name: str = ""
+    ) -> Dict[str, Any]:
         """
         单字段校验（基于规则引擎）
 
         Args:
             field_value: 字段值
             rules: 规则列表 [{"rule_type": "min", "rule_value": 0, "message": "..."}]
+            field_code: 字段代码（用于生成规范 issues）
+            field_name: 字段中文名
 
         Returns:
-            {"success": bool, "valid": bool, "errors": [str]}
+            {"success": bool, "valid": bool, "errors": [str], "issues": [ValidationIssue]}
         """
         result = validation_engine.validate_field(field_value, rules)
+
+        # 转换为规范 issues 格式
+        issues = []
+        for err_msg in result.errors:
+            issues.append({
+                "field": field_code,
+                "field_name": field_name,
+                "error_code": cls._detect_error_code(err_msg, rules),
+                "level": "error",
+                "message": err_msg
+            })
+
         return {
             "success": True,
             "valid": result.valid,
-            "errors": result.errors
+            "errors": result.errors,
+            "issues": issues
         }
+
+    @classmethod
+    def _detect_error_code(cls, err_msg: str, rules: List[Dict]) -> str:
+        """根据错误消息推断错误码"""
+        msg_lower = err_msg.lower()
+        for rule in rules:
+            rule_type = rule.get("rule_type", "")
+            rule_value = rule.get("rule_value", "")
+
+            if rule_type == "minLength":
+                return "ERR_VAL_RANGE"
+            elif rule_type == "maxLength":
+                return "ERR_VAL_RANGE"
+            elif rule_type in ("min", "minimum"):
+                return "ERR_VAL_RANGE"
+            elif rule_type in ("max", "maximum"):
+                return "ERR_VAL_RANGE"
+            elif rule_type == "pattern":
+                return "ERR_VAL_FORMAT"
+            elif rule_type == "email":
+                return "ERR_VAL_FORMAT"
+            elif rule_type == "phone":
+                return "ERR_VAL_FORMAT"
+            elif rule_type == "idCard":
+                return "ERR_VAL_FORMAT"
+            elif rule_type == "url":
+                return "ERR_VAL_FORMAT"
+            elif rule_type == "enum":
+                return "ERR_VAL_RULE_FAIL"
+
+        if "不能为空" in err_msg or "必填" in err_msg:
+            return "ERR_VAL_REQUIRED"
+        elif "格式" in err_msg or "格式不正确" in msg_lower:
+            return "ERR_VAL_FORMAT"
+        elif "超出" in err_msg or "范围" in msg_lower:
+            return "ERR_VAL_RANGE"
+
+        return "ERR_VAL_RULE_FAIL"
 
     @classmethod
     def validate_form(cls, form_data: Dict[str, Any], fields: List[Dict]) -> Dict[str, Any]:
         """
-        表单校验（基于规则引擎）
+        表单校验（基于规则引擎），返回规范化结构
 
         Args:
             form_data: 表单数据 {"fieldCode": value}
-            fields: 字段定义列表（来自本体 schema）
+            fields: 字段定义列表（包含 fieldCode, fieldName, rules 等）
 
         Returns:
-            {"success": bool, "valid": bool, "errors": [str]}
+            {"success": bool, "valid": bool, "errors": [str], "warnings": [], "issues": [ValidationIssue]}
         """
-        result = validation_engine.validate_form(form_data, fields)
+        all_errors = []
+        all_warnings = []
+        all_issues = []
+
+        for field_def in fields:
+            field_code = field_def.get("fieldCode", "")
+            field_name = field_def.get("fieldName", field_code)
+            required = field_def.get("required", False)
+            rules = field_def.get("rules", [])
+
+            field_value = form_data.get(field_code)
+
+            # 必填检查
+            if required and (field_value is None or field_value == ""):
+                err_msg = f"{field_name} 不能为空"
+                all_errors.append(err_msg)
+                all_issues.append({
+                    "field": field_code,
+                    "field_name": field_name,
+                    "error_code": "ERR_VAL_REQUIRED",
+                    "level": "error",
+                    "message": err_msg
+                })
+                continue
+
+            if field_value is not None and field_value != "":
+                # 逐规则校验
+                result = validation_engine.validate_field(field_value, rules)
+                for err_msg in result.errors:
+                    all_errors.append(err_msg)
+                    all_issues.append({
+                        "field": field_code,
+                        "field_name": field_name,
+                        "error_code": cls._detect_error_code(err_msg, rules),
+                        "level": "error",
+                        "message": err_msg
+                    })
+
         return {
             "success": True,
-            "valid": result.valid,
-            "errors": result.errors
+            "valid": len(all_errors) == 0,
+            "errors": all_errors,
+            "warnings": all_warnings,
+            "issues": all_issues
         }
 
     @classmethod

@@ -1,7 +1,8 @@
 from fastapi import APIRouter
 from app.schemas.form import (
     ValidationFieldRequest, ValidationFieldResponse,
-    ValidationFormRequest, ValidationFormResponse
+    ValidationFormRequest, ValidationFormResponse,
+    ValidationIssue
 )
 from app.skills.validation_skill import ValidationSkill
 
@@ -14,7 +15,8 @@ async def validate_field(request: ValidationFieldRequest):
     return ValidationFieldResponse(
         success=result.get("success", True),
         valid=result.get("valid", True),
-        errors=result.get("errors", [])
+        errors=result.get("errors", []),
+        issues=[ValidationIssue(**i) for i in result.get("issues", [])]
     )
 
 
@@ -24,5 +26,7 @@ async def validate_form(request: ValidationFormRequest):
     return ValidationFormResponse(
         success=result.get("success", True),
         valid=result.get("valid", True),
-        errors=result.get("errors", [])
+        errors=result.get("errors", []),
+        warnings=result.get("warnings", []),
+        issues=[ValidationIssue(**i) for i in result.get("issues", [])]
     )
