@@ -7,6 +7,7 @@ import json
 import asyncio
 import logging
 import time
+import requests
 from dataclasses import dataclass
 from app.services.llm_service import llm_service, StreamStats
 from app.core.config_loader import config_loader
@@ -27,6 +28,8 @@ from app.harness.observability.llm_call_logger import (
     get_llm_call_logger,
     CallType
 )
+from app.mcp_tools import get_toolhub
+from app.core.config import get_settings
 # 意图处理器注册器 —— 触发所有 handler 装饰器注册
 from app.intent import get_intent_registry
 from app.intent.base import IntentContext
@@ -451,12 +454,16 @@ async def chat(request: ChatRequest):
             intent_prompt_template = config_loader.get_prompt('smart_intent_recognition')
             logger.info("Intent prompt template loaded: %s", intent_prompt_template is not None)
             if intent_prompt_template:
-                intent_prompt = intent_prompt_template.format(
-                    ontologies_info=ontologies_info,
-                    scene_keywords=scene_keywords,
-                    separators=separators,
-                    messages_text=messages_text,
-                    last_user_message=last_user_message
+                # 用 str.replace() 替代 .format()，避免 {param} 与工具返回的字段名冲突
+                mcp_info_raw = get_toolhub().get_tool_schemas_for_llm()
+                intent_prompt = (
+                    intent_prompt_template
+                    .replace("{ontologies_info}", ontologies_info)
+                    .replace("{scene_keywords}", scene_keywords)
+                    .replace("{separators}", separators)
+                    .replace("{mcp_tools_info}", mcp_info_raw or "")
+                    .replace("{messages_text}", messages_text or "[]")
+                    .replace("{last_user_message}", last_user_message or "")
                 )
                 
                 logger.info("Calling LLM for intent recognition")
@@ -720,12 +727,16 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
 
             intent_prompt_template = config_loader.get_prompt('smart_intent_recognition')
             if intent_prompt_template:
-                intent_prompt = intent_prompt_template.format(
-                    ontologies_info=ontologies_info,
-                    scene_keywords=scene_keywords,
-                    separators=separators,
-                    messages_text=messages_text,
-                    last_user_message=last_user_message
+                # 用 str.replace() 替代 .format()，避免 {param} 与工具返回的字段名冲突
+                mcp_info_raw = get_toolhub().get_tool_schemas_for_llm()
+                intent_prompt = (
+                    intent_prompt_template
+                    .replace("{ontologies_info}", ontologies_info)
+                    .replace("{scene_keywords}", scene_keywords)
+                    .replace("{separators}", separators)
+                    .replace("{mcp_tools_info}", mcp_info_raw or "")
+                    .replace("{messages_text}", messages_text or "[]")
+                    .replace("{last_user_message}", last_user_message or "")
                 )
 
                 yield _thinking("🧠 调用 LLM 进行意图识别...")
@@ -799,6 +810,37 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                             logger.info(f"│    Extracted Fields: {list(intent_data.get('extractedFields', {}).keys())}")
                             logger.info(f"│    Confidence: {intent_data.get('confidence', '-')}")
                             logger.info("└" + "─" * 78)
+
+                            # LLM 决定调用 MCP 工具
+                            tool_calls = intent_data.get("tool_calls", [])
+                            if tool_calls:
+                                logger.info("[MCP] ┌── LLM 请求调用 %d 个 MCP 工具 ──", len(tool_calls))
+                                yield _thinking(f"🔧 需要调用 %d 个工具获取额外数据..." % len(tool_calls))
+                                hub = get_toolhub()
+                                extracted = intent_data.get("extractedFields", {})
+                                for i, tc in enumerate(tool_calls, 1):
+                                    tool_name = tc.get("name")
+                                    tool_args = tc.get("arguments", {})
+                                    logger.info("[MCP] ├─[%d/%d] 工具: %s", i, len(tool_calls), tool_name)
+                                    logger.info("[MCP] ├─[%d/%d] 参数: %s", i, len(tool_calls), tool_args)
+                                    if tool_name and hub.has_tool(tool_name):
+                                        logger.info("[MCP] ├─[%d/%d] ▶ 执行中...", i, len(tool_calls))
+                                        result = hub.execute_sync(tool_name, tool_args)
+                                        if result.get("success"):
+                                            tool_result = result.get("result", {})
+                                            if isinstance(tool_result, dict):
+                                                extracted.update(tool_result)
+                                                fields = list(tool_result.keys())
+                                                logger.info("[MCP] ├─[%d/%d] ✅ 成功，返回字段: %s", i, len(tool_calls), fields)
+                                            else:
+                                                logger.info("[MCP] ├─[%d/%d] ✅ 成功，无返回数据", i, len(tool_calls))
+                                        else:
+                                            err = result.get("error", "未知错误")
+                                            logger.warning("[MCP] ├─[%d/%d] ❌ 失败: %s", i, len(tool_calls), err)
+                                    else:
+                                        logger.warning("[MCP] ├─[%d/%d] ❌ 工具不存在: %s", i, len(tool_calls), tool_name)
+                                logger.info("[MCP] └── MCP 调用结束，累计提取字段数: %d", len(extracted))
+                                intent_data["extractedFields"] = extracted
                             yield _thinking(f"✅ 意图识别完成: {intent_type} (耗时 {intent_elapsed:.2f}s)")
 
                             # ── 意图分发（注册器模式） ──────────────────────────────
@@ -955,209 +997,6 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
         }
     )
 
-
-# ── AI 表单校验端点 ──────────────────────────────────────────────────────────────
-
-_VALIDATE_SYSTEM_PROMPT = """你是一个严格的表单校验助手。你会收到一组字段的当前值和每个字段的规则描述，你需要逐条判断每个字段的值是否符合规则。
-
-## 判断原则
-1. 严格按规则描述判断，不做额外推断
-2. 如果规则描述为空或不存在，该字段视为通过
-3. 空值且非必填字段，视为通过（必填检查由前端完成）
-4. 判断要确定性，不要模棱两可
-
-## 输出格式
-
-严格以 JSON 格式返回：
-```json
-{
-  "passed": true/false,
-  "errors": [
-    {
-      "fieldCode": "字段编码",
-      "fieldName": "字段名称",
-      "value": "当前值",
-      "ruleDescription": "违反的规则描述",
-      "reason": "具体违反原因，用中文说明"
-    }
-  ],
-  "warnings": [
-    {
-      "fieldCode": "字段编码",
-      "fieldName": "字段名称",
-      "value": "当前值",
-      "ruleDescription": "可能违反的规则描述",
-      "reason": "建议说明"
-    }
-  ]
-}
-```
-
-- `passed`: 是否全部通过（无 error 时为 true）
-- `errors`: 严格违反规则的字段列表（阻塞提交）
-- `warnings`: 可能有问题但不阻塞提交的字段列表
-"""
-
-
-class ValidateRequest(BaseModel):
-    formCode: str
-    formData: Dict[str, Any]
-    ontology: Optional[Dict[str, Any]] = None
-
-
-@router.post("/chat/validate")
-async def validate_form(request: ValidateRequest):
-    """
-    AI 校验表单数据：
-    将字段值 + ruleDescription 发送给 LLM，让 AI 做判断题。
-    返回结构化校验结果（errors / warnings）。
-    """
-    form_code = request.formCode
-    form_data = request.formData
-
-    logger.info("[validate] 收到校验请求 formCode=%s fields=%d", form_code, len(form_data))
-
-    # 获取本体
-    ontology = request.ontology
-    if not ontology:
-        ontology = config_loader.get_ontology(form_code)
-
-    if not ontology:
-        return {"success": False, "message": f"表单 {form_code} 不存在"}
-
-    # 收集所有字段及其规则描述
-    fields_with_rules = []
-    entities = ontology.get("entities", [])
-
-    # 兼容两种结构：entities 分组 和 顶层 fields
-    if entities:
-        for entity in entities:
-            for field in entity.get("fields", []):
-                fields_with_rules.append(field)
-    else:
-        # 顶层 fields 格式（如 tariff_filing.json）
-        for field in ontology.get("fields", []):
-            fields_with_rules.append(field)
-
-    # 构建校验 prompt：把每个有 ruleDescription 的字段列出来
-    check_items = []
-    for field in fields_with_rules:
-        field_code = field.get("fieldCode", "")
-        field_name = field.get("fieldName", "")
-        rule_desc = field.get("ruleDescription", "")
-        field_type = field.get("fieldType", "")
-        value = form_data.get(field_code)
-
-        if not rule_desc:
-            # 没有规则描述的字段，如果值存在则做基本格式提示
-            if value is not None and value != "":
-                check_items.append({
-                    "fieldCode": field_code,
-                    "fieldName": field_name,
-                    "fieldType": field_type,
-                    "value": str(value) if value is not None else "",
-                    "ruleDescription": "无特殊规则"
-                })
-            continue
-
-        check_items.append({
-            "fieldCode": field_code,
-            "fieldName": field_name,
-            "fieldType": field_type,
-            "value": str(value) if value is not None else "",
-            "ruleDescription": rule_desc
-        })
-
-    if not check_items:
-        # 没有任何需要校验的字段
-        return {"success": True, "passed": True, "errors": [], "warnings": []}
-
-    # 构建用户 prompt
-    items_text = "\n".join([
-        f"- 字段: {item['fieldName']}({item['fieldCode']}), 类型: {item['fieldType']}, "
-        f"当前值: \"{item['value']}\", 规则: {item['ruleDescription']}"
-        for item in check_items
-    ])
-
-    user_prompt = f"""请校验以下表单字段是否符合规则描述：
-
-表单编码: {form_code}
-表单名称: {ontology.get('formName', form_code)}
-
-{items_text}
-
-请逐条判断，返回 JSON 格式的校验结果。"""
-
-    try:
-        loop = asyncio.get_event_loop()
-
-        if not llm_service.enabled:
-            # LLM 不可用时，只做基本判断
-            return {
-                "success": True,
-                "passed": True,
-                "errors": [],
-                "warnings": [],
-                "method": "no_llm_skip"
-            }
-
-        result_text, reasoning = await loop.run_in_executor(
-            None,
-            lambda: llm_service._call_llm_sync_with_reasoning(
-                user_prompt,
-                system_prompt=_VALIDATE_SYSTEM_PROMPT,
-                max_tokens=2048
-            )
-        )
-
-        if not result_text:
-            logger.warning("[validate] LLM 返回为空，跳过 AI 校验")
-            return {
-                "success": True,
-                "passed": True,
-                "errors": [],
-                "warnings": [],
-                "method": "llm_empty_skip"
-            }
-
-        # 解析 JSON
-        parsed = llm_service._extract_json(result_text)
-        if not parsed:
-            logger.warning("[validate] AI 校验结果解析失败: %s", result_text[:200])
-            return {
-                "success": True,
-                "passed": True,
-                "errors": [],
-                "warnings": [],
-                "method": "parse_fail_skip"
-            }
-
-        errors = parsed.get("errors", [])
-        warnings = parsed.get("warnings", [])
-        passed = parsed.get("passed", len(errors) == 0)
-
-        logger.info("[validate] 校验完成 passed=%s errors=%d warnings=%d",
-                     passed, len(errors), len(warnings))
-
-        return {
-            "success": True,
-            "passed": passed,
-            "errors": errors,
-            "warnings": warnings,
-            "method": "llm"
-        }
-
-    except Exception as e:
-        logger.exception("[validate] AI 校验异常: %s", e)
-        # 校验异常不阻塞提交
-        return {
-            "success": True,
-            "passed": True,
-            "errors": [],
-            "warnings": [],
-            "method": "error_skip",
-            "error": str(e)
-        }
 
 
 # ── 历史数据维护 API ───────────────────────────────────────────────────────────

@@ -37,14 +37,6 @@
       @analyze="() => emit('intent-action', { intentType, action: 'analyze', payload: panelData, msg })"
       @export="(opts) => emit('intent-action', { intentType, action: 'export', payload: opts, msg })"
     />
-
-    <!-- validate -->
-    <ValidationResultPanel
-      v-else-if="intentType === 'validate' && panelData"
-      :validationData="panelData"
-      @fix="(errors) => emit('intent-action', { intentType, action: 'fix', payload: errors, msg })"
-      @ignore-warnings="() => emit('intent-action', { intentType, action: 'ignore-warnings', payload: panelData, msg })"
-    />
   </div>
 </template>
 
@@ -53,7 +45,6 @@ import { computed } from 'vue'
 import ConfigCard from '../ConfigCard.vue'
 import DeleteResultPanel from './DeleteResultPanel.vue'
 import HistoryPanel from './HistoryPanel.vue'
-import ValidationResultPanel from './ValidationResultPanel.vue'
 
 const props = defineProps({
   intentType: { type: String, required: true },

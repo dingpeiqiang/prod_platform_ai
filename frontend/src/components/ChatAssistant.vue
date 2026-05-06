@@ -230,7 +230,6 @@ import ConfigCard from './ConfigCard.vue'
 // 意图面板组件
 import DeleteResultPanel from './intent-panels/DeleteResultPanel.vue'
 import HistoryPanel from './intent-panels/HistoryPanel.vue'
-import ValidationResultPanel from './intent-panels/ValidationResultPanel.vue'
 import IntentPanel from './intent-panels/IntentPanel.vue'
 // 意图注册器
 import { registerEventHandler, registerPostProcessor, getEventHandler, getEventPanel, getPostProcessor, listIntentPanels } from '../composables/useIntentRegistry.js'
@@ -284,13 +283,6 @@ registerEventHandler('manage_history', (data, msg) => {
   }
   scrollToBottom()
 }, { panel: HistoryPanel })
-
-// 校验结果（validate 意图）
-registerEventHandler('validate', (data, msg) => {
-  if (!msg._intentData) msg._intentData = {}
-  msg._intentData['validate'] = data.content || data.data || {}
-  scrollToBottom()
-}, { panel: ValidationResultPanel })
 
 // ── 意图后处理器注册 ──────────────────────────────
 // SSE 流结束后的意图专属后处理（替代 if/elif 链）

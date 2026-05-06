@@ -6,10 +6,11 @@
 - 前端：Vue3 + Element Plus, 主聊天窗口（管理后台已移除，配置功能内嵌于聊天）
 
 ## 关键架构
-- 意图类型：form / form_update / configure / delete_form / chat / manage_history
+- 意图类型：form / form_update / configure / delete_form / manage_history / chat（7种）
 - **IntentHandler 注册器架构**（2026-04-29 改造）：
   - `backend/app/intent/` 模块：BaseIntentHandler ABC + IntentContext + IntentHandlerRegistry 单例
-  - 6个独立处理器文件在 `handlers/` 目录下，通过 `__init__.py` 显式注册
+  - 7个独立处理器文件在 `handlers/` 目录下（form/form_update/delete_form/configure/manage_history/tariff_filing/chat）
+  - 通过 `__init__.py` 显式注册，handlers/__init__.py 需同步导出所有 Handler
   - chat.py 的 if/elif 链已替换为 `registry.dispatch(intent_type, ctx)` 一行分发
   - 前端 `intent-panels/intent-registry.js`：SSE事件处理器 + 意图后处理器注册器
   - 前端面板组件化：DeleteResultPanel.vue / HistoryPanel.vue / ConfigCard.vue
@@ -41,14 +42,10 @@
   - submitConfig：外部 API 提交配置
   - 前端 validateForm 支持 custom 类型（Function 沙箱）
   - max_tokens 从 2048 提升到 8192，_extract_json 支持截断 JSON 括号补全
-- 2026-04-28：规则体系重构——rules 结构化 → ruleDescription 自然语言 + AI 校验
+- 2026-04-28：规则体系重构——rules 结构化 → ruleDescription 自然语言
   - 本体字段新增 ruleDescription（自然语言规则描述），替代旧的 rules 结构化数组
   - 所有 7 个本体 JSON 已迁移，添加 ruleDescription 示例
-  - 新增 POST /chat/validate AI 校验端点：LLM 做判断题，返回 {passed, errors, warnings}
   - _CONFIG_SYSTEM_PROMPT 已简化：删除 15 种 rule_type 巨表，改为 ruleDescription 说明
-  - DynamicForm.vue 校验流程：前端即时校验（必填+格式）→ AI 校验（业务规则）→ 提交
-  - AI 校验 errors 阻塞提交但允许用户选择"仍然提交"（ElMessageBox.confirm）
-  - AI 校验 warnings 不阻塞，仅展示提示
 - form_service.py 新增 ruleDescription 字段传递
 - ChatAssistant.vue 表单提交成功后展示提交摘要（字段值列表）
 

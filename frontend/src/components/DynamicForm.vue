@@ -326,41 +326,9 @@ const validateForm = () => {
 
 const aiValidate = async () => {
   /**
-   * 调用后端 AI 校验接口，对业务规则进行校验。
-   * 返回 { passed, errors, warnings }
+   * AI 校验已移除，直接返回通过
    */
-  const API_BASE = '/api/v1'
-  const formCode = props.schema.formCode || ''
-
-  try {
-    const response = await fetch(`${API_BASE}/chat/validate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        formCode: formCode,
-        formData: { ...localFormData }
-      })
-    })
-
-    if (!response.ok) {
-      console.warn('[DynamicForm] AI 校验请求失败:', response.status)
-      return { passed: true, errors: [], warnings: [] }
-    }
-
-    const result = await response.json()
-    if (result.success) {
-      return {
-        passed: result.passed !== false,
-        errors: result.errors || [],
-        warnings: result.warnings || []
-      }
-    }
-
-    return { passed: true, errors: [], warnings: [] }
-  } catch (e) {
-    console.warn('[DynamicForm] AI 校验异常:', e)
-    return { passed: true, errors: [], warnings: [] }
-  }
+  return { passed: true, errors: [], warnings: [] }
 }
 
 const handleCancel = () => {

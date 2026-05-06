@@ -7,7 +7,6 @@ from .delete_form_handler import DeleteFormHandler
 from .manage_history_handler import ManageHistoryHandler
 from .configure_handler import ConfigureHandler
 from .tariff_filing_handler import TariffFilingHandler
-from .validate_handler import ValidateHandler
 from .chat_handler import ChatHandler
 
 __all__ = [
@@ -17,6 +16,5 @@ __all__ = [
     "ManageHistoryHandler",
     "ConfigureHandler",
     "TariffFilingHandler",
-    "ValidateHandler",
     "ChatHandler",
 ]
