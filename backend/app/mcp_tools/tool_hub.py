@@ -7,6 +7,10 @@ from .tool_def import MCPTool
 
 logger = logging.getLogger("mcp_tools")
 
+# 导入框架错误处理
+from app.core.errors import ErrorCategory, ErrorLevel, ErrorCode, create_error
+from app.core.error_handler import error_handler
+
 
 class MCPToolHub:
     """
@@ -173,11 +177,21 @@ class MCPToolHub:
         """
         tool = self.get_tool(name)
         if not tool:
+            # 使用框架错误处理
+            error = create_error(
+                category=ErrorCategory.TOOL.value,
+                code=ErrorCode.TOOL_NOT_FOUND,
+                message=f"工具 '{name}' 不存在",
+                level=ErrorLevel.WARNING.value,
+                recoverable=True,
+                recovery_hint="请检查工具名称是否正确"
+            )
+            error_handler.emit(error)
             return {
                 "success": False,
-                "error": f"工具 '{name}' 不存在"
+                "error": str(error.message)
             }
-        
+
         try:
             result = tool.handler(**arguments)
             return {
@@ -186,9 +200,21 @@ class MCPToolHub:
             }
         except Exception as e:
             logger.exception(f"工具执行失败 [{name}]: {e}")
+            # 使用框架错误处理
+            error = create_error(
+                category=ErrorCategory.TOOL.value,
+                code=ErrorCode.TOOL_EXEC_FAILED,
+                message=f"工具 {name} 执行失败: {str(e)}",
+                level=ErrorLevel.WARNING.value,
+                recoverable=True,
+                recovery_hint="该工具调用失败不影响其他功能，已跳过",
+                tool_name=name,
+                tool_args=arguments
+            )
+            error_handler.emit(error)
             return {
                 "success": False,
-                "error": str(e)
+                "error": str(error.message)
             }
 
     def has_tool(self, name: str) -> bool:

@@ -743,13 +743,28 @@ const handleEvent = (data, idx) => {
       break
     }
     case 'error':
-      msg.reasoning.push({ type: 'error', content: data.content })
+      // 支持新旧两种格式
+      let errMsg = data.content || data.message || '未知错误'
+      if (data.error_code) {
+        errMsg += ` [${data.error_code}]`
+      }
+      if (data.recoverable === false) {
+        errMsg += ' (不可恢复)'
+      }
+      msg.reasoning.push({ type: 'error', content: errMsg })
       break
     case 'tool_error':
       // MCP 工具执行失败，通知用户
+      let errorContent = `⚠️ 工具 ${data.tool} 执行失败: ${data.error}`
+      if (data.error_code) {
+        errorContent += ` [${data.error_code}]`
+      }
+      if (data.recoverable === false) {
+        errorContent += ' (不可恢复)'
+      }
       msg.reasoning.push({
         type: 'error',
-        content: `⚠️ 工具 ${data.tool} 执行失败: ${data.error}`
+        content: errorContent
       })
       break
   }

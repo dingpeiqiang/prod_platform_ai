@@ -28,6 +28,11 @@ from app.harness.observability.llm_call_logger import (
     get_llm_call_logger,
     CallType
 )
+from app.core.errors import (
+    ErrorCategory, ErrorLevel, ErrorCode,
+    FrameworkError, get_error_message, create_error
+)
+from app.core.error_handler import error_handler
 from app.mcp_tools import get_toolhub
 from app.core.config import get_settings
 # 意图处理器注册器 —— 触发所有 handler 装饰器注册
@@ -720,9 +725,19 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                 else:
                     yield _thinking("❌ LLM 服务已禁用，且未启用降级处理")
                     stream_stats.total_elapsed = time.time() - start_time
-                    stream_stats.error = "LLM 服务已禁用，且未启用降级处理"
+                    # 使用框架错误处理
+                    error = create_error(
+                        category=ErrorCategory.LLM.value,
+                        code=ErrorCode.LLM_DISABLED,
+                        message="LLM 服务已禁用，且未启用降级处理",
+                        level=ErrorLevel.CRITICAL.value,
+                        recoverable=False,
+                        recovery_hint="请在配置中启用 LLM 服务或启用 fallback 降级处理"
+                    )
+                    error_handler.emit(error)
+                    stream_stats.error = error.message
                     yield _sse({"type": "stats", "content": stream_stats.to_dict()})
-                    yield _sse({"type": "error", "content": "LLM 服务已禁用，且未启用降级处理"})
+                    yield _sse(error.to_sse())
                     return
 
             intent_prompt_template = config_loader.get_prompt('smart_intent_recognition')
@@ -837,18 +852,45 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                         else:
                                             err = result.get("error", "未知错误")
                                             logger.warning("[MCP] ├─[%d/%d] ❌ 失败: %s", i, len(tool_calls), err)
+                                            # 使用框架错误处理
+                                            error = create_error(
+                                                category=ErrorCategory.TOOL.value,
+                                                code=ErrorCode.TOOL_EXEC_FAILED,
+                                                message=f"工具 {tool_name} 执行失败: {err}",
+                                                level=ErrorLevel.WARNING.value,
+                                                recoverable=True,
+                                                recovery_hint="该工具调用失败不影响其他功能，已跳过",
+                                                tool_name=tool_name,
+                                                tool_args=tool_args
+                                            )
+                                            error_handler.emit(error)
                                             # 发送错误事件通知前端
                                             yield _sse({
                                                 "type": "tool_error",
                                                 "tool": tool_name,
-                                                "error": str(err)
+                                                "error": str(err),
+                                                "error_code": ErrorCode.TOOL_EXEC_FAILED,
+                                                "recoverable": True
                                             })
                                     else:
                                         logger.warning("[MCP] ├─[%d/%d] ❌ 工具不存在: %s", i, len(tool_calls), tool_name)
+                                        # 使用框架错误处理
+                                        error = create_error(
+                                            category=ErrorCategory.TOOL.value,
+                                            code=ErrorCode.TOOL_NOT_FOUND,
+                                            message=f"工具 '{tool_name}' 不存在",
+                                            level=ErrorLevel.WARNING.value,
+                                            recoverable=True,
+                                            recovery_hint="请检查工具名称是否正确",
+                                            tool_name=tool_name
+                                        )
+                                        error_handler.emit(error)
                                         yield _sse({
                                             "type": "tool_error",
                                             "tool": tool_name,
-                                            "error": f"工具 '{tool_name}' 不存在"
+                                            "error": f"工具 '{tool_name}' 不存在",
+                                            "error_code": ErrorCode.TOOL_NOT_FOUND,
+                                            "recoverable": True
                                         })
                                 logger.info("[MCP] └── MCP 调用结束，累计提取字段数: %d", len(extracted))
                                 intent_data["extractedFields"] = extracted
@@ -884,9 +926,20 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                             else:
                                 yield _thinking(f"❌ 意图解析失败，且未启用降级处理")
                                 stream_stats.total_elapsed = time.time() - start_time
-                                stream_stats.error = f"LLM 意图解析失败: {str(e)}"
+                                # 使用框架错误处理
+                                error = create_error(
+                                    category=ErrorCategory.LLM.value,
+                                    code=ErrorCode.LLM_PARSE_ERROR,
+                                    message=f"LLM 意图解析失败: {str(e)}",
+                                    level=ErrorLevel.ERROR.value,
+                                    recoverable=False,
+                                    recovery_hint="请稍后重试，或联系管理员检查 AI 服务配置",
+                                    raw_response=intent_result[:200] if intent_result else ""
+                                )
+                                error_handler.emit(error)
+                                stream_stats.error = error.message
                                 yield _sse({"type": "stats", "content": stream_stats.to_dict()})
-                                yield _sse({"type": "error", "content": f"LLM 意图解析失败: {str(e)}"})
+                                yield _sse(error.to_sse())
                                 return
                         except Exception as e:
                             logger.exception("意图处理异常: %s", e)
@@ -895,9 +948,19 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                             else:
                                 yield _thinking(f"❌ 处理异常: {e}")
                                 stream_stats.total_elapsed = time.time() - start_time
-                                stream_stats.error = f"处理异常: {str(e)}"
+                                # 使用框架错误处理
+                                error = create_error(
+                                    category=ErrorCategory.INTENT.value,
+                                    code=ErrorCode.INTENT_PARSE,
+                                    message=f"意图处理异常: {str(e)}",
+                                    level=ErrorLevel.ERROR.value,
+                                    recoverable=False,
+                                    recovery_hint="请稍后重试"
+                                )
+                                error_handler.emit(error)
+                                stream_stats.error = error.message
                                 yield _sse({"type": "stats", "content": stream_stats.to_dict()})
-                                yield _sse({"type": "error", "content": f"处理异常: {str(e)}"})
+                                yield _sse(error.to_sse())
                                 return
                     else:
                         logger.warning("[chat/stream] LLM 返回为空，耗时 %.1fs", intent_elapsed)
@@ -906,9 +969,19 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                         else:
                             yield _thinking(f"❌ LLM 返回为空（耗时 {intent_elapsed:.1f}s），且未启用降级处理")
                             stream_stats.total_elapsed = time.time() - start_time
-                            stream_stats.error = "LLM 返回为空，且未启用降级处理"
+                            # 使用框架错误处理
+                            error = create_error(
+                                category=ErrorCategory.LLM.value,
+                                code=ErrorCode.LLM_EMPTY_RESPONSE,
+                                message=f"LLM 返回为空（耗时 {intent_elapsed:.1f}s），且未启用降级处理",
+                                level=ErrorLevel.ERROR.value,
+                                recoverable=False,
+                                recovery_hint="请稍后重试，或联系管理员检查 AI 服务"
+                            )
+                            error_handler.emit(error)
+                            stream_stats.error = error.message
                             yield _sse({"type": "stats", "content": stream_stats.to_dict()})
-                            yield _sse({"type": "error", "content": "LLM 返回为空，且未启用降级处理"})
+                            yield _sse(error.to_sse())
                             return
                 except Exception as e:
                     logger.exception("LLM 调用异常: %s", e)
@@ -917,9 +990,19 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                     else:
                         yield _thinking(f"❌ LLM 调用失败，且未启用降级处理")
                         stream_stats.total_elapsed = time.time() - start_time
-                        stream_stats.error = f"LLM 调用失败: {str(e)}"
+                        # 使用框架错误处理
+                        error = create_error(
+                            category=ErrorCategory.LLM.value,
+                            code=ErrorCode.LLM_TIMEOUT,
+                            message=f"LLM 调用失败: {str(e)}",
+                            level=ErrorLevel.ERROR.value,
+                            recoverable=False,
+                            recovery_hint="请稍后重试，或联系管理员检查 AI 服务"
+                        )
+                        error_handler.emit(error)
+                        stream_stats.error = error.message
                         yield _sse({"type": "stats", "content": stream_stats.to_dict()})
-                        yield _sse({"type": "error", "content": f"LLM 调用失败: {str(e)}"})
+                        yield _sse(error.to_sse())
                         return
 
             # ── 只有在启用 fallback 时才使用 Skills ──────────────────────────────────────────
@@ -987,16 +1070,36 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
             else:
                 yield _thinking("❌ LLM 处理流程失败，且未启用降级处理")
                 stream_stats.total_elapsed = time.time() - start_time
-                stream_stats.error = "LLM 处理流程失败，且未启用降级处理"
+                # 使用框架错误处理
+                error = create_error(
+                    category=ErrorCategory.LLM.value,
+                    code=ErrorCode.LLM_UNAVAILABLE,
+                    message="LLM 处理流程失败，且未启用降级处理",
+                    level=ErrorLevel.ERROR.value,
+                    recoverable=False,
+                    recovery_hint="请稍后重试，或联系管理员检查 AI 服务"
+                )
+                error_handler.emit(error)
+                stream_stats.error = error.message
                 yield _sse({"type": "stats", "content": stream_stats.to_dict()})
-                yield _sse({"type": "error", "content": "LLM 处理流程失败，且未启用降级处理"})
+                yield _sse(error.to_sse())
 
         except Exception as e:
             logger.exception("Stream error: %s", e)
-            stream_stats.error = str(e)
+            # 使用框架错误处理
+            error = create_error(
+                category=ErrorCategory.SYSTEM.value,
+                code="ERR_STREAM_ERROR",
+                message=f"Stream 处理异常: {str(e)}",
+                level=ErrorLevel.ERROR.value,
+                recoverable=False,
+                recovery_hint="请刷新页面后重试"
+            )
+            error_handler.emit(error)
+            stream_stats.error = error.message
             stream_stats.total_elapsed = time.time() - start_time
             yield _sse({"type": "stats", "content": stream_stats.to_dict()})
-            yield _sse({"type": "error", "content": str(e)})
+            yield _sse(error.to_sse())
 
     return StreamingResponse(
         stream_generator(),
