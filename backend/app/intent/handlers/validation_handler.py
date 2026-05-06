@@ -134,15 +134,11 @@ class ValidationHandler(BaseIntentHandler):
 
     async def handle(self, ctx: IntentContext) -> AsyncGenerator[str, None]:
         """
-        处理表单校验请求，分步骤执行：
-        1. 规则引擎校验（快速过滤）
-        2. LLM 智能校验（语义+一致性，含模型思考过程）
+        处理步骤规范：
 
-        两步都执行完后统一汇总结果，输出结构化错误信息。
-
-        IntentContext.intent_data 需要包含：
-        - form_code: str 表单代码
-        - form_data: Dict 用户提交的表单数据 {"fieldCode": value}
+        ═══ Phase 1：识别 (Identify)     —— 分析输入，确定任务
+        ═══ Phase 2：执行 (Execute)      —— 核心业务逻辑（规则引擎 + LLM 校验）
+        ═══ Phase 3：输出 (Output)       —— SSE 事件输出
         """
         # 从 intent_data 中提取 form_code 和 form_data
         _raw_form_data = (
@@ -160,9 +156,14 @@ class ValidationHandler(BaseIntentHandler):
         form_data = _raw_form_data if isinstance(_raw_form_data, dict) else {}
         logger.info(f"[ValidationHandler] intent_data keys: {list(ctx.intent_data.keys())}, form_code={form_code}, form_data size={len(form_data)}")
 
-        # ═══════════════════════════════════════════════════════════
-        # Step 1：规则引擎校验
-        # ═══════════════════════════════════════════════════════════
+        # ═══ Phase 1：识别 ══════════════════════════════════════════
+        yield thinking(f"📋 识别到校验任务，表单类型：{form_code}", result={
+            "formCode": form_code,
+            "fieldCount": len(form_data)
+        })
+
+        # ═══ Phase 2：执行 ══════════════════════════════════════════
+        # ── Step 1：规则引擎校验 ───────────────────────────────────
         _t0 = time.time()
 
         rule_result = ValidationSkill.validate_form_from_ontology(form_code, form_data)
@@ -187,7 +188,7 @@ class ValidationHandler(BaseIntentHandler):
                 })
 
         yield thinking(
-            f"🔍 步骤 1/2：规则引擎校验{'通过' if rule_engine_passed else f'失败，{len(structured_errors)} 个问题'}",
+            f"🔍 Step 1/2：规则引擎校验{'通过' if rule_engine_passed else f'失败，{len(structured_errors)} 个问题'}",
             result={
                 "formCode": form_code,
                 "fieldsChecked": fields_checked,
@@ -199,9 +200,7 @@ class ValidationHandler(BaseIntentHandler):
             }
         )
 
-        # ═══════════════════════════════════════════════════════════
-        # Step 2：LLM 智能校验
-        # ═══════════════════════════════════════════════════════════
+        # ── Step 2：LLM 智能校验 ───────────────────────────────────
         from app.services.llm_service import llm_service
 
         _t1 = time.time()
@@ -216,7 +215,7 @@ class ValidationHandler(BaseIntentHandler):
         llm_warnings = llm_result.get("warnings", [])
 
         yield thinking(
-            f"🤖 步骤 2/2：AI 智能校验{'通过' if not llm_errors_raw else f'发现 {len(llm_errors_raw)} 个错误，{len(llm_warnings)} 个警告'}",
+            f"🤖 Step 2/2：AI 智能校验{'通过' if not llm_errors_raw else f'发现 {len(llm_errors_raw)} 个错误，{len(llm_warnings)} 个警告'}",
             result={
                 "model": llm_service.llm_config.get("model"),
                 "provider": llm_service.llm_config.get("provider"),
@@ -228,9 +227,7 @@ class ValidationHandler(BaseIntentHandler):
             }
         )
 
-        # ═══════════════════════════════════════════════════════════
-        # Step 3：汇总输出（结构化错误/警告列表）
-        # ═══════════════════════════════════════════════════════════
+        # ── Step 3：汇总输出 ──────────────────────────────────────
         # 将 LLM 原始错误转结构化
         llm_structured_errors = []
         import re as regex_mod
@@ -291,9 +288,8 @@ class ValidationHandler(BaseIntentHandler):
             }
         )
 
-        # ═══════════════════════════════════════════════════════════
+        # ═══ Phase 3：输出 ══════════════════════════════════════════
         # 最终 SSE 事件（前端面板使用）
-        # ═══════════════════════════════════════════════════════════
         if all_errors:
             yield sse({
                 "type": "validation_fail",
@@ -312,5 +308,9 @@ class ValidationHandler(BaseIntentHandler):
                 "warnings": llm_warnings,
                 "rule_engine_passed": rule_engine_passed
             })
+
+        # 输出统计信息
+        ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
+        yield sse({"type": "stats", "content": ctx.stream_stats.to_dict()})
 
         yield done_event(intent_type="validate", is_form=False)

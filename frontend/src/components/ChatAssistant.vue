@@ -92,22 +92,6 @@
                         <span v-if="si === msg.latestStepIndex && !msg.done" class="step-loading">
                           <span/><span/><span/>
                         </span>
-                        <!-- 步骤结果详情（可展开） -->
-                        <div v-if="step.result" class="step-result-inline">
-                          <span class="step-result-toggle" @click="step._showResult = !step._showResult">
-                            <svg
-                              :style="{ transform: step._showResult ? 'rotate(90deg)' : 'rotate(0deg)' }"
-                              width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                              style="transition:transform .2s;vertical-align:middle"
-                            ><polyline points="9 18 15 12 9 6"/></svg>
-                            📋 查看详情
-                          </span>
-                          <transition name="collapse">
-                            <div v-if="step._showResult" class="step-result-body">
-                              <pre class="step-result-text">{{ formatStepResult(step.result) }}</pre>
-                            </div>
-                          </transition>
-                        </div>
                         <!-- 该步骤对应的模型推理（内嵌显示） -->
                         <div v-if="step.reasoning" class="step-reasoning-inline">
                           <span class="step-reasoning-toggle" @click="step._showReasoning = !step._showReasoning">
@@ -1148,8 +1132,9 @@ const updateFormFields = async (intentData) => {
 
 // 表单提交
 const handleFormSubmit = (formData, formId) => {
-  // 生成提交摘要
   const schema = currentFormSchema.value
+
+  // 生成提交摘要
   let summaryLines = []
   if (schema && schema.fields) {
     for (const field of schema.fields) {
@@ -1168,6 +1153,7 @@ const handleFormSubmit = (formData, formId) => {
   currentFormId.value = ''
   currentFormSchema.value = null
   ElMessage({ message: '表单提交成功！', type: 'success', plain: true })
+
   messages.value.push({
     id: genId(), role: 'assistant',
     content: `✅ 表单已成功提交！${summary ? '\n\n' + summary : ''}\n\n还有什么我可以帮你的吗？`,
@@ -1685,10 +1671,21 @@ defineExpose({ requestValidation })
 }
 .icon-btn:hover { background: #f5f5f5; color: #555; }
 
+/* ── 表单跳转按钮 ── */
 /* ── 消息区 ── */
 .messages-area {
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
+}
+
+/* ── 历史记录区（在消息区下方，固定高度） ── */
+.submission-history-area {
+  flex-shrink: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  border-top: 1px solid #f0f0f0;
+  background: #fafafa;
 }
 .messages-area::-webkit-scrollbar { width: 6px; }
 .messages-area::-webkit-scrollbar-track { background: transparent; }
@@ -1910,33 +1907,6 @@ defineExpose({ requestValidation })
 .step-reasoning-text::-webkit-scrollbar { width: 4px; }
 .step-reasoning-text::-webkit-scrollbar-track { background: transparent; }
 .step-reasoning-text::-webkit-scrollbar-thumb { background: #ddd6fe; border-radius: 2px; }
-
-/* 步骤结果详情 */
-.step-result-inline {
-  flex-basis: 100%;
-  margin-top: 4px;
-  padding-left: 22px;
-  border-top: 1px dashed #d1fae5;
-  padding-top: 6px;
-}
-.step-result-toggle {
-  cursor: pointer; color: #059669; font-size: 12px;
-  display: inline-flex; align-items: center; gap: 4px;
-  user-select: none;
-  transition: color .15s;
-}
-.step-result-toggle:hover { color: #047857; }
-.step-result-body { margin-top: 6px; }
-.step-result-text {
-  font-size: 12px; line-height: 1.65; color: #065f46;
-  white-space: pre-wrap; word-break: break-word;
-  background: #ecfdf5; border-radius: 8px; padding: 10px 12px;
-  max-height: 320px; overflow-y: auto;
-  border: 1px solid #d1fae5;
-}
-.step-result-text::-webkit-scrollbar { width: 4px; }
-.step-result-text::-webkit-scrollbar-track { background: transparent; }
-.step-result-text::-webkit-scrollbar-thumb { background: #6ee7b7; border-radius: 2px; }
 
 .step-loading {
   display: inline-flex;

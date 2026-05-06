@@ -257,6 +257,93 @@ async def get_recommend_values(request: HistoryRecommendRequest, db: Session = D
     )
 
 
+@router.get("/form/history/{form_code}/submissions")
+async def list_form_submissions(
+    form_code: str,
+    limit: int = 20,
+    session_id: str = None,
+    db: Session = Depends(get_db)
+):
+    """
+    查询指定表单类型的已提交记录列表。
+    用于前端"历史填写记录"功能。
+    """
+    # 先找到 template_id
+    template = db.query(FormTemplate).filter(
+        FormTemplate.form_code == form_code,
+        FormTemplate.is_active == True
+    ).first()
+
+    if not template:
+        return {"success": True, "submissions": [], "total": 0}
+
+    query = db.query(FormInstance).filter(
+        FormInstance.template_id == template.id,
+        FormInstance.status == "submitted"
+    ).order_by(FormInstance.submitted_at.desc()).limit(limit)
+
+    instances = query.all()
+
+    submissions = []
+    for inst in instances:
+        # 提取字段名用于预览（最多6个）
+        data = inst.data or {}
+        preview_fields = {}
+        field_keys = list(data.keys())[:6]
+        for k in field_keys:
+            val = data[k]
+            if isinstance(val, list):
+                val = ", ".join(str(v) for v in val)
+            elif not isinstance(val, str):
+                val = str(val)
+            if len(val) > 20:
+                val = val[:20] + "…"
+            preview_fields[k] = val
+
+        submissions.append({
+            "instanceId": inst.form_id,
+            "formCode": form_code,
+            "formName": template.form_name,
+            "submittedAt": inst.submitted_at.isoformat() if inst.submitted_at else None,
+            "fieldCount": len(data),
+            "previewFields": preview_fields,
+            "data": data  # 完整数据用于"重新填写"
+        })
+
+    return {"success": True, "submissions": submissions, "total": len(submissions)}
+
+
+@router.get("/form/instance/{form_id}")
+async def get_form_instance(form_id: str, db: Session = Depends(get_db)):
+    """
+    获取单个已提交表单实例的完整数据。
+    用于历史记录详情查看。
+    """
+    inst = db.query(FormInstance).filter(
+        FormInstance.form_id == form_id,
+        FormInstance.status == "submitted"
+    ).first()
+
+    if not inst:
+        return {"success": False, "message": "未找到该记录"}
+
+    # 获取 form_name
+    template = db.query(FormTemplate).filter(FormTemplate.id == inst.template_id).first()
+    form_name = template.form_name if template else form_id
+
+    return {
+        "success": True,
+        "instance": {
+            "instanceId": inst.form_id,
+            "formCode": template.form_code if template else "",
+            "formName": form_name,
+            "submittedAt": inst.submitted_at.isoformat() if inst.submitted_at else None,
+            "data": inst.data or {},
+            "createdAt": inst.created_at.isoformat() if inst.created_at else None
+        }
+    }
+
+
 @router.websocket("/ws/form/{form_id}")
 async def websocket_endpoint(websocket: WebSocket, form_id: str):
     await manager.connect(websocket, form_id)

@@ -1040,11 +1040,44 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                         "confidence": skills_result.confidence or 0.7
                     })
 
+                    # ── 获取字段推荐 ─────────────────────────────────────
+                    field_recommendations = {}
+                    try:
+                        rec_engine = get_recommendation_engine()
+                        ontology_def = ontologies.get(form_code, {})
+                        all_field_codes = [
+                            f.get("fieldCode")
+                            for entity in ontology_def.get("entities", [])
+                            for f in entity.get("fields", [])
+                        ]
+                        rec_result = rec_engine.batch_recommend(
+                            form_code=form_code,
+                            extracted_fields=extracted,
+                            user_input=last_user_message,
+                            user_id=None,
+                            conversation_context={"messages": [], "extractedFields": extracted, "lastUserMessage": last_user_message},
+                            max_per_field=5,
+                            db=db,
+                            field_codes=all_field_codes if all_field_codes else None
+                        )
+                        for fc, rec in rec_result.items():
+                            if rec.success and rec.recommendations:
+                                field_recommendations[fc] = {
+                                    "items": [r.to_dict() for r in rec.recommendations],
+                                    "strategyUsed": rec.strategy_used,
+                                    "totalCandidates": rec.total_candidates,
+                                    "processingTimeMs": round(rec.processing_time_ms, 2)
+                                }
+                        logger.info(f"[chat/stream] 推荐生成完成 fieldCount={len(field_recommendations)}")
+                    except Exception as rec_err:
+                        logger.warning(f"[chat/stream] 推荐生成失败: {rec_err}")
+
                     intent_data = {
                         "formCode": form_code,
                         "formName": form_name,
                         "extractedFields": extracted,
-                        "confidence": skills_result.confidence or 0.7
+                        "confidence": skills_result.confidence or 0.7,
+                        "fieldRecommendations": field_recommendations
                     }
                     stream_stats.total_elapsed = time.time() - start_time
                     stream_stats.is_form = True

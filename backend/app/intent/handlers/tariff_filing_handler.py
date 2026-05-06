@@ -37,15 +37,18 @@ class TariffFilingHandler(BaseIntentHandler):
     intent_type = "tariff_filing"
 
     async def handle(self, ctx: IntentContext) -> AsyncGenerator[str, None]:
-        form_code = "tariff_filing_publicity"
-        form_name = "资费备案公示"
+        """处理步骤规范：
 
+        ═══ Phase 1：识别 (Identify)     —— 分析输入，确定任务
+        ═══ Phase 2：执行 (Execute)      —— 核心业务逻辑（字段提取 + 推荐引擎）
+        ═══ Phase 3：输出 (Output)       —— SSE 事件输出
+        """
         form_code = "tariff_filing_publicity"
         form_name = "资费备案公示"
 
         extracted = ctx.intent_data.get("extractedFields", {})
 
-        # ── Phase 1：表单识别 + 字段提取 ──────────────────────────────
+        # ═══ Phase 1：识别 ══════════════════════════════════════════
         has_mcp_fill = bool(extracted.get("bossid"))
         yield thinking(f"📋 识别到「{form_name}」", result={
             "formCode": form_code,
@@ -56,7 +59,7 @@ class TariffFilingHandler(BaseIntentHandler):
             "mcpTariffCode": extracted.get("bossid") if has_mcp_fill else None
         })
 
-        # ── 关键字段缺失检查（提前返回，不输出空白表单）───────────────
+        # ── 关键字段缺失检查（提前返回，不输出空白表单）──────────────
         missing_info = FieldExtractionSkill.check_missing_required(form_code, extracted)
         if missing_info:
             yield ask_user(
@@ -67,7 +70,8 @@ class TariffFilingHandler(BaseIntentHandler):
             ctx.intent_data["_missing_required"] = missing_info["field"]
             return
 
-        # ── Phase 2：历史推荐（可选） ─────────────────────────────────
+        # ═══ Phase 2：执行 ══════════════════════════════════════════
+        # ── Step 1：历史推荐（可选）─────────────────────────────────
         try:
             recommendation_engine = get_recommendation_engine()
             conversation_context = {
@@ -113,7 +117,7 @@ class TariffFilingHandler(BaseIntentHandler):
         except Exception as rec_err:
             logger.warning(f"[TariffFilingHandler] 获取历史推荐失败: {rec_err}")
 
-        # ── 内部自动化 ───────────────────────────────────────────────
+        # ═══ Phase 3：输出 ══════════════════════════════════════════
         ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
         ctx.stream_stats.is_form = True
         yield sse({"type": "stats", "content": ctx.stream_stats.to_dict()})

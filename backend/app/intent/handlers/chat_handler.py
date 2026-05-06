@@ -15,7 +15,16 @@ class ChatHandler(BaseIntentHandler):
     intent_type = "chat"
 
     async def handle(self, ctx: IntentContext) -> AsyncGenerator[str, None]:
+        """处理步骤规范：
+
+        ═══ Phase 1：识别 (Identify)     —— 分析输入，确定任务
+        ═══ Phase 2：执行 (Execute)      —— 核心业务逻辑（LLM 流式回复）
+        ═══ Phase 3：输出 (Output)       —— SSE 事件输出
+        """
+        # ═══ Phase 1：识别 ══════════════════════════════════════════
         yield thinking("💬 正在生成回复...")
+
+        # ═══ Phase 2：执行 ══════════════════════════════════════════
         final_llm_stats: Optional[StreamStats] = None
 
         async for chunk, stats in stream_chat_reply(
@@ -35,6 +44,7 @@ class ChatHandler(BaseIntentHandler):
             ctx.stream_stats.llm_chars = final_llm_stats.char_count
             ctx.stream_stats.llm_tps = final_llm_stats.tokens_per_second
 
+        # ═══ Phase 3：输出 ══════════════════════════════════════════
         ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
         ctx.stream_stats.is_form = False
         yield sse({"type": "stats", "content": ctx.stream_stats.to_dict()})

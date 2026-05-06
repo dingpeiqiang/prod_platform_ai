@@ -82,7 +82,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import DynamicForm from './DynamicForm.vue'
 
 const props = defineProps({
@@ -179,12 +179,26 @@ const handleFieldChange = (fieldCode, value) => {
   emit('field-change', fieldCode, value)
 }
 
+// 展开面板并滚动到表单
+const scrollToForm = () => {
+  if (!visible.value) {
+    visible.value = true
+  }
+  // 等待面板展开动画完成后滚动
+  nextTick(() => {
+    const el = document.querySelector('.form-panel')
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
+}
+
 // 监听表单schema变化，自动展开面板
 watch(() => props.formSchema, (newVal) => {
   if (newVal) {
     visible.value = true
   }
-})
+}, { immediate: true })
 
 // 恢复保存的宽度
 onMounted(() => {
@@ -192,6 +206,11 @@ onMounted(() => {
   if (savedWidth) {
     panelWidth.value = parseInt(savedWidth, 10)
   }
+})
+
+// 暴露方法给父组件调用
+defineExpose({
+  scrollToForm
 })
 </script>
 

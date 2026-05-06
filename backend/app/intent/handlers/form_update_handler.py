@@ -14,6 +14,12 @@ class FormUpdateHandler(BaseIntentHandler):
     intent_type = "form_update"
 
     async def handle(self, ctx: IntentContext) -> AsyncGenerator[str, None]:
+        """处理步骤规范：
+
+        ═══ Phase 1：识别 (Identify)     —— 分析输入，确定任务
+        ═══ Phase 2：执行 (Execute)      —— 核心业务逻辑（提取字段）
+        ═══ Phase 3：输出 (Output)       —— SSE 事件输出
+        """
         detected_form_code = ctx.intent_data.get("detectedFormCode", "")
         form_name = ""
         if detected_form_code and detected_form_code in ctx.ontologies:
@@ -22,13 +28,13 @@ class FormUpdateHandler(BaseIntentHandler):
         extracted = ctx.intent_data.get("extractedFields", {})
         confidence = ctx.intent_data.get("confidence", 0)
 
-        # ── Step 1：识别表单更新请求 ────────────────────────────────────
-        yield thinking(f"🔄 识别到表单更新「{form_name or detected_form_code}」", result={
+        # ═══ Phase 1：识别 ══════════════════════════════════════════
+        yield thinking(f"📋 识别到表单更新「{form_name or detected_form_code}」", result={
             "formCode": detected_form_code,
             "formName": form_name or detected_form_code
         })
 
-        # ── Step 2：提取待更新字段 ──────────────────────────────────────
+        # ═══ Phase 2：执行 ══════════════════════════════════════════
         yield thinking(
             f"📝 提取到 {len(extracted)} 个待更新字段" if extracted else "⚠️ 未提取到任何字段值",
             result={
@@ -39,7 +45,7 @@ class FormUpdateHandler(BaseIntentHandler):
             }
         )
 
-        # ── 内部自动化 ────────────────────────────────────────────────────
+        # ═══ Phase 3：输出 ══════════════════════════════════════════
         ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
         ctx.stream_stats.is_form = True
         yield sse({"type": "stats", "content": ctx.stream_stats.to_dict()})

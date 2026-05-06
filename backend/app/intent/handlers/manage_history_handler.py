@@ -26,6 +26,12 @@ class ManageHistoryHandler(BaseIntentHandler):
     intent_type = "manage_history"
 
     async def handle(self, ctx: IntentContext) -> AsyncGenerator[str, None]:
+        """处理步骤规范：
+
+        ═══ Phase 1：识别 (Identify)     —— 分析输入，确定任务和 action 类型
+        ═══ Phase 2：执行 (Execute)      —— 核心业务逻辑（根据 action 执行）
+        ═══ Phase 3：输出 (Output)       —— SSE 事件输出
+        """
         target_code = ctx.intent_data.get("formCode", "") or ctx.intent_data.get("detectedFormCode", "")
         action = ctx.intent_data.get("action", "analyze")
         target_name = ctx.intent_data.get("formName", "")
@@ -37,7 +43,7 @@ class ManageHistoryHandler(BaseIntentHandler):
 
         loop = asyncio.get_event_loop()
 
-        # ── Phase 1：操作识别（统一入口） ─────────────────────────────
+        # ═══ Phase 1：识别 ══════════════════════════════════════════
         phase1_result = {
             "action": action,
             "formCode": target_code,
@@ -48,11 +54,12 @@ class ManageHistoryHandler(BaseIntentHandler):
             phase1_result["description"] = f"分析「{target_name or target_code}」历史数据质量"
             yield thinking(f"📊 开始分析「{target_name or target_code}」历史数据...", result=phase1_result)
 
+            # ═══ Phase 2：执行 ══════════════════════════════════════
             result = await loop.run_in_executor(None, lambda: analyze_history(target_code, db=ctx.db))
             ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
 
             if result.get("success"):
-                # ── Phase 2：分析结果 ─────────────────────────────────
+                # ═══ Phase 3：输出 ══════════════════════════════════
                 recommendations = result.get("recommendations", [])[:3]
                 yield thinking(f"✅ 分析完成，质量评分: {result.get('qualityScore', '-')}", result={
                     "success": True,
@@ -74,6 +81,7 @@ class ManageHistoryHandler(BaseIntentHandler):
             phase1_result["description"] = f"准备导入「{target_name or target_code}」历史数据"
             yield thinking("📥 准备数据导入...", result=phase1_result)
 
+            # ═══ Phase 2：执行 ══════════════════════════════════════
             import_entry = {
                 "type": "import_entry",
                 "formCode": target_code,
@@ -83,6 +91,7 @@ class ManageHistoryHandler(BaseIntentHandler):
                 "upload_url": f"/api/v1/config/import/upload"
             }
 
+            # ═══ Phase 3：输出 ══════════════════════════════════════
             ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
             yield sse({"type": "stats", "content": ctx.stream_stats.to_dict()})
             yield intent_event("manage_history", "import", import_entry, is_form=False)
@@ -99,6 +108,7 @@ class ManageHistoryHandler(BaseIntentHandler):
             phase1_result["dateRange"] = {"start": start_date, "end": end_date}
             yield thinking(f"🔍 查询「{target_name or target_code}」历史数据...", result=phase1_result)
 
+            # ═══ Phase 2：执行 ══════════════════════════════════════
             result = await loop.run_in_executor(
                 None,
                 lambda: query_history_records(
@@ -114,6 +124,7 @@ class ManageHistoryHandler(BaseIntentHandler):
             ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
 
             if result.get("success"):
+                # ═══ Phase 3：输出 ══════════════════════════════════
                 yield thinking(f"✅ 查询完成，共 {result.get('total', 0)} 条记录", result={
                     "success": True,
                     "total": result.get("total", 0),
@@ -137,6 +148,7 @@ class ManageHistoryHandler(BaseIntentHandler):
             phase1_result["description"] = f"导出「{target_name or target_code}」历史数据为 {export_format.upper()} 格式"
             yield thinking(f"📤 导出历史数据（{export_format.upper()}）...", result=phase1_result)
 
+            # ═══ Phase 2：执行 ══════════════════════════════════════
             result = await loop.run_in_executor(
                 None,
                 lambda: export_history_data(
@@ -152,6 +164,7 @@ class ManageHistoryHandler(BaseIntentHandler):
 
             if result.get("success"):
                 filename = result.get("filename", "")
+                # ═══ Phase 3：输出 ══════════════════════════════════
                 yield thinking(f"✅ 导出完成，共 {result.get('recordCount', 0)} 条记录", result={
                     "success": True,
                     "recordCount": result.get("recordCount", 0),
@@ -179,9 +192,11 @@ class ManageHistoryHandler(BaseIntentHandler):
             phase1_result["description"] = f"查询「{target_name or target_code}」历史数据状态"
             yield thinking(f"📋 查询「{target_name or target_code}」数据状态...", result=phase1_result)
 
+            # ═══ Phase 2：执行 ══════════════════════════════════════
             result = await loop.run_in_executor(None, lambda: get_history_summary(target_code, db=ctx.db))
             ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
 
+            # ═══ Phase 3：输出 ══════════════════════════════════════
             yield thinking("✅ 数据状态查询完成", result={
                 "success": True,
                 "recordCount": result.get("recordCount", 0),
