@@ -111,17 +111,27 @@ class ValidationSkill:
         # ══ 枚举/选择类字段：自动添加 enum 规则 ══
         if field_type == "select" and options:
             option_values = []
+            option_labels = []  # 带中文标签的选项列表
             for o in options:
                 if isinstance(o, dict):
-                    option_values.append(o.get("value", ""))
+                    value = o.get("value", "")
+                    label = o.get("label", value)
+                    option_values.append(value)
+                    # 生成 "值(标签)" 格式
+                    if label != value:
+                        option_labels.append(f"{value}({label})")
+                    else:
+                        option_labels.append(str(value))
                 else:
                     option_values.append(str(o))
+                    option_labels.append(str(o))
 
             if option_values:
                 rules.append({
                     "rule_type": "enum",
                     "rule_value": option_values,
-                    "message": f"值必须在可选列表中，可选值：{', '.join(str(v) for v in option_values)}"
+                    "rule_options": option_labels,  # 新增：带中文的选项列表
+                    "message": f"值必须在可选列表中，可选值：{', '.join(option_labels)}"
                 })
 
         return rules
@@ -176,13 +186,20 @@ class ValidationSkill:
                 result = validation_engine.validate_field(field_value, rules)
                 for err_msg in result.errors:
                     all_errors.append(err_msg)
+                    # 检查是否有 enum 规则的 rule_options
+                    rule_options = None
+                    for rule in rules:
+                        if rule.get("rule_type") == "enum" and rule.get("rule_options"):
+                            rule_options = rule.get("rule_options")
+                            break
                     all_issues.append({
                         "field": field_code,
                         "field_name": field_name,
                         "error_code": cls._detect_error_code(err_msg, rules),
                         "level": "error",
                         "message": err_msg,
-                        "rule_description": rule_desc
+                        "rule_description": rule_desc,
+                        "rule_options": rule_options
                     })
 
         return {
@@ -213,9 +230,9 @@ class ValidationSkill:
             logger.warning(f"[ValidationSkill] 未找到本体 form_code={form_code}")
             return {
                 "success": False,
-                "valid": True,
-                "errors": [],
-                "warnings": [f"未找到表单 {form_code} 的本体定义"],
+                "valid": False,
+                "errors": [f"未找到表单 {form_code} 的本体定义，无法进行规则校验"],
+                "warnings": [],
                 "issues": []
             }
 
@@ -252,9 +269,9 @@ class ValidationSkill:
             logger.warning(f"[ValidationSkill] 未找到本体 form_code={form_code}")
             return {
                 "success": False,
-                "valid": True,
-                "errors": [],
-                "warnings": [f"未找到表单 {form_code} 的本体定义，已跳过智能校验"],
+                "valid": False,
+                "errors": [f"未找到表单 {form_code} 的本体定义，无法进行智能校验"],
+                "warnings": [],
                 "method": "fallback"
             }, []
 

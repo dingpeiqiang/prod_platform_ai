@@ -231,6 +231,7 @@ import ConfigCard from './ConfigCard.vue'
 import DeleteResultPanel from './intent-panels/DeleteResultPanel.vue'
 import HistoryPanel from './intent-panels/HistoryPanel.vue'
 import IntentPanel from './intent-panels/IntentPanel.vue'
+import ValidationResultPanel from './intent-panels/ValidationResultPanel.vue'
 // 意图注册器
 import { registerEventHandler, registerPostProcessor, getEventHandler, getEventPanel, getPostProcessor, listIntentPanels } from '../composables/useIntentRegistry.js'
 
@@ -283,6 +284,25 @@ registerEventHandler('manage_history', (data, msg) => {
   }
   scrollToBottom()
 }, { panel: HistoryPanel })
+
+// ── 校验结果事件处理器 ──────────────────────────────
+// validation_fail 和 validation_pass 都写入 validation_result，渲染同一面板
+const _handleValidationResult = (data, msg) => {
+  if (!msg._intentData) msg._intentData = {}
+  // 使用 data.type 作为 key（validation_fail 或 validation_pass），与 IntentPanel.vue 中的条件匹配
+  msg._intentData[data.type] = {
+    formCode: data.form_code || '',
+    passed: data.type === 'validation_pass',
+    errors: data.errors || [],
+    warnings: data.warnings || [],
+    step: data.step || '',
+    rule_engine_passed: data.rule_engine_passed || false
+  }
+  scrollToBottom()
+}
+
+registerEventHandler('validation_fail', _handleValidationResult, { panel: ValidationResultPanel })
+registerEventHandler('validation_pass', _handleValidationResult, { panel: ValidationResultPanel })
 
 // ── 意图后处理器注册 ──────────────────────────────
 // SSE 流结束后的意图专属后处理（替代 if/elif 链）
@@ -734,7 +754,9 @@ const handleEvent = (data, idx) => {
     }
     case 'config':
     case 'delete_form':
-    case 'manage_history': {
+    case 'manage_history':
+    case 'validation_fail':
+    case 'validation_pass': {
       // ── 意图事件：通过注册器分发 ──
       const handler = getEventHandler(data.type)
       if (handler) {
@@ -766,6 +788,30 @@ const handleEvent = (data, idx) => {
         type: 'error',
         content: errorContent
       })
+      break
+    case 'validation_fail':
+      // 校验失败：显示错误列表
+      if (data.errors?.length) {
+        msg.reasoning.push({
+          type: 'error',
+          content: `❌ 校验失败：${data.errors.join('；')}`
+        })
+      }
+      if (data.warnings?.length) {
+        msg.reasoning.push({
+          type: 'warning',
+          content: `⚠️ 警告：${data.warnings.join('；')}`
+        })
+      }
+      break
+    case 'validation_pass':
+      // 校验通过：显示警告（若有）或不显示
+      if (data.warnings?.length) {
+        msg.reasoning.push({
+          type: 'warning',
+          content: `⚠️ 校验通过（有警告）：${data.warnings.join('；')}`
+        })
+      }
       break
   }
 }

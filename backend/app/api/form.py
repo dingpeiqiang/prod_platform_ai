@@ -134,31 +134,28 @@ async def submit_form(request: FormSubmitRequest, db: Session = Depends(get_db))
         llm_warnings = []
 
         try:
+            import json
+            import re
             # 通过 IntentRegistry 分发校验意图
             async for event_str in registry.dispatch("validate", ctx):
-                # 解析 SSE 事件
-                if "validation_fail" in event_str:
+                # 解析 SSE 事件：格式为 "data: {json}\n\n"
+                try:
+                    # 提取 JSON 部分（去掉 "data: " 前缀和尾部换行）
+                    json_str = re.sub(r'^data:\s*', '', event_str.strip())
+                    event_data = json.loads(json_str)
+                except (json.JSONDecodeError, re.error):
+                    # 无法解析的事件，跳过
+                    continue
+
+                event_type = event_data.get("type", "")
+                if event_type == "validation_fail":
                     llm_validation_passed = False
-                    import json
-                    import re
-                    match = re.search(r'"errors":\s*\[(.*?)\]', event_str, re.DOTALL)
-                    if match:
-                        errors_str = match.group(0).replace('"errors": ', '')
-                        try:
-                            llm_errors = json.loads(f"[{errors_str}]")
-                        except:
-                            llm_errors = [event_str]
-                elif "validation_pass" in event_str:
+                    llm_errors = event_data.get("errors", [])
+                    logger.info(f"[form/submit] ValidationHandler 返回 validation_fail: {llm_errors}")
+                elif event_type == "validation_pass":
                     llm_validation_passed = True
-                    import re
-                    match = re.search(r'"warnings":\s*\[(.*?)\]', event_str, re.DOTALL)
-                    if match:
-                        import json
-                        warnings_str = match.group(0).replace('"warnings": ', '')
-                        try:
-                            llm_warnings = json.loads(f"[{warnings_str}]")
-                        except:
-                            pass
+                    llm_warnings = event_data.get("warnings", [])
+                    logger.info(f"[form/submit] ValidationHandler 返回 validation_pass: warnings={llm_warnings}")
 
             if not llm_validation_passed:
                 logger.warning("[form/submit] LLM智能校验失败 form_id=%s errors=%s",

@@ -37,6 +37,17 @@
       @analyze="() => emit('intent-action', { intentType, action: 'analyze', payload: panelData, msg })"
       @export="(opts) => emit('intent-action', { intentType, action: 'export', payload: opts, msg })"
     />
+
+    <!-- validation_fail / validation_pass -->
+    <ValidationResultPanel
+      v-else-if="(intentType === 'validation_fail' || intentType === 'validation_pass') && panelData"
+      :formCode="panelData.formCode"
+      :passed="panelData.passed"
+      :errors="panelData.errors || []"
+      :warnings="panelData.warnings || []"
+      :step="panelData.step"
+      :rule_engine_passed="panelData.rule_engine_passed"
+    />
   </div>
 </template>
 
@@ -45,6 +56,7 @@ import { computed } from 'vue'
 import ConfigCard from '../ConfigCard.vue'
 import DeleteResultPanel from './DeleteResultPanel.vue'
 import HistoryPanel from './HistoryPanel.vue'
+import ValidationResultPanel from './ValidationResultPanel.vue'
 
 const props = defineProps({
   intentType: { type: String, required: true },
