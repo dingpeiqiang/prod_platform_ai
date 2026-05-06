@@ -6,6 +6,7 @@ import tempfile
 import os
 from pathlib import Path
 from app.core.config_loader import config_loader
+from app.core.database import get_db
 from app.services.ontology_service import OntologyService
 from app.scripts.import_history import discover_forms, import_form_data
 from app.services.history_ai_service import export_history_data

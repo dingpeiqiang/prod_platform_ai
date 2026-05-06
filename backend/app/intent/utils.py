@@ -3,6 +3,7 @@
 
 import json
 import logging
+import datetime
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, AsyncGenerator
 
@@ -52,7 +53,11 @@ async def stream_chat_reply(
         yield sse({"type": "text_end"}), None
         return
 
+    current_date = datetime.datetime.now().strftime('%Y-%m-%d')
+    current_weekday = datetime.datetime.now().strftime('%A')
     prompt = chat_prompt_template.format(
+        current_date=current_date,
+        current_weekday=current_weekday,
         ontologies_info=ontologies_info,
         messages_text=messages_text
     )

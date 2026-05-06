@@ -1,16 +1,30 @@
 from typing import Dict, Any, List
 import re
+import logging
 from datetime import datetime
 from app.core.config_loader import config_loader
 from app.services.llm_service import llm_service
 
+logger = logging.getLogger("field_extraction")
+
 
 class FieldExtractionSkill:
-    
+
     @classmethod
     def extract(cls, user_input: str, scene_code: str, form_schema: Dict = None) -> Dict[str, Any]:
         if form_schema:
+            field_count = len(form_schema.get("fields", []))
+            logger.info("[FieldExtraction] LLM提取开始 user_input长度=%d 字段数=%d", len(user_input), field_count)
+            logger.debug("[FieldExtraction] user_input=\n%s", user_input[:500])
+
             llm_result = llm_service.extract_fields(user_input, form_schema)
+
+            logger.info("[FieldExtraction] LLM提取完成 success=%s extractedFields数量=%s",
+                        bool(llm_result and 'extractedFields' in llm_result),
+                        len(llm_result.get('extractedFields', [])) if llm_result else 0)
+            if llm_result and 'extractedFields' in llm_result:
+                logger.debug("[FieldExtraction] 提取结果=%s", llm_result['extractedFields'])
+
             if llm_result and 'extractedFields' in llm_result:
                 return {
                     "success": True,

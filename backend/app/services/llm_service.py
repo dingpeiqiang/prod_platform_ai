@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional, List, AsyncGenerator, Tuple
 from dataclasses import dataclass
 from app.core.config import get_settings
 from app.core.config_loader import config_loader
+from app.services.llm.base import StreamStats, StreamBuffer
 from app.harness.observability.llm_call_logger import (
     get_llm_call_logger,
     CallType,
@@ -25,90 +26,6 @@ logger = logging.getLogger("llm_service")
 
 # 获取LLM调用日志记录器
 llm_call_logger = get_llm_call_logger()
-
-
-@dataclass
-class StreamStats:
-    """流式输出统计信息"""
-    start_time: float = 0.0
-    end_time: float = 0.0
-    token_count: int = 0
-    char_count: int = 0
-    chunk_count: int = 0
-    thinking_chars: int = 0
-    error_count: int = 0
-    
-    @property
-    def elapsed(self) -> float:
-        return self.end_time - self.start_time if self.end_time > 0 else time.time() - self.start_time
-    
-    @property
-    def tokens_per_second(self) -> float:
-        return self.token_count / self.elapsed if self.elapsed > 0 else 0.0
-    
-    @property
-    def chars_per_second(self) -> float:
-        return self.char_count / self.elapsed if self.elapsed > 0 else 0.0
-
-
-class StreamBuffer:
-    """流式输出缓冲区 - 批量发送 token 以减少开销"""
-    
-    def __init__(self, buffer_size: int = 10, flush_interval: float = 0.05):
-        """
-        初始化缓冲区
-        
-        Args:
-            buffer_size: 缓冲区大小（字符数）
-            flush_interval: 强制刷新间隔（秒）
-        """
-        self.buffer: List[str] = []
-        self.buffer_size = buffer_size
-        self.flush_interval = flush_interval
-        self.last_flush_time = time.time()
-        self.total_chars = 0
-        self.total_chunks = 0
-    
-    def add(self, text: str) -> Optional[str]:
-        """
-        添加文本到缓冲区
-        
-        Returns:
-            如果需要刷新，返回缓冲区内容；否则返回 None
-        """
-        if not text:
-            return None
-        
-        self.buffer.append(text)
-        self.total_chars += len(text)
-        
-        # 检查是否需要刷新
-        current_size = sum(len(t) for t in self.buffer)
-        current_time = time.time()
-        
-        if current_size >= self.buffer_size or (current_time - self.last_flush_time) >= self.flush_interval:
-            return self.flush()
-        
-        return None
-    
-    def flush(self) -> Optional[str]:
-        """
-        强制刷新缓冲区
-        
-        Returns:
-            缓冲区内容，如果为空返回 None
-        """
-        if not self.buffer:
-            return None
-        
-        result = ''.join(self.buffer)
-        self.buffer = []
-        self.last_flush_time = time.time()
-        self.total_chunks += 1
-        return result
-    
-    def __len__(self) -> int:
-        return sum(len(t) for t in self.buffer)
 
 
 def _truncate(text: str, max_len: int = 200) -> str:
@@ -1511,21 +1428,32 @@ class LLMService:
     
     def extract_fields(self, user_input: str, form_schema: Dict) -> Optional[Dict]:
         if not self.enabled:
+            logger.warning("[extract_fields] LLM服务未启用，跳过")
             return None
-        
+
         prompt_template = config_loader.get_prompt('field_extraction')
         if not prompt_template:
+            logger.warning("[extract_fields] 未找到 field_extraction prompt 模板")
             return None
-        
+
         schema_str = json.dumps(form_schema, ensure_ascii=False, indent=2)
         prompt = prompt_template.format(
             form_schema=schema_str,
             user_input=user_input
         )
-        
+
+        logger.info("[extract_fields] 调用LLM prompt长度=%d schema字段数=%d",
+                    len(prompt), len(form_schema.get("fields", [])))
+        logger.debug("[extract_fields] prompt=\n%s", prompt[:800])
+
         result = self._call_llm(prompt)
         if result:
-            return self._extract_json(result)
+            parsed = self._extract_json(result)
+            logger.info("[extract_fields] LLM返回原始长度=%d 解析成功=%s 提取字段数=%d",
+                        len(result), bool(parsed), len(parsed.get('extractedFields', [])) if parsed else 0)
+            logger.debug("[extract_fields] LLM原始返回=\n%s", result[:500])
+            return parsed
+        logger.warning("[extract_fields] LLM返回为空")
         return None
 
 

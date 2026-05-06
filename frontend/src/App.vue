@@ -13,6 +13,7 @@
 
     <div class="main-area">
       <ChatAssistant
+        ref="chatRef"
         :sessionId="activeSessionId"
         :sessionTitle="activeSessionTitle"
         @title-update="onTitleUpdate"
@@ -22,7 +23,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, provide } from 'vue'
 import Sidebar from './components/Sidebar.vue'
 import ChatAssistant from './components/ChatAssistant.vue'
 
@@ -88,6 +89,11 @@ const activeSessionTitle = computed(() => {
   const s = sessions.value.find(s => s.id === activeSessionId.value)
   return s?.title || '新对话'
 })
+
+const chatRef = ref(null)
+
+// 提供 requestValidation 给子树组件（通过 provide/inject 传递给 DynamicForm）
+provide('chatRef', chatRef)
 
 loadSessions()
 </script>

@@ -22,6 +22,63 @@ logger = logging.getLogger("llm.minimax")
 
 _SENTINEL = object()
 
+# MiniMax 模型上下文限制
+_MODEL_CONTEXT_LIMIT = 196608
+# 保留余量给输出
+_DEFAULT_MAX_INPUT_TOKENS = 180000
+
+
+def _estimate_tokens(text: str) -> int:
+    """估算文本token数（中英文混合：≈字符数/2）"""
+    if not text:
+        return 0
+    return len(text) // 2
+
+
+def _truncate_messages(messages: list, max_input_tokens: int = _DEFAULT_MAX_INPUT_TOKENS) -> list:
+    """截断消息以满足输入token限制"""
+    total_tokens = sum(_estimate_tokens(m.get('content', '')) for m in messages)
+    if total_tokens <= max_input_tokens:
+        return messages
+
+    # 计算系统消息token（通常需要保留）
+    system_tokens = 0
+    system_msg = None
+    other_messages = []
+    for m in messages:
+        if m.get('role') == 'system':
+            system_msg = m
+            system_tokens = _estimate_tokens(m.get('content', ''))
+        else:
+            other_messages.append(m)
+
+    # 可用的token额度
+    available = max_input_tokens - system_tokens - _estimate_tokens(messages[-1].get('content', '')) if messages else max_input_tokens
+    if available < 0:
+        # 系统消息太大，截断它
+        if system_msg:
+            max_chars = (max_input_tokens - 1000) * 2  # 留1K给用户消息
+            if max_chars > 0:
+                system_msg = {"role": "system", "content": system_msg['content'][:max_chars] + "\n[内容已截断]"}
+            else:
+                system_msg = {"role": "system", "content": "你是一个AI助手。"}
+        available = max_input_tokens - _estimate_tokens(messages[-1].get('content', '')) if messages else max_input_tokens
+
+    # 截断最后一条用户消息
+    if other_messages and available > 0:
+        last_msg = other_messages[-1]
+        max_chars = available * 2
+        content = last_msg.get('content', '')
+        if _estimate_tokens(content) > available:
+            last_msg = {**last_msg, "content": content[:max_chars] + "\n[输入过长已截断]"}
+            other_messages[-1] = last_msg
+
+    result = []
+    if system_msg:
+        result.append(system_msg)
+    result.extend(other_messages)
+    return result
+
 
 def _build_messages(prompt, system_prompt):
     messages = []
@@ -37,6 +94,8 @@ def call_sync(base_url, model, api_key, prompt, system_prompt=None, max_tokens=N
     if not base_url or not api_key:
         return None
     messages = _build_messages(prompt, system_prompt)
+    max_input = llm_config.get('maxInputTokens', _DEFAULT_MAX_INPUT_TOKENS) if llm_config else _DEFAULT_MAX_INPUT_TOKENS
+    messages = _truncate_messages(messages, max_input)
     url = f"{base_url}/chat/completions"
     effective_max_tokens = max_tokens or (llm_config.get('maxTokens', 2048) if llm_config else 2048)
     headers = {"Content-Type": "application/json", "token": api_key}
@@ -69,6 +128,8 @@ def call_stream_sync(base_url, model, api_key, prompt, system_prompt=None, max_t
     if not base_url or not api_key:
         return None
     messages = _build_messages(prompt, system_prompt)
+    max_input = llm_config.get('maxInputTokens', _DEFAULT_MAX_INPUT_TOKENS) if llm_config else _DEFAULT_MAX_INPUT_TOKENS
+    messages = _truncate_messages(messages, max_input)
     url = f"{base_url}/chat/completions"
     effective_max_tokens = max_tokens or (llm_config.get('maxTokens', 2048) if llm_config else 2048)
     headers = {"Content-Type": "application/json", "token": api_key}
@@ -121,6 +182,8 @@ def call_with_reasoning(base_url, model, api_key, prompt, system_prompt=None, ma
     if not base_url or not api_key:
         return None, None
     messages = _build_messages(prompt, system_prompt)
+    max_input = llm_config.get('maxInputTokens', _DEFAULT_MAX_INPUT_TOKENS) if llm_config else _DEFAULT_MAX_INPUT_TOKENS
+    messages = _truncate_messages(messages, max_input)
     url = f"{base_url}/chat/completions"
     effective_max_tokens = max_tokens or (llm_config.get('maxTokens', 2048) if llm_config else 2048)
     headers = {"Content-Type": "application/json", "token": api_key}
@@ -156,6 +219,8 @@ async def call_stream(base_url, model, api_key, prompt, system_prompt=None, max_
                       llm_config=None) -> AsyncGenerator[Tuple[str, Optional[StreamStats]], None]:
     """MiniMax/Custom API 异步流式调用"""
     messages = _build_messages(prompt, system_prompt)
+    max_input = llm_config.get('maxInputTokens', _DEFAULT_MAX_INPUT_TOKENS) if llm_config else _DEFAULT_MAX_INPUT_TOKENS
+    messages = _truncate_messages(messages, max_input)
     url = f"{base_url}/chat/completions"
     effective_max_tokens = max_tokens or (llm_config.get('maxTokens', 2048) if llm_config else 2048)
     headers = {"Content-Type": "application/json", "token": api_key}

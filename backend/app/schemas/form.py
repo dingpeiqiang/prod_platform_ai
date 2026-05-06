@@ -19,6 +19,8 @@ class FormField(BaseModel):
     rules: List[FieldRule] = Field(default_factory=list)
     recommend: List[Any] = Field(default_factory=list)  # 兼容字符串和对象: str | {"value","source","reason","confidence"}
     defaultValue: Optional[Any] = None
+    options: List[Any] = Field(default_factory=list)            # 枚举选项（静态枚举）
+    enumConfig: Optional[Dict[str, Any]] = None                 # 枚举配置（外部API枚举或静态枚举定义）
 
 
 class FormSchema(BaseModel):

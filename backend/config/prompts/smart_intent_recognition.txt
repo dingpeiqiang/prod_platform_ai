@@ -11,9 +11,21 @@
 
 字段提取分隔符参考：{separators}
 
+## 可调用的 MCP 工具
+{mcp_tools_info}
+
+
+
 ## 你的任务
 
 分析用户的最后一条消息，结合上述本体和Skills参考信息，完成以下任务：
+
+### MCP 工具调用决策
+如果用户的请求需要实时外部数据才能完成字段提取（如用户提到套餐编码、订单号等），应在生成表单之前调用 MCP 工具获取完整数据：
+- 当用户提供了一个编码/ID，但表单需要该对象的全部字段时 → 调用对应工具
+- 调用后，把工具返回的字段值填入 extractedFields
+- 工具调用格式：在 JSON 中添加 tool_calls 字段，列出要调用的工具名和参数
+- 示例：用户提供"备案套餐P000111" → 调用 query_tariff_by_code({tariff_code: "P000111"}) → 将结果填入 extractedFields
 
 1. **意图判断**：判断用户是想聊天还是生成/填写表单
 2. **更新判断**：如果是表单相关，判断是"首次生成新表单"还是"更新现有表单的字段"
@@ -91,6 +103,15 @@
    - action 字段：analyze（分析质量）/ generate（生成数据）/ import（导入数据）/ export（导出数据）/ status（查询状态）
    - 如果用户没有指定具体 action，根据语义推断最合适的操作
 
+7. **intentType: "validate"** - 用户想要校验/检查某个已填写表单的数据质量或业务规则符合性
+   - **校验表单**："帮我校验一下这张请假单"、"检查一下这个销售订单"、"帮我审核这个报销单"、"这张订单填写对不对"
+   - **单独校验**："校验一下请假天数"、"帮我看看日期填的对不对"
+   - 关键特征：用户在已有表单数据基础上，要求 AI 检查**填写内容是否符合业务规则**，不是生成新表单
+   - detectedFormCode 应匹配已存在的表单类型
+   - formData 应为该表单的当前填写数据（从前端传入，或从会话上下文中推断）
+   - **注意：与 manage_history 的 analyze 区分**——analyze 是分析历史数据质量，validate 是检查单张表单的填写是否正确
+   - 如果是 form 或 form_update 意图处理后，用户说"校验"、"检查一下" → 转为 validate 意图继续处理
+
 ### 如果用户想生成新表单（intentType: "form"）：
 ```json
 {{
@@ -114,7 +135,13 @@
     "valid": true,
     "warnings": ["可选警告信息"]
   }},
-  "reasoning": "简短的推理说明"
+  "reasoning": "简短的推理说明",
+  "tool_calls": [
+    {
+      "name": "工具名称（从上面的MCP工具列表选择）",
+      "arguments": { "参数名": "参数值" }
+    }
+  ]
 }}
 ```
 
@@ -181,12 +208,26 @@
 }}
 ```
 
+### 如果用户想校验表单数据（intentType: "validate"）：
+```json
+{{
+  "intentType": "validate",
+  "detectedFormCode": "leave",
+  "formName": "请假申请",
+  "confidence": 0.95,
+  "reasoning": "用户想检查请假单填写是否符合业务规则"
+}}
+```
+
 **完整示例参考**：
 - "请假申请历史数据导入" → formCode: "leave", action: "import"
 - "分析一下请假的数据质量" → formCode: "leave", action: "analyze"
 - "帮我生成一些请假测试数据" → formCode: "leave", action: "generate", count: 10
 - "导出请假的历史数据" → formCode: "leave", action: "export"
 - "请假有多少历史数据" → formCode: "leave", action: "status"
+- "帮我校验一下这张请假单" → intentType: "validate", detectedFormCode: "leave"
+- "检查一下这个销售订单填写对不对" → intentType: "validate", detectedFormCode: "sales_order"
+- "审核这个报销单" → intentType: "validate", detectedFormCode: "expense"
 
 action 判断规则：
 - **analyze**: 用户想看数据质量、分析问题、检查数据 → "分析一下XX的数据"、"看看数据有没有问题"

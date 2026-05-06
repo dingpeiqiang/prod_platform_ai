@@ -275,7 +275,6 @@ const startImport = async () => {
   try {
     const formData = new FormData()
     formData.append('file', selectedFile.value)
-    formData.append('formCode', props.formCode)
 
     // 模拟进度更新
     const progressInterval = setInterval(() => {
@@ -286,13 +285,8 @@ const startImport = async () => {
     }, 500)
 
     const response = await axios.post(
-      '/api/v1/config/import/upload',
-      formData,
-      {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      }
+      `/api/v1/config/import/upload?formCode=${props.formCode}`,
+      formData
     )
 
     clearInterval(progressInterval)

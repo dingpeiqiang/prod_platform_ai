@@ -19,7 +19,10 @@ def register_all_tools():
     
     # 系统工具
     from . import system_tools
-    
+
+    # 资费备案工具
+    from . import tariff_tools
+
     hub = get_toolhub()
     print(f"[MCP] 已注册 {hub.get_tool_count()} 个工具")
     return hub

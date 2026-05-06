@@ -4,6 +4,7 @@ LLM Provider 基础类型与共享工具
 import json
 import re
 import logging
+import time
 from typing import Dict, Any, Optional, List, Tuple, AsyncGenerator
 
 logger = logging.getLogger("llm.base")
@@ -11,17 +12,18 @@ logger = logging.getLogger("llm.base")
 
 class StreamStats:
     """流式输出统计信息"""
-    start_time: float = 0.0
-    end_time: float = 0.0
-    token_count: int = 0
-    char_count: int = 0
-    chunk_count: int = 0
-    thinking_chars: int = 0
-    error_count: int = 0
+    def __init__(self, start_time: float = 0.0):
+        self.start_time = start_time
+        self.end_time: float = 0.0
+        self.token_count: int = 0
+        self.char_count: int = 0
+        self.chunk_count: int = 0
+        self.thinking_chars: int = 0
+        self.error_count: int = 0
 
     @property
     def elapsed(self) -> float:
-        return self.end_time - self.start_time if self.end_time > 0 else 0.0
+        return self.end_time - self.start_time if self.end_time > 0 else time.time() - self.start_time
 
     @property
     def tokens_per_second(self) -> float:
