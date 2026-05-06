@@ -14,9 +14,12 @@ from app.services.history_service import HistoryService
 from app.services.validation_service import validation_engine
 from app.websocket.manager import manager
 from app.models.form import FormInstance, FormTemplate
+from app.intent import get_intent_registry
+from app.intent.base import IntentContext
 from datetime import datetime
 import uuid
 import logging
+import asyncio
 
 logger = logging.getLogger("form_api")
 
@@ -102,14 +105,80 @@ async def submit_form(request: FormSubmitRequest, db: Session = Depends(get_db))
         
         validation_result = validation_engine.validate_form(request.data, fields)
         if not validation_result.valid:
-            logger.warning("[form/submit] 校验失败 form_id=%s errors=%s",
+            logger.warning("[form/submit] 规则引擎校验失败 form_id=%s errors=%s",
                            request.formId, validation_result.errors)
             return FormSubmitResponse(
                 success=False,
                 message="; ".join(validation_result.errors),
                 formInstanceId=None
             )
-        
+
+        # ── LLM 智能校验（复用 Intent 机制）──────────────────────
+        # ValidationHandler 会直接从本体加载 fields 定义
+        registry = get_intent_registry()
+        ctx = IntentContext(
+            intent_data={
+                "form_code": form_code,
+                "form_data": request.data
+            },
+            intent_type="validate",
+            intent_result="",
+            confidence=1.0,
+            ontologies={},
+            request=None,
+            db=db
+        )
+
+        llm_validation_passed = True
+        llm_errors = []
+        llm_warnings = []
+
+        try:
+            # 通过 IntentRegistry 分发校验意图
+            async for event_str in registry.dispatch("validate", ctx):
+                # 解析 SSE 事件
+                if "validation_fail" in event_str:
+                    llm_validation_passed = False
+                    import json
+                    import re
+                    match = re.search(r'"errors":\s*\[(.*?)\]', event_str, re.DOTALL)
+                    if match:
+                        errors_str = match.group(0).replace('"errors": ', '')
+                        try:
+                            llm_errors = json.loads(f"[{errors_str}]")
+                        except:
+                            llm_errors = [event_str]
+                elif "validation_pass" in event_str:
+                    llm_validation_passed = True
+                    import re
+                    match = re.search(r'"warnings":\s*\[(.*?)\]', event_str, re.DOTALL)
+                    if match:
+                        import json
+                        warnings_str = match.group(0).replace('"warnings": ', '')
+                        try:
+                            llm_warnings = json.loads(f"[{warnings_str}]")
+                        except:
+                            pass
+
+            if not llm_validation_passed:
+                logger.warning("[form/submit] LLM智能校验失败 form_id=%s errors=%s",
+                               request.formId, llm_errors)
+                return FormSubmitResponse(
+                    success=False,
+                    message="; ".join(llm_errors) if llm_errors else "表单智能校验未通过",
+                    formInstanceId=None
+                )
+
+            if llm_warnings:
+                logger.info("[form/submit] LLM智能校验警告 form_id=%s warnings=%s",
+                            request.formId, llm_warnings)
+
+        except Exception as e:
+            logger.warning("[form/submit] LLM智能校验异常 form_id=%s error=%s，跳过校验",
+                           request.formId, str(e))
+            # LLM 校验异常不影响提交（降级处理）
+        # ── LLM 智能校验结束 ────────────────────────────────────
+
         form_instance = FormInstance(
             form_id=request.formId,
             template_id=template_id,

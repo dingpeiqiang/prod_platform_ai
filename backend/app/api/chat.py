@@ -837,8 +837,19 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                         else:
                                             err = result.get("error", "未知错误")
                                             logger.warning("[MCP] ├─[%d/%d] ❌ 失败: %s", i, len(tool_calls), err)
+                                            # 发送错误事件通知前端
+                                            yield _sse({
+                                                "type": "tool_error",
+                                                "tool": tool_name,
+                                                "error": str(err)
+                                            })
                                     else:
                                         logger.warning("[MCP] ├─[%d/%d] ❌ 工具不存在: %s", i, len(tool_calls), tool_name)
+                                        yield _sse({
+                                            "type": "tool_error",
+                                            "tool": tool_name,
+                                            "error": f"工具 '{tool_name}' 不存在"
+                                        })
                                 logger.info("[MCP] └── MCP 调用结束，累计提取字段数: %d", len(extracted))
                                 intent_data["extractedFields"] = extracted
                             yield _thinking(f"✅ 意图识别完成: {intent_type} (耗时 {intent_elapsed:.2f}s)")

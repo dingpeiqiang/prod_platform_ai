@@ -8,6 +8,7 @@ from .manage_history_handler import ManageHistoryHandler
 from .configure_handler import ConfigureHandler
 from .tariff_filing_handler import TariffFilingHandler
 from .chat_handler import ChatHandler
+from .validation_handler import ValidationHandler
 
 __all__ = [
     "FormHandler",
@@ -17,4 +18,5 @@ __all__ = [
     "ConfigureHandler",
     "TariffFilingHandler",
     "ChatHandler",
+    "ValidationHandler",
 ]

@@ -745,6 +745,13 @@ const handleEvent = (data, idx) => {
     case 'error':
       msg.reasoning.push({ type: 'error', content: data.content })
       break
+    case 'tool_error':
+      // MCP 工具执行失败，通知用户
+      msg.reasoning.push({
+        type: 'error',
+        content: `⚠️ 工具 ${data.tool} 执行失败: ${data.error}`
+      })
+      break
   }
 }
 
