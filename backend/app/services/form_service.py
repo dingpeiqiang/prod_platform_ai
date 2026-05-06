@@ -135,6 +135,10 @@ class FormService:
                 if "options" in field:
                     field_dict["options"] = field["options"]
 
+                # 复制 enumConfig（外部API枚举或静态枚举配置）
+                if "enumConfig" in field:
+                    field_dict["enumConfig"] = field["enumConfig"]
+
                 # ── 三层推荐合并 ──────────────────────────────────────────
                 fc = field["fieldCode"]
                 merged = cls._merge_recommendations(
@@ -162,6 +166,11 @@ class FormService:
         # 1. 先用 FieldExtractionSkill 从 user_input 提取（作为兜底）
         extraction_result = FieldExtractionSkill.extract(user_input, form_code, temp_schema)
         if extraction_result["success"]:
+            method = extraction_result.get("method", "unknown")
+            field_count = len(extraction_result["fields"])
+            logger.info("[FormService] 字段提取完成 方法=%s 提取字段数=%d", method, field_count)
+            if method == "llm":
+                logger.debug("[FormService] LLM提取结果=%s", extraction_result["fields"])
             for ef in extraction_result["fields"]:
                 fc = ef.get("fieldCode")
                 fv = ef.get("fieldValue", ef.get("defaultValue"))
