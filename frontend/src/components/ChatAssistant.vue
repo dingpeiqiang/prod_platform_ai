@@ -455,11 +455,185 @@ const stepIcon = (type) => ({ thinking: '💭', reasoning: '🔍', result: '✅'
 const formatStepResult = (result) => {
   if (!result) return ''
   if (typeof result === 'string') return result
-  try {
-    return JSON.stringify(result, null, 2)
-  } catch {
-    return String(result)
+  if (typeof result !== 'object') return String(result)
+
+  // ── LLM 调用（model / temperature / maxTokens / promptLength）─────────
+  if (result.model || result.provider) {
+    const parts = []
+    if (result.model) parts.push(`调用模型: ${result.model}`)
+    if (result.provider) parts.push(`服务商: ${result.provider}`)
+    if (result.temperature !== undefined) parts.push(`温度: ${result.temperature}`)
+    if (result.maxTokens !== undefined) parts.push(`最大Token: ${result.maxTokens}`)
+    if (result.promptLength !== undefined) parts.push(`Prompt: ${result.promptLength} 字`)
+    if (result.elapsed !== undefined) parts.push(`耗时: ${result.elapsed}s`)
+    if (result.retry) parts.push(`⚠️ 已重试 1 次`)
+    return parts.join('\n')
   }
+
+  // ── MCP 工具执行（tools / totalTools）───────────────────────────────
+  if (result.tools && Array.isArray(result.tools)) {
+    const lines = [`共 ${result.totalTools} 个工具调用`]
+    result.tools.forEach(t => {
+      const icon = t.success ? '✅' : '❌'
+      const fields = t.fields && t.fields.length ? ` → ${t.fields.join(', ')}` : ''
+      lines.push(`${icon} ${t.name}${fields}`)
+    })
+    if (result.extractedFields && result.extractedFields.length) {
+      lines.push(`📝 提取字段: ${result.extractedFields.slice(0, 8).join(', ')}${result.extractedFields.length > 8 ? '...' : ''}`)
+    }
+    return lines.join('\n')
+  }
+
+  // ── 意图识别完成（intentType / formCode / extractedFields）─────────
+  if (result.intentType !== undefined || result.formCode !== undefined) {
+    const lines = []
+    if (result.intentType) lines.push(`意图类型: ${result.intentType}`)
+    if (result.formCode) lines.push(`表单编码: ${result.formCode}`)
+    if (result.formName) lines.push(`表单名称: ${result.formName}`)
+    if (result.extractedFields && result.extractedFields.length) lines.push(`提取字段 (${result.extractedCount}): ${result.extractedFields.slice(0, 6).join(', ')}${result.extractedCount > 6 ? '...' : ''}`)
+    if (result.confidence !== undefined) lines.push(`置信度: ${(result.confidence * 100).toFixed(0)}%`)
+    if (result.elapsed !== undefined) lines.push(`耗时: ${result.elapsed}s`)
+    if (result.retryCount) lines.push(`⚠️ 重试: ${result.retryCount} 次`)
+    return lines.join('\n')
+  }
+
+  // ── 表单识别（formCode / formName / confidenceLevel）────────────────
+  if (result.formName !== undefined && !result.extractedFields) {
+    const lines = []
+    if (result.formCode) lines.push(`表单编码: ${result.formCode}`)
+    if (result.formName) lines.push(`表单名称: ${result.formName}`)
+    if (result.confidence !== undefined) lines.push(`置信度: ${(result.confidence * 100).toFixed(0)}% (${result.confidenceLevel})`)
+    return lines.join('\n')
+  }
+
+  // ── 提取字段（extractedFields / extractedCount）────────────────────
+  if (result.extractedCount !== undefined) {
+    const lines = [`提取字段数: ${result.extractedCount}`]
+    if (result.extractedFields && result.extractedFields.length) {
+      lines.push(`字段列表: ${result.extractedFields.slice(0, 8).join(', ')}${result.extractedCount > 8 ? ` ...等${result.extractedCount}个` : ''}`)
+    }
+    if (result.sample) {
+      const entries = Object.entries(result.sample).slice(0, 4)
+      entries.forEach(([k, v]) => lines.push(`  ${k}: ${String(v).substring(0, 30)}`))
+    }
+    if (result.confidence !== undefined) lines.push(`置信度: ${(result.confidence * 100).toFixed(0)}%`)
+    return lines.join('\n')
+  }
+
+  // ── 历史推荐（fieldCount / fieldSummary）──────────────────────────
+  if (result.fieldCount !== undefined && result.fieldSummary) {
+    const lines = [`推荐字段数: ${result.fieldCount}`]
+    if (result.totalRecommendations !== undefined) lines.push(`推荐总数: ${result.totalRecommendations} 条`)
+    const top = Object.entries(result.fieldSummary).slice(0, 5)
+    top.forEach(([k, v]) => lines.push(`  ${k}: ${v} 条`))
+    return lines.join('\n')
+  }
+
+  // ── 校验结果（passed / totalErrors）───────────────────────────────
+  if (result.passed !== undefined && result.totalErrors !== undefined) {
+    const lines = []
+    if (result.totalErrors !== undefined) lines.push(`错误数: ${result.totalErrors}`)
+    if (result.totalWarnings !== undefined) lines.push(`警告数: ${result.totalWarnings}`)
+    if (result.ruleEngineErrors !== undefined) lines.push(`规则引擎错误: ${result.ruleEngineErrors}`)
+    if (result.llmErrors !== undefined) lines.push(`AI 校验错误: ${result.llmErrors}`)
+    lines.push(`结果: ${result.passed ? '✅ 全部通过' : '❌ 存在问题'}`)
+    return lines.join('\n')
+  }
+
+  // ── 规则引擎校验（fieldsChecked / issues）─────────────────────────
+  if (result.fieldsChecked && result.elapsedMs !== undefined) {
+    const lines = [`检查字段: ${result.fieldCount} 个`, `耗时: ${result.elapsedMs}ms`]
+    lines.push(`结果: ${result.passed ? '✅ 通过' : `❌ ${result.issueCount} 个问题`}`)
+    if (result.issues && result.issues.length) {
+      result.issues.slice(0, 3).forEach(iss => {
+        lines.push(`  ❌ ${iss.field_name}: ${iss.message.substring(0, 40)}`)
+      })
+    }
+    return lines.join('\n')
+  }
+
+  // ── AI 智能校验（model / elapsed / reasoningChunks）────────────────
+  if (result.model && result.elapsed !== undefined) {
+    const lines = [`模型: ${result.model}`, `耗时: ${result.elapsed}s`]
+    if (result.llmErrors !== undefined) lines.push(`错误: ${result.llmErrors}`)
+    if (result.llmWarnings !== undefined) lines.push(`警告: ${result.llmWarnings}`)
+    if (result.ruleEnginePassed !== undefined) lines.push(`规则引擎: ${result.ruleEnginePassed ? '✅' : '❌'}`)
+    if (result.reasoningChunks !== undefined) lines.push(`推理片段: ${result.reasoningChunks}`)
+    return lines.join('\n')
+  }
+
+  // ── 分析/查询/导出结果（success / recordCount / total）────────────
+  if (result.success !== undefined) {
+    const lines = []
+    if (result.qualityScore !== undefined) lines.push(`质量评分: ${result.qualityScore}`)
+    if (result.recordCount !== undefined) lines.push(`记录数: ${result.recordCount}`)
+    if (result.total !== undefined) lines.push(`查询结果: ${result.total} 条`)
+    if (result.filename) lines.push(`文件名: ${result.filename}`)
+    if (result.downloadUrl) lines.push(`下载地址: ${result.downloadUrl}`)
+    if (result.passed === false && result.error) lines.push(`❌ ${result.error}`)
+    if (result.lastUpdated) lines.push(`最后更新: ${result.lastUpdated}`)
+    lines.push(`结果: ${result.success ? '✅ 成功' : '❌ 失败'}`)
+    return lines.join('\n')
+  }
+
+  // ── 错误结果（success: false / error）─────────────────────────────
+  if (result.success === false && result.error) {
+    return `❌ 错误: ${result.error}`
+  }
+
+  // ── 删除结果（backupVersionId / success）──────────────────────────
+  if (result.backupVersionId !== undefined || result.message !== undefined) {
+    const lines = []
+    if (result.success) {
+      if (result.backupVersionId) lines.push(`备份版本: ${result.backupVersionId}`)
+      lines.push(`结果: ✅ ${result.message || '删除成功'}`)
+    } else {
+      lines.push(`结果: ❌ ${result.error || result.message || '删除失败'}`)
+    }
+    return lines.join('\n')
+  }
+
+  // ── 配置生成完成（formName / fieldCount / entityCount）─────────────
+  if (result.formName && result.fieldCount !== undefined) {
+    const lines = []
+    lines.push(`表单名称: ${result.formName}`)
+    lines.push(`表单编码: ${result.formCode}`)
+    lines.push(`字段数: ${result.fieldCount}`)
+    lines.push(`实体数: ${result.entityCount}`)
+    if (result.keywordCount !== undefined) lines.push(`关键词: ${result.keywordCount} 个`)
+    if (result.validationErrors && result.validationErrors.length) {
+      lines.push(`⚠️ 校验问题: ${result.validationErrors.join('; ')}`)
+    }
+    return lines.join('\n')
+  }
+
+  // ── Skills 模式（matchedKeywords）────────────────────────────────
+  if (result.mode === 'skills') {
+    const lines = [`模式: Skills 降级处理`]
+    if (result.matchedKeywords && result.matchedKeywords.length) lines.push(`匹配关键词: ${result.matchedKeywords.join(', ')}`)
+    if (result.error) lines.push(`原因: ${result.error}`)
+    return lines.join('\n')
+  }
+
+  // ── 最后兜底：格式化 Key-Value 对 ─────────────────────────────────
+  const entries = Object.entries(result).filter(([k]) => !k.startsWith('_'))
+  if (entries.length === 0) return ''
+
+  // 如果所有值都是简单类型，格式化为竖线对齐的键值表
+  const isSimple = entries.every(([, v]) => v === null || v === undefined || typeof v !== 'object')
+  if (isSimple) {
+    return entries.map(([k, v]) => {
+      const label = k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())
+      return `${label}: ${v}`
+    }).join('\n')
+  }
+
+  // 有复杂值时，只显示关键字段
+  const simple = entries.filter(([, v]) => typeof v !== 'object' || v === null)
+  return simple.map(([k, v]) => {
+    const label = k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())
+    return `${label}: ${JSON.stringify(v)}`
+  }).join('\n')
 }
 
 const renderMarkdown = (text) => {
