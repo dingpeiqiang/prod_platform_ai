@@ -2,7 +2,7 @@
 # 提供字段级、表单级、基于本体的 LLM 智能校验能力
 
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 
 from app.core.config_loader import config_loader
 from app.services.validation_service import validation_engine
@@ -60,7 +60,6 @@ class ValidationSkill:
         msg_lower = err_msg.lower()
         for rule in rules:
             rule_type = rule.get("rule_type", "")
-            rule_value = rule.get("rule_value", "")
 
             if rule_type == "minLength":
                 return "ERR_VAL_RANGE"
@@ -82,24 +81,63 @@ class ValidationSkill:
                 return "ERR_VAL_FORMAT"
             elif rule_type == "enum":
                 return "ERR_VAL_RULE_FAIL"
+            elif rule_type == "dateMin":
+                return "ERR_VAL_RANGE"
+            elif rule_type == "dateMax":
+                return "ERR_VAL_RANGE"
 
         if "不能为空" in err_msg or "必填" in err_msg:
             return "ERR_VAL_REQUIRED"
-        elif "格式" in err_msg or "格式不正确" in msg_lower:
+        elif "格式" in err_msg or "格式不正确" in msg_lower or "格式错误" in msg_lower:
             return "ERR_VAL_FORMAT"
-        elif "超出" in err_msg or "范围" in msg_lower:
+        elif "超出" in err_msg or "范围" in msg_lower or "超过" in msg_lower:
             return "ERR_VAL_RANGE"
+        elif "不在可" in err_msg or "枚举" in msg_lower or "选项" in msg_lower:
+            return "ERR_VAL_RULE_FAIL"
 
         return "ERR_VAL_RULE_FAIL"
 
     @classmethod
-    def validate_form(cls, form_data: Dict[str, Any], fields: List[Dict]) -> Dict[str, Any]:
+    def _build_rules_from_field(cls, field: Dict) -> List[Dict]:
+        """
+        从字段定义构建规则列表，包含枚举校验
+
+        自动从 options 生成 enum 规则，从 ruleDescription 推断规则
+        """
+        rules = list(field.get("rules", []))
+        field_type = field.get("fieldType", "")
+        options = field.get("options", [])
+
+        # ══ 枚举/选择类字段：自动添加 enum 规则 ══
+        if field_type == "select" and options:
+            option_values = []
+            for o in options:
+                if isinstance(o, dict):
+                    option_values.append(o.get("value", ""))
+                else:
+                    option_values.append(str(o))
+
+            if option_values:
+                rules.append({
+                    "rule_type": "enum",
+                    "rule_value": option_values,
+                    "message": f"值必须在可选列表中，可选值：{', '.join(str(v) for v in option_values)}"
+                })
+
+        return rules
+
+    @classmethod
+    def validate_form(
+        cls,
+        form_data: Dict[str, Any],
+        fields: List[Dict]
+    ) -> Dict[str, Any]:
         """
         表单校验（基于规则引擎），返回规范化结构
 
         Args:
-            form_data: 表单数据 {"fieldCode": value}
-            fields: 字段定义列表（包含 fieldCode, fieldName, rules 等）
+            form_data: 表单数据
+            fields: 字段定义列表（包含 fieldCode, fieldName, rules, options 等）
 
         Returns:
             {"success": bool, "valid": bool, "errors": [str], "warnings": [], "issues": [ValidationIssue]}
@@ -112,11 +150,14 @@ class ValidationSkill:
             field_code = field_def.get("fieldCode", "")
             field_name = field_def.get("fieldName", field_code)
             required = field_def.get("required", False)
-            rules = field_def.get("rules", [])
+            rule_desc = field_def.get("ruleDescription", "")
+
+            # 从字段定义构建完整规则（包含自动生成的 enum 规则）
+            rules = cls._build_rules_from_field(field_def)
 
             field_value = form_data.get(field_code)
 
-            # 必填检查
+            # ══ 必填检查 ══
             if required and (field_value is None or field_value == ""):
                 err_msg = f"{field_name} 不能为空"
                 all_errors.append(err_msg)
@@ -125,12 +166,13 @@ class ValidationSkill:
                     "field_name": field_name,
                     "error_code": "ERR_VAL_REQUIRED",
                     "level": "error",
-                    "message": err_msg
+                    "message": err_msg,
+                    "rule_description": rule_desc
                 })
                 continue
 
             if field_value is not None and field_value != "":
-                # 逐规则校验
+                # ══ 逐规则校验 ══
                 result = validation_engine.validate_field(field_value, rules)
                 for err_msg in result.errors:
                     all_errors.append(err_msg)
@@ -139,7 +181,8 @@ class ValidationSkill:
                         "field_name": field_name,
                         "error_code": cls._detect_error_code(err_msg, rules),
                         "level": "error",
-                        "message": err_msg
+                        "message": err_msg,
+                        "rule_description": rule_desc
                     })
 
         return {
@@ -151,15 +194,48 @@ class ValidationSkill:
         }
 
     @classmethod
-    def validate_with_ontology(
+    def validate_form_from_ontology(
         cls,
         form_code: str,
         form_data: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
+        从本体加载字段定义，执行规则引擎校验
+
+        自动为 select 类型字段从 options 生成 enum 规则，
+        并从 ruleDescription 中推断额外规则（min/max/length 等）
+
+        Returns:
+            {"success": bool, "valid": bool, "errors": [str], "warnings": [], "issues": []}
+        """
+        ontology = config_loader.get_ontology(form_code)
+        if not ontology:
+            logger.warning(f"[ValidationSkill] 未找到本体 form_code={form_code}")
+            return {
+                "success": False,
+                "valid": True,
+                "errors": [],
+                "warnings": [f"未找到表单 {form_code} 的本体定义"],
+                "issues": []
+            }
+
+        fields = []
+        for entity in ontology.get("entities", []):
+            for field in entity.get("fields", []):
+                fields.append(field)
+
+        return cls.validate_form(form_data, fields)
+
+    @classmethod
+    def validate_with_ontology(
+        cls,
+        form_code: str,
+        form_data: Dict[str, Any]
+    ) -> Tuple[Dict[str, Any], List[str]]:
+        """
         基于本体的 LLM 智能校验
 
-        从本体加载字段定义（包含 ruleDescription），
+        从本体加载字段定义（包含 ruleDescription + options），
         使用 LLM 理解自然语言规则并进行智能校验。
 
         Args:
@@ -167,15 +243,10 @@ class ValidationSkill:
             form_data: 表单数据
 
         Returns:
-            {
-                "success": bool,
-                "valid": bool,
-                "errors": [str],
-                "warnings": [str],
-                "method": "llm" | "fallback"
-            }
+            (result_dict, reasoning_chunks_list)
+            - result_dict: {"success", "valid", "errors", "warnings", "method"}
+            - reasoning_chunks_list: LLM 模型思考过程列表
         """
-        # 1. 从本体加载字段定义
         ontology = config_loader.get_ontology(form_code)
         if not ontology:
             logger.warning(f"[ValidationSkill] 未找到本体 form_code={form_code}")
@@ -185,7 +256,7 @@ class ValidationSkill:
                 "errors": [],
                 "warnings": [f"未找到表单 {form_code} 的本体定义，已跳过智能校验"],
                 "method": "fallback"
-            }
+            }, []
 
         fields = []
         for entity in ontology.get("entities", []):
@@ -199,15 +270,28 @@ class ValidationSkill:
                 "errors": [],
                 "warnings": ["表单字段定义为空"],
                 "method": "fallback"
-            }
+            }, []
 
-        # 2. 构建 LLM Prompt
+        # 构建 LLM Prompt（包含完整的 fieldDescription 和 options）
         prompt = cls._build_llm_prompt(form_code, form_data, fields)
 
-        # 3. 调用 LLM
         logger.info(f"[ValidationSkill] LLM校验开始 form_code={form_code} 字段数={len(fields)}")
+
+        # 调用 LLM 并获取模型思考过程
+        reasoning_chunks = []
         try:
-            response = llm_service._call_llm(prompt, max_tokens=2048)
+            response, reasoning = llm_service._call_llm_sync_with_reasoning(prompt, max_tokens=2048)
+
+            # 收集模型思考过程
+            if reasoning:
+                # reasoning 可能是一个长字符串，按句子分割
+                import re
+                sentences = re.split(r'[。\n]', reasoning)
+                for sent in sentences:
+                    sent = sent.strip()
+                    if sent and len(sent) > 2:
+                        reasoning_chunks.append(sent + "。")
+
         except Exception as e:
             logger.warning(f"[ValidationSkill] LLM 调用失败: {e}")
             return {
@@ -216,7 +300,7 @@ class ValidationSkill:
                 "errors": [],
                 "warnings": ["智能校验服务暂时不可用，已跳过"],
                 "method": "fallback"
-            }
+            }, []
 
         if not response:
             return {
@@ -225,9 +309,9 @@ class ValidationSkill:
                 "errors": [],
                 "warnings": ["智能校验返回为空，已跳过"],
                 "method": "fallback"
-            }
+            }, reasoning_chunks
 
-        # 4. 解析 LLM 返回
+        # 解析 LLM 返回
         parsed = llm_service._extract_json(response)
         if not parsed:
             logger.warning(f"[ValidationSkill] JSON 解析失败: {response[:200]}")
@@ -237,7 +321,7 @@ class ValidationSkill:
                 "errors": [],
                 "warnings": ["智能校验结果解析异常，已跳过"],
                 "method": "fallback"
-            }
+            }, reasoning_chunks
 
         logger.info(f"[ValidationSkill] LLM校验完成 valid={parsed.get('valid')} "
                     f"errors={len(parsed.get('errors', []))} "
@@ -249,7 +333,7 @@ class ValidationSkill:
             "errors": parsed.get("errors", []),
             "warnings": parsed.get("warnings", []),
             "method": "llm"
-        }
+        }, reasoning_chunks
 
     @classmethod
     def _build_llm_prompt(
@@ -258,7 +342,7 @@ class ValidationSkill:
         form_data: Dict[str, Any],
         fields: List[Dict]
     ) -> str:
-        """构建 LLM 校验 Prompt"""
+        """构建 LLM 校验 Prompt，传递完整的字段定义"""
 
         # 构建字段定义文本
         field_defs = []
@@ -270,16 +354,22 @@ class ValidationSkill:
             rule_desc = f.get("ruleDescription", "")
             options = f.get("options", [])
 
-            parts = [f"- {field_name} ({field_code})"]
+            parts = [f"- {field_name}（{field_code}）"]
             parts.append(f"  类型: {field_type}")
             parts.append(f"  必填: {'是' if required else '否'}")
+
+            # ══ 规则描述：这是 AI 校验的核心依据 ══
             if rule_desc:
                 parts.append(f"  规则: {rule_desc}")
+
+            # ══ 选项列表：用于校验枚举类字段的值是否在允许范围内 ══
             if options:
                 option_labels = []
                 for o in options[:10]:
                     if isinstance(o, dict):
-                        option_labels.append(o.get("label", o.get("value", "")))
+                        label = o.get("label", o.get("value", ""))
+                        value = o.get("value", "")
+                        option_labels.append(f"{label}({value})" if label != value else label)
                     else:
                         option_labels.append(str(o))
                 if option_labels:
@@ -312,15 +402,22 @@ class ValidationSkill:
 
 ## 校验要求：
 1. **规则校验**：检查数据是否符合 ruleDescription 中描述的规则
-2. **一致性校验**：检查字段间的逻辑关系（如结束日期必须晚于开始日期）
-3. **业务语义校验**：检查数据的业务合理性（如金额是否合理）
+2. **枚举校验**：检查 select 类型字段的值是否在可选值列表中
+3. **一致性校验**：检查字段间的逻辑关系（如结束日期必须晚于开始日期、数量不能为负等）
+4. **业务语义校验**：检查数据的业务合理性（如金额是否合理、请假天数是否超过限制等）
 
-## 输出格式（仅输出 JSON）：
-{{"valid": true或false, "errors": ["错误描述"], "warnings": ["警告描述"]}}
+## 重要说明：
+- 请仔细核对每个字段的值与可选值列表是否匹配
+- ruleDescription 中的规则是硬性要求，必须严格遵守
+- 枚举类字段（如请假类型、部门）只能选择提供的选项
+
+## 输出格式（仅输出 JSON，不要其他内容）：
+{{"valid": true或false, "errors": ["错误描述1", "错误描述2"], "warnings": ["警告描述1"]}}
 
 - valid=false 表示有必须修复的错误
 - warnings 是建议但不阻塞提交的问题
-- error 消息要具体，指出问题和建议"""
+- error 消息要具体，指出：哪个字段、什么问题、正确值应该是什么
+- 错误信息必须使用中文，描述友好易懂"""
 
     @classmethod
     def validate_batch(
