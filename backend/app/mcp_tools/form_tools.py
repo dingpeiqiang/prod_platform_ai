@@ -5,6 +5,7 @@ from typing import Dict, Any
 from ..services.form_service import FormService
 from ..skills.scene_recognition import SceneRecognitionSkill
 from ..skills.field_extraction import FieldExtractionSkill
+from ..core.config_loader import config_loader
 from .tool_hub import mcptool
 
 
