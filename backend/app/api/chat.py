@@ -1439,6 +1439,48 @@ async def update_chat_session_title(
     return {"success": success}
 
 
+class MessageCreateRequest(BaseModel):
+    role: str = Field(..., description="消息角色: user / assistant")
+    content: str = Field(..., description="消息内容")
+    intent_type: Optional[str] = Field(None, description="意图类型")
+    form_code: Optional[str] = Field(None, description="表单编码")
+    extracted_fields: Optional[Dict[str, Any]] = Field(None, description="提取的字段")
+    confidence: Optional[str] = Field(None, description="置信度")
+    reasoning: Optional[str] = Field(None, description="AI 推理过程（多行文本）")
+
+
+class MessageCreateResponse(BaseModel):
+    success: bool
+    message_id: Optional[int] = None
+    error: Optional[str] = None
+
+
+@router.post("/chat/sessions/{session_id}/messages", response_model=MessageCreateResponse)
+async def save_chat_message(
+    session_id: str,
+    request: MessageCreateRequest,
+    db: Session = Depends(get_db)
+):
+    """保存单条聊天消息到数据库"""
+    result = ChatHistoryService.save_message(
+        session_id=session_id,
+        role=request.role,
+        content=request.content,
+        intent_type=request.intent_type,
+        form_code=request.form_code,
+        extracted_fields=request.extracted_fields,
+        confidence=request.confidence,
+        reasoning=request.reasoning,
+        db=db
+    )
+    if result and result.get("success"):
+        logger.debug("[chat/sessions/messages] 保存成功 session_id=%s msg_id=%s",
+                     session_id, result.get("message_id"))
+        return MessageCreateResponse(success=True, message_id=result.get("message_id"))
+    logger.warning("[chat/sessions/messages] 保存失败 session_id=%s", session_id)
+    return MessageCreateResponse(success=False, error=result.get("error") if result else "未知错误")
+
+
 # ── 测试端点 ─────────────────────────────────────────────────────────────────
 
 @router.post("/test/llm-call")

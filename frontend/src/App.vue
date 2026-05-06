@@ -1,86 +1,143 @@
 <template>
   <div id="app">
-    <div v-if="sidebarOpen" class="sidebar-mask" @click="sidebarOpen = false" />
+    <!-- 未登录：显示登录页 -->
+    <LoginScreen v-if="!userStore.isLoggedIn" />
 
-    <Sidebar
-      :class="['sidebar-wrapper', { 'sidebar-visible': sidebarOpen }]"
-      :sessions="sessionList"
-      :activeId="activeSessionId"
-      @new-session="onNewSession"
-      @switch-session="onSwitchSession"
-      @delete-session="deleteSession"
-    />
+    <!-- 已登录：主界面 -->
+    <template v-else>
+      <div v-if="sidebarOpen" class="sidebar-mask" @click="sidebarOpen = false" />
 
-    <div class="main-area">
-      <ChatAssistant
-        ref="chatRef"
-        :sessionId="activeSessionId"
-        :sessionTitle="activeSessionTitle"
-        @title-update="onTitleUpdate"
+      <Sidebar
+        :class="['sidebar-wrapper', { 'sidebar-visible': sidebarOpen }]"
+        :sessions="sessionList"
+        :activeId="activeSessionId"
+        @new-session="onNewSession"
+        @switch-session="onSwitchSession"
+        @delete-session="deleteSession"
+        @logout="handleLogout"
       />
-    </div>
+
+      <div class="main-area">
+        <ChatAssistant
+          ref="chatRef"
+          :sessionId="activeSessionId"
+          :dbSessionId="activeDbSessionId"
+          :userId="userStore.username"
+          :sessionTitle="activeSessionTitle"
+          @title-update="onTitleUpdate"
+          @session-init="onSessionInit"
+        />
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, provide } from 'vue'
+import { ref, computed, provide, onMounted, watch } from 'vue'
 import Sidebar from './components/Sidebar.vue'
 import ChatAssistant from './components/ChatAssistant.vue'
+import LoginScreen from './components/LoginScreen.vue'
+import { useUserStore } from './stores/user'
+import { createSession as apiCreateSession, getSessions as apiGetSessions, deleteSession as apiDeleteSession } from './services/chatApi.js'
+
+const userStore = useUserStore()
 
 const SESSIONS_KEY = 'chat_sessions'
 
+// ── 本地会话列表 ──────────────────────────────────────────
+// 每项：{ id, title, createdAt, updatedAt, dbSessionId }
+// dbSessionId: 数据库 session_id，已知则直接用，未知则首次发消息时创建
 const sessions = ref([])
 const activeSessionId = ref('')
 const sidebarOpen = ref(false)
 
+// 当前数据库会话 ID（与 activeSessionId 对应）
+const activeDbSessionId = ref('')
+
+// ── 加载本地会话列表 ──────────────────────────────────────
 const loadSessions = () => {
   try {
     const raw = localStorage.getItem(SESSIONS_KEY)
     if (raw) sessions.value = JSON.parse(raw)
   } catch {}
-  if (!sessions.value.length) createSession()
-  else activeSessionId.value = sessions.value[0].id
+  if (!sessions.value.length) {
+    sessions.value = []
+  }
 }
 
+// ── 保存本地会话列表 ──────────────────────────────────────
 const saveSessions = () => {
   try { localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions.value)) } catch {}
 }
 
+// ── 生成 ID ──────────────────────────────────────────────
 const genId = () => `sess_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
 
-const createSession = () => {
+// ── 创建本地会话 ──────────────────────────────────────────
+const createLocalSession = (dbSessionId = null) => {
   const now = Date.now()
-  const s = { id: genId(), title: '新对话', createdAt: now, updatedAt: now }
+  const s = {
+    id: genId(),
+    title: '新对话',
+    createdAt: now,
+    updatedAt: now,
+    dbSessionId
+  }
   sessions.value.unshift(s)
   activeSessionId.value = s.id
+  activeDbSessionId.value = dbSessionId || ''
   saveSessions()
   sidebarOpen.value = false
+  return s
 }
 
-const onNewSession = () => createSession()
+// ── 新建按钮 ──────────────────────────────────────────────
+const onNewSession = () => createLocalSession()
 
-const switchSession = (id) => {
+// ── 切换会话 ──────────────────────────────────────────────
+const onSwitchSession = (id) => {
+  const s = sessions.value.find(s => s.id === id)
   activeSessionId.value = id
+  activeDbSessionId.value = s?.dbSessionId || ''
   sidebarOpen.value = false
 }
 
-const onSwitchSession = (id) => switchSession(id)
-
-const deleteSession = (id) => {
+// ── 删除会话 ──────────────────────────────────────────────
+const deleteSession = async (id) => {
+  const s = sessions.value.find(s => s.id === id)
+  if (s?.dbSessionId) {
+    await apiDeleteSession(s.dbSessionId)
+  }
   sessions.value = sessions.value.filter(s => s.id !== id)
   localStorage.removeItem(`chat_session_${id}`)
   saveSessions()
   if (activeSessionId.value === id) {
     activeSessionId.value = sessions.value.length ? sessions.value[0].id : ''
-    if (!activeSessionId.value) createSession()
+    const first = sessions.value.find(s => s.id === activeSessionId.value)
+    activeDbSessionId.value = first?.dbSessionId || ''
+    if (!activeSessionId.value) createLocalSession()
   }
 }
 
+// ── 标题更新 ──────────────────────────────────────────────
 const onTitleUpdate = (id, title) => {
   const s = sessions.value.find(s => s.id === id)
   if (s) { s.title = title; s.updatedAt = Date.now(); saveSessions() }
 }
 
+// ── ChatAssistant 首次发消息后回调：回填 dbSessionId ──────
+const onSessionInit = ({ localId, dbSessionId }) => {
+  const s = sessions.value.find(s => s.id === localId)
+  if (s && dbSessionId && !s.dbSessionId) {
+    s.dbSessionId = dbSessionId
+    saveSessions()
+  }
+  if (localId === activeSessionId.value) {
+    activeDbSessionId.value = dbSessionId || ''
+  }
+}
+
+// ── 计算属性 ──────────────────────────────────────────────
 const sessionList = computed(() =>
   [...sessions.value].sort((a, b) => b.updatedAt - a.updatedAt)
 )
@@ -91,11 +148,89 @@ const activeSessionTitle = computed(() => {
 })
 
 const chatRef = ref(null)
-
-// 提供 requestValidation 给子树组件（通过 provide/inject 传递给 DynamicForm）
 provide('chatRef', chatRef)
 
-loadSessions()
+// ── 登出 ──────────────────────────────────────────────────
+const handleLogout = () => {
+  sessions.value = []
+  activeSessionId.value = ''
+  activeDbSessionId.value = ''
+  userStore.logout()
+}
+
+// ── 初始化：加载本地会话 + 同步 DB 会话 ────────────────────
+const initDbSessions = async () => {
+  // 1. 加载本地会话
+  loadSessions()
+
+  // 2. 查询 DB 中该用户的会话列表
+  const dbSessions = await apiGetSessions(userStore.username)
+
+  // 3. 为本地会话匹配 dbSessionId（按 dbSessionId 精确匹配 + 时间戳兜底）
+  for (const s of sessions.value) {
+    if (s.dbSessionId) {
+      // 已有映射，检查 DB 中是否还存在（可能被删了）
+      const stillExists = dbSessions.some(d => d.session_id === s.dbSessionId)
+      if (!stillExists) s.dbSessionId = null
+      continue
+    }
+    // 无 dbSessionId → 用时间戳匹配（误差 5s 内视为同一会话）
+    const matched = dbSessions.find(d =>
+      Math.abs(new Date(d.created_at).getTime() - s.createdAt) < 5000
+    )
+    if (matched) s.dbSessionId = matched.session_id
+  }
+
+  // 4. 找出 DB 中有但本地没有的会话（跨设备/跨浏览器场景），追加到本地
+  for (const d of dbSessions) {
+    const alreadyLocal = sessions.value.some(s => s.dbSessionId === d.session_id)
+    if (!alreadyLocal) {
+      const createdAt = new Date(d.created_at).getTime()
+      sessions.value.push({
+        id: genId(),                            // 生成本地 ID（避免与旧的冲突）
+        title: d.title || '新对话',
+        createdAt,
+        updatedAt: new Date(d.updated_at || d.created_at).getTime(),
+        dbSessionId: d.session_id
+      })
+    }
+  }
+
+  saveSessions()
+
+  // 5. 激活最近一次更新的会话（优先用当前 activeSessionId 的映射）
+  const sorted = [...sessions.value].sort((a, b) => b.updatedAt - a.updatedAt)
+  if (sorted.length === 0) {
+    createLocalSession()
+    return
+  }
+
+  // 如果当前 activeSessionId 已有有效的 dbSessionId，保持激活
+  const current = sessions.value.find(s => s.id === activeSessionId.value)
+  if (current?.dbSessionId && dbSessions.some(d => d.session_id === current.dbSessionId)) {
+    activeDbSessionId.value = current.dbSessionId
+  } else {
+    // 激活最近更新的那个
+    const target = sorted[0]
+    activeSessionId.value = target.id
+    activeDbSessionId.value = target.dbSessionId || ''
+  }
+}
+
+// ── 监听登录状态 ───────────────────────────────────────────
+let wasLoggedIn = false
+
+watch(() => userStore.isLoggedIn, (loggedIn) => {
+  if (loggedIn && !wasLoggedIn) {
+    wasLoggedIn = true
+    initDbSessions()
+  } else if (!loggedIn) {
+    wasLoggedIn = false
+    sessions.value = []
+    activeSessionId.value = ''
+    activeDbSessionId.value = ''
+  }
+}, { immediate: true })   // immediate: true 确保 onMounted 之前也触发一次
 </script>
 
 <style>
@@ -116,12 +251,8 @@ body {
   background: #f5f5f5;
 }
 
-.sidebar-wrapper {
-  flex-shrink: 0;
-}
-.sidebar-mask {
-  display: none;
-}
+.sidebar-wrapper { flex-shrink: 0; }
+.sidebar-mask { display: none; }
 
 .main-area {
   flex: 1;
@@ -141,9 +272,7 @@ body {
     transform: translateX(-100%);
     transition: transform .25s cubic-bezier(.4,0,.2,1);
   }
-  .sidebar-wrapper.sidebar-visible {
-    transform: translateX(0);
-  }
+  .sidebar-wrapper.sidebar-visible { transform: translateX(0); }
 
   .sidebar-mask {
     display: block;

@@ -234,6 +234,8 @@ import IntentPanel from './intent-panels/IntentPanel.vue'
 import ValidationResultPanel from './intent-panels/ValidationResultPanel.vue'
 // 意图注册器
 import { registerEventHandler, registerPostProcessor, getEventHandler, getEventPanel, getPostProcessor, listIntentPanels } from '../composables/useIntentRegistry.js'
+// 数据库持久化 API
+import { createSession as apiCreateSession, saveMessage, loadMessages as apiLoadMessages, deleteSession as apiDeleteSession } from '../services/chatApi.js'
 
 marked.setOptions({ breaks: true, gfm: true })
 
@@ -346,9 +348,11 @@ registerPostProcessor('form', async (msg, intentData) => {
 
 const props = defineProps({
   sessionId:    { type: String, required: true },
+  dbSessionId:  { type: String, default: '' },   // 数据库会话 ID（来自 App.vue）
+  userId:       { type: String, default: '' },   // 当前登录用户名
   sessionTitle: { type: String, default: '新对话' }
 })
-const emit = defineEmits(['title-update'])
+const emit = defineEmits(['title-update', 'session-init'])
 
 const messagesEl = ref(null)
 const inputEl    = ref(null)
@@ -363,6 +367,33 @@ const currentFormId     = ref('')
 const currentFormSchema = ref(null)
 
 let abortCtrl = null
+
+// ── 数据库会话状态 ─────────────────────────────────────────
+const currentDbSessionId = ref('')   // 当前会话对应的数据库 session_id
+
+// 确保有数据库会话（首次发消息时调用）
+const ensureDbSession = async (localSessionId) => {
+  if (currentDbSessionId.value) return currentDbSessionId.value
+
+  // 从 prop 中取（App.vue 已设置）
+  if (props.dbSessionId) {
+    currentDbSessionId.value = props.dbSessionId
+    return currentDbSessionId.value
+  }
+
+  // prop 也没有 → 在这里创建（新建本地会话场景）
+  try {
+    const result = await apiCreateSession(props.userId || null, '新对话')
+    if (result.success && result.session_id) {
+      currentDbSessionId.value = result.session_id
+      // 通知 App.vue 写入本地会话的 dbSessionId
+      emit('session-init', { localId: localSessionId, dbSessionId: result.session_id })
+    }
+  } catch (e) {
+    console.warn('[ChatAssistant] 创建 DB 会话失败:', e)
+  }
+  return currentDbSessionId.value
+}
 
 // 配置状态
 const configDeploying = ref({})  // msgId -> bool
@@ -410,11 +441,17 @@ watch([currentFormId, currentFormSchema], () => {
   saveFormState()
 }, { deep: true })
 
-watch(() => props.sessionId, () => {
+watch(() => props.sessionId, async () => {
   messages.value = []
   currentFormId.value = ''
   currentFormSchema.value = null
-  loadMessages()
+  // 有 DB 会话 → 从数据库加载；无 DB 会话 → 降级到 localStorage
+  if (currentDbSessionId.value) {
+    const dbMsgs = await apiLoadMessages(currentDbSessionId.value)
+    messages.value = dbMsgs
+  } else {
+    loadMessages()
+  }
   loadFormState()
 })
 
@@ -743,6 +780,17 @@ const sendMessage = async () => {
   resetInput()
   messages.value.push({ id: genId(), role: 'user', content: text, done: true })
 
+  // ── 首次发消息：确保数据库会话已创建 ──────────────────
+  await ensureDbSession(props.sessionId)
+
+  // ── 保存用户消息到数据库 ─────────────────────────────
+  if (currentDbSessionId.value) {
+    await saveMessage(currentDbSessionId.value, {
+      role: 'user',
+      content: text
+    })
+  }
+
   if (messages.value.filter(m => m.role === 'user').length === 1) {
     emit('title-update', props.sessionId, text.slice(0, 20))
   }
@@ -837,6 +885,17 @@ const sendMessage = async () => {
       msg.done = true
       msg.showReasoning = false
 
+      // ── 保存 AI 回复到数据库 ─────────────────────────────
+      if (currentDbSessionId.value) {
+        await saveMessage(currentDbSessionId.value, {
+          role: 'assistant',
+          content: msg.content || msg.streamText || '',
+          reasoning: Array.isArray(msg.reasoning)
+            ? msg.reasoning.map(s => s.content || '').join('\n')
+            : (msg.reasoning || '')
+        })
+      }
+
       // 根据 intentType 后处理（通过注册器分发）
       const postProcessor = getPostProcessor(intentType)
       if (postProcessor) {
@@ -856,6 +915,14 @@ const sendMessage = async () => {
         msg.showReasoning = true
         msg.reasoning.push({ type: 'error', content: '请求出错：' + err.message })
         msg.content = '抱歉，遇到了一些问题，请稍后重试。'
+        // 保存错误回复到数据库
+        if (currentDbSessionId.value) {
+          await saveMessage(currentDbSessionId.value, {
+            role: 'assistant',
+            content: msg.content,
+            reasoning: msg.reasoning.map(s => s.content || '').join('\n')
+          }).catch(() => {})
+        }
       }
     } else {
       const msg = messages.value[msgIdx]
@@ -1279,9 +1346,38 @@ const handleConfigPreview = (config) => {
   scrollToBottom()
 }
 
-onMounted(() => {
-  loadMessages()
+onMounted(async () => {
+  // App.vue 已通过 prop 传入 dbSessionId（精确匹配会话）
+  if (props.dbSessionId) {
+    currentDbSessionId.value = props.dbSessionId
+  }
+
+  // ── 有 DB 会话：始终从数据库加载 ─────────────────────────
+  if (currentDbSessionId.value) {
+    const dbMsgs = await apiLoadMessages(currentDbSessionId.value)
+    messages.value = dbMsgs   // DB 有多少显示多少；空则显示空会话
+  } else {
+    // ── 无 DB 会话（旧版本地会话降级）：用 localStorage ─────
+    loadMessages()
+  }
+
   loadFormState()
+  scrollToBottom()
+  nextTick(() => inputEl.value?.focus())
+})
+
+// 监听 dbSessionId 变化（App.vue 切换会话时更新）
+watch(() => props.dbSessionId, async (newId) => {
+  if (!newId) return
+  currentDbSessionId.value = newId
+  messages.value = []
+  loadFormState()
+  const dbMsgs = await apiLoadMessages(newId)
+  if (dbMsgs.length > 0) {
+    messages.value = dbMsgs
+  } else {
+    loadMessages()
+  }
   scrollToBottom()
   nextTick(() => inputEl.value?.focus())
 })
