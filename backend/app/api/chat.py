@@ -719,11 +719,11 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
 
             logger.info(f"[chat/stream] 场景关键词: {scene_keywords}")
             
-            # ── Phase 1：意图识别 ─────────────────────────────────────────
-            # 阶段结果在下方统一收集：intent_type, form_code, extracted, confidence, intent_elapsed
-            phase1_result = {"status": "pending"}
-            _llm_error = None
-            _retry_count = 0
+            # ── Step 1：识别用户意图 ─────────────────────────────────────────
+            yield _thinking("🔍 正在分析用户意图...", result={
+                "messagesCount": len(request.messages),
+                "lastUserMessage": last_user_message[:100] if last_user_message else ""
+            })
 
             if not llm_service.enabled:
                 if fallback_enabled:
@@ -760,16 +760,30 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
 
                 loop = asyncio.get_event_loop()
                 _t0 = time.time()
+                _retry_count = 0
 
+                yield _thinking("🧠 调用 LLM 进行意图识别...", result={
+                    "model": llm_service.llm_config.get("model"),
+                    "provider": llm_service.llm_config.get("provider"),
+                    "temperature": llm_service.llm_config.get("temperature"),
+                    "maxTokens": llm_service.llm_config.get("maxTokens"),
+                    "promptLength": len(intent_prompt)
+                })
+
+                _llm_error = None
                 try:
                     intent_result, intent_reasoning = await loop.run_in_executor(
                         None, llm_service._call_llm_sync_with_reasoning, intent_prompt
                     )
 
-                    # 重试逻辑：content 为空但 reasoning 有内容时（MiniMax M2.7 等模型常见问题）
+                    # 重试逻辑
                     if not intent_result and intent_reasoning:
                         logger.info("[chat/stream] 🔄 content 为空但 reasoning 有内容，用简化 prompt 重试一次")
                         _retry_count = 1
+                        yield _thinking("🔄 模型响应格式异常，正在重试...", result={
+                            "retry": True,
+                            "originalElapsed": round(time.time() - _t0, 2)
+                        })
                         retry_prompt = (
                             intent_prompt
                             + "\n\n---\n**重要提醒**：请直接输出 JSON，不要在 JSON 之外输出任何分析文本。"
@@ -797,25 +811,25 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                             if intent_reasoning and intent_type in ('form', 'form_update', 'configure'):
                                 yield _reasoning(intent_reasoning)
 
-                            # ── Phase 2：工具执行（MCP 工具批量执行，不拆成多个步骤） ──
+                            # ── Step 2：MCP 工具执行 ────────────────────────────────────
                             tool_calls = intent_data.get("tool_calls", [])
                             tool_results = []
                             extracted = intent_data.get("extractedFields", {})
 
                             if tool_calls:
                                 hub = get_toolhub()
-                                for i, tc in enumerate(tool_calls, 1):
+                                for tc in tool_calls:
                                     tool_name = tc.get("name")
                                     tool_args = tc.get("arguments", {})
                                     if tool_name and hub.has_tool(tool_name):
-                                        result = hub.execute_sync(tool_name, tool_args)
-                                        if result.get("success"):
-                                            tool_result = result.get("result", {})
+                                        exec_result = hub.execute_sync(tool_name, tool_args)
+                                        if exec_result.get("success"):
+                                            tool_result = exec_result.get("result", {})
                                             if isinstance(tool_result, dict):
                                                 extracted.update(tool_result)
                                             tool_results.append({"name": tool_name, "success": True, "fields": list(tool_result.keys()) if isinstance(tool_result, dict) else []})
                                         else:
-                                            err = result.get("error", "未知错误")
+                                            err = exec_result.get("error", "未知错误")
                                             tool_results.append({"name": tool_name, "success": False, "error": str(err)})
                                             error = create_error(
                                                 category=ErrorCategory.TOOL.value,
@@ -836,7 +850,7 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                                 "recoverable": True
                                             })
                                     else:
-                                        tool_results.append({"name": tool_name, "success": False, "error": f"工具不存在"})
+                                        tool_results.append({"name": tool_name, "success": False, "error": "工具不存在"})
                                         error = create_error(
                                             category=ErrorCategory.TOOL.value,
                                             code=ErrorCode.TOOL_NOT_FOUND,
@@ -856,21 +870,30 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                         })
                                 intent_data["extractedFields"] = extracted
 
-                            # ── Phase 1 结果（意图识别 + 工具执行结果合并上报） ──
+                            yield _thinking(
+                                f"🔧 已执行 {len(tool_calls)} 个工具，" + (f"成功 {sum(1 for r in tool_results if r['success'])} 个" if tool_calls else "无工具调用"),
+                                result={
+                                    "tools": tool_results,
+                                    "totalTools": len(tool_calls),
+                                    "successCount": sum(1 for r in tool_results if r["success"]),
+                                    "failedCount": sum(1 for r in tool_results if not r["success"]),
+                                    "extractedFields": list(extracted.keys())
+                                }
+                            )
+
+                            # ── Step 3：意图识别完成，解析结果 ──────────────────────────
                             form_code = intent_data.get("detectedFormCode") or intent_data.get("formCode") or intent_data.get("form_code")
-                            phase1_result = {
-                                "status": "success",
-                                "intentType": intent_type,
-                                "formCode": form_code,
-                                "extractedFields": list(extracted.keys()),
-                                "confidence": intent_data.get("confidence"),
-                                "elapsed": round(intent_elapsed, 2),
-                                "retryCount": _retry_count,
-                                "tools": tool_results
-                            }
                             yield _thinking(
                                 f"✅ 意图识别完成: {intent_type}" + (f" ({intent_elapsed:.2f}s)" if intent_elapsed else ""),
-                                result=phase1_result
+                                result={
+                                    "intentType": intent_type,
+                                    "formCode": form_code,
+                                    "extractedFields": list(intent_data.get("extractedFields", {}).keys()),
+                                    "extractedCount": len(extracted),
+                                    "confidence": intent_data.get("confidence"),
+                                    "elapsed": round(intent_elapsed, 2),
+                                    "retryCount": _retry_count
+                                }
                             )
 
                             # ── Phase 3：意图分发 ─────────────────────────────────────────────
@@ -904,6 +927,10 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                             logger.warning("意图识别 JSON 解析失败: %s  raw=%s", e,
                                            intent_result[:200] if intent_result else "")
                             _llm_error = f"JSON 解析失败: {str(e)}"
+                            yield _thinking(f"❌ JSON 解析失败: {str(e)}", result={
+                                "error": str(e),
+                                "elapsed": round(time.time() - _t0, 2) if '_t0' in dir() else 0
+                            })
                             if not fallback_enabled:
                                 stream_stats.total_elapsed = time.time() - start_time
                                 error = create_error(
@@ -923,6 +950,9 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                         except Exception as e:
                             logger.exception("意图处理异常: %s", e)
                             _llm_error = str(e)
+                            yield _thinking(f"❌ 意图处理异常: {str(e)}", result={
+                                "error": str(e)
+                            })
                             if not fallback_enabled:
                                 stream_stats.total_elapsed = time.time() - start_time
                                 error = create_error(
@@ -941,6 +971,10 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                     else:
                         logger.warning("[chat/stream] LLM 返回为空，耗时 %.1fs", intent_elapsed)
                         _llm_error = f"LLM 返回为空（耗时 {intent_elapsed:.1f}s）"
+                        yield _thinking(f"❌ LLM 返回为空（耗时 {intent_elapsed:.1f}s）", result={
+                            "error": "LLM 返回为空",
+                            "elapsed": round(intent_elapsed, 1) if intent_elapsed else 0
+                        })
                         if not fallback_enabled:
                             stream_stats.total_elapsed = time.time() - start_time
                             error = create_error(
@@ -959,6 +993,9 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                 except Exception as e:
                     logger.exception("LLM 调用异常: %s", e)
                     _llm_error = str(e)
+                    yield _thinking(f"❌ LLM 调用失败: {str(e)}", result={
+                        "error": str(e)
+                    })
                     if not fallback_enabled:
                         stream_stats.total_elapsed = time.time() - start_time
                         error = create_error(
@@ -975,17 +1012,17 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                         yield _sse(error.to_sse())
                         return
 
-            # ── Fallback（Skills 模式）简化步骤 ──
+            # ── Fallback（Skills 模式）步骤 ──
             if fallback_enabled:
                 form_keywords = ['订单', '请假', '报销', '合同', '项目', '表单', '填写', '生成']
                 matched_keywords = [kw for kw in form_keywords if kw in last_user_message]
 
-                # Phase 1：场景识别（Skills）
-                yield _thinking("⚙️ Skills 模式处理", result={
+                yield _thinking("⚙️ Skills 模式处理（LLM 不可用）", result={
                     "mode": "skills",
                     "matchedKeywords": matched_keywords,
-                    "fallbackReason": _llm_error or "LLM 处理失败"
+                    "error": _llm_error or "LLM 处理失败"
                 })
+
                 skills_result = _call_skills_only(last_user_message, ontologies)
 
                 if skills_result.intentType == "form":

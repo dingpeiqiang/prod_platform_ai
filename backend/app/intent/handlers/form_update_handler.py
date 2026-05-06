@@ -22,17 +22,24 @@ class FormUpdateHandler(BaseIntentHandler):
         extracted = ctx.intent_data.get("extractedFields", {})
         confidence = ctx.intent_data.get("confidence", 0)
 
-        # ── Phase 1：表单更新识别 ────────────────────────────────────
+        # ── Step 1：识别表单更新请求 ────────────────────────────────────
         yield thinking(f"🔄 识别到表单更新「{form_name or detected_form_code}」", result={
             "formCode": detected_form_code,
-            "formName": form_name or detected_form_code,
-            "extractedFields": list(extracted.keys()),
-            "extractedCount": len(extracted),
-            "confidence": confidence,
-            "confidenceLevel": "high" if confidence >= 0.8 else "medium" if confidence >= 0.5 else "low"
+            "formName": form_name or detected_form_code
         })
 
-        # ── 内部自动化 ───────────────────────────────────────────────
+        # ── Step 2：提取待更新字段 ──────────────────────────────────────
+        yield thinking(
+            f"📝 提取到 {len(extracted)} 个待更新字段" if extracted else "⚠️ 未提取到任何字段值",
+            result={
+                "extractedFields": list(extracted.keys()),
+                "extractedCount": len(extracted),
+                "confidence": confidence,
+                "confidenceLevel": "high" if confidence >= 0.8 else "medium" if confidence >= 0.5 else "low"
+            }
+        )
+
+        # ── 内部自动化 ────────────────────────────────────────────────────
         ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
         ctx.stream_stats.is_form = True
         yield sse({"type": "stats", "content": ctx.stream_stats.to_dict()})

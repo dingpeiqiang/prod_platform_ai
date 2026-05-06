@@ -2,6 +2,7 @@
 # 在表单提交时通过 LLM 校验 ruleDescription 规则、字段一致性和业务语义
 
 import logging
+import time
 from typing import AsyncGenerator, Dict, Any
 
 from ..base import BaseIntentHandler, IntentContext
@@ -160,14 +161,19 @@ class ValidationHandler(BaseIntentHandler):
         logger.info(f"[ValidationHandler] intent_data keys: {list(ctx.intent_data.keys())}, form_code={form_code}, form_data size={len(form_data)}")
 
         # ═══════════════════════════════════════════════════════════
-        # Phase 1：规则引擎校验
+        # Step 1：规则引擎校验
         # ═══════════════════════════════════════════════════════════
-        structured_errors = []
-        rule_engine_passed = False
+        _t0 = time.time()
 
         rule_result = ValidationSkill.validate_form_from_ontology(form_code, form_data)
+        rule_elapsed_ms = round((time.time() - _t0) * 1000, 1)
+
+        fields_checked = list(form_data.keys())
+        structured_errors = []
+        rule_engine_passed = True
 
         if not rule_result.get("valid"):
+            rule_engine_passed = False
             issues = rule_result.get("issues", [])
             for issue in issues:
                 field_value = form_data.get(issue.get("field", ""))
@@ -179,102 +185,121 @@ class ValidationHandler(BaseIntentHandler):
                     "errorCode": issue.get("error_code", ""),
                     "suggestion": _build_suggestion(issue, field_value)
                 })
-            rule_engine_passed = False
-        else:
-            rule_engine_passed = True
 
         yield thinking(
             f"🔍 步骤 1/2：规则引擎校验{'通过' if rule_engine_passed else f'失败，{len(structured_errors)} 个问题'}",
             result={
-                "step": 1,
+                "formCode": form_code,
+                "fieldsChecked": fields_checked,
+                "fieldCount": len(fields_checked),
                 "passed": rule_engine_passed,
-                "ruleEngineErrors": len(structured_errors)
+                "issues": rule_result.get("issues", []),
+                "issueCount": len(structured_errors),
+                "elapsedMs": rule_elapsed_ms
             }
         )
 
         # ═══════════════════════════════════════════════════════════
-        # Phase 2：LLM 智能校验
+        # Step 2：LLM 智能校验
         # ═══════════════════════════════════════════════════════════
-        llm_result, reasoning_chunks = ValidationSkill.validate_with_ontology(form_code, form_data)
+        from app.services.llm_service import llm_service
 
+        _t1 = time.time()
+        llm_result, reasoning_chunks = ValidationSkill.validate_with_ontology(form_code, form_data)
+        llm_elapsed = time.time() - _t1
+
+        # 先流式发送模型思考过程（内嵌到 Step 2 下）
         for chunk in reasoning_chunks:
             yield sse({"type": "reasoning", "content": chunk, "step": "llm_validation"})
 
-        llm_errors = []
-        llm_warnings = []
+        llm_errors_raw = llm_result.get("errors", [])
+        llm_warnings = llm_result.get("warnings", [])
 
-        if llm_result.get("valid"):
-            llm_errors = llm_result.get("errors", [])
-            llm_warnings = llm_result.get("warnings", [])
-        else:
-            llm_errors = llm_result.get("errors", [])
-            for err_msg in llm_errors:
-                import re
-                bracket_match = re.search(r'【(.+?)】', err_msg)
-                if bracket_match:
-                    bracket_content = bracket_match.group(1)
-                    field_match = re.match(r'^(.+?)\(([^)]+)\)$', bracket_content)
-                    if field_match:
-                        field_name = field_match.group(1)
-                        field_code = field_match.group(2)
-                        message = err_msg.replace(bracket_match.group(0), "").strip()
-                    else:
-                        field_name = bracket_content
-                        field_code = ""
-                        message = err_msg.replace(bracket_match.group(0), "").strip()
-                else:
-                    field_name = "未知字段"
-                    field_code = ""
-                    message = err_msg
-
-                message = re.sub(r'^(值|字段|输入).*?[：:]\s*', '', message)
-                if "应从以下选项中选择" in message or "选项" in message:
-                    options_match = re.search(r'应从以下选项中选择[：:]\s*(.+?)$', message, re.DOTALL)
-                    if options_match:
-                        options_part = options_match.group(1).strip()
-                        base_part = message[:message.find("应从以下选项中选择")].strip()
-                        message = base_part + "，应从以下选项中选择：" + options_part
-                else:
-                    if len(message) > 80:
-                        truncate_at = message[:80].rfind('，')
-                        if truncate_at > 20:
-                            message = message[:truncate_at] + "..."
-                message = message.strip('。，、')
-
-                structured_errors.append({
-                    "field": field_name,
-                    "fieldCode": field_code,
-                    "message": message,
-                    "source": "llm_validation",
-                    "errorCode": "ERR_LLM_VALIDATION",
-                    "suggestion": _build_llm_suggestion(field_name, message, field_code)
-                })
-            llm_warnings = llm_result.get("warnings", [])
-
-        # ── Phase 2 结果（合并到一条，包含 AI 校验结论） ─────────────
-        total_errors = len(structured_errors)
         yield thinking(
-            f"🤖 步骤 2/2：AI 智能校验{'通过' if not llm_errors else f'发现 {len(llm_errors)} 个错误'}",
+            f"🤖 步骤 2/2：AI 智能校验{'通过' if not llm_errors_raw else f'发现 {len(llm_errors_raw)} 个错误，{len(llm_warnings)} 个警告'}",
             result={
-                "step": 2,
-                "llmErrors": len(llm_errors),
+                "model": llm_service.llm_config.get("model"),
+                "provider": llm_service.llm_config.get("provider"),
+                "elapsed": round(llm_elapsed, 2),
+                "llmErrors": len(llm_errors_raw),
                 "llmWarnings": len(llm_warnings),
                 "ruleEnginePassed": rule_engine_passed,
-                "totalErrors": total_errors,
-                "totalWarnings": len(llm_warnings),
-                "passed": total_errors == 0
+                "reasoningChunks": len(reasoning_chunks)
             }
         )
 
         # ═══════════════════════════════════════════════════════════
-        # 最终输出（根据是否有错误选择 SSE 事件）
+        # Step 3：汇总输出（结构化错误/警告列表）
         # ═══════════════════════════════════════════════════════════
-        if structured_errors:
+        # 将 LLM 原始错误转结构化
+        llm_structured_errors = []
+        import re as regex_mod
+        for err_msg in llm_errors_raw:
+            bracket_match = regex_mod.search(r'【(.+?)】', err_msg)
+            if bracket_match:
+                bracket_content = bracket_match.group(1)
+                field_match = regex_mod.match(r'^(.+?)\(([^)]+)\)$', bracket_content)
+                if field_match:
+                    field_name = field_match.group(1)
+                    field_code = field_match.group(2)
+                    message = err_msg.replace(bracket_match.group(0), "").strip()
+                else:
+                    field_name = bracket_content
+                    field_code = ""
+                    message = err_msg.replace(bracket_match.group(0), "").strip()
+            else:
+                field_name = "未知字段"
+                field_code = ""
+                message = err_msg
+
+            message = regex_mod.sub(r'^(值|字段|输入).*?[：:]\s*', '', message)
+            if "应从以下选项中选择" in message or "选项" in message:
+                options_match = regex_mod.search(r'应从以下选项中选择[：:]\s*(.+?)$', message, regex_mod.DOTALL)
+                if options_match:
+                    options_part = options_match.group(1).strip()
+                    base_part = message[:message.find("应从以下选项中选择")].strip()
+                    message = base_part + "，应从以下选项中选择：" + options_part
+            else:
+                if len(message) > 80:
+                    truncate_at = message[:80].rfind('，')
+                    if truncate_at > 20:
+                        message = message[:truncate_at] + "..."
+            message = message.strip('。，、')
+
+            llm_structured_errors.append({
+                "field": field_name,
+                "fieldCode": field_code,
+                "message": message,
+                "source": "llm_validation",
+                "errorCode": "ERR_LLM_VALIDATION",
+                "suggestion": _build_llm_suggestion(field_name, message, field_code)
+            })
+
+        all_errors = structured_errors + llm_structured_errors
+        total_errors = len(all_errors)
+
+        yield thinking(
+            f"📋 校验汇总：共 {total_errors} 个错误，{len(llm_warnings)} 个警告{'（全部通过）' if total_errors == 0 else ''}",
+            result={
+                "totalErrors": total_errors,
+                "totalWarnings": len(llm_warnings),
+                "ruleEngineErrors": len(structured_errors),
+                "llmErrors": len(llm_structured_errors),
+                "passed": total_errors == 0,
+                "errors": all_errors,
+                "warnings": llm_warnings
+            }
+        )
+
+        # ═══════════════════════════════════════════════════════════
+        # 最终 SSE 事件（前端面板使用）
+        # ═══════════════════════════════════════════════════════════
+        if all_errors:
             yield sse({
                 "type": "validation_fail",
                 "form_code": form_code,
                 "step": "all",
-                "errors": structured_errors,
+                "errors": all_errors,
                 "warnings": llm_warnings,
                 "rule_engine_passed": rule_engine_passed
             })

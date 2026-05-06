@@ -26,33 +26,38 @@ class FormHandler(BaseIntentHandler):
         extracted = ctx.intent_data.get("extractedFields", {})
         confidence = ctx.intent_data.get("confidence", 0)
 
-        # ── Phase 1：表单识别 ──────────────────────────────────────────
+        # ── Step 1：识别表单类型 ──────────────────────────────────────────
         yield thinking(f"📋 识别到表单「{form_name or form_code}」", result={
             "formCode": form_code,
             "formName": form_name or form_code,
-            "extractedFields": list(extracted.keys()),
-            "extractedCount": len(extracted),
             "confidence": confidence,
             "confidenceLevel": "high" if confidence >= 0.8 else "medium" if confidence >= 0.5 else "low"
         })
 
-        # ── Phase 2：历史推荐（可选） ─────────────────────────────────
+        # ── Step 2：提取用户输入的字段 ────────────────────────────────────
+        if extracted:
+            yield thinking(f"📝 从用户输入中提取到 {len(extracted)} 个字段", result={
+                "extractedFields": list(extracted.keys()),
+                "extractedCount": len(extracted),
+                "sample": dict(list(extracted.items())[:5])  # 前5个字段样本
+            })
+        else:
+            yield thinking("📝 未提取到具体字段值，将展示空表单供填写", result={
+                "extractedFields": [],
+                "extractedCount": 0
+            })
+
+        # ── Step 3：历史推荐 ──────────────────────────────────────────────
         try:
             recommendation_engine = get_recommendation_engine()
             conversation_context = {
-                "messages": [
-                    {"role": msg.role, "content": msg.content}
-                    for msg in ctx.request.messages
-                ],
+                "messages": [{"role": msg.role, "content": msg.content} for msg in ctx.request.messages],
                 "extractedFields": extracted,
                 "lastUserMessage": ctx.last_user_message
             }
 
             ontology_def = ctx.ontologies.get(form_code, {})
-            all_field_codes = []
-            for entity in ontology_def.get("entities", []):
-                for f in entity.get("fields", []):
-                    all_field_codes.append(f.get("fieldCode"))
+            all_field_codes = [f.get("fieldCode") for entity in ontology_def.get("entities", []) for f in entity.get("fields", [])]
 
             recommendations_result = recommendation_engine.batch_recommend(
                 form_code=form_code,
@@ -66,30 +71,33 @@ class FormHandler(BaseIntentHandler):
             )
 
             all_recommendations = {}
-            for field_code, result in recommendations_result.items():
-                if result.success and result.recommendations:
+            for field_code, rec_result in recommendations_result.items():
+                if rec_result.success and rec_result.recommendations:
                     all_recommendations[field_code] = {
-                        "items": [r.to_dict() for r in result.recommendations],
-                        "strategyUsed": result.strategy_used,
-                        "totalCandidates": result.total_candidates,
-                        "processingTimeMs": round(result.processing_time_ms, 2)
+                        "items": [r.to_dict() for r in rec_result.recommendations],
+                        "strategyUsed": rec_result.strategy_used,
+                        "totalCandidates": rec_result.total_candidates,
+                        "processingTimeMs": round(rec_result.processing_time_ms, 2)
                     }
 
-            if all_recommendations:
-                field_summary = {k: len(v.get("items", [])) for k, v in all_recommendations.items()}
-                yield thinking(f"📚 为 {len(all_recommendations)} 个字段生成推荐", result={
+            field_summary = {k: len(v.get("items", [])) for k, v in all_recommendations.items()}
+            yield thinking(
+                f"📚 为 {len(all_recommendations)} 个字段生成推荐" + (f"，共 {sum(field_summary.values())} 条" if all_recommendations else ""),
+                result={
                     "fieldCount": len(all_recommendations),
-                    "fieldSummary": field_summary
-                })
+                    "fieldSummary": field_summary,
+                    "totalRecommendations": sum(field_summary.values())
+                }
+            )
 
-                llm_recs = ctx.intent_data.get("fieldRecommendations", {})
-                merged_recs = merge_field_recommendations(llm_recs, all_recommendations)
-                ctx.intent_data["fieldRecommendations"] = merged_recs
-                logger.debug(f"[chat/stream] 🔀 合并后推荐字段数: {len(merged_recs)}")
+            llm_recs = ctx.intent_data.get("fieldRecommendations", {})
+            merged_recs = merge_field_recommendations(llm_recs, all_recommendations)
+            ctx.intent_data["fieldRecommendations"] = merged_recs
+            logger.debug(f"[form_handler] 🔀 合并后推荐字段数: {len(merged_recs)}")
         except Exception as rec_err:
-            logger.warning(f"[chat/stream] 获取历史推荐失败: {rec_err}")
+            logger.warning(f"[form_handler] 获取历史推荐失败: {rec_err}")
 
-        # ── 内部自动化（不作为用户可见步骤） ───────────────────────────
+        # ── 内部自动化 ────────────────────────────────────────────────────
         ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
         ctx.stream_stats.is_form = True
         yield sse({"type": "stats", "content": ctx.stream_stats.to_dict()})
