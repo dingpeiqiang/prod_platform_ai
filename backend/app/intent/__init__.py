@@ -13,6 +13,7 @@ from .handlers.manage_history_handler import ManageHistoryHandler
 from .handlers.configure_handler import ConfigureHandler
 from .handlers.tariff_filing_handler import TariffFilingHandler
 from .handlers.chat_handler import ChatHandler
+from .handlers.validation_handler import ValidationHandler
 
 # 显式注册所有处理器（通过 registry 的 register 方法）
 from .registry import get_intent_registry
@@ -25,17 +26,19 @@ _registry.register(ManageHistoryHandler)
 _registry.register(ConfigureHandler)
 _registry.register(TariffFilingHandler)
 _registry.register(ChatHandler)
+_registry.register(ValidationHandler)
 
 logger.info(f"[intent] 模块加载完成, 已注册 {_registry.list_handlers()}")
 
 __all__ = [
     "FormHandler",
-    "FormUpdateHandler", 
+    "FormUpdateHandler",
     "DeleteFormHandler",
     "ManageHistoryHandler",
     "ConfigureHandler",
     "TariffFilingHandler",
     "ChatHandler",
+    "ValidationHandler",
     "get_intent_registry",
     "intent_handler",
 ]
