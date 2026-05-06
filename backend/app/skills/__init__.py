@@ -1,6 +1,7 @@
 from .tool_registry import ToolRegistry
 from .scene_recognition import SceneRecognitionSkill
 from .field_extraction import FieldExtractionSkill
+from .validation_skill import ValidationSkill
 from app.core.config_loader import config_loader
 
 

@@ -111,19 +111,18 @@ def extract_fields(
 )
 def validate_form(form_code: str, form_data: Dict) -> Dict[str, Any]:
     """
-    校验表单数据
+    校验表单数据（基于本体的 LLM 智能校验 + 规则引擎校验）
 
     Args:
         form_code: 表单类型代码
         form_data: 表单填写的数据
 
     Returns:
-        校验结果
+        校验结果，包含 valid, errors, warnings
     """
-    from ..services.validation_service import validation_engine
-    from ..core.config_loader import config_loader
+    from ..skills.validation_skill import ValidationSkill
 
-    # 从本体获取字段定义
+    # 1. 先用规则引擎校验（快速）
     ontology = config_loader.get_ontology(form_code)
     if not ontology:
         return {
@@ -131,7 +130,6 @@ def validate_form(form_code: str, form_data: Dict) -> Dict[str, Any]:
             "message": f"未找到表单 {form_code} 的定义"
         }
 
-    # 提取字段定义列表
     fields = []
     for entity in ontology.get("entities", []):
         for field in entity.get("fields", []):
@@ -141,17 +139,20 @@ def validate_form(form_code: str, form_data: Dict) -> Dict[str, Any]:
                 "required": field.get("required", False),
                 "rules": field.get("rules", [])
             }
-            # 提取 ruleDescription 作为规则描述
-            if field.get("ruleDescription"):
-                field_dict["ruleDescription"] = field.get("ruleDescription")
             fields.append(field_dict)
 
-    # 执行校验
-    result = validation_engine.validate_form(form_data, fields)
+    rule_result = ValidationSkill.validate_form(form_data, fields)
+    if not rule_result.get("valid"):
+        return rule_result
+
+    # 2. 规则引擎通过后，再用 LLM 做智能校验
+    llm_result = ValidationSkill.validate_with_ontology(form_code, form_data)
+
     return {
-        "success": result.valid,
-        "valid": result.valid,
-        "errors": result.errors
+        "success": llm_result.get("success", True),
+        "valid": llm_result.get("valid", True),
+        "errors": llm_result.get("errors", []),
+        "warnings": llm_result.get("warnings", [])
     }
 
 
