@@ -30,9 +30,9 @@ from app.harness.observability.llm_call_logger import (
 )
 from app.core.errors import (
     ErrorCategory, ErrorLevel, ErrorCode,
-    FrameworkError, get_error_message, create_error
+    FrameworkError, get_error_message
 )
-from app.core.error_handler import error_handler
+from app.core.error_handler import error_handler, create_error
 from app.mcp_tools import get_toolhub
 from app.core.config import get_settings
 # 意图处理器注册器 —— 触发所有 handler 装饰器注册
