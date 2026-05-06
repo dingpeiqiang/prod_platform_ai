@@ -20,7 +20,7 @@ TARIFF_API_CONFIG = {
 # value: 本体 ontology 中定义的 fieldCode
 _API_TO_ONTO_FIELD_MAP = {
     "tariff_name": "name",          # API: 套餐名称 → 本体: 资费名称
-    "tariff_code": None,            # API: 套餐编码 → 本体无此字段，丢弃
+    "tariff_code": "bossid",        # API: 套餐编码 → 本体: 省内套餐编码
     "offline_day": "offline_day",   # 显式声明，避免因 API 无此字段而丢失本体配置
 }
 

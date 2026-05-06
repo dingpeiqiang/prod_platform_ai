@@ -92,6 +92,22 @@
                         <span v-if="si === msg.latestStepIndex && !msg.done" class="step-loading">
                           <span/><span/><span/>
                         </span>
+                        <!-- 步骤结果详情（可展开） -->
+                        <div v-if="step.result" class="step-result-inline">
+                          <span class="step-result-toggle" @click="step._showResult = !step._showResult">
+                            <svg
+                              :style="{ transform: step._showResult ? 'rotate(90deg)' : 'rotate(0deg)' }"
+                              width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                              style="transition:transform .2s;vertical-align:middle"
+                            ><polyline points="9 18 15 12 9 6"/></svg>
+                            📋 查看详情
+                          </span>
+                          <transition name="collapse">
+                            <div v-if="step._showResult" class="step-result-body">
+                              <pre class="step-result-text">{{ formatStepResult(step.result) }}</pre>
+                            </div>
+                          </transition>
+                        </div>
                         <!-- 该步骤对应的模型推理（内嵌显示） -->
                         <div v-if="step.reasoning" class="step-reasoning-inline">
                           <span class="step-reasoning-toggle" @click="step._showReasoning = !step._showReasoning">
@@ -436,6 +452,16 @@ const quickActions = [
 const genId = () => `msg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
 const stepIcon = (type) => ({ thinking: '💭', reasoning: '🔍', result: '✅', error: '❌' }[type] || '•')
 
+const formatStepResult = (result) => {
+  if (!result) return ''
+  if (typeof result === 'string') return result
+  try {
+    return JSON.stringify(result, null, 2)
+  } catch {
+    return String(result)
+  }
+}
+
 const renderMarkdown = (text) => {
   if (!text) return ''
   let t = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
@@ -698,7 +724,7 @@ const handleEvent = (data, idx) => {
     case 'executing': {
       const last = msg.reasoning[msg.reasoning.length - 1]
       if (last && last.content === data.content) break
-      msg.reasoning.push({ type: 'thinking', content: data.content })
+      msg.reasoning.push({ type: 'thinking', content: data.content, result: data.result || null })
       // 自动展开思考步骤，让用户看到实时进度
       msg.showReasoning = true
       // 标记最新步骤（用于动画效果）
@@ -1710,6 +1736,34 @@ defineExpose({ requestValidation })
 .step-reasoning-text::-webkit-scrollbar { width: 4px; }
 .step-reasoning-text::-webkit-scrollbar-track { background: transparent; }
 .step-reasoning-text::-webkit-scrollbar-thumb { background: #ddd6fe; border-radius: 2px; }
+
+/* 步骤结果详情 */
+.step-result-inline {
+  flex-basis: 100%;
+  margin-top: 4px;
+  padding-left: 22px;
+  border-top: 1px dashed #d1fae5;
+  padding-top: 6px;
+}
+.step-result-toggle {
+  cursor: pointer; color: #059669; font-size: 12px;
+  display: inline-flex; align-items: center; gap: 4px;
+  user-select: none;
+  transition: color .15s;
+}
+.step-result-toggle:hover { color: #047857; }
+.step-result-body { margin-top: 6px; }
+.step-result-text {
+  font-size: 12px; line-height: 1.65; color: #065f46;
+  white-space: pre-wrap; word-break: break-word;
+  background: #ecfdf5; border-radius: 8px; padding: 10px 12px;
+  max-height: 320px; overflow-y: auto;
+  border: 1px solid #d1fae5;
+}
+.step-result-text::-webkit-scrollbar { width: 4px; }
+.step-result-text::-webkit-scrollbar-track { background: transparent; }
+.step-result-text::-webkit-scrollbar-thumb { background: #6ee7b7; border-radius: 2px; }
+
 .step-loading {
   display: inline-flex;
   gap: 3px;

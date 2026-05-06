@@ -16,8 +16,9 @@ import logging
 from typing import AsyncGenerator
 
 from ..base import BaseIntentHandler, IntentContext
-from ..utils import thinking, sse, merge_field_recommendations, intent_event, done_event
+from ..utils import thinking, ask_user, sse, merge_field_recommendations, intent_event, done_event
 from ...services.recommendation_engine import get_recommendation_engine
+from ...skills.field_extraction import FieldExtractionSkill
 
 logger = logging.getLogger("intent.tariff_filing_handler")
 
@@ -46,15 +47,27 @@ class TariffFilingHandler(BaseIntentHandler):
         # 如果 extractedFields 已有数据（来自 chat.py 的 tool_calls 合并结果），展示信息
         if extracted:
             field_count = len(extracted)
-            # 检查是否已有 seq_no（套餐编码）
-            if "seq_no" in extracted or "name" in extracted:
-                code = extracted.get("seq_no", extracted.get("name", ""))
-                yield thinking(f"✅ 已通过 MCP 查询自动填充表单数据: {code}")
+            # 检查是否有 bossid（省内套餐编码），这是 MCP 查询的主要返回结果
+            if extracted.get("bossid"):
+                yield thinking(f"✅ 已通过 MCP 查询自动填充表单数据：套餐编码 {extracted.get('bossid')}")
                 yield thinking(f"📝 预填充 {field_count} 个字段")
             else:
                 yield thinking(f"📝 提取到 {field_count} 个字段")
         else:
             yield thinking("📝 未提取到字段值，将展示空表单供手动填写")
+
+        # ── 关键字段缺失检查（通过 Skill 获取业务规则）─────────────────────
+        # FieldExtractionSkill.check_missing_required 封装了各表单的前置必填字段规则
+        # 缺失时返回缺失信息，handler 据此提示用户后提前返回，不输出空白表单
+        missing_info = FieldExtractionSkill.check_missing_required(form_code, extracted)
+        if missing_info:
+            yield ask_user(
+                f"⚠️ {missing_info['message']}\n\n"
+                f"👉 {missing_info['hint']}"
+            )
+            yield sse({"type": "missing_field", **missing_info})
+            ctx.intent_data["_missing_required"] = missing_info["field"]
+            return
 
         # ── 获取历史推荐（与 FormHandler 相同逻辑）─────────────────────────
         try:

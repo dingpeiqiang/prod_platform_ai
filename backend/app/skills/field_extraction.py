@@ -1,7 +1,8 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import re
 import logging
 from datetime import datetime
+from dataclasses import dataclass
 from app.core.config_loader import config_loader
 from app.services.llm_service import llm_service
 
@@ -156,3 +157,36 @@ class FieldExtractionSkill:
                 for k, v in extracted.items()
             ]
         }
+
+    @classmethod
+    def check_missing_required(cls, form_code: str, extracted: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        表单填充前检查：某些表单存在"前置必填字段"（必须先通过外部查询才能继续），
+        缺失时返回缺失信息供 handler 提示用户；未缺失或无特殊要求时返回 None。
+
+        目前已知前置必填字段：
+        - tariff_filing_publicity: bossid（省内套餐编码，需通过 MCP 查询）
+
+        Returns:
+            None 表示检查通过，或返回缺失信息 Dict：
+            {
+                "field": str,       # 字段编码
+                "fieldName": str,   # 字段中文名
+                "message": str,     # 提示用户的消息
+                "hint": str         # 补充说明（格式示例等）
+            }
+        """
+        _PRE_FILL_REQUIRED = {
+            "tariff_filing_publicity": {
+                "field": "bossid",
+                "fieldName": "省内套餐编码",
+                "message": "资费备案必须提供省内套餐编码才能继续，请提供您的套餐编码",
+                "hint": "例如：P000111、P123456"
+            },
+        }
+        req = _PRE_FILL_REQUIRED.get(form_code)
+        if not req:
+            return None
+        if extracted.get(req["field"]):
+            return None
+        return req

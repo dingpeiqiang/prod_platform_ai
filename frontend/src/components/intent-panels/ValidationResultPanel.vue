@@ -18,32 +18,52 @@
       <span class="form-code-tag">{{ formCode }}</span>
     </div>
 
-    <!-- 错误列表（结构化） -->
-    <div v-if="errors?.length" class="validation-errors">
+    <!-- 按字段分组的错误列表 -->
+    <div v-if="groupedErrors.length" class="validation-errors">
       <div class="validation-section-title">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/>
         </svg>
-        错误 ({{ errors.length }})
+        错误 ({{ errors.length }}，{{ groupedErrors.length }} 个字段)
       </div>
 
       <div
-        v-for="(err, idx) in errors"
-        :key="'err-' + idx"
+        v-for="(group, idx) in groupedErrors"
+        :key="'err-group-' + idx"
         class="validation-item error-item"
       >
+        <!-- 字段名 + 来源标签 -->
         <div class="error-header">
-          <span class="error-field">{{ err.field || '未知字段' }}</span>
-          <span class="error-source" :class="'source-' + err.source">
-            {{ err.source === 'rule_engine' ? '规则引擎' : 'AI 校验' }}
-          </span>
+          <span class="error-field">{{ group.field }}</span>
+          <div class="source-tags">
+            <span
+              v-for="source in group.sources"
+              :key="source"
+              class="error-source"
+              :class="'source-' + source"
+            >
+              {{ source === 'rule_engine' ? '规则引擎' : 'AI 校验' }}
+            </span>
+          </div>
         </div>
-        <div class="error-message">{{ err.message }}</div>
-        <div v-if="err.suggestion" class="error-suggestion">
+
+        <!-- 错误列表 -->
+        <div class="error-messages">
+          <div v-for="(err, ei) in group.errors" :key="ei" class="error-message">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#e74c3c" stroke-width="2">
+              <circle cx="12" cy="12" r="4"/>
+            </svg>
+            {{ err.message }}
+          </div>
+        </div>
+
+        <!-- 优化建议（取最后一个，建议相同则合并） -->
+        <div v-if="group.suggestions.length" class="error-suggestion">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#3498db" stroke-width="2">
             <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
           </svg>
-          {{ err.suggestion }}
+          <span v-if="group.suggestions.length === 1">{{ group.suggestions[0] }}</span>
+          <span v-else>{{ group.suggestions[0] }}</span>
         </div>
       </div>
     </div>
@@ -58,6 +78,9 @@
         警告 ({{ warnings.length }})
       </div>
       <div v-for="(warn, idx) in warnings" :key="'warn-' + idx" class="validation-item warning-item">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f39c12" stroke-width="2">
+          <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+        </svg>
         <span class="warning-text">{{ warn }}</span>
       </div>
     </div>
@@ -70,6 +93,8 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
+
 const props = defineProps({
   formCode: { type: String, default: '' },
   passed: { type: Boolean, default: false },
@@ -77,6 +102,39 @@ const props = defineProps({
   warnings: { type: Array, default: () => [] },
   step: { type: String, default: '' },
   rule_engine_passed: { type: Boolean, default: false }
+})
+
+// 按字段名分组错误
+const groupedErrors = computed(() => {
+  const groups = {}
+
+  for (const err of props.errors) {
+    const field = err.field || '未知字段'
+    if (!groups[field]) {
+      groups[field] = {
+        field,
+        fieldCode: err.fieldCode || '',
+        errors: [],
+        sources: [],
+        suggestions: []
+      }
+    }
+
+    groups[field].errors.push({
+      message: err.message,
+      source: err.source
+    })
+
+    if (!groups[field].sources.includes(err.source)) {
+      groups[field].sources.push(err.source)
+    }
+
+    if (err.suggestion && !groups[field].suggestions.includes(err.suggestion)) {
+      groups[field].suggestions.push(err.suggestion)
+    }
+  }
+
+  return Object.values(groups)
 })
 </script>
 
@@ -137,9 +195,9 @@ const props = defineProps({
 }
 
 .validation-item {
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-radius: 6px;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   background: white;
   border: 1px solid #e8e8e8;
 }
@@ -150,19 +208,27 @@ const props = defineProps({
 
 .warning-item {
   border-left: 3px solid #f39c12;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .error-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 4px;
+  margin-bottom: 8px;
 }
 
 .error-field {
   font-size: 13px;
   font-weight: 600;
   color: #333;
+}
+
+.source-tags {
+  display: flex;
+  gap: 4px;
 }
 
 .error-source {
@@ -182,11 +248,23 @@ const props = defineProps({
   color: #7b1fa2;
 }
 
+.error-messages {
+  margin-bottom: 6px;
+}
+
 .error-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
   font-size: 12px;
-  color: #666;
+  color: #555;
   line-height: 1.4;
-  margin-bottom: 4px;
+  padding: 2px 0;
+}
+
+.error-message svg {
+  margin-top: 3px;
+  flex-shrink: 0;
 }
 
 .error-suggestion {
@@ -196,7 +274,7 @@ const props = defineProps({
   font-size: 11px;
   color: #3498db;
   background: #f0f7ff;
-  padding: 4px 8px;
+  padding: 6px 8px;
   border-radius: 4px;
   margin-top: 4px;
 }

@@ -567,9 +567,12 @@ def _sse(data: dict) -> str:
     return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-def _thinking(content: str) -> str:
-    """系统步骤日志（type=thinking）"""
-    return _sse({"type": "thinking", "content": content})
+def _thinking(content: str, result: Any = None) -> str:
+    """系统步骤日志（type=thinking），支持结构化结果详情"""
+    data = {"type": "thinking", "content": content}
+    if result is not None:
+        data["result"] = result
+    return _sse(data)
 
 
 def _reasoning(content: str) -> str:
@@ -717,7 +720,10 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
             logger.info(f"[chat/stream] 场景关键词: {scene_keywords}")
             
             # ── 第一步：意图识别 ──────────────────────────────────────────
-            yield _thinking("🔍 正在分析用户意图...")
+            yield _thinking("🔍 正在分析用户意图...", result={
+                "step": "intent_recognition",
+                "messageCount": len(request.messages)
+            })
             
             if not llm_service.enabled:
                 if fallback_enabled:
@@ -754,7 +760,13 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                     .replace("{last_user_message}", last_user_message or "")
                 )
 
-                yield _thinking("🧠 调用 LLM 进行意图识别...")
+                yield _thinking("🧠 调用 LLM 进行意图识别...", result={
+                    "provider": llm_service.llm_config.get("provider"),
+                    "model": llm_service.llm_config.get("model"),
+                    "temperature": llm_service.llm_config.get("temperature"),
+                    "maxTokens": llm_service.llm_config.get("maxTokens"),
+                    "promptLength": len(intent_prompt)
+                })
 
                 # 意图识别需要结构化 JSON，使用同步（非流式）调用
                 loop = asyncio.get_event_loop()
@@ -831,7 +843,9 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                             tool_calls = intent_data.get("tool_calls", [])
                             if tool_calls:
                                 logger.info("[MCP] ┌── LLM 请求调用 %d 个 MCP 工具 ──", len(tool_calls))
-                                yield _thinking(f"🔧 需要调用 %d 个工具获取额外数据..." % len(tool_calls))
+                                yield _thinking(f"🔧 需要调用 %d 个工具获取额外数据..." % len(tool_calls), result={
+                                    "tools": [{"name": tc.get("name"), "args": tc.get("arguments", {})} for tc in tool_calls]
+                                })
                                 hub = get_toolhub()
                                 extracted = intent_data.get("extractedFields", {})
                                 for i, tc in enumerate(tool_calls, 1):
@@ -895,10 +909,23 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                         })
                                 logger.info("[MCP] └── MCP 调用结束，累计提取字段数: %d", len(extracted))
                                 intent_data["extractedFields"] = extracted
-                            yield _thinking(f"✅ 意图识别完成: {intent_type} (耗时 {intent_elapsed:.2f}s)")
+                            yield _thinking(f"✅ 意图识别完成: {intent_type} (耗时 {intent_elapsed:.2f}s)", result={
+                                "intentType": intent_type,
+                                "formCode": intent_data.get("detectedFormCode") or intent_data.get("formCode") or intent_data.get("form_code"),
+                                "extractedFields": list(intent_data.get("extractedFields", {}).keys()),
+                                "confidence": intent_data.get("confidence"),
+                                "elapsed": round(intent_elapsed, 2)
+                            })
 
                             # ── 意图分发（注册器模式） ──────────────────────────────
-                            # 通过 IntentHandlerRegistry 分发到对应处理器
+                            # 特殊表单类型映射：formCode 有专属 handler 时，替换 intentType
+                            _FORM_CODE_TO_INTENT = {
+                                "tariff_filing_publicity": "tariff_filing",
+                            }
+                            form_code = intent_data.get("formCode")
+                            if intent_type == "form" and form_code in _FORM_CODE_TO_INTENT:
+                                intent_type = _FORM_CODE_TO_INTENT[form_code]
+                                logger.info(f"[路由] 表单 %s 使用专属 handler: %s", form_code, intent_type)
                             ctx = IntentContext(
                                 intent_data=intent_data,
                                 intent_result=intent_result,

@@ -8,6 +8,13 @@
       "entityName": "资费备案信息",
       "fields": [
         {
+          "fieldCode": "bossid",
+          "fieldName": "省内套餐编码",
+          "fieldType": "input",
+          "required": true,
+          "ruleDescription": "BOSS系统内的省内套餐唯一编码，示例：P000111"
+        },
+        {
           "fieldCode": "seq_no",
           "fieldName": "序列号",
           "fieldType": "input",

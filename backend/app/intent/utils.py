@@ -20,9 +20,23 @@ def sse(data: dict) -> str:
     return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-def thinking(content: str) -> str:
-    """系统步骤日志（type=thinking）"""
-    return sse({"type": "thinking", "content": content})
+def thinking(content: str, result: Any = None) -> str:
+    """
+    系统步骤日志（type=thinking）。
+
+    Args:
+        content: 步骤描述
+        result: 步骤结果，可选。结构化数据会在前端显示为可展开的详情
+    """
+    data = {"type": "thinking", "content": content}
+    if result is not None:
+        data["result"] = result
+    return sse(data)
+
+
+def ask_user(content: str) -> str:
+    """直接回复用户的消息（type=text），会显示在聊天区而非推理折叠面板"""
+    return sse({"type": "text", "content": content})
 
 
 def reasoning(content: str) -> str:

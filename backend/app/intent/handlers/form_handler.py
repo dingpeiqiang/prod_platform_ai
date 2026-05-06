@@ -22,18 +22,25 @@ class FormHandler(BaseIntentHandler):
         form_name = ""
         if form_code and form_code in ctx.ontologies:
             form_name = ctx.ontologies[form_code].get("formName", form_code)
-        yield thinking(f"📋 识别到表单类型: {form_name or form_code}")
+        yield thinking(f"📋 识别到表单类型: {form_name or form_code}", result={
+            "formCode": form_code,
+            "formName": form_name or form_code
+        })
 
         extracted = ctx.intent_data.get("extractedFields", {})
         if extracted:
-            field_details = [f"{k}={v}" for k, v in extracted.items()]
-            yield thinking(f"📝 提取到 {len(extracted)} 个字段:")
-            yield thinking(f"   {', '.join(field_details)}")
+            yield thinking(f"📝 提取到 {len(extracted)} 个字段", result={
+                "fields": extracted,
+                "count": len(extracted)
+            })
         else:
             yield thinking("📝 未提取到具体字段值，将展示空表单供用户填写")
 
         confidence = ctx.intent_data.get("confidence", 0)
-        yield thinking(f"📊 识别置信度: {confidence}")
+        yield thinking(f"📊 识别置信度: {confidence:.0%}", result={
+            "confidence": confidence,
+            "level": "high" if confidence >= 0.8 else "medium" if confidence >= 0.5 else "low"
+        })
 
         # ── 获取历史推荐数据 ──────────────────────────────────────
         try:
@@ -79,7 +86,12 @@ class FormHandler(BaseIntentHandler):
 
             if all_recommendations:
                 logger.info(f"[chat/stream] 📚 获取到历史推荐: {all_recommendations}")
-                yield thinking(f"📚 基于历史数据为 {len(all_recommendations)} 个字段生成推荐")
+                # 汇总各字段推荐数
+                field_summary = {k: len(v.get("items", [])) for k, v in all_recommendations.items()}
+                yield thinking(f"📚 基于历史数据为 {len(all_recommendations)} 个字段生成推荐", result={
+                    "fieldCount": len(all_recommendations),
+                    "fieldSummary": field_summary
+                })
 
                 # 合并两路推荐
                 llm_recs = ctx.intent_data.get("fieldRecommendations", {})

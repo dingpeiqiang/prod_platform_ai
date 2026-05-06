@@ -211,8 +211,20 @@ const localFormData = reactive({})
 const submitting = ref(false)
 
 watch(() => props.formData, (newData) => {
+  // 构建 fieldCode -> fieldType 的映射，用于类型转换
+  const numberFields = new Set()
+  if (props.schema && props.schema.fields) {
+    props.schema.fields.forEach(f => {
+      if (f.fieldType === 'number') numberFields.add(f.fieldCode)
+    })
+  }
   Object.keys(newData).forEach(key => {
-    localFormData[key] = newData[key]
+    let val = newData[key]
+    // number 类型字段将字符串转为数字，避免 ElInputNumber prop 类型校验失败
+    if (numberFields.has(key) && val !== null && val !== undefined && val !== '') {
+      val = Number(val)
+    }
+    localFormData[key] = val
   })
 }, { deep: true, immediate: true })
 
@@ -221,11 +233,21 @@ watch(() => props.schema, (newSchema) => {
     newSchema.fields.forEach(field => {
       // 优先使用字段的 value 属性（用于外部更新）
       if (field.value !== undefined && field.value !== null) {
-        localFormData[field.fieldCode] = field.value
+        let val = field.value
+        // number 类型字段将字符串转为数字
+        if (field.fieldType === 'number' && val !== '' && typeof val === 'string') {
+          val = Number(val)
+        }
+        localFormData[field.fieldCode] = val
       }
       // 其次使用默认值
       else if (field.defaultValue !== undefined && localFormData[field.fieldCode] === undefined) {
-        localFormData[field.fieldCode] = field.defaultValue
+        let val = field.defaultValue
+        // number 类型字段将字符串转为数字
+        if (field.fieldType === 'number' && val !== '' && typeof val === 'string') {
+          val = Number(val)
+        }
+        localFormData[field.fieldCode] = val
       }
     })
   }
