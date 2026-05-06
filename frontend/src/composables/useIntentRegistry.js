@@ -57,6 +57,12 @@ export function listEventTypes() {
   return Object.keys(_eventHandlers)
 }
 
+export function listIntentPanels() {
+  return Object.entries(_eventHandlers)
+    .filter(([, entry]) => entry.panel !== null)
+    .map(([type]) => type)
+}
+
 export function listIntentTypes() {
   return Object.keys(_postProcessors)
 }

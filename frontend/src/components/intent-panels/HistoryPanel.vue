@@ -129,8 +129,9 @@
         </div>
       </div>
       <div v-else class="no-data-tip">暂无数据，请导入历史数据</div>
-      <div style="margin-top:8px;">
-        <button class="gen-data-btn outline" @click="$emit('analyze')">🔍 分析</button>
+      <div v-if="historyData.totalRecords > 0" style="margin-top:8px; display:flex; gap:8px;">
+        <button class="gen-data-btn outline" @click="exportData('jsonl')">📤 导出JSONL</button>
+        <button class="gen-data-btn outline" @click="exportData('csv')">📊 导出CSV</button>
       </div>
     </template>
   </div>

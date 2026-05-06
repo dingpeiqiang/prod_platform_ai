@@ -126,42 +126,13 @@
                   <span/><span/><span/>
                 </div>
 
-                <!-- 配置预览卡片 -->
-                <ConfigCard
-                  v-if="msg.configData"
-                  :config="msg.configData.config"
-                  :keywords="msg.configData.keywords"
-                  :validationErrors="msg.configData.validationErrors"
-                  :deployed="msg.configDeployed"
-                  :deploying="msg.configDeploying"
-                  @deploy="handleConfigDeploy(msg, $event)"
-                  @modify="handleConfigModify(msg)"
-                  @preview="handleConfigPreview($event)"
-                  @test="handleConfigTest"
-                />
-
-                <!-- 删除结果面板（组件化） -->
-                <DeleteResultPanel
-                  v-if="msg.deleteFormData"
-                  :formCode="msg.deleteFormData.formCode"
-                  :formName="msg.deleteFormData.formName"
-                  :versionList="msg.versionList"
-                  :loadingVersions="msg.loadingVersions"
-                  :rollingBack="msg.rollingBack"
-                  :rollbackResult="msg.rollbackResult"
-                  @rollback="(v) => handleRollback(msg, v)"
-                  @load-versions="() => loadVersions(msg)"
-                />
-
-                <!-- 历史数据维护面板（组件化） -->
-                <HistoryPanel
-                  v-if="msg.historyData"
-                  :historyData="msg.historyData"
-                  :importing="msg.importing"
-                  :importResult="msg.importResult"
-                  @import="() => handleImportHistory(msg)"
-                  @analyze="() => handleAnalyzeHistory(msg)"
-                  @export="(opts) => handleExportHistory(msg, opts)"
+                <!-- 意图面板（统一动态渲染，通过 intent-registry.js 注册） -->
+                <IntentPanel
+                  v-for="intentType in intentPanelTypes"
+                  :key="intentType"
+                  :intentType="intentType"
+                  :msg="msg"
+                  @intent-action="handleIntentEvent"
                 />
 
                 <!-- 操作按钮（已移除表单内嵌） -->
@@ -259,8 +230,10 @@ import ConfigCard from './ConfigCard.vue'
 // 意图面板组件
 import DeleteResultPanel from './intent-panels/DeleteResultPanel.vue'
 import HistoryPanel from './intent-panels/HistoryPanel.vue'
+import ValidationResultPanel from './intent-panels/ValidationResultPanel.vue'
+import IntentPanel from './intent-panels/IntentPanel.vue'
 // 意图注册器
-import { registerEventHandler, registerPostProcessor, getEventHandler, getPostProcessor } from '../composables/useIntentRegistry.js'
+import { registerEventHandler, registerPostProcessor, getEventHandler, getEventPanel, getPostProcessor, listIntentPanels } from '../composables/useIntentRegistry.js'
 
 marked.setOptions({ breaks: true, gfm: true })
 
@@ -268,16 +241,23 @@ marked.setOptions({ breaks: true, gfm: true })
 // 将 SSE 事件处理逻辑从 handleEvent switch/case 迁移到注册器
 registerEventHandler('config', (data, msg) => {
   console.log('[SSE] 收到 config 事件, configData:', data.content ? Object.keys(data.content) : null)
-  msg.configData = data.content
-  msg.configDeployed = false
-  msg.configDeploying = false
+  if (!msg._intentData) msg._intentData = {}
+  msg._intentData['config'] = { ...data.content, deployed: false, deploying: false }
   scrollToBottom()
 }, { panel: ConfigCard })
 
 registerEventHandler('delete_form', (data, msg) => {
   console.log('[SSE] 收到 delete_form 事件', data.content)
-  msg.deleteFormData = data.content
-  msg.showVersionHistory = true
+  if (!msg._intentData) msg._intentData = {}
+  const d = data.content || {}
+  msg._intentData['delete_form'] = {
+    ...d,
+    showVersionHistory: true,
+    versionList: d.versionList || [],
+    loadingVersions: false,
+    rollingBack: false,
+    rollbackResult: null
+  }
   scrollToBottom()
 }, { panel: DeleteResultPanel })
 
@@ -291,14 +271,26 @@ registerEventHandler('manage_history', (data, msg) => {
     else if (historyPayload.totalRecords !== undefined) historyPayload.action = 'status'
     else historyPayload.action = 'status'
   }
+  if (!msg._intentData) msg._intentData = {}
   if (historyPayload.action === 'export') {
     // export 不渲染面板，只在气泡里显示下载链接
     msg._historyRaw = historyPayload
   } else {
-    msg.historyData = historyPayload
+    msg._intentData['manage_history'] = {
+      ...historyPayload,
+      importing: false,
+      importResult: null
+    }
   }
   scrollToBottom()
 }, { panel: HistoryPanel })
+
+// 校验结果（validate 意图）
+registerEventHandler('validate', (data, msg) => {
+  if (!msg._intentData) msg._intentData = {}
+  msg._intentData['validate'] = data.content || data.data || {}
+  scrollToBottom()
+}, { panel: ValidationResultPanel })
 
 // ── 意图后处理器注册 ──────────────────────────────
 // SSE 流结束后的意图专属后处理（替代 if/elif 链）
@@ -953,7 +945,7 @@ const handleConfigDeploy = async (msg, { config, keywords }) => {
     return
   }
 
-  msg.configDeploying = true
+  _updateIntentData(msg, 'config', { deploying: true })
 
   try {
     const resp = await fetch('/api/v1/chat/deploy-config', {
@@ -964,8 +956,7 @@ const handleConfigDeploy = async (msg, { config, keywords }) => {
     const result = await resp.json()
 
     if (result.success) {
-      msg.configDeployed = true
-      msg.configDeploying = false
+      _updateIntentData(msg, 'config', { deployed: true, deploying: false })
       ElMessage({ message: result.message, type: 'success', duration: 3000, plain: true })
 
       // 添加成功消息
@@ -975,11 +966,11 @@ const handleConfigDeploy = async (msg, { config, keywords }) => {
         done: true, type: 'chat'
       })
     } else {
-      msg.configDeploying = false
+      _updateIntentData(msg, 'config', { deploying: false })
       ElMessage.error(result.message || '部署失败')
     }
   } catch {
-    msg.configDeploying = false
+    _updateIntentData(msg, 'config', { deploying: false })
     ElMessage.error('部署请求失败，请重试')
   }
   scrollToBottom()
@@ -1049,31 +1040,42 @@ onMounted(() => {
   nextTick(() => inputEl.value?.focus())
 })
 
+// 意图面板类型列表（静态，注册后不变）
+const intentPanelTypes = listIntentPanels()
+
+// ── 意图面板统一事件处理辅助函数 ──────────────────────
+const _updateIntentData = (msg, intentType, partial) => {
+  if (!msg._intentData) msg._intentData = {}
+  msg._intentData[intentType] = { ...msg._intentData[intentType], ...partial }
+}
+
 // ── 版本历史管理 ───────────────────────────────────────────────────────
 const loadVersions = async (msg) => {
-  const formCode = msg.deleteFormData?.formCode || msg.intentData?.formCode
+  const intentData = msg._intentData?.['delete_form']
+  const formCode = intentData?.formCode || msg.intentData?.formCode
   if (!formCode) return
 
-  msg.loadingVersions = true
+  _updateIntentData(msg, 'delete_form', { loadingVersions: true })
   try {
     const resp = await fetch(`/api/v1/chat/form-versions/${encodeURIComponent(formCode)}`)
     const result = await resp.json()
     if (result.success && result.versions?.length) {
-      msg.versionList = result.versions
+      _updateIntentData(msg, 'delete_form', { versionList: result.versions })
     } else {
-      msg.versionList = []
+      _updateIntentData(msg, 'delete_form', { versionList: [] })
     }
   } catch (e) {
     console.error('加载版本列表失败', e)
-    msg.versionList = []
+    _updateIntentData(msg, 'delete_form', { versionList: [] })
   } finally {
-    msg.loadingVersions = false
+    _updateIntentData(msg, 'delete_form', { loadingVersions: false })
   }
 }
 
 const handleRollback = async (msg, version) => {
-  const formCode = msg.deleteFormData?.formCode || msg.intentData?.formCode
-  
+  const intentData = msg._intentData?.['delete_form']
+  const formCode = intentData?.formCode || msg.intentData?.formCode
+
   // 二次确认
   try {
     await ElMessageBox.confirm(
@@ -1083,8 +1085,7 @@ const handleRollback = async (msg, version) => {
     )
   } catch { return }
 
-  msg.rollingBack = version.id
-  msg.rollbackResult = null
+  _updateIntentData(msg, 'delete_form', { rollingBack: version.id, rollbackResult: null })
 
   try {
     const resp = await fetch('/api/v1/chat/rollback-form', {
@@ -1094,11 +1095,11 @@ const handleRollback = async (msg, version) => {
     })
     const result = await resp.json()
 
-    msg.rollbackResult = result
+    _updateIntentData(msg, 'delete_form', { rollbackResult: result })
 
     if (result.success) {
       ElMessage({ message: `已成功回退到 ${version.id}`, type: 'success', duration: 3000, plain: true })
-      
+
       // 添加系统消息
       messages.value.push({
         id: genId(), role: 'assistant',
@@ -1110,9 +1111,9 @@ const handleRollback = async (msg, version) => {
     }
   } catch (e) {
     console.error('回退失败', e)
-    msg.rollbackResult = { success: false, message: '网络错误' }
+    _updateIntentData(msg, 'delete_form', { rollbackResult: { success: false, message: '网络错误' } })
   } finally {
-    msg.rollingBack = null
+    _updateIntentData(msg, 'delete_form', { rollingBack: null })
   }
 }
 
@@ -1200,12 +1201,183 @@ const handleExportHistory = async (msg, opts) => {
   }
 }
 
+// ── 意图面板统一事件处理 ──────────────────────────────
+const handleIntentEvent = ({ intentType, action, payload, msg }) => {
+  switch (intentType) {
+    // config
+    case 'config': {
+      const cfg = payload
+      if (action === 'deploy') {
+        // 部署配置（复用 handleConfigDeploy 的逻辑）
+        handleConfigDeploy(msg, cfg.config, cfg.keywords)
+      } else if (action === 'modify') {
+        inputText.value = `修改表单配置「${cfg.config?.formName || ''}」：`
+        nextTick(() => inputEl.value?.focus())
+      } else if (action === 'preview') {
+        handleConfigPreview(cfg)
+      } else if (action === 'test') {
+        handleConfigTest(cfg)
+      }
+      break
+    }
+    // delete_form
+    case 'delete_form': {
+      if (action === 'rollback') {
+        handleRollback(msg, payload)
+      } else if (action === 'load-versions') {
+        loadVersions(msg)
+      }
+      break
+    }
+    // manage_history
+    case 'manage_history': {
+      if (action === 'import') {
+        handleImportHistory(msg)
+      } else if (action === 'analyze') {
+        handleAnalyzeHistory(msg)
+      } else if (action === 'export') {
+        handleExportHistory(msg, payload)
+      }
+      break
+    }
+    // validate
+    case 'validate': {
+      if (action === 'fix') {
+        handleFixValidationErrors(msg, payload)
+      } else if (action === 'ignore-warnings') {
+        handleIgnoreValidationWarnings(msg)
+      }
+      break
+    }
+  }
+}
+const handleFixValidationErrors = (msg, errors) => {
+  // 将错误信息注入到输入框，引导用户修正
+  if (errors?.length > 0) {
+    const first = errors[0]
+    inputText.value = `修改一下：${first.fieldName || '字段'}，${first.reason}`
+  }
+}
+
+const handleIgnoreValidationWarnings = (msg) => {
+  // 忽略警告，继续提交流程
+  ElMessage.info('已忽略提示，可继续操作')
+}
+
 const formatVersionTime = (isoStr) => {
   if (!isoStr) return ''
   const d = new Date(isoStr)
   const pad = n => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
+
+// ── 对外方法：表单校验（通过聊天SSE流显示thinking，结果通过Promise返回）──
+const requestValidation = (validationText) => {
+  return new Promise(async (resolve) => {
+    if (isStreaming.value) {
+      resolve({ passed: false, errors: [], warnings: [], message: '聊天窗口正忙，请稍后重试' })
+      return
+    }
+
+    // 推送用户消息（带 🤖 前缀表示AI在校验）
+    const userMsg = { id: genId(), role: 'user', content: validationText, done: true }
+    messages.value.push(userMsg)
+
+    const aiMsg = {
+      id: genId(), role: 'assistant',
+      reasoning: [], streamText: '', content: '',
+      showReasoning: false,
+      done: false, type: 'chat'
+    }
+    messages.value.push(aiMsg)
+    const msgIdx = messages.value.length - 1
+
+    isStreaming.value = true
+    abortCtrl = new AbortController()
+    scrollToBottom()
+
+    try {
+      const chatHistory = messages.value
+        .filter(m => m.role === 'user' || (m.role === 'assistant' && m.done && m.content))
+        .slice(0, -1)
+        .slice(-20)
+        .map(m => ({ role: m.role, content: m.content || m.streamText || '' }))
+
+      const resp = await fetch('/api/v1/chat/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: [...chatHistory, { role: 'user', content: validationText }] }),
+        signal: abortCtrl.signal
+      })
+
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+
+      const reader = resp.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const frames = buffer.split('\n\n')
+        buffer = frames.pop()
+
+        for (const frame of frames) {
+          if (!frame.startsWith('data:')) continue
+          try {
+            const data = JSON.parse(frame.slice(5).trim())
+            handleEvent(data, msgIdx)
+          } catch {}
+        }
+      }
+
+      // 流结束后，从AI消息内容中解析结构化校验结果
+      const finalContent = messages.value[msgIdx]?.content || messages.value[msgIdx]?.streamText || ''
+      let result = { passed: true, errors: [], warnings: [], message: '' }
+
+      // 尝试从JSON代码块中提取
+      const jsonMatch = finalContent.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/i)
+        || finalContent.match(/(\{[\s\S]*?\})(?:\s*$)/)
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[1])
+          result = {
+            passed: parsed.passed !== false && parsed.errors?.length === 0,
+            errors: parsed.errors || [],
+            warnings: parsed.warnings || [],
+            message: parsed.message || ''
+          }
+        } catch {}
+      } else {
+        // 从纯文本推断
+        const hasError = /错误|问题|不符合|失败|❌/.test(finalContent)
+        const hasWarning = /警告|提示|注意|⚠/.test(finalContent)
+        result = {
+          passed: !hasError,
+          errors: hasError ? [{ fieldName: '校验', reason: finalContent.slice(0, 200) }] : [],
+          warnings: hasWarning ? [{ fieldName: '提示', reason: finalContent.slice(0, 200) }] : [],
+          message: finalContent.slice(0, 100)
+        }
+      }
+
+      // 将结果注入到AI消息的intentResult中（便于后续追踪）
+      messages.value[msgIdx].intentResult = result
+      resolve(result)
+    } catch (e) {
+      console.error('[requestValidation] 异常:', e)
+      messages.value[msgIdx].content = '校验请求失败：' + e.message
+      resolve({ passed: false, errors: [{ fieldName: '系统', reason: e.message }], warnings: [], message: e.message })
+    } finally {
+      isStreaming.value = false
+      abortCtrl = null
+    }
+  })
+}
+
+// 暴露给父组件
+defineExpose({ requestValidation })
 </script>
 
 <style scoped>
