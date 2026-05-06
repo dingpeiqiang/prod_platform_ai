@@ -15,7 +15,6 @@ from app.core.database import get_db
 from app.skills.scene_recognition import SceneRecognitionSkill
 from app.skills.field_extraction import FieldExtractionSkill
 from app.services.agent_executor import AgentExecutor
-from app.services.chat_history_service import ChatHistoryService
 from app.services.recommendation_engine import get_recommendation_engine
 from app.services.admin_service import AdminService
 from app.services.history_ai_service import (
@@ -1341,149 +1340,8 @@ async def rollback_form_endpoint(request: RollbackFormRequest):
     except Exception as e:
         logger.exception("[rollback-form] 回退失败: %s", e)
         return {"success": False, "message": f"回退失败: {str(e)}"}
-    sessions: List[Dict[str, Any]]
-    total: int
 
 
-class SessionCreateRequest(BaseModel):
-    user_id: Optional[str] = None
-    title: Optional[str] = None
-
-
-class SessionCreateResponse(BaseModel):
-    success: bool
-    session_id: Optional[str] = None
-    title: Optional[str] = None
-    created_at: Optional[str] = None
-    error: Optional[str] = None
-
-
-class MessageListResponse(BaseModel):
-    messages: List[Dict[str, Any]]
-    total: int
-
-
-class SessionListResponse(BaseModel):
-    sessions: List[Dict[str, Any]]
-    total: int
-
-
-@router.get("/chat/sessions", response_model=SessionListResponse)
-async def get_chat_sessions(
-    user_id: Optional[str] = Query(None, description="用户ID"),
-    limit: int = Query(50, ge=1, le=100, description="返回数量限制"),
-    db: Session = Depends(get_db)
-):
-    logger.debug("[chat/sessions] 查询会话列表 user_id=%s limit=%d", user_id, limit)
-    sessions = ChatHistoryService.get_sessions(user_id=user_id, limit=limit, db=db)
-    logger.debug("[chat/sessions] 返回 %d 条会话", len(sessions))
-    return SessionListResponse(sessions=sessions, total=len(sessions))
-
-
-@router.post("/chat/sessions", response_model=SessionCreateResponse)
-async def create_chat_session(
-    request: SessionCreateRequest,
-    db: Session = Depends(get_db)
-):
-    logger.info("[chat/sessions] 创建会话 user_id=%s title=%s", request.user_id, request.title)
-    result = ChatHistoryService.create_session(
-        user_id=request.user_id,
-        title=request.title,
-        db=db
-    )
-    if result.get("success"):
-        logger.info("[chat/sessions] 创建成功 session_id=%s", result.get("session_id"))
-        return SessionCreateResponse(
-            success=True,
-            session_id=result.get("session_id"),
-            title=result.get("title"),
-            created_at=result.get("created_at")
-        )
-    logger.warning("[chat/sessions] 创建失败: %s", result.get("error", "未知错误"))
-    return SessionCreateResponse(success=False, error=result.get("error", "创建失败"))
-
-
-@router.get("/chat/sessions/{session_id}/messages", response_model=MessageListResponse)
-async def get_chat_messages(
-    session_id: str,
-    db: Session = Depends(get_db)
-):
-    logger.debug("[chat/sessions/messages] 查询消息 session_id=%s", session_id)
-    messages = ChatHistoryService.get_messages(session_id=session_id, db=db)
-    logger.debug("[chat/sessions/messages] 返回 %d 条消息 session_id=%s", len(messages), session_id)
-    return MessageListResponse(messages=messages, total=len(messages))
-
-
-@router.delete("/chat/sessions/{session_id}")
-async def delete_chat_session(
-    session_id: str,
-    db: Session = Depends(get_db)
-):
-    logger.info("[chat/sessions] 删除会话 session_id=%s", session_id)
-    success = ChatHistoryService.delete_session(session_id=session_id, db=db)
-    if not success:
-        logger.warning("[chat/sessions] 删除失败 session_id=%s", session_id)
-    return {"success": success}
-
-
-@router.patch("/chat/sessions/{session_id}")
-async def update_chat_session_title(
-    session_id: str,
-    title: str = Query(..., description="新的会话标题"),
-    db: Session = Depends(get_db)
-):
-    logger.info("[chat/sessions] 更新标题 session_id=%s title=%s", session_id, title)
-    success = ChatHistoryService.update_session_title(session_id=session_id, title=title, db=db)
-    if not success:
-        logger.warning("[chat/sessions] 更新标题失败 session_id=%s", session_id)
-    return {"success": success}
-
-
-class MessageCreateRequest(BaseModel):
-    role: str = Field(..., description="消息角色: user / assistant")
-    content: str = Field(..., description="消息内容")
-    intent_type: Optional[str] = Field(None, description="意图类型")
-    form_code: Optional[str] = Field(None, description="表单编码")
-    extracted_fields: Optional[Dict[str, Any]] = Field(None, description="提取的字段")
-    confidence: Optional[str] = Field(None, description="置信度")
-    reasoning: Optional[str] = Field(None, description="AI 推理过程（多行文本）")
-
-
-class MessageCreateResponse(BaseModel):
-    success: bool
-    message_id: Optional[int] = None
-    error: Optional[str] = None
-
-
-@router.post("/chat/sessions/{session_id}/messages", response_model=MessageCreateResponse)
-async def save_chat_message(
-    session_id: str,
-    request: MessageCreateRequest,
-    db: Session = Depends(get_db)
-):
-    """保存单条聊天消息到数据库"""
-    result = ChatHistoryService.save_message(
-        session_id=session_id,
-        role=request.role,
-        content=request.content,
-        intent_type=request.intent_type,
-        form_code=request.form_code,
-        extracted_fields=request.extracted_fields,
-        confidence=request.confidence,
-        reasoning=request.reasoning,
-        db=db
-    )
-    if result and result.get("success"):
-        logger.debug("[chat/sessions/messages] 保存成功 session_id=%s msg_id=%s",
-                     session_id, result.get("message_id"))
-        return MessageCreateResponse(success=True, message_id=result.get("message_id"))
-    logger.warning("[chat/sessions/messages] 保存失败 session_id=%s", session_id)
-    return MessageCreateResponse(success=False, error=result.get("error") if result else "未知错误")
-
-
-# ── 测试端点 ─────────────────────────────────────────────────────────────────
-
-@router.post("/test/llm-call")
 async def test_llm_call():
     """
     测试LLM调用端点 - 直接测试大模型调用

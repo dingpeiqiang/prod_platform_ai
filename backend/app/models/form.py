@@ -67,27 +67,4 @@ class SystemLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
-class ChatSession(Base):
-    __tablename__ = "chat_sessions"
-
-    id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(String(100), unique=True, index=True, nullable=False)
-    user_id = Column(String(100), nullable=True)
-    title = Column(String(200), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-
-
-class ChatMessage(Base):
-    __tablename__ = "chat_messages"
-
-    id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(String(100), index=True, nullable=False)
-    role = Column(String(20), nullable=False)
-    content = Column(Text, nullable=False)
-    intent_type = Column(String(50), nullable=True)
-    form_code = Column(String(100), nullable=True)
-    extracted_fields = Column(JSON, nullable=True)
-    confidence = Column(String(10), nullable=True)
-    reasoning = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+# ChatSession / ChatMessage 已迁移到 v2，见 app/models/chat_v2.py

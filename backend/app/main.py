@@ -47,7 +47,7 @@ _root_logger.setLevel(logging.DEBUG)
 _LOG_MODULES = [
     "main", "llm_service", "chat_api", "config_loader", "agent_executor",
     "form_service", "form_api", "chat_with_tools_api", "config_api",
-    "chat_history_service", "history_service", "ontology_service",
+    "history_service", "ontology_service",
     "validation_service", "harness.engine", "harness.observability",
     "llm_call",
 ]
@@ -77,6 +77,7 @@ from app.api.form import router as form_router
 from app.api.config import router as config_router
 from app.api.validation import router as validation_router
 from app.api.chat import router as chat_router
+from app.api.chat_v2 import router as chat_v2_router
 from app.api.chat_with_tools import router as chat_with_tools_router
 from app.api.harness import router as harness_router
 from app.api.mcp import router as mcp_router
@@ -117,6 +118,7 @@ app.include_router(form_router)
 app.include_router(config_router)
 app.include_router(validation_router)
 app.include_router(chat_router)
+app.include_router(chat_v2_router)  # 通用聊天 v2 API
 app.include_router(chat_with_tools_router)
 app.include_router(harness_router)
 app.include_router(mcp_router)  # MCP 工具接口
