@@ -160,70 +160,58 @@ class ValidationHandler(BaseIntentHandler):
         logger.info(f"[ValidationHandler] intent_data keys: {list(ctx.intent_data.keys())}, form_code={form_code}, form_data size={len(form_data)}")
 
         # ═══════════════════════════════════════════════════════════
-        # 汇总收集器（两步都执行完后统一输出）
+        # Phase 1：规则引擎校验
         # ═══════════════════════════════════════════════════════════
-        structured_errors = []  # 结构化错误列表
+        structured_errors = []
         rule_engine_passed = False
 
-        # ═══════════════════════════════════════════════════════════
-        # 步骤 1/2：规则引擎校验
-        # ═══════════════════════════════════════════════════════════
-        yield thinking("🔍 步骤 1/2：执行规则引擎校验...")
-
-        # 委托 ValidationSkill 执行规则引擎校验（同步）
         rule_result = ValidationSkill.validate_form_from_ontology(form_code, form_data)
 
         if not rule_result.get("valid"):
-            # 使用结构化的 issues 数组
             issues = rule_result.get("issues", [])
             for issue in issues:
                 field_value = form_data.get(issue.get("field", ""))
                 structured_errors.append({
-                    "field": issue.get("field_name", ""),           # 字段中文名
-                    "fieldCode": issue.get("field", ""),            # 字段代码
-                    "message": issue.get("message", ""),            # 错误信息
-                    "source": "rule_engine",                         # 来源
-                    "errorCode": issue.get("error_code", ""),       # 错误码
-                    "suggestion": _build_suggestion(issue, field_value)  # 优化建议
+                    "field": issue.get("field_name", ""),
+                    "fieldCode": issue.get("field", ""),
+                    "message": issue.get("message", ""),
+                    "source": "rule_engine",
+                    "errorCode": issue.get("error_code", ""),
+                    "suggestion": _build_suggestion(issue, field_value)
                 })
-            yield thinking(f"❌ 步骤 1/2：规则引擎校验失败，发现 {len(structured_errors)} 个问题")
+            rule_engine_passed = False
         else:
             rule_engine_passed = True
-            yield thinking("✅ 步骤 1/2：规则引擎校验通过")
 
-        # ═══════════════════════════════════════════════════════════
-        # 步骤 2/2：LLM 智能校验（包含模型思考过程）
-        # ═══════════════════════════════════════════════════════════
-        yield thinking("🤖 步骤 2/2：调用 AI 模型进行智能校验...")
-        yield thinking("💭 AI 正在分析数据合理性、字段一致性、业务语义...")
-
-        # 委托 ValidationSkill 执行 LLM 智能校验
-        llm_result, reasoning_chunks = ValidationSkill.validate_with_ontology(
-            form_code, form_data
+        yield thinking(
+            f"🔍 步骤 1/2：规则引擎校验{'通过' if rule_engine_passed else f'失败，{len(structured_errors)} 个问题'}",
+            result={
+                "step": 1,
+                "passed": rule_engine_passed,
+                "ruleEngineErrors": len(structured_errors)
+            }
         )
 
-        # 先流式发送模型思考过程（让用户看到 AI 在思考）
-        for chunk in reasoning_chunks:
-            yield sse({
-                "type": "reasoning",
-                "content": chunk,
-                "step": "llm_validation"
-            })
+        # ═══════════════════════════════════════════════════════════
+        # Phase 2：LLM 智能校验
+        # ═══════════════════════════════════════════════════════════
+        llm_result, reasoning_chunks = ValidationSkill.validate_with_ontology(form_code, form_data)
 
+        for chunk in reasoning_chunks:
+            yield sse({"type": "reasoning", "content": chunk, "step": "llm_validation"})
+
+        llm_errors = []
         llm_warnings = []
+
         if llm_result.get("valid"):
             llm_errors = llm_result.get("errors", [])
             llm_warnings = llm_result.get("warnings", [])
-            yield thinking(f"✅ 步骤 2/2：AI 智能校验通过（{len(llm_errors)} 个错误，{len(llm_warnings)} 个警告）")
         else:
-            # LLM 错误也需要结构化
             llm_errors = llm_result.get("errors", [])
             for err_msg in llm_errors:
-                # 尝试从【字段名(code)】格式中提取字段名
                 import re
                 bracket_match = re.search(r'【(.+?)】', err_msg)
                 if bracket_match:
-                    # 提取【】中的内容，如"序列号(seq_no)"或"二级分类(type2)"
                     bracket_content = bracket_match.group(1)
                     field_match = re.match(r'^(.+?)\(([^)]+)\)$', bracket_content)
                     if field_match:
@@ -239,20 +227,15 @@ class ValidationHandler(BaseIntentHandler):
                     field_code = ""
                     message = err_msg
 
-                # 精简 message（只保留核心错误描述）
                 message = re.sub(r'^(值|字段|输入).*?[：:]\s*', '', message)
-                # 如果包含选项列表，保留完整选项
                 if "应从以下选项中选择" in message or "选项" in message:
-                    # 提取完整选项列表（不截断）
                     options_match = re.search(r'应从以下选项中选择[：:]\s*(.+?)$', message, re.DOTALL)
                     if options_match:
                         options_part = options_match.group(1).strip()
                         base_part = message[:message.find("应从以下选项中选择")].strip()
                         message = base_part + "，应从以下选项中选择：" + options_part
                 else:
-                    # 截断过长的 message
                     if len(message) > 80:
-                        # 尝试在句号处截断
                         truncate_at = message[:80].rfind('，')
                         if truncate_at > 20:
                             message = message[:truncate_at] + "..."
@@ -267,13 +250,26 @@ class ValidationHandler(BaseIntentHandler):
                     "suggestion": _build_llm_suggestion(field_name, message, field_code)
                 })
             llm_warnings = llm_result.get("warnings", [])
-            yield thinking(f"❌ 步骤 2/2：AI 智能校验未通过，发现 {len(llm_errors)} 个问题")
+
+        # ── Phase 2 结果（合并到一条，包含 AI 校验结论） ─────────────
+        total_errors = len(structured_errors)
+        yield thinking(
+            f"🤖 步骤 2/2：AI 智能校验{'通过' if not llm_errors else f'发现 {len(llm_errors)} 个错误'}",
+            result={
+                "step": 2,
+                "llmErrors": len(llm_errors),
+                "llmWarnings": len(llm_warnings),
+                "ruleEnginePassed": rule_engine_passed,
+                "totalErrors": total_errors,
+                "totalWarnings": len(llm_warnings),
+                "passed": total_errors == 0
+            }
+        )
 
         # ═══════════════════════════════════════════════════════════
-        # 汇总输出：两步都执行完后统一输出结果
+        # 最终输出（根据是否有错误选择 SSE 事件）
         # ═══════════════════════════════════════════════════════════
         if structured_errors:
-            yield thinking(f"📋 校验汇总：共发现 {len(structured_errors)} 个错误，{len(llm_warnings)} 个警告")
             yield sse({
                 "type": "validation_fail",
                 "form_code": form_code,
@@ -283,7 +279,6 @@ class ValidationHandler(BaseIntentHandler):
                 "rule_engine_passed": rule_engine_passed
             })
         else:
-            yield thinking(f"✅ 校验通过（{len(llm_warnings)} 个警告）")
             yield sse({
                 "type": "validation_pass",
                 "form_code": form_code,

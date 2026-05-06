@@ -21,24 +21,33 @@ class DeleteFormHandler(BaseIntentHandler):
         if not target_name and target_code and target_code in ctx.ontologies:
             target_name = ctx.ontologies[target_code].get("formName", target_code)
 
-        yield thinking(f"🗑️ 识别到删除表单请求: {target_name or target_code}")
-        yield thinking("📦 正在备份当前版本...")
+        # ── Phase 1：确认删除目标 ────────────────────────────────────
+        yield thinking(f"🗑️ 确认删除表单「{target_name or target_code}」（自动备份）", result={
+            "formCode": target_code,
+            "formName": target_name,
+            "autoBackup": True
+        })
 
-        # 执行删除（自动备份）
+        # 执行删除
         loop = asyncio.get_event_loop()
         delete_result = await loop.run_in_executor(
             None,
             lambda: AdminService.delete_ontology(target_code, auto_backup=True)
         )
 
+        ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
+
         if delete_result.get("success"):
             backup = delete_result.get("backup", {})
             backup_id = backup.get("id", "") if backup else ""
-            yield thinking(f"✅ 已删除表单「{target_name or target_code}」")
-            if backup_id:
-                yield thinking(f"📦 备份版本: {backup_id}")
 
-            ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
+            # ── Phase 2：删除结果 ────────────────────────────────────
+            yield thinking(f"✅ 已删除表单「{target_name or target_code}」", result={
+                "success": True,
+                "backupVersionId": backup_id,
+                "message": delete_result.get("message", "")
+            })
+
             yield sse({"type": "stats", "content": ctx.stream_stats.to_dict()})
 
             yield intent_event("delete_form", "delete", {
@@ -58,9 +67,13 @@ class DeleteFormHandler(BaseIntentHandler):
             yield done_event("delete_form", is_form=False, intent_data=ctx.intent_data)
         else:
             error_msg = delete_result.get("message", "删除失败")
-            yield thinking(f"❌ 删除失败: {error_msg}")
 
-            ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
+            # ── Phase 2：错误结果（合并到同一结构） ───────────────────
+            yield thinking(f"❌ 删除失败: {error_msg}", result={
+                "success": False,
+                "error": error_msg
+            })
+
             ctx.stream_stats.error = error_msg
             yield sse({"type": "stats", "content": ctx.stream_stats.to_dict()})
             yield sse({"type": "error", "content": error_msg})

@@ -27,7 +27,7 @@ class ManageHistoryHandler(BaseIntentHandler):
 
     async def handle(self, ctx: IntentContext) -> AsyncGenerator[str, None]:
         target_code = ctx.intent_data.get("formCode", "") or ctx.intent_data.get("detectedFormCode", "")
-        action = ctx.intent_data.get("action", "analyze")  # analyze / generate / import / status
+        action = ctx.intent_data.get("action", "analyze")
         target_name = ctx.intent_data.get("formName", "")
         description = ctx.intent_data.get("description", "")
         count = ctx.intent_data.get("count", 10)
@@ -35,40 +35,45 @@ class ManageHistoryHandler(BaseIntentHandler):
         if not target_name and target_code and target_code in ctx.ontologies:
             target_name = ctx.ontologies[target_code].get("formName", target_code)
 
-        yield thinking(f"📊 识别到历史数据维护请求: {target_name or target_code}")
-        yield thinking(f"   操作: {action}")
-
         loop = asyncio.get_event_loop()
 
+        # ── Phase 1：操作识别（统一入口） ─────────────────────────────
+        phase1_result = {
+            "action": action,
+            "formCode": target_code,
+            "formName": target_name
+        }
+
         if action == "analyze":
-            yield thinking("🔍 正在分析历史数据质量...")
-            result = await loop.run_in_executor(
-                None, lambda: analyze_history(target_code, db=ctx.db)
-            )
+            phase1_result["description"] = f"分析「{target_name or target_code}」历史数据质量"
+            yield thinking(f"📊 开始分析「{target_name or target_code}」历史数据...", result=phase1_result)
+
+            result = await loop.run_in_executor(None, lambda: analyze_history(target_code, db=ctx.db))
+            ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
 
             if result.get("success"):
-                yield thinking(f"✅ 分析完成，数据质量评分: {result.get('qualityScore', '-')}")
-                if result.get("recommendations"):
-                    for rec in result["recommendations"][:3]:
-                        yield thinking(f"   💡 {rec}")
-
-                ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
+                # ── Phase 2：分析结果 ─────────────────────────────────
+                recommendations = result.get("recommendations", [])[:3]
+                yield thinking(f"✅ 分析完成，质量评分: {result.get('qualityScore', '-')}", result={
+                    "success": True,
+                    "qualityScore": result.get("qualityScore"),
+                    "recordCount": result.get("recordCount", 0),
+                    "recommendations": recommendations
+                })
                 yield sse({"type": "stats", "content": ctx.stream_stats.to_dict()})
                 yield intent_event("manage_history", "analyze", result, is_form=False)
                 yield done_event("manage_history", is_form=False, intent_data=ctx.intent_data)
             else:
                 error_msg = result.get("message", "分析失败")
-                yield thinking(f"❌ {error_msg}")
-                ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
+                yield thinking(f"❌ {error_msg}", result={"success": False, "error": error_msg})
                 ctx.stream_stats.error = error_msg
                 yield sse({"type": "stats", "content": ctx.stream_stats.to_dict()})
                 yield sse({"type": "error", "content": error_msg})
 
         elif action == "import":
-            # 新的导入流程：提供上传入口
-            yield thinking("📥 准备数据导入入口...")
+            phase1_result["description"] = f"准备导入「{target_name or target_code}」历史数据"
+            yield thinking("📥 准备数据导入...", result=phase1_result)
 
-            # 返回导入入口信息，前端会显示上传界面
             import_entry = {
                 "type": "import_entry",
                 "formCode": target_code,
@@ -84,16 +89,15 @@ class ManageHistoryHandler(BaseIntentHandler):
             yield done_event("manage_history", is_form=False, intent_data=ctx.intent_data)
 
         elif action == "query":
-            # 查询历史数据记录
             start_date = ctx.intent_data.get("start_date")
             end_date = ctx.intent_data.get("end_date")
             user_id = ctx.intent_data.get("user_id")
             page = ctx.intent_data.get("page", 1)
             page_size = ctx.intent_data.get("page_size", 20)
 
-            yield thinking(f"🔍 查询历史数据...")
-            if start_date or end_date:
-                yield thinking(f"   时间范围: {start_date or '开始'} ~ {end_date or '至今'}")
+            phase1_result["description"] = f"查询「{target_name or target_code}」历史记录"
+            phase1_result["dateRange"] = {"start": start_date, "end": end_date}
+            yield thinking(f"🔍 查询「{target_name or target_code}」历史数据...", result=phase1_result)
 
             result = await loop.run_in_executor(
                 None,
@@ -107,15 +111,21 @@ class ManageHistoryHandler(BaseIntentHandler):
                     db=ctx.db
                 )
             )
+            ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
 
             if result.get("success"):
-                yield thinking(f"✅ 查询完成，共 {result.get('total', 0)} 条记录")
+                yield thinking(f"✅ 查询完成，共 {result.get('total', 0)} 条记录", result={
+                    "success": True,
+                    "total": result.get("total", 0),
+                    "page": result.get("page", page),
+                    "pageSize": result.get("pageSize", page_size)
+                })
                 yield sse({"type": "stats", "content": ctx.stream_stats.to_dict()})
                 yield intent_event("manage_history", "query", result, is_form=False)
                 yield done_event("manage_history", is_form=False, intent_data=ctx.intent_data)
             else:
                 error_msg = result.get("message", "查询失败")
-                yield thinking(f"❌ {error_msg}")
+                yield thinking(f"❌ {error_msg}", result={"success": False, "error": error_msg})
                 yield sse({"type": "error", "content": error_msg})
 
         elif action == "export":
@@ -124,7 +134,8 @@ class ManageHistoryHandler(BaseIntentHandler):
             end_date = ctx.intent_data.get("end_date")
             user_id = ctx.intent_data.get("user_id")
 
-            yield thinking(f"📤 导出历史数据为 {export_format.upper()} 格式...")
+            phase1_result["description"] = f"导出「{target_name or target_code}」历史数据为 {export_format.upper()} 格式"
+            yield thinking(f"📤 导出历史数据（{export_format.upper()}）...", result=phase1_result)
 
             result = await loop.run_in_executor(
                 None,
@@ -137,13 +148,18 @@ class ManageHistoryHandler(BaseIntentHandler):
                     db=ctx.db
                 )
             )
+            ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
 
             if result.get("success"):
-                yield thinking(f"✅ 导出完成，共 {result.get('recordCount', 0)} 条记录")
-
-                # 只返回下载链接，不带文件内容（大文件不适合走 SSE）
                 filename = result.get("filename", "")
-                export_event_data = {
+                yield thinking(f"✅ 导出完成，共 {result.get('recordCount', 0)} 条记录", result={
+                    "success": True,
+                    "recordCount": result.get("recordCount", 0),
+                    "filename": filename,
+                    "downloadUrl": f"/api/v1/config/export/{target_code}?format={export_format}"
+                })
+                yield sse({"type": "stats", "content": ctx.stream_stats.to_dict()})
+                yield intent_event("manage_history", "export", {
                     "action": "export",
                     "formCode": target_code,
                     "formName": target_name,
@@ -151,24 +167,26 @@ class ManageHistoryHandler(BaseIntentHandler):
                     "recordCount": result.get("recordCount", 0),
                     "downloadUrl": f"/api/v1/config/export/{target_code}?format={export_format}",
                     "message": f"文件已准备好，点击下载：{filename}"
-                }
-                ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
-                yield sse({"type": "stats", "content": ctx.stream_stats.to_dict()})
-                yield intent_event("manage_history", "export", export_event_data, is_form=False)
+                }, is_form=False)
                 yield done_event("manage_history", is_form=False, intent_data=ctx.intent_data)
             else:
                 error_msg = result.get("message", "导出失败")
-                yield thinking(f"❌ {error_msg}")
+                yield thinking(f"❌ {error_msg}", result={"success": False, "error": error_msg})
                 yield sse({"type": "error", "content": error_msg})
 
         else:
             # 默认：status 查询
-            yield thinking("📋 正在查询历史数据状态...")
-            result = await loop.run_in_executor(
-                None, lambda: get_history_summary(target_code, db=ctx.db)
-            )
+            phase1_result["description"] = f"查询「{target_name or target_code}」历史数据状态"
+            yield thinking(f"📋 查询「{target_name or target_code}」数据状态...", result=phase1_result)
 
+            result = await loop.run_in_executor(None, lambda: get_history_summary(target_code, db=ctx.db))
             ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
+
+            yield thinking("✅ 数据状态查询完成", result={
+                "success": True,
+                "recordCount": result.get("recordCount", 0),
+                "lastUpdated": result.get("lastUpdated")
+            })
             yield sse({"type": "stats", "content": ctx.stream_stats.to_dict()})
             yield intent_event("manage_history", "status", result, is_form=False)
             yield done_event("manage_history", is_form=False, intent_data=ctx.intent_data)

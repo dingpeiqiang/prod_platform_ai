@@ -40,25 +40,23 @@ class TariffFilingHandler(BaseIntentHandler):
         form_code = "tariff_filing_publicity"
         form_name = "资费备案公示"
 
-        yield thinking(f"📋 识别到表单类型: {form_name}")
+        form_code = "tariff_filing_publicity"
+        form_name = "资费备案公示"
 
         extracted = ctx.intent_data.get("extractedFields", {})
 
-        # 如果 extractedFields 已有数据（来自 chat.py 的 tool_calls 合并结果），展示信息
-        if extracted:
-            field_count = len(extracted)
-            # 检查是否有 bossid（省内套餐编码），这是 MCP 查询的主要返回结果
-            if extracted.get("bossid"):
-                yield thinking(f"✅ 已通过 MCP 查询自动填充表单数据：套餐编码 {extracted.get('bossid')}")
-                yield thinking(f"📝 预填充 {field_count} 个字段")
-            else:
-                yield thinking(f"📝 提取到 {field_count} 个字段")
-        else:
-            yield thinking("📝 未提取到字段值，将展示空表单供手动填写")
+        # ── Phase 1：表单识别 + 字段提取 ──────────────────────────────
+        has_mcp_fill = bool(extracted.get("bossid"))
+        yield thinking(f"📋 识别到「{form_name}」", result={
+            "formCode": form_code,
+            "formName": form_name,
+            "extractedFields": list(extracted.keys()),
+            "extractedCount": len(extracted),
+            "mcpPrefilled": has_mcp_fill,
+            "mcpTariffCode": extracted.get("bossid") if has_mcp_fill else None
+        })
 
-        # ── 关键字段缺失检查（通过 Skill 获取业务规则）─────────────────────
-        # FieldExtractionSkill.check_missing_required 封装了各表单的前置必填字段规则
-        # 缺失时返回缺失信息，handler 据此提示用户后提前返回，不输出空白表单
+        # ── 关键字段缺失检查（提前返回，不输出空白表单）───────────────
         missing_info = FieldExtractionSkill.check_missing_required(form_code, extracted)
         if missing_info:
             yield ask_user(
@@ -69,24 +67,17 @@ class TariffFilingHandler(BaseIntentHandler):
             ctx.intent_data["_missing_required"] = missing_info["field"]
             return
 
-        # ── 获取历史推荐（与 FormHandler 相同逻辑）─────────────────────────
+        # ── Phase 2：历史推荐（可选） ─────────────────────────────────
         try:
             recommendation_engine = get_recommendation_engine()
-
             conversation_context = {
-                "messages": [
-                    {"role": msg.role, "content": msg.content}
-                    for msg in ctx.request.messages
-                ],
+                "messages": [{"role": msg.role, "content": msg.content} for msg in ctx.request.messages],
                 "extractedFields": extracted,
                 "lastUserMessage": ctx.last_user_message
             }
 
             ontology_def = ctx.ontologies.get(form_code, {})
-            all_field_codes = []
-            for entity in ontology_def.get("entities", []):
-                for f in entity.get("fields", []):
-                    all_field_codes.append(f.get("fieldCode"))
+            all_field_codes = [f.get("fieldCode") for entity in ontology_def.get("entities", []) for f in entity.get("fields", [])]
 
             recommendations_result = recommendation_engine.batch_recommend(
                 form_code=form_code,
@@ -110,17 +101,19 @@ class TariffFilingHandler(BaseIntentHandler):
                     }
 
             if all_recommendations:
-                logger.info(f"[TariffFilingHandler] 📚 获取到历史推荐: {all_recommendations}")
-                yield thinking(f"📚 基于历史数据为 {len(all_recommendations)} 个字段生成推荐")
+                field_summary = {k: len(v.get("items", [])) for k, v in all_recommendations.items()}
+                yield thinking(f"📚 为 {len(all_recommendations)} 个字段生成推荐", result={
+                    "fieldCount": len(all_recommendations),
+                    "fieldSummary": field_summary
+                })
 
                 llm_recs = ctx.intent_data.get("fieldRecommendations", {})
                 merged_recs = merge_field_recommendations(llm_recs, all_recommendations)
                 ctx.intent_data["fieldRecommendations"] = merged_recs
-
         except Exception as rec_err:
             logger.warning(f"[TariffFilingHandler] 获取历史推荐失败: {rec_err}")
 
-        # ── 输出表单事件 ────────────────────────────────────────────────
+        # ── 内部自动化 ───────────────────────────────────────────────
         ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
         ctx.stream_stats.is_form = True
         yield sse({"type": "stats", "content": ctx.stream_stats.to_dict()})
