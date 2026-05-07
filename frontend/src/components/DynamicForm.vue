@@ -440,27 +440,29 @@ const handleSubmit = async () => {
     }
     const aiResult = _lastAiValidation
 
-    // 显示 AI 校验 warnings 到聊天窗口
+    // 显示 AI 校验 warnings 到聊天窗口（不阻塞）
     if (aiResult.warnings && aiResult.warnings.length > 0) {
       emit('ai-validation', { type: 'warning', messages: aiResult.warnings })
     }
 
-    // 显示 AI 校验 errors 到聊天窗口（但不阻塞）
+    // 如果有 AI 校验 errors → 显示错误到聊天窗口，阻塞确认流程
     if (aiResult.errors && aiResult.errors.length > 0) {
       emit('ai-validation', { type: 'error', messages: aiResult.errors })
+      // 不进入确认流程，等待用户修改
+      return
     }
 
-    // emit confirm-submit，让聊天窗口显示确认卡片
+    // 只有 AI 校验通过（没有 errors）才进入确认流程
     emit('confirm-submit', {
       formId: props.formId,
       formCode: props.schema.formCode,
       formName: props.schema.formName,
       data: { ...localFormData },
-      aiWarnings: aiResult.warnings || [],
-      aiErrors: aiResult.errors || []
+      aiWarnings: aiResult.warnings || []
     })
   } catch (e) {
     console.error('[handleSubmit] 校验失败:', e)
+    // 校验失败时也允许强制提交（兼容网络错误等情况）
     emit('confirm-submit', {
       formId: props.formId,
       formCode: props.schema.formCode,
