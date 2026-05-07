@@ -27,6 +27,7 @@
         :sessionTitle="activeSessionTitle"
         @title-update="onTitleUpdate"
         @session-init="onSessionInit"
+        @create-session-from-home="onCreateSessionFromHome"
       />
       </div>
     </template>
@@ -109,7 +110,13 @@ const createLocalSession = (dbSessionId = null) => {
 }
 
 // ── 新建按钮 ──────────────────────────────────────────────
-const onNewSession = () => createLocalSession()
+const onNewSession = () => {
+  // 点击新建会话不创建新会话，只跳转到首页
+  activeSessionId.value = ''
+  activeDbSessionId.value = ''
+  saveActiveSessionId()
+  sidebarOpen.value = false
+}
 
 // ── 切换会话 ──────────────────────────────────────────────
 const onSwitchSession = (id) => {
@@ -130,11 +137,18 @@ const deleteSession = async (id) => {
   localStorage.removeItem(`chat_session_${id}`)
   saveSessions()
   if (activeSessionId.value === id) {
-    activeSessionId.value = sessions.value.length ? sessions.value[0].id : ''
-    const first = sessions.value.find(s => s.id === activeSessionId.value)
-    activeDbSessionId.value = first?.dbSessionId || ''
-    if (!activeSessionId.value) createLocalSession()
-    else saveActiveSessionId()  // 保存切换后的激活会话
+    if (sessions.value.length > 0) {
+      // 还有其他会话，切换到第一个
+      activeSessionId.value = sessions.value[0].id
+      const first = sessions.value.find(s => s.id === activeSessionId.value)
+      activeDbSessionId.value = first?.dbSessionId || ''
+      saveActiveSessionId()
+    } else {
+      // 删除了最后一个会话，跳转回首页
+      activeSessionId.value = ''
+      activeDbSessionId.value = ''
+      saveActiveSessionId()
+    }
   }
 }
 
@@ -142,6 +156,17 @@ const deleteSession = async (id) => {
 const onTitleUpdate = (id, title) => {
   const s = sessions.value.find(s => s.id === id)
   if (s) { s.title = title; s.updatedAt = Date.now(); saveSessions() }
+}
+
+// ── ChatAssistant 在首页发消息时，需要先创建本地会话 ──────
+const onCreateSessionFromHome = async (initialText) => {
+  const newSession = createLocalSession()
+  // 等待一下让 props 传递更新
+  await new Promise(resolve => setTimeout(resolve, 50))
+  // 告诉 ChatAssistant 可以继续发消息了
+  if (chatRef.value && chatRef.value.sendMessageAfterSessionCreated) {
+    chatRef.value.sendMessageAfterSessionCreated(initialText, newSession.id)
+  }
 }
 
 // ── ChatAssistant 首次发消息后回调：回填 dbSessionId ──────
@@ -235,25 +260,27 @@ const initDbSessions = async () => {
         activeSessionId.value = saved.id
         activeDbSessionId.value = saved.dbSessionId || ''
       } else {
-        // 保存的会话已不存在，fallback 到最近会话
+        // 保存的会话已不存在，fallback 到首页
         const sorted = [...sessions.value].sort((a, b) => b.updatedAt - a.updatedAt)
         if (sorted.length > 0) {
           activeSessionId.value = sorted[0].id
           activeDbSessionId.value = sorted[0].dbSessionId || ''
         } else {
-          // 只有在完全没有会话时才创建新会话
-          createLocalSession()
+          // 没有会话，直接在首页
+          activeSessionId.value = ''
+          activeDbSessionId.value = ''
         }
       }
     } else {
-      // 没有保存的激活会话，按原有逻辑激活最近会话
+      // 没有保存的激活会话，有会话就激活最近的，没有就直接在首页
       const sorted = [...sessions.value].sort((a, b) => b.updatedAt - a.updatedAt)
       if (sorted.length > 0) {
         activeSessionId.value = sorted[0].id
         activeDbSessionId.value = sorted[0].dbSessionId || ''
       } else {
-        // 只有在完全没有会话时才创建新会话
-        createLocalSession()
+        // 没有会话，直接在首页
+        activeSessionId.value = ''
+        activeDbSessionId.value = ''
       }
     }
   } finally {

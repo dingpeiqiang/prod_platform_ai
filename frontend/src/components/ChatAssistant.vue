@@ -434,10 +434,17 @@ watch([currentFormId, currentFormSchema], () => {
   saveFormState()
 }, { deep: true })
 
-watch(() => props.sessionId, async () => {
+watch(() => props.sessionId, async (newSessionId) => {
   messages.value = []
   currentFormId.value = ''
   currentFormSchema.value = null
+  
+  // 如果是首页（sessionId为空），重置状态但不创建会话
+  if (!newSessionId) {
+    currentDbSessionId.value = ''
+    loadFormState()
+    return
+  }
   
   // 切换会话时，先从 prop 更新 currentDbSessionId
   if (props.dbSessionId) {
@@ -793,6 +800,26 @@ const sendMessage = async () => {
   if (!text || isStreaming.value) return
 
   resetInput()
+
+  // 如果在首页，先创建新会话
+  if (!props.sessionId) {
+    // 告诉 App.vue 创建新会话，App.vue 会回调回来
+    emit('create-session-from-home', text)
+    return
+  }
+
+  // 正常发消息
+  await doSendMessage(text)
+}
+
+// App.vue 创建完会话后，通过这个方法继续发消息
+const sendMessageAfterSessionCreated = async (text, sessionId) => {
+  // 等待一下让 watch 完成初始化
+  await new Promise(resolve => setTimeout(resolve, 50))
+  await doSendMessage(text)
+}
+
+const doSendMessage = async (text) => {
   messages.value.push({ id: genId(), role: 'user', content: text, done: true })
 
   // ── 首次发消息：确保数据库会话已创建 ──────────────────
@@ -1377,6 +1404,15 @@ const handleConfigPreview = (config) => {
 }
 
 onMounted(async () => {
+  // 如果是首页（sessionId为空），不创建会话
+  if (!props.sessionId) {
+    currentDbSessionId.value = ''
+    loadFormState()
+    scrollToBottom()
+    nextTick(() => inputEl.value?.focus())
+    return
+  }
+
   // App.vue 已通过 prop 传入 dbSessionId（精确匹配会话）
   if (props.dbSessionId) {
     currentDbSessionId.value = props.dbSessionId
@@ -1770,7 +1806,7 @@ const requestValidation = (validationText) => {
 }
 
 // 暴露给父组件
-defineExpose({ requestValidation })
+defineExpose({ requestValidation, sendMessageAfterSessionCreated })
 </script>
 
 <style scoped>
