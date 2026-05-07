@@ -25,7 +25,7 @@
             </div>
           </div>
           <h2 class="welcome-title">有什么可以帮你的？</h2>
-          <p class="welcome-subtitle">AI 驱动的智能表单助手，帮你快速填写各类表单</p>
+          <p class="welcome-subtitle">产商品研发助手，帮你快速填写各类表单</p>
           <div class="welcome-suggestions">
             <button
               v-for="s in suggestions"

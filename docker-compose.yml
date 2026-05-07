@@ -1,0 +1,67 @@
+# ============================================================
+# AI驱动动态表单 - 容器编排
+# ============================================================
+# 生产部署：docker-compose up -d
+# 开发模式：  docker-compose --profile dev up
+# 停止：     docker-compose down
+# 查看日志： docker-compose logs -f [service]
+# ============================================================
+
+services:
+  # -------------------- 后端服务 --------------------
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: ai-form-backend
+    restart: unless-stopped
+    ports:
+      - "6173:6173"
+    volumes:
+      # 挂载本地配置文件（开发时可热重载配置）
+      - ./config:/app/config:ro
+      # 挂载数据库文件（持久化数据）
+      - backend-data:/app/backend
+    environment:
+      - DEBUG=false
+      - PYTHONUNBUFFERED=1
+      # LLM 配置（通过 .env 或环境变量覆盖）
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4}
+      - DATABASE_URL=sqlite:///./backend/form.db
+    networks:
+      - ai-form-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6173/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # -------------------- 前端服务 (仅生产) --------------------
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost:6173
+    container_name: ai-form-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - ai-form-network
+    profiles:
+      - production  # 仅在 docker-compose --profile production up 时自动启动
+
+networks:
+  ai-form-network:
+    driver: bridge
+
+volumes:
+  backend-data:
+    driver: local

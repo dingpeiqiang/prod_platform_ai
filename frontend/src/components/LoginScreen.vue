@@ -15,7 +15,7 @@
             <path d="M2 12l10 5 10-5"/>
           </svg>
         </div>
-        <h1 class="logo-title">AI 助手</h1>
+        <h1 class="logo-title">产商品研发助手</h1>
         <p class="logo-subtitle">智能表单填写系统</p>
       </div>
 

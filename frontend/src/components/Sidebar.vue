@@ -6,7 +6,7 @@
           <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
         </svg>
       </div>
-      <span class="logo-text">AI 助手</span>
+      <span class="logo-text">产商品研发助手</span>
     </div>
 
     <button class="new-chat-btn" @click="$emit('new-session')">
