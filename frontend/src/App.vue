@@ -19,14 +19,15 @@
 
       <div class="main-area">
         <ChatAssistant
-          ref="chatRef"
-          :sessionId="activeSessionId"
-          :dbSessionId="activeDbSessionId"
-          :userId="userStore.username"
-          :sessionTitle="activeSessionTitle"
-          @title-update="onTitleUpdate"
-          @session-init="onSessionInit"
-        />
+        v-if="!isInitializing"
+        ref="chatRef"
+        :sessionId="activeSessionId"
+        :dbSessionId="activeDbSessionId"
+        :userId="userStore.username"
+        :sessionTitle="activeSessionTitle"
+        @title-update="onTitleUpdate"
+        @session-init="onSessionInit"
+      />
       </div>
     </template>
   </div>
@@ -51,6 +52,7 @@ const ACTIVE_SESSION_KEY = 'chat_active_session'
 const sessions = ref([])
 const activeSessionId = ref('')
 const sidebarOpen = ref(false)
+const isInitializing = ref(true)  // 初始化状态标志
 
 // 当前数据库会话 ID（与 activeSessionId 对应）
 const activeDbSessionId = ref('')
@@ -177,60 +179,74 @@ const handleLogout = () => {
 
 // ── 初始化：加载本地会话 + 同步 DB 会话 ────────────────────
 const initDbSessions = async () => {
-  // 0. 恢复之前激活的会话 ID
-  const savedActiveId = loadActiveSessionId()
+  isInitializing.value = true  // 开始初始化
+  
+  try {
+    // 0. 恢复之前激活的会话 ID
+    const savedActiveId = loadActiveSessionId()
 
-  // 1. 加载本地会话
-  loadSessions()
+    // 1. 加载本地会话
+    loadSessions()
 
-  // 2. 查询 DB 中该用户的会话列表
-  const dbSessions = await apiGetSessions(userStore.username)
+    // 2. 查询 DB 中该用户的会话列表
+    const dbSessions = await apiGetSessions(userStore.username)
 
-  // 3. 为本地会话匹配 dbSessionId（按 dbSessionId 精确匹配 + 时间戳兜底）
-  for (const s of sessions.value) {
-    if (s.dbSessionId) {
-      // 已有映射，检查 DB 中是否还存在（可能被删了）
-      const stillExists = dbSessions.some(d => d.session_id === s.dbSessionId)
-      if (!stillExists) s.dbSessionId = null
-      continue
+    // 3. 为本地会话匹配 dbSessionId（按 dbSessionId 精确匹配 + 时间戳兜底）
+    for (const s of sessions.value) {
+      if (s.dbSessionId) {
+        // 已有映射，检查 DB 中是否还存在（可能被删了）
+        const stillExists = dbSessions.some(d => d.session_id === s.dbSessionId)
+        if (!stillExists) s.dbSessionId = null
+        continue
+      }
+      // 无 dbSessionId → 用时间戳匹配（误差 5s 内视为同一会话）
+      const matched = dbSessions.find(d =>
+        Math.abs(new Date(d.created_at).getTime() - s.createdAt) < 5000
+      )
+      if (matched) s.dbSessionId = matched.session_id
     }
-    // 无 dbSessionId → 用时间戳匹配（误差 5s 内视为同一会话）
-    const matched = dbSessions.find(d =>
-      Math.abs(new Date(d.created_at).getTime() - s.createdAt) < 5000
-    )
-    if (matched) s.dbSessionId = matched.session_id
-  }
 
-  // 4. 找出 DB 中有但本地没有的会话（跨设备/跨浏览器场景），追加到本地
-  for (const d of dbSessions) {
-    const alreadyLocal = sessions.value.some(s => s.dbSessionId === d.session_id)
-    if (!alreadyLocal) {
-      const createdAt = new Date(d.created_at).getTime()
-      sessions.value.push({
-        id: genId(),                            // 生成本地 ID（避免与旧的冲突）
-        title: d.title || '新对话',
-        createdAt,
-        updatedAt: new Date(d.updated_at || d.created_at).getTime(),
-        dbSessionId: d.session_id
-      })
+    // 4. 找出 DB 中有但本地没有的会话（跨设备/跨浏览器场景），追加到本地
+    for (const d of dbSessions) {
+      const alreadyLocal = sessions.value.some(s => s.dbSessionId === d.session_id)
+      if (!alreadyLocal) {
+        const createdAt = new Date(d.created_at).getTime()
+        sessions.value.push({
+          id: genId(),                            // 生成本地 ID（避免与旧的冲突）
+          title: d.title || '新对话',
+          createdAt,
+          updatedAt: new Date(d.updated_at || d.created_at).getTime(),
+          dbSessionId: d.session_id
+        })
+      }
     }
-  }
 
-  saveSessions()
+    saveSessions()
 
-  // 5. 激活会话：优先使用刷新前激活的那个
-  if (savedActiveId) {
-    const saved = sessions.value.find(s => s.id === savedActiveId)
-    if (saved?.dbSessionId && dbSessions.some(d => d.session_id === saved.dbSessionId)) {
-      // 之前激活的会话仍然有效，恢复它
-      activeSessionId.value = saved.id
-      activeDbSessionId.value = saved.dbSessionId
-    } else if (saved && sessions.value.some(s => s.id === saved.id)) {
-      // 会话存在但 dbSessionId 无效，仍恢复（ChatAssistant 会重新创建 DB 会话）
-      activeSessionId.value = saved.id
-      activeDbSessionId.value = saved.dbSessionId || ''
+    // 5. 激活会话：优先使用刷新前激活的那个
+    if (savedActiveId) {
+      const saved = sessions.value.find(s => s.id === savedActiveId)
+      if (saved?.dbSessionId && dbSessions.some(d => d.session_id === saved.dbSessionId)) {
+        // 之前激活的会话仍然有效，恢复它
+        activeSessionId.value = saved.id
+        activeDbSessionId.value = saved.dbSessionId
+      } else if (saved && sessions.value.some(s => s.id === saved.id)) {
+        // 会话存在但 dbSessionId 无效，仍恢复（ChatAssistant 会重新创建 DB 会话）
+        activeSessionId.value = saved.id
+        activeDbSessionId.value = saved.dbSessionId || ''
+      } else {
+        // 保存的会话已不存在，fallback 到最近会话
+        const sorted = [...sessions.value].sort((a, b) => b.updatedAt - a.updatedAt)
+        if (sorted.length > 0) {
+          activeSessionId.value = sorted[0].id
+          activeDbSessionId.value = sorted[0].dbSessionId || ''
+        } else {
+          // 只有在完全没有会话时才创建新会话
+          createLocalSession()
+        }
+      }
     } else {
-      // 保存的会话已不存在，fallback 到最近会话
+      // 没有保存的激活会话，按原有逻辑激活最近会话
       const sorted = [...sessions.value].sort((a, b) => b.updatedAt - a.updatedAt)
       if (sorted.length > 0) {
         activeSessionId.value = sorted[0].id
@@ -240,16 +256,8 @@ const initDbSessions = async () => {
         createLocalSession()
       }
     }
-  } else {
-    // 没有保存的激活会话，按原有逻辑激活最近会话
-    const sorted = [...sessions.value].sort((a, b) => b.updatedAt - a.updatedAt)
-    if (sorted.length > 0) {
-      activeSessionId.value = sorted[0].id
-      activeDbSessionId.value = sorted[0].dbSessionId || ''
-    } else {
-      // 只有在完全没有会话时才创建新会话
-      createLocalSession()
-    }
+  } finally {
+    isInitializing.value = false  // 初始化完成
   }
 }
 
