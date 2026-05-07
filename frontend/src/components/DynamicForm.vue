@@ -506,8 +506,6 @@ const doSubmit = async () => {
     submitting.value = false
   }
 }
-
-}
 </script>
 
 <style scoped>
