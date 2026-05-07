@@ -232,22 +232,24 @@ const initDbSessions = async () => {
     } else {
       // 保存的会话已不存在，fallback 到最近会话
       const sorted = [...sessions.value].sort((a, b) => b.updatedAt - a.updatedAt)
-      if (sorted.length === 0) {
+      if (sorted.length > 0) {
+        activeSessionId.value = sorted[0].id
+        activeDbSessionId.value = sorted[0].dbSessionId || ''
+      } else {
+        // 只有在完全没有会话时才创建新会话
         createLocalSession()
-        return
       }
-      activeSessionId.value = sorted[0].id
-      activeDbSessionId.value = sorted[0].dbSessionId || ''
     }
   } else {
     // 没有保存的激活会话，按原有逻辑激活最近会话
     const sorted = [...sessions.value].sort((a, b) => b.updatedAt - a.updatedAt)
-    if (sorted.length === 0) {
+    if (sorted.length > 0) {
+      activeSessionId.value = sorted[0].id
+      activeDbSessionId.value = sorted[0].dbSessionId || ''
+    } else {
+      // 只有在完全没有会话时才创建新会话
       createLocalSession()
-      return
     }
-    activeSessionId.value = sorted[0].id
-    activeDbSessionId.value = sorted[0].dbSessionId || ''
   }
 }
 

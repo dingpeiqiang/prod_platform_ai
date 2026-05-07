@@ -438,15 +438,28 @@ watch(() => props.sessionId, async () => {
   messages.value = []
   currentFormId.value = ''
   currentFormSchema.value = null
-  // 有 DB 会话 → 从数据库加载；无 DB 会话 → 降级到 localStorage
+  
+  // 只有在没有 DB 会话时才创建新的（避免重复创建）
   if (!currentDbSessionId.value) {
     const result = await apiCreateSession(props.userId || null, '新对话')
-    if (result.session_id) currentDbSessionId.value = result.session_id
+    if (result.session_id) {
+      currentDbSessionId.value = result.session_id
+      // 通知 App.vue 写入本地会话的 dbSessionId
+      emit('session-init', { localId: props.sessionId, dbSessionId: result.session_id })
+    }
   }
+  
+  // 只有在有有效数据库会话ID时才加载消息
   if (currentDbSessionId.value) {
-    const dbMsgs = await apiLoadMessages(currentDbSessionId.value)
-    messages.value = dbMsgs
+    try {
+      const dbMsgs = await apiLoadMessages(currentDbSessionId.value)
+      messages.value = dbMsgs
+    } catch (e) {
+      console.warn('[ChatAssistant] 加载消息失败:', e)
+      messages.value = []
+    }
   }
+  
   loadFormState()
 })
 
@@ -1371,9 +1384,16 @@ onMounted(async () => {
       emit('session-init', { localId: props.sessionId, dbSessionId: result.session_id })
     }
   }
+  
+  // 只有在有有效数据库会话ID时才加载消息
   if (currentDbSessionId.value) {
-    const dbMsgs = await apiLoadMessages(currentDbSessionId.value)
-    messages.value = dbMsgs
+    try {
+      const dbMsgs = await apiLoadMessages(currentDbSessionId.value)
+      messages.value = dbMsgs
+    } catch (e) {
+      console.warn('[ChatAssistant] 加载消息失败:', e)
+      messages.value = []
+    }
   }
 
   loadFormState()
@@ -1384,11 +1404,22 @@ onMounted(async () => {
 // 监听 dbSessionId 变化（App.vue 切换会话时更新）
 watch(() => props.dbSessionId, async (newId) => {
   if (!newId) return
+  
+  // 只有当新的dbSessionId与当前不同时才处理
+  if (currentDbSessionId.value === newId) return
+  
   currentDbSessionId.value = newId
   messages.value = []
   loadFormState()
-  const dbMsgs = await apiLoadMessages(newId)
-  messages.value = dbMsgs
+  
+  try {
+    const dbMsgs = await apiLoadMessages(newId)
+    messages.value = dbMsgs
+  } catch (e) {
+    console.warn('[ChatAssistant] 加载消息失败:', e)
+    messages.value = []
+  }
+  
   scrollToBottom()
   nextTick(() => inputEl.value?.focus())
 })
