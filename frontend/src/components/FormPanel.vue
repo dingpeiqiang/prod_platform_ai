@@ -67,6 +67,7 @@
           @submit="handleFormSubmit"
           @cancel="handleFormCancel"
           @field-change="handleFieldChange"
+          @ai-validation="(data) => emit('ai-validation', data)"
         />
       </div>
     </div>
@@ -101,7 +102,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['submit', 'cancel', 'field-change'])
+const emit = defineEmits(['submit', 'cancel', 'field-change', 'ai-validation'])
 
 // 面板可见性
 const visible = ref(true)

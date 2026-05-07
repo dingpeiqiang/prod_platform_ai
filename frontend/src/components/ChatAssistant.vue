@@ -223,6 +223,7 @@
       @submit="handleFormSubmit"
       @cancel="handleFormCancel"
       @field-change="handleFormFieldChange"
+      @ai-validation="handleAiValidation"
     />
   </div>
 </template>
@@ -1490,6 +1491,34 @@ const updateFormFields = async (intentData) => {
       reasoning: [],
       formId: currentFormId.value,
       formSchema: currentFormSchema.value
+    }).catch(() => {})
+  }
+}
+
+// AI 校验结果 - 显示到会话窗口
+const handleAiValidation = ({ type, messages }) => {
+  if (!messages || messages.length === 0) return
+  
+  const icon = type === 'warning' ? '⚠️' : '❌'
+  const title = type === 'warning' ? 'AI 校验警告' : 'AI 校验错误'
+  
+  const lines = messages.map(m => `• **${m.fieldName}**: ${m.reason}`)
+  const content = `${icon} ${title}：\n${lines.join('\n')}`
+  
+  const aiMsg = {
+    id: genId(), role: 'assistant',
+    content: content,
+    done: true, type: 'chat'
+  }
+  messages.value.push(aiMsg)
+  scrollToBottom()
+  
+  // 保存到数据库
+  if (currentDbSessionId.value) {
+    saveMessage(currentDbSessionId.value, {
+      role: 'assistant',
+      content: content,
+      reasoning: []
     }).catch(() => {})
   }
 }

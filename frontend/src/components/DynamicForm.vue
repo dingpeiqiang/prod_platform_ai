@@ -223,7 +223,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['field-change', 'form-submit', 'submit', 'cancel'])
+const emit = defineEmits(['field-change', 'form-submit', 'submit', 'cancel', 'ai-validation'])
 
 const localFormData = reactive({})
 const submitting = ref(false)
@@ -423,6 +423,8 @@ const handleSubmit = async () => {
 
     // 显示 AI 校验 warnings（不阻塞提交）
     if (aiResult.warnings && aiResult.warnings.length > 0) {
+      // 发送到会话窗口显示
+      emit('ai-validation', { type: 'warning', messages: aiResult.warnings })
       aiResult.warnings.forEach(w => {
         ElMessage.warning({
           message: `⚠️ ${w.fieldName}: ${w.reason}`,
@@ -433,6 +435,8 @@ const handleSubmit = async () => {
 
     // 显示 AI 校验 errors（阻塞提交，但允许用户选择忽略）
     if (aiResult.errors && aiResult.errors.length > 0) {
+      // 发送到会话窗口显示
+      emit('ai-validation', { type: 'error', messages: aiResult.errors })
       submitting.value = false
       
       // 弹窗展示所有错误，用户可选择"仍然提交"或"返回修改"
