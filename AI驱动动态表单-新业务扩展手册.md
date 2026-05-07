@@ -37,7 +37,7 @@
 | Field Extraction | `app/skills/field_extraction.py` | 字段提取（正则匹配） |
 | **RecommendationEngine** | `app/services/recommendation_engine.py` | **智能推荐引擎（独立组件）** |
 | Intent Recognition | `app/core/config_loader.py` | 意图识别Prompt管理 |
-| Form Schemas | `backend/config/schemas/` | 表单Schema定义 |
+| Form Schemas | `backend/config/ontologies/` | 表单Schema定义（实体-字段结构） |
 
 ---
 
@@ -50,12 +50,17 @@
 | `leave` | 请假申请 | leave_type, leave_days | reason, start_date, end_date | 员工请假 |
 | `expense` | 报销申请 | amount, category | description, receipt_ids | 费用报销 |
 | `sales_order` | 销售订单 | customer_name, order_amount | customer_phone, order_date, remark | 销售订单 |
+| `tariff_filing_publicity` | 资费备案公示 | bossid, tariff_code | （根据Schema定义） | 资费备案公示 |
+| `external_api_demo` | 外部API演示 | - | - | API调用演示 |
+| `validation_demo` | 校验演示 | - | - | 表单校验演示 |
 
 ### 字段类型定义
 
 | 类型 | 格式 | 示例 |
 |------|------|------|
 | `string` | 任意文本 | "张三" |
+| `input` | 文本输入 | "张三" |
+| `textarea` | 多行文本 | "详细描述..." |
 | `integer` | 整数 | 3 |
 | `number` | 数值 | 123.45 |
 | `boolean` | true/false | true |
@@ -75,103 +80,104 @@
 
 ### 📝 Step 1: 创建表单Schema文件
 
-**文件路径**: `backend/config/schemas/contract.json`
+**文件路径**: `backend/config/ontologies/contract.json`
 
 ```json
 {
   "formCode": "contract",
   "formName": "合同审批",
   "description": "公司合同审批流程",
-  "category": "法务管理",
-  "fields": [
+  "entities": [
     {
-      "name": "contract_name",
-      "type": "string",
-      "label": "合同名称",
-      "required": true,
-      "description": "合同的完整名称"
-    },
-    {
-      "name": "contract_type",
-      "type": "enum",
-      "label": "合同类型",
-      "required": true,
-      "enumValues": ["采购合同", "销售合同", "租赁合同", "服务合同", "劳动合同"],
-      "description": "合同的类型分类"
-    },
-    {
-      "name": "contract_amount",
-      "type": "number",
-      "label": "合同金额",
-      "required": true,
-      "min": 0,
-      "description": "合同的总金额（元）"
-    },
-    {
-      "name": "party_a",
-      "type": "string",
-      "label": "甲方",
-      "required": true,
-      "description": "合同甲方公司/个人名称"
-    },
-    {
-      "name": "party_b",
-      "type": "string",
-      "label": "乙方",
-      "required": true,
-      "description": "合同乙方公司/个人名称"
-    },
-    {
-      "name": "sign_date",
-      "type": "date",
-      "label": "签订日期",
-      "required": true,
-      "description": "合同签订的日期"
-    },
-    {
-      "name": "start_date",
-      "type": "date",
-      "label": "生效日期",
-      "required": true,
-      "description": "合同开始生效的日期"
-    },
-    {
-      "name": "end_date",
-      "type": "date",
-      "label": "到期日期",
-      "required": false,
-      "description": "合同到期的日期"
-    },
-    {
-      "name": "remark",
-      "type": "string",
-      "label": "备注",
-      "required": false,
-      "description": "其他需要说明的事项"
+      "entityCode": "contract_info",
+      "entityName": "合同信息",
+      "fields": [
+        {
+          "fieldCode": "contract_name",
+          "fieldName": "合同名称",
+          "fieldType": "input",
+          "required": true,
+          "ruleDescription": "合同的完整名称，至少2个字符"
+        },
+        {
+          "fieldCode": "contract_type",
+          "fieldName": "合同类型",
+          "fieldType": "enum",
+          "required": true,
+          "enumValues": ["采购合同", "销售合同", "租赁合同", "服务合同", "劳动合同"],
+          "ruleDescription": "合同的类型分类"
+        },
+        {
+          "fieldCode": "contract_amount",
+          "fieldName": "合同金额",
+          "fieldType": "number",
+          "required": true,
+          "ruleDescription": "正数，最小0.01，最大9999999.99"
+        },
+        {
+          "fieldCode": "party_a",
+          "fieldName": "甲方",
+          "fieldType": "input",
+          "required": true,
+          "ruleDescription": "合同甲方公司/个人名称"
+        },
+        {
+          "fieldCode": "party_b",
+          "fieldName": "乙方",
+          "fieldType": "input",
+          "required": true,
+          "ruleDescription": "合同乙方公司/个人名称"
+        },
+        {
+          "fieldCode": "sign_date",
+          "fieldName": "签订日期",
+          "fieldType": "date",
+          "required": true,
+          "ruleDescription": "合同签订的日期，格式YYYY-MM-DD"
+        },
+        {
+          "fieldCode": "start_date",
+          "fieldName": "生效日期",
+          "fieldType": "date",
+          "required": true,
+          "ruleDescription": "合同开始生效的日期"
+        },
+        {
+          "fieldCode": "end_date",
+          "fieldName": "到期日期",
+          "fieldType": "date",
+          "required": false,
+          "ruleDescription": "合同到期的日期"
+        },
+        {
+          "fieldCode": "remark",
+          "fieldName": "备注",
+          "fieldType": "textarea",
+          "required": false,
+          "ruleDescription": "其他需要说明的事项"
+        }
+      ]
     }
   ]
 }
 ```
 
-### 📝 Step 2: 更新表单类型映射
+### 📝 Step 2: 更新场景映射
 
-**文件路径**: `backend/config/scene_mapping.json`
+**文件路径**: `backend/config/scenes/scene_mapping.json`
 
-在 `formMappings` 中添加新的映射：
+在 `sceneMappings` 数组中添加新的映射：
 
 ```json
 {
-  "formMappings": {
-    "contract": {
-      "formName": "合同审批",
+  "sceneMappings": [
+    {
+      "sceneCode": "contract",
       "keywords": ["合同", "审批", "盖章", "签约", "协议"],
-      "patterns": [
-        "我要(签|创建)(一个)?合同",
-        "申请(一份)?合同",
-        "(需要)?合同审批"
-      ]
+      "priority": 10
     }
-  }
+  ],
+  "defaultScene": "generic"
 }
 ```
 
@@ -186,6 +192,7 @@
 - 请假、休假、请假申请（leave）
 - 报销、发票、费用（expense）
 - 订单、销售、采购（sales_order）
+- 资费、备案（tariff_filing_publicity）
 - 合同、审批、盖章、签约（contract）  ← 新增
 ```
 
@@ -193,7 +200,23 @@
 
 在Prompt模板的 `ontologies` 部分添加新表单信息。
 
-### 📝 Step 4: 重启服务
+### 📝 Step 4: 添加静态推荐值（可选）
+
+**文件路径**: `backend/config/templates/recommendations.json`
+
+```json
+{
+  "recommendations": {
+    "contract": {
+      "contract_type": ["采购合同", "销售合同", "服务合同"],
+      "party_a": ["本公司名称"],
+      "remark": ["常规合同", "加急处理", "需法务审核"]
+    }
+  }
+}
+```
+
+### 📝 Step 5: 重启服务
 
 ```bash
 # 停止当前服务（Ctrl+C）
@@ -202,7 +225,7 @@
 start-all.bat
 ```
 
-### 📝 Step 5: 测试验证
+### 📝 Step 6: 测试验证
 
 #### 方式1：使用API测试端点
 
@@ -443,27 +466,45 @@ curl -X POST http://localhost:6173/api/v1/chat/stream \
 
 ```json
 {
-  "formCode": "string",      // 表单唯一编码（英文）
-  "formName": "string",      // 表单显示名称（中文）
-  "description": "string",   // 表单描述
-  "category": "string",      // 分类标签
-  "fields": [...]            // 字段定义数组
+  "formCode": "string",           // 表单唯一编码（英文小写）
+  "formName": "string",           // 表单显示名称（中文）
+  "description": "string",        // 表单描述
+  "entities": [                   // 实体数组
+    {
+      "entityCode": "string",     // 实体编码
+      "entityName": "string",     // 实体名称
+      "fields": [                 // 字段数组
+        {
+          "fieldCode": "string",  // 字段编码（英文小写）
+          "fieldName": "string",  // 字段显示名称（中文）
+          "fieldType": "string",  // 字段类型
+          "required": true/false, // 是否必填
+          "min": 0,              // 最小值（number类型）
+          "max": 1000000,        // 最大值（number类型）
+          "enumValues": [...],    // 枚举值（enum类型）
+          "pattern": "正则表达式", // 自定义验证正则
+          "ruleDescription": "字符串" // 验证规则描述（用于LLM校验）
+        }
+      ]
+    }
+  ]
 }
 ```
 
-### 字段定义详解
+### 场景映射文件结构
+
+**文件路径**: `backend/config/scenes/scene_mapping.json`
 
 ```json
 {
-  "name": "field_name",      // 字段名（英文，驼峰命名）
-  "type": "string|number|boolean|date|email|phone|enum",
-  "label": "字段标签",        // 显示名称
-  "required": true/false,   // 是否必填
-  "min": 0,                 // 最小值（number类型）
-  "max": 1000000,           // 最大值（number类型）
-  "enumValues": [...],       // 枚举值（enum类型）
-  "pattern": "正则表达式",    // 自定义验证正则
-  "description": "字段说明"  // 字段描述
+  "sceneMappings": [
+    {
+      "sceneCode": "string",      // 场景编码（与formCode一致）
+      "keywords": ["keyword1", "keyword2"], // 触发关键词
+      "priority": 10              // 优先级（数字越小优先级越高）
+    }
+  ],
+  "defaultScene": "generic"       // 默认场景
 }
 ```
 
@@ -499,7 +540,7 @@ curl -X POST http://localhost:6173/api/v1/chat/stream \
 
 ### Prompt设计原则
 
-1. **清晰的角色定义**: AI作为智能助手
+1. **清晰的角色定义**: AI作为智能表单助手
 2. **完整的上下文**: 提供所有可用表单信息
 3. **明确的输出格式**: JSON结构化输出
 4. **合理的约束**: 置信度阈值、正则表达式
@@ -542,6 +583,7 @@ curl -X POST http://localhost:6173/api/v1/chat/stream \
 ### 功能测试清单
 
 - [ ] Schema文件语法正确（JSON格式）
+- [ ] 场景映射配置正确
 - [ ] 表单可以被正确识别
 - [ ] 字段提取完整
 - [ ] 流式输出正常
@@ -602,7 +644,7 @@ curl -X POST http://localhost:6173/api/v1/history/getRecommendValues \
 - 字段名称不够直观
 
 **解决方法**：
-1. 在Schema的 `description` 中添加详细说明
+1. 在Schema的 `ruleDescription` 中添加详细说明
 2. 提供更多示例让LLM学习
 3. 降低该字段的 `required` 要求
 
@@ -614,7 +656,7 @@ curl -X POST http://localhost:6173/api/v1/history/getRecommendValues \
 - LLM判断错误
 
 **解决方法**：
-1. 检查 `scene_keywords` 配置
+1. 检查 `scene_mapping.json` 配置
 2. 调整LLM的Prompt模板
 3. 提高form识别的优先级
 
@@ -661,7 +703,7 @@ taskkill /F /PID <进程ID>
 
 ### 高级功能
 
-1. **自定义验证规则**: 在Schema中添加 `validator` 字段
+1. **自定义验证规则**: 在Schema中添加 `ruleDescription` 字段（已支持）
 2. **级联字段**: 字段之间建立依赖关系
 3. **智能推荐**: 基于相似用户的历史数据推荐 ⭐ 已实现（RecommendationEngine）
 4. **多语言支持**: 扩展国际化能力
@@ -675,7 +717,7 @@ taskkill /F /PID <进程ID>
 
 ---
 
-**手册版本**: v2.2
-**新增功能**: RecommendationEngine 独立推荐组件
-**最后更新**: 2026-04-22
+**手册版本**: v2.3  
+**新增功能**: 推荐引擎配置说明、场景映射格式更新、Schema结构规范  
+**最后更新**: 2026-05-07  
 **维护团队**: AI Team

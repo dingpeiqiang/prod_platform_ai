@@ -6,7 +6,7 @@
 
 **项目名称**：work-ai（AI驱动动态表单底层框架）  
 **版本**：v2.0  
-**核心能力**：智能表单识别、字段提取、表单验证
+**核心能力**：智能表单识别、字段提取、表单验证、历史数据推荐
 
 ## 核心原则
 
@@ -62,6 +62,10 @@
 |------|------|----------|----------|
 | `leave` | 请假申请 | leave_type, leave_days | reason, start_date, end_date |
 | `expense` | 报销申请 | amount, category | description, receipt_ids |
+| `sales_order` | 销售订单 | customer_name, order_amount | customer_phone, order_date, remark |
+| `tariff_filing_publicity` | 资费备案公示 | bossid, tariff_code | （根据Schema定义） |
+| `external_api_demo` | 外部API演示 | - | - |
+| `validation_demo` | 校验演示 | - | - |
 | `survey` | 调查问卷 | (根据问卷定义) | (根据问卷定义) |
 | `general` | 通用表单 | (无) | (无) |
 
@@ -70,6 +74,8 @@
 | 类型 | 格式 | 示例 |
 |------|------|------|
 | `string` | 任意文本 | "张三" |
+| `input` | 文本输入 | "张三" |
+| `textarea` | 多行文本 | "详细描述..." |
 | `integer` | 整数 | 3 |
 | `number` | 数值 | 123.45 |
 | `boolean` | true/false | true |
@@ -78,6 +84,35 @@
 | `email` | 邮箱格式 | user@example.com |
 | `phone` | 手机号 | 13812345678 |
 | `enum` | 枚举值 | ["年假", "病假", "事假"] |
+
+### Schema 文件结构
+
+表单 Schema 采用**实体-字段**层级结构：
+
+```json
+{
+  "formCode": "string",           // 表单唯一编码（英文小写）
+  "formName": "string",           // 表单显示名称（中文）
+  "description": "string",        // 表单描述
+  "entities": [                   // 实体数组
+    {
+      "entityCode": "string",     // 实体编码
+      "entityName": "string",     // 实体名称
+      "fields": [                 // 字段数组
+        {
+          "fieldCode": "string",  // 字段编码
+          "fieldName": "string",  // 字段显示名称
+          "fieldType": "string",  // 字段类型
+          "required": true/false, // 是否必填
+          "ruleDescription": "string"  // 验证规则描述
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Schema 文件位置**：`backend/config/ontologies/{form_code}.json`
 
 ---
 
@@ -155,11 +190,18 @@ PUBLIC (公开) → AUTHENTICATED (登录) → ADMIN (管理员) → RESTRICTED 
 |----------|------|----------|
 | `xss_script` | XSS 脚本注入 | 高 |
 | `xss_onerror` | HTML 事件注入 | 中 |
+| `xss_javascript` | JavaScript 协议注入 | 高 |
 | `sql_union` | SQL UNION 注入 | 高 |
 | `sql_drop` | SQL DROP 注入 | 严重 |
+| `sql_exec` | SQL 执行命令 | 严重 |
 | `cmd_shell` | Shell 命令注入 | 严重 |
+| `cmd_pipe` | 管道命令注入 | 高 |
+| `cmd_semicolon` | 分号命令注入 | 高 |
 | `prompt_ignore` | Prompt 忽略攻击 | 中 |
+| `prompt_override` | Prompt 覆盖攻击 | 中 |
 | `prompt_jailbreak` | Prompt 越狱攻击 | 高 |
+| `malicious_url` | 恶意协议 URL | 中 |
+| `path_traversal` | 路径遍历攻击 | 高 |
 
 ### 敏感信息检测
 
@@ -175,20 +217,57 @@ PUBLIC (公开) → AUTHENTICATED (登录) → ADMIN (管理员) → RESTRICTED 
 ### 表单识别流程
 
 ```
-用户输入 → 输入护栏 → 上下文注入 → LLM 识别 → 输出校验 → 返回结果
+用户输入 → 输入护栏 → 场景识别 → LLM 意图识别 → 输出校验 → 返回结果
 ```
 
 ### 字段提取流程
 
 ```
-用户输入 + 表单类型 → 输入护栏 → Schema 加载 → LLM 提取 → 输出校验 → 返回结果
+用户输入 + 表单类型 → 输入护栏 → Schema 加载 → LLM 提取 → 推荐引擎 → 输出校验 → 返回结果
 ```
 
 ### 表单验证流程
 
 ```
-表单数据 + Schema → 字段校验 → 类型检查 → 范围检查 → 返回验证结果
+表单数据 + Schema → 规则引擎校验 → LLM 智能校验 → 返回验证结果
 ```
+
+### 历史推荐流程
+
+```
+表单编码 + 用户输入 → 推荐引擎 → 多策略融合 → 返回推荐列表
+```
+
+---
+
+## 推荐引擎配置
+
+推荐引擎支持多策略融合，配置位于 `backend/config/app_config.json`：
+
+```json
+{
+  "recommendation": {
+    "recommendationLimit": 5,
+    "historyQueryLimit": 1000,
+    "countScoreWeight": 0.4,
+    "userScoreWeight": 0.4,
+    "timeScoreWeight": 0.2,
+    "timeDecayDays": 30,
+    "countScorePerUnit": 0.1,
+    "userScorePerUnit": 0.2,
+    "recentDaysThreshold": 90
+  }
+}
+```
+
+### 推荐策略
+
+| 策略 | 权重 | 说明 |
+|------|------|------|
+| `frequency` | 40% | 基于历史填写频率 |
+| `user_personalized` | 40% | 同一用户的历史记录优先 |
+| `time_decay` | 20% | 近期数据权重更高 |
+| `static` | 兜底 | 无历史数据时使用配置文件默认值 |
 
 ---
 
@@ -212,6 +291,7 @@ PUBLIC (公开) → AUTHENTICATED (登录) → ADMIN (管理员) → RESTRICTED 
 | 错误率 | 按错误码统计 |
 | 工具调用 | 调用次数, 成功率 |
 | 护栏拦截 | 拦截次数, 类型分布 |
+| 推荐引擎 | 推荐命中率, 处理耗时 |
 
 ---
 
@@ -219,9 +299,11 @@ PUBLIC (公开) → AUTHENTICATED (登录) → ADMIN (管理员) → RESTRICTED 
 
 ### 新增表单类型
 
-1. 在 `config/schemas/` 添加 `{form_code}.json`
-2. 在 `AGENTS.md` 更新表单类型表
-3. 更新 `EnhancedToolRegistry` 添加相关工具
+1. 在 `backend/config/ontologies/` 添加 `{form_code}.json`
+2. 在 `backend/config/scenes/scene_mapping.json` 添加场景映射
+3. 更新 `backend/config/prompts/intent_recognition.txt` 添加关键词
+4. 在 `AGENTS.md` 更新表单类型表
+5. （可选）在 `backend/config/templates/recommendations.json` 添加静态推荐值
 
 ### 新增工具
 
@@ -240,9 +322,10 @@ PUBLIC (公开) → AUTHENTICATED (登录) → ADMIN (管理员) → RESTRICTED 
 
 1. 在 `backend/app/intent/handlers/` 创建 `{name}_handler.py`
 2. 继承 `BaseIntentHandler`，实现 `intent_type` 和 `handle()` 方法
-3. 在 `backend/app/intent/__init__.py` 注册 Handler
-4. 前端在 `intent-panels/` 创建对应的 Panel 组件
-5. 在 `intent-registry.js` 注册事件处理器（不改主逻辑）
+3. 遵循 Phase 模板结构（见下文）
+4. 在 `backend/app/intent/__init__.py` 注册 Handler
+5. 前端在 `intent-panels/` 创建对应的 Panel 组件
+6. 在 `intent-registry.js` 注册事件处理器（不改主逻辑）
 
 ---
 
@@ -262,13 +345,13 @@ async def handle(self, ctx: IntentContext) -> AsyncGenerator[str, None]:
     """
 
     # ═══ Phase 1：识别 ══════════════════════════════════════════
-    yield thinking("📋 识别到任务「XXX」", result={...})
+    yield thinking("📋 Phase 1：识别到任务「XXX」", result={...})
 
     # ═══ Phase 2：执行 ══════════════════════════════════════════
     # ── Step 1：子步骤1 ────────────────────────────────────────
     try:
         result = await do_something()
-        yield thinking(f"✅ 执行完成", result={...})
+        yield thinking("📝 Step 1/2：执行完成", result={...})
     except Exception as e:
         logger.warning(f"执行失败: {e}")
         yield thinking(f"❌ 执行失败: {e}", result={...})
@@ -329,8 +412,6 @@ async def handle(self, ctx: IntentContext) -> AsyncGenerator[str, None]:
 
 ---
 
-**最后更新**：2026-05-07
-**维护者**：AI Team
-**版本**：v2.0 Phase 2（处理步骤规范统一）  
+**最后更新**：2026-05-07  
 **维护者**：AI Team  
-**版本**：v2.0 Phase 1
+**版本**：v2.0 Phase 2（处理步骤规范统一）
