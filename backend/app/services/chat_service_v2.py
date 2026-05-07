@@ -200,12 +200,17 @@ class ChatServiceV2:
             ).scalar()
             sort_order = (max_sort_order or 0) + 1
 
+            # 验证 content 不为空
+            if not content or not str(content).strip():
+                logger.warning("[ChatServiceV2] 消息内容为空，拒绝保存 session_id=%s", session_id)
+                return None
+            
             message_id = str(uuid.uuid4())
             message = ChatMessageV2(
                 message_id=message_id,
                 session_id=session_id,
                 role=role,
-                content=content,
+                content=str(content).strip(),
                 content_type=content_type,
                 parent_id=parent_id,
                 sort_order=sort_order,
@@ -477,6 +482,12 @@ class ChatServiceV2:
             base_time = datetime.now()
 
             for msg_data in messages:
+                # 跳过 content 为空的消息
+                content = msg_data.get('content', '')
+                if not content or not str(content).strip():
+                    logger.warning("[ChatServiceV2] 跳过空内容消息 session_id=%s", session_id)
+                    continue
+                
                 message_id = str(uuid.uuid4())
                 message_ids.append(message_id)
                 
@@ -487,7 +498,7 @@ class ChatServiceV2:
                     message_id=message_id,
                     session_id=session_id,
                     role=msg_data.get('role', 'user'),
-                    content=msg_data.get('content', ''),
+                    content=str(content).strip(),
                     content_type=msg_data.get('content_type', 'text'),
                     parent_id=msg_data.get('parent_id'),
                     sort_order=current_sort_order,
