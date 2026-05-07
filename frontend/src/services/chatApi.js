@@ -12,12 +12,18 @@ const BASE = '/api/v2/chat'
  */
 export async function saveThinkingStep(sessionId, content, parentId) {
   try {
+    // 跳过空内容的 thinking 步骤
+    if (!content || !String(content).trim()) {
+      console.warn('[chatApi] saveThinkingStep: 跳过空内容')
+      return
+    }
+    
     await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         role: 'system',
-        content: content,
+        content: String(content).trim(),
         content_type: 'thinking',
         parent_id: parentId,
         metadata: { step_type: 'thinking' }
