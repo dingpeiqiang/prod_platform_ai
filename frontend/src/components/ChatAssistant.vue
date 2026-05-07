@@ -359,17 +359,18 @@ const inputEl    = ref(null)
 
 const inputText    = ref('')
 const inputFocused = ref(false)
-const isStreaming  = ref(false)
-const messages     = ref([])
+const isStreaming = ref(false)
+const messages = ref([])
 
 // 表单状态（提升到父组件管理）
-const currentFormId     = ref('')
+const currentFormId = ref('')
 const currentFormSchema = ref(null)
 
 let abortCtrl = null
 
 // ── 数据库会话状态 ─────────────────────────────────────────
 const currentDbSessionId = ref('')   // 当前会话对应的数据库 session_id
+let isCreatingFromHome = false       // 是否正在从首页创建新会话
 
 // 确保有数据库会话（首次发消息时调用）
 const ensureDbSession = async (localSessionId) => {
@@ -435,24 +436,34 @@ watch([currentFormId, currentFormSchema], () => {
 }, { deep: true })
 
 watch(() => props.sessionId, async (newSessionId) => {
+  // 如果正在从首页创建会话，不清空消息，重置标志位
+  if (isCreatingFromHome) {
+    isCreatingFromHome = false
+    // 只更新状态，不清空消息
+    currentDbSessionId.value = props.dbSessionId || ''
+    loadFormState()
+    return
+  }
+
+  // 正常的会话切换，清空状态
   messages.value = []
   currentFormId.value = ''
   currentFormSchema.value = null
-  
+
   // 如果是首页（sessionId为空），重置状态但不创建会话
   if (!newSessionId) {
     currentDbSessionId.value = ''
     loadFormState()
     return
   }
-  
+
   // 切换会话时，先从 prop 更新 currentDbSessionId
   if (props.dbSessionId) {
     currentDbSessionId.value = props.dbSessionId
   } else {
     currentDbSessionId.value = ''
   }
-  
+
   // 只有在没有 DB 会话时才创建新的（避免重复创建）
   if (!currentDbSessionId.value) {
     const result = await apiCreateSession(props.userId || null, '新对话')
@@ -462,7 +473,7 @@ watch(() => props.sessionId, async (newSessionId) => {
       emit('session-init', { localId: props.sessionId, dbSessionId: result.session_id })
     }
   }
-  
+
   // 只有在有有效数据库会话ID时才加载消息
   if (currentDbSessionId.value) {
     try {
@@ -473,7 +484,7 @@ watch(() => props.sessionId, async (newSessionId) => {
       messages.value = []
     }
   }
-  
+
   loadFormState()
 })
 
@@ -803,6 +814,10 @@ const sendMessage = async () => {
 
   // 如果在首页，先创建新会话
   if (!props.sessionId) {
+    // 设置标志：正在从首页创建会话
+    isCreatingFromHome = true
+    // 先在前端显示用户消息，让用户能看到
+    messages.value.push({ id: genId(), role: 'user', content: text, done: true })
     // 告诉 App.vue 创建新会话，App.vue 会回调回来
     emit('create-session-from-home', text)
     return
@@ -816,11 +831,16 @@ const sendMessage = async () => {
 const sendMessageAfterSessionCreated = async (text, sessionId) => {
   // 等待一下让 watch 完成初始化
   await new Promise(resolve => setTimeout(resolve, 50))
-  await doSendMessage(text)
+  // 完成后续流程（创建 db 会话、保存消息、发送给 AI）
+  await doSendMessageAfterHome(text)
 }
 
 const doSendMessage = async (text) => {
   messages.value.push({ id: genId(), role: 'user', content: text, done: true })
+  await doSendMessageAfterHome(text)
+}
+
+const doSendMessageAfterHome = async (text) => {
 
   // ── 首次发消息：确保数据库会话已创建 ──────────────────
   await ensureDbSession(props.sessionId)
