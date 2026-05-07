@@ -226,19 +226,6 @@
       @ai-validation="handleAiValidation"
       @confirm-submit="handleConfirmSubmit"
     />
-
-    <!-- 确认提交卡片（浮动在聊天区域） -->
-    <div v-if="confirmSubmitData" class="confirm-submit-overlay">
-      <ConfirmSubmitPanel
-        :data="confirmSubmitData.data"
-        :formName="confirmSubmitData.formName"
-        :fields="confirmSubmitData.fields || []"
-        :aiWarnings="confirmSubmitData.aiWarnings"
-        :aiErrors="confirmSubmitData.aiErrors"
-        @confirm="handleDoConfirmSubmit"
-        @cancel="handleCancelSubmit"
-      />
-    </div>
   </div>
 </template>
 
@@ -248,7 +235,6 @@ import { marked } from 'marked'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import FormPanel from './FormPanel.vue'
 import ConfigCard from './ConfigCard.vue'
-import ConfirmSubmitPanel from './ConfirmSubmitPanel.vue'
 // 意图面板组件
 import DeleteResultPanel from './intent-panels/DeleteResultPanel.vue'
 import HistoryPanel from './intent-panels/HistoryPanel.vue'
@@ -895,6 +881,23 @@ const sendMessageAfterSessionCreated = async (text, sessionId) => {
 
 const doSendMessage = async (text) => {
   messages.value.push({ id: genId(), role: 'user', content: text, done: true })
+
+  // 检查是否有待确认的表单提交
+  if (pendingConfirmForm && checkUserConfirmation(text)) {
+    // 用户确认提交
+    await handleDoConfirmSubmit()
+    return
+  }
+
+  // 检查是否取消
+  if (pendingConfirmForm) {
+    const msg = text.toLowerCase()
+    if (msg.includes('取消') || msg.includes('不') || msg.includes('算了')) {
+      handleCancelSubmit()
+      return
+    }
+  }
+
   await doSendMessageAfterHome(text)
 }
 
@@ -1538,24 +1541,72 @@ const handleAiValidation = ({ type, messages }) => {
   }
 }
 
-// 确认提交数据
-const confirmSubmitData = ref(null)
+// 待确认提交的数据（用于聊天中确认）
+let pendingConfirmForm = null
 
 // 处理确认提交请求（从表单面板传来）
 const handleConfirmSubmit = (data) => {
-  confirmSubmitData.value = {
-    ...data,
-    fields: currentFormSchema.value?.fields || []
+  const schema = currentFormSchema.value
+
+  // 生成提交内容预览
+  let previewLines = []
+  if (schema && schema.fields) {
+    for (const field of schema.fields) {
+      const val = data.data[field.fieldCode]
+      if (val !== undefined && val !== null && val !== '') {
+        const displayVal = Array.isArray(val) ? val.join(', ') : String(val)
+        previewLines.push(`- **${field.fieldName}**: ${displayVal}`)
+      }
+    }
+  }
+
+  // 保存待确认数据
+  pendingConfirmForm = {
+    formId: data.formId,
+    formCode: data.formCode,
+    formName: data.formName,
+    data: data.data,
+    schema: schema
+  }
+
+  // 在聊天窗口显示确认消息
+  const confirmMsg = {
+    id: genId(), role: 'assistant',
+    content: `📋 **${data.formName}确认**\n提交内容：\n${previewLines.join('\n')}\n\n请确认是否提交？（回复"确认"或"好的"执行提交）`,
+    done: true, type: 'chat'
+  }
+  messages.value.push(confirmMsg)
+  scrollToBottom()
+
+  // 保存到数据库
+  if (currentDbSessionId.value) {
+    saveMessage(currentDbSessionId.value, {
+      role: 'assistant',
+      content: confirmMsg.content,
+      reasoning: []
+    }).catch(() => {})
   }
 }
 
-// 执行真正的表单提交
-const handleDoConfirmSubmit = async (formData) => {
-  confirmSubmitData.value = null  // 关闭确认卡片
+// 检查用户消息是否确认提交
+const checkUserConfirmation = (userMessage) => {
+  if (!pendingConfirmForm) return false
+  const msg = userMessage.toLowerCase()
+  // 确认关键词
+  return msg.includes('确认') || msg.includes('好的') || msg.includes('是') || msg.includes('提交')
+}
 
-  const formId = currentFormId.value
-  const submittedFormId = formId
-  const submittedFormSchema = currentFormSchema.value
+// 执行真正的表单提交
+const handleDoConfirmSubmit = async () => {
+  if (!pendingConfirmForm) return
+
+  const formData = pendingConfirmForm.data
+  const formId = pendingConfirmForm.formId
+  const formName = pendingConfirmForm.formName
+  const schema = pendingConfirmForm.schema
+
+  // 清除待确认状态
+  pendingConfirmForm = null
 
   // 清空表单状态
   currentFormId.value = ''
@@ -1578,7 +1629,6 @@ const handleDoConfirmSubmit = async (formData) => {
     if (result.success) {
       // 生成提交摘要
       let summaryLines = []
-      const schema = submittedFormSchema
       if (schema && schema.fields) {
         for (const field of schema.fields) {
           const val = formData[field.fieldCode]
@@ -1592,7 +1642,7 @@ const handleDoConfirmSubmit = async (formData) => {
 
       const submitMsg = {
         id: genId(), role: 'assistant',
-        content: `✅ 表单已成功提交！${summary}\n\n还有什么我可以帮你的吗？`,
+        content: `✅ ${formName || '表单'}已成功提交！${summary}\n\n还有什么我可以帮你的吗？`,
         done: true, type: 'chat'
       }
       messages.value.push(submitMsg)
@@ -1604,8 +1654,8 @@ const handleDoConfirmSubmit = async (formData) => {
           role: 'assistant',
           content: submitMsg.content,
           reasoning: [],
-          formId: submittedFormId,
-          formSchema: submittedFormSchema,
+          formId: formId,
+          formSchema: schema,
           formSubmitted: true
         }).catch(() => {})
       }
@@ -1636,7 +1686,16 @@ const handleDoConfirmSubmit = async (formData) => {
 
 // 取消提交
 const handleCancelSubmit = () => {
-  confirmSubmitData.value = null
+  if (pendingConfirmForm) {
+    pendingConfirmForm = null
+    const cancelMsg = {
+      id: genId(), role: 'assistant',
+      content: '好的，已取消提交。表单数据保留在右侧，可以继续修改。',
+      done: true, type: 'chat'
+    }
+    messages.value.push(cancelMsg)
+    scrollToBottom()
+  }
 }
 
 // 表单提交
@@ -2290,15 +2349,6 @@ defineExpose({ requestValidation, sendMessageAfterSessionCreated })
 </script>
 
 <style scoped>
-/* ── 确认提交卡片悬浮层 ── */
-.confirm-submit-overlay {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 1000;
-}
-
 /* ── 整体布局 ── */
 .chat-layout {
   display: flex;
