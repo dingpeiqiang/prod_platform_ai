@@ -980,6 +980,15 @@ const doSendMessageAfterHome = async (text) => {
       msg.done = true
       msg.showReasoning = false
 
+      // 根据 intentType 后处理（通过注册器分发）
+      const postProcessor = getPostProcessor(intentType)
+      if (postProcessor) {
+        await postProcessor(msg, intentData)
+      } else {
+        // 默认：普通聊天
+        msg.content = msg.streamText
+      }
+
       // ── 保存 AI 回复到数据库 ─────────────────────────────
       if (currentDbSessionId.value) {
         // 直接传递完整的消息对象，让 saveMessage 正确保存完整的 reasoning 结构和表单状态
@@ -992,15 +1001,6 @@ const doSendMessageAfterHome = async (text) => {
           formId: currentFormId.value,
           formSchema: currentFormSchema.value
         })
-      }
-
-      // 根据 intentType 后处理（通过注册器分发）
-      const postProcessor = getPostProcessor(intentType)
-      if (postProcessor) {
-        await postProcessor(msg, intentData)
-      } else {
-        // 默认：普通聊天
-        msg.content = msg.streamText
       }
     }
 
