@@ -63,6 +63,7 @@
         <DynamicForm
           :schema="formSchema"
           :formId="formId"
+          :formSubmitted="formSubmitted"
           @submit="handleFormSubmit"
           @cancel="handleFormCancel"
           @field-change="handleFieldChange"
@@ -93,6 +94,10 @@ const props = defineProps({
   formId: {
     type: String,
     default: ''
+  },
+  formSubmitted: {
+    type: Boolean,
+    default: false
   }
 })
 

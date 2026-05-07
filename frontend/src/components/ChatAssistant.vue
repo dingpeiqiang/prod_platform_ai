@@ -214,6 +214,7 @@
     <FormPanel
       :formSchema="currentFormSchema"
       :formId="currentFormId"
+      :formSubmitted="currentFormSubmitted"
       @submit="handleFormSubmit"
       @cancel="handleFormCancel"
       @field-change="handleFormFieldChange"
@@ -365,6 +366,7 @@ const messages = ref([])
 // 表单状态（提升到父组件管理）
 const currentFormId = ref('')
 const currentFormSchema = ref(null)
+const currentFormSubmitted = ref(false)
 
 let abortCtrl = null
 
@@ -482,17 +484,20 @@ watch(() => props.sessionId, async (newSessionId) => {
       // 从加载的消息中恢复最后一个表单状态
       let lastFormId = ''
       let lastFormSchema = null
+      let lastFormSubmitted = false
       for (let i = dbMsgs.length - 1; i >= 0; i--) {
         const msg = dbMsgs[i]
         if (msg.formId !== undefined && msg.formSchema !== null) {
           lastFormId = msg.formId
           lastFormSchema = msg.formSchema
+          lastFormSubmitted = msg.formSubmitted || false
           break
         }
       }
       if (lastFormId || lastFormSchema) {
         currentFormId.value = lastFormId
         currentFormSchema.value = lastFormSchema
+        currentFormSubmitted.value = lastFormSubmitted
       } else {
         // 没有找到表单状态，从 localStorage 加载
         loadFormState()
@@ -1397,8 +1402,13 @@ const handleFormSubmit = async (formData, formId) => {
     ? `提交内容：\n${summaryLines.join('\n')}`
     : ''
 
+  // 保存表单状态快照（用于历史会话显示已提交的表单）
+  const submittedFormId = currentFormId.value
+  const submittedFormSchema = currentFormSchema.value
+
   currentFormId.value = ''
   currentFormSchema.value = null
+  currentFormSubmitted.value = false
   ElMessage({ message: '表单提交成功！', type: 'success', plain: true })
 
   const submitMsg = {
@@ -1409,14 +1419,15 @@ const handleFormSubmit = async (formData, formId) => {
   messages.value.push(submitMsg)
   scrollToBottom()
 
-  // 保存消息到数据库
+  // 保存消息到数据库，包含表单已提交状态
   if (currentDbSessionId.value) {
     await saveMessage(currentDbSessionId.value, {
       role: 'assistant',
       content: submitMsg.content,
       reasoning: [],
-      formId: currentFormId.value,
-      formSchema: currentFormSchema.value
+      formId: submittedFormId,
+      formSchema: submittedFormSchema,
+      formSubmitted: true  // 标记表单已提交
     }).catch(() => {})
   }
 }
@@ -1609,17 +1620,20 @@ onMounted(async () => {
       // 从加载的消息中恢复最后一个表单状态
       let lastFormId = ''
       let lastFormSchema = null
+      let lastFormSubmitted = false
       for (let i = dbMsgs.length - 1; i >= 0; i--) {
         const msg = dbMsgs[i]
         if (msg.formId !== undefined && msg.formSchema !== null) {
           lastFormId = msg.formId
           lastFormSchema = msg.formSchema
+          lastFormSubmitted = msg.formSubmitted || false
           break
         }
       }
       if (lastFormId || lastFormSchema) {
         currentFormId.value = lastFormId
         currentFormSchema.value = lastFormSchema
+        currentFormSubmitted.value = lastFormSubmitted
       } else {
         // 没有找到表单状态，从 localStorage 加载
         loadFormState()

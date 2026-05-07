@@ -58,6 +58,10 @@ export async function saveMessage(sessionId, msg) {
     if (msg.formSchema !== undefined) {
       metadata.formSchema = JSON.stringify(msg.formSchema)
     }
+    // 保存表单提交状态（用于标记已提交的表单）
+    if (msg.formSubmitted !== undefined) {
+      metadata.formSubmitted = msg.formSubmitted
+    }
     
     // 保存意图相关字段
     if (msg.intentType || msg.intent_type) metadata.intent_type = msg.intentType || msg.intent_type
@@ -125,6 +129,10 @@ export async function saveMessages(sessionId, messages) {
         }
         if (msg.formSchema !== undefined) {
           metadata.formSchema = JSON.stringify(msg.formSchema)
+        }
+        // 保存表单提交状态（用于标记已提交的表单）
+        if (msg.formSubmitted !== undefined) {
+          metadata.formSubmitted = msg.formSubmitted
         }
         if (msg.intentType || msg.intent_type) metadata.intent_type = msg.intentType || msg.intent_type
         if (msg.formCode || msg.form_code)     metadata.form_code   = msg.formCode   || msg.form_code
@@ -209,6 +217,7 @@ export async function loadMessages(sessionId) {
       // 恢复表单状态
       let formId = undefined
       let formSchema = null
+      let formSubmitted = false
       if (meta.formId !== undefined) {
         formId = meta.formId
       }
@@ -218,6 +227,10 @@ export async function loadMessages(sessionId) {
         } catch (e) {
           formSchema = null
         }
+      }
+      // 恢复表单提交状态
+      if (meta.formSubmitted !== undefined) {
+        formSubmitted = meta.formSubmitted === 'true' || meta.formSubmitted === true
       }
       
       return {
@@ -244,7 +257,8 @@ export async function loadMessages(sessionId) {
         metadata:        meta,
         // 恢复表单状态
         formId:          formId,
-        formSchema:      formSchema
+        formSchema:      formSchema,
+        formSubmitted:   formSubmitted
       }
     })
   } catch (e) {

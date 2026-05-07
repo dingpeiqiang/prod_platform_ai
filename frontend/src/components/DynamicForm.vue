@@ -171,13 +171,27 @@
       </el-form-item>
       
       <el-form-item>
-        <el-button @click="handleCancel">
+        <el-button @click="handleCancel" :disabled="formSubmitted">
           取消
         </el-button>
-        <el-button type="primary" @click="handleSubmit" :loading="submitting">
-          提交表单
+        <el-button 
+          type="primary" 
+          @click="handleSubmit" 
+          :loading="submitting"
+          :disabled="formSubmitted"
+        >
+          {{ formSubmitted ? '已提交' : '提交表单' }}
         </el-button>
       </el-form-item>
+      
+      <!-- 表单已提交提示 -->
+      <div v-if="formSubmitted" class="submitted-hint">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <polyline points="16 10 10 16 8 14"/>
+        </svg>
+        <span>此表单已提交，不可再次提交</span>
+      </div>
     </el-form>
   </div>
 </template>
@@ -202,6 +216,10 @@ const props = defineProps({
   version: {
     type: Number,
     default: 1
+  },
+  formSubmitted: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -565,5 +583,19 @@ const handleSubmit = async () => {
   border-radius: 8px;
   background: #a855f7;
   color: white;
+}
+
+/* 已提交提示 */
+.submitted-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 8px;
+  color: #065f46;
+  font-size: 13px;
+  margin-top: 8px;
 }
 </style>
