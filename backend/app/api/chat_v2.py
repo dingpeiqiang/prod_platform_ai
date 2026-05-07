@@ -6,7 +6,7 @@ chat_v2 API - 通用聊天架构端点
 import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, Query, Body
+from fastapi import APIRouter, Depends, Query, Body, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -14,7 +14,7 @@ from app.core.database import get_db
 from app.services.chat_service_v2 import ChatServiceV2
 
 logger = logging.getLogger("chat_v2_api")
-router = APIRouter(prefix="/api/v2/chat", tags=["chat_v2"])
+router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 
 
 # ── Request / Response Models ──────────────────────────────────
@@ -192,7 +192,7 @@ async def create_message(
     if result:
         logger.info("[chat_v2] 保存消息 session=%s role=%s", session_id, request.role)
         return {"success": True, **result}
-    return {"success": False, "error": "保存失败"}
+    raise HTTPException(500, detail="保存失败")
 
 
 @router.get("/sessions/{session_id}/messages/{message_id}", response_model=MessageResponse)

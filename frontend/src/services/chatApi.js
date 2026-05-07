@@ -4,7 +4,7 @@
  * 所有调用通过 /api/v2/chat/* 端点。
  */
 
-const BASE = '/api/v2/chat'
+const BASE = '/api/v1/chat'
 
 /**
  * 创建数据库会话

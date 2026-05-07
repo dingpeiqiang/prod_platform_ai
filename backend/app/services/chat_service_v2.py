@@ -42,7 +42,7 @@ class ChatServiceV2:
                 user_id=user_id,
                 title=title or f"新会话 {datetime.now().strftime('%Y-%m-%d %H:%M')}",
                 context_tags=context_tags,
-                metadata=metadata or {}
+                session_metadata=metadata or {}
             )
             db.add(session)
             db.commit()
@@ -111,7 +111,7 @@ class ChatServiceV2:
             if context_tags is not None:
                 session.context_tags = context_tags
             if metadata is not None:
-                session.metadata = metadata
+                session.session_metadata = metadata
             if status is not None:
                 session.status = status
             db.commit()
@@ -197,7 +197,7 @@ class ChatServiceV2:
                 for key, value in metadata.items():
                     meta = ChatMessageMetadata(
                         message_id=message_id,
-                        key=key,
+                        meta_key=key,
                         value=json.dumps(value) if isinstance(value, (dict, list)) else str(value) if value is not None else None
                     )
                     db.add(meta)
@@ -248,7 +248,7 @@ class ChatServiceV2:
                 for msg in messages:
                     d = cls._message_to_dict(msg, False)
                     d["metadata"] = {
-                        m.key: m.value for m in meta_map.get(msg.message_id, [])
+                        m.meta_key: m.value for m in meta_map.get(msg.message_id, [])
                     }
                     result.append(d)
                 return result
@@ -265,7 +265,7 @@ class ChatServiceV2:
             return None
         try:
             msg = db.query(ChatMessageV2).options(
-                joinedload(ChatMessageV2.metadata)
+                joinedload(ChatMessageV2.msg_metadata)
             ).filter(ChatMessageV2.message_id == message_id).first()
             if not msg:
                 return None
@@ -307,7 +307,7 @@ class ChatServiceV2:
             return []
         try:
             q = db.query(ChatMessageV2).options(
-                joinedload(ChatMessageV2.metadata)
+                joinedload(ChatMessageV2.msg_metadata)
             )
             q = q.filter(ChatMessageV2.content.ilike(f"%{query_text}%"))
             if session_id:
@@ -355,7 +355,7 @@ class ChatServiceV2:
             "user_id":      s.user_id,
             "title":        s.title,
             "context_tags": s.context_tags or [],
-            "metadata":     s.metadata or {},
+            "metadata":     s.session_metadata or {},
             "status":       s.status,
             "created_at":   s.created_at.isoformat() if s.created_at else None,
             "updated_at":   s.updated_at.isoformat() if s.updated_at else None,
@@ -372,8 +372,8 @@ class ChatServiceV2:
             "parent_id":    m.parent_id,
             "created_at":   m.created_at.isoformat() if m.created_at else None,
         }
-        if include_metadata and m.metadata:
-            result["metadata"] = {x.key: x.value for x in m.metadata}
+        if include_metadata and m.msg_metadata:
+            result["metadata"] = {x.meta_key: x.value for x in m.msg_metadata}
         elif include_metadata:
             result["metadata"] = {}
         return result

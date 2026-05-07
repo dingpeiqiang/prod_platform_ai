@@ -408,13 +408,6 @@ const saveMessages = () => {
   } catch {}
 }
 
-const loadMessages = () => {
-  try {
-    const raw = localStorage.getItem(storageKey.value)
-    if (raw) messages.value = JSON.parse(raw)
-  } catch {}
-}
-
 const saveFormState = () => {
   try {
     localStorage.setItem(formStorageKey.value, JSON.stringify({
@@ -446,11 +439,13 @@ watch(() => props.sessionId, async () => {
   currentFormId.value = ''
   currentFormSchema.value = null
   // 有 DB 会话 → 从数据库加载；无 DB 会话 → 降级到 localStorage
+  if (!currentDbSessionId.value) {
+    const result = await apiCreateSession(props.userId || null, '新对话')
+    if (result.session_id) currentDbSessionId.value = result.session_id
+  }
   if (currentDbSessionId.value) {
     const dbMsgs = await apiLoadMessages(currentDbSessionId.value)
     messages.value = dbMsgs
-  } else {
-    loadMessages()
   }
   loadFormState()
 })
@@ -865,7 +860,20 @@ const sendMessage = async () => {
           // 新版 intent 事件（统一格式 v2.0）
           if (data.type === 'intent' && data.intentType) {
             intentType = data.intentType
-            if (data.data) intentData = data.data
+            if (data.data) {
+              intentData = data.data
+              // 把可持久化字段写入 msg.metadata，saveMessage 会自动读取
+              const msg = messages.value[msgIdx]
+              if (msg) {
+                msg.metadata = {
+                  intentType:     data.data.intentType,
+                  formCode:       data.data.formCode,
+                  extractedFields: data.data.extractedFields,
+                  confidence:     data.data.confidence,
+                  model:          data.data.model
+                }
+              }
+            }
           }
           // 旧版 result 事件兼容
           if (data.type === 'result') {
@@ -892,7 +900,8 @@ const sendMessage = async () => {
           content: msg.content || msg.streamText || '',
           reasoning: Array.isArray(msg.reasoning)
             ? msg.reasoning.map(s => s.content || '').join('\n')
-            : (msg.reasoning || '')
+            : (msg.reasoning || ''),
+          metadata: msg.metadata || null
         })
       }
 
@@ -920,7 +929,8 @@ const sendMessage = async () => {
           await saveMessage(currentDbSessionId.value, {
             role: 'assistant',
             content: msg.content,
-            reasoning: msg.reasoning.map(s => s.content || '').join('\n')
+            reasoning: msg.reasoning.map(s => s.content || '').join('\n'),
+          metadata: msg.metadata || null
           }).catch(() => {})
         }
       }
@@ -1353,12 +1363,13 @@ onMounted(async () => {
   }
 
   // ── 有 DB 会话：始终从数据库加载 ─────────────────────────
+  if (!currentDbSessionId.value) {
+    const result = await apiCreateSession(props.userId || null, '新对话')
+    if (result.session_id) currentDbSessionId.value = result.session_id
+  }
   if (currentDbSessionId.value) {
     const dbMsgs = await apiLoadMessages(currentDbSessionId.value)
-    messages.value = dbMsgs   // DB 有多少显示多少；空则显示空会话
-  } else {
-    // ── 无 DB 会话（旧版本地会话降级）：用 localStorage ─────
-    loadMessages()
+    messages.value = dbMsgs
   }
 
   loadFormState()
@@ -1373,11 +1384,7 @@ watch(() => props.dbSessionId, async (newId) => {
   messages.value = []
   loadFormState()
   const dbMsgs = await apiLoadMessages(newId)
-  if (dbMsgs.length > 0) {
-    messages.value = dbMsgs
-  } else {
-    loadMessages()
-  }
+  messages.value = dbMsgs
   scrollToBottom()
   nextTick(() => inputEl.value?.focus())
 })
