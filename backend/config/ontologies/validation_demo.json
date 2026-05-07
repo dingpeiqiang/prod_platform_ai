@@ -71,7 +71,27 @@
           "fieldName": "部门",
           "fieldType": "select",
           "required": true,
-          "options": ["技术部", "产品部", "运营部", "市场部"]
+          "enumConfig": {
+            "type": "static",
+            "options": [
+              {
+                "value": "技术部",
+                "label": "技术部"
+              },
+              {
+                "value": "产品部",
+                "label": "产品部"
+              },
+              {
+                "value": "运营部",
+                "label": "运营部"
+              },
+              {
+                "value": "市场部",
+                "label": "市场部"
+              }
+            ]
+          }
         },
         {
           "fieldCode": "startDate",

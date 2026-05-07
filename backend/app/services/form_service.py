@@ -132,9 +132,6 @@ class FormService:
                 else:
                     field_dict["rules"] = []
 
-                if "options" in field:
-                    field_dict["options"] = field["options"]
-
                 # 复制 enumConfig（外部API枚举或静态枚举配置）
                 if "enumConfig" in field:
                     field_dict["enumConfig"] = field["enumConfig"]
@@ -340,8 +337,9 @@ class FormService:
 
         # ── Layer 3: 静态配置兜底 ──────────────────────────────────────
         if enable_static:
-            # 3a. 本体 options 作为静态推荐
-            options = field_def.get("options", [])
+            # 3a. 本体 enumConfig.options 作为静态推荐
+            enum_config = field_def.get("enumConfig", {})
+            options = enum_config.get("options", []) if isinstance(enum_config, dict) else []
             if options:
                 for opt in options:
                     opt_val = opt.get("value", opt.get("label", ""))

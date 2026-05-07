@@ -353,6 +353,46 @@ registerPostProcessor('form', async (msg, intentData) => {
   }
 })
 
+// ── validate 意图后处理器 ──────────────────────────────
+// 校验流结束后，根据结果决定是否进入提交确认流程
+registerPostProcessor('validate', async (msg) => {
+  // 从 _intentData 中检查校验结果
+  const validationPass = msg._intentData?.validation_pass
+  const validationFail = msg._intentData?.validation_fail
+
+  if (validationFail) {
+    // 校验失败：清除待确认状态
+    console.log('[validate 后处理] 校验失败，清除 pendingConfirmForm')
+    pendingConfirmForm = null
+    // streamText 已包含校验结果，不需要额外处理
+  } else if (validationPass) {
+    // 校验通过：追加确认提示到 streamText（模板渲染优先取 streamText）
+    if (pendingConfirmForm) {
+      const schema = pendingConfirmForm.schema
+      let previewLines = []
+      if (schema && schema.fields) {
+        for (const field of schema.fields) {
+          const val = pendingConfirmForm.data[field.fieldCode]
+          if (val !== undefined && val !== null && val !== '') {
+            const displayVal = Array.isArray(val) ? val.join(', ') : String(val)
+            previewLines.push(`- **${field.fieldName}**: ${displayVal}`)
+          }
+        }
+      }
+
+      const confirmText = `\n\n---\n\n✅ 校验通过！请确认是否提交？（回复"确认"或"好的"执行提交，回复"取消"放弃提交）`
+      msg.streamText = (msg.streamText || '') + confirmText
+    }
+  } else {
+    // 没有明确的校验结果事件（LLM 未返回 validation_pass/fail）
+    // 兜底：如果 pendingConfirmForm 存在，直接显示确认提示
+    if (pendingConfirmForm) {
+      const confirmText = `\n\n---\n\n请确认是否提交当前表单？（回复"确认"或"好的"执行提交）`
+      msg.streamText = (msg.streamText || '') + confirmText
+    }
+  }
+})
+
 const props = defineProps({
   sessionId:    { type: String, required: true },
   dbSessionId:  { type: String, default: '' },   // 数据库会话 ID（来自 App.vue）
@@ -875,12 +915,11 @@ const sendMessageAfterSessionCreated = async (text, sessionId) => {
   // 等待一下让 watch 完成初始化
   await new Promise(resolve => setTimeout(resolve, 50))
   // 完成后续流程（创建 db 会话、保存消息、发送给 AI）
-  await doSendMessageAfterHome(text)
+  // skipUserPush: 用户消息已在 handleInput 中 push 到 UI
+  await doSendMessageAfterHome(text, { skipUserPush: true })
 }
 
 const doSendMessage = async (text) => {
-  messages.value.push({ id: genId(), role: 'user', content: text, done: true })
-
   // 检查是否有待确认的表单提交
   if (pendingConfirmForm && checkUserConfirmation(text)) {
     // 用户确认提交
@@ -900,10 +939,16 @@ const doSendMessage = async (text) => {
   await doSendMessageAfterHome(text)
 }
 
-const doSendMessageAfterHome = async (text) => {
+const doSendMessageAfterHome = async (text, { skipUserPush = false } = {}) => {
 
   // ── 首次发消息：确保数据库会话已创建 ──────────────────
   await ensureDbSession(props.sessionId)
+
+  // ── 显示用户消息到 UI（首页创建会话时已在 handleInput 中 push，跳过） ─────
+  if (!skipUserPush) {
+    messages.value.push({ id: genId(), role: 'user', content: text, done: true })
+    scrollToBottom()
+  }
 
   // ── 保存用户消息到数据库 ─────────────────────────────
   if (currentDbSessionId.value) {
@@ -1544,20 +1589,9 @@ const handleAiValidation = ({ type, messages }) => {
 let pendingConfirmForm = null
 
 // 处理确认提交请求（从表单面板传来）
+// 将表单数据显式构造为聊天消息，通过 SSE 流触发后端 validate 意图
 const handleConfirmSubmit = async (data) => {
   const schema = currentFormSchema.value
-
-  // 生成提交内容预览
-  let previewLines = []
-  if (schema && schema.fields) {
-    for (const field of schema.fields) {
-      const val = data.data[field.fieldCode]
-      if (val !== undefined && val !== null && val !== '') {
-        const displayVal = Array.isArray(val) ? val.join(', ') : String(val)
-        previewLines.push(`- **${field.fieldName}**: ${displayVal}`)
-      }
-    }
-  }
 
   // 保存待确认数据
   pendingConfirmForm = {
@@ -1568,98 +1602,53 @@ const handleConfirmSubmit = async (data) => {
     schema: schema
   }
 
-  // 在聊天窗口显示"正在校验..."消息
-  const checkingMsg = {
-    id: genId(), role: 'assistant',
-    content: `🔄 正在对 ${data.formName} 进行 AI 校验...`,
-    done: true, type: 'chat'
+  // 构造显式包含表单内容的校验消息
+  // 获取字段选项列表（与 DynamicForm.getFieldOptions 逻辑一致）
+  const _getFieldOptions = (field) => {
+    if (field.enumConfig) {
+      if (field.enumConfig.type === 'static' && Array.isArray(field.enumConfig.options)) {
+        return field.enumConfig.options
+      }
+      if (field.enumConfig.type === 'api') {
+        const fallback = field.enumConfig.api?.fallback
+        if (Array.isArray(fallback)) return fallback
+      }
+    }
+    return field.options || []
   }
-  messages.value.push(checkingMsg)
-  scrollToBottom()
 
-  // 调用 LLM 校验 API
-  try {
-    const response = await fetch('/api/v1/validation/llm', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        form_code: data.formCode,
-        data: data.data
-      })
-    })
-    const result = await response.json()
-
-    // 删除"正在校验..."消息
-    messages.value = messages.value.filter(m => m.id !== checkingMsg.id)
-
-    // 有 AI 校验 errors → 显示错误，不显示确认
-    if (result.errors && result.errors.length > 0) {
-      const errorLines = result.errors.map(e => `• **${e.field_name}**: ${e.reason}`)
-      const errorMsg = {
-        id: genId(), role: 'assistant',
-        content: `❌ AI 校验发现以下问题：\n${errorLines.join('\n')}\n\n请修改后重新提交。`,
-        done: true, type: 'chat'
+  // 格式：字段名(字段编码)：值[code] —— 用方括号包裹 code，避免被 LLM 当作值的一部分
+  let fieldLines = []
+  if (schema && schema.fields) {
+    for (const field of schema.fields) {
+      const val = data.data[field.fieldCode]
+      if (val !== undefined && val !== null && val !== '') {
+        // 枚举字段：显示 "显示名[code]"，让 LLM 提取 code 值进行校验
+        let displayVal
+        const options = _getFieldOptions(field)
+        if (options.length > 0) {
+          if (Array.isArray(val)) {
+            displayVal = val.map(v => {
+              const opt = options.find(o => o.value === v)
+              return opt ? `${opt.label}[${v}]` : v
+            }).join(', ')
+          } else {
+            const opt = options.find(o => o.value === val)
+            displayVal = opt ? `${opt.label}[${val}]` : String(val)
+          }
+        } else {
+          displayVal = Array.isArray(val) ? val.join(', ') : String(val)
+        }
+        fieldLines.push(`- ${field.fieldName}(${field.fieldCode})：${displayVal}`)
       }
-      messages.value.push(errorMsg)
-      scrollToBottom()
-      pendingConfirmForm = null  // 清除待确认状态
-
-      // 保存到数据库
-      if (currentDbSessionId.value) {
-        saveMessage(currentDbSessionId.value, {
-          role: 'assistant',
-          content: errorMsg.content,
-          reasoning: []
-        }).catch(() => {})
-      }
-      return
-    }
-
-    // 校验通过（可能有 warnings），显示确认消息
-    let warningsText = ''
-    if (result.warnings && result.warnings.length > 0) {
-      const warningLines = result.warnings.map(w => `• **${w.field_name}**: ${w.reason}`)
-      warningsText = `\n\n⚠️ 提示：\n${warningLines.join('\n')}`
-    }
-
-    const confirmMsg = {
-      id: genId(), role: 'assistant',
-      content: `📋 **${data.formName}确认**\n提交内容：\n${previewLines.join('\n')}${warningsText}\n\n请确认是否提交？（回复"确认"或"好的"执行提交）`,
-      done: true, type: 'chat'
-    }
-    messages.value.push(confirmMsg)
-    scrollToBottom()
-
-    // 保存到数据库
-    if (currentDbSessionId.value) {
-      saveMessage(currentDbSessionId.value, {
-        role: 'assistant',
-        content: confirmMsg.content,
-        reasoning: []
-      }).catch(() => {})
-    }
-
-  } catch (e) {
-    console.error('[handleConfirmSubmit] AI 校验失败:', e)
-    // 校验失败时直接显示确认消息（允许用户强制提交）
-    messages.value = messages.value.filter(m => m.id !== checkingMsg.id)
-
-    const confirmMsg = {
-      id: genId(), role: 'assistant',
-      content: `📋 **${data.formName}确认**\n提交内容：\n${previewLines.join('\n')}\n\n请确认是否提交？（回复"确认"或"好的"执行提交）`,
-      done: true, type: 'chat'
-    }
-    messages.value.push(confirmMsg)
-    scrollToBottom()
-
-    if (currentDbSessionId.value) {
-      saveMessage(currentDbSessionId.value, {
-        role: 'assistant',
-        content: confirmMsg.content,
-        reasoning: []
-      }).catch(() => {})
     }
   }
+  const validationMessage = `请帮我校验【${data.formName}】（${data.formCode}）的填写内容是否符合业务规则：\n${fieldLines.join('\n')}`
+
+  // 走 SSE 流（注意：不能走 doSendMessage，它会检查 pendingConfirmForm 误判为确认/取消）
+  // 注意：doSendMessageAfterHome 内部会处理用户消息的 UI 显示和数据库保存，
+  // 因此这里不需要手动 push 消息和 saveMessage，避免重复保存
+  await doSendMessageAfterHome(validationMessage)
 }
 
 // 检查用户消息是否确认提交

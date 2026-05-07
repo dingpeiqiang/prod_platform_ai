@@ -12,12 +12,27 @@
           "fieldName": "费用类型",
           "fieldType": "select",
           "required": true,
-          "options": [
-            {"value": "差旅费", "label": "差旅费"},
-            {"value": "餐饮费", "label": "餐饮费"},
-            {"value": "交通费", "label": "交通费"},
-            {"value": "办公费", "label": "办公费"}
-          ]
+          "enumConfig": {
+            "type": "static",
+            "options": [
+              {
+                "value": "差旅费",
+                "label": "差旅费"
+              },
+              {
+                "value": "餐饮费",
+                "label": "餐饮费"
+              },
+              {
+                "value": "交通费",
+                "label": "交通费"
+              },
+              {
+                "value": "办公费",
+                "label": "办公费"
+              }
+            ]
+          }
         },
         {
           "fieldCode": "amount",

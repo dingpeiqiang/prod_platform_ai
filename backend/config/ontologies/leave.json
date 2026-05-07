@@ -19,13 +19,31 @@
           "fieldName": "部门",
           "fieldType": "select",
           "required": true,
-          "options": [
-            {"value": "tech", "label": "技术部"},
-            {"value": "sales", "label": "销售部"},
-            {"value": "finance", "label": "财务部"},
-            {"value": "hr", "label": "人事部"},
-            {"value": "marketing", "label": "市场部"}
-          ]
+          "enumConfig": {
+            "type": "static",
+            "options": [
+              {
+                "value": "tech",
+                "label": "技术部"
+              },
+              {
+                "value": "sales",
+                "label": "销售部"
+              },
+              {
+                "value": "finance",
+                "label": "财务部"
+              },
+              {
+                "value": "hr",
+                "label": "人事部"
+              },
+              {
+                "value": "marketing",
+                "label": "市场部"
+              }
+            ]
+          }
         }
       ]
     },
@@ -38,13 +56,31 @@
           "fieldName": "请假类型",
           "fieldType": "select",
           "required": true,
-          "options": [
-            {"value": "annual", "label": "年假"},
-            {"value": "sick", "label": "病假"},
-            {"value": "personal", "label": "事假"},
-            {"value": "marriage", "label": "婚假"},
-            {"value": "maternity", "label": "产假"}
-          ]
+          "enumConfig": {
+            "type": "static",
+            "options": [
+              {
+                "value": "annual",
+                "label": "年假"
+              },
+              {
+                "value": "sick",
+                "label": "病假"
+              },
+              {
+                "value": "personal",
+                "label": "事假"
+              },
+              {
+                "value": "marriage",
+                "label": "婚假"
+              },
+              {
+                "value": "maternity",
+                "label": "产假"
+              }
+            ]
+          }
         },
         {
           "fieldCode": "start_date",

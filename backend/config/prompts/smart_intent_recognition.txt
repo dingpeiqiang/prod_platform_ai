@@ -209,15 +209,29 @@
 ```
 
 ### 如果用户想校验表单数据（intentType: "validate"）：
+当用户消息中**显式包含表单字段内容**（如 "字段名(字段编码)：值[code]" 格式），必须提取 formData 字典：
+- **枚举字段**：值格式为 `显示名[code]`，formData 中应提取 **code**（即方括号内的值），不是显示名
+  - 例如 `请假类型(leave_type)：年假[annual]` → `"leave_type": "annual"`
+  - 例如 `部门(department)：技术部[tech]` → `"department": "tech"`
+- **非枚举字段**：直接提取值
+  - 例如 `请假天数(leave_days)：3` → `"leave_days": "3"`
 ```json
 {{
   "intentType": "validate",
   "detectedFormCode": "leave",
   "formName": "请假申请",
+  "formData": {{
+    "leave_type": "annual",
+    "leave_days": "3",
+    "department": "tech",
+    "reason": "家里有事"
+  }},
   "confidence": 0.95,
-  "reasoning": "用户想检查请假单填写是否符合业务规则"
+  "reasoning": "用户想检查请假单填写是否符合业务规则，已提取所有字段值（枚举字段使用 code 而非显示名）"
 }}
 ```
+如果用户消息中没有显式的字段内容（仅有"帮我检查一下"），formData 可以为空对象 {{}}，handler 会尝试从上下文推断。
+**formData 中所有值统一用字符串类型**，枚举字段必须使用 code（option.value），不要使用显示名。
 
 **完整示例参考**：
 - "请假申请历史数据导入" → formCode: "leave", action: "import"

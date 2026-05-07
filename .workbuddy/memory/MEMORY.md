@@ -6,10 +6,10 @@
 - 前端：Vue3 + Element Plus, 主聊天窗口（管理后台已移除，配置功能内嵌于聊天）
 
 ## 关键架构
-- 意图类型：form / form_update / configure / delete_form / manage_history / chat（7种）
+- 意图类型：form / form_update / configure / delete_form / manage_history / validate / chat（8种）
 - **IntentHandler 注册器架构**（2026-04-29 改造）：
   - `backend/app/intent/` 模块：BaseIntentHandler ABC + IntentContext + IntentHandlerRegistry 单例
-  - 7个独立处理器文件在 `handlers/` 目录下（form/form_update/delete_form/configure/manage_history/tariff_filing/chat）
+  - 8个独立处理器文件在 `handlers/` 目录下（form/form_update/delete_form/configure/manage_history/tariff_filing/validation/chat）
   - 通过 `__init__.py` 显式注册，handlers/__init__.py 需同步导出所有 Handler
   - chat.py 的 if/elif 链已替换为 `registry.dispatch(intent_type, ctx)` 一行分发
   - 前端 `intent-panels/intent-registry.js`：SSE事件处理器 + 意图后处理器注册器
@@ -48,6 +48,17 @@
   - _CONFIG_SYSTEM_PROMPT 已简化：删除 15 种 rule_type 巨表，改为 ruleDescription 说明
 - form_service.py 新增 ruleDescription 字段传递
 - ChatAssistant.vue 表单提交成功后展示提交摘要（字段值列表）
+- 2026-05-07：表单提交流程改造——提交→聊天窗口校验→确认
+  - handleConfirmSubmit 不再直接调 /api/v1/validation/llm，改为通过 SSE 流发送校验消息
+  - 新增 doSendValidationMessage()：构造用户消息 + form_data 发送到 /api/v1/chat/stream
+  - 后端 ChatRequest 新增 form_data 可选字段，chat_stream 在意图分发前注入到 intent_data
+  - 前端注册 validate 意图后处理器：校验通过→追加确认提示；校验失败→清除 pendingConfirmForm
+  - 完整流程：点击提交→聊天窗口显示校验消息→SSE流→ValidationHandler→通过/失败→确认提示→用户回复确认→执行提交
+- 2026-05-07：枚举配置统一迁移
+  - 所有本体枚举字段从 `field.options` 迁移为 `field.enumConfig = {type:"static", options:[...]}`
+  - 后端 5 个文件统一改为读 `enumConfig.options`（form_service/history_ai_service/validation_skill/admin_service）
+  - 前端 getFieldOptions 保留 field.options 回退作为防御性兼容
+  - 表单校验消息中枚举字段显示为 `显示名[code]` 格式（方括号包裹 code）
 
 ## 启动方式
 - **后端**：`start-backend.bat`

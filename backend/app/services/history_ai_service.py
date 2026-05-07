@@ -589,7 +589,8 @@ def _build_ontology_summary(ontology: Dict) -> str:
             fn = f.get("fieldName", "")
             ft = f.get("fieldType", "")
             req = "必填" if f.get("required") else "可选"
-            opts = f.get("options", [])
+            enum_config = f.get("enumConfig", {})
+            opts = enum_config.get("options", []) if isinstance(enum_config, dict) else []
             opt_str = f", 枚举: {opts}" if opts else ""
             lines.append(f"  {fn}({fc}): {ft} [{req}{opt_str}]")
 

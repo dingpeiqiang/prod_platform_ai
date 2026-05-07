@@ -2,6 +2,7 @@
 # 在表单提交时通过 LLM 校验 ruleDescription 规则、字段一致性和业务语义
 
 import logging
+import re
 import time
 from typing import AsyncGenerator, Dict, Any
 
@@ -154,6 +155,13 @@ class ValidationHandler(BaseIntentHandler):
             or "unknown"
         )
         form_data = _raw_form_data if isinstance(_raw_form_data, dict) else {}
+
+        # Fallback：如果 intent_data 中没有 form_data，尝试从用户消息文本中解析
+        if not form_data and ctx.last_user_message:
+            form_data = self._parse_form_data_from_message(ctx.last_user_message)
+            if form_data:
+                logger.info(f"[ValidationHandler] 从消息文本解析到 formData: {list(form_data.keys())}")
+
         logger.info(f"[ValidationHandler] intent_data keys: {list(ctx.intent_data.keys())}, form_code={form_code}, form_data size={len(form_data)}")
 
         # ═══ Phase 1：识别 ══════════════════════════════════════════
@@ -245,9 +253,23 @@ class ValidationHandler(BaseIntentHandler):
                     field_code = ""
                     message = err_msg.replace(bracket_match.group(0), "").strip()
             else:
-                field_name = "未知字段"
-                field_code = ""
-                message = err_msg
+                # 尝试匹配 "字段名（字段编码）：错误描述" 格式（中文括号，如 费用说明（description）：...）
+                paren_match = regex_mod.match(r'^([^（(]+)[（(]([^）)]+)[）)][：:]\s*(.*)', err_msg)
+                if paren_match:
+                    field_name = paren_match.group(1).strip()
+                    field_code = paren_match.group(2).strip()
+                    message = paren_match.group(3).strip()
+                else:
+                    # 尝试匹配 "字段名：" 格式（无括号，AI 简化输出）
+                    field_prefix_match = regex_mod.match(r'^([^\s：:]{1,10})[：:]\s*(.*)', err_msg)
+                    if field_prefix_match:
+                        field_name = field_prefix_match.group(1)
+                        field_code = ""
+                        message = field_prefix_match.group(2).strip()
+                    else:
+                        field_name = "未知字段"
+                        field_code = ""
+                        message = err_msg
 
             message = regex_mod.sub(r'^(值|字段|输入).*?[：:]\s*', '', message)
             if "应从以下选项中选择" in message or "选项" in message:
@@ -314,3 +336,36 @@ class ValidationHandler(BaseIntentHandler):
         yield sse({"type": "stats", "content": ctx.stream_stats.to_dict()})
 
         yield done_event(intent_type="validate", is_form=False)
+
+    @staticmethod
+    def _parse_form_data_from_message(message: str) -> Dict[str, str]:
+        """
+        从用户消息文本中解析表单字段数据。
+        支持两种格式：
+          - 字段名(字段编码)：显示名[code]   （枚举字段，code 在方括号中）
+          - 字段名(字段编码)：值               （普通字段）
+        返回 {字段编码: 值} 字典。
+        """
+        form_data = {}
+
+        # 匹配 "字段编码)：...label[code]" 格式（code 在方括号中）
+        # 例如：请假类型(leave_type)：年假[annual]
+        # 提取 code：匹配 ) 后面直到最后一个 [ 之间的一切 + 最后一个 ] 内的值
+        pattern_brackets = r'([a-zA-Z_][a-zA-Z0-9_]*)\)[：:]\s*.*\[([^\]]+)\]'
+        for match in re.finditer(pattern_brackets, message):
+            field_code = match.group(1).strip()
+            field_value = match.group(2).strip()
+            if field_code and field_value:
+                form_data[field_code] = field_value
+
+        # 匹配 "字段名(字段编码)：值" 格式（无方括号，即非枚举字段）
+        # 例如：请假天数(leave_days)：3
+        pattern_simple = r'([a-zA-Z_][a-zA-Z0-9_]*)\)[：:]\s*([^\n[（(（]+?)(?![^\[]*\[)'
+        for match in re.finditer(pattern_simple, message):
+            field_code = match.group(1).strip()
+            field_value = match.group(2).strip()
+            # 跳过已有字段（已通过方括号格式解析的）
+            if field_code and field_value and field_code not in form_data:
+                form_data[field_code] = field_value
+
+        return form_data

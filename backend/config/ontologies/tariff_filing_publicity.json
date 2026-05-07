@@ -26,57 +26,144 @@
           "fieldName": "备案主体",
           "fieldType": "select",
           "required": true,
-          "options": [
-            {"value": "JT1", "label": "中国电信集团"},
-            {"value": "YD1", "label": "中国移动集团"},
-            {"value": "LT1", "label": "中国联通集团"},
-            {"value": "HE2", "label": "河北移动"},
-            {"value": "BJ2", "label": "北京移动"},
-            {"value": "SH2", "label": "上海移动"},
-            {"value": "GD2", "label": "广东移动"},
-            {"value": "SC2", "label": "四川移动"},
-            {"value": "HE1", "label": "河北电信"},
-            {"value": "BJ1", "label": "北京电信"},
-            {"value": "SD1", "label": "山东电信"},
-            {"value": "GX1", "label": "广西电信"}
-          ]
+          "enumConfig": {
+            "type": "static",
+            "options": [
+              {
+                "value": "JT1",
+                "label": "中国电信集团"
+              },
+              {
+                "value": "YD1",
+                "label": "中国移动集团"
+              },
+              {
+                "value": "LT1",
+                "label": "中国联通集团"
+              },
+              {
+                "value": "HE2",
+                "label": "河北移动"
+              },
+              {
+                "value": "BJ2",
+                "label": "北京移动"
+              },
+              {
+                "value": "SH2",
+                "label": "上海移动"
+              },
+              {
+                "value": "GD2",
+                "label": "广东移动"
+              },
+              {
+                "value": "SC2",
+                "label": "四川移动"
+              },
+              {
+                "value": "HE1",
+                "label": "河北电信"
+              },
+              {
+                "value": "BJ1",
+                "label": "北京电信"
+              },
+              {
+                "value": "SD1",
+                "label": "山东电信"
+              },
+              {
+                "value": "GX1",
+                "label": "广西电信"
+              }
+            ]
+          }
         },
         {
           "fieldCode": "action_type",
           "fieldName": "操作类型",
           "fieldType": "select",
           "required": true,
-          "options": [
-            {"value": "A", "label": "新增"},
-            {"value": "M", "label": "修改"},
-            {"value": "D", "label": "删除"},
-            {"value": "AC", "label": "新增校验"}
-          ]
+          "enumConfig": {
+            "type": "static",
+            "options": [
+              {
+                "value": "A",
+                "label": "新增"
+              },
+              {
+                "value": "M",
+                "label": "修改"
+              },
+              {
+                "value": "D",
+                "label": "删除"
+              },
+              {
+                "value": "AC",
+                "label": "新增校验"
+              }
+            ]
+          }
         },
         {
           "fieldCode": "type1",
           "fieldName": "一级分类",
           "fieldType": "select",
           "required": true,
-          "options": [
-            {"value": "1", "label": "公众"},
-            {"value": "2", "label": "政企"}
-          ]
+          "enumConfig": {
+            "type": "static",
+            "options": [
+              {
+                "value": "1",
+                "label": "公众"
+              },
+              {
+                "value": "2",
+                "label": "政企"
+              }
+            ]
+          }
         },
         {
           "fieldCode": "type2",
           "fieldName": "二级分类",
           "fieldType": "select",
           "required": true,
-          "options": [
-            {"value": "1", "label": "套餐"},
-            {"value": "2", "label": "加装包（不含港澳台和国际）"},
-            {"value": "3", "label": "营销活动"},
-            {"value": "4", "label": "国际及港澳台加装包"},
-            {"value": "5", "label": "国内标准资费"},
-            {"value": "6", "label": "国际及港澳台标准资费"},
-            {"value": "7", "label": "其他"}
-          ]
+          "enumConfig": {
+            "type": "static",
+            "options": [
+              {
+                "value": "1",
+                "label": "套餐"
+              },
+              {
+                "value": "2",
+                "label": "加装包（不含港澳台和国际）"
+              },
+              {
+                "value": "3",
+                "label": "营销活动"
+              },
+              {
+                "value": "4",
+                "label": "国际及港澳台加装包"
+              },
+              {
+                "value": "5",
+                "label": "国内标准资费"
+              },
+              {
+                "value": "6",
+                "label": "国际及港澳台标准资费"
+              },
+              {
+                "value": "7",
+                "label": "其他"
+              }
+            ]
+          }
         },
         {
           "fieldCode": "name",
@@ -168,11 +255,23 @@
           "fieldName": "资费属性",
           "fieldType": "select",
           "required": true,
-          "options": [
-            {"value": "1", "label": "全国"},
-            {"value": "2", "label": "省内"},
-            {"value": "3", "label": "本地"}
-          ]
+          "enumConfig": {
+            "type": "static",
+            "options": [
+              {
+                "value": "1",
+                "label": "全国"
+              },
+              {
+                "value": "2",
+                "label": "省内"
+              },
+              {
+                "value": "3",
+                "label": "本地"
+              }
+            ]
+          }
         },
         {
           "fieldCode": "applicable_people",

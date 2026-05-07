@@ -102,11 +102,12 @@ class ValidationSkill:
         """
         从字段定义构建规则列表，包含枚举校验
 
-        自动从 options 生成 enum 规则，从 ruleDescription 推断规则
+        自动从 enumConfig.options 生成 enum 规则，从 ruleDescription 推断规则
         """
         rules = list(field.get("rules", []))
         field_type = field.get("fieldType", "")
-        options = field.get("options", [])
+        enum_config = field.get("enumConfig", {})
+        options = enum_config.get("options", []) if isinstance(enum_config, dict) else []
 
         # ══ 枚举/选择类字段：自动添加 enum 规则 ══
         if field_type == "select" and options:
@@ -369,7 +370,8 @@ class ValidationSkill:
             field_type = f.get("fieldType", "input")
             required = f.get("required", False)
             rule_desc = f.get("ruleDescription", "")
-            options = f.get("options", [])
+            enum_config = f.get("enumConfig", {})
+            options = enum_config.get("options", []) if isinstance(enum_config, dict) else []
 
             parts = [f"- {field_name}（{field_code}）"]
             parts.append(f"  类型: {field_type}")
