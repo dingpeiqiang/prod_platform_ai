@@ -8,7 +8,7 @@ ChatServiceV2 - 通用聊天服务
 import uuid
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, func
@@ -154,8 +154,7 @@ class ChatServiceV2:
         parent_id: str = None,
         user_id: str = None,
         db: Session = None,
-        step_type: str = None,  # 处理步骤类型：thinking / reasoning / action
-        message_id: str = None   # 前端传入的消息ID（可选，不传则自动生成）
+        step_type: str = None  # 处理步骤类型：thinking / reasoning / action
     ) -> Optional[Dict[str, Any]]:
         """
         保存消息 + metadata。
@@ -201,20 +200,12 @@ class ChatServiceV2:
             ).scalar()
             sort_order = (max_sort_order or 0) + 1
 
-            # 验证 content 不为空
-            if not content or not str(content).strip():
-                logger.warning("[ChatServiceV2] 消息内容为空，拒绝保存 session_id=%s", session_id)
-                return None
-            
-            # 使用前端传入的消息ID，否则自动生成
-            if not message_id:
-                message_id = str(uuid.uuid4())
-            
+            message_id = str(uuid.uuid4())
             message = ChatMessageV2(
                 message_id=message_id,
                 session_id=session_id,
                 role=role,
-                content=str(content).strip(),
+                content=content,
                 content_type=content_type,
                 parent_id=parent_id,
                 sort_order=sort_order,
@@ -244,8 +235,8 @@ class ChatServiceV2:
                 )
                 db.add(meta)
 
-            # 更新会话 updated_at
-            session.updated_at = func.now()
+            # 更新会话 updated_at（使用 Python 时间，与消息 created_at 保持一致）
+            session.updated_at = datetime.now()
 
             db.commit()
             db.refresh(message)
@@ -435,6 +426,57 @@ class ChatServiceV2:
             return False
 
     @classmethod
+    def update_message(cls, message_id: str, content: str = None, metadata: Dict[str, Any] = None, db: Session = None) -> bool:
+        """
+        更新消息内容或 metadata（用于 thinking 步骤实时更新）
+
+        Args:
+            message_id: 消息ID
+            content: 新的消息内容（可选）
+            metadata: 要更新的 metadata（可选，会与现有 metadata 合并）
+
+        Returns:
+            是否更新成功
+        """
+        if not db:
+            return False
+        try:
+            msg = db.query(ChatMessageV2).filter(ChatMessageV2.message_id == message_id).first()
+            if not msg:
+                logger.warning("[ChatServiceV2] 更新消息失败：消息不存在 msg_id=%s", message_id)
+                return False
+
+            # 更新内容
+            if content is not None:
+                msg.content = content
+
+            # 更新 metadata（先删除旧的，再插入新的，实现替换）
+            if metadata is not None:
+                # 删除现有的 metadata
+                db.query(ChatMessageMetadata).filter(
+                    ChatMessageMetadata.message_id == message_id
+                ).delete()
+
+                # 插入新的 metadata
+                for key, value in metadata.items():
+                    serialized_value = json.dumps(value, ensure_ascii=False) if value is not None else None
+                    meta = ChatMessageMetadata(
+                        message_id=message_id,
+                        meta_key=key,
+                        value=serialized_value
+                    )
+                    db.add(meta)
+
+            db.commit()
+            logger.debug("[ChatServiceV2] 更新消息 msg_id=%s content=%s metadata=%s",
+                         message_id, content is not None, metadata is not None)
+            return True
+        except Exception as e:
+            db.rollback()
+            logger.exception("[ChatServiceV2] 更新消息失败: %s", e)
+            return False
+
+    @classmethod
     def save_messages_batch(
         cls,
         session_id: str,
@@ -482,31 +524,29 @@ class ChatServiceV2:
             metadata_objects = []
             message_ids = []
             
-            # 记录起始时间
+            # 记录起始时间（后续消息递增微秒，确保时间戳区分度）
             base_time = datetime.now()
 
-            for msg_data in messages:
-                # 跳过 content 为空的消息
-                content = msg_data.get('content', '')
-                if not content or not str(content).strip():
-                    logger.warning("[ChatServiceV2] 跳过空内容消息 session_id=%s", session_id)
-                    continue
-                
+            for idx, msg_data in enumerate(messages):
                 message_id = str(uuid.uuid4())
                 message_ids.append(message_id)
                 
                 # 递增 sort_order，确保消息顺序正确
                 current_sort_order += 1
                 
+                # 每条消息的 created_at 递增 1 毫秒，确保时间戳有区分度
+                # 这解决了批量保存消息 created_at 相同导致的排序不稳定问题
+                msg_time = base_time + timedelta(milliseconds=idx)
+                
                 message = ChatMessageV2(
                     message_id=message_id,
                     session_id=session_id,
                     role=msg_data.get('role', 'user'),
-                    content=str(content).strip(),
+                    content=msg_data.get('content', ''),
                     content_type=msg_data.get('content_type', 'text'),
                     parent_id=msg_data.get('parent_id'),
                     sort_order=current_sort_order,
-                    created_at=base_time
+                    created_at=msg_time
                 )
                 message_objects.append(message)
 
@@ -529,8 +569,8 @@ class ChatServiceV2:
             if metadata_objects:
                 db.add_all(metadata_objects)
 
-            # 更新会话时间
-            session.updated_at = func.now()
+            # 更新会话时间（使用 Python 时间，与消息 created_at 保持一致）
+            session.updated_at = datetime.now()
 
             db.commit()
             logger.info(f"[ChatServiceV2] 批量保存消息 session_id={session_id} count={len(message_objects)}")

@@ -39,7 +39,7 @@ class MessageCreateRequest(BaseModel):
     content_type: str = Field(default='text', description="text / markdown / json / form")
     metadata:     Optional[Dict[str, Any]] = Field(default=None, description="业务扩展字段")
     parent_id:    Optional[str] = Field(default=None, description="父消息 ID")
-    message_id:   Optional[str] = Field(default=None, description="消息 ID（前端传入，不传则自动生成）")
+    step_type:    Optional[str] = Field(default=None, description="处理步骤类型：thinking / reasoning / action")
 
 
 class BatchMessageCreateRequest(BaseModel):
@@ -215,7 +215,7 @@ async def create_message(
         content_type=request.content_type,
         metadata=request.metadata,
         parent_id=request.parent_id,
-        message_id=request.message_id,  # 传递前端传入的消息ID
+        step_type=request.step_type,
         db=db
     )
     if result:
@@ -282,6 +282,23 @@ async def delete_message(
 ):
     """删除单条消息"""
     success = ChatServiceV2.delete_message(message_id, db=db)
+    return {"success": success}
+
+
+class MessageUpdateRequest(BaseModel):
+    content: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
+@router.patch("/sessions/{session_id}/messages/{message_id}")
+async def update_message(
+    session_id: str,
+    message_id: str,
+    request: MessageUpdateRequest,
+    db: Session = Depends(get_db)
+):
+    """更新消息内容或 metadata（用于 thinking 步骤实时更新）"""
+    success = ChatServiceV2.update_message(message_id, request.content, request.metadata, db=db)
     return {"success": success}
 
 

@@ -236,7 +236,7 @@ import ValidationResultPanel from './intent-panels/ValidationResultPanel.vue'
 // 意图注册器
 import { registerEventHandler, registerPostProcessor, getEventHandler, getEventPanel, getPostProcessor, listIntentPanels } from '../composables/useIntentRegistry.js'
 // 数据库持久化 API
-import { createSession as apiCreateSession, saveMessage, saveThinkingStep, loadMessages as apiLoadMessages, deleteSession as apiDeleteSession } from '../services/chatApi.js'
+import { createSession as apiCreateSession, saveMessage, updateMessage, loadMessages as apiLoadMessages, deleteSession as apiDeleteSession } from '../services/chatApi.js'
 
 marked.setOptions({ breaks: true, gfm: true })
 
@@ -888,11 +888,31 @@ const doSendMessageAfterHome = async (text) => {
     id: genId(), role: 'assistant',
     reasoning: [], streamText: '', content: '',
     showReasoning: false,
-    done: false, type: 'chat',
-    backendMessageId: null  // 后端生成的消息ID
+    done: false, type: 'chat'
   }
   messages.value.push(aiMsg)
   const msgIdx = messages.value.length - 1
+
+  // ── 立即保存空 AI 消息到数据库，获取 dbMessageId ───────────────────
+  let dbMessageId = null
+  if (currentDbSessionId.value) {
+    try {
+      const saved = await saveMessage(currentDbSessionId.value, {
+        role: 'assistant',
+        content: '',
+        reasoning: [],
+        metadata: { stream_status: 'streaming' }
+      })
+      // 从返回结果中提取 message_id（如果 API 返回）
+      if (saved?.message_id) {
+        dbMessageId = saved.message_id
+        aiMsg.dbMessageId = dbMessageId
+      }
+    } catch (e) {
+      console.warn('[SSE] 初始保存 AI 消息失败:', e)
+    }
+  }
+
   isStreaming.value = true
   abortCtrl = new AbortController()
 
@@ -995,24 +1015,45 @@ const doSendMessageAfterHome = async (text) => {
         msg.content = msg.streamText
       }
 
-      // ── 保存 AI 回复到数据库 ─────────────────────────────
+      // ── 保存/更新 AI 回复到数据库 ─────────────────────────────
+      // 如果已有 dbMessageId，说明之前保存过空消息，使用 updateMessage 更新
+      // 否则使用 saveMessage（兼容旧数据）
       if (currentDbSessionId.value) {
-        const msgContent = msg.content || msg.streamText || ''
-        // 只有当内容不为空时才保存 AI 回复
-        if (msgContent.trim()) {
-          // 直接传递完整的消息对象，让 saveMessage 正确保存完整的 reasoning 结构和表单状态
+        const finalMetadata = {
+          ...(msg.metadata || {}),
+          reasoning_full: JSON.stringify(msg.reasoning.map((r, i) => ({ ...r, _index: i }))),
+          reasoning: msg.reasoning.map(s => s.content || '').join('\n'),
+          stream_status: 'done',
+          done: 'true',
+          // 保存意图相关字段
+          intent_type: intentType || undefined,
+          form_code: intentData?.formCode || undefined,
+          extracted_fields: intentData?.extractedFields || undefined,
+          confidence: intentData?.confidence != null ? String(intentData.confidence) : undefined,
+          model: intentData?.model || undefined,
+          // 保存表单状态
+          formId: currentFormId.value || undefined,
+          formSchema: currentFormSchema.value ? JSON.stringify(currentFormSchema.value) : undefined
+        }
+        // 清理 undefined 值
+        Object.keys(finalMetadata).forEach(k => finalMetadata[k] === undefined && delete finalMetadata[k])
+
+        if (msg.dbMessageId) {
+          // 更新已存在的消息
+          await updateMessage(currentDbSessionId.value, msg.dbMessageId, {
+            content: msg.content || msg.streamText || '',
+            metadata: finalMetadata
+          })
+        } else {
+          // 首次保存（兼容旧逻辑）
           await saveMessage(currentDbSessionId.value, {
             role: 'assistant',
-            content: msgContent,
+            content: msg.content || msg.streamText || '',
             reasoning: msg.reasoning,
-            metadata: msg.metadata || null,
-            message_id: msg.backendMessageId,  // 使用后端提供的消息ID
-            // 保存当前表单状态到数据库消息
+            metadata: finalMetadata,
             formId: currentFormId.value,
             formSchema: currentFormSchema.value
           })
-        } else {
-          console.warn('[ChatAssistant] 跳过空内容的 AI 回复')
         }
       }
     }
@@ -1065,28 +1106,39 @@ const handleEvent = (data, idx) => {
     case 'executing': {
       const last = msg.reasoning[msg.reasoning.length - 1]
       if (last && last.content === data.content) break
-      
-      // 使用后端提供的消息ID和关联ID
-      // 优先使用后端提供的 assistant_message_id，确保关联正确
-      const parentId = data.assistant_message_id || msg.backendMessageId || msg.id
-      const thinkingMsg = { 
-        type: 'thinking', 
-        content: data.content, 
-        result: data.result || null,
-        message_id: data.message_id,
-        parent_id: parentId
-      }
-      msg.reasoning.push(thinkingMsg)
-      
+      msg.reasoning.push({ type: 'thinking', content: data.content, result: data.result || null })
       // 自动展开思考步骤，让用户看到实时进度
       msg.showReasoning = true
       // 标记最新步骤（用于动画效果）
       msg.latestStepIndex = msg.reasoning.length - 1
       scrollToBottom()
-      
-      // 实时保存 thinking 步骤为独立消息块，确保排序正确
-      if (currentDbSessionId.value) {
-        saveThinkingStep(currentDbSessionId.value, thinkingMsg).catch(e => console.warn('saveThinkingStep failed:', e))
+
+      // ── 实时更新 AI 消息的 metadata ─────────────────────────────
+      // 将 thinking 步骤追加到 reasoning_full 中
+      if (currentDbSessionId.value && msg.dbMessageId) {
+        const stepTypeMap = { thinking: 'thinking', decision: 'decision', executing: 'action' }
+        // 从现有 metadata 中恢复 reasoning_full，追加新步骤
+        const existingMeta = msg.metadata || {}
+        let reasoningFull = []
+        if (existingMeta.reasoning_full) {
+          try {
+            reasoningFull = JSON.parse(existingMeta.reasoning_full)
+          } catch {}
+        }
+        reasoningFull.push({
+          type: stepTypeMap[data.type] || 'thinking',
+          content: data.content,
+          result: data.result || null,
+          _index: reasoningFull.length
+        })
+        // 更新消息 metadata
+        updateMessage(currentDbSessionId.value, msg.dbMessageId, {
+          metadata: {
+            ...existingMeta,
+            reasoning_full: JSON.stringify(reasoningFull),
+            stream_status: 'streaming'
+          }
+        }).catch(err => console.warn('[SSE] 更新 thinking 步骤失败:', err))
       }
       break
     }
@@ -1109,10 +1161,6 @@ const handleEvent = (data, idx) => {
     }
     case 'text_start':
       msg.streamText = ''
-      // 记录后端提供的消息ID
-      if (data.message_id) {
-        msg.backendMessageId = data.message_id
-      }
       break
     case 'text':
       msg.streamText = (msg.streamText || '') + (data.content || '')

@@ -7,40 +7,6 @@
 const BASE = '/api/v2/chat'
 
 /**
- * 实时保存处理步骤（thinking）作为独立消息块
- * 确保 thinking 步骤按正确顺序保存，与聊天消息顺序一致
- * @param {string} sessionId - 会话ID
- * @param {Object} thinkingMsg - thinking 消息对象，包含 message_id
- */
-export async function saveThinkingStep(sessionId, thinkingMsg) {
-  try {
-    const { content, message_id, parent_id } = thinkingMsg
-    
-    // 跳过空内容的 thinking 步骤
-    if (!content || !String(content).trim()) {
-      console.warn('[chatApi] saveThinkingStep: 跳过空内容')
-      return
-    }
-    
-    await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message_id: message_id,      // 使用后端提供的消息ID
-        role: 'system',
-        content: String(content).trim(),
-        content_type: 'thinking',
-        parent_id: parent_id,
-        // sort_order 由后端保存时计算
-        metadata: { step_type: 'thinking' }
-      })
-    })
-  } catch (e) {
-    console.warn('[chatApi] saveThinkingStep failed:', e)
-  }
-}
-
-/**
  * 创建数据库会话
  * @param {string} userId  用户ID
  * @param {string} title   会话标题（可选）
@@ -113,7 +79,7 @@ export async function saveMessage(sessionId, msg) {
     // 保存 contentType
     if (msg.contentType) metadata.content_type = msg.contentType
 
-    await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/messages`, {
+    const resp = await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -121,13 +87,39 @@ export async function saveMessage(sessionId, msg) {
         content:      msg.content || msg.streamText || '',
         content_type: msg.contentType || 'text',
         parent_id:    msg.parentId || null,
-        message_id:   msg.message_id || null,  // 支持传入后端生成的消息ID
+        step_type:    msg.step_type || null,
         metadata:     Object.keys(metadata).length > 0 ? metadata : null
       })
     })
+    const data = await resp.json()
+    return { success: resp.ok, message_id: data.message_id, ...data }
   } catch (e) {
     console.warn('[chatApi] saveMessage failed:', e)
     throw e  // 重新抛出错误，让调用者处理
+  }
+}
+
+/**
+ * 更新消息内容或 metadata（用于 thinking 步骤实时更新）
+ */
+export async function updateMessage(sessionId, messageId, { content, metadata }) {
+  try {
+    const resp = await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(messageId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content: content || null,
+        metadata: metadata || null
+      })
+    })
+    if (!resp.ok) {
+      console.warn('[chatApi] updateMessage failed:', resp.status)
+      return false
+    }
+    return true
+  } catch (e) {
+    console.warn('[chatApi] updateMessage failed:', e)
+    return false
   }
 }
 
@@ -217,7 +209,6 @@ export async function saveMessages(sessionId, messages) {
 
 /**
  * 从数据库加载某会话的所有消息，转换为前端消息格式
- * 支持加载独立的 thinking 消息块
  */
 export async function loadMessages(sessionId) {
   try {
@@ -226,34 +217,19 @@ export async function loadMessages(sessionId) {
     const result = await resp.json()
     const msgs = result.messages || []
 
-    // 分离 thinking 消息和普通消息
-    const thinkingMsgs = []
-    const normalMsgs = []
-    
-    for (const m of msgs) {
-      const meta = m.metadata || {}
-      const isThinking = m.content_type === 'thinking' || meta.step_type === 'thinking'
-      if (isThinking) {
-        thinkingMsgs.push(m)
-      } else {
-        normalMsgs.push(m)
-      }
-    }
-
-    const resultMsgs = []
-    const msgMap = {}  // 用于快速查找消息
-    
-    // 第一步：创建所有普通消息
-    for (const m of normalMsgs) {
+    return msgs.map(m => {
       const meta = m.metadata || {}
       
-      // 优先从 reasoning_full 恢复完整的 reasoning 结构（旧格式兼容）
+      // 优先从 reasoning_full 恢复完整的 reasoning 结构
       let reasoning = []
       if (meta.reasoning_full) {
         try {
           reasoning = JSON.parse(meta.reasoning_full)
+          // 按步骤序号排序，确保顺序正确
           reasoning.sort((a, b) => (a._index ?? 0) - (b._index ?? 0))
-        } catch (e) {}
+        } catch (e) {
+          // 如果解析失败，降级到旧格式
+        }
       }
       
       // 如果没有完整结构，用旧格式 fallback
@@ -261,7 +237,7 @@ export async function loadMessages(sessionId) {
         reasoning = meta.reasoning.split('\n').filter(Boolean).map((c, index) => ({ 
           type: 'thinking', 
           content: c,
-          _index: index 
+          _index: index  // 添加序号确保顺序
         }))
       }
       
@@ -269,7 +245,9 @@ export async function loadMessages(sessionId) {
       let formId = undefined
       let formSchema = null
       let formSubmitted = false
-      if (meta.formId !== undefined) formId = meta.formId
+      if (meta.formId !== undefined) {
+        formId = meta.formId
+      }
       if (meta.formSchema !== undefined) {
         try {
           formSchema = JSON.parse(meta.formSchema)
@@ -277,24 +255,29 @@ export async function loadMessages(sessionId) {
           formSchema = null
         }
       }
+      // 恢复表单提交状态
       if (meta.formSubmitted !== undefined) {
         formSubmitted = meta.formSubmitted === 'true' || meta.formSubmitted === true
       }
       
-      const msg = {
+      return {
         id:              m.message_id,
-        role:            m.role === 'assistant' ? 'assistant' : (m.role === 'system' ? 'system' : 'user'),
+        role:            m.role === 'assistant' ? 'assistant' : 'user',
         content:         m.content || '',
+        // 恢复 streamText（如果有）
         streamText:      meta.stream_text || m.content || '',
+        // 恢复 reasoning
         reasoning:       reasoning,
-        showReasoning:   (reasoning && reasoning.length > 0) ? true : false,
-        done:            meta.done === 'true' || meta.done === true || true,
+        showReasoning:   (reasoning && reasoning.length > 0) ? true : false,  // 有处理步骤则默认展开
+        done:            meta.done === 'true' || meta.done === true || true,  // 默认已完成
         type:            'chat',
+        // 恢复意图相关字段
         intentType:      meta.intent_type,
         formCode:        meta.form_code,
         extractedFields: meta.extracted_fields,
         confidence:      meta.confidence,
         model:           meta.model,
+        // 恢复 contentType
         contentType:     meta.content_type || m.content_type || 'text',
         parentId:        m.parent_id,
         createdAt:       m.created_at,
@@ -302,34 +285,9 @@ export async function loadMessages(sessionId) {
         // 恢复表单状态
         formId:          formId,
         formSchema:      formSchema,
-        formSubmitted:   formSubmitted,
-        sortOrder:       m.sort_order  // 保存排序字段用于验证
+        formSubmitted:   formSubmitted
       }
-      
-      resultMsgs.push(msg)
-      
-      // 记录消息到 map，用于后续关联 thinking
-      msgMap[m.message_id] = msg
-    }
-    
-    // 第二步：将 thinking 消息关联到对应的 assistant 消息
-    for (const thinking of thinkingMsgs) {
-      const parentId = thinking.parent_id
-      if (parentId && msgMap[parentId]) {
-        const targetMsg = msgMap[parentId]
-        const lastThinking = targetMsg.reasoning[targetMsg.reasoning.length - 1]
-        if (!lastThinking || lastThinking.content !== thinking.content) {
-          targetMsg.reasoning.push({ 
-            type: 'thinking', 
-            content: thinking.content, 
-            _index: targetMsg.reasoning.length 
-          })
-          targetMsg.showReasoning = true  // 有 thinking 就展开
-        }
-      }
-    }
-    
-    return resultMsgs
+    })
   } catch (e) {
     console.warn('[chatApi] loadMessages failed:', e)
     return []
