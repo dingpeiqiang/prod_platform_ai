@@ -1662,16 +1662,6 @@ const handleConfirmSubmit = async (data) => {
   }
 }
 
-  // 保存到数据库
-  if (currentDbSessionId.value) {
-    saveMessage(currentDbSessionId.value, {
-      role: 'assistant',
-      content: confirmMsg.content,
-      reasoning: []
-    }).catch(() => {})
-  }
-}
-
 // 检查用户消息是否确认提交
 const checkUserConfirmation = (userMessage) => {
   if (!pendingConfirmForm) return false
