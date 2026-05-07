@@ -10,18 +10,41 @@
 
     <!-- 快捷建议 -->
     <div class="suggestions-area">
-      <div class="suggestions-grid">
-        <button
-          v-for="s in suggestions"
-          :key="s.key"
-          class="suggestion-item"
-          @click="handleSuggestion(s)"
-        >
-          <span class="suggestion-icon">{{ s.icon }}</span>
-          <span class="suggestion-text">{{ s.text }}</span>
-        </button>
-      </div>
+    <div class="suggestions-grid">
+      <button
+        v-for="s in suggestions"
+        :key="s.key"
+        class="suggestion-item"
+        @click="handleSuggestion(s)"
+      >
+        <span class="suggestion-icon">
+          <svg v-if="s.icon === 'form'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+          <svg v-else-if="s.icon === 'calendar'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+            <line x1="16" y1="2" x2="16" y2="6"/>
+            <line x1="8" y1="2" x2="8" y2="6"/>
+            <line x1="3" y1="10" x2="21" y2="10"/>
+          </svg>
+          <svg v-else-if="s.icon === 'wallet'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 7h-9a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
+            <path d="M16 21V5a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2z"/>
+          </svg>
+          <svg v-else-if="s.icon === 'help'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </span>
+        <span class="suggestion-text">{{ s.text }}</span>
+      </button>
     </div>
+  </div>
 
     <!-- 底部输入区 -->
     <div class="bottom-input">
@@ -54,7 +77,12 @@
       <!-- 待办 -->
       <div class="widget-card">
         <div class="widget-header">
-          <span class="widget-icon">📋</span>
+          <span class="widget-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <path d="M9 3v6h6"/>
+            </svg>
+          </span>
           <span class="widget-title">待办</span>
           <span class="widget-count">{{ pendingTodos.length }}</span>
         </div>
@@ -86,7 +114,11 @@
       <!-- 快捷入口 -->
       <div class="widget-card">
         <div class="widget-header">
-          <span class="widget-icon">⚡</span>
+          <span class="widget-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+          </span>
           <span class="widget-title">快捷</span>
         </div>
         <div class="widget-body">
@@ -97,7 +129,42 @@
               class="shortcut-btn"
               @click="handleShortcut(sc)"
             >
-              <span class="shortcut-icon">{{ sc.icon }}</span>
+              <span class="shortcut-icon">
+                <svg v-if="sc.icon === 'form'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="16" y1="13" x2="8" y2="13"/>
+                  <line x1="16" y1="17" x2="8" y2="17"/>
+                  <polyline points="10 9 9 9 8 9"/>
+                </svg>
+                <svg v-else-if="sc.icon === 'calendar'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                  <line x1="16" y1="2" x2="16" y2="6"/>
+                  <line x1="8" y1="2" x2="8" y2="6"/>
+                  <line x1="3" y1="10" x2="21" y2="10"/>
+                </svg>
+                <svg v-else-if="sc.icon === 'wallet'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 7h-9a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
+                  <path d="M16 21V5a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2z"/>
+                </svg>
+                <svg v-else-if="sc.icon === 'chart'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="20" x2="18" y2="10"/>
+                  <line x1="12" y1="20" x2="12" y2="4"/>
+                  <line x1="6" y1="20" x2="6" y2="16"/>
+                </svg>
+                <svg v-else-if="sc.icon === 'file'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="16" y1="13" x2="8" y2="13"/>
+                  <line x1="16" y1="17" x2="8" y2="17"/>
+                  <polyline points="10 9 9 9 8 9"/>
+                </svg>
+                <svg v-else-if="sc.icon === 'help'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+              </span>
               <span class="shortcut-label">{{ sc.label }}</span>
             </button>
           </div>
@@ -107,7 +174,12 @@
       <!-- 预警 -->
       <div class="widget-card">
         <div class="widget-header">
-          <span class="widget-icon">🔔</span>
+          <span class="widget-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            </svg>
+          </span>
           <span class="widget-title">预警</span>
           <span v-if="alerts.length" class="widget-count alert">{{ alerts.length }}</span>
         </div>
@@ -137,20 +209,20 @@ const newTodo = ref('')
 
 // 快捷建议
 const suggestions = [
-  { key: 'sales', icon: '📋', text: '帮我填一个销售订单' },
-  { key: 'leave', icon: '📅', text: '帮我填一个请假申请' },
-  { key: 'expense', icon: '💰', text: '帮我填一个费用报销' },
-  { key: 'help', icon: '💬', text: '你能做什么？' },
+  { key: 'sales', icon: 'form', text: '帮我填一个销售订单' },
+  { key: 'leave', icon: 'calendar', text: '帮我填一个请假申请' },
+  { key: 'expense', icon: 'wallet', text: '帮我填一个费用报销' },
+  { key: 'help', icon: 'help', text: '你能做什么？' },
 ]
 
 // 快捷入口
 const shortcuts = [
-  { key: 'sales', icon: '📋', label: '销售订单' },
-  { key: 'leave', icon: '📅', label: '请假申请' },
-  { key: 'expense', icon: '💰', label: '费用报销' },
-  { key: 'report', icon: '📊', label: '数据报告' },
-  { key: 'meeting', icon: '📝', label: '会议纪要' },
-  { key: 'help', icon: '❓', label: '帮助中心' },
+  { key: 'sales', icon: 'form', label: '销售订单' },
+  { key: 'leave', icon: 'calendar', label: '请假申请' },
+  { key: 'expense', icon: 'wallet', label: '费用报销' },
+  { key: 'report', icon: 'chart', label: '数据报告' },
+  { key: 'meeting', icon: 'file', label: '会议纪要' },
+  { key: 'help', icon: 'help', label: '帮助中心' },
 ]
 
 // 预警列表

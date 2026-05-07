@@ -2,11 +2,25 @@
   <div class="sidebar">
     <div class="sidebar-logo">
       <div class="logo-icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <circle cx="12" cy="12" r="6"/>
+          <circle cx="12" cy="12" r="2"/>
+          <path d="M12 6a6 6 0 0 1 4 1.5"/>
+          <path d="M12 6a6 6 0 0 0-4 1.5"/>
+          <path d="M12 18a6 6 0 0 1 4-1.5"/>
+          <path d="M12 18a6 6 0 0 0-4-1.5"/>
+          <path d="M6 12a6 6 0 0 1 1.5 4"/>
+          <path d="M6 12a6 6 0 0 0 1.5-4"/>
+          <path d="M18 12a6 6 0 0 1-1.5 4"/>
+          <path d="M18 12a6 6 0 0 0-1.5-4"/>
+          <circle cx="7.5" cy="8.5" r="1"/>
+          <circle cx="16.5" cy="8.5" r="1"/>
+          <circle cx="7.5" cy="15.5" r="1"/>
+          <circle cx="16.5" cy="15.5" r="1"/>
         </svg>
       </div>
-      <span class="logo-text">产商品研发助手</span>
+      <span class="logo-text">数智赋能</span>
     </div>
 
     <button class="new-chat-btn" @click="$emit('new-session')">

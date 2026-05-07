@@ -19,16 +19,30 @@
       <!-- 消息区 -->
       <div class="messages-area" ref="messagesEl">
         <!-- 欢迎屏 -->
-        <div v-if="!messages.length" class="welcome-screen">
-          <div class="welcome-logo">
-            <div class="welcome-logo-inner">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
-              </svg>
+          <div v-if="!messages.length" class="welcome-screen">
+            <div class="welcome-logo">
+              <div class="welcome-logo-inner">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/>
+                  <circle cx="12" cy="12" r="6"/>
+                  <circle cx="12" cy="12" r="2"/>
+                  <path d="M12 6a6 6 0 0 1 4 1.5"/>
+                  <path d="M12 6a6 6 0 0 0-4 1.5"/>
+                  <path d="M12 18a6 6 0 0 1 4-1.5"/>
+                  <path d="M12 18a6 6 0 0 0-4-1.5"/>
+                  <path d="M6 12a6 6 0 0 1 1.5 4"/>
+                  <path d="M6 12a6 6 0 0 0 1.5-4"/>
+                  <path d="M18 12a6 6 0 0 1-1.5 4"/>
+                  <path d="M18 12a6 6 0 0 0-1.5-4"/>
+                  <circle cx="7.5" cy="8.5" r="1"/>
+                  <circle cx="16.5" cy="8.5" r="1"/>
+                  <circle cx="7.5" cy="15.5" r="1"/>
+                  <circle cx="16.5" cy="15.5" r="1"/>
+                </svg>
+              </div>
             </div>
-          </div>
           <h2 class="welcome-title">有什么可以帮你的？</h2>
-          <p class="welcome-subtitle">产商品研发助手，帮你快速填写各类表单</p>
+          <p class="welcome-subtitle">数智赋能，帮你快速填写各类表单</p>
           <div class="welcome-suggestions">
             <button
               v-for="s in suggestions"
@@ -55,7 +69,21 @@
             <!-- AI 头像 -->
             <div v-if="msg.role === 'assistant'" class="avatar ai-avatar">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+                <circle cx="12" cy="12" r="10"/>
+                <circle cx="12" cy="12" r="6"/>
+                <circle cx="12" cy="12" r="2"/>
+                <path d="M12 6a6 6 0 0 1 4 1.5"/>
+                <path d="M12 6a6 6 0 0 0-4 1.5"/>
+                <path d="M12 18a6 6 0 0 1 4-1.5"/>
+                <path d="M12 18a6 6 0 0 0-4-1.5"/>
+                <path d="M6 12a6 6 0 0 1 1.5 4"/>
+                <path d="M6 12a6 6 0 0 0 1.5-4"/>
+                <path d="M18 12a6 6 0 0 1-1.5 4"/>
+                <path d="M18 12a6 6 0 0 0-1.5-4"/>
+                <circle cx="7.5" cy="8.5" r="1"/>
+                <circle cx="16.5" cy="8.5" r="1"/>
+                <circle cx="7.5" cy="15.5" r="1"/>
+                <circle cx="16.5" cy="15.5" r="1"/>
               </svg>
             </div>
 
