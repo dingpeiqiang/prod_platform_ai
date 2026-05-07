@@ -224,7 +224,21 @@
       @cancel="handleFormCancel"
       @field-change="handleFormFieldChange"
       @ai-validation="handleAiValidation"
+      @confirm-submit="handleConfirmSubmit"
     />
+
+    <!-- 确认提交卡片（浮动在聊天区域） -->
+    <div v-if="confirmSubmitData" class="confirm-submit-overlay">
+      <ConfirmSubmitPanel
+        :data="confirmSubmitData.data"
+        :formName="confirmSubmitData.formName"
+        :fields="confirmSubmitData.fields || []"
+        :aiWarnings="confirmSubmitData.aiWarnings"
+        :aiErrors="confirmSubmitData.aiErrors"
+        @confirm="handleDoConfirmSubmit"
+        @cancel="handleCancelSubmit"
+      />
+    </div>
   </div>
 </template>
 
@@ -234,6 +248,7 @@ import { marked } from 'marked'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import FormPanel from './FormPanel.vue'
 import ConfigCard from './ConfigCard.vue'
+import ConfirmSubmitPanel from './ConfirmSubmitPanel.vue'
 // 意图面板组件
 import DeleteResultPanel from './intent-panels/DeleteResultPanel.vue'
 import HistoryPanel from './intent-panels/HistoryPanel.vue'
@@ -1498,13 +1513,13 @@ const updateFormFields = async (intentData) => {
 // AI 校验结果 - 显示到会话窗口
 const handleAiValidation = ({ type, messages }) => {
   if (!messages || messages.length === 0) return
-  
+
   const icon = type === 'warning' ? '⚠️' : '❌'
   const title = type === 'warning' ? 'AI 校验警告' : 'AI 校验错误'
-  
+
   const lines = messages.map(m => `• **${m.fieldName}**: ${m.reason}`)
   const content = `${icon} ${title}：\n${lines.join('\n')}`
-  
+
   const aiMsg = {
     id: genId(), role: 'assistant',
     content: content,
@@ -1512,7 +1527,7 @@ const handleAiValidation = ({ type, messages }) => {
   }
   messages.value.push(aiMsg)
   scrollToBottom()
-  
+
   // 保存到数据库
   if (currentDbSessionId.value) {
     saveMessage(currentDbSessionId.value, {
@@ -1521,6 +1536,107 @@ const handleAiValidation = ({ type, messages }) => {
       reasoning: []
     }).catch(() => {})
   }
+}
+
+// 确认提交数据
+const confirmSubmitData = ref(null)
+
+// 处理确认提交请求（从表单面板传来）
+const handleConfirmSubmit = (data) => {
+  confirmSubmitData.value = {
+    ...data,
+    fields: currentFormSchema.value?.fields || []
+  }
+}
+
+// 执行真正的表单提交
+const handleDoConfirmSubmit = async (formData) => {
+  confirmSubmitData.value = null  // 关闭确认卡片
+
+  const formId = currentFormId.value
+  const submittedFormId = formId
+  const submittedFormSchema = currentFormSchema.value
+
+  // 清空表单状态
+  currentFormId.value = ''
+  currentFormSchema.value = null
+  currentFormSubmitted.value = false
+
+  // 调用后端提交 API
+  try {
+    const response = await fetch('/api/v1/form/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        formId: formId,
+        data: formData,
+        version: 1
+      })
+    })
+    const result = await response.json()
+
+    if (result.success) {
+      // 生成提交摘要
+      let summaryLines = []
+      const schema = submittedFormSchema
+      if (schema && schema.fields) {
+        for (const field of schema.fields) {
+          const val = formData[field.fieldCode]
+          if (val !== undefined && val !== null && val !== '') {
+            const displayVal = Array.isArray(val) ? val.join(', ') : String(val)
+            summaryLines.push(`- **${field.fieldName}**: ${displayVal}`)
+          }
+        }
+      }
+      const summary = summaryLines.length > 0 ? `\n\n提交内容：\n${summaryLines.join('\n')}` : ''
+
+      const submitMsg = {
+        id: genId(), role: 'assistant',
+        content: `✅ 表单已成功提交！${summary}\n\n还有什么我可以帮你的吗？`,
+        done: true, type: 'chat'
+      }
+      messages.value.push(submitMsg)
+      scrollToBottom()
+
+      // 保存消息到数据库
+      if (currentDbSessionId.value) {
+        await saveMessage(currentDbSessionId.value, {
+          role: 'assistant',
+          content: submitMsg.content,
+          reasoning: [],
+          formId: submittedFormId,
+          formSchema: submittedFormSchema,
+          formSubmitted: true
+        }).catch(() => {})
+      }
+
+      ElMessage({ message: '表单提交成功！', type: 'success', plain: true })
+    } else {
+      const errorMsg = {
+        id: genId(), role: 'assistant',
+        content: `❌ 提交失败：${result.message || '未知错误'}`,
+        done: true, type: 'chat'
+      }
+      messages.value.push(errorMsg)
+      scrollToBottom()
+      ElMessage.error(result.message || '提交失败')
+    }
+  } catch (e) {
+    console.error('[handleDoConfirmSubmit] 提交失败:', e)
+    const errorMsg = {
+      id: genId(), role: 'assistant',
+      content: `❌ 提交失败：${e.message}`,
+      done: true, type: 'chat'
+    }
+    messages.value.push(errorMsg)
+    scrollToBottom()
+    ElMessage.error('提交失败: ' + e.message)
+  }
+}
+
+// 取消提交
+const handleCancelSubmit = () => {
+  confirmSubmitData.value = null
 }
 
 // 表单提交
@@ -2174,6 +2290,15 @@ defineExpose({ requestValidation, sendMessageAfterSessionCreated })
 </script>
 
 <style scoped>
+/* ── 确认提交卡片悬浮层 ── */
+.confirm-submit-overlay {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
+}
+
 /* ── 整体布局 ── */
 .chat-layout {
   display: flex;

@@ -224,7 +224,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['field-change', 'form-submit', 'submit', 'cancel', 'ai-validation'])
+const emit = defineEmits(['field-change', 'form-submit', 'submit', 'cancel', 'ai-validation', 'confirm-submit'])
 
 const localFormData = reactive({})
 const submitting = ref(false)
@@ -400,18 +400,17 @@ const handleCancel = () => {
   emit('cancel')
 }
 
-// AI 校验结果缓存（用于用户选择"忽略警告继续提交"时跳过重复校验）
+// AI 校验结果缓存
 let _lastAiValidation = null
 
 const handleSubmit = async () => {
-  // 预览模式：表单未部署，只做前端校验 + 本地预览
+  // 预览模式
   if (props.schema._preview) {
     const errors = validateForm()
     if (errors.length > 0) {
       ElMessage.error(errors[0])
       return
     }
-    // 预览模式下提交 = 展示填写结果摘要，不上传后端
     const summaryLines = []
     for (const field of props.schema.fields) {
       const val = localFormData[field.fieldCode]
@@ -428,77 +427,59 @@ const handleSubmit = async () => {
     return
   }
 
-  // 正式模式：完整提交流程
-  // 第一步：前端即时校验（必填 + 通用格式）
+  // 正式模式：前端校验 + AI 校验
   const errors = validateForm()
-  
   if (errors.length > 0) {
     ElMessage.error(errors[0])
     return
   }
-  
-  submitting.value = true
-  
+
   try {
-    // 第二步：AI 业务规则校验（如果上次校验没被缓存跳过）
     if (!_lastAiValidation) {
       _lastAiValidation = await aiValidate()
     }
     const aiResult = _lastAiValidation
 
-    // 显示 AI 校验 warnings（不阻塞提交）
+    // 显示 AI 校验 warnings 到聊天窗口
     if (aiResult.warnings && aiResult.warnings.length > 0) {
-      // 发送到会话窗口显示
       emit('ai-validation', { type: 'warning', messages: aiResult.warnings })
-      aiResult.warnings.forEach(w => {
-        ElMessage.warning({
-          message: `⚠️ ${w.fieldName}: ${w.reason}`,
-          duration: 5000
-        })
-      })
     }
 
-    // 显示 AI 校验 errors（阻塞提交，但允许用户选择忽略）
+    // 显示 AI 校验 errors 到聊天窗口（但不阻塞）
     if (aiResult.errors && aiResult.errors.length > 0) {
-      // 发送到会话窗口显示
       emit('ai-validation', { type: 'error', messages: aiResult.errors })
-      submitting.value = false
-      
-      // 弹窗展示所有错误，用户可选择"仍然提交"或"返回修改"
-      const errorDetails = aiResult.errors.map(e => `• ${e.fieldName}: ${e.reason}`).join('\n')
-      
-      try {
-        await ElMessageBox.confirm(
-          `AI 校验发现以下问题：\n${errorDetails}\n\n你可以返回修改，或忽略警告继续提交。`,
-          'AI 校验结果',
-          {
-            confirmButtonText: '仍然提交',
-            cancelButtonText: '返回修改',
-            type: 'warning',
-            dangerouslyUseHTMLString: false
-          }
-        )
-        // 用户选择"仍然提交"
-        _lastAiValidation = null  // 清除缓存
-        submitting.value = true
-        // 继续走提交流程
-      } catch {
-        // 用户选择"返回修改"
-        _lastAiValidation = null
-        return
-      }
     }
 
-    // 第三步：提交表单
-    const API_BASE = '/api/v1'
-    const url = `${API_BASE}/form/submit`
-    
-    console.log('[FormSubmit] 开始提交表单')
-    console.log('[FormSubmit] URL:', url)
-    console.log('[FormSubmit] formId:', props.formId)
-    console.log('[FormSubmit] version:', props.version)
-    console.log('[FormSubmit] data:', localFormData)
-    
+    // emit confirm-submit，让聊天窗口显示确认卡片
+    emit('confirm-submit', {
+      formId: props.formId,
+      formCode: props.schema.formCode,
+      formName: props.schema.formName,
+      data: { ...localFormData },
+      aiWarnings: aiResult.warnings || [],
+      aiErrors: aiResult.errors || []
+    })
+  } catch (e) {
+    console.error('[handleSubmit] 校验失败:', e)
+    emit('confirm-submit', {
+      formId: props.formId,
+      formCode: props.schema.formCode,
+      formName: props.schema.formName,
+      data: { ...localFormData },
+      aiWarnings: [],
+      aiErrors: []
+    })
+  }
+}
+
+// 对外方法：执行真正的表单提交（由父组件在确认后调用）
+const doSubmit = async () => {
+  const API_BASE = '/api/v1'
+  const url = `${API_BASE}/form/submit`
+
+  submitting.value = true
+
+  try {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -508,35 +489,24 @@ const handleSubmit = async () => {
         version: props.version || 1
       })
     })
-    
-    console.log('[FormSubmit] HTTP Status:', response.status)
-    
-    // 读取响应文本用于调试
-    const responseText = await response.text()
-    console.log('[FormSubmit] Response Text:', responseText)
-    
-    let result
-    try {
-      result = JSON.parse(responseText)
-      console.log('[FormSubmit] Parsed Response:', result)
-    } catch (e) {
-      console.error('[FormSubmit] JSON Parse Error:', e)
-      ElMessage.error('服务器返回了无效的响应格式')
-      return
-    }
-    
+
+    const result = await response.json()
+
     if (result.success) {
-      _lastAiValidation = null  // 提交成功，清除缓存
+      _lastAiValidation = null
       emit('submit', { ...localFormData }, props.formId)
+      return { success: true, message: result.message }
     } else {
-      ElMessage.error(result.message || '提交失败')
+      return { success: false, message: result.message || '提交失败' }
     }
-  } catch (error) {
-    console.error('[FormSubmit] Error:', error)
-    ElMessage.error('提交失败，请重试: ' + error.message)
+  } catch (e) {
+    console.error('[doSubmit] 提交失败:', e)
+    return { success: false, message: '提交失败: ' + e.message }
   } finally {
     submitting.value = false
   }
+}
+
 }
 </script>
 
