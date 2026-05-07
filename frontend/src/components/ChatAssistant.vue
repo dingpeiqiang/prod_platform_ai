@@ -1362,10 +1362,14 @@ onMounted(async () => {
     currentDbSessionId.value = props.dbSessionId
   }
 
-  // ── 有 DB 会话：始终从数据库加载 ─────────────────────────
+  // ── 无 DB 会话：创建新会话并立即通知 App.vue ────────────
   if (!currentDbSessionId.value) {
     const result = await apiCreateSession(props.userId || null, '新对话')
-    if (result.session_id) currentDbSessionId.value = result.session_id
+    if (result.session_id) {
+      currentDbSessionId.value = result.session_id
+      // 立即通知 App.vue 更新 dbSessionId，避免刷新后重复创建
+      emit('session-init', { localId: props.sessionId, dbSessionId: result.session_id })
+    }
   }
   if (currentDbSessionId.value) {
     const dbMsgs = await apiLoadMessages(currentDbSessionId.value)
