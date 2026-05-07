@@ -37,8 +37,13 @@ export async function saveMessage(sessionId, msg) {
     const metadata = { ...(msg.metadata || {}) }
 
     // 保存完整的 reasoning 数组结构（用于模型思考内容恢复）
+    // 为每个步骤添加索引确保顺序正确
     if (msg.reasoning !== undefined && Array.isArray(msg.reasoning)) {
-      metadata.reasoning_full = JSON.stringify(msg.reasoning)
+      const indexedReasoning = msg.reasoning.map((step, index) => ({
+        ...step,
+        _index: index  // 添加序号确保顺序
+      }))
+      metadata.reasoning_full = JSON.stringify(indexedReasoning)
     }
     // 同时保存旧格式的 reasoning 字符串（用于向后兼容）
     if (msg.reasoning !== undefined) {
@@ -100,8 +105,13 @@ export async function saveMessages(sessionId, messages) {
         const metadata = { ...(msg.metadata || {}) }
         
         // 保存完整的 reasoning 数组结构（用于模型思考内容恢复）
+        // 为每个步骤添加索引确保顺序正确
         if (msg.reasoning !== undefined && Array.isArray(msg.reasoning)) {
-          metadata.reasoning_full = JSON.stringify(msg.reasoning)
+          const indexedReasoning = msg.reasoning.map((step, index) => ({
+            ...step,
+            _index: index  // 添加序号确保顺序
+          }))
+          metadata.reasoning_full = JSON.stringify(indexedReasoning)
         }
         // 同时保存旧格式的 reasoning 字符串（用于向后兼容）
         if (msg.reasoning !== undefined) {
@@ -180,6 +190,8 @@ export async function loadMessages(sessionId) {
       if (meta.reasoning_full) {
         try {
           reasoning = JSON.parse(meta.reasoning_full)
+          // 按步骤序号排序，确保顺序正确
+          reasoning.sort((a, b) => (a._index ?? 0) - (b._index ?? 0))
         } catch (e) {
           // 如果解析失败，降级到旧格式
         }
@@ -187,7 +199,11 @@ export async function loadMessages(sessionId) {
       
       // 如果没有完整结构，用旧格式 fallback
       if (!reasoning.length && meta.reasoning) {
-        reasoning = meta.reasoning.split('\n').filter(Boolean).map(c => ({ type: 'thinking', content: c }))
+        reasoning = meta.reasoning.split('\n').filter(Boolean).map((c, index) => ({ 
+          type: 'thinking', 
+          content: c,
+          _index: index  // 添加序号确保顺序
+        }))
       }
       
       // 恢复表单状态
