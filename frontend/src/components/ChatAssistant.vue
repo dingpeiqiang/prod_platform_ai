@@ -117,8 +117,13 @@
                 <div
                   v-if="msg.streamText || msg.content"
                   class="ai-text"
+                  :class="{ 'loading-text': msg.loading }"
                   v-html="renderMarkdown(msg.streamText || msg.content)"
                 />
+                <!-- 动态 loading 动画 -->
+                <div v-if="msg.loading" class="loading-indicator">
+                  <span class="loading-dot"/><span class="loading-dot"/><span class="loading-dot"/>
+                </div>
                 <span v-if="!msg.done && (msg.streamText || !msg.reasoning?.length)" class="cursor-blink">▌</span>
 
                 <!-- 流式等待 -->
@@ -1268,19 +1273,32 @@ const handleEvent = (data, idx) => {
 const generateForm = async (intentData) => {
   const { formCode, extractedFields, fieldRecommendations } = intentData
 
-  // 添加系统消息
+  // 添加系统消息（带动态loading效果）
   const loadingMsg = {
     id: genId(), role: 'assistant',
-    content: `正在为你生成 ${formCode || ''} 表单...`, done: true, type: 'chat'
+    content: `正在为你生成 ${formCode || ''} 表单`, done: true, type: 'chat',
+    loading: true,  // 标记为 loading 状态
+    loadingDots: 0  // 动态点计数
   }
   messages.value.push(loadingMsg)
   scrollToBottom()
+
+  // 启动 loading 动画（动态添加省略号）
+  const loadingInterval = setInterval(() => {
+    if (loadingMsg.loadingDots < 3) {
+      loadingMsg.loadingDots++
+      loadingMsg.content = `正在为你生成 ${formCode || ''} 表单${'.'.repeat(loadingMsg.loadingDots)}`
+    } else {
+      loadingMsg.loadingDots = 0
+      loadingMsg.content = `正在为你生成 ${formCode || ''} 表单`
+    }
+  }, 400)
 
   // 保存消息到数据库
   if (currentDbSessionId.value) {
     await saveMessage(currentDbSessionId.value, {
       role: 'assistant',
-      content: loadingMsg.content,
+      content: `正在为你生成 ${formCode || ''} 表单...`,
       reasoning: [],
       formId: currentFormId.value,
       formSchema: currentFormSchema.value
@@ -1299,6 +1317,11 @@ const generateForm = async (intentData) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     })
+    
+    // 停止 loading 动画
+    clearInterval(loadingInterval)
+    loadingMsg.loading = false
+
     const result = await resp.json()
 
     let replyMsg
@@ -2510,6 +2533,26 @@ defineExpose({ requestValidation, sendMessageAfterSessionCreated })
   0%,80%,100% { transform: scale(.6); opacity: .4; }
   40%          { transform: scale(1);  opacity: 1;  }
 }
+
+/* 动态 loading 指示器 */
+.loading-indicator {
+  display: inline-flex; gap: 4px; padding: 4px 0; align-items: center;
+  vertical-align: middle;
+}
+.loading-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #818cf8;
+  animation: dotPulse 1.2s infinite ease-in-out;
+}
+.loading-dot:nth-child(1) { animation-delay: 0s; }
+.loading-dot:nth-child(2) { animation-delay: .2s; }
+.loading-dot:nth-child(3) { animation-delay: .4s; }
+@keyframes dotPulse {
+  0%,80%,100% { transform: scale(.8); opacity: .5; }
+  40%          { transform: scale(1.2); opacity: 1; }
+}
+.loading-text { opacity: 0.8; }
 
 /* 消息操作按钮 */
 .msg-actions {
