@@ -134,6 +134,29 @@ class ValidationFormRequest(BaseModel):
     fields: List[Dict[str, Any]]
 
 
+class LLMValidationRequest(BaseModel):
+    """LLM 智能校验请求"""
+    form_code: str = Field(..., description="表单类型代码，如 leave, sales_order")
+    data: Dict[str, Any] = Field(..., description="表单数据")
+
+
+class LLMValidationIssue(BaseModel):
+    """LLM 校验问题"""
+    field_name: str = Field(..., description="字段中文名")
+    field_code: str = Field(..., description="字段编码")
+    reason: str = Field(..., description="问题原因")
+    level: str = Field(..., description="级别: error / warning")
+
+
+class LLMValidationResponse(BaseModel):
+    """LLM 智能校验响应"""
+    success: bool
+    valid: bool = True
+    errors: List[LLMValidationIssue] = Field(default_factory=list)
+    warnings: List[LLMValidationIssue] = Field(default_factory=list)
+    reasoning: List[str] = Field(default_factory=list, description="LLM 思考过程")
+
+
 class ValidationFormResponse(BaseModel):
     success: bool
     valid: bool
