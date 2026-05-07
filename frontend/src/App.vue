@@ -40,7 +40,7 @@ import Sidebar from './components/Sidebar.vue'
 import ChatAssistant from './components/ChatAssistant.vue'
 import LoginScreen from './components/LoginScreen.vue'
 import { useUserStore } from './stores/user'
-import { createSession as apiCreateSession, getSessions as apiGetSessions, deleteSession as apiDeleteSession } from './services/chatApi.js'
+import { createSession as apiCreateSession, getSessions as apiGetSessions, deleteSession as apiDeleteSession, updateSessionTitle as apiUpdateSessionTitle } from './services/chatApi.js'
 
 const userStore = useUserStore()
 
@@ -153,9 +153,17 @@ const deleteSession = async (id) => {
 }
 
 // ── 标题更新 ──────────────────────────────────────────────
-const onTitleUpdate = (id, title) => {
+const onTitleUpdate = async (id, title) => {
   const s = sessions.value.find(s => s.id === id)
-  if (s) { s.title = title; s.updatedAt = Date.now(); saveSessions() }
+  if (s) { 
+    s.title = title; 
+    s.updatedAt = Date.now(); 
+    saveSessions();
+    // 如果有数据库会话ID，同步更新到数据库
+    if (s.dbSessionId) {
+      await apiUpdateSessionTitle(s.dbSessionId, title);
+    }
+  }
 }
 
 // ── ChatAssistant 在首页发消息时，需要先创建本地会话 ──────
