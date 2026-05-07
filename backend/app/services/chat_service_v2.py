@@ -154,7 +154,8 @@ class ChatServiceV2:
         parent_id: str = None,
         user_id: str = None,
         db: Session = None,
-        step_type: str = None  # 处理步骤类型：thinking / reasoning / action
+        step_type: str = None,  # 处理步骤类型：thinking / reasoning / action
+        message_id: str = None   # 前端传入的消息ID（可选，不传则自动生成）
     ) -> Optional[Dict[str, Any]]:
         """
         保存消息 + metadata。
@@ -205,7 +206,10 @@ class ChatServiceV2:
                 logger.warning("[ChatServiceV2] 消息内容为空，拒绝保存 session_id=%s", session_id)
                 return None
             
-            message_id = str(uuid.uuid4())
+            # 使用前端传入的消息ID，否则自动生成
+            if not message_id:
+                message_id = str(uuid.uuid4())
+            
             message = ChatMessageV2(
                 message_id=message_id,
                 session_id=session_id,

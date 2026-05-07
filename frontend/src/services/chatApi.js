@@ -9,9 +9,13 @@ const BASE = '/api/v2/chat'
 /**
  * 实时保存处理步骤（thinking）作为独立消息块
  * 确保 thinking 步骤按正确顺序保存，与聊天消息顺序一致
+ * @param {string} sessionId - 会话ID
+ * @param {Object} thinkingMsg - thinking 消息对象，包含 message_id
  */
-export async function saveThinkingStep(sessionId, content, parentId) {
+export async function saveThinkingStep(sessionId, thinkingMsg) {
   try {
+    const { content, message_id, parent_id } = thinkingMsg
+    
     // 跳过空内容的 thinking 步骤
     if (!content || !String(content).trim()) {
       console.warn('[chatApi] saveThinkingStep: 跳过空内容')
@@ -22,10 +26,12 @@ export async function saveThinkingStep(sessionId, content, parentId) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        message_id: message_id,      // 使用后端提供的消息ID
         role: 'system',
         content: String(content).trim(),
         content_type: 'thinking',
-        parent_id: parentId,
+        parent_id: parent_id,
+        // sort_order 由后端保存时计算
         metadata: { step_type: 'thinking' }
       })
     })

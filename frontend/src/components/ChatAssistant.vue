@@ -1063,7 +1063,17 @@ const handleEvent = (data, idx) => {
     case 'executing': {
       const last = msg.reasoning[msg.reasoning.length - 1]
       if (last && last.content === data.content) break
-      msg.reasoning.push({ type: 'thinking', content: data.content, result: data.result || null })
+      
+      // 使用后端提供的消息ID（排序值由后端保存时计算）
+      const thinkingMsg = { 
+        type: 'thinking', 
+        content: data.content, 
+        result: data.result || null,
+        message_id: data.message_id,
+        parent_id: msg.id
+      }
+      msg.reasoning.push(thinkingMsg)
+      
       // 自动展开思考步骤，让用户看到实时进度
       msg.showReasoning = true
       // 标记最新步骤（用于动画效果）
@@ -1072,7 +1082,7 @@ const handleEvent = (data, idx) => {
       
       // 实时保存 thinking 步骤为独立消息块，确保排序正确
       if (currentDbSessionId.value) {
-        saveThinkingStep(currentDbSessionId.value, data.content, msg.id).catch(e => console.warn('saveThinkingStep failed:', e))
+        saveThinkingStep(currentDbSessionId.value, thinkingMsg).catch(e => console.warn('saveThinkingStep failed:', e))
       }
       break
     }

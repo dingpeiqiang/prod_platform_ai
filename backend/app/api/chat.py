@@ -568,7 +568,12 @@ def _sse(data: dict) -> str:
 
 def _thinking(content: str, result: Any = None) -> str:
     """系统步骤日志（type=thinking），支持结构化结果详情"""
-    data = {"type": "thinking", "content": content}
+    import uuid
+    data = {
+        "type": "thinking", 
+        "content": content,
+        "message_id": str(uuid.uuid4())  # 生成消息ID，排序值由后端保存时计算
+    }
     if result is not None:
         data["result"] = result
     return _sse(data)

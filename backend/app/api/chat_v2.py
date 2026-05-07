@@ -39,6 +39,7 @@ class MessageCreateRequest(BaseModel):
     content_type: str = Field(default='text', description="text / markdown / json / form")
     metadata:     Optional[Dict[str, Any]] = Field(default=None, description="业务扩展字段")
     parent_id:    Optional[str] = Field(default=None, description="父消息 ID")
+    message_id:   Optional[str] = Field(default=None, description="消息 ID（前端传入，不传则自动生成）")
 
 
 class BatchMessageCreateRequest(BaseModel):
@@ -214,6 +215,7 @@ async def create_message(
         content_type=request.content_type,
         metadata=request.metadata,
         parent_id=request.parent_id,
+        message_id=request.message_id,  # 传递前端传入的消息ID
         db=db
     )
     if result:
