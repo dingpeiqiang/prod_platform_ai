@@ -1175,11 +1175,23 @@ const generateForm = async (intentData) => {
   const { formCode, extractedFields, fieldRecommendations } = intentData
 
   // 添加系统消息
-  messages.value.push({
+  const loadingMsg = {
     id: genId(), role: 'assistant',
     content: `正在为你生成 ${formCode || ''} 表单...`, done: true, type: 'chat'
-  })
+  }
+  messages.value.push(loadingMsg)
   scrollToBottom()
+
+  // 保存消息到数据库
+  if (currentDbSessionId.value) {
+    await saveMessage(currentDbSessionId.value, {
+      role: 'assistant',
+      content: loadingMsg.content,
+      reasoning: [],
+      formId: currentFormId.value,
+      formSchema: currentFormSchema.value
+    }).catch(() => {})
+  }
 
   try {
     const userInput = `生成${formCode || ''}表单`
@@ -1195,29 +1207,55 @@ const generateForm = async (intentData) => {
     })
     const result = await resp.json()
 
+    let replyMsg
     if (result.success) {
       // 更新右侧表单面板
       currentFormId.value = result.formId
       currentFormSchema.value = result.formSchema
 
       // 更新消息
-      messages.value.push({
+      replyMsg = {
         id: genId(), role: 'assistant',
         content: `✅ 已生成表单，请在右侧填写并提交。`, done: true, type: 'chat'
-      })
+      }
     } else {
-      messages.value.push({
+      replyMsg = {
         id: genId(), role: 'assistant',
         content: result.message || '生成表单失败，请重试。', done: true, type: 'chat'
-      })
+      }
+    }
+    messages.value.push(replyMsg)
+    scrollToBottom()
+
+    // 保存消息到数据库
+    if (currentDbSessionId.value) {
+      await saveMessage(currentDbSessionId.value, {
+        role: 'assistant',
+        content: replyMsg.content,
+        reasoning: [],
+        formId: currentFormId.value,
+        formSchema: currentFormSchema.value
+      }).catch(() => {})
     }
   } catch {
-    messages.value.push({
+    const errorMsg = {
       id: genId(), role: 'assistant',
       content: '生成表单时出现网络错误，请重试。', done: true, type: 'chat'
-    })
+    }
+    messages.value.push(errorMsg)
+    scrollToBottom()
+
+    // 保存消息到数据库
+    if (currentDbSessionId.value) {
+      await saveMessage(currentDbSessionId.value, {
+        role: 'assistant',
+        content: errorMsg.content,
+        reasoning: [],
+        formId: currentFormId.value,
+        formSchema: currentFormSchema.value
+      }).catch(() => {})
+    }
   }
-  scrollToBottom()
 }
 
 // 更新表单字段 - 增量更新现有表单，不重新生成
@@ -1229,12 +1267,24 @@ const updateFormFields = async (intentData) => {
   // 检查是否有现有表单
   if (!currentFormSchema.value) {
     // 没有现有表单，降级为生成新表单
-    messages.value.push({
+    const fallbackMsg = {
       id: genId(), role: 'assistant',
       content: `检测到你想要更新表单，但没有找到现有表单。正在为你生成新的 ${actualFormCode || ''} 表单...`,
       done: true, type: 'chat'
-    })
+    }
+    messages.value.push(fallbackMsg)
     scrollToBottom()
+
+    // 保存消息到数据库
+    if (currentDbSessionId.value) {
+      await saveMessage(currentDbSessionId.value, {
+        role: 'assistant',
+        content: fallbackMsg.content,
+        reasoning: [],
+        formId: currentFormId.value,
+        formSchema: currentFormSchema.value
+      }).catch(() => {})
+    }
 
     if (actualFormCode) {
       await generateForm({
@@ -1246,18 +1296,33 @@ const updateFormFields = async (intentData) => {
   }
 
   // 有关于表单，先添加确认消息
+  let loadingMsg
   if (extractedFields && Object.keys(extractedFields).length > 0) {
     const fieldNames = Object.keys(extractedFields)
-    messages.value.push({
+    loadingMsg = {
       id: genId(), role: 'assistant',
       content: `正在更新字段: ${fieldNames.join(', ')}...`,
       done: true, type: 'chat'
-    })
+    }
+    messages.value.push(loadingMsg)
+    scrollToBottom()
+
+    // 保存消息到数据库
+    if (currentDbSessionId.value) {
+      await saveMessage(currentDbSessionId.value, {
+        role: 'assistant',
+        content: loadingMsg.content,
+        reasoning: [],
+        formId: currentFormId.value,
+        formSchema: currentFormSchema.value
+      }).catch(() => {})
+    }
   }
 
   // 增量更新表单字段值
   const newSchema = JSON.parse(JSON.stringify(currentFormSchema.value))
 
+  let replyMsg
   if (extractedFields && Object.keys(extractedFields).length > 0) {
     let updatedCount = 0
 
@@ -1277,31 +1342,43 @@ const updateFormFields = async (intentData) => {
       // 更新右侧表单面板
       currentFormSchema.value = newSchema
 
-      messages.value.push({
+      replyMsg = {
         id: genId(), role: 'assistant',
         content: `✅ 已更新 ${updatedCount} 个字段，请查看右侧表单确认。`,
         done: true, type: 'chat'
-      })
+      }
     } else {
-      messages.value.push({
+      replyMsg = {
         id: genId(), role: 'assistant',
         content: `⚠️ 未找到可更新的字段，表单项可能不匹配。`,
         done: true, type: 'chat'
-      })
+      }
     }
   } else {
-    messages.value.push({
+    replyMsg = {
       id: genId(), role: 'assistant',
       content: `⚠️ 未提取到字段值，请尝试更明确的表达。`,
       done: true, type: 'chat'
-    })
+    }
   }
 
+  messages.value.push(replyMsg)
   scrollToBottom()
+
+  // 保存消息到数据库
+  if (currentDbSessionId.value) {
+    await saveMessage(currentDbSessionId.value, {
+      role: 'assistant',
+      content: replyMsg.content,
+      reasoning: [],
+      formId: currentFormId.value,
+      formSchema: currentFormSchema.value
+    }).catch(() => {})
+  }
 }
 
 // 表单提交
-const handleFormSubmit = (formData, formId) => {
+const handleFormSubmit = async (formData, formId) => {
   const schema = currentFormSchema.value
 
   // 生成提交摘要
@@ -1324,23 +1401,47 @@ const handleFormSubmit = (formData, formId) => {
   currentFormSchema.value = null
   ElMessage({ message: '表单提交成功！', type: 'success', plain: true })
 
-  messages.value.push({
+  const submitMsg = {
     id: genId(), role: 'assistant',
     content: `✅ 表单已成功提交！${summary ? '\n\n' + summary : ''}\n\n还有什么我可以帮你的吗？`,
     done: true, type: 'chat'
-  })
+  }
+  messages.value.push(submitMsg)
   scrollToBottom()
+
+  // 保存消息到数据库
+  if (currentDbSessionId.value) {
+    await saveMessage(currentDbSessionId.value, {
+      role: 'assistant',
+      content: submitMsg.content,
+      reasoning: [],
+      formId: currentFormId.value,
+      formSchema: currentFormSchema.value
+    }).catch(() => {})
+  }
 }
 
 // 表单取消
-const handleFormCancel = () => {
+const handleFormCancel = async () => {
   currentFormId.value = ''
   currentFormSchema.value = null
-  messages.value.push({
+  const cancelMsg = {
     id: genId(), role: 'assistant',
     content: '好的，已取消。还有什么我可以帮你的吗？', done: true, type: 'chat'
-  })
+  }
+  messages.value.push(cancelMsg)
   scrollToBottom()
+
+  // 保存消息到数据库
+  if (currentDbSessionId.value) {
+    await saveMessage(currentDbSessionId.value, {
+      role: 'assistant',
+      content: cancelMsg.content,
+      reasoning: [],
+      formId: currentFormId.value,
+      formSchema: currentFormSchema.value
+    }).catch(() => {})
+  }
 }
 
 // 表单字段变化（可同步到 AI）
@@ -1376,11 +1477,24 @@ const handleConfigDeploy = async (msg, { config, keywords }) => {
       ElMessage({ message: result.message, type: 'success', duration: 3000, plain: true })
 
       // 添加成功消息
-      messages.value.push({
+      const successMsg = {
         id: genId(), role: 'assistant',
         content: `🎉 表单「${config.formName}」已部署成功！现在你可以说"帮我填一个${config.formName}"来测试了。`,
         done: true, type: 'chat'
-      })
+      }
+      messages.value.push(successMsg)
+      scrollToBottom()
+
+      // 保存消息到数据库
+      if (currentDbSessionId.value) {
+        await saveMessage(currentDbSessionId.value, {
+          role: 'assistant',
+          content: successMsg.content,
+          reasoning: [],
+          formId: currentFormId.value,
+          formSchema: currentFormSchema.value
+        }).catch(() => {})
+      }
     } else {
       _updateIntentData(msg, 'config', { deploying: false })
       ElMessage.error(result.message || '部署失败')
@@ -1389,7 +1503,6 @@ const handleConfigDeploy = async (msg, { config, keywords }) => {
     _updateIntentData(msg, 'config', { deploying: false })
     ElMessage.error('部署请求失败，请重试')
   }
-  scrollToBottom()
 }
 
 const handleConfigModify = (msg) => {
@@ -1436,17 +1549,29 @@ const convertConfigToSchema = (config) => {
   }
 }
 
-const handleConfigPreview = (config) => {
+const handleConfigPreview = async (config) => {
   const schema = convertConfigToSchema(config)
   currentFormId.value = `preview_${Date.now()}`
   currentFormSchema.value = schema
 
-  messages.value.push({
+  const previewMsg = {
     id: genId(), role: 'assistant',
     content: `👁️ 已将「**${config.formName}**」表单加载到右侧面板进行预览，你可以查看字段布局并填写测试。确认无误后点击部署即可正式使用。`,
     done: true, type: 'chat'
-  })
+  }
+  messages.value.push(previewMsg)
   scrollToBottom()
+
+  // 保存消息到数据库
+  if (currentDbSessionId.value) {
+    await saveMessage(currentDbSessionId.value, {
+      role: 'assistant',
+      content: previewMsg.content,
+      reasoning: [],
+      formId: currentFormId.value,
+      formSchema: currentFormSchema.value
+    }).catch(() => {})
+  }
 }
 
 onMounted(async () => {
