@@ -996,16 +996,22 @@ const doSendMessageAfterHome = async (text) => {
 
       // ── 保存 AI 回复到数据库 ─────────────────────────────
       if (currentDbSessionId.value) {
-        // 直接传递完整的消息对象，让 saveMessage 正确保存完整的 reasoning 结构和表单状态
-        await saveMessage(currentDbSessionId.value, {
-          role: 'assistant',
-          content: msg.content || msg.streamText || '',
-          reasoning: msg.reasoning,
-          metadata: msg.metadata || null,
-          // 保存当前表单状态到数据库消息
-          formId: currentFormId.value,
-          formSchema: currentFormSchema.value
-        })
+        const msgContent = msg.content || msg.streamText || ''
+        // 只有当内容不为空时才保存 AI 回复
+        if (msgContent.trim()) {
+          // 直接传递完整的消息对象，让 saveMessage 正确保存完整的 reasoning 结构和表单状态
+          await saveMessage(currentDbSessionId.value, {
+            role: 'assistant',
+            content: msgContent,
+            reasoning: msg.reasoning,
+            metadata: msg.metadata || null,
+            // 保存当前表单状态到数据库消息
+            formId: currentFormId.value,
+            formSchema: currentFormSchema.value
+          })
+        } else {
+          console.warn('[ChatAssistant] 跳过空内容的 AI 回复')
+        }
       }
     }
 
