@@ -7,6 +7,28 @@
 const BASE = '/api/v2/chat'
 
 /**
+ * 实时保存处理步骤（thinking）作为独立消息块
+ * 确保 thinking 步骤按正确顺序保存，与聊天消息顺序一致
+ */
+export async function saveThinkingStep(sessionId, content, parentId) {
+  try {
+    await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        role: 'system',
+        content: content,
+        content_type: 'thinking',
+        parent_id: parentId,
+        metadata: { step_type: 'thinking' }
+      })
+    })
+  } catch (e) {
+    console.warn('[chatApi] saveThinkingStep failed:', e)
+  }
+}
+
+/**
  * 创建数据库会话
  * @param {string} userId  用户ID
  * @param {string} title   会话标题（可选）
@@ -182,6 +204,7 @@ export async function saveMessages(sessionId, messages) {
 
 /**
  * 从数据库加载某会话的所有消息，转换为前端消息格式
+ * 支持加载独立的 thinking 消息块
  */
 export async function loadMessages(sessionId) {
   try {
@@ -190,8 +213,30 @@ export async function loadMessages(sessionId) {
     const result = await resp.json()
     const msgs = result.messages || []
 
-    return msgs.map(m => {
+    const resultMsgs = []
+    let assistantMsg = null
+    
+    for (const m of msgs) {
       const meta = m.metadata || {}
+      
+      // 判断是否为 thinking 步骤消息（独立消息块）
+      const isThinking = m.content_type === 'thinking' || meta.step_type === 'thinking'
+      
+      if (isThinking) {
+        // 如果是独立的 thinking 消息块，关联到最近的 assistant 消息
+        if (assistantMsg) {
+          // 添加到最近 assistant 消息的 reasoning 列表
+          const lastThinking = assistantMsg.reasoning[assistantMsg.reasoning.length - 1]
+          if (!lastThinking || lastThinking.content !== m.content) {
+            assistantMsg.reasoning.push({ 
+              type: 'thinking', 
+              content: m.content, 
+              _index: assistantMsg.reasoning.length 
+            })
+          }
+        }
+        continue  // thinking 消息不单独显示，合并到 assistant 消息中
+      }
       
       // 优先从 reasoning_full 恢复完整的 reasoning 结构
       let reasoning = []
@@ -233,9 +278,9 @@ export async function loadMessages(sessionId) {
         formSubmitted = meta.formSubmitted === 'true' || meta.formSubmitted === true
       }
       
-      return {
+      const msg = {
         id:              m.message_id,
-        role:            m.role === 'assistant' ? 'assistant' : 'user',
+        role:            m.role === 'assistant' ? 'assistant' : (m.role === 'system' ? 'system' : 'user'),
         content:         m.content || '',
         // 恢复 streamText（如果有）
         streamText:      meta.stream_text || m.content || '',
@@ -258,9 +303,19 @@ export async function loadMessages(sessionId) {
         // 恢复表单状态
         formId:          formId,
         formSchema:      formSchema,
-        formSubmitted:   formSubmitted
+        formSubmitted:   formSubmitted,
+        sortOrder:       m.sort_order  // 保存排序字段用于验证
       }
-    })
+      
+      resultMsgs.push(msg)
+      
+      // 记录最近的 assistant 消息，用于关联后续的 thinking 消息
+      if (msg.role === 'assistant') {
+        assistantMsg = msg
+      }
+    }
+    
+    return resultMsgs
   } catch (e) {
     console.warn('[chatApi] loadMessages failed:', e)
     return []

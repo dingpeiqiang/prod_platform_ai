@@ -236,7 +236,7 @@ import ValidationResultPanel from './intent-panels/ValidationResultPanel.vue'
 // 意图注册器
 import { registerEventHandler, registerPostProcessor, getEventHandler, getEventPanel, getPostProcessor, listIntentPanels } from '../composables/useIntentRegistry.js'
 // 数据库持久化 API
-import { createSession as apiCreateSession, saveMessage, loadMessages as apiLoadMessages, deleteSession as apiDeleteSession } from '../services/chatApi.js'
+import { createSession as apiCreateSession, saveMessage, saveThinkingStep, loadMessages as apiLoadMessages, deleteSession as apiDeleteSession } from '../services/chatApi.js'
 
 marked.setOptions({ breaks: true, gfm: true })
 
@@ -1063,6 +1063,11 @@ const handleEvent = (data, idx) => {
       // 标记最新步骤（用于动画效果）
       msg.latestStepIndex = msg.reasoning.length - 1
       scrollToBottom()
+      
+      // 实时保存 thinking 步骤为独立消息块，确保排序正确
+      if (currentDbSessionId.value) {
+        saveThinkingStep(currentDbSessionId.value, data.content, msg.id).catch(e => console.warn('saveThinkingStep failed:', e))
+      }
       break
     }
     case 'reasoning': {
