@@ -443,6 +443,8 @@ watch(() => props.sessionId, async (newSessionId) => {
     isCreatingFromHome = false
     // 只更新状态，不清空消息
     currentDbSessionId.value = props.dbSessionId || ''
+    // 重置表单提交状态，避免新会话显示旧会话的"已提交"状态
+    currentFormSubmitted.value = false
     loadFormState()
     return
   }
@@ -455,6 +457,8 @@ watch(() => props.sessionId, async (newSessionId) => {
   // 如果是首页（sessionId为空），重置状态但不创建会话
   if (!newSessionId) {
     currentDbSessionId.value = ''
+    // 重置表单提交状态
+    currentFormSubmitted.value = false
     loadFormState()
     return
   }
