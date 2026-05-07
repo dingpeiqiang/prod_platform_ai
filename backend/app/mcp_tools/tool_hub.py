@@ -194,6 +194,30 @@ class MCPToolHub:
 
         try:
             result = tool.handler(**arguments)
+            if isinstance(result, dict) and "success" in result:
+                if result["success"]:
+                    return {
+                        "success": True,
+                        "result": {k: v for k, v in result.items() if k != "success"}
+                    }
+                else:
+                    err = result.get("error", "未知错误")
+                    logger.warning(f"工具执行失败 [{name}]: {err}")
+                    error = create_error(
+                        category=ErrorCategory.TOOL.value,
+                        code=ErrorCode.TOOL_EXEC_FAILED,
+                        message=f"工具 {name} 执行失败: {err}",
+                        level=ErrorLevel.WARNING.value,
+                        recoverable=True,
+                        recovery_hint="该工具调用失败不影响其他功能，已跳过",
+                        tool_name=name,
+                        tool_args=arguments
+                    )
+                    error_handler.emit(error)
+                    return {
+                        "success": False,
+                        "error": str(err)
+                    }
             return {
                 "success": True,
                 "result": result

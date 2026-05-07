@@ -184,6 +184,8 @@ class FormService:
         # 2. 用 LLM 传入的字段覆盖（更准确）
         if extracted_fields:
             for fc, fv in extracted_fields.items():
+                if fc in ['success', 'error', 'message', 'result']:
+                    continue
                 if fv is not None and fv != "":
                     # 对日期字段进行转换
                     if fc in ['start_date', 'end_date', 'date', 'expense_date']:

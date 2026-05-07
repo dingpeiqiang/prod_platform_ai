@@ -48,31 +48,18 @@
       "priority": 10
     },
     {
-      "sceneCode": "tariff_filing",
+      "sceneCode": "tariff_filing_publicity",
       "keywords": [
         "资费备案",
         "资费",
         "备案",
         "资费申请",
-        "资费标准"
-      ],
-      "priority": 10
-    },
-    {
-      "sceneCode": "tariff_filing_form",
-      "keywords": [
-        "资费备案",
+        "资费标准",
         "资费公示",
         "新增资费备案",
         "修改资费备案",
         "删除资费备案",
-        "校验资费备案"
-      ],
-      "priority": 10
-    },
-    {
-      "sceneCode": "tariff_filing_publicity",
-      "keywords": [
+        "校验资费备案",
         "资费备案公示",
         "tariff_filing_publicity"
       ],

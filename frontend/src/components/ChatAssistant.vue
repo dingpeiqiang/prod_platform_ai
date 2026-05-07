@@ -983,7 +983,7 @@ const doSendMessageAfterHome = async (text) => {
     const msg = messages.value[msgIdx]
     if (msg) {
       msg.done = true
-      msg.showReasoning = false
+      msg.showReasoning = msg.reasoning.some(r => r.type === 'error') || false
 
       // 根据 intentType 后处理（通过注册器分发）
       const postProcessor = getPostProcessor(intentType)

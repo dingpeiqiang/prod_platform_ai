@@ -824,6 +824,8 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                         exec_result = hub.execute_sync(tool_name, tool_args)
                                         if exec_result.get("success"):
                                             tool_result = exec_result.get("result", {})
+                                            if not isinstance(tool_result, dict) or not tool_result:
+                                                tool_result = {k: v for k, v in exec_result.items() if k != "success"}
                                             if isinstance(tool_result, dict):
                                                 extracted.update(tool_result)
                                             tool_results.append({"name": tool_name, "success": True, "fields": list(tool_result.keys()) if isinstance(tool_result, dict) else []})
