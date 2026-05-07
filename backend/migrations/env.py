@@ -17,9 +17,12 @@ from app.models.form import (
     FormInstance,
     FormHistory,
     Ontology,
-    SystemLog,
-    ChatSession,
-    ChatMessage
+    SystemLog
+)
+from app.models.chat_v2 import (
+    ChatSessionV2,
+    ChatMessageV2,
+    ChatMessageMetadata
 )
 
 # this is the Alembic Config object, which provides

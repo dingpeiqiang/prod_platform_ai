@@ -75,6 +75,8 @@ class SessionListResponse(BaseModel):
 class MessageListResponse(BaseModel):
     messages: List[Dict[str, Any]]
     total: int
+    has_more_before: bool = False
+    has_more_after: bool = False
 
 
 # ── 会话 API ──────────────────────────────────────────────────
@@ -158,27 +160,44 @@ async def delete_session(
 async def get_messages(
     session_id: str,
     limit: int = Query(200, ge=1, le=500),
-    before_ts: Optional[str] = Query(None, description="ISO 时间戳，分页游标"),
+    before_ts: Optional[str] = Query(None, description="向前翻页：获取此时间之前的消息"),
+    after_ts: Optional[str] = Query(None, description="向后翻页：获取此时间之后的消息"),
     include_metadata: bool = Query(True),
     db: Session = Depends(get_db)
 ):
-    """获取会话的所有消息（含 metadata）"""
-    logger.info(f"[chat_v2] 获取消息 session_id={session_id}, limit={limit}")
+    """获取会话的消息列表（支持滚动加载）"""
+    logger.info(f"[chat_v2] 获取消息 session_id={session_id}, limit={limit}, before_ts={before_ts}, after_ts={after_ts}")
+    
     before_dt = None
     if before_ts:
         try:
             before_dt = datetime.fromisoformat(before_ts.replace('Z', '+00:00'))
         except ValueError:
             pass
-    messages = ChatServiceV2.get_messages(
+    
+    after_dt = None
+    if after_ts:
+        try:
+            after_dt = datetime.fromisoformat(after_ts.replace('Z', '+00:00'))
+        except ValueError:
+            pass
+    
+    result = ChatServiceV2.get_messages(
         session_id=session_id,
         limit=limit,
         before_ts=before_dt,
+        after_ts=after_dt,
         include_metadata=include_metadata,
         db=db
     )
-    logger.info(f"[chat_v2] 返回 {len(messages)} 条消息")
-    return MessageListResponse(messages=messages, total=len(messages))
+    
+    logger.info(f"[chat_v2] 返回 {len(result['messages'])} 条消息，总数 {result['total']}")
+    return MessageListResponse(
+        messages=result['messages'],
+        total=result['total'],
+        has_more_before=result['has_more_before'],
+        has_more_after=result['has_more_after']
+    )
 
 
 @router.post("/sessions/{session_id}/messages", response_model=Dict[str, Any])
@@ -209,26 +228,35 @@ async def create_messages_batch(
     request: BatchMessageCreateRequest,
     db: Session = Depends(get_db)
 ):
-    """批量保存消息（提高性能）"""
-    results = []
-    for msg_req in request.messages:
-        result = ChatServiceV2.save_message(
-            session_id=session_id,
-            role=msg_req.role,
-            content=msg_req.content,
-            content_type=msg_req.content_type,
-            metadata=msg_req.metadata,
-            parent_id=msg_req.parent_id,
-            db=db
-        )
-        if result:
-            results.append(result)
-        else:
-            logger.warning("[chat_v2] 批量保存消息失败 session=%s", session_id)
-            raise HTTPException(500, detail=f"批量保存失败，已保存 {len(results)} 条消息")
+    """批量保存消息（真正的批量插入优化）"""
+    # 转换为字典列表
+    messages_data = [
+        {
+            "role": msg.role,
+            "content": msg.content,
+            "content_type": msg.content_type,
+            "metadata": msg.metadata,
+            "parent_id": msg.parent_id
+        }
+        for msg in request.messages
+    ]
     
-    logger.info("[chat_v2] 批量保存消息 session=%s count=%d", session_id, len(results))
-    return {"success": True, "count": len(results), "results": results}
+    result = ChatServiceV2.save_messages_batch(
+        session_id=session_id,
+        messages=messages_data,
+        db=db
+    )
+    
+    if result["success"]:
+        logger.info("[chat_v2] 批量保存消息 session=%s count=%d", session_id, result["count"])
+        return {
+            "success": True,
+            "count": result["count"],
+            "message_ids": result["message_ids"]
+        }
+    else:
+        logger.warning("[chat_v2] 批量保存消息失败 session=%s", session_id)
+        raise HTTPException(500, detail="批量保存失败")
 
 
 @router.get("/sessions/{session_id}/messages/{message_id}", response_model=MessageResponse)

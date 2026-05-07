@@ -26,7 +26,7 @@ class ChatSessionV2(Base):
         "ChatMessageV2",
         back_populates="session",
         cascade="all, delete-orphan",
-        order_by="ChatMessageV2.created_at.asc()"
+        order_by="ChatMessageV2.sort_order.asc()"
     )
 
 
@@ -41,6 +41,7 @@ class ChatMessageV2(Base):
     content     = Column(Text, nullable=False)
     content_type = Column(String(20), default='text')  # text / markdown / json / form
     parent_id   = Column(String(64), nullable=True)    # 父消息 ID（多轮树状）
+    sort_order  = Column(Integer, nullable=False)      # 排序字段，保证消息顺序
     created_at  = Column(DateTime(timezone=True), server_default=func.now())
 
     session  = relationship("ChatSessionV2", back_populates="messages")
@@ -66,6 +67,7 @@ class ChatMessageV2(Base):
             "content":      self.content,
             "content_type": self.content_type,
             "parent_id":    self.parent_id,
+            "sort_order":   self.sort_order,
             "created_at":   self.created_at.isoformat() if self.created_at else None,
         }
         if include_metadata:

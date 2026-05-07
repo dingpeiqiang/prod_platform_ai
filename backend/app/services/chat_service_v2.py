@@ -153,10 +153,22 @@ class ChatServiceV2:
         metadata: Dict[str, Any] = None,   # ← 所有业务扩展全走这里
         parent_id: str = None,
         user_id: str = None,
-        db: Session = None
+        db: Session = None,
+        step_type: str = None  # 处理步骤类型：thinking / reasoning / action
     ) -> Optional[Dict[str, Any]]:
         """
         保存消息 + metadata。
+        
+        Args:
+            session_id: 会话ID
+            role: 用户角色（user/assistant/system）
+            content: 消息内容
+            content_type: 内容类型（text/markdown/json/form/thinking）
+            metadata: 业务扩展字段
+            parent_id: 父消息ID
+            user_id: 用户ID
+            step_type: 处理步骤类型（用于标识中间步骤）
+        
         metadata 示例（表单业务）：
           {
             "intent_type": "form",
@@ -182,6 +194,12 @@ class ChatServiceV2:
                 db.add(session)
                 logger.debug("[ChatServiceV2] 自动创建会话 session_id=%s", session_id)
 
+            # 获取当前会话的最大 sort_order，确保消息顺序正确
+            max_sort_order = db.query(func.max(ChatMessageV2.sort_order)).filter(
+                ChatMessageV2.session_id == session_id
+            ).scalar()
+            sort_order = (max_sort_order or 0) + 1
+
             message_id = str(uuid.uuid4())
             message = ChatMessageV2(
                 message_id=message_id,
@@ -189,7 +207,9 @@ class ChatServiceV2:
                 role=role,
                 content=content,
                 content_type=content_type,
-                parent_id=parent_id
+                parent_id=parent_id,
+                sort_order=sort_order,
+                created_at=datetime.now()
             )
             db.add(message)
 
@@ -205,6 +225,15 @@ class ChatServiceV2:
                         value=serialized_value
                     )
                     db.add(meta)
+            
+            # 处理步骤类型（thinking/reasoning/action）作为独立消息块标识
+            if step_type:
+                meta = ChatMessageMetadata(
+                    message_id=message_id,
+                    meta_key="step_type",
+                    value=step_type
+                )
+                db.add(meta)
 
             # 更新会话 updated_at
             session.updated_at = func.now()
@@ -220,23 +249,112 @@ class ChatServiceV2:
             return None
 
     @classmethod
+    def save_step_message(
+        cls,
+        session_id: str,
+        step_type: str,
+        content: str,
+        parent_id: str = None,
+        user_id: str = None,
+        db: Session = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        保存处理步骤消息（作为独立消息块）
+        
+        Args:
+            session_id: 会话ID
+            step_type: 步骤类型（thinking/reasoning/action）
+            content: 步骤内容
+            parent_id: 关联的父消息ID
+            user_id: 用户ID
+        
+        Returns:
+            {"message_id": ..., "session_id": ...}
+        """
+        metadata = {
+            "step_type": step_type
+        }
+        
+        return cls.save_message(
+            session_id=session_id,
+            role="system",
+            content=content,
+            content_type="thinking",
+            metadata=metadata,
+            parent_id=parent_id,
+            user_id=user_id,
+            db=db
+        )
+
+    @classmethod
     def get_messages(
         cls,
         session_id: str,
         limit: int = 200,
-        before_ts: datetime = None,  # 分页游标
+        before_ts: datetime = None,  # 向前翻页游标
+        after_ts: datetime = None,   # 向后翻页游标
         include_metadata: bool = True,
         db: Session = None
-    ) -> List[Dict[str, Any]]:
-        """获取会话的所有消息（含 metadata）"""
+    ) -> Dict[str, Any]:
+        """
+        获取会话的消息列表（支持滚动加载）
+        
+        Args:
+            session_id: 会话ID
+            limit: 返回数量限制
+            before_ts: 向前翻页，获取此时间之前的消息
+            after_ts: 向后翻页，获取此时间之后的消息
+            include_metadata: 是否包含metadata
+        
+        Returns:
+            {
+                "messages": 消息列表（按时间升序排列）,
+                "total": 会话总消息数,
+                "has_more_before": 是否有更早的消息,
+                "has_more_after": 是否有更新的消息
+            }
+        """
         if not db:
-            return []
+            return {"messages": [], "total": 0, "has_more_before": False, "has_more_after": False}
         try:
+            # 获取会话总消息数（用于滚动加载判断）
+            total_count = db.query(ChatMessageV2).filter(ChatMessageV2.session_id == session_id).count()
+
+            # 构建查询条件
             query = db.query(ChatMessageV2).filter(ChatMessageV2.session_id == session_id)
+            
+            # 双向分页支持
             if before_ts:
                 query = query.filter(ChatMessageV2.created_at < before_ts)
-            messages = query.order_by(ChatMessageV2.created_at.asc()).limit(limit).all()
-            logger.info(f"[ChatServiceV2] 查询到 {len(messages)} 条消息 for session {session_id}")
+            if after_ts:
+                query = query.filter(ChatMessageV2.created_at > after_ts)
+
+            # 使用 sort_order 排序，确保消息顺序正确
+            # sort_order 是会话内递增的整数，保证消息顺序绝对正确
+            messages = query.order_by(
+                ChatMessageV2.sort_order.asc()
+            ).limit(limit + 1).all()
+
+            # 判断是否还有更多数据
+            has_more = len(messages) > limit
+            if has_more:
+                messages = messages[:-1]  # 移除多余的一条用于判断
+
+            # 判断翻页方向
+            has_more_before = False
+            has_more_after = False
+            if before_ts:
+                # 向前翻页模式
+                has_more_before = has_more
+            elif after_ts:
+                # 向后翻页模式
+                has_more_after = has_more
+            else:
+                # 默认模式（从最新或最早开始）
+                if total_count > len(messages):
+                    has_more_after = True
+
+            logger.info(f"[ChatServiceV2] 查询到 {len(messages)} 条消息 for session {session_id}, total={total_count}")
 
             if include_metadata:
                 # 批量加载 metadata（避免 N+1）
@@ -249,7 +367,7 @@ class ChatServiceV2:
                     for m in metas:
                         meta_map.setdefault(m.message_id, []).append(m)
 
-                result = []
+                result_messages = []
                 for msg in messages:
                     d = cls._message_to_dict(msg, False)
                     # 优化：反序列化 JSON 值
@@ -260,13 +378,19 @@ class ChatServiceV2:
                         except (json.JSONDecodeError, TypeError):
                             metadata_dict[m_meta.meta_key] = m_meta.value
                     d["metadata"] = metadata_dict
-                    result.append(d)
-                return result
+                    result_messages.append(d)
             else:
-                return [cls._message_to_dict(m, False) for m in messages]
+                result_messages = [cls._message_to_dict(m, False) for m in messages]
+
+            return {
+                "messages": result_messages,
+                "total": total_count,
+                "has_more_before": has_more_before,
+                "has_more_after": has_more_after
+            }
         except Exception as e:
             logger.exception("[ChatServiceV2] 获取消息失败: %s", e)
-            return []
+            return {"messages": [], "total": 0, "has_more_before": False, "has_more_after": False}
 
     @classmethod
     def get_message(cls, message_id: str, db: Session = None) -> Optional[Dict[str, Any]]:
@@ -300,6 +424,111 @@ class ChatServiceV2:
             db.rollback()
             logger.exception("[ChatServiceV2] 删除消息失败: %s", e)
             return False
+
+    @classmethod
+    def save_messages_batch(
+        cls,
+        session_id: str,
+        messages: List[Dict[str, Any]],
+        user_id: str = None,
+        db: Session = None
+    ) -> Dict[str, Any]:
+        """
+        批量保存消息（真正的批量插入优化）
+        
+        Args:
+            session_id: 会话ID
+            messages: 消息列表，每条消息包含: role, content, content_type, metadata, parent_id
+            user_id: 用户ID
+        
+        Returns:
+            {
+                "success": 是否成功,
+                "count": 保存的消息数,
+                "message_ids": 生成的消息ID列表
+            }
+        """
+        if not db or not messages:
+            return {"success": False, "count": 0, "message_ids": []}
+        
+        try:
+            # 确保会话存在
+            session = db.query(ChatSessionV2).filter(ChatSessionV2.session_id == session_id).first()
+            if not session:
+                session = ChatSessionV2(
+                    session_id=session_id,
+                    user_id=user_id,
+                    title=f"会话 {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+                )
+                db.add(session)
+
+            # 获取当前会话的最大 sort_order，确保消息顺序正确
+            max_sort_order = db.query(func.max(ChatMessageV2.sort_order)).filter(
+                ChatMessageV2.session_id == session_id
+            ).scalar()
+            current_sort_order = max_sort_order or 0
+
+            # 批量创建消息对象
+            message_objects = []
+            metadata_objects = []
+            message_ids = []
+            
+            # 记录起始时间
+            base_time = datetime.now()
+
+            for msg_data in messages:
+                message_id = str(uuid.uuid4())
+                message_ids.append(message_id)
+                
+                # 递增 sort_order，确保消息顺序正确
+                current_sort_order += 1
+                
+                message = ChatMessageV2(
+                    message_id=message_id,
+                    session_id=session_id,
+                    role=msg_data.get('role', 'user'),
+                    content=msg_data.get('content', ''),
+                    content_type=msg_data.get('content_type', 'text'),
+                    parent_id=msg_data.get('parent_id'),
+                    sort_order=current_sort_order,
+                    created_at=base_time
+                )
+                message_objects.append(message)
+
+                # 处理 metadata
+                metadata = msg_data.get('metadata', {})
+                for key, value in metadata.items():
+                    serialized_value = json.dumps(value, ensure_ascii=False) if value is not None else None
+                    meta = ChatMessageMetadata(
+                        message_id=message_id,
+                        meta_key=key,
+                        value=serialized_value
+                    )
+                    metadata_objects.append(meta)
+
+            # 批量插入消息
+            if message_objects:
+                db.add_all(message_objects)
+
+            # 批量插入 metadata
+            if metadata_objects:
+                db.add_all(metadata_objects)
+
+            # 更新会话时间
+            session.updated_at = func.now()
+
+            db.commit()
+            logger.info(f"[ChatServiceV2] 批量保存消息 session_id={session_id} count={len(message_objects)}")
+            return {
+                "success": True,
+                "count": len(message_objects),
+                "message_ids": message_ids
+            }
+        
+        except Exception as e:
+            db.rollback()
+            logger.exception("[ChatServiceV2] 批量保存消息失败: %s", e)
+            return {"success": False, "count": 0, "message_ids": []}
 
     # ── 搜索 ─────────────────────────────────────────────────
 
