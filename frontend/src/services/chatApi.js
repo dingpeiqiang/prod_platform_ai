@@ -225,41 +225,34 @@ export async function loadMessages(sessionId) {
     const result = await resp.json()
     const msgs = result.messages || []
 
-    const resultMsgs = []
-    let assistantMsg = null
+    // 分离 thinking 消息和普通消息
+    const thinkingMsgs = []
+    const normalMsgs = []
     
     for (const m of msgs) {
       const meta = m.metadata || {}
-      
-      // 判断是否为 thinking 步骤消息（独立消息块）
       const isThinking = m.content_type === 'thinking' || meta.step_type === 'thinking'
-      
       if (isThinking) {
-        // 如果是独立的 thinking 消息块，关联到最近的 assistant 消息
-        if (assistantMsg) {
-          // 添加到最近 assistant 消息的 reasoning 列表
-          const lastThinking = assistantMsg.reasoning[assistantMsg.reasoning.length - 1]
-          if (!lastThinking || lastThinking.content !== m.content) {
-            assistantMsg.reasoning.push({ 
-              type: 'thinking', 
-              content: m.content, 
-              _index: assistantMsg.reasoning.length 
-            })
-          }
-        }
-        continue  // thinking 消息不单独显示，合并到 assistant 消息中
+        thinkingMsgs.push(m)
+      } else {
+        normalMsgs.push(m)
       }
+    }
+
+    const resultMsgs = []
+    const msgMap = {}  // 用于快速查找消息
+    
+    // 第一步：创建所有普通消息
+    for (const m of normalMsgs) {
+      const meta = m.metadata || {}
       
-      // 优先从 reasoning_full 恢复完整的 reasoning 结构
+      // 优先从 reasoning_full 恢复完整的 reasoning 结构（旧格式兼容）
       let reasoning = []
       if (meta.reasoning_full) {
         try {
           reasoning = JSON.parse(meta.reasoning_full)
-          // 按步骤序号排序，确保顺序正确
           reasoning.sort((a, b) => (a._index ?? 0) - (b._index ?? 0))
-        } catch (e) {
-          // 如果解析失败，降级到旧格式
-        }
+        } catch (e) {}
       }
       
       // 如果没有完整结构，用旧格式 fallback
@@ -267,7 +260,7 @@ export async function loadMessages(sessionId) {
         reasoning = meta.reasoning.split('\n').filter(Boolean).map((c, index) => ({ 
           type: 'thinking', 
           content: c,
-          _index: index  // 添加序号确保顺序
+          _index: index 
         }))
       }
       
@@ -275,9 +268,7 @@ export async function loadMessages(sessionId) {
       let formId = undefined
       let formSchema = null
       let formSubmitted = false
-      if (meta.formId !== undefined) {
-        formId = meta.formId
-      }
+      if (meta.formId !== undefined) formId = meta.formId
       if (meta.formSchema !== undefined) {
         try {
           formSchema = JSON.parse(meta.formSchema)
@@ -285,7 +276,6 @@ export async function loadMessages(sessionId) {
           formSchema = null
         }
       }
-      // 恢复表单提交状态
       if (meta.formSubmitted !== undefined) {
         formSubmitted = meta.formSubmitted === 'true' || meta.formSubmitted === true
       }
@@ -294,20 +284,16 @@ export async function loadMessages(sessionId) {
         id:              m.message_id,
         role:            m.role === 'assistant' ? 'assistant' : (m.role === 'system' ? 'system' : 'user'),
         content:         m.content || '',
-        // 恢复 streamText（如果有）
         streamText:      meta.stream_text || m.content || '',
-        // 恢复 reasoning
         reasoning:       reasoning,
-        showReasoning:   (reasoning && reasoning.length > 0) ? true : false,  // 有处理步骤则默认展开
-        done:            meta.done === 'true' || meta.done === true || true,  // 默认已完成
+        showReasoning:   (reasoning && reasoning.length > 0) ? true : false,
+        done:            meta.done === 'true' || meta.done === true || true,
         type:            'chat',
-        // 恢复意图相关字段
         intentType:      meta.intent_type,
         formCode:        meta.form_code,
         extractedFields: meta.extracted_fields,
         confidence:      meta.confidence,
         model:           meta.model,
-        // 恢复 contentType
         contentType:     meta.content_type || m.content_type || 'text',
         parentId:        m.parent_id,
         createdAt:       m.created_at,
@@ -321,9 +307,24 @@ export async function loadMessages(sessionId) {
       
       resultMsgs.push(msg)
       
-      // 记录最近的 assistant 消息，用于关联后续的 thinking 消息
-      if (msg.role === 'assistant') {
-        assistantMsg = msg
+      // 记录消息到 map，用于后续关联 thinking
+      msgMap[m.message_id] = msg
+    }
+    
+    // 第二步：将 thinking 消息关联到对应的 assistant 消息
+    for (const thinking of thinkingMsgs) {
+      const parentId = thinking.parent_id
+      if (parentId && msgMap[parentId]) {
+        const targetMsg = msgMap[parentId]
+        const lastThinking = targetMsg.reasoning[targetMsg.reasoning.length - 1]
+        if (!lastThinking || lastThinking.content !== thinking.content) {
+          targetMsg.reasoning.push({ 
+            type: 'thinking', 
+            content: thinking.content, 
+            _index: targetMsg.reasoning.length 
+          })
+          targetMsg.showReasoning = true  // 有 thinking 就展开
+        }
       }
     }
     
