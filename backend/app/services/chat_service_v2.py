@@ -72,6 +72,7 @@ class ChatServiceV2:
             if status:
                 query = query.filter(ChatSessionV2.status == status)
             sessions = query.order_by(ChatSessionV2.updated_at.desc()).limit(limit).all()
+            logger.info(f"[ChatServiceV2] 查询到 {len(sessions)} 个会话")
             return [cls._session_to_dict(s) for s in sessions]
         except Exception as e:
             logger.exception("[ChatServiceV2] 查询会话列表失败: %s", e)
@@ -195,10 +196,13 @@ class ChatServiceV2:
             # 批量写入 metadata（如果有）
             if metadata:
                 for key, value in metadata.items():
+                    # 优化：统一使用 JSON 序列化，避免类型判断
+                    # 对于 None 值，存储为 null 字符串
+                    serialized_value = json.dumps(value, ensure_ascii=False) if value is not None else None
                     meta = ChatMessageMetadata(
                         message_id=message_id,
                         meta_key=key,
-                        value=json.dumps(value) if isinstance(value, (dict, list)) else str(value) if value is not None else None
+                        value=serialized_value
                     )
                     db.add(meta)
 
@@ -232,6 +236,7 @@ class ChatServiceV2:
             if before_ts:
                 query = query.filter(ChatMessageV2.created_at < before_ts)
             messages = query.order_by(ChatMessageV2.created_at.asc()).limit(limit).all()
+            logger.info(f"[ChatServiceV2] 查询到 {len(messages)} 条消息 for session {session_id}")
 
             if include_metadata:
                 # 批量加载 metadata（避免 N+1）
@@ -247,9 +252,14 @@ class ChatServiceV2:
                 result = []
                 for msg in messages:
                     d = cls._message_to_dict(msg, False)
-                    d["metadata"] = {
-                        m.meta_key: m.value for m in meta_map.get(msg.message_id, [])
-                    }
+                    # 优化：反序列化 JSON 值
+                    metadata_dict = {}
+                    for m_meta in meta_map.get(msg.message_id, []):
+                        try:
+                            metadata_dict[m_meta.meta_key] = json.loads(m_meta.value) if m_meta.value is not None else None
+                        except (json.JSONDecodeError, TypeError):
+                            metadata_dict[m_meta.meta_key] = m_meta.value
+                    d["metadata"] = metadata_dict
                     result.append(d)
                 return result
             else:
@@ -373,7 +383,16 @@ class ChatServiceV2:
             "created_at":   m.created_at.isoformat() if m.created_at else None,
         }
         if include_metadata and m.msg_metadata:
-            result["metadata"] = {x.meta_key: x.value for x in m.msg_metadata}
+            # 优化：反序列化 JSON 值，恢复原始数据类型
+            metadata_dict = {}
+            for x in m.msg_metadata:
+                try:
+                    # 尝试解析 JSON，如果失败则保持原字符串
+                    metadata_dict[x.meta_key] = json.loads(x.value) if x.value is not None else None
+                except (json.JSONDecodeError, TypeError):
+                    # 如果不是有效的 JSON，直接返回字符串
+                    metadata_dict[x.meta_key] = x.value
+            result["metadata"] = metadata_dict
         elif include_metadata:
             result["metadata"] = {}
         return result

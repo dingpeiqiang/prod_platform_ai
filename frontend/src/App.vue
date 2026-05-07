@@ -43,6 +43,7 @@ import { createSession as apiCreateSession, getSessions as apiGetSessions, delet
 const userStore = useUserStore()
 
 const SESSIONS_KEY = 'chat_sessions'
+const ACTIVE_SESSION_KEY = 'chat_active_session'
 
 // ── 本地会话列表 ──────────────────────────────────────────
 // 每项：{ id, title, createdAt, updatedAt, dbSessionId }
@@ -70,6 +71,19 @@ const saveSessions = () => {
   try { localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions.value)) } catch {}
 }
 
+// ── 保存当前激活的会话 ID ─────────────────────────────────
+const saveActiveSessionId = () => {
+  try { localStorage.setItem(ACTIVE_SESSION_KEY, activeSessionId.value) } catch {}
+}
+
+// ── 恢复当前激活的会话 ID ─────────────────────────────────
+const loadActiveSessionId = () => {
+  try {
+    const raw = localStorage.getItem(ACTIVE_SESSION_KEY)
+    return raw || ''
+  } catch { return '' }
+}
+
 // ── 生成 ID ──────────────────────────────────────────────
 const genId = () => `sess_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
 
@@ -87,6 +101,7 @@ const createLocalSession = (dbSessionId = null) => {
   activeSessionId.value = s.id
   activeDbSessionId.value = dbSessionId || ''
   saveSessions()
+  saveActiveSessionId()  // 保存当前激活会话
   sidebarOpen.value = false
   return s
 }
@@ -99,6 +114,7 @@ const onSwitchSession = (id) => {
   const s = sessions.value.find(s => s.id === id)
   activeSessionId.value = id
   activeDbSessionId.value = s?.dbSessionId || ''
+  saveActiveSessionId()  // 保存当前激活会话
   sidebarOpen.value = false
 }
 
@@ -116,6 +132,7 @@ const deleteSession = async (id) => {
     const first = sessions.value.find(s => s.id === activeSessionId.value)
     activeDbSessionId.value = first?.dbSessionId || ''
     if (!activeSessionId.value) createLocalSession()
+    else saveActiveSessionId()  // 保存切换后的激活会话
   }
 }
 
@@ -160,6 +177,9 @@ const handleLogout = () => {
 
 // ── 初始化：加载本地会话 + 同步 DB 会话 ────────────────────
 const initDbSessions = async () => {
+  // 0. 恢复之前激活的会话 ID
+  const savedActiveId = loadActiveSessionId()
+
   // 1. 加载本地会话
   loadSessions()
 
@@ -198,22 +218,36 @@ const initDbSessions = async () => {
 
   saveSessions()
 
-  // 5. 激活最近一次更新的会话（优先用当前 activeSessionId 的映射）
-  const sorted = [...sessions.value].sort((a, b) => b.updatedAt - a.updatedAt)
-  if (sorted.length === 0) {
-    createLocalSession()
-    return
-  }
-
-  // 如果当前 activeSessionId 已有有效的 dbSessionId，保持激活
-  const current = sessions.value.find(s => s.id === activeSessionId.value)
-  if (current?.dbSessionId && dbSessions.some(d => d.session_id === current.dbSessionId)) {
-    activeDbSessionId.value = current.dbSessionId
+  // 5. 激活会话：优先使用刷新前激活的那个
+  if (savedActiveId) {
+    const saved = sessions.value.find(s => s.id === savedActiveId)
+    if (saved?.dbSessionId && dbSessions.some(d => d.session_id === saved.dbSessionId)) {
+      // 之前激活的会话仍然有效，恢复它
+      activeSessionId.value = saved.id
+      activeDbSessionId.value = saved.dbSessionId
+    } else if (saved && sessions.value.some(s => s.id === saved.id)) {
+      // 会话存在但 dbSessionId 无效，仍恢复（ChatAssistant 会重新创建 DB 会话）
+      activeSessionId.value = saved.id
+      activeDbSessionId.value = saved.dbSessionId || ''
+    } else {
+      // 保存的会话已不存在，fallback 到最近会话
+      const sorted = [...sessions.value].sort((a, b) => b.updatedAt - a.updatedAt)
+      if (sorted.length === 0) {
+        createLocalSession()
+        return
+      }
+      activeSessionId.value = sorted[0].id
+      activeDbSessionId.value = sorted[0].dbSessionId || ''
+    }
   } else {
-    // 激活最近更新的那个
-    const target = sorted[0]
-    activeSessionId.value = target.id
-    activeDbSessionId.value = target.dbSessionId || ''
+    // 没有保存的激活会话，按原有逻辑激活最近会话
+    const sorted = [...sessions.value].sort((a, b) => b.updatedAt - a.updatedAt)
+    if (sorted.length === 0) {
+      createLocalSession()
+      return
+    }
+    activeSessionId.value = sorted[0].id
+    activeDbSessionId.value = sorted[0].dbSessionId || ''
   }
 }
 

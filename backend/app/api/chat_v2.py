@@ -14,7 +14,7 @@ from app.core.database import get_db
 from app.services.chat_service_v2 import ChatServiceV2
 
 logger = logging.getLogger("chat_v2_api")
-router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
+router = APIRouter(prefix="/api/v2/chat", tags=["chat-v2"])
 
 
 # ── Request / Response Models ──────────────────────────────────
@@ -39,6 +39,10 @@ class MessageCreateRequest(BaseModel):
     content_type: str = Field(default='text', description="text / markdown / json / form")
     metadata:     Optional[Dict[str, Any]] = Field(default=None, description="业务扩展字段")
     parent_id:    Optional[str] = Field(default=None, description="父消息 ID")
+
+
+class BatchMessageCreateRequest(BaseModel):
+    messages: List[MessageCreateRequest] = Field(..., description="消息列表")
 
 
 class SessionResponse(BaseModel):
@@ -83,7 +87,9 @@ async def get_sessions(
     db: Session = Depends(get_db)
 ):
     """查询会话列表"""
+    logger.info(f"[chat_v2] 查询会话列表 user_id={user_id}, status={status}, limit={limit}")
     sessions = ChatServiceV2.get_sessions(user_id=user_id, status=status, limit=limit, db=db)
+    logger.info(f"[chat_v2] 返回 {len(sessions)} 个会话")
     return SessionListResponse(sessions=sessions, total=len(sessions))
 
 
@@ -157,6 +163,7 @@ async def get_messages(
     db: Session = Depends(get_db)
 ):
     """获取会话的所有消息（含 metadata）"""
+    logger.info(f"[chat_v2] 获取消息 session_id={session_id}, limit={limit}")
     before_dt = None
     if before_ts:
         try:
@@ -170,6 +177,7 @@ async def get_messages(
         include_metadata=include_metadata,
         db=db
     )
+    logger.info(f"[chat_v2] 返回 {len(messages)} 条消息")
     return MessageListResponse(messages=messages, total=len(messages))
 
 
@@ -193,6 +201,34 @@ async def create_message(
         logger.info("[chat_v2] 保存消息 session=%s role=%s", session_id, request.role)
         return {"success": True, **result}
     raise HTTPException(500, detail="保存失败")
+
+
+@router.post("/sessions/{session_id}/messages/batch", response_model=Dict[str, Any])
+async def create_messages_batch(
+    session_id: str,
+    request: BatchMessageCreateRequest,
+    db: Session = Depends(get_db)
+):
+    """批量保存消息（提高性能）"""
+    results = []
+    for msg_req in request.messages:
+        result = ChatServiceV2.save_message(
+            session_id=session_id,
+            role=msg_req.role,
+            content=msg_req.content,
+            content_type=msg_req.content_type,
+            metadata=msg_req.metadata,
+            parent_id=msg_req.parent_id,
+            db=db
+        )
+        if result:
+            results.append(result)
+        else:
+            logger.warning("[chat_v2] 批量保存消息失败 session=%s", session_id)
+            raise HTTPException(500, detail=f"批量保存失败，已保存 {len(results)} 条消息")
+    
+    logger.info("[chat_v2] 批量保存消息 session=%s count=%d", session_id, len(results))
+    return {"success": True, "count": len(results), "results": results}
 
 
 @router.get("/sessions/{session_id}/messages/{message_id}", response_model=MessageResponse)

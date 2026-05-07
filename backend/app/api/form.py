@@ -313,6 +313,33 @@ async def list_form_submissions(
     return {"success": True, "submissions": submissions, "total": len(submissions)}
 
 
+@router.get("/form/schema/{form_code}")
+async def get_form_schema(form_code: str, db: Session = Depends(get_db)):
+    """
+    根据formCode获取最新的表单Schema
+    用于从数据库恢复表单状态
+    """
+    logger.info("[form/schema] 获取表单 schema form_code=%s", form_code)
+    
+    template = db.query(FormTemplate).filter(
+        FormTemplate.form_code == form_code,
+        FormTemplate.is_active == True
+    ).order_by(FormTemplate.version.desc()).first()
+    
+    if not template:
+        logger.warning("[form/schema] 表单模板不存在 form_code=%s", form_code)
+        return {"success": False, "message": "表单模板不存在"}
+    
+    logger.info("[form/schema] 成功 form_code=%s version=%d", form_code, template.version)
+    return {
+        "success": True,
+        "formCode": template.form_code,
+        "formName": template.form_name,
+        "version": template.version,
+        "schema": template.schema
+    }
+
+
 @router.get("/form/instance/{form_id}")
 async def get_form_instance(form_id: str, db: Session = Depends(get_db)):
     """

@@ -27,7 +27,7 @@
         <svg class="session-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
         </svg>
-        <span class="session-title">{{ s.title }}</span>
+        <span class="session-title">{{ s.title || '新对话' }}</span>
         <button class="session-delete" @click.stop="$emit('delete-session', s.id)" title="删除对话">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -45,7 +45,7 @@
         <svg class="session-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
         </svg>
-        <span class="session-title">{{ s.title }}</span>
+        <span class="session-title">{{ s.title || '新对话' }}</span>
         <button class="session-delete" @click.stop="$emit('delete-session', s.id)" title="删除对话">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -101,6 +101,9 @@ const props = defineProps({
   sessions: { type: Array, default: () => [] },
   activeId: { type: String, default: '' }
 })
+
+// 调试：打印 sessions 数量
+console.log('[Sidebar] sessions 数量:', props.sessions.length, 'activeId:', props.activeId)
 
 const emit = defineEmits(['new-session', 'switch-session', 'delete-session', 'logout'])
 
