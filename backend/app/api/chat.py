@@ -566,13 +566,14 @@ def _sse(data: dict) -> str:
     return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-def _thinking(content: str, result: Any = None) -> str:
+def _thinking(content: str, result: Any = None, assistant_message_id: str = None) -> str:
     """系统步骤日志（type=thinking），支持结构化结果详情"""
     import uuid
     data = {
         "type": "thinking", 
         "content": content,
-        "message_id": str(uuid.uuid4())  # 生成消息ID，排序值由后端保存时计算
+        "message_id": str(uuid.uuid4()),  # 生成消息ID，排序值由后端保存时计算
+        "assistant_message_id": assistant_message_id  # AI回复消息的ID，用于关联
     }
     if result is not None:
         data["result"] = result
@@ -596,9 +597,13 @@ async def _stream_chat_reply(
     Yields:
         (SSE帧, 统计信息) - 统计信息仅在结束时提供
     """
+    import uuid
+    # 预先生成 AI 回复消息的 ID，用于关联 thinking 消息
+    assistant_message_id = str(uuid.uuid4())
+    
     chat_prompt_template = config_loader.get_prompt('smart_chat_response')
     if not chat_prompt_template:
-        yield _sse({"type": "text_start"}), None
+        yield _sse({"type": "text_start", "message_id": assistant_message_id}), None
         yield _sse({"type": "text", "content": "好的，请问有什么可以帮助你？"}), None
         yield _sse({"type": "text_end"}), None
         return
@@ -608,7 +613,7 @@ async def _stream_chat_reply(
         messages_text=messages_text
     )
 
-    yield _thinking("🤖 正在生成回复..."), None
+    yield _thinking("🤖 正在生成回复...", None, assistant_message_id), None
     logger.info("[stream_chat] 开始流式调用，prompt长度=%d", len(prompt))
 
     # text_start 延迟到首个正文出现时再发，让前端先展示 thinking 折叠区
@@ -650,7 +655,7 @@ async def _stream_chat_reply(
                     if remaining.strip():
                         if not _text_started:
                             _text_started = True
-                            yield _sse({"type": "text_start"}), None
+                            yield _sse({"type": "text_start", "message_id": assistant_message_id}), None
                         yield _sse({"type": "text", "content": remaining}), None
                         await asyncio.sleep(0)
                     remaining = ""
@@ -660,7 +665,7 @@ async def _stream_chat_reply(
                     if before.strip():
                         if not _text_started:
                             _text_started = True
-                            yield _sse({"type": "text_start"}), None
+                            yield _sse({"type": "text_start", "message_id": assistant_message_id}), None
                         yield _sse({"type": "text", "content": before}), None
                         await asyncio.sleep(0)
                     _in_thinking = True
@@ -673,7 +678,7 @@ async def _stream_chat_reply(
 
     # 如果模型只输出了 thinking 没有正文，补发 text_start/text_end 让前端正常结束
     if not _text_started:
-        yield _sse({"type": "text_start"}), None
+        yield _sse({"type": "text_start", "message_id": assistant_message_id}), None
 
     if final_stats:
         logger.info("[stream_chat] 流式完成: tokens=%d chars=%d thinking_chars=%d chunks=%d elapsed=%.2fs tps=%.1f", 

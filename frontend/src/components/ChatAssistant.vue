@@ -888,7 +888,8 @@ const doSendMessageAfterHome = async (text) => {
     id: genId(), role: 'assistant',
     reasoning: [], streamText: '', content: '',
     showReasoning: false,
-    done: false, type: 'chat'
+    done: false, type: 'chat',
+    backendMessageId: null  // 后端生成的消息ID
   }
   messages.value.push(aiMsg)
   const msgIdx = messages.value.length - 1
@@ -1005,6 +1006,7 @@ const doSendMessageAfterHome = async (text) => {
             content: msgContent,
             reasoning: msg.reasoning,
             metadata: msg.metadata || null,
+            message_id: msg.backendMessageId,  // 使用后端提供的消息ID
             // 保存当前表单状态到数据库消息
             formId: currentFormId.value,
             formSchema: currentFormSchema.value
@@ -1064,13 +1066,15 @@ const handleEvent = (data, idx) => {
       const last = msg.reasoning[msg.reasoning.length - 1]
       if (last && last.content === data.content) break
       
-      // 使用后端提供的消息ID（排序值由后端保存时计算）
+      // 使用后端提供的消息ID和关联ID
+      // 优先使用后端提供的 assistant_message_id，确保关联正确
+      const parentId = data.assistant_message_id || msg.backendMessageId || msg.id
       const thinkingMsg = { 
         type: 'thinking', 
         content: data.content, 
         result: data.result || null,
         message_id: data.message_id,
-        parent_id: msg.id
+        parent_id: parentId
       }
       msg.reasoning.push(thinkingMsg)
       
@@ -1105,6 +1109,10 @@ const handleEvent = (data, idx) => {
     }
     case 'text_start':
       msg.streamText = ''
+      // 记录后端提供的消息ID
+      if (data.message_id) {
+        msg.backendMessageId = data.message_id
+      }
       break
     case 'text':
       msg.streamText = (msg.streamText || '') + (data.content || '')

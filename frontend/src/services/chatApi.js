@@ -121,6 +121,7 @@ export async function saveMessage(sessionId, msg) {
         content:      msg.content || msg.streamText || '',
         content_type: msg.contentType || 'text',
         parent_id:    msg.parentId || null,
+        message_id:   msg.message_id || null,  // 支持传入后端生成的消息ID
         metadata:     Object.keys(metadata).length > 0 ? metadata : null
       })
     })
