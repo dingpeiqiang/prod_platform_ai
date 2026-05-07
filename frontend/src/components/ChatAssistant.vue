@@ -437,7 +437,15 @@ watch([currentFormId, currentFormSchema], () => {
   saveFormState()
 }, { deep: true })
 
-watch(() => props.sessionId, async (newSessionId) => {
+watch(() => props.sessionId, async (newSessionId, oldSessionId) => {
+  // 如果正在处理流式响应，先优雅地终止
+  if (isStreaming.value && oldSessionId) {
+    if (abortCtrl) { abortCtrl.abort() }
+    isStreaming.value = false
+    abortCtrl = null
+    console.log('[ChatAssistant] 切换会话，终止当前流式响应')
+  }
+
   // 如果正在从首页创建会话，不清空消息，重置标志位
   if (isCreatingFromHome) {
     isCreatingFromHome = false
