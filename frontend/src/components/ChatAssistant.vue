@@ -479,13 +479,33 @@ watch(() => props.sessionId, async (newSessionId) => {
     try {
       const dbMsgs = await apiLoadMessages(currentDbSessionId.value)
       messages.value = dbMsgs
+      // 从加载的消息中恢复最后一个表单状态
+      let lastFormId = ''
+      let lastFormSchema = null
+      for (let i = dbMsgs.length - 1; i >= 0; i--) {
+        const msg = dbMsgs[i]
+        if (msg.formId !== undefined && msg.formSchema !== null) {
+          lastFormId = msg.formId
+          lastFormSchema = msg.formSchema
+          break
+        }
+      }
+      if (lastFormId || lastFormSchema) {
+        currentFormId.value = lastFormId
+        currentFormSchema.value = lastFormSchema
+      } else {
+        // 没有找到表单状态，从 localStorage 加载
+        loadFormState()
+      }
     } catch (e) {
       console.warn('[ChatAssistant] 加载消息失败:', e)
       messages.value = []
+      loadFormState()
     }
+  } else {
+    // 没有数据库会话ID时从 localStorage 加载
+    loadFormState()
   }
-
-  loadFormState()
 })
 
 const suggestions = [
@@ -962,12 +982,15 @@ const doSendMessageAfterHome = async (text) => {
 
       // ── 保存 AI 回复到数据库 ─────────────────────────────
       if (currentDbSessionId.value) {
-        // 直接传递完整的消息对象，让 saveMessage 正确保存完整的 reasoning 结构
+        // 直接传递完整的消息对象，让 saveMessage 正确保存完整的 reasoning 结构和表单状态
         await saveMessage(currentDbSessionId.value, {
           role: 'assistant',
           content: msg.content || msg.streamText || '',
           reasoning: msg.reasoning,
-          metadata: msg.metadata || null
+          metadata: msg.metadata || null,
+          // 保存当前表单状态到数据库消息
+          formId: currentFormId.value,
+          formSchema: currentFormSchema.value
         })
       }
 
@@ -992,12 +1015,15 @@ const doSendMessageAfterHome = async (text) => {
         msg.content = '抱歉，遇到了一些问题，请稍后重试。'
         // 保存错误回复到数据库
         if (currentDbSessionId.value) {
-          // 直接传递完整的消息对象，让 saveMessage 正确保存完整的 reasoning 结构
+          // 直接传递完整的消息对象，让 saveMessage 正确保存完整的 reasoning 结构和表单状态
           await saveMessage(currentDbSessionId.value, {
             role: 'assistant',
             content: msg.content,
             reasoning: msg.reasoning,
-            metadata: msg.metadata || null
+            metadata: msg.metadata || null,
+            // 保存当前表单状态到数据库消息
+            formId: currentFormId.value,
+            formSchema: currentFormSchema.value
           }).catch(() => {})
         }
       }
@@ -1455,13 +1481,33 @@ onMounted(async () => {
     try {
       const dbMsgs = await apiLoadMessages(currentDbSessionId.value)
       messages.value = dbMsgs
+      // 从加载的消息中恢复最后一个表单状态
+      let lastFormId = ''
+      let lastFormSchema = null
+      for (let i = dbMsgs.length - 1; i >= 0; i--) {
+        const msg = dbMsgs[i]
+        if (msg.formId !== undefined && msg.formSchema !== null) {
+          lastFormId = msg.formId
+          lastFormSchema = msg.formSchema
+          break
+        }
+      }
+      if (lastFormId || lastFormSchema) {
+        currentFormId.value = lastFormId
+        currentFormSchema.value = lastFormSchema
+      } else {
+        // 没有找到表单状态，从 localStorage 加载
+        loadFormState()
+      }
     } catch (e) {
       console.warn('[ChatAssistant] 加载消息失败:', e)
       messages.value = []
+      loadFormState()
     }
+  } else {
+    // 没有数据库会话ID时从 localStorage 加载
+    loadFormState()
   }
-
-  loadFormState()
   scrollToBottom()
   nextTick(() => inputEl.value?.focus())
 })
@@ -1475,14 +1521,32 @@ watch(() => props.dbSessionId, async (newId) => {
   
   currentDbSessionId.value = newId
   messages.value = []
-  loadFormState()
   
   try {
     const dbMsgs = await apiLoadMessages(newId)
     messages.value = dbMsgs
+    // 从加载的消息中恢复最后一个表单状态
+    let lastFormId = ''
+    let lastFormSchema = null
+    for (let i = dbMsgs.length - 1; i >= 0; i--) {
+      const msg = dbMsgs[i]
+      if (msg.formId !== undefined && msg.formSchema !== null) {
+        lastFormId = msg.formId
+        lastFormSchema = msg.formSchema
+        break
+      }
+    }
+    if (lastFormId || lastFormSchema) {
+      currentFormId.value = lastFormId
+      currentFormSchema.value = lastFormSchema
+    } else {
+      // 没有找到表单状态，从 localStorage 加载
+      loadFormState()
+    }
   } catch (e) {
     console.warn('[ChatAssistant] 加载消息失败:', e)
     messages.value = []
+    loadFormState()
   }
   
   scrollToBottom()

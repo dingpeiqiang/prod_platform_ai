@@ -41,16 +41,18 @@ export async function saveMessage(sessionId, msg) {
       metadata.reasoning_full = JSON.stringify(msg.reasoning)
     }
     // 同时保存旧格式的 reasoning 字符串（用于向后兼容）
-    // 保存完整的 reasoning 数组结构（用于模型思考内容恢复）
-      if (msg.reasoning !== undefined && Array.isArray(msg.reasoning)) {
-        metadata.reasoning_full = JSON.stringify(msg.reasoning)
-      }
-      // 同时保存旧格式的 reasoning 字符串（用于向后兼容）
-      if (msg.reasoning !== undefined) {
-        metadata.reasoning = Array.isArray(msg.reasoning)
-          ? msg.reasoning.map(s => s.content || '').join('\n')
-          : String(msg.reasoning)
-      }
+    if (msg.reasoning !== undefined) {
+      metadata.reasoning = Array.isArray(msg.reasoning)
+        ? msg.reasoning.map(s => s.content || '').join('\n')
+        : String(msg.reasoning)
+    }
+    // 保存表单状态（用于恢复表单）
+    if (msg.formId !== undefined) {
+      metadata.formId = msg.formId
+    }
+    if (msg.formSchema !== undefined) {
+      metadata.formSchema = JSON.stringify(msg.formSchema)
+    }
     
     // 保存意图相关字段
     if (msg.intentType || msg.intent_type) metadata.intent_type = msg.intentType || msg.intent_type
@@ -106,6 +108,13 @@ export async function saveMessages(sessionId, messages) {
           metadata.reasoning = Array.isArray(msg.reasoning)
             ? msg.reasoning.map(s => s.content || '').join('\n')
             : String(msg.reasoning)
+        }
+        // 保存表单状态（用于恢复表单）
+        if (msg.formId !== undefined) {
+          metadata.formId = msg.formId
+        }
+        if (msg.formSchema !== undefined) {
+          metadata.formSchema = JSON.stringify(msg.formSchema)
         }
         if (msg.intentType || msg.intent_type) metadata.intent_type = msg.intentType || msg.intent_type
         if (msg.formCode || msg.form_code)     metadata.form_code   = msg.formCode   || msg.form_code
@@ -181,6 +190,20 @@ export async function loadMessages(sessionId) {
         reasoning = meta.reasoning.split('\n').filter(Boolean).map(c => ({ type: 'thinking', content: c }))
       }
       
+      // 恢复表单状态
+      let formId = undefined
+      let formSchema = null
+      if (meta.formId !== undefined) {
+        formId = meta.formId
+      }
+      if (meta.formSchema !== undefined) {
+        try {
+          formSchema = JSON.parse(meta.formSchema)
+        } catch (e) {
+          formSchema = null
+        }
+      }
+      
       return {
         id:              m.message_id,
         role:            m.role === 'assistant' ? 'assistant' : 'user',
@@ -202,7 +225,10 @@ export async function loadMessages(sessionId) {
         contentType:     meta.content_type || m.content_type || 'text',
         parentId:        m.parent_id,
         createdAt:       m.created_at,
-        metadata:        meta
+        metadata:        meta,
+        // 恢复表单状态
+        formId:          formId,
+        formSchema:      formSchema
       }
     })
   } catch (e) {
