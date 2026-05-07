@@ -36,12 +36,21 @@ export async function saveMessage(sessionId, msg) {
   try {
     const metadata = { ...(msg.metadata || {}) }
 
-    // 保存 reasoning
-    if (msg.reasoning !== undefined) {
-      metadata.reasoning = Array.isArray(msg.reasoning)
-        ? msg.reasoning.map(s => s.content || '').join('\n')
-        : String(msg.reasoning)
+    // 保存完整的 reasoning 数组结构（用于模型思考内容恢复）
+    if (msg.reasoning !== undefined && Array.isArray(msg.reasoning)) {
+      metadata.reasoning_full = JSON.stringify(msg.reasoning)
     }
+    // 同时保存旧格式的 reasoning 字符串（用于向后兼容）
+    // 保存完整的 reasoning 数组结构（用于模型思考内容恢复）
+      if (msg.reasoning !== undefined && Array.isArray(msg.reasoning)) {
+        metadata.reasoning_full = JSON.stringify(msg.reasoning)
+      }
+      // 同时保存旧格式的 reasoning 字符串（用于向后兼容）
+      if (msg.reasoning !== undefined) {
+        metadata.reasoning = Array.isArray(msg.reasoning)
+          ? msg.reasoning.map(s => s.content || '').join('\n')
+          : String(msg.reasoning)
+      }
     
     // 保存意图相关字段
     if (msg.intentType || msg.intent_type) metadata.intent_type = msg.intentType || msg.intent_type
@@ -88,6 +97,11 @@ export async function saveMessages(sessionId, messages) {
       const batchData = done.map(msg => {
         const metadata = { ...(msg.metadata || {}) }
         
+        // 保存完整的 reasoning 数组结构（用于模型思考内容恢复）
+        if (msg.reasoning !== undefined && Array.isArray(msg.reasoning)) {
+          metadata.reasoning_full = JSON.stringify(msg.reasoning)
+        }
+        // 同时保存旧格式的 reasoning 字符串（用于向后兼容）
         if (msg.reasoning !== undefined) {
           metadata.reasoning = Array.isArray(msg.reasoning)
             ? msg.reasoning.map(s => s.content || '').join('\n')
@@ -151,6 +165,22 @@ export async function loadMessages(sessionId) {
 
     return msgs.map(m => {
       const meta = m.metadata || {}
+      
+      // 优先从 reasoning_full 恢复完整的 reasoning 结构
+      let reasoning = []
+      if (meta.reasoning_full) {
+        try {
+          reasoning = JSON.parse(meta.reasoning_full)
+        } catch (e) {
+          // 如果解析失败，降级到旧格式
+        }
+      }
+      
+      // 如果没有完整结构，用旧格式 fallback
+      if (!reasoning.length && meta.reasoning) {
+        reasoning = meta.reasoning.split('\n').filter(Boolean).map(c => ({ type: 'thinking', content: c }))
+      }
+      
       return {
         id:              m.message_id,
         role:            m.role === 'assistant' ? 'assistant' : 'user',
@@ -158,10 +188,8 @@ export async function loadMessages(sessionId) {
         // 恢复 streamText（如果有）
         streamText:      meta.stream_text || m.content || '',
         // 恢复 reasoning
-        reasoning:       meta.reasoning
-          ? meta.reasoning.split('\n').filter(Boolean).map(c => ({ type: 'thinking', content: c }))
-          : [],
-        showReasoning:   meta.reasoning ? true : false,  // 有处理步骤则默认展开
+        reasoning:       reasoning,
+        showReasoning:   (reasoning && reasoning.length > 0) ? true : false,  // 有处理步骤则默认展开
         done:            meta.done === 'true' || meta.done === true || true,  // 默认已完成
         type:            'chat',
         // 恢复意图相关字段
