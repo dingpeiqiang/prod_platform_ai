@@ -176,6 +176,7 @@
         </el-button>
         <el-button 
           type="primary" 
+          native-type="button"
           @click="handleSubmit" 
           :loading="submitting"
           :disabled="formSubmitted"
