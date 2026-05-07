@@ -962,12 +962,11 @@ const doSendMessageAfterHome = async (text) => {
 
       // ── 保存 AI 回复到数据库 ─────────────────────────────
       if (currentDbSessionId.value) {
+        // 直接传递完整的消息对象，让 saveMessage 正确保存完整的 reasoning 结构
         await saveMessage(currentDbSessionId.value, {
           role: 'assistant',
           content: msg.content || msg.streamText || '',
-          reasoning: Array.isArray(msg.reasoning)
-            ? msg.reasoning.map(s => s.content || '').join('\n')
-            : (msg.reasoning || ''),
+          reasoning: msg.reasoning,
           metadata: msg.metadata || null
         })
       }
@@ -993,11 +992,12 @@ const doSendMessageAfterHome = async (text) => {
         msg.content = '抱歉，遇到了一些问题，请稍后重试。'
         // 保存错误回复到数据库
         if (currentDbSessionId.value) {
+          // 直接传递完整的消息对象，让 saveMessage 正确保存完整的 reasoning 结构
           await saveMessage(currentDbSessionId.value, {
             role: 'assistant',
             content: msg.content,
-            reasoning: msg.reasoning.map(s => s.content || '').join('\n'),
-          metadata: msg.metadata || null
+            reasoning: msg.reasoning,
+            metadata: msg.metadata || null
           }).catch(() => {})
         }
       }
