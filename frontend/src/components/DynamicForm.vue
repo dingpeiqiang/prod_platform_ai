@@ -427,51 +427,20 @@ const handleSubmit = async () => {
     return
   }
 
-  // 正式模式：前端校验 + AI 校验
+  // 正式模式：前端校验
   const errors = validateForm()
   if (errors.length > 0) {
     ElMessage.error(errors[0])
     return
   }
 
-  try {
-    if (!_lastAiValidation) {
-      _lastAiValidation = await aiValidate()
-    }
-    const aiResult = _lastAiValidation
-
-    // 显示 AI 校验 warnings 到聊天窗口（不阻塞）
-    if (aiResult.warnings && aiResult.warnings.length > 0) {
-      emit('ai-validation', { type: 'warning', messages: aiResult.warnings })
-    }
-
-    // 如果有 AI 校验 errors → 显示错误到聊天窗口，阻塞确认流程
-    if (aiResult.errors && aiResult.errors.length > 0) {
-      emit('ai-validation', { type: 'error', messages: aiResult.errors })
-      // 不进入确认流程，等待用户修改
-      return
-    }
-
-    // 只有 AI 校验通过（没有 errors）才进入确认流程
-    emit('confirm-submit', {
-      formId: props.formId,
-      formCode: props.schema.formCode,
-      formName: props.schema.formName,
-      data: { ...localFormData },
-      aiWarnings: aiResult.warnings || []
-    })
-  } catch (e) {
-    console.error('[handleSubmit] 校验失败:', e)
-    // 校验失败时也允许强制提交（兼容网络错误等情况）
-    emit('confirm-submit', {
-      formId: props.formId,
-      formCode: props.schema.formCode,
-      formName: props.schema.formName,
-      data: { ...localFormData },
-      aiWarnings: [],
-      aiErrors: []
-    })
-  }
+  // 前端校验通过后，emit 数据到聊天窗口进行 AI 校验和确认
+  emit('confirm-submit', {
+    formId: props.formId,
+    formCode: props.schema.formCode,
+    formName: props.schema.formName,
+    data: { ...localFormData }
+  })
 }
 
 // 对外方法：执行真正的表单提交（由父组件在确认后调用）

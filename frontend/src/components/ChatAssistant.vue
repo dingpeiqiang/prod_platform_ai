@@ -223,7 +223,6 @@
       @submit="handleFormSubmit"
       @cancel="handleFormCancel"
       @field-change="handleFormFieldChange"
-      @ai-validation="handleAiValidation"
       @confirm-submit="handleConfirmSubmit"
     />
   </div>
@@ -1545,7 +1544,7 @@ const handleAiValidation = ({ type, messages }) => {
 let pendingConfirmForm = null
 
 // 处理确认提交请求（从表单面板传来）
-const handleConfirmSubmit = (data) => {
+const handleConfirmSubmit = async (data) => {
   const schema = currentFormSchema.value
 
   // 生成提交内容预览
@@ -1569,14 +1568,99 @@ const handleConfirmSubmit = (data) => {
     schema: schema
   }
 
-  // 在聊天窗口显示确认消息
-  const confirmMsg = {
+  // 在聊天窗口显示"正在校验..."消息
+  const checkingMsg = {
     id: genId(), role: 'assistant',
-    content: `📋 **${data.formName}确认**\n提交内容：\n${previewLines.join('\n')}\n\n请确认是否提交？（回复"确认"或"好的"执行提交）`,
+    content: `🔄 正在对 ${data.formName} 进行 AI 校验...`,
     done: true, type: 'chat'
   }
-  messages.value.push(confirmMsg)
+  messages.value.push(checkingMsg)
   scrollToBottom()
+
+  // 调用 LLM 校验 API
+  try {
+    const response = await fetch('/api/v1/validation/llm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        form_code: data.formCode,
+        data: data.data
+      })
+    })
+    const result = await response.json()
+
+    // 删除"正在校验..."消息
+    messages.value = messages.value.filter(m => m.id !== checkingMsg.id)
+
+    // 有 AI 校验 errors → 显示错误，不显示确认
+    if (result.errors && result.errors.length > 0) {
+      const errorLines = result.errors.map(e => `• **${e.field_name}**: ${e.reason}`)
+      const errorMsg = {
+        id: genId(), role: 'assistant',
+        content: `❌ AI 校验发现以下问题：\n${errorLines.join('\n')}\n\n请修改后重新提交。`,
+        done: true, type: 'chat'
+      }
+      messages.value.push(errorMsg)
+      scrollToBottom()
+      pendingConfirmForm = null  // 清除待确认状态
+
+      // 保存到数据库
+      if (currentDbSessionId.value) {
+        saveMessage(currentDbSessionId.value, {
+          role: 'assistant',
+          content: errorMsg.content,
+          reasoning: []
+        }).catch(() => {})
+      }
+      return
+    }
+
+    // 校验通过（可能有 warnings），显示确认消息
+    let warningsText = ''
+    if (result.warnings && result.warnings.length > 0) {
+      const warningLines = result.warnings.map(w => `• **${w.field_name}**: ${w.reason}`)
+      warningsText = `\n\n⚠️ 提示：\n${warningLines.join('\n')}`
+    }
+
+    const confirmMsg = {
+      id: genId(), role: 'assistant',
+      content: `📋 **${data.formName}确认**\n提交内容：\n${previewLines.join('\n')}${warningsText}\n\n请确认是否提交？（回复"确认"或"好的"执行提交）`,
+      done: true, type: 'chat'
+    }
+    messages.value.push(confirmMsg)
+    scrollToBottom()
+
+    // 保存到数据库
+    if (currentDbSessionId.value) {
+      saveMessage(currentDbSessionId.value, {
+        role: 'assistant',
+        content: confirmMsg.content,
+        reasoning: []
+      }).catch(() => {})
+    }
+
+  } catch (e) {
+    console.error('[handleConfirmSubmit] AI 校验失败:', e)
+    // 校验失败时直接显示确认消息（允许用户强制提交）
+    messages.value = messages.value.filter(m => m.id !== checkingMsg.id)
+
+    const confirmMsg = {
+      id: genId(), role: 'assistant',
+      content: `📋 **${data.formName}确认**\n提交内容：\n${previewLines.join('\n')}\n\n请确认是否提交？（回复"确认"或"好的"执行提交）`,
+      done: true, type: 'chat'
+    }
+    messages.value.push(confirmMsg)
+    scrollToBottom()
+
+    if (currentDbSessionId.value) {
+      saveMessage(currentDbSessionId.value, {
+        role: 'assistant',
+        content: confirmMsg.content,
+        reasoning: []
+      }).catch(() => {})
+    }
+  }
+}
 
   // 保存到数据库
   if (currentDbSessionId.value) {
