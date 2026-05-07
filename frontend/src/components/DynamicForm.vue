@@ -366,10 +366,39 @@ const validateForm = () => {
 }
 
 const aiValidate = async () => {
-  /**
-   * AI 校验已移除，直接返回通过
-   */
-  return { passed: true, errors: [], warnings: [] }
+  try {
+    const response = await fetch('/api/v1/validation/form', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        data: { ...localFormData },
+        fields: props.schema.fields.map(f => ({
+          fieldCode: f.fieldCode,
+          fieldName: f.fieldName,
+          fieldType: f.fieldType,
+          required: f.required,
+          ruleDescription: f.ruleDescription || ''
+        }))
+      })
+    })
+    const result = await response.json()
+    
+    // 转换为统一格式
+    return {
+      passed: result.valid !== false,
+      errors: (result.errors || []).map(e => ({
+        fieldName: e.fieldName || e.field || '未知字段',
+        reason: e.message || e.reason || String(e)
+      })),
+      warnings: (result.warnings || []).map(w => ({
+        fieldName: w.fieldName || w.field || '未知字段',
+        reason: w.message || w.reason || String(w)
+      }))
+    }
+  } catch (e) {
+    console.error('[aiValidate] 校验失败:', e)
+    return { passed: true, errors: [], warnings: [] }
+  }
 }
 
 const handleCancel = () => {
