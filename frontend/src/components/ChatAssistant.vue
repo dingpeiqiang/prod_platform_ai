@@ -439,6 +439,13 @@ watch(() => props.sessionId, async () => {
   currentFormId.value = ''
   currentFormSchema.value = null
   
+  // 切换会话时，先从 prop 更新 currentDbSessionId
+  if (props.dbSessionId) {
+    currentDbSessionId.value = props.dbSessionId
+  } else {
+    currentDbSessionId.value = ''
+  }
+  
   // 只有在没有 DB 会话时才创建新的（避免重复创建）
   if (!currentDbSessionId.value) {
     const result = await apiCreateSession(props.userId || null, '新对话')
@@ -1373,6 +1380,8 @@ onMounted(async () => {
   // App.vue 已通过 prop 传入 dbSessionId（精确匹配会话）
   if (props.dbSessionId) {
     currentDbSessionId.value = props.dbSessionId
+  } else {
+    currentDbSessionId.value = ''
   }
 
   // ── 无 DB 会话：创建新会话并立即通知 App.vue ────────────
