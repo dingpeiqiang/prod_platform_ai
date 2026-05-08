@@ -346,6 +346,21 @@ registerPostProcessor('configure', (msg) => {
 })
 
 registerPostProcessor('form', async (msg, intentData) => {
+  // ══ 检查是否有未完成的表单 ══════════════════════════════════
+  // 情况1：有活动表单（currentFormSchema 存在且未提交）
+  // 情况2：待确认提交（pendingConfirmForm 存在，等待用户回复确认/取消）
+  const hasActiveForm = currentFormSchema.value && !currentFormSubmitted.value
+  const hasPendingConfirm = !!pendingConfirmForm
+
+  if (hasActiveForm || hasPendingConfirm) {
+    const formName = currentFormSchema.value?.formName || pendingConfirmForm?.formName || '当前表单'
+    // 替换流式文本为阻塞提示
+    msg.streamText = `⚠️ 检测到你有一个未完成的「${formName}」，请先完成或关闭后再发起新任务。\n\n你可以说「完成」或「提交」来完成当前表单，或者「取消」放弃当前表单。`
+    msg.content = msg.streamText
+    console.log('[form 拦截] 有未完成表单，阻止生成新表单:', formName)
+    return
+  }
+
   if (intentData?.formCode) {
     await generateForm({
       formCode: intentData.formCode,
@@ -936,6 +951,26 @@ const doSendMessage = async (text) => {
     const msg = text.toLowerCase()
     if (msg.includes('取消') || msg.includes('不') || msg.includes('算了')) {
       handleCancelSubmit()
+      return
+    }
+  }
+
+  // ══ 检查是否有未完成的表单需要先处理 ═══════════════════
+  // 情况1：有活动表单且用户想"完成/提交"它
+  const lowerText = text.toLowerCase()
+  const wantsSubmit = lowerText.includes('完成') || lowerText.includes('提交')
+  const wantsCancel = lowerText.includes('取消') || lowerText.includes('算了') || lowerText.includes('不要了')
+
+  if (currentFormSchema.value && !currentFormSubmitted.value) {
+    if (wantsSubmit) {
+      // 用户想完成当前表单，引导其完成并提交
+      handleConfirmSubmitForActiveForm()
+      return
+    }
+    if (wantsCancel) {
+      // 用户想取消当前表单
+      handleFormCancel()
+      // 返回，不发送消息（用户可能只是想把表单关掉）
       return
     }
   }
@@ -1819,6 +1854,7 @@ const handleFormSubmit = async (formData, formId) => {
 const handleFormCancel = async () => {
   currentFormId.value = ''
   currentFormSchema.value = null
+  currentFormSubmitted.value = false
   const cancelMsg = {
     id: genId(), role: 'assistant',
     content: '好的，已取消。还有什么我可以帮你的吗？', done: true, type: 'chat'
@@ -1836,6 +1872,20 @@ const handleFormCancel = async () => {
       formSchema: currentFormSchema.value
     }).catch(() => {})
   }
+}
+
+// 用户通过聊天说"完成/提交"时，引导其完成当前表单
+const handleConfirmSubmitForActiveForm = () => {
+  if (!currentFormSchema.value) return
+
+  const formName = currentFormSchema.value.formName || '当前表单'
+  const guideMsg = {
+    id: genId(), role: 'assistant',
+    content: `好的，请先完成右侧的「${formName}」并点击提交按钮。\n\n提交后我会帮你处理后续操作。`,
+    done: true, type: 'chat'
+  }
+  messages.value.push(guideMsg)
+  scrollToBottom()
 }
 
 // 表单字段变化（可同步到 AI）
