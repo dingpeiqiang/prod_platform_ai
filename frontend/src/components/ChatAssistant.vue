@@ -470,6 +470,7 @@ const messages = ref([])
 const currentFormId = ref('')
 const currentFormSchema = ref(null)
 const currentFormSubmitted = ref(false)
+const currentFormCardMsgId = ref('')  // 表单卡片归属的消息 ID，用于精确更新
 
 let abortCtrl = null
 
@@ -600,12 +601,14 @@ watch(() => props.sessionId, async (newSessionId, oldSessionId) => {
       let lastFormId = ''
       let lastFormSchema = null
       let lastFormSubmitted = false
+      let lastFormCardMsgId = ''
       for (let i = dbMsgs.length - 1; i >= 0; i--) {
         const msg = dbMsgs[i]
         if (msg.formId !== undefined && msg.formSchema !== null) {
           lastFormId = msg.formId
           lastFormSchema = msg.formSchema
           lastFormSubmitted = msg.formSubmitted || false
+          lastFormCardMsgId = msg.formCard?.msgId || msg.id || ''
           break
         }
       }
@@ -613,6 +616,7 @@ watch(() => props.sessionId, async (newSessionId, oldSessionId) => {
         currentFormId.value = lastFormId
         currentFormSchema.value = lastFormSchema
         currentFormSubmitted.value = lastFormSubmitted
+        currentFormCardMsgId.value = lastFormCardMsgId
       } else {
         // 没有找到表单状态，从 localStorage 加载
         loadFormState()
@@ -956,13 +960,20 @@ const focusFormPanel = () => {
   }
 }
 
-// 更新消息中的表单卡片状态
-const updateFormCardStatus = (formId, status) => {
-  messages.value.forEach(msg => {
-    if (msg.formCard && msg.formCard.formId === formId) {
-      msg.formCard.status = status
-    }
-  })
+// 更新消息中的表单卡片状态（优先用 msgId 精确匹配，formId 作为回退）
+const updateFormCardStatus = (msgId, formId, status) => {
+  let targetMsg = null
+  // 优先：精确匹配 msgId（当前会话中）
+  if (msgId) {
+    targetMsg = messages.value.find(m => m.id === msgId)
+  }
+  // 回退：按 formId 匹配（历史恢复场景，formId 全局唯一）
+  if (!targetMsg && formId) {
+    targetMsg = messages.value.find(m => m.formCard?.formId === formId)
+  }
+  if (targetMsg?.formCard) {
+    targetMsg.formCard.status = status
+  }
 }
 
 const clearHistory = async () => {
@@ -1519,11 +1530,18 @@ const generateForm = async (intentData) => {
         currentFormId.value = result.formId
         currentFormSchema.value = result.formSchema
 
+        // 生成消息 ID，用于 formCard 归属
+        const msgId = genId()
+
+        // 记录表单卡片归属的消息 ID
+        currentFormCardMsgId.value = msgId
+
         // 在消息中嵌入表单卡片
         replyMsg = {
-          id: genId(), role: 'assistant',
+          id: msgId, role: 'assistant',
           content: `✅ 已生成表单，请在右侧填写并提交。`, done: true, type: 'chat',
           formCard: {
+            msgId: msgId,  // 归属消息 ID
             formId: result.formId,
             formName: result.formSchema?.formName || formCode,
             formCode: result.formSchema?.formCode || formCode,
@@ -1809,6 +1827,10 @@ const handleDoConfirmSubmit = async () => {
   currentFormId.value = ''
   currentFormSchema.value = null
   currentFormSubmitted.value = false
+  currentFormCardMsgId.value = ''
+
+  // 更新消息中的表单卡片状态
+  updateFormCardStatus('', formId, 'submitted')
 
   // 调用后端提交 API
   try {
@@ -1918,14 +1940,16 @@ const handleFormSubmit = async (formData, formId) => {
   // 保存表单状态快照（用于历史会话显示已提交的表单）
   const submittedFormId = currentFormId.value
   const submittedFormSchema = currentFormSchema.value
+  const submittedFormCardMsgId = currentFormCardMsgId.value
 
   currentFormId.value = ''
   currentFormSchema.value = null
   currentFormSubmitted.value = false
+  currentFormCardMsgId.value = ''
   ElMessage({ message: '表单提交成功！', type: 'success', plain: true })
 
   // 更新消息中的表单卡片状态
-  updateFormCardStatus(submittedFormId, 'submitted')
+  updateFormCardStatus(submittedFormCardMsgId, submittedFormId, 'submitted')
 
   const submitMsg = {
     id: genId(), role: 'assistant',
@@ -1951,13 +1975,15 @@ const handleFormSubmit = async (formData, formId) => {
 // 表单取消
 const handleFormCancel = async () => {
   const cancelledFormId = currentFormId.value
+  const cancelledFormCardMsgId = currentFormCardMsgId.value
   currentFormId.value = ''
   currentFormSchema.value = null
   currentFormSubmitted.value = false
+  currentFormCardMsgId.value = ''
 
   // 更新消息中的表单卡片状态
   if (cancelledFormId) {
-    updateFormCardStatus(cancelledFormId, 'cancelled')
+    updateFormCardStatus(cancelledFormCardMsgId, cancelledFormId, 'cancelled')
   }
 
   const cancelMsg = {
@@ -2159,12 +2185,14 @@ onMounted(async () => {
       let lastFormId = ''
       let lastFormSchema = null
       let lastFormSubmitted = false
+      let lastFormCardMsgId = ''
       for (let i = dbMsgs.length - 1; i >= 0; i--) {
         const msg = dbMsgs[i]
         if (msg.formId !== undefined && msg.formSchema !== null) {
           lastFormId = msg.formId
           lastFormSchema = msg.formSchema
           lastFormSubmitted = msg.formSubmitted || false
+          lastFormCardMsgId = msg.formCard?.msgId || msg.id || ''
           break
         }
       }
@@ -2172,6 +2200,7 @@ onMounted(async () => {
         currentFormId.value = lastFormId
         currentFormSchema.value = lastFormSchema
         currentFormSubmitted.value = lastFormSubmitted
+        currentFormCardMsgId.value = lastFormCardMsgId
       } else {
         // 没有找到表单状态，从 localStorage 加载
         loadFormState()
