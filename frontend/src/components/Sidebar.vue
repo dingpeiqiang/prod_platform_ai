@@ -57,16 +57,6 @@
     </div>
 
     <div class="sidebar-footer">
-      <!-- 主题切换 -->
-      <button class="theme-toggle" @click="toggleTheme" :title="themeLabel" :aria-label="themeLabel">
-        <svg v-if="!isDark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-        </svg>
-        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-        </svg>
-      </button>
-
       <!-- 用户信息 & 登出 -->
       <div class="user-info" @click="showLogoutMenu = !showLogoutMenu" ref="userInfoRef">
         <div class="user-avatar" :style="{ background: avatarColor }">{{ avatarText }}</div>
@@ -98,13 +88,10 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useUserStore } from '../stores/user'
-import { useTheme } from '../composables/useTheme'
 
 const userStore = useUserStore()
 const showLogoutMenu = ref(false)
 const userInfoRef = ref(null)
-
-const { isDark, toggleTheme, themeLabel } = useTheme()
 
 const username = computed(() => userStore.username)
 const avatarText = computed(() => userStore.avatarText)
@@ -281,26 +268,6 @@ const olderSessions = computed(() =>
   padding-top: var(--space-2-5);
   margin-top: var(--space-2);
   position: relative;
-}
-
-.theme-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: calc(100% - 16px);
-  height: 32px;
-  margin: 0 var(--space-2) var(--space-2);
-  background: var(--sidebar-hover-bg);
-  border: none;
-  border-radius: var(--radius-md);
-  color: var(--sidebar-text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.theme-toggle:hover {
-  background: var(--bg-tertiary);
-  color: var(--sidebar-text-primary);
 }
 
 .user-info {
