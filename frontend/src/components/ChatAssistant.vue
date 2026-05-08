@@ -63,6 +63,11 @@
               <!-- 用户消息 -->
               <div v-if="msg.role === 'user'" class="bubble user-bubble">
                 {{ msg.content }}
+                <button class="copy-btn" @click="copyText(msg.content)" title="复制">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                </button>
               </div>
 
               <!-- AI 消息 -->
@@ -2915,7 +2920,9 @@ defineExpose({ requestValidation, sendMessageAfterSessionCreated })
 
 /* 用户气泡 */
 .bubble.user-bubble {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   max-width: 100%;
   background: var(--bg-primary);
   color: var(--text-primary);
@@ -2925,7 +2932,29 @@ defineExpose({ requestValidation, sendMessageAfterSessionCreated })
   line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
-  box-shadow: var(--shadow-sm);
+
+  .copy-btn {
+    flex-shrink: 0;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s, visibility 0.2s;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 2px;
+    border-radius: var(--radius-sm);
+
+    &:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
+  }
+
+  &:hover .copy-btn {
+    opacity: 1;
+    visibility: visible;
+  }
 }
 
 /* AI 消息区 */
