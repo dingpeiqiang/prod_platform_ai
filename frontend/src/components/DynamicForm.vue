@@ -486,6 +486,90 @@ const doSubmit = async () => {
   font-size: var(--font-size-xl);
 }
 
+/* Element Plus 输入框样式覆盖 */
+.dynamic-form :deep(.el-input__wrapper) {
+  box-shadow: 0 0 0 1px var(--border-default) inset;
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+}
+
+.dynamic-form :deep(.el-input__wrapper:hover) {
+  box-shadow: 0 0 0 1px var(--border-strong) inset;
+}
+
+.dynamic-form :deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 0 0 1px var(--color-primary-500) inset !important;
+}
+
+.dynamic-form :deep(.el-input__inner) {
+  color: var(--text-primary);
+}
+
+.dynamic-form :deep(.el-input__inner::placeholder) {
+  color: var(--text-tertiary);
+}
+
+/* 数字输入框 */
+.dynamic-form :deep(.el-input-number) {
+  width: 100%;
+}
+
+.dynamic-form :deep(.el-input-number .el-input__wrapper) {
+  padding-left: var(--space-3);
+  padding-right: var(--space-3);
+}
+
+/* 日期选择器 */
+.dynamic-form :deep(.el-date-editor) {
+  width: 100% !important;
+}
+
+.dynamic-form :deep(.el-date-editor .el-input__wrapper) {
+  width: 100%;
+}
+
+/* 选择器 */
+.dynamic-form :deep(.el-select) {
+  width: 100%;
+}
+
+.dynamic-form :deep(.el-select .el-input__wrapper) {
+  width: 100%;
+}
+
+/* 单选框和复选框 */
+.dynamic-form :deep(.el-radio-group),
+.dynamic-form :deep(.el-checkbox-group) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.dynamic-form :deep(.el-radio),
+.dynamic-form :deep(.el-checkbox) {
+  margin-right: 0;
+}
+
+.dynamic-form :deep(.el-radio__label),
+.dynamic-form :deep(.el-checkbox__label) {
+  color: var(--text-primary);
+}
+
+/* 表单项标签 */
+.dynamic-form :deep(.el-form-item__label) {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.dynamic-form :deep(.el-form-item__label::before) {
+  color: var(--color-error-500);
+}
+
+/* 表单验证错误状态 */
+.dynamic-form :deep(.el-form-item.is-error .el-input__wrapper) {
+  box-shadow: 0 0 0 1px var(--color-error-500) inset !important;
+}
+
 .recommend-tags {
   margin-top: var(--space-2);
   display: flex;
