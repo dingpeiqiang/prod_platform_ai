@@ -1914,6 +1914,12 @@ const handleDoConfirmSubmit = async () => {
     updateFormCardStatus(activeFormCard.value.msgId, formId, 'submitted')
     activeFormCard.value.status = 'submitted'
     activeFormCard.value.formData = formData
+    // 持久化更新的 formCard 到数据库（原消息）
+    if (currentDbSessionId.value && activeFormCard.value.msgId) {
+      await updateMessage(currentDbSessionId.value, activeFormCard.value.msgId, {
+        metadata: { formCard: JSON.stringify(activeFormCard.value) }
+      }).catch(e => console.warn('[handleDoConfirmSubmit] 更新 formCard 失败:', e))
+    }
     activeFormCard.value = null
     activeFormMsgId.value = ''
   }
@@ -2031,6 +2037,13 @@ const handleFormSubmit = async (formData, formId) => {
   card.status = 'submitted'
   card.formData = formData  // 保存用户填写的值
 
+  // 持久化更新的 formCard 到数据库（原消息）
+  if (currentDbSessionId.value && card.msgId) {
+    await updateMessage(currentDbSessionId.value, card.msgId, {
+      metadata: { formCard: JSON.stringify(card) }
+    }).catch(e => console.warn('[handleFormSubmit] 更新 formCard 失败:', e))
+  }
+
   // 清除活动表单
   activeFormCard.value = null
   activeFormMsgId.value = ''
@@ -2069,6 +2082,13 @@ const handleFormCancel = async () => {
   updateFormCardStatus(cancelledCard.msgId, cancelledCard.formId, 'cancelled')
   // 也直接更新 activeFormCard 的 status（因为 updateFormCardStatus 是引用操作）
   cancelledCard.status = 'cancelled'
+
+  // 持久化更新的 formCard 到数据库（原消息）
+  if (currentDbSessionId.value && cancelledCard.msgId) {
+    await updateMessage(currentDbSessionId.value, cancelledCard.msgId, {
+      metadata: { formCard: JSON.stringify(cancelledCard) }
+    }).catch(e => console.warn('[handleFormCancel] 更新 formCard 失败:', e))
+  }
 
   // 清除活动表单
   activeFormCard.value = null
