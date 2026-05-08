@@ -1325,10 +1325,8 @@ const doSendMessageAfterHome = async (text, { skipUserPush = false } = {}) => {
           form_code: intentData?.formCode || undefined,
           extracted_fields: intentData?.extractedFields || undefined,
           confidence: intentData?.confidence != null ? String(intentData.confidence) : undefined,
-          model: intentData?.model || undefined,
-          // 保存表单状态
-          formId: currentFormId.value || undefined,
-          formSchema: currentFormSchema.value ? JSON.stringify(currentFormSchema.value) : undefined
+          model: intentData?.model || undefined
+          // 不保存 formId 和 formSchema，避免消息加载时被误判为表单卡片
         }
         // 清理 undefined 值
         Object.keys(finalMetadata).forEach(k => finalMetadata[k] === undefined && delete finalMetadata[k])
@@ -1345,9 +1343,8 @@ const doSendMessageAfterHome = async (text, { skipUserPush = false } = {}) => {
             role: 'assistant',
             content: msg.content || msg.streamText || '',
             reasoning: msg.reasoning,
-            metadata: finalMetadata,
-            formId: currentFormId.value,
-            formSchema: currentFormSchema.value
+            metadata: finalMetadata
+            // 不保存 formId, formSchema，避免加载时被重建为表单卡片
           })
         }
       }
@@ -1661,14 +1658,13 @@ const generateForm = async (intentData) => {
     messages.value.push(errorMsg)
     scrollToBottom()
 
-    // 保存消息到数据库
+    // 保存消息到数据库（注意：不保存表单状态，避免被误判为表单卡片）
     if (currentDbSessionId.value) {
       await saveMessage(currentDbSessionId.value, {
         role: 'assistant',
         content: errorMsg.content,
-        reasoning: [],
-        formId: currentFormId.value,
-        formSchema: currentFormSchema.value
+        reasoning: []
+        // 不保存 formId, formSchema，避免加载时被重建为表单卡片
       }).catch(() => {})
     }
   }
@@ -1693,12 +1689,12 @@ const updateFormFields = async (intentData) => {
 
     // 保存消息到数据库
     if (currentDbSessionId.value) {
+      // 保存消息到数据库（注意：不保存表单状态，避免被误判为表单卡片）
       await saveMessage(currentDbSessionId.value, {
         role: 'assistant',
         content: fallbackMsg.content,
-        reasoning: [],
-        formId: currentFormId.value,
-        formSchema: currentFormSchema.value
+        reasoning: []
+        // 不保存 formId, formSchema，避免加载时被重建为表单卡片
       }).catch(() => {})
     }
 
@@ -1723,14 +1719,13 @@ const updateFormFields = async (intentData) => {
     messages.value.push(loadingMsg)
     scrollToBottom()
 
-    // 保存消息到数据库
+    // 保存消息到数据库（注意：不保存表单状态，避免被误判为表单卡片）
     if (currentDbSessionId.value) {
       await saveMessage(currentDbSessionId.value, {
         role: 'assistant',
         content: loadingMsg.content,
-        reasoning: [],
-        formId: currentFormId.value,
-        formSchema: currentFormSchema.value
+        reasoning: []
+        // 不保存 formId, formSchema，避免加载时被重建为表单卡片
       }).catch(() => {})
     }
   }
@@ -1781,14 +1776,13 @@ const updateFormFields = async (intentData) => {
   messages.value.push(replyMsg)
   scrollToBottom()
 
-  // 保存消息到数据库
+  // 保存消息到数据库（注意：不保存表单状态，避免被误判为表单卡片）
   if (currentDbSessionId.value) {
     await saveMessage(currentDbSessionId.value, {
       role: 'assistant',
       content: replyMsg.content,
-      reasoning: [],
-      formId: currentFormId.value,
-      formSchema: currentFormSchema.value
+      reasoning: []
+      // 不保存 formId, formSchema，避免加载时被重建为表单卡片
     }).catch(() => {})
   }
 }
@@ -2094,9 +2088,8 @@ const handleFormCancel = async () => {
     const payload = {
       content: targetMsg.content,
       metadata: {
-        formCard: JSON.stringify(cancelledCard),
-        formId: cancelledCard.formId,
-        formSubmitted: 'false'
+        formCard: JSON.stringify(cancelledCard)
+        // 不保存 formId 和 formSubmitted，避免消息加载时被误判为新表单卡片
       }
     }
     console.log('[handleFormCancel] 发送 PATCH 请求:', payload)
@@ -2188,14 +2181,13 @@ const handleConfigDeploy = async (msg, { config, keywords }) => {
       messages.value.push(successMsg)
       scrollToBottom()
 
-      // 保存消息到数据库
+      // 保存消息到数据库（注意：不保存表单状态，避免被误判为表单卡片）
       if (currentDbSessionId.value) {
         await saveMessage(currentDbSessionId.value, {
           role: 'assistant',
           content: successMsg.content,
-          reasoning: [],
-          formId: currentFormId.value,
-          formSchema: currentFormSchema.value
+          reasoning: []
+          // 不保存 formId, formSchema，避免加载时被重建为表单卡片
         }).catch(() => {})
       }
     } else {
@@ -2265,14 +2257,13 @@ const handleConfigPreview = async (config) => {
   messages.value.push(previewMsg)
   scrollToBottom()
 
-  // 保存消息到数据库
+  // 保存消息到数据库（注意：不保存表单状态，避免被误判为表单卡片）
   if (currentDbSessionId.value) {
     await saveMessage(currentDbSessionId.value, {
       role: 'assistant',
       content: previewMsg.content,
-      reasoning: [],
-      formId: currentFormId.value,
-      formSchema: currentFormSchema.value
+      reasoning: []
+      // 不保存 formId, formSchema，避免加载时被重建为表单卡片
     }).catch(() => {})
   }
 }
