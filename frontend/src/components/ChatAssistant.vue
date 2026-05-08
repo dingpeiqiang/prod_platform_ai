@@ -143,6 +143,44 @@
                   @intent-action="handleIntentEvent"
                 />
 
+                <!-- 表单卡片（嵌入消息的表单信息） -->
+                <div v-if="msg.formCard" class="form-card">
+                  <div class="form-card-header">
+                    <div class="form-card-icon">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="16" y1="13" x2="8" y2="13"/>
+                        <line x1="16" y1="17" x2="8" y2="17"/>
+                        <polyline points="10 9 9 9 8 9"/>
+                      </svg>
+                    </div>
+                    <div class="form-card-info">
+                      <div class="form-card-name">{{ msg.formCard.formName }}</div>
+                      <div class="form-card-meta">
+                        <span class="form-card-code">{{ msg.formCard.formCode }}</span>
+                        <span class="form-card-sep">·</span>
+                        <span>{{ msg.formCard.fieldCount }} 个字段</span>
+                        <span class="form-card-sep">·</span>
+                        <span>{{ formatTime(msg.formCard.createdAt) }}</span>
+                      </div>
+                    </div>
+                    <div class="form-card-status" :class="'status-' + msg.formCard.status">
+                      <span class="status-dot"></span>
+                      <span class="status-text">{{ getFormStatusText(msg.formCard.status) }}</span>
+                    </div>
+                  </div>
+                  <div class="form-card-actions">
+                    <button class="form-card-btn primary" @click="focusFormPanel">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                      {{ msg.formCard.status === 'filling' ? '填写表单' : '查看详情' }}
+                    </button>
+                  </div>
+                </div>
+
                 <!-- 操作按钮（已移除表单内嵌） -->
                 <div v-if="msg.done && (msg.streamText || msg.content)" class="msg-actions">
                   <button class="action-btn" @click="copyText(msg.streamText || msg.content)" title="复制">
@@ -878,6 +916,55 @@ const copyText = async (text) => {
   }
 }
 
+// 格式化时间显示（几分钟前）
+const formatTime = (isoString) => {
+  if (!isoString) return ''
+  const date = new Date(isoString)
+  const now = new Date()
+  const diffMs = now - date
+  const diffMins = Math.floor(diffMs / 60000)
+  if (diffMins < 1) return '刚刚'
+  if (diffMins < 60) return `${diffMins} 分钟前`
+  const diffHours = Math.floor(diffMins / 60)
+  if (diffHours < 24) return `${diffHours} 小时前`
+  const diffDays = Math.floor(diffHours / 24)
+  if (diffDays < 7) return `${diffDays} 天前`
+  return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+}
+
+// 获取表单状态文本
+const getFormStatusText = (status) => {
+  const map = {
+    filling: '填写中',
+    submitted: '已提交',
+    cancelled: '已取消'
+  }
+  return map[status] || status
+}
+
+// 聚焦到表单面板
+const focusFormPanel = () => {
+  const formPanel = document.querySelector('.form-panel')
+  if (formPanel) {
+    formPanel.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    // 展开面板（如果被收起了）
+    const collapseBtn = formPanel.querySelector('.collapse-btn')
+    if (collapseBtn) {
+      const isCollapsed = formPanel.classList.contains('collapsed')
+      if (isCollapsed) collapseBtn.click()
+    }
+  }
+}
+
+// 更新消息中的表单卡片状态
+const updateFormCardStatus = (formId, status) => {
+  messages.value.forEach(msg => {
+    if (msg.formCard && msg.formCard.formId === formId) {
+      msg.formCard.status = status
+    }
+  })
+}
+
 const clearHistory = async () => {
   try {
     await ElMessageBox.confirm('确定清空本次对话记录吗？', '清空记录', {
@@ -1427,17 +1514,25 @@ const generateForm = async (intentData) => {
     const result = await resp.json()
 
     let replyMsg
-    if (result.success) {
-      // 更新右侧表单面板
-      currentFormId.value = result.formId
-      currentFormSchema.value = result.formSchema
+      if (result.success) {
+        // 更新右侧表单面板
+        currentFormId.value = result.formId
+        currentFormSchema.value = result.formSchema
 
-      // 更新消息
-      replyMsg = {
-        id: genId(), role: 'assistant',
-        content: `✅ 已生成表单，请在右侧填写并提交。`, done: true, type: 'chat'
-      }
-    } else {
+        // 在消息中嵌入表单卡片
+        replyMsg = {
+          id: genId(), role: 'assistant',
+          content: `✅ 已生成表单，请在右侧填写并提交。`, done: true, type: 'chat',
+          formCard: {
+            formId: result.formId,
+            formName: result.formSchema?.formName || formCode,
+            formCode: result.formSchema?.formCode || formCode,
+            status: 'filling',  // filling | submitted | cancelled
+            fieldCount: result.formSchema?.fields?.length || 0,
+            createdAt: new Date().toISOString()
+          }
+        }
+      } else {
       replyMsg = {
         id: genId(), role: 'assistant',
         content: result.message || '生成表单失败，请重试。', done: true, type: 'chat'
@@ -1829,6 +1924,9 @@ const handleFormSubmit = async (formData, formId) => {
   currentFormSubmitted.value = false
   ElMessage({ message: '表单提交成功！', type: 'success', plain: true })
 
+  // 更新消息中的表单卡片状态
+  updateFormCardStatus(submittedFormId, 'submitted')
+
   const submitMsg = {
     id: genId(), role: 'assistant',
     content: `✅ 表单已成功提交！${summary ? '\n\n' + summary : ''}\n\n还有什么我可以帮你的吗？`,
@@ -1852,9 +1950,16 @@ const handleFormSubmit = async (formData, formId) => {
 
 // 表单取消
 const handleFormCancel = async () => {
+  const cancelledFormId = currentFormId.value
   currentFormId.value = ''
   currentFormSchema.value = null
   currentFormSubmitted.value = false
+
+  // 更新消息中的表单卡片状态
+  if (cancelledFormId) {
+    updateFormCardStatus(cancelledFormId, 'cancelled')
+  }
+
   const cancelMsg = {
     id: genId(), role: 'assistant',
     content: '好的，已取消。还有什么我可以帮你的吗？', done: true, type: 'chat'
@@ -3332,4 +3437,128 @@ textarea::-webkit-scrollbar-thumb {
 }
 .fc-name { font-family: monospace; color: var(--text-primary); font-weight: var(--font-weight-medium); }
 .fc-count { color: var(--text-tertiary); font-size: 11.5px; }
+
+/* 表单卡片（嵌入消息） */
+.form-card {
+  margin-top: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  overflow: hidden;
+  max-width: 380px;
+}
+.form-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-light);
+}
+.form-card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--color-primary-50), var(--color-primary-100));
+  color: var(--color-primary-500);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.form-card-info {
+  flex: 1;
+  min-width: 0;
+}
+.form-card-name {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.form-card-meta {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.form-card-code {
+  font-family: monospace;
+  font-size: 11px;
+  background: var(--bg-tertiary);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+}
+.form-card-sep {
+  color: var(--text-tertiary);
+}
+.form-card-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+.form-card-status.status-filling {
+  background: var(--color-primary-50);
+  color: var(--color-primary-600);
+}
+.form-card-status.status-filling .status-dot {
+  background: var(--color-primary-400);
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+.form-card-status.status-submitted {
+  background: var(--color-success-50);
+  color: var(--color-success-600);
+}
+.form-card-status.status-submitted .status-dot {
+  background: var(--color-success-400);
+}
+.form-card-status.status-cancelled {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+.form-card-status.status-cancelled .status-dot {
+  background: var(--text-tertiary);
+}
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.form-card-actions {
+  padding: var(--space-2-5) var(--space-4);
+  background: var(--bg-secondary);
+}
+.form-card-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  border: none;
+  transition: all var(--transition-fast);
+}
+.form-card-btn.primary {
+  background: var(--color-primary-500);
+  color: white;
+}
+.form-card-btn.primary:hover {
+  background: var(--color-primary-600);
+}
 </style>
