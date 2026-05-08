@@ -488,17 +488,19 @@ const doSubmit = async () => {
 
 /* Element Plus 输入框样式覆盖 */
 .dynamic-form :deep(.el-input__wrapper) {
-  box-shadow: 0 0 0 1px var(--border-default) inset;
+  box-shadow: 0 0 0 1px var(--border-default) inset !important;
   border-radius: var(--radius-md);
-  transition: all var(--transition-fast);
+  transition: box-shadow var(--transition-fast);
 }
 
 .dynamic-form :deep(.el-input__wrapper:hover) {
-  box-shadow: 0 0 0 1px var(--border-strong) inset;
+  box-shadow: 0 0 0 1px var(--border-strong) inset !important;
 }
 
-.dynamic-form :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 1px var(--color-primary-500) inset !important;
+.dynamic-form :deep(.el-input__wrapper.is-focus),
+.dynamic-form :deep(.el-select .el-input.is-focus .el-input__wrapper),
+.dynamic-form :deep(.el-date-editor.is-active .el-input__wrapper) {
+  box-shadow: 0 0 0 1px var(--color-primary-400) inset !important;
 }
 
 .dynamic-form :deep(.el-input__inner) {

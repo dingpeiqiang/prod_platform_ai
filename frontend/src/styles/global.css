@@ -81,6 +81,32 @@ input, textarea, select {
 }
 
 /* ══════════════════════════════════════════════════════════════
+ * Element Plus 组件通用样式修复
+ * ══════════════════════════════════════════════════════════════ */
+
+/* 输入框组件边框优化 */
+.el-input__wrapper {
+  box-shadow: none !important;
+  border: 1px solid var(--border-default) !important;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 2px rgba(99,102,241,.1) !important;
+  border-color: var(--color-primary-400) !important;
+}
+
+.el-textarea__inner {
+  box-shadow: none !important;
+  border: 1px solid var(--border-default) !important;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.el-textarea__inner:focus {
+  border-color: var(--color-primary-400) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
  * 可访问性增强 - Accessibility
  * ══════════════════════════════════════════════════════════════ */
 
@@ -94,12 +120,9 @@ input, textarea, select {
   outline-offset: 2px;
 }
 
-/* 确保交互元素有焦点状态 */
+/* 确保交互元素有焦点状态（排除 Element Plus 内部元素，EP 自带焦点样式） */
 button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible {
+a:focus-visible {
   outline: 2px solid var(--color-primary-500);
   outline-offset: 2px;
   box-shadow: 0 0 0 4px var(--color-primary-100);
