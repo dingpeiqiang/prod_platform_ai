@@ -2846,20 +2846,21 @@ defineExpose({ requestValidation, sendMessageAfterSessionCreated })
 /* ── 输入区 ── */
 .input-area {
   flex-shrink: 0;
-  padding: 8px var(--space-6) var(--space-4);
+  padding: var(--space-2) var(--space-6) var(--space-4);
   background: var(--bg-secondary);
 }
 .quick-bar {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
   max-width: 780px;
-  margin: 0 auto 8px;
+  margin: 0 auto var(--space-2);
+  flex-wrap: wrap;
 }
 .quick-chip {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
+  gap: var(--space-1-5);
+  padding: var(--space-1-5) var(--space-3);
   background: var(--bg-primary);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-full);
@@ -2867,16 +2868,24 @@ defineExpose({ requestValidation, sendMessageAfterSessionCreated })
   color: var(--text-secondary);
   cursor: pointer;
   transition: all var(--transition-fast);
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
 }
 .chip-dot {
-  width: 6px; height: 6px;
+  width: 8px; height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+  transition: transform var(--transition-fast);
 }
 .quick-chip:hover:not(:disabled) {
-  border-color: var(--color-primary-200);
+  border-color: var(--color-primary-300);
   color: var(--color-primary-600);
   background: var(--color-primary-50);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+.quick-chip:hover:not(:disabled) .chip-dot {
+  transform: scale(1.2);
 }
 .quick-chip:disabled { opacity: .4; cursor: not-allowed; }
 
