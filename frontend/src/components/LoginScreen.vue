@@ -220,7 +220,7 @@ const handleLogin = async () => {
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-.login-input::placeholder { color: var(--color-gray-600); }
+.login-input::placeholder { color: var(--text-tertiary); }
 .login-input:focus {
   border-color: rgba(99,102,241,0.6);
   box-shadow: 0 0 0 3px rgba(99,102,241,0.12);

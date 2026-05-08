@@ -373,11 +373,11 @@ onMounted(() => {
   font-family: inherit;
   max-height: 120px;
   min-height: 48px;
-  color: #222;
+  color: var(--text-primary);
 }
 
 .chat-input-bar textarea::placeholder {
-  color: #c0c0c0;
+  color: var(--text-tertiary);
 }
 
 .send-btn {
