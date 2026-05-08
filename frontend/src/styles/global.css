@@ -100,10 +100,22 @@ input, textarea, select {
   box-shadow: none !important;
   border: 1px solid var(--border-default) !important;
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  color: var(--text-primary) !important;
 }
 
 .el-textarea__inner:focus {
   border-color: var(--color-primary-400) !important;
+}
+
+/* 输入框文字颜色 */
+.el-input__inner {
+  color: var(--text-primary) !important;
+}
+
+/* 输入框占位符颜色 */
+.el-input__inner::placeholder,
+.el-textarea__inner::placeholder {
+  color: var(--text-tertiary) !important;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -349,6 +361,9 @@ a:focus-visible {
   --el-bg-color-overlay: var(--bg-elevated);
   --el-text-color-primary: var(--text-primary);
   --el-text-color-regular: var(--text-secondary);
+  --el-text-color-placeholder: var(--text-tertiary);
   --el-border-color: var(--border-default);
   --el-border-color-light: var(--border-light);
+  --el-input-text-color: var(--text-primary);
+  --el-textarea-text-color: var(--text-primary);
 }
