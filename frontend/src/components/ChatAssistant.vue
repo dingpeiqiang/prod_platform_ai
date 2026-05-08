@@ -1057,31 +1057,43 @@ const doSendMessage = async (text) => {
     return
   }
 
-  // 检查是否取消
-  if (pendingConfirmForm) {
-    const msg = text.toLowerCase()
-    if (msg.includes('取消') || msg.includes('不') || msg.includes('算了')) {
-      handleCancelSubmit()
-      return
-    }
-  }
-
   // ══ 检查是否有未完成的表单需要先处理 ═══════════════════
-  // 情况1：有活动表单且用户想"完成/提交"它
-  const lowerText = text.toLowerCase()
-  const wantsSubmit = lowerText.includes('完成') || lowerText.includes('提交')
-  const wantsCancel = lowerText.includes('取消') || lowerText.includes('算了') || lowerText.includes('不要了')
+  // 只有在有待确认或活动表单时才拦截对话
+  const hasFormToHandle = pendingConfirmForm || (currentFormSchema.value && !currentFormSubmitted.value)
 
-  if (currentFormSchema.value && !currentFormSubmitted.value) {
-    if (wantsSubmit) {
-      // 用户想完成当前表单，引导其完成并提交
-      handleConfirmSubmitForActiveForm()
+  if (hasFormToHandle) {
+    const lowerText = text.toLowerCase()
+    const hasExplicitCancel = lowerText.includes('取消') || lowerText.includes('算了') || lowerText.includes('放弃')
+    const hasExplicitSubmit = lowerText.includes('完成') || lowerText.includes('提交') || lowerText.includes('确认')
+
+    // 有待确认的表单
+    if (pendingConfirmForm) {
+      if (hasExplicitCancel) {
+        handleCancelSubmit()
+        return
+      }
+      // 确认关键词只有"好的"——其他视为普通回复，让 AI 继续对话
+      if (text.trim() === '好的' || text.trim() === '好') {
+        await handleDoConfirmSubmit()
+        return
+      }
+      // 其他内容继续发给 AI
+      await doSendMessageAfterHome(text)
       return
     }
-    if (wantsCancel) {
-      // 用户想取消当前表单
-      handleFormCancel()
-      // 返回，不发送消息（用户可能只是想把表单关掉）
+
+    // 有活动表单
+    if (currentFormSchema.value && !currentFormSubmitted.value) {
+      if (hasExplicitCancel) {
+        handleFormCancel()
+        return
+      }
+      if (hasExplicitSubmit) {
+        handleConfirmSubmitForActiveForm()
+        return
+      }
+      // 如果用户只是在说普通内容（如"好的"），让消息继续发给 AI
+      await doSendMessageAfterHome(text)
       return
     }
   }
@@ -2007,14 +2019,25 @@ const handleFormCancel = async () => {
   messages.value.push(cancelMsg)
   scrollToBottom()
 
-  // 保存消息到数据库
+  // 保存消息到数据库（使用 cancelledFormId，因为 currentFormId 已清空）
+  const cancelledFormSchema = currentFormSchema.value
   if (currentDbSessionId.value) {
     await saveMessage(currentDbSessionId.value, {
       role: 'assistant',
       content: cancelMsg.content,
       reasoning: [],
-      formId: currentFormId.value,
-      formSchema: currentFormSchema.value
+      formId: cancelledFormId,
+      formSchema: cancelledFormSchema,
+      formSubmitted: false,  // 标记表单已取消
+      formCard: {
+        msgId: cancelMsg.id,
+        formId: cancelledFormId,
+        formName: cancelledFormSchema?.formName || '当前表单',
+        formCode: cancelledFormSchema?.formCode || '',
+        status: 'cancelled',
+        fieldCount: cancelledFormSchema?.fields?.length || 0,
+        createdAt: new Date().toISOString()
+      }
     }).catch(() => {})
   }
 }
