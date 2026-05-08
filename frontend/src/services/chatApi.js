@@ -62,6 +62,10 @@ export async function saveMessage(sessionId, msg) {
     if (msg.formSubmitted !== undefined) {
       metadata.formSubmitted = msg.formSubmitted
     }
+    // 保存表单卡片信息（用于消息中显示表单卡片）
+    if (msg.formCard) {
+      metadata.formCard = JSON.stringify(msg.formCard)
+    }
     
     // 保存意图相关字段
     if (msg.intentType || msg.intent_type) metadata.intent_type = msg.intentType || msg.intent_type
@@ -161,6 +165,10 @@ export async function saveMessages(sessionId, messages) {
         if (msg.formSubmitted !== undefined) {
           metadata.formSubmitted = msg.formSubmitted
         }
+        // 保存表单卡片信息
+        if (msg.formCard) {
+          metadata.formCard = JSON.stringify(msg.formCard)
+        }
         if (msg.intentType || msg.intent_type) metadata.intent_type = msg.intentType || msg.intent_type
         if (msg.formCode || msg.form_code)     metadata.form_code   = msg.formCode   || msg.form_code
         if (msg.extractedFields || msg.extracted_fields) metadata.extracted_fields = msg.extractedFields || msg.extracted_fields
@@ -259,6 +267,28 @@ export async function loadMessages(sessionId) {
       if (meta.formSubmitted !== undefined) {
         formSubmitted = meta.formSubmitted === 'true' || meta.formSubmitted === true
       }
+
+      // 恢复表单卡片信息
+      let formCard = null
+      if (meta.formCard) {
+        try {
+          formCard = JSON.parse(meta.formCard)
+        } catch (e) {
+          formCard = null
+        }
+      }
+
+      // 如果没有 formCard 但有 formSchema，根据状态重建一个
+      if (!formCard && formSchema) {
+        formCard = {
+          formId: formId,
+          formName: formSchema.formName || formSchema.formCode || '',
+          formCode: formSchema.formCode || '',
+          status: formSubmitted ? 'submitted' : 'filling',
+          fieldCount: formSchema.fields?.length || 0,
+          createdAt: m.created_at
+        }
+      }
       
       return {
         id:              m.message_id,
@@ -285,7 +315,9 @@ export async function loadMessages(sessionId) {
         // 恢复表单状态
         formId:          formId,
         formSchema:      formSchema,
-        formSubmitted:   formSubmitted
+        formSubmitted:   formSubmitted,
+        // 恢复表单卡片
+        formCard:        formCard
       }
     })
   } catch (e) {
