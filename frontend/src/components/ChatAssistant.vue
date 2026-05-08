@@ -2084,28 +2084,36 @@ const handleFormCancel = async () => {
   cancelledCard.status = 'cancelled'
 
   // 持久化更新的 formCard 到数据库（原消息）
-  // 查找原消息并更新其 formCard
-  const targetMsg = messages.value.find(m => m.id === cancelledCard.msgId)
-  if (!targetMsg) {
-    console.warn('[handleFormCancel] 未找到原消息:', cancelledCard.msgId)
-  } else if (!currentDbSessionId.value) {
-    console.warn('[handleFormCancel] 缺少 dbSessionId')
-  } else {
-    targetMsg.formCard = cancelledCard
-    try {
-      await updateMessage(currentDbSessionId.value, cancelledCard.msgId, {
+    // 查找原消息并更新其 formCard
+    const targetMsg = messages.value.find(m => m.id === cancelledCard.msgId)
+    console.log('[handleFormCancel] 查找目标消息:', {
+      cancelledMsgId: cancelledCard.msgId,
+      found: !!targetMsg,
+      messagesCount: messages.value.length,
+      firstFewIds: messages.value.slice(0, 3).map(m => m.id)
+    })
+    if (!targetMsg) {
+      console.warn('[handleFormCancel] 未找到原消息:', cancelledCard.msgId)
+    } else if (!currentDbSessionId.value) {
+      console.warn('[handleFormCancel] 缺少 dbSessionId')
+    } else {
+      targetMsg.formCard = cancelledCard
+      const payload = {
         content: targetMsg.content,
         metadata: {
           formCard: JSON.stringify(cancelledCard),
           formId: cancelledCard.formId,
           formSubmitted: 'false'
         }
-      })
-      console.log('[handleFormCancel] 数据库更新成功')
-    } catch(e) {
-      console.error('[handleFormCancel] 更新失败:', e)
+      }
+      console.log('[handleFormCancel] 发送 PATCH 请求:', payload)
+      try {
+        await updateMessage(currentDbSessionId.value, cancelledCard.msgId, payload)
+        console.log('[handleFormCancel] 数据库更新成功')
+      } catch(e) {
+        console.error('[handleFormCancel] 更新失败:', e)
+      }
     }
-  }
 
   // 清除活动表单
   activeFormCard.value = null
