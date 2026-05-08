@@ -392,9 +392,22 @@ registerPostProcessor('form', async (msg, intentData) => {
 
   if (hasActiveForm || hasPendingConfirm) {
     const formName = currentFormSchema.value?.formName || pendingConfirmForm?.formName || '当前表单'
-    // 替换流式文本为阻塞提示
-    msg.streamText = `⚠️ 检测到你有一个未完成的「${formName}」，请先完成或关闭后再发起新任务。\n\n你可以说「完成」或「提交」来完成当前表单，或者「取消」放弃当前表单。`
-    msg.content = msg.streamText
+    // 推送单独的警告消息，不替换原消息内容
+    const warnMsg = {
+      id: genId(), role: 'assistant',
+      content: `⚠️ 检测到你有一个未完成的「${formName}」，请先完成或关闭后再发起新任务。\n\n你可以说「完成」或「提交」来完成当前表单，或者「取消」放弃当前表单。`,
+      done: true, type: 'chat'
+    }
+    messages.value.push(warnMsg)
+    scrollToBottom()
+    // 保存警告消息到数据库
+    if (currentDbSessionId.value) {
+      await saveMessage(currentDbSessionId.value, {
+        role: 'assistant',
+        content: warnMsg.content,
+        reasoning: []
+      }).catch(() => {})
+    }
     console.log('[form 拦截] 有未完成表单，阻止生成新表单:', formName)
     return
   }
