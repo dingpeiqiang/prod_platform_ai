@@ -5,12 +5,15 @@
       <!-- 顶部栏 -->
       <div class="chat-topbar">
         <span class="session-name">{{ sessionTitle }}</span>
-        <button class="icon-btn" title="清空记录" @click="clearHistory">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>
-            <path d="M9 6V4h6v2"/>
-          </svg>
-        </button>
+        <div class="topbar-actions">
+          <ThemeToggle />
+          <button class="icon-btn" title="清空记录" @click="clearHistory">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>
+              <path d="M9 6V4h6v2"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       <!-- 消息区 -->
@@ -234,6 +237,7 @@ import { marked } from 'marked'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import FormPanel from './FormPanel.vue'
 import ConfigCard from './ConfigCard.vue'
+import ThemeToggle from './common/ThemeToggle.vue'
 // 意图面板组件
 import DeleteResultPanel from './intent-panels/DeleteResultPanel.vue'
 import HistoryPanel from './intent-panels/HistoryPanel.vue'
@@ -2444,7 +2448,12 @@ defineExpose({ requestValidation, sendMessageAfterSessionCreated })
 .session-name {
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-semibold);
-  color: var(--color-gray-900);
+  color: var(--text-primary);
+}
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 .icon-btn {
   width: 34px; height: 34px;
