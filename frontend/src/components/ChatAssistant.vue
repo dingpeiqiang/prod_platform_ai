@@ -1069,7 +1069,15 @@ const doSendMessage = async (text) => {
     // 有待确认的表单
     if (pendingConfirmForm) {
       if (hasExplicitCancel) {
-        handleCancelSubmit()
+        // 先显示用户消息
+        messages.value.push({ id: genId(), role: 'user', content: text, done: true })
+        scrollToBottom()
+        // 保存用户消息
+        if (currentDbSessionId.value) {
+          await saveMessage(currentDbSessionId.value, { role: 'user', content: text }).catch(() => {})
+        }
+        // 再执行取消（会推送 AI 响应）
+        await handleCancelSubmit()
         return
       }
       // 确认关键词只有"好的"——其他视为普通回复，让 AI 继续对话
@@ -1085,7 +1093,15 @@ const doSendMessage = async (text) => {
     // 有活动表单
     if (currentFormSchema.value && !currentFormSubmitted.value) {
       if (hasExplicitCancel) {
-        handleFormCancel()
+        // 先显示用户消息
+        messages.value.push({ id: genId(), role: 'user', content: text, done: true })
+        scrollToBottom()
+        // 保存用户消息
+        if (currentDbSessionId.value) {
+          await saveMessage(currentDbSessionId.value, { role: 'user', content: text }).catch(() => {})
+        }
+        // 再执行取消（会推送 AI 响应）
+        await handleFormCancel()
         return
       }
       if (hasExplicitSubmit) {
