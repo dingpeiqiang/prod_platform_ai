@@ -143,8 +143,8 @@
                   @intent-action="handleIntentEvent"
                 />
 
-                <!-- 表单卡片（嵌入消息的表单信息） -->
-                <div v-if="msg.formCard" class="form-card">
+                <!-- 表单卡片（嵌入消息的表单信息，点击激活） -->
+                <div v-if="msg.formCard" class="form-card" @click="handleFormCardClick(msg)">
                   <div class="form-card-header">
                     <div class="form-card-icon">
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -170,8 +170,8 @@
                       <span class="status-text">{{ getFormStatusText(msg.formCard.status) }}</span>
                     </div>
                   </div>
-                  <div class="form-card-actions">
-                    <button class="form-card-btn primary" @click="focusFormPanel">
+                  <div class="form-card-actions" @click.stop>
+                    <button class="form-card-btn primary">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                         <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -258,9 +258,9 @@
 
     <!-- 右侧：表单面板 -->
     <FormPanel
-      :formSchema="currentFormSchema"
-      :formId="currentFormId"
-      :formSubmitted="currentFormSubmitted"
+      :formSchema="activeFormCard?.formSchema"
+      :formId="activeFormCard?.formId"
+      :formSubmitted="activeFormCard?.status === 'submitted'"
       @submit="handleFormSubmit"
       @cancel="handleFormCancel"
       @field-change="handleFormFieldChange"
@@ -385,13 +385,13 @@ registerPostProcessor('configure', (msg) => {
 
 registerPostProcessor('form', async (msg, intentData) => {
   // ══ 检查是否有未完成的表单 ══════════════════════════════════
-  // 情况1：有活动表单（currentFormSchema 存在且未提交）
+  // 情况1：有活动表单卡片（status === 'filling'）
   // 情况2：待确认提交（pendingConfirmForm 存在，等待用户回复确认/取消）
-  const hasActiveForm = currentFormSchema.value && !currentFormSubmitted.value
+  const hasActiveForm = activeFormCard.value?.status === 'filling'
   const hasPendingConfirm = !!pendingConfirmForm
 
   if (hasActiveForm || hasPendingConfirm) {
-    const formName = currentFormSchema.value?.formName || pendingConfirmForm?.formName || '当前表单'
+    const formName = activeFormCard.value?.formName || pendingConfirmForm?.formName || '当前表单'
     // 推送单独的警告消息，不替换原消息内容
     const warnMsg = {
       id: genId(), role: 'assistant',
@@ -484,6 +484,10 @@ const currentFormId = ref('')
 const currentFormSchema = ref(null)
 const currentFormSubmitted = ref(false)
 const currentFormCardMsgId = ref('')  // 表单卡片归属的消息 ID，用于精确更新
+
+// 新的活动表单卡片（formCard 作为消息体，右侧栏从这儿读取）
+const activeFormCard = ref(null)  // 当前活动表单的 formCard 引用
+const activeFormMsgId = ref('')   // 当前活动表单的消息 ID
 
 let abortCtrl = null
 
@@ -611,25 +615,36 @@ watch(() => props.sessionId, async (newSessionId, oldSessionId) => {
       const dbMsgs = await apiLoadMessages(currentDbSessionId.value)
       messages.value = dbMsgs
       // 从加载的消息中恢复最后一个表单状态
-      let lastFormId = ''
-      let lastFormSchema = null
-      let lastFormSubmitted = false
-      let lastFormCardMsgId = ''
+      let lastFillingCard = null
       for (let i = dbMsgs.length - 1; i >= 0; i--) {
         const msg = dbMsgs[i]
-        if (msg.formId !== undefined && msg.formSchema !== null) {
-          lastFormId = msg.formId
-          lastFormSchema = msg.formSchema
-          lastFormSubmitted = msg.formSubmitted || false
-          lastFormCardMsgId = msg.formCard?.msgId || msg.id || ''
+        // 找最后一个 status === 'filling' 的 formCard 作为活动表单
+        if (msg.formCard && msg.formCard.status === 'filling' && msg.formCard.formSchema) {
+          lastFillingCard = msg.formCard
           break
         }
+        // 兼容旧数据（只有 formSchema 没有 formCard 的情况）
+        if (!lastFillingCard && msg.formId !== undefined && msg.formSchema !== null) {
+          lastFillingCard = {
+            msgId: msg.id,
+            formId: msg.formId,
+            formSchema: msg.formSchema,
+            formName: msg.formSchema.formName || '',
+            formCode: msg.formSchema.formCode || '',
+            status: msg.formSubmitted ? 'submitted' : 'filling',
+            fieldCount: msg.formSchema.fields?.length || 0,
+            createdAt: msg.createdAt || new Date().toISOString(),
+            formData: {}
+          }
+        }
       }
-      if (lastFormId || lastFormSchema) {
-        currentFormId.value = lastFormId
-        currentFormSchema.value = lastFormSchema
-        currentFormSubmitted.value = lastFormSubmitted
-        currentFormCardMsgId.value = lastFormCardMsgId
+      if (lastFillingCard) {
+        activeFormCard.value = lastFillingCard
+        activeFormMsgId.value = lastFillingCard.msgId || ''
+        // 保持旧 refs 同步（兼容其他代码）
+        currentFormId.value = lastFillingCard.formId
+        currentFormSchema.value = lastFillingCard.formSchema
+        currentFormSubmitted.value = lastFillingCard.status === 'submitted'
       } else {
         // 没有找到表单状态，从 localStorage 加载
         loadFormState()
@@ -973,6 +988,27 @@ const focusFormPanel = () => {
   }
 }
 
+// 点击表单卡片，激活对应表单到右侧栏
+const handleFormCardClick = (msg) => {
+  if (msg.formCard && msg.formCard.formSchema) {
+    // 如果点击的是当前活动卡片，不需要重复设置
+    if (activeFormCard.value?.msgId === msg.formCard.msgId) {
+      focusFormPanel()
+      return
+    }
+    // 激活该表单卡片
+    activeFormCard.value = msg.formCard
+    activeFormMsgId.value = msg.id
+    // 保持旧 refs 同步
+    currentFormId.value = msg.formCard.formId
+    currentFormSchema.value = msg.formCard.formSchema
+    currentFormSubmitted.value = msg.formCard.status === 'submitted'
+    // 聚焦到右侧面板
+    focusFormPanel()
+    ElMessage({ message: `已切换到「${msg.formCard.formName}」`, duration: 1500, plain: true })
+  }
+}
+
 // 更新消息中的表单卡片状态（优先用 msgId 精确匹配，formId 作为回退）
 const updateFormCardStatus = (msgId, formId, status) => {
   let targetMsg = null
@@ -1058,8 +1094,8 @@ const doSendMessage = async (text) => {
   }
 
   // ══ 检查是否有未完成的表单需要先处理 ═══════════════════
-  // 只有在有待确认或活动表单时才拦截对话
-  const hasFormToHandle = pendingConfirmForm || (currentFormSchema.value && !currentFormSubmitted.value)
+  // 只有在有待确认或活动表单卡片时才拦截对话
+  const hasFormToHandle = pendingConfirmForm || (activeFormCard.value?.status === 'filling')
 
   if (hasFormToHandle) {
     const lowerText = text.toLowerCase()
@@ -1090,8 +1126,8 @@ const doSendMessage = async (text) => {
       return
     }
 
-    // 有活动表单
-    if (currentFormSchema.value && !currentFormSubmitted.value) {
+    // 有活动表单卡片
+    if (activeFormCard.value?.status === 'filling') {
       if (hasExplicitCancel) {
         // 先显示用户消息
         messages.value.push({ id: genId(), role: 'user', content: text, done: true })
@@ -1567,30 +1603,29 @@ const generateForm = async (intentData) => {
 
     let replyMsg
       if (result.success) {
-        // 更新右侧表单面板
-        currentFormId.value = result.formId
-        currentFormSchema.value = result.formSchema
-
         // 生成消息 ID，用于 formCard 归属
         const msgId = genId()
 
-        // 记录表单卡片归属的消息 ID
-        currentFormCardMsgId.value = msgId
-
         // 在消息中嵌入表单卡片
+        const newFormCard = {
+          msgId: msgId,  // 归属消息 ID
+          formId: result.formId,
+          formName: result.formSchema?.formName || formCode,
+          formCode: result.formSchema?.formCode || formCode,
+          status: 'filling',  // filling | submitted | cancelled
+          fieldCount: result.formSchema?.fields?.length || 0,
+          createdAt: new Date().toISOString(),
+          formSchema: result.formSchema,  // 完整表单结构
+          formData: {}  // 用户填写的字段值
+        }
         replyMsg = {
           id: msgId, role: 'assistant',
           content: `✅ 已生成表单，请在右侧填写并提交。`, done: true, type: 'chat',
-          formCard: {
-            msgId: msgId,  // 归属消息 ID
-            formId: result.formId,
-            formName: result.formSchema?.formName || formCode,
-            formCode: result.formSchema?.formCode || formCode,
-            status: 'filling',  // filling | submitted | cancelled
-            fieldCount: result.formSchema?.fields?.length || 0,
-            createdAt: new Date().toISOString()
-          }
+          formCard: newFormCard
         }
+        // 设置当前活动表单卡片
+        activeFormCard.value = newFormCard
+        activeFormMsgId.value = msgId
       } else {
       replyMsg = {
         id: genId(), role: 'assistant',
@@ -1865,14 +1900,14 @@ const handleDoConfirmSubmit = async () => {
   // 清除待确认状态
   pendingConfirmForm = null
 
-  // 清空表单状态
-  currentFormId.value = ''
-  currentFormSchema.value = null
-  currentFormSubmitted.value = false
-  currentFormCardMsgId.value = ''
-
-  // 更新消息中的表单卡片状态
-  updateFormCardStatus('', formId, 'submitted')
+  // 更新 formCard 状态（如果存在的话）
+  if (activeFormCard.value) {
+    updateFormCardStatus(activeFormCard.value.msgId, formId, 'submitted')
+    activeFormCard.value.status = 'submitted'
+    activeFormCard.value.formData = formData
+    activeFormCard.value = null
+    activeFormMsgId.value = ''
+  }
 
   // 调用后端提交 API
   try {
@@ -1961,7 +1996,10 @@ const handleCancelSubmit = () => {
 
 // 表单提交
 const handleFormSubmit = async (formData, formId) => {
-  const schema = currentFormSchema.value
+  if (!activeFormCard.value) return
+
+  const card = activeFormCard.value
+  const schema = card.formSchema
 
   // 生成提交摘要
   let summaryLines = []
@@ -1979,19 +2017,15 @@ const handleFormSubmit = async (formData, formId) => {
     ? `提交内容：\n${summaryLines.join('\n')}`
     : ''
 
-  // 保存表单状态快照（用于历史会话显示已提交的表单）
-  const submittedFormId = currentFormId.value
-  const submittedFormSchema = currentFormSchema.value
-  const submittedFormCardMsgId = currentFormCardMsgId.value
+  // 更新 formCard 状态为 submitted
+  updateFormCardStatus(card.msgId, card.formId, 'submitted')
+  card.status = 'submitted'
+  card.formData = formData  // 保存用户填写的值
 
-  currentFormId.value = ''
-  currentFormSchema.value = null
-  currentFormSubmitted.value = false
-  currentFormCardMsgId.value = ''
+  // 清除活动表单
+  activeFormCard.value = null
+  activeFormMsgId.value = ''
   ElMessage({ message: '表单提交成功！', type: 'success', plain: true })
-
-  // 更新消息中的表单卡片状态
-  updateFormCardStatus(submittedFormCardMsgId, submittedFormId, 'submitted')
 
   const submitMsg = {
     id: genId(), role: 'assistant',
@@ -2007,62 +2041,55 @@ const handleFormSubmit = async (formData, formId) => {
       role: 'assistant',
       content: submitMsg.content,
       reasoning: [],
-      formId: submittedFormId,
-      formSchema: submittedFormSchema,
-      formSubmitted: true  // 标记表单已提交
+      formId: card.formId,
+      formSchema: schema,
+      formSubmitted: true,  // 标记表单已提交
+      formCard: { ...card }  // 保存完整的 formCard
     }).catch(() => {})
   }
 }
 
 // 表单取消
 const handleFormCancel = async () => {
-  const cancelledFormId = currentFormId.value
-  const cancelledFormCardMsgId = currentFormCardMsgId.value
-  currentFormId.value = ''
-  currentFormSchema.value = null
-  currentFormSubmitted.value = false
-  currentFormCardMsgId.value = ''
+  if (!activeFormCard.value) return
 
-  // 更新消息中的表单卡片状态
-  if (cancelledFormId) {
-    updateFormCardStatus(cancelledFormCardMsgId, cancelledFormId, 'cancelled')
-  }
+  const cancelledCard = activeFormCard.value
+  const cancelMsgId = genId()
+
+  // 更新 formCard 状态为 cancelled（通过 msgId 精确匹配）
+  updateFormCardStatus(cancelledCard.msgId, cancelledCard.formId, 'cancelled')
+  // 也直接更新 activeFormCard 的 status（因为 updateFormCardStatus 是引用操作）
+  cancelledCard.status = 'cancelled'
+
+  // 清除活动表单
+  activeFormCard.value = null
+  activeFormMsgId.value = ''
 
   const cancelMsg = {
-    id: genId(), role: 'assistant',
+    id: cancelMsgId, role: 'assistant',
     content: '好的，已取消。还有什么我可以帮你的吗？', done: true, type: 'chat'
   }
   messages.value.push(cancelMsg)
   scrollToBottom()
 
-  // 保存消息到数据库（使用 cancelledFormId，因为 currentFormId 已清空）
-  const cancelledFormSchema = currentFormSchema.value
+  // 保存取消消息到数据库
   if (currentDbSessionId.value) {
     await saveMessage(currentDbSessionId.value, {
       role: 'assistant',
       content: cancelMsg.content,
       reasoning: [],
-      formId: cancelledFormId,
-      formSchema: cancelledFormSchema,
-      formSubmitted: false,  // 标记表单已取消
-      formCard: {
-        msgId: cancelMsg.id,
-        formId: cancelledFormId,
-        formName: cancelledFormSchema?.formName || '当前表单',
-        formCode: cancelledFormSchema?.formCode || '',
-        status: 'cancelled',
-        fieldCount: cancelledFormSchema?.fields?.length || 0,
-        createdAt: new Date().toISOString()
-      }
+      formId: cancelledCard.formId,
+      formSchema: cancelledCard.formSchema,
+      formSubmitted: false  // 标记表单已取消
     }).catch(() => {})
   }
 }
 
 // 用户通过聊天说"完成/提交"时，引导其完成当前表单
 const handleConfirmSubmitForActiveForm = () => {
-  if (!currentFormSchema.value) return
+  if (!activeFormCard.value) return
 
-  const formName = currentFormSchema.value.formName || '当前表单'
+  const formName = activeFormCard.value.formName || '当前表单'
   const guideMsg = {
     id: genId(), role: 'assistant',
     content: `好的，请先完成右侧的「${formName}」并点击提交按钮。\n\n提交后我会帮你处理后续操作。`,
@@ -2072,9 +2099,12 @@ const handleConfirmSubmitForActiveForm = () => {
   scrollToBottom()
 }
 
-// 表单字段变化（可同步到 AI）
+// 表单字段变化（同步到 activeFormCard.formData）
 const handleFormFieldChange = (fieldCode, value) => {
-  // 可选：通知后端字段变化
+  // 同步到活动表单卡片
+  if (activeFormCard.value) {
+    activeFormCard.value.formData[fieldCode] = value
+  }
   console.log('表单字段变化:', fieldCode, value)
 }
 
@@ -2235,25 +2265,36 @@ onMounted(async () => {
       const dbMsgs = await apiLoadMessages(currentDbSessionId.value)
       messages.value = dbMsgs
       // 从加载的消息中恢复最后一个表单状态
-      let lastFormId = ''
-      let lastFormSchema = null
-      let lastFormSubmitted = false
-      let lastFormCardMsgId = ''
+      let lastFillingCard = null
       for (let i = dbMsgs.length - 1; i >= 0; i--) {
         const msg = dbMsgs[i]
-        if (msg.formId !== undefined && msg.formSchema !== null) {
-          lastFormId = msg.formId
-          lastFormSchema = msg.formSchema
-          lastFormSubmitted = msg.formSubmitted || false
-          lastFormCardMsgId = msg.formCard?.msgId || msg.id || ''
+        // 找最后一个 status === 'filling' 的 formCard 作为活动表单
+        if (msg.formCard && msg.formCard.status === 'filling' && msg.formCard.formSchema) {
+          lastFillingCard = msg.formCard
           break
         }
+        // 兼容旧数据（只有 formSchema 没有 formCard 的情况）
+        if (!lastFillingCard && msg.formId !== undefined && msg.formSchema !== null) {
+          lastFillingCard = {
+            msgId: msg.id,
+            formId: msg.formId,
+            formSchema: msg.formSchema,
+            formName: msg.formSchema.formName || '',
+            formCode: msg.formSchema.formCode || '',
+            status: msg.formSubmitted ? 'submitted' : 'filling',
+            fieldCount: msg.formSchema.fields?.length || 0,
+            createdAt: msg.createdAt || new Date().toISOString(),
+            formData: {}
+          }
+        }
       }
-      if (lastFormId || lastFormSchema) {
-        currentFormId.value = lastFormId
-        currentFormSchema.value = lastFormSchema
-        currentFormSubmitted.value = lastFormSubmitted
-        currentFormCardMsgId.value = lastFormCardMsgId
+      if (lastFillingCard) {
+        activeFormCard.value = lastFillingCard
+        activeFormMsgId.value = lastFillingCard.msgId || ''
+        // 保持旧 refs 同步（兼容其他代码）
+        currentFormId.value = lastFillingCard.formId
+        currentFormSchema.value = lastFillingCard.formSchema
+        currentFormSubmitted.value = lastFillingCard.status === 'submitted'
       } else {
         // 没有找到表单状态，从 localStorage 加载
         loadFormState()
