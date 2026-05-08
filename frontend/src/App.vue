@@ -40,9 +40,11 @@ import Sidebar from './components/Sidebar.vue'
 import ChatAssistant from './components/ChatAssistant.vue'
 import LoginScreen from './components/LoginScreen.vue'
 import { useUserStore } from './stores/user'
+import { useTheme } from './composables/useTheme'
 import { createSession as apiCreateSession, getSessions as apiGetSessions, deleteSession as apiDeleteSession, updateSessionTitle as apiUpdateSessionTitle } from './services/chatApi.js'
 
 const userStore = useUserStore()
+const { initTheme } = useTheme()
 
 const SESSIONS_KEY = 'chat_sessions'
 const ACTIVE_SESSION_KEY = 'chat_active_session'
@@ -310,6 +312,11 @@ watch(() => userStore.isLoggedIn, (loggedIn) => {
     activeDbSessionId.value = ''
   }
 }, { immediate: true })   // immediate: true 确保 onMounted 之前也触发一次
+
+onMounted(() => {
+  // 初始化主题（在应用加载时立即执行）
+  initTheme()
+})
 </script>
 
 <style scoped>
