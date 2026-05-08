@@ -225,17 +225,17 @@ defineExpose({
 .form-panel {
   display: flex;
   flex-direction: column;
-  background: #fff;
-  border-left: 1px solid #f0f0f0;
+  background: var(--bg-primary);
+  border-left: 1px solid var(--border-light);
   transition: width 0.15s ease;
   position: relative;
   overflow: hidden;
 }
 
 .form-panel:not(.collapsed) {
-  width: 420px;
-  min-width: 320px;
-  max-width: 600px;
+  width: var(--form-panel-width);
+  min-width: var(--form-panel-width-min);
+  max-width: var(--form-panel-width-max);
 }
 
 .form-panel.collapsed {
@@ -251,19 +251,19 @@ defineExpose({
   bottom: 0;
   width: 8px;
   cursor: col-resize;
-  z-index: 20;
+  z-index: var(--z-dropdown);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s;
+  transition: background var(--transition-fast);
 }
 
 .resize-handle:hover {
-  background: rgba(129, 140, 248, 0.15);
+  background: var(--color-primary-100);
 }
 
 .resize-handle:active {
-  background: rgba(129, 140, 248, 0.25);
+  background: var(--color-primary-200);
 }
 
 .resize-grip {
@@ -271,7 +271,7 @@ defineExpose({
   flex-direction: column;
   gap: 3px;
   opacity: 0.3;
-  transition: opacity 0.15s;
+  transition: opacity var(--transition-fast);
 }
 
 .resize-handle:hover .resize-grip {
@@ -281,7 +281,7 @@ defineExpose({
 .resize-grip span {
   width: 2px;
   height: 2px;
-  background: #666;
+  background: var(--color-gray-600);
   border-radius: 50%;
 }
 
@@ -289,24 +289,24 @@ defineExpose({
 .collapse-btn {
   position: absolute;
   left: 8px;
-  top: 12px;
+  top: var(--space-3);
   width: 32px;
   height: 32px;
-  background: #f5f5f5;
-  border: 1px solid #eaeaea;
-  border-radius: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #666;
-  transition: all 0.15s;
-  z-index: 10;
+  color: var(--color-gray-600);
+  transition: all var(--transition-fast);
+  z-index: var(--z-dropdown);
 }
 
 .collapse-btn:hover {
-  background: #e8e8e8;
-  color: #333;
+  background: var(--border-default);
+  color: var(--text-primary);
 }
 
 .collapsed .collapse-btn {
@@ -328,39 +328,39 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px;
-  border-bottom: 1px solid #f0f0f0;
-  background: #fafafa;
+  padding: var(--space-3-5) var(--space-4);
+  border-bottom: 1px solid var(--border-light);
+  background: var(--bg-secondary);
   flex-shrink: 0;
 }
 
 .panel-title {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #333;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
 }
 
 .panel-title svg {
-  color: #818cf8;
+  color: var(--color-primary-400);
 }
 
 .preview-badge {
   font-size: 11px;
   padding: 2px 8px;
-  background: linear-gradient(135deg, #ede9fe, #f5f3ff);
-  color: #7c3aed;
-  border-radius: 10px;
-  font-weight: 500;
-  margin-left: 6px;
+  background: linear-gradient(135deg, var(--color-primary-100), var(--color-primary-50));
+  color: var(--color-primary-700);
+  border-radius: var(--radius-full);
+  font-weight: var(--font-weight-medium);
+  margin-left: var(--space-1-5);
 }
 
 .panel-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .form-id-tag {
@@ -374,33 +374,33 @@ defineExpose({
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 24px;
+  padding: var(--space-10) var(--space-6);
   text-align: center;
 }
 
 .empty-icon {
   width: 72px;
   height: 72px;
-  background: linear-gradient(135deg, #f5f3ff, #ede9fe);
-  border-radius: 20px;
+  background: linear-gradient(135deg, var(--color-primary-50), var(--color-primary-100));
+  border-radius: var(--radius-xl);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #a78bfa;
-  margin-bottom: 16px;
+  color: var(--color-primary-400);
+  margin-bottom: var(--space-4);
 }
 
 .empty-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 8px;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
 }
 
 .empty-hint {
-  font-size: 13px;
-  color: #999;
-  line-height: 1.6;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: var(--line-height-relaxed);
   max-width: 280px;
 }
 
@@ -408,7 +408,7 @@ defineExpose({
 .form-area {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: var(--space-4);
 }
 
 .form-area::-webkit-scrollbar {
@@ -416,16 +416,16 @@ defineExpose({
 }
 
 .form-area::-webkit-scrollbar-track {
-  background: #f5f5f5;
+  background: var(--bg-secondary);
 }
 
 .form-area::-webkit-scrollbar-thumb {
-  background: #ccc;
-  border-radius: 3px;
+  background: var(--border-default);
+  border-radius: var(--radius-sm);
 }
 
 .form-area::-webkit-scrollbar-thumb:hover {
-  background: #aaa;
+  background: var(--border-strong);
 }
 
 /* 收起时的提示 */
@@ -435,9 +435,9 @@ defineExpose({
   align-items: center;
   justify-content: center;
   height: 100%;
-  gap: 8px;
-  color: #999;
-  font-size: 12px;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
   writing-mode: vertical-rl;
   text-orientation: mixed;
 }
@@ -446,7 +446,7 @@ defineExpose({
 @media (max-width: 1024px) {
   .form-panel:not(.collapsed) {
     width: 380px;
-    min-width: 320px;
+    min-width: var(--form-panel-width-min);
   }
 }
 
@@ -459,7 +459,7 @@ defineExpose({
     width: 100%;
     min-width: 100%;
     max-width: 100%;
-    z-index: 100;
+    z-index: var(--z-modal);
     box-shadow: -4px 0 20px rgba(0, 0, 0, 0.1);
   }
 }

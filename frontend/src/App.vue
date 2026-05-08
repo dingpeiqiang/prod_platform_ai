@@ -312,33 +312,30 @@ watch(() => userStore.isLoggedIn, (loggedIn) => {
 }, { immediate: true })   // immediate: true 确保 onMounted 之前也触发一次
 </script>
 
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { height: 100%; overflow: hidden; }
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei',
-    'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
+<style scoped>
+/* App 主容器 */
 #app {
   display: flex;
   height: 100vh;
   height: 100dvh;
   width: 100vw;
-  background: #f5f5f5;
+  background: var(--bg-secondary);
 }
 
-.sidebar-wrapper { flex-shrink: 0; }
-.sidebar-mask { display: none; }
+.sidebar-wrapper { 
+  flex-shrink: 0; 
+}
+
+.sidebar-mask { 
+  display: none; 
+}
 
 .main-area {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  background: #f5f5f5;
+  background: var(--bg-secondary);
   position: relative;
 }
 
@@ -347,22 +344,25 @@ body {
     position: fixed;
     top: 0; left: 0;
     height: 100vh; height: 100dvh;
-    z-index: 200;
+    z-index: var(--z-fixed);
     transform: translateX(-100%);
-    transition: transform .25s cubic-bezier(.4,0,.2,1);
+    transition: transform 0.25s cubic-bezier(.4,0,.2,1);
   }
-  .sidebar-wrapper.sidebar-visible { transform: translateX(0); }
+  .sidebar-wrapper.sidebar-visible { 
+    transform: translateX(0); 
+  }
 
   .sidebar-mask {
     display: block;
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,.4);
-    z-index: 199;
-    animation: fadeIn .2s ease;
+    background: var(--bg-overlay);
+    z-index: calc(var(--z-fixed) - 1);
+    animation: fadeIn 0.2s ease;
   }
   @keyframes fadeIn {
-    from { opacity: 0; } to { opacity: 1; }
+    from { opacity: 0; } 
+    to { opacity: 1; }
   }
 }
 </style>

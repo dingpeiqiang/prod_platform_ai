@@ -481,27 +481,27 @@ const doSubmit = async () => {
 
 <style scoped>
 .dynamic-form h3 {
-  margin-bottom: 20px;
-  color: #303133;
-  font-size: 18px;
+  margin-bottom: var(--space-5);
+  color: var(--text-primary);
+  font-size: var(--font-size-xl);
 }
 
 .recommend-tags {
-  margin-top: 8px;
+  margin-top: var(--space-2);
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .recommend-label {
-  font-size: 12px;
-  color: #909399;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
 }
 
 .recommend-tag {
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all var(--transition-fast);
   position: relative;
 }
 
@@ -511,36 +511,36 @@ const doSubmit = async () => {
 
 /* 按来源区分颜色 */
 .recommend-tag.rec-source-llm_rule {
-  background-color: #f0e6ff;
-  border-color: #a855f7;
-  color: #7c3aed;
+  background-color: var(--color-primary-50);
+  border-color: var(--color-primary-400);
+  color: var(--color-primary-700);
 }
 .recommend-tag.rec-source-llm_rule:hover {
-  background-color: #a855f7 !important;
+  background-color: var(--color-primary-500) !important;
   color: white !important;
 }
 
 .recommend-tag.rec-source-inference,
 .recommend-tag.rec-source-history {
-  background-color: #e6f4ff;
-  border-color: #409eff;
-  color: #2563eb;
+  background-color: var(--color-info-50);
+  border-color: var(--color-info-500);
+  color: var(--color-info-700);
 }
 .recommend-tag.rec-source-inference:hover,
 .recommend-tag.rec-source-history:hover {
-  background-color: #409eff !important;
+  background-color: var(--color-info-500) !important;
   color: white !important;
 }
 
 .recommend-tag.rec-source-static,
 .recommend-tag.rec-source-context {
-  background-color: #f5f5f5;
-  border-color: #c0c4cc;
-  color: #606266;
+  background-color: var(--bg-tertiary);
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
 }
 .recommend-tag.rec-source-static:hover,
 .recommend-tag.rec-source-context:hover {
-  background-color: #909399 !important;
+  background-color: var(--color-gray-500) !important;
   color: white !important;
 }
 
@@ -548,8 +548,8 @@ const doSubmit = async () => {
   font-size: 10px;
   margin-left: 2px;
   padding: 0 3px;
-  border-radius: 8px;
-  background: #a855f7;
+  border-radius: var(--radius-full);
+  background: var(--color-primary-500);
   color: white;
 }
 
@@ -557,13 +557,13 @@ const doSubmit = async () => {
 .submitted-hint {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
-  background: #ecfdf5;
-  border: 1px solid #a7f3d0;
-  border-radius: 8px;
-  color: #065f46;
-  font-size: 13px;
-  margin-top: 8px;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-success-50);
+  border: 1px solid var(--color-success-100);
+  border-radius: var(--radius-md);
+  color: var(--color-success-700);
+  font-size: var(--font-size-sm);
+  margin-top: var(--space-2);
 }
 </style>

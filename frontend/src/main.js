@@ -3,6 +3,11 @@ import { createPinia } from 'pinia'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
+
+// 设计系统 - Design System
+import './styles/variables.css'  // 设计令牌
+import './styles/global.css'     // 全局样式
+
 import App from './App.vue'
 
 const app = createApp(App)

@@ -94,8 +94,8 @@ const handleLogin = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #0f0f0f;
-  z-index: 9999;
+  background: var(--color-gray-950);
+  z-index: var(--z-modal);
   overflow: hidden;
 }
 
@@ -128,8 +128,8 @@ const handleLogin = async () => {
   max-width: calc(100vw - 32px);
   background: rgba(255,255,255,0.035);
   border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 20px;
-  padding: 44px 36px 36px;
+  border-radius: var(--radius-2xl);
+  padding: var(--space-11) var(--space-9) var(--space-9);
   backdrop-filter: blur(20px);
   box-shadow:
     0 0 0 1px rgba(255,255,255,0.05) inset,
@@ -146,52 +146,52 @@ const handleLogin = async () => {
 /* Logo */
 .login-logo {
   text-align: center;
-  margin-bottom: 36px;
+  margin-bottom: var(--space-9);
 }
 
 .logo-icon {
   width: 56px;
   height: 56px;
-  background: linear-gradient(135deg, #818cf8, #6366f1);
-  border-radius: 16px;
+  background: linear-gradient(135deg, var(--color-primary-400), var(--color-primary-500));
+  border-radius: var(--radius-xl);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  margin: 0 auto 16px;
+  color: var(--text-inverse);
+  margin: 0 auto var(--space-4);
   box-shadow: 0 8px 32px rgba(99,102,241,0.35);
 }
 
 .logo-title {
-  font-size: 22px;
-  font-weight: 700;
-  color: #f1f5f9;
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-gray-100);
   letter-spacing: 1px;
-  margin-bottom: 6px;
+  margin-bottom: var(--space-1-5);
 }
 
 .logo-subtitle {
-  font-size: 13px;
-  color: #6b7280;
+  font-size: var(--font-size-sm);
+  color: var(--color-gray-500);
 }
 
 /* 输入框 */
 .login-form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--space-5);
 }
 
 .input-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .input-label {
-  font-size: 13px;
-  color: #9ca3af;
-  font-weight: 500;
+  font-size: var(--font-size-sm);
+  color: var(--color-gray-400);
+  font-weight: var(--font-weight-medium);
 }
 
 .input-wrapper {
@@ -203,7 +203,7 @@ const handleLogin = async () => {
 .input-icon {
   position: absolute;
   left: 14px;
-  color: #6b7280;
+  color: var(--color-gray-500);
   pointer-events: none;
   z-index: 1;
 }
@@ -213,14 +213,14 @@ const handleLogin = async () => {
   padding: 12px 14px 12px 42px;
   background: rgba(255,255,255,0.05);
   border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 10px;
-  color: #f1f5f9;
-  font-size: 15px;
+  border-radius: var(--radius-md);
+  color: var(--color-gray-100);
+  font-size: var(--font-size-base);
   outline: none;
-  transition: border-color .2s, box-shadow .2s;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-.login-input::placeholder { color: #4b5563; }
+.login-input::placeholder { color: var(--color-gray-600); }
 .login-input:focus {
   border-color: rgba(99,102,241,0.6);
   box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
@@ -231,8 +231,8 @@ const handleLogin = async () => {
 }
 
 .error-tip {
-  font-size: 12px;
-  color: #f87171;
+  font-size: var(--font-size-xs);
+  color: var(--color-error-500);
   padding-left: 2px;
 }
 
@@ -240,17 +240,17 @@ const handleLogin = async () => {
 .login-btn {
   width: 100%;
   padding: 13px;
-  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  background: linear-gradient(135deg, var(--color-primary-500), var(--color-primary-600));
   border: none;
-  border-radius: 10px;
-  color: #fff;
-  font-size: 15px;
-  font-weight: 600;
+  border-radius: var(--radius-md);
+  color: var(--text-inverse);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
   cursor: pointer;
-  transition: opacity .2s, transform .15s, box-shadow .2s;
+  transition: opacity var(--transition-fast), transform 0.15s, box-shadow var(--transition-fast);
   box-shadow: 0 4px 20px rgba(99,102,241,0.35);
   letter-spacing: 3px;
-  margin-top: 4px;
+  margin-top: var(--space-1);
 }
 .login-btn:hover:not(:disabled) {
   opacity: 0.92;
@@ -273,7 +273,7 @@ const handleLogin = async () => {
 }
 .loading-dots span {
   width: 6px; height: 6px;
-  background: #fff;
+  background: var(--text-inverse);
   border-radius: 50%;
   animation: dotBounce 1.2s ease-in-out infinite;
 }
@@ -281,15 +281,20 @@ const handleLogin = async () => {
 .loading-dots span:nth-child(3) { animation-delay: .4s; }
 
 @keyframes dotBounce {
-  0%, 80%, 100% { transform: scale(0.7); opacity: .5; }
-  40% { transform: scale(1); opacity: 1; }
+   0%, 80%, 100% { transform: scale(0.7); opacity: .5; }
+   40% { transform: scale(1); opacity: 1; }
 }
 
 /* 底部提示 */
 .login-tip {
   text-align: center;
-  font-size: 12px;
-  color: #4b5563;
-  margin-top: 20px;
+  font-size: var(--font-size-xs);
+  color: var(--color-gray-600);
+  margin-top: var(--space-5);
+}
+
+/* 暗色主题适配 */
+[data-theme="dark"] .login-screen {
+  background: var(--color-gray-900);
 }
 </style>
