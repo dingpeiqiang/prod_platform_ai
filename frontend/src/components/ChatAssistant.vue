@@ -1566,7 +1566,8 @@ const generateForm = async (intentData) => {
         content: replyMsg.content,
         reasoning: [],
         formId: currentFormId.value,
-        formSchema: currentFormSchema.value
+        formSchema: currentFormSchema.value,
+        formCard: replyMsg.formCard || null
       }).catch(() => {})
     }
   } catch {
