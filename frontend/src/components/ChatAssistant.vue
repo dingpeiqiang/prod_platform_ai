@@ -1635,19 +1635,18 @@ const generateForm = async (intentData) => {
     messages.value.push(replyMsg)
     scrollToBottom()
 
-    // 保存消息到数据库
-    if (currentDbSessionId.value) {
+    // 保存消息到数据库（注意：不保存表单状态，避免被误判为新表单卡片）
+    if (currentDbSessionId.value && replyMsg.formCard) {
+      // 只保存表单卡片消息，不保存表单状态信息
       const saved = await saveMessage(currentDbSessionId.value, {
         role: 'assistant',
         content: replyMsg.content,
         reasoning: [],
-        formId: currentFormId.value,
-        formSchema: currentFormSchema.value,
-        formCard: replyMsg.formCard || null
+        formCard: replyMsg.formCard
       }).catch(() => {})
       
       // 如果保存成功且返回了 message_id，更新相关ID为后端实际生成的ID
-      if (saved?.message_id && replyMsg.formCard) {
+      if (saved?.message_id) {
         replyMsg.formCard.msgId = saved.message_id
         activeFormCard.value.msgId = saved.message_id
         // 更新消息列表中的消息ID，确保后续查找能匹配
