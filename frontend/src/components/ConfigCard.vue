@@ -115,17 +115,17 @@ const toggleEntity = (idx) => {
 
 <style scoped>
 .config-card {
-  background: #fff;
-  border: 1px solid #e8e6f0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
   border-radius: 14px;
   overflow: hidden;
   margin: 8px 0;
-  box-shadow: 0 2px 8px rgba(0,0,0,.04);
+  box-shadow: var(--shadow-sm);
   transition: border-color .2s;
 }
 .config-card.deployed {
   border-color: #86efac;
-  background: linear-gradient(135deg, #f0fdf4, #fff);
+  background: var(--bg-elevated);
 }
 .config-card:not(.deployed):hover {
   border-color: #c7c7fa;
@@ -318,7 +318,7 @@ const toggleEntity = (idx) => {
   gap: 6px;
   padding: 10px 20px;
   background: linear-gradient(135deg, #818cf8, #6366f1);
-  color: #fff;
+  color: var(--text-inverse);
   border: none;
   border-radius: 10px;
   font-size: 14px;
@@ -344,11 +344,11 @@ const toggleEntity = (idx) => {
 }
 .modify-btn {
   padding: 10px 20px;
-  background: #fff;
-  border: 1px solid #e0e0e0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
   border-radius: 10px;
   font-size: 14px;
-  color: #666;
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all .15s;
 }
@@ -358,7 +358,7 @@ const toggleEntity = (idx) => {
 }
 .preview-btn {
   padding: 10px 20px;
-  background: #fff;
+  background: var(--bg-elevated);
   border: 1px solid #c7d2fe;
   border-radius: 10px;
   font-size: 14px;
@@ -367,21 +367,21 @@ const toggleEntity = (idx) => {
   transition: all .15s;
 }
 .preview-btn:hover {
-  background: #eef2ff;
+  background: var(--color-primary-50);
   border-color: #818cf8;
 }
 
 /* 已部署后 */
 .deployed-actions {
   padding: 14px 18px;
-  border-top: 1px solid #e8f5e9;
-  background: #f0fdf4;
+  border-top: 1px solid var(--border-light);
+  background: var(--bg-secondary);
 }
 .test-btn {
   width: 100%;
   padding: 10px;
   background: linear-gradient(135deg, #34d399, #059669);
-  color: #fff;
+  color: var(--text-inverse);
   border: none;
   border-radius: 10px;
   font-size: 14px;

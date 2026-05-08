@@ -309,14 +309,14 @@ onMounted(() => {
   align-items: center;
   gap: 10px;
   padding: 14px 20px;
-  background: #fff;
-  border: 1px solid #eaeaea;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
   border-radius: 14px;
   font-size: 14px;
-  color: #333;
+  color: var(--text-primary);
   cursor: pointer;
   transition: all .2s;
-  box-shadow: 0 2px 8px rgba(0,0,0,.04);
+  box-shadow: var(--shadow-sm);
 }
 
 .suggestion-item:hover {
@@ -346,14 +346,14 @@ onMounted(() => {
 .chat-input-bar {
   width: 100%;
   max-width: 720px;
-  background: #fff;
+  background: var(--bg-elevated);
   border-radius: 24px;
   padding: 16px 20px;
   display: flex;
   align-items: flex-end;
   gap: 14px;
-  box-shadow: 0 8px 32px rgba(0,0,0,.1);
-  border: 2px solid #f0f0f0;
+  box-shadow: var(--shadow-lg);
+  border: 2px solid var(--border-light);
   transition: all .2s;
 }
 
@@ -397,7 +397,7 @@ onMounted(() => {
 
 .send-btn.active {
   background: linear-gradient(135deg, #818cf8, #6366f1);
-  color: #fff;
+  color: var(--text-inverse);
   box-shadow: 0 4px 16px rgba(99,102,241,.4);
 }
 
@@ -412,7 +412,7 @@ onMounted(() => {
 .input-hint {
   margin-top: 12px;
   font-size: 12px;
-  color: #bbb;
+  color: var(--text-tertiary);
 }
 
 /* 右侧小部件 */
@@ -431,15 +431,15 @@ onMounted(() => {
 }
 
 .sidebar-widgets::-webkit-scrollbar-thumb {
-  background: #ddd;
+  background: var(--border-default);
   border-radius: 2px;
 }
 
 .widget-card {
-  background: #fff;
+  background: var(--bg-elevated);
   border-radius: 16px;
   padding: 16px;
-  box-shadow: 0 2px 12px rgba(0,0,0,.06);
+  box-shadow: var(--shadow-sm);
 }
 
 .widget-header {
@@ -448,7 +448,7 @@ onMounted(() => {
   gap: 8px;
   margin-bottom: 14px;
   padding-bottom: 10px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-light);
 }
 
 .widget-icon {
@@ -504,7 +504,7 @@ onMounted(() => {
   height: 32px;
   border: none;
   background: #818cf8;
-  color: #fff;
+  color: var(--text-inverse);
   border-radius: 8px;
   cursor: pointer;
   font-size: 18px;
@@ -526,12 +526,12 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   padding: 8px 0;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid var(--border-light);
 }
 
 .todo-item.done .todo-text {
   text-decoration: line-through;
-  color: #aaa;
+  color: var(--text-tertiary);
 }
 
 .todo-item input[type="checkbox"] {

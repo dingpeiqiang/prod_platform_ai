@@ -619,7 +619,7 @@ const doSubmit = async () => {
 }
 .recommend-tag.rec-source-llm_rule:hover {
   background-color: var(--color-primary-500) !important;
-  color: white !important;
+  color: var(--text-inverse) !important;
 }
 
 .recommend-tag.rec-source-inference,
@@ -631,7 +631,7 @@ const doSubmit = async () => {
 .recommend-tag.rec-source-inference:hover,
 .recommend-tag.rec-source-history:hover {
   background-color: var(--color-info-500) !important;
-  color: white !important;
+  color: var(--text-inverse) !important;
 }
 
 .recommend-tag.rec-source-static,
@@ -643,7 +643,7 @@ const doSubmit = async () => {
 .recommend-tag.rec-source-static:hover,
 .recommend-tag.rec-source-context:hover {
   background-color: var(--color-gray-500) !important;
-  color: white !important;
+  color: var(--text-inverse) !important;
 }
 
 .rec-badge {
@@ -652,7 +652,7 @@ const doSubmit = async () => {
   padding: 0 3px;
   border-radius: var(--radius-full);
   background: var(--color-primary-500);
-  color: white;
+  color: var(--text-inverse);
 }
 
 /* 已提交提示 */

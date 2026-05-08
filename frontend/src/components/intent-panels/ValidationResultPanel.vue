@@ -198,8 +198,8 @@ const groupedErrors = computed(() => {
   padding: 10px 12px;
   border-radius: 6px;
   margin-bottom: 8px;
-  background: white;
-  border: 1px solid #e8e8e8;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
 }
 
 .error-item {

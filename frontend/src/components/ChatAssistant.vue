@@ -3744,7 +3744,7 @@ textarea::-webkit-scrollbar-thumb {
 }
 .form-card-btn.primary {
   background: var(--color-primary-500);
-  color: white;
+  color: var(--text-inverse);
 }
 .form-card-btn.primary:hover {
   background: var(--color-primary-600);

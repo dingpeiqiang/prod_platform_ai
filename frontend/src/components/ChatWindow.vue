@@ -291,7 +291,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: var(--text-inverse);
   flex-shrink: 0;
 }
 
@@ -304,10 +304,10 @@ onUnmounted(() => {
 }
 
 .message-text {
-  background: white;
+  background: var(--bg-elevated);
   padding: 12px 16px;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: var(--shadow-sm);
   line-height: 1.6;
 }
 
@@ -326,25 +326,25 @@ onUnmounted(() => {
 }
 
 .message-text :deep(code) {
-  background-color: #f0f0f0;
+  background-color: var(--bg-tertiary);
   padding: 2px 4px;
   border-radius: 3px;
   font-family: monospace;
 }
 
 .message-text :deep(pre) {
-  background-color: #f5f5f5;
+  background-color: var(--bg-tertiary);
   padding: 10px;
   border-radius: 5px;
   overflow-x: auto;
 }
 
 .message.user .message-text {
-  background: #e6f7ff;
+  background: var(--color-info-50);
 }
 
 .message-form {
-  background: white;
+  background: var(--bg-elevated);
   padding: 20px;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);

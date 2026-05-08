@@ -277,7 +277,7 @@ const topFieldStats = (fieldStats) => {
   gap: 6px;
   padding: 8px 16px;
   background: #409eff;
-  color: #fff;
+  color: var(--text-inverse);
   border: none;
   border-radius: 6px;
   font-size: 13px;
@@ -285,32 +285,32 @@ const topFieldStats = (fieldStats) => {
   margin-top: 8px;
 }
 .gen-data-btn.outline {
-  background: #fff;
+  background: var(--bg-elevated);
   color: #409eff;
   border: 1px solid #409eff;
 }
 .gen-data-btn:hover { opacity: 0.85; }
 
 /* 查询结果样式 */
-.query-stats { font-size: 12px; color: #909399; margin-bottom: 10px; }
+.query-stats { font-size: 12px; color: var(--text-secondary); margin-bottom: 10px; }
 .record-list { max-height: 300px; overflow-y: auto; margin-bottom: 12px; }
 .record-item {
   padding: 10px;
-  background: #f5f7fa;
+  background: var(--bg-secondary);
   border-radius: 6px;
   margin-bottom: 8px;
 }
 .record-header { display: flex; justify-content: space-between; margin-bottom: 6px; }
 .record-id { font-weight: 600; color: #409eff; font-size: 12px; }
-.record-time { color: #909399; font-size: 11px; }
+.record-time { color: var(--text-secondary); font-size: 11px; }
 .record-data { display: flex; flex-wrap: wrap; gap: 6px; }
-.record-field { font-size: 11px; background: #fff; padding: 2px 6px; border-radius: 3px; }
-.field-key { color: #909399; }
-.field-value { color: #303133; margin-left: 2px; }
+.record-field { font-size: 11px; background: var(--bg-elevated); padding: 2px 6px; border-radius: 3px; }
+.field-key { color: var(--text-secondary); }
+.field-value { color: var(--text-primary); margin-left: 2px; }
 .export-actions { display: flex; gap: 8px; margin-top: 8px; }
 
 /* 导出结果样式 */
-.export-result { background: #f5f7fa; padding: 12px; border-radius: 6px; margin-bottom: 12px; }
-.export-result p { margin: 4px 0; font-size: 13px; color: #606266; }
+.export-result { background: var(--bg-secondary); padding: 12px; border-radius: 6px; margin-bottom: 12px; }
+.export-result p { margin: 4px 0; font-size: 13px; color: var(--text-secondary); }
 .export-hint { color: #909399 !important; font-size: 12px !important; }
 </style>
