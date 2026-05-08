@@ -64,6 +64,7 @@
           :schema="formSchema"
           :formId="formId"
           :formSubmitted="formSubmitted"
+          :formCancelled="formCancelled"
           @submit="handleFormSubmit"
           @cancel="handleFormCancel"
           @field-change="handleFieldChange"
@@ -98,6 +99,10 @@ const props = defineProps({
     default: ''
   },
   formSubmitted: {
+    type: Boolean,
+    default: false
+  },
+  formCancelled: {
     type: Boolean,
     default: false
   }

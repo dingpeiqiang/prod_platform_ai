@@ -261,6 +261,7 @@
       :formSchema="activeFormCard?.formSchema"
       :formId="activeFormCard?.formId"
       :formSubmitted="activeFormCard?.status === 'submitted'"
+      :formCancelled="activeFormCard?.status === 'cancelled'"
       @submit="handleFormSubmit"
       @cancel="handleFormCancel"
       @field-change="handleFormFieldChange"
@@ -1580,14 +1581,13 @@ const generateForm = async (intentData) => {
     }
   }, 400)
 
-  // 保存消息到数据库
+  // 保存消息到数据库（注意：不保存表单状态，避免被误判为表单卡片）
   if (currentDbSessionId.value) {
     await saveMessage(currentDbSessionId.value, {
       role: 'assistant',
       content: `正在为你生成 ${formCode || ''} 表单...`,
-      reasoning: [],
-      formId: currentFormId.value,
-      formSchema: currentFormSchema.value
+      reasoning: []
+      // 不保存 formId, formSchema，避免加载时被重建为表单卡片
     }).catch(() => {})
   }
 
@@ -1646,7 +1646,7 @@ const generateForm = async (intentData) => {
 
     // 保存消息到数据库
     if (currentDbSessionId.value) {
-      await saveMessage(currentDbSessionId.value, {
+      const saved = await saveMessage(currentDbSessionId.value, {
         role: 'assistant',
         content: replyMsg.content,
         reasoning: [],
@@ -1654,6 +1654,14 @@ const generateForm = async (intentData) => {
         formSchema: currentFormSchema.value,
         formCard: replyMsg.formCard || null
       }).catch(() => {})
+      
+      // 如果保存成功且返回了 message_id，更新相关ID为后端实际生成的ID
+      if (saved?.message_id && replyMsg.formCard) {
+        replyMsg.formCard.msgId = saved.message_id
+        activeFormCard.value.msgId = saved.message_id
+        // 更新消息列表中的消息ID，确保后续查找能匹配
+        replyMsg.id = saved.message_id
+      }
     }
   } catch {
     const errorMsg = {
@@ -1959,15 +1967,13 @@ const handleDoConfirmSubmit = async () => {
       messages.value.push(submitMsg)
       scrollToBottom()
 
-      // 保存消息到数据库
+      // 保存消息到数据库（注意：不要保存表单状态，避免被误判为新表单卡片）
       if (currentDbSessionId.value) {
         await saveMessage(currentDbSessionId.value, {
           role: 'assistant',
           content: submitMsg.content,
-          reasoning: [],
-          formId: formId,
-          formSchema: schema,
-          formSubmitted: true
+          reasoning: []
+          // 不保存 formId, formSchema, formSubmitted，避免加载时被重建为表单卡片
         }).catch(() => {})
       }
 
@@ -2057,16 +2063,13 @@ const handleFormSubmit = async (formData, formId) => {
   messages.value.push(submitMsg)
   scrollToBottom()
 
-  // 保存消息到数据库，包含表单已提交状态
+  // 保存消息到数据库（注意：不要保存表单状态，避免被误判为新表单卡片）
   if (currentDbSessionId.value) {
     await saveMessage(currentDbSessionId.value, {
       role: 'assistant',
       content: submitMsg.content,
-      reasoning: [],
-      formId: card.formId,
-      formSchema: schema,
-      formSubmitted: true,  // 标记表单已提交
-      formCard: { ...card }  // 保存完整的 formCard
+      reasoning: []
+      // 不保存 formId, formSchema, formSubmitted, formCard，避免加载时被重建为表单卡片
     }).catch(() => {})
   }
 }
@@ -2084,36 +2087,36 @@ const handleFormCancel = async () => {
   cancelledCard.status = 'cancelled'
 
   // 持久化更新的 formCard 到数据库（原消息）
-    // 查找原消息并更新其 formCard
-    const targetMsg = messages.value.find(m => m.id === cancelledCard.msgId)
-    console.log('[handleFormCancel] 查找目标消息:', {
-      cancelledMsgId: cancelledCard.msgId,
-      found: !!targetMsg,
-      messagesCount: messages.value.length,
-      firstFewIds: messages.value.slice(0, 3).map(m => m.id)
-    })
-    if (!targetMsg) {
-      console.warn('[handleFormCancel] 未找到原消息:', cancelledCard.msgId)
-    } else if (!currentDbSessionId.value) {
-      console.warn('[handleFormCancel] 缺少 dbSessionId')
-    } else {
-      targetMsg.formCard = cancelledCard
-      const payload = {
-        content: targetMsg.content,
-        metadata: {
-          formCard: JSON.stringify(cancelledCard),
-          formId: cancelledCard.formId,
-          formSubmitted: 'false'
-        }
-      }
-      console.log('[handleFormCancel] 发送 PATCH 请求:', payload)
-      try {
-        await updateMessage(currentDbSessionId.value, cancelledCard.msgId, payload)
-        console.log('[handleFormCancel] 数据库更新成功')
-      } catch(e) {
-        console.error('[handleFormCancel] 更新失败:', e)
+  // 查找原消息并更新其 formCard
+  const targetMsg = messages.value.find(m => m.id === cancelledCard.msgId)
+  console.log('[handleFormCancel] 查找目标消息:', {
+    cancelledMsgId: cancelledCard.msgId,
+    found: !!targetMsg,
+    messagesCount: messages.value.length,
+    firstFewIds: messages.value.slice(0, 3).map(m => m.id)
+  })
+  if (!targetMsg) {
+    console.warn('[handleFormCancel] 未找到原消息:', cancelledCard.msgId)
+  } else if (!currentDbSessionId.value) {
+    console.warn('[handleFormCancel] 缺少 dbSessionId')
+  } else {
+    targetMsg.formCard = cancelledCard
+    const payload = {
+      content: targetMsg.content,
+      metadata: {
+        formCard: JSON.stringify(cancelledCard),
+        formId: cancelledCard.formId,
+        formSubmitted: 'false'
       }
     }
+    console.log('[handleFormCancel] 发送 PATCH 请求:', payload)
+    try {
+      await updateMessage(currentDbSessionId.value, cancelledCard.msgId, payload)
+      console.log('[handleFormCancel] 数据库更新成功')
+    } catch(e) {
+      console.error('[handleFormCancel] 更新失败:', e)
+    }
+  }
 
   // 清除活动表单
   activeFormCard.value = null
@@ -2126,15 +2129,13 @@ const handleFormCancel = async () => {
   messages.value.push(cancelMsg)
   scrollToBottom()
 
-  // 保存取消消息到数据库
+  // 保存取消消息到数据库（注意：不要保存表单状态，避免被误判为新表单卡片）
   if (currentDbSessionId.value) {
     await saveMessage(currentDbSessionId.value, {
       role: 'assistant',
       content: cancelMsg.content,
-      reasoning: [],
-      formId: cancelledCard.formId,
-      formSchema: cancelledCard.formSchema,
-      formSubmitted: false  // 标记表单已取消
+      reasoning: []
+      // 不保存 formId, formSchema, formSubmitted，避免加载时被重建为表单卡片
     }).catch(() => {})
   }
 }

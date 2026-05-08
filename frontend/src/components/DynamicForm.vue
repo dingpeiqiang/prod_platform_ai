@@ -12,7 +12,7 @@
           <el-input
             v-if="field.fieldType === 'input'"
             v-model="localFormData[field.fieldCode]"
-            :disabled="field.disabled"
+            :disabled="field.disabled || isFormDisabled()"
             :placeholder="'请输入' + field.fieldName"
             @input="handleInput(field.fieldCode, $event)"
           />
@@ -20,7 +20,7 @@
           <el-input-number
             v-else-if="field.fieldType === 'number'"
             v-model="localFormData[field.fieldCode]"
-            :disabled="field.disabled"
+            :disabled="field.disabled || isFormDisabled()"
             :min="0"
             style="width: 100%"
             @change="handleInput(field.fieldCode, $event)"
@@ -30,7 +30,7 @@
             v-else-if="field.fieldType === 'date'"
             v-model="localFormData[field.fieldCode]"
             type="date"
-            :disabled="field.disabled"
+            :disabled="field.disabled || isFormDisabled()"
             :placeholder="'请选择' + field.fieldName"
             style="width: 100%"
             @change="handleInput(field.fieldCode, $event)"
@@ -41,7 +41,7 @@
             v-else-if="field.fieldType === 'datetime'"
             v-model="localFormData[field.fieldCode]"
             type="datetime"
-            :disabled="field.disabled"
+            :disabled="field.disabled || isFormDisabled()"
             :placeholder="'请选择' + field.fieldName"
             style="width: 100%"
             @change="handleInput(field.fieldCode, $event)"
@@ -52,7 +52,7 @@
           <el-select
             v-else-if="field.fieldType === 'select' && hasEnumOptions(field)"
             v-model="localFormData[field.fieldCode]"
-            :disabled="field.disabled"
+            :disabled="field.disabled || isFormDisabled()"
             :placeholder="'请选择' + field.fieldName"
             style="width: 100%"
             @change="handleInput(field.fieldCode, $event)"
@@ -68,7 +68,7 @@
           <el-input
             v-else-if="field.fieldType === 'select' && !hasEnumOptions(field)"
             v-model="localFormData[field.fieldCode]"
-            :disabled="field.disabled"
+            :disabled="field.disabled || isFormDisabled()"
             :placeholder="'请输入' + field.fieldName + '（枚举选项缺失，已自动切换为文本输入）'"
             @input="handleInput(field.fieldCode, $event)"
           />
@@ -77,7 +77,7 @@
           <el-radio-group
             v-else-if="field.fieldType === 'radio' && hasEnumOptions(field)"
             v-model="localFormData[field.fieldCode]"
-            :disabled="field.disabled"
+            :disabled="field.disabled || isFormDisabled()"
             @change="handleInput(field.fieldCode, $event)"
           >
             <el-radio
@@ -93,7 +93,7 @@
           <el-checkbox-group
             v-else-if="field.fieldType === 'checkbox' && hasEnumOptions(field)"
             v-model="localFormData[field.fieldCode]"
-            :disabled="field.disabled"
+            :disabled="field.disabled || isFormDisabled()"
             @change="handleInput(field.fieldCode, $event)"
           >
             <el-checkbox
@@ -108,7 +108,7 @@
             v-else-if="field.fieldType === 'checkbox' && !hasEnumOptions(field)"
             v-model="localFormData[field.fieldCode]"
             type="textarea"
-            :disabled="field.disabled"
+            :disabled="field.disabled || isFormDisabled()"
             :placeholder="'请输入选项（枚举选项缺失，已切换为文本输入）'"
             @input="handleInput(field.fieldCode, $event)"
           />
@@ -118,7 +118,7 @@
             v-model="localFormData[field.fieldCode]"
             type="textarea"
             :rows="3"
-            :disabled="field.disabled"
+            :disabled="field.disabled || isFormDisabled()"
             :placeholder="'请输入' + field.fieldName"
             @input="handleInput(field.fieldCode, $event)"
           />
@@ -126,7 +126,7 @@
           <el-input
             v-else-if="field.fieldType === 'email'"
             v-model="localFormData[field.fieldCode]"
-            :disabled="field.disabled"
+            :disabled="field.disabled || isFormDisabled()"
             placeholder="请输入邮箱地址"
             @input="handleInput(field.fieldCode, $event)"
           />
@@ -134,18 +134,18 @@
           <el-input
             v-else-if="field.fieldType === 'phone'"
             v-model="localFormData[field.fieldCode]"
-            :disabled="field.disabled"
+            :disabled="field.disabled || isFormDisabled()"
             placeholder="请输入手机号"
             @input="handleInput(field.fieldCode, $event)"
           />
 
           <el-upload
             v-else-if="field.fieldType === 'file'"
-            :disabled="field.disabled"
+            :disabled="field.disabled || isFormDisabled()"
             :auto-upload="false"
             :on-change="(file) => handleFileChange(field.fieldCode, file)"
           >
-            <el-button size="small" :disabled="field.disabled">点击上传</el-button>
+            <el-button size="small" :disabled="field.disabled || isFormDisabled()">点击上传</el-button>
           </el-upload>
           
           <div v-if="field.recommend && field.recommend.length > 0" class="recommend-tags">
@@ -171,7 +171,7 @@
       </el-form-item>
       
       <el-form-item>
-        <el-button @click="handleCancel" :disabled="formSubmitted">
+        <el-button @click="handleCancel" :disabled="formSubmitted || formCancelled">
           取消
         </el-button>
         <el-button 
@@ -179,9 +179,9 @@
           native-type="button"
           @click="handleSubmit" 
           :loading="submitting"
-          :disabled="formSubmitted"
+          :disabled="formSubmitted || formCancelled"
         >
-          {{ formSubmitted ? '已提交' : '提交表单' }}
+          {{ formSubmitted ? '已提交' : (formCancelled ? '已取消' : '提交表单') }}
         </el-button>
       </el-form-item>
       
@@ -192,6 +192,15 @@
           <polyline points="16 10 10 16 8 14"/>
         </svg>
         <span>此表单已提交，不可再次提交</span>
+      </div>
+      
+      <!-- 表单已取消提示 -->
+      <div v-if="formCancelled" class="cancelled-hint">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+        <span>此表单已取消，不可操作</span>
       </div>
     </el-form>
   </div>
@@ -221,12 +230,19 @@ const props = defineProps({
   formSubmitted: {
     type: Boolean,
     default: false
+  },
+  formCancelled: {
+    type: Boolean,
+    default: false
   }
 })
 
 const emit = defineEmits(['field-change', 'form-submit', 'submit', 'cancel', 'ai-validation', 'confirm-submit'])
 
 const localFormData = reactive({})
+
+// 表单不可编辑状态（已提交或已取消）
+const isFormDisabled = () => props.formSubmitted || props.formCancelled
 const submitting = ref(false)
 
 watch(() => props.formData, (newData) => {
@@ -649,6 +665,20 @@ const doSubmit = async () => {
   border: 1px solid var(--color-success-100);
   border-radius: var(--radius-md);
   color: var(--color-success-700);
+  font-size: var(--font-size-sm);
+  margin-top: var(--space-2);
+}
+
+/* 已取消提示 */
+.cancelled-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-error-50);
+  border: 1px solid var(--color-error-100);
+  border-radius: var(--radius-md);
+  color: var(--color-error-700);
   font-size: var(--font-size-sm);
   margin-top: var(--space-2);
 }
