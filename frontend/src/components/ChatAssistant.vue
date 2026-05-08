@@ -574,6 +574,8 @@ watch(() => props.sessionId, async (newSessionId, oldSessionId) => {
     currentDbSessionId.value = props.dbSessionId || ''
     // 重置表单提交状态，避免新会话显示旧会话的"已提交"状态
     currentFormSubmitted.value = false
+    activeFormCard.value = null
+    activeFormMsgId.value = ''
     loadFormState()
     return
   }
@@ -582,12 +584,16 @@ watch(() => props.sessionId, async (newSessionId, oldSessionId) => {
   messages.value = []
   currentFormId.value = ''
   currentFormSchema.value = null
+  activeFormCard.value = null
+  activeFormMsgId.value = ''
 
   // 如果是首页（sessionId为空），重置状态但不创建会话
   if (!newSessionId) {
     currentDbSessionId.value = ''
     // 重置表单提交状态
     currentFormSubmitted.value = false
+    activeFormCard.value = null
+    activeFormMsgId.value = ''
     loadFormState()
     return
   }
@@ -1033,6 +1039,9 @@ const clearHistory = async () => {
     messages.value = []
     currentFormId.value = ''
     currentFormSchema.value = null
+    currentFormSubmitted.value = false
+    activeFormCard.value = null
+    activeFormMsgId.value = ''
     localStorage.removeItem(storageKey.value)
     localStorage.removeItem(formStorageKey.value)
     ElMessage({ message: '已清空', type: 'success', duration: 1500, plain: true })
