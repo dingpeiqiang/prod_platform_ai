@@ -2888,6 +2888,7 @@ defineExpose({ requestValidation, sendMessageAfterSessionCreated })
   border-radius: var(--radius-xl);
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  overflow: hidden;
 }
 .input-box.focused {
   border-color: var(--color-primary-400);
@@ -2897,7 +2898,7 @@ defineExpose({ requestValidation, sendMessageAfterSessionCreated })
   display: flex;
   align-items: flex-end;
   gap: var(--space-2);
-  padding: 8px 12px 10px;
+  padding: var(--space-2) var(--space-3) var(--space-2-5);
 }
 textarea {
   flex: 1;
@@ -2907,32 +2908,43 @@ textarea {
   background: transparent;
   font-size: var(--font-size-sm);
   line-height: 1.6;
-  color: var(--color-gray-900);
+  color: var(--text-primary);
   font-family: inherit;
+  min-height: 24px;
   max-height: 160px;
   overflow-y: auto;
+  padding: 0;
+  margin: 0;
 }
-textarea::placeholder { color: var(--border-strong); }
-textarea::-webkit-scrollbar { width: 3px; }
-textarea::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 2px; }
+textarea::placeholder { 
+  color: var(--text-tertiary); 
+}
+textarea::-webkit-scrollbar { 
+  width: 3px; 
+}
+textarea::-webkit-scrollbar-thumb { 
+  background: var(--border-default); 
+  border-radius: 2px; 
+}
 
 .send-btn {
   width: 32px; height: 32px;
   border-radius: var(--radius-md);
-  border: none;
+  border: 1px solid var(--border-default);
   display: flex; align-items: center; justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
   transition: all var(--transition-fast);
-  background: var(--border-light);
-  color: var(--border-strong);
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
 }
 .send-btn.active {
   background: linear-gradient(135deg, var(--color-primary-400), var(--color-primary-500));
   color: var(--text-inverse);
+  border-color: transparent;
 }
 .send-btn.active:hover { transform: scale(1.05); box-shadow: 0 2px 8px rgba(99,102,241,.3); }
-.send-btn:disabled { cursor: not-allowed; }
+.send-btn:disabled { cursor: not-allowed; opacity: 0.5; }
 .stop-btn {
   background: var(--color-error-50);
   color: var(--color-error-500);
@@ -2943,7 +2955,7 @@ textarea::-webkit-scrollbar-thumb { background: var(--border-default); border-ra
 .input-hint {
   text-align: center;
   font-size: 11px;
-  color: var(--border-strong);
+  color: var(--text-tertiary);
   padding: 6px 0 0;
 }
 
