@@ -2084,10 +2084,27 @@ const handleFormCancel = async () => {
   cancelledCard.status = 'cancelled'
 
   // 持久化更新的 formCard 到数据库（原消息）
-  if (currentDbSessionId.value && cancelledCard.msgId) {
-    await updateMessage(currentDbSessionId.value, cancelledCard.msgId, {
-      metadata: { formCard: JSON.stringify(cancelledCard) }
-    }).catch(e => console.warn('[handleFormCancel] 更新 formCard 失败:', e))
+  // 查找原消息并更新其 formCard
+  const targetMsg = messages.value.find(m => m.id === cancelledCard.msgId)
+  if (!targetMsg) {
+    console.warn('[handleFormCancel] 未找到原消息:', cancelledCard.msgId)
+  } else if (!currentDbSessionId.value) {
+    console.warn('[handleFormCancel] 缺少 dbSessionId')
+  } else {
+    targetMsg.formCard = cancelledCard
+    try {
+      await updateMessage(currentDbSessionId.value, cancelledCard.msgId, {
+        content: targetMsg.content,
+        metadata: {
+          formCard: JSON.stringify(cancelledCard),
+          formId: cancelledCard.formId,
+          formSubmitted: 'false'
+        }
+      })
+      console.log('[handleFormCancel] 数据库更新成功')
+    } catch(e) {
+      console.error('[handleFormCancel] 更新失败:', e)
+    }
   }
 
   // 清除活动表单
