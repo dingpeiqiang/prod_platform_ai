@@ -20,10 +20,7 @@ from app.services.history_ai_service import (
     list_available_data,
     get_history_summary
 )
-from app.core.errors import (
-    ErrorCategory, ErrorLevel, ErrorCode,
-    FrameworkError, get_error_message
-)
+from app.core.errors import ErrorCategory, ErrorLevel, ErrorCode
 from app.core.error_handler import error_handler, create_error
 from app.mcp_tools import get_toolhub
 from app.core.config import get_settings

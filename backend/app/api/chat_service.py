@@ -11,7 +11,8 @@ from app.core.error_handler import create_error, error_handler
 from app.mcp_tools import get_toolhub
 from app.api.chat_utils import (
     strip_json_comments, fix_json_newlines, build_ontologies_info,
-    build_scene_keywords, build_separators, FALLBACK_RESPONSES
+    build_scene_keywords, build_separators, FALLBACK_RESPONSES,
+    sse, thinking, reasoning
 )
 
 logger = logging.getLogger("chat_service")
@@ -254,25 +255,3 @@ async def stream_chat_reply(
     yield sse({"type": "text_end"}), final_stats
 
 
-def sse(data: dict) -> str:
-    """格式化 SSE 帧"""
-    return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
-
-
-def thinking(content: str, result: Any = None, assistant_message_id: str = None) -> str:
-    """系统步骤日志（type=thinking），支持结构化结果详情"""
-    import uuid
-    data = {
-        "type": "thinking",
-        "content": content,
-        "message_id": str(uuid.uuid4()),
-        "assistant_message_id": assistant_message_id
-    }
-    if result is not None:
-        data["result"] = result
-    return sse(data)
-
-
-def reasoning(content: str) -> str:
-    """大模型推理过程（type=reasoning），与系统步骤区分"""
-    return sse({"type": "reasoning", "content": content})
