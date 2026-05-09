@@ -347,16 +347,16 @@ onMounted(() => {
 }
 
 .welcome-title {
-  font-size: 36px;
-  font-weight: 700;
-  color: #1a1a1a;
+  font-size: var(--font-size-3xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
   margin-bottom: 12px;
   letter-spacing: -0.5px;
 }
 
 .welcome-subtitle {
-  font-size: 16px;
-  color: #888;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
 }
 
 /* 快捷建议 */

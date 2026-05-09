@@ -79,7 +79,7 @@ defineEmits(['click'])
 .welcome-title {
   font-size: var(--font-size-3xl);
   font-weight: var(--font-weight-bold);
-  color: var(--color-gray-900);
+  color: var(--text-primary);
   letter-spacing: -0.5px;
 }
 
