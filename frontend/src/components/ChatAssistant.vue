@@ -75,9 +75,6 @@ const { isStreaming, stopStream, sendStreamMessage } = useChatStream(messages, c
 const { currentFormId, currentFormSchema, currentFormSubmitted, activeFormCard, activeFormMsgId, pendingConfirmForm, generateForm, updateFormFields, handleConfirmSubmit, checkUserConfirmation, handleDoConfirmSubmit, handleCancelSubmit, handleFormSubmit, handleFormCancel, handleConfirmSubmitForActiveForm, handleFormFieldChange, updateFormCardStatus } = useFormHandling(messages, currentDbSessionId);
 const { handleIntentEvent: handleIntentAction } = useIntentHandlers(messages, currentDbSessionId, emit);
 const suggestions = [
- { key: 'sales', icon: '📋', text: '帮我填一个销售订单' },
- { key: 'leave', icon: '📅', text: '帮我填一个请假申请' },
- { key: 'expense', icon: '💰', text: '帮我填一个费用报销' },
  { key: 'config', icon: '🛠️', text: '我想添加一种新表单' },
  { key: 'help', icon: '💬', text: '你能做什么？' },
 ];

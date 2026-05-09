@@ -54,7 +54,7 @@ import { ref, nextTick, watch } from 'vue'
 const props = defineProps({
   modelValue: { type: String, default: '' },
   disabled: { type: Boolean, default: false },
-  placeholder: { type: String, default: '描述你想做的事，例如「帮我填一个销售订单」' }
+  placeholder: { type: String, default: '描述你想做的事...' }
 })
 
 const emit = defineEmits(['update:modelValue', 'send', 'stop', 'quick-action'])
@@ -68,9 +68,6 @@ watch(() => props.modelValue, (val) => {
 })
 
 const quickActions = [
-  { key: 'sales', label: '销售订单', content: '帮我填一个销售订单', color: '#818cf8' },
-  { key: 'leave', label: '请假申请', content: '帮我填一个请假申请', color: '#34d399' },
-  { key: 'expense', label: '费用报销', content: '帮我填一个费用报销', color: '#fbbf24' },
   { key: 'config', label: '+ 新表单', content: '我想添加一种新的业务表单', color: '#f472b6' },
 ]
 

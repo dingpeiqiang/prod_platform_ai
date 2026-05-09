@@ -25,7 +25,7 @@
           v-model="userInput"
           type="textarea"
           :rows="2"
-          placeholder="输入您的需求，例如：帮我填一个销售订单..."
+          placeholder="输入您的需求..."
           @keydown.enter.ctrl="sendMessage"
         />
         <el-button type="primary" @click="sendMessage" :loading="loading">

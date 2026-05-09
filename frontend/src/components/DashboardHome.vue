@@ -276,7 +276,6 @@ const autoResize = () => {
 const placeholder = computed(() => {
   const tips = [
     '描述你想做的事...',
-    '试试「帮我填一个销售订单」',
     '问问「你能做什么」',
   ]
   return tips[Math.floor(Math.random() * tips.length)]
