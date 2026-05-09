@@ -399,22 +399,13 @@ registerPostProcessor('form', async (msg, intentData) => {
   if (hasPendingConfirm && validationPass) {
     console.log('[form 后处理] 有待确认表单且校验通过，自动触发提交')
     
-    // 构建提交摘要，在消息中显示
-    const schema = pendingConfirmForm.value.schema
-    let previewLines = []
-    if (schema && schema.fields) {
-      for (const field of schema.fields) {
-        const val = pendingConfirmForm.value.data[field.fieldCode]
-        if (val !== undefined && val !== null && val !== '') {
-          const displayVal = Array.isArray(val) ? val.join(', ') : String(val)
-          previewLines.push(`- **${field.fieldName}**: ${displayVal}`)
-        }
-      }
-    }
-    
-    const submitSummary = previewLines.length > 0 ? `\n\n提交内容：\n${previewLines.join('\n')}` : ''
-    msg.streamText = (msg.streamText || '') + `\n\n---\n\n✅ 校验通过！正在提交表单...${submitSummary}`
+    // 简化消息：只显示校验通过，不显示详细内容（提交成功后会显示）
+    msg.streamText = (msg.streamText || '') + '\n\n---\n\n✅ 校验通过，正在提交表单...'
     msg.content = msg.streamText
+    
+    // 删除 validation_pass 标记，防止 ValidationResultPanel 面板显示
+    // 因为已经自动提交，不需要再显示校验结果面板
+    delete msg._intentData['validation_pass']
     
     // 等待消息渲染后再执行提交
     await new Promise(resolve => setTimeout(resolve, 300))
