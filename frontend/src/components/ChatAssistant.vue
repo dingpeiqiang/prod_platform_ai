@@ -546,8 +546,20 @@ const loadFormState = () => {
       const state = JSON.parse(raw)
       currentFormId.value = state.formId || ''
       currentFormSchema.value = state.formSchema || null
+    } else {
+      // 没有保存的表单状态，确保重置所有表单相关状态
+      currentFormId.value = ''
+      currentFormSchema.value = null
+      activeFormCard.value = null
+      pendingConfirmForm.value = null
     }
-  } catch {}
+  } catch {
+    // 如果解析失败，重置所有表单状态
+    currentFormId.value = ''
+    currentFormSchema.value = null
+    activeFormCard.value = null
+    pendingConfirmForm.value = null
+  }
 }
 
 watch(messages, saveMessages, { deep: true })
@@ -650,16 +662,26 @@ watch(() => props.sessionId, async (newSessionId, oldSessionId) => {
         currentFormSchema.value = lastFillingCard.formSchema
         currentFormSubmitted.value = lastFillingCard.status === 'submitted'
       } else {
-        // 没有找到表单状态，从 localStorage 加载
-        loadFormState()
+        // 数据库中没有找到表单状态，对于新会话，不应该从 localStorage 加载旧数据
+        // 重置所有表单相关状态
+        currentFormId.value = ''
+        currentFormSchema.value = null
+        activeFormCard.value = null
+        pendingConfirmForm.value = null
+        currentFormSubmitted.value = false
       }
     } catch (e) {
       console.warn('[ChatAssistant] 加载消息失败:', e)
       messages.value = []
-      loadFormState()
+      // 加载失败时也重置状态，避免使用旧数据
+      currentFormId.value = ''
+      currentFormSchema.value = null
+      activeFormCard.value = null
+      pendingConfirmForm.value = null
+      currentFormSubmitted.value = false
     }
   } else {
-    // 没有数据库会话ID时从 localStorage 加载
+    // 没有数据库会话ID时从 localStorage 加载（首页情况）
     loadFormState()
   }
 })
@@ -2077,16 +2099,26 @@ onMounted(async () => {
         currentFormSchema.value = lastFillingCard.formSchema
         currentFormSubmitted.value = lastFillingCard.status === 'submitted'
       } else {
-        // 没有找到表单状态，从 localStorage 加载
-        loadFormState()
+        // 数据库中没有找到表单状态，对于新会话，不应该从 localStorage 加载旧数据
+        // 重置所有表单相关状态
+        currentFormId.value = ''
+        currentFormSchema.value = null
+        activeFormCard.value = null
+        pendingConfirmForm.value = null
+        currentFormSubmitted.value = false
       }
     } catch (e) {
       console.warn('[ChatAssistant] 加载消息失败:', e)
       messages.value = []
-      loadFormState()
+      // 加载失败时也重置状态，避免使用旧数据
+      currentFormId.value = ''
+      currentFormSchema.value = null
+      activeFormCard.value = null
+      pendingConfirmForm.value = null
+      currentFormSubmitted.value = false
     }
   } else {
-    // 没有数据库会话ID时从 localStorage 加载
+    // 没有数据库会话ID时从 localStorage 加载（首页情况）
     loadFormState()
   }
   scrollToBottom()

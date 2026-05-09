@@ -188,6 +188,9 @@ class LLMService:
     def _call_llm(self, prompt: str, system_prompt: Optional[str] = None, max_tokens: Optional[int] = None) -> Optional[str]:
         return self._call_llm_sync(prompt, system_prompt, max_tokens=max_tokens)
 
+    def _extract_json(self, text: str) -> Optional[Dict]:
+        return extract_json(text)
+
     def _call_llm_sync_with_reasoning(
         self, prompt: str, system_prompt: Optional[str] = None, max_tokens: Optional[int] = None
     ) -> Tuple[Optional[str], Optional[str]]:
