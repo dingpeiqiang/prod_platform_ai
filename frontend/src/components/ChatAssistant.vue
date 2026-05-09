@@ -76,7 +76,7 @@ const { currentFormId, currentFormSchema, currentFormSubmitted, activeFormCard, 
 const { handleIntentEvent: handleIntentAction } = useIntentHandlers(messages, currentDbSessionId, emit);
 const suggestions = [
  { key: 'config', icon: '🛠️', text: '我想添加一种新表单' },
- { key: 'help', icon: '💬', text: '你能做什么？' },
+ { key: 'help', icon: '💬', text: '我能为你做什么？' },
 ];
 const storageKey = computed(() => `chat_session_${props.sessionId}`);
 const formStorageKey = computed(() => `chat_form_${props.sessionId}`);

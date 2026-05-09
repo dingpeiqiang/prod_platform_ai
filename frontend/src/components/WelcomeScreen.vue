@@ -46,7 +46,7 @@ defineProps({
     type: Array,
     default: () => [
       { key: 'config', icon: '🛠️', text: '我想添加一种新表单' },
-      { key: 'help', icon: '💬', text: '你能做什么？' },
+      { key: 'help', icon: '💬', text: '我能为你做什么？' },
     ]
   }
 })

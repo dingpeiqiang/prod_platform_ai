@@ -208,7 +208,7 @@ const newTodo = ref('')
 
 // 快捷建议
 const suggestions = [
-  { key: 'help', icon: 'help', text: '你能做什么？' },
+  { key: 'help', icon: 'help', text: '我能为你做什么？' },
 ]
 
 // 快捷入口
@@ -276,7 +276,7 @@ const autoResize = () => {
 const placeholder = computed(() => {
   const tips = [
     '描述你想做的事...',
-    '问问「你能做什么」',
+    '问问「我能为你做什么」',
   ]
   return tips[Math.floor(Math.random() * tips.length)]
 })
