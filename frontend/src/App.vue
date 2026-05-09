@@ -18,8 +18,17 @@
       />
 
       <div class="main-area">
+        <!-- 首页：没有活动会话时显示 -->
+        <DashboardHome
+          v-if="!isInitializing && !activeSessionId"
+          @send-message="onSendMessageFromHome"
+          @switch-chat="onSwitchChat"
+          @create-session="onNewSession"
+        />
+        
+        <!-- 聊天界面：有活动会话时显示 -->
         <ChatAssistant
-        v-if="!isInitializing"
+        v-if="!isInitializing && activeSessionId"
         ref="chatRef"
         :sessionId="activeSessionId"
         :dbSessionId="activeDbSessionId"
@@ -39,6 +48,7 @@ import { ref, computed, provide, onMounted, watch } from 'vue'
 import Sidebar from './components/Sidebar.vue'
 import ChatAssistant from './components/ChatAssistant.vue'
 import LoginScreen from './components/LoginScreen.vue'
+import DashboardHome from './components/DashboardHome.vue'
 import { useUserStore } from './stores/user'
 import { useTheme } from './composables/useTheme'
 import { createSession as apiCreateSession, getSessions as apiGetSessions, deleteSession as apiDeleteSession, updateSessionTitle as apiUpdateSessionTitle } from './services/chatApi.js'
@@ -191,6 +201,23 @@ const onSessionInit = ({ localId, dbSessionId }) => {
   }
 }
 
+// ── 从首页发送消息 ────────────────────────────────────────
+const onSendMessageFromHome = async (text) => {
+  const newSession = createLocalSession()
+  await new Promise(resolve => setTimeout(resolve, 50))
+  if (chatRef.value && chatRef.value.sendMessageAfterSessionCreated) {
+    chatRef.value.sendMessageAfterSessionCreated(text, newSession.id)
+  }
+}
+
+// ── 切换聊天 ──────────────────────────────────────────────
+const onSwitchChat = (sessionId) => {
+  activeSessionId.value = sessionId
+  const s = sessions.value.find(s => s.id === sessionId)
+  activeDbSessionId.value = s?.dbSessionId || ''
+  saveActiveSessionId()
+}
+
 // ── 计算属性 ──────────────────────────────────────────────
 const sessionList = computed(() =>
   [...sessions.value].sort((a, b) => b.updatedAt - a.updatedAt)
@@ -258,41 +285,10 @@ const initDbSessions = async () => {
 
     saveSessions()
 
-    // 5. 激活会话：优先使用刷新前激活的那个
-    if (savedActiveId) {
-      const saved = sessions.value.find(s => s.id === savedActiveId)
-      if (saved?.dbSessionId && dbSessions.some(d => d.session_id === saved.dbSessionId)) {
-        // 之前激活的会话仍然有效，恢复它
-        activeSessionId.value = saved.id
-        activeDbSessionId.value = saved.dbSessionId
-      } else if (saved && sessions.value.some(s => s.id === saved.id)) {
-        // 会话存在但 dbSessionId 无效，仍恢复（ChatAssistant 会重新创建 DB 会话）
-        activeSessionId.value = saved.id
-        activeDbSessionId.value = saved.dbSessionId || ''
-      } else {
-        // 保存的会话已不存在，fallback 到首页
-        const sorted = [...sessions.value].sort((a, b) => b.updatedAt - a.updatedAt)
-        if (sorted.length > 0) {
-          activeSessionId.value = sorted[0].id
-          activeDbSessionId.value = sorted[0].dbSessionId || ''
-        } else {
-          // 没有会话，直接在首页
-          activeSessionId.value = ''
-          activeDbSessionId.value = ''
-        }
-      }
-    } else {
-      // 没有保存的激活会话，有会话就激活最近的，没有就直接在首页
-      const sorted = [...sessions.value].sort((a, b) => b.updatedAt - a.updatedAt)
-      if (sorted.length > 0) {
-        activeSessionId.value = sorted[0].id
-        activeDbSessionId.value = sorted[0].dbSessionId || ''
-      } else {
-        // 没有会话，直接在首页
-        activeSessionId.value = ''
-        activeDbSessionId.value = ''
-      }
-    }
+    // 5. 刷新页面默认显示首页，不自动激活任何会话
+    // 用户需要主动点击会话列表中的会话才能进入聊天界面
+    activeSessionId.value = ''
+    activeDbSessionId.value = ''
   } finally {
     isInitializing.value = false  // 初始化完成
   }

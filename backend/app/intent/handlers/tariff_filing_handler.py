@@ -12,6 +12,8 @@
 #   → dispatch("form", ctx) → FormHandler 处理
 
 import time
+import json
+import re
 import logging
 from typing import AsyncGenerator
 
@@ -50,25 +52,55 @@ class TariffFilingHandler(BaseIntentHandler):
 
         # ═══ Phase 1：识别 ══════════════════════════════════════════
         has_mcp_fill = bool(extracted.get("bossid"))
+        
+        # 从用户输入中提取套餐编码（支持多种格式：P000111、套餐P000111、编码P000111等）
+        user_provided_code = extracted.get("tariff_code") or extracted.get("bossid")
+        if not user_provided_code:
+            # 使用正则从用户消息中提取套餐编码
+            code_match = re.search(r'[Pp][0-9]{6,}', ctx.last_user_message)
+            if code_match:
+                user_provided_code = code_match.group(0).upper()
+        
         yield thinking(f"📋 识别到「{form_name}」", result={
             "formCode": form_code,
             "formName": form_name,
             "extractedFields": list(extracted.keys()),
             "extractedCount": len(extracted),
             "mcpPrefilled": has_mcp_fill,
-            "mcpTariffCode": extracted.get("bossid") if has_mcp_fill else None
+            "mcpTariffCode": extracted.get("bossid") if has_mcp_fill else None,
+            "userProvidedCode": user_provided_code
         })
 
-        # ── 关键字段缺失检查（提前返回，不输出空白表单）──────────────
-        missing_info = FieldExtractionSkill.check_missing_required(form_code, extracted)
-        if missing_info:
-            yield ask_user(
-                f"⚠️ {missing_info['message']}\n\n"
-                f"👉 {missing_info['hint']}"
-            )
-            yield sse({"type": "missing_field", **missing_info})
-            ctx.intent_data["_missing_required"] = missing_info["field"]
-            return
+        # ── 检查工具调用结果（从 intent_data 获取）────────────────────
+        tool_results = ctx.intent_data.get("tool_results", [])
+        tariff_tool_failed = any(t.get("name") == "query_tariff_by_code" and not t.get("success") for t in tool_results)
+        
+        # 如果工具调用失败但用户已提供套餐编码，跳过必填检查，直接生成表单
+        if tariff_tool_failed and user_provided_code:
+            # 工具调用失败但用户已提供套餐编码，仍然生成表单，提示用户手动填写
+            yield thinking(f"⚠️ 套餐信息查询失败，将为您生成表单，请手动填写相关信息", result={
+                "tariffCode": user_provided_code,
+                "toolFailed": True
+            })
+        else:
+            # ── 关键字段缺失检查（提前返回，不输出空白表单）──────────────
+            missing_info = FieldExtractionSkill.check_missing_required(form_code, extracted)
+            if missing_info:
+                # 如果用户已经提供了套餐编码但工具调用失败，不要求用户再次提供
+                if user_provided_code and missing_info.get("field") in ("bossid", "tariff_code"):
+                    # 用户已提供编码，跳过检查继续生成表单
+                    yield thinking(f"⚠️ 套餐信息查询失败，将为您生成表单，请手动填写相关信息", result={
+                        "tariffCode": user_provided_code,
+                        "toolFailed": True
+                    })
+                else:
+                    yield ask_user(
+                        f"⚠️ {missing_info['message']}\n\n"
+                        f"👉 {missing_info['hint']}"
+                    )
+                    yield sse({"type": "missing_field", **missing_info})
+                    ctx.intent_data["_missing_required"] = missing_info["field"]
+                    return
 
         # ═══ Phase 2：执行 ══════════════════════════════════════════
         # ── Step 1：历史推荐（可选）─────────────────────────────────

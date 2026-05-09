@@ -69,6 +69,7 @@ const messages = ref([]);
 const inputText = ref('');
 const currentDbSessionId = ref('');
 let isCreatingFromHome = false;
+const dbLoaded = ref(false);
 const messageListRef = ref(null);
 const inputRef = ref(null);
 const { isStreaming, stopStream, sendStreamMessage } = useChatStream(messages, currentDbSessionId);
@@ -185,7 +186,14 @@ watch(() => props.sessionId, async (newSessionId, oldSessionId) => {
  if (currentDbSessionId.value) {
  try {
  const dbMsgs = await apiLoadMessages(currentDbSessionId.value);
+ // 如果消息列表已经有消息（从首页发送过来），则不覆盖
+ // 否则使用数据库中的消息
+ if (messages.value.length === 0) {
  messages.value = dbMsgs;
+ } else {
+ // 如果有数据库消息但本地已有消息，说明是新会话，不需要合并
+ console.log('[ChatAssistant] 消息列表已存在，跳过数据库加载');
+ }
  let lastFillingCard = null;
  for (let i = dbMsgs.length - 1; i >= 0; i--) {
  const msg = dbMsgs[i];
@@ -320,21 +328,22 @@ const sendSuggestion = (text) => {
  inputText.value = text;
  sendMessage();
 };
-const sendMessage = async () => {
- const text = inputText.value.trim();
- if (!text || isStreaming.value)
+const sendMessage = async (text) => {
+ const messageText = text || inputText.value.trim();
+ console.log('[ChatAssistant] sendMessage called:', { text: messageText, sessionId: props.sessionId, isStreaming: isStreaming.value, messagesLength: messages.value.length });
+ if (!messageText || isStreaming.value)
  return;
  if (!props.sessionId) {
  isCreatingFromHome = true;
- messages.value.push({ id: genId(), role: 'user', content: text, done: true });
- emit('create-session-from-home', text);
+ messages.value.push({ id: genId(), role: 'user', content: messageText, done: true });
+ emit('create-session-from-home', messageText);
  return;
  }
- await doSendMessage(text);
+ await doSendMessage(messageText);
 };
 const sendMessageAfterSessionCreated = async (text, sessionId) => {
  await new Promise(resolve => setTimeout(resolve, 50));
- await doSendMessageAfterHome(text, { skipUserPush: true });
+ await doSendMessageAfterHome(text);
 };
 const doSendMessage = async (text) => {
  if (pendingConfirmForm.value && checkUserConfirmation(text)) {
@@ -384,9 +393,13 @@ const doSendMessage = async (text) => {
  await doSendMessageAfterHome(text);
 };
 const doSendMessageAfterHome = async (text, { skipUserPush = false, formCode = null, formData = null } = {}) => {
+ console.log('[ChatAssistant] doSendMessageAfterHome called:', { text, skipUserPush, sessionId: props.sessionId, currentDbSessionId: currentDbSessionId.value });
  await ensureDbSession(props.sessionId);
+ console.log('[ChatAssistant] after ensureDbSession:', { currentDbSessionId: currentDbSessionId.value });
  if (!skipUserPush) {
+ console.log('[ChatAssistant] pushing user message:', { text });
  messages.value.push({ id: genId(), role: 'user', content: text, done: true });
+ console.log('[ChatAssistant] messages after push:', messages.value.length);
  scrollToBottom();
  }
  if (currentDbSessionId.value) {
@@ -608,7 +621,14 @@ onMounted(async () => {
  if (currentDbSessionId.value) {
  try {
  const dbMsgs = await apiLoadMessages(currentDbSessionId.value);
+ // 如果消息列表已经有消息（从首页发送过来），则不覆盖
+ // 否则使用数据库中的消息
+ if (messages.value.length === 0) {
  messages.value = dbMsgs;
+ } else {
+ // 如果有数据库消息但本地已有消息，说明是新会话，不需要合并
+ console.log('[ChatAssistant] 消息列表已存在，跳过数据库加载');
+ }
  let lastFillingCard = null;
  for (let i = dbMsgs.length - 1; i >= 0; i--) {
  const msg = dbMsgs[i];

@@ -198,7 +198,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 
 const emit = defineEmits(['send-message', 'switch-chat', 'create-session'])
 
@@ -304,8 +304,6 @@ const handleShortcut = (sc) => {
     emit('send-message', `帮我填一个${sc.label}`)
   }
 }
-
-import { nextTick } from 'vue'
 
 onMounted(() => {
   loadTodos()
