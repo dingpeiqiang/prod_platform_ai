@@ -133,7 +133,7 @@ defineExpose({ focus, resetInput })
   gap: 6px;
   padding: 6px 14px;
   background: var(--bg-secondary);
-  border: none;
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-full);
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
@@ -142,8 +142,9 @@ defineExpose({ focus, resetInput })
 }
 
 .quick-chip:hover:not(:disabled) {
-  background: var(--color-primary-50);
-  color: var(--color-primary-700);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
 }
 
 .quick-chip:disabled {

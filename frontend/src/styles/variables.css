@@ -11,42 +11,42 @@
 
 :root {
   /* ══════════════════════════════════════════════════════════════
-   * 颜色系统 - Color System
+   * 颜色系统 - Color System (参考豆包风格)
    * ══════════════════════════════════════════════════════════════ */
   
-  /* 主色调 - Primary Colors */
-  --color-primary-50: #eef2ff;
-  --color-primary-100: #e0e7ff;
-  --color-primary-200: #c7d2fe;
-  --color-primary-300: #a5b4fc;
-  --color-primary-400: #818cf8;
-  --color-primary-500: #6366f1;  /* 主色 - 品牌核心色 */
-  --color-primary-600: #4f46e5;  /* 深主色 - 悬停状态 */
-  --color-primary-700: #4338ca;
-  --color-primary-800: #3730a3;
-  --color-primary-900: #312e81;
+  /* 主色调 - Primary Colors (豆包风格蓝紫色) */
+  --color-primary-50: #f0f4ff;
+  --color-primary-100: #e0e8ff;
+  --color-primary-200: #c7d4fe;
+  --color-primary-300: #a3b6fd;
+  --color-primary-400: #7b93fa;
+  --color-primary-500: #5b7cfa;  /* 主色 - 清新蓝紫色 */
+  --color-primary-600: #4363eb;  /* 深主色 - 悬停状态 */
+  --color-primary-700: #3742d0;
+  --color-primary-800: #2f37a8;
+  --color-primary-900: #2a3080;
   
-  /* 中性色 - Neutral Colors */
-  --color-gray-25: #fcfcfc;
-  --color-gray-50: #f9fafb;
-  --color-gray-100: #f3f4f6;
-  --color-gray-200: #e5e7eb;
-  --color-gray-300: #d1d5db;
-  --color-gray-400: #9ca3af;
-  --color-gray-500: #6b7280;  /* 次要文本 */
-  --color-gray-600: #4b5563;
-  --color-gray-700: #374151;
-  --color-gray-800: #1f2937;
-  --color-gray-850: #171717;  /* 侧边栏背景 */
-  --color-gray-900: #111827;  /* 主要文本 */
-  --color-gray-950: #030712;
+  /* 中性色 - Neutral Colors (豆包风格) */
+  --color-gray-25: #fefefe;
+  --color-gray-50: #f8fafc;
+  --color-gray-100: #f1f5f9;
+  --color-gray-200: #e2e8f0;
+  --color-gray-300: #cbd5e1;
+  --color-gray-400: #94a3b8;
+  --color-gray-500: #64748b;  /* 次要文本 */
+  --color-gray-600: #475569;
+  --color-gray-700: #334155;
+  --color-gray-800: #1e293b;
+  --color-gray-850: #0f172a;  /* 侧边栏背景 */
+  --color-gray-900: #020617;  /* 主要文本 */
+  --color-gray-950: #020617;
   
   /* 功能色 - Semantic Colors */
-  --color-success-50: #ecfdf5;
-  --color-success-100: #d1fae5;
-  --color-success-500: #10b981;
-  --color-success-600: #059669;
-  --color-success-700: #047857;
+  --color-success-50: #f0fdf4;
+  --color-success-100: #dcfce7;
+  --color-success-500: #22c55e;
+  --color-success-600: #16a34a;
+  --color-success-700: #15803d;
   
   --color-warning-50: #fffbeb;
   --color-warning-100: #fef3c7;
@@ -66,14 +66,14 @@
   --color-info-600: #2563eb;
   --color-info-700: #1d4ed8;
   
-  /* 侧边栏专用色 */
-  --sidebar-bg: #171717;
-  --sidebar-text-primary: #e5e7eb;
-  --sidebar-text-secondary: #9ca3af;
-  --sidebar-text-muted: #6b7280;
-  --sidebar-border: rgba(255, 255, 255, 0.06);
-  --sidebar-hover-bg: rgba(255, 255, 255, 0.06);
-  --sidebar-active-bg: rgba(99, 102, 241, 0.2);
+  /* 侧边栏专用色 (亮色主题) */
+  --sidebar-bg: #ffffff;
+  --sidebar-text-primary: #1e293b;
+  --sidebar-text-secondary: #64748b;
+  --sidebar-text-muted: #94a3b8;
+  --sidebar-border: rgba(0, 0, 0, 0.08);
+  --sidebar-hover-bg: rgba(0, 0, 0, 0.04);
+  --sidebar-active-bg: rgba(91, 124, 250, 0.15);
   
   /* ══════════════════════════════════════════════════════════════
    * 文本色 - Text Colors
@@ -85,20 +85,29 @@
   --text-inverse: #ffffff;
   
   /* ══════════════════════════════════════════════════════════════
-   * 背景色 - Background Colors
-   * ══════════════════════════════════════════════════════════════ */
+ * 背景色 - Background Colors (豆包风格)
+ * ══════════════════════════════════════════════════════════════ */
   --bg-primary: #ffffff;
-  --bg-secondary: #f9fafb;
-  --bg-tertiary: #f3f4f6;
+  --bg-secondary: #f8fafc;
+  --bg-tertiary: #f1f5f9;
   --bg-elevated: #ffffff;
-  --bg-overlay: rgba(0, 0, 0, 0.4);
+  --bg-overlay: rgba(0, 0, 0, 0.5);
+  
+  /* 用户消息气泡背景 (豆包风格浅色) */
+  --bg-user-bubble: #f1f1f1;
+  
+  /* AI消息气泡背景 (豆包风格白色) */
+  --bg-ai-bubble: #ffffff;
+  
+  /* 处理步骤面板背景 */
+  --bg-reasoning: rgba(91, 124, 250, 0.05);
   
   /* ══════════════════════════════════════════════════════════════
    * 边框色 - Border Colors
    * ══════════════════════════════════════════════════════════════ */
-  --border-light: #f3f4f6;
-  --border-default: #e5e7eb;
-  --border-strong: #d1d5db;
+  --border-light: #e5e5e5;
+  --border-default: #d4d4d4;
+  --border-strong: #a3a3a3;
   --border-focus: var(--color-primary-500);
   
   /* ══════════════════════════════════════════════════════════════
@@ -218,39 +227,48 @@
 }
 
 /* ══════════════════════════════════════════════════════════════
- * 暗色主题 - Dark Theme
+ * 暗色主题 - Dark Theme (豆包风格)
  * ══════════════════════════════════════════════════════════════ */
 [data-theme="dark"] {
-  /* 文本色反转 */
-  --text-primary: #f9fafb;
-  --text-secondary: #9ca3af;
-  --text-tertiary: #6b7280;
-  --text-disabled: #4b5563;
-  --text-inverse: #111827;
+  /* 文本色反转 - 豆包风格 */
+  --text-primary: #e8e8e8;
+  --text-secondary: #a8a8a8;
+  --text-tertiary: #6a6a6a;
+  --text-disabled: #4a4a4a;
+  --text-inverse: #1a1a1a;
   
-  /* 背景色反转 */
-  --bg-primary: #111827;
-  --bg-secondary: #1f2937;
-  --bg-tertiary: #374151;
-  --bg-elevated: #1f2937;
-  --bg-overlay: rgba(0, 0, 0, 0.6);
+  /* 背景色反转 - 豆包风格深色背景 */
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #1a1a1a;
+  --bg-tertiary: #2a2a2a;
+  --bg-elevated: #2a2a2a;
+  --bg-overlay: rgba(0, 0, 0, 0.8);
+  
+  /* 用户消息气泡背景 - 暗色主题深色 */
+  --bg-user-bubble: #313131;
+  
+  /* AI消息气泡背景 - 豆包风格深色卡片 */
+  --bg-ai-bubble: #2a2a2a;
+  
+  /* 处理步骤面板背景 */
+  --bg-reasoning: rgba(91, 124, 250, 0.08);
   
   /* 边框色调整 */
-  --border-light: #374151;
-  --border-default: #4b5563;
-  --border-strong: #6b7280;
+  --border-light: #2a2a2a;
+  --border-default: #3a3a3a;
+  --border-strong: #4a4a4a;
   
-  /* 侧边栏 */
-  --sidebar-bg: #0a0a0a;
-  --sidebar-text-primary: #f3f4f6;
-  --sidebar-text-secondary: #9ca3af;
-  --sidebar-text-muted: #6b7280;
-  --sidebar-border: rgba(255, 255, 255, 0.06);
-  --sidebar-hover-bg: rgba(255, 255, 255, 0.06);
-  --sidebar-active-bg: rgba(99, 102, 241, 0.25);
+  /* 侧边栏 - 暗色主题 */
+  --sidebar-bg: #0d0d0d;
+  --sidebar-text-primary: #e8e8e8;
+  --sidebar-text-secondary: #a8a8a8;
+  --sidebar-text-muted: #6a6a6a;
+  --sidebar-border: rgba(255, 255, 255, 0.05);
+  --sidebar-hover-bg: rgba(255, 255, 255, 0.04);
+  --sidebar-active-bg: rgba(91, 124, 250, 0.15);
   
-  /* 阴影调整 - 暗色主题需要更深的阴影 */
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.2);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.2);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+  /* 阴影调整 */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.6), 0 4px 6px -4px rgb(0 0 0 / 0.5);
 }

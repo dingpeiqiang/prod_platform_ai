@@ -272,7 +272,7 @@ const olderSessions = computed(() =>
 
 .empty-tip {
   text-align: center;
-  color: #4b5563;
+  color: var(--sidebar-text-muted);
   font-size: var(--font-size-sm);
   padding: var(--space-8) 0;
 }
@@ -352,8 +352,8 @@ const olderSessions = computed(() =>
 }
 
 .logout-menu-inner {
-  background: var(--color-gray-800);
-  border: 1px solid rgba(255,255,255,0.1);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
   padding: var(--space-3) var(--space-3-5);
   box-shadow: var(--shadow-xl);

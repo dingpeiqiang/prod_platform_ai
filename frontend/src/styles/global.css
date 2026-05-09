@@ -356,6 +356,11 @@ a:focus-visible {
     color: var(--text-inverse);
   }
   
+  /* 处理步骤面板暗色样式 */
+  .reasoning-wrap {
+    border-color: rgba(91, 124, 250, 0.15);
+  }
+  
   /* Element Plus 暗色覆盖 */
   --el-bg-color: var(--bg-primary);
   --el-bg-color-overlay: var(--bg-elevated);

@@ -65,11 +65,13 @@
                     :key="si"
                     :class="['reasoning-step', 'step-' + step.type, { 'step-latest': si === msg.latestStepIndex && !msg.done }]"
                   >
-                    <span class="step-icon">{{ stepIcon(step.type) }}</span>
-                    <span class="step-text">{{ step.content }}</span>
-                    <span v-if="si === msg.latestStepIndex && !msg.done" class="step-loading">
-                      <span/><span/><span/>
-                    </span>
+                    <div class="step-content">
+                      <span class="step-icon">{{ stepIcon(step.type) }}</span>
+                      <span class="step-text">{{ step.content }}</span>
+                      <span v-if="si === msg.latestStepIndex && !msg.done" class="step-loading">
+                        <span/><span/><span/>
+                      </span>
+                    </div>
                     <div v-if="step.reasoning" class="step-reasoning-inline">
                       <span class="step-reasoning-toggle" @click="step._showReasoning = !step._showReasoning">
                         <svg
@@ -274,7 +276,7 @@ defineExpose({ scrollToBottom });
   align-items: center;
   gap: var(--space-2);
   max-width: 100%;
-  background: var(--bg-primary);
+  background: var(--bg-user-bubble);
   color: var(--text-primary);
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-xl) 4px var(--radius-xl) var(--radius-xl);
@@ -282,22 +284,23 @@ defineExpose({ scrollToBottom });
   line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
+  box-shadow: var(--shadow-sm);
 
   .copy-btn {
     flex-shrink: 0;
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.2s, visibility 0.2s;
-    background: transparent;
+    background: rgba(0,0,0,0.08);
     border: none;
-    color: var(--text-muted);
+    color: var(--text-tertiary);
     cursor: pointer;
-    padding: 2px;
+    padding: 4px;
     border-radius: var(--radius-sm);
 
     &:hover {
       color: var(--text-primary);
-      background: var(--bg-hover);
+      background: rgba(0,0,0,0.12);
     }
   }
 
@@ -313,8 +316,8 @@ defineExpose({ scrollToBottom });
 
 .reasoning-wrap {
   margin-bottom: var(--space-2-5);
-  background: linear-gradient(135deg, var(--color-primary-50), var(--bg-secondary));
-  border: 1px solid var(--color-primary-100);
+  background: var(--bg-reasoning);
+  border: 1px solid rgba(99, 102, 241, 0.15);
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
@@ -347,14 +350,17 @@ defineExpose({ scrollToBottom });
 }
 
 .reasoning-step {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
   padding: var(--space-2) 0;
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
 
   &:not(:last-child) { border-bottom: 1px dashed var(--color-primary-100); }
+}
+
+.step-content {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
 }
 
 .step-icon {
@@ -382,14 +388,20 @@ defineExpose({ scrollToBottom });
 
 .step-reasoning-inline {
   margin-top: var(--space-2);
-  padding-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   border-top: 1px dashed var(--border-light);
+  background: rgba(99, 102, 241, 0.03);
+  border-radius: var(--radius-sm);
 }
 
 .step-reasoning-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .step-reasoning-body {
@@ -422,7 +434,7 @@ defineExpose({ scrollToBottom });
 }
 
 .bubble.ai-bubble {
-  background: var(--bg-primary);
+  background: var(--bg-ai-bubble);
   color: var(--text-primary);
   padding: var(--space-3) var(--space-4);
   border-radius: 4px var(--radius-xl) var(--radius-xl) var(--radius-xl);
@@ -430,6 +442,7 @@ defineExpose({ scrollToBottom });
   line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
+  border: 1px solid var(--border-default);
 }
 
 .loading-indicator {
