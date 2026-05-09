@@ -90,12 +90,14 @@
               </transition>
             </div>
 
-            <div
-              v-if="msg.streamText || msg.content"
-              class="ai-text"
-              :class="{ 'loading-text': msg.loading }"
-              v-html="renderMarkdown(msg.streamText || msg.content)"
-            />
+            <div class="bubble ai-bubble">
+              <div
+                v-if="msg.streamText || msg.content"
+                class="ai-text"
+                :class="{ 'loading-text': msg.loading }"
+                v-html="renderMarkdown(msg.streamText || msg.content)"
+              />
+            </div>
             <div v-if="msg.loading" class="loading-indicator">
               <span class="loading-dot"/><span class="loading-dot"/><span class="loading-dot"/>
             </div>
@@ -417,6 +419,17 @@ defineExpose({ scrollToBottom });
 
 .ai-text.loading-text {
   min-height: 24px;
+}
+
+.bubble.ai-bubble {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  padding: var(--space-3) var(--space-4);
+  border-radius: 4px var(--radius-xl) var(--radius-xl) var(--radius-xl);
+  font-size: var(--font-size-sm);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .loading-indicator {
