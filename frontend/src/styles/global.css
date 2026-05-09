@@ -366,4 +366,33 @@ a:focus-visible {
   --el-border-color-light: var(--border-light);
   --el-input-text-color: var(--text-primary);
   --el-textarea-text-color: var(--text-primary);
+  --el-input-bg-color: var(--bg-elevated);
+  --el-textarea-bg-color: var(--bg-elevated);
+  
+  /* 输入框外层 wrapper 暗色样式 - 修复两头白边问题 */
+  .el-input__wrapper,
+  .el-input-number__wrapper {
+    background-color: var(--bg-elevated) !important;
+  }
+  
+  /* 输入框暗色样式增强 */
+  .el-input__inner,
+  .el-textarea__inner {
+    background-color: var(--bg-elevated) !important;
+    color: var(--text-primary) !important;
+  }
+  
+  /* 数字输入框暗色样式 */
+  .el-input-number__decrease,
+  .el-input-number__increase {
+    background-color: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-default) !important;
+  }
+  
+  /* 日期选择器输入框暗色样式 */
+  .el-date-editor .el-input__inner {
+    background-color: var(--bg-elevated) !important;
+    color: var(--text-primary) !important;
+  }
 }
