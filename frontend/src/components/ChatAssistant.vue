@@ -381,14 +381,59 @@ registerPostProcessor('configure', (msg) => {
 })
 
 registerPostProcessor('form', async (msg, intentData) => {
+  console.log('[form 后处理] ==================== 进入 form 后处理器 ====================')
+  console.log('[form 后处理] msg._intentData:', msg._intentData)
+  console.log('[form 后处理] pendingConfirmForm:', pendingConfirmForm.value)
+  
   // ══ 检查是否有未完成的表单 ══════════════════════════════════
   // 情况1：有活动表单卡片（status === 'filling'）
   // 情况2：待确认提交（pendingConfirmForm 存在，等待用户回复确认/取消）
   const hasActiveForm = activeFormCard.value?.status === 'filling'
   const hasPendingConfirm = !!pendingConfirmForm.value
+  
+  // 检查是否有校验通过的标志
+  const validationPass = msg._intentData?.['validation_pass']
+  console.log('[form 后处理] validationPass:', !!validationPass)
 
-  if (hasActiveForm || hasPendingConfirm) {
-    const formName = activeFormCard.value?.formName || pendingConfirmForm.value?.formName || '当前表单'
+  // 如果有待确认表单且校验通过，自动触发提交
+  if (hasPendingConfirm && validationPass) {
+    console.log('[form 后处理] 有待确认表单且校验通过，自动触发提交')
+    
+    // 构建提交摘要，在消息中显示
+    const schema = pendingConfirmForm.value.schema
+    let previewLines = []
+    if (schema && schema.fields) {
+      for (const field of schema.fields) {
+        const val = pendingConfirmForm.value.data[field.fieldCode]
+        if (val !== undefined && val !== null && val !== '') {
+          const displayVal = Array.isArray(val) ? val.join(', ') : String(val)
+          previewLines.push(`- **${field.fieldName}**: ${displayVal}`)
+        }
+      }
+    }
+    
+    const submitSummary = previewLines.length > 0 ? `\n\n提交内容：\n${previewLines.join('\n')}` : ''
+    msg.streamText = (msg.streamText || '') + `\n\n---\n\n✅ 校验通过！正在提交表单...${submitSummary}`
+    msg.content = msg.streamText
+    
+    // 等待消息渲染后再执行提交
+    await new Promise(resolve => setTimeout(resolve, 300))
+    
+    // 直接执行提交
+    await handleDoConfirmSubmit()
+    return
+  }
+
+  // 如果有待确认表单但校验未通过（或未校验），说明用户正在完成当前表单的流程，不应该拦截
+  // 让用户继续与 AI 对话，由 doSendMessage 中的 checkUserConfirmation 处理
+  if (hasPendingConfirm) {
+    console.log('[form 后处理] 有待确认表单但未校验通过，不拦截，让 doSendMessage 处理')
+    msg.content = msg.streamText || ''
+    return
+  }
+
+  if (hasActiveForm) {
+    const formName = activeFormCard.value?.formName || '当前表单'
     // 推送单独的警告消息，不替换原消息内容
     const warnMsg = {
       id: genId(), role: 'assistant',
@@ -422,19 +467,34 @@ registerPostProcessor('form', async (msg, intentData) => {
 
 // ── validate 意图后处理器 ──────────────────────────────
 // 校验流结束后，根据结果决定是否进入提交确认流程
-registerPostProcessor('validate', async (msg) => {
+registerPostProcessor('validate', async (msg, intentData) => {
+  console.log('[validate 后处理] ==================== 进入后处理器 ====================')
+  console.log('[validate 后处理] msg:', msg)
+  console.log('[validate 后处理] intentData:', intentData)
+  
   // 从 _intentData 中检查校验结果
-  const validationPass = msg._intentData?.validation_pass
-  const validationFail = msg._intentData?.validation_fail
+  // 注意：_handleValidationResult 使用 data.type 作为 key（'validation_pass' 或 'validation_fail'）
+  const validationPass = msg._intentData?.['validation_pass']
+  const validationFail = msg._intentData?.['validation_fail']
+  
+  console.log('[validate 后处理] msg._intentData:', msg._intentData)
+  console.log('[validate 后处理] validationPass:', !!validationPass, 'value:', validationPass)
+  console.log('[validate 后处理] validationFail:', !!validationFail, 'value:', validationFail)
+  console.log('[validate 后处理] pendingConfirmForm:', pendingConfirmForm.value ? '存在' : 'null', pendingConfirmForm.value)
 
   if (validationFail) {
     // 校验失败：清除待确认状态
     console.log('[validate 后处理] 校验失败，清除 pendingConfirmForm')
     pendingConfirmForm.value = null
-    // streamText 已包含校验结果，不需要额外处理
+    // streamText 已包含校验结果，确保 content 也更新，用于保存
+    msg.content = msg.streamText || ''
   } else if (validationPass) {
-    // 校验通过：追加确认提示到 streamText（模板渲染优先取 streamText）
+    console.log('[validate 后处理] ────────────────── 校验通过 ──────────────────')
+    // 校验通过：自动触发提交，无需用户确认
+    console.log('[validate 后处理] 校验通过，准备自动触发提交')
     if (pendingConfirmForm.value) {
+      console.log('[validate 后处理] pendingConfirmForm 存在，开始构建提交摘要')
+      // 构建提交摘要，在消息中显示
       const schema = pendingConfirmForm.value.schema
       let previewLines = []
       if (schema && schema.fields) {
@@ -446,16 +506,39 @@ registerPostProcessor('validate', async (msg) => {
           }
         }
       }
-
-      const confirmText = `\n\n---\n\n✅ 校验通过！请确认是否提交？（回复"确认"或"好的"执行提交，回复"取消"放弃提交）`
-      msg.streamText = (msg.streamText || '') + confirmText
+      
+      const submitSummary = previewLines.length > 0 ? `\n\n提交内容：\n${previewLines.join('\n')}` : ''
+      msg.streamText = (msg.streamText || '') + `\n\n---\n\n✅ 校验通过！正在提交表单...${submitSummary}`
+      msg.content = msg.streamText  // 确保 content 也更新，用于保存
+      console.log('[validate 后处理] 已更新消息内容')
+      
+      // 等待消息渲染后再执行提交（避免 UI 闪烁）
+      console.log('[validate 后处理] 等待 300ms 后执行提交')
+      await new Promise(resolve => setTimeout(resolve, 300))
+      
+      // 直接执行提交，不需要用户确认
+      console.log('[validate 后处理] 调用 handleDoConfirmSubmit()')
+      await handleDoConfirmSubmit()
+      console.log('[validate 后处理] handleDoConfirmSubmit() 执行完成')
+    } else {
+      console.warn('[validate 后处理] ⚠️ 校验通过但 pendingConfirmForm 为空！')
+      msg.content = msg.streamText || ''
     }
   } else {
     // 没有明确的校验结果事件（LLM 未返回 validation_pass/fail）
-    // 兜底：如果 pendingConfirmForm 存在，直接显示确认提示
+    // 兜底：如果 pendingConfirmForm 存在，直接执行提交
+    console.log('[validate 后处理] 无明确校验结果，pendingConfirmForm 状态:', pendingConfirmForm.value ? '存在' : 'null')
     if (pendingConfirmForm.value) {
-      const confirmText = `\n\n---\n\n请确认是否提交当前表单？（回复"确认"或"好的"执行提交）`
-      msg.streamText = (msg.streamText || '') + confirmText
+      msg.streamText = (msg.streamText || '') + '\n\n---\n\n校验完成，正在提交表单...'
+      msg.content = msg.streamText  // 确保 content 也更新，用于保存
+      
+      // 等待消息渲染后再执行提交
+      await new Promise(resolve => setTimeout(resolve, 300))
+      
+      // 直接执行提交
+      await handleDoConfirmSubmit()
+    } else {
+      msg.content = msg.streamText || ''
     }
   }
 })
@@ -857,8 +940,13 @@ const sendMessageAfterSessionCreated = async (text, sessionId) => {
 }
 
 const doSendMessage = async (text) => {
+  console.log('[doSendMessage] 收到消息:', text)
+  console.log('[doSendMessage] pendingConfirmForm:', pendingConfirmForm.value ? '存在' : 'null')
+  console.log('[doSendMessage] checkUserConfirmation:', checkUserConfirmation(text))
+  
   // 检查是否有待确认的表单提交
   if (pendingConfirmForm.value && checkUserConfirmation(text)) {
+    console.log('[doSendMessage] 检测到确认关键词，执行提交')
     // 用户确认提交
     await handleDoConfirmSubmit()
     return
@@ -887,8 +975,8 @@ const doSendMessage = async (text) => {
         await handleCancelSubmit()
         return
       }
-      // 确认关键词只有"好的"——其他视为普通回复，让 AI 继续对话
-      if (text.trim() === '好的' || text.trim() === '好') {
+      // 确认关键词：使用 checkUserConfirmation 统一处理
+      if (checkUserConfirmation(text)) {
         await handleDoConfirmSubmit()
         return
       }
@@ -1082,11 +1170,27 @@ const doSendMessageAfterHome = async (text, { skipUserPush = false, formCode = n
       msg.showReasoning = msg.reasoning.some(r => r.type === 'error') || false
 
       // 根据 intentType 后处理（通过注册器分发）
+      console.log('[SSE 流结束] ==================== SSE 流结束 ====================')
+      console.log('[SSE 流结束] msgIdx:', msgIdx)
+      console.log('[SSE 流结束] msg:', msg)
+      console.log('[SSE 流结束] intentType:', intentType)
+      console.log('[SSE 流结束] intentData:', intentData)
+      console.log('[SSE 流结束] msg._intentData:', msg._intentData)
+      
       const postProcessor = getPostProcessor(intentType)
+      console.log('[SSE 流结束] postProcessor:', postProcessor ? '存在' : 'null', postProcessor)
+      
       if (postProcessor) {
-        await postProcessor(msg, intentData)
+        console.log('[SSE 流结束] 准备调用后处理器:', intentType)
+        try {
+          await postProcessor(msg, intentData)
+          console.log('[SSE 流结束] 后处理器执行完成')
+        } catch (e) {
+          console.error('[SSE 流结束] 后处理器执行异常:', e)
+        }
       } else {
         // 默认：普通聊天
+        console.log('[SSE 流结束] 无后处理器，使用默认处理')
         msg.content = msg.streamText
       }
 
@@ -1657,20 +1761,32 @@ const handleConfirmSubmit = async (data) => {
 
 // 检查用户消息是否确认提交
 const checkUserConfirmation = (userMessage) => {
-  if (!pendingConfirmForm.value) return false
+  if (!pendingConfirmForm.value) {
+    console.log('[checkUserConfirmation] pendingConfirmForm 为空，返回 false')
+    return false
+  }
   const msg = userMessage.toLowerCase()
-  // 确认关键词
-  return msg.includes('确认') || msg.includes('好的') || msg.includes('是') || msg.includes('提交')
+  const result = msg.includes('确认') || msg.includes('好的') || msg.includes('是') || msg.includes('提交')
+  console.log(`[checkUserConfirmation] 消息: "${userMessage}", 结果: ${result}`)
+  return result
 }
 
 // 执行真正的表单提交
 const handleDoConfirmSubmit = async () => {
-  if (!pendingConfirmForm.value) return
+  console.log('[handleDoConfirmSubmit] 开始执行提交')
+  console.log('[handleDoConfirmSubmit] pendingConfirmForm:', pendingConfirmForm.value)
+  
+  if (!pendingConfirmForm.value) {
+    console.warn('[handleDoConfirmSubmit] pendingConfirmForm 为空，无法提交')
+    return
+  }
 
   const formData = pendingConfirmForm.value.data
   const formId = pendingConfirmForm.value.formId
   const formName = pendingConfirmForm.value.formName
   const schema = pendingConfirmForm.value.schema
+  
+  console.log('[handleDoConfirmSubmit] 提交表单:', formName, formId)
 
   // 清除待确认状态
   pendingConfirmForm.value = null

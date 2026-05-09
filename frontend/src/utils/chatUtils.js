@@ -26,11 +26,15 @@ export const formatStepResult = (result) => {
 export const renderMarkdown = (text) => {
   if (!text) return ''
   try {
-    const marked = window.marked || (() => ({ parse: (t) => t }))
-    let html = marked.parse(text)
-    html = html.replace(/<script[^>]*>.*?<\/script>/gi, '')
-    html = html.replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')
-    return html
+    // 尝试使用 marked 库
+    if (window.marked && typeof window.marked.parse === 'function') {
+      let html = window.marked.parse(text)
+      html = html.replace(/<script[^>]*>.*?<\/script>/gi, '')
+      html = html.replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')
+      return html
+    }
+    // 降级处理：简单的文本格式化
+    return formatMarkdownText(text)
   } catch (error) {
     console.error('Markdown 解析错误:', error)
     return text
