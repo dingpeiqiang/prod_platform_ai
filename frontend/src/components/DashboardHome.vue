@@ -208,17 +208,11 @@ const newTodo = ref('')
 
 // 快捷建议
 const suggestions = [
-  { key: 'sales', icon: 'form', text: '帮我填一个销售订单' },
-  { key: 'leave', icon: 'calendar', text: '帮我填一个请假申请' },
-  { key: 'expense', icon: 'wallet', text: '帮我填一个费用报销' },
   { key: 'help', icon: 'help', text: '你能做什么？' },
 ]
 
 // 快捷入口
 const shortcuts = [
-  { key: 'sales', icon: 'form', label: '销售订单' },
-  { key: 'leave', icon: 'calendar', label: '请假申请' },
-  { key: 'expense', icon: 'wallet', label: '费用报销' },
   { key: 'report', icon: 'chart', label: '数据报告' },
   { key: 'meeting', icon: 'file', label: '会议纪要' },
   { key: 'help', icon: 'help', label: '帮助中心' },

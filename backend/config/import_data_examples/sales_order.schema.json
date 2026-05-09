@@ -1,1 +1,0 @@
-{"formCode": "sales_order", "formName": "销售订单", "description": "ERP系统历史订单记录", "fields": ["customer_name", "customer_phone", "product_name", "order_amount", "order_date", "delivery_date", "remark"], "_comment": "CSV格式，首行为字段编码（必须与本本体fieldCode一致）"}

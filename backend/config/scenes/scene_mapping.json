@@ -20,34 +20,6 @@
       "priority": 15
     },
     {
-      "sceneCode": "sales_order",
-      "keywords": [
-        "销售订单",
-        "销售",
-        "订单",
-        "客户"
-      ],
-      "priority": 10
-    },
-    {
-      "sceneCode": "leave",
-      "keywords": [
-        "请假",
-        "请假申请",
-        "休假"
-      ],
-      "priority": 10
-    },
-    {
-      "sceneCode": "expense",
-      "keywords": [
-        "报销",
-        "费用报销",
-        "报销申请"
-      ],
-      "priority": 10
-    },
-    {
       "sceneCode": "tariff_filing_publicity",
       "keywords": [
         "资费备案",

@@ -60,9 +60,6 @@
 
 | 编码 | 类型 | 必填字段 | 可选字段 |
 |------|------|----------|----------|
-| `leave` | 请假申请 | leave_type, leave_days | reason, start_date, end_date |
-| `expense` | 报销申请 | amount, category | description, receipt_ids |
-| `sales_order` | 销售订单 | customer_name, order_amount | customer_phone, order_date, remark |
 | `tariff_filing_publicity` | 资费备案公示 | bossid, tariff_code | （根据Schema定义） |
 | `external_api_demo` | 外部API演示 | - | - |
 | `validation_demo` | 校验演示 | - | - |
@@ -174,7 +171,7 @@ PUBLIC (公开) → AUTHENTICATED (登录) → ADMIN (管理员) → RESTRICTED 
     "code": "E003",
     "message": "必填字段缺失",
     "details": [
-      {"field": "leave_days", "message": "请假天数必填"}
+      {"field": "required_field", "message": "必填字段不能为空"}
     ]
   }
 }
