@@ -1,6 +1,7 @@
 """
 管理模块 Service 层
 负责：表单本体 CRUD、场景关键词管理、配置热重载、AI 配置生成、版本备份与回退
+支持数据库和文件系统双存储
 """
 import json
 import logging
@@ -21,56 +22,158 @@ _BASE_DIR = Path(__file__).parent.parent.parent / "config"
 class AdminService:
 
     # ────────────────────────────────────────────────────────────────────────
-    # 表单本体（Ontology）管理
+    # 表单本体（Ontology）管理 - 数据库优先
     # ────────────────────────────────────────────────────────────────────────
 
     @classmethod
-    def list_ontologies(cls) -> Dict[str, Any]:
+    def list_ontologies(cls, db=None) -> Dict[str, Any]:
         """获取所有表单配置列表"""
         try:
-            all_ontologies = config_loader.get_all_ontologies()
-            ontologies = list(all_ontologies.values())
-            # 注入字段数量统计
-            for o in ontologies:
-                total_fields = sum(
-                    len(e.get("fields", [])) for e in o.get("entities", [])
-                )
-                o["_fieldCount"] = total_fields
-            logger.info("[AdminService] 获取表单列表 count=%d", len(ontologies))
-            return {"success": True, "total": len(ontologies), "data": ontologies}
+            if db:
+                from app.models.ontology import Ontology
+                db_ontologies = db.query(Ontology).filter(Ontology.is_active == True).all()
+                ontologies = []
+                for o in db_ontologies:
+                    data = o.to_dict()
+                    total_fields = sum(len(e.get("fields", [])) for e in data.get("entities", []))
+                    data["_fieldCount"] = total_fields
+                    ontologies.append(data)
+                logger.info("[AdminService] 从数据库获取表单列表 count=%d", len(ontologies))
+                return {"success": True, "total": len(ontologies), "data": ontologies}
+            else:
+                all_ontologies = config_loader.get_all_ontologies()
+                ontologies = list(all_ontologies.values())
+                for o in ontologies:
+                    total_fields = sum(len(e.get("fields", [])) for e in o.get("entities", []))
+                    o["_fieldCount"] = total_fields
+                logger.info("[AdminService] 从缓存获取表单列表 count=%d", len(ontologies))
+                return {"success": True, "total": len(ontologies), "data": ontologies}
         except Exception as e:
             logger.exception("[AdminService] 获取表单列表失败: %s", e)
             return {"success": False, "total": 0, "data": [], "message": str(e)}
 
     @classmethod
-    def get_ontology(cls, form_code: str) -> Dict[str, Any]:
+    def get_ontology(cls, form_code: str, db=None) -> Dict[str, Any]:
         """获取单个表单配置"""
+        if db:
+            try:
+                from app.models.ontology import Ontology
+                ontology = db.query(Ontology).filter(
+                    Ontology.ontology_code == form_code,
+                    Ontology.is_active == True
+                ).first()
+                if ontology:
+                    return {"success": True, "data": ontology.to_dict()}
+                return {"success": False, "data": None, "message": f"表单 {form_code} 不存在"}
+            except Exception as e:
+                logger.exception("[AdminService] 数据库查询失败: %s", e)
+        
         data = config_loader.get_ontology(form_code)
         if data is None:
             return {"success": False, "data": None, "message": f"表单 {form_code} 不存在"}
         return {"success": True, "data": data}
 
     @classmethod
-    def create_ontology(cls, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """新建表单本体，写入 config/ontologies/{formCode}.json"""
+    def create_ontology(cls, payload: Dict[str, Any], db=None) -> Dict[str, Any]:
+        """新建表单本体"""
         form_code = payload.get("formCode", "").strip()
         if not form_code:
             return {"success": False, "message": "formCode 不能为空"}
 
-        # 检查是否已存在
-        if config_loader.get_ontology(form_code) is not None:
+        if db:
+            return cls._create_ontology_db(form_code, payload, db)
+        
+        return cls._create_ontology_file(form_code, payload)
+
+    @classmethod
+    def _create_ontology_db(cls, form_code: str, payload: Dict[str, Any], db) -> Dict[str, Any]:
+        """通过数据库创建表单本体"""
+        from app.models.ontology import Ontology
+        
+        existing = db.query(Ontology).filter(Ontology.ontology_code == form_code).first()
+        if existing:
             return {"success": False, "message": f"表单编码 '{form_code}' 已存在，请使用不同的编码"}
 
+        ontology = Ontology(
+            ontology_code=form_code,
+            ontology_name=payload.get("formName", form_code),
+            form_code=form_code,
+            form_name=payload.get("formName"),
+            description=payload.get("description"),
+            entities=payload.get("entities", []),
+            version=1,
+            is_active=True
+        )
+        
+        try:
+            db.add(ontology)
+            db.commit()
+            db.refresh(ontology)
+            
+            cls._write_ontology_file(form_code, payload)
+            config_loader.reload_config("ontologies")
+            
+            logger.info("[AdminService] 数据库创建表单成功 form_code=%s", form_code)
+            return {"success": True, "data": ontology.to_dict(), "message": "操作成功"}
+        except Exception as e:
+            db.rollback()
+            logger.exception("[AdminService] 数据库创建表单失败 form_code=%s: %s", form_code, e)
+            return {"success": False, "message": str(e)}
+
+    @classmethod
+    def _create_ontology_file(cls, form_code: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """通过文件系统创建表单本体"""
+        if config_loader.get_ontology(form_code) is not None:
+            return {"success": False, "message": f"表单编码 '{form_code}' 已存在，请使用不同的编码"}
         return cls._write_ontology_file(form_code, payload)
 
     @classmethod
-    def update_ontology(cls, form_code: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def update_ontology(cls, form_code: str, payload: Dict[str, Any], db=None) -> Dict[str, Any]:
         """更新表单本体"""
+        if db:
+            return cls._update_ontology_db(form_code, payload, db)
+        
+        return cls._update_ontology_file(form_code, payload)
+
+    @classmethod
+    def _update_ontology_db(cls, form_code: str, payload: Dict[str, Any], db) -> Dict[str, Any]:
+        """通过数据库更新表单本体"""
+        from app.models.ontology import Ontology
+        
+        existing = db.query(Ontology).filter(Ontology.ontology_code == form_code).first()
+        if not existing:
+            return {"success": False, "message": f"表单 {form_code} 不存在"}
+
+        if "formName" in payload and payload["formName"] is not None:
+            existing.ontology_name = payload["formName"]
+            existing.form_name = payload["formName"]
+        if "description" in payload and payload["description"] is not None:
+            existing.description = payload["description"]
+        if "entities" in payload and payload["entities"] is not None:
+            existing.entities = payload["entities"]
+        existing.version = (existing.version or 0) + 1
+
+        try:
+            db.commit()
+            
+            merged = existing.to_dict()
+            cls._write_ontology_file(form_code, merged)
+            config_loader.reload_config("ontologies")
+            
+            logger.info("[AdminService] 数据库更新表单成功 form_code=%s", form_code)
+            return {"success": True, "data": merged, "message": "操作成功"}
+        except Exception as e:
+            db.rollback()
+            logger.exception("[AdminService] 数据库更新表单失败 form_code=%s: %s", form_code, e)
+            return {"success": False, "message": str(e)}
+
+    @classmethod
+    def _update_ontology_file(cls, form_code: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """通过文件系统更新表单本体"""
         existing = config_loader.get_ontology(form_code)
         if existing is None:
             return {"success": False, "message": f"表单 {form_code} 不存在"}
 
-        # 合并更新（保留未提交字段）
         merged = {**existing}
         if "formName" in payload and payload["formName"] is not None:
             merged["formName"] = payload["formName"]
@@ -82,13 +185,22 @@ class AdminService:
         return cls._write_ontology_file(form_code, merged)
 
     @classmethod
-    def delete_ontology(cls, form_code: str, auto_backup: bool = True) -> Dict[str, Any]:
-        """删除表单本体（自动备份到版本历史）"""
-        existing = config_loader.get_ontology(form_code)
-        if existing is None:
+    def delete_ontology(cls, form_code: str, db=None, auto_backup: bool = True) -> Dict[str, Any]:
+        """删除表单本体"""
+        if db:
+            return cls._delete_ontology_db(form_code, db, auto_backup)
+        
+        return cls._delete_ontology_file(form_code, auto_backup)
+
+    @classmethod
+    def _delete_ontology_db(cls, form_code: str, db, auto_backup: bool = True) -> Dict[str, Any]:
+        """通过数据库删除表单本体"""
+        from app.models.ontology import Ontology
+        
+        existing = db.query(Ontology).filter(Ontology.ontology_code == form_code).first()
+        if not existing:
             return {"success": False, "message": f"表单 {form_code} 不存在"}
 
-        # 自动备份当前版本
         backup_info = None
         if auto_backup:
             backup_result = cls.create_version(form_code, action="delete")
@@ -96,25 +208,59 @@ class AdminService:
                 backup_info = backup_result.get("version")
                 logger.info("[AdminService] 删除前自动备份 form_code=%s version_id=%s", form_code, backup_info.get("id") if backup_info else "N/A")
 
-        # 删除本体文件
-        file_path = _BASE_DIR / "ontologies" / f"{form_code}.json"
         try:
-            file_path.unlink()
+            db.delete(existing)
+            db.commit()
 
-            # 从场景映射中移除该表单
             cls._remove_from_scene_mappings(form_code)
+            
+            file_path = _BASE_DIR / "ontologies" / f"{form_code}.json"
+            if file_path.exists():
+                file_path.unlink()
 
             config_loader.reload_config("ontologies")
             config_loader.reload_config("scene_mappings")
 
-            logger.info("[AdminService] 删除表单 form_code=%s (已备份)", form_code)
+            logger.info("[AdminService] 数据库删除表单成功 form_code=%s", form_code)
             return {
                 "success": True,
                 "message": f"表单 {form_code} 已删除",
                 "backup": backup_info
             }
         except Exception as e:
-            logger.exception("[AdminService] 删除表单失败 form_code=%s: %s", form_code, e)
+            db.rollback()
+            logger.exception("[AdminService] 数据库删除表单失败 form_code=%s: %s", form_code, e)
+            return {"success": False, "message": str(e)}
+
+    @classmethod
+    def _delete_ontology_file(cls, form_code: str, auto_backup: bool = True) -> Dict[str, Any]:
+        """通过文件系统删除表单本体"""
+        existing = config_loader.get_ontology(form_code)
+        if existing is None:
+            return {"success": False, "message": f"表单 {form_code} 不存在"}
+
+        backup_info = None
+        if auto_backup:
+            backup_result = cls.create_version(form_code, action="delete")
+            if backup_result.get("success"):
+                backup_info = backup_result.get("version")
+                logger.info("[AdminService] 删除前自动备份 form_code=%s version_id=%s", form_code, backup_info.get("id") if backup_info else "N/A")
+
+        file_path = _BASE_DIR / "ontologies" / f"{form_code}.json"
+        try:
+            file_path.unlink()
+            cls._remove_from_scene_mappings(form_code)
+            config_loader.reload_config("ontologies")
+            config_loader.reload_config("scene_mappings")
+
+            logger.info("[AdminService] 文件删除表单成功 form_code=%s", form_code)
+            return {
+                "success": True,
+                "message": f"表单 {form_code} 已删除",
+                "backup": backup_info
+            }
+        except Exception as e:
+            logger.exception("[AdminService] 文件删除表单失败 form_code=%s: %s", form_code, e)
             return {"success": False, "message": str(e)}
 
     @classmethod

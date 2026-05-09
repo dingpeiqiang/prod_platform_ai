@@ -76,7 +76,7 @@ class DeployConfigRequest(BaseModel):
 
 
 @router.post("/chat/deploy-config")
-async def deploy_config(request: DeployConfigRequest):
+async def deploy_config(request: DeployConfigRequest, db: Session = Depends(get_db)):
     config_data = request.config
     keywords = request.keywords
 
@@ -89,9 +89,9 @@ async def deploy_config(request: DeployConfigRequest):
     logger.info("[deploy-config] 开始部署 form_code=%s form_name=%s", form_code, form_name)
 
     try:
-        ontology_result = AdminService.create_ontology(config_data)
+        ontology_result = AdminService.create_ontology(config_data, db=db)
         if not ontology_result.get("success"):
-            ontology_result = AdminService.update_ontology(form_code, config_data)
+            ontology_result = AdminService.update_ontology(form_code, config_data, db=db)
             if not ontology_result.get("success"):
                 return {"success": False, "message": ontology_result.get("message", "写入表单配置失败")}
 
@@ -141,7 +141,7 @@ class DeleteFormRequest(BaseModel):
 
 
 @router.post("/chat/delete-form")
-async def delete_form_endpoint(request: DeleteFormRequest):
+async def delete_form_endpoint(request: DeleteFormRequest, db: Session = Depends(get_db)):
     form_code = request.formCode.strip()
     if not form_code:
         return {"success": False, "message": "formCode 不能为空"}
@@ -149,7 +149,7 @@ async def delete_form_endpoint(request: DeleteFormRequest):
     logger.info("[delete-form] 删除表单 form_code=%s", form_code)
 
     try:
-        result = AdminService.delete_ontology(form_code, auto_backup=True)
+        result = AdminService.delete_ontology(form_code, db=db, auto_backup=True)
         return result
     except Exception as e:
         logger.exception("[delete-form] 删除失败: %s", e)

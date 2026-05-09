@@ -72,7 +72,7 @@ _logger.info("=" * 60)
 
 # ── 其他导入（在日志配置之后）─────────────────────────────────────────────────
 from app.core.config import get_settings
-from app.core.database import engine, Base
+from app.core.database import engine, Base, SessionLocal
 from app.api.form import router as form_router
 from app.api.config import router as config_router
 from app.api.validation import router as validation_router
@@ -85,6 +85,9 @@ from app.api.mcp import router as mcp_router
 
 settings = get_settings()
 Base.metadata.create_all(bind=engine)
+
+from app.core.config_loader import config_loader
+config_loader.set_db_session_factory(SessionLocal)
 
 # ── MCP 工具初始化 ──────────────────────────────────────────────────────────
 # 在应用启动时注册所有 MCP 工具

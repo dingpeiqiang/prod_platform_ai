@@ -30,7 +30,12 @@ class ConfigLoader:
         self.base_path = Path(__file__).parent.parent.parent / "config"
         self._config_cache: Dict[str, Any] = {}
         self._last_modified: Dict[str, float] = {}
+        self._db_session_factory = None
+        self._ontology_source = "database"
         self._load_all_configs()
+    
+    def set_db_session_factory(self, session_factory):
+        self._db_session_factory = session_factory
     
     def _load_all_configs(self):
         self._load_system_config()
@@ -79,6 +84,14 @@ class ConfigLoader:
             self._last_modified['scene_mappings'] = path.stat().st_mtime
     
     def _load_ontologies(self):
+        if self._ontology_source == "database":
+            self._load_ontologies_from_db()
+        elif self._ontology_source == "hybrid":
+            self._load_ontologies_hybrid()
+        else:
+            self._load_ontologies_from_file()
+    
+    def _load_ontologies_from_file(self):
         ontologies = {}
         ontologies_path = self.base_path / "ontologies"
         if ontologies_path.exists():
@@ -87,6 +100,48 @@ class ConfigLoader:
                 if data and 'formCode' in data:
                     ontologies[data['formCode']] = data
         self._config_cache['ontologies'] = ontologies
+        logger.info("[ConfigLoader] 从文件系统加载本体 count=%d", len(ontologies))
+    
+    def _load_ontologies_from_db(self):
+        if not self._db_session_factory:
+            logger.warning("[ConfigLoader] 数据库会话工厂未设置，回退到文件系统")
+            self._load_ontologies_from_file()
+            return
+        
+        try:
+            from app.models.ontology import Ontology
+            
+            db = self._db_session_factory()
+            try:
+                ontologies = {}
+                db_ontologies = db.query(Ontology).filter(Ontology.is_active == True).all()
+                
+                for o in db_ontologies:
+                    ontologies[o.ontology_code] = o.to_ontology_format()
+                
+                self._config_cache['ontologies'] = ontologies
+                logger.info("[ConfigLoader] 从数据库加载本体 count=%d", len(ontologies))
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error("[ConfigLoader] 数据库加载失败，回退到文件系统: %s", e)
+            self._load_ontologies_from_file()
+    
+    def _load_ontologies_hybrid(self):
+        self._load_ontologies_from_db()
+        db_ontologies = self._config_cache.get('ontologies', {})
+        
+        file_path = self.base_path / "ontologies"
+        if file_path.exists():
+            for file in file_path.glob("*.json"):
+                data = self._load_json(file)
+                if data and 'formCode' in data:
+                    code = data['formCode']
+                    if code not in db_ontologies:
+                        db_ontologies[code] = data
+        
+        self._config_cache['ontologies'] = db_ontologies
+        logger.info("[ConfigLoader] 混合模式加载本体 count=%d", len(db_ontologies))
     
     def _load_recommendations(self):
         path = self.base_path / "templates" / "recommendations.json"
