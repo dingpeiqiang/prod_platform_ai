@@ -167,7 +167,8 @@
 import { ElMessage } from 'element-plus';
 import WelcomeScreen from './WelcomeScreen.vue';
 import IntentPanel from './intent-panels/IntentPanel.vue';
-import { stepIcon, renderMarkdown, formatTime, getFormStatusText, listIntentPanels } from '../utils/chatUtils.js';
+import { stepIcon, renderMarkdown, formatTime, getFormStatusText } from '../utils/chatUtils.js';
+import { listIntentPanels } from '../composables/useIntentRegistry.js';
 const props = defineProps({
  messages: { type: Array, required: true },
  suggestions: { type: Array, default: () => [] }
