@@ -76,6 +76,8 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     messages: List[ChatMessage]
     userId: Optional[str] = None
+    formCode: Optional[str] = None  # 表单编码（用于校验等场景）
+    formData: Optional[Dict[str, Any]] = None  # 表单数据（用于校验等场景）
 
 
 class ChatResponse(BaseModel):
@@ -409,6 +411,11 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                             if intent_type == "form" and form_code in _FORM_CODE_TO_INTENT:
                                 intent_type = _FORM_CODE_TO_INTENT[form_code]
                                 logger.info(f"[路由] 表单 %s 使用专属 handler: %s", form_code, intent_type)
+
+                            if request.formCode:
+                                intent_data["form_code"] = request.formCode
+                            if request.formData:
+                                intent_data["form_data"] = request.formData
 
                             ctx = IntentContext(
                                 intent_data=intent_data,

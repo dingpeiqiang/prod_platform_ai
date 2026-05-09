@@ -924,7 +924,7 @@ const doSendMessage = async (text) => {
   await doSendMessageAfterHome(text)
 }
 
-const doSendMessageAfterHome = async (text, { skipUserPush = false } = {}) => {
+const doSendMessageAfterHome = async (text, { skipUserPush = false, formCode = null, formData = null } = {}) => {
 
   // ── 首次发消息：确保数据库会话已创建 ──────────────────
   await ensureDbSession(props.sessionId)
@@ -988,10 +988,20 @@ const doSendMessageAfterHome = async (text, { skipUserPush = false } = {}) => {
       .slice(-20)
       .map(m => ({ role: m.role, content: m.content || m.streamText || '' }))
 
+    const requestBody = {
+      messages: [...chatHistory, { role: 'user', content: text }]
+    }
+    if (formCode) {
+      requestBody.formCode = formCode
+    }
+    if (formData) {
+      requestBody.formData = formData
+    }
+
     const resp = await fetch('/api/v1/chat/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [...chatHistory, { role: 'user', content: text }] }),
+      body: JSON.stringify(requestBody),
       signal: abortCtrl.signal
     })
 
@@ -1287,30 +1297,6 @@ const handleEvent = (data, idx) => {
         content: errorContent
       })
       break
-    case 'validation_fail':
-      // 校验失败：显示错误列表
-      if (data.errors?.length) {
-        msg.reasoning.push({
-          type: 'error',
-          content: `❌ 校验失败：${data.errors.join('；')}`
-        })
-      }
-      if (data.warnings?.length) {
-        msg.reasoning.push({
-          type: 'warning',
-          content: `⚠️ 警告：${data.warnings.join('；')}`
-        })
-      }
-      break
-    case 'validation_pass':
-      // 校验通过：显示警告（若有）或不显示
-      if (data.warnings?.length) {
-        msg.reasoning.push({
-          type: 'warning',
-          content: `⚠️ 校验通过（有警告）：${data.warnings.join('；')}`
-        })
-      }
-      break
   }
 }
 
@@ -1588,7 +1574,9 @@ const handleAiValidation = ({ type, messages }) => {
 // 处理确认提交请求（从表单面板传来）
 // 将表单数据显式构造为聊天消息，通过 SSE 流触发后端 validate 意图
 const handleConfirmSubmit = async (data) => {
-  const schema = currentFormSchema.value
+  // 优先使用传入的 schema，否则使用 currentFormSchema
+  const schema = data.schema || currentFormSchema.value
+  console.log('[handleConfirmSubmit] 使用的 schema:', schema ? schema.formCode : 'null')
 
   // 保存待确认数据
   pendingConfirmForm.value = {
@@ -1616,12 +1604,19 @@ const handleConfirmSubmit = async (data) => {
 
   // 格式：字段名(字段编码)：值[code] —— 用方括号包裹 code，避免被 LLM 当作值的一部分
   let fieldLines = []
+  console.log('[handleConfirmSubmit] schema:', schema)
+  console.log('[handleConfirmSubmit] data.data:', data.data)
+  
   if (schema && schema.fields) {
+    console.log('[handleConfirmSubmit] schema.fields count:', schema.fields.length)
     for (const field of schema.fields) {
       const val = data.data[field.fieldCode]
+      console.log(`[handleConfirmSubmit] field ${field.fieldCode}:`, val)
+      
+      // 即使字段值为空，也显示出来，让后端校验必填字段
+      let displayVal
       if (val !== undefined && val !== null && val !== '') {
         // 枚举字段：显示 "显示名[code]"，让 LLM 提取 code 值进行校验
-        let displayVal
         const options = _getFieldOptions(field)
         if (options.length > 0) {
           if (Array.isArray(val)) {
@@ -1636,16 +1631,28 @@ const handleConfirmSubmit = async (data) => {
         } else {
           displayVal = Array.isArray(val) ? val.join(', ') : String(val)
         }
-        fieldLines.push(`- ${field.fieldName}(${field.fieldCode})：${displayVal}`)
+      } else {
+        displayVal = '(未填写)'
       }
+      
+      fieldLines.push(`- ${field.fieldName}(${field.fieldCode})：${displayVal}`)
     }
+  } else {
+    console.warn('[handleConfirmSubmit] schema 或 schema.fields 不存在')
   }
+  
+  console.log('[handleConfirmSubmit] fieldLines:', fieldLines)
   const validationMessage = `请帮我校验【${data.formName}】（${data.formCode}）的填写内容是否符合业务规则：\n${fieldLines.join('\n')}`
+  console.log('[handleConfirmSubmit] validationMessage:', validationMessage)
 
   // 走 SSE 流（注意：不能走 doSendMessage，它会检查 pendingConfirmForm 误判为确认/取消）
   // 注意：doSendMessageAfterHome 内部会处理用户消息的 UI 显示和数据库保存，
   // 因此这里不需要手动 push 消息和 saveMessage，避免重复保存
-  await doSendMessageAfterHome(validationMessage)
+  // 同时传递表单数据，让后端 ValidationHandler 能够直接获取到表单信息
+  await doSendMessageAfterHome(validationMessage, {
+    formCode: data.formCode,
+    formData: data.data
+  })
 }
 
 // 检查用户消息是否确认提交

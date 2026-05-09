@@ -455,7 +455,8 @@ const handleSubmit = async () => {
     formId: props.formId,
     formCode: props.schema.formCode,
     formName: props.schema.formName,
-    data: { ...localFormData }
+    data: { ...localFormData },
+    schema: props.schema  // 添加 schema，让后端知道字段定义
   })
 }
 

@@ -107,9 +107,26 @@ async def submit_form(request: FormSubmitRequest, db: Session = Depends(get_db))
         if not validation_result.valid:
             logger.warning("[form/submit] 规则引擎校验失败 form_id=%s errors=%s",
                            request.formId, validation_result.errors)
+            
+            # 构建更详细的错误信息，包含字段名和具体错误
+            error_details = []
+            for issue in validation_result.issues:
+                field_name = issue.get('field_name', '未知字段')
+                field_code = issue.get('field', '')
+                message = issue.get('message', '')
+                
+                detail = f"{field_name}"
+                if field_code:
+                    detail += f"({field_code})"
+                detail += f": {message}"
+                
+                error_details.append(detail)
+            
+            detailed_message = "\n".join(error_details) if error_details else "; ".join(validation_result.errors)
+            
             return FormSubmitResponse(
                 success=False,
-                message="; ".join(validation_result.errors),
+                message=detailed_message,
                 formInstanceId=None
             )
 
@@ -160,9 +177,28 @@ async def submit_form(request: FormSubmitRequest, db: Session = Depends(get_db))
             if not llm_validation_passed:
                 logger.warning("[form/submit] LLM智能校验失败 form_id=%s errors=%s",
                                request.formId, llm_errors)
+                # 构建更详细的错误信息，包含表单信息
+                error_details = []
+                for error in llm_errors:
+                    field_name = error.get('field', '未知字段')
+                    field_code = error.get('fieldCode', '')
+                    message = error.get('message', '')
+                    suggestion = error.get('suggestion', '')
+                    
+                    detail = f"{field_name}"
+                    if field_code:
+                        detail += f"({field_code})"
+                    detail += f": {message}"
+                    if suggestion:
+                        detail += f" - {suggestion}"
+                    
+                    error_details.append(detail)
+                
+                detailed_message = "\n".join(error_details) if error_details else ("; ".join([e.get('message', '') for e in llm_errors]) if llm_errors else "表单智能校验未通过")
+                
                 return FormSubmitResponse(
                     success=False,
-                    message="; ".join(llm_errors) if llm_errors else "表单智能校验未通过",
+                    message=detailed_message,
                     formInstanceId=None
                 )
 
