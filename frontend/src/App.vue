@@ -1,5 +1,26 @@
 <template>
   <div id="app">
+    <!-- 网络状态提示 -->
+    <transition name="slide-down">
+      <div v-if="!isOnline" class="network-status-bar offline">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="20" x2="21" y2="23"/>
+          <line x1="12" y1="14" x2="12" y2="23"/>
+          <line x1="6" y1="8" x2="6" y2="23"/>
+          <line x1="2" y1="2" x2="23" y2="23"/>
+        </svg>
+        <span>网络连接已断开，请检查网络设置</span>
+        <button class="reconnect-btn" @click="checkNetwork">重新连接</button>
+      </div>
+      <div v-else-if="!isBackendOnline" class="network-status-bar warning">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin-icon">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <path d="M9 12l2 2 4-4"/>
+        </svg>
+        <span>服务器连接异常，正在自动重连...</span>
+      </div>
+    </transition>
+
     <!-- 未登录：显示登录页 -->
     <LoginScreen v-if="!userStore.isLoggedIn" />
 
@@ -44,7 +65,7 @@
 </template>
 
 <script setup>
-import { ref, computed, provide, onMounted, watch } from 'vue'
+import { ref, computed, provide, onMounted, watch, onUnmounted } from 'vue'
 import Sidebar from './components/Sidebar.vue'
 import ChatAssistant from './components/ChatAssistant.vue'
 import LoginScreen from './components/LoginScreen.vue'
@@ -52,6 +73,14 @@ import DashboardHome from './components/DashboardHome.vue'
 import { useUserStore } from './stores/user'
 import { useTheme } from './composables/useTheme'
 import { createSession as apiCreateSession, getSessions as apiGetSessions, deleteSession as apiDeleteSession, updateSessionTitle as apiUpdateSessionTitle } from './services/chatApi.js'
+
+// 网络状态
+const isOnline = ref(navigator.onLine)
+const isBackendOnline = ref(true)
+const reconnectAttempts = ref(0)
+const isReconnecting = ref(false)
+let backendCheckInterval = null
+let reconnectTimeout = null
 
 const userStore = useUserStore()
 const { initTheme } = useTheme()
@@ -294,6 +323,109 @@ const initDbSessions = async () => {
   }
 }
 
+// ── 检查后端服务是否在线 ──────────────────────────────────
+const checkBackendOnline = async () => {
+  if (!isOnline.value) {
+    isBackendOnline.value = false
+    return
+  }
+  try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 5000)
+    const response = await fetch('/api/v1/health', { 
+      method: 'HEAD', 
+      signal: controller.signal 
+    })
+    clearTimeout(timeoutId)
+    
+    if (response.ok && !isBackendOnline.value) {
+      // 从离线恢复到在线
+      reconnectAttempts.value = 0
+      isReconnecting.value = false
+    }
+    isBackendOnline.value = response.ok
+  } catch {
+    const shouldReconnect = isBackendOnline.value || reconnectAttempts.value === 0
+    if (shouldReconnect) {
+      // 刚刚断开连接，或者是首次检查失败，开始重连流程
+      // 先设置重连次数，再设置离线状态，确保 UI 显示正确
+      reconnectAttempts.value = 1
+      isReconnecting.value = true
+      isBackendOnline.value = false
+      attemptReconnect()
+    } else {
+      isBackendOnline.value = false
+    }
+  }
+}
+
+// ── 开始重连流程（带指数退避）──────────────────────────────
+const startReconnect = () => {
+  if (isReconnecting.value) return
+  
+  isReconnecting.value = true
+  reconnectAttempts.value = 1  // 从第1次开始
+  attemptReconnect()
+}
+
+// ── 尝试重连 ──────────────────────────────────────────────
+const attemptReconnect = async () => {
+  if (!isOnline.value) {
+    // 网络离线，等待网络恢复
+    isReconnecting.value = false
+    return
+  }
+  
+  try {
+    const response = await fetch('/api/v1/health', { method: 'HEAD' })
+    if (response.ok) {
+      // 重连成功
+      isBackendOnline.value = true
+      isReconnecting.value = false
+      reconnectAttempts.value = 0
+      return
+    }
+  } catch {
+    // 重连失败，继续尝试
+  }
+  
+  // 指数退避：1s, 2s, 4s, 8s, 16s, 最大30s
+  reconnectAttempts.value++
+  const delay = Math.min(Math.pow(2, reconnectAttempts.value - 1) * 1000, 30000)
+  
+  reconnectTimeout = setTimeout(() => {
+    if (!isBackendOnline.value) {
+      attemptReconnect()
+    }
+  }, delay)
+}
+
+// ── 手动检查网络 ──────────────────────────────────────────
+const checkNetwork = () => {
+  if (navigator.onLine) {
+    checkBackendOnline()
+  }
+}
+
+// ── 网络状态变化处理 ──────────────────────────────────────
+const handleOnline = () => {
+  isOnline.value = true
+  if (!isBackendOnline.value) {
+    startReconnect()
+  } else {
+    checkBackendOnline()
+  }
+}
+
+const handleOffline = () => {
+  isOnline.value = false
+  isBackendOnline.value = false
+  isReconnecting.value = false
+  if (reconnectTimeout) {
+    clearTimeout(reconnectTimeout)
+  }
+}
+
 // ── 监听登录状态 ───────────────────────────────────────────
 let wasLoggedIn = false
 
@@ -312,10 +444,118 @@ watch(() => userStore.isLoggedIn, (loggedIn) => {
 onMounted(() => {
   // 初始化主题（在应用加载时立即执行）
   initTheme()
+  
+  // 添加网络状态监听
+  window.addEventListener('online', handleOnline)
+  window.addEventListener('offline', handleOffline)
+  
+  // 初始检查后端服务状态
+  checkBackendOnline()
+  
+  // 定期检查后端服务状态（每30秒）
+  backendCheckInterval = setInterval(checkBackendOnline, 30000)
+})
+
+onUnmounted(() => {
+  // 清理网络状态监听
+  window.removeEventListener('online', handleOnline)
+  window.removeEventListener('offline', handleOffline)
+  
+  // 清理定时器
+  if (backendCheckInterval) {
+    clearInterval(backendCheckInterval)
+  }
+  if (reconnectTimeout) {
+    clearTimeout(reconnectTimeout)
+  }
 })
 </script>
 
 <style scoped>
+/* 网络状态提示条 */
+.network-status-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.network-status-bar.offline {
+  background: var(--color-error-500);
+  color: var(--text-inverse);
+}
+
+.network-status-bar.warning {
+  background: var(--color-warning-500);
+  color: var(--text-inverse);
+}
+
+.network-status-bar svg {
+  flex-shrink: 0;
+}
+
+.network-status-bar span {
+  flex: 1;
+}
+
+.reconnect-btn {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: var(--radius-md);
+  color: var(--text-inverse);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.reconnect-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.reconnect-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.reconnect-status {
+  font-size: var(--font-size-xs);
+  opacity: 0.8;
+}
+
+.spin-icon {
+  animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 动画 */
+.slide-down-enter-active,
+.slide-down-leave-active {
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.slide-down-enter-from,
+.slide-down-leave-to {
+  transform: translateY(-100%);
+  opacity: 0;
+}
+
 /* App 主容器 */
 #app {
   display: flex;

@@ -82,6 +82,7 @@ from app.api.chat_v2 import router as chat_crud_router
 from app.api.chat_with_tools import router as chat_with_tools_router
 from app.api.harness import router as harness_router
 from app.api.mcp import router as mcp_router
+from app.api.health import router as health_router
 
 settings = get_settings()
 Base.metadata.create_all(bind=engine)
@@ -118,6 +119,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(health_router)  # 健康检查接口
 app.include_router(form_router)
 app.include_router(config_router)
 app.include_router(validation_router)
