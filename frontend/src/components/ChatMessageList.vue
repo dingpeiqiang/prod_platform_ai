@@ -147,10 +147,9 @@
 
             <div v-if="msg.done && (msg.streamText || msg.content)" class="msg-actions">
               <button class="action-btn" @click="copyText(msg.streamText || msg.content)" title="复制">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
                 </svg>
-                复制
               </button>
             </div>
           </div>
@@ -584,26 +583,34 @@ defineExpose({ scrollToBottom });
 
 .msg-actions {
   display: flex;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
+  justify-content: flex-end;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
 }
 
 .action-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
   background: transparent;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-xs);
-  color: var(--text-tertiary);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-quaternary);
   cursor: pointer;
   transition: all var(--transition-fast);
+  opacity: 0;
+}
+
+.bubble:hover + .msg-actions .action-btn,
+.msg-actions:hover .action-btn {
+  opacity: 1;
 }
 
 .action-btn:hover {
-  border-color: var(--color-primary-300);
-  color: var(--color-primary-600);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
 }
 </style>

@@ -69,7 +69,6 @@
           </svg>
         </button>
       </div>
-      <p class="input-hint">内容由 AI 生成，仅供参考</p>
     </div>
 
     <!-- 待办、快捷、预警侧边栏 -->

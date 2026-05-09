@@ -27,8 +27,8 @@
             <circle cx="16.5" cy="15.5" r="1"/>
           </svg>
         </div>
-        <h1 class="logo-title">数智赋能</h1>
-        <p class="logo-subtitle">智能表单填写系统</p>
+        <h1 class="logo-title">产商品研发助手</h1>
+        <p class="logo-subtitle">AI 驱动的智能助手</p>
       </div>
 
       <!-- 表单 -->

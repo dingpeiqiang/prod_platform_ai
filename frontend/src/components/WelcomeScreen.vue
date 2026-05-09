@@ -22,7 +22,7 @@
       </div>
     </div>
     <h2 class="welcome-title">有什么可以帮你的？</h2>
-    <p class="welcome-subtitle">数智赋能，帮你快速填写各类表单</p>
+    <p class="welcome-subtitle">产商品研发助手，助力高效填写业务表单</p>
     <div class="welcome-suggestions">
       <button
         v-for="s in suggestions"

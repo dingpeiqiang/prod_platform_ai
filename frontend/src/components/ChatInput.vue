@@ -45,7 +45,6 @@
         </button>
       </div>
     </div>
-    <div class="input-hint">内容由 AI 生成，仅供参考</div>
   </div>
 </template>
 
