@@ -400,7 +400,7 @@ registerPostProcessor('form', async (msg, intentData) => {
     console.log('[form 后处理] 有待确认表单且校验通过，自动触发提交')
     
     // 简化消息：只显示校验通过，不显示详细内容（提交成功后会显示）
-    msg.streamText = (msg.streamText || '') + '\n\n---\n\n✅ 校验通过，正在提交表单...'
+    msg.streamText = (msg.streamText || '') + '\n\n✅ 校验通过，正在提交表单...'
     msg.content = msg.streamText
     
     // 删除 validation_pass 标记，防止 ValidationResultPanel 面板显示
