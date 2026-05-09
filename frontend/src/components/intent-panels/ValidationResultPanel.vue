@@ -171,8 +171,8 @@ const groupedErrors = computed(() => {
 .form-code-tag {
   font-size: 11px;
   font-weight: 400;
-  color: #888;
-  background: #f0f0f0;
+  color: var(--text-tertiary);
+  background: var(--bg-tertiary);
   padding: 2px 6px;
   border-radius: 4px;
 }
@@ -223,7 +223,7 @@ const groupedErrors = computed(() => {
 .error-field {
   font-size: 13px;
   font-weight: 600;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .source-tags {

@@ -64,8 +64,8 @@
           <el-table-column prop="description" label="描述" show-overflow-tooltip />
           <el-table-column label="Schema" width="80" align="center">
             <template #default="{ row }">
-              <el-icon v-if="row.hasSchema" color="#67c23a"><Check /></el-icon>
-              <el-icon v-else color="#909399"><Close /></el-icon>
+              <el-icon v-if="row.hasSchema" :color="hasSchemaColor"><Check /></el-icon>
+              <el-icon v-else :color="noSchemaColor"><Close /></el-icon>
             </template>
           </el-table-column>
         </el-table>
@@ -279,6 +279,14 @@ const selectedForm = computed(() => {
   return forms.value.find(f => f.formCode === selectedFormCode.value) || null
 })
 
+const hasSchemaColor = computed(() => {
+  return getComputedStyle(document.documentElement).getPropertyValue('--color-success-600').trim()
+})
+
+const noSchemaColor = computed(() => {
+  return getComputedStyle(document.documentElement).getPropertyValue('--text-tertiary').trim()
+})
+
 // 打开对话框
 const open = async () => {
   visible.value = true
@@ -426,7 +434,7 @@ defineExpose({
 
 .step-description {
   margin-bottom: 16px;
-  color: #606266;
+  color: var(--text-secondary);
   font-size: 14px;
 }
 
@@ -444,7 +452,7 @@ defineExpose({
 
 .form-preview h4 {
   margin-bottom: 12px;
-  color: #303133;
+  color: var(--text-primary);
   font-size: 15px;
 }
 
@@ -454,12 +462,12 @@ defineExpose({
 
 .card-header {
   font-weight: 500;
-  color: #303133;
+  color: var(--text-primary);
 }
 
 .form-tip {
   margin-left: 8px;
-  color: #909399;
+  color: var(--text-tertiary);
   font-size: 12px;
 }
 

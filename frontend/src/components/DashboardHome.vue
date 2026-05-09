@@ -329,7 +329,7 @@ onMounted(() => {
   gap: 24px;
   height: 100%;
   padding: 40px 48px;
-  background: linear-gradient(180deg, #fafafa 0%, #f5f5f5 100%);
+  background: var(--bg-secondary);
   overflow: hidden;
 }
 
@@ -530,13 +530,13 @@ onMounted(() => {
 .widget-title {
   font-size: 14px;
   font-weight: 600;
-  color: #333;
+  color: var(--text-secondary);
   flex: 1;
 }
 
 .widget-count {
-  background: #818cf8;
-  color: #fff;
+  background: var(--color-primary-400);
+  color: var(--text-inverse);
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 10px;
@@ -615,20 +615,20 @@ onMounted(() => {
 .todo-text {
   flex: 1;
   font-size: 13px;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .todo-delete {
   background: none;
   border: none;
-  color: #ccc;
+  color: var(--text-tertiary);
   cursor: pointer;
   font-size: 16px;
   padding: 0 4px;
 }
 
 .todo-delete:hover {
-  color: #f87171;
+  color: var(--color-error-500);
 }
 
 /* 快捷入口 */
@@ -712,19 +712,19 @@ onMounted(() => {
 .alert-dismiss {
   background: none;
   border: none;
-  color: #ccc;
+  color: var(--text-tertiary);
   cursor: pointer;
   font-size: 14px;
   padding: 0 2px;
 }
 
 .alert-dismiss:hover {
-  color: #999;
+  color: var(--text-secondary);
 }
 
 .empty-tip {
   text-align: center;
-  color: #aaa;
+  color: var(--text-tertiary);
   font-size: 12px;
   padding: 16px 0;
 }

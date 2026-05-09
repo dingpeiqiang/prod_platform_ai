@@ -327,7 +327,7 @@ const startImport = async () => {
 .card-header {
   font-weight: 600;
   font-size: 16px;
-  color: #303133;
+  color: var(--text-primary);
 }
 
 .import-content {
@@ -337,26 +337,26 @@ const startImport = async () => {
 .step-section {
   margin-bottom: 24px;
   padding: 16px;
-  background: #f9fafb;
+  background: var(--bg-secondary);
   border-radius: 8px;
 }
 
 .step-section h4 {
   margin: 0 0 8px 0;
-  color: #303133;
+  color: var(--text-primary);
   font-size: 15px;
 }
 
 .step-description {
   margin: 0 0 12px 0;
-  color: #606266;
+  color: var(--text-secondary);
   font-size: 14px;
   line-height: 1.6;
 }
 
 .hint {
   margin: 8px 0 0 0;
-  color: #909399;
+  color: var(--text-tertiary);
   font-size: 13px;
 }
 
@@ -368,7 +368,7 @@ const startImport = async () => {
 }
 
 .file-size {
-  color: #909399;
+  color: var(--text-tertiary);
   font-size: 13px;
 }
 
@@ -379,7 +379,7 @@ const startImport = async () => {
 
 .progress-text {
   margin-top: 8px;
-  color: #606266;
+  color: var(--text-secondary);
   font-size: 14px;
 }
 

@@ -218,7 +218,7 @@ const topFieldStats = (fieldStats) => {
   align-items: center;
   gap: 8px;
   font-weight: 600;
-  color: #303133;
+  color: var(--text-primary);
   margin-bottom: 12px;
 }
 .history-score {
@@ -237,40 +237,40 @@ const topFieldStats = (fieldStats) => {
   font-size: 16px;
   font-weight: 700;
 }
-.score-ring.level-good { background: #e1f3d8; color: #67c23a; }
-.score-ring.level-ok { background: #fdf6ec; color: #e6a23c; }
-.score-ring.level-bad { background: #fde2e2; color: #f56c6c; }
-.score-label { color: #909399; font-size: 13px; }
+.score-ring.level-good { background: var(--color-success-100); color: var(--color-success-600); }
+.score-ring.level-ok { background: var(--color-warning-100); color: var(--color-warning-600); }
+.score-ring.level-bad { background: var(--color-error-100); color: var(--color-error-600); }
+.score-label { color: var(--text-tertiary); font-size: 13px; }
 .stat-row {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #606266;
+  color: var(--text-secondary);
   font-size: 13px;
   margin-bottom: 8px;
 }
 .no-data-tip {
-  color: #909399;
+  color: var(--text-tertiary);
   font-size: 13px;
   padding: 16px 0;
   text-align: center;
 }
 .recommend-list { margin-top: 8px; }
-.recommend-title { font-size: 12px; color: #909399; margin-bottom: 6px; }
-.recommend-item { font-size: 12.5px; color: #606266; padding: 4px 0; }
-.import-done { font-size: 14px; color: #303133; margin-bottom: 12px; }
+.recommend-title { font-size: 12px; color: var(--text-tertiary); margin-bottom: 6px; }
+.recommend-item { font-size: 12.5px; color: var(--text-secondary); padding: 4px 0; }
+.import-done { font-size: 14px; color: var(--text-primary); margin-bottom: 12px; }
 .field-dist { margin-top: 12px; }
-.dist-title { font-size: 12px; color: #909399; margin-bottom: 8px; }
+.dist-title { font-size: 12px; color: var(--text-tertiary); margin-bottom: 8px; }
 .dist-item {
   display: flex;
   justify-content: space-between;
   font-size: 12.5px;
   padding: 4px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-light);
 }
-.fc-name { color: #606266; }
-.fc-count { color: #909399; font-size: 12px; }
-.stat-detail { font-size: 12.5px; color: #606266; padding: 3px 0; }
+.fc-name { color: var(--text-secondary); }
+.fc-count { color: var(--text-tertiary); font-size: 12px; }
+.stat-detail { font-size: 12.5px; color: var(--text-secondary); padding: 3px 0; }
 .gen-data-btn {
   display: inline-flex;
   align-items: center;
@@ -312,5 +312,5 @@ const topFieldStats = (fieldStats) => {
 /* 导出结果样式 */
 .export-result { background: var(--bg-secondary); padding: 12px; border-radius: 6px; margin-bottom: 12px; }
 .export-result p { margin: 4px 0; font-size: 13px; color: var(--text-secondary); }
-.export-hint { color: #909399 !important; font-size: 12px !important; }
+.export-hint { color: var(--text-tertiary) !important; font-size: 12px !important; }
 </style>

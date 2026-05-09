@@ -180,9 +180,9 @@ const toggleEntity = (idx) => {
 .config-desc {
   padding: 10px 18px;
   font-size: 13px;
-  color: #666;
+  color: var(--text-secondary);
   line-height: 1.6;
-  border-bottom: 1px solid #f5f5f5;
+  border-bottom: 1px solid var(--border-light);
 }
 
 /* 实体组 */
@@ -202,17 +202,17 @@ const toggleEntity = (idx) => {
   padding: 6px 8px;
   font-size: 13.5px;
   font-weight: 500;
-  color: #333;
+  color: var(--text-primary);
   cursor: pointer;
   border-radius: 6px;
   transition: background .15s;
 }
 .entity-name:hover {
-  background: #f5f5f5;
+  background: var(--bg-tertiary);
 }
 .field-count {
   font-size: 11px;
-  color: #aaa;
+  color: var(--text-tertiary);
   font-weight: 400;
   margin-left: 4px;
 }
@@ -241,7 +241,7 @@ const toggleEntity = (idx) => {
 }
 .field-name {
   flex: 1;
-  color: #333;
+  color: var(--text-primary);
 }
 .field-type-badge {
   padding: 2px 8px;
@@ -264,16 +264,16 @@ const toggleEntity = (idx) => {
 /* 关键词 */
 .keywords-section {
   padding: 10px 18px;
-  border-top: 1px solid #f5f5f5;
+  border-top: 1px solid var(--border-light);
 }
 .section-label {
   font-size: 12.5px;
   font-weight: 500;
-  color: #666;
+  color: var(--text-secondary);
   margin-bottom: 8px;
 }
 .error-label {
-  color: #d97706;
+  color: var(--color-warning-600);
 }
 .keyword-tags {
   display: flex;
@@ -292,13 +292,13 @@ const toggleEntity = (idx) => {
 /* 校验错误 */
 .errors-section {
   padding: 10px 18px;
-  border-top: 1px solid #f5f5f5;
+  border-top: 1px solid var(--border-light);
 }
 .error-list {
   margin: 0;
   padding-left: 18px;
   font-size: 12.5px;
-  color: #d97706;
+  color: var(--color-warning-600);
   line-height: 1.8;
 }
 
@@ -307,8 +307,8 @@ const toggleEntity = (idx) => {
   display: flex;
   gap: 10px;
   padding: 14px 18px;
-  border-top: 1px solid #f5f5f5;
-  background: #fafafa;
+  border-top: 1px solid var(--border-light);
+  background: var(--bg-secondary);
 }
 .deploy-btn {
   flex: 1;
