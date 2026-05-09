@@ -268,7 +268,6 @@
 
 <script setup>
 import { ref, computed, nextTick, onMounted, watch } from 'vue'
-import { marked } from 'marked'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import FormPanel from './FormPanel.vue'
 import ConfigCard from './ConfigCard.vue'
@@ -282,8 +281,9 @@ import ValidationResultPanel from './intent-panels/ValidationResultPanel.vue'
 import { registerEventHandler, registerPostProcessor, getEventHandler, getEventPanel, getPostProcessor, listIntentPanels } from '../composables/useIntentRegistry.js'
 // 数据库持久化 API
 import { createSession as apiCreateSession, saveMessage, updateMessage, loadMessages as apiLoadMessages, deleteSession as apiDeleteSession } from '../services/chatApi.js'
+// 工具函数
+import { genId, stepIcon, formatStepResult, renderMarkdown, formatMarkdownText, formatTime, getFormStatusText, formatVersionTime } from '../utils/chatUtils.js'
 
-marked.setOptions({ breaks: true, gfm: true })
 
 // ── 意图事件处理器注册 ──────────────────────────────
 // 将 SSE 事件处理逻辑从 handleEvent switch/case 迁移到注册器
@@ -385,10 +385,10 @@ registerPostProcessor('form', async (msg, intentData) => {
   // 情况1：有活动表单卡片（status === 'filling'）
   // 情况2：待确认提交（pendingConfirmForm 存在，等待用户回复确认/取消）
   const hasActiveForm = activeFormCard.value?.status === 'filling'
-  const hasPendingConfirm = !!pendingConfirmForm
+  const hasPendingConfirm = !!pendingConfirmForm.value
 
   if (hasActiveForm || hasPendingConfirm) {
-    const formName = activeFormCard.value?.formName || pendingConfirmForm?.formName || '当前表单'
+    const formName = activeFormCard.value?.formName || pendingConfirmForm.value?.formName || '当前表单'
     // 推送单独的警告消息，不替换原消息内容
     const warnMsg = {
       id: genId(), role: 'assistant',
@@ -430,16 +430,16 @@ registerPostProcessor('validate', async (msg) => {
   if (validationFail) {
     // 校验失败：清除待确认状态
     console.log('[validate 后处理] 校验失败，清除 pendingConfirmForm')
-    pendingConfirmForm = null
+    pendingConfirmForm.value = null
     // streamText 已包含校验结果，不需要额外处理
   } else if (validationPass) {
     // 校验通过：追加确认提示到 streamText（模板渲染优先取 streamText）
-    if (pendingConfirmForm) {
-      const schema = pendingConfirmForm.schema
+    if (pendingConfirmForm.value) {
+      const schema = pendingConfirmForm.value.schema
       let previewLines = []
       if (schema && schema.fields) {
         for (const field of schema.fields) {
-          const val = pendingConfirmForm.data[field.fieldCode]
+          const val = pendingConfirmForm.value.data[field.fieldCode]
           if (val !== undefined && val !== null && val !== '') {
             const displayVal = Array.isArray(val) ? val.join(', ') : String(val)
             previewLines.push(`- **${field.fieldName}**: ${displayVal}`)
@@ -453,7 +453,7 @@ registerPostProcessor('validate', async (msg) => {
   } else {
     // 没有明确的校验结果事件（LLM 未返回 validation_pass/fail）
     // 兜底：如果 pendingConfirmForm 存在，直接显示确认提示
-    if (pendingConfirmForm) {
+    if (pendingConfirmForm.value) {
       const confirmText = `\n\n---\n\n请确认是否提交当前表单？（回复"确认"或"好的"执行提交）`
       msg.streamText = (msg.streamText || '') + confirmText
     }
@@ -485,6 +485,7 @@ const currentFormCardMsgId = ref('')  // 表单卡片归属的消息 ID，用于
 // 新的活动表单卡片（formCard 作为消息体，右侧栏从这儿读取）
 const activeFormCard = ref(null)  // 当前活动表单的 formCard 引用
 const activeFormMsgId = ref('')   // 当前活动表单的消息 ID
+const pendingConfirmForm = ref(null)  // 待确认提交的表单数据
 
 let abortCtrl = null
 
@@ -678,238 +679,6 @@ const quickActions = [
   { key: 'config',  label: '+ 新表单', content: '我想添加一种新的业务表单', color: '#f472b6' },
 ]
 
-const genId = () => `msg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
-const stepIcon = (type) => ({ thinking: '💭', reasoning: '🔍', result: '✅', error: '❌' }[type] || '•')
-
-const formatStepResult = (result) => {
-  if (!result) return ''
-  if (typeof result === 'string') return result
-  if (typeof result !== 'object') return String(result)
-
-  // ── LLM 调用（model / temperature / maxTokens / promptLength）─────────
-  if (result.model || result.provider) {
-    const parts = []
-    if (result.model) parts.push(`调用模型: ${result.model}`)
-    if (result.provider) parts.push(`服务商: ${result.provider}`)
-    if (result.temperature !== undefined) parts.push(`温度: ${result.temperature}`)
-    if (result.maxTokens !== undefined) parts.push(`最大Token: ${result.maxTokens}`)
-    if (result.promptLength !== undefined) parts.push(`Prompt: ${result.promptLength} 字`)
-    if (result.elapsed !== undefined) parts.push(`耗时: ${result.elapsed}s`)
-    if (result.retry) parts.push(`⚠️ 已重试 1 次`)
-    return parts.join('\n')
-  }
-
-  // ── MCP 工具执行（tools / totalTools）───────────────────────────────
-  if (result.tools && Array.isArray(result.tools)) {
-    const lines = [`共 ${result.totalTools} 个工具调用`]
-    result.tools.forEach(t => {
-      const icon = t.success ? '✅' : '❌'
-      const fields = t.fields && t.fields.length ? ` → ${t.fields.join(', ')}` : ''
-      lines.push(`${icon} ${t.name}${fields}`)
-    })
-    if (result.extractedFields && result.extractedFields.length) {
-      lines.push(`📝 提取字段: ${result.extractedFields.slice(0, 8).join(', ')}${result.extractedFields.length > 8 ? '...' : ''}`)
-    }
-    return lines.join('\n')
-  }
-
-  // ── 意图识别完成（intentType / formCode / extractedFields）─────────
-  if (result.intentType !== undefined || result.formCode !== undefined) {
-    const lines = []
-    if (result.intentType) lines.push(`意图类型: ${result.intentType}`)
-    if (result.formCode) lines.push(`表单编码: ${result.formCode}`)
-    if (result.formName) lines.push(`表单名称: ${result.formName}`)
-    if (result.extractedFields && result.extractedFields.length) lines.push(`提取字段 (${result.extractedCount}): ${result.extractedFields.slice(0, 6).join(', ')}${result.extractedCount > 6 ? '...' : ''}`)
-    if (result.confidence !== undefined) lines.push(`置信度: ${(result.confidence * 100).toFixed(0)}%`)
-    if (result.elapsed !== undefined) lines.push(`耗时: ${result.elapsed}s`)
-    if (result.retryCount) lines.push(`⚠️ 重试: ${result.retryCount} 次`)
-    return lines.join('\n')
-  }
-
-  // ── 表单识别（formCode / formName / confidenceLevel）────────────────
-  if (result.formName !== undefined && !result.extractedFields) {
-    const lines = []
-    if (result.formCode) lines.push(`表单编码: ${result.formCode}`)
-    if (result.formName) lines.push(`表单名称: ${result.formName}`)
-    if (result.confidence !== undefined) lines.push(`置信度: ${(result.confidence * 100).toFixed(0)}% (${result.confidenceLevel})`)
-    return lines.join('\n')
-  }
-
-  // ── 提取字段（extractedFields / extractedCount）────────────────────
-  if (result.extractedCount !== undefined) {
-    const lines = [`提取字段数: ${result.extractedCount}`]
-    if (result.extractedFields && result.extractedFields.length) {
-      lines.push(`字段列表: ${result.extractedFields.slice(0, 8).join(', ')}${result.extractedCount > 8 ? ` ...等${result.extractedCount}个` : ''}`)
-    }
-    if (result.sample) {
-      const entries = Object.entries(result.sample).slice(0, 4)
-      entries.forEach(([k, v]) => lines.push(`  ${k}: ${String(v).substring(0, 30)}`))
-    }
-    if (result.confidence !== undefined) lines.push(`置信度: ${(result.confidence * 100).toFixed(0)}%`)
-    return lines.join('\n')
-  }
-
-  // ── 历史推荐（fieldCount / fieldSummary）──────────────────────────
-  if (result.fieldCount !== undefined && result.fieldSummary) {
-    const lines = [`推荐字段数: ${result.fieldCount}`]
-    if (result.totalRecommendations !== undefined) lines.push(`推荐总数: ${result.totalRecommendations} 条`)
-    const top = Object.entries(result.fieldSummary).slice(0, 5)
-    top.forEach(([k, v]) => lines.push(`  ${k}: ${v} 条`))
-    return lines.join('\n')
-  }
-
-  // ── 校验结果（passed / totalErrors）───────────────────────────────
-  if (result.passed !== undefined && result.totalErrors !== undefined) {
-    const lines = []
-    if (result.totalErrors !== undefined) lines.push(`错误数: ${result.totalErrors}`)
-    if (result.totalWarnings !== undefined) lines.push(`警告数: ${result.totalWarnings}`)
-    if (result.ruleEngineErrors !== undefined) lines.push(`规则引擎错误: ${result.ruleEngineErrors}`)
-    if (result.llmErrors !== undefined) lines.push(`AI 校验错误: ${result.llmErrors}`)
-    lines.push(`结果: ${result.passed ? '✅ 全部通过' : '❌ 存在问题'}`)
-    return lines.join('\n')
-  }
-
-  // ── 规则引擎校验（fieldsChecked / issues）─────────────────────────
-  if (result.fieldsChecked && result.elapsedMs !== undefined) {
-    const lines = [`检查字段: ${result.fieldCount} 个`, `耗时: ${result.elapsedMs}ms`]
-    lines.push(`结果: ${result.passed ? '✅ 通过' : `❌ ${result.issueCount} 个问题`}`)
-    if (result.issues && result.issues.length) {
-      result.issues.slice(0, 3).forEach(iss => {
-        lines.push(`  ❌ ${iss.field_name}: ${iss.message.substring(0, 40)}`)
-      })
-    }
-    return lines.join('\n')
-  }
-
-  // ── AI 智能校验（model / elapsed / reasoningChunks）────────────────
-  if (result.model && result.elapsed !== undefined) {
-    const lines = [`模型: ${result.model}`, `耗时: ${result.elapsed}s`]
-    if (result.llmErrors !== undefined) lines.push(`错误: ${result.llmErrors}`)
-    if (result.llmWarnings !== undefined) lines.push(`警告: ${result.llmWarnings}`)
-    if (result.ruleEnginePassed !== undefined) lines.push(`规则引擎: ${result.ruleEnginePassed ? '✅' : '❌'}`)
-    if (result.reasoningChunks !== undefined) lines.push(`推理片段: ${result.reasoningChunks}`)
-    return lines.join('\n')
-  }
-
-  // ── 分析/查询/导出结果（success / recordCount / total）────────────
-  if (result.success !== undefined) {
-    const lines = []
-    if (result.qualityScore !== undefined) lines.push(`质量评分: ${result.qualityScore}`)
-    if (result.recordCount !== undefined) lines.push(`记录数: ${result.recordCount}`)
-    if (result.total !== undefined) lines.push(`查询结果: ${result.total} 条`)
-    if (result.filename) lines.push(`文件名: ${result.filename}`)
-    if (result.downloadUrl) lines.push(`下载地址: ${result.downloadUrl}`)
-    if (result.passed === false && result.error) lines.push(`❌ ${result.error}`)
-    if (result.lastUpdated) lines.push(`最后更新: ${result.lastUpdated}`)
-    lines.push(`结果: ${result.success ? '✅ 成功' : '❌ 失败'}`)
-    return lines.join('\n')
-  }
-
-  // ── 错误结果（success: false / error）─────────────────────────────
-  if (result.success === false && result.error) {
-    return `❌ 错误: ${result.error}`
-  }
-
-  // ── 删除结果（backupVersionId / success）──────────────────────────
-  if (result.backupVersionId !== undefined || result.message !== undefined) {
-    const lines = []
-    if (result.success) {
-      if (result.backupVersionId) lines.push(`备份版本: ${result.backupVersionId}`)
-      lines.push(`结果: ✅ ${result.message || '删除成功'}`)
-    } else {
-      lines.push(`结果: ❌ ${result.error || result.message || '删除失败'}`)
-    }
-    return lines.join('\n')
-  }
-
-  // ── 配置生成完成（formName / fieldCount / entityCount）─────────────
-  if (result.formName && result.fieldCount !== undefined) {
-    const lines = []
-    lines.push(`表单名称: ${result.formName}`)
-    lines.push(`表单编码: ${result.formCode}`)
-    lines.push(`字段数: ${result.fieldCount}`)
-    lines.push(`实体数: ${result.entityCount}`)
-    if (result.keywordCount !== undefined) lines.push(`关键词: ${result.keywordCount} 个`)
-    if (result.validationErrors && result.validationErrors.length) {
-      lines.push(`⚠️ 校验问题: ${result.validationErrors.join('; ')}`)
-    }
-    return lines.join('\n')
-  }
-
-  // ── Skills 模式（matchedKeywords）────────────────────────────────
-  if (result.mode === 'skills') {
-    const lines = [`模式: Skills 降级处理`]
-    if (result.matchedKeywords && result.matchedKeywords.length) lines.push(`匹配关键词: ${result.matchedKeywords.join(', ')}`)
-    if (result.error) lines.push(`原因: ${result.error}`)
-    return lines.join('\n')
-  }
-
-  // ── 最后兜底：格式化 Key-Value 对 ─────────────────────────────────
-  const entries = Object.entries(result).filter(([k]) => !k.startsWith('_'))
-  if (entries.length === 0) return ''
-
-  // 如果所有值都是简单类型，格式化为竖线对齐的键值表
-  const isSimple = entries.every(([, v]) => v === null || v === undefined || typeof v !== 'object')
-  if (isSimple) {
-    return entries.map(([k, v]) => {
-      const label = k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())
-      return `${label}: ${v}`
-    }).join('\n')
-  }
-
-  // 有复杂值时，只显示关键字段
-  const simple = entries.filter(([, v]) => typeof v !== 'object' || v === null)
-  return simple.map(([k, v]) => {
-    const label = k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())
-    return `${label}: ${JSON.stringify(v)}`
-  }).join('\n')
-}
-
-const renderMarkdown = (text) => {
-  if (!text) return ''
-  let t = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-
-  // 修复 MiniMax 等模型输出不规范的 Markdown 格式
-  // 1. "-费用" → "- 费用"：短横线列表标记后补空格
-  t = t.replace(/^-([^\s\d])/gm, '- $1')
-  t = t.replace(/\n-([^\s\d])/g, '\n- $1')
-  t = t.replace(/ -([^\s\d])/g, ' - $1')
-
-  // 2. 同一行多个 "- xxx" 列表项拆行
-  t = t.replace(/(- [^-]+?)(?=\s- )/g, '$1\n')
-
-  // 3. "2.聊天" → "2. 聊天"：数字编号后补空格
-  t = t.replace(/(\d+\.)(?=[^\s\d])/g, '$1 ')
-
-  // 4. 同一行多个编号拆行
-  t = t.replace(/([^\n])(\d+\.\s)/g, '$1\n$2')
-
-  return marked.parse(t)
-}
-
-/**
- * 对完整文本做 Markdown 格式规范化（仅在 done/text_end 时调用）
- * 修复 MiniMax 等模型输出不规范的问题
- */
-const formatMarkdownText = (raw) => {
-  if (!raw) return raw
-  let t = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-
-  // 1. " -费用" → " - 费用"：空格+短横线后无空格，补空格（让 marked 识别为列表项）
-  t = t.replace(/ (\-)([^\s\d])/g, ' $1 $2')
-
-  // 2. 同一行内多个 "- xxx" 列表项拆行："- A - B" → "- A\n- B"
-  t = t.replace(/(- [^-]+?)(?=\s- )/g, '$1\n')
-
-  // 3. "2.聊天" → "2. 聊天"：数字编号后补空格
-  t = t.replace(/(\d+\.)(?=[^\s\d])/g, '$1 ')
-
-  // 4. 同一行多个编号拆行："...2. xxx3. yyy..." → "...2. xxx\n3. yyy..."
-  t = t.replace(/([^\n])(\d+\. )/g, '$1\n$2')
-
-  return t
-}
-
 const scrollToBottom = (smooth = false) => {
   nextTick(() => {
     if (messagesEl.value) {
@@ -949,32 +718,6 @@ const copyText = async (text) => {
   } catch {
     ElMessage.error('复制失败')
   }
-}
-
-// 格式化时间显示（几分钟前）
-const formatTime = (isoString) => {
-  if (!isoString) return ''
-  const date = new Date(isoString)
-  const now = new Date()
-  const diffMs = now - date
-  const diffMins = Math.floor(diffMs / 60000)
-  if (diffMins < 1) return '刚刚'
-  if (diffMins < 60) return `${diffMins} 分钟前`
-  const diffHours = Math.floor(diffMins / 60)
-  if (diffHours < 24) return `${diffHours} 小时前`
-  const diffDays = Math.floor(diffHours / 24)
-  if (diffDays < 7) return `${diffDays} 天前`
-  return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
-}
-
-// 获取表单状态文本
-const getFormStatusText = (status) => {
-  const map = {
-    filling: '填写中',
-    submitted: '已提交',
-    cancelled: '已取消'
-  }
-  return map[status] || status
 }
 
 // 聚焦到表单面板
@@ -1093,7 +836,7 @@ const sendMessageAfterSessionCreated = async (text, sessionId) => {
 
 const doSendMessage = async (text) => {
   // 检查是否有待确认的表单提交
-  if (pendingConfirmForm && checkUserConfirmation(text)) {
+  if (pendingConfirmForm.value && checkUserConfirmation(text)) {
     // 用户确认提交
     await handleDoConfirmSubmit()
     return
@@ -1101,7 +844,7 @@ const doSendMessage = async (text) => {
 
   // ══ 检查是否有未完成的表单需要先处理 ═══════════════════
   // 只有在有待确认或活动表单卡片时才拦截对话
-  const hasFormToHandle = pendingConfirmForm || (activeFormCard.value?.status === 'filling')
+  const hasFormToHandle = pendingConfirmForm.value || (activeFormCard.value?.status === 'filling')
 
   if (hasFormToHandle) {
     const lowerText = text.toLowerCase()
@@ -1109,7 +852,7 @@ const doSendMessage = async (text) => {
     const hasExplicitSubmit = lowerText.includes('完成') || lowerText.includes('提交') || lowerText.includes('确认')
 
     // 有待确认的表单
-    if (pendingConfirmForm) {
+    if (pendingConfirmForm.value) {
       if (hasExplicitCancel) {
         // 先显示用户消息
         messages.value.push({ id: genId(), role: 'user', content: text, done: true })
@@ -1549,7 +1292,7 @@ const handleEvent = (data, idx) => {
   }
 }
 
-// 生成表单 - 更新右侧面板，不再内嵌在消息中
+// ── 配置相关处理 ──────────────────────────────────────────────────────
 const generateForm = async (intentData) => {
   const { formCode, extractedFields, fieldRecommendations } = intentData
 
@@ -1820,16 +1563,13 @@ const handleAiValidation = ({ type, messages }) => {
   }
 }
 
-// 待确认提交的数据（用于聊天中确认）
-let pendingConfirmForm = null
-
 // 处理确认提交请求（从表单面板传来）
 // 将表单数据显式构造为聊天消息，通过 SSE 流触发后端 validate 意图
 const handleConfirmSubmit = async (data) => {
   const schema = currentFormSchema.value
 
   // 保存待确认数据
-  pendingConfirmForm = {
+  pendingConfirmForm.value = {
     formId: data.formId,
     formCode: data.formCode,
     formName: data.formName,
@@ -1888,7 +1628,7 @@ const handleConfirmSubmit = async (data) => {
 
 // 检查用户消息是否确认提交
 const checkUserConfirmation = (userMessage) => {
-  if (!pendingConfirmForm) return false
+  if (!pendingConfirmForm.value) return false
   const msg = userMessage.toLowerCase()
   // 确认关键词
   return msg.includes('确认') || msg.includes('好的') || msg.includes('是') || msg.includes('提交')
@@ -1896,15 +1636,15 @@ const checkUserConfirmation = (userMessage) => {
 
 // 执行真正的表单提交
 const handleDoConfirmSubmit = async () => {
-  if (!pendingConfirmForm) return
+  if (!pendingConfirmForm.value) return
 
-  const formData = pendingConfirmForm.data
-  const formId = pendingConfirmForm.formId
-  const formName = pendingConfirmForm.formName
-  const schema = pendingConfirmForm.schema
+  const formData = pendingConfirmForm.value.data
+  const formId = pendingConfirmForm.value.formId
+  const formName = pendingConfirmForm.value.formName
+  const schema = pendingConfirmForm.value.schema
 
   // 清除待确认状态
-  pendingConfirmForm = null
+  pendingConfirmForm.value = null
 
   // 更新 formCard 状态（如果存在的话）
   if (activeFormCard.value) {
@@ -1992,8 +1732,8 @@ const handleDoConfirmSubmit = async () => {
 
 // 取消提交
 const handleCancelSubmit = () => {
-  if (pendingConfirmForm) {
-    pendingConfirmForm = null
+  if (pendingConfirmForm.value) {
+    pendingConfirmForm.value = null
     const cancelMsg = {
       id: genId(), role: 'assistant',
       content: '好的，已取消提交。表单数据保留在右侧，可以继续修改。',
@@ -2616,13 +2356,6 @@ const handleFixValidationErrors = (msg, errors) => {
 const handleIgnoreValidationWarnings = (msg) => {
   // 忽略警告，继续提交流程
   ElMessage.info('已忽略提示，可继续操作')
-}
-
-const formatVersionTime = (isoStr) => {
-  if (!isoStr) return ''
-  const d = new Date(isoStr)
-  const pad = n => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 // ── 对外方法：表单校验（通过聊天SSE流显示thinking，结果通过Promise返回）──
