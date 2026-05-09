@@ -92,7 +92,7 @@
               </transition>
             </div>
 
-            <div class="bubble ai-bubble">
+            <div v-if="msg.streamText || msg.content || msg.loading" class="bubble ai-bubble">
               <div
                 v-if="msg.streamText || msg.content"
                 class="ai-text"
@@ -430,16 +430,16 @@ defineExpose({ scrollToBottom });
 }
 
 .ai-text.loading-text {
-  min-height: 24px;
+  min-height: 0;
 }
 
 .bubble.ai-bubble {
   background: var(--bg-ai-bubble);
   color: var(--text-primary);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-3);
   border-radius: 4px var(--radius-xl) var(--radius-xl) var(--radius-xl);
   font-size: var(--font-size-sm);
-  line-height: 1.7;
+  line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
   border: 1px solid var(--border-default);
