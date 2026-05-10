@@ -233,6 +233,13 @@ async def rollback_form_endpoint(request: RollbackFormRequest):
 
 # ============ 场景管理 API ============
 
+@router.get("/scenes/enums")
+async def get_scene_enums():
+    """获取场景枚举选项（意图类型、动作类型）"""
+    result = SceneService.get_enum_options()
+    return result
+
+
 @router.get("/scenes")
 async def list_scenes(is_active: Optional[bool] = None, db: Session = Depends(get_db)):
     """获取场景列表"""

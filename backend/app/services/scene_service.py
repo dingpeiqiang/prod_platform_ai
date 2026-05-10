@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from app.models.scene import Scene
+from app.models.scene_enums import IntentType, ActionType
 from app.core.config_loader import config_loader
 
 logger = logging.getLogger("scene_service")
@@ -18,6 +19,44 @@ _BASE_DIR = Path(__file__).parent.parent.parent / "config"
 
 
 class SceneService:
+
+    @classmethod
+    def get_enum_options(cls) -> Dict[str, Any]:
+        """获取枚举选项"""
+        return {
+            "success": True,
+            "data": {
+                "intentTypes": [
+                    {"value": t.value, "label": t.name, "description": t.value}
+                    for t in IntentType
+                ],
+                "actionTypes": [
+                    {"value": t.value, "label": ActionType.get_description(t.value), "description": t.value}
+                    for t in ActionType
+                ]
+            }
+        }
+
+    @classmethod
+    def validate_scene_data(cls, scene_data: Dict[str, Any]) -> Dict[str, Any]:
+        """验证场景数据"""
+        # 验证 intent_type
+        intent_type = scene_data.get("intentType")
+        if intent_type and not IntentType.is_valid(intent_type):
+            return {
+                "success": False,
+                "message": f"Invalid intentType: {intent_type}. Valid values: {IntentType.list()}"
+            }
+
+        # 验证 action_type
+        action_type = scene_data.get("actionType")
+        if action_type and not ActionType.is_valid(action_type):
+            return {
+                "success": False,
+                "message": f"Invalid actionType: {action_type}. Valid values: {ActionType.list()}"
+            }
+
+        return {"success": True}
 
     @classmethod
     def list_scenes(cls, db: Session, is_active: Optional[bool] = None) -> Dict[str, Any]:
@@ -55,6 +94,11 @@ class SceneService:
     def create_scene(cls, scene_data: Dict[str, Any], db: Session, user: Optional[str] = None) -> Dict[str, Any]:
         """创建场景"""
         try:
+            # 验证数据
+            validation_result = cls.validate_scene_data(scene_data)
+            if not validation_result["success"]:
+                return validation_result
+
             scene_code = scene_data.get("sceneCode")
             if not scene_code:
                 return {"success": False, "message": "sceneCode is required"}
@@ -101,6 +145,11 @@ class SceneService:
     def update_scene(cls, scene_code: str, scene_data: Dict[str, Any], db: Session, user: Optional[str] = None) -> Dict[str, Any]:
         """更新场景"""
         try:
+            # 验证数据
+            validation_result = cls.validate_scene_data(scene_data)
+            if not validation_result["success"]:
+                return validation_result
+
             scene = db.query(Scene).filter(Scene.scene_code == scene_code).first()
             if not scene:
                 return {"success": False, "message": f"Scene {scene_code} not found"}

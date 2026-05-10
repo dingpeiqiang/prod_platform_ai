@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, JSON, Boolean, DateTime, Text
 from sqlalchemy.sql import func
 from app.core.database import Base
+from app.models.scene_enums import IntentType, ActionType
 
 
 class Scene(Base):

@@ -5,6 +5,14 @@
 const API_BASE = '/api/v1'
 
 /**
+ * 获取枚举选项
+ */
+export async function getSceneEnums() {
+  const resp = await fetch(`${API_BASE}/scenes/enums`)
+  return await resp.json()
+}
+
+/**
  * 获取场景列表
  */
 export async function listScenes(isActive) {
