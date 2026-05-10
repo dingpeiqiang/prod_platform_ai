@@ -1,75 +1,136 @@
 {
   "sceneMappings": [
     {
-      "sceneCode": "tariff_filing_publicity",
-      "sceneName": "资费备案公示",
-      "description": "资费备案公示表单场景",
+      "sceneCode": "product_center",
+      "sceneName": "产商品中心",
+      "description": "负责管理各类产商品的中心部门",
       "keywords": [
-        "资费备案",
-        "资费",
-        "备案",
-        "资费申请",
-        "资费标准",
-        "资费公示",
-        "新增资费备案",
-        "修改资费备案",
-        "删除资费备案",
-        "校验资费备案",
-        "资费备案公示",
-        "tariff_filing_publicity"
+        "产商品",
+        "产品",
+        "商品",
+        "中心"
       ],
       "priority": 10,
       "isActive": true,
+      "intentType": "center",
+      "formCode": null,
+      "actionType": null,
+      "actionPrompt": null,
+      "type": "center",
+      "parentId": null,
+      "config": {
+        "level": "一级部门",
+        "owner": "产商品管理部",
+        "department": "产商品中心"
+      }
+    },
+    {
+      "sceneCode": "tariff_filing",
+      "sceneName": "资费备案",
+      "description": "负责资费备案相关业务",
+      "keywords": [
+        "资费",
+        "备案",
+        "价格"
+      ],
+      "priority": 9,
+      "isActive": true,
+      "intentType": "business",
+      "formCode": null,
+      "actionType": null,
+      "actionPrompt": null,
+      "type": "business",
+      "parentId": 10,
+      "config": {
+        "manager": "资费管理部",
+        "business_line": "产商品",
+        "business_scope": [
+          "资费备案",
+          "价格管理"
+        ]
+      }
+    },
+    {
+      "sceneCode": "tariff_filing_apply",
+      "sceneName": "资费备案申请",
+      "description": "新资费的备案申请流程",
+      "keywords": [
+        "资费备案",
+        "申请",
+        "新资费"
+      ],
+      "priority": 8,
+      "isActive": true,
       "intentType": "tariff_filing",
       "formCode": "tariff_filing_publicity",
-      "actionType": "form_with_mcp",
-      "actionPrompt": "tariff_filing_publicity_prompt.txt",
-      "requiredTools": [
-        "query_tariff_by_code"
+      "actionType": null,
+      "actionPrompt": null,
+      "type": "scene",
+      "parentId": 11,
+      "config": {
+        "workflow": [
+          "提交申请",
+          "初审",
+          "复核",
+          "公示"
+        ],
+        "sla_hours": 48,
+        "auto_approve": false
+      }
+    },
+    {
+      "sceneCode": "tariff_filing_change",
+      "sceneName": "资费备案变更",
+      "description": "对已有资费进行变更备案",
+      "keywords": [
+        "资费变更",
+        "备案变更",
+        "修改资费"
       ],
-      "preActionSteps": [
-        {
-          "stepType": "extract_param",
-          "paramName": "tariff_code",
-          "extractionRule": "从用户输入中提取套餐编码，格式为P开头后跟数字"
-        },
-        {
-          "stepType": "call_tool",
-          "toolName": "query_tariff_by_code",
-          "paramMapping": {
-            "tariff_code": "tariff_code"
-          },
-          "onSuccess": "merge_fields",
-          "onFailure": "continue_manual"
-        }
+      "priority": 7,
+      "isActive": true,
+      "intentType": "tariff_filing",
+      "formCode": "tariff_filing_publicity",
+      "actionType": null,
+      "actionPrompt": null,
+      "type": "scene",
+      "parentId": 11,
+      "config": {
+        "workflow": [
+          "提交变更",
+          "审核",
+          "变更生效"
+        ],
+        "sla_hours": 24,
+        "requires_approval": true
+      }
+    },
+    {
+      "sceneCode": "tariff_filing_query",
+      "sceneName": "资费备案查询",
+      "description": "查询已备案的资费信息",
+      "keywords": [
+        "资费查询",
+        "备案查询",
+        "查看"
       ],
-      "postActionSteps": [
-        {
-          "stepType": "validate",
-          "rules": [
-            "check_required_fields",
-            "validate_data_types"
-          ]
-        },
-        {
-          "stepType": "recommend",
-          "strategy": [
-            "user_history",
-            "frequency",
-            "time_decay"
-          ]
-        }
-      ]
+      "priority": 6,
+      "isActive": true,
+      "intentType": "query",
+      "formCode": null,
+      "actionType": null,
+      "actionPrompt": null,
+      "type": "scene",
+      "parentId": 11,
+      "config": {
+        "query_type": [
+          "按资费",
+          "按时间",
+          "按状态"
+        ],
+        "export_enabled": true
+      }
     }
   ],
-  "defaultScene": "generic",
-  "version": "3.0",
-  "actionTypes": {
-    "form_generation": "标准表单生成",
-    "form_with_mcp": "表单生成+MCP工具调用",
-    "workflow": "复杂工作流执行",
-    "chat": "对话式处理",
-    "analysis": "数据分析类",
-    "custom": "自定义处理逻辑"
-  }
+  "version": "4.0"
 }

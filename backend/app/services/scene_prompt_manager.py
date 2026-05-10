@@ -95,16 +95,11 @@ class ScenePromptManager:
             
             prompts = []
             for file_path in base_path.glob("*.txt"):
-                if file_path.is_file():
-                    stat = file_path.stat()
-                    prompts.append({
-                        "fileName": file_path.name,
-                        "fileSize": stat.st_size,
-                        "lastModified": datetime.fromtimestamp(stat.st_mtime).isoformat()
-                    })
+                if file_path.is_file() and not file_path.name.startswith("_"):
+                    prompts.append(file_path.name)
             
             # 按名称排序
-            prompts.sort(key=lambda x: x["fileName"])
+            prompts.sort()
             
             return {"success": True, "data": prompts}
         except Exception as e:

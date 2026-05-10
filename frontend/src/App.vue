@@ -39,40 +39,80 @@
       />
 
       <div class="main-area">
+        <!-- 首页：没有活动会话时显示 -->
+        <DashboardHome
+          v-if="!isInitializing && currentView === 'dashboard' && !activeSessionId"
+          @send-message="onSendMessageFromHome"
+          @switch-chat="onSwitchChat"
+          @create-session="onNewSession"
+          @open-scene-manager="openSceneManager"
+          @open-prompt-manager="openPromptManager"
+          @open-tool-manager="openToolManager"
+          @open-form-manager="openFormManager"
+          @open-ontology-manager="openOntologyManager"
+        />
+
         <!-- 场景管理界面 -->
         <SceneManager 
           v-if="!isInitializing && currentView === 'scene-manager'" 
           @go-back="returnToDashboard"
         />
-        
-        <!-- 首页：没有活动会话时显示 -->
-        <DashboardHome
-          v-else-if="!isInitializing && !activeSessionId"
-          @send-message="onSendMessageFromHome"
-          @switch-chat="onSwitchChat"
-          @create-session="onNewSession"
-        @open-scene-manager="openSceneManager"
-        @open-prompt-manager="openPromptManager"
-      />
 
         <!-- 提示词管理界面 -->
         <PromptManager 
           v-if="!isInitializing && currentView === 'prompt-manager'" 
           @go-back="returnToDashboard"
         />
+
+        <!-- 工具管理界面 -->
+        <GenericManager 
+          v-if="!isInitializing && currentView === 'tool-manager'" 
+          title="🔧 工具管理"
+          item-type="工具"
+          code-field="toolCode"
+          name-field="toolName"
+          :show-tools="true"
+          :api-service="toolApiService"
+          @go-back="returnToDashboard"
+        />
+
+        <!-- 表单管理界面 -->
+        <GenericManager 
+          v-if="!isInitializing && currentView === 'form-manager'" 
+          title="📝 表单管理"
+          item-type="表单"
+          code-field="formCode"
+          name-field="formName"
+          :show-entities="true"
+          :api-service="formApiService"
+          @go-back="returnToDashboard"
+        />
+
+        <!-- 本体管理界面 -->
+        <GenericManager 
+          v-if="!isInitializing && currentView === 'ontology-manager'" 
+          title="📚 本体管理"
+          item-type="本体"
+          code-field="ontologyCode"
+          name-field="ontologyName"
+          :show-entities="true"
+          :show-category="false"
+          :api-service="ontologyApiService"
+          @go-back="returnToDashboard"
+        />
         
         <!-- 聊天界面：有活动会话时显示 -->
         <ChatAssistant
-        v-else-if="!isInitializing && activeSessionId"
-        ref="chatRef"
-        :sessionId="activeSessionId"
-        :dbSessionId="activeDbSessionId"
-        :userId="userStore.username"
-        :sessionTitle="activeSessionTitle"
-        @title-update="onTitleUpdate"
-        @session-init="onSessionInit"
-        @create-session-from-home="onCreateSessionFromHome"
-      />
+          v-if="!isInitializing && currentView === 'dashboard' && activeSessionId"
+          ref="chatRef"
+          :sessionId="activeSessionId"
+          :dbSessionId="activeDbSessionId"
+          :userId="userStore.username"
+          :sessionTitle="activeSessionTitle"
+          @title-update="onTitleUpdate"
+          @session-init="onSessionInit"
+          @create-session-from-home="onCreateSessionFromHome"
+        />
       </div>
     </template>
   </div>
@@ -86,9 +126,13 @@ import LoginScreen from './components/LoginScreen.vue'
 import DashboardHome from './components/DashboardHome.vue'
 import SceneManager from './components/SceneManager.vue'
 import PromptManager from './components/PromptManager.vue'
+import GenericManager from './components/GenericManager.vue'
 import { useUserStore } from './stores/user'
 import { useTheme } from './composables/useTheme'
 import { createSession as apiCreateSession, getSessions as apiGetSessions, deleteSession as apiDeleteSession, updateSessionTitle as apiUpdateSessionTitle } from './services/chatApi.js'
+import * as toolApi from './services/toolApi.js'
+import * as formApi from './services/formApi.js'
+import * as ontologyApi from './services/ontologyApi.js'
 
 const currentView = ref('dashboard')
 
@@ -184,6 +228,64 @@ const openPromptManager = () => {
   activeDbSessionId.value = ''
   saveActiveSessionId()
   sidebarOpen.value = false
+}
+
+// ── 打开工具管理 ─────────────────────────────────────────
+const openToolManager = () => {
+  currentView.value = 'tool-manager'
+  activeSessionId.value = ''
+  activeDbSessionId.value = ''
+  saveActiveSessionId()
+  sidebarOpen.value = false
+}
+
+// ── 打开表单管理 ─────────────────────────────────────────
+const openFormManager = () => {
+  currentView.value = 'form-manager'
+  activeSessionId.value = ''
+  activeDbSessionId.value = ''
+  saveActiveSessionId()
+  sidebarOpen.value = false
+}
+
+// ── 打开本体管理 ─────────────────────────────────────────
+const openOntologyManager = () => {
+  currentView.value = 'ontology-manager'
+  activeSessionId.value = ''
+  activeDbSessionId.value = ''
+  saveActiveSessionId()
+  sidebarOpen.value = false
+}
+
+// ── API 服务适配器 ─────────────────────────────────────────
+const toolApiService = {
+  getCategories: toolApi.getToolCategories,
+  list: toolApi.listTools,
+  get: toolApi.getTool,
+  create: toolApi.createTool,
+  update: toolApi.updateTool,
+  delete: toolApi.deleteTool,
+  toggle: toolApi.toggleTool
+}
+
+const formApiService = {
+  getCategories: formApi.getFormCategories,
+  list: formApi.listForms,
+  get: formApi.getForm,
+  create: formApi.createForm,
+  update: formApi.updateForm,
+  delete: formApi.deleteForm,
+  toggle: formApi.toggleForm
+}
+
+const ontologyApiService = {
+  getCategories: ontologyApi.getOntologyCategories,
+  list: ontologyApi.listOntologies,
+  get: ontologyApi.getOntology,
+  create: ontologyApi.createOntology,
+  update: ontologyApi.updateOntology,
+  delete: ontologyApi.deleteOntology,
+  toggle: ontologyApi.toggleOntology
 }
 
 // ── 返回首页 ─────────────────────────────────────────────
