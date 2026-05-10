@@ -51,7 +51,14 @@
           @send-message="onSendMessageFromHome"
           @switch-chat="onSwitchChat"
           @create-session="onNewSession"
-          @open-scene-manager="openSceneManager"
+        @open-scene-manager="openSceneManager"
+        @open-prompt-manager="openPromptManager"
+      />
+
+        <!-- 提示词管理界面 -->
+        <PromptManager 
+          v-if="!isInitializing && currentView === 'prompt-manager'" 
+          @go-back="returnToDashboard"
         />
         
         <!-- 聊天界面：有活动会话时显示 -->
@@ -78,6 +85,7 @@ import ChatAssistant from './components/ChatAssistant.vue'
 import LoginScreen from './components/LoginScreen.vue'
 import DashboardHome from './components/DashboardHome.vue'
 import SceneManager from './components/SceneManager.vue'
+import PromptManager from './components/PromptManager.vue'
 import { useUserStore } from './stores/user'
 import { useTheme } from './composables/useTheme'
 import { createSession as apiCreateSession, getSessions as apiGetSessions, deleteSession as apiDeleteSession, updateSessionTitle as apiUpdateSessionTitle } from './services/chatApi.js'
@@ -163,6 +171,15 @@ const createLocalSession = (dbSessionId = null) => {
 // ── 打开场景管理 ─────────────────────────────────────────
 const openSceneManager = () => {
   currentView.value = 'scene-manager'
+  activeSessionId.value = ''
+  activeDbSessionId.value = ''
+  saveActiveSessionId()
+  sidebarOpen.value = false
+}
+
+// ── 打开提示词管理 ─────────────────────────────────────────
+const openPromptManager = () => {
+  currentView.value = 'prompt-manager'
   activeSessionId.value = ''
   activeDbSessionId.value = ''
   saveActiveSessionId()

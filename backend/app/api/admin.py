@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.services.admin_service import AdminService
 from app.services.scene_service import SceneService
 from app.services.scene_prompt_manager import ScenePromptManager
+from app.services.prompt_service import PromptService
 from app.services.history_ai_service import (
     analyze_history,
     apply_generated_data,
@@ -324,4 +325,113 @@ async def save_scene_prompt(request: ScenePromptSaveRequest):
 async def delete_scene_prompt(prompt_name: str):
     """删除场景提示词"""
     result = ScenePromptManager.delete_prompt(prompt_name)
+    return result
+
+
+# ============ 提示词管理 API ============
+
+class PromptCreateRequest(BaseModel):
+    code: str
+    name: str
+    description: Optional[str] = None
+    category: str = "general"
+    content: str = ""
+    variables: List[Dict[str, Any]] = []
+    tools: List[Dict[str, Any]] = []
+    isTemplate: bool = False
+
+
+class PromptUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    content: Optional[str] = None
+    variables: Optional[List[Dict[str, Any]]] = None
+    tools: Optional[List[Dict[str, Any]]] = None
+    isTemplate: Optional[bool] = None
+    isActive: Optional[bool] = None
+    changeNote: Optional[str] = None
+
+
+class PromptPreviewRequest(BaseModel):
+    variables: Optional[Dict[str, Any]] = None
+
+
+class AIGenerateRequest(BaseModel):
+    requirement: str
+    category: str = "general"
+    useTools: List[Dict[str, Any]] = []
+
+
+class AIOptimizeRequest(BaseModel):
+    content: str
+
+
+@router.get("/prompts")
+async def list_prompts(category: Optional[str] = None, isActive: Optional[bool] = None, db: Session = Depends(get_db)):
+    """获取提示词列表"""
+    result = PromptService.list_prompts(db, category=category, is_active=isActive)
+    return result
+
+
+@router.get("/prompts/categories")
+async def get_prompt_categories():
+    """获取提示词分类列表"""
+    result = PromptService.get_categories()
+    return result
+
+
+@router.get("/prompts/{code}")
+async def get_prompt(code: str, db: Session = Depends(get_db)):
+    """获取单个提示词详情"""
+    result = PromptService.get_prompt(db, code)
+    return result
+
+
+@router.post("/prompts")
+async def create_prompt(request: PromptCreateRequest, db: Session = Depends(get_db)):
+    """创建提示词"""
+    result = PromptService.create_prompt(db, request.dict())
+    return result
+
+
+@router.put("/prompts/{code}")
+async def update_prompt(code: str, request: PromptUpdateRequest, db: Session = Depends(get_db)):
+    """更新提示词"""
+    result = PromptService.update_prompt(db, code, request.dict())
+    return result
+
+
+@router.delete("/prompts/{code}")
+async def delete_prompt(code: str, db: Session = Depends(get_db)):
+    """删除提示词"""
+    result = PromptService.delete_prompt(db, code)
+    return result
+
+
+@router.get("/prompts/{code}/versions")
+async def get_prompt_versions(code: str, db: Session = Depends(get_db)):
+    """获取提示词版本历史"""
+    result = PromptService.get_versions(db, code)
+    return result
+
+
+@router.post("/prompts/{code}/preview")
+async def preview_prompt(code: str, request: PromptPreviewRequest = PromptPreviewRequest(), db: Session = Depends(get_db)):
+    """预览提示词（变量替换）"""
+    result = PromptService.preview_prompt(db, code, request.variables)
+    return result
+
+
+@router.post("/prompts/ai/generate")
+async def generate_with_ai(request: AIGenerateRequest, db: Session = Depends(get_db)):
+    """AI辅助生成提示词"""
+    result = PromptService.generate_with_ai(db, request.dict())
+    return result
+
+
+@router.post("/prompts/ai/optimize")
+async def optimize_with_ai(request: AIOptimizeRequest, db: Session = Depends(get_db)):
+    """AI优化提示词"""
+    result = PromptService.optimize_prompt(db, request.dict())
     return result
