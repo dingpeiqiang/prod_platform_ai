@@ -1,39 +1,6 @@
 {
   "sceneMappings": [
     {
-      "sceneCode": "external_api_demo",
-      "sceneName": "外部API演示",
-      "description": "外部API调用演示场景",
-      "keywords": [
-        "外部API",
-        "API演示",
-        "API调用"
-      ],
-      "priority": 15,
-      "isActive": true,
-      "intentType": "form",
-      "formCode": "external_api_demo",
-      "actionType": "form_generation",
-      "actionPrompt": null
-    },
-    {
-      "sceneCode": "validation_demo",
-      "sceneName": "校验演示",
-      "description": "表单校验规则演示场景",
-      "keywords": [
-        "校验演示",
-        "校验规则",
-        "校验",
-        "演示"
-      ],
-      "priority": 15,
-      "isActive": true,
-      "intentType": "form",
-      "formCode": "validation_demo",
-      "actionType": "form_generation",
-      "actionPrompt": null
-    },
-    {
       "sceneCode": "tariff_filing_publicity",
       "sceneName": "资费备案公示",
       "description": "资费备案公示表单场景",
@@ -57,7 +24,9 @@
       "formCode": "tariff_filing_publicity",
       "actionType": "form_with_mcp",
       "actionPrompt": "tariff_filing_publicity_prompt.txt",
-      "requiredTools": ["query_tariff_by_code"],
+      "requiredTools": [
+        "query_tariff_by_code"
+      ],
       "preActionSteps": [
         {
           "stepType": "extract_param",
@@ -77,11 +46,18 @@
       "postActionSteps": [
         {
           "stepType": "validate",
-          "rules": ["check_required_fields", "validate_data_types"]
+          "rules": [
+            "check_required_fields",
+            "validate_data_types"
+          ]
         },
         {
           "stepType": "recommend",
-          "strategy": ["user_history", "frequency", "time_decay"]
+          "strategy": [
+            "user_history",
+            "frequency",
+            "time_decay"
+          ]
         }
       ]
     }

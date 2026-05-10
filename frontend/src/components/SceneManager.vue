@@ -120,7 +120,14 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="意图类型">
-              <el-input v-model="formData.intentType" placeholder="如: form, tariff_filing" />
+              <el-select v-model="formData.intentType" placeholder="选择意图类型" clearable>
+                <el-option
+                  v-for="t in enumOptions.intentTypes"
+                  :key="t.value"
+                  :label="t.label"
+                  :value="t.value"
+                />
+              </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -130,9 +137,13 @@
           </el-col>
         </el-row>
         <el-form-item label="动作类型">
-          <el-select v-model="formData.actionType">
-            <el-option label="标准表单生成" value="form_generation" />
-            <el-option label="带MCP工具调用" value="form_with_mcp" />
+          <el-select v-model="formData.actionType" placeholder="选择动作类型">
+            <el-option
+              v-for="t in enumOptions.actionTypes"
+              :key="t.value"
+              :label="t.label"
+              :value="t.value"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="提示词文件">
@@ -183,7 +194,7 @@
 import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, ArrowLeft } from '@element-plus/icons-vue'
-import { listScenes, createScene, updateScene, deleteScene, toggleScene, testSceneRecognition } from '../services/sceneApi.js'
+import { listScenes, createScene, updateScene, deleteScene, toggleScene, testSceneRecognition, getSceneEnums } from '../services/sceneApi.js'
 
 const emit = defineEmits(['go-back'])
 
@@ -204,6 +215,12 @@ const testResult = ref(null)
 const keywordInputVisible = ref(false)
 const keywordInput = ref('')
 const keywordInputRef = ref(null)
+
+// 枚举选项
+const enumOptions = ref({
+  intentTypes: [],
+  actionTypes: []
+})
 
 const formData = reactive({
   sceneCode: '',
@@ -408,8 +425,20 @@ function handleKeywordRemove(tag) {
   }
 }
 
+async function loadEnumOptions() {
+  try {
+    const result = await getSceneEnums()
+    if (result.success) {
+      enumOptions.value = result.data
+    }
+  } catch (e) {
+    console.error('Failed to load enum options', e)
+  }
+}
+
 onMounted(() => {
   refresh()
+  loadEnumOptions()
 })
 </script>
 
