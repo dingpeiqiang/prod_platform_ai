@@ -16,7 +16,6 @@ from app.models.form import (
     FormTemplate,
     FormInstance,
     FormHistory,
-    Ontology,
     SystemLog
 )
 from app.models.chat_v2 import (
@@ -24,6 +23,8 @@ from app.models.chat_v2 import (
     ChatMessageV2,
     ChatMessageMetadata
 )
+from app.models.ontology import Ontology
+from app.models.scene import Scene
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

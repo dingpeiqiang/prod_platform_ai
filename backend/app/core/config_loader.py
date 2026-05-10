@@ -158,13 +158,48 @@ class ConfigLoader:
             for file in prompts_path.glob("*.txt"):
                 prompt_name = file.stem
                 prompts[prompt_name] = self._load_text(file)
+        
+        # 加载场景提示词
+        scene_prompts = {}
+        scene_prompts_path = self.base_path / "prompts" / "scenes"
+        if scene_prompts_path.exists():
+            for file in scene_prompts_path.glob("*.txt"):
+                prompt_name = file.stem
+                scene_prompts[prompt_name] = self._load_text(file)
+        
         self._config_cache['prompts'] = prompts
+        self._config_cache['scene_prompts'] = scene_prompts
     
     def get_app_config(self) -> Dict[str, Any]:
         return self._config_cache.get('app_config', {})
     
     def get_scene_mappings(self) -> List[Dict]:
         return self._config_cache.get('scene_mappings', {}).get('sceneMappings', [])
+    
+    def get_scene_by_code(self, scene_code: str) -> Optional[Dict]:
+        """从场景映射中获取场景"""
+        scene_mappings = self.get_scene_mappings()
+        for scene in scene_mappings:
+            if scene.get('sceneCode') == scene_code:
+                return scene
+        return None
+    
+    def get_all_scenes(self) -> List[Dict]:
+        """获取所有场景"""
+        return self.get_scene_mappings()
+    
+    def get_scene_prompt(self, scene_code: str) -> Optional[str]:
+        """获取场景提示词"""
+        scene = self.get_scene_by_code(scene_code)
+        if scene:
+            prompt_file = scene.get('actionPrompt')
+            if prompt_file:
+                scene_prompts = self._config_cache.get('scene_prompts', {})
+                # 移除扩展名查找
+                from pathlib import Path
+                prompt_name = Path(prompt_file).stem
+                return scene_prompts.get(prompt_name)
+        return None
     
     def get_ontology(self, form_code: str) -> Optional[Dict]:
         return self._config_cache.get('ontologies', {}).get(form_code)

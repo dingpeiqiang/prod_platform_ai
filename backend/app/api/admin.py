@@ -6,6 +6,8 @@ import logging
 
 from app.core.database import get_db
 from app.services.admin_service import AdminService
+from app.services.scene_service import SceneService
+from app.services.scene_prompt_manager import ScenePromptManager
 from app.services.history_ai_service import (
     analyze_history,
     apply_generated_data,
@@ -16,6 +18,48 @@ from app.services.history_ai_service import (
 logger = logging.getLogger("admin_api")
 
 router = APIRouter(prefix="/api/v1", tags=["admin"])
+
+
+class SceneCreateRequest(BaseModel):
+    sceneCode: str
+    sceneName: str
+    description: Optional[str] = None
+    keywords: List[str] = []
+    priority: int = 10
+    isActive: bool = True
+    intentType: Optional[str] = None
+    formCode: Optional[str] = None
+    actionType: str = "form_generation"
+    actionPromptFile: Optional[str] = None
+    requiredTools: List[str] = []
+    availableTools: List[str] = []
+    preActionSteps: List[Dict] = []
+    postActionSteps: List[Dict] = []
+
+
+class SceneUpdateRequest(BaseModel):
+    sceneName: Optional[str] = None
+    description: Optional[str] = None
+    keywords: Optional[List[str]] = None
+    priority: Optional[int] = None
+    isActive: Optional[bool] = None
+    intentType: Optional[str] = None
+    formCode: Optional[str] = None
+    actionType: Optional[str] = None
+    actionPromptFile: Optional[str] = None
+    requiredTools: Optional[List[str]] = None
+    availableTools: Optional[List[str]] = None
+    preActionSteps: Optional[List[Dict]] = None
+    postActionSteps: Optional[List[Dict]] = None
+
+
+class SceneRecognitionTestRequest(BaseModel):
+    userInput: str
+
+
+class ScenePromptSaveRequest(BaseModel):
+    promptFile: str
+    content: str
 
 
 class HistoryAnalyzeRequest(BaseModel):
@@ -185,3 +229,129 @@ async def rollback_form_endpoint(request: RollbackFormRequest):
     except Exception as e:
         logger.exception("[rollback-form] 回退失败: %s", e)
         return {"success": False, "message": f"回退失败: {str(e)}"}
+
+
+# ============ 场景管理 API ============
+
+@router.get("/scenes")
+async def list_scenes(is_active: Optional[bool] = None, db: Session = Depends(get_db)):
+    """获取场景列表"""
+    result = SceneService.list_scenes(db, is_active=is_active)
+    return result
+
+
+@router.get("/scenes/{scene_code}")
+async def get_scene(scene_code: str, db: Session = Depends(get_db)):
+    """获取单个场景详情"""
+    result = SceneService.get_scene(scene_code, db)
+    return result
+
+
+@router.post("/scenes")
+async def create_scene(request: SceneCreateRequest, db: Session = Depends(get_db)):
+    """创建新场景"""
+    scene_data = request.dict()
+    # 转换字段名（驼峰转下划线）
+    scene_data['scene_code'] = scene_data.pop('sceneCode')
+    scene_data['scene_name'] = scene_data.pop('sceneName')
+    scene_data['intent_type'] = scene_data.pop('intentType')
+    scene_data['form_code'] = scene_data.pop('formCode')
+    scene_data['action_type'] = scene_data.pop('actionType')
+    scene_data['action_prompt_file'] = scene_data.pop('actionPromptFile')
+    scene_data['required_tools'] = scene_data.pop('requiredTools')
+    scene_data['available_tools'] = scene_data.pop('availableTools')
+    scene_data['pre_action_steps'] = scene_data.pop('preActionSteps')
+    scene_data['post_action_steps'] = scene_data.pop('postActionSteps')
+    
+    result = SceneService.create_scene(scene_data, db)
+    return result
+
+
+@router.put("/scenes/{scene_code}")
+async def update_scene(scene_code: str, request: SceneUpdateRequest, db: Session = Depends(get_db)):
+    """更新场景"""
+    scene_data = request.dict(exclude_none=True)
+    # 转换字段名
+    if 'sceneName' in scene_data:
+        scene_data['scene_name'] = scene_data.pop('sceneName')
+    if 'intentType' in scene_data:
+        scene_data['intent_type'] = scene_data.pop('intentType')
+    if 'formCode' in scene_data:
+        scene_data['form_code'] = scene_data.pop('formCode')
+    if 'actionType' in scene_data:
+        scene_data['action_type'] = scene_data.pop('actionType')
+    if 'actionPromptFile' in scene_data:
+        scene_data['action_prompt_file'] = scene_data.pop('actionPromptFile')
+    if 'requiredTools' in scene_data:
+        scene_data['required_tools'] = scene_data.pop('requiredTools')
+    if 'availableTools' in scene_data:
+        scene_data['available_tools'] = scene_data.pop('availableTools')
+    if 'preActionSteps' in scene_data:
+        scene_data['pre_action_steps'] = scene_data.pop('preActionSteps')
+    if 'postActionSteps' in scene_data:
+        scene_data['post_action_steps'] = scene_data.pop('postActionSteps')
+    if 'isActive' in scene_data:
+        scene_data['is_active'] = scene_data.pop('isActive')
+    
+    result = SceneService.update_scene(scene_code, scene_data, db)
+    return result
+
+
+@router.delete("/scenes/{scene_code}")
+async def delete_scene(scene_code: str, db: Session = Depends(get_db)):
+    """删除场景"""
+    result = SceneService.delete_scene(scene_code, db)
+    return result
+
+
+@router.patch("/scenes/{scene_code}/toggle")
+async def toggle_scene(scene_code: str, db: Session = Depends(get_db)):
+    """切换场景启用状态"""
+    result = SceneService.toggle_active(scene_code, db)
+    return result
+
+
+@router.post("/scenes/test")
+async def test_scene_recognition(request: SceneRecognitionTestRequest, db: Session = Depends(get_db)):
+    """测试场景识别"""
+    result = SceneService.test_scene_recognition(request.userInput, db)
+    return result
+
+
+@router.get("/scenes/stats/summary")
+async def get_scene_stats(db: Session = Depends(get_db)):
+    """获取场景统计"""
+    result = SceneService.get_scene_stats(db)
+    return result
+
+
+# ============ 场景提示词管理 API ============
+
+@router.get("/scenes/prompts/list")
+async def list_scene_prompts():
+    """列出所有场景提示词"""
+    result = ScenePromptManager.list_prompts()
+    return result
+
+
+@router.get("/scenes/prompts/{prompt_name}")
+async def get_scene_prompt(prompt_name: str):
+    """获取场景提示词内容"""
+    content = ScenePromptManager.load_prompt(prompt_name)
+    if content is None:
+        return {"success": False, "message": f"提示词 {prompt_name} 不存在"}
+    return {"success": True, "data": {"content": content}}
+
+
+@router.post("/scenes/prompts")
+async def save_scene_prompt(request: ScenePromptSaveRequest):
+    """保存场景提示词"""
+    result = ScenePromptManager.save_prompt(request.promptFile, request.content)
+    return result
+
+
+@router.delete("/scenes/prompts/{prompt_name}")
+async def delete_scene_prompt(prompt_name: str):
+    """删除场景提示词"""
+    result = ScenePromptManager.delete_prompt(prompt_name)
+    return result
