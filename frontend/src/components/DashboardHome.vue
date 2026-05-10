@@ -200,7 +200,7 @@
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue'
 
-const emit = defineEmits(['send-message', 'switch-chat', 'create-session', 'open-scene-manager', 'open-prompt-manager'])
+const emit = defineEmits(['send-message', 'switch-chat', 'create-session', 'open-scene-manager', 'open-prompt-manager', 'open-tool-manager', 'open-form-manager', 'open-ontology-manager'])
 
 const inputEl = ref(null)
 const inputText = ref('')
@@ -215,8 +215,9 @@ const suggestions = [
 const shortcuts = [
   { key: 'scene', icon: 'chart', label: '场景管理' },
   { key: 'prompt', icon: 'file', label: '提示词管理' },
-  { key: 'report', icon: 'chart', label: '数据报告' },
-  { key: 'help', icon: 'help', label: '帮助中心' },
+  { key: 'tool', icon: 'chart', label: '工具管理' },
+  { key: 'form', icon: 'file', label: '表单管理' },
+  { key: 'ontology', icon: 'help', label: '本体管理' },
 ]
 
 // 预警列表
@@ -306,6 +307,18 @@ const handleShortcut = (sc) => {
   }
   if (sc.key === 'prompt') {
     emit('open-prompt-manager')
+    return
+  }
+  if (sc.key === 'tool') {
+    emit('open-tool-manager')
+    return
+  }
+  if (sc.key === 'form') {
+    emit('open-form-manager')
+    return
+  }
+  if (sc.key === 'ontology') {
+    emit('open-ontology-manager')
     return
   }
   const msg = shortcuts.find(s => s.key === sc.key)

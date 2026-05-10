@@ -97,6 +97,11 @@ _mcp_tools = register_all_tools()
 _logger.info(f"[MCP] 已注册 {_mcp_tools.get_tool_count()} 个工具")
 
 
+# ── 数据初始化 ─────────────────────────────────────────────────────────────
+from app.services.data_init import init_all_data
+init_all_data()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _logger.info("应用启动完成，所有路由已注册")

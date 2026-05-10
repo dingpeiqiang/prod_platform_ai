@@ -15,8 +15,7 @@ from app.core.database import Base
 from app.models.form import (
     FormTemplate,
     FormInstance,
-    FormHistory,
-    SystemLog
+    FormHistory
 )
 from app.models.chat_v2 import (
     ChatSessionV2,

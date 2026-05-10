@@ -1,5 +1,5 @@
 """
-场景管理服务
+场景管理服务 - 支持三层树形结构（center / business / scene
 """
 import json
 import logging
@@ -8,7 +8,7 @@ from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
-from app.models.scene import Scene
+from app.models.scene import Scene, SceneHistory
 from app.core.config_loader import config_loader
 
 logger = logging.getLogger("scene_service")
@@ -18,6 +18,50 @@ _BASE_DIR = Path(__file__).parent.parent.parent / "config"
 
 
 class SceneService:
+
+    @classmethod
+    def list_scenes_tree(cls, db: Session, is_active: Optional[bool] = None) -> Dict[str, Any]:
+        """获取场景树状场景树"""
+        try:
+            query = db.query(Scene)
+            
+            if is_active is not None:
+                query = query.filter(Scene.is_active == is_active)
+            
+            all_scenes = query.order_by(desc(Scene.priority)).all()
+            
+            # 构建树形结构
+            tree = cls._build_tree(all_scenes)
+            
+            return {
+                "success": True,
+                "total": len(all_scenes),
+                "data": tree
+            }
+        except Exception as e:
+            logger.exception(f"Failed to list scenes: {e}")
+            return {"success": False, "message": str(e)}
+
+    @classmethod
+    def _build_tree(cls, scenes: List[Scene]) -> List[Dict]:
+        """构建树形结构"""
+        # 先创建节点字典
+        node_map = {}
+        for scene in scenes:
+            node = scene.to_tree_node()
+            node_map[scene.id] = node
+        
+        # 再构建树
+        tree = []
+        for scene in scenes:
+            # 顶级节点（center类型且无父节点
+            if scene.parent_id is None and scene.type == 'center':
+                tree.append(node_map[scene.id])
+            elif scene.parent_id in node_map:
+                parent_node = node_map[scene.parent_id]
+                parent_node["children"].append(node_map[scene.id])
+        
+        return tree
 
     @classmethod
     def list_scenes(cls, db: Session, is_active: Optional[bool] = None) -> Dict[str, Any]:
@@ -70,8 +114,17 @@ class SceneService:
                 keywords=scene_data.get("keywords", []),
                 priority=scene_data.get("priority", 10),
                 is_active=scene_data.get("isActive", True),
+                intent_type=scene_data.get("intentType"),
                 form_code=scene_data.get("formCode"),
+                action_type=scene_data.get("actionType"),
                 action_prompt_file=scene_data.get("actionPromptFile"),
+                required_tools=scene_data.get("requiredTools", []),
+                available_tools=scene_data.get("availableTools", []),
+                pre_action_steps=scene_data.get("preActionSteps", []),
+                post_action_steps=scene_data.get("postActionSteps", []),
+                type=scene_data.get("type", "scene"),
+                parent_id=scene_data.get("parentId"),
+                config=scene_data.get("config", {}),
                 version=1,
                 created_by=user
             )
@@ -79,6 +132,9 @@ class SceneService:
             db.add(scene)
             db.commit()
             db.refresh(scene)
+            
+            # 创建第一个历史版本
+            cls._create_history(db, scene, "Initial version", user)
             
             # 同时写入文件
             cls._write_scene_to_file(scene)
@@ -99,25 +155,47 @@ class SceneService:
             if not scene:
                 return {"success": False, "message": f"Scene {scene_code} not found"}
             
-            if "sceneName" in scene_data:
-                scene.scene_name = scene_data["sceneName"]
-            if "description" in scene_data:
-                scene.description = scene_data["description"]
-            if "keywords" in scene_data:
-                scene.keywords = scene_data["keywords"]
-            if "priority" in scene_data:
-                scene.priority = scene_data["priority"]
-            if "isActive" in scene_data:
-                scene.is_active = scene_data["isActive"]
-            if "formCode" in scene_data:
-                scene.form_code = scene_data["formCode"]
-            if "actionPromptFile" in scene_data:
-                scene.action_prompt_file = scene_data["actionPromptFile"]
+            change_note = scene_data.pop("changeNote", "Update scene")
             
-            scene.version = (scene.version or 0) + 1
-            scene.updated_by = user
+            # 检查是否有内容变更
+            has_changes = False
+            
+            # 字段映射表
+            field_mapping = {
+                "sceneName": ("scene_name", str),
+                "description": ("description", str),
+                "keywords": ("keywords", list),
+                "priority": ("priority", int),
+                "intentType": ("intent_type", str),
+                "formCode": ("form_code", str),
+                "actionType": ("action_type", str),
+                "actionPromptFile": ("action_prompt_file", str),
+                "requiredTools": ("required_tools", list),
+                "availableTools": ("available_tools", list),
+                "preActionSteps": ("pre_action_steps", list),
+                "postActionSteps": ("post_action_steps", list),
+                "type": ("type", str),
+                "parentId": ("parent_id", int),
+                "config": ("config", dict),
+            }
+            
+            for key, value in scene_data.items():
+                if key in field_mapping:
+                    model_field, _ = field_mapping[key]
+                    current_value = getattr(scene, model_field)
+                    if current_value != value:
+                        setattr(scene, model_field, value)
+                        has_changes = True
+                elif key == "isActive":
+                    scene.is_active = value
+            
+            if has_changes:
+                scene.version = scene.version + 1
+                scene.updated_by = user
+                cls._create_history(db, scene, change_note, user)
             
             db.commit()
+            db.refresh(scene)
             
             # 同时写入文件
             cls._write_scene_to_file(scene)
@@ -132,13 +210,15 @@ class SceneService:
 
     @classmethod
     def delete_scene(cls, scene_code: str, db: Session) -> Dict[str, Any]:
-        """删除场景"""
+        """删除场景（包括其子节点）"""
         try:
             scene = db.query(Scene).filter(Scene.scene_code == scene_code).first()
             if not scene:
                 return {"success": False, "message": f"Scene {scene_code} not found"}
             
-            db.delete(scene)
+            # 递归删除子节点
+            cls._delete_with_children(scene.id, db)
+            
             db.commit()
             
             # 更新文件，移除该场景
@@ -151,6 +231,19 @@ class SceneService:
             db.rollback()
             logger.exception(f"Failed to delete scene {scene_code}: {e}")
             return {"success": False, "message": str(e)}
+
+    @classmethod
+    def _delete_with_children(cls, scene_id: int, db: Session):
+        """递归删除场景及其子节点"""
+        # 先找子节点
+        children = db.query(Scene).filter(Scene.parent_id == scene_id).all()
+        for child in children:
+            cls._delete_with_children(child.id, db)
+        
+        # 再删当前节点
+        scene = db.query(Scene).filter(Scene.id == scene_id).first()
+        if scene:
+            db.delete(scene)
 
     @classmethod
     def toggle_active(cls, scene_code: str, db: Session) -> Dict[str, Any]:
@@ -175,29 +268,89 @@ class SceneService:
 
     @classmethod
     def test_scene_recognition(cls, user_input: str, db: Session) -> Dict[str, Any]:
-        """测试场景识别"""
+        """三层场景识别 - 先匹配center，再business，最后scene"""
         try:
             # 获取所有启用的场景
-            scenes = db.query(Scene).filter(Scene.is_active == True).all()
+            all_scenes = db.query(Scene).filter(Scene.is_active == True).all()
             
-            # 简单的关键词匹配
-            matched_scenes = []
+            # 按类型分类
+            centers = [s for s in all_scenes if s.type == 'center']
+            businesses = [s for s in all_scenes if s.type == 'business']
+            scenes = [s for s in all_scenes if s.type == 'scene']
+            
             user_input_lower = user_input.lower()
             
-            for scene in scenes:
+            # 第一层：匹配中心域
+            matched_center = None
+            center_score = 0
+            for center in centers:
+                for keyword in center.keywords:
+                    if keyword.lower() in user_input_lower:
+                        matched_center = center
+                        center_score = center.priority
+                        break
+                if matched_center:
+                    break
+            
+            # 第二层：匹配业务域
+            matched_business = None
+            business_score = 0
+            if matched_center:
+                # 在中心域下找业务域
+                center_businesses = [b for b in businesses if b.parent_id == matched_center.id]
+                for business in center_businesses:
+                    for keyword in business.keywords:
+                        if keyword.lower() in user_input_lower:
+                            matched_business = business
+                            business_score = business.priority
+                            break
+                    if matched_business:
+                        break
+                if not matched_business:
+                    # 如果中心域匹配了但是没匹配到业务域，就找所有业务域
+                    for business in businesses:
+                        for keyword in business.keywords:
+                            if keyword.lower() in user_input_lower:
+                                matched_business = business
+                                business_score = business.priority
+                                break
+                        if matched_business:
+                            break
+            
+            # 第三层：匹配场景
+            matched_scenes = []
+            if matched_business:
+                # 在业务域下找场景
+                target_scenes = [s for s in scenes if s.parent_id == matched_business.id]
+            elif matched_center:
+                # 在中心域下找所有场景
+                target_scenes = []
+                # 先找中心域下的业务域
+                center_businesses = [b for b in businesses if b.parent_id == matched_center.id]
+                for business in center_businesses:
+                    target_scenes.extend([s for s in scenes if s.parent_id == business.id])
+                # 如果还没有，找所有场景
+                if not target_scenes:
+                    target_scenes = scenes
+            else:
+                target_scenes = scenes
+            
+            for scene in target_scenes:
                 for keyword in scene.keywords:
                     if keyword.lower() in user_input_lower:
                         matched_scenes.append({
                             "sceneCode": scene.scene_code,
                             "sceneName": scene.scene_name,
-                            "confidence": 0.8,
+                            "type": scene.type,
+                            "priority": scene.priority,
+                            "confidence": 0.8 + (scene.priority / 100),
                             "method": "keyword",
                             "matchedKeyword": keyword
                         })
                         break
             
-            # 按优先级排序
-            matched_scenes.sort(key=lambda x: -next(s.priority for s in scenes if s.scene_code == x["sceneCode"]))
+            # 排序：优先按层级，再按优先级
+            matched_scenes.sort(key=lambda x: -x["priority"])
             
             best_match = matched_scenes[0] if matched_scenes else None
             
@@ -205,7 +358,9 @@ class SceneService:
                 "success": True,
                 "bestMatch": best_match,
                 "allMatches": matched_scenes,
-                "totalScanned": len(scenes)
+                "matchedCenter": matched_center.scene_name if matched_center else None,
+                "matchedBusiness": matched_business.scene_name if matched_business else None,
+                "totalScanned": len(all_scenes)
             }
         except Exception as e:
             logger.exception(f"Failed to test scene recognition: {e}")
@@ -219,11 +374,10 @@ class SceneService:
             active = db.query(Scene).filter(Scene.is_active == True).count()
             inactive = total - active
             
-            scenes = db.query(Scene).all()
-            scenes_by_action = {}
-            for scene in scenes:
-                action_type = scene.action_type or "unknown"
-                scenes_by_action[action_type] = scenes_by_action.get(action_type, 0) + 1
+            # 按类型统计
+            center_count = db.query(Scene).filter(Scene.type == 'center').count()
+            business_count = db.query(Scene).filter(Scene.type == 'business').count()
+            scene_count = db.query(Scene).filter(Scene.type == 'scene').count()
             
             return {
                 "success": True,
@@ -231,7 +385,11 @@ class SceneService:
                     "total": total,
                     "active": active,
                     "inactive": inactive,
-                    "byActionType": scenes_by_action
+                    "byType": {
+                        "center": center_count,
+                        "business": business_count,
+                        "scene": scene_count
+                    }
                 }
             }
         except Exception as e:
@@ -251,12 +409,26 @@ class SceneService:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
             else:
-                data = {"sceneMappings": [], "version": "3.0"}
+                data = {"sceneMappings": [], "version": "4.0"}
             
             scene_mappings = data.get("sceneMappings", [])
             
             # 更新或添加场景
-            scene_data = scene.to_scene_mapping_format()
+            scene_data = {
+                "sceneCode": scene.scene_code,
+                "sceneName": scene.scene_name,
+                "description": scene.description,
+                "keywords": scene.keywords,
+                "priority": scene.priority,
+                "isActive": scene.is_active,
+                "intentType": scene.intent_type,
+                "formCode": scene.form_code,
+                "actionType": scene.action_type,
+                "actionPrompt": scene.action_prompt_file,
+                "type": scene.type,
+                "parentId": scene.parent_id,
+                "config": scene.config
+            }
             found = False
             for i, existing in enumerate(scene_mappings):
                 if existing.get("sceneCode") == scene.scene_code:
@@ -295,3 +467,105 @@ class SceneService:
             
         except Exception as e:
             logger.warning(f"Failed to remove scene from file: {e}")
+
+    @classmethod
+    def _create_history(cls, db: Session, scene: Scene, change_note: str, user: Optional[str]):
+        """创建历史版本记录"""
+        history = SceneHistory(
+            scene_id=scene.id,
+            scene_code=scene.scene_code,
+            version=scene.version,
+            scene_name=scene.scene_name,
+            description=scene.description,
+            keywords=scene.keywords,
+            priority=scene.priority,
+            is_active=scene.is_active,
+            intent_type=scene.intent_type,
+            form_code=scene.form_code,
+            action_type=scene.action_type,
+            action_prompt_file=scene.action_prompt_file,
+            required_tools=scene.required_tools,
+            available_tools=scene.available_tools,
+            pre_action_steps=scene.pre_action_steps,
+            post_action_steps=scene.post_action_steps,
+            type=scene.type,
+            parent_id=scene.parent_id,
+            config=scene.config,
+            change_note=change_note,
+            created_by=user
+        )
+        db.add(history)
+
+    @classmethod
+    def get_history(cls, scene_code: str, db: Session) -> Dict[str, Any]:
+        """获取场景版本历史"""
+        try:
+            scene = db.query(Scene).filter(Scene.scene_code == scene_code).first()
+            if not scene:
+                return {"success": False, "message": f"Scene {scene_code} not found"}
+
+            history_list = db.query(SceneHistory).filter(
+                SceneHistory.scene_id == scene.id
+            ).order_by(desc(SceneHistory.version)).all()
+
+            return {
+                "success": True,
+                "data": [h.to_dict() for h in history_list]
+            }
+        except Exception as e:
+            logger.exception(f"Failed to get history: {e}")
+            return {"success": False, "message": str(e)}
+
+    @classmethod
+    def rollback_to_version(cls, scene_code: str, version: int, db: Session, user: Optional[str] = None) -> Dict[str, Any]:
+        """回滚到指定版本"""
+        try:
+            scene = db.query(Scene).filter(Scene.scene_code == scene_code).first()
+            if not scene:
+                return {"success": False, "message": f"Scene {scene_code} not found"}
+
+            # 找到目标历史版本
+            target_history = db.query(SceneHistory).filter(
+                SceneHistory.scene_id == scene.id,
+                SceneHistory.version == version
+            ).first()
+
+            if not target_history:
+                return {"success": False, "message": f"Version {version} not found"}
+
+            # 回滚数据
+            scene.scene_name = target_history.scene_name
+            scene.description = target_history.description
+            scene.keywords = target_history.keywords
+            scene.priority = target_history.priority
+            scene.is_active = target_history.is_active
+            scene.intent_type = target_history.intent_type
+            scene.form_code = target_history.form_code
+            scene.action_type = target_history.action_type
+            scene.action_prompt_file = target_history.action_prompt_file
+            scene.required_tools = target_history.required_tools
+            scene.available_tools = target_history.available_tools
+            scene.pre_action_steps = target_history.pre_action_steps
+            scene.post_action_steps = target_history.post_action_steps
+            scene.type = target_history.type
+            scene.parent_id = target_history.parent_id
+            scene.config = target_history.config
+            scene.version = scene.version + 1
+            scene.updated_by = user
+
+            # 创建新版本记录
+            cls._create_history(db, scene, f"Rollback to version {version}", user)
+            
+            db.commit()
+            db.refresh(scene)
+
+            # 同时写入文件
+            cls._write_scene_to_file(scene)
+            config_loader.reload_config("scene_mappings")
+
+            logger.info(f"Rolled back scene {scene_code} to version {version}")
+            return {"success": True, "data": scene.to_dict(), "message": f"Rolled back to version {version} successfully"}
+        except Exception as e:
+            db.rollback()
+            logger.exception(f"Failed to rollback scene: {e}")
+            return {"success": False, "message": str(e)}

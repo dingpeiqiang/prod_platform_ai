@@ -5,6 +5,17 @@
 const API_BASE = '/api/v1'
 
 /**
+ * 获取场景树结构
+ */
+export async function listScenesTree(isActive) {
+  const url = isActive !== undefined
+    ? `${API_BASE}/scenes/tree?isActive=${isActive}`
+    : `${API_BASE}/scenes/tree`
+  const resp = await fetch(url)
+  return await resp.json()
+}
+
+/**
  * 获取场景列表
  */
 export async function listScenes(isActive) {

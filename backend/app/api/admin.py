@@ -9,6 +9,9 @@ from app.services.admin_service import AdminService
 from app.services.scene_service import SceneService
 from app.services.scene_prompt_manager import ScenePromptManager
 from app.services.prompt_service import PromptService
+from app.services.tool_service import ToolService
+from app.services.form_service import FormService
+from app.services.ontology_service import OntologyService
 from app.services.history_ai_service import (
     analyze_history,
     apply_generated_data,
@@ -28,8 +31,17 @@ class SceneCreateRequest(BaseModel):
     keywords: List[str] = []
     priority: int = 10
     isActive: bool = True
+    intentType: Optional[str] = None
     formCode: Optional[str] = None
+    actionType: Optional[str] = None
     actionPromptFile: Optional[str] = None
+    requiredTools: Optional[List[Any]] = None
+    availableTools: Optional[List[Any]] = None
+    preActionSteps: Optional[List[Any]] = None
+    postActionSteps: Optional[List[Any]] = None
+    type: str = "scene"
+    parentId: Optional[int] = None
+    config: Optional[Dict[str, Any]] = None
 
 
 class SceneUpdateRequest(BaseModel):
@@ -38,8 +50,18 @@ class SceneUpdateRequest(BaseModel):
     keywords: Optional[List[str]] = None
     priority: Optional[int] = None
     isActive: Optional[bool] = None
+    intentType: Optional[str] = None
     formCode: Optional[str] = None
+    actionType: Optional[str] = None
     actionPromptFile: Optional[str] = None
+    requiredTools: Optional[List[Any]] = None
+    availableTools: Optional[List[Any]] = None
+    preActionSteps: Optional[List[Any]] = None
+    postActionSteps: Optional[List[Any]] = None
+    type: Optional[str] = None
+    parentId: Optional[int] = None
+    changeNote: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
 
 
 class SceneRecognitionTestRequest(BaseModel):
@@ -222,6 +244,13 @@ async def rollback_form_endpoint(request: RollbackFormRequest):
 
 # ============ 场景管理 API ============
 
+@router.get("/scenes/tree")
+async def list_scenes_tree(is_active: Optional[bool] = None, db: Session = Depends(get_db)):
+    """获取场景树状结构"""
+    result = SceneService.list_scenes_tree(db, is_active=is_active)
+    return result
+
+
 @router.get("/scenes")
 async def list_scenes(is_active: Optional[bool] = None, db: Session = Depends(get_db)):
     """获取场景列表"""
@@ -245,6 +274,7 @@ async def create_scene(request: SceneCreateRequest, db: Session = Depends(get_db
     scene_data['scene_name'] = scene_data.pop('sceneName')
     scene_data['form_code'] = scene_data.pop('formCode')
     scene_data['action_prompt_file'] = scene_data.pop('actionPromptFile')
+    scene_data['parent_id'] = scene_data.pop('parentId')
     
     result = SceneService.create_scene(scene_data, db)
     return result
@@ -263,6 +293,8 @@ async def update_scene(scene_code: str, request: SceneUpdateRequest, db: Session
         scene_data['action_prompt_file'] = scene_data.pop('actionPromptFile')
     if 'isActive' in scene_data:
         scene_data['is_active'] = scene_data.pop('isActive')
+    if 'parentId' in scene_data:
+        scene_data['parent_id'] = scene_data.pop('parentId')
     
     result = SceneService.update_scene(scene_code, scene_data, db)
     return result
@@ -293,6 +325,24 @@ async def test_scene_recognition(request: SceneRecognitionTestRequest, db: Sessi
 async def get_scene_stats(db: Session = Depends(get_db)):
     """获取场景统计"""
     result = SceneService.get_scene_stats(db)
+    return result
+
+
+@router.get("/scenes/{scene_code}/history")
+async def get_scene_history(scene_code: str, db: Session = Depends(get_db)):
+    """获取场景版本历史"""
+    result = SceneService.get_history(scene_code, db)
+    return result
+
+
+class SceneRollbackRequest(BaseModel):
+    version: int
+
+
+@router.post("/scenes/{scene_code}/rollback")
+async def rollback_scene(scene_code: str, request: SceneRollbackRequest, db: Session = Depends(get_db)):
+    """回滚场景到指定版本"""
+    result = SceneService.rollback_to_version(scene_code, request.version, db)
     return result
 
 
@@ -434,4 +484,222 @@ async def generate_with_ai(request: AIGenerateRequest, db: Session = Depends(get
 async def optimize_with_ai(request: AIOptimizeRequest, db: Session = Depends(get_db)):
     """AI优化提示词"""
     result = PromptService.optimize_prompt(db, request.dict())
+    return result
+
+
+# ============ 工具管理 API ============
+
+class ToolCreateRequest(BaseModel):
+    toolCode: str
+    toolName: str
+    description: Optional[str] = None
+    category: str = "general"
+    toolType: str = "custom"
+    config: Dict[str, Any] = {}
+    parameters: List[Dict[str, Any]] = []
+    returnSchema: Dict[str, Any] = {}
+    endpoint: Optional[str] = None
+    handler: Optional[str] = None
+    isAsync: bool = True
+
+
+class ToolUpdateRequest(BaseModel):
+    toolName: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    toolType: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
+    parameters: Optional[List[Dict[str, Any]]] = None
+    returnSchema: Optional[Dict[str, Any]] = None
+    endpoint: Optional[str] = None
+    handler: Optional[str] = None
+    isAsync: Optional[bool] = None
+    isActive: Optional[bool] = None
+
+
+@router.get("/tools")
+async def list_tools(category: Optional[str] = None, isActive: Optional[bool] = None, db: Session = Depends(get_db)):
+    """获取工具列表"""
+    result = ToolService.list_tools(db, category=category, is_active=isActive)
+    return result
+
+
+@router.get("/tools/categories")
+async def get_tool_categories():
+    """获取工具分类"""
+    return {"success": True, "data": ToolService.get_categories()}
+
+
+@router.get("/tools/{tool_code}")
+async def get_tool(tool_code: str, db: Session = Depends(get_db)):
+    """获取工具详情"""
+    result = ToolService.get_tool(db, tool_code)
+    return result
+
+
+@router.post("/tools")
+async def create_tool(request: ToolCreateRequest, db: Session = Depends(get_db)):
+    """创建工具"""
+    result = ToolService.create_tool(db, request.dict())
+    return result
+
+
+@router.put("/tools/{tool_code}")
+async def update_tool(tool_code: str, request: ToolUpdateRequest, db: Session = Depends(get_db)):
+    """更新工具"""
+    result = ToolService.update_tool(db, tool_code, request.dict())
+    return result
+
+
+@router.delete("/tools/{tool_code}")
+async def delete_tool(tool_code: str, db: Session = Depends(get_db)):
+    """删除工具"""
+    result = ToolService.delete_tool(db, tool_code)
+    return result
+
+
+@router.patch("/tools/{tool_code}/toggle")
+async def toggle_tool(tool_code: str, db: Session = Depends(get_db)):
+    """切换工具启用状态"""
+    result = ToolService.toggle_active(db, tool_code)
+    return result
+
+
+# ============ 表单管理 API ============
+
+class FormCreateRequest(BaseModel):
+    formCode: str
+    formName: str
+    description: Optional[str] = None
+    category: str = "general"
+    entities: List[Dict[str, Any]] = []
+    layout: Dict[str, Any] = {}
+    validationRules: List[Dict[str, Any]] = []
+    ontologyCode: Optional[str] = None
+
+
+class FormUpdateRequest(BaseModel):
+    formName: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    entities: Optional[List[Dict[str, Any]]] = None
+    layout: Optional[Dict[str, Any]] = None
+    validationRules: Optional[List[Dict[str, Any]]] = None
+    ontologyCode: Optional[str] = None
+    isActive: Optional[bool] = None
+
+
+@router.get("/forms")
+async def list_forms(category: Optional[str] = None, isActive: Optional[bool] = None, db: Session = Depends(get_db)):
+    """获取表单列表"""
+    result = FormService.list_forms(db, category=category, is_active=isActive)
+    return result
+
+
+@router.get("/forms/categories")
+async def get_form_categories():
+    """获取表单分类"""
+    return {"success": True, "data": FormService.get_categories()}
+
+
+@router.get("/forms/{form_code}")
+async def get_form(form_code: str, db: Session = Depends(get_db)):
+    """获取表单详情"""
+    result = FormService.get_form(db, form_code)
+    return result
+
+
+@router.post("/forms")
+async def create_form(request: FormCreateRequest, db: Session = Depends(get_db)):
+    """创建表单"""
+    result = FormService.create_form(db, request.dict())
+    return result
+
+
+@router.put("/forms/{form_code}")
+async def update_form(form_code: str, request: FormUpdateRequest, db: Session = Depends(get_db)):
+    """更新表单"""
+    result = FormService.update_form(db, form_code, request.dict())
+    return result
+
+
+@router.delete("/forms/{form_code}")
+async def delete_form(form_code: str, db: Session = Depends(get_db)):
+    """删除表单"""
+    result = FormService.delete_form(db, form_code)
+    return result
+
+
+@router.patch("/forms/{form_code}/toggle")
+async def toggle_form(form_code: str, db: Session = Depends(get_db)):
+    """切换表单启用状态"""
+    result = FormService.toggle_active(db, form_code)
+    return result
+
+
+# ============ 本体管理 API ============
+
+class OntologyCreateRequest(BaseModel):
+    ontologyCode: str
+    ontologyName: str
+    formCode: Optional[str] = None
+    formName: Optional[str] = None
+    description: Optional[str] = None
+    entities: List[Dict[str, Any]] = []
+
+
+class OntologyUpdateRequest(BaseModel):
+    ontologyName: Optional[str] = None
+    formCode: Optional[str] = None
+    formName: Optional[str] = None
+    description: Optional[str] = None
+    entities: Optional[List[Dict[str, Any]]] = None
+    isActive: Optional[bool] = None
+
+
+@router.get("/ontologies")
+async def list_ontologies(isActive: Optional[bool] = None, db: Session = Depends(get_db)):
+    """获取本体列表"""
+    result = OntologyService.list_ontologies(db, is_active=isActive)
+    return result
+
+
+@router.get("/ontologies/categories")
+async def get_ontology_categories():
+    """获取本体分类"""
+    return {"success": True, "data": OntologyService.get_categories()}
+
+
+@router.get("/ontologies/{ontology_code}")
+async def get_ontology(ontology_code: str, db: Session = Depends(get_db)):
+    """获取本体详情"""
+    result = OntologyService.get_ontology(db, ontology_code)
+    return result
+
+
+@router.post("/ontologies")
+async def create_ontology(request: OntologyCreateRequest, db: Session = Depends(get_db)):
+    """创建本体"""
+    result = OntologyService.create_ontology(db, request.dict())
+    return result
+
+
+@router.put("/ontologies/{ontology_code}")
+async def update_ontology(ontology_code: str, request: OntologyUpdateRequest, db: Session = Depends(get_db)):
+    """更新本体"""
+    result = OntologyService.update_ontology(db, ontology_code, request.dict())
+    return result
+
+
+@router.delete("/ontologies/{ontology_code}")
+async def delete_ontology(ontology_code: str, db: Session = Depends(get_db)):
+    """删除本体"""
+    result = OntologyService.delete_ontology(db, ontology_code)
+    return result
+
+
+@router.patch("/ontologies/{ontology_code}/toggle")
+async def toggle_ontology(ontology_code: str, db: Session = Depends(get_db)):
+    """切换本体启用状态"""
+    result = OntologyService.toggle_active(db, ontology_code)
     return result
