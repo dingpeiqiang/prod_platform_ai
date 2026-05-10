@@ -60,17 +60,17 @@ const { isDark, toggleTheme, themeLabel } = useTheme()
   width: 36px;
   height: 36px;
   border-radius: var(--radius-md);
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-default);
-  color: var(--text-secondary);
+  background: var(--sidebar-hover-bg);
+  border: 1px solid var(--sidebar-border);
+  color: var(--sidebar-text-secondary);
   cursor: pointer;
   transition: all var(--transition-fast);
 }
 
 .theme-toggle:hover {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  border-color: var(--border-strong);
+  background: rgba(255,255,255,0.1);
+  color: var(--sidebar-text-primary);
+  border-color: rgba(255,255,255,0.2);
 }
 
 .theme-toggle:focus-visible {
@@ -80,13 +80,13 @@ const { isDark, toggleTheme, themeLabel } = useTheme()
 
 /* 暗色模式激活状态 */
 .theme-toggle.is-dark {
-  background: var(--color-gray-800);
-  border-color: var(--color-gray-700);
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.15);
   color: var(--color-primary-400);
 }
 
 .theme-toggle.is-dark:hover {
-  background: var(--color-gray-700);
+  background: rgba(255,255,255,0.12);
   color: var(--color-primary-300);
 }
 </style>

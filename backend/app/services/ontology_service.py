@@ -20,9 +20,11 @@ class OntologyService:
         ]
     
     @classmethod
-    def list_ontologies(cls, db: Session, is_active: Optional[bool] = None) -> Dict[str, Any]:
+    def list_ontologies(cls, db: Session, category: Optional[str] = None, is_active: Optional[bool] = None) -> Dict[str, Any]:
         try:
             query = db.query(Ontology)
+            if category and category != "":
+                query = query.filter(Ontology.category == category)
             if is_active is not None:
                 query = query.filter(Ontology.is_active == is_active)
             
@@ -60,6 +62,7 @@ class OntologyService:
             ontology = Ontology(
                 ontology_code=ontology_code,
                 ontology_name=ontology_data.get("ontologyName", ontology_code),
+                category=ontology_data.get("category", "general"),
                 form_code=ontology_data.get("formCode"),
                 form_name=ontology_data.get("formName"),
                 description=ontology_data.get("description"),
@@ -84,6 +87,8 @@ class OntologyService:
             
             if "ontologyName" in ontology_data:
                 ontology.ontology_name = ontology_data["ontologyName"]
+            if "category" in ontology_data:
+                ontology.category = ontology_data["category"]
             if "formCode" in ontology_data:
                 ontology.form_code = ontology_data["formCode"]
             if "formName" in ontology_data:
