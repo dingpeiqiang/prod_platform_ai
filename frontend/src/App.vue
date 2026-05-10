@@ -39,17 +39,24 @@
       />
 
       <div class="main-area">
+        <!-- 场景管理界面 -->
+        <SceneManager 
+          v-if="!isInitializing && currentView === 'scene-manager'" 
+          @go-back="returnToDashboard"
+        />
+        
         <!-- 首页：没有活动会话时显示 -->
         <DashboardHome
-          v-if="!isInitializing && !activeSessionId"
+          v-else-if="!isInitializing && !activeSessionId"
           @send-message="onSendMessageFromHome"
           @switch-chat="onSwitchChat"
           @create-session="onNewSession"
+          @open-scene-manager="openSceneManager"
         />
         
         <!-- 聊天界面：有活动会话时显示 -->
         <ChatAssistant
-        v-if="!isInitializing && activeSessionId"
+        v-else-if="!isInitializing && activeSessionId"
         ref="chatRef"
         :sessionId="activeSessionId"
         :dbSessionId="activeDbSessionId"
@@ -70,9 +77,12 @@ import Sidebar from './components/Sidebar.vue'
 import ChatAssistant from './components/ChatAssistant.vue'
 import LoginScreen from './components/LoginScreen.vue'
 import DashboardHome from './components/DashboardHome.vue'
+import SceneManager from './components/SceneManager.vue'
 import { useUserStore } from './stores/user'
 import { useTheme } from './composables/useTheme'
 import { createSession as apiCreateSession, getSessions as apiGetSessions, deleteSession as apiDeleteSession, updateSessionTitle as apiUpdateSessionTitle } from './services/chatApi.js'
+
+const currentView = ref('dashboard')
 
 // 网络状态
 const isOnline = ref(navigator.onLine)
@@ -150,9 +160,24 @@ const createLocalSession = (dbSessionId = null) => {
   return s
 }
 
+// ── 打开场景管理 ─────────────────────────────────────────
+const openSceneManager = () => {
+  currentView.value = 'scene-manager'
+  activeSessionId.value = ''
+  activeDbSessionId.value = ''
+  saveActiveSessionId()
+  sidebarOpen.value = false
+}
+
+// ── 返回首页 ─────────────────────────────────────────────
+const returnToDashboard = () => {
+  currentView.value = 'dashboard'
+}
+
 // ── 新建按钮 ──────────────────────────────────────────────
 const onNewSession = () => {
   // 点击新建会话不创建新会话，只跳转到首页
+  currentView.value = 'dashboard'
   activeSessionId.value = ''
   activeDbSessionId.value = ''
   saveActiveSessionId()
@@ -162,6 +187,7 @@ const onNewSession = () => {
 // ── 切换会话 ──────────────────────────────────────────────
 const onSwitchSession = (id) => {
   const s = sessions.value.find(s => s.id === id)
+  currentView.value = 'dashboard'
   activeSessionId.value = id
   activeDbSessionId.value = s?.dbSessionId || ''
   saveActiveSessionId()  // 保存当前激活会话

@@ -200,7 +200,7 @@
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue'
 
-const emit = defineEmits(['send-message', 'switch-chat', 'create-session'])
+const emit = defineEmits(['send-message', 'switch-chat', 'create-session', 'open-scene-manager'])
 
 const inputEl = ref(null)
 const inputText = ref('')
@@ -213,6 +213,7 @@ const suggestions = [
 
 // 快捷入口
 const shortcuts = [
+  { key: 'scene', icon: 'chart', label: '场景管理' },
   { key: 'report', icon: 'chart', label: '数据报告' },
   { key: 'meeting', icon: 'file', label: '会议纪要' },
   { key: 'help', icon: 'help', label: '帮助中心' },
@@ -299,6 +300,10 @@ const handleSuggestion = (s) => {
 }
 
 const handleShortcut = (sc) => {
+  if (sc.key === 'scene') {
+    emit('open-scene-manager')
+    return
+  }
   const msg = shortcuts.find(s => s.key === sc.key)
   if (msg) {
     emit('send-message', `帮我填一个${sc.label}`)

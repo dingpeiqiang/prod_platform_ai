@@ -2,25 +2,41 @@
   "sceneMappings": [
     {
       "sceneCode": "external_api_demo",
+      "sceneName": "外部API演示",
+      "description": "外部API调用演示场景",
       "keywords": [
         "外部API",
         "API演示",
         "API调用"
       ],
-      "priority": 15
+      "priority": 15,
+      "isActive": true,
+      "intentType": "form",
+      "formCode": "external_api_demo",
+      "actionType": "form_generation",
+      "actionPrompt": null
     },
     {
       "sceneCode": "validation_demo",
+      "sceneName": "校验演示",
+      "description": "表单校验规则演示场景",
       "keywords": [
         "校验演示",
         "校验规则",
         "校验",
         "演示"
       ],
-      "priority": 15
+      "priority": 15,
+      "isActive": true,
+      "intentType": "form",
+      "formCode": "validation_demo",
+      "actionType": "form_generation",
+      "actionPrompt": null
     },
     {
       "sceneCode": "tariff_filing_publicity",
+      "sceneName": "资费备案公示",
+      "description": "资费备案公示表单场景",
       "keywords": [
         "资费备案",
         "资费",
@@ -35,8 +51,49 @@
         "资费备案公示",
         "tariff_filing_publicity"
       ],
-      "priority": 10
+      "priority": 10,
+      "isActive": true,
+      "intentType": "tariff_filing",
+      "formCode": "tariff_filing_publicity",
+      "actionType": "form_with_mcp",
+      "actionPrompt": "tariff_filing_publicity_prompt.txt",
+      "requiredTools": ["query_tariff_by_code"],
+      "preActionSteps": [
+        {
+          "stepType": "extract_param",
+          "paramName": "tariff_code",
+          "extractionRule": "从用户输入中提取套餐编码，格式为P开头后跟数字"
+        },
+        {
+          "stepType": "call_tool",
+          "toolName": "query_tariff_by_code",
+          "paramMapping": {
+            "tariff_code": "tariff_code"
+          },
+          "onSuccess": "merge_fields",
+          "onFailure": "continue_manual"
+        }
+      ],
+      "postActionSteps": [
+        {
+          "stepType": "validate",
+          "rules": ["check_required_fields", "validate_data_types"]
+        },
+        {
+          "stepType": "recommend",
+          "strategy": ["user_history", "frequency", "time_decay"]
+        }
+      ]
     }
   ],
-  "defaultScene": "generic"
+  "defaultScene": "generic",
+  "version": "3.0",
+  "actionTypes": {
+    "form_generation": "标准表单生成",
+    "form_with_mcp": "表单生成+MCP工具调用",
+    "workflow": "复杂工作流执行",
+    "chat": "对话式处理",
+    "analysis": "数据分析类",
+    "custom": "自定义处理逻辑"
+  }
 }
