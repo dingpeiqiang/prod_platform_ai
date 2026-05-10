@@ -40,13 +40,7 @@
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="动作类型" width="140">
-          <template #default="{ row }">
-            <el-tag :type="row.actionType === 'form_with_mcp' ? 'primary' : 'info'" size="small">
-              {{ row.actionType }}
-            </el-tag>
-          </template>
-        </el-table-column>
+        <el-table-column prop="formCode" label="关联表单" width="140" />
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
             <el-switch
@@ -117,40 +111,11 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="意图类型">
-              <el-select v-model="formData.intentType" placeholder="选择意图类型" clearable>
-                <el-option
-                  v-for="t in enumOptions.intentTypes"
-                  :key="t.value"
-                  :label="t.label"
-                  :value="t.value"
-                />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="关联表单">
-              <el-input v-model="formData.formCode" placeholder="表单编码" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-        <el-form-item label="动作类型">
-          <el-select v-model="formData.actionType" placeholder="选择动作类型">
-            <el-option
-              v-for="t in enumOptions.actionTypes"
-              :key="t.value"
-              :label="t.label"
-              :value="t.value"
-            />
-          </el-select>
+        <el-form-item label="关联表单编码">
+          <el-input v-model="formData.formCode" placeholder="可选，关联的表单编码" />
         </el-form-item>
         <el-form-item label="提示词文件">
           <el-input v-model="formData.actionPromptFile" placeholder="如: tariff_filing_prompt.txt" />
-        </el-form-item>
-        <el-form-item label="必需工具">
-          <el-input v-model="requiredToolsText" placeholder="工具列表，用逗号分隔" />
         </el-form-item>
       </el-form>
 
@@ -194,7 +159,7 @@
 import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, ArrowLeft } from '@element-plus/icons-vue'
-import { listScenes, createScene, updateScene, deleteScene, toggleScene, testSceneRecognition, getSceneEnums } from '../services/sceneApi.js'
+import { listScenes, createScene, updateScene, deleteScene, toggleScene, testSceneRecognition } from '../services/sceneApi.js'
 
 const emit = defineEmits(['go-back'])
 
@@ -216,12 +181,6 @@ const keywordInputVisible = ref(false)
 const keywordInput = ref('')
 const keywordInputRef = ref(null)
 
-// 枚举选项
-const enumOptions = ref({
-  intentTypes: [],
-  actionTypes: []
-})
-
 const formData = reactive({
   sceneCode: '',
   sceneName: '',
@@ -229,21 +188,8 @@ const formData = reactive({
   keywords: [],
   priority: 10,
   isActive: true,
-  intentType: '',
   formCode: '',
-  actionType: 'form_generation',
-  actionPromptFile: '',
-  requiredTools: [],
-  availableTools: [],
-  preActionSteps: [],
-  postActionSteps: []
-})
-
-const requiredToolsText = computed({
-  get: () => (formData.requiredTools || []).join(', '),
-  set: (val) => {
-    formData.requiredTools = val.split(/[,，]/).map(s => s.trim()).filter(s => s)
-  }
+  actionPromptFile: ''
 })
 
 async function refresh() {
@@ -271,14 +217,8 @@ function openCreateDialog() {
     keywords: [],
     priority: 10,
     isActive: true,
-    intentType: '',
     formCode: '',
-    actionType: 'form_generation',
-    actionPromptFile: '',
-    requiredTools: [],
-    availableTools: [],
-    preActionSteps: [],
-    postActionSteps: []
+    actionPromptFile: ''
   })
   dialogVisible.value = true
 }
@@ -292,14 +232,8 @@ function openEditDialog(scene) {
     keywords: [...(scene.keywords || [])],
     priority: scene.priority,
     isActive: scene.isActive,
-    intentType: scene.intentType,
     formCode: scene.formCode,
-    actionType: scene.actionType,
-    actionPromptFile: scene.actionPromptFile,
-    requiredTools: [...(scene.requiredTools || [])],
-    availableTools: [...(scene.availableTools || [])],
-    preActionSteps: [...(scene.preActionSteps || [])],
-    postActionSteps: [...(scene.postActionSteps || [])]
+    actionPromptFile: scene.actionPromptFile
   })
   dialogVisible.value = true
 }
@@ -425,20 +359,8 @@ function handleKeywordRemove(tag) {
   }
 }
 
-async function loadEnumOptions() {
-  try {
-    const result = await getSceneEnums()
-    if (result.success) {
-      enumOptions.value = result.data
-    }
-  } catch (e) {
-    console.error('Failed to load enum options', e)
-  }
-}
-
 onMounted(() => {
   refresh()
-  loadEnumOptions()
 })
 </script>
 

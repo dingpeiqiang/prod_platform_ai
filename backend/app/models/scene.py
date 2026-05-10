@@ -1,7 +1,6 @@
 from sqlalchemy import Column, Integer, String, JSON, Boolean, DateTime, Text
 from sqlalchemy.sql import func
 from app.core.database import Base
-from app.models.scene_enums import IntentType, ActionType
 
 
 class Scene(Base):
@@ -14,14 +13,8 @@ class Scene(Base):
     keywords = Column(JSON, nullable=False, default=list)
     priority = Column(Integer, default=10)
     is_active = Column(Boolean, default=True)
-    intent_type = Column(String(50))
-    form_code = Column(String(100))
-    action_type = Column(String(50), default="form_generation")
-    action_prompt_file = Column(String(255))
-    required_tools = Column(JSON, default=list)
-    available_tools = Column(JSON, default=list)
-    pre_action_steps = Column(JSON, default=list)
-    post_action_steps = Column(JSON, default=list)
+    form_code = Column(String(100))  # 关联的表单编码（可选）
+    action_prompt_file = Column(String(255))  # 提示词文件
     version = Column(Integer, default=1)
     created_by = Column(String(100))
     updated_by = Column(String(100))
@@ -36,14 +29,8 @@ class Scene(Base):
             "keywords": self.keywords,
             "priority": self.priority,
             "isActive": self.is_active,
-            "intentType": self.intent_type,
             "formCode": self.form_code,
-            "actionType": self.action_type,
             "actionPromptFile": self.action_prompt_file,
-            "requiredTools": self.required_tools,
-            "availableTools": self.available_tools,
-            "preActionSteps": self.pre_action_steps,
-            "postActionSteps": self.post_action_steps,
             "version": self.version,
             "createdBy": self.created_by,
             "updatedBy": self.updated_by,
@@ -60,11 +47,6 @@ class Scene(Base):
             "keywords": self.keywords,
             "priority": self.priority,
             "isActive": self.is_active,
-            "intentType": self.intent_type,
             "formCode": self.form_code,
-            "actionType": self.action_type,
-            "actionPrompt": self.action_prompt_file,
-            "requiredTools": self.required_tools,
-            "preActionSteps": self.pre_action_steps,
-            "postActionSteps": self.post_action_steps
+            "actionPrompt": self.action_prompt_file
         }

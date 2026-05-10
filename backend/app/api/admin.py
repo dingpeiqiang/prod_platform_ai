@@ -27,14 +27,8 @@ class SceneCreateRequest(BaseModel):
     keywords: List[str] = []
     priority: int = 10
     isActive: bool = True
-    intentType: Optional[str] = None
     formCode: Optional[str] = None
-    actionType: str = "form_generation"
     actionPromptFile: Optional[str] = None
-    requiredTools: List[str] = []
-    availableTools: List[str] = []
-    preActionSteps: List[Dict] = []
-    postActionSteps: List[Dict] = []
 
 
 class SceneUpdateRequest(BaseModel):
@@ -43,14 +37,8 @@ class SceneUpdateRequest(BaseModel):
     keywords: Optional[List[str]] = None
     priority: Optional[int] = None
     isActive: Optional[bool] = None
-    intentType: Optional[str] = None
     formCode: Optional[str] = None
-    actionType: Optional[str] = None
     actionPromptFile: Optional[str] = None
-    requiredTools: Optional[List[str]] = None
-    availableTools: Optional[List[str]] = None
-    preActionSteps: Optional[List[Dict]] = None
-    postActionSteps: Optional[List[Dict]] = None
 
 
 class SceneRecognitionTestRequest(BaseModel):
@@ -233,13 +221,6 @@ async def rollback_form_endpoint(request: RollbackFormRequest):
 
 # ============ 场景管理 API ============
 
-@router.get("/scenes/enums")
-async def get_scene_enums():
-    """获取场景枚举选项（意图类型、动作类型）"""
-    result = SceneService.get_enum_options()
-    return result
-
-
 @router.get("/scenes")
 async def list_scenes(is_active: Optional[bool] = None, db: Session = Depends(get_db)):
     """获取场景列表"""
@@ -261,14 +242,8 @@ async def create_scene(request: SceneCreateRequest, db: Session = Depends(get_db
     # 转换字段名（驼峰转下划线）
     scene_data['scene_code'] = scene_data.pop('sceneCode')
     scene_data['scene_name'] = scene_data.pop('sceneName')
-    scene_data['intent_type'] = scene_data.pop('intentType')
     scene_data['form_code'] = scene_data.pop('formCode')
-    scene_data['action_type'] = scene_data.pop('actionType')
     scene_data['action_prompt_file'] = scene_data.pop('actionPromptFile')
-    scene_data['required_tools'] = scene_data.pop('requiredTools')
-    scene_data['available_tools'] = scene_data.pop('availableTools')
-    scene_data['pre_action_steps'] = scene_data.pop('preActionSteps')
-    scene_data['post_action_steps'] = scene_data.pop('postActionSteps')
     
     result = SceneService.create_scene(scene_data, db)
     return result
@@ -281,22 +256,10 @@ async def update_scene(scene_code: str, request: SceneUpdateRequest, db: Session
     # 转换字段名
     if 'sceneName' in scene_data:
         scene_data['scene_name'] = scene_data.pop('sceneName')
-    if 'intentType' in scene_data:
-        scene_data['intent_type'] = scene_data.pop('intentType')
     if 'formCode' in scene_data:
         scene_data['form_code'] = scene_data.pop('formCode')
-    if 'actionType' in scene_data:
-        scene_data['action_type'] = scene_data.pop('actionType')
     if 'actionPromptFile' in scene_data:
         scene_data['action_prompt_file'] = scene_data.pop('actionPromptFile')
-    if 'requiredTools' in scene_data:
-        scene_data['required_tools'] = scene_data.pop('requiredTools')
-    if 'availableTools' in scene_data:
-        scene_data['available_tools'] = scene_data.pop('availableTools')
-    if 'preActionSteps' in scene_data:
-        scene_data['pre_action_steps'] = scene_data.pop('preActionSteps')
-    if 'postActionSteps' in scene_data:
-        scene_data['post_action_steps'] = scene_data.pop('postActionSteps')
     if 'isActive' in scene_data:
         scene_data['is_active'] = scene_data.pop('isActive')
     
