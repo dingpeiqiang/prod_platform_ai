@@ -642,6 +642,7 @@ async def toggle_form(form_code: str, db: Session = Depends(get_db)):
 class OntologyCreateRequest(BaseModel):
     ontologyCode: str
     ontologyName: str
+    category: Optional[str] = "general"
     formCode: Optional[str] = None
     formName: Optional[str] = None
     description: Optional[str] = None
@@ -650,6 +651,7 @@ class OntologyCreateRequest(BaseModel):
 
 class OntologyUpdateRequest(BaseModel):
     ontologyName: Optional[str] = None
+    category: Optional[str] = None
     formCode: Optional[str] = None
     formName: Optional[str] = None
     description: Optional[str] = None
@@ -658,9 +660,9 @@ class OntologyUpdateRequest(BaseModel):
 
 
 @router.get("/ontologies")
-async def list_ontologies(isActive: Optional[bool] = None, db: Session = Depends(get_db)):
+async def list_ontologies(category: Optional[str] = None, isActive: Optional[bool] = None, db: Session = Depends(get_db)):
     """获取本体列表"""
-    result = OntologyService.list_ontologies(db, is_active=isActive)
+    result = OntologyService.list_ontologies(db, category=category, is_active=isActive)
     return result
 
 

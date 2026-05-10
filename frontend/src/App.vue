@@ -1,5 +1,8 @@
 <template>
   <div id="app">
+    <!-- 统一 Loading -->
+    <Loading :visible="isLoading" :text="loadingText" />
+    
     <!-- 网络状态提示 -->
     <transition name="slide-down">
       <div v-if="!isOnline" class="network-status-bar offline">
@@ -89,15 +92,8 @@
         />
 
         <!-- 本体管理界面 -->
-        <GenericManager 
+        <OntologyManager 
           v-if="!isInitializing && currentView === 'ontology-manager'" 
-          title="📚 本体管理"
-          item-type="本体"
-          code-field="ontologyCode"
-          name-field="ontologyName"
-          :show-entities="true"
-          :show-category="false"
-          :api-service="ontologyApiService"
           @go-back="returnToDashboard"
         />
         
@@ -120,6 +116,7 @@
 
 <script setup>
 import { ref, computed, provide, onMounted, watch, onUnmounted } from 'vue'
+import { storeToRefs } from 'pinia'
 import Sidebar from './components/Sidebar.vue'
 import ChatAssistant from './components/ChatAssistant.vue'
 import LoginScreen from './components/LoginScreen.vue'
@@ -127,7 +124,10 @@ import DashboardHome from './components/DashboardHome.vue'
 import SceneManager from './components/SceneManager.vue'
 import PromptManager from './components/PromptManager.vue'
 import GenericManager from './components/GenericManager.vue'
+import OntologyManager from './components/OntologyManager.vue'
+import Loading from './components/Loading.vue'
 import { useUserStore } from './stores/user'
+import { useLoadingStore } from './stores/loading'
 import { useTheme } from './composables/useTheme'
 import { createSession as apiCreateSession, getSessions as apiGetSessions, deleteSession as apiDeleteSession, updateSessionTitle as apiUpdateSessionTitle } from './services/chatApi.js'
 import * as toolApi from './services/toolApi.js'
@@ -145,6 +145,8 @@ let backendCheckInterval = null
 let reconnectTimeout = null
 
 const userStore = useUserStore()
+const loadingStore = useLoadingStore()
+const { isLoading, loadingText } = storeToRefs(loadingStore)
 const { initTheme } = useTheme()
 
 const SESSIONS_KEY = 'chat_sessions'
@@ -416,6 +418,7 @@ const handleLogout = () => {
 // ── 初始化：加载本地会话 + 同步 DB 会话 ────────────────────
 const initDbSessions = async () => {
   isInitializing.value = true  // 开始初始化
+  loadingStore.show('正在初始化...')
   
   try {
     // 0. 恢复之前激活的会话 ID
@@ -465,6 +468,7 @@ const initDbSessions = async () => {
     activeDbSessionId.value = ''
   } finally {
     isInitializing.value = false  // 初始化完成
+    loadingStore.hide()
   }
 }
 

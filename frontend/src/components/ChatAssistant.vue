@@ -4,7 +4,6 @@
       <div class="chat-topbar">
         <span class="session-name">{{ sessionTitle }}</span>
         <div class="topbar-actions">
-          <ThemeToggle />
           <button class="icon-btn" title="清空记录" @click="clearHistory">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>
@@ -48,7 +47,6 @@
 
 <script setup>import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import ThemeToggle from './common/ThemeToggle.vue';
 import ChatMessageList from './ChatMessageList.vue';
 import ChatInput from './ChatInput.vue';
 import FormPanel from './FormPanel.vue';

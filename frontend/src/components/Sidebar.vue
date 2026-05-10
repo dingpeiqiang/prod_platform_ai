@@ -71,6 +71,11 @@
     </div>
 
     <div class="sidebar-footer">
+      <!-- 主题切换 -->
+      <div class="theme-toggle-wrapper">
+        <ThemeToggle />
+      </div>
+      
       <!-- 用户信息 & 登出 -->
       <div class="user-info" @click="showLogoutMenu = !showLogoutMenu" ref="userInfoRef">
         <div class="user-avatar" :style="{ background: avatarColor }">{{ avatarText }}</div>
@@ -102,6 +107,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useUserStore } from '../stores/user'
+import ThemeToggle from './common/ThemeToggle.vue'
 
 const userStore = useUserStore()
 const showLogoutMenu = ref(false)
@@ -282,6 +288,14 @@ const olderSessions = computed(() =>
   padding-top: var(--space-2-5);
   margin-top: var(--space-2);
   position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.theme-toggle-wrapper {
+  display: flex;
+  padding: var(--space-2);
 }
 
 .user-info {

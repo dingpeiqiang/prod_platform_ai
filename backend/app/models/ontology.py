@@ -9,6 +9,7 @@ class Ontology(Base):
     id = Column(Integer, primary_key=True, index=True)
     ontology_code = Column(String(100), unique=True, index=True, nullable=False)
     ontology_name = Column(String(200), nullable=False)
+    category = Column(String(100), default="general")
     entities = Column(JSON, nullable=False)
     form_code = Column(String(100))
     form_name = Column(String(200))
@@ -20,12 +21,17 @@ class Ontology(Base):
 
     def to_dict(self):
         return {
-            "formCode": self.form_code or self.ontology_code,
-            "formName": self.form_name or self.ontology_name,
+            "ontologyCode": self.ontology_code,
+            "ontologyName": self.ontology_name,
+            "category": self.category,
             "description": self.description,
             "entities": self.entities,
+            "formCode": self.form_code,
+            "formName": self.form_name,
             "version": self.version,
-            "isActive": self.is_active
+            "isActive": self.is_active,
+            "createdAt": self.created_at.isoformat() if self.created_at else None,
+            "updatedAt": self.updated_at.isoformat() if self.updated_at else None
         }
 
     def to_ontology_format(self):
