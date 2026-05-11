@@ -33,7 +33,7 @@ Write-Host "[INFO] 使用 requirements.txt: $Requirements"
 Write-Host ""
 
 # 第一步：尝试下载二进制 wheel（与容器平台一致）
-Write-Host "[STEP 1/2] 下载 manylinux wheel 包..." -ForegroundColor Green
+Write-Host "[STEP 1/3] 下载 manylinux wheel 包..." -ForegroundColor Green
 pip download `
     --dest $VendorDir `
     --platform manylinux2014_x86_64 `
@@ -44,8 +44,19 @@ pip download `
     -r $Requirements 2>$null
 # 忽略错误，下一步补充 sdist
 
-# 第二步：补充下载（源码包 / 当前平台包），用于构建时编译
-Write-Host "[STEP 2/2] 补充下载 sdist 和未覆盖的包..." -ForegroundColor Green
+# 第二步：专门下载 uvicorn[standard] 的 Linux 依赖（如 uvloop, httptools）
+Write-Host "[STEP 2/3] 补充下载 uvicorn[standard] 的 Linux 依赖..." -ForegroundColor Green
+pip download `
+    --dest $VendorDir `
+    --platform manylinux2014_x86_64 `
+    --python-version 3.10 `
+    --implementation cp `
+    --abi cp310 `
+    --only-binary=:all: `
+    "uvicorn[standard]" 2>$null
+
+# 第三步：补充下载（源码包 / 当前平台包），用于构建时编译
+Write-Host "[STEP 3/3] 补充下载 sdist 和未覆盖的包..." -ForegroundColor Green
 pip download `
     --dest $VendorDir `
     -r $Requirements
