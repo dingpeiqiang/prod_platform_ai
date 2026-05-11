@@ -1,16 +1,17 @@
 # ============================================================
-# AI驱动动态表单 - 后端容器（基于基础镜像）
-# ============================================================
-# 构建：docker build -f backend/Dockerfile -t prod-platform-ai-backend .
-# 运行：docker run -d -p 6173:6173 --name ai-backend prod-platform-ai-backend
+# AI驱动动态表单 - 后端容器（基于私有仓库基础镜像）
 # ============================================================
 
-# 基础镜像名称（可以是本地镜像或私有仓库镜像）
-ARG BUILDER_IMAGE=ai-form-backend-builder:latest
-ARG RUNTIME_IMAGE=ai-form-backend-runtime:latest
+# 私有仓库配置
+ARG REGISTRY=10.86.12.11:20200
+ARG PROJECT=crm-pgcent
+
+# 基础镜像名称
+ARG BUILDER_IMAGE=${REGISTRY}/${PROJECT}/ai-form-backend-builder:latest
+ARG RUNTIME_IMAGE=${REGISTRY}/${PROJECT}/ai-form-backend-runtime:latest
 
 # ============================================================
-# 构建阶段 - 使用包含构建依赖的基础镜像
+# 构建阶段
 # ============================================================
 FROM ${BUILDER_IMAGE} AS builder
 
@@ -21,7 +22,7 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # ============================================================
-# 生产阶段 - 使用运行时基础镜像
+# 生产阶段
 # ============================================================
 FROM ${RUNTIME_IMAGE}
 
@@ -38,7 +39,7 @@ COPY config/ ./config/
 # 创建必要目录
 RUN mkdir -p backend/logs backend/app/logs
 
-# 环境变量（可在 docker-compose 或 .env 中覆盖）
+# 环境变量
 ENV PYTHONUNBUFFERED=1
 ENV PORT=6173
 ENV DEBUG=False
