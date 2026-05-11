@@ -35,9 +35,10 @@ function Build-And-Push-Image {
     Write-Host ""
     Write-Status "Building $Name" "Info"
     
+    # 基础镜像只需要 Dockerfile 所在目录作为 context
     $context = Split-Path -Parent $Dockerfile
     try {
-        docker build --platform linux/amd64 -t $Tag -f $Dockerfile $context
+        docker build --platform linux/amd64 -t $Tag $context
         if ($LASTEXITCODE -ne 0) {
             throw "Build failed"
         }
