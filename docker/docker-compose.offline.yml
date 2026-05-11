@@ -1,0 +1,87 @@
+# ============================================================
+# AI驱动动态表单 - 内网离线部署配置
+# ============================================================
+# 使用前提：已在内网机器上加载好所有镜像
+# ============================================================
+
+version: '3.8'
+
+services:
+  # -------------------- MySQL 数据库 --------------------
+  mysql:
+    image: mysql:8.0
+    container_name: ai-form-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: prodplatformai
+      MYSQL_USER: prodplatformai
+      MYSQL_PASSWORD: prodplatformai@134
+    ports:
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - ai-form-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  # -------------------- 后端服务 --------------------
+  backend:
+    image: prod-platform-ai-backend:latest
+    container_name: ai-form-backend
+    restart: unless-stopped
+    ports:
+      - "6173:6173"
+    volumes:
+      # 挂载本地配置文件（可选）
+      - ../config:/app/config:ro
+      # 挂载日志目录
+      - ../logs/backend:/app/backend/logs:rw
+      # 挂载 .env 文件（可选）
+      - ../backend/.env:/app/.env:ro
+    environment:
+      - DEBUG=false
+      - PYTHONUNBUFFERED=1
+      # MySQL 配置
+      - DATABASE_URL=mysql+pymysql://prodplatformai:prodplatformai%40134@mysql:3306/prodplatformai?charset=utf8mb4
+      # LLM 配置（根据实际情况修改）
+      - LLM_API_KEY=
+      - LLM_BASE_URL=
+      - LLM_MODEL=gpt-4
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - ai-form-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6173/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # -------------------- 前端服务 --------------------
+  frontend:
+    image: prod-platform-ai-frontend:latest
+    container_name: ai-form-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - ai-form-network
+
+networks:
+  ai-form-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
+    driver: local

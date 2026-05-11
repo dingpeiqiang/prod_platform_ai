@@ -9,15 +9,18 @@ FROM python:3.10-slim AS builder
 
 WORKDIR /app
 
+# 使用国内 APT 源
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources
+
 # 安装构建依赖（用于某些需要编译的包）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# 复制依赖文件并安装
+# 复制依赖文件并安装（使用国内 pip 源）
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+RUN pip install --no-cache-dir --user -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
 
 # ============================================================
 # 生产镜像
@@ -25,6 +28,9 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 FROM python:3.10-slim
 
 WORKDIR /app
+
+# 使用国内 APT 源
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources
 
 # 安装运行时依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \

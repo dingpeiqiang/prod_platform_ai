@@ -10,6 +10,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# 使用国内 npm 源
+RUN npm config set registry https://registry.npmmirror.com
+
 # 复制 package.json 和 package-lock.json
 COPY frontend/package.json frontend/package-lock.json* ./
 
