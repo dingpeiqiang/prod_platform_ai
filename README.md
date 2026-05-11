@@ -69,42 +69,36 @@ work-ai/
 - 字段约束、规则定义
 - Schema合规校验
 
-## 快速开始
+## 🚀 快速开始
 
-### 环境要求
+详细的部署指南请参考：[deploy/DEPLOYMENT.md](./deploy/DEPLOYMENT.md)
 
-- Python 3.8+
-- Node.js 16+
+### 1. 本地开发模式
 
-### 后端启动
-
+**后端启动：**
 ```bash
 cd backend
-
-# 安装依赖
 pip install -r requirements.txt
-
-# 启动服务
 python -m app.main
 ```
+*   **地址**: `http://localhost:6173`
 
-后端服务将在 http://localhost:8000 启动
-
-API文档：http://localhost:8000/docs
-
-### 前端启动
-
+**前端启动：**
 ```bash
 cd frontend
-
-# 安装依赖
 npm install
-
-# 启动开发服务
 npm run dev
 ```
+*   **地址**: `http://localhost:5173`
 
-前端服务将在 http://localhost:5173 启动
+### 2. Docker 生产模式
+
+```bash
+docker-compose -f deploy/docker-compose.yml up -d --build
+```
+*   **访问**: `http://localhost:80`
+
+---
 
 ## 使用示例
 

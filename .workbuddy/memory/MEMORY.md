@@ -18,6 +18,7 @@
 - configure 意图：主聊天窗口中通过自然语言创建新业务表单类型
 - delete_form 意图：删除业务表单（自动备份到版本历史，支持回退）
 - 部署流程：AdminAiService 生成配置 → deploy-config API 一键部署（写文件+热重载）
+- **容器化部署**：离线依赖打包进 git（backend/frontend/vendor/），Dockerfile.offline 从本地安装，内网构建不访问外网。打包：`pack-offline-deps.ps1`，构建：`docker-compose up -d --build`
 - 配置存储：config/ontologies/*.json（本体） + config/scenes/scene_mapping.json（场景映射） + config/versions/{formCode}/（版本历史）
 - ConfigLoader 支持热重载：reload_config('ontologies'|'scene_mappings'|'prompts')
 - AdminService 保留：被 chat.py 的 deploy-config / delete-form / rollback-form 端点复用

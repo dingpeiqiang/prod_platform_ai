@@ -86,3 +86,9 @@ form.db
 docker/offline-package/
 docker/*.tar
 docker/*.zip
+
+# vendor 离线依赖包 —— 明确追踪（不排除）
+# backend/vendor/ 和 frontend/vendor/ 应提交到 git
+# 下面的 !vendor/ 规则确保 vendor 目录不被上面的规则意外排除
+!backend/vendor/
+!frontend/vendor/
