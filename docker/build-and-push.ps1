@@ -1,5 +1,5 @@
 # ============================================================
-# Build base images and export to TAR files
+# Build and push base images to private registry
 # ============================================================
 
 $ErrorActionPreference = "Stop"
@@ -38,16 +38,27 @@ function Build-Image {
     
     $context = Split-Path -Parent $Dockerfile
     try {
+        # Try with buildx first - use docker v2 format
+        try {
+            Write-Status "Trying with buildx (v2 format)..." "Info"
+            docker buildx build -t $LocalTag -f $Dockerfile $context --load
+            if ($LASTEXITCODE -eq 0) {
+                docker tag $LocalTag $RemoteTag
+                Write-Status "[OK] $Name built with buildx" "Success"
+                return $true
+            }
+        }
+        catch {
+            Write-Status "Falling back to standard build..." "Warning"
+        }
+        
+        # Fallback to standard build
         docker build -t $LocalTag -f $Dockerfile $context
         if ($LASTEXITCODE -ne 0) {
             throw "Build failed"
         }
-        Write-Status "[OK] $Name built successfully" "Success"
-        
-        # Tag with remote registry
         docker tag $LocalTag $RemoteTag
-        Write-Status "[OK] Tagged as $RemoteTag" "Success"
-        
+        Write-Status "[OK] $Name built successfully" "Success"
         return $true
     }
     catch {
@@ -56,24 +67,20 @@ function Build-Image {
     }
 }
 
-function Save-Image {
-    param(
-        [string]$Tag,
-        [string]$OutputFile
-    )
+function Push-Image {
+    param([string]$Tag)
     
     try {
-        Write-Status "Saving to $OutputFile..." "Info"
-        docker save $Tag -o $OutputFile
+        Write-Status "Pushing $Tag..." "Info"
+        docker push $Tag
         if ($LASTEXITCODE -ne 0) {
-            throw "Save failed"
+            throw "Push failed"
         }
-        $size = (Get-Item $OutputFile).Length / 1MB
-        Write-Status "[OK] Saved ($([math]::Round($size, 2)) MB)" "Success"
+        Write-Status "[OK] Push successful" "Success"
         return $true
     }
     catch {
-        Write-Status "[ERROR] Failed to save image: $_" "Error"
+        Write-Status "[ERROR] Failed to push: $_" "Error"
         return $false
     }
 }
@@ -81,15 +88,30 @@ function Save-Image {
 # Main
 Write-Host ""
 Write-Status "========================================" "Header"
-Write-Status "Build and Export Base Images" "Header"
+Write-Status "Build and Push Base Images" "Header"
 Write-Status "========================================" "Header"
 Write-Host ""
 Write-Status "Registry: http://$registry" "Info"
 Write-Status "Project: $project" "Info"
 Write-Host ""
-Write-Status "This script builds and exports images to TAR files." "Warning"
-Write-Status "Copy these TAR files to internal network and import them there." "Warning"
+Write-Status "IMPORTANT! Configure Docker first:" "Warning"
+Write-Host "  1. Open Docker Desktop Settings" "Gray"
+Write-Host "  2. Go to Docker Engine" "Gray"
+Write-Host "  3. Add this to the JSON config:" "Gray"
+Write-Host "     `"insecure-registries`": [`"10.86.12.11:20200`"]," "Gray"
+Write-Host "     `"features`": { `"buildkit`": false }" "Gray"
+Write-Host "  4. Click Apply & Restart" "Gray"
 Write-Host ""
+
+# Login to registry
+Write-Status "Logging in to private registry..." "Info"
+$password | docker login $registry -u $username --password-stdin
+if ($LASTEXITCODE -ne 0) {
+    Write-Status "[ERROR] Login failed" "Error"
+    Read-Host "Press Enter to exit"
+    exit 1
+}
+Write-Status "[OK] Login successful" "Success"
 
 # Get project root (go up one level from script directory)
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -104,21 +126,18 @@ $images = @(
         LocalTag = "ai-form-backend-builder:latest"
         RemoteTag = "$registry/$project/ai-form-backend-builder:latest"
         Dockerfile = "docker/base-images/backend-builder/Dockerfile"
-        OutputFile = "docker/ai-form-backend-builder.tar"
     },
     [PSCustomObject]@{
         Name = "Backend Runtime"
         LocalTag = "ai-form-backend-runtime:latest"
         RemoteTag = "$registry/$project/ai-form-backend-runtime:latest"
         Dockerfile = "docker/base-images/backend-runtime/Dockerfile"
-        OutputFile = "docker/ai-form-backend-runtime.tar"
     },
     [PSCustomObject]@{
         Name = "Frontend Builder"
         LocalTag = "ai-form-frontend-builder:latest"
         RemoteTag = "$registry/$project/ai-form-frontend-builder:latest"
         Dockerfile = "docker/base-images/frontend-builder/Dockerfile"
-        OutputFile = "docker/ai-form-frontend-builder.tar"
     }
 )
 
@@ -129,13 +148,11 @@ Write-Host ""
 # Start building
 $totalStartTime = Get-Date
 $successCount = 0
-$exportedFiles = @()
 
 foreach ($img in $images) {
     if (Build-Image -Name $img.Name -LocalTag $img.LocalTag -RemoteTag $img.RemoteTag -Dockerfile $img.Dockerfile) {
-        if (Save-Image -Tag $img.RemoteTag -OutputFile $img.OutputFile) {
+        if (Push-Image -Tag $img.RemoteTag) {
             $successCount++
-            $exportedFiles += $img.OutputFile
         }
     }
 }
@@ -146,7 +163,7 @@ $totalDuration = ($totalEndTime - $totalStartTime).TotalSeconds
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor $Colors.Header
-Write-Host "Build and Export Complete" -ForegroundColor $Colors.Success
+Write-Host "Build Complete" -ForegroundColor $Colors.Success
 Write-Host "========================================" -ForegroundColor $Colors.Header
 Write-Host ""
 Write-Status "Success: $successCount / $($images.Count)" "Success"
@@ -154,15 +171,9 @@ Write-Status "Duration: $($totalDuration.ToString('F1')) seconds" "Info"
 Write-Host ""
 
 if ($successCount -eq $images.Count) {
-    Write-Status "All images exported successfully!" "Success"
-    Write-Host ""
-    Write-Status "Copy these files to internal network:" "Info"
-    foreach ($file in $exportedFiles) {
-        Write-Host "  - $file" "Gray"
-    }
-    Write-Host ""
-    Write-Status "On internal machine:" "Info"
-    Write-Host "  1. docker load -i <filename.tar>" "Gray"
-    Write-Host "  2. docker login $registry -u $username" "Gray"
-    Write-Host "  3. docker push <image-tag>" "Gray"
+    Write-Status "All images successfully pushed to: http://$registry/$project" "Success"
+}
+else {
+    Write-Status "" "Warning"
+    Write-Status "If push fails, check your Docker Engine config has buildkit disabled" "Warning"
 }
