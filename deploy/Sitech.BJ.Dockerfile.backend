@@ -1,0 +1,36 @@
+# ============================================================
+# AI驱动动态表单 - 后端容器（内网离线构建版）
+# 依赖包已预置于 backend/vendor/，构建时不访问外部网络
+# ============================================================
+
+FROM python:10.86.12.11:20200/aipaas-cloud/python:3.10-slim
+WORKDIR /app
+
+# 复制依赖文件
+COPY backend/requirements.txt .
+
+# 复制离线依赖包
+COPY backend/vendor/ ./vendor/
+
+# 从本地 vendor 目录安装（--no-index 禁止访问 PyPI）
+RUN pip install \
+    --no-cache-dir \
+    --no-index \
+    --find-links=./vendor \
+    -r requirements.txt
+
+# 复制后端代码
+COPY backend/ ./backend/
+COPY config/ ./config/
+
+# 创建必要目录
+RUN mkdir -p backend/logs backend/app/logs
+
+# 环境变量
+ENV PYTHONUNBUFFERED=1
+ENV PORT=6173
+ENV DEBUG=False
+
+EXPOSE 6173
+
+CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "6173", "--log-level", "info"]
