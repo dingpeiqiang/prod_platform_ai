@@ -33,14 +33,10 @@ function Build-Image {
     )
     
     Write-Host ""
-    Write-Status "========================================" "Info"
     Write-Status "Building $Name" "Info"
-    Write-Status "========================================" "Info"
     
     $context = Split-Path -Parent $Dockerfile
     try {
-        Write-Status "Context: $context" "Info"
-        Write-Status "Dockerfile: $Dockerfile" "Info"
         docker build -t $Tag -f $Dockerfile $context
         if ($LASTEXITCODE -ne 0) {
             throw "Build failed"
@@ -81,30 +77,15 @@ Write-Host ""
 Write-Status "Registry: http://$registry" "Info"
 Write-Status "Project: $project" "Info"
 Write-Host ""
-Write-Status "IMPORTANT: Ensure Docker daemon is configured to allow insecure registry!" "Warning"
-Write-Host "  1. Open Docker Desktop Settings" -ForegroundColor Gray
-Write-Host "  2. Go to Docker Engine" -ForegroundColor Gray
-Write-Host "  3. Add `"insecure-registries`": [`"10.86.12.11:20200`"] to config" -ForegroundColor Gray
-Write-Host "  4. Click Apply & Restart" -ForegroundColor Gray
+Write-Status "IMPORTANT: Configure Docker to allow insecure registry first!" "Warning"
+Write-Host "  Add `"insecure-registries`": [`"10.86.12.11:20200`"] in Docker Engine config" -ForegroundColor Gray
 Write-Host ""
 
-# Check if user wants to continue
-$ready = Read-Host "Is Docker configured? (Y/N)"
-if ($ready.ToLower() -ne "y") {
-    Write-Status "Please configure Docker first, then run this script again." "Warning"
-    exit 0
-}
-
 # Login to registry
-Write-Status "" "Info"
 Write-Status "Logging in to private registry..." "Info"
 $password | docker login $registry -u $username --password-stdin
 if ($LASTEXITCODE -ne 0) {
     Write-Status "[ERROR] Login failed" "Error"
-    Write-Status "Please check:" "Warning"
-    Write-Host "  1. Insecure registry is configured in Docker" -ForegroundColor Gray
-    Write-Host "  2. Username and password are correct" -ForegroundColor Gray
-    Write-Host "  3. Registry is accessible" -ForegroundColor Gray
     Read-Host "Press Enter to exit"
     exit 1
 }
@@ -116,7 +97,7 @@ $projectRoot = Split-Path -Parent $scriptDir
 Set-Location $projectRoot
 Write-Status "Working from: $projectRoot" "Info"
 
-# Image list - paths are relative to project root
+# Image list - build all by default
 $images = @(
     [PSCustomObject]@{
         Name = "Backend Builder"
@@ -138,46 +119,18 @@ $images = @(
     }
 )
 
-# Select images to build
 Write-Host ""
-Write-Status "Select images to build and push:" "Header"
-Write-Host "  1. All" -ForegroundColor Gray
-Write-Host "  2. Backend only" -ForegroundColor Gray
-Write-Host "  3. Frontend only" -ForegroundColor Gray
+Write-Status "Building $($images.Count) images..." "Info"
 Write-Host ""
-$choice = Read-Host "Enter choice (1-3, default 1)"
-
-if ([string]::IsNullOrWhiteSpace($choice)) {
-    $choice = "1"
-}
-
-# Filter by choice
-$selectedImages = @()
-switch ($choice) {
-    "1" { $selectedImages = $images }
-    "2" { $selectedImages = $images | Where-Object { $_.Name -like "*Backend*" } }
-    "3" { $selectedImages = $images | Where-Object { $_.Name -like "*Frontend*" } }
-    default { $selectedImages = $images }
-}
-
-Write-Host ""
-Write-Status "Ready to build $($selectedImages.Count) image(s)" "Info"
-$continue = Read-Host "Continue? (Y/N, default Y)"
-
-if ($continue -and $continue.ToLower() -ne "y" -and $continue -ne "") {
-    Write-Status "Cancelled" "Warning"
-    exit 0
-}
 
 # Start building
 $totalStartTime = Get-Date
 $successCount = 0
 
-foreach ($img in $selectedImages) {
+foreach ($img in $images) {
     if (Build-Image -Name $img.Name -Tag $img.LocalTag -Dockerfile $img.Dockerfile) {
         # Tag
         docker tag $img.LocalTag $img.RemoteTag
-        Write-Status "Tagged: $($img.RemoteTag)" "Info"
         
         if (Push-Image -Tag $img.RemoteTag) {
             $successCount++
@@ -194,12 +147,10 @@ Write-Host "========================================" -ForegroundColor $Colors.H
 Write-Host "Build Complete" -ForegroundColor $Colors.Success
 Write-Host "========================================" -ForegroundColor $Colors.Header
 Write-Host ""
-Write-Status "Success: $successCount / $($selectedImages.Count)" "Success"
+Write-Status "Success: $successCount / $($images.Count)" "Success"
 Write-Status "Duration: $($totalDuration.ToString('F1')) seconds" "Info"
 Write-Host ""
 
-if ($successCount -eq $selectedImages.Count) {
+if ($successCount -eq $images.Count) {
     Write-Status "All images successfully pushed to: http://$registry/$project" "Success"
 }
-
-Read-Host "Press Enter to exit"
