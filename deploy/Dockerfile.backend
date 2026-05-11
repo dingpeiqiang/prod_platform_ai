@@ -2,18 +2,8 @@
 # AI驱动动态表单 - 后端容器（内网离线构建版）
 # 依赖包已预置于 backend/vendor/，构建时不访问外部网络
 # ============================================================
-# 构建命令：
-#   docker build --network=none -f backend/Dockerfile.offline -t ai-form-backend:offline .
-# ============================================================
 
-ARG REGISTRY=10.86.12.11:20200
-ARG PROJECT=crm-pgcent
-ARG BUILDER_IMAGE=${REGISTRY}/${PROJECT}/ai-form-backend-builder:latest
-
-# ============================================================
-# 构建阶段
-# ============================================================
-FROM ${BUILDER_IMAGE} AS builder
+FROM python:3.10-slim
 
 WORKDIR /app
 
@@ -28,20 +18,7 @@ RUN pip install \
     --no-cache-dir \
     --no-index \
     --find-links=./vendor \
-    --user \
     -r requirements.txt
-
-# ============================================================
-# 生产阶段
-# ============================================================
-ARG RUNTIME_IMAGE=${REGISTRY}/${PROJECT}/ai-form-backend-runtime:latest
-FROM ${RUNTIME_IMAGE}
-
-WORKDIR /app
-
-# 从 builder 复制已安装的包
-COPY --from=builder /root/.local /root/.local
-ENV PATH=/root/.local/bin:$PATH
 
 # 复制后端代码
 COPY backend/ ./backend/

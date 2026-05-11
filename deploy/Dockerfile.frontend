@@ -2,18 +2,8 @@
 # AI驱动动态表单 - 前端容器（内网离线构建版）
 # 依赖包已预置于 frontend/vendor/，构建时不访问外部网络
 # ============================================================
-# 构建命令：
-#   docker build --network=none -f frontend/Dockerfile.offline -t ai-form-frontend:offline .
-# ============================================================
 
-ARG REGISTRY=10.86.12.11:20200
-ARG PROJECT=crm-pgcent
-ARG BUILDER_IMAGE=${REGISTRY}/${PROJECT}/ai-form-frontend-builder:latest
-
-# ============================================================
-# 构建阶段
-# ============================================================
-FROM ${BUILDER_IMAGE} AS builder
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
@@ -24,8 +14,6 @@ COPY frontend/package.json frontend/package-lock.json* ./
 COPY frontend/vendor/ ./vendor/
 
 # 配置 npm 离线模式，从本地 vendor 安装
-# --prefer-offline：优先使用本地缓存
-# 先将 .tgz 文件加入本地 npm cache，再执行 npm ci
 RUN npm config set cache /tmp/npm-cache && \
     find ./vendor -name "*.tgz" -exec npm cache add {} \; 2>/dev/null || true
 
