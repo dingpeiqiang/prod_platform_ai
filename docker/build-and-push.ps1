@@ -76,15 +76,33 @@ Write-Status "========================================" "Header"
 Write-Status "Build and Push Base Images" "Header"
 Write-Status "========================================" "Header"
 Write-Host ""
-Write-Status "Registry: $registry" "Info"
+Write-Status "Registry: http://$registry" "Info"
 Write-Status "Project: $project" "Info"
 Write-Host ""
+Write-Status "IMPORTANT: Ensure Docker daemon is configured to allow insecure registry!" "Warning"
+Write-Host "  1. Open Docker Desktop Settings" -ForegroundColor Gray
+Write-Host "  2. Go to Docker Engine" -ForegroundColor Gray
+Write-Host "  3. Add `"insecure-registries`": [`"10.86.12.11:20200`"] to config" -ForegroundColor Gray
+Write-Host "  4. Click Apply & Restart" -ForegroundColor Gray
+Write-Host ""
+
+# Check if user wants to continue
+$ready = Read-Host "Is Docker configured? (Y/N)"
+if ($ready.ToLower() -ne "y") {
+    Write-Status "Please configure Docker first, then run this script again." "Warning"
+    exit 0
+}
 
 # Login to registry
+Write-Status "" "Info"
 Write-Status "Logging in to private registry..." "Info"
-docker login $registry -u $username -p $password
+$password | docker login $registry -u $username --password-stdin
 if ($LASTEXITCODE -ne 0) {
-    Write-Status "[ERROR] Login failed, please check username and password" "Error"
+    Write-Status "[ERROR] Login failed" "Error"
+    Write-Status "Please check:" "Warning"
+    Write-Host "  1. Insecure registry is configured in Docker" -ForegroundColor Gray
+    Write-Host "  2. Username and password are correct" -ForegroundColor Gray
+    Write-Host "  3. Registry is accessible" -ForegroundColor Gray
     Read-Host "Press Enter to exit"
     exit 1
 }
@@ -173,7 +191,7 @@ Write-Status "Duration: $($totalDuration.ToString('F1')) seconds" "Info"
 Write-Host ""
 
 if ($successCount -eq $selectedImages.Count) {
-    Write-Status "All images successfully pushed to: $registry/$project" "Success"
+    Write-Status "All images successfully pushed to: http://$registry/$project" "Success"
 }
 
 Read-Host "Press Enter to exit"

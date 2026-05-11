@@ -12,6 +12,24 @@ docker/
 └── README.md                    # 本文档
 ```
 
+## 配置 Docker（重要！）
+
+由于私有仓库使用 HTTP 而非 HTTPS，需要先配置 Docker 允许不安全的注册表：
+
+1. 打开 Docker Desktop Settings
+2. 进入 Docker Engine
+3. 添加以下配置：
+
+```json
+{
+  "insecure-registries": [
+    "10.86.12.11:20200"
+  ]
+}
+```
+
+4. 点击 Apply & Restart
+
 ## 快速开始
 
 ### 1. 构建并推送基础镜像
@@ -22,7 +40,9 @@ cd docker
 ```
 
 脚本会：
+- 检查 Docker 配置
 - 登录私有仓库 10.86.12.11:20200
+- 交互式选择要构建的镜像
 - 构建基础镜像
 - 推送到 crm-pgcent 项目
 
