@@ -37,7 +37,7 @@ function Build-And-Push-Image {
     
     $context = Split-Path -Parent $Dockerfile
     try {
-        docker build -t $Tag -f $Dockerfile $context
+        docker build --platform linux/amd64 -t $Tag -f $Dockerfile $context
         if ($LASTEXITCODE -ne 0) {
             throw "Build failed"
         }
