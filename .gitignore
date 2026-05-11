@@ -81,3 +81,8 @@ Thumbs.db
 backend/app/logs/
 frontend/dist/
 form.db
+
+# Offline deployment packages
+docker/offline-package/
+docker/*.tar
+docker/*.zip
