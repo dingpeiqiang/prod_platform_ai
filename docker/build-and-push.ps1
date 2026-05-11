@@ -37,7 +37,9 @@ function Build-Image {
     
     $context = Split-Path -Parent $Dockerfile
     try {
-        docker build -t $Tag -f $Dockerfile $context
+        # Use Docker v2 format for compatibility
+        $env:DOCKER_BUILDKIT = 0
+        docker build --format docker -t $Tag -f $Dockerfile $context
         if ($LASTEXITCODE -ne 0) {
             throw "Build failed"
         }
