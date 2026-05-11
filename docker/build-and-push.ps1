@@ -1,5 +1,5 @@
 # ============================================================
-# Build and push base images to private registry
+# Build and push base images - simplest way
 # ============================================================
 
 $ErrorActionPreference = "Stop"
@@ -25,11 +25,10 @@ function Write-Status {
     Write-Host $Message -ForegroundColor $color
 }
 
-function Build-Image {
+function Build-And-Push-Image {
     param(
         [string]$Name,
-        [string]$LocalTag,
-        [string]$RemoteTag,
+        [string]$Tag,
         [string]$Dockerfile
     )
     
@@ -38,37 +37,22 @@ function Build-Image {
     
     $context = Split-Path -Parent $Dockerfile
     try {
-        # Use buildx with docker format - this forces v2 manifest
-        Write-Status "Building with buildx (docker format)..." "Info"
-        docker buildx build -t $LocalTag -f $Dockerfile $context --output type=docker
+        docker build -t $Tag -f $Dockerfile $context
         if ($LASTEXITCODE -ne 0) {
             throw "Build failed"
         }
+        Write-Status "[OK] $Name built" "Success"
         
-        docker tag $LocalTag $RemoteTag
-        Write-Status "[OK] $Name built successfully (docker format)" "Success"
-        return $true
-    }
-    catch {
-        Write-Status "[ERROR] Failed to build $Name : $_" "Error"
-        return $false
-    }
-}
-
-function Push-Image {
-    param([string]$Tag)
-    
-    try {
         Write-Status "Pushing $Tag..." "Info"
         docker push $Tag
         if ($LASTEXITCODE -ne 0) {
             throw "Push failed"
         }
-        Write-Status "[OK] Push successful" "Success"
+        Write-Status "[OK] Pushed successfully" "Success"
         return $true
     }
     catch {
-        Write-Status "[ERROR] Failed to push: $_" "Error"
+        Write-Status "[ERROR] $Name failed: $_" "Error"
         return $false
     }
 }
@@ -109,20 +93,17 @@ Write-Status "Working from: $projectRoot" "Info"
 $images = @(
     [PSCustomObject]@{
         Name = "Backend Builder"
-        LocalTag = "ai-form-backend-builder:latest"
-        RemoteTag = "$registry/$project/ai-form-backend-builder:latest"
+        Tag = "$registry/$project/ai-form-backend-builder:latest"
         Dockerfile = "docker/base-images/backend-builder/Dockerfile"
     },
     [PSCustomObject]@{
         Name = "Backend Runtime"
-        LocalTag = "ai-form-backend-runtime:latest"
-        RemoteTag = "$registry/$project/ai-form-backend-runtime:latest"
+        Tag = "$registry/$project/ai-form-backend-runtime:latest"
         Dockerfile = "docker/base-images/backend-runtime/Dockerfile"
     },
     [PSCustomObject]@{
         Name = "Frontend Builder"
-        LocalTag = "ai-form-frontend-builder:latest"
-        RemoteTag = "$registry/$project/ai-form-frontend-builder:latest"
+        Tag = "$registry/$project/ai-form-frontend-builder:latest"
         Dockerfile = "docker/base-images/frontend-builder/Dockerfile"
     }
 )
@@ -136,10 +117,8 @@ $totalStartTime = Get-Date
 $successCount = 0
 
 foreach ($img in $images) {
-    if (Build-Image -Name $img.Name -LocalTag $img.LocalTag -RemoteTag $img.RemoteTag -Dockerfile $img.Dockerfile) {
-        if (Push-Image -Tag $img.RemoteTag) {
-            $successCount++
-        }
+    if (Build-And-Push-Image -Name $img.Name -Tag $img.Tag -Dockerfile $img.Dockerfile) {
+        $successCount++
     }
 }
 
