@@ -8,11 +8,16 @@
 
 ```
 docker/
-├── build-base-images.ps1     # 外网构建/导出基础镜像脚本 (PowerShell)
-├── build-export.ps1          # 外网构建/导出应用镜像脚本 (PowerShell)
-├── import-base-images.ps1    # 内网导入基础镜像脚本 (PowerShell)
-├── deploy-offline.ps1        # 内网部署脚本 (PowerShell)
-├── docker-compose.offline.yml # 内网部署配置
+├── build-base-images.ps1     # 本地构建基础镜像脚本 (PowerShell)
+├── build-export.ps1          # 构建/导出应用镜像脚本 (PowerShell)
+├── import-base-images.ps1    # 导入基础镜像脚本 (PowerShell)
+├── deploy-offline.ps1        # 部署脚本 (PowerShell)
+├── docker-compose.offline.yml # 部署配置
+├── base-images/              # 基础镜像目录
+│   ├── backend-builder/      # 后端构建基础镜像
+│   ├── backend-runtime/      # 后端运行时基础镜像
+│   ├── frontend-builder/     # 前端构建基础镜像
+│   └── README.md             # 基础镜像文档
 ├── .gitignore                # Git 忽略规则
 └── README.md                 # 本文档
 ```
@@ -24,7 +29,7 @@ docker/
 ### 完整流程（首次使用）
 
 ```
-外网机器                    内网服务器
+本地开发                      内网服务器
   |                            |
   ├─ 1. build-base-images.ps1 ─┐
   │                            │
@@ -44,7 +49,7 @@ docker/
 ### 快速流程（已有基础镜像）
 
 ```
-外网机器                    内网服务器
+本地开发                      内网服务器
   |                            |
   └─ 1. build-export.ps1 ────┐
                             │
@@ -59,7 +64,7 @@ docker/
 
 ## 🚀 快速开始
 
-### 第一步：在外网机器上准备基础镜像（首次）
+### 第一步：构建本地基础镜像（首次）
 
 ```powershell
 # 进入 docker 目录
@@ -69,18 +74,16 @@ cd docker
 .\build-base-images.ps1
 ```
 
+选择要构建的镜像（全部/后端/前端）。
+
 这个脚本会：
-1. 连接私有镜像仓库（`10.86.12.11:20200`）
-2. 优先从私有仓库拉取已有的基础镜像
-3. 如果仓库没有，从Docker Hub拉取并推送到私有仓库
-4. 导出基础镜像为tar文件
+1. 构建后端构建基础镜像（`ai-form-backend-builder`）
+2. 构建后端运行时基础镜像（`ai-form-backend-runtime`）
+3. 构建前端构建基础镜像（`ai-form-frontend-builder`）
 
-导出的文件：
-- `python-3.10-slim.tar` - 后端基础镜像
-- `node-20-alpine.tar` - 前端构建基础镜像  
-- `nginx-alpine.tar` - 前端运行基础镜像
+详细文档请参考 [base-images/README.md](./base-images/README.md)。
 
-### 第二步：在外网机器上构建应用镜像
+### 第二步：构建应用镜像
 
 ```powershell
 # 进入 docker 目录
@@ -91,6 +94,8 @@ cd docker
 ```
 
 选择要构建的组件（后端/前端/全部）。
+
+应用镜像会基于第一步构建的基础镜像进行构建。
 
 ### 第三步：传输文件到内网
 
@@ -139,11 +144,11 @@ docker load -i prod-platform-ai-frontend.tar
 
 | 文件名 | 说明 | 使用环境 |
 |--------|------|----------|
-| `build-base-images.ps1` | 外网构建/导出基础镜像脚本 | 外网机器 |
-| `build-export.ps1` | 外网构建/导出应用镜像脚本 | 外网机器 |
-| `import-base-images.ps1` | 内网导入基础镜像脚本 | 内网服务器 |
-| `deploy-offline.ps1` | 内网部署应用脚本 | 内网服务器 |
-| `docker-compose.offline.yml` | 内网部署配置文件 | 内网服务器 |
+| `build-base-images.ps1` | 本地构建基础镜像脚本 | 本地开发 |
+| `build-export.ps1` | 构建/导出应用镜像脚本 | 本地开发 |
+| `import-base-images.ps1` | 导入基础镜像脚本 | 内网服务器 |
+| `deploy-offline.ps1` | 部署应用脚本 | 内网服务器 |
+| `docker-compose.offline.yml` | 部署配置文件 | 内网服务器 |
 | `*.tar` | 镜像包文件（构建后生成） | 两边都需要 |
 
 ---
@@ -162,10 +167,9 @@ docker load -i prod-platform-ai-frontend.tar
 ## 🌐 访问地址
 
 部署成功后访问：
-
-- **前端应用**: http://内网服务器IP
-- **后端API**: http://内网服务器IP:6173
-- **API文档**: http://内网服务器IP:6173/docs
+- **前端应用**: http://localhost
+- **后端API**: http://localhost:6173
+- **API文档**: http://localhost:6173/docs
 
 ---
 
@@ -187,9 +191,42 @@ docker-compose -f docker-compose.offline.yml restart
 
 ---
 
+## 💡 构建优化说明
+
+### 为什么使用基础镜像？
+
+1. **构建加速**：APT源、pip源、npm源等在基础镜像中提前配置，无需每次构建都下载
+2. **依赖缓存**：基础镜像包含gcc、libpq-dev等构建依赖，重复构建时无需重新安装
+3. **网络优化**：国内源配置好，减少网络失败
+4. **体积更小**：基础镜像和应用镜像分层，复用公共层
+
+### 镜像层次结构
+
+```
+后端构建
+├── python:3.10-slim
+│   └── ai-form-backend-builder (gcc, libpq-dev, pip源)
+│       └── prod-platform-ai-backend (应用代码 + 依赖)
+
+后端运行
+├── python:3.10-slim
+│   └── ai-form-backend-runtime (curl, pip源)
+│       └── prod-platform-ai-backend (应用代码 + 依赖)
+
+前端构建
+├── node:20-alpine
+│   └── ai-form-frontend-builder (npm源)
+│       └── (构建阶段)
+│           └── nginx:alpine
+│               └── prod-platform-ai-frontend (构建产物)
+```
+
+---
+
 ## 📝 注意事项
 
 1. **镜像包较大**: `.tar` 文件较大，传输时请耐心等待，优先使用私有仓库
 2. **PowerShell 执行策略**: 如果无法运行脚本，可能需要设置执行策略：`Set-ExecutionPolicy RemoteSigned -Scope CurrentUser`
 3. **配置修改**: 修改配置后需要重启容器生效
 4. **基础镜像只需一次**: 基础镜像只需构建一次，后续可以重复使用
+5. **基础镜像更新**: 如需更新基础镜像，重新运行 `build-base-images.ps1` 即可

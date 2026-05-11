@@ -1,186 +1,153 @@
 # ============================================================
-# AI Form - 构建并导出基础镜像脚本（支持私有仓库）
+# AI Form - 构建本地基础镜像脚本
 # ============================================================
 
 $ErrorActionPreference = "Stop"
 
-# 私有仓库配置
-$registry = "10.86.12.11:20200"
-$username = "dingpq"
-$password = "Docker.2022!"
-$project = "crm-pgcent"
-
-# Colors
+# 颜色配置
 $Colors = @{
     Success = "Green"
     Warning = "Yellow"
-    Error = "Error"
+    Error = "Red"
     Info = "Cyan"
     Header = "DarkCyan"
 }
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor $Colors.Header
-Write-Host "   AI Form - 构建并导出基础镜像" -ForegroundColor $Colors.Header
+Write-Host "   AI Form - 构建本地基础镜像" -ForegroundColor $Colors.Header
 Write-Host "========================================" -ForegroundColor $Colors.Header
 Write-Host ""
 
-# Switch to script directory
+# 切换到项目根目录
 $ScriptPath = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location $ScriptPath
+$ProjectRoot = Split-Path -Parent $ScriptPath
+Set-Location $ProjectRoot
 
-# Helper function for status
+Write-Status -Message "项目根目录: $ProjectRoot" -Type "Info"
+Write-Host ""
+
+# 辅助函数
 function Write-Status {
     param([string]$Message, [string]$Type = "Info")
     $color = $Colors[$Type]
     Write-Host $Message -ForegroundColor $color
 }
 
+function Build-Image {
+    param(
+        [string]$Name,
+        [string]$Tag,
+        [string]$DockerfilePath,
+        [string]$ContextPath
+    )
+    
+    Write-Status "----------------------------------------" -Type "Info"
+    Write-Status "构建镜像: $Name" -Type "Info"
+    Write-Status "Dockerfile: $DockerfilePath" -Type "Info"
+    Write-Status "上下文: $ContextPath" -Type "Info"
+    Write-Host ""
+    
+    $startTime = Get-Date
+    try {
+        docker build -t $Tag -f $DockerfilePath $ContextPath
+        if ($LASTEXITCODE -ne 0) {
+            throw "构建镜像 $Name 失败"
+        }
+        
+        $endTime = Get-Date
+        $duration = ($endTime - $startTime).TotalSeconds
+        Write-Status "[成功] $Name 构建完成 ($($duration.ToString('F1'))s)" -Type "Success"
+        Write-Host ""
+        return $true
+    }
+    catch {
+        Write-Status "[错误] $_" -Type "Error"
+        return $false
+    }
+}
+
 # 基础镜像列表
 $baseImages = @(
-    @{ Name = "python:3.10-slim"; File = "python-3.10-slim.tar"; Desc = "后端基础镜像" },
-    @{ Name = "node:20-alpine"; File = "node-20-alpine.tar"; Desc = "前端构建基础镜像" },
-    @{ Name = "nginx:alpine"; File = "nginx-alpine.tar"; Desc = "前端运行基础镜像" }
+    @{
+        Name = "后端构建基础镜像"
+        Tag = "ai-form-backend-builder:latest"
+        Dockerfile = "$ProjectRoot/docker/base-images/backend-builder/Dockerfile"
+        Context = "$ProjectRoot/docker/base-images/backend-builder"
+    },
+    @{
+        Name = "后端运行时基础镜像"
+        Tag = "ai-form-backend-runtime:latest"
+        Dockerfile = "$ProjectRoot/docker/base-images/backend-runtime/Dockerfile"
+        Context = "$ProjectRoot/docker/base-images/backend-runtime"
+    },
+    @{
+        Name = "前端构建基础镜像"
+        Tag = "ai-form-frontend-builder:latest"
+        Dockerfile = "$ProjectRoot/docker/base-images/frontend-builder/Dockerfile"
+        Context = "$ProjectRoot/docker/base-images/frontend-builder"
+    }
 )
 
-Write-Status "配置信息:" -ForegroundColor $Colors.Info
-Write-Host "  - 私有仓库: $registry" -ForegroundColor Gray
-Write-Host "  - 用户名: $username" -ForegroundColor Gray
-Write-Host "  - 项目: $project" -ForegroundColor Gray
+# 询问用户是否要构建所有镜像
+Write-Status "请选择要构建的镜像:" -Type "Header"
+Write-Host "  1. 所有基础镜像（推荐）" -ForegroundColor Gray
+Write-Host "  2. 仅后端基础镜像" -ForegroundColor Gray
+Write-Host "  3. 仅前端基础镜像" -ForegroundColor Gray
 Write-Host ""
-Write-Status "以下基础镜像将被处理:" -ForegroundColor $Colors.Info
-foreach ($img in $baseImages) {
-    Write-Host "  - $($img.Name) - $($img.Desc)" -ForegroundColor Gray
+$choice = Read-Host "请输入选项 (1-3，默认为1)"
+
+if ([string]::IsNullOrWhiteSpace($choice)) {
+    $choice = "1"
 }
-Write-Host ""
 
-Write-Status "[1/6] 登录私有仓库..." -ForegroundColor $Colors.Info
-docker login $registry -u $username -p $password
-if ($LASTEXITCODE -ne 0) {
-    Write-Status "[警告] 登录失败，将尝试导出本地镜像" -ForegroundColor $Colors.Warning
-} else {
-    Write-Status "[OK] 登录成功" -ForegroundColor $Colors.Success
-}
-Write-Host ""
-
-Write-Status "[2/6] 检查私有仓库镜像..." -ForegroundColor $Colors.Info
-Write-Host ""
-
-$useRegistry = $true
-$imagesFromRegistry = @()
-$imagesToPull = @()
-
-foreach ($img in $baseImages) {
-    $registryImage = "$registry/$project/$($img.Name -replace ':','-')"
-    Write-Status "检查 $registryImage..." -ForegroundColor $Colors.Info
-    
-    # 尝试拉取私有仓库镜像
-    docker pull $registryImage 2>&1 | Out-Null
-    if ($LASTEXITCODE -eq 0) {
-        Write-Status "[OK] 从私有仓库获取 $($img.Name)" -ForegroundColor $Colors.Success
-        # 重新打标签
-        docker tag $registryImage $img.Name
-        $imagesFromRegistry += $img
-    } else {
-        Write-Status "[跳过] 私有仓库无此镜像" -ForegroundColor $Colors.Warning
-        $imagesToPull += $img
+# 根据选择过滤镜像
+$imagesToBuild = @()
+switch ($choice) {
+    "1" {
+        $imagesToBuild = $baseImages
     }
-    Write-Host ""
-}
-
-if ($imagesToPull.Count -gt 0) {
-    Write-Status "[3/6] 从Docker Hub拉取剩余镜像..." -ForegroundColor $Colors.Info
-    Write-Host ""
-    
-    foreach ($img in $imagesToPull) {
-        Write-Status "拉取 $($img.Name)..." -ForegroundColor $Colors.Info
-        docker pull $img.Name
-        if ($LASTEXITCODE -ne 0) {
-            Write-Status "拉取 $($img.Name) 失败!" -ForegroundColor $Colors.Error
-            Read-Host "按回车键退出"
-            exit 1
-        }
-        Write-Status "[OK] $($img.Name) 已拉取" -ForegroundColor $Colors.Success
-        
-        # 推送到私有仓库
-        $registryImage = "$registry/$project/$($img.Name -replace ':','-')"
-        Write-Status "推送到私有仓库: $registryImage" -ForegroundColor $Colors.Info
-        docker tag $img.Name $registryImage
-        docker push $registryImage
-        if ($LASTEXITCODE -ne 0) {
-            Write-Status "[警告] 推送失败" -ForegroundColor $Colors.Warning
-        } else {
-            Write-Status "[OK] 推送成功" -ForegroundColor $Colors.Success
-        }
-        Write-Host ""
+    "2" {
+        $imagesToBuild = $baseImages | Where-Object { $_.Name -like "*后端*" }
     }
-} else {
-    Write-Status "[3/6] 全部镜像从私有仓库获取完成" -ForegroundColor $Colors.Success
-}
-
-Write-Status "[4/6] 导出基础镜像..." -ForegroundColor $Colors.Info
-Write-Host ""
-
-$totalSize = 0
-$exportedFiles = @()
-
-foreach ($img in $baseImages) {
-    Write-Status "导出 $($img.Name) -> $($img.File)..." -ForegroundColor $Colors.Info
-    docker save $img.Name -o $img.File
-    if ($LASTEXITCODE -ne 0) {
-        Write-Status "导出 $($img.Name) 失败!" -ForegroundColor $Colors.Error
-        Read-Host "按回车键退出"
-        exit 1
+    "3" {
+        $imagesToBuild = $baseImages | Where-Object { $_.Name -like "*前端*" }
     }
-    
-    $size = (Get-Item $img.File).Length
-    $sizeMB = [math]::Round($size / 1MB, 2)
-    $totalSize += $size
-    $exportedFiles += $img.File
-    
-    Write-Status "[OK] $($img.File) ($sizeMB MB)" -ForegroundColor $Colors.Success
-    Write-Host ""
-}
-
-$sw.Stop()
-$totalSizeMB = [math]::Round($totalSize / 1MB, 2)
-Write-Status "导出完成! 耗时: $($sw.Elapsed.TotalSeconds.ToString('F1'))s, 总大小: $totalSizeMB MB" -ForegroundColor $Colors.Success
-Write-Host ""
-
-Write-Status "[5/6] 验证导出文件..." -ForegroundColor $Colors.Info
-Write-Host ""
-
-$allOk = $true
-foreach ($file in $exportedFiles) {
-    if (Test-Path $file) {
-        $size = (Get-Item $file).Length
-        $sizeMB = [math]::Round($size / 1MB, 2)
-        Write-Status "[OK] $file ($sizeMB MB)" -ForegroundColor $Colors.Success
-    } else {
-        Write-Status "[错误] $file 不存在!" -ForegroundColor $Colors.Error
-        $allOk = $false
+    default {
+        Write-Status "无效选项，将构建所有镜像" -Type "Warning"
+        $imagesToBuild = $baseImages
     }
 }
 
 Write-Host ""
+Write-Status "开始构建... ($($imagesToBuild.Count) 个镜像)" -Type "Info"
+Write-Host ""
 
-if (-not $allOk) {
-    Write-Status "部分文件验证失败!" -ForegroundColor $Colors.Error
-    Read-Host "按回车键退出"
-    exit 1
+$successCount = 0
+$totalStartTime = Get-Date
+
+foreach ($img in $imagesToBuild) {
+    if (Build-Image -Name $img.Name -Tag $img.Tag -DockerfilePath $img.Dockerfile -ContextPath $img.Context) {
+        $successCount++
+    }
 }
 
-Write-Status "[6/6] 完成!" -ForegroundColor $Colors.Info
+$totalEndTime = Get-Date
+$totalDuration = ($totalEndTime - $totalStartTime).TotalSeconds
+
 Write-Host ""
 Write-Host "========================================" -ForegroundColor $Colors.Header
-Write-Host "   基础镜像构建导出完成!" -ForegroundColor $Colors.Success
+Write-Host "   构建完成" -ForegroundColor $Colors.Success
 Write-Host "========================================" -ForegroundColor $Colors.Header
 Write-Host ""
-Write-Status "请将以下文件传输到内网服务器:" -ForegroundColor $Colors.Info
-foreach ($file in $exportedFiles) {
-    Write-Host "  - docker/$file" -ForegroundColor Gray
+Write-Status "成功: $successCount / $($imagesToBuild.Count) 个镜像" -Type "Success"
+Write-Status "总耗时: $($totalDuration.ToString('F1'))s" -Type "Info"
+Write-Host ""
+Write-Status "构建的镜像:" -Type "Info"
+foreach ($img in $imagesToBuild) {
+    Write-Host "  - $($img.Tag)" -ForegroundColor Gray
 }
 Write-Host ""
-Write-Status "在内网使用 import-base-images.ps1 脚本导入这些镜像" -ForegroundColor $Colors.Info
+Write-Status "现在可以使用这些基础镜像构建应用了!" -Type "Success"
 Write-Host ""
 Read-Host "按回车键退出"

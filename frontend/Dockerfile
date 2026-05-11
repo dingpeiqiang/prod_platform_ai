@@ -1,17 +1,19 @@
 # ============================================================
-# AI驱动动态表单 - 前端容器 (Nginx)
+# AI驱动动态表单 - 前端容器 (基于基础镜像)
 # ============================================================
 # 构建：docker build -f frontend/Dockerfile -t prod-platform-ai-frontend .
 # 运行：docker run -d -p 80:80 --name ai-frontend prod-platform-ai-frontend
 # ============================================================
 
-# ---- 构建阶段 ----
-FROM node:20-alpine AS builder
+# 基础镜像名称（可以是本地镜像或私有仓库镜像）
+ARG BUILDER_IMAGE=ai-form-frontend-builder:latest
+
+# ============================================================
+# 构建阶段 - 使用包含Node.js的基础镜像
+# ============================================================
+FROM ${BUILDER_IMAGE} AS builder
 
 WORKDIR /app
-
-# 使用国内 npm 源
-RUN npm config set registry https://registry.npmmirror.com
 
 # 复制 package.json 和 package-lock.json
 COPY frontend/package.json frontend/package-lock.json* ./
@@ -29,8 +31,13 @@ ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 RUN npm run build
 
-# ---- Nginx 阶段 ----
+# ============================================================
+# Nginx 阶段
+# ============================================================
 FROM nginx:alpine
+
+LABEL maintainer="AI Platform"
+LABEL description="AI Form Frontend Nginx"
 
 # 复制构建产物
 COPY --from=builder /app/dist /usr/share/nginx/html
