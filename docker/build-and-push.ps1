@@ -38,27 +38,15 @@ function Build-Image {
     
     $context = Split-Path -Parent $Dockerfile
     try {
-        # Try with buildx first - use docker v2 format
-        try {
-            Write-Status "Trying with buildx (v2 format)..." "Info"
-            docker buildx build -t $LocalTag -f $Dockerfile $context --load
-            if ($LASTEXITCODE -eq 0) {
-                docker tag $LocalTag $RemoteTag
-                Write-Status "[OK] $Name built with buildx" "Success"
-                return $true
-            }
-        }
-        catch {
-            Write-Status "Falling back to standard build..." "Warning"
-        }
-        
-        # Fallback to standard build
-        docker build -t $LocalTag -f $Dockerfile $context
+        # Use buildx with docker format - this forces v2 manifest
+        Write-Status "Building with buildx (docker format)..." "Info"
+        docker buildx build -t $LocalTag -f $Dockerfile $context --output type=docker
         if ($LASTEXITCODE -ne 0) {
             throw "Build failed"
         }
+        
         docker tag $LocalTag $RemoteTag
-        Write-Status "[OK] $Name built successfully" "Success"
+        Write-Status "[OK] $Name built successfully (docker format)" "Success"
         return $true
     }
     catch {
@@ -97,9 +85,7 @@ Write-Host ""
 Write-Status "IMPORTANT! Configure Docker first:" "Warning"
 Write-Host "  1. Open Docker Desktop Settings" "Gray"
 Write-Host "  2. Go to Docker Engine" "Gray"
-Write-Host "  3. Add this to the JSON config:" "Gray"
-Write-Host "     `"insecure-registries`": [`"10.86.12.11:20200`"]," "Gray"
-Write-Host "     `"features`": { `"buildkit`": false }" "Gray"
+Write-Host "  3. Add: `"insecure-registries`": [`"10.86.12.11:20200`"]" "Gray"
 Write-Host "  4. Click Apply & Restart" "Gray"
 Write-Host ""
 
@@ -172,8 +158,4 @@ Write-Host ""
 
 if ($successCount -eq $images.Count) {
     Write-Status "All images successfully pushed to: http://$registry/$project" "Success"
-}
-else {
-    Write-Status "" "Warning"
-    Write-Status "If push fails, check your Docker Engine config has buildkit disabled" "Warning"
 }
