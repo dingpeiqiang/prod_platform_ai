@@ -39,6 +39,8 @@ function Build-Image {
     
     $context = Split-Path -Parent $Dockerfile
     try {
+        Write-Status "Context: $context" "Info"
+        Write-Status "Dockerfile: $Dockerfile" "Info"
         docker build -t $Tag -f $Dockerfile $context
         if ($LASTEXITCODE -ne 0) {
             throw "Build failed"
@@ -108,21 +110,27 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Status "[OK] Login successful" "Success"
 
-# Image list
+# Get project root (go up one level from script directory)
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$projectRoot = Split-Path -Parent $scriptDir
+Set-Location $projectRoot
+Write-Status "Working from: $projectRoot" "Info"
+
+# Image list - paths are relative to project root
 $images = @(
-    @{
+    [PSCustomObject]@{
         Name = "Backend Builder"
         LocalTag = "ai-form-backend-builder:latest"
         RemoteTag = "$registry/$project/ai-form-backend-builder:latest"
         Dockerfile = "docker/base-images/backend-builder/Dockerfile"
     },
-    @{
+    [PSCustomObject]@{
         Name = "Backend Runtime"
         LocalTag = "ai-form-backend-runtime:latest"
         RemoteTag = "$registry/$project/ai-form-backend-runtime:latest"
         Dockerfile = "docker/base-images/backend-runtime/Dockerfile"
     },
-    @{
+    [PSCustomObject]@{
         Name = "Frontend Builder"
         LocalTag = "ai-form-frontend-builder:latest"
         RemoteTag = "$registry/$project/ai-form-frontend-builder:latest"
@@ -169,7 +177,7 @@ foreach ($img in $selectedImages) {
     if (Build-Image -Name $img.Name -Tag $img.LocalTag -Dockerfile $img.Dockerfile) {
         # Tag
         docker tag $img.LocalTag $img.RemoteTag
-        Write-Status "Tagged: $img.RemoteTag" "Info"
+        Write-Status "Tagged: $($img.RemoteTag)" "Info"
         
         if (Push-Image -Tag $img.RemoteTag) {
             $successCount++
