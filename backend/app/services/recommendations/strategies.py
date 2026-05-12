@@ -274,7 +274,7 @@ class UserPersonalizedStrategy:
                     source="history",
                     confidence=min(stats['count'] / 5.0, 1.0),
                     match_type="exact",
-                    reason=f"您历史填写{stats['count']}次",
+                    reason=f"🟢 您历史填写{stats['count']}次",
                     metadata={"count": stats['count'], "personalized": True}
                 ))
 
@@ -385,32 +385,29 @@ class ContextAwareStrategy:
             extracted_fields = context.get('extractedFields', {})
             
             # 【核心】从 LLM 意图识别结果中提取推荐
-            # LLM 应该在第一阶段为所有字段生成推断值（一次性完成）
-            # extractedFields 应该包含本体中定义的所有字段
+            # ⚠️ LLM 严禁返回空值，必须为每个字段生成合理的推断值
+            value = extracted_fields.get(field_code)
             
-            if field_code in extracted_fields:
-                value = extracted_fields[field_code]
-                
-                # ✅ LLM 已为该字段生成推断值（可能为空字符串）
+            if value:
+                # ✅ LLM 已为该字段生成了非空的推断值
                 recommendations.append(RecommendationItem(
-                    value=str(value) if value else "",
+                    value=str(value),
                     field_code=field_code,
-                    score=0.95 if value else 0.7,
-                    source="llm_extraction" if value else "llm_inference",
-                    confidence=0.95 if value else 0.7,
-                    match_type="extracted" if value else "inferred_empty",
-                    reason=f"🔴 AI{'从您的输入中提取' if value else '推断：您未提供此信息'}",
+                    score=0.95,
+                    source="llm_extraction",
+                    confidence=0.95,
+                    match_type="extracted",
+                    reason=f"🔴 AI从您的输入中提取",
                     metadata={
                         "extractedBy": "llm",
-                        "source": "user_input" if value else "ai_inference",
-                        "isEmpty": not value,
+                        "source": "user_input",
+                        "isEmpty": False,
                         "priority": 1
                     }
                 ))
             else:
-                # ❌ 异常情况：LLM 没有为该字段生成推断
-                # 这不应该发生，因为 LLM 应该为所有字段生成推断值
-                logger.warning(f"[ContextAwareStrategy] LLM 未为字段 {field_code} 生成推断值")
+                # ❌ 异常情况：LLM 返回了空值（违反规范）
+                logger.warning(f"[ContextAwareStrategy] LLM 为字段 {field_code} 返回空值，违反规范")
                 # 不返回任何推荐，让其他策略处理
 
         except Exception as e:

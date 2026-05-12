@@ -128,9 +128,9 @@ class RecommendationEngine:
                     db, form_code, field_code, user_id, conversation_context
                 )
                 for item in user_candidates:
-                    item.priority = 2
-                    candidates_by_priority[2].append(item)
-                    all_candidates.append(item)  # 【修复】添加到总候选列表
+                    item.priority = 3
+                    candidates_by_priority[3].append(item)
+                    all_candidates.append(item)
 
             if "frequency" in active_strategies:
                 strategies_used.append("frequency")
@@ -138,10 +138,10 @@ class RecommendationEngine:
                     db, form_code, field_code, user_id, conversation_context
                 )
                 for item in history_candidates:
-                    if item.priority is None or item.priority > 2:
-                        item.priority = 2
-                    candidates_by_priority[2].append(item)
-                    all_candidates.append(item)  # 【修复】添加到总候选列表
+                    if item.priority is None or item.priority > 3:
+                        item.priority = 3
+                    candidates_by_priority[3].append(item)
+                    all_candidates.append(item)
 
             if "time_decay" in active_strategies:
                 strategies_used.append("time_decay")
@@ -149,10 +149,10 @@ class RecommendationEngine:
                     db, form_code, field_code, user_id
                 )
                 for item in time_candidates:
-                    if item.priority is None or item.priority > 3:
-                        item.priority = 3
-                    candidates_by_priority[3].append(item)
-                    all_candidates.append(item)  # 【修复】添加到总候选列表
+                    if item.priority is None or item.priority > 2:
+                        item.priority = 2
+                    candidates_by_priority[2].append(item)
+                    all_candidates.append(item)
 
             # 【新增】静态推荐策略（兜底）
             if "static" in active_strategies:
@@ -167,7 +167,7 @@ class RecommendationEngine:
             seen_values = set()
             final_recommendations = []
             
-            for priority in [1, 2, 3, 4]:  # 【修改】支持优先级4（静态推荐）
+            for priority in [1, 2, 3, 4]:
                 candidates = candidates_by_priority.get(priority, [])
                 candidates.sort(key=lambda x: (x.confidence, x.score), reverse=True)
                 
@@ -175,6 +175,11 @@ class RecommendationEngine:
                 
                 for item in candidates:
                     logger.debug(f"[RecommendationEngine] 检查候选项: value={item.value}, reason='{item.reason}', confidence={item.confidence}")
+                    
+                    # ⚠️ AI 推荐值不允许为空
+                    if not item.value:
+                        logger.warning(f"[RecommendationEngine] 跳过空值推荐: field={field_code}, source={item.source}")
+                        continue
                     
                     if item.value not in seen_values:
                         seen_values.add(item.value)
