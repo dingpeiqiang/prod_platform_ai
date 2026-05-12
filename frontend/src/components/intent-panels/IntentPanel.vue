@@ -47,6 +47,7 @@
       :warnings="panelData.warnings || []"
       :step="panelData.step"
       :rule_engine_passed="panelData.rule_engine_passed"
+      :validationTable="panelData.validationTable"
     />
   </div>
 </template>

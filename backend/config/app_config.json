@@ -7,7 +7,7 @@
   "llm": {
     "enabled": true,
     "provider": "custom",
-    "model": "qwen-plus-2025-07-28",
+    "model": "qwen-vl-plus-2025-05-07",
     "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
     "apiKey": "sk-16f6fcbc5d1e47f4b976ed8c757ddb95",
     "thinking": true,

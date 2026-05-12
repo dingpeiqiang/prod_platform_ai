@@ -299,14 +299,11 @@ class ValidationHandler(BaseIntentHandler):
         # 获取所有字段的推荐值
         recommendations = self._get_recommendations(form_code, form_data, ctx.db)
         
-        # 构建表格格式的校验结果
+        # 构建表格格式的校验结果（JSON 结构）
         validation_table = self._build_validation_table(form_data, all_errors, recommendations)
         
         total_errors = len(all_errors)
 
-        # 构建表格格式的输出文本
-        table_output = self._format_table_output(validation_table, llm_warnings)
-        
         yield thinking(
             f"📋 校验汇总：共 {total_errors} 个错误，{len(llm_warnings)} 个警告{'（全部通过）' if total_errors == 0 else ''}",
             result={
@@ -320,12 +317,6 @@ class ValidationHandler(BaseIntentHandler):
                 "validationTable": validation_table
             }
         )
-        
-        # 使用 sse 事件发送表格内容，确保换行符正确显示
-        if table_output:
-            yield sse({"type": "text_start"})
-            yield sse({"type": "text", "content": table_output})
-            yield sse({"type": "text_end"})
 
         # ═══ Phase 3：输出 ══════════════════════════════════════════
         # 最终 SSE 事件（前端面板使用）
@@ -398,6 +389,11 @@ class ValidationHandler(BaseIntentHandler):
         for err in errors:
             field_name_map[err.get("fieldCode", "")] = err.get("field", "")
         
+        # 获取表单编码（用于枚举值转换）
+        form_code = ""
+        if errors:
+            form_code = errors[0].get("formCode", "")
+        
         # 构建行数据
         rows = []
         error_field_codes = {err.get("fieldCode", "") for err in errors}
@@ -406,11 +402,15 @@ class ValidationHandler(BaseIntentHandler):
             field_name = field_name_map.get(field_code, field_code)
             error_info = next((err for err in errors if err.get("fieldCode") == field_code), None)
             
+            # 🔧 如果是枚举值，转换为中文标签
+            display_value = self._convert_enum_value(form_code, field_code, field_value)
+            display_recommended = self._convert_enum_value(form_code, field_code, recommendations.get(field_code, ""))
+            
             row = {
                 "fieldCode": field_code,
                 "fieldName": field_name,
-                "originalValue": field_value,
-                "recommendedValue": recommendations.get(field_code, ""),
+                "originalValue": display_value,
+                "recommendedValue": display_recommended,
                 "validationResult": "不通过" if field_code in error_field_codes else "通过",
                 "suggestion": error_info.get("suggestion", "") if error_info else ""
             }
@@ -436,82 +436,33 @@ class ValidationHandler(BaseIntentHandler):
             }
         }
     
-    def _format_table_output(self, validation_table: Dict[str, Any], warnings: List[str]) -> str:
+    def _convert_enum_value(self, form_code: str, field_code: str, value: str) -> str:
         """
-        格式化表格输出为可读文本格式
+        将枚举值转换为中文标签显示
         
-        输出格式：
-        | 编码 | 名称 | 原值 | 推荐值 | 校验结果 | 优化建议 |
-        |------|------|------|--------|----------|----------|
-        | ...  | ...  | ...  | ...    | ...      | ...      |
+        Args:
+            form_code: 表单编码
+            field_code: 字段编码
+            value: 枚举值（可能是编码或已经是标签）
         
-        警告：
-        1. ...
-        2. ...
+        Returns:
+            中文标签，如果不是枚举字段则返回原值
         """
-        columns = validation_table.get("columns", [])
-        rows = validation_table.get("rows", [])
-        summary = validation_table.get("summary", {})
+        if not value or not form_code or not field_code:
+            return value
         
-        # 设置固定列宽度（优化对齐）
-        col_widths = {
-            "fieldCode": 12,
-            "fieldName": 12,
-            "originalValue": 12,
-            "recommendedValue": 12,
-            "validationResult": 10,
-            "suggestion": 40
-        }
-        
-        # 构建表头
-        header = "| " + " | ".join(f"{col['label']:{col_widths[col['key']]}}" for col in columns) + " |"
-        
-        # 构建分隔线
-        separator = "|-" + "-|-".join("-" * col_widths[col["key"]] for col in columns) + "-|"
-        
-        # 构建数据行
-        data_rows = []
-        for row in rows:
-            cells = []
-            for col in columns:
-                key = col["key"]
-                value = str(row.get(key, ""))
-                # 校验结果高亮
-                if key == "validationResult":
-                    if value == "不通过":
-                        cells.append(f"❌ 不通过".ljust(col_widths[key]))
-                    elif value == "通过":
-                        cells.append(f"✅ 通过".ljust(col_widths[key]))
-                    else:
-                        cells.append(value.ljust(col_widths[key]))
-                else:
-                    # 截断过长内容
-                    if len(value) > col_widths[key]:
-                        value = value[:col_widths[key] - 3] + "..."
-                    cells.append(value.ljust(col_widths[key]))
-            data_rows.append("| " + " | ".join(cells) + " |")
-        
-        # 组合所有部分
-        output_lines = []
-        output_lines.append("### 校验结果")
-        output_lines.append("")
-        output_lines.append(header)
-        output_lines.append(separator)
-        output_lines.extend(data_rows)
-        output_lines.append("")
-        
-        # 添加汇总信息
-        output_lines.append(f"**汇总**: 共 {summary.get('totalFields', 0)} 个字段，{summary.get('passedCount', 0)} 通过，{summary.get('failedCount', 0)} 不通过")
-        output_lines.append("")
-        
-        # 添加警告信息
-        if warnings:
-            output_lines.append("### ⚠️ 警告")
-            for i, warning in enumerate(warnings, 1):
-                output_lines.append(f"{i}. {warning}")
-        
-        return "\n".join(output_lines)
+        try:
+            from app.services.recommendation_engine import RecommendationEngine
+            label = RecommendationEngine._get_enum_label(form_code, field_code, value)
+            # 如果 label 和 value 不同，说明找到了映射，显示为 "标签 (编码)" 格式
+            if label != value:
+                return f"{label}"
+            return value
+        except Exception as e:
+            logger.debug(f"[_convert_enum_value] 转换失败: {e}")
+            return value
     
+        
     @staticmethod
     def _parse_form_data_from_message(message: str) -> Dict[str, str]:
         """

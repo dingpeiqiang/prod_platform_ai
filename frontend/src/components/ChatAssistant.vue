@@ -479,7 +479,8 @@ const _handleValidationResult = (data, msg) => {
  errors: data.errors || [],
  warnings: data.warnings || [],
  step: data.step || '',
- rule_engine_passed: data.rule_engine_passed || false
+ rule_engine_passed: data.rule_engine_passed || false,
+ validationTable: data.validationTable || null
  };
  scrollToBottom();
 };
