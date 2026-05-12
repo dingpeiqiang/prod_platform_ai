@@ -9,6 +9,9 @@ export const stepIcon = (type) => {
     'info': 'ℹ️',
     'loading': '⏳',
     'done': '✅',
+    'recommendation': '📚',
+    'recommendation_engine': '⚙️',
+    'recommendation_complete': '📊',
     'default': '📋'
   }
   return icons[type] || icons.default
@@ -17,6 +20,32 @@ export const stepIcon = (type) => {
 export const formatStepResult = (result) => {
   if (!result) return ''
   try {
+    // 如果是推荐引擎的结果，进行格式化显示
+    if (result.step && result.step.includes('recommendation')) {
+      const lines = []
+      if (result.fieldCount !== undefined) {
+        lines.push(`字段数: ${result.fieldCount}`)
+      }
+      if (result.totalRecommendations !== undefined) {
+        lines.push(`推荐总数: ${result.totalRecommendations}`)
+      }
+      if (result.maxPerField !== undefined) {
+        lines.push(`每字段最大: ${result.maxPerField}`)
+      }
+      if (result.strategySummary) {
+        const strategyStr = Object.entries(result.strategySummary)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join(', ')
+        lines.push(`策略: ${strategyStr}`)
+      }
+      if (result.processingTimeMs !== undefined) {
+        lines.push(`耗时: ${result.processingTimeMs}ms`)
+      }
+      if (lines.length > 0) {
+        return lines.join('\n')
+      }
+    }
+    // 默认 JSON 格式化
     return JSON.stringify(result, null, 2)
   } catch {
     return String(result)

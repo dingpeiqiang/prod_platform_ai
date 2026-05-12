@@ -67,7 +67,9 @@
                   >
                     <div class="step-content">
                       <span class="step-icon">{{ stepIcon(step.type) }}</span>
-                      <span class="step-text">{{ step.content }}</span>
+                      <div class="step-main">
+                        <span class="step-text">{{ step.content }}</span>
+                      </div>
                       <span v-if="si === msg.latestStepIndex && !msg.done" class="step-loading">
                         <span/><span/><span/>
                       </span>
@@ -372,6 +374,24 @@ defineExpose({ scrollToBottom });
 }
 
 .step-text { flex: 1; line-height: 1.5; }
+.step-main { flex: 1; }
+
+.step-result {
+  margin-top: var(--space-1);
+  padding: var(--space-2);
+  background: rgba(99, 102, 241, 0.05);
+  border: 1px solid var(--color-primary-100);
+  border-radius: var(--radius-md);
+  font-size: 11px;
+}
+
+.step-result-text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--color-primary-700);
+  line-height: 1.4;
+}
 
 .step-loading span {
   display: inline-block;

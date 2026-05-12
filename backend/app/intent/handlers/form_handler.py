@@ -289,12 +289,16 @@ class FormHandler(BaseIntentHandler):
             yield thinking(f"⚠️ 推荐引擎异常: {str(rec_err)[:100]}")
 
         # ═══ Phase 3：输出 ══════════════════════════════════════════
+        # 【调整顺序】先发送 intent_event 触发前端显示"正在生成表单..."提示
+        # 然后再发送最终的 thinking 事件和统计信息
+        yield intent_event("form", "generate", ctx.intent_data, is_form=True)
+        
+        # 发送统计信息
         ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
         ctx.stream_stats.is_form = True
         yield sse({"type": "stats", "content": ctx.stream_stats.to_dict()})
         
-        # 【新增】发送最终提示，告诉用户即将生成表单
+        # 发送最终完成提示
         yield thinking(f"✅ 准备生成 {form_name or form_code} 表单...")
 
-        yield intent_event("form", "generate", ctx.intent_data, is_form=True)
         yield done_event("form", is_form=True, intent_data=ctx.intent_data)

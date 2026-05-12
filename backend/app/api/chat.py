@@ -721,25 +721,18 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                         intent_data["detectedFormCode"] = form_code
                                         logger.info(f"[chat/stream] 从场景映射获取 formCode: {form_code}")
                                 
-                                # 直接返回，触发前端显示表单
-                                stream_stats.total_elapsed = time.time() - start_time
-                                yield sse({"type": "stats", "content": stream_stats.to_dict()})
-                                
-                                form_code = intent_data.get("formCode") or intent_data.get("detectedFormCode")
-                                yield intent_event("form", "form_generated", intent_data, is_form=True)
-                                yield done_event("form", is_form=True, intent_data=intent_data)
-                                return
+                                # 设置 intent_type 为 form，让 FormHandler 处理表单生成（显示处理步骤）
+                                intent_type = "form"
+                                logger.info(f"[chat/stream] 设置 intent_type=form，准备通过 FormHandler 处理")
+                                # 继续执行后续逻辑，不直接返回
 
-                            # 【关键】如果场景响应已经处理完成（generate_form action），直接返回，不要分发到 handler
+                            # 【关键】如果场景响应已经处理完成（generate_form action），通过 FormHandler 处理（显示处理步骤）
                             if scene_handled and intent_data.get("action") == "generate_form":
-                                logger.info(f"[chat/stream] 场景响应已处理完成，直接返回")
-                                stream_stats.total_elapsed = time.time() - start_time
-                                yield sse({"type": "stats", "content": stream_stats.to_dict()})
-                                
-                                form_code = intent_data.get("formCode") or intent_data.get("detectedFormCode")
-                                yield intent_event("form", "form_generated", intent_data, is_form=True)
-                                yield done_event("form", is_form=True, intent_data=intent_data)
-                                return
+                                logger.info(f"[chat/stream] 场景响应已处理完成，准备通过 FormHandler 生成表单")
+                                # 设置 intent_type 为 form，让 FormHandler 处理表单生成（显示处理步骤）
+                                intent_type = "form"
+                                logger.info(f"[chat/stream] 设置 intent_type=form，准备通过 FormHandler 处理")
+                                # 继续执行后续逻辑，不直接返回
                             
                             # 【调试】打印 intent_type 和 intent_data
                             logger.info(f"[chat/stream] 准备分发意图: intent_type={intent_type}, action={intent_data.get('action')}")
@@ -766,6 +759,15 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                             if request.formData:
                                 intent_data["form_data"] = request.formData
 
+                            # 获取表单名称用于提示
+                            form_name = ""
+                            if form_code and form_code in ontologies:
+                                form_name = ontologies[form_code].get("formName", form_code)
+                            
+                            # 【关键修改】在调用 FormHandler 之前先发送"正在生成表单"的提示
+                            # 这样处理步骤会显示在这个提示的下方
+                            yield thinking(f"正在为你生成 {form_name or form_code} 表单...")
+                            
                             ctx = IntentContext(
                                 intent_data=intent_data,
                                 intent_result=intent_result,

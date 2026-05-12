@@ -92,11 +92,29 @@ class OpenAIProvider(BaseProvider):
                 raise Exception(f"LLM 服务调用失败: {error_msg}")
             
             result = resp.json()
+            
+            # 提取 content
             content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
+            
+            # 【修复】支持多种 reasoning 字段名（适配不同 API）
+            choice = result.get('choices', [{}])[0] if result.get('choices') else {}
+            message = choice.get('message', {})
+            
+            # 尝试从多个可能的位置提取 reasoning
             reasoning = (
-                result.get('choices', [{}])[0].get('message', {}).get('reasoning', '') or
-                result.get('choices', [{}])[0].get('message', {}).get('reasoning_content', '')
+                message.get('thinking', '') or  # DashScope thinking 模式
+                message.get('reasoning', '') or  # 标准 reasoning 字段
+                message.get('reasoning_content', '') or  # 备用字段名
+                message.get('thought', '') or  # 其他可能的字段名
+                choice.get('thinking', '') or  # 可能在 choice 层级
+                choice.get('reasoning', '')    # 可能在 choice 层级
             )
+            
+            # 记录日志以便调试
+            if reasoning:
+                import logging
+                logger = logging.getLogger("llm.openai")
+                logger.info(f"[OpenAIProvider] 成功提取 reasoning（长度: {len(reasoning)}）")
             
             return content, reasoning
         

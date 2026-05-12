@@ -183,8 +183,13 @@ class HistoryService:
                 fields = entity.get('fields', [])
                 for field_def in fields:
                     if field_def.get('fieldCode') == field_code:
-                        # 检查是否有 options 映射
-                        options = field_def.get('options', [])
+                        # 优先从 enumConfig.options 查找，这是标准位置
+                        enum_config = field_def.get('enumConfig', {})
+                        options = enum_config.get('options', []) if isinstance(enum_config, dict) else []
+                        # 如果 enumConfig 中没有，再尝试直接的 options 字段（兼容旧格式）
+                        if not options:
+                            options = field_def.get('options', [])
+                        
                         for opt in options:
                             # 支持两种格式：字符串数组 和 {value, label} 对象数组
                             if isinstance(opt, str):

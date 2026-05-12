@@ -23,11 +23,15 @@ export function useFormHandling(messagesRef, currentDbSessionIdRef) {
  };
  const generateForm = async (intentData) => {
  const { formCode, extractedFields, fieldRecommendations } = intentData;
+ 
+ // 【修复】不继承 reasoning，避免重复显示。处理步骤在流式消息中已完整展示
  const loadingMsg = {
  id: genId(), role: 'assistant',
  content: `正在为你生成 ${formCode || ''} 表单`, done: true, type: 'chat',
  loading: true,
- loadingDots: 0
+ loadingDots: 0,
+ reasoning: [],  // 空数组，不显示处理步骤
+ showReasoning: false
  };
  messagesRef.value.push(loadingMsg);
  const loadingInterval = setInterval(() => {
@@ -44,7 +48,7 @@ export function useFormHandling(messagesRef, currentDbSessionIdRef) {
  await saveMessage(currentDbSessionIdRef.value, {
  role: 'assistant',
  content: `正在为你生成 ${formCode || ''} 表单...`,
- reasoning: []
+ reasoning: []  // 空数组，不保存处理步骤
  }).catch(() => { });
  }
  try {
