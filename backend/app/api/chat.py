@@ -430,7 +430,11 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                             
                                             # 【新增】支持 action 字段的场景响应格式
                                             action = scene_json.get("action")
+                                            scene_handled = False  # 标记场景响应是否已处理完成
+                                            
                                             if action:
+                                                # 保存 action 到 intent_data，供后续逻辑使用
+                                                intent_data["action"] = action
                                                 logger.info(f"[chat/stream] 场景响应 action={action}")
                                                 
                                                 if action == "ask_user":
@@ -477,6 +481,8 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                                         "arguments": tool_args
                                                     })
                                                     logger.info(f"[chat/stream] 场景要求调用工具: {tool_name}")
+                                                    # 标记场景已处理，但允许继续执行工具调用
+                                                    scene_handled = True
                                                 
                                                 elif action == "generate_form":
                                                     # 生成表单
@@ -498,6 +504,8 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                                         intent_data["extractedFields"] = extracted_fields
                                                     
                                                     logger.info(f"[chat/stream] 场景要求生成表单: formCode={form_code}")
+                                                    # 标记场景已处理，并且应该直接返回（不继续执行 dispatch）
+                                                    scene_handled = True
                                             
                                             else:
                                                 # 旧格式：直接使用 message 字段
@@ -656,6 +664,20 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                     "extractedFields": list(extracted.keys())
                                 }
                             )
+
+                            # 【关键】如果场景响应已经处理完成（generate_form action），直接返回，不要分发到 handler
+                            if scene_handled and intent_data.get("action") == "generate_form":
+                                logger.info(f"[chat/stream] 场景响应已处理完成，直接返回")
+                                stream_stats.total_elapsed = time.time() - start_time
+                                yield sse({"type": "stats", "content": stream_stats.to_dict()})
+                                
+                                form_code = intent_data.get("formCode") or intent_data.get("detectedFormCode")
+                                yield intent_event("form", "form_generated", intent_data, is_form=True)
+                                yield done_event("form", is_form=True, intent_data=intent_data)
+                                return
+                            
+                            # 【调试】打印 intent_type 和 intent_data
+                            logger.info(f"[chat/stream] 准备分发意图: intent_type={intent_type}, action={intent_data.get('action')}")
 
                             form_code = intent_data.get("detectedFormCode") or intent_data.get("formCode") or intent_data.get("form_code") or scene_code
                             yield thinking(
