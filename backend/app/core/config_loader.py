@@ -38,18 +38,13 @@ class ConfigLoader:
         self._db_session_factory = session_factory
     
     def _load_all_configs(self):
-        self._load_system_config()
         self._load_app_config()
-        self._load_scene_mappings()
         self._load_ontologies()
         self._load_recommendations()
         self._load_prompts()
     
     def _load_system_config(self):
-        path = self.base_path / "system_config.json"
-        if path.exists():
-            self._config_cache['system_config'] = self._load_json(path)
-            self._last_modified['system_config'] = path.stat().st_mtime
+        pass
     
     def _load_json(self, path: Path) -> Optional[Dict]:
         try:
@@ -74,14 +69,16 @@ class ConfigLoader:
     def _load_app_config(self):
         path = self.base_path / "app_config.json"
         if path.exists():
-            self._config_cache['app_config'] = self._load_json(path)
+            app_config = self._load_json(path)
+            self._config_cache['app_config'] = app_config
             self._last_modified['app_config'] = path.stat().st_mtime
-    
-    def _load_scene_mappings(self):
-        path = self.base_path / "scenes" / "scene_mapping.json"
-        if path.exists():
-            self._config_cache['scene_mappings'] = self._load_json(path)
-            self._last_modified['scene_mappings'] = path.stat().st_mtime
+            
+            if app_config:
+                system_config = {}
+                for key in ['recommendation', 'smartRecommend', 'sceneRecognition', 'fieldExtraction']:
+                    if key in app_config:
+                        system_config[key] = app_config[key]
+                self._config_cache['system_config'] = system_config
     
     def _load_ontologies(self):
         if self._ontology_source == "database":
@@ -174,19 +171,13 @@ class ConfigLoader:
         return self._config_cache.get('app_config', {})
     
     def get_scene_mappings(self) -> List[Dict]:
-        return self._config_cache.get('scene_mappings', {}).get('sceneMappings', [])
+        return []
     
     def get_scene_by_code(self, scene_code: str) -> Optional[Dict]:
-        """从场景映射中获取场景"""
-        scene_mappings = self.get_scene_mappings()
-        for scene in scene_mappings:
-            if scene.get('sceneCode') == scene_code:
-                return scene
         return None
     
     def get_all_scenes(self) -> List[Dict]:
-        """获取所有场景"""
-        return self.get_scene_mappings()
+        return []
     
     def get_scene_prompt(self, scene_code: str) -> Optional[str]:
         """获取场景提示词"""
@@ -231,11 +222,9 @@ class ConfigLoader:
         if config_type is None or config_type == 'all':
             self._load_all_configs()
         elif config_type == 'system_config':
-            self._load_system_config()
+            self._load_app_config()
         elif config_type == 'app_config':
             self._load_app_config()
-        elif config_type == 'scene_mappings':
-            self._load_scene_mappings()
         elif config_type == 'ontologies':
             self._load_ontologies()
         elif config_type == 'recommendations':

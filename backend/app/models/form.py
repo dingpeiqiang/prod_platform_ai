@@ -19,7 +19,7 @@ class Form(Base):
     validation_rules = Column(JSON, default=list)  # 验证规则
     
     # 关联
-    ontology_code = Column(String(100))  # 关联的本体
+    ontology_code = Column(String(100))  # 关联的本体编码
     
     # 状态
     is_active = Column(Boolean, default=True)
@@ -44,23 +44,11 @@ class Form(Base):
         }
 
 
-class FormTemplate(Base):
-    __tablename__ = "form_templates"
-
-    id = Column(Integer, primary_key=True, index=True)
-    form_code = Column(String(100), index=True, nullable=False)
-    version = Column(Integer, default=1)
-    schema_data = Column(JSON, default=dict)
-    is_active = Column(Boolean, default=True)
-    created_by = Column(String(100))
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-
 class FormInstance(Base):
     __tablename__ = "form_instances"
 
     id = Column(Integer, primary_key=True, index=True)
-    template_id = Column(Integer, ForeignKey("form_templates.id"), index=True)
+    form_code = Column(String(100), index=True, nullable=False)  # 直接关联表单编码，不再依赖模板
     user_id = Column(String(100), index=True)
     session_id = Column(String(100), index=True)
     data = Column(JSON, default=dict)

@@ -1,0 +1,365 @@
+{
+  "id": "20260512_001136",
+  "formCode": "tariff_filing_publicity",
+  "formName": "资费备案公示",
+  "action": "delete",
+  "timestamp": "2026-05-12T00:11:36.653991",
+  "data": {
+    "formCode": "tariff_filing_publicity",
+    "formName": "资费备案公示",
+    "description": "电信业务资费信息的备案和公示表单，用于记录和管理资费套餐的详细信息，包括新增、修改、删除等操作",
+    "entities": [
+      {
+        "entityCode": "tariff_info",
+        "entityName": "资费备案信息",
+        "fields": [
+          {
+            "fieldCode": "bossid",
+            "fieldName": "省内套餐编码",
+            "fieldType": "input",
+            "required": true,
+            "ruleDescription": "BOSS系统内的省内套餐唯一编码，示例：P000111"
+          },
+          {
+            "fieldCode": "seq_no",
+            "fieldName": "序列号",
+            "fieldType": "input",
+            "required": true,
+            "ruleDescription": "由客户端生成，唯一标识一条备案数据。生成规则：省份编码（附录3表A）+基础电信企业编码（附录3表B）+YYYYMMDD+5位序号，示例：BJ22024070100001"
+          },
+          {
+            "fieldCode": "reporter",
+            "fieldName": "备案主体",
+            "fieldType": "select",
+            "required": true,
+            "enumConfig": {
+              "type": "static",
+              "options": [
+                {
+                  "value": "JT1",
+                  "label": "中国电信集团"
+                },
+                {
+                  "value": "YD1",
+                  "label": "中国移动集团"
+                },
+                {
+                  "value": "LT1",
+                  "label": "中国联通集团"
+                },
+                {
+                  "value": "HE2",
+                  "label": "河北移动"
+                },
+                {
+                  "value": "BJ2",
+                  "label": "北京移动"
+                },
+                {
+                  "value": "SH2",
+                  "label": "上海移动"
+                },
+                {
+                  "value": "GD2",
+                  "label": "广东移动"
+                },
+                {
+                  "value": "SC2",
+                  "label": "四川移动"
+                },
+                {
+                  "value": "HE1",
+                  "label": "河北电信"
+                },
+                {
+                  "value": "BJ1",
+                  "label": "北京电信"
+                },
+                {
+                  "value": "SD1",
+                  "label": "山东电信"
+                },
+                {
+                  "value": "GX1",
+                  "label": "广西电信"
+                }
+              ]
+            }
+          },
+          {
+            "fieldCode": "action_type",
+            "fieldName": "操作类型",
+            "fieldType": "select",
+            "required": true,
+            "enumConfig": {
+              "type": "static",
+              "options": [
+                {
+                  "value": "A",
+                  "label": "新增"
+                },
+                {
+                  "value": "M",
+                  "label": "修改"
+                },
+                {
+                  "value": "D",
+                  "label": "删除"
+                },
+                {
+                  "value": "AC",
+                  "label": "新增校验"
+                }
+              ]
+            }
+          },
+          {
+            "fieldCode": "type1",
+            "fieldName": "一级分类",
+            "fieldType": "select",
+            "required": true,
+            "enumConfig": {
+              "type": "static",
+              "options": [
+                {
+                  "value": "1",
+                  "label": "公众"
+                },
+                {
+                  "value": "2",
+                  "label": "政企"
+                }
+              ]
+            }
+          },
+          {
+            "fieldCode": "type2",
+            "fieldName": "二级分类",
+            "fieldType": "select",
+            "required": true,
+            "enumConfig": {
+              "type": "static",
+              "options": [
+                {
+                  "value": "1",
+                  "label": "套餐"
+                },
+                {
+                  "value": "2",
+                  "label": "加装包（不含港澳台和国际）"
+                },
+                {
+                  "value": "3",
+                  "label": "营销活动"
+                },
+                {
+                  "value": "4",
+                  "label": "国际及港澳台加装包"
+                },
+                {
+                  "value": "5",
+                  "label": "国内标准资费"
+                },
+                {
+                  "value": "6",
+                  "label": "国际及港澳台标准资费"
+                },
+                {
+                  "value": "7",
+                  "label": "其他"
+                }
+              ]
+            }
+          },
+          {
+            "fieldCode": "name",
+            "fieldName": "资费名称",
+            "fieldType": "input",
+            "required": true,
+            "ruleDescription": "应与订购成功信息中资费名称一致"
+          },
+          {
+            "fieldCode": "fees",
+            "fieldName": "资费标准",
+            "fieldType": "number",
+            "required": false
+          },
+          {
+            "fieldCode": "fees_unit",
+            "fieldName": "资费单位",
+            "fieldType": "input",
+            "required": false,
+            "ruleDescription": "如：元/月、元/年"
+          },
+          {
+            "fieldCode": "call",
+            "fieldName": "语音",
+            "fieldType": "number",
+            "required": false,
+            "ruleDescription": "单位：分钟"
+          },
+          {
+            "fieldCode": "data",
+            "fieldName": "通用流量",
+            "fieldType": "number",
+            "required": false
+          },
+          {
+            "fieldCode": "data_unit",
+            "fieldName": "流量单位",
+            "fieldType": "input",
+            "required": false,
+            "ruleDescription": "如：GB、MB"
+          },
+          {
+            "fieldCode": "sms",
+            "fieldName": "短彩信",
+            "fieldType": "number",
+            "required": false,
+            "ruleDescription": "单位：条"
+          },
+          {
+            "fieldCode": "orient_traffic",
+            "fieldName": "定向流量",
+            "fieldType": "number",
+            "required": false
+          },
+          {
+            "fieldCode": "orient_traffic_unit",
+            "fieldName": "定向流量单位",
+            "fieldType": "input",
+            "required": false,
+            "ruleDescription": "如：GB、MB"
+          },
+          {
+            "fieldCode": "iptv",
+            "fieldName": "IPTV",
+            "fieldType": "input",
+            "required": false
+          },
+          {
+            "fieldCode": "bandwidth",
+            "fieldName": "带宽",
+            "fieldType": "input",
+            "required": false
+          },
+          {
+            "fieldCode": "rights",
+            "fieldName": "权益",
+            "fieldType": "input",
+            "required": false
+          },
+          {
+            "fieldCode": "other_content",
+            "fieldName": "服务内容",
+            "fieldType": "textarea",
+            "required": false,
+            "ruleDescription": "除语音、流量、短彩信、定向流量、IPTV、带宽、权益外的服务内容信息，也可将套外资费信息填写在此字段，不超过6000个字符"
+          },
+          {
+            "fieldCode": "tariff_attr",
+            "fieldName": "资费属性",
+            "fieldType": "select",
+            "required": true,
+            "enumConfig": {
+              "type": "static",
+              "options": [
+                {
+                  "value": "1",
+                  "label": "全国"
+                },
+                {
+                  "value": "2",
+                  "label": "省内"
+                },
+                {
+                  "value": "3",
+                  "label": "本地"
+                }
+              ]
+            }
+          },
+          {
+            "fieldCode": "applicable_people",
+            "fieldName": "适用范围",
+            "fieldType": "textarea",
+            "required": true,
+            "ruleDescription": "指可办理本资费的人群和地区范围，应与公示保持一致，如：全网用户、本销售品仅限外卖、快递、专送等特定渠道用户办理、月费69元至297元用户可办理等"
+          },
+          {
+            "fieldCode": "applicable_area",
+            "fieldName": "适用地区",
+            "fieldType": "textarea",
+            "required": true,
+            "ruleDescription": "指可办理本资费的地区范围，和适用范围中的地区保持一致。省份表述见附录表A，前加!表示不适用，地市表述见附录表C，多个省份或地区之间用英文逗号分隔。省公司只能填写省内范围，如：SC表示四川全省适用、3110表示河北省石家庄适用；集团公司可填全国各省，如：!SC,!HE表示除四川、河北外其他省份适用、000表示全国适用"
+          },
+          {
+            "fieldCode": "valid_period",
+            "fieldName": "有效期限",
+            "fieldType": "input",
+            "required": true,
+            "ruleDescription": "指用户订购本资费后可以连续使用的时长，应与公示保持一致，如：24个月"
+          },
+          {
+            "fieldCode": "channel",
+            "fieldName": "销售渠道",
+            "fieldType": "input",
+            "required": true,
+            "ruleDescription": "指本资费可销售的渠道范围，应与公示保持一致，如：线上、线下及线上渠道、合作伙伴-今日头条、中国移动APP等"
+          },
+          {
+            "fieldCode": "duration",
+            "fieldName": "在网要求",
+            "fieldType": "input",
+            "required": true,
+            "ruleDescription": "指用户订购本资费后要求用户承诺在网的时长，应与公示保持一致，如：24个月。无在网要求的填写无"
+          },
+          {
+            "fieldCode": "unsubscribe",
+            "fieldName": "退订方式",
+            "fieldType": "input",
+            "required": true,
+            "ruleDescription": "指提前退订本资费的操作方式，应与公示保持一致"
+          },
+          {
+            "fieldCode": "responsibility",
+            "fieldName": "违约责任",
+            "fieldType": "textarea",
+            "required": true,
+            "ruleDescription": "应与公示保持一致，若无违约责任填写无"
+          },
+          {
+            "fieldCode": "online_day",
+            "fieldName": "上线日期",
+            "fieldType": "date",
+            "required": true,
+            "ruleDescription": "格式为YYYYMMDD，如：20240101"
+          },
+          {
+            "fieldCode": "offline_day",
+            "fieldName": "下线日期",
+            "fieldType": "date",
+            "required": false,
+            "ruleDescription": "格式为YYYYMMDD，如：20240101，如不填则表示不确定，长期有效填写20991231"
+          },
+          {
+            "fieldCode": "others",
+            "fieldName": "其他说明",
+            "fieldType": "textarea",
+            "required": false,
+            "ruleDescription": "公示中不在资费名称、资费类型、资费标准、服务内容、适用范围、有效期限、销售渠道、上下线时间、在网要求、退订方式、违约责任等字段中的其他内容，应全部填入本字段，如合约到期后资费及其他需要说明的情况，不超过6000个字符"
+          }
+        ]
+      }
+    ],
+    "submitConfig": {
+      "type": "api",
+      "api": {
+        "url": "",
+        "method": "POST",
+        "timeout": 30,
+        "dataPath": ""
+      }
+    }
+  }
+}

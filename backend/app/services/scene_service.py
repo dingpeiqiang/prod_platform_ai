@@ -94,6 +94,100 @@ class SceneService:
         except Exception as e:
             logger.exception(f"Failed to get scene {scene_code}: {e}")
             return {"success": False, "message": str(e)}
+    
+    @classmethod
+    def get_scene_prompt(cls, scene_code: str, db: Session) -> Dict[str, Any]:
+        """根据场景编码获取提示词内容
+        
+        流程：场景编码 → 查询场景表获取提示词编码 → 根据提示词编码获取提示词内容
+        
+        Args:
+            scene_code: 场景编码
+            db: 数据库会话
+        
+        Returns:
+            Dict: 包含场景信息和提示词内容
+        """
+        try:
+            logger.debug(f"[get_scene_prompt] 查询场景 scene_code={scene_code}")
+            
+            scene = db.query(Scene).filter(Scene.scene_code == scene_code).first()
+            if not scene:
+                logger.warning(f"[get_scene_prompt] 场景 {scene_code} 不存在")
+                return {"success": False, "message": f"场景 {scene_code} 不存在"}
+            
+            logger.debug(f"[get_scene_prompt] 找到场景: id={scene.id}, name={scene.scene_name}, prompt_code={scene.prompt_code}")
+            
+            if not scene.is_active:
+                logger.warning(f"[get_scene_prompt] 场景 {scene_code} 已禁用")
+                return {"success": False, "message": f"场景 {scene_code} 已禁用"}
+            
+            scene_data = scene.to_dict()
+            prompt_code = scene.prompt_code
+            
+            if not prompt_code:
+                logger.warning(f"[get_scene_prompt] 场景 {scene_code} 未配置提示词编码")
+                return {
+                    "success": True,
+                    "scene": scene_data,
+                    "prompt_code": None,
+                    "prompt_content": None,
+                    "message": "场景未配置提示词编码"
+                }
+            
+            logger.debug(f"[get_scene_prompt] 使用提示词编码: {prompt_code}")
+            
+            prompt_content = cls._get_prompt_from_db(prompt_code, db)
+            
+            if not prompt_content:
+                logger.debug(f"[get_scene_prompt] 尝试添加 _prompt 后缀")
+                prompt_content = cls._get_prompt_from_db(f"{prompt_code}_prompt", db)
+            
+            if prompt_content:
+                logger.info(f"[get_scene_prompt] 成功获取提示词，长度={len(prompt_content)}")
+            else:
+                logger.warning(f"[get_scene_prompt] 未找到提示词内容 prompt_code={prompt_code}")
+            
+            return {
+                "success": True,
+                "scene": scene_data,
+                "prompt_code": prompt_code,
+                "prompt_content": prompt_content,
+                "message": "获取成功"
+            }
+        except Exception as e:
+            logger.exception(f"[get_scene_prompt] 获取场景提示词失败 scene_code={scene_code}: {e}")
+            return {"success": False, "message": str(e)}
+
+    @classmethod
+    def _get_prompt_from_db(cls, prompt_code: str, db: Session) -> Optional[str]:
+        """从数据库查询提示词内容
+        
+        Args:
+            prompt_code: 提示词编码
+            db: 数据库会话
+        
+        Returns:
+            提示词内容，如果未找到返回 None
+        """
+        try:
+            from app.models.prompt import Prompt
+            
+            prompt = db.query(Prompt).filter(
+                Prompt.code == prompt_code,
+                Prompt.is_active == True
+            ).first()
+            
+            if prompt:
+                logger.debug(f"[_get_prompt_from_db] 从数据库找到提示词: {prompt_code}")
+                return prompt.content
+            
+            logger.debug(f"[_get_prompt_from_db] 数据库中未找到提示词: {prompt_code}")
+            return None
+            
+        except Exception as e:
+            logger.exception(f"[_get_prompt_from_db] 查询失败 prompt_code={prompt_code}: {e}")
+            return None
 
     @classmethod
     def create_scene(cls, scene_data: Dict[str, Any], db: Session, user: Optional[str] = None) -> Dict[str, Any]:
@@ -115,9 +209,8 @@ class SceneService:
                 priority=scene_data.get("priority", 10),
                 is_active=scene_data.get("isActive", True),
                 intent_type=scene_data.get("intentType"),
-                form_code=scene_data.get("formCode"),
+                prompt_code=scene_data.get("promptCode"),
                 action_type=scene_data.get("actionType"),
-                action_prompt_file=scene_data.get("actionPromptFile"),
                 required_tools=scene_data.get("requiredTools", []),
                 available_tools=scene_data.get("availableTools", []),
                 pre_action_steps=scene_data.get("preActionSteps", []),
@@ -167,9 +260,8 @@ class SceneService:
                 "keywords": ("keywords", list),
                 "priority": ("priority", int),
                 "intentType": ("intent_type", str),
-                "formCode": ("form_code", str),
+                "promptCode": ("prompt_code", str),
                 "actionType": ("action_type", str),
-                "actionPromptFile": ("action_prompt_file", str),
                 "requiredTools": ("required_tools", list),
                 "availableTools": ("available_tools", list),
                 "preActionSteps": ("pre_action_steps", list),
@@ -422,9 +514,8 @@ class SceneService:
                 "priority": scene.priority,
                 "isActive": scene.is_active,
                 "intentType": scene.intent_type,
-                "formCode": scene.form_code,
+                "promptCode": scene.prompt_code,
                 "actionType": scene.action_type,
-                "actionPrompt": scene.action_prompt_file,
                 "type": scene.type,
                 "parentId": scene.parent_id,
                 "config": scene.config
@@ -481,9 +572,8 @@ class SceneService:
             priority=scene.priority,
             is_active=scene.is_active,
             intent_type=scene.intent_type,
-            form_code=scene.form_code,
+            prompt_code=scene.prompt_code,
             action_type=scene.action_type,
-            action_prompt_file=scene.action_prompt_file,
             required_tools=scene.required_tools,
             available_tools=scene.available_tools,
             pre_action_steps=scene.pre_action_steps,
@@ -540,9 +630,8 @@ class SceneService:
             scene.priority = target_history.priority
             scene.is_active = target_history.is_active
             scene.intent_type = target_history.intent_type
-            scene.form_code = target_history.form_code
+            scene.prompt_code = target_history.prompt_code
             scene.action_type = target_history.action_type
-            scene.action_prompt_file = target_history.action_prompt_file
             scene.required_tools = target_history.required_tools
             scene.available_tools = target_history.available_tools
             scene.pre_action_steps = target_history.pre_action_steps

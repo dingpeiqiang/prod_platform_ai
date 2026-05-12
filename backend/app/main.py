@@ -28,17 +28,19 @@ _console_handler.setLevel(logging.DEBUG)
 _console_handler.setFormatter(logging.Formatter(_FMT, _DATE_FMT))
 _root_logger.addHandler(_console_handler)
 
-# 文件输出（每日轮转）
-_file_handler = logging.handlers.TimedRotatingFileHandler(
-    filename=os.path.join(_LOG_DIR, "app.log"),
-    when="midnight",
-    interval=1,
-    backupCount=7,
-    encoding="utf-8",
-)
-_file_handler.setLevel(logging.DEBUG)
-_file_handler.setFormatter(logging.Formatter(_FMT, _DATE_FMT))
-_root_logger.addHandler(_file_handler)
+# 文件输出（简化版，避免文件占用问题）
+try:
+    _file_handler = logging.FileHandler(
+        filename=os.path.join(_LOG_DIR, "app.log"),
+        mode="a",
+        encoding="utf-8",
+        delay=True,
+    )
+    _file_handler.setLevel(logging.DEBUG)
+    _file_handler.setFormatter(logging.Formatter(_FMT, _DATE_FMT))
+    _root_logger.addHandler(_file_handler)
+except Exception as e:
+    print(f"Failed to create file handler: {e}")
 
 # 设置根日志级别
 _root_logger.setLevel(logging.DEBUG)

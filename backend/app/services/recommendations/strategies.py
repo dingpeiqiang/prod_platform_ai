@@ -6,7 +6,7 @@ import logging
 import re
 
 from sqlalchemy.orm import Session
-from app.models.form import FormInstance, FormTemplate
+from app.models.form import FormInstance
 
 logger = logging.getLogger("recommendation_strategies")
 
@@ -29,6 +29,7 @@ class RecommendationItem:
     match_type: str
     reason: str
     metadata: Dict[str, Any] = field(default_factory=dict)
+    priority: Optional[int] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -84,16 +85,8 @@ class FrequencyRecommendationStrategy:
         context: Optional[Dict[str, Any]] = None
     ) -> List[RecommendationItem]:
         try:
-            template_ids = db.query(FormTemplate.id).filter(
-                FormTemplate.form_code == form_code,
-                FormTemplate.is_active == True
-            ).all()
-            tid_list = [t.id for t in template_ids]
-            if not tid_list:
-                return []
-
             form_instances = db.query(FormInstance).filter(
-                FormInstance.template_id.in_(tid_list),
+                FormInstance.form_code == form_code,
                 FormInstance.status == 'submitted'
             ).order_by(
                 FormInstance.submitted_at.desc()
@@ -242,16 +235,8 @@ class UserPersonalizedStrategy:
             return []
 
         try:
-            template_ids = db.query(FormTemplate.id).filter(
-                FormTemplate.form_code == form_code,
-                FormTemplate.is_active == True
-            ).all()
-            tid_list = [t.id for t in template_ids]
-            if not tid_list:
-                return []
-
             form_instances = db.query(FormInstance).filter(
-                FormInstance.template_id.in_(tid_list),
+                FormInstance.form_code == form_code,
                 FormInstance.user_id == user_id,
                 FormInstance.status == 'submitted'
             ).order_by(
@@ -331,18 +316,10 @@ class TimeDecayStrategy:
             return []
 
         try:
-            template_ids = db.query(FormTemplate.id).filter(
-                FormTemplate.form_code == form_code,
-                FormTemplate.is_active == True
-            ).all()
-            tid_list = [t.id for t in template_ids]
-            if not tid_list:
-                return []
-
             cutoff_date = datetime.now() - timedelta(days=self.recent_days_threshold)
 
             form_instances = db.query(FormInstance).filter(
-                FormInstance.template_id.in_(tid_list),
+                FormInstance.form_code == form_code,
                 FormInstance.status == 'submitted',
                 FormInstance.submitted_at >= cutoff_date
             ).order_by(

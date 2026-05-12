@@ -1,0 +1,47 @@
+# ============================================================
+# AI驱动动态表单 - 前端容器（内网离线构建版）
+# 依赖包已预置于 frontend/vendor/，构建时不访问外部网络
+# ============================================================
+
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# 复制 package 文件
+COPY frontend/package.json frontend/package-lock.json* ./
+
+# 复制离线依赖包
+COPY frontend/vendor/ ./vendor/
+
+# 配置 npm 离线模式，从本地 vendor 安装
+RUN npm config set cache /tmp/npm-cache && \
+    find ./vendor -name "*.tgz" -exec npm cache add {} \; 2>/dev/null || true
+
+# 使用 prefer-offline 安装（先走 cache，无网络也能完成）
+RUN npm ci --prefer-offline --cache /tmp/npm-cache
+
+# 复制前端源码
+COPY frontend/ ./
+
+# 构建生产版本
+ARG VITE_API_BASE_URL=http://localhost:6173
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+
+RUN npm run build
+
+# ============================================================
+# Nginx 阶段
+# ============================================================
+FROM nginx:alpine
+
+LABEL maintainer="AI Platform"
+
+# 复制构建产物
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# 复制 nginx 配置
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

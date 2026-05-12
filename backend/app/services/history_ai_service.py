@@ -88,7 +88,7 @@ def analyze_history(form_code: str, db=None) -> Dict[str, Any]:
       2. 将摘要发给 LLM 分析
       3. 返回数据质量报告
     """
-    from app.models.form import FormInstance, FormTemplate, FormHistory
+    from app.models.form import FormInstance, FormHistory
 
     # 获取本体
     ontology = config_loader.get_ontology(form_code)
@@ -237,30 +237,16 @@ def query_history_records(
             "total_pages": int
         }
     """
-    from app.models.form import FormInstance, FormTemplate
+    from app.models.form import FormInstance
 
     if db is None:
         from app.core.database import get_db
         db = next(get_db())
 
     try:
-        # 查询 FormTemplate
-        template = db.query(FormTemplate).filter(
-            FormTemplate.form_code == form_code,
-            FormTemplate.is_active == True
-        ).first()
-
-        if not template:
-            return {
-                "success": False,
-                "message": f"表单 {form_code} 不存在",
-                "records": [],
-                "total": 0
-            }
-
-        # 构建基础查询
+        # 构建基础查询（直接通过 form_code 过滤，不再依赖 FormTemplate）
         query = db.query(FormInstance).filter(
-            FormInstance.template_id == template.id,
+            FormInstance.form_code == form_code,
             FormInstance.status == 'submitted'
         )
 
@@ -354,25 +340,16 @@ def export_history_data(
     """
     import csv
     from io import StringIO
-    from app.models.form import FormInstance, FormTemplate
+    from app.models.form import FormInstance
 
     if db is None:
         from app.core.database import get_db
         db = next(get_db())
 
     try:
-        # 查询 FormTemplate
-        template = db.query(FormTemplate).filter(
-            FormTemplate.form_code == form_code,
-            FormTemplate.is_active == True
-        ).first()
-
-        if not template:
-            return {"success": False, "message": f"表单 {form_code} 不存在"}
-
-        # 构建查询
+        # 构建查询（直接通过 form_code 过滤，不再依赖 FormTemplate）
         query = db.query(FormInstance).filter(
-            FormInstance.template_id == template.id,
+            FormInstance.form_code == form_code,
             FormInstance.status == 'submitted'
         )
 
@@ -490,7 +467,7 @@ def _export_as_jsonl(instances: list, form_code: str, timestamp: str) -> Dict[st
 
 def _collect_field_stats(form_code: str, db=None) -> Dict[str, Any]:
     """从数据库收集字段值统计"""
-    from app.models.form import FormInstance, FormTemplate, FormHistory
+    from app.models.form import FormInstance, FormHistory
     from collections import defaultdict
 
     if db is None:
@@ -498,67 +475,35 @@ def _collect_field_stats(form_code: str, db=None) -> Dict[str, Any]:
         db = next(get_db())
 
     try:
-        # 查 FormTemplate
-        template = db.query(FormTemplate).filter(
-            FormTemplate.form_code == form_code
-        ).first()
-
         total_records = 0
         field_stats = {}
 
-        if template:
-            # 通过 template_id 查 FormInstance
-            instances = db.query(FormInstance).filter(
-                FormInstance.template_id == template.id,
-                FormInstance.status == 'submitted'
+        # 直接通过 form_code 查 FormInstance（不再依赖 FormTemplate）
+        instances = db.query(FormInstance).filter(
+            FormInstance.form_code == form_code,
+            FormInstance.status == 'submitted'
+        ).all()
+        total_records = len(instances)
+
+        if instances:
+            instance_ids = [inst.id for inst in instances]
+            histories = db.query(FormHistory).filter(
+                FormHistory.form_instance_id.in_(instance_ids)
             ).all()
-            total_records = len(instances)
 
-            if instances:
-                instance_ids = [inst.id for inst in instances]
-                histories = db.query(FormHistory).filter(
-                    FormHistory.form_instance_id.in_(instance_ids)
-                ).all()
+            # 统计每个字段的值分布
+            value_counts = defaultdict(lambda: defaultdict(int))
+            for h in histories:
+                if h.field_value and h.field_value.strip():
+                    value_counts[h.field_code][h.field_value] += 1
 
-                # 统计每个字段的值分布
-                value_counts = defaultdict(lambda: defaultdict(int))
-                for h in histories:
-                    if h.field_value and h.field_value.strip():
-                        value_counts[h.field_code][h.field_value] += 1
-
-                # 取每个字段的 Top 10
-                for fc, vals in value_counts.items():
-                    top = sorted(vals.items(), key=lambda x: x[1], reverse=True)[:10]
-                    field_stats[fc] = {
-                        "distinctValues": len(vals),
-                        "topValues": [{"value": v, "count": c} for v, c in top]
-                    }
-        else:
-            # 无 template → 兜底：直接查 form_history
-            # 尝试通过 import_ 前缀的 form_id 匹配
-            instances = db.query(FormInstance).filter(
-                FormInstance.form_id.like(f"imp_{form_code}%"),
-                FormInstance.status == 'submitted'
-            ).all()
-            total_records = len(instances)
-
-            if instances:
-                instance_ids = [inst.id for inst in instances]
-                histories = db.query(FormHistory).filter(
-                    FormHistory.form_instance_id.in_(instance_ids)
-                ).all()
-
-                value_counts = defaultdict(lambda: defaultdict(int))
-                for h in histories:
-                    if h.field_value and h.field_value.strip():
-                        value_counts[h.field_code][h.field_value] += 1
-
-                for fc, vals in value_counts.items():
-                    top = sorted(vals.items(), key=lambda x: x[1], reverse=True)[:10]
-                    field_stats[fc] = {
-                        "distinctValues": len(vals),
-                        "topValues": [{"value": v, "count": c} for v, c in top]
-                    }
+            # 取每个字段的 Top 10
+            for fc, vals in value_counts.items():
+                top = sorted(vals.items(), key=lambda x: x[1], reverse=True)[:10]
+                field_stats[fc] = {
+                    "distinctValues": len(vals),
+                    "topValues": [{"value": v, "count": c} for v, c in top]
+                }
 
         return {
             "totalRecords": total_records,

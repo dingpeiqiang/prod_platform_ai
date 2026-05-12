@@ -4,7 +4,7 @@ from collections import defaultdict
 import logging
 from sqlalchemy.orm import Session
 from app.core.config_loader import config_loader
-from app.models.form import FormInstance, FormHistory, FormTemplate
+from app.models.form import FormInstance, FormHistory
 from app.services.ontology_service import OntologyService
 
 logger = logging.getLogger("history_service")
@@ -80,22 +80,9 @@ class HistoryService:
 
         query_limit = config.get('historyQueryLimit', 1000)
 
-        # [修复] 先通过 form_code 查出 template_id 列表，再按 template_id 过滤 FormInstance
-        # 避免不同表单类型的字段值串入推荐结果
-        template_ids = db.query(FormTemplate.id).filter(
-            FormTemplate.form_code == form_code,
-            FormTemplate.is_active == True
-        ).all()
-        tid_list = [t.id for t in template_ids]
-
-        if not tid_list:
-            # [兜底] FormTemplate 无记录时，直接从 form_history 表查询
-            # 这确保即使未通过 upsert 创建模板，历史推荐仍能工作
-            logger.info("[HistoryService] form_code=%s 无FormTemplate记录，回退到form_history表", form_code)
-            return cls._get_recommendations_from_history(db, form_code, field_code, user_id, config)
-
+        # 直接通过 form_code 过滤 FormInstance（不再依赖 FormTemplate）
         base_query = db.query(FormInstance).filter(
-            FormInstance.template_id.in_(tid_list),
+            FormInstance.form_code == form_code,
             FormInstance.status == 'submitted'
         )
         if user_id:

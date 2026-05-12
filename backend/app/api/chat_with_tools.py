@@ -8,6 +8,8 @@ from app.core.config_loader import config_loader
 from app.skills import ToolRegistry
 from app.skills.scene_recognition import SceneRecognitionSkill
 from app.skills.field_extraction import FieldExtractionSkill
+from app.services.scene_service import SceneService
+from app.core.database import get_db
 
 logger = logging.getLogger("chat_with_tools_api")
 
@@ -46,13 +48,49 @@ def _call_tools_manually(user_message: str, ontologies: Dict) -> Dict:
     tool_calls = []
     
     scene_result = SceneRecognitionSkill.recognize(user_message)
-    form_code = scene_result["sceneCode"]
-    logger.debug("[chat_with_tools] 场景识别结果 form_code=%s", form_code)
+    scene_code = scene_result["sceneCode"]
+    logger.info("[chat_with_tools] 场景识别结果 scene_code=%s", scene_code)
     tool_calls.append({
         "tool": "recognize_scene",
         "input": user_message,
-        "output": form_code
+        "output": scene_code
     })
+    
+    prompt_content = None
+    form_code = None
+    
+    if scene_code:
+        db_gen = get_db()
+        db = next(db_gen)
+        try:
+            prompt_result = SceneService.get_scene_prompt(scene_code, db)
+            if prompt_result["success"]:
+                prompt_content = prompt_result.get("prompt_content")
+                form_code = prompt_result.get("scene", {}).get("formCode")
+                
+                logger.info("[chat_with_tools] 获取提示词成功 prompt_code=%s", prompt_result.get("prompt_code"))
+                tool_calls.append({
+                    "tool": "get_scene_prompt",
+                    "input": {"scene_code": scene_code},
+                    "output": {"prompt_code": prompt_result.get("prompt_code"), "has_prompt": prompt_content is not None}
+                })
+            else:
+                logger.warning("[chat_with_tools] 获取提示词失败: %s", prompt_result.get("message"))
+        finally:
+            db.close()
+    
+    llm_response = None
+    if prompt_content:
+        try:
+            llm_response = llm_service.call_llm_sync(user_message, system_prompt=prompt_content)
+            logger.info("[chat_with_tools] 大模型调用成功 response_len=%d", len(llm_response) if llm_response else 0)
+            tool_calls.append({
+                "tool": "call_llm",
+                "input": {"user_message": user_message, "prompt_code": prompt_result.get("prompt_code")},
+                "output": llm_response[:200] + "..." if llm_response and len(llm_response) > 200 else llm_response
+            })
+        except Exception as e:
+            logger.exception("[chat_with_tools] 大模型调用失败: %s", e)
     
     extracted_fields = {}
     if form_code and form_code in ontologies:
@@ -75,7 +113,10 @@ def _call_tools_manually(user_message: str, ontologies: Dict) -> Dict:
         })
     
     return {
+        "scene_code": scene_code,
         "form_code": form_code,
+        "prompt_content": prompt_content,
+        "llm_response": llm_response,
         "extracted_fields": extracted_fields,
         "tool_calls": tool_calls
     }
@@ -101,18 +142,26 @@ async def chat_with_tools(request: ChatRequest):
         
         if needs_form:
             tool_result = _call_tools_manually(last_user_message, ontologies)
+            scene_code = tool_result["scene_code"]
             form_code = tool_result["form_code"]
+            llm_response = tool_result.get("llm_response")
             
-            if form_code and form_code in ontologies:
-                logger.info("[chat_with_tools] 识别到表单 form_code=%s extracted_fields=%s",
-                            form_code, list(tool_result["extracted_fields"].keys()))
-                return ChatResponse(
-                    success=True,
-                    intentType="form",
-                    formCode=form_code,
-                    extractedFields=tool_result["extracted_fields"],
-                    toolCalls=tool_result["tool_calls"]
-                )
+            if scene_code:
+                logger.info("[chat_with_tools] 识别到场景 scene_code=%s form_code=%s has_prompt=%s",
+                            scene_code, form_code, tool_result.get("prompt_content") is not None)
+                
+                response_data = {
+                    "success": True,
+                    "intentType": "form",
+                    "formCode": form_code,
+                    "extractedFields": tool_result["extracted_fields"],
+                    "toolCalls": tool_result["tool_calls"]
+                }
+                
+                if llm_response:
+                    response_data["reply"] = llm_response
+                
+                return ChatResponse(**response_data)
         
         reply = FALLBACK_RESPONSES['默认']
         for key, value in FALLBACK_RESPONSES.items():

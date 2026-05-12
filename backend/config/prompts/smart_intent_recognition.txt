@@ -6,7 +6,12 @@
 
 ## Skills插件参考能力
 
-场景识别关键词参考：
+### 场景分层结构（优先级从高到低）
+
+{scene_hierarchy}
+
+### 场景识别关键词参考
+
 {scene_keywords}
 
 字段提取分隔符参考：{separators}

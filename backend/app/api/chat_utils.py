@@ -193,6 +193,95 @@ def build_scene_keywords() -> str:
     return "\n".join(keyword_lines)
 
 
+def build_scene_hierarchy() -> str:
+    from app.models.scene import Scene
+    from app.core.database import get_db
+    
+    try:
+        db_gen = get_db()
+        db = next(db_gen)
+        scene_mappings = db.query(Scene).filter(Scene.is_active == True).all()
+        scene_mappings = [scene.to_dict() for scene in scene_mappings]
+    except Exception as e:
+        return "场景加载失败"
+    
+    if not scene_mappings:
+        return "暂无场景配置"
+    
+    scenes_by_parent = {}
+    root_scenes = []
+    
+    for mapping in scene_mappings:
+        parent_id = mapping.get('parentId')
+        if parent_id is None:
+            root_scenes.append(mapping)
+        else:
+            if parent_id not in scenes_by_parent:
+                scenes_by_parent[parent_id] = []
+            scenes_by_parent[parent_id].append(mapping)
+    
+    hierarchy_lines = []
+    hierarchy_lines.append("```")
+    hierarchy_lines.append("【场景层级筛选规则】")
+    hierarchy_lines.append("")
+    hierarchy_lines.append("┌─────────────────────────────────────────────────────────────┐")
+    hierarchy_lines.append("│  层级结构用于帮助您筛选和定位正确的【三级】具体场景         │")
+    hierarchy_lines.append("├─────────────────────────────────────────────────────────────┤")
+    hierarchy_lines.append("│  【一级】部门分类 → 用于缩小业务范围                        │")
+    hierarchy_lines.append("│  【二级】业务类型 → 进一步定位业务方向                      │")
+    hierarchy_lines.append("│  【三级】具体场景 → 最终意图，唯一可作为意图的层级          │")
+    hierarchy_lines.append("└─────────────────────────────────────────────────────────────┘")
+    hierarchy_lines.append("")
+    hierarchy_lines.append("【筛选流程】")
+    hierarchy_lines.append("1. 分析用户输入，先匹配【一级】部门关键词")
+    hierarchy_lines.append("2. 根据一级结果，缩小到对应的【二级】业务类型")
+    hierarchy_lines.append("3. 在二级业务下，找到最匹配的【三级】具体场景")
+    hierarchy_lines.append("4. 最终意图必须是【三级】场景，不能是一级或二级")
+    hierarchy_lines.append("")
+    hierarchy_lines.append("【可用场景树】")
+    
+    for root in sorted(root_scenes, key=lambda x: x.get('priority', 0), reverse=True):
+        root_id = root.get('id')
+        root_code = root.get('sceneCode', '')
+        root_name = root.get('sceneName', '')
+        root_keywords = root.get('keywords', [])
+        root_keywords_str = ", ".join(root_keywords) if root_keywords else "无"
+        hierarchy_lines.append(f"┌ 【一级】{root_code} ({root_name})")
+        hierarchy_lines.append(f"│  关键词: {root_keywords_str}")
+        
+        children = scenes_by_parent.get(root_id)
+        if children:
+            for child in sorted(children, key=lambda x: x.get('priority', 0), reverse=True):
+                child_id = child.get('id')
+                child_code = child.get('sceneCode', '')
+                child_name = child.get('sceneName', '')
+                child_keywords = child.get('keywords', [])
+                child_keywords_str = ", ".join(child_keywords) if child_keywords else "无"
+                hierarchy_lines.append(f"├─┬ 【二级】{child_code} ({child_name})")
+                hierarchy_lines.append(f"│ │  关键词: {child_keywords_str}")
+                
+                grandchildren = scenes_by_parent.get(child_id)
+                if grandchildren:
+                    for i, grandchild in enumerate(sorted(grandchildren, key=lambda x: x.get('priority', 0), reverse=True)):
+                        grandchild_code = grandchild.get('sceneCode', '')
+                        grandchild_name = grandchild.get('sceneName', '')
+                        grandchild_keywords = grandchild.get('keywords', [])
+                        grandchild_prompt_code = grandchild.get('promptCode', '')
+                        keywords_str = ", ".join(grandchild_keywords) if grandchild_keywords else "无"
+                        prefix = "│ └─" if i == len(grandchildren) - 1 else "│ ├─"
+                        prompt_info = f" │ 提示词: {grandchild_prompt_code}" if grandchild_prompt_code else ""
+                        hierarchy_lines.append(f"{prefix} 【三级】{grandchild_code} ({grandchild_name}) ✅{prompt_info}")
+                        hierarchy_lines.append(f"│     关键词: {keywords_str}")
+                else:
+                    hierarchy_lines.append(f"│ └─ （无三级场景）")
+        else:
+            hierarchy_lines.append(f"└─ （无二级业务）")
+    
+    hierarchy_lines.append("```")
+    
+    return "\n".join(hierarchy_lines)
+
+
 def build_separators() -> str:
     fe_config = config_loader.get_field_extraction_config()
     separators = fe_config.get('separators', ['是', '为', '：', ':', ' '])

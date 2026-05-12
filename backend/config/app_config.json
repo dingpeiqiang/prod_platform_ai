@@ -7,14 +7,14 @@
   "llm": {
     "enabled": true,
     "provider": "custom",
-    "model": "minimax-m2.7",
-    "thinking": false,
-    "temperature": 0.3,
-    "maxTokens": 2048,
+    "model": "qwen-plus-2025-07-28",
+    "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "apiKey": "sk-16f6fcbc5d1e47f4b976ed8c757ddb95",
+    "thinking": true,
+    "temperature": 0.5,
+    "maxTokens": 4096,
     "maxInputTokens": 180000,
     "fallbackToRules": false,
-    "baseUrl": "https://aicp.teamshub.com/openai/api/v1/openai/v1",
-    "apiKey": "cb3a5cb469de1d0820d25a1e6349306dc4482f90",
     "bufferSize": 20,
     "flushInterval": 0.05
   },
@@ -40,11 +40,36 @@
     "modules": {
       "llm_service": "DEBUG",
       "chat_api": "DEBUG",
+      "llm.minimax": "DEBUG",
       "config_loader": "INFO",
       "agent_executor": "INFO",
       "form_service": "INFO",
       "uvicorn.access": "WARNING",
       "httpx": "WARNING"
     }
+  },
+  "recommendation": {
+    "countScoreWeight": 0.4,
+    "userScoreWeight": 0.4,
+    "timeScoreWeight": 0.2,
+    "countScorePerUnit": 0.1,
+    "userScorePerUnit": 0.2,
+    "timeDecayDays": 30,
+    "historyQueryLimit": 1000,
+    "recommendationLimit": 3,
+    "confidenceThreshold": 0.4,
+    "enableSmartFilter": true
+  },
+  "smartRecommend": {
+    "enableRuleInference": true,
+    "enableStaticFallback": true,
+    "enableHistoryInference": true,
+    "maxRecommendationsPerField": 5
+  },
+  "sceneRecognition": {
+    "defaultScene": "generic"
+  },
+  "fieldExtraction": {
+    "separators": ["是", "为", "：", ":", " "]
   }
 }

@@ -16,11 +16,10 @@ class Scene(Base):
     priority = Column(Integer, default=10)
     is_active = Column(Boolean, default=True)
     
-    # 原有字段
+    # 业务字段
     intent_type = Column(String(50))
-    form_code = Column(String(100))
+    prompt_code = Column(String(100), index=True)  # 提示词编码
     action_type = Column(String(50))
-    action_prompt_file = Column(String(255))
     required_tools = Column(JSON, nullable=False, default=list)
     available_tools = Column(JSON, nullable=False, default=list)
     pre_action_steps = Column(JSON, nullable=False, default=list)
@@ -56,9 +55,8 @@ class Scene(Base):
             "priority": self.priority,
             "isActive": self.is_active,
             "intentType": self.intent_type,
-            "formCode": self.form_code,
+            "promptCode": self.prompt_code,
             "actionType": self.action_type,
-            "actionPromptFile": self.action_prompt_file,
             "requiredTools": self.required_tools,
             "availableTools": self.available_tools,
             "preActionSteps": self.pre_action_steps,
@@ -84,8 +82,7 @@ class Scene(Base):
             "type": self.type,
             "priority": self.priority,
             "isActive": self.is_active,
-            "formCode": self.form_code,
-            "actionPromptFile": self.action_prompt_file,
+            "promptCode": self.prompt_code,
             "config": self.config,
             "children": []
         }
@@ -107,9 +104,8 @@ class SceneHistory(Base):
     priority = Column(Integer, default=10)
     is_active = Column(Boolean, default=True)
     intent_type = Column(String(50))
-    form_code = Column(String(100))
+    prompt_code = Column(String(100))  # 提示词编码快照
     action_type = Column(String(50))
-    action_prompt_file = Column(String(255))
     required_tools = Column(JSON, nullable=False, default=list)
     available_tools = Column(JSON, nullable=False, default=list)
     pre_action_steps = Column(JSON, nullable=False, default=list)
@@ -137,9 +133,8 @@ class SceneHistory(Base):
             "priority": self.priority,
             "isActive": self.is_active,
             "intentType": self.intent_type,
-            "formCode": self.form_code,
+            "promptCode": self.prompt_code,
             "actionType": self.action_type,
-            "actionPromptFile": self.action_prompt_file,
             "requiredTools": self.required_tools,
             "availableTools": self.available_tools,
             "preActionSteps": self.pre_action_steps,

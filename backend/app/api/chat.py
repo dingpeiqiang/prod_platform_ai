@@ -26,7 +26,7 @@ from app.api.chat_utils import (
 )
 from app.api.chat_service import (
     call_skills_only, build_intent_prompt, parse_intent_result,
-    execute_tool_calls
+    execute_tool_calls, get_scene_prompt_by_code
 )
 
 logger = logging.getLogger("chat_api")
@@ -339,6 +339,7 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                     intent_result, intent_reasoning = await loop.run_in_executor(
                         None, llm_service._call_llm_sync_with_reasoning, intent_prompt
                     )
+                    logger.info(f"[chat/stream] LLM 返回结果: intent_result={len(intent_result) if intent_result else 0} chars, intent_reasoning={len(intent_reasoning) if intent_reasoning else 0} chars")
 
                     if not intent_result and intent_reasoning:
                         logger.info("[chat/stream] 🔄 content 为空但 reasoning 有内容，用简化 prompt 重试一次")
@@ -363,9 +364,39 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                         intent_data = parse_intent_result(intent_result)
                         if intent_data:
                             intent_type = intent_data.get("intentType", "chat")
+                            scene_code = intent_data.get("sceneCode") or intent_data.get("formCode") or intent_data.get("form_code")
 
-                            if intent_reasoning and intent_type in ('form', 'form_update', 'configure'):
+                            logger.info(f"[chat/stream] intent_type={intent_type}, scene_code={scene_code}, will_output_reasoning={bool(intent_reasoning)}")
+                            if intent_reasoning:
                                 yield reasoning(intent_reasoning)
+
+                            scene_prompt_content = None
+                            if scene_code:
+                                yield thinking(f"🔍 查询场景提示词 scene_code={scene_code}")
+                                scene_prompt_content = get_scene_prompt_by_code(scene_code)
+                                if scene_prompt_content:
+                                    logger.info(f"[chat/stream] 成功获取场景提示词，长度={len(scene_prompt_content)}")
+                                    yield thinking(f"✅ 已获取场景提示词")
+                                else:
+                                    logger.warning(f"[chat/stream] 未找到场景 {scene_code} 的提示词")
+                                    yield thinking(f"⚠️ 未找到场景提示词，使用默认处理")
+
+                            if scene_prompt_content and last_user_message:
+                                yield thinking(f"🧠 使用场景提示词调用大模型...")
+                                try:
+                                    scene_response = llm_service._call_llm_sync(last_user_message, system_prompt=scene_prompt_content)
+                                    if scene_response:
+                                        intent_data["sceneResponse"] = scene_response
+                                        logger.info(f"[chat/stream] 场景提示词调用成功，响应长度={len(scene_response)}")
+                                        yield thinking(f"✅ 场景大模型调用完成")
+                                        yield sse({"type": "text_start"})
+                                        yield sse({"type": "text", "content": scene_response})
+                                        yield sse({"type": "text_end"})
+                                    else:
+                                        yield thinking(f"⚠️ 场景大模型返回为空")
+                                except Exception as e:
+                                    logger.exception(f"[chat/stream] 场景大模型调用失败: {e}")
+                                    yield thinking(f"❌ 场景大模型调用失败: {str(e)}")
 
                             tool_result = await execute_tool_calls(intent_data)
                             tool_results = tool_result["tool_results"]
@@ -382,7 +413,7 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                 }
                             )
 
-                            form_code = intent_data.get("detectedFormCode") or intent_data.get("formCode") or intent_data.get("form_code")
+                            form_code = intent_data.get("detectedFormCode") or intent_data.get("formCode") or intent_data.get("form_code") or scene_code
                             yield thinking(
                                 f"✅ 意图识别完成: {intent_type}" + (f" ({intent_elapsed:.2f}s)" if intent_elapsed else ""),
                                 result={
@@ -392,7 +423,8 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                     "extractedCount": len(extracted),
                                     "confidence": intent_data.get("confidence"),
                                     "elapsed": round(intent_elapsed, 2),
-                                    "retryCount": _retry_count
+                                    "retryCount": _retry_count,
+                                    "hasScenePrompt": scene_prompt_content is not None
                                 }
                             )
 
@@ -454,7 +486,8 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                         _llm_error = f"LLM 返回为空（耗时 {intent_elapsed:.1f}s）"
                         yield thinking(f"❌ {_llm_error}", result={
                             "error": "LLM 返回为空",
-                            "elapsed": round(intent_elapsed, 1) if intent_elapsed else 0
+                            "elapsed": round(intent_elapsed, 1) if intent_elapsed else 0,
+                            "suggestion": "请稍后重试，或联系管理员检查 AI 服务配置"
                         })
                         if not fallback_enabled:
                             stream_stats.total_elapsed = time.time() - start_time
@@ -464,7 +497,11 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                 message=_llm_error + "，且未启用降级处理",
                                 level=ErrorLevel.ERROR.value,
                                 recoverable=False,
-                                recovery_hint="请稍后重试，或联系管理员检查 AI 服务"
+                                recovery_hint="请稍后重试，或联系管理员检查 AI 服务",
+                                provider=llm_service.llm_config.get('provider'),
+                                model=llm_service.llm_config.get('model'),
+                                base_url=llm_service.llm_config.get('baseUrl'),
+                                elapsed_time=intent_elapsed
                             )
                             error_handler.emit(error)
                             stream_stats.error = error.message
@@ -474,18 +511,40 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                 except Exception as e:
                     logger.exception("LLM 调用异常: %s", e)
                     _llm_error = str(e)
+                    import traceback
+                    error_trace = traceback.format_exc()[:500]
+                    
+                    if '余额不足' in _llm_error or 'quota' in _llm_error.lower():
+                        error_code = ErrorCode.LLM_QUOTA_EXCEEDED
+                        recovery_hint = "请联系管理员充值 API Key"
+                    elif 'rate limit' in _llm_error.lower() or '频繁' in _llm_error:
+                        error_code = ErrorCode.LLM_RATE_LIMIT
+                        recovery_hint = "请稍后重试，当前调用过于频繁"
+                    elif 'timeout' in _llm_error.lower() or '超时' in _llm_error:
+                        error_code = ErrorCode.LLM_TIMEOUT
+                        recovery_hint = "请稍后重试，服务响应超时"
+                    else:
+                        error_code = ErrorCode.LLM_UNAVAILABLE
+                        recovery_hint = "请稍后重试，或联系管理员检查 AI 服务"
+                    
                     yield thinking(f"❌ LLM 调用失败: {str(e)}", result={
-                        "error": str(e)
+                        "error": str(e),
+                        "suggestion": recovery_hint
                     })
                     if not fallback_enabled:
                         stream_stats.total_elapsed = time.time() - start_time
                         error = create_error(
                             category=ErrorCategory.LLM.value,
-                            code=ErrorCode.LLM_TIMEOUT,
+                            code=error_code,
                             message=f"LLM 调用失败: {str(e)}",
                             level=ErrorLevel.ERROR.value,
                             recoverable=False,
-                            recovery_hint="请稍后重试，或联系管理员检查 AI 服务"
+                            recovery_hint=recovery_hint,
+                            provider=llm_service.llm_config.get('provider'),
+                            model=llm_service.llm_config.get('model'),
+                            base_url=llm_service.llm_config.get('baseUrl'),
+                            error_detail=error_trace,
+                            user_input=last_user_message[:200]
                         )
                         error_handler.emit(error)
                         stream_stats.error = error.message

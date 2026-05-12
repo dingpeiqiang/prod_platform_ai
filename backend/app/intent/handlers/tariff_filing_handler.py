@@ -20,6 +20,7 @@ from typing import AsyncGenerator
 from ..base import BaseIntentHandler, IntentContext
 from ..utils import thinking, ask_user, sse, merge_field_recommendations, intent_event, done_event
 from ...services.recommendation_engine import get_recommendation_engine
+from ...core.config_loader import config_loader
 from ...skills.field_extraction import FieldExtractionSkill
 
 logger = logging.getLogger("intent.tariff_filing_handler")
@@ -115,13 +116,16 @@ class TariffFilingHandler(BaseIntentHandler):
             ontology_def = ctx.ontologies.get(form_code, {})
             all_field_codes = [f.get("fieldCode") for entity in ontology_def.get("entities", []) for f in entity.get("fields", [])]
 
+            rec_config = config_loader.get_recommendation_config()
+            max_recs = rec_config.get('recommendationLimit', 3)
+
             recommendations_result = recommendation_engine.batch_recommend(
                 form_code=form_code,
                 extracted_fields=extracted,
                 user_input=ctx.last_user_message,
                 user_id=ctx.request.userId,
                 conversation_context=conversation_context,
-                max_per_field=5,
+                max_per_field=max_recs,
                 db=ctx.db,
                 field_codes=all_field_codes if all_field_codes else None
             )
@@ -129,8 +133,9 @@ class TariffFilingHandler(BaseIntentHandler):
             all_recommendations = {}
             for field_code, result in recommendations_result.items():
                 if result.success and result.recommendations:
+                    top_recs = result.recommendations[:max_recs]
                     all_recommendations[field_code] = {
-                        "items": [r.to_dict() for r in result.recommendations],
+                        "items": [r.to_dict() for r in top_recs],
                         "strategyUsed": result.strategy_used,
                         "totalCandidates": result.total_candidates,
                         "processingTimeMs": round(result.processing_time_ms, 2)
@@ -138,9 +143,11 @@ class TariffFilingHandler(BaseIntentHandler):
 
             if all_recommendations:
                 field_summary = {k: len(v.get("items", [])) for k, v in all_recommendations.items()}
-                yield thinking(f"📚 为 {len(all_recommendations)} 个字段生成推荐", result={
+                total_recs = sum(field_summary.values())
+                yield thinking(f"📚 为 {len(all_recommendations)} 个字段生成推荐，共 {total_recs} 条（每字段最多{max_recs}条）", result={
                     "fieldCount": len(all_recommendations),
-                    "fieldSummary": field_summary
+                    "fieldSummary": field_summary,
+                    "maxPerField": max_recs
                 })
 
                 llm_recs = ctx.intent_data.get("fieldRecommendations", {})

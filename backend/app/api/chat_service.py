@@ -11,7 +11,7 @@ from app.core.error_handler import create_error, error_handler
 from app.mcp_tools import get_toolhub
 from app.api.chat_utils import (
     strip_json_comments, fix_json_newlines, build_ontologies_info,
-    build_scene_keywords, build_separators, FALLBACK_RESPONSES,
+    build_scene_keywords, build_scene_hierarchy, build_separators, FALLBACK_RESPONSES,
     sse, thinking, reasoning
 )
 
@@ -69,6 +69,7 @@ def build_intent_prompt(messages_text: str, last_user_message: str) -> Optional[
         return None
 
     ontologies_info = build_ontologies_info()
+    scene_hierarchy = build_scene_hierarchy()
     scene_keywords = build_scene_keywords()
     separators = build_separators()
     mcp_info_raw = get_toolhub().get_tool_schemas_for_llm()
@@ -76,12 +77,45 @@ def build_intent_prompt(messages_text: str, last_user_message: str) -> Optional[
     return (
         intent_prompt_template
         .replace("{ontologies_info}", ontologies_info)
+        .replace("{scene_hierarchy}", scene_hierarchy)
         .replace("{scene_keywords}", scene_keywords)
         .replace("{separators}", separators)
         .replace("{mcp_tools_info}", mcp_info_raw or "")
         .replace("{messages_text}", messages_text or "[]")
         .replace("{last_user_message}", last_user_message or "")
     )
+
+
+def get_scene_prompt_by_code(scene_code: str) -> Optional[str]:
+    """
+    根据场景编码获取场景提示词内容
+    
+    流程：场景编码 → 查询场景表获取提示词编码 → 根据提示词编码获取提示词内容
+    
+    Args:
+        scene_code: 场景编码
+        
+    Returns:
+        提示词内容，如果未找到返回 None
+    """
+    try:
+        from app.services.scene_service import SceneService
+        from app.core.database import get_db
+        
+        db_gen = get_db()
+        db = next(db_gen)
+        try:
+            prompt_result = SceneService.get_scene_prompt(scene_code, db)
+            if prompt_result["success"]:
+                return prompt_result.get("prompt_content")
+            else:
+                logger.warning(f"[get_scene_prompt_by_code] 获取提示词失败: {prompt_result.get('message')}")
+                return None
+        finally:
+            db.close()
+    except Exception as e:
+        logger.exception(f"[get_scene_prompt_by_code] 异常 scene_code={scene_code}: {e}")
+        return None
 
 
 def parse_intent_result(intent_result: str) -> Optional[Dict]:
@@ -212,7 +246,9 @@ async def stream_chat_reply(
                     remaining = ""
                 else:
                     _thinking_buf += remaining[:end_idx]
-                    logger.debug("[stream_chat] 丢弃 thinking 块 (%d 字符): %s", len(_thinking_buf), _thinking_buf[:100])
+                    # 将 thinking 内容转为 reasoning 事件发送给前端
+                    if _thinking_buf.strip():
+                        yield reasoning(_thinking_buf), None
                     _thinking_buf = ""
                     _in_thinking = False
                     remaining = remaining[end_idx + len("[/THINKING]"):]
@@ -237,8 +273,9 @@ async def stream_chat_reply(
                     _in_thinking = True
                     remaining = remaining[start_idx + len("[THINKING]"):]
 
+    # 处理未闭合的 thinking 块
     if _in_thinking and _thinking_buf.strip():
-        logger.debug("[stream_chat] 丢弃未闭合的 thinking 块 (%d 字符)", len(_thinking_buf))
+        yield reasoning(_thinking_buf), None
 
     if not _text_started:
         yield sse({"type": "text_start", "message_id": assistant_message_id}), None

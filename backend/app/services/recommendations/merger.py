@@ -74,13 +74,16 @@ class RecommendationMerger:
                     form_code, field_code, user_id, db
                 )
                 if recommend_result["success"]:
-                    for rec_value in recommend_result["recommendations"]:
+                    for rec in recommend_result["recommendations"]:
+                        # HistoryService 返回的是 Dict: {value, label, score, source}
+                        rec_value = rec.get("value") if isinstance(rec, dict) else rec
                         if rec_value and rec_value not in all_items:
                             all_items[rec_value] = {
                                 "value": rec_value,
-                                "source": "history",
+                                "label": rec.get("label") if isinstance(rec, dict) else rec_value,
+                                "source": rec.get("source", "history") if isinstance(rec, dict) else "history",
                                 "reason": "历史推荐",
-                                "confidence": 0.5,
+                                "confidence": rec.get("score", 0.5) if isinstance(rec, dict) else 0.5,
                                 "priority": cls.SOURCE_PRIORITY.get("history", 2)
                             }
             except Exception as e:

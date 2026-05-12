@@ -61,8 +61,10 @@ class RecommendationEngine:
         self._init_strategies()
 
     def _load_config(self):
-        self.max_recommendations = self.recommendation_config.get('recommendationLimit', 5)
+        self.max_recommendations = self.recommendation_config.get('recommendationLimit', 3)
         self.history_query_limit = self.recommendation_config.get('historyQueryLimit', 1000)
+        self.confidence_threshold = self.recommendation_config.get('confidenceThreshold', 0.4)
+        self.enable_smart_filter = self.recommendation_config.get('enableSmartFilter', True)
 
     def _init_strategies(self):
         self.frequency_strategy = FrequencyRecommendationStrategy(self.recommendation_config)
@@ -101,17 +103,23 @@ class RecommendationEngine:
         try:
             active_strategies = strategies or ["frequency", "user_personalized", "time_decay", "static"]
             strategies_used = []
-            all_candidates: List[Tuple[str, RecommendationItem]] = []
-            candidate_scores: Dict[str, float] = {}
+            
+            all_candidates: List[RecommendationItem] = []
+            candidates_by_priority: Dict[int, List[RecommendationItem]] = {
+                1: [],  # AI推荐（最高优先级）
+                2: [],  # 用户个性化/高频填写
+                3: [],  # 近期常用
+            }
 
-            if "frequency" in active_strategies:
-                strategies_used.append("frequency")
-                history_candidates = self.frequency_strategy.recommend(
-                    db, form_code, field_code, user_id, conversation_context
+            if user_input and conversation_context:
+                strategies_used.append("ai_recommend")
+                ai_candidates = self.context_aware_strategy.recommend(
+                    user_input, form_code, field_code, conversation_context
                 )
-                for item in history_candidates:
-                    all_candidates.append((item.value, item))
-                    candidate_scores[item.value] = item.score
+                for item in ai_candidates:
+                    item.priority = 1
+                    item.reason = f"AI智能推荐"
+                    candidates_by_priority[1].append(item)
 
             if "user_personalized" in active_strategies and user_id:
                 strategies_used.append("user_personalized")
@@ -119,9 +127,18 @@ class RecommendationEngine:
                     db, form_code, field_code, user_id, conversation_context
                 )
                 for item in user_candidates:
-                    if item.value not in candidate_scores or item.score > candidate_scores[item.value]:
-                        all_candidates.append((item.value, item))
-                        candidate_scores[item.value] = item.score
+                    item.priority = 2
+                    candidates_by_priority[2].append(item)
+
+            if "frequency" in active_strategies:
+                strategies_used.append("frequency")
+                history_candidates = self.frequency_strategy.recommend(
+                    db, form_code, field_code, user_id, conversation_context
+                )
+                for item in history_candidates:
+                    if item.priority is None or item.priority > 2:
+                        item.priority = 2
+                    candidates_by_priority[2].append(item)
 
             if "time_decay" in active_strategies:
                 strategies_used.append("time_decay")
@@ -129,38 +146,29 @@ class RecommendationEngine:
                     db, form_code, field_code, user_id
                 )
                 for item in time_candidates:
-                    if item.value not in candidate_scores or item.score > candidate_scores[item.value]:
-                        all_candidates.append((item.value, item))
-                        candidate_scores[item.value] = item.score
+                    if item.priority is None or item.priority > 3:
+                        item.priority = 3
+                    candidates_by_priority[3].append(item)
 
-            if "static" in active_strategies:
-                strategies_used.append("static")
-                static_candidates = self._get_static_recommendations(form_code, field_code)
-                for item in static_candidates:
-                    if item.value not in candidate_scores:
-                        all_candidates.append((item.value, item))
-
-            if user_input and conversation_context:
-                strategies_used.append("context_aware")
-                context_candidates = self.context_aware_strategy.recommend(
-                    user_input, form_code, field_code, conversation_context
-                )
-                for item in context_candidates:
-                    if item.value not in candidate_scores or item.score > candidate_scores[item.value]:
-                        all_candidates.append((item.value, item))
-                        candidate_scores[item.value] = item.score
-
-            best_by_value: Dict[str, RecommendationItem] = {}
-            for value, item in all_candidates:
-                if value not in best_by_value or item.score > best_by_value[value].score:
-                    best_by_value[value] = item
-            sorted_candidates = sorted(
-                best_by_value.values(),
-                key=lambda x: x.score,
-                reverse=True
-            )
-
-            final_recommendations = sorted_candidates[:max_recommendations]
+            seen_values = set()
+            final_recommendations = []
+            
+            for priority in [1, 2, 3]:
+                candidates = candidates_by_priority[priority]
+                candidates.sort(key=lambda x: (x.confidence, x.score), reverse=True)
+                
+                for item in candidates:
+                    if item.value not in seen_values:
+                        seen_values.add(item.value)
+                        item.reason = self._simplify_reason(item.reason, item.confidence)
+                        if item.reason and item.reason.strip():
+                            final_recommendations.append(item)
+                    
+                    if len(final_recommendations) >= min(max_recommendations, self.max_recommendations):
+                        break
+                
+                if len(final_recommendations) >= min(max_recommendations, self.max_recommendations):
+                    break
             processing_time = (time.time() - start_time) * 1000
 
             result = RecommendationResult(
@@ -192,6 +200,24 @@ class RecommendationEngine:
                 processing_time_ms=(time.time() - start_time) * 1000
             )
 
+    def _simplify_reason(self, reason: str, confidence: float) -> str:
+        """根据置信度精简推荐理由"""
+        if confidence >= 0.8:
+            return reason
+        elif confidence >= 0.6:
+            if "历史填写" in reason:
+                return "高频填写"
+            elif "相似记录" in reason:
+                return "智能推断"
+            elif "近期" in reason:
+                return "近期常用"
+            elif "您历史" in reason:
+                return "您常填写"
+            else:
+                return "推荐选项"
+        else:
+            return ""
+    
     def _get_static_recommendations(
         self,
         form_code: str,

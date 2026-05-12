@@ -242,7 +242,9 @@ export function useChatStream(messagesRef, currentDbSessionIdRef) {
  const msg = messagesRef.value[msgIdx];
  if (msg) {
  msg.done = true;
- msg.showReasoning = msg.reasoning.some(r => r.type === 'error') || false;
+ // 有 reasoning 内容或有错误时保持面板展开
+ const hasReasoning = msg.reasoning.some(r => r.reasoning && r.reasoning.trim());
+ msg.showReasoning = msg.reasoning.some(r => r.type === 'error') || hasReasoning || false;
  const postProcessor = getPostProcessor(intentType);
  if (postProcessor) {
  try {

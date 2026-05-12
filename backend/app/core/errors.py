@@ -50,6 +50,7 @@ class ErrorCode:
     LLM_PARSE_ERROR = "ERR_LLM_PARSE_ERROR"
     LLM_TOKEN_EXCEED = "ERR_LLM_TOKEN_EXCEED"
     LLM_RATE_LIMIT = "ERR_LLM_RATE_LIMIT"
+    LLM_QUOTA_EXCEEDED = "ERR_LLM_QUOTA_EXCEEDED"
     LLM_UNAVAILABLE = "ERR_LLM_UNAVAILABLE"
 
     # Tool 相关 (ERR_TOOL_XXX)
@@ -125,7 +126,11 @@ class FrameworkError:
             "error_type": self.category,
             "error_code": self.code,
             "message": self.message,
-            "recoverable": self.recoverable
+            "detail": self.detail,
+            "source": self.source,
+            "recoverable": self.recoverable,
+            "recovery_hint": self.recovery_hint,
+            "context": self.context
         }
 
 
@@ -138,6 +143,7 @@ ERROR_CODE_MESSAGES = {
     ErrorCode.LLM_PARSE_ERROR: "AI 响应解析失败",
     ErrorCode.LLM_TOKEN_EXCEED: "输入内容过长，已超出 AI 处理限制",
     ErrorCode.LLM_RATE_LIMIT: "AI 服务调用过于频繁，请稍后重试",
+    ErrorCode.LLM_QUOTA_EXCEEDED: "API Key 余额不足，请联系管理员充值",
     ErrorCode.LLM_UNAVAILABLE: "AI 服务暂时不可用",
 
     # Tool
