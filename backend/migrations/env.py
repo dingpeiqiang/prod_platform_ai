@@ -12,8 +12,13 @@ from alembic import context
 
 # 导入我们的模型和数据库配置
 from app.core.database import Base
+# FormTemplate 已废弃
+# from app.models.form import (
+#     FormTemplate,
+#     FormInstance,
+#     FormHistory
+# )
 from app.models.form import (
-    FormTemplate,
     FormInstance,
     FormHistory
 )

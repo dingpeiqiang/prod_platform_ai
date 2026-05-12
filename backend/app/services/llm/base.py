@@ -33,6 +33,19 @@ class StreamStats:
     def chars_per_second(self) -> float:
         return self.char_count / self.elapsed if self.elapsed > 0 else 0.0
 
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典格式"""
+        return {
+            "elapsed": round(self.elapsed, 3),
+            "tokenCount": self.token_count,
+            "charCount": self.char_count,
+            "chunkCount": self.chunk_count,
+            "thinkingChars": self.thinking_chars,
+            "errorCount": self.error_count,
+            "tokensPerSecond": round(self.tokens_per_second, 2),
+            "charsPerSecond": round(self.chars_per_second, 2)
+        }
+
 
 class StreamBuffer:
     """流式输出缓冲区 - 批量发送 token 以减少开销"""

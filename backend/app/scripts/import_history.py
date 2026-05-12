@@ -269,13 +269,22 @@ def _extract_timestamp(record: Dict[str, Any]) -> datetime:
 def _ensure_template(db, form_code: str, form_name: str,
                      schema: Optional[Dict] = None,
                      sample_record: Optional[Dict] = None) -> int:
-    """确保 FormTemplate 存在，不存在则创建，存在则更新"""
-    from app.models.form import FormTemplate
-    from app.services.ontology_service import OntologyService
-
-    template = db.query(FormTemplate).filter(
-        FormTemplate.form_code == form_code
-    ).first()
+    """
+    确保 FormTemplate 存在（已废弃）
+    
+    注意：FormTemplate 已废弃，此函数不再使用
+    表单 Schema 由本体约束（ontology）驱动
+    """
+    # FormTemplate 已废弃，返回 0
+    logger.warning("_ensure_template 已废弃，FormTemplate 不再使用")
+    return 0
+    
+    # from app.models.form import FormTemplate
+    # from app.services.ontology_service import OntologyService
+    #
+    # template = db.query(FormTemplate).filter(
+    #     FormTemplate.form_code == form_code
+    # ).first()
 
     enriched_schema = schema.copy() if schema else {}
     try:
@@ -472,7 +481,9 @@ def import_form_data(
 ) -> Dict[str, Any]:
     """导入单个表单类型的历史数据"""
     from app.core.database import get_db
-    from app.models.form import FormInstance, FormTemplate, FormHistory
+    # FormTemplate 已废弃，不再导入
+    from app.models.form import FormInstance, FormHistory
+    # from app.models.form import FormTemplate
     from app.services.ontology_service import OntologyService
 
     stats = {

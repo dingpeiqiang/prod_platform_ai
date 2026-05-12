@@ -58,8 +58,13 @@ class FormHandler(BaseIntentHandler):
         # ── Step 2：历史推荐 ───────────────────────────────────────
         try:
             recommendation_engine = get_recommendation_engine()
+            # 处理 request 可能为 None 的情况（REST API 调用）
+            messages_list = []
+            if ctx.request and hasattr(ctx.request, 'messages'):
+                messages_list = [{"role": msg.role, "content": msg.content} for msg in ctx.request.messages]
+            
             conversation_context = {
-                "messages": [{"role": msg.role, "content": msg.content} for msg in ctx.request.messages],
+                "messages": messages_list,
                 "extractedFields": extracted,
                 "lastUserMessage": ctx.last_user_message
             }
@@ -74,7 +79,7 @@ class FormHandler(BaseIntentHandler):
                 form_code=form_code,
                 extracted_fields=extracted,
                 user_input=ctx.last_user_message,
-                user_id=ctx.request.userId,
+                user_id=ctx.request.userId if ctx.request and hasattr(ctx.request, 'userId') else None,
                 conversation_context=conversation_context,
                 max_per_field=max_recs,
                 db=ctx.db,
@@ -116,5 +121,5 @@ class FormHandler(BaseIntentHandler):
         ctx.stream_stats.is_form = True
         yield sse({"type": "stats", "content": ctx.stream_stats.to_dict()})
 
-        yield intent_event("form", "generate", ctx.intent_result, is_form=True)
+        yield intent_event("form", "generate", ctx.intent_data, is_form=True)
         yield done_event("form", is_form=True, intent_data=ctx.intent_data)

@@ -157,9 +157,10 @@ class TariffFilingHandler(BaseIntentHandler):
             logger.warning(f"[TariffFilingHandler] 获取历史推荐失败: {rec_err}")
 
         # ═══ Phase 3：输出 ══════════════════════════════════════════
+        ctx.intent_data["formCode"] = form_code
         ctx.stream_stats.total_elapsed = time.time() - ctx.start_time
         ctx.stream_stats.is_form = True
         yield sse({"type": "stats", "content": ctx.stream_stats.to_dict()})
 
-        yield intent_event("form", "generate", ctx.intent_result, is_form=True)
+        yield intent_event("form", "generate", ctx.intent_data, is_form=True)
         yield done_event("form", is_form=True, intent_data=ctx.intent_data)

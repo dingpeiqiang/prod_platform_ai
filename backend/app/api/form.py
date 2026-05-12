@@ -14,6 +14,8 @@ from app.services.history_service import HistoryService
 from app.services.validation_service import validation_engine
 from app.websocket.manager import manager
 from app.models.form import FormInstance
+# FormTemplate 已废弃，不再使用
+# from app.models.form import FormTemplate
 from app.intent import get_intent_registry
 from app.intent.base import IntentContext
 from datetime import datetime
@@ -31,32 +33,182 @@ async def generate_form(request: FormGenerateRequest, db: Session = Depends(get_
     logger.info("[form/generate] 收到请求 form_code=%s user_id=%s user_input=%s",
                 request.formCode, request.userId,
                 (request.userInput or "")[:100])
-    result = FormService.generate_form(
-        user_input=request.userInput,
-        form_code=request.formCode,
-        user_id=request.userId,
-        extracted_fields=request.extractedFields,
-        field_recommendations=request.fieldRecommendations,
-        db=db
-    )
     
-    if result["success"]:
-        adapted_schema = FormService.adapt_for_chat_window(result["formSchema"])
-        manager.set_form_state(result["formId"], {"version": 1, "schema": adapted_schema})
-        logger.info("[form/generate] 成功 form_id=%s", result["formId"])
-        return FormGenerateResponse(
-            success=True,
-            formSchema=adapted_schema,
-            formId=result["formId"]
+    # 使用意图处理系统来生成表单
+    from app.intent import get_intent_registry
+    from app.intent.base import IntentContext
+    from app.services.llm.base import StreamStats
+    from app.core.config_loader import config_loader
+    import time
+    
+    try:
+        # 加载本体定义
+        ontologies = config_loader.get_all_ontologies()
+        
+        # 构建 intent_data
+        intent_data = {
+            "formCode": request.formCode,
+            "extractedFields": request.extractedFields or {},
+            "fieldRecommendations": request.fieldRecommendations or {}
+        }
+        
+        # 创建 StreamStats
+        stream_stats = StreamStats()
+        start_time = time.time()
+        
+        # 创建 IntentContext（包含所有必需字段）
+        ctx = IntentContext(
+            intent_data=intent_data,
+            intent_result="",
+            intent_type="form",
+            confidence=1.0,
+            ontologies=ontologies,
+            ontologies_info="",  # 可选字段
+            scene_keywords="",   # 可选字段
+            request=None,        # REST API 没有 WebSocket request
+            db=db,
+            last_user_message=request.userInput or "",
+            messages_text="",
+            intent_prompt="",
+            start_time=start_time,
+            stream_stats=stream_stats
         )
-    
-    logger.warning("[form/generate] 失败: %s", result.get("message", "未知错误"))
-    return FormGenerateResponse(
-        success=False,
-        formSchema=None,
-        formId="",
-        message=result.get("message", "生成表单失败")
-    )
+        
+        # 分发到意图处理器
+        registry = get_intent_registry()
+        events = []
+        async for event_str in registry.dispatch("form", ctx):
+            events.append(event_str)
+        
+        # 解析最后一个done_event获取结果
+        import json
+        import re
+        result_data = None
+        for event_str in reversed(events):
+            try:
+                json_str = re.sub(r'^data:\s*', '', event_str.strip())
+                event_data = json.loads(json_str)
+                if event_data.get("type") == "done":
+                    result_data = event_data
+                    break
+            except (json.JSONDecodeError, re.error):
+                continue
+        
+        if result_data:
+            # 从intent_data中获取生成的表单信息
+            intent_data_result = result_data.get("intentData", {})
+            form_code = intent_data_result.get("formCode", request.formCode)
+            
+            # 从本体获取表单 schema
+            ontology_def = ontologies.get(form_code, {})
+            if not ontology_def:
+                return FormGenerateResponse(
+                    success=False,
+                    formSchema=None,
+                    formId="",
+                    message=f"未找到表单 {form_code} 的本体定义"
+                )
+            
+            # 构建表单 schema
+            fields = []
+            for entity in ontology_def.get("entities", []):
+                for field_def in entity.get("fields", []):
+                    field_info = {
+                        "fieldCode": field_def.get("fieldCode"),
+                        "fieldName": field_def.get("fieldName"),
+                        "fieldType": field_def.get("fieldType", "input"),
+                        "required": field_def.get("required", False),
+                        "disabled": False,
+                        "hidden": False,
+                        "rules": [],
+                        "recommend": [],
+                        "defaultValue": None,
+                        "options": [],
+                        "enumConfig": field_def.get("enumConfig")
+                    }
+                    
+                    # 添加默认值（从 extractedFields）
+                    extracted = intent_data_result.get("extractedFields", {})
+                    if field_info["fieldCode"] in extracted:
+                        field_info["defaultValue"] = extracted[field_info["fieldCode"]]
+                    
+                    # 添加推荐（从 fieldRecommendations）
+                    field_recs = intent_data_result.get("fieldRecommendations", {})
+                    if field_info["fieldCode"] in field_recs:
+                        rec_data = field_recs[field_info["fieldCode"]]
+                        if isinstance(rec_data, dict) and "items" in rec_data:
+                            field_info["recommend"] = rec_data["items"]
+                        elif isinstance(rec_data, list):
+                            field_info["recommend"] = rec_data
+                    
+                    fields.append(field_info)
+            
+            form_schema = {
+                "formCode": form_code,
+                "formName": ontology_def.get("formName", form_code),
+                "version": 1,
+                "globalControl": {},
+                "fields": fields
+            }
+            
+            # 生成表单 ID
+            form_id = f"form_{uuid.uuid4().hex[:12]}"
+            
+            # 适配为聊天窗口格式
+            adapted_schema = FormService.adapt_for_chat_window(form_schema)
+            
+            # 设置表单状态
+            manager.set_form_state(form_id, {"version": 1, "schema": adapted_schema})
+            
+            # FormTemplate 已废弃，不再保存模板到数据库
+            # 表单 Schema 由本体约束（ontology）驱动
+            # try:
+            #     from app.models.form import FormTemplate
+            #     existing_template = db.query(FormTemplate).filter(
+            #         FormTemplate.form_code == form_code,
+            #         FormTemplate.is_active == True
+            #     ).first()
+            #     
+            #     if existing_template:
+            #         existing_template.schema_data = form_schema
+            #         existing_template.version += 1
+            #         db.commit()
+            #     else:
+            #         new_template = FormTemplate(
+            #             form_code=form_code,
+            #             form_name=ontology_def.get("formName", form_code),
+            #             version=1,
+            #             schema_data=form_schema,
+            #             is_active=True,
+            #             created_by=request.userId
+            #         )
+            #         db.add(new_template)
+            #         db.commit()
+            # except Exception as e:
+            #     logger.warning(f"[form/generate] 保存模板失败: {e}")
+            
+            logger.info("[form/generate] 成功 form_id=%s", form_id)
+            return FormGenerateResponse(
+                success=True,
+                formSchema=adapted_schema,
+                formId=form_id
+            )
+        else:
+            logger.warning("[form/generate] 失败: 未获取到 done 事件")
+            return FormGenerateResponse(
+                success=False,
+                formSchema=None,
+                formId="",
+                message="生成表单失败：未获取到完成事件"
+            )
+    except Exception as e:
+        logger.exception("[form/generate] 异常: %s", str(e))
+        return FormGenerateResponse(
+            success=False,
+            formSchema=None,
+            formId="",
+            message=f"生成表单时发生错误: {str(e)}"
+        )
 
 
 @router.post("/form/submit", response_model=FormSubmitResponse)
@@ -88,7 +240,21 @@ async def submit_form(request: FormSubmitRequest, db: Session = Depends(get_db))
         fields = schema.get("fields", [])
         form_code = schema.get("formCode", "unknown")
         
-        logger.debug("[form/submit] form_code=%s", form_code)
+        # FormTemplate 已废弃，不再查询 template_id
+        template_id = 0
+        # try:
+        #     from app.models.form import FormTemplate
+        #     template = db.query(FormTemplate).filter(
+        #         FormTemplate.form_code == form_code,
+        #         FormTemplate.is_active == True
+        #     ).first()
+        #     if template:
+        #         template_id = template.id
+        #         logger.debug("[form/submit] 查到 template_id=%s form_code=%s", template_id, form_code)
+        #     else:
+        #         logger.warning("[form/submit] 未找到 FormTemplate form_code=%s，使用 template_id=0", form_code)
+        # except Exception as e:
+        #     logger.warning("[form/submit] 查询 FormTemplate 失败: %s", e)
         
         validation_result = validation_engine.validate_form(request.data, fields)
         if not validation_result.valid:
@@ -200,11 +366,12 @@ async def submit_form(request: FormSubmitRequest, db: Session = Depends(get_db))
         # ── LLM 智能校验结束 ────────────────────────────────────
 
         form_instance = FormInstance(
-            form_code=form_code,
-            user_id=request.userId,
+            form_id=request.formId,
+            template_id=template_id,
             data=request.data,
             version=current_version,
             status="submitted",
+            user_id=request.userId,
             submitted_at=datetime.now()
         )
         db.add(form_instance)
@@ -288,19 +455,18 @@ async def list_form_submissions(
 ):
     """
     查询指定表单类型的已提交记录列表。
-    用于前端"历史填写记录"功能。
+    用于前端“历史填写记录”功能。
     """
-    # 先找到 template_id
-    template = db.query(FormTemplate).filter(
-        FormTemplate.form_code == form_code,
-        FormTemplate.is_active == True
-    ).first()
-
-    if not template:
-        return {"success": True, "submissions": [], "total": 0}
-
+    # FormTemplate 已废弃，直接根据 form_code 查询
+    # template = db.query(FormTemplate).filter(
+    #     FormTemplate.form_code == form_code,
+    #     FormTemplate.is_active == True
+    # ).first()
+    # if not template:
+    #     return {"success": True, "submissions": [], "total": 0}
+    
     query = db.query(FormInstance).filter(
-        FormInstance.template_id == template.id,
+        FormInstance.form_code == form_code,
         FormInstance.status == "submitted"
     ).order_by(FormInstance.submitted_at.desc()).limit(limit)
 

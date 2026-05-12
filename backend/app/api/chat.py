@@ -24,6 +24,7 @@ from app.api.chat_utils import (
     fix_json_newlines, build_ontologies_info, build_scene_keywords,
     build_separators, sse, thinking, reasoning, FALLBACK_RESPONSES
 )
+from app.intent.utils import intent_event, done_event
 from app.api.chat_service import (
     call_skills_only, build_intent_prompt, parse_intent_result,
     execute_tool_calls, get_scene_prompt_by_code
@@ -389,14 +390,156 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                         intent_data["sceneResponse"] = scene_response
                                         logger.info(f"[chat/stream] 场景提示词调用成功，响应长度={len(scene_response)}")
                                         yield thinking(f"✅ 场景大模型调用完成")
-                                        yield sse({"type": "text_start"})
-                                        yield sse({"type": "text", "content": scene_response})
-                                        yield sse({"type": "text_end"})
+                                        
+                                        # 解析场景响应，检查是否需要调用工具
+                                        try:
+                                            import json
+                                            scene_json = json.loads(scene_response)
+                                            
+                                            # 将场景数据添加到 intent_data
+                                            intent_data["sceneData"] = scene_json
+                                            
+                                            # 提取消息并显示给用户
+                                            message = scene_json.get("message", "")
+                                            if message:
+                                                yield sse({"type": "text_start"})
+                                                yield sse({"type": "text", "content": message})
+                                                yield sse({"type": "text_end"})
+                                            
+                                            # 直接使用场景响应中的 needUserResponse 值
+                                            need_user_response_from_scene = scene_json.get("needUserResponse", False)
+                                            if need_user_response_from_scene:
+                                                intent_data["needUserResponse"] = True
+                                                yield thinking(f"🔍 场景提示词标记需要用户响应")
+                                            else:
+                                                # 检查是否有缺失字段（支持 missingInfo 和 missingFields 两种格式）
+                                                missing_info = scene_json.get("missingInfo", [])
+                                                missing_fields = scene_json.get("missingFields", [])
+                                                
+                                                # 合并两种格式的缺失字段
+                                                all_missing_fields = []
+                                                all_missing_items = []  # 保存完整的字典对象
+                                                
+                                                # 优先使用 missingFields（大模型最新返回的格式）
+                                                if missing_fields and isinstance(missing_fields, list):
+                                                    if len(missing_fields) > 0 and isinstance(missing_fields[0], dict):
+                                                        all_missing_items = missing_fields.copy()
+                                                        all_missing_fields = [str(item.get("field")) for item in missing_fields if item.get("field")]
+                                                    else:
+                                                        all_missing_fields = [str(f) for f in missing_fields if f]
+                                                elif missing_info and isinstance(missing_info, list):
+                                                    if len(missing_info) > 0 and isinstance(missing_info[0], dict):
+                                                        all_missing_items = missing_info.copy()
+                                                        all_missing_fields = [str(item.get("field")) for item in missing_info if item.get("field")]
+                                                    else:
+                                                        all_missing_fields = [str(f) for f in missing_info if f]
+                                                
+                                                logger.info(f"[chat/stream] 解析缺失字段: missingFields={missing_fields}, missingInfo={missing_info}, all_missing_fields={all_missing_fields}")
+                                                
+                                                if all_missing_fields:
+                                                    yield thinking(f"🔍 发现缺失字段: {', '.join(all_missing_fields)}")
+                                                    
+                                                    # 检查用户输入中是否包含套餐编码
+                                                    tariff_code = None
+                                                    if last_user_message:
+                                                        # 从用户输入中提取套餐编码（P开头后跟数字）
+                                                        import re
+                                                        match = re.search(r'P\d+', last_user_message)
+                                                        if match:
+                                                            tariff_code = match.group(0)
+                                                            yield thinking(f"✅ 从用户输入中提取到套餐编码: {tariff_code}")
+                                                    
+                                                    # 如果找到了套餐编码，调用工具查询套餐信息
+                                                    if tariff_code:
+                                                        yield thinking(f"🔧 调用工具查询套餐信息: {tariff_code}")
+                                                        # 添加工具调用到 intent_data
+                                                        if "tool_calls" not in intent_data:
+                                                            intent_data["tool_calls"] = []
+                                                        intent_data["tool_calls"].append({
+                                                            "name": "query_tariff_by_code",
+                                                            "arguments": {"tariff_code": tariff_code}
+                                                        })
+                                                    else:
+                                                        # 检查是否有必填字段缺失（根据场景响应中的 required=True 判断）
+                                                        needs_response = False
+                                                        required_fields = []
+                                                        
+                                                        # 从合并后的 all_missing_items 中提取必填字段名（确保是字符串）
+                                                        for item in all_missing_items:
+                                                            if isinstance(item, dict):
+                                                                field_name = item.get("field")
+                                                                if field_name and item.get("required", False):
+                                                                    required_fields.append(str(field_name))
+                                                                    needs_response = True
+                                                        
+                                                        # 如果没有必填字段，使用所有缺失字段
+                                                        if not needs_response and all_missing_fields:
+                                                            needs_response = True
+                                                            required_fields = all_missing_fields.copy()
+                                                        
+                                                        logger.info(f"[chat/stream] 检查必填字段: needs_response={needs_response}, required_fields={required_fields}")
+                                                        
+                                                        if needs_response or all_missing_fields:
+                                                            # 使用场景响应中的 recommendations（如果有）
+                                                            user_prompt = scene_json.get("recommendations", [])
+                                                            if user_prompt and isinstance(user_prompt, list) and len(user_prompt) > 0:
+                                                                yield sse({"type": "text_start"})
+                                                                yield sse({"type": "text", "content": str(user_prompt[0])})
+                                                                yield sse({"type": "text_end"})
+                                                            elif all_missing_items:
+                                                                # 使用合并后的 all_missing_items 中的提示信息
+                                                                found_prompt = False
+                                                                for item in all_missing_items:
+                                                                    if isinstance(item, dict):
+                                                                        field_name = item.get("field")
+                                                                        is_required = item.get("required", False)
+                                                                        if is_required or (field_name and str(field_name) in required_fields):
+                                                                            prompt_text = item.get("description", item.get("label", item.get("message", "请提供必要信息")))
+                                                                            yield sse({"type": "text_start"})
+                                                                            yield sse({"type": "text", "content": str(prompt_text)})
+                                                                            yield sse({"type": "text_end"})
+                                                                            found_prompt = True
+                                                                            break
+                                                                if not found_prompt:
+                                                                    # 回退到默认提示
+                                                                    yield sse({"type": "text_start"})
+                                                                    yield sse({"type": "text", "content": f"请提供以下必要信息：{', '.join(required_fields)}"})
+                                                                    yield sse({"type": "text_end"})
+                                                            else:
+                                                                # 默认提示
+                                                                yield sse({"type": "text_start"})
+                                                                yield sse({"type": "text", "content": f"请提供以下必要信息：{', '.join(required_fields)}"})
+                                                                yield sse({"type": "text_end"})
+                                                        
+                                                            # 标记需要用户响应（只要有缺失字段就需要用户响应）
+                                                            intent_data["needUserResponse"] = True
+                                                            intent_data["missingRequiredFields"] = required_fields
+                                                            logger.info(f"[chat/stream] 设置 needUserResponse=True")
+                                            
+                                            # 发送场景数据给前端
+                                            yield sse({"type": "scene_data", "content": scene_response})
+                                            
+                                        except json.JSONDecodeError:
+                                            # 如果不是 JSON 格式，直接作为文本发送
+                                            yield sse({"type": "text_start"})
+                                            yield sse({"type": "text", "content": scene_response})
+                                            yield sse({"type": "text_end"})
                                     else:
                                         yield thinking(f"⚠️ 场景大模型返回为空")
                                 except Exception as e:
                                     logger.exception(f"[chat/stream] 场景大模型调用失败: {e}")
                                     yield thinking(f"❌ 场景大模型调用失败: {str(e)}")
+
+                            # 检查是否需要用户响应（在工具调用和表单生成之前）
+                            need_user_response = intent_data.get("needUserResponse", False)
+                            if need_user_response:
+                                logger.info(f"[chat/stream] 需要用户响应，等待用户输入...")
+                                yield thinking(f"⏳ 等待用户提供必要信息...")
+                                stream_stats.total_elapsed = time.time() - start_time
+                                yield sse({"type": "stats", "content": stream_stats.to_dict()})
+                                yield intent_event(intent_type, "awaiting_input", intent_data, is_form=False)
+                                yield done_event(intent_type, is_form=False, intent_data=intent_data)
+                                return
 
                             tool_result = await execute_tool_calls(intent_data)
                             tool_results = tool_result["tool_results"]
@@ -435,8 +578,10 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                 intent_type = _FORM_CODE_TO_INTENT[form_code]
                                 logger.info(f"[路由] 表单 %s 使用专属 handler: %s", form_code, intent_type)
 
-                            if request.formCode:
-                                intent_data["form_code"] = request.formCode
+                            # 注意：不再用 request.formCode 覆盖 intent_data
+                            # formCode 应由 LLM 意图识别或 handler 决定，避免场景编码覆盖表单编码
+                            # if request.formCode:
+                            #     intent_data["form_code"] = request.formCode
                             if request.formData:
                                 intent_data["form_data"] = request.formData
 

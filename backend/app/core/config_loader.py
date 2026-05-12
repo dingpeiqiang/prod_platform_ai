@@ -31,11 +31,20 @@ class ConfigLoader:
         self._config_cache: Dict[str, Any] = {}
         self._last_modified: Dict[str, float] = {}
         self._db_session_factory = None
-        self._ontology_source = "database"
-        self._load_all_configs()
+        # 注意：不在这里加载本体，等待 set_db_session_factory 后手动调用 reload_config
+        self._load_app_config()
+        self._load_recommendations()
+        self._load_prompts()
     
     def set_db_session_factory(self, session_factory):
+        """设置数据库会话工厂并加载本体"""
         self._db_session_factory = session_factory
+        # 设置完数据库会话工厂后，立即加载本体
+        try:
+            self._load_ontologies()
+        except Exception as e:
+            logger.error("[ConfigLoader] 初始化本体失败: %s", e)
+            raise
     
     def _load_all_configs(self):
         self._load_app_config()
@@ -81,29 +90,17 @@ class ConfigLoader:
                 self._config_cache['system_config'] = system_config
     
     def _load_ontologies(self):
-        if self._ontology_source == "database":
-            self._load_ontologies_from_db()
-        elif self._ontology_source == "hybrid":
-            self._load_ontologies_hybrid()
-        else:
-            self._load_ontologies_from_file()
+        """加载本体 - 只从数据库查询，无兜底方案"""
+        self._load_ontologies_from_db()
     
-    def _load_ontologies_from_file(self):
-        ontologies = {}
-        ontologies_path = self.base_path / "ontologies"
-        if ontologies_path.exists():
-            for file in ontologies_path.glob("*.json"):
-                data = self._load_json(file)
-                if data and 'formCode' in data:
-                    ontologies[data['formCode']] = data
-        self._config_cache['ontologies'] = ontologies
-        logger.info("[ConfigLoader] 从文件系统加载本体 count=%d", len(ontologies))
-    
+
     def _load_ontologies_from_db(self):
+        """从数据库加载本体 - 无兜底，查不到就报错"""
         if not self._db_session_factory:
-            logger.warning("[ConfigLoader] 数据库会话工厂未设置，回退到文件系统")
-            self._load_ontologies_from_file()
-            return
+            raise RuntimeError(
+                "[ConfigLoader] 数据库会话工厂未设置，无法加载本体。"
+                "请在应用启动时调用 config_loader.set_db_session_factory(session_factory)"
+            )
         
         try:
             from app.models.ontology import Ontology
@@ -118,28 +115,18 @@ class ConfigLoader:
                 
                 self._config_cache['ontologies'] = ontologies
                 logger.info("[ConfigLoader] 从数据库加载本体 count=%d", len(ontologies))
+                
+                if len(ontologies) == 0:
+                    logger.warning("[ConfigLoader] 数据库中没有任何启用的本体数据")
             finally:
                 db.close()
         except Exception as e:
-            logger.error("[ConfigLoader] 数据库加载失败，回退到文件系统: %s", e)
-            self._load_ontologies_from_file()
+            logger.error("[ConfigLoader] 从数据库加载本体失败: %s", e)
+            # 清空缓存并抛出异常，不静默失败
+            self._config_cache['ontologies'] = {}
+            raise RuntimeError(f"[ConfigLoader] 本体加载失败: {e}") from e
     
-    def _load_ontologies_hybrid(self):
-        self._load_ontologies_from_db()
-        db_ontologies = self._config_cache.get('ontologies', {})
-        
-        file_path = self.base_path / "ontologies"
-        if file_path.exists():
-            for file in file_path.glob("*.json"):
-                data = self._load_json(file)
-                if data and 'formCode' in data:
-                    code = data['formCode']
-                    if code not in db_ontologies:
-                        db_ontologies[code] = data
-        
-        self._config_cache['ontologies'] = db_ontologies
-        logger.info("[ConfigLoader] 混合模式加载本体 count=%d", len(db_ontologies))
-    
+
     def _load_recommendations(self):
         path = self.base_path / "templates" / "recommendations.json"
         if path.exists():

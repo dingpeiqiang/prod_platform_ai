@@ -1,234 +1,17 @@
-from typing import Dict, Any, Optional, List
-import uuid
 import logging
-from datetime import datetime, timedelta
+from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
-from app.skills.scene_recognition import SceneRecognitionSkill
-from app.skills.field_extraction import FieldExtractionSkill
-from app.services.ontology_service import OntologyService
-from app.core.config_loader import config_loader
 from app.models.form import Form
-from app.services.recommendations.merger import RecommendationMerger
+import uuid
+import json
+from datetime import datetime
 
 logger = logging.getLogger("form_service")
 
 
-def _convert_date_string(date_str: str) -> str:
-    if not date_str or not isinstance(date_str, str):
-        return date_str
-
-    today = datetime.now()
-    date_str_lower = date_str.strip().lower()
-
-    if date_str_lower in ['今天', '今日']:
-        return today.strftime('%Y-%m-%d')
-    elif date_str_lower in ['明天', '明日']:
-        return (today + timedelta(days=1)).strftime('%Y-%m-%d')
-    elif date_str_lower in ['后天']:
-        return (today + timedelta(days=2)).strftime('%Y-%m-%d')
-    elif date_str_lower in ['昨天', '昨日']:
-        return (today - timedelta(days=1)).strftime('%Y-%m-%d')
-    elif date_str_lower in ['前天']:
-        return (today - timedelta(days=2)).strftime('%Y-%m-%d')
-
-    try:
-        datetime.strptime(date_str, '%Y-%m-%d')
-        return date_str
-    except ValueError:
-        pass
-
-    return date_str
-
-
 class FormService:
-    @classmethod
-    def generate_form(
-        cls,
-        user_input: str,
-        form_code: str = None,
-        user_id: str = None,
-        extracted_fields: Dict[str, Any] = None,
-        db: Session = None,
-        field_recommendations: Dict[str, Any] = None
-    ) -> Dict[str, Any]:
-        if not form_code:
-            scene_result = SceneRecognitionSkill.recognize(user_input)
-            form_code = scene_result["sceneCode"]
-
-        logger.info("[FormService] 生成表单 form_code=%s user_id=%s "
-                    "pre_extracted_fields=%s",
-                    form_code, user_id,
-                    list(extracted_fields.keys()) if extracted_fields else [])
-
-        ontology_result = OntologyService.get_form_constraint(form_code)
-        if not ontology_result["success"]:
-            return {
-                "success": False,
-                "message": ontology_result.get("message", "获取本体约束失败")
-            }
-
-        ontology = ontology_result["constraints"]
-
-        if db:
-            try:
-                existing = db.query(Form).filter(
-                    Form.form_code == form_code,
-                    Form.is_active == True
-                ).first()
-                if not existing:
-                    form = Form(
-                        form_code=form_code,
-                        form_name=ontology.get("formName", form_code),
-                        description=ontology.get("description", ""),
-                        category=ontology.get("category", "general"),
-                        entities=ontology.get("entities", []),
-                        ontology_code=form_code
-                    )
-                    db.add(form)
-                    db.commit()
-                    db.refresh(form)
-                    logger.info("[FormService] 自动创建 Form form_code=%s id=%s",
-                                form_code, form.id)
-                else:
-                    existing.entities = ontology.get("entities", [])
-                    existing.version = (existing.version or 0) + 1
-                    db.commit()
-                    logger.debug("[FormService] Form 已存在 form_code=%s id=%s ver=%s",
-                                 form_code, existing.id, existing.version)
-            except Exception as e:
-                logger.warning("[FormService] Form upsert 失败 form_code=%s: %s", form_code, e)
-
-        fields = []
-
-        for entity in ontology.get("entities", []):
-            for field in entity.get("fields", []):
-                field_dict = {
-                    "fieldCode": field["fieldCode"],
-                    "fieldName": field["fieldName"],
-                    "fieldType": field["fieldType"],
-                    "required": field.get("required", False),
-                    "disabled": False,
-                    "hidden": False,
-                    "ruleDescription": field.get("ruleDescription", ""),
-                    "recommend": [],
-                    "defaultValue": None
-                }
-
-                if "rules" in field:
-                    field_dict["rules"] = [
-                        {"rule_type": r["rule_type"], "rule_value": r["rule_value"], "message": r["message"]}
-                        for r in field["rules"]
-                    ]
-                else:
-                    field_dict["rules"] = []
-
-                if "enumConfig" in field:
-                    field_dict["enumConfig"] = field["enumConfig"]
-
-                fc = field["fieldCode"]
-                merged = RecommendationMerger.merge_recommendations(
-                    form_code=form_code,
-                    field_code=fc,
-                    field_def=field,
-                    user_id=user_id,
-                    db=db,
-                    engine_recommendations=field_recommendations
-                )
-                field_dict["recommend"] = merged
-
-                fields.append(field_dict)
-
-        temp_schema = {
-            "formCode": form_code,
-            "formName": ontology.get("formName", ""),
-            "fields": fields
-        }
-
-        extracted_values: Dict[str, Any] = {}
-
-        extraction_result = FieldExtractionSkill.extract(user_input, form_code, temp_schema)
-        if extraction_result["success"]:
-            method = extraction_result.get("method", "unknown")
-            field_count = len(extraction_result["fields"])
-            logger.info("[FormService] 字段提取完成 方法=%s 提取字段数=%d", method, field_count)
-            if method == "llm":
-                logger.debug("[FormService] LLM提取结果=%s", extraction_result["fields"])
-            for ef in extraction_result["fields"]:
-                fc = ef.get("fieldCode")
-                fv = ef.get("fieldValue", ef.get("defaultValue"))
-                if fc and fv is not None:
-                    if fc in ['start_date', 'end_date', 'date', 'expense_date']:
-                        fv = _convert_date_string(fv)
-                        logger.debug("[FormService] Skills日期字段 %s 转换: %s -> %s", fc, ef.get("fieldValue"), fv)
-                    extracted_values[fc] = fv
-
-        if extracted_fields:
-            for fc, fv in extracted_fields.items():
-                if fc in ['success', 'error', 'message', 'result']:
-                    continue
-                if fv is not None and fv != "":
-                    if fc in ['start_date', 'end_date', 'date', 'expense_date']:
-                        fv = _convert_date_string(fv)
-                        logger.debug("[FormService] 日期字段 %s 转换: %s -> %s", fc, extracted_fields[fc], fv)
-                    extracted_values[fc] = fv
-                    logger.debug("[FormService] 使用 LLM 提取字段 %s=%s", fc, fv)
-
-        logger.info("[FormService] 最终提取字段: %s", extracted_values)
-
-        for field in fields:
-            field_code = field["fieldCode"]
-
-            if field_code in extracted_values:
-                field["defaultValue"] = extracted_values[field_code]
-            else:
-                if field.get("recommend") and len(field["recommend"]) > 0:
-                    first_rec = field["recommend"][0]
-                    if isinstance(first_rec, dict):
-                        field["defaultValue"] = first_rec.get("value", "")
-                    else:
-                        field["defaultValue"] = first_rec
-
-        form_id = f"form_{uuid.uuid4().hex[:12]}"
-
-        form_schema = {
-            "formCode": form_code,
-            "formName": ontology.get("formName", ""),
-            "version": 1,
-            "globalControl": {},
-            "fields": fields
-        }
-
-        logger.info("[FormService] 表单生成完成 form_id=%s fields_count=%d "
-                    "prefilled=%d",
-                    form_id, len(fields), len(extracted_values))
-
-        return {
-            "success": True,
-            "formSchema": form_schema,
-            "formId": form_id,
-            "sceneMethod": extraction_result.get("method", "unknown"),
-            "extractedFields": list(extracted_values.keys())
-        }
-
-    @classmethod
-    def adapt_for_chat_window(cls, form_schema: Dict[str, Any]) -> Dict[str, Any]:
-        adapted_schema = form_schema.copy()
-
-        for field in adapted_schema["fields"]:
-            if field["fieldType"] == "select":
-                field["fieldType"] = "select"
-            elif field["fieldType"] == "textarea":
-                field["fieldType"] = "textarea"
-            elif field["fieldType"] == "date":
-                field["fieldType"] = "date"
-            elif field["fieldType"] == "number":
-                field["fieldType"] = "number"
-            else:
-                field["fieldType"] = "input"
-
-        return adapted_schema
-
+    
     @classmethod
     def get_categories(cls) -> List[Dict[str, str]]:
         return [
@@ -238,7 +21,7 @@ class FormService:
             {"code": "customer", "name": "客户信息"},
             {"code": "project", "name": "项目管理"}
         ]
-
+    
     @classmethod
     def list_forms(cls, db: Session, category: Optional[str] = None, is_active: Optional[bool] = None) -> Dict[str, Any]:
         try:
@@ -247,7 +30,7 @@ class FormService:
                 query = query.filter(Form.category == category)
             if is_active is not None:
                 query = query.filter(Form.is_active == is_active)
-
+            
             forms = query.order_by(desc(Form.created_at)).all()
             return {
                 "success": True,
@@ -256,7 +39,7 @@ class FormService:
         except Exception as e:
             logger.exception(f"Failed to list forms: {e}")
             return {"success": False, "message": str(e)}
-
+    
     @classmethod
     def get_form(cls, db: Session, form_code: str) -> Dict[str, Any]:
         try:
@@ -267,18 +50,18 @@ class FormService:
         except Exception as e:
             logger.exception(f"Failed to get form: {e}")
             return {"success": False, "message": str(e)}
-
+    
     @classmethod
     def create_form(cls, db: Session, form_data: Dict[str, Any], user: Optional[str] = None) -> Dict[str, Any]:
         try:
             form_code = form_data.get("formCode")
             if not form_code:
                 return {"success": False, "message": "表单编码不能为空"}
-
+            
             existing = db.query(Form).filter(Form.form_code == form_code).first()
             if existing:
                 return {"success": False, "message": f"表单 {form_code} 已存在"}
-
+            
             form = Form(
                 form_code=form_code,
                 form_name=form_data.get("formName", form_code),
@@ -292,20 +75,20 @@ class FormService:
             db.add(form)
             db.commit()
             db.refresh(form)
-
+            
             return {"success": True, "data": form.to_dict(), "message": "创建成功"}
         except Exception as e:
             db.rollback()
             logger.exception(f"Failed to create form: {e}")
             return {"success": False, "message": str(e)}
-
+    
     @classmethod
     def update_form(cls, db: Session, form_code: str, form_data: Dict[str, Any], user: Optional[str] = None) -> Dict[str, Any]:
         try:
             form = db.query(Form).filter(Form.form_code == form_code).first()
             if not form:
                 return {"success": False, "message": f"表单 {form_code} 不存在"}
-
+            
             if "formName" in form_data:
                 form.form_name = form_data["formName"]
             if "description" in form_data:
@@ -318,29 +101,178 @@ class FormService:
                 form.layout = form_data["layout"]
             if "validationRules" in form_data:
                 form.validation_rules = form_data["validationRules"]
-
+            if "ontologyCode" in form_data:
+                form.ontology_code = form_data["ontologyCode"]
+            if "isActive" in form_data:
+                form.is_active = form_data["isActive"]
+            
+            form.version += 1
             db.commit()
+            db.refresh(form)
+            
             return {"success": True, "data": form.to_dict(), "message": "更新成功"}
         except Exception as e:
             db.rollback()
             logger.exception(f"Failed to update form: {e}")
             return {"success": False, "message": str(e)}
-
+    
     @classmethod
-    def delete_form(cls, db: Session, form_code: str, user: Optional[str] = None) -> Dict[str, Any]:
+    def delete_form(cls, db: Session, form_code: str) -> Dict[str, Any]:
         try:
             form = db.query(Form).filter(Form.form_code == form_code).first()
             if not form:
                 return {"success": False, "message": f"表单 {form_code} 不存在"}
-
-            form.is_active = False
+            db.delete(form)
             db.commit()
             return {"success": True, "message": "删除成功"}
         except Exception as e:
             db.rollback()
             logger.exception(f"Failed to delete form: {e}")
             return {"success": False, "message": str(e)}
-
+    
     @classmethod
-    def get_form_ontology(cls, form_code: str) -> Dict[str, Any]:
-        return OntologyService.get_form_constraint(form_code)
+    def toggle_active(cls, db: Session, form_code: str) -> Dict[str, Any]:
+        try:
+            form = db.query(Form).filter(Form.form_code == form_code).first()
+            if not form:
+                return {"success": False, "message": f"表单 {form_code} 不存在"}
+            form.is_active = not form.is_active
+            db.commit()
+            return {"success": True, "data": form.to_dict()}
+        except Exception as e:
+            db.rollback()
+            logger.exception(f"Failed to toggle form: {e}")
+            return {"success": False, "message": str(e)}
+    
+    @classmethod
+    def generate_form(cls, user_input: str, form_code: str, user_id: Optional[str] = None,
+                     extracted_fields: Optional[Dict[str, Any]] = None,
+                     field_recommendations: Optional[Dict[str, Any]] = None,
+                     db: Session = None) -> Dict[str, Any]:
+        """
+        生成表单（兼容旧接口）
+        
+        Args:
+            user_input: 用户输入
+            form_code: 表单编码
+            user_id: 用户ID
+            extracted_fields: 已提取的字段
+            field_recommendations: 字段推荐
+            db: 数据库会话
+            
+        Returns:
+            包含 success, formSchema, formId 的字典
+        """
+        try:
+            from app.services.ontology_service import OntologyService
+            
+            # 获取本体定义
+            ontology_result = OntologyService.get_form_constraint(form_code)
+            if not ontology_result["success"]:
+                return {
+                    "success": False,
+                    "message": f"未找到表单 {form_code} 的本体定义"
+                }
+            
+            constraints = ontology_result.get("constraints", {})
+            entities = constraints.get("entities", [])
+            
+            # 构建表单 schema
+            fields = []
+            for entity in entities:
+                for field_def in entity.get("fields", []):
+                    field_info = {
+                        "fieldCode": field_def.get("fieldCode"),
+                        "fieldName": field_def.get("fieldName"),
+                        "fieldType": field_def.get("fieldType", "input"),
+                        "required": field_def.get("required", False),
+                        "disabled": False,
+                        "hidden": False,
+                        "rules": [],
+                        "recommend": [],
+                        "defaultValue": None,
+                        "options": [],
+                        "enumConfig": field_def.get("enumConfig")
+                    }
+                    
+                    # 添加默认值
+                    if extracted_fields and field_info["fieldCode"] in extracted_fields:
+                        field_info["defaultValue"] = extracted_fields[field_info["fieldCode"]]
+                    
+                    # 添加推荐
+                    if field_recommendations and field_info["fieldCode"] in field_recommendations:
+                        rec_data = field_recommendations[field_info["fieldCode"]]
+                        if isinstance(rec_data, dict) and "items" in rec_data:
+                            field_info["recommend"] = rec_data["items"]
+                        elif isinstance(rec_data, list):
+                            field_info["recommend"] = rec_data
+                    
+                    fields.append(field_info)
+            
+            form_schema = {
+                "formCode": form_code,
+                "formName": constraints.get("formName", form_code),
+                "version": 1,
+                "globalControl": {},
+                "fields": fields
+            }
+            
+            # 生成表单 ID
+            form_id = f"form_{uuid.uuid4().hex[:12]}"
+            
+            # 注意：不再保存到数据库，FormTemplate 已废弃
+            # 表单 Schema 由本体约束（ontology）驱动，通过 config_loader 加载
+            # if db:
+            #     try:
+            #         existing_form = db.query(Form).filter(
+            #             Form.form_code == form_code,
+            #             Form.is_active == True
+            #         ).first()
+            #         
+            #         if existing_form:
+            #             existing_form.version += 1
+            #             db.commit()
+            #             logger.info(f"[FormService] 更新表单版本 form_code={form_code} version={existing_form.version}")
+            #         else:
+            #             new_form = Form(
+            #                 form_code=form_code,
+            #                 form_name=constraints.get("formName", form_code),
+            #                 description=constraints.get("description"),
+            #                 entities=constraints.get("entities", []),
+            #                 ontology_code=form_code,
+            #                 is_active=True,
+            #                 version=1
+            #             )
+            #             db.add(new_form)
+            #             db.commit()
+            #             logger.info(f"[FormService] 创建表单记录 form_code={form_code}")
+            #     except Exception as db_err:
+            #         logger.warning(f"[FormService] 保存表单记录失败: {db_err}")
+            
+            return {
+                "success": True,
+                "formSchema": form_schema,
+                "formId": form_id,
+                "message": "表单生成成功"
+            }
+            
+        except Exception as e:
+            logger.exception(f"[FormService] 生成表单失败: {e}")
+            return {
+                "success": False,
+                "message": f"生成表单时发生错误: {str(e)}"
+            }
+    
+    @classmethod
+    def adapt_for_chat_window(cls, form_schema: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        将表单 schema 适配为聊天窗口所需的格式
+        
+        Args:
+            form_schema: 原始表单 schema
+            
+        Returns:
+            适配后的表单 schema
+        """
+        # 目前直接返回原 schema，后续可根据需要添加适配逻辑
+        return form_schema

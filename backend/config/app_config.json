@@ -37,6 +37,11 @@
       "maxResponsePreview": 1000,
       "maxHistory": 1000
     },
+    "sql": {
+      "enableLogging": false,
+      "enableConsole": false,
+      "level": "INFO"
+    },
     "modules": {
       "llm_service": "DEBUG",
       "chat_api": "DEBUG",
