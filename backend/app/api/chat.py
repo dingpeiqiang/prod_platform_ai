@@ -407,6 +407,11 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                     return
 
                             if scene_prompt_content and last_user_message:
+                                # 【调试】打印场景提示词内容
+                                logger.info(f"[chat/stream] ===== 场景提示词内容 =====")
+                                logger.info(f"[chat/stream] {scene_prompt_content[:500]}...")  # 只打印前500字符
+                                logger.info(f"[chat/stream] ================================")
+                                
                                 yield thinking(f"🧠 使用场景提示词调用大模型...")
                                 try:
                                     scene_response = llm_service._call_llm_sync(last_user_message, system_prompt=scene_prompt_content)
