@@ -171,12 +171,22 @@ class RecommendationEngine:
                 candidates = candidates_by_priority.get(priority, [])
                 candidates.sort(key=lambda x: (x.confidence, x.score), reverse=True)
                 
+                logger.debug(f"[RecommendationEngine] 处理优先级 {priority}, 候选项数={len(candidates)}")
+                
                 for item in candidates:
+                    logger.debug(f"[RecommendationEngine] 检查候选项: value={item.value}, reason='{item.reason}', confidence={item.confidence}")
+                    
                     if item.value not in seen_values:
                         seen_values.add(item.value)
+                        original_reason = item.reason
                         item.reason = self._simplify_reason(item.reason, item.confidence)
+                        logger.debug(f"[RecommendationEngine] 简化后 reason='{item.reason}' (原: '{original_reason}')")
+                        
                         if item.reason and item.reason.strip():
                             final_recommendations.append(item)
+                            logger.debug(f"[RecommendationEngine] ✅ 添加推荐: {item.value}")
+                        else:
+                            logger.debug(f"[RecommendationEngine] ❌ 跳过推荐: reason 为空")
                     
                     if len(final_recommendations) >= min(max_recommendations, self.max_recommendations):
                         break
