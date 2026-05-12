@@ -665,6 +665,8 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                             yield sse({"type": "text_start"})
                                             yield sse({"type": "text", "content": scene_response})
                                             yield sse({"type": "text_end"})
+                                            # 设置需要用户响应，因为场景回复是对话式的
+                                            intent_data["needUserResponse"] = True
                                     else:
                                         yield thinking(f"⚠️ 场景大模型返回为空")
                                 except Exception as e:
