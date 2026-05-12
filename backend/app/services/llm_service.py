@@ -144,38 +144,28 @@ class LLMService:
         logger.info("[LLM STREAM] PromptLength: %d", prompt_len)
         
         llm_start = time.time()
-        total_chars = 0
-        reasoning_chars = 0
-        response_buffer = []
+        stats = StreamStats(start_time=llm_start)
         
         try:
             async for text, _ in self.provider.call_stream(prompt, system_prompt, max_tokens):
                 if text:
-                    total_chars += len(text)
-                    response_buffer.append(text)
+                    stats.char_count += len(text)
                     yield text, None
             
-            llm_elapsed = time.time() - llm_start
-            full_response = ''.join(response_buffer)
+            stats.end_time = time.time()
             
             logger.info("[LLM STREAM] ====== COMPLETE ======")
             logger.info("[LLM STREAM] Stats: %d chars | %d reasoning chars | %.2fs", 
-                       total_chars, reasoning_chars, llm_elapsed)
+                       stats.char_count, stats.thinking_chars, stats.elapsed)
             
             # 最后返回统计信息
-            stats = {
-                'chars': total_chars,
-                'reasoning_chars': reasoning_chars,
-                'elapsed': llm_elapsed,
-                'chars_per_second': total_chars / llm_elapsed if llm_elapsed > 0 else 0
-            }
             yield None, stats
             
         except Exception as e:
-            llm_elapsed = time.time() - llm_start
+            stats.end_time = time.time()
             logger.error("[LLM STREAM] ====== FAILED ======")
             logger.error("[LLM STREAM] Error: %s", str(e))
-            logger.error("[LLM STREAM] Elapsed: %.2fs", llm_elapsed)
+            logger.error("[LLM STREAM] Elapsed: %.2fs", stats.elapsed)
             raise
     
     def _call_llm_sync(self, prompt: str, system_prompt: Optional[str] = None, 
