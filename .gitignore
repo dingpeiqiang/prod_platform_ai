@@ -77,6 +77,14 @@ coverage/
 Thumbs.db
 .DS_Store
 
+# Windows reserved filenames (prevent accidental tracking)
+nul
+con
+prn
+aux
+com[0-9]
+lpt[0-9]
+
 # Project specific
 backend/app/logs/
 frontend/dist/
