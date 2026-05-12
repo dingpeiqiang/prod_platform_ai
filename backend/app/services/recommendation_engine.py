@@ -120,6 +120,7 @@ class RecommendationEngine:
                     item.priority = 1
                     item.reason = f"AI智能推荐"
                     candidates_by_priority[1].append(item)
+                    all_candidates.append(item)  # 【修复】添加到总候选列表
 
             if "user_personalized" in active_strategies and user_id:
                 strategies_used.append("user_personalized")
@@ -129,6 +130,7 @@ class RecommendationEngine:
                 for item in user_candidates:
                     item.priority = 2
                     candidates_by_priority[2].append(item)
+                    all_candidates.append(item)  # 【修复】添加到总候选列表
 
             if "frequency" in active_strategies:
                 strategies_used.append("frequency")
@@ -139,6 +141,7 @@ class RecommendationEngine:
                     if item.priority is None or item.priority > 2:
                         item.priority = 2
                     candidates_by_priority[2].append(item)
+                    all_candidates.append(item)  # 【修复】添加到总候选列表
 
             if "time_decay" in active_strategies:
                 strategies_used.append("time_decay")
@@ -149,6 +152,7 @@ class RecommendationEngine:
                     if item.priority is None or item.priority > 3:
                         item.priority = 3
                     candidates_by_priority[3].append(item)
+                    all_candidates.append(item)  # 【修复】添加到总候选列表
 
             seen_values = set()
             final_recommendations = []
