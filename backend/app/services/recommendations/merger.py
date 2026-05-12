@@ -25,6 +25,51 @@ class RecommendationMerger:
         "context": 2,
     }
 
+    @staticmethod
+    def _get_enum_label(form_code: str, field_code: str, value: str) -> str:
+        """
+        从本体定义中获取枚举值的中文标签
+        
+        Args:
+            form_code: 表单编码
+            field_code: 字段编码
+            value: 枚举值（编码）
+        
+        Returns:
+            中文标签，如果没有映射则返回原值
+        """
+        try:
+            from app.services.ontology_service import OntologyService
+            ontology_result = OntologyService.get_form_constraint(form_code)
+            if not ontology_result.get('success'):
+                return value
+            
+            ontology = ontology_result.get('constraints', {})
+            entities = ontology.get('entities', [])
+            
+            for entity in entities:
+                fields = entity.get('fields', [])
+                for field_def in fields:
+                    if field_def.get('fieldCode') == field_code:
+                        # 优先从 enumConfig.options 查找
+                        enum_config = field_def.get('enumConfig', {})
+                        options = enum_config.get('options', []) if isinstance(enum_config, dict) else []
+                        # 如果 enumConfig 中没有，再尝试直接的 options 字段
+                        if not options:
+                            options = field_def.get('options', [])
+                        
+                        for opt in options:
+                            if isinstance(opt, str):
+                                if opt == value:
+                                    return opt
+                            elif isinstance(opt, dict):
+                                if opt.get('value') == value:
+                                    return opt.get('label', value)
+        except Exception as e:
+            logger.debug(f"[_get_enum_label] 获取标签失败: {e}")
+        
+        return value
+
     @classmethod
     def merge_recommendations(
         cls,
@@ -57,11 +102,13 @@ class RecommendationMerger:
                 source = item.get("source", "history")
                 reason = item.get("reason", "")
                 confidence = item.get("confidence", 0)
+                label = item.get("label", cls._get_enum_label(form_code, field_code, value))
                 priority = cls.SOURCE_PRIORITY.get(source, 1)
 
                 if value not in all_items or priority > all_items[value]["priority"]:
                     all_items[value] = {
                         "value": value,
+                        "label": label,
                         "source": source,
                         "reason": reason,
                         "confidence": confidence,
@@ -95,9 +142,11 @@ class RecommendationMerger:
             if options:
                 for opt in options:
                     opt_val = opt.get("value", opt.get("label", ""))
+                    opt_label = opt.get("label", opt_val) if isinstance(opt, dict) else opt_val
                     if opt_val and opt_val not in all_items:
                         all_items[opt_val] = {
                             "value": opt_val,
+                            "label": opt_label,
                             "source": "static",
                             "reason": "常用选项",
                             "confidence": 0.3,
@@ -126,26 +175,9 @@ class RecommendationMerger:
 
         result = []
         for item in sorted_items[:max_per_field]:
+            # label 应该已经在前面的处理中添加了
             label = item.get("label", item["value"])
-            if not label:
-                try:
-                    from app.services.ontology_service import OntologyService
-                    ontology_result = OntologyService.get_form_constraint(form_code)
-                    if ontology_result.get('success'):
-                        ontology = ontology_result.get('constraints', {})
-                        entities = ontology.get('entities', [])
-                        for entity in entities:
-                            fields = entity.get('fields', [])
-                            for field_def_item in fields:
-                                if field_def_item.get('fieldCode') == field_code:
-                                    options = field_def_item.get('options', [])
-                                    for opt in options:
-                                        if isinstance(opt, dict) and opt.get('value') == item["value"]:
-                                            label = opt.get('label', item["value"])
-                                            break
-                except Exception:
-                    pass
-
+            
             result.append({
                 "value": item["value"],
                 "label": label,

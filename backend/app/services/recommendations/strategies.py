@@ -30,9 +30,10 @@ class RecommendationItem:
     reason: str
     metadata: Dict[str, Any] = field(default_factory=dict)
     priority: Optional[int] = None
+    label: Optional[str] = None  # 枚举值的中文标签
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "value": self.value,
             "fieldCode": self.field_code,
             "score": round(self.score, 3),
@@ -42,6 +43,10 @@ class RecommendationItem:
             "reason": self.reason,
             "metadata": self.metadata
         }
+        # 如果有 label 字段，也包含进去
+        if hasattr(self, 'label') and self.label:
+            result["label"] = self.label
+        return result
 
 
 @dataclass

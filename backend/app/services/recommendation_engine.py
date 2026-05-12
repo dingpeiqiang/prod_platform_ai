@@ -181,6 +181,10 @@ class RecommendationEngine:
                         logger.warning(f"[RecommendationEngine] 跳过空值推荐: field={field_code}, source={item.source}")
                         continue
                     
+                    # 🔧 为枚举值添加中文标签
+                    if not hasattr(item, 'label') or not item.label:
+                        item.label = self._get_enum_label(form_code, field_code, item.value)
+                    
                     if item.value not in seen_values:
                         seen_values.add(item.value)
                         original_reason = item.reason
@@ -189,7 +193,7 @@ class RecommendationEngine:
                         
                         if item.reason and item.reason.strip():
                             final_recommendations.append(item)
-                            logger.debug(f"[RecommendationEngine] ✅ 添加推荐: {item.value}")
+                            logger.debug(f"[RecommendationEngine] ✅ 添加推荐: {item.value} (label={item.label})")
                         else:
                             logger.debug(f"[RecommendationEngine] ❌ 跳过推荐: reason 为空")
                     
@@ -280,6 +284,51 @@ class RecommendationEngine:
                 return reason
             else:
                 return "⚪ 常用选项"
+    
+    @staticmethod
+    def _get_enum_label(form_code: str, field_code: str, value: str) -> str:
+        """
+        从本体定义中获取枚举值的中文标签
+        
+        Args:
+            form_code: 表单编码
+            field_code: 字段编码
+            value: 枚举值（编码）
+        
+        Returns:
+            中文标签，如果没有映射则返回原值
+        """
+        try:
+            from app.services.ontology_service import OntologyService
+            ontology_result = OntologyService.get_form_constraint(form_code)
+            if not ontology_result.get('success'):
+                return value
+            
+            ontology = ontology_result.get('constraints', {})
+            entities = ontology.get('entities', [])
+            
+            for entity in entities:
+                fields = entity.get('fields', [])
+                for field_def in fields:
+                    if field_def.get('fieldCode') == field_code:
+                        # 优先从 enumConfig.options 查找
+                        enum_config = field_def.get('enumConfig', {})
+                        options = enum_config.get('options', []) if isinstance(enum_config, dict) else []
+                        # 如果 enumConfig 中没有，再尝试直接的 options 字段
+                        if not options:
+                            options = field_def.get('options', [])
+                        
+                        for opt in options:
+                            if isinstance(opt, str):
+                                if opt == value:
+                                    return opt
+                            elif isinstance(opt, dict):
+                                if opt.get('value') == value:
+                                    return opt.get('label', value)
+        except Exception as e:
+            logger.debug(f"[_get_enum_label] 获取标签失败: {e}")
+        
+        return value
     
     def _get_static_recommendations(
         self,
