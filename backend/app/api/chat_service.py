@@ -10,7 +10,7 @@ from app.core.errors import ErrorCategory, ErrorLevel, ErrorCode
 from app.core.error_handler import create_error, error_handler
 from app.mcp_tools import get_toolhub
 from app.api.chat_utils import (
-    strip_json_comments, fix_json_newlines, build_ontologies_info,
+    strip_json_comments, fix_json_newlines, fix_incomplete_json, build_ontologies_info,
     build_scene_keywords, build_scene_hierarchy, build_separators, FALLBACK_RESPONSES,
     sse, thinking, reasoning
 )
