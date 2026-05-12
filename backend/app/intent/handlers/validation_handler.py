@@ -4,7 +4,7 @@
 import logging
 import re
 import time
-from typing import AsyncGenerator, Dict, Any
+from typing import AsyncGenerator, Dict, Any, List
 
 from ..base import BaseIntentHandler, IntentContext
 from ..utils import thinking, sse, done_event
