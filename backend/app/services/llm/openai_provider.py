@@ -133,10 +133,11 @@ class OpenAIProvider(BaseProvider):
         payload = self._build_payload(prompt, system_prompt, max_tokens, stream=True)
         headers = self._get_headers()
         
-        stats = StreamStats(start_time=asyncio.get_event_loop().time())
+        loop = asyncio.get_event_loop()
+        stats = StreamStats(start_time=loop.time())
         token_queue = asyncio.Queue()
         
-        def _worker():
+        def _worker(event_loop):
             try:
                 resp = requests.post(url, json=payload, headers=headers, stream=True, timeout=300)
                 if resp.status_code != 200:
@@ -157,11 +158,11 @@ class OpenAIProvider(BaseProvider):
                         reasoning = delta.get('reasoning', '')
                         
                         if content:
-                            asyncio.get_event_loop().call_soon_threadsafe(
+                            event_loop.call_soon_threadsafe(
                                 token_queue.put_nowait, ('content', content)
                             )
                         if reasoning:
-                            asyncio.get_event_loop().call_soon_threadsafe(
+                            event_loop.call_soon_threadsafe(
                                 token_queue.put_nowait, ('reasoning', reasoning)
                             )
                     except json.JSONDecodeError:
@@ -169,10 +170,9 @@ class OpenAIProvider(BaseProvider):
             except Exception as e:
                 pass
             finally:
-                asyncio.get_event_loop().call_soon_threadsafe(token_queue.put_nowait, None)
+                event_loop.call_soon_threadsafe(token_queue.put_nowait, None)
         
-        loop = asyncio.get_event_loop()
-        loop.run_in_executor(None, _worker)
+        loop.run_in_executor(None, _worker, loop)
         
         while True:
             item = await token_queue.get()
