@@ -126,6 +126,8 @@ def parse_intent_result(intent_result: str) -> Optional[Dict]:
     try:
         cleaned = strip_json_comments(intent_result.strip())
         cleaned = fix_json_newlines(cleaned)
+        # 尝试修复不完整的 JSON（模型返回结果被截断的情况）
+        cleaned = fix_incomplete_json(cleaned)
         return json.loads(cleaned)
     except json.JSONDecodeError as e:
         logger.warning("意图识别 JSON 解析失败: %s raw=%s", e, intent_result[:200] if intent_result else "")

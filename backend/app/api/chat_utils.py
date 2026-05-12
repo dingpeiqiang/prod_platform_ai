@@ -147,6 +147,46 @@ def fix_json_newlines(json_str: str) -> str:
     return ''.join(result)
 
 
+def fix_incomplete_json(json_str: str) -> str:
+    """修复不完整的 JSON（模型返回结果被截断的情况）。
+    
+    处理以下情况：
+    1. 未闭合的字符串（添加结束引号）
+    2. 缺少闭合的花括号/方括号
+    """
+    # 统计引号数量，如果是奇数，说明字符串未闭合
+    quote_count = json_str.count('"')
+    if quote_count % 2 != 0:
+        # 找到最后一个未转义的引号位置
+        last_quote_idx = -1
+        escape_next = False
+        for i, ch in enumerate(json_str):
+            if escape_next:
+                escape_next = False
+                continue
+            if ch == '\\':
+                escape_next = True
+                continue
+            if ch == '"':
+                last_quote_idx = i
+        
+        if last_quote_idx != -1:
+            # 在字符串末尾添加闭合引号
+            json_str = json_str[:last_quote_idx + 1] + '"' + json_str[last_quote_idx + 1:]
+    
+    # 统计花括号和方括号是否匹配
+    open_braces = json_str.count('{')
+    close_braces = json_str.count('}')
+    open_brackets = json_str.count('[')
+    close_brackets = json_str.count(']')
+    
+    # 添加缺少的闭合括号
+    json_str += '}' * (open_braces - close_braces)
+    json_str += ']' * (open_brackets - close_brackets)
+    
+    return json_str
+
+
 def build_ontologies_info() -> str:
     ontologies = config_loader.get_all_ontologies()
     info_lines = []
