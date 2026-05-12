@@ -425,7 +425,18 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                         # 解析场景响应，检查是否需要调用工具
                                         try:
                                             import json
-                                            scene_json = json.loads(scene_response)
+                                            import re
+                                            
+                                            # 【修复】清理 LLM 返回的 Markdown 代码块标记
+                                            cleaned_response = scene_response.strip()
+                                            # 移除开头的 ```json 或 ```
+                                            cleaned_response = re.sub(r'^```json\s*', '', cleaned_response)
+                                            cleaned_response = re.sub(r'^```\s*', '', cleaned_response)
+                                            # 移除结尾的 ```
+                                            cleaned_response = re.sub(r'\s*```$', '', cleaned_response)
+                                            cleaned_response = cleaned_response.strip()
+                                            
+                                            scene_json = json.loads(cleaned_response)
                                             
                                             # 将场景数据添加到 intent_data
                                             intent_data["sceneData"] = scene_json
