@@ -304,8 +304,11 @@ class ValidationHandler(BaseIntentHandler):
         
         total_errors = len(all_errors)
 
+        # 构建表格格式的输出文本
+        table_output = self._format_table_output(validation_table, llm_warnings)
+        
         yield thinking(
-            f"📋 校验汇总：共 {total_errors} 个错误，{len(llm_warnings)} 个警告{'（全部通过）' if total_errors == 0 else ''}",
+            f"📋 校验汇总：共 {total_errors} 个错误，{len(llm_warnings)} 个警告{'（全部通过）' if total_errors == 0 else ''}\n\n{table_output}",
             result={
                 "totalErrors": total_errors,
                 "totalWarnings": len(llm_warnings),
@@ -424,6 +427,82 @@ class ValidationHandler(BaseIntentHandler):
                 "failedCount": sum(1 for r in rows if r["validationResult"] == "不通过")
             }
         }
+    
+    def _format_table_output(self, validation_table: Dict[str, Any], warnings: List[str]) -> str:
+        """
+        格式化表格输出为可读文本格式
+        
+        输出格式：
+        | 编码 | 名称 | 原值 | 推荐值 | 校验结果 | 优化建议 |
+        |------|------|------|--------|----------|----------|
+        | ...  | ...  | ...  | ...    | ...      | ...      |
+        
+        警告：
+        1. ...
+        2. ...
+        """
+        columns = validation_table.get("columns", [])
+        rows = validation_table.get("rows", [])
+        summary = validation_table.get("summary", {})
+        
+        # 列标签映射
+        label_map = {col["key"]: col["label"] for col in columns}
+        
+        # 计算列宽度
+        col_widths = {}
+        for col in columns:
+            key = col["key"]
+            max_width = len(col["label"]) + 2  # 标签宽度 + 边距
+            for row in rows:
+                cell_value = str(row.get(key, ""))
+                max_width = max(max_width, len(cell_value) + 2)
+            col_widths[key] = min(max_width, 30)  # 最大宽度限制
+        
+        # 构建表头
+        header = "| " + " | ".join(f"{col['label']:{col_widths[col['key']]}}" for col in columns) + " |"
+        
+        # 构建分隔线
+        separator = "|-" + "-|-".join("-" * col_widths[col["key"]] for col in columns) + "-|"
+        
+        # 构建数据行
+        data_rows = []
+        for row in rows:
+            cells = []
+            for col in columns:
+                key = col["key"]
+                value = str(row.get(key, ""))
+                # 校验结果高亮
+                if key == "validationResult" and value == "不通过":
+                    cells.append(f"❌ {value}".ljust(col_widths[key]))
+                elif key == "validationResult" and value == "通过":
+                    cells.append(f"✅ {value}".ljust(col_widths[key]))
+                else:
+                    # 截断过长内容
+                    if len(value) > col_widths[key]:
+                        value = value[:col_widths[key] - 3] + "..."
+                    cells.append(value.ljust(col_widths[key]))
+            data_rows.append("| " + " | ".join(cells) + " |")
+        
+        # 组合所有部分
+        output_lines = []
+        output_lines.append("### 校验结果")
+        output_lines.append("")
+        output_lines.append(header)
+        output_lines.append(separator)
+        output_lines.extend(data_rows)
+        output_lines.append("")
+        
+        # 添加汇总信息
+        output_lines.append(f"**汇总**: 共 {summary.get('totalFields', 0)} 个字段，{summary.get('passedCount', 0)} 通过，{summary.get('failedCount', 0)} 不通过")
+        output_lines.append("")
+        
+        # 添加警告信息
+        if warnings:
+            output_lines.append("### ⚠️ 警告")
+            for i, warning in enumerate(warnings, 1):
+                output_lines.append(f"{i}. {warning}")
+        
+        return "\n".join(output_lines)
     
     @staticmethod
     def _parse_form_data_from_message(message: str) -> Dict[str, str]:
