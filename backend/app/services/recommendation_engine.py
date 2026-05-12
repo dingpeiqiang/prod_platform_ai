@@ -164,32 +164,6 @@ class RecommendationEngine:
                     candidates_by_priority.setdefault(4, []).append(item)
                     all_candidates.append(item)
 
-            # 【关键】确保每个字段都有 AI 推断结果
-            # 如果 Priority 1（AI 推荐）为空，添加一个默认的 AI 推断项
-            if not candidates_by_priority.get(1):
-                # LLM 没有为该字段生成任何推断
-                # 添加一个默认的 AI 推断项，标记为“AI 未推断”
-                ai_default = RecommendationItem(
-                    value="",
-                    field_code=field_code,
-                    score=0.3,
-                    source="llm_inference",
-                    confidence=0.5,
-                    match_type="not_inferred",
-                    reason="🔴 AI 未推断此字段",
-                    metadata={
-                        "inferredBy": "llm",
-                        "source": "ai_default",
-                        "isEmpty": True,
-                        "priority": 1,
-                        "note": "LLM 在意图识别阶段未为此字段生成推断"
-                    }
-                )
-                ai_default.priority = 1
-                candidates_by_priority[1] = [ai_default]
-                all_candidates.append(ai_default)
-                logger.debug(f"[RecommendationEngine] 为字段 {field_code} 添加默认 AI 推断项")
-
             seen_values = set()
             final_recommendations = []
             

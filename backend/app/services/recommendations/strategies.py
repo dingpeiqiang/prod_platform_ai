@@ -383,52 +383,35 @@ class ContextAwareStrategy:
 
         try:
             extracted_fields = context.get('extractedFields', {})
-            field_schema = context.get('fieldSchema', {})  # 字段的 Schema 定义
             
             # 【核心】从 LLM 意图识别结果中提取推荐
-            # LLM 应该在第一阶段为所有字段生成推断值
+            # LLM 应该在第一阶段为所有字段生成推断值（一次性完成）
+            # extractedFields 应该包含本体中定义的所有字段
+            
             if field_code in extracted_fields:
                 value = extracted_fields[field_code]
-                if value:
-                    # ✅ 情况1：LLM 从用户输入中提取到了值
-                    recommendations.append(RecommendationItem(
-                        value=str(value),
-                        field_code=field_code,
-                        score=0.95,
-                        source="llm_extraction",
-                        confidence=0.95,
-                        match_type="extracted",
-                        reason="🔴 AI从您的输入中提取",
-                        metadata={
-                            "extractedBy": "llm",
-                            "source": "user_input",
-                            "priority": 1
-                        }
-                    ))
-                else:
-                    # ⚠️ 情况2：LLM 推断该字段为空（用户未提供）
-                    # 仍然返回一个推荐项，标记为 AI 推断为空
-                    # 这样前端可以显示“AI 推断：暂无信息”
-                    recommendations.append(RecommendationItem(
-                        value="",
-                        field_code=field_code,
-                        score=0.5,
-                        source="llm_inference",
-                        confidence=0.7,
-                        match_type="inferred_empty",
-                        reason="🔴 AI推断：您未提供此信息",
-                        metadata={
-                            "inferredBy": "llm",
-                            "source": "ai_inference",
-                            "isEmpty": True,
-                            "priority": 1
-                        }
-                    ))
+                
+                # ✅ LLM 已为该字段生成推断值（可能为空字符串）
+                recommendations.append(RecommendationItem(
+                    value=str(value) if value else "",
+                    field_code=field_code,
+                    score=0.95 if value else 0.7,
+                    source="llm_extraction" if value else "llm_inference",
+                    confidence=0.95 if value else 0.7,
+                    match_type="extracted" if value else "inferred_empty",
+                    reason=f"🔴 AI{'从您的输入中提取' if value else '推断：您未提供此信息'}",
+                    metadata={
+                        "extractedBy": "llm",
+                        "source": "user_input" if value else "ai_inference",
+                        "isEmpty": not value,
+                        "priority": 1
+                    }
+                ))
             else:
-                # ❌ 情况3：LLM 完全没有推断该字段（可能是遗漏）
-                # 这种情况下，我们不应该返回任何推荐
-                # 让其他策略（frequency/time_decay/static）来处理
-                pass
+                # ❌ 异常情况：LLM 没有为该字段生成推断
+                # 这不应该发生，因为 LLM 应该为所有字段生成推断值
+                logger.warning(f"[ContextAwareStrategy] LLM 未为字段 {field_code} 生成推断值")
+                # 不返回任何推荐，让其他策略处理
 
         except Exception as e:
             logger.warning(f"[ContextAwareStrategy] 推荐失败: {e}")
