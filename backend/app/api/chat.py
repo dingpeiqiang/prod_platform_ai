@@ -374,17 +374,25 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                             if intent_reasoning:
                                 yield reasoning(intent_reasoning)
 
-                            # 关键逻辑：如果识别出 form 意图但没有 scene_code，说明 LLM 跳过了场景识别
-                            # 这时需要根据 formCode 反查对应的场景
-                            if intent_type == "form" and form_code and not scene_code:
-                                # TODO: 根据 formCode 反查场景（需要建立 formCode -> sceneCode 的映射）
-                                # 暂时直接使用 formCode 作为 scene_code 尝试查询
-                                logger.warning(f"[chat/stream] form 意图缺少 scene_code，尝试使用 formCode={form_code} 作为 scene_code")
-                                scene_code = form_code
+                            # 关键逻辑：必须遵循两阶段流程
+                            # 第一阶段：识别场景意图
+                            # 第二阶段：用场景提示词调用 LLM，识别具体的表单/工具意图
                             
-                            # 只有 scene 意图或 form 意图（带 scene_code）才需要查询场景提示词
+                            # 如果 LLM 直接返回 form 意图但没有 scene_code，说明跳过了场景识别
+                            if intent_type == "form" and form_code and not scene_code:
+                                error_msg = (
+                                    f"意图识别流程错误：LLM 直接返回 form 意图但缺少 scene_code\n"
+                                    f"正确流程应该是：先识别场景 (scene) → 查询场景提示词 → 再识别表单 (form)\n"
+                                    f"请检查意图识别 prompt 是否正确配置了场景识别逻辑"
+                                )
+                                logger.error(f"[chat/stream] {error_msg}")
+                                yield sse({"type": "error", "content": error_msg})
+                                yield done_event("intent_recognition", is_form=False, intent_data=intent_data)
+                                return
+                            
+                            # 只有 scene 意图才需要查询场景提示词
                             scene_prompt_content = None
-                            if scene_code:
+                            if intent_type == "scene" and scene_code:
                                 yield thinking(f"🔍 查询场景提示词 scene_code={scene_code}")
                                 scene_prompt_content = get_scene_prompt_by_code(scene_code)
                                 if scene_prompt_content:
