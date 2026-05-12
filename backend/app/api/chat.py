@@ -365,14 +365,18 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                         intent_data = parse_intent_result(intent_result)
                         if intent_data:
                             intent_type = intent_data.get("intentType", "chat")
-                            scene_code = intent_data.get("sceneCode") or intent_data.get("formCode") or intent_data.get("form_code")
+                            
+                            # 区分 form 意图和 scene 意图
+                            form_code = intent_data.get("formCode") or intent_data.get("form_code")
+                            scene_code = intent_data.get("sceneCode")
 
-                            logger.info(f"[chat/stream] intent_type={intent_type}, scene_code={scene_code}, will_output_reasoning={bool(intent_reasoning)}")
+                            logger.info(f"[chat/stream] intent_type={intent_type}, form_code={form_code}, scene_code={scene_code}")
                             if intent_reasoning:
                                 yield reasoning(intent_reasoning)
 
+                            # 只有 scene 意图才需要查询场景提示词
                             scene_prompt_content = None
-                            if scene_code:
+                            if intent_type == "scene" and scene_code:
                                 yield thinking(f"🔍 查询场景提示词 scene_code={scene_code}")
                                 scene_prompt_content = get_scene_prompt_by_code(scene_code)
                                 if scene_prompt_content:
@@ -385,6 +389,10 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                     yield sse({"type": "error", "content": error_msg})
                                     yield done_event("intent_recognition", is_form=False, intent_data=intent_data)
                                     return
+                            elif intent_type == "form" and form_code:
+                                # form 意图不需要场景提示词，直接使用 formCode
+                                logger.info(f"[chat/stream] form 意图，使用 formCode={form_code}")
+                                yield thinking(f"📋 识别到表单意图，formCode={form_code}")
 
                             if scene_prompt_content and last_user_message:
                                 yield thinking(f"🧠 使用场景提示词调用大模型...")
