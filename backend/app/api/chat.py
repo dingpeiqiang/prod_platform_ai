@@ -428,12 +428,84 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                             # 将场景数据添加到 intent_data
                                             intent_data["sceneData"] = scene_json
                                             
-                                            # 提取消息并显示给用户
-                                            message = scene_json.get("message", "")
-                                            if message:
-                                                yield sse({"type": "text_start"})
-                                                yield sse({"type": "text", "content": message})
-                                                yield sse({"type": "text_end"})
+                                            # 【新增】支持 action 字段的场景响应格式
+                                            action = scene_json.get("action")
+                                            if action:
+                                                logger.info(f"[chat/stream] 场景响应 action={action}")
+                                                
+                                                if action == "ask_user":
+                                                    # 需要用户补充信息
+                                                    missing_fields = scene_json.get("missing_fields", [])
+                                                    message = scene_json.get("message", "")
+                                                    
+                                                    # 显示消息给用户
+                                                    if message:
+                                                        yield sse({"type": "text_start"})
+                                                        yield sse({"type": "text", "content": message})
+                                                        yield sse({"type": "text_end"})
+                                                    
+                                                    # 标记需要用户响应
+                                                    intent_data["needUserResponse"] = True
+                                                    intent_data["missingFields"] = missing_fields
+                                                    logger.info(f"[chat/stream] 场景要求用户补充信息: {missing_fields}")
+                                                    
+                                                    # 发送场景数据并返回
+                                                    yield sse({"type": "scene_data", "content": scene_response})
+                                                    stream_stats.total_elapsed = time.time() - start_time
+                                                    yield sse({"type": "stats", "content": stream_stats.to_dict()})
+                                                    yield intent_event(intent_type, "awaiting_input", intent_data, is_form=False)
+                                                    yield done_event(intent_type, is_form=False, intent_data=intent_data)
+                                                    return
+                                                
+                                                elif action == "call_tool":
+                                                    # 需要调用工具
+                                                    tool_name = scene_json.get("tool_name")
+                                                    tool_args = scene_json.get("tool_args", {})
+                                                    message = scene_json.get("message", "")
+                                                    
+                                                    # 显示消息
+                                                    if message:
+                                                        yield sse({"type": "text_start"})
+                                                        yield sse({"type": "text", "content": message})
+                                                        yield sse({"type": "text_end"})
+                                                    
+                                                    # 添加工具调用到 intent_data
+                                                    if "tool_calls" not in intent_data:
+                                                        intent_data["tool_calls"] = []
+                                                    intent_data["tool_calls"].append({
+                                                        "name": tool_name,
+                                                        "arguments": tool_args
+                                                    })
+                                                    logger.info(f"[chat/stream] 场景要求调用工具: {tool_name}")
+                                                
+                                                elif action == "generate_form":
+                                                    # 生成表单
+                                                    form_code = scene_json.get("formCode")
+                                                    extracted_fields = scene_json.get("extractedFields", {})
+                                                    message = scene_json.get("message", "")
+                                                    
+                                                    # 显示消息
+                                                    if message:
+                                                        yield sse({"type": "text_start"})
+                                                        yield sse({"type": "text", "content": message})
+                                                        yield sse({"type": "text_end"})
+                                                    
+                                                    # 设置 formCode 和 extractedFields
+                                                    if form_code:
+                                                        intent_data["formCode"] = form_code
+                                                        intent_data["detectedFormCode"] = form_code
+                                                    if extracted_fields:
+                                                        intent_data["extractedFields"] = extracted_fields
+                                                    
+                                                    logger.info(f"[chat/stream] 场景要求生成表单: formCode={form_code}")
+                                            
+                                            else:
+                                                # 旧格式：直接使用 message 字段
+                                                message = scene_json.get("message", "")
+                                                if message:
+                                                    yield sse({"type": "text_start"})
+                                                    yield sse({"type": "text", "content": message})
+                                                    yield sse({"type": "text_end"})
                                             
                                             # 直接使用场景响应中的 needUserResponse 值
                                             need_user_response_from_scene = scene_json.get("needUserResponse", False)
