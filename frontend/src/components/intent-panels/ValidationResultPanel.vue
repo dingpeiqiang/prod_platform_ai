@@ -18,80 +18,14 @@
       <span class="form-code-tag">{{ formCode }}</span>
     </div>
 
-    <!-- 表格格式校验结果 -->
-    <div v-if="validationTable" class="validation-table-section">
-      <div class="validation-section-title">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/>
-        </svg>
-        校验结果
-      </div>
-      
-      <div class="validation-table-wrapper">
-        <table class="validation-table">
-          <thead>
-            <tr>
-              <th v-for="col in validationTable.columns" :key="col.key">{{ col.label }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr 
-              v-for="(row, idx) in validationTable.rows" 
-              :key="idx"
-              :class="{ 'row-failed': row.validationResult === '不通过' }"
-            >
-              <td v-for="col in validationTable.columns" :key="col.key" class="table-cell">
-                <template v-if="col.key === 'validationResult'">
-                  <span v-if="row[col.key] === '通过'" class="result-badge result-pass">✅ 通过</span>
-                  <span v-else class="result-badge result-fail">❌ 不通过</span>
-                </template>
-                <template v-else-if="col.key === 'suggestion' && row.suggestion">
-                  <div class="suggestion-cell">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#3498db" stroke-width="2">
-                      <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-                    </svg>
-                    {{ row[col.key] }}
-                  </div>
-                </template>
-                <template v-else>
-                  {{ row[col.key] || '-' }}
-                </template>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- 汇总信息 -->
-      <div class="validation-summary">
-        <span class="summary-item">
-          共 <strong>{{ validationTable.summary.totalFields }}</strong> 个字段
-        </span>
-        <span class="summary-item summary-pass">
-          ✅ 通过 <strong>{{ validationTable.summary.passedCount }}</strong>
-        </span>
-        <span class="summary-item summary-fail">
-          ❌ 不通过 <strong>{{ validationTable.summary.failedCount }}</strong>
-        </span>
-      </div>
-    </div>
-
-    <!-- 警告列表 -->
-    <div v-if="warnings?.length" class="validation-warnings">
-      <div class="validation-section-title">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-          <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-        </svg>
-        警告 ({{ warnings.length }})
-      </div>
-      <div v-for="(warn, idx) in warnings" :key="'warn-' + idx" class="validation-item warning-item">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f39c12" stroke-width="2">
-          <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-        </svg>
-        <span class="warning-text">{{ warn }}</span>
-      </div>
-    </div>
+    <!-- 使用专门的表格组件展示校验结果 -->
+    <ValidationResultTable
+      v-if="validationTable"
+      :columns="validationTable.columns"
+      :rows="validationTable.rows"
+      :summary="validationTable.summary"
+      :warnings="warnings || []"
+    />
 
     <!-- 校验阶段信息 -->
     <div v-if="step" class="validation-step">
@@ -101,9 +35,9 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import ValidationResultTable from '../ValidationResultTable.vue'
 
-const props = defineProps({
+defineProps({
   formCode: { type: String, default: '' },
   passed: { type: Boolean, default: false },
   errors: { type: Array, default: () => [] },
@@ -111,39 +45,6 @@ const props = defineProps({
   step: { type: String, default: '' },
   rule_engine_passed: { type: Boolean, default: false },
   validationTable: { type: Object, default: null }
-})
-
-// 按字段名分组错误（保留用于兼容旧格式）
-const groupedErrors = computed(() => {
-  const groups = {}
-
-  for (const err of props.errors) {
-    const field = err.field || '未知字段'
-    if (!groups[field]) {
-      groups[field] = {
-        field,
-        fieldCode: err.fieldCode || '',
-        errors: [],
-        sources: [],
-        suggestions: []
-      }
-    }
-
-    groups[field].errors.push({
-      message: err.message,
-      source: err.source
-    })
-
-    if (!groups[field].sources.includes(err.source)) {
-      groups[field].sources.push(err.source)
-    }
-
-    if (err.suggestion && !groups[field].suggestions.includes(err.suggestion)) {
-      groups[field].suggestions.push(err.suggestion)
-    }
-  }
-
-  return Object.values(groups)
 })
 </script>
 
@@ -293,105 +194,7 @@ const groupedErrors = computed(() => {
   color: #d68910;
 }
 
-/* 表格样式 */
-.validation-table-section {
-  margin-bottom: 10px;
-}
-
-.validation-table-wrapper {
-  overflow-x: auto;
-  border-radius: 6px;
-  border: 1px solid #eee;
-  margin-bottom: 8px;
-}
-
-.validation-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-
-.validation-table th {
-  background: #f8f9fa;
-  padding: 8px 10px;
-  text-align: left;
-  font-weight: 600;
-  color: #666;
-  border-bottom: 2px solid #e9ecef;
-  white-space: nowrap;
-}
-
-.validation-table td {
-  padding: 8px 10px;
-  border-bottom: 1px solid #eee;
-  vertical-align: top;
-}
-
-.validation-table tbody tr:hover {
-  background: #f8f9fa;
-}
-
-.validation-table tbody tr.row-failed {
-  background: #fff5f5;
-}
-
-.validation-table tbody tr.row-failed td {
-  border-bottom-color: #ffe5e5;
-}
-
-.table-cell {
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.result-badge {
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: 500;
-}
-
-.result-pass {
-  background: #e8f5e9;
-  color: #2e7d32;
-}
-
-.result-fail {
-  background: #ffebee;
-  color: #c62828;
-}
-
-.suggestion-cell {
-  display: flex;
-  align-items: flex-start;
-  gap: 4px;
-  font-size: 11px;
-  color: #3498db;
-  line-height: 1.3;
-}
-
-.validation-summary {
-  display: flex;
-  gap: 16px;
-  font-size: 12px;
-  padding: 8px 10px;
-  background: #f8f9fa;
-  border-radius: 4px;
-}
-
-.summary-item {
-  color: #666;
-}
-
-.summary-item.summary-pass {
-  color: #27ae60;
-}
-
-.summary-item.summary-fail {
-  color: #e74c3c;
-}
+/* 表格组件已移至 ValidationResultTable.vue */
 
 .validation-step {
   font-size: 11px;
