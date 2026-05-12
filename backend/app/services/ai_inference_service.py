@@ -222,6 +222,21 @@ class AIInferenceService:
         result = json.loads(cleaned)
         extracted_fields = result.get("extractedFields", {})
         
+        # 处理枚举字段：提取方括号中的实际值（如 "中国电信集团[JT1]" -> "JT1"）
+        for entity in ontology.get("entities", []):
+            for field in entity.get("fields", []):
+                field_code = field.get("fieldCode")
+                field_type = field.get("fieldType")
+                
+                # 只处理枚举类型字段
+                if field_type in ["select", "enum", "radio"] and field_code in extracted_fields:
+                    value = extracted_fields[field_code]
+                    if isinstance(value, str):
+                        # 尝试提取方括号中的值
+                        match = re.search(r'\[([^\]]+)\]', value)
+                        if match:
+                            extracted_fields[field_code] = match.group(1)
+        
         # 确保所有字段都存在
         all_field_codes = set()
         for entity in ontology.get("entities", []):
