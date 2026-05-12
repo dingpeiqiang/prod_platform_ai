@@ -38,7 +38,10 @@ class AIInferenceService:
             context: 上下文信息（可选）
             
         Returns:
-            extractedFields: 所有字段的推断值（不允许空值）
+            dict: {
+                "extractedFields": {...},  # 字段推断值
+                "reasoning": "..."          # LLM 推理过程（可选）
+            }
         """
         try:
             # 1. 加载本体定义
@@ -50,23 +53,30 @@ class AIInferenceService:
             # 2. 构建推断提示词
             prompt = self._build_inference_prompt(ontology, user_input, context)
             
-            # 3. 调用 LLM 进行推断
+            # 3. 调用 LLM 进行推断（带推理过程）
             logger.info(f"[AIInference] 开始推断 form_code={form_code}, 字段数={self._count_fields(ontology)}")
             
-            # 使用 llm_service 的同步调用方法（私有方法）
-            response = llm_service._call_llm_sync(
+            # 使用 llm_service 的同步调用方法（带推理）
+            content, reasoning = llm_service._call_llm_sync_with_reasoning(
                 prompt=prompt,
                 system_prompt="你是专业的表单字段推断助手，基于本体定义为用户输入生成合理的字段值。"
             )
             
+            if not content:
+                logger.error(f"[AIInference] LLM 返回为空")
+                return {"extractedFields": {}, "reasoning": ""}
+            
             # 4. 解析推断结果
-            extracted_fields = self._parse_inference_result(response, ontology)
+            extracted_fields = self._parse_inference_result(content, ontology)
             
             # 5. 验证结果（确保没有空值）
             self._validate_no_empty_values(extracted_fields, ontology, form_code)
             
             logger.info(f"[AIInference] 推断完成 form_code={form_code}, 字段数={len(extracted_fields)}")
-            return extracted_fields
+            return {
+                "extractedFields": extracted_fields,
+                "reasoning": reasoning or ""
+            }
             
         except Exception as e:
             logger.exception(f"[AIInference] 推断失败: {e}")

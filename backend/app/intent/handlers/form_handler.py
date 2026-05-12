@@ -48,7 +48,7 @@ class FormHandler(BaseIntentHandler):
         
         try:
             ai_service = get_ai_inference_service()
-            inferred_fields = ai_service.infer_fields(
+            inference_result = ai_service.infer_fields(
                 form_code=form_code,
                 user_input=ctx.last_user_message or "",
                 context={
@@ -56,6 +56,14 @@ class FormHandler(BaseIntentHandler):
                     "sessionId": ctx.request.sessionId if ctx.request and hasattr(ctx.request, 'sessionId') else None,
                 }
             )
+            
+            inferred_fields = inference_result.get("extractedFields", {})
+            reasoning = inference_result.get("reasoning", "")
+            
+            # 如果有推理过程，发送给前端显示
+            if reasoning:
+                from ..utils import reasoning as reasoning_event
+                yield reasoning_event(reasoning)
             
             # 合并 LLM 意图识别的结果和 AI 推断的结果
             # AI 推断的优先级更高（因为是基于本体的完整推断）
