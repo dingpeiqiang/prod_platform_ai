@@ -53,14 +53,11 @@ class AIInferenceService:
             # 3. 调用 LLM 进行推断
             logger.info(f"[AIInference] 开始推断 form_code={form_code}, 字段数={self._count_fields(ontology)}")
             
-            # 使用 llm_service 的 chat 方法
-            import asyncio
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                response = loop.run_until_complete(llm_service.chat(prompt))
-            finally:
-                loop.close()
+            # 使用 llm_service 的同步调用方法
+            response = llm_service.call_llm_sync(
+                user_message="请为所有字段生成推断值",
+                system_prompt=prompt
+            )
             
             # 4. 解析推断结果
             extracted_fields = self._parse_inference_result(response, ontology)
