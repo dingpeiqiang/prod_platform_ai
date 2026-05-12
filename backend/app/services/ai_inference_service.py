@@ -53,10 +53,10 @@ class AIInferenceService:
             # 3. 调用 LLM 进行推断
             logger.info(f"[AIInference] 开始推断 form_code={form_code}, 字段数={self._count_fields(ontology)}")
             
-            # 使用 llm_service 的同步调用方法
-            response = llm_service.call_llm_sync(
-                user_message="请为所有字段生成推断值",
-                system_prompt=prompt
+            # 使用 llm_service 的同步调用方法（私有方法）
+            response = llm_service._call_llm_sync(
+                prompt=prompt,
+                system_prompt="你是专业的表单字段推断助手，基于本体定义为用户输入生成合理的字段值。"
             )
             
             # 4. 解析推断结果
