@@ -297,7 +297,7 @@ class ValidationHandler(BaseIntentHandler):
         all_errors = structured_errors + llm_structured_errors
         
         # 获取所有字段的推荐值
-        recommendations = self._get_recommendations(form_code, form_data, db)
+        recommendations = self._get_recommendations(form_code, form_data, ctx.db)
         
         # 构建表格格式的校验结果
         validation_table = self._build_validation_table(form_data, all_errors, recommendations)
