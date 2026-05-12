@@ -127,6 +127,57 @@ class LLMService:
             logger.error("[LLM STREAM] Elapsed: %.2fs", llm_elapsed)
             raise
     
+    async def call_llm_stream_with_stats(self, prompt: str, system_prompt: Optional[str] = None, 
+                                         max_tokens: Optional[int] = None) -> AsyncGenerator[Any, None]:
+        """异步流式调用 LLM（带统计信息）"""
+        if not self.enabled or not self.provider:
+            logger.warning("[LLM STREAM] 服务未启用或 Provider 未初始化")
+            return
+        
+        provider_name = self.llm_config.get('provider', 'openai')
+        model = self._get_model()
+        prompt_len = len(prompt) + len(system_prompt) if system_prompt else len(prompt)
+        
+        logger.info("[LLM STREAM] ====== START ======")
+        logger.info("[LLM STREAM] Provider: %s, Model: %s, MaxTokens: %s", 
+                   provider_name.upper(), model, max_tokens)
+        logger.info("[LLM STREAM] PromptLength: %d", prompt_len)
+        
+        llm_start = time.time()
+        total_chars = 0
+        reasoning_chars = 0
+        response_buffer = []
+        
+        try:
+            async for text, _ in self.provider.call_stream(prompt, system_prompt, max_tokens):
+                if text:
+                    total_chars += len(text)
+                    response_buffer.append(text)
+                    yield text, None
+            
+            llm_elapsed = time.time() - llm_start
+            full_response = ''.join(response_buffer)
+            
+            logger.info("[LLM STREAM] ====== COMPLETE ======")
+            logger.info("[LLM STREAM] Stats: %d chars | %d reasoning chars | %.2fs", 
+                       total_chars, reasoning_chars, llm_elapsed)
+            
+            # 最后返回统计信息
+            stats = {
+                'chars': total_chars,
+                'reasoning_chars': reasoning_chars,
+                'elapsed': llm_elapsed,
+                'chars_per_second': total_chars / llm_elapsed if llm_elapsed > 0 else 0
+            }
+            yield None, stats
+            
+        except Exception as e:
+            llm_elapsed = time.time() - llm_start
+            logger.error("[LLM STREAM] ====== FAILED ======")
+            logger.error("[LLM STREAM] Error: %s", str(e))
+            logger.error("[LLM STREAM] Elapsed: %.2fs", llm_elapsed)
+            raise
+    
     def _call_llm_sync(self, prompt: str, system_prompt: Optional[str] = None, 
                        max_tokens: Optional[int] = None) -> Optional[str]:
         """同步调用 LLM"""
