@@ -384,89 +384,23 @@ class ContextAwareStrategy:
         try:
             extracted_fields = context.get('extractedFields', {})
 
-            # 【新增】资费备案表单的本体规则推断
-            if form_code == 'tariff_filing_publicity':
-                # 从用户输入中提取套餐编码（P开头+数字）
-                if field_code == 'bossid':
-                    tariff_pattern = r'(P\d{6,})'
-                    matches = re.findall(tariff_pattern, user_input, re.IGNORECASE)
-                    if matches:
-                        recommendations.append(RecommendationItem(
-                            value=matches[0].upper(),
-                            field_code=field_code,
-                            score=0.95,
-                            source="llm_rule",
-                            confidence=0.9,
-                            match_type="inferred",
-                            reason="从您输入的套餐编码提取",
-                            metadata={"inferredFrom": "user_input", "pattern": "tariff_code"}
-                        ))
-                
-                # 根据操作类型推断
-                if field_code == 'action_type':
-                    if '新增' in user_input or '新建' in user_input or 'add' in user_input.lower():
-                        recommendations.append(RecommendationItem(
-                            value="新增",
-                            field_code=field_code,
-                            score=0.9,
-                            source="llm_rule",
-                            confidence=0.85,
-                            match_type="inferred",
-                            reason="基于本体规则推断",
-                            metadata={"inferredFrom": "keyword_match"}
-                        ))
-                    elif '修改' in user_input or '更新' in user_input or 'update' in user_input.lower():
-                        recommendations.append(RecommendationItem(
-                            value="修改",
-                            field_code=field_code,
-                            score=0.9,
-                            source="llm_rule",
-                            confidence=0.85,
-                            match_type="inferred",
-                            reason="基于本体规则推断",
-                            metadata={"inferredFrom": "keyword_match"}
-                        ))
-                    elif '删除' in user_input or 'delete' in user_input.lower():
-                        recommendations.append(RecommendationItem(
-                            value="删除",
-                            field_code=field_code,
-                            score=0.9,
-                            source="llm_rule",
-                            confidence=0.85,
-                            match_type="inferred",
-                            reason="基于本体规则推断",
-                            metadata={"inferredFrom": "keyword_match"}
-                        ))
-
-            # 原有的通用规则
-            if field_code in ['order_amount', 'amount', 'contract_amount']:
-                amount_pattern = r'(\d+(?:\.\d+)?)\s*(?:万|元|千)?'
-                matches = re.findall(amount_pattern, user_input)
-                if matches:
-                    amount = matches[0]
+            # 【AI主导】从 LLM 意图识别结果中提取推荐
+            # LLM 已经在第一阶段识别出表单意图并提取了字段值
+            # 这里只需要将 LLM 提取的值转换为推荐项
+            
+            if field_code in extracted_fields:
+                value = extracted_fields[field_code]
+                if value:
                     recommendations.append(RecommendationItem(
-                        value=amount,
+                        value=str(value),
                         field_code=field_code,
-                        score=0.9,
-                        source="context",
-                        confidence=0.8,
-                        match_type="inferred",
-                        reason="从您输入的金额推断",
-                        metadata={"inferredFrom": "user_input"}
+                        score=0.95,
+                        source="llm_extraction",
+                        confidence=0.9,
+                        match_type="extracted",
+                        reason="AI从您的输入中提取",
+                        metadata={"extractedBy": "llm", "source": "user_input"}
                     ))
-
-            if 'customer_name' in extracted_fields and field_code == 'customer_phone':
-                customer_name = extracted_fields['customer_name']
-                recommendations.append(RecommendationItem(
-                    value=f"客户{customer_name}的历史电话",
-                    field_code=field_code,
-                    score=0.85,
-                    source="context",
-                    confidence=0.7,
-                    match_type="inferred",
-                    reason=f"基于您提到的客户{customer_name}",
-                    metadata={"relatedField": "customer_name"}
-                ))
 
         except Exception as e:
             logger.warning(f"[ContextAwareStrategy] 推荐失败: {e}")
