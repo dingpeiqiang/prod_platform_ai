@@ -165,22 +165,39 @@ class ConfigLoader:
         
         try:
             from app.models.scene import Scene
+            from app.models.prompt import Prompt
             
             db = self._db_session_factory()
             try:
                 scenes = db.query(Scene).filter(Scene.is_active == True).all()
                 result = []
                 for scene in scenes:
-                    result.append({
+                    scene_dict = {
                         'sceneCode': scene.scene_code,
                         'sceneName': scene.scene_name,
                         'description': scene.description,
                         'keywords': scene.keywords or [],
                         'priority': scene.priority,
                         'isActive': scene.is_active,
-                        'formCode': scene.form_code,
-                        'actionPrompt': scene.action_prompt_file
-                    })
+                        'promptCode': scene.prompt_code,
+                        'actionPrompt': scene.prompt_code  # 使用 prompt_code 作为 actionPrompt
+                    }
+                    
+                    # 如果有 prompt_code，尝试从提示词中解析 formCode
+                    if scene.prompt_code:
+                        prompt = db.query(Prompt).filter(
+                            Prompt.code == scene.prompt_code,
+                            Prompt.is_active == True
+                        ).first()
+                        
+                        if prompt and prompt.content:
+                            # 从提示词内容中提取 formCode
+                            import re
+                            match = re.search(r'formCode["\']?\s*[:=]\s*["\']?([a-zA-Z0-9_]+)', prompt.content)
+                            if match:
+                                scene_dict['formCode'] = match.group(1)
+                    
+                    result.append(scene_dict)
                 return result
             finally:
                 db.close()
@@ -196,6 +213,7 @@ class ConfigLoader:
         
         try:
             from app.models.scene import Scene
+            from app.models.prompt import Prompt
             
             db = self._db_session_factory()
             try:
@@ -204,18 +222,35 @@ class ConfigLoader:
                     Scene.is_active == True
                 ).first()
                 
-                if scene:
-                    return {
-                        'sceneCode': scene.scene_code,
-                        'sceneName': scene.scene_name,
-                        'description': scene.description,
-                        'keywords': scene.keywords or [],
-                        'priority': scene.priority,
-                        'isActive': scene.is_active,
-                        'formCode': scene.form_code,
-                        'actionPrompt': scene.action_prompt_file
-                    }
-                return None
+                if not scene:
+                    return None
+                
+                scene_dict = {
+                    'sceneCode': scene.scene_code,
+                    'sceneName': scene.scene_name,
+                    'description': scene.description,
+                    'keywords': scene.keywords or [],
+                    'priority': scene.priority,
+                    'isActive': scene.is_active,
+                    'promptCode': scene.prompt_code,
+                    'actionPrompt': scene.prompt_code  # 使用 prompt_code 作为 actionPrompt
+                }
+                
+                # 如果有 prompt_code，尝试从提示词中解析 formCode
+                if scene.prompt_code:
+                    prompt = db.query(Prompt).filter(
+                        Prompt.code == scene.prompt_code,
+                        Prompt.is_active == True
+                    ).first()
+                    
+                    if prompt and prompt.content:
+                        # 从提示词内容中提取 formCode
+                        import re
+                        match = re.search(r'formCode["\']?\s*[:=]\s*["\']?([a-zA-Z0-9_]+)', prompt.content)
+                        if match:
+                            scene_dict['formCode'] = match.group(1)
+                
+                return scene_dict
             finally:
                 db.close()
         except Exception as e:
