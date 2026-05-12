@@ -168,11 +168,11 @@ class FrequencyRecommendationStrategy:
                 score = self._calculate_score(stats, now)
 
                 if filter_field_count > 0 and len(form_instances) != len(filtered_instances):
-                    reason = f"基于{len(filtered_instances)}条相似记录推断"
+                    reason = f"🟢 基于{len(filtered_instances)}条相似记录推断"
                     source = "inference"
                     confidence = min(stats['weighted_sum'] / max(len(filtered_instances), 1), 1.0)
                 else:
-                    reason = f"历史填写{stats['count']}次"
+                    reason = f"🟢 历史填写{stats['count']}次"
                     source = "history"
                     confidence = min(stats['count'] / 10.0, 1.0)
 
@@ -355,10 +355,10 @@ class TimeDecayStrategy:
                     value=value,
                     field_code=field_code,
                     score=score,
-                    source="history",
+                    source="time_decay",
                     confidence=avg_recency,
                     match_type="exact",
-                    reason="近期常用选项",
+                    reason=f"🟡 近期常用（{info['count']}次）",
                     metadata={"recencyScore": avg_recency, "count": info['count']}
                 ))
 
@@ -370,7 +370,7 @@ class TimeDecayStrategy:
 
 
 class ContextAwareStrategy:
-    """基于上下文的推荐策略"""
+    """基于上下文的推荐策略（AI 主导）"""
 
     def recommend(
         self,
@@ -383,24 +383,52 @@ class ContextAwareStrategy:
 
         try:
             extracted_fields = context.get('extractedFields', {})
-
-            # 【AI主导】从 LLM 意图识别结果中提取推荐
-            # LLM 已经在第一阶段识别出表单意图并提取了字段值
-            # 这里只需要将 LLM 提取的值转换为推荐项
+            field_schema = context.get('fieldSchema', {})  # 字段的 Schema 定义
             
+            # 【核心】从 LLM 意图识别结果中提取推荐
+            # LLM 应该在第一阶段为所有字段生成推断值
             if field_code in extracted_fields:
                 value = extracted_fields[field_code]
                 if value:
+                    # ✅ 情况1：LLM 从用户输入中提取到了值
                     recommendations.append(RecommendationItem(
                         value=str(value),
                         field_code=field_code,
                         score=0.95,
                         source="llm_extraction",
-                        confidence=0.9,
+                        confidence=0.95,
                         match_type="extracted",
-                        reason="AI从您的输入中提取",
-                        metadata={"extractedBy": "llm", "source": "user_input"}
+                        reason="🔴 AI从您的输入中提取",
+                        metadata={
+                            "extractedBy": "llm",
+                            "source": "user_input",
+                            "priority": 1
+                        }
                     ))
+                else:
+                    # ⚠️ 情况2：LLM 推断该字段为空（用户未提供）
+                    # 仍然返回一个推荐项，标记为 AI 推断为空
+                    # 这样前端可以显示“AI 推断：暂无信息”
+                    recommendations.append(RecommendationItem(
+                        value="",
+                        field_code=field_code,
+                        score=0.5,
+                        source="llm_inference",
+                        confidence=0.7,
+                        match_type="inferred_empty",
+                        reason="🔴 AI推断：您未提供此信息",
+                        metadata={
+                            "inferredBy": "llm",
+                            "source": "ai_inference",
+                            "isEmpty": True,
+                            "priority": 1
+                        }
+                    ))
+            else:
+                # ❌ 情况3：LLM 完全没有推断该字段（可能是遗漏）
+                # 这种情况下，我们不应该返回任何推荐
+                # 让其他策略（frequency/time_decay/static）来处理
+                pass
 
         except Exception as e:
             logger.warning(f"[ContextAwareStrategy] 推荐失败: {e}")

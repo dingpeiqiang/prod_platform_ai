@@ -251,38 +251,58 @@ const selectRecommend = (rec) => {
   transform: translateY(-1px);
 }
 
+.recommend-tag.rec-source-llm_extraction,
 .recommend-tag.rec-source-llm_rule {
-  background-color: var(--color-primary-50);
-  border-color: var(--color-primary-400);
-  color: var(--color-primary-700);
+  /* 🔴 AI 推荐 - 最高优先级 */
+  background-color: #fee2e2;
+  border-color: #ef4444;
+  color: #991b1b;
+  font-weight: 600;
 }
+.recommend-tag.rec-source-llm_extraction:hover,
 .recommend-tag.rec-source-llm_rule:hover {
-  background-color: var(--color-primary-500) !important;
-  color: var(--text-inverse) !important;
+  background-color: #ef4444 !important;
+  color: #ffffff !important;
 }
 
-.recommend-tag.rec-source-inference,
-.recommend-tag.rec-source-history {
-  background-color: var(--color-info-50);
-  border-color: var(--color-info-500);
-  color: var(--color-info-700);
+.recommend-tag.rec-source-time_decay {
+  /* 🟡 近期常用 - 第二优先级 */
+  background-color: #fef3c7;
+  border-color: #f59e0b;
+  color: #92400e;
+  font-weight: 500;
 }
-.recommend-tag.rec-source-inference:hover,
-.recommend-tag.rec-source-history:hover {
-  background-color: var(--color-info-500) !important;
-  color: var(--text-inverse) !important;
+.recommend-tag.rec-source-time_decay:hover {
+  background-color: #f59e0b !important;
+  color: #ffffff !important;
+}
+
+.recommend-tag.rec-source-frequency,
+.recommend-tag.rec-source-user_personalized {
+  /* 🟢 历史高频率 - 第三优先级 */
+  background-color: #d1fae5;
+  border-color: #10b981;
+  color: #065f46;
+  font-weight: 500;
+}
+.recommend-tag.rec-source-frequency:hover,
+.recommend-tag.rec-source-user_personalized:hover {
+  background-color: #10b981 !important;
+  color: #ffffff !important;
 }
 
 .recommend-tag.rec-source-static,
 .recommend-tag.rec-source-context {
-  background-color: var(--bg-tertiary);
-  border-color: var(--border-strong);
-  color: var(--text-secondary);
+  /* ⚪ 常用选项 - 兜底优先级 */
+  background-color: #f3f4f6;
+  border-color: #9ca3af;
+  color: #4b5563;
+  font-weight: 400;
 }
 .recommend-tag.rec-source-static:hover,
 .recommend-tag.rec-source-context:hover {
-  background-color: var(--color-gray-500) !important;
-  color: var(--text-inverse) !important;
+  background-color: #6b7280 !important;
+  color: #ffffff !important;
 }
 
 .rec-badge {
