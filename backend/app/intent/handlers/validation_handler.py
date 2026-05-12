@@ -308,7 +308,7 @@ class ValidationHandler(BaseIntentHandler):
         table_output = self._format_table_output(validation_table, llm_warnings)
         
         yield thinking(
-            f"📋 校验汇总：共 {total_errors} 个错误，{len(llm_warnings)} 个警告{'（全部通过）' if total_errors == 0 else ''}\n\n{table_output}",
+            f"📋 校验汇总：共 {total_errors} 个错误，{len(llm_warnings)} 个警告{'（全部通过）' if total_errors == 0 else ''}",
             result={
                 "totalErrors": total_errors,
                 "totalWarnings": len(llm_warnings),
@@ -320,6 +320,12 @@ class ValidationHandler(BaseIntentHandler):
                 "validationTable": validation_table
             }
         )
+        
+        # 使用 sse 事件发送表格内容，确保换行符正确显示
+        if table_output:
+            yield sse({"type": "text_start"})
+            yield sse({"type": "text", "content": table_output})
+            yield sse({"type": "text_end"})
 
         # ═══ Phase 3：输出 ══════════════════════════════════════════
         # 最终 SSE 事件（前端面板使用）
