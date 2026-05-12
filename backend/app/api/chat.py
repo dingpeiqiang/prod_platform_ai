@@ -789,7 +789,59 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                             return
                         else:
                             _llm_error = "JSON 解析失败"
-                            yield thinking(f"❌ JSON 解析失败", result={
+                            logger.warning(f"[chat/stream] JSON 解析失败，尝试重试")
+                            
+                            # 【新增】JSON 解析失败时进行重试
+                            _retry_count = 1
+                            while _retry_count <= 2 and not intent_data:
+                                yield thinking(f"🔄 JSON 解析失败，正在重试 ({_retry_count}/2)...", result={
+                                    "retry": True,
+                                    "retryCount": _retry_count,
+                                    "elapsed": round(time.time() - _t0, 2) if '_t0' in dir() else 0
+                                })
+                                
+                                # 构建重试提示词，强调返回完整 JSON
+                                retry_prompt = intent_prompt + "\n\n---\n**重要提醒**：请返回完整的 JSON 对象，确保所有引号和括号都正确闭合。你的响应必须是一个合法的 JSON，不能截断。"
+                                
+                                intent_result, _ = await loop.run_in_executor(
+                                    None, llm_service._call_llm_sync_with_reasoning, retry_prompt
+                                )
+                                
+                                if intent_result:
+                                    intent_data = parse_intent_result(intent_result)
+                                
+                                _retry_count += 1
+                            
+                            if intent_data:
+                                # 重试成功，继续处理
+                                logger.info("[chat/stream] ✅ JSON 解析重试成功")
+                                intent_type = intent_data.get("intentType", "chat")
+                                form_code = intent_data.get("formCode") or intent_data.get("form_code")
+                                scene_code = intent_data.get("sceneCode")
+                                
+                                # 重新构建 ctx 并继续处理
+                                ctx = IntentContext(
+                                    intent_data=intent_data,
+                                    intent_result=intent_result,
+                                    intent_type=intent_type,
+                                    confidence=intent_data.get("confidence", 0),
+                                    ontologies=ontologies,
+                                    ontologies_info=build_ontologies_info(),
+                                    scene_keywords=build_scene_keywords(),
+                                    request=request,
+                                    db=db,
+                                    last_user_message=last_user_message,
+                                    messages_text=messages_text,
+                                    intent_prompt=intent_prompt,
+                                    start_time=start_time,
+                                    stream_stats=stream_stats
+                                )
+                                async for chunk in get_intent_registry().dispatch(intent_type, ctx):
+                                    yield chunk
+                                return
+                            
+                            # 重试仍然失败
+                            yield thinking(f"❌ JSON 解析失败（已重试 {_retry_count-1} 次）", result={
                                 "error": _llm_error,
                                 "elapsed": round(time.time() - _t0, 2) if '_t0' in dir() else 0
                             })
