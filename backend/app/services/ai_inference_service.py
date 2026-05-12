@@ -93,7 +93,7 @@ class AIInferenceService:
         form_code = ontology.get("formCode", "")
         form_name = ontology.get("formName", "")
         
-        # 提取所有字段定义
+        # 提取所有字段定义（完整本体信息）
         fields_info = []
         for entity in ontology.get("entities", []):
             for field in entity.get("fields", []):
@@ -102,14 +102,15 @@ class AIInferenceService:
                     "fieldName": field.get("fieldName"),
                     "fieldType": field.get("fieldType"),
                     "required": field.get("required", False),
+                    "ruleDescription": field.get("ruleDescription", ""),
                 }
                 
-                # 添加枚举选项
+                # 添加枚举选项（包含 value 和 label）
                 if field.get("enumConfig"):
                     enum_type = field["enumConfig"].get("type")
                     if enum_type == "static":
                         options = field["enumConfig"].get("options", [])
-                        field_info["options"] = [opt.get("value") for opt in options]
+                        field_info["options"] = [f"{opt.get('label')}[{opt.get('value')}]" for opt in options]
                 
                 fields_info.append(field_info)
         
@@ -119,7 +120,7 @@ class AIInferenceService:
 ## 任务
 基于以下本体定义和用户输入，为所有字段生成合理的推断值。
 
-## 表单信息
+## 本体信息
 - 表单编码：{form_code}
 - 表单名称：{form_name}
 
@@ -185,7 +186,7 @@ class AIInferenceService:
         return prompt
     
     def _format_fields(self, fields_info: list) -> str:
-        """格式化字段信息"""
+        """格式化字段信息（包含完整本体定义）"""
         lines = []
         for i, field in enumerate(fields_info, 1):
             line = f"{i}. {field['fieldCode']} ({field['fieldName']})"
@@ -194,6 +195,8 @@ class AIInferenceService:
                 line += " - **必填**"
             if field.get('options'):
                 line += f" - 选项: {', '.join(field['options'])}"
+            if field.get('ruleDescription'):
+                line += f" - 规则: {field['ruleDescription']}"
             lines.append(line)
         return "\n".join(lines)
     
