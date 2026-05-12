@@ -17,52 +17,28 @@ logger = logging.getLogger(__name__)
 
 
 def init_scenes(db):
-    """初始化场景数据"""
+    """初始化场景数据 - 场景应从数据库查询，不从文件加载"""
     from app.models.scene import Scene
     
     try:
-        config_path = Path(__file__).parent.parent.parent / 'config' / 'scenes' / 'scene_mapping.json'
-        if not config_path.exists():
-            logger.warning("场景配置文件不存在: %s", config_path)
+        # 检查数据库中是否已有场景数据
+        scene_count = db.query(Scene).count()
+        if scene_count > 0:
+            logger.info("数据库中已有 %d 个场景，跳过初始化", scene_count)
             return
         
-        with open(config_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        
-        scene_mappings = data.get('sceneMappings', [])
-        if not scene_mappings:
-            return
-        
-        imported_count = 0
-        for scene_data in scene_mappings:
-            scene_code = scene_data.get('sceneCode')
-            existing = db.query(Scene).filter(Scene.scene_code == scene_code).first()
-            if existing:
-                continue
-            
-            scene = Scene(
-                scene_code=scene_code,
-                scene_name=scene_data.get('sceneName', scene_code),
-                description=scene_data.get('description'),
-                keywords=scene_data.get('keywords', []),
-                priority=scene_data.get('priority', 10),
-                is_active=scene_data.get('isActive', True),
-                form_code=scene_data.get('formCode'),
-                action_prompt_file=scene_data.get('actionPrompt'),
-                version=1,
-                created_by='system'
-            )
-            db.add(scene)
-            imported_count += 1
-            logger.info("导入场景: %s", scene_code)
-        
-        if imported_count > 0:
-            db.commit()
-            logger.info("场景数据初始化完成，共导入 %d 个场景", imported_count)
+        # 如果数据库中没有场景数据，提示用户
+        logger.warning(
+            "数据库中没有场景数据！\n"
+            "请执行以下操作之一：\n"
+            "1. 运行初始化脚本: python init_new_scene_data.py\n"
+            "2. 从备份恢复场景数据\n"
+            "3. 通过管理界面手动添加场景"
+        )
+        # 不再从文件系统加载场景配置
         
     except Exception as e:
-        db.rollback()
-        logger.error("初始化场景数据失败: %s", e, exc_info=True)
+        logger.error("检查场景数据失败: %s", e, exc_info=True)
 
 
 def init_prompts(db):

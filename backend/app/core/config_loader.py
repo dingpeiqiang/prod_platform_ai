@@ -158,13 +158,73 @@ class ConfigLoader:
         return self._config_cache.get('app_config', {})
     
     def get_scene_mappings(self) -> List[Dict]:
-        return []
+        """从数据库获取场景映射列表"""
+        if not self._db_session_factory:
+            logger.warning("[ConfigLoader] 数据库会话工厂未设置，无法查询场景")
+            return []
+        
+        try:
+            from app.models.scene import Scene
+            
+            db = self._db_session_factory()
+            try:
+                scenes = db.query(Scene).filter(Scene.is_active == True).all()
+                result = []
+                for scene in scenes:
+                    result.append({
+                        'sceneCode': scene.scene_code,
+                        'sceneName': scene.scene_name,
+                        'description': scene.description,
+                        'keywords': scene.keywords or [],
+                        'priority': scene.priority,
+                        'isActive': scene.is_active,
+                        'formCode': scene.form_code,
+                        'actionPrompt': scene.action_prompt_file
+                    })
+                return result
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error("[ConfigLoader] 查询场景失败: %s", e)
+            return []
     
     def get_scene_by_code(self, scene_code: str) -> Optional[Dict]:
-        return None
+        """从数据库获取指定场景"""
+        if not self._db_session_factory:
+            logger.warning("[ConfigLoader] 数据库会话工厂未设置，无法查询场景")
+            return None
+        
+        try:
+            from app.models.scene import Scene
+            
+            db = self._db_session_factory()
+            try:
+                scene = db.query(Scene).filter(
+                    Scene.scene_code == scene_code,
+                    Scene.is_active == True
+                ).first()
+                
+                if scene:
+                    return {
+                        'sceneCode': scene.scene_code,
+                        'sceneName': scene.scene_name,
+                        'description': scene.description,
+                        'keywords': scene.keywords or [],
+                        'priority': scene.priority,
+                        'isActive': scene.is_active,
+                        'formCode': scene.form_code,
+                        'actionPrompt': scene.action_prompt_file
+                    }
+                return None
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error("[ConfigLoader] 查询场景失败: %s", e)
+            return None
     
     def get_all_scenes(self) -> List[Dict]:
-        return []
+        """获取所有场景（别名）"""
+        return self.get_scene_mappings()
     
     def get_scene_prompt(self, scene_code: str) -> Optional[str]:
         """获取场景提示词"""
