@@ -56,6 +56,10 @@ class FormInstance(Base):
     submitted_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # 历史遗留字段（保留以兼容旧数据，但不再使用）
+    form_id = Column(String(100), nullable=True)  # 已废弃，使用 form_code 替代
+    template_id = Column(Integer, nullable=True)  # 已废弃，FormTemplate 已移除
 
 
 class FormHistory(Base):

@@ -366,10 +366,8 @@ async def submit_form(request: FormSubmitRequest, db: Session = Depends(get_db))
         # ── LLM 智能校验结束 ────────────────────────────────────
 
         form_instance = FormInstance(
-            form_id=request.formId,
-            template_id=template_id,
+            form_code=form_code,
             data=request.data,
-            version=current_version,
             status="submitted",
             user_id=request.userId,
             submitted_at=datetime.now()
