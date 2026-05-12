@@ -266,7 +266,11 @@ class RecommendationEngine:
             else:
                 return "推荐选项"
         else:
-            return ""
+            # 【修复】低置信度也返回默认 reason，避免被过滤
+            if reason and reason.strip():
+                return reason
+            else:
+                return "常用选项"
     
     def _get_static_recommendations(
         self,
