@@ -666,6 +666,39 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                 }
                             )
 
+                            # 【关键】如果场景响应是 call_tool action，工具调用后应该继续生成表单
+                            if scene_handled and intent_data.get("action") == "call_tool":
+                                logger.info(f"[chat/stream] 工具调用完成，准备生成表单")
+                                
+                                # 检查是否有工具调用成功
+                                success_count = sum(1 for r in tool_results if r["success"])
+                                failed_count = sum(1 for r in tool_results if not r["success"])
+                                
+                                if failed_count > 0:
+                                    yield thinking(f"⚠️ {failed_count} 个工具调用失败，将生成空表单供手动填写")
+                                
+                                # 设置 formCode（从场景中获取）
+                                if not intent_data.get("formCode"):
+                                    # 从场景提示词中推断 formCode（场景名称中包含）
+                                    # 对于 tariff_filing_apply 场景，formCode 是 tariff_filing_publicity
+                                    form_code_map = {
+                                        "tariff_filing_apply": "tariff_filing_publicity"
+                                    }
+                                    form_code = form_code_map.get(scene_code)
+                                    if form_code:
+                                        intent_data["formCode"] = form_code
+                                        intent_data["detectedFormCode"] = form_code
+                                        logger.info(f"[chat/stream] 从场景映射获取 formCode: {form_code}")
+                                
+                                # 直接返回，触发前端显示表单
+                                stream_stats.total_elapsed = time.time() - start_time
+                                yield sse({"type": "stats", "content": stream_stats.to_dict()})
+                                
+                                form_code = intent_data.get("formCode") or intent_data.get("detectedFormCode")
+                                yield intent_event("form", "form_generated", intent_data, is_form=True)
+                                yield done_event("form", is_form=True, intent_data=intent_data)
+                                return
+
                             # 【关键】如果场景响应已经处理完成（generate_form action），直接返回，不要分发到 handler
                             if scene_handled and intent_data.get("action") == "generate_form":
                                 logger.info(f"[chat/stream] 场景响应已处理完成，直接返回")
