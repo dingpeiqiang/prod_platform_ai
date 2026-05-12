@@ -32,6 +32,23 @@ class FormHandler(BaseIntentHandler):
 
         extracted = ctx.intent_data.get("extractedFields", {})
         confidence = ctx.intent_data.get("confidence", 0)
+        
+        # 【关键】确保 extractedFields 包含本体中定义的所有字段
+        # 如果 LLM 没有为某些字段生成推断值，补充空字符串
+        if form_code and form_code in ctx.ontologies:
+            ontology = ctx.ontologies[form_code]
+            all_field_codes = []
+            for entity in ontology.get("entities", []):
+                for field in entity.get("fields", []):
+                    all_field_codes.append(field.get("fieldCode"))
+            
+            # 为缺失的字段补充空字符串
+            for field_code in all_field_codes:
+                if field_code not in extracted:
+                    extracted[field_code] = ""
+                    logger.debug(f"[form_handler] 为字段 {field_code} 补充空字符串")
+            
+            logger.info(f"[form_handler] 本体字段数: {len(all_field_codes)}, 提取字段数: {len(ctx.intent_data.get('extractedFields', {}))}, 补充后字段数: {len(extracted)}")
 
         # ═══ Phase 1：识别 ══════════════════════════════════════════
         yield thinking(f"📋 识别到表单「{form_name or form_code}」", result={
