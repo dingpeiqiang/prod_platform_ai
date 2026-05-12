@@ -379,8 +379,12 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                     logger.info(f"[chat/stream] 成功获取场景提示词，长度={len(scene_prompt_content)}")
                                     yield thinking(f"✅ 已获取场景提示词")
                                 else:
-                                    logger.warning(f"[chat/stream] 未找到场景 {scene_code} 的提示词")
-                                    yield thinking(f"⚠️ 未找到场景提示词，使用默认处理")
+                                    # 未找到场景提示词，报错并终止
+                                    error_msg = f"未找到场景 {scene_code} 的提示词配置，请检查：\n1. 场景中是否配置了 prompt_code\n2. 对应的提示词是否存在且已启用"
+                                    logger.error(f"[chat/stream] {error_msg}")
+                                    yield sse({"type": "error", "content": error_msg})
+                                    yield done_event("intent_recognition", is_form=False, intent_data=intent_data)
+                                    return
 
                             if scene_prompt_content and last_user_message:
                                 yield thinking(f"🧠 使用场景提示词调用大模型...")
