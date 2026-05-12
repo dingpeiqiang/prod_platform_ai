@@ -40,7 +40,7 @@
       @submit="handleFormSubmit"
       @cancel="handleFormCancel"
       @field-change="handleFormFieldChange"
-      @confirm-submit="handleConfirmSubmit"
+      @confirm-submit="(data) => handleConfirmSubmit(data).then(msg => msg && doSendMessageAfterHome(msg))"
     />
   </div>
 </template>

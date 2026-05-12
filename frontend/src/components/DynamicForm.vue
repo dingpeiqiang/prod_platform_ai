@@ -134,6 +134,9 @@ const handleFieldChange = (fieldCode, value) => {
 
 const validateForm = () => {
   const errors = []
+  if (!props.schema.fields || !Array.isArray(props.schema.fields)) {
+    return errors
+  }
   props.schema.fields.forEach(field => {
     const fieldErrors = validateField(field, localFormData[field.fieldCode])
     errors.push(...fieldErrors)
