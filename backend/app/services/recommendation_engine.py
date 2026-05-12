@@ -154,11 +154,21 @@ class RecommendationEngine:
                     candidates_by_priority[3].append(item)
                     all_candidates.append(item)  # 【修复】添加到总候选列表
 
+            # 【新增】静态推荐策略（兜底）
+            if "static" in active_strategies:
+                strategies_used.append("static")
+                static_candidates = self._get_static_recommendations(form_code, field_code)
+                for item in static_candidates:
+                    if item.priority is None or item.priority > 4:
+                        item.priority = 4  # 最低优先级
+                    candidates_by_priority.setdefault(4, []).append(item)
+                    all_candidates.append(item)
+
             seen_values = set()
             final_recommendations = []
             
-            for priority in [1, 2, 3]:
-                candidates = candidates_by_priority[priority]
+            for priority in [1, 2, 3, 4]:  # 【修改】支持优先级4（静态推荐）
+                candidates = candidates_by_priority.get(priority, [])
                 candidates.sort(key=lambda x: (x.confidence, x.score), reverse=True)
                 
                 for item in candidates:
@@ -203,6 +213,32 @@ class RecommendationEngine:
                 error=str(e),
                 processing_time_ms=(time.time() - start_time) * 1000
             )
+
+    def _get_static_recommendations(self, form_code: str, field_code: str) -> List[RecommendationItem]:
+        """获取静态推荐值（兜底策略）"""
+        try:
+            static_values = config_loader.get_recommendations(form_code, field_code)
+            
+            if not static_values:
+                return []
+            
+            recommendations = []
+            for i, value in enumerate(static_values):
+                recommendations.append(RecommendationItem(
+                    value=value,
+                    field_code=field_code,
+                    score=0.3 - (i * 0.05),
+                    source="static",
+                    confidence=0.5,
+                    match_type="exact",
+                    reason="常用选项",
+                    metadata={"staticRank": i + 1}
+                ))
+            
+            return recommendations
+        except Exception as e:
+            logger.warning(f"[RecommendationEngine] 静态推荐失败: {e}")
+            return []
 
     def _simplify_reason(self, reason: str, confidence: float) -> str:
         """根据置信度精简推荐理由"""
