@@ -330,7 +330,8 @@ class ValidationHandler(BaseIntentHandler):
                 "step": "all",
                 "errors": all_errors,
                 "warnings": llm_warnings,
-                "rule_engine_passed": rule_engine_passed
+                "rule_engine_passed": rule_engine_passed,
+                "validationTable": validation_table
             })
         else:
             yield sse({
@@ -339,7 +340,8 @@ class ValidationHandler(BaseIntentHandler):
                 "step": "all",
                 "errors": [],
                 "warnings": llm_warnings,
-                "rule_engine_passed": rule_engine_passed
+                "rule_engine_passed": rule_engine_passed,
+                "validationTable": validation_table
             })
 
         # 输出统计信息

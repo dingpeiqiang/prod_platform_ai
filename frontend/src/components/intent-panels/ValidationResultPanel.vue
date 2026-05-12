@@ -18,53 +18,61 @@
       <span class="form-code-tag">{{ formCode }}</span>
     </div>
 
-    <!-- 按字段分组的错误列表 -->
-    <div v-if="groupedErrors.length" class="validation-errors">
+    <!-- 表格格式校验结果 -->
+    <div v-if="validationTable" class="validation-table-section">
       <div class="validation-section-title">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/>
         </svg>
-        错误 ({{ errors.length }}，{{ groupedErrors.length }} 个字段)
+        校验结果
+      </div>
+      
+      <div class="validation-table-wrapper">
+        <table class="validation-table">
+          <thead>
+            <tr>
+              <th v-for="col in validationTable.columns" :key="col.key">{{ col.label }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr 
+              v-for="(row, idx) in validationTable.rows" 
+              :key="idx"
+              :class="{ 'row-failed': row.validationResult === '不通过' }"
+            >
+              <td v-for="col in validationTable.columns" :key="col.key" class="table-cell">
+                <template v-if="col.key === 'validationResult'">
+                  <span v-if="row[col.key] === '通过'" class="result-badge result-pass">✅ 通过</span>
+                  <span v-else class="result-badge result-fail">❌ 不通过</span>
+                </template>
+                <template v-else-if="col.key === 'suggestion' && row.suggestion">
+                  <div class="suggestion-cell">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#3498db" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    {{ row[col.key] }}
+                  </div>
+                </template>
+                <template v-else>
+                  {{ row[col.key] || '-' }}
+                </template>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
-      <div
-        v-for="(group, idx) in groupedErrors"
-        :key="'err-group-' + idx"
-        class="validation-item error-item"
-      >
-        <!-- 字段名 + 来源标签 -->
-        <div class="error-header">
-          <span class="error-field">{{ group.field }}</span>
-          <div class="source-tags">
-            <span
-              v-for="source in group.sources"
-              :key="source"
-              class="error-source"
-              :class="'source-' + source"
-            >
-              {{ source === 'rule_engine' ? '规则引擎' : 'AI 校验' }}
-            </span>
-          </div>
-        </div>
-
-        <!-- 错误列表 -->
-        <div class="error-messages">
-          <div v-for="(err, ei) in group.errors" :key="ei" class="error-message">
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#e74c3c" stroke-width="2">
-              <circle cx="12" cy="12" r="4"/>
-            </svg>
-            {{ err.message }}
-          </div>
-        </div>
-
-        <!-- 优化建议（取最后一个，建议相同则合并） -->
-        <div v-if="group.suggestions.length" class="error-suggestion">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#3498db" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-          </svg>
-          <span v-if="group.suggestions.length === 1">{{ group.suggestions[0] }}</span>
-          <span v-else>{{ group.suggestions[0] }}</span>
-        </div>
+      <!-- 汇总信息 -->
+      <div class="validation-summary">
+        <span class="summary-item">
+          共 <strong>{{ validationTable.summary.totalFields }}</strong> 个字段
+        </span>
+        <span class="summary-item summary-pass">
+          ✅ 通过 <strong>{{ validationTable.summary.passedCount }}</strong>
+        </span>
+        <span class="summary-item summary-fail">
+          ❌ 不通过 <strong>{{ validationTable.summary.failedCount }}</strong>
+        </span>
       </div>
     </div>
 
@@ -101,10 +109,11 @@ const props = defineProps({
   errors: { type: Array, default: () => [] },
   warnings: { type: Array, default: () => [] },
   step: { type: String, default: '' },
-  rule_engine_passed: { type: Boolean, default: false }
+  rule_engine_passed: { type: Boolean, default: false },
+  validationTable: { type: Object, default: null }
 })
 
-// 按字段名分组错误
+// 按字段名分组错误（保留用于兼容旧格式）
 const groupedErrors = computed(() => {
   const groups = {}
 
@@ -282,6 +291,106 @@ const groupedErrors = computed(() => {
 .warning-text {
   font-size: 12px;
   color: #d68910;
+}
+
+/* 表格样式 */
+.validation-table-section {
+  margin-bottom: 10px;
+}
+
+.validation-table-wrapper {
+  overflow-x: auto;
+  border-radius: 6px;
+  border: 1px solid #eee;
+  margin-bottom: 8px;
+}
+
+.validation-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.validation-table th {
+  background: #f8f9fa;
+  padding: 8px 10px;
+  text-align: left;
+  font-weight: 600;
+  color: #666;
+  border-bottom: 2px solid #e9ecef;
+  white-space: nowrap;
+}
+
+.validation-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #eee;
+  vertical-align: top;
+}
+
+.validation-table tbody tr:hover {
+  background: #f8f9fa;
+}
+
+.validation-table tbody tr.row-failed {
+  background: #fff5f5;
+}
+
+.validation-table tbody tr.row-failed td {
+  border-bottom-color: #ffe5e5;
+}
+
+.table-cell {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.result-pass {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.result-fail {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.suggestion-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: 11px;
+  color: #3498db;
+  line-height: 1.3;
+}
+
+.validation-summary {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  padding: 8px 10px;
+  background: #f8f9fa;
+  border-radius: 4px;
+}
+
+.summary-item {
+  color: #666;
+}
+
+.summary-item.summary-pass {
+  color: #27ae60;
+}
+
+.summary-item.summary-fail {
+  color: #e74c3c;
 }
 
 .validation-step {
