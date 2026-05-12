@@ -483,8 +483,8 @@ const _handleValidationResult = (data, msg) => {
  };
  scrollToBottom();
 };
-registerEventHandler('validation_fail', _handleValidationResult, { panel: null });
-registerEventHandler('validation_pass', _handleValidationResult, { panel: null });
+registerEventHandler('validation_fail', _handleValidationResult, { panel: 'ValidationResultPanel' });
+registerEventHandler('validation_pass', _handleValidationResult, { panel: 'ValidationResultPanel' });
 registerPostProcessor('form_update', async (msg, intentData) => {
  await updateFormFields(intentData);
 });
