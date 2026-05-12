@@ -447,18 +447,15 @@ class ValidationHandler(BaseIntentHandler):
         rows = validation_table.get("rows", [])
         summary = validation_table.get("summary", {})
         
-        # 列标签映射
-        label_map = {col["key"]: col["label"] for col in columns}
-        
-        # 计算列宽度
-        col_widths = {}
-        for col in columns:
-            key = col["key"]
-            max_width = len(col["label"]) + 2  # 标签宽度 + 边距
-            for row in rows:
-                cell_value = str(row.get(key, ""))
-                max_width = max(max_width, len(cell_value) + 2)
-            col_widths[key] = min(max_width, 30)  # 最大宽度限制
+        # 设置固定列宽度（优化对齐）
+        col_widths = {
+            "fieldCode": 12,
+            "fieldName": 12,
+            "originalValue": 12,
+            "recommendedValue": 12,
+            "validationResult": 10,
+            "suggestion": 40
+        }
         
         # 构建表头
         header = "| " + " | ".join(f"{col['label']:{col_widths[col['key']]}}" for col in columns) + " |"
@@ -474,10 +471,13 @@ class ValidationHandler(BaseIntentHandler):
                 key = col["key"]
                 value = str(row.get(key, ""))
                 # 校验结果高亮
-                if key == "validationResult" and value == "不通过":
-                    cells.append(f"❌ {value}".ljust(col_widths[key]))
-                elif key == "validationResult" and value == "通过":
-                    cells.append(f"✅ {value}".ljust(col_widths[key]))
+                if key == "validationResult":
+                    if value == "不通过":
+                        cells.append(f"❌ 不通过".ljust(col_widths[key]))
+                    elif value == "通过":
+                        cells.append(f"✅ 通过".ljust(col_widths[key]))
+                    else:
+                        cells.append(value.ljust(col_widths[key]))
                 else:
                     # 截断过长内容
                     if len(value) > col_widths[key]:
