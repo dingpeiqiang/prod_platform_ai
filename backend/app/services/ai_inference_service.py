@@ -135,8 +135,9 @@ class AIInferenceService:
 ⚠️ **严禁返回空值**：必须为每个字段生成非空的合理值！
 
 1. **优先使用用户明确提供的值**
-2. **基于本体定义的枚举值进行推断**
-   - 枚举字段：从 options 列表中选择一个最合理的值
+2. **枚举字段处理**（select/enum/radio类型）：
+   - 必须返回选项中的 **value 值**（即方括号内的内容，如 JT1、A、1）
+   - 不要返回标签名称（如"中国电信集团"、"新增"）
    - 如果没有明确指示，选择第一个选项或最常用的选项
 3. **基于业务常识推断默认值**
    - 文本字段：给出通用的占位符或默认描述
@@ -161,7 +162,33 @@ class AIInferenceService:
 }}
 ```
 
-## 示例
+## 枚举字段输出示例
+
+假设字段定义包含：reporter (备案主体) - 类型: select - 选项: 中国电信集团[JT1], 中国移动集团[YD1]
+
+正确输出（使用 value）：
+```json
+{{
+  "extractedFields": {{
+    "reporter": "JT1",
+    "action_type": "A",
+    "type1": "1"
+  }}
+}}
+```
+
+错误输出（不要这样）：
+```json
+{{
+  "extractedFields": {{
+    "reporter": "中国电信集团[JT1]",  // ❌ 错误：包含了标签名称
+    "action_type": "新增",           // ❌ 错误：返回了标签而非value
+    "type1": "公众[1]"               // ❌ 错误：包含了标签名称
+  }}
+}}
+```
+
+## 完整示例
 
 用户输入："资费备案申请"
 
@@ -170,8 +197,8 @@ class AIInferenceService:
 {{
   "extractedFields": {{
     "bossid": "P000001",
-    "action_type": "新增",
-    "reporter": "系统管理员",
+    "action_type": "A",
+    "reporter": "JT1",
     "name": "请输入套餐名称",
     "fees": 0,
     "valid_period": "长期有效",
