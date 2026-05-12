@@ -295,6 +295,13 @@ class ValidationHandler(BaseIntentHandler):
             })
 
         all_errors = structured_errors + llm_structured_errors
+        
+        # 获取所有字段的推荐值
+        recommendations = self._get_recommendations(form_code, form_data, db)
+        
+        # 构建表格格式的校验结果
+        validation_table = self._build_validation_table(form_data, all_errors, recommendations)
+        
         total_errors = len(all_errors)
 
         yield thinking(
@@ -306,7 +313,8 @@ class ValidationHandler(BaseIntentHandler):
                 "llmErrors": len(llm_structured_errors),
                 "passed": total_errors == 0,
                 "errors": all_errors,
-                "warnings": llm_warnings
+                "warnings": llm_warnings,
+                "validationTable": validation_table
             }
         )
 
@@ -337,6 +345,86 @@ class ValidationHandler(BaseIntentHandler):
 
         yield done_event(intent_type="validate", is_form=False)
 
+    def _get_recommendations(self, form_code: str, form_data: Dict[str, Any], db) -> Dict[str, str]:
+        """
+        获取表单所有字段的推荐值
+        """
+        recommendations = {}
+        try:
+            from app.services.recommendation_engine import get_recommendation_engine
+            
+            engine = get_recommendation_engine()
+            for field_code in form_data.keys():
+                rec_result = engine.recommend(
+                    form_code=form_code,
+                    field_code=field_code,
+                    user_input="",
+                    db=db
+                )
+                if rec_result and rec_result.recommendations:
+                    recommendations[field_code] = rec_result.recommendations[0].value
+        except Exception as e:
+            logger.warning(f"[ValidationHandler] 获取推荐值失败: {e}")
+        
+        return recommendations
+    
+    def _build_validation_table(
+        self,
+        form_data: Dict[str, Any],
+        errors: List[Dict[str, Any]],
+        recommendations: Dict[str, str]
+    ) -> Dict[str, Any]:
+        """
+        构建表格格式的校验结果
+        
+        表格结构：
+        - columns: 列定义（编码、名称、原值、推荐值、校验结果、优化建议）
+        - rows: 行数据，校验不通过的排在前面
+        - summary: 汇总信息
+        """
+        # 获取字段名映射（从错误信息中提取）
+        field_name_map = {}
+        for err in errors:
+            field_name_map[err.get("fieldCode", "")] = err.get("field", "")
+        
+        # 构建行数据
+        rows = []
+        error_field_codes = {err.get("fieldCode", "") for err in errors}
+        
+        for field_code, field_value in form_data.items():
+            field_name = field_name_map.get(field_code, field_code)
+            error_info = next((err for err in errors if err.get("fieldCode") == field_code), None)
+            
+            row = {
+                "fieldCode": field_code,
+                "fieldName": field_name,
+                "originalValue": field_value,
+                "recommendedValue": recommendations.get(field_code, ""),
+                "validationResult": "不通过" if field_code in error_field_codes else "通过",
+                "suggestion": error_info.get("suggestion", "") if error_info else ""
+            }
+            rows.append(row)
+        
+        # 排序：校验不通过的排在前面
+        rows.sort(key=lambda x: x["validationResult"] != "不通过")
+        
+        return {
+            "columns": [
+                {"key": "fieldCode", "label": "编码"},
+                {"key": "fieldName", "label": "名称"},
+                {"key": "originalValue", "label": "原值"},
+                {"key": "recommendedValue", "label": "推荐值"},
+                {"key": "validationResult", "label": "校验结果"},
+                {"key": "suggestion", "label": "优化建议"}
+            ],
+            "rows": rows,
+            "summary": {
+                "totalFields": len(rows),
+                "passedCount": sum(1 for r in rows if r["validationResult"] == "通过"),
+                "failedCount": sum(1 for r in rows if r["validationResult"] == "不通过")
+            }
+        }
+    
     @staticmethod
     def _parse_form_data_from_message(message: str) -> Dict[str, str]:
         """
