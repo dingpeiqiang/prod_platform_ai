@@ -10,7 +10,7 @@ AI Field Inference Service - 基于本体的智能字段推断服务
 
 import logging
 from typing import Dict, Any, Optional
-from app.core.llm_client import get_llm_client
+from app.services.llm_service import llm_service
 from app.core.config_loader import config_loader
 
 logger = logging.getLogger("ai_inference")
@@ -20,7 +20,8 @@ class AIInferenceService:
     """AI 字段推断服务"""
     
     def __init__(self):
-        self.llm_client = get_llm_client()
+        # llm_service 是全局单例，直接使用
+        pass
     
     def infer_fields(
         self,
@@ -51,7 +52,15 @@ class AIInferenceService:
             
             # 3. 调用 LLM 进行推断
             logger.info(f"[AIInference] 开始推断 form_code={form_code}, 字段数={self._count_fields(ontology)}")
-            response = self.llm_client.chat(prompt)
+            
+            # 使用 llm_service 的 chat 方法
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                response = loop.run_until_complete(llm_service.chat(prompt))
+            finally:
+                loop.close()
             
             # 4. 解析推断结果
             extracted_fields = self._parse_inference_result(response, ontology)
