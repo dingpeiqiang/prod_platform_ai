@@ -114,11 +114,14 @@ class AIInferenceService:
                 
                 fields_info.append(field_info)
         
+        # 获取已提取的字段（来自场景识别阶段）
+        extracted_fields = context.get('extractedFields', {}) if context else {}
+        
         # 构建提示词
         prompt = f"""你是专业的表单字段推断助手。
 
 ## 任务
-基于以下本体定义和用户输入，为所有字段生成**真实合理的业务值**，严禁返回"请输入XXX"等占位符！
+基于以下本体定义、已提取字段和用户输入，为所有字段生成**真实合理的业务值**，严禁返回"请输入XXX"等占位符！
 
 ## 本体信息
 - 表单编码：{form_code}
@@ -126,6 +129,9 @@ class AIInferenceService:
 
 ## 字段定义（共 {len(fields_info)} 个字段）
 {self._format_fields(fields_info)}
+
+## 已提取字段（来自场景识别）
+{self._format_extracted_fields(extracted_fields)}
 
 ## 用户输入
 {user_input}
@@ -244,6 +250,21 @@ class AIInferenceService:
             if field.get('ruleDescription'):
                 line += f" - 规则: {field['ruleDescription']}"
             lines.append(line)
+        return "\n".join(lines)
+    
+    def _format_extracted_fields(self, extracted_fields: Dict[str, Any]) -> str:
+        """格式化已提取字段信息"""
+        if not extracted_fields:
+            return "- 无"
+        
+        lines = []
+        for field_code, value in extracted_fields.items():
+            if value:
+                lines.append(f"- {field_code}: {value}")
+        
+        if not lines:
+            return "- 无"
+        
         return "\n".join(lines)
     
     def _count_fields(self, ontology: Dict[str, Any]) -> int:

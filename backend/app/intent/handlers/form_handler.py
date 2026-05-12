@@ -68,6 +68,7 @@ class FormHandler(BaseIntentHandler):
                 context={
                     "userId": ctx.request.userId if ctx.request and hasattr(ctx.request, 'userId') else None,
                     "sessionId": ctx.request.sessionId if ctx.request and hasattr(ctx.request, 'sessionId') else None,
+                    "extractedFields": extracted,  # 传递已提取的字段（如 bossid）
                 }
             )
             
