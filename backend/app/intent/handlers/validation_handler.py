@@ -87,7 +87,7 @@ def _build_llm_suggestion(field_name: str, message: str, field_code: str) -> str
     # 枚举值无效
     if "值" in message and ("无效" in message or "应从" in message):
         # 提取可选值列表（支持带中文标签的格式）
-        match = re.search(r'应从以下选项中选择[：:]\s*(.+?)(?：|$|\n)', message)
+        match = re.search(r'应从以下选项中选择[：:]\s*(.+?)(?:$|\n)', message)
         if match:
             options_str = match.group(1).strip()
             # 截断过长的选项列表（保留前5个）
@@ -97,7 +97,7 @@ def _build_llm_suggestion(field_name: str, message: str, field_code: str) -> str
             else:
                 options_str = "、".join(options_list)
             return f"请选择：{options_str}"
-        match = re.search(r'选项[：:]\s*(.+?)(?：|$|\n)', message)
+        match = re.search(r'选项[：:]\s*(.+?)(?:$|\n)', message)
         if match:
             options_str = match.group(1).strip()
             return f"请选择：{options_str}"
