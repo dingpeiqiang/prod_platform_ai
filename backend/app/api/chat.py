@@ -374,9 +374,17 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                             if intent_reasoning:
                                 yield reasoning(intent_reasoning)
 
-                            # 只有 scene 意图才需要查询场景提示词
+                            # 关键逻辑：如果识别出 form 意图但没有 scene_code，说明 LLM 跳过了场景识别
+                            # 这时需要根据 formCode 反查对应的场景
+                            if intent_type == "form" and form_code and not scene_code:
+                                # TODO: 根据 formCode 反查场景（需要建立 formCode -> sceneCode 的映射）
+                                # 暂时直接使用 formCode 作为 scene_code 尝试查询
+                                logger.warning(f"[chat/stream] form 意图缺少 scene_code，尝试使用 formCode={form_code} 作为 scene_code")
+                                scene_code = form_code
+                            
+                            # 只有 scene 意图或 form 意图（带 scene_code）才需要查询场景提示词
                             scene_prompt_content = None
-                            if intent_type == "scene" and scene_code:
+                            if scene_code:
                                 yield thinking(f"🔍 查询场景提示词 scene_code={scene_code}")
                                 scene_prompt_content = get_scene_prompt_by_code(scene_code)
                                 if scene_prompt_content:
@@ -389,10 +397,6 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                     yield sse({"type": "error", "content": error_msg})
                                     yield done_event("intent_recognition", is_form=False, intent_data=intent_data)
                                     return
-                            elif intent_type == "form" and form_code:
-                                # form 意图不需要场景提示词，直接使用 formCode
-                                logger.info(f"[chat/stream] form 意图，使用 formCode={form_code}")
-                                yield thinking(f"📋 识别到表单意图，formCode={form_code}")
 
                             if scene_prompt_content and last_user_message:
                                 yield thinking(f"🧠 使用场景提示词调用大模型...")
