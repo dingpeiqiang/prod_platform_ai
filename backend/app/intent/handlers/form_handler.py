@@ -8,6 +8,7 @@ from typing import AsyncGenerator
 from ..base import BaseIntentHandler, IntentContext
 from ..utils import thinking, sse, merge_field_recommendations, intent_event, done_event
 from ...services.recommendation_engine import get_recommendation_engine
+from ...services.ai_inference_service import get_ai_inference_service
 from ...core.config_loader import config_loader
 
 logger = logging.getLogger("intent.form_handler")
@@ -32,24 +33,6 @@ class FormHandler(BaseIntentHandler):
 
         extracted = ctx.intent_data.get("extractedFields", {})
         confidence = ctx.intent_data.get("confidence", 0)
-        
-        # 【关键】验证 extractedFields 是否包含所有本体字段
-        # 如果 LLM 遗漏了某些字段，记录警告日志
-        if form_code and form_code in ctx.ontologies:
-            ontology = ctx.ontologies[form_code]
-            all_field_codes = []
-            for entity in ontology.get("entities", []):
-                for field in entity.get("fields", []):
-                    all_field_codes.append(field.get("fieldCode"))
-            
-            missing_fields = [fc for fc in all_field_codes if fc not in extracted]
-            if missing_fields:
-                logger.warning(f"[form_handler] LLM 未为以下字段生成推断值: {missing_fields[:5]}...")
-                # 为缺失的字段补充空字符串（作为兜底）
-                for field_code in missing_fields:
-                    extracted[field_code] = ""
-            
-            logger.info(f"[form_handler] 本体字段数: {len(all_field_codes)}, LLM推断字段数: {len(ctx.intent_data.get('extractedFields', {}))}, 最终字段数: {len(extracted)}")
 
         # ═══ Phase 1：识别 ══════════════════════════════════════════
         yield thinking(f"📋 识别到表单「{form_name or form_code}」", result={
@@ -60,18 +43,36 @@ class FormHandler(BaseIntentHandler):
         })
 
         # ═══ Phase 2：执行 ══════════════════════════════════════════
-        # ── Step 1：提取用户输入的字段 ─────────────────────────────
-        if extracted:
-            yield thinking(f"📝 从用户输入中提取到 {len(extracted)} 个字段", result={
-                "extractedFields": list(extracted.keys()),
-                "extractedCount": len(extracted),
-                "sample": dict(list(extracted.items())[:5])  # 前5个字段样本
-            })
-        else:
-            yield thinking("📝 未提取到具体字段值，将展示空表单供填写", result={
-                "extractedFields": [],
-                "extractedCount": 0
-            })
+        # ── Step 1：AI 字段推断（单独调用 LLM）──────────────────────
+        yield thinking("🧠 调用 AI 进行字段推断...")
+        
+        try:
+            ai_service = get_ai_inference_service()
+            inferred_fields = ai_service.infer_fields(
+                form_code=form_code,
+                user_input=ctx.last_user_message or "",
+                context={
+                    "userId": ctx.request.userId if ctx.request and hasattr(ctx.request, 'userId') else None,
+                    "sessionId": ctx.request.sessionId if ctx.request and hasattr(ctx.request, 'sessionId') else None,
+                }
+            )
+            
+            # 合并 LLM 意图识别的结果和 AI 推断的结果
+            # AI 推断的优先级更高（因为是基于本体的完整推断）
+            extracted = {**extracted, **inferred_fields}
+            ctx.intent_data["extractedFields"] = extracted
+            
+            yield thinking(
+                f"✅ AI 推断完成，共 {len(inferred_fields)} 个字段",
+                result={
+                    "inferredFields": list(inferred_fields.keys()),
+                    "inferredCount": len(inferred_fields),
+                    "sample": dict(list(inferred_fields.items())[:5])  # 前5个字段样本
+                }
+            )
+        except Exception as e:
+            logger.warning(f"[form_handler] AI 推断失败: {e}，使用 LLM 意图识别的结果")
+            yield thinking(f"⚠️ AI 推断失败，使用已有数据")
 
         # ── Step 2：历史推荐 ───────────────────────────────────────
         try:
