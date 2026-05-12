@@ -180,7 +180,7 @@ class OpenAIProvider(BaseProvider):
                 break
             
             item_type, text = item
-            stats.chars += len(text)
+            stats.char_count += len(text)
             
             if item_type == 'content':
                 yield text, None
