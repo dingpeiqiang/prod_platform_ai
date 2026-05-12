@@ -11,7 +11,6 @@ from .handlers.form_update_handler import FormUpdateHandler
 from .handlers.delete_form_handler import DeleteFormHandler
 from .handlers.manage_history_handler import ManageHistoryHandler
 from .handlers.configure_handler import ConfigureHandler
-from .handlers.tariff_filing_handler import TariffFilingHandler
 from .handlers.chat_handler import ChatHandler
 from .handlers.validation_handler import ValidationHandler
 
@@ -24,7 +23,6 @@ _registry.register(FormUpdateHandler)
 _registry.register(DeleteFormHandler)
 _registry.register(ManageHistoryHandler)
 _registry.register(ConfigureHandler)
-_registry.register(TariffFilingHandler)
 _registry.register(ChatHandler)
 _registry.register(ValidationHandler)
 
@@ -36,7 +34,6 @@ __all__ = [
     "DeleteFormHandler",
     "ManageHistoryHandler",
     "ConfigureHandler",
-    "TariffFilingHandler",
     "ChatHandler",
     "ValidationHandler",
     "get_intent_registry",

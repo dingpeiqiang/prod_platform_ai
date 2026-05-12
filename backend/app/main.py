@@ -52,6 +52,7 @@ _LOG_MODULES = [
     "history_service", "ontology_service",
     "validation_service", "harness.engine", "harness.observability",
     "llm_call",
+    "intent.form_handler", "recommendation_engine",
 ]
 
 for _name in _LOG_MODULES:

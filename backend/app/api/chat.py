@@ -334,6 +334,9 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                     "maxTokens": llm_service.llm_config.get("maxTokens"),
                     "promptLength": len(intent_prompt)
                 })
+                
+                # 【新增】发送 prompt 内容到前端（可展开查看）
+                yield reasoning(f"📥 Prompt 输入（{len(intent_prompt)} 字符）:\n\n{intent_prompt[:2000]}{'...' if len(intent_prompt) > 2000 else ''}")
 
                 _llm_error = None
                 try:
@@ -341,6 +344,11 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                         None, llm_service._call_llm_sync_with_reasoning, intent_prompt
                     )
                     logger.info(f"[chat/stream] LLM 返回结果: intent_result={len(intent_result) if intent_result else 0} chars, intent_reasoning={len(intent_reasoning) if intent_reasoning else 0} chars")
+                    
+                    # 【新增】发送 response 内容到前端（可展开查看）
+                    if intent_result:
+                        response_preview = intent_result[:2000] + ('...' if len(intent_result) > 2000 else '')
+                        yield reasoning(f"📤 Response 输出（{len(intent_result)} 字符）:\n\n{response_preview}")
 
                     if not intent_result and intent_reasoning:
                         logger.info("[chat/stream] 🔄 content 为空但 reasoning 有内容，用简化 prompt 重试一次")
@@ -371,8 +379,12 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                             scene_code = intent_data.get("sceneCode")
 
                             logger.info(f"[chat/stream] intent_type={intent_type}, form_code={form_code}, scene_code={scene_code}")
-                            if intent_reasoning:
-                                yield reasoning(intent_reasoning)
+                            
+                            # 【修复】优先使用 API 返回的 reasoning，如果没有则从 JSON 内容中提取
+                            reasoning_content = intent_reasoning or intent_data.get("reasoning", "")
+                            if reasoning_content:
+                                yield thinking("🧠 分析用户意图...")
+                                yield reasoning(reasoning_content)
 
                             # 关键逻辑：必须遵循两阶段流程
                             # 第一阶段：识别场景意图
@@ -415,12 +427,20 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                 logger.info(f"[chat/stream] ================================")
                                 
                                 yield thinking(f"🧠 使用场景提示词调用大模型...")
+                                
+                                # 【新增】发送场景 prompt 到前端
+                                yield reasoning(f"📥 场景 Prompt 输入（{len(scene_prompt_content) + len(last_user_message)} 字符）:\n\n系统提示词：{scene_prompt_content[:1000]}{'...' if len(scene_prompt_content) > 1000 else ''}\n\n用户消息：{last_user_message[:500]}{'...' if len(last_user_message) > 500 else ''}")
+                                
                                 try:
                                     scene_response = llm_service._call_llm_sync(last_user_message, system_prompt=scene_prompt_content)
                                     if scene_response:
                                         intent_data["sceneResponse"] = scene_response
                                         logger.info(f"[chat/stream] 场景提示词调用成功，响应长度={len(scene_response)}")
                                         yield thinking(f"✅ 场景大模型调用完成")
+                                        
+                                        # 【新增】发送场景 response 到前端
+                                        response_preview = scene_response[:2000] + ('...' if len(scene_response) > 2000 else '')
+                                        yield reasoning(f"📤 场景 Response 输出（{len(scene_response)} 字符）:\n\n{response_preview}")
                                         
                                         # 解析场景响应，检查是否需要调用工具
                                         try:
@@ -738,13 +758,6 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                     "hasScenePrompt": scene_prompt_content is not None
                                 }
                             )
-
-                            _FORM_CODE_TO_INTENT = {
-                                "tariff_filing_publicity": "tariff_filing",
-                            }
-                            if intent_type == "form" and form_code in _FORM_CODE_TO_INTENT:
-                                intent_type = _FORM_CODE_TO_INTENT[form_code]
-                                logger.info(f"[路由] 表单 %s 使用专属 handler: %s", form_code, intent_type)
 
                             # 注意：不再用 request.formCode 覆盖 intent_data
                             # formCode 应由 LLM 意图识别或 handler 决定，避免场景编码覆盖表单编码
