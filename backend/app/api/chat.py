@@ -392,6 +392,8 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                             
                             # 只有 scene 意图才需要查询场景提示词
                             scene_prompt_content = None
+                            scene_handled = False  # 标记场景响应是否已处理完成（必须在外部初始化）
+                            
                             if intent_type == "scene" and scene_code:
                                 yield thinking(f"🔍 查询场景提示词 scene_code={scene_code}")
                                 scene_prompt_content = get_scene_prompt_by_code(scene_code)
@@ -430,7 +432,6 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                             
                                             # 【新增】支持 action 字段的场景响应格式
                                             action = scene_json.get("action")
-                                            scene_handled = False  # 标记场景响应是否已处理完成
                                             
                                             if action:
                                                 # 保存 action 到 intent_data，供后续逻辑使用
