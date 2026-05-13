@@ -17,13 +17,14 @@ export function useChatStream(messagesRef, currentDbSessionIdRef) {
  return;
  switch (data.type) {
  case 'thinking':
- case 'decision':
- case 'executing': {
+case 'decision':
+case 'executing': {
  const last = msg.reasoning[msg.reasoning.length - 1];
  if (last && last.content === data.content)
  break;
  msg.reasoning.push({ type: 'thinking', content: data.content, result: data.result || null });
- msg.showReasoning = true;
+ // 保持处理步骤默认折叠，用户需手动展开
+ // msg.showReasoning = true;
  msg.latestStepIndex = msg.reasoning.length - 1;
  if (currentDbSessionIdRef.value && msg.dbMessageId) {
  const stepTypeMap = { thinking: 'thinking', decision: 'decision', executing: 'action' };
@@ -242,9 +243,10 @@ export function useChatStream(messagesRef, currentDbSessionIdRef) {
  const msg = messagesRef.value[msgIdx];
  if (msg) {
  msg.done = true;
- // 有 reasoning 内容或有错误时保持面板展开
- const hasReasoning = msg.reasoning.some(r => r.reasoning && r.reasoning.trim());
- msg.showReasoning = msg.reasoning.some(r => r.type === 'error') || hasReasoning || false;
+ // 处理步骤默认保持折叠，只有发生错误时才自动展开
+ // const hasReasoning = msg.reasoning.some(r => r.reasoning && r.reasoning.trim());
+ // msg.showReasoning = msg.reasoning.some(r => r.type === 'error') || hasReasoning || false;
+ msg.showReasoning = msg.reasoning.some(r => r.type === 'error') || false;
  const postProcessor = getPostProcessor(intentType);
  if (postProcessor) {
  try {

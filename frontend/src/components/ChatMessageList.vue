@@ -45,7 +45,16 @@
           <div v-else class="ai-message">
             <div v-if="msg.reasoning && msg.reasoning.length" class="reasoning-wrap">
               <button class="reasoning-toggle" @click="toggleReasoning(idx)">
+                <!-- loading状态显示旋转的圆环，完成后显示箭头 -->
                 <svg
+                  v-if="!msg.done"
+                  class="loading-icon"
+                  width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                >
+                  <circle class="loading-ring" cx="12" cy="12" r="10" stroke-linecap="round"/>
+                </svg>
+                <svg
+                  v-else
                   :style="{ transform: msg.showReasoning ? 'rotate(90deg)' : 'rotate(0deg)' }"
                   width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                   style="transition:transform .2s"
@@ -345,6 +354,15 @@ defineExpose({ scrollToBottom });
 .thinking-dots span:nth-child(2) { animation-delay: .2s; }
 .thinking-dots span:nth-child(3) { animation-delay: .4s; }
 
+.loading-icon {
+  animation: spin 1s linear infinite;
+}
+
+.loading-ring {
+  stroke-dasharray: 50;
+  stroke-dashoffset: 10;
+}
+
 .reasoning-body {
   padding: var(--space-1) var(--space-3-5) var(--space-3-5);
   border-top: 1px solid var(--color-primary-100);
@@ -510,6 +528,11 @@ defineExpose({ scrollToBottom });
 @keyframes dotPulse {
   0%, 60%, 100% { opacity: 0.4; transform: scale(1); }
   30% { opacity: 1; transform: scale(1.1); }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .form-card {

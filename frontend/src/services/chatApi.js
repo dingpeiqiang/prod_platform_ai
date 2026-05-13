@@ -96,9 +96,13 @@ function restoreMessageMetadata(meta = {}) {
     }
   }
 
-  return {
+  // 检查是否有错误类型的步骤
+    const hasError = reasoning.some(r => r.type === 'error');
+    
+    return {
     reasoning,
-    showReasoning: reasoning.length > 0,
+    // 历史消息默认保持折叠，只有发生错误时才展开
+    showReasoning: hasError || false,
     done: meta.done === 'true' || meta.done === true || true,
     intentType: meta.intent_type,
     formCode: meta.form_code,

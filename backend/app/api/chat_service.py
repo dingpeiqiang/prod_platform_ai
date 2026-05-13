@@ -10,9 +10,9 @@ from app.core.errors import ErrorCategory, ErrorLevel, ErrorCode
 from app.core.error_handler import create_error, error_handler
 from app.mcp_tools import get_toolhub
 from app.api.chat_utils import (
-    strip_json_comments, fix_json_newlines, fix_incomplete_json, build_ontologies_info,
-    build_scene_keywords, build_scene_hierarchy, build_separators, FALLBACK_RESPONSES,
-    sse, thinking, reasoning
+    strip_json_comments, fix_json_newlines, fix_incomplete_json, extract_json_from_text,
+    build_ontologies_info, build_scene_keywords, build_scene_hierarchy, build_separators,
+    FALLBACK_RESPONSES, sse, thinking, reasoning
 )
 
 logger = logging.getLogger("chat_service")
@@ -41,7 +41,7 @@ def call_skills_only(last_user_message: str, ontologies: Dict) -> Dict:
 
             return {
                 "success": True,
-                "intentType": "form",
+                "sceneCode": form_code,
                 "formCode": form_code,
                 "extractedFields": extracted_fields,
                 "confidence": 0.7,
@@ -56,7 +56,8 @@ def call_skills_only(last_user_message: str, ontologies: Dict) -> Dict:
 
     return {
         "success": True,
-        "intentType": "chat",
+        "sceneCode": "",
+        "formCode": "",
         "reply": reply,
         "method": "skills"
     }
@@ -124,7 +125,9 @@ def parse_intent_result(intent_result: str) -> Optional[Dict]:
         return None
 
     try:
-        cleaned = strip_json_comments(intent_result.strip())
+        # 先从文本中提取 JSON 部分（处理模型返回额外文本的情况）
+        cleaned = extract_json_from_text(intent_result.strip())
+        cleaned = strip_json_comments(cleaned)
         cleaned = fix_json_newlines(cleaned)
         # 尝试修复不完整的 JSON（模型返回结果被截断的情况）
         cleaned = fix_incomplete_json(cleaned)

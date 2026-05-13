@@ -119,6 +119,30 @@ def strip_json_comments(text: str) -> str:
     return text.strip()
 
 
+def extract_json_from_text(text: str) -> str:
+    """从包含额外文本的响应中提取 JSON 部分"""
+    import re
+    
+    # 尝试匹配 ```json ... ``` 格式
+    json_block_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
+    if json_block_match:
+        return json_block_match.group(1).strip()
+    
+    # 尝试匹配 {} 包裹的内容
+    brace_start = text.find('{')
+    brace_end = text.rfind('}')
+    if brace_start != -1 and brace_end != -1 and brace_start < brace_end:
+        return text[brace_start:brace_end + 1].strip()
+    
+    # 尝试匹配 [] 包裹的内容（数组）
+    bracket_start = text.find('[')
+    bracket_end = text.rfind(']')
+    if bracket_start != -1 and bracket_end != -1 and bracket_start < bracket_end:
+        return text[bracket_start:bracket_end + 1].strip()
+    
+    return text.strip()
+
+
 def fix_json_newlines(json_str: str) -> str:
     """修复 JSON 字符串值中的裸换行符（MiniMax 等模型常见问题）。
     模型在 JSON 字段值中写入真实换行而非 \\n 转义，导致 json.loads 失败。

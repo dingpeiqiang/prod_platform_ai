@@ -125,7 +125,7 @@ async def chat_with_agent(request: ChatRequest):
             response_obj = ChatResponse(
                 success=True,
                 intentType="form" if result_data.get("sceneCode") else "chat",
-                formCode=result_data.get("sceneCode"),
+                formCode=result_data.get("formCode") or result_data.get("sceneCode"),
                 confidence=result_data.get("confidence"),
                 reasoning=agent_result.get("reasoning"),
                 method=f"agent_{result_data.get('method', 'unknown')}"
@@ -188,13 +188,15 @@ async def chat(request: ChatRequest):
                 if intent_result:
                     intent_data = parse_intent_result(intent_result)
                     if intent_data:
-                        intent_type = intent_data.get("intentType", "chat")
-
-                        if intent_type == "form":
+                        scene_code = intent_data.get("sceneCode")
+                        form_code = intent_data.get("formCode")
+                        
+                        # 如果有场景编码或表单编码，说明是表单意图
+                        if scene_code or form_code:
                             return ChatResponse(
                                 success=True,
                                 intentType="form",
-                                formCode=intent_data.get("formCode"),
+                                formCode=form_code or scene_code,
                                 extractedFields=intent_data.get("extractedFields", {}),
                                 confidence=intent_data.get("confidence"),
                                 reasoning=intent_data.get("reasoning"),
@@ -372,11 +374,13 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                     if intent_result:
                         intent_data = parse_intent_result(intent_result)
                         if intent_data:
-                            intent_type = intent_data.get("intentType", "chat")
-                            
-                            # 区分 form 意图和 scene 意图
+                            # 直接从意图数据中获取场景编码和表单编码
                             form_code = intent_data.get("formCode") or intent_data.get("form_code")
                             scene_code = intent_data.get("sceneCode")
+                            
+                            # 根据是否有场景编码判断意图类型
+                            # 如果有场景编码，走场景处理流程；否则走聊天流程
+                            intent_type = "form" if scene_code else "chat"
 
                             logger.info(f"[chat/stream] intent_type={intent_type}, form_code={form_code}, scene_code={scene_code}")
                             
@@ -386,27 +390,11 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                 yield thinking("🧠 分析用户意图...")
                                 yield reasoning(reasoning_content)
 
-                            # 关键逻辑：必须遵循两阶段流程
-                            # 第一阶段：识别场景意图
-                            # 第二阶段：用场景提示词调用 LLM，识别具体的表单/工具意图
-                            
-                            # 如果 LLM 直接返回 form 意图但没有 scene_code，说明跳过了场景识别
-                            if intent_type == "form" and form_code and not scene_code:
-                                error_msg = (
-                                    f"意图识别流程错误：LLM 直接返回 form 意图但缺少 scene_code\n"
-                                    f"正确流程应该是：先识别场景 (scene) → 查询场景提示词 → 再识别表单 (form)\n"
-                                    f"请检查意图识别 prompt 是否正确配置了场景识别逻辑"
-                                )
-                                logger.error(f"[chat/stream] {error_msg}")
-                                yield sse({"type": "error", "content": error_msg})
-                                yield done_event("intent_recognition", is_form=False, intent_data=intent_data)
-                                return
-                            
-                            # 只有 scene 意图才需要查询场景提示词
+                            # 关键逻辑：如果有场景编码，查询场景提示词并处理
                             scene_prompt_content = None
                             scene_handled = False  # 标记场景响应是否已处理完成（必须在外部初始化）
                             
-                            if intent_type == "scene" and scene_code:
+                            if scene_code:
                                 yield thinking(f"🔍 查询场景提示词 scene_code={scene_code}")
                                 scene_prompt_content = get_scene_prompt_by_code(scene_code)
                                 if scene_prompt_content:
@@ -428,11 +416,15 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                 
                                 yield thinking(f"🧠 使用场景提示词调用大模型...")
                                 
+                                # 【修复】将历史上下文和当前消息合并
+                                # messages_text 包含完整的对话历史，用于保持上下文连贯性
+                                scene_input = f"{messages_text}\n\n用户最新消息：{last_user_message}" if messages_text else last_user_message
+                                
                                 # 【新增】发送场景 prompt 到前端
-                                yield reasoning(f"📥 场景 Prompt 输入（{len(scene_prompt_content) + len(last_user_message)} 字符）:\n\n系统提示词：{scene_prompt_content[:1000]}{'...' if len(scene_prompt_content) > 1000 else ''}\n\n用户消息：{last_user_message[:500]}{'...' if len(last_user_message) > 500 else ''}")
+                                yield reasoning(f"📥 场景 Prompt 输入（{len(scene_prompt_content) + len(scene_input)} 字符）:\n\n系统提示词：{scene_prompt_content[:1000]}{'...' if len(scene_prompt_content) > 1000 else ''}\n\n对话上下文：{scene_input[:1000]}{'...' if len(scene_input) > 1000 else ''}")
                                 
                                 try:
-                                    scene_response = llm_service._call_llm_sync(last_user_message, system_prompt=scene_prompt_content)
+                                    scene_response = llm_service._call_llm_sync(scene_input, system_prompt=scene_prompt_content)
                                     if scene_response:
                                         intent_data["sceneResponse"] = scene_response
                                         logger.info(f"[chat/stream] 场景提示词调用成功，响应长度={len(scene_response)}")
@@ -537,6 +529,62 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                                     
                                                     logger.info(f"[chat/stream] 场景要求生成表单: formCode={form_code}")
                                                     # 标记场景已处理，并且应该直接返回（不继续执行 dispatch）
+                                                    scene_handled = True
+                                                
+                                                elif action == "validate_form":
+                                                    # 表单校验
+                                                    form_code = scene_json.get("formCode")
+                                                    extracted_fields = scene_json.get("extractedFields", {})
+                                                    validation_results = scene_json.get("validationResults", [])
+                                                    message = scene_json.get("message", "")
+                                                    
+                                                    # 显示消息
+                                                    if message:
+                                                        yield sse({"type": "text_start"})
+                                                        yield sse({"type": "text", "content": message})
+                                                        yield sse({"type": "text_end"})
+                                                    
+                                                    # 输出校验结果清单（按照校验结果格式说明）
+                                                    if validation_results and isinstance(validation_results, list):
+                                                        yield sse({"type": "text_start"})
+                                                        yield sse({"type": "text", "content": "\n**校验结果清单：**\n\n"})
+                                                        
+                                                        # 构建表格格式输出
+                                                        table_rows = []
+                                                        table_rows.append("| 字段名称 | 字段编码 | 校验值 | 校验结果 | 说明 | 优化建议 |")
+                                                        table_rows.append("|---------|---------|--------|---------|------|---------|")
+                                                        
+                                                        for result in validation_results:
+                                                            field = result.get("field", "")
+                                                            field_name = result.get("fieldName", field)
+                                                            value = result.get("value", "")
+                                                            val_result = result.get("result", "")
+                                                            reason = result.get("reason", "")
+                                                            suggestion = result.get("suggestion", "")
+                                                            
+                                                            # 转换校验结果状态显示
+                                                            result_display = {
+                                                                "pass": "✅ 通过",
+                                                                "warning": "⚠️ 警告",
+                                                                "error": "❌ 错误"
+                                                            }.get(val_result, val_result)
+                                                            
+                                                            table_rows.append(f"| {field_name} | {field} | {value} | {result_display} | {reason} | {suggestion} |")
+                                                        
+                                                        yield sse({"type": "text", "content": "\n".join(table_rows)})
+                                                        yield sse({"type": "text_end"})
+                                                    
+                                                    # 设置 formCode、extractedFields 和 validationResults
+                                                    if form_code:
+                                                        intent_data["formCode"] = form_code
+                                                        intent_data["detectedFormCode"] = form_code
+                                                    if extracted_fields:
+                                                        intent_data["extractedFields"] = extracted_fields
+                                                    if validation_results:
+                                                        intent_data["validationResults"] = validation_results
+                                                    
+                                                    logger.info(f"[chat/stream] 场景要求表单校验: formCode={form_code}, 校验项数={len(validation_results)}")
+                                                    # 标记场景已处理
                                                     scene_handled = True
                                             
                                             else:
@@ -817,9 +865,10 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                             if intent_data:
                                 # 重试成功，继续处理
                                 logger.info("[chat/stream] ✅ JSON 解析重试成功")
-                                intent_type = intent_data.get("intentType", "chat")
                                 form_code = intent_data.get("formCode") or intent_data.get("form_code")
                                 scene_code = intent_data.get("sceneCode")
+                                # 根据是否有场景编码判断意图类型
+                                intent_type = "form" if scene_code else "chat"
                                 
                                 # 重新构建 ctx 并继续处理
                                 ctx = IntentContext(
@@ -946,7 +995,8 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
 
                 skills_result = call_skills_only(last_user_message, ontologies)
 
-                if skills_result["intentType"] == "form":
+                # 根据是否有场景编码判断是否为表单意图
+                if skills_result.get("sceneCode"):
                     form_code = skills_result["formCode"]
                     form_name = ""
                     if form_code and form_code in ontologies:
@@ -1006,7 +1056,6 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                     yield sse({"type": "done", "isForm": True, "intentData": intent_data})
                 else:
                     yield thinking("💬 生成聊天回复...", result={
-                        "intentType": "chat",
                         "mode": "skills"
                     })
                     reply_text = skills_result["reply"] or ""
