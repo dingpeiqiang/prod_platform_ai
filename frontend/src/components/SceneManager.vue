@@ -663,7 +663,7 @@ onMounted(() => {
 <style scoped>
 .scene-manager {
   height: 100vh;
-  background: #f5f7fa;
+  background: var(--bg-primary);
   display: flex;
   flex-direction: column;
 }
@@ -673,8 +673,8 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 16px 24px;
-  background: white;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-sm);
 }
 
 .header-left {
@@ -704,16 +704,17 @@ onMounted(() => {
 
 .tree-section {
   width: 360px;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  background: var(--bg-elevated);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
+  border: 1px solid var(--border-light);
 }
 
 .tree-header {
   padding: 16px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border-light);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -722,11 +723,12 @@ onMounted(() => {
 .tree-header h3 {
   margin: 0;
   font-size: 16px;
+  color: var(--text-primary);
 }
 
 .tree-search {
   padding: 12px 16px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border-light);
 }
 
 .tree-container {

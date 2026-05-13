@@ -366,7 +366,7 @@ onMounted(() => {
     height: 100%;
     display: flex;
     flex-direction: column;
-    background: #f5f7fa;
+    background: var(--bg-primary);
 }
 
 .top-bar {
@@ -374,10 +374,11 @@ onMounted(() => {
     align-items: center;
     justify-content: space-between;
     padding: 16px 24px;
-    background: #fff;
-    border-radius: 12px;
+    background: var(--bg-elevated);
+    border-radius: var(--radius-lg);
     margin-bottom: 20px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border-light);
 }
 
 .back-btn {
@@ -385,16 +386,23 @@ onMounted(() => {
     align-items: center;
     gap: 8px;
     padding: 10px 16px;
-    border-radius: 8px;
-    border: 1px solid #e5e7eb;
-    background: white;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-default);
+    background: var(--bg-elevated);
     cursor: pointer;
     font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.back-btn:hover {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
 }
 
 .top-bar h2 {
     margin: 0;
     font-size: 18px;
+    color: var(--text-primary);
 }
 
 .header-actions {
@@ -405,8 +413,10 @@ onMounted(() => {
 
 .filter-select {
     padding: 8px 12px;
-    border-radius: 6px;
-    border: 1px solid #e5e7eb;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-default);
+    background: var(--bg-elevated);
+    color: var(--text-primary);
 }
 
 .primary-btn {
@@ -429,23 +439,23 @@ onMounted(() => {
 }
 
 .item-card {
-    background: white;
+    background: var(--bg-elevated);
     padding: 20px;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     border: 2px solid transparent;
     cursor: pointer;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-    transition: all 0.2s;
+    box-shadow: var(--shadow-sm);
+    transition: all var(--transition-fast);
 }
 
 .item-card:hover {
-    border-color: #3b82f6;
+    border-color: var(--color-primary-500);
     transform: translateY(-2px);
 }
 
 .item-card.active {
-    border-color: #3b82f6;
-    background: #eff6ff;
+    border-color: var(--color-primary-500);
+    background: rgba(91, 124, 250, 0.08);
 }
 
 .item-header {
@@ -456,9 +466,10 @@ onMounted(() => {
 
 .item-category {
     padding: 4px 10px;
-    border-radius: 20px;
+    border-radius: var(--radius-full);
     font-size: 12px;
-    background: #e5e7eb;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
 }
 
 .item-status {
