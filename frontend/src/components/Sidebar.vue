@@ -71,33 +71,50 @@
     </div>
 
     <div class="sidebar-footer">
-      <!-- 主题切换 -->
-      <div class="theme-toggle-wrapper">
-        <ThemeToggle />
-      </div>
-      
-      <!-- 用户信息 & 登出 -->
-      <div class="user-info" @click="showLogoutMenu = !showLogoutMenu" ref="userInfoRef">
+      <!-- 用户信息 -->
+      <div class="user-info" @click="showUserMenu = !showUserMenu" ref="userInfoRef">
         <div class="user-avatar" :style="{ background: avatarColor }">{{ avatarText }}</div>
         <div class="user-detail">
           <span class="user-name">{{ username }}</span>
           <span class="user-status">已登录</span>
         </div>
-        <svg class="logout-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-          <polyline points="16 17 21 12 16 7"/>
-          <line x1="21" y1="12" x2="9" y2="12"/>
+        <svg class="menu-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="6 9 12 15 18 9"/>
         </svg>
       </div>
 
-      <!-- 登出确认气泡 -->
-      <div class="logout-menu" v-if="showLogoutMenu" @click.stop>
-        <div class="logout-menu-inner">
-          <div class="logout-tip">确定要退出登录吗？</div>
-          <div class="logout-actions">
-            <button class="logout-btn-cancel" @click="showLogoutMenu = false">取消</button>
-            <button class="logout-btn-confirm" @click="doLogout">确认</button>
-          </div>
+      <!-- 用户操作菜单 -->
+      <div class="user-menu" v-if="showUserMenu" @click.stop>
+        <div class="user-menu-inner">
+          <!-- 主题切换 -->
+          <button class="menu-item theme-toggle-item" @click="toggleTheme">
+            <svg class="menu-item-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle v-if="isDark" cx="12" cy="12" r="5"/>
+              <path v-else d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+              <line v-if="isDark" x1="12" y1="1" x2="12" y2="3"/>
+              <line v-if="isDark" x1="12" y1="21" x2="12" y2="23"/>
+              <line v-if="isDark" x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+              <line v-if="isDark" x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+              <line v-if="isDark" x1="1" y1="12" x2="3" y2="12"/>
+              <line v-if="isDark" x1="21" y1="12" x2="23" y2="12"/>
+              <line v-if="isDark" x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+              <line v-if="isDark" x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+            </svg>
+            <span class="menu-item-text">{{ isDark ? '切换亮色模式' : '切换暗色模式' }}</span>
+          </button>
+          
+          <!-- 分隔线 -->
+          <div class="menu-divider"></div>
+          
+          <!-- 退出登录 -->
+          <button class="menu-item logout-item" @click="doLogout">
+            <svg class="menu-item-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+            <span class="menu-item-text">退出登录</span>
+          </button>
         </div>
       </div>
     </div>
@@ -107,10 +124,11 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useUserStore } from '../stores/user'
-import ThemeToggle from './common/ThemeToggle.vue'
+import { useTheme } from '../composables/useTheme'
 
 const userStore = useUserStore()
-const showLogoutMenu = ref(false)
+const { isDark, toggleTheme } = useTheme()
+const showUserMenu = ref(false)
 const userInfoRef = ref(null)
 
 const username = computed(() => userStore.username)
@@ -128,14 +146,14 @@ console.log('[Sidebar] sessions 数量:', props.sessions.length, 'activeId:', pr
 const emit = defineEmits(['new-session', 'switch-session', 'delete-session', 'logout'])
 
 const doLogout = () => {
-  showLogoutMenu.value = false
+  showUserMenu.value = false
   emit('logout')
 }
 
 // 点击空白处关闭菜单
 const handleClickOutside = (e) => {
   if (userInfoRef.value && !userInfoRef.value.contains(e.target)) {
-    showLogoutMenu.value = false
+    showUserMenu.value = false
   }
 }
 onMounted(() => document.addEventListener('click', handleClickOutside))
@@ -288,14 +306,6 @@ const olderSessions = computed(() =>
   padding-top: var(--space-2-5);
   margin-top: var(--space-2);
   position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.theme-toggle-wrapper {
-  display: flex;
-  padding: var(--space-2);
 }
 
 .user-info {
@@ -343,15 +353,16 @@ const olderSessions = computed(() =>
   color: var(--sidebar-text-muted);
 }
 
-.logout-icon {
+.menu-arrow {
   flex-shrink: 0;
   opacity: 0.5;
-  transition: opacity var(--transition-fast);
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
 }
-.user-info:hover .logout-icon { opacity: 0.8; }
+.user-info:hover .menu-arrow { opacity: 0.8; }
+.user-info.open .menu-arrow { transform: rotate(180deg); }
 
-/* 登出确认气泡 */
-.logout-menu {
+/* 用户操作菜单 */
+.user-menu {
   position: absolute;
   bottom: calc(100% + 6px);
   left: var(--space-2);
@@ -365,50 +376,52 @@ const olderSessions = computed(() =>
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-.logout-menu-inner {
+.user-menu-inner {
   background: var(--bg-elevated);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
-  padding: var(--space-3) var(--space-3-5);
+  padding: var(--space-2);
   box-shadow: var(--shadow-xl);
 }
 
-.logout-tip {
-  font-size: var(--font-size-sm);
-  color: var(--sidebar-text-primary);
-  margin-bottom: var(--space-3);
-}
-
-.logout-actions {
+.menu-item {
   display: flex;
-  gap: var(--space-2);
-}
-
-.logout-btn-cancel,
-.logout-btn-confirm {
-  flex: 1;
-  padding: 7px 0;
-  border-radius: var(--radius-md);
+  align-items: center;
+  gap: var(--space-2-5);
+  width: 100%;
+  padding: var(--space-2-5) var(--space-3);
+  background: none;
   border: none;
-  font-size: var(--font-size-sm);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  font-weight: var(--font-weight-medium);
-  transition: opacity var(--transition-fast), transform 0.1s;
-}
-.logout-btn-cancel {
-  background: rgba(255,255,255,0.07);
   color: var(--sidebar-text-secondary);
+  font-size: var(--font-size-sm);
+  transition: background var(--transition-fast), color var(--transition-fast);
+  text-align: left;
 }
-.logout-btn-cancel:hover { background: rgba(255,255,255,0.1); }
+.menu-item:hover {
+  background: var(--sidebar-hover-bg);
+  color: var(--sidebar-text-primary);
+}
 
-.logout-btn-confirm {
-  background: rgba(239,68,68,0.2);
-  color: var(--color-error-500);
-  border: 1px solid rgba(239,68,68,0.25);
+.menu-item-icon {
+  flex-shrink: 0;
+  opacity: 0.7;
 }
-.logout-btn-confirm:hover {
-  background: rgba(239,68,68,0.3);
-  transform: translateY(-1px);
+
+.menu-item-text {
+  flex: 1;
+}
+
+.menu-divider {
+  height: 1px;
+  background: var(--border-light);
+  margin: var(--space-2) 0;
+}
+
+.logout-item:hover {
+  background: rgba(239,68,68,0.1);
+  color: var(--color-error-500);
 }
 
 </style>
