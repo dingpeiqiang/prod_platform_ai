@@ -308,6 +308,13 @@ defineExpose({ doSubmit })
 
 .dynamic-form :deep(.el-select .el-input__wrapper) {
   width: 100%;
+  background-color: var(--bg-elevated);
+  border-color: var(--border-default);
+}
+
+.dynamic-form :deep(.el-select .el-input__inner) {
+  background-color: var(--bg-elevated);
+  color: var(--text-primary);
 }
 
 .dynamic-form :deep(.el-radio-group),
@@ -366,3 +373,44 @@ defineExpose({ doSubmit })
   margin-top: var(--space-2);
 }
 </style>
+
+<style>
+[data-theme="dark"] .dynamic-form :deep(.el-select .el-input__wrapper) {
+  background-color: #2a2a2a !important;
+  border-color: #3a3a3a !important;
+}
+
+[data-theme="dark"] .dynamic-form :deep(.el-select .el-input__inner) {
+  background-color: #2a2a2a !important;
+  color: #e8e8e8 !important;
+}
+
+[data-theme="dark"] .dynamic-form :deep(.el-select-dropdown) {
+  background-color: #1a1a1a !important;
+  border-color: #3a3a3a !important;
+}
+
+[data-theme="dark"] .dynamic-form :deep(.el-select-dropdown__item) {
+  color: #e8e8e8 !important;
+}
+
+[data-theme="dark"] .dynamic-form :deep(.el-select-dropdown__item:hover) {
+  background-color: #2a2a2a !important;
+}
+
+[data-theme="dark"] .dynamic-form :deep(.el-select-dropdown__item.selected) {
+  color: #7b93fa !important;
+  background-color: rgba(91, 124, 250, 0.1) !important;
+}
+
+[data-theme="dark"] .dynamic-form :deep(.el-input__wrapper) {
+  background-color: #2a2a2a !important;
+  border-color: #3a3a3a !important;
+}
+
+[data-theme="dark"] .dynamic-form :deep(.el-input__inner) {
+  background-color: #2a2a2a !important;
+  color: #e8e8e8 !important;
+}
+</style>
+
