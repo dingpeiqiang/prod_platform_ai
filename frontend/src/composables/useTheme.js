@@ -30,9 +30,8 @@ export function useTheme() {
     if (savedTheme) {
       isDark.value = savedTheme === 'dark'
     } else {
-      // 2. 检查系统偏好
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-      isDark.value = prefersDark
+      // 2. 默认使用亮色模式（不跟随系统偏好）
+      isDark.value = false
     }
 
     // 3. 应用主题到 document
