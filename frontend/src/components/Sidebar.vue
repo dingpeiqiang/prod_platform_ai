@@ -42,11 +42,61 @@
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
         </svg>
         <span class="session-title">{{ s.title || '新对话' }}</span>
-        <button class="session-delete" @click.stop="$emit('delete-session', s.id)" title="删除对话">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        <button 
+          class="session-menu-btn" 
+          @click.stop="toggleSessionMenu(s.id)" 
+          title="更多操作"
+          ref="sessionMenuBtnRef"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="12" r="1"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="7"/>
           </svg>
         </button>
+        
+        <!-- 会话操作菜单 -->
+        <div 
+          v-if="activeSessionMenu === s.id" 
+          class="session-menu" 
+          @click.stop
+        >
+          <div class="session-menu-inner">
+            <button class="session-menu-item" @click.stop="$emit('pin-session', s.id)">
+              <svg class="menu-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                <circle cx="12" cy="10" r="3"/>
+              </svg>
+              <span>置顶</span>
+            </button>
+            <button class="session-menu-item" @click.stop="$emit('share-session', s.id)">
+              <svg class="menu-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 16.08c-.76 0-1.44.3-1.96.72L8.92 12l7.12-4.8c.54.5 1.25.87 2.04.87 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .79.38 1.49.97 1.92L8.92 12l7.08 4.08c-.59.43-.97 1.13-.97 1.92 0 1.66 1.34 3 3 3s3-1.34 3-3-1.34-3-3-3z"/>
+              </svg>
+              <span>分享</span>
+            </button>
+            <button class="session-menu-item" @click.stop="handleRename(s)">
+              <svg class="menu-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+              <span>重命名</span>
+            </button>
+            <button class="session-menu-item" @click.stop="$emit('report-session', s.id)">
+              <svg class="menu-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 9v2m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/>
+              </svg>
+              <span>举报</span>
+            </button>
+            <div class="menu-divider"></div>
+            <button class="session-menu-item danger" @click.stop="$emit('delete-session', s.id)">
+              <svg class="menu-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 6h18"/>
+                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+              </svg>
+              <span>删除</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <div class="session-group-label" v-if="olderSessions.length">更早</div>
@@ -60,11 +110,60 @@
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
         </svg>
         <span class="session-title">{{ s.title || '新对话' }}</span>
-        <button class="session-delete" @click.stop="$emit('delete-session', s.id)" title="删除对话">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        <button 
+          class="session-menu-btn" 
+          @click.stop="toggleSessionMenu(s.id)" 
+          title="更多操作"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="12" r="1"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="7"/>
           </svg>
         </button>
+        
+        <!-- 会话操作菜单 -->
+        <div 
+          v-if="activeSessionMenu === s.id" 
+          class="session-menu" 
+          @click.stop
+        >
+          <div class="session-menu-inner">
+            <button class="session-menu-item" @click.stop="$emit('pin-session', s.id)">
+              <svg class="menu-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                <circle cx="12" cy="10" r="3"/>
+              </svg>
+              <span>置顶</span>
+            </button>
+            <button class="session-menu-item" @click.stop="$emit('share-session', s.id)">
+              <svg class="menu-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 16.08c-.76 0-1.44.3-1.96.72L8.92 12l7.12-4.8c.54.5 1.25.87 2.04.87 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .79.38 1.49.97 1.92L8.92 12l7.08 4.08c-.59.43-.97 1.13-.97 1.92 0 1.66 1.34 3 3 3s3-1.34 3-3-1.34-3-3-3z"/>
+              </svg>
+              <span>分享</span>
+            </button>
+            <button class="session-menu-item" @click.stop="handleRename(s)">
+              <svg class="menu-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+              <span>重命名</span>
+            </button>
+            <button class="session-menu-item" @click.stop="$emit('report-session', s.id)">
+              <svg class="menu-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 9v2m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/>
+              </svg>
+              <span>举报</span>
+            </button>
+            <div class="menu-divider"></div>
+            <button class="session-menu-item danger" @click.stop="$emit('delete-session', s.id)">
+              <svg class="menu-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 6h18"/>
+                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+              </svg>
+              <span>删除</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <div class="empty-tip" v-if="!sessions.length">暂无历史对话</div>
@@ -129,6 +228,7 @@ import { useTheme } from '../composables/useTheme'
 const userStore = useUserStore()
 const { isDark, toggleTheme } = useTheme()
 const showUserMenu = ref(false)
+const activeSessionMenu = ref(null)
 const userInfoRef = ref(null)
 
 const username = computed(() => userStore.username)
@@ -143,11 +243,23 @@ const props = defineProps({
 // 调试：打印 sessions 数量
 console.log('[Sidebar] sessions 数量:', props.sessions.length, 'activeId:', props.activeId)
 
-const emit = defineEmits(['new-session', 'switch-session', 'delete-session', 'logout'])
+const emit = defineEmits(['new-session', 'switch-session', 'delete-session', 'logout', 'pin-session', 'share-session', 'report-session', 'rename-session'])
 
 const doLogout = () => {
   showUserMenu.value = false
   emit('logout')
+}
+
+const toggleSessionMenu = (sessionId) => {
+  activeSessionMenu.value = activeSessionMenu.value === sessionId ? null : sessionId
+}
+
+const handleRename = (session) => {
+  activeSessionMenu.value = null
+  const newTitle = prompt('请输入新的对话名称:', session.title || '新对话')
+  if (newTitle !== null) {
+    emit('rename-session', session.id, newTitle.trim())
+  }
 }
 
 // 点击空白处关闭菜单
@@ -155,6 +267,7 @@ const handleClickOutside = (e) => {
   if (userInfoRef.value && !userInfoRef.value.contains(e.target)) {
     showUserMenu.value = false
   }
+  activeSessionMenu.value = null
 }
 onMounted(() => document.addEventListener('click', handleClickOutside))
 onUnmounted(() => document.removeEventListener('click', handleClickOutside))
@@ -280,7 +393,7 @@ const olderSessions = computed(() =>
   line-height: 1.4;
 }
 
-.session-delete {
+.session-menu-btn {
   display: none;
   background: none;
   border: none;
@@ -291,8 +404,64 @@ const olderSessions = computed(() =>
   flex-shrink: 0;
   line-height: 1;
 }
-.session-delete:hover { color: var(--color-error-500); background: rgba(248,113,113,0.1); }
-.session-item:hover .session-delete { display: flex; }
+.session-menu-btn:hover { color: var(--sidebar-text-primary); background: var(--bg-tertiary); }
+.session-item:hover .session-menu-btn { display: flex; }
+
+.session-menu {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: var(--z-dropdown);
+  animation: sessionMenuIn 0.15s cubic-bezier(.16,1,.3,1) both;
+}
+
+@keyframes sessionMenuIn {
+  from { opacity: 0; transform: translateY(-50%) scale(0.95); }
+  to   { opacity: 1; transform: translateY(-50%) scale(1); }
+}
+
+.session-menu-inner {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--space-1);
+  min-width: 140px;
+  box-shadow: var(--shadow-xl);
+}
+
+.session-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: none;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: var(--sidebar-text-secondary);
+  font-size: var(--font-size-xs);
+  transition: background var(--transition-fast), color var(--transition-fast);
+  text-align: left;
+}
+.session-menu-item:hover {
+  background: var(--sidebar-hover-bg);
+  color: var(--sidebar-text-primary);
+}
+
+.session-menu-item.danger:hover {
+  background: rgba(239,68,68,0.1);
+  color: var(--color-error-500);
+}
+
+.menu-icon { flex-shrink: 0; }
+
+.menu-divider {
+  height: 1px;
+  background: var(--border-light);
+  margin: var(--space-1-5) 0;
+}
 
 .empty-tip {
   text-align: center;
