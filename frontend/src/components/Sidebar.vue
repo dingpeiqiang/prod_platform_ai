@@ -35,9 +35,13 @@
       <div
         v-for="s in todaySessions"
         :key="s.id"
-        :class="['session-item', { active: s.id === activeId }]"
+        :class="['session-item', { active: s.id === activeId, pinned: s.pinned }]"
         @click="$emit('switch-session', s.id)"
       >
+        <svg v-if="s.pinned" class="pinned-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+          <circle cx="12" cy="10" r="3"/>
+        </svg>
         <svg class="session-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
         </svg>
@@ -60,12 +64,12 @@
           @click.stop
         >
           <div class="session-menu-inner">
-            <button class="session-menu-item pin" @click.stop="$emit('pin-session', s.id)">
+            <button class="session-menu-item pin" @click.stop="handlePinSession(s.id)">
               <svg class="menu-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
                 <circle cx="12" cy="10" r="3"/>
               </svg>
-              <span>置顶</span>
+              <span>{{ s.pinned ? '取消置顶' : '置顶' }}</span>
             </button>
             <button class="session-menu-item share" @click.stop="$emit('share-session', s.id)">
               <svg class="menu-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -103,9 +107,13 @@
       <div
         v-for="s in olderSessions"
         :key="s.id"
-        :class="['session-item', { active: s.id === activeId }]"
+        :class="['session-item', { active: s.id === activeId, pinned: s.pinned }]"
         @click="$emit('switch-session', s.id)"
       >
+        <svg v-if="s.pinned" class="pinned-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+          <circle cx="12" cy="10" r="3"/>
+        </svg>
         <svg class="session-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
         </svg>
@@ -127,12 +135,12 @@
           @click.stop
         >
           <div class="session-menu-inner">
-            <button class="session-menu-item pin" @click.stop="$emit('pin-session', s.id)">
+            <button class="session-menu-item pin" @click.stop="handlePinSession(s.id)">
               <svg class="menu-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
                 <circle cx="12" cy="10" r="3"/>
               </svg>
-              <span>置顶</span>
+              <span>{{ s.pinned ? '取消置顶' : '置顶' }}</span>
             </button>
             <button class="session-menu-item share" @click.stop="$emit('share-session', s.id)">
               <svg class="menu-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -244,6 +252,11 @@ const props = defineProps({
 console.log('[Sidebar] sessions 数量:', props.sessions.length, 'activeId:', props.activeId)
 
 const emit = defineEmits(['new-session', 'switch-session', 'delete-session', 'logout', 'pin-session', 'share-session', 'report-session', 'rename-session'])
+
+const handlePinSession = (sessionId) => {
+  console.log('[Sidebar.vue] handlePinSession called with sessionId:', sessionId)
+  emit('pin-session', sessionId)
+}
 
 const doLogout = () => {
   showUserMenu.value = false
@@ -387,6 +400,11 @@ const olderSessions = computed(() =>
   color: var(--sidebar-text-primary);
 }
 
+.pinned-icon {
+  flex-shrink: 0;
+  color: var(--color-primary-500);
+  opacity: 0.7;
+}
 .session-icon { flex-shrink: 0; opacity: 0.5; }
 .session-item.active .session-icon { opacity: 0.8; }
 

@@ -207,7 +207,8 @@ const createLocalSession = (dbSessionId = null) => {
     title: '新对话',
     createdAt: now,
     updatedAt: now,
-    dbSessionId
+    dbSessionId,
+    pinned: false
   }
   sessions.value.unshift(s)
   activeSessionId.value = s.id
@@ -346,10 +347,10 @@ const deleteSession = async (id) => {
 
 // ── 置顶会话 ──────────────────────────────────────────────
 const pinSession = (id) => {
-  const index = sessions.value.findIndex(s => s.id === id)
-  if (index > 0) {
-    const [session] = sessions.value.splice(index, 1)
-    sessions.value.unshift(session)
+  const s = sessions.value.find(s => s.id === id)
+  if (s) {
+    s.pinned = !s.pinned
+    s.updatedAt = Date.now()
     saveSessions()
   }
 }
@@ -450,7 +451,12 @@ const onSwitchChat = (sessionId) => {
 
 // ── 计算属性 ──────────────────────────────────────────────
 const sessionList = computed(() =>
-  [...sessions.value].sort((a, b) => b.updatedAt - a.updatedAt)
+  [...sessions.value].sort((a, b) => {
+    if (a.pinned !== b.pinned) {
+      return a.pinned ? -1 : 1
+    }
+    return b.updatedAt - a.updatedAt
+  })
 )
 
 const activeSessionTitle = computed(() => {
