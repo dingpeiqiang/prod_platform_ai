@@ -80,7 +80,7 @@
               </svg>
               <span>重命名</span>
             </button>
-            <button class="session-menu-item" @click.stop="$emit('report-session', s.id)">
+            <button class="session-menu-item" @click.stop="handleReport(s.id)">
               <svg class="menu-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M12 9v2m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/>
               </svg>
@@ -147,7 +147,7 @@
               </svg>
               <span>重命名</span>
             </button>
-            <button class="session-menu-item" @click.stop="$emit('report-session', s.id)">
+            <button class="session-menu-item" @click.stop="handleReport(s.id)">
               <svg class="menu-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M12 9v2m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/>
               </svg>
@@ -260,6 +260,11 @@ const handleRename = (session) => {
   if (newTitle !== null) {
     emit('rename-session', session.id, newTitle.trim())
   }
+}
+
+const handleReport = (sessionId) => {
+  activeSessionMenu.value = null
+  emit('report-session', sessionId)
 }
 
 // 点击空白处关闭菜单
