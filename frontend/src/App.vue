@@ -39,6 +39,10 @@
         @switch-session="onSwitchSession"
         @delete-session="deleteSession"
         @logout="handleLogout"
+        @pin-session="pinSession"
+        @share-session="shareSession"
+        @rename-session="renameSession"
+        @report-session="reportSession"
       />
 
       <div class="main-area">
@@ -337,6 +341,56 @@ const deleteSession = async (id) => {
       activeDbSessionId.value = ''
       saveActiveSessionId()
     }
+  }
+}
+
+// ── 置顶会话 ──────────────────────────────────────────────
+const pinSession = (id) => {
+  const index = sessions.value.findIndex(s => s.id === id)
+  if (index > 0) {
+    const [session] = sessions.value.splice(index, 1)
+    sessions.value.unshift(session)
+    saveSessions()
+  }
+}
+
+// ── 分享会话 ──────────────────────────────────────────────
+const shareSession = (id) => {
+  const s = sessions.value.find(s => s.id === id)
+  if (s?.dbSessionId) {
+    const shareUrl = `${window.location.origin}/chat/${s.dbSessionId}`
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      alert('分享链接已复制到剪贴板')
+    }).catch(() => {
+      prompt('分享链接:', shareUrl)
+    })
+  } else {
+    alert('该会话尚未保存到服务器，无法分享')
+  }
+}
+
+// ── 重命名会话 ──────────────────────────────────────────────
+const renameSession = async (id, newTitle) => {
+  if (!newTitle.trim()) {
+    alert('会话名称不能为空')
+    return
+  }
+  const s = sessions.value.find(s => s.id === id)
+  if (s) {
+    s.title = newTitle.trim()
+    s.updatedAt = Date.now()
+    saveSessions()
+    if (s.dbSessionId) {
+      await apiUpdateSessionTitle(s.dbSessionId, s.title)
+    }
+  }
+}
+
+// ── 举报会话 ──────────────────────────────────────────────
+const reportSession = (id) => {
+  const reason = prompt('请说明举报原因：', '')
+  if (reason !== null) {
+    alert(`已收到您的举报，原因：${reason}\n\n我们会尽快处理，感谢您的反馈！`)
   }
 }
 
