@@ -1,5 +1,5 @@
 """
-分布式追踪
+分布式追踪 - 支持数据库持久化
 """
 
 from typing import Dict, Any, Optional, List, Callable
@@ -7,8 +7,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 import uuid
-import time
 import threading
+import time
 
 from collections import defaultdict
 
@@ -68,20 +68,63 @@ class Span:
 
 class Tracer:
     """
-    分布式追踪器
+    分布式追踪器 - 支持数据库持久化
     
     功能：
     1. 创建追踪 Span
     2. 层级关系管理
     3. 追踪导出
     4. 性能分析
+    5. 数据库持久化
     """
 
-    def __init__(self, service_name: str = "harness"):
+    def __init__(self, service_name: str = "harness", use_database: bool = True):
         self.service_name = service_name
+        self.use_database = use_database
         self._spans: Dict[str, Span] = {}
         self._trace_spans: Dict[str, List[str]] = defaultdict(list)  # trace_id -> span_ids
         self._lock = threading.Lock()
+        
+        # 延迟导入数据库相关模块
+        self._db_session = None
+        self._Trace = None
+        self._Span = None
+        self._SpanStatusDB = None
+        self._db_initialized = False
+        self._db_init_error = None
+
+    def _init_db(self):
+        """延迟初始化数据库连接"""
+        if self._db_initialized or not self.use_database:
+            return
+        
+        if self._db_init_error:
+            # 之前初始化失败过，不再尝试
+            return
+        
+        try:
+            from sqlalchemy import create_engine
+            from sqlalchemy.orm import sessionmaker
+            from app.core.config import get_settings
+            from app.models.trace_model import Trace, Span as DBSpan, SpanStatus as DBSpanStatus
+            
+            settings = get_settings()
+            engine = create_engine(settings.DATABASE_URL, pool_timeout=5, connect_args={"connect_timeout": 5})
+            SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+            
+            # 创建表（如果不存在）
+            from app.models.trace_model import Base
+            Base.metadata.create_all(bind=engine)
+            
+            self._db_session = SessionLocal()
+            self._Trace = Trace
+            self._Span = DBSpan
+            self._SpanStatusDB = DBSpanStatus
+            self._db_initialized = True
+        except Exception as e:
+            # 如果数据库初始化失败，回退到内存存储
+            self._db_init_error = str(e)
+            self.use_database = False
 
     def start_span(
         self,
@@ -110,8 +153,68 @@ class Tracer:
         return span
 
     def finish_span(self, span: Span, status: SpanStatus = SpanStatus.OK):
-        """结束 Span"""
+        """结束 Span 并保存到数据库"""
         span.finish(status)
+        
+        # 保存到数据库（后台异步执行，不阻塞主线程）
+        if self.use_database:
+            threading.Thread(target=self._save_to_db_async, args=(span,), daemon=True).start()
+
+    def _save_to_db_async(self, span: Span):
+        """异步保存 Span 到数据库"""
+        try:
+            self._init_db()
+            
+            if self._db_session and self._Span and self._Trace:
+                session = self._db_session()
+                try:
+                    # 检查是否已存在该 trace
+                    db_trace = session.query(self._Trace).filter(
+                        self._Trace.id == span.trace_id
+                    ).first()
+                    
+                    if not db_trace:
+                        db_trace = self._Trace(
+                            id=span.trace_id,
+                            service_name=self.service_name,
+                            start_time=span.start_time,
+                            end_time=span.end_time,
+                            total_duration_ms=span.duration_ms,
+                            span_count=1
+                        )
+                        session.add(db_trace)
+                    else:
+                        db_trace.end_time = span.end_time
+                        db_trace.span_count += 1
+                        if db_trace.total_duration_ms:
+                            db_trace.total_duration_ms += span.duration_ms or 0
+                        else:
+                            db_trace.total_duration_ms = span.duration_ms
+                    
+                    # 保存 span
+                    db_span = self._Span(
+                        id=span.span_id,
+                        trace_id=span.trace_id,
+                        parent_span_id=span.parent_span_id,
+                        name=span.name,
+                        component=span.component,
+                        start_time=span.start_time,
+                        end_time=span.end_time,
+                        duration_ms=span.duration_ms,
+                        status=self._SpanStatusDB(span.status.value),
+                        tags=span.tags,
+                        logs=span.logs
+                    )
+                    session.add(db_span)
+                    
+                    session.commit()
+                except Exception as e:
+                    session.rollback()
+                finally:
+                    session.close()
+        except Exception as e:
+            # 数据库保存失败不影响业务
+            pass
 
     def get_trace(self, trace_id: str) -> List[Span]:
         """获取追踪的所有 Span"""
@@ -127,6 +230,11 @@ class Tracer:
     def export_trace(self, trace_id: str) -> Dict:
         """导出追踪"""
         spans = self.get_trace(trace_id)
+        
+        # 如果内存中没有，尝试从数据库加载
+        if not spans and self.use_database:
+            spans = self._load_trace_from_db(trace_id)
+        
         if not spans:
             return {}
         
@@ -140,6 +248,43 @@ class Tracer:
             "spans": [s.to_dict() for s in spans]
         }
 
+    def _load_trace_from_db(self, trace_id: str) -> List[Span]:
+        """从数据库加载追踪"""
+        try:
+            self._init_db()
+            
+            if self._db_session and self._Span:
+                session = self._db_session()
+                try:
+                    db_spans = session.query(self._Span).filter(
+                        self._Span.trace_id == trace_id
+                    ).order_by(self._Span.start_time).all()
+                    
+                    spans = []
+                    for db_span in db_spans:
+                        span = Span(
+                            span_id=db_span.id,
+                            trace_id=db_span.trace_id,
+                            name=db_span.name,
+                            start_time=db_span.start_time,
+                            end_time=db_span.end_time,
+                            duration_ms=db_span.duration_ms,
+                            status=SpanStatus(db_span.status.value),
+                            parent_span_id=db_span.parent_span_id,
+                            component=db_span.component,
+                            tags=db_span.tags or {},
+                            logs=db_span.logs or []
+                        )
+                        spans.append(span)
+                    
+                    return spans
+                finally:
+                    session.close()
+        except Exception as e:
+            pass
+        
+        return []
+
     def export_traces(
         self,
         start_time: Optional[datetime] = None,
@@ -147,8 +292,10 @@ class Tracer:
         limit: int = 100
     ) -> List[Dict]:
         """导出追踪列表"""
+        traces = []
+        
+        # 首先从内存加载（快速）
         with self._lock:
-            traces = []
             for trace_id, span_ids in self._trace_spans.items():
                 if not span_ids:
                     continue
@@ -163,24 +310,75 @@ class Tracer:
                     continue
                 
                 traces.append(self.export_trace(trace_id))
+        
+        # 如果内存中没有，尝试从数据库加载
+        if not traces and self.use_database:
+            traces = self._load_traces_from_db(start_time, end_time, limit)
+        
+        traces.sort(key=lambda t: t.get("start_time", ""), reverse=True)
+        traces = traces[:limit]
+        
+        return traces
+
+    def _load_traces_from_db(
+        self,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        limit: int = 100
+    ) -> List[Dict]:
+        """从数据库加载追踪列表"""
+        try:
+            self._init_db()
             
-            traces.sort(key=lambda t: t.get("start_time", ""), reverse=True)
-            return traces[:limit]
+            if self._db_session and self._Trace:
+                session = self._db_session()
+                try:
+                    query = session.query(self._Trace)
+                    
+                    if start_time:
+                        query = query.filter(self._Trace.start_time >= start_time)
+                    if end_time:
+                        query = query.filter(self._Trace.start_time <= end_time)
+                    
+                    db_traces = query.order_by(self._Trace.start_time.desc()).limit(limit).all()
+                    
+                    traces = []
+                    for db_trace in db_traces:
+                        trace_data = db_trace.to_dict()
+                        trace_data["spans"] = []
+                        
+                        # 加载关联的 spans
+                        db_spans = session.query(self._Span).filter(
+                            self._Span.trace_id == db_trace.id
+                        ).order_by(self._Span.start_time).all()
+                        
+                        for db_span in db_spans:
+                            span_dict = db_span.to_dict()
+                            trace_data["spans"].append(span_dict)
+                        
+                        traces.append(trace_data)
+                    
+                    return traces
+                finally:
+                    session.close()
+        except Exception as e:
+            pass
+        
+        return []
 
     def analyze_trace(self, trace_id: str) -> Dict[str, Any]:
         """分析追踪性能"""
         spans = self.get_trace(trace_id)
         
+        # 如果内存中没有，尝试从数据库加载
+        if not spans and self.use_database:
+            spans = self._load_trace_from_db(trace_id)
+        
         if not spans:
             return {}
         
-        # 找出最慢的 Span
         slowest = max(spans, key=lambda s: s.duration_ms or 0) if spans else None
-        
-        # 找出有错误的 Span
         errors = [s for s in spans if s.status == SpanStatus.ERROR]
-        
-        # 构建 Span 树
         span_tree = self._build_span_tree(spans)
         
         return {
@@ -211,7 +409,6 @@ class Tracer:
                 "children": [build_node(child) for child in children[span.span_id]]
             }
         
-        # 找到根 Span
         roots = [s for s in spans if not s.parent_span_id]
         return {
             "roots": [build_node(root) for root in roots]
@@ -238,21 +435,54 @@ class Tracer:
 
     def get_stats(self) -> Dict[str, Any]:
         """获取统计"""
+        db_stats = self._get_db_stats() if self.use_database else {}
+        
         with self._lock:
-            return {
-                "total_traces": len(self._trace_spans),
-                "total_spans": len(self._spans),
-                "service_name": self.service_name
+            memory_stats = {
+                "memory_total_traces": len(self._trace_spans),
+                "memory_total_spans": len(self._spans)
             }
+        
+        return {
+            "total_traces": db_stats.get("total_traces", 0) + memory_stats["memory_total_traces"],
+            "total_spans": db_stats.get("total_spans", 0) + memory_stats["memory_total_spans"],
+            "service_name": self.service_name,
+            "use_database": self.use_database,
+            "db_initialized": self._db_initialized,
+            **memory_stats,
+            **db_stats
+        }
+
+    def _get_db_stats(self) -> Dict[str, Any]:
+        """从数据库获取统计"""
+        try:
+            self._init_db()
+            
+            if self._db_session and self._Trace and self._Span:
+                session = self._db_session()
+                try:
+                    total_traces = session.query(self._Trace).count()
+                    total_spans = session.query(self._Span).count()
+                    return {
+                        "db_total_traces": total_traces,
+                        "db_total_spans": total_spans
+                    }
+                finally:
+                    session.close()
+        except Exception as e:
+            pass
+        
+        return {}
 
 
 _tracer: Optional[Tracer] = None
 
 
-def get_tracer(service_name: str = "harness") -> Tracer:
+def get_tracer(service_name: str = "harness", use_database: bool = False) -> Tracer:
+    """获取全局追踪器实例"""
     global _tracer
     if _tracer is None:
-        _tracer = Tracer(service_name)
+        _tracer = Tracer(service_name, use_database=use_database)
     return _tracer
 
 

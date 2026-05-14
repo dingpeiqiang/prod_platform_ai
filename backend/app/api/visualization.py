@@ -45,12 +45,16 @@ async def websocket_endpoint(websocket: WebSocket, trace_id: str):
 @router.get("/traces")
 async def get_traces(
     limit: int = 20,
-    start_time: Optional[datetime] = None,
-    end_time: Optional[datetime] = None
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None
 ) -> Dict[str, Any]:
     """获取追踪列表"""
+    from datetime import datetime as dt
+    start_dt = dt.fromisoformat(start_time) if start_time else None
+    end_dt = dt.fromisoformat(end_time) if end_time else None
+    
     tracer = get_tracer()
-    traces = tracer.export_traces(start_time, end_time, limit)
+    traces = tracer.export_traces(start_dt, end_dt, limit)
     
     return {
         "success": True,
@@ -152,4 +156,26 @@ async def delete_trace(trace_id: str) -> Dict[str, Any]:
     return {
         "success": True,
         "message": "Trace deleted"
+    }
+
+
+@router.post("/traces/test")
+async def test_trace() -> Dict[str, Any]:
+    """测试追踪功能"""
+    tracer = get_tracer()
+    
+    # 添加测试追踪
+    span1 = tracer.start_span("test_operation", trace_id="test_trace_id", component="test")
+    span1.add_tag("status", "success")
+    tracer.finish_span(span1, SpanStatus.OK)
+    
+    # 获取统计
+    stats = tracer.get_stats()
+    traces = tracer.export_traces()
+    
+    return {
+        "success": True,
+        "message": "Test trace added successfully",
+        "stats": stats,
+        "trace_count": len(traces)
     }

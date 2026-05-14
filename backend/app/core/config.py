@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
     
+    # SQLite 数据库配置（开发环境）
     DATABASE_URL: str = "sqlite:///./form.db"
     REDIS_URL: str = "redis://localhost:6379/0"
     NEO4J_URL: str = "bolt://localhost:7687"
