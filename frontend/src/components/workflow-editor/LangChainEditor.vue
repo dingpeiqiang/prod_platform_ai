@@ -2,6 +2,13 @@
   <div class="langchain-editor">
     <div class="toolbar">
       <div class="toolbar-left">
+        <button @click="goBack" class="btn-secondary" title="返回工作流管理">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+          返回
+        </button>
+        <div class="toolbar-divider"></div>
         <button @click="newWorkflow" class="btn-primary" title="新建工作流">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 5v14"/>
@@ -112,6 +119,7 @@
           :disabled="!isValid || isRunning" 
           class="btn-success"
           :class="{ running: isRunning }"
+          title="带参数执行"
         >
           <svg v-if="!isRunning" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="5 3 19 12 5 21 5 3"/>
@@ -121,6 +129,21 @@
             <path d="M12 6v6l4 2"/>
           </svg>
           {{ isRunning ? '运行中...' : '运行' }}
+        </button>
+        <button 
+          @click="runWorkflow()" 
+          :disabled="!isValid || isRunning" 
+          class="btn-secondary"
+          title="直接执行（无参数）"
+        >
+          <svg v-if="!isRunning" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          <svg v-else class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 6v6l4 2"/>
+          </svg>
+          快速执行
         </button>
         <button @click="clearWorkflow" class="btn-danger">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -134,6 +157,15 @@
       
       <div class="toolbar-center">
         <div class="align-group">
+          <button @click="autoLayout" class="btn-icon" title="自动排版">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="7" height="7" rx="1"/>
+              <rect x="14" y="3" width="7" height="7" rx="1"/>
+              <rect x="3" y="14" width="7" height="7" rx="1"/>
+              <rect x="14" y="14" width="7" height="7" rx="1"/>
+            </svg>
+          </button>
+          <div class="toolbar-divider-small"></div>
           <button @click="alignLeft" :disabled="selectedNodeIds.length < 2" class="btn-icon" title="左对齐">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="4" y1="6" x2="20" y2="6"/>
@@ -510,7 +542,16 @@
           </div>
 
           <div v-show="activePanel === 'execution'" class="panel-content-wrapper">
+            <!-- 参数输入面板 -->
+            <ParameterInputPanel 
+              v-if="showParameterPanel"
+              :initial-parameters="executionParameters"
+              @close="closeParameterPanel"
+              @execute="handleParameterExecute"
+            />
+            <!-- 执行日志面板 -->
             <ExecutionPanel 
+              v-else
               :logs="executionLogs"
               :is-running="isRunning"
               :last-result="lastExecutionResult"
@@ -530,10 +571,13 @@ import { Background } from '@vue-flow/background';
 import { Controls } from '@vue-flow/controls';
 import { MiniMap } from '@vue-flow/minimap';
 import { v4 as uuidv4 } from 'uuid';
+import { ElMessage } from 'element-plus';
+import * as workflowApi from '@/services/workflowApi';
 
 import NodePanel from './NodePanel.vue';
 import PropertyPanel from './PropertyPanel.vue';
 import ExecutionPanel from './ExecutionPanel.vue';
+import ParameterInputPanel from './ParameterInputPanel.vue';
 
 import StartNode from './nodes/StartNode.vue';
 import EndNode from './nodes/EndNode.vue';
@@ -547,9 +591,29 @@ import HttpNode from './nodes/HttpNode.vue';
 import CodeNode from './nodes/CodeNode.vue';
 import ParserNode from './nodes/ParserNode.vue';
 
-import { debounce, validateWorkflow, alignNodes, distributeNodes } from './utils/editorUtils';
+import { debounce, validateWorkflow, alignNodes, distributeNodes, autoLayoutNodes } from './utils/editorUtils';
 import { ExecutionEngine } from './utils/executionEngine';
 import { KeyboardShortcuts } from './utils/keyboardShortcuts';
+
+// Props
+const props = defineProps({
+  workflowCode: {
+    type: String,
+    default: ''
+  }
+});
+
+// Emits
+const emit = defineEmits(['go-back']);
+
+const goBack = () => {
+  if (hasChanges.value) {
+    if (!confirm('当前工作流有未保存的更改，确定要返回吗？')) {
+      return;
+    }
+  }
+  emit('go-back');
+};
 
 const { addEdges, removeNodes, removeEdges, project } = useVueFlow();
 
@@ -581,6 +645,10 @@ const isRunning = ref(false);
 const lastExecutionResult = ref(null);
 const copiedNodes = ref([]);
 const nodeExecutionStatus = ref({});
+
+// 参数配置相关状态
+const showParameterPanel = ref(false);
+const executionParameters = ref([]);
 
 const executionEngine = new ExecutionEngine();
 const keyboardShortcuts = new KeyboardShortcuts();
@@ -1136,7 +1204,7 @@ const saveWorkflows = () => {
   localStorage.setItem('langchain-workflows', JSON.stringify(workflows.value));
 };
 
-const saveWorkflow = () => {
+const saveWorkflow = async () => {
   const workflowData = {
     nodes: elements.value.filter(el => !el.source && !el.target),
     edges: elements.value.filter(el => el.source && el.target),
@@ -1145,29 +1213,64 @@ const saveWorkflow = () => {
     updatedAt: new Date().toISOString()
   };
 
-  if (currentWorkflowId.value) {
-    const index = workflows.value.findIndex(w => w.id === currentWorkflowId.value);
-    if (index !== -1) {
-      workflows.value[index] = { 
-        ...workflows.value[index], 
+  try {
+    if (currentWorkflowId.value) {
+      // 更新现有工作流
+      const index = workflows.value.findIndex(w => w.id === currentWorkflowId.value);
+      if (index !== -1) {
+        workflows.value[index] = { 
+          ...workflows.value[index], 
+          ...workflowData,
+          name: workflowName.value
+        };
+        saveWorkflows();
+      }
+      
+      // 同步到后端
+      const updateResult = await workflowApi.workflowApi.update(currentWorkflowId.value, {
+        workflowName: workflowName.value,
+        workflowData: workflowData
+      });
+      
+      if (updateResult.success) {
+        ElMessage.success('工作流已保存');
+      } else {
+        ElMessage.warning('本地保存成功，但云端同步失败：' + (updateResult.message || '未知错误'));
+      }
+    } else {
+      // 创建新工作流
+      const newId = uuidv4();
+      const newWorkflow = {
+        id: newId,
+        name: workflowName.value,
+        description: '',
         ...workflowData,
-        name: workflowName.value
+        createdAt: new Date().toISOString()
       };
+      workflows.value.push(newWorkflow);
+      currentWorkflowId.value = newId;
       saveWorkflows();
+      
+      // 同步到后端
+      const createResult = await workflowApi.workflowApi.create({
+        workflowCode: newId,
+        workflowName: workflowName.value,
+        description: '',
+        category: 'general',
+        workflowData: workflowData
+      });
+      
+      if (createResult.success) {
+        ElMessage.success('工作流已创建并保存');
+      } else {
+        ElMessage.warning('本地保存成功，但云端同步失败：' + (createResult.message || '未知错误'));
+      }
     }
-  } else {
-    const newWorkflow = {
-      id: uuidv4(),
-      name: workflowName.value,
-      description: '',
-      ...workflowData,
-      createdAt: new Date().toISOString()
-    };
-    workflows.value.push(newWorkflow);
-    currentWorkflowId.value = newWorkflow.id;
-    saveWorkflows();
+    hasChanges.value = false;
+  } catch (error) {
+    console.error('保存工作流失败:', error);
+    ElMessage.error('保存失败：' + (error.message || '未知错误'));
   }
-  hasChanges.value = false;
 };
 
 const newWorkflow = () => {
@@ -1334,10 +1437,11 @@ const clearWorkflow = () => {
 const runWorkflowWithPanel = () => {
   showRightPanel.value = true;
   activePanel.value = 'execution';
-  runWorkflow();
+  // 显示参数输入面板
+  showParameterPanel.value = true;
 };
 
-const runWorkflow = async () => {
+const runWorkflow = async (inputParams = {}) => {
   if (!isValid.value || isRunning.value) return;
   
   isRunning.value = true;
@@ -1353,9 +1457,20 @@ const runWorkflow = async () => {
   };
   
   executionEngine.setCallbacks(onStatusChange, onLog);
-  const result = await executionEngine.execute(elements.value);
+  const result = await executionEngine.execute(elements.value, inputParams);
   lastExecutionResult.value = result;
   isRunning.value = false;
+};
+
+const handleParameterExecute = (params) => {
+  // 关闭参数面板
+  showParameterPanel.value = false;
+  // 执行工作流并传入参数
+  runWorkflow(params);
+};
+
+const closeParameterPanel = () => {
+  showParameterPanel.value = false;
 };
 
 const clearExecutionLogs = () => {
@@ -1469,6 +1584,15 @@ const distributeVertical = () => {
   if (nodes.length < 3) return;
   saveHistory();
   distributeNodes(nodes, 'vertical');
+  markDirty();
+};
+
+const autoLayout = () => {
+  const allNodes = elements.value.filter(el => !el.source && !el.target);
+  const allEdges = elements.value.filter(el => el.source && el.target);
+  if (allNodes.length === 0) return;
+  saveHistory();
+  autoLayoutNodes(allNodes, allEdges);
   markDirty();
 };
 
@@ -1621,13 +1745,40 @@ const handleKeydown = (event) => {
   }
 };
 
-onMounted(() => {
+onMounted(async () => {
   registerShortcuts();
   window.addEventListener('keydown', handleKeydown);
   
   loadWorkflows();
   
-  if (workflows.value.length > 0) {
+  // 如果传入了 workflowCode，从后端加载
+  if (props.workflowCode) {
+    try {
+      const result = await workflowApi.workflowApi.get(props.workflowCode);
+      if (result.success && result.data) {
+        const workflow = result.data;
+        currentWorkflowId.value = workflow.workflowCode;
+        workflowName.value = workflow.workflowName;
+        
+        // 加载工作流数据
+        if (workflow.workflowData) {
+          const { nodes, edges } = workflow.workflowData;
+          elements.value = [
+            ...(nodes || []),
+            ...(edges || [])
+          ];
+        }
+        
+        ElMessage.success('工作流加载成功');
+      } else {
+        ElMessage.warning('未找到工作流，将创建新的工作流');
+      }
+    } catch (error) {
+      console.error('加载工作流失败:', error);
+      ElMessage.error('加载工作流失败');
+    }
+  } else if (workflows.value.length > 0) {
+    // 否则打开第一个本地工作流
     openWorkflow(workflows.value[0]);
   }
   
@@ -1660,6 +1811,14 @@ onUnmounted(() => {
   overflow-x: auto;
   overflow-y: hidden;
   min-height: 40px;
+}
+
+/* 修复工具栏按钮内SVG图标显示问题 */
+.toolbar button svg {
+  display: inline-block !important;
+  flex-shrink: 0;
+  max-width: none !important;
+  /* 不强制设置宽高，使用HTML中的width/height属性 */
 }
 
 .toolbar-left {
@@ -1699,6 +1858,14 @@ onUnmounted(() => {
   min-width: 120px;
   justify-content: flex-start;
   padding: 6px 12px;
+}
+
+.workflow-btn svg {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  max-width: none;
 }
 
 .workflow-name {
@@ -1832,6 +1999,10 @@ onUnmounted(() => {
 .dropdown-item svg {
   flex-shrink: 0;
   margin-top: 2px;
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  max-width: none;
 }
 
 .delete-btn {
@@ -1843,6 +2014,13 @@ onUnmounted(() => {
   background: transparent;
   cursor: pointer;
   color: #999;
+}
+
+.delete-btn svg {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  max-width: none;
 }
 
 .dropdown-item:hover .delete-btn {
@@ -1957,6 +2135,17 @@ onUnmounted(() => {
   height: 32px;
 }
 
+.btn-icon svg,
+.btn-primary svg,
+.btn-secondary svg,
+.btn-success svg,
+.btn-danger svg {
+  display: inline-block;
+  flex-shrink: 0;
+  max-width: none;
+  /* 使用HTML中定义的width和height */
+}
+
 .btn-icon {
   background: transparent;
   color: #666;
@@ -1969,6 +2158,10 @@ onUnmounted(() => {
 .btn-icon:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.btn-icon:disabled svg {
+  opacity: 1;
 }
 
 .btn-primary {
@@ -2053,6 +2246,14 @@ onUnmounted(() => {
   justify-content: center;
   min-width: 32px;
   height: 32px;
+}
+
+.panel-toggle-btn svg {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  max-width: none;
 }
 
 .panel-toggle-btn.active {

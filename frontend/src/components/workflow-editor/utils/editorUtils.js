@@ -170,3 +170,89 @@ export const distributeNodes = (nodes, distributeType) => {
     sortedNodes.forEach((node, index) => { node.position.y = minY + index * gap; });
   }
 };
+
+export const autoLayoutNodes = (nodes, edges) => {
+  if (nodes.length === 0) return;
+  
+  const NODE_WIDTH = 180;
+  const NODE_HEIGHT = 80;
+  const HORIZONTAL_GAP = 200;
+  const VERTICAL_GAP = 100;
+  const START_X = 50;
+  const START_Y = 200;
+  
+  const nodeMap = new Map();
+  nodes.forEach(node => nodeMap.set(node.id, node));
+  
+  const inDegree = new Map();
+  const outEdges = new Map();
+  nodes.forEach(node => {
+    inDegree.set(node.id, 0);
+    outEdges.set(node.id, []);
+  });
+  
+  edges.forEach(edge => {
+    inDegree.set(edge.target, (inDegree.get(edge.target) || 0) + 1);
+    outEdges.get(edge.source)?.push(edge.target);
+  });
+  
+  const levels = [];
+  const visited = new Set();
+  const queue = [];
+  
+  nodes.forEach(node => {
+    if (inDegree.get(node.id) === 0 || node.type === 'start') {
+      queue.push(node.id);
+      visited.add(node.id);
+    }
+  });
+  
+  if (queue.length === 0 && nodes.length > 0) {
+    queue.push(nodes[0].id);
+    visited.add(nodes[0].id);
+  }
+  
+  while (queue.length > 0) {
+    const levelSize = queue.length;
+    const currentLevel = [];
+    
+    for (let i = 0; i < levelSize; i++) {
+      const nodeId = queue.shift();
+      currentLevel.push(nodeId);
+      
+      const targets = outEdges.get(nodeId) || [];
+      targets.forEach(targetId => {
+        if (!visited.has(targetId)) {
+          const newInDegree = (inDegree.get(targetId) || 0) - 1;
+          inDegree.set(targetId, newInDegree);
+          if (newInDegree <= 0) {
+            visited.add(targetId);
+            queue.push(targetId);
+          }
+        }
+      });
+    }
+    
+    if (currentLevel.length > 0) {
+      levels.push(currentLevel);
+    }
+  }
+  
+  const remainingNodes = nodes.filter(node => !visited.has(node.id));
+  if (remainingNodes.length > 0) {
+    levels.push(remainingNodes.map(node => node.id));
+  }
+  
+  levels.forEach((level, levelIndex) => {
+    const totalLevelHeight = level.length * NODE_HEIGHT + (level.length - 1) * VERTICAL_GAP;
+    const startY = START_Y - totalLevelHeight / 2 + NODE_HEIGHT / 2;
+    
+    level.forEach((nodeId, nodeIndex) => {
+      const node = nodeMap.get(nodeId);
+      if (node) {
+        node.position.x = START_X + levelIndex * (NODE_WIDTH + HORIZONTAL_GAP);
+        node.position.y = startY + nodeIndex * (NODE_HEIGHT + VERTICAL_GAP);
+      }
+    });
+  });
+};

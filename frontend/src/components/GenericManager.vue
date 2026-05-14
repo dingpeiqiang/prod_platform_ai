@@ -171,10 +171,11 @@ const props = defineProps({
     apiService: { type: Object, required: true },
     showCategory: { type: Boolean, default: true },
     showEntities: { type: Boolean, default: false },
-    showTools: { type: Boolean, default: false }
+    showTools: { type: Boolean, default: false },
+    useExternalEditor: { type: Boolean, default: false }  // 是否使用外部编辑器
 })
 
-const emit = defineEmits(['goBack'])
+const emit = defineEmits(['goBack', 'edit-item'])
 const goBack = () => { emit('goBack') }
 
 const loading = ref(false)
@@ -218,6 +219,12 @@ const loadItems = async () => {
 }
 
 const selectItem = async (item) => {
+    // 如果使用外部编辑器，直接跳转
+    if (props.useExternalEditor) {
+        emit('edit-item', item[props.codeField])
+        return
+    }
+    
     selectedCode.value = item[props.codeField]
     const res = await props.apiService.get(item[props.codeField])
     if (res.success) {

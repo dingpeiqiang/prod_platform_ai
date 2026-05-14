@@ -145,8 +145,10 @@
         item-type="工作流"
         code-field="workflowCode"
         name-field="workflowName"
+        :use-external-editor="true"
         :api-service="workflowApiService"
         @go-back="returnToDashboard"
+        @edit-item="openWorkflowEditor"
       />
 
         <!-- LangChain 测试界面 -->
@@ -162,6 +164,8 @@
         <!-- LangChain 工作流编辑器 -->
         <LangChainEditor 
           v-if="!isInitializing && currentView === 'langchain-editor'" 
+          :workflow-code="currentWorkflowCode"
+          @go-back="returnToWorkflowManager"
         />
         
         <!-- 聊天界面：有活动会话时显示 -->
@@ -206,6 +210,7 @@ import * as ontologyApi from './services/ontologyApi.js'
 import * as workflowApi from './services/workflowApi.js'
 
 const currentView = ref('dashboard')
+const currentWorkflowCode = ref('')  // 当前编辑的工作流编码
 
 // 网络状态
 const isOnline = ref(navigator.onLine)
@@ -355,8 +360,26 @@ const openLangChainEditor = () => {
   currentView.value = 'langchain-editor'
   activeSessionId.value = ''
   activeDbSessionId.value = ''
+  currentWorkflowCode.value = ''  // 清空工作流编码，新建模式
   isDashboardSidebarVisible.value = false
   saveActiveSessionId()
+}
+
+// ── 打开工作流编辑器（从管理列表）──────────────────────────────
+const openWorkflowEditor = (workflowCode) => {
+  currentView.value = 'langchain-editor'
+  activeSessionId.value = ''
+  activeDbSessionId.value = ''
+  currentWorkflowCode.value = workflowCode  // 设置要编辑的工作流编码
+  isDashboardSidebarVisible.value = false
+  saveActiveSessionId()
+}
+
+// ── 返回工作流管理 ─────────────────────────────────────────
+const returnToWorkflowManager = () => {
+  currentView.value = 'workflow-manager'
+  currentWorkflowCode.value = ''  // 清空工作流编码
+  isDashboardSidebarVisible.value = true  // 恢复侧边栏显示
 }
 
 // ── API 服务适配器 ─────────────────────────────────────────

@@ -47,10 +47,15 @@ export const workflowApi = {
 
   // 创建工作流 - 适配表单数据
   create(data) {
-    // 将传入的表单数据转换为API期望的格式
+    // 如果数据已经包含 workflowCode 和 workflowName，直接使用
+    if (data.workflowCode && data.workflowName) {
+      return apiClient.post('/api/workflows', data)
+    }
+    
+    // 否则将传入的表单数据转换为API期望的格式
     const payload = {
-      workflowCode: data.code,
-      workflowName: data.name,
+      workflowCode: data.code || data.workflowCode,
+      workflowName: data.name || data.workflowName,
       description: data.description,
       category: data.category || 'general',
       tags: data.tags || [],

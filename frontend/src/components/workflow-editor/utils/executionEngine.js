@@ -35,7 +35,7 @@ export class ExecutionEngine {
     }
   }
 
-  async execute(elements) {
+  async execute(elements, inputParams = {}) {
     if (this.isRunning) return;
 
     this.isRunning = true;
@@ -53,8 +53,14 @@ export class ExecutionEngine {
 
       const context = {
         input: '',
-        variables: {}
+        variables: {},
+        params: inputParams || {}  // 添加传入参数到上下文
       };
+
+      // 记录输入参数
+      if (Object.keys(inputParams).length > 0) {
+        this.addLog('info', '接收到执行参数', null, { params: inputParams });
+      }
 
       this.addLog('start', '开始执行工作流', null, null);
       await this.executeNode(startNode.id, nodes, edges, context);
@@ -93,7 +99,13 @@ export class ExecutionEngine {
     try {
       switch (node.type) {
         case 'start':
-          this.addLog('info', '初始化工作流上下文', null, context);
+          // 将传入的参数设置到变量中，方便后续节点使用
+          if (context.params && Object.keys(context.params).length > 0) {
+            Object.assign(context.variables, context.params);
+            this.addLog('info', '初始化参数到变量', null, context.variables);
+          } else {
+            this.addLog('info', '初始化工作流上下文', null, context);
+          }
           break;
 
         case 'prompt': {
