@@ -1,4 +1,4 @@
-﻿import axios from 'axios'
+import axios from 'axios'
 
 const API_BASE_URL = window.location.origin
 
@@ -42,7 +42,7 @@ export const workflowApi = {
 
   // 获取单个工作流
   get(workflowCode) {
-    return apiClient.get(/api/workflows/)
+    return apiClient.get(`/api/workflows/${workflowCode}`)
   },
 
   // 创建工作流 - 适配表单数据
@@ -73,16 +73,16 @@ export const workflowApi = {
     if (data.priority !== undefined) payload.priority = data.priority
     if (data.isActive !== undefined) payload.isActive = data.isActive
     if (data.workflowData !== undefined) payload.workflowData = data.workflowData
-    return apiClient.put(/api/workflows/, payload)
+    return apiClient.put(`/api/workflows/${workflowCode}`, payload)
   },
 
   // 删除工作流
   delete(workflowCode) {
-    return apiClient.delete(/api/workflows/)
+    return apiClient.delete(`/api/workflows/${workflowCode}`)
   },
 
   // 切换工作流启用状态
   toggle(workflowCode) {
-    return apiClient.post(/api/workflows//toggle)
+    return apiClient.post(`/api/workflows/${workflowCode}/toggle`)
   }
 }
