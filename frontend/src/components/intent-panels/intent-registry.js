@@ -4,6 +4,7 @@
  */
 
 import LangChainPanel from './LangChainPanel.vue'
+import LangChainEditor from './LangChainEditor.vue'
 
 // ── 事件处理器注册表 ──────────────────────────────────
 // key: SSE event type (如 'config', 'delete_form', 'manage_history')
@@ -15,9 +16,14 @@ const _eventHandlers = new Map()
 // value: Function(msg, intentData)
 const _postProcessors = new Map()
 
+// ── 注册事件处理器 ──────────────────────────────────
 registerEventHandler('langchain', (data, msg) => {
   console.log('[LangChain Event]', data)
 }, { panel: LangChainPanel })
+
+registerEventHandler('langchain_editor', (data, msg) => {
+  console.log('[LangChain Editor Event]', data)
+}, { panel: LangChainEditor })
 
 /**
  * 注册 SSE 事件处理器

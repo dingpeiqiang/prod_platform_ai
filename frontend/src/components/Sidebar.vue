@@ -45,6 +45,15 @@
       可视化
     </button>
 
+    <button class="editor-btn" @click="$emit('open-langchain-editor')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+        <line x1="9" y1="9" x2="15" y2="9"/>
+        <line x1="9" y1="15" x2="13" y2="15"/>
+      </svg>
+      工作流编辑器
+    </button>
+
     <div class="session-list">
       <div class="session-group-label" v-if="todaySessions.length">今天</div>
       <div
@@ -266,7 +275,7 @@ const props = defineProps({
 // 调试：打印 sessions 数量
 console.log('[Sidebar] sessions 数量:', props.sessions.length, 'activeId:', props.activeId)
 
-const emit = defineEmits(['new-session', 'switch-session', 'delete-session', 'logout', 'pin-session', 'share-session', 'report-session', 'rename-session', 'open-langchain', 'open-visualization'])
+const emit = defineEmits(['new-session', 'switch-session', 'delete-session', 'logout', 'pin-session', 'share-session', 'report-session', 'rename-session', 'open-langchain', 'open-visualization', 'open-langchain-editor'])
 
 const handlePinSession = (sessionId) => {
   console.log('[Sidebar.vue] handlePinSession called with sessionId:', sessionId)
@@ -417,6 +426,27 @@ const olderSessions = computed(() =>
   background: linear-gradient(135deg, rgba(34, 197, 94, 0.25), rgba(34, 197, 94, 0.1));
   border-color: rgba(34, 197, 94, 0.5);
   color: var(--color-success-300);
+}
+
+.editor-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 10px var(--space-3-5);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(139, 92, 246, 0.05));
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: var(--radius-lg);
+  color: var(--color-purple-400);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  margin-bottom: var(--space-3-5);
+}
+.editor-btn:hover {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(139, 92, 246, 0.1));
+  border-color: rgba(139, 92, 246, 0.5);
+  color: var(--color-purple-300);
 }
 
 .session-list {

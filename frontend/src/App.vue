@@ -45,6 +45,7 @@
         @report-session="reportSession"
         @open-langchain="openLangChain"
         @open-visualization="openVisualization"
+        @open-langchain-editor="openLangChainEditor"
       />
 
       <div class="main-area">
@@ -113,6 +114,11 @@
           v-if="!isInitializing && currentView === 'visualization'" 
         />
         
+        <!-- LangChain 工作流编辑器 -->
+        <LangChainEditor 
+          v-if="!isInitializing && currentView === 'langchain-editor'" 
+        />
+        
         <!-- 聊天界面：有活动会话时显示 -->
         <ChatAssistant
           v-if="!isInitializing && currentView === 'dashboard' && activeSessionId"
@@ -143,6 +149,7 @@ import GenericManager from './components/GenericManager.vue'
 import OntologyManager from './components/OntologyManager.vue'
 import Loading from './components/Loading.vue'
 import LangChainPanel from './components/intent-panels/LangChainPanel.vue'
+import LangChainEditor from './components/intent-panels/LangChainEditor.vue'
 import VisualizationPanel from './components/visualization/VisualizationPanel.vue'
 import { useUserStore } from './stores/user'
 import { useLoadingStore } from './stores/loading'
@@ -290,6 +297,15 @@ const openLangChain = () => {
 // ── 打开可视化面板 ──────────────────────────────────────
 const openVisualization = () => {
   currentView.value = 'visualization'
+  activeSessionId.value = ''
+  activeDbSessionId.value = ''
+  saveActiveSessionId()
+  sidebarOpen.value = false
+}
+
+// ── 打开 LangChain 工作流编辑器 ──────────────────────────────
+const openLangChainEditor = () => {
+  currentView.value = 'langchain-editor'
   activeSessionId.value = ''
   activeDbSessionId.value = ''
   saveActiveSessionId()
