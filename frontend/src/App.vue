@@ -43,6 +43,8 @@
         @share-session="shareSession"
         @rename-session="renameSession"
         @report-session="reportSession"
+        @open-langchain="openLangChain"
+        @open-visualization="openVisualization"
       />
 
       <div class="main-area">
@@ -100,6 +102,16 @@
           v-if="!isInitializing && currentView === 'ontology-manager'" 
           @go-back="returnToDashboard"
         />
+
+        <!-- LangChain 测试界面 -->
+        <LangChainPanel 
+          v-if="!isInitializing && currentView === 'langchain'" 
+        />
+        
+        <!-- 可视化面板 -->
+        <VisualizationPanel 
+          v-if="!isInitializing && currentView === 'visualization'" 
+        />
         
         <!-- 聊天界面：有活动会话时显示 -->
         <ChatAssistant
@@ -130,6 +142,8 @@ import PromptManager from './components/PromptManager.vue'
 import GenericManager from './components/GenericManager.vue'
 import OntologyManager from './components/OntologyManager.vue'
 import Loading from './components/Loading.vue'
+import LangChainPanel from './components/intent-panels/LangChainPanel.vue'
+import VisualizationPanel from './components/visualization/VisualizationPanel.vue'
 import { useUserStore } from './stores/user'
 import { useLoadingStore } from './stores/loading'
 import { useTheme } from './composables/useTheme'
@@ -258,6 +272,24 @@ const openFormManager = () => {
 // ── 打开本体管理 ─────────────────────────────────────────
 const openOntologyManager = () => {
   currentView.value = 'ontology-manager'
+  activeSessionId.value = ''
+  activeDbSessionId.value = ''
+  saveActiveSessionId()
+  sidebarOpen.value = false
+}
+
+// ── 打开 LangChain 测试界面 ──────────────────────────────
+const openLangChain = () => {
+  currentView.value = 'langchain'
+  activeSessionId.value = ''
+  activeDbSessionId.value = ''
+  saveActiveSessionId()
+  sidebarOpen.value = false
+}
+
+// ── 打开可视化面板 ──────────────────────────────────────
+const openVisualization = () => {
+  currentView.value = 'visualization'
   activeSessionId.value = ''
   activeDbSessionId.value = ''
   saveActiveSessionId()

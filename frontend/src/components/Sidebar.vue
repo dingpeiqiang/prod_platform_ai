@@ -30,6 +30,21 @@
       新建对话
     </button>
 
+    <button class="langchain-btn" @click="$emit('open-langchain')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+        <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+      </svg>
+      LangChain
+    </button>
+
+    <button class="visualization-btn" @click="$emit('open-visualization')">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+        <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
+        <polyline points="16 7 22 7 22 13"/>
+      </svg>
+      可视化
+    </button>
+
     <div class="session-list">
       <div class="session-group-label" v-if="todaySessions.length">今天</div>
       <div
@@ -251,7 +266,7 @@ const props = defineProps({
 // 调试：打印 sessions 数量
 console.log('[Sidebar] sessions 数量:', props.sessions.length, 'activeId:', props.activeId)
 
-const emit = defineEmits(['new-session', 'switch-session', 'delete-session', 'logout', 'pin-session', 'share-session', 'report-session', 'rename-session'])
+const emit = defineEmits(['new-session', 'switch-session', 'delete-session', 'logout', 'pin-session', 'share-session', 'report-session', 'rename-session', 'open-langchain', 'open-visualization'])
 
 const handlePinSession = (sessionId) => {
   console.log('[Sidebar.vue] handlePinSession called with sessionId:', sessionId)
@@ -360,6 +375,48 @@ const olderSessions = computed(() =>
 .new-chat-btn:hover {
   background: rgba(255,255,255,0.1);
   border-color: rgba(255,255,255,0.15);
+}
+
+.langchain-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 10px var(--space-3-5);
+  background: linear-gradient(135deg, rgba(91, 124, 250, 0.15), rgba(91, 124, 250, 0.05));
+  border: 1px solid rgba(91, 124, 250, 0.3);
+  border-radius: var(--radius-lg);
+  color: var(--color-primary-400);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  margin-bottom: var(--space-3-5);
+}
+.langchain-btn:hover {
+  background: linear-gradient(135deg, rgba(91, 124, 250, 0.25), rgba(91, 124, 250, 0.1));
+  border-color: rgba(91, 124, 250, 0.5);
+  color: var(--color-primary-300);
+}
+
+.visualization-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 10px var(--space-3-5);
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(34, 197, 94, 0.05));
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: var(--radius-lg);
+  color: var(--color-success-400);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  margin-bottom: var(--space-3-5);
+}
+.visualization-btn:hover {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.25), rgba(34, 197, 94, 0.1));
+  border-color: rgba(34, 197, 94, 0.5);
+  color: var(--color-success-300);
 }
 
 .session-list {

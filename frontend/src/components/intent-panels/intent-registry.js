@@ -3,6 +3,8 @@
  * 管理 SSE 事件类型 → 面板组件 + 事件处理器的映射
  */
 
+import LangChainPanel from './LangChainPanel.vue'
+
 // ── 事件处理器注册表 ──────────────────────────────────
 // key: SSE event type (如 'config', 'delete_form', 'manage_history')
 // value: { handler: Function, panel: Component | null }
@@ -12,6 +14,10 @@ const _eventHandlers = new Map()
 // key: intentType (如 'form', 'form_update', 'configure')
 // value: Function(msg, intentData)
 const _postProcessors = new Map()
+
+registerEventHandler('langchain', (data, msg) => {
+  console.log('[LangChain Event]', data)
+}, { panel: LangChainPanel })
 
 /**
  * 注册 SSE 事件处理器
