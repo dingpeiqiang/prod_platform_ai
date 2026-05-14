@@ -63,6 +63,18 @@
 - **LLM 负责智能推断**：代码只负责流程编排和结果展示
 - **新增表单零代码**：通过配置本体和提示词即可支持新表单类型
 
+### 6. 最小化改动原则 🔧
+
+```
+优先级别：高
+```
+
+- **编辑模式最小化改动**：在编辑模式下，仅更新被修改的字段或节点，不影响未改动的部分
+- **增量更新**：采用增量更新策略，避免全量替换
+- **保持上下文**：修改时保持原有数据结构和上下文不变
+- **兼容性保证**：改动后需保证向后兼容，不破坏现有功能
+- **可回滚**：支持操作回滚，确保改动可撤销
+
 ---
 
 ## AI 主导的字段推断规范
@@ -1434,6 +1446,296 @@ def test_calculate_total():
 
 ---
 
+## 组件化编码规范
+
+### 1. 目录结构规范
+
+**前端组件统一组织在 `frontend/src/components/` 目录下**
+
+```
+frontend/src/components/
+├── intent-panels/           # 意图面板（通用意图处理面板）
+│   ├── LangChainPanel.vue
+│   ├── FormIntentPanel.vue
+│   ├── HistoryPanel.vue
+│   └── ...
+├── workflow-editor/         # 工作流编辑器（独立模块）
+│   ├── LangChainEditor.vue  # 主编辑器组件
+│   ├── NodePanel.vue        # 节点面板组件
+│   ├── PropertyPanel.vue    # 属性面板组件
+│   ├── ExecutionPanel.vue   # 执行日志面板组件
+│   └── nodes/               # 节点组件目录
+│       ├── StartNode.vue
+│       ├── EndNode.vue
+│       ├── PromptNode.vue
+│       └── ...
+└── common/                  # 通用组件
+    ├── Loading.vue
+    ├── Sidebar.vue
+    └── ...
+```
+
+### 2. 组件划分原则
+
+| 原则 | 说明 | 示例 |
+|------|------|------|
+| **单一职责** | 每个组件只负责一个功能 | `ExecutionPanel` 只处理执行日志展示 |
+| **可复用性** | 组件应易于在其他地方复用 | `PropertyPanel` 可用于不同类型节点 |
+| **解耦合** | 组件间通过 props 和 events 通信 | 父组件通过 props 传递数据 |
+| **可测试性** | 组件应易于单元测试 | 避免直接依赖全局状态 |
+
+### 3. Vue 组件规范
+
+#### 3.1 组件结构
+
+```vue
+<template>
+  <!-- 模板部分：只包含展示逻辑 -->
+</template>
+
+<script setup>
+// 逻辑部分：使用 Composition API
+import { ref, computed, watch } from 'vue';
+
+// Props 定义
+const props = defineProps({
+  propName: {
+    type: Object,
+    default: null
+  }
+});
+
+// Events 定义
+const emit = defineEmits(['update', 'toggle']);
+
+// 响应式状态
+const localState = ref(null);
+
+// 计算属性
+const computedValue = computed(() => {
+  return props.propName?.value;
+});
+
+// 方法
+const handleAction = () => {
+  emit('update', { key: 'value' });
+};
+</script>
+
+<style scoped>
+/* 样式部分：使用 scoped 隔离 */
+</style>
+```
+
+#### 3.2 命名规范
+
+| 类型 | 规则 | 示例 |
+|------|------|------|
+| **组件文件** | PascalCase | `LangChainEditor.vue` |
+| **组件目录** | kebab-case | `workflow-editor/` |
+| **props** | camelCase | `nodeData`, `isExpanded` |
+| **events** | kebab-case | `@update`, `@toggle-panel` |
+| **methods** | camelCase | `handleClick`, `updateNode` |
+
+#### 3.3 Props 传递
+
+```vue
+<!-- ✅ 正确：明确传递 props -->
+<PropertyPanel 
+  :node-data="selectedNodeData"
+  :expanded="showRightPanel"
+  :node-type-label="selectedNodeTypeLabel"
+  @toggle="showRightPanel = !showRightPanel"
+  @update="onPropertyUpdate"
+/>
+
+<!-- ❌ 错误：props 命名不规范 -->
+<PropertyPanel 
+  :data="selectedNode"
+  :show="panelOpen"
+  @click="togglePanel"
+/>
+```
+
+#### 3.4 事件通信
+
+```vue
+<!-- 子组件触发事件 -->
+<button @click="emit('update', { key: value })">
+  更新
+</button>
+
+<!-- 父组件监听事件 -->
+<ChildComponent @update="handleUpdate" />
+
+<script setup>
+const handleUpdate = (payload) => {
+  console.log(payload.key);
+};
+</script>
+```
+
+### 4. 组件通信模式
+
+#### 4.1 Parent → Child（父传子）
+
+通过 `props` 传递数据：
+
+```vue
+<!-- Parent.vue -->
+<ChildComponent :message="parentMessage" />
+
+<!-- ChildComponent.vue -->
+<script setup>
+const props = defineProps({
+  message: {
+    type: String,
+    required: true
+  }
+});
+</script>
+```
+
+#### 4.2 Child → Parent（子传父）
+
+通过 `emit` 触发事件：
+
+```vue
+<!-- ChildComponent.vue -->
+<button @click="$emit('custom-event', data)">
+  点击
+</button>
+
+<!-- Parent.vue -->
+<ChildComponent @custom-event="handleEvent" />
+```
+
+#### 4.3 Sibling → Sibling（兄弟组件）
+
+通过父组件作为中介：
+
+```vue
+<!-- Parent.vue -->
+<PanelA @update="handlePanelAUpdate" />
+<PanelB :data="sharedData" />
+
+<script setup>
+const sharedData = ref(null);
+
+const handlePanelAUpdate = (data) => {
+  sharedData.value = data;
+};
+</script>
+```
+
+### 5. 组件拆分策略
+
+#### 5.1 按功能拆分
+
+将大型组件按功能拆分为多个小组件：
+
+```
+LangChainEditor（主编辑器）
+├── NodePanel（节点选择面板）
+├── VueFlow（画布）
+├── PropertyPanel（属性配置面板）
+└── ExecutionPanel（执行日志面板）
+```
+
+#### 5.2 按职责拆分
+
+| 职责 | 组件 | 说明 |
+|------|------|------|
+| **数据展示** | 纯展示组件，无业务逻辑 | `StartNode`, `EndNode` |
+| **数据处理** | 处理数据转换和计算 | `PropertyPanel` |
+| **状态管理** | 管理复杂状态逻辑 | 主编辑器组件 |
+| **交互控制** | 处理用户交互 | 按钮、表单组件 |
+
+### 6. 组件复用策略
+
+#### 6.1 通用组件提取
+
+提取通用功能为独立组件：
+
+```vue
+<!-- 通用按钮组件 -->
+<template>
+  <button :class="['btn', `btn-${variant}`]" @click="$emit('click')">
+    <slot />
+  </button>
+</template>
+
+<script setup>
+defineProps({
+  variant: {
+    type: String,
+    default: 'primary'
+  }
+});
+
+defineEmits(['click']);
+</script>
+```
+
+#### 6.2 高阶组件
+
+使用组合式函数复用逻辑：
+
+```javascript
+// useValidation.js
+export function useValidation() {
+  const errors = ref({});
+  
+  const validate = (data, rules) => {
+    // 验证逻辑
+    return errors.value;
+  };
+  
+  return { errors, validate };
+}
+
+// 在组件中使用
+import { useValidation } from './useValidation';
+
+const { errors, validate } = useValidation();
+```
+
+### 7. 性能优化
+
+#### 7.1 懒加载
+
+对大型组件使用动态导入：
+
+```javascript
+const HeavyComponent = defineAsyncComponent(() => 
+  import('./HeavyComponent.vue')
+);
+```
+
+#### 7.2 虚拟滚动
+
+对大量数据使用虚拟滚动：
+
+```vue
+<VirtualList :items="largeList" item-height="50">
+  <template #default="{ item }">
+    <ListItem :data="item" />
+  </template>
+</VirtualList>
+```
+
+#### 7.3 缓存计算结果
+
+使用 `computed` 缓存计算结果：
+
+```javascript
+const processedData = computed(() => {
+  return heavyComputation(props.rawData);
+});
+```
+
+---
+
 **最后更新**：2026-05-14  
 **维护者**：AI Team  
-**版本**：v2.0 Phase 5（编码原则完善）
+**版本**：v2.0 Phase 6（组件化编码规范完善）

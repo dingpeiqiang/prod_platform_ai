@@ -4,7 +4,7 @@
  */
 
 import LangChainPanel from './LangChainPanel.vue'
-import LangChainEditor from './LangChainEditorVueFlow.vue'
+import LangChainEditor from '../workflow-editor/LangChainEditor.vue'
 
 // ── 事件处理器注册表 ──────────────────────────────────
 // key: SSE event type (如 'config', 'delete_form', 'manage_history')

@@ -36,7 +36,7 @@ defineProps({
   background: white;
   border: 2px solid #e2e8f0;
   border-radius: 8px;
-  min-width: 150px;
+  min-width: 180px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 

@@ -1,0 +1,225 @@
+<template>
+  <div class="node-panel">
+    <h3>节点类型</h3>
+    <div v-for="group in nodeGroups" :key="group.id" class="node-group">
+      <div class="group-header" @click="toggleGroup(group.id)">
+        <svg 
+          width="12" 
+          height="12" 
+          viewBox="0 0 24 24" 
+          fill="none" 
+          stroke="currentColor" 
+          stroke-width="2"
+          :class="{ rotated: expandedGroups.includes(group.id) }"
+        >
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+        <span>{{ group.name }}</span>
+      </div>
+      <div v-show="expandedGroups.includes(group.id)" class="node-types">
+        <div 
+          v-for="nodeType in group.nodes" 
+          :key="nodeType.id"
+          class="node-type-item"
+          draggable="true"
+          @dragstart="onDragStart($event, nodeType)"
+        >
+          <span class="node-icon">{{ nodeType.icon }}</span>
+          <span class="node-name">{{ nodeType.name }}</span>
+        </div>
+      </div>
+    </div>
+    
+    <div class="templates-section">
+      <h4>快速模板</h4>
+      <div class="templates-list">
+        <button 
+          v-for="template in quickTemplates" 
+          :key="template.id" 
+          @click="$emit('apply-template', template)" 
+          class="template-btn"
+        >
+          {{ template.name }}
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref } from 'vue';
+
+defineProps({
+  quickTemplates: {
+    type: Array,
+    default: () => []
+  }
+});
+
+const emit = defineEmits(['drag-start', 'apply-template']);
+
+const expandedGroups = ref(['flow', 'llm', 'tools', 'parser']);
+
+const nodeGroups = ref([
+  {
+    id: 'flow',
+    name: '流程控制',
+    nodes: [
+      { id: 'start', name: '开始', icon: '🚀', type: 'start' },
+      { id: 'end', name: '结束', icon: '🏁', type: 'end' },
+      { id: 'condition', name: '条件分支', icon: '🔀', type: 'condition' },
+      { id: 'loop', name: '循环', icon: '🔄', type: 'loop' }
+    ]
+  },
+  {
+    id: 'llm',
+    name: 'LLM 相关',
+    nodes: [
+      { id: 'prompt', name: '提示词', icon: '📝', type: 'prompt' },
+      { id: 'llm', name: 'LLM 调用', icon: '🤖', type: 'llm' }
+    ]
+  },
+  {
+    id: 'tools',
+    name: '工具与数据',
+    nodes: [
+      { id: 'tool', name: '工具调用', icon: '🔧', type: 'tool' },
+      { id: 'http', name: 'HTTP请求', icon: '🌐', type: 'http' },
+      { id: 'code', name: '代码执行', icon: '💻', type: 'code' },
+      { id: 'variable', name: '变量赋值', icon: '📦', type: 'variable' }
+    ]
+  },
+  {
+    id: 'parser',
+    name: '数据处理',
+    nodes: [
+      { id: 'parser', name: '输出解析', icon: '📊', type: 'parser' }
+    ]
+  }
+]);
+
+const toggleGroup = (groupId) => {
+  const index = expandedGroups.value.indexOf(groupId);
+  if (index > -1) {
+    expandedGroups.value.splice(index, 1);
+  } else {
+    expandedGroups.value.push(groupId);
+  }
+};
+
+const onDragStart = (event, nodeType) => {
+  event.dataTransfer.setData('application/vueflow', JSON.stringify(nodeType));
+  event.dataTransfer.effectAllowed = 'move';
+  emit('drag-start', nodeType);
+};
+</script>
+
+<style scoped>
+.node-panel {
+  width: 180px;
+  background-color: #f8fafc;
+  border-right: 1px solid #e2e8f0;
+  padding: 12px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.node-panel h3 {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: #334155;
+  font-weight: 600;
+}
+
+.node-group {
+  margin-bottom: 8px;
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #475569;
+}
+
+.group-header svg {
+  transition: transform 0.2s;
+}
+
+.group-header svg.rotated {
+  transform: rotate(180deg);
+}
+
+.node-types {
+  padding-left: 8px;
+}
+
+.node-type-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  background-color: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  cursor: grab;
+}
+
+.node-type-item:hover {
+  background-color: #eff6ff;
+  border-color: #3b82f6;
+}
+
+.node-type-item:active {
+  cursor: grabbing;
+}
+
+.node-icon {
+  font-size: 16px;
+}
+
+.node-name {
+  font-size: 12px;
+  color: #334155;
+}
+
+.templates-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.templates-section h4 {
+  margin: 0 0 10px 0;
+  font-size: 11px;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.templates-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.template-btn {
+  padding: 6px 10px;
+  background-color: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+  color: #334155;
+}
+
+.template-btn:hover {
+  background-color: #eff6ff;
+  border-color: #3b82f6;
+}
+</style>
