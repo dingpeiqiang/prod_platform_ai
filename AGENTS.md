@@ -560,6 +560,880 @@ async def handle(self, ctx: IntentContext) -> AsyncGenerator[str, None]:
 
 ---
 
-**最后更新**：2026-05-07  
+## 编码质量规范
+
+### 1. 代码风格规范
+
+#### Python 代码风格
+
+- **遵循 PEP 8**：所有 Python 代码必须符合 PEP 8 规范
+- **缩进**：使用 4 个空格，禁止使用 Tab
+- **行长度**：单行不超过 120 字符
+- **空白行**：函数/类之间用 2 个空行分隔，方法之间用 1 个空行
+- **导入顺序**：标准库 → 第三方库 → 项目内部模块，每组之间空一行
+
+```python
+# ✅ 正确示例
+import os
+import re
+from typing import Optional, List
+
+import requests
+from fastapi import FastAPI
+
+from app.utils.logger import get_logger
+```
+
+#### JavaScript/TypeScript 代码风格
+
+- **遵循 Airbnb 规范**：所有 JS/TS 代码必须符合 Airbnb 风格指南
+- **缩进**：使用 2 个空格
+- **分号**：语句末尾必须加分号
+- **引号**：使用单引号，JSX 中使用双引号
+- **箭头函数**：单行函数体可以省略大括号
+
+```javascript
+// ✅ 正确示例
+const handleClick = (e: React.MouseEvent) => {
+  dispatch({ type: 'CLICK', payload: e.target.value });
+};
+
+const getValue = () => defaultValue;
+```
+
+### 2. 命名规范
+
+| 类型 | 规则 | 示例 |
+|------|------|------|
+| **变量** | 小驼峰 | `userInput`, `formData` |
+| **函数/方法** | 小驼峰 | `extractFields`, `validateForm` |
+| **类** | 大驼峰 | `BaseIntentHandler`, `InputGuard` |
+| **常量** | 全大写下划线分隔 | `MAX_RETRY`, `DANGEROUS_PATTERNS` |
+| **文件** | 小写连字符 | `intent-handler.js`, `input-guard.py` |
+| **目录** | 小写连字符 | `intent-handlers/`, `config/` |
+
+### 3. 代码审查规范
+
+#### PR 提交要求
+
+1. **单一职责**：每个 PR 只解决一个问题或实现一个功能
+2. **测试覆盖**：新增代码必须有对应的单元测试，覆盖率 ≥ 80%
+3. **文档更新**：修改影响使用方式的代码时，必须更新相关文档
+4. **无警告**：代码通过所有 lint 和类型检查
+
+#### 审查要点
+
+| 检查项 | 说明 |
+|--------|------|
+| **正确性** | 代码是否正确实现需求 |
+| **可读性** | 代码是否易于理解 |
+| **可维护性** | 是否符合设计模式和架构原则 |
+| **安全性** | 是否存在安全隐患 |
+| **性能** | 是否有性能优化空间 |
+| **测试** | 测试用例是否完整 |
+
+### 4. 测试规范
+
+#### 测试类型
+
+| 类型 | 说明 | 覆盖率要求 |
+|------|------|------------|
+| **单元测试** | 测试单个函数/方法 | ≥ 80% |
+| **集成测试** | 测试模块间交互 | 关键路径覆盖 |
+| **端到端测试** | 测试完整业务流程 | 核心场景覆盖 |
+
+#### 测试命名约定
+
+```python
+# 测试文件：test_{module_name}.py
+# 测试类：Test{ClassName}
+# 测试方法：test_{scenario}_{expected_behavior}
+
+class TestInputGuard:
+    def test_should_block_xss_script(self):
+        # 测试逻辑
+        pass
+    
+    def test_should_allow_valid_input(self):
+        # 测试逻辑
+        pass
+```
+
+### 5. 文档规范
+
+#### 代码注释
+
+- **模块级**：每个模块顶部必须有文档字符串，说明功能、输入输出
+- **函数级**：公共函数必须有文档字符串
+- **复杂逻辑**：非直观的业务逻辑必须添加注释说明
+- **禁止冗余**：代码自解释时无需注释
+
+```python
+def extract_fields(user_input: str, schema: dict) -> dict:
+    """从用户输入中提取字段值
+    
+    Args:
+        user_input: 用户输入文本
+        schema: 表单 Schema 定义
+        
+    Returns:
+        提取的字段字典，key 为字段编码，value 为字段值
+        
+    Raises:
+        ValidationError: Schema 格式不正确时抛出
+    """
+    # 核心提取逻辑...
+```
+
+#### API 文档
+
+- **OpenAPI 规范**：所有 API 必须有完整的 OpenAPI 文档
+- **参数说明**：每个参数必须说明类型、是否必填、含义
+- **返回值说明**：说明返回结构和字段含义
+
+### 6. 代码复杂度控制
+
+| 指标 | 阈值 | 说明 |
+|------|------|------|
+| **圈复杂度** | ≤ 10 | 单个函数/方法的分支数量 |
+| **函数长度** | ≤ 50 行 | 超出应拆分为多个函数 |
+| **类方法数** | ≤ 20 | 超出应考虑拆分类 |
+| **嵌套深度** | ≤ 4 | 超出应重构 |
+
+### 7. 静态分析工具
+
+#### 必用工具
+
+| 工具 | 用途 | 配置文件 |
+|------|------|----------|
+| **flake8** | Python 代码检查 | `.flake8` |
+| **mypy** | Python 类型检查 | `mypy.ini` |
+| **eslint** | JavaScript/TypeScript 检查 | `.eslintrc.json` |
+| **prettier** | 代码格式化 | `.prettierrc` |
+
+#### 配置要求
+
+- **CI 集成**：所有静态分析工具必须集成到 CI 流程
+- **预提交钩子**：使用 `pre-commit` 确保提交代码符合规范
+
+```yaml
+# .pre-commit-config.yaml 示例
+repos:
+  - repo: https://github.com/PyCQA/flake8
+    rev: 6.0.0
+    hooks:
+      - id: flake8
+  - repo: https://github.com/python/mypy
+    rev: v1.5.1
+    hooks:
+      - id: mypy
+```
+
+### 8. 依赖管理
+
+- **版本锁定**：使用 `requirements.txt` 或 `pyproject.toml` 锁定依赖版本
+- **定期更新**：每季度检查并更新依赖版本
+- **安全扫描**：使用 `safety` 或 `pip-audit` 扫描已知安全漏洞
+
+---
+
+## 设计模式规范
+
+### 1. 创建型模式
+
+#### 工厂模式 (Factory Pattern)
+
+**适用场景**：对象创建逻辑复杂，需要统一管理创建过程
+
+**应用示例**：推荐引擎策略创建
+
+```python
+class StrategyFactory:
+    _strategies = {}
+
+    @classmethod
+    def register(cls, strategy_type: str, strategy_class):
+        cls._strategies[strategy_type] = strategy_class
+
+    @classmethod
+    def create(cls, strategy_type: str, **kwargs):
+        if strategy_type not in cls._strategies:
+            raise ValueError(f"Unknown strategy: {strategy_type}")
+        return cls._strategies[strategy_type](**kwargs)
+
+StrategyFactory.register('frequency', FrequencyStrategy)
+StrategyFactory.register('time_decay', TimeDecayStrategy)
+```
+
+**使用位置**：`backend/app/recommendation/strategy_factory.py`
+
+#### 单例模式 (Singleton Pattern)
+
+**适用场景**：全局唯一的资源管理器、配置管理器
+
+**应用示例**：日志管理器、配置中心
+
+```python
+class SingletonMeta(type):
+    _instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super().__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+class ConfigManager(metaclass=SingletonMeta):
+    def __init__(self):
+        self._config = self._load_config()
+```
+
+**使用位置**：`backend/app/utils/config_manager.py`
+
+### 2. 结构型模式
+
+#### 策略模式 (Strategy Pattern)
+
+**适用场景**：算法需要灵活切换，避免大量条件判断
+
+**应用示例**：推荐引擎多策略融合
+
+```python
+from abc import ABC, abstractmethod
+
+class RecommendationStrategy(ABC):
+    @abstractmethod
+    def recommend(self, user_input: str, context: dict) -> list:
+        pass
+
+class FrequencyStrategy(RecommendationStrategy):
+    def recommend(self, user_input: str, context: dict) -> list:
+        # 基于频率的推荐逻辑
+        pass
+
+class TimeDecayStrategy(RecommendationStrategy):
+    def recommend(self, user_input: str, context: dict) -> list:
+        # 基于时间衰减的推荐逻辑
+        pass
+```
+
+**使用位置**：`backend/app/recommendation/strategies/`
+
+#### 适配器模式 (Adapter Pattern)
+
+**适用场景**：接口不兼容的组件需要协同工作
+
+**应用示例**：外部 API 数据格式转换
+
+```python
+class ExternalApiAdapter:
+    def __init__(self, external_api):
+        self._external_api = external_api
+
+    def get_form_data(self, form_code: str) -> dict:
+        raw_data = self._external_api.fetch(form_code)
+        return self._transform(raw_data)
+
+    def _transform(self, raw_data: dict) -> dict:
+        return {
+            'formCode': raw_data.get('form_code'),
+            'fields': self._transform_fields(raw_data.get('fields', []))
+        }
+```
+
+**使用位置**：`backend/app/external/adapters/`
+
+#### 装饰器模式 (Decorator Pattern)
+
+**适用场景**：需要动态添加功能，且不修改原有代码
+
+**应用示例**：日志装饰器、性能监控装饰器
+
+```python
+def log_execution(func):
+    async def wrapper(*args, **kwargs):
+        logger.info(f"Executing {func.__name__}")
+        start_time = time.time()
+        try:
+            result = await func(*args, **kwargs)
+            return result
+        finally:
+            elapsed = time.time() - start_time
+            logger.info(f"{func.__name__} completed in {elapsed:.2f}s")
+    return wrapper
+
+@log_execution
+async def extract_fields(user_input: str, schema: dict) -> dict:
+    # 字段提取逻辑
+    pass
+```
+
+**使用位置**：`backend/app/utils/decorators.py`
+
+### 3. 行为型模式
+
+#### 观察者模式 (Observer Pattern)
+
+**适用场景**：一个对象状态变化需要通知多个观察者
+
+**应用示例**：SSE 事件推送、状态变更通知
+
+```python
+class Subject:
+    def __init__(self):
+        self._observers = []
+
+    def attach(self, observer):
+        if observer not in self._observers:
+            self._observers.append(observer)
+
+    def detach(self, observer):
+        self._observers.remove(observer)
+
+    def notify(self, event: dict):
+        for observer in self._observers:
+            observer.update(event)
+
+class SseObserver:
+    def update(self, event: dict):
+        self.send_event(event)
+```
+
+**使用位置**：`backend/app/sse/event_manager.py`
+
+#### 模板方法模式 (Template Method Pattern)
+
+**适用场景**：算法骨架固定，细节步骤可定制
+
+**应用示例**：意图处理器基类
+
+```python
+from abc import ABC, abstractmethod
+
+class BaseIntentHandler(ABC):
+    async def handle(self, ctx: IntentContext):
+        # Phase 1: 识别
+        await self._identify(ctx)
+        
+        # Phase 2: 执行
+        await self._execute(ctx)
+        
+        # Phase 3: 输出
+        await self._output(ctx)
+
+    @abstractmethod
+    def _identify(self, ctx: IntentContext):
+        pass
+
+    @abstractmethod
+    def _execute(self, ctx: IntentContext):
+        pass
+
+    @abstractmethod
+    def _output(self, ctx: IntentContext):
+        pass
+```
+
+**使用位置**：`backend/app/intent/handlers/base_handler.py`
+
+#### 责任链模式 (Chain of Responsibility Pattern)
+
+**适用场景**：请求需要经过多个处理器依次处理
+
+**应用示例**：输入护栏校验链
+
+```python
+from abc import ABC, abstractmethod
+
+class GuardHandler(ABC):
+    def __init__(self, next_handler=None):
+        self._next_handler = next_handler
+
+    @abstractmethod
+    def handle(self, user_input: str) -> bool:
+        pass
+
+class XssGuard(GuardHandler):
+    def handle(self, user_input: str) -> bool:
+        if self._contains_xss(user_input):
+            raise ValueError("XSS attack detected")
+        if self._next_handler:
+            return self._next_handler.handle(user_input)
+        return True
+
+class SqlInjectionGuard(GuardHandler):
+    def handle(self, user_input: str) -> bool:
+        if self._contains_sql_injection(user_input):
+            raise ValueError("SQL injection detected")
+        if self._next_handler:
+            return self._next_handler.handle(user_input)
+        return True
+```
+
+**使用位置**：`backend/app/guard/input_guard.py`
+
+#### 命令模式 (Command Pattern)
+
+**适用场景**：需要将操作封装为对象，支持撤销/重做
+
+**应用示例**：表单操作日志、事务管理
+
+```python
+from abc import ABC, abstractmethod
+
+class Command(ABC):
+    @abstractmethod
+    def execute(self):
+        pass
+
+    @abstractmethod
+    def undo(self):
+        pass
+
+class FormSubmitCommand(Command):
+    def __init__(self, form_service, form_data):
+        self._form_service = form_service
+        self._form_data = form_data
+        self._previous_state = None
+
+    def execute(self):
+        self._previous_state = self._form_service.get_current_state()
+        self._form_service.submit(self._form_data)
+
+    def undo(self):
+        self._form_service.restore_state(self._previous_state)
+```
+
+**使用位置**：`backend/app/commands/`
+
+### 4. 架构模式
+
+#### MVC 模式 (Model-View-Controller)
+
+**分层结构**：
+
+| 层级 | 职责 | 示例文件 |
+|------|------|----------|
+| **Model** | 数据模型和业务逻辑 | `backend/app/models/` |
+| **View** | 数据展示（前端） | `frontend/components/` |
+| **Controller** | 请求处理和协调 | `backend/app/api/` |
+
+#### 依赖注入模式 (Dependency Injection)
+
+**应用示例**：FastAPI 依赖注入
+
+```python
+from fastapi import Depends
+
+async def get_recommendation_service(
+    db: Session = Depends(get_db),
+    config: ConfigManager = Depends()
+) -> RecommendationService:
+    return RecommendationService(db=db, config=config)
+
+@app.post("/recommend")
+async def recommend(
+    request: RecommendRequest,
+    service: RecommendationService = Depends(get_recommendation_service)
+):
+    return await service.recommend(request)
+```
+
+**使用位置**：`backend/app/api/dependencies.py`
+
+### 5. 设计模式使用指南
+
+| 场景 | 推荐模式 | 理由 |
+|------|----------|------|
+| 对象创建 | 工厂模式 | 解耦创建逻辑与使用方 |
+| 算法切换 | 策略模式 | 运行时动态选择算法 |
+| 功能扩展 | 装饰器模式 | 无侵入式添加功能 |
+| 状态通知 | 观察者模式 | 解耦发布者与订阅者 |
+| 请求处理 | 责任链模式 | 灵活组合处理器 |
+| 代码复用 | 模板方法模式 | 定义算法骨架 |
+| 接口适配 | 适配器模式 | 兼容不同接口 |
+
+---
+
+## 编码原则
+
+### 1. SOLID 原则
+
+#### 单一职责原则 (SRP - Single Responsibility Principle)
+
+**定义**：一个类应该只有一个引起它变化的原因
+
+**应用示例**：
+
+```python
+# ❌ 错误：一个类负责多个职责
+class FormService:
+    def validate_form(self, form_data):
+        # 验证逻辑
+        pass
+    
+    def save_to_database(self, form_data):
+        # 数据库操作
+        pass
+    
+    def send_notification(self, form_data):
+        # 通知逻辑
+        pass
+
+# ✅ 正确：职责分离
+class FormValidator:
+    def validate(self, form_data):
+        pass
+
+class FormRepository:
+    def save(self, form_data):
+        pass
+
+class NotificationService:
+    def send(self, form_data):
+        pass
+```
+
+#### 开闭原则 (OCP - Open/Closed Principle)
+
+**定义**：软件实体应该对扩展开放，对修改关闭
+
+**应用示例**：
+
+```python
+# ❌ 错误：需要修改现有代码添加新策略
+class RecommendationService:
+    def recommend(self, strategy_type, user_input):
+        if strategy_type == 'frequency':
+            # 频率策略逻辑
+            pass
+        elif strategy_type == 'time_decay':
+            # 时间衰减策略逻辑
+            pass
+        # 添加新策略需要修改此方法
+
+# ✅ 正确：通过扩展实现新功能
+class RecommendationService:
+    def __init__(self, strategies):
+        self._strategies = strategies
+    
+    def recommend(self, strategy_type, user_input):
+        strategy = self._strategies.get(strategy_type)
+        if strategy:
+            return strategy.recommend(user_input)
+```
+
+#### 里氏替换原则 (LSP - Liskov Substitution Principle)
+
+**定义**：子类对象应该能够替换父类对象而不影响程序的正确性
+
+**应用示例**：
+
+```python
+# ✅ 正确：子类可以替换父类
+class Animal:
+    def make_sound(self):
+        pass
+
+class Dog(Animal):
+    def make_sound(self):
+        return "Woof"
+
+class Cat(Animal):
+    def make_sound(self):
+        return "Meow"
+
+def play_sound(animal: Animal):
+    print(animal.make_sound())
+
+# 子类可以安全替换父类
+play_sound(Dog())  # Output: Woof
+play_sound(Cat())  # Output: Meow
+```
+
+#### 接口隔离原则 (ISP - Interface Segregation Principle)
+
+**定义**：客户端不应该被迫依赖它不需要的接口
+
+**应用示例**：
+
+```python
+# ❌ 错误：胖接口
+class Worker:
+    def work(self):
+        pass
+    
+    def eat(self):
+        pass
+    
+    def sleep(self):
+        pass
+
+# ✅ 正确：接口分离
+class Workable:
+    def work(self):
+        pass
+
+class Eatable:
+    def eat(self):
+        pass
+
+class Sleepable:
+    def sleep(self):
+        pass
+
+class HumanWorker(Workable, Eatable, Sleepable):
+    pass
+
+class RobotWorker(Workable):
+    pass  # 机器人不需要 eat 和 sleep
+```
+
+#### 依赖倒置原则 (DIP - Dependency Inversion Principle)
+
+**定义**：高层模块不应该依赖低层模块，两者都应该依赖抽象
+
+**应用示例**：
+
+```python
+# ❌ 错误：高层依赖低层具体实现
+class MySQLDatabase:
+    def connect(self):
+        pass
+
+class UserService:
+    def __init__(self):
+        self._db = MySQLDatabase()  # 直接依赖具体类
+
+# ✅ 正确：依赖抽象接口
+class Database:
+    def connect(self):
+        pass
+
+class MySQLDatabase(Database):
+    def connect(self):
+        pass
+
+class UserService:
+    def __init__(self, db: Database):
+        self._db = db  # 依赖抽象接口
+```
+
+### 2. DRY 原则 (Don't Repeat Yourself)
+
+**定义**：不要重复代码，相同的逻辑应该只出现一次
+
+**应用示例**：
+
+```python
+# ❌ 错误：重复的验证逻辑
+def validate_email(email):
+    if not email:
+        raise ValueError("Email is required")
+    if '@' not in email:
+        raise ValueError("Invalid email format")
+
+def validate_username(username):
+    if not username:
+        raise ValueError("Username is required")
+    if len(username) < 3:
+        raise ValueError("Username must be at least 3 characters")
+
+# ✅ 正确：提取公共验证逻辑
+def validate_required(field, name):
+    if not field:
+        raise ValueError(f"{name} is required")
+
+def validate_email(email):
+    validate_required(email, "Email")
+    if '@' not in email:
+        raise ValueError("Invalid email format")
+
+def validate_username(username):
+    validate_required(username, "Username")
+    if len(username) < 3:
+        raise ValueError("Username must be at least 3 characters")
+```
+
+### 3. KISS 原则 (Keep It Simple, Stupid)
+
+**定义**：保持代码简单易懂，避免不必要的复杂性
+
+**应用示例**：
+
+```python
+# ❌ 错误：过度复杂的实现
+def calculate_average(numbers):
+    total = sum(numbers)
+    count = len(numbers)
+    if count == 0:
+        raise ValueError("Cannot calculate average of empty list")
+    return total / count
+
+# ✅ 正确：简洁明了
+def calculate_average(numbers):
+    if not numbers:
+        raise ValueError("Cannot calculate average of empty list")
+    return sum(numbers) / len(numbers)
+```
+
+### 4. YAGNI 原则 (You Ain't Gonna Need It)
+
+**定义**：不要实现当前不需要的功能
+
+**实践要点**：
+- 只实现当前需求明确需要的功能
+- 避免过度设计和"未来可能需要"的功能
+- 保持代码灵活，便于后续扩展
+
+### 5. 高内聚低耦合
+
+**定义**：模块内部应该高度相关，模块之间应该松散耦合
+
+**应用示例**：
+
+```
+┌─────────────────────────────────────────────────────┐
+│           高内聚示例                                │
+│  ┌──────────────┐    ┌──────────────┐             │
+│  │  UserService │    │  FormService │             │
+│  │  ──────────  │    │  ──────────  │             │
+│  │  - create()  │    │  - submit()  │             │
+│  │  - update()  │    │  - validate()│             │
+│  │  - delete()  │    │  - query()   │             │
+│  └──────────────┘    └──────────────┘             │
+└─────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────┐
+│           低耦合示例                                │
+│                                                    │
+│   UserService ───(抽象接口)───> Database           │
+│                                    ▲               │
+│                                    │               │
+│                              MySQLDatabase         │
+│                              PostgreSQLDatabase    │
+└─────────────────────────────────────────────────────┘
+```
+
+### 6. 关注点分离 (SoC - Separation of Concerns)
+
+**定义**：将不同的关注点分离到不同的模块中
+
+**应用示例**：
+
+| 关注点 | 模块 | 职责 |
+|--------|------|------|
+| 数据访问 | `repository/` | 数据库操作 |
+| 业务逻辑 | `service/` | 核心业务处理 |
+| API 控制 | `api/` | 请求响应处理 |
+| 数据验证 | `validation/` | 数据校验逻辑 |
+| 配置管理 | `config/` | 配置读取管理 |
+
+### 7. 最小惊讶原则 (Principle of Least Surprise)
+
+**定义**：代码行为应该符合用户的预期
+
+**应用示例**：
+
+```python
+# ❌ 错误：行为不符合预期
+def get_users(active_only=True):
+    # 函数名暗示获取用户列表
+    # 但默认只返回活跃用户，可能令人惊讶
+    pass
+
+# ✅ 正确：行为清晰明确
+def get_users(filter_active=None):
+    """
+    获取用户列表
+    
+    Args:
+        filter_active: None表示不筛选, True只返回活跃用户, False只返回非活跃用户
+    """
+    pass
+```
+
+### 8. 防御性编程
+
+**定义**：假设输入可能是错误的，提前处理异常情况
+
+**应用示例**：
+
+```python
+# ✅ 防御性编程示例
+def process_form(form_data):
+    # 验证输入类型
+    if not isinstance(form_data, dict):
+        raise TypeError("form_data must be a dictionary")
+    
+    # 验证必填字段
+    required_fields = ['name', 'email']
+    missing_fields = [f for f in required_fields if f not in form_data]
+    if missing_fields:
+        raise ValueError(f"Missing required fields: {', '.join(missing_fields)}")
+    
+    # 验证字段类型
+    if not isinstance(form_data['name'], str):
+        raise TypeError("name must be a string")
+    
+    # 安全处理
+    sanitized_email = sanitize_email(form_data['email'])
+    return process(sanitized_email)
+```
+
+### 9. 可测试性原则
+
+**定义**：代码应该易于编写测试
+
+**实践要点**：
+- 使用依赖注入，便于 mock
+- 保持函数单一职责
+- 避免全局状态
+- 返回确定的结果
+
+**应用示例**：
+
+```python
+# ❌ 错误：难以测试
+class OrderService:
+    def __init__(self):
+        self._repo = OrderRepository()  # 硬编码依赖
+    
+    def calculate_total(self, order_id):
+        order = self._repo.get(order_id)
+        return order.amount * 1.08  # 税率硬编码
+
+# ✅ 正确：易于测试
+class OrderService:
+    def __init__(self, repo, tax_rate=0.08):
+        self._repo = repo
+        self._tax_rate = tax_rate
+    
+    def calculate_total(self, order_id):
+        order = self._repo.get(order_id)
+        return order.amount * (1 + self._tax_rate)
+
+# 测试时可以注入 mock
+def test_calculate_total():
+    mock_repo = Mock()
+    mock_repo.get.return_value = Order(amount=100)
+    service = OrderService(mock_repo, tax_rate=0.08)
+    assert service.calculate_total(1) == 108
+```
+
+### 10. 代码可读性原则
+
+**实践要点**：
+
+| 原则 | 说明 | 示例 |
+|------|------|------|
+| **有意义的命名** | 使用描述性名称 | `user_input` vs `u` |
+| **适当的注释** | 解释为什么，而非做什么 | 注释业务规则而非代码逻辑 |
+| **合理的结构** | 清晰的代码组织 | 合理的函数拆分 |
+| **一致的风格** | 统一的编码风格 | 遵循项目规范 |
+| **避免魔法数字** | 使用常量替代 | `MAX_RETRY = 3` vs `3` |
+
+---
+
+**最后更新**：2026-05-14  
 **维护者**：AI Team  
-**版本**：v2.0 Phase 2（处理步骤规范统一）
+**版本**：v2.0 Phase 5（编码原则完善）
