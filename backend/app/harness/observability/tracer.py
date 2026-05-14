@@ -486,6 +486,10 @@ def get_tracer(service_name: str = "harness", use_database: bool = False) -> Tra
     return _tracer
 
 
+# 默认返回不使用数据库的追踪器
+_tracer_instance = Tracer("harness", use_database=False)
+
+
 # 上下文管理器
 class trace:
     """Span 追踪上下文管理器"""
