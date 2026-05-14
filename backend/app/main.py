@@ -88,6 +88,7 @@ from app.api.mcp import router as mcp_router
 from app.api.health import router as health_router
 from app.api.langchain_api import router as langchain_router
 from app.api.visualization import router as visualization_router
+from app.api.workflows import router as workflow_router
 
 settings = get_settings()
 Base.metadata.create_all(bind=engine)
@@ -141,6 +142,7 @@ app.include_router(harness_router)
 app.include_router(mcp_router)  # MCP 工具接口
 app.include_router(langchain_router)  # LangChain API
 app.include_router(visualization_router)  # 可视化 API
+app.include_router(workflow_router)  # 工作流管理 API
 
 
 @app.get("/")

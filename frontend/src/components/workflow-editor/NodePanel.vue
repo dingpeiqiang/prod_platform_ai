@@ -39,7 +39,8 @@
           @click="$emit('apply-template', template)" 
           class="template-btn"
         >
-          {{ template.name }}
+          <div class="template-name">{{ template.name }}</div>
+          <div class="template-desc" v-if="template.description">{{ template.description }}</div>
         </button>
       </div>
     </div>
@@ -243,18 +244,33 @@ const onDragStart = (event, nodeType) => {
 }
 
 .template-btn {
-  padding: 6px 10px;
+  padding: 8px 10px;
   background-color: #fff;
   border: 1px solid #e2e8f0;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 12px;
   text-align: left;
   color: #334155;
+  transition: all 0.2s;
 }
 
 .template-btn:hover {
   background-color: #eff6ff;
   border-color: #3b82f6;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);
+}
+
+.template-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: #334155;
+  margin-bottom: 2px;
+}
+
+.template-desc {
+  font-size: 10px;
+  color: #94a3b8;
+  line-height: 1.4;
 }
 </style>

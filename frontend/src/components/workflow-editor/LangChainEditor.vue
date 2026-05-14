@@ -24,8 +24,14 @@
           <div v-if="showWorkflowList" class="workflow-dropdown">
             <div class="dropdown-header">
               <span>工作流列表</span>
+              <span class="workflow-count" v-if="workflows.length > 0">{{ workflows.length }}</span>
             </div>
             <div class="dropdown-content">
+              <div v-if="workflows.length === 0" class="empty-workflows">
+                <div class="empty-icon">📋</div>
+                <div class="empty-text">暂无保存的工作流</div>
+                <div class="empty-hint">从右侧快速模板开始创建</div>
+              </div>
               <div 
                 v-for="wf in workflows" 
                 :key="wf.id"
@@ -33,11 +39,19 @@
                 class="dropdown-item"
                 :class="{ active: currentWorkflowId === wf.id }"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                  <path d="M9 3v18"/>
-                </svg>
-                <span>{{ wf.name }}</span>
+                <div class="item-left">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <path d="M9 3v18"/>
+                  </svg>
+                  <div class="item-info">
+                    <div class="item-name">{{ wf.name }}</div>
+                    <div class="item-meta">
+                      <span v-if="wf.description" class="item-desc">{{ wf.description }}</span>
+                      <span class="item-time">{{ formatDate(wf.updatedAt || wf.savedAt || wf.createdAt) }}</span>
+                    </div>
+                  </div>
+                </div>
                 <button @click.stop="deleteWorkflow(wf.id)" class="delete-btn" title="删除">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M3 6h18"/>
@@ -216,11 +230,13 @@
     </div>
 
     <div class="editor-container">
-      <NodePanel 
-        :quick-templates="quickTemplates"
-        @apply-template="applyTemplate"
-        @drag-start="onNodeDragStartFromPanel"
-      />
+      <div class="left-panel-wrapper">
+        <NodePanel 
+          :quick-templates="quickTemplates"
+          @apply-template="applyTemplate"
+          @drag-start="onNodeDragStartFromPanel"
+        />
+      </div>
 
       <div class="canvas-wrapper">
         <VueFlow
@@ -541,6 +557,7 @@ const elements = ref([]);
 const hasChanges = ref(false);
 const selectedNodeId = ref(null);
 const selectedNodeIds = ref([]);
+const showLeftPanel = ref(true); // 新增：控制左侧节点面板显示/隐藏
 const showRightPanel = ref(true);
 const activePanel = ref('properties');
 const showShortcuts = ref(false);
@@ -572,6 +589,7 @@ const quickTemplates = ref([
   {
     id: 'simple-qa',
     name: '简单问答',
+    description: '基础的问答流程，适合快速上手',
     nodes: [
       { type: 'start', x: 50, y: 200, title: '开始' },
       { type: 'prompt', x: 250, y: 200, title: '问题提示词', prompt: '请回答以下问题：{{question}}' },
@@ -583,8 +601,113 @@ const quickTemplates = ref([
       { from: 1, to: 2 },
       { from: 2, to: 3 }
     ]
+  },
+  {
+    id: 'data-analysis',
+    name: '数据分析',
+    description: '获取数据并进行分析处理',
+    nodes: [
+      { type: 'start', x: 50, y: 200, title: '开始' },
+      { type: 'http', x: 250, y: 200, title: '获取数据', method: 'GET', url: '{{apiUrl}}' },
+      { type: 'parser', x: 450, y: 200, title: '解析数据' },
+      { type: 'prompt', x: 650, y: 200, title: '分析提示词', prompt: '请分析以下数据：{{data}}' },
+      { type: 'llm', x: 850, y: 200, title: 'LLM分析', model: 'qwen-vl-plus', temperature: 0.5 },
+      { type: 'end', x: 1050, y: 200, title: '结束' }
+    ],
+    connections: [
+      { from: 0, to: 1 },
+      { from: 1, to: 2 },
+      { from: 2, to: 3 },
+      { from: 3, to: 4 },
+      { from: 4, to: 5 }
+    ]
+  },
+  {
+    id: 'condition-branch',
+    name: '条件分支',
+    description: '根据条件判断走不同流程',
+    nodes: [
+      { type: 'start', x: 50, y: 250, title: '开始' },
+      { type: 'prompt', x: 250, y: 250, title: '输入问题', prompt: '{{question}}' },
+      { type: 'llm', x: 450, y: 250, title: '意图识别', model: 'qwen-vl-plus', temperature: 0.3 },
+      { type: 'condition', x: 650, y: 250, title: '判断意图' },
+      { type: 'http', x: 850, y: 150, title: '查询数据', method: 'GET' },
+      { type: 'prompt', x: 850, y: 350, title: '闲聊回复', prompt: '用友好的语气回复：{{input}}' },
+      { type: 'llm', x: 1050, y: 150, title: '生成答案', model: 'qwen-vl-plus', temperature: 0.7 },
+      { type: 'llm', x: 1050, y: 350, title: '生成回复', model: 'qwen-vl-plus', temperature: 0.9 },
+      { type: 'end', x: 1250, y: 250, title: '结束' }
+    ],
+    connections: [
+      { from: 0, to: 1 },
+      { from: 1, to: 2 },
+      { from: 2, to: 3 },
+      { from: 3, to: 4, outputIndex: 0, inputIndex: 0 },
+      { from: 3, to: 5, outputIndex: 1, inputIndex: 0 },
+      { from: 4, to: 6 },
+      { from: 5, to: 7 },
+      { from: 6, to: 8 },
+      { from: 7, to: 8 }
+    ]
+  },
+  {
+id: 'code-execution',
+    name: '代码执行',
+    description: '生成并执行代码获取结果',
+    nodes: [
+      { type: 'start', x: 50, y: 200, title: '开始' },
+      { type: 'prompt', x: 250, y: 200, title: '需求描述', prompt: '{{requirement}}' },
+      { type: 'llm', x: 450, y: 200, title: '生成代码', model: 'qwen-vl-plus', temperature: 0.3 },
+      { type: 'code', x: 650, y: 200, title: '执行代码', language: 'javascript' },
+      { type: 'parser', x: 850, y: 200, title: '解析结果' },
+      { type: 'end', x: 1050, y: 200, title: '结束' }
+    ],
+    connections: [
+      { from: 0, to: 1 },
+      { from: 1, to: 2 },
+      { from: 2, to: 3 },
+      { from: 3, to: 4 },
+      { from: 4, to: 5 }
+    ]
   }
 ]);
+
+const generateDefaultElements = () => {
+  const template = quickTemplates.value[0];
+  const elements = [];
+  
+  template.nodes.forEach((node, idx) => {
+    const nodeId = `${node.type}-${uuidv4().slice(0, 8)}`;
+    elements.push({
+      id: nodeId,
+      type: node.type,
+      position: { x: node.x, y: node.y },
+      data: { 
+        label: node.title || node.type,
+        ...node
+      }
+    });
+  });
+  
+  template.connections.forEach(conn => {
+    const fromNode = elements[conn.from];
+    const toNode = elements[conn.to];
+    if (fromNode && toNode) {
+      elements.push({
+        id: `edge-${uuidv4().slice(0, 8)}`,
+        source: fromNode.id,
+        target: toNode.id,
+        sourceHandle: conn.outputIndex ? `source-${conn.outputIndex}` : undefined,
+        targetHandle: conn.inputIndex ? `target-${conn.inputIndex}` : undefined,
+        markerEnd: {
+          type: 'arrowclosed',
+          color: '#94a3b8'
+        }
+      });
+    }
+  });
+  
+  return elements;
+};
 
 const nodeTypeDefinitions = [
   { id: 'start', name: '开始' },
@@ -1005,18 +1128,7 @@ const loadWorkflows = () => {
   if (saved) {
     workflows.value = JSON.parse(saved);
   } else {
-    workflows.value = [
-      {
-        id: 'demo-workflow',
-        name: '示例工作流',
-        nodes: [],
-        edges: [],
-        version: '2.0',
-        createdAt: new Date().toISOString(),
-        savedAt: new Date().toISOString()
-      }
-    ];
-    saveWorkflows();
+    workflows.value = [];
   }
 };
 
@@ -1029,19 +1141,25 @@ const saveWorkflow = () => {
     nodes: elements.value.filter(el => !el.source && !el.target),
     edges: elements.value.filter(el => el.source && el.target),
     version: '2.0',
-    savedAt: new Date().toISOString()
+    savedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   };
 
   if (currentWorkflowId.value) {
     const index = workflows.value.findIndex(w => w.id === currentWorkflowId.value);
     if (index !== -1) {
-      workflows.value[index] = { ...workflows.value[index], ...workflowData };
+      workflows.value[index] = { 
+        ...workflows.value[index], 
+        ...workflowData,
+        name: workflowName.value
+      };
       saveWorkflows();
     }
   } else {
     const newWorkflow = {
       id: uuidv4(),
       name: workflowName.value,
+      description: '',
       ...workflowData,
       createdAt: new Date().toISOString()
     };
@@ -1058,7 +1176,7 @@ const newWorkflow = () => {
       return;
     }
   }
-  elements.value = generateDefaultElements();
+  elements.value = [];
   selectedNodeId.value = null;
   selectedNodeIds.value = [];
   currentWorkflowId.value = null;
@@ -1118,14 +1236,23 @@ const deleteWorkflow = (workflowId) => {
 };
 
 const renameWorkflow = () => {
+  const currentWorkflow = currentWorkflowId.value 
+    ? workflows.value.find(w => w.id === currentWorkflowId.value)
+    : null;
+  
   const newName = prompt('请输入工作流名称:', workflowName.value);
   if (newName && newName.trim()) {
     workflowName.value = newName.trim();
-    if (currentWorkflowId.value) {
-      const index = workflows.value.findIndex(w => w.id === currentWorkflowId.value);
-      if (index !== -1) {
-        workflows.value[index].name = workflowName.value;
-        saveWorkflows();
+    
+    const newDesc = prompt('请输入工作流描述（可选）:', currentWorkflow?.description || '');
+    if (newDesc !== null) {
+      if (currentWorkflowId.value) {
+        const index = workflows.value.findIndex(w => w.id === currentWorkflowId.value);
+        if (index !== -1) {
+          workflows.value[index].name = workflowName.value;
+          workflows.value[index].description = newDesc.trim();
+          saveWorkflows();
+        }
       }
     }
   }
@@ -1433,6 +1560,29 @@ const pasteNodes = () => {
   }
 };
 
+const formatDate = (dateStr) => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diff = now - date;
+  
+  // 小于1分钟
+  if (diff < 60000) return '刚刚';
+  // 小于1小时
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`;
+  // 小于24小时
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`;
+  // 小于7天
+  if (diff < 604800000) return `${Math.floor(diff / 86400000)}天前`;
+  
+  // 超过7天显示日期
+  return date.toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+};
+
 const toggleRightPanel = () => {
   showRightPanel.value = !showRightPanel.value;
 };
@@ -1479,9 +1629,6 @@ onMounted(() => {
   
   if (workflows.value.length > 0) {
     openWorkflow(workflows.value[0]);
-  } else {
-    elements.value = generateDefaultElements();
-    hasChanges.value = false;
   }
   
   history.value.push(JSON.stringify(elements.value));
@@ -1582,6 +1729,82 @@ onUnmounted(() => {
   border-bottom: 1px solid #e0e0e0;
   font-weight: 600;
   font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.workflow-count {
+  background: #3b82f6;
+  color: white;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  min-width: 18px;
+  text-align: center;
+}
+
+.empty-workflows {
+  padding: 30px 20px;
+  text-align: center;
+}
+
+.empty-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.empty-text {
+  font-size: 13px;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.empty-hint {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.item-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #334155;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.item-desc {
+  font-size: 11px;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-time {
+  font-size: 10px;
+  color: #94a3b8;
 }
 
 .dropdown-content {
@@ -1608,13 +1831,7 @@ onUnmounted(() => {
 
 .dropdown-item svg {
   flex-shrink: 0;
-}
-
-.dropdown-item span {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  margin-top: 2px;
 }
 
 .delete-btn {
@@ -1865,10 +2082,64 @@ onUnmounted(() => {
   min-height: 0; /* 防止flex子项溢出 */
 }
 
+/* 左侧面板容器 */
+.left-panel-wrapper {
+  display: flex;
+  flex-shrink: 0;
+  position: relative;
+}
+
 .canvas-wrapper {
   flex: 1;
   position: relative;
   overflow: hidden;
+}
+
+/* 左侧面板切换按钮样式 */
+.toggle-left-panel-btn,
+.hide-left-panel-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 36px;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-left: none;
+  border-radius: 0 4px 4px 0;
+  cursor: pointer;
+  color: #999;
+  transition: all 0.2s;
+  z-index: 100;
+  flex-shrink: 0;
+  box-shadow: 1px 0 4px rgba(0, 0, 0, 0.06);
+  align-self: center;
+}
+
+.toggle-left-panel-btn:hover,
+.hide-left-panel-btn:hover {
+  background: #f8f9fa;
+  color: #3b82f6;
+  border-color: #d0d0d0;
+}
+
+.toggle-left-panel-btn svg,
+.hide-left-panel-btn svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2.5;
+}
+
+.hide-left-panel-btn {
+  position: absolute;
+  right: -20px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 100;
+  border-radius: 0 4px 4px 0;
+  border: 1px solid #e0e0e0;
+  border-left: none;
+  margin-left: 0;
 }
 
 .canvas-wrapper :deep(.vue-flow__pane) {
@@ -2108,64 +2379,29 @@ onUnmounted(() => {
 }
 
 /* VueFlow Handle 样式优化 */
-.canvas-wrapper :deep(.vue-flow__handle),
-.canvas-wrapper :deep(.vue-flow__handle svg circle),
-.canvas-wrapper :deep(.vue-flow__handle-path) {
-  width: 24px !important;
-  height: 24px !important;
-  min-width: 24px !important;
-  min-height: 24px !important;
-  max-width: 24px !important;
-  max-height: 24px !important;
-  background-color: #3b82f6 !important;
-  border: 3px solid white !important;
-  border-radius: 50% !important;
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.4), 0 2px 8px rgba(0, 0, 0, 0.15) !important;
-  cursor: crosshair !important;
-  z-index: 1000 !important;
-  pointer-events: auto !important;
-  position: relative !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  fill: #3b82f6 !important;
-  stroke: #3b82f6 !important;
-  stroke-width: 0 !important;
-}
-
-.canvas-wrapper :deep(.vue-flow__handle)::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: transparent;
+.canvas-wrapper :deep(.vue-flow__handle) {
+  width: 20px;
+  height: 20px;
+  background-color: #3b82f6;
+  border: 2px solid white;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4);
   cursor: crosshair;
-  z-index: 1001;
+  z-index: 1000;
+  pointer-events: auto;
 }
 
-.canvas-wrapper :deep(.vue-flow__handle:hover),
-.canvas-wrapper :deep(.vue-flow__handle:hover svg circle) {
-  transform: scale(1.5) !important;
-  box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.5), 0 4px 12px rgba(59, 130, 246, 0.3) !important;
-  background-color: #2563eb !important;
-  fill: #2563eb !important;
+.canvas-wrapper :deep(.vue-flow__handle:hover) {
+  transform: scale(1.6);
+  box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.6);
+  background-color: #2563eb;
 }
 
-.canvas-wrapper :deep(.vue-flow__handle[type="target"]),
-.canvas-wrapper :deep(.vue-flow__handle[type="target"] svg circle) {
-  background-color: #a78bfa !important;
-  fill: #a78bfa !important;
-  stroke: #a78bfa !important;
+.canvas-wrapper :deep(.vue-flow__handle[type="target"]) {
+  background-color: #a78bfa;
 }
 
-.canvas-wrapper :deep(.vue-flow__handle[type="source"]),
-.canvas-wrapper :deep(.vue-flow__handle[type="source"] svg circle) {
-  background-color: #3b82f6 !important;
-  fill: #3b82f6 !important;
-  stroke: #3b82f6 !important;
+.canvas-wrapper :deep(.vue-flow__handle[type="source"]) {
+  background-color: #3b82f6;
 }
 
 

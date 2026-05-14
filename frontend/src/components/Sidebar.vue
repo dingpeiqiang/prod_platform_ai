@@ -1,28 +1,47 @@
 <template>
   <div class="sidebar">
-    <div class="sidebar-logo">
-      <div class="logo-icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/>
-          <circle cx="12" cy="12" r="6"/>
-          <circle cx="12" cy="12" r="2"/>
-          <path d="M12 6a6 6 0 0 1 4 1.5"/>
-          <path d="M12 6a6 6 0 0 0-4 1.5"/>
-          <path d="M12 18a6 6 0 0 1 4-1.5"/>
-          <path d="M12 18a6 6 0 0 0-4-1.5"/>
-          <path d="M6 12a6 6 0 0 1 1.5 4"/>
-          <path d="M6 12a6 6 0 0 0 1.5-4"/>
-          <path d="M18 12a6 6 0 0 1-1.5 4"/>
-          <path d="M18 12a6 6 0 0 0-1.5-4"/>
-          <circle cx="7.5" cy="8.5" r="1"/>
-          <circle cx="16.5" cy="8.5" r="1"/>
-          <circle cx="7.5" cy="15.5" r="1"/>
-          <circle cx="16.5" cy="15.5" r="1"/>
-        </svg>
+    <!-- 侧边栏头部 - 始终显示 -->
+    <div class="sidebar-header" :class="{ 'collapsed': canShowSidebarToggle && !isSidebarVisible }">
+      <!-- Logo - 始终显示，除非侧边栏收起 -->
+      <div class="sidebar-logo" v-if="!canShowSidebarToggle || isSidebarVisible">
+        <div class="logo-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <circle cx="12" cy="12" r="6"/>
+            <circle cx="12" cy="12" r="2"/>
+            <path d="M12 6a6 6 0 0 1 4 1.5"/>
+            <path d="M12 6a6 6 0 0 0-4 1.5"/>
+            <path d="M12 18a6 6 0 0 1 4-1.5"/>
+            <path d="M12 18a6 6 0 0 0-4-1.5"/>
+            <path d="M6 12a6 6 0 0 1 1.5 4"/>
+            <path d="M6 12a6 6 0 0 0 1.5-4"/>
+            <path d="M18 12a6 6 0 0 1-1.5 4"/>
+            <path d="M18 12a6 6 0 0 0-1.5-4"/>
+            <circle cx="7.5" cy="8.5" r="1"/>
+            <circle cx="16.5" cy="8.5" r="1"/>
+            <circle cx="7.5" cy="15.5" r="1"/>
+            <circle cx="16.5" cy="15.5" r="1"/>
+          </svg>
+        </div>
+        <span class="logo-text">产商品研发助手</span>
       </div>
-      <span class="logo-text">产商品研发助手</span>
+      
+      <!-- 切换按钮 - 在允许显示的视图中始终可见 -->
+      <button 
+        v-if="canShowSidebarToggle"
+        class="sidebar-toggle-btn-inner"
+        :class="{ 'expanded': isSidebarVisible }"
+        @click="$emit('toggle-sidebar')"
+        :title="isSidebarVisible ? '收起侧边栏' : '展开侧边栏'"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline :points="isSidebarVisible ? '15 18 9 12 15 6' : '9 18 15 12 9 6'"></polyline>
+        </svg>
+      </button>
     </div>
 
+    <!-- 侧边栏内容（在聊天视图或侧边栏展开状态显示） -->
+    <template v-if="!canShowSidebarToggle || isSidebarVisible">
     <button class="new-chat-btn" @click="$emit('new-session')">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
         <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -249,6 +268,7 @@
         </div>
       </div>
     </div>
+    </template>
   </div>
 </template>
 
@@ -269,13 +289,16 @@ const avatarColor = computed(() => userStore.avatar)
 
 const props = defineProps({
   sessions: { type: Array, default: () => [] },
-  activeId: { type: String, default: '' }
+  activeId: { type: String, default: '' },
+  isDashboardView: { type: Boolean, default: false },
+  canShowSidebarToggle: { type: Boolean, default: true },
+  isSidebarVisible: { type: Boolean, default: true }
 })
 
 // 调试：打印 sessions 数量
 console.log('[Sidebar] sessions 数量:', props.sessions.length, 'activeId:', props.activeId)
 
-const emit = defineEmits(['new-session', 'switch-session', 'delete-session', 'logout', 'pin-session', 'share-session', 'report-session', 'rename-session', 'open-langchain', 'open-visualization', 'open-langchain-editor'])
+const emit = defineEmits(['new-session', 'switch-session', 'delete-session', 'logout', 'pin-session', 'share-session', 'report-session', 'rename-session', 'open-langchain', 'open-visualization', 'open-langchain-editor', 'toggle-sidebar'])
 
 const handlePinSession = (sessionId) => {
   console.log('[Sidebar.vue] handlePinSession called with sessionId:', sessionId)
@@ -346,12 +369,59 @@ const olderSessions = computed(() =>
   }
 }
 
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-2);
+}
+
+/* 当侧边栏收起时，让按钮居中 */
+.sidebar-header.collapsed {
+  justify-content: center;
+}
+
 .sidebar-logo {
   display: flex;
   align-items: center;
   gap: var(--space-2-5);
-  padding: var(--space-1) var(--space-2) var(--space-5);
+  flex: 1;
 }
+
+.sidebar-toggle-btn-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--sidebar-border);
+  background: var(--sidebar-hover-bg);
+  color: var(--sidebar-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  padding: 0;
+  flex-shrink: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.sidebar-toggle-btn-inner:hover {
+  background: var(--color-primary-500);
+  color: var(--text-inverse);
+  border-color: var(--color-primary-500);
+  transform: scale(1.05);
+  box-shadow: 0 4px 8px rgba(91, 124, 250, 0.3);
+}
+
+.sidebar-toggle-btn-inner:active {
+  transform: scale(0.98);
+}
+
+.sidebar-header {
+  min-height: 48px;
+}
+
 .logo-icon {
   width: 30px; height: 30px;
   background: linear-gradient(135deg, var(--color-primary-400), var(--color-primary-500));

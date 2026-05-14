@@ -29,12 +29,32 @@
 
     <!-- 已登录：主界面 -->
     <template v-else>
-      <div v-if="sidebarOpen" class="sidebar-mask" @click="sidebarOpen = false" />
+      <!-- 侧边栏切换按钮（仅在聊天视图且侧边栏隐藏时显示） -->
+      <button 
+        v-if="isChatView && !isSidebarPinned"
+        class="sidebar-toggle-btn"
+        @click="isSidebarPinned = true"
+        title="显示会话列表"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+      </button>
 
+      <!-- 侧边栏（固定显示在左侧） -->
       <Sidebar
-        :class="['sidebar-wrapper', { 'sidebar-visible': sidebarOpen }]"
+        :class="['sidebar-wrapper', { 
+          'sidebar-hidden': isChatView && !isSidebarPinned
+        }]"
+        :style="canShowSidebarToggle ? {
+          width: isDashboardSidebarVisible ? 'var(--sidebar-width)' : '56px',
+          minWidth: isDashboardSidebarVisible ? 'var(--sidebar-width)' : '56px'
+        } : {}"
         :sessions="sessionList"
         :activeId="activeSessionId"
+        :is-dashboard-view="isDashboardView"
+        :can-show-sidebar-toggle="canShowSidebarToggle"
+        :is-sidebar-visible="isDashboardSidebarVisible"
         @new-session="onNewSession"
         @switch-session="onSwitchSession"
         @delete-session="deleteSession"
@@ -46,21 +66,35 @@
         @open-langchain="openLangChain"
         @open-visualization="openVisualization"
         @open-langchain-editor="openLangChainEditor"
+        @toggle-sidebar="toggleDashboardSidebar"
       />
+      
+      <!-- 聊天时隐藏侧边栏的按钮 -->
+      <button 
+        v-if="isChatView && isSidebarPinned"
+        class="sidebar-toggle-btn chat-mode-toggle"
+        @click="isSidebarPinned = false"
+        title="隐藏会话列表"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+      </button>
 
       <div class="main-area">
         <!-- 首页：没有活动会话时显示 -->
-        <DashboardHome
-          v-if="!isInitializing && currentView === 'dashboard' && !activeSessionId"
-          @send-message="onSendMessageFromHome"
-          @switch-chat="onSwitchChat"
-          @create-session="onNewSession"
-          @open-scene-manager="openSceneManager"
-          @open-prompt-manager="openPromptManager"
-          @open-tool-manager="openToolManager"
-          @open-form-manager="openFormManager"
-          @open-ontology-manager="openOntologyManager"
-        />
+      <DashboardHome
+        v-if="!isInitializing && currentView === 'dashboard' && !activeSessionId"
+        @send-message="onSendMessageFromHome"
+        @switch-chat="onSwitchChat"
+        @create-session="onNewSession"
+        @open-scene-manager="openSceneManager"
+        @open-prompt-manager="openPromptManager"
+        @open-tool-manager="openToolManager"
+        @open-form-manager="openFormManager"
+        @open-ontology-manager="openOntologyManager"
+        @open-workflow-manager="openWorkflowManager"
+      />
 
         <!-- 场景管理界面 -->
         <SceneManager 
@@ -99,10 +133,21 @@
         />
 
         <!-- 本体管理界面 -->
-        <OntologyManager 
-          v-if="!isInitializing && currentView === 'ontology-manager'" 
-          @go-back="returnToDashboard"
-        />
+      <OntologyManager 
+        v-if="!isInitializing && currentView === 'ontology-manager'" 
+        @go-back="returnToDashboard"
+      />
+
+      <!-- 工作流管理界面 -->
+      <GenericManager 
+        v-if="!isInitializing && currentView === 'workflow-manager'" 
+        title="🔀 工作流管理"
+        item-type="工作流"
+        code-field="workflowCode"
+        name-field="workflowName"
+        :api-service="workflowApiService"
+        @go-back="returnToDashboard"
+      />
 
         <!-- LangChain 测试界面 -->
         <LangChainPanel 
@@ -158,6 +203,7 @@ import { createSession as apiCreateSession, getSessions as apiGetSessions, delet
 import * as toolApi from './services/toolApi.js'
 import * as formApi from './services/formApi.js'
 import * as ontologyApi from './services/ontologyApi.js'
+import * as workflowApi from './services/workflowApi.js'
 
 const currentView = ref('dashboard')
 
@@ -182,7 +228,8 @@ const ACTIVE_SESSION_KEY = 'chat_active_session'
 // dbSessionId: 数据库 session_id，已知则直接用，未知则首次发消息时创建
 const sessions = ref([])
 const activeSessionId = ref('')
-const sidebarOpen = ref(false)
+const isSidebarPinned = ref(true)  // 聊天时侧边栏是否固定显示
+const isDashboardSidebarVisible = ref(true)  // 首页时侧边栏是否可见
 const isInitializing = ref(true)  // 初始化状态标志
 
 // 当前数据库会话 ID（与 activeSessionId 对应）
@@ -236,7 +283,6 @@ const createLocalSession = (dbSessionId = null) => {
   activeDbSessionId.value = dbSessionId || ''
   saveSessions()
   saveActiveSessionId()  // 保存当前激活会话
-  sidebarOpen.value = false
   return s
 }
 
@@ -246,7 +292,6 @@ const openSceneManager = () => {
   activeSessionId.value = ''
   activeDbSessionId.value = ''
   saveActiveSessionId()
-  sidebarOpen.value = false
 }
 
 // ── 打开提示词管理 ─────────────────────────────────────────
@@ -255,7 +300,6 @@ const openPromptManager = () => {
   activeSessionId.value = ''
   activeDbSessionId.value = ''
   saveActiveSessionId()
-  sidebarOpen.value = false
 }
 
 // ── 打开工具管理 ─────────────────────────────────────────
@@ -264,7 +308,6 @@ const openToolManager = () => {
   activeSessionId.value = ''
   activeDbSessionId.value = ''
   saveActiveSessionId()
-  sidebarOpen.value = false
 }
 
 // ── 打开表单管理 ─────────────────────────────────────────
@@ -273,7 +316,6 @@ const openFormManager = () => {
   activeSessionId.value = ''
   activeDbSessionId.value = ''
   saveActiveSessionId()
-  sidebarOpen.value = false
 }
 
 // ── 打开本体管理 ─────────────────────────────────────────
@@ -282,7 +324,14 @@ const openOntologyManager = () => {
   activeSessionId.value = ''
   activeDbSessionId.value = ''
   saveActiveSessionId()
-  sidebarOpen.value = false
+}
+
+// ── 打开工作流管理 ─────────────────────────────────────────
+const openWorkflowManager = () => {
+  currentView.value = 'workflow-manager'
+  activeSessionId.value = ''
+  activeDbSessionId.value = ''
+  saveActiveSessionId()
 }
 
 // ── 打开 LangChain 测试界面 ──────────────────────────────
@@ -291,7 +340,6 @@ const openLangChain = () => {
   activeSessionId.value = ''
   activeDbSessionId.value = ''
   saveActiveSessionId()
-  sidebarOpen.value = false
 }
 
 // ── 打开可视化面板 ──────────────────────────────────────
@@ -300,7 +348,6 @@ const openVisualization = () => {
   activeSessionId.value = ''
   activeDbSessionId.value = ''
   saveActiveSessionId()
-  sidebarOpen.value = false
 }
 
 // ── 打开 LangChain 工作流编辑器 ──────────────────────────────
@@ -308,8 +355,8 @@ const openLangChainEditor = () => {
   currentView.value = 'langchain-editor'
   activeSessionId.value = ''
   activeDbSessionId.value = ''
+  isDashboardSidebarVisible.value = false
   saveActiveSessionId()
-  sidebarOpen.value = false
 }
 
 // ── API 服务适配器 ─────────────────────────────────────────
@@ -343,6 +390,21 @@ const ontologyApiService = {
   toggle: ontologyApi.toggleOntology
 }
 
+const workflowApiService = {
+  getCategories: workflowApi.workflowApi.getCategories,
+  list: workflowApi.workflowApi.list,
+  get: workflowApi.workflowApi.get,
+  create: workflowApi.workflowApi.create,
+  update: workflowApi.workflowApi.update,
+  delete: workflowApi.workflowApi.delete,
+  toggle: workflowApi.workflowApi.toggle
+}
+
+// ── 切换首页侧边栏可见性 ─────────────────────────────────
+const toggleDashboardSidebar = () => {
+  isDashboardSidebarVisible.value = !isDashboardSidebarVisible.value
+}
+
 // ── 返回首页 ─────────────────────────────────────────────
 const returnToDashboard = () => {
   currentView.value = 'dashboard'
@@ -355,7 +417,6 @@ const onNewSession = () => {
   activeSessionId.value = ''
   activeDbSessionId.value = ''
   saveActiveSessionId()
-  sidebarOpen.value = false
 }
 
 // ── 切换会话 ──────────────────────────────────────────────
@@ -365,7 +426,6 @@ const onSwitchSession = (id) => {
   activeSessionId.value = id
   activeDbSessionId.value = s?.dbSessionId || ''
   saveActiveSessionId()  // 保存当前激活会话
-  sidebarOpen.value = false
 }
 
 // ── 删除会话 ──────────────────────────────────────────────
@@ -506,6 +566,21 @@ const sessionList = computed(() =>
     return b.updatedAt - a.updatedAt
   })
 )
+
+// 判断当前是否为聊天视图
+const isChatView = computed(() => {
+  return currentView.value === 'dashboard' && activeSessionId.value
+})
+
+// 判断当前是否为首页视图（无活动会话）
+const isDashboardView = computed(() => {
+  return currentView.value === 'dashboard' && !activeSessionId.value
+})
+
+// 判断当前是否可以显示侧边栏切换按钮（非聊天视图）
+const canShowSidebarToggle = computed(() => {
+  return !isChatView.value
+})
 
 const activeSessionTitle = computed(() => {
   const s = sessions.value.find(s => s.id === activeSessionId.value)
@@ -824,10 +899,17 @@ onUnmounted(() => {
 
 .sidebar-wrapper { 
   flex-shrink: 0; 
+  transition: width 0.3s ease, min-width 0.3s ease, transform 0.3s ease, opacity 0.3s ease;
+  position: relative;
+  z-index: 50;
+  overflow: hidden;
 }
 
-.sidebar-mask { 
-  display: none; 
+/* 聊天时隐藏侧边栏的样式 */
+.sidebar-wrapper.sidebar-hidden {
+  transform: translateX(-100%);
+  opacity: 0;
+  pointer-events: none;
 }
 
 .main-area {
@@ -837,6 +919,37 @@ onUnmounted(() => {
   flex-direction: column;
   background: var(--bg-secondary);
   position: relative;
+  transition: flex 0.3s ease;
+}
+
+/* 聊天模式切换按钮样式 */
+.sidebar-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 56px;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+  cursor: pointer;
+  color: #666;
+  transition: all 0.2s;
+  z-index: 100;
+  flex-shrink: 0;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.08);
+  align-self: center;
+}
+
+.sidebar-toggle-btn:hover {
+  background: #f8f9fa;
+  color: #3b82f6;
+  border-color: #d0d0d0;
+}
+
+.sidebar-toggle-btn.chat-mode-toggle {
+  margin-left: -1px;
 }
 
 @media (max-width: 768px) {
@@ -848,21 +961,9 @@ onUnmounted(() => {
     transform: translateX(-100%);
     transition: transform 0.25s cubic-bezier(.4,0,.2,1);
   }
-  .sidebar-wrapper.sidebar-visible { 
+  
+  .sidebar-wrapper:not(.sidebar-hidden) { 
     transform: translateX(0); 
-  }
-
-  .sidebar-mask {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: var(--bg-overlay);
-    z-index: calc(var(--z-fixed) - 1);
-    animation: fadeIn 0.2s ease;
-  }
-  @keyframes fadeIn {
-    from { opacity: 0; } 
-    to { opacity: 1; }
   }
 }
 </style>
