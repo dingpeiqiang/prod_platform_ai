@@ -1,15 +1,67 @@
 <template>
   <div class="langchain-editor">
-    <!-- 主工具栏 -->
     <div class="toolbar">
       <div class="toolbar-left">
+        <button @click="newWorkflow" class="btn-primary" title="新建工作流">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 5v14"/>
+            <path d="M5 12h14"/>
+          </svg>
+          新建
+        </button>
+        <div class="workflow-selector">
+          <button @click="showWorkflowList = !showWorkflowList" class="btn-secondary workflow-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+              <line x1="12" y1="22.08" x2="12" y2="12"/>
+            </svg>
+            <span class="workflow-name">{{ workflowName }}</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+          <div v-if="showWorkflowList" class="workflow-dropdown">
+            <div class="dropdown-header">
+              <span>工作流列表</span>
+            </div>
+            <div class="dropdown-content">
+              <div 
+                v-for="wf in workflows" 
+                :key="wf.id"
+                @click="openWorkflow(wf)"
+                class="dropdown-item"
+                :class="{ active: currentWorkflowId === wf.id }"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                  <path d="M9 3v18"/>
+                </svg>
+                <span>{{ wf.name }}</span>
+                <button @click.stop="deleteWorkflow(wf.id)" class="delete-btn" title="删除">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 6h18"/>
+                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <button @click="renameWorkflow" class="btn-icon" title="重命名">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+            <path d="m15 3 4 4"/>
+          </svg>
+        </button>
+        <div class="toolbar-divider"></div>
         <button @click="undo" :disabled="!canUndo" class="btn-icon" title="撤销 (Ctrl+Z)">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 7v6h6"/>
             <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
           </svg>
         </button>
-        <button @click="redo" :disabled="!canRedo" class="btn-icon" title="重做 (Ctrl+Shift+Z)">
+        <button @click="redo" :disabled="!canRedo" class="btn-icon" title="重做 (Ctrl+Y)">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 7v6h-6"/>
             <path d="M3 17a9 9 0 0 0 9 9 9 9 0 0 0 6-2.3L21 11"/>
@@ -65,10 +117,87 @@
           清空
         </button>
       </div>
+      
+      <div class="toolbar-center">
+        <div class="align-group">
+          <button @click="alignLeft" :disabled="selectedNodeIds.length < 2" class="btn-icon" title="左对齐">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="4" y1="6" x2="20" y2="6"/>
+              <line x1="4" y1="12" x2="14" y2="12"/>
+              <line x1="4" y1="18" x2="18" y2="18"/>
+            </svg>
+          </button>
+          <button @click="alignCenter" :disabled="selectedNodeIds.length < 2" class="btn-icon" title="水平居中">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="4" y1="6" x2="20" y2="6"/>
+              <line x1="8" y1="12" x2="16" y2="12"/>
+              <line x1="6" y1="18" x2="18" y2="18"/>
+            </svg>
+          </button>
+          <button @click="alignRight" :disabled="selectedNodeIds.length < 2" class="btn-icon" title="右对齐">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="4" y1="6" x2="20" y2="6"/>
+              <line x1="10" y1="12" x2="20" y2="12"/>
+              <line x1="6" y1="18" x2="20" y2="18"/>
+            </svg>
+          </button>
+          <div class="toolbar-divider-small"></div>
+          <button @click="alignTop" :disabled="selectedNodeIds.length < 2" class="btn-icon" title="顶部对齐">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="6" y1="4" x2="6" y2="20"/>
+              <line x1="12" y1="4" x2="12" y2="14"/>
+              <line x1="18" y1="4" x2="18" y2="18"/>
+            </svg>
+          </button>
+          <button @click="alignMiddle" :disabled="selectedNodeIds.length < 2" class="btn-icon" title="垂直居中">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="6" y1="4" x2="6" y2="20"/>
+              <line x1="12" y1="8" x2="12" y2="16"/>
+              <line x1="18" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+          <button @click="alignBottom" :disabled="selectedNodeIds.length < 2" class="btn-icon" title="底部对齐">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="6" y1="4" x2="6" y2="20"/>
+              <line x1="12" y1="10" x2="12" y2="20"/>
+              <line x1="18" y1="6" x2="18" y2="20"/>
+            </svg>
+          </button>
+        </div>
+        <div class="toolbar-divider"></div>
+        <div class="distribute-group">
+          <button @click="distributeHorizontal" :disabled="selectedNodeIds.length < 3" class="btn-icon" title="水平分布">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="4" y1="8" x2="4" y2="16"/>
+              <line x1="12" y1="8" x2="12" y2="16"/>
+              <line x1="20" y1="8" x2="20" y2="16"/>
+              <line x1="4" y1="12" x2="20" y2="12"/>
+            </svg>
+          </button>
+          <button @click="distributeVertical" :disabled="selectedNodeIds.length < 3" class="btn-icon" title="垂直分布">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="8" y1="4" x2="16" y2="4"/>
+              <line x1="8" y1="12" x2="16" y2="12"/>
+              <line x1="8" y1="20" x2="16" y2="20"/>
+              <line x1="12" y1="4" x2="12" y2="20"/>
+            </svg>
+          </button>
+        </div>
+      </div>
       <div class="toolbar-right">
         <span class="status" :class="validationStatus">
           {{ validationText }}
         </span>
+        <button 
+          @click="showShortcuts = !showShortcuts" 
+          class="btn-icon"
+          title="快捷键"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="4" width="20" height="16" rx="2"/>
+            <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8"/>
+          </svg>
+        </button>
         <button 
           @click="toggleRightPanel" 
           :class="['panel-toggle-btn', { active: showRightPanel }]"
@@ -86,25 +215,44 @@
       </div>
     </div>
 
-    <!-- 主编辑区域 -->
     <div class="editor-container">
-      <!-- 左侧节点面板 -->
       <NodePanel 
         :quick-templates="quickTemplates"
         @apply-template="applyTemplate"
+        @drag-start="onNodeDragStartFromPanel"
       />
 
-      <!-- Vue Flow 画布 -->
       <div class="canvas-wrapper">
         <VueFlow
           v-model="elements"
           :default-zoom="1"
           :min-zoom="0.2"
           :max-zoom="4"
+          :nodes-draggable="true"
+          :nodes-connectable="true"
+          :edges-connectable="true"
+          :connect-on-drag="true"
+          :auto-connect="false"
+          :snap-to-grid="true"
+          :snap-grid="[20, 20]"
+          :edges-updatable="true"
+          :edges-deletable="true"
+          :delete-key-code="['Delete', 'Backspace']"
+          :disable-pan="false"
+          :prevent-scroll-on-drag="true"
           @connect="onConnect"
+          @connect-end="onConnectEnd"
+          @node-drag-start="onNodeDragStart"
           @node-drag-stop="onNodeDragStop"
           @pane-click="onPaneClick"
-          @node-click="onNodeClick"
+          @node-click="({ event, node }) => onNodeClick(event, node)"
+          @edge-click="onEdgeClick"
+          @drop="onDrop"
+          @dragover="onDragOver"
+          @dragleave="onDragLeave"
+          @pane-ready="onPaneReady"
+          @handle-click="onHandleClick"
+          @handle-mousedown="onHandleMouseDown"
           class="vue-flow-canvas"
         >
           <Background pattern-color="#aaa" :gap="20" />
@@ -118,12 +266,46 @@
             class="mini-map"
           />
           
+          <!-- 空状态提示 -->
+          <div v-if="elements.length === 0" class="empty-state">
+            <div class="empty-state-content">
+              <div class="empty-icon">📋</div>
+              <h3>开始创建工作流</h3>
+              <p>从左侧面板拖拽节点到此处</p>
+              <p class="hint">或使用快速模板快速开始</p>
+            </div>
+          </div>
+          
+          <!-- 连接成功提示 -->
+          <transition name="fade-slide">
+            <div v-if="connectionSuccess" class="connection-success-toast">
+              <span class="success-icon">✓</span>
+              <span>连接创建成功</span>
+            </div>
+          </transition>
+          
+          <!-- 智能吸附提示 -->
+          <transition name="fade-slide">
+            <div v-if="nearbyHandle" class="snap-indicator">
+              <span class="snap-icon">🧲</span>
+              <span class="snap-text">已锁定连接点</span>
+            </div>
+          </transition>
+          
           <template #node-start="props">
-            <StartNode :data="props.data" :selected="props.selected" />
+            <StartNode 
+              :data="props.data" 
+              :selected="props.selected" 
+              :execution-status="nodeExecutionStatus[props.node?.id]" 
+            />
           </template>
           
           <template #node-end="props">
-            <EndNode :data="props.data" :selected="props.selected" />
+            <EndNode 
+              :data="props.data" 
+              :selected="props.selected" 
+              :execution-status="nodeExecutionStatus[props.node?.id]" 
+            />
           </template>
           
           <template #node-prompt="props">
@@ -162,59 +344,163 @@
             <ParserNode :data="props.data" :selected="props.selected" @update="updateNodeData" />
           </template>
         </VueFlow>
+      </div>
 
-        <!-- 执行状态覆盖层 -->
-        <div v-if="isRunning" class="execution-overlay">
-          <div class="execution-progress">
-            <div class="progress-spinner"></div>
-            <span>工作流执行中...</span>
+      <!-- 快捷键提示面板 -->
+      <div v-if="showShortcuts" class="shortcuts-panel">
+        <div class="shortcuts-header">
+          <h4>⌨️ 快捷键</h4>
+          <button @click="showShortcuts = false" class="close-btn">✕</button>
+        </div>
+        <div class="shortcuts-content">
+          <div class="shortcut-group">
+            <h5>编辑操作</h5>
+            <div class="shortcut-item">
+              <span class="key">Ctrl + Z</span>
+              <span class="desc">撤销</span>
+            </div>
+            <div class="shortcut-item">
+              <span class="key">Ctrl + Y</span>
+              <span class="desc">重做</span>
+            </div>
+            <div class="shortcut-item">
+              <span class="key">Delete</span>
+              <span class="desc">删除选中节点</span>
+            </div>
+          </div>
+          
+          <div class="shortcut-group">
+            <h5>选择操作</h5>
+            <div class="shortcut-item">
+              <span class="key">Ctrl + A</span>
+              <span class="desc">全选</span>
+            </div>
+            <div class="shortcut-item">
+              <span class="key">Shift + 点击</span>
+              <span class="desc">多选</span>
+            </div>
+            <div class="shortcut-item">
+              <span class="key">Esc</span>
+              <span class="desc">取消选择</span>
+            </div>
+          </div>
+          
+          <div class="shortcut-group">
+            <h5>剪贴板</h5>
+            <div class="shortcut-item">
+              <span class="key">Ctrl + C</span>
+              <span class="desc">复制</span>
+            </div>
+            <div class="shortcut-item">
+              <span class="key">Ctrl + V</span>
+              <span class="desc">粘贴</span>
+            </div>
+          </div>
+          
+          <div class="shortcut-group">
+            <h5>文件操作</h5>
+            <div class="shortcut-item">
+              <span class="key">Ctrl + S</span>
+              <span class="desc">保存</span>
+            </div>
+          </div>
+          
+          <div class="shortcut-group">
+            <h5>面板切换</h5>
+            <div class="shortcut-item">
+              <span class="key">Ctrl + G</span>
+              <span class="desc">属性面板</span>
+            </div>
+            <div class="shortcut-item">
+              <span class="key">Ctrl + L</span>
+              <span class="desc">执行日志</span>
+            </div>
+          </div>
+          
+          <div class="shortcut-hint">
+            💡 提示：将鼠标移到连接点上，按住左键拖动即可创建连接
           </div>
         </div>
       </div>
 
-      <!-- 右侧面板区域 -->
       <div v-show="showRightPanel" class="right-panel">
-        <!-- 面板标签切换 -->
         <div class="panel-tabs">
           <button 
             @click="activePanel = 'properties'" 
-            :class="['tab-btn', { active: activePanel === 'properties' }]"
+            :class="['panel-tab', { active: activePanel === 'properties' }]"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-            </svg>
             属性
           </button>
           <button 
-            @click="activePanel = 'execution'" 
-            :class="['tab-btn', { active: activePanel === 'execution', running: isRunning }]"
+            @click="activePanel = 'validation'" 
+            :class="['panel-tab', { active: activePanel === 'validation' }]"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-            </svg>
-            日志
-            <span v-if="executionLogs.length > 0" class="tab-badge">{{ executionLogs.length }}</span>
+            验证
+            <span v-if="validationResults.errors.length > 0" class="error-count">{{ validationResults.errors.length }}</span>
+          </button>
+          <button 
+            @click="activePanel = 'execution'" 
+            :class="['panel-tab', { active: activePanel === 'execution' }]"
+          >
+            执行日志
           </button>
         </div>
+        
+        <div class="panel-content">
+          <div v-show="activePanel === 'properties'" class="panel-content-wrapper">
+            <PropertyPanel 
+              :node-data="selectedNodeData"
+              :expanded="showRightPanel"
+              :node-type-label="selectedNodeTypeLabel"
+              @update="onPropertyUpdate"
+            />
+          </div>
 
-        <!-- 属性面板 -->
-        <div v-show="activePanel === 'properties'" class="panel-content-wrapper">
-          <PropertyPanel 
-            :node-data="selectedNodeData"
-            :node-type-label="selectedNodeTypeLabel"
-            @update="onPropertyUpdate"
-          />
-        </div>
+          <div v-show="activePanel === 'validation'" class="panel-content-wrapper">
+            <div v-if="validationResults.errors.length === 0 && validationResults.warnings.length === 0" class="validation-empty">
+              <span class="success-icon">✓</span>
+              <p>工作流验证通过</p>
+            </div>
+            <div v-else>
+              <div v-if="validationResults.errors.length > 0" class="validation-section">
+                <h4>错误</h4>
+                <div 
+                  v-for="(error, index) in validationResults.errors" 
+                  :key="'error-' + index" 
+                  class="validation-item error"
+                >
+                  <span class="validation-icon">✗</span>
+                  <div class="validation-detail">
+                    <span class="validation-message">{{ error.message }}</span>
+                    <span class="validation-suggestion">💡 {{ error.suggestion }}</span>
+                  </div>
+                </div>
+              </div>
+              <div v-if="validationResults.warnings.length > 0" class="validation-section">
+                <h4>警告</h4>
+                <div 
+                  v-for="(warning, index) in validationResults.warnings" 
+                  :key="'warning-' + index" 
+                  class="validation-item warning"
+                >
+                  <span class="validation-icon">⚠️</span>
+                  <div class="validation-detail">
+                    <span class="validation-message">{{ warning.message }}</span>
+                    <span class="validation-suggestion">💡 {{ warning.suggestion }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
-        <!-- 执行日志面板 -->
-        <div v-show="activePanel === 'execution'" class="panel-content-wrapper">
-          <ExecutionPanel 
-            :logs="executionLogs"
-            :is-running="isRunning"
-            :last-result="lastExecutionResult"
-            @clear="clearExecutionLogs"
-          />
+          <div v-show="activePanel === 'execution'" class="panel-content-wrapper">
+            <ExecutionPanel 
+              :logs="executionLogs"
+              :is-running="isRunning"
+              :last-result="lastExecutionResult"
+              @clear="clearExecutionLogs"
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -222,7 +508,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue';
 import { VueFlow, useVueFlow } from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
 import { Controls } from '@vue-flow/controls';
@@ -245,21 +531,42 @@ import HttpNode from './nodes/HttpNode.vue';
 import CodeNode from './nodes/CodeNode.vue';
 import ParserNode from './nodes/ParserNode.vue';
 
-const { addEdges, removeNodes, removeEdges } = useVueFlow();
+import { debounce, validateWorkflow, alignNodes, distributeNodes } from './utils/editorUtils';
+import { ExecutionEngine } from './utils/executionEngine';
+import { KeyboardShortcuts } from './utils/keyboardShortcuts';
+
+const { addEdges, removeNodes, removeEdges, project } = useVueFlow();
 
 const elements = ref([]);
 const hasChanges = ref(false);
 const selectedNodeId = ref(null);
+const selectedNodeIds = ref([]);
 const showRightPanel = ref(true);
 const activePanel = ref('properties');
+const showShortcuts = ref(false);
+const connectionSuccess = ref(false);
+
+// 智能吸附相关状态
+const nearbyHandle = ref(null);
+const SNAP_DISTANCE = 50;
 
 const history = ref([]);
 const historyIndex = ref(-1);
 const MAX_HISTORY = 50;
 
+const workflows = ref([]);
+const currentWorkflowId = ref(null);
+const showWorkflowList = ref(false);
+const workflowName = ref('未命名工作流');
+
 const executionLogs = ref([]);
 const isRunning = ref(false);
 const lastExecutionResult = ref(null);
+const copiedNodes = ref([]);
+const nodeExecutionStatus = ref({});
+
+const executionEngine = new ExecutionEngine();
+const keyboardShortcuts = new KeyboardShortcuts();
 
 const quickTemplates = ref([
   {
@@ -303,25 +610,25 @@ const selectedNodeTypeLabel = computed(() => {
   return def ? def.name : selectedNodeData.value.type;
 });
 
-const isValid = computed(() => {
-  const nodes = elements.value.filter(el => !el.source && !el.target);
-  const edges = elements.value.filter(el => el.source && el.target);
-  const startNodes = nodes.filter(n => n.type === 'start');
-  const endNodes = nodes.filter(n => n.type === 'end');
-  return startNodes.length >= 1 && endNodes.length >= 1 && edges.length > 0;
+const validationResults = computed(() => {
+  return validateWorkflow(elements.value);
 });
 
-const validationStatus = computed(() => isValid.value ? 'valid' : 'invalid');
+const isValid = computed(() => validationResults.value.errors.length === 0);
+
+const validationStatus = computed(() => {
+  if (validationResults.value.errors.length > 0) return 'invalid';
+  if (validationResults.value.warnings.length > 0) return 'warning';
+  return 'valid';
+});
 
 const validationText = computed(() => {
-  const nodes = elements.value.filter(el => !el.source && !el.target);
-  const edges = elements.value.filter(el => el.source && el.target);
-  const startNodes = nodes.filter(n => n.type === 'start');
-  const endNodes = nodes.filter(n => n.type === 'end');
-  
-  if (startNodes.length === 0) return '⚠️ 缺少开始节点';
-  if (endNodes.length === 0) return '⚠️ 缺少结束节点';
-  if (edges.length === 0) return '⚠️ 没有连接线';
+  if (validationResults.value.errors.length > 0) {
+    return `❌ ${validationResults.value.errors.length} 个错误`;
+  }
+  if (validationResults.value.warnings.length > 0) {
+    return `⚠️ ${validationResults.value.warnings.length} 个警告`;
+  }
   return '✓ 工作流有效';
 });
 
@@ -339,23 +646,333 @@ const saveHistory = () => {
 };
 
 const onConnect = (params) => {
+  // 验证连接
+  const validation = validateConnection(params);
+  if (!validation.valid) {
+    console.warn('连接验证失败:', validation.message);
+    return;
+  }
+  
+  // 添加箭头标记
+  const edgeWithMarker = {
+    ...params,
+    markerEnd: {
+      type: 'arrowclosed',
+      color: '#94a3b8'
+    }
+  };
+  
   saveHistory();
-  addEdges(params);
+  addEdges(edgeWithMarker);
   markDirty();
+  
+  // 显示连接成功动画
+  showConnectionSuccess();
 };
 
-const onNodeDragStop = (event) => {
+// 连接结束时的智能吸附
+const onConnectEnd = (event) => {
+  if (!nearbyHandle.value) return;
+  
+  // 获取锁定的连接点信息
+  const snappedHandle = nearbyHandle.value;
+  const handleId = snappedHandle.getAttribute('data-handleid');
+  const nodeId = snappedHandle.closest('.vue-flow__node')?.getAttribute('data-id');
+  const handleType = snappedHandle.classList.contains('target') ? 'target' : 'source';
+  
+  if (!nodeId || !handleId) return;
+  
+  // 检查是否需要修正连接
+  // Vue Flow 在 connect-end 时，如果释放位置不在有效目标上，会创建一个无效连接
+  // 我们需要检测这种情况并用锁定的点替换
+  
+  setTimeout(() => {
+    // 查找刚刚创建的边（最后一条边）
+    const edges = elements.value.filter(el => el.source && el.target);
+    if (edges.length === 0) return;
+    
+    const lastEdge = edges[edges.length - 1];
+    
+    // 判断是否需要修正
+    let needsCorrection = false;
+    
+    if (handleType === 'target') {
+      // 如果锁定的是目标点，检查最后一条边的目标是否正确
+      if (lastEdge.target !== nodeId || lastEdge.targetHandle !== handleId) {
+        needsCorrection = true;
+      }
+    } else if (handleType === 'source') {
+      // 如果锁定的是源点，检查最后一条边的源是否正确
+      if (lastEdge.source !== nodeId || lastEdge.sourceHandle !== handleId) {
+        needsCorrection = true;
+      }
+    }
+    
+    if (needsCorrection) {
+      // 删除错误的边
+      removeEdges([lastEdge.id]);
+      
+      // 创建正确的边
+      const correctEdge = {
+        id: `edge-${uuidv4().slice(0, 8)}`,
+        source: handleType === 'source' ? nodeId : lastEdge.source,
+        target: handleType === 'target' ? nodeId : lastEdge.target,
+        sourceHandle: handleType === 'source' ? handleId : lastEdge.sourceHandle,
+        targetHandle: handleType === 'target' ? handleId : lastEdge.targetHandle,
+        markerEnd: {
+          type: 'arrowclosed',
+          color: '#94a3b8'
+        }
+      };
+      
+      // 验证新连接
+      const validation = validateConnection(correctEdge);
+      if (validation.valid) {
+        addEdges([correctEdge]);
+        showConnectionSuccess();
+      }
+    }
+  }, 50);
+};
+
+// 显示连接成功提示
+const showConnectionSuccess = () => {
+  connectionSuccess.value = true;
+  setTimeout(() => {
+    connectionSuccess.value = false;
+  }, 1500);
+};
+
+// 智能吸附功能
+const onPaneReady = ({ vueFlowRef }) => {
+  // 监听画布的鼠标移动事件
+  const pane = vueFlowRef.value?.querySelector('.vue-flow__pane');
+  if (!pane) return;
+  
+  pane.addEventListener('mousemove', handleMouseMove);
+  pane.addEventListener('mouseleave', clearNearbyHandle);
+};
+
+const handleMouseMove = (event) => {
+  const handles = document.querySelectorAll('.vue-flow__handle');
+  let closestHandle = null;
+  let minDistance = SNAP_DISTANCE;
+  
+  const container = event.target.closest('.vue-flow__pane');
+  if (!container) return;
+  
+  const containerRect = container.getBoundingClientRect();
+  const mouseX = event.clientX - containerRect.left;
+  const mouseY = event.clientY - containerRect.top;
+  
+  handles.forEach(handle => {
+    const handleRect = handle.getBoundingClientRect();
+    const handleX = handleRect.left - containerRect.left + handleRect.width / 2;
+    const handleY = handleRect.top - containerRect.top + handleRect.height / 2;
+    const distance = Math.sqrt(
+      Math.pow(mouseX - handleX, 2) + Math.pow(mouseY - handleY, 2)
+    );
+    
+    if (distance < minDistance) {
+      minDistance = distance;
+      closestHandle = handle;
+    }
+  });
+  
+  if (closestHandle && closestHandle !== nearbyHandle.value) {
+    if (nearbyHandle.value) {
+      nearbyHandle.value.classList.remove('handle-snapped');
+    }
+    closestHandle.classList.add('handle-snapped');
+    nearbyHandle.value = closestHandle;
+    container.style.cursor = 'crosshair';
+    
+  } else if (!closestHandle && nearbyHandle.value) {
+    nearbyHandle.value.classList.remove('handle-snapped');
+    nearbyHandle.value = null;
+    container.style.cursor = 'default';
+  }
+};
+
+const clearNearbyHandle = () => {
+  if (nearbyHandle.value) {
+    nearbyHandle.value.classList.remove('handle-snapped');
+    nearbyHandle.value = null;
+  }
+  // 恢复默认鼠标样式
+  const pane = document.querySelector('.vue-flow__pane');
+  if (pane) {
+    pane.style.cursor = 'default';
+  }
+};
+
+// 连接验证逻辑
+const validateConnection = (connection) => {
+  const { source, target } = connection;
+  
+  // 查找源节点和目标节点
+  const sourceNode = elements.value.find(el => el.id === source && !el.source);
+  const targetNode = elements.value.find(el => el.id === target && !el.source);
+  
+  if (!sourceNode || !targetNode) {
+    return { valid: false, message: '节点不存在' };
+  }
+  
+  // 规则1: 不能连接到自身
+  if (source === target) {
+    return { valid: false, message: '不能连接到自身' };
+  }
+  
+  // 规则2: 结束节点不能有输出连接
+  if (sourceNode.type === 'end') {
+    return { valid: false, message: '结束节点不能有输出连接' };
+  }
+  
+  // 规则3: 开始节点不能有输入连接
+  if (targetNode.type === 'start') {
+    return { valid: false, message: '开始节点不能有输入连接' };
+  }
+  
+  // 规则4: 检查是否已存在相同的连接
+  const existingEdge = elements.value.find(
+    el => el.source === source && 
+          el.target === target && 
+          el.sourceHandle === connection.sourceHandle &&
+          el.targetHandle === connection.targetHandle
+  );
+  if (existingEdge) {
+    return { valid: false, message: '连接已存在' };
+  }
+  
+  // 规则5: 检查是否会形成循环（可选，根据需求决定）
+  // if (wouldCreateCycle(source, target)) {
+  //   return { valid: false, message: '不能形成循环' };
+  // }
+  
+  return { valid: true, message: '连接有效' };
+};
+
+const onNodeDragStart = () => {
+  saveHistory();
+};
+
+const onNodeDragStop = debounce(() => {
   markDirty();
+}, 100);
+
+const onNodeDragStartFromPanel = (nodeType) => {
+  // 可以在这里添加拖拽开始时的逻辑，例如显示提示等
+  console.log('开始拖拽节点:', nodeType.name);
 };
 
 const onPaneClick = () => {
   selectedNodeId.value = null;
 };
 
-const onNodeClick = (event) => {
-  selectedNodeId.value = event.node.id;
+const onEdgeClick = ({ edge, event }) => {
+  event.stopPropagation();
+};
+
+const onHandleClick = ({ event, handle, node }) => {
+};
+
+const onHandleMouseDown = ({ event, handle, node }) => {
+};
+
+const onNodeClick = (event, node) => {
+  if (event.shiftKey) {
+    const idx = selectedNodeIds.value.indexOf(node.id);
+    if (idx > -1) {
+      selectedNodeIds.value.splice(idx, 1);
+    } else {
+      selectedNodeIds.value.push(node.id);
+    }
+    selectedNodeId.value = selectedNodeIds.value.length > 0 
+      ? selectedNodeIds.value[selectedNodeIds.value.length - 1] 
+      : null;
+  } else {
+    selectedNodeIds.value = [node.id];
+    selectedNodeId.value = node.id;
+  }
   if (activePanel.value !== 'properties') {
     activePanel.value = 'properties';
+  }
+};
+
+// 拖拽放置事件处理
+const onDragOver = (event) => {
+  event.preventDefault();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move';
+  }
+  
+  // 添加放置区域的视觉反馈
+  const pane = event.target.closest('.vue-flow__pane');
+  if (pane) {
+    pane.classList.add('dropzone');
+  }
+};
+
+const onDragLeave = (event) => {
+  // 移除放置区域的视觉反馈
+  const pane = event.target.closest('.vue-flow__pane');
+  if (pane) {
+    pane.classList.remove('dropzone');
+  }
+};
+
+const onDrop = (event) => {
+  event.preventDefault();
+  
+  // 移除放置区域的视觉反馈
+  const pane = event.target.closest('.vue-flow__pane');
+  if (pane) {
+    pane.classList.remove('dropzone');
+  }
+  
+  try {
+    const data = event.dataTransfer.getData('application/vueflow');
+    if (!data) return;
+    
+    const nodeType = JSON.parse(data);
+    
+    // 获取画布容器的位置
+    const container = pane?.getBoundingClientRect();
+    if (!container) {
+      console.error('无法获取画布容器位置');
+      return;
+    }
+    
+    // 计算相对于画布的坐标
+    const x = event.clientX - container.left;
+    const y = event.clientY - container.top;
+    
+    // 使用 project 函数转换为画布坐标（考虑缩放和平移）
+    const position = project({ x, y });
+    
+    // 创建新节点
+    const newNode = {
+      id: `${nodeType.type}-${uuidv4().slice(0, 8)}`,
+      type: nodeType.type,
+      position,
+      data: {
+        label: nodeType.name,
+        ...nodeType
+      }
+    };
+    
+    saveHistory();
+    elements.value.push(newNode);
+    markDirty();
+    
+    // 自动选中新创建的节点
+    selectedNodeId.value = newNode.id;
+    selectedNodeIds.value = [newNode.id];
+    if (activePanel.value !== 'properties') {
+      activePanel.value = 'properties';
+    }
+  } catch (error) {
+    console.error('拖拽节点失败:', error);
   }
 };
 
@@ -383,15 +1000,135 @@ const markDirty = () => {
   hasChanges.value = true;
 };
 
+const loadWorkflows = () => {
+  const saved = localStorage.getItem('langchain-workflows');
+  if (saved) {
+    workflows.value = JSON.parse(saved);
+  } else {
+    workflows.value = [
+      {
+        id: 'demo-workflow',
+        name: '示例工作流',
+        nodes: [],
+        edges: [],
+        version: '2.0',
+        createdAt: new Date().toISOString(),
+        savedAt: new Date().toISOString()
+      }
+    ];
+    saveWorkflows();
+  }
+};
+
+const saveWorkflows = () => {
+  localStorage.setItem('langchain-workflows', JSON.stringify(workflows.value));
+};
+
 const saveWorkflow = () => {
-  const workflow = {
+  const workflowData = {
     nodes: elements.value.filter(el => !el.source && !el.target),
     edges: elements.value.filter(el => el.source && el.target),
     version: '2.0',
     savedAt: new Date().toISOString()
   };
-  localStorage.setItem('langchain-workflow-vueflow', JSON.stringify(workflow));
+
+  if (currentWorkflowId.value) {
+    const index = workflows.value.findIndex(w => w.id === currentWorkflowId.value);
+    if (index !== -1) {
+      workflows.value[index] = { ...workflows.value[index], ...workflowData };
+      saveWorkflows();
+    }
+  } else {
+    const newWorkflow = {
+      id: uuidv4(),
+      name: workflowName.value,
+      ...workflowData,
+      createdAt: new Date().toISOString()
+    };
+    workflows.value.push(newWorkflow);
+    currentWorkflowId.value = newWorkflow.id;
+    saveWorkflows();
+  }
   hasChanges.value = false;
+};
+
+const newWorkflow = () => {
+  if (hasChanges.value) {
+    if (!confirm('当前工作流有未保存的更改，确定要创建新工作流吗？')) {
+      return;
+    }
+  }
+  elements.value = generateDefaultElements();
+  selectedNodeId.value = null;
+  selectedNodeIds.value = [];
+  currentWorkflowId.value = null;
+  workflowName.value = '未命名工作流';
+  hasChanges.value = false;
+  history.value = [];
+  historyIndex.value = -1;
+  showWorkflowList.value = false;
+};
+
+const openWorkflow = (workflow) => {
+  if (hasChanges.value) {
+    if (!confirm('当前工作流有未保存的更改，确定要打开其他工作流吗？')) {
+      return;
+    }
+  }
+  currentWorkflowId.value = workflow.id;
+  workflowName.value = workflow.name;
+  const nodes = workflow.nodes.map(node => ({
+    id: node.id,
+    type: node.type,
+    position: node.position,
+    data: node.data
+  }));
+  const edges = workflow.edges ? workflow.edges.map(edge => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    sourceHandle: edge.sourceHandle,
+    targetHandle: edge.targetHandle,
+    markerEnd: edge.markerEnd || {
+      type: 'arrowclosed',
+      color: '#94a3b8'
+    }
+  })) : [];
+  elements.value = [...nodes, ...edges];
+  selectedNodeId.value = null;
+  selectedNodeIds.value = [];
+  hasChanges.value = false;
+  history.value = [];
+  historyIndex.value = -1;
+  showWorkflowList.value = false;
+};
+
+const deleteWorkflow = (workflowId) => {
+  if (!confirm('确定要删除这个工作流吗？')) {
+    return;
+  }
+  const index = workflows.value.findIndex(w => w.id === workflowId);
+  if (index !== -1) {
+    workflows.value.splice(index, 1);
+    saveWorkflows();
+    if (currentWorkflowId.value === workflowId) {
+      newWorkflow();
+    }
+  }
+};
+
+const renameWorkflow = () => {
+  const newName = prompt('请输入工作流名称:', workflowName.value);
+  if (newName && newName.trim()) {
+    workflowName.value = newName.trim();
+    if (currentWorkflowId.value) {
+      const index = workflows.value.findIndex(w => w.id === currentWorkflowId.value);
+      if (index !== -1) {
+        workflows.value[index].name = workflowName.value;
+        saveWorkflows();
+      }
+    }
+  }
 };
 
 const exportWorkflow = () => {
@@ -437,7 +1174,11 @@ const importWorkflow = () => {
               source: edge.source,
               target: edge.target,
               sourceHandle: edge.sourceHandle,
-              targetHandle: edge.targetHandle
+              targetHandle: edge.targetHandle,
+              markerEnd: edge.markerEnd || {
+                type: 'arrowclosed',
+                color: '#94a3b8'
+              }
             })) : [];
             elements.value = [...nodes, ...edges];
             markDirty();
@@ -476,140 +1217,19 @@ const runWorkflow = async () => {
   executionLogs.value = [];
   lastExecutionResult.value = null;
   
-  addLog('start', '开始执行工作流', null, null);
+  const onStatusChange = (status) => {
+    nodeExecutionStatus.value = status;
+  };
   
-  try {
-    const nodes = elements.value.filter(el => !el.source && !el.target);
-    const edges = elements.value.filter(el => el.source && el.target);
-    
-    const startNode = nodes.find(n => n.type === 'start');
-    if (!startNode) {
-      throw new Error('未找到开始节点');
-    }
-    
-    const context = {
-      input: '',
-      variables: {}
-    };
-    
-    await executeNode(startNode.id, nodes, edges, context);
-    
-    addLog('success', '工作流执行完成', null, { 
-      context, 
-      timestamp: new Date().toISOString() 
-    });
-    
-    lastExecutionResult.value = {
-      status: 'success',
-      context,
-      timestamp: new Date().toISOString()
-    };
-    
-  } catch (error) {
-    addLog('error', '工作流执行失败', error.message, null);
-    lastExecutionResult.value = {
-      status: 'error',
-      error: error.message,
-      timestamp: new Date().toISOString()
-    };
-  } finally {
-    isRunning.value = false;
-  }
+  const onLog = (log) => {
+    executionLogs.value.push(log);
+  };
+  
+  executionEngine.setCallbacks(onStatusChange, onLog);
+  const result = await executionEngine.execute(elements.value);
+  lastExecutionResult.value = result;
+  isRunning.value = false;
 };
-
-const addLog = (type, title, message, data) => {
-  const now = new Date();
-  const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
-  executionLogs.value.push({
-    type,
-    title,
-    message,
-    data,
-    time: timeStr
-  });
-};
-
-const executeNode = async (nodeId, nodes, edges, context) => {
-  const node = nodes.find(n => n.id === nodeId);
-  if (!node) return;
-  
-  addLog('node', `执行节点: ${node.data.label || node.type}`, `节点ID: ${node.id}`, { node });
-  
-  await delay(500);
-  
-  switch (node.type) {
-    case 'start':
-      addLog('info', '初始化工作流上下文', null, context);
-      break;
-    
-    case 'prompt':
-      const prompt = node.data.prompt || '请输入内容';
-      context.input = prompt.replace(/\{\{(\w+)\}\}/g, (_, key) => context.variables[key] || '');
-      addLog('info', '构建提示词', prompt, { result: context.input });
-      break;
-    
-    case 'llm':
-      const model = node.data.model || 'qwen-vl-plus';
-      const temperature = node.data.temperature || 0.7;
-      addLog('info', `调用 LLM 模型`, `模型: ${model}, 温度: ${temperature}`, { input: context.input });
-      
-      const mockResponse = `这是模拟的 LLM 响应。\n\n输入: ${context.input}\n\n模型: ${model}\n\n时间: ${new Date().toLocaleString()}`;
-      context.output = mockResponse;
-      addLog('info', 'LLM 响应完成', null, { output: mockResponse });
-      break;
-    
-    case 'tool':
-      addLog('info', '工具调用', `工具类型: ${node.data.toolType || '未知'}`, null);
-      context.variables['toolResult'] = '模拟工具执行结果';
-      break;
-    
-    case 'condition':
-      const condition = node.data.condition || 'true';
-      addLog('info', '条件判断', `条件: ${condition}`, { result: true });
-      break;
-    
-    case 'loop':
-      const iterations = node.data.iterations || 3;
-      addLog('info', '循环执行', `迭代次数: ${iterations}`, null);
-      break;
-    
-    case 'variable':
-      const varName = node.data.variableName || 'result';
-      const varValue = node.data.variableValue || context.output;
-      context.variables[varName] = varValue;
-      addLog('info', '变量赋值', `${varName} = ${varValue}`, context.variables);
-      break;
-    
-    case 'http':
-      addLog('info', 'HTTP 请求', `URL: ${node.data.url || '未配置'}`, null);
-      context.variables['httpResult'] = { status: 200, data: '模拟响应数据' };
-      break;
-    
-    case 'code':
-      addLog('info', '代码执行', node.data.code || '无代码', null);
-      context.variables['codeResult'] = '模拟代码执行结果';
-      break;
-    
-    case 'parser':
-      addLog('info', '输出解析', null, { input: context.output });
-      context.parsed = context.output ? JSON.stringify({ text: context.output }, null, 2) : null;
-      break;
-    
-    case 'end':
-      addLog('info', '到达结束节点', null, null);
-      return;
-    
-    default:
-      addLog('info', `执行节点类型: ${node.type}`, null, null);
-  }
-  
-  const nextEdges = edges.filter(e => e.source === nodeId);
-  for (const edge of nextEdges) {
-    await executeNode(edge.target, nodes, edges, context);
-  }
-};
-
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const clearExecutionLogs = () => {
   executionLogs.value = [];
@@ -635,18 +1255,94 @@ const redo = () => {
 };
 
 const deleteSelectedNode = () => {
-  if (selectedNodeId.value) {
+  const nodesToDelete = selectedNodeIds.value.length > 0 
+    ? selectedNodeIds.value 
+    : (selectedNodeId.value ? [selectedNodeId.value] : []);
+  
+  if (nodesToDelete.length > 0) {
     saveHistory();
-    removeNodes([selectedNodeId.value]);
+    removeNodes(nodesToDelete);
     const connectedEdges = elements.value.filter(
-      el => el.source === selectedNodeId.value || el.target === selectedNodeId.value
+      el => nodesToDelete.includes(el.source) || nodesToDelete.includes(el.target)
     );
     if (connectedEdges.length > 0) {
       removeEdges(connectedEdges.map(e => e.id));
     }
     selectedNodeId.value = null;
+    selectedNodeIds.value = [];
     markDirty();
   }
+};
+
+const getSelectedNodes = () => {
+  const ids = selectedNodeIds.value.length > 0 
+    ? selectedNodeIds.value 
+    : (selectedNodeId.value ? [selectedNodeId.value] : []);
+  return elements.value.filter(el => !el.source && !el.target && ids.includes(el.id));
+};
+
+const alignLeft = () => {
+  const nodes = getSelectedNodes();
+  if (nodes.length < 2) return;
+  saveHistory();
+  alignNodes(nodes, 'left');
+  markDirty();
+};
+
+const alignCenter = () => {
+  const nodes = getSelectedNodes();
+  if (nodes.length < 2) return;
+  saveHistory();
+  alignNodes(nodes, 'center');
+  markDirty();
+};
+
+const alignRight = () => {
+  const nodes = getSelectedNodes();
+  if (nodes.length < 2) return;
+  saveHistory();
+  alignNodes(nodes, 'right');
+  markDirty();
+};
+
+const alignTop = () => {
+  const nodes = getSelectedNodes();
+  if (nodes.length < 2) return;
+  saveHistory();
+  alignNodes(nodes, 'top');
+  markDirty();
+};
+
+const alignMiddle = () => {
+  const nodes = getSelectedNodes();
+  if (nodes.length < 2) return;
+  saveHistory();
+  alignNodes(nodes, 'middle');
+  markDirty();
+};
+
+const alignBottom = () => {
+  const nodes = getSelectedNodes();
+  if (nodes.length < 2) return;
+  saveHistory();
+  alignNodes(nodes, 'bottom');
+  markDirty();
+};
+
+const distributeHorizontal = () => {
+  const nodes = getSelectedNodes();
+  if (nodes.length < 3) return;
+  saveHistory();
+  distributeNodes(nodes, 'horizontal');
+  markDirty();
+};
+
+const distributeVertical = () => {
+  const nodes = getSelectedNodes();
+  if (nodes.length < 3) return;
+  saveHistory();
+  distributeNodes(nodes, 'vertical');
+  markDirty();
 };
 
 const applyTemplate = (template) => {
@@ -675,7 +1371,11 @@ const applyTemplate = (template) => {
         source: fromNode.id,
         target: toNode.id,
         sourceHandle: conn.outputIndex ? `source-${conn.outputIndex}` : undefined,
-        targetHandle: conn.inputIndex ? `target-${conn.inputIndex}` : undefined
+        targetHandle: conn.inputIndex ? `target-${conn.inputIndex}` : undefined,
+        markerEnd: {
+          type: 'arrowclosed',
+          color: '#94a3b8'
+        }
       });
     }
   });
@@ -685,15 +1385,13 @@ const applyTemplate = (template) => {
 };
 
 const copyNodes = () => {
-  if (selectedNodeId.value) {
-    const node = elements.value.find(el => el.id === selectedNodeId.value && !el.source);
-    if (node) {
-      const copyData = {
-        nodes: [node],
-        edges: []
-      };
-      localStorage.setItem('workflow-copy', JSON.stringify(copyData));
-    }
+  const nodes = getSelectedNodes();
+  if (nodes.length > 0) {
+    const copyData = {
+      nodes: nodes.map(n => ({ ...n })),
+      edges: []
+    };
+    localStorage.setItem('workflow-copy', JSON.stringify(copyData));
   }
 };
 
@@ -702,24 +1400,33 @@ const pasteNodes = () => {
   if (copyData) {
     try {
       const data = JSON.parse(copyData);
-      saveHistory();
-      const offset = { x: 50, y: 50 };
-      data.nodes.forEach(node => {
-        const newId = `${node.type}-${uuidv4().slice(0, 8)}`;
-        elements.value.push({
-          ...node,
-          id: newId,
-          position: {
-            x: node.position.x + offset.x,
-            y: node.position.y + offset.y
-          },
-          data: {
-            ...node.data,
-            id: newId
-          }
+      if (data.nodes && data.nodes.length > 0) {
+        saveHistory();
+        const offset = { x: 50, y: 50 };
+        const newNodes = [];
+        
+        data.nodes.forEach(node => {
+          const newId = `${node.type}-${uuidv4().slice(0, 8)}`;
+          const newNode = {
+            ...node,
+            id: newId,
+            position: {
+              x: node.position.x + offset.x,
+              y: node.position.y + offset.y
+            },
+            data: {
+              ...node.data,
+              id: newId
+            }
+          };
+          newNodes.push(newNode);
+          elements.value.push(newNode);
         });
-      });
-      markDirty();
+        
+        selectedNodeId.value = newNodes[newNodes.length - 1].id;
+        selectedNodeIds.value = newNodes.map(n => n.id);
+        markDirty();
+      }
     } catch (error) {
       console.error('粘贴失败:', error);
     }
@@ -730,130 +1437,316 @@ const toggleRightPanel = () => {
   showRightPanel.value = !showRightPanel.value;
 };
 
+const selectAllNodes = () => {
+  const nodes = elements.value.filter(el => !el.source && !el.target);
+  if (nodes.length > 0) {
+    selectedNodeIds.value = nodes.map(n => n.id);
+    selectedNodeId.value = nodes[nodes.length - 1].id;
+  }
+};
+
+const registerShortcuts = () => {
+  keyboardShortcuts.register('ctrl+z', () => undo());
+  keyboardShortcuts.register('ctrl+y', () => redo());
+  keyboardShortcuts.register('ctrl+c', () => copyNodes());
+  keyboardShortcuts.register('ctrl+v', () => pasteNodes());
+  keyboardShortcuts.register('ctrl+s', () => saveWorkflow());
+  keyboardShortcuts.register('delete', () => deleteSelectedNode());
+  keyboardShortcuts.register('backspace', () => deleteSelectedNode());
+  keyboardShortcuts.register('ctrl+shift+a', () => selectAllNodes());
+  keyboardShortcuts.register('escape', () => {
+    selectedNodeId.value = null;
+    selectedNodeIds.value = [];
+  });
+  keyboardShortcuts.register('ctrl+g', () => { activePanel.value = 'properties'; });
+  keyboardShortcuts.register('ctrl+l', () => { activePanel.value = 'execution'; });
+};
+
 const handleKeydown = (event) => {
   const target = event.target;
   const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
   
   if (!isInput) {
-    if ((event.ctrlKey || event.metaKey) && event.key === 'z') {
-      event.preventDefault();
-      if (event.shiftKey) {
-        redo();
-      } else {
-        undo();
-      }
-    }
-    
-    if ((event.ctrlKey || event.metaKey) && event.key === 'c') {
-      event.preventDefault();
-      copyNodes();
-    }
-    
-    if ((event.ctrlKey || event.metaKey) && event.key === 'v') {
-      event.preventDefault();
-      pasteNodes();
-    }
-    
-    if (event.key === 'Delete' || event.key === 'Backspace') {
-      event.preventDefault();
-      deleteSelectedNode();
-    }
+    keyboardShortcuts.handleEvent(event);
   }
 };
 
 onMounted(() => {
-  const saved = localStorage.getItem('langchain-workflow-vueflow');
-  if (saved) {
-    try {
-      const workflow = JSON.parse(saved);
-      const nodes = workflow.nodes.map(node => ({
-        id: node.id,
-        type: node.type,
-        position: node.position,
-        data: node.data
-      }));
-      const edges = workflow.edges.map(edge => ({
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        sourceHandle: edge.sourceHandle,
-        targetHandle: edge.targetHandle
-      }));
-      elements.value = [...nodes, ...edges];
-    } catch (e) {
-      console.error('加载工作流失败:', e);
-    }
-  }
+  registerShortcuts();
+  window.addEventListener('keydown', handleKeydown);
   
-  if (elements.value.length === 0) {
-    applyTemplate(quickTemplates.value[0]);
+  loadWorkflows();
+  
+  if (workflows.value.length > 0) {
+    openWorkflow(workflows.value[0]);
+  } else {
+    elements.value = generateDefaultElements();
     hasChanges.value = false;
   }
   
-  saveHistory();
-  
-  window.addEventListener('keydown', handleKeydown);
+  history.value.push(JSON.stringify(elements.value));
+  historyIndex.value = 0;
 });
 
-watch(elements, () => {
-  const saved = localStorage.getItem('langchain-workflow-vueflow');
-  const current = JSON.stringify({
-    nodes: elements.value.filter(el => !el.source && !el.target),
-    edges: elements.value.filter(el => el.source && el.target)
-  });
-  if (saved !== current) {
-    hasChanges.value = true;
-  }
-}, { deep: true });
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown);
+});
 </script>
 
-<style scoped>
+<style>
 .langchain-editor {
-  height: 100%;
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  background-color: #fff;
+  background-color: #f5f5f5;
 }
 
 .toolbar {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 10px 16px;
-  background-color: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: white;
+  border-bottom: 1px solid #e0e0e0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  min-height: 40px;
 }
 
-.toolbar-left, .toolbar-right {
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.toolbar-center {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin: 0 10px;
+  padding: 0 10px;
+  border-left: 1px solid #e0e0e0;
+  border-right: 1px solid #e0e0e0;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.workflow-selector {
+  position: relative;
+  display: inline-block;
+}
+
+.workflow-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 120px;
+  justify-content: flex-start;
+  padding: 6px 12px;
+}
+
+.workflow-name {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  min-width: 240px;
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.dropdown-header {
+  padding: 10px 12px;
+  background: #f5f5f5;
+  border-bottom: 1px solid #e0e0e0;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.dropdown-content {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.dropdown-item:hover {
+  background-color: #f0f5ff;
+}
+
+.dropdown-item.active {
+  background-color: #e6f0ff;
+}
+
+.dropdown-item svg {
+  flex-shrink: 0;
+}
+
+.dropdown-item span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.delete-btn {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s, visibility 0.15s;
+  padding: 4px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #999;
+}
+
+.dropdown-item:hover .delete-btn {
+  opacity: 1;
+  visibility: visible;
+}
+
+.delete-btn:hover {
+  color: #ff4d4f;
+}
+
+.align-group,
+.distribute-group {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
+@media (max-width: 768px) {
+  .toolbar {
+    padding: 6px 8px;
+  }
+  
+  .toolbar-center {
+    margin: 0 5px;
+    padding: 0 5px;
+  }
+  
+  .toolbar-left,
+  .toolbar-right {
+    gap: 4px;
+  }
+  
+  .btn-icon, .btn-primary, .btn-secondary, .btn-success, .btn-danger {
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .toolbar {
+    padding: 4px 6px;
+  }
+  
+  .toolbar-center {
+    display: none;
+  }
+  
+  .status {
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+}
+
+.toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.toolbar-center {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin: 0 10px;
+  padding: 0 10px;
+  border-left: 1px solid #e0e0e0;
+  border-right: 1px solid #e0e0e0;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
 .toolbar-divider {
   width: 1px;
   height: 24px;
-  background-color: #e2e8f0;
-  margin: 0 8px;
+  background-color: #e0e0e0;
+  margin: 0 4px;
+  flex-shrink: 0;
 }
 
-.btn-icon {
-  width: 32px;
-  height: 32px;
+.toolbar-divider-small {
+  width: 1px;
+  height: 16px;
+  background-color: #e0e0e0;
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+.btn-icon, .btn-primary, .btn-secondary, .btn-success, .btn-danger {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 4px;
+  padding: 6px 12px;
   border: none;
-  background-color: transparent;
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
-  color: #64748b;
+  font-size: 13px;
   transition: all 0.2s;
+  min-width: 32px;
+  height: 32px;
+}
+
+.btn-icon {
+  background: transparent;
+  color: #666;
 }
 
 .btn-icon:hover:not(:disabled) {
-  background-color: #e2e8f0;
-  color: #334155;
+  background-color: #f0f0f0;
 }
 
 .btn-icon:disabled {
@@ -861,241 +1754,729 @@ watch(elements, () => {
   cursor: not-allowed;
 }
 
-.btn-primary, .btn-secondary, .btn-success, .btn-danger {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.2s;
-}
-
 .btn-primary {
-  background-color: #3b82f6;
+  background-color: #2196f3;
   color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background-color: #2563eb;
+  background-color: #1976d2;
+}
+
+.btn-primary:disabled {
+  background-color: #90caf9;
+  cursor: not-allowed;
 }
 
 .btn-secondary {
-  background-color: #e2e8f0;
-  color: #334155;
+  background-color: #e0e0e0;
+  color: #333;
+}
+
+.btn-secondary:hover {
+  background-color: #bdbdbd;
 }
 
 .btn-success {
-  background-color: #22c55e;
+  background-color: #4caf50;
   color: white;
+}
+
+.btn-success:hover:not(:disabled) {
+  background-color: #388e3c;
 }
 
 .btn-success.running {
-  background-color: #f59e0b;
-}
-
-.btn-success svg.spin {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  background-color: #ff9800;
 }
 
 .btn-danger {
-  background-color: #ef4444;
+  background-color: #f44336;
   color: white;
+}
+
+.btn-danger:hover {
+  background-color: #d32f2f;
 }
 
 .status {
   padding: 4px 12px;
-  border-radius: 20px;
+  border-radius: 12px;
   font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .status.valid {
-  background-color: #dcfce7;
-  color: #166534;
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}
+
+.status.warning {
+  background-color: #fff3e0;
+  color: #ef6c00;
 }
 
 .status.invalid {
-  background-color: #fee2e2;
-  color: #991b1b;
+  background-color: #ffebee;
+  color: #c62828;
 }
 
 .panel-toggle-btn {
+  position: relative;
+  padding: 6px;
+  background: transparent;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  color: #666;
+  cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 10px;
-  background: none;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  cursor: pointer;
-  color: #64748b;
-  font-size: 12px;
-  transition: all 0.2s;
-  position: relative;
-  margin-left: 12px;
-}
-
-.panel-toggle-btn:hover {
-  background-color: #e2e8f0;
-  color: #334155;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
 }
 
 .panel-toggle-btn.active {
-  background-color: #3b82f6;
-  border-color: #3b82f6;
+  background-color: #2196f3;
   color: white;
+  border-color: #2196f3;
 }
 
 .badge {
   position: absolute;
   top: -4px;
   right: -4px;
-  min-width: 14px;
-  height: 14px;
-  padding: 0 3px;
-  background-color: #ef4444;
+  background-color: #f44336;
   color: white;
-  font-size: 9px;
-  border-radius: 7px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 10px;
+  min-width: 16px;
+  text-align: center;
+  line-height: 1;
 }
 
 .editor-container {
   flex: 1;
   display: flex;
   overflow: hidden;
+  min-height: 0; /* 防止flex子项溢出 */
 }
 
 .canvas-wrapper {
   flex: 1;
   position: relative;
-  min-width: 0;
-}
-
-.vue-flow-canvas {
-  width: 100%;
-  height: 100%;
-}
-
-.right-panel {
-  width: 320px;
-  background-color: #f8fafc;
-  border-left: 1px solid #e2e8f0;
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-}
-
-.panel-tabs {
-  display: flex;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.tab-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 10px;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  cursor: pointer;
-  font-size: 12px;
-  color: #64748b;
-  transition: all 0.2s;
-  position: relative;
-}
-
-.tab-btn:hover {
-  background-color: #f1f5f9;
-}
-
-.tab-btn.active {
-  color: #3b82f6;
-  border-bottom-color: #3b82f6;
-  background-color: #fff;
-}
-
-.tab-btn.running.active {
-  color: #f59e0b;
-  border-bottom-color: #f59e0b;
-}
-
-.tab-badge {
-  position: absolute;
-  top: 6px;
-  right: 8px;
-  min-width: 14px;
-  height: 14px;
-  padding: 0 3px;
-  background-color: #ef4444;
-  color: white;
-  font-size: 9px;
-  border-radius: 7px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.panel-content-wrapper {
-  flex: 1;
   overflow: hidden;
 }
 
-.execution-overlay {
+.canvas-wrapper :deep(.vue-flow__pane) {
+  cursor: default;
+}
+
+.canvas-wrapper :deep(.vue-flow__pane.dragging) {
+  cursor: grabbing !important;
+}
+
+/* 连接时的鼠标样式 */
+.canvas-wrapper :deep(.vue-flow__pane.connecting) {
+  cursor: crosshair !important;
+}
+
+.canvas-wrapper :deep(.vue-flow__connection-line) {
+  stroke: #3b82f6;
+  stroke-width: 3;
+  stroke-dasharray: 5;
+  filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.6));
+}
+
+/* 快捷键提示面板 */
+.shortcuts-panel {
+  position: absolute;
+  top: 60px;
+  right: 20px;
+  width: 320px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  z-index: 1000;
+  animation: slideIn 0.3s ease-out;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.shortcuts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid #e2e8f0;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 12px 12px 0 0;
+}
+
+.shortcuts-header h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.close-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.close-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.1);
+}
+
+.shortcuts-content {
+  padding: 16px;
+}
+
+.shortcut-group {
+  margin-bottom: 16px;
+}
+
+.shortcut-group:last-child {
+  margin-bottom: 0;
+}
+
+.shortcut-group h5 {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.shortcut-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  background: #f8fafc;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.shortcut-item:hover {
+  background: #eff6ff;
+  transform: translateX(2px);
+}
+
+.shortcut-item .key {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: #3b82f6;
+  background: white;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.shortcut-item .desc {
+  font-size: 13px;
+  color: #475569;
+}
+
+.shortcut-hint {
+  margin-top: 16px;
+  padding: 12px;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-left: 4px solid #f59e0b;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #92400e;
+  line-height: 1.5;
+}
+
+/* 连接成功提示 */
+.connection-success-toast {
+  position: absolute;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  z-index: 1000;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.success-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: all 0.3s ease;
+}
+
+.fade-slide-enter-from {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-10px);
+}
+
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-10px);
+}
+
+/* 智能吸附指示器 */
+.snap-indicator {
+  position: absolute;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 20px;
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  z-index: 1000;
+  font-size: 14px;
+  font-weight: 500;
+  pointer-events: none;
+}
+
+.snap-icon {
+  font-size: 18px;
+  animation: snap-icon-bounce 1s ease-in-out infinite;
+}
+
+@keyframes snap-icon-bounce {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+}
+
+.canvas-wrapper :deep(.vue-flow__background) {
+  opacity: 0.3;
+}
+
+.canvas-wrapper :deep(.vue-flow__pane.dropzone) {
+  background-color: rgba(59, 130, 246, 0.05);
+}
+
+/* VueFlow Handle 样式优化 */
+.canvas-wrapper :deep(.vue-flow__handle),
+.canvas-wrapper :deep(.vue-flow__handle svg circle),
+.canvas-wrapper :deep(.vue-flow__handle-path) {
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  min-height: 24px !important;
+  max-width: 24px !important;
+  max-height: 24px !important;
+  background-color: #3b82f6 !important;
+  border: 3px solid white !important;
+  border-radius: 50% !important;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.4), 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+  cursor: crosshair !important;
+  z-index: 1000 !important;
+  pointer-events: auto !important;
+  position: relative !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  fill: #3b82f6 !important;
+  stroke: #3b82f6 !important;
+  stroke-width: 0 !important;
+}
+
+.canvas-wrapper :deep(.vue-flow__handle)::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: transparent;
+  cursor: crosshair;
+  z-index: 1001;
+}
+
+.canvas-wrapper :deep(.vue-flow__handle:hover),
+.canvas-wrapper :deep(.vue-flow__handle:hover svg circle) {
+  transform: scale(1.5) !important;
+  box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.5), 0 4px 12px rgba(59, 130, 246, 0.3) !important;
+  background-color: #2563eb !important;
+  fill: #2563eb !important;
+}
+
+.canvas-wrapper :deep(.vue-flow__handle[type="target"]),
+.canvas-wrapper :deep(.vue-flow__handle[type="target"] svg circle) {
+  background-color: #a78bfa !important;
+  fill: #a78bfa !important;
+  stroke: #a78bfa !important;
+}
+
+.canvas-wrapper :deep(.vue-flow__handle[type="source"]),
+.canvas-wrapper :deep(.vue-flow__handle[type="source"] svg circle) {
+  background-color: #3b82f6 !important;
+  fill: #3b82f6 !important;
+  stroke: #3b82f6 !important;
+}
+
+
+
+.canvas-wrapper :deep(.vue-flow__handle-connecting) {
+  background-color: #10b981;
+  border-color: white;
+  box-shadow: 0 0 0 5px rgba(16, 185, 129, 0.5), 0 4px 12px rgba(16, 185, 129, 0.4);
+  animation: pulse-green 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-green {
+  0%, 100% {
+    box-shadow: 0 0 0 5px rgba(16, 185, 129, 0.5), 0 4px 12px rgba(16, 185, 129, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0.3), 0 4px 12px rgba(16, 185, 129, 0.4);
+  }
+}
+
+.canvas-wrapper :deep(.vue-flow__handle-valid) {
+  background-color: #10b981;
+  border-color: white;
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.5), 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+.canvas-wrapper :deep(.vue-flow__handle-invalid) {
+  background-color: #ef4444;
+  border-color: white;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.5), 0 2px 8px rgba(239, 68, 68, 0.3);
+  animation: shake 0.4s ease-in-out;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
+
+/* 输入点（target）特殊样式 */
+.canvas-wrapper :deep(.vue-flow__handle[type="target"]) {
+  background-color: #a78bfa;
+}
+
+/* 输出点（source）特殊样式 */
+.canvas-wrapper :deep(.vue-flow__handle[type="source"]) {
+  background-color: #60a5fa;
+}
+
+
+
+/* 确保节点不会遮挡 Handle */
+.canvas-wrapper :deep(.vue-flow__node) {
+  z-index: 1;
+  transition: box-shadow 0.2s;
+}
+
+.canvas-wrapper :deep(.vue-flow__node.selected) {
+  z-index: 2;
+}
+
+/* 节点悬停时的连接提示 */
+.canvas-wrapper :deep(.vue-flow__node:hover) {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+/* VueFlow Edge 样式优化 */
+.canvas-wrapper :deep(.vue-flow__edge-path) {
+  stroke: #94a3b8;
+  stroke-width: 2.5;
+  transition: stroke 0.2s, stroke-width 0.2s, filter 0.2s;
+  cursor: pointer;
+}
+
+.canvas-wrapper :deep(.vue-flow__edge:hover .vue-flow__edge-path) {
+  stroke: #64748b;
+  stroke-width: 3.5;
+  filter: drop-shadow(0 0 4px rgba(100, 116, 139, 0.5));
+}
+
+.canvas-wrapper :deep(.vue-flow__edge:selected .vue-flow__edge-path),
+.canvas-wrapper :deep(.vue-flow__edge.selected .vue-flow__edge-path) {
+  stroke: #3b82f6;
+  stroke-width: 3.5;
+  filter: drop-shadow(0 0 5px rgba(59, 130, 246, 0.6));
+}
+
+.canvas-wrapper :deep(.vue-flow__edge-animated) {
+  stroke-dasharray: 5;
+  animation: dashdraw 0.5s linear infinite;
+}
+
+/* 连接引导线样式 */
+.canvas-wrapper :deep(.vue-flow__connection-path) {
+  stroke: #3b82f6;
+  stroke-width: 3;
+  stroke-dasharray: 10;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.5));
+  cursor: crosshair;
+}
+
+/* 连线可拖拽区域扩展 */
+.canvas-wrapper :deep(.vue-flow__edge) {
+  pointer-events: stroke;
+  stroke-width: 12;
+}
+
+.canvas-wrapper :deep(.vue-flow__edge):hover {
+  stroke-width: 16;
+}
+
+
+
+@keyframes dashdraw {
+  from {
+    stroke-dashoffset: 10;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.vue-flow-canvas {
+  height: 100%;
+  width: 100%;
+}
+
+.mini-map {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  width: 200px;
+  height: 150px;
+}
+
+.empty-state {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
-  animation: fadeIn 0.3s ease;
+  pointer-events: none;
+  z-index: 10;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+.empty-state-content {
+  text-align: center;
+  color: #94a3b8;
+  pointer-events: auto;
 }
 
-.execution-progress {
+.empty-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.empty-state h3 {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.empty-state p {
+  margin: 4px 0;
+  font-size: 14px;
+  color: #94a3b8;
+}
+
+.empty-state .hint {
+  font-size: 12px;
+  color: #cbd5e1;
+  margin-top: 8px;
+}
+
+
+
+.right-panel {
+  width: 320px;
+  background: white;
+  border-left: 1px solid #e0e0e0;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-tabs {
+  display: flex;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.panel-tab {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  color: #666;
+  position: relative;
+}
+
+.panel-tab.active {
+  color: #2196f3;
+  font-weight: 500;
+}
+
+.panel-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: #2196f3;
+}
+
+.error-count {
+  background-color: #f44336;
+  color: white;
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 10px;
+  margin-left: 4px;
+}
+
+.panel-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+.panel-content-wrapper {
+  height: 100%;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.validation-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 30px 40px;
-  background-color: #fff;
-  border-radius: 12px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  justify-content: center;
+  padding: 40px 20px;
+  color: #666;
 }
 
-.progress-spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid #e2e8f0;
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+.success-icon {
+  font-size: 48px;
+  color: #4caf50;
+  margin-bottom: 12px;
 }
 
-.execution-progress span {
-  color: #334155;
+.validation-section {
+  margin-bottom: 16px;
+}
+
+.validation-section h4 {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  color: #333;
+}
+
+.validation-item {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.validation-item.error {
+  background-color: #ffebee;
+  border-left: 3px solid #f44336;
+}
+
+.validation-item.warning {
+  background-color: #fff3e0;
+  border-left: 3px solid #ff9800;
+}
+
+.validation-icon {
   font-size: 14px;
-  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.validation-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.validation-message {
+  font-size: 13px;
+  color: #333;
+}
+
+.validation-suggestion {
+  font-size: 12px;
+  color: #666;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 </style>

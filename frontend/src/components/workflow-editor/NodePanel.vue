@@ -110,6 +110,33 @@ const toggleGroup = (groupId) => {
 const onDragStart = (event, nodeType) => {
   event.dataTransfer.setData('application/vueflow', JSON.stringify(nodeType));
   event.dataTransfer.effectAllowed = 'move';
+  
+  // 保存当前元素引用
+  const currentElement = event.currentTarget;
+  
+  // 添加拖动时的视觉反馈
+  const dragImage = event.currentTarget.cloneNode(true);
+  dragImage.style.position = 'absolute';
+  dragImage.style.top = '-1000px';
+  dragImage.style.opacity = '0.8';
+  document.body.appendChild(dragImage);
+  event.dataTransfer.setDragImage(dragImage, 0, 0);
+  
+  // 添加 dragging 类
+  if (currentElement) {
+    currentElement.classList.add('dragging');
+  }
+  
+  // 拖拽结束后移除 dragging 类
+  setTimeout(() => {
+    if (currentElement && currentElement.classList) {
+      currentElement.classList.remove('dragging');
+    }
+    if (document.body.contains(dragImage)) {
+      document.body.removeChild(dragImage);
+    }
+  }, 0);
+  
   emit('drag-start', nodeType);
 };
 </script>
@@ -168,15 +195,23 @@ const onDragStart = (event, nodeType) => {
   border: 1px solid #e2e8f0;
   border-radius: 6px;
   cursor: grab;
+  user-select: none;
+  transition: all 0.2s;
 }
 
 .node-type-item:hover {
   background-color: #eff6ff;
   border-color: #3b82f6;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);
 }
 
 .node-type-item:active {
   cursor: grabbing;
+}
+
+.node-type-item.dragging {
+  opacity: 0.5;
 }
 
 .node-icon {

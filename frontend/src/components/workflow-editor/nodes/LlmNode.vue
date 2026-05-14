@@ -121,4 +121,36 @@ watch(() => props.data, (newData) => {
 .node-range {
   flex: 1;
 }
+
+:deep(.vue-flow__handle) {
+  width: 12px !important;
+  height: 12px !important;
+  border: 2px solid white !important;
+  border-radius: 50% !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3) !important;
+  cursor: crosshair !important;
+  transition: all 0.2s ease !important;
+}
+
+:deep(.vue-flow__handle:hover) {
+  width: 24px !important;
+  height: 24px !important;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.5) !important;
+}
+
+:deep(.vue-flow__handle[type="target"]) {
+  background-color: #a78bfa !important;
+}
+
+:deep(.vue-flow__handle[type="target"]:hover) {
+  background-color: #7c3aed !important;
+}
+
+:deep(.vue-flow__handle[type="source"]) {
+  background-color: #3b82f6 !important;
+}
+
+:deep(.vue-flow__handle[type="source"]:hover) {
+  background-color: #2563eb !important;
+}
 </style>
