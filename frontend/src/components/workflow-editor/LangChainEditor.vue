@@ -1781,6 +1781,14 @@ const handleKeydown = (event) => {
   }
 };
 
+const handleClickOutside = (event) => {
+  const target = event.target;
+  const shortcutsPanel = document.querySelector('.shortcuts-panel');
+  if (shortcutsPanel && !shortcutsPanel.contains(target)) {
+    showShortcuts.value = false;
+  }
+};
+
 onMounted(async () => {
   registerShortcuts();
   window.addEventListener('keydown', handleKeydown);
@@ -1820,6 +1828,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
+  document.removeEventListener('click', handleClickOutside);
 });
 </script>
 
