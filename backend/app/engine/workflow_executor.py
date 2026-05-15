@@ -34,6 +34,58 @@ class ExecutionStatus(str, Enum):
     SKIPPED = "skipped"
 
 
+class VariableMetadata:
+    """变量元数据"""
+    
+    def __init__(self, name: str, value: Any, source: str = "input", 
+                 type_name: str = None, description: str = ""):
+        self.name = name
+        self.value = value
+        self.source = source  # input, node_output, system, custom
+        self.type_name = type_name or self._infer_type(value)
+        self.description = description
+    
+    def _infer_type(self, value: Any) -> str:
+        """推断变量类型"""
+        if isinstance(value, str):
+            return "string"
+        elif isinstance(value, int):
+            return "number"
+        elif isinstance(value, float):
+            return "number"
+        elif isinstance(value, bool):
+            return "boolean"
+        elif isinstance(value, dict):
+            return "object"
+        elif isinstance(value, list):
+            return "array"
+        elif value is None:
+            return "null"
+        else:
+            return "unknown"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典"""
+        return {
+            "name": self.name,
+            "type": self.type_name,
+            "source": self.source,
+            "description": self.description,
+            "preview": self._get_preview()
+        }
+    
+    def _get_preview(self) -> str:
+        """获取变量预览值"""
+        if isinstance(self.value, str):
+            return self.value[:50] + "..." if len(self.value) > 50 else self.value
+        elif isinstance(self.value, dict):
+            return f"Object with {len(self.value)} keys"
+        elif isinstance(self.value, list):
+            return f"Array with {len(self.value)} items"
+        else:
+            return str(self.value)[:50]
+
+
 class WorkflowContext:
     """工作流执行上下文"""
     
@@ -50,14 +102,105 @@ class WorkflowContext:
         self.error: Optional[str] = None
         self.metadata: Dict[str, Any] = {}
         self.node_statuses: Dict[str, ExecutionStatus] = {}
+        # 变量元数据存储
+        self.variable_metadata: Dict[str, VariableMetadata] = {}
+        
+        # 初始化输入变量的元数据
+        for key, value in self.inputs.items():
+            self.variable_metadata[key] = VariableMetadata(
+                name=key,
+                value=value,
+                source="input",
+                description="工作流输入参数"
+            )
     
-    def set_variable(self, key: str, value: Any):
+    def set_variable(self, key: str, value: Any, source: str = "node_output", description: str = ""):
         """设置变量"""
         self.variables[key] = value
+        
+        # 更新或创建变量元数据
+        if key in self.variable_metadata:
+            self.variable_metadata[key].value = value
+            self.variable_metadata[key].type_name = self.variable_metadata[key]._infer_type(value)
+        else:
+            self.variable_metadata[key] = VariableMetadata(
+                name=key,
+                value=value,
+                source=source,
+                description=description
+            )
     
     def get_variable(self, key: str, default: Any = None) -> Any:
         """获取变量"""
         return self.variables.get(key, default)
+    
+    def get_variable_metadata(self, key: str) -> Optional[VariableMetadata]:
+        """获取变量元数据"""
+        return self.variable_metadata.get(key)
+    
+    def get_all_variables(self) -> Dict[str, Any]:
+        """获取所有变量"""
+        return self.variables.copy()
+    
+    def get_all_variable_metadata(self) -> List[Dict[str, Any]]:
+        """获取所有变量的元数据列表"""
+        return [meta.to_dict() for meta in self.variable_metadata.values()]
+    
+    def search_variables(self, query: str = "", type_filter: str = None, 
+                        source_filter: str = None) -> List[Dict[str, Any]]:
+        """搜索变量
+        
+        Args:
+            query: 搜索关键词，匹配变量名或描述
+            type_filter: 类型过滤（string, number, boolean, object, array）
+            source_filter: 来源过滤（input, node_output, system, custom）
+        
+        Returns:
+            匹配的变量元数据列表
+        """
+        results = []
+        
+        for meta in self.variable_metadata.values():
+            # 关键词过滤
+            if query:
+                query_lower = query.lower()
+                if query_lower not in meta.name.lower() and query_lower not in meta.description.lower():
+                    continue
+            
+            # 类型过滤
+            if type_filter and meta.type_name != type_filter:
+                continue
+            
+            # 来源过滤
+            if source_filter and meta.source != source_filter:
+                continue
+            
+            results.append(meta.to_dict())
+        
+        # 按名称排序
+        results.sort(key=lambda x: x["name"])
+        
+        return results
+    
+    def suggest_variables(self, prefix: str = "", limit: int = 10) -> List[Dict[str, Any]]:
+        """根据前缀建议变量
+        
+        Args:
+            prefix: 变量名前缀
+            limit: 返回数量限制
+        
+        Returns:
+            匹配的变量元数据列表
+        """
+        results = []
+        
+        for meta in self.variable_metadata.values():
+            if meta.name.startswith(prefix):
+                results.append(meta.to_dict())
+        
+        # 按名称排序并限制数量
+        results.sort(key=lambda x: x["name"])
+        return results[:limit]
     
     def update_node_status(self, node_id: str, status: ExecutionStatus):
         """更新节点状态"""
@@ -69,26 +212,327 @@ class NodeExecutor(ABC):
     
     NODE_TYPE = ""
     
+    # 标准输出变量名，用于节点间数据传递
+    OUTPUT_VAR_NAME = "__node_output__"
+    
     def __init__(self, node: Dict[str, Any]):
         self.node = node
         self.node_id = node.get("id", "")
         self.node_data = node.get("data", {})
+        # 显性配置的输入输出映射
+        self.input_mappings = self.node_data.get("inputs", {})
+        self.output_mappings = self.node_data.get("outputs", {})
     
     @abstractmethod
     async def execute(self, context: WorkflowContext, edges: List[Dict[str, Any]]) -> List[str]:
         """执行节点，返回下一个节点ID列表"""
         pass
     
+    def get_available_variables(self, context: WorkflowContext, 
+                               type_filter: str = None, 
+                               include_internal: bool = False) -> List[Dict[str, Any]]:
+        """获取当前可用的变量列表
+        
+        Args:
+            context: 工作流上下文
+            type_filter: 类型过滤（string, number, boolean, object, array）
+            include_internal: 是否包含内部变量（如 __node_output__）
+        
+        Returns:
+            变量元数据列表，包含name, type, source, description, preview
+        """
+        variables = context.get_all_variable_metadata()
+        
+        # 过滤内部变量
+        if not include_internal:
+            variables = [v for v in variables if not v["name"].startswith("_")]
+        
+        # 类型过滤
+        if type_filter:
+            variables = [v for v in variables if v["type"] == type_filter]
+        
+        return variables
+    
+    def search_available_variables(self, context: WorkflowContext, 
+                                  query: str = "", 
+                                  type_filter: str = None) -> List[Dict[str, Any]]:
+        """搜索可用变量
+        
+        Args:
+            context: 工作流上下文
+            query: 搜索关键词
+            type_filter: 类型过滤
+        
+        Returns:
+            匹配的变量元数据列表
+        """
+        return context.search_variables(query, type_filter)
+    
+    def suggest_variables(self, context: WorkflowContext, 
+                         prefix: str = "", 
+                         limit: int = 10) -> List[Dict[str, Any]]:
+        """根据前缀建议变量
+        
+        Args:
+            context: 工作流上下文
+            prefix: 变量名前缀
+            limit: 返回数量限制
+        
+        Returns:
+            匹配的变量元数据列表
+        """
+        return context.suggest_variables(prefix, limit)
+    
+    def validate_variable(self, context: WorkflowContext, variable_name: str) -> Dict[str, Any]:
+        """验证变量是否存在
+        
+        Args:
+            context: 工作流上下文
+            variable_name: 变量名
+        
+        Returns:
+            验证结果字典，包含exists, type, preview
+        """
+        value = context.get_variable(variable_name)
+        meta = context.get_variable_metadata(variable_name)
+        
+        if meta:
+            return {
+                "exists": True,
+                "type": meta.type_name,
+                "preview": meta._get_preview(),
+                "source": meta.source,
+                "description": meta.description
+            }
+        elif value is not None:
+            # 变量存在但没有元数据
+            return {
+                "exists": True,
+                "type": type(value).__name__,
+                "preview": str(value)[:50],
+                "source": "unknown",
+                "description": ""
+            }
+        else:
+            return {
+                "exists": False,
+                "type": None,
+                "preview": None,
+                "source": None,
+                "description": None
+            }
+    
+    def get_previous_output(self, context: WorkflowContext) -> Any:
+        """获取前一个节点的输出
+        
+        这是节点间数据传递的标准方式，每个节点执行完毕后应该将结果
+        存储到 OUTPUT_VAR_NAME 变量中，下一个节点通过此方法获取。
+        """
+        return context.get_variable(self.OUTPUT_VAR_NAME, "")
+    
+    def set_output(self, context: WorkflowContext, value: Any):
+        """设置当前节点的输出
+        
+        将节点执行结果存储到标准输出变量中，供下一个节点使用。
+        同时也将结果存储到 context.outputs 中供外部访问。
+        
+        如果配置了output_mappings，则按照映射关系设置变量。
+        """
+        context.set_variable(self.OUTPUT_VAR_NAME, value)
+        # 同时更新节点专属输出（保持向后兼容）
+        context.outputs[self.NODE_TYPE] = value
+        
+        # 处理显性输出映射
+        if self.output_mappings:
+            for target_var, source_expr in self.output_mappings.items():
+                resolved_value = self._resolve_expression(source_expr, context, value)
+                context.set_variable(target_var, resolved_value)
+                context.outputs[target_var] = resolved_value
+    
+    def _resolve_expression(self, expr: str, context: WorkflowContext, node_output: Any = None) -> Any:
+        """解析表达式，支持多种引用方式
+        
+        支持的表达式类型：
+        1. {{variable_name}} - 引用上下文变量
+        2. {{__node_output__}} - 引用前一个节点的输出
+        3. {{__output__}} - 引用当前节点的输出
+        4. {{__output__.field}} - 引用当前节点输出的字段
+        5. 直接字符串常量
+        """
+        if not expr or not isinstance(expr, str):
+            return expr
+        
+        # 去除首尾空格
+        expr = expr.strip()
+        
+        # 检查是否是变量引用
+        if expr.startswith("{{") and expr.endswith("}}"):
+            var_path = expr[2:-2].strip()
+            
+            # 处理 __output__ 引用（当前节点输出）
+            if var_path == "__output__":
+                return node_output
+            elif var_path.startswith("__output__."):
+                # 支持 {{__output__.field_name}} 语法
+                field_name = var_path[10:]
+                if isinstance(node_output, dict) and field_name in node_output:
+                    return node_output[field_name]
+                return ""
+            
+            # 处理 __node_output__ 引用（前一个节点输出）
+            if var_path == self.OUTPUT_VAR_NAME:
+                return self.get_previous_output(context)
+            elif var_path.startswith(self.OUTPUT_VAR_NAME + "."):
+                field_name = var_path[len(self.OUTPUT_VAR_NAME) + 1:]
+                prev_output = self.get_previous_output(context)
+                if isinstance(prev_output, dict) and field_name in prev_output:
+                    return prev_output[field_name]
+                return ""
+            
+            # 尝试从上下文变量获取
+            value = context.get_variable(var_path, None)
+            if value is not None:
+                return value
+            
+            # 尝试从前一个节点输出的字段获取
+            prev_output = self.get_previous_output(context)
+            if isinstance(prev_output, dict) and var_path in prev_output:
+                return prev_output[var_path]
+            
+            return ""
+        
+        # 直接返回字符串常量
+        return expr
+    
+    def resolve_inputs(self, context: WorkflowContext) -> Dict[str, Any]:
+        """根据显性配置解析输入变量
+        
+        返回一个字典，包含所有配置的输入变量及其解析后的值。
+        如果没有配置inputs，则返回空字典（使用默认行为）。
+        """
+        resolved = {}
+        
+        if not self.input_mappings:
+            return resolved
+        
+        for input_key, source_expr in self.input_mappings.items():
+            # 获取当前节点输出（可能还不存在，用于自引用）
+            current_output = context.get_variable(self.OUTPUT_VAR_NAME, "")
+            resolved[input_key] = self._resolve_expression(source_expr, context, current_output)
+        
+        return resolved
+    
     def render_template(self, template: str, context: WorkflowContext) -> str:
-        """渲染模板，替换变量"""
+        """渲染模板，替换变量
+        
+        支持的变量引用方式：
+        1. {{variable_name}} - 标准模板语法
+        2. {{{variable_name}}} - 三重花括号，用于需要保留花括号的场景
+        3. {{variable_name.field}} - 访问对象字段
+        4. {{variable_name[index]}} - 访问数组元素
+        
+        优先从上下文变量中获取值，如果找不到则尝试从前一个节点的输出中获取。
+        """
         if not template:
             return ""
         
         def replace_var(match):
-            var_name = match.group(1)
-            return str(context.get_variable(var_name, ""))
+            var_expr = match.group(1).strip()
+            
+            # 解析变量表达式（支持 field 和 index 访问）
+            value = self._resolve_variable_expression(var_expr, context)
+            
+            if value is not None:
+                return str(value)
+            
+            # 尝试从前一个节点的输出中获取
+            previous_output = self.get_previous_output(context)
+            if isinstance(previous_output, dict) and var_expr in previous_output:
+                return str(previous_output[var_expr])
+            
+            return ""
         
-        return re.sub(r"\{\{(\w+)\}\}", replace_var, template)
+        # 支持 {{variable}} 语法（支持复杂表达式）
+        result = re.sub(r"\{\{([^{}]+)\}\}", replace_var, template)
+        
+        # 支持 {{{variable}}} 语法（用于需要保留花括号的场景）
+        def replace_triple_braces(match):
+            var_expr = match.group(1).strip()
+            value = self._resolve_variable_expression(var_expr, context)
+            return "{{" + str(value if value is not None else "") + "}}"
+        
+        result = re.sub(r"\{\{\{([^{}]+)\}\}\}", replace_triple_braces, result)
+        
+        return result
+    
+    def _resolve_variable_expression(self, expr: str, context: WorkflowContext) -> Any:
+        """解析变量表达式，支持字段访问和数组索引
+        
+        支持的表达式格式：
+        - variable_name - 直接变量名
+        - variable_name.field - 访问对象字段
+        - variable_name[index] - 访问数组元素
+        - variable_name.field[index] - 组合访问
+        
+        Args:
+            expr: 变量表达式
+            context: 工作流上下文
+        
+        Returns:
+            解析后的值，如果解析失败返回None
+        """
+        if not expr:
+            return None
+        
+        # 首先尝试直接获取变量
+        value = context.get_variable(expr, None)
+        if value is not None:
+            return value
+        
+        # 解析嵌套表达式
+        try:
+            # 处理字段访问和数组索引
+            parts = expr.split('.')
+            current_value = context.get_variable(parts[0], None)
+            
+            if current_value is None:
+                return None
+            
+            # 遍历剩余部分
+            for part in parts[1:]:
+                # 处理数组索引：field[index]
+                if '[' in part and ']' in part:
+                    field_name = part[:part.index('[')]
+                    index_str = part[part.index('[')+1:part.index(']')]
+                    
+                    # 获取字段值
+                    if isinstance(current_value, dict) and field_name in current_value:
+                        current_value = current_value[field_name]
+                    elif hasattr(current_value, field_name):
+                        current_value = getattr(current_value, field_name)
+                    
+                    # 获取数组索引
+                    try:
+                        index = int(index_str)
+                        if isinstance(current_value, list) and 0 <= index < len(current_value):
+                            current_value = current_value[index]
+                        else:
+                            return None
+                    except ValueError:
+                        return None
+                else:
+                    # 普通字段访问
+                    if isinstance(current_value, dict) and part in current_value:
+                        current_value = current_value[part]
+                    elif hasattr(current_value, part):
+                        current_value = getattr(current_value, part)
+                    else:
+                        return None
+            
+            return current_value
+        
+        except Exception:
+            return None
 
 
 class StartNodeExecutor(NodeExecutor):
@@ -103,6 +547,9 @@ class StartNodeExecutor(NodeExecutor):
         if context.inputs:
             for key, value in context.inputs.items():
                 context.set_variable(key, value)
+        
+        # 设置初始输出（包含所有输入参数）
+        self.set_output(context, context.inputs.copy())
         
         context.update_node_status(self.node_id, ExecutionStatus.COMPLETED)
         
@@ -134,12 +581,22 @@ class PromptNodeExecutor(NodeExecutor):
     async def execute(self, context: WorkflowContext, edges: List[Dict[str, Any]]) -> List[str]:
         context.update_node_status(self.node_id, ExecutionStatus.RUNNING)
         
+        # 如果配置了显性输入映射，先解析输入变量
+        if self.input_mappings:
+            resolved_inputs = self.resolve_inputs(context)
+            # 将解析的输入变量设置到上下文中
+            for key, value in resolved_inputs.items():
+                context.set_variable(key, value)
+        
         prompt = self.node_data.get("prompt", "")
         rendered_prompt = self.render_template(prompt, context)
         
-        # 将渲染后的提示词设置为下一个节点的输入
+        # 将渲染后的提示词设置为下一个节点的输入（标准方式）
         context.set_variable("input", rendered_prompt)
         context.outputs["prompt"] = rendered_prompt
+        
+        # 使用标准输出变量传递数据（同时处理显性输出映射）
+        self.set_output(context, rendered_prompt)
         
         logger.info(f"Prompt rendered: {rendered_prompt[:100]}...")
         
@@ -169,8 +626,41 @@ class LlmNodeExecutor(NodeExecutor):
             top_p = self.node_data.get("topP", 0.95)
             system_prompt = self.node_data.get("systemPrompt", "")
             
-            # 获取输入（来自前一个节点的output或input）
-            prompt_input = context.get_variable("input", "")
+            # 如果配置了显性输入映射，先解析输入变量
+            if self.input_mappings:
+                resolved_inputs = self.resolve_inputs(context)
+                # 将解析的输入变量设置到上下文中
+                for key, value in resolved_inputs.items():
+                    context.set_variable(key, value)
+            
+            # 获取输入（优先级：显性配置输入 > input变量 > 前一个节点输出 > output变量 > 节点自带prompt）
+            prompt_input = ""
+            
+            # 检查显性配置的输入
+            if self.input_mappings and "input" in self.input_mappings:
+                prompt_input = self._resolve_expression(self.input_mappings["input"], context, "")
+            
+            # 如果没有显性配置，使用默认行为
+            if not prompt_input:
+                prompt_input = context.get_variable("input", "")
+            
+            # 如果没有输入，尝试从标准输出变量获取（前一个节点的输出）
+            if not prompt_input:
+                prompt_input = self.get_previous_output(context)
+            
+            # 如果仍然没有输入，尝试从output变量获取
+            if not prompt_input:
+                prompt_input = context.get_variable("output", "")
+            
+            # 如果仍然没有输入，使用节点自带的prompt
+            if not prompt_input:
+                node_prompt = self.node_data.get("prompt", "")
+                if node_prompt:
+                    prompt_input = self.render_template(node_prompt, context)
+            
+            # 验证输入
+            if not prompt_input or not prompt_input.strip():
+                raise ValueError("LLM节点需要输入内容，请确保前一个节点已正确设置input变量或在节点配置中设置prompt")
             
             logger.info(f"LLM executing with model={model}, input={prompt_input[:50]}...")
             
@@ -188,9 +678,12 @@ class LlmNodeExecutor(NodeExecutor):
             chain = prompt | self.llm | StrOutputParser()
             result = await chain.ainvoke({})
             
-            # 设置输出变量
+            # 设置输出变量（保持向后兼容）
             context.set_variable("output", result)
             context.outputs["llm_output"] = result
+            
+            # 使用标准输出变量传递数据（同时处理显性输出映射）
+            self.set_output(context, result)
             
             logger.info(f"LLM response received: {result[:100]}...")
             
@@ -217,6 +710,12 @@ class ConditionNodeExecutor(NodeExecutor):
         context.update_node_status(self.node_id, ExecutionStatus.RUNNING)
         
         try:
+            # 如果配置了显性输入映射，先解析输入变量
+            if self.input_mappings:
+                resolved_inputs = self.resolve_inputs(context)
+                for key, value in resolved_inputs.items():
+                    context.set_variable(key, value)
+            
             # 获取条件配置
             left_type = self.node_data.get("leftType", "variable")
             left_value = self.node_data.get("leftValue", "")
@@ -227,6 +726,11 @@ class ConditionNodeExecutor(NodeExecutor):
             # 获取左操作数
             if left_type == "variable":
                 left_operand = context.get_variable(left_value, "")
+                # 如果变量不存在，尝试从前一个节点的输出中获取
+                if not left_operand and left_value != "":
+                    prev_output = self.get_previous_output(context)
+                    if isinstance(prev_output, dict) and left_value in prev_output:
+                        left_operand = prev_output[left_value]
             else:  # constant or expression
                 left_operand = left_value
             
@@ -239,6 +743,9 @@ class ConditionNodeExecutor(NodeExecutor):
             # 执行条件判断
             result = self._evaluate_condition(left_operand, operator, right_operand)
             context.set_variable("condition_result", result)
+            
+            # 使用标准输出变量传递条件结果（同时处理显性输出映射）
+            self.set_output(context, {"condition_result": result, "input": left_operand})
             
             logger.info(f"Condition evaluated: {left_operand} {operator} {right_operand} = {result}")
             
@@ -357,6 +864,12 @@ class VariableNodeExecutor(NodeExecutor):
     async def execute(self, context: WorkflowContext, edges: List[Dict[str, Any]]) -> List[str]:
         context.update_node_status(self.node_id, ExecutionStatus.RUNNING)
         
+        # 如果配置了显性输入映射，先解析输入变量
+        if self.input_mappings:
+            resolved_inputs = self.resolve_inputs(context)
+            for key, value in resolved_inputs.items():
+                context.set_variable(key, value)
+        
         var_name = self.node_data.get("variableName", "result")
         var_value = self.node_data.get("variableValue", "")
         
@@ -367,8 +880,30 @@ class VariableNodeExecutor(NodeExecutor):
         if var_value == "{{output}}" or var_value == "output":
             rendered_value = context.get_variable("output", "")
         
-        context.set_variable(var_name, rendered_value)
-        context.outputs[var_name] = rendered_value
+        # 如果值引用了前一个节点的输出，使用标准输出变量
+        if var_value == "{{__node_output__}}" or var_value == "__node_output__":
+            rendered_value = self.get_previous_output(context)
+        
+        # 如果配置了显性输出映射，优先使用映射配置
+        if self.output_mappings:
+            # 遍历输出映射，设置变量
+            for target_var, source_expr in self.output_mappings.items():
+                resolved_value = self._resolve_expression(source_expr, context, rendered_value)
+                context.set_variable(target_var, resolved_value)
+                context.outputs[target_var] = resolved_value
+            
+            # 构建输出值
+            output_value = {}
+            for target_var in self.output_mappings.keys():
+                output_value[target_var] = context.get_variable(target_var, "")
+        else:
+            # 使用传统方式设置变量
+            context.set_variable(var_name, rendered_value)
+            context.outputs[var_name] = rendered_value
+            output_value = {var_name: rendered_value}
+        
+        # 使用标准输出变量传递数据
+        self.set_output(context, output_value)
         
         logger.info(f"Variable set: {var_name} = {rendered_value[:50]}...")
         
@@ -390,10 +925,20 @@ class HttpNodeExecutor(NodeExecutor):
         import aiohttp
         
         try:
+            # 如果配置了显性输入映射，先解析输入变量
+            if self.input_mappings:
+                resolved_inputs = self.resolve_inputs(context)
+                for key, value in resolved_inputs.items():
+                    context.set_variable(key, value)
+            
             method = self.node_data.get("method", "GET").upper()
             url = self.render_template(self.node_data.get("url", ""), context)
             headers = self.node_data.get("headers", {})
             body = self.node_data.get("body", "")
+            
+            # 如果body是字符串模板，进行渲染
+            if isinstance(body, str):
+                body = self.render_template(body, context)
             
             logger.info(f"HTTP {method} request to {url}")
             
@@ -413,12 +958,17 @@ class HttpNodeExecutor(NodeExecutor):
                     else:
                         result = await response.text()
                     
-                    context.set_variable("httpResult", {
+                    http_result = {
                         "status": status,
                         "data": result,
                         "headers": dict(response.headers)
-                    })
-                    context.outputs["httpResult"] = context.variables["httpResult"]
+                    }
+                    
+                    context.set_variable("httpResult", http_result)
+                    context.outputs["httpResult"] = http_result
+                    
+                    # 使用标准输出变量传递数据（同时处理显性输出映射）
+                    self.set_output(context, http_result)
             
             logger.info(f"HTTP response received: status={status}")
             
@@ -444,6 +994,12 @@ class CodeNodeExecutor(NodeExecutor):
     async def execute(self, context: WorkflowContext, edges: List[Dict[str, Any]]) -> List[str]:
         context.update_node_status(self.node_id, ExecutionStatus.RUNNING)
         
+        # 如果配置了显性输入映射，先解析输入变量
+        if self.input_mappings:
+            resolved_inputs = self.resolve_inputs(context)
+            for key, value in resolved_inputs.items():
+                context.set_variable(key, value)
+        
         code = self.node_data.get("code", "")
         language = self.node_data.get("language", "python").lower()
         
@@ -455,6 +1011,7 @@ class CodeNodeExecutor(NodeExecutor):
                     "variables": context.variables,
                     "output": context.get_variable("output", ""),
                     "input": context.get_variable("input", ""),
+                    "__node_output__": self.get_previous_output(context),  # 添加前一个节点的输出
                 }
                 
                 # 执行代码
@@ -464,10 +1021,16 @@ class CodeNodeExecutor(NodeExecutor):
                 if "result" in exec_locals:
                     context.set_variable("codeResult", exec_locals["result"])
                     context.outputs["codeResult"] = exec_locals["result"]
+                    
+                    # 使用标准输出变量传递数据（同时处理显性输出映射）
+                    self.set_output(context, exec_locals["result"])
+                else:
+                    # 如果没有显式设置result，使用前一个节点的输出作为默认输出
+                    self.set_output(context, self.get_previous_output(context))
                 
                 # 更新上下文中的变量
                 for key, value in exec_locals.items():
-                    if key not in ["context", "variables"]:
+                    if key not in ["context", "variables", "__node_output__"]:
                         context.set_variable(key, value)
             
             logger.info(f"Code executed successfully")
@@ -495,18 +1058,45 @@ class ParserNodeExecutor(NodeExecutor):
         context.update_node_status(self.node_id, ExecutionStatus.RUNNING)
         
         try:
-            input_data = context.get_variable("output", "")
+            # 如果配置了显性输入映射，先解析输入变量
+            if self.input_mappings:
+                resolved_inputs = self.resolve_inputs(context)
+                for key, value in resolved_inputs.items():
+                    context.set_variable(key, value)
             
-            # 尝试解析为JSON
-            try:
-                parsed = json.loads(input_data)
+            # 获取输入（优先级：显性配置输入 > output变量 > 前一个节点输出）
+            input_data = ""
+            
+            # 检查显性配置的输入
+            if self.input_mappings and "input" in self.input_mappings:
+                input_data = self._resolve_expression(self.input_mappings["input"], context, "")
+            
+            # 如果没有显性配置，使用默认行为
+            if not input_data:
+                input_data = context.get_variable("output", "")
+            
+            # 如果没有输入，尝试从前一个节点的输出获取
+            if not input_data:
+                input_data = self.get_previous_output(context)
+            
+            # 如果input_data是字典，直接使用
+            if isinstance(input_data, dict):
+                parsed = input_data
                 context.set_variable("parsed", parsed)
-            except (json.JSONDecodeError, TypeError):
-                # 如果不是JSON，尝试提取结构化信息
-                parsed = {"text": input_data}
-                context.set_variable("parsed", parsed)
+            else:
+                # 尝试解析为JSON
+                try:
+                    parsed = json.loads(input_data)
+                    context.set_variable("parsed", parsed)
+                except (json.JSONDecodeError, TypeError):
+                    # 如果不是JSON，尝试提取结构化信息
+                    parsed = {"text": input_data}
+                    context.set_variable("parsed", parsed)
             
             context.outputs["parsed"] = context.variables["parsed"]
+            
+            # 使用标准输出变量传递数据（同时处理显性输出映射）
+            self.set_output(context, parsed)
             
             logger.info(f"Output parsed successfully")
             
@@ -540,6 +1130,12 @@ class ToolNodeExecutor(NodeExecutor):
         tool_params = self.node_data.get("params", {})
         
         try:
+            # 如果配置了显性输入映射，先解析输入变量
+            if self.input_mappings:
+                resolved_inputs = self.resolve_inputs(context)
+                for key, value in resolved_inputs.items():
+                    context.set_variable(key, value)
+            
             # 渲染参数中的变量
             rendered_params = {}
             for key, value in tool_params.items():
@@ -560,6 +1156,9 @@ class ToolNodeExecutor(NodeExecutor):
             
             context.set_variable("toolResult", result)
             context.outputs["toolResult"] = result
+            
+            # 使用标准输出变量传递数据（同时处理显性输出映射）
+            self.set_output(context, result)
             
             logger.info(f"Tool {tool_type} executed successfully")
             

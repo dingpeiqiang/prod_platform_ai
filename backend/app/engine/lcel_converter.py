@@ -25,10 +25,67 @@ logger = __import__('logging').getLogger(__name__)
 class LcelConverter:
     """工作流到LCEL转换器"""
     
+    # 标准输出变量名，与原生模式保持一致
+    OUTPUT_VAR_NAME = "__node_output__"
+    
     def __init__(self):
         self.llm = get_langchain_llm().llm
         self.node_map = {}
         self.edge_map = {}
+        self.current_node_data = {}  # 当前节点数据，用于获取输入输出映射
+    
+    def _resolve_expression(self, expr: str, context: Dict[str, Any], node_output: Any = None) -> Any:
+        """解析表达式，支持多种引用方式"""
+        if not expr or not isinstance(expr, str):
+            return expr
+        
+        expr = expr.strip()
+        
+        if expr.startswith("{{") and expr.endswith("}}"):
+            var_path = expr[2:-2].strip()
+            
+            # 处理 __output__ 引用（当前节点输出）
+            if var_path == "__output__":
+                return node_output
+            elif var_path.startswith("__output__."):
+                field_name = var_path[10:]
+                if isinstance(node_output, dict) and field_name in node_output:
+                    return node_output[field_name]
+                return ""
+            
+            # 处理 __node_output__ 引用（前一个节点输出）
+            if var_path == self.OUTPUT_VAR_NAME:
+                return context.get(self.OUTPUT_VAR_NAME, "")
+            elif var_path.startswith(self.OUTPUT_VAR_NAME + "."):
+                field_name = var_path[len(self.OUTPUT_VAR_NAME) + 1:]
+                prev_output = context.get(self.OUTPUT_VAR_NAME, {})
+                if isinstance(prev_output, dict) and field_name in prev_output:
+                    return prev_output[field_name]
+                return ""
+            
+            # 尝试从上下文获取
+            if var_path in context:
+                return context[var_path]
+            
+            # 尝试从前一个节点输出获取
+            prev_output = context.get(self.OUTPUT_VAR_NAME, {})
+            if isinstance(prev_output, dict) and var_path in prev_output:
+                return prev_output[var_path]
+            
+            return ""
+        
+        return expr
+    
+    def _resolve_inputs(self, inputs_config: Dict[str, str], context: Dict[str, Any], node_output: Any = None) -> Dict[str, Any]:
+        """解析显性输入配置"""
+        resolved = {}
+        if not inputs_config:
+            return resolved
+        
+        for input_key, source_expr in inputs_config.items():
+            resolved[input_key] = self._resolve_expression(source_expr, context, node_output)
+        
+        return resolved
     
     def convert(self, workflow_def: Dict[str, Any]) -> Runnable:
         """将工作流定义转换为LCEL Runnable"""
@@ -146,40 +203,124 @@ class LcelConverter:
     
     def _handle_start(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """处理开始节点"""
-        return {"context": inputs.get("inputs", {}), "output": ""}
+        input_data = inputs.get("inputs", {})
+        return {
+            "context": input_data, 
+            "output": "",
+            self.OUTPUT_VAR_NAME: input_data  # 设置标准输出变量
+        }
     
     def _handle_end(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """处理结束节点"""
-        return {"result": inputs.get("output", ""), "context": inputs.get("context", {})}
+        final_output = inputs.get(self.OUTPUT_VAR_NAME, inputs.get("output", ""))
+        return {
+            "result": final_output, 
+            "context": inputs.get("context", {}),
+            self.OUTPUT_VAR_NAME: final_output
+        }
     
     def _create_prompt_runnable(self, node_data: Dict[str, Any]) -> Runnable:
         """创建提示词节点的Runnable"""
         prompt_text = node_data.get("prompt", "")
+        input_mappings = node_data.get("inputs", {})
+        output_mappings = node_data.get("outputs", {})
         
         def render_prompt(inputs: Dict[str, Any]) -> Dict[str, Any]:
-            context = inputs.get("context", {})
+            context = inputs.get("context", {}).copy()
+            prev_output = inputs.get(self.OUTPUT_VAR_NAME, "")
+            
+            # 处理显性输入映射
+            if input_mappings:
+                resolved_inputs = self._resolve_inputs(input_mappings, context, prev_output)
+                context.update(resolved_inputs)
+            
             rendered = prompt_text
             for key, value in context.items():
                 rendered = rendered.replace(f"{{{{{key}}}}}", str(value))
-            return {"input": rendered, "context": context}
+            
+            # 如果模板中引用了前一个节点的输出，尝试从标准输出变量获取
+            if "{{__node_output__}}" in rendered:
+                rendered = rendered.replace("{{__node_output__}}", str(prev_output))
+            
+            # 处理显性输出映射
+            output_value = rendered
+            if output_mappings:
+                output_dict = {}
+                for target_var, source_expr in output_mappings.items():
+                    resolved_value = self._resolve_expression(source_expr, context, rendered)
+                    context[target_var] = resolved_value
+                    output_dict[target_var] = resolved_value
+                output_value = output_dict
+            
+            return {
+                "input": rendered, 
+                "context": context,
+                "output": rendered,
+                self.OUTPUT_VAR_NAME: output_value  # 设置标准输出变量
+            }
         
         return RunnableLambda(render_prompt)
     
     def _create_llm_runnable(self, node_data: Dict[str, Any]) -> Runnable:
         """创建LLM节点的Runnable"""
         system_prompt = node_data.get("systemPrompt", "")
+        input_mappings = node_data.get("inputs", {})
+        output_mappings = node_data.get("outputs", {})
         
         def build_and_run(inputs: Dict[str, Any]) -> Dict[str, Any]:
+            context = inputs.get("context", {}).copy()
+            prev_output = inputs.get(self.OUTPUT_VAR_NAME, "")
+            
+            # 处理显性输入映射
+            if input_mappings:
+                resolved_inputs = self._resolve_inputs(input_mappings, context, prev_output)
+                context.update(resolved_inputs)
+            
+            # 获取输入（优先级：显性配置输入 > input变量 > 标准输出变量 > output变量）
+            prompt_input = ""
+            
+            # 检查显性配置的输入
+            if input_mappings and "input" in input_mappings:
+                prompt_input = self._resolve_expression(input_mappings["input"], context, "")
+            
+            # 如果没有显性配置，使用默认行为
+            if not prompt_input:
+                prompt_input = inputs.get("input", "")
+            if not prompt_input:
+                prompt_input = inputs.get(self.OUTPUT_VAR_NAME, "")
+            if not prompt_input:
+                prompt_input = inputs.get("output", "")
+            
             messages = []
             if system_prompt:
-                messages.append(("system", system_prompt))
-            messages.append(("user", inputs.get("input", "")))
+                # 渲染系统提示词中的变量
+                rendered_system = system_prompt
+                for key, value in context.items():
+                    rendered_system = rendered_system.replace(f"{{{{{key}}}}}", str(value))
+                messages.append(("system", rendered_system))
+            
+            messages.append(("user", prompt_input))
             
             prompt = ChatPromptTemplate.from_messages(messages)
             chain = prompt | self.llm | StrOutputParser()
             
             result = chain.invoke({})
-            return {"output": result, "context": inputs.get("context", {})}
+            
+            # 处理显性输出映射
+            output_value = result
+            if output_mappings:
+                output_dict = {}
+                for target_var, source_expr in output_mappings.items():
+                    resolved_value = self._resolve_expression(source_expr, context, result)
+                    context[target_var] = resolved_value
+                    output_dict[target_var] = resolved_value
+                output_value = output_dict
+            
+            return {
+                "output": result, 
+                "context": context,
+                self.OUTPUT_VAR_NAME: output_value  # 设置标准输出变量
+            }
         
         return RunnableLambda(build_and_run)
     
@@ -187,21 +328,59 @@ class LcelConverter:
         """处理变量赋值节点"""
         var_name = node_data.get("variableName", "result")
         var_value = node_data.get("variableValue", "")
+        input_mappings = node_data.get("inputs", {})
+        output_mappings = node_data.get("outputs", {})
         
         def assign_variable(inputs: Dict[str, Any]) -> Dict[str, Any]:
             context = inputs.get("context", {}).copy()
+            prev_output = inputs.get(self.OUTPUT_VAR_NAME, "")
+            
+            # 处理显性输入映射
+            if input_mappings:
+                resolved_inputs = self._resolve_inputs(input_mappings, context, prev_output)
+                context.update(resolved_inputs)
+            
+            # 如果配置了显性输出映射，优先使用映射配置
+            if output_mappings:
+                output_dict = {}
+                for target_var, source_expr in output_mappings.items():
+                    resolved_value = self._resolve_expression(source_expr, context, "")
+                    context[target_var] = resolved_value
+                    output_dict[target_var] = resolved_value
+                return {
+                    "context": context, 
+                    "output": inputs.get("output", ""),
+                    self.OUTPUT_VAR_NAME: output_dict  # 设置标准输出变量
+                }
+            
+            # 传统变量赋值逻辑
             if var_value.startswith("{{") and var_value.endswith("}}"):
                 # 引用其他变量
                 ref_var = var_value[2:-2]
-                context[var_name] = context.get(ref_var, "")
+                if ref_var == self.OUTPUT_VAR_NAME:
+                    context[var_name] = prev_output
+                else:
+                    context[var_name] = context.get(ref_var, "")
             elif var_value == "output":
-                # 使用上一个输出
+                # 使用上一个输出（保持向后兼容）
                 context[var_name] = inputs.get("output", "")
+            elif var_value == "__node_output__":
+                # 使用标准输出变量
+                context[var_name] = prev_output
             else:
-                # 直接赋值
-                context[var_name] = var_value
+                # 直接赋值（支持模板渲染）
+                rendered_value = var_value
+                for key, value in context.items():
+                    rendered_value = rendered_value.replace(f"{{{{{key}}}}}", str(value))
+                context[var_name] = rendered_value
             
-            return {"context": context, "output": inputs.get("output", "")}
+            output_value = {var_name: context[var_name]}
+            
+            return {
+                "context": context, 
+                "output": inputs.get("output", ""),
+                self.OUTPUT_VAR_NAME: output_value  # 设置标准输出变量
+            }
         
         return assign_variable
     
@@ -212,13 +391,25 @@ class LcelConverter:
         operator = node_data.get("operator", "==")
         right_type = node_data.get("rightType", "constant")
         right_value = node_data.get("rightValue", "")
+        input_mappings = node_data.get("inputs", {})
+        output_mappings = node_data.get("outputs", {})
         
         def evaluate_condition(inputs: Dict[str, Any]) -> Dict[str, Any]:
-            context = inputs.get("context", {})
+            context = inputs.get("context", {}).copy()
+            prev_output = inputs.get(self.OUTPUT_VAR_NAME, "")
+            
+            # 处理显性输入映射
+            if input_mappings:
+                resolved_inputs = self._resolve_inputs(input_mappings, context, prev_output)
+                context.update(resolved_inputs)
             
             # 获取左操作数
             if left_type == "variable":
                 left = context.get(left_value, "")
+                # 如果变量不存在，尝试从前一个节点的输出中获取
+                if not left and left_value != "":
+                    if isinstance(prev_output, dict) and left_value in prev_output:
+                        left = prev_output[left_value]
             else:
                 left = left_value
             
@@ -248,7 +439,23 @@ class LcelConverter:
                 case _: result = False
             
             context["condition_result"] = result
-            return {"context": context, "output": inputs.get("output", ""), "condition_result": result}
+            
+            # 处理显性输出映射
+            output_value = {"condition_result": result, "input": left}
+            if output_mappings:
+                output_dict = {}
+                for target_var, source_expr in output_mappings.items():
+                    resolved_value = self._resolve_expression(source_expr, context, output_value)
+                    context[target_var] = resolved_value
+                    output_dict[target_var] = resolved_value
+                output_value = output_dict
+            
+            return {
+                "context": context, 
+                "output": inputs.get("output", ""), 
+                "condition_result": result,
+                self.OUTPUT_VAR_NAME: output_value  # 设置标准输出变量
+            }
         
         return evaluate_condition
     
@@ -271,7 +478,20 @@ class LcelConverter:
                 results.append({"iteration": i, "context": context.copy()})
             
             context["loopResults"] = results
-            return {"context": context, "output": inputs.get("output", "")}
+            
+            loop_info = {
+                "loopIndex": context.get("loopIndex", 0),
+                "loopCount": loop_count,
+                "loopFirst": context.get("loopFirst", True),
+                "loopLast": context.get("loopLast", False),
+                "loopResults": results
+            }
+            
+            return {
+                "context": context, 
+                "output": inputs.get("output", ""),
+                self.OUTPUT_VAR_NAME: loop_info  # 设置标准输出变量
+            }
         
         return execute_loop
     
@@ -281,23 +501,38 @@ class LcelConverter:
         url = node_data.get("url", "")
         headers = node_data.get("headers", {})
         body = node_data.get("body", "")
+        input_mappings = node_data.get("inputs", {})
+        output_mappings = node_data.get("outputs", {})
         
         async def make_request(inputs: Dict[str, Any]) -> Dict[str, Any]:
             import aiohttp
             
-            context = inputs.get("context", {})
+            context = inputs.get("context", {}).copy()
+            prev_output = inputs.get(self.OUTPUT_VAR_NAME, "")
+            
+            # 处理显性输入映射
+            if input_mappings:
+                resolved_inputs = self._resolve_inputs(input_mappings, context, prev_output)
+                context.update(resolved_inputs)
             
             # 渲染URL中的变量
             rendered_url = url
             for key, value in context.items():
                 rendered_url = rendered_url.replace(f"{{{{{key}}}}}", str(value))
             
+            # 渲染body中的变量
+            rendered_body = body
+            if isinstance(rendered_body, str):
+                for key, value in context.items():
+                    rendered_body = rendered_body.replace(f"{{{{{key}}}}}", str(value))
+            
             async with aiohttp.ClientSession() as session:
                 async with session.request(
                     method,
                     rendered_url,
                     headers=headers,
-                    data=body if body else None
+                    data=rendered_body if rendered_body else None,
+                    json=json.loads(rendered_body) if rendered_body and rendered_body.startswith("{") else None
                 ) as response:
                     content_type = response.headers.get("Content-Type", "")
                     if "json" in content_type:
@@ -305,13 +540,28 @@ class LcelConverter:
                     else:
                         data = await response.text()
                     
-                    context["httpResult"] = {
+                    http_result = {
                         "status": response.status,
                         "data": data,
                         "headers": dict(response.headers)
                     }
+                    context["httpResult"] = http_result
             
-            return {"context": context, "output": inputs.get("output", "")}
+            # 处理显性输出映射
+            output_value = http_result
+            if output_mappings:
+                output_dict = {}
+                for target_var, source_expr in output_mappings.items():
+                    resolved_value = self._resolve_expression(source_expr, context, http_result)
+                    context[target_var] = resolved_value
+                    output_dict[target_var] = resolved_value
+                output_value = output_dict
+            
+            return {
+                "context": context, 
+                "output": inputs.get("output", ""),
+                self.OUTPUT_VAR_NAME: output_value  # 设置标准输出变量
+            }
         
         return make_request
     
@@ -319,15 +569,24 @@ class LcelConverter:
         """处理代码执行节点"""
         code = node_data.get("code", "")
         language = node_data.get("language", "python").lower()
+        input_mappings = node_data.get("inputs", {})
+        output_mappings = node_data.get("outputs", {})
         
         def execute_code(inputs: Dict[str, Any]) -> Dict[str, Any]:
             context = inputs.get("context", {}).copy()
+            prev_output = inputs.get(self.OUTPUT_VAR_NAME, "")
+            
+            # 处理显性输入映射
+            if input_mappings:
+                resolved_inputs = self._resolve_inputs(input_mappings, context, prev_output)
+                context.update(resolved_inputs)
             
             if language == "python":
                 exec_locals = {
                     "context": context,
                     "output": inputs.get("output", ""),
-                    "input": inputs.get("input", "")
+                    "input": inputs.get("input", ""),
+                    self.OUTPUT_VAR_NAME: prev_output  # 添加前一个节点的输出
                 }
                 
                 try:
@@ -335,14 +594,32 @@ class LcelConverter:
                     
                     if "result" in exec_locals:
                         context["codeResult"] = exec_locals["result"]
+                        code_result = exec_locals["result"]
+                    else:
+                        code_result = prev_output  # 如果没有显式设置result，使用前一个节点的输出
                     
                     for key, value in exec_locals.items():
-                        if key not in ["context"]:
+                        if key not in ["context", self.OUTPUT_VAR_NAME]:
                             context[key] = value
                 except Exception as e:
                     context["codeError"] = str(e)
+                    code_result = {"error": str(e)}
             
-            return {"context": context, "output": inputs.get("output", "")}
+            # 处理显性输出映射
+            output_value = code_result
+            if output_mappings:
+                output_dict = {}
+                for target_var, source_expr in output_mappings.items():
+                    resolved_value = self._resolve_expression(source_expr, context, code_result)
+                    context[target_var] = resolved_value
+                    output_dict[target_var] = resolved_value
+                output_value = output_dict
+            
+            return {
+                "context": context, 
+                "output": inputs.get("output", ""),
+                self.OUTPUT_VAR_NAME: output_value  # 设置标准输出变量
+            }
         
         return execute_code
     
@@ -351,40 +628,80 @@ class LcelConverter:
         import json
         
         context = inputs.get("context", {}).copy()
-        output = inputs.get("output", "")
+        prev_output = inputs.get(self.OUTPUT_VAR_NAME, "")
+        
+        # 获取输入（优先级：output变量 > 标准输出变量）
+        input_data = inputs.get("output", "")
+        if not input_data:
+            input_data = inputs.get(self.OUTPUT_VAR_NAME, "")
         
         try:
-            parsed = json.loads(output)
+            # 如果input_data已经是字典，直接使用
+            if isinstance(input_data, dict):
+                parsed = input_data
+            else:
+                parsed = json.loads(input_data)
         except (json.JSONDecodeError, TypeError):
-            parsed = {"text": output}
+            parsed = {"text": input_data}
         
         context["parsed"] = parsed
-        return {"context": context, "output": parsed}
+        
+        return {
+            "context": context, 
+            "output": parsed,
+            self.OUTPUT_VAR_NAME: parsed  # 设置标准输出变量
+        }
     
     def _handle_tool(self, node_data: Dict[str, Any]):
         """处理工具调用节点"""
         tool_type = node_data.get("toolType", "")
+        input_mappings = node_data.get("inputs", {})
+        output_mappings = node_data.get("outputs", {})
         tool_params = node_data.get("params", {})
         
         def call_tool(inputs: Dict[str, Any]) -> Dict[str, Any]:
             context = inputs.get("context", {}).copy()
+            prev_output = inputs.get(self.OUTPUT_VAR_NAME, "")
+            
+            # 处理显性输入映射
+            if input_mappings:
+                resolved_inputs = self._resolve_inputs(input_mappings, context, prev_output)
+                context.update(resolved_inputs)
             
             # 渲染参数
             rendered_params = {}
             for key, value in tool_params.items():
                 if isinstance(value, str) and value.startswith("{{") and value.endswith("}}"):
                     ref_var = value[2:-2]
-                    rendered_params[key] = context.get(ref_var, value)
+                    if ref_var == self.OUTPUT_VAR_NAME:
+                        rendered_params[key] = prev_output
+                    else:
+                        rendered_params[key] = context.get(ref_var, value)
                 else:
                     rendered_params[key] = value
             
-            context["toolResult"] = {
+            tool_result = {
                 "toolType": tool_type,
                 "params": rendered_params,
                 "timestamp": __import__('datetime').datetime.now().isoformat()
             }
+            context["toolResult"] = tool_result
             
-            return {"context": context, "output": inputs.get("output", "")}
+            # 处理显性输出映射
+            output_value = tool_result
+            if output_mappings:
+                output_dict = {}
+                for target_var, source_expr in output_mappings.items():
+                    resolved_value = self._resolve_expression(source_expr, context, tool_result)
+                    context[target_var] = resolved_value
+                    output_dict[target_var] = resolved_value
+                output_value = output_dict
+            
+            return {
+                "context": context, 
+                "output": inputs.get("output", ""),
+                self.OUTPUT_VAR_NAME: output_value  # 设置标准输出变量
+            }
         
         return call_tool
     

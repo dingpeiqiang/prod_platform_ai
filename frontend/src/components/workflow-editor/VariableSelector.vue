@@ -16,9 +16,26 @@
         placeholder="搜索变量..." 
         class="search-input"
       />
+      <div class="type-filter">
+        <select v-model="typeFilter" class="filter-select">
+          <option value="">全部类型</option>
+          <option value="string">字符串</option>
+          <option value="number">数字</option>
+          <option value="boolean">布尔</option>
+          <option value="object">对象</option>
+          <option value="array">数组</option>
+        </select>
+      </div>
     </div>
 
-    <div class="variable-categories">
+    <div v-if="loading" class="loading-state">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" class="loading-spinner">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-dasharray="20 10"/>
+      </svg>
+      <p>加载变量列表中...</p>
+    </div>
+
+    <div v-else class="variable-categories">
       <div v-if="inputVariables.length > 0" class="category">
         <div class="category-header">
           <span class="category-icon">📥</span>
@@ -36,18 +53,18 @@
             <span class="var-icon input-icon">📝</span>
             <div class="var-info">
               <span class="var-name">{{ varItem.name }}</span>
-              <span class="var-type">{{ varItem.type }}</span>
+              <span class="var-type">{{ getTypeLabel(varItem.type) }}</span>
             </div>
             <span v-if="varItem.description" class="var-desc">{{ varItem.description }}</span>
-            <span class="var-preview">{{ getPreview(varItem) }}</span>
+            <span class="var-preview">{{ varItem.preview || '-' }}</span>
           </div>
         </div>
       </div>
 
       <div v-if="workflowVariables.length > 0" class="category">
         <div class="category-header">
-          <span class="category-icon">📦</span>
-          <span class="category-name">工作流变量</span>
+          <span class="category-icon">⚙️</span>
+          <span class="category-name">系统变量</span>
           <span class="category-count">{{ workflowVariables.length }}</span>
         </div>
         <div class="variable-list">
@@ -61,10 +78,10 @@
             <span class="var-icon workflow-icon">🔧</span>
             <div class="var-info">
               <span class="var-name">{{ varItem.name }}</span>
-              <span class="var-type">{{ varItem.type }}</span>
+              <span class="var-type">{{ getTypeLabel(varItem.type) }}</span>
             </div>
             <span v-if="varItem.description" class="var-desc">{{ varItem.description }}</span>
-            <span class="var-preview">{{ getPreview(varItem) }}</span>
+            <span class="var-preview">{{ varItem.preview || '-' }}</span>
           </div>
         </div>
       </div>
@@ -86,10 +103,10 @@
             <span class="var-icon output-icon">🚀</span>
             <div class="var-info">
               <span class="var-name">{{ varItem.name }}</span>
-              <span class="var-type">{{ varItem.type }}</span>
+              <span class="var-type">{{ getTypeLabel(varItem.type) }}</span>
             </div>
-            <span class="var-desc">来自: {{ varItem.sourceNode }}</span>
-            <span class="var-preview">{{ getPreview(varItem) }}</span>
+            <span class="var-desc">来自: {{ getSourceLabel(varItem.source, varItem.sourceNodeType) }}</span>
+            <span class="var-preview">{{ varItem.preview || '-' }}</span>
           </div>
         </div>
       </div>
@@ -106,7 +123,7 @@
       </div>
     </div>
 
-    <div v-if="allVariables.length > 0" class="selector-footer">
+    <div v-if="!loading && allVariables.length > 0" class="selector-footer">
       <button @click="insertVariable" class="btn-insert" :disabled="!selectedVar">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M12 5v14M5 12h14"/>
@@ -127,23 +144,34 @@ const props = defineProps({
     type: Array, 
     default: () => [] 
   },
-  selectedVar: { type: Object, default: null }
+  selectedVar: { type: Object, default: null },
+  loading: { type: Boolean, default: false }
 });
 
 const emit = defineEmits(['close', 'select', 'insert']);
 
 const searchQuery = ref('');
+const typeFilter = ref('');
 
 const inputVariables = computed(() => {
-  return props.variables.filter(v => v.category === 'input').filter(filterBySearch);
+  return props.variables
+    .filter(v => v.source === 'workflow_input')
+    .filter(filterBySearch)
+    .filter(filterByType);
 });
 
 const workflowVariables = computed(() => {
-  return props.variables.filter(v => v.category === 'workflow').filter(filterBySearch);
+  return props.variables
+    .filter(v => v.source === 'system')
+    .filter(filterBySearch)
+    .filter(filterByType);
 });
 
 const nodeOutputs = computed(() => {
-  return props.variables.filter(v => v.category === 'output').filter(filterBySearch);
+  return props.variables
+    .filter(v => v.source === 'node_output')
+    .filter(filterBySearch)
+    .filter(filterByType);
 });
 
 const allVariables = computed(() => props.variables);
@@ -153,15 +181,42 @@ const filterBySearch = (item) => {
   const query = searchQuery.value.toLowerCase();
   return item.name.toLowerCase().includes(query) || 
          item.description?.toLowerCase().includes(query) ||
-         item.sourceNode?.toLowerCase().includes(query);
+         item.sourceNodeType?.toLowerCase().includes(query);
 };
 
-const getPreview = (varItem) => {
-  if (varItem.value !== undefined) {
-    const val = String(varItem.value);
-    return val.length > 20 ? val.substring(0, 20) + '...' : val;
+const filterByType = (item) => {
+  if (!typeFilter.value) return true;
+  return item.type === typeFilter.value;
+};
+
+const getTypeLabel = (type) => {
+  const typeMap = {
+    'string': '字符串',
+    'number': '数字',
+    'boolean': '布尔',
+    'object': '对象',
+    'array': '数组',
+    'any': '任意',
+    'null': '空'
+  };
+  return typeMap[type] || type;
+};
+
+const getSourceLabel = (source, sourceNodeType) => {
+  if (sourceNodeType) {
+    const typeLabels = {
+      'prompt': '提示词节点',
+      'llm': 'LLM节点',
+      'http': 'HTTP节点',
+      'code': '代码节点',
+      'parser': '解析器节点',
+      'tool': '工具节点',
+      'variable': '变量节点',
+      'condition': '条件节点'
+    };
+    return typeLabels[sourceNodeType] || sourceNodeType;
   }
-  return varItem.default || '-';
+  return source || '未知';
 };
 
 const selectVariable = (varItem) => {
@@ -181,6 +236,7 @@ const close = () => {
 watch(() => props.visible, (newVal) => {
   if (newVal) {
     searchQuery.value = '';
+    typeFilter.value = '';
   }
 });
 </script>

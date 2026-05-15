@@ -316,9 +316,12 @@ class DynamicWorkflowGenerator:
 
 请返回优化后的工作流定义（JSON格式）。"""
         
+        workflow_json = json.dumps(workflow_def, indent=2)
+        workflow_json_escaped = workflow_json.replace("{", "{{").replace("}", "}}")
+        
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
-            ("user", f"请优化以下工作流：\n{json.dumps(workflow_def, indent=2)}")
+            ("user", f"请优化以下工作流：\n{workflow_json_escaped}")
         ])
         
         parser = JsonOutputParser()

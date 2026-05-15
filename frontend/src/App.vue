@@ -164,6 +164,7 @@
         <!-- LangChain 工作流编辑器 -->
         <LangChainEditor 
           v-if="!isInitializing && currentView === 'langchain-editor'" 
+          :key="`editor-${currentWorkflowCode}-${editorKey}`"
           :workflow-code="currentWorkflowCode"
           @go-back="returnToWorkflowManager"
         />
@@ -239,6 +240,9 @@ const isInitializing = ref(true)  // 初始化状态标志
 
 // 当前数据库会话 ID（与 activeSessionId 对应）
 const activeDbSessionId = ref('')
+
+// 工作流编辑器 key，用于强制组件重建
+const editorKey = ref(0)
 
 // ── 加载本地会话列表 ──────────────────────────────────────
 const loadSessions = () => {
@@ -362,6 +366,7 @@ const openLangChainEditor = () => {
   activeDbSessionId.value = ''
   currentWorkflowCode.value = ''  // 清空工作流编码，新建模式
   isDashboardSidebarVisible.value = false
+  editorKey.value++  // 强制组件重建，确保编辑器重置
   saveActiveSessionId()
 }
 
@@ -372,6 +377,7 @@ const openWorkflowEditor = (workflowCode) => {
   activeDbSessionId.value = ''
   currentWorkflowCode.value = workflowCode || ''  // 设置要编辑的工作流编码，null表示新建
   isDashboardSidebarVisible.value = false
+  editorKey.value++  // 强制组件重建，确保编辑器重置
   saveActiveSessionId()
 }
 

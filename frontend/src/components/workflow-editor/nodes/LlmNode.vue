@@ -154,6 +154,33 @@
             class="node-textarea"
           ></textarea>
         </div>
+
+        <div class="section-title">输入输出参数</div>
+        
+        <div class="param-row">
+          <label>输入变量</label>
+          <select 
+            v-model="localInputVar" 
+            @change="emitUpdate" 
+            class="node-select"
+          >
+            <option value="">选择输入变量</option>
+            <option v-for="varItem in availableVariables" :key="varItem.name" :value="varItem.name">
+              {{ varItem.name }} ({{ varItem.type }})
+            </option>
+          </select>
+        </div>
+
+        <div class="param-row">
+          <label>输出变量名</label>
+          <input
+            v-model="localOutputVar"
+            @input="emitUpdate"
+            type="text"
+            placeholder="自定义变量名"
+            class="node-input"
+          />
+        </div>
       </div>
     </div>
     <Handle type="target" :position="Position.Left" id="target" />
@@ -173,6 +200,10 @@ const props = defineProps({
   selected: {
     type: Boolean,
     default: false
+  },
+  availableVariables: {
+    type: Array,
+    default: () => []
   }
 });
 
@@ -188,12 +219,25 @@ const localFrequencyPenalty = ref(props.data.frequencyPenalty || 0);
 const localPresencePenalty = ref(props.data.presencePenalty || 0);
 const localStopTokens = ref(props.data.stopTokens || '');
 const localSystemPrompt = ref(props.data.systemPrompt || '');
+const localInputVar = ref(props.data.inputVar || '');
+const localOutputVar = ref(props.data.outputVar || '');
 
 const toggleAdvanced = () => {
   showAdvanced.value = !showAdvanced.value;
 };
 
 const emitUpdate = () => {
+  const inputs = {};
+  const outputs = {};
+  
+  if (localInputVar.value) {
+    inputs['input'] = `{{${localInputVar.value}}}`;
+  }
+  
+  if (localOutputVar.value) {
+    outputs[localOutputVar.value] = '{{__output__}}';
+  }
+  
   emit('update', props.data.id, {
     model: localModel.value,
     temperature: localTemperature.value,
@@ -202,7 +246,11 @@ const emitUpdate = () => {
     frequencyPenalty: localFrequencyPenalty.value,
     presencePenalty: localPresencePenalty.value,
     stopTokens: localStopTokens.value,
-    systemPrompt: localSystemPrompt.value
+    systemPrompt: localSystemPrompt.value,
+    inputVar: localInputVar.value,
+    outputVar: localOutputVar.value,
+    inputs: Object.keys(inputs).length > 0 ? inputs : undefined,
+    outputs: Object.keys(outputs).length > 0 ? outputs : undefined
   });
 };
 
@@ -215,6 +263,8 @@ watch(() => props.data, (newData) => {
   localPresencePenalty.value = newData.presencePenalty || 0;
   localStopTokens.value = newData.stopTokens || '';
   localSystemPrompt.value = newData.systemPrompt || '';
+  localInputVar.value = newData.inputVar || '';
+  localOutputVar.value = newData.outputVar || '';
 }, { deep: true });
 </script>
 

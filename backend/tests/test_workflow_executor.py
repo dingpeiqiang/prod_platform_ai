@@ -4,7 +4,7 @@
 
 import pytest
 import asyncio
-from app.engine.workflow_executor import WorkflowExecutor, ExecutionStatus
+from app.engine.workflow_executor import WorkflowExecutor, ExecutionStatus, WorkflowContext
 
 
 class TestWorkflowExecutor:
@@ -32,6 +32,150 @@ class TestWorkflowExecutor:
         assert context.status == ExecutionStatus.COMPLETED
         assert "prompt" in context.outputs
         assert "llm_output" in context.outputs
+
+    def test_auto_data_passing_between_nodes(self):
+        """测试节点间自动数据传递"""
+        workflow_def = {
+            "nodes": [
+                {"id": "start-1", "type": "start", "data": {"label": "开始"}},
+                {"id": "var-1", "type": "variable", "data": {"label": "设置变量", "variableName": "inputText", "variableValue": "Hello World"}},
+                {"id": "prompt-1", "type": "prompt", "data": {"label": "使用变量", "prompt": "输入内容：{{inputText}}，请分析这段文本"}},
+                {"id": "llm-1", "type": "llm", "data": {"label": "LLM分析", "model": "qwen-vl-plus"}},
+                {"id": "end-1", "type": "end", "data": {"label": "结束"}}
+            ],
+            "edges": [
+                {"source": "start-1", "target": "var-1"},
+                {"source": "var-1", "target": "prompt-1"},
+                {"source": "prompt-1", "target": "llm-1"},
+                {"source": "llm-1", "target": "end-1"}
+            ]
+        }
+        
+        executor = WorkflowExecutor(workflow_def)
+        context = asyncio.run(executor.execute())
+        
+        assert context.status == ExecutionStatus.COMPLETED
+        assert context.get_variable("inputText") == "Hello World"
+        assert "Hello World" in context.outputs.get("prompt", "")
+        assert "llm_output" in context.outputs
+
+    def test_direct_data_flow_without_explicit_variable(self):
+        """测试不使用显式变量的直接数据流"""
+        workflow_def = {
+            "nodes": [
+                {"id": "start-1", "type": "start", "data": {"label": "开始"}},
+                {"id": "llm-1", "type": "llm", "data": {"label": "LLM生成", "model": "qwen-vl-plus", "prompt": "请生成一句问候语"}},
+                {"id": "llm-2", "type": "llm", "data": {"label": "LLM处理", "model": "qwen-vl-plus", "prompt": "请将以下内容翻译成英文："}},
+                {"id": "end-1", "type": "end", "data": {"label": "结束"}}
+            ],
+            "edges": [
+                {"source": "start-1", "target": "llm-1"},
+                {"source": "llm-1", "target": "llm-2"},
+                {"source": "llm-2", "target": "end-1"}
+            ]
+        }
+        
+        executor = WorkflowExecutor(workflow_def)
+        context = asyncio.run(executor.execute())
+        
+        assert context.status == ExecutionStatus.COMPLETED
+        assert "llm_output" in context.outputs
+        # 验证标准输出变量存在
+        assert context.get_variable("__node_output__") is not None
+
+    def test_explicit_input_mapping(self):
+        """测试显性输入映射配置"""
+        workflow_def = {
+            "nodes": [
+                {"id": "start-1", "type": "start", "data": {"label": "开始"}},
+                {"id": "var-1", "type": "variable", "data": {"label": "设置变量", "variableName": "user_name", "variableValue": "张三"}},
+                {"id": "prompt-1", "type": "prompt", "data": {
+                    "label": "使用显性输入", 
+                    "prompt": "你好，{{name}}！",
+                    "inputs": {
+                        "name": "{{user_name}}"
+                    }
+                }},
+                {"id": "end-1", "type": "end", "data": {"label": "结束"}}
+            ],
+            "edges": [
+                {"source": "start-1", "target": "var-1"},
+                {"source": "var-1", "target": "prompt-1"},
+                {"source": "prompt-1", "target": "end-1"}
+            ]
+        }
+        
+        executor = WorkflowExecutor(workflow_def)
+        context = asyncio.run(executor.execute())
+        
+        assert context.status == ExecutionStatus.COMPLETED
+        assert "你好，张三！" in context.outputs.get("prompt", "")
+
+    def test_explicit_output_mapping(self):
+        """测试显性输出映射配置"""
+        workflow_def = {
+            "nodes": [
+                {"id": "start-1", "type": "start", "data": {"label": "开始"}},
+                {"id": "llm-1", "type": "llm", "data": {
+                    "label": "LLM生成", 
+                    "model": "qwen-vl-plus", 
+                    "prompt": "生成一个JSON格式的用户信息：姓名和年龄",
+                    "outputs": {
+                        "user_info": "{{__output__}}"
+                    }
+                }},
+                {"id": "end-1", "type": "end", "data": {"label": "结束"}}
+            ],
+            "edges": [
+                {"source": "start-1", "target": "llm-1"},
+                {"source": "llm-1", "target": "end-1"}
+            ]
+        }
+        
+        executor = WorkflowExecutor(workflow_def)
+        context = asyncio.run(executor.execute())
+        
+        assert context.status == ExecutionStatus.COMPLETED
+        assert context.get_variable("user_info") is not None
+
+    def test_explicit_input_output_chain(self):
+        """测试显性输入输出映射链式传递"""
+        workflow_def = {
+            "nodes": [
+                {"id": "start-1", "type": "start", "data": {"label": "开始"}},
+                {"id": "llm-1", "type": "llm", "data": {
+                    "label": "第一步", 
+                    "model": "qwen-vl-plus", 
+                    "prompt": "说'hello'",
+                    "outputs": {
+                        "step1_result": "{{__output__}}"
+                    }
+                }},
+                {"id": "llm-2", "type": "llm", "data": {
+                    "label": "第二步", 
+                    "model": "qwen-vl-plus",
+                    "inputs": {
+                        "input": "{{step1_result}}"
+                    },
+                    "outputs": {
+                        "step2_result": "{{__output__}}"
+                    }
+                }},
+                {"id": "end-1", "type": "end", "data": {"label": "结束"}}
+            ],
+            "edges": [
+                {"source": "start-1", "target": "llm-1"},
+                {"source": "llm-1", "target": "llm-2"},
+                {"source": "llm-2", "target": "end-1"}
+            ]
+        }
+        
+        executor = WorkflowExecutor(workflow_def)
+        context = asyncio.run(executor.execute())
+        
+        assert context.status == ExecutionStatus.COMPLETED
+        assert context.get_variable("step1_result") is not None
+        assert context.get_variable("step2_result") is not None
 
     def test_condition_workflow(self):
         """测试条件分支工作流"""

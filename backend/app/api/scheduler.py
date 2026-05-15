@@ -166,11 +166,35 @@ async def optimize_workflow(workflow_def: Dict[str, Any]):
         generator = DynamicWorkflowGenerator()
         optimized = await generator.optimize_workflow(workflow_def)
         
+        original_node_count = len(workflow_def.get('nodes', []))
+        optimized_node_count = len(optimized.get('nodes', []))
+        
+        optimizations = []
+        if optimized_node_count < original_node_count:
+            optimizations.append(f"节点数从 {original_node_count} 减少到 {optimized_node_count}")
+        
         return {
             "success": True,
-            "workflow_def": optimized
+            "description": optimized.get('description', '工作流优化完成'),
+            "data": optimized,
+            "optimizations": optimizations,
+            "originalNodeCount": original_node_count,
+            "validation": {
+                "valid": True,
+                "errors": []
+            }
         }
     
     except Exception as e:
         logger.error(f"优化工作流失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {
+            "success": False,
+            "description": "优化失败",
+            "data": workflow_def,
+            "optimizations": [],
+            "originalNodeCount": len(workflow_def.get('nodes', [])),
+            "validation": {
+                "valid": False,
+                "errors": [str(e)]
+            }
+        }

@@ -58,6 +58,15 @@
           </svg>
           AI生成
         </button>
+        <button @click="showOptimizeModal = true" class="btn-secondary ai-btn" title="AI优化工作流" :disabled="elements.length === 0">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+            <path d="M16 21h5v-5"/>
+          </svg>
+          AI优化
+        </button>
         <div class="toolbar-divider"></div>
         <button
         @click="handleExecute"
@@ -502,7 +511,9 @@
               :logs="executionLogs"
               :is-running="isRunning"
               :last-result="lastExecutionResult"
+              :history="executionHistory"
               @clear="clearExecutionLogs"
+              @clear-history="clearExecutionHistory"
             />
           </div>
         </div>
@@ -546,6 +557,83 @@
         <div class="modal-footer">
           <button class="btn" @click="showWorkflowInfo = false">取消</button>
           <button class="btn btn-primary" @click="saveWorkflowInfo">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI优化工作流模态框 -->
+    <div v-if="showOptimizeModal" class="modal-overlay" @click.self="cancelOptimize">
+      <div class="modal generate-workflow-modal">
+        <div class="modal-header">
+          <div class="modal-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+              <path d="M3 3v5h5"/>
+              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+              <path d="M16 21h5v-5"/>
+            </svg>
+            <h3>AI优化工作流</h3>
+          </div>
+          <button class="close-btn" @click="cancelOptimize">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="generate-intro">
+            <p>AI将分析当前工作流，提供优化建议并生成优化后的工作流设计。</p>
+            <div class="example-tips">
+              <span class="tips-label">💡 优化方向：</span>
+              <span class="tips-content">节点合并、流程简化、参数优化、最佳实践建议</span>
+            </div>
+          </div>
+          <div v-if="optimizeResult" class="generate-result">
+            <div class="result-header">
+              <h4>优化结果</h4>
+              <span class="result-status" :class="{ success: optimizeResult.validation.valid, error: !optimizeResult.validation.valid }">
+                {{ optimizeResult.validation.valid ? '✓ 验证通过' : '✗ 存在错误' }}
+              </span>
+            </div>
+            <div v-if="optimizeResult.description" class="result-description">
+              <p>{{ optimizeResult.description }}</p>
+            </div>
+            <div v-if="optimizeResult.optimizations && optimizeResult.optimizations.length > 0" class="result-optimizations">
+              <h5>优化建议：</h5>
+              <ul>
+                <li v-for="(opt, index) in optimizeResult.optimizations" :key="index">{{ opt }}</li>
+              </ul>
+            </div>
+            <div v-if="optimizeResult.validation.errors.length > 0" class="result-errors">
+              <h5>错误信息：</h5>
+              <ul>
+                <li v-for="(error, index) in optimizeResult.validation.errors" :key="index">{{ error }}</li>
+              </ul>
+            </div>
+            <div class="result-stats">
+              <span>优化前节点数：{{ optimizeResult.originalNodeCount || '-' }}</span>
+              <span>优化后节点数：{{ optimizeResult.data?.nodes.length || '-' }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn" @click="cancelOptimize" :disabled="isOptimizing">取消</button>
+          <button 
+            v-if="!optimizeResult"
+            @click="optimizeWorkflow" 
+            :disabled="isOptimizing"
+            class="btn btn-primary"
+          >
+            <svg v-if="isOptimizing" class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 6v6l4 2"/>
+            </svg>
+            {{ isOptimizing ? '优化中...' : '开始优化' }}
+          </button>
+          <button 
+            v-else
+            @click="applyOptimizedWorkflow" 
+            :disabled="!optimizeResult.validation.valid"
+            class="btn btn-success"
+          >
+            应用优化
+          </button>
         </div>
       </div>
     </div>
@@ -717,12 +805,20 @@ const workflowTags = ref([]);
 
 const executionLogs = ref([]);
 const isRunning = ref(false);
+const executionHistory = ref([]);
+const maxHistoryCount = 10;
 
 // AI生成工作流相关状态
 const showGenerateModal = ref(false);
 const generateRequirement = ref('');
 const isGenerating = ref(false);
 const generateResult = ref(null);
+
+// AI优化工作流相关状态
+const showOptimizeModal = ref(false);
+const isOptimizing = ref(false);
+const optimizeResult = ref(null);
+
 const lastExecutionResult = ref(null);
 const copiedNodes = ref([]);
 const nodeExecutionStatus = ref({});
@@ -1627,6 +1723,82 @@ const applyGeneratedWorkflow = () => {
   ElMessage.success('工作流已应用到画布');
 };
 
+// AI优化工作流相关方法
+const optimizeWorkflow = async () => {
+  isOptimizing.value = true;
+  optimizeResult.value = null;
+  
+  try {
+    const nodes = elements.value.filter(el => !el.source && !el.target);
+    const edges = elements.value.filter(el => el.source && el.target);
+    
+    const workflowData = {
+      nodes,
+      edges
+    };
+    
+    const response = await workflowApi.workflowApi.optimize(workflowData);
+    
+    if (response.success) {
+      optimizeResult.value = response;
+      ElMessage.success('工作流优化成功！');
+    } else {
+      ElMessage.error(response.message || '优化失败');
+    }
+  } catch (error) {
+    console.error('优化工作流失败:', error);
+    ElMessage.error('优化工作流失败：' + (error.message || '未知错误'));
+  } finally {
+    isOptimizing.value = false;
+  }
+};
+
+const cancelOptimize = () => {
+  showOptimizeModal.value = false;
+  optimizeResult.value = null;
+};
+
+const applyOptimizedWorkflow = () => {
+  if (!optimizeResult.value || !optimizeResult.value.data) return;
+  
+  saveHistory();
+  
+  const { nodes, edges } = optimizeResult.value.data;
+  
+  const processedNodes = nodes.map(node => {
+    const typeDef = nodeTypeDefinitions.find(def => def.id === node.type);
+    const defaultLabel = typeDef ? typeDef.name : node.type;
+    
+    return {
+      id: node.id,
+      type: node.type,
+      position: node.position,
+      data: {
+        ...node.data,
+        label: node.data?.label || defaultLabel
+      }
+    };
+  });
+  
+  const processedEdges = edges.map(edge => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    sourceHandle: edge.sourceHandle,
+    targetHandle: edge.targetHandle,
+    markerEnd: edge.markerEnd || {
+      type: 'arrowclosed',
+      color: '#94a3b8'
+    }
+  }));
+  
+  elements.value = [...processedNodes, ...processedEdges];
+  markDirty();
+  
+  cancelOptimize();
+  ElMessage.success('优化后的工作流已应用到画布');
+};
+
 const handleExecute = () => {
   // 检查开始节点是否有参数
   const startNode = elements.value.find(el => !el.source && el.type === 'start');
@@ -1677,6 +1849,8 @@ const runWorkflow = async (inputParams = {}) => {
   executionLogs.value = [];
   lastExecutionResult.value = null;
   
+  const startTime = Date.now();
+  
   const onStatusChange = (status) => {
     nodeExecutionStatus.value = status;
   };
@@ -1689,6 +1863,20 @@ const runWorkflow = async (inputParams = {}) => {
   const result = await executionEngine.execute(elements.value, inputParams);
   lastExecutionResult.value = result;
   isRunning.value = false;
+  
+  const endTime = Date.now();
+  const duration = endTime - startTime;
+  
+  executionHistory.value.unshift({
+    timestamp: startTime,
+    duration: duration,
+    logs: [...executionLogs.value],
+    result: { ...result }
+  });
+  
+  if (executionHistory.value.length > maxHistoryCount) {
+    executionHistory.value = executionHistory.value.slice(0, maxHistoryCount);
+  }
 };
 
 const handleParameterExecute = (params) => {
@@ -1705,6 +1893,10 @@ const closeParameterPanel = () => {
 const clearExecutionLogs = () => {
   executionLogs.value = [];
   lastExecutionResult.value = null;
+};
+
+const clearExecutionHistory = () => {
+  executionHistory.value = [];
 };
 
 const undo = () => {
@@ -1726,7 +1918,7 @@ const redo = () => {
 };
 
 const deleteSelectedNode = () => {
-  const edgesToDelete = selectedEdges.value.length > 0 
+  const edgesToDelete = selectedEdges?.value?.length > 0 
     ? selectedEdges.value.map(e => e.id) 
     : [];
   
@@ -2067,7 +2259,7 @@ const loadWorkflow = async (code) => {
 };
 
 const initNewWorkflow = () => {
-  elements.value = generateDefaultElements();
+  elements.value = [];
   workflowName.value = '未命名工作流';
   workflowCode.value = '';
   workflowDescription.value = '';

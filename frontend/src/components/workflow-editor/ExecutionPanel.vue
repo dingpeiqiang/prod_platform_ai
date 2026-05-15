@@ -1,6 +1,5 @@
 <template>
   <div class="execution-panel">
-    <!-- 面板头部 -->
     <div class="panel-header">
       <div class="header-left">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -12,11 +11,24 @@
           <span class="status-dot"></span>
           运行中
         </span>
-        <span v-else-if="lastResult" class="status-badge" :class="lastResult.status">
-          {{ lastResult.status === 'success' ? '✓ 成功' : '✗ 失败' }}
+        <span v-else-if="currentExecution?.result" class="status-badge" :class="currentExecution.result.status">
+          {{ currentExecution.result.status === 'success' ? '✓ 成功' : '✗ 失败' }}
         </span>
       </div>
       <div class="header-right">
+        <button 
+          v-if="history.length > 0" 
+          @click="showHistory = !showHistory" 
+          class="btn-action" 
+          :class="{ active: showHistory }"
+          title="历史记录"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+          </svg>
+          <span v-if="history.length > 0" class="history-count">{{ history.length }}</span>
+        </button>
         <button 
           v-if="logs.length > 0" 
           @click="$emit('clear')" 
@@ -31,8 +43,35 @@
         </button>
       </div>
     </div>
-    
-    <!-- 工具栏 -->
+
+    <div v-if="showHistory && history.length > 0" class="history-panel">
+      <div class="history-header">
+        <span>历史执行记录</span>
+        <button @click="clearHistory" class="btn-clear-history" title="清空历史">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 6h18"/>
+            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+          </svg>
+        </button>
+      </div>
+      <div class="history-list">
+        <div 
+          v-for="(item, index) in history" 
+          :key="index"
+          @click="selectHistory(index)"
+          :class="['history-item', { active: selectedHistoryIndex === index }]"
+        >
+          <div class="history-status" :class="item.result.status"></div>
+          <div class="history-info">
+            <span class="history-time">{{ formatTime(item.timestamp) }}</span>
+            <span class="history-duration">{{ item.duration }}ms</span>
+          </div>
+          <div class="history-logs">{{ item.logs.length }} 条日志</div>
+        </div>
+      </div>
+    </div>
+
     <div class="toolbar">
       <div class="search-box">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -57,8 +96,7 @@
         </button>
       </div>
     </div>
-    
-    <!-- 日志列表 -->
+
     <div class="logs-container" ref="logsContainer">
       <div v-if="visibleLogs.length === 0" class="empty-logs">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
@@ -103,9 +141,8 @@
         </div>
       </div>
     </div>
-    
-    <!-- 执行结果 -->
-    <div v-if="lastResult" class="result-section">
+
+    <div v-if="currentExecution?.result" class="result-section">
       <div 
         class="result-resizer" 
         @mousedown="startResize"
@@ -123,140 +160,166 @@
         </button>
       </div>
       <div class="result-content" :style="{ maxHeight: resultHeight + 'px' }">
-        <pre>{{ formatJson(lastResult) }}</pre>
+        <pre>{{ formatJson(currentExecution.result) }}</pre>
       </div>
     </div>
   </div>
 </template>
 
-<script setup>
-import { ref, computed, watch, nextTick } from 'vue';
-
+<script setup>import { ref, computed, watch, nextTick } from 'vue';
 const props = defineProps({
-  logs: {
-    type: Array,
-    default: () => []
-  },
-  isRunning: {
-    type: Boolean,
-    default: false
-  },
-  lastResult: {
-    type: Object,
-    default: null
-  }
+ logs: {
+ type: Array,
+ default: () => []
+ },
+ isRunning: {
+ type: Boolean,
+ default: false
+ },
+ lastResult: {
+ type: Object,
+ default: null
+ },
+ history: {
+ type: Array,
+ default: () => []
+ }
 });
-
-defineEmits(['clear']);
-
+const emit = defineEmits(['clear', 'clear-history']);
 const searchQuery = ref('');
 const activeFilters = ref(['all']);
 const expandedLogs = ref([]);
 const logsContainer = ref(null);
 const resultHeight = ref(100);
 const isResizing = ref(false);
-
+const showHistory = ref(false);
+const selectedHistoryIndex = ref(-1);
 const filterTags = [
-  { value: 'all', label: '全部' },
-  { value: 'node', label: '节点' },
-  { value: 'info', label: '信息' },
-  { value: 'start', label: '开始' },
-  { value: 'success', label: '成功' },
-  { value: 'error', label: '错误' }
+ { value: 'all', label: '全部' },
+ { value: 'node', label: '节点' },
+ { value: 'info', label: '信息' },
+ { value: 'start', label: '开始' },
+ { value: 'success', label: '成功' },
+ { value: 'error', label: '错误' }
 ];
-
-const visibleLogs = computed(() => {
-  let result = props.logs;
-  
-  if (activeFilters.value.length === 0 || !activeFilters.value.includes('all')) {
-    result = result.filter(log => activeFilters.value.includes(log.type));
-  }
-  
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase();
-    result = result.filter(log => 
-      log.title.toLowerCase().includes(query) ||
-      (log.message && log.message.toLowerCase().includes(query))
-    );
-  }
-  
-  return result;
+const currentExecution = computed(() => {
+ if (selectedHistoryIndex.value >= 0 && props.history.length > 0) {
+ return props.history[selectedHistoryIndex.value];
+ }
+ return {
+ logs: props.logs,
+ result: props.lastResult,
+ timestamp: Date.now(),
+ duration: 0
+ };
 });
-
+const visibleLogs = computed(() => {
+ let result = currentExecution.value.logs || [];
+ if (activeFilters.value.length === 0 || !activeFilters.value.includes('all')) {
+ result = result.filter(log => activeFilters.value.includes(log.type));
+ }
+ if (searchQuery.value) {
+ const query = searchQuery.value.toLowerCase();
+ result = result.filter(log => log.title.toLowerCase().includes(query) ||
+ (log.message && log.message.toLowerCase().includes(query)));
+ }
+ return result;
+});
 const toggleFilter = (filter) => {
-  if (filter === 'all') {
-    activeFilters.value = ['all'];
-  } else {
-    activeFilters.value = activeFilters.value.includes(filter)
-      ? activeFilters.value.filter(f => f !== filter)
-      : [...activeFilters.value.filter(f => f !== 'all'), filter];
-    if (activeFilters.value.length === 0) {
-      activeFilters.value = ['all'];
-    }
-  }
+ if (filter === 'all') {
+ activeFilters.value = ['all'];
+ }
+ else {
+ activeFilters.value = activeFilters.value.includes(filter)
+ ? activeFilters.value.filter(f => f !== filter)
+ : [...activeFilters.value.filter(f => f !== 'all'), filter];
+ if (activeFilters.value.length === 0) {
+ activeFilters.value = ['all'];
+ }
+ }
 };
-
 const toggleLogExpand = (index) => {
-  const idx = expandedLogs.value.indexOf(index);
-  if (idx > -1) {
-    expandedLogs.value.splice(idx, 1);
-  } else {
-    expandedLogs.value.push(index);
-  }
+ const idx = expandedLogs.value.indexOf(index);
+ if (idx > -1) {
+ expandedLogs.value.splice(idx, 1);
+ }
+ else {
+ expandedLogs.value.push(index);
+ }
 };
-
+const selectHistory = (index) => {
+ selectedHistoryIndex.value = selectedHistoryIndex.value === index ? -1 : index;
+ expandedLogs.value = [];
+};
+const clearHistory = () => {
+ emit('clear-history');
+ selectedHistoryIndex.value = -1;
+};
 const copyResult = async () => {
-  if (props.lastResult) {
-    try {
-      await navigator.clipboard.writeText(formatJson(props.lastResult));
-      alert('已复制到剪贴板');
-    } catch (err) {
-      console.error('复制失败:', err);
-    }
-  }
+ if (currentExecution.value.result) {
+ try {
+ await navigator.clipboard.writeText(formatJson(currentExecution.value.result));
+ alert('已复制到剪贴板');
+ }
+ catch (err) {
+ console.error('复制失败:', err);
+ }
+ }
 };
-
 const formatJson = (data) => {
-  try {
-    return JSON.stringify(data, null, 2);
-  } catch {
-    return String(data);
-  }
+ try {
+ return JSON.stringify(data, null, 2);
+ }
+ catch {
+ return String(data);
+ }
 };
-
+const formatTime = (timestamp) => {
+ const date = new Date(timestamp);
+ return date.toLocaleString('zh-CN', {
+ month: '2-digit',
+ day: '2-digit',
+ hour: '2-digit',
+ minute: '2-digit',
+ second: '2-digit'
+ });
+};
 const startResize = (event) => {
-  isResizing.value = true;
-  document.addEventListener('mousemove', onResize);
-  document.addEventListener('mouseup', stopResize);
-  event.preventDefault();
+ isResizing.value = true;
+ document.addEventListener('mousemove', onResize);
+ document.addEventListener('mouseup', stopResize);
+ event.preventDefault();
 };
-
 const onResize = (event) => {
-  if (!isResizing.value) return;
-  
-  const panel = document.querySelector('.execution-panel');
-  if (!panel) return;
-  
-  const panelRect = panel.getBoundingClientRect();
-  const newHeight = panelRect.height - event.clientY + panelRect.top;
-  
-  const minHeight = 60;
-  const maxHeight = panelRect.height - 100;
-  
-  resultHeight.value = Math.max(minHeight, Math.min(maxHeight, newHeight));
+ if (!isResizing.value)
+ return;
+ const panel = document.querySelector('.execution-panel');
+ if (!panel)
+ return;
+ const panelRect = panel.getBoundingClientRect();
+ const newHeight = panelRect.height - event.clientY + panelRect.top;
+ const minHeight = 60;
+ const maxHeight = panelRect.height - 100;
+ resultHeight.value = Math.max(minHeight, Math.min(maxHeight, newHeight));
 };
-
 const stopResize = () => {
-  isResizing.value = false;
-  document.removeEventListener('mousemove', onResize);
-  document.removeEventListener('mouseup', stopResize);
+ isResizing.value = false;
+ document.removeEventListener('mousemove', onResize);
+ document.removeEventListener('mouseup', stopResize);
 };
-
 watch(() => props.logs.length, async () => {
-  await nextTick();
-  if (logsContainer.value) {
-    logsContainer.value.scrollTop = logsContainer.value.scrollHeight;
-  }
+ if (selectedHistoryIndex.value >= 0)
+ return;
+ await nextTick();
+ if (logsContainer.value) {
+ logsContainer.value.scrollTop = logsContainer.value.scrollHeight;
+ }
+});
+watch(selectedHistoryIndex, async () => {
+ await nextTick();
+ if (logsContainer.value) {
+ logsContainer.value.scrollTop = 0;
+ }
 });
 </script>
 
@@ -348,11 +411,126 @@ watch(() => props.logs.length, async () => {
   cursor: pointer;
   padding: 4px;
   border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .btn-action:hover {
   background-color: #334155;
   color: #e2e8f0;
+}
+
+.btn-action.active {
+  background-color: #3b82f6;
+  color: white;
+}
+
+.history-count {
+  background-color: #334155;
+  padding: 1px 4px;
+  border-radius: 8px;
+  font-size: 10px;
+}
+
+.history-panel {
+  background-color: #0f172a;
+  border-bottom: 1px solid #334155;
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #334155;
+}
+
+.history-header span {
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.btn-clear-history {
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+}
+
+.btn-clear-history:hover {
+  background-color: #334155;
+  color: #ef4444;
+}
+
+.history-list {
+  max-height: 120px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.history-item:hover {
+  background-color: #1e293b;
+}
+
+.history-item.active {
+  background-color: #3b82f6;
+}
+
+.history-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.history-status.success {
+  background-color: #10b981;
+}
+
+.history-status.error {
+  background-color: #ef4444;
+}
+
+.history-info {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+}
+
+.history-time {
+  font-size: 11px;
+  color: #e2e8f0;
+}
+
+.history-duration {
+  font-size: 10px;
+  color: #64748b;
+}
+
+.history-logs {
+  font-size: 10px;
+  color: #64748b;
+  background-color: #334155;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.history-item.active .history-logs {
+  background-color: rgba(255, 255, 255, 0.2);
 }
 
 .execution-panel .toolbar {
@@ -427,7 +605,7 @@ watch(() => props.logs.length, async () => {
 }
 
 .filter-tag.start.active {
-  background-color: #3b82f6;
+  background-color: #334155;
 }
 
 .filter-tag.success.active {

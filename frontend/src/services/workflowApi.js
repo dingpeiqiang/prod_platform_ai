@@ -4,7 +4,7 @@ const API_BASE_URL = window.location.origin
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 120000,
 })
 
 // 请求拦截器
@@ -94,5 +94,23 @@ export const workflowApi = {
   // AI生成工作流
   generate(requirement) {
     return apiClient.post('/api/workflows/generate', { requirement })
+  },
+
+  // AI优化工作流
+  optimize(workflowData) {
+    return apiClient.post('/api/scheduler/optimize', workflowData)
+  },
+
+  // 获取工作流可用变量
+  getVariables(workflowCode, nodeId = null, typeFilter = null) {
+    const params = {}
+    if (nodeId) params.nodeId = nodeId
+    if (typeFilter) params.typeFilter = typeFilter
+    return apiClient.get(`/api/workflows/${workflowCode}/variables`, { params })
+  },
+
+  // 获取节点配置选项（包含可用变量和字段定义）
+  getNodeConfigOptions(workflowCode, nodeId) {
+    return apiClient.get(`/api/workflows/${workflowCode}/node-config-options/${nodeId}`)
   }
 }
