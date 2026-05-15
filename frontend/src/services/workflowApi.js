@@ -89,5 +89,10 @@ export const workflowApi = {
   // 切换工作流启用状态
   toggle(workflowCode) {
     return apiClient.post(`/api/workflows/${workflowCode}/toggle`)
+  },
+
+  // AI生成工作流
+  generate(requirement) {
+    return apiClient.post('/api/workflows/generate', { requirement })
   }
 }

@@ -1,4 +1,4 @@
-﻿"""
+"""
 工作流管理API
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
@@ -7,6 +7,7 @@ from typing import Optional
 
 from app.core.database import get_db
 from app.services.workflow_service import WorkflowService
+from app.services.workflow_generator import get_workflow_generator
 from pydantic import BaseModel
 from typing import List, Dict, Any
 
@@ -149,3 +150,30 @@ async def update_execution_status(execution_id: str, request: ExecutionUpdateReq
     if not result["success"]:
         raise HTTPException(status_code=404, detail=result["message"])
     return result
+
+
+class WorkflowGenerationRequest(BaseModel):
+    requirement: str
+
+
+@router.post("/generate")
+async def generate_workflow(request: WorkflowGenerationRequest):
+    """根据用户需求生成工作流"""
+    generator = get_workflow_generator()
+    result = generator.generate_workflow(request.requirement)
+    
+    if not result["success"]:
+        raise HTTPException(status_code=500, detail=result["message"])
+    
+    # 验证生成的工作流
+    validation = generator.validate_workflow(result["data"])
+    
+    # 格式化为编辑器可用格式
+    editor_format = generator.format_for_editor(result["data"])
+    
+    return {
+        "success": True,
+        "data": editor_format,
+        "description": result["data"].get("description", ""),
+        "validation": validation
+    }

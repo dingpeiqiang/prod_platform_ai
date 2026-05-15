@@ -50,6 +50,14 @@
           </svg>
           导入
         </button>
+        <button @click="showGenerateModal = true" class="btn-secondary ai-btn" title="AI生成工作流">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+          </svg>
+          AI生成
+        </button>
         <div class="toolbar-divider"></div>
         <button
         @click="handleExecute"
@@ -541,6 +549,85 @@
         </div>
       </div>
     </div>
+
+    <!-- AI生成工作流模态框 -->
+    <div v-if="showGenerateModal" class="modal-overlay" @click.self="cancelGenerate">
+      <div class="modal generate-workflow-modal">
+        <div class="modal-header">
+          <div class="modal-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+              <path d="M2 17l10 5 10-5"/>
+              <path d="M2 12l10 5 10-5"/>
+            </svg>
+            <h3>AI生成工作流</h3>
+          </div>
+          <button class="close-btn" @click="cancelGenerate">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="generate-intro">
+            <p>描述您想要创建的工作流，AI将自动为您生成工作流设计。</p>
+            <div class="example-tips">
+              <span class="tips-label">💡 示例：</span>
+              <span class="tips-content">"创建一个数据分析工作流，获取API数据后进行分析"</span>
+            </div>
+          </div>
+          <div class="form-item">
+            <label>工作流需求描述</label>
+            <textarea 
+              v-model="generateRequirement" 
+              rows="4" 
+              placeholder="请描述您想要创建的工作流..."
+              :disabled="isGenerating"
+            ></textarea>
+          </div>
+          <div v-if="generateResult" class="generate-result">
+            <div class="result-header">
+              <h4>生成结果</h4>
+              <span class="result-status" :class="{ success: generateResult.validation.valid, error: !generateResult.validation.valid }">
+                {{ generateResult.validation.valid ? '✓ 验证通过' : '✗ 存在错误' }}
+              </span>
+            </div>
+            <div v-if="generateResult.description" class="result-description">
+              <p>{{ generateResult.description }}</p>
+            </div>
+            <div v-if="generateResult.validation.errors.length > 0" class="result-errors">
+              <h5>错误信息：</h5>
+              <ul>
+                <li v-for="(error, index) in generateResult.validation.errors" :key="index">{{ error }}</li>
+              </ul>
+            </div>
+            <div class="result-stats">
+              <span>节点数：{{ generateResult.data.nodes.length }}</span>
+              <span>连接线数：{{ generateResult.data.edges.length }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn" @click="cancelGenerate" :disabled="isGenerating">取消</button>
+          <button 
+            v-if="!generateResult"
+            @click="generateWorkflow" 
+            :disabled="!generateRequirement.trim() || isGenerating"
+            class="btn btn-primary"
+          >
+            <svg v-if="isGenerating" class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 6v6l4 2"/>
+            </svg>
+            {{ isGenerating ? '生成中...' : '生成工作流' }}
+          </button>
+          <button 
+            v-else
+            @click="applyGeneratedWorkflow" 
+            :disabled="!generateResult.validation.valid"
+            class="btn btn-success"
+          >
+            应用到画布
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -630,6 +717,12 @@ const workflowTags = ref([]);
 
 const executionLogs = ref([]);
 const isRunning = ref(false);
+
+// AI生成工作流相关状态
+const showGenerateModal = ref(false);
+const generateRequirement = ref('');
+const isGenerating = ref(false);
+const generateResult = ref(null);
 const lastExecutionResult = ref(null);
 const copiedNodes = ref([]);
 const nodeExecutionStatus = ref({});
@@ -1459,6 +1552,79 @@ const clearWorkflow = () => {
     selectedNodeId.value = null;
     hasChanges.value = false;
   }
+};
+
+// AI生成工作流相关方法
+const generateWorkflow = async () => {
+  if (!generateRequirement.value.trim()) return;
+  
+  isGenerating.value = true;
+  generateResult.value = null;
+  
+  try {
+    const response = await workflowApi.workflowApi.generate(generateRequirement.value);
+    
+    if (response.success) {
+      generateResult.value = response;
+      ElMessage.success('工作流生成成功！');
+    } else {
+      ElMessage.error(response.message || '生成失败');
+    }
+  } catch (error) {
+    console.error('生成工作流失败:', error);
+    ElMessage.error('生成工作流失败：' + (error.message || '未知错误'));
+  } finally {
+    isGenerating.value = false;
+  }
+};
+
+const cancelGenerate = () => {
+  showGenerateModal.value = false;
+  generateRequirement.value = '';
+  generateResult.value = null;
+};
+
+const applyGeneratedWorkflow = () => {
+  if (!generateResult.value || !generateResult.value.data) return;
+  
+  saveHistory();
+  
+  const { nodes, edges } = generateResult.value.data;
+  
+  // 为导入的节点设置默认label（如果没有的话）
+  const processedNodes = nodes.map(node => {
+    const typeDef = nodeTypeDefinitions.find(def => def.id === node.type);
+    const defaultLabel = typeDef ? typeDef.name : node.type;
+    
+    return {
+      id: node.id,
+      type: node.type,
+      position: node.position,
+      data: {
+        ...node.data,
+        label: node.data?.label || defaultLabel
+      }
+    };
+  });
+  
+  const processedEdges = edges.map(edge => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    sourceHandle: edge.sourceHandle,
+    targetHandle: edge.targetHandle,
+    markerEnd: edge.markerEnd || {
+      type: 'arrowclosed',
+      color: '#94a3b8'
+    }
+  }));
+  
+  elements.value = [...processedNodes, ...processedEdges];
+  markDirty();
+  
+  // 关闭模态框并重置状态
+  cancelGenerate();
+  ElMessage.success('工作流已应用到画布');
 };
 
 const handleExecute = () => {
