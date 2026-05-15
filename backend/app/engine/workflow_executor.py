@@ -719,6 +719,10 @@ class WorkflowExecutor:
         context.status = ExecutionStatus.RUNNING
         context.started_at = datetime.now()
         
+        # 创建消息队列
+        import asyncio
+        message_queue = asyncio.Queue()
+        
         yield {
             "type": "workflow_start",
             "workflow_id": workflow_id,
@@ -735,7 +739,28 @@ class WorkflowExecutor:
                 }
                 return
             
-            await self._execute_node_streaming(start_node["id"], context, lambda msg: yield msg)
+            # 异步执行节点，并收集消息
+            async def run_and_collect():
+                await self._execute_node_streaming(start_node["id"], context, message_queue.put)
+            
+            # 并行处理执行和输出
+            async def process_queue():
+                while True:
+                    msg = await message_queue.get()
+                    if msg is None:
+                        break
+                    yield msg
+                    message_queue.task_done()
+            
+            # 启动执行任务
+            exec_task = asyncio.create_task(run_and_collect())
+            
+            # 处理队列中的消息
+            async for msg in process_queue():
+                yield msg
+            
+            # 等待执行完成
+            await exec_task
             
             yield {
                 "type": "workflow_complete",
@@ -797,7 +822,7 @@ class WorkflowExecutor:
             return
         
         # 发送节点开始事件
-        yield_fn({
+        await yield_fn({
             "type": "node_start",
             "node_id": node_id,
             "node_type": node_type,
@@ -810,7 +835,7 @@ class WorkflowExecutor:
         
         # 发送节点完成事件
         node_status = context.node_statuses.get(node_id, ExecutionStatus.COMPLETED)
-        yield_fn({
+        await yield_fn({
             "type": "node_complete",
             "node_id": node_id,
             "node_type": node_type,

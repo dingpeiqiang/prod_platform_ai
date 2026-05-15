@@ -12,7 +12,7 @@
     <div class="node-body">
       <span class="node-desc">工作流结束</span>
     </div>
-    <Handle type="target" :position="Position.Left" />
+    <Handle type="target" :position="Position.Left" id="target" />
   </div>
 </template>
 

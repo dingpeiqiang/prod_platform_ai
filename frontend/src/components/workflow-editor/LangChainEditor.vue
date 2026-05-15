@@ -549,7 +549,7 @@ const goBack = () => {
   emit('go-back');
 };
 
-const { addEdges, removeNodes, removeEdges, project } = useVueFlow();
+const { addEdges, removeNodes, removeEdges, project, selectedEdges } = useVueFlow();
 
 const elements = ref([]);
 const hasChanges = ref(false);
@@ -1372,6 +1372,17 @@ const redo = () => {
 };
 
 const deleteSelectedNode = () => {
+  const edgesToDelete = selectedEdges.value.length > 0 
+    ? selectedEdges.value.map(e => e.id) 
+    : [];
+  
+  if (edgesToDelete.length > 0) {
+    saveHistory();
+    removeEdges(edgesToDelete);
+    markDirty();
+    return;
+  }
+  
   const nodesToDelete = selectedNodeIds.value.length > 0 
     ? selectedNodeIds.value 
     : (selectedNodeId.value ? [selectedNodeId.value] : []);

@@ -12,8 +12,8 @@
         class="node-textarea"
       ></textarea>
     </div>
-    <Handle type="target" :position="Position.Left" />
-    <Handle type="source" :position="Position.Right" />
+    <Handle type="target" :position="Position.Left" id="target" />
+    <Handle type="source" :position="Position.Right" id="source" />
   </div>
 </template>
 

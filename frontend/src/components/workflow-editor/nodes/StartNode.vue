@@ -109,7 +109,7 @@
         </button>
       </div>
     </div>
-    <Handle type="source" :position="Position.Right" />
+    <Handle type="source" :position="Position.Right" id="source" />
   </div>
 </template>
 

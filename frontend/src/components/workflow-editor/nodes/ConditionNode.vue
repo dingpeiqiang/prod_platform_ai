@@ -117,7 +117,7 @@
         </label>
       </div>
     </div>
-    <Handle type="target" :position="Position.Left" />
+    <Handle type="target" :position="Position.Left" id="target" />
     <Handle type="source" :position="Position.Right" id="true" class="handle-true" />
     <Handle type="source" :position="Position.Right" id="false" class="handle-false" />
   </div>
