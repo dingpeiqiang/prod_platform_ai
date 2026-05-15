@@ -318,6 +318,10 @@
           <template #node-parser="props">
             <ParserNode :data="props.data" :selected="props.selected" @update="updateNodeData" />
           </template>
+          
+          <template #node-form="props">
+            <FormNode :data="props.data" :selected="props.selected" @update="updateNodeData" />
+          </template>
         </VueFlow>
       </div>
 
@@ -567,6 +571,7 @@ import VariableNode from './nodes/VariableNode.vue';
 import HttpNode from './nodes/HttpNode.vue';
 import CodeNode from './nodes/CodeNode.vue';
 import ParserNode from './nodes/ParserNode.vue';
+import FormNode from './nodes/FormNode.vue';
 
 import { debounce, validateWorkflow, alignNodes, distributeNodes, autoLayoutNodes } from './utils/editorUtils';
 import { ExecutionEngine } from './utils/executionEngine';
@@ -803,7 +808,8 @@ const nodeTypeDefinitions = [
   { id: 'http', name: 'HTTP请求' },
   { id: 'code', name: '代码执行' },
   { id: 'variable', name: '变量赋值' },
-  { id: 'parser', name: '输出解析' }
+  { id: 'parser', name: '输出解析' },
+  { id: 'form', name: '表单节点' }
 ];
 
 const selectedNodeData = computed(() => {
@@ -890,6 +896,16 @@ const availableVariables = computed(() => {
         type: 'object',
         description: '解析后的数据',
         sourceNode: node.data.label || '解析节点',
+        category: 'output'
+      });
+    }
+    
+    if (node.type === 'form') {
+      vars.push({
+        name: 'form_data',
+        type: 'object',
+        description: '表单提交数据',
+        sourceNode: node.data.label || '表单节点',
         category: 'output'
       });
     }

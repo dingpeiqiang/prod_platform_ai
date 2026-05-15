@@ -96,6 +96,13 @@ const nodeGroups = ref([
     nodes: [
       { id: 'parser', name: '输出解析', icon: '📊', type: 'parser' }
     ]
+  },
+  {
+    id: 'forms',
+    name: '表单操作',
+    nodes: [
+      { id: 'form', name: '表单节点', icon: '📋', type: 'form' }
+    ]
   }
 ]);
 
