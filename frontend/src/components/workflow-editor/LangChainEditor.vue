@@ -290,7 +290,12 @@
           </template>
           
           <template #node-prompt="props">
-            <PromptNode :data="props.data" :selected="props.selected" @update="updateNodeData" />
+            <PromptNode 
+              :data="props.data" 
+              :selected="props.selected" 
+              :available-variables="availableVariables"
+              @update="updateNodeData" 
+            />
           </template>
           
           <template #node-llm="props">
@@ -591,7 +596,15 @@ const quickTemplates = ref([
     name: '简单问答',
     description: '基础的问答流程，适合快速上手',
     nodes: [
-      { type: 'start', x: 50, y: 200, title: '开始' },
+      { 
+        type: 'start', 
+        x: 50, 
+        y: 200, 
+        title: '开始',
+        parameters: [
+          { name: 'question', type: 'string', default: '', description: '用户输入的问题' }
+        ]
+      },
       { type: 'prompt', x: 250, y: 200, title: '问题提示词', prompt: '请回答以下问题：{{question}}' },
       { type: 'llm', x: 450, y: 200, title: 'LLM', model: 'qwen-vl-plus', temperature: 0.7 },
       { type: 'end', x: 650, y: 200, title: '结束' }
@@ -607,7 +620,15 @@ const quickTemplates = ref([
     name: '数据分析',
     description: '获取数据并进行分析处理',
     nodes: [
-      { type: 'start', x: 50, y: 200, title: '开始' },
+      { 
+        type: 'start', 
+        x: 50, 
+        y: 200, 
+        title: '开始',
+        parameters: [
+          { name: 'apiUrl', type: 'string', default: '', description: '数据源API地址' }
+        ]
+      },
       { type: 'http', x: 250, y: 200, title: '获取数据', method: 'GET', url: '{{apiUrl}}' },
       { type: 'parser', x: 450, y: 200, title: '解析数据' },
       { type: 'prompt', x: 650, y: 200, title: '分析提示词', prompt: '请分析以下数据：{{data}}' },
@@ -627,7 +648,15 @@ const quickTemplates = ref([
     name: '条件分支',
     description: '根据条件判断走不同流程',
     nodes: [
-      { type: 'start', x: 50, y: 250, title: '开始' },
+      { 
+        type: 'start', 
+        x: 50, 
+        y: 250, 
+        title: '开始',
+        parameters: [
+          { name: 'question', type: 'string', default: '', description: '用户输入的问题' }
+        ]
+      },
       { type: 'prompt', x: 250, y: 250, title: '输入问题', prompt: '{{question}}' },
       { type: 'llm', x: 450, y: 250, title: '意图识别', model: 'qwen-vl-plus', temperature: 0.3 },
       { type: 'condition', x: 650, y: 250, title: '判断意图' },
@@ -650,11 +679,19 @@ const quickTemplates = ref([
     ]
   },
   {
-id: 'code-execution',
+    id: 'code-execution',
     name: '代码执行',
     description: '生成并执行代码获取结果',
     nodes: [
-      { type: 'start', x: 50, y: 200, title: '开始' },
+      { 
+        type: 'start', 
+        x: 50, 
+        y: 200, 
+        title: '开始',
+        parameters: [
+          { name: 'requirement', type: 'string', default: '', description: '代码需求描述' }
+        ]
+      },
       { type: 'prompt', x: 250, y: 200, title: '需求描述', prompt: '{{requirement}}' },
       { type: 'llm', x: 450, y: 200, title: '生成代码', model: 'qwen-vl-plus', temperature: 0.3 },
       { type: 'code', x: 650, y: 200, title: '执行代码', language: 'javascript' },
@@ -731,6 +768,88 @@ const selectedNodeTypeLabel = computed(() => {
   if (!selectedNodeData.value) return '';
   const def = nodeTypeDefinitions.find(d => d.id === selectedNodeData.value.type);
   return def ? def.name : selectedNodeData.value.type;
+});
+
+const availableVariables = computed(() => {
+  const vars = [];
+  
+  const nodes = elements.value.filter(el => !el.source && !el.target);
+  
+  nodes.forEach(node => {
+    if (node.type === 'start' && node.data.parameters) {
+      node.data.parameters.forEach(param => {
+        vars.push({
+          name: param.name,
+          type: param.type || 'string',
+          description: param.description,
+          default: param.default,
+          category: 'input'
+        });
+      });
+    }
+    
+    if (node.type === 'variable' && node.data.varName) {
+      vars.push({
+        name: node.data.varName,
+        type: node.data.varType || 'string',
+        description: node.data.description,
+        value: node.data.varValue,
+        category: 'workflow'
+      });
+    }
+    
+    if (node.type === 'llm') {
+      vars.push({
+        name: 'llm_output',
+        type: 'string',
+        description: 'LLM 模型输出',
+        sourceNode: node.data.label || 'LLM节点',
+        category: 'output'
+      });
+    }
+    
+    if (node.type === 'http') {
+      vars.push({
+        name: 'http_result',
+        type: 'object',
+        description: 'HTTP 请求结果',
+        sourceNode: node.data.label || 'HTTP节点',
+        category: 'output'
+      });
+    }
+    
+    if (node.type === 'code') {
+      vars.push({
+        name: 'code_result',
+        type: 'string',
+        description: '代码执行结果',
+        sourceNode: node.data.label || '代码节点',
+        category: 'output'
+      });
+    }
+    
+    if (node.type === 'tool') {
+      vars.push({
+        name: 'tool_result',
+        type: 'object',
+        description: '工具调用结果',
+        sourceNode: node.data.label || '工具节点',
+        category: 'output'
+      });
+    }
+    
+    if (node.type === 'parser') {
+      vars.push({
+        name: 'parsed_data',
+        type: 'object',
+        description: '解析后的数据',
+        sourceNode: node.data.label || '解析节点',
+        category: 'output'
+      });
+    }
+  });
+  
+  return vars;
 });
 
 const validationResults = computed(() => {
@@ -1080,7 +1199,10 @@ const onDrop = (event) => {
       position,
       data: {
         label: nodeType.name,
-        ...nodeType
+        ...nodeType,
+        ...(nodeType.type === 'start' && {
+          parameters: [{ name: 'input', type: 'string', default: '', description: '输入参数' }]
+        })
       }
     };
     
