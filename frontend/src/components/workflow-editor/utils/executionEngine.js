@@ -1,3 +1,11 @@
+/**
+ * 工作流执行引擎
+ * 
+ * 支持两种执行模式：
+ * 1. 本地模拟执行（用于快速预览）
+ * 2. 后端API执行（真实执行，调用LangChain）
+ */
+
 export class ExecutionEngine {
   constructor() {
     this.logs = [];
@@ -5,6 +13,7 @@ export class ExecutionEngine {
     this.nodeStatus = {};
     this.onStatusChange = null;
     this.onLog = null;
+    this.useRemoteExecution = true; // 默认使用后端执行
   }
 
   setCallbacks(onStatusChange, onLog) {
@@ -43,38 +52,13 @@ export class ExecutionEngine {
     this.clearNodeStatus();
 
     try {
-      const nodes = elements.filter(el => !el.source && !el.target);
-      const edges = elements.filter(el => el.source && el.target);
-
-      const startNode = nodes.find(n => n.type === 'start');
-      if (!startNode) {
-        throw new Error('未找到开始节点');
+      if (this.useRemoteExecution) {
+        // 使用后端API执行
+        return await this.executeRemote(elements, inputParams);
+      } else {
+        // 使用本地模拟执行
+        return await this.executeLocal(elements, inputParams);
       }
-
-      const context = {
-        input: '',
-        variables: {},
-        params: inputParams || {}  // 添加传入参数到上下文
-      };
-
-      // 记录输入参数
-      if (Object.keys(inputParams).length > 0) {
-        this.addLog('info', '接收到执行参数', null, { params: inputParams });
-      }
-
-      this.addLog('start', '开始执行工作流', null, null);
-      await this.executeNode(startNode.id, nodes, edges, context);
-
-      this.addLog('success', '工作流执行完成', null, {
-        context,
-        timestamp: new Date().toISOString()
-      });
-
-      return {
-        status: 'success',
-        context,
-        timestamp: new Date().toISOString()
-      };
     } catch (error) {
       this.addLog('error', '工作流执行失败', error.message, null);
       return {
@@ -85,6 +69,174 @@ export class ExecutionEngine {
     } finally {
       this.isRunning = false;
     }
+  }
+
+  async executeRemote(elements, inputParams) {
+    const nodes = elements.filter(el => !el.source && !el.target);
+    const edges = elements.filter(el => el.source && el.target);
+    
+    const workflowDef = {
+      nodes,
+      edges,
+      version: '2.0'
+    };
+
+    this.addLog('start', '开始执行工作流（远程模式）', null, null);
+
+    try {
+      const response = await fetch('/api/execution/execute', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          workflow_def: workflowDef,
+          inputs: inputParams
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || '执行失败');
+      }
+
+      const result = await response.json();
+
+      // 更新节点状态
+      if (result.node_statuses) {
+        this.nodeStatus = { ...result.node_statuses };
+        if (this.onStatusChange) {
+          this.onStatusChange({ ...this.nodeStatus });
+        }
+      }
+
+      // 添加执行日志
+      this.addLog('info', '工作流执行完成', null, {
+        workflowId: result.workflow_id,
+        status: result.status
+      });
+
+      if (result.outputs) {
+        Object.keys(result.outputs).forEach(key => {
+          this.addLog('info', `输出变量: ${key}`, null, result.outputs[key]);
+        });
+      }
+
+      return {
+        status: result.status === 'completed' ? 'success' : result.status,
+        context: { outputs: result.outputs },
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      this.addLog('error', '远程执行失败', error.message, null);
+      throw error;
+    }
+  }
+
+  async executeStreaming(elements, inputParams = {}) {
+    const nodes = elements.filter(el => !el.source && !el.target);
+    const edges = elements.filter(el => el.source && el.target);
+    
+    const workflowDef = {
+      nodes,
+      edges,
+      version: '2.0'
+    };
+
+    return new Promise((resolve, reject) => {
+      const eventSource = new EventSource('/api/execution/execute/stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          workflow_def: workflowDef,
+          inputs: inputParams
+        })
+      });
+
+      eventSource.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          
+          switch (message.type) {
+            case 'workflow_start':
+              this.addLog('start', '工作流开始执行', null, { workflowId: message.workflow_id });
+              break;
+            
+            case 'node_start':
+              this.setNodeStatus(message.node_id, 'running');
+              this.addLog('node', `开始执行节点: ${message.node_label}`, `节点ID: ${message.node_id}`, { nodeType: message.node_type });
+              break;
+            
+            case 'node_complete':
+              this.setNodeStatus(message.node_id, message.status);
+              this.addLog('info', `节点执行完成: ${message.node_type}`, null, { status: message.status });
+              break;
+            
+            case 'workflow_complete':
+              this.addLog('success', '工作流执行完成', null, { outputs: message.outputs });
+              eventSource.close();
+              resolve({
+                status: 'success',
+                context: { outputs: message.outputs },
+                timestamp: new Date().toISOString()
+              });
+              break;
+            
+            case 'error':
+              this.addLog('error', '执行错误', message.message, null);
+              eventSource.close();
+              reject(new Error(message.message));
+              break;
+          }
+        } catch (error) {
+          eventSource.close();
+          reject(error);
+        }
+      };
+
+      eventSource.onerror = (error) => {
+        eventSource.close();
+        this.addLog('error', '流连接错误', error.message || '未知错误', null);
+        reject(new Error('流连接失败'));
+      };
+    });
+  }
+
+  async executeLocal(elements, inputParams = {}) {
+    const nodes = elements.filter(el => !el.source && !el.target);
+    const edges = elements.filter(el => el.source && el.target);
+
+    const startNode = nodes.find(n => n.type === 'start');
+    if (!startNode) {
+      throw new Error('未找到开始节点');
+    }
+
+    const context = {
+      input: '',
+      variables: {},
+      params: inputParams || {}
+    };
+
+    if (Object.keys(inputParams).length > 0) {
+      this.addLog('info', '接收到执行参数', null, { params: inputParams });
+    }
+
+    this.addLog('start', '开始执行工作流（本地模式）', null, null);
+    await this.executeNode(startNode.id, nodes, edges, context);
+
+    this.addLog('success', '工作流执行完成', null, {
+      context,
+      timestamp: new Date().toISOString()
+    });
+
+    return {
+      status: 'success',
+      context,
+      timestamp: new Date().toISOString()
+    };
   }
 
   async executeNode(nodeId, nodes, edges, context) {
@@ -99,7 +251,6 @@ export class ExecutionEngine {
     try {
       switch (node.type) {
         case 'start':
-          // 将传入的参数设置到变量中，方便后续节点使用
           if (context.params && Object.keys(context.params).length > 0) {
             Object.assign(context.variables, context.params);
             this.addLog('info', '初始化参数到变量', null, context.variables);

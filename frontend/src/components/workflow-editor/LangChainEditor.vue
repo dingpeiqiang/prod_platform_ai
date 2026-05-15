@@ -9,65 +9,13 @@
           返回
         </button>
         <div class="toolbar-divider"></div>
-        <button @click="newWorkflow" class="btn-primary" title="新建工作流">
+        <div class="workflow-name-display">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 5v14"/>
-            <path d="M5 12h14"/>
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+            <line x1="12" y1="22.08" x2="12" y2="12"/>
           </svg>
-          新建
-        </button>
-        <div class="workflow-selector">
-          <button @click="showWorkflowList = !showWorkflowList" class="btn-secondary workflow-btn">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-              <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-              <line x1="12" y1="22.08" x2="12" y2="12"/>
-            </svg>
-            <span class="workflow-name">{{ workflowName }}</span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-          </button>
-          <div v-if="showWorkflowList" class="workflow-dropdown">
-            <div class="dropdown-header">
-              <span>工作流列表</span>
-              <span class="workflow-count" v-if="workflows.length > 0">{{ workflows.length }}</span>
-            </div>
-            <div class="dropdown-content">
-              <div v-if="workflows.length === 0" class="empty-workflows">
-                <div class="empty-icon">📋</div>
-                <div class="empty-text">暂无保存的工作流</div>
-                <div class="empty-hint">从右侧快速模板开始创建</div>
-              </div>
-              <div 
-                v-for="wf in workflows" 
-                :key="wf.id"
-                @click="openWorkflow(wf)"
-                class="dropdown-item"
-                :class="{ active: currentWorkflowId === wf.id }"
-              >
-                <div class="item-left">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                    <path d="M9 3v18"/>
-                  </svg>
-                  <div class="item-info">
-                    <div class="item-name">{{ wf.name }}</div>
-                    <div class="item-meta">
-                      <span v-if="wf.description" class="item-desc">{{ wf.description }}</span>
-                      <span class="item-time">{{ formatDate(wf.updatedAt || wf.savedAt || wf.createdAt) }}</span>
-                    </div>
-                  </div>
-                </div>
-                <button @click.stop="deleteWorkflow(wf.id)" class="delete-btn" title="删除">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M3 6h18"/>
-                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
+          <span class="workflow-name">{{ workflowName }}</span>
         </div>
         <button @click="renameWorkflow" class="btn-icon" title="重命名">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -114,37 +62,22 @@
           导入
         </button>
         <div class="toolbar-divider"></div>
-        <button 
-          @click="runWorkflowWithPanel" 
-          :disabled="!isValid || isRunning" 
-          class="btn-success"
-          :class="{ running: isRunning }"
-          title="带参数执行"
-        >
-          <svg v-if="!isRunning" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polygon points="5 3 19 12 5 21 5 3"/>
-          </svg>
-          <svg v-else class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <path d="M12 6v6l4 2"/>
-          </svg>
-          {{ isRunning ? '运行中...' : '运行' }}
-        </button>
-        <button 
-          @click="runWorkflow()" 
-          :disabled="!isValid || isRunning" 
-          class="btn-secondary"
-          title="直接执行（无参数）"
-        >
-          <svg v-if="!isRunning" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polygon points="5 3 19 12 5 21 5 3"/>
-          </svg>
-          <svg v-else class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <path d="M12 6v6l4 2"/>
-          </svg>
-          快速执行
-        </button>
+        <button
+        @click="handleExecute"
+        :disabled="!isValid || isRunning"
+        class="btn-success"
+        :class="{ running: isRunning }"
+        title="执行工作流"
+      >
+        <svg v-if="!isRunning" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="5 3 19 12 5 21 5 3"/>
+        </svg>
+        <svg v-else class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 6v6l4 2"/>
+        </svg>
+        {{ isRunning ? '运行中...' : '执行' }}
+      </button>
         <button @click="clearWorkflow" class="btn-danger">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 6h18"/>
@@ -500,7 +433,8 @@
               :node-data="selectedNodeData"
               :expanded="showRightPanel"
               :node-type-label="selectedNodeTypeLabel"
-              @update="onPropertyUpdate"
+              @toggle="toggleRightPanel"
+              @update-label="onUpdateLabel"
             />
           </div>
 
@@ -635,9 +569,7 @@ const history = ref([]);
 const historyIndex = ref(-1);
 const MAX_HISTORY = 50;
 
-const workflows = ref([]);
 const currentWorkflowId = ref(null);
-const showWorkflowList = ref(false);
 const workflowName = ref('未命名工作流');
 
 const executionLogs = ref([]);
@@ -1187,21 +1119,17 @@ const onPropertyUpdate = ({ key, value }) => {
   }
 };
 
-const markDirty = () => {
-  hasChanges.value = true;
-};
-
-const loadWorkflows = () => {
-  const saved = localStorage.getItem('langchain-workflows');
-  if (saved) {
-    workflows.value = JSON.parse(saved);
-  } else {
-    workflows.value = [];
+const onUpdateLabel = (nodeId, newLabel) => {
+  saveHistory();
+  const node = elements.value.find(el => el.id === nodeId);
+  if (node) {
+    node.data.label = newLabel;
+    markDirty();
   }
 };
 
-const saveWorkflows = () => {
-  localStorage.setItem('langchain-workflows', JSON.stringify(workflows.value));
+const markDirty = () => {
+  hasChanges.value = true;
 };
 
 const saveWorkflow = async () => {
@@ -1216,17 +1144,6 @@ const saveWorkflow = async () => {
   try {
     if (currentWorkflowId.value) {
       // 更新现有工作流
-      const index = workflows.value.findIndex(w => w.id === currentWorkflowId.value);
-      if (index !== -1) {
-        workflows.value[index] = { 
-          ...workflows.value[index], 
-          ...workflowData,
-          name: workflowName.value
-        };
-        saveWorkflows();
-      }
-      
-      // 同步到后端
       const updateResult = await workflowApi.workflowApi.update(currentWorkflowId.value, {
         workflowName: workflowName.value,
         workflowData: workflowData
@@ -1235,23 +1152,13 @@ const saveWorkflow = async () => {
       if (updateResult.success) {
         ElMessage.success('工作流已保存');
       } else {
-        ElMessage.warning('本地保存成功，但云端同步失败：' + (updateResult.message || '未知错误'));
+        ElMessage.error('保存失败：' + (updateResult.message || '未知错误'));
       }
     } else {
       // 创建新工作流
       const newId = uuidv4();
-      const newWorkflow = {
-        id: newId,
-        name: workflowName.value,
-        description: '',
-        ...workflowData,
-        createdAt: new Date().toISOString()
-      };
-      workflows.value.push(newWorkflow);
       currentWorkflowId.value = newId;
-      saveWorkflows();
       
-      // 同步到后端
       const createResult = await workflowApi.workflowApi.create({
         workflowCode: newId,
         workflowName: workflowName.value,
@@ -1263,7 +1170,8 @@ const saveWorkflow = async () => {
       if (createResult.success) {
         ElMessage.success('工作流已创建并保存');
       } else {
-        ElMessage.warning('本地保存成功，但云端同步失败：' + (createResult.message || '未知错误'));
+        ElMessage.error('创建失败：' + (createResult.message || '未知错误'));
+        currentWorkflowId.value = null;
       }
     }
     hasChanges.value = false;
@@ -1273,91 +1181,11 @@ const saveWorkflow = async () => {
   }
 };
 
-const newWorkflow = () => {
-  if (hasChanges.value) {
-    if (!confirm('当前工作流有未保存的更改，确定要创建新工作流吗？')) {
-      return;
-    }
-  }
-  elements.value = [];
-  selectedNodeId.value = null;
-  selectedNodeIds.value = [];
-  currentWorkflowId.value = null;
-  workflowName.value = '未命名工作流';
-  hasChanges.value = false;
-  history.value = [];
-  historyIndex.value = -1;
-  showWorkflowList.value = false;
-};
-
-const openWorkflow = (workflow) => {
-  if (hasChanges.value) {
-    if (!confirm('当前工作流有未保存的更改，确定要打开其他工作流吗？')) {
-      return;
-    }
-  }
-  currentWorkflowId.value = workflow.id;
-  workflowName.value = workflow.name;
-  const nodes = workflow.nodes.map(node => ({
-    id: node.id,
-    type: node.type,
-    position: node.position,
-    data: node.data
-  }));
-  const edges = workflow.edges ? workflow.edges.map(edge => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-    sourceHandle: edge.sourceHandle,
-    targetHandle: edge.targetHandle,
-    markerEnd: edge.markerEnd || {
-      type: 'arrowclosed',
-      color: '#94a3b8'
-    }
-  })) : [];
-  elements.value = [...nodes, ...edges];
-  selectedNodeId.value = null;
-  selectedNodeIds.value = [];
-  hasChanges.value = false;
-  history.value = [];
-  historyIndex.value = -1;
-  showWorkflowList.value = false;
-};
-
-const deleteWorkflow = (workflowId) => {
-  if (!confirm('确定要删除这个工作流吗？')) {
-    return;
-  }
-  const index = workflows.value.findIndex(w => w.id === workflowId);
-  if (index !== -1) {
-    workflows.value.splice(index, 1);
-    saveWorkflows();
-    if (currentWorkflowId.value === workflowId) {
-      newWorkflow();
-    }
-  }
-};
-
 const renameWorkflow = () => {
-  const currentWorkflow = currentWorkflowId.value 
-    ? workflows.value.find(w => w.id === currentWorkflowId.value)
-    : null;
-  
   const newName = prompt('请输入工作流名称:', workflowName.value);
   if (newName && newName.trim()) {
     workflowName.value = newName.trim();
-    
-    const newDesc = prompt('请输入工作流描述（可选）:', currentWorkflow?.description || '');
-    if (newDesc !== null) {
-      if (currentWorkflowId.value) {
-        const index = workflows.value.findIndex(w => w.id === currentWorkflowId.value);
-        if (index !== -1) {
-          workflows.value[index].name = workflowName.value;
-          workflows.value[index].description = newDesc.trim();
-          saveWorkflows();
-        }
-      }
-    }
+    markDirty();
   }
 };
 
@@ -1393,12 +1221,23 @@ const importWorkflow = () => {
           const workflow = JSON.parse(event.target.result);
           if (workflow.nodes && Array.isArray(workflow.nodes)) {
             saveHistory();
-            const nodes = workflow.nodes.map(node => ({
-              id: node.id,
-              type: node.type,
-              position: node.position,
-              data: node.data
-            }));
+            
+            // 为导入的节点设置默认 label（如果没有的话）
+            const nodes = workflow.nodes.map(node => {
+              const typeDef = nodeTypeDefinitions.find(def => def.id === node.type);
+              const defaultLabel = typeDef ? typeDef.name : node.type;
+              
+              return {
+                id: node.id,
+                type: node.type,
+                position: node.position,
+                data: {
+                  ...node.data,
+                  label: node.data?.label || defaultLabel
+                }
+              };
+            });
+            
             const edges = workflow.edges ? workflow.edges.map(edge => ({
               id: edge.id,
               source: edge.source,
@@ -1434,11 +1273,47 @@ const clearWorkflow = () => {
   }
 };
 
+const handleExecute = () => {
+  // 检查开始节点是否有参数
+  const startNode = elements.value.find(el => !el.source && el.type === 'start');
+  const hasParameters = startNode && startNode.data && startNode.data.parameters && startNode.data.parameters.length > 0;
+
+  if (hasParameters) {
+    // 有参数，显示参数输入面板
+    showRightPanel.value = true;
+    activePanel.value = 'execution';
+    showParameterPanel.value = true;
+
+    // 从开始节点获取预定义的参数
+    executionParameters.value = startNode.data.parameters.map(param => ({
+      name: param.name,
+      type: param.type,
+      value: param.default || '',
+      description: param.description || ''
+    }));
+  } else {
+    // 无参数，直接执行
+    runWorkflow();
+  }
+};
+
 const runWorkflowWithPanel = () => {
+  // 保持这个函数供ParameterInputPanel调用
   showRightPanel.value = true;
   activePanel.value = 'execution';
-  // 显示参数输入面板
   showParameterPanel.value = true;
+
+  const startNode = elements.value.find(el => !el.source && el.type === 'start');
+  if (startNode && startNode.data && startNode.data.parameters) {
+    executionParameters.value = startNode.data.parameters.map(param => ({
+      name: param.name,
+      type: param.type,
+      value: param.default || '',
+      description: param.description || ''
+    }));
+  } else {
+    executionParameters.value = [];
+  }
 };
 
 const runWorkflow = async (inputParams = {}) => {
@@ -1739,7 +1614,7 @@ const registerShortcuts = () => {
 const handleKeydown = (event) => {
   const target = event.target;
   const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
-  
+
   if (!isInput) {
     keyboardShortcuts.handleEvent(event);
   }
@@ -1748,8 +1623,7 @@ const handleKeydown = (event) => {
 onMounted(async () => {
   registerShortcuts();
   window.addEventListener('keydown', handleKeydown);
-  
-  loadWorkflows();
+  document.addEventListener('click', handleClickOutside);
   
   // 如果传入了 workflowCode，从后端加载
   if (props.workflowCode) {
@@ -1777,9 +1651,6 @@ onMounted(async () => {
       console.error('加载工作流失败:', error);
       ElMessage.error('加载工作流失败');
     }
-  } else if (workflows.value.length > 0) {
-    // 否则打开第一个本地工作流
-    openWorkflow(workflows.value[0]);
   }
   
   history.value.push(JSON.stringify(elements.value));
@@ -1846,26 +1717,24 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-.workflow-selector {
-  position: relative;
-  display: inline-block;
-}
-
-.workflow-btn {
+.workflow-name-display {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 120px;
-  justify-content: flex-start;
   padding: 6px 12px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  border: 1px solid #e0e0e0;
+  min-width: 120px;
 }
 
-.workflow-btn svg {
+.workflow-name-display svg {
   display: inline-block;
   flex-shrink: 0;
   width: 14px;
   height: 14px;
   max-width: none;
+  color: #64748b;
 }
 
 .workflow-name {
@@ -1874,162 +1743,9 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.workflow-dropdown {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  margin-top: 4px;
-  background: white;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  min-width: 240px;
-  z-index: 1000;
-  overflow: hidden;
-}
-
-.dropdown-header {
-  padding: 10px 12px;
-  background: #f5f5f5;
-  border-bottom: 1px solid #e0e0e0;
-  font-weight: 600;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.workflow-count {
-  background: #3b82f6;
-  color: white;
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 10px;
-  min-width: 18px;
-  text-align: center;
-}
-
-.empty-workflows {
-  padding: 30px 20px;
-  text-align: center;
-}
-
-.empty-icon {
-  font-size: 32px;
-  margin-bottom: 8px;
-}
-
-.empty-text {
-  font-size: 13px;
-  color: #64748b;
-  margin-bottom: 4px;
-}
-
-.empty-hint {
-  font-size: 11px;
-  color: #94a3b8;
-}
-
-.item-left {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  flex: 1;
-  min-width: 0;
-}
-
-.item-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.item-name {
   font-size: 13px;
   font-weight: 500;
   color: #334155;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.item-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-top: 2px;
-}
-
-.item-desc {
-  font-size: 11px;
-  color: #64748b;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.item-time {
-  font-size: 10px;
-  color: #94a3b8;
-}
-
-.dropdown-content {
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.dropdown-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  cursor: pointer;
-  transition: background-color 0.15s;
-}
-
-.dropdown-item:hover {
-  background-color: #f0f5ff;
-}
-
-.dropdown-item.active {
-  background-color: #e6f0ff;
-}
-
-.dropdown-item svg {
-  flex-shrink: 0;
-  margin-top: 2px;
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  max-width: none;
-}
-
-.delete-btn {
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.15s, visibility 0.15s;
-  padding: 4px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  color: #999;
-}
-
-.delete-btn svg {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  max-width: none;
-}
-
-.dropdown-item:hover .delete-btn {
-  opacity: 1;
-  visibility: visible;
-}
-
-.delete-btn:hover {
-  color: #ff4d4f;
 }
 
 .align-group,

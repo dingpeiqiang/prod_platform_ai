@@ -7,7 +7,7 @@
           <path d="M12 20h9"/>
           <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
         </svg>
-        <span>执行参数配置</span>
+        <span>{{ hasPredefinedParams ? '执行参数配置' : '执行参数配置' }}</span>
       </div>
       <div class="header-right">
         <button @click="$emit('close')" class="btn-close" title="关闭">
@@ -41,15 +41,19 @@
             <div class="param-name-row">
               <input 
                 v-model="param.name" 
+                :disabled="hasPredefinedParams"
                 @input="handleParamChange"
                 type="text" 
                 placeholder="参数名"
                 class="param-name-input"
+                :class="{ 'input-disabled': hasPredefinedParams }"
               />
               <select 
                 v-model="param.type" 
+                :disabled="hasPredefinedParams"
                 @change="handleParamChange"
                 class="param-type-select"
+                :class="{ 'select-disabled': hasPredefinedParams }"
               >
                 <option value="string">字符串</option>
                 <option value="number">数字</option>
@@ -58,7 +62,12 @@
                 <option value="array">数组</option>
               </select>
             </div>
-            <button @click="removeParameter(index)" class="btn-remove" title="删除参数">
+            <button 
+              v-if="!hasPredefinedParams"
+              @click="removeParameter(index)" 
+              class="btn-remove" 
+              title="删除参数"
+            >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="3 6 5 6 21 6"/>
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -112,20 +121,14 @@
           </div>
 
           <!-- 参数描述（可选） -->
-          <div class="param-description">
-            <input 
-              v-model="param.description" 
-              @input="handleParamChange"
-              type="text" 
-              placeholder="参数描述（可选）"
-              class="param-desc-input"
-            />
+          <div v-if="param.description" class="param-description">
+            <span class="param-desc-text">{{ param.description }}</span>
           </div>
         </div>
       </div>
 
-      <!-- 添加参数按钮 -->
-      <button @click="addParameter" class="btn-add-param">
+      <!-- 添加参数按钮（仅在没有预定义参数时显示） -->
+      <button v-if="!hasPredefinedParams" @click="addParameter" class="btn-add-param">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="12" y1="5" x2="12" y2="19"/>
           <line x1="5" y1="12" x2="19" y2="12"/>
@@ -150,7 +153,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 
 const props = defineProps({
   initialParameters: {
@@ -161,7 +164,20 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'execute']);
 
-const parameters = ref(props.initialParameters.map(p => ({ ...p })));
+const hasPredefinedParams = computed(() => {
+  return props.initialParameters && props.initialParameters.length > 0;
+});
+
+const parameters = ref([]);
+
+// 监听初始参数变化
+watch(() => props.initialParameters, (newParams) => {
+  if (newParams && newParams.length > 0) {
+    parameters.value = newParams.map(p => ({ ...p }));
+  } else {
+    parameters.value = [];
+  }
+}, { immediate: true, deep: true });
 
 const canExecute = computed(() => {
   return parameters.value.every(p => p.name && p.name.trim() !== '');
@@ -187,7 +203,13 @@ const handleParamChange = () => {
 
 const resetParameters = () => {
   if (confirm('确定要重置所有参数吗？')) {
-    parameters.value = [];
+    if (hasPredefinedParams.value) {
+      // 重置为预定义的初始参数
+      parameters.value = props.initialParameters.map(p => ({ ...p }));
+    } else {
+      // 清空所有参数
+      parameters.value = [];
+    }
   }
 };
 
@@ -438,6 +460,19 @@ const executeWithParams = () => {
 
 .param-desc-input:focus {
   border-bottom-color: #3b82f6;
+}
+
+.param-desc-text {
+  font-size: 11px;
+  color: #64748b;
+  font-style: italic;
+}
+
+.input-disabled,
+.select-disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  background-color: #0f172a;
 }
 
 .btn-add-param {

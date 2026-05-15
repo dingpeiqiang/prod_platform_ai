@@ -11,7 +11,8 @@
           <div class="property-group">
             <label>节点名称</label>
             <input
-              v-model="nodeData.label"
+              :value="nodeData.label"
+              @input="onLabelChange"
               type="text"
               class="property-input"
             />
@@ -84,7 +85,7 @@
 </template>
 
 <script setup>
-defineProps({
+const props = defineProps({
   nodeData: { type: Object, default: null },
   expanded: { type: Boolean, default: true },
   nodeTypeLabel: { type: String, default: '' },
@@ -92,7 +93,13 @@ defineProps({
   executionTime: { type: String, default: '' }
 });
 
-defineEmits(['toggle']);
+const emit = defineEmits(['toggle', 'update-label']);
+
+const onLabelChange = (event) => {
+  if (props.nodeData) {
+    emit('update-label', props.nodeData.id, event.target.value);
+  }
+};
 </script>
 
 <style scoped>
