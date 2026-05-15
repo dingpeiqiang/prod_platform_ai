@@ -25,24 +25,14 @@
         </button>
         <div class="toolbar-divider"></div>
         <button @click="undo" :disabled="!canUndo" class="btn-icon" title="撤销 (Ctrl+Z)">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 7v6h6"/>
-            <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
-          </svg>
+          <Undo2 :size="16" />
         </button>
         <button @click="redo" :disabled="!canRedo" class="btn-icon" title="重做 (Ctrl+Y)">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 7v6h-6"/>
-            <path d="M3 17a9 9 0 0 0 9 9 9 9 0 0 0 6-2.3L21 11"/>
-          </svg>
+          <Redo2 :size="16" />
         </button>
         <div class="toolbar-divider"></div>
         <button @click="saveWorkflow" :disabled="!hasChanges" class="btn-primary">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M19 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2"/>
-            <polyline points="12 15 17 20 22 15"/>
-            <path d="M12 15V3"/>
-          </svg>
+          <Save :size="14" />
           保存
         </button>
         <button @click="exportWorkflow" class="btn-secondary">
@@ -518,6 +508,7 @@ import { Controls } from '@vue-flow/controls';
 import { MiniMap } from '@vue-flow/minimap';
 import { v4 as uuidv4 } from 'uuid';
 import { ElMessage } from 'element-plus';
+import { Undo2, Redo2, Save } from 'lucide-vue-next';
 import * as workflowApi from '@/services/workflowApi';
 
 import NodePanel from './NodePanel.vue';
