@@ -370,7 +370,7 @@ const openWorkflowEditor = (workflowCode) => {
   currentView.value = 'langchain-editor'
   activeSessionId.value = ''
   activeDbSessionId.value = ''
-  currentWorkflowCode.value = workflowCode  // 设置要编辑的工作流编码
+  currentWorkflowCode.value = workflowCode || ''  // 设置要编辑的工作流编码，null表示新建
   isDashboardSidebarVisible.value = false
   saveActiveSessionId()
 }

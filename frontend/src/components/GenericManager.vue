@@ -271,6 +271,10 @@ const saveItem = async () => {
 }
 
 const openCreateModal = () => {
+    if (props.useExternalEditor) {
+        emit('edit-item', null)
+        return
+    }
     isEdit.value = false
     createData.value = { code: '', name: '', description: '', category: 'general' }
     showModal.value = true

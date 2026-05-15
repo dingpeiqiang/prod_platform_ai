@@ -9,20 +9,19 @@
           返回
         </button>
         <div class="toolbar-divider"></div>
-        <div class="workflow-name-display">
+        <div class="workflow-name-display" @click="showWorkflowInfo = true">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
             <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
             <line x1="12" y1="22.08" x2="12" y2="12"/>
           </svg>
           <span class="workflow-name">{{ workflowName }}</span>
-        </div>
-        <button @click="renameWorkflow" class="btn-icon" title="重命名">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
-            <path d="m15 3 4 4"/>
+          <svg class="info-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="16" x2="12" y2="12"/>
+            <line x1="12" y1="8" x2="12.01" y2="8"/>
           </svg>
-        </button>
+        </div>
         <div class="toolbar-divider"></div>
         <button @click="undo" :disabled="!canUndo" class="btn-icon" title="撤销 (Ctrl+Z)">
           <Undo2 :size="16" />
@@ -497,6 +496,47 @@
         </div>
       </div>
     </div>
+
+    <!-- 工作流信息编辑模态框 -->
+    <div v-if="showWorkflowInfo" class="modal-overlay" @click.self="showWorkflowInfo = false">
+      <div class="modal workflow-info-modal">
+        <div class="modal-header">
+          <h3>工作流信息</h3>
+          <button class="close-btn" @click="showWorkflowInfo = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-item">
+            <label>工作流名称 *</label>
+            <input v-model="workflowName" placeholder="输入工作流名称" />
+          </div>
+          <div class="form-item">
+            <label>工作流编码</label>
+            <input v-model="workflowCode" :disabled="!!currentWorkflowId" placeholder="自动生成" />
+          </div>
+          <div class="form-item">
+            <label>分类</label>
+            <select v-model="workflowCategory">
+              <option value="general">通用</option>
+              <option value="business">业务</option>
+              <option value="system">系统</option>
+              <option value="ai">AI</option>
+            </select>
+          </div>
+          <div class="form-item">
+            <label>描述</label>
+            <textarea v-model="workflowDescription" rows="3" placeholder="输入工作流描述"></textarea>
+          </div>
+          <div class="form-item">
+            <label>标签</label>
+            <input v-model="workflowTagsInput" placeholder="多个标签用逗号分隔" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn" @click="showWorkflowInfo = false">取消</button>
+          <button class="btn btn-primary" @click="saveWorkflowInfo">保存</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -576,6 +616,12 @@ const MAX_HISTORY = 50;
 
 const currentWorkflowId = ref(null);
 const workflowName = ref('未命名工作流');
+const showWorkflowInfo = ref(false);
+const workflowCode = ref('');
+const workflowCategory = ref('general');
+const workflowDescription = ref('');
+const workflowTagsInput = ref('');
+const workflowTags = ref([]);
 
 const executionLogs = ref([]);
 const isRunning = ref(false);
@@ -1268,6 +1314,9 @@ const saveWorkflow = async () => {
       // 更新现有工作流
       const updateResult = await workflowApi.workflowApi.update(currentWorkflowId.value, {
         workflowName: workflowName.value,
+        description: workflowDescription.value,
+        category: workflowCategory.value,
+        tags: workflowTags.value,
         workflowData: workflowData
       });
       
@@ -1278,14 +1327,16 @@ const saveWorkflow = async () => {
       }
     } else {
       // 创建新工作流
-      const newId = uuidv4();
-      currentWorkflowId.value = newId;
+      const code = workflowCode.value.trim() || uuidv4();
+      workflowCode.value = code;
+      currentWorkflowId.value = code;
       
       const createResult = await workflowApi.workflowApi.create({
-        workflowCode: newId,
+        workflowCode: code,
         workflowName: workflowName.value,
-        description: '',
-        category: 'general',
+        description: workflowDescription.value,
+        category: workflowCategory.value,
+        tags: workflowTags.value,
         workflowData: workflowData
       });
       
@@ -1303,12 +1354,11 @@ const saveWorkflow = async () => {
   }
 };
 
-const renameWorkflow = () => {
-  const newName = prompt('请输入工作流名称:', workflowName.value);
-  if (newName && newName.trim()) {
-    workflowName.value = newName.trim();
-    markDirty();
-  }
+const saveWorkflowInfo = () => {
+  workflowTags.value = workflowTagsInput.value.split(',').map(tag => tag.trim()).filter(tag => tag);
+  showWorkflowInfo.value = false;
+  markDirty();
+  ElMessage.success('工作流信息已更新');
 };
 
 const exportWorkflow = () => {
@@ -1789,6 +1839,61 @@ const handleClickOutside = (event) => {
   }
 };
 
+const loadWorkflow = async (code) => {
+  try {
+    const result = await workflowApi.workflowApi.get(code);
+    if (result.success && result.data) {
+      const workflow = result.data;
+      currentWorkflowId.value = workflow.workflowCode;
+      workflowCode.value = workflow.workflowCode;
+      workflowName.value = workflow.workflowName;
+      workflowDescription.value = workflow.description || '';
+      workflowCategory.value = workflow.category || 'general';
+      workflowTags.value = workflow.tags || [];
+      workflowTagsInput.value = (workflow.tags || []).join(', ');
+      
+      // 加载工作流数据
+      if (workflow.workflowData) {
+        const { nodes, edges } = workflow.workflowData;
+        const loadedNodes = (nodes || []).map(node => ({
+          ...node,
+          data: {
+            ...node.data,
+            label: node.data?.label || node.type
+          }
+        }));
+        const loadedEdges = (edges || []).map(edge => ({
+          ...edge,
+          markerEnd: edge.markerEnd || {
+            type: 'arrowclosed',
+            color: '#94a3b8'
+          }
+        }));
+        elements.value = [...loadedNodes, ...loadedEdges];
+      }
+      
+      ElMessage.success('工作流加载成功');
+    } else {
+      ElMessage.warning('未找到工作流，将创建新的工作流');
+      initNewWorkflow();
+    }
+  } catch (error) {
+    console.error('加载工作流失败:', error);
+    ElMessage.error('加载工作流失败');
+    initNewWorkflow();
+  }
+};
+
+const initNewWorkflow = () => {
+  elements.value = generateDefaultElements();
+  workflowName.value = '未命名工作流';
+  workflowCode.value = '';
+  workflowDescription.value = '';
+  workflowCategory.value = 'general';
+  workflowTags.value = [];
+  workflowTagsInput.value = '';
+};
+
 onMounted(async () => {
   registerShortcuts();
   window.addEventListener('keydown', handleKeydown);
@@ -1796,30 +1901,10 @@ onMounted(async () => {
   
   // 如果传入了 workflowCode，从后端加载
   if (props.workflowCode) {
-    try {
-      const result = await workflowApi.workflowApi.get(props.workflowCode);
-      if (result.success && result.data) {
-        const workflow = result.data;
-        currentWorkflowId.value = workflow.workflowCode;
-        workflowName.value = workflow.workflowName;
-        
-        // 加载工作流数据
-        if (workflow.workflowData) {
-          const { nodes, edges } = workflow.workflowData;
-          elements.value = [
-            ...(nodes || []),
-            ...(edges || [])
-          ];
-        }
-        
-        ElMessage.success('工作流加载成功');
-      } else {
-        ElMessage.warning('未找到工作流，将创建新的工作流');
-      }
-    } catch (error) {
-      console.error('加载工作流失败:', error);
-      ElMessage.error('加载工作流失败');
-    }
+    await loadWorkflow(props.workflowCode);
+  } else {
+    // 新建工作流，初始化默认模板
+    initNewWorkflow();
   }
   
   history.value.push(JSON.stringify(elements.value));
@@ -1905,6 +1990,21 @@ onUnmounted(() => {
   height: 14px;
   max-width: none;
   color: #64748b;
+}
+
+.workflow-name-display .info-icon {
+  opacity: 0.5;
+  transition: opacity 0.2s;
+}
+
+.workflow-name-display:hover .info-icon {
+  opacity: 1;
+}
+
+.workflow-name-display:hover {
+  cursor: pointer;
+  background: #f1f5f9;
+  border-color: #cbd5e1;
 }
 
 .workflow-name {
@@ -2840,5 +2940,157 @@ onUnmounted(() => {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* 工作流信息模态框样式 */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal {
+  background: white;
+  border-radius: 12px;
+  width: 500px;
+  max-height: 90vh;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: slideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.close-btn {
+  border: none;
+  background: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #9ca3af;
+  padding: 0 8px;
+  transition: color 0.2s;
+}
+
+.close-btn:hover {
+  color: #374151;
+}
+
+.modal-body {
+  padding: 20px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.btn {
+  padding: 10px 20px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn:hover {
+  background: #f3f4f6;
+}
+
+.btn-primary {
+  background: #3b82f6;
+  color: white;
+  border: none;
+}
+
+.btn-primary:hover {
+  background: #2563eb;
+}
+
+.form-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.form-item label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.form-item input,
+.form-item select,
+.form-item textarea {
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.form-item input:focus,
+.form-item select:focus,
+.form-item textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.form-item input:disabled {
+  background: #f9fafb;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.form-item textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.workflow-info-modal {
+  width: 500px;
 }
 </style>
