@@ -106,6 +106,13 @@
     
     <!-- 执行结果 -->
     <div v-if="lastResult" class="result-section">
+      <div 
+        class="result-resizer" 
+        @mousedown="startResize"
+        :class="{ resizing: isResizing }"
+      >
+        <div class="resizer-handle"></div>
+      </div>
       <div class="result-header">
         <h4>执行结果</h4>
         <button @click="copyResult" class="btn-copy" title="复制结果">
@@ -115,7 +122,7 @@
           </svg>
         </button>
       </div>
-      <div class="result-content">
+      <div class="result-content" :style="{ maxHeight: resultHeight + 'px' }">
         <pre>{{ formatJson(lastResult) }}</pre>
       </div>
     </div>
@@ -146,6 +153,8 @@ const searchQuery = ref('');
 const activeFilters = ref(['all']);
 const expandedLogs = ref([]);
 const logsContainer = ref(null);
+const resultHeight = ref(100);
+const isResizing = ref(false);
 
 const filterTags = [
   { value: 'all', label: '全部' },
@@ -213,6 +222,34 @@ const formatJson = (data) => {
   } catch {
     return String(data);
   }
+};
+
+const startResize = (event) => {
+  isResizing.value = true;
+  document.addEventListener('mousemove', onResize);
+  document.addEventListener('mouseup', stopResize);
+  event.preventDefault();
+};
+
+const onResize = (event) => {
+  if (!isResizing.value) return;
+  
+  const panel = document.querySelector('.execution-panel');
+  if (!panel) return;
+  
+  const panelRect = panel.getBoundingClientRect();
+  const newHeight = panelRect.height - event.clientY + panelRect.top;
+  
+  const minHeight = 60;
+  const maxHeight = panelRect.height - 100;
+  
+  resultHeight.value = Math.max(minHeight, Math.min(maxHeight, newHeight));
+};
+
+const stopResize = () => {
+  isResizing.value = false;
+  document.removeEventListener('mousemove', onResize);
+  document.removeEventListener('mouseup', stopResize);
 };
 
 watch(() => props.logs.length, async () => {
@@ -525,6 +562,45 @@ watch(() => props.logs.length, async () => {
   background-color: #0f172a;
   border-top: 1px solid #334155;
   padding: 10px 12px;
+  position: relative;
+}
+
+.result-resizer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: row-resize;
+  background: transparent;
+  z-index: 10;
+  transform: translateY(-50%);
+  transition: background-color 0.2s;
+}
+
+.result-resizer:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.result-resizer.resizing {
+  background-color: rgba(33, 150, 243, 0.3);
+}
+
+.result-resizer .resizer-handle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 10px;
+  background-color: #475569;
+  border-radius: 2px;
+  transition: background-color 0.2s;
+}
+
+.result-resizer:hover .resizer-handle,
+.result-resizer.resizing .resizer-handle {
+  background-color: #2196f3;
 }
 
 .result-header {

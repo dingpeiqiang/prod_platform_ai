@@ -409,7 +409,14 @@
         </div>
       </div>
 
-      <div v-show="showRightPanel" class="right-panel">
+      <div v-show="showRightPanel" class="right-panel" :style="{ width: rightPanelWidth + 'px' }">
+        <div 
+          class="panel-resizer" 
+          @mousedown="startResize"
+          :class="{ resizing: isResizing }"
+        >
+          <div class="resizer-handle"></div>
+        </div>
         <div class="panel-tabs">
           <button 
             @click="activePanel = 'properties'" 
@@ -563,6 +570,8 @@ const selectedNodeIds = ref([]);
 const showLeftPanel = ref(true); // 新增：控制左侧节点面板显示/隐藏
 const showRightPanel = ref(true);
 const activePanel = ref('properties');
+const rightPanelWidth = ref(320);
+const isResizing = ref(false);
 const showShortcuts = ref(false);
 const connectionSuccess = ref(false);
 
@@ -1727,6 +1736,34 @@ const selectAllNodes = () => {
   }
 };
 
+const startResize = (event) => {
+  isResizing.value = true;
+  document.addEventListener('mousemove', onResize);
+  document.addEventListener('mouseup', stopResize);
+  event.preventDefault();
+};
+
+const onResize = (event) => {
+  if (!isResizing.value) return;
+  
+  const container = document.querySelector('.editor-container');
+  if (!container) return;
+  
+  const containerRect = container.getBoundingClientRect();
+  const newWidth = containerRect.width - event.clientX + containerRect.left;
+  
+  const minWidth = 200;
+  const maxWidth = containerRect.width - 200;
+  
+  rightPanelWidth.value = Math.max(minWidth, Math.min(maxWidth, newWidth));
+};
+
+const stopResize = () => {
+  isResizing.value = false;
+  document.removeEventListener('mousemove', onResize);
+  document.removeEventListener('mouseup', stopResize);
+};
+
 const registerShortcuts = () => {
   keyboardShortcuts.register('ctrl+z', () => undo());
   keyboardShortcuts.register('ctrl+y', () => redo());
@@ -2635,11 +2672,50 @@ onUnmounted(() => {
 
 
 .right-panel {
-  width: 320px;
   background: white;
   border-left: 1px solid #e0e0e0;
   display: flex;
   flex-direction: column;
+  position: relative;
+  transition: width 0.1s ease;
+}
+
+.panel-resizer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 10;
+  transform: translateX(-50%);
+  transition: background-color 0.2s;
+}
+
+.panel-resizer:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.panel-resizer.resizing {
+  background-color: rgba(33, 150, 243, 0.3);
+}
+
+.resizer-handle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px;
+  height: 40px;
+  background-color: #e0e0e0;
+  border-radius: 2px;
+  transition: background-color 0.2s;
+}
+
+.panel-resizer:hover .resizer-handle,
+.panel-resizer.resizing .resizer-handle {
+  background-color: #2196f3;
 }
 
 .panel-tabs {
