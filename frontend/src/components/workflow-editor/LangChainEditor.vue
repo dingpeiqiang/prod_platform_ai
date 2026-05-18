@@ -363,7 +363,6 @@
             <ConditionNode
               :data="enrichNodeData(props.data, props.node?.id)"
               :selected="props.selected"
-              compact
               @update="updateNodeData"
             />
           </template>
@@ -1324,6 +1323,14 @@ const updateNodeData = (nodeId, data) => {
   if (node) {
     node.data = { ...node.data, ...data };
     markDirty();
+    
+    // 如果是条件分支节点，延迟重新计算锚点位置
+    if (node.type === 'condition') {
+      setTimeout(() => {
+        // 触发 Vue Flow 重新渲染
+        elements.value = [...elements.value];
+      }, 50);
+    }
   }
 };
 

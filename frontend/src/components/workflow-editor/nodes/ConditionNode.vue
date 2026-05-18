@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="nodeRef"
     class="node condition-node"
     :class="{
       selected,
@@ -13,11 +14,11 @@
       <div class="node-description">
         连接多个下游分支，如果设立的条件成立，则只运行如果分支，不成立则只运行否则分支。
       </div>
-      
+
       <!-- 节点标题 -->
       <div class="node-title-section">
-        <input 
-          v-model="localLabel" 
+        <input
+          v-model="localLabel"
           @input="emitUpdate"
           type="text"
           placeholder="条件分支"
@@ -27,20 +28,20 @@
 
       <!-- 分支列表 -->
       <div class="branch-list">
-        <div 
-          v-for="(branch, branchIndex) in localBranches" 
+        <div
+          v-for="(branch, branchIndex) in localBranches"
           :key="branchIndex"
           class="branch-container"
         >
           <!-- 分支标题 -->
           <div class="branch-header">
             <button @click="toggleBranch(branchIndex)" class="branch-toggle-btn">
-              <svg 
-                width="14" 
-                height="14" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="currentColor" 
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
                 stroke-width="2"
                 :class="{ rotated: branch.expanded }"
               >
@@ -56,10 +57,10 @@
                   <line x1="12" y1="17" x2="12.01" y2="17"/>
                 </svg>
               </button>
-              <button 
-                v-if="branchIndex > 0"
-                @click="removeBranch(branchIndex)" 
-                class="action-btn delete-branch-btn" 
+              <button
+                v-if="branchIndex > 0 && branch.type !== 'else'"
+                @click="removeBranch(branchIndex)"
+                class="action-btn delete-branch-btn"
                 title="删除当前分支"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -78,11 +79,11 @@
                 <div class="grid-cell label-cell">
                   <span class="condition-label-text">条件</span>
                 </div>
-                
+
                 <!-- 引用变量列 -->
                 <div class="grid-cell variable-cell">
-                  <select 
-                    v-model="condition.variable" 
+                  <select
+                    v-model="condition.variable"
                     @change="emitUpdate"
                     class="variable-select"
                     placeholder="请选择..."
@@ -93,11 +94,11 @@
                     </option>
                   </select>
                 </div>
-                
+
                 <!-- 选择条件列 -->
                 <div class="grid-cell operator-cell">
-                  <select 
-                    v-model="condition.operator" 
+                  <select
+                    v-model="condition.operator"
                     @change="emitUpdate"
                     class="operator-select"
                   >
@@ -117,29 +118,29 @@
                     <option value="not_empty">不为空</option>
                   </select>
                 </div>
-                
+
                 <!-- 比较值列 -->
                 <div class="grid-cell value-cell">
                   <div class="value-group">
-                    <select 
-                      v-model="condition.valueType" 
+                    <select
+                      v-model="condition.valueType"
                       @change="emitUpdate"
                       class="value-type-select"
                     >
                       <option value="input">输入</option>
                       <option value="reference">引用变量</option>
                     </select>
-                    <input 
+                    <input
                       v-if="condition.valueType === 'input'"
-                      v-model="condition.value" 
+                      v-model="condition.value"
                       @input="emitUpdate"
                       type="text"
                       placeholder="请输入"
                       class="value-input"
                     />
-                    <select 
+                    <select
                       v-else
-                      v-model="condition.value" 
+                      v-model="condition.value"
                       @change="emitUpdate"
                       class="value-reference-select"
                     >
@@ -150,13 +151,13 @@
                     </select>
                   </div>
                 </div>
-                
+
                 <!-- 操作按钮列 -->
                 <div class="grid-cell action-cell">
-                  <button 
+                  <button
                     v-if="condIndex === branch.conditions.length - 1"
-                    @click="addCondition(branchIndex)" 
-                    class="action-btn add-condition-btn" 
+                    @click="addCondition(branchIndex)"
+                    class="action-btn add-condition-btn"
                     title="添加更多条件"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -183,43 +184,73 @@
         <button @click="$emit('close')" class="close-btn-inline">收起</button>
       </div>
     </div>
-    
+
     <!-- 非配置模式 - 画布编辑区显示 -->
     <div v-if="!configMode" class="condition-node-view">
-      <!-- 功能说明 -->
-      <div class="view-description">
-        连接多个下游分支，如果设立的条件成立，则只运行如果分支，不成立则只运行否则分支。
+      <!-- 头部区域 -->
+      <div class="node-header">
+        <span class="node-icon">🔀</span>
+        <span class="node-title">{{ data.label || '条件分支' }}</span>
       </div>
-      
-      <!-- 节点标题 -->
-      <div class="view-title">{{ data.label || '条件分支' }}</div>
-      
-      <!-- 分支列表 -->
-      <div class="view-branches">
-        <div 
-          v-for="(branch, branchIndex) in localBranches" 
-          :key="branchIndex"
-          class="view-branch-item"
-        >
-          <div class="view-branch-info">
-            <span v-if="branchIndex === 0" class="view-branch-icon">⚙️</span>
-            <span class="view-branch-name">{{ getBranchTitle(branchIndex) }}</span>
-            <span v-if="branchIndex === 0" class="view-help-icon" title="第一优先级条件">️</span>
+
+      <!-- 紧凑模式内容 -->
+      <div v-if="compact" class="node-compact-body">
+        <div class="compact-summary-row">
+          <span class="compact-summary">{{ localBranches.length }} 个分支</span>
+          <div class="compact-dots">
+            <span
+              v-for="(_, index) in localBranches"
+              :key="index"
+              class="compact-dot"
+              :class="'dot-' + index"
+            ></span>
+          </div>
+        </div>
+        <span class="compact-hint">双击配置</span>
+      </div>
+
+      <!-- 非紧凑模式内容 -->
+      <div v-else class="node-body">
+        <span class="node-desc">连接多个下游分支进行条件判断</span>
+        <!-- 分支条件列表 -->
+        <div class="branch-conditions">
+          <div
+            v-for="(branch, branchIndex) in localBranches"
+            :key="branchIndex"
+            class="branch-condition-item"
+          >
+            <div class="branch-content-row">
+              <div class="branch-indicator" :class="'indicator-' + branchIndex"></div>
+              <div class="branch-info">
+                <span class="branch-name">{{ getBranchTitle(branchIndex) }}</span>
+                <div class="condition-summary">
+                  <span v-if="hasConditions(branch)" class="condition-text">
+                    {{ getConditionSummary(branch) }}
+                  </span>
+                  <span v-else class="condition-empty">未设置条件</span>
+                </div>
+              </div>
+              <div class="branch-arrow" :class="'arrow-' + branchIndex">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M5 12h14M12 5l7 7-7 7"/>
+                </svg>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </div>
-    
+
     <!-- 连接线Handle -->
     <Handle v-if="!configMode" type="target" :position="Position.Left" id="target" />
     <!-- 动态生成与分支数量对应的输出连接点 -->
-    <Handle 
-      v-for="(branch, index) in localBranches" 
+    <Handle
+      v-for="(branch, index) in localBranches"
       :key="'branch-' + index"
-      v-if="!configMode" 
-      type="source" 
-      :position="Position.Right" 
-      :id="'branch_' + index" 
+      v-if="!configMode"
+      type="source"
+      :position="Position.Right"
+      :id="'branch_' + index"
       :class="'handle-branch-' + index"
       :style="{ top: getHandlePosition(index) + '%' }"
     />
@@ -227,7 +258,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, watch, onMounted, nextTick } from 'vue';
 import { Handle, Position } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
 
@@ -252,6 +283,7 @@ const emit = defineEmits(['update', 'close']);
 // 本地状态
 const localLabel = ref(props.data.label || '判断器');
 const branchSectionExpanded = ref(true);
+const nodeRef = ref(null); // 节点DOM引用
 
 // 分支数据结构
 const localBranches = ref([]);
@@ -259,9 +291,21 @@ const localBranches = ref([]);
 // 初始化分支数据
 const initBranches = () => {
   if (props.data.branches && props.data.branches.length > 0) {
-    localBranches.value = JSON.parse(JSON.stringify(props.data.branches));
+    // 深拷贝数据
+    let branches = JSON.parse(JSON.stringify(props.data.branches));
+    
+    // 确保“否则”分支在最后
+    const elseIndex = branches.findIndex(branch => branch.type === 'else');
+    if (elseIndex !== -1 && elseIndex !== branches.length - 1) {
+      // 移除“否则”分支
+      const elseBranch = branches.splice(elseIndex, 1)[0];
+      // 添加到末尾
+      branches.push(elseBranch);
+    }
+    
+    localBranches.value = branches;
   } else {
-    // 默认创建两个分支：如果、否则如果
+    // 默认创建三个分支：如果、否则如果、否则
     localBranches.value = [
       {
         type: 'if',
@@ -286,6 +330,11 @@ const initBranches = () => {
             value: ''
           }
         ]
+      },
+      {
+        type: 'else',
+        expanded: true,
+        conditions: []
       }
     ];
     emitUpdate();
@@ -304,19 +353,26 @@ const toggleBranchSection = () => {
 
 // 获取分支标题
 const getBranchTitle = (index) => {
+  const branch = localBranches.value[index];
+  if (branch?.type === 'else') return '否则';
   if (index === 0) return '如果';
   return '否则如果';
 };
 
 // 获取分支帮助文本
 const getBranchHelp = (index) => {
+  const branch = localBranches.value[index];
+  if (branch?.type === 'else') return '默认分支，当所有条件都不成立时执行';
   if (index === 0) return '第一优先级条件，如果成立则执行此分支';
   return '第二优先级条件，在第一条件不成立时判断';
 };
 
 // 添加新分支
 const addBranch = () => {
-  localBranches.value.push({
+  // 找到“否则”分支的位置
+  const elseIndex = localBranches.value.findIndex(branch => branch.type === 'else');
+  
+  const newBranch = {
     type: 'else_if',
     expanded: true,
     conditions: [
@@ -327,16 +383,36 @@ const addBranch = () => {
         value: ''
       }
     ]
-  });
+  };
+  
+  // 如果存在“否则”分支，插入到它之前
+  if (elseIndex !== -1) {
+    localBranches.value.splice(elseIndex, 0, newBranch);
+  } else {
+    // 如果没有“否则”分支，添加到末尾
+    localBranches.value.push(newBranch);
+  }
+  
   emitUpdate();
 };
 
 // 删除分支
 const removeBranch = (index) => {
-  if (localBranches.value.length > 1) {
-    localBranches.value.splice(index, 1);
-    emitUpdate();
+  const branch = localBranches.value[index];
+  
+  // 不允许删除“否则”分支
+  if (branch?.type === 'else') {
+    return;
   }
+  
+  // 至少保留一个分支（如果或否则如果）
+  const nonElseBranches = localBranches.value.filter(b => b.type !== 'else');
+  if (nonElseBranches.length <= 1) {
+    return;
+  }
+  
+  localBranches.value.splice(index, 1);
+  emitUpdate();
 };
 
 // 添加条件到指定分支
@@ -358,13 +434,123 @@ const emitUpdate = () => {
   });
 };
 
+// 检查分支是否有条件
+const hasConditions = (branch) => {
+  if (branch.type === 'else') return true;
+  return branch.conditions && branch.conditions.length > 0 &&
+         branch.conditions.some(cond => cond.variable && cond.operator);
+};
+
+// 获取条件摘要
+const getConditionSummary = (branch) => {
+  if (branch.type === 'else') return '其他情况';
+  if (!branch.conditions || branch.conditions.length === 0) return '';
+
+  const conditions = branch.conditions.filter(cond => cond.variable && cond.operator);
+  if (conditions.length === 0) return '';
+
+  const summaries = conditions.map(cond => {
+    const varName = getVariableName(cond.variable);
+    const operator = getOperatorLabel(cond.operator);
+    let value = cond.value;
+
+    if (cond.valueType === 'reference') {
+      value = '引用: ' + getVariableName(cond.value);
+    }
+
+    return `${varName} ${operator} ${value}`;
+  });
+
+  return summaries.join(' && ');
+};
+
+// 根据变量ID获取变量名
+const getVariableName = (variableId) => {
+  if (!variableId) return '';
+  const variable = props.availableVariables.find(v => v.id === variableId);
+  return variable ? variable.name : variableId;
+};
+
+// 获取运算符标签
+const getOperatorLabel = (operator) => {
+  const operators = {
+    '==': '=',
+    '!=': '≠',
+    '>': '>',
+    '<': '<',
+    '>=': '≥',
+    '<=': '≤',
+    'contains': '包含',
+    'not_contains': '不包含',
+    'starts_with': '以...开头',
+    'ends_with': '以...结尾',
+    'matches': '匹配',
+    'is_empty': '为空',
+    'not_empty': '不为空'
+  };
+  return operators[operator] || operator;
+};
+
 // 计算连接点的垂直位置百分比
+const handlePositions = ref({}); // 存储每个连接点的位置
+
+const calculateHandlePositions = async () => {
+  await nextTick();
+
+  if (!nodeRef.value) return;
+
+  const nodeElement = nodeRef.value;
+  const nodeRect = nodeElement.getBoundingClientRect();
+
+  // 如果节点不可见或尺寸为0，跳过计算
+  if (nodeRect.width === 0 || nodeRect.height === 0) return;
+
+  const newPositions = {};
+
+  // 优先查找画布视图中的分支项（非配置模式）
+  let branchItems = nodeElement.querySelectorAll('.branch-condition-item');
+  
+  // 如果找不到，尝试查找配置模式下的分支容器
+  if (branchItems.length === 0) {
+    branchItems = nodeElement.querySelectorAll('.branch-container');
+  }
+
+  localBranches.value.forEach((_, index) => {
+    // 直接通过 index 获取对应的分支项
+    const branchItem = branchItems[index];
+
+    if (branchItem) {
+      // 优先查找箭头元素（画布模式）
+      let targetElement = branchItem.querySelector('.branch-arrow');
+      
+      // 如果找不到箭头，使用分支容器的中心位置（配置模式）
+      if (!targetElement) {
+        targetElement = branchItem;
+      }
+
+      const targetRect = targetElement.getBoundingClientRect();
+      // 计算目标元素中心相对于节点顶部的偏移
+      const centerY = targetRect.top + targetRect.height / 2 - nodeRect.top;
+      // 转换为百分比
+      const percent = (centerY / nodeRect.height) * 100;
+      newPositions[index] = Math.max(5, Math.min(95, percent));
+      return;
+    }
+
+    // 如果找不到对应元素，使用默认计算（均匀分布）
+    const totalBranches = localBranches.value.length;
+    const bodyStartPercent = 30;
+    const bodyEndPercent = 90;
+    const bodyHeightPercent = bodyEndPercent - bodyStartPercent;
+    const step = totalBranches > 1 ? bodyHeightPercent / (totalBranches - 1) : 0;
+    newPositions[index] = bodyStartPercent + (index * step);
+  });
+
+  handlePositions.value = newPositions;
+};
+
 const getHandlePosition = (index) => {
-  const totalBranches = localBranches.value.length;
-  if (totalBranches === 1) return 50;
-  // 均匀分布，第一个在20%，最后一个在80%，中间均匀分布
-  const step = 60 / (totalBranches - 1);
-  return 20 + (index * step);
+  return handlePositions.value[index] ?? 50;
 };
 
 // 监听数据变化
@@ -372,24 +558,62 @@ watch(() => props.data, (newData) => {
   if (newData) {
     localLabel.value = newData.label || '判断器';
     initBranches();
+    calculateHandlePositions(); // 数据变化后重新计算位置
   }
 }, { immediate: true, deep: true });
+
+// 监听分支数量变化
+watch(() => localBranches.value.length, () => {
+  calculateHandlePositions();
+});
+
+// 监听配置模式变化，确保在两种模式下都能正确定位锚点
+const configModeRef = ref(props.configMode);
+watch(() => props.configMode, (newMode) => {
+  configModeRef.value = newMode;
+  // 配置模式切换时延迟计算，等待DOM更新
+  setTimeout(() => {
+    calculateHandlePositions();
+  }, 50);
+});
+
+// 组件挂载后计算位置
+onMounted(async () => {
+  await nextTick();
+  setTimeout(() => {
+    calculateHandlePositions();
+  }, 100); // 给DOM渲染一些时间
+
+  // 监听节点尺寸变化
+  if (nodeRef.value) {
+    const resizeObserver = new ResizeObserver(() => {
+      calculateHandlePositions();
+    });
+    resizeObserver.observe(nodeRef.value);
+  }
+});
+
+// 暴露方法供父组件调用
+defineExpose({
+  calculateHandlePositions
+});
 </script>
 
 <style scoped>
 .condition-node {
   background: white;
   border: 1px solid #e2e8f0;
+  color: #333;
   border-radius: 8px;
-  min-width: 280px;
+  min-width: 260px;
+  min-height: 180px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  transition: all 0.2s ease;
-  padding: 16px;
+  transition: all 0.3s ease;
 }
 
 .condition-node.selected {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  border-color: #ff7a45;
+  box-shadow: 0 0 0 3px rgba(255, 122, 69, 0.2);
 }
 
 .condition-node.is-config-mode {
@@ -399,7 +623,6 @@ watch(() => props.data, (newData) => {
   border-radius: 0;
   background: #ffffff;
   color: #333;
-  padding: 0;
 }
 
 .condition-node-config {
@@ -409,59 +632,178 @@ watch(() => props.data, (newData) => {
 
 /* 画布编辑区节点样式 */
 .condition-node-view {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  padding: 0;
 }
 
-.view-description {
-  font-size: 12px;
-  color: #999;
-  line-height: 1.6;
-  margin: 0 0 12px 0;
-}
-
-.view-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 12px;
-}
-
-.view-branches {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.view-branch-item {
-  display: flex;
-  align-items: center;
-  padding: 6px 0;
-}
-
-.view-branch-info {
+.node-header {
   display: flex;
   align-items: center;
   gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #fafafa;
 }
 
-.view-branch-icon {
-  font-size: 14px;
+.node-icon {
+  font-size: 16px;
 }
 
-.view-branch-name {
-  font-size: 13px;
-  font-weight: 500;
-  color: #333;
-}
-
-.view-help-icon {
+.node-title {
   font-size: 12px;
-  color: #bbb;
-  cursor: help;
+  font-weight: 600;
+  flex: 1;
 }
+
+.node-compact-body {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.compact-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.compact-summary {
+  font-size: 11px;
+  color: #475569;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.compact-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.compact-dot.dot-0 { background-color: #22c55e; }
+.compact-dot.dot-1 { background-color: #ef4444; }
+.compact-dot.dot-2 { background-color: #3b82f6; }
+.compact-dot.dot-3 { background-color: #f59e0b; }
+.compact-dot.dot-4 { background-color: #8b5cf6; }
+
+.compact-hint {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.node-body {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.node-desc {
+  font-size: 11px;
+  color: #64748b;
+}
+
+/* 分支条件列表 */
+.branch-conditions {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  min-height: 120px;
+}
+
+.branch-condition-item {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.branch-content-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: #f8fafc;
+  border-radius: 4px;
+  border-left: 3px solid transparent;
+  width: 100%;
+}
+
+.branch-condition-item:nth-child(1) .branch-content-row { border-left-color: #22c55e; }
+.branch-condition-item:nth-child(2) .branch-content-row { border-left-color: #ef4444; }
+.branch-condition-item:nth-child(3) .branch-content-row { border-left-color: #3b82f6; }
+.branch-condition-item:nth-child(4) .branch-content-row { border-left-color: #f59e0b; }
+.branch-condition-item:nth-child(5) .branch-content-row { border-left-color: #8b5cf6; }
+
+/* 左侧颜色指示器 */
+.branch-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.branch-indicator.indicator-0 { background-color: #22c55e; box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.3); }
+.branch-indicator.indicator-1 { background-color: #ef4444; box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.3); }
+.branch-indicator.indicator-2 { background-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3); }
+.branch-indicator.indicator-3 { background-color: #f59e0b; box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3); }
+.branch-indicator.indicator-4 { background-color: #8b5cf6; box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3); }
+
+/* 分支信息 */
+.branch-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.branch-name {
+  font-size: 11px;
+  font-weight: 600;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.condition-summary {
+  display: block;
+}
+
+.condition-text {
+  font-size: 10px;
+  color: #64748b;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.condition-empty {
+  font-size: 10px;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+/* 右侧箭头指示 */
+.branch-arrow {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #e2e8f0;
+}
+
+.branch-arrow.arrow-0 { color: #22c55e; }
+.branch-arrow.arrow-1 { color: #ef4444; }
+.branch-arrow.arrow-2 { color: #3b82f6; }
+.branch-arrow.arrow-3 { color: #f59e0b; }
+.branch-arrow.arrow-4 { color: #8b5cf6; }
 
 /* ========== 配置面板样式 ========== */
 
@@ -513,6 +855,7 @@ watch(() => props.data, (newData) => {
   border: 1px solid #e8e8e8;
   border-radius: 6px;
   overflow: hidden;
+  min-height: 50px; /* 确保每个分支有最小高度，便于锚点定位 */
 }
 
 .branch-container:last-child {
@@ -824,10 +1167,27 @@ watch(() => props.data, (newData) => {
 }
 
 :deep(.vue-flow__handle[type="source"]) {
-  background-color: #3b82f6 !important;
+  background-color: #10b981 !important;
 }
 
 :deep(.vue-flow__handle[type="source"]:hover) {
-  background-color: #2563eb !important;
+  background-color: #059669 !important;
+}
+
+/* 分支连接点颜色 */
+:deep(.vue-flow__handle.handle-branch-0[type="source"]) {
+  background-color: #22c55e !important;
+}
+:deep(.vue-flow__handle.handle-branch-1[type="source"]) {
+  background-color: #ef4444 !important;
+}
+:deep(.vue-flow__handle.handle-branch-2[type="source"]) {
+  background-color: #3b82f6 !important;
+}
+:deep(.vue-flow__handle.handle-branch-3[type="source"]) {
+  background-color: #f59e0b !important;
+}
+:deep(.vue-flow__handle.handle-branch-4[type="source"]) {
+  background-color: #8b5cf6 !important;
 }
 </style>
