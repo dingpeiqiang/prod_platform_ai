@@ -19,13 +19,62 @@
             <span>模型配置</span>
           </button>
           <div class="header-actions">
-            <button class="help-btn" title="配置LLM模型和核心参数">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-                <line x1="12" y1="17" x2="12.01" y2="17"/>
-              </svg>
-            </button>
+            <div class="help-container">
+              <button 
+                class="help-btn" 
+                @mouseenter="handleTooltipEnter" 
+                @mouseleave="handleTooltipLeave"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+              </button>
+              <div v-if="showModelTooltip" class="model-tooltip" @mouseenter="handleTooltipEnter" @mouseleave="handleTooltipLeave">
+                <div class="tooltip-header">📌 模型配置说明</div>
+                <div class="tooltip-section">
+                  <div class="tooltip-section-title">【模型选择】</div>
+                  <div class="tooltip-item">• Qwen-VL-Plus: 多模态任务（图文理解）</div>
+                  <div class="tooltip-item">• Qwen-Plus: 通用文本任务</div>
+                  <div class="tooltip-item">• GPT-4o/GPT-4: 复杂推理任务</div>
+                  <div class="tooltip-item">• GPT-3.5 Turbo: 日常对话（性价比高）</div>
+                  <div class="tooltip-item">• Claude 3 Opus: 超长上下文</div>
+                  <div class="tooltip-item">• Claude 3 Sonnet: 平衡性能与成本</div>
+                  <div class="tooltip-item">• Gemini 1.5 Pro: 多模态长上下文</div>
+                </div>
+                <div class="tooltip-section">
+                  <div class="tooltip-section-title">【温度值】控制随机性</div>
+                  <div class="tooltip-item">• 0.0-0.3: 确定性强（事实问答、代码生成）</div>
+                  <div class="tooltip-item">• 0.4-0.7: 平衡创意与稳定（日常对话）</div>
+                  <div class="tooltip-item">• 0.8-1.0: 高度随机（创意写作）</div>
+                </div>
+                <div class="tooltip-section">
+                  <div class="tooltip-section-title">【top_k】固定候选数量</div>
+                  <div class="tooltip-item">• 0: 不限制</div>
+                  <div class="tooltip-item">• 10-30: 输出聚焦（精确任务）</div>
+                  <div class="tooltip-item">• 50+: 增加多样性（创意任务）</div>
+                </div>
+                <div class="tooltip-section">
+                  <div class="tooltip-section-title">【top_p】核采样（动态候选）</div>
+                  <div class="tooltip-item">• 0.1-0.5: 高度聚焦</div>
+                  <div class="tooltip-item">• 0.6-0.9: 平衡多样与确定</div>
+                  <div class="tooltip-item">• 0.95-1.0: 保留所有可能</div>
+                </div>
+                <div class="tooltip-section">
+                  <div class="tooltip-section-title">【maxTokens】最大回复长度</div>
+                  <div class="tooltip-item">• 256-512: 简短回答</div>
+                  <div class="tooltip-item">• 512-1024: 中等长度</div>
+                  <div class="tooltip-item">• 1024-4096: 长文本生成</div>
+                </div>
+                <div class="tooltip-section">
+                  <div class="tooltip-section-title">💡 推荐组合</div>
+                  <div class="tooltip-item">• 事实问答: temp=0.1-0.3, top_k=20-50, top_p=0.7-0.9</div>
+                  <div class="tooltip-item">• 创意写作: temp=0.7-1.0, top_k=50+, top_p=0.9-1.0</div>
+                  <div class="tooltip-item">• 代码生成: temp=0.1-0.3, top_k=30-50, maxTokens=2048</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         
@@ -287,6 +336,24 @@ const expandedSections = ref({
   outputs: true
 });
 
+const showModelTooltip = ref(false);
+let hideTimer = null;
+
+const handleTooltipEnter = () => {
+  if (hideTimer) {
+    clearTimeout(hideTimer);
+    hideTimer = null;
+  }
+  showModelTooltip.value = true;
+};
+
+const handleTooltipLeave = () => {
+  hideTimer = setTimeout(() => {
+    showModelTooltip.value = false;
+    hideTimer = null;
+  }, 1000);
+};
+
 const adjustValue = (field, delta) => {
   const fieldMap = {
     temperature: localTemperature,
@@ -496,6 +563,85 @@ watch(() => props.data, (newData) => {
 .help-btn:hover {
   background: #f0f0f0;
   color: #666;
+}
+
+.help-container {
+  position: relative;
+}
+
+.model-tooltip {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  width: 400px;
+  max-height: 600px;
+  overflow-y: auto;
+  background: #ffffff;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  padding: 16px;
+  z-index: 1000;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.model-tooltip::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  right: 12px;
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 8px solid #e8e8e8;
+}
+
+.model-tooltip::after {
+  content: '';
+  position: absolute;
+  top: -6px;
+  right: 14px;
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 6px solid #ffffff;
+}
+
+.tooltip-header {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.tooltip-section {
+  margin-bottom: 12px;
+}
+
+.tooltip-section:last-child {
+  margin-bottom: 0;
+}
+
+.tooltip-section-title {
+  font-weight: 500;
+  color: #3b82f6;
+  margin-bottom: 6px;
+}
+
+.tooltip-item {
+  color: #475569;
+  padding-left: 8px;
+  margin-bottom: 4px;
+}
+
+.tooltip-item:last-child {
+  margin-bottom: 0;
 }
 
 .add-param-btn {
