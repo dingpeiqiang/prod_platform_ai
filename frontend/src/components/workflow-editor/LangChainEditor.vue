@@ -2990,22 +2990,25 @@ onUnmounted(() => {
 
 
 .node-config-drawer {
-  width: 520px;
+  width: 0;
   flex-shrink: 0;
+  overflow: hidden;
   background: #fff;
-  border-left: 1px solid #e2e8f0;
+  border-left: 1px solid transparent;
   display: flex;
   flex-direction: column;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition: opacity 0.3s ease, visibility 0.3s ease;
+  transition: width 0.32s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease, visibility 0.3s ease, border-color 0.32s ease;
 }
 
 .node-config-drawer.open {
+  width: 520px;
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
+  border-left-color: #e2e8f0;
   box-shadow: -8px 0 24px rgba(15, 23, 42, 0.08), -2px 0 8px rgba(15, 23, 42, 0.04);
 }
 
@@ -3024,11 +3027,15 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   transition: width 0.32s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.32s ease;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .right-panel.open {
   width: 320px;
   border-left-color: #e0e0e0;
+  visibility: visible;
+  pointer-events: auto;
 }
 
 .panel-tabs {
