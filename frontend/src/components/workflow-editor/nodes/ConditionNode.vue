@@ -634,6 +634,7 @@ onMounted(() => {
   grid-template-columns: 1fr auto;
   align-items: center;
   gap: 8px;
+  position: relative; /* 为Handle提供定位上下文 */
 }
 
 .branch-condition-item {
@@ -1108,5 +1109,14 @@ onMounted(() => {
 }
 :deep(.vue-flow__handle.handle-branch-4[type="source"]) {
   background-color: #8b5cf6 !important;
+}
+
+/* 分支行中的 Handle - 确保在Grid中正确显示 */
+.branch-handle {
+  position: relative !important;
+  margin: 0 !important;
+  right: auto !important;
+  top: auto !important;
+  transform: none !important;
 }
 </style>
