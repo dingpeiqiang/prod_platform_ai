@@ -398,7 +398,6 @@ const addBranch = () => {
   }
   
   emitUpdate();
-  // watch 监听器会自动触发 calculateHandlePositions
 };
 
 // 删除分支
@@ -418,7 +417,6 @@ const removeBranch = (index) => {
   
   localBranches.value.splice(index, 1);
   emitUpdate();
-  // watch 监听器会自动触发 calculateHandlePositions
 };
 
 // 添加条件到指定分支
@@ -570,10 +568,10 @@ watch(() => props.data, (newData) => {
 
 // 监听分支数量变化
 watch(() => localBranches.value.length, () => {
-  // 分支数量变化时，延迟重新计算锚点位置，等待DOM更新
-  setTimeout(() => {
+  // 分支数量变化时，立即重新计算锚点位置
+  nextTick(() => {
     calculateHandlePositions();
-  }, 100);
+  });
 });
 
 // 监听配置模式变化，确保在两种模式下都能正确定位锚点
