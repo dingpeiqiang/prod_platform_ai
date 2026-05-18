@@ -9,19 +9,72 @@
           返回
         </button>
         <div class="toolbar-divider"></div>
-        <div class="workflow-name-display" @click="showWorkflowInfo = true">
+        <button @click="newWorkflow" class="btn-primary" title="新建工作流">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-            <line x1="12" y1="22.08" x2="12" y2="12"/>
+            <path d="M12 5v14"/>
+            <path d="M5 12h14"/>
           </svg>
-          <span class="workflow-name">{{ workflowName }}</span>
-          <svg class="info-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="16" x2="12" y2="12"/>
-            <line x1="12" y1="8" x2="12.01" y2="8"/>
-          </svg>
+          新建
+        </button>
+        <div class="workflow-selector">
+          <button @click="showWorkflowList = !showWorkflowList" class="btn-secondary workflow-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+              <line x1="12" y1="22.08" x2="12" y2="12"/>
+            </svg>
+            <span class="workflow-name">{{ workflowName }}</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+          <div v-if="showWorkflowList" class="workflow-dropdown">
+            <div class="dropdown-header">
+              <span>工作流列表</span>
+              <span class="workflow-count" v-if="workflows.length > 0">{{ workflows.length }}</span>
+            </div>
+            <div class="dropdown-content">
+              <div v-if="workflows.length === 0" class="empty-workflows">
+                <div class="empty-icon">📋</div>
+                <div class="empty-text">暂无保存的工作流</div>
+                <div class="empty-hint">从右侧快速模板开始创建</div>
+              </div>
+              <div 
+                v-for="wf in workflows" 
+                :key="wf.id"
+                @click="openWorkflow(wf)"
+                class="dropdown-item"
+                :class="{ active: currentWorkflowId === wf.id }"
+              >
+                <div class="item-left">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <path d="M9 3v18"/>
+                  </svg>
+                  <div class="item-info">
+                    <div class="item-name">{{ wf.name }}</div>
+                    <div class="item-meta">
+                      <span v-if="wf.description" class="item-desc">{{ wf.description }}</span>
+                      <span class="item-time">{{ formatDate(wf.updatedAt || wf.savedAt || wf.createdAt) }}</span>
+                    </div>
+                  </div>
+                </div>
+                <button @click.stop="deleteWorkflow(wf.id)" class="delete-btn" title="删除">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 6h18"/>
+                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
+        <button @click="renameWorkflow" class="btn-icon" title="重命名">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+            <path d="m15 3 4 4"/>
+          </svg>
+        </button>
         <div class="toolbar-divider"></div>
         <button @click="undo" :disabled="!canUndo" class="btn-icon" title="撤销 (Ctrl+Z)">
           <Undo2 :size="16" />
@@ -30,60 +83,47 @@
           <Redo2 :size="16" />
         </button>
         <div class="toolbar-divider"></div>
-        <button @click="saveWorkflow" :disabled="!hasChanges" class="btn-primary">
-          <Save :size="14" />
-          保存
+        <button @click="saveWorkflow" :disabled="!hasChanges" class="btn-icon" title="保存 (Ctrl+S)">
+          <Save :size="16" />
         </button>
-        <button @click="exportWorkflow" class="btn-secondary">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          导出
+        <button @click="exportWorkflow" class="btn-icon" title="导出">
+          <Download :size="16" />
         </button>
-        <button @click="importWorkflow" class="btn-secondary">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/>
-            <line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-          导入
-        </button>
-        <button @click="showGenerateModal = true" class="btn-secondary ai-btn" title="AI生成工作流">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-            <path d="M2 17l10 5 10-5"/>
-            <path d="M2 12l10 5 10-5"/>
-          </svg>
-          AI生成
-        </button>
-        <button @click="showOptimizeModal = true" class="btn-secondary ai-btn" title="AI优化工作流" :disabled="elements.length === 0">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-            <path d="M3 3v5h5"/>
-            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
-            <path d="M16 21h5v-5"/>
-          </svg>
-          AI优化
+        <button @click="importWorkflow" class="btn-icon" title="导入">
+          <Upload :size="16" />
         </button>
         <div class="toolbar-divider"></div>
-        <button
-        @click="handleExecute"
-        :disabled="!isValid || isRunning"
-        class="btn-success"
-        :class="{ running: isRunning }"
-        title="执行工作流"
-      >
-        <svg v-if="!isRunning" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polygon points="5 3 19 12 5 21 5 3"/>
-        </svg>
-        <svg v-else class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-          <path d="M12 6v6l4 2"/>
-        </svg>
-        {{ isRunning ? '运行中...' : '执行' }}
-      </button>
+        <button 
+          @click="runWorkflowWithPanel" 
+          :disabled="!isValid || isRunning" 
+          class="btn-success"
+          :class="{ running: isRunning }"
+          title="带参数执行"
+        >
+          <svg v-if="!isRunning" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          <svg v-else class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 6v6l4 2"/>
+          </svg>
+          {{ isRunning ? '运行中...' : '运行' }}
+        </button>
+        <button 
+          @click="runWorkflow()" 
+          :disabled="!isValid || isRunning" 
+          class="btn-secondary"
+          title="直接执行（无参数）"
+        >
+          <svg v-if="!isRunning" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          <svg v-else class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 6v6l4 2"/>
+          </svg>
+          快速执行
+        </button>
         <button @click="clearWorkflow" class="btn-danger">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 6h18"/>
@@ -96,15 +136,6 @@
       
       <div class="toolbar-center">
         <div class="align-group">
-          <button @click="autoLayout" class="btn-icon" title="自动排版">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="7" height="7" rx="1"/>
-              <rect x="14" y="3" width="7" height="7" rx="1"/>
-              <rect x="3" y="14" width="7" height="7" rx="1"/>
-              <rect x="14" y="14" width="7" height="7" rx="1"/>
-            </svg>
-          </button>
-          <div class="toolbar-divider-small"></div>
           <button @click="alignLeft" :disabled="selectedNodeIds.length < 2" class="btn-icon" title="左对齐">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="4" y1="6" x2="20" y2="6"/>
@@ -296,12 +327,7 @@
           </template>
           
           <template #node-prompt="props">
-            <PromptNode 
-              :data="props.data" 
-              :selected="props.selected" 
-              :available-variables="availableVariables"
-              @update="updateNodeData" 
-            />
+            <PromptNode :data="props.data" :selected="props.selected" @update="updateNodeData" />
           </template>
           
           <template #node-llm="props">
@@ -334,10 +360,6 @@
           
           <template #node-parser="props">
             <ParserNode :data="props.data" :selected="props.selected" @update="updateNodeData" />
-          </template>
-          
-          <template #node-form="props">
-            <FormNode :data="props.data" :selected="props.selected" @update="updateNodeData" />
           </template>
         </VueFlow>
       </div>
@@ -419,14 +441,7 @@
         </div>
       </div>
 
-      <div v-show="showRightPanel" class="right-panel" :style="{ width: rightPanelWidth + 'px' }">
-        <div 
-          class="panel-resizer" 
-          @mousedown="startResize"
-          :class="{ resizing: isResizing }"
-        >
-          <div class="resizer-handle"></div>
-        </div>
+      <div v-show="showRightPanel" class="right-panel">
         <div class="panel-tabs">
           <button 
             @click="activePanel = 'properties'" 
@@ -455,8 +470,7 @@
               :node-data="selectedNodeData"
               :expanded="showRightPanel"
               :node-type-label="selectedNodeTypeLabel"
-              @toggle="toggleRightPanel"
-              @update-label="onUpdateLabel"
+              @update="onPropertyUpdate"
             />
           </div>
 
@@ -511,208 +525,9 @@
               :logs="executionLogs"
               :is-running="isRunning"
               :last-result="lastExecutionResult"
-              :history="executionHistory"
               @clear="clearExecutionLogs"
-              @clear-history="clearExecutionHistory"
             />
           </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 工作流信息编辑模态框 -->
-    <div v-if="showWorkflowInfo" class="modal-overlay" @click.self="showWorkflowInfo = false">
-      <div class="modal workflow-info-modal">
-        <div class="modal-header">
-          <h3>工作流信息</h3>
-          <button class="close-btn" @click="showWorkflowInfo = false">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-item">
-            <label>工作流名称 *</label>
-            <input v-model="workflowName" placeholder="输入工作流名称" />
-          </div>
-          <div class="form-item">
-            <label>工作流编码</label>
-            <input v-model="workflowCode" :disabled="!!currentWorkflowId" placeholder="自动生成" />
-          </div>
-          <div class="form-item">
-            <label>分类</label>
-            <select v-model="workflowCategory">
-              <option value="general">通用</option>
-              <option value="business">业务</option>
-              <option value="system">系统</option>
-              <option value="ai">AI</option>
-            </select>
-          </div>
-          <div class="form-item">
-            <label>描述</label>
-            <textarea v-model="workflowDescription" rows="3" placeholder="输入工作流描述"></textarea>
-          </div>
-          <div class="form-item">
-            <label>标签</label>
-            <input v-model="workflowTagsInput" placeholder="多个标签用逗号分隔" />
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn" @click="showWorkflowInfo = false">取消</button>
-          <button class="btn btn-primary" @click="saveWorkflowInfo">保存</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- AI优化工作流模态框 -->
-    <div v-if="showOptimizeModal" class="modal-overlay" @click.self="cancelOptimize">
-      <div class="modal generate-workflow-modal">
-        <div class="modal-header">
-          <div class="modal-title">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
-              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-              <path d="M3 3v5h5"/>
-              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
-              <path d="M16 21h5v-5"/>
-            </svg>
-            <h3>AI优化工作流</h3>
-          </div>
-          <button class="close-btn" @click="cancelOptimize">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="generate-intro">
-            <p>AI将分析当前工作流，提供优化建议并生成优化后的工作流设计。</p>
-            <div class="example-tips">
-              <span class="tips-label">💡 优化方向：</span>
-              <span class="tips-content">节点合并、流程简化、参数优化、最佳实践建议</span>
-            </div>
-          </div>
-          <div v-if="optimizeResult" class="generate-result">
-            <div class="result-header">
-              <h4>优化结果</h4>
-              <span class="result-status" :class="{ success: optimizeResult.validation.valid, error: !optimizeResult.validation.valid }">
-                {{ optimizeResult.validation.valid ? '✓ 验证通过' : '✗ 存在错误' }}
-              </span>
-            </div>
-            <div v-if="optimizeResult.description" class="result-description">
-              <p>{{ optimizeResult.description }}</p>
-            </div>
-            <div v-if="optimizeResult.optimizations && optimizeResult.optimizations.length > 0" class="result-optimizations">
-              <h5>优化建议：</h5>
-              <ul>
-                <li v-for="(opt, index) in optimizeResult.optimizations" :key="index">{{ opt }}</li>
-              </ul>
-            </div>
-            <div v-if="optimizeResult.validation.errors.length > 0" class="result-errors">
-              <h5>错误信息：</h5>
-              <ul>
-                <li v-for="(error, index) in optimizeResult.validation.errors" :key="index">{{ error }}</li>
-              </ul>
-            </div>
-            <div class="result-stats">
-              <span>优化前节点数：{{ optimizeResult.originalNodeCount || '-' }}</span>
-              <span>优化后节点数：{{ optimizeResult.data?.nodes.length || '-' }}</span>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn" @click="cancelOptimize" :disabled="isOptimizing">取消</button>
-          <button 
-            v-if="!optimizeResult"
-            @click="optimizeWorkflow" 
-            :disabled="isOptimizing"
-            class="btn btn-primary"
-          >
-            <svg v-if="isOptimizing" class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="M12 6v6l4 2"/>
-            </svg>
-            {{ isOptimizing ? '优化中...' : '开始优化' }}
-          </button>
-          <button 
-            v-else
-            @click="applyOptimizedWorkflow" 
-            :disabled="!optimizeResult.validation.valid"
-            class="btn btn-success"
-          >
-            应用优化
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- AI生成工作流模态框 -->
-    <div v-if="showGenerateModal" class="modal-overlay" @click.self="cancelGenerate">
-      <div class="modal generate-workflow-modal">
-        <div class="modal-header">
-          <div class="modal-title">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2">
-              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-              <path d="M2 17l10 5 10-5"/>
-              <path d="M2 12l10 5 10-5"/>
-            </svg>
-            <h3>AI生成工作流</h3>
-          </div>
-          <button class="close-btn" @click="cancelGenerate">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="generate-intro">
-            <p>描述您想要创建的工作流，AI将自动为您生成工作流设计。</p>
-            <div class="example-tips">
-              <span class="tips-label">💡 示例：</span>
-              <span class="tips-content">"创建一个数据分析工作流，获取API数据后进行分析"</span>
-            </div>
-          </div>
-          <div class="form-item">
-            <label>工作流需求描述</label>
-            <textarea 
-              v-model="generateRequirement" 
-              rows="4" 
-              placeholder="请描述您想要创建的工作流..."
-              :disabled="isGenerating"
-            ></textarea>
-          </div>
-          <div v-if="generateResult" class="generate-result">
-            <div class="result-header">
-              <h4>生成结果</h4>
-              <span class="result-status" :class="{ success: generateResult.validation.valid, error: !generateResult.validation.valid }">
-                {{ generateResult.validation.valid ? '✓ 验证通过' : '✗ 存在错误' }}
-              </span>
-            </div>
-            <div v-if="generateResult.description" class="result-description">
-              <p>{{ generateResult.description }}</p>
-            </div>
-            <div v-if="generateResult.validation.errors.length > 0" class="result-errors">
-              <h5>错误信息：</h5>
-              <ul>
-                <li v-for="(error, index) in generateResult.validation.errors" :key="index">{{ error }}</li>
-              </ul>
-            </div>
-            <div class="result-stats">
-              <span>节点数：{{ generateResult.data.nodes.length }}</span>
-              <span>连接线数：{{ generateResult.data.edges.length }}</span>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn" @click="cancelGenerate" :disabled="isGenerating">取消</button>
-          <button 
-            v-if="!generateResult"
-            @click="generateWorkflow" 
-            :disabled="!generateRequirement.trim() || isGenerating"
-            class="btn btn-primary"
-          >
-            <svg v-if="isGenerating" class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="M12 6v6l4 2"/>
-            </svg>
-            {{ isGenerating ? '生成中...' : '生成工作流' }}
-          </button>
-          <button 
-            v-else
-            @click="applyGeneratedWorkflow" 
-            :disabled="!generateResult.validation.valid"
-            class="btn btn-success"
-          >
-            应用到画布
-          </button>
         </div>
       </div>
     </div>
@@ -727,7 +542,7 @@ import { Controls } from '@vue-flow/controls';
 import { MiniMap } from '@vue-flow/minimap';
 import { v4 as uuidv4 } from 'uuid';
 import { ElMessage } from 'element-plus';
-import { Undo2, Redo2, Save } from 'lucide-vue-next';
+import { Undo2, Redo2, Save, Download, Upload } from 'lucide-vue-next';
 import * as workflowApi from '@/services/workflowApi';
 
 import NodePanel from './NodePanel.vue';
@@ -746,9 +561,8 @@ import VariableNode from './nodes/VariableNode.vue';
 import HttpNode from './nodes/HttpNode.vue';
 import CodeNode from './nodes/CodeNode.vue';
 import ParserNode from './nodes/ParserNode.vue';
-import FormNode from './nodes/FormNode.vue';
 
-import { debounce, validateWorkflow, alignNodes, distributeNodes, autoLayoutNodes } from './utils/editorUtils';
+import { debounce, validateWorkflow, alignNodes, distributeNodes } from './utils/editorUtils';
 import { ExecutionEngine } from './utils/executionEngine';
 import { KeyboardShortcuts } from './utils/keyboardShortcuts';
 
@@ -772,7 +586,7 @@ const goBack = () => {
   emit('go-back');
 };
 
-const { addEdges, removeNodes, removeEdges, project, selectedEdges } = useVueFlow();
+const { addEdges, removeNodes, removeEdges, project } = useVueFlow();
 
 const elements = ref([]);
 const hasChanges = ref(false);
@@ -781,8 +595,6 @@ const selectedNodeIds = ref([]);
 const showLeftPanel = ref(true); // 新增：控制左侧节点面板显示/隐藏
 const showRightPanel = ref(true);
 const activePanel = ref('properties');
-const rightPanelWidth = ref(320);
-const isResizing = ref(false);
 const showShortcuts = ref(false);
 const connectionSuccess = ref(false);
 
@@ -794,31 +606,13 @@ const history = ref([]);
 const historyIndex = ref(-1);
 const MAX_HISTORY = 50;
 
+const workflows = ref([]);
 const currentWorkflowId = ref(null);
+const showWorkflowList = ref(false);
 const workflowName = ref('未命名工作流');
-const showWorkflowInfo = ref(false);
-const workflowCode = ref('');
-const workflowCategory = ref('general');
-const workflowDescription = ref('');
-const workflowTagsInput = ref('');
-const workflowTags = ref([]);
 
 const executionLogs = ref([]);
 const isRunning = ref(false);
-const executionHistory = ref([]);
-const maxHistoryCount = 10;
-
-// AI生成工作流相关状态
-const showGenerateModal = ref(false);
-const generateRequirement = ref('');
-const isGenerating = ref(false);
-const generateResult = ref(null);
-
-// AI优化工作流相关状态
-const showOptimizeModal = ref(false);
-const isOptimizing = ref(false);
-const optimizeResult = ref(null);
-
 const lastExecutionResult = ref(null);
 const copiedNodes = ref([]);
 const nodeExecutionStatus = ref({});
@@ -836,15 +630,7 @@ const quickTemplates = ref([
     name: '简单问答',
     description: '基础的问答流程，适合快速上手',
     nodes: [
-      { 
-        type: 'start', 
-        x: 50, 
-        y: 200, 
-        title: '开始',
-        parameters: [
-          { name: 'question', type: 'string', default: '', description: '用户输入的问题' }
-        ]
-      },
+      { type: 'start', x: 50, y: 200, title: '开始' },
       { type: 'prompt', x: 250, y: 200, title: '问题提示词', prompt: '请回答以下问题：{{question}}' },
       { type: 'llm', x: 450, y: 200, title: 'LLM', model: 'qwen-vl-plus', temperature: 0.7 },
       { type: 'end', x: 650, y: 200, title: '结束' }
@@ -860,15 +646,7 @@ const quickTemplates = ref([
     name: '数据分析',
     description: '获取数据并进行分析处理',
     nodes: [
-      { 
-        type: 'start', 
-        x: 50, 
-        y: 200, 
-        title: '开始',
-        parameters: [
-          { name: 'apiUrl', type: 'string', default: '', description: '数据源API地址' }
-        ]
-      },
+      { type: 'start', x: 50, y: 200, title: '开始' },
       { type: 'http', x: 250, y: 200, title: '获取数据', method: 'GET', url: '{{apiUrl}}' },
       { type: 'parser', x: 450, y: 200, title: '解析数据' },
       { type: 'prompt', x: 650, y: 200, title: '分析提示词', prompt: '请分析以下数据：{{data}}' },
@@ -888,15 +666,7 @@ const quickTemplates = ref([
     name: '条件分支',
     description: '根据条件判断走不同流程',
     nodes: [
-      { 
-        type: 'start', 
-        x: 50, 
-        y: 250, 
-        title: '开始',
-        parameters: [
-          { name: 'question', type: 'string', default: '', description: '用户输入的问题' }
-        ]
-      },
+      { type: 'start', x: 50, y: 250, title: '开始' },
       { type: 'prompt', x: 250, y: 250, title: '输入问题', prompt: '{{question}}' },
       { type: 'llm', x: 450, y: 250, title: '意图识别', model: 'qwen-vl-plus', temperature: 0.3 },
       { type: 'condition', x: 650, y: 250, title: '判断意图' },
@@ -919,19 +689,11 @@ const quickTemplates = ref([
     ]
   },
   {
-    id: 'code-execution',
+id: 'code-execution',
     name: '代码执行',
     description: '生成并执行代码获取结果',
     nodes: [
-      { 
-        type: 'start', 
-        x: 50, 
-        y: 200, 
-        title: '开始',
-        parameters: [
-          { name: 'requirement', type: 'string', default: '', description: '代码需求描述' }
-        ]
-      },
+      { type: 'start', x: 50, y: 200, title: '开始' },
       { type: 'prompt', x: 250, y: 200, title: '需求描述', prompt: '{{requirement}}' },
       { type: 'llm', x: 450, y: 200, title: '生成代码', model: 'qwen-vl-plus', temperature: 0.3 },
       { type: 'code', x: 650, y: 200, title: '执行代码', language: 'javascript' },
@@ -997,8 +759,7 @@ const nodeTypeDefinitions = [
   { id: 'http', name: 'HTTP请求' },
   { id: 'code', name: '代码执行' },
   { id: 'variable', name: '变量赋值' },
-  { id: 'parser', name: '输出解析' },
-  { id: 'form', name: '表单节点' }
+  { id: 'parser', name: '输出解析' }
 ];
 
 const selectedNodeData = computed(() => {
@@ -1009,98 +770,6 @@ const selectedNodeTypeLabel = computed(() => {
   if (!selectedNodeData.value) return '';
   const def = nodeTypeDefinitions.find(d => d.id === selectedNodeData.value.type);
   return def ? def.name : selectedNodeData.value.type;
-});
-
-const availableVariables = computed(() => {
-  const vars = [];
-  
-  const nodes = elements.value.filter(el => !el.source && !el.target);
-  
-  nodes.forEach(node => {
-    if (node.type === 'start' && node.data.parameters) {
-      node.data.parameters.forEach(param => {
-        vars.push({
-          name: param.name,
-          type: param.type || 'string',
-          description: param.description,
-          default: param.default,
-          category: 'input'
-        });
-      });
-    }
-    
-    if (node.type === 'variable' && node.data.varName) {
-      vars.push({
-        name: node.data.varName,
-        type: node.data.varType || 'string',
-        description: node.data.description,
-        value: node.data.varValue,
-        category: 'workflow'
-      });
-    }
-    
-    if (node.type === 'llm') {
-      vars.push({
-        name: 'llm_output',
-        type: 'string',
-        description: 'LLM 模型输出',
-        sourceNode: node.data.label || 'LLM节点',
-        category: 'output'
-      });
-    }
-    
-    if (node.type === 'http') {
-      vars.push({
-        name: 'http_result',
-        type: 'object',
-        description: 'HTTP 请求结果',
-        sourceNode: node.data.label || 'HTTP节点',
-        category: 'output'
-      });
-    }
-    
-    if (node.type === 'code') {
-      vars.push({
-        name: 'code_result',
-        type: 'string',
-        description: '代码执行结果',
-        sourceNode: node.data.label || '代码节点',
-        category: 'output'
-      });
-    }
-    
-    if (node.type === 'tool') {
-      vars.push({
-        name: 'tool_result',
-        type: 'object',
-        description: '工具调用结果',
-        sourceNode: node.data.label || '工具节点',
-        category: 'output'
-      });
-    }
-    
-    if (node.type === 'parser') {
-      vars.push({
-        name: 'parsed_data',
-        type: 'object',
-        description: '解析后的数据',
-        sourceNode: node.data.label || '解析节点',
-        category: 'output'
-      });
-    }
-    
-    if (node.type === 'form') {
-      vars.push({
-        name: 'form_data',
-        type: 'object',
-        description: '表单提交数据',
-        sourceNode: node.data.label || '表单节点',
-        category: 'output'
-      });
-    }
-  });
-  
-  return vars;
 });
 
 const validationResults = computed(() => {
@@ -1450,10 +1119,7 @@ const onDrop = (event) => {
       position,
       data: {
         label: nodeType.name,
-        ...nodeType,
-        ...(nodeType.type === 'start' && {
-          parameters: [{ name: 'input', type: 'string', default: '', description: '输入参数' }]
-        })
+        ...nodeType
       }
     };
     
@@ -1492,17 +1158,21 @@ const onPropertyUpdate = ({ key, value }) => {
   }
 };
 
-const onUpdateLabel = (nodeId, newLabel) => {
-  saveHistory();
-  const node = elements.value.find(el => el.id === nodeId);
-  if (node) {
-    node.data.label = newLabel;
-    markDirty();
+const markDirty = () => {
+  hasChanges.value = true;
+};
+
+const loadWorkflows = () => {
+  const saved = localStorage.getItem('langchain-workflows');
+  if (saved) {
+    workflows.value = JSON.parse(saved);
+  } else {
+    workflows.value = [];
   }
 };
 
-const markDirty = () => {
-  hasChanges.value = true;
+const saveWorkflows = () => {
+  localStorage.setItem('langchain-workflows', JSON.stringify(workflows.value));
 };
 
 const saveWorkflow = async () => {
@@ -1517,39 +1187,54 @@ const saveWorkflow = async () => {
   try {
     if (currentWorkflowId.value) {
       // 更新现有工作流
+      const index = workflows.value.findIndex(w => w.id === currentWorkflowId.value);
+      if (index !== -1) {
+        workflows.value[index] = { 
+          ...workflows.value[index], 
+          ...workflowData,
+          name: workflowName.value
+        };
+        saveWorkflows();
+      }
+      
+      // 同步到后端
       const updateResult = await workflowApi.workflowApi.update(currentWorkflowId.value, {
         workflowName: workflowName.value,
-        description: workflowDescription.value,
-        category: workflowCategory.value,
-        tags: workflowTags.value,
         workflowData: workflowData
       });
       
       if (updateResult.success) {
         ElMessage.success('工作流已保存');
       } else {
-        ElMessage.error('保存失败：' + (updateResult.message || '未知错误'));
+        ElMessage.warning('本地保存成功，但云端同步失败：' + (updateResult.message || '未知错误'));
       }
     } else {
       // 创建新工作流
-      const code = workflowCode.value.trim() || uuidv4();
-      workflowCode.value = code;
-      currentWorkflowId.value = code;
+      const newId = uuidv4();
+      const newWorkflow = {
+        id: newId,
+        name: workflowName.value,
+        description: '',
+        ...workflowData,
+        createdAt: new Date().toISOString()
+      };
+      workflows.value.push(newWorkflow);
+      currentWorkflowId.value = newId;
+      saveWorkflows();
       
+      // 同步到后端
       const createResult = await workflowApi.workflowApi.create({
-        workflowCode: code,
+        workflowCode: newId,
         workflowName: workflowName.value,
-        description: workflowDescription.value,
-        category: workflowCategory.value,
-        tags: workflowTags.value,
+        description: '',
+        category: 'general',
         workflowData: workflowData
       });
       
       if (createResult.success) {
         ElMessage.success('工作流已创建并保存');
       } else {
-        ElMessage.error('创建失败：' + (createResult.message || '未知错误'));
-        currentWorkflowId.value = null;
+        ElMessage.warning('本地保存成功，但云端同步失败：' + (createResult.message || '未知错误'));
       }
     }
     hasChanges.value = false;
@@ -1559,11 +1244,92 @@ const saveWorkflow = async () => {
   }
 };
 
-const saveWorkflowInfo = () => {
-  workflowTags.value = workflowTagsInput.value.split(',').map(tag => tag.trim()).filter(tag => tag);
-  showWorkflowInfo.value = false;
-  markDirty();
-  ElMessage.success('工作流信息已更新');
+const newWorkflow = () => {
+  if (hasChanges.value) {
+    if (!confirm('当前工作流有未保存的更改，确定要创建新工作流吗？')) {
+      return;
+    }
+  }
+  elements.value = [];
+  selectedNodeId.value = null;
+  selectedNodeIds.value = [];
+  currentWorkflowId.value = null;
+  workflowName.value = '未命名工作流';
+  hasChanges.value = false;
+  history.value = [];
+  historyIndex.value = -1;
+  showWorkflowList.value = false;
+};
+
+const openWorkflow = (workflow) => {
+  if (hasChanges.value) {
+    if (!confirm('当前工作流有未保存的更改，确定要打开其他工作流吗？')) {
+      return;
+    }
+  }
+  currentWorkflowId.value = workflow.id;
+  workflowName.value = workflow.name;
+  const nodes = workflow.nodes.map(node => ({
+    id: node.id,
+    type: node.type,
+    position: node.position,
+    data: node.data
+  }));
+  const edges = workflow.edges ? workflow.edges.map(edge => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    sourceHandle: edge.sourceHandle,
+    targetHandle: edge.targetHandle,
+    markerEnd: edge.markerEnd || {
+      type: 'arrowclosed',
+      color: '#94a3b8'
+    }
+  })) : [];
+  elements.value = [...nodes, ...edges];
+  selectedNodeId.value = null;
+  selectedNodeIds.value = [];
+  hasChanges.value = false;
+  history.value = [];
+  historyIndex.value = -1;
+  showWorkflowList.value = false;
+};
+
+const deleteWorkflow = (workflowId) => {
+  if (!confirm('确定要删除这个工作流吗？')) {
+    return;
+  }
+  const index = workflows.value.findIndex(w => w.id === workflowId);
+  if (index !== -1) {
+    workflows.value.splice(index, 1);
+    saveWorkflows();
+    if (currentWorkflowId.value === workflowId) {
+      newWorkflow();
+    }
+  }
+};
+
+const renameWorkflow = () => {
+  const currentWorkflow = currentWorkflowId.value 
+    ? workflows.value.find(w => w.id === currentWorkflowId.value)
+    : null;
+  
+  const newName = prompt('请输入工作流名称:', workflowName.value);
+  if (newName && newName.trim()) {
+    workflowName.value = newName.trim();
+    
+    const newDesc = prompt('请输入工作流描述（可选）:', currentWorkflow?.description || '');
+    if (newDesc !== null) {
+      if (currentWorkflowId.value) {
+        const index = workflows.value.findIndex(w => w.id === currentWorkflowId.value);
+        if (index !== -1) {
+          workflows.value[index].name = workflowName.value;
+          workflows.value[index].description = newDesc.trim();
+          saveWorkflows();
+        }
+      }
+    }
+  }
 };
 
 const exportWorkflow = () => {
@@ -1598,23 +1364,12 @@ const importWorkflow = () => {
           const workflow = JSON.parse(event.target.result);
           if (workflow.nodes && Array.isArray(workflow.nodes)) {
             saveHistory();
-            
-            // 为导入的节点设置默认 label（如果没有的话）
-            const nodes = workflow.nodes.map(node => {
-              const typeDef = nodeTypeDefinitions.find(def => def.id === node.type);
-              const defaultLabel = typeDef ? typeDef.name : node.type;
-              
-              return {
-                id: node.id,
-                type: node.type,
-                position: node.position,
-                data: {
-                  ...node.data,
-                  label: node.data?.label || defaultLabel
-                }
-              };
-            });
-            
+            const nodes = workflow.nodes.map(node => ({
+              id: node.id,
+              type: node.type,
+              position: node.position,
+              data: node.data
+            }));
             const edges = workflow.edges ? workflow.edges.map(edge => ({
               id: edge.id,
               source: edge.source,
@@ -1650,196 +1405,11 @@ const clearWorkflow = () => {
   }
 };
 
-// AI生成工作流相关方法
-const generateWorkflow = async () => {
-  if (!generateRequirement.value.trim()) return;
-  
-  isGenerating.value = true;
-  generateResult.value = null;
-  
-  try {
-    const response = await workflowApi.workflowApi.generate(generateRequirement.value);
-    
-    if (response.success) {
-      generateResult.value = response;
-      ElMessage.success('工作流生成成功！');
-    } else {
-      ElMessage.error(response.message || '生成失败');
-    }
-  } catch (error) {
-    console.error('生成工作流失败:', error);
-    ElMessage.error('生成工作流失败：' + (error.message || '未知错误'));
-  } finally {
-    isGenerating.value = false;
-  }
-};
-
-const cancelGenerate = () => {
-  showGenerateModal.value = false;
-  generateRequirement.value = '';
-  generateResult.value = null;
-};
-
-const applyGeneratedWorkflow = () => {
-  if (!generateResult.value || !generateResult.value.data) return;
-  
-  saveHistory();
-  
-  const { nodes, edges } = generateResult.value.data;
-  
-  // 为导入的节点设置默认label（如果没有的话）
-  const processedNodes = nodes.map(node => {
-    const typeDef = nodeTypeDefinitions.find(def => def.id === node.type);
-    const defaultLabel = typeDef ? typeDef.name : node.type;
-    
-    return {
-      id: node.id,
-      type: node.type,
-      position: node.position,
-      data: {
-        ...node.data,
-        label: node.data?.label || defaultLabel
-      }
-    };
-  });
-  
-  const processedEdges = edges.map(edge => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-    sourceHandle: edge.sourceHandle,
-    targetHandle: edge.targetHandle,
-    markerEnd: edge.markerEnd || {
-      type: 'arrowclosed',
-      color: '#94a3b8'
-    }
-  }));
-  
-  elements.value = [...processedNodes, ...processedEdges];
-  markDirty();
-  
-  // 关闭模态框并重置状态
-  cancelGenerate();
-  ElMessage.success('工作流已应用到画布');
-};
-
-// AI优化工作流相关方法
-const optimizeWorkflow = async () => {
-  isOptimizing.value = true;
-  optimizeResult.value = null;
-  
-  try {
-    const nodes = elements.value.filter(el => !el.source && !el.target);
-    const edges = elements.value.filter(el => el.source && el.target);
-    
-    const workflowData = {
-      nodes,
-      edges
-    };
-    
-    const response = await workflowApi.workflowApi.optimize(workflowData);
-    
-    if (response.success) {
-      optimizeResult.value = response;
-      ElMessage.success('工作流优化成功！');
-    } else {
-      ElMessage.error(response.message || '优化失败');
-    }
-  } catch (error) {
-    console.error('优化工作流失败:', error);
-    ElMessage.error('优化工作流失败：' + (error.message || '未知错误'));
-  } finally {
-    isOptimizing.value = false;
-  }
-};
-
-const cancelOptimize = () => {
-  showOptimizeModal.value = false;
-  optimizeResult.value = null;
-};
-
-const applyOptimizedWorkflow = () => {
-  if (!optimizeResult.value || !optimizeResult.value.data) return;
-  
-  saveHistory();
-  
-  const { nodes, edges } = optimizeResult.value.data;
-  
-  const processedNodes = nodes.map(node => {
-    const typeDef = nodeTypeDefinitions.find(def => def.id === node.type);
-    const defaultLabel = typeDef ? typeDef.name : node.type;
-    
-    return {
-      id: node.id,
-      type: node.type,
-      position: node.position,
-      data: {
-        ...node.data,
-        label: node.data?.label || defaultLabel
-      }
-    };
-  });
-  
-  const processedEdges = edges.map(edge => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-    sourceHandle: edge.sourceHandle,
-    targetHandle: edge.targetHandle,
-    markerEnd: edge.markerEnd || {
-      type: 'arrowclosed',
-      color: '#94a3b8'
-    }
-  }));
-  
-  elements.value = [...processedNodes, ...processedEdges];
-  markDirty();
-  
-  cancelOptimize();
-  ElMessage.success('优化后的工作流已应用到画布');
-};
-
-const handleExecute = () => {
-  // 检查开始节点是否有参数
-  const startNode = elements.value.find(el => !el.source && el.type === 'start');
-  const hasParameters = startNode && startNode.data && startNode.data.parameters && startNode.data.parameters.length > 0;
-
-  if (hasParameters) {
-    // 有参数，显示参数输入面板
-    showRightPanel.value = true;
-    activePanel.value = 'execution';
-    showParameterPanel.value = true;
-
-    // 从开始节点获取预定义的参数
-    executionParameters.value = startNode.data.parameters.map(param => ({
-      name: param.name,
-      type: param.type,
-      value: param.default || '',
-      description: param.description || ''
-    }));
-  } else {
-    // 无参数，直接执行
-    runWorkflow();
-  }
-};
-
 const runWorkflowWithPanel = () => {
-  // 保持这个函数供ParameterInputPanel调用
   showRightPanel.value = true;
   activePanel.value = 'execution';
+  // 显示参数输入面板
   showParameterPanel.value = true;
-
-  const startNode = elements.value.find(el => !el.source && el.type === 'start');
-  if (startNode && startNode.data && startNode.data.parameters) {
-    executionParameters.value = startNode.data.parameters.map(param => ({
-      name: param.name,
-      type: param.type,
-      value: param.default || '',
-      description: param.description || ''
-    }));
-  } else {
-    executionParameters.value = [];
-  }
 };
 
 const runWorkflow = async (inputParams = {}) => {
@@ -1848,8 +1418,6 @@ const runWorkflow = async (inputParams = {}) => {
   isRunning.value = true;
   executionLogs.value = [];
   lastExecutionResult.value = null;
-  
-  const startTime = Date.now();
   
   const onStatusChange = (status) => {
     nodeExecutionStatus.value = status;
@@ -1863,20 +1431,6 @@ const runWorkflow = async (inputParams = {}) => {
   const result = await executionEngine.execute(elements.value, inputParams);
   lastExecutionResult.value = result;
   isRunning.value = false;
-  
-  const endTime = Date.now();
-  const duration = endTime - startTime;
-  
-  executionHistory.value.unshift({
-    timestamp: startTime,
-    duration: duration,
-    logs: [...executionLogs.value],
-    result: { ...result }
-  });
-  
-  if (executionHistory.value.length > maxHistoryCount) {
-    executionHistory.value = executionHistory.value.slice(0, maxHistoryCount);
-  }
 };
 
 const handleParameterExecute = (params) => {
@@ -1893,10 +1447,6 @@ const closeParameterPanel = () => {
 const clearExecutionLogs = () => {
   executionLogs.value = [];
   lastExecutionResult.value = null;
-};
-
-const clearExecutionHistory = () => {
-  executionHistory.value = [];
 };
 
 const undo = () => {
@@ -1918,17 +1468,6 @@ const redo = () => {
 };
 
 const deleteSelectedNode = () => {
-  const edgesToDelete = selectedEdges?.value?.length > 0 
-    ? selectedEdges.value.map(e => e.id) 
-    : [];
-  
-  if (edgesToDelete.length > 0) {
-    saveHistory();
-    removeEdges(edgesToDelete);
-    markDirty();
-    return;
-  }
-  
   const nodesToDelete = selectedNodeIds.value.length > 0 
     ? selectedNodeIds.value 
     : (selectedNodeId.value ? [selectedNodeId.value] : []);
@@ -2016,15 +1555,6 @@ const distributeVertical = () => {
   if (nodes.length < 3) return;
   saveHistory();
   distributeNodes(nodes, 'vertical');
-  markDirty();
-};
-
-const autoLayout = () => {
-  const allNodes = elements.value.filter(el => !el.source && !el.target);
-  const allEdges = elements.value.filter(el => el.source && el.target);
-  if (allNodes.length === 0) return;
-  saveHistory();
-  autoLayoutNodes(allNodes, allEdges);
   markDirty();
 };
 
@@ -2151,34 +1681,6 @@ const selectAllNodes = () => {
   }
 };
 
-const startResize = (event) => {
-  isResizing.value = true;
-  document.addEventListener('mousemove', onResize);
-  document.addEventListener('mouseup', stopResize);
-  event.preventDefault();
-};
-
-const onResize = (event) => {
-  if (!isResizing.value) return;
-  
-  const container = document.querySelector('.editor-container');
-  if (!container) return;
-  
-  const containerRect = container.getBoundingClientRect();
-  const newWidth = containerRect.width - event.clientX + containerRect.left;
-  
-  const minWidth = 200;
-  const maxWidth = containerRect.width - 200;
-  
-  rightPanelWidth.value = Math.max(minWidth, Math.min(maxWidth, newWidth));
-};
-
-const stopResize = () => {
-  isResizing.value = false;
-  document.removeEventListener('mousemove', onResize);
-  document.removeEventListener('mouseup', stopResize);
-};
-
 const registerShortcuts = () => {
   keyboardShortcuts.register('ctrl+z', () => undo());
   keyboardShortcuts.register('ctrl+y', () => redo());
@@ -2199,86 +1701,47 @@ const registerShortcuts = () => {
 const handleKeydown = (event) => {
   const target = event.target;
   const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
-
+  
   if (!isInput) {
     keyboardShortcuts.handleEvent(event);
   }
 };
 
-const handleClickOutside = (event) => {
-  const target = event.target;
-  const shortcutsPanel = document.querySelector('.shortcuts-panel');
-  if (shortcutsPanel && !shortcutsPanel.contains(target)) {
-    showShortcuts.value = false;
-  }
-};
-
-const loadWorkflow = async (code) => {
-  try {
-    const result = await workflowApi.workflowApi.get(code);
-    if (result.success && result.data) {
-      const workflow = result.data;
-      currentWorkflowId.value = workflow.workflowCode;
-      workflowCode.value = workflow.workflowCode;
-      workflowName.value = workflow.workflowName;
-      workflowDescription.value = workflow.description || '';
-      workflowCategory.value = workflow.category || 'general';
-      workflowTags.value = workflow.tags || [];
-      workflowTagsInput.value = (workflow.tags || []).join(', ');
-      
-      // 加载工作流数据
-      if (workflow.workflowData) {
-        const { nodes, edges } = workflow.workflowData;
-        const loadedNodes = (nodes || []).map(node => ({
-          ...node,
-          data: {
-            ...node.data,
-            label: node.data?.label || node.type
-          }
-        }));
-        const loadedEdges = (edges || []).map(edge => ({
-          ...edge,
-          markerEnd: edge.markerEnd || {
-            type: 'arrowclosed',
-            color: '#94a3b8'
-          }
-        }));
-        elements.value = [...loadedNodes, ...loadedEdges];
-      }
-      
-      ElMessage.success('工作流加载成功');
-    } else {
-      ElMessage.warning('未找到工作流，将创建新的工作流');
-      initNewWorkflow();
-    }
-  } catch (error) {
-    console.error('加载工作流失败:', error);
-    ElMessage.error('加载工作流失败');
-    initNewWorkflow();
-  }
-};
-
-const initNewWorkflow = () => {
-  elements.value = [];
-  workflowName.value = '未命名工作流';
-  workflowCode.value = '';
-  workflowDescription.value = '';
-  workflowCategory.value = 'general';
-  workflowTags.value = [];
-  workflowTagsInput.value = '';
-};
-
 onMounted(async () => {
   registerShortcuts();
   window.addEventListener('keydown', handleKeydown);
-  document.addEventListener('click', handleClickOutside);
+  
+  loadWorkflows();
   
   // 如果传入了 workflowCode，从后端加载
   if (props.workflowCode) {
-    await loadWorkflow(props.workflowCode);
-  } else {
-    // 新建工作流，初始化默认模板
-    initNewWorkflow();
+    try {
+      const result = await workflowApi.workflowApi.get(props.workflowCode);
+      if (result.success && result.data) {
+        const workflow = result.data;
+        currentWorkflowId.value = workflow.workflowCode;
+        workflowName.value = workflow.workflowName;
+        
+        // 加载工作流数据
+        if (workflow.workflowData) {
+          const { nodes, edges } = workflow.workflowData;
+          elements.value = [
+            ...(nodes || []),
+            ...(edges || [])
+          ];
+        }
+        
+        ElMessage.success('工作流加载成功');
+      } else {
+        ElMessage.warning('未找到工作流，将创建新的工作流');
+      }
+    } catch (error) {
+      console.error('加载工作流失败:', error);
+      ElMessage.error('加载工作流失败');
+    }
+  } else if (workflows.value.length > 0) {
+    // 否则打开第一个本地工作流
+    openWorkflow(workflows.value[0]);
   }
   
   history.value.push(JSON.stringify(elements.value));
@@ -2287,7 +1750,6 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
-  document.removeEventListener('click', handleClickOutside);
 });
 </script>
 
@@ -2346,39 +1808,26 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-.workflow-name-display {
+.workflow-selector {
+  position: relative;
+  display: inline-block;
+}
+
+.workflow-btn {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px;
-  background: #f8f9fa;
-  border-radius: 4px;
-  border: 1px solid #e0e0e0;
   min-width: 120px;
+  justify-content: flex-start;
+  padding: 6px 12px;
 }
 
-.workflow-name-display svg {
+.workflow-btn svg {
   display: inline-block;
   flex-shrink: 0;
   width: 14px;
   height: 14px;
   max-width: none;
-  color: #64748b;
-}
-
-.workflow-name-display .info-icon {
-  opacity: 0.5;
-  transition: opacity 0.2s;
-}
-
-.workflow-name-display:hover .info-icon {
-  opacity: 1;
-}
-
-.workflow-name-display:hover {
-  cursor: pointer;
-  background: #f1f5f9;
-  border-color: #cbd5e1;
 }
 
 .workflow-name {
@@ -2387,9 +1836,162 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.workflow-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  min-width: 240px;
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.dropdown-header {
+  padding: 10px 12px;
+  background: #f5f5f5;
+  border-bottom: 1px solid #e0e0e0;
+  font-weight: 600;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.workflow-count {
+  background: #3b82f6;
+  color: white;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  min-width: 18px;
+  text-align: center;
+}
+
+.empty-workflows {
+  padding: 30px 20px;
+  text-align: center;
+}
+
+.empty-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.empty-text {
+  font-size: 13px;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.empty-hint {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.item-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-name {
   font-size: 13px;
   font-weight: 500;
   color: #334155;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.item-desc {
+  font-size: 11px;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-time {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.dropdown-content {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.dropdown-item:hover {
+  background-color: #f0f5ff;
+}
+
+.dropdown-item.active {
+  background-color: #e6f0ff;
+}
+
+.dropdown-item svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  max-width: none;
+}
+
+.delete-btn {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s, visibility 0.15s;
+  padding: 4px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #999;
+}
+
+.delete-btn svg {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  max-width: none;
+}
+
+.dropdown-item:hover .delete-btn {
+  opacity: 1;
+  visibility: visible;
+}
+
+.delete-btn:hover {
+  color: #ff4d4f;
 }
 
 .align-group,
@@ -3146,50 +2748,11 @@ onUnmounted(() => {
 
 
 .right-panel {
+  width: 320px;
   background: white;
   border-left: 1px solid #e0e0e0;
   display: flex;
   flex-direction: column;
-  position: relative;
-  transition: width 0.1s ease;
-}
-
-.panel-resizer {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 6px;
-  cursor: col-resize;
-  background: transparent;
-  z-index: 10;
-  transform: translateX(-50%);
-  transition: background-color 0.2s;
-}
-
-.panel-resizer:hover {
-  background-color: rgba(0, 0, 0, 0.1);
-}
-
-.panel-resizer.resizing {
-  background-color: rgba(33, 150, 243, 0.3);
-}
-
-.resizer-handle {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 10px;
-  height: 40px;
-  background-color: #e0e0e0;
-  border-radius: 2px;
-  transition: background-color 0.2s;
-}
-
-.panel-resizer:hover .resizer-handle,
-.panel-resizer.resizing .resizer-handle {
-  background-color: #2196f3;
 }
 
 .panel-tabs {
@@ -3314,157 +2877,5 @@ onUnmounted(() => {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
-}
-
-/* 工作流信息模态框样式 */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  animation: fadeIn 0.2s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.modal {
-  background: white;
-  border-radius: 12px;
-  width: 500px;
-  max-height: 90vh;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  animation: slideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-20px) scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.modal-header h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #1f2937;
-}
-
-.close-btn {
-  border: none;
-  background: none;
-  font-size: 24px;
-  cursor: pointer;
-  color: #9ca3af;
-  padding: 0 8px;
-  transition: color 0.2s;
-}
-
-.close-btn:hover {
-  color: #374151;
-}
-
-.modal-body {
-  padding: 20px;
-  max-height: 60vh;
-  overflow-y: auto;
-}
-
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 16px 20px;
-  border-top: 1px solid #e5e7eb;
-  background: #f9fafb;
-}
-
-.btn {
-  padding: 10px 20px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  transition: all 0.2s;
-}
-
-.btn:hover {
-  background: #f3f4f6;
-}
-
-.btn-primary {
-  background: #3b82f6;
-  color: white;
-  border: none;
-}
-
-.btn-primary:hover {
-  background: #2563eb;
-}
-
-.form-item {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 16px;
-}
-
-.form-item label {
-  font-size: 13px;
-  font-weight: 500;
-  color: #374151;
-}
-
-.form-item input,
-.form-item select,
-.form-item textarea {
-  padding: 10px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 14px;
-  transition: border-color 0.2s;
-}
-
-.form-item input:focus,
-.form-item select:focus,
-.form-item textarea:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.form-item input:disabled {
-  background: #f9fafb;
-  color: #9ca3af;
-  cursor: not-allowed;
-}
-
-.form-item textarea {
-  resize: vertical;
-  min-height: 60px;
-}
-
-.workflow-info-modal {
-  width: 500px;
 }
 </style>
