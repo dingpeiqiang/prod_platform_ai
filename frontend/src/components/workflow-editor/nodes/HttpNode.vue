@@ -1,13 +1,17 @@
 <template>
-  <div class="node http-node" :class="{ selected }">
-    <div class="node-header">
+  <div class="node http-node" :class="{ selected, 'is-config-mode': configMode, 'is-compact': compact && !configMode }">
+    <div v-if="!configMode" class="node-header">
       <span class="node-icon">🌐</span>
       <span class="node-title">{{ data.label }}</span>
       <button @click="toggleAdvanced" class="advanced-toggle" :class="{ active: showAdvanced }">
         ⚙
       </button>
     </div>
-    <div class="node-body">
+    <div v-if="compact && !configMode" class="node-compact-body">
+      <span class="compact-summary">{{ httpSummary }}</span>
+      <span class="compact-hint">双击配置</span>
+    </div>
+    <div v-if="!compact || configMode" class="node-body">
       <div class="method-url-row">
         <select v-model="localMethod" @change="emitUpdate" class="method-select">
           <option value="GET">GET</option>
@@ -20,7 +24,7 @@
         <input v-model="localUrl" @input="emitUpdate" placeholder="URL" class="url-input" />
       </div>
 
-      <div v-if="showAdvanced" class="advanced-panel">
+      <div v-if="configMode || showAdvanced" class="advanced-panel">
         <div class="section-title">认证方式</div>
         <select v-model="localAuthType" @change="emitUpdate" class="node-select">
           <option value="none">无</option>
@@ -112,18 +116,20 @@
         </label>
       </div>
     </div>
-    <Handle type="target" :position="Position.Left" id="target" />
-    <Handle type="source" :position="Position.Right" id="source" />
+    <Handle v-if="!configMode" type="target" :position="Position.Left" id="target" />
+    <Handle v-if="!configMode" type="source" :position="Position.Right" id="source" />
   </div>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { Handle, Position } from '@vue-flow/core';
+import { nodeDisplayProps } from './nodeDisplayProps.js';
 
 const props = defineProps({
   data: { type: Object, required: true },
-  selected: { type: Boolean, default: false }
+  selected: { type: Boolean, default: false },
+  ...nodeDisplayProps
 });
 
 const emit = defineEmits(['update']);
@@ -145,6 +151,12 @@ const localBody = ref(props.data.body || '');
 const localTimeout = ref(props.data.timeout || 30);
 const localFollowRedirects = ref(props.data.followRedirects !== false);
 const localVerifySSL = ref(props.data.verifySSL !== false);
+
+const httpSummary = computed(() => {
+  const url = localUrl.value || '未设置 URL';
+  const preview = url.length > 22 ? `${url.slice(0, 22)}…` : url;
+  return `${localMethod.value} ${preview}`;
+});
 
 const toggleAdvanced = () => {
   showAdvanced.value = !showAdvanced.value;
@@ -227,6 +239,36 @@ watch(() => props.data, (d) => {
 .http-node.selected {
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.http-node.is-compact {
+  min-width: 160px;
+}
+
+.node-compact-body {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.compact-summary {
+  font-size: 11px;
+  color: #475569;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-hint {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.http-node.is-config-mode {
+  min-width: unset;
+  border: none;
+  box-shadow: none;
 }
 
 .node-header {

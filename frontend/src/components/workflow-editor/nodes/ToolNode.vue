@@ -1,13 +1,17 @@
 <template>
-  <div class="node tool-node" :class="{ selected }">
-    <div class="node-header">
+  <div class="node tool-node" :class="{ selected, 'is-config-mode': configMode, 'is-compact': compact && !configMode }">
+    <div v-if="!configMode" class="node-header">
       <span class="node-icon">🔧</span>
       <span class="node-title">{{ data.label }}</span>
       <button @click="toggleAdvanced" class="advanced-toggle" :class="{ active: showAdvanced }">
         ⚙
       </button>
     </div>
-    <div class="node-body">
+    <div v-if="compact && !configMode" class="node-compact-body">
+      <span class="compact-summary">{{ toolDisplayName }}</span>
+      <span class="compact-hint">双击配置</span>
+    </div>
+    <div v-if="!compact || configMode" class="node-body">
       <select v-model="localToolName" @change="onToolChange" class="node-select">
         <option value="">选择工具</option>
         <option value="web_search">网页搜索</option>
@@ -21,7 +25,7 @@
         <option value="document_summary">文档摘要</option>
       </select>
 
-      <div v-if="showAdvanced && localToolName" class="advanced-panel">
+      <div v-if="(configMode || showAdvanced) && localToolName" class="advanced-panel">
         <div class="section-title">工具参数</div>
         <div class="params-container">
           <div 
@@ -84,14 +88,15 @@
         </div>
       </div>
     </div>
-    <Handle type="target" :position="Position.Left" id="target" />
-    <Handle type="source" :position="Position.Right" id="source" />
+    <Handle v-if="!configMode" type="target" :position="Position.Left" id="target" />
+    <Handle v-if="!configMode" type="source" :position="Position.Right" id="source" />
   </div>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { Handle, Position } from '@vue-flow/core';
+import { nodeDisplayProps } from './nodeDisplayProps.js';
 
 const props = defineProps({
   data: {
@@ -101,12 +106,30 @@ const props = defineProps({
   selected: {
     type: Boolean,
     default: false
-  }
+  },
+  ...nodeDisplayProps
 });
 
 const emit = defineEmits(['update']);
 
+const toolLabels = {
+  web_search: '网页搜索',
+  database_query: '数据库查询',
+  file_read: '文件读取',
+  file_write: '文件写入',
+  api_call: 'API调用',
+  email_send: '发送邮件',
+  shell_exec: '执行命令',
+  image_generate: '图像生成',
+  document_summary: '文档摘要'
+};
+
 const showAdvanced = ref(false);
+
+const toolDisplayName = computed(() => {
+  if (!localToolName.value) return '未选择工具';
+  return toolLabels[localToolName.value] || localToolName.value;
+});
 
 const localToolName = ref(props.data.toolName || '');
 const localParams = ref(props.data.params || []);
@@ -250,6 +273,36 @@ watch(() => props.data, (d) => {
 .tool-node.selected {
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.tool-node.is-compact {
+  min-width: 160px;
+}
+
+.node-compact-body {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.compact-summary {
+  font-size: 11px;
+  color: #475569;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-hint {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.tool-node.is-config-mode {
+  min-width: unset;
+  border: none;
+  box-shadow: none;
 }
 
 .node-header {

@@ -1,6 +1,14 @@
 <template>
-  <div class="node end-node" :class="{ selected, [executionStatus]: executionStatus }">
-    <div class="node-header">
+  <div
+    class="node end-node"
+    :class="{
+      selected,
+      'is-config-mode': configMode,
+      'is-compact': compact && !configMode,
+      [executionStatus]: executionStatus
+    }"
+  >
+    <div v-if="!configMode" class="node-header">
       <span class="node-icon">🏁</span>
       <span class="node-title">{{ data.label }}</span>
       <span v-if="executionStatus" class="status-indicator">
@@ -9,15 +17,19 @@
         <span v-else-if="executionStatus === 'error'" class="status-dot error"></span>
       </span>
     </div>
-    <div class="node-body">
+    <div v-if="compact && !configMode" class="node-compact-body">
+      <span class="compact-summary">工作流结束</span>
+    </div>
+    <div v-if="!compact || configMode" class="node-body">
       <span class="node-desc">工作流结束</span>
     </div>
-    <Handle type="target" :position="Position.Left" id="target" />
+    <Handle v-if="!configMode" type="target" :position="Position.Left" id="target" />
   </div>
 </template>
 
 <script setup>
 import { Handle, Position } from '@vue-flow/core';
+import { nodeDisplayProps } from './nodeDisplayProps.js';
 
 defineProps({
   data: {
@@ -31,7 +43,8 @@ defineProps({
   executionStatus: {
     type: String,
     default: ''
-  }
+  },
+  ...nodeDisplayProps
 });
 </script>
 
@@ -59,6 +72,24 @@ defineProps({
 
 .end-node.error {
   box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.5), 0 2px 12px rgba(239, 68, 68, 0.4);
+}
+
+.end-node.is-compact {
+  min-width: 160px;
+}
+
+.node-compact-body {
+  padding: 8px 10px;
+}
+
+.compact-summary {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.end-node.is-config-mode {
+  min-width: unset;
+  box-shadow: none;
 }
 
 .node-header {

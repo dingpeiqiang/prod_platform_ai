@@ -1,6 +1,6 @@
 <template>
-  <div class="node form-node" :class="{ selected }">
-    <div class="node-header">
+  <div class="node form-node" :class="{ selected, 'is-config-mode': configMode, 'is-compact': compact && !configMode }">
+    <div v-if="!configMode" class="node-header">
       <span class="node-icon">📋</span>
       <span class="node-title">{{ data.label }}</span>
       <button @click="toggleConfig" class="config-toggle" :class="{ active: showConfig }">
@@ -10,7 +10,11 @@
         </svg>
       </button>
     </div>
-    <div class="node-body">
+    <div v-if="compact && !configMode" class="node-compact-body">
+      <span class="compact-summary">{{ formSummary }}</span>
+      <span class="compact-hint">双击配置</span>
+    </div>
+    <div v-if="!compact || configMode" class="node-body">
       <div class="mode-selector">
         <button 
           @click="switchMode('online')" 
@@ -84,8 +88,8 @@
       </div>
     </div>
     
-    <Handle type="target" :position="Position.Left" id="target" />
-    <Handle type="source" :position="Position.Right" id="source" />
+    <Handle v-if="!configMode" type="target" :position="Position.Left" id="target" />
+    <Handle v-if="!configMode" type="source" :position="Position.Right" id="source" />
   </div>
 
   <Teleport to="body">
@@ -118,6 +122,7 @@ import { Handle, Position } from '@vue-flow/core';
 import { ElSelect, ElOption, ElButton, ElDialog } from 'element-plus';
 import FormCreateDesigner from 'form-create-designer';
 import * as formApi from '@/services/formApi';
+import { nodeDisplayProps } from './nodeDisplayProps.js';
 
 const props = defineProps({
   data: {
@@ -127,7 +132,8 @@ const props = defineProps({
   selected: {
     type: Boolean,
     default: false
-  }
+  },
+  ...nodeDisplayProps
 });
 
 const emit = defineEmits(['update']);
@@ -142,6 +148,15 @@ const formSchema = ref([]);
 
 const selectedForm = computed(() => {
   return availableForms.value.find(f => f.formCode === selectedFormCode.value);
+});
+
+const formSummary = computed(() => {
+  if (formMode.value === 'reference') {
+    const name = selectedForm.value?.formName;
+    return name ? `关联: ${name}` : '关联表单';
+  }
+  const count = formSchema.value?.length || 0;
+  return count > 0 ? `在线表单 · ${count} 字段` : '在线表单';
 });
 
 const toggleConfig = () => {
@@ -269,6 +284,36 @@ watch(() => props.data, (newData) => {
 .form-node.selected {
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.form-node.is-compact {
+  min-width: 160px;
+}
+
+.node-compact-body {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.compact-summary {
+  font-size: 11px;
+  color: #475569;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-hint {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.form-node.is-config-mode {
+  min-width: unset;
+  border: none;
+  box-shadow: none;
 }
 
 .node-header {

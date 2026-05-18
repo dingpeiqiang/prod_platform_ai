@@ -1,13 +1,17 @@
 <template>
-  <div class="node code-node" :class="{ selected }">
-    <div class="node-header">
+  <div class="node code-node" :class="{ selected, 'is-config-mode': configMode, 'is-compact': compact && !configMode }">
+    <div v-if="!configMode" class="node-header">
       <span class="node-icon">💻</span>
       <span class="node-title">{{ data.label }}</span>
       <button @click="toggleAdvanced" class="advanced-toggle" :class="{ active: showAdvanced }">
         ⚙
       </button>
     </div>
-    <div class="node-body">
+    <div v-if="compact && !configMode" class="node-compact-body">
+      <span class="compact-summary">{{ codeSummary }}</span>
+      <span class="compact-hint">双击配置</span>
+    </div>
+    <div v-if="!compact || configMode" class="node-body">
       <div class="code-header">
         <select v-model="localLanguage" @change="emitUpdate" class="lang-select">
           <option value="javascript">JavaScript</option>
@@ -47,7 +51,7 @@
         </div>
       </div>
 
-      <div v-if="showAdvanced" class="advanced-panel">
+      <div v-if="configMode || showAdvanced" class="advanced-panel">
         <div class="section-title">执行配置</div>
         <div class="timeout-row">
           <label>超时时间</label>
@@ -111,18 +115,20 @@
         </div>
       </div>
     </div>
-    <Handle type="target" :position="Position.Left" id="target" />
-    <Handle type="source" :position="Position.Right" id="source" />
+    <Handle v-if="!configMode" type="target" :position="Position.Left" id="target" />
+    <Handle v-if="!configMode" type="source" :position="Position.Right" id="source" />
   </div>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { Handle, Position } from '@vue-flow/core';
+import { nodeDisplayProps } from './nodeDisplayProps.js';
 
 const props = defineProps({
   data: { type: Object, required: true },
-  selected: { type: Boolean, default: false }
+  selected: { type: Boolean, default: false },
+  ...nodeDisplayProps
 });
 
 const emit = defineEmits(['update']);
@@ -138,6 +144,12 @@ const localSandbox = ref(props.data.sandbox !== false);
 const localOutputType = ref(props.data.outputType || 'auto');
 const localReturnJson = ref(props.data.returnJson || false);
 const localEnvVars = ref(props.data.envVars || []);
+
+const codeSummary = computed(() => {
+  const lang = localLanguage.value || 'javascript';
+  const lines = (localCode.value || '').split('\n').length;
+  return `${lang} · ${lines} 行`;
+});
 
 const codeTemplates = [
   { name: 'HTTP请求', description: '发送HTTP请求', language: 'javascript', code: "const response = await fetch('https://api.example.com/data', {\n  method: 'GET',\n  headers: { 'Content-Type': 'application/json' }\n});\nconst data = await response.json();\nreturn data;" },
@@ -237,6 +249,36 @@ watch(() => props.data, (d) => {
 .code-node.selected {
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.code-node.is-compact {
+  min-width: 160px;
+}
+
+.node-compact-body {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.compact-summary {
+  font-size: 11px;
+  color: #475569;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-hint {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.code-node.is-config-mode {
+  min-width: unset;
+  border: none;
+  box-shadow: none;
 }
 
 .node-header {

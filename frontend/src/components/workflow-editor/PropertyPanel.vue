@@ -1,6 +1,6 @@
 <template>
-  <div class="properties-panel" :class="{ collapsed: !expanded }">
-    <div class="panel-header">
+  <div class="properties-panel" :class="{ collapsed: !expanded && !embedded, embedded }">
+    <div v-if="!embedded" class="panel-header">
       <h3>属性</h3>
       <button @click="$emit('toggle')" class="panel-close-btn">✕</button>
     </div>
@@ -27,50 +27,7 @@
           </div>
         </div>
 
-        <div class="property-section">
-          <h4>通用配置</h4>
-          <div class="property-group">
-            <label>超时时间</label>
-            <input
-              v-model.number="nodeData.timeout"
-              type="number"
-              min="1"
-              max="300"
-              class="property-input"
-              placeholder="30"
-            />
-            <span class="property-unit">秒</span>
-          </div>
-          <label class="checkbox-label">
-            <input v-model="nodeData.ignoreError" type="checkbox" />
-            <span>忽略错误继续执行</span>
-          </label>
-          <div class="property-group">
-            <label>重试次数</label>
-            <input
-              v-model.number="nodeData.retryCount"
-              type="number"
-              min="0"
-              max="10"
-              class="property-input"
-              placeholder="0"
-            />
-          </div>
-        </div>
 
-        <div class="property-section">
-          <h4>执行信息</h4>
-          <div class="property-group">
-            <label>执行状态</label>
-            <span :class="['property-value', executionStatus?.toLowerCase()]">
-              {{ executionStatus || '未执行' }}
-            </span>
-          </div>
-          <div class="property-group">
-            <label>执行时间</label>
-            <span class="property-value">{{ executionTime || '-' }}</span>
-          </div>
-        </div>
       </div>
       <div v-else class="empty-properties">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
@@ -88,9 +45,8 @@
 const props = defineProps({
   nodeData: { type: Object, default: null },
   expanded: { type: Boolean, default: true },
-  nodeTypeLabel: { type: String, default: '' },
-  executionStatus: { type: String, default: '' },
-  executionTime: { type: String, default: '' }
+  embedded: { type: Boolean, default: false },
+  nodeTypeLabel: { type: String, default: '' }
 });
 
 const emit = defineEmits(['toggle', 'update-label']);
@@ -117,6 +73,16 @@ const onLabelChange = (event) => {
   width: 0;
   overflow: hidden;
   border-left: none;
+}
+
+.properties-panel.embedded {
+  width: 100%;
+  border-left: none;
+  background: transparent;
+}
+
+.properties-panel.embedded .panel-content {
+  padding-top: 4px;
 }
 
 .panel-header {
@@ -200,17 +166,7 @@ const onLabelChange = (event) => {
   border-radius: 3px;
 }
 
-.property-value.running {
-  color: #f59e0b;
-}
 
-.property-value.completed {
-  color: #10b981;
-}
-
-.property-value.error {
-  color: #ef4444;
-}
 
 .property-unit {
   font-size: 11px;

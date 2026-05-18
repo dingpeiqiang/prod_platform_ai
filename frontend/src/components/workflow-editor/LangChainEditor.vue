@@ -264,6 +264,7 @@
           @node-drag-stop="onNodeDragStop"
           @pane-click="onPaneClick"
           @node-click="({ event, node }) => onNodeClick(event, node)"
+          @node-double-click="({ event, node }) => onNodeDoubleClick(event, node)"
           @edge-click="onEdgeClick"
           @drop="onDrop"
           @dragover="onDragOver"
@@ -311,57 +312,117 @@
           </transition>
           
           <template #node-start="props">
-            <StartNode 
-              :data="props.data" 
-              :selected="props.selected" 
-              :execution-status="nodeExecutionStatus[props.node?.id]" 
+            <StartNode
+              :data="enrichNodeData(props.data, props.node?.id)"
+              :selected="props.selected"
+              compact
+              :execution-status="nodeExecutionStatus[props.node?.id]"
+              @update="updateNodeData"
             />
           </template>
-          
+
           <template #node-end="props">
-            <EndNode 
-              :data="props.data" 
-              :selected="props.selected" 
-              :execution-status="nodeExecutionStatus[props.node?.id]" 
+            <EndNode
+              :data="enrichNodeData(props.data, props.node?.id)"
+              :selected="props.selected"
+              compact
+              :execution-status="nodeExecutionStatus[props.node?.id]"
             />
           </template>
-          
+
           <template #node-prompt="props">
-            <PromptNode :data="props.data" :selected="props.selected" @update="updateNodeData" />
+            <PromptNode
+              :data="enrichNodeData(props.data, props.node?.id)"
+              :selected="props.selected"
+              compact
+              @update="updateNodeData"
+            />
           </template>
-          
+
           <template #node-llm="props">
-            <LlmNode :data="props.data" :selected="props.selected" @update="updateNodeData" />
+            <LlmNode
+              :data="enrichNodeData(props.data, props.node?.id)"
+              :selected="props.selected"
+              compact
+              @update="updateNodeData"
+            />
           </template>
-          
+
           <template #node-tool="props">
-            <ToolNode :data="props.data" :selected="props.selected" @update="updateNodeData" />
+            <ToolNode
+              :data="enrichNodeData(props.data, props.node?.id)"
+              :selected="props.selected"
+              compact
+              @update="updateNodeData"
+            />
           </template>
-          
+
           <template #node-condition="props">
-            <ConditionNode :data="props.data" :selected="props.selected" @update="updateNodeData" />
+            <ConditionNode
+              :data="enrichNodeData(props.data, props.node?.id)"
+              :selected="props.selected"
+              compact
+              @update="updateNodeData"
+            />
           </template>
-          
+
           <template #node-loop="props">
-            <LoopNode :data="props.data" :selected="props.selected" @update="updateNodeData" />
+            <LoopNode
+              :data="enrichNodeData(props.data, props.node?.id)"
+              :selected="props.selected"
+              compact
+              @update="updateNodeData"
+            />
           </template>
-          
+
           <template #node-variable="props">
-            <VariableNode :data="props.data" :selected="props.selected" @update="updateNodeData" />
+            <VariableNode
+              :data="enrichNodeData(props.data, props.node?.id)"
+              :selected="props.selected"
+              compact
+              @update="updateNodeData"
+            />
           </template>
-          
+
           <template #node-http="props">
-            <HttpNode :data="props.data" :selected="props.selected" @update="updateNodeData" />
+            <HttpNode
+              :data="enrichNodeData(props.data, props.node?.id)"
+              :selected="props.selected"
+              compact
+              @update="updateNodeData"
+            />
           </template>
-          
+
           <template #node-code="props">
-            <CodeNode :data="props.data" :selected="props.selected" @update="updateNodeData" />
+            <CodeNode
+              :data="enrichNodeData(props.data, props.node?.id)"
+              :selected="props.selected"
+              compact
+              @update="updateNodeData"
+            />
           </template>
-          
+
           <template #node-parser="props">
-            <ParserNode :data="props.data" :selected="props.selected" @update="updateNodeData" />
+            <ParserNode
+              :data="enrichNodeData(props.data, props.node?.id)"
+              :selected="props.selected"
+              compact
+              @update="updateNodeData"
+            />
           </template>
         </VueFlow>
+      </div>
+
+      <div class="node-config-drawer" :class="{ open: showNodeConfigPanel }">
+        <NodeConfigPanel
+          :node="selectedNodeData"
+          :execution-status="selectedNodeExecutionStatus"
+          :execution-time="selectedNodeExecutionTime"
+          @close="closeNodeConfigPanel"
+          @update-label="onPropertyLabelUpdate"
+          @update="onPropertyUpdate"
+          @node-update="updateNodeData"
+        />
       </div>
 
       <!-- 快捷键提示面板 -->
@@ -426,8 +487,12 @@
           <div class="shortcut-group">
             <h5>面板切换</h5>
             <div class="shortcut-item">
+              <span class="key">双击节点</span>
+              <span class="desc">打开/关闭配置面板</span>
+            </div>
+            <div class="shortcut-item">
               <span class="key">Ctrl + G</span>
-              <span class="desc">属性面板</span>
+              <span class="desc">切换节点配置面板</span>
             </div>
             <div class="shortcut-item">
               <span class="key">Ctrl + L</span>
@@ -441,16 +506,10 @@
         </div>
       </div>
 
-      <div v-show="showRightPanel" class="right-panel">
+      <div class="right-panel" :class="{ open: showRightPanel }">
         <div class="panel-tabs">
-          <button 
-            @click="activePanel = 'properties'" 
-            :class="['panel-tab', { active: activePanel === 'properties' }]"
-          >
-            属性
-          </button>
-          <button 
-            @click="activePanel = 'validation'" 
+          <button
+            @click="activePanel = 'validation'"
             :class="['panel-tab', { active: activePanel === 'validation' }]"
           >
             验证
@@ -465,15 +524,6 @@
         </div>
         
         <div class="panel-content">
-          <div v-show="activePanel === 'properties'" class="panel-content-wrapper">
-            <PropertyPanel 
-              :node-data="selectedNodeData"
-              :expanded="showRightPanel"
-              :node-type-label="selectedNodeTypeLabel"
-              @update="onPropertyUpdate"
-            />
-          </div>
-
           <div v-show="activePanel === 'validation'" class="panel-content-wrapper">
             <div v-if="validationResults.errors.length === 0 && validationResults.warnings.length === 0" class="validation-empty">
               <span class="success-icon">✓</span>
@@ -546,7 +596,7 @@ import { Undo2, Redo2, Save, Download, Upload } from 'lucide-vue-next';
 import * as workflowApi from '@/services/workflowApi';
 
 import NodePanel from './NodePanel.vue';
-import PropertyPanel from './PropertyPanel.vue';
+import NodeConfigPanel from './NodeConfigPanel.vue';
 import ExecutionPanel from './ExecutionPanel.vue';
 import ParameterInputPanel from './ParameterInputPanel.vue';
 
@@ -593,8 +643,11 @@ const hasChanges = ref(false);
 const selectedNodeId = ref(null);
 const selectedNodeIds = ref([]);
 const showLeftPanel = ref(true); // 新增：控制左侧节点面板显示/隐藏
-const showRightPanel = ref(true);
-const activePanel = ref('properties');
+const showRightPanel = ref(false);
+const showNodeConfigPanel = ref(false);
+const activePanel = ref('validation');
+const lastNodeClick = ref({ id: null, time: 0 });
+const DOUBLE_CLICK_MS = 320;
 const showShortcuts = ref(false);
 const connectionSuccess = ref(false);
 
@@ -763,7 +816,7 @@ const nodeTypeDefinitions = [
 ];
 
 const selectedNodeData = computed(() => {
-  return elements.value.find(el => el.id === selectedNodeId.value && !el.source);
+  return elements.value.find(el => el.id === selectedNodeId.value && el.type && !el.source);
 });
 
 const selectedNodeTypeLabel = computed(() => {
@@ -1027,8 +1080,35 @@ const onNodeDragStartFromPanel = (nodeType) => {
   console.log('开始拖拽节点:', nodeType.name);
 };
 
+const enrichNodeData = (data, nodeId) => {
+  if (!data) return data;
+  return nodeId ? { ...data, id: nodeId } : data;
+};
+
+const openNodeConfigPanel = (node) => {
+  selectedNodeIds.value = [node.id];
+  selectedNodeId.value = node.id;
+  showNodeConfigPanel.value = true;
+};
+
+const closeNodeConfigPanel = () => {
+  showNodeConfigPanel.value = false;
+};
+
+const toggleNodeConfigPanel = () => {
+  if (!selectedNodeId.value) return;
+  if (showNodeConfigPanel.value) {
+    closeNodeConfigPanel();
+  } else {
+    const node = elements.value.find((el) => el.id === selectedNodeId.value && !el.source);
+    if (node) openNodeConfigPanel(node);
+  }
+};
+
 const onPaneClick = () => {
   selectedNodeId.value = null;
+  selectedNodeIds.value = [];
+  closeNodeConfigPanel();
 };
 
 const onEdgeClick = ({ edge, event }) => {
@@ -1041,6 +1121,8 @@ const onHandleClick = ({ event, handle, node }) => {
 const onHandleMouseDown = ({ event, handle, node }) => {
 };
 
+const animatingNodeId = ref(null);
+
 const onNodeClick = (event, node) => {
   if (event.shiftKey) {
     const idx = selectedNodeIds.value.indexOf(node.id);
@@ -1049,15 +1131,36 @@ const onNodeClick = (event, node) => {
     } else {
       selectedNodeIds.value.push(node.id);
     }
-    selectedNodeId.value = selectedNodeIds.value.length > 0 
-      ? selectedNodeIds.value[selectedNodeIds.value.length - 1] 
+    selectedNodeId.value = selectedNodeIds.value.length > 0
+      ? selectedNodeIds.value[selectedNodeIds.value.length - 1]
       : null;
   } else {
     selectedNodeIds.value = [node.id];
     selectedNodeId.value = node.id;
   }
-  if (activePanel.value !== 'properties') {
-    activePanel.value = 'properties';
+};
+
+const onNodeDoubleClick = (event, node) => {
+  triggerNodeDoubleClickAnimation(node.id);
+  
+  if (showNodeConfigPanel.value && selectedNodeId.value === node.id) {
+    closeNodeConfigPanel();
+  } else {
+    openNodeConfigPanel(node);
+  }
+};
+
+const triggerNodeDoubleClickAnimation = (nodeId) => {
+  animatingNodeId.value = nodeId;
+  
+  const nodeElement = document.querySelector(`[data-id="${nodeId}"]`);
+  if (nodeElement) {
+    nodeElement.classList.add('dblclick-triggered');
+    
+    setTimeout(() => {
+      nodeElement.classList.remove('dblclick-triggered');
+      animatingNodeId.value = null;
+    }, 400);
   }
 };
 
@@ -1123,16 +1226,13 @@ const onDrop = (event) => {
       }
     };
     
-    saveHistory();
     elements.value.push(newNode);
+    saveHistory();
     markDirty();
     
     // 自动选中新创建的节点
     selectedNodeId.value = newNode.id;
     selectedNodeIds.value = [newNode.id];
-    if (activePanel.value !== 'properties') {
-      activePanel.value = 'properties';
-    }
   } catch (error) {
     console.error('拖拽节点失败:', error);
   }
@@ -1150,13 +1250,29 @@ const updateNodeData = (nodeId, data) => {
 const onPropertyUpdate = ({ key, value }) => {
   if (selectedNodeId.value) {
     saveHistory();
-    const node = elements.value.find(el => el.id === selectedNodeId.value);
+    const node = elements.value.find((el) => el.id === selectedNodeId.value);
     if (node) {
       node.data[key] = value;
       markDirty();
     }
   }
 };
+
+const onPropertyLabelUpdate = (nodeId, label) => {
+  saveHistory();
+  const node = elements.value.find((el) => el.id === nodeId);
+  if (node) {
+    node.data.label = label;
+    markDirty();
+  }
+};
+
+const selectedNodeExecutionStatus = computed(() => {
+  if (!selectedNodeId.value) return '';
+  return nodeExecutionStatus.value[selectedNodeId.value] || '';
+});
+
+const selectedNodeExecutionTime = computed(() => '');
 
 const markDirty = () => {
   hasChanges.value = true;
@@ -1691,11 +1807,18 @@ const registerShortcuts = () => {
   keyboardShortcuts.register('backspace', () => deleteSelectedNode());
   keyboardShortcuts.register('ctrl+shift+a', () => selectAllNodes());
   keyboardShortcuts.register('escape', () => {
+    if (showNodeConfigPanel.value) {
+      closeNodeConfigPanel();
+      return;
+    }
     selectedNodeId.value = null;
     selectedNodeIds.value = [];
   });
-  keyboardShortcuts.register('ctrl+g', () => { activePanel.value = 'properties'; });
-  keyboardShortcuts.register('ctrl+l', () => { activePanel.value = 'execution'; });
+  keyboardShortcuts.register('ctrl+g', () => { toggleNodeConfigPanel(); });
+  keyboardShortcuts.register('ctrl+l', () => {
+    activePanel.value = 'execution';
+    showRightPanel.value = true;
+  });
 };
 
 const handleKeydown = (event) => {
@@ -2619,11 +2742,43 @@ onUnmounted(() => {
 /* 确保节点不会遮挡 Handle */
 .canvas-wrapper :deep(.vue-flow__node) {
   z-index: 1;
-  transition: box-shadow 0.2s;
+  transition: box-shadow 0.2s, transform 0.2s;
 }
 
 .canvas-wrapper :deep(.vue-flow__node.selected) {
   z-index: 2;
+}
+
+.canvas-wrapper :deep(.vue-flow__node.dblclick-triggered) {
+  animation: nodeDblClickPulse 0.4s ease-out;
+}
+
+@keyframes nodeDblClickPulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 0 0 12px rgba(59, 130, 246, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+  }
+}
+
+.canvas-wrapper :deep(.vue-flow__node.dblclick-opening) {
+  animation: nodeOpenConfig 0.3s ease-out forwards;
+}
+
+@keyframes nodeOpenConfig {
+  0% {
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+  }
+  100% {
+    box-shadow: 0 0 20px 4px rgba(59, 130, 246, 0.2), 0 0 0 3px rgba(59, 130, 246, 0.3);
+  }
 }
 
 /* 节点悬停时的连接提示 */
@@ -2747,12 +2902,46 @@ onUnmounted(() => {
 
 
 
-.right-panel {
-  width: 320px;
-  background: white;
-  border-left: 1px solid #e0e0e0;
+.node-config-drawer {
+  width: 360px;
+  flex-shrink: 0;
+  background: #fff;
+  border-left: 1px solid #e2e8f0;
   display: flex;
   flex-direction: column;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.node-config-drawer.open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  box-shadow: -8px 0 24px rgba(15, 23, 42, 0.08), -2px 0 8px rgba(15, 23, 42, 0.04);
+}
+
+.canvas-wrapper {
+  flex: 1;
+  transition: flex 0.3s ease;
+}
+
+.right-panel {
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: white;
+  border-left: 1px solid transparent;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.32s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.32s ease;
+}
+
+.right-panel.open {
+  width: 320px;
+  border-left-color: #e0e0e0;
 }
 
 .panel-tabs {

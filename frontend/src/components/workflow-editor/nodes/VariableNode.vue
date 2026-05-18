@@ -1,17 +1,21 @@
 <template>
-  <div class="node variable-node" :class="{ selected }">
-    <div class="node-header">
+  <div class="node variable-node" :class="{ selected, 'is-config-mode': configMode, 'is-compact': compact && !configMode }">
+    <div v-if="!configMode" class="node-header">
       <span class="node-icon">📦</span>
       <span class="node-title">{{ data.label }}</span>
       <button @click="toggleAdvanced" class="advanced-toggle" :class="{ active: showAdvanced }">
         ⚙
       </button>
     </div>
-    <div class="node-body">
+    <div v-if="compact && !configMode" class="node-compact-body">
+      <span class="compact-summary">{{ variableSummary }}</span>
+      <span class="compact-hint">双击配置</span>
+    </div>
+    <div v-if="!compact || configMode" class="node-body">
       <div class="var-name-row">
-        <input 
-          v-model="data.varName" 
-          class="var-name-input" 
+        <input
+          v-model="data.varName"
+          class="var-name-input"
           placeholder="变量名"
         />
         <select v-model="data.varType" class="var-type-select">
@@ -33,13 +37,13 @@
         <option value="json-path">JSON路径</option>
       </select>
 
-      <textarea 
-        v-model="data.varValue" 
+      <textarea
+        v-model="data.varValue"
         class="var-value-textarea"
         :placeholder="getPlaceholder()"
       ></textarea>
 
-      <div v-if="showAdvanced" class="advanced-panel">
+      <div v-if="configMode || showAdvanced" class="advanced-panel">
         <div class="section-title">数据绑定</div>
         <div class="bind-options">
           <label class="checkbox-label">
@@ -54,9 +58,9 @@
 
         <div class="section-title">表达式函数</div>
         <div class="function-list">
-          <button 
-            v-for="func in availableFunctions" 
-            :key="func.name" 
+          <button
+            v-for="func in availableFunctions"
+            :key="func.name"
             @click="insertFunction(func)"
             class="function-btn"
             :title="func.description"
@@ -84,76 +88,66 @@
 
         <div v-if="data.required" class="default-value">
           <label>默认值</label>
-          <input 
-            v-model="data.defaultValue" 
-            class="node-input" 
-            placeholder="默认值" 
+          <input
+            v-model="data.defaultValue"
+            class="node-input"
+            placeholder="默认值"
           />
         </div>
       </div>
     </div>
-    <Handle type="target" :position="Position.Left" id="target" />
-    <Handle type="source" :position="Position.Right" id="source" />
+    <Handle v-if="!configMode" type="target" :position="Position.Left" id="target" />
+    <Handle v-if="!configMode" type="source" :position="Position.Right" id="source" />
   </div>
 </template>
 
-<script>
-import { ref } from 'vue';
+<script setup>
+import { ref, computed } from 'vue';
 import { Handle, Position } from '@vue-flow/core';
+import { nodeDisplayProps } from './nodeDisplayProps.js';
 
-export default {
-  name: 'VariableNode',
-  components: { Handle },
-  props: {
-    data: { type: Object, required: true },
-    selected: { type: Boolean, default: false }
-  },
-  setup() {
-    const showAdvanced = ref(false);
+const props = defineProps({
+  data: { type: Object, required: true },
+  selected: { type: Boolean, default: false },
+  ...nodeDisplayProps
+});
 
-    const availableFunctions = [
-      { name: '{{now()}}', description: '获取当前时间' },
-      { name: '{{uuid()}}', description: '生成UUID' },
-      { name: '{{len()}}', description: '获取长度' },
-      { name: '{{trim()}}', description: '去除空白' },
-      { name: '{{upper()}}', description: '转大写' },
-      { name: '{{lower()}}', description: '转小写' },
-      { name: '{{json()}}', description: 'JSON序列化' },
-      { name: '{{parseJson()}}', description: 'JSON解析' },
-      { name: '{{env()}}', description: '读取环境变量' },
-      { name: '{{random()}}', description: '生成随机数' }
-    ];
+const showAdvanced = ref(false);
 
-    const toggleAdvanced = () => {
-      showAdvanced.value = !showAdvanced.value;
-    };
+const availableFunctions = [
+  { name: '{{now()}}', description: '获取当前时间' },
+  { name: '{{uuid()}}', description: '生成UUID' },
+  { name: '{{len()}}', description: '获取长度' },
+  { name: '{{trim()}}', description: '去除空白' },
+  { name: '{{upper()}}', description: '转大写' },
+  { name: '{{lower()}}', description: '转小写' },
+  { name: '{{json()}}', description: 'JSON序列化' },
+  { name: '{{parseJson()}}', description: 'JSON解析' },
+  { name: '{{env()}}', description: '读取环境变量' },
+  { name: '{{random()}}', description: '生成随机数' }
+];
 
-    const getPlaceholder = () => {
-      const valueSource = this?.data?.valueSource || 'constant';
-      switch (valueSource) {
-        case 'constant': return '输入常量值...';
-        case 'expression': return '输入表达式，如: {{var1 + var2}}';
-        case 'reference': return '引用变量，如: {{otherVar}}';
-        case 'function': return '输入函数调用，如: {{now()}}';
-        case 'json-path': return '输入JSON路径，如: $.data.items[0]';
-        default: return '输入变量值...';
-      }
-    };
+const variableSummary = computed(() => props.data.varName || '未命名变量');
 
-    const insertFunction = (func) => {
-      if (!this.data.varValue) this.data.varValue = '';
-      this.data.varValue += func.name;
-    };
+const toggleAdvanced = () => {
+  showAdvanced.value = !showAdvanced.value;
+};
 
-    return { 
-      Position, 
-      showAdvanced, 
-      availableFunctions,
-      toggleAdvanced, 
-      getPlaceholder, 
-      insertFunction 
-    };
+const getPlaceholder = () => {
+  const valueSource = props.data?.valueSource || 'constant';
+  switch (valueSource) {
+    case 'constant': return '输入常量值...';
+    case 'expression': return '输入表达式，如: {{var1 + var2}}';
+    case 'reference': return '引用变量，如: {{otherVar}}';
+    case 'function': return '输入函数调用，如: {{now()}}';
+    case 'json-path': return '输入JSON路径，如: $.data.items[0]';
+    default: return '输入变量值...';
   }
+};
+
+const insertFunction = (func) => {
+  if (!props.data.varValue) props.data.varValue = '';
+  props.data.varValue += func.name;
 };
 </script>
 
@@ -170,6 +164,36 @@ export default {
 .variable-node.selected {
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.variable-node.is-compact {
+  min-width: 160px;
+}
+
+.node-compact-body {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.compact-summary {
+  font-size: 11px;
+  color: #475569;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-hint {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.variable-node.is-config-mode {
+  min-width: unset;
+  border: none;
+  box-shadow: none;
 }
 
 .node-header {

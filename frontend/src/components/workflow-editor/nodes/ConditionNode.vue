@@ -1,13 +1,17 @@
 <template>
-  <div class="node condition-node" :class="{ selected }">
-    <div class="node-header">
+  <div class="node condition-node" :class="{ selected, 'is-config-mode': configMode, 'is-compact': compact && !configMode }">
+    <div v-if="!configMode" class="node-header">
       <span class="node-icon">🔀</span>
       <span class="node-title">{{ data.label }}</span>
       <button @click="toggleAdvanced" class="advanced-toggle" :class="{ active: showAdvanced }">
         ⚙
       </button>
     </div>
-    <div class="node-body">
+    <div v-if="compact && !configMode" class="node-compact-body">
+      <span class="compact-summary">{{ conditionSummary }}</span>
+      <span class="compact-hint">双击配置</span>
+    </div>
+    <div v-if="!compact || configMode" class="node-body">
       <div class="condition-builder">
         <div class="builder-row">
           <select v-model="localLeftType" @change="emitUpdate" class="operand-select">
@@ -61,7 +65,7 @@
         <span class="label-false">✗ 不满足</span>
       </div>
 
-      <div v-if="showAdvanced" class="advanced-panel">
+      <div v-if="configMode || showAdvanced" class="advanced-panel">
         <div class="section-title">逻辑操作</div>
         <select v-model="localLogicType" @change="emitUpdate" class="node-select">
           <option value="single">单条件</option>
@@ -117,15 +121,16 @@
         </label>
       </div>
     </div>
-    <Handle type="target" :position="Position.Left" id="target" />
-    <Handle type="source" :position="Position.Right" id="true" class="handle-true" />
-    <Handle type="source" :position="Position.Right" id="false" class="handle-false" />
+    <Handle v-if="!configMode" type="target" :position="Position.Left" id="target" />
+    <Handle v-if="!configMode" type="source" :position="Position.Right" id="true" class="handle-true" />
+    <Handle v-if="!configMode" type="source" :position="Position.Right" id="false" class="handle-false" />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { Handle, Position } from '@vue-flow/core';
+import { nodeDisplayProps } from './nodeDisplayProps.js';
 
 const props = defineProps({
   data: {
@@ -135,7 +140,8 @@ const props = defineProps({
   selected: {
     type: Boolean,
     default: false
-  }
+  },
+  ...nodeDisplayProps
 });
 
 const emit = defineEmits(['update']);
@@ -155,6 +161,15 @@ const localTrimWhitespace = ref(props.data.trimWhitespace !== false);
 const unaryOperators = ['is_empty', 'not_empty', 'is_true', 'is_false'];
 
 const isUnaryOperator = computed(() => unaryOperators.includes(localOperator.value));
+
+const conditionSummary = computed(() => {
+  const left = localLeftValue.value || '…';
+  const op = localOperator.value || '==';
+  if (isUnaryOperator.value) return `${left} ${op}`;
+  const right = localRightValue.value || '…';
+  const text = `${left} ${op} ${right}`;
+  return text.length > 28 ? `${text.slice(0, 28)}…` : text;
+});
 
 const toggleAdvanced = () => {
   showAdvanced.value = !showAdvanced.value;
@@ -230,6 +245,36 @@ watch(() => props.data, (d) => {
 .condition-node.selected {
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.condition-node.is-compact {
+  min-width: 160px;
+}
+
+.node-compact-body {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.compact-summary {
+  font-size: 11px;
+  color: #475569;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-hint {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.condition-node.is-config-mode {
+  min-width: unset;
+  border: none;
+  box-shadow: none;
 }
 
 .node-header {

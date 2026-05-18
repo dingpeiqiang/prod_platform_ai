@@ -1,13 +1,17 @@
 <template>
-  <div class="node parser-node" :class="{ selected }">
-    <div class="node-header">
+  <div class="node parser-node" :class="{ selected, 'is-config-mode': configMode, 'is-compact': compact && !configMode }">
+    <div v-if="!configMode" class="node-header">
       <span class="node-icon">📊</span>
       <span class="node-title">{{ data.label }}</span>
       <button @click="toggleAdvanced" class="advanced-toggle" :class="{ active: showAdvanced }">
         ⚙
       </button>
     </div>
-    <div class="node-body">
+    <div v-if="compact && !configMode" class="node-compact-body">
+      <span class="compact-summary">{{ parserSummary }}</span>
+      <span class="compact-hint">双击配置</span>
+    </div>
+    <div v-if="!compact || configMode" class="node-body">
       <select v-model="localParserType" @change="onParserChange" class="node-select">
         <option value="json">JSON 解析</option>
         <option value="regex">正则提取</option>
@@ -155,7 +159,7 @@
         </div>
       </div>
 
-      <div v-if="showAdvanced" class="advanced-panel">
+      <div v-if="configMode || showAdvanced" class="advanced-panel">
         <div class="section-title">输出配置</div>
         <select v-model="localOutputFormat" @change="emitUpdate" class="node-select">
           <option value="auto">自动</option>
@@ -193,25 +197,39 @@
         </div>
       </div>
     </div>
-    <Handle type="target" :position="Position.Left" id="target" />
-    <Handle type="source" :position="Position.Right" id="source" />
+    <Handle v-if="!configMode" type="target" :position="Position.Left" id="target" />
+    <Handle v-if="!configMode" type="source" :position="Position.Right" id="source" />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { Handle, Position } from '@vue-flow/core';
+import { nodeDisplayProps } from './nodeDisplayProps.js';
 
 const props = defineProps({
   data: { type: Object, required: true },
-  selected: { type: Boolean, default: false }
+  selected: { type: Boolean, default: false },
+  ...nodeDisplayProps
 });
 
 const emit = defineEmits(['update']);
 
 const showAdvanced = ref(false);
 
+const parserTypeLabels = {
+  json: 'JSON 解析',
+  regex: '正则提取',
+  jsonpath: 'JSON Path',
+  csv: 'CSV 解析',
+  xml: 'XML 解析',
+  yaml: 'YAML 解析',
+  html: 'HTML 解析'
+};
+
 const localParserType = ref(props.data.parserType || 'json');
+
+const parserSummary = computed(() => parserTypeLabels[localParserType.value] || localParserType.value);
 const localRegexPattern = ref(props.data.regexPattern || '');
 const localRegexGlobal = ref(props.data.regexGlobal || false);
 const localRegexIgnoreCase = ref(props.data.regexIgnoreCase || false);
@@ -326,6 +344,36 @@ watch(() => props.data, (d) => {
 .parser-node.selected {
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.parser-node.is-compact {
+  min-width: 160px;
+}
+
+.node-compact-body {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.compact-summary {
+  font-size: 11px;
+  color: #475569;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-hint {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.parser-node.is-config-mode {
+  min-width: unset;
+  border: none;
+  box-shadow: none;
 }
 
 .node-header {

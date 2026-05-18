@@ -1,10 +1,14 @@
 <template>
-  <div class="node loop-node" :class="{ selected }">
-    <div class="node-header">
+  <div class="node loop-node" :class="{ selected, 'is-config-mode': configMode, 'is-compact': compact && !configMode }">
+    <div v-if="!configMode" class="node-header">
       <span class="node-icon">🔄</span>
       <span class="node-title">{{ data.label }}</span>
     </div>
-    <div class="node-body">
+    <div v-if="compact && !configMode" class="node-compact-body">
+      <span class="compact-summary">{{ loopSummary }}</span>
+      <span class="compact-hint">双击配置</span>
+    </div>
+    <div v-if="!compact || configMode" class="node-body">
       <select v-model="localLoopType" @change="emitUpdate" class="node-select">
         <option value="for">for 循环</option>
         <option value="while">while 循环</option>
@@ -21,24 +25,31 @@
         <span class="label-end">循环结束</span>
       </div>
     </div>
-    <Handle type="target" :position="Position.Left" id="target" />
-    <Handle type="source" :position="Position.Right" id="body" class="handle-body" />
-    <Handle type="source" :position="Position.Right" id="end" class="handle-end" />
+    <Handle v-if="!configMode" type="target" :position="Position.Left" id="target" />
+    <Handle v-if="!configMode" type="source" :position="Position.Right" id="body" class="handle-body" />
+    <Handle v-if="!configMode" type="source" :position="Position.Right" id="end" class="handle-end" />
   </div>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { Handle, Position } from '@vue-flow/core';
+import { nodeDisplayProps } from './nodeDisplayProps.js';
 
 const props = defineProps({
   data: { type: Object, required: true },
-  selected: { type: Boolean, default: false }
+  selected: { type: Boolean, default: false },
+  ...nodeDisplayProps
 });
 
 const emit = defineEmits(['update']);
 const localLoopType = ref(props.data.loopType || 'for');
 const localLoopCount = ref(props.data.loopCount || 5);
+
+const loopSummary = computed(() => {
+  const typeLabel = localLoopType.value === 'while' ? 'while' : 'for';
+  return `${typeLabel} × ${localLoopCount.value}`;
+});
 
 const emitUpdate = () => {
   emit('update', props.data.id, { loopType: localLoopType.value, loopCount: localLoopCount.value });
@@ -62,6 +73,36 @@ watch(() => props.data, (d) => {
 .loop-node.selected {
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.loop-node.is-compact {
+  min-width: 160px;
+}
+
+.node-compact-body {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.compact-summary {
+  font-size: 11px;
+  color: #475569;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-hint {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.loop-node.is-config-mode {
+  min-width: unset;
+  border: none;
+  box-shadow: none;
 }
 
 .node-header {
