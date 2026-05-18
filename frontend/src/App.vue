@@ -94,6 +94,8 @@
         @open-form-manager="openFormManager"
         @open-ontology-manager="openOntologyManager"
         @open-workflow-manager="openWorkflowManager"
+        @open-mcp-manager="openMCPManager"
+        @open-kb-manager="openKBManager"
       />
 
         <!-- 场景管理界面 -->
@@ -169,6 +171,18 @@
           @go-back="returnToWorkflowManager"
         />
         
+        <!-- MCP 工具管理平台 -->
+        <MCPToolDashboard
+          v-if="!isInitializing && currentView === 'mcp-dashboard'"
+          @go-back="returnToDashboard"
+        />
+        
+        <!-- 知识库管理界面 -->
+        <KBManager
+          v-if="!isInitializing && currentView === 'kb-manager'"
+          @go-back="returnToDashboard"
+        />
+        
         <!-- 聊天界面：有活动会话时显示 -->
         <ChatAssistant
           v-if="!isInitializing && currentView === 'dashboard' && activeSessionId"
@@ -201,6 +215,8 @@ import Loading from './components/Loading.vue'
 import LangChainPanel from './components/intent-panels/LangChainPanel.vue'
 import LangChainEditor from './components/workflow-editor/LangChainEditor.vue'
 import VisualizationPanel from './components/visualization/VisualizationPanel.vue'
+import MCPToolDashboard from './components/MCPToolDashboard.vue'
+import KBManager from './components/KBManager.vue'
 import { useUserStore } from './stores/user'
 import { useLoadingStore } from './stores/loading'
 import { useTheme } from './composables/useTheme'
@@ -338,6 +354,22 @@ const openOntologyManager = () => {
 // ── 打开工作流管理 ─────────────────────────────────────────
 const openWorkflowManager = () => {
   currentView.value = 'workflow-manager'
+  activeSessionId.value = ''
+  activeDbSessionId.value = ''
+  saveActiveSessionId()
+}
+
+// ── 打开 MCP 工具管理平台 ─────────────────────────────────
+const openMCPManager = () => {
+  currentView.value = 'mcp-dashboard'
+  activeSessionId.value = ''
+  activeDbSessionId.value = ''
+  saveActiveSessionId()
+}
+
+// ── 打开知识库管理 ─────────────────────────────────────────
+const openKBManager = () => {
+  currentView.value = 'kb-manager'
   activeSessionId.value = ''
   activeDbSessionId.value = ''
   saveActiveSessionId()

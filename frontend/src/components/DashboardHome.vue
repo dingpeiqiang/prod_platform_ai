@@ -200,7 +200,7 @@
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue'
 
-const emit = defineEmits(['send-message', 'switch-chat', 'create-session', 'open-scene-manager', 'open-prompt-manager', 'open-tool-manager', 'open-form-manager', 'open-ontology-manager', 'open-workflow-manager'])
+const emit = defineEmits(['send-message', 'switch-chat', 'create-session', 'open-scene-manager', 'open-prompt-manager', 'open-tool-manager', 'open-form-manager', 'open-ontology-manager', 'open-workflow-manager', 'open-mcp-manager', 'open-kb-manager'])
 
 const inputEl = ref(null)
 const inputText = ref('')
@@ -219,6 +219,8 @@ const shortcuts = [
   { key: 'form', icon: 'file', label: '表单管理' },
   { key: 'ontology', icon: 'help', label: '本体管理' },
   { key: 'workflow', icon: 'chart', label: '工作流管理' },
+  { key: 'mcp', icon: 'chart', label: 'MCP 管理' },
+  { key: 'kb', icon: 'file', label: '知识库' },
 ]
 
 // 预警列表
@@ -324,6 +326,14 @@ const handleShortcut = (sc) => {
   }
   if (sc.key === 'workflow') {
     emit('open-workflow-manager')
+    return
+  }
+  if (sc.key === 'mcp') {
+    emit('open-mcp-manager')
+    return
+  }
+  if (sc.key === 'kb') {
+    emit('open-kb-manager')
     return
   }
   const msg = shortcuts.find(s => s.key === sc.key)

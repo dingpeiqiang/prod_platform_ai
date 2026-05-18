@@ -6,6 +6,7 @@
 - 相似度检索
 - 记忆存储与查询
 - 基于 Embeddings 的上下文检索
+- 持久化存储（JSON 文件）
 """
 
 from typing import Dict, Any, Optional, List, Tuple, Callable
@@ -15,6 +16,7 @@ import json
 import hashlib
 import logging
 import math
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +37,27 @@ class MemoryEntry:
         return {
             "id": self.id,
             "content": self.content,
+            "vector": self.vector,
             "metadata": self.metadata,
             "created_at": self.created_at.isoformat(),
             "access_count": self.access_count,
             "last_accessed": self.last_accessed.isoformat() if self.last_accessed else None,
             "importance": self.importance
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> 'MemoryEntry':
+        """从字典恢复 MemoryEntry"""
+        return cls(
+            id=data["id"],
+            content=data["content"],
+            vector=data.get("vector"),
+            metadata=data.get("metadata", {}),
+            created_at=datetime.fromisoformat(data["created_at"]),
+            access_count=data.get("access_count", 0),
+            last_accessed=datetime.fromisoformat(data["last_accessed"]) if data.get("last_accessed") else None,
+            importance=data.get("importance", 1.0)
+        )
 
 
 class EmbeddingsManager:
@@ -81,15 +98,30 @@ class EmbeddingsManager:
         return [self.embed(text, use_cache) for text in texts]
 
     def _simple_embed(self, text: str) -> List[float]:
-        """简化嵌入"""
+        """简化嵌入 - 使用改进的哈希算法增加区分度"""
+        if not text:
+            return [0.0] * self.dimension
+        
         vector = []
-        text_hash = hashlib.md5(text.encode()).digest()
+        
+        # 使用多种哈希组合增加多样性
+        md5_hash = hashlib.md5(text.encode()).digest()
+        sha256_hash = hashlib.sha256(text.encode()).digest()
+        combined_hash = md5_hash + sha256_hash
         
         for i in range(self.dimension):
-            byte_idx = i % len(text_hash)
-            value = (text_hash[byte_idx] / 255.0) * math.sin(i * 0.1 + text_hash[byte_idx])
+            byte_idx = i % len(combined_hash)
+            # 使用更复杂的计算增加向量区分度
+            base_value = combined_hash[byte_idx] / 255.0
+            # 添加多种周期性函数组合
+            value = (
+                base_value * math.sin(i * 0.1 + combined_hash[byte_idx]) +
+                (1 - base_value) * math.cos(i * 0.05 + combined_hash[(i + 7) % len(combined_hash)]) +
+                math.sin(i * 0.15) * 0.3
+            )
             vector.append(value)
         
+        # 归一化
         magnitude = math.sqrt(sum(v * v for v in vector))
         if magnitude > 0:
             vector = [v / magnitude for v in vector]
@@ -117,13 +149,89 @@ class VectorStore:
         self,
         embeddings_manager: Optional[EmbeddingsManager] = None,
         max_entries: int = 10000,
-        similarity_threshold: float = 0.7
+        similarity_threshold: float = 0.3,  # 降低阈值，提升搜索召回率
+        persist_path: str = None,
+        auto_save_interval: int = 300  # 自动保存间隔（秒）
     ):
         self.embeddings = embeddings_manager or EmbeddingsManager()
         self.max_entries = max_entries
         self.similarity_threshold = similarity_threshold
         self._store: Dict[str, MemoryEntry] = {}
         self._session_index: Dict[str, List[str]] = {}
+        
+        # 持久化配置
+        self.persist_path = persist_path or os.path.join(
+            os.path.dirname(__file__), "..", "..", "data", "vector_store.json"
+        )
+        self.auto_save_interval = auto_save_interval
+        self._last_save_time = 0
+        
+        # 确保数据目录存在
+        os.makedirs(os.path.dirname(self.persist_path), exist_ok=True)
+        
+        # 加载已保存的数据
+        self.load_from_disk()
+
+    def load_from_disk(self) -> bool:
+        """从磁盘加载数据"""
+        try:
+            if os.path.exists(self.persist_path):
+                with open(self.persist_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                
+                # 恢复存储
+                self._store = {}
+                for entry_data in data.get("entries", []):
+                    try:
+                        entry = MemoryEntry.from_dict(entry_data)
+                        self._store[entry.id] = entry
+                    except Exception as e:
+                        logger.warning(f"Failed to load entry: {e}")
+                
+                # 恢复索引
+                self._session_index = data.get("session_index", {})
+                
+                logger.info(f"Loaded {len(self._store)} entries from {self.persist_path}")
+                return True
+            else:
+                logger.info(f"No existing data file found at {self.persist_path}")
+                return False
+        except Exception as e:
+            logger.error(f"Failed to load data from disk: {e}")
+            return False
+
+    def save_to_disk(self) -> bool:
+        """保存数据到磁盘"""
+        try:
+            data = {
+                "entries": [entry.to_dict() for entry in self._store.values()],
+                "session_index": self._session_index,
+                "saved_at": datetime.now().isoformat()
+            }
+            
+            # 先写入临时文件，避免损坏
+            temp_path = self.persist_path + ".tmp"
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            
+            # 原子替换
+            os.replace(temp_path, self.persist_path)
+            
+            self._last_save_time = datetime.now().timestamp()
+            logger.debug(f"Saved {len(self._store)} entries to {self.persist_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save data to disk: {e}")
+            return False
+
+    def maybe_auto_save(self):
+        """检查是否需要自动保存"""
+        if self.auto_save_interval <= 0:
+            return
+        
+        now = datetime.now().timestamp()
+        if now - self._last_save_time >= self.auto_save_interval:
+            self.save_to_disk()
 
     def add(
         self,
@@ -153,6 +261,10 @@ class VectorStore:
             self._session_index[session_id].append(entry_id)
         
         logger.debug(f"Memory added: {entry_id}")
+        
+        # 检查自动保存
+        self.maybe_auto_save()
+        
         return entry_id
 
     def add_batch(
@@ -187,6 +299,8 @@ class VectorStore:
             candidates = [c for c in candidates if c.id in session_ids]
         
         results = []
+        all_candidates = []  # 存储所有候选，用于fallback
+        
         for entry in candidates:
             if not entry.vector:
                 continue
@@ -202,6 +316,14 @@ class VectorStore:
             threshold = min_similarity or self.similarity_threshold
             if similarity >= threshold:
                 results.append((entry, similarity))
+            
+            # 始终记录，用于fallback
+            all_candidates.append((entry, similarity))
+        
+        # 如果没有达到阈值的结果，返回最相似的几个（fallback机制）
+        if len(results) == 0 and len(all_candidates) > 0:
+            all_candidates.sort(key=lambda x: (x[1], x[0].importance), reverse=True)
+            results = all_candidates[:top_k]
         
         results.sort(key=lambda x: (x[1], x[0].importance), reverse=True)
         return results[:top_k]
@@ -233,6 +355,10 @@ class VectorStore:
                 if entry_id in ids:
                     ids.remove(entry_id)
             del self._store[entry_id]
+            
+            # 检查自动保存
+            self.maybe_auto_save()
+            
             return True
         return False
 
@@ -244,6 +370,10 @@ class VectorStore:
                 del self._store[entry_id]
                 count += 1
         del self._session_index[session_id]
+        
+        # 检查自动保存
+        self.maybe_auto_save()
+        
         return count
 
     def _cleanup_if_needed(self):
@@ -286,6 +416,11 @@ class VectorStore:
         else:
             entries = list(self._store.values())
         return json.dumps([e.to_dict() for e in entries], ensure_ascii=False, indent=2)
+
+    def close(self):
+        """关闭存储，确保数据保存"""
+        self.save_to_disk()
+        logger.info("VectorStore closed, data saved")
 
 
 _vector_store: Optional[VectorStore] = None

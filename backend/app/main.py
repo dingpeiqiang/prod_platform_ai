@@ -91,6 +91,8 @@ from app.api.visualization import router as visualization_router
 from app.api.workflows import router as workflow_router
 from app.api.execution import router as execution_router
 from app.api.scheduler import router as scheduler_router
+from app.api.mcp_management import router as mcp_management_router
+from app.api.kb import router as kb_router
 
 settings = get_settings()
 Base.metadata.create_all(bind=engine)
@@ -142,11 +144,13 @@ app.include_router(chat_crud_router)  # 通用聊天 v2 API
 app.include_router(chat_with_tools_router)
 app.include_router(harness_router)
 app.include_router(mcp_router)  # MCP 工具接口
+app.include_router(mcp_management_router)  # MCP 管理接口
 app.include_router(langchain_router)  # LangChain API
 app.include_router(visualization_router)  # 可视化 API
 app.include_router(workflow_router)  # 工作流管理 API
 app.include_router(execution_router)  # 工作流执行 API
 app.include_router(scheduler_router)  # 工作流调度器 API
+app.include_router(kb_router)  # 知识库 API
 
 
 @app.get("/")
