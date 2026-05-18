@@ -244,16 +244,20 @@
     <!-- 连接线Handle -->
     <Handle v-if="!configMode" type="target" :position="Position.Left" id="target" />
     <!-- 动态生成与分支数量对应的输出连接点 -->
-    <Handle
+    <div
       v-for="(branch, index) in localBranches"
-      :key="'branch-' + index"
+      :key="'handle-wrapper-' + index"
       v-if="!configMode"
-      type="source"
-      :position="Position.Right"
-      :id="'branch_' + index"
-      :class="'handle-branch-' + index"
+      class="handle-wrapper"
       :style="{ top: getHandlePosition(index) + '%' }"
-    />
+    >
+      <Handle
+        type="source"
+        :position="Position.Right"
+        :id="'branch_' + index"
+        :class="'handle-branch-' + index"
+      />
+    </div>
   </div>
 </template>
 
@@ -1196,5 +1200,17 @@ defineExpose({
 }
 :deep(.vue-flow__handle.handle-branch-4[type="source"]) {
   background-color: #8b5cf6 !important;
+}
+
+/* Handle 包裹器 - 用于自定义位置 */
+.handle-wrapper {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  pointer-events: none; /* 让点击事件穿透到 Handle */
+}
+
+.handle-wrapper :deep(.vue-flow__handle) {
+  pointer-events: auto; /* 恢复 Handle 的点击事件 */
 }
 </style>
