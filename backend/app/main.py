@@ -104,7 +104,20 @@ config_loader.set_db_session_factory(SessionLocal)
 # 在应用启动时注册所有 MCP 工具
 from app.mcp_tools import register_all_tools
 _mcp_tools = register_all_tools()
-_logger.info(f"[MCP] 已注册 {_mcp_tools.get_tool_count()} 个工具")
+_logger.info(f"[MCP] 已注册 {_mcp_tools.get_tool_count()} 个内部工具（代码注解）")
+
+# 从数据库加载外部 API 工具
+from app.core.database import SessionLocal
+from app.mcp_tools.tool_registry_manager import init_external_tools
+
+db_session = SessionLocal()
+try:
+    external_count = init_external_tools(db_session)
+    _logger.info(f"[MCP] 已注册 {external_count} 个外部 API 工具（数据库配置）")
+finally:
+    db_session.close()
+
+_logger.info(f"[MCP] 总计 {_mcp_tools.get_tool_count() + external_count} 个工具可用")
 
 
 # ── 数据初始化 ─────────────────────────────────────────────────────────────

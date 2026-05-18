@@ -50,3 +50,49 @@ export async function getCategories() {
   const res = await axios.get(`${BASE_URL}/categories`)
   return res.data
 }
+
+/**
+ * 获取外部工具列表
+ */
+export async function getExternalTools() {
+  const res = await axios.get(`${BASE_URL}/external-tools`)
+  return res.data
+}
+
+/**
+ * 创建外部工具
+ * @param {Object} toolData - 工具数据
+ */
+export async function createExternalTool(toolData) {
+  const res = await axios.post(`${BASE_URL}/external-tools`, toolData)
+  return res.data
+}
+
+/**
+ * 更新外部工具
+ * @param {string} toolName - 工具名称
+ * @param {Object} toolData - 工具数据
+ */
+export async function updateExternalTool(toolName, toolData) {
+  const res = await axios.put(`${BASE_URL}/external-tools/${toolName}`, toolData)
+  return res.data
+}
+
+/**
+ * 删除外部工具
+ * @param {string} toolName - 工具名称
+ */
+export async function deleteExternalTool(toolName) {
+  const res = await axios.delete(`${BASE_URL}/external-tools/${toolName}`)
+  return res.data
+}
+
+/**
+ * 切换外部工具启用状态
+ * @param {string} toolName - 工具名称
+ * @param {boolean} enabled - 是否启用
+ */
+export async function toggleExternalTool(toolName, enabled) {
+  const res = await axios.post(`${BASE_URL}/external-tools/${toolName}/toggle`, { enabled })
+  return res.data
+}

@@ -87,6 +87,13 @@
           @filter-change="onLogFilterChange"
         />
       </el-tab-pane>
+
+      <!-- Tab 5: 外部工具管理 -->
+      <el-tab-pane label="外部工具管理" name="external">
+        <ExternalToolManager 
+          @refresh="loadTools"
+        />
+      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -97,6 +104,7 @@ import ToolList from './mcp/ToolList.vue'
 import ToolTester from './mcp/ToolTester.vue'
 import CallStats from './mcp/CallStats.vue'
 import ExecutionLogs from './mcp/ExecutionLogs.vue'
+import ExternalToolManager from './mcp/ExternalToolManager.vue'
 import * as mcpApi from '@/services/mcpManagementApi'
 import { ElMessage } from 'element-plus'
 
