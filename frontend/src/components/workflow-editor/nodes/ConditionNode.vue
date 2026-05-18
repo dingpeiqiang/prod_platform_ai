@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="nodeRef"
     class="node condition-node"
     :class="{
       selected,
@@ -235,16 +236,6 @@
                 </svg>
               </div>
             </div>
-            
-            <!-- Handle放在分支项内部右侧 -->
-            <Handle
-              v-if="!configMode"
-              type="source"
-              :position="Position.Right"
-              :id="'branch_' + branchIndex"
-              :class="'handle-branch-' + branchIndex"
-              style="right: -6px;"
-            />
           </div>
         </div>
       </div>
@@ -252,6 +243,21 @@
 
     <!-- 连接线Handle -->
     <Handle v-if="!configMode" type="target" :position="Position.Left" id="target" />
+    <!-- 动态生成与分支数量对应的输出连接点 - 使用wrapper实现精确定位 -->
+    <div
+      v-for="(branch, index) in localBranches"
+      :key="'handle-wrapper-' + index"
+      v-if="!configMode"
+      class="handle-position-wrapper"
+      :data-branch-index="index"
+    >
+      <Handle
+        type="source"
+        :position="Position.Right"
+        :id="'branch_' + index"
+        :class="'handle-branch-' + index"
+      />
+    </div>
   </div>
 </template>
 
@@ -281,6 +287,7 @@ const emit = defineEmits(['update', 'close']);
 // 本地状态
 const localLabel = ref(props.data.label || '判断器');
 const branchSectionExpanded = ref(true);
+const nodeRef = ref(null); // 节点DOM引用
 
 // 分支数据结构
 const localBranches = ref([]);
@@ -492,17 +499,54 @@ const getOperatorLabel = (operator) => {
   return operators[operator] || operator;
 };
 
+// 更新 Handle wrapper 的位置
+const updateHandlePositions = () => {
+  if (!nodeRef.value) return;
+  
+  const nodeElement = nodeRef.value;
+  const branchItems = nodeElement.querySelectorAll('.branch-condition-item');
+  const wrappers = nodeElement.querySelectorAll('.handle-position-wrapper');
+  
+  branchItems.forEach((item, index) => {
+    const wrapper = wrappers[index];
+    if (wrapper && item) {
+      const itemRect = item.getBoundingClientRect();
+      const nodeRect = nodeElement.getBoundingClientRect();
+      
+      // 计算相对于节点的top位置
+      const top = itemRect.top - nodeRect.top + itemRect.height / 2;
+      wrapper.style.top = `${top}px`;
+    }
+  });
+};
+
 // 监听数据变化
 watch(() => props.data, (newData) => {
   if (newData) {
     localLabel.value = newData.label || '判断器';
     initBranches();
+    nextTick(() => updateHandlePositions());
   }
 }, { immediate: true, deep: true });
 
+// 监听分支数量变化
+watch(() => localBranches.value.length, () => {
+  nextTick(() => updateHandlePositions());
+});
+
 // 组件挂载后初始化
 onMounted(() => {
-  // 无需特殊处理，Vue Flow会自动管理Handle位置
+  nextTick(() => {
+    updateHandlePositions();
+    
+    // 监听节点尺寸变化
+    if (nodeRef.value) {
+      const resizeObserver = new ResizeObserver(() => {
+        updateHandlePositions();
+      });
+      resizeObserver.observe(nodeRef.value);
+    }
+  });
 });
 </script>
 
@@ -1096,5 +1140,14 @@ onMounted(() => {
 }
 :deep(.vue-flow__handle.handle-branch-4[type="source"]) {
   background-color: #8b5cf6 !important;
+}
+
+/* Handle 位置包装器 - 通过JS动态定位 */
+.handle-position-wrapper {
+  position: absolute;
+  right: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
 }
 </style>
