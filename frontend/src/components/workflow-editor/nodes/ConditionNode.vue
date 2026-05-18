@@ -514,45 +514,18 @@ const calculateHandlePositions = async () => {
   if (nodeRect.width === 0 || nodeRect.height === 0) return;
 
   const newPositions = {};
-
-  // 优先查找画布视图中的分支项（非配置模式）
-  let branchItems = nodeElement.querySelectorAll('.branch-condition-item');
+  const totalBranches = localBranches.value.length;
   
-  // 如果找不到，尝试查找配置模式下的分支容器
-  if (branchItems.length === 0) {
-    branchItems = nodeElement.querySelectorAll('.branch-container');
+  // 使用固定间距策略：每个分支间隔15%，从25%开始
+  // 这样添加新分支时，只会在末尾增加，不影响已有分支的位置
+  const startPercent = 25;
+  const stepPercent = 15;
+  
+  for (let i = 0; i < totalBranches; i++) {
+    const position = startPercent + (i * stepPercent);
+    // 确保不超过95%
+    newPositions[i] = Math.min(position, 95);
   }
-
-  localBranches.value.forEach((_, index) => {
-    // 直接通过 index 获取对应的分支项
-    const branchItem = branchItems[index];
-
-    if (branchItem) {
-      // 优先查找箭头元素（画布模式）
-      let targetElement = branchItem.querySelector('.branch-arrow');
-      
-      // 如果找不到箭头，使用分支容器的中心位置（配置模式）
-      if (!targetElement) {
-        targetElement = branchItem;
-      }
-
-      const targetRect = targetElement.getBoundingClientRect();
-      // 计算目标元素中心相对于节点顶部的偏移
-      const centerY = targetRect.top + targetRect.height / 2 - nodeRect.top;
-      // 转换为百分比
-      const percent = (centerY / nodeRect.height) * 100;
-      newPositions[index] = Math.max(5, Math.min(95, percent));
-      return;
-    }
-
-    // 如果找不到对应元素，使用默认计算（均匀分布）
-    const totalBranches = localBranches.value.length;
-    const bodyStartPercent = 30;
-    const bodyEndPercent = 90;
-    const bodyHeightPercent = bodyEndPercent - bodyStartPercent;
-    const step = totalBranches > 1 ? bodyHeightPercent / (totalBranches - 1) : 0;
-    newPositions[index] = bodyStartPercent + (index * step);
-  });
 
   handlePositions.value = newPositions;
 };
