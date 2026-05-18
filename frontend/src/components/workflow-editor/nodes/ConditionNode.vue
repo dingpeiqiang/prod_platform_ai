@@ -1,6 +1,5 @@
 <template>
   <div
-    ref="nodeRef"
     class="node condition-node"
     :class="{
       selected,
@@ -217,25 +216,38 @@
           <div
             v-for="(branch, branchIndex) in localBranches"
             :key="branchIndex"
-            class="branch-condition-item"
+            class="branch-condition-row"
           >
-            <div class="branch-content-row">
-              <div class="branch-indicator" :class="'indicator-' + branchIndex"></div>
-              <div class="branch-info">
-                <span class="branch-name">{{ getBranchTitle(branchIndex) }}</span>
-                <div class="condition-summary">
-                  <span v-if="hasConditions(branch)" class="condition-text">
-                    {{ getConditionSummary(branch) }}
-                  </span>
-                  <span v-else class="condition-empty">未设置条件</span>
+            <!-- 左侧分支内容 -->
+            <div class="branch-condition-item">
+              <div class="branch-content-row">
+                <div class="branch-indicator" :class="'indicator-' + branchIndex"></div>
+                <div class="branch-info">
+                  <span class="branch-name">{{ getBranchTitle(branchIndex) }}</span>
+                  <div class="condition-summary">
+                    <span v-if="hasConditions(branch)" class="condition-text">
+                      {{ getConditionSummary(branch) }}
+                    </span>
+                    <span v-else class="condition-empty">未设置条件</span>
+                  </div>
+                </div>
+                <div class="branch-arrow" :class="'arrow-' + branchIndex">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M5 12h14M12 5l7 7-7 7"/>
+                  </svg>
                 </div>
               </div>
-              <div class="branch-arrow" :class="'arrow-' + branchIndex">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M5 12h14M12 5l7 7-7 7"/>
-                </svg>
-              </div>
             </div>
+            
+            <!-- 右侧锚点 -->
+            <Handle
+              v-if="!configMode"
+              type="source"
+              :position="Position.Right"
+              :id="'branch_' + branchIndex"
+              :class="'handle-branch-' + branchIndex"
+              class="branch-handle"
+            />
           </div>
         </div>
       </div>
@@ -243,21 +255,6 @@
 
     <!-- 连接线Handle -->
     <Handle v-if="!configMode" type="target" :position="Position.Left" id="target" />
-    <!-- 动态生成与分支数量对应的输出连接点 -->
-    <div
-      v-for="(branch, index) in localBranches"
-      :key="'handle-wrapper-' + index"
-      v-if="!configMode"
-      class="handle-wrapper"
-      :style="{ top: getHandlePosition(index) + '%' }"
-    >
-      <Handle
-        type="source"
-        :position="Position.Right"
-        :id="'branch_' + index"
-        :class="'handle-branch-' + index"
-      />
-    </div>
   </div>
 </template>
 
@@ -287,7 +284,6 @@ const emit = defineEmits(['update', 'close']);
 // 本地状态
 const localLabel = ref(props.data.label || '判断器');
 const branchSectionExpanded = ref(true);
-const nodeRef = ref(null); // 节点DOM引用
 
 // 分支数据结构
 const localBranches = ref([]);
@@ -499,87 +495,17 @@ const getOperatorLabel = (operator) => {
   return operators[operator] || operator;
 };
 
-// 计算连接点的垂直位置百分比
-const handlePositions = ref({}); // 存储每个连接点的位置
-
-const calculateHandlePositions = async () => {
-  await nextTick();
-
-  if (!nodeRef.value) return;
-
-  const nodeElement = nodeRef.value;
-  const nodeRect = nodeElement.getBoundingClientRect();
-
-  // 如果节点不可见或尺寸为0，跳过计算
-  if (nodeRect.width === 0 || nodeRect.height === 0) return;
-
-  const newPositions = {};
-  const totalBranches = localBranches.value.length;
-  
-  // 使用固定间距策略：每个分支间隔15%，从25%开始
-  // 这样添加新分支时，只会在末尾增加，不影响已有分支的位置
-  const startPercent = 25;
-  const stepPercent = 15;
-  
-  for (let i = 0; i < totalBranches; i++) {
-    const position = startPercent + (i * stepPercent);
-    // 确保不超过95%
-    newPositions[i] = Math.min(position, 95);
-  }
-
-  handlePositions.value = newPositions;
-};
-
-const getHandlePosition = (index) => {
-  return handlePositions.value[index] ?? 50;
-};
-
 // 监听数据变化
 watch(() => props.data, (newData) => {
   if (newData) {
     localLabel.value = newData.label || '判断器';
     initBranches();
-    calculateHandlePositions(); // 数据变化后重新计算位置
   }
 }, { immediate: true, deep: true });
 
-// 监听分支数量变化
-watch(() => localBranches.value.length, () => {
-  // 分支数量变化时，立即重新计算锚点位置
-  nextTick(() => {
-    calculateHandlePositions();
-  });
-});
-
-// 监听配置模式变化，确保在两种模式下都能正确定位锚点
-const configModeRef = ref(props.configMode);
-watch(() => props.configMode, (newMode) => {
-  configModeRef.value = newMode;
-  // 配置模式切换时延迟计算，等待DOM更新
-  setTimeout(() => {
-    calculateHandlePositions();
-  }, 50);
-});
-
-// 组件挂载后计算位置
-onMounted(async () => {
-  await nextTick();
-  setTimeout(() => {
-    calculateHandlePositions();
-  }, 100); // 给DOM渲染一些时间
-
-  // 监听节点尺寸变化
-  if (nodeRef.value) {
-    const resizeObserver = new ResizeObserver(() => {
-      calculateHandlePositions();
-    });
-    resizeObserver.observe(nodeRef.value);
-  }
-});
-
-// 暴露方法供父组件调用
-defineExpose({
-  calculateHandlePositions
+// 组件挂载后初始化
+onMounted(() => {
+  // 无需特殊处理，Vue Flow会自动管理Handle位置
 });
 </script>
 
@@ -698,14 +624,23 @@ defineExpose({
 .branch-conditions {
   display: flex;
   flex-direction: column;
-  justify-content: space-evenly;
+  gap: 8px;
   min-height: 120px;
+}
+
+/* 每一行：左侧分支内容 + 右侧锚点 */
+.branch-condition-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
 }
 
 .branch-condition-item {
   display: flex;
   align-items: center;
   position: relative;
+  width: 100%;
 }
 
 .branch-content-row {
@@ -1173,17 +1108,5 @@ defineExpose({
 }
 :deep(.vue-flow__handle.handle-branch-4[type="source"]) {
   background-color: #8b5cf6 !important;
-}
-
-/* Handle 包裹器 - 用于自定义位置 */
-.handle-wrapper {
-  position: absolute;
-  right: 0;
-  transform: translateY(-50%);
-  pointer-events: none; /* 让点击事件穿透到 Handle */
-}
-
-.handle-wrapper :deep(.vue-flow__handle) {
-  pointer-events: auto; /* 恢复 Handle 的点击事件 */
 }
 </style>
