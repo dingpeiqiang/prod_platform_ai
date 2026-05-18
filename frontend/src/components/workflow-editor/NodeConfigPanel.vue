@@ -1,22 +1,28 @@
 <template>
   <div class="node-config-panel">
     <div class="panel-header">
-      <div class="header-info">
-        <span class="header-icon">{{ headerIcon }}</span>
-        <div>
-          <h3>{{ nodeTypeLabel || '节点配置' }}</h3>
-          <p v-if="nodeData?.label" class="header-subtitle">{{ nodeData.label }}</p>
-        </div>
+      <h2 class="panel-title">编辑工作流</h2>
+      <div class="header-actions">
+        <button type="button" class="action-btn run-btn" title="运行 / 测试节点" @click="$emit('run')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+        </button>
+        <button type="button" class="action-btn close-btn" title="关闭 (Esc)" @click="$emit('close')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
       </div>
-      <button type="button" class="panel-close-btn" title="关闭 (Esc)" @click="$emit('close')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="6" x2="6" y2="18"/>
-          <line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>
-      </button>
     </div>
+    
+    <!-- 节点信息区(根据节点类型动态显示) -->
+    <NodeInfoSection v-if="nodeData" :node-type="nodeType" :node-type-label="nodeTypeLabel" />
 
+    <!-- 可滚动内容区 -->
     <div class="panel-scroll">
+      <!-- 通用属性面板 -->
       <PropertyPanel
         embedded
         :node-data="nodeData"
@@ -27,6 +33,7 @@
         @update="(payload) => $emit('update', payload)"
       />
 
+      <!-- 节点特定配置组件 -->
       <div v-if="configComponent && nodeData" class="node-config-section">
         <h4 class="section-title">{{ configTitle }}</h4>
         <component
@@ -35,9 +42,12 @@
           :selected="true"
           config-mode
           @update="(nodeId, data) => $emit('node-update', nodeId, data)"
+          @close="$emit('close')"
+          @run="$emit('run')"
         />
       </div>
 
+      <!-- 空状态 -->
       <div v-else-if="!nodeData" class="empty-config">
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
           <rect x="3" y="3" width="18" height="18" rx="2"/>
@@ -52,6 +62,7 @@
 <script setup>
 import { computed } from 'vue';
 import PropertyPanel from './PropertyPanel.vue';
+import NodeInfoSection from './NodeInfoSection.vue';
 import { NODE_CONFIG_COMPONENTS, NODE_TYPE_LABELS } from './nodeConfigRegistry.js';
 
 const props = defineProps({
@@ -67,7 +78,7 @@ const nodeData = computed(() => {
 
 const nodeType = computed(() => props.node?.type || '');
 
-defineEmits(['close', 'update', 'update-label', 'node-update']);
+defineEmits(['close', 'update', 'update-label', 'node-update', 'run']);
 
 const nodeTypeLabel = computed(() => NODE_TYPE_LABELS[nodeType.value] || nodeType.value);
 
@@ -134,75 +145,77 @@ const configTitle = computed(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e8e8e8;
   flex-shrink: 0;
-  animation: headerSlideIn 0.3s ease-out;
+  background: #fff;
 }
 
-@keyframes headerSlideIn {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+.panel-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #000;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
-.header-info {
+.header-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-width: 0;
+  gap: 8px;
 }
 
-.header-icon {
-  font-size: 22px;
-  flex-shrink: 0;
-}
-
-.panel-header h3 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #1e293b;
-}
-
-.header-subtitle {
-  margin: 2px 0 0;
-  font-size: 12px;
-  color: #64748b;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.panel-close-btn {
+.action-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border: none;
-  background: #f1f5f9;
+  background: transparent;
   border-radius: 6px;
   color: #64748b;
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.2s, color 0.2s;
+  transition: all 0.2s;
 }
 
-.panel-close-btn:hover {
-  background: #e2e8f0;
+.action-btn:hover {
+  background: #f1f5f9;
   color: #334155;
+}
+
+.run-btn:hover {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.close-btn:hover {
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 .panel-scroll {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+.panel-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.panel-scroll::-webkit-scrollbar-track {
+  background: #f5f5f5;
+}
+
+.panel-scroll::-webkit-scrollbar-thumb {
+  background: #d9d9d9;
+  border-radius: 3px;
+}
+
+.panel-scroll::-webkit-scrollbar-thumb:hover {
+  background: #bfbfbf;
 }
 
 .node-config-section {

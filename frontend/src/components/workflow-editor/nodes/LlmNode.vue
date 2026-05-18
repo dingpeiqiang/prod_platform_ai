@@ -5,185 +5,249 @@
       <span class="node-title">{{ data.label }}</span>
     </div>
     <div v-if="compact && !configMode" class="node-compact-body">
-      <span class="compact-summary">{{ localModel }}</span>
+      <span class="compact-summary">{{ localModel || '未选择' }}</span>
       <span class="compact-hint">双击配置</span>
     </div>
-    <div v-if="!compact || configMode" class="node-body">
-      <select v-model="localModel" @change="emitUpdate" class="node-select">
-        <option value="qwen-vl-plus">Qwen-VL-Plus</option>
-        <option value="qwen-plus">Qwen-Plus</option>
-        <option value="qwen-7b">Qwen-7B</option>
-        <option value="qwen-14b">Qwen-14B</option>
-        <option value="gpt-4o">GPT-4o</option>
-        <option value="gpt-4">GPT-4</option>
-        <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-        <option value="claude-3-opus">Claude 3 Opus</option>
-        <option value="claude-3-sonnet">Claude 3 Sonnet</option>
-        <option value="claude-3-haiku">Claude 3 Haiku</option>
-        <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-        <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-      </select>
-      
-      <div class="param-row">
-        <label>温度</label>
-        <div class="param-control">
-          <input
-            v-model.number="localTemperature"
-            type="range"
-            min="0"
-            max="2"
-            step="0.1"
-            @input="emitUpdate"
-            class="node-range"
-          />
-          <input
-            v-model.number="localTemperature"
-            type="number"
-            min="0"
-            max="2"
-            step="0.1"
-            @input="emitUpdate"
-            class="node-input-small"
-          />
+    
+    <div v-if="configMode" class="llm-node-config">
+      <div class="config-section collapsible-section">
+        <div class="section-header">
+          <button @click="toggleSection('model')" class="section-toggle-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.model }">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>模型配置</span>
+          </button>
+          <div class="header-actions">
+            <button class="help-btn" title="配置LLM模型和核心参数">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        
+        <div v-if="expandedSections.model" class="section-content">
+          <div class="param-grid">
+            <div class="param-row">
+              <label class="param-label">模型选择</label>
+              <select v-model="localModel" @change="emitUpdate" class="param-select">
+                <option value="" disabled>请选择模型</option>
+                <option value="qwen-vl-plus">Qwen-VL-Plus</option>
+                <option value="qwen-plus">Qwen-Plus</option>
+                <option value="gpt-4o">GPT-4o</option>
+                <option value="gpt-4">GPT-4</option>
+                <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                <option value="claude-3-opus">Claude 3 Opus</option>
+                <option value="claude-3-sonnet">Claude 3 Sonnet</option>
+                <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+              </select>
+            </div>
+
+            <div class="param-row">
+              <label class="param-label">
+                温度值
+                <span class="help-icon" title="控制生成文本的随机性">?</span>
+              </label>
+              <div class="slider-control">
+                <input v-model.number="localTemperature" type="range" min="0" max="1" step="0.1" @input="emitUpdate" class="param-slider"/>
+                <div class="slider-value-group">
+                  <input v-model.number="localTemperature" type="number" min="0" max="1" step="0.1" @input="emitUpdate" class="value-input"/>
+                  <div class="adjust-buttons">
+                    <button @click="adjustValue('temperature', -0.1)" class="adjust-btn">-</button>
+                    <button @click="adjustValue('temperature', 0.1)" class="adjust-btn">+</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="param-row">
+              <label class="param-label">
+                top_k
+                <span class="help-icon" title="限制采样token范围">?</span>
+              </label>
+              <div class="slider-control">
+                <input v-model.number="localTopK" type="range" min="0" max="100" step="1" @input="emitUpdate" class="param-slider"/>
+                <div class="slider-value-group">
+                  <input v-model.number="localTopK" type="number" min="0" max="100" step="1" @input="emitUpdate" class="value-input"/>
+                  <div class="adjust-buttons">
+                    <button @click="adjustValue('topK', -1)" class="adjust-btn">-</button>
+                    <button @click="adjustValue('topK', 1)" class="adjust-btn">+</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="param-row">
+              <label class="param-label">
+                top_p
+                <span class="help-icon" title="核采样参数">?</span>
+              </label>
+              <div class="slider-control">
+                <input v-model.number="localTopP" type="range" min="0" max="1" step="0.01" @input="emitUpdate" class="param-slider"/>
+                <div class="slider-value-group">
+                  <input v-model.number="localTopP" type="number" min="0" max="1" step="0.01" @input="emitUpdate" class="value-input"/>
+                  <div class="adjust-buttons">
+                    <button @click="adjustValue('topP', -0.01)" class="adjust-btn">-</button>
+                    <button @click="adjustValue('topP', 0.01)" class="adjust-btn">+</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="param-row full-width">
+              <label class="param-label">
+                最大回复长度
+                <span class="help-icon" title="限制最大token数">?</span>
+              </label>
+              <div class="slider-control">
+                <input v-model.number="localMaxTokens" type="range" min="1" max="4096" step="1" @input="emitUpdate" class="param-slider"/>
+                <div class="slider-value-group">
+                  <input v-model.number="localMaxTokens" type="number" min="1" max="4096" step="1" @input="emitUpdate" class="value-input"/>
+                  <div class="adjust-buttons">
+                    <button @click="adjustValue('maxTokens', -64)" class="adjust-btn">-</button>
+                    <button @click="adjustValue('maxTokens', 64)" class="adjust-btn">+</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div v-if="configMode || showAdvanced" class="advanced-panel">
-        <div class="section-title">高级参数</div>
+      <div class="config-section collapsible-section">
+        <div class="section-header">
+          <button @click="toggleSection('systemPrompt')" class="section-toggle-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.systemPrompt }">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>系统提示词</span>
+          </button>
+          <div class="header-actions">
+            <button class="help-btn" title="设置模型角色和行为规则">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </button>
+          </div>
+        </div>
         
-        <div class="param-row">
-          <label>Top P</label>
-          <div class="param-control">
-            <input
-              v-model.number="localTopP"
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              @input="emitUpdate"
-              class="node-range"
-            />
-            <input
-              v-model.number="localTopP"
-              type="number"
-              min="0"
-              max="1"
-              step="0.01"
-              @input="emitUpdate"
-              class="node-input-small"
-            />
+        <div v-if="expandedSections.systemPrompt" class="section-content">
+          <textarea v-model="localSystemPrompt" @input="emitUpdate" placeholder="设置模型的角色和行为规则" class="multiline-input" rows="4"></textarea>
+          <div v-if="!localSystemPrompt" class="weak-hint">建议配置系统提示词</div>
+        </div>
+      </div>
+
+      <div class="config-section collapsible-section">
+        <div class="section-header">
+          <button @click="toggleSection('inputs')" class="section-toggle-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.inputs }">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>输入参数</span>
+          </button>
+          <div class="header-actions">
+            <button class="help-btn" title="配置输入参数">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </button>
+            <button @click.stop="addInputParam" class="add-param-btn" title="添加输入参数">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
           </div>
         </div>
-
-        <div class="param-row">
-          <label>最大 Token</label>
-          <input
-            v-model.number="localMaxTokens"
-            type="number"
-            min="1"
-            max="16384"
-            @input="emitUpdate"
-            class="node-input"
-          />
-        </div>
-
-        <div class="param-row">
-          <label>频率惩罚</label>
-          <div class="param-control">
-            <input
-              v-model.number="localFrequencyPenalty"
-              type="range"
-              min="-2"
-              max="2"
-              step="0.1"
-              @input="emitUpdate"
-              class="node-range"
-            />
-            <input
-              v-model.number="localFrequencyPenalty"
-              type="number"
-              min="-2"
-              max="2"
-              step="0.1"
-              @input="emitUpdate"
-              class="node-input-small"
-            />
-          </div>
-        </div>
-
-        <div class="param-row">
-          <label>存在惩罚</label>
-          <div class="param-control">
-            <input
-              v-model.number="localPresencePenalty"
-              type="range"
-              min="-2"
-              max="2"
-              step="0.1"
-              @input="emitUpdate"
-              class="node-range"
-            />
-            <input
-              v-model.number="localPresencePenalty"
-              type="number"
-              min="-2"
-              max="2"
-              step="0.1"
-              @input="emitUpdate"
-              class="node-input-small"
-            />
-          </div>
-        </div>
-
-        <div class="param-row">
-          <label>停止词</label>
-          <input
-            v-model="localStopTokens"
-            @input="emitUpdate"
-            type="text"
-            placeholder="用逗号分隔"
-            class="node-input"
-          />
-        </div>
-
-        <div class="param-row">
-          <label>系统提示词</label>
-          <textarea
-            v-model="localSystemPrompt"
-            @input="emitUpdate"
-            placeholder="输入系统提示词..."
-            class="node-textarea"
-          ></textarea>
-        </div>
-
-        <div class="section-title">输入输出参数</div>
         
-        <div class="param-row">
-          <label>输入变量</label>
-          <select 
-            v-model="localInputVar" 
-            @change="emitUpdate" 
-            class="node-select"
-          >
-            <option value="">选择输入变量</option>
-            <option v-for="varItem in availableVariables" :key="varItem.name" :value="varItem.name">
-              {{ varItem.name }} ({{ varItem.type }})
-            </option>
-          </select>
+        <div v-if="expandedSections.inputs" class="section-content">
+            <div v-for="(param, index) in localInputs" :key="index" class="input-param-item">
+              <input v-model="param.name" @input="emitUpdate" placeholder="参数名" class="param-name-input" :class="{ error: !param.name }"/>
+              <select v-model="param.valueType" @change="emitUpdate" class="param-type-select">
+                <option value="input">输入</option>
+                <option value="reference">引用</option>
+              </select>
+              <button @click="removeInputParam(index)" class="action-btn delete-btn" title="删除">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            <div v-if="localInputs.some(p => !p.name)" class="error-message">参数名不能为空</div>
         </div>
+      </div>
 
-        <div class="param-row">
-          <label>输出变量名</label>
-          <input
-            v-model="localOutputVar"
-            @input="emitUpdate"
-            type="text"
-            placeholder="自定义变量名"
-            class="node-input"
-          />
+      <div class="config-section">
+        <label class="section-label">提示词内容</label>
+        <textarea v-model="localPrompt" @input="emitUpdate" placeholder="可以使用{变量名}引用输入参数" class="answer-textarea" rows="6"></textarea>
+        <div v-if="!localPrompt" class="error-message">提示词不能为空</div>
+      </div>
+
+      <div class="config-section collapsible-section">
+        <div class="section-header">
+          <button @click="toggleSection('outputs')" class="section-toggle-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.outputs }">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>输出配置</span>
+          </button>
+          <div class="header-actions">
+            <button class="help-btn" title="配置输出参数">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </button>
+            <button @click.stop="addOutputParam" class="add-param-btn" title="添加输出参数">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
+          </div>
         </div>
+        
+        <div v-if="expandedSections.outputs" class="section-content">
+          <div class="history-toggle">
+            <label class="toggle-label">
+              <input v-model="localKeepHistory" @change="emitUpdate" type="checkbox" class="toggle-checkbox"/>
+              <span class="toggle-text" :class="{ active: localKeepHistory }">保留对话历史</span>
+            </label>
+            <span class="help-icon" title="支持多轮对话"></span>
+          </div>
+            <div v-for="(param, index) in localOutputs" :key="index" class="output-param-item">
+              <input v-model="param.name" @input="emitUpdate" placeholder="参数名" class="param-name-input"/>
+              <select v-model="param.type" @change="emitUpdate" class="param-type-select">
+                <option value="string">string</option>
+                <option value="number">number</option>
+                <option value="boolean">boolean</option>
+                <option value="object">object</option>
+                <option value="array">array</option>
+              </select>
+              <button @click="removeOutputParam(index)" class="action-btn delete-btn" title="删除">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+        </div>
+      </div>
+
+      <div class="collapse-btn">
+        <button @click="$emit('close')">收起</button>
       </div>
     </div>
+    
     <Handle v-if="!configMode" type="target" :position="Position.Left" id="target" />
     <Handle v-if="!configMode" type="source" :position="Position.Right" id="source" />
   </div>
@@ -195,79 +259,100 @@ import { Handle, Position } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
 
 const props = defineProps({
-  data: {
-    type: Object,
-    required: true
-  },
-  selected: {
-    type: Boolean,
-    default: false
-  },
-  availableVariables: {
-    type: Array,
-    default: () => []
-  },
+  data: { type: Object, required: true },
+  selected: { type: Boolean, default: false },
+  availableVariables: { type: Array, default: () => [] },
   ...nodeDisplayProps
 });
 
-const emit = defineEmits(['update']);
+const emit = defineEmits(['update', 'close', 'run']);
 
-const showAdvanced = ref(false);
-
-const localModel = ref(props.data.model || 'qwen-vl-plus');
-const localTemperature = ref(props.data.temperature || 0.7);
-const localTopP = ref(props.data.topP || 0.95);
-const localMaxTokens = ref(props.data.maxTokens || 4096);
-const localFrequencyPenalty = ref(props.data.frequencyPenalty || 0);
-const localPresencePenalty = ref(props.data.presencePenalty || 0);
-const localStopTokens = ref(props.data.stopTokens || '');
+const localLabel = ref(props.data.label || 'LLM');
+const localModel = ref(props.data.model || '');
+const localTemperature = ref(props.data.temperature ?? 0.1);
+const localTopK = ref(props.data.topK ?? 0.1);
+const localTopP = ref(props.data.topP ?? 1);
+const localMaxTokens = ref(props.data.maxTokens ?? 1024);
 const localSystemPrompt = ref(props.data.systemPrompt || '');
-const localInputVar = ref(props.data.inputVar || '');
-const localOutputVar = ref(props.data.outputVar || '');
+const localPrompt = ref(props.data.prompt || '');
+const localKeepHistory = ref(props.data.keepHistory ?? false);
 
-const toggleAdvanced = () => {
-  showAdvanced.value = !showAdvanced.value;
+const localInputs = ref(props.data.inputs || []);
+const localOutputs = ref(props.data.outputs || []);
+
+const expandedSections = ref({
+  model: true,
+  systemPrompt: true,
+  inputs: true,
+  outputs: true
+});
+
+const adjustValue = (field, delta) => {
+  const fieldMap = {
+    temperature: localTemperature,
+    topK: localTopK,
+    topP: localTopP,
+    maxTokens: localMaxTokens
+  };
+  const ref = fieldMap[field];
+  if (ref) {
+    ref.value = Math.round((ref.value + delta) * 100) / 100;
+    emitUpdate();
+  }
+};
+
+const toggleSection = (section) => {
+  expandedSections.value[section] = !expandedSections.value[section];
+};
+
+const addInputParam = () => {
+  localInputs.value.push({ name: '', valueType: 'input' });
+  emitUpdate();
+};
+
+const removeInputParam = (index) => {
+  localInputs.value.splice(index, 1);
+  emitUpdate();
+};
+
+const addOutputParam = () => {
+  localOutputs.value.push({ name: '', type: 'string' });
+  emitUpdate();
+};
+
+const removeOutputParam = (index) => {
+  localOutputs.value.splice(index, 1);
+  emitUpdate();
 };
 
 const emitUpdate = () => {
-  const inputs = {};
-  const outputs = {};
-  
-  if (localInputVar.value) {
-    inputs['input'] = `{{${localInputVar.value}}}`;
-  }
-  
-  if (localOutputVar.value) {
-    outputs[localOutputVar.value] = '{{__output__}}';
-  }
-  
   emit('update', props.data.id, {
+    label: localLabel.value,
     model: localModel.value,
     temperature: localTemperature.value,
+    topK: localTopK.value,
     topP: localTopP.value,
     maxTokens: localMaxTokens.value,
-    frequencyPenalty: localFrequencyPenalty.value,
-    presencePenalty: localPresencePenalty.value,
-    stopTokens: localStopTokens.value,
     systemPrompt: localSystemPrompt.value,
-    inputVar: localInputVar.value,
-    outputVar: localOutputVar.value,
-    inputs: Object.keys(inputs).length > 0 ? inputs : undefined,
-    outputs: Object.keys(outputs).length > 0 ? outputs : undefined
+    prompt: localPrompt.value,
+    keepHistory: localKeepHistory.value,
+    inputs: localInputs.value,
+    outputs: localOutputs.value
   });
 };
 
 watch(() => props.data, (newData) => {
-  localModel.value = newData.model || 'qwen-vl-plus';
-  localTemperature.value = newData.temperature || 0.7;
-  localTopP.value = newData.topP || 0.95;
-  localMaxTokens.value = newData.maxTokens || 4096;
-  localFrequencyPenalty.value = newData.frequencyPenalty || 0;
-  localPresencePenalty.value = newData.presencePenalty || 0;
-  localStopTokens.value = newData.stopTokens || '';
+  localLabel.value = newData.label || 'LLM';
+  localModel.value = newData.model || '';
+  localTemperature.value = newData.temperature ?? 0.1;
+  localTopK.value = newData.topK ?? 0.1;
+  localTopP.value = newData.topP ?? 1;
+  localMaxTokens.value = newData.maxTokens ?? 1024;
   localSystemPrompt.value = newData.systemPrompt || '';
-  localInputVar.value = newData.inputVar || '';
-  localOutputVar.value = newData.outputVar || '';
+  localPrompt.value = newData.prompt || '';
+  localKeepHistory.value = newData.keepHistory ?? false;
+  localInputs.value = newData.inputs || [];
+  localOutputs.value = newData.outputs || [];
 }, { deep: true });
 </script>
 
@@ -288,6 +373,23 @@ watch(() => props.data, (newData) => {
 
 .llm-node.is-compact {
   min-width: 160px;
+}
+
+.node-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+}
+
+.node-icon {
+  font-size: 16px;
+}
+
+.node-title {
+  font-size: 12px;
+  font-weight: 600;
+  flex: 1;
 }
 
 .node-compact-body {
@@ -312,157 +414,465 @@ watch(() => props.data, (newData) => {
 
 .llm-node.is-config-mode {
   min-width: unset;
-  border: none;
+  width: 100%;
   box-shadow: none;
+  border-radius: 0;
+  background: #ffffff;
+  color: #333;
 }
 
-.node-header {
+.llm-node-config {
+  padding: 0;
+  background: #fff;
+}
+
+.config-section {
+  padding: 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.collapsible-section {
+  padding: 0;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #fafafa;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.section-toggle-btn {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 10px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.node-icon {
-  font-size: 16px;
-}
-
-.node-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: white;
-  flex: 1;
-}
-
-.advanced-toggle {
-  width: 24px;
-  height: 24px;
   border: none;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  color: white;
+  background: transparent;
+  color: #333;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  padding: 4px 8px;
+  border-radius: 4px;
   transition: background 0.2s;
 }
 
-.advanced-toggle:hover,
-.advanced-toggle.active {
-  background: rgba(255, 255, 255, 0.3);
+.section-toggle-btn:hover {
+  background: #f0f0f0;
 }
 
-.node-body {
-  padding: 10px;
+.section-toggle-btn svg {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.2s;
+}
+
+.section-toggle-btn svg.rotated {
+  transform: rotate(180deg);
+}
+
+.header-actions {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 8px;
 }
 
-.node-select {
-  width: 100%;
-  padding: 6px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  font-size: 12px;
-  background: white;
+.help-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: #999;
+  cursor: help;
+  border-radius: 50%;
+  transition: all 0.2s;
 }
 
-.node-select:focus {
+.help-btn:hover {
+  background: #f0f0f0;
+  color: #666;
+}
+
+.add-param-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: #3b82f6;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.add-param-btn:hover {
+  background: #2563eb;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
+}
+
+.section-content {
+  padding: 16px;
+  animation: slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.section-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 20px;
+  background: #fafafa;
+  border-radius: 8px;
+  margin: 16px;
+}
+
+.empty-state svg {
+  margin-bottom: 12px;
+  opacity: 0.6;
+}
+
+.empty-text {
+  font-size: 13px;
+  color: #999;
+  margin: 0;
+}
+
+.action-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: #3b82f6;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+  margin: 0 auto;
+}
+
+.action-btn:hover:not(:disabled) {
+  background: #f0f9ff;
+}
+
+.action-btn.delete-btn:hover {
+  background: #fff1f0;
+  color: #f5222d;
+}
+
+.answer-textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  transition: all 0.2s;
+  box-sizing: border-box;
+}
+
+.answer-textarea:focus {
   outline: none;
   border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.collapse-btn {
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+  border-top: 1px solid #e8e8e8;
+  background: #fafafa;
+}
+
+.collapse-btn button {
+  padding: 8px 48px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.collapse-btn button:hover {
+  background: #2563eb;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+.param-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
 }
 
 .param-row {
   display: flex;
   flex-direction: column;
+  gap: 8px;
+}
+
+.param-row.full-width {
+  grid-column: 1 / -1;
+}
+
+.param-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  display: flex;
+  align-items: center;
   gap: 4px;
 }
 
-.param-row label {
+.help-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #e8e8e8;
+  color: #999;
   font-size: 11px;
-  color: #64748b;
-  font-weight: 500;
+  cursor: help;
+  transition: all 0.2s;
 }
 
-.param-control {
+.help-icon:hover {
+  background: #3b82f6;
+  color: white;
+}
+
+.param-select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+  background: white;
+  transition: all 0.2s;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 8px center;
+  background-repeat: no-repeat;
+  background-size: 12px;
+  padding-right: 28px;
+  box-sizing: border-box;
+}
+
+.param-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.slider-control {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.param-slider {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: #e8e8e8;
+  outline: none;
+  -webkit-appearance: none;
+}
+
+.param-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #3b82f6;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.param-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+}
+
+.slider-value-group {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.node-range {
+.value-input {
   flex: 1;
-  height: 6px;
-  cursor: pointer;
-}
-
-.node-input {
-  width: 100%;
-  padding: 6px;
-  border: 1px solid #e2e8f0;
+  padding: 6px 8px;
+  border: 1px solid #d9d9d9;
   border-radius: 4px;
-  font-size: 12px;
-}
-
-.node-input:focus {
-  outline: none;
-  border-color: #3b82f6;
-}
-
-.node-input-small {
-  width: 60px;
-  padding: 4px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  font-size: 11px;
+  font-size: 13px;
   text-align: center;
 }
 
-.advanced-panel {
-  margin-top: 4px;
-  padding-top: 10px;
-  border-top: 1px dashed #cbd5e1;
-  animation: slideDown 0.2s ease;
+.value-input:focus {
+  outline: none;
+  border-color: #3b82f6;
 }
 
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.adjust-buttons {
+  display: flex;
+  gap: 4px;
 }
 
-.section-title {
-  font-size: 10px;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+.adjust-btn {
+  width: 24px;
+  height: 24px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  background: white;
+  color: #666;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.adjust-btn:hover {
+  border-color: #3b82f6;
+  color: #3b82f6;
+  background: #e6f7ff;
+}
+
+.multiline-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  transition: all 0.2s;
+  box-sizing: border-box;
+}
+
+.multiline-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.weak-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #999;
+}
+
+.error-message {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #ff4d4f;
+}
+
+.input-param-item, .output-param-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 8px;
 }
 
-.node-textarea {
-  width: 100%;
-  min-height: 60px;
-  padding: 6px;
-  border: 1px solid #e2e8f0;
+.param-name-input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #d9d9d9;
   border-radius: 4px;
-  font-size: 11px;
-  resize: vertical;
-  font-family: inherit;
+  font-size: 13px;
 }
 
-.node-textarea:focus {
+.param-name-input:focus {
   outline: none;
   border-color: #3b82f6;
+}
+
+.param-name-input.error {
+  border-color: #ff4d4f;
+}
+
+.param-type-select {
+  padding: 8px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+  background: white;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 8px center;
+  background-repeat: no-repeat;
+  background-size: 12px;
+  padding-right: 28px;
+}
+
+.param-type-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.history-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  background: #f5f5f5;
+  border-radius: 4px;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.toggle-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.toggle-text {
+  font-size: 13px;
+  color: #666;
+  transition: color 0.2s;
+}
+
+.toggle-text.active {
+  color: #3b82f6;
+  font-weight: 500;
 }
 
 :deep(.vue-flow__handle) {

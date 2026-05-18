@@ -12,6 +12,7 @@ import ParserNode from './nodes/ParserNode.vue';
 import FormNode from './nodes/FormNode.vue';
 
 export const NODE_CONFIG_COMPONENTS = {
+  start: StartNode,
   end: EndNode,
   prompt: PromptNode,
   llm: LlmNode,

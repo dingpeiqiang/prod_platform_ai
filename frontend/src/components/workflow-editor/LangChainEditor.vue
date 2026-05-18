@@ -327,6 +327,8 @@
               :selected="props.selected"
               compact
               :execution-status="nodeExecutionStatus[props.node?.id]"
+              :available-variables="getAvailableVariables(props.node?.id)"
+              @update="updateNodeData"
             />
           </template>
 
@@ -422,6 +424,7 @@
           @update-label="onPropertyLabelUpdate"
           @update="onPropertyUpdate"
           @node-update="updateNodeData"
+          @run="handleNodeRun"
         />
       </div>
 
@@ -1085,6 +1088,69 @@ const enrichNodeData = (data, nodeId) => {
   return nodeId ? { ...data, id: nodeId } : data;
 };
 
+// 获取节点可用的变量列表
+const getAvailableVariables = (nodeId) => {
+  if (!nodeId) return [];
+  
+  const variables = [];
+  const nodes = elements.value.filter(el => !el.source && !el.target);
+  
+  // 遍历所有在当前节点之前的节点
+  for (const node of nodes) {
+    if (node.id === nodeId) break;
+    
+    // 为每个节点添加输出变量
+    const nodeType = node.type;
+    let outputVarName = '';
+    
+    switch (nodeType) {
+      case 'start':
+        // 开始节点的输入参数
+        if (node.data.params && Array.isArray(node.data.params)) {
+          node.data.params.forEach(param => {
+            variables.push({
+              id: `${node.id}.${param.name}`,
+              name: `${param.name} (入参)`,
+              nodeId: node.id,
+              nodeType: 'start',
+              type: param.type || 'string'
+            });
+          });
+        }
+        break;
+      case 'llm':
+      case 'prompt':
+      case 'tool':
+      case 'http':
+      case 'code':
+      case 'variable':
+      case 'parser':
+        // 这些节点都有输出
+        outputVarName = node.data.outputVar || node.data.label || nodeType;
+        variables.push({
+          id: `${node.id}.output`,
+          name: `${outputVarName} (输出)`,
+          nodeId: node.id,
+          nodeType: nodeType,
+          type: 'any'
+        });
+        break;
+      case 'condition':
+        // 条件节点可能有多个输出分支
+        variables.push({
+          id: `${node.id}.result`,
+          name: `${node.data.label || '条件'} (结果)`,
+          nodeId: node.id,
+          nodeType: 'condition',
+          type: 'boolean'
+        });
+        break;
+    }
+  }
+  
+  return variables;
+};
+
 const openNodeConfigPanel = (node) => {
   selectedNodeIds.value = [node.id];
   selectedNodeId.value = node.id;
@@ -1103,6 +1169,20 @@ const toggleNodeConfigPanel = () => {
     const node = elements.value.find((el) => el.id === selectedNodeId.value && !el.source);
     if (node) openNodeConfigPanel(node);
   }
+};
+
+const handleNodeRun = async () => {
+  if (!selectedNodeId.value) return;
+  
+  // 获取当前节点
+  const node = elements.value.find(el => el.id === selectedNodeId.value && !el.source);
+  if (!node) return;
+  
+  ElMessage.info(`运行节点: ${node.data.label}`);
+  
+  // TODO: 实现单个节点的运行逻辑
+  // 这里可以调用后端API来运行单个LLM节点
+  console.log('Running node:', node);
 };
 
 const onPaneClick = () => {
@@ -2903,7 +2983,7 @@ onUnmounted(() => {
 
 
 .node-config-drawer {
-  width: 360px;
+  width: 520px;
   flex-shrink: 0;
   background: #fff;
   border-left: 1px solid #e2e8f0;
