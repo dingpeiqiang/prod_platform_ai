@@ -1327,9 +1327,9 @@ const updateNodeData = (nodeId, data) => {
     // 如果是条件分支节点，延迟重新计算锚点位置
     if (node.type === 'condition') {
       setTimeout(() => {
-        // 触发 Vue Flow 重新渲染
+        // 触发 Vue Flow 重新渲染，间接触发锚点位置重新计算
         elements.value = [...elements.value];
-      }, 50);
+      }, 150); // 增加延迟时间，确保DOM完全更新
     }
   }
 };

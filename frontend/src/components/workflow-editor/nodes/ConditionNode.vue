@@ -344,6 +344,11 @@ const initBranches = () => {
 // 切换分支展开/折叠
 const toggleBranch = (index) => {
   localBranches.value[index].expanded = !localBranches.value[index].expanded;
+  
+  // 延迟重新计算锚点位置，等待DOM更新
+  setTimeout(() => {
+    calculateHandlePositions();
+  }, 150);
 };
 
 // 切换分支区域展开/折叠
@@ -394,6 +399,11 @@ const addBranch = () => {
   }
   
   emitUpdate();
+  
+  // 延迟重新计算锚点位置，等待DOM更新
+  setTimeout(() => {
+    calculateHandlePositions();
+  }, 100);
 };
 
 // 删除分支
@@ -413,6 +423,11 @@ const removeBranch = (index) => {
   
   localBranches.value.splice(index, 1);
   emitUpdate();
+  
+  // 延迟重新计算锚点位置，等待DOM更新
+  setTimeout(() => {
+    calculateHandlePositions();
+  }, 100);
 };
 
 // 添加条件到指定分支
