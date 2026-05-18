@@ -109,6 +109,15 @@ POST /api/v1/mcp/tools/call
 | `configure_knowledge_base` | 配置知识库 | api_url, api_key, model |
 | `get_help` | 获取帮助 | topic |
 
+### 工作流工具 (category: workflow)
+
+| 工具名称 | 说明 | 参数 |
+|---------|------|------|
+| `execute_workflow` | 执行指定的工作流 | workflow_code, inputs |
+| `list_workflows` | 列出所有可用的工作流 | category, active_only |
+| `get_workflow_detail` | 获取工作流详细信息 | workflow_code |
+| `get_workflow_execution_history` | 查询工作流执行历史 | workflow_code, limit |
+
 ## AgentExecutor 集成
 
 AgentExecutor 自动使用 MCP ToolHub：
@@ -157,6 +166,97 @@ POST /api/v1/mcp/tools/call
     "tool_name": "kb_qa",
     "arguments": {
         "question": "公司的年假政策是什么？"
+    }
+}
+```
+
+## 工作流工具使用示例
+
+### 1. 列出所有工作流
+
+```bash
+POST /api/v1/mcp/tools/call
+{
+    "tool_name": "list_workflows",
+    "arguments": {
+        "category": null,
+        "active_only": true
+    }
+}
+```
+
+响应：
+```json
+{
+    "success": true,
+    "result": {
+        "total": 5,
+        "workflows": [
+            {
+                "workflowCode": "order_processing",
+                "workflowName": "订单处理流程",
+                "description": "自动处理订单，包括库存检查、价格计算等",
+                "category": "order",
+                "tags": ["order", "automation"]
+            }
+        ]
+    }
+}
+```
+
+### 2. 获取工作流详情
+
+```bash
+POST /api/v1/mcp/tools/call
+{
+    "tool_name": "get_workflow_detail",
+    "arguments": {
+        "workflow_code": "order_processing"
+    }
+}
+```
+
+### 3. 执行工作流
+
+```bash
+POST /api/v1/mcp/tools/call
+{
+    "tool_name": "execute_workflow",
+    "arguments": {
+        "workflow_code": "order_processing",
+        "inputs": {
+            "order_id": "ORD-12345",
+            "customer_id": "CUST-67890"
+        }
+    }
+}
+```
+
+响应：
+```json
+{
+    "success": true,
+    "result": {
+        "execution_id": "exec_20260518123456789",
+        "status": "completed",
+        "outputs": {
+            "order_status": "processed",
+            "total_amount": 299.99
+        },
+        "error": null
+    }
+}
+```
+
+### 4. 查询执行历史
+
+```bash
+POST /api/v1/mcp/tools/call
+{
+    "tool_name": "get_workflow_execution_history",
+    "arguments": {
+        "workflow_code": "order_processing",
+        "limit": 10
     }
 }
 ```

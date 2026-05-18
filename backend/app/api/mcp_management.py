@@ -336,8 +336,8 @@ async def update_external_tool(tool_name: str, tool_data: Dict[str, Any], db: Se
             tool.output_schema = tool_data["output_schema"]
         if "config" in tool_data:
             tool.config = tool_data["config"]
-        if "metadata" in tool_data:
-            tool.metadata = tool_data["metadata"]
+        if "extra_metadata" in tool_data:
+            tool.extra_metadata = tool_data["extra_metadata"]
         
         db.commit()
         

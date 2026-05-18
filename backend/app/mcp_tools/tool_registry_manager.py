@@ -54,7 +54,7 @@ class ToolRegistryManager:
                     metadata={
                         "type": "external_api",
                         "tool_code": tool_def.tool_code,
-                        **{k: v for k, v in (tool_def.metadata or {}).items()}
+                        **{k: v for k, v in (tool_def.extra_metadata or {}).items()}
                     }
                 )
                 
@@ -195,7 +195,7 @@ class ToolRegistryManager:
                 input_schema=tool_data.get("input_schema"),
                 output_schema=tool_data.get("output_schema"),
                 config=tool_data.get("config"),
-                metadata=tool_data.get("metadata")
+                extra_metadata=tool_data.get("extra_metadata")
             )
             
             self.db.add(new_tool)

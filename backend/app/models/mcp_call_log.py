@@ -29,7 +29,7 @@ class MCPToolDefinition(Base):
     
     # 配置信息
     config = Column(JSON, nullable=True, comment="工具配置（超时、重试等）")
-    metadata = Column(JSON, nullable=True, comment="扩展元数据")
+    extra_metadata = Column(JSON, nullable=True, comment="扩展元数据")
     
     # 统计信息（冗余字段，便于快速查询）
     total_calls = Column(Integer, nullable=False, default=0, comment="总调用次数")
@@ -60,7 +60,7 @@ class MCPToolDefinition(Base):
             "input_schema": self.input_schema,
             "output_schema": self.output_schema,
             "config": self.config,
-            "metadata": self.metadata,
+            "extra_metadata": self.extra_metadata,
             "total_calls": self.total_calls,
             "last_called_at": self.last_called_at.isoformat() if self.last_called_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
