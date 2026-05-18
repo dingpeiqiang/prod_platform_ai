@@ -216,37 +216,34 @@
           <div
             v-for="(branch, branchIndex) in localBranches"
             :key="branchIndex"
-            class="branch-condition-row"
+            class="branch-condition-item"
           >
-            <!-- 左侧分支内容 -->
-            <div class="branch-condition-item">
-              <div class="branch-content-row">
-                <div class="branch-indicator" :class="'indicator-' + branchIndex"></div>
-                <div class="branch-info">
-                  <span class="branch-name">{{ getBranchTitle(branchIndex) }}</span>
-                  <div class="condition-summary">
-                    <span v-if="hasConditions(branch)" class="condition-text">
-                      {{ getConditionSummary(branch) }}
-                    </span>
-                    <span v-else class="condition-empty">未设置条件</span>
-                  </div>
+            <div class="branch-content-row">
+              <div class="branch-indicator" :class="'indicator-' + branchIndex"></div>
+              <div class="branch-info">
+                <span class="branch-name">{{ getBranchTitle(branchIndex) }}</span>
+                <div class="condition-summary">
+                  <span v-if="hasConditions(branch)" class="condition-text">
+                    {{ getConditionSummary(branch) }}
+                  </span>
+                  <span v-else class="condition-empty">未设置条件</span>
                 </div>
-                <div class="branch-arrow" :class="'arrow-' + branchIndex">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M5 12h14M12 5l7 7-7 7"/>
-                  </svg>
-                </div>
+              </div>
+              <div class="branch-arrow" :class="'arrow-' + branchIndex">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M5 12h14M12 5l7 7-7 7"/>
+                </svg>
               </div>
             </div>
             
-            <!-- 右侧锚点 -->
+            <!-- Handle放在分支项内部右侧 -->
             <Handle
               v-if="!configMode"
               type="source"
               :position="Position.Right"
               :id="'branch_' + branchIndex"
               :class="'handle-branch-' + branchIndex"
-              class="branch-handle"
+              style="right: -6px;"
             />
           </div>
         </div>
@@ -628,20 +625,10 @@ onMounted(() => {
   min-height: 120px;
 }
 
-/* 每一行：左侧分支内容 + 右侧锚点 */
-.branch-condition-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 8px;
-  position: relative; /* 为Handle提供定位上下文 */
-}
-
 .branch-condition-item {
   display: flex;
   align-items: center;
-  position: relative;
-  width: 100%;
+  position: relative; /* 为Handle提供定位上下文 */
 }
 
 .branch-content-row {
@@ -1109,14 +1096,5 @@ onMounted(() => {
 }
 :deep(.vue-flow__handle.handle-branch-4[type="source"]) {
   background-color: #8b5cf6 !important;
-}
-
-/* 分支行中的 Handle - 确保在Grid中正确显示 */
-.branch-handle {
-  position: relative !important;
-  margin: 0 !important;
-  right: auto !important;
-  top: auto !important;
-  transform: none !important;
 }
 </style>
