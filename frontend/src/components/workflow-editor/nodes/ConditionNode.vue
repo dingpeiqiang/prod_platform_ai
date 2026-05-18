@@ -344,8 +344,7 @@ const initBranches = () => {
 // 切换分支展开/折叠
 const toggleBranch = (index) => {
   localBranches.value[index].expanded = !localBranches.value[index].expanded;
-  
-  // 延迟重新计算锚点位置，等待DOM更新
+  // 展开/折叠不改变分支数量，但会改变节点高度，需要重新计算
   setTimeout(() => {
     calculateHandlePositions();
   }, 150);
@@ -399,11 +398,7 @@ const addBranch = () => {
   }
   
   emitUpdate();
-  
-  // 延迟重新计算锚点位置，等待DOM更新
-  setTimeout(() => {
-    calculateHandlePositions();
-  }, 100);
+  // watch 监听器会自动触发 calculateHandlePositions
 };
 
 // 删除分支
@@ -423,11 +418,7 @@ const removeBranch = (index) => {
   
   localBranches.value.splice(index, 1);
   emitUpdate();
-  
-  // 延迟重新计算锚点位置，等待DOM更新
-  setTimeout(() => {
-    calculateHandlePositions();
-  }, 100);
+  // watch 监听器会自动触发 calculateHandlePositions
 };
 
 // 添加条件到指定分支
@@ -579,7 +570,10 @@ watch(() => props.data, (newData) => {
 
 // 监听分支数量变化
 watch(() => localBranches.value.length, () => {
-  calculateHandlePositions();
+  // 分支数量变化时，延迟重新计算锚点位置，等待DOM更新
+  setTimeout(() => {
+    calculateHandlePositions();
+  }, 100);
 });
 
 // 监听配置模式变化，确保在两种模式下都能正确定位锚点
