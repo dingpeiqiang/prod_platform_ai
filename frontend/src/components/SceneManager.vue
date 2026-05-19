@@ -177,23 +177,13 @@
             </div>
           </el-card>
 
-          <!-- 配置信息（仅场景） -->
-          <el-card v-if="selectedNode.type === 'scene'" class="info-card">
-            <template #header>
-              <span class="card-title">配置信息</span>
-            </template>
-            <el-descriptions :column="1" border>
-              <el-descriptions-item label="关联提示词">
-                <span>{{ getPromptName(selectedNode.promptCode) || '未配置' }}</span>
-                <el-button v-if="selectedNode.promptCode" link size="small" @click="openPromptEditorForSelected">编辑</el-button>
-              </el-descriptions-item>
-            </el-descriptions>
-          </el-card>
-
-          <!-- 提示词预览（仅场景） -->
+          <!-- 提示词（仅场景） -->
           <el-card v-if="selectedNode.type === 'scene' && selectedNode.promptCode" class="info-card">
             <template #header>
-              <span class="card-title">提示词预览</span>
+              <div class="prompt-header-info">
+                <span class="card-title">提示词</span>
+                <span class="prompt-code">{{ selectedNode.promptCode }}</span>
+              </div>
               <el-button link @click="openPromptEditorForSelected" class="preview-edit-btn">
                 <el-icon><Edit /></el-icon>
                 编辑
@@ -566,13 +556,17 @@ const loadStats = async () => {
 
 const getPromptName = (promptCode) => {
   if (!promptCode) return null
-  const prompt = prompts.value.find(p => p.code === promptCode)
+  let prompt = prompts.value.find(p => p.code === promptCode)
+  if (prompt) return prompt.name
+  prompt = prompts.value.find(p => p.code === `${promptCode}_prompt`)
   return prompt ? prompt.name : promptCode
 }
 
 const getPromptContent = (promptCode) => {
   if (!promptCode) return null
-  const prompt = prompts.value.find(p => p.code === promptCode)
+  let prompt = prompts.value.find(p => p.code === promptCode)
+  if (prompt) return prompt.content
+  prompt = prompts.value.find(p => p.code === `${promptCode}_prompt`)
   return prompt ? prompt.content : null
 }
 
@@ -1047,6 +1041,21 @@ onMounted(() => {
 .card-title {
   font-weight: 600;
   font-size: 15px;
+}
+
+.prompt-header-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.prompt-code {
+  font-size: 12px;
+  color: #666;
+  padding: 2px 8px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  font-family: 'Monaco', 'Menlo', monospace;
 }
 
 .keywords-container {
