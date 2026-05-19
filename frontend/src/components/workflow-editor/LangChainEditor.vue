@@ -418,14 +418,23 @@
           </template>
 
           <template #node-parser="props">
-            <ParserNode
-              :data="enrichNodeData(props.data, props.node?.id)"
-              :selected="props.selected"
-              compact
-              @update="updateNodeData"
-            />
-          </template>
-        </VueFlow>
+          <ParserNode
+            :data="enrichNodeData(props.data, props.node?.id)"
+            :selected="props.selected"
+            compact
+            @update="updateNodeData"
+          />
+        </template>
+
+        <template #node-knowledgeBase="props">
+          <KnowledgeNode
+            :data="enrichNodeData(props.data, props.node?.id)"
+            :selected="props.selected"
+            compact
+            @update="updateNodeData"
+          />
+        </template>
+      </VueFlow>
       </div>
 
       <div class="node-config-drawer" :class="{ open: showNodeConfigPanel }">
@@ -628,6 +637,7 @@ import VariableNode from './nodes/VariableNode.vue';
 import HttpNode from './nodes/HttpNode.vue';
 import CodeNode from './nodes/CodeNode.vue';
 import ParserNode from './nodes/ParserNode.vue';
+import KnowledgeNode from './nodes/KnowledgeNode.vue';
 
 import { debounce, validateWorkflow, alignNodes, distributeNodes } from './utils/editorUtils';
 import { ExecutionEngine } from './utils/executionEngine';

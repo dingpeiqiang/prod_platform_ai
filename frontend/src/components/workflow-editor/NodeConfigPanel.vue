@@ -97,7 +97,8 @@ const headerIcon = computed(() => {
     http: '🌐',
     code: '💻',
     parser: '📋',
-    form: '📄'
+    form: '📄',
+    knowledgeBase: '📚'
   };
   return icons[nodeType.value] || '⚙️';
 });
@@ -115,7 +116,8 @@ const configTitle = computed(() => {
     http: 'HTTP配置',
     code: '代码配置',
     parser: '解析配置',
-    form: '表单配置'
+    form: '表单配置',
+    knowledgeBase: '知识库配置'
   };
   return titles[nodeType.value] || '配置';
 });

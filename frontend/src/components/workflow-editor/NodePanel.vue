@@ -94,7 +94,8 @@ const nodeGroups = ref([
       { id: 'tool', name: '工具调用', icon: '🔧', type: 'tool' },
       { id: 'http', name: 'HTTP请求', icon: '🌐', type: 'http' },
       { id: 'code', name: '代码执行', icon: '💻', type: 'code' },
-      { id: 'variable', name: '变量赋值', icon: '📦', type: 'variable' }
+      { id: 'variable', name: '变量赋值', icon: '📦', type: 'variable' },
+      { id: 'knowledgeBase', name: '知识库', icon: '📚', type: 'knowledgeBase' }
     ]
   },
   {

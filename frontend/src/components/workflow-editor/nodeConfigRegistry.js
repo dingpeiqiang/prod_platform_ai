@@ -10,6 +10,7 @@ import HttpNode from './nodes/HttpNode.vue';
 import CodeNode from './nodes/CodeNode.vue';
 import ParserNode from './nodes/ParserNode.vue';
 import FormNode from './nodes/FormNode.vue';
+import KnowledgeNode from './nodes/KnowledgeNode.vue';
 
 export const NODE_CONFIG_COMPONENTS = {
   start: StartNode,
@@ -23,7 +24,8 @@ export const NODE_CONFIG_COMPONENTS = {
   http: HttpNode,
   code: CodeNode,
   parser: ParserNode,
-  form: FormNode
+  form: FormNode,
+  knowledgeBase: KnowledgeNode
 };
 
 export const NODE_TYPE_LABELS = {
@@ -38,5 +40,6 @@ export const NODE_TYPE_LABELS = {
   code: '代码执行',
   variable: '变量赋值',
   parser: '输出解析',
-  form: '表单'
+  form: '表单',
+  knowledgeBase: '知识库'
 };

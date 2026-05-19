@@ -202,6 +202,37 @@ export class ExecutionEngine {
           break;
         }
 
+        case 'knowledgeBase': {
+          const kbId = node.data.knowledgeBase || '';
+          const queryMode = node.data.queryMode || 'retrieve';
+          const queryText = node.data.queryText || '';
+          
+          const resolvedQuery = queryText.replace(/\{\{(\w+)\}\}/g, (_, key) => context.variables[key] || '');
+          
+          this.addLog('info', '知识库查询', 
+            `知识库: ${kbId}, 模式: ${queryMode}, 查询: ${resolvedQuery}`, 
+            { knowledgeBase: kbId, queryMode, queryText: resolvedQuery }
+          );
+
+          const mockResults = {
+            documents: [
+              { id: 'doc1', content: '知识库文档内容示例1...', score: 0.95 },
+              { id: 'doc2', content: '知识库文档内容示例2...', score: 0.88 }
+            ],
+            answer: queryMode === 'qa' ? '这是模拟的知识库问答响应。' : null,
+            summary: queryMode === 'summarize' ? '这是模拟的文档摘要。' : null
+          };
+
+          context.variables['kbResult'] = mockResults;
+          
+          if (node.data.outputVar) {
+            context.variables[node.data.outputVar] = mockResults;
+          }
+          
+          this.addLog('info', '知识库查询完成', null, { result: mockResults });
+          break;
+        }
+
         case 'end': {
           this.addLog('info', '到达结束节点', null, null);
           this.setNodeStatus(nodeId, 'completed');
