@@ -260,7 +260,7 @@
           :max-zoom="4"
           :nodes-draggable="true"
           :nodes-connectable="true"
-          :edges-connectable="true"
+          :edges-connectable="isEdgeConnectable"
           :connect-on-drag="true"
           :auto-connect="false"
           :snap-to-grid="true"
@@ -630,6 +630,7 @@ import ParserNode from './nodes/ParserNode.vue';
 import { debounce, validateWorkflow, alignNodes, distributeNodes } from './utils/editorUtils';
 import { ExecutionEngine } from './utils/executionEngine';
 import { KeyboardShortcuts } from './utils/keyboardShortcuts';
+import { validateConnection as validateConnectionRules } from './utils/connectionRules';
 
 // Props
 const props = defineProps({
@@ -651,12 +652,13 @@ const goBack = () => {
   emit('go-back');
 };
 
-const { addEdges, removeNodes, removeEdges, project } = useVueFlow();
+const { addEdges, removeNodes, removeEdges, project, updateEdge, getEdges, getNodes } = useVueFlow();
 
 const elements = ref([]);
 const hasChanges = ref(false);
 const selectedNodeId = ref(null);
 const selectedNodeIds = ref([]);
+const selectedEdgeIds = ref([]);
 const showLeftPanel = ref(true); // 控制左侧节点面板显示/隐藏
 const showRightPanel = ref(false);
 const showLibraryPanel = ref(false); // 控制工作流库面板显示/隐藏
@@ -666,6 +668,10 @@ const lastNodeClick = ref({ id: null, time: 0 });
 const DOUBLE_CLICK_MS = 320;
 const showShortcuts = ref(false);
 const connectionSuccess = ref(false);
+const isEdgeConnectable = ref(true);
+
+// 连接阻止标志，用于协调 onConnect 和 onConnectEnd
+const connectionBlocked = ref(false);
 
 // 智能吸附相关状态
 const nearbyHandle = ref(null);
@@ -877,35 +883,57 @@ const saveHistory = () => {
 };
 
 const onConnect = (params) => {
-  // 验证连接
-  const validation = validateConnection(params);
+  const validation = validateConnectionRules(params, elements.value);
+  
   if (!validation.valid) {
     console.warn('连接验证失败:', validation.message);
-    return;
+    ElMessage.warning({
+      message: validation.message,
+      duration: 3000,
+      showClose: true
+    });
+    
+    connectionBlocked.value = true;
+    setTimeout(() => {
+      connectionBlocked.value = false;
+    }, 100);
+    
+    return false;
   }
   
-  // 添加箭头标记
-  const edgeWithMarker = {
-    ...params,
+  // 显式创建边对象并添加到 elements
+  const newEdge = {
+    id: `edge-${uuidv4().slice(0, 8)}`,
+    source: params.source,
+    target: params.target,
+    sourceHandle: params.sourceHandle,
+    targetHandle: params.targetHandle,
+    type: 'default',
     markerEnd: {
       type: 'arrowclosed',
       color: '#94a3b8'
-    }
+    },
+    style: {
+      stroke: '#94a3b8',
+      strokeWidth: 2.5
+    },
+    animated: false
   };
   
-  saveHistory();
-  addEdges(edgeWithMarker);
-  markDirty();
+  // 使用 addEdges 显式添加边
+  addEdges([newEdge]);
   
-  // 显示连接成功动画
+  saveHistory();
+  markDirty();
   showConnectionSuccess();
 };
 
 // 连接结束时的智能吸附
 const onConnectEnd = (event) => {
+  if (connectionBlocked.value) return;
+  
   if (!nearbyHandle.value) return;
   
-  // 获取锁定的连接点信息
   const snappedHandle = nearbyHandle.value;
   const handleId = snappedHandle.getAttribute('data-handleid');
   const nodeId = snappedHandle.closest('.vue-flow__node')?.getAttribute('data-id');
@@ -913,37 +941,29 @@ const onConnectEnd = (event) => {
   
   if (!nodeId || !handleId) return;
   
-  // 检查是否需要修正连接
-  // Vue Flow 在 connect-end 时，如果释放位置不在有效目标上，会创建一个无效连接
-  // 我们需要检测这种情况并用锁定的点替换
-  
   setTimeout(() => {
-    // 查找刚刚创建的边（最后一条边）
+    if (connectionBlocked.value) return;
+    
     const edges = elements.value.filter(el => el.source && el.target);
     if (edges.length === 0) return;
     
     const lastEdge = edges[edges.length - 1];
     
-    // 判断是否需要修正
     let needsCorrection = false;
     
     if (handleType === 'target') {
-      // 如果锁定的是目标点，检查最后一条边的目标是否正确
       if (lastEdge.target !== nodeId || lastEdge.targetHandle !== handleId) {
         needsCorrection = true;
       }
     } else if (handleType === 'source') {
-      // 如果锁定的是源点，检查最后一条边的源是否正确
       if (lastEdge.source !== nodeId || lastEdge.sourceHandle !== handleId) {
         needsCorrection = true;
       }
     }
     
     if (needsCorrection) {
-      // 删除错误的边
       removeEdges([lastEdge.id]);
       
-      // 创建正确的边
       const correctEdge = {
         id: `edge-${uuidv4().slice(0, 8)}`,
         source: handleType === 'source' ? nodeId : lastEdge.source,
@@ -956,11 +976,16 @@ const onConnectEnd = (event) => {
         }
       };
       
-      // 验证新连接
-      const validation = validateConnection(correctEdge);
+      const validation = validateConnectionRules(correctEdge, elements.value);
       if (validation.valid) {
         addEdges([correctEdge]);
         showConnectionSuccess();
+      } else {
+        ElMessage.warning({
+          message: validation.message,
+          duration: 3000,
+          showClose: true
+        });
       }
     }
   }, 50);
@@ -1035,52 +1060,6 @@ const clearNearbyHandle = () => {
   if (pane) {
     pane.style.cursor = 'default';
   }
-};
-
-// 连接验证逻辑
-const validateConnection = (connection) => {
-  const { source, target } = connection;
-  
-  // 查找源节点和目标节点
-  const sourceNode = elements.value.find(el => el.id === source && !el.source);
-  const targetNode = elements.value.find(el => el.id === target && !el.source);
-  
-  if (!sourceNode || !targetNode) {
-    return { valid: false, message: '节点不存在' };
-  }
-  
-  // 规则1: 不能连接到自身
-  if (source === target) {
-    return { valid: false, message: '不能连接到自身' };
-  }
-  
-  // 规则2: 结束节点不能有输出连接
-  if (sourceNode.type === 'end') {
-    return { valid: false, message: '结束节点不能有输出连接' };
-  }
-  
-  // 规则3: 开始节点不能有输入连接
-  if (targetNode.type === 'start') {
-    return { valid: false, message: '开始节点不能有输入连接' };
-  }
-  
-  // 规则4: 检查是否已存在相同的连接
-  const existingEdge = elements.value.find(
-    el => el.source === source && 
-          el.target === target && 
-          el.sourceHandle === connection.sourceHandle &&
-          el.targetHandle === connection.targetHandle
-  );
-  if (existingEdge) {
-    return { valid: false, message: '连接已存在' };
-  }
-  
-  // 规则5: 检查是否会形成循环（可选，根据需求决定）
-  // if (wouldCreateCycle(source, target)) {
-  //   return { valid: false, message: '不能形成循环' };
-  // }
-  
-  return { valid: true, message: '连接有效' };
 };
 
 const onNodeDragStart = () => {
@@ -1199,6 +1178,11 @@ const handleNodeRun = async () => {
 };
 
 const onPaneClick = () => {
+  selectedEdgeIds.value.forEach(id => {
+    updateEdgeStyle(id, false);
+  });
+  selectedEdgeIds.value = [];
+  
   selectedNodeId.value = null;
   selectedNodeIds.value = [];
   closeNodeConfigPanel();
@@ -1206,6 +1190,42 @@ const onPaneClick = () => {
 
 const onEdgeClick = ({ edge, event }) => {
   event.stopPropagation();
+  
+  let wasSelected = false;
+  if (event.shiftKey) {
+    const idx = selectedEdgeIds.value.indexOf(edge.id);
+    if (idx > -1) {
+      selectedEdgeIds.value.splice(idx, 1);
+      wasSelected = true;
+    } else {
+      selectedEdgeIds.value.push(edge.id);
+    }
+  } else {
+    const previousSelected = [...selectedEdgeIds.value];
+    selectedEdgeIds.value = [edge.id];
+    
+    previousSelected.forEach(id => {
+      if (id !== edge.id) {
+        updateEdgeStyle(id, false);
+      }
+    });
+  }
+  
+  const isSelected = selectedEdgeIds.value.includes(edge.id);
+  updateEdgeStyle(edge.id, isSelected);
+  
+  selectedNodeId.value = null;
+  selectedNodeIds.value = [];
+};
+
+const updateEdgeStyle = (edgeId, isSelected) => {
+  const edge = elements.value.find(el => el.id === edgeId);
+  if (edge) {
+    edge.style = {
+      stroke: isSelected ? '#3b82f6' : '#94a3b8',
+      strokeWidth: isSelected ? 4 : 2.5
+    };
+  }
 };
 
 const onHandleClick = ({ event, handle, node }) => {
@@ -1217,6 +1237,11 @@ const onHandleMouseDown = ({ event, handle, node }) => {
 const animatingNodeId = ref(null);
 
 const onNodeClick = (event, node) => {
+  selectedEdgeIds.value.forEach(id => {
+    updateEdgeStyle(id, false);
+  });
+  selectedEdgeIds.value = [];
+  
   if (event.shiftKey) {
     const idx = selectedNodeIds.value.indexOf(node.id);
     if (idx > -1) {
@@ -1726,15 +1751,28 @@ const deleteSelectedNode = () => {
     ? selectedNodeIds.value 
     : (selectedNodeId.value ? [selectedNodeId.value] : []);
   
-  if (nodesToDelete.length > 0) {
+  const edgesToDelete = selectedEdgeIds.value.length > 0 
+    ? selectedEdgeIds.value 
+    : [];
+  
+  if (nodesToDelete.length > 0 || edgesToDelete.length > 0) {
     saveHistory();
-    removeNodes(nodesToDelete);
-    const connectedEdges = elements.value.filter(
-      el => nodesToDelete.includes(el.source) || nodesToDelete.includes(el.target)
-    );
-    if (connectedEdges.length > 0) {
-      removeEdges(connectedEdges.map(e => e.id));
+    
+    if (edgesToDelete.length > 0) {
+      removeEdges(edgesToDelete);
     }
+    
+    if (nodesToDelete.length > 0) {
+      removeNodes(nodesToDelete);
+      const connectedEdges = elements.value.filter(
+        el => nodesToDelete.includes(el.source) || nodesToDelete.includes(el.target)
+      );
+      if (connectedEdges.length > 0) {
+        removeEdges(connectedEdges.map(e => e.id));
+      }
+    }
+    
+    selectedEdgeIds.value = [];
     selectedNodeId.value = null;
     selectedNodeIds.value = [];
     markDirty();
