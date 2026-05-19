@@ -39,14 +39,21 @@ def get_git_status():
     stdout, stderr, code = run_command("git status --porcelain")
     if code != 0:
         return None, stderr
+    
     changed_files = []
+    status_map = {}
+    
     if stdout:
         for line in stdout.split('\n'):
             if line.strip():
                 parts = line.split()
                 if len(parts) >= 2:
-                    changed_files.append(' '.join(parts[1:]))
-    return changed_files, None
+                    status = parts[0]
+                    filename = ' '.join(parts[1:])
+                    changed_files.append(filename)
+                    status_map[filename] = status
+    
+    return changed_files, status_map, None
 
 
 def get_current_branch():
@@ -57,31 +64,141 @@ def get_current_branch():
     return "main"
 
 
-def generate_commit_message(changed_files):
-    """根据变更文件生成提交信息"""
+def get_git_diff(filename):
+    """获取单个文件的 diff 信息"""
+    stdout, _, _ = run_command(f"git diff --stat {filename}")
+    return stdout
+
+
+def analyze_changes(changed_files, status_map):
+    """分析变更类型和内容"""
     file_types = {
-        '.py': 'Python代码',
-        '.js': 'JavaScript代码',
-        '.ts': 'TypeScript代码',
-        '.vue': 'Vue组件',
-        '.md': '文档',
-        '.json': '配置文件',
-        '.yml': 'YAML配置',
-        '.sql': 'SQL脚本',
-        '.html': 'HTML文件',
-        '.css': 'CSS样式',
+        '.py': {'category': 'backend', 'label': 'Python后端代码'},
+        '.js': {'category': 'frontend', 'label': 'JavaScript代码'},
+        '.ts': {'category': 'frontend', 'label': 'TypeScript代码'},
+        '.vue': {'category': 'frontend', 'label': 'Vue组件'},
+        '.md': {'category': 'docs', 'label': '文档'},
+        '.json': {'category': 'config', 'label': '配置文件'},
+        '.yml': {'category': 'config', 'label': 'YAML配置'},
+        '.sql': {'category': 'database', 'label': 'SQL脚本'},
+        '.html': {'category': 'frontend', 'label': 'HTML模板'},
+        '.css': {'category': 'frontend', 'label': 'CSS样式'},
+        '.txt': {'category': 'docs', 'label': '文本文件'},
     }
     
-    summary = []
-    for f in changed_files[:5]:
-        ext = os.path.splitext(f)[1]
-        summary.append(f"- {file_types.get(ext, '文件')}: {f}")
+    stats = {
+        'added': 0,
+        'modified': 0,
+        'deleted': 0,
+        'renamed': 0,
+        'categories': {},
+        'details': []
+    }
     
-    if len(changed_files) > 5:
-        summary.append(f"- 还有 {len(changed_files) - 5} 个文件...")
+    for filename in changed_files:
+        status = status_map.get(filename, 'M')
+        
+        if status.startswith('A'):
+            stats['added'] += 1
+            change_type = '新增'
+        elif status.startswith('D'):
+            stats['deleted'] += 1
+            change_type = '删除'
+        elif status.startswith('R'):
+            stats['renamed'] += 1
+            change_type = '重命名'
+        else:
+            stats['modified'] += 1
+            change_type = '修改'
+        
+        ext = os.path.splitext(filename)[1]
+        file_info = file_types.get(ext, {'category': 'other', 'label': '其他文件'})
+        category = file_info['category']
+        
+        if category not in stats['categories']:
+            stats['categories'][category] = 0
+        stats['categories'][category] += 1
+        
+        stats['details'].append({
+            'filename': filename,
+            'status': status,
+            'change_type': change_type,
+            'category': category,
+            'label': file_info['label']
+        })
     
-    message = f"chore: 会话完成自动提交\n\n变更文件:\n{chr(10).join(summary)}"
-    return message
+    return stats
+
+
+def generate_commit_message(changed_files, status_map):
+    """根据变更文件生成详细的提交信息"""
+    stats = analyze_changes(changed_files, status_map)
+    
+    commit_type = 'chore'
+    type_emoji = '🔧'
+    
+    has_backend = stats['categories'].get('backend', 0) > 0
+    has_frontend = stats['categories'].get('frontend', 0) > 0
+    has_docs = stats['categories'].get('docs', 0) > 0
+    has_config = stats['categories'].get('config', 0) > 0
+    
+    if stats['added'] > stats['modified'] and stats['added'] > 0:
+        commit_type = 'feat'
+        type_emoji = '✨'
+    elif has_backend and stats['modified'] > 0:
+        commit_type = 'refactor'
+        type_emoji = '🔄'
+    elif has_frontend and stats['modified'] > 0:
+        commit_type = 'refactor'
+        type_emoji = '🔄'
+    elif has_docs:
+        commit_type = 'docs'
+        type_emoji = '📝'
+    elif has_config:
+        commit_type = 'chore'
+        type_emoji = '🔧'
+    
+    summary_parts = []
+    if stats['added'] > 0:
+        summary_parts.append(f"新增{stats['added']}个文件")
+    if stats['modified'] > 0:
+        summary_parts.append(f"修改{stats['modified']}个文件")
+    if stats['deleted'] > 0:
+        summary_parts.append(f"删除{stats['deleted']}个文件")
+    if stats['renamed'] > 0:
+        summary_parts.append(f"重命名{stats['renamed']}个文件")
+    
+    summary = '、'.join(summary_parts)
+    
+    subject = f"{type_emoji} {commit_type}: {summary}"
+    
+    body_lines = []
+    
+    if stats['categories']:
+        body_lines.append("## 变更分类")
+        category_labels = {
+            'backend': '后端代码',
+            'frontend': '前端代码',
+            'docs': '文档',
+            'config': '配置',
+            'database': '数据库',
+            'other': '其他'
+        }
+        for cat, count in stats['categories'].items():
+            body_lines.append(f"- {category_labels.get(cat, cat)}: {count}个文件")
+    
+    body_lines.append("\n## 变更详情")
+    for detail in stats['details'][:10]:
+        body_lines.append(f"- {detail['change_type']} {detail['label']}: {detail['filename']}")
+    
+    if len(stats['details']) > 10:
+        body_lines.append(f"- ... 还有 {len(stats['details']) - 10} 个文件")
+    
+    body = '\n'.join(body_lines)
+    
+    full_message = f"{subject}\n\n{body}"
+    
+    return full_message
 
 
 def auto_commit():
@@ -95,7 +212,7 @@ def auto_commit():
             print(f"   {stderr}")
         return False
     
-    changed_files, error = get_git_status()
+    changed_files, status_map, error = get_git_status()
     if error:
         print(f"❌ 检查状态失败: {error}")
         return False
@@ -105,8 +222,18 @@ def auto_commit():
         return True
     
     print(f"📝 检测到 {len(changed_files)} 个文件变更")
+    for filename in changed_files[:5]:
+        status = status_map.get(filename, 'M')
+        if status.startswith('A'):
+            print(f"   + {filename}")
+        elif status.startswith('D'):
+            print(f"   - {filename}")
+        else:
+            print(f"   ~ {filename}")
+    if len(changed_files) > 5:
+        print(f"   ... 还有 {len(changed_files) - 5} 个文件")
     
-    print("📦 执行 git add -A...")
+    print("\n📦 执行 git add -A...")
     _, stderr, code = run_command("git add -A")
     if code != 0:
         print(f"❌ git add 失败")
@@ -114,10 +241,13 @@ def auto_commit():
             print(f"   {stderr}")
         return False
     
-    message = generate_commit_message(changed_files)
-    print(f"✏️ 生成提交信息: {message.splitlines()[0]}")
+    message = generate_commit_message(changed_files, status_map)
+    print("\n✏️ 生成提交信息:")
+    print("-" * 50)
+    print(message)
+    print("-" * 50)
     
-    print("🚀 执行 git commit...")
+    print("\n🚀 执行 git commit...")
     cmd = f'git commit -m "{message}"'
     _, stderr, code = run_command(cmd)
     if code != 0:
@@ -131,7 +261,7 @@ def auto_commit():
     print(f"✅ 提交成功! 哈希: {commit_hash}")
     
     branch = get_current_branch()
-    print(f"📤 推送到 origin/{branch}...")
+    print(f"\n📤 推送到 origin/{branch}...")
     _, stderr, code = run_command(f"git push origin {branch}")
     if code != 0:
         print(f"⚠️ git push 失败（可能需要手动推送）")

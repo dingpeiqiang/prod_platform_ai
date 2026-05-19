@@ -1,14 +1,14 @@
 import axios from 'axios'
-import { useLoadingStore } from '../stores/loading'
 
 const API_BASE = '/api/v1'
 
 let loadingCount = 0
-const loadingStore = useLoadingStore()
 
 function showLoading(text) {
   loadingCount++
   if (loadingCount === 1) {
+    const { useLoadingStore } = require('../stores/loading')
+    const loadingStore = useLoadingStore()
     loadingStore.show(text)
   }
 }
@@ -17,6 +17,8 @@ function hideLoading() {
   loadingCount--
   if (loadingCount <= 0) {
     loadingCount = 0
+    const { useLoadingStore } = require('../stores/loading')
+    const loadingStore = useLoadingStore()
     loadingStore.hide()
   }
 }
