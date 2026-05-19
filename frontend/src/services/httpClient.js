@@ -4,20 +4,20 @@ const API_BASE = '/api/v1'
 
 let loadingCount = 0
 
-function showLoading(text) {
+async function showLoading(text) {
   loadingCount++
   if (loadingCount === 1) {
-    const { useLoadingStore } = require('../stores/loading')
+    const { useLoadingStore } = await import('../stores/loading.js')
     const loadingStore = useLoadingStore()
     loadingStore.show(text)
   }
 }
 
-function hideLoading() {
+async function hideLoading() {
   loadingCount--
   if (loadingCount <= 0) {
     loadingCount = 0
-    const { useLoadingStore } = require('../stores/loading')
+    const { useLoadingStore } = await import('../stores/loading.js')
     const loadingStore = useLoadingStore()
     loadingStore.hide()
   }
@@ -32,25 +32,25 @@ const apiClient = axios.create({
 })
 
 apiClient.interceptors.request.use(
-  (config) => {
+  async (config) => {
     if (config.showLoading !== false) {
-      showLoading(config.loadingText || '加载中...')
+      await showLoading(config.loadingText || '加载中...')
     }
     return config
   },
-  (error) => {
-    hideLoading()
+  async (error) => {
+    await hideLoading()
     return Promise.reject(error)
   }
 )
 
 apiClient.interceptors.response.use(
-  (response) => {
-    hideLoading()
+  async (response) => {
+    await hideLoading()
     return response.data
   },
-  (error) => {
-    hideLoading()
+  async (error) => {
+    await hideLoading()
     let errorMessage = '请求失败'
     if (error.response) {
       errorMessage = error.response.data?.message || error.response.data?.error || `HTTP Error: ${error.response.status}`

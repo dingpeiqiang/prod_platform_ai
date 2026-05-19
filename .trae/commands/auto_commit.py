@@ -3,13 +3,14 @@
 自动提交脚本 - 在会话结束时自动检测代码变更并提交
 
 使用方法：
-1. 在 Trae 对话中输入: /auto_commit
+1. 在 Trae 对话中输入: /auto_commit [summary]
 2. 或作为会话结束钩子自动执行
 
 功能：
 - 检测工作区是否有未提交的变更
 - 如果有变更，自动执行 git add → git commit → git push
 - 自动生成规范的 Conventional Commits 格式提交信息
+- 支持接收会话总结作为提交信息前缀
 """
 
 import subprocess
@@ -62,12 +63,6 @@ def get_current_branch():
     if code == 0 and stdout:
         return stdout.strip()
     return "main"
-
-
-def get_git_diff(filename):
-    """获取单个文件的 diff 信息"""
-    stdout, _, _ = run_command(f"git diff --stat {filename}")
-    return stdout
 
 
 def analyze_changes(changed_files, status_map):
@@ -130,8 +125,8 @@ def analyze_changes(changed_files, status_map):
     return stats
 
 
-def generate_commit_message(changed_files, status_map):
-    """根据变更文件生成详细的提交信息"""
+def generate_commit_message(changed_files, status_map, session_summary=None):
+    """根据变更文件和会话总结生成详细的提交信息"""
     stats = analyze_changes(changed_files, status_map)
     
     commit_type = 'chore'
@@ -170,12 +165,19 @@ def generate_commit_message(changed_files, status_map):
     
     summary = '、'.join(summary_parts)
     
-    subject = f"{type_emoji} {commit_type}: {summary}"
+    if session_summary:
+        subject = f"{type_emoji} {commit_type}: {session_summary}"
+    else:
+        subject = f"{type_emoji} {commit_type}: {summary}"
     
     body_lines = []
     
+    if session_summary:
+        body_lines.append(f"## 会话总结")
+        body_lines.append(session_summary)
+    
     if stats['categories']:
-        body_lines.append("## 变更分类")
+        body_lines.append("\n## 变更分类")
         category_labels = {
             'backend': '后端代码',
             'frontend': '前端代码',
@@ -201,7 +203,7 @@ def generate_commit_message(changed_files, status_map):
     return full_message
 
 
-def auto_commit():
+def auto_commit(session_summary=None):
     """执行自动提交流程"""
     print("🔍 检查 Git 工作区状态...")
     
@@ -241,7 +243,7 @@ def auto_commit():
             print(f"   {stderr}")
         return False
     
-    message = generate_commit_message(changed_files, status_map)
+    message = generate_commit_message(changed_files, status_map, session_summary)
     print("\n✏️ 生成提交信息:")
     print("-" * 50)
     print(message)
@@ -274,9 +276,9 @@ def auto_commit():
 
 
 if __name__ == "__main__":
-    custom_message = None
+    session_summary = None
     if len(sys.argv) > 1:
-        custom_message = " ".join(sys.argv[1:])
+        session_summary = " ".join(sys.argv[1:])
     
-    success = auto_commit()
+    success = auto_commit(session_summary)
     sys.exit(0 if success else 1)
