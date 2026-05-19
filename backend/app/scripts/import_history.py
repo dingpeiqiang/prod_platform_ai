@@ -275,64 +275,8 @@ def _ensure_template(db, form_code: str, form_name: str,
     注意：FormTemplate 已废弃，此函数不再使用
     表单 Schema 由本体约束（ontology）驱动
     """
-    # FormTemplate 已废弃，返回 0
     logger.warning("_ensure_template 已废弃，FormTemplate 不再使用")
     return 0
-    
-    # from app.models.form import FormTemplate
-    # from app.services.ontology_service import OntologyService
-    #
-    # template = db.query(FormTemplate).filter(
-    #     FormTemplate.form_code == form_code
-    # ).first()
-
-    enriched_schema = schema.copy() if schema else {}
-    try:
-        ontology_result = OntologyService.get_form_constraint(form_code)
-        if ontology_result.get('success'):
-            ontology = ontology_result.get('constraints', {})
-            if 'entities' in ontology and ontology['entities']:
-                enriched_schema['entities'] = ontology['entities']
-                logger.info("从本体加载字段配置: form_code=%s", form_code)
-    except Exception as e:
-        logger.warning("从本体加载字段配置失败: %s", e)
-
-    if sample_record:
-        enriched_schema['sample'] = sample_record
-
-    if template:
-        if enriched_schema:
-            updated = False
-            if form_name and template.form_name != form_name:
-                template.form_name = form_name
-                updated = True
-            current_schema = template.schema or {}
-            for key, value in enriched_schema.items():
-                if key not in current_schema or current_schema[key] != value:
-                    current_schema[key] = value
-                    updated = True
-            if updated:
-                template.schema = current_schema
-                template.updated_at = datetime.now()
-                db.commit()
-                logger.info("更新 FormTemplate: form_code=%s", form_code)
-        return template.id
-
-    template_schema = enriched_schema or {"formCode": form_code, "formName": form_name}
-    template = FormTemplate(
-        form_code=form_code,
-        form_name=form_name,
-        schema=template_schema,
-        version=1,
-        is_active=True,
-        created_at=datetime.now(),
-        updated_at=datetime.now()
-    )
-    db.add(template)
-    db.commit()
-    db.refresh(template)
-    logger.info("创建 FormTemplate: form_code=%s id=%d", form_code, template.id)
-    return template.id
 
 
 def _flush_batch(db, batch: List[tuple]) -> int:

@@ -13,8 +13,8 @@ from app.services.ontology_service import OntologyService
 from app.services.history_service import HistoryService
 from app.services.validation_service import validation_engine
 from app.websocket.manager import manager
+from app.models.ontology import Ontology
 from app.models.ontology_instance import OntologyInstance
-# FormTemplate 已废弃，不再使用
 from app.intent import get_intent_registry
 from app.intent.base import IntentContext
 from datetime import datetime
@@ -506,22 +506,49 @@ async def get_form_schema(form_code: str, db: Session = Depends(get_db)):
     """
     logger.info("[form/schema] 获取表单 schema form_code=%s", form_code)
     
-    template = db.query(FormTemplate).filter(
-        FormTemplate.form_code == form_code,
-        FormTemplate.is_active == True
-    ).order_by(FormTemplate.version.desc()).first()
+    # 从本体表获取定义（FormTemplate 已废弃）
+    ontology = db.query(Ontology).filter(
+        Ontology.ontology_code == form_code,
+        Ontology.is_active == True
+    ).first()
     
-    if not template:
-        logger.warning("[form/schema] 表单模板不存在 form_code=%s", form_code)
-        return {"success": False, "message": "表单模板不存在"}
+    if not ontology:
+        logger.warning("[form/schema] 本体不存在 form_code=%s", form_code)
+        return {"success": False, "message": "本体不存在"}
     
-    logger.info("[form/schema] 成功 form_code=%s version=%d", form_code, template.version)
+    # 构建表单 schema 格式
+    fields = []
+    for entity in ontology.entities:
+        for field_def in entity.get("fields", []):
+            fields.append({
+                "fieldCode": field_def.get("fieldCode"),
+                "fieldName": field_def.get("fieldName"),
+                "fieldType": field_def.get("fieldType", "input"),
+                "required": field_def.get("required", False),
+                "disabled": False,
+                "hidden": False,
+                "rules": [],
+                "recommend": [],
+                "defaultValue": None,
+                "options": [],
+                "enumConfig": field_def.get("enumConfig")
+            })
+    
+    schema = {
+        "ontologyCode": ontology.ontology_code,
+        "ontologyName": ontology.ontology_name,
+        "version": ontology.version,
+        "globalControl": {},
+        "fields": fields
+    }
+    
+    logger.info("[form/schema] 成功 form_code=%s version=%d", form_code, ontology.version)
     return {
         "success": True,
-        "formCode": template.form_code,
-        "formName": template.form_name,
-        "version": template.version,
-        "schema": template.schema
+        "formCode": ontology.ontology_code,
+        "formName": ontology.ontology_name,
+        "version": ontology.version,
+        "schema": schema
     }
 
 
@@ -539,15 +566,17 @@ async def get_form_instance(form_id: str, db: Session = Depends(get_db)):
     if not inst:
         return {"success": False, "message": "未找到该记录"}
 
-    # 获取 form_name
-    template = db.query(FormTemplate).filter(FormTemplate.id == inst.template_id).first()
-    form_name = template.form_name if template else form_id
+    # 从本体表获取 form_name（FormTemplate 已废弃）
+    ontology = db.query(Ontology).filter(
+        Ontology.ontology_code == inst.ontology_code
+    ).first()
+    form_name = ontology.ontology_name if ontology else inst.ontology_code
 
     return {
         "success": True,
         "instance": {
-            "instanceId": inst.form_id,
-            "formCode": template.form_code if template else "",
+            "instanceId": inst.id,
+            "formCode": inst.ontology_code,
             "formName": form_name,
             "submittedAt": inst.submitted_at.isoformat() if inst.submitted_at else None,
             "data": inst.data or {},
