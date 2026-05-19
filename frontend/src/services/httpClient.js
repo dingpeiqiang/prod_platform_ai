@@ -1,3 +1,4 @@
+import axios from 'axios'
 import { useLoadingStore } from '../stores/loading'
 
 const API_BASE = '/api/v1'
@@ -20,87 +21,82 @@ function hideLoading() {
   }
 }
 
+const apiClient = axios.create({
+  baseURL: API_BASE,
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+})
+
+apiClient.interceptors.request.use(
+  (config) => {
+    if (config.showLoading !== false) {
+      showLoading(config.loadingText || '加载中...')
+    }
+    return config
+  },
+  (error) => {
+    hideLoading()
+    return Promise.reject(error)
+  }
+)
+
+apiClient.interceptors.response.use(
+  (response) => {
+    hideLoading()
+    return response.data
+  },
+  (error) => {
+    hideLoading()
+    let errorMessage = '请求失败'
+    if (error.response) {
+      errorMessage = error.response.data?.message || error.response.data?.error || `HTTP Error: ${error.response.status}`
+    } else if (error.message) {
+      errorMessage = error.message
+    }
+    console.error('[httpClient] Request failed:', errorMessage)
+    return Promise.reject(new Error(errorMessage))
+  }
+)
+
 export async function request(url, options = {}) {
-  const { 
-    method = 'GET', 
-    headers = {}, 
-    body, 
-    params, 
-    showLoading: showLoadingOpt = true,
+  const {
+    method = 'GET',
+    headers = {},
+    data,
+    params,
+    showLoading = true,
     loadingText = '加载中...',
-    baseURL = API_BASE 
+    baseURL = API_BASE
   } = options
 
-  const fullUrl = new URL(url.startsWith('/') ? url : `${baseURL}/${url}`)
-  
-  if (params) {
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        fullUrl.searchParams.set(key, value)
-      }
-    })
-  }
-
-  const defaultHeaders = {
-    'Content-Type': 'application/json',
-    ...headers
-  }
-
-  const fetchOptions = {
+  return await apiClient({
+    url,
     method,
-    headers: defaultHeaders
-  }
-
-  if (body) {
-    fetchOptions.body = typeof body === 'string' ? body : JSON.stringify(body)
-  }
-
-  if (showLoadingOpt) {
-    showLoading(loadingText)
-  }
-
-  try {
-    const response = await fetch(fullUrl.toString(), fetchOptions)
-    
-    if (!response.ok) {
-      let errorMessage = `HTTP Error: ${response.status}`
-      try {
-        const errorData = await response.json()
-        errorMessage = errorData.message || errorData.error || errorMessage
-      } catch {}
-      
-      throw new Error(errorMessage)
-    }
-
-    try {
-      return await response.json()
-    } catch {
-      return response.text()
-    }
-  } catch (error) {
-    console.error('[httpClient] Request failed:', error)
-    throw error
-  } finally {
-    if (showLoadingOpt) {
-      hideLoading()
-    }
-  }
+    headers,
+    data,
+    params,
+    showLoading,
+    loadingText,
+    baseURL
+  })
 }
 
 export function get(url, options = {}) {
   return request(url, { ...options, method: 'GET' })
 }
 
-export function post(url, body, options = {}) {
-  return request(url, { ...options, method: 'POST', body })
+export function post(url, data, options = {}) {
+  return request(url, { ...options, method: 'POST', data })
 }
 
-export function put(url, body, options = {}) {
-  return request(url, { ...options, method: 'PUT', body })
+export function put(url, data, options = {}) {
+  return request(url, { ...options, method: 'PUT', data })
 }
 
-export function patch(url, body, options = {}) {
-  return request(url, { ...options, method: 'PATCH', body })
+export function patch(url, data, options = {}) {
+  return request(url, { ...options, method: 'PATCH', data })
 }
 
 export function del(url, options = {}) {
@@ -113,5 +109,6 @@ export default {
   post,
   put,
   patch,
-  delete: del
+  delete: del,
+  axios: apiClient
 }

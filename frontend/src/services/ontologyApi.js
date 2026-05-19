@@ -33,4 +33,7 @@ export async function deleteOntology(ontologyCode) {
 }
 
 export async function toggleOntology(ontologyCode) {
-    return await patch
+    return await patch(`ontologies/${ontologyCode}/toggle`, {}, {
+        loadingText: '切换状态中...'
+    })
+}
