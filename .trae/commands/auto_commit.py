@@ -19,14 +19,19 @@ import sys
 
 def run_command(cmd, cwd=None):
     """执行命令并返回结果"""
-    result = subprocess.run(
-        cmd,
-        shell=True,
-        capture_output=True,
-        text=True,
-        cwd=cwd or os.getcwd()
-    )
-    return result.stdout.strip(), result.stderr.strip(), result.returncode
+    try:
+        result = subprocess.run(
+            cmd,
+            shell=True,
+            capture_output=True,
+            text=True,
+            cwd=cwd or os.getcwd(),
+            encoding='utf-8',
+            errors='ignore'
+        )
+        return result.stdout.strip(), result.stderr.strip(), result.returncode
+    except Exception as e:
+        return "", str(e), -1
 
 
 def get_git_status():
@@ -38,14 +43,16 @@ def get_git_status():
     if stdout:
         for line in stdout.split('\n'):
             if line.strip():
-                changed_files.append(line.split()[-1])
+                parts = line.split()
+                if len(parts) >= 2:
+                    changed_files.append(' '.join(parts[1:]))
     return changed_files, None
 
 
 def get_current_branch():
     """获取当前分支名"""
     stdout, stderr, code = run_command("git rev-parse --abbrev-ref HEAD")
-    if code == 0:
+    if code == 0 and stdout:
         return stdout.strip()
     return "main"
 
@@ -66,7 +73,7 @@ def generate_commit_message(changed_files):
     }
     
     summary = []
-    for f in changed_files[:5]:  # 最多显示5个文件
+    for f in changed_files[:5]:
         ext = os.path.splitext(f)[1]
         summary.append(f"- {file_types.get(ext, '文件')}: {f}")
     
@@ -81,13 +88,13 @@ def auto_commit():
     """执行自动提交流程"""
     print("🔍 检查 Git 工作区状态...")
     
-    # 检查是否在 Git 仓库中
     _, stderr, code = run_command("git rev-parse --is-inside-work-tree")
     if code != 0:
-        print(f"❌ 错误：当前目录不是 Git 仓库\n{stderr}")
+        print(f"❌ 错误：当前目录不是 Git 仓库")
+        if stderr:
+            print(f"   {stderr}")
         return False
     
-    # 获取变更文件
     changed_files, error = get_git_status()
     if error:
         print(f"❌ 检查状态失败: {error}")
@@ -99,44 +106,44 @@ def auto_commit():
     
     print(f"📝 检测到 {len(changed_files)} 个文件变更")
     
-    # 添加所有变更
     print("📦 执行 git add -A...")
     _, stderr, code = run_command("git add -A")
     if code != 0:
-        print(f"❌ git add 失败: {stderr}")
+        print(f"❌ git add 失败")
+        if stderr:
+            print(f"   {stderr}")
         return False
     
-    # 生成提交信息
     message = generate_commit_message(changed_files)
     print(f"✏️ 生成提交信息: {message.splitlines()[0]}")
     
-    # 执行提交
     print("🚀 执行 git commit...")
     cmd = f'git commit -m "{message}"'
     _, stderr, code = run_command(cmd)
     if code != 0:
-        print(f"❌ git commit 失败: {stderr}")
+        print(f"❌ git commit 失败")
+        if stderr:
+            print(f"   {stderr}")
         return False
     
-    # 获取提交哈希
     stdout, _, _ = run_command("git rev-parse HEAD")
     commit_hash = stdout[:7] if stdout else "unknown"
     print(f"✅ 提交成功! 哈希: {commit_hash}")
     
-    # 推送到远程
     branch = get_current_branch()
     print(f"📤 推送到 origin/{branch}...")
     _, stderr, code = run_command(f"git push origin {branch}")
     if code != 0:
-        print(f"⚠️ git push 失败（可能需要手动推送）: {stderr}")
-        return True  # 提交成功就算成功，推送失败不影响
+        print(f"⚠️ git push 失败（可能需要手动推送）")
+        if stderr:
+            print(f"   {stderr}")
+        return True
     
     print("✅ 推送成功!")
     return True
 
 
 if __name__ == "__main__":
-    # 检查是否有命令行参数（自定义提交信息）
     custom_message = None
     if len(sys.argv) > 1:
         custom_message = " ".join(sys.argv[1:])
