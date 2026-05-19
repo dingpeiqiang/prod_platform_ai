@@ -12,15 +12,11 @@ from alembic import context
 
 # 导入我们的模型和数据库配置
 from app.core.database import Base
-# FormTemplate 已废弃
-# from app.models.form import (
-#     FormTemplate,
-#     FormInstance,
-#     FormHistory
-# )
-from app.models.form import (
-    FormInstance,
-    FormHistory
+# Form 相关模型已废弃，不再导入
+# from app.models.form import ...
+from app.models.ontology_instance import (
+    OntologyInstance,
+    OntologyInstanceHistory
 )
 from app.models.chat_v2 import (
     ChatSessionV2,

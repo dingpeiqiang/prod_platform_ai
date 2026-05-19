@@ -63,8 +63,6 @@ class OntologyService:
                 ontology_code=ontology_code,
                 ontology_name=ontology_data.get("ontologyName", ontology_code),
                 category=ontology_data.get("category", "general"),
-                form_code=ontology_data.get("formCode"),
-                form_name=ontology_data.get("formName"),
                 description=ontology_data.get("description"),
                 entities=ontology_data.get("entities", [])
             )
@@ -89,10 +87,7 @@ class OntologyService:
                 ontology.ontology_name = ontology_data["ontologyName"]
             if "category" in ontology_data:
                 ontology.category = ontology_data["category"]
-            if "formCode" in ontology_data:
-                ontology.form_code = ontology_data["formCode"]
-            if "formName" in ontology_data:
-                ontology.form_name = ontology_data["formName"]
+            # formCode/formName 字段已删除，不再更新
             if "description" in ontology_data:
                 ontology.description = ontology_data["description"]
             if "entities" in ontology_data:

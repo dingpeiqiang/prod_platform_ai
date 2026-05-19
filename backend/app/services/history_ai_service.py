@@ -88,7 +88,7 @@ def analyze_history(form_code: str, db=None) -> Dict[str, Any]:
       2. 将摘要发给 LLM 分析
       3. 返回数据质量报告
     """
-    from app.models.form import FormInstance, FormHistory
+    from app.models.ontology_instance import OntologyInstance, OntologyInstanceHistory
 
     # 获取本体
     ontology = config_loader.get_ontology(form_code)
@@ -103,8 +103,8 @@ def analyze_history(form_code: str, db=None) -> Dict[str, Any]:
         return {
             "success": True,
             "hasData": False,
-            "formCode": form_code,
-            "formName": ontology.get("formName", form_code),
+            "ontologyCode": form_code,
+            "ontologyName": ontology.get("ontologyName", form_code),
             "message": "暂无历史数据，请导入历史数据以启用智能推荐",
             "qualityScore": 0,
             "totalRecords": 0,
@@ -237,7 +237,7 @@ def query_history_records(
             "total_pages": int
         }
     """
-    from app.models.form import FormInstance
+    from app.models.ontology_instance import OntologyInstance
 
     if db is None:
         from app.core.database import get_db
@@ -245,16 +245,16 @@ def query_history_records(
 
     try:
         # 构建基础查询（直接通过 form_code 过滤，不再依赖 FormTemplate）
-        query = db.query(FormInstance).filter(
-            FormInstance.form_code == form_code,
-            FormInstance.status == 'submitted'
+        query = db.query(OntologyInstance).filter(
+            OntologyInstance.ontology_code == form_code,
+            OntologyInstance.status == 'submitted'
         )
 
         # 应用时间范围筛选
         if start_date:
             try:
                 start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-                query = query.filter(FormInstance.submitted_at >= start_dt)
+                query = query.filter(OntologyInstance.submitted_at >= start_dt)
             except ValueError:
                 logger.warning("[query_history] 无效的 start_date: %s", start_date)
 
@@ -263,13 +263,13 @@ def query_history_records(
                 end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(
                     hour=23, minute=59, second=59
                 )
-                query = query.filter(FormInstance.submitted_at <= end_dt)
+                query = query.filter(OntologyInstance.submitted_at <= end_dt)
             except ValueError:
                 logger.warning("[query_history] 无效的 end_date: %s", end_date)
 
         # 应用用户筛选
         if user_id:
-            query = query.filter(FormInstance.user_id == user_id)
+            query = query.filter(OntologyInstance.user_id == user_id)
 
         # 获取总数
         total = query.count()
@@ -280,7 +280,7 @@ def query_history_records(
 
         # 分页查询
         instances = query.order_by(
-            FormInstance.submitted_at.desc()
+            OntologyInstance.submitted_at.desc()
         ).offset(offset).limit(page_size).all()
 
         # 格式化记录
@@ -340,7 +340,7 @@ def export_history_data(
     """
     import csv
     from io import StringIO
-    from app.models.form import FormInstance
+    from app.models.ontology_instance import OntologyInstance
 
     if db is None:
         from app.core.database import get_db
@@ -348,15 +348,15 @@ def export_history_data(
 
     try:
         # 构建查询（直接通过 form_code 过滤，不再依赖 FormTemplate）
-        query = db.query(FormInstance).filter(
-            FormInstance.form_code == form_code,
-            FormInstance.status == 'submitted'
+        query = db.query(OntologyInstance).filter(
+            OntologyInstance.ontology_code == form_code,
+            OntologyInstance.status == 'submitted'
         )
 
         if start_date:
             try:
                 start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-                query = query.filter(FormInstance.submitted_at >= start_dt)
+                query = query.filter(OntologyInstance.submitted_at >= start_dt)
             except ValueError:
                 pass
 
@@ -365,14 +365,14 @@ def export_history_data(
                 end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(
                     hour=23, minute=59, second=59
                 )
-                query = query.filter(FormInstance.submitted_at <= end_dt)
+                query = query.filter(OntologyInstance.submitted_at <= end_dt)
             except ValueError:
                 pass
 
         if user_id:
-            query = query.filter(FormInstance.user_id == user_id)
+            query = query.filter(OntologyInstance.user_id == user_id)
 
-        instances = query.order_by(FormInstance.submitted_at.desc()).all()
+        instances = query.order_by(OntologyInstance.submitted_at.desc()).all()
 
         if not instances:
             return {"success": False, "message": "没有找到符合条件的记录"}
@@ -467,7 +467,7 @@ def _export_as_jsonl(instances: list, form_code: str, timestamp: str) -> Dict[st
 
 def _collect_field_stats(form_code: str, db=None) -> Dict[str, Any]:
     """从数据库收集字段值统计"""
-    from app.models.form import FormInstance, FormHistory
+    from app.models.ontology_instance import OntologyInstance, OntologyInstanceHistory
     from collections import defaultdict
 
     if db is None:
@@ -479,16 +479,16 @@ def _collect_field_stats(form_code: str, db=None) -> Dict[str, Any]:
         field_stats = {}
 
         # 直接通过 form_code 查 FormInstance（不再依赖 FormTemplate）
-        instances = db.query(FormInstance).filter(
-            FormInstance.form_code == form_code,
-            FormInstance.status == 'submitted'
+        instances = db.query(OntologyInstance).filter(
+            OntologyInstance.ontology_code == form_code,
+            OntologyInstance.status == 'submitted'
         ).all()
         total_records = len(instances)
 
         if instances:
             instance_ids = [inst.id for inst in instances]
-            histories = db.query(FormHistory).filter(
-                FormHistory.form_instance_id.in_(instance_ids)
+            histories = db.query(OntologyInstanceHistory).filter(
+                OntologyInstanceHistory.form_instance_id.in_(instance_ids)
             ).all()
 
             # 统计每个字段的值分布

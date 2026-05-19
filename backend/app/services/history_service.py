@@ -4,7 +4,7 @@ from collections import defaultdict
 import logging
 from sqlalchemy.orm import Session
 from app.core.config_loader import config_loader
-from app.models.form import FormInstance, FormHistory
+from app.models.ontology_instance import OntologyInstance, OntologyInstanceHistory
 from app.services.ontology_service import OntologyService
 
 logger = logging.getLogger("history_service")
@@ -80,16 +80,16 @@ class HistoryService:
 
         query_limit = config.get('historyQueryLimit', 1000)
 
-        # 直接通过 form_code 过滤 FormInstance（不再依赖 FormTemplate）
-        base_query = db.query(FormInstance).filter(
-            FormInstance.form_code == form_code,
-            FormInstance.status == 'submitted'
+        # 直接通过 ontology_code 过滤 OntologyInstance
+        base_query = db.query(OntologyInstance).filter(
+            OntologyInstance.ontology_code == form_code,
+            OntologyInstance.status == 'submitted'
         )
         if user_id:
-            base_query = base_query.filter(FormInstance.user_id == user_id)
+            base_query = base_query.filter(OntologyInstance.user_id == user_id)
 
         form_instances = base_query.order_by(
-            FormInstance.submitted_at.desc()
+            OntologyInstance.submitted_at.desc()
         ).limit(query_limit).all()
         
         for instance in form_instances:
@@ -219,13 +219,13 @@ class HistoryService:
         config: Dict = None
     ) -> List[Dict[str, Any]]:
         """
-        兜底路径：直接从 form_history 表查询，不依赖 FormTemplate。
-        当 FormTemplate 无记录时使用（兼容旧数据或异常情况）。
+        兜底路径：直接从 ontology_instance_history 表查询，不依赖本体定义。
+        当本体无记录时使用（兼容旧数据或异常情况）。
         
         查询策略：
-          1. 从 form_instances.data JSON 中反推 form_code（字段签名匹配）
+          1. 从 ontology_instances.data JSON 中反推 ontology_code（字段签名匹配）
           2. 找到匹配的 instance_ids
-          3. 用这些 IDs 过滤 form_history
+          3. 用这些 IDs 过滤 ontology_instance_history
           4. 统计频次 + 时间衰减打分
         """
         from collections import defaultdict as ddict
@@ -244,8 +244,8 @@ class HistoryService:
             return []
         
         matched_instance_ids: List[int] = []
-        instances = db.query(FormInstance.id, FormInstance.data).filter(
-            FormInstance.status == 'submitted'
+        instances = db.query(OntologyInstance.id, OntologyInstance.data).filter(
+            OntologyInstance.status == 'submitted'
         ).all()
         
         for inst_id, data in instances:
@@ -262,9 +262,9 @@ class HistoryService:
         
         query_limit = config.get('historyQueryLimit', 1000) if config else 1000
         
-        histories = db.query(FormHistory).filter(
-            FormHistory.form_instance_id.in_(matched_instance_ids),
-            FormHistory.field_code == field_code
+        histories = db.query(OntologyInstanceHistory).filter(
+            OntologyInstanceHistory.form_instance_id.in_(matched_instance_ids),
+            OntologyInstanceHistory.field_code == field_code
         ).limit(query_limit).all()
         
         for h in histories:
@@ -311,7 +311,7 @@ class HistoryService:
             return
         
         try:
-            history = FormHistory(
+            history = OntologyInstanceHistory(
                 form_instance_id=form_instance_id,
                 field_code=field_code,
                 field_value=str(field_value) if field_value is not None else '',

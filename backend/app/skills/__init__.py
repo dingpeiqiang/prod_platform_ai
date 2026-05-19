@@ -15,8 +15,8 @@ def extract_fields(user_input: str, form_code: str) -> str:
     ontology = ontologies.get(form_code, {})
     
     temp_schema = {
-        "formCode": form_code,
-        "formName": ontology.get("formName", ""),
+        "ontologyCode": form_code,
+        "ontologyName": ontology.get("ontologyName", ""),
         "fields": []
     }
     

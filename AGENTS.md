@@ -56,14 +56,144 @@ const getValue = () => defaultValue;
 
 ### 2. 命名规范
 
-| 类型        | 规则       | 示例                                    |
-| --------- | -------- | ------------------------------------- |
-| **变量**    | 小驼峰      | `userInput`, `formData`               |
-| **函数/方法** | 小驼峰      | `extractFields`, `validateForm`       |
-| **类**     | 大驼峰      | `BaseIntentHandler`, `InputGuard`     |
-| **常量**    | 全大写下划线分隔 | `MAX_RETRY`, `DANGEROUS_PATTERNS`     |
-| **文件**    | 小写连字符    | `intent-handler.js`, `input-guard.py` |
-| **目录**    | 小写连字符    | `intent-handlers/`, `config/`         |
+#### 2.1 Python 命名规范
+
+| 类型 | 规则 | 示例 |
+| ---- | ---- | ---- |
+| **变量/函数** | snake_case（下划线） | `user_identifier`, `get_user_info` |
+| **类** | PascalCase（大驼峰） | `LLMUserConfig`, `WorkflowService` |
+| **常量** | UPPER_SNAKE_CASE | `MAX_RETRY`, `DANGEROUS_PATTERNS` |
+| **私有成员** | `_leading_underscore` | `_internal_method` |
+| **文件/目录** | snake_case | `llm_config.py`, `intent_handlers/` |
+
+**重要原则**：
+- ✅ **所有 API 请求/响应 JSON 字段使用 snake_case**
+- ✅ **数据库字段使用 snake_case**
+- ✅ **Pydantic 模型字段使用 snake_case**
+
+```python
+# ✅ 正确：API 请求模型
+class LLMConfigRequest(BaseModel):
+    user_identifier: str
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    max_tokens: int = 2048
+
+# ❌ 错误：不要使用 camelCase
+class LLMConfigRequest(BaseModel):
+    userIdentifier: str  # 不要这样写
+    apiKey: str          # 不要这样写
+```
+
+#### 2.2 JavaScript/TypeScript 命名规范
+
+| 类型 | 规则 | 示例 |
+| ---- | ---- | ---- |
+| **变量/函数** | camelCase（小驼峰） | `userId`, `getUserInfo` |
+| **类/组件** | PascalCase（大驼峰） | `ModelSelector`, `UserService` |
+| **常量** | UPPER_SNAKE_CASE | `MAX_RETRY`, `API_BASE_URL` |
+| **文件** | kebab-case（连字符） | `model-selector.vue`, `user-service.js` |
+| **目录** | kebab-case | `intent-handlers/`, `components/` |
+
+**重要原则**：
+- ✅ **JavaScript 内部变量使用 camelCase**
+- ✅ **发送到后端的 JSON 数据转换为 snake_case**
+- ✅ **从后端接收的数据可以保持 snake_case 或转换为 camelCase**
+
+```javascript
+// ✅ 正确：前端内部使用 camelCase
+const userId = 'user-123'
+const getUserInfo = () => { ... }
+
+// ✅ 正确：发送前转换为 snake_case
+const requestData = {
+  user_identifier: userId,  // 发送到后端时使用 snake_case
+  api_key: apiKey,
+  base_url: baseUrl
+}
+
+// ✅ 推荐：使用工具函数自动转换
+import { snakeCase } from 'lodash-es'
+
+function toSnakeCase(obj) {
+  const result = {}
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      result[snakeCase(key)] = obj[key]
+    }
+  }
+  return result
+}
+
+const requestData = toSnakeCase({
+  userId: 'user-123',
+  apiKey: 'sk-xxx',
+  baseUrl: 'https://...'
+})
+// 结果: { user_id: 'user-123', api_key: 'sk-xxx', base_url: 'https://...' }
+```
+
+#### 2.3 前后端通信规范
+
+**统一使用 snake_case 进行 JSON 数据传输**：
+
+```typescript
+// 前端 TypeScript 接口定义
+interface LLMConfigRequest {
+  user_identifier: string  // 直接使用 snake_case，与后端一致
+  provider: string
+  model: string
+  api_key?: string
+  base_url?: string
+  temperature: number
+  max_tokens: number
+  thinking: boolean
+}
+
+// 发送请求
+fetch('/api/v1/llm-config/save', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    user_identifier: userId,
+    api_key: apiKey,
+    base_url: baseUrl,
+    max_tokens: 2048
+  })
+})
+```
+
+#### 2.4 历史代码兼容
+
+对于已有的使用 camelCase 的旧代码，采用**渐进式迁移策略**：
+
+**方案 1：Pydantic Alias（推荐）**
+
+```python
+from pydantic import BaseModel, Field
+
+class WorkflowCreateRequest(BaseModel):
+    # 内部使用 snake_case
+    workflow_code: str = Field(alias='workflowCode')
+    workflow_name: str = Field(alias='workflowName')
+    is_active: bool = Field(alias='isActive', default=True)
+    
+    class Config:
+        populate_by_name = True  # 同时接受两种命名
+```
+
+**方案 2：手动兼容（当前使用）**
+
+```python
+# 同时支持两种命名方式
+self.api_key = config.get('apiKey') or config.get('api_key') or ''
+self.base_url = config.get('baseUrl') or config.get('base_url') or ''
+```
+
+**迁移优先级**：
+1. 🥇 **新代码**：直接使用 snake_case
+2. 🥈 **活跃维护的代码**：添加 alias 支持
+3. 🥉 **稳定不常修改的代码**：保持现状，逐步替换
 
 ### 3. 代码审查规范
 

@@ -13,9 +13,8 @@ from app.services.ontology_service import OntologyService
 from app.services.history_service import HistoryService
 from app.services.validation_service import validation_engine
 from app.websocket.manager import manager
-from app.models.form import FormInstance
+from app.models.ontology_instance import OntologyInstance
 # FormTemplate 已废弃，不再使用
-# from app.models.form import FormTemplate
 from app.intent import get_intent_registry
 from app.intent.base import IntentContext
 from datetime import datetime
@@ -144,8 +143,8 @@ async def generate_form(request: FormGenerateRequest, db: Session = Depends(get_
                     fields.append(field_info)
             
             form_schema = {
-                "formCode": form_code,
-                "formName": ontology_def.get("formName", form_code),
+                "ontologyCode": form_code,
+                "ontologyName": ontology_def.get("ontologyName", form_code),
                 "version": 1,
                 "globalControl": {},
                 "fields": fields
@@ -365,8 +364,8 @@ async def submit_form(request: FormSubmitRequest, db: Session = Depends(get_db))
             # LLM 校验异常不影响提交（降级处理）
         # ── LLM 智能校验结束 ────────────────────────────────────
 
-        form_instance = FormInstance(
-            form_code=form_code,
+        form_instance = OntologyInstance(
+            ontology_code=form_code,
             data=request.data,
             status="submitted",
             user_id=request.userId,
@@ -463,10 +462,10 @@ async def list_form_submissions(
     # if not template:
     #     return {"success": True, "submissions": [], "total": 0}
     
-    query = db.query(FormInstance).filter(
-        FormInstance.form_code == form_code,
-        FormInstance.status == "submitted"
-    ).order_by(FormInstance.submitted_at.desc()).limit(limit)
+    query = db.query(OntologyInstance).filter(
+        OntologyInstance.ontology_code == form_code,
+        OntologyInstance.status == "submitted"
+    ).order_by(OntologyInstance.submitted_at.desc()).limit(limit)
 
     instances = query.all()
 
@@ -532,9 +531,9 @@ async def get_form_instance(form_id: str, db: Session = Depends(get_db)):
     获取单个已提交表单实例的完整数据。
     用于历史记录详情查看。
     """
-    inst = db.query(FormInstance).filter(
-        FormInstance.form_id == form_id,
-        FormInstance.status == "submitted"
+    inst = db.query(OntologyInstance).filter(
+        OntologyInstance.id == form_id,
+        OntologyInstance.status == "submitted"
     ).first()
 
     if not inst:

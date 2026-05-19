@@ -20,9 +20,14 @@ class OpenAIProvider(BaseProvider):
         super().__init__(config)
         settings = get_settings()
         
-        # 优先使用 config 中的值，如果没有则使用 .env 的默认值
-        self.api_key = config.get('apiKey', '') or (settings.LLM_API_KEY.strip() if settings.LLM_API_KEY else '')
-        self.base_url = config.get('baseUrl', '') or (settings.LLM_BASE_URL.strip() if settings.LLM_BASE_URL else '')
+        # 优先使用 config 中的值，兼容驼峰和下划线两种命名方式
+        self.api_key = (
+            config.get('apiKey') or config.get('api_key') or ''
+        ) or (settings.LLM_API_KEY.strip() if settings.LLM_API_KEY else '')
+        
+        self.base_url = (
+            config.get('baseUrl') or config.get('base_url') or ''
+        ) or (settings.LLM_BASE_URL.strip() if settings.LLM_BASE_URL else '')
         
         # 如果 config 中没有提供 model，使用 .env 的默认值
         if not self.model and settings.LLM_MODEL:
@@ -35,9 +40,10 @@ class OpenAIProvider(BaseProvider):
                 "访问 http://localhost:5173，在侧边栏找到'模型配置'面板进行设置。"
             )
         
+        # 兼容两种命名方式
         self.temperature = config.get('temperature', 0.3)
-        self.max_tokens = config.get('maxTokens', 2048)
-        self.max_input_tokens = config.get('maxInputTokens', 180000)
+        self.max_tokens = config.get('maxTokens') or config.get('max_tokens') or 2048
+        self.max_input_tokens = config.get('maxInputTokens') or config.get('max_input_tokens') or 180000
     
     def _get_headers(self) -> Dict[str, str]:
         """获取请求头"""

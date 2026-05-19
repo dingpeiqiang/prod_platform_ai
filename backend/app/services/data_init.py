@@ -11,7 +11,7 @@ import logging
 from app.core.database import SessionLocal
 from app.models.scene import Scene
 from app.models.prompt import Prompt
-from app.models.form import Form
+from app.models.ontology import Ontology
 
 logger = logging.getLogger(__name__)
 

@@ -220,24 +220,27 @@ def submit_form(form_instance_id: str, form_data: Dict) -> Dict[str, Any]:
 # ============================================================
 
 @mcptool(
-    name="form_list_templates",
-    description="获取系统中所有可用的表单模板列表。返回表单类型代码和名称。",
-    category="form"
+    name="ontology_list_all",
+    description="获取系统中所有可用的本体列表。返回本体编码和名称。",
+    category="ontology"
 )
-def list_form_templates() -> Dict[str, Any]:
+def list_ontologies() -> Dict[str, Any]:
     """
-    获取表单模板列表
+    获取本体列表（原 list_form_templates，已废弃）
     
     Returns:
-        可用表单列表
+        可用本体列表
     """
     from ..services.ontology_service import OntologyService
     
     result = OntologyService.get_all_ontologies()
     return {
         "success": True,
-        "templates": [
-            {"form_code": code, "form_name": info.get("formName", code)}
+        "ontologies": [
+            {"ontology_code": code, "ontology_name": info.get("formName", code)}
             for code, info in result.items()
         ]
     }
+
+# 兼容别名（废弃）
+list_form_templates = list_ontologies

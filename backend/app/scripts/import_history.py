@@ -337,7 +337,7 @@ def _ensure_template(db, form_code: str, form_name: str,
 
 def _flush_batch(db, batch: List[tuple]) -> int:
     """批量写入 FormInstance + FormHistory"""
-    from app.models.form import FormHistory
+    from app.models.ontology_instance import OntologyInstanceHistory
 
     count = 0
     for instance, flat_data, user_id in batch:
@@ -346,7 +346,7 @@ def _flush_batch(db, batch: List[tuple]) -> int:
         db.refresh(instance)
 
         for fc, fv in flat_data.items():
-            history = FormHistory(
+            history = OntologyInstanceHistory(
                 form_instance_id=instance.id,
                 field_code=fc,
                 field_value=str(fv),
@@ -482,7 +482,7 @@ def import_form_data(
     """导入单个表单类型的历史数据"""
     from app.core.database import get_db
     # FormTemplate 已废弃，不再导入
-    from app.models.form import FormInstance, FormHistory
+    from app.models.ontology_instance import OntologyInstance, OntologyInstanceHistory
     # from app.models.form import FormTemplate
     from app.services.ontology_service import OntologyService
 
@@ -570,9 +570,8 @@ def import_form_data(
                     if '.' not in fc:
                         record_with_codes[fc] = fv
 
-                instance = FormInstance(
-                    form_id=f"imp_{form_code}_{uuid.uuid4().hex[:12]}",
-                    template_id=template_id,
+                instance = OntologyInstance(
+                    ontology_code=form_code,
                     data=record_with_codes,
                     version=1,
                     status='submitted',

@@ -1,8 +1,21 @@
+"""
+表单服务（已废弃 - 完全删除）
+
+⚠️ DEPRECATED: 此服务已完全废弃并删除
+AI 原生架构中，不再需要“表单”概念，只有“本体”和“本体实例”
+
+请使用：
+- OntologyService - 本体定义管理
+- OntologyInstance - 本体实例管理
+
+注意：此文件保留仅作为占位符，所有方法都已禁用。
+"""
 import logging
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
-from app.models.form import Form
+# Form 模型已完全删除，无法导入
+Form = None
 import uuid
 import json
 from datetime import datetime

@@ -188,15 +188,15 @@ const createModelConfig = () => {
   }
 
   if (apiKey.value.trim()) {
-    config.apiKey = apiKey.value.trim()
+    config.api_key = apiKey.value.trim()  // 使用下划线命名，与后端保持一致
   }
   if (baseUrl.value.trim()) {
-    config.baseUrl = baseUrl.value.trim()
+    config.base_url = baseUrl.value.trim()  // 使用下划线命名，与后端保持一致
   }
   
   // 添加高级配置
   config.temperature = temperature.value
-  config.maxTokens = maxTokens.value
+  config.max_tokens = maxTokens.value  // 使用下划线命名
   config.thinking = thinking.value
 
   return config
@@ -273,25 +273,42 @@ const applyModel = async () => {
   try {
     const modelConfig = createModelConfig()
 
-    const response = await fetch('/api/v1/chat/model/switch', {
+    // 生成用户标识（使用 session_id 或随机 ID）
+    let userId = localStorage.getItem('user_id')
+    if (!userId) {
+      userId = 'user-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9)
+      localStorage.setItem('user_id', userId)
+    }
+
+    // 1. 保存到数据库
+    const saveResponse = await fetch('/api/v1/llm-config/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(modelConfig)
+      body: JSON.stringify({
+        user_identifier: userId,
+        ...modelConfig
+      })
     })
 
-    const result = await response.json()
+    const saveResult = await saveResponse.json()
 
-    if (result.success) {
-      showStatus('✓ 模型配置成功', 'success')
-      emit('modelChange', modelConfig)
-      setTimeout(() => {
-        statusMessage.value = ''
-      }, 2000)
-    } else {
-      showStatus('✗ ' + (result.message || '配置失败'), 'error')
+    if (!saveResult.success) {
+      throw new Error(saveResult.message || '保存配置失败')
     }
+
+    // 2. 保存到 localStorage（作为缓存）
+    saveConfigToStorage(modelConfig)
+
+    // 3. 通知父组件
+    emit('modelChange', modelConfig)
+
+    showStatus('✓ 模型配置已保存到数据库', 'success')
+    setTimeout(() => {
+      statusMessage.value = ''
+    }, 2000)
   } catch (error) {
-    showStatus('✗ 请求失败，请稍后重试', 'error')
+    console.error('保存配置失败:', error)
+    showStatus('✗ ' + (error.message || '保存失败，请稍后重试'), 'error')
   } finally {
     applying.value = false
   }
@@ -304,21 +321,53 @@ const showStatus = (message, type) => {
 
 const loadDefaultConfig = async () => {
   try {
-    // 优先从 localStorage 获取上次保存的配置
+    // 获取用户标识
+    let userId = localStorage.getItem('user_id')
+    if (!userId) {
+      userId = 'user-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9)
+      localStorage.setItem('user_id', userId)
+    }
+
+    // 1. 优先从数据库获取激活配置
+    try {
+      const dbResponse = await fetch(`/api/v1/llm-config/active/${userId}`)
+      const dbResult = await dbResponse.json()
+
+      if (dbResult.success && dbResult.config) {
+        const config = dbResult.config
+        provider.value = config.provider || 'custom'
+        modelName.value = config.model || ''
+        // 不加载 API Key（安全考虑）
+        apiKey.value = ''
+        baseUrl.value = config.base_url || ''
+        temperature.value = config.temperature ?? 0.3
+        maxTokens.value = config.max_tokens ?? 2048
+        thinking.value = config.thinking ?? false
+        
+        console.log('✓ 从数据库加载配置成功')
+        return
+      }
+    } catch (dbError) {
+      console.warn('从数据库加载配置失败，尝试从 localStorage 加载:', dbError)
+    }
+
+    // 2. 如果数据库没有配置，从 localStorage 获取上次保存的配置
     const savedConfig = localStorage.getItem('chat_model_config')
     if (savedConfig) {
       const config = JSON.parse(savedConfig)
       provider.value = config.provider || 'custom'
       modelName.value = config.model || ''
-      apiKey.value = config.apiKey || ''
-      baseUrl.value = config.baseUrl || ''
+      // 兼容新旧命名方式（apiKey/api_key, baseUrl/base_url）
+      apiKey.value = config.apiKey || config.api_key || ''
+      baseUrl.value = config.baseUrl || config.base_url || ''
       temperature.value = config.temperature ?? 0.3
-      maxTokens.value = config.maxTokens ?? 2048
+      maxTokens.value = (config.maxTokens || config.max_tokens) ?? 2048
       thinking.value = config.thinking ?? false
+      console.log('✓ 从 localStorage 加载配置')
       return
     }
 
-    // 如果没有保存的配置，从后端获取系统默认配置
+    // 3. 如果没有保存的配置，从后端获取系统默认配置
     const response = await fetch('/api/v1/chat/model/default')
     const result = await response.json()
 
@@ -326,10 +375,11 @@ const loadDefaultConfig = async () => {
       provider.value = result.config.provider || 'custom'
       modelName.value = result.config.model || ''
       // 不加载 API Key（安全考虑）
-      baseUrl.value = result.config.baseUrl || ''
+      baseUrl.value = result.config.baseUrl || result.config.base_url || ''
       temperature.value = result.config.temperature ?? 0.3
-      maxTokens.value = result.config.maxTokens ?? 2048
+      maxTokens.value = (result.config.maxTokens || result.config.max_tokens) ?? 2048
       thinking.value = result.config.thinking ?? false
+      console.log('✓ 从系统默认配置加载')
     }
   } catch (error) {
     console.error('加载默认配置失败:', error)

@@ -10,7 +10,8 @@ from app.services.scene_service import SceneService
 from app.services.scene_prompt_manager import ScenePromptManager
 from app.services.prompt_service import PromptService
 from app.services.tool_service import ToolService
-from app.services.form_service import FormService
+# FormService 已废弃，不再使用
+# from app.services.form_service import FormService
 from app.services.ontology_service import OntologyService
 from app.services.history_ai_service import (
     analyze_history,
@@ -561,76 +562,78 @@ async def toggle_tool(tool_code: str, db: Session = Depends(get_db)):
     return result
 
 
-# ============ 表单管理 API ============
+# ============ 表单管理 API（已废弃） ============
+# 注意：Form 相关 API 和模型已废弃，因为 forms 表已被删除
+# AI 原生架构中，使用 Ontology 替代表单概念
+# 以下代码保留仅用于参考，实际已注释
 
-class FormCreateRequest(BaseModel):
-    formCode: str
-    formName: str
-    description: Optional[str] = None
-    category: str = "general"
-    entities: List[Dict[str, Any]] = []
-    layout: Dict[str, Any] = {}
-    validationRules: List[Dict[str, Any]] = []
-    ontologyCode: Optional[str] = None
-
-
-class FormUpdateRequest(BaseModel):
-    formName: Optional[str] = None
-    description: Optional[str] = None
-    category: Optional[str] = None
-    entities: Optional[List[Dict[str, Any]]] = None
-    layout: Optional[Dict[str, Any]] = None
-    validationRules: Optional[List[Dict[str, Any]]] = None
-    ontologyCode: Optional[str] = None
-    isActive: Optional[bool] = None
-
-
-@router.get("/forms")
-async def list_forms(category: Optional[str] = None, isActive: Optional[bool] = None, db: Session = Depends(get_db)):
-    """获取表单列表"""
-    result = FormService.list_forms(db, category=category, is_active=isActive)
-    return result
+# class FormCreateRequest(BaseModel):
+#     formCode: str
+#     formName: str
+#     description: Optional[str] = None
+#     category: str = "general"
+#     entities: List[Dict[str, Any]] = []
+#     layout: Dict[str, Any] = {}
+#     validationRules: List[Dict[str, Any]] = []
+#     ontologyCode: Optional[str] = None
+#
+#
+# class FormUpdateRequest(BaseModel):
+#     formName: Optional[str] = None
+#     description: Optional[str] = None
+#     category: Optional[str] = None
+#     entities: Optional[List[Dict[str, Any]]] = None
+#     layout: Optional[Dict[str, Any]] = None
+#     validationRules: Optional[List[Dict[str, Any]]] = None
+#     ontologyCode: Optional[str] = None
+#     isActive: Optional[bool] = None
 
 
-@router.get("/forms/categories")
-async def get_form_categories():
-    """获取表单分类"""
-    return {"success": True, "data": FormService.get_categories()}
+# ============ 本体管理 API ============
+# 注意：以下 Form 相关 API 已废弃，因为 forms 表已被删除
+# AI 原生架构中，使用 Ontology 替代表单概念
+# 请使用下方的本体管理 API
 
-
-@router.get("/forms/{form_code}")
-async def get_form(form_code: str, db: Session = Depends(get_db)):
-    """获取表单详情"""
-    result = FormService.get_form(db, form_code)
-    return result
-
-
-@router.post("/forms")
-async def create_form(request: FormCreateRequest, db: Session = Depends(get_db)):
-    """创建表单"""
-    result = FormService.create_form(db, request.dict())
-    return result
-
-
-@router.put("/forms/{form_code}")
-async def update_form(form_code: str, request: FormUpdateRequest, db: Session = Depends(get_db)):
-    """更新表单"""
-    result = FormService.update_form(db, form_code, request.dict())
-    return result
-
-
-@router.delete("/forms/{form_code}")
-async def delete_form(form_code: str, db: Session = Depends(get_db)):
-    """删除表单"""
-    result = FormService.delete_form(db, form_code)
-    return result
-
-
-@router.patch("/forms/{form_code}/toggle")
-async def toggle_form(form_code: str, db: Session = Depends(get_db)):
-    """切换表单启用状态"""
-    result = FormService.toggle_active(db, form_code)
-    return result
+# @router.get("/forms")
+# async def list_forms(category: Optional[str] = None, isActive: Optional[bool] = None, db: Session = Depends(get_db)):
+#     """获取表单列表（已废弃）"""
+#     return {"success": False, "message": "此 API 已废弃，请使用 /admin/ontologies"}
+#
+#
+# @router.get("/forms/categories")
+# async def get_form_categories():
+#     """获取表单分类（已废弃）"""
+#     return {"success": False, "message": "此 API 已废弃"}
+#
+#
+# @router.get("/forms/{form_code}")
+# async def get_form(form_code: str, db: Session = Depends(get_db)):
+#     """获取表单详情（已废弃）"""
+#     return {"success": False, "message": "此 API 已废弃，请使用 /admin/ontologies/{ontology_code}"}
+#
+#
+# @router.post("/forms")
+# async def create_form(request: FormCreateRequest, db: Session = Depends(get_db)):
+#     """创建表单（已废弃）"""
+#     return {"success": False, "message": "此 API 已废弃，请使用 /admin/ontologies"}
+#
+#
+# @router.put("/forms/{form_code}")
+# async def update_form(form_code: str, request: FormUpdateRequest, db: Session = Depends(get_db)):
+#     """更新表单（已废弃）"""
+#     return {"success": False, "message": "此 API 已废弃"}
+#
+#
+# @router.delete("/forms/{form_code}")
+# async def delete_form(form_code: str, db: Session = Depends(get_db)):
+#     """删除表单（已废弃）"""
+#     return {"success": False, "message": "此 API 已废弃"}
+#
+#
+# @router.patch("/forms/{form_code}/toggle")
+# async def toggle_form(form_code: str, db: Session = Depends(get_db)):
+#     """切换表单启用状态（已废弃）"""
+#     return {"success": False, "message": "此 API 已废弃"}
 
 
 # ============ 本体管理 API ============

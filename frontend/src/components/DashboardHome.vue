@@ -216,7 +216,7 @@ const shortcuts = [
   { key: 'scene', icon: 'chart', label: '场景管理' },
   { key: 'prompt', icon: 'file', label: '提示词管理' },
   { key: 'tool', icon: 'chart', label: '工具管理' },
-  { key: 'form', icon: 'file', label: '表单管理' },
+  // { key: 'form', icon: 'file', label: '表单管理' }, // 已废弃，使用本体管理替代
   { key: 'ontology', icon: 'help', label: '本体管理' },
   { key: 'workflow', icon: 'chart', label: '工作流管理' },
   { key: 'mcp', icon: 'chart', label: 'MCP 管理' },
@@ -316,10 +316,10 @@ const handleShortcut = (sc) => {
     emit('open-tool-manager')
     return
   }
-  if (sc.key === 'form') {
-    emit('open-form-manager')
-    return
-  }
+  // if (sc.key === 'form') {
+  //   emit('open-form-manager') // 已废弃
+  //   return
+  // }
   if (sc.key === 'ontology') {
     emit('open-ontology-manager')
     return

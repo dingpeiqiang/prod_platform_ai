@@ -1,73 +1,24 @@
-from sqlalchemy import Column, Integer, String, JSON, Boolean, DateTime, Text, ForeignKey
-from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
-from app.core.database import Base
+"""
+表单模型（已废弃 - 完全删除）
 
+⚠️ DEPRECATED: 此模块已完全废弃并删除
 
-class Form(Base):
-    __tablename__ = "forms"
+设计理念变更：
+- AI 原生架构中，没有"表单"概念，只有"本体"和"本体实例"
+- Ontology = Schema/Class（定义数据结构和约束）
+- OntologyInstance = Object/Record（存储实际数据）
+- Forms 表已被删除，不再使用
 
-    id = Column(Integer, primary_key=True, index=True)
-    form_code = Column(String(100), unique=True, index=True, nullable=False)
-    form_name = Column(String(200), nullable=False)
-    description = Column(Text)
-    category = Column(String(50), default="general")
-    
-    # 表单结构
-    entities = Column(JSON, default=list)  # 实体列表
-    layout = Column(JSON, default=dict)  # 布局配置
-    validation_rules = Column(JSON, default=list)  # 验证规则
-    
-    # 关联
-    ontology_code = Column(String(100))  # 关联的本体编码
-    
-    # 状态
-    is_active = Column(Boolean, default=True)
-    version = Column(Integer, default=1)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+迁移指南：
+- Form → 不再需要，本体定义在 Ontology 表中
+- FormInstance → 请使用 OntologyInstance（在 ontology_instance.py 中）
+- FormHistory → 请使用 OntologyInstanceHistory（在 ontology_instance.py 中）
 
-    def to_dict(self):
-        return {
-            "formCode": self.form_code,
-            "formName": self.form_name,
-            "description": self.description,
-            "category": self.category,
-            "entities": self.entities,
-            "layout": self.layout,
-            "validationRules": self.validation_rules,
-            "ontologyCode": self.ontology_code,
-            "isActive": self.is_active,
-            "version": self.version,
-            "createdAt": self.created_at.isoformat() if self.created_at else None,
-            "updatedAt": self.updated_at.isoformat() if self.updated_at else None
-        }
-
-
-class FormInstance(Base):
-    __tablename__ = "form_instances"
-
-    id = Column(Integer, primary_key=True, index=True)
-    form_code = Column(String(100), index=True, nullable=False)  # 直接关联表单编码，不再依赖模板
-    user_id = Column(String(100), index=True)
-    session_id = Column(String(100), index=True)
-    data = Column(JSON, default=dict)
-    status = Column(String(50), default="draft")  # draft, submitted, cancelled
-    submitted_at = Column(DateTime(timezone=True))
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
-    # 历史遗留字段（保留以兼容旧数据，但不再使用）
-    form_id = Column(String(100), nullable=True)  # 已废弃，使用 form_code 替代
-    template_id = Column(Integer, nullable=True)  # 已废弃，FormTemplate 已移除
-
-
-class FormHistory(Base):
-    __tablename__ = "form_history"
-
-    id = Column(Integer, primary_key=True, index=True)
-    form_instance_id = Column(Integer, ForeignKey("form_instances.id"), index=True)
-    field_code = Column(String(100), index=True, nullable=False)
-    field_value = Column(Text)
-    user_id = Column(String(100), index=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+注意：此文件保留仅作为占位符，不应被导入或使用。
+"""
+# 此文件已废弃，请勿导入
+# 如需使用本体实例，请从 app.models.ontology_instance 导入
+raise ImportError(
+    "app.models.form 已废弃！\n"
+    "请使用：from app.models.ontology_instance import OntologyInstance, OntologyInstanceHistory"
+)

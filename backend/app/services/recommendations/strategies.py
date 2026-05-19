@@ -6,7 +6,7 @@ import logging
 import re
 
 from sqlalchemy.orm import Session
-from app.models.form import FormInstance
+from app.models.ontology_instance import OntologyInstance
 
 logger = logging.getLogger("recommendation_strategies")
 
@@ -90,11 +90,11 @@ class FrequencyRecommendationStrategy:
         context: Optional[Dict[str, Any]] = None
     ) -> List[RecommendationItem]:
         try:
-            form_instances = db.query(FormInstance).filter(
-                FormInstance.form_code == form_code,
-                FormInstance.status == 'submitted'
+            form_instances = db.query(OntologyInstance).filter(
+                OntologyInstance.ontology_code == form_code,
+                OntologyInstance.status == 'submitted'
             ).order_by(
-                FormInstance.submitted_at.desc()
+                OntologyInstance.submitted_at.desc()
             ).limit(self.history_query_limit).all()
 
             if not form_instances:
@@ -240,12 +240,12 @@ class UserPersonalizedStrategy:
             return []
 
         try:
-            form_instances = db.query(FormInstance).filter(
-                FormInstance.form_code == form_code,
-                FormInstance.user_id == user_id,
-                FormInstance.status == 'submitted'
+            form_instances = db.query(OntologyInstance).filter(
+                OntologyInstance.ontology_code == form_code,
+                OntologyInstance.user_id == user_id,
+                OntologyInstance.status == 'submitted'
             ).order_by(
-                FormInstance.submitted_at.desc()
+                OntologyInstance.submitted_at.desc()
             ).limit(100).all()
 
             value_stats = defaultdict(lambda: {'count': 0, 'last_used': None})
@@ -323,12 +323,12 @@ class TimeDecayStrategy:
         try:
             cutoff_date = datetime.now() - timedelta(days=self.recent_days_threshold)
 
-            form_instances = db.query(FormInstance).filter(
-                FormInstance.form_code == form_code,
-                FormInstance.status == 'submitted',
-                FormInstance.submitted_at >= cutoff_date
+            form_instances = db.query(OntologyInstance).filter(
+                OntologyInstance.ontology_code == form_code,
+                OntologyInstance.status == 'submitted',
+                OntologyInstance.submitted_at >= cutoff_date
             ).order_by(
-                FormInstance.submitted_at.desc()
+                OntologyInstance.submitted_at.desc()
             ).limit(500).all()
 
             value_recency = defaultdict(lambda: {'value': None, 'recency_score': 0.0, 'count': 0})

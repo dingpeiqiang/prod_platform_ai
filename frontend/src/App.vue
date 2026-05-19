@@ -92,7 +92,6 @@
         @open-scene-manager="openSceneManager"
         @open-prompt-manager="openPromptManager"
         @open-tool-manager="openToolManager"
-        @open-form-manager="openFormManager"
         @open-ontology-manager="openOntologyManager"
         @open-workflow-manager="openWorkflowManager"
         @open-mcp-manager="openMCPManager"
@@ -123,8 +122,8 @@
           @go-back="returnToDashboard"
         />
 
-        <!-- 表单管理界面 -->
-        <GenericManager 
+        <!-- 表单管理界面（已废弃） -->
+        <!-- <GenericManager 
           v-if="!isInitializing && currentView === 'form-manager'" 
           title="📝 表单管理"
           item-type="表单"
@@ -133,7 +132,7 @@
           :show-entities="true"
           :api-service="formApiService"
           @go-back="returnToDashboard"
-        />
+        /> -->
 
         <!-- 本体管理界面 -->
       <OntologyManager 
@@ -224,7 +223,7 @@ import { useLoadingStore } from './stores/loading'
 import { useTheme } from './composables/useTheme'
 import { createSession as apiCreateSession, getSessions as apiGetSessions, deleteSession as apiDeleteSession, updateSessionTitle as apiUpdateSessionTitle } from './services/chatApi.js'
 import * as toolApi from './services/toolApi.js'
-import * as formApi from './services/formApi.js'
+// import * as formApi from './services/formApi.js' // 已废弃
 import * as ontologyApi from './services/ontologyApi.js'
 import * as workflowApi from './services/workflowApi.js'
 
@@ -341,13 +340,13 @@ const openToolManager = () => {
   saveActiveSessionId()
 }
 
-// ── 打开表单管理 ─────────────────────────────────────────
-const openFormManager = () => {
-  currentView.value = 'form-manager'
-  activeSessionId.value = ''
-  activeDbSessionId.value = ''
-  saveActiveSessionId()
-}
+// ── 打开表单管理（已废弃） ───────────────────────────────
+// const openFormManager = () => {
+//   currentView.value = 'form-manager'
+//   activeSessionId.value = ''
+//   activeDbSessionId.value = ''
+//   saveActiveSessionId()
+// }
 
 // ── 打开本体管理 ─────────────────────────────────────────
 const openOntologyManager = () => {
@@ -437,15 +436,15 @@ const toolApiService = {
   toggle: toolApi.toggleTool
 }
 
-const formApiService = {
-  getCategories: formApi.getFormCategories,
-  list: formApi.listForms,
-  get: formApi.getForm,
-  create: formApi.createForm,
-  update: formApi.updateForm,
-  delete: formApi.deleteForm,
-  toggle: formApi.toggleForm
-}
+// const formApiService = {
+//   getCategories: formApi.getFormCategories,
+//   list: formApi.listForms,
+//   get: formApi.getForm,
+//   create: formApi.createForm,
+//   update: formApi.updateForm,
+//   delete: formApi.deleteForm,
+//   toggle: formApi.toggleForm
+// }
 
 const ontologyApiService = {
   getCategories: ontologyApi.getOntologyCategories,
