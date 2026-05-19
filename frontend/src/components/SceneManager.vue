@@ -190,7 +190,8 @@
               </el-button>
             </template>
             <div class="prompt-preview">
-              <pre class="preview-content">{{ getPromptContent(selectedNode.promptCode) || '加载中...' }}</pre>
+              <div v-if="loadingPrompt" class="loading-text">加载中...</div>
+              <pre v-else class="preview-content">{{ currentPromptContent || '未找到提示词内容' }}</pre>
             </div>
           </el-card>
 
@@ -431,6 +432,8 @@ const promptEditorVisible = ref(false)
 const currentPrompt = ref(null)
 const editingPromptContent = ref('')
 const savingPrompt = ref(false)
+const currentPromptContent = ref('')
+const loadingPrompt = ref(false)
 
 const currentType = computed(() => {
   return editingNode.value ? editingNode.value.type : 'scene'
@@ -556,37 +559,62 @@ const loadStats = async () => {
 
 const getPromptName = (promptCode) => {
   if (!promptCode) return null
-  let prompt = prompts.value.find(p => p.code === promptCode)
-  if (prompt) return prompt.name
-  prompt = prompts.value.find(p => p.code === `${promptCode}_prompt`)
+  const prompt = prompts.value.find(p => p.code === promptCode)
   return prompt ? prompt.name : promptCode
 }
 
-const getPromptContent = (promptCode) => {
-  if (!promptCode) return null
-  let prompt = prompts.value.find(p => p.code === promptCode)
-  if (prompt) return prompt.content
-  prompt = prompts.value.find(p => p.code === `${promptCode}_prompt`)
-  return prompt ? prompt.content : null
+const loadPromptContent = async (promptCode) => {
+  if (!promptCode) {
+    currentPromptContent.value = null
+    return
+  }
+  loadingPrompt.value = true
+  try {
+    const result = await getPrompt(promptCode)
+    if (result.success) {
+      currentPromptContent.value = result.data.content
+    } else {
+      currentPromptContent.value = null
+    }
+  } catch (e) {
+    currentPromptContent.value = null
+    console.error(e)
+  } finally {
+    loadingPrompt.value = false
+  }
 }
 
 const openPromptEditor = async () => {
   if (!formData.promptCode) return
-  const prompt = prompts.value.find(p => p.code === formData.promptCode)
-  if (prompt) {
-    currentPrompt.value = prompt
-    editingPromptContent.value = prompt.content
-    promptEditorVisible.value = true
+  loadingPrompt.value = true
+  try {
+    const result = await getPrompt(formData.promptCode)
+    if (result.success) {
+      currentPrompt.value = result.data
+      editingPromptContent.value = result.data.content
+      promptEditorVisible.value = true
+    }
+  } catch (e) {
+    ElMessage.error('获取提示词失败')
+  } finally {
+    loadingPrompt.value = false
   }
 }
 
 const openPromptEditorForSelected = async () => {
   if (!selectedNode.value?.promptCode) return
-  const prompt = prompts.value.find(p => p.code === selectedNode.value.promptCode)
-  if (prompt) {
-    currentPrompt.value = prompt
-    editingPromptContent.value = prompt.content
-    promptEditorVisible.value = true
+  loadingPrompt.value = true
+  try {
+    const result = await getPrompt(selectedNode.value.promptCode)
+    if (result.success) {
+      currentPrompt.value = result.data
+      editingPromptContent.value = result.data.content
+      promptEditorVisible.value = true
+    }
+  } catch (e) {
+    ElMessage.error('获取提示词失败')
+  } finally {
+    loadingPrompt.value = false
   }
 }
 
@@ -611,8 +639,13 @@ const savePromptChanges = async () => {
 }
 
 // 节点点击
-const handleNodeClick = (data, node) => {
+const handleNodeClick = async (data, node) => {
   selectedNode.value = data
+  if (data.type === 'scene' && data.promptCode) {
+    await loadPromptContent(data.promptCode)
+  } else {
+    currentPromptContent.value = null
+  }
 }
 
 // 新增中心域
@@ -1269,5 +1302,11 @@ onMounted(() => {
   word-break: break-all;
   max-height: 300px;
   overflow-y: auto;
+}
+
+.loading-text {
+  padding: 12px;
+  color: #999;
+  text-align: center;
 }
 </style>

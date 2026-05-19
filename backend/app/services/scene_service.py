@@ -137,10 +137,6 @@ class SceneService:
             
             prompt_content = cls._get_prompt_from_db(prompt_code, db)
             
-            if not prompt_content:
-                logger.debug(f"[get_scene_prompt] 尝试添加 _prompt 后缀")
-                prompt_content = cls._get_prompt_from_db(f"{prompt_code}_prompt", db)
-            
             if prompt_content:
                 logger.info(f"[get_scene_prompt] 成功获取提示词，长度={len(prompt_content)}")
             else:
