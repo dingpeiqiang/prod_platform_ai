@@ -19,7 +19,7 @@ class Scene(Base):
     # 业务字段
     intent_type = Column(String(50))
     prompt_code = Column(String(100), index=True)  # 提示词编码
-    action_type = Column(String(50))
+    action_type = Column(String(50))  # 场景触发的动作类型：form, tool, message 等
     required_tools = Column(JSON, nullable=False, default=list)
     available_tools = Column(JSON, nullable=False, default=list)
     pre_action_steps = Column(JSON, nullable=False, default=list)

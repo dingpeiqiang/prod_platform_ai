@@ -32,9 +32,8 @@ class SceneCreateRequest(BaseModel):
     priority: int = 10
     isActive: bool = True
     intentType: Optional[str] = None
-    formCode: Optional[str] = None
     actionType: Optional[str] = None
-    actionPromptFile: Optional[str] = None
+    promptCode: Optional[str] = None
     requiredTools: Optional[List[Any]] = None
     availableTools: Optional[List[Any]] = None
     preActionSteps: Optional[List[Any]] = None
@@ -51,9 +50,8 @@ class SceneUpdateRequest(BaseModel):
     priority: Optional[int] = None
     isActive: Optional[bool] = None
     intentType: Optional[str] = None
-    formCode: Optional[str] = None
     actionType: Optional[str] = None
-    actionPromptFile: Optional[str] = None
+    promptCode: Optional[str] = None
     requiredTools: Optional[List[Any]] = None
     availableTools: Optional[List[Any]] = None
     preActionSteps: Optional[List[Any]] = None
@@ -272,8 +270,8 @@ async def create_scene(request: SceneCreateRequest, db: Session = Depends(get_db
     # 转换字段名（驼峰转下划线）
     scene_data['scene_code'] = scene_data.pop('sceneCode')
     scene_data['scene_name'] = scene_data.pop('sceneName')
-    scene_data['form_code'] = scene_data.pop('formCode')
-    scene_data['action_prompt_file'] = scene_data.pop('actionPromptFile')
+    if 'promptCode' in scene_data:
+        scene_data['prompt_code'] = scene_data.pop('promptCode')
     scene_data['parent_id'] = scene_data.pop('parentId')
     
     result = SceneService.create_scene(scene_data, db)
@@ -287,10 +285,8 @@ async def update_scene(scene_code: str, request: SceneUpdateRequest, db: Session
     # 转换字段名
     if 'sceneName' in scene_data:
         scene_data['scene_name'] = scene_data.pop('sceneName')
-    if 'formCode' in scene_data:
-        scene_data['form_code'] = scene_data.pop('formCode')
-    if 'actionPromptFile' in scene_data:
-        scene_data['action_prompt_file'] = scene_data.pop('actionPromptFile')
+    if 'promptCode' in scene_data:
+        scene_data['prompt_code'] = scene_data.pop('promptCode')
     if 'isActive' in scene_data:
         scene_data['is_active'] = scene_data.pop('isActive')
     if 'parentId' in scene_data:

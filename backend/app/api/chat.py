@@ -125,7 +125,7 @@ async def chat_with_agent(request: ChatRequest):
             response_obj = ChatResponse(
                 success=True,
                 intentType="form" if result_data.get("sceneCode") else "chat",
-                formCode=result_data.get("formCode") or result_data.get("sceneCode"),
+                formCode=result_data.get("formCode"),
                 confidence=result_data.get("confidence"),
                 reasoning=agent_result.get("reasoning"),
                 method=f"agent_{result_data.get('method', 'unknown')}"
@@ -196,7 +196,7 @@ async def chat(request: ChatRequest):
                             return ChatResponse(
                                 success=True,
                                 intentType="form",
-                                formCode=form_code or scene_code,
+                                formCode=form_code,
                                 extractedFields=intent_data.get("extractedFields", {}),
                                 confidence=intent_data.get("confidence"),
                                 reasoning=intent_data.get("reasoning"),
@@ -758,18 +758,10 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                 if failed_count > 0:
                                     yield thinking(f"⚠️ {failed_count} 个工具调用失败，将生成空表单供手动填写")
                                 
-                                # 设置 formCode（从场景中获取）
-                                if not intent_data.get("formCode"):
-                                    # 从场景提示词中推断 formCode（场景名称中包含）
-                                    # 对于 tariff_filing_apply 场景，formCode 是 tariff_filing_publicity
-                                    form_code_map = {
-                                        "tariff_filing_apply": "tariff_filing_publicity"
-                                    }
-                                    form_code = form_code_map.get(scene_code)
-                                    if form_code:
-                                        intent_data["formCode"] = form_code
-                                        intent_data["detectedFormCode"] = form_code
-                                        logger.info(f"[chat/stream] 从场景映射获取 formCode: {form_code}")
+                                # 注意：场景不再直接映射表单
+                                    # 表单应由提示词或LLM根据用户意图动态决定
+                                    # 如果提示词返回了 formCode，则使用它
+                                    # 这样场景可以灵活支持多种动作（表单、工具调用等）
                                 
                                 # 设置 intent_type 为 form，让 FormHandler 处理表单生成（显示处理步骤）
                                 intent_type = "form"
@@ -787,7 +779,7 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                             # 【调试】打印 intent_type 和 intent_data
                             logger.info(f"[chat/stream] 准备分发意图: intent_type={intent_type}, action={intent_data.get('action')}")
 
-                            form_code = intent_data.get("detectedFormCode") or intent_data.get("formCode") or intent_data.get("form_code") or scene_code
+                            form_code = intent_data.get("detectedFormCode") or intent_data.get("formCode") or intent_data.get("form_code")
                             yield thinking(
                                 f"✅ 意图识别完成: {intent_type}" + (f" ({intent_elapsed:.2f}s)" if intent_elapsed else ""),
                                 result={

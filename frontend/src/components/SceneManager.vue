@@ -9,6 +9,28 @@
         </el-button>
         <h1 class="page-title">场景管理</h1>
       </div>
+      <div class="stats-bar" v-if="stats">
+        <div class="stat-item">
+          <span class="stat-value">{{ stats.total }}</span>
+          <span class="stat-label">总场景</span>
+        </div>
+        <div class="stat-item active">
+          <span class="stat-value">{{ stats.active }}</span>
+          <span class="stat-label">已启用</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value">{{ stats.byType.center }}</span>
+          <span class="stat-label">中心域</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value">{{ stats.byType.business }}</span>
+          <span class="stat-label">业务域</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value">{{ stats.byType.scene }}</span>
+          <span class="stat-label">场景</span>
+        </div>
+      </div>
       <el-button type="primary" @click="handleAddCenter">
         <el-icon><Plus /></el-icon>
         新增中心域
@@ -34,7 +56,7 @@
         <div class="tree-container">
           <el-tree
             ref="treeRef"
-            :data="treeData"
+            :data="filteredTreeData"
             :props="treeProps"
             node-key="id"
             default-expand-all
@@ -161,11 +183,9 @@
               <span class="card-title">配置信息</span>
             </template>
             <el-descriptions :column="1" border>
-              <el-descriptions-item label="关联表单">
-                {{ selectedNode.formCode || '未关联' }}
-              </el-descriptions-item>
-              <el-descriptions-item label="提示词文件">
-                {{ selectedNode.actionPromptFile || '未配置' }}
+              <el-descriptions-item label="关联提示词">
+                <span>{{ getPromptName(selectedNode.promptCode) || '未配置' }}</span>
+                <el-button v-if="selectedNode.promptCode" type="text" size="small" @click="openPromptEditorForSelected">编辑</el-button>
               </el-descriptions-item>
             </el-descriptions>
           </el-card>
@@ -256,25 +276,16 @@
           <el-switch v-model="formData.isActive" />
         </el-form-item>
         <template v-if="currentType === 'scene'">
-          <el-form-item label="关联表单">
-            <el-select v-model="formData.formCode" placeholder="选择表单" clearable filterable style="width: 100%">
+          <el-form-item label="关联提示词">
+            <el-select v-model="formData.promptCode" placeholder="选择提示词" clearable filterable style="width: 100%">
               <el-option
-                v-for="form in forms"
-                :key="form.formCode"
-                :label="`${form.formName} (${form.formCode})`"
-                :value="form.formCode"
+                v-for="prompt in prompts"
+                :key="prompt.code"
+                :label="`${prompt.name} (${prompt.code})`"
+                :value="prompt.code"
               />
             </el-select>
-          </el-form-item>
-          <el-form-item label="提示词文件">
-            <el-select v-model="formData.actionPromptFile" placeholder="选择提示词文件" clearable filterable style="width: 100%">
-              <el-option
-                v-for="prompt in scenePrompts"
-                :key="prompt"
-                :label="prompt"
-                :value="prompt"
-              />
-            </el-select>
+            <el-button v-if="formData.promptCode" type="text" @click="openPromptEditor">编辑提示词</el-button>
           </el-form-item>
         </template>
       </el-form>
@@ -330,6 +341,51 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 提示词编辑器对话框 -->
+    <el-dialog v-model="promptEditorVisible" title="提示词编辑器" width="800px" :close-on-click-modal="false">
+      <div v-if="currentPrompt" class="prompt-editor">
+        <div class="prompt-header">
+          <el-tag type="info">{{ currentPrompt.code }}</el-tag>
+          <span class="prompt-name">{{ currentPrompt.name }}</span>
+          <el-tag :type="currentPrompt.isActive ? 'success' : 'warning'" size="small">
+            {{ currentPrompt.isActive ? '启用' : '禁用' }}
+          </el-tag>
+        </div>
+        <div class="prompt-description" v-if="currentPrompt.description">
+          {{ currentPrompt.description }}
+        </div>
+        <el-form-item label="提示词内容" class="prompt-content-item">
+          <el-input
+            v-model="editingPromptContent"
+            type="textarea"
+            :rows="15"
+            placeholder="请输入提示词内容..."
+            class="prompt-textarea"
+          />
+        </el-form-item>
+        <div v-if="currentPrompt.variables && currentPrompt.variables.length > 0" class="variables-info">
+          <div class="variables-title">可用变量：</div>
+          <div class="variables-list">
+            <el-tag
+              v-for="(varItem, idx) in currentPrompt.variables"
+              :key="idx"
+              size="small"
+              class="variable-tag"
+            >
+              {{ varItem.name }}
+              <span class="variable-desc">{{ varItem.description }}</span>
+            </el-tag>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="promptEditorVisible = false">取消</el-button>
+        <el-button type="primary" @click="savePromptChanges" :loading="savingPrompt">
+          保存
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -337,7 +393,8 @@
 import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, View, ArrowLeft, Pointer, Search } from '@element-plus/icons-vue'
-import { listScenesTree, createScene, updateScene, deleteScene, toggleScene, testSceneRecognition, listScenePrompts } from '../services/sceneApi.js'
+import { listScenesTree, createScene, updateScene, deleteScene, toggleScene, testSceneRecognition, getSceneStats } from '../services/sceneApi.js'
+import { listPrompts, getPrompt, savePrompt } from '../services/promptApi.js'
 import { listForms } from '../services/formApi.js'
 
 const emit = defineEmits(['go-back'])
@@ -348,6 +405,7 @@ const goBack = () => {
 
 const loading = ref(false)
 const treeData = ref([])
+const originalTreeData = ref([])
 const treeRef = ref(null)
 const selectedNode = ref(null)
 const searchKeyword = ref('')
@@ -362,12 +420,44 @@ const keywordInputVisible = ref(false)
 const keywordInput = ref('')
 const keywordInputRef = ref(null)
 const forms = ref([])
-const scenePrompts = ref([])
+const prompts = ref([])
 const formRef = ref(null)
+const stats = ref(null)
+const promptEditorVisible = ref(false)
+const currentPrompt = ref(null)
+const editingPromptContent = ref('')
+const savingPrompt = ref(false)
 
 const currentType = computed(() => {
   return editingNode.value ? editingNode.value.type : 'scene'
 })
+
+const filteredTreeData = computed(() => {
+  if (!searchKeyword.value.trim()) {
+    return treeData.value
+  }
+  const keyword = searchKeyword.value.toLowerCase()
+  return filterTree(originalTreeData.value, keyword)
+})
+
+const filterTree = (nodes, keyword) => {
+  const result = []
+  for (const node of nodes) {
+    const matchName = (node.sceneName || node.label || '').toLowerCase().includes(keyword)
+    const matchCode = (node.sceneCode || '').toLowerCase().includes(keyword)
+    const matchKeyword = (node.keywords || []).some(k => k.toLowerCase().includes(keyword))
+    
+    const children = node.children ? filterTree(node.children, keyword) : []
+    
+    if (matchName || matchCode || matchKeyword || children.length > 0) {
+      result.push({
+        ...node,
+        children: children
+      })
+    }
+  }
+  return result
+}
 
 const formData = reactive({
   sceneCode: '',
@@ -418,6 +508,7 @@ const loadData = async () => {
     const res = await listScenesTree()
     if (res.success) {
       treeData.value = res.data || []
+      originalTreeData.value = JSON.parse(JSON.stringify(res.data || []))
     }
   } catch (e) {
     ElMessage.error('加载失败')
@@ -437,14 +528,71 @@ const loadForms = async () => {
   }
 }
 
-const loadScenePrompts = async () => {
+const loadPrompts = async () => {
   try {
-    const res = await listScenePrompts()
+    const res = await listPrompts()
     if (res.success) {
-      scenePrompts.value = res.data || []
+      prompts.value = res.data || []
     }
   } catch (e) {
     console.error(e)
+  }
+}
+
+const loadStats = async () => {
+  try {
+    const res = await getSceneStats()
+    if (res.success) {
+      stats.value = res.data
+    }
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+const getPromptName = (promptCode) => {
+  if (!promptCode) return null
+  const prompt = prompts.value.find(p => p.code === promptCode)
+  return prompt ? prompt.name : promptCode
+}
+
+const openPromptEditor = async () => {
+  if (!formData.promptCode) return
+  const prompt = prompts.value.find(p => p.code === formData.promptCode)
+  if (prompt) {
+    currentPrompt.value = prompt
+    editingPromptContent.value = prompt.content
+    promptEditorVisible.value = true
+  }
+}
+
+const openPromptEditorForSelected = async () => {
+  if (!selectedNode.value?.promptCode) return
+  const prompt = prompts.value.find(p => p.code === selectedNode.value.promptCode)
+  if (prompt) {
+    currentPrompt.value = prompt
+    editingPromptContent.value = prompt.content
+    promptEditorVisible.value = true
+  }
+}
+
+const savePromptChanges = async () => {
+  if (!currentPrompt.value) return
+  
+  savingPrompt.value = true
+  try {
+    const result = await savePrompt(currentPrompt.value.code, editingPromptContent.value)
+    if (result.success) {
+      ElMessage.success('提示词更新成功')
+      await loadPrompts()
+      promptEditorVisible.value = false
+    } else {
+      ElMessage.error(result.message || '保存失败')
+    }
+  } catch (e) {
+    ElMessage.error('保存失败')
+  } finally {
+    savingPrompt.value = false
   }
 }
 
@@ -463,12 +611,11 @@ const handleAddCenter = () => {
     keywords: [],
     priority: 10,
     isActive: true,
-    formCode: '',
-    actionPromptFile: '',
+    promptCode: '',
     type: 'center',
     parentId: null
   })
-  Promise.all([loadForms(), loadScenePrompts()]).then(() => {
+  Promise.all([loadForms(), loadPrompts()]).then(() => {
     dialogVisible.value = true
   })
 }
@@ -483,12 +630,11 @@ const handleAddBusiness = (parentData) => {
     keywords: [],
     priority: 10,
     isActive: true,
-    formCode: '',
-    actionPromptFile: '',
+    promptCode: '',
     type: 'business',
     parentId: parentData.id
   })
-  Promise.all([loadForms(), loadScenePrompts()]).then(() => {
+  Promise.all([loadForms(), loadPrompts()]).then(() => {
     dialogVisible.value = true
   })
 }
@@ -503,12 +649,11 @@ const handleAddScene = (parentData) => {
     keywords: [],
     priority: 10,
     isActive: true,
-    formCode: '',
-    actionPromptFile: '',
+    promptCode: '',
     type: 'scene',
     parentId: parentData.id
   })
-  Promise.all([loadForms(), loadScenePrompts()]).then(() => {
+  Promise.all([loadForms(), loadPrompts()]).then(() => {
     dialogVisible.value = true
   })
 }
@@ -523,12 +668,11 @@ const handleEdit = async (data) => {
     keywords: [...(data.keywords || [])],
     priority: data.priority,
     isActive: data.isActive,
-    formCode: data.formCode,
-    actionPromptFile: data.actionPromptFile,
+    promptCode: data.promptCode,
     type: data.type,
     parentId: data.parentId
   })
-  await Promise.all([loadForms(), loadScenePrompts()])
+  await Promise.all([loadForms(), loadPrompts()])
   dialogVisible.value = true
 }
 
@@ -544,6 +688,7 @@ const handleDelete = async (data) => {
     if (result.success) {
       ElMessage.success('删除成功')
       await loadData()
+      await loadStats()
       selectedNode.value = null
     } else {
       ElMessage.error(result.message || '删除失败')
@@ -625,9 +770,8 @@ const handleSave = async () => {
       ElMessage.success(editingNode.value ? '更新成功' : '创建成功')
       dialogVisible.value = false
       await loadData()
-      // 重新选中节点
+      await loadStats()
       if (result.data && result.data.id) {
-        // 找到新节点
         setTimeout(() => {
           const findNode = (nodes, id) => {
             for (const node of nodes) {
@@ -657,6 +801,8 @@ const handleSave = async () => {
 
 onMounted(() => {
   loadData()
+  loadStats()
+  loadPrompts()
 })
 </script>
 
@@ -675,6 +821,38 @@ onMounted(() => {
   padding: 16px 24px;
   background: var(--bg-elevated);
   box-shadow: var(--shadow-sm);
+  gap: 24px;
+}
+
+.stats-bar {
+  display: flex;
+  gap: 24px;
+  padding: 8px 20px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 8px;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 60px;
+}
+
+.stat-value {
+  font-size: 20px;
+  font-weight: 600;
+  color: #666;
+}
+
+.stat-item.active .stat-value {
+  color: #10b981;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #999;
+  margin-top: 2px;
 }
 
 .header-left {
@@ -962,5 +1140,70 @@ onMounted(() => {
   overflow-x: auto;
   max-height: 200px;
   overflow-y: auto;
+}
+
+.prompt-editor {
+  padding: 8px;
+}
+
+.prompt-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.prompt-name {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.prompt-description {
+  padding: 12px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  color: #666;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.prompt-content-item {
+  margin-bottom: 16px;
+}
+
+.prompt-textarea {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.variables-info {
+  padding: 12px;
+  background: #fffbe6;
+  border-radius: 4px;
+}
+
+.variables-title {
+  font-weight: 500;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.variables-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.variable-tag {
+  background: #fff3cd;
+  border-color: #ffeeba;
+  color: #856404;
+}
+
+.variable-desc {
+  margin-left: 6px;
+  opacity: 0.7;
+  font-size: 12px;
 }
 </style>

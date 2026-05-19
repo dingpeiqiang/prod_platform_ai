@@ -45,21 +45,19 @@ class SceneService:
     @classmethod
     def _build_tree(cls, scenes: List[Scene]) -> List[Dict]:
         """构建树形结构"""
-        # 先创建节点字典
         node_map = {}
+        tree = []
+        
+        # 单次遍历完成节点创建和树形构建
         for scene in scenes:
             node = scene.to_tree_node()
             node_map[scene.id] = node
-        
-        # 再构建树
-        tree = []
-        for scene in scenes:
-            # 顶级节点（center类型且无父节点
+            
+            # 同时构建树
             if scene.parent_id is None and scene.type == 'center':
-                tree.append(node_map[scene.id])
+                tree.append(node)
             elif scene.parent_id in node_map:
-                parent_node = node_map[scene.parent_id]
-                parent_node["children"].append(node_map[scene.id])
+                node_map[scene.parent_id]["children"].append(node)
         
         return tree
 
@@ -359,90 +357,29 @@ class SceneService:
             return {"success": False, "message": str(e)}
 
     @classmethod
+    def _match_keyword(cls, item, user_input_lower):
+        """检查项目是否匹配关键词"""
+        for keyword in item.keywords:
+            if keyword.lower() in user_input_lower:
+                return keyword
+        return None
+    
+    @classmethod
     def test_scene_recognition(cls, user_input: str, db: Session) -> Dict[str, Any]:
         """三层场景识别 - 先匹配center，再business，最后scene"""
         try:
-            # 获取所有启用的场景
             all_scenes = db.query(Scene).filter(Scene.is_active == True).all()
             
-            # 按类型分类
             centers = [s for s in all_scenes if s.type == 'center']
             businesses = [s for s in all_scenes if s.type == 'business']
             scenes = [s for s in all_scenes if s.type == 'scene']
             
             user_input_lower = user_input.lower()
             
-            # 第一层：匹配中心域
-            matched_center = None
-            center_score = 0
-            for center in centers:
-                for keyword in center.keywords:
-                    if keyword.lower() in user_input_lower:
-                        matched_center = center
-                        center_score = center.priority
-                        break
-                if matched_center:
-                    break
-            
-            # 第二层：匹配业务域
-            matched_business = None
-            business_score = 0
-            if matched_center:
-                # 在中心域下找业务域
-                center_businesses = [b for b in businesses if b.parent_id == matched_center.id]
-                for business in center_businesses:
-                    for keyword in business.keywords:
-                        if keyword.lower() in user_input_lower:
-                            matched_business = business
-                            business_score = business.priority
-                            break
-                    if matched_business:
-                        break
-                if not matched_business:
-                    # 如果中心域匹配了但是没匹配到业务域，就找所有业务域
-                    for business in businesses:
-                        for keyword in business.keywords:
-                            if keyword.lower() in user_input_lower:
-                                matched_business = business
-                                business_score = business.priority
-                                break
-                        if matched_business:
-                            break
-            
-            # 第三层：匹配场景
-            matched_scenes = []
-            if matched_business:
-                # 在业务域下找场景
-                target_scenes = [s for s in scenes if s.parent_id == matched_business.id]
-            elif matched_center:
-                # 在中心域下找所有场景
-                target_scenes = []
-                # 先找中心域下的业务域
-                center_businesses = [b for b in businesses if b.parent_id == matched_center.id]
-                for business in center_businesses:
-                    target_scenes.extend([s for s in scenes if s.parent_id == business.id])
-                # 如果还没有，找所有场景
-                if not target_scenes:
-                    target_scenes = scenes
-            else:
-                target_scenes = scenes
-            
-            for scene in target_scenes:
-                for keyword in scene.keywords:
-                    if keyword.lower() in user_input_lower:
-                        matched_scenes.append({
-                            "sceneCode": scene.scene_code,
-                            "sceneName": scene.scene_name,
-                            "type": scene.type,
-                            "priority": scene.priority,
-                            "confidence": 0.8 + (scene.priority / 100),
-                            "method": "keyword",
-                            "matchedKeyword": keyword
-                        })
-                        break
-            
-            # 排序：优先按层级，再按优先级
-            matched_scenes.sort(key=lambda x: -x["priority"])
+            matched_center = cls._find_best_match(centers, user_input_lower)
+            matched_business = cls._find_business(businesses, centers, matched_center, user_input_lower)
+            target_scenes = cls._get_target_scenes(scenes, businesses, matched_center, matched_business)
+            matched_scenes = cls._match_scenes(target_scenes, user_input_lower)
             
             best_match = matched_scenes[0] if matched_scenes else None
             
@@ -457,6 +394,57 @@ class SceneService:
         except Exception as e:
             logger.exception(f"Failed to test scene recognition: {e}")
             return {"success": False, "message": str(e)}
+    
+    @classmethod
+    def _find_best_match(cls, items, user_input_lower):
+        """在列表中找到匹配关键词的第一个项目"""
+        for item in items:
+            if cls._match_keyword(item, user_input_lower):
+                return item
+        return None
+    
+    @classmethod
+    def _find_business(cls, businesses, centers, matched_center, user_input_lower):
+        """查找匹配的业务域"""
+        if matched_center:
+            center_businesses = [b for b in businesses if b.parent_id == matched_center.id]
+            matched = cls._find_best_match(center_businesses, user_input_lower)
+            if matched:
+                return matched
+        
+        return cls._find_best_match(businesses, user_input_lower)
+    
+    @classmethod
+    def _get_target_scenes(cls, scenes, businesses, matched_center, matched_business):
+        """获取目标场景列表"""
+        if matched_business:
+            return [s for s in scenes if s.parent_id == matched_business.id]
+        
+        if matched_center:
+            center_business_ids = {b.id for b in businesses if b.parent_id == matched_center.id}
+            target_scenes = [s for s in scenes if s.parent_id in center_business_ids]
+            return target_scenes if target_scenes else scenes
+        
+        return scenes
+    
+    @classmethod
+    def _match_scenes(cls, target_scenes, user_input_lower):
+        """匹配场景并返回排序后的结果"""
+        matched_scenes = []
+        for scene in target_scenes:
+            matched_keyword = cls._match_keyword(scene, user_input_lower)
+            if matched_keyword:
+                matched_scenes.append({
+                    "sceneCode": scene.scene_code,
+                    "sceneName": scene.scene_name,
+                    "type": scene.type,
+                    "priority": scene.priority,
+                    "confidence": 0.8 + (scene.priority / 100),
+                    "method": "keyword",
+                    "matchedKeyword": matched_keyword
+                })
+        
+        return sorted(matched_scenes, key=lambda x: -x["priority"])
 
     @classmethod
     def get_scene_stats(cls, db: Session) -> Dict[str, Any]:

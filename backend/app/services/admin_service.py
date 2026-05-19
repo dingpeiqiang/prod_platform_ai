@@ -416,8 +416,8 @@ class AdminService:
             return {"success": False, "message": str(e)}
 
     @classmethod
-    def _remove_from_scene_mappings(cls, form_code: str):
-        """从场景映射中移除指定表单的关键词条目"""
+    def _remove_from_scene_mappings(cls, scene_code: str):
+        """从场景映射中移除指定场景"""
         scene_result = cls.get_scene_mappings()
         if not scene_result.get("success"):
             return
@@ -425,14 +425,13 @@ class AdminService:
         mappings_data = scene_result.get("data", {})
         scene_mappings = mappings_data.get("sceneMappings", [])
 
-        # 过滤掉该 formCode 的条目
         original_count = len(scene_mappings)
-        scene_mappings = [m for m in scene_mappings if m.get("formCode") != form_code]
+        scene_mappings = [m for m in scene_mappings if m.get("sceneCode") != scene_code]
 
         if len(scene_mappings) < original_count:
             mappings_data["sceneMappings"] = scene_mappings
             cls.update_scene_mappings(mappings_data)
-            logger.info("[AdminService] 从场景映射移除 form_code=%s (删除 %d 条)", form_code, original_count - len(scene_mappings))
+            logger.info("[AdminService] 从场景映射移除 scene_code=%s (删除 %d 条)", scene_code, original_count - len(scene_mappings))
 
     # ────────────────────────────────────────────────────────────────────────
     # 场景关键词（Scene Mapping）管理
