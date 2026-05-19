@@ -10,21 +10,22 @@ export const NODE_TYPES = {
   CODE: 'code',
   VARIABLE: 'variable',
   PARSER: 'parser',
-  KNOWLEDGE_BASE: 'knowledgeBase'
+  KNOWLEDGE_BASE: 'knowledgeBase',
+  USER_INPUT: 'userInput'
 };
 
 export const NODE_CONFIG = {
   [NODE_TYPES.START]: {
     name: '开始节点',
     canConnectFrom: [],
-    canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase'],
+    canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
     maxInputs: 0,
     maxOutputs: 1,
     handles: [{ type: 'source', position: 'right', id: 'default' }]
   },
   [NODE_TYPES.END]: {
     name: '结束节点',
-    canConnectFrom: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase'],
+    canConnectFrom: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
     canConnectTo: [],
     maxInputs: 1,
     maxOutputs: 0,
@@ -32,8 +33,8 @@ export const NODE_CONFIG = {
   },
   [NODE_TYPES.CONDITION]: {
     name: '条件分支节点',
-    canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase'],
-    canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase'],
+    canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
+    canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase', 'userInput'],
     maxInputs: 1,
     maxOutputs: 2,
     handles: [
@@ -44,8 +45,8 @@ export const NODE_CONFIG = {
   },
   [NODE_TYPES.LOOP]: {
     name: '循环节点',
-    canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase'],
-    canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'parser', 'end', 'knowledgeBase'],
+    canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
+    canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'parser', 'end', 'knowledgeBase', 'userInput'],
     maxInputs: 2,
     maxOutputs: 2,
     handles: [
@@ -57,8 +58,8 @@ export const NODE_CONFIG = {
   },
   [NODE_TYPES.PROMPT]: {
     name: '提示词节点',
-    canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase'],
-    canConnectTo: ['llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase'],
+    canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
+    canConnectTo: ['llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase', 'userInput'],
     maxInputs: 1,
     maxOutputs: 1,
     handles: [
@@ -68,8 +69,8 @@ export const NODE_CONFIG = {
   },
   [NODE_TYPES.LLM]: {
     name: 'LLM调用节点',
-    canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase'],
-    canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase'],
+    canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
+    canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase', 'userInput'],
     maxInputs: 1,
     maxOutputs: 1,
     handles: [
@@ -79,8 +80,8 @@ export const NODE_CONFIG = {
   },
   [NODE_TYPES.TOOL]: {
     name: '工具调用节点',
-    canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase'],
-    canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase'],
+    canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
+    canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase', 'userInput'],
     maxInputs: 1,
     maxOutputs: 1,
     handles: [
@@ -90,8 +91,8 @@ export const NODE_CONFIG = {
   },
   [NODE_TYPES.HTTP]: {
     name: 'HTTP请求节点',
-    canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase'],
-    canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase'],
+    canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
+    canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase', 'userInput'],
     maxInputs: 1,
     maxOutputs: 1,
     handles: [
@@ -101,8 +102,8 @@ export const NODE_CONFIG = {
   },
   [NODE_TYPES.CODE]: {
     name: '代码执行节点',
-    canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase'],
-    canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase'],
+    canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
+    canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase', 'userInput'],
     maxInputs: 1,
     maxOutputs: 1,
     handles: [
@@ -112,8 +113,8 @@ export const NODE_CONFIG = {
   },
   [NODE_TYPES.VARIABLE]: {
     name: '变量赋值节点',
-    canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase'],
-    canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase'],
+    canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
+    canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase', 'userInput'],
     maxInputs: 1,
     maxOutputs: 1,
     handles: [
@@ -123,8 +124,8 @@ export const NODE_CONFIG = {
   },
   [NODE_TYPES.PARSER]: {
     name: '输出解析节点',
-    canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase'],
-    canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase'],
+    canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
+    canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase', 'userInput'],
     maxInputs: 1,
     maxOutputs: 1,
     handles: [
@@ -134,8 +135,19 @@ export const NODE_CONFIG = {
   },
   [NODE_TYPES.KNOWLEDGE_BASE]: {
     name: '知识库节点',
-    canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase'],
-    canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase'],
+    canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
+    canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase', 'userInput'],
+    maxInputs: 1,
+    maxOutputs: 1,
+    handles: [
+      { type: 'target', position: 'left', id: 'default' },
+      { type: 'source', position: 'right', id: 'default' }
+    ]
+  },
+  [NODE_TYPES.USER_INPUT]: {
+    name: '用户输入节点',
+    canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
+    canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase', 'userInput'],
     maxInputs: 1,
     maxOutputs: 1,
     handles: [

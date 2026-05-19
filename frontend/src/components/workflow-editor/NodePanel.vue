@@ -76,7 +76,8 @@ const nodeGroups = ref([
       { id: 'start', name: '开始', icon: '🚀', type: 'start' },
       { id: 'end', name: '结束', icon: '🏁', type: 'end' },
       { id: 'condition', name: '条件分支', icon: '🔀', type: 'condition' },
-      { id: 'loop', name: '循环', icon: '🔄', type: 'loop' }
+      { id: 'loop', name: '循环', icon: '🔄', type: 'loop' },
+      { id: 'userInput', name: '用户输入', icon: '👤', type: 'userInput' }
     ]
   },
   {

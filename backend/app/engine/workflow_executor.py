@@ -856,6 +856,44 @@ class LoopNodeExecutor(NodeExecutor):
             raise
 
 
+class UserInputNodeExecutor(NodeExecutor):
+    """用户输入节点执行器 - 暂停工作流等待用户反馈"""
+    
+    NODE_TYPE = "user_input"
+    
+    async def execute(self, context: WorkflowContext, edges: List[Dict[str, Any]]) -> List[str]:
+        context.update_node_status(self.node_id, ExecutionStatus.RUNNING)
+        
+        # 设置暂停标志，通知执行器暂停
+        context.status = ExecutionStatus.PENDING
+        context.current_node_id = self.node_id
+        
+        # 保存需要收集的信息
+        prompt = self.node_data.get("prompt", "请输入反馈：")
+        input_type = self.node_data.get("inputType", "text")
+        options = self.node_data.get("options", "")
+        required = self.node_data.get("required", True)
+        output_var = self.node_data.get("outputVar", "user_input")
+        
+        # 将暂停信息存入上下文，供外部调用获取
+        context.set_variable(
+            "__pending_input__",
+            {
+                "node_id": self.node_id,
+                "prompt": prompt,
+                "input_type": input_type,
+                "options": [opt.strip() for opt in options.split('\n') if opt.strip()] if options else [],
+                "required": required,
+                "output_var": output_var
+            }
+        )
+        
+        logger.info(f"Workflow paused waiting for user input at node: {self.node_id}")
+        
+        # 返回空列表，触发执行器暂停
+        return []
+
+
 class VariableNodeExecutor(NodeExecutor):
     """变量赋值节点执行器"""
     
@@ -1238,6 +1276,7 @@ class WorkflowExecutor:
         "llm": LlmNodeExecutor,
         "condition": ConditionNodeExecutor,
         "loop": LoopNodeExecutor,
+        "user_input": UserInputNodeExecutor,
         "variable": VariableNodeExecutor,
         "http": HttpNodeExecutor,
         "code": CodeNodeExecutor,

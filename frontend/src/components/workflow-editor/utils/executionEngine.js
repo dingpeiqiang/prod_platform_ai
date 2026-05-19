@@ -5,6 +5,9 @@ export class ExecutionEngine {
     this.nodeStatus = {};
     this.onStatusChange = null;
     this.onLog = null;
+    this.isPaused = false;
+    this.pendingInput = null;
+    this.resumeCallback = null;
   }
 
   setCallbacks(onStatusChange, onLog) {
@@ -124,6 +127,40 @@ export class ExecutionEngine {
           context.output = mockResponse;
           this.addLog('info', 'LLM 响应完成', null, { output: mockResponse });
           break;
+        }
+
+        case 'userInput': {
+          const prompt = node.data.prompt || '请输入：';
+          const inputType = node.data.inputType || 'text';
+          const options = node.data.options ? node.data.options.split('\n').filter(opt => opt.trim()) : [];
+          const required = node.data.required ?? true;
+          const outputVar = node.data.outputVar || 'user_input';
+
+          this.addLog('info', '用户输入节点', `提示: ${prompt}, 类型: ${inputType}`, { prompt, inputType, options, required });
+
+          this.isPaused = true;
+          this.pendingInput = {
+            nodeId: nodeId,
+            prompt: prompt,
+            inputType: inputType,
+            options: options,
+            required: required,
+            outputVar: outputVar
+          };
+
+          this.addLog('info', '工作流暂停等待用户输入', null, this.pendingInput);
+
+          return new Promise((resolve) => {
+            this.resumeCallback = (userInputValue) => {
+              context.variables[outputVar] = userInputValue;
+              context.output = userInputValue;
+              this.isPaused = false;
+              this.pendingInput = null;
+              this.resumeCallback = null;
+              this.addLog('info', '收到用户输入', null, { [outputVar]: userInputValue });
+              resolve();
+            };
+          });
         }
 
         case 'tool': {
@@ -262,5 +299,30 @@ export class ExecutionEngine {
 
   delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  resume(userInputValue) {
+    if (this.resumeCallback) {
+      this.resumeCallback(userInputValue);
+      return true;
+    }
+    return false;
+  }
+
+  getPendingInput() {
+    return this.pendingInput;
+  }
+
+  isExecutionPaused() {
+    return this.isPaused;
+  }
+
+  stop() {
+    this.isRunning = false;
+    this.isPaused = false;
+    this.pendingInput = null;
+    this.resumeCallback = null;
+    this.logs = [];
+    this.clearNodeStatus();
   }
 }

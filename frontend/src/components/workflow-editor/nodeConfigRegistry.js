@@ -11,6 +11,7 @@ import CodeNode from './nodes/CodeNode.vue';
 import ParserNode from './nodes/ParserNode.vue';
 import FormNode from './nodes/FormNode.vue';
 import KnowledgeNode from './nodes/KnowledgeNode.vue';
+import UserInputNode from './nodes/UserInputNode.vue';
 
 export const NODE_CONFIG_COMPONENTS = {
   start: StartNode,
@@ -20,6 +21,7 @@ export const NODE_CONFIG_COMPONENTS = {
   tool: ToolNode,
   condition: ConditionNode,
   loop: LoopNode,
+  userInput: UserInputNode,
   variable: VariableNode,
   http: HttpNode,
   code: CodeNode,
@@ -41,5 +43,6 @@ export const NODE_TYPE_LABELS = {
   variable: '变量赋值',
   parser: '输出解析',
   form: '表单',
-  knowledgeBase: '知识库'
+  knowledgeBase: '知识库',
+  userInput: '用户输入'
 };
