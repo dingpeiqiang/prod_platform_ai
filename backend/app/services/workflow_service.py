@@ -1,4 +1,4 @@
-﻿"""
+"""
 工作流管理服务
 """
 import json
@@ -70,6 +70,7 @@ class WorkflowService:
                 tags=workflow_data.get("tags", []),
                 priority=workflow_data.get("priority", 10),
                 is_active=workflow_data.get("isActive", True),
+                is_in_library=workflow_data.get("isInLibrary", False),
                 workflow_data=workflow_data.get("workflowData", {}),
                 version=1,
                 created_by=user,
@@ -145,6 +146,8 @@ class WorkflowService:
                 workflow.priority = workflow_data["priority"]
             if "isActive" in workflow_data:
                 workflow.is_active = workflow_data["isActive"]
+            if "isInLibrary" in workflow_data:
+                workflow.is_in_library = workflow_data["isInLibrary"]
             if "workflowData" in workflow_data:
                 workflow.workflow_data = workflow_data["workflowData"]
 
@@ -307,6 +310,66 @@ class WorkflowService:
             }
         except Exception as e:
             logger.exception(f"Failed to list executions: {e}")
+            return {"success": False, "message": str(e)}
+
+    @classmethod
+    def copy_workflow(cls, source_workflow_code: str, new_workflow_code: str, db: Session, user: Optional[str] = None) -> Dict[str, Any]:
+        """复制工作流"""
+        try:
+            # 获取源工作流
+            source_workflow = db.query(Workflow).filter(Workflow.workflow_code == source_workflow_code).first()
+            if not source_workflow:
+                return {"success": False, "message": f"源工作流 {source_workflow_code} 不存在"}
+
+            # 检查新工作流代码是否已存在
+            existing = db.query(Workflow).filter(Workflow.workflow_code == new_workflow_code).first()
+            if existing:
+                return {"success": False, "message": f"工作流 {new_workflow_code} 已存在"}
+
+            # 创建新工作流（复制源工作流的配置）
+            new_workflow = Workflow(
+                workflow_code=new_workflow_code,
+                workflow_name=f"{source_workflow.workflow_name} (副本)",
+                description=source_workflow.description,
+                category=source_workflow.category,
+                tags=source_workflow.tags,
+                priority=source_workflow.priority,
+                is_active=True,  # 复制的工作流默认启用
+                is_in_library=False,  # 复制的工作流默认不纳入工作流库
+                workflow_data=source_workflow.workflow_data,
+                version=1,
+                created_by=user,
+                updated_by=user
+            )
+
+            db.add(new_workflow)
+            db.flush()
+
+            # 保存初始版本历史
+            history = WorkflowHistory(
+                workflow_id=new_workflow.id,
+                workflow_code=new_workflow.workflow_code,
+                version=1,
+                workflow_name=new_workflow.workflow_name,
+                description=new_workflow.description,
+                workflow_data=new_workflow.workflow_data,
+                category=new_workflow.category,
+                tags=new_workflow.tags,
+                priority=new_workflow.priority,
+                is_active=new_workflow.is_active,
+                change_note=f"从 {source_workflow_code} 复制",
+                created_by=user
+            )
+            db.add(history)
+
+            db.commit()
+            db.refresh(new_workflow)
+
+            logger.info(f"Copied workflow: {source_workflow_code} -> {new_workflow_code}")
+            return {"success": True, "data": new_workflow.to_dict()}
+        except Exception as e:
+            db.rollback()
+            logger.exception(f"Failed to copy workflow: {e}")
             return {"success": False, "message": str(e)}
 
     @classmethod

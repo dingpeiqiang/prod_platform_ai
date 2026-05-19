@@ -1,20 +1,20 @@
 @echo off
 chcp 65001 >nul
-title AI驱动动态表单 - 后端启动脚本 (FastAPI)
+title AI Platform - Backend (FastAPI)
 color 0A
 
 echo.
-echo ╔═══════════════════════════════════════════════════════════╗
-echo ║       AI驱动动态表单底层框架 - 后端启动脚本                ║
-echo ╚═══════════════════════════════════════════════════════════╝
+echo ============================================================
+echo          AI Platform - Backend Startup Script
+echo ============================================================
 echo.
 
 cd /d "%~dp0backend"
 
-echo [1/4] 检查Python环境...
+echo [1/4] Checking Python environment...
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] 未找到Python，请先安装Python 3.8+
+    echo [ERROR] Python not found. Please install Python 3.8+
     pause
     exit /b 1
 )
@@ -22,59 +22,69 @@ echo [OK] Python:
 python --version
 echo.
 
-echo [2/4] 检查/创建虚拟环境...
+echo [2/4] Checking/Creating virtual environment...
 if not exist "venv" (
-    echo [INFO] 首次运行，正在创建虚拟环境...
+    echo [INFO] First run, creating virtual environment...
     python -m venv venv
 )
 call venv\Scripts\activate.bat
 pip install -r requirements.txt -q
-echo [OK] 依赖就绪
+echo [OK] Dependencies ready
 echo.
 
-echo [3/4] 检查端口6173占用情况...
-netstat -ano | findstr :6173 | findstr LISTENING >nul 2>&1
+set PORT=6173
+echo [3/4] Checking port %PORT% availability...
+netstat -ano | findstr :%PORT% | findstr LISTENING >nul 2>&1
 if %errorLevel% == 0 (
-    echo [WARNING] 端口6173已被占用，尝试使用6174端口
-    set PORT=6174
-) else (
-    set PORT=6173
+    echo [WARNING] Port %PORT% is in use, cleaning up...
+    for /f "tokens=5" %%a in ('netstat -ano ^| findstr :%PORT% ^| findstr LISTENING') do (
+        echo   Killing process PID: %%a
+        taskkill /F /PID %%a >nul 2>&1
+        if %errorLevel% == 0 (
+            echo   [OK] Process %%a terminated
+        ) else (
+            echo   [ERROR] Failed to terminate process %%a, please handle manually
+            pause
+            exit /b 1
+        )
+    )
+    timeout /t 1 /nobreak >nul
 )
-echo [OK] 将使用端口: %PORT%
+echo [OK] Using port: %PORT%
 echo.
 
-echo [4/4] 检查启动参数...
+echo [4/4] Checking startup parameters...
 if "%1"=="dev" goto DEV
 if "%1"=="--dev" goto DEV
 if "%1"=="-d" goto DEV
 
 echo.
-echo [PROD] 启动生产模式（默认）...
-echo    - 如需开发模式，请使用: start-backend.bat dev
+echo [PROD] Starting production mode (default)...
+echo    - For development mode: start-backend.bat dev
 echo.
 
 :PROD
-echo ========================================
-echo    API地址:  http://localhost:%PORT%
-echo    API文档:  http://localhost:%PORT%/docs
-echo    模    式: 单进程，无自动重载
-echo    日    志: 终端 + backend\app\logs\app.log
-echo ========================================
+echo ============================================================
+echo    API:       http://localhost:%PORT%
+echo    Docs:      http://localhost:%PORT%/docs
+echo    Mode:      Single process, no auto-reload
+echo    Log:       Terminal + backend\app\logs\app.log
+echo ============================================================
 echo.
 python -m uvicorn app.main:app --host 0.0.0.0 --port %PORT% --log-level debug
 goto END
 
 :DEV
-echo ========================================
-echo    API地址:  http://localhost:%PORT%
-echo    API文档:  http://localhost:%PORT%/docs
-echo    模    式: 自动重载（修改代码自动重启）
-echo    日    志: 查看 backend\app\logs\app.log
-echo ========================================
+echo ============================================================
+echo    API:       http://localhost:%PORT%
+echo    Docs:      http://localhost:%PORT%/docs
+echo    Mode:      Auto-reload (restarts on code change)
+echo    Log:       Check backend\app\logs\app.log
+echo ============================================================
 echo.
 set PYTHONUNBUFFERED=1
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port %PORT% --log-level debug
 goto END
 
 :END
-REM 脚本结束，不暂停（由 start-all.bat 一键启动时不需要）
+REM Script ends without pause (not needed when called from start-all.bat)

@@ -39,6 +39,7 @@ class WorkflowCreateRequest(BaseModel):
     tags: Optional[List[str]] = []
     priority: Optional[int] = 10
     isActive: Optional[bool] = True
+    isInLibrary: Optional[bool] = False
     workflowData: Optional[Dict[str, Any]] = {}
 
 
@@ -49,6 +50,7 @@ class WorkflowUpdateRequest(BaseModel):
     tags: Optional[List[str]] = None
     priority: Optional[int] = None
     isActive: Optional[bool] = None
+    isInLibrary: Optional[bool] = None
     workflowData: Optional[Dict[str, Any]] = None
     changeNote: Optional[str] = None
 
@@ -571,6 +573,35 @@ async def update_execution_status(execution_id: str, request: ExecutionUpdateReq
     result = WorkflowService.update_execution_status(execution_id, request.dict(exclude_unset=True), db)
     if not result["success"]:
         raise HTTPException(status_code=404, detail=result["message"])
+    return result
+
+
+class WorkflowCopyRequest(BaseModel):
+    newWorkflowCode: str
+    newWorkflowName: Optional[str] = None
+
+
+@router.post("/{workflow_code}/copy")
+async def copy_workflow(workflow_code: str, request: WorkflowCopyRequest, db: Session = Depends(get_db)):
+    """复制工作流"""
+    result = WorkflowService.copy_workflow(
+        source_workflow_code=workflow_code,
+        new_workflow_code=request.newWorkflowCode,
+        db=db
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+    
+    # 如果指定了新名称，更新工作流名称
+    if request.newWorkflowName:
+        update_result = WorkflowService.update_workflow(
+            workflow_code=request.newWorkflowCode,
+            workflow_data={"workflowName": request.newWorkflowName},
+            db=db
+        )
+        if update_result["success"]:
+            result["data"] = update_result["data"]
+    
     return result
 
 

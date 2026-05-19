@@ -228,11 +228,23 @@
           </svg>
           <span v-if="executionLogs.length > 0" class="badge">{{ executionLogs.length }}</span>
         </button>
+        <button 
+          @click="showLibraryPanel = !showLibraryPanel" 
+          :class="['panel-toggle-btn', { active: showLibraryPanel }]"
+          title="工作流库"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+        </button>
       </div>
     </div>
 
     <div class="editor-container">
-      <div class="left-panel-wrapper">
+      <div v-if="showLibraryPanel" class="library-panel-wrapper">
+        <WorkflowLibrary @load-workflow="handleLoadFromLibrary" />
+      </div>
+      <div v-if="showLeftPanel" class="left-panel-wrapper">
         <NodePanel 
           :quick-templates="quickTemplates"
           @apply-template="applyTemplate"
@@ -601,6 +613,7 @@ import NodePanel from './NodePanel.vue';
 import NodeConfigPanel from './NodeConfigPanel.vue';
 import ExecutionPanel from './ExecutionPanel.vue';
 import ParameterInputPanel from './ParameterInputPanel.vue';
+import WorkflowLibrary from './WorkflowLibrary.vue';
 
 import StartNode from './nodes/StartNode.vue';
 import EndNode from './nodes/EndNode.vue';
@@ -644,8 +657,9 @@ const elements = ref([]);
 const hasChanges = ref(false);
 const selectedNodeId = ref(null);
 const selectedNodeIds = ref([]);
-const showLeftPanel = ref(true); // 新增：控制左侧节点面板显示/隐藏
+const showLeftPanel = ref(true); // 控制左侧节点面板显示/隐藏
 const showRightPanel = ref(false);
+const showLibraryPanel = ref(false); // 控制工作流库面板显示/隐藏
 const showNodeConfigPanel = ref(false);
 const activePanel = ref('validation');
 const lastNodeClick = ref({ id: null, time: 0 });
@@ -1496,6 +1510,43 @@ const openWorkflow = (workflow) => {
   history.value = [];
   historyIndex.value = -1;
   showWorkflowList.value = false;
+};
+
+const handleLoadFromLibrary = (workflow) => {
+  if (hasChanges.value) {
+    if (!confirm('当前工作流有未保存的更改，确定要加载工作流库中的工作流吗？')) {
+      return;
+    }
+  }
+  
+  currentWorkflowId.value = workflow.workflowCode;
+  workflowName.value = workflow.workflowName;
+  
+  const workflowData = workflow.workflowData || {};
+  const nodes = (workflowData.nodes || []).map(node => ({
+    id: node.id,
+    type: node.type,
+    position: node.position || { x: 0, y: 0 },
+    data: node.data || {}
+  }));
+  const edges = (workflowData.edges || []).map(edge => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    sourceHandle: edge.sourceHandle,
+    targetHandle: edge.targetHandle,
+    markerEnd: edge.markerEnd || {
+      type: 'arrowclosed',
+      color: '#94a3b8'
+    }
+  }));
+  
+  elements.value = [...nodes, ...edges];
+  selectedNodeId.value = null;
+  selectedNodeIds.value = [];
+  hasChanges.value = false;
+  history.value = [];
+  historyIndex.value = -1;
 };
 
 const deleteWorkflow = (workflowId) => {
@@ -2457,6 +2508,12 @@ onUnmounted(() => {
 
 /* 左侧面板容器 */
 .left-panel-wrapper {
+  display: flex;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.library-panel-wrapper {
   display: flex;
   flex-shrink: 0;
   position: relative;

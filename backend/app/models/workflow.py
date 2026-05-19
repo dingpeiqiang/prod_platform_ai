@@ -1,4 +1,4 @@
-﻿from sqlalchemy import Column, Integer, String, JSON, Boolean, DateTime, Text, ForeignKey
+from sqlalchemy import Column, Integer, String, JSON, Boolean, DateTime, Text, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -16,6 +16,7 @@ class Workflow(Base):
     tags = Column(JSON, nullable=False, default=list)
     priority = Column(Integer, default=10)
     is_active = Column(Boolean, default=True)
+    is_in_library = Column(Boolean, default=False)  # 是否纳入工作流库
     
     # 工作流配置
     workflow_data = Column(JSON, nullable=False, default=dict)  # 存储完整的工作流配置（节点、边等）
@@ -46,6 +47,7 @@ class Workflow(Base):
             "tags": self.tags,
             "priority": self.priority,
             "isActive": self.is_active,
+            "isInLibrary": self.is_in_library,
             "workflowData": self.workflow_data,
             "version": self.version,
             "executionCount": self.execution_count,

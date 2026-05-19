@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 import logging
@@ -6,9 +6,11 @@ import tempfile
 import os
 from pathlib import Path
 from app.core.config_loader import config_loader
+from app.core.data_source import DataSourceType
 from app.services.ontology_service import OntologyService
 from app.scripts.import_history import discover_forms, import_form_data
 from app.services.history_ai_service import export_history_data
+from app.core.database import get_db
 
 # 项目根目录
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -470,3 +472,68 @@ async def export_history(
             db.close()
         except Exception:
             pass
+
+
+class DataSourceInfo(BaseModel):
+    type: str
+    availableTypes: List[str] = ["file", "database"]
+
+
+class DataSourceSwitchRequest(BaseModel):
+    type: str
+
+
+class DataSourceSwitchResponse(BaseModel):
+    success: bool
+    message: str
+    currentType: str
+
+
+@router.get("/datasource", response_model=DataSourceInfo)
+async def get_data_source_info():
+    """获取当前数据源配置信息"""
+    logger.debug("[config/datasource] 获取数据源配置")
+    try:
+        current_type = config_loader.get_current_data_source_type()
+        return DataSourceInfo(
+            type=current_type,
+            availableTypes=["file", "database"]
+        )
+    except Exception as e:
+        logger.exception("[config/datasource] 获取失败: %s", e)
+        raise HTTPException(status_code=500, detail=f"获取数据源配置失败: {str(e)}")
+
+
+@router.post("/datasource/switch", response_model=DataSourceSwitchResponse)
+async def switch_data_source(request: DataSourceSwitchRequest, db=Depends(get_db)):
+    """
+    切换数据源类型
+    
+    参数：
+    - type: 数据源类型 (file / database)
+    """
+    logger.info("[config/datasource/switch] 切换数据源 type=%s", request.type)
+    
+    if request.type not in ["file", "database"]:
+        raise HTTPException(status_code=400, detail="无效的数据源类型，支持: file, database")
+    
+    try:
+        if request.type == "database":
+            config_loader.set_db_session_factory(lambda: db)
+        
+        config_loader.switch_data_source(DataSourceType(request.type))
+        
+        current_type = config_loader.get_current_data_source_type()
+        logger.info("[config/datasource/switch] 切换成功 currentType=%s", current_type)
+        
+        return DataSourceSwitchResponse(
+            success=True,
+            message=f"数据源已切换为: {current_type}",
+            currentType=current_type
+        )
+    except RuntimeError as e:
+        logger.error("[config/datasource/switch] 切换失败: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.exception("[config/datasource/switch] 切换异常: %s", e)
+        raise HTTPException(status_code=500, detail=f"切换数据源失败: {str(e)}")
