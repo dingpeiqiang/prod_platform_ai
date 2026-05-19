@@ -266,11 +266,10 @@ const confirmCopy = async () => {
     )
     
     if (result.success) {
-      ElMessage.success(`工作流复制成功: ${result.data.workflowName}`)
       closeCopyModal()
       refreshWorkflows()
-      // 自动加载复制的工作流到编辑区
-      emit('load-workflow', result.data)
+      // 自动加载复制的工作流到编辑区，标记为复制模式（可编辑）
+      emit('load-workflow', { ...result.data, isCopy: true })
     } else {
       ElMessage.error(result.message || '复制失败')
     }

@@ -69,27 +69,27 @@
             </div>
           </div>
         </div>
-        <button @click="renameWorkflow" class="btn-icon" title="重命名">
+        <button @click="renameWorkflow" :disabled="isReadOnly" class="btn-icon" title="重命名">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
             <path d="m15 3 4 4"/>
           </svg>
         </button>
         <div class="toolbar-divider"></div>
-        <button @click="undo" :disabled="!canUndo" class="btn-icon" title="撤销 (Ctrl+Z)">
+        <button @click="undo" :disabled="!canUndo || isReadOnly" class="btn-icon" title="撤销 (Ctrl+Z)">
           <Undo2 :size="16" />
         </button>
-        <button @click="redo" :disabled="!canRedo" class="btn-icon" title="重做 (Ctrl+Y)">
+        <button @click="redo" :disabled="!canRedo || isReadOnly" class="btn-icon" title="重做 (Ctrl+Y)">
           <Redo2 :size="16" />
         </button>
         <div class="toolbar-divider"></div>
-        <button @click="saveWorkflow" :disabled="!hasChanges" class="btn-icon" title="保存 (Ctrl+S)">
+        <button @click="saveWorkflow" :disabled="!hasChanges || isReadOnly" class="btn-icon" title="保存 (Ctrl+S)">
           <Save :size="16" />
         </button>
         <button @click="exportWorkflow" class="btn-icon" title="导出">
           <Download :size="16" />
         </button>
-        <button @click="importWorkflow" class="btn-icon" title="导入">
+        <button @click="importWorkflow" :disabled="isReadOnly" class="btn-icon" title="导入">
           <Upload :size="16" />
         </button>
         <div class="toolbar-divider"></div>
@@ -124,7 +124,7 @@
           </svg>
           快速执行
         </button>
-        <button @click="clearWorkflow" class="btn-danger">
+        <button @click="clearWorkflow" :disabled="isReadOnly" class="btn-danger">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 6h18"/>
             <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
@@ -132,25 +132,26 @@
           </svg>
           清空
         </button>
+        <span v-if="isReadOnly" class="read-only-badge">🔒 只读模式</span>
       </div>
       
       <div class="toolbar-center">
         <div class="align-group">
-          <button @click="alignLeft" :disabled="selectedNodeIds.length < 2" class="btn-icon" title="左对齐">
+          <button @click="alignLeft" :disabled="selectedNodeIds.length < 2 || isReadOnly" class="btn-icon" title="左对齐">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="4" y1="6" x2="20" y2="6"/>
               <line x1="4" y1="12" x2="14" y2="12"/>
               <line x1="4" y1="18" x2="18" y2="18"/>
             </svg>
           </button>
-          <button @click="alignCenter" :disabled="selectedNodeIds.length < 2" class="btn-icon" title="水平居中">
+          <button @click="alignCenter" :disabled="selectedNodeIds.length < 2 || isReadOnly" class="btn-icon" title="水平居中">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="4" y1="6" x2="20" y2="6"/>
               <line x1="8" y1="12" x2="16" y2="12"/>
               <line x1="6" y1="18" x2="18" y2="18"/>
             </svg>
           </button>
-          <button @click="alignRight" :disabled="selectedNodeIds.length < 2" class="btn-icon" title="右对齐">
+          <button @click="alignRight" :disabled="selectedNodeIds.length < 2 || isReadOnly" class="btn-icon" title="右对齐">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="4" y1="6" x2="20" y2="6"/>
               <line x1="10" y1="12" x2="20" y2="12"/>
@@ -158,21 +159,21 @@
             </svg>
           </button>
           <div class="toolbar-divider-small"></div>
-          <button @click="alignTop" :disabled="selectedNodeIds.length < 2" class="btn-icon" title="顶部对齐">
+          <button @click="alignTop" :disabled="selectedNodeIds.length < 2 || isReadOnly" class="btn-icon" title="顶部对齐">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="6" y1="4" x2="6" y2="20"/>
               <line x1="12" y1="4" x2="12" y2="14"/>
               <line x1="18" y1="4" x2="18" y2="18"/>
             </svg>
           </button>
-          <button @click="alignMiddle" :disabled="selectedNodeIds.length < 2" class="btn-icon" title="垂直居中">
+          <button @click="alignMiddle" :disabled="selectedNodeIds.length < 2 || isReadOnly" class="btn-icon" title="垂直居中">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="6" y1="4" x2="6" y2="20"/>
               <line x1="12" y1="8" x2="12" y2="16"/>
               <line x1="18" y1="6" x2="18" y2="18"/>
             </svg>
           </button>
-          <button @click="alignBottom" :disabled="selectedNodeIds.length < 2" class="btn-icon" title="底部对齐">
+          <button @click="alignBottom" :disabled="selectedNodeIds.length < 2 || isReadOnly" class="btn-icon" title="底部对齐">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="6" y1="4" x2="6" y2="20"/>
               <line x1="12" y1="10" x2="12" y2="20"/>
@@ -182,7 +183,7 @@
         </div>
         <div class="toolbar-divider"></div>
         <div class="distribute-group">
-          <button @click="distributeHorizontal" :disabled="selectedNodeIds.length < 3" class="btn-icon" title="水平分布">
+          <button @click="distributeHorizontal" :disabled="selectedNodeIds.length < 3 || isReadOnly" class="btn-icon" title="水平分布">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="4" y1="8" x2="4" y2="16"/>
               <line x1="12" y1="8" x2="12" y2="16"/>
@@ -190,7 +191,7 @@
               <line x1="4" y1="12" x2="20" y2="12"/>
             </svg>
           </button>
-          <button @click="distributeVertical" :disabled="selectedNodeIds.length < 3" class="btn-icon" title="垂直分布">
+          <button @click="distributeVertical" :disabled="selectedNodeIds.length < 3 || isReadOnly" class="btn-icon" title="垂直分布">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="8" y1="4" x2="16" y2="4"/>
               <line x1="8" y1="12" x2="16" y2="12"/>
@@ -242,11 +243,12 @@
 
     <div class="editor-container">
       <div v-if="showLibraryPanel" class="library-panel-wrapper">
-        <WorkflowLibrary @load-workflow="handleLoadFromLibrary" />
+        <WorkflowLibrary @load-workflow="(wf) => handleLoadFromLibrary(wf, wf.isCopy || false)" />
       </div>
       <div v-if="showLeftPanel" class="left-panel-wrapper">
         <NodePanel 
           :quick-templates="quickTemplates"
+          :disabled="isReadOnly"
           @apply-template="applyTemplate"
           @drag-start="onNodeDragStartFromPanel"
         />
@@ -258,16 +260,16 @@
           :default-zoom="1"
           :min-zoom="0.2"
           :max-zoom="4"
-          :nodes-draggable="true"
-          :nodes-connectable="true"
-          :edges-connectable="isEdgeConnectable"
-          :connect-on-drag="true"
+          :nodes-draggable="!isReadOnly"
+          :nodes-connectable="!isReadOnly"
+          :edges-connectable="!isReadOnly && isEdgeConnectable"
+          :connect-on-drag="!isReadOnly"
           :auto-connect="false"
           :snap-to-grid="true"
           :snap-grid="[20, 20]"
-          :edges-updatable="true"
-          :edges-deletable="true"
-          :delete-key-code="['Delete', 'Backspace']"
+          :edges-updatable="!isReadOnly"
+          :edges-deletable="!isReadOnly"
+          :delete-key-code="isReadOnly ? [] : ['Delete', 'Backspace']"
           :disable-pan="false"
           :prevent-scroll-on-drag="true"
           @connect="onConnect"
@@ -669,6 +671,7 @@ const DOUBLE_CLICK_MS = 320;
 const showShortcuts = ref(false);
 const connectionSuccess = ref(false);
 const isEdgeConnectable = ref(true);
+const isReadOnly = ref(false); // 工作流库加载的工作流为只读模式
 
 // 连接阻止标志，用于协调 onConnect 和 onConnectEnd
 const connectionBlocked = ref(false);
@@ -1501,6 +1504,7 @@ const newWorkflow = () => {
   history.value = [];
   historyIndex.value = -1;
   showWorkflowList.value = false;
+  isReadOnly.value = false; // 新建工作流时重置为可编辑模式
 };
 
 const openWorkflow = (workflow) => {
@@ -1535,9 +1539,10 @@ const openWorkflow = (workflow) => {
   history.value = [];
   historyIndex.value = -1;
   showWorkflowList.value = false;
+  isReadOnly.value = false; // 打开本地工作流时重置为可编辑模式
 };
 
-const handleLoadFromLibrary = (workflow) => {
+const handleLoadFromLibrary = (workflow, isCopy = false) => {
   if (hasChanges.value) {
     if (!confirm('当前工作流有未保存的更改，确定要加载工作流库中的工作流吗？')) {
       return;
@@ -1572,6 +1577,14 @@ const handleLoadFromLibrary = (workflow) => {
   hasChanges.value = false;
   history.value = [];
   historyIndex.value = -1;
+  
+  if (isCopy) {
+    isReadOnly.value = false; // 复制的工作流可编辑
+    ElMessage.success(`工作流复制成功: ${workflow.workflowName}`);
+  } else {
+    isReadOnly.value = true; // 直接加载的工作流设为只读模式
+    ElMessage.info('工作流库中的工作流为只读模式，仅支持查看');
+  }
 };
 
 const deleteWorkflow = (workflowId) => {
@@ -3255,5 +3268,18 @@ onUnmounted(() => {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+.read-only-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background-color: #fef3c7;
+  color: #b45309;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 4px;
+  margin-left: 8px;
 }
 </style>

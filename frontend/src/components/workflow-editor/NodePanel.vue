@@ -21,8 +21,9 @@
           v-for="nodeType in group.nodes" 
           :key="nodeType.id"
           class="node-type-item"
-          draggable="true"
-          @dragstart="onDragStart($event, nodeType)"
+          :class="{ disabled: disabled }"
+          :draggable="!disabled"
+          @dragstart="disabled ? undefined : onDragStart($event, nodeType)"
         >
           <span class="node-icon">{{ nodeType.icon }}</span>
           <span class="node-name">{{ nodeType.name }}</span>
@@ -36,8 +37,10 @@
         <button 
           v-for="template in quickTemplates" 
           :key="template.id" 
-          @click="$emit('apply-template', template)" 
+          @click="disabled ? undefined : $emit('apply-template', template)" 
+          :disabled="disabled"
           class="template-btn"
+          :class="{ disabled: disabled }"
         >
           <div class="template-name">{{ template.name }}</div>
           <div class="template-desc" v-if="template.description">{{ template.description }}</div>
@@ -48,12 +51,16 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 
-defineProps({
+const props = defineProps({
   quickTemplates: {
     type: Array,
     default: () => []
+  },
+  disabled: {
+    type: Boolean,
+    default: false
   }
 });
 
@@ -222,6 +229,20 @@ const onDragStart = (event, nodeType) => {
   opacity: 0.5;
 }
 
+.node-type-item.disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  background-color: #f1f5f9;
+  border-color: #e2e8f0;
+}
+
+.node-type-item.disabled:hover {
+  background-color: #f1f5f9;
+  border-color: #e2e8f0;
+  transform: none;
+  box-shadow: none;
+}
+
 .node-icon {
   font-size: 16px;
 }
@@ -266,6 +287,20 @@ const onDragStart = (event, nodeType) => {
   border-color: #3b82f6;
   transform: translateY(-1px);
   box-shadow: 0 2px 4px rgba(59, 130, 246, 0.1);
+}
+
+.template-btn.disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  background-color: #f1f5f9;
+  border-color: #e2e8f0;
+}
+
+.template-btn.disabled:hover {
+  background-color: #f1f5f9;
+  border-color: #e2e8f0;
+  transform: none;
+  box-shadow: none;
 }
 
 .template-name {
