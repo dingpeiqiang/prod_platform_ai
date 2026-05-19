@@ -127,7 +127,7 @@ case 'executing': {
  }
  }
  };
- const sendStreamMessage = async (text, { formCode = null, formData = null } = {}) => {
+ const sendStreamMessage = async (text, { formCode = null, formData = null, modelConfig = null } = {}) => {
  if (!currentDbSessionIdRef.value)
  return;
  const aiMsg = {
@@ -171,6 +171,8 @@ case 'executing': {
  requestBody.formCode = formCode;
  if (formData)
  requestBody.formData = formData;
+ if (modelConfig)
+ requestBody.modelConfig = modelConfig;
  const resp = await fetch('/api/v1/chat/stream', {
  method: 'POST',
  headers: { 'Content-Type': 'application/json' },

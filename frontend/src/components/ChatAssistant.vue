@@ -60,7 +60,8 @@ const props = defineProps({
  sessionId: { type: String, required: true },
  dbSessionId: { type: String, default: '' },
  userId: { type: String, default: '' },
- sessionTitle: { type: String, default: '新对话' }
+ sessionTitle: { type: String, default: '新对话' },
+ modelConfig: { type: Object, default: null }
 });
 const emit = defineEmits(['title-update', 'session-init', 'create-session-from-home']);
 const messages = ref([]);
@@ -410,7 +411,7 @@ const doSendMessageAfterHome = async (text, { skipUserPush = false, formCode = n
  emit('title-update', props.sessionId, text.slice(0, 20));
  }
  scrollToBottom();
- await sendStreamMessage(text, { formCode, formData });
+ await sendStreamMessage(text, { formCode, formData, modelConfig: props.modelConfig });
 };
 const scrollToBottom = (smooth = false) => {
  if (messageListRef.value) {

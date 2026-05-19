@@ -317,3 +317,56 @@ export async function getFormSchema(formCode) {
     return null
   }
 }
+
+export async function sendMessageWithModel(messages, modelConfig = null) {
+  try {
+    const body = { messages }
+    
+    if (modelConfig) {
+      body.modelConfig = modelConfig
+    }
+    
+    const resp = await fetch('/api/v1/chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+    
+    if (!resp.ok) {
+      const error = await resp.json()
+      throw new Error(error.message || '请求失败')
+    }
+    
+    return resp
+  } catch (e) {
+    console.warn('[chatApi] sendMessageWithModel failed:', e)
+    throw e
+  }
+}
+
+export async function switchModel(modelConfig) {
+  try {
+    const resp = await fetch('/api/v1/chat/model/switch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(modelConfig)
+    })
+    
+    const result = await resp.json()
+    return result
+  } catch (e) {
+    console.warn('[chatApi] switchModel failed:', e)
+    return { success: false, message: '请求失败' }
+  }
+}
+
+export async function getSupportedProviders() {
+  try {
+    const resp = await fetch('/api/v1/chat/model/providers')
+    const result = await resp.json()
+    return result
+  } catch (e) {
+    console.warn('[chatApi] getSupportedProviders failed:', e)
+    return { success: false, providers: [] }
+  }
+}

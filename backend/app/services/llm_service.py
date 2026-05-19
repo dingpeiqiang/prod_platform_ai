@@ -285,6 +285,57 @@ class LLMService:
         """统一调用接口"""
         return self._call_llm_sync(prompt, system_prompt, max_tokens=max_tokens)
     
+    def call_with_provider(self, provider, prompt: str, system_prompt: Optional[str] = None,
+                          max_tokens: Optional[int] = None, reasoning: bool = False):
+        """使用指定的 provider 调用 LLM"""
+        if not provider:
+            logger.warning("[LLM] Provider 未提供")
+            return None if not reasoning else (None, None)
+        
+        prompt_len = len(prompt) + len(system_prompt) if system_prompt else len(prompt)
+        model = provider.model if hasattr(provider, 'model') else 'unknown'
+        
+        logger.info("[LLM DYNAMIC] ====== START ======")
+        logger.info("[LLM DYNAMIC] Model: %s, MaxTokens: %s, Reasoning: %s", 
+                   model, max_tokens, reasoning)
+        logger.info("[LLM DYNAMIC] PromptLength: %d", prompt_len)
+        
+        llm_start = time.time()
+        
+        try:
+            if reasoning:
+                content, reasoning_content = provider.call_with_reasoning(prompt, system_prompt, max_tokens)
+                llm_elapsed = time.time() - llm_start
+                
+                logger.info("[LLM DYNAMIC] ====== COMPLETE ======")
+                if content:
+                    logger.info("[LLM DYNAMIC] Content: %d chars", len(content))
+                    if reasoning_content:
+                        logger.info("[LLM DYNAMIC] Reasoning: %d chars", len(reasoning_content))
+                logger.info("[LLM DYNAMIC] Elapsed: %.2fs", llm_elapsed)
+                
+                return content, reasoning_content
+            else:
+                response = provider.call_sync(prompt, system_prompt, max_tokens)
+                llm_elapsed = time.time() - llm_start
+                
+                logger.info("[LLM DYNAMIC] ====== COMPLETE ======")
+                if response:
+                    logger.info("[LLM DYNAMIC] Response: %d chars", len(response))
+                logger.info("[LLM DYNAMIC] Elapsed: %.2fs", llm_elapsed)
+                
+                return response
+        
+        except Exception as e:
+            llm_elapsed = time.time() - llm_start
+            logger.error("[LLM DYNAMIC] ====== FAILED ======")
+            logger.error("[LLM DYNAMIC] Error: %s", str(e))
+            logger.error("[LLM DYNAMIC] Elapsed: %.2fs", llm_elapsed)
+            
+            if reasoning:
+                return None, None
+            return None
+    
     def _extract_json(self, text: str) -> Optional[Dict]:
         """提取 JSON"""
         return extract_json(text)

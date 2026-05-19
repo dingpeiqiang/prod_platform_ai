@@ -67,6 +67,7 @@
         @open-visualization="openVisualization"
         @open-langchain-editor="openLangChainEditor"
         @toggle-sidebar="toggleDashboardSidebar"
+        @model-change="onModelChange"
       />
       
       <!-- 聊天时隐藏侧边栏的按钮 -->
@@ -191,6 +192,7 @@
           :dbSessionId="activeDbSessionId"
           :userId="userStore.username"
           :sessionTitle="activeSessionTitle"
+          :modelConfig="currentModelConfig"
           @title-update="onTitleUpdate"
           @session-init="onSessionInit"
           @create-session-from-home="onCreateSessionFromHome"
@@ -256,6 +258,10 @@ const isInitializing = ref(true)  // 初始化状态标志
 
 // 当前数据库会话 ID（与 activeSessionId 对应）
 const activeDbSessionId = ref('')
+
+// 当前模型配置
+const currentModelConfig = ref(null)
+const MODEL_CONFIG_KEY = 'chat_model_config'
 
 // 工作流编辑器 key，用于强制组件重建
 const editorKey = ref(0)
@@ -564,6 +570,47 @@ const reportSession = (id) => {
   }
 }
 
+// ── 加载模型配置 ──────────────────────────────────────────
+const loadModelConfig = async () => {
+  try {
+    // 先尝试从 localStorage 加载
+    const raw = localStorage.getItem(MODEL_CONFIG_KEY)
+    if (raw) {
+      currentModelConfig.value = JSON.parse(raw)
+      return
+    }
+    
+    // 如果没有保存的配置，从后端获取系统默认配置
+    const response = await fetch('/api/v1/chat/model/default')
+    const result = await response.json()
+    
+    if (result.success) {
+      currentModelConfig.value = {
+        provider: result.provider,
+        model: result.model,
+        baseUrl: result.baseUrl
+      }
+    }
+  } catch (e) {
+    console.error('加载模型配置失败:', e)
+  }
+}
+
+// ── 保存模型配置 ──────────────────────────────────────────
+const saveModelConfig = (config) => {
+  try {
+    localStorage.setItem(MODEL_CONFIG_KEY, JSON.stringify(config))
+  } catch (e) {
+    console.error('保存模型配置失败:', e)
+  }
+}
+
+// ── 模型配置变更 ──────────────────────────────────────────
+const onModelChange = (modelConfig) => {
+  currentModelConfig.value = modelConfig
+  saveModelConfig(modelConfig)
+}
+
 // ── 标题更新 ──────────────────────────────────────────────
 const onTitleUpdate = async (id, title) => {
   const s = sessions.value.find(s => s.id === id)
@@ -837,6 +884,9 @@ watch(() => userStore.isLoggedIn, (loggedIn) => {
 onMounted(() => {
   // 初始化主题（在应用加载时立即执行）
   initTheme()
+  
+  // 加载模型配置
+  loadModelConfig()
   
   // 添加网络状态监听
   window.addEventListener('online', handleOnline)

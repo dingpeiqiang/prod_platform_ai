@@ -60,6 +60,194 @@ class ChatStreamStats:
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 
 
+@router.post("/chat/model/switch")
+async def switch_model(model_config: Dict[str, Any]):
+    """动态切换模型配置"""
+    from app.services.llm.factory import ProviderFactory
+    
+    try:
+        provider_name = model_config.get('provider', 'openai')
+        if not ProviderFactory.is_supported(provider_name):
+            return {"success": False, "message": f"不支持的 Provider: {provider_name}"}
+        
+        provider = ProviderFactory.create(provider_name, model_config)
+        
+        if hasattr(provider, 'call_sync'):
+            test_response = provider.call_sync("Hello")
+            if test_response is not None:
+                return {
+                    "success": True,
+                    "message": "模型连接成功",
+                    "provider": provider_name,
+                    "model": model_config.get('model')
+                }
+        
+        return {"success": False, "message": "模型连接测试失败"}
+    
+    except Exception as e:
+        logger.error(f"模型切换失败: {e}")
+        return {"success": False, "message": str(e)}
+
+
+@router.post("/chat/model/test")
+async def test_model(model_config: Dict[str, Any]):
+    """测试模型配置是否可用"""
+    from app.services.llm.factory import ProviderFactory
+    
+    try:
+        provider_name = model_config.get('provider', 'custom')
+        logger.info(f"[ModelTest] 开始测试 - Provider: {provider_name}, Model: {model_config.get('model')}")
+        
+        if not ProviderFactory.is_supported(provider_name):
+            return {"success": False, "message": f"不支持的 Provider: {provider_name}"}
+        
+        provider = ProviderFactory.create(provider_name, model_config)
+        
+        if hasattr(provider, 'call_sync'):
+            try:
+                test_response = provider.call_sync("Hello, this is a test message.")
+                if test_response is not None:
+                    logger.info(f"[ModelTest] 测试成功 - Provider: {provider_name}")
+                    return {
+                        "success": True,
+                        "message": "模型连接测试成功",
+                        "provider": provider_name,
+                        "model": model_config.get('model'),
+                        "response_preview": test_response[:100] if len(test_response) > 100 else test_response
+                    }
+                else:
+                    logger.warning(f"[ModelTest] 测试失败 - 返回值为 None")
+                    return {"success": False, "message": "模型连接测试失败: 未能获取有效响应（返回值为 None）"}
+            except Exception as call_error:
+                error_detail = str(call_error)
+                logger.error(f"[ModelTest] call_sync 异常: {error_detail}", exc_info=True)
+                raise call_error
+        
+        return {"success": False, "message": "模型连接测试失败: Provider 不支持同步调用"}
+    
+    except Exception as e:
+        error_message = str(e)
+        logger.error(f"[ModelTest] 模型测试失败: {error_message}", exc_info=True)
+        
+        # 提取更详细的错误信息
+        if "401" in error_message or "Unauthorized" in error_message:
+            return {
+                "success": False, 
+                "message": "认证失败: API Key 无效或已过期", 
+                "detail": error_message,
+                "suggestion": "请检查 API Key 是否正确，或联系服务提供商确认账户状态"
+            }
+        elif "403" in error_message or "Forbidden" in error_message:
+            return {
+                "success": False, 
+                "message": "权限不足: 该 API Key 没有访问此模型的权限", 
+                "detail": error_message,
+                "suggestion": "请确认您的账户有访问该模型的权限，或升级账户等级"
+            }
+        elif "404" in error_message:
+            # 提取模型名称
+            model_name = model_config.get('model', '未知')
+            return {
+                "success": False, 
+                "message": f"模型 '{model_name}' 不存在或您没有访问权限", 
+                "detail": error_message,
+                "suggestion": f"请检查模型名称 '{model_name}' 是否正确，或查阅 API 文档确认可用模型列表"
+            }
+        elif "Connection refused" in error_message or "connect ECONNREFUSED" in error_message:
+            return {
+                "success": False, 
+                "message": "连接失败: 无法连接到指定的服务器", 
+                "detail": error_message,
+                "suggestion": "请检查 Base URL 是否正确，以及网络连接是否正常"
+            }
+        elif "timeout" in error_message.lower():
+            return {
+                "success": False, 
+                "message": "连接超时: 服务器响应时间过长", 
+                "detail": error_message,
+                "suggestion": "请检查网络连接，或稍后重试"
+            }
+        elif "SSL" in error_message or "certificate" in error_message.lower():
+            return {
+                "success": False, 
+                "message": "SSL 证书错误: 无法建立安全连接", 
+                "detail": error_message,
+                "suggestion": "请检查系统时间是否正确，或联系 API 提供商确认证书状态"
+            }
+        elif "HTTP 400" in error_message and ("overdue" in error_message.lower() or "payment" in error_message.lower()):
+            return {
+                "success": False, 
+                "message": "账户欠费或余额不足", 
+                "detail": error_message,
+                "suggestion": "请检查账户余额并及时充值"
+            }
+        elif "HTTP" in error_message:
+            # 提取 HTTP 状态码
+            import re
+            match = re.search(r'HTTP (\d+)', error_message)
+            status_code = match.group(1) if match else '未知'
+            return {
+                "success": False, 
+                "message": f"HTTP {status_code} 错误", 
+                "detail": error_message,
+                "suggestion": "请检查配置是否正确，或查阅 API 文档"
+            }
+        
+        return {
+            "success": False, 
+            "message": f"连接失败: {error_message[:100]}", 
+            "detail": error_message,
+            "suggestion": "请检查配置是否正确，或查看日志获取更多信息"
+        }
+
+
+@router.get("/chat/model/providers")
+async def get_supported_providers():
+    from app.services.llm.factory import ProviderFactory
+    
+    providers = ProviderFactory.get_supported_providers()
+    return {"success": True, "providers": providers}
+
+
+@router.get("/chat/model/default")
+async def get_default_model():
+    """获取系统默认模型配置"""
+    from app.core.config_loader import config_loader
+    
+    llm_config = config_loader.get_app_config().get('llm', {})
+    return {
+        "success": True,
+        "provider": llm_config.get('provider'),
+        "model": llm_config.get('model'),
+        "baseUrl": llm_config.get('baseUrl'),
+        "temperature": llm_config.get('temperature'),
+        "maxTokens": llm_config.get('maxTokens')
+    }
+
+
+@router.get("/chat/model/available")
+async def get_available_models():
+    """获取可用的模型列表"""
+    from app.core.config_loader import config_loader
+    
+    llm_config = config_loader.get_app_config().get('llm', {})
+    default_provider = llm_config.get('provider', 'custom')
+    default_model = llm_config.get('model', '')
+    
+    available_models = []
+    
+    if default_provider and default_model:
+        available_models.append({
+            "id": f"{default_provider}-{default_model}",
+            "provider": default_provider,
+            "providerName": "系统默认",
+            "name": default_model,
+            "isDefault": True
+        })
+    
+    return {"success": True, "models": available_models}
+
+
 class ChatMessage(BaseModel):
     role: str
     content: str
@@ -70,6 +258,7 @@ class ChatRequest(BaseModel):
     userId: Optional[str] = None
     formCode: Optional[str] = None
     formData: Optional[Dict[str, Any]] = None
+    modelConfig: Optional[Dict[str, Any]] = None
 
 
 class ChatResponse(BaseModel):
@@ -271,6 +460,8 @@ async def chat(request: ChatRequest):
 @router.post("/chat/stream")
 async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
     async def stream_generator():
+        from app.services.llm.factory import ProviderFactory
+        
         start_time = time.time()
         stream_stats = ChatStreamStats()
         fallback_enabled = llm_service.fallback_to_rules
@@ -280,6 +471,18 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
         logger.info(f"[chat/stream] 时间戳: {start_time:.3f}")
         logger.info(f"[chat/stream] 消息数量: {len(request.messages)}")
         logger.info(f"[chat/stream] fallbackToRules: {fallback_enabled}")
+
+        current_provider = llm_service.provider
+        model_config = request.modelConfig
+        
+        if model_config:
+            try:
+                provider_name = model_config.get('provider', 'openai')
+                current_provider = ProviderFactory.create(provider_name, model_config)
+                logger.info(f"[chat/stream] 使用动态模型配置: provider={provider_name}, model={model_config.get('model')}")
+            except Exception as e:
+                logger.warning(f"[chat/stream] 动态模型配置失败，使用默认配置: {e}")
+                current_provider = llm_service.provider
 
         try:
             ontologies = config_loader.get_all_ontologies()
@@ -329,12 +532,16 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                 _t0 = time.time()
                 _retry_count = 0
 
+                model_info = current_provider.model if hasattr(current_provider, 'model') else llm_service.llm_config.get("model")
+                provider_info = model_config.get('provider') if model_config else llm_service.llm_config.get("provider")
+                
                 yield thinking("🧠 调用 LLM 进行意图识别...", result={
-                    "model": llm_service.llm_config.get("model"),
-                    "provider": llm_service.llm_config.get("provider"),
+                    "model": model_info,
+                    "provider": provider_info,
                     "temperature": llm_service.llm_config.get("temperature"),
                     "maxTokens": llm_service.llm_config.get("maxTokens"),
-                    "promptLength": len(intent_prompt)
+                    "promptLength": len(intent_prompt),
+                    "isDynamic": model_config is not None
                 })
                 
                 # 【新增】发送 prompt 内容到前端（可展开查看）
@@ -343,7 +550,7 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                 _llm_error = None
                 try:
                     intent_result, intent_reasoning = await loop.run_in_executor(
-                        None, llm_service._call_llm_sync_with_reasoning, intent_prompt
+                        None, llm_service.call_with_provider, current_provider, intent_prompt, None, None, True
                     )
                     logger.info(f"[chat/stream] LLM 返回结果: intent_result={len(intent_result) if intent_result else 0} chars, intent_reasoning={len(intent_reasoning) if intent_reasoning else 0} chars")
                     
@@ -361,7 +568,7 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                         })
                         retry_prompt = intent_prompt + "\n\n---\n**重要提醒**：请直接输出 JSON，不要在 JSON 之外输出任何分析文本。你的回答必须是一个合法的 JSON 对象，以 { 开头，以 } 结尾。"
                         intent_result, _ = await loop.run_in_executor(
-                            None, llm_service._call_llm_sync_with_reasoning, retry_prompt
+                            None, llm_service.call_with_provider, current_provider, retry_prompt, None, None, True
                         )
                         if intent_result:
                             logger.info("[chat/stream] ✅ 重试成功，获得 JSON 响应 (%d chars)", len(intent_result))
@@ -424,7 +631,7 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                 yield reasoning(f"📥 场景 Prompt 输入（{len(scene_prompt_content) + len(scene_input)} 字符）:\n\n系统提示词：{scene_prompt_content[:1000]}{'...' if len(scene_prompt_content) > 1000 else ''}\n\n对话上下文：{scene_input[:1000]}{'...' if len(scene_input) > 1000 else ''}")
                                 
                                 try:
-                                    scene_response = llm_service._call_llm_sync(scene_input, system_prompt=scene_prompt_content)
+                                    scene_response = llm_service.call_with_provider(current_provider, scene_input, system_prompt=scene_prompt_content)
                                     if scene_response:
                                         intent_data["sceneResponse"] = scene_response
                                         logger.info(f"[chat/stream] 场景提示词调用成功，响应长度={len(scene_response)}")

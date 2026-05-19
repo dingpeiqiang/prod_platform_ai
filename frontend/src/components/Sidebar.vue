@@ -253,6 +253,41 @@
             <span class="menu-item-text">{{ isDark ? '切换亮色模式' : '切换暗色模式' }}</span>
           </button>
           
+          <!-- 切换模型 -->
+          <div class="model-switch-section">
+            <button class="menu-item model-switch-item" @click="toggleModelSwitch">
+              <svg class="menu-item-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+              </svg>
+              <span class="menu-item-text">切换模型</span>
+              <span class="current-model">{{ currentModelName }}</span>
+            </button>
+            
+            <!-- 快速切换模型列表 -->
+            <div v-if="showModelSwitch" class="model-switch-list">
+              <div
+                v-for="model in availableModels"
+                :key="model.id"
+                class="model-switch-item"
+                :class="{ active: isCurrentModel(model) }"
+                @click="quickSwitchModel(model)"
+              >
+                <span class="model-provider">{{ model.providerName }}</span>
+                <span class="model-name">{{ model.name }}</span>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 模型配置 -->
+          <button class="menu-item model-config-item" @click="toggleModelConfig">
+            <svg class="menu-item-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <circle cx="12" cy="12" r="4"/>
+              <circle cx="12" cy="12" r="1"/>
+            </svg>
+            <span class="menu-item-text">模型配置</span>
+          </button>
+          
           <!-- 分隔线 -->
           <div class="menu-divider"></div>
           
@@ -267,6 +302,24 @@
           </button>
         </div>
       </div>
+
+      <!-- 模型选择器弹窗 -->
+      <div v-if="showModelSelector" class="model-selector-overlay" @click="showModelSelector = false">
+        <div class="model-selector-popup" @click.stop>
+          <div class="popup-header">
+            <span class="popup-title">模型配置</span>
+            <button class="popup-close" @click="showModelSelector = false">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <div class="popup-content">
+            <ModelSelector @model-change="handleModelChange" />
+          </div>
+        </div>
+      </div>
     </div>
     </template>
   </div>
@@ -276,12 +329,32 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useUserStore } from '../stores/user'
 import { useTheme } from '../composables/useTheme'
+import ModelSelector from './ModelSelector.vue'
 
 const userStore = useUserStore()
 const { isDark, toggleTheme } = useTheme()
 const showUserMenu = ref(false)
+const showModelSelector = ref(false)
+const showModelSwitch = ref(false)
 const activeSessionMenu = ref(null)
 const userInfoRef = ref(null)
+
+const currentModel = ref(null)
+const MODEL_CONFIG_KEY = 'chat_model_config'
+const MODEL_HISTORY_KEY = 'chat_model_history'
+const availableModels = ref([])
+
+const currentModelName = computed(() => {
+  if (currentModel.value) {
+    return currentModel.value.name
+  }
+  return '未选择'
+})
+
+const isCurrentModel = (model) => {
+  if (!currentModel.value) return false
+  return currentModel.value.id === model.id
+}
 
 const username = computed(() => userStore.username)
 const avatarText = computed(() => userStore.avatarText)
@@ -298,7 +371,7 @@ const props = defineProps({
 // 调试：打印 sessions 数量
 console.log('[Sidebar] sessions 数量:', props.sessions.length, 'activeId:', props.activeId)
 
-const emit = defineEmits(['new-session', 'switch-session', 'delete-session', 'logout', 'pin-session', 'share-session', 'report-session', 'rename-session', 'open-langchain', 'open-visualization', 'open-langchain-editor', 'toggle-sidebar'])
+const emit = defineEmits(['new-session', 'switch-session', 'delete-session', 'logout', 'pin-session', 'share-session', 'report-session', 'rename-session', 'open-langchain', 'open-visualization', 'open-langchain-editor', 'toggle-sidebar', 'model-change'])
 
 const handlePinSession = (sessionId) => {
   console.log('[Sidebar.vue] handlePinSession called with sessionId:', sessionId)
@@ -327,14 +400,189 @@ const handleReport = (sessionId) => {
   emit('report-session', sessionId)
 }
 
+const handleModelChange = (modelConfig) => {
+  emit('model-change', modelConfig)
+  showModelSelector.value = false
+  
+  saveModelToHistory(modelConfig)
+  loadAvailableModels()
+  
+  const model = availableModels.value.find(m => m.provider === modelConfig.provider && m.name === modelConfig.model)
+  if (model) {
+    currentModel.value = model
+  } else {
+    currentModel.value = {
+      id: `${modelConfig.provider}-${modelConfig.model}`,
+      provider: modelConfig.provider,
+      providerName: modelConfig.provider === 'custom' ? '自定义' : modelConfig.provider,
+      name: modelConfig.model
+    }
+  }
+}
+
+const toggleModelSelector = () => {
+  showModelSelector.value = !showModelSelector.value
+  showUserMenu.value = false
+}
+
+const toggleModelConfig = () => {
+  toggleModelSelector()
+}
+
+const toggleModelSwitch = () => {
+  showModelSwitch.value = !showModelSwitch.value
+}
+
+const quickSwitchModel = async (model) => {
+  showModelSwitch.value = false
+  
+  const modelConfig = {
+    provider: model.provider,
+    model: model.name
+  }
+  
+  try {
+    const response = await fetch('/api/v1/chat/model/switch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(modelConfig)
+    })
+    
+    const result = await response.json()
+    
+    if (result.success) {
+      saveModelToHistory(modelConfig)
+      currentModel.value = model
+      emit('model-change', modelConfig)
+    }
+  } catch (error) {
+    console.error('快速切换模型失败:', error)
+  }
+}
+
+// 获取模型历史记录
+const getModelHistory = () => {
+  try {
+    const raw = localStorage.getItem(MODEL_HISTORY_KEY)
+    if (raw) {
+      return JSON.parse(raw)
+    }
+  } catch (e) {
+    console.error('读取模型历史失败:', e)
+  }
+  return []
+}
+
+// 保存模型到历史记录
+const saveModelToHistory = (modelConfig) => {
+  try {
+    const history = getModelHistory()
+    const existingIndex = history.findIndex(
+      m => m.provider === modelConfig.provider && m.name === modelConfig.model
+    )
+    
+    if (existingIndex >= 0) {
+      history.splice(existingIndex, 1)
+    }
+    
+    history.unshift({
+      id: `${modelConfig.provider}-${modelConfig.model}`,
+      provider: modelConfig.provider,
+      providerName: modelConfig.provider === 'custom' ? '自定义' : modelConfig.provider,
+      name: modelConfig.model
+    })
+    
+    const maxHistory = 5
+    const trimmedHistory = history.slice(0, maxHistory)
+    
+    localStorage.setItem(MODEL_HISTORY_KEY, JSON.stringify(trimmedHistory))
+    return trimmedHistory
+  } catch (e) {
+    console.error('保存模型历史失败:', e)
+    return []
+  }
+}
+
+// 加载可用模型列表
+const loadAvailableModels = async () => {
+  try {
+    const response = await fetch('/api/v1/chat/model/available')
+    const result = await response.json()
+    
+    const history = getModelHistory()
+    
+    if (result.success && result.models) {
+      const existingIds = new Set(history.map(m => m.id))
+      result.models.forEach(model => {
+        if (!existingIds.has(model.id)) {
+          history.push(model)
+        }
+      })
+    }
+    
+    availableModels.value = history
+  } catch (e) {
+    console.error('加载可用模型列表失败:', e)
+    availableModels.value = getModelHistory()
+  }
+}
+
+// 加载保存的模型配置
+const loadSavedModel = async () => {
+  try {
+    // 先加载可用模型列表
+    await loadAvailableModels()
+    
+    // 先尝试从 localStorage 加载
+    const raw = localStorage.getItem(MODEL_CONFIG_KEY)
+    if (raw) {
+      const config = JSON.parse(raw)
+      const model = availableModels.value.find(
+        m => m.provider === config.provider && m.name === config.model
+      )
+      if (model) {
+        currentModel.value = model
+        return
+      }
+    }
+    
+    // 如果没有保存的配置或未匹配到列表，从后端获取系统默认配置
+    const response = await fetch('/api/v1/chat/model/default')
+    const result = await response.json()
+    
+    if (result.success) {
+      const model = availableModels.value.find(
+        m => m.provider === result.provider && m.name === result.model
+      )
+      if (model) {
+        currentModel.value = model
+      } else {
+        // 如果系统默认模型不在列表中，显示自定义标识
+        currentModel.value = {
+          id: `${result.provider}-${result.model}`,
+          provider: result.provider,
+          providerName: result.provider === 'custom' ? '自定义' : result.provider,
+          name: result.model
+        }
+      }
+    }
+  } catch (e) {
+    console.error('加载保存的模型配置失败:', e)
+  }
+}
+
 // 点击空白处关闭菜单
 const handleClickOutside = (e) => {
   if (userInfoRef.value && !userInfoRef.value.contains(e.target)) {
     showUserMenu.value = false
   }
   activeSessionMenu.value = null
+  showModelSwitch.value = false
 }
-onMounted(() => document.addEventListener('click', handleClickOutside))
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+  loadSavedModel()
+})
 onUnmounted(() => document.removeEventListener('click', handleClickOutside))
 
 const today = new Date().toDateString()
@@ -741,6 +989,10 @@ const olderSessions = computed(() =>
   position: relative;
 }
 
+.model-selector-container {
+  margin-bottom: var(--space-3);
+}
+
 .user-info {
   display: flex;
   align-items: center;
@@ -855,6 +1107,167 @@ const olderSessions = computed(() =>
 .logout-item:hover {
   background: rgba(239,68,68,0.1);
   color: var(--color-error-500);
+}
+
+.model-config-item:hover {
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--color-primary-500);
+}
+
+.model-switch-section {
+  position: relative;
+}
+
+.model-switch-item {
+  justify-content: space-between;
+}
+
+.model-switch-item .current-model {
+  font-size: var(--font-size-xs);
+  color: var(--color-primary-500);
+  background: rgba(99, 102, 241, 0.1);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.model-switch-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  padding: var(--space-1);
+  z-index: var(--z-dropdown);
+  animation: sessionMenuIn 0.15s cubic-bezier(.16,1,.3,1) both;
+}
+
+.model-switch-list .model-switch-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.model-switch-list .model-switch-item:hover {
+  background: var(--sidebar-hover-bg);
+}
+
+.model-switch-list .model-switch-item.active {
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.model-switch-list .model-switch-item.active .model-name {
+  color: var(--color-primary-500);
+  font-weight: var(--font-weight-medium);
+}
+
+.model-provider {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+
+.model-name {
+  font-size: var(--font-size-sm);
+  color: var(--sidebar-text-secondary);
+}
+
+/* 模型选择器弹窗 */
+.model-selector-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal);
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.model-selector-popup {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-2xl);
+  width: 90%;
+  max-width: 400px;
+  overflow: hidden;
+  animation: popupIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes popupIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border-light);
+  background: var(--bg-secondary);
+}
+
+.popup-title {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.popup-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+}
+
+.popup-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.popup-content {
+  padding: var(--space-4);
+}
+
+.popup-content :deep(.model-selector) {
+  background: transparent;
+  border: none;
+  padding: 0;
+  gap: var(--space-3);
+}
+
+.popup-content :deep(.selector-header) {
+  display: none;
 }
 
 </style>
