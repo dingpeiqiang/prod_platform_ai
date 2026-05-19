@@ -1,52 +1,39 @@
-const API_BASE = '/api/v1'
+import { get, post, put, del, patch } from './httpClient'
 
 export async function getToolCategories() {
-    const resp = await fetch(`${API_BASE}/tools/categories`)
-    return await resp.json()
+    return await get('tools/categories')
 }
 
 export async function listTools(category, isActive) {
-    const params = new URLSearchParams()
-    if (category) params.set('category', category)
-    if (isActive !== undefined) params.set('isActive', isActive)
-    
-    const resp = await fetch(`${API_BASE}/tools?${params}`)
-    return await resp.json()
+    return await get('tools', {
+        params: { category, isActive }
+    })
 }
 
 export async function getTool(toolCode) {
-    const resp = await fetch(`${API_BASE}/tools/${toolCode}`)
-    return await resp.json()
+    return await get(`tools/${toolCode}`)
 }
 
 export async function createTool(data) {
-    const resp = await fetch(`${API_BASE}/tools`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+    return await post('tools', data, {
+        loadingText: '创建工具中...'
     })
-    return await resp.json()
 }
 
 export async function updateTool(toolCode, data) {
-    const resp = await fetch(`${API_BASE}/tools/${toolCode}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+    return await put(`tools/${toolCode}`, data, {
+        loadingText: '更新工具中...'
     })
-    return await resp.json()
 }
 
 export async function deleteTool(toolCode) {
-    const resp = await fetch(`${API_BASE}/tools/${toolCode}`, {
-        method: 'DELETE'
+    return await del(`tools/${toolCode}`, {
+        loadingText: '删除工具中...'
     })
-    return await resp.json()
 }
 
 export async function toggleTool(toolCode) {
-    const resp = await fetch(`${API_BASE}/tools/${toolCode}/toggle`, {
-        method: 'PATCH'
+    return await patch(`tools/${toolCode}/toggle`, {}, {
+        loadingText: '切换状态中...'
     })
-    return await resp.json()
 }

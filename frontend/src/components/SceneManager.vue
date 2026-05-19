@@ -185,9 +185,23 @@
             <el-descriptions :column="1" border>
               <el-descriptions-item label="关联提示词">
                 <span>{{ getPromptName(selectedNode.promptCode) || '未配置' }}</span>
-                <el-button v-if="selectedNode.promptCode" type="text" size="small" @click="openPromptEditorForSelected">编辑</el-button>
+                <el-button v-if="selectedNode.promptCode" type="link" size="small" @click="openPromptEditorForSelected">编辑</el-button>
               </el-descriptions-item>
             </el-descriptions>
+          </el-card>
+
+          <!-- 提示词预览（仅场景） -->
+          <el-card v-if="selectedNode.type === 'scene' && selectedNode.promptCode" class="info-card">
+            <template #header>
+              <span class="card-title">提示词预览</span>
+              <el-button type="text" @click="openPromptEditorForSelected" class="preview-edit-btn">
+                <el-icon><Edit /></el-icon>
+                编辑
+              </el-button>
+            </template>
+            <div class="prompt-preview">
+              <pre class="preview-content">{{ getPromptContent(selectedNode.promptCode) || '加载中...' }}</pre>
+            </div>
           </el-card>
 
           <!-- 子节点列表 -->
@@ -238,7 +252,7 @@
     >
       <el-form :model="formData" label-width="110px" ref="formRef">
         <el-form-item label="编码" prop="sceneCode" required>
-          <el-input v-model="formData.sceneCode" :disabled="!!editingNode" placeholder="请输入编码" />
+          <el-input v-model="formData.sceneCode" :disabled="!!editingNode" placeholder="请输入编码" @input="updateDefaultPromptCode" />
         </el-form-item>
         <el-form-item label="名称" prop="sceneName" required>
           <el-input v-model="formData.sceneName" placeholder="请输入名称" />
@@ -285,7 +299,7 @@
                 :value="prompt.code"
               />
             </el-select>
-            <el-button v-if="formData.promptCode" type="text" @click="openPromptEditor">编辑提示词</el-button>
+            <el-button v-if="formData.promptCode" type="link" @click="openPromptEditor">编辑提示词</el-button>
           </el-form-item>
         </template>
       </el-form>
@@ -556,6 +570,12 @@ const getPromptName = (promptCode) => {
   return prompt ? prompt.name : promptCode
 }
 
+const getPromptContent = (promptCode) => {
+  if (!promptCode) return null
+  const prompt = prompts.value.find(p => p.code === promptCode)
+  return prompt ? prompt.content : null
+}
+
 const openPromptEditor = async () => {
   if (!formData.promptCode) return
   const prompt = prompts.value.find(p => p.code === formData.promptCode)
@@ -656,6 +676,12 @@ const handleAddScene = (parentData) => {
   Promise.all([loadForms(), loadPrompts()]).then(() => {
     dialogVisible.value = true
   })
+}
+
+const updateDefaultPromptCode = () => {
+  if (formData.type === 'scene' && formData.sceneCode && !formData.promptCode) {
+    formData.promptCode = `${formData.sceneCode}_prompt`
+  }
 }
 
 // 编辑
@@ -1205,5 +1231,34 @@ onMounted(() => {
   margin-left: 6px;
   opacity: 0.7;
   font-size: 12px;
+}
+
+.preview-edit-btn {
+  float: right;
+  color: #409eff;
+  font-size: 14px;
+}
+
+.preview-edit-btn:hover {
+  color: #66b1ff;
+}
+
+.prompt-preview {
+  margin-top: 8px;
+}
+
+.preview-content {
+  margin: 0;
+  padding: 12px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #333;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 300px;
+  overflow-y: auto;
 }
 </style>

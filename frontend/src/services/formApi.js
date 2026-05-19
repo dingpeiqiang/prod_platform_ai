@@ -1,52 +1,42 @@
-const API_BASE = '/api/v1'
+import { get, post, put, del } from './httpClient'
 
 export async function getFormCategories() {
-    const resp = await fetch(`${API_BASE}/forms/categories`)
-    return await resp.json()
+    return await get('forms/categories')
 }
 
 export async function listForms(category, isActive) {
-    const params = new URLSearchParams()
-    if (category) params.set('category', category)
-    if (isActive !== undefined) params.set('isActive', isActive)
-    
-    const resp = await fetch(`${API_BASE}/forms?${params}`)
-    return await resp.json()
+    return await get('forms', {
+        params: {
+            category,
+            isActive
+        }
+    })
 }
 
 export async function getForm(formCode) {
-    const resp = await fetch(`${API_BASE}/forms/${formCode}`)
-    return await resp.json()
+    return await get(`forms/${formCode}`)
 }
 
 export async function createForm(data) {
-    const resp = await fetch(`${API_BASE}/forms`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+    return await post('forms', data, {
+        loadingText: '创建表单中...'
     })
-    return await resp.json()
 }
 
 export async function updateForm(formCode, data) {
-    const resp = await fetch(`${API_BASE}/forms/${formCode}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+    return await put(`forms/${formCode}`, data, {
+        loadingText: '更新表单中...'
     })
-    return await resp.json()
 }
 
 export async function deleteForm(formCode) {
-    const resp = await fetch(`${API_BASE}/forms/${formCode}`, {
-        method: 'DELETE'
+    return await del(`forms/${formCode}`, {
+        loadingText: '删除表单中...'
     })
-    return await resp.json()
 }
 
 export async function toggleForm(formCode) {
-    const resp = await fetch(`${API_BASE}/forms/${formCode}/toggle`, {
-        method: 'PATCH'
+    return await put(`forms/${formCode}/toggle`, {}, {
+        loadingText: '切换状态中...'
     })
-    return await resp.json()
 }
