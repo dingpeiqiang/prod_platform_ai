@@ -185,7 +185,7 @@
             <el-descriptions :column="1" border>
               <el-descriptions-item label="关联提示词">
                 <span>{{ getPromptName(selectedNode.promptCode) || '未配置' }}</span>
-                <el-button v-if="selectedNode.promptCode" type="text" size="small" @click="openPromptEditorForSelected">编辑</el-button>
+                <el-button v-if="selectedNode.promptCode" link size="small" @click="openPromptEditorForSelected">编辑</el-button>
               </el-descriptions-item>
             </el-descriptions>
           </el-card>
@@ -194,7 +194,7 @@
           <el-card v-if="selectedNode.type === 'scene' && selectedNode.promptCode" class="info-card">
             <template #header>
               <span class="card-title">提示词预览</span>
-              <el-button type="text" @click="openPromptEditorForSelected" class="preview-edit-btn">
+              <el-button link @click="openPromptEditorForSelected" class="preview-edit-btn">
                 <el-icon><Edit /></el-icon>
                 编辑
               </el-button>
@@ -299,7 +299,7 @@
                 :value="prompt.code"
               />
             </el-select>
-            <el-button v-if="formData.promptCode" type="text" @click="openPromptEditor">编辑提示词</el-button>
+            <el-button v-if="formData.promptCode" link @click="openPromptEditor">编辑提示词</el-button>
           </el-form-item>
         </template>
       </el-form>
