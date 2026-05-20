@@ -1,11 +1,13 @@
 <template>
-  <div
+    <div
     ref="nodeRef"
     class="node condition-node"
     :class="{
       selected,
       'is-config-mode': configMode,
-      'is-compact': compact && !configMode
+      'is-compact': compact && !configMode,
+      'layout-vertical': isVertical,
+      'layout-horizontal': !isVertical
     }"
   >
     <!-- 配置模式 -->
@@ -892,10 +894,15 @@ onUnmounted(() => {
 .handle-label.handle-label-3 { background: rgba(245, 158, 11, 0.9); border: 1px solid #f59e0b; }
 .handle-label.handle-label-4 { background: rgba(139, 92, 246, 0.9); border: 1px solid #8b5cf6; }
 
-/* 水平布局时标签位置调整 - 标签紧跟 Handle 左侧 */
-:deep(.vue-flow--horizontal) .handle-label {
-  transform: translate(calc(-100% - 8px), -50%);
-  margin-top: 0;
+/* 水平布局时：标签在锚点的正左侧（标签右侧距锚点中心14px=Handle半径6px+间距8px） */
+.condition-node.layout-horizontal .handle-label {
+  transform: translateX(calc(-100% - 14px));
+}
+
+/* 垂直布局时：标签在节点底部内侧，Handle 的上方 */
+.condition-node.layout-vertical .handle-label {
+  transform: translate(-50%, -100%);
+  margin-top: -6px;
 }
 
 /* ========== 配置面板样式 ========== */
