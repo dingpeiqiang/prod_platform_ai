@@ -110,7 +110,8 @@ const nodeGroups = ref([
     id: 'forms',
     name: '表单操作',
     nodes: [
-      { id: 'form', name: '表单节点', icon: '📋', type: 'form' }
+      { id: 'form', name: '表单节点', icon: '📋', type: 'form' },
+      { id: 'validate', name: '数据验证', icon: '✓', type: 'validate' }
     ]
   }
 ]);

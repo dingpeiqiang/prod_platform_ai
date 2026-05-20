@@ -242,7 +242,7 @@
     </div>
 
     <!-- 连接线Handle -->
-    <Handle v-if="!configMode" type="target" :position="Position.Left" id="target" />
+    <Handle v-if="!configMode" type="target" :position="targetPosition" id="target" />
     <!-- 动态生成与分支数量对应的输出连接点 - 使用wrapper实现精确定位 -->
     <div
       v-for="(branch, index) in localBranches"
@@ -253,7 +253,7 @@
     >
       <Handle
         type="source"
-        :position="Position.Right"
+        :position="isVertical ? Position.Right : Position.Bottom"
         :id="'branch_' + index"
         :class="'handle-branch-' + index"
       />
@@ -262,9 +262,10 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted, nextTick } from 'vue';
+import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { Handle, Position } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
+import { useNodeAnchorMode } from './useHandlePosition.js';
 
 const props = defineProps({
   data: {
@@ -281,6 +282,8 @@ const props = defineProps({
   },
   ...nodeDisplayProps
 });
+
+const { targetPosition, sourcePosition, isVertical } = useNodeAnchorMode(props);
 
 const emit = defineEmits(['update', 'close']);
 
@@ -499,25 +502,49 @@ const getOperatorLabel = (operator) => {
   return operators[operator] || operator;
 };
 
-// 更新 Handle wrapper 的位置
+// 更新 Handle wrapper 的位置（使用防抖优化性能）
+let updateHandlePositionsTimer = null;
 const updateHandlePositions = () => {
   if (!nodeRef.value) return;
-  
-  const nodeElement = nodeRef.value;
-  const branchItems = nodeElement.querySelectorAll('.branch-condition-item');
-  const wrappers = nodeElement.querySelectorAll('.handle-position-wrapper');
-  
-  branchItems.forEach((item, index) => {
-    const wrapper = wrappers[index];
-    if (wrapper && item) {
-      const itemRect = item.getBoundingClientRect();
-      const nodeRect = nodeElement.getBoundingClientRect();
-      
-      // 计算相对于节点的top位置
-      const top = itemRect.top - nodeRect.top + itemRect.height / 2;
-      wrapper.style.top = `${top}px`;
-    }
-  });
+
+  // 清除之前的定时器
+  if (updateHandlePositionsTimer) {
+    clearTimeout(updateHandlePositionsTimer);
+  }
+
+  // 使用 requestAnimationFrame 和防抖优化性能
+  updateHandlePositionsTimer = setTimeout(() => {
+    requestAnimationFrame(() => {
+      const nodeElement = nodeRef.value;
+      if (!nodeElement) return;
+
+      const branchItems = nodeElement.querySelectorAll('.branch-condition-item');
+      const wrappers = nodeElement.querySelectorAll('.handle-position-wrapper');
+
+      branchItems.forEach((item, index) => {
+        const wrapper = wrappers[index];
+        if (wrapper && item) {
+          const itemRect = item.getBoundingClientRect();
+          const nodeRect = nodeElement.getBoundingClientRect();
+
+          // 根据布局模式计算位置
+          if (isVertical.value) {
+            // 垂直布局：source 在底部，wrapper 从右侧伸出
+            const top = itemRect.top - nodeRect.top + itemRect.height / 2;
+            wrapper.style.top = `${top}px`;
+            wrapper.style.left = '';
+            wrapper.style.right = '0px';
+          } else {
+            // 水平布局：source 在右侧，wrapper 从底部伸出
+            const left = itemRect.left - nodeRect.left + itemRect.width / 2;
+            wrapper.style.left = `${left}px`;
+            wrapper.style.top = '';
+            wrapper.style.bottom = '0px';
+          }
+        }
+      });
+    });
+  }, 50); // 50ms 防抖
 };
 
 // 监听数据变化
@@ -531,6 +558,11 @@ watch(() => props.data, (newData) => {
 
 // 监听分支数量变化
 watch(() => localBranches.value.length, () => {
+  nextTick(() => updateHandlePositions());
+});
+
+// 监听锚点模式变化（切换垂直/水平布局时重新计算 Handle 位置）
+watch(isVertical, () => {
   nextTick(() => updateHandlePositions());
 });
 
@@ -548,6 +580,14 @@ onMounted(() => {
     }
   });
 });
+
+// 组件卸载时清理定时器
+onUnmounted(() => {
+  if (updateHandlePositionsTimer) {
+    clearTimeout(updateHandlePositionsTimer);
+    updateHandlePositionsTimer = null;
+  }
+});
 </script>
 
 <style scoped>
@@ -556,8 +596,8 @@ onMounted(() => {
   border: 1px solid #e2e8f0;
   color: #333;
   border-radius: 8px;
-  min-width: 260px;
-  min-height: 180px;
+  min-width: 180px;
+  min-height: 120px; /* 统一节点最小高度 */
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   transition: all 0.3s ease;
 }
@@ -1117,15 +1157,7 @@ onMounted(() => {
   background-color: #7c3aed !important;
 }
 
-:deep(.vue-flow__handle[type="source"]) {
-  background-color: #10b981 !important;
-}
-
-:deep(.vue-flow__handle[type="source"]:hover) {
-  background-color: #059669 !important;
-}
-
-/* 分支连接点颜色 */
+/* 条件分支输出Handle - 保持多色以区分不同分支 */
 :deep(.vue-flow__handle.handle-branch-0[type="source"]) {
   background-color: #22c55e !important;
 }
@@ -1145,9 +1177,12 @@ onMounted(() => {
 /* Handle 位置包装器 - 通过JS动态定位 */
 .handle-position-wrapper {
   position: absolute;
+  /* 默认垂直布局：right + top */
   right: 0;
+  /* 水平布局下会被 JS 动态设置为 left + bottom */
   width: 0;
   height: 0;
   pointer-events: none;
+  transform: translateY(-50%);
 }
 </style>

@@ -90,3 +90,6 @@
 - API端点：/chat/history/analyze, generate, import, list, {formCode}/summary
 - AI生成流程：读取本体 → LLM生成符合约束的JSONL → 保存到import_data/ → 前端预览+确认导入
 - 前端面板：评分环+异常检测+推荐列表+预览+导入按钮+字段分布
+
+## 踩坑经验
+- **Vue Flow 节点数据更新**：当通过 `elements.value` 中的节点直接修改 `node.data.anchorMode = newMode` 时，Vue 响应式系统无法正确追踪嵌套属性的变化，导致节点组件的 watch 不触发。解决方式：使用 `node.data = { ...node.data, anchorMode: newMode }` 替换整个 data 对象，Vue 能正确追踪替换操作并触发响应式更新（类似 updateNodeData 的实现模式）。

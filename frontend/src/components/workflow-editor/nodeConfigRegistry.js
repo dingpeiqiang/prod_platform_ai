@@ -12,6 +12,7 @@ import ParserNode from './nodes/ParserNode.vue';
 import FormNode from './nodes/FormNode.vue';
 import KnowledgeNode from './nodes/KnowledgeNode.vue';
 import UserInputNode from './nodes/UserInputNode.vue';
+import ValidateNode from './nodes/ValidateNode.vue';
 
 export const NODE_CONFIG_COMPONENTS = {
   start: StartNode,
@@ -27,7 +28,8 @@ export const NODE_CONFIG_COMPONENTS = {
   code: CodeNode,
   parser: ParserNode,
   form: FormNode,
-  knowledgeBase: KnowledgeNode
+  knowledgeBase: KnowledgeNode,
+  validate: ValidateNode
 };
 
 export const NODE_TYPE_LABELS = {
@@ -44,5 +46,6 @@ export const NODE_TYPE_LABELS = {
   parser: '输出解析',
   form: '表单',
   knowledgeBase: '知识库',
-  userInput: '用户输入'
+  userInput: '用户输入',
+  validate: '数据验证'
 };

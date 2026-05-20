@@ -175,9 +175,9 @@ export const autoLayoutNodes = (nodes, edges) => {
   if (nodes.length === 0) return;
   
   const NODE_WIDTH = 180;
-  const NODE_HEIGHT = 80;
-  const HORIZONTAL_GAP = 200;
-  const VERTICAL_GAP = 100;
+  const NODE_HEIGHT = 120; // 与节点CSS中的min-height保持一致
+  const HORIZONTAL_GAP = 80;  // 水平间距（与toggleAnchorMode保持一致）
+  const VERTICAL_GAP = 80;    // 垂直间距（与toggleAnchorMode保持一致）
   const START_X = 50;
   const START_Y = 200;
   

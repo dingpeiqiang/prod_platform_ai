@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
+from sqlalchemy.orm import Session
 import logging
 import tempfile
 import os
@@ -106,14 +107,19 @@ async def get_app_config():
 
 
 @router.get("/ontologies", response_model=OntologyListResponse)
-async def list_ontologies():
+async def list_ontologies(db: Session = Depends(get_db)):
+    """
+    获取所有本体列表（从数据库）
+    返回完整的本体信息，含 category / isActive / entities 等所有字段
+    """
     logger.debug("[config/ontologies] 获取本体列表")
     try:
-        result = OntologyService.get_all_ontologies()
-        logger.debug("[config/ontologies] 返回 %d 个本体", len(result.get("ontologies", [])))
+        result = OntologyService.list_ontologies(db)
+        ontologies = result.get("data", [])
+        logger.debug("[config/ontologies] 返回 %d 个本体", len(ontologies))
         return OntologyListResponse(
             success=result["success"],
-            ontologies=result.get("ontologies", [])
+            ontologies=ontologies
         )
     except Exception as e:
         logger.exception("[config/ontologies] 获取本体列表失败: %s", e)

@@ -19,6 +19,10 @@
     </div>
     <div v-if="compact && !configMode" class="node-compact-body">
       <span class="compact-summary">工作流结束</span>
+      <div class="compact-direction-indicator">
+        <span class="direction-arrow">⬅️</span>
+        <span class="direction-text">仅输入</span>
+      </div>
     </div>
     
     <div v-if="configMode" class="end-node-config">
@@ -199,14 +203,15 @@
       </div>
     </div>
     
-    <Handle v-if="!configMode" type="target" :position="Position.Left" id="target" />
+    <Handle v-if="!configMode" type="target" :position="targetPosition" id="target" />
   </div>
 </template>
 
 <script setup>
 import { ref, watch } from 'vue';
-import { Handle, Position } from '@vue-flow/core';
+import { Handle } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
+import { useNodeAnchorMode } from './useHandlePosition.js';
 
 const props = defineProps({
   data: {
@@ -227,6 +232,8 @@ const props = defineProps({
   },
   ...nodeDisplayProps
 });
+
+const { targetPosition } = useNodeAnchorMode(props);
 
 const emit = defineEmits(['update', 'close']);
 
@@ -298,7 +305,8 @@ watch(() => props.data, (newData) => {
   background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
   color: white;
   border-radius: 8px;
-  min-width: 150px;
+  min-width: 180px;
+  min-height: 120px; /* 统一节点最小高度 */
   box-shadow: 0 2px 8px rgba(245, 87, 108, 0.3);
   transition: all 0.3s ease;
 }
@@ -320,7 +328,7 @@ watch(() => props.data, (newData) => {
 }
 
 .end-node.is-compact {
-  min-width: 160px;
+  min-width: 180px;
 }
 
 .node-compact-body {
@@ -330,6 +338,22 @@ watch(() => props.data, (newData) => {
 .compact-summary {
   font-size: 11px;
   color: rgba(255, 255, 255, 0.95);
+}
+
+.compact-direction-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.direction-arrow {
+  font-size: 12px;
+}
+
+.direction-text {
+  white-space: nowrap;
 }
 
 .end-node.is-config-mode {
@@ -765,7 +789,7 @@ watch(() => props.data, (newData) => {
   background-color: #a78bfa !important;
   border: 2px solid white !important;
   border-radius: 50% !important;
-  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3) !important;
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.3) !important;
   cursor: crosshair !important;
   transition: all 0.2s ease !important;
 }
@@ -773,7 +797,7 @@ watch(() => props.data, (newData) => {
 :deep(.vue-flow__handle:hover) {
   width: 24px !important;
   height: 24px !important;
-  box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.5) !important;
+  box-shadow: 0 0 0 4px rgba(167, 139, 250, 0.5) !important;
 }
 
 :deep(.vue-flow__handle[type="target"]) {

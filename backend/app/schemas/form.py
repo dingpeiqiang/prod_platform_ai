@@ -163,3 +163,66 @@ class ValidationFormResponse(BaseModel):
     errors: List[str] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
     issues: List[ValidationIssue] = Field(default_factory=list)  # 详细问题列表（含字段+错误码+级别）
+
+
+# ── CRUD schemas ────────────────────────────────────────────────────────────
+
+class FormListItem(BaseModel):
+    formCode: str
+    formName: str
+    category: str = "general"
+    description: Optional[str] = ""
+    version: int = 1
+    isActive: bool = True
+    createdAt: Optional[str] = None
+    updatedAt: Optional[str] = None
+
+
+class FormsListResponse(BaseModel):
+    success: bool
+    forms: List[FormListItem]
+    total: int
+
+
+class FormCategoriesResponse(BaseModel):
+    success: bool
+    categories: List[str]
+
+
+class CreateFormRequest(BaseModel):
+    formCode: str
+    formName: str
+    category: str = "general"
+    description: Optional[str] = ""
+    entities: List[Dict[str, Any]] = Field(default_factory=list)  # 字段定义
+
+
+class UpdateFormRequest(BaseModel):
+    formName: Optional[str] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
+    entities: Optional[List[Dict[str, Any]]] = None
+    isActive: Optional[bool] = None
+
+
+class FormDetailResponse(BaseModel):
+    success: bool
+    form: Optional[FormListItem] = None
+    entities: List[Dict[str, Any]] = Field(default_factory=list)
+    message: Optional[str] = None
+
+
+class FormSchemaData(BaseModel):
+    """GET /form/schema/{form_code} 返回的 data 部分"""
+    formCode: str
+    formName: str
+    version: int = 1
+    fields: List[Dict[str, Any]] = Field(default_factory=list)
+    entities: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class FormSchemaResponse(BaseModel):
+    """GET /form/schema/{form_code} 完整响应"""
+    success: bool
+    data: Optional[FormSchemaData] = None
+    message: Optional[str] = None

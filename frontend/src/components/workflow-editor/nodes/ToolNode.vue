@@ -88,8 +88,8 @@
         </div>
       </div>
     </div>
-    <Handle v-if="!configMode" type="target" :position="Position.Left" id="target" />
-    <Handle v-if="!configMode" type="source" :position="Position.Right" id="source" />
+    <Handle v-if="!configMode" type="target" :position="targetPosition" id="target" />
+    <Handle v-if="!configMode" type="source" :position="sourcePosition" id="source" />
   </div>
 </template>
 
@@ -97,6 +97,7 @@
 import { ref, watch, computed } from 'vue';
 import { Handle, Position } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
+import { useNodeAnchorMode } from './useHandlePosition.js';
 
 const props = defineProps({
   data: {
@@ -109,6 +110,8 @@ const props = defineProps({
   },
   ...nodeDisplayProps
 });
+
+const { targetPosition, sourcePosition } = useNodeAnchorMode(props);
 
 const emit = defineEmits(['update']);
 
@@ -265,7 +268,8 @@ watch(() => props.data, (d) => {
   background: white;
   border: 2px solid #e2e8f0;
   border-radius: 8px;
-  min-width: 260px;
+  min-width: 180px;
+  min-height: 120px; /* 统一节点最小高度 */
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   transition: all 0.2s ease;
 }
@@ -276,7 +280,7 @@ watch(() => props.data, (d) => {
 }
 
 .tool-node.is-compact {
-  min-width: 160px;
+  min-width: 180px;
 }
 
 .node-compact-body {

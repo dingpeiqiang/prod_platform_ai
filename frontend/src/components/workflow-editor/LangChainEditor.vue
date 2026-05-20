@@ -134,7 +134,7 @@
         </button>
         <span v-if="isReadOnly" class="read-only-badge">🔒 只读模式</span>
         <div class="toolbar-divider"></div>
-        <button @click="toggleAnchorMode" class="btn-icon" :title="currentAnchorMode === 'vertical' ? '当前：垂直布局（点击切换为水平）' : '当前：水平布局（点击切换为垂直）'">
+        <button @click="toggleAnchorMode" class="btn-icon" :title="currentAnchorMode === 'horizontal' ? '当前：水平布局（点击切换为垂直）' : '当前：垂直布局（点击切换为水平）'">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path v-if="currentAnchorMode === 'vertical'" d="M12 5v14M5 12l7-7 7 7"/>
             <path v-else d="M5 12h14M12 5l-7 7 7 7"/>
@@ -1748,49 +1748,148 @@ const clearWorkflow = () => {
   }
 };
 
-// 切换锚点模式（垂直/水平布局）
+// 拓扑排序：按节点连接顺序排列
+const topologicalSort = (nodes, edges) => {
+  if (edges.length === 0) {
+    // 没有边时按原始位置排序
+    return [...nodes].sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x);
+  }
+  
+  // 构建邻接表和入度表
+  const inDegree = new Map();
+  const outEdges = new Map();
+  const nodeMap = new Map();
+  
+  nodes.forEach(node => {
+    nodeMap.set(node.id, node);
+    inDegree.set(node.id, 0);
+    outEdges.set(node.id, []);
+  });
+  
+  // 统计入度和出边
+  edges.forEach(edge => {
+    if (nodeMap.has(edge.source) && nodeMap.has(edge.target)) {
+      inDegree.set(edge.target, (inDegree.get(edge.target) || 0) + 1);
+      outEdges.get(edge.source)?.push(edge.target);
+    }
+  });
+  
+  // Kahn算法：从入度为0的节点开始
+  const queue = [];
+  const result = [];
+  
+  nodes.forEach(node => {
+    if (inDegree.get(node.id) === 0) {
+      queue.push(node.id);
+    }
+  });
+  
+  // 按原始位置对队列排序，保持一致的相对顺序
+  queue.sort((a, b) => {
+    const nodeA = nodeMap.get(a);
+    const nodeB = nodeMap.get(b);
+    return (nodeA?.position?.y || 0) - (nodeB?.position?.y || 0) || 
+           (nodeA?.position?.x || 0) - (nodeB?.position?.x || 0);
+  });
+  
+  while (queue.length > 0) {
+    const nodeId = queue.shift();
+    const node = nodeMap.get(nodeId);
+    if (node) result.push(node);
+    
+    const neighbors = outEdges.get(nodeId) || [];
+    neighbors.forEach(targetId => {
+      inDegree.set(targetId, inDegree.get(targetId) - 1);
+      if (inDegree.get(targetId) === 0) {
+        queue.push(targetId);
+        // 保持队列有序
+        queue.sort((a, b) => {
+          const nodeA = nodeMap.get(a);
+          const nodeB = nodeMap.get(b);
+          return (nodeA?.position?.y || 0) - (nodeB?.position?.y || 0) || 
+                 (nodeA?.position?.x || 0) - (nodeB?.position?.x || 0);
+        });
+      }
+    });
+  }
+  
+  // 如果有环（仍有节点未访问），将剩余节点按原始顺序追加
+  if (result.length < nodes.length) {
+    const visited = new Set(result.map(n => n.id));
+    nodes.forEach(node => {
+      if (!visited.has(node.id)) {
+        result.push(node);
+      }
+    });
+  }
+  
+  return result;
+};
+
+// 切换锚点模式（水平/垂直布局）
+// 语义统一：anchorMode 名称与布局方向一致
+// 'horizontal' = 水平布局 + 水平锚点(top/bottom)
+// 'vertical' = 垂直布局 + 垂直锚点(left/right)
 const toggleAnchorMode = () => {
-  const newMode = currentAnchorMode.value === 'vertical' ? 'horizontal' : 'vertical';
-  const newDirection = newMode === 'vertical' ? 'LR' : 'TB';
+  // 切换模式
+  const newMode = currentAnchorMode.value === 'horizontal' ? 'vertical' : 'horizontal';
+  // 方向：horizontal=LR(左到右), vertical=TB(上到下)
+  const newDirection = newMode === 'horizontal' ? 'LR' : 'TB';
   currentAnchorMode.value = newMode;
   vueFlowDirection.value = newDirection;
 
-  // 获取所有节点（不包括边）
+  // 获取所有节点和边
   const nodes = elements.value.filter(el => !el.source && !el.target);
+  const edges = elements.value.filter(el => el.source && el.target);
 
-  // 计算节点位置并交换 x/y（实现布局旋转）
   if (nodes.length > 0) {
-    // 计算当前画布边界
-    let minX = Infinity, maxX = -Infinity;
-    let minY = Infinity, maxY = -Infinity;
-    nodes.forEach(node => {
-      minX = Math.min(minX, node.position.x);
-      maxX = Math.max(maxX, node.position.x + (node.width || 180));
-      minY = Math.min(minY, node.position.y);
-      maxY = Math.max(maxY, node.position.y + (node.height || 80));
-    });
+    // 定义节点尺寸常量（与UI统一优化后的尺寸一致）
+    const NODE_WIDTH = 180;  // 统一的最小宽度
+    const NODE_HEIGHT = 120; // 统一节点最小高度（与CSS中的min-height一致）
+    
+    // 定义合理的间距（确保节点之间有足够间隙不重叠）
+    const HORIZONTAL_SPACING = 80; // 水平间距
+    const VERTICAL_SPACING = 80;   // 垂直间距
+    const MARGIN = 100;            // 画布边距
+    
+    // 计算节点间的总间距（用于保持布局一致性）
+    const NODE_HORIZONTAL_GAP = NODE_WIDTH + HORIZONTAL_SPACING;
+    const NODE_VERTICAL_GAP = NODE_HEIGHT + VERTICAL_SPACING;
 
-    const MARGIN = 100; // 边距
+    // 拓扑排序：按节点连接顺序排列
+    const sortedNodes = topologicalSort(nodes, edges);
 
-    // 交换所有节点的 x 和 y（实现布局旋转 90 度）
-    // 原理解：垂直布局的 x 轴变成水平布局的 y 轴，垂直布局的 y 轴变成水平布局的 x 轴
-    nodes.forEach(node => {
-      const newX = node.position.y - minY + MARGIN;
-      const newY = node.position.x - minX + MARGIN;
-      node.position.x = newX;
-      node.position.y = newY;
+    if (newMode === 'horizontal') {
+      // 水平布局：从左到右排列，所有节点在同一水平线上
+      let currentX = MARGIN;
       
-      // 关键修复：更新 anchorMode 并添加强制刷新标记
-      // 使用 Vue.set 或直接赋值确保响应式更新
-      const updatedData = { 
-        ...node.data, 
-        anchorMode: newMode,
-        _layoutTimestamp: Date.now() // 时间戳用于强制触发更新
-      };
+      sortedNodes.forEach((node) => {
+        node.position.x = currentX;
+        node.position.y = MARGIN; // y 固定
+        currentX += NODE_HORIZONTAL_GAP;
+        
+        node.data = { 
+          ...node.data, 
+          anchorMode: newMode,
+          _layoutTimestamp: Date.now()
+        };
+      });
+    } else {
+      // 垂直布局：从上到下排列，所有节点在同一垂直线上
+      let currentY = MARGIN;
       
-      // 直接替换整个 data 对象以确保深度响应式更新
-      node.data = updatedData;
-    });
+      sortedNodes.forEach((node) => {
+        node.position.x = MARGIN; // x 固定
+        node.position.y = currentY;
+        currentY += NODE_VERTICAL_GAP;
+        
+        node.data = { 
+          ...node.data, 
+          anchorMode: newMode,
+          _layoutTimestamp: Date.now()
+        };
+      });
+    }
   }
 
   // 强制触发 Vue Flow 重新渲染
@@ -1798,7 +1897,7 @@ const toggleAnchorMode = () => {
   const oldElements = [...elements.value];
   elements.value = [];
   
-  // 使用 nextTick 确保 DOM 完全清空后再重新渲染
+  // 使用 setTimeout 确保 DOM 完全清空后再重新渲染
   setTimeout(() => {
     elements.value = oldElements;
     hasChanges.value = true;

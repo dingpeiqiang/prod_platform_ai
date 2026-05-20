@@ -85,7 +85,7 @@
           <textarea
             v-model="localQueryText"
             @input="emitUpdate"
-            placeholder="输入查询内容，使用 {{变量名}} 引用变量..."
+            :placeholder="placeholderText"
             class="node-textarea"
             :rows="3"
           ></textarea>
@@ -110,15 +110,16 @@
       </div>
     </div>
     
-    <Handle v-if="!configMode" type="target" :position="Position.Left" id="target" />
-    <Handle v-if="!configMode" type="source" :position="Position.Right" id="source" />
+    <Handle v-if="!configMode" type="target" :position="targetPosition" id="target" />
+    <Handle v-if="!configMode" type="source" :position="sourcePosition" id="source" />
   </div>
 </template>
 
 <script setup>
 import { ref, watch, computed } from 'vue';
-import { Handle, Position } from '@vue-flow/core';
+import { Handle } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
+import { useNodeAnchorMode } from './useHandlePosition.js';
 
 const props = defineProps({
   data: {
@@ -131,6 +132,11 @@ const props = defineProps({
   },
   ...nodeDisplayProps
 });
+
+const { targetPosition, sourcePosition } = useNodeAnchorMode(props);
+
+// 用于显示的占位符文本（避免 Vue 解析 {{}}）
+const placeholderText = '输入查询内容，使用 {{变量名}} 引用变量...';
 
 const knowledgeBases = ref([
   { id: 'kb1', name: '产品知识库' },
@@ -209,7 +215,8 @@ watch(() => props.data, (newData) => {
   background: linear-gradient(135deg, #ffffff 0%, #faf5ff 100%);
   border: 2px solid #ddd6fe;
   border-radius: 12px;
-  min-width: 260px;
+  min-width: 180px;
+  min-height: 120px; /* 统一节点最小高度 */
   box-shadow: 
     0 2px 8px rgba(139, 92, 246, 0.08),
     0 1px 2px rgba(0, 0, 0, 0.05);

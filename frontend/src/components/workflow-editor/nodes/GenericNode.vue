@@ -7,15 +7,16 @@
     <div class="node-body">
       <slot></slot>
     </div>
-    <Handle type="target" :position="Position.Left" id="target" />
-    <Handle type="source" :position="Position.Right" id="source" />
+    <Handle type="target" :position="targetPosition" id="target" />
+    <Handle type="source" :position="sourcePosition" id="source" />
   </div>
 </template>
 
 <script setup>
-import { Handle, Position } from '@vue-flow/core';
+import { Handle } from '@vue-flow/core';
+import { useNodeAnchorMode } from './useHandlePosition.js';
 
-defineProps({
+const props = defineProps({
   data: {
     type: Object,
     required: true
@@ -27,8 +28,14 @@ defineProps({
   icon: {
     type: String,
     default: '📦'
+  },
+  anchorMode: {
+    type: String,
+    default: 'vertical'
   }
 });
+
+const { targetPosition, sourcePosition } = useNodeAnchorMode(props);
 </script>
 
 <style scoped>
@@ -37,6 +44,7 @@ defineProps({
   border: 2px solid #e2e8f0;
   border-radius: 8px;
   min-width: 180px;
+  min-height: 120px; /* 统一节点最小高度 */
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 

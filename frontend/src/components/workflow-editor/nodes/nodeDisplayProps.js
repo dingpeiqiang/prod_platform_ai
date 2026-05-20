@@ -6,5 +6,10 @@ export const nodeDisplayProps = {
   compact: {
     type: Boolean,
     default: false
+  },
+  anchorMode: {
+    type: String,
+    default: 'vertical',
+    validator: (value) => ['vertical', 'horizontal'].includes(value)
   }
 };

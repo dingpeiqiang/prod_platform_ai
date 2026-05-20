@@ -6,7 +6,10 @@
     </div>
     <div v-if="compact && !configMode" class="node-compact-body">
       <span class="compact-summary">{{ localModel || '未选择' }}</span>
-      <span class="compact-hint">双击配置</span>
+      <div class="compact-direction-indicator">
+        <span class="direction-arrow">⬇️</span>
+        <span class="direction-text">输入 → 输出</span>
+      </div>
     </div>
     
     <div v-if="configMode" class="llm-node-config">
@@ -297,15 +300,16 @@
       </div>
     </div>
     
-    <Handle v-if="!configMode" type="target" :position="Position.Left" id="target" />
-    <Handle v-if="!configMode" type="source" :position="Position.Right" id="source" />
+    <Handle v-if="!configMode" type="target" :position="targetPosition" id="target" />
+    <Handle v-if="!configMode" type="source" :position="sourcePosition" id="source" />
   </div>
 </template>
 
 <script setup>
 import { ref, watch } from 'vue';
-import { Handle, Position } from '@vue-flow/core';
+import { Handle } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
+import { useNodeAnchorMode } from './useHandlePosition.js';
 
 const props = defineProps({
   data: { type: Object, required: true },
@@ -313,6 +317,8 @@ const props = defineProps({
   availableVariables: { type: Array, default: () => [] },
   ...nodeDisplayProps
 });
+
+const { targetPosition, sourcePosition } = useNodeAnchorMode(props);
 
 const emit = defineEmits(['update', 'close', 'run']);
 
@@ -428,7 +434,8 @@ watch(() => props.data, (newData) => {
   background: white;
   border: 2px solid #e2e8f0;
   border-radius: 8px;
-  min-width: 220px;
+  min-width: 180px;
+  min-height: 120px; /* 统一节点最小高度 */
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   transition: all 0.2s ease;
 }
@@ -439,7 +446,7 @@ watch(() => props.data, (newData) => {
 }
 
 .llm-node.is-compact {
-  min-width: 160px;
+  min-width: 180px;
 }
 
 .node-header {
@@ -477,6 +484,22 @@ watch(() => props.data, (newData) => {
 .compact-hint {
   font-size: 10px;
   color: #94a3b8;
+}
+
+.compact-direction-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #64748b;
+}
+
+.direction-arrow {
+  font-size: 12px;
+}
+
+.direction-text {
+  white-space: nowrap;
 }
 
 .llm-node.is-config-mode {

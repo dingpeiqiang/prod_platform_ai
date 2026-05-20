@@ -12,7 +12,7 @@
       <textarea
         v-model="localPrompt"
         @input="emitUpdate"
-        placeholder="输入提示词，使用 {{变量名}} 引用变量..."
+        :placeholder="placeholderText"
         class="node-textarea"
       ></textarea>
       
@@ -29,7 +29,7 @@
               {{ varItem.name }} ({{ varItem.type }})
             </option>
           </select>
-          <span class="param-hint">或使用 {{变量名}} 语法</span>
+          <span class="param-hint" title="使用双花括号引用变量">或使用 {{ displayVarSyntax }} 语法</span>
         </div>
         
         <div class="section-title">输出参数</div>
@@ -44,15 +44,16 @@
         </div>
       </div>
     </div>
-    <Handle v-if="!configMode" type="target" :position="Position.Left" id="target" />
-    <Handle v-if="!configMode" type="source" :position="Position.Right" id="source" />
+    <Handle v-if="!configMode" type="target" :position="targetPosition" id="target" />
+    <Handle v-if="!configMode" type="source" :position="sourcePosition" id="source" />
   </div>
 </template>
 
 <script setup>
 import { ref, watch, computed } from 'vue';
-import { Handle, Position } from '@vue-flow/core';
+import { Handle } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
+import { useNodeAnchorMode } from './useHandlePosition.js';
 
 const props = defineProps({
   data: {
@@ -70,6 +71,8 @@ const props = defineProps({
   ...nodeDisplayProps
 });
 
+const { targetPosition, sourcePosition } = useNodeAnchorMode(props);
+
 const compactPromptPreview = computed(() => {
   const text = localPrompt.value || '未设置提示词';
   return text.length > 28 ? `${text.slice(0, 28)}…` : text;
@@ -81,6 +84,10 @@ const localPrompt = ref(props.data.prompt || '');
 const showAdvanced = ref(false);
 const localInputVar = ref(props.data.inputVar || '');
 const localOutputVar = ref(props.data.outputVar || '');
+
+// 用于显示的占位符文本（避免 Vue 解析 {{}}）
+const placeholderText = '输入提示词，使用 {{变量名}} 引用变量...';
+const displayVarSyntax = '{{变量名}}';
 
 const emitUpdate = () => {
   // 构建输入输出映射
@@ -120,7 +127,8 @@ watch(() => props.data, (newData) => {
   background: white;
   border: 2px solid #e2e8f0;
   border-radius: 8px;
-  min-width: 200px;
+  min-width: 180px;
+  min-height: 120px; /* 统一节点最小高度 */
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
@@ -130,7 +138,7 @@ watch(() => props.data, (newData) => {
 }
 
 .prompt-node.is-compact {
-  min-width: 160px;
+  min-width: 180px;
 }
 
 .node-compact-body {

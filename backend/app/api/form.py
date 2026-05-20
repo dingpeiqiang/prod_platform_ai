@@ -6,7 +6,10 @@ from app.schemas.form import (
     FormSubmitRequest, FormSubmitResponse,
     OntologyConstraintRequest, OntologyConstraintResponse,
     OntologyValidateRequest, OntologyValidateResponse,
-    HistoryRecommendRequest, HistoryRecommendResponse
+    HistoryRecommendRequest, HistoryRecommendResponse,
+    FormsListResponse, FormCategoriesResponse,
+    CreateFormRequest, UpdateFormRequest,
+    FormDetailResponse, FormListItem, FormSchemaResponse, FormSchemaData
 )
 from app.services.form_service import FormService
 from app.services.ontology_service import OntologyService
@@ -14,6 +17,7 @@ from app.services.history_service import HistoryService
 from app.services.validation_service import validation_engine
 from app.websocket.manager import manager
 from app.models.ontology_instance import OntologyInstance
+from app.models.ontology import Ontology
 # FormTemplate 已废弃，不再使用
 from app.intent import get_intent_registry
 from app.intent.base import IntentContext
@@ -485,10 +489,14 @@ async def list_form_submissions(
                 val = val[:20] + "…"
             preview_fields[k] = val
 
+        # 获取本体名称（用于展示）
+        ontology = db.query(Ontology).filter(Ontology.ontology_code == form_code).first()
+        form_name = ontology.ontology_name if ontology else form_code
+
         submissions.append({
-            "instanceId": inst.form_id,
+            "instanceId": inst.id,
             "formCode": form_code,
-            "formName": template.form_name,
+            "formName": form_name,
             "submittedAt": inst.submitted_at.isoformat() if inst.submitted_at else None,
             "fieldCount": len(data),
             "previewFields": preview_fields,
@@ -498,35 +506,52 @@ async def list_form_submissions(
     return {"success": True, "submissions": submissions, "total": len(submissions)}
 
 
-@router.get("/form/schema/{form_code}")
+@router.get("/form/schema/{form_code}", response_model=FormSchemaResponse)
 async def get_form_schema(form_code: str, db: Session = Depends(get_db)):
     """
     根据formCode获取最新的表单Schema
-    用于从数据库恢复表单状态
+    用于从数据库恢复表单状态 / 工作流编辑器获取本体字段
     """
     logger.info("[form/schema] 获取表单 schema form_code=%s", form_code)
-    
-    template = db.query(FormTemplate).filter(
-        FormTemplate.form_code == form_code,
-        FormTemplate.is_active == True
-    ).order_by(FormTemplate.version.desc()).first()
-    
-    if not template:
-        logger.warning("[form/schema] 表单模板不存在 form_code=%s", form_code)
-        return {"success": False, "message": "表单模板不存在"}
-    
-    logger.info("[form/schema] 成功 form_code=%s version=%d", form_code, template.version)
-    return {
-        "success": True,
-        "formCode": template.form_code,
-        "formName": template.form_name,
-        "version": template.version,
-        "schema": template.schema
-    }
+
+    ontology = db.query(Ontology).filter(
+        Ontology.ontology_code == form_code,
+        Ontology.is_active == True
+    ).first()
+
+    if not ontology:
+        logger.warning("[form/schema] 本体不存在 form_code=%s", form_code)
+        return FormSchemaResponse(success=False, data=None, message="本体不存在")
+
+    # 从 entities 构建 fields 列表（适配前端格式）
+    fields = []
+    for entity in (ontology.entities or []):
+        for field_def in (entity.get("fields") or []):
+            fields.append({
+                "fieldCode": field_def.get("fieldCode", ""),
+                "fieldName": field_def.get("fieldName", ""),
+                "fieldType": field_def.get("fieldType", "input"),
+                "required": field_def.get("required", False),
+                "enumConfig": field_def.get("enumConfig"),
+                "ruleDescription": field_def.get("ruleDescription", ""),
+            })
+
+    logger.info("[form/schema] 成功 form_code=%s version=%d fields=%d",
+                form_code, ontology.version, len(fields))
+    return FormSchemaResponse(
+        success=True,
+        data=FormSchemaData(
+            formCode=ontology.ontology_code,
+            formName=ontology.ontology_name,
+            version=ontology.version,
+            fields=fields,
+            entities=ontology.entities or [],
+        )
+    )
 
 
 @router.get("/form/instance/{form_id}")
-async def get_form_instance(form_id: str, db: Session = Depends(get_db)):
+async def get_form_instance(form_id: int, db: Session = Depends(get_db)):
     """
     获取单个已提交表单实例的完整数据。
     用于历史记录详情查看。
@@ -539,15 +564,15 @@ async def get_form_instance(form_id: str, db: Session = Depends(get_db)):
     if not inst:
         return {"success": False, "message": "未找到该记录"}
 
-    # 获取 form_name
-    template = db.query(FormTemplate).filter(FormTemplate.id == inst.template_id).first()
-    form_name = template.form_name if template else form_id
+    # 获取 form_name（从本体定义）
+    ontology = db.query(Ontology).filter(Ontology.ontology_code == inst.ontology_code).first()
+    form_name = ontology.ontology_name if ontology else inst.ontology_code
 
     return {
         "success": True,
         "instance": {
-            "instanceId": inst.form_id,
-            "formCode": template.form_code if template else "",
+            "instanceId": inst.id,
+            "formCode": inst.ontology_code,
             "formName": form_name,
             "submittedAt": inst.submitted_at.isoformat() if inst.submitted_at else None,
             "data": inst.data or {},

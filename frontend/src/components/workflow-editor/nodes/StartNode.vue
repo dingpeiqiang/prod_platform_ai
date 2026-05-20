@@ -19,6 +19,10 @@
     </div>
     <div v-if="compact && !configMode" class="node-compact-body">
       <span class="compact-summary">{{ localParams.length }} 个入参</span>
+      <div class="compact-direction-indicator">
+        <span class="direction-arrow">➡️</span>
+        <span class="direction-text">仅输出</span>
+      </div>
     </div>
     
     <div v-if="configMode" class="start-node-config">
@@ -143,14 +147,15 @@
       <span class="node-desc">工作流入口</span>
     </div>
     
-    <Handle v-if="!configMode" type="source" :position="Position.Right" id="source" />
+    <Handle v-if="!configMode" type="source" :position="sourcePosition" id="source" />
   </div>
 </template>
 
 <script setup>
 import { ref, watch } from 'vue';
-import { Handle, Position } from '@vue-flow/core';
+import { Handle } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
+import { useNodeAnchorMode } from './useHandlePosition.js';
 
 const props = defineProps({
   data: {
@@ -167,6 +172,8 @@ const props = defineProps({
   },
   ...nodeDisplayProps
 });
+
+const { sourcePosition } = useNodeAnchorMode(props);
 
 const emit = defineEmits(['update', 'close']);
 
@@ -260,7 +267,8 @@ watch(() => props.data, (newData) => {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border-radius: 8px;
-  min-width: 220px;
+  min-width: 180px;
+  min-height: 120px; /* 统一节点最小高度 */
   box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
   transition: all 0.3s ease;
 }
@@ -282,7 +290,7 @@ watch(() => props.data, (newData) => {
 }
 
 .start-node.is-compact {
-  min-width: 160px;
+  min-width: 180px;
 }
 
 .node-compact-body {
@@ -303,6 +311,22 @@ watch(() => props.data, (newData) => {
 .compact-hint {
   font-size: 10px;
   color: rgba(255, 255, 255, 0.7);
+}
+
+.compact-direction-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.direction-arrow {
+  font-size: 12px;
+}
+
+.direction-text {
+  white-space: nowrap;
 }
 
 .start-node.is-config-mode {
@@ -1129,10 +1153,10 @@ watch(() => props.data, (newData) => {
 }
 
 :deep(.vue-flow__handle[type="source"]) {
-  background-color: #10b981 !important;
+  background-color: #3b82f6 !important;
 }
 
 :deep(.vue-flow__handle[type="source"]:hover) {
-  background-color: #059669 !important;
+  background-color: #2563eb !important;
 }
 </style>
