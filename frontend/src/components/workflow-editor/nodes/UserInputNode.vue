@@ -59,8 +59,19 @@
       </div>
     </div>
     
-    <Handle v-if="!configMode" type="target" :position="targetPosition" id="target" />
-    <Handle v-if="!configMode" type="source" :position="sourcePosition" id="source" />
+    <Handle
+      v-if="!configMode"
+      type="target"
+      :position="targetPosition"
+      id="target"
+    />
+    <Handle
+      v-if="!configMode"
+      type="source"
+      :position="sourcePosition"
+      id="source"
+      :style="isVertical ? { left: getHandleLeft(0) + '%' } : { top: getHandleTop(0) + '%' }"
+    />
   </div>
 </template>
 
@@ -77,7 +88,7 @@ const props = defineProps({
   ...nodeDisplayProps
 });
 
-const { targetPosition, sourcePosition } = useNodeAnchorMode(props);
+const { targetPosition, sourcePosition, isVertical } = useNodeAnchorMode(props);
 
 const emit = defineEmits(['update', 'close']);
 
@@ -115,6 +126,18 @@ watch(() => props.data, (newData) => {
   localRequired.value = newData.required ?? true;
   localOutputVar.value = newData.outputVar || 'user_input';
 }, { deep: true });
+
+// 计算 Handle 的垂直位置百分比（水平布局时用于 source handle 的 top 定位）
+const getHandleTop = (index) => {
+  // 单个 handle 居中
+  return 50;
+};
+
+// 计算 Handle 的水平位置百分比（垂直布局时用于 source handle 的 left 定位）
+const getHandleLeft = (index) => {
+  // 单个 handle 居中
+  return 50;
+};
 </script>
 
 <style scoped>
@@ -391,5 +414,31 @@ watch(() => props.data, (newData) => {
 
 :deep(.vue-flow__handle[type="source"]:hover) {
   background-color: #ea580c !important;
+}
+
+/* ========== 水平和垂直布局支持 ========== */
+
+/* 水平布局时 Source Handle 位置调整 - 居中垂直定位 */
+:deep(.vue-flow--horizontal) .user-input-node .vue-flow__handle[type="source"] {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* 垂直布局时 Source Handle 位置调整 - 居中水平定位 */
+:deep(.vue-flow--vertical) .user-input-node .vue-flow__handle[type="source"] {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* 水平布局时 Target Handle 位置微调 */
+:deep(.vue-flow--horizontal) .user-input-node .vue-flow__handle[type="target"] {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* 垂直布局时 Target Handle 保持默认 */
+:deep(.vue-flow--vertical) .user-input-node .vue-flow__handle[type="target"] {
+  top: 0;
+  transform: translateX(-50%);
 }
 </style>

@@ -11,13 +11,15 @@
 | **end** | 结束节点 | 工作流出口 |
 | **prompt** | 提示词节点 | 定义 LLM 输入提示词，支持变量引用如 `{{input}}` |
 | **llm** | LLM调用节点 | 调用大语言模型生成内容 |
-| **tool** | 工具调用节点 | 调用外部工具或API |
+| **tool** | 工具调用节点 | 调用外部工具或API，支持 toolType: form_submit/search/database/mcp |
 | **http** | HTTP请求节点 | 发送HTTP请求获取数据 |
-| **condition** | 条件分支节点 | 根据条件判断走不同路径 |
+| **condition** | 条件分支节点 | 根据条件判断走不同路径（使用 leftType/leftValue/operator/rightType/rightValue 结构） |
 | **loop** | 循环节点 | 重复执行某段流程 |
-| **variable** | 变量赋值节点 | 设置或计算变量值 |
+| **variable** | 变量赋值节点 | 设置或计算变量值，使用 varName 和 varValue |
 | **parser** | 输出解析节点 | 解析和转换数据格式 |
 | **form** | 表单节点 | 收集用户表单数据 |
+| **user_input** | 用户输入节点 | 收集用户文本输入，使用 prompt 和 outputVar |
+| **user_input** | 用户输入节点 | 收集用户文本输入 |
 
 ## 输出格式要求
 
@@ -29,22 +31,28 @@
   "nodes": [
     {
       "id": "node_unique_id",
-      "type": "start|prompt|llm|tool|http|condition|loop|variable|parser|form|end",
+      "type": "start|end|prompt|llm|tool|http|condition|loop|variable|parser|form|user_input",
       "label": "节点显示名称",
       "x": 50,
       "y": 200,
       "data": {
         "label": "节点显示名称",
         "parameters": [{ "name": "param_name", "type": "string", "description": "参数描述" }],
-        "prompt": "提示词内容",
+        "prompt": "提示词内容，支持 {{variable}} 变量引用",
         "model": "qwen-vl-plus",
         "temperature": 0.7,
         "method": "GET|POST",
         "url": "API地址",
-        "condition": "条件表达式",
+        "leftType": "variable|constant",
+        "leftValue": "变量名或常量值",
+        "operator": "==|!=|>| |<|>=|<=|contains|not_contains|starts_with|ends_with|is_empty",
+        "rightType": "variable|constant",
+        "rightValue": "变量名或常量值",
         "varName": "变量名",
-        "varValue": "变量值",
-        "language": "javascript|python"
+        "varValue": "变量值，支持 {{other_var}} 引用",
+        "toolType": "form_submit|search|database|mcp",
+        "params": { "key": "value" },
+        "outputVar": "输出变量名"
       }
     }
   ],

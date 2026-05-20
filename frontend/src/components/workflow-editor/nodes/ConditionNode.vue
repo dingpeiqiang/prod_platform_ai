@@ -230,18 +230,32 @@
       </div>
     </div>
 
-    <!-- 连接线Handle -->
-    <Handle v-if="!configMode" type="target" :position="Position.Left" id="target" />
-    <!-- 动态生成与分支数量对应的输出连接点 - 直接使用style定位 -->
+    <!-- 连接线Handle - 每个分支输出点旁边显示标签 -->
+    <div class="handle-labels">
+      <div
+        v-for="(branch, index) in localBranches"
+        :key="'label-' + index"
+        v-if="!configMode"
+        class="handle-label"
+        :class="'handle-label-' + index"
+        :style="isVertical
+          ? { left: getHandleLeft(index) + '%', top: '100%' }
+          : { left: '100%', top: getHandleTop(index) + '%' }"
+      >
+        {{ getBranchTitle(index) }}
+      </div>
+    </div>
+    <Handle v-if="!configMode" type="target" :position="targetPosition" id="target" />
+    <!-- 动态生成与分支数量对应的输出连接点 - 根据布局方向动态定位 -->
     <Handle
       v-for="(branch, index) in localBranches"
       :key="'handle-' + index"
       v-if="!configMode"
       type="source"
-      :position="Position.Right"
+      :position="sourcePosition"
       :id="getHandleId(index)"
       :class="'handle-branch-' + index"
-      :style="{ top: getHandleTop(index) + '%' }"
+      :style="isVertical ? { left: getHandleLeft(index) + '%' } : { top: getHandleTop(index) + '%' }"
     />
   </div>
 </template>
@@ -519,24 +533,42 @@ const getHandleId = (index) => {
   return 'branch_' + index;
 };
 
-// 计算 Handle 的垂直位置百分比
+// 计算 Handle 的垂直位置百分比（水平布局时用 top 定位，模拟右侧连接线）
 const getHandleTop = (index) => {
   const totalBranches = localBranches.value.length;
+
+  // 只有一个分支时居中
   if (totalBranches <= 1) return 50;
-  
-  // 紧凑模式下，圆点在 header 下方的 summary row 中
-  // 预定义位置，使 Handle 与圆点对齐
-  const positions = [42, 58, 35, 50, 65];
-  
-  // 如果分支数量超过预定义，使用均匀分布
+
+  // 两个分支："如果"在顶部，"否则"在底部
+  if (totalBranches === 2) {
+    return index === 0 ? 15 : 85;
+  }
+
+  // 三个及以上：第一个在顶部（15%），最后一个在底部（85%），中间均匀分布
+  const first = 15;
+  const last = 85;
+  const step = (last - first) / (totalBranches - 1);
+
+  return first + (index * step);
+};
+
+// 计算 Handle 的水平位置百分比（水平布局用 left）
+const getHandleLeft = (index) => {
+  const totalBranches = localBranches.value.length;
+  if (totalBranches <= 1) return 50;
+
+  // 水平布局时，Handle 分布在底部，使用 left 定位
+  const positions = [30, 50, 70, 40, 60];
+
   if (index >= positions.length) {
-    const startPercent = 30;
-    const endPercent = 70;
+    const startPercent = 20;
+    const endPercent = 80;
     const range = endPercent - startPercent;
     const step = totalBranches > 1 ? range / (totalBranches - 1) : 0;
     return startPercent + (index * step);
   }
-  
+
   return positions[index];
 };
 
@@ -829,6 +861,42 @@ onUnmounted(() => {
 .branch-arrow.arrow-2 { color: #3b82f6; }
 .branch-arrow.arrow-3 { color: #f59e0b; }
 .branch-arrow.arrow-4 { color: #8b5cf6; }
+
+/* Handle标签样式 - 显示分支名称 */
+.handle-labels {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.handle-label {
+  position: absolute;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 8px;
+  font-weight: 600;
+  color: white;
+  white-space: nowrap;
+  /* 垂直布局时：标签在节点底部内侧，Handle 的上方 */
+  transform: translate(-50%, -100%);
+  margin-top: -6px;
+}
+
+.handle-label.handle-label-0 { background: rgba(34, 197, 94, 0.9); border: 1px solid #22c55e; }
+.handle-label.handle-label-1 { background: rgba(239, 68, 68, 0.9); border: 1px solid #ef4444; }
+.handle-label.handle-label-2 { background: rgba(59, 130, 246, 0.9); border: 1px solid #3b82f6; }
+.handle-label.handle-label-3 { background: rgba(245, 158, 11, 0.9); border: 1px solid #f59e0b; }
+.handle-label.handle-label-4 { background: rgba(139, 92, 246, 0.9); border: 1px solid #8b5cf6; }
+
+/* 水平布局时标签位置调整 - 标签紧跟 Handle 左侧 */
+:deep(.vue-flow--horizontal) .handle-label {
+  transform: translate(calc(-100% - 8px), -50%);
+  margin-top: 0;
+}
 
 /* ========== 配置面板样式 ========== */
 

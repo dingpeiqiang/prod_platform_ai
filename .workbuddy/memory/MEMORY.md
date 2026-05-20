@@ -93,3 +93,4 @@
 
 ## 踩坑经验
 - **Vue Flow 节点数据更新**：当通过 `elements.value` 中的节点直接修改 `node.data.anchorMode = newMode` 时，Vue 响应式系统无法正确追踪嵌套属性的变化，导致节点组件的 watch 不触发。解决方式：使用 `node.data = { ...node.data, anchorMode: newMode }` 替换整个 data 对象，Vue 能正确追踪替换操作并触发响应式更新（类似 updateNodeData 的实现模式）。
+- **ConditionNode 水平布局锚点定位**：getHandleTop() 方法，水平布局时"如果"锚点固定在顶部 15% 位置，"否则"锚点固定在底部 85% 位置，中间分支均匀分布（2026-05-20）。
