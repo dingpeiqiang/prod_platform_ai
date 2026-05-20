@@ -197,14 +197,7 @@
       <div v-if="compact" class="node-compact-body">
         <div class="compact-summary-row">
           <span class="compact-summary">{{ localBranches.length }} 个分支</span>
-          <div class="compact-dots">
-            <span
-              v-for="(_, index) in localBranches"
-              :key="index"
-              class="compact-dot"
-              :class="'dot-' + index"
-            ></span>
-          </div>
+          <!-- Handle已显示分支颜色圆点，此处不再重复显示 -->
         </div>
         <span class="compact-hint">双击配置</span>
       </div>
@@ -230,11 +223,7 @@
                   <span v-else class="condition-empty">未设置条件</span>
                 </div>
               </div>
-              <div class="branch-arrow" :class="'arrow-' + branchIndex">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M5 12h14M12 5l7 7-7 7"/>
-                </svg>
-              </div>
+              <!-- Handle已显示分支颜色圆点，此处不再显示箭头 -->
             </div>
           </div>
         </div>
