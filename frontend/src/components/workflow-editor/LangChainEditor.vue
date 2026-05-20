@@ -1137,16 +1137,93 @@ const enrichNodeData = (data, nodeId) => {
   return nodeId ? { ...data, id: nodeId } : data;
 };
 
-// 获取节点可用的变量列表
+// 计算节点的拓扑顺序（从 start 节点开始，按照边的连接关系遍历）
+const getTopologicalNodeOrder = () => {
+  const nodes = elements.value.filter(el => !el.source && !el.target);
+  const edges = elements.value.filter(el => el.source && el.target);
+  
+  if (nodes.length === 0) return [];
+  
+  // 构建邻接表和入度表
+  const adjacencyList = new Map();  // source -> [targets]
+  const inDegree = new Map();       // nodeId -> in-degree count
+  
+  // 初始化
+  nodes.forEach(node => {
+    adjacencyList.set(node.id, []);
+    inDegree.set(node.id, 0);
+  });
+  
+  // 构建图
+  edges.forEach(edge => {
+    if (adjacencyList.has(edge.source) && inDegree.has(edge.target)) {
+      adjacencyList.get(edge.source).push(edge.target);
+      inDegree.set(edge.target, (inDegree.get(edge.target) || 0) + 1);
+    }
+  });
+  
+  // Kahn's algorithm - BFS 拓扑排序
+  const queue = [];
+  const result = [];
+  
+  // 从 start 节点开始（入度为 0 的节点）
+  nodes.forEach(node => {
+    if (inDegree.get(node.id) === 0) {
+      queue.push(node.id);
+    }
+  });
+  
+  // 如果没有 start 节点（入度为 0 的节点），使用原始顺序中的第一个
+  if (queue.length === 0 && nodes.length > 0) {
+    queue.push(nodes[0].id);
+  }
+  
+  while (queue.length > 0) {
+    const currentId = queue.shift();
+    result.push(currentId);
+    
+    const neighbors = adjacencyList.get(currentId) || [];
+    neighbors.forEach(neighborId => {
+      const newDegree = inDegree.get(neighborId) - 1;
+      inDegree.set(neighborId, newDegree);
+      if (newDegree === 0) {
+        queue.push(neighborId);
+      }
+    });
+  }
+  
+  // 如果有节点未被访问（可能有环），追加到结果末尾
+  nodes.forEach(node => {
+    if (!result.includes(node.id)) {
+      result.push(node.id);
+    }
+  });
+  
+  return result;
+};
+
+// 获取节点可用的变量列表（基于拓扑顺序，而不是数组索引）
 const getAvailableVariables = (nodeId) => {
   if (!nodeId) return [];
   
   const variables = [];
   const nodes = elements.value.filter(el => !el.source && !el.target);
+  if (nodes.length === 0) return [];
   
-  // 遍历所有在当前节点之前的节点
-  for (const node of nodes) {
-    if (node.id === nodeId) break;
+  // 获取拓扑顺序
+  const topoOrder = getTopologicalNodeOrder();
+  
+  // 找出当前节点在拓扑顺序中的索引
+  const currentIndex = topoOrder.indexOf(nodeId);
+  if (currentIndex === -1) return [];
+  
+  // 获取当前节点之前的所有节点 ID
+  const precedingNodeIds = topoOrder.slice(0, currentIndex);
+  
+  // 遍历所有在当前节点之前的节点，收集它们的输出变量
+  for (const precedingId of precedingNodeIds) {
+    const node = nodes.find(n => n.id === precedingId);
+    if (!node) continue;
     
     // 为每个节点添加输出变量
     const nodeType = node.type;
@@ -1167,15 +1244,25 @@ const getAvailableVariables = (nodeId) => {
           });
         }
         break;
+      case 'variable':
+        // variable 节点：使用 varName 作为变量名，ID 也使用 varName 以便条件节点引用
+        outputVarName = node.data?.varName || node.data?.outputVar || node.data?.label || nodeType;
+        variables.push({
+          id: outputVarName,  // 直接使用 varName，让条件节点可以用简单名称引用
+          name: `${outputVarName} (输出)`,
+          nodeId: node.id,
+          nodeType: nodeType,
+          type: node.data?.varType || 'any'
+        });
+        break;
       case 'llm':
       case 'prompt':
       case 'tool':
       case 'http':
       case 'code':
-      case 'variable':
       case 'parser':
         // 这些节点都有输出
-        outputVarName = node.data.outputVar || node.data.label || nodeType;
+        outputVarName = node.data?.outputVar || node.data?.label || nodeType;
         variables.push({
           id: `${node.id}.output`,
           name: `${outputVarName} (输出)`,
@@ -1188,7 +1275,7 @@ const getAvailableVariables = (nodeId) => {
         // 条件节点可能有多个输出分支
         variables.push({
           id: `${node.id}.result`,
-          name: `${node.data.label || '条件'} (结果)`,
+          name: `${node.data?.label || '条件'} (结果)`,
           nodeId: node.id,
           nodeType: 'condition',
           type: 'boolean'
@@ -1611,7 +1698,8 @@ const handleLoadFromLibrary = (workflow, isCopy = false) => {
     id: node.id,
     type: node.type,
     position: node.position || { x: 0, y: 0 },
-    data: node.data || {}
+    // 深拷贝 data 对象，确保响应式更新正确触发
+    data: JSON.parse(JSON.stringify(node.data || {}))
   }));
   const edges = (workflowData.edges || []).map(edge => ({
     id: edge.id,

@@ -385,7 +385,86 @@ class LcelConverter:
         return assign_variable
     
     def _handle_condition(self, node_data: Dict[str, Any]):
-        """处理条件节点"""
+        """处理条件节点（支持新旧两种格式）"""
+        # 优先检测新的 branches 格式（前端 Vue Flow 风格）
+        branches = node_data.get("branches", [])
+        
+        if branches:
+            return self._handle_condition_branches(node_data)
+        else:
+            return self._handle_condition_legacy(node_data)
+    
+    def _handle_condition_branches(self, node_data: Dict[str, Any]):
+        """处理 branches 格式的条件节点（前端 Vue Flow 风格）"""
+        def evaluate_condition(inputs: Dict[str, Any]) -> Dict[str, Any]:
+            context = inputs.get("context", {}).copy()
+            prev_output = inputs.get(self.OUTPUT_VAR_NAME, {})
+            
+            branches = node_data.get("branches", [])
+            matched_branch_index = -1
+            
+            for branch_index, branch in enumerate(branches):
+                branch_type = branch.get("type", "")
+                conditions = branch.get("conditions", [])
+                
+                # "否则"分支直接匹配
+                if branch_type == "else":
+                    matched_branch_index = branch_index
+                    break
+                
+                # 评估当前分支的所有条件（AND 关系）
+                if conditions:
+                    all_conditions_met = True
+                    for condition in conditions:
+                        var_name = condition.get("variable", "")
+                        operator = condition.get("operator", "==")
+                        value_type = condition.get("valueType", "input")
+                        value = condition.get("value", "")
+                        
+                        if not var_name or not operator:
+                            all_conditions_met = False
+                            continue
+                        
+                        # 获取左操作数
+                        left = context.get(var_name, "")
+                        if not left and var_name:
+                            if isinstance(prev_output, dict) and var_name in prev_output:
+                                left = prev_output[var_name]
+                        
+                        # 获取右操作数
+                        if value_type == "reference":
+                            right = context.get(value, "")
+                            if not right and value:
+                                if isinstance(prev_output, dict) and value in prev_output:
+                                    right = prev_output[value]
+                        else:
+                            right = value
+                        
+                        # 执行比较
+                        if not self._evaluate_single_condition(left, operator, right):
+                            all_conditions_met = False
+                            break
+                    
+                    if all_conditions_met:
+                        matched_branch_index = branch_index
+                        break
+            
+            result = matched_branch_index >= 0
+            context["condition_result"] = result
+            context["matched_branch_index"] = matched_branch_index
+            
+            return {
+                "context": context, 
+                "output": inputs.get("output", ""),
+                "condition_result": result,
+                "matched_branch_index": matched_branch_index,
+                self.OUTPUT_VAR_NAME: {"condition_result": result, "matched_branch_index": matched_branch_index}
+            }
+        
+        return evaluate_condition
+    
+    def _handle_condition_legacy(self, node_data: Dict[str, Any]):
+        """处理旧格式的条件节点（leftType/leftValue/operator/rightType/rightValue）"""
         left_type = node_data.get("leftType", "variable")
         left_value = node_data.get("leftValue", "")
         operator = node_data.get("operator", "==")
@@ -406,7 +485,6 @@ class LcelConverter:
             # 获取左操作数
             if left_type == "variable":
                 left = context.get(left_value, "")
-                # 如果变量不存在，尝试从前一个节点的输出中获取
                 if not left and left_value != "":
                     if isinstance(prev_output, dict) and left_value in prev_output:
                         left = prev_output[left_value]
@@ -419,24 +497,8 @@ class LcelConverter:
             else:
                 right = right_value
             
-            # 类型转换
-            if isinstance(left, str) and left.replace('.', '').isdigit():
-                left = float(left) if '.' in left else int(left)
-            if isinstance(right, str) and right.replace('.', '').isdigit():
-                right = float(right) if '.' in right else int(right)
-            
             # 执行比较
-            result = False
-            match operator:
-                case "==": result = left == right
-                case "!=": result = left != right
-                case ">": result = left > right
-                case "<": result = left < right
-                case ">=": result = left >= right
-                case "<=": result = left <= right
-                case "contains": result = str(right) in str(left)
-                case "not_contains": result = str(right) not in str(left)
-                case _: result = False
+            result = self._evaluate_single_condition(left, operator, right)
             
             context["condition_result"] = result
             
@@ -454,10 +516,34 @@ class LcelConverter:
                 "context": context, 
                 "output": inputs.get("output", ""), 
                 "condition_result": result,
-                self.OUTPUT_VAR_NAME: output_value  # 设置标准输出变量
+                self.OUTPUT_VAR_NAME: output_value
             }
         
         return evaluate_condition
+    
+    def _evaluate_single_condition(self, left, operator, right) -> bool:
+        """评估单个条件表达式"""
+        # 类型转换
+        if isinstance(left, str) and left.replace('.', '').isdigit():
+            left = float(left) if '.' in left else int(left)
+        if isinstance(right, str) and right.replace('.', '').isdigit():
+            right = float(right) if '.' in right else int(right)
+        
+        # 执行比较
+        match operator:
+            case "==": return left == right
+            case "!=": return left != right
+            case ">": return left > right
+            case "<": return left < right
+            case ">=": return left >= right
+            case "<=": return left <= right
+            case "contains": return str(right) in str(left)
+            case "not_contains": return str(right) not in str(left)
+            case "starts_with": return str(left).startswith(str(right))
+            case "ends_with": return str(left).endswith(str(right))
+            case "is_empty": return str(left) == ""
+            case "not_empty": return str(left) != ""
+            case _: return False
     
     def _handle_loop(self, node_data: Dict[str, Any]):
         """处理循环节点"""
@@ -706,15 +792,21 @@ class LcelConverter:
         return call_tool
     
     def _build_condition_chain(self, node: Dict[str, Any], edges: List[Dict[str, Any]]) -> Runnable:
-        """构建条件分支链"""
+        """构建条件分支链（支持多分支和旧格式）"""
         # 先执行条件判断
         condition_runnable = self._node_to_runnable(node)
         
-        # 获取true和false分支的目标节点
+        node_data = node.get("data", {})
+        branches = node_data.get("branches", [])
+        
+        # 检查是否使用新的 branches 格式
+        if branches:
+            return self._build_branches_condition_chain(node, edges, branches)
+        
+        # 旧格式：只支持 true/false 两个分支
         true_edges = [e for e in edges if e.get("sourceHandle") == "true"]
         false_edges = [e for e in edges if e.get("sourceHandle") == "false"]
         
-        # 构建分支链
         true_runnable = None
         if true_edges:
             true_runnable = self._build_chain(true_edges[0]["target"])
@@ -723,13 +815,43 @@ class LcelConverter:
         if false_edges:
             false_runnable = self._build_chain(false_edges[0]["target"])
         
-        # 使用RunnableBranch
         branch = RunnableBranch(
             (lambda x: x.get("condition_result", False), true_runnable or RunnablePassthrough()),
             false_runnable or RunnablePassthrough()
         )
         
         return condition_runnable | branch
+    
+    def _build_branches_condition_chain(self, node: Dict[str, Any], edges: List[Dict[str, Any]], branches: List[Dict[str, Any]]) -> Runnable:
+        """构建多分支条件链（前端 Vue Flow 风格）"""
+        # 按分支索引构建分支映射
+        branch_runnables = {}
+        
+        for branch_index in range(len(branches)):
+            # 查找对应分支的边 (sourceHandle = "branch_0", "branch_1", ...)
+            branch_edges = [e for e in edges if e.get("sourceHandle") == f"branch_{branch_index}"]
+            
+            if branch_edges:
+                branch_runnables[branch_index] = self._build_chain(branch_edges[0]["target"])
+        
+        # 构建条件分支链
+        # 使用 matched_branch_index 来决定走哪个分支
+        condition_runnable = self._node_to_runnable(node)
+        
+        # 构建分支映射条件
+        branch_conditions = []
+        for branch_index in range(len(branches)):
+            if branch_index in branch_runnables:
+                condition = lambda x, idx=branch_index: x.get("matched_branch_index", -1) == idx
+                branch_conditions.append((condition, branch_runnables[branch_index]))
+        
+        if branch_conditions:
+            # 添加默认分支（当没有匹配任何分支时）
+            branch_conditions.append((lambda x: True, RunnablePassthrough()))
+            branch = RunnableBranch(*branch_conditions)
+            return condition_runnable | branch
+        
+        return condition_runnable
     
     def _build_loop_chain(self, node: Dict[str, Any], edges: List[Dict[str, Any]]) -> Runnable:
         """构建循环链"""

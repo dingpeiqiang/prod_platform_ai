@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="workflow-library">
     <div class="library-header">
       <h3>📚 工作流库</h3>
@@ -234,9 +234,24 @@ const refreshWorkflows = async () => {
   }
 }
 
-const loadWorkflow = (workflow) => {
-  emit('load-workflow', workflow)
-  ElMessage.success(`已加载工作流: ${workflow.workflowName}`)
+const loadWorkflow = async (workflow) => {
+  try {
+    // 获取完整的工作流数据（包括 workflowData）
+    const result = await workflowApi.workflowApi.get(workflow.workflowCode)
+    if (result.success && result.data) {
+      emit('load-workflow', result.data)
+      ElMessage.success(`已加载工作流: ${workflow.workflowName}`)
+    } else {
+      // 如果获取失败，尝试使用本地数据（兼容没有后端的情况）
+      emit('load-workflow', workflow)
+      ElMessage.warning(`从缓存加载工作流: ${workflow.workflowName}`)
+    }
+  } catch (error) {
+    console.error('加载工作流失败:', error)
+    // 获取失败时使用本地数据作为兜底
+    emit('load-workflow', workflow)
+    ElMessage.warning(`从缓存加载工作流: ${workflow.workflowName}`)
+  }
 }
 
 const showCopyModal = (workflow) => {

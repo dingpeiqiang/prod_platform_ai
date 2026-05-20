@@ -716,45 +716,46 @@ class ConditionNodeExecutor(NodeExecutor):
                 for key, value in resolved_inputs.items():
                     context.set_variable(key, value)
             
-            # 获取条件配置
-            left_type = self.node_data.get("leftType", "variable")
-            left_value = self.node_data.get("leftValue", "")
-            operator = self.node_data.get("operator", "==")
-            right_type = self.node_data.get("rightType", "constant")
-            right_value = self.node_data.get("rightValue", "")
+            # 优先检测新的 branches 格式（前端 Vue Flow 风格）
+            branches = self.node_data.get("branches", [])
             
-            # 获取左操作数
-            if left_type == "variable":
-                left_operand = context.get_variable(left_value, "")
-                # 如果变量不存在，尝试从前一个节点的输出中获取
-                if not left_operand and left_value != "":
-                    prev_output = self.get_previous_output(context)
-                    if isinstance(prev_output, dict) and left_value in prev_output:
-                        left_operand = prev_output[left_value]
-            else:  # constant or expression
-                left_operand = left_value
-            
-            # 获取右操作数
-            if right_type == "variable":
-                right_operand = context.get_variable(right_value, "")
+            if branches:
+                # 使用新的 branches 格式评估
+                result, matched_branch_index = await self._evaluate_branches(context)
+                context.set_variable("condition_result", result)
+                context.set_variable("matched_branch_index", matched_branch_index)
+                self.set_output(context, {"condition_result": result, "matched_branch_index": matched_branch_index})
+                
+                logger.info(f"Condition (branches format) evaluated: matched_branch={matched_branch_index}, result={result}")
+                
+                # 根据匹配的分支索引选择输出边
+                # sourceHandle 格式为 "branch_0", "branch_1", ...
+                output_key = f"branch_{matched_branch_index}"
+                next_nodes = [
+                    e["target"] for e in edges 
+                    if e["source"] == self.node_id and e.get("sourceHandle") == output_key
+                ]
+                
+                # 如果没有找到对应分支的边，尝试兼容旧格式
+                if not next_nodes:
+                    output_key = "true" if result else "false"
+                    next_nodes = [
+                        e["target"] for e in edges 
+                        if e["source"] == self.node_id and e.get("sourceHandle") == output_key
+                    ]
             else:
-                right_operand = right_value
-            
-            # 执行条件判断
-            result = self._evaluate_condition(left_operand, operator, right_operand)
-            context.set_variable("condition_result", result)
-            
-            # 使用标准输出变量传递条件结果（同时处理显性输出映射）
-            self.set_output(context, {"condition_result": result, "input": left_operand})
-            
-            logger.info(f"Condition evaluated: {left_operand} {operator} {right_operand} = {result}")
-            
-            # 根据结果选择输出边
-            output_key = "true" if result else "false"
-            next_nodes = [
-                e["target"] for e in edges 
-                if e["source"] == self.node_id and e.get("sourceHandle") == output_key
-            ]
+                # 兼容旧格式：leftType/leftValue/operator/rightType/rightValue
+                result, matched_branch_index = await self._evaluate_legacy_format(context)
+                context.set_variable("condition_result", result)
+                self.set_output(context, {"condition_result": result, "input": result})
+                
+                logger.info(f"Condition (legacy format) evaluated: {result}")
+                
+                output_key = "true" if result else "false"
+                next_nodes = [
+                    e["target"] for e in edges 
+                    if e["source"] == self.node_id and e.get("sourceHandle") == output_key
+                ]
             
             context.update_node_status(self.node_id, ExecutionStatus.COMPLETED)
             return next_nodes
@@ -764,6 +765,102 @@ class ConditionNodeExecutor(NodeExecutor):
             context.error = str(e)
             context.update_node_status(self.node_id, ExecutionStatus.FAILED)
             raise
+    
+    async def _evaluate_branches(self, context: WorkflowContext) -> tuple:
+        """评估 branches 格式的条件（前端 Vue Flow 风格）
+        
+        Args:
+            context: 工作流上下文
+            
+        Returns:
+            (result, matched_branch_index): 条件结果和匹配的分支索引
+        """
+        branches = self.node_data.get("branches", [])
+        
+        for branch_index, branch in enumerate(branches):
+            branch_type = branch.get("type", "")
+            conditions = branch.get("conditions", [])
+            
+            # "否则"分支直接匹配
+            if branch_type == "else":
+                return True, branch_index
+            
+            # 评估当前分支的所有条件（AND 关系）
+            if conditions:
+                all_conditions_met = True
+                for condition in conditions:
+                    var_name = condition.get("variable", "")
+                    operator = condition.get("operator", "==")
+                    value_type = condition.get("valueType", "input")
+                    value = condition.get("value", "")
+                    
+                    if not var_name or not operator:
+                        all_conditions_met = False
+                        continue
+                    
+                    # 获取左操作数（变量值）
+                    left_operand = context.get_variable(var_name, "")
+                    if not left_operand and var_name != "":
+                        prev_output = self.get_previous_output(context)
+                        if isinstance(prev_output, dict) and var_name in prev_output:
+                            left_operand = prev_output[var_name]
+                    
+                    # 获取右操作数
+                    if value_type == "reference":
+                        # 引用变量
+                        right_operand = context.get_variable(value, "")
+                        if not right_operand and value != "":
+                            prev_output = self.get_previous_output(context)
+                            if isinstance(prev_output, dict) and value in prev_output:
+                                right_operand = prev_output[value]
+                    else:
+                        # 直接输入值
+                        right_operand = value
+                    
+                    # 执行条件判断
+                    if not self._evaluate_condition(left_operand, operator, right_operand):
+                        all_conditions_met = False
+                        break
+                
+                if all_conditions_met:
+                    return True, branch_index
+        
+        # 没有匹配任何分支，返回 False 和 -1
+        return False, -1
+    
+    async def _evaluate_legacy_format(self, context: WorkflowContext) -> tuple:
+        """评估旧格式的条件（leftType/leftValue/operator/rightType/rightValue）
+        
+        Args:
+            context: 工作流上下文
+            
+        Returns:
+            (result, matched_branch_index): 条件结果（始终返回0作为分支索引）
+        """
+        left_type = self.node_data.get("leftType", "variable")
+        left_value = self.node_data.get("leftValue", "")
+        operator = self.node_data.get("operator", "==")
+        right_type = self.node_data.get("rightType", "constant")
+        right_value = self.node_data.get("rightValue", "")
+        
+        # 获取左操作数
+        if left_type == "variable":
+            left_operand = context.get_variable(left_value, "")
+            if not left_operand and left_value != "":
+                prev_output = self.get_previous_output(context)
+                if isinstance(prev_output, dict) and left_value in prev_output:
+                    left_operand = prev_output[left_value]
+        else:
+            left_operand = left_value
+        
+        # 获取右操作数
+        if right_type == "variable":
+            right_operand = context.get_variable(right_value, "")
+        else:
+            right_operand = right_value
+        
+        result = self._evaluate_condition(left_operand, operator, right_operand)
+        return result, 0
     
     def _evaluate_condition(self, left, operator, right) -> bool:
         """评估条件表达式"""
