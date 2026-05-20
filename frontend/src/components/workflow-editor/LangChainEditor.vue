@@ -385,6 +385,7 @@
             <ConditionNode
               :data="enrichNodeData(props.data, props.node?.id)"
               :selected="props.selected"
+              compact
               @update="updateNodeData"
             />
           </template>

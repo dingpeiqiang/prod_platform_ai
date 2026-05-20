@@ -242,22 +242,18 @@
     </div>
 
     <!-- 连接线Handle -->
-    <Handle v-if="!configMode" type="target" :position="targetPosition" id="target" />
-    <!-- 动态生成与分支数量对应的输出连接点 - 使用wrapper实现精确定位 -->
-    <div
+    <Handle v-if="!configMode" type="target" :position="Position.Left" id="target" />
+    <!-- 动态生成与分支数量对应的输出连接点 - 直接使用style定位 -->
+    <Handle
       v-for="(branch, index) in localBranches"
-      :key="'handle-wrapper-' + index"
+      :key="'handle-' + index"
       v-if="!configMode"
-      class="handle-position-wrapper"
-      :data-branch-index="index"
-    >
-      <Handle
-        type="source"
-        :position="isVertical ? Position.Right : Position.Bottom"
-        :id="'branch_' + index"
-        :class="'handle-branch-' + index"
-      />
-    </div>
+      type="source"
+      :position="Position.Right"
+      :id="getHandleId(index)"
+      :class="'handle-branch-' + index"
+      :style="{ top: getHandleTop(index) + '%' }"
+    />
   </div>
 </template>
 
@@ -311,6 +307,28 @@ const initBranches = () => {
     }
     
     localBranches.value = branches;
+  } else if (props.data.condition) {
+    // 兼容旧格式：单个 condition 字段
+    localBranches.value = [
+      {
+        type: 'if',
+        expanded: true,
+        conditions: [
+          {
+            variable: '',
+            operator: '',
+            valueType: 'input',
+            value: props.data.condition
+          }
+        ]
+      },
+      {
+        type: 'else',
+        expanded: true,
+        conditions: []
+      }
+    ];
+    emitUpdate();
   } else {
     // 默认创建三个分支：如果、否则如果、否则
     localBranches.value = [
@@ -502,6 +520,37 @@ const getOperatorLabel = (operator) => {
   return operators[operator] || operator;
 };
 
+// 获取 Handle id - 兼容旧格式（true/false）和新格式（branch_0/branch_1）
+const getHandleId = (index) => {
+  // 如果是旧格式（没有 branches 字段或使用 condition 字段），使用旧格式的 id
+  if (!props.data.branches || props.data.branches.length === 0 || props.data.condition) {
+    return index === 0 ? 'true' : 'false';
+  }
+  // 新格式：使用 branch_0, branch_1, branch_2...
+  return 'branch_' + index;
+};
+
+// 计算 Handle 的垂直位置百分比
+const getHandleTop = (index) => {
+  const totalBranches = localBranches.value.length;
+  if (totalBranches <= 1) return 50;
+  
+  // 紧凑模式下，圆点在 header 下方的 summary row 中
+  // 预定义位置，使 Handle 与圆点对齐
+  const positions = [42, 58, 35, 50, 65];
+  
+  // 如果分支数量超过预定义，使用均匀分布
+  if (index >= positions.length) {
+    const startPercent = 30;
+    const endPercent = 70;
+    const range = endPercent - startPercent;
+    const step = totalBranches > 1 ? range / (totalBranches - 1) : 0;
+    return startPercent + (index * step);
+  }
+  
+  return positions[index];
+};
+
 // 更新 Handle wrapper 的位置（使用防抖优化性能）
 let updateHandlePositionsTimer = null;
 const updateHandlePositions = () => {
@@ -518,7 +567,13 @@ const updateHandlePositions = () => {
       const nodeElement = nodeRef.value;
       if (!nodeElement) return;
 
-      const branchItems = nodeElement.querySelectorAll('.branch-condition-item');
+      // 优先查找紧凑模式的圆点，否则查找分支项
+      let branchItems = nodeElement.querySelectorAll('.compact-dot');
+      
+      if (branchItems.length === 0) {
+        branchItems = nodeElement.querySelectorAll('.branch-condition-item');
+      }
+
       const wrappers = nodeElement.querySelectorAll('.handle-position-wrapper');
 
       branchItems.forEach((item, index) => {
@@ -527,20 +582,10 @@ const updateHandlePositions = () => {
           const itemRect = item.getBoundingClientRect();
           const nodeRect = nodeElement.getBoundingClientRect();
 
-          // 根据布局模式计算位置
-          if (isVertical.value) {
-            // 垂直布局：source 在底部，wrapper 从右侧伸出
-            const top = itemRect.top - nodeRect.top + itemRect.height / 2;
-            wrapper.style.top = `${top}px`;
-            wrapper.style.left = '';
-            wrapper.style.right = '0px';
-          } else {
-            // 水平布局：source 在右侧，wrapper 从底部伸出
-            const left = itemRect.left - nodeRect.left + itemRect.width / 2;
-            wrapper.style.left = `${left}px`;
-            wrapper.style.top = '';
-            wrapper.style.bottom = '0px';
-          }
+          // 计算垂直居中位置
+          const top = itemRect.top - nodeRect.top + itemRect.height / 2;
+          wrapper.style.top = `${top}px`;
+          // Handle 的水平位置由 position="Position.Right" 控制，不需要设置 left/right
         }
       });
     });
@@ -1174,15 +1219,5 @@ onUnmounted(() => {
   background-color: #8b5cf6 !important;
 }
 
-/* Handle 位置包装器 - 通过JS动态定位 */
-.handle-position-wrapper {
-  position: absolute;
-  /* 默认垂直布局：right + top */
-  right: 0;
-  /* 水平布局下会被 JS 动态设置为 left + bottom */
-  width: 0;
-  height: 0;
-  pointer-events: none;
-  transform: translateY(-50%);
-}
+
 </style>
