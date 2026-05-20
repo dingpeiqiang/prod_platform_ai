@@ -555,23 +555,16 @@ const getHandleTop = (index) => {
   return first + (index * step);
 };
 
-// 计算 Handle 的水平位置百分比（水平布局用 left）
+// 计算 Handle 的水平位置百分比（垂直布局时从左到右分布）
 const getHandleLeft = (index) => {
   const totalBranches = localBranches.value.length;
   if (totalBranches <= 1) return 50;
 
-  // 水平布局时，Handle 分布在底部，使用 left 定位
-  const positions = [30, 50, 70, 40, 60];
-
-  if (index >= positions.length) {
-    const startPercent = 20;
-    const endPercent = 80;
-    const range = endPercent - startPercent;
-    const step = totalBranches > 1 ? range / (totalBranches - 1) : 0;
-    return startPercent + (index * step);
-  }
-
-  return positions[index];
+  // 垂直布局：从左到右分布，"如果"最左（15%），"否则"最右（85%），中间均匀分布
+  const first = 15;
+  const last = 85;
+  const step = (last - first) / (totalBranches - 1);
+  return first + (index * step);
 };
 
 // 更新 Handle wrapper 的位置（使用防抖优化性能）
