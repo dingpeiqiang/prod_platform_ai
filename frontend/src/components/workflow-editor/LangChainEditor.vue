@@ -133,6 +133,13 @@
           清空
         </button>
         <span v-if="isReadOnly" class="read-only-badge">🔒 只读模式</span>
+        <div class="toolbar-divider"></div>
+        <button @click="toggleAnchorMode" class="btn-icon" :title="currentAnchorMode === 'vertical' ? '当前：垂直布局（点击切换为水平）' : '当前：水平布局（点击切换为垂直）'">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path v-if="currentAnchorMode === 'vertical'" d="M12 5v14M5 12l7-7 7 7"/>
+            <path v-else d="M5 12h14M12 5l-7 7 7 7"/>
+          </svg>
+        </button>
       </div>
       
       <div class="toolbar-center">
@@ -272,6 +279,7 @@
           :delete-key-code="isReadOnly ? [] : ['Delete', 'Backspace']"
           :disable-pan="false"
           :prevent-scroll-on-drag="true"
+          :direction="vueFlowDirection"
           @connect="onConnect"
           @connect-end="onConnectEnd"
           @node-drag-start="onNodeDragStart"
@@ -428,6 +436,34 @@
 
         <template #node-knowledgeBase="props">
           <KnowledgeNode
+            :data="enrichNodeData(props.data, props.node?.id)"
+            :selected="props.selected"
+            compact
+            @update="updateNodeData"
+          />
+        </template>
+
+        <template #node-userInput="props">
+          <UserInputNode
+            :data="enrichNodeData(props.data, props.node?.id)"
+            :selected="props.selected"
+            compact
+            :available-variables="getAvailableVariables(props.node?.id)"
+            @update="updateNodeData"
+          />
+        </template>
+
+        <template #node-form="props">
+          <FormNode
+            :data="enrichNodeData(props.data, props.node?.id)"
+            :selected="props.selected"
+            compact
+            @update="updateNodeData"
+          />
+        </template>
+
+        <template #node-validate="props">
+          <ValidateNode
             :data="enrichNodeData(props.data, props.node?.id)"
             :selected="props.selected"
             compact
@@ -638,8 +674,11 @@ import HttpNode from './nodes/HttpNode.vue';
 import CodeNode from './nodes/CodeNode.vue';
 import ParserNode from './nodes/ParserNode.vue';
 import KnowledgeNode from './nodes/KnowledgeNode.vue';
+import UserInputNode from './nodes/UserInputNode.vue';
+import FormNode from './nodes/FormNode.vue';
+import ValidateNode from './nodes/ValidateNode.vue';
 
-import { debounce, validateWorkflow, alignNodes, distributeNodes } from './utils/editorUtils';
+import { debounce, validateWorkflow, alignNodes, distributeNodes, autoLayoutNodes } from './utils/editorUtils';
 import { ExecutionEngine } from './utils/executionEngine';
 import { KeyboardShortcuts } from './utils/keyboardShortcuts';
 import { validateConnection as validateConnectionRules } from './utils/connectionRules';
@@ -682,6 +721,8 @@ const showShortcuts = ref(false);
 const connectionSuccess = ref(false);
 const isEdgeConnectable = ref(true);
 const isReadOnly = ref(false); // 工作流库加载的工作流为只读模式
+const currentAnchorMode = ref('vertical'); // 当前锚点模式：vertical（垂直）或 horizontal（水平）
+const vueFlowDirection = ref('TB'); // VueFlow 布局方向：TB（垂直，从上到下）或 LR（水平，从左到右）
 
 // 连接阻止标志，用于协调 onConnect 和 onConnectEnd
 const connectionBlocked = ref(false);
@@ -1705,6 +1746,64 @@ const clearWorkflow = () => {
     selectedNodeId.value = null;
     hasChanges.value = false;
   }
+};
+
+// 切换锚点模式（垂直/水平布局）
+const toggleAnchorMode = () => {
+  const newMode = currentAnchorMode.value === 'vertical' ? 'horizontal' : 'vertical';
+  const newDirection = newMode === 'vertical' ? 'LR' : 'TB';
+  currentAnchorMode.value = newMode;
+  vueFlowDirection.value = newDirection;
+
+  // 获取所有节点（不包括边）
+  const nodes = elements.value.filter(el => !el.source && !el.target);
+
+  // 计算节点位置并交换 x/y（实现布局旋转）
+  if (nodes.length > 0) {
+    // 计算当前画布边界
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    nodes.forEach(node => {
+      minX = Math.min(minX, node.position.x);
+      maxX = Math.max(maxX, node.position.x + (node.width || 180));
+      minY = Math.min(minY, node.position.y);
+      maxY = Math.max(maxY, node.position.y + (node.height || 80));
+    });
+
+    const MARGIN = 100; // 边距
+
+    // 交换所有节点的 x 和 y（实现布局旋转 90 度）
+    // 原理解：垂直布局的 x 轴变成水平布局的 y 轴，垂直布局的 y 轴变成水平布局的 x 轴
+    nodes.forEach(node => {
+      const newX = node.position.y - minY + MARGIN;
+      const newY = node.position.x - minX + MARGIN;
+      node.position.x = newX;
+      node.position.y = newY;
+      
+      // 关键修复：更新 anchorMode 并添加强制刷新标记
+      // 使用 Vue.set 或直接赋值确保响应式更新
+      const updatedData = { 
+        ...node.data, 
+        anchorMode: newMode,
+        _layoutTimestamp: Date.now() // 时间戳用于强制触发更新
+      };
+      
+      // 直接替换整个 data 对象以确保深度响应式更新
+      node.data = updatedData;
+    });
+  }
+
+  // 强制触发 Vue Flow 重新渲染
+  // 通过创建新数组引用触发响应式更新
+  const oldElements = [...elements.value];
+  elements.value = [];
+  
+  // 使用 nextTick 确保 DOM 完全清空后再重新渲染
+  setTimeout(() => {
+    elements.value = oldElements;
+    hasChanges.value = true;
+    console.log(`锚点模式已切换为: ${newMode}, 方向: ${newDirection}`);
+  }, 10);
 };
 
 const runWorkflowWithPanel = () => {
