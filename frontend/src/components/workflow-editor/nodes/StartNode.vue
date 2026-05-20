@@ -152,7 +152,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, watchEffect } from 'vue';
 import { Handle } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
 import { useNodeAnchorMode } from './useHandlePosition.js';
@@ -177,7 +177,15 @@ const { sourcePosition } = useNodeAnchorMode(props);
 
 const emit = defineEmits(['update', 'close']);
 
-const localParams = ref([]);
+const localParams = ref([
+  {
+    name: '',
+    type: 'string',
+    description: '',
+    default: '',
+    required: false
+  }
+]);
 const inputSectionExpanded = ref(true);
 
 const toggleInputSection = () => {
@@ -237,29 +245,39 @@ const getTypeDescription = (type) => {
 };
 
 const emitUpdate = () => {
+  // 确保 localParams 有数据
+  if (localParams.value.length === 0) {
+    localParams.value.push({
+      name: '',
+      type: 'string',
+      description: '',
+      default: '',
+      required: false
+    });
+  }
+  console.log('[StartNode] emitUpdate called, localParams:', JSON.stringify(localParams.value));
   emit('update', props.data.id, {
     parameters: localParams.value
   });
 };
 
-watch(() => props.data, (newData) => {
-  if (newData.parameters && newData.parameters.length > 0) {
-    localParams.value = JSON.parse(JSON.stringify(newData.parameters));
-  } else {
-    // 默认初始化一个参数
-    localParams.value = [
-      {
-        name: '',
-        type: 'string',
-        description: '',
-        default: '',
-        required: false
+// 使用 watch 而非 watchEffect，避免初始化时覆盖用户数据
+// 只在外部数据真正变化时才同步
+watch(
+  () => props.data.parameters,
+  (externalParams) => {
+    if (externalParams && externalParams.length > 0) {
+      // 比较是否真的需要更新
+      const externalJson = JSON.stringify(externalParams);
+      const localJson = JSON.stringify(localParams.value);
+      if (externalJson !== localJson) {
+        console.log('[StartNode] Syncing localParams from external data:', externalParams);
+        localParams.value = JSON.parse(externalJson);
       }
-    ];
-    // 触发更新，保存默认参数
-    emitUpdate();
-  }
-}, { immediate: true, deep: true });
+    }
+  },
+  { immediate: false } // 不在初始化时执行
+);
 </script>
 
 <style scoped>
@@ -576,9 +594,9 @@ watch(() => props.data, (newData) => {
 }
 
 .params-table th {
-  padding: 12px 16px;
+  padding: 8px 10px;
   text-align: left;
-  font-size: 13px;
+  font-size: 12px;
   color: #333;
   font-weight: 600;
   border-bottom: 1px solid #e8e8e8;
@@ -587,7 +605,7 @@ watch(() => props.data, (newData) => {
 }
 
 .params-table td {
-  padding: 14px 16px;
+  padding: 8px 10px;
   vertical-align: middle;
   border-bottom: 1px solid #f0f0f0;
   background: #fff;
@@ -615,28 +633,27 @@ watch(() => props.data, (newData) => {
 }
 
 .col-name {
-  width: 20%;
-  min-width: 140px;
+  width: 140px;
 }
 
 .col-type {
-  width: 15%;
-  min-width: 120px;
+  width: 110px;
 }
 
 .col-desc {
-  width: 35%;
-  min-width: 180px;
+  width: calc(100% - 140px - 110px - 70px - 50px);
+  min-width: 120px;
 }
 
 .col-required {
-  width: 100px;
+  width: 70px;
   text-align: center;
 }
 
 .col-action {
   width: 60px;
   text-align: center;
+  padding: 8px 4px;
 }
 
 .order-badge {
@@ -664,27 +681,25 @@ watch(() => props.data, (newData) => {
   height: 28px;
   border: none;
   background: transparent;
-  color: #1890ff;
+  color: #999;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 4px;
   transition: all 0.2s;
-  margin: 0 auto;
+  margin: 0;
+  padding: 0;
 }
 
 .action-btn:hover:not(:disabled) {
-  background: #e6f7ff;
+  background: #f5f5f5;
+  color: #666;
 }
 
 .action-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
-}
-
-.action-btn.delete-btn {
-  color: #1890ff;
 }
 
 .action-btn.delete-btn:hover {
@@ -699,10 +714,10 @@ watch(() => props.data, (newData) => {
 
 .param-name-input {
   width: 100%;
-  padding: 8px 12px;
+  padding: 5px 8px;
   border: 1px solid #d9d9d9;
   border-radius: 4px;
-  font-size: 13px;
+  font-size: 12px;
   background: #fff;
   color: #333;
   outline: none;
@@ -725,21 +740,19 @@ watch(() => props.data, (newData) => {
 
 .param-type-select {
   width: 100%;
-  padding: 8px 12px;
+  max-width: 95px;
+  padding: 4px 20px 4px 6px;
   border: 1px solid #d9d9d9;
   border-radius: 4px;
-  font-size: 13px;
+  font-size: 11px;
   background: #fff;
   color: #333;
   cursor: pointer;
   outline: none;
   transition: all 0.2s;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-  background-position: right 8px center;
-  background-repeat: no-repeat;
-  background-size: 12px;
-  padding-right: 28px;
+  appearance: auto;
+  -webkit-appearance: auto;
+  -moz-appearance: auto;
   box-sizing: border-box;
 }
 
@@ -776,10 +789,10 @@ watch(() => props.data, (newData) => {
 
 .param-desc-input {
   width: 100%;
-  padding: 8px 12px;
+  padding: 5px 8px;
   border: 1px solid #d9d9d9;
   border-radius: 4px;
-  font-size: 13px;
+  font-size: 12px;
   background: #fff;
   color: #333;
   outline: none;
@@ -855,9 +868,9 @@ watch(() => props.data, (newData) => {
 }
 
 .required-toggle {
-  width: 44px;
-  height: 22px;
-  border-radius: 11px;
+  width: 36px;
+  height: 18px;
+  border-radius: 9px;
   background: #d9d9d9;
   cursor: pointer;
   position: relative;
@@ -884,8 +897,8 @@ watch(() => props.data, (newData) => {
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   background: #fff;
   border-radius: 50%;
   transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -893,7 +906,7 @@ watch(() => props.data, (newData) => {
 }
 
 .required-toggle.active::after {
-  left: 24px;
+  left: 20px;
 }
 
 .action-delete {

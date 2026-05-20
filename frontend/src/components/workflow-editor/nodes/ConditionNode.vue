@@ -59,143 +59,114 @@
 
           <!-- 分支内容 - 条件配置 -->
           <div v-if="branch.expanded" class="branch-content">
-            <!-- 多条件时显示 AND 连接提示 -->
-            <div v-if="branch.conditions.length > 1" class="condition-logic-hint">
-              <span class="logic-label">所有条件均满足时执行</span>
-            </div>
-
-            <!-- 条件卡片列表 -->
-            <div class="condition-cards">
-              <div
-                v-for="(condition, condIndex) in branch.conditions"
-                :key="condIndex"
-                class="condition-card"
-              >
-                <!-- 卡片头部：序号 + 操作按钮 -->
-                <div class="card-header">
-                  <div class="card-title">
-                    <span class="card-num">{{ condIndex + 1 }}</span>
-                    <span class="card-label">条件</span>
-                  </div>
-                  <div class="card-actions">
-                    <button
-                      @click="addCondition(branchIndex)"
-                      class="card-action-btn add-btn"
-                      title="在下方添加条件"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="12" y1="5" x2="12" y2="19"/>
-                        <line x1="5" y1="12" x2="19" y2="12"/>
-                      </svg>
-                      <span>添加</span>
-                    </button>
-                    <button
-                      v-if="branch.conditions.length > 1"
-                      @click="removeCondition(branchIndex, condIndex)"
-                      class="card-action-btn delete-btn"
-                      title="删除此条件"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="18" y1="6" x2="6" y2="18"/>
-                        <line x1="6" y1="6" x2="18" y2="18"/>
-                      </svg>
-                      <span>删除</span>
-                    </button>
-                  </div>
+            <div v-for="(condition, condIndex) in branch.conditions" :key="condIndex" class="condition-row">
+              <div class="condition-grid">
+                <!-- 条件标签列 -->
+                <div class="grid-cell label-cell">
+                  <span class="condition-label-text">条件</span>
                 </div>
 
-                <!-- 卡片主体：三列布局 -->
-                <div class="card-body">
-                  <!-- 第一列：引用变量 -->
-                  <div class="card-field">
-                    <label class="field-label">当</label>
-                    <select
-                      v-model="condition.variable"
-                      @change="emitUpdate"
-                      class="field-select variable-select"
+                <!-- 引用变量列 -->
+                <div class="grid-cell variable-cell">
+                  <select
+                    v-model="condition.variable"
+                    @change="emitUpdate"
+                    class="variable-select"
+                    placeholder="请选择..."
+                  >
+                    <option value="" disabled>请选择...</option>
+                    <!-- 确保已选中的值能正确显示 -->
+                    <option 
+                      v-if="condition.variable && !availableVariables.find(v => v.id === condition.variable)" 
+                      :value="condition.variable"
+                      disabled
                     >
-                      <option value="" disabled>选择变量...</option>
-                      <option
-                        v-if="condition.variable && !availableVariables.find(v => v.id === condition.variable)"
-                        :value="condition.variable"
+                      {{ condition.variable }}
+                    </option>
+                    <option v-for="variable in availableVariables" :key="variable.id" :value="variable.id">
+                      {{ variable.name }}
+                    </option>
+                  </select>
+                </div>
+
+                <!-- 选择条件列 -->
+                <div class="grid-cell operator-cell">
+                  <select
+                    v-model="condition.operator"
+                    @change="emitUpdate"
+                    class="operator-select"
+                  >
+                    <option value="" disabled>请选择条件</option>
+                    <option value="==">等于</option>
+                    <option value="!=">不等于</option>
+                    <option value=">">大于</option>
+                    <option value="<">小于</option>
+                    <option value=">=">大于等于</option>
+                    <option value="<=">小于等于</option>
+                    <option value="contains">包含</option>
+                    <option value="not_contains">不包含</option>
+                    <option value="starts_with">以...开头</option>
+                    <option value="ends_with">以...结尾</option>
+                    <option value="matches">匹配正则</option>
+                    <option value="is_empty">为空</option>
+                    <option value="not_empty">不为空</option>
+                  </select>
+                </div>
+
+                <!-- 比较值列 -->
+                <div class="grid-cell value-cell">
+                  <div class="value-group">
+                    <select
+                      v-model="condition.valueType"
+                      @change="emitUpdate"
+                      class="value-type-select"
+                    >
+                      <option value="input">输入</option>
+                      <option value="reference">引用变量</option>
+                    </select>
+                    <input
+                      v-if="condition.valueType === 'input'"
+                      v-model="condition.value"
+                      @input="emitUpdate"
+                      type="text"
+                      placeholder="请输入"
+                      class="value-input"
+                    />
+                    <select
+                      v-else
+                      v-model="condition.value"
+                      @change="emitUpdate"
+                      class="value-reference-select"
+                    >
+                      <option value="" disabled>请选择...</option>
+                      <!-- 确保已选中的值能正确显示 -->
+                      <option 
+                        v-if="condition.value && !availableVariables.find(v => v.id === condition.value)" 
+                        :value="condition.value"
                         disabled
                       >
-                        {{ condition.variable }}
+                        {{ condition.value }}
                       </option>
                       <option v-for="variable in availableVariables" :key="variable.id" :value="variable.id">
                         {{ variable.name }}
                       </option>
                     </select>
                   </div>
+                </div>
 
-                  <!-- 第二列：运算符 -->
-                  <div class="card-field">
-                    <label class="field-label">满足</label>
-                    <select
-                      v-model="condition.operator"
-                      @change="onOperatorChange(condition)"
-                      class="field-select operator-select"
-                    >
-                      <option value="" disabled>选择条件</option>
-                      <option value="==">等于</option>
-                      <option value="!=">不等于</option>
-                      <option value=">">大于</option>
-                      <option value="<">小于</option>
-                      <option value=">=">大于等于</option>
-                      <option value="<=">小于等于</option>
-                      <option value="contains">包含</option>
-                      <option value="not_contains">不包含</option>
-                      <option value="starts_with">以...开头</option>
-                      <option value="ends_with">以...结尾</option>
-                      <option value="matches">匹配正则</option>
-                      <option value="is_empty">为空</option>
-                      <option value="not_empty">不为空</option>
-                    </select>
-                  </div>
-
-                  <!-- 第三列：比较值 -->
-                  <div class="card-field value-field">
-                    <label class="field-label">{{ isNoValueOperator(condition.operator) ? '' : '比较' }}</label>
-                    <div v-if="isNoValueOperator(condition.operator)" class="no-value-hint">
-                      <span>无需比较值</span>
-                    </div>
-                    <div v-else class="value-input-group">
-                      <select
-                        v-model="condition.valueType"
-                        @change="onValueTypeChange(condition)"
-                        class="field-select value-type-select"
-                      >
-                        <option value="input">输入</option>
-                        <option value="reference">引用</option>
-                      </select>
-                      <input
-                        v-if="condition.valueType === 'input'"
-                        v-model="condition.value"
-                        @input="emitUpdate"
-                        type="text"
-                        placeholder="输入值"
-                        class="field-input value-input"
-                      />
-                      <select
-                        v-else
-                        v-model="condition.value"
-                        @change="emitUpdate"
-                        class="field-select value-ref-select"
-                      >
-                        <option value="" disabled>选择变量...</option>
-                        <option
-                          v-if="condition.value && !availableVariables.find(v => v.id === condition.value)"
-                          :value="condition.value"
-                          disabled
-                        >
-                          {{ condition.value }}
-                        </option>
-                        <option v-for="variable in availableVariables" :key="variable.id" :value="variable.id">
-                          {{ variable.name }}
-                        </option>
-                      </select>
-                    </div>
-                  </div>
+                <!-- 操作按钮列 -->
+                <div class="grid-cell action-cell">
+                  <button
+                    v-if="condIndex === branch.conditions.length - 1"
+                    @click="addCondition(branchIndex)"
+                    class="action-btn add-condition-btn"
+                    title="添加更多条件"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="12" y1="5" x2="12" y2="19"/>
+                      <line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                  </button>
                 </div>
               </div>
             </div>
@@ -327,12 +298,8 @@ const localBranches = ref([]);
 
 // 初始化分支数据
 const initBranches = () => {
-  // 确保 props.data 存在且有 branches
-  if (!props.data || !props.data.branches || props.data.branches.length === 0) {
-    // 如果 props.data 没有 branches，使用当前 localBranches（保留已初始化的数据）
-    if (localBranches.value.length > 0) {
-      return;
-    }
+  // 确保 props.data 存在
+  if (!props.data) {
     // 默认创建分支
     localBranches.value = [
       {
@@ -356,24 +323,82 @@ const initBranches = () => {
     return;
   }
   
-  // 深拷贝数据，确保响应式
-  let branches = JSON.parse(JSON.stringify(props.data.branches));
-  
-  // 确保每个分支都有 conditions 数组
-  branches = branches.map(branch => ({
-    ...branch,
-    conditions: branch.conditions || []
-  }));
-  
-  // 确保"否则"分支在最后
-  const elseIndex = branches.findIndex(branch => branch.type === 'else');
-  if (elseIndex !== -1 && elseIndex !== branches.length - 1) {
-    const elseBranch = branches.splice(elseIndex, 1)[0];
-    branches.push(elseBranch);
+  if (props.data.branches && props.data.branches.length > 0) {
+    // 深拷贝数据，确保响应式
+    let branches = JSON.parse(JSON.stringify(props.data.branches));
+    
+    // 确保每个分支都有 conditions 数组
+    branches = branches.map(branch => ({
+      ...branch,
+      conditions: branch.conditions || []
+    }));
+    
+    // 确保“否则”分支在最后
+    const elseIndex = branches.findIndex(branch => branch.type === 'else');
+    if (elseIndex !== -1 && elseIndex !== branches.length - 1) {
+      const elseBranch = branches.splice(elseIndex, 1)[0];
+      branches.push(elseBranch);
+    }
+    
+    // 直接赋值，确保响应式更新立即触发
+    localBranches.value = branches;
+  } else if (props.data.condition) {
+    // 兼容旧格式：单个 condition 字段
+    localBranches.value = [
+      {
+        type: 'if',
+        expanded: true,
+        conditions: [
+          {
+            variable: '',
+            operator: '',
+            valueType: 'input',
+            value: props.data.condition
+          }
+        ]
+      },
+      {
+        type: 'else',
+        expanded: true,
+        conditions: []
+      }
+    ];
+    emitUpdate();
+  } else {
+    // 默认创建三个分支：如果、否则如果、否则
+    localBranches.value = [
+      {
+        type: 'if',
+        expanded: true,
+        conditions: [
+          {
+            variable: '',
+            operator: '',
+            valueType: 'input',
+            value: ''
+          }
+        ]
+      },
+      {
+        type: 'else_if',
+        expanded: true,
+        conditions: [
+          {
+            variable: '',
+            operator: '',
+            valueType: 'input',
+            value: ''
+          }
+        ]
+      },
+      {
+        type: 'else',
+        expanded: true,
+        conditions: []
+      }
+    ];
+    emitUpdate();
   }
-  
-  // 直接赋值，确保响应式更新立即触发
-  localBranches.value = branches;
 };
 
 // 切换分支展开/折叠
@@ -451,40 +476,6 @@ const removeBranch = (index) => {
   }
   
   localBranches.value.splice(index, 1);
-  emitUpdate();
-};
-
-// 删除指定分支中的指定条件
-const removeCondition = (branchIndex, condIndex) => {
-  const branch = localBranches.value[branchIndex];
-  if (!branch) return;
-
-  // 至少保留一个条件（如果分支不是 else 类型）
-  if (branch.type !== 'else' && branch.conditions.length <= 1) {
-    return;
-  }
-
-  branch.conditions.splice(condIndex, 1);
-  emitUpdate();
-};
-
-// 判断是否为无需比较值的运算符
-const isNoValueOperator = (operator) => {
-  return operator === 'is_empty' || operator === 'not_empty';
-};
-
-// 运算符变更处理 - 选中的值操作符时清空比较值
-const onOperatorChange = (condition) => {
-  if (isNoValueOperator(condition.operator)) {
-    condition.value = '';
-    condition.valueType = 'input';
-  }
-  emitUpdate();
-};
-
-// 值类型变更处理 - 清空旧值避免混淆
-const onValueTypeChange = (condition) => {
-  condition.value = '';
   emitUpdate();
 };
 
@@ -651,21 +642,14 @@ const updateHandlePositions = () => {
   }, 50); // 50ms 防抖
 };
 
-// 监听数据变化 - 专门监听 props.data.branches，只在 branches 真正变化时才重新初始化
-// 避免每次父组件重渲染都触发 initBranches 导致数据被重置
-watch(() => props.data?.branches, (newBranches) => {
-  if (props.data) {
-    localLabel.value = props.data.label || '判断器';
-    // 只在 branches 有实际内容时才初始化，避免覆盖用户已修改的数据
-    if (newBranches && newBranches.length > 0) {
-      initBranches();
-    } else if (localBranches.value.length === 0) {
-      // 只有在本地没有数据时才用默认值初始化
-      initBranches();
-    }
+// 监听数据变化
+watch(() => props.data, (newData) => {
+  if (newData) {
+    localLabel.value = newData.label || '判断器';
+    initBranches();
     nextTick(() => updateHandlePositions());
   }
-}, { immediate: true });
+}, { immediate: true, deep: true });
 
 // 监听 availableVariables 变化，确保条件值能正确显示
 watch(() => props.availableVariables, () => {
@@ -1077,246 +1061,137 @@ onUnmounted(() => {
   color: #666;
 }
 
-/* ========== 条件卡片式布局 ========== */
-
 /* 分支内容 */
 .branch-content {
   padding: 12px;
   background: #fff;
 }
 
-/* 多条件逻辑提示 */
-.condition-logic-hint {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 16px;
-  padding: 8px 16px;
-  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-  border-radius: 6px;
-  border: 1px solid #bae6fd;
+/* 条件行 */
+.condition-row {
+  margin-bottom: 12px;
 }
 
-.logic-label {
-  font-size: 13px;
-  color: #0369a1;
-  font-weight: 500;
+.condition-row:last-child {
+  margin-bottom: 0;
 }
 
-/* 条件卡片容器 */
-.condition-cards {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-/* 条件卡片 */
-.condition-card {
-  background: #fafbfc;
-  border: 1px solid #e8ecf0;
-  border-radius: 8px;
-  overflow: hidden;
-  transition: all 0.2s ease;
-}
-
-.condition-card:hover {
-  border-color: #d0d7de;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-/* 卡片头部 */
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  background: linear-gradient(to bottom, #ffffff, #f7f8f9);
-  border-bottom: 1px solid #e8ecf0;
-}
-
-.card-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.card-num {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  background: #3b82f6;
-  color: white;
-  font-size: 12px;
-  font-weight: 700;
-  border-radius: 50%;
-}
-
-.card-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: #374151;
-}
-
-/* 卡片操作按钮 */
-.card-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.card-action-btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 5px 10px;
-  border: none;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.card-action-btn svg {
-  width: 13px;
-  height: 13px;
-}
-
-.card-action-btn.add-btn {
-  background: #eff6ff;
-  color: #3b82f6;
-  border: 1px solid #bfdbfe;
-}
-
-.card-action-btn.add-btn:hover {
-  background: #3b82f6;
-  color: white;
-}
-
-.card-action-btn.delete-btn {
-  background: #fef2f2;
-  color: #ef4444;
-  border: 1px solid #fecaca;
-}
-
-.card-action-btn.delete-btn:hover {
-  background: #ef4444;
-  color: white;
-}
-
-/* 卡片主体 - 三列布局 */
-.card-body {
+.condition-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1.5fr;
-  gap: 12px;
-  padding: 14px;
-  align-items: start;
+  grid-template-columns: 60px 1fr 1fr 1.5fr 60px;
+  gap: 8px;
+  align-items: center;
 }
 
-/* 卡片字段 */
-.card-field {
+.grid-cell {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
 }
 
-.field-label {
-  font-size: 11px;
-  color: #6b7280;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+.label-cell {
+  justify-content: center;
 }
 
-/* 通用字段选择器样式 */
-.field-select {
-  width: 100%;
-  padding: 8px 32px 8px 10px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
+.condition-label-text {
   font-size: 13px;
-  background: #ffffff;
-  color: #374151;
+  color: #666;
+  font-weight: 500;
+}
+
+.variable-select,
+.operator-select,
+.value-type-select,
+.value-reference-select {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+  background: #fff;
   cursor: pointer;
   outline: none;
   transition: all 0.2s;
   appearance: none;
   background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-  background-position: right 10px center;
+  background-position: right 8px center;
   background-repeat: no-repeat;
-  background-size: 14px;
+  background-size: 12px;
+  padding-right: 28px;
+  box-sizing: border-box;
 }
 
-.field-select:focus {
+.variable-select:focus,
+.operator-select:focus,
+.value-type-select:focus,
+.value-reference-select:focus {
   border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
 
-.field-select:disabled {
-  background-color: #f3f4f6;
-  color: #9ca3af;
-  cursor: not-allowed;
-}
-
-/* 通用输入框样式 */
-.field-input {
+.value-group {
+  display: flex;
+  gap: 6px;
   width: 100%;
-  padding: 8px 10px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
+}
+
+.value-type-select {
+  width: 90px;
+  flex-shrink: 0;
+}
+
+.value-input,
+.value-reference-select {
+  flex: 1;
+}
+
+.value-input {
+  padding: 6px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
   font-size: 13px;
-  background: #ffffff;
-  color: #374151;
+  background: #fff;
   outline: none;
   transition: all 0.2s;
   box-sizing: border-box;
 }
 
-.field-input::placeholder {
-  color: #9ca3af;
+.value-input::placeholder {
+  color: #bfbfbf;
 }
 
-.field-input:focus {
+.value-input:focus {
   border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
 
-/* 值输入组（类型+值） */
-.value-input-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.action-cell {
+  justify-content: center;
+  gap: 4px;
 }
 
-.value-type-select {
-  width: 100%;
-  padding: 6px 10px;
-  font-size: 12px;
-}
-
-.value-ref-select {
-  flex: 1;
-}
-
-/* 无值提示 */
-.no-value-hint {
+.action-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: #3b82f6;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 10px;
-  background: #f3f4f6;
-  border: 1px dashed #d1d5db;
-  border-radius: 6px;
+  border-radius: 4px;
+  transition: all 0.2s;
 }
 
-.no-value-hint span {
-  font-size: 12px;
-  color: #9ca3af;
+.action-btn:hover:not(:disabled) {
+  background: #f0f7ff;
 }
 
-/* 删除分支按钮 */
+.add-condition-btn:hover {
+  background: #f0f7ff;
+  color: #3b82f6;
+}
+
 .delete-branch-btn {
   color: #ff4d4f;
 }

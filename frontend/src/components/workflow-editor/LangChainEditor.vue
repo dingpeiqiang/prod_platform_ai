@@ -109,21 +109,6 @@
           </svg>
           {{ isRunning ? '运行中...' : '运行' }}
         </button>
-        <button 
-          @click="runWorkflow()" 
-          :disabled="!isValid || isRunning" 
-          class="btn-secondary"
-          title="直接执行（无参数）"
-        >
-          <svg v-if="!isRunning" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polygon points="5 3 19 12 5 21 5 3"/>
-          </svg>
-          <svg v-else class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <path d="M12 6v6l4 2"/>
-          </svg>
-          快速执行
-        </button>
         <button @click="clearWorkflow" :disabled="isReadOnly" class="btn-danger">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 6h18"/>
@@ -639,6 +624,7 @@
               :logs="executionLogs"
               :is-running="isRunning"
               :last-result="lastExecutionResult"
+              :node-execution-data="nodeExecutionData"
               @clear="clearExecutionLogs"
             />
           </div>
@@ -748,6 +734,7 @@ const isRunning = ref(false);
 const lastExecutionResult = ref(null);
 const copiedNodes = ref([]);
 const nodeExecutionStatus = ref({});
+const nodeExecutionData = ref([]);  // 结构化的节点执行数据
 
 // 参数配置相关状态
 const showParameterPanel = ref(false);
@@ -1997,9 +1984,27 @@ const toggleAnchorMode = () => {
 };
 
 const runWorkflowWithPanel = () => {
+  // 1. 找到开始节点，提取其参数定义
+  const startNode = elements.value.find(el => el.type === 'start');
+  if (!startNode) {
+    ElMessage.warning('未找到开始节点');
+    return;
+  }
+
+  const startParams = startNode.data?.parameters || [];
+
+  // 2. 将开始节点的参数定义填充到 executionParameters（显示在参数输入面板供用户填写）
+  executionParameters.value = startParams.map(p => ({
+    name: p.name,
+    type: p.type,
+    description: p.description || '',
+    required: p.required ?? false,
+    value: p.default ?? ''   // 用开始节点的默认值初始化
+  }));
+
+  // 3. 打开右侧执行面板 + 显示参数输入面板
   showRightPanel.value = true;
   activePanel.value = 'execution';
-  // 显示参数输入面板
   showParameterPanel.value = true;
 };
 
@@ -2021,6 +2026,8 @@ const runWorkflow = async (inputParams = {}) => {
   executionEngine.setCallbacks(onStatusChange, onLog);
   const result = await executionEngine.execute(elements.value, inputParams);
   lastExecutionResult.value = result;
+  // 获取结构化的节点执行数据
+  nodeExecutionData.value = executionEngine.getNodeExecutionData();
   isRunning.value = false;
 };
 
@@ -2038,6 +2045,8 @@ const closeParameterPanel = () => {
 const clearExecutionLogs = () => {
   executionLogs.value = [];
   lastExecutionResult.value = null;
+  nodeExecutionData.value = [];
+  executionEngine.clearNodeExecutionData();
 };
 
 const undo = () => {

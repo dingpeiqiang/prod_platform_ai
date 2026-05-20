@@ -6,320 +6,223 @@
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
         </svg>
         <span>执行日志</span>
-        <span class="log-count">{{ visibleLogs.length }}</span>
         <span v-if="isRunning" class="status-badge running">
-          <span class="status-dot"></span>
-          运行中
+          <span class="status-dot"></span>运行中
         </span>
-        <span v-else-if="currentExecution?.result" class="status-badge" :class="currentExecution.result.status">
-          {{ currentExecution.result.status === 'success' ? '✓ 成功' : '✗ 失败' }}
+        <span v-else-if="lastResult" class="status-badge" :class="lastResult.status === 'success' ? 'success' : 'error'">
+          {{ lastResult.status === 'success' ? '✓ 成功' : '✗ 失败' }}
         </span>
+        <span class="node-count">{{ nodeExecutionData.length }} 个节点</span>
       </div>
       <div class="header-right">
-        <button 
-          v-if="history.length > 0" 
-          @click="showHistory = !showHistory" 
-          class="btn-action" 
-          :class="{ active: showHistory }"
-          title="历史记录"
-        >
+        <button v-if="nodeExecutionData.length > 0" @click="toggleAllExpand" class="btn-action" :title="allExpanded ? '收起全部' : '展开全部'">
+          <svg v-if="allExpanded" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="18 15 12 9 6 15"/>
+          </svg>
+          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </button>
+        <button v-if="nodeExecutionData.length > 0" @click="$emit('clear')" class="btn-action" title="清空日志">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-            <path d="M3 3v5h5"/>
+            <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
           </svg>
-          <span v-if="history.length > 0" class="history-count">{{ history.length }}</span>
-        </button>
-        <button 
-          v-if="logs.length > 0" 
-          @click="$emit('clear')" 
-          class="btn-action" 
-          title="清空日志"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 6h18"/>
-            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
-            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
-          </svg>
-        </button>
-      </div>
-    </div>
-
-    <div v-if="showHistory && history.length > 0" class="history-panel">
-      <div class="history-header">
-        <span>历史执行记录</span>
-        <button @click="clearHistory" class="btn-clear-history" title="清空历史">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 6h18"/>
-            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
-            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
-          </svg>
-        </button>
-      </div>
-      <div class="history-list">
-        <div 
-          v-for="(item, index) in history" 
-          :key="index"
-          @click="selectHistory(index)"
-          :class="['history-item', { active: selectedHistoryIndex === index }]"
-        >
-          <div class="history-status" :class="item.result.status"></div>
-          <div class="history-info">
-            <span class="history-time">{{ formatTime(item.timestamp) }}</span>
-            <span class="history-duration">{{ item.duration }}ms</span>
-          </div>
-          <div class="history-logs">{{ item.logs.length }} 条日志</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="toolbar">
-      <div class="search-box">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8"/>
-          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-        </svg>
-        <input 
-          v-model="searchQuery" 
-          type="text" 
-          placeholder="搜索日志..."
-          class="search-input"
-        />
-      </div>
-      <div class="filter-tags">
-        <button 
-          v-for="tag in filterTags" 
-          :key="tag.value"
-          @click="toggleFilter(tag.value)"
-          :class="['filter-tag', { active: activeFilters.includes(tag.value), [tag.value]: true }]"
-        >
-          {{ tag.label }}
         </button>
       </div>
     </div>
 
     <div class="logs-container" ref="logsContainer">
-      <div v-if="visibleLogs.length === 0" class="empty-logs">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+      <div v-if="nodeExecutionData.length === 0" class="empty-logs">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
           <polyline points="14 2 14 8 20 8"/>
-          <line x1="16" y1="13" x2="8" y2="13"/>
-          <line x1="16" y1="17" x2="8" y2="17"/>
-          <line x1="10" y1="9" x2="8" y2="9"/>
+          <line x1="9" y1="13" x2="15" y2="13"/>
         </svg>
-        <p>{{ searchQuery ? '未找到匹配的日志' : '暂无执行日志' }}</p>
+        <p>{{ isRunning ? '执行中...' : '暂无执行日志' }}</p>
+        <span v-if="isRunning" class="running-hint">节点正在运行，请稍候</span>
       </div>
-      
+
       <div v-else>
-        <div 
-          v-for="(log, index) in visibleLogs" 
-          :key="index" 
-          class="log-item"
-          :class="log.type"
-          @click="toggleLogExpand(index)"
+        <div
+          v-for="(nodeData, groupIdx) in nodeExecutionData"
+          :key="nodeData.nodeId"
+          class="node-card"
+          :class="nodeData.status"
         >
-          <div class="log-icon">
-            <span v-if="log.type === 'start'">🚀</span>
-            <span v-else-if="log.type === 'success'">✓</span>
-            <span v-else-if="log.type === 'error'">✗</span>
-            <span v-else-if="log.type === 'info'">📝</span>
-            <span v-else-if="log.type === 'node'">🔹</span>
-            <span v-else>●</span>
+          <div class="node-header" @click="toggleExpand(nodeData.nodeId)">
+            <div class="node-left">
+              <span class="expand-icon" :class="{ expanded: expandedNodes[nodeData.nodeId] }">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </span>
+              <span class="step-number">{{ groupIdx + 1 }}</span>
+              <span class="node-icon">{{ nodeIconMap[nodeData.nodeType] || '📌' }}</span>
+              <div class="node-info">
+                <span class="node-name">{{ nodeData.nodeLabel }}</span>
+                <span class="node-type">[{{ nodeData.nodeType }}]</span>
+              </div>
+            </div>
+            <div class="node-right">
+              <span class="node-duration">{{ nodeData.duration }}ms</span>
+              <span :class="['status-badge-sm', nodeData.status]">
+                {{ nodeData.status === 'completed' ? '✓' : nodeData.status === 'error' ? '✗' : '⋯' }}
+              </span>
+            </div>
           </div>
-          <div class="log-main">
-            <div class="log-header">
-              <span class="log-title">{{ log.title }}</span>
-              <span class="log-time">{{ log.time }}</span>
+
+          <!-- 展开的详细信息 -->
+          <div v-if="expandedNodes[nodeData.nodeId]" class="node-details">
+            <!-- 节点配置信息 -->
+            <div v-if="nodeData.config && Object.keys(nodeData.config).length > 0" class="node-config">
+              <div class="section-header">
+                <span class="section-icon">⚙️</span>
+                <span>配置</span>
+              </div>
+              <pre class="section-content config-content">{{ formatJson(nodeData.config) }}</pre>
             </div>
-            <div v-if="log.message" class="log-message">{{ log.message }}</div>
-            <div v-if="log.data && expandedLogs.includes(index)" class="log-data">
-              <pre>{{ formatJson(log.data) }}</pre>
+
+            <!-- 输入数据 -->
+            <div v-if="nodeData.input" class="node-input">
+              <div class="section-header">
+                <span class="section-icon">📥</span>
+                <span>输入</span>
+              </div>
+              <pre class="section-content input-content">{{ formatJson(nodeData.input) }}</pre>
             </div>
-            <div v-if="log.data" class="expand-hint" :class="{ expanded: expandedLogs.includes(index) }">
-              {{ expandedLogs.includes(index) ? '点击收起数据' : '点击查看详情' }}
+
+            <!-- 执行日志 -->
+            <div v-if="nodeData.logs && nodeData.logs.length > 0" class="node-logs">
+              <div class="section-header">
+                <span class="section-icon">📝</span>
+                <span>执行日志 ({{ nodeData.logs.length }})</span>
+              </div>
+              <div class="logs-list">
+                <div
+                  v-for="(log, idx) in nodeData.logs"
+                  :key="idx"
+                  class="log-row"
+                >
+                  <span class="log-type" :class="log.type">{{ getLogTypeLabel(log.type) }}</span>
+                  <span class="log-content">{{ log.message }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 错误信息 -->
+            <div v-if="nodeData.error" class="node-error">
+              <div class="section-header error">
+                <span class="section-icon">✗</span>
+                <span>错误</span>
+              </div>
+              <pre class="section-content error-content">{{ nodeData.error }}</pre>
+            </div>
+
+            <!-- 输出数据 -->
+            <div v-if="nodeData.output !== null && nodeData.output !== undefined" class="node-output">
+              <div class="section-header">
+                <span class="section-icon">📤</span>
+                <span>输出</span>
+              </div>
+              <pre class="section-content output-content">{{ formatJson(nodeData.output) }}</pre>
             </div>
           </div>
         </div>
       </div>
     </div>
 
-    <div v-if="currentExecution?.result" class="result-section">
-      <div 
-        class="result-resizer" 
-        @mousedown="startResize"
-        :class="{ resizing: isResizing }"
-      >
-        <div class="resizer-handle"></div>
-      </div>
+    <div v-if="lastResult && !isRunning" class="result-summary">
       <div class="result-header">
-        <h4>执行结果</h4>
-        <button @click="copyResult" class="btn-copy" title="复制结果">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-          </svg>
-        </button>
+        <span>📊 执行结果</span>
+        <span class="result-status" :class="lastResult.status === 'success' ? 'success' : 'error'">
+          {{ lastResult.status === 'success' ? '✓ 成功' : '✗ 失败' }}
+        </span>
       </div>
-      <div class="result-content" :style="{ maxHeight: resultHeight + 'px' }">
-        <pre>{{ formatJson(currentExecution.result) }}</pre>
-      </div>
+      <pre class="result-content">{{ formatJson(lastResult) }}</pre>
     </div>
   </div>
 </template>
 
-<script setup>import { ref, computed, watch, nextTick } from 'vue';
+<script setup>
+import { ref, computed, watch, nextTick, reactive } from 'vue';
+
 const props = defineProps({
- logs: {
- type: Array,
- default: () => []
- },
- isRunning: {
- type: Boolean,
- default: false
- },
- lastResult: {
- type: Object,
- default: null
- },
- history: {
- type: Array,
- default: () => []
- }
+  logs: { type: Array, default: () => [] },
+  isRunning: { type: Boolean, default: false },
+  lastResult: { type: Object, default: null },
+  history: { type: Array, default: () => [] },
+  nodeExecutionData: { type: Array, default: () => [] }  // 新增：结构化的节点执行数据
 });
-const emit = defineEmits(['clear', 'clear-history']);
-const searchQuery = ref('');
-const activeFilters = ref(['all']);
-const expandedLogs = ref([]);
+
+const emit = defineEmits(['clear']);
+
 const logsContainer = ref(null);
-const resultHeight = ref(100);
-const isResizing = ref(false);
-const showHistory = ref(false);
-const selectedHistoryIndex = ref(-1);
-const filterTags = [
- { value: 'all', label: '全部' },
- { value: 'node', label: '节点' },
- { value: 'info', label: '信息' },
- { value: 'start', label: '开始' },
- { value: 'success', label: '成功' },
- { value: 'error', label: '错误' }
-];
-const currentExecution = computed(() => {
- if (selectedHistoryIndex.value >= 0 && props.history.length > 0) {
- return props.history[selectedHistoryIndex.value];
- }
- return {
- logs: props.logs,
- result: props.lastResult,
- timestamp: Date.now(),
- duration: 0
- };
-});
-const visibleLogs = computed(() => {
- let result = currentExecution.value.logs || [];
- if (activeFilters.value.length === 0 || !activeFilters.value.includes('all')) {
- result = result.filter(log => activeFilters.value.includes(log.type));
- }
- if (searchQuery.value) {
- const query = searchQuery.value.toLowerCase();
- result = result.filter(log => log.title.toLowerCase().includes(query) ||
- (log.message && log.message.toLowerCase().includes(query)));
- }
- return result;
-});
-const toggleFilter = (filter) => {
- if (filter === 'all') {
- activeFilters.value = ['all'];
- }
- else {
- activeFilters.value = activeFilters.value.includes(filter)
- ? activeFilters.value.filter(f => f !== filter)
- : [...activeFilters.value.filter(f => f !== 'all'), filter];
- if (activeFilters.value.length === 0) {
- activeFilters.value = ['all'];
- }
- }
+const expandedNodes = reactive({});
+const allExpanded = ref(false);  // 默认全部折叠
+
+const nodeIconMap = {
+  'start': '🚀', 'end': '🏁', 'prompt': '💬', 'llm': '🤖',
+  'tool': '🔧', 'condition': '🔀', 'loop': '🔄', 'variable': '📦',
+  'http': '🌐', 'code': '💻', 'parser': '🔣', 'knowledgeBase': '📚',
+  'userInput': '⌨️', 'form': '📋', 'validate': '✅', 'default': '📌'
 };
-const toggleLogExpand = (index) => {
- const idx = expandedLogs.value.indexOf(index);
- if (idx > -1) {
- expandedLogs.value.splice(idx, 1);
- }
- else {
- expandedLogs.value.push(index);
- }
+
+const logTypeLabels = {
+  'start': '开始',
+  'end': '结束',
+  'success': '成功',
+  'error': '错误',
+  'info': '信息',
+  'warn': '警告',
+  'debug': '调试',
+  'node': '节点',
+  'result': '结果',
+  'default': '日志'
 };
-const selectHistory = (index) => {
- selectedHistoryIndex.value = selectedHistoryIndex.value === index ? -1 : index;
- expandedLogs.value = [];
+
+const getLogTypeLabel = (type) => {
+  return logTypeLabels[type] || logTypeLabels['default'];
 };
-const clearHistory = () => {
- emit('clear-history');
- selectedHistoryIndex.value = -1;
+
+const toggleExpand = (nodeId) => {
+  expandedNodes[nodeId] = !expandedNodes[nodeId];
 };
-const copyResult = async () => {
- if (currentExecution.value.result) {
- try {
- await navigator.clipboard.writeText(formatJson(currentExecution.value.result));
- alert('已复制到剪贴板');
- }
- catch (err) {
- console.error('复制失败:', err);
- }
- }
+
+const toggleAllExpand = () => {
+  allExpanded.value = !allExpanded.value;
+  const newValue = allExpanded.value;
+  nodeExecutionData.value?.forEach(node => {
+    expandedNodes[node.nodeId] = newValue;
+  });
 };
+
+// 监听节点执行数据变化，默认全部折叠
+watch(() => props.nodeExecutionData, (newData) => {
+  if (newData && newData.length > 0) {
+    // 新数据到达时，默认全部折叠，用户可自行展开
+    newData.forEach(node => {
+      if (expandedNodes[node.nodeId] === undefined) {
+        expandedNodes[node.nodeId] = false;
+      }
+    });
+  }
+}, { immediate: true });
+
 const formatJson = (data) => {
- try {
- return JSON.stringify(data, null, 2);
- }
- catch {
- return String(data);
- }
+  if (!data) return '';
+  try { return JSON.stringify(data, null, 2); }
+  catch { return String(data); }
 };
-const formatTime = (timestamp) => {
- const date = new Date(timestamp);
- return date.toLocaleString('zh-CN', {
- month: '2-digit',
- day: '2-digit',
- hour: '2-digit',
- minute: '2-digit',
- second: '2-digit'
- });
+
+const formatTimestamp = (ts) => {
+  if (!ts) return '--:--:--';
+  const d = new Date(ts);
+  return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 };
-const startResize = (event) => {
- isResizing.value = true;
- document.addEventListener('mousemove', onResize);
- document.addEventListener('mouseup', stopResize);
- event.preventDefault();
-};
-const onResize = (event) => {
- if (!isResizing.value)
- return;
- const panel = document.querySelector('.execution-panel');
- if (!panel)
- return;
- const panelRect = panel.getBoundingClientRect();
- const newHeight = panelRect.height - event.clientY + panelRect.top;
- const minHeight = 60;
- const maxHeight = panelRect.height - 100;
- resultHeight.value = Math.max(minHeight, Math.min(maxHeight, newHeight));
-};
-const stopResize = () => {
- isResizing.value = false;
- document.removeEventListener('mousemove', onResize);
- document.removeEventListener('mouseup', stopResize);
-};
-watch(() => props.logs.length, async () => {
- if (selectedHistoryIndex.value >= 0)
- return;
- await nextTick();
- if (logsContainer.value) {
- logsContainer.value.scrollTop = logsContainer.value.scrollHeight;
- }
-});
-watch(selectedHistoryIndex, async () => {
- await nextTick();
- if (logsContainer.value) {
- logsContainer.value.scrollTop = 0;
- }
+
+watch(() => props.logs.length + props.nodeExecutionData.length, async () => {
+  await nextTick();
+  if (logsContainer.value) logsContainer.value.scrollTop = logsContainer.value.scrollHeight;
 });
 </script>
 
@@ -328,298 +231,73 @@ watch(selectedHistoryIndex, async () => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background-color: #1e293b;
+  background-color: #0f172a;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-.execution-panel .panel-header {
+.panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 12px;
-  background-color: #0f172a;
+  padding: 12px 16px;
+  background-color: #1e293b;
   border-bottom: 1px solid #334155;
 }
 
-.execution-panel .header-left {
+.header-left {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.execution-panel .header-left span {
-  font-size: 13px;
-  font-weight: 500;
+  gap: 10px;
   color: #e2e8f0;
+  font-size: 14px;
+  font-weight: 500;
 }
 
-.log-count {
-  background-color: #334155;
-  padding: 2px 6px;
+.node-count {
+  font-size: 12px;
+  color: #64748b;
+  background: #334155;
+  padding: 2px 8px;
   border-radius: 10px;
-  font-size: 11px;
-  color: #94a3b8;
 }
 
 .status-badge {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
   font-weight: 600;
 }
 
-.status-badge.running {
-  background-color: rgba(245, 158, 11, 0.2);
-  color: #f59e0b;
-}
+.status-badge.running { background: rgba(245,158,11,.2); color: #f59e0b; }
+.status-badge.success { background: rgba(16,185,129,.2); color: #10b981; }
+.status-badge.error { background: rgba(239,68,68,.2); color: #ef4444; }
 
 .status-dot {
-  width: 6px;
-  height: 6px;
-  background-color: #f59e0b;
-  border-radius: 50%;
+  width: 6px; height: 6px; background: #f59e0b; border-radius: 50%;
   animation: pulse 1.5s infinite;
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-.status-badge.success {
-  background-color: rgba(16, 185, 129, 0.2);
-  color: #10b981;
-}
-
-.status-badge.error {
-  background-color: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
-}
-
-.execution-panel .header-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
 
 .btn-action {
-  background: none;
-  border: none;
-  color: #94a3b8;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  background: none; border: none; color: #94a3b8; cursor: pointer;
+  padding: 5px; border-radius: 4px;
 }
 
-.btn-action:hover {
-  background-color: #334155;
-  color: #e2e8f0;
-}
+.btn-action:hover { background: #334155; color: #e2e8f0; }
 
-.btn-action.active {
-  background-color: #3b82f6;
-  color: white;
-}
-
-.history-count {
-  background-color: #334155;
-  padding: 1px 4px;
-  border-radius: 8px;
-  font-size: 10px;
-}
-
-.history-panel {
-  background-color: #0f172a;
-  border-bottom: 1px solid #334155;
-}
-
-.history-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 12px;
-  border-bottom: 1px solid #334155;
-}
-
-.history-header span {
-  font-size: 11px;
-  color: #94a3b8;
-  font-weight: 500;
-}
-
-.btn-clear-history {
-  background: none;
-  border: none;
-  color: #64748b;
-  cursor: pointer;
-  padding: 2px;
-  border-radius: 4px;
-}
-
-.btn-clear-history:hover {
-  background-color: #334155;
-  color: #ef4444;
-}
-
-.history-list {
-  max-height: 120px;
-  overflow-y: auto;
-  padding: 4px;
-}
-
-.history-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.history-item:hover {
-  background-color: #1e293b;
-}
-
-.history-item.active {
-  background-color: #3b82f6;
-}
-
-.history-status {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.history-status.success {
-  background-color: #10b981;
-}
-
-.history-status.error {
-  background-color: #ef4444;
-}
-
-.history-info {
-  flex: 1;
-  display: flex;
-  gap: 12px;
-}
-
-.history-time {
-  font-size: 11px;
-  color: #e2e8f0;
-}
-
-.history-duration {
-  font-size: 10px;
-  color: #64748b;
-}
-
-.history-logs {
-  font-size: 10px;
-  color: #64748b;
-  background-color: #334155;
-  padding: 1px 6px;
-  border-radius: 8px;
-}
-
-.history-item.active .history-logs {
-  background-color: rgba(255, 255, 255, 0.2);
-}
-
-.execution-panel .toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 12px;
-  gap: 12px;
-  background-color: #1e293b;
-  border-bottom: 1px solid #334155;
-}
-
-.search-box {
-  display: flex;
-  align-items: center;
-  background-color: #0f172a;
-  border-radius: 6px;
-  padding: 4px 8px;
-  flex: 1;
-}
-
-.search-box svg {
-  color: #64748b;
-}
-
-.search-input {
-  background: none;
-  border: none;
-  color: #e2e8f0;
-  font-size: 12px;
-  padding: 4px 6px;
-  outline: none;
-  flex: 1;
-}
-
-.search-input::placeholder {
-  color: #64748b;
-}
-
-.filter-tags {
+.header-right {
   display: flex;
   gap: 4px;
-  flex-wrap: wrap;
-}
-
-.filter-tag {
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  background-color: #0f172a;
-  color: #94a3b8;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.filter-tag:hover {
-  background-color: #334155;
-}
-
-.filter-tag.active {
-  background-color: #3b82f6;
-  color: white;
-}
-
-.filter-tag.node.active {
-  background-color: #f59e0b;
-}
-
-.filter-tag.info.active {
-  background-color: #64748b;
-}
-
-.filter-tag.start.active {
-  background-color: #334155;
-}
-
-.filter-tag.success.active {
-  background-color: #10b981;
-}
-
-.filter-tag.error.active {
-  background-color: #ef4444;
 }
 
 .logs-container {
   flex: 1;
   overflow-y: auto;
-  padding: 10px 12px;
+  padding: 12px;
 }
 
 .empty-logs {
@@ -627,158 +305,258 @@ watch(selectedHistoryIndex, async () => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 20px;
+  padding: 60px 20px;
   color: #64748b;
 }
 
-.empty-logs p {
-  margin-top: 8px;
-  font-size: 12px;
+.empty-logs svg { opacity: 0.5; }
+.empty-logs p { margin-top: 12px; font-size: 14px; }
+.running-hint { font-size: 12px; color: #f59e0b; margin-top: 6px; }
+
+.node-card {
+  margin-bottom: 12px;
+  padding: 0;
+  background: #1e293b;
+  border-radius: 8px;
+  border-left: 4px solid #64748b;
+  overflow: hidden;
 }
 
-.log-item {
-  display: flex;
-  gap: 10px;
-  padding: 8px;
-  margin-bottom: 4px;
-  background-color: #0f172a;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
+.node-card.completed { border-left-color: #10b981; }
+.node-card.error { border-left-color: #ef4444; }
+.node-card.running { border-left-color: #f59e0b; }
 
-.log-item:hover {
-  background-color: #1e293b;
-}
-
-.log-item.start {
-  border-left: 3px solid #3b82f6;
-}
-
-.log-item.success {
-  border-left: 3px solid #10b981;
-}
-
-.log-item.error {
-  border-left: 3px solid #ef4444;
-}
-
-.log-item.info {
-  border-left: 3px solid #64748b;
-}
-
-.log-item.node {
-  border-left: 3px solid #f59e0b;
-}
-
-.log-icon {
-  font-size: 14px;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.log-main {
-  flex: 1;
-  min-width: 0;
-}
-
-.log-header {
+.node-header {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.node-header:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.node-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.expand-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s;
+  color: #64748b;
+}
+
+.expand-icon.expanded {
+  transform: rotate(180deg);
+}
+
+.step-number {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #334155;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.node-icon {
+  font-size: 18px;
+}
+
+.node-info {
+  display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.log-title {
-  font-size: 12px;
-  font-weight: 500;
+.node-name {
+  font-size: 13px;
+  font-weight: 600;
   color: #e2e8f0;
 }
 
-.log-time {
-  font-size: 10px;
+.node-type {
+  font-size: 11px;
   color: #64748b;
+}
+
+.node-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.node-time {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.node-duration {
+  font-size: 11px;
+  color: #94a3b8;
+  background: #0f172a;
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+
+.status-badge-sm {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+
+.status-badge-sm.completed { background: rgba(16,185,129,.2); color: #10b981; }
+.status-badge-sm.error { background: rgba(239,68,68,.2); color: #ef4444; }
+.status-badge-sm.running { background: rgba(245,158,11,.2); color: #f59e0b; }
+
+.node-details {
+  padding: 0 14px 14px;
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Section styles */
+.node-config,
+.node-input,
+.node-output {
+  margin-top: 10px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+
+.section-header.error {
+  color: #ef4444;
+}
+
+.section-icon {
+  font-size: 12px;
+}
+
+.section-content {
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  font-size: 11px;
+  margin: 0;
+  padding: 10px;
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.config-content {
+  background: rgba(148,163,184,.05);
+  color: #94a3b8;
+  border: 1px solid rgba(148,163,184,.1);
+}
+
+.input-content {
+  background: rgba(59,130,246,.05);
+  color: #93c5fd;
+  border: 1px solid rgba(59,130,246,.2);
+}
+
+.output-content {
+  background: rgba(16,185,129,.05);
+  color: #86efac;
+  border: 1px solid rgba(16,185,129,.2);
+}
+
+/* Logs list */
+.node-logs {
+  margin-top: 10px;
+}
+
+.logs-list {
+  background: rgba(0,0,0,.2);
+  border-radius: 6px;
+  border: 1px solid rgba(148,163,184,.1);
+}
+
+.log-row {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px dashed rgba(148,163,184,.1);
+}
+
+.log-row:last-child {
+  border-bottom: none;
+}
+
+.log-type {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  min-width: 40px;
+  text-align: center;
   flex-shrink: 0;
 }
 
-.log-message {
-  font-size: 11px;
-  color: #94a3b8;
-  margin-top: 2px;
+.log-type.info { background: rgba(59,130,246,.2); color: #60a5fa; }
+.log-type.warn { background: rgba(245,158,11,.2); color: #f59e0b; }
+.log-type.error { background: rgba(239,68,68,.2); color: #ef4444; }
+.log-type.debug { background: rgba(139,92,246,.2); color: #a78bfa; }
+.log-type.result { background: rgba(16,185,129,.2); color: #10b981; }
+.log-type.default { background: rgba(148,163,184,.2); color: #94a3b8; }
+
+.log-content {
+  font-size: 12px;
+  color: #cbd5e1;
+  flex: 1;
   word-break: break-all;
 }
 
-.log-data {
-  margin-top: 8px;
-  padding: 8px;
-  background-color: #1e293b;
-  border-radius: 4px;
-  overflow-x: auto;
+/* Error */
+.node-error {
+  margin-top: 10px;
 }
 
-.log-data pre {
+.error-content {
+  background: rgba(239,68,68,.1);
+  color: #fca5a5;
+  border: 1px solid rgba(239,68,68,.3);
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
   font-size: 11px;
-  color: #94a3b8;
+  margin: 0;
+  padding: 10px;
+  border-radius: 6px;
   white-space: pre-wrap;
   word-break: break-all;
-  margin: 0;
-  font-family: 'Monaco', 'Menlo', monospace;
+  max-height: 150px;
+  overflow-y: auto;
 }
 
-.expand-hint {
-  font-size: 10px;
-  color: #64748b;
-  margin-top: 4px;
-  font-style: italic;
-}
-
-.expand-hint.expanded {
-  color: #3b82f6;
-}
-
-.result-section {
-  background-color: #0f172a;
+/* Result summary */
+.result-summary {
+  background: #1e293b;
   border-top: 1px solid #334155;
-  padding: 10px 12px;
-  position: relative;
-}
-
-.result-resizer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 6px;
-  cursor: row-resize;
-  background: transparent;
-  z-index: 10;
-  transform: translateY(-50%);
-  transition: background-color 0.2s;
-}
-
-.result-resizer:hover {
-  background-color: rgba(0, 0, 0, 0.1);
-}
-
-.result-resizer.resizing {
-  background-color: rgba(33, 150, 243, 0.3);
-}
-
-.result-resizer .resizer-handle {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 40px;
-  height: 10px;
-  background-color: #475569;
-  border-radius: 2px;
-  transition: background-color 0.2s;
-}
-
-.result-resizer:hover .resizer-handle,
-.result-resizer.resizing .resizer-handle {
-  background-color: #2196f3;
+  padding: 12px 16px;
 }
 
 .result-header {
@@ -788,56 +566,35 @@ watch(selectedHistoryIndex, async () => {
   margin-bottom: 8px;
 }
 
-.result-section h4 {
-  font-size: 11px;
+.result-header span {
+  font-size: 12px;
+  font-weight: 600;
   color: #94a3b8;
-  margin: 0;
-  text-transform: uppercase;
 }
 
-.btn-copy {
-  background: none;
-  border: none;
-  color: #64748b;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
+.result-status {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 10px;
 }
 
-.btn-copy:hover {
-  background-color: #334155;
-  color: #e2e8f0;
-}
+.result-status.success { background: rgba(16,185,129,.2); color: #10b981; }
+.result-status.error { background: rgba(239,68,68,.2); color: #ef4444; }
 
 .result-content {
-  max-height: 100px;
-  overflow-y: auto;
-}
-
-.result-content pre {
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
   font-size: 11px;
   color: #e2e8f0;
   margin: 0;
   white-space: pre-wrap;
   word-break: break-all;
-  font-family: 'Monaco', 'Menlo', monospace;
+  max-height: 120px;
+  overflow-y: auto;
 }
 
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: #0f172a;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #475569;
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
-}
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #0f172a; }
+::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #64748b; }
 </style>
