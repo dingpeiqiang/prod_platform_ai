@@ -40,6 +40,7 @@
           :is="configComponent"
           :data="nodeData"
           :selected="true"
+          :available-variables="availableVariables"
           config-mode
           @update="(nodeId, data) => $emit('node-update', nodeId, data)"
           @close="$emit('close')"
@@ -68,7 +69,8 @@ import { NODE_CONFIG_COMPONENTS, NODE_TYPE_LABELS } from './nodeConfigRegistry.j
 const props = defineProps({
   node: { type: Object, default: null },
   executionStatus: { type: String, default: '' },
-  executionTime: { type: String, default: '' }
+  executionTime: { type: String, default: '' },
+  availableVariables: { type: Array, default: () => [] }
 });
 
 const nodeData = computed(() => {

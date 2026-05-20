@@ -227,23 +227,79 @@ async def get_default_model():
 
 @router.get("/chat/model/available")
 async def get_available_models():
-    """获取可用的模型列表"""
+    """获取可用的模型列表
+    
+    从以下来源聚合模型：
+    1. 系统配置中的默认模型
+    2. 用户在数据库中保存的自定义模型配置
+    """
     from app.core.config_loader import config_loader
+    from app.models.llm_user_config import LLMUserConfig
+    from app.core.database import get_db
+    from sqlalchemy.orm import Session
+    from app.core.database import engine
     
     llm_config = config_loader.get_app_config().get('llm', {})
     default_provider = llm_config.get('provider', 'custom')
     default_model = llm_config.get('model', '')
     
     available_models = []
+    seen_model_keys = set()
     
+    def add_model(model_info: dict):
+        """添加模型去重"""
+        key = f"{model_info.get('provider', '')}:{model_info.get('name', '')}"
+        if key and key not in seen_model_keys:
+            seen_model_keys.add(key)
+            available_models.append(model_info)
+    
+    # 1. 添加系统默认模型
     if default_provider and default_model:
-        available_models.append({
+        add_model({
             "id": f"{default_provider}-{default_model}",
             "provider": default_provider,
             "providerName": "系统默认",
             "name": default_model,
             "isDefault": True
         })
+    
+    # 2. 从数据库获取用户保存的模型配置（只取激活状态的）
+    logger_warning = logging.getLogger(__name__)
+    try:
+        with Session(engine) as db:
+            user_configs = db.query(LLMUserConfig).filter(
+                LLMUserConfig.is_active == True
+            ).limit(50).all()
+            
+            logger_warning.warning(f"[model/available] 从数据库查询到 {len(user_configs)} 个用户模型配置")
+            
+            provider_names = {
+                'custom': '自定义',
+                'openai': 'OpenAI',
+                'anthropic': 'Anthropic',
+                'minimax': 'MiniMax',
+                'ollama': 'Ollama',
+                'websocket': 'WebSocket'
+            }
+            
+            for config in user_configs:
+                provider_label = provider_names.get(config.provider, config.provider or '自定义')
+                model_info = {
+                    "id": f"{config.provider}-{config.model}" if config.provider else config.model,
+                    "provider": config.provider or 'custom',
+                    "providerName": provider_label,
+                    "name": config.model,
+                    "isDefault": False,
+                    "apiKey": bool(config.api_key),
+                    "baseUrl": config.base_url
+                }
+                logger_warning.warning(f"[model/available] 添加模型: {model_info}")
+                add_model(model_info)
+    except Exception as e:
+        logger_warning.warning(f"获取用户模型配置失败: {e}")
+    
+    # 3. 添加常见的预设模型（如果不在列表中）
+    # 已删除兜底逻辑，API返回什么就显示什么，为空也可以
     
     return {"success": True, "models": available_models}
 

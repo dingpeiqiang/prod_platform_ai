@@ -85,16 +85,13 @@
           <div class="param-grid">
             <div class="param-row">
               <label class="param-label">模型选择</label>
-              <select v-model="localModel" @change="emitUpdate" class="param-select">
+              <select v-model="localModel" @change="emitUpdate" class="param-select" :disabled="modelsLoading">
                 <option value="" disabled>请选择模型</option>
-                <option value="qwen-vl-plus">Qwen-VL-Plus</option>
-                <option value="qwen-plus">Qwen-Plus</option>
-                <option value="gpt-4o">GPT-4o</option>
-                <option value="gpt-4">GPT-4</option>
-                <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-                <option value="claude-3-opus">Claude 3 Opus</option>
-                <option value="claude-3-sonnet">Claude 3 Sonnet</option>
-                <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                <option
+                  v-for="opt in modelOptions"
+                  :key="opt.value"
+                  :value="opt.value"
+                >{{ opt.label }}</option>
               </select>
             </div>
 
@@ -306,7 +303,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, onMounted, computed } from 'vue';
 import { Handle } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
 import { useNodeAnchorMode } from './useHandlePosition.js';
@@ -344,6 +341,40 @@ const expandedSections = ref({
 
 const showModelTooltip = ref(false);
 let hideTimer = null;
+
+// 可用模型列表（动态从API获取）
+const availableModels = ref([]);
+const modelsLoading = ref(false);
+
+// 获取可用模型列表
+const loadAvailableModels = async () => {
+  if (modelsLoading.value) return;
+  modelsLoading.value = true;
+  try {
+    const response = await fetch('/api/v1/chat/model/available');
+    const result = await response.json();
+    if (result.success && result.models) {
+      availableModels.value = result.models;
+    }
+  } catch (e) {
+    console.error('加载可用模型列表失败:', e);
+  } finally {
+    modelsLoading.value = false;
+  }
+};
+
+onMounted(() => {
+  loadAvailableModels();
+});
+
+// 模型选项（格式化为 select 需要的选项）
+const modelOptions = computed(() => {
+  return availableModels.value.map(m => ({
+    value: m.id,
+    label: `${m.name} (${m.providerName || m.provider})`,
+    raw: m
+  }));
+});
 
 const handleTooltipEnter = () => {
   if (hideTimer) {
@@ -858,6 +889,12 @@ watch(() => props.data, (newData) => {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.param-select:disabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .slider-control {

@@ -69,7 +69,7 @@
         "id": "check_code",
         "type": "condition",
         "data": {
-          "label": "检查套餐编码",
+          "label": "条件分支",
           "branches": [
             {
               "type": "if",

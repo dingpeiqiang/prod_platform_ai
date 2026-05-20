@@ -12,22 +12,6 @@
   >
     <!-- 配置模式 -->
     <div v-if="configMode" class="condition-node-config">
-      <!-- 顶部功能说明 -->
-      <div class="node-description">
-        连接多个下游分支，如果设立的条件成立，则只运行如果分支，不成立则只运行否则分支。
-      </div>
-
-      <!-- 节点标题 -->
-      <div class="node-title-section">
-        <input
-          v-model="localLabel"
-          @input="emitUpdate"
-          type="text"
-          placeholder="条件分支"
-          class="node-title-input"
-        />
-      </div>
-
       <!-- 分支列表 -->
       <div class="branch-list">
         <div

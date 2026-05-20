@@ -386,6 +386,7 @@
               :data="enrichNodeData(props.data, props.node?.id)"
               :selected="props.selected"
               compact
+              :available-variables="getAvailableVariables(props.node?.id)"
               @update="updateNodeData"
             />
           </template>
@@ -479,6 +480,7 @@
           :node="selectedNodeData"
           :execution-status="selectedNodeExecutionStatus"
           :execution-time="selectedNodeExecutionTime"
+          :available-variables="getAvailableVariables(selectedNodeId)"
           @close="closeNodeConfigPanel"
           @update-label="onPropertyLabelUpdate"
           @update="onPropertyUpdate"
