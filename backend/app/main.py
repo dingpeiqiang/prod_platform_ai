@@ -94,6 +94,7 @@ from app.api.scheduler import router as scheduler_router
 from app.api.mcp_management import router as mcp_management_router
 from app.api.kb import router as kb_router
 from app.api.llm_config import router as llm_config_router
+from app.api.tariff_filing import router as tariff_filing_router
 
 settings = get_settings()
 Base.metadata.create_all(bind=engine)
@@ -166,6 +167,7 @@ app.include_router(execution_router)  # 工作流执行 API
 app.include_router(scheduler_router)  # 工作流调度器 API
 app.include_router(kb_router)  # 知识库 API
 app.include_router(llm_config_router)  # LLM 配置管理 API
+app.include_router(tariff_filing_router)  # 资费备案 API
 
 
 @app.get("/")

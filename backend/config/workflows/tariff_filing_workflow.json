@@ -1,0 +1,174 @@
+{
+  "id": "tariff_filing_workflow",
+  "name": "资费备案工作流",
+  "description": "资费备案业务流程：解析输入→查询套餐→生成表单→校验表单",
+  "category": "general",
+  "tags": [],
+  "createdAt": "2026-05-20T07:18:30",
+  "updatedAt": "2026-05-20T07:18:30",
+  "workflowData": {
+    "workflowCode": "tariff_filing_workflow",
+    "workflowName": "资费备案工作流",
+    "description": "资费备案业务流程：解析输入→查询套餐→生成表单→校验表单",
+    "nodes": [
+      {
+        "id": "start",
+        "type": "start",
+        "data": {
+          "label": "开始"
+        },
+        "position": {
+          "x": 60,
+          "y": 200
+        }
+      },
+      {
+        "id": "llm_parse",
+        "type": "llm",
+        "data": {
+          "label": "解析用户输入",
+          "prompt": "从用户输入中提取套餐编码和操作类型：\n\n用户输入：{{user_input}}\n\n请输出JSON格式结果：\n{\n  \"tariff_code\": \"提取的套餐编码，如果没有则为空字符串\",\n  \"action_type\": \"新增/A, 修改/M, 删除/D，如果不确定则为A\"\n}",
+          "model": "gpt-4",
+          "temperature": 0.1,
+          "outputVar": "parsed_result"
+        },
+        "position": {
+          "x": 220,
+          "y": 200
+        }
+      },
+      {
+        "id": "check_code",
+        "type": "condition",
+        "data": {
+          "label": "检查套餐编码",
+          "condition": "{{parsed_result.tariff_code}} !== undefined && {{parsed_result.tariff_code}} !== ''"
+        },
+        "position": {
+          "x": 380,
+          "y": 200
+        }
+      },
+      {
+        "id": "ask_user",
+        "type": "userInput",
+        "data": {
+          "label": "询问用户",
+          "required": true,
+          "inputType": "text",
+          "prompt": "请提供您要备案的套餐编码（字母开头+数字组合）：",
+          "outputVar": "user_tariff_code"
+        },
+        "position": {
+          "x": 520,
+          "y": 80
+        }
+      },
+      {
+        "id": "tool_query",
+        "type": "tool",
+        "data": {
+          "label": "查询套餐信息",
+          "toolType": "mcp",
+          "toolName": "query_tariff_by_code",
+          "params": {
+            "tariff_code": "{{parsed_result.tariff_code || user_tariff_code}}"
+          },
+          "retryCount": 2,
+          "retryDelay": 1,
+          "outputVar": "tariff_info"
+        },
+        "position": {
+          "x": 540,
+          "y": 200
+        }
+      },
+      {
+        "id": "generate_form",
+        "type": "form",
+        "data": {
+          "label": "生成备案表单",
+          "ontologyCode": "tariff_filing"
+        },
+        "position": {
+          "x": 700,
+          "y": 200
+        }
+      },
+      {
+        "id": "validate_form",
+        "type": "validate",
+        "data": {
+          "label": "表单校验"
+        },
+        "position": {
+          "x": 860,
+          "y": 200
+        }
+      },
+      {
+        "id": "end",
+        "type": "end",
+        "data": {
+          "label": "结束"
+        },
+        "position": {
+          "x": 1020,
+          "y": 200
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge-start-llm_parse",
+        "source": "start",
+        "target": "llm_parse",
+        "markerEnd": { "type": "arrowclosed", "color": "#94a3b8" }
+      },
+      {
+        "id": "edge-llm_parse-check_code",
+        "source": "llm_parse",
+        "target": "check_code",
+        "markerEnd": { "type": "arrowclosed", "color": "#94a3b8" }
+      },
+      {
+        "id": "edge-check_code-tool_query-true",
+        "source": "check_code",
+        "target": "tool_query",
+        "sourceHandle": "true",
+        "markerEnd": { "type": "arrowclosed", "color": "#94a3b8" }
+      },
+      {
+        "id": "edge-check_code-ask_user-false",
+        "source": "check_code",
+        "target": "ask_user",
+        "sourceHandle": "false",
+        "markerEnd": { "type": "arrowclosed", "color": "#94a3b8" }
+      },
+      {
+        "id": "edge-ask_user-tool_query",
+        "source": "ask_user",
+        "target": "tool_query",
+        "markerEnd": { "type": "arrowclosed", "color": "#94a3b8" }
+      },
+      {
+        "id": "edge-tool_query-generate_form",
+        "source": "tool_query",
+        "target": "generate_form",
+        "markerEnd": { "type": "arrowclosed", "color": "#94a3b8" }
+      },
+      {
+        "id": "edge-generate_form-validate_form",
+        "source": "generate_form",
+        "target": "validate_form",
+        "markerEnd": { "type": "arrowclosed", "color": "#94a3b8" }
+      },
+      {
+        "id": "edge-validate_form-end",
+        "source": "validate_form",
+        "target": "end",
+        "markerEnd": { "type": "arrowclosed", "color": "#94a3b8" }
+      }
+    ]
+  }
+}

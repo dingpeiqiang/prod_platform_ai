@@ -1255,6 +1255,255 @@ class ToolNodeExecutor(NodeExecutor):
         return [e["target"] for e in edges if e["source"] == self.node_id]
 
 
+class FormNodeExecutor(NodeExecutor):
+    """表单生成节点执行器"""
+    
+    NODE_TYPE = "form"
+    
+    async def execute(self, context: WorkflowContext, edges: List[Dict[str, Any]]) -> List[str]:
+        context.update_node_status(self.node_id, ExecutionStatus.RUNNING)
+        
+        try:
+            # 如果配置了显性输入映射，先解析输入变量
+            if self.input_mappings:
+                resolved_inputs = self.resolve_inputs(context)
+                for key, value in resolved_inputs.items():
+                    context.set_variable(key, value)
+            
+            # 获取本体编码
+            ontology_code = self.node_data.get("ontologyCode", "")
+            
+            if not ontology_code:
+                raise ValueError("表单节点必须配置 ontologyCode")
+            
+            logger.info(f"Form node executing with ontology: {ontology_code}")
+            
+            # 获取本体定义
+            ontology = config_loader.get_ontology(ontology_code)
+            if not ontology:
+                raise ValueError(f"未找到本体定义: {ontology_code}")
+            
+            # 生成表单数据
+            form_data = await self._generate_form_data(ontology, context)
+            
+            # 设置表单数据到上下文
+            context.set_variable("form_data", form_data)
+            context.outputs["form_data"] = form_data
+            context.outputs["ontology_code"] = ontology_code
+            
+            # 使用标准输出变量传递数据（同时处理显性输出映射）
+            self.set_output(context, {"form_data": form_data, "ontology_code": ontology_code})
+            
+            logger.info(f"Form generated successfully with {len(form_data)} fields")
+            
+            context.update_node_status(self.node_id, ExecutionStatus.COMPLETED)
+            
+        except Exception as e:
+            logger.error(f"Form node execution failed: {e}")
+            context.error = str(e)
+            context.update_node_status(self.node_id, ExecutionStatus.FAILED)
+            raise
+        
+        return self._get_next_nodes(edges)
+    
+    async def _generate_form_data(self, ontology: Dict[str, Any], context: WorkflowContext) -> Dict[str, Any]:
+        """根据本体生成表单数据"""
+        form_data = {}
+        
+        # 获取上下文中的工具调用结果
+        tool_result = context.get_variable("tariff_info", {})
+        
+        # 遍历本体中的实体和字段
+        for entity in ontology.get("entities", []):
+            for field in entity.get("fields", []):
+                field_code = field.get("fieldCode")
+                field_name = field.get("fieldName")
+                
+                # 优先从工具结果中获取（通过字段映射）
+                value = None
+                if tool_result:
+                    mapping = field.get("mapping")
+                    if mapping and mapping in tool_result:
+                        value = tool_result[mapping]
+                    elif field_code in tool_result:
+                        value = tool_result[field_code]
+                
+                # 如果没有从工具获取到值，使用默认值
+                if value is None:
+                    value = field.get("default", "")
+                
+                # 如果仍然为空，尝试从上下文变量中获取
+                if not value:
+                    value = context.get_variable(field_code, "")
+                
+                form_data[field_code] = value
+        
+        return form_data
+    
+    def _get_next_nodes(self, edges: List[Dict[str, Any]]) -> List[str]:
+        return [e["target"] for e in edges if e["source"] == self.node_id]
+
+
+class ValidateNodeExecutor(NodeExecutor):
+    """表单校验节点执行器"""
+    
+    NODE_TYPE = "validate"
+    
+    async def execute(self, context: WorkflowContext, edges: List[Dict[str, Any]]) -> List[str]:
+        context.update_node_status(self.node_id, ExecutionStatus.RUNNING)
+        
+        try:
+            # 如果配置了显性输入映射，先解析输入变量
+            if self.input_mappings:
+                resolved_inputs = self.resolve_inputs(context)
+                for key, value in resolved_inputs.items():
+                    context.set_variable(key, value)
+            
+            # 获取表单数据
+            form_data = context.get_variable("form_data", {})
+            
+            if not form_data:
+                raise ValueError("表单数据为空，请确保表单节点已正确执行")
+            
+            logger.info(f"Validate node executing with {len(form_data)} fields")
+            
+            # 执行表单校验
+            validation_results = await self._validate_form(form_data, context)
+            
+            # 设置校验结果到上下文
+            context.set_variable("validation_result", validation_results)
+            context.outputs["validation_result"] = validation_results
+            
+            # 计算校验统计
+            stats = self._calculate_stats(validation_results)
+            context.set_variable("validation_stats", stats)
+            context.outputs["validation_stats"] = stats
+            
+            # 使用标准输出变量传递数据（同时处理显性输出映射）
+            self.set_output(context, {
+                "validation_results": validation_results,
+                "stats": stats
+            })
+            
+            logger.info(f"Validation completed: {stats['passed']} passed, {stats['errors']} errors, {stats['warnings']} warnings")
+            
+            context.update_node_status(self.node_id, ExecutionStatus.COMPLETED)
+            
+        except Exception as e:
+            logger.error(f"Validate node execution failed: {e}")
+            context.error = str(e)
+            context.update_node_status(self.node_id, ExecutionStatus.FAILED)
+            raise
+        
+        return self._get_next_nodes(edges)
+    
+    async def _validate_form(self, form_data: Dict[str, Any], context: WorkflowContext) -> List[Dict[str, Any]]:
+        """执行表单校验"""
+        # 获取本体编码
+        ontology_code = context.get_variable("ontology_code", "tariff_filing")
+        
+        try:
+            # 使用 TariffProcessor 进行校验
+            from app.langchain.tariff_agent import TariffProcessor
+            
+            processor = TariffProcessor()
+            validation_results = processor._validate_fields(form_data)
+            
+            return validation_results
+        except ImportError:
+            # 如果无法导入TariffProcessor，使用基础校验
+            return self._basic_validate(form_data, ontology_code)
+    
+    def _basic_validate(self, form_data: Dict[str, Any], ontology_code: str) -> List[Dict[str, Any]]:
+        """基础表单校验（当TariffProcessor不可用时）"""
+        results = []
+        
+        # 获取本体定义
+        ontology = config_loader.get_ontology(ontology_code)
+        if not ontology:
+            return results
+        
+        # 遍历字段进行校验
+        for entity in ontology.get("entities", []):
+            for field in entity.get("fields", []):
+                field_code = field.get("fieldCode")
+                field_name = field.get("fieldName")
+                value = form_data.get(field_code, "")
+                required = field.get("required", False)
+                
+                result = {
+                    "field": field_code,
+                    "fieldName": field_name,
+                    "value": value,
+                    "result": "pass",
+                    "reason": "",
+                    "suggestion": ""
+                }
+                
+                # 必填校验
+                if required and not value:
+                    result["result"] = "error"
+                    result["reason"] = "此字段不能为空"
+                    results.append(result)
+                    continue
+                
+                # 长度校验
+                max_length = field.get("maxLength")
+                if max_length and len(str(value)) > max_length:
+                    result["result"] = "error"
+                    result["reason"] = f"长度超过限制（最大{max_length}字符）"
+                    results.append(result)
+                    continue
+                
+                # 正则校验
+                validation = field.get("validation", {})
+                pattern = validation.get("pattern")
+                if pattern:
+                    import re
+                    if value and not re.match(pattern, str(value)):
+                        result["result"] = "error"
+                        result["reason"] = validation.get("patternError", "格式不正确")
+                        results.append(result)
+                        continue
+                
+                # 类型校验
+                field_type = field.get("fieldType")
+                if field_type == "number" and value:
+                    try:
+                        float(value)
+                    except (ValueError, TypeError):
+                        result["result"] = "error"
+                        result["reason"] = "必须是数字类型"
+                        results.append(result)
+                        continue
+                
+                results.append(result)
+        
+        return results
+    
+    def _calculate_stats(self, validation_results: List[Dict[str, Any]]) -> Dict[str, int]:
+        """计算校验统计"""
+        stats = {
+            "total": len(validation_results),
+            "passed": 0,
+            "errors": 0,
+            "warnings": 0
+        }
+        
+        for result in validation_results:
+            if result["result"] == "pass":
+                stats["passed"] += 1
+            elif result["result"] == "error":
+                stats["errors"] += 1
+            elif result["result"] == "warning":
+                stats["warnings"] += 1
+        
+        return stats
+    
+    def _get_next_nodes(self, edges: List[Dict[str, Any]]) -> List[str]:
+        return [e["target"] for e in edges if e["source"] == self.node_id]
+
+
 class WorkflowExecutor:
     """工作流执行器主类
     
@@ -1282,6 +1531,8 @@ class WorkflowExecutor:
         "code": CodeNodeExecutor,
         "parser": ParserNodeExecutor,
         "tool": ToolNodeExecutor,
+        "form": FormNodeExecutor,
+        "validate": ValidateNodeExecutor,
     }
     
     @classmethod

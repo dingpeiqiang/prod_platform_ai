@@ -1,0 +1,204 @@
+# 资费备案业务规则配置
+# 此文件定义资费备案场景的业务规则和默认值
+
+# 默认字段值配置
+default_values:
+  action_type: "A"                      # 操作类型：A(新增), M(修改), D(删除), AC(新增校验)
+  reporter: "JT1"                       # 备案主体：JT1(中国电信集团)
+  type1: "1"                            # 一级分类：1(公众), 2(政企)
+  type2: "1"                            # 二级分类：1(套餐), 2(加装包), 3(营销活动), 4(国际加装包), 5(国内标准资费), 6(国际标准资费), 7(其他)
+  tariff_attr: "1"                      # 资费属性：1(全国), 2(省内), 3(本地)
+  applicable_area: "000"                # 适用地区：000(全国)
+  valid_period: "长期有效"                # 有效期限
+  channel: "线上渠道"                     # 销售渠道
+  duration: "无"                         # 在网要求
+  unsubscribe: "线上办理"                 # 退订方式
+  responsibility: "无"                   # 违约责任
+  fees_unit: "元/月"                     # 资费单位
+
+# 枚举值配置
+enums:
+  action_type:
+    - {"value": "A", "label": "新增"}
+    - {"value": "M", "label": "修改"}
+    - {"value": "D", "label": "删除"}
+    - {"value": "AC", "label": "新增校验"}
+  
+  reporter:
+    - {"value": "JT1", "label": "中国电信集团"}
+    - {"value": "YD1", "label": "中国移动集团"}
+    - {"value": "LT1", "label": "中国联通集团"}
+    - {"value": "HE2", "label": "河北电信"}
+    - {"value": "BJ2", "label": "北京电信"}
+    - {"value": "SH2", "label": "上海电信"}
+    - {"value": "GD2", "label": "广东电信"}
+    - {"value": "SC2", "label": "四川电信"}
+    - {"value": "HE1", "label": "河北移动"}
+    - {"value": "BJ1", "label": "北京移动"}
+    - {"value": "SD1", "label": "山东移动"}
+    - {"value": "GX1", "label": "广西移动"}
+  
+  type1:
+    - {"value": "1", "label": "公众"}
+    - {"value": "2", "label": "政企"}
+  
+  type2:
+    - {"value": "1", "label": "套餐"}
+    - {"value": "2", "label": "加装包"}
+    - {"value": "3", "label": "营销活动"}
+    - {"value": "4", "label": "国际加装包"}
+    - {"value": "5", "label": "国内标准资费"}
+    - {"value": "6", "label": "国际标准资费"}
+    - {"value": "7", "label": "其他"}
+  
+  tariff_attr:
+    - {"value": "1", "label": "全国"}
+    - {"value": "2", "label": "省内"}
+    - {"value": "3", "label": "本地"}
+
+# 校验规则配置
+validation_rules:
+  bossid:
+    required: true
+    pattern: "^[A-Za-z][A-Za-z0-9]+$"
+    pattern_error: "应为字母开头+数字组合（如P000111）"
+    empty_error: "套餐编码不能为空"
+  
+  seq_no:
+    required: false
+    empty_warning: "序列号由客户端生成，格式：省份编码+企业编码+YYYYMMDD+5位序号"
+  
+  reporter:
+    required: true
+    enum: reporter
+    empty_error: "备案主体不能为空"
+    enum_error: "备案主体值无效"
+  
+  action_type:
+    required: true
+    enum: action_type
+    empty_error: "操作类型不能为空"
+    enum_error: "操作类型值无效"
+  
+  type1:
+    required: true
+    enum: type1
+    empty_error: "一级分类不能为空"
+    enum_error: "一级分类值无效"
+  
+  type2:
+    required: true
+    enum: type2
+    empty_error: "二级分类不能为空"
+    enum_error: "二级分类值无效"
+  
+  name:
+    required: true
+    max_length: 200
+    empty_error: "资费名称不能为空"
+    length_error: "资费名称过长，最大长度200字符"
+  
+  tariff_attr:
+    required: true
+    enum: tariff_attr
+    empty_error: "资费属性不能为空"
+    enum_error: "资费属性值无效"
+  
+  applicable_area:
+    required: true
+    empty_error: "适用地区不能为空"
+  
+  valid_period:
+    required: true
+    empty_error: "有效期限不能为空"
+  
+  channel:
+    required: true
+    empty_error: "销售渠道不能为空"
+  
+  duration:
+    required: true
+    empty_error: "在网要求不能为空"
+  
+  unsubscribe:
+    required: true
+    empty_error: "退订方式不能为空"
+  
+  responsibility:
+    required: true
+    empty_error: "违约责任不能为空"
+  
+  online_day:
+    required: true
+    pattern: "^\\d{8}$"
+    pattern_error: "应为YYYYMMDD格式（如20240101）"
+    empty_error: "上线日期不能为空"
+  
+  fees:
+    required: false
+    type: number
+    type_error: "资费标准必须为数值"
+
+# 字段映射配置（工具返回字段 → 表单字段）
+field_mapping:
+  bossid:
+    - bossid
+    - tariff_code
+  
+  name:
+    - name
+    - tariff_name
+  
+  fees:
+    - fees
+    - price
+  
+  fees_unit:
+    - fees_unit
+    - price_unit
+  
+  online_day:
+    - online_day
+    - start_date
+    - begin_date
+  
+  offline_day:
+    - offline_day
+    - end_date
+  
+  description:
+    - description
+    - other_content
+  
+  valid_period:
+    - valid_period
+  
+  applicable_area:
+    - applicable_area
+  
+  channel:
+    - channel
+    - sales_channel
+
+# 提取规则配置
+extraction_rules:
+  action_type:
+    keywords:
+      - {"keyword": "修改", "value": "M"}
+      - {"keyword": "删除", "value": "D"}
+      - {"keyword": "校验", "value": "AC"}
+      - {"keyword": "新增", "value": "A"}
+    
+  fees:
+    pattern: "([\\d.]+)[\\s元￥$]*(?:元|元/月|元/年)?"
+  
+  online_day:
+    pattern: "(\\d{4})[年/-](\\d{1,2})[月/-](\\d{1,2})日?"
+    format: "{0}{1:02d}{2:02d}"
+
+# 套餐编码提取模式
+tariff_code_patterns:
+  - "^[A-Za-z][A-Za-z0-9]+$"           # 字母开头+数字组合
+  - "^P\\d{6,}$"                        # P开头+6位以上数字
+  - "^TC\\d{6,}$"                       # TC开头+数字
+  - "^\\d{7,}$"                         # 纯数字（7位以上）

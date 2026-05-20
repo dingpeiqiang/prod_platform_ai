@@ -1,5 +1,10 @@
 """
 工作流管理API
+
+集成前端工作流编辑器和后端工作流引擎，支持：
+1. 工作流CRUD（数据库存储）
+2. 工作流执行（通过WorkflowEngine）
+3. 工作流格式转换（前端→后端）
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
@@ -8,6 +13,8 @@ from typing import Optional
 from app.core.database import get_db
 from app.services.workflow_service import WorkflowService
 from app.services.workflow_generator import get_workflow_generator
+from app.langchain.workflow_engine import workflow_engine
+from app.langchain.workflow_converter import WorkflowConverter
 from pydantic import BaseModel
 from typing import List, Dict, Any
 
@@ -629,4 +636,154 @@ async def generate_workflow(request: WorkflowGenerationRequest):
         "data": editor_format,
         "description": result["data"].get("description", ""),
         "validation": validation
+    }
+
+
+class WorkflowExecuteRequest(BaseModel):
+    """执行工作流请求（支持两种方式）"""
+    workflowCode: Optional[str] = None  # 方式1：指定工作流编码
+    workflowId: Optional[str] = None    # 方式2：指定工作流ID
+    inputParams: Optional[Dict[str, Any]] = {}
+
+
+@router.post("/execute")
+async def execute_workflow_generic(request: WorkflowExecuteRequest, db: Session = Depends(get_db)):
+    """通用工作流执行接口（无需硬编码工作流编码）
+    
+    支持两种调用方式：
+    1. 指定工作流编码: {"workflowCode": "tariff_filing", "inputParams": {...}}
+    2. 指定工作流ID: {"workflowId": "123", "inputParams": {...}}
+    
+    执行流程：
+    1. 根据编码/ID获取工作流定义
+    2. 验证工作流配置
+    3. 转换为后端格式
+    4. 执行工作流
+    """
+    # 获取工作流编码
+    workflow_code = request.workflowCode
+    
+    if not workflow_code:
+        if request.workflowId:
+            # 通过ID查找编码
+            result = WorkflowService.get_workflow_by_id(request.workflowId, db)
+            if not result["success"]:
+                raise HTTPException(status_code=404, detail=result["message"])
+            workflow_code = result.get("data", {}).get("workflowCode")
+        else:
+            raise HTTPException(status_code=400, detail="请提供 workflowCode 或 workflowId")
+    
+    # 调用原有执行逻辑
+    return await _execute_workflow_internal(workflow_code, request.inputParams, db)
+
+
+@router.post("/{workflow_code}/execute")
+async def execute_workflow(workflow_code: str, request: WorkflowExecuteRequest, db: Session = Depends(get_db)):
+    """执行指定工作流（保留原接口兼容）"""
+    return await _execute_workflow_internal(workflow_code, request.inputParams, db)
+
+
+async def _execute_workflow_internal(workflow_code: str, input_params: Dict[str, Any], db: Session):
+    """内部执行逻辑
+    
+    将前端编辑器创建的工作流配置转换为后端格式并执行。
+    自动从本体加载业务规则（默认值、校验规则、字段映射）。
+    """
+    # 获取工作流定义
+    result = WorkflowService.get_workflow(workflow_code, db)
+    if not result["success"]:
+        raise HTTPException(status_code=404, detail=result["message"])
+    
+    workflow_data = result.get("data", {}).get("workflowData", {})
+    workflow_name = result.get("data", {}).get("workflowName", workflow_code)
+    
+    # 验证工作流配置
+    validation = WorkflowConverter.validate(workflow_data)
+    if not validation["valid"]:
+        raise HTTPException(status_code=400, detail={
+            "message": "工作流配置验证失败",
+            "errors": validation["errors"],
+            "warnings": validation["warnings"]
+        })
+    
+    # 将前端格式转换为后端格式（传入db用于节点级本体加载）
+    # 本体编码作为表单节点的属性，在转换时自动加载
+    backend_config = WorkflowConverter.convert(
+        workflow_data, 
+        workflow_code, 
+        workflow_name, 
+        db
+    )
+    
+    # 注册到工作流引擎
+    workflow_def = workflow_engine.load_workflow_from_json(backend_config)
+    workflow_engine.register_workflow(workflow_def)
+    
+    # 执行工作流
+    try:
+        execution_results = []
+        async for event in workflow_engine.run(workflow_code, input_params):
+            execution_results.append(event)
+        
+        # 返回结果
+        if execution_results:
+            last_event = execution_results[-1]
+            if last_event["type"] == "workflow_complete":
+                return {
+                    "success": True,
+                    "message": "工作流执行完成",
+                    "result": last_event.get("outputs"),
+                    "executionLog": execution_results
+                }
+            elif last_event["type"] == "workflow_failed":
+                return {
+                    "success": False,
+                    "message": "工作流执行失败",
+                    "error": last_event.get("error"),
+                    "executionLog": execution_results
+                }
+        
+        return {
+            "success": False,
+            "message": "工作流执行异常",
+            "executionLog": execution_results
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"执行工作流失败: {str(e)}")
+
+
+@router.post("/validate-config")
+async def validate_workflow_config(request: Dict[str, Any]):
+    """验证工作流配置（前端格式）"""
+    workflow_data = request.get("workflowData", {})
+    validation = WorkflowConverter.validate(workflow_data)
+    
+    return validation
+
+
+@router.post("/convert-format")
+async def convert_workflow_format(request: Dict[str, Any]):
+    """将前端工作流格式转换为后端格式"""
+    workflow_data = request.get("workflowData", {})
+    workflow_id = request.get("workflowId", "workflow_001")
+    workflow_name = request.get("workflowName", "未命名工作流")
+    
+    # 先验证
+    validation = WorkflowConverter.validate(workflow_data)
+    if not validation["valid"]:
+        return {
+            "success": False,
+            "message": "验证失败",
+            "errors": validation["errors"],
+            "warnings": validation["warnings"]
+        }
+    
+    # 转换格式
+    backend_config = WorkflowConverter.convert(workflow_data, workflow_id, workflow_name)
+    
+    return {
+        "success": True,
+        "message": "转换成功",
+        "backendConfig": backend_config,
+        "warnings": validation["warnings"]
     }

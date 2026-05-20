@@ -3,6 +3,12 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
+try:
+    import yaml
+    HAS_YAML = True
+except ImportError:
+    HAS_YAML = False
+
 from .data_source import BaseDataSource, DataSourceType, DataSourceFactory
 
 logger = logging.getLogger("file_data_source")
@@ -25,6 +31,17 @@ class FileDataSource(BaseDataSource):
         self.load_prompts()
         self.load_recommendations()
     
+    def _load_yaml(self, path: Path) -> Optional[Dict]:
+        if not HAS_YAML:
+            logger.warning("[FileDataSource] PyYAML not installed, skipping YAML file: %s", path)
+            return None
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f)
+        except Exception as e:
+            logger.error("[FileDataSource] 加载YAML失败 %s: %s", path, e)
+            return None
+
     def _load_json(self, path: Path) -> Optional[Dict]:
         try:
             with open(path, 'r', encoding='utf-8') as f:
@@ -50,12 +67,27 @@ class FileDataSource(BaseDataSource):
         ontologies_path = self.base_path / "ontologies"
         
         if ontologies_path.exists():
+            # 加载 JSON 格式的本体文件
             for file in ontologies_path.glob("*.json"):
                 data = self._load_json(file)
                 if data:
                     ontology_data = data.get("data", data)
                     form_code = ontology_data.get("formCode", file.stem)
                     ontologies[form_code] = ontology_data
+            
+            # 加载 YAML 格式的本体文件
+            for file in ontologies_path.glob("*.yaml"):
+                data = self._load_yaml(file)
+                if data:
+                    ontology_code = data.get("ontologyCode", file.stem)
+                    ontologies[ontology_code] = data
+            
+            # 加载 YML 格式的本体文件（备用扩展名）
+            for file in ontologies_path.glob("*.yml"):
+                data = self._load_yaml(file)
+                if data:
+                    ontology_code = data.get("ontologyCode", file.stem)
+                    ontologies[ontology_code] = data
         
         self._cache['ontologies'] = ontologies
         logger.info("[FileDataSource] 从文件加载本体 count=%d", len(ontologies))
