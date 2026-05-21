@@ -1183,7 +1183,7 @@ const getTopologicalNodeOrder = () => {
   return result;
 };
 
-// 获取节点可用的变量列表（基于拓扑顺序，而不是数组索引）
+// 获取节点可用的变量列表
 const getAvailableVariables = (nodeId) => {
   if (!nodeId) return [];
   
@@ -1206,13 +1206,11 @@ const getAvailableVariables = (nodeId) => {
     const node = nodes.find(n => n.id === precedingId);
     if (!node) continue;
     
-    // 为每个节点添加输出变量
     const nodeType = node.type;
     let outputVarName = '';
     
     switch (nodeType) {
       case 'start':
-        // 开始节点的输入参数
         if (node.data.parameters && Array.isArray(node.data.parameters)) {
           node.data.parameters.forEach(param => {
             variables.push({
@@ -1226,10 +1224,9 @@ const getAvailableVariables = (nodeId) => {
         }
         break;
       case 'variable':
-        // variable 节点：使用 varName 作为变量名，ID 也使用 varName 以便条件节点引用
         outputVarName = node.data?.varName || node.data?.outputVar || node.data?.label || nodeType;
         variables.push({
-          id: outputVarName,  // 直接使用 varName，让条件节点可以用简单名称引用
+          id: outputVarName,
           name: `${outputVarName} (输出)`,
           nodeId: node.id,
           nodeType: nodeType,
@@ -1243,7 +1240,6 @@ const getAvailableVariables = (nodeId) => {
       case 'code':
       case 'parser':
       case 'userInput':
-        // 这些节点都有输出
         outputVarName = node.data?.outputVar || node.data?.label || nodeType;
         variables.push({
           id: `${node.id}.output`,
@@ -1254,7 +1250,6 @@ const getAvailableVariables = (nodeId) => {
         });
         break;
       case 'condition':
-        // 条件节点可能有多个输出分支
         variables.push({
           id: `${node.id}.result`,
           name: `${node.data?.label || '条件'} (结果)`,
@@ -1266,21 +1261,29 @@ const getAvailableVariables = (nodeId) => {
     }
   }
   
-  // 如果没有前置节点（即当前节点在拓扑顺序中排第一），则添加开始节点的输入参数
-  if (precedingNodeIds.length === 0) {
-    const startNode = nodes.find(n => n.type === 'start');
-    const startParams = startNode?.data?.parameters;
-
+  // 始终添加开始节点的输入参数（如果存在开始节点且参数不为空）
+  // 确保其他节点总是能引用到开始节点的入参，不依赖拓扑顺序
+  const startNode = nodes.find(n => n.type === 'start');
+  if (startNode) {
+    const startParams = startNode.data?.parameters;
     if (startParams && Array.isArray(startParams)) {
+      const existingStartVarIds = new Set(
+        variables
+          .filter(v => v.nodeType === 'start')
+          .map(v => v.id)
+      );
       startParams.forEach(param => {
         if (param && param.name) {
-          variables.push({
-            id: `${startNode.id}.${param.name}`,
-            name: `${param.name} (入参)`,
-            nodeId: startNode.id,
-            nodeType: 'start',
-            type: param.type || 'string'
-          });
+          const varId = `${startNode.id}.${param.name}`;
+          if (!existingStartVarIds.has(varId)) {
+            variables.push({
+              id: varId,
+              name: `${param.name} (入参)`,
+              nodeId: startNode.id,
+              nodeType: 'start',
+              type: param.type || 'string'
+            });
+          }
         }
       });
     }

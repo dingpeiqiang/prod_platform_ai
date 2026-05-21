@@ -393,6 +393,55 @@ const loadAvailableModels = async () => {
   }
 };
 
+const getNodeLabelById = (nodeId) => {
+  if (nodeId.startsWith('start')) return '开始节点';
+  if (nodeId.startsWith('variable')) return '变量节点';
+  if (nodeId.startsWith('llm')) return 'LLM节点';
+  if (nodeId.startsWith('prompt')) return '提示词节点';
+  if (nodeId.startsWith('tool')) return '工具节点';
+  if (nodeId.startsWith('http')) return 'HTTP节点';
+  if (nodeId.startsWith('code')) return '代码节点';
+  if (nodeId.startsWith('parser')) return '解析节点';
+  if (nodeId.startsWith('condition')) return '条件节点';
+  if (nodeId.startsWith('userInput')) return '用户输入节点';
+  return nodeId;
+};
+
+const cascaderOptions = computed(() => {
+  if (!props.availableVariables || !Array.isArray(props.availableVariables)) return [];
+  
+  const nodeMap = new Map();
+  
+  props.availableVariables.forEach(variable => {
+    if (variable && variable.nodeId && variable.id && variable.name) {
+      if (!nodeMap.has(variable.nodeId)) {
+        let nodeLabel = getNodeLabelById(variable.nodeId);
+        
+        if (variable.nodeType === 'start') {
+          nodeLabel = '开始节点';
+        } else {
+          const namePart = variable.name.split('(')[0].trim();
+          if (namePart && !namePart.includes('输出') && !namePart.includes('入参')) {
+            nodeLabel = namePart;
+          }
+        }
+        
+        nodeMap.set(variable.nodeId, {
+          value: variable.nodeId,
+          label: nodeLabel,
+          children: []
+        });
+      }
+      nodeMap.get(variable.nodeId).children.push({
+        value: variable.id,
+        label: variable.name
+      });
+    }
+  });
+  
+  return Array.from(nodeMap.values());
+});
+
 onMounted(() => {
   loadAvailableModels();
 });
@@ -417,7 +466,7 @@ watch(() => props.availableVariables, (newVars) => {
 }, { immediate: true });
 
 // 监听 cascaderOptions 变化，清除已失效的 cascaderValue
-watch(cascaderOptions, (newOptions) => {
+watch(() => cascaderOptions.value, (newOptions) => {
   if (!newOptions || newOptions.length === 0) {
     // 选项为空时清除所有引用参数的 cascaderValue
     localInputs.value.forEach(param => {
@@ -508,55 +557,6 @@ const handleNodeSelect = (index) => {
   const param = localInputs.value[index];
   param.refValue = '';
   emitUpdate();
-};
-
-const cascaderOptions = computed(() => {
-  if (!props.availableVariables || !Array.isArray(props.availableVariables)) return [];
-  
-  const nodeMap = new Map();
-  
-  props.availableVariables.forEach(variable => {
-    if (variable && variable.nodeId && variable.id && variable.name) {
-      if (!nodeMap.has(variable.nodeId)) {
-        let nodeLabel = getNodeLabelById(variable.nodeId);
-        
-        if (variable.nodeType === 'start') {
-          nodeLabel = '开始节点';
-        } else {
-          const namePart = variable.name.split('(')[0].trim();
-          if (namePart && !namePart.includes('输出') && !namePart.includes('入参')) {
-            nodeLabel = namePart;
-          }
-        }
-        
-        nodeMap.set(variable.nodeId, {
-          value: variable.nodeId,
-          label: nodeLabel,
-          children: []
-        });
-      }
-      nodeMap.get(variable.nodeId).children.push({
-        value: variable.id,
-        label: variable.name
-      });
-    }
-  });
-  
-  return Array.from(nodeMap.values());
-});
-
-const getNodeLabelById = (nodeId) => {
-  if (nodeId.startsWith('start')) return '开始节点';
-  if (nodeId.startsWith('variable')) return '变量节点';
-  if (nodeId.startsWith('llm')) return 'LLM节点';
-  if (nodeId.startsWith('prompt')) return '提示词节点';
-  if (nodeId.startsWith('tool')) return '工具节点';
-  if (nodeId.startsWith('http')) return 'HTTP节点';
-  if (nodeId.startsWith('code')) return '代码节点';
-  if (nodeId.startsWith('parser')) return '解析节点';
-  if (nodeId.startsWith('condition')) return '条件节点';
-  if (nodeId.startsWith('userInput')) return '用户输入节点';
-  return nodeId;
 };
 
 const handleCascaderChange = (index, value) => {

@@ -152,7 +152,7 @@
 </template>
 
 <script setup>
-import { ref, watch, watchEffect } from 'vue';
+import { ref, watch, watchEffect, onMounted } from 'vue';
 import { Handle } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
 import { useNodeAnchorMode } from './useHandlePosition.js';
@@ -187,6 +187,12 @@ const localParams = ref([
   }
 ]);
 const inputSectionExpanded = ref(true);
+
+onMounted(() => {
+  if (!props.data.parameters || props.data.parameters.length === 0) {
+    emitUpdate();
+  }
+});
 
 const toggleInputSection = () => {
   inputSectionExpanded.value = !inputSectionExpanded.value;
