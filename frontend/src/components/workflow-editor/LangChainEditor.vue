@@ -1266,6 +1266,25 @@ const getAvailableVariables = (nodeId) => {
     }
   }
   
+  // 如果没有前置节点（即当前节点在拓扑顺序中排第一），则尝试添加开始节点的输入参数
+  // 这确保了即使节点尚未连接，开始节点的输入参数也可用
+  if (precedingNodeIds.length === 0) {
+    const startNode = nodes.find(n => n.type === 'start');
+    if (startNode && startNode.data.parameters && Array.isArray(startNode.data.parameters)) {
+      startNode.data.parameters.forEach(param => {
+        if (param && param.name) {
+          variables.push({
+            id: `${startNode.id}.${param.name}`,
+            name: `${param.name} (入参)`,
+            nodeId: startNode.id,
+            nodeType: 'start',
+            type: param.type || 'string'
+          });
+        }
+      });
+    }
+  }
+  
   return variables;
 };
 

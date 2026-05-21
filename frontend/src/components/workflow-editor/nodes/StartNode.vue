@@ -124,7 +124,10 @@
                         class="action-btn delete-btn" 
                         title="删除"
                       >
-                        <ElIcon><Delete /></ElIcon>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <line x1="18" y1="6" x2="6" y2="18"/>
+                          <line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
                       </button>
                     </td>
                   </tr>
@@ -151,8 +154,6 @@
 <script setup>
 import { ref, watch, watchEffect } from 'vue';
 import { Handle } from '@vue-flow/core';
-import { ElIcon } from 'element-plus';
-import { Delete } from '@element-plus/icons-vue';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
 import { useNodeAnchorMode } from './useHandlePosition.js';
 
@@ -669,8 +670,8 @@ watch(
   width: 32px;
   height: 32px;
   border: none;
-  background: transparent;
-  color: #999;
+  background: #fff;
+  color: #ff4d4f;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -679,6 +680,7 @@ watch(
   transition: all 0.2s;
   margin: 0;
   padding: 4px;
+  border: 1px solid #ff4d4f;
 }
 
 .action-btn:hover:not(:disabled) {
@@ -691,21 +693,12 @@ watch(
   cursor: not-allowed;
 }
 
-.action-btn.delete-btn {
-  opacity: 1 !important;
-  visibility: visible !important;
-  background: transparent;
-  color: #ff4d4f;
-  border: none;
-}
-
 .action-btn.delete-btn:hover {
   background: #fff1f0;
   color: #f5222d;
 }
 
-.action-btn svg,
-.action-btn :deep(.el-icon) {
+.action-btn svg {
   width: 18px;
   height: 18px;
 }

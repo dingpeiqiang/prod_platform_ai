@@ -217,35 +217,39 @@
         </div>
         
         <div v-if="expandedSections.inputs" class="section-content">
-            <div v-for="(param, index) in localInputs" :key="index" class="input-param-item">
-              <input v-model="param.name" @input="emitUpdate" placeholder="参数名" class="param-name-input" :class="{ error: !param.name }"/>
-              <select v-model="param.valueType" @change="emitUpdate" class="param-type-select">
-                <option value="input">输入</option>
-                <option value="reference">引用</option>
-              </select>
-              <select 
-                v-if="param.valueType === 'reference'" 
-                v-model="param.refValue" 
-                @change="emitUpdate" 
-                class="param-ref-select"
-              >
-                <option value="" disabled>选择引用变量</option>
-                <option v-if="param.refValue && !availableVariables.find(v => v.id === param.refValue)" :value="param.refValue" disabled>
-                  {{ param.refValue }}
-                </option>
-                <option v-for="variable in availableVariables" :key="variable.id" :value="variable.id">
-                  {{ variable.name }} ({{ variable.type }})
-                </option>
-              </select>
-              <button @click="removeInputParam(index)" class="action-btn delete-btn" title="删除">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18"/>
-                  <line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
-            </div>
-            <div v-if="localInputs.some(p => !p.name)" class="error-message">参数名不能为空</div>
-            <div v-if="localInputs.some(p => p.valueType === 'reference' && !p.refValue)" class="error-message">引用变量不能为空</div>
+            <template v-for="(param, index) in localInputs" :key="index">
+              <div v-if="param" class="input-param-item">
+                <input v-model="param.name" @input="emitUpdate" placeholder="参数名" class="param-name-input" :class="{ error: !param.name }"/>
+                <select v-model="param.valueType" @change="handleValueTypeChange(index)" class="param-type-select">
+                  <option value="input">输入</option>
+                  <option value="reference">引用</option>
+                </select>
+                <input 
+                  v-if="param.valueType === 'input'" 
+                  v-model="param.defaultValue" 
+                  @input="emitUpdate" 
+                  placeholder="默认值" 
+                  class="param-default-input"
+                />
+                <el-cascader 
+                  v-if="param.valueType === 'reference'"
+                  v-model="param.cascaderValue"
+                  :options="cascaderOptions"
+                  :props="{ expandTrigger: 'click' }"
+                  placeholder="请选择变量"
+                  class="param-cascader"
+                  @change="handleCascaderChange(index, $event)"
+                ></el-cascader>
+                <button @click="removeInputParam(index)" class="action-btn delete-btn" title="删除">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+            </template>
+            <div v-if="localInputs.some(p => p && !p.name)" class="error-message">参数名不能为空</div>
+            <div v-if="localInputs.some(p => p && p.valueType === 'reference' && !p.refValue)" class="error-message">引用变量不能为空</div>
         </div>
       </div>
 
@@ -288,9 +292,10 @@
             </label>
             <span class="help-icon" title="支持多轮对话"></span>
           </div>
-            <div v-for="(param, index) in localOutputs" :key="index" class="output-param-item">
-              <input v-model="param.name" @input="emitUpdate" placeholder="参数名" class="param-name-input"/>
-              <select v-model="param.type" @change="emitUpdate" class="param-type-select">
+            <template v-for="(param, index) in localOutputs" :key="index">
+              <div v-if="param" class="output-param-item">
+                <input v-model="param.name" @input="emitUpdate" placeholder="参数名" class="param-name-input"/>
+                <select v-model="param.type" @change="emitUpdate" class="param-type-select">
                 <option value="string">string</option>
                 <option value="number">number</option>
                 <option value="boolean">boolean</option>
@@ -303,7 +308,8 @@
                   <line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>
               </button>
-            </div>
+              </div>
+            </template>
         </div>
       </div>
 
@@ -318,7 +324,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted, computed } from 'vue';
+import { ref, watch, onMounted, onUnmounted, computed } from 'vue';
 import { Handle } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
 import { useNodeAnchorMode } from './useHandlePosition.js';
@@ -334,18 +340,19 @@ const { targetPosition, sourcePosition } = useNodeAnchorMode(props);
 
 const emit = defineEmits(['update', 'close', 'run']);
 
-const localLabel = ref(props.data.label || 'LLM');
-const localModel = ref(props.data.model || '');
-const localTemperature = ref(props.data.temperature ?? 0.1);
-const localTopK = ref(props.data.topK ?? 0.1);
-const localTopP = ref(props.data.topP ?? 1);
-const localMaxTokens = ref(props.data.maxTokens ?? 1024);
-const localSystemPrompt = ref(props.data.systemPrompt || '');
-const localPrompt = ref(props.data.prompt || '');
-const localKeepHistory = ref(props.data.keepHistory ?? false);
+const safeData = props.data || {};
+const localLabel = ref(safeData.label || 'LLM');
+const localModel = ref(safeData.model || '');
+const localTemperature = ref(safeData.temperature ?? 0.1);
+const localTopK = ref(safeData.topK ?? 0.1);
+const localTopP = ref(safeData.topP ?? 1);
+const localMaxTokens = ref(safeData.maxTokens ?? 1024);
+const localSystemPrompt = ref(safeData.systemPrompt || '');
+const localPrompt = ref(safeData.prompt || '');
+const localKeepHistory = ref(safeData.keepHistory ?? false);
 
-const localInputs = ref(props.data.inputs || []);
-const localOutputs = ref(props.data.outputs || []);
+const localInputs = ref((safeData.inputs && Array.isArray(safeData.inputs)) ? safeData.inputs : []);
+const localOutputs = ref((safeData.outputs && Array.isArray(safeData.outputs)) ? safeData.outputs : []);
 
 const expandedSections = ref({
   model: true,
@@ -357,6 +364,9 @@ const expandedSections = ref({
 const showModelTooltip = ref(false);
 let hideTimer = null;
 
+// 组件是否已卸载
+let isUnmounted = false;
+
 // 可用模型列表（动态从API获取）
 const availableModels = ref([]);
 const modelsLoading = ref(false);
@@ -367,19 +377,32 @@ const loadAvailableModels = async () => {
   modelsLoading.value = true;
   try {
     const response = await fetch('/api/v1/chat/model/available');
+    // 检查组件是否已卸载
+    if (isUnmounted) return;
     const result = await response.json();
+    if (isUnmounted) return;
     if (result.success && result.models) {
       availableModels.value = result.models;
     }
   } catch (e) {
     console.error('加载可用模型列表失败:', e);
   } finally {
-    modelsLoading.value = false;
+    if (!isUnmounted) {
+      modelsLoading.value = false;
+    }
   }
 };
 
 onMounted(() => {
   loadAvailableModels();
+});
+
+onUnmounted(() => {
+  isUnmounted = true;
+  if (hideTimer) {
+    clearTimeout(hideTimer);
+    hideTimer = null;
+  }
 });
 
 // 模型选项（格式化为 select 需要的选项）
@@ -425,8 +448,88 @@ const toggleSection = (section) => {
 };
 
 const addInputParam = () => {
-  localInputs.value.push({ name: '', valueType: 'input', refValue: '' });
+  localInputs.value.push({ name: '', valueType: 'input', defaultValue: '', refValue: '', selectedNodeId: '', cascaderValue: [] });
   emitUpdate();
+};
+
+const handleValueTypeChange = (index) => {
+  const param = localInputs.value[index];
+  if (param.valueType === 'reference') {
+    param.selectedNodeId = '';
+    param.refValue = '';
+  }
+  emitUpdate();
+};
+
+const handleNodeSelect = (index) => {
+  const param = localInputs.value[index];
+  param.refValue = '';
+  emitUpdate();
+};
+
+const cascaderOptions = computed(() => {
+  if (!props.availableVariables || !Array.isArray(props.availableVariables)) return [];
+  
+  const nodeMap = new Map();
+  
+  props.availableVariables.forEach(variable => {
+    if (variable && variable.nodeId && variable.id && variable.name) {
+      if (!nodeMap.has(variable.nodeId)) {
+        let nodeLabel = getNodeLabelById(variable.nodeId);
+        
+        if (variable.nodeType === 'start') {
+          nodeLabel = '开始节点';
+        } else {
+          const namePart = variable.name.split('(')[0].trim();
+          if (namePart && !namePart.includes('输出') && !namePart.includes('入参')) {
+            nodeLabel = namePart;
+          }
+        }
+        
+        nodeMap.set(variable.nodeId, {
+          value: variable.nodeId,
+          label: nodeLabel,
+          children: []
+        });
+      }
+      nodeMap.get(variable.nodeId).children.push({
+        value: variable.id,
+        label: variable.name
+      });
+    }
+  });
+  
+  return Array.from(nodeMap.values());
+});
+
+const getNodeLabelById = (nodeId) => {
+  if (nodeId.startsWith('start')) return '开始节点';
+  if (nodeId.startsWith('variable')) return '变量节点';
+  if (nodeId.startsWith('llm')) return 'LLM节点';
+  if (nodeId.startsWith('prompt')) return '提示词节点';
+  if (nodeId.startsWith('tool')) return '工具节点';
+  if (nodeId.startsWith('http')) return 'HTTP节点';
+  if (nodeId.startsWith('code')) return '代码节点';
+  if (nodeId.startsWith('parser')) return '解析节点';
+  if (nodeId.startsWith('condition')) return '条件节点';
+  if (nodeId.startsWith('userInput')) return '用户输入节点';
+  return nodeId;
+};
+
+const handleCascaderChange = (index, value) => {
+  const param = localInputs.value[index];
+  if (param) {
+    if (Array.isArray(value) && value.length === 2) {
+      param.selectedNodeId = value[0];
+      param.refValue = value[1];
+      param.cascaderValue = value;
+    } else {
+      param.selectedNodeId = '';
+      param.refValue = '';
+      param.cascaderValue = [];
+    }
+    emitUpdate();
+  }
 };
 
 const removeInputParam = (index) => {
@@ -445,6 +548,7 @@ const removeOutputParam = (index) => {
 };
 
 const emitUpdate = () => {
+  if (!props.data || !props.data.id) return;
   emit('update', props.data.id, {
     label: localLabel.value,
     model: localModel.value,
@@ -461,6 +565,7 @@ const emitUpdate = () => {
 };
 
 watch(() => props.data, (newData) => {
+  if (!newData) return;
   localLabel.value = newData.label || 'LLM';
   localModel.value = newData.model || '';
   localTemperature.value = newData.temperature ?? 0.1;
@@ -1019,7 +1124,15 @@ watch(() => props.data, (newData) => {
   color: #ff4d4f;
 }
 
-.input-param-item, .output-param-item {
+.input-param-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: nowrap;
+}
+
+.output-param-item {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1080,6 +1193,26 @@ watch(() => props.data, (newData) => {
 .param-ref-select:focus {
   outline: none;
   border-color: #3b82f6;
+}
+
+.param-default-input {
+  padding: 8px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+  background: white;
+  min-width: 120px;
+}
+
+.param-default-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.param-cascader {
+  width: 200px;
+  flex-shrink: 1;
+  font-size: 13px;
 }
 
 .history-toggle {

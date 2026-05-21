@@ -117,7 +117,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { Handle } from '@vue-flow/core';
 import { ElSelect, ElOption, ElButton, ElDialog } from 'element-plus';
 import FormCreateDesigner from 'form-create-designer';
@@ -140,6 +140,8 @@ const props = defineProps({
 const { targetPosition, sourcePosition } = useNodeAnchorMode(props);
 
 const emit = defineEmits(['update']);
+
+let isUnmounted = false;
 
 const designerRef = ref(null);
 const showConfig = ref(false);
@@ -244,6 +246,7 @@ const emitUpdate = () => {
 const loadForms = async () => {
   try {
     const result = await formApi.listForms();
+    if (isUnmounted) return;
     if (result.success && result.data) {
       availableForms.value = result.data.map(form => ({
         formCode: form.formCode,
@@ -265,7 +268,12 @@ onMounted(() => {
   }
 });
 
+onUnmounted(() => {
+  isUnmounted = true;
+});
+
 watch(() => props.data, (newData) => {
+  if (!newData) return;
   formMode.value = newData.formMode || 'online';
   selectedFormCode.value = newData.selectedFormCode || '';
   if (newData.formSchema) {

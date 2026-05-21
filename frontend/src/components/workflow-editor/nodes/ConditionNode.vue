@@ -292,6 +292,7 @@ const emit = defineEmits(['update', 'close']);
 const localLabel = ref(props.data.label || '判断器');
 const branchSectionExpanded = ref(true);
 const nodeRef = ref(null); // 节点DOM引用
+let resizeObserver = null; // ResizeObserver 引用
 
 // 分支数据结构
 const localBranches = ref([]);
@@ -676,7 +677,7 @@ onMounted(() => {
     
     // 监听节点尺寸变化
     if (nodeRef.value) {
-      const resizeObserver = new ResizeObserver(() => {
+      resizeObserver = new ResizeObserver(() => {
         updateHandlePositions();
       });
       resizeObserver.observe(nodeRef.value);
@@ -684,11 +685,15 @@ onMounted(() => {
   });
 });
 
-// 组件卸载时清理定时器
+// 组件卸载时清理定时器和监听器
 onUnmounted(() => {
   if (updateHandlePositionsTimer) {
     clearTimeout(updateHandlePositionsTimer);
     updateHandlePositionsTimer = null;
+  }
+  if (resizeObserver) {
+    resizeObserver.disconnect();
+    resizeObserver = null;
   }
 });
 </script>
