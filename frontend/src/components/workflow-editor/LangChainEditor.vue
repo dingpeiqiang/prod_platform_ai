@@ -313,28 +313,28 @@
           
           <template #node-start="props">
             <StartNode
-              :data="enrichNodeData(props.data, props.node?.id)"
+              :data="enrichNodeData(props.data, props.id)"
               :selected="props.selected"
               compact
-              :execution-status="nodeExecutionStatus[props.node?.id]"
+              :execution-status="nodeExecutionStatus[props.id]"
               @update="updateNodeData"
             />
           </template>
 
           <template #node-end="props">
             <EndNode
-              :data="enrichNodeData(props.data, props.node?.id)"
+              :data="enrichNodeData(props.data, props.id)"
               :selected="props.selected"
               compact
-              :execution-status="nodeExecutionStatus[props.node?.id]"
-              :available-variables="getAvailableVariables(props.node?.id)"
+              :execution-status="nodeExecutionStatus[props.id]"
+              :available-variables="getAvailableVariables(props.id)"
               @update="updateNodeData"
             />
           </template>
 
           <template #node-prompt="props">
             <PromptNode
-              :data="enrichNodeData(props.data, props.node?.id)"
+              :data="enrichNodeData(props.data, props.id)"
               :selected="props.selected"
               compact
               @update="updateNodeData"
@@ -343,8 +343,9 @@
 
           <template #node-llm="props">
             <LlmNode
-              :data="enrichNodeData(props.data, props.node?.id)"
+              :data="enrichNodeData(props.data, props.id)"
               :selected="props.selected"
+              :available-variables="getAvailableVariables(props.id)"
               compact
               @update="updateNodeData"
             />
@@ -352,7 +353,7 @@
 
           <template #node-tool="props">
             <ToolNode
-              :data="enrichNodeData(props.data, props.node?.id)"
+              :data="enrichNodeData(props.data, props.id)"
               :selected="props.selected"
               compact
               @update="updateNodeData"
@@ -361,17 +362,17 @@
 
           <template #node-condition="props">
             <ConditionNode
-              :data="enrichNodeData(props.data, props.node?.id)"
+              :data="enrichNodeData(props.data, props.id)"
               :selected="props.selected"
               compact
-              :available-variables="getAvailableVariables(props.node?.id)"
+              :available-variables="getAvailableVariables(props.id)"
               @update="updateNodeData"
             />
           </template>
 
           <template #node-loop="props">
             <LoopNode
-              :data="enrichNodeData(props.data, props.node?.id)"
+              :data="enrichNodeData(props.data, props.id)"
               :selected="props.selected"
               compact
               @update="updateNodeData"
@@ -380,7 +381,7 @@
 
           <template #node-variable="props">
             <VariableNode
-              :data="enrichNodeData(props.data, props.node?.id)"
+              :data="enrichNodeData(props.data, props.id)"
               :selected="props.selected"
               compact
               @update="updateNodeData"
@@ -389,7 +390,7 @@
 
           <template #node-http="props">
             <HttpNode
-              :data="enrichNodeData(props.data, props.node?.id)"
+              :data="enrichNodeData(props.data, props.id)"
               :selected="props.selected"
               compact
               @update="updateNodeData"
@@ -398,7 +399,7 @@
 
           <template #node-code="props">
             <CodeNode
-              :data="enrichNodeData(props.data, props.node?.id)"
+              :data="enrichNodeData(props.data, props.id)"
               :selected="props.selected"
               compact
               @update="updateNodeData"
@@ -407,7 +408,7 @@
 
           <template #node-parser="props">
           <ParserNode
-            :data="enrichNodeData(props.data, props.node?.id)"
+            :data="enrichNodeData(props.data, props.id)"
             :selected="props.selected"
             compact
             @update="updateNodeData"
@@ -416,7 +417,7 @@
 
         <template #node-knowledgeBase="props">
           <KnowledgeNode
-            :data="enrichNodeData(props.data, props.node?.id)"
+            :data="enrichNodeData(props.data, props.id)"
             :selected="props.selected"
             compact
             @update="updateNodeData"
@@ -425,17 +426,17 @@
 
         <template #node-userInput="props">
           <UserInputNode
-            :data="enrichNodeData(props.data, props.node?.id)"
+            :data="enrichNodeData(props.data, props.id)"
             :selected="props.selected"
             compact
-            :available-variables="getAvailableVariables(props.node?.id)"
+            :available-variables="getAvailableVariables(props.id)"
             @update="updateNodeData"
           />
         </template>
 
         <template #node-form="props">
           <FormNode
-            :data="enrichNodeData(props.data, props.node?.id)"
+            :data="enrichNodeData(props.data, props.id)"
             :selected="props.selected"
             compact
             @update="updateNodeData"
@@ -444,7 +445,7 @@
 
         <template #node-validate="props">
           <ValidateNode
-            :data="enrichNodeData(props.data, props.node?.id)"
+            :data="enrichNodeData(props.data, props.id)"
             :selected="props.selected"
             compact
             @update="updateNodeData"
@@ -742,7 +743,7 @@ const quickTemplates = ref([
     name: '简单问答',
     description: '基础的问答流程，适合快速上手',
     nodes: [
-      { type: 'start', x: 50, y: 200, title: '开始' },
+      { type: 'start', x: 50, y: 200, title: '开始', parameters: [{ name: 'input', type: 'string', description: '用户输入', default: '', required: true }] },
       { type: 'prompt', x: 250, y: 200, title: '问题提示词', prompt: '请回答以下问题：{{question}}' },
       { type: 'llm', x: 450, y: 200, title: 'LLM', model: 'qwen-vl-plus', temperature: 0.7 },
       { type: 'end', x: 650, y: 200, title: '结束' }
@@ -1212,8 +1213,8 @@ const getAvailableVariables = (nodeId) => {
     switch (nodeType) {
       case 'start':
         // 开始节点的输入参数
-        if (node.data.params && Array.isArray(node.data.params)) {
-          node.data.params.forEach(param => {
+        if (node.data.parameters && Array.isArray(node.data.parameters)) {
+          node.data.parameters.forEach(param => {
             variables.push({
               id: `${node.id}.${param.name}`,
               name: `${param.name} (入参)`,
@@ -1241,6 +1242,7 @@ const getAvailableVariables = (nodeId) => {
       case 'http':
       case 'code':
       case 'parser':
+      case 'userInput':
         // 这些节点都有输出
         outputVarName = node.data?.outputVar || node.data?.label || nodeType;
         variables.push({
@@ -1464,7 +1466,11 @@ const onDrop = (event) => {
       position,
       data: {
         label: nodeType.name,
-        ...nodeType
+        ...nodeType,
+        // 为开始节点添加默认参数
+        ...(nodeType.type === 'start' ? {
+          parameters: [{ name: 'input', type: 'string', description: '用户输入', default: '', required: true }]
+        } : {})
       }
     };
     
@@ -1487,13 +1493,10 @@ const updateNodeData = (nodeId, data) => {
     node.data = { ...node.data, ...data };
     markDirty();
     
-    // 如果是条件分支节点，延迟重新计算锚点位置
-    if (node.type === 'condition') {
-      setTimeout(() => {
-        // 触发 Vue Flow 重新渲染，间接触发锚点位置重新计算
-        elements.value = [...elements.value];
-      }, 150); // 增加延迟时间，确保DOM完全更新
-    }
+    // 触发 Vue Flow 重新渲染，确保变量列表更新
+    setTimeout(() => {
+      elements.value = [...elements.value];
+    }, 100);
   }
 };
 
@@ -2624,8 +2627,8 @@ onUnmounted(() => {
 }
 
 .delete-btn {
-  opacity: 0;
-  visibility: hidden;
+  opacity: 1;
+  visibility: visible;
   transition: opacity 0.15s, visibility 0.15s;
   padding: 4px;
   border: none;

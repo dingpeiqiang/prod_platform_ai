@@ -39,40 +39,52 @@ class WorkflowService:
 
     @classmethod
     def list_workflows(cls, db: Session, category: Optional[str] = None, is_active: Optional[bool] = None) -> Dict[str, Any]:
-        """获取工作流列表（优先从文件读取）"""
+        """获取工作流列表（合并文件和数据库中的工作流）"""
         try:
-            # 优先从文件读取
+            # 从文件读取工作流
             file_workflows = cls._list_workflows_from_files()
             
-            # 过滤条件
-            if category is not None:
-                file_workflows = [w for w in file_workflows if w.get("category") == category]
-            if is_active is not None:
-                file_workflows = [w for w in file_workflows if w.get("isActive") == is_active]
-            
-            # 如果文件中有工作流，返回文件中的工作流
-            if file_workflows:
-                logger.info(f"Loaded {len(file_workflows)} workflows from files")
-                return {
-                    "success": True,
-                    "total": len(file_workflows),
-                    "data": file_workflows
-                }
-            
-            # 如果文件中没有工作流，从数据库读取
+            # 从数据库读取工作流
             query = db.query(Workflow)
-
             if category is not None:
                 query = query.filter(Workflow.category == category)
             if is_active is not None:
                 query = query.filter(Workflow.is_active == is_active)
-
-            workflows = query.order_by(desc(Workflow.priority), desc(Workflow.created_at)).all()
-
+            
+            db_workflows = query.order_by(desc(Workflow.priority), desc(Workflow.created_at)).all()
+            db_workflows_list = [workflow.to_dict() for workflow in db_workflows]
+            
+            # 合并工作流（文件工作流优先，避免重复）
+            seen_codes = set()
+            all_workflows = []
+            
+            # 添加文件工作流
+            for wf in file_workflows:
+                code = wf.get("workflowCode")
+                if code and code not in seen_codes:
+                    seen_codes.add(code)
+                    all_workflows.append(wf)
+            
+            # 添加数据库工作流（排除已在文件中存在的）
+            for wf in db_workflows_list:
+                code = wf.get("workflowCode")
+                if code and code not in seen_codes:
+                    seen_codes.add(code)
+                    all_workflows.append(wf)
+            
+            # 应用过滤条件到合并后的结果
+            if category is not None:
+                all_workflows = [w for w in all_workflows if w.get("category") == category]
+            if is_active is not None:
+                active_key = "isActive" if "isActive" in all_workflows[0] else "is_active" if all_workflows else "isActive"
+                all_workflows = [w for w in all_workflows if w.get(active_key) == is_active]
+            
+            logger.info(f"Loaded {len(all_workflows)} workflows (files: {len(file_workflows)}, db: {len(db_workflows_list)})")
+            
             return {
                 "success": True,
-                "total": len(workflows),
-                "data": [workflow.to_dict() for workflow in workflows]
+                "total": len(all_workflows),
+                "data": all_workflows
             }
         except Exception as e:
             logger.exception(f"Failed to list workflows: {e}")

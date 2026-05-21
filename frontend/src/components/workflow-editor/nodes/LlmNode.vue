@@ -223,14 +223,29 @@
                 <option value="input">输入</option>
                 <option value="reference">引用</option>
               </select>
+              <select 
+                v-if="param.valueType === 'reference'" 
+                v-model="param.refValue" 
+                @change="emitUpdate" 
+                class="param-ref-select"
+              >
+                <option value="" disabled>选择引用变量</option>
+                <option v-if="param.refValue && !availableVariables.find(v => v.id === param.refValue)" :value="param.refValue" disabled>
+                  {{ param.refValue }}
+                </option>
+                <option v-for="variable in availableVariables" :key="variable.id" :value="variable.id">
+                  {{ variable.name }} ({{ variable.type }})
+                </option>
+              </select>
               <button @click="removeInputParam(index)" class="action-btn delete-btn" title="删除">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="18" y1="6" x2="6" y2="18"/>
                   <line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>
               </button>
             </div>
             <div v-if="localInputs.some(p => !p.name)" class="error-message">参数名不能为空</div>
+            <div v-if="localInputs.some(p => p.valueType === 'reference' && !p.refValue)" class="error-message">引用变量不能为空</div>
         </div>
       </div>
 
@@ -283,7 +298,7 @@
                 <option value="array">array</option>
               </select>
               <button @click="removeOutputParam(index)" class="action-btn delete-btn" title="删除">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="18" y1="6" x2="6" y2="18"/>
                   <line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>
@@ -410,7 +425,7 @@ const toggleSection = (section) => {
 };
 
 const addInputParam = () => {
-  localInputs.value.push({ name: '', valueType: 'input' });
+  localInputs.value.push({ name: '', valueType: 'input', refValue: '' });
   emitUpdate();
 };
 
@@ -1043,6 +1058,26 @@ watch(() => props.data, (newData) => {
 }
 
 .param-type-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.param-ref-select {
+  padding: 8px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+  background: white;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 8px center;
+  background-repeat: no-repeat;
+  background-size: 12px;
+  padding-right: 28px;
+  min-width: 150px;
+}
+
+.param-ref-select:focus {
   outline: none;
   border-color: #3b82f6;
 }

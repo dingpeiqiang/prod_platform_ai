@@ -124,10 +124,7 @@
                         class="action-btn delete-btn" 
                         title="删除"
                       >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <line x1="18" y1="6" x2="6" y2="18"/>
-                          <line x1="6" y1="6" x2="18" y2="18"/>
-                        </svg>
+                        <ElIcon><Delete /></ElIcon>
                       </button>
                     </td>
                   </tr>
@@ -154,6 +151,8 @@
 <script setup>
 import { ref, watch, watchEffect } from 'vue';
 import { Handle } from '@vue-flow/core';
+import { ElIcon } from 'element-plus';
+import { Delete } from '@element-plus/icons-vue';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
 import { useNodeAnchorMode } from './useHandlePosition.js';
 
@@ -179,11 +178,11 @@ const emit = defineEmits(['update', 'close']);
 
 const localParams = ref([
   {
-    name: '',
+    name: 'input',
     type: 'string',
-    description: '',
+    description: '用户输入内容',
     default: '',
-    required: false
+    required: true
   }
 ]);
 const inputSectionExpanded = ref(true);
@@ -245,16 +244,6 @@ const getTypeDescription = (type) => {
 };
 
 const emitUpdate = () => {
-  // 确保 localParams 有数据
-  if (localParams.value.length === 0) {
-    localParams.value.push({
-      name: '',
-      type: 'string',
-      description: '',
-      default: '',
-      required: false
-    });
-  }
   console.log('[StartNode] emitUpdate called, localParams:', JSON.stringify(localParams.value));
   emit('update', props.data.id, {
     parameters: localParams.value
@@ -651,9 +640,9 @@ watch(
 }
 
 .col-action {
-  width: 60px;
+  width: 80px;
   text-align: center;
-  padding: 8px 4px;
+  padding: 8px 8px;
 }
 
 .order-badge {
@@ -677,8 +666,8 @@ watch(
 }
 
 .action-btn {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border: none;
   background: transparent;
   color: #999;
@@ -689,7 +678,7 @@ watch(
   border-radius: 4px;
   transition: all 0.2s;
   margin: 0;
-  padding: 0;
+  padding: 4px;
 }
 
 .action-btn:hover:not(:disabled) {
@@ -702,14 +691,23 @@ watch(
   cursor: not-allowed;
 }
 
+.action-btn.delete-btn {
+  opacity: 1 !important;
+  visibility: visible !important;
+  background: transparent;
+  color: #ff4d4f;
+  border: none;
+}
+
 .action-btn.delete-btn:hover {
   background: #fff1f0;
   color: #f5222d;
 }
 
-.action-btn svg {
-  width: 16px;
-  height: 16px;
+.action-btn svg,
+.action-btn :deep(.el-icon) {
+  width: 18px;
+  height: 18px;
 }
 
 .param-name-input {
