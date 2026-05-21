@@ -397,6 +397,25 @@ onMounted(() => {
   loadAvailableModels();
 });
 
+// 监听 availableVariables 变化，为存量工作流的引用参数重建 cascaderValue
+watch(() => props.availableVariables, (newVars) => {
+  if (!newVars || newVars.length === 0) return;
+  
+  localInputs.value.forEach(param => {
+    if (param && param.valueType === 'reference' && param.selectedNodeId && param.refValue && !param.cascaderValue?.length) {
+      // 查找匹配的变量
+      const matchedVar = newVars.find(v => 
+        v.nodeId === param.selectedNodeId && 
+        (v.id === `${param.selectedNodeId}.${param.refValue}` || v.name.startsWith(param.refValue))
+      );
+      
+      if (matchedVar) {
+        param.cascaderValue = [matchedVar.nodeId, matchedVar.id];
+      }
+    }
+  });
+}, { immediate: true });
+
 onUnmounted(() => {
   isUnmounted = true;
   if (hideTimer) {

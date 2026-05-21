@@ -68,25 +68,14 @@
 
                 <!-- 引用变量列 -->
                 <div class="grid-cell variable-cell">
-                  <select
-                    v-model="condition.variable"
-                    @change="emitUpdate"
-                    class="variable-select"
-                    placeholder="请选择..."
-                  >
-                    <option value="" disabled>请选择...</option>
-                    <!-- 确保已选中的值能正确显示 -->
-                    <option 
-                      v-if="condition.variable && !availableVariables.find(v => v.id === condition.variable)" 
-                      :value="condition.variable"
-                      disabled
-                    >
-                      {{ condition.variable }}
-                    </option>
-                    <option v-for="variable in availableVariables" :key="variable.id" :value="variable.id">
-                      {{ variable.name }}
-                    </option>
-                  </select>
+                  <el-cascader
+                    v-model="condition.variableCascaderValue"
+                    :options="cascaderOptions"
+                    :props="{ expandTrigger: 'click' }"
+                    placeholder="请选择变量"
+                    class="variable-cascader"
+                    @change="handleVariableChange(branchIndex, condIndex, $event)"
+                  ></el-cascader>
                 </div>
 
                 <!-- 选择条件列 -->
@@ -118,7 +107,7 @@
                   <div class="value-group">
                     <select
                       v-model="condition.valueType"
-                      @change="emitUpdate"
+                      @change="handleValueTypeChange(branchIndex, condIndex)"
                       class="value-type-select"
                     >
                       <option value="input">输入</option>
@@ -132,25 +121,15 @@
                       placeholder="请输入"
                       class="value-input"
                     />
-                    <select
+                    <el-cascader
                       v-else
-                      v-model="condition.value"
-                      @change="emitUpdate"
-                      class="value-reference-select"
-                    >
-                      <option value="" disabled>请选择...</option>
-                      <!-- 确保已选中的值能正确显示 -->
-                      <option 
-                        v-if="condition.value && !availableVariables.find(v => v.id === condition.value)" 
-                        :value="condition.value"
-                        disabled
-                      >
-                        {{ condition.value }}
-                      </option>
-                      <option v-for="variable in availableVariables" :key="variable.id" :value="variable.id">
-                        {{ variable.name }}
-                      </option>
-                    </select>
+                      v-model="condition.valueCascaderValue"
+                      :options="cascaderOptions"
+                      :props="{ expandTrigger: 'click' }"
+                      placeholder="请选择变量"
+                      class="value-cascader"
+                      @change="handleValueChange(branchIndex, condIndex, $event)"
+                    ></el-cascader>
                   </div>
                 </div>
 
@@ -297,6 +276,110 @@ let resizeObserver = null; // ResizeObserver 引用
 // 分支数据结构
 const localBranches = ref([]);
 
+// 级联选择器选项
+const cascaderOptions = computed(() => {
+  if (!props.availableVariables || !Array.isArray(props.availableVariables)) return [];
+
+  const nodeMap = new Map();
+
+  props.availableVariables.forEach(variable => {
+    if (variable && variable.nodeId && variable.id && variable.name) {
+      if (!nodeMap.has(variable.nodeId)) {
+        let nodeLabel = getNodeLabelById(variable.nodeId);
+
+        if (variable.nodeType === 'start') {
+          nodeLabel = '开始节点';
+        } else {
+          const namePart = variable.name.split('(')[0].trim();
+          if (namePart && !namePart.includes('输出') && !namePart.includes('入参')) {
+            nodeLabel = namePart;
+          }
+        }
+
+        nodeMap.set(variable.nodeId, {
+          value: variable.nodeId,
+          label: nodeLabel,
+          children: []
+        });
+      }
+      nodeMap.get(variable.nodeId).children.push({
+        value: variable.id,
+        label: variable.name
+      });
+    }
+  });
+
+  return Array.from(nodeMap.values());
+});
+
+// 获取节点标签
+const getNodeLabelById = (nodeId) => {
+  if (nodeId.startsWith('start')) return '开始节点';
+  if (nodeId.startsWith('variable')) return '变量节点';
+  if (nodeId.startsWith('llm')) return 'LLM节点';
+  if (nodeId.startsWith('prompt')) return '提示词节点';
+  if (nodeId.startsWith('tool')) return '工具节点';
+  if (nodeId.startsWith('http')) return 'HTTP节点';
+  if (nodeId.startsWith('code')) return '代码节点';
+  if (nodeId.startsWith('parser')) return '解析节点';
+  if (nodeId.startsWith('condition')) return '条件节点';
+  if (nodeId.startsWith('userInput')) return '用户输入节点';
+  if (nodeId.startsWith('end')) return '结束节点';
+  return nodeId;
+};
+
+// 处理变量选择变化
+const handleVariableChange = (branchIndex, condIndex, value) => {
+  const branch = localBranches.value[branchIndex];
+  if (!branch) return;
+  const cond = branch.conditions[condIndex];
+  if (!cond) return;
+
+  if (Array.isArray(value) && value.length === 2) {
+    cond.variable = value[1];
+    cond.variableNodeId = value[0];
+    cond.variableCascaderValue = value;
+  } else {
+    cond.variable = '';
+    cond.variableNodeId = '';
+    cond.variableCascaderValue = [];
+  }
+  emitUpdate();
+};
+
+// 处理比较值选择变化
+const handleValueChange = (branchIndex, condIndex, value) => {
+  const branch = localBranches.value[branchIndex];
+  if (!branch) return;
+  const cond = branch.conditions[condIndex];
+  if (!cond) return;
+
+  if (Array.isArray(value) && value.length === 2) {
+    cond.value = value[1];
+    cond.valueNodeId = value[0];
+    cond.valueCascaderValue = value;
+  } else {
+    cond.value = '';
+    cond.valueNodeId = '';
+    cond.valueCascaderValue = [];
+  }
+  emitUpdate();
+};
+
+// 处理值类型变化
+const handleValueTypeChange = (branchIndex, condIndex) => {
+  const branch = localBranches.value[branchIndex];
+  if (!branch) return;
+  const cond = branch.conditions[condIndex];
+  if (!cond) return;
+
+  // 重置引用相关字段
+  cond.value = '';
+  cond.valueNodeId = '';
+  cond.valueCascaderValue = [];
+  emitUpdate();
+};
+
 // 初始化分支数据
 const initBranches = () => {
   // 确保 props.data 存在
@@ -309,9 +392,13 @@ const initBranches = () => {
         conditions: [
           {
             variable: '',
+            variableNodeId: '',
+            variableCascaderValue: [],
             operator: '',
             valueType: 'input',
-            value: ''
+            value: '',
+            valueNodeId: '',
+            valueCascaderValue: []
           }
         ]
       },
@@ -374,9 +461,13 @@ const initBranches = () => {
         conditions: [
           {
             variable: '',
+            variableNodeId: '',
+            variableCascaderValue: [],
             operator: '',
             valueType: 'input',
-            value: ''
+            value: '',
+            valueNodeId: '',
+            valueCascaderValue: []
           }
         ]
       },
@@ -386,9 +477,13 @@ const initBranches = () => {
         conditions: [
           {
             variable: '',
+            variableNodeId: '',
+            variableCascaderValue: [],
             operator: '',
             valueType: 'input',
-            value: ''
+            value: '',
+            valueNodeId: '',
+            valueCascaderValue: []
           }
         ]
       },
@@ -443,9 +538,13 @@ const addBranch = () => {
     conditions: [
       {
         variable: '',
+        variableNodeId: '',
+        variableCascaderValue: [],
         operator: '',
         valueType: 'input',
-        value: ''
+        value: '',
+        valueNodeId: '',
+        valueCascaderValue: []
       }
     ]
   };
@@ -484,9 +583,13 @@ const removeBranch = (index) => {
 const addCondition = (branchIndex) => {
   localBranches.value[branchIndex].conditions.push({
     variable: '',
+    variableNodeId: '',
+    variableCascaderValue: [],
     operator: '',
     valueType: 'input',
-    value: ''
+    value: '',
+    valueNodeId: '',
+    valueCascaderValue: []
   });
   emitUpdate();
 };
@@ -1106,7 +1209,9 @@ onUnmounted(() => {
 .variable-select,
 .operator-select,
 .value-type-select,
-.value-reference-select {
+.value-reference-select,
+.variable-cascader,
+.value-cascader {
   width: 100%;
   padding: 6px 10px;
   border: 1px solid #d9d9d9;
@@ -1145,8 +1250,11 @@ onUnmounted(() => {
 }
 
 .value-input,
-.value-reference-select {
+.value-reference-select,
+.value-cascader {
   flex: 1;
+  width: 200px;
+  flex-shrink: 1;
 }
 
 .value-input {
