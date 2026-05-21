@@ -89,11 +89,40 @@ const localOutputVar = ref(props.data.outputVar || '');
 const placeholderText = '输入提示词，使用 {{变量名}} 引用变量...';
 const displayVarSyntax = '{{变量名}}';
 
+// 监听 cascaderOptions 变化，清除已失效的 cascaderValue
+watch(cascaderOptions, (newOptions) => {
+  if (!newOptions || newOptions.length === 0) {
+    // 选项为空时清除值
+    if (inputCascaderValue.value?.length) {
+      inputCascaderValue.value = [];
+    }
+    return;
+  }
+
+  // 检查当前选中值是否仍然有效
+  if (inputCascaderValue.value?.length === 2) {
+    const [nodeId, varId] = inputCascaderValue.value;
+    const nodeExists = newOptions.some(opt => opt.value === nodeId);
+    if (!nodeExists) {
+      inputCascaderValue.value = [];
+    }
+  }
+}, { immediate: false });
+
 // 监听 availableVariables 变化，为存量工作流的引用参数重建 cascaderValue
 watch(() => props.availableVariables, (newVars) => {
-  if (!newVars || newVars.length === 0) return;
+  // 如果变量列表为空或未定义，不处理
+  if (!newVars || !Array.isArray(newVars) || newVars.length === 0) {
+    return;
+  }
 
-  if (localInputNodeId.value && localInputVar.value && !inputCascaderValue.value?.length) {
+  // 如果已经有 cascaderValue，说明已加载过，不需要重建
+  if (inputCascaderValue.value?.length) {
+    return;
+  }
+
+  // 只有当有引用信息但没有 cascaderValue 时才尝试重建
+  if (localInputNodeId.value && localInputVar.value) {
     const matchedVar = newVars.find(v =>
       v.nodeId === localInputNodeId.value &&
       (v.id === `${localInputNodeId.value}.${localInputVar.value}` || v.name.startsWith(localInputVar.value))

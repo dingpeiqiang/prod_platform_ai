@@ -416,6 +416,30 @@ watch(() => props.availableVariables, (newVars) => {
   });
 }, { immediate: true });
 
+// 监听 cascaderOptions 变化，清除已失效的 cascaderValue
+watch(cascaderOptions, (newOptions) => {
+  if (!newOptions || newOptions.length === 0) {
+    // 选项为空时清除所有引用参数的 cascaderValue
+    localInputs.value.forEach(param => {
+      if (param && param.valueType === 'reference' && param.cascaderValue?.length) {
+        param.cascaderValue = [];
+      }
+    });
+    return;
+  }
+
+  // 检查每个引用参数的 cascaderValue 是否仍然有效
+  localInputs.value.forEach(param => {
+    if (param && param.valueType === 'reference' && param.cascaderValue?.length === 2) {
+      const [nodeId] = param.cascaderValue;
+      const nodeExists = newOptions.some(opt => opt.value === nodeId);
+      if (!nodeExists) {
+        param.cascaderValue = [];
+      }
+    }
+  });
+}, { immediate: false });
+
 onUnmounted(() => {
   isUnmounted = true;
   if (hideTimer) {
