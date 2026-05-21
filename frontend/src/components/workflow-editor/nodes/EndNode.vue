@@ -100,6 +100,7 @@
                   :props="{ expandTrigger: 'click' }"
                   placeholder="请选择变量"
                   class="param-value-cascader"
+                  :popper-append-to-body="true"
                   @change="handleOutputParamChange(index, $event)"
                 ></el-cascader>
                 <input

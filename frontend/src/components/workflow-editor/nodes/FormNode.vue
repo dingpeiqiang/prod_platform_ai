@@ -58,7 +58,7 @@
       </div>
 
       <div v-if="formMode === 'reference'" class="reference-form-panel">
-        <el-select v-model="selectedFormCode" @change="onFormSelect" class="form-select" placeholder="选择表单">
+        <el-select v-model="selectedFormCode" @change="onFormSelect" class="form-select" placeholder="选择表单" :popper-append-to-body="true">
           <el-option v-for="form in availableForms" :key="form.formCode" :label="form.formName" :value="form.formCode" />
         </el-select>
         <div v-if="selectedForm" class="selected-form-info">

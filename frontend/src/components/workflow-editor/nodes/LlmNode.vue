@@ -238,6 +238,7 @@
                   :props="{ expandTrigger: 'click' }"
                   placeholder="请选择变量"
                   class="param-cascader"
+                  :popper-append-to-body="true"
                   @change="handleCascaderChange(index, $event)"
                 ></el-cascader>
                 <button @click="removeInputParam(index)" class="action-btn delete-btn" title="删除">

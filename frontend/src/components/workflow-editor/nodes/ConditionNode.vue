@@ -74,6 +74,7 @@
                     :props="{ expandTrigger: 'click' }"
                     placeholder="请选择变量"
                     class="variable-cascader"
+                    :popper-append-to-body="true"
                     @change="handleVariableChange(branchIndex, condIndex, $event)"
                   ></el-cascader>
                 </div>
@@ -128,6 +129,7 @@
                       :props="{ expandTrigger: 'click' }"
                       placeholder="请选择变量"
                       class="value-cascader"
+                      :popper-append-to-body="true"
                       @change="handleValueChange(branchIndex, condIndex, $event)"
                     ></el-cascader>
                   </div>

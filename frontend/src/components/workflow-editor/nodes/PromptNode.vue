@@ -25,6 +25,7 @@
             :props="{ expandTrigger: 'hover' }"
             placeholder="选择输入变量"
             class="param-cascader"
+            :popper-append-to-body="true"
             @change="handleInputCascaderChange"
           ></el-cascader>
           <span class="param-hint" title="使用双花括号引用变量">或使用 {{ displayVarSyntax }} 语法</span>
