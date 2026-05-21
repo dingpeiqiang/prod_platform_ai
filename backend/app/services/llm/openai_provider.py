@@ -5,7 +5,7 @@ import asyncio
 from typing import Optional, Dict, Any, AsyncGenerator, Tuple
 from app.services.llm.provider import BaseProvider
 from app.services.llm.factory import ProviderFactory
-from app.services.llm.base import StreamStats, extract_json
+from app.services.llm.base import StreamStats, extract_json, normalize_base_url
 from app.core.config import get_settings
 
 logger = logging.getLogger("llm.openai")
@@ -28,6 +28,8 @@ class OpenAIProvider(BaseProvider):
         self.base_url = (
             config.get('baseUrl') or config.get('base_url') or ''
         ) or (settings.LLM_BASE_URL.strip() if settings.LLM_BASE_URL else '')
+
+        self.base_url = normalize_base_url(self.base_url, 'openai/custom')
         
         # 如果 config 中没有提供 model，使用 .env 的默认值
         if not self.model and settings.LLM_MODEL:

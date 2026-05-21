@@ -84,6 +84,52 @@ class StreamBuffer:
         return sum(len(t) for t in self.buffer)
 
 
+def normalize_base_url(raw_url: str, provider_name: str = "") -> str:
+    """规范化 base_url，防止配置错误导致的 URL 拼接异常
+
+    常见问题：
+    - 前后空格或反引号
+    - 末尾多余的斜杠
+    - 用户误将完整端点 URL 填入（如 .../chat/completions）
+    - 路径段重复（如 /v1/openai/v1）
+    """
+    if not raw_url:
+        return ""
+
+    url = raw_url.strip().strip("`\"'")
+
+    url = url.rstrip("/")
+
+    if url.endswith("/chat/completions"):
+        original = url
+        url = url[: -len("/chat/completions")]
+        logger.warning(
+            "[URL规范化] base_url 末尾包含 /chat/completions，已自动去除\n"
+            "  原始值: %s\n  修正值: %s\n  提示: 请在前端模型配置中更新 base_url，只填写到 /v1 即可",
+            original, url
+        )
+
+    segments = url.rstrip("/").split("/")
+    segment_set = set()
+    for seg in segments[3:]:
+        if seg and seg in segment_set:
+            logger.warning(
+                "[URL规范化] base_url 存在可疑的重复路径段 '%s'，请检查是否正确\n"
+                "  URL: %s\n  提示: 正确的 OpenAI 兼容 base_url 通常以 /v1 结尾",
+                seg, url
+            )
+            break
+        if seg:
+            segment_set.add(seg)
+
+    if provider_name:
+        logger.debug("[URL规范化] provider=%s, 原始=%s, 最终=%s", provider_name, raw_url, url)
+    else:
+        logger.debug("[URL规范化] 原始=%s, 最终=%s", raw_url, url)
+
+    return url
+
+
 def extract_json(text: str) -> Optional[Dict]:
     """从 LLM 输出中提取 JSON，支持多种容错策略"""
     if not text:

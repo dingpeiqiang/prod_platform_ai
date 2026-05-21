@@ -29,6 +29,7 @@ from app.api.chat_service import (
     call_skills_only, build_intent_prompt, parse_intent_result,
     execute_tool_calls, get_scene_prompt_by_code
 )
+from app.services.llm.base import normalize_base_url
 
 logger = logging.getLogger("chat_api")
 
@@ -58,6 +59,146 @@ class ChatStreamStats:
 
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
+
+
+class CompletionRequest(BaseModel):
+    model: Optional[str] = None
+    prompt: str
+    system_prompt: Optional[str] = None
+    temperature: Optional[float] = 0.7
+    max_tokens: Optional[int] = 1024
+    top_k: Optional[int] = Field(0, ge=0, le=100)
+    top_p: Optional[float] = Field(1.0, ge=0.0, le=1.0)
+    user_identifier: Optional[str] = None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "model": "qwen-vl-plus",
+                "prompt": "Hello, how are you?",
+                "system_prompt": "You are a helpful assistant.",
+                "temperature": 0.7,
+                "max_tokens": 1024,
+                "top_k": 0,
+                "top_p": 1.0,
+                "user_identifier": "user-123"
+            }
+        }
+
+
+@router.post("/chat/completion")
+async def chat_completion(request: CompletionRequest, db: Session = Depends(get_db)):
+    """单节点LLM调用接口 - 用于工作流编辑器的单节点运行功能"""
+    logger.info(f"[chat/completion] ====== 收到请求 ======")
+    logger.info(f"[chat/completion] model: {request.model}")
+    logger.info(f"[chat/completion] ==== 输入提示词 ====")
+    logger.info(f"[chat/completion] {request.prompt}")
+    logger.info(f"[chat/completion] ==== 输入结束 ====")
+    logger.info(f"[chat/completion] prompt_length: {len(request.prompt)}")
+    logger.info(f"[chat/completion] system_prompt: {request.system_prompt[:200] if request.system_prompt else 'None'}")
+    logger.debug(f"[chat/completion] temperature: {request.temperature}, type={type(request.temperature)}")
+    logger.debug(f"[chat/completion] max_tokens: {request.max_tokens}, type={type(request.max_tokens)}")
+    logger.debug(f"[chat/completion] top_k: {request.top_k}, type={type(request.top_k)}")
+    logger.debug(f"[chat/completion] top_p: {request.top_p}, type={type(request.top_p)}")
+    
+    try:
+        if not llm_service.enabled:
+            logger.warning("[chat/completion] LLM 服务未启用")
+            return {"success": False, "message": "LLM 服务未启用"}
+        
+        # 使用指定的模型配置或默认配置
+        provider = llm_service.provider
+        custom_provider = None
+        
+        if request.model:
+            from app.services.llm.factory import ProviderFactory
+            from app.models.llm_user_config import LLMUserConfig
+            
+            # 根据模型名称从数据库查询配置
+            # 支持两种格式：带前缀的模型ID（如 custom-minimax-m2.7）和不带前缀的模型名称（如 minimax-m2.7）
+            model_name = request.model
+            if model_name.startswith('custom-'):
+                model_name = model_name[7:]  # 移除 custom- 前缀
+            
+            model_db_config = db.query(LLMUserConfig).filter(
+                LLMUserConfig.model == model_name,
+                LLMUserConfig.is_active == True
+            ).first()
+            
+            if not model_db_config:
+                logger.warning(f"[chat/completion] 未找到模型配置: {request.model}")
+                mock_response = f"这是模拟的 LLM 响应（未找到模型配置）\n\n输入提示词:\n{request.prompt}\n\n模型: {request.model}\n\n提示：请先在'模型配置'面板中添加该模型的配置。"
+                return {
+                    "success": True,
+                    "result": mock_response,
+                    "model": request.model,
+                    "prompt_length": len(request.prompt),
+                    "simulated": True,
+                    "message": "未找到模型配置，返回模拟响应"
+                }
+            
+            # 使用数据库配置
+            api_key = (model_db_config.api_key or '').strip().strip('`')
+            provider_type = model_db_config.provider or 'openai'
+            base_url = normalize_base_url(model_db_config.base_url or '', provider_type)
+            
+            logger.info(f"[chat/completion] 从数据库找到模型配置: {request.model}, provider: {provider_type}")
+            logger.debug(f"[chat/completion] api_key_exists={bool(api_key)}, base_url={base_url}")
+            
+            model_config = {
+                'provider': provider_type,
+                'model': request.model,
+                'apiKey': api_key,
+                'baseUrl': base_url,
+                'temperature': request.temperature,
+                'maxTokens': request.max_tokens
+            }
+            
+            try:
+                custom_provider = ProviderFactory.create(model_config['provider'], model_config)
+                provider = custom_provider
+                logger.info(f"[chat/completion] 使用自定义模型: {request.model}, provider: {provider_type}")
+            except Exception as e:
+                logger.warning(f"[chat/completion] 创建自定义 Provider 失败，使用默认: {e}")
+        
+        # 调用 LLM
+        response = llm_service.call_with_provider(
+            provider,
+            request.prompt,
+            request.system_prompt,
+            request.max_tokens,
+            False
+        )
+        
+        if response:
+            logger.info(f"[chat/completion] ====== LLM 响应成功 ======")
+            logger.info(f"[chat/completion] ==== 输出结果 ====")
+            logger.info(f"[chat/completion] {response}")
+            logger.info(f"[chat/completion] ==== 输出结束 ====")
+            logger.info(f"[chat/completion] 响应长度: {len(response)}")
+            return {
+                "success": True,
+                "result": response,
+                "model": request.model or llm_service.llm_config.get('model'),
+                "prompt_length": len(request.prompt),
+                "response_length": len(response)
+            }
+        else:
+            logger.warning(f"[chat/completion] ====== LLM 返回为空 ======")
+            logger.warning(f"[chat/completion] 输入提示词: {request.prompt[:100]}...")
+            mock_response = f"这是模拟的 LLM 响应（配置不完整）\n\n输入提示词:\n{request.prompt}\n\n模型: {request.model or '未指定'}\n温度: {request.temperature}\n最大Token: {request.max_tokens}\n\n提示：请通过前端界面配置 LLM 模型参数以获取真实响应。"
+            return {
+                "success": True,
+                "result": mock_response,
+                "model": request.model or "simulated",
+                "prompt_length": len(request.prompt),
+                "simulated": True,
+                "message": "LLM 配置不完整，返回模拟响应"
+            }
+    
+    except Exception as e:
+        logger.error(f"[chat/completion] 执行失败: {e}", exc_info=True)
+        return {"success": False, "message": str(e)}
 
 
 @router.post("/chat/model/switch")

@@ -4,7 +4,7 @@ import asyncio
 from typing import Optional, Dict, Any, AsyncGenerator, Tuple
 from app.services.llm.provider import BaseProvider
 from app.services.llm.factory import ProviderFactory
-from app.services.llm.base import StreamStats, extract_json
+from app.services.llm.base import StreamStats, extract_json, normalize_base_url
 from app.core.config import get_settings
 
 
@@ -18,6 +18,8 @@ class MinimaxProvider(BaseProvider):
         
         self.api_key = settings.LLM_API_KEY.strip() if settings.LLM_API_KEY else self.api_key
         self.base_url = settings.LLM_BASE_URL.strip() if settings.LLM_BASE_URL else self.base_url
+
+        self.base_url = normalize_base_url(self.base_url, 'minimax')
         
         self.temperature = config.get('temperature', 0.3)
         self.max_tokens = config.get('maxTokens', 2048)
