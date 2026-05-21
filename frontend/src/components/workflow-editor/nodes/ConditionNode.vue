@@ -111,7 +111,7 @@
                       class="value-type-select"
                     >
                       <option value="input">输入</option>
-                      <option value="reference">引用变量</option>
+                      <option value="reference">引用</option>
                     </select>
                     <input
                       v-if="condition.valueType === 'input'"
