@@ -9,13 +9,6 @@
           返回
         </button>
         <div class="toolbar-divider"></div>
-        <button @click="newWorkflow" class="btn-primary" title="新建工作流">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 5v14"/>
-            <path d="M5 12h14"/>
-          </svg>
-          新建
-        </button>
         <div class="workflow-selector">
           <button @click="showWorkflowList = !showWorkflowList" class="btn-secondary workflow-btn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -692,7 +685,7 @@ const goBack = () => {
   emit('go-back');
 };
 
-const { addEdges, removeNodes, removeEdges, project, updateEdge, getEdges, getNodes } = useVueFlow();
+const { addEdges, removeNodes, removeEdges, project, updateEdge, getEdges, getNodes, fitView } = useVueFlow();
 
 const elements = ref([]);
 const hasChanges = ref(false);
@@ -1535,17 +1528,28 @@ const markDirty = () => {
   hasChanges.value = true;
 };
 
-const loadWorkflows = () => {
-  const saved = localStorage.getItem('langchain-workflows');
-  if (saved) {
-    workflows.value = JSON.parse(saved);
-  } else {
+const loadWorkflows = async () => {
+  try {
+    const result = await workflowApi.workflowApi.getAllWorkflows();
+    if (result.success && result.data) {
+      workflows.value = result.data.map(wf => ({
+        id: wf.workflowCode,
+        name: wf.workflowName,
+        description: wf.description,
+        nodes: wf.workflowData?.nodes || [],
+        edges: wf.workflowData?.edges || [],
+        version: wf.workflowData?.version || '2.0',
+        createdAt: wf.createdAt,
+        updatedAt: wf.updatedAt,
+        savedAt: wf.updatedAt
+      }));
+    } else {
+      workflows.value = [];
+    }
+  } catch (error) {
+    console.error('加载工作流列表失败:', error);
     workflows.value = [];
   }
-};
-
-const saveWorkflows = () => {
-  localStorage.setItem('langchain-workflows', JSON.stringify(workflows.value));
 };
 
 const saveWorkflow = async () => {
@@ -1560,17 +1564,6 @@ const saveWorkflow = async () => {
   try {
     if (currentWorkflowId.value) {
       // 更新现有工作流
-      const index = workflows.value.findIndex(w => w.id === currentWorkflowId.value);
-      if (index !== -1) {
-        workflows.value[index] = { 
-          ...workflows.value[index], 
-          ...workflowData,
-          name: workflowName.value
-        };
-        saveWorkflows();
-      }
-      
-      // 同步到后端
       const updateResult = await workflowApi.workflowApi.update(currentWorkflowId.value, {
         workflowName: workflowName.value,
         workflowData: workflowData
@@ -1578,24 +1571,23 @@ const saveWorkflow = async () => {
       
       if (updateResult.success) {
         ElMessage.success('工作流已保存');
+        // 更新本地缓存的工作流列表
+        const index = workflows.value.findIndex(w => w.id === currentWorkflowId.value);
+        if (index !== -1) {
+          workflows.value[index] = { 
+            ...workflows.value[index], 
+            ...workflowData,
+            name: workflowName.value,
+            updatedAt: new Date().toISOString()
+          };
+        }
       } else {
-        ElMessage.warning('本地保存成功，但云端同步失败：' + (updateResult.message || '未知错误'));
+        ElMessage.error('保存失败：' + (updateResult.message || '未知错误'));
       }
     } else {
       // 创建新工作流
       const newId = uuidv4();
-      const newWorkflow = {
-        id: newId,
-        name: workflowName.value,
-        description: '',
-        ...workflowData,
-        createdAt: new Date().toISOString()
-      };
-      workflows.value.push(newWorkflow);
-      currentWorkflowId.value = newId;
-      saveWorkflows();
       
-      // 同步到后端
       const createResult = await workflowApi.workflowApi.create({
         workflowCode: newId,
         workflowName: workflowName.value,
@@ -1605,9 +1597,20 @@ const saveWorkflow = async () => {
       });
       
       if (createResult.success) {
+        currentWorkflowId.value = newId;
+        // 更新本地缓存的工作流列表
+        workflows.value.push({
+          id: newId,
+          name: workflowName.value,
+          description: '',
+          ...workflowData,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          savedAt: new Date().toISOString()
+        });
         ElMessage.success('工作流已创建并保存');
       } else {
-        ElMessage.warning('本地保存成功，但云端同步失败：' + (createResult.message || '未知错误'));
+        ElMessage.error('创建失败：' + (createResult.message || '未知错误'));
       }
     }
     hasChanges.value = false;
@@ -1617,57 +1620,58 @@ const saveWorkflow = async () => {
   }
 };
 
-const newWorkflow = () => {
-  if (hasChanges.value) {
-    if (!confirm('当前工作流有未保存的更改，确定要创建新工作流吗？')) {
-      return;
-    }
-  }
-  elements.value = [];
-  selectedNodeId.value = null;
-  selectedNodeIds.value = [];
-  currentWorkflowId.value = null;
-  workflowName.value = '未命名工作流';
-  hasChanges.value = false;
-  history.value = [];
-  historyIndex.value = -1;
-  showWorkflowList.value = false;
-  isReadOnly.value = false; // 新建工作流时重置为可编辑模式
-};
-
-const openWorkflow = (workflow) => {
+const openWorkflow = async (workflow) => {
   if (hasChanges.value) {
     if (!confirm('当前工作流有未保存的更改，确定要打开其他工作流吗？')) {
       return;
     }
   }
-  currentWorkflowId.value = workflow.id;
-  workflowName.value = workflow.name;
-  const nodes = workflow.nodes.map(node => ({
-    id: node.id,
-    type: node.type,
-    position: node.position,
-    data: node.data
-  }));
-  const edges = workflow.edges ? workflow.edges.map(edge => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-    sourceHandle: edge.sourceHandle,
-    targetHandle: edge.targetHandle,
-    markerEnd: edge.markerEnd || {
-      type: 'arrowclosed',
-      color: '#94a3b8'
+  
+  try {
+    // 从后端重新加载最新数据
+    const result = await workflowApi.workflowApi.get(workflow.id);
+    
+    if (result.success && result.data) {
+      const workflowData = result.data.workflowData || {};
+      
+      currentWorkflowId.value = result.data.workflowCode;
+      workflowName.value = result.data.workflowName;
+      
+      const nodes = (workflowData.nodes || []).map(node => ({
+        id: node.id,
+        type: node.type,
+        position: node.position,
+        data: node.data
+      }));
+      const edges = (workflowData.edges || []).map(edge => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: edge.sourceHandle,
+        targetHandle: edge.targetHandle,
+        markerEnd: edge.markerEnd || {
+          type: 'arrowclosed',
+          color: '#94a3b8'
+        }
+      }));
+      
+      elements.value = [...nodes, ...edges];
+      selectedNodeId.value = null;
+      selectedNodeIds.value = [];
+      hasChanges.value = false;
+      history.value = [];
+      historyIndex.value = -1;
+      showWorkflowList.value = false;
+      isReadOnly.value = false;
+      
+      ElMessage.success(`已打开工作流: ${result.data.workflowName}`);
+    } else {
+      ElMessage.error('加载工作流失败：' + (result.message || '未知错误'));
     }
-  })) : [];
-  elements.value = [...nodes, ...edges];
-  selectedNodeId.value = null;
-  selectedNodeIds.value = [];
-  hasChanges.value = false;
-  history.value = [];
-  historyIndex.value = -1;
-  showWorkflowList.value = false;
-  isReadOnly.value = false; // 打开本地工作流时重置为可编辑模式
+  } catch (error) {
+    console.error('打开工作流失败:', error);
+    ElMessage.error('打开工作流失败：' + (error.message || '未知错误'));
+  }
 };
 
 const handleLoadFromLibrary = (workflow, isCopy = false) => {
@@ -1677,7 +1681,8 @@ const handleLoadFromLibrary = (workflow, isCopy = false) => {
     }
   }
   
-  currentWorkflowId.value = workflow.workflowCode;
+  // currentWorkflowId: 优先使用 workflowCode（新版本完整数据），兼容 id（旧版本列表数据）
+  currentWorkflowId.value = workflow.workflowCode || workflow.id;
   workflowName.value = workflow.workflowName;
   
   const workflowData = workflow.workflowData || {};
@@ -1716,39 +1721,67 @@ const handleLoadFromLibrary = (workflow, isCopy = false) => {
   }
 };
 
-const deleteWorkflow = (workflowId) => {
+const deleteWorkflow = async (workflowId) => {
   if (!confirm('确定要删除这个工作流吗？')) {
     return;
   }
-  const index = workflows.value.findIndex(w => w.id === workflowId);
-  if (index !== -1) {
-    workflows.value.splice(index, 1);
-    saveWorkflows();
-    if (currentWorkflowId.value === workflowId) {
-      newWorkflow();
+  
+  try {
+    const deleteResult = await workflowApi.workflowApi.delete(workflowId);
+    
+    if (deleteResult.success) {
+      const index = workflows.value.findIndex(w => w.id === workflowId);
+      if (index !== -1) {
+        workflows.value.splice(index, 1);
+        ElMessage.success('工作流已删除');
+      }
+      if (currentWorkflowId.value === workflowId) {
+        // 删除的是当前工作流，重置画布为空
+        elements.value = [];
+        nextTick(() => fitView({ padding: 0.2, duration: 300 }));
+        currentWorkflowId.value = null;
+        workflowName.value = '未命名工作流';
+        hasChanges.value = false;
+      }
+    } else {
+      ElMessage.error('删除失败：' + (deleteResult.message || '未知错误'));
     }
+  } catch (error) {
+    console.error('删除工作流失败:', error);
+    ElMessage.error('删除失败：' + (error.message || '未知错误'));
   }
 };
 
-const renameWorkflow = () => {
-  const currentWorkflow = currentWorkflowId.value 
-    ? workflows.value.find(w => w.id === currentWorkflowId.value)
-    : null;
-  
+const renameWorkflow = async () => {
   const newName = prompt('请输入工作流名称:', workflowName.value);
-  if (newName && newName.trim()) {
-    workflowName.value = newName.trim();
-    
-    const newDesc = prompt('请输入工作流描述（可选）:', currentWorkflow?.description || '');
-    if (newDesc !== null) {
-      if (currentWorkflowId.value) {
+  if (!newName || !newName.trim()) {
+    return;
+  }
+  
+  const newDesc = prompt('请输入工作流描述（可选）:', '');
+  
+  if (currentWorkflowId.value) {
+    try {
+      const updateResult = await workflowApi.workflowApi.update(currentWorkflowId.value, {
+        workflowName: newName.trim(),
+        description: newDesc !== null ? newDesc.trim() : ''
+      });
+      
+      if (updateResult.success) {
+        workflowName.value = newName.trim();
+        // 更新本地缓存的工作流列表
         const index = workflows.value.findIndex(w => w.id === currentWorkflowId.value);
         if (index !== -1) {
-          workflows.value[index].name = workflowName.value;
-          workflows.value[index].description = newDesc.trim();
-          saveWorkflows();
+          workflows.value[index].name = newName.trim();
+          workflows.value[index].description = newDesc !== null ? newDesc.trim() : '';
         }
+        ElMessage.success('工作流名称已更新');
+      } else {
+        ElMessage.error('更新失败：' + (updateResult.message || '未知错误'));
       }
+    } catch (error) {
+      console.error('重命名工作流失败:', error);
+      ElMessage.error('重命名失败：' + (error.message || '未知错误'));
     }
   }
 };
@@ -2331,7 +2364,8 @@ onMounted(async () => {
   registerShortcuts();
   window.addEventListener('keydown', handleKeydown);
   
-  loadWorkflows();
+  // 从后端加载工作流列表（必须await确保加载完成）
+  await loadWorkflows();
   
   // 如果传入了 workflowCode，从后端加载
   if (props.workflowCode) {
@@ -2339,7 +2373,8 @@ onMounted(async () => {
       const result = await workflowApi.workflowApi.get(props.workflowCode);
       if (result.success && result.data) {
         const workflow = result.data;
-        currentWorkflowId.value = workflow.workflowCode;
+        // currentWorkflowId: 优先使用 workflowCode（新版本完整数据），兼容 id（旧版本列表数据）
+        currentWorkflowId.value = workflow.workflowCode || workflow.id;
         workflowName.value = workflow.workflowName;
         
         // 加载工作流数据
@@ -2359,9 +2394,10 @@ onMounted(async () => {
       console.error('加载工作流失败:', error);
       ElMessage.error('加载工作流失败');
     }
-  } else if (workflows.value.length > 0) {
-    // 否则打开第一个本地工作流
-    openWorkflow(workflows.value[0]);
+  } else if (workflows.value.length > 0 && props.workflowCode) {
+    // 只有明确传入了 workflowCode 才有工作流列表时，才自动打开第一个工作流
+    // workflowCode 为空/undefined/null 时认为是新建工作流，保持空画布
+    await openWorkflow(workflows.value[0]);
   }
   
   history.value.push(JSON.stringify(elements.value));

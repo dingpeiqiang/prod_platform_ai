@@ -91,9 +91,7 @@ export const workflowApi = {
   },
 
   getNodeConfigOptions(workflowCode, nodeId) {
-    return get(`/api/workflows/${workflowCode}/node-config-options/${nodeId}`, { 
-      baseURL: ''
-    })
+    return get(`/api/workflows/${workflowCode}/node-config-options/${nodeId}`, { baseURL: '' })
   },
 
   copy(workflowCode, newWorkflowCode, newWorkflowName = null) {
