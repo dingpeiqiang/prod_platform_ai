@@ -3478,7 +3478,7 @@ onUnmounted(() => {
 }
 
 .node-config-drawer.open {
-  width: 520px;
+  width: 620px;
   opacity: 1;
   visibility: visible;
   pointer-events: auto;

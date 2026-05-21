@@ -375,7 +375,8 @@ watch(() => props.data, (newData) => {
 }
 
 .param-cascader {
-  width: 180px;
+  min-width: 180px;
+  width: 100%;
   flex-shrink: 0;
   font-size: 12px;
 }

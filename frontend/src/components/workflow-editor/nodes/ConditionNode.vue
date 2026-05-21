@@ -61,11 +61,6 @@
           <div v-if="branch.expanded" class="branch-content">
             <div v-for="(condition, condIndex) in branch.conditions" :key="condIndex" class="condition-row">
               <div class="condition-grid">
-                <!-- 条件标签列 -->
-                <div class="grid-cell label-cell">
-                  <span class="condition-label-text">条件</span>
-                </div>
-
                 <!-- 引用变量列 -->
                 <div class="grid-cell variable-cell">
                   <el-cascader
@@ -73,7 +68,7 @@
                     :options="cascaderOptions"
                     :props="{ expandTrigger: 'click' }"
                     placeholder="请选择变量"
-                    class="variable-cascader"
+                    size="small"
                     :popper-append-to-body="true"
                     @change="handleVariableChange(branchIndex, condIndex, $event)"
                   ></el-cascader>
@@ -81,46 +76,45 @@
 
                 <!-- 选择条件列 -->
                 <div class="grid-cell operator-cell">
-                  <select
+                  <el-select
                     v-model="condition.operator"
                     @change="emitUpdate"
-                    class="operator-select"
+                    placeholder="请选择条件"
+                    size="small"
                   >
-                    <option value="" disabled>请选择条件</option>
-                    <option value="==">等于</option>
-                    <option value="!=">不等于</option>
-                    <option value=">">大于</option>
-                    <option value="<">小于</option>
-                    <option value=">=">大于等于</option>
-                    <option value="<=">小于等于</option>
-                    <option value="contains">包含</option>
-                    <option value="not_contains">不包含</option>
-                    <option value="starts_with">以...开头</option>
-                    <option value="ends_with">以...结尾</option>
-                    <option value="matches">匹配正则</option>
-                    <option value="is_empty">为空</option>
-                    <option value="not_empty">不为空</option>
-                  </select>
+                    <el-option value="==" label="等于" />
+                    <el-option value="!=" label="不等于" />
+                    <el-option value=">" label="大于" />
+                    <el-option value="<" label="小于" />
+                    <el-option value=">=" label="大于等于" />
+                    <el-option value="<=" label="小于等于" />
+                    <el-option value="contains" label="包含" />
+                    <el-option value="not_contains" label="不包含" />
+                    <el-option value="starts_with" label="以...开头" />
+                    <el-option value="ends_with" label="以...结尾" />
+                    <el-option value="matches" label="匹配正则" />
+                    <el-option value="is_empty" label="为空" />
+                    <el-option value="not_empty" label="不为空" />
+                  </el-select>
                 </div>
 
                 <!-- 比较值列 -->
                 <div class="grid-cell value-cell">
                   <div class="value-group">
-                    <select
+                    <el-select
                       v-model="condition.valueType"
                       @change="handleValueTypeChange(branchIndex, condIndex)"
-                      class="value-type-select"
+                      size="small"
                     >
-                      <option value="input">输入</option>
-                      <option value="reference">引用</option>
-                    </select>
-                    <input
+                      <el-option value="input" label="输入" />
+                      <el-option value="reference" label="引用" />
+                    </el-select>
+                    <el-input
                       v-if="condition.valueType === 'input'"
                       v-model="condition.value"
                       @input="emitUpdate"
-                      type="text"
                       placeholder="请输入"
-                      class="value-input"
+                      size="small"
                     />
                     <el-cascader
                       v-else
@@ -128,7 +122,7 @@
                       :options="cascaderOptions"
                       :props="{ expandTrigger: 'click' }"
                       placeholder="请选择变量"
-                      class="value-cascader"
+                      size="small"
                       :popper-append-to-body="true"
                       @change="handleValueChange(branchIndex, condIndex, $event)"
                     ></el-cascader>
@@ -827,6 +821,7 @@ onUnmounted(() => {
   border-radius: 0;
   background: #ffffff;
   color: #333;
+  border: none;
 }
 
 .condition-node-config {
@@ -1093,18 +1088,18 @@ onUnmounted(() => {
 /* 分支容器 */
 .branch-list {
   margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .branch-container {
-  margin-bottom: 16px;
-  border: 1px solid #e8e8e8;
-  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
   overflow: hidden;
-  min-height: 50px; /* 确保每个分支有最小高度，便于锚点定位 */
-}
-
-.branch-container:last-child {
-  margin-bottom: 0;
+  min-height: 50px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 /* 分支标题 */
@@ -1112,29 +1107,29 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
-  background: #fafafa;
-  border-bottom: 1px solid #e8e8e8;
+  padding: 6px 10px;
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .branch-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .branch-toggle-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   border: none;
   background: transparent;
   color: #333;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: 2px 6px;
+  border-radius: 3px;
   transition: background 0.2s;
 }
 
@@ -1143,8 +1138,8 @@ onUnmounted(() => {
 }
 
 .branch-toggle-btn svg {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   transition: transform 0.2s;
 }
 
@@ -1156,14 +1151,19 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border: none;
   background: transparent;
   color: #bbb;
   cursor: help;
   border-radius: 50%;
   transition: all 0.2s;
+}
+
+.help-btn-small svg {
+  width: 12px;
+  height: 12px;
 }
 
 .help-btn-small:hover {
@@ -1173,13 +1173,13 @@ onUnmounted(() => {
 
 /* 分支内容 */
 .branch-content {
-  padding: 12px;
+  padding: 8px 4px;
   background: #fff;
 }
 
 /* 条件行 */
 .condition-row {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .condition-row:last-child {
@@ -1188,9 +1188,10 @@ onUnmounted(() => {
 
 .condition-grid {
   display: grid;
-  grid-template-columns: 60px 1fr 1fr 1.5fr 60px;
-  gap: 8px;
+  grid-template-columns: 2fr 0.8fr 2.4fr minmax(32px, 40px);
+  gap: 10px;
   align-items: center;
+  width: 100%;
 }
 
 .grid-cell {
@@ -1198,95 +1199,43 @@ onUnmounted(() => {
   align-items: center;
 }
 
-.label-cell {
-  justify-content: center;
+:deep(.el-cascader__label),
+:deep(.el-select__label),
+:deep(.el-input__inner) {
+  font-size: 12px;
+  text-align: center;
 }
 
-.condition-label-text {
-  font-size: 13px;
-  color: #666;
-  font-weight: 500;
-}
-
-.variable-select,
-.operator-select,
-.value-type-select,
-.value-reference-select,
-.variable-cascader,
-.value-cascader {
-  width: 100%;
-  padding: 6px 10px;
-  border: 1px solid #d9d9d9;
-  border-radius: 4px;
-  font-size: 13px;
-  background: #fff;
-  cursor: pointer;
-  outline: none;
-  transition: all 0.2s;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-  background-position: right 8px center;
-  background-repeat: no-repeat;
-  background-size: 12px;
-  padding-right: 28px;
-  box-sizing: border-box;
-}
-
-.variable-select:focus,
-.operator-select:focus,
-.value-type-select:focus,
-.value-reference-select:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+:deep(.el-input__placeholder) {
+  text-align: center;
 }
 
 .value-group {
   display: flex;
   gap: 6px;
   width: 100%;
+  align-items: center;
 }
 
-.value-type-select {
-  width: 90px;
+.value-group :deep(.el-select) {
+  width: 65px;
   flex-shrink: 0;
 }
 
-.value-input,
-.value-reference-select,
-.value-cascader {
+.value-group :deep(.el-cascader),
+.value-group :deep(.el-input) {
   flex: 1;
-  width: 200px;
-  flex-shrink: 1;
-}
-
-.value-input {
-  padding: 6px 10px;
-  border: 1px solid #d9d9d9;
-  border-radius: 4px;
-  font-size: 13px;
-  background: #fff;
-  outline: none;
-  transition: all 0.2s;
-  box-sizing: border-box;
-}
-
-.value-input::placeholder {
-  color: #bfbfbf;
-}
-
-.value-input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+  min-width: 0;
 }
 
 .action-cell {
-  justify-content: center;
+  justify-content: flex-start;
   gap: 4px;
 }
 
 .action-btn {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border: none;
   background: transparent;
   color: #3b82f6;
@@ -1294,40 +1243,47 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
-  transition: all 0.2s;
+  border-radius: 6px;
+  transition: all 0.2s ease;
 }
 
 .action-btn:hover:not(:disabled) {
-  background: #f0f7ff;
+  background: #eff6ff;
+}
+
+.action-btn:active:not(:disabled) {
+  transform: scale(0.95);
 }
 
 .add-condition-btn:hover {
-  background: #f0f7ff;
-  color: #3b82f6;
+  background: #eff6ff;
+  color: #2563eb;
 }
 
 .delete-branch-btn {
-  color: #ff4d4f;
+  color: #ef4444;
 }
 
 .delete-branch-btn:hover {
-  background: #fff1f0;
-  color: #ff4d4f;
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 .action-btn svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 /* 底部操作区 */
 .node-actions {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #e8e8e8;
+  padding: 14px 16px;
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+  margin: 0 -16px -16px -16px;
 }
 
 .action-btn-inline {

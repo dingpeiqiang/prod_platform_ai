@@ -662,8 +662,9 @@ watch(() => props.data, (newData) => {
 .param-value-input,
 .param-value-cascader {
   flex: 1;
-  width: 200px;
-  flex-shrink: 1;
+  min-width: 200px;
+  width: 100%;
+  flex-shrink: 0;
   padding: 6px 10px;
   border: 1px solid #d9d9d9;
   border-radius: 4px;
