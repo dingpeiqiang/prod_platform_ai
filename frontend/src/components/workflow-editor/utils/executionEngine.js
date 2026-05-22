@@ -411,23 +411,100 @@ export class ExecutionEngine {
         }
 
         case 'condition': {
-          const condition = node.data.condition || 'true';
-          let result = true;
-          try {
-            const func = new Function('context', `return ${condition}`);
-            result = func(context);
-          } catch {
-            result = true;
+          let result = false;
+          let conditionStr = 'false';
+          
+          let branch = null;
+          let branchIndex = 0;
+          const branchLogs = [];
+          
+          if (node.data.branches && node.data.branches.length > 0) {
+            const branches = node.data.branches;
+            console.log('[DEBUG] 分支数量:', branches.length);
+            for (let i = 0; i < branches.length; i++) {
+              console.log('[DEBUG] 当前分支索引:', i, '分支类型:', branches[i]?.type);
+              branch = branches[i];
+              branchIndex = i;
+              
+              let currentConditionStr = '';
+              let currentResult = false;
+              
+              if (branch.type === 'else') {
+                currentConditionStr = 'else';
+                currentResult = true;
+                result = true;
+                conditionStr = 'else';
+              } else if (branch.conditions && branch.conditions.length > 0) {
+                const conditions = branch.conditions;
+                let branchResult = true;
+                
+                for (const cond of conditions) {
+                  if (!cond.variable || !cond.operator) continue;
+                  
+                  const varValue = context.variables[cond.variable];
+                  let compareValue = cond.value;
+                  
+                  if (cond.valueType === 'reference' && cond.value) {
+                    compareValue = context.variables[cond.value] || cond.value;
+                  }
+                  
+                  branchResult = this.evaluateCondition(varValue, cond.operator, compareValue);
+                  if (!branchResult) break;
+                }
+                
+                currentResult = branchResult;
+                currentConditionStr = this.formatBranchConditions(branch);
+                
+                if (branchResult) {
+                  result = true;
+                  conditionStr = currentConditionStr;
+                }
+              }
+              
+              let branchLabel = '';
+              if (branch?.type === 'else') {
+                branchLabel = `分支 ${i + 1}: 否则`;
+              } else if (i === 0) {
+                branchLabel = `分支 ${i + 1}: 如果`;
+              } else {
+                branchLabel = `分支 ${i + 1}: 否则如果`;
+              }
+              
+              const logEntry = { type: currentResult ? 'result' : 'info', message: `${branchLabel}: ${currentConditionStr} = ${currentResult}` };
+              branchLogs.push(logEntry);
+              console.log('[DEBUG] 添加日志:', logEntry);
+              console.log('[DEBUG] 当前 result 值:', result);
+              
+              if (result) break;
+            }
+          } else {
+            conditionStr = node.data.condition || 'true';
+            try {
+              const func = new Function('context', `return ${conditionStr}`);
+              result = func(context);
+            } catch {
+              result = true;
+            }
           }
 
+          let branchLabel = '';
+          if (branch?.type === 'else') {
+            branchLabel = `分支 ${branchIndex + 1}: 否则`;
+          } else if (branchIndex === 0) {
+            branchLabel = `分支 ${branchIndex + 1}: 如果`;
+          } else {
+            branchLabel = `分支 ${branchIndex + 1}: 否则如果`;
+          }
+          
+          const resultMsg = `${branchLabel}: ${conditionStr} = ${result}`;
+          
           this.updateNodeData(nodeId, {
-            input: { condition, context: { ...context.variables } },
-            config: { condition },
+            input: { condition: conditionStr, context: { ...context.variables } },
+            config: { branches: node.data.branches, condition: node.data.condition },
             output: result,
-            logs: [{ type: 'result', message: `条件结果: ${condition} = ${result}` }]
+            logs: branchLogs.length > 0 ? branchLogs : [{ type: 'result', message: resultMsg }]
           });
-          this.addNodeLog(nodeId, { type: 'info', message: `条件判断: ${condition} = ${result}` });
-          this.addLog('info', '条件判断', `${condition} = ${result}`, { result });
+          this.addLog('info', '条件判断', resultMsg, { result, branchType: branch?.type });
 
           const resultEdges = edges.filter(e => e.source === nodeId && e.sourceHandle === (result ? 'true' : 'false'));
           for (const edge of resultEdges) {
@@ -614,23 +691,55 @@ export class ExecutionEngine {
     if (!expression) return expression;
     
     try {
-      let expr = expression.trim();
-      
-      expr = expr.replace(/\{\{(\w+)\}\}/g, (_, key) => {
-        const value = variables[key];
-        if (value === undefined || value === null) return 'undefined';
-        if (typeof value === 'string') return `"${value}"`;
-        return JSON.stringify(value);
-      });
+      const expr = expression.trim();
       
       if (/^[0-9.+\-*/%<>!=&|]+$/.test(expr)) {
         const func = new Function(`return ${expr}`);
         return func();
       }
       
-      if (expr.includes('{{') && expr.includes('}}')) {
-        const func = new Function(...Object.keys(variables), `return ${expr.replace(/\{\{(\w+)\}\}/g, '$1')}`);
-        return func(...Object.values(variables));
+      const funcMap = {
+        now: () => new Date().toISOString(),
+        uuid: () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+          const r = Math.random() * 16 | 0;
+          const v = c === 'x' ? r : (r & 0x3 | 0x8);
+          return v.toString(16);
+        }),
+        len: (str) => typeof str === 'string' ? str.length : 0,
+        trim: (str) => typeof str === 'string' ? str.trim() : str,
+        upper: (str) => typeof str === 'string' ? str.toUpperCase() : str,
+        lower: (str) => typeof str === 'string' ? str.toLowerCase() : str,
+        json: (obj) => JSON.stringify(obj),
+        parseJson: (str) => JSON.parse(str),
+        env: (key) => process.env[key] || '',
+        random: () => Math.random()
+      };
+      
+      const hasVariables = expr.includes('{{') && expr.includes('}}');
+      if (hasVariables) {
+        let result = expr;
+        
+        result = result.replace(/\{\{(\w+)\(\)\}\}/g, (_, funcName) => {
+          if (funcMap[funcName]) {
+            return funcMap[funcName]();
+          }
+          return `{{${funcName}()}}`;
+        });
+        
+        result = result.replace(/\{\{([\w.]+)\}\}/g, (_, path) => {
+          let value = variables;
+          const keys = path.split('.');
+          for (const key of keys) {
+            if (value === undefined || value === null) break;
+            value = value[key];
+          }
+          if (value === undefined || value === null) return '';
+          return String(value);
+        });
+        
+        if (result !== expr) {
+          return result;
+        }
       }
       
     } catch (error) {
@@ -638,6 +747,63 @@ export class ExecutionEngine {
     }
     
     return expression;
+  }
+
+  evaluateCondition(varValue, operator, compareValue) {
+    try {
+      const numVarValue = parseFloat(varValue);
+      const numCompareValue = parseFloat(compareValue);
+      
+      switch (operator) {
+        case '==': return String(varValue) === String(compareValue);
+        case '!=': return String(varValue) !== String(compareValue);
+        case '>': return numVarValue > numCompareValue;
+        case '<': return numVarValue < numCompareValue;
+        case '>=': return numVarValue >= numCompareValue;
+        case '<=': return numVarValue <= numCompareValue;
+        case 'contains': 
+          return typeof varValue === 'string' && varValue.includes(compareValue);
+        case 'not_contains':
+          return typeof varValue !== 'string' || !varValue.includes(compareValue);
+        case 'starts_with':
+          return typeof varValue === 'string' && varValue.startsWith(compareValue);
+        case 'ends_with':
+          return typeof varValue === 'string' && varValue.endsWith(compareValue);
+        case 'matches':
+          return typeof varValue === 'string' && new RegExp(compareValue).test(varValue);
+        case 'is_empty':
+          return !varValue || String(varValue).trim() === '';
+        default: return true;
+      }
+    } catch {
+      return false;
+    }
+  }
+
+  formatBranchConditions(branch) {
+    if (!branch.conditions || branch.conditions.length === 0) {
+      return branch.type === 'else' ? 'else' : 'true';
+    }
+    
+    return branch.conditions.map(cond => {
+      const operatorLabel = {
+        '==': '等于',
+        '!=': '不等于',
+        '>': '大于',
+        '<': '小于',
+        '>=': '大于等于',
+        '<=': '小于等于',
+        'contains': '包含',
+        'not_contains': '不包含',
+        'starts_with': '以...开头',
+        'ends_with': '以...结尾',
+        'matches': '匹配正则',
+        'is_empty': '为空'
+      }[cond.operator] || cond.operator;
+      
+      const displayValue = cond.value || '(空)';
+      return `${cond.variable} ${operatorLabel} ${cond.valueType === 'reference' ? `{{${displayValue}}}` : displayValue}`;
+    }).join(' && ');
   }
 
   resume(userInputValue) {

@@ -510,9 +510,9 @@ const toggleBranchSection = () => {
 // 获取分支标题
 const getBranchTitle = (index) => {
   const branch = localBranches.value[index];
-  if (branch?.type === 'else') return '否则';
-  if (index === 0) return '如果';
-  return '否则如果';
+  if (branch?.type === 'else') return `分支 ${index + 1}: 否则`;
+  if (index === 0) return `分支 ${index + 1}: 如果`;
+  return `分支 ${index + 1}: 否则如果`;
 };
 
 // 获取分支帮助文本
