@@ -406,30 +406,58 @@ class NodeExecutor(ABC):
     
     def resolve_inputs(self, context: WorkflowContext) -> Dict[str, Any]:
         """根据显性配置解析输入变量
-        
+
         返回一个字典，包含所有配置的输入变量及其解析后的值。
         如果没有配置inputs，则返回空字典（使用默认行为）。
+
+        支持两种 inputs 格式：
+        1. 字典格式: {"input": "{{variable}}", "param1": "value"}
+        2. 数组格式: [{"name": "param1", "valueType": "input", "defaultValue": "xxx"}, ...]
         """
         resolved = {}
-        
+
         if not self.input_mappings:
             return resolved
+
+        # 如果是数组格式（前端发送的格式）
+        if isinstance(self.input_mappings, list):
+            for param in self.input_mappings:
+                if not param or not param.get("name"):
+                    continue
+                
+                param_name = param["name"]
+                value_type = param.get("valueType", "input")
+                
+                if value_type == "input":
+                    # 直接输入类型，使用 defaultValue
+                    resolved[param_name] = param.get("defaultValue", "")
+                elif value_type == "reference":
+                    # 引用类型，需要解析引用的变量
+                    ref_value = param.get("refValue", "")
+                    if ref_value:
+                        current_output = context.get_variable(self.OUTPUT_VAR_NAME, "")
+                        resolved[param_name] = self._resolve_expression(ref_value, context, current_output)
+                    else:
+                        resolved[param_name] = ""
         
-        for input_key, source_expr in self.input_mappings.items():
-            # 获取当前节点输出（可能还不存在，用于自引用）
-            current_output = context.get_variable(self.OUTPUT_VAR_NAME, "")
-            resolved[input_key] = self._resolve_expression(source_expr, context, current_output)
-        
+        # 如果是字典格式（原有格式）
+        elif isinstance(self.input_mappings, dict):
+            for input_key, source_expr in self.input_mappings.items():
+                # 获取当前节点输出（可能还不存在，用于自引用）
+                current_output = context.get_variable(self.OUTPUT_VAR_NAME, "")
+                resolved[input_key] = self._resolve_expression(source_expr, context, current_output)
+
         return resolved
     
     def render_template(self, template: str, context: WorkflowContext) -> str:
         """渲染模板，替换变量
         
         支持的变量引用方式：
-        1. {{variable_name}} - 标准模板语法
-        2. {{{variable_name}}} - 三重花括号，用于需要保留花括号的场景
-        3. {{variable_name.field}} - 访问对象字段
-        4. {{variable_name[index]}} - 访问数组元素
+        1. {{variable_name}} - 标准模板语法（推荐）
+        2. {variable_name} - 简化语法（兼容前端）
+        3. {{{variable_name}}} - 三重花括号，用于需要保留花括号的场景
+        4. {{variable_name.field}} - 访问对象字段
+        5. {{variable_name[index]}} - 访问数组元素
         
         优先从上下文变量中获取值，如果找不到则尝试从前一个节点的输出中获取。
         """
@@ -452,16 +480,20 @@ class NodeExecutor(ABC):
             
             return ""
         
-        # 支持 {{variable}} 语法（支持复杂表达式）
-        result = re.sub(r"\{\{([^{}]+)\}\}", replace_var, template)
-        
-        # 支持 {{{variable}}} 语法（用于需要保留花括号的场景）
+        # 先处理三重花括号 {{{variable}}}（避免被单花括号替换影响）
         def replace_triple_braces(match):
             var_expr = match.group(1).strip()
             value = self._resolve_variable_expression(var_expr, context)
             return "{{" + str(value if value is not None else "") + "}}"
         
-        result = re.sub(r"\{\{\{([^{}]+)\}\}\}", replace_triple_braces, result)
+        result = re.sub(r"\{\{\{([^{}]+)\}\}\}", replace_triple_braces, template)
+        
+        # 支持 {variable} 语法（简化语法，兼容前端）
+        # 使用负向前瞻，避免匹配已经是 {{variable}} 的情况
+        result = re.sub(r"\{([^{}]+)\}(?!\})", replace_var, result)
+        
+        # 支持 {{variable}} 语法（支持复杂表达式）
+        result = re.sub(r"\{\{([^{}]+)\}\}", replace_var, result)
         
         return result
     
@@ -633,14 +665,15 @@ class LlmNodeExecutor(NodeExecutor):
                 for key, value in resolved_inputs.items():
                     context.set_variable(key, value)
             
-            # 获取输入（优先级：显性配置输入 > input变量 > 前一个节点输出 > output变量 > 节点自带prompt）
+            # 获取输入内容
             prompt_input = ""
+            node_prompt = self.node_data.get("prompt", "")
             
-            # 检查显性配置的输入
-            if self.input_mappings and "input" in self.input_mappings:
+            # 检查显性配置的输入（字典格式的 input_mappings 中的 "input" 键）
+            if self.input_mappings and isinstance(self.input_mappings, dict) and "input" in self.input_mappings:
                 prompt_input = self._resolve_expression(self.input_mappings["input"], context, "")
             
-            # 如果没有显性配置，使用默认行为
+            # 如果没有显性配置，从上下文获取输入
             if not prompt_input:
                 prompt_input = context.get_variable("input", "")
             
@@ -652,11 +685,15 @@ class LlmNodeExecutor(NodeExecutor):
             if not prompt_input:
                 prompt_input = context.get_variable("output", "")
             
-            # 如果仍然没有输入，使用节点自带的prompt
-            if not prompt_input:
-                node_prompt = self.node_data.get("prompt", "")
-                if node_prompt:
-                    prompt_input = self.render_template(node_prompt, context)
+            # 始终使用节点自带的prompt作为基础模板，将输入内容嵌入其中
+            if node_prompt:
+                # 渲染节点prompt（支持变量引用）
+                rendered_prompt = self.render_template(node_prompt, context)
+                # 如果有额外的输入内容，将其拼接到prompt中
+                if prompt_input and prompt_input.strip():
+                    prompt_input = rendered_prompt.replace("{input}", prompt_input) if "{input}" in rendered_prompt else rendered_prompt + "\n" + prompt_input
+                else:
+                    prompt_input = rendered_prompt
             
             # 验证输入
             if not prompt_input or not prompt_input.strip():

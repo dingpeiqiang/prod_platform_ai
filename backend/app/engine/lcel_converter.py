@@ -264,6 +264,7 @@ class LcelConverter:
     def _create_llm_runnable(self, node_data: Dict[str, Any]) -> Runnable:
         """创建LLM节点的Runnable"""
         system_prompt = node_data.get("systemPrompt", "")
+        node_prompt = node_data.get("prompt", "")
         input_mappings = node_data.get("inputs", {})
         output_mappings = node_data.get("outputs", {})
         
@@ -290,6 +291,18 @@ class LcelConverter:
                 prompt_input = inputs.get(self.OUTPUT_VAR_NAME, "")
             if not prompt_input:
                 prompt_input = inputs.get("output", "")
+            
+            # 始终使用节点自带的prompt作为基础模板，将输入内容嵌入其中
+            if node_prompt:
+                # 渲染节点prompt中的变量
+                rendered_prompt = node_prompt
+                for key, value in context.items():
+                    rendered_prompt = rendered_prompt.replace(f"{{{{{key}}}}}", str(value))
+                # 如果有额外的输入内容，将其拼接到prompt中
+                if prompt_input and prompt_input.strip():
+                    prompt_input = rendered_prompt.replace("{input}", prompt_input) if "{input}" in rendered_prompt else rendered_prompt + "\n" + prompt_input
+                else:
+                    prompt_input = rendered_prompt
             
             messages = []
             if system_prompt:

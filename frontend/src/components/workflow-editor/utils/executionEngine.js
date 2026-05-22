@@ -1,3 +1,70 @@
+function extractJson(text) {
+  if (!text || typeof text !== 'string') {
+    return null;
+  }
+
+  let cleaned = text.trim();
+
+  const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (codeBlockMatch) {
+    cleaned = codeBlockMatch[1].trim();
+  }
+
+  cleaned = cleaned.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}') + 1;
+  if (start === -1 || end <= start) {
+    return null;
+  }
+
+  let jsonStr = cleaned.substring(start, end);
+  jsonStr = jsonStr.replace(/,\s*([}\]])/g, '$1');
+
+  try {
+    return JSON.parse(jsonStr);
+  } catch {
+    try {
+      let inString = false;
+      let escapeNext = false;
+      const stack = [];
+      for (const ch of jsonStr) {
+        if (escapeNext) {
+          escapeNext = false;
+          continue;
+        }
+        if (ch === '\\' && inString) {
+          escapeNext = true;
+          continue;
+        }
+        if (ch === '"' && !escapeNext) {
+          inString = !inString;
+          continue;
+        }
+        if (inString) continue;
+        if (ch === '{' || ch === '[') {
+          stack.push(ch);
+        } else if (ch === '}' && stack.length && stack[stack.length - 1] === '{') {
+          stack.pop();
+        } else if (ch === ']' && stack.length && stack[stack.length - 1] === '[') {
+          stack.pop();
+        }
+      }
+      if (inString) {
+        jsonStr += '"';
+      }
+      while (stack.length) {
+        const opener = stack.pop();
+        jsonStr = jsonStr.replace(/,\s*$/, '');
+        jsonStr += opener === '{' ? '}' : ']';
+      }
+      return JSON.parse(jsonStr);
+    } catch {
+      return null;
+    }
+  }
+}
+
 export class ExecutionEngine {
   constructor() {
     this.logs = [];
@@ -207,16 +274,28 @@ export class ExecutionEngine {
           const model = node.data.model || 'qwen-vl-plus';
           const temperature = node.data.temperature || 0.7;
           const systemPrompt = node.data.systemPrompt || '';
+          const nodePrompt = node.data.prompt || '';
+          
+          let resolvedPrompt = context.input || '';
+          
+          if (nodePrompt) {
+            let renderedPrompt = nodePrompt.replace(/\{\{(\w+)\}\}/g, (_, key) => context.variables[key] || '');
+            if (resolvedPrompt && resolvedPrompt.trim()) {
+              resolvedPrompt = renderedPrompt.includes("{input}") ? renderedPrompt.replace("{input}", resolvedPrompt) : renderedPrompt + "\n" + resolvedPrompt;
+            } else {
+              resolvedPrompt = renderedPrompt;
+            }
+          }
           
           this.updateNodeData(nodeId, {
-            input: { prompt: context.input, systemPrompt, model, temperature },
-            config: { model, temperature, maxTokens: node.data.maxTokens, systemPrompt },
+            input: { prompt: resolvedPrompt, systemPrompt, model, temperature },
+            config: { model, temperature, maxTokens: node.data.maxTokens, systemPrompt, prompt: nodePrompt },
             output: null  // 待填充
           });
           this.addNodeLog(nodeId, { type: 'info', message: `调用模型: ${model}, 温度: ${temperature}` });
-          this.addNodeLog(nodeId, { type: 'debug', message: `输入: ${context.input}` });
+          this.addNodeLog(nodeId, { type: 'debug', message: `输入: ${resolvedPrompt}` });
           
-          this.addLog('info', `调用 LLM 模型`, `模型: ${model}, 温度: ${temperature}`, { input: context.input });
+          this.addLog('info', `调用 LLM 模型`, `模型: ${model}, 温度: ${temperature}`, { input: resolvedPrompt });
 
           try {
             const response = await fetch('/api/v1/chat/completion', {
@@ -224,7 +303,7 @@ export class ExecutionEngine {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 model: model,
-                prompt: context.input,
+                prompt: resolvedPrompt,
                 system_prompt: systemPrompt,
                 temperature: parseFloat(temperature) || 0.7,
                 max_tokens: Math.round(parseFloat(node.data.maxTokens) || 1024),
@@ -249,9 +328,29 @@ export class ExecutionEngine {
             throw error;
           }
           
-          this.updateNodeData(nodeId, { output: context.output });
+          let finalOutput = context.output;
+          
+          const outputs = node.data.outputs || [];
+          const needJsonParse = outputs.some(param => param && param.type === 'json');
+          
+          if (needJsonParse && context.output && typeof context.output === 'string') {
+            const parsedJson = extractJson(context.output);
+            if (parsedJson) {
+              finalOutput = parsedJson;
+              this.addNodeLog(nodeId, { type: 'info', message: '已解析 JSON 输出' });
+            }
+          }
+          
+          context.output = finalOutput;
+          context.variables['llmOutput'] = finalOutput;
+          
+          if (node.data.outputVar) {
+            context.variables[node.data.outputVar] = finalOutput;
+          }
+          
+          this.updateNodeData(nodeId, { output: finalOutput });
           this.addNodeLog(nodeId, { type: 'info', message: 'LLM 响应完成' });
-          this.addLog('info', 'LLM 响应完成', null, { output: context.output });
+          this.addLog('info', 'LLM 响应完成', null, { output: finalOutput });
           break;
         }
 
@@ -570,19 +669,26 @@ export class ExecutionEngine {
           const model = node.data.model || 'qwen-vl-plus';
           const temperature = node.data.temperature || 0.7;
           const systemPrompt = node.data.systemPrompt || '';
-          const prompt = node.data.prompt || '';
+          const nodePrompt = node.data.prompt || '';
+          
+          const inputContent = inputData && inputData.input ? inputData.input : '';
+          let resolvedPrompt = inputContent || '';
+          
+          if (nodePrompt) {
+            let renderedPrompt = nodePrompt.replace(/\{\{(\w+)\}\}/g, (_, key) => inputData[key] || '');
+            if (resolvedPrompt && resolvedPrompt.trim()) {
+              resolvedPrompt = renderedPrompt.includes("{input}") ? renderedPrompt.replace("{input}", resolvedPrompt) : renderedPrompt + "\n" + resolvedPrompt;
+            } else {
+              resolvedPrompt = renderedPrompt;
+            }
+          }
           
           this.updateNodeData(nodeId, {
-            input: { prompt, systemPrompt, model, temperature, ...inputData },
-            config: { model, temperature, maxTokens: node.data.maxTokens, systemPrompt },
+            input: { prompt: resolvedPrompt, systemPrompt, model, temperature, ...inputData },
+            config: { model, temperature, maxTokens: node.data.maxTokens, systemPrompt, prompt: nodePrompt },
             output: null
           });
           this.addNodeLog(nodeId, { type: 'info', message: `调用模型: ${model}, 温度: ${temperature}` });
-
-          let resolvedPrompt = prompt;
-          if (inputData) {
-            resolvedPrompt = prompt.replace(/\{\{(\w+)\}\}/g, (_, key) => inputData[key] || '');
-          }
           
           this.addNodeLog(nodeId, { type: 'debug', message: `输入提示词: ${resolvedPrompt}` });
           this.addLog('info', `调用 LLM 模型`, `模型: ${model}, 温度: ${temperature}`, { input: resolvedPrompt });

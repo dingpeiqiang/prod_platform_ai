@@ -309,16 +309,14 @@
             </label>
             <span class="help-icon" title="支持多轮对话"></span>
           </div>
+          
             <template v-for="(param, index) in localOutputs" :key="index">
               <div v-if="param" class="output-param-item">
                 <input v-model="param.name" @input="emitUpdate" placeholder="参数名" class="param-name-input"/>
                 <select v-model="param.type" @change="emitUpdate" class="param-type-select">
-                <option value="string">string</option>
-                <option value="number">number</option>
-                <option value="boolean">boolean</option>
-                <option value="object">object</option>
-                <option value="array">array</option>
-              </select>
+                  <option value="string">string</option>
+                  <option value="json">json</option>
+                </select>
               <button @click="removeOutputParam(index)" class="action-btn delete-btn" title="删除">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="18" y1="6" x2="6" y2="18"/>

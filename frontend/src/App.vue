@@ -923,10 +923,10 @@ onUnmounted(() => {
   z-index: var(--z-modal);
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+  gap: 8px;
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .network-status-bar.offline {
@@ -949,14 +949,14 @@ onUnmounted(() => {
 
 .reconnect-btn {
   flex-shrink: 0;
-  padding: 4px 12px;
+  padding: 3px 8px;
   background: rgba(255, 255, 255, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: var(--radius-md);
+  border-radius: 4px;
   color: var(--text-inverse);
-  font-size: var(--font-size-xs);
+  font-size: 11px;
   cursor: pointer;
-  transition: background var(--transition-fast);
+  transition: background 0.2s;
 }
 
 .reconnect-btn:hover:not(:disabled) {
