@@ -12,51 +12,21 @@
       <span class="compact-hint">双击配置</span>
     </div>
     <div v-if="!compact || configMode" class="node-body">
-      <div class="var-name-row">
-        <input
-          v-model="data.varName"
-          class="var-name-input"
-          placeholder="变量名"
-        />
-        <select v-model="data.varType" class="var-type-select">
-          <option value="string">字符串</option>
-          <option value="number">数字</option>
-          <option value="boolean">布尔值</option>
-          <option value="array">数组</option>
-          <option value="object">对象</option>
-          <option value="date">日期</option>
-          <option value="json">JSON</option>
-        </select>
-      </div>
-
-      <select v-model="data.valueSource" class="value-source-select">
-        <option value="constant">常量值</option>
-        <option value="expression">表达式</option>
-        <option value="reference">引用变量</option>
-        <option value="function">函数调用</option>
-        <option value="json-path">JSON路径</option>
-      </select>
+      <input
+        v-model="data.varName"
+        class="var-name-input"
+        placeholder="变量名"
+      />
+      <input type="hidden" v-model="data.varType" value="json" />
 
       <textarea
         v-model="data.varValue"
         class="var-value-textarea"
-        :placeholder="getPlaceholder()"
+        placeholder="输入变量值，支持: 直接文本、{{变量名}}、{{函数()}}、JSON路径"
       ></textarea>
 
       <div v-if="configMode || showAdvanced" class="advanced-panel">
-        <div class="section-title">数据绑定</div>
-        <div class="bind-options">
-          <label class="checkbox-label">
-            <input v-model="data.bindToInput" type="checkbox" />
-            <span>绑定到输入</span>
-          </label>
-          <label class="checkbox-label">
-            <input v-model="data.bindToOutput" type="checkbox" />
-            <span>绑定到输出</span>
-          </label>
-        </div>
-
-        <div class="section-title">表达式函数</div>
+        <div class="section-title">快捷插入</div>
         <div class="function-list">
           <button
             v-for="func in availableFunctions"
@@ -68,31 +38,33 @@
             {{ func.name }}
           </button>
         </div>
-
-        <div class="section-title">变量作用域</div>
-        <select v-model="data.scope" class="node-select">
-          <option value="workflow">工作流级别</option>
-          <option value="step">步骤级别</option>
-          <option value="global">全局</option>
-        </select>
-
-        <div class="section-title">高级选项</div>
-        <label class="checkbox-label">
-          <input v-model="data.required" type="checkbox" />
-          <span>必填</span>
-        </label>
-        <label class="checkbox-label">
-          <input v-model="data.readonly" type="checkbox" />
-          <span>只读</span>
-        </label>
-
-        <div v-if="data.required" class="default-value">
-          <label>默认值</label>
-          <input
-            v-model="data.defaultValue"
-            class="node-input"
-            placeholder="默认值"
-          />
+        
+        <div class="section-title">使用说明</div>
+        <div class="usage-guide">
+          <div class="guide-item">
+            <code v-text="'{{变量名}}'"></code>
+            <span>引用其他变量</span>
+          </div>
+          <div class="guide-item">
+            <code v-text="'{{now()}}'"></code>
+            <span>调用内置函数</span>
+          </div>
+          <div class="guide-item">
+            <code>1+2*3</code>
+            <span>数学运算</span>
+          </div>
+          <div class="guide-item">
+            <code>age>18</code>
+            <span>比较运算</span>
+          </div>
+          <div class="guide-item">
+            <code>$.data.items[0]</code>
+            <span>JSON路径提取</span>
+          </div>
+          <div class="guide-item">
+            <code>{"key": "value"}</code>
+            <span>直接输入JSON</span>
+          </div>
         </div>
       </div>
     </div>
@@ -112,6 +84,8 @@ const props = defineProps({
   selected: { type: Boolean, default: false },
   ...nodeDisplayProps
 });
+
+const emit = defineEmits(['update']);
 
 const { targetPosition, sourcePosition } = useNodeAnchorMode(props);
 
@@ -136,21 +110,10 @@ const toggleAdvanced = () => {
   showAdvanced.value = !showAdvanced.value;
 };
 
-const getPlaceholder = () => {
-  const valueSource = props.data?.valueSource || 'constant';
-  switch (valueSource) {
-    case 'constant': return '输入常量值...';
-    case 'expression': return '输入表达式，如: {{var1 + var2}}';
-    case 'reference': return '引用变量，如: {{otherVar}}';
-    case 'function': return '输入函数调用，如: {{now()}}';
-    case 'json-path': return '输入JSON路径，如: $.data.items[0]';
-    default: return '输入变量值...';
-  }
-};
-
 const insertFunction = (func) => {
-  if (!props.data.varValue) props.data.varValue = '';
-  props.data.varValue += func.name;
+  const currentValue = props.data.varValue || '';
+  const newValue = currentValue + func.name;
+  emit('update', props.data.id, { varValue: newValue });
 };
 </script>
 
@@ -247,13 +210,8 @@ const insertFunction = (func) => {
   gap: 8px;
 }
 
-.var-name-row {
-  display: flex;
-  gap: 6px;
-}
-
 .var-name-input {
-  flex: 1;
+  width: 100%;
   padding: 5px;
   border: 1px solid #e2e8f0;
   border-radius: 4px;
@@ -263,22 +221,6 @@ const insertFunction = (func) => {
 .var-name-input:focus {
   outline: none;
   border-color: #3b82f6;
-}
-
-.var-type-select {
-  width: 80px;
-  padding: 5px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  font-size: 11px;
-}
-
-.value-source-select {
-  width: 100%;
-  padding: 5px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  font-size: 11px;
 }
 
 .var-value-textarea {
@@ -317,26 +259,6 @@ const insertFunction = (func) => {
   margin-bottom: 6px;
 }
 
-.bind-options {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: #475569;
-  cursor: pointer;
-}
-
-.checkbox-label input {
-  width: 14px;
-  height: 14px;
-}
-
 .function-list {
   display: flex;
   flex-wrap: wrap;
@@ -360,32 +282,33 @@ const insertFunction = (func) => {
   color: #3b82f6;
 }
 
-.node-select {
-  width: 100%;
-  padding: 5px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  font-size: 11px;
-  margin-bottom: 8px;
-}
-
-.node-input {
-  width: 100%;
-  padding: 5px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  font-size: 11px;
-}
-
-.default-value {
+.usage-guide {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin-top: 4px;
+  padding: 6px;
+  background: #f8fafc;
+  border-radius: 4px;
 }
 
-.default-value label {
+.guide-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 10px;
+}
+
+.guide-item code {
+  font-family: monospace;
+  font-size: 10px;
+  padding: 2px 4px;
+  background: #e2e8f0;
+  border-radius: 2px;
+  color: #64748b;
+  min-width: 100px;
+}
+
+.guide-item span {
   color: #64748b;
 }
 

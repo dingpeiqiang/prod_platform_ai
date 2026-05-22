@@ -470,12 +470,17 @@ export class ExecutionEngine {
         }
 
         case 'variable': {
-          const varName = node.data.variableName || 'result';
-          const varValue = node.data.variableValue || context.output;
+          const varName = node.data.varName || node.data.variableName || 'result';
+          let rawValue = node.data.varValue || node.data.variableValue || context.output;
+          
+          let varValue = rawValue;
+          if (rawValue && typeof rawValue === 'string') {
+            varValue = this.evaluateExpression(rawValue, context.variables);
+          }
           
           this.updateNodeData(nodeId, {
             input: { varName, varValue: varValue },
-            config: { varName, varValue: node.data.variableValue },
+            config: { varName, varValue: node.data.varValue || node.data.variableValue },
             output: { [varName]: varValue }
           });
           context.variables[varName] = varValue;
@@ -603,6 +608,36 @@ export class ExecutionEngine {
 
   delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  evaluateExpression(expression, variables) {
+    if (!expression) return expression;
+    
+    try {
+      let expr = expression.trim();
+      
+      expr = expr.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+        const value = variables[key];
+        if (value === undefined || value === null) return 'undefined';
+        if (typeof value === 'string') return `"${value}"`;
+        return JSON.stringify(value);
+      });
+      
+      if (/^[0-9.+\-*/%<>!=&|]+$/.test(expr)) {
+        const func = new Function(`return ${expr}`);
+        return func();
+      }
+      
+      if (expr.includes('{{') && expr.includes('}}')) {
+        const func = new Function(...Object.keys(variables), `return ${expr.replace(/\{\{(\w+)\}\}/g, '$1')}`);
+        return func(...Object.values(variables));
+      }
+      
+    } catch (error) {
+      console.warn('Expression evaluation error:', error);
+    }
+    
+    return expression;
   }
 
   resume(userInputValue) {
@@ -817,18 +852,24 @@ export class ExecutionEngine {
         }
 
         case 'variable': {
-          const varName = node.data.variableName || 'result';
-          let varValue = node.data.variableValue || '';
+          const varName = node.data.varName || node.data.variableName || 'result';
+          let rawValue = node.data.varValue || node.data.variableValue || '';
           
-          if (inputData && node.data.variableValue) {
-            varValue = node.data.variableValue.replace(/\{\{(\w+)\}\}/g, (_, key) => inputData[key] || '');
+          const sourceValue = node.data.varValue || node.data.variableValue;
+          if (inputData && sourceValue) {
+            rawValue = sourceValue.replace(/\{\{(\w+)\}\}/g, (_, key) => inputData[key] || '');
           } else if (inputData && inputData[varName]) {
-            varValue = inputData[varName];
+            rawValue = inputData[varName];
+          }
+          
+          let varValue = rawValue;
+          if (rawValue && typeof rawValue === 'string') {
+            varValue = this.evaluateExpression(rawValue, inputData || {});
           }
           
           this.updateNodeData(nodeId, {
             input: { varName, varValue: varValue },
-            config: { varName, varValue: node.data.variableValue },
+            config: { varName, varValue: sourceValue },
             output: { [varName]: varValue }
           });
           result = { [varName]: varValue };
