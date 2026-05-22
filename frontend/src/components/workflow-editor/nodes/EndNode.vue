@@ -255,18 +255,10 @@ const cascaderOptions = computed(() => {
 
   props.availableVariables.forEach(variable => {
     if (variable && variable.nodeId && variable.id && variable.name) {
+      const nodeLabel = variable.nodeName || variable.sourceNodeName;
+      if (!nodeLabel) return;
+
       if (!nodeMap.has(variable.nodeId)) {
-        let nodeLabel = getNodeLabelById(variable.nodeId);
-
-        if (variable.nodeType === 'start') {
-          nodeLabel = '开始节点';
-        } else {
-          const namePart = variable.name.split('(')[0].trim();
-          if (namePart && !namePart.includes('输出') && !namePart.includes('入参')) {
-            nodeLabel = namePart;
-          }
-        }
-
         nodeMap.set(variable.nodeId, {
           value: variable.nodeId,
           label: nodeLabel,

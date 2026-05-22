@@ -16,16 +16,6 @@
         placeholder="搜索变量..." 
         class="search-input"
       />
-      <div class="type-filter">
-        <select v-model="typeFilter" class="filter-select">
-          <option value="">全部类型</option>
-          <option value="string">字符串</option>
-          <option value="number">数字</option>
-          <option value="boolean">布尔</option>
-          <option value="object">对象</option>
-          <option value="array">数组</option>
-        </select>
-      </div>
     </div>
 
     <div v-if="loading" class="loading-state">
@@ -35,91 +25,61 @@
       <p>加载变量列表中...</p>
     </div>
 
-    <div v-else class="variable-categories">
-      <div v-if="inputVariables.length > 0" class="category">
-        <div class="category-header">
-          <span class="category-icon">📥</span>
-          <span class="category-name">输入参数</span>
-          <span class="category-count">{{ inputVariables.length }}</span>
+    <div v-else class="selector-body">
+      <div class="node-panel">
+        <div class="panel-header">
+          <span>节点列表</span>
+          <span class="count">{{ nodes.length }}</span>
         </div>
+        <div class="node-list">
+          <div 
+            v-for="node in nodes" 
+            :key="node.id"
+            @click="selectNode(node)"
+            class="node-item"
+            :class="{ selected: selectedNode?.id === node.id }"
+          >
+            <span class="node-icon">{{ getNodeIcon(node.type) }}</span>
+            <span class="node-name">{{ node.name }}</span>
+            <span class="node-type">{{ getNodeTypeLabel(node.type) }}</span>
+          </div>
+          <div v-if="nodes.length === 0" class="empty-nodes">
+            <p>暂无可用节点</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="variable-panel">
+        <div class="panel-header">
+          <span>变量列表</span>
+          <span class="count">{{ filteredVariables.length }}</span>
+        </div>
+        
+        <div v-if="selectedNode" class="selected-node-info">
+          <span class="label">当前节点:</span>
+          <span class="value">{{ selectedNode.name }}</span>
+        </div>
+
         <div class="variable-list">
           <div 
-            v-for="varItem in inputVariables" 
+            v-for="varItem in filteredVariables" 
             :key="varItem.name"
             @click="selectVariable(varItem)"
             class="variable-item"
             :class="{ selected: selectedVar?.name === varItem.name }"
           >
-            <span class="var-icon input-icon">📝</span>
+            <span class="var-icon">{{ getVarIcon(varItem.source) }}</span>
             <div class="var-info">
               <span class="var-name">{{ varItem.name }}</span>
               <span class="var-type">{{ getTypeLabel(varItem.type) }}</span>
             </div>
-            <span v-if="varItem.description" class="var-desc">{{ varItem.description }}</span>
             <span class="var-preview">{{ varItem.preview || '-' }}</span>
           </div>
-        </div>
-      </div>
-
-      <div v-if="workflowVariables.length > 0" class="category">
-        <div class="category-header">
-          <span class="category-icon">⚙️</span>
-          <span class="category-name">系统变量</span>
-          <span class="category-count">{{ workflowVariables.length }}</span>
-        </div>
-        <div class="variable-list">
-          <div 
-            v-for="varItem in workflowVariables" 
-            :key="varItem.name"
-            @click="selectVariable(varItem)"
-            class="variable-item"
-            :class="{ selected: selectedVar?.name === varItem.name }"
-          >
-            <span class="var-icon workflow-icon">🔧</span>
-            <div class="var-info">
-              <span class="var-name">{{ varItem.name }}</span>
-              <span class="var-type">{{ getTypeLabel(varItem.type) }}</span>
-            </div>
-            <span v-if="varItem.description" class="var-desc">{{ varItem.description }}</span>
-            <span class="var-preview">{{ varItem.preview || '-' }}</span>
+          
+          <div v-if="filteredVariables.length === 0 && !loading" class="empty-variables">
+            <p>{{ selectedNode ? '该节点暂无输出变量' : '请先选择一个节点' }}</p>
           </div>
         </div>
-      </div>
-
-      <div v-if="nodeOutputs.length > 0" class="category">
-        <div class="category-header">
-          <span class="category-icon">📤</span>
-          <span class="category-name">节点输出</span>
-          <span class="category-count">{{ nodeOutputs.length }}</span>
-        </div>
-        <div class="variable-list">
-          <div 
-            v-for="varItem in nodeOutputs" 
-            :key="varItem.name"
-            @click="selectVariable(varItem)"
-            class="variable-item"
-            :class="{ selected: selectedVar?.name === varItem.name }"
-          >
-            <span class="var-icon output-icon">🚀</span>
-            <div class="var-info">
-              <span class="var-name">{{ varItem.name }}</span>
-              <span class="var-type">{{ getTypeLabel(varItem.type) }}</span>
-            </div>
-            <span class="var-desc">来自: {{ getSourceLabel(varItem.source, varItem.sourceNodeType) }}</span>
-            <span class="var-preview">{{ varItem.preview || '-' }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="allVariables.length === 0" class="empty-state">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-          <line x1="16" y1="3" x2="16" y2="7"/>
-          <line x1="8" y1="3" x2="8" y2="7"/>
-          <line x1="3" y1="16" x2="21" y2="16"/>
-        </svg>
-        <p>暂无可用变量</p>
-        <p class="hint">添加开始节点参数或变量节点来创建变量</p>
       </div>
     </div>
 
@@ -151,42 +111,116 @@ const props = defineProps({
 const emit = defineEmits(['close', 'select', 'insert']);
 
 const searchQuery = ref('');
-const typeFilter = ref('');
+const selectedNode = ref(null);
 
-const inputVariables = computed(() => {
-  return props.variables
-    .filter(v => v.source === 'workflow_input')
-    .filter(filterBySearch)
-    .filter(filterByType);
+const nodes = computed(() => {
+  const nodeMap = new Map();
+  
+  props.variables.forEach(v => {
+    if (v.nodeId && v.sourceNodeName) {
+      const key = v.nodeId;
+      if (!nodeMap.has(key)) {
+        nodeMap.set(key, {
+          id: v.nodeId,
+          name: v.sourceNodeName,
+          type: v.sourceNodeType || v.nodeType
+        });
+      }
+    }
+  });
+  
+  return Array.from(nodeMap.values()).sort((a, b) => a.name.localeCompare(b.name));
 });
 
-const workflowVariables = computed(() => {
-  return props.variables
-    .filter(v => v.source === 'system')
-    .filter(filterBySearch)
-    .filter(filterByType);
-});
-
-const nodeOutputs = computed(() => {
-  return props.variables
-    .filter(v => v.source === 'node_output')
-    .filter(filterBySearch)
-    .filter(filterByType);
+const filteredVariables = computed(() => {
+  let vars = props.variables;
+  
+  if (selectedNode.value) {
+    vars = vars.filter(v => v.nodeId === selectedNode.value.id);
+  }
+  
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase();
+    vars = vars.filter(v => 
+      v.name.toLowerCase().includes(query) ||
+      v.sourceNodeName?.toLowerCase().includes(query) ||
+      v.description?.toLowerCase().includes(query)
+    );
+  }
+  
+  return vars;
 });
 
 const allVariables = computed(() => props.variables);
 
-const filterBySearch = (item) => {
-  if (!searchQuery.value) return true;
-  const query = searchQuery.value.toLowerCase();
-  return item.name.toLowerCase().includes(query) || 
-         item.description?.toLowerCase().includes(query) ||
-         item.sourceNodeType?.toLowerCase().includes(query);
+const selectNode = (node) => {
+  selectedNode.value = node;
+  selectedVar.value = null;
+  emit('select', null);
 };
 
-const filterByType = (item) => {
-  if (!typeFilter.value) return true;
-  return item.type === typeFilter.value;
+const selectVariable = (varItem) => {
+  selectedVar.value = varItem;
+  emit('select', varItem);
+};
+
+const insertVariable = () => {
+  if (props.selectedVar) {
+    emit('insert', props.selectedVar);
+  }
+};
+
+const close = () => {
+  emit('close');
+};
+
+const getNodeIcon = (type) => {
+  const icons = {
+    'start': '🚀',
+    'end': '🏁',
+    'prompt': '📝',
+    'llm': '🤖',
+    'tool': '🔧',
+    'http': '🌐',
+    'code': '💻',
+    'variable': '📦',
+    'condition': '🔀',
+    'loop': '🔄',
+    'parser': '📊',
+    'knowledgeBase': '📚',
+    'userInput': '👤',
+    'form': '📋',
+    'validate': '✅'
+  };
+  return icons[type] || '📌';
+};
+
+const getNodeTypeLabel = (type) => {
+  const labels = {
+    'start': '开始',
+    'end': '结束',
+    'prompt': '提示词',
+    'llm': 'LLM',
+    'tool': '工具',
+    'http': 'HTTP',
+    'code': '代码',
+    'variable': '变量',
+    'condition': '条件',
+    'loop': '循环',
+    'parser': '解析',
+    'knowledgeBase': '知识库',
+    'userInput': '用户输入',
+    'form': '表单',
+    'validate': '验证'
+  };
+  return labels[type] || type;
+};
+
+const getVarIcon = (source) => {
+  if (source === 'workflow_input') return '📥';
+  if (source === 'system') return '⚙️';
+  if (source === 'node_output') return '📤';
+  return '📌';
 };
 
 const getTypeLabel = (type) => {
@@ -202,41 +236,10 @@ const getTypeLabel = (type) => {
   return typeMap[type] || type;
 };
 
-const getSourceLabel = (source, sourceNodeType) => {
-  if (sourceNodeType) {
-    const typeLabels = {
-      'prompt': '提示词节点',
-      'llm': 'LLM节点',
-      'http': 'HTTP节点',
-      'code': '代码节点',
-      'parser': '解析器节点',
-      'tool': '工具节点',
-      'variable': '变量节点',
-      'condition': '条件节点'
-    };
-    return typeLabels[sourceNodeType] || sourceNodeType;
-  }
-  return source || '未知';
-};
-
-const selectVariable = (varItem) => {
-  emit('select', varItem);
-};
-
-const insertVariable = () => {
-  if (props.selectedVar) {
-    emit('insert', props.selectedVar);
-  }
-};
-
-const close = () => {
-  emit('close');
-};
-
 watch(() => props.visible, (newVal) => {
   if (newVal) {
     searchQuery.value = '';
-    typeFilter.value = '';
+    selectedNode.value = null;
   }
 });
 </script>
@@ -247,8 +250,8 @@ watch(() => props.visible, (newVal) => {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%) scale(0.9);
-  width: 480px;
-  max-height: 60vh;
+  width: 600px;
+  max-height: 65vh;
   background: white;
   border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
@@ -305,7 +308,7 @@ watch(() => props.visible, (newVal) => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 16px;
+  padding: 10px 16px;
   background: #f8fafc;
   border-bottom: 1px solid #e2e8f0;
 }
@@ -328,29 +331,32 @@ watch(() => props.visible, (newVal) => {
   border-color: #3b82f6;
 }
 
-.variable-categories {
+.selector-body {
   flex: 1;
-  overflow-y: auto;
-  padding: 8px;
-}
-
-.category {
-  margin-bottom: 12px;
-}
-
-.category-header {
   display: flex;
+  overflow: hidden;
+}
+
+.node-panel {
+  width: 200px;
+  border-right: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+}
+
+.variable-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  margin-bottom: 4px;
-}
-
-.category-icon {
-  font-size: 14px;
-}
-
-.category-name {
+  padding: 8px 12px;
+  background: #f1f5f9;
+  border-bottom: 1px solid #e2e8f0;
   font-size: 11px;
   font-weight: 600;
   color: #64748b;
@@ -358,8 +364,7 @@ watch(() => props.visible, (newVal) => {
   letter-spacing: 0.5px;
 }
 
-.category-count {
-  margin-left: auto;
+.panel-header .count {
   font-size: 10px;
   color: #94a3b8;
   background: #e2e8f0;
@@ -367,10 +372,88 @@ watch(() => props.visible, (newVal) => {
   border-radius: 10px;
 }
 
-.variable-list {
+.node-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.node-item {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-bottom: 2px;
+}
+
+.node-item:hover {
+  background: #dbeafe;
+}
+
+.node-item.selected {
+  background: #3b82f6;
+  color: white;
+}
+
+.node-item.selected .node-type {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.node-icon {
+  font-size: 16px;
+}
+
+.node-name {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-type {
+  font-size: 10px;
+  color: #64748b;
+  background: #e2e8f0;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.empty-nodes {
+  padding: 20px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.selected-node-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #eff6ff;
+  border-bottom: 1px solid #dbeafe;
+  font-size: 12px;
+}
+
+.selected-node-info .label {
+  color: #64748b;
+}
+
+.selected-node-info .value {
+  color: #3b82f6;
+  font-weight: 500;
+}
+
+.variable-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
 }
 
 .variable-item {
@@ -381,6 +464,7 @@ watch(() => props.visible, (newVal) => {
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.15s ease;
+  margin-bottom: 2px;
 }
 
 .variable-item:hover {
@@ -400,18 +484,7 @@ watch(() => props.visible, (newVal) => {
   justify-content: center;
   border-radius: 6px;
   font-size: 14px;
-}
-
-.input-icon {
-  background: #dbeafe;
-}
-
-.workflow-icon {
-  background: #d1fae5;
-}
-
-.output-icon {
-  background: #fef3c7;
+  background: #f1f5f9;
 }
 
 .var-info {
@@ -436,15 +509,6 @@ watch(() => props.visible, (newVal) => {
   width: fit-content;
 }
 
-.var-desc {
-  font-size: 11px;
-  color: #94a3b8;
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .var-preview {
   font-size: 11px;
   color: #64748b;
@@ -455,27 +519,11 @@ watch(() => props.visible, (newVal) => {
   flex-shrink: 0;
 }
 
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+.empty-variables {
   padding: 40px 20px;
+  text-align: center;
   color: #94a3b8;
-}
-
-.empty-state svg {
-  margin-bottom: 12px;
-}
-
-.empty-state p {
-  margin: 4px 0;
   font-size: 13px;
-}
-
-.empty-state .hint {
-  font-size: 11px;
-  color: #cbd5e1;
 }
 
 .selector-footer {

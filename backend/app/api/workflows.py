@@ -141,11 +141,16 @@ def _analyze_workflow_variables(workflow_data: Dict[str, Any], node_id: Optional
     input_params = workflow_data.get("inputs", [])
     for param in input_params:
         var_info = {
+            "id": f"start.{param.get('key', '')}",
             "name": param.get("key", ""),
             "type": param.get("type", "string"),
             "source": "workflow_input",
+            "nodeId": "start",
+            "nodeType": "start",
+            "nodeName": "开始节点",
             "sourceNodeId": None,
-            "sourceNodeType": None,
+            "sourceNodeType": "start",
+            "sourceNodeName": "开始节点",
             "description": param.get("label", "") + " (工作流输入)",
             "preview": ""
         }
@@ -241,17 +246,25 @@ def _extract_node_variables(node_type: str, node_data: Dict[str, Any], node_id: 
     """从节点定义中提取输出变量"""
     variables = []
     
+    # 获取节点名称（优先使用自定义标签，否则使用节点类型）
+    node_label = node_data.get("label", node_type)
+    
     # 根据节点类型提取变量
     output_mappings = node_data.get("outputs", {})
     if output_mappings:
         for var_name, source_expr in output_mappings.items():
             var_info = {
+                "id": f"{node_id}.{var_name}",
                 "name": var_name,
                 "type": "any",
                 "source": "node_output",
+                "nodeId": node_id,
+                "nodeType": node_type,
+                "nodeName": node_label,
                 "sourceNodeId": node_id,
                 "sourceNodeType": node_type,
-                "description": f"来自{node_type}节点的输出",
+                "sourceNodeName": node_label,
+                "description": f"来自{node_label}节点的输出",
                 "preview": ""
             }
             variables.append(var_info)
@@ -264,19 +277,24 @@ def _extract_node_variables(node_type: str, node_data: Dict[str, Any], node_id: 
             "code": ["codeResult", "result"],
             "parser": ["parsed"],
             "tool": ["toolResult"],
-            "variable": [node_data.get("variableName", "result")],
+            "variable": [node_data.get("variableName", node_data.get("label", "result"))],
             "condition": ["condition_result"]
         }
         
         if node_type in default_vars:
             for var_name in default_vars[node_type]:
                 var_info = {
+                    "id": f"{node_id}.{var_name}",
                     "name": var_name,
                     "type": "any",
                     "source": "node_output",
+                    "nodeId": node_id,
+                    "nodeType": node_type,
+                    "nodeName": node_label,
                     "sourceNodeId": node_id,
                     "sourceNodeType": node_type,
-                    "description": f"来自{node_type}节点的输出",
+                    "sourceNodeName": node_label,
+                    "description": f"来自{node_label}节点的输出",
                     "preview": ""
                 }
                 variables.append(var_info)

@@ -337,6 +337,7 @@
               :data="enrichNodeData(props.data, props.id)"
               :selected="props.selected"
               compact
+              :available-variables="getAvailableVariables(props.id)"
               @update="updateNodeData"
             />
           </template>
@@ -1207,6 +1208,7 @@ const getAvailableVariables = (nodeId) => {
     if (!node) continue;
     
     const nodeType = node.type;
+    const nodeName = node.data?.label || nodeType;
     let outputVarName = '';
     
     switch (nodeType) {
@@ -1218,7 +1220,11 @@ const getAvailableVariables = (nodeId) => {
               name: `${param.name} (入参)`,
               nodeId: node.id,
               nodeType: 'start',
-              type: param.type || 'string'
+              nodeName: '开始节点',
+              type: param.type || 'string',
+              source: 'workflow_input',
+              sourceNodeType: 'start',
+              sourceNodeName: '开始节点'
             });
           });
         }
@@ -1230,7 +1236,11 @@ const getAvailableVariables = (nodeId) => {
           name: `${outputVarName} (输出)`,
           nodeId: node.id,
           nodeType: nodeType,
-          type: node.data?.varType || 'any'
+          nodeName: nodeName,
+          type: node.data?.varType || 'any',
+          source: 'node_output',
+          sourceNodeType: nodeType,
+          sourceNodeName: nodeName
         });
         break;
       case 'llm':
@@ -1246,7 +1256,11 @@ const getAvailableVariables = (nodeId) => {
           name: `${outputVarName} (输出)`,
           nodeId: node.id,
           nodeType: nodeType,
-          type: 'any'
+          nodeName: nodeName,
+          type: 'any',
+          source: 'node_output',
+          sourceNodeType: nodeType,
+          sourceNodeName: nodeName
         });
         break;
       case 'condition':
@@ -1255,7 +1269,11 @@ const getAvailableVariables = (nodeId) => {
           name: `${node.data?.label || '条件'} (结果)`,
           nodeId: node.id,
           nodeType: 'condition',
-          type: 'boolean'
+          nodeName: nodeName,
+          type: 'boolean',
+          source: 'node_output',
+          sourceNodeType: 'condition',
+          sourceNodeName: nodeName
         });
         break;
     }
@@ -1281,7 +1299,11 @@ const getAvailableVariables = (nodeId) => {
               name: `${param.name} (入参)`,
               nodeId: startNode.id,
               nodeType: 'start',
-              type: param.type || 'string'
+              nodeName: '开始节点',
+              type: param.type || 'string',
+              source: 'workflow_input',
+              sourceNodeType: 'start',
+              sourceNodeName: '开始节点'
             });
           }
         }

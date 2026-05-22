@@ -112,16 +112,10 @@ const cascaderOptions = computed(() => {
 
   props.availableVariables.forEach(variable => {
     if (variable && variable.nodeId && variable.id && variable.name) {
+      const nodeLabel = variable.nodeName || variable.sourceNodeName;
+      if (!nodeLabel) return;
+
       if (!nodeMap.has(variable.nodeId)) {
-        let nodeLabel = getNodeLabelById(variable.nodeId);
-
-        if (variable.nodeType === 'start') {
-          nodeLabel = '开始节点';
-        } else if (variable.nodeType) {
-          // 根据 nodeType 获取节点类型标签，而不是使用变量名
-          nodeLabel = getNodeLabelById(variable.nodeType);
-        }
-
         nodeMap.set(variable.nodeId, {
           value: variable.nodeId,
           label: nodeLabel,
