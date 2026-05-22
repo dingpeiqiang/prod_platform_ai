@@ -823,8 +823,9 @@ class ConditionNodeExecutor(NodeExecutor):
                 return True, branch_index
             
             # 评估当前分支的所有条件（AND 关系）
+            # 注意：all_conditions_met 需要在分支循环开始时重置为 True
+            all_conditions_met = True
             if conditions:
-                all_conditions_met = True
                 for condition in conditions:
                     var_name = condition.get("variable", "")
                     operator = condition.get("operator", "==")
@@ -1042,19 +1043,24 @@ class VariableNodeExecutor(NodeExecutor):
             for key, value in resolved_inputs.items():
                 context.set_variable(key, value)
         
-        var_name = self.node_data.get("variableName", "result")
-        var_value = self.node_data.get("variableValue", "")
-        
-        # 渲染变量值（支持模板）
-        rendered_value = self.render_template(var_value, context)
-        
-        # 如果值引用了output变量，使用output
+        var_name = self.node_data.get("varName", self.node_data.get("variableName", "result"))
+        var_value = self.node_data.get("varValue", self.node_data.get("variableValue", ""))
+
+        # 根据不同引用方式获取值
         if var_value == "{{output}}" or var_value == "output":
             rendered_value = context.get_variable("output", "")
-        
-        # 如果值引用了前一个节点的输出，使用标准输出变量
-        if var_value == "{{__node_output__}}" or var_value == "__node_output__":
+            logger.info(f"Variable [{var_name}] resolved from 'output': {rendered_value[:50] if rendered_value else '(empty)'}...")
+        elif var_value == "{{__node_output__}}" or var_value == "__node_output__":
             rendered_value = self.get_previous_output(context)
+            logger.info(f"Variable [{var_name}] resolved from '__node_output__': {rendered_value[:50] if rendered_value else '(empty)'}...")
+        elif var_value.startswith("{{") and var_value.endswith("}}"):
+            # 其他模板引用
+            rendered_value = self.render_template(var_value, context)
+            logger.info(f"Variable [{var_name}] resolved from template '{var_value}': {rendered_value[:50] if rendered_value else '(empty)'}...")
+        else:
+            # 普通字符串或空值
+            rendered_value = var_value
+            logger.info(f"Variable [{var_name}] set to direct value: {rendered_value[:50] if rendered_value else '(empty)'}...")
         
         # 如果配置了显性输出映射，优先使用映射配置
         if self.output_mappings:
@@ -1785,6 +1791,9 @@ class WorkflowExecutor:
             # 等待执行完成
             await exec_task
             
+            # 通知消息队列处理完成，防止 process_queue 死循环
+            await message_queue.put(None)
+            
             yield {
                 "type": "workflow_complete",
                 "workflow_id": workflow_id,
@@ -1794,6 +1803,8 @@ class WorkflowExecutor:
             }
             
         except Exception as e:
+            # 异常时也通知消息队列
+            await message_queue.put(None)
             logger.error(f"Workflow streaming execution failed: {e}")
             context.status = ExecutionStatus.FAILED
             context.error = str(e)
@@ -1868,5 +1879,7 @@ class WorkflowExecutor:
         })
         
         # 递归执行下一个节点
+        logger.info(f"Node [{node_id}] completed: next_nodes={next_node_ids}")
         for next_node_id in next_node_ids:
+            logger.info(f"Executing next node: {next_node_id}")
             await self._execute_node_streaming(next_node_id, context, yield_fn)

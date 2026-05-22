@@ -16,7 +16,7 @@
       <div class="branch-list">
         <div
           v-for="(branch, branchIndex) in localBranches"
-          :key="branchIndex"
+          :key="getHandleId(branchIndex)"
           class="branch-container"
         >
           <!-- 分支标题 -->
@@ -186,7 +186,7 @@
         <div class="branch-conditions">
           <div
             v-for="(branch, branchIndex) in localBranches"
-            :key="branchIndex"
+            :key="getHandleId(branchIndex)"
             class="branch-condition-item"
           >
             <div class="branch-content-row">
@@ -211,13 +211,13 @@
     <div class="handle-labels">
       <div
         v-for="(branch, index) in localBranches"
-        :key="'label-' + index"
+        :key="'label-' + getHandleId(index)"
         v-if="!configMode"
         class="handle-label"
         :class="'handle-label-' + index"
         :style="isVertical
-          ? { left: getHandleLeft(index) + '%', top: '100%' }
-          : { left: '100%', top: getHandleTop(index) + '%' }"
+          ? { left: `calc(${getHandleLeft(index)}% + 6px)`, bottom: '0' }
+          : { right: '0', top: `calc(${getHandleTop(index)}% + 6px)` }"
       >
         {{ getBranchTitle(index) }}
       </div>
@@ -226,11 +226,12 @@
     <!-- 动态生成与分支数量对应的输出连接点 - 根据布局方向动态定位 -->
     <Handle
       v-for="(branch, index) in localBranches"
-      :key="'handle-' + index"
+      :key="getHandleId(index)"
       v-if="!configMode"
       type="source"
       :position="sourcePosition"
       :id="getHandleId(index)"
+      :data-handleid="getHandleId(index)"
       :class="'handle-branch-' + index"
       :style="isVertical ? { left: getHandleLeft(index) + '%' } : { top: getHandleTop(index) + '%' }"
     />
@@ -285,11 +286,9 @@ const cascaderOptions = computed(() => {
 
         if (variable.nodeType === 'start') {
           nodeLabel = '开始节点';
-        } else {
-          const namePart = variable.name.split('(')[0].trim();
-          if (namePart && !namePart.includes('输出') && !namePart.includes('入参')) {
-            nodeLabel = namePart;
-          }
+        } else if (variable.nodeType) {
+          // 根据 nodeType 获取节点类型标签，而不是使用变量名
+          nodeLabel = getNodeLabelById(variable.nodeType);
         }
 
         nodeMap.set(variable.nodeId, {
@@ -380,11 +379,12 @@ const handleValueTypeChange = (branchIndex, condIndex) => {
 const initBranches = () => {
   // 确保 props.data 存在
   if (!props.data) {
-    // 默认创建分支
+    // 默认创建分支：如果、否则（不需要否则如果）
     localBranches.value = [
       {
         type: 'if',
         expanded: true,
+        handle: 'branch_0',  // 固定 handle ID
         conditions: [
           {
             variable: '',
@@ -401,6 +401,7 @@ const initBranches = () => {
       {
         type: 'else',
         expanded: true,
+        handle: 'branch_else',  // else 分支使用固定 ID
         conditions: []
       }
     ];
@@ -449,27 +450,12 @@ const initBranches = () => {
     ];
     emitUpdate();
   } else {
-    // 默认创建三个分支：如果、否则如果、否则
+    // 默认创建两个分支：如果、否则（不需要否则如果）
     localBranches.value = [
       {
         type: 'if',
         expanded: true,
-        conditions: [
-          {
-            variable: '',
-            variableNodeId: '',
-            variableCascaderValue: [],
-            operator: '',
-            valueType: 'input',
-            value: '',
-            valueNodeId: '',
-            valueCascaderValue: []
-          }
-        ]
-      },
-      {
-        type: 'else_if',
-        expanded: true,
+        handle: 'branch_0',  // 固定 handle ID
         conditions: [
           {
             variable: '',
@@ -486,6 +472,7 @@ const initBranches = () => {
       {
         type: 'else',
         expanded: true,
+        handle: 'branch_else',  // else 分支使用固定 ID
         conditions: []
       }
     ];
@@ -528,9 +515,13 @@ const addBranch = () => {
   // 找到“否则”分支的位置
   const elseIndex = localBranches.value.findIndex(branch => branch.type === 'else');
   
+  // 生成唯一的 handle ID
+  let newHandle = `branch_${Date.now()}`;
+  
   const newBranch = {
     type: 'else_if',
     expanded: true,
+    handle: newHandle,  // 添加唯一的 handle ID
     conditions: [
       {
         variable: '',
@@ -659,14 +650,18 @@ const getOperatorLabel = (operator) => {
   return operators[operator] || operator;
 };
 
-// 获取 Handle id - 兼容旧格式（true/false）和新格式（branch_0/branch_1）
+// 获取 Handle id - 使用分支的唯一标识符，避免索引变化导致连线错误
 const getHandleId = (index) => {
-  // 如果是旧格式（没有 branches 字段或使用 condition 字段），使用旧格式的 id
-  if (!props.data.branches || props.data.branches.length === 0 || props.data.condition) {
-    return index === 0 ? 'true' : 'false';
+  const branch = localBranches.value[index];
+  // 使用分支的 handle 属性（如果存在），否则生成唯一ID
+  if (branch?.handle) {
+    return branch.handle;
   }
-  // 新格式：使用 branch_0, branch_1, branch_2...
-  return 'branch_' + index;
+  // 生成唯一ID：如果是 else 分支使用固定ID，否则使用索引
+  if (branch?.type === 'else') {
+    return 'branch_else';
+  }
+  return `branch_${index}`;
 };
 
 // 计算 Handle 的垂直位置百分比（水平布局时用 top 定位，模拟右侧连接线）
@@ -1023,9 +1018,6 @@ onUnmounted(() => {
   font-weight: 600;
   color: white;
   white-space: nowrap;
-  /* 垂直布局时：标签在节点底部内侧，Handle 的上方 */
-  transform: translate(-50%, -100%);
-  margin-top: -6px;
 }
 
 .handle-label.handle-label-0 { background: rgba(34, 197, 94, 0.9); border: 1px solid #22c55e; }
@@ -1034,15 +1026,14 @@ onUnmounted(() => {
 .handle-label.handle-label-3 { background: rgba(245, 158, 11, 0.9); border: 1px solid #f59e0b; }
 .handle-label.handle-label-4 { background: rgba(139, 92, 246, 0.9); border: 1px solid #8b5cf6; }
 
-/* 水平布局时：标签在锚点的正左侧（标签右侧距锚点中心14px=Handle半径6px+间距8px） */
+/* 水平布局时：标签在锚点的正左侧，与Handle中心垂直对齐 */
 .condition-node.layout-horizontal .handle-label {
-  transform: translateX(calc(-100% - 14px));
+  transform: translateX(calc(-100% - 14px)) translateY(-50%);
 }
 
-/* 垂直布局时：标签在节点底部内侧，Handle 的上方 */
+/* 垂直布局时：标签在锚点的正上方，与Handle中心水平对齐 */
 .condition-node.layout-vertical .handle-label {
-  transform: translate(-50%, -100%);
-  margin-top: -6px;
+  transform: translate(-50%, calc(-100% - 14px));
 }
 
 /* ========== 配置面板样式 ========== */

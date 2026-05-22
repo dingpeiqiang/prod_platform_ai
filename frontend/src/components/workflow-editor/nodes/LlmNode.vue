@@ -434,11 +434,9 @@ const cascaderOptions = computed(() => {
         
         if (variable.nodeType === 'start') {
           nodeLabel = '开始节点';
-        } else {
-          const namePart = variable.name.split('(')[0].trim();
-          if (namePart && !namePart.includes('输出') && !namePart.includes('入参')) {
-            nodeLabel = namePart;
-          }
+        } else if (variable.nodeType) {
+          // 根据 nodeType 获取节点类型标签，而不是使用变量名
+          nodeLabel = getNodeLabelById(variable.nodeType);
         }
         
         nodeMap.set(variable.nodeId, {

@@ -1529,17 +1529,55 @@ const onDrop = (event) => {
     const position = project({ x, y });
     
     // 创建新节点
+    // 根据节点类型提供必要的默认数据
+    const defaultData = {
+      loop: {
+        loopType: 'for',
+        loopCount: 5
+      },
+      condition: {
+        branches: [
+          {
+            type: 'if',
+            expanded: true,
+            handle: 'branch_0',
+            conditions: [
+              {
+                variable: '',
+                variableNodeId: '',
+                variableCascaderValue: [],
+                operator: '',
+                valueType: 'input',
+                value: '',
+                valueNodeId: '',
+                valueCascaderValue: []
+              }
+            ]
+          },
+          {
+            type: 'else',
+            expanded: true,
+            handle: 'branch_else',
+            conditions: []
+          }
+        ]
+      }
+    };
+    
     const newNode = {
       id: `${nodeType.type}-${uuidv4().slice(0, 8)}`,
       type: nodeType.type,
       position,
       data: {
         label: nodeType.name,
+        anchorMode: 'vertical',
+        ...defaultData[nodeType.type],
         ...nodeType
       }
     };
     
-    elements.value.push(newNode);
+    // 使用数组扩展代替 push，触发 Vue 响应式更新
+    elements.value = [...elements.value, newNode];
     saveHistory();
     markDirty();
     

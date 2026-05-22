@@ -506,7 +506,18 @@ export class ExecutionEngine {
           });
           this.addLog('info', '条件判断', resultMsg, { result, branchType: branch?.type });
 
-          const resultEdges = edges.filter(e => e.source === nodeId && e.sourceHandle === (result ? 'true' : 'false'));
+          const currentBranch = branch;
+          // 使用分支的 handle 属性（如果存在），否则使用索引或 else 分支的固定ID
+          let branchHandle = currentBranch?.handle;
+          if (!branchHandle) {
+            if (currentBranch?.type === 'else') {
+              branchHandle = 'branch_else';
+            } else {
+              branchHandle = `branch_${branchIndex}`;
+            }
+          }
+          
+          const resultEdges = edges.filter(e => e.source === nodeId && e.sourceHandle === branchHandle);
           for (const edge of resultEdges) {
             await this.executeNode(edge.target, nodes, edges, context);
           }

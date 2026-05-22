@@ -90,51 +90,6 @@ const localOutputVar = ref(props.data.outputVar || '');
 const placeholderText = '输入提示词，使用 {{变量名}} 引用变量...';
 const displayVarSyntax = '{{变量名}}';
 
-// 监听 cascaderOptions 变化，清除已失效的 cascaderValue
-watch(cascaderOptions, (newOptions) => {
-  if (!newOptions || newOptions.length === 0) {
-    // 选项为空时清除值
-    if (inputCascaderValue.value?.length) {
-      inputCascaderValue.value = [];
-    }
-    return;
-  }
-
-  // 检查当前选中值是否仍然有效
-  if (inputCascaderValue.value?.length === 2) {
-    const [nodeId, varId] = inputCascaderValue.value;
-    const nodeExists = newOptions.some(opt => opt.value === nodeId);
-    if (!nodeExists) {
-      inputCascaderValue.value = [];
-    }
-  }
-}, { immediate: false });
-
-// 监听 availableVariables 变化，为存量工作流的引用参数重建 cascaderValue
-watch(() => props.availableVariables, (newVars) => {
-  // 如果变量列表为空或未定义，不处理
-  if (!newVars || !Array.isArray(newVars) || newVars.length === 0) {
-    return;
-  }
-
-  // 如果已经有 cascaderValue，说明已加载过，不需要重建
-  if (inputCascaderValue.value?.length) {
-    return;
-  }
-
-  // 只有当有引用信息但没有 cascaderValue 时才尝试重建
-  if (localInputNodeId.value && localInputVar.value) {
-    const matchedVar = newVars.find(v =>
-      v.nodeId === localInputNodeId.value &&
-      (v.id === `${localInputNodeId.value}.${localInputVar.value}` || v.name.startsWith(localInputVar.value))
-    );
-
-    if (matchedVar) {
-      inputCascaderValue.value = [matchedVar.nodeId, matchedVar.id];
-    }
-  }
-}, { immediate: true });
-
 // 级联选择器选项
 const cascaderOptions = computed(() => {
   if (!props.availableVariables || !Array.isArray(props.availableVariables)) return [];
@@ -148,11 +103,9 @@ const cascaderOptions = computed(() => {
 
         if (variable.nodeType === 'start') {
           nodeLabel = '开始节点';
-        } else {
-          const namePart = variable.name.split('(')[0].trim();
-          if (namePart && !namePart.includes('输出') && !namePart.includes('入参')) {
-            nodeLabel = namePart;
-          }
+        } else if (variable.nodeType) {
+          // 根据 nodeType 获取节点类型标签，而不是使用变量名
+          nodeLabel = getNodeLabelById(variable.nodeType);
         }
 
         nodeMap.set(variable.nodeId, {
@@ -170,6 +123,46 @@ const cascaderOptions = computed(() => {
 
   return Array.from(nodeMap.values());
 });
+
+// 监听 cascaderOptions 变化，清除已失效的 cascaderValue
+watch(cascaderOptions, (newOptions) => {
+  if (!newOptions || newOptions.length === 0) {
+    if (inputCascaderValue.value?.length) {
+      inputCascaderValue.value = [];
+    }
+    return;
+  }
+
+  if (inputCascaderValue.value?.length === 2) {
+    const [nodeId, varId] = inputCascaderValue.value;
+    const nodeExists = newOptions.some(opt => opt.value === nodeId);
+    if (!nodeExists) {
+      inputCascaderValue.value = [];
+    }
+  }
+}, { immediate: false });
+
+// 监听 availableVariables 变化，为存量工作流的引用参数重建 cascaderValue
+watch(() => props.availableVariables, (newVars) => {
+  if (!newVars || !Array.isArray(newVars) || newVars.length === 0) {
+    return;
+  }
+
+  if (inputCascaderValue.value?.length) {
+    return;
+  }
+
+  if (localInputNodeId.value && localInputVar.value) {
+    const matchedVar = newVars.find(v =>
+      v.nodeId === localInputNodeId.value &&
+      (v.id === `${localInputNodeId.value}.${localInputVar.value}` || v.name.startsWith(localInputVar.value))
+    );
+
+    if (matchedVar) {
+      inputCascaderValue.value = [matchedVar.nodeId, matchedVar.id];
+    }
+  }
+}, { immediate: true });
 
 const getNodeLabelById = (nodeId) => {
   if (nodeId.startsWith('start')) return '开始节点';

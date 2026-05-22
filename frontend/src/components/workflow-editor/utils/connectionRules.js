@@ -20,14 +20,14 @@ export const NODE_CONFIG = {
     canConnectFrom: [],
     canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
     maxInputs: 0,
-    maxOutputs: 1,
+    maxOutputs: 10,
     handles: [{ type: 'source', position: 'right', id: 'default' }]
   },
   [NODE_TYPES.END]: {
     name: '结束节点',
-    canConnectFrom: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
+    canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
     canConnectTo: [],
-    maxInputs: 1,
+    maxInputs: 10,
     maxOutputs: 0,
     handles: [{ type: 'target', position: 'left', id: 'default' }]
   },
@@ -35,20 +35,20 @@ export const NODE_CONFIG = {
     name: '条件分支节点',
     canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
     canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase', 'userInput'],
-    maxInputs: 1,
-    maxOutputs: 2,
+    maxInputs: 10,
+    maxOutputs: 10,
     handles: [
       { type: 'target', position: 'left', id: 'default' },
-      { type: 'source', position: 'right', id: 'true', label: '满足' },
-      { type: 'source', position: 'right', id: 'false', label: '不满足' }
+      { type: 'source', position: 'right', id: 'branch_0', label: '分支0' },
+      { type: 'source', position: 'right', id: 'branch_1', label: '分支1' }
     ]
   },
   [NODE_TYPES.LOOP]: {
     name: '循环节点',
     canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
     canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'parser', 'end', 'knowledgeBase', 'userInput'],
-    maxInputs: 2,
-    maxOutputs: 2,
+    maxInputs: 10,
+    maxOutputs: 10,
     handles: [
       { type: 'target', position: 'left', id: 'default', label: '入口' },
       { type: 'target', position: 'bottom', id: 'continue', label: '继续' },
@@ -60,8 +60,8 @@ export const NODE_CONFIG = {
     name: '提示词节点',
     canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
     canConnectTo: ['llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase', 'userInput'],
-    maxInputs: 1,
-    maxOutputs: 1,
+    maxInputs: 10,
+    maxOutputs: 10,
     handles: [
       { type: 'target', position: 'left', id: 'default' },
       { type: 'source', position: 'right', id: 'default' }
@@ -71,8 +71,8 @@ export const NODE_CONFIG = {
     name: 'LLM调用节点',
     canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
     canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase', 'userInput'],
-    maxInputs: 1,
-    maxOutputs: 1,
+    maxInputs: 10,
+    maxOutputs: 10,
     handles: [
       { type: 'target', position: 'left', id: 'default' },
       { type: 'source', position: 'right', id: 'default' }
@@ -82,8 +82,8 @@ export const NODE_CONFIG = {
     name: '工具调用节点',
     canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
     canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase', 'userInput'],
-    maxInputs: 1,
-    maxOutputs: 1,
+    maxInputs: 10,
+    maxOutputs: 10,
     handles: [
       { type: 'target', position: 'left', id: 'default' },
       { type: 'source', position: 'right', id: 'default' }
@@ -93,8 +93,8 @@ export const NODE_CONFIG = {
     name: 'HTTP请求节点',
     canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
     canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase', 'userInput'],
-    maxInputs: 1,
-    maxOutputs: 1,
+    maxInputs: 10,
+    maxOutputs: 10,
     handles: [
       { type: 'target', position: 'left', id: 'default' },
       { type: 'source', position: 'right', id: 'default' }
@@ -104,8 +104,8 @@ export const NODE_CONFIG = {
     name: '代码执行节点',
     canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
     canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase', 'userInput'],
-    maxInputs: 1,
-    maxOutputs: 1,
+    maxInputs: 10,
+    maxOutputs: 10,
     handles: [
       { type: 'target', position: 'left', id: 'default' },
       { type: 'source', position: 'right', id: 'default' }
@@ -115,8 +115,8 @@ export const NODE_CONFIG = {
     name: '变量赋值节点',
     canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
     canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase', 'userInput'],
-    maxInputs: 1,
-    maxOutputs: 1,
+    maxInputs: 10,
+    maxOutputs: 10,
     handles: [
       { type: 'target', position: 'left', id: 'default' },
       { type: 'source', position: 'right', id: 'default' }
@@ -126,8 +126,8 @@ export const NODE_CONFIG = {
     name: '输出解析节点',
     canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
     canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase', 'userInput'],
-    maxInputs: 1,
-    maxOutputs: 1,
+    maxInputs: 10,
+    maxOutputs: 10,
     handles: [
       { type: 'target', position: 'left', id: 'default' },
       { type: 'source', position: 'right', id: 'default' }
@@ -137,8 +137,8 @@ export const NODE_CONFIG = {
     name: '知识库节点',
     canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
     canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase', 'userInput'],
-    maxInputs: 1,
-    maxOutputs: 1,
+    maxInputs: 10,
+    maxOutputs: 10,
     handles: [
       { type: 'target', position: 'left', id: 'default' },
       { type: 'source', position: 'right', id: 'default' }
@@ -148,8 +148,8 @@ export const NODE_CONFIG = {
     name: '用户输入节点',
     canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput'],
     canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase', 'userInput'],
-    maxInputs: 1,
-    maxOutputs: 1,
+    maxInputs: 10,
+    maxOutputs: 10,
     handles: [
       { type: 'target', position: 'left', id: 'default' },
       { type: 'source', position: 'right', id: 'default' }
@@ -255,10 +255,12 @@ export const validateConnection = (connection, elements) => {
   
   if (sourceNode.type === NODE_TYPES.CONDITION) {
     if (!sourceHandle) {
-      return { valid: false, code: 'CONDITION_MISSING_HANDLE', message: '条件节点必须选择输出分支', suggestion: '请选择"满足"或"不满足"分支' };
+      return { valid: false, code: 'CONDITION_MISSING_HANDLE', message: '条件节点必须选择输出分支', suggestion: '请选择对应分支' };
     }
-    if (sourceHandle !== 'true' && sourceHandle !== 'false') {
-      return { valid: false, code: 'INVALID_CONDITION_HANDLE', message: '无效的条件分支', suggestion: '条件节点只能选择"满足"或"不满足"分支' };
+    // 支持新格式 branch_0, branch_1... 和旧格式 true, false
+    const isValidHandle = sourceHandle.startsWith('branch_') || sourceHandle === 'true' || sourceHandle === 'false';
+    if (!isValidHandle) {
+      return { valid: false, code: 'INVALID_CONDITION_HANDLE', message: '无效的条件分支', suggestion: '条件节点只能选择对应分支' };
     }
   }
   

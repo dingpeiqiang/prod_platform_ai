@@ -51,9 +51,8 @@ export const validateWorkflow = (elements) => {
     }
     
     if (node.type === 'condition') {
-      const trueEdges = edges.filter(e => e.source === node.id && e.sourceHandle === 'true');
-      const falseEdges = edges.filter(e => e.source === node.id && e.sourceHandle === 'false');
-      if (trueEdges.length === 0 && falseEdges.length === 0) {
+      const conditionEdges = edges.filter(e => e.source === node.id && (e.sourceHandle === 'true' || e.sourceHandle === 'false' || e.sourceHandle.startsWith('branch_')));
+      if (conditionEdges.length === 0) {
         warnings.push({ type: 'condition_no_output', message: `条件节点 "${node.data.label}" 缺少输出连接`, nodeId: node.id, suggestion: '请连接满足和不满足两个分支' });
       }
     }
