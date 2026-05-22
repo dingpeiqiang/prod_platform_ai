@@ -1336,7 +1336,11 @@ const handleNodeRun = async () => {
   };
 
   const onLog = (log) => {
-    executionLogs.value.push(log);
+    if (log.type === 'clear') {
+      executionLogs.value = [];
+    } else {
+      executionLogs.value.push(log);
+    }
   };
 
   executionEngine.setCallbacks(onStatusChange, onLog);
@@ -2117,7 +2121,11 @@ const runWorkflow = async (inputParams = {}) => {
   };
   
   const onLog = (log) => {
-    executionLogs.value.push(log);
+    if (log.type === 'clear') {
+      executionLogs.value = [];
+    } else {
+      executionLogs.value.push(log);
+    }
   };
   
   executionEngine.setCallbacks(onStatusChange, onLog);

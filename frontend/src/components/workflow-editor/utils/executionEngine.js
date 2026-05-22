@@ -94,9 +94,16 @@ export class ExecutionEngine {
     if (this.isRunning) return;
 
     this.isRunning = true;
+    this.isPaused = false;
+    this.pendingInput = null;
+    this.resumeCallback = null;
     this.logs = [];
     this.clearNodeStatus();
     this.clearNodeExecutionData();
+    
+    if (this.onLog) {
+      this.onLog({ type: 'clear' });
+    }
 
     try {
       const nodes = elements.filter(el => !el.source && !el.target);
@@ -502,9 +509,16 @@ export class ExecutionEngine {
     }
 
     this.isRunning = true;
+    this.isPaused = false;
+    this.pendingInput = null;
+    this.resumeCallback = null;
     this.logs = [];
     this.clearNodeStatus();
     this.clearNodeExecutionData();
+    
+    if (this.onLog) {
+      this.onLog({ type: 'clear' });
+    }
 
     try {
       const nodeId = node.id;
