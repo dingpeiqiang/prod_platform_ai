@@ -90,6 +90,20 @@ const localOutputVar = ref(props.data.outputVar || '');
 const placeholderText = '输入提示词，使用 {{变量名}} 引用变量...';
 const displayVarSyntax = '{{变量名}}';
 
+const getNodeLabelById = (nodeId) => {
+  if (nodeId.startsWith('start')) return '开始节点';
+  if (nodeId.startsWith('variable')) return '变量节点';
+  if (nodeId.startsWith('llm')) return 'LLM节点';
+  if (nodeId.startsWith('prompt')) return '提示词节点';
+  if (nodeId.startsWith('tool')) return '工具节点';
+  if (nodeId.startsWith('http')) return 'HTTP节点';
+  if (nodeId.startsWith('code')) return '代码节点';
+  if (nodeId.startsWith('parser')) return '解析节点';
+  if (nodeId.startsWith('condition')) return '条件节点';
+  if (nodeId.startsWith('userInput')) return '用户输入节点';
+  return nodeId;
+};
+
 // 级联选择器选项
 const cascaderOptions = computed(() => {
   if (!props.availableVariables || !Array.isArray(props.availableVariables)) return [];
@@ -163,20 +177,6 @@ watch(() => props.availableVariables, (newVars) => {
     }
   }
 }, { immediate: true });
-
-const getNodeLabelById = (nodeId) => {
-  if (nodeId.startsWith('start')) return '开始节点';
-  if (nodeId.startsWith('variable')) return '变量节点';
-  if (nodeId.startsWith('llm')) return 'LLM节点';
-  if (nodeId.startsWith('prompt')) return '提示词节点';
-  if (nodeId.startsWith('tool')) return '工具节点';
-  if (nodeId.startsWith('http')) return 'HTTP节点';
-  if (nodeId.startsWith('code')) return '代码节点';
-  if (nodeId.startsWith('parser')) return '解析节点';
-  if (nodeId.startsWith('condition')) return '条件节点';
-  if (nodeId.startsWith('userInput')) return '用户输入节点';
-  return nodeId;
-};
 
 const handleInputCascaderChange = (value) => {
   if (Array.isArray(value) && value.length === 2) {

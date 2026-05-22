@@ -2526,6 +2526,10 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   background-color: #f5f5f5;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 
 .toolbar {
@@ -3017,6 +3021,10 @@ onUnmounted(() => {
   display: flex;
   flex-shrink: 0;
   position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 
 .library-panel-wrapper {
