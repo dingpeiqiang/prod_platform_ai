@@ -1,6 +1,9 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 import logging
 import logging.handlers
 import os
@@ -53,10 +56,13 @@ _LOG_MODULES = [
     "validation_service", "harness.engine", "harness.observability",
     "llm_call",
     "intent.form_handler", "recommendation_engine",
+    "app.api.chat",  # 确保 chat.py 中的 logger 也能输出 DEBUG
+    "app.api.chat",  # 重复配置确保所有 chat.py 中的 logger 都能输出 DEBUG
 ]
 
 for _name in _LOG_MODULES:
-    logging.getLogger(_name).setLevel(logging.DEBUG)
+    logger_instance = logging.getLogger(_name)
+    logger_instance.setLevel(logging.DEBUG)
 
 # 降低第三方库的日志级别
 logging.getLogger("uvicorn.access").setLevel(logging.INFO)
@@ -148,6 +154,27 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """全局验证异常处理器 - 显示详细的验证错误信息"""
+    logger = logging.getLogger("main")
+    logger.error(f"[Validation Error] 请求验证失败")
+    logger.error(f"[Validation Error] URL: {request.url}")
+    logger.error(f"[Validation Error] 错误详情: {exc.errors()}")
+    logger.error(f"[Validation Error] 原始消息: {exc.json()}")
+    
+    return JSONResponse(
+        status_code=422,
+        content={
+            "success": False,
+            "message": "请求参数验证失败",
+            "detail": exc.errors(),
+            "body": exc.body if hasattr(exc, 'body') else None
+        },
+    )
+
 
 app.include_router(health_router)  # 健康检查接口
 app.include_router(form_router)

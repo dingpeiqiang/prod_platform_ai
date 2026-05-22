@@ -278,7 +278,7 @@ class LLMService:
             logger.error("[LLM REASONING] Provider: %s, Model: %s", provider_name.upper(), model)
             logger.error("[LLM REASONING] Error: %s", str(e))
             logger.error("[LLM REASONING] Elapsed: %.2fs", llm_elapsed)
-            return None, None
+            raise  # 让异常向上传播，不吞掉
     
     def _call_llm(self, prompt: str, system_prompt: Optional[str] = None, 
                   max_tokens: Optional[int] = None) -> Optional[str]:
@@ -331,15 +331,8 @@ class LLMService:
             logger.error("[LLM DYNAMIC] ====== FAILED ======")
             logger.error("[LLM DYNAMIC] Error: %s", str(e))
             logger.error("[LLM DYNAMIC] Elapsed: %.2fs", llm_elapsed)
-            
-            if reasoning:
-                return None, None
-            return None
-    
-    def _extract_json(self, text: str) -> Optional[Dict]:
-        """提取 JSON"""
-        return extract_json(text)
-    
+            raise  # 让异常向上传播，不吞掉
+
     @staticmethod
     def get_supported_providers() -> list:
         """获取支持的 Provider 列表"""

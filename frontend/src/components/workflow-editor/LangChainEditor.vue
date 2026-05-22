@@ -1313,17 +1313,59 @@ const toggleNodeConfigPanel = () => {
 };
 
 const handleNodeRun = async () => {
-  if (!selectedNodeId.value) return;
+  if (!selectedNodeId.value || isRunning.value) return;
   
-  // 获取当前节点
   const node = elements.value.find(el => el.id === selectedNodeId.value && !el.source);
   if (!node) return;
-  
-  ElMessage.info(`运行节点: ${node.data.label}`);
-  
-  // TODO: 实现单个节点的运行逻辑
-  // 这里可以调用后端API来运行单个LLM节点
-  console.log('Running node:', node);
+
+  if (node.type === 'start' || node.type === 'end' || node.type === 'condition' || node.type === 'loop') {
+    ElMessage.warning(`该节点类型不支持单节点运行: ${node.data.label}`);
+    return;
+  }
+
+  showRightPanel.value = true;
+  activePanel.value = 'execution';
+  showParameterPanel.value = false;
+
+  isRunning.value = true;
+  executionLogs.value = [];
+  lastExecutionResult.value = null;
+
+  const onStatusChange = (status) => {
+    nodeExecutionStatus.value = status;
+  };
+
+  const onLog = (log) => {
+    executionLogs.value.push(log);
+  };
+
+  executionEngine.setCallbacks(onStatusChange, onLog);
+
+  const inputData = {};
+  if (node.data.inputs && Array.isArray(node.data.inputs)) {
+    node.data.inputs.forEach(param => {
+      if (param.valueType === 'input' && param.defaultValue) {
+        inputData[param.name] = param.defaultValue;
+      }
+    });
+  }
+
+  try {
+    const result = await executionEngine.executeSingleNode(node, inputData);
+    lastExecutionResult.value = result;
+    nodeExecutionData.value = executionEngine.getNodeExecutionData();
+    
+    if (result.status === 'success') {
+      ElMessage.success(`节点执行成功: ${node.data.label}`);
+    } else {
+      ElMessage.error(`节点执行失败: ${result.error}`);
+    }
+  } catch (error) {
+    ElMessage.error(`节点执行异常: ${error.message}`);
+    console.error('Single node execution error:', error);
+  } finally {
+    isRunning.value = false;
+  }
 };
 
 const onPaneClick = () => {

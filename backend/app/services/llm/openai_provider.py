@@ -11,6 +11,14 @@ from app.core.config import get_settings
 logger = logging.getLogger("llm.openai")
 
 
+class LLMAPIError(Exception):
+    """LLM API 返回的业务错误（如认证失败、权限不足等）"""
+    def __init__(self, result_code: str, message: str):
+        self.result_code = result_code
+        self.message = message
+        super().__init__(f"LLM API 错误 [{result_code}]: {message}")
+
+
 @ProviderFactory.register('openai')
 @ProviderFactory.register('custom')
 class OpenAIProvider(BaseProvider):
@@ -51,9 +59,19 @@ class OpenAIProvider(BaseProvider):
         """获取请求头"""
         headers = {"Content-Type": "application/json"}
         
-        if 'dashscope' in self.base_url.lower():
-            headers["Authorization"] = f"Bearer {self.api_key}"
+        # 根据配置的认证类型添加认证头
+        auth_type = self.config.get('authType') or self.config.get('auth_type') or 'bearer'
+        auth_header = self.config.get('authHeader') or self.config.get('auth_header')
+        
+        if auth_type == 'custom' and auth_header:
+            # 自定义认证头
+            headers[auth_header] = self.api_key
+        elif auth_type == 'token':
+            headers["token"] = self.api_key
+        elif auth_type == 'api_key':
+            headers["api-key"] = self.api_key
         else:
+            # 默认使用 Bearer 认证
             headers["Authorization"] = f"Bearer {self.api_key}"
         
         return headers
@@ -63,8 +81,13 @@ class OpenAIProvider(BaseProvider):
         """构建请求体"""
         messages = self._build_messages(prompt, system_prompt)
         
+        # 去掉 custom- 前缀，因为实际 API 需要的是不带前缀的模型名称
+        model_name = self.model
+        if model_name.startswith('custom-'):
+            model_name = model_name[7:]
+        
         payload = {
-            "model": self.model,
+            "model": model_name,
             "messages": messages,
             "temperature": self.temperature,
             "max_tokens": max_tokens or self.max_tokens,
@@ -83,13 +106,25 @@ class OpenAIProvider(BaseProvider):
             logger.warning(f"[OpenAIProvider] 配置不完整 - base_url: {bool(self.base_url)}, api_key: {bool(self.api_key)}")
             return None
         
-        url = f"{self.base_url}/chat/completions"
+        # 判断是否使用完整 URL
+        is_full_url = self.config.get('isFullUrl') or self.config.get('is_full_url') or False
+        
+        if is_full_url:
+            # 完整 URL 模式，直接使用 base_url
+            url = self.base_url
+        else:
+            # 标准模式，添加 /chat/completions 路径
+            url = f"{self.base_url}/chat/completions"
         payload = self._build_payload(prompt, system_prompt, max_tokens, stream=False)
         headers = self._get_headers()
         
         try:
             logger.info(f"[OpenAIProvider] 开始同步调用 - URL: {url}, Model: {self.model}")
+            logger.debug(f"[OpenAIProvider] 请求头: {headers}")
+            logger.debug(f"[OpenAIProvider] 请求体: {json.dumps(payload, ensure_ascii=False)}")
             resp = requests.post(url, json=payload, headers=headers, timeout=180)
+            logger.info(f"[OpenAIProvider] 响应状态码: {resp.status_code}")
+            logger.debug(f"[OpenAIProvider] 响应体: {resp.text[:2000]}")
             
             if resp.status_code != 200:
                 error_msg = f"HTTP {resp.status_code}"
@@ -103,15 +138,34 @@ class OpenAIProvider(BaseProvider):
                 raise Exception(error_msg)
             
             result = resp.json()
-            content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
             
+            # 检查自定义错误格式（公司内部部署的 MiniMax）
+            # 格式1: {"flag": false, "resultCode": 4016, "message": "..."}
+            # 格式2: {"code": 401, "message": "..."}
+            if result.get('flag') is False or result.get('resultCode'):
+                err_msg = result.get('message', 'Unknown error')
+                result_code = result.get('resultCode', 'unknown')
+                logger.error(f"[OpenAIProvider] API 返回错误 - resultCode: {result_code}, message: {err_msg}")
+                raise LLMAPIError(str(result_code), err_msg)
+            
+            # 检查格式2: {"code": 401, "message": "..."}
+            if result.get('code'):
+                err_msg = result.get('message', 'Unknown error')
+                result_code = result.get('code', 'unknown')
+                logger.error(f"[OpenAIProvider] API 返回错误 - code: {result_code}, message: {err_msg}")
+                raise LLMAPIError(str(result_code), err_msg)
+
+            content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
+
             if not content:
                 logger.warning("[OpenAIProvider] 响应内容为空")
                 return None
-            
-            logger.info(f"[OpenAIProvider] 调用成功 - 内容长度: {len(content)}")
+
+            logger.info(f"[OpenAIProvider] 调用成功 - choices 结构: {result.get('choices')}, content: {content[:200] if content else '(empty)'}")
             return content
-        
+
+        except LLMAPIError:
+            raise  # 业务 API 错误直接向上传播
         except requests.exceptions.Timeout:
             error_msg = "请求超时 (180秒)"
             logger.error(f"[OpenAIProvider] {error_msg}")
@@ -127,12 +181,16 @@ class OpenAIProvider(BaseProvider):
         except Exception as e:
             error_msg = f"未知错误: {str(e)}"
             logger.error(f"[OpenAIProvider] {error_msg}", exc_info=True)
-            raise Exception(error_msg)
+            raise
     
-    def call_with_reasoning(self, prompt: str, system_prompt: Optional[str] = None, 
+    def call_with_reasoning(self, prompt: str, system_prompt: Optional[str] = None,
                            max_tokens: Optional[int] = None) -> Tuple[Optional[str], Optional[str]]:
         """同步调用，返回 (content, reasoning)"""
+        import logging
+        _logger = logging.getLogger("llm.openai")
+        _logger.info(f"[OpenAIProvider] call_with_reasoning - base_url='{self.base_url}', api_key_set={bool(self.api_key)}, model={self.model}")
         if not self.base_url or not self.api_key:
+            _logger.warning(f"[OpenAIProvider] base_url 或 api_key 为空，拒绝调用")
             return None, None
         
         url = f"{self.base_url}/chat/completions"
@@ -147,7 +205,16 @@ class OpenAIProvider(BaseProvider):
                 raise Exception(f"LLM 服务调用失败: {error_msg}")
             
             result = resp.json()
-            
+
+            # 【新增】检测 teamshub 自定义错误格式
+            if result.get('flag') is False or result.get('resultCode'):
+                err_msg = result.get('message', 'Unknown error')
+                result_code = result.get('resultCode', 'unknown')
+                import logging
+                logger = logging.getLogger("llm.openai")
+                logger.error(f"[OpenAIProvider] API 返回错误 - resultCode: {result_code}, message: {err_msg}")
+                raise LLMAPIError(str(result_code), err_msg)
+
             # 提取 content
             content = result.get('choices', [{}])[0].get('message', {}).get('content', '')
             

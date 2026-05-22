@@ -115,7 +115,7 @@
             <div class="param-row">
               <label class="param-label">
                 top_k
-                <span class="help-icon" title="限制采样token范围">?</span>
+                <span class="help-icon" title="Top-K 采样：从概率最高的 K 个 token 中随机选择。0 表示不限制（默认），建议值：10-50">?</span>
               </label>
               <div class="slider-control">
                 <input v-model.number="localTopK" type="range" min="0" max="100" step="1" @input="emitUpdate" class="param-slider"/>
@@ -127,22 +127,38 @@
                   </div>
                 </div>
               </div>
+              <div class="param-hint" v-if="localTopK === 0">未限制（从所有 token 中采样）</div>
+              <div class="param-hint" v-else>从前 {{ localTopK }} 个 token 中采样</div>
             </div>
 
             <div class="param-row">
               <label class="param-label">
                 top_p
-                <span class="help-icon" title="核采样参数">?</span>
+                <span class="help-icon" title="核采样：从累计概率达到 P 的 token 中随机选择。1.0 表示不限制（默认），建议值：0.7-0.9">?</span>
               </label>
               <div class="slider-control">
-                <input v-model.number="localTopP" type="range" min="0" max="1" step="0.01" @input="emitUpdate" class="param-slider"/>
+                <input v-model.number="localTopP" type="range" min="0" max="1" step="0.05" @input="emitUpdate" class="param-slider"/>
                 <div class="slider-value-group">
                   <input v-model.number="localTopP" type="number" min="0" max="1" step="0.01" @input="emitUpdate" class="value-input"/>
                   <div class="adjust-buttons">
-                    <button @click="adjustValue('topP', -0.01)" class="adjust-btn">-</button>
-                    <button @click="adjustValue('topP', 0.01)" class="adjust-btn">+</button>
+                    <button @click="adjustValue('topP', -0.05)" class="adjust-btn top-p-btn">-</button>
+                    <button @click="adjustValue('topP', 0.05)" class="adjust-btn top-p-btn">+</button>
                   </div>
                 </div>
+              </div>
+              <div class="param-hint" v-if="localTopP >= 1">未限制（从所有 token 中采样）</div>
+              <div class="param-hint" v-else>从累计概率 ≥ {{ (localTopP * 100).toFixed(0) }}% 的 token 中采样</div>
+            </div>
+
+            <div class="param-row tips-row">
+              <div class="param-tips">
+                <strong>使用建议：</strong>
+                <ul>
+                  <li>通常只需要设置其中一个参数</li>
+                  <li>top_k 控制候选 token 数量，适合需要精确控制的场景</li>
+                  <li>top_p 控制概率分布范围，适合需要多样性的场景</li>
+                  <li>同时设置时，会取两者的交集</li>
+                </ul>
               </div>
             </div>
 
@@ -345,7 +361,7 @@ const safeData = props.data || {};
 const localLabel = ref(safeData.label || 'LLM');
 const localModel = ref(safeData.model || '');
 const localTemperature = ref(safeData.temperature ?? 0.1);
-const localTopK = ref(safeData.topK ?? 0.1);
+const localTopK = ref(safeData.topK ?? 0);
 const localTopP = ref(safeData.topP ?? 1);
 const localMaxTokens = ref(safeData.maxTokens ?? 1024);
 const localSystemPrompt = ref(safeData.systemPrompt || '');
@@ -523,15 +539,17 @@ const handleTooltipLeave = () => {
 };
 
 const adjustValue = (field, delta) => {
-  const fieldMap = {
-    temperature: localTemperature,
-    topK: localTopK,
-    topP: localTopP,
-    maxTokens: localMaxTokens
+  const constraints = {
+    temperature: { ref: localTemperature, min: 0, max: 2, round: 10 },
+    topK: { ref: localTopK, min: 0, max: 100, round: 1 },
+    topP: { ref: localTopP, min: 0, max: 1, round: 100 },
+    maxTokens: { ref: localMaxTokens, min: 128, max: 16384, round: 1 }
   };
-  const ref = fieldMap[field];
-  if (ref) {
-    ref.value = Math.round((ref.value + delta) * 100) / 100;
+  const config = constraints[field];
+  if (config) {
+    const newValue = config.ref.value + delta;
+    const clampedValue = Math.max(config.min, Math.min(config.max, newValue));
+    config.ref.value = Math.round(clampedValue * config.round) / config.round;
     emitUpdate();
   }
 };
@@ -613,7 +631,7 @@ watch(() => props.data, (newData) => {
   localLabel.value = newData.label || 'LLM';
   localModel.value = newData.model || '';
   localTemperature.value = newData.temperature ?? 0.1;
-  localTopK.value = newData.topK ?? 0.1;
+  localTopK.value = Math.round(newData.topK ?? 0);
   localTopP.value = newData.topP ?? 1;
   localMaxTokens.value = newData.maxTokens ?? 1024;
   localSystemPrompt.value = newData.systemPrompt || '';
@@ -1324,5 +1342,38 @@ watch(() => props.data, (newData) => {
 
 :deep(.vue-flow__handle[type="source"]:hover) {
   background-color: #2563eb !important;
+}
+
+.param-hint {
+  font-size: 12px;
+  color: #666;
+  margin-top: 4px;
+}
+
+.param-row.tips-row {
+  padding: 10px;
+  background: #f8fafc;
+  border-radius: 4px;
+  border-left: 3px solid #3b82f6;
+}
+
+.param-tips {
+  font-size: 12px;
+  color: #666;
+}
+
+.param-tips strong {
+  color: #333;
+  font-size: 13px;
+}
+
+.param-tips ul {
+  margin: 8px 0 0 0;
+  padding-left: 20px;
+  list-style-type: disc;
+}
+
+.param-tips li {
+  margin-bottom: 4px;
 }
 </style>

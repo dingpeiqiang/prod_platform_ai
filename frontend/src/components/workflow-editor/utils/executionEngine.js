@@ -495,4 +495,232 @@ export class ExecutionEngine {
     this.clearNodeStatus();
     this.clearNodeExecutionData();
   }
+
+  async executeSingleNode(node, inputData = {}) {
+    if (this.isRunning) {
+      throw new Error('工作流正在执行中');
+    }
+
+    this.isRunning = true;
+    this.logs = [];
+    this.clearNodeStatus();
+    this.clearNodeExecutionData();
+
+    try {
+      const nodeId = node.id;
+      const nodeLabel = node.data.label || node.type;
+      
+      this.setNodeStatus(nodeId, 'running');
+      this.initNodeExecution(nodeId, node.type, nodeLabel);
+      
+      this.addLog('node_start', `开始执行单节点: ${nodeLabel}`, `节点ID: ${node.id}`, { 
+        nodeId, nodeType: node.type, nodeLabel 
+      });
+      this.addNodeLog(nodeId, { type: 'info', message: '节点开始执行' });
+
+      await this.delay(300);
+
+      let result = null;
+
+      switch (node.type) {
+        case 'llm': {
+          const model = node.data.model || 'qwen-vl-plus';
+          const temperature = node.data.temperature || 0.7;
+          const systemPrompt = node.data.systemPrompt || '';
+          const prompt = node.data.prompt || '';
+          
+          this.updateNodeData(nodeId, {
+            input: { prompt, systemPrompt, model, temperature, ...inputData },
+            config: { model, temperature, maxTokens: node.data.maxTokens, systemPrompt },
+            output: null
+          });
+          this.addNodeLog(nodeId, { type: 'info', message: `调用模型: ${model}, 温度: ${temperature}` });
+
+          let resolvedPrompt = prompt;
+          if (inputData) {
+            resolvedPrompt = prompt.replace(/\{\{(\w+)\}\}/g, (_, key) => inputData[key] || '');
+          }
+          
+          this.addNodeLog(nodeId, { type: 'debug', message: `输入提示词: ${resolvedPrompt}` });
+          this.addLog('info', `调用 LLM 模型`, `模型: ${model}, 温度: ${temperature}`, { input: resolvedPrompt });
+
+          try {
+            const response = await fetch('/api/v1/chat/completion', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: model,
+                prompt: resolvedPrompt,
+                system_prompt: systemPrompt,
+                temperature: parseFloat(temperature) || 0.7,
+                max_tokens: Math.round(parseFloat(node.data.maxTokens) || 1024),
+                top_k: Math.round(parseFloat(node.data.topK) || 0),
+                top_p: parseFloat(node.data.topP) || 1.0
+              })
+            });
+
+            if (response.ok) {
+              const data = await response.json();
+              result = data.result || data.content || `这是模拟的 LLM 响应。\n\n输入: ${resolvedPrompt}\n\n模型: ${model}\n\n时间: ${new Date().toLocaleString()}`;
+            } else {
+              const errorData = await response.json();
+              throw new Error(errorData.message || 'LLM 调用失败');
+            }
+          } catch (error) {
+            console.error('LLM 调用失败:', error);
+            result = `这是模拟的 LLM 响应（本地模式）。\n\n输入: ${resolvedPrompt}\n\n模型: ${model}\n\n时间: ${new Date().toLocaleString()}`;
+          }
+
+          this.updateNodeData(nodeId, { output: result });
+          this.addNodeLog(nodeId, { type: 'info', message: 'LLM 响应完成' });
+          this.addLog('info', 'LLM 响应完成', null, { output: result });
+          break;
+        }
+
+        case 'prompt': {
+          const promptTemplate = node.data.prompt || '请输入内容';
+          let resolvedPrompt = promptTemplate;
+          
+          if (inputData) {
+            resolvedPrompt = promptTemplate.replace(/\{\{(\w+)\}\}/g, (_, key) => inputData[key] || '');
+          }
+          
+          this.updateNodeData(nodeId, {
+            input: { template: promptTemplate, variables: inputData },
+            config: { template: promptTemplate },
+            output: resolvedPrompt
+          });
+          this.addNodeLog(nodeId, { type: 'info', message: `解析变量后的提示词: ${resolvedPrompt}` });
+          result = resolvedPrompt;
+          this.addLog('info', '构建提示词', promptTemplate, { resolved: resolvedPrompt });
+          break;
+        }
+
+        case 'http': {
+          const url = node.data.url || '未配置';
+          const method = node.data.method || 'GET';
+          let requestData = {};
+          
+          if (inputData) {
+            requestData = { ...inputData };
+          }
+          
+          this.updateNodeData(nodeId, {
+            input: { url, method, data: requestData },
+            config: { url, method, headers: node.data.headers },
+            output: { status: 200, data: '模拟响应数据' }
+          });
+          result = { status: 200, data: '模拟响应数据' };
+          this.addNodeLog(nodeId, { type: 'info', message: `HTTP ${method} ${url}` });
+          this.addLog('info', 'HTTP 请求', `URL: ${url}`, null);
+          break;
+        }
+
+        case 'code': {
+          const code = node.data.code || '无代码';
+          
+          this.updateNodeData(nodeId, {
+            input: { code, variables: inputData },
+            config: { language: node.data.language || 'javascript' },
+            output: '模拟代码执行结果'
+          });
+          result = '模拟代码执行结果';
+          this.addNodeLog(nodeId, { type: 'info', message: `执行代码 (${node.data.language || 'javascript'})` });
+          this.addLog('info', '代码执行', code, null);
+          break;
+        }
+
+        case 'knowledgeBase': {
+          const kbId = node.data.knowledgeBase || '';
+          const queryMode = node.data.queryMode || 'retrieve';
+          const queryText = node.data.queryText || '';
+          
+          let resolvedQuery = queryText;
+          if (inputData) {
+            resolvedQuery = queryText.replace(/\{\{(\w+)\}\}/g, (_, key) => inputData[key] || '');
+          }
+          
+          this.updateNodeData(nodeId, {
+            input: { knowledgeBase: kbId, queryMode, queryText: resolvedQuery },
+            config: { knowledgeBase: kbId, queryMode, queryText },
+            output: null
+          });
+          this.addNodeLog(nodeId, { type: 'info', message: `查询知识库: ${kbId}, 模式: ${queryMode}` });
+          this.addNodeLog(nodeId, { type: 'debug', message: `查询内容: ${resolvedQuery}` });
+
+          const mockResults = {
+            documents: [
+              { id: 'doc1', content: '知识库文档内容示例1...', score: 0.95 },
+              { id: 'doc2', content: '知识库文档内容示例2...', score: 0.88 }
+            ],
+            answer: queryMode === 'qa' ? '这是模拟的知识库问答响应。' : null,
+            summary: queryMode === 'summarize' ? '这是模拟的文档摘要。' : null
+          };
+          
+          result = mockResults;
+          this.updateNodeData(nodeId, { output: mockResults });
+          this.addNodeLog(nodeId, { type: 'info', message: `查询完成，返回 ${mockResults.documents?.length || 0} 条结果` });
+          this.addLog('info', '知识库查询完成', null, { result: mockResults });
+          break;
+        }
+
+        case 'variable': {
+          const varName = node.data.variableName || 'result';
+          let varValue = node.data.variableValue || '';
+          
+          if (inputData && node.data.variableValue) {
+            varValue = node.data.variableValue.replace(/\{\{(\w+)\}\}/g, (_, key) => inputData[key] || '');
+          } else if (inputData && inputData[varName]) {
+            varValue = inputData[varName];
+          }
+          
+          this.updateNodeData(nodeId, {
+            input: { varName, varValue: varValue },
+            config: { varName, varValue: node.data.variableValue },
+            output: { [varName]: varValue }
+          });
+          result = { [varName]: varValue };
+          this.addNodeLog(nodeId, { type: 'info', message: `赋值 ${varName} = ${varValue}` });
+          this.addLog('info', '变量赋值', `${varName} = ${varValue}`, { [varName]: varValue });
+          break;
+        }
+
+        default: {
+          this.updateNodeData(nodeId, { 
+            config: { nodeType: node.type },
+            output: `单节点运行不支持该节点类型: ${node.type}`
+          });
+          result = `单节点运行不支持该节点类型: ${node.type}`;
+          this.addLog('info', `执行节点类型: ${node.type}`, null, null);
+        }
+      }
+
+      this.addLog('success', '单节点执行完成', null, {
+        result,
+        timestamp: new Date().toISOString()
+      });
+
+      return {
+        status: 'success',
+        result,
+        nodeExecutionData: this.getNodeExecutionData(),
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      this.addLog('error', '单节点执行失败', error.message, null);
+      return {
+        status: 'error',
+        error: error.message,
+        timestamp: new Date().toISOString()
+      };
+    } finally {
+      this.isRunning = false;
+      const nodeId = node.id;
+      if (this.nodeStatus[nodeId] === 'running') {
+        this.setNodeStatus(nodeId, 'completed');
+        this.completeNodeExecution(nodeId, 'completed');
+      }
+    }
+  }
 }

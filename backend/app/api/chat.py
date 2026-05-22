@@ -150,6 +150,10 @@ async def chat_completion(request: CompletionRequest, db: Session = Depends(get_
                 'model': request.model,
                 'apiKey': api_key,
                 'baseUrl': base_url,
+                'authType': model_db_config.auth_type if hasattr(model_db_config, 'auth_type') else 'bearer',
+                'authHeader': getattr(model_db_config, 'auth_header', None),
+                'apiFormat': getattr(model_db_config, 'api_format', 'openai'),
+                'isFullUrl': getattr(model_db_config, 'is_full_url', False),
                 'temperature': request.temperature,
                 'maxTokens': request.max_tokens
             }

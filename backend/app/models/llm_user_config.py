@@ -20,6 +20,10 @@ class LLMUserConfig(Base):
     model = Column(String(100), nullable=False, comment="模型名称")
     api_key = Column(Text, nullable=True, comment="API Key（加密存储）")
     base_url = Column(Text, nullable=True, comment="Base URL")
+    auth_type = Column(String(20), nullable=False, default="bearer", comment="认证类型: bearer, token, api_key, custom")
+    auth_header = Column(String(50), nullable=True, comment="自定义认证头名称")
+    api_format = Column(String(50), nullable=False, default="openai", comment="API 格式: openai, anthropic, gemini")
+    is_full_url = Column(Boolean, nullable=False, default=False, comment="是否使用完整 URL")
     
     # 高级配置
     temperature = Column(Float, nullable=False, default=0.3, comment="温度参数")
@@ -45,6 +49,10 @@ class LLMUserConfig(Base):
             "model": self.model,
             # api_key 不返回，需要时单独获取
             "base_url": self.base_url,
+            "auth_type": self.auth_type,
+            "auth_header": self.auth_header,
+            "api_format": self.api_format,
+            "is_full_url": self.is_full_url,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
             "thinking": self.thinking,
