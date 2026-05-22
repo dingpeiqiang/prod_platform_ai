@@ -1649,6 +1649,7 @@ const saveWorkflow = async () => {
             updatedAt: new Date().toISOString()
           };
         }
+        hasChanges.value = false;
       } else {
         ElMessage.error('保存失败：' + (updateResult.message || '未知错误'));
       }
@@ -1677,11 +1678,11 @@ const saveWorkflow = async () => {
           savedAt: new Date().toISOString()
         });
         ElMessage.success('工作流已创建并保存');
+        hasChanges.value = false;
       } else {
         ElMessage.error('创建失败：' + (createResult.message || '未知错误'));
       }
     }
-    hasChanges.value = false;
   } catch (error) {
     console.error('保存工作流失败:', error);
     ElMessage.error('保存失败：' + (error.message || '未知错误'));

@@ -1,10 +1,8 @@
 """
 工作流管理服务
 """
-import json
 import logging
 import uuid
-import os
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -14,37 +12,13 @@ from app.models.workflow import Workflow, WorkflowHistory, WorkflowExecution
 
 logger = logging.getLogger("workflow_service")
 
-# 工作流文件存储目录
-WORKFLOW_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../config/workflows"))
-
 
 class WorkflowService:
 
     @classmethod
-    def _list_workflows_from_files(cls) -> List[Dict[str, Any]]:
-        """从文件加载工作流列表（不包含完整配置）"""
-        workflows = []
-        try:
-            if os.path.exists(WORKFLOW_DIR):
-                for filename in os.listdir(WORKFLOW_DIR):
-                    if filename.endswith(".json"):
-                        workflow_code = filename.replace(".json", "")
-                        # 列表查询不包含完整配置
-                        workflow = cls._load_workflow_from_file(workflow_code, include_data=False)
-                        if workflow:
-                            workflows.append(workflow)
-        except Exception as e:
-            logger.error(f"Failed to list workflows from files: {e}")
-        return workflows
-
-    @classmethod
     def list_workflows(cls, db: Session, category: Optional[str] = None, is_active: Optional[bool] = None) -> Dict[str, Any]:
-        """获取工作流列表（合并文件和数据库中的工作流）"""
+        """获取工作流列表"""
         try:
-            # 从文件读取工作流
-            file_workflows = cls._list_workflows_from_files()
-            
-            # 从数据库读取工作流
             query = db.query(Workflow)
             if category is not None:
                 query = query.filter(Workflow.category == category)
@@ -52,34 +26,9 @@ class WorkflowService:
                 query = query.filter(Workflow.is_active == is_active)
             
             db_workflows = query.order_by(desc(Workflow.priority), desc(Workflow.created_at)).all()
-            db_workflows_list = [workflow.to_dict() for workflow in db_workflows]
+            all_workflows = [workflow.to_dict() for workflow in db_workflows]
             
-            # 合并工作流（文件工作流优先，避免重复）
-            seen_codes = set()
-            all_workflows = []
-            
-            # 添加文件工作流
-            for wf in file_workflows:
-                code = wf.get("workflowCode")
-                if code and code not in seen_codes:
-                    seen_codes.add(code)
-                    all_workflows.append(wf)
-            
-            # 添加数据库工作流（排除已在文件中存在的）
-            for wf in db_workflows_list:
-                code = wf.get("workflowCode")
-                if code and code not in seen_codes:
-                    seen_codes.add(code)
-                    all_workflows.append(wf)
-            
-            # 应用过滤条件到合并后的结果
-            if category is not None:
-                all_workflows = [w for w in all_workflows if w.get("category") == category]
-            if is_active is not None:
-                active_key = "isActive" if "isActive" in all_workflows[0] else "is_active" if all_workflows else "isActive"
-                all_workflows = [w for w in all_workflows if w.get(active_key) == is_active]
-            
-            logger.info(f"Loaded {len(all_workflows)} workflows (files: {len(file_workflows)}, db: {len(db_workflows_list)})")
+            logger.info(f"Loaded {len(all_workflows)} workflows from database")
             
             return {
                 "success": True,
@@ -91,64 +40,14 @@ class WorkflowService:
             return {"success": False, "message": str(e)}
 
     @classmethod
-    def _load_workflow_from_file(cls, workflow_code: str, include_data: bool = True) -> Optional[Dict[str, Any]]:
-        """从文件加载工作流
-        
-        Args:
-            workflow_code: 工作流编码
-            include_data: 是否包含完整的工作流配置（列表查询时设为False）
-        """
-        try:
-            filepath = os.path.join(WORKFLOW_DIR, f"{workflow_code}.json")
-            if os.path.exists(filepath):
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                
-                # 转换为数据库格式（使用驼峰式命名，与模型 to_dict 一致）
-                result = {
-                    "id": 0,
-                    "workflowCode": data.get("id", workflow_code),
-                    "workflowName": data.get("name", workflow_code),
-                    "description": data.get("description"),
-                    "category": data.get("category", "general"),
-                    "tags": data.get("tags", []),
-                    "priority": 10,
-                    "isActive": True,
-                    "isInLibrary": False,
-                    "version": 1,
-                    "executionCount": 0,
-                    "lastExecutionAt": None,
-                    "lastExecutionStatus": None,
-                    "createdBy": None,
-                    "updatedBy": None,
-                    "createdAt": data.get("createdAt"),
-                    "updatedAt": data.get("updatedAt")
-                }
-                
-                # 只有在需要时才包含完整配置
-                if include_data:
-                    result["workflowData"] = data.get("workflowData", {})
-                
-                return result
-            return None
-        except Exception as e:
-            logger.error(f"Failed to load workflow from file {workflow_code}: {e}")
-            return None
-
-    @classmethod
     def get_workflow(cls, workflow_code: str, db: Session) -> Dict[str, Any]:
-        """获取单个工作流（优先从文件读取）"""
+        """获取单个工作流"""
         try:
-            # 优先从文件读取
-            file_workflow = cls._load_workflow_from_file(workflow_code)
-            if file_workflow:
-                logger.info(f"Loaded workflow {workflow_code} from file")
-                return {"success": True, "data": file_workflow}
-            
-            # 如果文件不存在，从数据库读取
             workflow = db.query(Workflow).filter(Workflow.workflow_code == workflow_code).first()
             if not workflow:
                 return {"success": False, "message": f"Workflow {workflow_code} not found"}
+            
+            logger.info(f"Loaded workflow {workflow_code} from database")
             return {"success": True, "data": workflow.to_dict()}
         except Exception as e:
             logger.exception(f"Failed to get workflow {workflow_code}: {e}")
