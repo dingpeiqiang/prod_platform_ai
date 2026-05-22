@@ -1570,7 +1570,7 @@ const onDrop = (event) => {
       position,
       data: {
         label: nodeType.name,
-        anchorMode: 'vertical',
+        anchorMode: currentAnchorMode.value,
         ...defaultData[nodeType.type],
         ...nodeType
       }
@@ -2327,6 +2327,7 @@ const applyTemplate = (template) => {
       position: { x: node.x, y: node.y },
       data: { 
         label: node.title || node.type,
+        anchorMode: currentAnchorMode.value,
         ...node
       }
     });
