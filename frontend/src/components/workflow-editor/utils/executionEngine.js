@@ -206,10 +206,11 @@ export class ExecutionEngine {
         case 'llm': {
           const model = node.data.model || 'qwen-vl-plus';
           const temperature = node.data.temperature || 0.7;
+          const systemPrompt = node.data.systemPrompt || '';
           
           this.updateNodeData(nodeId, {
-            input: { prompt: context.input, model, temperature },
-            config: { model, temperature, maxTokens: node.data.maxTokens },
+            input: { prompt: context.input, systemPrompt, model, temperature },
+            config: { model, temperature, maxTokens: node.data.maxTokens, systemPrompt },
             output: null  // 待填充
           });
           this.addNodeLog(nodeId, { type: 'info', message: `调用模型: ${model}, 温度: ${temperature}` });
@@ -217,12 +218,40 @@ export class ExecutionEngine {
           
           this.addLog('info', `调用 LLM 模型`, `模型: ${model}, 温度: ${temperature}`, { input: context.input });
 
-          const mockResponse = `这是模拟的 LLM 响应。\n\n输入: ${context.input}\n\n模型: ${model}\n\n时间: ${new Date().toLocaleString()}`;
-          context.output = mockResponse;
+          try {
+            const response = await fetch('/api/v1/chat/completion', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: model,
+                prompt: context.input,
+                system_prompt: systemPrompt,
+                temperature: parseFloat(temperature) || 0.7,
+                max_tokens: Math.round(parseFloat(node.data.maxTokens) || 1024),
+                top_k: Math.round(parseFloat(node.data.topK) || 0),
+                top_p: parseFloat(node.data.topP) || 1.0
+              })
+            });
+
+            if (response.ok) {
+              const data = await response.json();
+              if (!data.result && !data.content) {
+                throw new Error('LLM 响应为空');
+              }
+              context.output = data.result || data.content;
+            } else {
+              const errorData = await response.json();
+              throw new Error(errorData.message || 'LLM 调用失败');
+            }
+          } catch (error) {
+            this.addNodeLog(nodeId, { type: 'error', message: error.message });
+            this.addLog('error', 'LLM 调用失败', error.message, null);
+            throw error;
+          }
           
-          this.updateNodeData(nodeId, { output: mockResponse });
+          this.updateNodeData(nodeId, { output: context.output });
           this.addNodeLog(nodeId, { type: 'info', message: 'LLM 响应完成' });
-          this.addLog('info', 'LLM 响应完成', null, { output: mockResponse });
+          this.addLog('info', 'LLM 响应完成', null, { output: context.output });
           break;
         }
 
@@ -575,14 +604,17 @@ export class ExecutionEngine {
 
             if (response.ok) {
               const data = await response.json();
-              result = data.result || data.content || `这是模拟的 LLM 响应。\n\n输入: ${resolvedPrompt}\n\n模型: ${model}\n\n时间: ${new Date().toLocaleString()}`;
+              if (!data.result && !data.content) {
+                throw new Error('LLM 响应为空');
+              }
+              result = data.result || data.content;
             } else {
               const errorData = await response.json();
               throw new Error(errorData.message || 'LLM 调用失败');
             }
           } catch (error) {
             console.error('LLM 调用失败:', error);
-            result = `这是模拟的 LLM 响应（本地模式）。\n\n输入: ${resolvedPrompt}\n\n模型: ${model}\n\n时间: ${new Date().toLocaleString()}`;
+            throw error;
           }
 
           this.updateNodeData(nodeId, { output: result });

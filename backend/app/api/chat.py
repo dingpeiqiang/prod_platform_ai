@@ -126,16 +126,8 @@ async def chat_completion(request: CompletionRequest, db: Session = Depends(get_
             ).first()
             
             if not model_db_config:
-                logger.warning(f"[chat/completion] 未找到模型配置: {request.model}")
-                mock_response = f"这是模拟的 LLM 响应（未找到模型配置）\n\n输入提示词:\n{request.prompt}\n\n模型: {request.model}\n\n提示：请先在'模型配置'面板中添加该模型的配置。"
-                return {
-                    "success": True,
-                    "result": mock_response,
-                    "model": request.model,
-                    "prompt_length": len(request.prompt),
-                    "simulated": True,
-                    "message": "未找到模型配置，返回模拟响应"
-                }
+                logger.error(f"[chat/completion] 未找到模型配置: {request.model}")
+                raise HTTPException(status_code=400, detail=f"未找到模型配置: {request.model}。请先在'模型配置'面板中添加该模型的配置。")
             
             # 使用数据库配置
             api_key = (model_db_config.api_key or '').strip().strip('`')
@@ -188,21 +180,13 @@ async def chat_completion(request: CompletionRequest, db: Session = Depends(get_
                 "response_length": len(response)
             }
         else:
-            logger.warning(f"[chat/completion] ====== LLM 返回为空 ======")
-            logger.warning(f"[chat/completion] 输入提示词: {request.prompt[:100]}...")
-            mock_response = f"这是模拟的 LLM 响应（配置不完整）\n\n输入提示词:\n{request.prompt}\n\n模型: {request.model or '未指定'}\n温度: {request.temperature}\n最大Token: {request.max_tokens}\n\n提示：请通过前端界面配置 LLM 模型参数以获取真实响应。"
-            return {
-                "success": True,
-                "result": mock_response,
-                "model": request.model or "simulated",
-                "prompt_length": len(request.prompt),
-                "simulated": True,
-                "message": "LLM 配置不完整，返回模拟响应"
-            }
+            logger.error(f"[chat/completion] ====== LLM 返回为空 ======")
+            logger.error(f"[chat/completion] 输入提示词: {request.prompt[:100]}...")
+            raise HTTPException(status_code=500, detail="LLM 调用返回为空，请检查模型配置和网络连接。")
     
     except Exception as e:
         logger.error(f"[chat/completion] 执行失败: {e}", exc_info=True)
-        return {"success": False, "message": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/chat/model/switch")
