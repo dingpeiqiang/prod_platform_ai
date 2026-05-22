@@ -158,7 +158,14 @@ export class ExecutionEngine {
   }
 
   async execute(elements, inputParams = {}) {
-    if (this.isRunning) return;
+    console.log('[WORKFLOW DEBUG] ==================== 工作流执行开始 ====================');
+    console.log('[WORKFLOW DEBUG] 输入参数:', JSON.stringify(inputParams, null, 2));
+    console.log('[WORKFLOW DEBUG] 所有元素数量:', elements.length);
+    
+    if (this.isRunning) {
+      console.log('[WORKFLOW DEBUG] 工作流正在运行中，跳过执行');
+      return;
+    }
 
     this.isRunning = true;
     this.isPaused = false;
@@ -175,11 +182,18 @@ export class ExecutionEngine {
     try {
       const nodes = elements.filter(el => !el.source && !el.target);
       const edges = elements.filter(el => el.source && el.target);
+      
+      console.log('[WORKFLOW DEBUG] 节点数量:', nodes.length);
+      console.log('[WORKFLOW DEBUG] 边数量:', edges.length);
+      console.log('[WORKFLOW DEBUG] 所有节点:', JSON.stringify(nodes.map(n => ({ id: n.id, type: n.type, data: n.data })), null, 2));
+      console.log('[WORKFLOW DEBUG] 所有边:', JSON.stringify(edges, null, 2));
 
       const startNode = nodes.find(n => n.type === 'start');
       if (!startNode) {
+        console.log('[WORKFLOW ERROR] 未找到开始节点');
         throw new Error('未找到开始节点');
       }
+      console.log('[WORKFLOW DEBUG] 开始节点:', startNode.id);
 
       const context = {
         input: '',
@@ -193,6 +207,7 @@ export class ExecutionEngine {
       }
 
       this.addLog('start', '开始执行工作流', null, null);
+      console.log('[WORKFLOW DEBUG] 开始执行节点:', startNode.id);
       await this.executeNode(startNode.id, nodes, edges, context);
 
       this.addLog('success', '工作流执行完成', null, {
@@ -218,8 +233,17 @@ export class ExecutionEngine {
   }
 
   async executeNode(nodeId, nodes, edges, context) {
+    console.log('[NODE DEBUG] ---------- 开始执行节点 ----------');
+    console.log('[NODE DEBUG] 节点ID:', nodeId);
+    
     const node = nodes.find(n => n.id === nodeId);
-    if (!node) return;
+    if (!node) {
+      console.log('[NODE ERROR] 未找到节点:', nodeId);
+      return;
+    }
+    
+    console.log('[NODE DEBUG] 节点类型:', node.type);
+    console.log('[NODE DEBUG] 节点数据:', JSON.stringify(node.data, null, 2));
 
     const nodeLabel = node.data.label || node.type;
     this.setNodeStatus(nodeId, 'running');
@@ -411,6 +435,11 @@ export class ExecutionEngine {
         }
 
         case 'condition': {
+          console.log('[DEBUG] ==================== 条件节点执行开始 ====================');
+          console.log('[DEBUG] 节点ID:', nodeId);
+          console.log('[DEBUG] 节点数据:', JSON.stringify(node.data, null, 2));
+          console.log('[DEBUG] 当前上下文变量:', JSON.stringify(context.variables, null, 2));
+          
           let result = false;
           let conditionStr = 'false';
           
@@ -420,16 +449,22 @@ export class ExecutionEngine {
           
           if (node.data.branches && node.data.branches.length > 0) {
             const branches = node.data.branches;
-            console.log('[DEBUG] 分支数量:', branches.length);
+            console.log('[DEBUG] 分支数据:', JSON.stringify(branches, null, 2));
+            
             for (let i = 0; i < branches.length; i++) {
-              console.log('[DEBUG] 当前分支索引:', i, '分支类型:', branches[i]?.type);
+              console.log('[DEBUG] ---------- 评估分支 ' + i + ' ----------');
               branch = branches[i];
               branchIndex = i;
+              
+              console.log('[DEBUG] 分支类型:', branch.type);
+              console.log('[DEBUG] 分支handle:', branch.handle);
+              console.log('[DEBUG] 分支条件:', JSON.stringify(branch.conditions, null, 2));
               
               let currentConditionStr = '';
               let currentResult = false;
               
               if (branch.type === 'else') {
+                console.log('[DEBUG] 检测到 ELSE 分支，直接匹配');
                 currentConditionStr = 'else';
                 currentResult = true;
                 result = true;
@@ -438,27 +473,50 @@ export class ExecutionEngine {
                 const conditions = branch.conditions;
                 let branchResult = true;
                 
-                for (const cond of conditions) {
-                  if (!cond.variable || !cond.operator) continue;
+                console.log('[DEBUG] 开始评估条件，共 ' + conditions.length + ' 个条件');
+                
+                for (let j = 0; j < conditions.length; j++) {
+                  const cond = conditions[j];
+                  console.log('[DEBUG] 条件 ' + j + ':');
+                  console.log('[DEBUG]   变量名:', cond.variable);
+                  console.log('[DEBUG]   操作符:', cond.operator);
+                  console.log('[DEBUG]   值类型:', cond.valueType);
+                  console.log('[DEBUG]   比较值:', cond.value);
                   
-                  const varValue = context.variables[cond.variable];
-                  let compareValue = cond.value;
-                  
-                  if (cond.valueType === 'reference' && cond.value) {
-                    compareValue = context.variables[cond.value] || cond.value;
+                  if (!cond.variable || !cond.operator) {
+                    console.log('[DEBUG]   跳过：变量或操作符为空');
+                    continue;
                   }
                   
+                  const varValue = context.variables[cond.variable];
+                  console.log('[DEBUG]   变量实际值:', varValue, '(类型:', typeof varValue + ')');
+                  
+                  let compareValue = cond.value;
+                  if (cond.valueType === 'reference' && cond.value) {
+                    compareValue = context.variables[cond.value] || cond.value;
+                    console.log('[DEBUG]   引用变量解析后的值:', compareValue);
+                  }
+                  
+                  console.log('[DEBUG]   执行比较:', varValue, cond.operator, compareValue);
                   branchResult = this.evaluateCondition(varValue, cond.operator, compareValue);
-                  if (!branchResult) break;
+                  console.log('[DEBUG]   比较结果:', branchResult);
+                  
+                  if (!branchResult) {
+                    console.log('[DEBUG]   条件不满足，跳出循环');
+                    break;
+                  }
                 }
                 
                 currentResult = branchResult;
                 currentConditionStr = this.formatBranchConditions(branch);
                 
                 if (branchResult) {
+                  console.log('[DEBUG] 分支条件全部满足，设置结果为 true');
                   result = true;
                   conditionStr = currentConditionStr;
                 }
+              } else {
+                console.log('[DEBUG] 分支没有条件，跳过');
               }
               
               let branchLabel = '';
@@ -475,14 +533,21 @@ export class ExecutionEngine {
               console.log('[DEBUG] 添加日志:', logEntry);
               console.log('[DEBUG] 当前 result 值:', result);
               
-              if (result) break;
+              if (result) {
+                console.log('[DEBUG] 找到匹配分支，跳出循环');
+                break;
+              }
             }
           } else {
+            console.log('[DEBUG] 使用旧格式 condition 字段');
             conditionStr = node.data.condition || 'true';
+            console.log('[DEBUG] 条件表达式:', conditionStr);
             try {
               const func = new Function('context', `return ${conditionStr}`);
               result = func(context);
-            } catch {
+              console.log('[DEBUG] 旧格式执行结果:', result);
+            } catch (e) {
+              console.log('[DEBUG] 旧格式执行出错:', e.message);
               result = true;
             }
           }
@@ -497,6 +562,7 @@ export class ExecutionEngine {
           }
           
           const resultMsg = `${branchLabel}: ${conditionStr} = ${result}`;
+          console.log('[DEBUG] 最终结果消息:', resultMsg);
           
           this.updateNodeData(nodeId, {
             input: { condition: conditionStr, context: { ...context.variables } },
@@ -507,6 +573,17 @@ export class ExecutionEngine {
           this.addLog('info', '条件判断', resultMsg, { result, branchType: branch?.type });
 
           const currentBranch = branch;
+          
+          // 如果没有任何分支匹配，记录错误并返回
+          if (!result) {
+            console.log('[ERROR] 没有找到匹配的分支条件');
+            this.addLog('error', '条件分支执行失败', '没有找到匹配的分支条件', { branches: node.data.branches });
+            this.addNodeLog(nodeId, { type: 'error', message: '没有找到匹配的分支条件' });
+            this.setNodeStatus(nodeId, 'completed');
+            console.log('[DEBUG] ==================== 条件节点执行结束（无匹配分支） ====================');
+            return;
+          }
+          
           // 使用分支的 handle 属性（如果存在），否则使用索引或 else 分支的固定ID
           let branchHandle = currentBranch?.handle;
           if (!branchHandle) {
@@ -516,12 +593,32 @@ export class ExecutionEngine {
               branchHandle = `branch_${branchIndex}`;
             }
           }
+          console.log('[DEBUG] 匹配分支的 handle:', branchHandle);
+          
+          // 输出所有从当前节点出发的边
+          const allOutgoingEdges = edges.filter(e => e.source === nodeId);
+          console.log('[DEBUG] 从当前节点出发的所有边:', JSON.stringify(allOutgoingEdges, null, 2));
           
           const resultEdges = edges.filter(e => e.source === nodeId && e.sourceHandle === branchHandle);
+          console.log('[DEBUG] 匹配的边数量:', resultEdges.length);
+          console.log('[DEBUG] 匹配的边:', JSON.stringify(resultEdges, null, 2));
+          
+          if (resultEdges.length === 0) {
+            console.log('[ERROR] 未找到 handle 为 "' + branchHandle + '" 的输出边');
+            this.addLog('error', '条件分支执行失败', `未找到 handle 为 "${branchHandle}" 的输出边`, { branchHandle, edges: allOutgoingEdges });
+            this.addNodeLog(nodeId, { type: 'error', message: `未找到 handle 为 "${branchHandle}" 的输出边` });
+            this.setNodeStatus(nodeId, 'completed');
+            console.log('[DEBUG] ==================== 条件节点执行结束（无输出边） ====================');
+            return;
+          }
+          
+          console.log('[DEBUG] 开始执行后续节点');
           for (const edge of resultEdges) {
+            console.log('[DEBUG] 执行节点:', edge.target);
             await this.executeNode(edge.target, nodes, edges, context);
           }
           this.setNodeStatus(nodeId, 'completed');
+          console.log('[DEBUG] ==================== 条件节点执行结束（成功） ====================');
           return;
         }
 
@@ -672,8 +769,20 @@ export class ExecutionEngine {
           this.addLog('info', `执行节点类型: ${node.type}`, null, null);
       }
 
-      const nextEdges = edges.filter(e => e.source === nodeId && !e.sourceHandle);
+      // 查找没有 sourceHandle 或者 sourceHandle 为 "source" 的边（普通节点的输出边）
+      // Vue Flow 默认会给边添加 sourceHandle: "source" 属性
+      const nextEdges = edges.filter(e => e.source === nodeId && (!e.sourceHandle || e.sourceHandle === 'source'));
+      console.log('[NODE DEBUG] 查找后续节点 - 当前节点ID:', nodeId);
+      console.log('[NODE DEBUG] 所有从当前节点出发的边:', JSON.stringify(edges.filter(e => e.source === nodeId), null, 2));
+      console.log('[NODE DEBUG] 匹配的后续边数量:', nextEdges.length);
+      console.log('[NODE DEBUG] 匹配的后续边:', JSON.stringify(nextEdges, null, 2));
+      
+      if (nextEdges.length === 0 && node.type !== 'end') {
+        console.log('[NODE WARNING] 当前节点没有后续节点:', nodeId, '节点类型:', node.type);
+      }
+      
       for (const edge of nextEdges) {
+        console.log('[NODE DEBUG] 执行后续节点:', edge.target);
         await this.executeNode(edge.target, nodes, edges, context);
       }
     } catch (error) {

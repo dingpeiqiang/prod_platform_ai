@@ -758,28 +758,35 @@ class ConditionNodeExecutor(NodeExecutor):
             
             if branches:
                 # 使用新的 branches 格式评估
-                result, matched_branch_index = await self._evaluate_branches(context)
+                result, matched_handle = await self._evaluate_branches(context)
                 context.set_variable("condition_result", result)
-                context.set_variable("matched_branch_index", matched_branch_index)
-                self.set_output(context, {"condition_result": result, "matched_branch_index": matched_branch_index})
+                context.set_variable("matched_handle", matched_handle)
+                self.set_output(context, {"condition_result": result, "matched_handle": matched_handle})
                 
-                logger.info(f"Condition (branches format) evaluated: matched_branch={matched_branch_index}, result={result}")
+                logger.info(f"Condition (branches format) evaluated: matched_handle={matched_handle}, result={result}")
                 
-                # 根据匹配的分支索引选择输出边
-                # sourceHandle 格式为 "branch_0", "branch_1", ...
-                output_key = f"branch_{matched_branch_index}"
+                # 如果没有匹配任何分支，记录警告
+                if not result:
+                    logger.warning(f"Condition node {self.node_id} has no matching branch")
+                
+                # 根据匹配的分支 handle 选择输出边
                 next_nodes = [
                     e["target"] for e in edges 
-                    if e["source"] == self.node_id and e.get("sourceHandle") == output_key
+                    if e["source"] == self.node_id and e.get("sourceHandle") == matched_handle
                 ]
                 
                 # 如果没有找到对应分支的边，尝试兼容旧格式
                 if not next_nodes:
+                    logger.debug(f"No edges found for handle {matched_handle}, trying legacy format")
                     output_key = "true" if result else "false"
                     next_nodes = [
                         e["target"] for e in edges 
                         if e["source"] == self.node_id and e.get("sourceHandle") == output_key
                     ]
+                
+                # 如果仍然没有找到边，记录错误
+                if not next_nodes:
+                    logger.error(f"Condition node {self.node_id} has no outgoing edges for handle {matched_handle}")
             else:
                 # 兼容旧格式：leftType/leftValue/operator/rightType/rightValue
                 result, matched_branch_index = await self._evaluate_legacy_format(context)
@@ -810,7 +817,7 @@ class ConditionNodeExecutor(NodeExecutor):
             context: 工作流上下文
             
         Returns:
-            (result, matched_branch_index): 条件结果和匹配的分支索引
+            (result, handle): 条件结果和匹配分支的 handle
         """
         branches = self.node_data.get("branches", [])
         
@@ -818,9 +825,17 @@ class ConditionNodeExecutor(NodeExecutor):
             branch_type = branch.get("type", "")
             conditions = branch.get("conditions", [])
             
+            # 获取分支的 handle（优先使用分支定义中的 handle，否则生成默认值）
+            branch_handle = branch.get("handle")
+            if not branch_handle:
+                if branch_type == "else":
+                    branch_handle = "branch_else"
+                else:
+                    branch_handle = f"branch_{branch_index}"
+            
             # "否则"分支直接匹配
             if branch_type == "else":
-                return True, branch_index
+                return True, branch_handle
             
             # 评估当前分支的所有条件（AND 关系）
             # 注意：all_conditions_met 需要在分支循环开始时重置为 True
@@ -861,10 +876,10 @@ class ConditionNodeExecutor(NodeExecutor):
                         break
                 
                 if all_conditions_met:
-                    return True, branch_index
+                    return True, branch_handle
         
-        # 没有匹配任何分支，返回 False 和 -1
-        return False, -1
+        # 没有匹配任何分支，返回 False 和默认 handle
+        return False, "branch_0"
     
     async def _evaluate_legacy_format(self, context: WorkflowContext) -> tuple:
         """评估旧格式的条件（leftType/leftValue/operator/rightType/rightValue）

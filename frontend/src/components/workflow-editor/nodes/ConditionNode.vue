@@ -406,11 +406,23 @@ const initBranches = () => {
     // 深拷贝数据，确保响应式
     let branches = JSON.parse(JSON.stringify(props.data.branches));
     
-    // 确保每个分支都有 conditions 数组
-    branches = branches.map(branch => ({
-      ...branch,
-      conditions: branch.conditions || []
-    }));
+    // 确保每个分支都有 conditions 数组和 handle 属性
+    branches = branches.map((branch, index) => {
+      // 如果没有 handle，生成唯一的 handle ID
+      let handle = branch.handle;
+      if (!handle) {
+        if (branch.type === 'else') {
+          handle = 'branch_else';
+        } else {
+          handle = `branch_${Date.now()}_${index}`;
+        }
+      }
+      return {
+        ...branch,
+        handle: handle,
+        conditions: branch.conditions || []
+      };
+    });
     
     // 确保“否则”分支在最后
     const elseIndex = branches.findIndex(branch => branch.type === 'else');
@@ -427,6 +439,7 @@ const initBranches = () => {
       {
         type: 'if',
         expanded: true,
+        handle: 'branch_0',  // 固定 handle ID
         conditions: [
           {
             variable: '',
@@ -439,6 +452,7 @@ const initBranches = () => {
       {
         type: 'else',
         expanded: true,
+        handle: 'branch_else',  // else 分支使用固定 ID
         conditions: []
       }
     ];

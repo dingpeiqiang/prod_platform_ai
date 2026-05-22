@@ -313,6 +313,110 @@ class TestWorkflowExecutor:
             
             assert context.status == ExecutionStatus.COMPLETED
 
+    def test_condition_branches_format(self):
+        """测试条件分支的 branches 格式（Vue Flow 风格）"""
+        workflow_def = {
+            "nodes": [
+                {"id": "start-1", "type": "start", "data": {"label": "开始"}},
+                {"id": "condition-1", "type": "condition", "data": {
+                    "label": "条件判断",
+                    "branches": [
+                        {
+                            "type": "if",
+                            "handle": "branch_0",
+                            "conditions": [
+                                {
+                                    "variable": "score",
+                                    "operator": ">",
+                                    "valueType": "constant",
+                                    "value": "60"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "else",
+                            "handle": "branch_else",
+                            "conditions": []
+                        }
+                    ]
+                }},
+                {"id": "var-pass", "type": "variable", "data": {"label": "及格", "varName": "result", "varValue": "pass"}},
+                {"id": "var-fail", "type": "variable", "data": {"label": "不及格", "varName": "result", "varValue": "fail"}},
+                {"id": "end-1", "type": "end", "data": {"label": "结束"}}
+            ],
+            "edges": [
+                {"source": "start-1", "target": "condition-1"},
+                {"source": "condition-1", "target": "var-pass", "sourceHandle": "branch_0"},
+                {"source": "condition-1", "target": "var-fail", "sourceHandle": "branch_else"},
+                {"source": "var-pass", "target": "end-1"},
+                {"source": "var-fail", "target": "end-1"}
+            ]
+        }
+        
+        # 测试及格路径
+        executor_pass = WorkflowExecutor(workflow_def)
+        context_pass = asyncio.run(executor_pass.execute({"score": 85}))
+        assert context_pass.status == ExecutionStatus.COMPLETED
+        assert context_pass.get_variable("result") == "pass"
+        
+        # 测试不及格路径
+        executor_fail = WorkflowExecutor(workflow_def)
+        context_fail = asyncio.run(executor_fail.execute({"score": 45}))
+        assert context_fail.status == ExecutionStatus.COMPLETED
+        assert context_fail.get_variable("result") == "fail"
+
+    def test_condition_branches_with_custom_handle(self):
+        """测试条件分支使用自定义 handle（时间戳格式）"""
+        workflow_def = {
+            "nodes": [
+                {"id": "start-1", "type": "start", "data": {"label": "开始"}},
+                {"id": "condition-1", "type": "condition", "data": {
+                    "label": "条件判断",
+                    "branches": [
+                        {
+                            "type": "if",
+                            "handle": "branch_1704067200000",  # 模拟前端生成的时间戳格式
+                            "conditions": [
+                                {
+                                    "variable": "value",
+                                    "operator": "==",
+                                    "valueType": "constant",
+                                    "value": "test"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "else",
+                            "handle": "branch_else",
+                            "conditions": []
+                        }
+                    ]
+                }},
+                {"id": "var-match", "type": "variable", "data": {"label": "匹配", "varName": "matched", "varValue": "yes"}},
+                {"id": "var-nomatch", "type": "variable", "data": {"label": "不匹配", "varName": "matched", "varValue": "no"}},
+                {"id": "end-1", "type": "end", "data": {"label": "结束"}}
+            ],
+            "edges": [
+                {"source": "start-1", "target": "condition-1"},
+                {"source": "condition-1", "target": "var-match", "sourceHandle": "branch_1704067200000"},
+                {"source": "condition-1", "target": "var-nomatch", "sourceHandle": "branch_else"},
+                {"source": "var-match", "target": "end-1"},
+                {"source": "var-nomatch", "target": "end-1"}
+            ]
+        }
+        
+        # 测试匹配路径
+        executor_match = WorkflowExecutor(workflow_def)
+        context_match = asyncio.run(executor_match.execute({"value": "test"}))
+        assert context_match.status == ExecutionStatus.COMPLETED
+        assert context_match.get_variable("matched") == "yes"
+        
+        # 测试不匹配路径（走 else 分支）
+        executor_nomatch = WorkflowExecutor(workflow_def)
+        context_nomatch = asyncio.run(executor_nomatch.execute({"value": "other"}))
+        assert context_nomatch.status == ExecutionStatus.COMPLETED
+        assert context_nomatch.get_variable("matched") == "no"
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
