@@ -49,6 +49,7 @@ class MCPToolDefinition(Base):
 
     def to_dict(self):
         """转换为字典"""
+        config = self.config or {}
         return {
             "id": self.id,
             "tool_name": self.tool_name,
@@ -59,12 +60,21 @@ class MCPToolDefinition(Base):
             "is_public": self.is_public,
             "input_schema": self.input_schema,
             "output_schema": self.output_schema,
-            "config": self.config,
+            "config": config,
             "extra_metadata": self.extra_metadata,
             "total_calls": self.total_calls,
             "last_called_at": self.last_called_at.isoformat() if self.last_called_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            # 兼容前端显示，从 config 中提取 URL 和请求方法
+            "url": config.get("url", ""),
+            "request_method": config.get("method", "POST").lower(),
+            "tool_type": "url",
+            "protocol": "http",
+            "auth_info": "",
+            "auth_type": "none",
+            "need_summary": False,
+            "prompt": ""
         }
 
 

@@ -438,3 +438,135 @@ async def toggle_external_tool(tool_name: str, data: Dict[str, bool], db: Sessio
         db.rollback()
         logger.error(f"Failed to toggle external tool: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
+
+
+@router.post("/external-tools/import")
+async def import_external_tools(import_data: Dict[str, Any], db: Session = Depends(get_db)):
+    """
+    从 OpenAPI 规范导入外部工具
+    
+    Args:
+        import_data: 包含 OpenAPI 规范内容的字典
+            - spec_content: OpenAPI 规范内容（JSON 或 YAML 格式字符串）
+            - category: 可选，工具分类
+            - is_enabled: 可选，是否启用，默认 true
+    """
+    from app.models.mcp_call_log import MCPToolDefinition
+    from app.mcp_tools.tool_registry_manager import ToolRegistryManager
+    from app.mcp_tools.openapi_parser import generate_tools_from_openapi
+    
+    spec_content = import_data.get("spec_content", "")
+    category = import_data.get("category", "external")
+    is_enabled = import_data.get("is_enabled", True)
+    
+    if not spec_content:
+        return {"success": False, "error": "OpenAPI 规范内容不能为空"}
+    
+    try:
+        # 解析 OpenAPI 规范并生成工具定义
+        tools = generate_tools_from_openapi(spec_content)
+        
+        if not tools:
+            return {"success": False, "error": "未能从 OpenAPI 规范中解析出任何工具"}
+        
+        # 批量创建工具
+        created_tools = []
+        skipped_tools = []
+        failed_tools = []
+        
+        for tool_data in tools:
+            # 更新分类和启用状态
+            tool_data["category"] = category
+            tool_data["is_enabled"] = is_enabled
+            
+            try:
+                # 检查是否已存在
+                existing = db.query(MCPToolDefinition).filter(
+                    MCPToolDefinition.tool_name == tool_data["tool_name"]
+                ).first()
+                
+                if existing:
+                    skipped_tools.append({
+                        "tool_name": tool_data["tool_name"],
+                        "reason": "工具已存在"
+                    })
+                    continue
+                
+                # 创建新记录
+                new_tool = MCPToolDefinition(
+                    tool_name=tool_data["tool_name"],
+                    tool_code=tool_data.get("tool_code"),
+                    description=tool_data.get("description"),
+                    category=tool_data.get("category", "external"),
+                    is_enabled=tool_data.get("is_enabled", True),
+                    is_public=tool_data.get("is_public", True),
+                    input_schema=tool_data.get("input_schema"),
+                    output_schema=tool_data.get("output_schema"),
+                    config=tool_data.get("config"),
+                    extra_metadata=tool_data.get("extra_metadata")
+                )
+                
+                db.add(new_tool)
+                created_tools.append(new_tool.to_dict())
+                
+            except Exception as e:
+                failed_tools.append({
+                    "tool_name": tool_data["tool_name"],
+                    "reason": str(e)
+                })
+        
+        db.commit()
+        
+        # 如果有创建成功的工具，重新加载外部工具
+        if created_tools and is_enabled:
+            manager = ToolRegistryManager(db)
+            manager.sync_tools_from_database()
+        
+        logger.info(f"Imported {len(created_tools)} external tools from OpenAPI spec")
+        
+        return {
+            "success": True,
+            "message": f"成功导入 {len(created_tools)} 个工具，跳过 {len(skipped_tools)} 个，失败 {len(failed_tools)} 个",
+            "created": created_tools,
+            "skipped": skipped_tools,
+            "failed": failed_tools
+        }
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to import external tools: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
+@router.post("/external-tools/parse")
+async def parse_openapi_spec(import_data: Dict[str, Any]):
+    """
+    解析 OpenAPI 规范并预览工具定义（不保存）
+    
+    Args:
+        import_data: 包含 OpenAPI 规范内容的字典
+            - spec_content: OpenAPI 规范内容（JSON 或 YAML 格式字符串）
+    """
+    from app.mcp_tools.openapi_parser import generate_tools_from_openapi
+    
+    spec_content = import_data.get("spec_content", "")
+    
+    if not spec_content:
+        return {"success": False, "error": "OpenAPI 规范内容不能为空"}
+    
+    try:
+        # 解析 OpenAPI 规范并生成工具定义
+        tools = generate_tools_from_openapi(spec_content)
+        
+        if not tools:
+            return {"success": False, "error": "未能从 OpenAPI 规范中解析出任何工具"}
+        
+        return {
+            "success": True,
+            "tools": tools,
+            "total": len(tools)
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to parse OpenAPI spec: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}

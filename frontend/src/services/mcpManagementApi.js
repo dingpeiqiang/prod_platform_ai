@@ -105,3 +105,26 @@ export async function toggleExternalTool(toolName, enabled) {
   const res = await axios.post(`${BASE_URL}/external-tools/${toolName}/toggle`, { enabled })
   return res.data
 }
+
+/**
+ * 解析 OpenAPI 规范并预览工具定义（不保存）
+ * @param {string} specContent - OpenAPI 规范内容
+ */
+export async function parseOpenAPISpec(specContent) {
+  const res = await axios.post(`${BASE_URL}/external-tools/parse`, { spec_content: specContent })
+  return res.data
+}
+
+/**
+ * 从 OpenAPI 规范导入外部工具
+ * @param {string} specContent - OpenAPI 规范内容
+ * @param {object} options - 导入选项
+ */
+export async function importExternalTools(specContent, options = {}) {
+  const res = await axios.post(`${BASE_URL}/external-tools/import`, {
+    spec_content: specContent,
+    category: options.category || 'external',
+    is_enabled: options.isEnabled !== undefined ? options.isEnabled : true
+  })
+  return res.data
+}

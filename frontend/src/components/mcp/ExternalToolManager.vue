@@ -14,6 +14,14 @@
         <el-option label="已启用" :value="true" />
         <el-option label="已禁用" :value="false" />
       </el-select>
+      <el-button type="success" @click="showImportModal = true">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+        导入工具
+      </el-button>
       <el-button type="primary" @click="$emit('create')">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;">
           <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -68,6 +76,19 @@
     <div v-if="filteredTools.length === 0" class="empty-state">
       <p>暂无外部工具，点击"新建外部工具"添加</p>
     </div>
+
+    <!-- 导入工具弹窗 -->
+    <el-dialog
+      v-model="showImportModal"
+      title="导入外部工具"
+      width="70%"
+      top="5vh"
+    >
+      <OpenAPIImporter
+        @close="showImportModal = false"
+        @import-success="handleImportSuccess"
+      />
+    </el-dialog>
   </div>
 </template>
 
@@ -75,11 +96,13 @@
 import { ref, computed, onMounted } from 'vue'
 import * as mcpApi from '@/services/mcpManagementApi'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import OpenAPIImporter from './OpenAPIImporter.vue'
 
 const emit = defineEmits(['refresh', 'create', 'edit', 'test'])
 
 const searchKeyword = ref('')
 const filterStatus = ref('')
+const showImportModal = ref(false)
 
 const externalTools = ref([])
 
@@ -166,6 +189,13 @@ const deleteTool = async (tool) => {
       ElMessage.error('删除失败: ' + e.message)
     }
   }
+}
+
+const handleImportSuccess = () => {
+  showImportModal.value = false
+  loadExternalTools()
+  emit('refresh')
+  ElMessage.success('工具导入成功')
 }
 </script>
 

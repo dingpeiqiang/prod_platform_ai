@@ -307,26 +307,31 @@ const schemaToParams = (schema) => {
     const result = []
     
     for (const [name, prop] of Object.entries(props || {})) {
+      const resolvedProp = resolveRef(schema, prop)
+      
       const param = {
         id: isRoot ? (name === 'ROOT' ? 'input-root' : generateId()) : generateId(),
         name: name,
-        description: prop.description || '',
-        enum_values: prop.enum ? prop.enum.join(', ') : '',
-        data_type: prop.type || 'string',
+        description: resolvedProp.description || '',
+        enum_values: resolvedProp.enum ? resolvedProp.enum.join(', ') : '',
+        data_type: getParamType(resolvedProp),
         required: required.includes(name),
         prompt: prop.prompt || false,
-        default_value: prop.default || '',
+        default_value: resolvedProp.default || '',
         parentId: parentId,
         children: [],
         expanded: false
       }
       
-      if (prop.type === 'object' && prop.properties) {
-        param.children = buildParams(prop.properties, prop.required || [], param.id, false)
+      if (param.data_type === 'object' && resolvedProp.properties) {
+        param.children = buildParams(resolvedProp.properties, resolvedProp.required || [], param.id, false)
         param.expanded = param.children.length > 0
-      } else if (prop.type === 'array' && prop.items && prop.items.properties) {
-        param.children = buildParams(prop.items.properties, prop.items.required || [], param.id, false)
-        param.expanded = param.children.length > 0
+      } else if (param.data_type === 'array' && resolvedProp.items) {
+        const itemsProp = resolveRef(schema, resolvedProp.items)
+        if (itemsProp.type === 'object' && itemsProp.properties) {
+          param.children = buildParams(itemsProp.properties, itemsProp.required || [], param.id, false)
+          param.expanded = param.children.length > 0
+        }
       }
       
       result.push(param)
@@ -354,6 +359,54 @@ const schemaToParams = (schema) => {
   }
   
   return params
+}
+
+const resolveRef = (schema, prop) => {
+  if (!prop || typeof prop !== 'object') {
+    return { type: 'string' }
+  }
+  
+  if (prop.$ref && schema.components && schema.components.schemas) {
+    const refPath = prop.$ref.replace('#/components/schemas/', '')
+    const referencedSchema = schema.components.schemas[refPath]
+    if (referencedSchema) {
+      return resolveRef(schema, referencedSchema)
+    }
+  }
+  
+  if (prop.allOf && prop.allOf.length > 0) {
+    const merged = {}
+    for (const part of prop.allOf) {
+      Object.assign(merged, resolveRef(schema, part))
+    }
+    return merged
+  }
+  
+  return prop
+}
+
+const getParamType = (prop) => {
+  if (!prop || typeof prop !== 'object') {
+    return 'string'
+  }
+  
+  if (prop.type) {
+    return prop.type
+  }
+  
+  if (prop.$ref) {
+    return 'object'
+  }
+  
+  if (prop.allOf) {
+    return 'object'
+  }
+  
+  if (prop.items) {
+    return 'array'
+  }
+  
+  return 'string'
 }
 
 watch(() => props.editTool, () => {
