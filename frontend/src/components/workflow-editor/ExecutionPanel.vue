@@ -6,7 +6,10 @@
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
         </svg>
         <span>执行日志</span>
-        <span v-if="isRunning" class="status-badge running">
+        <span v-if="isPaused" class="status-badge paused">
+          <span class="status-dot"></span>等待输入
+        </span>
+        <span v-else-if="isRunning" class="status-badge running">
           <span class="status-dot"></span>运行中
         </span>
         <span v-else-if="lastResult" class="status-badge" :class="lastResult.status === 'success' ? 'success' : 'error'">
@@ -131,7 +134,7 @@
       </div>
     </div>
 
-    <div v-if="lastResult && !isRunning" class="result-summary">
+    <div v-if="lastResult && !isRunning && !isPaused" class="result-summary">
       <div class="result-header">
         <span>📊 执行结果</span>
         <span class="result-status" :class="lastResult.status === 'success' ? 'success' : 'error'">
@@ -139,6 +142,54 @@
         </span>
       </div>
       <pre class="result-content">{{ formatJson(lastResult) }}</pre>
+    </div>
+
+    <div v-if="isPaused && pendingInput" class="user-input-panel">
+      <div class="input-panel-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+        <span>等待用户输入</span>
+      </div>
+      
+      <div class="input-panel-content">
+        <div class="prompt-text">{{ pendingInput.prompt }}</div>
+        
+        <div v-if="pendingInput.inputType === 'text'" class="input-field">
+          <textarea 
+            v-model="userInputValue"
+            :placeholder="pendingInput.required ? '请输入内容（必填）' : '请输入内容'"
+            :rows="3"
+            class="text-input"
+            @keyup.enter="handleSubmit"
+          ></textarea>
+        </div>
+        
+        <div v-else-if="pendingInput.inputType === 'select'" class="input-field">
+          <select v-model="userInputValue" class="select-input">
+            <option value="" disabled>请选择选项</option>
+            <option v-for="(opt, idx) in pendingInput.options" :key="idx" :value="opt">{{ opt }}</option>
+          </select>
+        </div>
+        
+        <div v-else-if="pendingInput.inputType === 'confirm'" class="input-field">
+          <div class="confirm-options">
+            <button @click="handleConfirm(true)" class="confirm-btn confirm-yes">✓ 确认</button>
+            <button @click="handleConfirm(false)" class="confirm-btn confirm-no">✗ 取消</button>
+          </div>
+        </div>
+        
+        <div class="input-actions">
+          <button 
+            v-if="pendingInput.inputType !== 'confirm'"
+            @click="handleSubmit" 
+            class="submit-btn"
+            :disabled="pendingInput.required && !userInputValue"
+          >
+            继续执行
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -149,12 +200,33 @@ import { ref, computed, watch, nextTick, reactive } from 'vue';
 const props = defineProps({
   logs: { type: Array, default: () => [] },
   isRunning: { type: Boolean, default: false },
+  isPaused: { type: Boolean, default: false },
+  pendingInput: { type: Object, default: null },
   lastResult: { type: Object, default: null },
   history: { type: Array, default: () => [] },
-  nodeExecutionData: { type: Array, default: () => [] }  // 新增：结构化的节点执行数据
+  nodeExecutionData: { type: Array, default: () => [] }
 });
 
-const emit = defineEmits(['clear']);
+const emit = defineEmits(['clear', 'resume']);
+
+const userInputValue = ref('');
+
+watch(() => props.pendingInput, (newInput) => {
+  if (newInput) {
+    userInputValue.value = '';
+  }
+});
+
+const handleSubmit = () => {
+  if (props.pendingInput?.required && !userInputValue.value) {
+    return;
+  }
+  emit('resume', userInputValue.value);
+};
+
+const handleConfirm = (value) => {
+  emit('resume', value);
+};
 
 const logsContainer = ref(null);
 const expandedNodes = reactive({});
@@ -605,6 +677,153 @@ watch(() => props.logs.length + props.nodeExecutionData.length, async () => {
   max-height: 120px;
   overflow-y: auto;
 }
+
+.user-input-panel {
+  background: #1e293b;
+  border-top: 1px solid #334155;
+  padding: 12px 16px;
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.input-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f59e0b;
+  margin-bottom: 12px;
+}
+
+.input-panel-content {
+  background: #0f172a;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.prompt-text {
+  font-size: 13px;
+  color: #e2e8f0;
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.input-field {
+  margin-bottom: 16px;
+}
+
+.text-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  background: #1e293b;
+  color: #e2e8f0;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+
+.text-input:focus {
+  outline: none;
+  border-color: #f97316;
+}
+
+.text-input::placeholder {
+  color: #64748b;
+}
+
+.select-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  background: #1e293b;
+  color: #e2e8f0;
+  font-size: 13px;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 10px center;
+  background-repeat: no-repeat;
+  background-size: 14px;
+  padding-right: 32px;
+}
+
+.select-input:focus {
+  outline: none;
+  border-color: #f97316;
+}
+
+.confirm-options {
+  display: flex;
+  gap: 12px;
+}
+
+.confirm-btn {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.confirm-yes {
+  background: #10b981;
+  color: white;
+}
+
+.confirm-yes:hover {
+  background: #059669;
+}
+
+.confirm-no {
+  background: #64748b;
+  color: white;
+}
+
+.confirm-no:hover {
+  background: #475569;
+}
+
+.input-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.submit-btn {
+  padding: 10px 24px;
+  background: #f97316;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.submit-btn:hover:not(:disabled) {
+  background: #ea580c;
+}
+
+.submit-btn:disabled {
+  background: #475569;
+  cursor: not-allowed;
+}
+
+.status-badge.paused { background: rgba(249,115,22,.2); color: #f97316; }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: #0f172a; }

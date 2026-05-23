@@ -415,7 +415,7 @@ export class ExecutionEngine {
 
           this.addLog('info', '工作流暂停等待用户输入', null, this.pendingInput);
 
-          return new Promise((resolve) => {
+          const userInputPromise = new Promise((resolve) => {
             this.resumeCallback = (userInputValue) => {
               context.variables[outputVar] = userInputValue;
               context.output = userInputValue;
@@ -429,6 +429,16 @@ export class ExecutionEngine {
               resolve();
             };
           });
+
+          await userInputPromise;
+
+          const userInputNextEdges = edges.filter(e => e.source === nodeId && (!e.sourceHandle || e.sourceHandle === 'source'));
+          for (const edge of userInputNextEdges) {
+            await this.executeNode(edge.target, nodes, edges, context);
+          }
+          this.setNodeStatus(nodeId, 'completed');
+          this.completeNodeExecution(nodeId, 'completed');
+          return;
         }
 
         case 'tool': {

@@ -666,9 +666,12 @@
               v-else
               :logs="executionLogs"
               :is-running="isRunning"
+              :is-paused="isPaused"
+              :pending-input="pendingInput"
               :last-result="lastExecutionResult"
               :node-execution-data="nodeExecutionData"
               @clear="clearExecutionLogs"
+              @resume="handleResume"
             />
           </div>
         </div>
@@ -780,6 +783,8 @@ const workflowName = ref('未命名工作流');
 
 const executionLogs = ref([]);
 const isRunning = ref(false);
+const isPaused = ref(false);
+const pendingInput = ref(null);
 const lastExecutionResult = ref(null);
 const copiedNodes = ref([]);
 const nodeExecutionStatus = ref({});
@@ -790,6 +795,15 @@ const showParameterPanel = ref(false);
 const executionParameters = ref([]);
 
 const executionEngine = new ExecutionEngine();
+
+const checkPauseStatus = () => {
+  isPaused.value = executionEngine.isExecutionPaused();
+  pendingInput.value = executionEngine.getPendingInput();
+};
+
+const handleResume = (userInputValue) => {
+  executionEngine.resume(userInputValue);
+};
 const keyboardShortcuts = new KeyboardShortcuts();
 
 const quickTemplates = ref([
@@ -1427,6 +1441,7 @@ const handleNodeRun = async () => {
     } else {
       executionLogs.value.push(log);
     }
+    checkPauseStatus();
   };
 
   const onNodeDataChange = (data) => {
@@ -2441,6 +2456,7 @@ const runWorkflow = async (inputParams = {}) => {
     } else {
       executionLogs.value.push(log);
     }
+    checkPauseStatus();
   };
   
   const onNodeDataChange = (data) => {
