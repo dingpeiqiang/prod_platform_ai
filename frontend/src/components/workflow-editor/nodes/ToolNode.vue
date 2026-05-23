@@ -48,10 +48,19 @@
               <option value="variable">变量引用</option>
             </select>
             <input 
+              v-if="param.type !== 'variable'"
               v-model="param.value" 
               @input="emitUpdate" 
               :placeholder="getParamPlaceholder(param.type)"
               class="param-value" 
+            />
+            <VariableCascader
+              v-else
+              v-model="param.value"
+              :available-variables="availableVariables"
+              placeholder="请选择变量"
+              class="param-value-cascader"
+              @change="emitUpdate"
             />
             <button @click="removeParam(index)" class="remove-param-btn">✕</button>
           </div>
@@ -98,6 +107,7 @@ import { ref, watch, computed } from 'vue';
 import { Handle, Position } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
 import { useNodeAnchorMode } from './useHandlePosition.js';
+import VariableCascader from '../VariableCascader.vue';
 
 const props = defineProps({
   data: {
@@ -107,6 +117,10 @@ const props = defineProps({
   selected: {
     type: Boolean,
     default: false
+  },
+  availableVariables: {
+    type: Array,
+    default: () => []
   },
   ...nodeDisplayProps
 });

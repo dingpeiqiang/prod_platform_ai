@@ -93,19 +93,17 @@
                   <option value="constant">常量</option>
                   <option value="expression">表达式</option>
                 </select>
-                <el-cascader
+                <VariableCascader
                   v-if="param.sourceType === 'reference'"
-                  v-model="param.cascaderValue"
-                  :options="cascaderOptions"
-                  :props="{ expandTrigger: 'click' }"
+                  v-model="param.value"
+                  :available-variables="availableVariables"
                   placeholder="请选择变量"
                   class="param-value-cascader"
-                  :popper-append-to-body="true"
-                  @change="handleOutputParamChange(index, $event)"
-                ></el-cascader>
-                <input
+                  @change="emitUpdate"
+                />
+                <input 
                   v-else
-                  v-model="param.value"
+                  v-model="param.value" 
                   @input="emitUpdate"
                   class="param-value-input"
                   placeholder="输入值"
@@ -206,10 +204,11 @@
 </template>
 
 <script setup>
-import { ref, watch, computed } from 'vue';
+import { ref, watch } from 'vue';
 import { Handle } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
 import { useNodeAnchorMode } from './useHandlePosition.js';
+import VariableCascader from '../VariableCascader.vue';
 
 const props = defineProps({
   data: {
@@ -247,67 +246,6 @@ const localUseHistory = ref(props.data.useHistory || false);
 const showOutputSection = ref(true);
 const showAnswerSection = ref(true);
 
-// 级联选择器选项
-const cascaderOptions = computed(() => {
-  if (!props.availableVariables || !Array.isArray(props.availableVariables)) return [];
-
-  const nodeMap = new Map();
-
-  props.availableVariables.forEach(variable => {
-    if (variable && variable.nodeId && variable.id && variable.name) {
-      const nodeLabel = variable.nodeName || variable.sourceNodeName;
-      if (!nodeLabel) return;
-
-      if (!nodeMap.has(variable.nodeId)) {
-        nodeMap.set(variable.nodeId, {
-          value: variable.nodeId,
-          label: nodeLabel,
-          children: []
-        });
-      }
-      nodeMap.get(variable.nodeId).children.push({
-        value: variable.id,
-        label: variable.name
-      });
-    }
-  });
-
-  return Array.from(nodeMap.values());
-});
-
-// 获取节点标签
-const getNodeLabelById = (nodeId) => {
-  if (nodeId.startsWith('start')) return '开始节点';
-  if (nodeId.startsWith('variable')) return '变量节点';
-  if (nodeId.startsWith('llm')) return 'LLM节点';
-  if (nodeId.startsWith('prompt')) return '提示词节点';
-  if (nodeId.startsWith('tool')) return '工具节点';
-  if (nodeId.startsWith('http')) return 'HTTP节点';
-  if (nodeId.startsWith('code')) return '代码节点';
-  if (nodeId.startsWith('parser')) return '解析节点';
-  if (nodeId.startsWith('condition')) return '条件节点';
-  if (nodeId.startsWith('userInput')) return '用户输入节点';
-  if (nodeId.startsWith('end')) return '结束节点';
-  return nodeId;
-};
-
-// 处理输出参数引用变化
-const handleOutputParamChange = (index, value) => {
-  const param = localOutputParams.value[index];
-  if (!param) return;
-
-  if (Array.isArray(value) && value.length === 2) {
-    param.value = value[1];
-    param.nodeId = value[0];
-    param.cascaderValue = value;
-  } else {
-    param.value = '';
-    param.nodeId = '';
-    param.cascaderValue = [];
-  }
-  emitUpdate();
-};
-
 // 更新数据
 const emitUpdate = () => {
   emit('update', props.data.id, {
@@ -335,9 +273,7 @@ const addOutputParam = () => {
   localOutputParams.value.push({
     name: '',
     sourceType: 'reference',
-    value: '',
-    nodeId: '',
-    cascaderValue: []
+    value: ''
   });
   emitUpdate();
 };
@@ -651,12 +587,8 @@ watch(() => props.data, (newData) => {
 }
 
 .param-value-select,
-.param-value-input,
-.param-value-cascader {
+.param-value-input {
   flex: 1;
-  min-width: 200px;
-  width: 100%;
-  flex-shrink: 0;
   padding: 6px 10px;
   border: 1px solid #d9d9d9;
   border-radius: 4px;
@@ -665,8 +597,7 @@ watch(() => props.data, (newData) => {
 }
 
 .param-value-select:focus,
-.param-value-input:focus,
-.param-value-cascader:focus {
+.param-value-input:focus {
   outline: none;
   border-color: #7c3aed;
   box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.1);

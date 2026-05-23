@@ -41,18 +41,17 @@ export function useNodeAnchorMode(props) {
     props.data?.anchorMode || ANCHOR_MODE_VERTICAL
   );
 
-  // 监听整个props.data对象的变化，确保可靠的响应式更新
+  // 监听props.data.anchorMode字段的变化，避免监听整个对象导致不必要的更新
   watch(
-    () => props.data,
-    (newData) => {
-      if (newData) {
-        const newAnchorMode = newData.anchorMode || ANCHOR_MODE_VERTICAL;
+    () => props.data?.anchorMode,
+    (newAnchorMode) => {
+      if (newAnchorMode !== undefined && newAnchorMode !== null) {
         anchorModeValue.value = newAnchorMode;
         // 调试日志：确认anchorMode更新
         console.log(`[useNodeAnchorMode] anchorMode更新为: ${newAnchorMode}`);
       }
     },
-    { immediate: true, deep: true }
+    { immediate: true }
   );
 
   // 创建computed包装器

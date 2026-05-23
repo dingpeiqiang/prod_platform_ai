@@ -16,7 +16,7 @@
       <div class="branch-list">
         <div
           v-for="(branch, branchIndex) in localBranches"
-          :key="getHandleId(branchIndex)"
+          :key="branchIndex"
           class="branch-container"
         >
           <!-- 分支标题 -->
@@ -61,71 +61,73 @@
           <div v-if="branch.expanded" class="branch-content">
             <div v-for="(condition, condIndex) in branch.conditions" :key="condIndex" class="condition-row">
               <div class="condition-grid">
+                <!-- 条件标签列 -->
+                <div class="grid-cell label-cell">
+                  <span class="condition-label-text">条件</span>
+                </div>
+
                 <!-- 引用变量列 -->
                 <div class="grid-cell variable-cell">
-                  <el-cascader
-                    v-model="condition.variableCascaderValue"
-                    :options="cascaderOptions"
-                    :props="{ expandTrigger: 'click' }"
+                  <VariableCascader
+                    v-model="condition.variable"
+                    :available-variables="availableVariables"
                     placeholder="请选择变量"
-                    size="small"
-                    :popper-append-to-body="true"
-                    @change="handleVariableChange(branchIndex, condIndex, $event)"
-                  ></el-cascader>
+                    class="variable-cascader"
+                    @change="(val) => handleVariableChange(branchIndex, condIndex, val)"
+                  />
                 </div>
 
                 <!-- 选择条件列 -->
                 <div class="grid-cell operator-cell">
-                  <el-select
+                  <select
                     v-model="condition.operator"
                     @change="emitUpdate"
-                    placeholder="请选择条件"
-                    size="small"
+                    class="operator-select"
                   >
-                    <el-option value="==" label="等于" />
-                    <el-option value="!=" label="不等于" />
-                    <el-option value=">" label="大于" />
-                    <el-option value="<" label="小于" />
-                    <el-option value=">=" label="大于等于" />
-                    <el-option value="<=" label="小于等于" />
-                    <el-option value="contains" label="包含" />
-                    <el-option value="not_contains" label="不包含" />
-                    <el-option value="starts_with" label="以...开头" />
-                    <el-option value="ends_with" label="以...结尾" />
-                    <el-option value="matches" label="匹配正则" />
-                    <el-option value="is_empty" label="为空" />
-                    <el-option value="not_empty" label="不为空" />
-                  </el-select>
+                    <option value="" disabled>请选择条件</option>
+                    <option value="==">等于</option>
+                    <option value="!=">不等于</option>
+                    <option value=">">大于</option>
+                    <option value="<">小于</option>
+                    <option value=">=">大于等于</option>
+                    <option value="<=">小于等于</option>
+                    <option value="contains">包含</option>
+                    <option value="not_contains">不包含</option>
+                    <option value="starts_with">以...开头</option>
+                    <option value="ends_with">以...结尾</option>
+                    <option value="matches">匹配正则</option>
+                    <option value="is_empty">为空</option>
+                    <option value="not_empty">不为空</option>
+                  </select>
                 </div>
 
                 <!-- 比较值列 -->
                 <div class="grid-cell value-cell">
                   <div class="value-group">
-                    <el-select
+                    <select
                       v-model="condition.valueType"
-                      @change="handleValueTypeChange(branchIndex, condIndex)"
-                      size="small"
+                      @change="emitUpdate"
+                      class="value-type-select"
                     >
-                      <el-option value="input" label="输入" />
-                      <el-option value="reference" label="引用" />
-                    </el-select>
-                    <el-input
+                      <option value="input">输入</option>
+                      <option value="reference">引用变量</option>
+                    </select>
+                    <input
                       v-if="condition.valueType === 'input'"
                       v-model="condition.value"
                       @input="emitUpdate"
+                      type="text"
                       placeholder="请输入"
-                      size="small"
+                      class="value-input"
                     />
-                    <el-cascader
+                    <VariableCascader
                       v-else
-                      v-model="condition.valueCascaderValue"
-                      :options="cascaderOptions"
-                      :props="{ expandTrigger: 'click' }"
+                      v-model="condition.value"
+                      :available-variables="availableVariables"
                       placeholder="请选择变量"
-                      size="small"
-                      :popper-append-to-body="true"
-                      @change="handleValueChange(branchIndex, condIndex, $event)"
-                    ></el-cascader>
+                      class="value-reference-cascader"
+                      @change="(val) => handleValueChange(branchIndex, condIndex, val)"
+                    />
                   </div>
                 </div>
 
@@ -186,7 +188,7 @@
         <div class="branch-conditions">
           <div
             v-for="(branch, branchIndex) in localBranches"
-            :key="getHandleId(branchIndex)"
+            :key="branchIndex"
             class="branch-condition-item"
           >
             <div class="branch-content-row">
@@ -211,13 +213,13 @@
     <div class="handle-labels">
       <div
         v-for="(branch, index) in localBranches"
-        :key="'label-' + getHandleId(index)"
+        :key="'label-' + index"
         v-if="!configMode"
         class="handle-label"
         :class="'handle-label-' + index"
         :style="isVertical
-          ? { left: `calc(${getHandleLeft(index)}% + 6px)`, bottom: '0' }
-          : { right: '0', top: `calc(${getHandleTop(index)}% + 6px)` }"
+          ? { left: getHandleLeft(index) + '%', top: '100%' }
+          : { left: '100%', top: getHandleTop(index) + '%' }"
       >
         {{ getBranchTitle(index) }}
       </div>
@@ -226,12 +228,11 @@
     <!-- 动态生成与分支数量对应的输出连接点 - 根据布局方向动态定位 -->
     <Handle
       v-for="(branch, index) in localBranches"
-      :key="getHandleId(index)"
+      :key="'handle-' + index"
       v-if="!configMode"
       type="source"
       :position="sourcePosition"
       :id="getHandleId(index)"
-      :data-handleid="getHandleId(index)"
       :class="'handle-branch-' + index"
       :style="isVertical ? { left: getHandleLeft(index) + '%' } : { top: getHandleTop(index) + '%' }"
     />
@@ -243,6 +244,7 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { Handle, Position } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
 import { useNodeAnchorMode } from './useHandlePosition.js';
+import VariableCascader from '../VariableCascader.vue';
 
 const props = defineProps({
   data: {
@@ -269,103 +271,20 @@ const localLabel = ref(props.data.label || '判断器');
 const branchSectionExpanded = ref(true);
 const nodeRef = ref(null); // 节点DOM引用
 let resizeObserver = null; // ResizeObserver 引用
+let isMounted = false; // 组件挂载状态标志，用于防止卸载后执行异步操作
 
 // 分支数据结构
 const localBranches = ref([]);
 
-// 级联选择器选项
-const cascaderOptions = computed(() => {
-  if (!props.availableVariables || !Array.isArray(props.availableVariables)) return [];
-
-  const nodeMap = new Map();
-
-  props.availableVariables.forEach(variable => {
-    if (variable && variable.nodeId && variable.id && variable.name) {
-      const nodeLabel = variable.nodeName || variable.sourceNodeName;
-      if (!nodeLabel) return;
-
-      if (!nodeMap.has(variable.nodeId)) {
-        nodeMap.set(variable.nodeId, {
-          value: variable.nodeId,
-          label: nodeLabel,
-          children: []
-        });
-      }
-      nodeMap.get(variable.nodeId).children.push({
-        value: variable.id,
-        label: variable.name
-      });
-    }
-  });
-
-  return Array.from(nodeMap.values());
-});
-
-// 获取节点标签
-const getNodeLabelById = (nodeId) => {
-  if (nodeId.startsWith('start')) return '开始节点';
-  if (nodeId.startsWith('variable')) return '变量节点';
-  if (nodeId.startsWith('llm')) return 'LLM节点';
-  if (nodeId.startsWith('prompt')) return '提示词节点';
-  if (nodeId.startsWith('tool')) return '工具节点';
-  if (nodeId.startsWith('http')) return 'HTTP节点';
-  if (nodeId.startsWith('code')) return '代码节点';
-  if (nodeId.startsWith('parser')) return '解析节点';
-  if (nodeId.startsWith('condition')) return '条件节点';
-  if (nodeId.startsWith('userInput')) return '用户输入节点';
-  if (nodeId.startsWith('end')) return '结束节点';
-  return nodeId;
-};
-
 // 处理变量选择变化
 const handleVariableChange = (branchIndex, condIndex, value) => {
-  const branch = localBranches.value[branchIndex];
-  if (!branch) return;
-  const cond = branch.conditions[condIndex];
-  if (!cond) return;
-
-  if (Array.isArray(value) && value.length === 2) {
-    cond.variable = value[1];
-    cond.variableNodeId = value[0];
-    cond.variableCascaderValue = value;
-  } else {
-    cond.variable = '';
-    cond.variableNodeId = '';
-    cond.variableCascaderValue = [];
-  }
+  localBranches.value[branchIndex].conditions[condIndex].variable = value || '';
   emitUpdate();
 };
 
-// 处理比较值选择变化
+// 处理值选择变化
 const handleValueChange = (branchIndex, condIndex, value) => {
-  const branch = localBranches.value[branchIndex];
-  if (!branch) return;
-  const cond = branch.conditions[condIndex];
-  if (!cond) return;
-
-  if (Array.isArray(value) && value.length === 2) {
-    cond.value = value[1];
-    cond.valueNodeId = value[0];
-    cond.valueCascaderValue = value;
-  } else {
-    cond.value = '';
-    cond.valueNodeId = '';
-    cond.valueCascaderValue = [];
-  }
-  emitUpdate();
-};
-
-// 处理值类型变化
-const handleValueTypeChange = (branchIndex, condIndex) => {
-  const branch = localBranches.value[branchIndex];
-  if (!branch) return;
-  const cond = branch.conditions[condIndex];
-  if (!cond) return;
-
-  // 重置引用相关字段
-  cond.value = '';
-  cond.valueNodeId = '';
-  cond.valueCascaderValue = [];
+  localBranches.value[branchIndex].conditions[condIndex].value = value || '';
   emitUpdate();
 };
 
@@ -373,29 +292,25 @@ const handleValueTypeChange = (branchIndex, condIndex) => {
 const initBranches = () => {
   // 确保 props.data 存在
   if (!props.data) {
-    // 默认创建分支：如果、否则（不需要否则如果）
+    // 默认创建分支
     localBranches.value = [
       {
         type: 'if',
         expanded: true,
-        handle: 'branch_0',  // 固定 handle ID
         conditions: [
           {
             variable: '',
-            variableNodeId: '',
-            variableCascaderValue: [],
+            variablePath: [],
             operator: '',
             valueType: 'input',
             value: '',
-            valueNodeId: '',
-            valueCascaderValue: []
+            valuePath: []
           }
         ]
       },
       {
         type: 'else',
         expanded: true,
-        handle: 'branch_else',  // else 分支使用固定 ID
         conditions: []
       }
     ];
@@ -406,23 +321,15 @@ const initBranches = () => {
     // 深拷贝数据，确保响应式
     let branches = JSON.parse(JSON.stringify(props.data.branches));
     
-    // 确保每个分支都有 conditions 数组和 handle 属性
-    branches = branches.map((branch, index) => {
-      // 如果没有 handle，生成唯一的 handle ID
-      let handle = branch.handle;
-      if (!handle) {
-        if (branch.type === 'else') {
-          handle = 'branch_else';
-        } else {
-          handle = `branch_${Date.now()}_${index}`;
-        }
-      }
-      return {
-        ...branch,
-        handle: handle,
-        conditions: branch.conditions || []
-      };
-    });
+    // 确保每个分支都有 conditions 数组，并为条件添加 path 属性
+    branches = branches.map(branch => ({
+      ...branch,
+      conditions: (branch.conditions || []).map(cond => ({
+        ...cond,
+        variablePath: cond.variable ? buildVariablePath(cond.variable) : [],
+        valuePath: cond.valueType === 'reference' && cond.value ? buildVariablePath(cond.value) : []
+      }))
+    }));
     
     // 确保“否则”分支在最后
     const elseIndex = branches.findIndex(branch => branch.type === 'else');
@@ -439,48 +346,58 @@ const initBranches = () => {
       {
         type: 'if',
         expanded: true,
-        handle: 'branch_0',  // 固定 handle ID
         conditions: [
           {
             variable: '',
+            variablePath: [],
             operator: '',
             valueType: 'input',
-            value: props.data.condition
+            value: props.data.condition,
+            valuePath: []
           }
         ]
       },
       {
         type: 'else',
         expanded: true,
-        handle: 'branch_else',  // else 分支使用固定 ID
         conditions: []
       }
     ];
     emitUpdate();
   } else {
-    // 默认创建两个分支：如果、否则（不需要否则如果）
+    // 默认创建三个分支：如果、否则如果、否则
     localBranches.value = [
       {
         type: 'if',
         expanded: true,
-        handle: 'branch_0',  // 固定 handle ID
         conditions: [
           {
             variable: '',
-            variableNodeId: '',
-            variableCascaderValue: [],
+            variablePath: [],
             operator: '',
             valueType: 'input',
             value: '',
-            valueNodeId: '',
-            valueCascaderValue: []
+            valuePath: []
+          }
+        ]
+      },
+      {
+        type: 'else_if',
+        expanded: true,
+        conditions: [
+          {
+            variable: '',
+            variablePath: [],
+            operator: '',
+            valueType: 'input',
+            value: '',
+            valuePath: []
           }
         ]
       },
       {
         type: 'else',
         expanded: true,
-        handle: 'branch_else',  // else 分支使用固定 ID
         conditions: []
       }
     ];
@@ -505,9 +422,9 @@ const toggleBranchSection = () => {
 // 获取分支标题
 const getBranchTitle = (index) => {
   const branch = localBranches.value[index];
-  if (branch?.type === 'else') return `分支 ${index + 1}: 否则`;
-  if (index === 0) return `分支 ${index + 1}: 如果`;
-  return `分支 ${index + 1}: 否则如果`;
+  if (branch?.type === 'else') return '否则';
+  if (index === 0) return '如果';
+  return '否则如果';
 };
 
 // 获取分支帮助文本
@@ -523,23 +440,17 @@ const addBranch = () => {
   // 找到“否则”分支的位置
   const elseIndex = localBranches.value.findIndex(branch => branch.type === 'else');
   
-  // 生成唯一的 handle ID
-  let newHandle = `branch_${Date.now()}`;
-  
   const newBranch = {
     type: 'else_if',
     expanded: true,
-    handle: newHandle,  // 添加唯一的 handle ID
     conditions: [
       {
         variable: '',
-        variableNodeId: '',
-        variableCascaderValue: [],
+        variablePath: [],
         operator: '',
         valueType: 'input',
         value: '',
-        valueNodeId: '',
-        valueCascaderValue: []
+        valuePath: []
       }
     ]
   };
@@ -578,13 +489,11 @@ const removeBranch = (index) => {
 const addCondition = (branchIndex) => {
   localBranches.value[branchIndex].conditions.push({
     variable: '',
-    variableNodeId: '',
-    variableCascaderValue: [],
+    variablePath: [],
     operator: '',
     valueType: 'input',
     value: '',
-    valueNodeId: '',
-    valueCascaderValue: []
+    valuePath: []
   });
   emitUpdate();
 };
@@ -658,18 +567,14 @@ const getOperatorLabel = (operator) => {
   return operators[operator] || operator;
 };
 
-// 获取 Handle id - 使用分支的唯一标识符，避免索引变化导致连线错误
+// 获取 Handle id - 兼容旧格式（true/false）和新格式（branch_0/branch_1）
 const getHandleId = (index) => {
-  const branch = localBranches.value[index];
-  // 使用分支的 handle 属性（如果存在），否则生成唯一ID
-  if (branch?.handle) {
-    return branch.handle;
+  // 如果是旧格式（没有 branches 字段或使用 condition 字段），使用旧格式的 id
+  if (!props.data.branches || props.data.branches.length === 0 || props.data.condition) {
+    return index === 0 ? 'true' : 'false';
   }
-  // 生成唯一ID：如果是 else 分支使用固定ID，否则使用索引
-  if (branch?.type === 'else') {
-    return 'branch_else';
-  }
-  return `branch_${index}`;
+  // 新格式：使用 branch_0, branch_1, branch_2...
+  return 'branch_' + index;
 };
 
 // 计算 Handle 的垂直位置百分比（水平布局时用 top 定位，模拟右侧连接线）
@@ -707,6 +612,8 @@ const getHandleLeft = (index) => {
 // 更新 Handle wrapper 的位置（使用防抖优化性能）
 let updateHandlePositionsTimer = null;
 const updateHandlePositions = () => {
+  // 组件已卸载时直接返回，防止异步操作导致错误
+  if (!isMounted) return;
   if (!nodeRef.value) return;
 
   // 清除之前的定时器
@@ -716,7 +623,13 @@ const updateHandlePositions = () => {
 
   // 使用 requestAnimationFrame 和防抖优化性能
   updateHandlePositionsTimer = setTimeout(() => {
+    // 再次检查组件挂载状态
+    if (!isMounted) return;
+    
     requestAnimationFrame(() => {
+      // 再次检查组件挂载状态
+      if (!isMounted) return;
+      
       const nodeElement = nodeRef.value;
       if (!nodeElement) return;
 
@@ -755,11 +668,21 @@ watch(() => props.data, (newData) => {
 }, { immediate: true, deep: true });
 
 // 监听 availableVariables 变化，确保条件值能正确显示
-watch(() => props.availableVariables, () => {
-  nextTick(() => {
-    // 触发重新渲染，确保下拉框选项正确显示
-    localBranches.value = [...localBranches.value];
-  });
+watch(() => props.availableVariables, (newVars, oldVars) => {
+  // 只有当变量列表真正变化时才更新
+  if (newVars !== oldVars) {
+    nextTick(() => {
+      // 更新所有条件的 variablePath 和 valuePath，确保与最新的变量列表匹配
+      localBranches.value = localBranches.value.map(branch => ({
+        ...branch,
+        conditions: branch.conditions.map(cond => ({
+          ...cond,
+          variablePath: cond.variable ? buildVariablePath(cond.variable) : [],
+          valuePath: cond.valueType === 'reference' && cond.value ? buildVariablePath(cond.value) : []
+        }))
+      }));
+    });
+  }
 }, { immediate: true, deep: true });
 
 // 监听分支数量变化
@@ -774,6 +697,7 @@ watch(isVertical, () => {
 
 // 组件挂载后初始化
 onMounted(() => {
+  isMounted = true; // 设置组件已挂载标志
   nextTick(() => {
     updateHandlePositions();
     
@@ -789,6 +713,7 @@ onMounted(() => {
 
 // 组件卸载时清理定时器和监听器
 onUnmounted(() => {
+  isMounted = false; // 重置组件挂载标志，防止异步操作继续执行
   if (updateHandlePositionsTimer) {
     clearTimeout(updateHandlePositionsTimer);
     updateHandlePositionsTimer = null;
@@ -824,7 +749,6 @@ onUnmounted(() => {
   border-radius: 0;
   background: #ffffff;
   color: #333;
-  border: none;
 }
 
 .condition-node-config {
@@ -1026,6 +950,9 @@ onUnmounted(() => {
   font-weight: 600;
   color: white;
   white-space: nowrap;
+  /* 垂直布局时：标签在节点底部内侧，Handle 的上方 */
+  transform: translate(-50%, -100%);
+  margin-top: -6px;
 }
 
 .handle-label.handle-label-0 { background: rgba(34, 197, 94, 0.9); border: 1px solid #22c55e; }
@@ -1034,14 +961,15 @@ onUnmounted(() => {
 .handle-label.handle-label-3 { background: rgba(245, 158, 11, 0.9); border: 1px solid #f59e0b; }
 .handle-label.handle-label-4 { background: rgba(139, 92, 246, 0.9); border: 1px solid #8b5cf6; }
 
-/* 水平布局时：标签在锚点的正左侧，与Handle中心垂直对齐 */
+/* 水平布局时：标签在锚点的正左侧（标签右侧距锚点中心14px=Handle半径6px+间距8px） */
 .condition-node.layout-horizontal .handle-label {
-  transform: translateX(calc(-100% - 14px)) translateY(-50%);
+  transform: translateX(calc(-100% - 14px));
 }
 
-/* 垂直布局时：标签在锚点的正上方，与Handle中心水平对齐 */
+/* 垂直布局时：标签在节点底部内侧，Handle 的上方 */
 .condition-node.layout-vertical .handle-label {
-  transform: translate(-50%, calc(-100% - 14px));
+  transform: translate(-50%, -100%);
+  margin-top: -6px;
 }
 
 /* ========== 配置面板样式 ========== */
@@ -1087,18 +1015,18 @@ onUnmounted(() => {
 /* 分支容器 */
 .branch-list {
   margin-bottom: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
 }
 
 .branch-container {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  margin-bottom: 16px;
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
   overflow: hidden;
-  min-height: 50px;
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  min-height: 50px; /* 确保每个分支有最小高度，便于锚点定位 */
+}
+
+.branch-container:last-child {
+  margin-bottom: 0;
 }
 
 /* 分支标题 */
@@ -1106,29 +1034,29 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px;
-  background: #f9fafb;
-  border-bottom: 1px solid #e5e7eb;
+  padding: 10px 12px;
+  background: #fafafa;
+  border-bottom: 1px solid #e8e8e8;
 }
 
 .branch-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .branch-toggle-btn {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   border: none;
   background: transparent;
   color: #333;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 3px;
+  padding: 4px 8px;
+  border-radius: 4px;
   transition: background 0.2s;
 }
 
@@ -1137,8 +1065,8 @@ onUnmounted(() => {
 }
 
 .branch-toggle-btn svg {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   transition: transform 0.2s;
 }
 
@@ -1150,19 +1078,14 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border: none;
   background: transparent;
   color: #bbb;
   cursor: help;
   border-radius: 50%;
   transition: all 0.2s;
-}
-
-.help-btn-small svg {
-  width: 12px;
-  height: 12px;
 }
 
 .help-btn-small:hover {
@@ -1172,13 +1095,13 @@ onUnmounted(() => {
 
 /* 分支内容 */
 .branch-content {
-  padding: 8px 4px;
+  padding: 12px;
   background: #fff;
 }
 
 /* 条件行 */
 .condition-row {
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .condition-row:last-child {
@@ -1187,10 +1110,9 @@ onUnmounted(() => {
 
 .condition-grid {
   display: grid;
-  grid-template-columns: 2fr 0.8fr 2.4fr minmax(32px, 40px);
-  gap: 10px;
+  grid-template-columns: 60px 1fr 1fr 1.5fr 60px;
+  gap: 8px;
   align-items: center;
-  width: 100%;
 }
 
 .grid-cell {
@@ -1198,43 +1120,110 @@ onUnmounted(() => {
   align-items: center;
 }
 
-:deep(.el-cascader__label),
-:deep(.el-select__label),
-:deep(.el-input__inner) {
-  font-size: 12px;
-  text-align: center;
+.label-cell {
+  justify-content: center;
 }
 
-:deep(.el-input__placeholder) {
-  text-align: center;
+.condition-label-text {
+  font-size: 13px;
+  color: #666;
+  font-weight: 500;
+}
+
+.variable-select,
+.operator-select,
+.value-type-select,
+.value-reference-select {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+  background: #fff;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 8px center;
+  background-repeat: no-repeat;
+  background-size: 12px;
+  padding-right: 28px;
+  box-sizing: border-box;
+}
+
+.variable-select:focus,
+.operator-select:focus,
+.value-type-select:focus,
+.value-reference-select:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+/* 级联选择器样式 */
+.variable-cascader,
+.value-reference-cascader {
+  width: 100%;
+  font-size: 13px;
+}
+
+.variable-cascader :deep(.el-input__wrapper),
+.value-reference-cascader :deep(.el-input__wrapper) {
+  padding: 6px 10px;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+.variable-cascader :deep(.el-input__wrapper):focus,
+.value-reference-cascader :deep(.el-input__wrapper):focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
 
 .value-group {
   display: flex;
   gap: 6px;
   width: 100%;
-  align-items: center;
 }
 
-.value-group :deep(.el-select) {
-  width: 65px;
+.value-type-select {
+  width: 90px;
   flex-shrink: 0;
 }
 
-.value-group :deep(.el-cascader),
-.value-group :deep(.el-input) {
+.value-input,
+.value-reference-select {
   flex: 1;
-  min-width: 0;
+}
+
+.value-input {
+  padding: 6px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+  background: #fff;
+  outline: none;
+  transition: all 0.2s;
+  box-sizing: border-box;
+}
+
+.value-input::placeholder {
+  color: #bfbfbf;
+}
+
+.value-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
 
 .action-cell {
-  justify-content: flex-start;
+  justify-content: center;
   gap: 4px;
 }
 
 .action-btn {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border: none;
   background: transparent;
   color: #3b82f6;
@@ -1242,47 +1231,40 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  transition: all 0.2s ease;
+  border-radius: 4px;
+  transition: all 0.2s;
 }
 
 .action-btn:hover:not(:disabled) {
-  background: #eff6ff;
-}
-
-.action-btn:active:not(:disabled) {
-  transform: scale(0.95);
+  background: #f0f7ff;
 }
 
 .add-condition-btn:hover {
-  background: #eff6ff;
-  color: #2563eb;
+  background: #f0f7ff;
+  color: #3b82f6;
 }
 
 .delete-branch-btn {
-  color: #ef4444;
+  color: #ff4d4f;
 }
 
 .delete-branch-btn:hover {
-  background: #fef2f2;
-  color: #dc2626;
+  background: #fff1f0;
+  color: #ff4d4f;
 }
 
 .action-btn svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
 }
 
 /* 底部操作区 */
 .node-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  padding: 14px 16px;
-  border-top: 1px solid #e5e7eb;
-  background: #f9fafb;
-  margin: 0 -16px -16px -16px;
+  padding-top: 12px;
+  border-top: 1px solid #e8e8e8;
 }
 
 .action-btn-inline {

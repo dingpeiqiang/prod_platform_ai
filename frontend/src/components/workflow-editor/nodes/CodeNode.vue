@@ -67,10 +67,19 @@
                   <option value="reference">引用</option>
                 </select>
                 <input 
+                  v-if="param.sourceType !== 'reference'"
                   v-model="param.value" 
                   @input="emitUpdate"
                   class="param-value-input"
                   placeholder="请输入"
+                />
+                <VariableCascader
+                  v-else
+                  v-model="param.value"
+                  :available-variables="availableVariables"
+                  placeholder="请选择变量"
+                  class="param-value-cascader"
+                  @change="emitUpdate"
                 />
               </div>
               <button @click="removeInputParam(index)" class="action-btn delete-btn" title="删除">
@@ -364,10 +373,15 @@ import { ref, watch, computed } from 'vue';
 import { Handle } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
 import { useNodeAnchorMode } from './useHandlePosition.js';
+import VariableCascader from '../VariableCascader.vue';
 
 const props = defineProps({
   data: { type: Object, required: true },
   selected: { type: Boolean, default: false },
+  availableVariables: {
+    type: Array,
+    default: () => []
+  },
   ...nodeDisplayProps
 });
 

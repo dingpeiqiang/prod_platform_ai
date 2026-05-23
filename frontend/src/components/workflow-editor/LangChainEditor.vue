@@ -82,6 +82,9 @@
         <button @click="exportWorkflow" class="btn-icon" title="导出">
           <Download :size="16" />
         </button>
+        <button @click="editJson" :disabled="isReadOnly" class="btn-icon" title="编辑 JSON">
+          <Code :size="16" />
+        </button>
         <button @click="importWorkflow" :disabled="isReadOnly" class="btn-icon" title="导入">
           <Upload :size="16" />
         </button>
@@ -452,8 +455,53 @@
             @update="updateNodeData"
           />
         </template>
+
+        
       </VueFlow>
       </div>
+
+      <!-- 全屏 JSON 编辑器 -->
+      <transition name="fade">
+        <div v-if="isFullscreenJson" class="fullscreen-json-editor">
+          <div class="fullscreen-json-header">
+            <div class="header-left">
+              <h2>工作流 JSON 编辑器</h2>
+              <div class="json-validation-status-lg" :class="jsonValidationStatus">
+                {{ jsonValidationText }}
+              </div>
+            </div>
+            <div class="header-right">
+              <button @click="formatJson" class="json-tool-btn">格式化</button>
+              <button @click="clearJson" class="json-tool-btn">清空</button>
+              <button @click="loadCurrentWorkflow" class="json-tool-btn">加载当前</button>
+              <button @click="closeFullscreenJson" class="json-close-btn">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          
+          <div class="json-editor-content">
+            <JsonEditor 
+              v-model="jsonContent" 
+              :read-only="isReadOnly"
+              @change="validateJson"
+              ref="jsonEditor"
+            />
+          </div>
+          
+          <div v-if="jsonError" class="json-error-message-lg">
+            <span class="error-icon">✗</span>
+            <span>{{ jsonError }}</span>
+          </div>
+          <div class="fullscreen-json-footer">
+            <button @click="closeFullscreenJson" class="json-cancel-btn">取消</button>
+            <button @click="applyJson" :disabled="!isJsonValid" class="json-apply-btn-lg">应用到画布</button>
+            <button @click="saveJsonToDatabase" :disabled="!isJsonValid" class="json-save-btn">保存到数据库</button>
+          </div>
+        </div>
+      </transition>
 
       <div class="node-config-drawer" :class="{ open: showNodeConfigPanel }">
         <NodeConfigPanel
@@ -565,7 +613,7 @@
           >
             执行日志
           </button>
-        </div>
+          </div>
         
         <div class="panel-content">
           <div v-show="activePanel === 'validation'" class="panel-content-wrapper">
@@ -637,7 +685,7 @@ import { Controls } from '@vue-flow/controls';
 import { MiniMap } from '@vue-flow/minimap';
 import { v4 as uuidv4 } from 'uuid';
 import { ElMessage } from 'element-plus';
-import { Undo2, Redo2, Save, Download, Upload } from 'lucide-vue-next';
+import { Undo2, Redo2, Save, Download, Upload, Code } from 'lucide-vue-next';
 import * as workflowApi from '@/services/workflowApi';
 
 import NodePanel from './NodePanel.vue';
@@ -645,6 +693,7 @@ import NodeConfigPanel from './NodeConfigPanel.vue';
 import ExecutionPanel from './ExecutionPanel.vue';
 import ParameterInputPanel from './ParameterInputPanel.vue';
 import WorkflowLibrary from './WorkflowLibrary.vue';
+import JsonEditor from './JsonEditor.vue';
 
 import StartNode from './nodes/StartNode.vue';
 import EndNode from './nodes/EndNode.vue';
@@ -703,6 +752,11 @@ const lastNodeClick = ref({ id: null, time: 0 });
 const DOUBLE_CLICK_MS = 320;
 const showShortcuts = ref(false);
 const connectionSuccess = ref(false);
+const showJsonEditor = ref(false);
+const jsonContent = ref('');
+const jsonError = ref('');
+const isJsonValid = ref(false);
+const isFullscreenJson = ref(false);
 const isEdgeConnectable = ref(true);
 const isReadOnly = ref(false); // 工作流库加载的工作流为只读模式
 const currentAnchorMode = ref('vertical'); // 当前锚点模式：vertical（垂直）或 horizontal（水平）
@@ -877,7 +931,9 @@ const nodeTypeDefinitions = [
 ];
 
 const selectedNodeData = computed(() => {
-  return elements.value.find(el => el.id === selectedNodeId.value && el.type && !el.source);
+  const result = elements.value.find(el => el.id === selectedNodeId.value && el.type && !el.source);
+  console.log('[DEBUG] selectedNodeData computed:', selectedNodeId.value, result);
+  return result;
 });
 
 const selectedNodeTypeLabel = computed(() => {
@@ -1279,36 +1335,43 @@ const getAvailableVariables = (nodeId) => {
     }
   }
   
-  // 始终添加开始节点的输入参数（如果存在开始节点且参数不为空）
+  // 始终添加开始节点的输入参数（如果存在开始节点）
   // 确保其他节点总是能引用到开始节点的入参，不依赖拓扑顺序
   const startNode = nodes.find(n => n.type === 'start');
   if (startNode) {
     const startParams = startNode.data?.parameters;
-    if (startParams && Array.isArray(startParams)) {
-      const existingStartVarIds = new Set(
-        variables
-          .filter(v => v.nodeType === 'start')
-          .map(v => v.id)
-      );
-      startParams.forEach(param => {
-        if (param && param.name) {
-          const varId = `${startNode.id}.${param.name}`;
-          if (!existingStartVarIds.has(varId)) {
-            variables.push({
-              id: varId,
-              name: `${param.name} (入参)`,
-              nodeId: startNode.id,
-              nodeType: 'start',
-              nodeName: '开始节点',
-              type: param.type || 'string',
-              source: 'workflow_input',
-              sourceNodeType: 'start',
-              sourceNodeName: '开始节点'
-            });
-          }
-        }
-      });
+    let paramsToAdd = [];
+    
+    // 如果没有配置参数，添加默认的 input 参数
+    if (!startParams || !Array.isArray(startParams) || startParams.length === 0) {
+      paramsToAdd = [{ name: 'input', type: 'string', description: '用户输入', default: '', required: true }];
+    } else {
+      paramsToAdd = startParams;
     }
+    
+    const existingStartVarIds = new Set(
+      variables
+        .filter(v => v.nodeType === 'start')
+        .map(v => v.id)
+    );
+    paramsToAdd.forEach(param => {
+      if (param && param.name) {
+        const varId = `${startNode.id}.${param.name}`;
+        if (!existingStartVarIds.has(varId)) {
+          variables.push({
+            id: varId,
+            name: `${param.name} (入参)`,
+            nodeId: startNode.id,
+            nodeType: 'start',
+            nodeName: '开始节点',
+            type: param.type || 'string',
+            source: 'workflow_input',
+            sourceNodeType: 'start',
+            sourceNodeName: '开始节点'
+          });
+        }
+      }
+    });
   }
   
   return variables;
@@ -1977,6 +2040,191 @@ const importWorkflow = () => {
     }
   };
   input.click();
+};
+
+const jsonValidationStatus = computed(() => {
+  if (!jsonContent.value.trim()) return 'empty';
+  if (jsonError.value) return 'invalid';
+  if (isJsonValid.value) return 'valid';
+  return 'valid';
+});
+
+const jsonValidationText = computed(() => {
+  if (!jsonContent.value.trim()) return '请输入 JSON';
+  if (jsonError.value) return '❌ JSON 格式错误';
+  if (isJsonValid.value) return '✓ JSON 格式有效';
+  return '✓ JSON 格式有效';
+});
+
+
+
+const editJson = () => {
+  loadCurrentWorkflow();
+  isFullscreenJson.value = true;
+};
+
+const closeFullscreenJson = () => {
+  isFullscreenJson.value = false;
+};
+
+const validateJson = () => {
+  if (!jsonContent.value.trim()) {
+    jsonError.value = '';
+    isJsonValid.value = false;
+    return;
+  }
+  
+  try {
+    const parsed = JSON.parse(jsonContent.value);
+    jsonError.value = '';
+    isJsonValid.value = true;
+  } catch (error) {
+    jsonError.value = error.message;
+    isJsonValid.value = false;
+  }
+};
+
+const formatJson = () => {
+  if (!jsonContent.value.trim()) return;
+  
+  try {
+    const parsed = JSON.parse(jsonContent.value);
+    jsonContent.value = JSON.stringify(parsed, null, 2);
+    jsonError.value = '';
+    isJsonValid.value = true;
+  } catch (error) {
+    jsonError.value = error.message;
+    isJsonValid.value = false;
+  }
+};
+
+const clearJson = () => {
+  jsonContent.value = '';
+  jsonError.value = '';
+  isJsonValid.value = false;
+};
+
+const loadCurrentWorkflow = () => {
+  const workflow = {
+    nodes: elements.value.filter(el => !el.source && !el.target),
+    edges: elements.value.filter(el => el.source && el.target),
+    version: '2.0'
+  };
+  jsonContent.value = JSON.stringify(workflow, null, 2);
+  jsonError.value = '';
+  isJsonValid.value = true;
+};
+
+const applyJson = () => {
+  if (!isJsonValid.value) return;
+  
+  try {
+    const workflow = JSON.parse(jsonContent.value);
+    
+    if (!workflow.nodes || !Array.isArray(workflow.nodes)) {
+      ElMessage.error('无效的工作流格式：缺少 nodes 数组');
+      return;
+    }
+    
+    saveHistory();
+    
+    const nodes = workflow.nodes.map(node => ({
+      id: node.id,
+      type: node.type,
+      position: node.position || { x: 0, y: 0 },
+      data: node.data || {}
+    }));
+    
+    const edges = workflow.edges ? workflow.edges.map(edge => ({
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      sourceHandle: edge.sourceHandle,
+      targetHandle: edge.targetHandle,
+      markerEnd: edge.markerEnd || {
+        type: 'arrowclosed',
+        color: '#94a3b8'
+      }
+    })) : [];
+    
+    elements.value = [...nodes, ...edges];
+    selectedNodeId.value = null;
+    selectedNodeIds.value = [];
+    markDirty();
+    
+    closeFullscreenJson();
+    ElMessage.success('工作流已更新');
+  } catch (error) {
+    ElMessage.error('应用失败：' + error.message);
+  }
+};
+
+const saveJsonToDatabase = async () => {
+  if (!isJsonValid.value) return;
+  
+  try {
+    const workflowData = JSON.parse(jsonContent.value);
+    
+    if (!workflowData.nodes || !Array.isArray(workflowData.nodes)) {
+      ElMessage.error('无效的工作流格式：缺少 nodes 数组');
+      return;
+    }
+
+    workflowData.version = '2.0';
+    workflowData.savedAt = new Date().toISOString();
+    workflowData.updatedAt = new Date().toISOString();
+
+    if (currentWorkflowId.value) {
+      const updateResult = await workflowApi.workflowApi.update(currentWorkflowId.value, {
+        workflowName: workflowName.value,
+        workflowData: workflowData
+      });
+      
+      if (updateResult.success) {
+        ElMessage.success('工作流已保存到数据库');
+        const index = workflows.value.findIndex(w => w.id === currentWorkflowId.value);
+        if (index !== -1) {
+          workflows.value[index] = { 
+            ...workflows.value[index], 
+            ...workflowData,
+            name: workflowName.value,
+            updatedAt: new Date().toISOString()
+          };
+        }
+        hasChanges.value = false;
+        closeFullscreenJson();
+      } else {
+        ElMessage.error('保存失败：' + (updateResult.message || '未知错误'));
+      }
+    } else {
+      const newId = uuidv4();
+      
+      const createResult = await workflowApi.workflowApi.create({
+        workflowCode: newId,
+        workflowName: workflowName.value || '未命名工作流',
+        description: '',
+        category: 'general',
+        workflowData: workflowData
+      });
+      
+      if (createResult.success) {
+        currentWorkflowId.value = newId;
+        workflows.value.push({
+          id: newId,
+          name: workflowName.value || '未命名工作流',
+          ...workflowData,
+          updatedAt: new Date().toISOString()
+        });
+        ElMessage.success('工作流已保存到数据库');
+        hasChanges.value = false;
+        closeFullscreenJson();
+      } else {
+        ElMessage.error('创建失败：' + (createResult.message || '未知错误'));
+      }
+    }
+  } catch (error) {
+    ElMessage.error('保存失败：' + error.message);
+  }
 };
 
 const clearWorkflow = () => {
@@ -3767,5 +4015,204 @@ onUnmounted(() => {
   font-weight: 500;
   border-radius: 4px;
   margin-left: 8px;
+}
+
+/* 全屏 JSON 编辑器 */
+.fullscreen-json-editor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #1e1e1e;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+}
+
+.fullscreen-json-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: #252526;
+  border-bottom: 1px solid #3c3c3c;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.header-left h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #d4d4d4;
+}
+
+.json-validation-status-lg {
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 4px;
+}
+
+.json-validation-status-lg.empty {
+  color: #94a3b8;
+  background: #2d2d30;
+}
+
+.json-validation-status-lg.valid {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.2);
+}
+
+.json-validation-status-lg.invalid {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.json-tool-btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  background: #3c3c3c;
+  border: 1px solid #4c4c4c;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #d4d4d4;
+  transition: all 0.2s;
+}
+
+.json-tool-btn:hover {
+  background: #4c4c4c;
+  border-color: #5c5c5c;
+}
+
+.json-close-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #858585;
+  transition: all 0.2s;
+}
+
+.json-close-btn:hover {
+  background: #3c3c3c;
+  color: #d4d4d4;
+}
+
+.json-editor-content {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+  min-height: 0;
+}
+
+.json-error-message-lg {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 24px;
+  background: rgba(239, 68, 68, 0.15);
+  color: #ff6b6b;
+  border-top: 1px solid rgba(239, 68, 68, 0.3);
+  font-size: 13px;
+}
+
+.fullscreen-json-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  background: #252526;
+  border-top: 1px solid #3c3c3c;
+}
+
+.json-cancel-btn {
+  padding: 10px 24px;
+  font-size: 14px;
+  background: #3c3c3c;
+  border: 1px solid #4c4c4c;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #d4d4d4;
+  transition: all 0.2s;
+}
+
+.json-cancel-btn:hover {
+  background: #4c4c4c;
+}
+
+.json-apply-btn-lg {
+  padding: 10px 28px;
+  font-size: 14px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: white;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.json-apply-btn-lg:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4);
+}
+
+.json-apply-btn-lg:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.json-save-btn {
+  padding: 10px 28px;
+  font-size: 14px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: white;
+  font-weight: 500;
+  transition: all 0.2s;
+  margin-left: 12px;
+}
+
+.json-save-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.4);
+}
+
+.json-save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>

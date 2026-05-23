@@ -115,7 +115,7 @@
             <div class="param-row">
               <label class="param-label">
                 top_k
-                <span class="help-icon" title="Top-K 采样：从概率最高的 K 个 token 中随机选择。0 表示不限制（默认），建议值：10-50">?</span>
+                <span class="help-icon" title="限制采样token范围">?</span>
               </label>
               <div class="slider-control">
                 <input v-model.number="localTopK" type="range" min="0" max="100" step="1" @input="emitUpdate" class="param-slider"/>
@@ -127,38 +127,22 @@
                   </div>
                 </div>
               </div>
-              <div class="param-hint" v-if="localTopK === 0">未限制（从所有 token 中采样）</div>
-              <div class="param-hint" v-else>从前 {{ localTopK }} 个 token 中采样</div>
             </div>
 
             <div class="param-row">
               <label class="param-label">
                 top_p
-                <span class="help-icon" title="核采样：从累计概率达到 P 的 token 中随机选择。1.0 表示不限制（默认），建议值：0.7-0.9">?</span>
+                <span class="help-icon" title="核采样参数">?</span>
               </label>
               <div class="slider-control">
-                <input v-model.number="localTopP" type="range" min="0" max="1" step="0.05" @input="emitUpdate" class="param-slider"/>
+                <input v-model.number="localTopP" type="range" min="0" max="1" step="0.01" @input="emitUpdate" class="param-slider"/>
                 <div class="slider-value-group">
                   <input v-model.number="localTopP" type="number" min="0" max="1" step="0.01" @input="emitUpdate" class="value-input"/>
                   <div class="adjust-buttons">
-                    <button @click="adjustValue('topP', -0.05)" class="adjust-btn top-p-btn">-</button>
-                    <button @click="adjustValue('topP', 0.05)" class="adjust-btn top-p-btn">+</button>
+                    <button @click="adjustValue('topP', -0.01)" class="adjust-btn">-</button>
+                    <button @click="adjustValue('topP', 0.01)" class="adjust-btn">+</button>
                   </div>
                 </div>
-              </div>
-              <div class="param-hint" v-if="localTopP >= 1">未限制（从所有 token 中采样）</div>
-              <div class="param-hint" v-else>从累计概率 ≥ {{ (localTopP * 100).toFixed(0) }}% 的 token 中采样</div>
-            </div>
-
-            <div class="param-row tips-row">
-              <div class="param-tips">
-                <strong>使用建议：</strong>
-                <ul>
-                  <li>通常只需要设置其中一个参数</li>
-                  <li>top_k 控制候选 token 数量，适合需要精确控制的场景</li>
-                  <li>top_p 控制概率分布范围，适合需要多样性的场景</li>
-                  <li>同时设置时，会取两者的交集</li>
-                </ul>
               </div>
             </div>
 
@@ -247,16 +231,14 @@
                   placeholder="默认值" 
                   class="param-default-input"
                 />
-                <el-cascader 
+                <VariableCascader
                   v-if="param.valueType === 'reference'"
-                  v-model="param.cascaderValue"
-                  :options="cascaderOptions"
-                  :props="{ expandTrigger: 'click' }"
+                  v-model="param.refValue"
+                  :available-variables="availableVariables"
                   placeholder="请选择变量"
                   class="param-cascader"
-                  :popper-append-to-body="true"
-                  @change="handleCascaderChange(index, $event)"
-                ></el-cascader>
+                  @change="(val) => handleCascaderChange(index, val)"
+                />
                 <button @click="removeInputParam(index)" class="action-btn delete-btn" title="删除">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="18" y1="6" x2="6" y2="18"/>
@@ -309,14 +291,16 @@
             </label>
             <span class="help-icon" title="支持多轮对话"></span>
           </div>
-          
             <template v-for="(param, index) in localOutputs" :key="index">
               <div v-if="param" class="output-param-item">
                 <input v-model="param.name" @input="emitUpdate" placeholder="参数名" class="param-name-input"/>
                 <select v-model="param.type" @change="emitUpdate" class="param-type-select">
-                  <option value="string">string</option>
-                  <option value="json">json</option>
-                </select>
+                <option value="string">string</option>
+                <option value="number">number</option>
+                <option value="boolean">boolean</option>
+                <option value="object">object</option>
+                <option value="array">array</option>
+              </select>
               <button @click="removeOutputParam(index)" class="action-btn delete-btn" title="删除">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="18" y1="6" x2="6" y2="18"/>
@@ -343,6 +327,7 @@ import { ref, watch, onMounted, onUnmounted, computed } from 'vue';
 import { Handle } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
 import { useNodeAnchorMode } from './useHandlePosition.js';
+import VariableCascader from '../VariableCascader.vue';
 
 const props = defineProps({
   data: { type: Object, required: true },
@@ -359,7 +344,7 @@ const safeData = props.data || {};
 const localLabel = ref(safeData.label || 'LLM');
 const localModel = ref(safeData.model || '');
 const localTemperature = ref(safeData.temperature ?? 0.1);
-const localTopK = ref(safeData.topK ?? 0);
+const localTopK = ref(safeData.topK ?? 0.1);
 const localTopP = ref(safeData.topP ?? 1);
 const localMaxTokens = ref(safeData.maxTokens ?? 1024);
 const localSystemPrompt = ref(safeData.systemPrompt || '');
@@ -408,93 +393,9 @@ const loadAvailableModels = async () => {
   }
 };
 
-const getNodeLabelById = (nodeId) => {
-  if (nodeId.startsWith('start')) return '开始节点';
-  if (nodeId.startsWith('variable')) return '变量节点';
-  if (nodeId.startsWith('llm')) return 'LLM节点';
-  if (nodeId.startsWith('prompt')) return '提示词节点';
-  if (nodeId.startsWith('tool')) return '工具节点';
-  if (nodeId.startsWith('http')) return 'HTTP节点';
-  if (nodeId.startsWith('code')) return '代码节点';
-  if (nodeId.startsWith('parser')) return '解析节点';
-  if (nodeId.startsWith('condition')) return '条件节点';
-  if (nodeId.startsWith('userInput')) return '用户输入节点';
-  return nodeId;
-};
-
-const cascaderOptions = computed(() => {
-  if (!props.availableVariables || !Array.isArray(props.availableVariables)) return [];
-  
-  const nodeMap = new Map();
-  
-  props.availableVariables.forEach(variable => {
-    if (variable && variable.nodeId && variable.id && variable.name) {
-      const nodeLabel = variable.nodeName || variable.sourceNodeName;
-      if (!nodeLabel) return;
-
-      if (!nodeMap.has(variable.nodeId)) {
-        nodeMap.set(variable.nodeId, {
-          value: variable.nodeId,
-          label: nodeLabel,
-          children: []
-        });
-      }
-      nodeMap.get(variable.nodeId).children.push({
-        value: variable.id,
-        label: variable.name
-      });
-    }
-  });
-  
-  return Array.from(nodeMap.values());
-});
-
 onMounted(() => {
   loadAvailableModels();
 });
-
-// 监听 availableVariables 变化，为存量工作流的引用参数重建 cascaderValue
-watch(() => props.availableVariables, (newVars) => {
-  if (!newVars || newVars.length === 0) return;
-  
-  localInputs.value.forEach(param => {
-    if (param && param.valueType === 'reference' && param.selectedNodeId && param.refValue && !param.cascaderValue?.length) {
-      // 查找匹配的变量
-      const matchedVar = newVars.find(v => 
-        v.nodeId === param.selectedNodeId && 
-        (v.id === `${param.selectedNodeId}.${param.refValue}` || v.name.startsWith(param.refValue))
-      );
-      
-      if (matchedVar) {
-        param.cascaderValue = [matchedVar.nodeId, matchedVar.id];
-      }
-    }
-  });
-}, { immediate: true });
-
-// 监听 cascaderOptions 变化，清除已失效的 cascaderValue
-watch(() => cascaderOptions.value, (newOptions) => {
-  if (!newOptions || newOptions.length === 0) {
-    // 选项为空时清除所有引用参数的 cascaderValue
-    localInputs.value.forEach(param => {
-      if (param && param.valueType === 'reference' && param.cascaderValue?.length) {
-        param.cascaderValue = [];
-      }
-    });
-    return;
-  }
-
-  // 检查每个引用参数的 cascaderValue 是否仍然有效
-  localInputs.value.forEach(param => {
-    if (param && param.valueType === 'reference' && param.cascaderValue?.length === 2) {
-      const [nodeId] = param.cascaderValue;
-      const nodeExists = newOptions.some(opt => opt.value === nodeId);
-      if (!nodeExists) {
-        param.cascaderValue = [];
-      }
-    }
-  });
-}, { immediate: false });
 
 onUnmounted(() => {
   isUnmounted = true;
@@ -529,17 +430,15 @@ const handleTooltipLeave = () => {
 };
 
 const adjustValue = (field, delta) => {
-  const constraints = {
-    temperature: { ref: localTemperature, min: 0, max: 2, round: 10 },
-    topK: { ref: localTopK, min: 0, max: 100, round: 1 },
-    topP: { ref: localTopP, min: 0, max: 1, round: 100 },
-    maxTokens: { ref: localMaxTokens, min: 128, max: 16384, round: 1 }
+  const fieldMap = {
+    temperature: localTemperature,
+    topK: localTopK,
+    topP: localTopP,
+    maxTokens: localMaxTokens
   };
-  const config = constraints[field];
-  if (config) {
-    const newValue = config.ref.value + delta;
-    const clampedValue = Math.max(config.min, Math.min(config.max, newValue));
-    config.ref.value = Math.round(clampedValue * config.round) / config.round;
+  const ref = fieldMap[field];
+  if (ref) {
+    ref.value = Math.round((ref.value + delta) * 100) / 100;
     emitUpdate();
   }
 };
@@ -571,15 +470,7 @@ const handleNodeSelect = (index) => {
 const handleCascaderChange = (index, value) => {
   const param = localInputs.value[index];
   if (param) {
-    if (Array.isArray(value) && value.length === 2) {
-      param.selectedNodeId = value[0];
-      param.refValue = value[1];
-      param.cascaderValue = value;
-    } else {
-      param.selectedNodeId = '';
-      param.refValue = '';
-      param.cascaderValue = [];
-    }
+    param.refValue = value || '';
     emitUpdate();
   }
 };
@@ -621,7 +512,7 @@ watch(() => props.data, (newData) => {
   localLabel.value = newData.label || 'LLM';
   localModel.value = newData.model || '';
   localTemperature.value = newData.temperature ?? 0.1;
-  localTopK.value = Math.round(newData.topK ?? 0);
+  localTopK.value = newData.topK ?? 0.1;
   localTopP.value = newData.topP ?? 1;
   localMaxTokens.value = newData.maxTokens ?? 1024;
   localSystemPrompt.value = newData.systemPrompt || '';
@@ -1181,7 +1072,7 @@ watch(() => props.data, (newData) => {
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
 }
 
 .output-param-item {
@@ -1263,8 +1154,6 @@ watch(() => props.data, (newData) => {
 
 .param-cascader {
   min-width: 200px;
-  width: 100%;
-  flex-shrink: 0;
   font-size: 13px;
 }
 
@@ -1332,38 +1221,5 @@ watch(() => props.data, (newData) => {
 
 :deep(.vue-flow__handle[type="source"]:hover) {
   background-color: #2563eb !important;
-}
-
-.param-hint {
-  font-size: 12px;
-  color: #666;
-  margin-top: 4px;
-}
-
-.param-row.tips-row {
-  padding: 10px;
-  background: #f8fafc;
-  border-radius: 4px;
-  border-left: 3px solid #3b82f6;
-}
-
-.param-tips {
-  font-size: 12px;
-  color: #666;
-}
-
-.param-tips strong {
-  color: #333;
-  font-size: 13px;
-}
-
-.param-tips ul {
-  margin: 8px 0 0 0;
-  padding-left: 20px;
-  list-style-type: disc;
-}
-
-.param-tips li {
-  margin-bottom: 4px;
 }
 </style>

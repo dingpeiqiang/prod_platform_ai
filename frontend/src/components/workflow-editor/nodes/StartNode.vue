@@ -152,7 +152,7 @@
 </template>
 
 <script setup>
-import { ref, watch, watchEffect, onMounted } from 'vue';
+import { ref, watch, watchEffect } from 'vue';
 import { Handle } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
 import { useNodeAnchorMode } from './useHandlePosition.js';
@@ -188,11 +188,12 @@ const localParams = ref([
 ]);
 const inputSectionExpanded = ref(true);
 
-onMounted(() => {
-  if (!props.data.parameters || props.data.parameters.length === 0) {
-    emitUpdate();
-  }
-});
+// 初始化时，如果外部数据没有参数，自动同步默认参数到节点数据
+if (!props.data.parameters || !Array.isArray(props.data.parameters) || props.data.parameters.length === 0) {
+  emit('update', props.data.id, {
+    parameters: localParams.value
+  });
+}
 
 const toggleInputSection = () => {
   inputSectionExpanded.value = !inputSectionExpanded.value;

@@ -19,15 +19,13 @@
       <div v-if="configMode || showAdvanced" class="advanced-panel">
         <div class="section-title">输入参数</div>
         <div class="input-param-row">
-          <el-cascader
-            v-model="inputCascaderValue"
-            :options="cascaderOptions"
-            :props="{ expandTrigger: 'hover' }"
+          <VariableCascader
+            v-model="localInputVar"
+            :available-variables="availableVariables"
             placeholder="选择输入变量"
             class="param-cascader"
-            :popper-append-to-body="true"
-            @change="handleInputCascaderChange"
-          ></el-cascader>
+            @change="emitUpdate"
+          />
           <span class="param-hint" title="使用双花括号引用变量">或使用 {{ displayVarSyntax }} 语法</span>
         </div>
         
@@ -49,10 +47,11 @@
 </template>
 
 <script setup>
-import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { Handle } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
 import { useNodeAnchorMode } from './useHandlePosition.js';
+import VariableCascader from '../VariableCascader.vue';
 
 const props = defineProps({
   data: {
@@ -82,127 +81,28 @@ const emit = defineEmits(['update']);
 const localPrompt = ref(props.data.prompt || '');
 const showAdvanced = ref(false);
 const localInputVar = ref(props.data.inputVar || '');
-const localInputNodeId = ref(props.data.inputNodeId || '');
-const inputCascaderValue = ref(props.data.inputCascaderValue || []);
 const localOutputVar = ref(props.data.outputVar || '');
 
 // 用于显示的占位符文本（避免 Vue 解析 {{}}）
 const placeholderText = '输入提示词，使用 {{变量名}} 引用变量...';
 const displayVarSyntax = '{{变量名}}';
 
-const getNodeLabelById = (nodeId) => {
-  if (nodeId.startsWith('start')) return '开始节点';
-  if (nodeId.startsWith('variable')) return '变量节点';
-  if (nodeId.startsWith('llm')) return 'LLM节点';
-  if (nodeId.startsWith('prompt')) return '提示词节点';
-  if (nodeId.startsWith('tool')) return '工具节点';
-  if (nodeId.startsWith('http')) return 'HTTP节点';
-  if (nodeId.startsWith('code')) return '代码节点';
-  if (nodeId.startsWith('parser')) return '解析节点';
-  if (nodeId.startsWith('condition')) return '条件节点';
-  if (nodeId.startsWith('userInput')) return '用户输入节点';
-  return nodeId;
-};
-
-// 级联选择器选项
-const cascaderOptions = computed(() => {
-  if (!props.availableVariables || !Array.isArray(props.availableVariables)) return [];
-
-  const nodeMap = new Map();
-
-  props.availableVariables.forEach(variable => {
-    if (variable && variable.nodeId && variable.id && variable.name) {
-      const nodeLabel = variable.nodeName || variable.sourceNodeName;
-      if (!nodeLabel) return;
-
-      if (!nodeMap.has(variable.nodeId)) {
-        nodeMap.set(variable.nodeId, {
-          value: variable.nodeId,
-          label: nodeLabel,
-          children: []
-        });
-      }
-      nodeMap.get(variable.nodeId).children.push({
-        value: variable.id,
-        label: variable.name
-      });
-    }
-  });
-
-  return Array.from(nodeMap.values());
-});
-
-// 监听 cascaderOptions 变化，清除已失效的 cascaderValue
-watch(cascaderOptions, (newOptions) => {
-  if (!newOptions || newOptions.length === 0) {
-    if (inputCascaderValue.value?.length) {
-      inputCascaderValue.value = [];
-    }
-    return;
-  }
-
-  if (inputCascaderValue.value?.length === 2) {
-    const [nodeId, varId] = inputCascaderValue.value;
-    const nodeExists = newOptions.some(opt => opt.value === nodeId);
-    if (!nodeExists) {
-      inputCascaderValue.value = [];
-    }
-  }
-}, { immediate: false });
-
-// 监听 availableVariables 变化，为存量工作流的引用参数重建 cascaderValue
-watch(() => props.availableVariables, (newVars) => {
-  if (!newVars || !Array.isArray(newVars) || newVars.length === 0) {
-    return;
-  }
-
-  if (inputCascaderValue.value?.length) {
-    return;
-  }
-
-  if (localInputNodeId.value && localInputVar.value) {
-    const matchedVar = newVars.find(v =>
-      v.nodeId === localInputNodeId.value &&
-      (v.id === `${localInputNodeId.value}.${localInputVar.value}` || v.name.startsWith(localInputVar.value))
-    );
-
-    if (matchedVar) {
-      inputCascaderValue.value = [matchedVar.nodeId, matchedVar.id];
-    }
-  }
-}, { immediate: true });
-
-const handleInputCascaderChange = (value) => {
-  if (Array.isArray(value) && value.length === 2) {
-    localInputNodeId.value = value[0];
-    localInputVar.value = value[1];
-    inputCascaderValue.value = value;
-  } else {
-    localInputNodeId.value = '';
-    localInputVar.value = '';
-    inputCascaderValue.value = [];
-  }
-  emitUpdate();
-};
-
 const emitUpdate = () => {
   // 构建输入输出映射
   const inputs = {};
   const outputs = {};
-
+  
   if (localInputVar.value) {
     inputs['input'] = `{{${localInputVar.value}}}`;
   }
-
+  
   if (localOutputVar.value) {
     outputs[localOutputVar.value] = '{{__output__}}';
   }
-
+  
   emit('update', props.data.id, {
     prompt: localPrompt.value,
     inputVar: localInputVar.value,
-    inputNodeId: localInputNodeId.value,
-    inputCascaderValue: inputCascaderValue.value,
     outputVar: localOutputVar.value,
     inputs: Object.keys(inputs).length > 0 ? inputs : undefined,
     outputs: Object.keys(outputs).length > 0 ? outputs : undefined
@@ -216,8 +116,6 @@ const toggleAdvanced = () => {
 watch(() => props.data, (newData) => {
   localPrompt.value = newData.prompt || '';
   localInputVar.value = newData.inputVar || '';
-  localInputNodeId.value = newData.inputNodeId || '';
-  inputCascaderValue.value = newData.inputCascaderValue || [];
   localOutputVar.value = newData.outputVar || '';
 }, { deep: true });
 </script>
@@ -355,17 +253,6 @@ watch(() => props.data, (newData) => {
 .input-param-row,
 .output-param-row {
   margin-bottom: 8px;
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.param-cascader {
-  min-width: 180px;
-  width: 100%;
-  flex-shrink: 0;
-  font-size: 12px;
 }
 
 .param-select {
@@ -398,7 +285,8 @@ watch(() => props.data, (newData) => {
 .param-hint {
   font-size: 9px;
   color: #94a3b8;
-  white-space: nowrap;
+  margin-top: 2px;
+  display: block;
 }
 
 :deep(.vue-flow__handle) {
