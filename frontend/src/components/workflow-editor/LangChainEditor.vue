@@ -1415,6 +1415,7 @@ const handleNodeRun = async () => {
   isRunning.value = true;
   executionLogs.value = [];
   lastExecutionResult.value = null;
+  nodeExecutionData.value = [];
 
   const onStatusChange = (status) => {
     nodeExecutionStatus.value = status;
@@ -1428,7 +1429,11 @@ const handleNodeRun = async () => {
     }
   };
 
-  executionEngine.setCallbacks(onStatusChange, onLog);
+  const onNodeDataChange = (data) => {
+    nodeExecutionData.value = [...data];
+  };
+
+  executionEngine.setCallbacks(onStatusChange, onLog, onNodeDataChange);
 
   const inputData = {};
   if (node.data.inputs && Array.isArray(node.data.inputs)) {
@@ -2424,6 +2429,7 @@ const runWorkflow = async (inputParams = {}) => {
   isRunning.value = true;
   executionLogs.value = [];
   lastExecutionResult.value = null;
+  nodeExecutionData.value = [];
   
   const onStatusChange = (status) => {
     nodeExecutionStatus.value = status;
@@ -2437,7 +2443,11 @@ const runWorkflow = async (inputParams = {}) => {
     }
   };
   
-  executionEngine.setCallbacks(onStatusChange, onLog);
+  const onNodeDataChange = (data) => {
+    nodeExecutionData.value = [...data];
+  };
+  
+  executionEngine.setCallbacks(onStatusChange, onLog, onNodeDataChange);
   const result = await executionEngine.execute(elements.value, inputParams);
   lastExecutionResult.value = result;
   // 获取结构化的节点执行数据

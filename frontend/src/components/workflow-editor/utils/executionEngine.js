@@ -73,6 +73,7 @@ export class ExecutionEngine {
     this.nodeExecutionData = {};  // 新增：存储每个节点的执行详情
     this.onStatusChange = null;
     this.onLog = null;
+    this.onNodeDataChange = null;  // 新增：节点数据变化回调，用于流式更新UI
     this.isPaused = false;
     this.pendingInput = null;
     this.resumeCallback = null;
@@ -100,6 +101,10 @@ export class ExecutionEngine {
   updateNodeData(nodeId, data) {
     if (!this.nodeExecutionData[nodeId]) return;
     Object.assign(this.nodeExecutionData[nodeId], data);
+    // 触发节点数据变化回调，实现流式更新
+    if (this.onNodeDataChange) {
+      this.onNodeDataChange(this.getNodeExecutionData());
+    }
   }
 
   // 添加节点日志
@@ -109,6 +114,10 @@ export class ExecutionEngine {
       ...logEntry,
       timestamp: logEntry.timestamp || Date.now()
     });
+    // 触发节点数据变化回调，实现流式更新
+    if (this.onNodeDataChange) {
+      this.onNodeDataChange(this.getNodeExecutionData());
+    }
   }
 
   // 完成节点执行
@@ -125,9 +134,10 @@ export class ExecutionEngine {
     return Object.values(this.nodeExecutionData);
   }
 
-  setCallbacks(onStatusChange, onLog) {
+  setCallbacks(onStatusChange, onLog, onNodeDataChange = null) {
     this.onStatusChange = onStatusChange;
     this.onLog = onLog;
+    this.onNodeDataChange = onNodeDataChange;
   }
 
   setNodeStatus(nodeId, status) {

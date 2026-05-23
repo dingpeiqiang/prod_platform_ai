@@ -159,6 +159,17 @@ const emit = defineEmits(['clear']);
 const logsContainer = ref(null);
 const expandedNodes = reactive({});
 const allExpanded = ref(false);  // 默认全部折叠
+const autoScrollEnabled = ref(true);  // 自动滚动开关
+
+const shouldAutoScroll = () => {
+  if (!logsContainer.value) return false;
+  const container = logsContainer.value;
+  const scrollTop = container.scrollTop;
+  const scrollHeight = container.scrollHeight;
+  const clientHeight = container.clientHeight;
+  // 如果滚动条接近底部（100像素内），允许自动滚动
+  return scrollHeight - scrollTop - clientHeight < 100;
+};
 
 const nodeIconMap = {
   'start': '🚀', 'end': '🏁', 'prompt': '💬', 'llm': '🤖',
@@ -222,7 +233,9 @@ const formatTimestamp = (ts) => {
 
 watch(() => props.logs.length + props.nodeExecutionData.length, async () => {
   await nextTick();
-  if (logsContainer.value) logsContainer.value.scrollTop = logsContainer.value.scrollHeight;
+  if (logsContainer.value && shouldAutoScroll()) {
+    logsContainer.value.scrollTop = logsContainer.value.scrollHeight;
+  }
 });
 </script>
 
