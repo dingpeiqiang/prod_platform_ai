@@ -1423,7 +1423,14 @@ class ToolNodeExecutor(NodeExecutor):
 
 
 class FormNodeExecutor(NodeExecutor):
-    """表单生成节点执行器"""
+    """表单生成节点执行器 - 重构版
+    
+    功能特性：
+    1. 基于本体生成表单结构
+    2. 智能推荐初始化表单（通过推荐引擎）
+    3. 基于本体的智能校验
+    4. 通过 MCP 工具提交
+    """
     
     NODE_TYPE = "form"
     
@@ -1437,75 +1444,320 @@ class FormNodeExecutor(NodeExecutor):
                 for key, value in resolved_inputs.items():
                     context.set_variable(key, value)
             
-            # 获取本体编码
+            # 获取本体编码和 MCP 工具名称
             ontology_code = self.node_data.get("ontologyCode", "")
+            tool_name = self.node_data.get("toolType", "")
             
             if not ontology_code:
                 raise ValueError("表单节点必须配置 ontologyCode")
             
-            logger.info(f"Form node executing with ontology: {ontology_code}")
+            logger.info(f"[FormNodeExecutor] 执行表单节点，本体: {ontology_code}, 提交工具: {tool_name or '未配置'}")
             
             # 获取本体定义
             ontology = config_loader.get_ontology(ontology_code)
             if not ontology:
                 raise ValueError(f"未找到本体定义: {ontology_code}")
             
-            # 生成表单数据
-            form_data = await self._generate_form_data(ontology, context)
+            # 步骤 1: 根据本体生成表单结构
+            form_schema = self._generate_form_schema(ontology)
             
-            # 设置表单数据到上下文
+            # 步骤 2: 通过智能推荐初始化表单数据
+            form_data = await self._initialize_form_data_with_recommendations(ontology, context)
+            
+            # 步骤 3: 执行基于本体的智能校验
+            validation_result = await self._validate_form_data(ontology, form_data)
+            
+            # 步骤 4: 如果配置了 MCP 工具且校验通过，调用 MCP 工具提交
+            tool_result = None
+            if tool_name and validation_result.get("is_valid", True):
+                try:
+                    tool_result = await self._call_mcp_tool(tool_name, form_data, context)
+                except Exception as e:
+                    logger.warning(f"[FormNodeExecutor] MCP 工具调用失败: {e}，继续执行工作流")
+                    tool_result = {"success": False, "error": str(e)}
+            
+            # 设置结果到上下文
+            context.set_variable("form_schema", form_schema)
             context.set_variable("form_data", form_data)
+            context.set_variable("ontology_code", ontology_code)
+            context.set_variable("form_validation", validation_result)
+            if tool_result:
+                context.set_variable("form_submit_result", tool_result)
+            
+            context.outputs["form_schema"] = form_schema
             context.outputs["form_data"] = form_data
             context.outputs["ontology_code"] = ontology_code
+            context.outputs["form_validation"] = validation_result
+            if tool_result:
+                context.outputs["form_submit_result"] = tool_result
             
             # 使用标准输出变量传递数据（同时处理显性输出映射）
-            self.set_output(context, {"form_data": form_data, "ontology_code": ontology_code})
+            self.set_output(context, {
+                "form_schema": form_schema,
+                "form_data": form_data,
+                "ontology_code": ontology_code,
+                "form_validation": validation_result,
+                "form_submit_result": tool_result
+            })
             
-            logger.info(f"Form generated successfully with {len(form_data)} fields")
+            logger.info(f"[FormNodeExecutor] 表单处理完成: {len(form_data)} 个字段, 校验通过: {validation_result.get('is_valid', False)}")
             
             context.update_node_status(self.node_id, ExecutionStatus.COMPLETED)
             
         except Exception as e:
-            logger.error(f"Form node execution failed: {e}")
+            logger.exception(f"[FormNodeExecutor] 表单节点执行失败: {e}")
             context.error = str(e)
             context.update_node_status(self.node_id, ExecutionStatus.FAILED)
             raise
         
         return self._get_next_nodes(edges)
     
-    async def _generate_form_data(self, ontology: Dict[str, Any], context: WorkflowContext) -> Dict[str, Any]:
-        """根据本体生成表单数据"""
+    def _generate_form_schema(self, ontology: Dict[str, Any]) -> Dict[str, Any]:
+        """根据本体生成表单结构"""
+        form_schema = {
+            "ontologyCode": ontology.get("ontologyCode", ""),
+            "ontologyName": ontology.get("ontologyName", ""),
+            "description": ontology.get("description", ""),
+            "entities": [],
+            "fields": []
+        }
+        
+        # 遍历本体中的实体和字段
+        for entity in ontology.get("entities", []):
+            entity_info = {
+                "entityCode": entity.get("entityCode", ""),
+                "entityName": entity.get("entityName", ""),
+                "fields": []
+            }
+            
+            for field in entity.get("fields", []):
+                field_def = {
+                    "fieldCode": field.get("fieldCode"),
+                    "fieldName": field.get("fieldName"),
+                    "fieldType": field.get("fieldType", "string"),
+                    "required": field.get("required", False),
+                    "default": field.get("default", ""),
+                    "description": field.get("description", ""),
+                    "options": field.get("options", []),
+                    "validation": field.get("validation", {}),
+                    "placeholder": field.get("placeholder", "")
+                }
+                
+                entity_info["fields"].append(field_def)
+                form_schema["fields"].append(field_def)
+            
+            form_schema["entities"].append(entity_info)
+        
+        return form_schema
+    
+    async def _initialize_form_data_with_recommendations(self, ontology: Dict[str, Any], context: WorkflowContext) -> Dict[str, Any]:
+        """通过智能推荐初始化表单数据"""
         form_data = {}
         
-        # 获取上下文中的工具调用结果
-        tool_result = context.get_variable("tariff_info", {})
+        # 获取推荐引擎
+        try:
+            from app.services.recommendation_engine import get_recommendation_engine
+            rec_engine = get_recommendation_engine()
+        except Exception as e:
+            logger.warning(f"[FormNodeExecutor] 无法获取推荐引擎: {e}，使用默认初始化")
+            rec_engine = None
+        
+        ontology_code = ontology.get("ontologyCode", "")
         
         # 遍历本体中的实体和字段
         for entity in ontology.get("entities", []):
             for field in entity.get("fields", []):
                 field_code = field.get("fieldCode")
-                field_name = field.get("fieldName")
+                if not field_code:
+                    continue
                 
-                # 优先从工具结果中获取（通过字段映射）
+                # 初始化值
                 value = None
-                if tool_result:
-                    mapping = field.get("mapping")
-                    if mapping and mapping in tool_result:
-                        value = tool_result[mapping]
-                    elif field_code in tool_result:
-                        value = tool_result[field_code]
                 
-                # 如果没有从工具获取到值，使用默认值
+                # 1. 尝试从上下文变量中获取
+                if not value:
+                    value = context.get_variable(field_code)
+                
+                # 2. 尝试从工具结果中获取（兼容旧逻辑）
+                if not value:
+                    tool_result = context.get_variable("tariff_info", {})
+                    mapping = field.get("mapping")
+                    if tool_result:
+                        if mapping and mapping in tool_result:
+                            value = tool_result[mapping]
+                        elif field_code in tool_result:
+                            value = tool_result[field_code]
+                
+                # 3. 使用推荐引擎获取推荐值
+                if not value and rec_engine:
+                    try:
+                        # 从上下文中获取用户输入
+                        user_input = context.get_variable("user_input", "")
+                        user_id = context.get_variable("user_id", "default")
+                        
+                        rec_result = rec_engine.recommend(
+                            form_code=ontology_code,
+                            field_code=field_code,
+                            user_input=user_input,
+                            user_id=user_id
+                        )
+                        
+                        if rec_result and rec_result.recommendations and len(rec_result.recommendations) > 0:
+                            value = rec_result.recommendations[0].value
+                            logger.debug(f"[FormNodeExecutor] 字段 {field_code} 获取到推荐值: {value}")
+                    except Exception as e:
+                        logger.warning(f"[FormNodeExecutor] 字段 {field_code} 推荐失败: {e}")
+                
+                # 4. 使用字段默认值
                 if value is None:
                     value = field.get("default", "")
-                
-                # 如果仍然为空，尝试从上下文变量中获取
-                if not value:
-                    value = context.get_variable(field_code, "")
                 
                 form_data[field_code] = value
         
         return form_data
+    
+    async def _validate_form_data(self, ontology: Dict[str, Any], form_data: Dict[str, Any]) -> Dict[str, Any]:
+        """基于本体执行智能校验"""
+        validation_result = {
+            "is_valid": True,
+            "errors": [],
+            "warnings": [],
+            "info": []
+        }
+        
+        # 遍历本体中的实体和字段进行校验
+        for entity in ontology.get("entities", []):
+            for field in entity.get("fields", []):
+                field_code = field.get("fieldCode")
+                field_name = field.get("fieldName", field_code)
+                value = form_data.get(field_code, "")
+                
+                # 必填校验
+                required = field.get("required", False)
+                if required and (value is None or value == "" or (isinstance(value, str) and value.strip() == "")):
+                    validation_result["errors"].append({
+                        "field": field_code,
+                        "fieldName": field_name,
+                        "message": "此字段不能为空",
+                        "type": "required"
+                    })
+                    validation_result["is_valid"] = False
+                    continue
+                
+                # 空值跳过后续校验
+                if value is None or value == "" or (isinstance(value, str) and value.strip() == ""):
+                    continue
+                
+                # 类型校验
+                field_type = field.get("fieldType", "string")
+                try:
+                    if field_type == "number" or field_type == "integer":
+                        if not str(value).replace(".", "", 1).isdigit():
+                            validation_result["errors"].append({
+                                "field": field_code,
+                                "fieldName": field_name,
+                                "message": "必须是数字类型",
+                                "type": "type"
+                            })
+                            validation_result["is_valid"] = False
+                    elif field_type == "boolean":
+                        if not isinstance(value, bool) and str(value).lower() not in ["true", "false", "1", "0", "是", "否"]:
+                            validation_result["errors"].append({
+                                "field": field_code,
+                                "fieldName": field_name,
+                                "message": "必须是布尔类型",
+                                "type": "type"
+                            })
+                            validation_result["is_valid"] = False
+                except Exception as e:
+                    logger.debug(f"[FormNodeExecutor] 类型校验异常: {e}")
+                
+                # 长度校验
+                max_length = field.get("maxLength")
+                min_length = field.get("minLength")
+                if max_length and len(str(value)) > max_length:
+                    validation_result["errors"].append({
+                        "field": field_code,
+                        "fieldName": field_name,
+                        "message": f"长度超过限制（最大{max_length}字符）",
+                        "type": "max_length"
+                    })
+                    validation_result["is_valid"] = False
+                if min_length and len(str(value)) < min_length:
+                    validation_result["errors"].append({
+                        "field": field_code,
+                        "fieldName": field_name,
+                        "message": f"长度不足（最小{min_length}字符）",
+                        "type": "min_length"
+                    })
+                    validation_result["is_valid"] = False
+                
+                # 正则校验
+                validation = field.get("validation", {})
+                pattern = validation.get("pattern")
+                if pattern:
+                    import re
+                    try:
+                        if not re.match(pattern, str(value)):
+                            validation_result["errors"].append({
+                                "field": field_code,
+                                "fieldName": field_name,
+                                "message": validation.get("patternError", "格式不正确"),
+                                "type": "pattern"
+                            })
+                            validation_result["is_valid"] = False
+                    except Exception as e:
+                        logger.warning(f"[FormNodeExecutor] 正则校验异常: {e}")
+                
+                # 枚举值校验
+                options = field.get("options", [])
+                if options and len(options) > 0:
+                    valid_values = []
+                    for opt in options:
+                        if isinstance(opt, dict):
+                            valid_values.append(opt.get("value", opt.get("label")))
+                        else:
+                            valid_values.append(opt)
+                    
+                    if value not in valid_values:
+                        validation_result["warnings"].append({
+                            "field": field_code,
+                            "fieldName": field_name,
+                            "message": f"值 {value} 不在推荐选项中",
+                            "type": "enum"
+                        })
+        
+        return validation_result
+    
+    async def _call_mcp_tool(self, tool_name: str, form_data: Dict[str, Any], context: WorkflowContext) -> Dict[str, Any]:
+        """调用 MCP 工具提交表单"""
+        from app.mcp_tools import get_toolhub
+        
+        hub = get_toolhub()
+        
+        if not hub.has_tool(tool_name):
+            raise ValueError(f"MCP 工具 {tool_name} 不存在")
+        
+        # 准备工具参数 - 从节点配置获取参数模板并替换
+        tool_params = self.node_data.get("params", {})
+        
+        # 渲染参数模板
+        rendered_params = {}
+        for key, value in tool_params.items():
+            if isinstance(value, str):
+                rendered_params[key] = self.render_template(value, context)
+            else:
+                rendered_params[key] = value
+        
+        # 将表单数据作为参数传递（如果没有显式配置）
+        if "formData" not in rendered_params:
+            rendered_params["formData"] = form_data
+        
+        # 调用 MCP 工具
+        logger.info(f"[FormNodeExecutor] 调用 MCP 工具: {tool_name}, 参数: {list(rendered_params.keys())}")
+        result = hub.execute_sync(tool_name, rendered_params)
+        
+        return result
     
     def _get_next_nodes(self, edges: List[Dict[str, Any]]) -> List[str]:
         return [e["target"] for e in edges if e["source"] == self.node_id]
