@@ -193,6 +193,10 @@
         <span class="status" :class="validationStatus">
           {{ validationText }}
         </span>
+        <span class="save-status" :class="saveStatus.status">
+          <span class="save-icon">{{ saveStatus.icon }}</span>
+          <span class="save-text">{{ saveStatus.text }}</span>
+        </span>
         <button 
           @click="showShortcuts = !showShortcuts" 
           class="btn-icon"
@@ -796,6 +800,11 @@ const executionParameters = ref([]);
 
 const executionEngine = new ExecutionEngine();
 
+const AUTO_SAVE_INTERVAL = 10000;
+let autoSaveTimer = null;
+const isAutoSaving = ref(false);
+const lastSavedTime = ref(null);
+
 const checkPauseStatus = () => {
   isPaused.value = executionEngine.isExecutionPaused();
   pendingInput.value = executionEngine.getPendingInput();
@@ -980,6 +989,47 @@ const validationText = computed(() => {
 
 const canUndo = computed(() => historyIndex.value > 0);
 const canRedo = computed(() => historyIndex.value < history.value.length - 1);
+
+const saveStatus = computed(() => {
+  if (isAutoSaving.value) {
+    return {
+      status: 'saving',
+      text: '保存中...',
+      icon: '⏳'
+    };
+  }
+  if (hasChanges.value) {
+    return {
+      status: 'unsaved',
+      text: '未保存',
+      icon: '⚠️'
+    };
+  }
+  if (lastSavedTime.value) {
+    const now = new Date();
+    const diff = now - lastSavedTime.value;
+    let timeAgo = '';
+    if (diff < 5000) {
+      timeAgo = '刚刚';
+    } else if (diff < 60000) {
+      timeAgo = `${Math.floor(diff / 1000)}秒前`;
+    } else if (diff < 3600000) {
+      timeAgo = `${Math.floor(diff / 60000)}分钟前`;
+    } else {
+      timeAgo = lastSavedTime.value.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    }
+    return {
+      status: 'saved',
+      text: `已保存 ${timeAgo}`,
+      icon: '✓'
+    };
+  }
+  return {
+    status: 'idle',
+    text: '',
+    icon: ''
+  };
+});
 
 const saveHistory = () => {
   const snapshot = JSON.stringify(elements.value);
@@ -1763,7 +1813,7 @@ const loadWorkflows = async () => {
   }
 };
 
-const saveWorkflow = async () => {
+const saveWorkflow = async (isAuto = false) => {
   const workflowData = {
     nodes: elements.value.filter(el => !el.source && !el.target),
     edges: elements.value.filter(el => el.source && el.target),
@@ -1774,15 +1824,15 @@ const saveWorkflow = async () => {
 
   try {
     if (currentWorkflowId.value) {
-      // 更新现有工作流
       const updateResult = await workflowApi.workflowApi.update(currentWorkflowId.value, {
         workflowName: workflowName.value,
         workflowData: workflowData
-      });
+      }, { showLoading: !isAuto });
       
       if (updateResult.success) {
-        ElMessage.success('工作流已保存');
-        // 更新本地缓存的工作流列表
+        if (!isAuto) {
+          ElMessage.success('工作流已保存');
+        }
         const index = workflows.value.findIndex(w => w.id === currentWorkflowId.value);
         if (index !== -1) {
           workflows.value[index] = { 
@@ -1793,11 +1843,13 @@ const saveWorkflow = async () => {
           };
         }
         hasChanges.value = false;
+        lastSavedTime.value = new Date();
       } else {
-        ElMessage.error('保存失败：' + (updateResult.message || '未知错误'));
+        if (!isAuto) {
+          ElMessage.error('保存失败：' + (updateResult.message || '未知错误'));
+        }
       }
     } else {
-      // 创建新工作流
       const newId = uuidv4();
       
       const createResult = await workflowApi.workflowApi.create({
@@ -1806,11 +1858,10 @@ const saveWorkflow = async () => {
         description: '',
         category: 'general',
         workflowData: workflowData
-      });
+      }, { showLoading: !isAuto });
       
       if (createResult.success) {
         currentWorkflowId.value = newId;
-        // 更新本地缓存的工作流列表
         workflows.value.push({
           id: newId,
           name: workflowName.value,
@@ -1820,15 +1871,48 @@ const saveWorkflow = async () => {
           updatedAt: new Date().toISOString(),
           savedAt: new Date().toISOString()
         });
-        ElMessage.success('工作流已创建并保存');
+        if (!isAuto) {
+          ElMessage.success('工作流已创建并保存');
+        }
         hasChanges.value = false;
+        lastSavedTime.value = new Date();
       } else {
-        ElMessage.error('创建失败：' + (createResult.message || '未知错误'));
+        if (!isAuto) {
+          ElMessage.error('创建失败：' + (createResult.message || '未知错误'));
+        }
       }
     }
   } catch (error) {
     console.error('保存工作流失败:', error);
-    ElMessage.error('保存失败：' + (error.message || '未知错误'));
+    if (!isAuto) {
+      ElMessage.error('保存失败：' + (error.message || '未知错误'));
+    }
+  }
+};
+
+const checkAndAutoSave = async () => {
+  if (isAutoSaving.value) return;
+  if (isReadOnly.value) return;
+  if (!hasChanges.value) return;
+  if (!currentWorkflowId.value) return;
+
+  isAutoSaving.value = true;
+  try {
+    await saveWorkflow(true);
+  } finally {
+    isAutoSaving.value = false;
+  }
+};
+
+const startAutoSaveTimer = () => {
+  stopAutoSaveTimer();
+  autoSaveTimer = setInterval(checkAndAutoSave, AUTO_SAVE_INTERVAL);
+};
+
+const stopAutoSaveTimer = () => {
+  if (autoSaveTimer) {
+    clearInterval(autoSaveTimer);
+    autoSaveTimer = null;
   }
 };
 
@@ -2772,20 +2856,16 @@ onMounted(async () => {
   registerShortcuts();
   window.addEventListener('keydown', handleKeydown);
   
-  // 从后端加载工作流列表（必须await确保加载完成）
   await loadWorkflows();
   
-  // 如果传入了 workflowCode，从后端加载
   if (props.workflowCode) {
     try {
       const result = await workflowApi.workflowApi.get(props.workflowCode);
       if (result.success && result.data) {
         const workflow = result.data;
-        // currentWorkflowId: 优先使用 workflowCode（新版本完整数据），兼容 id（旧版本列表数据）
         currentWorkflowId.value = workflow.workflowCode || workflow.id;
         workflowName.value = workflow.workflowName;
         
-        // 加载工作流数据
         if (workflow.workflowData) {
           const { nodes, edges } = workflow.workflowData;
           elements.value = [
@@ -2803,17 +2883,18 @@ onMounted(async () => {
       ElMessage.error('加载工作流失败');
     }
   } else if (workflows.value.length > 0 && props.workflowCode) {
-    // 只有明确传入了 workflowCode 才有工作流列表时，才自动打开第一个工作流
-    // workflowCode 为空/undefined/null 时认为是新建工作流，保持空画布
     await openWorkflow(workflows.value[0]);
   }
   
   history.value.push(JSON.stringify(elements.value));
   historyIndex.value = 0;
+  
+  startAutoSaveTimer();
 });
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
+  stopAutoSaveTimer();
 });
 </script>
 
@@ -3261,6 +3342,56 @@ onUnmounted(() => {
 .status.invalid {
   background-color: #ffebee;
   color: #c62828;
+}
+
+.save-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+}
+
+.save-status.saving {
+  background-color: #e3f2fd;
+  color: #1976d2;
+}
+
+.save-status.unsaved {
+  background-color: #fff3e0;
+  color: #ef6c00;
+  animation: pulse-warning 2s infinite;
+}
+
+.save-status.saved {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+}
+
+.save-status.idle {
+  display: none;
+}
+
+.save-icon {
+  font-size: 12px;
+}
+
+.save-text {
+  font-size: 12px;
+}
+
+@keyframes pulse-warning {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
 }
 
 .panel-toggle-btn {

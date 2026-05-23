@@ -233,6 +233,7 @@ def _get_category_display_name(category: str) -> str:
         "kb": "知识库工具",
         "llm": "LLM 工具",
         "system": "系统工具",
+        "external": "外部API工具",
         "tariff": "资费工具",
         "general": "通用工具"
     }

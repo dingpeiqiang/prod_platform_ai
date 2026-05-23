@@ -46,7 +46,8 @@ class MCPToolHub:
         handler: Callable,
         category: str = "general",
         input_schema: Dict[str, Any] = None,
-        examples: List[Dict] = None
+        examples: List[Dict] = None,
+        output_schema: Dict[str, Any] = None
     ) -> None:
         """
         注册一个 MCP 工具
@@ -58,6 +59,7 @@ class MCPToolHub:
             category: 工具分类
             input_schema: 参数 schema（可选，自动从 handler 推断）
             examples: 使用示例
+            output_schema: 出参 schema（可选）
         """
         if name in self._tools:
             logger.warning(f"[MCPToolHub] 工具 {name} 已存在，将被覆盖")
@@ -68,7 +70,8 @@ class MCPToolHub:
             input_schema=input_schema or {"type": "object", "properties": {}, "required": []},
             handler=handler,
             category=category,
-            examples=examples or []
+            examples=examples or [],
+            output_schema=output_schema or {}
         )
         
         self._tools[name] = tool
@@ -133,7 +136,7 @@ class MCPToolHub:
         列出所有工具（MCP 协议格式）
         
         Returns:
-            符合 MCP list_tools 规范的列表
+            符合 MCP list_tools 规范的列表，包含 inputSchema 和 outputSchema
         """
         return [tool.to_mcp_dict() for tool in self._tools.values()]
 
@@ -272,13 +275,14 @@ def mcptool(
     name: str = None,
     description: str = None,
     category: str = "general",
-    input_schema: Dict[str, Any] = None
+    input_schema: Dict[str, Any] = None,
+    output_schema: Dict[str, Any] = None
 ):
     """
     MCP 工具装饰器
     
     用法:
-        @mcptool(name="my_tool", description="我的工具", category="form")
+        @mcptool(name="my_tool", description="我的工具", output_schema={"type": "object", "properties": {...}})
         def my_tool(param1: str, param2: int):
             '''工具描述'''
             return {"result": param1 + str(param2)}
@@ -294,7 +298,8 @@ def mcptool(
             description=tool_desc,
             handler=func,
             category=category,
-            input_schema=input_schema
+            input_schema=input_schema,
+            output_schema=output_schema
         )
         
         return func

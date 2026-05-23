@@ -51,9 +51,10 @@
         </template>
       </el-table-column>
       
-      <el-table-column label="操作" width="180" fixed="right">
+      <el-table-column label="操作" width="240" fixed="right">
         <template #default="{ row }">
           <el-button size="small" type="primary" @click="$emit('test-tool', row)">测试</el-button>
+          <el-button size="small" @click="openDetail(row)">详情</el-button>
           <el-button size="small" @click="$emit('view-logs', row.name)">日志</el-button>
         </template>
       </el-table-column>
@@ -62,11 +63,67 @@
     <div v-if="filteredTools.length === 0" class="empty-state">
       <p>暂无工具数据</p>
     </div>
+
+    <!-- 工具详情抽屉 -->
+    <el-drawer
+      v-model="showDetailDrawer"
+      :title="selectedTool?.name || '工具详情'"
+      size="560px"
+      direction="rtl"
+    >
+      <template #default>
+        <div v-if="selectedTool" class="tool-detail">
+          <!-- 基本信息 -->
+          <div class="detail-section">
+            <h4 class="section-title">基本信息</h4>
+            <div class="info-grid">
+              <div class="info-item">
+                <span class="info-label">工具名称</span>
+                <span class="info-value">{{ selectedTool.name }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">分类</span>
+                <el-tag size="small">{{ getCategoryName(selectedTool.metadata?.category) }}</el-tag>
+              </div>
+              <div class="info-item" style="grid-column: 1 / -1;">
+                <span class="info-label">描述</span>
+                <span class="info-value desc-value">{{ selectedTool.description || '无' }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 入参 Schema -->
+          <div class="detail-section">
+            <h4 class="section-title">入参定义 (inputSchema)</h4>
+            <SchemaViewer
+              :schema="selectedTool.inputSchema || {}"
+              mode="readonly"
+              label="入参"
+            />
+          </div>
+
+          <!-- 出参 Schema -->
+          <div class="detail-section">
+            <h4 class="section-title">出参定义 (outputSchema)</h4>
+            <SchemaViewer
+              v-if="selectedTool.outputSchema && Object.keys(selectedTool.outputSchema).length > 0"
+              :schema="selectedTool.outputSchema"
+              mode="readonly"
+              label="出参"
+            />
+            <div v-else class="no-schema">
+              <span>暂无出参定义</span>
+            </div>
+          </div>
+        </div>
+      </template>
+    </el-drawer>
   </div>
 </template>
 
 <script setup>
 import { ref, computed } from 'vue'
+import SchemaViewer from './SchemaViewer.vue'
 
 const props = defineProps({
   tools: {
@@ -83,6 +140,8 @@ defineEmits(['test-tool', 'view-logs'])
 
 const searchKeyword = ref('')
 const filterCategory = ref('')
+const showDetailDrawer = ref(false)
+const selectedTool = ref(null)
 
 const filteredTools = computed(() => {
   let result = props.tools
@@ -110,6 +169,11 @@ const calculateSuccessRate = (stats) => {
 const getCategoryName = (category) => {
   const cat = props.categories.find(c => c.code === category)
   return cat?.name || category
+}
+
+const openDetail = (tool) => {
+  selectedTool.value = tool
+  showDetailDrawer.value = true
 }
 </script>
 
@@ -156,5 +220,58 @@ const getCategoryName = (category) => {
 
 :deep(.el-table__body-wrapper) {
   overflow-y: auto;
+}
+
+/* 详情抽屉样式 */
+.tool-detail {
+  padding: 0 4px;
+}
+
+.detail-section {
+  margin-bottom: 24px;
+}
+
+.section-title {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+  border-left: 3px solid #409eff;
+  padding-left: 8px;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.info-label {
+  font-size: 11px;
+  color: #909399;
+}
+
+.info-value {
+  font-size: 12px;
+  color: #303133;
+}
+
+.desc-value {
+  line-height: 1.5;
+}
+
+.no-schema {
+  padding: 16px;
+  text-align: center;
+  color: #c0c4cc;
+  font-size: 12px;
+  border: 1px dashed #e4e7ed;
+  border-radius: 6px;
 }
 </style>

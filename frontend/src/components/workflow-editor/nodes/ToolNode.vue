@@ -1,45 +1,63 @@
 <template>
   <div class="node tool-node" :class="{ selected, 'is-config-mode': configMode, 'is-compact': compact && !configMode }">
     <div v-if="!configMode" class="node-header">
-      <span class="node-icon">🔧</span>
+      <span class="node-icon">🔌</span>
       <span class="node-title">{{ data.label }}</span>
       <button @click="toggleAdvanced" class="advanced-toggle" :class="{ active: showAdvanced }">
         ⚙
       </button>
     </div>
+
     <div v-if="compact && !configMode" class="node-compact-body">
       <span class="compact-summary">{{ toolDisplayName }}</span>
       <span class="compact-hint">双击配置</span>
     </div>
-    <div v-if="!compact || configMode" class="node-body">
-      <select v-model="localToolName" @change="onToolChange" class="node-select">
-        <option value="">选择工具</option>
-        <option value="web_search">网页搜索</option>
-        <option value="database_query">数据库查询</option>
-        <option value="file_read">文件读取</option>
-        <option value="file_write">文件写入</option>
-        <option value="api_call">API调用</option>
-        <option value="email_send">发送邮件</option>
-        <option value="shell_exec">执行命令</option>
-        <option value="image_generate">图像生成</option>
-        <option value="document_summary">文档摘要</option>
-      </select>
 
+    <div v-if="!compact || configMode" class="node-body">
+      <!-- 加载状态 -->
+      <div v-if="loading" class="loading-state">
+        <span class="loading-text">加载工具中...</span>
+      </div>
+
+      <!-- 工具选择器 -->
+      <div v-else class="tool-selector">
+        <!-- 分类选择 -->
+        <select v-model="localCategory" @change="onCategoryChange" class="node-select category-select">
+          <option value="">全部分类</option>
+          <option v-for="cat in categories" :key="cat" :value="cat">{{ getCategoryDisplayName(cat) }}</option>
+        </select>
+
+        <!-- 工具选择 -->
+        <select v-model="localToolName" @change="onToolChange" class="node-select">
+          <option value="">选择 MCP 工具</option>
+          <optgroup v-for="(tools, cat) in groupedTools" :key="cat" :label="getCategoryDisplayName(cat)">
+            <option v-for="tool in tools" :key="tool.name" :value="tool.name">
+              {{ tool.name }}
+            </option>
+          </optgroup>
+        </select>
+      </div>
+
+      <!-- 工具描述 -->
+      <div v-if="selectedTool" class="tool-desc">{{ selectedTool.description }}</div>
+
+      <!-- 高级配置：参数编辑 -->
       <div v-if="(configMode || showAdvanced) && localToolName" class="advanced-panel">
         <div class="section-title">工具参数</div>
         <div class="params-container">
-          <div 
-            v-for="(param, index) in localParams" 
-            :key="index" 
+          <div
+            v-for="(param, index) in localParams"
+            :key="index"
             class="param-row"
           >
-            <input 
-              v-model="param.name" 
-              @input="emitUpdate" 
-              placeholder="参数名" 
-              class="param-name" 
+            <input
+              v-model="param.name"
+              @input="emitUpdate"
+              placeholder="参数名"
+              class="param-name"
+              readonly
             />
-            <select v-model="param.type" @change="emitUpdate" class="param-type">
+            <select v-model="param.type" @change="emitUpdate" class="param-type" disabled>
               <option value="string">字符串</option>
               <option value="number">数字</option>
               <option value="boolean">布尔值</option>
@@ -47,12 +65,12 @@
               <option value="object">对象</option>
               <option value="variable">变量引用</option>
             </select>
-            <input 
+            <input
               v-if="param.type !== 'variable'"
-              v-model="param.value" 
-              @input="emitUpdate" 
+              v-model="param.value"
+              @input="emitUpdate"
               :placeholder="getParamPlaceholder(param.type)"
-              class="param-value" 
+              class="param-value"
             />
             <VariableCascader
               v-else
@@ -62,20 +80,21 @@
               class="param-value-cascader"
               @change="emitUpdate"
             />
-            <button @click="removeParam(index)" class="remove-param-btn">✕</button>
           </div>
-          <button @click="addParam" class="add-param-btn">+ 添加参数</button>
+          <div v-if="localParams.length === 0" class="no-params-hint">
+            此工具无需参数
+          </div>
         </div>
 
         <div class="section-title">执行配置</div>
         <div class="timeout-row">
           <label>超时时间</label>
-          <input 
-            v-model.number="localTimeout" 
-            @input="emitUpdate" 
-            type="number" 
-            min="1" 
-            max="600" 
+          <input
+            v-model.number="localTimeout"
+            @input="emitUpdate"
+            type="number"
+            min="1"
+            max="600"
             class="timeout-input"
           />
           <span class="timeout-unit">秒</span>
@@ -90,24 +109,21 @@
           <input v-model="localSilent" @change="emitUpdate" type="checkbox" />
           <span>静默模式（不输出日志）</span>
         </label>
-
-        <div v-if="toolDescriptions[localToolName]" class="tool-description">
-          <div class="section-title">工具说明</div>
-          <p>{{ toolDescriptions[localToolName] }}</p>
-        </div>
       </div>
     </div>
+
     <Handle v-if="!configMode" type="target" :position="targetPosition" id="target" />
     <Handle v-if="!configMode" type="source" :position="sourcePosition" id="source" />
   </div>
 </template>
 
 <script setup>
-import { ref, watch, computed } from 'vue';
-import { Handle, Position } from '@vue-flow/core';
-import { nodeDisplayProps } from './nodeDisplayProps.js';
-import { useNodeAnchorMode } from './useHandlePosition.js';
-import VariableCascader from '../VariableCascader.vue';
+import { ref, watch, computed, onMounted } from 'vue'
+import { Handle, Position } from '@vue-flow/core'
+import { nodeDisplayProps } from './nodeDisplayProps.js'
+import { useNodeAnchorMode } from './useHandlePosition.js'
+import VariableCascader from '../VariableCascader.vue'
+import * as mcpApi from '@/services/mcpManagementApi'
 
 const props = defineProps({
   data: {
@@ -123,158 +139,216 @@ const props = defineProps({
     default: () => []
   },
   ...nodeDisplayProps
-});
+})
 
-const { targetPosition, sourcePosition } = useNodeAnchorMode(props);
+const { targetPosition, sourcePosition } = useNodeAnchorMode(props)
 
-const emit = defineEmits(['update']);
+const emit = defineEmits(['update'])
 
-const toolLabels = {
-  web_search: '网页搜索',
-  database_query: '数据库查询',
-  file_read: '文件读取',
-  file_write: '文件写入',
-  api_call: 'API调用',
-  email_send: '发送邮件',
-  shell_exec: '执行命令',
-  image_generate: '图像生成',
-  document_summary: '文档摘要'
-};
+// MCP 工具数据
+const mcpTools = ref([])
+const mcpToolMap = ref({})
+const loading = ref(false)
+const showAdvanced = ref(false)
 
-const showAdvanced = ref(false);
+// 选择状态（对应后端 toolType 字段）
+const localCategory = ref('')
+const localToolName = ref(props.data.toolType || props.data.toolName || '')
+const localParams = ref([])
+const localTimeout = ref(props.data.timeout || 60)
+const localAsync = ref(props.data.isAsync || false)
+const localSilent = ref(props.data.silent || false)
 
+// 分类
+const categories = computed(() => {
+  const cats = [...new Set(mcpTools.value.map(t => t.metadata?.category || 'general'))]
+  return cats.sort()
+})
+
+// 按分类分组
+const groupedTools = computed(() => {
+  const filtered = localCategory.value
+    ? mcpTools.value.filter(t => (t.metadata?.category || 'general') === localCategory.value)
+    : mcpTools.value
+
+  const groups = {}
+  for (const tool of filtered) {
+    const cat = tool.metadata?.category || 'general'
+    if (!groups[cat]) groups[cat] = []
+    groups[cat].push(tool)
+  }
+  return groups
+})
+
+// 当前选中的工具定义
+const selectedTool = computed(() => {
+  return mcpToolMap.value[localToolName.value] || null
+})
+
+// 显示名称
 const toolDisplayName = computed(() => {
-  if (!localToolName.value) return '未选择工具';
-  return toolLabels[localToolName.value] || localToolName.value;
-});
+  if (!localToolName.value) return '未选择工具'
+  const tool = mcpToolMap.value[localToolName.value]
+  return tool?.name || localToolName.value
+})
 
-const localToolName = ref(props.data.toolName || '');
-const localParams = ref(props.data.params || []);
-const localTimeout = ref(props.data.timeout || 30);
-const localAsync = ref(props.data.isAsync || false);
-const localSilent = ref(props.data.silent || false);
+// 加载 MCP 工具列表
+const loadMCPTools = async () => {
+  loading.value = true
+  try {
+    const res = await mcpApi.listTools()
+    if (res.success) {
+      mcpTools.value = res.tools || []
+      // 构建 name -> tool 映射
+      const map = {}
+      for (const t of mcpTools.value) {
+        map[t.name] = t
+      }
+      mcpToolMap.value = map
 
-const toolDescriptions = {
-  web_search: '使用搜索引擎获取网页信息，支持关键词搜索和结果过滤',
-  database_query: '执行 SQL 查询语句，支持 MySQL、PostgreSQL 等主流数据库',
-  file_read: '读取本地文件内容，支持文本文件、JSON、CSV 等格式',
-  file_write: '写入内容到本地文件，支持创建和追加模式',
-  api_call: '调用外部 API 接口，支持自定义请求参数',
-  email_send: '发送邮件通知，支持附件和 HTML 格式',
-  shell_exec: '执行系统命令，注意安全风险',
-  image_generate: '根据文本描述生成图像',
-  document_summary: '对文档内容进行摘要提取和关键信息分析'
-};
+      // 如果已有选中工具且在列表中找到，同步参数
+      if (localToolName.value && map[localToolName.value]) {
+        syncParamsFromSchema(map[localToolName.value])
+      }
+    }
+  } catch (e) {
+    console.error('加载 MCP 工具失败:', e)
+  } finally {
+    loading.value = false
+  }
+}
 
-const toolDefaultParams = {
-  web_search: [
-    { name: 'query', type: 'string', value: '' },
-    { name: 'max_results', type: 'number', value: '10' }
-  ],
-  database_query: [
-    { name: 'query', type: 'string', value: '' },
-    { name: 'connection', type: 'string', value: 'default' }
-  ],
-  file_read: [
-    { name: 'path', type: 'string', value: '' },
-    { name: 'encoding', type: 'string', value: 'utf-8' }
-  ],
-  file_write: [
-    { name: 'path', type: 'string', value: '' },
-    { name: 'content', type: 'string', value: '' },
-    { name: 'mode', type: 'string', value: 'write' }
-  ],
-  api_call: [
-    { name: 'url', type: 'string', value: '' },
-    { name: 'method', type: 'string', value: 'GET' }
-  ],
-  email_send: [
-    { name: 'to', type: 'string', value: '' },
-    { name: 'subject', type: 'string', value: '' },
-    { name: 'body', type: 'string', value: '' }
-  ],
-  shell_exec: [
-    { name: 'command', type: 'string', value: '' },
-    { name: 'cwd', type: 'string', value: '' }
-  ],
-  image_generate: [
-    { name: 'prompt', type: 'string', value: '' },
-    { name: 'width', type: 'number', value: '1024' },
-    { name: 'height', type: 'number', value: '1024' }
-  ],
-  document_summary: [
-    { name: 'text', type: 'string', value: '' },
-    { name: 'max_tokens', type: 'number', value: '300' }
-  ]
-};
+// 分类显示名
+const categoryNames = {
+  form: '表单工具',
+  kb: '知识库工具',
+  llm: 'LLM 工具',
+  system: '系统工具',
+  tariff: '资费工具',
+  workflow: '工作流工具',
+  general: '通用工具',
+  external: '外部工具'
+}
 
-const toggleAdvanced = () => {
-  showAdvanced.value = !showAdvanced.value;
-};
+const getCategoryDisplayName = (cat) => categoryNames[cat] || cat
 
+// 分类切换时清空工具选择
+const onCategoryChange = () => {
+  localToolName.value = ''
+  localParams.value = []
+  emitUpdate()
+}
+
+// 工具切换时从 schema 生成参数行
 const onToolChange = () => {
-  if (toolDefaultParams[localToolName.value]) {
-    localParams.value = JSON.parse(JSON.stringify(toolDefaultParams[localToolName.value]));
+  const tool = mcpToolMap.value[localToolName.value]
+  if (tool) {
+    syncParamsFromSchema(tool)
   } else {
-    localParams.value = [{ name: '', type: 'string', value: '' }];
+    localParams.value = []
   }
-  emitUpdate();
-};
+  emitUpdate()
+}
 
-const addParam = () => {
-  localParams.value.push({ name: '', type: 'string', value: '' });
-  emitUpdate();
-};
+// 根据 input_schema 同步参数行
+const syncParamsFromSchema = (tool) => {
+  const schema = tool.input_schema || {}
+  const properties = schema.properties || {}
 
-const removeParam = (index) => {
-  if (localParams.value.length > 1) {
-    localParams.value.splice(index, 1);
-    emitUpdate();
+  // 保留已有值，只在必要时新增/删除行
+  const existing = {}
+  for (const p of localParams.value) {
+    existing[p.name] = p
   }
-};
+
+  localParams.value = Object.entries(properties).map(([name, prop]) => {
+    const inferType = (p) => {
+      const t = p.type || 'string'
+      if (t === 'number' || t === 'integer') return 'number'
+      if (t === 'boolean') return 'boolean'
+      if (t === 'array') return 'array'
+      if (t === 'object') return 'object'
+      return 'string'
+    }
+
+    return {
+      name,
+      type: inferType(prop),
+      value: existing[name]?.value || prop.default || ''
+    }
+  })
+}
 
 const getParamPlaceholder = (type) => {
   switch (type) {
-    case 'string':
-      return '字符串值';
-    case 'number':
-      return '数字';
-    case 'boolean':
-      return 'true/false';
-    case 'array':
-      return '[...]';
-    case 'object':
-      return '{...}';
-    case 'variable':
-      return '{{变量名}}';
-    default:
-      return '参数值';
+    case 'string': return '字符串值或 {{变量名}}'
+    case 'number': return '数字'
+    case 'boolean': return 'true/false'
+    case 'array': return '[...]'
+    case 'object': return '{...}'
+    default: return '参数值'
   }
-};
+}
 
 const emitUpdate = () => {
+  // 转换为 params 对象（key-value 形式）供后端使用
+  const params = {}
+  for (const p of localParams.value) {
+    if (p.name) {
+      params[p.name] = p.value
+    }
+  }
+
   emit('update', props.data.id, {
-    toolName: localToolName.value,
-    params: localParams.value,
+    toolType: localToolName.value,   // 后端字段名
+    toolName: localToolName.value,   // 兼容旧格式
+    params,
     timeout: localTimeout.value,
     isAsync: localAsync.value,
     silent: localSilent.value
-  });
-};
+  })
+}
 
 watch(() => props.data, (d) => {
-  localToolName.value = d.toolName || '';
-  localParams.value = d.params || [];
-  localTimeout.value = d.timeout || 30;
-  localAsync.value = d.isAsync || false;
-  localSilent.value = d.silent || false;
-  
-  if (localToolName.value && localParams.value.length === 0) {
-    if (toolDefaultParams[localToolName.value]) {
-      localParams.value = JSON.parse(JSON.stringify(toolDefaultParams[localToolName.value]));
+  localToolName.value = d.toolType || d.toolName || ''
+  localTimeout.value = d.timeout || 60
+  localAsync.value = d.isAsync || false
+  localSilent.value = d.silent || false
+
+  // 同步参数
+  if (localToolName.value && mcpToolMap.value[localToolName.value]) {
+    const tool = mcpToolMap.value[localToolName.value]
+    const schema = tool.input_schema || {}
+    const properties = schema.properties || {}
+
+    if (d.params && Object.keys(d.params).length > 0) {
+      // 复用已有值
+      localParams.value = Object.entries(properties).map(([name, prop]) => {
+        const inferType = (p) => {
+          const t = p.type || 'string'
+          if (t === 'number' || t === 'integer') return 'number'
+          if (t === 'boolean') return 'boolean'
+          if (t === 'array') return 'array'
+          if (t === 'object') return 'object'
+          return 'string'
+        }
+        return {
+          name,
+          type: inferType(prop),
+          value: d.params[name] !== undefined ? d.params[name] : prop.default || ''
+        }
+      })
     }
   }
-}, { deep: true });
+}, { deep: true })
+
+const toggleAdvanced = () => {
+  showAdvanced.value = !showAdvanced.value
+}
+
+onMounted(() => {
+  loadMCPTools()
+})
 </script>
 
 <style scoped>
@@ -282,15 +356,15 @@ watch(() => props.data, (d) => {
   background: white;
   border: 2px solid #e2e8f0;
   border-radius: 8px;
-  min-width: 180px;
-  min-height: 120px; /* 统一节点最小高度 */
+  min-width: 200px;
+  min-height: 120px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   transition: all 0.2s ease;
 }
 
 .tool-node.selected {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
 }
 
 .tool-node.is-compact {
@@ -328,7 +402,7 @@ watch(() => props.data, (d) => {
   align-items: center;
   gap: 6px;
   padding: 8px 10px;
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
   border-bottom: 1px solid #e2e8f0;
 }
 
@@ -370,6 +444,26 @@ watch(() => props.data, (d) => {
   gap: 8px;
 }
 
+.loading-state {
+  padding: 12px;
+  text-align: center;
+}
+
+.loading-text {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.tool-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.category-select {
+  font-size: 11px;
+}
+
 .node-select {
   width: 100%;
   padding: 6px;
@@ -381,7 +475,18 @@ watch(() => props.data, (d) => {
 
 .node-select:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: #8b5cf6;
+}
+
+.tool-desc {
+  font-size: 11px;
+  color: #64748b;
+  padding: 6px 8px;
+  background: #f8fafc;
+  border-radius: 4px;
+  line-height: 1.4;
+  max-height: 60px;
+  overflow-y: auto;
 }
 
 .advanced-panel {
@@ -420,6 +525,7 @@ watch(() => props.data, (d) => {
 .param-row {
   display: flex;
   gap: 4px;
+  align-items: center;
 }
 
 .param-name {
@@ -428,6 +534,8 @@ watch(() => props.data, (d) => {
   border: 1px solid #e2e8f0;
   border-radius: 4px;
   font-size: 11px;
+  background: #f8fafc;
+  color: #64748b;
 }
 
 .param-type {
@@ -436,6 +544,8 @@ watch(() => props.data, (d) => {
   border: 1px solid #e2e8f0;
   border-radius: 4px;
   font-size: 10px;
+  background: #f8fafc;
+  color: #64748b;
 }
 
 .param-value {
@@ -446,34 +556,11 @@ watch(() => props.data, (d) => {
   font-size: 11px;
 }
 
-.remove-param-btn {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: #fee2e2;
-  border-radius: 4px;
-  color: #dc2626;
-  cursor: pointer;
-  font-size: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.add-param-btn {
-  padding: 4px 8px;
-  border: 1px dashed #cbd5e1;
-  border-radius: 4px;
-  background: transparent;
-  color: #64748b;
-  cursor: pointer;
+.no-params-hint {
   font-size: 11px;
-  text-align: left;
-}
-
-.add-param-btn:hover {
-  border-color: #3b82f6;
-  color: #3b82f6;
+  color: #94a3b8;
+  padding: 4px 0;
+  text-align: center;
 }
 
 .timeout-row {
@@ -517,26 +604,12 @@ watch(() => props.data, (d) => {
   height: 14px;
 }
 
-.tool-description {
-  margin-top: 8px;
-  padding: 8px;
-  background: #f8fafc;
-  border-radius: 4px;
-}
-
-.tool-description p {
-  font-size: 11px;
-  color: #64748b;
-  margin: 0;
-  line-height: 1.4;
-}
-
 :deep(.vue-flow__handle) {
   width: 12px !important;
   height: 12px !important;
   border: 2px solid white !important;
   border-radius: 50% !important;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3) !important;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3) !important;
   cursor: crosshair !important;
   transition: all 0.2s ease !important;
 }
@@ -544,7 +617,7 @@ watch(() => props.data, (d) => {
 :deep(.vue-flow__handle:hover) {
   width: 24px !important;
   height: 24px !important;
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.5) !important;
+  box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.5) !important;
 }
 
 :deep(.vue-flow__handle[type="target"]) {
@@ -556,10 +629,10 @@ watch(() => props.data, (d) => {
 }
 
 :deep(.vue-flow__handle[type="source"]) {
-  background-color: #3b82f6 !important;
+  background-color: #8b5cf6 !important;
 }
 
 :deep(.vue-flow__handle[type="source"]:hover) {
-  background-color: #2563eb !important;
+  background-color: #7c3aed !important;
 }
 </style>

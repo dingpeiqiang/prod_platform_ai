@@ -100,7 +100,7 @@ from app.api.scheduler import router as scheduler_router
 from app.api.mcp_management import router as mcp_management_router
 from app.api.kb import router as kb_router
 from app.api.llm_config import router as llm_config_router
-from app.api.tariff_filing import router as tariff_filing_router
+from app.mock import router as mock_router
 
 settings = get_settings()
 Base.metadata.create_all(bind=engine)
@@ -110,9 +110,11 @@ config_loader.set_db_session_factory(SessionLocal)
 
 # ── MCP 工具初始化 ──────────────────────────────────────────────────────────
 # 在应用启动时注册所有 MCP 工具
-from app.mcp_tools import register_all_tools
+from app.mcp_tools import register_all_tools, register_external_tariff_tools
 _mcp_tools = register_all_tools()
-_logger.info(f"[MCP] 已注册 {_mcp_tools.get_tool_count()} 个内部工具（代码注解）")
+
+# 注册外部资费工具（query_tariff_by_code / query_tariff_info 实际调用外部 HTTP API）
+tariff_count = register_external_tariff_tools()
 
 # 从数据库加载外部 API 工具
 from app.core.database import SessionLocal
@@ -121,7 +123,8 @@ from app.mcp_tools.tool_registry_manager import init_external_tools
 db_session = SessionLocal()
 try:
     external_count = init_external_tools(db_session)
-    _logger.info(f"[MCP] 已注册 {external_count} 个外部 API 工具（数据库配置）")
+    external_count += tariff_count  # 加上代码注册的外部资费工具
+    _logger.info(f"[MCP] 已注册 {external_count} 个外部 API 工具（代码注册 + 数据库配置）")
 finally:
     db_session.close()
 
@@ -194,7 +197,13 @@ app.include_router(execution_router)  # 工作流执行 API
 app.include_router(scheduler_router)  # 工作流调度器 API
 app.include_router(kb_router)  # 知识库 API
 app.include_router(llm_config_router)  # LLM 配置管理 API
-app.include_router(tariff_filing_router)  # 资费备案 API
+
+# ── Mock API（条件注册）──────────────────────────────────────────────────────
+if settings.MOCK_API_ENABLED:
+    app.include_router(mock_router)
+    _logger.info("[Mock] Mock API 已启用，访问 /mock 查看可用端点")
+else:
+    _logger.info("[Mock] Mock API 未启用（设置 MOCK_API_ENABLED=true 开启）")
 
 
 @app.get("/")

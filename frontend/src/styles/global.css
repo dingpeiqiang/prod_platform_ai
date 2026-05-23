@@ -84,6 +84,48 @@ input, textarea, select {
  * Element Plus 组件通用样式修复
  * ══════════════════════════════════════════════════════════════ */
 
+/* 参数表格内表单元素左对齐 */
+.param-table th {
+  text-align: left !important;
+  padding: 12px 12px !important;
+}
+
+.param-table td {
+  text-align: left !important;
+  padding: 12px 12px !important;
+}
+
+.param-table td .el-input,
+.param-table td .el-select {
+  width: 100% !important;
+  margin: 0 !important;
+  text-align: left !important;
+}
+
+.param-table td .el-input__wrapper,
+.param-table td .el-select__wrapper {
+  margin: 0 !important;
+  padding: 0 !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
+  display: flex !important;
+}
+
+.param-table td .el-input__inner,
+.param-table td .el-select__placeholder,
+.param-table td .el-select__value {
+  text-align: left !important;
+}
+
+.param-table td .el-switch {
+  margin: 0 !important;
+  justify-self: flex-start !important;
+}
+
+.param-table td .el-button {
+  margin: 0 !important;
+}
+
 /* 输入框组件边框优化 */
 .el-input__wrapper {
   box-shadow: none !important;

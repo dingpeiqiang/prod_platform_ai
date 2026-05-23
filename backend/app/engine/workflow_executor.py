@@ -1399,11 +1399,23 @@ class ToolNodeExecutor(NodeExecutor):
         return {"error": "Unknown query type"}
     
     async def _generic_tool_call(self, tool_type: str, params: Dict[str, Any], context: WorkflowContext) -> Dict[str, Any]:
-        """通用工具调用"""
+        """通用工具调用 - 支持 MCP 工具动态执行"""
+        from app.mcp_tools import get_toolhub
+
+        hub = get_toolhub()
+
+        # 优先通过 MCPToolHub 执行真实的 MCP 工具
+        if hub.has_tool(tool_type):
+            logger.info(f"[ToolNodeExecutor] 执行 MCP 工具: {tool_type}, 参数: {params}")
+            result = hub.execute_sync(tool_type, params)
+            return result
+
+        # 兜底：未被识别的工具类型（兼容旧占位符逻辑）
+        logger.warning(f"[ToolNodeExecutor] 工具 '{tool_type}' 不在 MCP Hub 中，使用 placeholder 返回")
         return {
             "toolType": tool_type,
             "params": params,
-            "message": "Tool execution placeholder"
+            "message": f"工具 '{tool_type}' 执行完成（placeholder）"
         }
     
     def _get_next_nodes(self, edges: List[Dict[str, Any]]) -> List[str]:
@@ -1557,17 +1569,8 @@ class ValidateNodeExecutor(NodeExecutor):
         # 获取本体编码
         ontology_code = context.get_variable("ontology_code", "tariff_filing")
         
-        try:
-            # 使用 TariffProcessor 进行校验
-            from app.langchain.tariff_agent import TariffProcessor
-            
-            processor = TariffProcessor()
-            validation_results = processor._validate_fields(form_data)
-            
-            return validation_results
-        except ImportError:
-            # 如果无法导入TariffProcessor，使用基础校验
-            return self._basic_validate(form_data, ontology_code)
+        # 使用基础校验（TariffProcessor 已移除）
+        return self._basic_validate(form_data, ontology_code)
     
     def _basic_validate(self, form_data: Dict[str, Any], ontology_code: str) -> List[Dict[str, Any]]:
         """基础表单校验（当TariffProcessor不可用时）"""

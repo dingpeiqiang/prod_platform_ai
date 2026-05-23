@@ -16,7 +16,7 @@ export const workflowApi = {
     return get(`/api/workflows/${workflowCode}`, { baseURL: '' })
   },
 
-  create(data) {
+  create(data, options = {}) {
     let payload = data
     if (!(data.workflowCode && data.workflowName)) {
       payload = {
@@ -32,11 +32,12 @@ export const workflowApi = {
     }
     return post('/api/workflows', payload, { 
       baseURL: '',
-      loadingText: '创建工作流中...'
+      loadingText: '创建工作流中...',
+      ...options
     })
   },
 
-  update(workflowCode, data) {
+  update(workflowCode, data, options = {}) {
     const payload = {}
     if (data.workflowName !== undefined) payload.workflowName = data.workflowName
     if (data.name !== undefined) payload.workflowName = data.name
@@ -48,7 +49,8 @@ export const workflowApi = {
     if (data.workflowData !== undefined) payload.workflowData = data.workflowData
     return put(`/api/workflows/${workflowCode}`, payload, { 
       baseURL: '',
-      loadingText: '更新工作流中...'
+      loadingText: '更新工作流中...',
+      ...options
     })
   },
 

@@ -22,9 +22,26 @@
           <h4>工具信息</h4>
           <p><strong>描述:</strong> {{ currentTool.description }}</p>
           <p><strong>分类:</strong> {{ getCategoryName(currentTool.metadata?.category) }}</p>
-          
-          <h4>参数 Schema</h4>
-          <pre class="schema-preview">{{ JSON.stringify(currentTool.inputSchema, null, 2) }}</pre>
+        </div>
+
+        <!-- 入参 Schema 可视化 -->
+        <div v-if="currentTool" class="schema-section">
+          <h4>入参定义 (inputSchema)</h4>
+          <SchemaViewer
+            :schema="currentTool.inputSchema || {}"
+            mode="readonly"
+            label="入参"
+          />
+        </div>
+
+        <!-- 出参 Schema 可视化 -->
+        <div v-if="currentTool && currentTool.outputSchema && Object.keys(currentTool.outputSchema).length > 0" class="schema-section">
+          <h4>出参定义 (outputSchema)</h4>
+          <SchemaViewer
+            :schema="currentTool.outputSchema"
+            mode="readonly"
+            label="出参"
+          />
         </div>
 
         <h4>输入参数 (JSON)</h4>
@@ -80,6 +97,7 @@
 import { ref, computed, watch } from 'vue'
 import * as mcpApi from '@/services/mcpManagementApi'
 import { ElMessage } from 'element-plus'
+import SchemaViewer from './SchemaViewer.vue'
 
 const props = defineProps({
   tools: {
@@ -175,6 +193,7 @@ const getCategoryName = (category) => {
     kb: '知识库工具',
     llm: 'LLM 工具',
     system: '系统工具',
+    external: '外部API工具',
     tariff: '资费工具',
     general: '通用工具'
   }
@@ -232,15 +251,8 @@ const getCategoryName = (category) => {
   color: #606266;
 }
 
-.schema-preview {
-  background: #282c34;
-  color: #abb2bf;
-  padding: 10px;
-  border-radius: 6px;
-  font-size: 11px;
-  overflow-x: auto;
-  max-height: 180px;
-  overflow-y: auto;
+.schema-section {
+  margin-top: 12px;
 }
 
 .result-content {

@@ -41,10 +41,11 @@
       </div>
     </div>
 
-    <el-table 
-      :data="filteredLogs" 
-      stripe 
+    <el-table
+      :data="filteredLogs"
+      stripe
       max-height="600"
+      row-key="id"
       :expand-row-keys="expandedRows"
       @expand-change="handleExpandChange"
     >

@@ -28,7 +28,7 @@ class MCPInputSchema:
 class MCPTool:
     """
     MCP 工具定义
-    
+
     符合 Model Context Protocol 工具格式
     """
     name: str
@@ -37,6 +37,7 @@ class MCPTool:
     handler: Callable
     category: str = "general"
     examples: List[Dict] = field(default_factory=list)
+    output_schema: Dict[str, Any] = field(default_factory=dict)  # 出参 Schema 定义
 
     def __post_init__(self):
         if not self.input_schema or self.input_schema == {"type": "object", "properties": {}, "required": []}:
@@ -47,14 +48,14 @@ class MCPTool:
         try:
             sig = inspect.signature(self.handler)
             hints = get_type_hints(self.handler) if self.handler else {}
-            
+
             properties = {}
             required = []
-            
+
             for param_name, param in sig.parameters.items():
                 if param_name in ('cls', 'self'):
                     continue
-                    
+
                 param_type = hints.get(param_name, param.annotation)
                 if param_type == str or param_type == 'str':
                     schema_type = "string"
@@ -70,15 +71,15 @@ class MCPTool:
                     schema_type = "object"
                 else:
                     schema_type = "string"
-                
+
                 properties[param_name] = {
                     "type": schema_type,
                     "description": f"参数: {param_name}"
                 }
-                
+
                 if param.default == inspect.Parameter.empty:
                     required.append(param_name)
-            
+
             return {
                 "type": "object",
                 "properties": properties,
@@ -94,6 +95,7 @@ class MCPTool:
             "name": self.name,
             "description": self.description,
             "inputSchema": self.input_schema,
+            "outputSchema": self.output_schema,
             "metadata": {
                 "category": self.category,
                 "examples": self.examples
@@ -105,11 +107,11 @@ class MCPTool:
         try:
             self._validate_arguments(arguments)
             result = self.handler(**arguments)
-            
+
             import asyncio
             if asyncio.iscoroutine(result):
                 result = await result
-            
+
             return {
                 "success": True,
                 "result": result
@@ -134,11 +136,12 @@ def mcptool(
     name: str = None,
     description: str = None,
     category: str = "general",
-    input_schema: Dict[str, Any] = None
+    input_schema: Dict[str, Any] = None,
+    output_schema: Dict[str, Any] = None
 ):
     """
     MCP 工具装饰器
-    
+
     用法:
         @mcptool(name="my_tool", description="我的工具")
         def my_tool(param1: str, param2: int):
@@ -148,16 +151,17 @@ def mcptool(
     def decorator(func: Callable) -> Callable:
         tool_name = name or func.__name__
         tool_desc = description or func.__doc__ or tool_name
-        
+
         tool = MCPTool(
             name=tool_name,
             description=tool_desc,
             input_schema=input_schema or {"type": "object", "properties": {}, "required": []},
             handler=func,
-            category=category
+            category=category,
+            output_schema=output_schema or {}
         )
-        
+
         func._mcp_tool = tool
         return func
-    
+
     return decorator

@@ -1,0 +1,19 @@
+{
+  "_mock": {
+    "statusCode": 200,
+    "delayMs": 0,
+    "headers": {
+      "X-Mock": "true"
+    }
+  },
+  "success": true,
+  "message": "这是一个示例 mock 响应",
+  "data": {
+    "id": 1,
+    "name": "示例数据",
+    "items": [
+      {"code": "A001", "label": "选项一"},
+      {"code": "A002", "label": "选项二"}
+    ]
+  }
+}

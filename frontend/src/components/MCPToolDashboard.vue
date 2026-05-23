@@ -1,24 +1,30 @@
 <template>
   <div class="mcp-dashboard">
-    <!-- 顶部导航栏 -->
-    <div class="dashboard-header">
-      <button class="back-btn" @click="goBack">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M19 12H5M12 19l-7-7 7-7"/>
-        </svg>
-        返回首页
-      </button>
-      <h2>MCP 工具管理平台</h2>
-      <div class="header-actions">
-        <button @click="refreshData" class="refresh-btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M23 4v6h-6M1 20v-6h6"/>
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+    <ExternalToolCreate 
+      v-if="showCreate"
+      @go-back="showCreate = false"
+      @created="onToolCreated"
+    />
+    <template v-else>
+      <!-- 顶部导航栏 -->
+      <div class="dashboard-header">
+        <button class="back-btn" @click="goBack">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
           </svg>
-          刷新
+          返回首页
         </button>
+        <h2>MCP 工具管理平台</h2>
+        <div class="header-actions">
+          <button @click="refreshData" class="refresh-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M23 4v6h-6M1 20v-6h6"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+            刷新
+          </button>
+        </div>
       </div>
-    </div>
 
     <!-- 统计概览卡片 -->
     <div class="stats-overview">
@@ -92,19 +98,22 @@
       <el-tab-pane label="外部工具管理" name="external">
         <ExternalToolManager 
           @refresh="loadTools"
+          @create="showCreate = true"
         />
       </el-tab-pane>
     </el-tabs>
+    </template>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import ToolList from './mcp/ToolList.vue'
 import ToolTester from './mcp/ToolTester.vue'
 import CallStats from './mcp/CallStats.vue'
 import ExecutionLogs from './mcp/ExecutionLogs.vue'
 import ExternalToolManager from './mcp/ExternalToolManager.vue'
+import ExternalToolCreate from './mcp/ExternalToolCreate.vue'
 import * as mcpApi from '@/services/mcpManagementApi'
 import { ElMessage } from 'element-plus'
 
@@ -117,6 +126,7 @@ const categories = ref([])
 const selectedTool = ref(null)
 const logs = ref([])
 const logToolFilter = ref('')
+const showCreate = ref(false)
 
 const callStats = computed(() => {
   return tools.value.map(t => ({
@@ -201,6 +211,10 @@ const onTestComplete = () => {
   loadLogs()
 }
 
+const onToolCreated = () => {
+  activeTab.value = 'external'
+}
+
 const updateLogs = (newLogs) => {
   logs.value = newLogs
 }
@@ -217,6 +231,12 @@ onMounted(async () => {
     loadCategories(),
     loadLogs()
   ])
+})
+
+// 修复 Element Plus el-tabs 卸载时的竞态问题
+// 在组件销毁前将 activeTab 重置为首个 tab，避免 el-tab-pane 的 DOM 移除报错
+onBeforeUnmount(() => {
+  activeTab.value = 'tools'
 })
 </script>
 

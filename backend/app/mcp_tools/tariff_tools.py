@@ -1,11 +1,11 @@
-# 资费备案 MCP 工具
+# 资费备案外部 API 工具
 # 根据套餐编码查询套餐完整信息，供 AI 表单系统自动填充备案字段
+# 注意：这两个工具通过外部 MCP 工具注册机制注册（__init__.py -> register_external_tariff_tools），
+# 不再使用 @mcptool() 装饰器注册为内部工具
 
 import requests
 import logging
 from typing import Dict, Any, Optional
-
-from .tool_hub import mcptool
 
 logger = logging.getLogger("mcp_tools")
 
@@ -33,11 +33,6 @@ def configure_tariff_api(base_url: str = None, timeout: int = None):
         TARIFF_API_CONFIG["timeout"] = timeout
 
 
-@mcptool(
-    name="query_tariff_by_code",
-    description="根据套餐编码（如 P000111、P123456）查询资费套餐详细信息。当用户提到「备案套餐 X」「套餐编码 X」「我要备案 P000111」时，**必须**从用户输入中提取 X（如 P000111）作为 tariff_code 参数并调用本工具。参数 tariff_code 必填，绝不能为空。",
-    category="tariff"
-)
 def query_tariff_by_code(tariff_code: str) -> Dict[str, Any]:
     """
     根据套餐编码查询套餐信息
@@ -153,11 +148,6 @@ def query_tariff_by_code(tariff_code: str) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
-@mcptool(
-    name="query_tariff_info",
-    description="查询套餐核心信息（简化版），返回套餐编码、名称、备案主体、资费费率等核心字段。当需要快速查询套餐概要时使用，参数 tariff_code 必填。",
-    category="tariff"
-)
 def query_tariff_info(tariff_code: str) -> Dict[str, Any]:
     """
     查询套餐核心信息（简化版）

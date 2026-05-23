@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     
     WEBSOCKET_HOST: str = "0.0.0.0"
     WEBSOCKET_PORT: int = 8000
+
+    # Mock API 开关（模拟外部系统未提供的 API）
+    MOCK_API_ENABLED: bool = False
     
     class Config:
         env_file = ".env"
