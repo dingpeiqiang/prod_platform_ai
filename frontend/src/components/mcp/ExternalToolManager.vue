@@ -49,8 +49,10 @@
         </template>
       </el-table-column>
       
-      <el-table-column label="操作" width="180" fixed="right">
+      <el-table-column label="操作" width="260" fixed="right">
         <template #default="{ row }">
+          <el-button size="small" type="primary" @click="editTool(row)">编辑</el-button>
+          <el-button size="small" type="success" @click="testTool(row)">测试</el-button>
           <el-button 
             size="small" 
             :type="row.is_enabled ? 'warning' : 'success'"
@@ -74,7 +76,7 @@ import { ref, computed, onMounted } from 'vue'
 import * as mcpApi from '@/services/mcpManagementApi'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
-const emit = defineEmits(['refresh', 'create'])
+const emit = defineEmits(['refresh', 'create', 'edit', 'test'])
 
 const searchKeyword = ref('')
 const filterStatus = ref('')
@@ -114,6 +116,14 @@ const loadExternalTools = async () => {
     console.error('加载外部工具失败:', e)
     ElMessage.error('加载外部工具失败')
   }
+}
+
+const editTool = (tool) => {
+  emit('edit', tool)
+}
+
+const testTool = (tool) => {
+  emit('test', tool)
 }
 
 const toggleTool = async (tool) => {

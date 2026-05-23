@@ -60,6 +60,15 @@ export async function getExternalTools() {
 }
 
 /**
+ * 获取单个外部工具详情
+ * @param {string} toolName - 工具名称
+ */
+export async function getExternalTool(toolName) {
+  const res = await axios.get(`${BASE_URL}/external-tools/${toolName}`)
+  return res.data
+}
+
+/**
  * 创建外部工具
  * @param {Object} toolData - 工具数据
  */

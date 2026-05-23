@@ -2,8 +2,10 @@
   <div class="mcp-dashboard">
     <ExternalToolCreate 
       v-if="showCreate"
-      @go-back="showCreate = false"
+      :edit-tool="editTool"
+      @go-back="handleCloseCreate"
       @created="onToolCreated"
+      @updated="onToolUpdated"
     />
     <template v-else>
       <!-- 顶部导航栏 -->
@@ -99,6 +101,8 @@
         <ExternalToolManager 
           @refresh="loadTools"
           @create="showCreate = true"
+          @edit="handleEditTool"
+          @test="handleTestTool"
         />
       </el-tab-pane>
     </el-tabs>
@@ -127,6 +131,7 @@ const selectedTool = ref(null)
 const logs = ref([])
 const logToolFilter = ref('')
 const showCreate = ref(false)
+const editTool = ref(null)
 
 const callStats = computed(() => {
   return tools.value.map(t => ({
@@ -213,6 +218,32 @@ const onTestComplete = () => {
 
 const onToolCreated = () => {
   activeTab.value = 'external'
+}
+
+const onToolUpdated = () => {
+  activeTab.value = 'external'
+  loadTools()
+}
+
+const handleCloseCreate = () => {
+  showCreate.value = false
+  editTool.value = null
+}
+
+const handleEditTool = (tool) => {
+  editTool.value = tool
+  showCreate.value = true
+}
+
+const handleTestTool = (tool) => {
+  selectedTool.value = {
+    name: tool.tool_name,
+    description: tool.description,
+    category: tool.category,
+    inputSchema: tool.input_schema || {},
+    outputSchema: tool.output_schema || {}
+  }
+  activeTab.value = 'tester'
 }
 
 const updateLogs = (newLogs) => {

@@ -7,7 +7,7 @@
         </svg>
         返回
       </button>
-      <h2>新增外部工具</h2>
+      <h2>{{ isEdit ? '编辑外部工具' : '新增外部工具' }}</h2>
     </div>
 
     <div class="wizard-container">
@@ -234,12 +234,19 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import * as mcpApi from '@/services/mcpManagementApi'
 import { ElMessage } from 'element-plus'
 import ParamRow from './ParamRow.vue'
 
-const emit = defineEmits(['go-back', 'created'])
+const props = defineProps({
+  editTool: {
+    type: Object,
+    default: null
+  }
+})
+
+const emit = defineEmits(['go-back', 'created', 'updated'])
 
 const steps = [
   { id: 'basic', label: '填写基本信息' },
@@ -249,6 +256,8 @@ const steps = [
 
 const currentStep = ref(0)
 const saving = ref(false)
+
+const isEdit = computed(() => !!props.editTool)
 
 const formData = reactive({
   tool_code: '',
@@ -262,6 +271,99 @@ const formData = reactive({
   auth_type: 'none',
   need_summary: 'false',
   prompt: ''
+})
+
+const loadEditData = async () => {
+  if (!props.editTool) return
+  
+  try {
+    const res = await mcpApi.getExternalTool(props.editTool.tool_name)
+    if (res.success && res.tool) {
+      const tool = res.tool
+      formData.tool_code = tool.tool_code || ''
+      formData.tool_name = tool.tool_name || ''
+      formData.description = tool.description || ''
+      formData.tool_type = tool.tool_type || 'url'
+      formData.protocol = tool.protocol || 'http'
+      formData.request_method = tool.request_method || 'post'
+      formData.url = tool.url || ''
+      formData.auth_info = tool.auth_info || ''
+      formData.auth_type = tool.auth_type || 'none'
+      formData.need_summary = String(tool.need_summary || false)
+      formData.prompt = tool.prompt || ''
+      
+      inputParams.value = schemaToParams(tool.input_schema || {})
+      outputParams.value = schemaToParams(tool.output_schema || {})
+    }
+  } catch (e) {
+    ElMessage.error('加载工具信息失败: ' + e.message)
+  }
+}
+
+const schemaToParams = (schema) => {
+  const params = []
+  
+  const buildParams = (props, required = [], parentId = null, isRoot = true) => {
+    const result = []
+    
+    for (const [name, prop] of Object.entries(props || {})) {
+      const param = {
+        id: isRoot ? (name === 'ROOT' ? 'input-root' : generateId()) : generateId(),
+        name: name,
+        description: prop.description || '',
+        enum_values: prop.enum ? prop.enum.join(', ') : '',
+        data_type: prop.type || 'string',
+        required: required.includes(name),
+        prompt: prop.prompt || false,
+        default_value: prop.default || '',
+        parentId: parentId,
+        children: [],
+        expanded: false
+      }
+      
+      if (prop.type === 'object' && prop.properties) {
+        param.children = buildParams(prop.properties, prop.required || [], param.id, false)
+        param.expanded = param.children.length > 0
+      } else if (prop.type === 'array' && prop.items && prop.items.properties) {
+        param.children = buildParams(prop.items.properties, prop.items.required || [], param.id, false)
+        param.expanded = param.children.length > 0
+      }
+      
+      result.push(param)
+    }
+    
+    return result
+  }
+  
+  if (schema.properties) {
+    params.push(...buildParams(schema.properties, schema.required || [], null, true))
+  }
+  
+  if (params.length === 0) {
+    params.push({
+      id: 'input-root',
+      name: 'ROOT',
+      description: 'ROOT',
+      data_type: 'object',
+      required: false,
+      prompt: false,
+      parentId: null,
+      children: [],
+      expanded: true
+    })
+  }
+  
+  return params
+}
+
+watch(() => props.editTool, () => {
+  loadEditData()
+}, { immediate: true })
+
+onMounted(() => {
+  if (props.editTool) {
+    loadEditData()
+  }
 })
 
 const inputParams = ref([
@@ -506,14 +608,20 @@ const saveTool = async () => {
       output_schema: buildSchema(outputParams.value)
     }
     
-    await mcpApi.createExternalTool(toolData)
+    if (isEdit.value) {
+      await mcpApi.updateExternalTool(props.editTool.tool_name, toolData)
+      ElMessage.success('更新成功')
+      emit('updated')
+    } else {
+      await mcpApi.createExternalTool(toolData)
+      ElMessage.success('创建成功')
+      emit('created')
+    }
     
-    ElMessage.success('创建成功')
-    emit('created')
     emit('go-back')
     
   } catch (e) {
-    ElMessage.error('创建失败: ' + e.message)
+    ElMessage.error(isEdit.value ? '更新失败: ' + e.message : '创建失败: ' + e.message)
   } finally {
     saving.value = false
   }
@@ -523,7 +631,7 @@ const saveTool = async () => {
 <style scoped>
 .external-tool-create {
   min-height: 100%;
-  padding: 24px;
+  padding: 20px;
   background: #f5f7fa;
 }
 
@@ -536,7 +644,7 @@ const saveTool = async () => {
   display: flex;
   align-items: center;
   gap: 16px;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .back-btn {
@@ -568,10 +676,10 @@ const saveTool = async () => {
 .wizard-container {
   background: white;
   border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
   display: flex;
   flex-direction: column;
-  min-height: 400px;
+  min-height: calc(100vh - 160px);
 }
 
 .steps-indicator {
@@ -579,35 +687,37 @@ const saveTool = async () => {
   align-items: center;
   justify-content: center;
   gap: 48px;
-  padding: 24px;
+  padding: 20px 24px;
   background: linear-gradient(135deg, #f0f5ff 0%, #faf5ff 100%);
+  border-radius: 12px 12px 0 0;
 }
 
 .step-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .step-number {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  background: #d9d9d9;
+  background: #e4e7ed;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #909399;
   font-weight: 600;
   font-size: 14px;
-  transition: all 0.3s ease;
+  transition: all 0.25s ease;
 }
 
 .step-item.active .step-number {
   background: linear-gradient(135deg, #5b7cfa, #9333ea);
   color: white;
-  transform: scale(1.1);
+  transform: scale(1.08);
+  box-shadow: 0 3px 8px rgba(91, 124, 250, 0.25);
 }
 
 .step-item.completed .step-number {
@@ -618,7 +728,7 @@ const saveTool = async () => {
 .step-label {
   font-size: 13px;
   color: #909399;
-  transition: color 0.3s ease;
+  transition: color 0.25s ease;
 }
 
 .step-item.active .step-label,
@@ -628,7 +738,7 @@ const saveTool = async () => {
 }
 
 .wizard-content {
-  padding: 24px;
+  padding: 20px;
   flex: 1;
   overflow-y: auto;
 }
@@ -643,12 +753,12 @@ const saveTool = async () => {
 }
 
 .form-container {
-  max-width: 600px;
+  max-width: 650px;
 }
 
 .form-row {
   display: flex;
-  gap: 24px;
+  gap: 20px;
 }
 
 .form-row .el-form-item {
@@ -656,7 +766,7 @@ const saveTool = async () => {
 }
 
 .param-header {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .param-label {
@@ -667,13 +777,14 @@ const saveTool = async () => {
 
 .param-table-wrapper {
   border: 1px solid #ebeef5;
-  border-radius: 4px;
+  border-radius: 6px;
   overflow: auto;
   max-height: 500px;
+  background: white;
 }
 
 .param-table-wrapper + .custom-btn {
-  margin-top: 16px;
+  margin-top: 12px;
   position: sticky;
   bottom: 16px;
   display: block;
@@ -688,9 +799,9 @@ const saveTool = async () => {
 }
 
 .param-table th {
-  background: #f5f7fa;
+  background: #f8f9fa;
   text-align: left;
-  padding: 12px 12px;
+  padding: 10px 12px;
   font-weight: 500;
   color: #606266;
   font-size: 13px;
@@ -700,8 +811,8 @@ const saveTool = async () => {
 }
 
 .param-table td {
-  padding: 12px 4px 12px 12px;
-  border-bottom: 1px solid #ebeef5;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f0f0f0;
   vertical-align: middle;
   background: white;
   text-align: left;
@@ -734,19 +845,19 @@ const saveTool = async () => {
 }
 
 .param-table tr:hover td {
-  background-color: #fafafa;
+  background-color: #fafbfc;
 }
 
 .add-btn {
-  margin-top: 16px;
+  margin-top: 20px;
 }
 
 .custom-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  border-radius: 6px;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
   border: none;
@@ -760,35 +871,35 @@ const saveTool = async () => {
 }
 
 .custom-btn-primary:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(91, 124, 250, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(91, 124, 250, 0.35);
 }
 
 .custom-btn-primary:active:not(:disabled) {
   transform: translateY(0);
-  box-shadow: 0 2px 6px rgba(91, 124, 250, 0.2);
+  box-shadow: 0 3px 10px rgba(91, 124, 250, 0.25);
 }
 
 .step-panel {
   animation: fadeIn 0.3s ease;
-  padding-bottom: 80px;
+  padding-bottom: 70px;
 }
 
 .btn-add-root-param {
   position: relative;
   z-index: 10;
-  margin-top: 16px;
+  margin-top: 14px;
   background: linear-gradient(135deg, #5b7cfa, #9333ea);
   color: white;
   border: none;
   border-radius: 6px;
-  padding: 10px 20px;
+  padding: 8px 16px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   transition: all 0.2s;
 }
 
@@ -799,14 +910,15 @@ const saveTool = async () => {
 
 .btn-add-root-param:active {
   transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(91, 124, 250, 0.2);
 }
 
 .wizard-footer {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  padding: 20px 24px;
-  border-top: 1px solid #ebf0f5;
+  padding: 14px 20px;
+  border-top: 1px solid #f0f0f0;
   background: #fafbfc;
   position: sticky;
   bottom: 0;
@@ -814,7 +926,7 @@ const saveTool = async () => {
 }
 
 .btn {
-  padding: 10px 24px;
+  padding: 9px 20px;
   border-radius: 6px;
   font-size: 14px;
   font-weight: 500;
@@ -834,14 +946,16 @@ const saveTool = async () => {
 }
 
 .btn-primary:disabled {
-  opacity: 0.7;
+  opacity: 0.65;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .btn-secondary {
   background: white;
   color: #606266;
-  border: 1px solid #d9d9d9;
+  border: 1px solid #e4e7ed;
 }
 
 .btn-secondary:hover {
@@ -851,7 +965,7 @@ const saveTool = async () => {
 
 :deep(.el-radio-group) {
   display: flex;
-  gap: 24px;
+  gap: 28px;
 }
 
 :deep(.el-switch) {
@@ -860,11 +974,35 @@ const saveTool = async () => {
 
 :deep(.el-form-item__label) {
   font-weight: 500;
+  font-size: 14px;
+  color: #606266;
 }
 
 :deep(.el-form-item__label.is-required::before) {
   content: '*';
   color: #ef4444;
   margin-right: 4px;
+}
+
+:deep(.el-form-item) {
+  margin-bottom: 24px;
+}
+
+:deep(.el-input),
+:deep(.el-select) {
+  width: 100%;
+}
+
+:deep(.el-textarea) {
+  width: 100%;
+}
+
+:deep(.el-textarea__inner) {
+  min-height: 80px;
+}
+
+:deep(.el-input__inner),
+:deep(.el-textarea__inner) {
+  font-size: 14px;
 }
 </style>

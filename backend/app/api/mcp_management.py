@@ -258,6 +258,24 @@ async def list_external_tools(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/external-tools/{tool_name}")
+async def get_external_tool(tool_name: str, db: Session = Depends(get_db)):
+    """获取单个外部 API 工具详情"""
+    from app.models.mcp_call_log import MCPToolDefinition
+    
+    tool = db.query(MCPToolDefinition).filter(
+        MCPToolDefinition.tool_name == tool_name
+    ).first()
+    
+    if not tool:
+        return {"success": False, "error": f"工具 '{tool_name}' 不存在"}
+    
+    return {
+        "success": True,
+        "tool": tool.to_dict()
+    }
+
+
 @router.post("/external-tools")
 async def create_external_tool(tool_data: Dict[str, Any], db: Session = Depends(get_db)):
     """创建外部 API 工具"""
