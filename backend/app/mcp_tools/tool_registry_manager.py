@@ -47,15 +47,11 @@ class ToolRegistryManager:
                 # 注册到 ToolHub
                 self.toolhub.register(
                     name=tool_def.tool_name,
-                    func=handler,
+                    handler=handler,
                     description=tool_def.description or "",
                     category=tool_def.category or "external",
                     input_schema=tool_def.input_schema,
-                    metadata={
-                        "type": "external_api",
-                        "tool_code": tool_def.tool_code,
-                        **{k: v for k, v in (tool_def.extra_metadata or {}).items()}
-                    }
+                    output_schema=tool_def.output_schema
                 )
                 
                 registered_count += 1

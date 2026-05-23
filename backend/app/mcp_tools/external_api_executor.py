@@ -191,9 +191,9 @@ def create_external_tool_handler(tool_definition: Dict[str, Any]):
     Returns:
         可调用的处理函数
     """
-    def handler(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    def handler(**kwargs) -> Dict[str, Any]:
         config = tool_definition.get("config", {})
         executor = ExternalAPIExecutor(config)
-        return executor.execute(arguments)
+        return executor.execute(kwargs)
     
     return handler

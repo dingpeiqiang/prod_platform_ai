@@ -203,7 +203,7 @@ def _record_call_to_db(
         # 获取工具分类
         hub = get_toolhub()
         tool_info = hub.get_tool(tool_name)
-        tool_category = tool_info.get("metadata", {}).get("category") if tool_info else None
+        tool_category = tool_info.category if tool_info else None
         
         # 创建日志记录
         log_entry = MCPCallLog(

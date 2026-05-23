@@ -121,10 +121,24 @@ const currentTool = computed(() => {
   return props.tools.find(t => t.name === selectedToolName.value)
 })
 
+const generateDefaultParams = (schema) => {
+  if (!schema || !schema.properties) return '{}'
+  
+  const params = {}
+  for (const [key, prop] of Object.entries(schema.properties)) {
+    if (prop.type === 'string') params[key] = ''
+    else if (prop.type === 'number' || prop.type === 'integer') params[key] = 0
+    else if (prop.type === 'boolean') params[key] = false
+    else if (prop.type === 'array') params[key] = []
+    else if (prop.type === 'object') params[key] = {}
+  }
+  
+  return JSON.stringify(params, null, 2)
+}
+
 watch(() => props.selectedTool, (tool) => {
   if (tool) {
     selectedToolName.value = tool.name
-    // 根据 schema 生成默认参数
     argumentsJson.value = generateDefaultParams(tool.inputSchema)
   }
 }, { immediate: true })
@@ -162,21 +176,6 @@ const runTest = async () => {
   } finally {
     testing.value = false
   }
-}
-
-const generateDefaultParams = (schema) => {
-  if (!schema || !schema.properties) return '{}'
-  
-  const params = {}
-  for (const [key, prop] of Object.entries(schema.properties)) {
-    if (prop.type === 'string') params[key] = ''
-    else if (prop.type === 'number' || prop.type === 'integer') params[key] = 0
-    else if (prop.type === 'boolean') params[key] = false
-    else if (prop.type === 'array') params[key] = []
-    else if (prop.type === 'object') params[key] = {}
-  }
-  
-  return JSON.stringify(params, null, 2)
 }
 
 const formatResult = (data) => {
