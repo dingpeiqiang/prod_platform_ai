@@ -266,6 +266,15 @@ const { targetPosition, sourcePosition, isVertical } = useNodeAnchorMode(props);
 
 const emit = defineEmits(['update', 'close']);
 
+const buildVariablePath = (variableId) => {
+  if (!variableId) return [];
+  const variable = props.availableVariables.find(v => v.id === variableId);
+  if (variable && variable.nodeId) {
+    return [variable.nodeId, variableId];
+  }
+  return [];
+};
+
 // 本地状态
 const localLabel = ref(props.data.label || '判断器');
 const branchSectionExpanded = ref(true);
@@ -296,6 +305,7 @@ const initBranches = () => {
     localBranches.value = [
       {
         type: 'if',
+        handle: generateBranchHandle(),
         expanded: true,
         conditions: [
           {
@@ -310,6 +320,7 @@ const initBranches = () => {
       },
       {
         type: 'else',
+        handle: generateBranchHandle(),
         expanded: true,
         conditions: []
       }
@@ -321,9 +332,10 @@ const initBranches = () => {
     // 深拷贝数据，确保响应式
     let branches = JSON.parse(JSON.stringify(props.data.branches));
     
-    // 确保每个分支都有 conditions 数组，并为条件添加 path 属性
+    // 确保每个分支都有唯一的 handle ID 和 conditions 数组，并为条件添加 path 属性
     branches = branches.map(branch => ({
       ...branch,
+      handle: branch.handle || generateBranchHandle(),
       conditions: (branch.conditions || []).map(cond => ({
         ...cond,
         variablePath: cond.variable ? buildVariablePath(cond.variable) : [],
@@ -345,6 +357,7 @@ const initBranches = () => {
     localBranches.value = [
       {
         type: 'if',
+        handle: generateBranchHandle(),
         expanded: true,
         conditions: [
           {
@@ -359,6 +372,7 @@ const initBranches = () => {
       },
       {
         type: 'else',
+        handle: generateBranchHandle(),
         expanded: true,
         conditions: []
       }
@@ -369,6 +383,7 @@ const initBranches = () => {
     localBranches.value = [
       {
         type: 'if',
+        handle: generateBranchHandle(),
         expanded: true,
         conditions: [
           {
@@ -383,6 +398,7 @@ const initBranches = () => {
       },
       {
         type: 'else_if',
+        handle: generateBranchHandle(),
         expanded: true,
         conditions: [
           {
@@ -397,6 +413,7 @@ const initBranches = () => {
       },
       {
         type: 'else',
+        handle: generateBranchHandle(),
         expanded: true,
         conditions: []
       }
@@ -442,6 +459,7 @@ const addBranch = () => {
   
   const newBranch = {
     type: 'else_if',
+    handle: generateBranchHandle(),
     expanded: true,
     conditions: [
       {
@@ -567,14 +585,24 @@ const getOperatorLabel = (operator) => {
   return operators[operator] || operator;
 };
 
-// 获取 Handle id - 兼容旧格式（true/false）和新格式（branch_0/branch_1）
+// 生成唯一的分支 handle ID
+const generateBranchHandle = () => {
+  return 'branch_' + Math.random().toString(36).substr(2, 9);
+};
+
+// 获取 Handle id - 使用分支的唯一 handle ID，避免索引变化导致边连接错乱
 const getHandleId = (index) => {
   // 如果是旧格式（没有 branches 字段或使用 condition 字段），使用旧格式的 id
   if (!props.data.branches || props.data.branches.length === 0 || props.data.condition) {
     return index === 0 ? 'true' : 'false';
   }
-  // 新格式：使用 branch_0, branch_1, branch_2...
-  return 'branch_' + index;
+  
+  const branch = localBranches.value[index];
+  // 优先使用分支的 handle 字段，如果没有则生成并保存
+  if (!branch.handle) {
+    branch.handle = generateBranchHandle();
+  }
+  return branch.handle;
 };
 
 // 计算 Handle 的垂直位置百分比（水平布局时用 top 定位，模拟右侧连接线）

@@ -584,14 +584,16 @@ export class ExecutionEngine {
             return;
           }
           
-          // 使用分支的 handle 属性（如果存在），否则使用索引或 else 分支的固定ID
-          let branchHandle = currentBranch?.handle;
+          // 使用分支的 handle 属性作为唯一标识符
+          // handle 是在分支创建时生成的唯一 ID，不会因分支重排序而变化
+          const branchHandle = currentBranch?.handle;
           if (!branchHandle) {
-            if (currentBranch?.type === 'else') {
-              branchHandle = 'branch_else';
-            } else {
-              branchHandle = `branch_${branchIndex}`;
-            }
+            console.log('[ERROR] 分支没有 handle 属性:', currentBranch);
+            this.addLog('error', '条件分支执行失败', '分支配置不完整，缺少 handle 属性', { branch: currentBranch });
+            this.addNodeLog(nodeId, { type: 'error', message: '分支配置不完整，缺少 handle 属性' });
+            this.setNodeStatus(nodeId, 'completed');
+            console.log('[DEBUG] ==================== 条件节点执行结束（分支配置错误） ====================');
+            return;
           }
           console.log('[DEBUG] 匹配分支的 handle:', branchHandle);
           
