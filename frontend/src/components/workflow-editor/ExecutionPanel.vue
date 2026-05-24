@@ -16,6 +16,9 @@
           {{ lastResult.status === 'success' ? '✓ 成功' : '✗ 失败' }}
         </span>
         <span class="node-count">{{ nodeExecutionData.length }} 个节点</span>
+        <span v-if="hasError" class="error-badge">
+          ⚠️ 已终止
+        </span>
       </div>
       <div class="header-right">
         <button v-if="nodeExecutionData.length > 0" @click="toggleAllExpand" class="btn-action" :title="allExpanded ? '收起全部' : '展开全部'">
@@ -50,7 +53,7 @@
           v-for="(nodeData, groupIdx) in nodeExecutionData"
           :key="nodeData.nodeId"
           class="node-card"
-          :class="nodeData.status"
+          :class="[nodeData.status, { 'has-error': nodeData.status === 'error' }]"
         >
           <div class="node-header" @click="toggleExpand(nodeData.nodeId)">
             <div class="node-left">
@@ -121,9 +124,17 @@
 
             <!-- 错误信息 -->
             <div v-if="nodeData.error" class="node-error">
+              <div class="error-alert">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="12" y1="8" x2="12" y2="12"/>
+                  <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <span>执行终止：此节点执行失败</span>
+              </div>
               <div class="section-header error">
                 <span class="section-icon">✗</span>
-                <span>错误</span>
+                <span>错误详情</span>
               </div>
               <pre class="section-content error-content">{{ nodeData.error }}</pre>
             </div>
@@ -256,6 +267,11 @@ const expandedNodes = reactive({});
 const allExpanded = ref(false);  // 默认全部折叠
 const autoScrollEnabled = ref(true);  // 自动滚动开关
 
+const hasError = computed(() => {
+  return nodeExecutionData.value?.some(node => node.status === 'error') || 
+         lastResult.value?.status === 'error';
+});
+
 const shouldAutoScroll = () => {
   if (!logsContainer.value) return false;
   const container = logsContainer.value;
@@ -310,8 +326,13 @@ watch(() => props.nodeExecutionData, (newData) => {
       if (expandedNodes[node.nodeId] === undefined) {
         expandedNodes[node.nodeId] = false;
       }
+      
+      // 如果节点执行失败，自动展开显示错误
+      if (node.status === 'error') {
+        expandedNodes[node.nodeId] = true;
+      }
     });
-  }
+}
 }, { immediate: true });
 
 const formatJson = (data) => {
@@ -734,6 +755,47 @@ watch(() => props.logs.length + props.nodeExecutionData.length, async () => {
   word-break: break-all;
   max-height: 150px;
   overflow-y: auto;
+}
+
+.error-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(239,68,68,.15);
+  border: 1px solid rgba(239,68,68,.4);
+  border-radius: 6px;
+  color: #fca5a5;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.error-alert svg {
+  color: #ef4444;
+  flex-shrink: 0;
+}
+
+.error-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  background: rgba(239,68,68,.2);
+  border: 1px solid rgba(239,68,68,.4);
+  border-radius: 12px;
+  color: #fca5a5;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.node-card.has-error {
+  border-left: 3px solid #ef4444;
+  background: rgba(239,68,68,.05);
+}
+
+.node-card.has-error .node-header {
+  background: rgba(239,68,68,.1);
 }
 
 /* Result summary */
