@@ -724,7 +724,7 @@ export class ExecutionEngine {
           
           // 调用后端 API 执行表单节点
           try {
-            const response = await fetch('/api/v1/workflow/execute-form-node', {
+            const response = await fetch('/api/workflows/execute-form-node', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -1289,8 +1289,8 @@ export class ExecutionEngine {
           this.addLog('info', '表单节点', `本体: ${ontologyCode}, 工具: ${toolName || '未配置'}`, { ontologyCode, toolName, enableValidation, model });
           
           // 单节点执行时，调用后端 API 执行表单节点
-          try {
-            const response = await fetch('/api/v1/workflow/execute-form-node', {
+           try {
+             const response = await fetch('/api/workflows/execute-form-node', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
