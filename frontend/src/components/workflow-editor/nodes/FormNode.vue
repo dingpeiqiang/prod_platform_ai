@@ -43,6 +43,70 @@
       <!-- 工具描述 -->
       <div v-if="selectedTool" class="tool-desc">{{ selectedTool.description }}</div>
 
+      <!-- 大模型配置 -->
+      <div class="section-title">大模型校验配置</div>
+      <div class="llm-config-section">
+        <div class="llm-config-row">
+          <label class="config-label">启用校验</label>
+          <input 
+            v-model="localEnableValidation" 
+            @change="emitUpdate" 
+            type="checkbox" 
+            class="config-checkbox"
+          />
+        </div>
+        
+        <div v-if="localEnableValidation" class="llm-config-panel">
+          <div class="llm-config-row">
+            <label class="config-label">模型选择</label>
+            <select v-model="localModel" @change="emitUpdate" class="node-select">
+              <option value="qwen-vl-plus">Qwen-VL-Plus</option>
+              <option value="qwen-plus">Qwen-Plus</option>
+              <option value="gpt-4o">GPT-4o</option>
+              <option value="gpt-4">GPT-4</option>
+              <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+              <option value="claude-3-opus">Claude 3 Opus</option>
+              <option value="claude-3-sonnet">Claude 3 Sonnet</option>
+            </select>
+          </div>
+          
+          <div class="llm-config-row">
+            <label class="config-label">温度值</label>
+            <input 
+              v-model.number="localTemperature" 
+              @input="emitUpdate" 
+              type="number" 
+              min="0" 
+              max="1" 
+              step="0.1" 
+              class="config-input-small"
+            />
+          </div>
+          
+          <div class="llm-config-row">
+            <label class="config-label">校验提示词</label>
+            <textarea 
+              v-model="localValidationPrompt" 
+              @input="emitUpdate" 
+              placeholder="输入大模型校验提示词，支持 {{ontology_code}}、{{form_data}} 等变量"
+              class="config-textarea"
+              rows="3"
+            ></textarea>
+          </div>
+          
+          <div class="llm-config-row">
+            <label class="config-label">输入变量</label>
+            <VariableCascader
+              v-model="localInputVariable"
+              :available-variables="availableVariables"
+              placeholder="选择输入变量"
+              class="param-value-cascader"
+              @change="emitUpdate"
+            />
+          </div>
+        </div>
+      </div>
+
       <!-- 高级配置：参数编辑 -->
       <div v-if="(configMode || showAdvanced) && localToolName" class="advanced-panel">
         <div class="section-title">工具参数</div>
@@ -151,6 +215,13 @@ const localOntologyCode = ref(props.data.ontologyCode || '')
 const localToolName = ref(props.data.toolType || props.data.toolName || '')
 const localParams = ref([])
 const localTimeout = ref(props.data.timeout || 60)
+
+// 大模型校验配置
+const localEnableValidation = ref(props.data.enableValidation || false)
+const localModel = ref(props.data.model || 'qwen-plus')
+const localTemperature = ref(props.data.temperature || 0.3)
+const localValidationPrompt = ref(props.data.validationPrompt || '')
+const localInputVariable = ref(props.data.inputVariable || '')
 
 // 分类
 const categories = computed(() => {
@@ -308,7 +379,12 @@ const emitUpdate = () => {
     toolType: localToolName.value,
     toolName: localToolName.value,
     params,
-    timeout: localTimeout.value
+    timeout: localTimeout.value,
+    enableValidation: localEnableValidation.value,
+    model: localModel.value,
+    temperature: localTemperature.value,
+    validationPrompt: localValidationPrompt.value,
+    inputVariable: localInputVariable.value
   })
 }
 
@@ -320,6 +396,13 @@ watch(() => props.data, (d) => {
   localOntologyCode.value = d.ontologyCode || ''
   localToolName.value = d.toolType || d.toolName || ''
   localTimeout.value = d.timeout || 60
+  
+  // 大模型配置
+  localEnableValidation.value = d.enableValidation || false
+  localModel.value = d.model || 'qwen-plus'
+  localTemperature.value = d.temperature || 0.3
+  localValidationPrompt.value = d.validationPrompt || ''
+  localInputVariable.value = d.inputVariable || ''
 
   if (localToolName.value && mcpToolMap.value[localToolName.value]) {
     const tool = mcpToolMap.value[localToolName.value]
@@ -451,6 +534,67 @@ onMounted(() => {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 2px;
+}
+
+.llm-config-section {
+  padding: 8px;
+  background: #f8fafc;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.llm-config-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.llm-config-row:last-child {
+  margin-bottom: 0;
+}
+
+.config-label {
+  font-size: 11px;
+  color: #64748b;
+  min-width: 60px;
+  padding-top: 4px;
+}
+
+.config-checkbox {
+  width: 16px;
+  height: 16px;
+  margin-top: 4px;
+}
+
+.config-input-small {
+  width: 80px;
+  padding: 4px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.config-textarea {
+  flex: 1;
+  padding: 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-size: 11px;
+  resize: vertical;
+  min-height: 60px;
+  font-family: inherit;
+}
+
+.config-textarea:focus {
+  outline: none;
+  border-color: #10b981;
+}
+
+.llm-config-panel {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #cbd5e1;
 }
 
 .loading-state {

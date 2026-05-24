@@ -1428,11 +1428,15 @@ class FormNodeExecutor(NodeExecutor):
     功能特性：
     1. 基于本体生成表单结构
     2. 智能推荐初始化表单（通过推荐引擎）
-    3. 基于本体的智能校验
+    3. 大模型智能校验（可选）
     4. 通过 MCP 工具提交
     """
     
     NODE_TYPE = "form"
+    
+    def __init__(self, node: Dict[str, Any]):
+        super().__init__(node)
+        self.llm = get_langchain_llm().llm
     
     async def execute(self, context: WorkflowContext, edges: List[Dict[str, Any]]) -> List[str]:
         context.update_node_status(self.node_id, ExecutionStatus.RUNNING)
@@ -1444,14 +1448,19 @@ class FormNodeExecutor(NodeExecutor):
                 for key, value in resolved_inputs.items():
                     context.set_variable(key, value)
             
-            # 获取本体编码和 MCP 工具名称
+            # 获取配置
             ontology_code = self.node_data.get("ontologyCode", "")
             tool_name = self.node_data.get("toolType", "")
+            enable_validation = self.node_data.get("enableValidation", False)
+            validation_model = self.node_data.get("model", "qwen-plus")
+            validation_temperature = self.node_data.get("temperature", 0.3)
+            validation_prompt = self.node_data.get("validationPrompt", "")
+            input_variable = self.node_data.get("inputVariable", "")
             
             if not ontology_code:
                 raise ValueError("表单节点必须配置 ontologyCode")
             
-            logger.info(f"[FormNodeExecutor] 执行表单节点，本体: {ontology_code}, 提交工具: {tool_name or '未配置'}")
+            logger.info(f"[FormNodeExecutor] 执行表单节点，本体: {ontology_code}, 提交工具: {tool_name or '未配置'}, 大模型校验: {enable_validation}")
             
             # 获取本体定义
             ontology = config_loader.get_ontology(ontology_code)
@@ -1465,11 +1474,36 @@ class FormNodeExecutor(NodeExecutor):
             form_data = await self._initialize_form_data_with_recommendations(ontology, context)
             
             # 步骤 3: 执行基于本体的智能校验
-            validation_result = await self._validate_form_data(ontology, form_data)
+            basic_validation = await self._validate_form_data(ontology, form_data)
             
-            # 步骤 4: 如果配置了 MCP 工具且校验通过，调用 MCP 工具提交
+            # 步骤 4: 如果启用大模型校验，执行大模型校验
+            llm_validation = None
+            if enable_validation:
+                try:
+                    llm_validation = await self._validate_with_llm(
+                        ontology, 
+                        form_data, 
+                        context, 
+                        validation_model,
+                        validation_temperature,
+                        validation_prompt,
+                        input_variable
+                    )
+                except Exception as e:
+                    logger.warning(f"[FormNodeExecutor] 大模型校验失败: {e}，继续执行工作流")
+                    llm_validation = {
+                        "success": False,
+                        "is_valid": True,
+                        "error": str(e),
+                        "message": "大模型校验异常，使用基础校验结果"
+                    }
+            
+            # 合并校验结果
+            final_validation = self._merge_validation_results(basic_validation, llm_validation)
+            
+            # 步骤 5: 如果配置了 MCP 工具且校验通过，调用 MCP 工具提交
             tool_result = None
-            if tool_name and validation_result.get("is_valid", True):
+            if tool_name and final_validation.get("is_valid", True):
                 try:
                     tool_result = await self._call_mcp_tool(tool_name, form_data, context)
                 except Exception as e:
@@ -1480,14 +1514,14 @@ class FormNodeExecutor(NodeExecutor):
             context.set_variable("form_schema", form_schema)
             context.set_variable("form_data", form_data)
             context.set_variable("ontology_code", ontology_code)
-            context.set_variable("form_validation", validation_result)
+            context.set_variable("form_validation", final_validation)
             if tool_result:
                 context.set_variable("form_submit_result", tool_result)
             
             context.outputs["form_schema"] = form_schema
             context.outputs["form_data"] = form_data
             context.outputs["ontology_code"] = ontology_code
-            context.outputs["form_validation"] = validation_result
+            context.outputs["form_validation"] = final_validation
             if tool_result:
                 context.outputs["form_submit_result"] = tool_result
             
@@ -1496,11 +1530,12 @@ class FormNodeExecutor(NodeExecutor):
                 "form_schema": form_schema,
                 "form_data": form_data,
                 "ontology_code": ontology_code,
-                "form_validation": validation_result,
-                "form_submit_result": tool_result
+                "form_validation": final_validation,
+                "form_submit_result": tool_result,
+                "llm_validation": llm_validation
             })
             
-            logger.info(f"[FormNodeExecutor] 表单处理完成: {len(form_data)} 个字段, 校验通过: {validation_result.get('is_valid', False)}")
+            logger.info(f"[FormNodeExecutor] 表单处理完成: {len(form_data)} 个字段, 校验通过: {final_validation.get('is_valid', False)}, 工具提交: {tool_result is not None}")
             
             context.update_node_status(self.node_id, ExecutionStatus.COMPLETED)
             
@@ -1511,6 +1546,149 @@ class FormNodeExecutor(NodeExecutor):
             raise
         
         return self._get_next_nodes(edges)
+    
+    def _merge_validation_results(self, basic_validation: Dict[str, Any], llm_validation: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """合并基础校验和大模型校验结果"""
+        if not llm_validation:
+            return basic_validation
+        
+        merged = {
+            "is_valid": basic_validation.get("is_valid", True) and llm_validation.get("is_valid", True),
+            "basic_errors": basic_validation.get("errors", []),
+            "basic_warnings": basic_validation.get("warnings", []),
+            "llm_errors": llm_validation.get("errors", []),
+            "llm_warnings": llm_validation.get("warnings", []),
+            "llm_suggestions": llm_validation.get("suggestions", []),
+            "all_errors": [],
+            "all_warnings": []
+        }
+        
+        # 合并所有错误
+        merged["all_errors"] = merged["basic_errors"] + [
+            {"source": "llm", **err} for err in merged["llm_errors"]
+        ]
+        merged["all_warnings"] = merged["basic_warnings"] + [
+            {"source": "llm", **warn} for warn in merged["llm_warnings"]
+        ]
+        
+        if llm_validation.get("message"):
+            merged["llm_message"] = llm_validation["message"]
+        
+        return merged
+    
+    async def _validate_with_llm(
+        self, 
+        ontology: Dict[str, Any], 
+        form_data: Dict[str, Any], 
+        context: WorkflowContext,
+        model: str,
+        temperature: float,
+        custom_prompt: str,
+        input_variable: str
+    ) -> Dict[str, Any]:
+        """使用大模型进行智能校验"""
+        from langchain_core.prompts import ChatPromptTemplate
+        from langchain_core.output_parsers import JsonOutputParser
+        
+        # 构建默认提示词
+        if not custom_prompt:
+            custom_prompt = self._get_default_validation_prompt(ontology, form_data)
+        else:
+            # 渲染用户自定义提示词
+            custom_prompt = self.render_template(custom_prompt, context)
+        
+        # 获取输入变量
+        user_input = ""
+        if input_variable:
+            user_input = context.get_variable(input_variable, "")
+        
+        # 添加用户输入到提示词
+        if user_input:
+            full_prompt = f"用户输入：\n{user_input}\n\n{custom_prompt}"
+        else:
+            full_prompt = custom_prompt
+        
+        logger.info(f"[FormNodeExecutor] 大模型校验: model={model}, prompt长度={len(full_prompt)}")
+        
+        # 构建消息
+        messages = [
+            ("system", "你是一个专业的表单数据校验助手。请根据给定的本体定义和表单数据，校验数据的准确性和完整性。"),
+            ("user", full_prompt)
+        ]
+        
+        # 创建 Prompt
+        prompt = ChatPromptTemplate.from_messages(messages)
+        
+        # 执行 LLM 调用
+        chain = prompt | self.llm | JsonOutputParser()
+        result = await chain.ainvoke({})
+        
+        logger.info(f"[FormNodeExecutor] 大模型校验完成: is_valid={result.get('is_valid', True)}")
+        
+        return result
+    
+    def _get_default_validation_prompt(self, ontology: Dict[str, Any], form_data: Dict[str, Any]) -> str:
+        """生成默认的大模型校验提示词"""
+        ontology_code = ontology.get("ontologyCode", "")
+        ontology_name = ontology.get("ontologyName", "")
+        description = ontology.get("description", "")
+        
+        # 提取字段信息
+        fields_info = []
+        for entity in ontology.get("entities", []):
+            for field in entity.get("fields", []):
+                field_name = field.get("fieldName", field.get("fieldCode", ""))
+                field_type = field.get("fieldType", "string")
+                required = field.get("required", False)
+                description_field = field.get("description", "")
+                
+                field_info = f"- {field_name} ({field.get('fieldCode', '')})"
+                field_info += f" [类型: {field_type}]"
+                if required:
+                    field_info += " [必填]"
+                if description_field:
+                    field_info += f" - {description_field}"
+                
+                fields_info.append(field_info)
+        
+        fields_text = "\n".join(fields_info) if fields_info else "无"
+        
+        # 格式化表单数据
+        form_data_text = json.dumps(form_data, ensure_ascii=False, indent=2)
+        
+        prompt = f"""## 任务
+校验以下表单数据的准确性和完整性。
+
+## 本体信息
+- 本体编码：{ontology_code}
+- 本体名称：{ontology_name}
+- 本体描述：{description}
+
+## 本体字段定义
+{fields_text}
+
+## 表单数据
+```json
+{form_data_text}
+```
+
+## 输出要求
+请以 JSON 格式返回校验结果：
+{{
+    "is_valid": true/false,  // 是否通过校验
+    "errors": [  // 错误列表（严重问题）
+        {{"field": "字段编码", "message": "错误信息"}}
+    ],
+    "warnings": [  // 警告列表（建议修正）
+        {{"field": "字段编码", "message": "警告信息"}}
+    ],
+    "suggestions": [  // 改进建议
+        {{"field": "字段编码", "current": "当前值", "suggested": "建议值", "reason": "原因"}}
+    ],
+    "message": "总体评估说明"
+}}
+"""
+        return prompt
     
     def _generate_form_schema(self, ontology: Dict[str, Any]) -> Dict[str, Any]:
         """根据本体生成表单结构"""
