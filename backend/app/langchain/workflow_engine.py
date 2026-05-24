@@ -5,10 +5,11 @@
 1. JSON/YAML 配置定义工作流
 2. 支持条件分支、循环、并行执行
 3. 支持步骤跳过、重试、异常处理
-4. 与现有业务组件无缝集成
+4. 支持等待用户输入（如表单提交）
+5. 与现有业务组件无缝集成
 """
 from typing import Optional, Dict, Any, List, Callable, AsyncGenerator, Union
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from enum import Enum
 from datetime import datetime
 import json
@@ -22,6 +23,7 @@ class WorkflowStatus(str, Enum):
     """工作流状态"""
     PENDING = "pending"
     RUNNING = "running"
+    WAITING = "waiting"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -38,11 +40,11 @@ class StepStatus(str, Enum):
 
 class StepType(str, Enum):
     """步骤类型"""
-    ACTION = "action"           # 执行动作
-    CONDITIONAL = "conditional" # 条件分支
-    LOOP = "loop"               # 循环
-    PARALLEL = "parallel"       # 并行执行
-    SUBWORKFLOW = "subworkflow" # 子工作流
+    ACTION = "action"
+    CONDITIONAL = "conditional"
+    LOOP = "loop"
+    PARALLEL = "parallel"
+    SUBWORKFLOW = "subworkflow"
 
 
 @dataclass
@@ -51,19 +53,28 @@ class StepDefinition:
     id: str
     name: str
     type: StepType = StepType.ACTION
-    action: Optional[str] = None           # 动作名称（对应注册的处理器）
+    action: Optional[str] = None
     action_params: Dict[str, Any] = field(default_factory=dict)
-    condition: Optional[str] = None        # 条件表达式
-    next_step: Optional[str] = None        # 下一步骤ID
-    next_steps: Dict[str, str] = field(default_factory=dict)  # 条件分支的下一步
-    loop_count: int = 1                    # 循环次数
-    loop_condition: Optional[str] = None   # 循环条件
-    parallel_steps: List[str] = field(default_factory=list)  # 并行步骤ID列表
-    subworkflow: Optional[str] = None      # 子工作流ID
-    retry_count: int = 0                   # 重试次数
-    retry_delay: int = 1                   # 重试延迟（秒）
-    skip_if: Optional[str] = None          # 跳过条件
-    timeout: Optional[int] = None          # 超时时间（秒）
+    condition: Optional[str] = None
+    next_step: Optional[str] = None
+    next_steps: Dict[str, str] = field(default_factory=dict)
+    loop_count: int = 1
+    loop_condition: Optional[str] = None
+    parallel_steps: List[str] = field(default_factory=list)
+    subworkflow: Optional[str] = None
+    retry_count: int = 0
+    retry_delay: int = 1
+    skip_if: Optional[str] = None
+    timeout: Optional[int] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典"""
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'StepDefinition':
+        """从字典创建"""
+        return cls(**data)
 
 
 @dataclass
@@ -75,7 +86,36 @@ class WorkflowDefinition:
     version: str = "1.0"
     start_step: str = "start"
     steps: Dict[str, StepDefinition] = field(default_factory=dict)
-    variables: Dict[str, Any] = field(default_factory=dict)  # 全局变量
+    variables: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典"""
+        return {
+            'id': self.id,
+            'name': self.name,
+            'description': self.description,
+            'version': self.version,
+            'start_step': self.start_step,
+            'steps': {k: v.to_dict() for k, v in self.steps.items()},
+            'variables': self.variables
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'WorkflowDefinition':
+        """从字典创建"""
+        steps = {
+            k: StepDefinition.from_dict(v) 
+            for k, v in data.get("steps", {}).items()
+        }
+        return cls(
+            id=data["id"],
+            name=data["name"],
+            description=data.get("description"),
+            version=data.get("version", "1.0"),
+            start_step=data.get("start_step", "start"),
+            steps=steps,
+            variables=data.get("variables", {})
+        )
 
 
 @dataclass
@@ -92,6 +132,51 @@ class ExecutionContext:
     created_at: datetime = field(default_factory=datetime.now)
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    waiting_step_id: Optional[str] = None
+    waiting_form: Optional[Dict[str, Any]] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典（用于持久化）"""
+        return {
+            'workflow_id': self.workflow_id,
+            'definition': self.definition.to_dict(),
+            'inputs': self.inputs,
+            'outputs': self.outputs,
+            'status': self.status.value if isinstance(self.status, WorkflowStatus) else self.status,
+            'current_step_id': self.current_step_id,
+            'step_results': self.step_results,
+            'errors': self.errors,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'started_at': self.started_at.isoformat() if self.started_at else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'waiting_step_id': self.waiting_step_id,
+            'waiting_form': self.waiting_form
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ExecutionContext':
+        """从字典创建（用于恢复）"""
+        definition = WorkflowDefinition.from_dict(data['definition'])
+        created_at = datetime.fromisoformat(data['created_at']) if data.get('created_at') else datetime.now()
+        started_at = datetime.fromisoformat(data['started_at']) if data.get('started_at') else None
+        completed_at = datetime.fromisoformat(data['completed_at']) if data.get('completed_at') else None
+        status = WorkflowStatus(data['status']) if isinstance(data['status'], str) else data['status']
+        
+        return cls(
+            workflow_id=data['workflow_id'],
+            definition=definition,
+            inputs=data.get('inputs', {}),
+            outputs=data.get('outputs', {}),
+            status=status,
+            current_step_id=data.get('current_step_id'),
+            step_results=data.get('step_results', {}),
+            errors=data.get('errors', []),
+            created_at=created_at,
+            started_at=started_at,
+            completed_at=completed_at,
+            waiting_step_id=data.get('waiting_step_id'),
+            waiting_form=data.get('waiting_form')
+        )
 
 
 class WorkflowEngine:
@@ -104,11 +189,13 @@ class WorkflowEngine:
     3. 处理条件分支和循环
     4. 管理执行状态和上下文
     5. 支持动作注册和扩展
+    6. 支持等待用户输入（如表单提交）
     """
     
     def __init__(self):
-        self._action_registry = {}  # 动作处理器注册表
-        self._workflow_registry = {}  # 工作流定义注册表
+        self._action_registry = {}
+        self._workflow_registry = {}
+        self._context_storage = {}
     
     def register_action(self, action_name: str, handler: Callable):
         """注册动作处理器"""
@@ -164,17 +251,33 @@ class WorkflowEngine:
             variables=data.get("variables", {})
         )
     
+    def save_context(self, context: ExecutionContext):
+        """保存执行上下文（持久化）"""
+        self._context_storage[context.workflow_id] = context.to_dict()
+        logger.info(f"[WorkflowEngine] 保存上下文: {context.workflow_id}")
+    
+    def get_context(self, workflow_id: str) -> Optional[ExecutionContext]:
+        """获取执行上下文"""
+        data = self._context_storage.get(workflow_id)
+        if data:
+            return ExecutionContext.from_dict(data)
+        return None
+    
+    def remove_context(self, workflow_id: str):
+        """移除执行上下文"""
+        if workflow_id in self._context_storage:
+            del self._context_storage[workflow_id]
+            logger.info(f"[WorkflowEngine] 移除上下文: {workflow_id}")
+    
     async def run(self, workflow_id: str, inputs: Optional[Dict[str, Any]] = None) -> AsyncGenerator[Dict[str, Any], None]:
         """执行工作流"""
-        # 获取工作流定义
         if workflow_id not in self._workflow_registry:
             raise ValueError(f"工作流未注册: {workflow_id}")
         
         definition = self._workflow_registry[workflow_id]
         
-        # 创建执行上下文
         context = ExecutionContext(
-            workflow_id=f"exec_{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            workflow_id=f"exec_{datetime.now().strftime('%Y%m%d%H%M%S%f')}",
             definition=definition,
             inputs=inputs or {},
             outputs={},
@@ -182,13 +285,11 @@ class WorkflowEngine:
             started_at=datetime.now()
         )
         
-        # 合并全局变量
         context.outputs.update(definition.variables)
         
         yield {"type": "workflow_start", "workflow_id": context.workflow_id, "definition_id": workflow_id}
         
         try:
-            # 从开始步骤执行
             current_step_id = definition.start_step
             
             while current_step_id:
@@ -199,7 +300,6 @@ class WorkflowEngine:
                 
                 step_def = definition.steps[current_step_id]
                 
-                # 检查跳过条件
                 if step_def.skip_if and self._eval_expression(step_def.skip_if, context):
                     yield {"type": "step_skipped", "step": current_step_id, "name": step_def.name}
                     current_step_id = step_def.next_step
@@ -208,13 +308,28 @@ class WorkflowEngine:
                 yield {"type": "step_start", "step": current_step_id, "name": step_def.name}
                 
                 try:
-                    # 根据步骤类型执行
                     result = await self._execute_step(step_def, context)
+                    
+                    if isinstance(result, dict) and result.get("action") == "ask_user":
+                        context.status = WorkflowStatus.WAITING
+                        context.waiting_step_id = current_step_id
+                        context.waiting_form = result.get("form_schema")
+                        
+                        self.save_context(context)
+                        
+                        yield {
+                            "type": "workflow_waiting",
+                            "workflow_id": context.workflow_id,
+                            "step": current_step_id,
+                            "waiting_form": result.get("form_schema"),
+                            "message": result.get("message", "请填写表单")
+                        }
+                        return
+                    
                     context.step_results[current_step_id] = result
                     
                     yield {"type": "step_complete", "step": current_step_id, "name": step_def.name, "result": result}
                     
-                    # 确定下一步
                     current_step_id = self._determine_next_step(step_def, context)
                     
                 except Exception as e:
@@ -222,7 +337,6 @@ class WorkflowEngine:
                     context.errors.append({"step": current_step_id, "error": str(e)})
                     yield {"type": "step_failed", "step": current_step_id, "name": step_def.name, "error": str(e)}
                     
-                    # 处理重试
                     if step_def.retry_count > 0:
                         retry_count = step_def.retry_count
                         while retry_count > 0:
@@ -241,7 +355,6 @@ class WorkflowEngine:
                     else:
                         raise e
             
-            # 完成工作流
             context.status = WorkflowStatus.COMPLETED
             context.completed_at = datetime.now()
             
@@ -251,6 +364,104 @@ class WorkflowEngine:
             logger.error(f"工作流执行失败: {e}")
             context.status = WorkflowStatus.FAILED
             context.error = str(e)
+            yield {"type": "workflow_failed", "workflow_id": context.workflow_id, "error": str(e)}
+    
+    async def resume(self, workflow_id: str, user_input: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
+        """恢复执行（用户提交表单后调用）"""
+        context = self.get_context(workflow_id)
+        
+        if not context:
+            raise ValueError(f"未找到执行上下文: {workflow_id}")
+        
+        if context.status != WorkflowStatus.WAITING:
+            raise ValueError(f"工作流不在等待状态: {context.status}")
+        
+        waiting_step_id = context.waiting_step_id
+        
+        context.step_results[waiting_step_id] = {
+            "action": "form_submit",
+            "form_data": user_input,
+            "submitted_at": datetime.now().isoformat()
+        }
+        
+        context.inputs.update(user_input)
+        context.outputs.update(user_input)
+        
+        context.status = WorkflowStatus.RUNNING
+        context.waiting_step_id = None
+        context.waiting_form = None
+        
+        self.save_context(context)
+        
+        yield {
+            "type": "workflow_resumed",
+            "workflow_id": context.workflow_id,
+            "step": waiting_step_id,
+            "user_input": user_input
+        }
+        
+        definition = context.definition
+        step_def = definition.steps[waiting_step_id]
+        current_step_id = self._determine_next_step(step_def, context)
+        
+        try:
+            while current_step_id:
+                context.current_step_id = current_step_id
+                
+                if current_step_id not in definition.steps:
+                    break
+                
+                step_def = definition.steps[current_step_id]
+                
+                if step_def.skip_if and self._eval_expression(step_def.skip_if, context):
+                    yield {"type": "step_skipped", "step": current_step_id, "name": step_def.name}
+                    current_step_id = step_def.next_step
+                    continue
+                
+                yield {"type": "step_start", "step": current_step_id, "name": step_def.name}
+                
+                try:
+                    result = await self._execute_step(step_def, context)
+                    
+                    if isinstance(result, dict) and result.get("action") == "ask_user":
+                        context.status = WorkflowStatus.WAITING
+                        context.waiting_step_id = current_step_id
+                        context.waiting_form = result.get("form_schema")
+                        
+                        self.save_context(context)
+                        
+                        yield {
+                            "type": "workflow_waiting",
+                            "workflow_id": context.workflow_id,
+                            "step": current_step_id,
+                            "waiting_form": result.get("form_schema"),
+                            "message": result.get("message", "请填写表单")
+                        }
+                        return
+                    
+                    context.step_results[current_step_id] = result
+                    
+                    yield {"type": "step_complete", "step": current_step_id, "name": step_def.name, "result": result}
+                    
+                    current_step_id = self._determine_next_step(step_def, context)
+                    
+                except Exception as e:
+                    logger.error(f"步骤执行失败 {current_step_id}: {e}")
+                    context.errors.append({"step": current_step_id, "error": str(e)})
+                    yield {"type": "step_failed", "step": current_step_id, "name": step_def.name, "error": str(e)}
+                    raise e
+            
+            context.status = WorkflowStatus.COMPLETED
+            context.completed_at = datetime.now()
+            self.remove_context(workflow_id)
+            
+            yield {"type": "workflow_complete", "workflow_id": context.workflow_id, "outputs": context.outputs}
+            
+        except Exception as e:
+            logger.error(f"工作流执行失败: {e}")
+            context.status = WorkflowStatus.FAILED
+            context.error = str(e)
+            self.remove_context(workflow_id)
             yield {"type": "workflow_failed", "workflow_id": context.workflow_id, "error": str(e)}
     
     async def _execute_step(self, step_def: StepDefinition, context: ExecutionContext) -> Any:
@@ -276,13 +487,10 @@ class WorkflowEngine:
         if step_def.action not in self._action_registry:
             raise ValueError(f"动作未注册: {step_def.action}")
         
-        # 解析参数（支持上下文变量引用）
         params = self._resolve_params(step_def.action_params, context)
         
-        # 调用动作处理器
         handler = self._action_registry[step_def.action]
         
-        # 支持同步和异步处理器
         if asyncio.iscoroutinefunction(handler):
             return await handler(context, **params)
         else:
@@ -302,15 +510,12 @@ class WorkflowEngine:
         count = step_def.loop_count
         
         for i in range(count):
-            # 更新循环变量
             context.outputs["loop_index"] = i
             context.outputs["loop_count"] = count
             
-            # 检查动态循环条件
             if step_def.loop_condition and not self._eval_expression(step_def.loop_condition, context):
                 break
             
-            # 执行子步骤
             if step_def.next_step and step_def.next_step in context.definition.steps:
                 sub_step = context.definition.steps[step_def.next_step]
                 result = await self._execute_step(sub_step, context)
@@ -335,7 +540,6 @@ class WorkflowEngine:
         if not step_def.subworkflow:
             raise ValueError(f"子工作流步骤 {step_def.id} 未指定子工作流")
         
-        # 递归执行子工作流
         async for event in self.run(step_def.subworkflow, context.inputs):
             if event["type"] == "workflow_complete":
                 return event.get("outputs", {})
@@ -344,27 +548,23 @@ class WorkflowEngine:
     
     def _determine_next_step(self, step_def: StepDefinition, context: ExecutionContext) -> Optional[str]:
         """确定下一步骤"""
-        # 条件分支
         if step_def.type == StepType.CONDITIONAL and step_def.next_steps:
             condition_result = context.step_results.get(step_def.id, {}).get("condition_result")
             return step_def.next_steps.get(str(condition_result), step_def.next_step)
         
-        # 循环步骤继续执行循环体或退出
         if step_def.type == StepType.LOOP:
             loop_count = context.outputs.get("loop_count", 1)
             loop_index = context.outputs.get("loop_index", 0)
             if loop_index < loop_count - 1:
-                return step_def.next_step  # 继续循环
+                return step_def.next_step
             else:
-                return step_def.next_steps.get("exit")  # 退出循环
+                return step_def.next_steps.get("exit")
         
-        # 默认下一步
         return step_def.next_step
     
     def _eval_expression(self, expression: str, context: ExecutionContext) -> bool:
         """计算条件表达式"""
         try:
-            # 构建安全的评估环境
             env = {
                 **context.inputs,
                 **context.outputs,
@@ -382,7 +582,6 @@ class WorkflowEngine:
         
         for key, value in params.items():
             if isinstance(value, str) and value.startswith("{{") and value.endswith("}}"):
-                # 解析变量引用 {{variable_name}}
                 var_name = value[2:-2].strip()
                 resolved[key] = context.outputs.get(var_name, context.inputs.get(var_name, value))
             else:
@@ -391,6 +590,4 @@ class WorkflowEngine:
         return resolved
 
 
-# 全局工作流引擎实例
 workflow_engine = WorkflowEngine()
-

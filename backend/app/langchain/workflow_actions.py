@@ -4,7 +4,7 @@
 这些动作被 WorkflowEngine 调用，实现前端编辑器创建的工作流节点功能：
 1. workflow.start / workflow.end - 工作流控制
 2. workflow.call_llm - LLM 调用
-3. workflow.generate_form - 表单生成
+3. workflow.generate_form - 表单生成（支持等待用户输入）
 4. workflow.validate_form - 表单校验
 5. workflow.merge_results - 结果合并
 6. workflow.ask_user / workflow.call_tool - 用户交互和工具调用
@@ -256,12 +256,15 @@ async def action_query_knowledge(context: Any, **kwargs) -> Dict[str, Any]:
 async def action_generate_form(context: Any, **kwargs) -> Dict[str, Any]:
     """生成表单数据
     
-    参考 tariff_actions.action_generate_form 实现：
-    1. 从上下文获取前置步骤结果（如工具查询结果）
-    2. 使用本体定义生成表单结构
-    3. 合并默认值、提取字段、工具结果
-    4. 通过推荐引擎获取智能推荐值
-    5. 返回完整的表单数据
+    表单节点特殊处理：
+    - 返回 action=ask_user 表示需要等待用户输入
+    - WorkflowEngine 检测到此标记后会暂停执行
+    - 用户提交表单后，通过 resume() 恢复执行
+    
+    参数：
+    - ontologyCode: 本体编码
+    - waitForSubmit: 是否等待用户提交（默认 True）
+    - autoSubmit: 是否自动提交（默认 False，设为 True 则不等待）
     """
     ontology_code = kwargs.get("ontologyCode", "")
     default_values = kwargs.get("defaultValues", {})
@@ -270,6 +273,7 @@ async def action_generate_form(context: Any, **kwargs) -> Dict[str, Any]:
     input_variable = kwargs.get("inputVariable", "")
     tool_name = kwargs.get("toolName", "") or kwargs.get("toolType", "")
     enable_recommendation = kwargs.get("enableRecommendation", True)
+    auto_submit = kwargs.get("autoSubmit", False)
     
     if not ontology_code:
         return {
@@ -313,7 +317,7 @@ async def action_generate_form(context: Any, **kwargs) -> Dict[str, Any]:
             enable_recommendation=enable_recommendation
         )
         
-        return {
+        result = {
             "success": True,
             "action": "generate_form",
             "formCode": ontology_code,
@@ -324,6 +328,18 @@ async def action_generate_form(context: Any, **kwargs) -> Dict[str, Any]:
             "field_mappings": field_mappings,
             "message": tool_result.get("success") if tool_result else "使用默认表单"
         }
+        
+        if auto_submit:
+            result["action"] = "generate_form"
+            result["auto_submitted"] = True
+            return result
+        
+        result["action"] = "ask_user"
+        result["waiting_for_input"] = True
+        result["message"] = "请填写并提交表单"
+        
+        return result
+        
     except Exception as e:
         logger.exception(f"[action_generate_form] 表单生成失败: {e}")
         return {
@@ -598,13 +614,7 @@ def _generate_validation_message(passed: int, warnings: int, errors: int) -> str
 
 
 async def action_merge_results(context: Any, **kwargs) -> Dict[str, Any]:
-    """合并最终结果
-    
-    参考 tariff_actions.action_merge_results 实现：
-    1. 汇总表单生成结果
-    2. 汇总校验结果
-    3. 返回最终数据
-    """
+    """合并最终结果"""
     form_result = context.step_results.get("generate_form", {})
     if not form_result:
         form_result = context.outputs.get("form_result", {})
@@ -626,10 +636,7 @@ async def action_merge_results(context: Any, **kwargs) -> Dict[str, Any]:
 
 
 async def action_handle_missing_fields(context: Any, **kwargs) -> Dict[str, Any]:
-    """处理缺失字段
-    
-    当必填字段缺失时，返回需要用户补充的信息
-    """
+    """处理缺失字段"""
     validate_result = context.step_results.get("validate_form", {})
     if not validate_result:
         validate_result = context.outputs.get("validation_result", {})
