@@ -268,8 +268,8 @@ const allExpanded = ref(false);  // 默认全部折叠
 const autoScrollEnabled = ref(true);  // 自动滚动开关
 
 const hasError = computed(() => {
-  return nodeExecutionData.value?.some(node => node.status === 'error') || 
-         lastResult.value?.status === 'error';
+  return props.nodeExecutionData?.some(node => node.status === 'error') || 
+         props.lastResult?.status === 'error';
 });
 
 const shouldAutoScroll = () => {
