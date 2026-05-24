@@ -26,6 +26,9 @@ from .workflow_actions import (
     action_parse_output,
     action_query_knowledge,
     action_generate_form as workflow_generate_form,
+    action_validate_form as workflow_validate_form,
+    action_merge_results as workflow_merge_results,
+    action_handle_missing_fields,
     action_set_prompt
 )
 
@@ -63,6 +66,9 @@ def register_workflow_actions():
         ("workflow.parse_output", action_parse_output),
         ("workflow.query_knowledge", action_query_knowledge),
         ("workflow.generate_form", workflow_generate_form),
+        ("workflow.validate_form", workflow_validate_form),
+        ("workflow.merge_results", workflow_merge_results),
+        ("workflow.handle_missing_fields", action_handle_missing_fields),
     ]
     
     for action_name, handler in actions:
