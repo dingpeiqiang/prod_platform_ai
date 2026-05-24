@@ -1436,7 +1436,17 @@ class FormNodeExecutor(NodeExecutor):
     
     def __init__(self, node: Dict[str, Any]):
         super().__init__(node)
-        self.llm = get_langchain_llm().llm
+        self.llm = None
+    
+    def _get_llm(self):
+        """延迟初始化 LLM，只在需要时初始化"""
+        if self.llm is None:
+            try:
+                self.llm = get_langchain_llm().llm
+            except Exception as e:
+                logger.warning(f"[FormNodeExecutor] LLM 初始化失败: {e}")
+                raise RuntimeError(f"无法初始化 LLM: {e}")
+        return self.llm
     
     async def execute(self, context: WorkflowContext, edges: List[Dict[str, Any]]) -> List[str]:
         context.update_node_status(self.node_id, ExecutionStatus.RUNNING)
@@ -1619,8 +1629,11 @@ class FormNodeExecutor(NodeExecutor):
         # 创建 Prompt
         prompt = ChatPromptTemplate.from_messages(messages)
         
+        # 获取 LLM 实例（延迟初始化）
+        llm = self._get_llm()
+        
         # 执行 LLM 调用
-        chain = prompt | self.llm | JsonOutputParser()
+        chain = prompt | llm | JsonOutputParser()
         result = await chain.ainvoke({})
         
         logger.info(f"[FormNodeExecutor] 大模型校验完成: is_valid={result.get('is_valid', True)}")
