@@ -260,7 +260,8 @@ async def action_generate_form(context: Any, **kwargs) -> Dict[str, Any]:
     1. 从上下文获取前置步骤结果（如工具查询结果）
     2. 使用本体定义生成表单结构
     3. 合并默认值、提取字段、工具结果
-    4. 返回完整的表单数据
+    4. 通过推荐引擎获取智能推荐值
+    5. 返回完整的表单数据
     """
     ontology_code = kwargs.get("ontologyCode", "")
     default_values = kwargs.get("defaultValues", {})
@@ -268,6 +269,7 @@ async def action_generate_form(context: Any, **kwargs) -> Dict[str, Any]:
     validation_rules = kwargs.get("validationRules", {})
     input_variable = kwargs.get("inputVariable", "")
     tool_name = kwargs.get("toolName", "") or kwargs.get("toolType", "")
+    enable_recommendation = kwargs.get("enableRecommendation", True)
     
     if not ontology_code:
         return {
@@ -287,9 +289,7 @@ async def action_generate_form(context: Any, **kwargs) -> Dict[str, Any]:
         
         form_schema = _build_form_schema(ontology)
         
-        extracted_fields = context.outputs.get("extracted_fields", {})
-        if not extracted_fields:
-            extracted_fields = context.inputs
+        extracted_fields = context.inputs
         
         tool_result = None
         if tool_name:
@@ -297,13 +297,20 @@ async def action_generate_form(context: Any, **kwargs) -> Dict[str, Any]:
             if not tool_result:
                 tool_result = context.outputs.get("tool_result", {})
         
+        user_input = context.inputs.get("user_input", "")
+        user_id = context.inputs.get("user_id", "default")
+        
         form_data = _initialize_form_data(
             ontology=ontology,
             context=context,
             default_values=default_values,
             extracted_fields=extracted_fields,
             tool_result=tool_result,
-            field_mappings=field_mappings
+            field_mappings=field_mappings,
+            ontology_code=ontology_code,
+            user_input=user_input,
+            user_id=user_id,
+            enable_recommendation=enable_recommendation
         )
         
         return {
@@ -315,7 +322,7 @@ async def action_generate_form(context: Any, **kwargs) -> Dict[str, Any]:
             "ontology_code": ontology_code,
             "validation_rules": validation_rules,
             "field_mappings": field_mappings,
-            "message": tool_result.get("success") and "数据查询成功" or "使用默认表单"
+            "message": tool_result.get("success") if tool_result else "使用默认表单"
         }
     except Exception as e:
         logger.exception(f"[action_generate_form] 表单生成失败: {e}")
@@ -369,7 +376,11 @@ def _initialize_form_data(
     default_values: Dict[str, Any],
     extracted_fields: Dict[str, Any],
     tool_result: Optional[Dict[str, Any]],
-    field_mappings: Dict[str, Any]
+    field_mappings: Dict[str, Any],
+    ontology_code: str = "",
+    user_input: str = "",
+    user_id: str = "default",
+    enable_recommendation: bool = True
 ) -> Dict[str, Any]:
     """初始化表单数据
     
@@ -377,10 +388,19 @@ def _initialize_form_data(
     1. 工具查询结果（通过字段映射）
     2. 提取的字段
     3. 上下文变量
-    4. 默认值
-    5. 本体定义的默认值
+    4. 智能推荐引擎
+    5. 默认值
+    6. 本体定义的默认值
     """
     form_data = {}
+    rec_engine = None
+    
+    if enable_recommendation:
+        try:
+            from app.services.recommendation_engine import get_recommendation_engine
+            rec_engine = get_recommendation_engine()
+        except Exception as e:
+            logger.warning(f"[_initialize_form_data] 无法获取推荐引擎: {e}")
     
     for entity in ontology.get("entities", []):
         for field in entity.get("fields", []):
@@ -411,6 +431,20 @@ def _initialize_form_data(
             
             if not value:
                 value = context.outputs.get(field_code)
+            
+            if not value and rec_engine and ontology_code:
+                try:
+                    rec_result = rec_engine.recommend(
+                        form_code=ontology_code,
+                        field_code=field_code,
+                        user_input=user_input,
+                        user_id=user_id
+                    )
+                    if rec_result and rec_result.recommendations and len(rec_result.recommendations) > 0:
+                        value = rec_result.recommendations[0].value
+                        logger.debug(f"[_initialize_form_data] 字段 {field_code} 获取到推荐值: {value}")
+                except Exception as e:
+                    logger.warning(f"[_initialize_form_data] 字段 {field_code} 推荐失败: {e}")
             
             if not value:
                 value = default_values.get(field_code)
