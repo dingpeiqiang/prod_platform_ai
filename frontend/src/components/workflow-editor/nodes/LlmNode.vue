@@ -328,6 +328,7 @@ import { Handle } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
 import { useNodeAnchorMode } from './useHandlePosition.js';
 import VariableCascader from '../VariableCascader.vue';
+import { useModelsStore } from '@/stores/models.js';
 
 const props = defineProps({
   data: { type: Object, required: true },
@@ -367,34 +368,17 @@ let hideTimer = null;
 // 组件是否已卸载
 let isUnmounted = false;
 
-// 可用模型列表（动态从API获取）
-const availableModels = ref([]);
-const modelsLoading = ref(false);
+// 使用模型 store
+const modelsStore = useModelsStore();
 
-// 获取可用模型列表
-const loadAvailableModels = async () => {
-  if (modelsLoading.value) return;
-  modelsLoading.value = true;
-  try {
-    const response = await fetch('/api/v1/chat/model/available');
-    // 检查组件是否已卸载
-    if (isUnmounted) return;
-    const result = await response.json();
-    if (isUnmounted) return;
-    if (result.success && result.models) {
-      availableModels.value = result.models;
-    }
-  } catch (e) {
-    console.error('加载可用模型列表失败:', e);
-  } finally {
-    if (!isUnmounted) {
-      modelsLoading.value = false;
-    }
-  }
-};
+// 从 store 中获取模型列表和选项
+const modelOptions = computed(() => modelsStore.modelOptions);
+const modelsLoading = computed(() => modelsStore.loading);
 
 onMounted(() => {
-  loadAvailableModels();
+  isUnmounted = false;
+  // 加载模型列表（使用store会处理缓存）
+  modelsStore.loadModels();
 });
 
 onUnmounted(() => {
@@ -403,15 +387,6 @@ onUnmounted(() => {
     clearTimeout(hideTimer);
     hideTimer = null;
   }
-});
-
-// 模型选项（格式化为 select 需要的选项）
-const modelOptions = computed(() => {
-  return availableModels.value.map(m => ({
-    value: m.id,
-    label: `${m.name} (${m.providerName || m.provider})`,
-    raw: m
-  }));
 });
 
 const handleTooltipEnter = () => {

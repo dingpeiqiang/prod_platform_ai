@@ -59,14 +59,13 @@
         <div v-if="localEnableValidation" class="llm-config-panel">
           <div class="llm-config-row">
             <label class="config-label">模型选择</label>
-            <select v-model="localModel" @change="emitUpdate" class="node-select">
-              <option value="qwen-vl-plus">Qwen-VL-Plus</option>
-              <option value="qwen-plus">Qwen-Plus</option>
-              <option value="gpt-4o">GPT-4o</option>
-              <option value="gpt-4">GPT-4</option>
-              <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-              <option value="claude-3-opus">Claude 3 Opus</option>
-              <option value="claude-3-sonnet">Claude 3 Sonnet</option>
+            <select v-model="localModel" @change="emitUpdate" class="node-select" :disabled="modelsLoading">
+              <option value="" disabled>请选择模型</option>
+              <option
+                v-for="opt in modelOptions"
+                :key="opt.value"
+                :value="opt.value"
+              >{{ opt.label }}</option>
             </select>
           </div>
           
@@ -174,13 +173,14 @@
 </template>
 
 <script setup>
-import { ref, watch, computed, onMounted } from 'vue'
+import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { Handle } from '@vue-flow/core'
 import { nodeDisplayProps } from './nodeDisplayProps.js'
 import { useNodeAnchorMode } from './useHandlePosition.js'
 import VariableCascader from '../VariableCascader.vue'
 import * as ontologyApi from '@/services/ontologyApi'
 import * as mcpApi from '@/services/mcpManagementApi'
+import { useModelsStore } from '@/stores/models.js'
 
 const props = defineProps({
   data: {
@@ -202,6 +202,12 @@ const { targetPosition, sourcePosition } = useNodeAnchorMode(props)
 
 const emit = defineEmits(['update'])
 
+// 使用模型 store
+const modelsStore = useModelsStore()
+
+// 组件是否已卸载
+let isUnmounted = false
+
 // 状态管理
 const ontologies = ref([])
 const mcpTools = ref([])
@@ -218,10 +224,14 @@ const localTimeout = ref(props.data.timeout || 60)
 
 // 大模型校验配置
 const localEnableValidation = ref(props.data.enableValidation || false)
-const localModel = ref(props.data.model || 'qwen-plus')
+const localModel = ref(props.data.model || '')
 const localTemperature = ref(props.data.temperature || 0.3)
 const localValidationPrompt = ref(props.data.validationPrompt || '')
 const localInputVariable = ref(props.data.inputVariable || '')
+
+// 从 store 中获取模型列表和选项
+const modelOptions = computed(() => modelsStore.modelOptions)
+const modelsLoading = computed(() => modelsStore.loading)
 
 // 分类
 const categories = computed(() => {
@@ -399,7 +409,7 @@ watch(() => props.data, (d) => {
   
   // 大模型配置
   localEnableValidation.value = d.enableValidation || false
-  localModel.value = d.model || 'qwen-plus'
+  localModel.value = d.model || ''
   localTemperature.value = d.temperature || 0.3
   localValidationPrompt.value = d.validationPrompt || ''
   localInputVariable.value = d.inputVariable || ''
@@ -430,8 +440,15 @@ watch(() => props.data, (d) => {
 }, { deep: true })
 
 onMounted(() => {
+  isUnmounted = false
   loadOntologies()
   loadMCPTools()
+  // 加载模型列表（使用store会处理缓存）
+  modelsStore.loadModels()
+})
+
+onUnmounted(() => {
+  isUnmounted = true
 })
 </script>
 
