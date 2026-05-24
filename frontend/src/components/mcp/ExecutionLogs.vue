@@ -57,8 +57,9 @@
                 <span class="section-title">输入参数</span>
                 <el-button 
                   size="small" 
+                  type="primary"
+                  plain
                   @click="copyToClipboard(row.input_params)"
-                  :icon="CopiedIcon"
                 >
                   复制
                 </el-button>
@@ -70,6 +71,8 @@
                 <span class="section-title">输出结果</span>
                 <el-button 
                   size="small" 
+                  type="primary"
+                  plain
                   @click="copyToClipboard(row.output)"
                 >
                   复制
@@ -82,6 +85,8 @@
                 <span class="section-title">错误详情</span>
                 <el-button 
                   size="small" 
+                  type="danger"
+                  plain
                   @click="copyToClipboard(row.error)"
                 >
                   复制
@@ -137,10 +142,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { DocumentCopy, Check } from '@element-plus/icons-vue'
 import * as mcpApi from '@/services/mcpManagementApi'
-
-const CopiedIcon = DocumentCopy
 
 const props = defineProps({
   logs: {
