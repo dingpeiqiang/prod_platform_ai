@@ -2902,13 +2902,16 @@ onMounted(async () => {
         ElMessage.success('工作流加载成功');
       } else {
         ElMessage.warning('未找到工作流，将创建新的工作流');
+        await autoSaveNewWorkflow();
       }
     } catch (error) {
       console.error('加载工作流失败:', error);
       ElMessage.error('加载工作流失败');
+      await autoSaveNewWorkflow();
     }
-  } else if (workflows.value.length > 0 && props.workflowCode) {
-    await openWorkflow(workflows.value[0]);
+  } else {
+    // 新建工作流，自动保存
+    await autoSaveNewWorkflow();
   }
   
   history.value.push(JSON.stringify(elements.value));
@@ -2916,6 +2919,59 @@ onMounted(async () => {
   
   startAutoSaveTimer();
 });
+
+const autoSaveNewWorkflow = async () => {
+  try {
+    const nodes = elements.value.filter(el => !el.source && !el.target);
+    const edges = elements.value.filter(el => el.source && el.target);
+    
+    const workflowData = {
+      nodes: nodes.map(node => ({
+        id: node.id,
+        type: node.type,
+        position: node.position,
+        data: node.data
+      })),
+      edges: edges.map(edge => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: edge.sourceHandle,
+        targetHandle: edge.targetHandle
+      }))
+    };
+    
+    const newId = uuidv4();
+    
+    const saveResult = await workflowApi.workflowApi.create({
+      workflowCode: newId,
+      workflowName: workflowName.value || '未命名工作流',
+      description: '',
+      category: 'general',
+      workflowData: workflowData
+    });
+    
+    if (saveResult.success) {
+      currentWorkflowId.value = newId;
+      workflows.value.push({
+        id: newId,
+        name: workflowName.value || '未命名工作流',
+        description: '',
+        ...workflowData,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        savedAt: new Date().toISOString()
+      });
+      hasChanges.value = false;
+      ElMessage.success('新工作流已创建');
+    } else {
+      ElMessage.error('创建工作流失败: ' + (saveResult.message || '未知错误'));
+    }
+  } catch (error) {
+    console.error('创建工作流失败:', error);
+    ElMessage.error('创建工作流失败: ' + error.message);
+  }
+};
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
