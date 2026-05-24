@@ -15,7 +15,8 @@ import logging
 import json
 
 from app.langchain.llm_wrapper import get_langchain_llm
-from app.engine.workflow_executor import WorkflowExecutor
+from app.langchain.workflow_engine import WorkflowEngine
+from app.langchain.workflow_converter import WorkflowConverter
 
 logger = logging.getLogger("llm_workflow_scheduler")
 
@@ -196,13 +197,17 @@ class WorkflowScheduler:
         workflow_def = self.workflow_registry[workflow_id]["definition"]
         
         try:
-            executor = WorkflowExecutor(workflow_def)
-            context = await executor.execute(params)
+            # 转换为 WorkflowEngine 格式并执行
+            converter = WorkflowConverter()
+            engine_workflow = converter.convert(workflow_def)
+            
+            engine = WorkflowEngine(engine_workflow)
+            result = await engine.run(params)
             
             return {
-                "status": context.status.value,
-                "outputs": context.outputs,
-                "error": context.error
+                "status": result.status,
+                "outputs": result.outputs,
+                "error": result.errors[0] if result.errors else None
             }
         except Exception as e:
             logger.error(f"工作流执行失败: {e}")

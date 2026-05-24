@@ -26,7 +26,8 @@ def execute_workflow(workflow_code: str, inputs: Dict[str, Any] = None) -> Dict[
         执行结果，包含 execution_id、status、outputs 等信息
     """
     from ..services.workflow_service import WorkflowService
-    from ..engine.workflow_executor import WorkflowExecutor
+    from ..langchain.workflow_engine import WorkflowEngine
+    from ..langchain.workflow_converter import WorkflowConverter
     from app.core.database import SessionLocal
     import asyncio
     
@@ -62,19 +63,23 @@ def execute_workflow(workflow_code: str, inputs: Dict[str, Any] = None) -> Dict[
                 "error": f"工作流 '{workflow_code}' 定义不完整"
             }
         
-        # 3. 执行工作流
-        executor = WorkflowExecutor(workflow_def)
-        context = asyncio.run(executor.execute(inputs))
+        # 3. 转换为 WorkflowEngine 格式
+        converter = WorkflowConverter()
+        engine_workflow = converter.convert(workflow_def)
         
-        # 4. 返回执行结果
+        # 4. 执行工作流
+        engine = WorkflowEngine(engine_workflow)
+        result = asyncio.run(engine.run(inputs))
+        
+        # 5. 返回执行结果
         return {
-            "success": context.status.value == "completed",
+            "success": result.status == "completed",
             "result": {
-                "execution_id": context.workflow_id,
-                "status": context.status.value,
-                "outputs": context.outputs,
-                "error": context.error,
-                "node_statuses": {k: v.value for k, v in context.node_statuses.items()}
+                "execution_id": result.workflow_id,
+                "status": result.status,
+                "outputs": result.outputs,
+                "error": result.errors[0] if result.errors else None,
+                "node_statuses": None
             }
         }
         

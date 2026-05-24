@@ -23,7 +23,7 @@ class ExecuteRequest(BaseModel):
     """工作流执行请求"""
     workflow_def: Dict[str, Any]
     inputs: Optional[Dict[str, Any]] = {}
-    use_lcel: Optional[bool] = False
+    use_lcel: Optional[bool] = True
 
 
 class ExecutionResponse(BaseModel):
