@@ -2279,41 +2279,75 @@ class WorkflowExecutor:
     
     async def _execute_node(self, node_id: str, context: WorkflowContext):
         """递归执行节点"""
-        if context.status == ExecutionStatus.COMPLETED:
+        # 检查是否已终止或完成
+        if context.status in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED, ExecutionStatus.TERMINATED]:
             return
         
         node = self.node_map.get(node_id)
         if not node:
+            logger.warning(f"节点不存在: {node_id}")
             return
         
         node_type = node.get("type", "")
         executor_class = self._executor_registry.get(node_type)
         
         if not executor_class:
-            logger.warning(f"No executor found for node type: {node_type}")
+            logger.warning(f"未找到节点类型的执行器: {node_type}")
             return
         
-        executor = executor_class(node)
-        next_node_ids = await executor.execute(context, self.edges)
-        
-        # 递归执行下一个节点
-        for next_node_id in next_node_ids:
-            await self._execute_node(next_node_id, context)
+        try:
+            executor = executor_class(node)
+            next_node_ids = await executor.execute(context, self.edges)
+            
+            # 检查节点执行是否失败
+            node_status = context.node_statuses.get(node_id, ExecutionStatus.COMPLETED)
+            if node_status == ExecutionStatus.FAILED:
+                logger.error(f"节点执行失败，终止工作流: {node_id}")
+                context.status = ExecutionStatus.FAILED
+                return
+            
+            # 节点执行成功，递归执行下一个节点
+            for next_node_id in next_node_ids:
+                await self._execute_node(next_node_id, context)
+                # 每次递归后检查是否已终止
+                if context.status in [ExecutionStatus.FAILED, ExecutionStatus.TERMINATED]:
+                    return
+                    
+        except Exception as e:
+            logger.exception(f"节点执行异常，终止工作流: {node_id}, 错误: {e}")
+            context.status = ExecutionStatus.FAILED
+            context.error = f"节点 {node_id} 执行失败: {str(e)}"
+            context.update_node_status(node_id, ExecutionStatus.FAILED)
+            return
     
     async def _execute_node_streaming(self, node_id: str, context: WorkflowContext, yield_fn):
         """递归流式执行节点"""
-        if context.status == ExecutionStatus.COMPLETED:
+        # 检查是否已终止或完成
+        if context.status in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED, ExecutionStatus.TERMINATED]:
             return
         
         node = self.node_map.get(node_id)
         if not node:
+            logger.warning(f"节点不存在: {node_id}")
+            await yield_fn({
+                "type": "error",
+                "node_id": node_id,
+                "message": f"节点不存在: {node_id}",
+                "timestamp": datetime.now().isoformat()
+            })
             return
         
         node_type = node.get("type", "")
         executor_class = self._executor_registry.get(node_type)
         
         if not executor_class:
-            logger.warning(f"No executor found for node type: {node_type}")
+            logger.warning(f"未找到节点类型的执行器: {node_type}")
+            await yield_fn({
+                "type": "error",
+                "node_id": node_id,
+                "message": f"未找到节点类型的执行器: {node_type}",
+                "timestamp": datetime.now().isoformat()
+            })
             return
         
         # 发送节点开始事件
@@ -2325,22 +2359,69 @@ class WorkflowExecutor:
             "timestamp": datetime.now().isoformat()
         })
         
-        executor = executor_class(node)
-        next_node_ids = await executor.execute(context, self.edges)
-        
-        # 发送节点完成事件
-        node_status = context.node_statuses.get(node_id, ExecutionStatus.COMPLETED)
-        await yield_fn({
-            "type": "node_complete",
-            "node_id": node_id,
-            "node_type": node_type,
-            "status": node_status.value,
-            "outputs": context.outputs,
-            "timestamp": datetime.now().isoformat()
-        })
-        
-        # 递归执行下一个节点
-        logger.info(f"Node [{node_id}] completed: next_nodes={next_node_ids}")
-        for next_node_id in next_node_ids:
-            logger.info(f"Executing next node: {next_node_id}")
-            await self._execute_node_streaming(next_node_id, context, yield_fn)
+        try:
+            executor = executor_class(node)
+            next_node_ids = await executor.execute(context, self.edges)
+            
+            # 检查节点执行状态
+            node_status = context.node_statuses.get(node_id, ExecutionStatus.COMPLETED)
+            
+            # 发送节点完成事件
+            await yield_fn({
+                "type": "node_complete",
+                "node_id": node_id,
+                "node_type": node_type,
+                "status": node_status.value,
+                "outputs": context.outputs,
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            # 如果节点执行失败，终止工作流
+            if node_status == ExecutionStatus.FAILED:
+                logger.error(f"节点执行失败，终止工作流: {node_id}")
+                context.status = ExecutionStatus.FAILED
+                await yield_fn({
+                    "type": "workflow_error",
+                    "node_id": node_id,
+                    "message": f"节点执行失败，终止工作流: {node_id}",
+                    "error": context.error,
+                    "timestamp": datetime.now().isoformat()
+                })
+                return
+            
+            # 节点执行成功，递归执行下一个节点
+            logger.info(f"Node [{node_id}] completed: next_nodes={next_node_ids}")
+            for next_node_id in next_node_ids:
+                logger.info(f"Executing next node: {next_node_id}")
+                await self._execute_node_streaming(next_node_id, context, yield_fn)
+                # 每次递归后检查是否已终止
+                if context.status in [ExecutionStatus.FAILED, ExecutionStatus.TERMINATED]:
+                    return
+                    
+        except Exception as e:
+            logger.exception(f"节点执行异常，终止工作流: {node_id}, 错误: {e}")
+            error_message = f"节点 {node_id} 执行失败: {str(e)}"
+            context.status = ExecutionStatus.FAILED
+            context.error = error_message
+            context.update_node_status(node_id, ExecutionStatus.FAILED)
+            
+            # 发送错误事件
+            await yield_fn({
+                "type": "node_error",
+                "node_id": node_id,
+                "node_type": node_type,
+                "message": error_message,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            # 发送工作流错误事件
+            await yield_fn({
+                "type": "workflow_error",
+                "node_id": node_id,
+                "message": error_message,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            return
