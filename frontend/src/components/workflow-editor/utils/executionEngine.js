@@ -739,31 +739,35 @@ export class ExecutionEngine {
               })
             });
             
-            if (response.ok) {
-              const data = await response.json();
-              context.output = data;
-              context.variables['formResult'] = data;
-              
-              if (data.form_schema) {
-                context.variables['formSchema'] = data.form_schema;
-              }
-              if (data.form_data) {
-                context.variables['formData'] = data.form_data;
-              }
-              if (data.form_validation) {
-                context.variables['formValidation'] = data.form_validation;
-              }
-              if (data.form_submit_result) {
-                context.variables['formSubmitResult'] = data.form_submit_result;
-              }
-              
-              this.updateNodeData(nodeId, { output: data });
-              this.addNodeLog(nodeId, { type: 'info', message: '表单节点执行完成' });
-              this.addLog('info', '表单节点执行完成', null, data);
-            } else {
-              const errorData = await response.json();
-              throw new Error(errorData.message || '表单节点执行失败');
+            const data = await response.json();
+            context.output = data;
+            context.variables['formResult'] = data;
+            
+            if (data.form_schema) {
+              context.variables['formSchema'] = data.form_schema;
             }
+            if (data.form_data) {
+              context.variables['formData'] = data.form_data;
+            }
+            if (data.form_validation) {
+              context.variables['formValidation'] = data.form_validation;
+            }
+            if (data.form_submit_result) {
+              context.variables['formSubmitResult'] = data.form_submit_result;
+            }
+            
+            this.updateNodeData(nodeId, { output: data });
+            
+            // 检查后端返回的成功状态
+            if (!response.ok || !data.success) {
+              const errorMessage = data.message || data.error || '表单节点执行失败';
+              this.addNodeLog(nodeId, { type: 'error', message: errorMessage });
+              this.addLog('error', '表单节点执行失败', errorMessage, data);
+              throw new Error(errorMessage);
+            }
+            
+            this.addNodeLog(nodeId, { type: 'info', message: '表单节点执行完成' });
+            this.addLog('info', '表单节点执行完成', null, data);
           } catch (error) {
             console.error('表单节点执行失败:', error);
             this.addNodeLog(nodeId, { type: 'error', message: error.message });
