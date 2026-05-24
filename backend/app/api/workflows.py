@@ -856,13 +856,7 @@ async def execute_form_node(request: FormNodeExecutionRequest):
         context.params = request.input_data or {}
         
         # 执行节点
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            result = loop.run_until_complete(executor.execute(context, []))
-        finally:
-            loop.close()
+        result = await executor.execute(context, [])
         
         return {
             "success": True,
