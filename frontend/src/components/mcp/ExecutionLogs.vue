@@ -53,15 +53,40 @@
         <template #default="{ row }">
           <div class="expanded-content">
             <div class="expanded-section">
-              <span class="section-title">输入参数</span>
+              <div class="section-header">
+                <span class="section-title">输入参数</span>
+                <el-button 
+                  size="small" 
+                  @click="copyToClipboard(row.input_params)"
+                  :icon="CopiedIcon"
+                >
+                  复制
+                </el-button>
+              </div>
               <pre class="json-content" v-html="highlightJson(row.input_params)"></pre>
             </div>
             <div class="expanded-section" v-if="row.output">
-              <span class="section-title">输出结果</span>
+              <div class="section-header">
+                <span class="section-title">输出结果</span>
+                <el-button 
+                  size="small" 
+                  @click="copyToClipboard(row.output)"
+                >
+                  复制
+                </el-button>
+              </div>
               <pre class="json-content" v-html="highlightJson(row.output)"></pre>
             </div>
             <div class="expanded-section error-section" v-if="row.error">
-              <span class="section-title">错误详情</span>
+              <div class="section-header">
+                <span class="section-title">错误详情</span>
+                <el-button 
+                  size="small" 
+                  @click="copyToClipboard(row.error)"
+                >
+                  复制
+                </el-button>
+              </div>
               <pre class="json-content error-json">{{ row.error }}</pre>
             </div>
           </div>
@@ -111,7 +136,11 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { ElMessage } from 'element-plus'
+import { DocumentCopy, Check } from '@element-plus/icons-vue'
 import * as mcpApi from '@/services/mcpManagementApi'
+
+const CopiedIcon = DocumentCopy
 
 const props = defineProps({
   logs: {
@@ -243,6 +272,27 @@ const highlightJson = (data) => {
     return String(data).replace(/</g, '&lt;').replace(/>/g, '&gt;')
   }
 }
+
+const copyToClipboard = async (data) => {
+  try {
+    let textToCopy = ''
+    
+    if (typeof data === 'string') {
+      textToCopy = data
+    } else if (data) {
+      textToCopy = JSON.stringify(data, null, 2)
+    } else {
+      ElMessage.warning('没有可复制的内容')
+      return
+    }
+    
+    await navigator.clipboard.writeText(textToCopy)
+    ElMessage.success('复制成功')
+  } catch (error) {
+    console.error('复制失败:', error)
+    ElMessage.error('复制失败')
+  }
+}
 </script>
 
 <style scoped>
@@ -329,6 +379,17 @@ const highlightJson = (data) => {
   font-weight: 600;
   color: #606266;
   margin-bottom: 6px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.section-header .section-title {
+  margin-bottom: 0;
 }
 
 .json-content {
