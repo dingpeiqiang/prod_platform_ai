@@ -696,6 +696,82 @@ export class ExecutionEngine {
           break;
         }
 
+        case 'form': {
+          const ontologyCode = node.data.ontologyCode || '';
+          const toolName = node.data.toolType || node.data.toolName || '';
+          const enableValidation = node.data.enableValidation || false;
+          const model = node.data.model || '';
+          const temperature = node.data.temperature || 0.3;
+          const validationPrompt = node.data.validationPrompt || '';
+          const inputVariable = node.data.inputVariable || '';
+          
+          this.updateNodeData(nodeId, {
+            input: { ...context.variables },
+            config: {
+              ontologyCode,
+              toolName,
+              enableValidation,
+              model,
+              temperature,
+              validationPrompt,
+              inputVariable
+            },
+            output: null
+          });
+          
+          this.addNodeLog(nodeId, { type: 'info', message: `表单节点配置: 本体=${ontologyCode}, 工具=${toolName || '未配置'}` });
+          this.addLog('info', '表单节点', `本体: ${ontologyCode}, 工具: ${toolName || '未配置'}`, { ontologyCode, toolName, enableValidation, model });
+          
+          // 调用后端 API 执行表单节点
+          try {
+            const response = await fetch('/api/v1/workflow/execute-form-node', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ontology_code: ontologyCode,
+                tool_name: toolName,
+                enable_validation: enableValidation,
+                model: model,
+                temperature: temperature,
+                validation_prompt: validationPrompt,
+                input_variable: inputVariable,
+                input_data: context.variables
+              })
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              context.output = data;
+              context.variables['formResult'] = data;
+              
+              if (data.form_schema) {
+                context.variables['formSchema'] = data.form_schema;
+              }
+              if (data.form_data) {
+                context.variables['formData'] = data.form_data;
+              }
+              if (data.form_validation) {
+                context.variables['formValidation'] = data.form_validation;
+              }
+              if (data.form_submit_result) {
+                context.variables['formSubmitResult'] = data.form_submit_result;
+              }
+              
+              this.updateNodeData(nodeId, { output: data });
+              this.addNodeLog(nodeId, { type: 'info', message: '表单节点执行完成' });
+              this.addLog('info', '表单节点执行完成', null, data);
+            } else {
+              const errorData = await response.json();
+              throw new Error(errorData.message || '表单节点执行失败');
+            }
+          } catch (error) {
+            console.error('表单节点执行失败:', error);
+            this.addNodeLog(nodeId, { type: 'error', message: error.message });
+            throw error;
+          }
+          break;
+        }
+
         case 'http': {
           const url = node.data.url || '未配置';
           const method = node.data.method || 'GET';
@@ -1183,6 +1259,67 @@ export class ExecutionEngine {
           result = { [varName]: varValue };
           this.addNodeLog(nodeId, { type: 'info', message: `赋值 ${varName} = ${varValue}` });
           this.addLog('info', '变量赋值', `${varName} = ${varValue}`, { [varName]: varValue });
+          break;
+        }
+
+        case 'form': {
+          const ontologyCode = node.data.ontologyCode || '';
+          const toolName = node.data.toolType || node.data.toolName || '';
+          const enableValidation = node.data.enableValidation || false;
+          const model = node.data.model || '';
+          const temperature = node.data.temperature || 0.3;
+          const validationPrompt = node.data.validationPrompt || '';
+          const inputVariable = node.data.inputVariable || '';
+          
+          this.updateNodeData(nodeId, {
+            input: { ...inputData },
+            config: {
+              ontologyCode,
+              toolName,
+              enableValidation,
+              model,
+              temperature,
+              validationPrompt,
+              inputVariable
+            },
+            output: null
+          });
+          
+          this.addNodeLog(nodeId, { type: 'info', message: `表单节点配置: 本体=${ontologyCode}, 工具=${toolName || '未配置'}` });
+          this.addLog('info', '表单节点', `本体: ${ontologyCode}, 工具: ${toolName || '未配置'}`, { ontologyCode, toolName, enableValidation, model });
+          
+          // 单节点执行时，调用后端 API 执行表单节点
+          try {
+            const response = await fetch('/api/v1/workflow/execute-form-node', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ontology_code: ontologyCode,
+                tool_name: toolName,
+                enable_validation: enableValidation,
+                model: model,
+                temperature: temperature,
+                validation_prompt: validationPrompt,
+                input_variable: inputVariable,
+                input_data: inputData || {}
+              })
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              result = data;
+              this.updateNodeData(nodeId, { output: result });
+              this.addNodeLog(nodeId, { type: 'info', message: '表单节点执行完成' });
+              this.addLog('info', '表单节点执行完成', null, result);
+            } else {
+              const errorData = await response.json();
+              throw new Error(errorData.message || '表单节点执行失败');
+            }
+          } catch (error) {
+            console.error('表单节点执行失败:', error);
+            this.addNodeLog(nodeId, { type: 'error', message: error.message });
+            throw error;
+          }
           break;
         }
 

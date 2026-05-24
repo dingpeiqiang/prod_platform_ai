@@ -805,3 +805,80 @@ async def convert_workflow_format(request: Dict[str, Any]):
         "backendConfig": backend_config,
         "warnings": validation["warnings"]
     }
+
+
+class FormNodeExecutionRequest(BaseModel):
+    """表单节点执行请求"""
+    ontology_code: str
+    tool_name: Optional[str] = None
+    enable_validation: bool = False
+    model: Optional[str] = None
+    temperature: float = 0.3
+    validation_prompt: Optional[str] = None
+    input_variable: Optional[str] = None
+    input_data: Optional[Dict[str, Any]] = {}
+
+
+@router.post("/execute-form-node")
+async def execute_form_node(request: FormNodeExecutionRequest):
+    """执行表单节点（单节点运行）
+    
+    该接口用于：
+    1. 基于本体生成表单结构
+    2. 通过推荐策略初始化表单数据
+    3. 执行本体规则校验和大模型智能校验（可选）
+    4. 调用 MCP 工具提交表单（可选）
+    """
+    try:
+        from app.engine.workflow_executor import FormNodeExecutor, WorkflowContext
+        
+        # 创建节点数据
+        node_data = {
+            "ontologyCode": request.ontology_code,
+            "toolType": request.tool_name,
+            "toolName": request.tool_name,
+            "enableValidation": request.enable_validation,
+            "model": request.model,
+            "temperature": request.temperature,
+            "validationPrompt": request.validation_prompt,
+            "inputVariable": request.input_variable
+        }
+        
+        # 创建表单节点执行器
+        executor = FormNodeExecutor({
+            "node_id": "form_node_standalone",
+            "type": "form",
+            "data": node_data
+        })
+        
+        # 创建执行上下文
+        context = WorkflowContext()
+        context.params = request.input_data or {}
+        
+        # 执行节点
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result = loop.run_until_complete(executor.execute(context, []))
+        finally:
+            loop.close()
+        
+        return {
+            "success": True,
+            "message": "表单节点执行完成",
+            "form_schema": context.outputs.get("form_schema"),
+            "form_data": context.outputs.get("form_data"),
+            "ontology_code": context.outputs.get("ontology_code"),
+            "form_validation": context.outputs.get("form_validation"),
+            "form_submit_result": context.outputs.get("form_submit_result"),
+            "llm_validation": context.outputs.get("llm_validation"),
+            "next_nodes": result
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"表单节点执行失败: {str(e)}",
+            "error": str(e)
+        }
