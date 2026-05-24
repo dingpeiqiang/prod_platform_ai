@@ -1350,6 +1350,8 @@ export class ExecutionEngine {
       };
 
     } catch (error) {
+      this.setNodeStatus(node.id, 'error');
+      this.updateNodeData(node.id, { status: 'error', error: error.message });
       this.addLog('error', '单节点执行失败', error.message, null);
       return {
         status: 'error',
@@ -1358,11 +1360,6 @@ export class ExecutionEngine {
       };
     } finally {
       this.isRunning = false;
-      const nodeId = node.id;
-      if (this.nodeStatus[nodeId] === 'running') {
-        this.setNodeStatus(nodeId, 'completed');
-        this.completeNodeExecution(nodeId, 'completed');
-      }
     }
   }
 }
