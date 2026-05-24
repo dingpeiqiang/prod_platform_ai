@@ -851,8 +851,8 @@ async def execute_form_node(request: FormNodeExecutionRequest):
             "data": node_data
         })
         
-        # 创建执行上下文
-        context = WorkflowContext()
+        # 创建执行上下文（单节点执行时使用临时 workflow_id）
+        context = WorkflowContext(workflow_id="form-node-execution")
         context.params = request.input_data or {}
         
         # 执行节点

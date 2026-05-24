@@ -757,17 +757,17 @@ export class ExecutionEngine {
             }
             
             this.updateNodeData(nodeId, { output: data });
-            
-            // 检查后端返回的成功状态
-            if (!response.ok || !data.success) {
-              const errorMessage = data.message || data.error || '表单节点执行失败';
-              this.addNodeLog(nodeId, { type: 'error', message: errorMessage });
-              this.addLog('error', '表单节点执行失败', errorMessage, data);
-              throw new Error(errorMessage);
-            }
-            
-            this.addNodeLog(nodeId, { type: 'info', message: '表单节点执行完成' });
-            this.addLog('info', '表单节点执行完成', null, data);
+             
+             // 检查后端返回的成功状态（只在明确返回 success: false 时标记为失败）
+             if (!response.ok || data.success === false) {
+               const errorMessage = data.message || data.error || '表单节点执行失败';
+               this.addNodeLog(nodeId, { type: 'error', message: errorMessage });
+               this.addLog('error', '表单节点执行失败', errorMessage, data);
+               throw new Error(errorMessage);
+             }
+             
+             this.addNodeLog(nodeId, { type: 'info', message: '表单节点执行完成' });
+             this.addLog('info', '表单节点执行完成', null, data);
           } catch (error) {
             console.error('表单节点执行失败:', error);
             this.addNodeLog(nodeId, { type: 'error', message: error.message });
