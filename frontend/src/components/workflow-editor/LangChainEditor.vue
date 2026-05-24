@@ -745,7 +745,31 @@ const goBack = () => {
 
 const { addEdges, removeNodes, removeEdges, project, updateEdge, getEdges, getNodes, fitView } = useVueFlow();
 
-const elements = ref([]);
+const getDefaultWorkflowElements = () => {
+  return [
+    {
+      id: 'start-1',
+      type: 'start',
+      position: { x: 250, y: 50 },
+      data: {
+        label: '开始',
+        parameters: []
+      },
+      class: 'start-node-default'
+    },
+    {
+      id: 'end-1',
+      type: 'end',
+      position: { x: 250, y: 400 },
+      data: {
+        label: '结束'
+      },
+      class: 'end-node-default'
+    }
+  ];
+};
+
+const elements = ref(getDefaultWorkflowElements());
 const hasChanges = ref(false);
 const selectedNodeId = ref(null);
 const selectedNodeIds = ref([]);
@@ -2032,8 +2056,8 @@ const deleteWorkflow = async (workflowId) => {
         ElMessage.success('工作流已删除');
       }
       if (currentWorkflowId.value === workflowId) {
-        // 删除的是当前工作流，重置画布为空
-        elements.value = [];
+        // 删除的是当前工作流，重置画布为默认节点
+        elements.value = getDefaultWorkflowElements();
         nextTick(() => fitView({ padding: 0.2, duration: 300 }));
         currentWorkflowId.value = null;
         workflowName.value = '未命名工作流';
@@ -2334,9 +2358,10 @@ const saveJsonToDatabase = async () => {
 const clearWorkflow = () => {
   if (confirm('确定要清空工作流吗？')) {
     saveHistory();
-    elements.value = [];
+    elements.value = getDefaultWorkflowElements();
     selectedNodeId.value = null;
     hasChanges.value = false;
+    nextTick(() => fitView({ padding: 0.2, duration: 300 }));
   }
 };
 
