@@ -1539,12 +1539,22 @@ const handleNodeRun = async () => {
     lastExecutionResult.value = result;
     nodeExecutionData.value = executionEngine.getNodeExecutionData();
     
-    if (result.status === 'success') {
-      ElMessage.success(`节点执行成功: ${node.data.label}`);
+    // 检查节点执行状态
+    const hasNodeError = nodeExecutionData.value.some(n => n.status === 'error');
+    
+    if (hasNodeError || result.status === 'error') {
+      lastExecutionResult.value = { ...result, status: 'error' };
+      ElMessage.error(`节点执行失败: ${result.error || '请查看错误详情'}`);
     } else {
-      ElMessage.error(`节点执行失败: ${result.error}`);
+      ElMessage.success(`节点执行成功: ${node.data.label}`);
     }
   } catch (error) {
+    lastExecutionResult.value = {
+      status: 'error',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    };
+    nodeExecutionData.value = executionEngine.getNodeExecutionData();
     ElMessage.error(`节点执行异常: ${error.message}`);
     console.error('Single node execution error:', error);
   } finally {
@@ -2575,11 +2585,33 @@ const runWorkflow = async (inputParams = {}) => {
   };
   
   executionEngine.setCallbacks(onStatusChange, onLog, onNodeDataChange);
-  const result = await executionEngine.execute(elements.value, inputParams);
-  lastExecutionResult.value = result;
-  // 获取结构化的节点执行数据
-  nodeExecutionData.value = executionEngine.getNodeExecutionData();
-  isRunning.value = false;
+  
+  try {
+    const result = await executionEngine.execute(elements.value, inputParams);
+    lastExecutionResult.value = result;
+    // 获取结构化的节点执行数据
+    nodeExecutionData.value = executionEngine.getNodeExecutionData();
+    
+    // 检查是否有节点执行失败
+    const hasNodeError = nodeExecutionData.value.some(node => node.status === 'error');
+    
+    if (hasNodeError || result.status === 'error') {
+      lastExecutionResult.value = { ...result, status: 'error' };
+      ElMessage.error('工作流执行失败，请查看错误详情');
+    } else {
+      ElMessage.success('工作流执行成功');
+    }
+  } catch (error) {
+    lastExecutionResult.value = {
+      status: 'error',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    };
+    ElMessage.error(`工作流执行异常: ${error.message}`);
+    console.error('Workflow execution error:', error);
+  } finally {
+    isRunning.value = false;
+  }
 };
 
 const handleParameterExecute = (params) => {
