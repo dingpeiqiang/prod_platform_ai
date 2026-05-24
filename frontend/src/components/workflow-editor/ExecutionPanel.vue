@@ -90,6 +90,13 @@
               <div class="section-header">
                 <span class="section-icon">📥</span>
                 <span>输入</span>
+                <button @click="copyToClipboard(nodeData.input)" class="copy-btn" title="复制">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                  复制
+                </button>
               </div>
               <pre class="section-content input-content">{{ formatJson(nodeData.input) }}</pre>
             </div>
@@ -126,6 +133,13 @@
               <div class="section-header">
                 <span class="section-icon">📤</span>
                 <span>输出</span>
+                <button @click="copyToClipboard(nodeData.output)" class="copy-btn" title="复制">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                  复制
+                </button>
               </div>
               <pre class="section-content output-content">{{ formatJson(nodeData.output) }}</pre>
             </div>
@@ -137,9 +151,18 @@
     <div v-if="lastResult && !isRunning && !isPaused" class="result-summary">
       <div class="result-header">
         <span>📊 执行结果</span>
-        <span class="result-status" :class="lastResult.status === 'success' ? 'success' : 'error'">
-          {{ lastResult.status === 'success' ? '✓ 成功' : '✗ 失败' }}
-        </span>
+        <div class="result-actions">
+          <button @click="copyToClipboard(lastResult)" class="copy-btn" title="复制结果">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            复制
+          </button>
+          <span class="result-status" :class="lastResult.status === 'success' ? 'success' : 'error'">
+            {{ lastResult.status === 'success' ? '✓ 成功' : '✗ 失败' }}
+          </span>
+        </div>
       </div>
       <pre class="result-content">{{ formatJson(lastResult) }}</pre>
     </div>
@@ -301,6 +324,43 @@ const formatTimestamp = (ts) => {
   if (!ts) return '--:--:--';
   const d = new Date(ts);
   return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+};
+
+const copyToClipboard = async (data) => {
+  try {
+    let textToCopy = '';
+    
+    if (typeof data === 'string') {
+      textToCopy = data;
+    } else if (data) {
+      textToCopy = JSON.stringify(data, null, 2);
+    } else {
+      return;
+    }
+    
+    await navigator.clipboard.writeText(textToCopy);
+    
+    // 使用原生的提示方式，避免依赖 Element Plus
+    const message = document.createElement('div');
+    message.className = 'copy-toast';
+    message.textContent = '✓ 复制成功';
+    message.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 12px 20px;
+      background: #10b981;
+      color: white;
+      border-radius: 6px;
+      font-size: 14px;
+      z-index: 10000;
+      animation: fadeInOut 2s ease-in-out;
+    `;
+    document.body.appendChild(message);
+    setTimeout(() => message.remove(), 2000);
+  } catch (error) {
+    console.error('复制失败:', error);
+  }
 };
 
 watch(() => props.logs.length + props.nodeExecutionData.length, async () => {
@@ -537,6 +597,45 @@ watch(() => props.logs.length + props.nodeExecutionData.length, async () => {
   color: #ef4444;
 }
 
+.section-header .copy-btn {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: rgba(148,163,184,.1);
+  border: 1px solid rgba(148,163,184,.2);
+  border-radius: 4px;
+  color: #94a3b8;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.section-header .copy-btn:hover {
+  background: rgba(148,163,184,.2);
+  color: #e2e8f0;
+}
+
+.copy-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: rgba(148,163,184,.1);
+  border: 1px solid rgba(148,163,184,.2);
+  border-radius: 4px;
+  color: #94a3b8;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.copy-btn:hover {
+  background: rgba(148,163,184,.2);
+  color: #e2e8f0;
+}
+
 .section-icon {
   font-size: 12px;
 }
@@ -651,10 +750,16 @@ watch(() => props.logs.length + props.nodeExecutionData.length, async () => {
   margin-bottom: 8px;
 }
 
-.result-header span {
+.result-header > span {
   font-size: 12px;
   font-weight: 600;
   color: #94a3b8;
+}
+
+.result-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .result-status {
