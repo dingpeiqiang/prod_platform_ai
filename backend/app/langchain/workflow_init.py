@@ -14,6 +14,20 @@ from .tariff_actions import (
     action_validate_form,
     action_merge_results
 )
+from .workflow_actions import (
+    action_workflow_start,
+    action_workflow_end,
+    action_call_llm,
+    action_ask_user,
+    action_call_tool,
+    action_set_variable,
+    action_http_request,
+    action_execute_code,
+    action_parse_output,
+    action_query_knowledge,
+    action_generate_form as workflow_generate_form,
+    action_set_prompt
+)
 
 logger = logging.getLogger("workflow_init")
 
@@ -25,10 +39,36 @@ def init_workflow_engine():
     # 注册资费备案动作
     register_tariff_actions()
     
+    # 注册工作流编辑器动作
+    register_workflow_actions()
+    
     # 加载工作流定义
     load_workflows()
     
     logger.info("[WorkflowInit] 工作流引擎初始化完成")
+
+
+def register_workflow_actions():
+    """注册工作流编辑器动作"""
+    actions = [
+        ("workflow.start", action_workflow_start),
+        ("workflow.end", action_workflow_end),
+        ("workflow.set_prompt", action_set_prompt),
+        ("workflow.call_llm", action_call_llm),
+        ("workflow.ask_user", action_ask_user),
+        ("workflow.call_tool", action_call_tool),
+        ("workflow.set_variable", action_set_variable),
+        ("workflow.http_request", action_http_request),
+        ("workflow.execute_code", action_execute_code),
+        ("workflow.parse_output", action_parse_output),
+        ("workflow.query_knowledge", action_query_knowledge),
+        ("workflow.generate_form", workflow_generate_form),
+    ]
+    
+    for action_name, handler in actions:
+        workflow_engine.register_action(action_name, handler)
+    
+    logger.info(f"[WorkflowInit] 已注册 {len(actions)} 个工作流编辑器动作")
 
 
 def register_tariff_actions():

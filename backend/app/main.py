@@ -116,6 +116,10 @@ _mcp_tools = register_all_tools()
 # 注册外部资费工具（query_tariff_by_code / query_tariff_info 实际调用外部 HTTP API）
 tariff_count = register_external_tariff_tools()
 
+# 注册工作流引擎动作（workflow.* 动作处理器）
+from app.langchain import init_workflow_engine
+init_workflow_engine()
+
 # 从数据库加载外部 API 工具
 from app.core.database import SessionLocal
 from app.mcp_tools.tool_registry_manager import init_external_tools
