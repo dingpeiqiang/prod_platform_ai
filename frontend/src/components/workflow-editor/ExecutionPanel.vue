@@ -6,7 +6,10 @@
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
         </svg>
         <span>执行日志</span>
-        <span v-if="isPaused" class="status-badge paused">
+        <span v-if="isPaused && waitingForm" class="status-badge paused">
+          <span class="status-dot"></span>等待表单填写
+        </span>
+        <span v-else-if="isPaused" class="status-badge paused">
           <span class="status-dot"></span>等待输入
         </span>
         <span v-else-if="isRunning" class="status-badge running">
@@ -38,7 +41,7 @@
     </div>
 
     <div class="logs-container" ref="logsContainer">
-      <div v-if="nodeExecutionData.length === 0" class="empty-logs">
+      <div v-if="nodeExecutionData.length === 0 && !waitingForm" class="empty-logs">
         <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
           <polyline points="14 2 14 8 20 8"/>
@@ -77,9 +80,7 @@
             </div>
           </div>
 
-          <!-- 展开的详细信息 -->
           <div v-if="expandedNodes[nodeData.nodeId]" class="node-details">
-            <!-- 节点配置信息 -->
             <div v-if="nodeData.config && Object.keys(nodeData.config).length > 0" class="node-config">
               <div class="section-header">
                 <span class="section-icon">⚙️</span>
@@ -88,7 +89,6 @@
               <pre class="section-content config-content">{{ formatJson(nodeData.config) }}</pre>
             </div>
 
-            <!-- 输入数据 -->
             <div v-if="nodeData.input" class="node-input">
               <div class="section-header">
                 <span class="section-icon">📥</span>
@@ -104,7 +104,6 @@
               <pre class="section-content input-content">{{ formatJson(nodeData.input) }}</pre>
             </div>
 
-            <!-- 执行日志 -->
             <div v-if="nodeData.logs && nodeData.logs.length > 0" class="node-logs">
               <div class="section-header">
                 <span class="section-icon">📝</span>
@@ -122,7 +121,6 @@
               </div>
             </div>
 
-            <!-- 错误信息 -->
             <div v-if="nodeData.error" class="node-error">
               <div class="error-alert">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -139,7 +137,6 @@
               <pre class="section-content error-content">{{ nodeData.error }}</pre>
             </div>
 
-            <!-- 输出数据 -->
             <div v-if="nodeData.output !== null && nodeData.output !== undefined" class="node-output">
               <div class="section-header">
                 <span class="section-icon">📤</span>
@@ -178,7 +175,33 @@
       <pre class="result-content">{{ formatJson(lastResult) }}</pre>
     </div>
 
-    <div v-if="isPaused && pendingInput" class="user-input-panel">
+    <div v-if="waitingForm" class="form-panel">
+      <div class="form-panel-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="9" y1="13" x2="15" y2="13"/>
+        </svg>
+        <span>📋 请填写表单</span>
+      </div>
+      
+      <div class="form-panel-content">
+        <p v-if="waitingMessage" class="form-message">{{ waitingMessage }}</p>
+        
+        <DynamicForm
+          v-if="waitingForm"
+          :schema="waitingForm"
+          :form-data="formData"
+          :form-submitted="formSubmitted"
+          :form-cancelled="formCancelled"
+          @field-change="handleFieldChange"
+          @submit="handleFormSubmit"
+          @cancel="handleFormCancel"
+        />
+      </div>
+    </div>
+
+    <div v-if="isPaused && !waitingForm && pendingInput" class="user-input-panel">
       <div class="input-panel-header">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -230,6 +253,7 @@
 
 <script setup>
 import { ref, computed, watch, nextTick, reactive } from 'vue';
+import DynamicForm from '../DynamicForm.vue';
 
 const props = defineProps({
   logs: { type: Array, default: () => [] },
@@ -238,18 +262,59 @@ const props = defineProps({
   pendingInput: { type: Object, default: null },
   lastResult: { type: Object, default: null },
   history: { type: Array, default: () => [] },
-  nodeExecutionData: { type: Array, default: () => [] }
+  nodeExecutionData: { type: Array, default: () => [] },
+  waitingForm: { type: Object, default: null },
+  waitingMessage: { type: String, default: '' },
+  workflowId: { type: String, default: '' }
 });
 
-const emit = defineEmits(['clear', 'resume']);
+const emit = defineEmits(['clear', 'resume', 'form-submit', 'form-cancel']);
 
 const userInputValue = ref('');
+const formData = ref({});
+const formSubmitted = ref(false);
+const formCancelled = ref(false);
 
 watch(() => props.pendingInput, (newInput) => {
   if (newInput) {
     userInputValue.value = '';
   }
 });
+
+watch(() => props.waitingForm, (newForm) => {
+  if (newForm) {
+    formSubmitted.value = false;
+    formCancelled.value = false;
+    formData.value = {};
+    
+    if (newForm.fields) {
+      newForm.fields.forEach(field => {
+        if (field.defaultValue !== undefined && field.defaultValue !== null) {
+          formData.value[field.fieldCode] = field.defaultValue;
+        }
+      });
+    }
+  }
+});
+
+const handleFieldChange = (fieldCode, value) => {
+  formData.value[fieldCode] = value;
+  emit('form-submit', { type: 'field-change', workflowId: props.workflowId, fieldCode, value });
+};
+
+const handleFormSubmit = async () => {
+  if (formSubmitted.value || formCancelled.value) return;
+  
+  formSubmitted.value = true;
+  emit('resume', { workflowId: props.workflowId, formData: formData.value, type: 'form' });
+};
+
+const handleFormCancel = () => {
+  if (formSubmitted.value || formCancelled.value) return;
+  
+  formCancelled.value = true;
+  emit('form-cancel', { workflowId: props.workflowId });
+};
 
 const handleSubmit = () => {
   if (props.pendingInput?.required && !userInputValue.value) {
@@ -264,8 +329,8 @@ const handleConfirm = (value) => {
 
 const logsContainer = ref(null);
 const expandedNodes = reactive({});
-const allExpanded = ref(false);  // 默认全部折叠
-const autoScrollEnabled = ref(true);  // 自动滚动开关
+const allExpanded = ref(false);
+const autoScrollEnabled = ref(true);
 
 const hasError = computed(() => {
   return props.nodeExecutionData?.some(node => node.status === 'error') || 
@@ -278,7 +343,6 @@ const shouldAutoScroll = () => {
   const scrollTop = container.scrollTop;
   const scrollHeight = container.scrollHeight;
   const clientHeight = container.clientHeight;
-  // 如果滚动条接近底部（100像素内），允许自动滚动
   return scrollHeight - scrollTop - clientHeight < 100;
 };
 
@@ -290,16 +354,9 @@ const nodeIconMap = {
 };
 
 const logTypeLabels = {
-  'start': '开始',
-  'end': '结束',
-  'success': '成功',
-  'error': '错误',
-  'info': '信息',
-  'warn': '警告',
-  'debug': '调试',
-  'node': '节点',
-  'result': '结果',
-  'default': '日志'
+  'start': '开始', 'end': '结束', 'success': '成功', 'error': '错误',
+  'info': '信息', 'warn': '警告', 'debug': '调试', 'node': '节点',
+  'result': '结果', 'default': '日志'
 };
 
 const getLogTypeLabel = (type) => {
@@ -313,26 +370,23 @@ const toggleExpand = (nodeId) => {
 const toggleAllExpand = () => {
   allExpanded.value = !allExpanded.value;
   const newValue = allExpanded.value;
-  nodeExecutionData.value?.forEach(node => {
+  props.nodeExecutionData?.forEach(node => {
     expandedNodes[node.nodeId] = newValue;
   });
 };
 
-// 监听节点执行数据变化，默认全部折叠
 watch(() => props.nodeExecutionData, (newData) => {
   if (newData && newData.length > 0) {
-    // 新数据到达时，默认全部折叠，用户可自行展开
     newData.forEach(node => {
       if (expandedNodes[node.nodeId] === undefined) {
         expandedNodes[node.nodeId] = false;
       }
       
-      // 如果节点执行失败，自动展开显示错误
       if (node.status === 'error') {
         expandedNodes[node.nodeId] = true;
       }
     });
-}
+  }
 }, { immediate: true });
 
 const formatJson = (data) => {
@@ -361,7 +415,6 @@ const copyToClipboard = async (data) => {
     
     await navigator.clipboard.writeText(textToCopy);
     
-    // 使用原生的提示方式，避免依赖 Element Plus
     const message = document.createElement('div');
     message.className = 'copy-toast';
     message.textContent = '✓ 复制成功';
@@ -397,8 +450,6 @@ watch(() => props.logs.length + props.nodeExecutionData.length, async () => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background-color: #0f172a;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 .panel-header {
@@ -406,64 +457,97 @@ watch(() => props.logs.length + props.nodeExecutionData.length, async () => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  background-color: #1e293b;
-  border-bottom: 1px solid #334155;
+  border-bottom: 1px solid #e6e6e6;
+  background: #fafafa;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 10px;
-  color: #e2e8f0;
-  font-size: 14px;
-  font-weight: 500;
+  gap: 12px;
 }
-
-.node-count {
-  font-size: 12px;
-  color: #64748b;
-  background: #334155;
-  padding: 2px 8px;
-  border-radius: 10px;
-}
-
-.status-badge {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.status-badge.running { background: rgba(245,158,11,.2); color: #f59e0b; }
-.status-badge.success { background: rgba(16,185,129,.2); color: #10b981; }
-.status-badge.error { background: rgba(239,68,68,.2); color: #ef4444; }
-
-.status-dot {
-  width: 6px; height: 6px; background: #f59e0b; border-radius: 50%;
-  animation: pulse 1.5s infinite;
-}
-
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
-
-.btn-action {
-  background: none; border: none; color: #94a3b8; cursor: pointer;
-  padding: 5px; border-radius: 4px;
-}
-
-.btn-action:hover { background: #334155; color: #e2e8f0; }
 
 .header-right {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  gap: 6px;
+}
+
+.status-badge.running {
+  background: #e6f7ff;
+  color: #1890ff;
+}
+
+.status-badge.paused {
+  background: #fff7e6;
+  color: #fa8c16;
+}
+
+.status-badge.success {
+  background: #f6ffed;
+  color: #52c41a;
+}
+
+.status-badge.error {
+  background: #fff2f0;
+  color: #ff4d4f;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.node-count {
+  color: #8c8c8c;
+  font-size: 12px;
+}
+
+.error-badge {
+  color: #ff4d4f;
+  font-size: 12px;
+}
+
+.btn-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #595959;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-action:hover {
+  background: #f0f0f0;
+  color: #262626;
 }
 
 .logs-container {
   flex: 1;
   overflow-y: auto;
-  padding: 12px;
+  padding: 16px;
 }
 
 .empty-logs {
@@ -471,38 +555,56 @@ watch(() => props.logs.length + props.nodeExecutionData.length, async () => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px 20px;
-  color: #64748b;
+  height: 100%;
+  color: #8c8c8c;
+  gap: 12px;
 }
 
-.empty-logs svg { opacity: 0.5; }
-.empty-logs p { margin-top: 12px; font-size: 14px; }
-.running-hint { font-size: 12px; color: #f59e0b; margin-top: 6px; }
+.empty-logs svg {
+  opacity: 0.5;
+}
+
+.empty-logs p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.running-hint {
+  font-size: 12px;
+  color: #bfbfbf;
+}
 
 .node-card {
-  margin-bottom: 12px;
-  padding: 0;
-  background: #1e293b;
+  background: white;
+  border: 1px solid #e6e6e6;
   border-radius: 8px;
-  border-left: 4px solid #64748b;
+  margin-bottom: 12px;
   overflow: hidden;
 }
 
-.node-card.completed { border-left-color: #10b981; }
-.node-card.error { border-left-color: #ef4444; }
-.node-card.running { border-left-color: #f59e0b; }
+.node-card.running {
+  border-color: #91d5ff;
+}
+
+.node-card.completed {
+  border-color: #b7eb8f;
+}
+
+.node-card.error {
+  border-color: #ffccc7;
+}
 
 .node-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 14px;
+  padding: 12px 16px;
   cursor: pointer;
   transition: background 0.2s;
 }
 
 .node-header:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: #fafafa;
 }
 
 .node-left {
@@ -512,11 +614,7 @@ watch(() => props.logs.length + props.nodeExecutionData.length, async () => {
 }
 
 .expand-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
   transition: transform 0.2s;
-  color: #64748b;
 }
 
 .expand-icon.expanded {
@@ -524,37 +622,36 @@ watch(() => props.logs.length + props.nodeExecutionData.length, async () => {
 }
 
 .step-number {
-  width: 24px;
-  height: 24px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #334155;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
+  background: #e6e6e6;
   font-size: 11px;
-  font-weight: 600;
-  color: #e2e8f0;
+  color: #595959;
 }
 
 .node-icon {
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .node-info {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .node-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: #e2e8f0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #262626;
 }
 
 .node-type {
   font-size: 11px;
-  color: #64748b;
+  color: #8c8c8c;
 }
 
 .node-right {
@@ -563,198 +660,103 @@ watch(() => props.logs.length + props.nodeExecutionData.length, async () => {
   gap: 12px;
 }
 
-.node-time {
-  font-size: 11px;
-  color: #64748b;
-}
-
 .node-duration {
-  font-size: 11px;
-  color: #94a3b8;
-  background: #0f172a;
-  padding: 2px 8px;
-  border-radius: 8px;
+  font-size: 12px;
+  color: #8c8c8c;
 }
 
 .status-badge-sm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
   font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 8px;
 }
 
-.status-badge-sm.completed { background: rgba(16,185,129,.2); color: #10b981; }
-.status-badge-sm.error { background: rgba(239,68,68,.2); color: #ef4444; }
-.status-badge-sm.running { background: rgba(245,158,11,.2); color: #f59e0b; }
+.status-badge-sm.running {
+  background: #e6f7ff;
+  color: #1890ff;
+}
+
+.status-badge-sm.completed {
+  background: #f6ffed;
+  color: #52c41a;
+}
+
+.status-badge-sm.error {
+  background: #fff2f0;
+  color: #ff4d4f;
+}
 
 .node-details {
-  padding: 0 14px 14px;
-  animation: slideDown 0.2s ease;
-}
-
-@keyframes slideDown {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* Section styles */
-.node-config,
-.node-input,
-.node-output {
-  margin-top: 10px;
+  padding: 0 16px 16px;
+  border-top: 1px solid #f0f0f0;
 }
 
 .section-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #94a3b8;
-  margin-bottom: 6px;
+  gap: 8px;
+  padding: 12px 0 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #595959;
 }
 
-.section-header.error {
-  color: #ef4444;
-}
-
-.section-header .copy-btn {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  background: rgba(148,163,184,.1);
-  border: 1px solid rgba(148,163,184,.2);
-  border-radius: 4px;
-  color: #94a3b8;
-  font-size: 10px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.section-header .copy-btn:hover {
-  background: rgba(148,163,184,.2);
-  color: #e2e8f0;
+.section-icon {
+  font-size: 14px;
 }
 
 .copy-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 10px;
-  background: rgba(148,163,184,.1);
-  border: 1px solid rgba(148,163,184,.2);
+  margin-left: auto;
+  padding: 4px 8px;
+  border: none;
   border-radius: 4px;
-  color: #94a3b8;
+  background: #f0f0f0;
+  color: #595959;
   font-size: 11px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .copy-btn:hover {
-  background: rgba(148,163,184,.2);
-  color: #e2e8f0;
-}
-
-.section-icon {
-  font-size: 12px;
+  background: #d9d9d9;
 }
 
 .section-content {
-  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
-  font-size: 11px;
   margin: 0;
-  padding: 10px;
-  border-radius: 6px;
-  white-space: pre-wrap;
-  word-break: break-all;
-  max-height: 150px;
-  overflow-y: auto;
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
 }
 
 .config-content {
-  background: rgba(148,163,184,.05);
-  color: #94a3b8;
-  border: 1px solid rgba(148,163,184,.1);
+  color: #8c8c8c;
 }
 
 .input-content {
-  background: rgba(59,130,246,.05);
-  color: #93c5fd;
-  border: 1px solid rgba(59,130,246,.2);
+  color: #1890ff;
 }
 
 .output-content {
-  background: rgba(16,185,129,.05);
-  color: #86efac;
-  border: 1px solid rgba(16,185,129,.2);
-}
-
-/* Logs list */
-.node-logs {
-  margin-top: 10px;
-}
-
-.logs-list {
-  background: rgba(0,0,0,.2);
-  border-radius: 6px;
-  border: 1px solid rgba(148,163,184,.1);
-}
-
-.log-row {
-  display: flex;
-  gap: 8px;
-  padding: 8px 10px;
-  border-bottom: 1px dashed rgba(148,163,184,.1);
-}
-
-.log-row:last-child {
-  border-bottom: none;
-}
-
-.log-type {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 4px;
-  min-width: 40px;
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.log-type.info { background: rgba(59,130,246,.2); color: #60a5fa; }
-.log-type.warn { background: rgba(245,158,11,.2); color: #f59e0b; }
-.log-type.error { background: rgba(239,68,68,.2); color: #ef4444; }
-.log-type.debug { background: rgba(139,92,246,.2); color: #a78bfa; }
-.log-type.result { background: rgba(16,185,129,.2); color: #10b981; }
-.log-type.default { background: rgba(148,163,184,.2); color: #94a3b8; }
-
-.log-content {
-  font-size: 12px;
-  color: #cbd5e1;
-  flex: 1;
-  word-break: break-all;
-}
-
-/* Error */
-.node-error {
-  margin-top: 10px;
+  color: #52c41a;
 }
 
 .error-content {
-  background: rgba(239,68,68,.1);
-  color: #fca5a5;
-  border: 1px solid rgba(239,68,68,.3);
-  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
-  font-size: 11px;
-  margin: 0;
-  padding: 10px;
-  border-radius: 6px;
-  white-space: pre-wrap;
-  word-break: break-all;
-  max-height: 150px;
-  overflow-y: auto;
+  color: #ff4d4f;
+  background: #fff2f0;
+}
+
+.node-error {
+  margin-top: 12px;
 }
 
 .error-alert {
@@ -762,172 +764,168 @@ watch(() => props.logs.length + props.nodeExecutionData.length, async () => {
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  background: rgba(239,68,68,.15);
-  border: 1px solid rgba(239,68,68,.4);
-  border-radius: 6px;
-  color: #fca5a5;
+  background: #fff2f0;
+  border: 1px solid #ffccc7;
+  border-radius: 4px;
+  color: #ff4d4f;
+  font-size: 13px;
+}
+
+.section-header.error {
+  color: #ff4d4f;
+}
+
+.logs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.log-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #fafafa;
+  border-radius: 4px;
   font-size: 12px;
-  font-weight: 600;
-  margin-bottom: 8px;
 }
 
-.error-alert svg {
-  color: #ef4444;
+.log-type {
   flex-shrink: 0;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
 }
 
-.error-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
-  background: rgba(239,68,68,.2);
-  border: 1px solid rgba(239,68,68,.4);
-  border-radius: 12px;
-  color: #fca5a5;
-  font-size: 11px;
-  font-weight: 600;
+.log-type.info { background: #e6f7ff; color: #1890ff; }
+.log-type.error { background: #fff2f0; color: #ff4d4f; }
+.log-type.success { background: #f6ffed; color: #52c41a; }
+.log-type.warn { background: #fff7e6; color: #fa8c16; }
+.log-type.debug { background: #f0f0f0; color: #8c8c8c; }
+
+.log-content {
+  color: #595959;
+  word-break: break-all;
 }
 
-.node-card.has-error {
-  border-left: 3px solid #ef4444;
-  background: rgba(239,68,68,.05);
-}
-
-.node-card.has-error .node-header {
-  background: rgba(239,68,68,.1);
-}
-
-/* Result summary */
 .result-summary {
-  background: #1e293b;
-  border-top: 1px solid #334155;
-  padding: 12px 16px;
+  margin-top: 16px;
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 8px;
 }
 
 .result-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
-}
-
-.result-header > span {
-  font-size: 12px;
-  font-weight: 600;
-  color: #94a3b8;
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .result-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
 .result-status {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 2px 10px;
-  border-radius: 10px;
+  font-size: 13px;
 }
 
-.result-status.success { background: rgba(16,185,129,.2); color: #10b981; }
-.result-status.error { background: rgba(239,68,68,.2); color: #ef4444; }
+.result-status.success { color: #52c41a; }
+.result-status.error { color: #ff4d4f; }
 
 .result-content {
-  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
-  font-size: 11px;
-  color: #e2e8f0;
   margin: 0;
-  white-space: pre-wrap;
-  word-break: break-all;
-  max-height: 120px;
+  padding: 12px;
+  background: white;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  max-height: 200px;
   overflow-y: auto;
 }
 
-.user-input-panel {
-  background: #1e293b;
-  border-top: 1px solid #334155;
-  padding: 12px 16px;
-  animation: slideUp 0.3s ease;
+.form-panel {
+  border-top: 2px solid #1890ff;
+  background: #fafafa;
+  margin-top: auto;
 }
 
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+.form-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #e6f7ff;
+  color: #1890ff;
+  font-weight: 500;
+}
+
+.form-panel-content {
+  padding: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.form-message {
+  margin: 0 0 16px;
+  padding: 12px;
+  background: #fffbe6;
+  border: 1px solid #ffe58f;
+  border-radius: 4px;
+  color: #ad6800;
+  font-size: 13px;
+}
+
+.user-input-panel {
+  border-top: 2px solid #fa8c16;
+  background: #fff7e6;
+  margin-top: auto;
 }
 
 .input-panel-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #f59e0b;
-  margin-bottom: 12px;
+  padding: 12px 16px;
+  background: #fff7e6;
+  color: #fa8c16;
+  font-weight: 500;
 }
 
 .input-panel-content {
-  background: #0f172a;
-  border-radius: 8px;
   padding: 16px;
 }
 
 .prompt-text {
-  font-size: 13px;
-  color: #e2e8f0;
   margin-bottom: 12px;
-  line-height: 1.5;
+  font-size: 14px;
+  color: #595959;
 }
 
 .input-field {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
-.text-input {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #334155;
-  border-radius: 6px;
-  background: #1e293b;
-  color: #e2e8f0;
-  font-size: 13px;
-  font-family: inherit;
-  resize: vertical;
-  box-sizing: border-box;
-  transition: border-color 0.2s;
-}
-
-.text-input:focus {
-  outline: none;
-  border-color: #f97316;
-}
-
-.text-input::placeholder {
-  color: #64748b;
-}
-
+.text-input,
 .select-input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #334155;
-  border-radius: 6px;
-  background: #1e293b;
-  color: #e2e8f0;
-  font-size: 13px;
-  box-sizing: border-box;
-  transition: border-color 0.2s;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-  background-position: right 10px center;
-  background-repeat: no-repeat;
-  background-size: 14px;
-  padding-right: 32px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 14px;
+  resize: vertical;
 }
 
+.text-input:focus,
 .select-input:focus {
   outline: none;
-  border-color: #f97316;
+  border-color: #fa8c16;
+  box-shadow: 0 0 0 2px rgba(250, 140, 22, 0.1);
 }
 
 .confirm-options {
@@ -937,31 +935,30 @@ watch(() => props.logs.length + props.nodeExecutionData.length, async () => {
 
 .confirm-btn {
   flex: 1;
-  padding: 12px;
+  padding: 10px 16px;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   font-size: 14px;
-  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .confirm-yes {
-  background: #10b981;
+  background: #52c41a;
   color: white;
 }
 
 .confirm-yes:hover {
-  background: #059669;
+  background: #73d13d;
 }
 
 .confirm-no {
-  background: #64748b;
+  background: #ff4d4f;
   color: white;
 }
 
 .confirm-no:hover {
-  background: #475569;
+  background: #ff7875;
 }
 
 .input-actions {
@@ -971,29 +968,21 @@ watch(() => props.logs.length + props.nodeExecutionData.length, async () => {
 
 .submit-btn {
   padding: 10px 24px;
-  background: #f97316;
-  color: white;
   border: none;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 600;
+  border-radius: 4px;
+  background: #fa8c16;
+  color: white;
+  font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .submit-btn:hover:not(:disabled) {
-  background: #ea580c;
+  background: #fa8c16;
 }
 
 .submit-btn:disabled {
-  background: #475569;
+  background: #d9d9d9;
   cursor: not-allowed;
 }
-
-.status-badge.paused { background: rgba(249,115,22,.2); color: #f97316; }
-
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #0f172a; }
-::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #64748b; }
 </style>

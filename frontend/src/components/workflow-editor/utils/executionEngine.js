@@ -77,6 +77,8 @@ export class ExecutionEngine {
     this.isPaused = false;
     this.pendingInput = null;
     this.resumeCallback = null;
+    this.pendingForm = null;
+    this.cancelCallback = null;
   }
 
   // 初始化节点执行数据记录
@@ -722,7 +724,6 @@ export class ExecutionEngine {
           this.addNodeLog(nodeId, { type: 'info', message: `表单节点配置: 本体=${ontologyCode}, 工具=${toolName || '未配置'}` });
           this.addLog('info', '表单节点', `本体: ${ontologyCode}, 工具: ${toolName || '未配置'}`, { ontologyCode, toolName, enableValidation, model });
           
-          // 调用后端 API 执行表单节点
           try {
             const response = await fetch('/api/workflows/execute-form-node', {
               method: 'POST',
@@ -739,8 +740,20 @@ export class ExecutionEngine {
               })
             });
             
+            if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.message || '表单节点执行失败');
+            }
+            
             const data = await response.json();
-            context.output = data;
+            
+            if (data.success === false) {
+              const errorMessage = data.message || data.error || '表单节点执行失败';
+              this.addNodeLog(nodeId, { type: 'error', message: errorMessage });
+              this.addLog('error', '表单节点执行失败', errorMessage, data);
+              throw new Error(errorMessage);
+            }
+            
             context.variables['formResult'] = data;
             
             if (data.form_schema) {
@@ -749,31 +762,103 @@ export class ExecutionEngine {
             if (data.form_data) {
               context.variables['formData'] = data.form_data;
             }
-            if (data.form_validation) {
-              context.variables['formValidation'] = data.form_validation;
-            }
-            if (data.form_submit_result) {
-              context.variables['formSubmitResult'] = data.form_submit_result;
-            }
             
             this.updateNodeData(nodeId, { output: data });
-             
-             // 检查后端返回的成功状态（只在明确返回 success: false 时标记为失败）
-             if (!response.ok || data.success === false) {
-               const errorMessage = data.message || data.error || '表单节点执行失败';
-               this.addNodeLog(nodeId, { type: 'error', message: errorMessage });
-               this.addLog('error', '表单节点执行失败', errorMessage, data);
-               throw new Error(errorMessage);
-             }
-             
-             this.addNodeLog(nodeId, { type: 'info', message: '表单节点执行完成' });
-             this.addLog('info', '表单节点执行完成', null, data);
+            this.addNodeLog(nodeId, { type: 'info', message: '获取表单 Schema 成功，准备暂停等待用户提交' });
+            this.addLog('info', '表单节点暂停', '等待用户提交表单数据', data);
+            
+            this.isPaused = true;
+            this.pendingForm = {
+              nodeId: nodeId,
+              ontologyCode: ontologyCode,
+              toolName: toolName,
+              enableValidation: enableValidation,
+              model: model,
+              temperature: temperature,
+              validationPrompt: validationPrompt,
+              inputVariable: inputVariable,
+              contextVariables: { ...context.variables }
+            };
+            
+            const formSubmitPromise = new Promise((resolve, reject) => {
+              this.resumeCallback = async (submittedFormData) => {
+                try {
+                  if (submittedFormData === null || submittedFormData === undefined) {
+                    throw new Error('用户取消了表单提交');
+                  }
+                  
+                  this.addNodeLog(nodeId, { type: 'info', message: '收到用户提交的表单数据，正在处理...' });
+                  this.addLog('info', '收到表单提交数据', null, submittedFormData);
+                  
+                  const submitResponse = await fetch('/api/workflows/submit-form-data', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      ontology_code: ontologyCode,
+                      tool_name: toolName,
+                      form_data: submittedFormData,
+                      context_variables: context.variables
+                    })
+                  });
+                  
+                  if (!submitResponse.ok) {
+                    const errorData = await submitResponse.json();
+                    throw new Error(errorData.message || '表单提交失败');
+                  }
+                  
+                  const submitResult = await submitResponse.json();
+                  
+                  context.output = submitResult;
+                  context.variables['formSubmitResult'] = submitResult;
+                  
+                  if (submitResult.form_validation) {
+                    context.variables['formValidation'] = submitResult.form_validation;
+                  }
+                  if (submitResult.form_data) {
+                    context.variables['formData'] = submitResult.form_data;
+                  }
+                  
+                  this.updateNodeData(nodeId, { output: submitResult });
+                  this.addNodeLog(nodeId, { type: 'info', message: '表单提交成功' });
+                  this.addLog('info', '表单提交成功', null, submitResult);
+                  
+                  this.isPaused = false;
+                  this.pendingForm = null;
+                  this.resumeCallback = null;
+                  
+                  resolve(submitResult);
+                } catch (error) {
+                  this.isPaused = false;
+                  this.pendingForm = null;
+                  this.resumeCallback = null;
+                  this.addNodeLog(nodeId, { type: 'error', message: error.message });
+                  reject(error);
+                }
+              };
+              
+              this.cancelCallback = () => {
+                this.isPaused = false;
+                this.pendingForm = null;
+                this.resumeCallback = null;
+                this.addNodeLog(nodeId, { type: 'info', message: '表单提交已取消' });
+                this.addLog('info', '表单提交已取消', null, null);
+              };
+            });
+            
+            await formSubmitPromise;
+            
+            const formNextEdges = edges.filter(e => e.source === nodeId && (!e.sourceHandle || e.sourceHandle === 'source'));
+            for (const edge of formNextEdges) {
+              await this.executeNode(edge.target, nodes, edges, context);
+            }
+            this.setNodeStatus(nodeId, 'completed');
+            this.completeNodeExecution(nodeId, 'completed');
+            return;
           } catch (error) {
             console.error('表单节点执行失败:', error);
             this.addNodeLog(nodeId, { type: 'error', message: error.message });
             throw error;
           }
-          break;
         }
 
         case 'http': {
@@ -1028,7 +1113,40 @@ export class ExecutionEngine {
     }).join(' && ');
   }
 
+  async submitFormData(formData) {
+    try {
+      const response = await fetch('/api/workflows/execute-form-node', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ontology_code: this.pendingForm?.ontologyCode || '',
+          tool_name: this.pendingForm?.toolName || '',
+          enable_validation: this.pendingForm?.enableValidation || false,
+          model: this.pendingForm?.model || '',
+          temperature: this.pendingForm?.temperature || 0.3,
+          validation_prompt: this.pendingForm?.validationPrompt || '',
+          input_variable: this.pendingForm?.inputVariable || '',
+          input_data: this.pendingForm?.contextVariables || {}
+        })
+      });
+      
+      if (response.ok) {
+        return await response.json();
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.message || '表单节点执行失败');
+      }
+    } catch (error) {
+      throw error;
+    }
+  }
+
   resume(userInputValue) {
+    if (this.pendingForm && this.resumeCallback) {
+      this.resumeCallback(userInputValue);
+      return true;
+    }
+    
     if (this.resumeCallback) {
       this.resumeCallback(userInputValue);
       return true;
