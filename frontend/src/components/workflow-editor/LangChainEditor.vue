@@ -605,14 +605,14 @@
       <div class="right-panel" :class="{ open: showRightPanel }">
         <div class="panel-tabs">
           <button
-            @click="activePanel = 'validation'"
+            @click="switchPanel('validation')"
             :class="['panel-tab', { active: activePanel === 'validation' }]"
           >
             验证
             <span v-if="validationResults.errors.length > 0" class="error-count">{{ validationResults.errors.length }}</span>
           </button>
           <button 
-            @click="activePanel = 'execution'" 
+            @click="switchPanel('execution')" 
             :class="['panel-tab', { active: activePanel === 'execution' }]"
           >
             执行日志
@@ -1496,6 +1496,7 @@ const handleNodeRun = async () => {
     return;
   }
 
+  closeNodeConfigPanel();
   showRightPanel.value = true;
   activePanel.value = 'execution';
   showParameterPanel.value = false;
@@ -2542,6 +2543,7 @@ const runWorkflowWithPanel = () => {
   }));
 
   // 3. 打开右侧执行面板 + 显示参数输入面板
+  closeNodeConfigPanel();
   showRightPanel.value = true;
   activePanel.value = 'execution';
   showParameterPanel.value = true;
@@ -2836,6 +2838,19 @@ const toggleRightPanel = () => {
   showRightPanel.value = !showRightPanel.value;
 };
 
+const switchPanel = (panelName) => {
+  if (activePanel.value === panelName) {
+    showRightPanel.value = !showRightPanel.value;
+  } else {
+    activePanel.value = panelName;
+    showRightPanel.value = true;
+  }
+  
+  if (panelName === 'execution') {
+    closeNodeConfigPanel();
+  }
+};
+
 const selectAllNodes = () => {
   const nodes = elements.value.filter(el => !el.source && !el.target);
   if (nodes.length > 0) {
@@ -2863,6 +2878,7 @@ const registerShortcuts = () => {
   });
   keyboardShortcuts.register('ctrl+g', () => { toggleNodeConfigPanel(); });
   keyboardShortcuts.register('ctrl+l', () => {
+    closeNodeConfigPanel();
     activePanel.value = 'execution';
     showRightPanel.value = true;
   });
