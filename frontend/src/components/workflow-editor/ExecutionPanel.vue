@@ -197,6 +197,7 @@
           @field-change="handleFieldChange"
           @submit="handleFormSubmit"
           @cancel="handleFormCancel"
+          @confirm-submit="handleFormConfirmSubmit"
         />
       </div>
     </div>
@@ -282,20 +283,32 @@ watch(() => props.pendingInput, (newInput) => {
 });
 
 watch(() => props.waitingForm, (newForm) => {
+  console.log('[ExecutionPanel] waitingForm 变化:', newForm);
+  console.log('[ExecutionPanel] 推荐数据 formData:', newForm?.formData);
   if (newForm) {
     formSubmitted.value = false;
     formCancelled.value = false;
     formData.value = {};
     
+    const recommendedData = newForm.formData || {};
+    console.log('[ExecutionPanel] 推荐数据 recommendedData:', recommendedData);
+    
     if (newForm.fields) {
       newForm.fields.forEach(field => {
         if (field.defaultValue !== undefined && field.defaultValue !== null) {
-          formData.value[field.fieldCode] = field.defaultValue;
+          const fieldCode = field.fieldCode;
+          if (!recommendedData[fieldCode]) {
+            recommendedData[fieldCode] = field.defaultValue;
+            console.log(`[ExecutionPanel] 字段 ${fieldCode} 使用默认值:`, field.defaultValue);
+          }
         }
       });
     }
+    
+    Object.assign(formData.value, recommendedData);
+    console.log('[ExecutionPanel] 最终表单数据 formData:', formData.value);
   }
-});
+}, { immediate: true });
 
 const handleFieldChange = (fieldCode, value) => {
   formData.value[fieldCode] = value;
@@ -307,6 +320,26 @@ const handleFormSubmit = async () => {
   
   formSubmitted.value = true;
   emit('resume', { workflowId: props.workflowId, formData: formData.value, type: 'form' });
+};
+
+const handleFormConfirmSubmit = async (formSubmitData) => {
+  if (formSubmitted.value || formCancelled.value) return;
+  
+  console.log('[ExecutionPanel] 表单校验通过，准备提交:', formSubmitData);
+  console.log('[ExecutionPanel] 工作流ID:', props.workflowId);
+  console.log('[ExecutionPanel] 表单数据:', formSubmitData.data);
+  
+  formData.value = formSubmitData.data;
+  formSubmitted.value = true;
+  
+  emit('resume', { 
+    workflowId: props.workflowId, 
+    formData: formSubmitData.data, 
+    type: 'form',
+    formCode: formSubmitData.formCode,
+    formName: formSubmitData.formName,
+    schema: formSubmitData.schema
+  });
 };
 
 const handleFormCancel = () => {

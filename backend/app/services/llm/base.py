@@ -100,6 +100,8 @@ def normalize_base_url(raw_url: str, provider_name: str = "") -> str:
 
     url = url.rstrip("/")
 
+    original_url = url
+
     if url.endswith("/chat/completions"):
         original = url
         url = url[: -len("/chat/completions")]
@@ -110,22 +112,33 @@ def normalize_base_url(raw_url: str, provider_name: str = "") -> str:
         )
 
     segments = url.rstrip("/").split("/")
-    segment_set = set()
-    for seg in segments[3:]:
-        if seg and seg in segment_set:
+    if len(segments) > 3:
+        seen_segments = set()
+        new_segments = segments[:3]
+        has_duplicate = False
+        
+        for seg in segments[3:]:
+            if seg and seg in seen_segments:
+                has_duplicate = True
+                logger.debug(f"[URL规范化] 跳过重复路径段: {seg}")
+            else:
+                new_segments.append(seg)
+                if seg:
+                    seen_segments.add(seg)
+        
+        if has_duplicate:
+            new_url = "/".join(new_segments)
             logger.warning(
-                "[URL规范化] base_url 存在可疑的重复路径段 '%s'，请检查是否正确\n"
-                "  URL: %s\n  提示: 正确的 OpenAI 兼容 base_url 通常以 /v1 结尾",
-                seg, url
+                "[URL规范化] base_url 存在重复路径段，已自动修复\n"
+                "  原始值: %s\n  修正值: %s\n  提示: 正确的 OpenAI 兼容 base_url 通常以 /v1 结尾",
+                url, new_url
             )
-            break
-        if seg:
-            segment_set.add(seg)
+            url = new_url
 
     if provider_name:
-        logger.debug("[URL规范化] provider=%s, 原始=%s, 最终=%s", provider_name, raw_url, url)
+        logger.debug("[URL规范化] provider=%s, 原始=%s, 最终=%s", provider_name, original_url, url)
     else:
-        logger.debug("[URL规范化] 原始=%s, 最终=%s", raw_url, url)
+        logger.debug("[URL规范化] 原始=%s, 最终=%s", original_url, url)
 
     return url
 

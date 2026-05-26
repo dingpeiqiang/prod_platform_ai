@@ -12,6 +12,13 @@ export const workflowApi = {
     })
   },
 
+  search(params) {
+    return get('/api/workflows', { 
+      baseURL: '',
+      params
+    })
+  },
+
   get(workflowCode) {
     return get(`/api/workflows/${workflowCode}`, { baseURL: '' })
   },
@@ -66,6 +73,44 @@ export const workflowApi = {
       baseURL: '',
       loadingText: '切换状态中...'
     })
+  },
+
+  publish(workflowCode, user = null) {
+    return post(`/api/workflows/${workflowCode}/publish`, user ? { user } : {}, { 
+      baseURL: '',
+      loadingText: '发布工作流中...'
+    })
+  },
+
+  unpublish(workflowCode, user = null) {
+    return post(`/api/workflows/${workflowCode}/unpublish`, user ? { user } : {}, { 
+      baseURL: '',
+      loadingText: '下线工作流中...'
+    })
+  },
+
+  batchPublish(workflowCodes, user = null) {
+    return post('/api/workflows/batch-publish', { workflowCodes, user }, { 
+      baseURL: '',
+      loadingText: '批量发布中...'
+    })
+  },
+
+  rollback(workflowCode, targetVersion, user = null) {
+    return post(`/api/workflows/${workflowCode}/rollback`, { targetVersion, user }, { 
+      baseURL: '',
+      loadingText: '回滚中...'
+    })
+  },
+
+  compareVersions(workflowCode, version1, version2) {
+    return post(`/api/workflows/${workflowCode}/compare-versions`, { version1, version2 }, { 
+      baseURL: ''
+    })
+  },
+
+  getHistory(workflowCode) {
+    return get(`/api/workflows/${workflowCode}/history`, { baseURL: '' })
   },
 
   generate(requirement) {

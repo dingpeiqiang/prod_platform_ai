@@ -463,7 +463,9 @@ const workflowApiService = {
   create: workflowApi.workflowApi.create,
   update: workflowApi.workflowApi.update,
   delete: workflowApi.workflowApi.delete,
-  toggle: workflowApi.workflowApi.toggle
+  toggle: workflowApi.workflowApi.toggle,
+  getHistory: workflowApi.workflowApi.getHistory,
+  rollback: workflowApi.workflowApi.rollback
 }
 
 // ── 切换首页侧边栏可见性 ─────────────────────────────────

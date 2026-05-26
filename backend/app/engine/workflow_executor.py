@@ -21,6 +21,7 @@ from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
 
 from app.langchain.llm_wrapper import get_langchain_llm
 from app.core.config_loader import config_loader
+from app.services.recommendations import HighPerformanceRecommendationEngine
 
 logger = logging.getLogger("workflow_executor")
 
@@ -1461,16 +1462,16 @@ class FormNodeExecutor(NodeExecutor):
             # 获取配置
             ontology_code = self.node_data.get("ontologyCode", "")
             tool_name = self.node_data.get("toolType", "")
-            enable_validation = self.node_data.get("enableValidation", False)
-            validation_model = self.node_data.get("model", "qwen-plus")
-            validation_temperature = self.node_data.get("temperature", 0.3)
-            validation_prompt = self.node_data.get("validationPrompt", "")
+            
+            # 获取大模型配置（用于表单智能推荐和智能校验）
+            model = self.node_data.get("model", "qwen-plus")
+            temperature = self.node_data.get("temperature", 0.3)
             input_variable = self.node_data.get("inputVariable", "")
             
             if not ontology_code:
                 raise ValueError("表单节点必须配置 ontologyCode")
             
-            logger.info(f"[FormNodeExecutor] 执行表单节点，本体: {ontology_code}, 提交工具: {tool_name or '未配置'}, 大模型校验: {enable_validation}")
+            logger.info(f"[FormNodeExecutor] 执行表单节点，本体: {ontology_code}, 提交工具: {tool_name or '未配置'}, 模型: {model}, 温度: {temperature}")
             
             # 获取本体定义
             ontology = config_loader.get_ontology(ontology_code)
@@ -1480,72 +1481,32 @@ class FormNodeExecutor(NodeExecutor):
             # 步骤 1: 根据本体生成表单结构
             form_schema = self._generate_form_schema(ontology)
             
-            # 步骤 2: 通过智能推荐初始化表单数据
-            form_data = await self._initialize_form_data_with_recommendations(ontology, context)
+            # 步骤 2: 通过智能推荐初始化表单数据（使用大模型）
+            form_data = await self._initialize_form_data_with_recommendations(ontology, context, model, temperature, input_variable)
             
-            # 步骤 3: 执行基于本体的智能校验
-            basic_validation = await self._validate_form_data(ontology, form_data)
-            
-            # 步骤 4: 如果启用大模型校验，执行大模型校验
-            llm_validation = None
-            if enable_validation:
-                try:
-                    llm_validation = await self._validate_with_llm(
-                        ontology, 
-                        form_data, 
-                        context, 
-                        validation_model,
-                        validation_temperature,
-                        validation_prompt,
-                        input_variable
-                    )
-                except Exception as e:
-                    logger.warning(f"[FormNodeExecutor] 大模型校验失败: {e}，继续执行工作流")
-                    llm_validation = {
-                        "success": False,
-                        "is_valid": True,
-                        "error": str(e),
-                        "message": "大模型校验异常，使用基础校验结果"
-                    }
-            
-            # 合并校验结果
-            final_validation = self._merge_validation_results(basic_validation, llm_validation)
-            
-            # 步骤 5: 如果配置了 MCP 工具且校验通过，调用 MCP 工具提交
-            tool_result = None
-            if tool_name and final_validation.get("is_valid", True):
-                try:
-                    tool_result = await self._call_mcp_tool(tool_name, form_data, context)
-                except Exception as e:
-                    logger.warning(f"[FormNodeExecutor] MCP 工具调用失败: {e}，继续执行工作流")
-                    tool_result = {"success": False, "error": str(e)}
-            
-            # 设置结果到上下文
+            # 设置结果到上下文（不执行智能校验和工具提交，由后续动作触发）
             context.set_variable("form_schema", form_schema)
             context.set_variable("form_data", form_data)
             context.set_variable("ontology_code", ontology_code)
-            context.set_variable("form_validation", final_validation)
-            if tool_result:
-                context.set_variable("form_submit_result", tool_result)
+            context.set_variable("form_validation", None)
+            context.set_variable("form_submit_result", None)
             
             context.outputs["form_schema"] = form_schema
             context.outputs["form_data"] = form_data
             context.outputs["ontology_code"] = ontology_code
-            context.outputs["form_validation"] = final_validation
-            if tool_result:
-                context.outputs["form_submit_result"] = tool_result
+            context.outputs["form_validation"] = None
+            context.outputs["form_submit_result"] = None
             
             # 使用标准输出变量传递数据（同时处理显性输出映射）
             self.set_output(context, {
                 "form_schema": form_schema,
                 "form_data": form_data,
                 "ontology_code": ontology_code,
-                "form_validation": final_validation,
-                "form_submit_result": tool_result,
-                "llm_validation": llm_validation
+                "form_validation": None,
+                "form_submit_result": None
             })
             
-            logger.info(f"[FormNodeExecutor] 表单处理完成: {len(form_data)} 个字段, 校验通过: {final_validation.get('is_valid', False)}, 工具提交: {tool_result is not None}")
+            logger.info(f"[FormNodeExecutor] 表单初始化完成: {len(form_data)} 个字段")
             
             context.update_node_status(self.node_id, ExecutionStatus.COMPLETED)
             
@@ -1557,155 +1518,11 @@ class FormNodeExecutor(NodeExecutor):
         
         return self._get_next_nodes(edges)
     
-    def _merge_validation_results(self, basic_validation: Dict[str, Any], llm_validation: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-        """合并基础校验和大模型校验结果"""
-        if not llm_validation:
-            return basic_validation
-        
-        merged = {
-            "is_valid": basic_validation.get("is_valid", True) and llm_validation.get("is_valid", True),
-            "basic_errors": basic_validation.get("errors", []),
-            "basic_warnings": basic_validation.get("warnings", []),
-            "llm_errors": llm_validation.get("errors", []),
-            "llm_warnings": llm_validation.get("warnings", []),
-            "llm_suggestions": llm_validation.get("suggestions", []),
-            "all_errors": [],
-            "all_warnings": []
-        }
-        
-        # 合并所有错误
-        merged["all_errors"] = merged["basic_errors"] + [
-            {"source": "llm", **err} for err in merged["llm_errors"]
-        ]
-        merged["all_warnings"] = merged["basic_warnings"] + [
-            {"source": "llm", **warn} for warn in merged["llm_warnings"]
-        ]
-        
-        if llm_validation.get("message"):
-            merged["llm_message"] = llm_validation["message"]
-        
-        return merged
-    
-    async def _validate_with_llm(
-        self, 
-        ontology: Dict[str, Any], 
-        form_data: Dict[str, Any], 
-        context: WorkflowContext,
-        model: str,
-        temperature: float,
-        custom_prompt: str,
-        input_variable: str
-    ) -> Dict[str, Any]:
-        """使用大模型进行智能校验"""
-        from langchain_core.prompts import ChatPromptTemplate
-        from langchain_core.output_parsers import JsonOutputParser
-        
-        # 构建默认提示词
-        if not custom_prompt:
-            custom_prompt = self._get_default_validation_prompt(ontology, form_data)
-        else:
-            # 渲染用户自定义提示词
-            custom_prompt = self.render_template(custom_prompt, context)
-        
-        # 获取输入变量
-        user_input = ""
-        if input_variable:
-            user_input = context.get_variable(input_variable, "")
-        
-        # 添加用户输入到提示词
-        if user_input:
-            full_prompt = f"用户输入：\n{user_input}\n\n{custom_prompt}"
-        else:
-            full_prompt = custom_prompt
-        
-        logger.info(f"[FormNodeExecutor] 大模型校验: model={model}, prompt长度={len(full_prompt)}")
-        
-        # 构建消息
-        messages = [
-            ("system", "你是一个专业的表单数据校验助手。请根据给定的本体定义和表单数据，校验数据的准确性和完整性。"),
-            ("user", full_prompt)
-        ]
-        
-        # 创建 Prompt
-        prompt = ChatPromptTemplate.from_messages(messages)
-        
-        # 获取 LLM 实例（延迟初始化）
-        llm = self._get_llm()
-        
-        # 执行 LLM 调用
-        chain = prompt | llm | JsonOutputParser()
-        result = await chain.ainvoke({})
-        
-        logger.info(f"[FormNodeExecutor] 大模型校验完成: is_valid={result.get('is_valid', True)}")
-        
-        return result
-    
-    def _get_default_validation_prompt(self, ontology: Dict[str, Any], form_data: Dict[str, Any]) -> str:
-        """生成默认的大模型校验提示词"""
-        ontology_code = ontology.get("ontologyCode", "")
-        ontology_name = ontology.get("ontologyName", "")
-        description = ontology.get("description", "")
-        
-        # 提取字段信息
-        fields_info = []
-        for entity in ontology.get("entities", []):
-            for field in entity.get("fields", []):
-                field_name = field.get("fieldName", field.get("fieldCode", ""))
-                field_type = field.get("fieldType", "string")
-                required = field.get("required", False)
-                description_field = field.get("description", "")
-                
-                field_info = f"- {field_name} ({field.get('fieldCode', '')})"
-                field_info += f" [类型: {field_type}]"
-                if required:
-                    field_info += " [必填]"
-                if description_field:
-                    field_info += f" - {description_field}"
-                
-                fields_info.append(field_info)
-        
-        fields_text = "\n".join(fields_info) if fields_info else "无"
-        
-        # 格式化表单数据
-        form_data_text = json.dumps(form_data, ensure_ascii=False, indent=2)
-        
-        prompt = f"""## 任务
-校验以下表单数据的准确性和完整性。
-
-## 本体信息
-- 本体编码：{ontology_code}
-- 本体名称：{ontology_name}
-- 本体描述：{description}
-
-## 本体字段定义
-{fields_text}
-
-## 表单数据
-```json
-{form_data_text}
-```
-
-## 输出要求
-请以 JSON 格式返回校验结果：
-{{
-    "is_valid": true/false,  // 是否通过校验
-    "errors": [  // 错误列表（严重问题）
-        {{"field": "字段编码", "message": "错误信息"}}
-    ],
-    "warnings": [  // 警告列表（建议修正）
-        {{"field": "字段编码", "message": "警告信息"}}
-    ],
-    "suggestions": [  // 改进建议
-        {{"field": "字段编码", "current": "当前值", "suggested": "建议值", "reason": "原因"}}
-    ],
-    "message": "总体评估说明"
-}}
-"""
-        return prompt
-    
     def _generate_form_schema(self, ontology: Dict[str, Any]) -> Dict[str, Any]:
         """根据本体生成表单结构"""
         form_schema = {
+            "formName": ontology.get("ontologyName", "表单"),
+            "formCode": ontology.get("ontologyCode", ""),
             "ontologyCode": ontology.get("ontologyCode", ""),
             "ontologyName": ontology.get("ontologyName", ""),
             "description": ontology.get("description", ""),
@@ -1741,35 +1558,95 @@ class FormNodeExecutor(NodeExecutor):
         
         return form_schema
     
-    async def _initialize_form_data_with_recommendations(self, ontology: Dict[str, Any], context: WorkflowContext) -> Dict[str, Any]:
-        """通过智能推荐初始化表单数据"""
+    async def _initialize_form_data_with_recommendations(self, ontology: Dict[str, Any], context: WorkflowContext, model: str = "qwen-plus", temperature: float = 0.3, input_variable: str = "") -> Dict[str, Any]:
+        """通过智能推荐初始化表单数据（使用高性能推荐引擎）"""
         form_data = {}
         
+        # 兼容 ontologyCode 和 formCode 两种命名
+        ontology_code = ontology.get("ontologyCode") or ontology.get("formCode", "")
+        
+        logger.info(f"[FormNodeExecutor] 开始初始化表单数据，ontology: {ontology_code}, 模型: {model}, 温度: {temperature}")
+        
+        # 获取上下文变量和工具结果
+        context_values = {}
+        tool_result = context.get_variable("tariff_info", {})
+        
+        # 收集所有上下文变量
+        all_vars = context.get_all_variables()
+        for var_name, var_value in all_vars.items():
+            context_values[var_name] = var_value
+        
+        # 获取用户输入
+        user_input = context.get_variable(input_variable, "") or context.get_variable("user_input", "")
+        user_id = context.get_variable("user_id", "default")
+        
+        # 使用高性能推荐引擎
+        high_perf_engine = HighPerformanceRecommendationEngine()
+        
+        try:
+            form_data, decision_log = await high_perf_engine.recommend_form_data(
+                form_code=ontology_code,
+                ontology=ontology,
+                user_input=user_input,
+                user_id=user_id,
+                context_values=context_values,
+                tool_result=tool_result
+            )
+            
+            logger.info(f"[FormNodeExecutor] 高性能推荐引擎执行完成")
+            
+            # 记录决策日志
+            for field_code, log in decision_log.items():
+                source = log.get("source", "unknown")
+                confidence = log.get("confidence", 0.0)
+                reason = log.get("reason", "")
+                
+                if log.get("is_definite", False):
+                    logger.info(f"[FormNodeExecutor] 字段 {field_code} 使用确定性值 (来源: {source})")
+                else:
+                    rec_count = log.get("recommendations_count", 0)
+                    if rec_count > 0:
+                        logger.info(f"[FormNodeExecutor] 字段 {field_code} 使用推荐值 (来源: {source}, 置信度: {confidence:.2f}, 理由: {reason})")
+                    else:
+                        logger.info(f"[FormNodeExecutor] 字段 {field_code} 无推荐值")
+        
+        except Exception as e:
+            logger.error(f"[FormNodeExecutor] 高性能推荐引擎执行失败: {e}")
+            # 降级到旧逻辑
+            form_data = await self._initialize_form_data_fallback(ontology, context, model, temperature, input_variable)
+        
+        logger.info(f"[FormNodeExecutor] 表单数据初始化完成，共 {len(form_data)} 个字段")
+        return form_data
+    
+    async def _initialize_form_data_fallback(self, ontology: Dict[str, Any], context: WorkflowContext, model: str = "qwen-plus", temperature: float = 0.3, input_variable: str = "") -> Dict[str, Any]:
+        """降级方案：使用旧逻辑初始化表单数据"""
+        form_data = {}
+        
+        logger.info(f"[FormNodeExecutor] 使用降级方案初始化表单数据")
+        
         # 获取推荐引擎
+        rec_engine = None
         try:
             from app.services.recommendation_engine import get_recommendation_engine
             rec_engine = get_recommendation_engine()
         except Exception as e:
-            logger.warning(f"[FormNodeExecutor] 无法获取推荐引擎: {e}，使用默认初始化")
-            rec_engine = None
+            logger.warning(f"[FormNodeExecutor] 无法获取推荐引擎: {e}")
         
         ontology_code = ontology.get("ontologyCode", "")
         
-        # 遍历本体中的实体和字段
         for entity in ontology.get("entities", []):
             for field in entity.get("fields", []):
                 field_code = field.get("fieldCode")
                 if not field_code:
                     continue
                 
-                # 初始化值
                 value = None
                 
                 # 1. 尝试从上下文变量中获取
                 if not value:
                     value = context.get_variable(field_code)
                 
-                # 2. 尝试从工具结果中获取（兼容旧逻辑）
+                # 2. 尝试从工具结果中获取
                 if not value:
                     tool_result = context.get_variable("tariff_info", {})
                     mapping = field.get("mapping")
@@ -1779,10 +1656,9 @@ class FormNodeExecutor(NodeExecutor):
                         elif field_code in tool_result:
                             value = tool_result[field_code]
                 
-                # 3. 使用推荐引擎获取推荐值
+                # 3. 使用推荐引擎
                 if not value and rec_engine:
                     try:
-                        # 从上下文中获取用户输入
                         user_input = context.get_variable("user_input", "")
                         user_id = context.get_variable("user_id", "default")
                         
@@ -1795,11 +1671,20 @@ class FormNodeExecutor(NodeExecutor):
                         
                         if rec_result and rec_result.recommendations and len(rec_result.recommendations) > 0:
                             value = rec_result.recommendations[0].value
-                            logger.debug(f"[FormNodeExecutor] 字段 {field_code} 获取到推荐值: {value}")
                     except Exception as e:
                         logger.warning(f"[FormNodeExecutor] 字段 {field_code} 推荐失败: {e}")
                 
-                # 4. 使用字段默认值
+                # 4. 使用枚举选项
+                if not value:
+                    enum_options = self._get_enum_options(field)
+                    if enum_options and len(enum_options) > 0:
+                        first_option = enum_options[0]
+                        if isinstance(first_option, dict):
+                            value = first_option.get('value')
+                        else:
+                            value = first_option
+                
+                # 5. 使用默认值
                 if value is None:
                     value = field.get("default", "")
                 
@@ -1807,8 +1692,126 @@ class FormNodeExecutor(NodeExecutor):
         
         return form_data
     
-    async def _validate_form_data(self, ontology: Dict[str, Any], form_data: Dict[str, Any]) -> Dict[str, Any]:
-        """基于本体执行智能校验"""
+    async def _extract_field_value_with_llm(self, field: Dict[str, Any], user_input: str, llm) -> Optional[str]:
+        """使用大模型从用户输入中提取字段值"""
+        from langchain_core.prompts import ChatPromptTemplate
+        from langchain_core.output_parsers import StrOutputParser
+        
+        field_code = field.get("fieldCode", "")
+        field_name = field.get("fieldName", field_code)
+        field_type = field.get("fieldType", "string")
+        field_desc = field.get("description", "")
+        enum_options = self._get_enum_options(field)
+        
+        # 构建提示词
+        prompt_parts = [
+            f"你是一个智能表单助手，需要从用户输入中提取特定字段的值。\n\n",
+            f"字段信息：\n",
+            f"- 字段名称：{field_name}\n",
+            f"- 字段编码：{field_code}\n",
+            f"- 字段类型：{field_type}\n"
+        ]
+        
+        if field_desc:
+            prompt_parts.append(f"- 字段描述：{field_desc}\n")
+        
+        if enum_options:
+            valid_values = []
+            for opt in enum_options:
+                if isinstance(opt, dict):
+                    valid_values.append(f"{opt.get('value')} ({opt.get('label', '')})")
+                else:
+                    valid_values.append(str(opt))
+            prompt_parts.append(f"- 可选值：{', '.join(valid_values)}\n")
+        
+        prompt_parts.extend([
+            f"\n用户输入：\n{user_input}\n\n",
+            f"请提取上述用户输入中与该字段最匹配的值。",
+            f"如果找不到合适的值，请直接返回空字符串。",
+            f"只返回提取到的值，不要解释。",
+            f"\n提取结果："
+        ])
+        
+        prompt = "".join(prompt_parts)
+        
+        # 调用大模型
+        chain = ChatPromptTemplate.from_messages([("user", prompt)]) | llm | StrOutputParser()
+        result = await chain.ainvoke({})
+        
+        # 清理结果
+        result = result.strip()
+        
+        # 如果结果为空或无效，返回 None
+        if not result or result.lower() in ["null", "none", "无", "找不到", ""]:
+            return None
+        
+        return result
+    
+    def _create_llm(self, model: str, temperature: float = 0.3):
+        """创建大模型实例"""
+        try:
+            from langchain_openai import ChatOpenAI
+            from app.core.database import SessionLocal
+            from app.models.llm_user_config import LLMUserConfig
+            
+            # 支持两种格式：带前缀的模型ID（如 custom-minimax-m2.7）和不带前缀的模型名称（如 minimax-m2.7）
+            model_name = model
+            if model_name.startswith('custom-'):
+                model_name = model_name[7:]  # 移除 custom- 前缀
+            
+            # 从数据库获取配置
+            db = SessionLocal()
+            try:
+                model_db_config = db.query(LLMUserConfig).filter(
+                    LLMUserConfig.model == model_name,
+                    LLMUserConfig.is_active == True
+                ).first()
+                
+                if not model_db_config:
+                    raise ValueError(f"未找到模型配置: {model}。请先在'模型配置'面板中添加该模型的配置。")
+                
+                # 使用数据库配置
+                api_key = (model_db_config.api_key or '').strip().strip('`')
+                base_url = (model_db_config.base_url or '')
+                
+                logger.info(f"[FormNodeExecutor] 从数据库找到模型配置: {model}")
+            finally:
+                db.close()
+            
+            # 创建 LLM 实例
+            llm = ChatOpenAI(
+                model=model_name,
+                temperature=temperature,
+                api_key=api_key,
+                base_url=base_url,
+                max_retries=2,
+                timeout=30
+            )
+            
+            logger.info(f"[FormNodeExecutor] 成功创建 LLM 实例: {model}, 温度: {temperature}")
+            return llm
+        except Exception as e:
+            logger.error(f"[FormNodeExecutor] 创建 LLM 实例失败: {e}")
+            raise
+    
+    def _get_enum_options(self, field: Dict[str, Any]) -> List:
+        """获取字段的枚举选项"""
+        # 优先从 enumConfig.options 获取
+        enum_config = field.get("enumConfig", {})
+        if enum_config:
+            options = enum_config.get("options", [])
+            if options:
+                return options
+        
+        # 尝试直接从 options 字段获取
+        options = field.get("options", [])
+        if options:
+            return options
+        
+        return []
+    
+    async def _validate_form_data(self, ontology: Dict[str, Any], form_data: Dict[str, Any], model: str = "qwen-plus", temperature: float = 0.3) -> Dict[str, Any]:
+        """基于本体执行智能校验（使用大模型）"""
         validation_result = {
             "is_valid": True,
             "errors": [],
@@ -1816,7 +1819,9 @@ class FormNodeExecutor(NodeExecutor):
             "info": []
         }
         
-        # 遍历本体中的实体和字段进行校验
+        logger.info(f"[FormNodeExecutor] 开始智能校验，模型: {model}, 温度: {temperature}")
+        
+        # 遍历本体中的实体和字段进行基础校验
         for entity in ontology.get("entities", []):
             for field in entity.get("fields", []):
                 field_code = field.get("fieldCode")
@@ -1918,7 +1923,149 @@ class FormNodeExecutor(NodeExecutor):
                             "type": "enum"
                         })
         
+        # 如果配置了大模型，执行大模型智能校验
+        if model:
+            try:
+                llm = self._create_llm(model, temperature)
+                logger.info(f"[FormNodeExecutor] 基础校验完成，开始大模型智能校验")
+                
+                llm_validation = await self._validate_with_llm(ontology, form_data, llm)
+                
+                # 合并大模型校验结果
+                if llm_validation:
+                    # 添加大模型发现的问题
+                    for error in llm_validation.get("errors", []):
+                        validation_result["errors"].append({
+                            "field": error.get("field", ""),
+                            "fieldName": error.get("fieldName", ""),
+                            "message": error.get("message", ""),
+                            "type": "llm",
+                            "source": "大模型"
+                        })
+                    
+                    for warning in llm_validation.get("warnings", []):
+                        validation_result["warnings"].append({
+                            "field": warning.get("field", ""),
+                            "fieldName": warning.get("fieldName", ""),
+                            "message": warning.get("message", ""),
+                            "type": "llm",
+                            "source": "大模型"
+                        })
+                    
+                    # 更新有效性判断
+                    if not llm_validation.get("is_valid", True):
+                        validation_result["is_valid"] = False
+                    
+                    logger.info(f"[FormNodeExecutor] 大模型智能校验完成: is_valid={llm_validation.get('is_valid', True)}")
+            except Exception as e:
+                logger.warning(f"[FormNodeExecutor] 大模型智能校验失败: {e}，使用基础校验结果")
+        
         return validation_result
+    
+    async def _validate_with_llm(self, ontology: Dict[str, Any], form_data: Dict[str, Any], llm) -> Dict[str, Any]:
+        """使用大模型进行智能校验"""
+        from langchain_core.prompts import ChatPromptTemplate
+        from langchain_core.output_parsers import JsonOutputParser
+        
+        ontology_code = ontology.get("ontologyCode", "")
+        ontology_name = ontology.get("ontologyName", "")
+        description = ontology.get("description", "")
+        
+        # 提取字段信息
+        fields_info = []
+        for entity in ontology.get("entities", []):
+            for field in entity.get("fields", []):
+                field_name = field.get("fieldName", field.get("fieldCode", ""))
+                field_code = field.get("fieldCode", "")
+                field_type = field.get("fieldType", "string")
+                required = field.get("required", False)
+                description_field = field.get("description", "")
+                
+                field_info = f"- {field_name} ({field_code})"
+                field_info += f" [类型: {field_type}]"
+                if required:
+                    field_info += " [必填]"
+                if description_field:
+                    field_info += f" - {description_field}"
+                
+                # 添加枚举选项
+                options = self._get_enum_options(field)
+                if options and len(options) > 0:
+                    valid_values = []
+                    for opt in options:
+                        if isinstance(opt, dict):
+                            valid_values.append(f"{opt.get('value')} ({opt.get('label', '')})")
+                        else:
+                            valid_values.append(str(opt))
+                    field_info += f" [可选值: {', '.join(valid_values)}]"
+                
+                fields_info.append(field_info)
+        
+        fields_text = "\n".join(fields_info) if fields_info else "无"
+        
+        # 格式化表单数据
+        form_data_text = json.dumps(form_data, ensure_ascii=False, indent=2)
+        
+        prompt = f"""## 任务
+你是一个专业的表单数据校验助手。请根据给定的本体定义和表单数据，校验数据的准确性、完整性和合理性。
+
+## 本体信息
+- 本体编码：{ontology_code}
+- 本体名称：{ontology_name}
+- 本体描述：{description}
+
+## 本体字段定义
+{fields_text}
+
+## 用户填写的表单数据
+```json
+{form_data_text}
+```
+
+## 校验要求
+1. 检查必填字段是否已填写
+2. 检查数据类型是否正确
+3. 检查字段值是否符合业务逻辑和常识
+4. 检查字段值是否在合理范围内
+5. 检查字段之间的关联性（如起始日期应早于结束日期）
+6. 检查是否有明显的输入错误或遗漏
+
+## 输出要求
+请以 JSON 格式返回校验结果：
+{{
+    "is_valid": true/false,  // 是否通过校验
+    "errors": [  // 错误列表（严重问题，必须修正）
+        {{"field": "字段编码", "fieldName": "字段名称", "message": "错误信息"}}
+    ],
+    "warnings": [  // 警告列表（建议修正）
+        {{"field": "字段编码", "fieldName": "字段名称", "message": "警告信息"}}
+    ]
+}}
+
+请只返回 JSON 格式的校验结果，不要包含其他内容。"""
+        
+        logger.info(f"[FormNodeExecutor] 大模型智能校验: prompt长度={len(prompt)}")
+        
+        # 调用大模型
+        messages = [
+            ("system", "你是一个专业的表单数据校验助手。请严格校验表单数据的准确性。"),
+            ("user", prompt)
+        ]
+        
+        prompt_template = ChatPromptTemplate.from_messages(messages)
+        chain = prompt_template | llm | JsonOutputParser()
+        
+        try:
+            result = await chain.ainvoke({})
+            logger.info(f"[FormNodeExecutor] 大模型智能校验完成: {len(result.get('errors', []))} 个错误, {len(result.get('warnings', []))} 个警告")
+            return result
+        except Exception as e:
+            logger.warning(f"[FormNodeExecutor] 大模型智能校验解析失败: {e}")
+            return {
+                "is_valid": False,
+                "errors": [{"field": "", "fieldName": "", "message": f"大模型智能校验解析失败: {str(e)}"}],
+                "warnings": []
+            }
     
     async def _call_mcp_tool(self, tool_name: str, form_data: Dict[str, Any], context: WorkflowContext) -> Dict[str, Any]:
         """调用 MCP 工具提交表单"""

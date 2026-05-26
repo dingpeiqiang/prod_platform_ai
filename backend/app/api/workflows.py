@@ -82,12 +82,170 @@ class ExecutionUpdateRequest(BaseModel):
 async def list_workflows(
     category: Optional[str] = Query(None, description="分类过滤"),
     isActive: Optional[bool] = Query(None, description="启用状态过滤"),
+    keyword: Optional[str] = Query(None, description="关键词搜索（匹配名称、编码、描述）"),
+    workflowCode: Optional[str] = Query(None, description="工作流编码精确匹配"),
+    tags: Optional[List[str]] = Query(None, description="标签过滤（包含任一标签）"),
+    createdBy: Optional[str] = Query(None, description="创建者过滤"),
+    minExecutionCount: Optional[int] = Query(None, description="最小执行次数"),
+    maxExecutionCount: Optional[int] = Query(None, description="最大执行次数"),
+    sortBy: Optional[str] = Query("created_at", description="排序字段：created_at, updated_at, priority, execution_count"),
+    sortOrder: Optional[str] = Query("desc", description="排序方向：asc, desc"),
+    page: Optional[int] = Query(1, description="页码（从1开始）"),
+    pageSize: Optional[int] = Query(20, description="每页数量"),
     db: Session = Depends(get_db)
 ):
-    """获取工作流列表"""
-    result = WorkflowService.list_workflows(db, category=category, is_active=isActive)
+    """
+    获取工作流列表（支持按条件检索和分页）
+    
+    支持的过滤条件：
+    - category: 分类过滤
+    - isActive: 启用状态过滤
+    - keyword: 关键词搜索（匹配名称、编码、描述）
+    - workflowCode: 工作流编码精确匹配
+    - tags: 标签过滤（包含任一标签）
+    - createdBy: 创建者过滤
+    - minExecutionCount/maxExecutionCount: 执行次数范围过滤
+    
+    支持的排序字段：
+    - created_at: 创建时间（默认）
+    - updated_at: 更新时间
+    - priority: 优先级
+    - execution_count: 执行次数
+    """
+    result = WorkflowService.list_workflows(
+        db,
+        category=category,
+        is_active=isActive,
+        keyword=keyword,
+        workflow_code=workflowCode,
+        tags=tags,
+        created_by=createdBy,
+        min_execution_count=minExecutionCount,
+        max_execution_count=maxExecutionCount,
+        sort_by=sortBy,
+        sort_order=sortOrder,
+        page=page,
+        page_size=pageSize
+    )
     if not result["success"]:
         raise HTTPException(status_code=500, detail=result["message"])
+    return result
+
+
+class PublishRequest(BaseModel):
+    """发布请求"""
+    user: Optional[str] = None
+
+
+class BatchPublishRequest(BaseModel):
+    """批量发布请求"""
+    workflowCodes: List[str]
+    user: Optional[str] = None
+
+
+class RollbackRequest(BaseModel):
+    """回滚请求"""
+    targetVersion: int
+    user: Optional[str] = None
+
+
+class VersionCompareRequest(BaseModel):
+    """版本比较请求"""
+    version1: int
+    version2: int
+
+
+@router.post("/{workflow_code}/publish")
+async def publish_workflow(
+    workflow_code: str,
+    request: Optional[PublishRequest] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    发布工作流（上线滚动）
+    
+    将工作流从草稿状态发布为上线状态，支持版本管理和变更记录。
+    """
+    result = WorkflowService.publish_workflow(
+        workflow_code, db, user=request.user if request else None
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+    return result
+
+
+@router.post("/{workflow_code}/unpublish")
+async def unpublish_workflow(
+    workflow_code: str,
+    request: Optional[PublishRequest] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    下线工作流
+    
+    将工作流从上线状态下线，停止对外服务。
+    """
+    result = WorkflowService.unpublish_workflow(
+        workflow_code, db, user=request.user if request else None
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+    return result
+
+
+@router.post("/batch-publish")
+async def batch_publish_workflows(
+    request: BatchPublishRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    批量发布工作流（滚动发布）
+    
+    支持一次发布多个工作流，返回每个工作流的发布结果。
+    """
+    result = WorkflowService.batch_publish(
+        request.workflowCodes, db, user=request.user
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+    return result
+
+
+@router.post("/{workflow_code}/rollback")
+async def rollback_workflow(
+    workflow_code: str,
+    request: RollbackRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    回滚工作流到指定版本
+    
+    将工作流回滚到历史版本，当前版本会被保存到历史记录中。
+    """
+    result = WorkflowService.rollback_version(
+        workflow_code, request.targetVersion, db, user=request.user
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+    return result
+
+
+@router.post("/{workflow_code}/compare-versions")
+async def compare_workflow_versions(
+    workflow_code: str,
+    request: VersionCompareRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    比较两个版本的差异
+    
+    返回两个版本之间的字段差异信息。
+    """
+    result = WorkflowService.compare_versions(
+        workflow_code, request.version1, request.version2, db
+    )
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["message"])
     return result
 
 
@@ -874,5 +1032,75 @@ async def execute_form_node(request: FormNodeExecutionRequest):
         return {
             "success": False,
             "message": f"表单节点执行失败: {str(e)}",
+            "error": str(e)
+        }
+
+
+class WorkflowResumeRequest(BaseModel):
+    """工作流恢复执行请求"""
+    workflow_id: str
+    form_data: Dict[str, Any]
+    form_code: Optional[str] = None
+    form_name: Optional[str] = None
+
+
+@router.post("/resume")
+async def resume_workflow(request: WorkflowResumeRequest):
+    """恢复工作流执行（表单提交后调用）
+    
+    该接口用于：
+    1. 接收用户提交的表单数据
+    2. 恢复处于等待状态的工作流
+    3. 继续执行后续节点
+    
+    前端在收到 workflow_waiting 事件后，应该：
+    1. 显示表单让用户填写
+    2. 用户提交后调用此接口恢复执行
+    """
+    try:
+        from app.langchain.workflow_engine import workflow_engine
+        
+        logger.info(f"[resume_workflow] 收到表单提交，workflow_id={request.workflow_id}, form_code={request.form_code}")
+        
+        execution_results = []
+        async for event in workflow_engine.resume(request.workflow_id, request.form_data):
+            execution_results.append(event)
+            logger.info(f"[resume_workflow] 事件: {event.get('type')}")
+        
+        if execution_results:
+            last_event = execution_results[-1]
+            if last_event.get("type") == "workflow_complete":
+                return {
+                    "success": True,
+                    "message": "工作流执行完成",
+                    "result": last_event.get("outputs"),
+                    "executionLog": execution_results
+                }
+            elif last_event.get("type") == "workflow_failed":
+                return {
+                    "success": False,
+                    "message": "工作流执行失败",
+                    "error": last_event.get("error"),
+                    "executionLog": execution_results
+                }
+        
+        return {
+            "success": True,
+            "message": "工作流已恢复",
+            "executionLog": execution_results
+        }
+        
+    except ValueError as e:
+        logger.warning(f"[resume_workflow] 参数错误: {e}")
+        return {
+            "success": False,
+            "message": str(e),
+            "error": "invalid_request"
+        }
+    except Exception as e:
+        logger.exception(f"[resume_workflow] 恢复工作流失败: {e}")
+        return {
+            "success": False,
+            "message": f"恢复工作流失败: {str(e)}",
             "error": str(e)
         }

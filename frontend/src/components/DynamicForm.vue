@@ -1,19 +1,21 @@
 <template>
   <div class="dynamic-form">
     <h3>{{ schema.formName }}</h3>
-    <el-form :model="localFormData" label-width="120px">
+    <el-form :model="localFormData" label-width="120px" ref="formRef">
       <el-form-item
         v-for="field in schema.fields"
         :key="field.fieldCode"
         :label="field.fieldName"
         :required="field.required"
+        :prop="field.fieldCode"
+        :error="fieldErrors[field.fieldCode]"
       >
         <template v-if="!field.hidden">
           <BaseField
             :field="field"
             :model-value="localFormData[field.fieldCode]"
             :disabled="field.disabled || isFormDisabled()"
-            @update:model-value="(value) => localFormData[field.fieldCode] = value"
+            @update:model-value="(value) => handleFieldValueUpdate(field.fieldCode, value)"
             @field-change="handleFieldChange"
           />
         </template>
@@ -54,7 +56,7 @@
 </template>
 
 <script setup>
-import { ref, watch, reactive } from 'vue'
+import { ref, watch, reactive, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import BaseField from './fields/BaseField.vue'
 import { validateField } from './../utils'
@@ -88,7 +90,9 @@ const props = defineProps({
 
 const emit = defineEmits(['field-change', 'form-submit', 'submit', 'cancel', 'ai-validation', 'confirm-submit'])
 
+const formRef = ref(null)
 const localFormData = reactive({})
+const fieldErrors = reactive({})
 const isFormDisabled = () => props.formSubmitted || props.formCancelled
 const submitting = ref(false)
 
@@ -132,16 +136,37 @@ const handleFieldChange = (fieldCode, value) => {
   emit('field-change', fieldCode, value)
 }
 
+const handleFieldValueUpdate = (fieldCode, value) => {
+  localFormData[fieldCode] = value
+  if (fieldErrors[fieldCode]) {
+    delete fieldErrors[fieldCode]
+  }
+  emit('field-change', fieldCode, value)
+}
+
 const validateForm = () => {
-  const errors = []
+  const errors = {}
   if (!props.schema.fields || !Array.isArray(props.schema.fields)) {
     return errors
   }
   props.schema.fields.forEach(field => {
-    const fieldErrors = validateField(field, localFormData[field.fieldCode])
-    errors.push(...fieldErrors)
+    const fieldErrorList = validateField(field, localFormData[field.fieldCode])
+    if (fieldErrorList.length > 0) {
+      errors[field.fieldCode] = fieldErrorList[0]
+    }
   })
   return errors
+}
+
+const scrollToFirstError = async () => {
+  await nextTick()
+  const firstErrorField = Object.keys(fieldErrors)[0]
+  if (firstErrorField) {
+    const errorElement = document.querySelector(`[data-field-code="${firstErrorField}"]`)
+    if (errorElement) {
+      errorElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }
 }
 
 const aiValidate = async () => {
@@ -180,10 +205,14 @@ const handleCancel = () => {
 let _lastAiValidation = null
 
 const handleSubmit = async () => {
+  Object.keys(fieldErrors).forEach(key => delete fieldErrors[key])
+  
   if (props.schema._preview) {
     const errors = validateForm()
-    if (errors.length > 0) {
-      ElMessage.error(errors[0])
+    if (Object.keys(errors).length > 0) {
+      Object.assign(fieldErrors, errors)
+      ElMessage.error(Object.values(errors)[0])
+      scrollToFirstError()
       return
     }
     const summaryLines = []
@@ -203,8 +232,10 @@ const handleSubmit = async () => {
   }
 
   const errors = validateForm()
-  if (errors.length > 0) {
-    ElMessage.error(errors[0])
+  if (Object.keys(errors).length > 0) {
+    Object.assign(fieldErrors, errors)
+    ElMessage.error(`表单校验失败：${Object.values(errors)[0]}`)
+    scrollToFirstError()
     return
   }
 

@@ -43,66 +43,43 @@
       <!-- 工具描述 -->
       <div v-if="selectedTool" class="tool-desc">{{ selectedTool.description }}</div>
 
-      <!-- 大模型配置 -->
-      <div class="section-title">大模型校验配置</div>
+      <!-- 大模型配置（用于表单智能推荐和智能校验） -->
+      <div class="section-title">大模型配置</div>
       <div class="llm-config-section">
         <div class="llm-config-row">
-          <label class="config-label">启用校验</label>
+          <label class="config-label">模型选择</label>
+          <select v-model="localModel" @change="emitUpdate" class="node-select" :disabled="modelsLoading">
+            <option value="" disabled>请选择模型</option>
+            <option
+              v-for="opt in modelOptions"
+              :key="opt.value"
+              :value="opt.value"
+            >{{ opt.label }}</option>
+          </select>
+        </div>
+        
+        <div class="llm-config-row">
+          <label class="config-label">温度值</label>
           <input 
-            v-model="localEnableValidation" 
-            @change="emitUpdate" 
-            type="checkbox" 
-            class="config-checkbox"
+            v-model.number="localTemperature" 
+            @input="emitUpdate" 
+            type="number" 
+            min="0" 
+            max="1" 
+            step="0.1" 
+            class="config-input-small"
           />
         </div>
         
-        <div v-if="localEnableValidation" class="llm-config-panel">
-          <div class="llm-config-row">
-            <label class="config-label">模型选择</label>
-            <select v-model="localModel" @change="emitUpdate" class="node-select" :disabled="modelsLoading">
-              <option value="" disabled>请选择模型</option>
-              <option
-                v-for="opt in modelOptions"
-                :key="opt.value"
-                :value="opt.value"
-              >{{ opt.label }}</option>
-            </select>
-          </div>
-          
-          <div class="llm-config-row">
-            <label class="config-label">温度值</label>
-            <input 
-              v-model.number="localTemperature" 
-              @input="emitUpdate" 
-              type="number" 
-              min="0" 
-              max="1" 
-              step="0.1" 
-              class="config-input-small"
-            />
-          </div>
-          
-          <div class="llm-config-row">
-            <label class="config-label">校验提示词</label>
-            <textarea 
-              v-model="localValidationPrompt" 
-              @input="emitUpdate" 
-              placeholder="输入大模型校验提示词，支持 {{ontology_code}}、{{form_data}} 等变量"
-              class="config-textarea"
-              rows="3"
-            ></textarea>
-          </div>
-          
-          <div class="llm-config-row">
-            <label class="config-label">输入变量</label>
-            <VariableCascader
-              v-model="localInputVariable"
-              :available-variables="availableVariables"
-              placeholder="选择输入变量"
-              class="param-value-cascader"
-              @change="emitUpdate"
-            />
-          </div>
+        <div class="llm-config-row">
+          <label class="config-label">输入变量</label>
+          <VariableCascader
+            v-model="localInputVariable"
+            :available-variables="availableVariables"
+            placeholder="选择输入变量"
+            class="param-value-cascader"
+            @change="emitUpdate"
+          />
         </div>
       </div>
 
@@ -178,9 +155,8 @@ import { Handle } from '@vue-flow/core'
 import { nodeDisplayProps } from './nodeDisplayProps.js'
 import { useNodeAnchorMode } from './useHandlePosition.js'
 import VariableCascader from '../VariableCascader.vue'
-import * as ontologyApi from '@/services/ontologyApi'
-import * as mcpApi from '@/services/mcpManagementApi'
 import { useModelsStore } from '@/stores/models.js'
+import { useWorkflowDataStore } from '@/stores/workflowData.js'
 
 const props = defineProps({
   data: {
@@ -202,125 +178,62 @@ const { targetPosition, sourcePosition } = useNodeAnchorMode(props)
 
 const emit = defineEmits(['update'])
 
-// 使用模型 store
 const modelsStore = useModelsStore()
+const workflowDataStore = useWorkflowDataStore()
 
-// 组件是否已卸载
-let isUnmounted = false
-
-// 状态管理
-const ontologies = ref([])
-const mcpTools = ref([])
-const mcpToolMap = ref({})
-const loadingOntologies = ref(false)
-const loadingMcpTools = ref(false)
+const isUnmounted = ref(false)
 const showAdvanced = ref(false)
 
-// 本地数据
 const localOntologyCode = ref(props.data.ontologyCode || '')
 const localToolName = ref(props.data.toolType || props.data.toolName || '')
 const localParams = ref([])
 const localTimeout = ref(props.data.timeout || 60)
 
-// 大模型校验配置
-const localEnableValidation = ref(props.data.enableValidation || false)
 const localModel = ref(props.data.model || '')
 const localTemperature = ref(props.data.temperature || 0.3)
-const localValidationPrompt = ref(props.data.validationPrompt || '')
 const localInputVariable = ref(props.data.inputVariable || '')
 
-// 从 store 中获取模型列表和选项
 const modelOptions = computed(() => modelsStore.modelOptions)
 const modelsLoading = computed(() => modelsStore.loading)
 
-// 分类
-const categories = computed(() => {
-  const cats = [...new Set(mcpTools.value.map(t => t.metadata?.category || 'general'))]
-  return cats.sort()
-})
+const ontologies = computed(() => workflowDataStore.ontologies)
+const mcpTools = computed(() => workflowDataStore.mcpTools)
+const mcpToolMap = computed(() => workflowDataStore.mcpToolMap)
+const loadingOntologies = computed(() => workflowDataStore.loadingOntologies)
+const loadingMcpTools = computed(() => workflowDataStore.loadingMcpTools)
+const groupedTools = computed(() => workflowDataStore.groupedTools)
+const categories = computed(() => workflowDataStore.categories)
 
-// 按分类分组工具
-const groupedTools = computed(() => {
-  const groups = {}
-  for (const tool of mcpTools.value) {
-    const cat = tool.metadata?.category || 'general'
-    if (!groups[cat]) groups[cat] = []
-    groups[cat].push(tool)
-  }
-  return groups
-})
+const getCategoryDisplayName = (cat) => workflowDataStore.getCategoryDisplayName(cat)
 
-// 当前选中的工具
 const selectedTool = computed(() => {
   return mcpToolMap.value[localToolName.value] || null
 })
 
-// 节点摘要
 const nodeSummary = computed(() => {
   const parts = []
   if (localOntologyCode.value) {
-    const ontology = ontologies.value.find(o => o.ontologyCode === localOntologyCode.value)
+    const ontology = workflowDataStore.getOntologyByCode(localOntologyCode.value)
     parts.push(ontology?.ontologyName || localOntologyCode.value)
   }
   if (localToolName.value) {
-    const tool = mcpToolMap.value[localToolName.value]
+    const tool = workflowDataStore.getToolByName(localToolName.value)
     parts.push(tool?.name || localToolName.value)
   }
   return parts.length > 0 ? parts.join(' → ') : '未配置'
 })
 
-// 分类显示名
-const categoryNames = {
-  form: '表单工具',
-  kb: '知识库工具',
-  llm: 'LLM 工具',
-  system: '系统工具',
-  tariff: '资费工具',
-  workflow: '工作流工具',
-  general: '通用工具',
-  external: '外部工具'
+const loadOntologies = async () => {
+  await workflowDataStore.loadOntologies()
 }
 
-const getCategoryDisplayName = (cat) => categoryNames[cat] || cat
-
-// 加载本体列表
-const loadOntologies = async () => {
-        loadingOntologies.value = true
-        try {
-            const res = await ontologyApi.listOntologies(true)
-            if (res && res.success) {
-                ontologies.value = res.data || res.ontologies || []
-            } else if (Array.isArray(res)) {
-                ontologies.value = res
-            }
-        } catch (e) {
-            console.error('加载本体列表失败:', e)
-        } finally {
-            loadingOntologies.value = false
-        }
-    }
-
-// 加载 MCP 工具列表
 const loadMCPTools = async () => {
-  loadingMcpTools.value = true
-  try {
-    const res = await mcpApi.listTools()
-    if (res.success) {
-      mcpTools.value = res.tools || []
-      const map = {}
-      for (const t of mcpTools.value) {
-        map[t.name] = t
-      }
-      mcpToolMap.value = map
-
-      if (localToolName.value && map[localToolName.value]) {
-        syncParamsFromSchema(map[localToolName.value])
-      }
+  const tools = await workflowDataStore.loadMCPTools()
+  if (tools && localToolName.value) {
+    const tool = workflowDataStore.getToolByName(localToolName.value)
+    if (tool) {
+      syncParamsFromSchema(tool)
     }
-  } catch (e) {
-    console.error('加载 MCP 工具失败:', e)
-  } finally {
-    loadingMcpTools.value = false
   }
 }
 
@@ -390,10 +303,8 @@ const emitUpdate = () => {
     toolName: localToolName.value,
     params,
     timeout: localTimeout.value,
-    enableValidation: localEnableValidation.value,
     model: localModel.value,
     temperature: localTemperature.value,
-    validationPrompt: localValidationPrompt.value,
     inputVariable: localInputVariable.value
   })
 }
@@ -406,12 +317,10 @@ watch(() => props.data, (d) => {
   localOntologyCode.value = d.ontologyCode || ''
   localToolName.value = d.toolType || d.toolName || ''
   localTimeout.value = d.timeout || 60
-  
+
   // 大模型配置
-  localEnableValidation.value = d.enableValidation || false
   localModel.value = d.model || ''
   localTemperature.value = d.temperature || 0.3
-  localValidationPrompt.value = d.validationPrompt || ''
   localInputVariable.value = d.inputVariable || ''
 
   if (localToolName.value && mcpToolMap.value[localToolName.value]) {
@@ -440,15 +349,15 @@ watch(() => props.data, (d) => {
 }, { deep: true })
 
 onMounted(() => {
-  isUnmounted = false
+  isUnmounted.value = false
   loadOntologies()
   loadMCPTools()
-  // 加载模型列表（使用store会处理缓存）
+  // 加载模型列表（用于表单智能推荐和智能校验）
   modelsStore.loadModels()
 })
 
 onUnmounted(() => {
-  isUnmounted = true
+  isUnmounted.value = true
 })
 </script>
 

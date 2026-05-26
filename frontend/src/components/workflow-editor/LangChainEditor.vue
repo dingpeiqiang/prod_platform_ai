@@ -672,6 +672,8 @@
               :is-running="isRunning"
               :is-paused="isPaused"
               :pending-input="pendingInput"
+              :waiting-form="pendingForm"
+              :workflow-id="executionEngine.getWorkflowId()"
               :last-result="lastExecutionResult"
               :node-execution-data="nodeExecutionData"
               @clear="clearExecutionLogs"
@@ -694,6 +696,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { ElMessage } from 'element-plus';
 import { Undo2, Redo2, Save, Download, Upload, Code } from 'lucide-vue-next';
 import * as workflowApi from '@/services/workflowApi';
+import { useWorkflowDataStore } from '@/stores/workflowData.js';
 
 import NodePanel from './NodePanel.vue';
 import NodeConfigPanel from './NodeConfigPanel.vue';
@@ -813,6 +816,7 @@ const executionLogs = ref([]);
 const isRunning = ref(false);
 const isPaused = ref(false);
 const pendingInput = ref(null);
+const pendingForm = ref(null);
 const lastExecutionResult = ref(null);
 const copiedNodes = ref([]);
 const nodeExecutionStatus = ref({});
@@ -832,6 +836,7 @@ const lastSavedTime = ref(null);
 const checkPauseStatus = () => {
   isPaused.value = executionEngine.isExecutionPaused();
   pendingInput.value = executionEngine.getPendingInput();
+  pendingForm.value = executionEngine.getPendingForm();
 };
 
 const handleResume = (userInputValue) => {
@@ -2587,7 +2592,7 @@ const runWorkflow = async (inputParams = {}) => {
   executionEngine.setCallbacks(onStatusChange, onLog, onNodeDataChange);
   
   try {
-    const result = await executionEngine.execute(elements.value, inputParams);
+    const result = await executionEngine.execute(elements.value, inputParams, currentWorkflowId.value);
     lastExecutionResult.value = result;
     // 获取结构化的节点执行数据
     nodeExecutionData.value = executionEngine.getNodeExecutionData();
@@ -2925,9 +2930,23 @@ const handleKeydown = (event) => {
   }
 };
 
+let pauseCheckInterval = null;
+
 onMounted(async () => {
   registerShortcuts();
   window.addEventListener('keydown', handleKeydown);
+  
+  pauseCheckInterval = setInterval(() => {
+    if (isRunning.value || isPaused.value) {
+      checkPauseStatus();
+    }
+  }, 500);
+  
+  const workflowDataStore = useWorkflowDataStore();
+  await Promise.all([
+    workflowDataStore.loadOntologies(),
+    workflowDataStore.loadMCPTools()
+  ]);
   
   await loadWorkflows();
   
@@ -3024,6 +3043,10 @@ const autoSaveNewWorkflow = async () => {
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown);
   stopAutoSaveTimer();
+  if (pauseCheckInterval) {
+    clearInterval(pauseCheckInterval);
+    pauseCheckInterval = null;
+  }
 });
 </script>
 

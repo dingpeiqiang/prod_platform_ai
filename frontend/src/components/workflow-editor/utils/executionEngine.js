@@ -69,6 +69,7 @@ export class ExecutionEngine {
   constructor() {
     this.logs = [];
     this.isRunning = false;
+    this.workflowId = null;
     this.nodeStatus = {};
     this.nodeExecutionData = {};  // 新增：存储每个节点的执行详情
     this.onStatusChange = null;
@@ -169,10 +170,13 @@ export class ExecutionEngine {
     }
   }
 
-  async execute(elements, inputParams = {}) {
+  async execute(elements, inputParams = {}, workflowId = null) {
     console.log('[WORKFLOW DEBUG] ==================== 工作流执行开始 ====================');
     console.log('[WORKFLOW DEBUG] 输入参数:', JSON.stringify(inputParams, null, 2));
     console.log('[WORKFLOW DEBUG] 所有元素数量:', elements.length);
+    
+    this.workflowId = workflowId || `wf_${Date.now()}`;
+    console.log('[WORKFLOW DEBUG] 工作流ID:', this.workflowId);
     
     if (this.isRunning) {
       console.log('[WORKFLOW DEBUG] 工作流正在运行中，跳过执行');
@@ -183,6 +187,7 @@ export class ExecutionEngine {
     this.isPaused = false;
     this.pendingInput = null;
     this.resumeCallback = null;
+    this.pendingForm = null;
     this.logs = [];
     this.clearNodeStatus();
     this.clearNodeExecutionData();
@@ -769,6 +774,7 @@ export class ExecutionEngine {
             
             this.isPaused = true;
             this.pendingForm = {
+              ...(data.form_schema || {}),
               nodeId: nodeId,
               ontologyCode: ontologyCode,
               toolName: toolName,
@@ -777,8 +783,11 @@ export class ExecutionEngine {
               temperature: temperature,
               validationPrompt: validationPrompt,
               inputVariable: inputVariable,
-              contextVariables: { ...context.variables }
+              contextVariables: { ...context.variables },
+              formData: data.form_data || {}
             };
+            
+            console.log('[executionEngine] pendingForm 已设置:', this.pendingForm);
             
             const formSubmitPromise = new Promise((resolve, reject) => {
               this.resumeCallback = async (submittedFormData) => {
@@ -790,14 +799,14 @@ export class ExecutionEngine {
                   this.addNodeLog(nodeId, { type: 'info', message: '收到用户提交的表单数据，正在处理...' });
                   this.addLog('info', '收到表单提交数据', null, submittedFormData);
                   
-                  const submitResponse = await fetch('/api/workflows/submit-form-data', {
+                  const submitResponse = await fetch('/api/workflows/resume', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                      ontology_code: ontologyCode,
-                      tool_name: toolName,
+                      workflow_id: this.workflowId,
                       form_data: submittedFormData,
-                      context_variables: context.variables
+                      form_code: ontologyCode,
+                      form_name: this.pendingForm?.formName || '表单'
                     })
                   });
                   
@@ -1142,6 +1151,10 @@ export class ExecutionEngine {
   }
 
   resume(userInputValue) {
+    console.log('[executionEngine] resume 被调用:', userInputValue);
+    console.log('[executionEngine] pendingForm:', this.pendingForm);
+    console.log('[executionEngine] resumeCallback:', !!this.resumeCallback);
+    
     if (this.pendingForm && this.resumeCallback) {
       this.resumeCallback(userInputValue);
       return true;
@@ -1156,6 +1169,14 @@ export class ExecutionEngine {
 
   getPendingInput() {
     return this.pendingInput;
+  }
+
+  getPendingForm() {
+    return this.pendingForm;
+  }
+
+  getWorkflowId() {
+    return this.workflowId;
   }
 
   isExecutionPaused() {

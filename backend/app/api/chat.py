@@ -29,7 +29,6 @@ from app.api.chat_service import (
     call_skills_only, build_intent_prompt, parse_intent_result,
     execute_tool_calls, get_scene_prompt_by_code
 )
-from app.services.llm.base import normalize_base_url
 
 logger = logging.getLogger("chat_api")
 
@@ -132,7 +131,7 @@ async def chat_completion(request: CompletionRequest, db: Session = Depends(get_
             # 使用数据库配置
             api_key = (model_db_config.api_key or '').strip().strip('`')
             provider_type = model_db_config.provider or 'openai'
-            base_url = normalize_base_url(model_db_config.base_url or '', provider_type)
+            base_url = model_db_config.base_url or ''
             
             logger.info(f"[chat/completion] 从数据库找到模型配置: {request.model}, provider: {provider_type}")
             logger.debug(f"[chat/completion] api_key_exists={bool(api_key)}, base_url={base_url}")

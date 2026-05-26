@@ -107,8 +107,9 @@ class RecommendationEngine:
             all_candidates: List[RecommendationItem] = []
             candidates_by_priority: Dict[int, List[RecommendationItem]] = {
                 1: [],  # AI推荐（最高优先级）
-                2: [],  # 用户个性化/高频填写
-                3: [],  # 近期常用
+                2: [],  # 近期常用
+                3: [],  # 用户高频
+                4: [],  # 静态配置（兜底）
             }
 
             if user_input and conversation_context:
@@ -116,6 +117,7 @@ class RecommendationEngine:
                 ai_candidates = self.context_aware_strategy.recommend(
                     user_input, form_code, field_code, conversation_context
                 )
+                logger.debug(f"[RecommendationEngine] AI智能推荐获取到 {len(ai_candidates)} 个候选")
                 for item in ai_candidates:
                     item.priority = 1
                     item.reason = f"AI智能推荐"
@@ -127,6 +129,7 @@ class RecommendationEngine:
                 user_candidates = self.user_personalized_strategy.recommend(
                     db, form_code, field_code, user_id, conversation_context
                 )
+                logger.debug(f"[RecommendationEngine] 用户个性化推荐获取到 {len(user_candidates)} 个候选")
                 for item in user_candidates:
                     item.priority = 3
                     candidates_by_priority[3].append(item)
@@ -137,6 +140,7 @@ class RecommendationEngine:
                 history_candidates = self.frequency_strategy.recommend(
                     db, form_code, field_code, user_id, conversation_context
                 )
+                logger.debug(f"[RecommendationEngine] 历史频率推荐获取到 {len(history_candidates)} 个候选")
                 for item in history_candidates:
                     if item.priority is None or item.priority > 3:
                         item.priority = 3
@@ -148,6 +152,7 @@ class RecommendationEngine:
                 time_candidates = self.time_decay_strategy.recommend(
                     db, form_code, field_code, user_id
                 )
+                logger.debug(f"[RecommendationEngine] 时间衰减推荐获取到 {len(time_candidates)} 个候选")
                 for item in time_candidates:
                     if item.priority is None or item.priority > 2:
                         item.priority = 2
@@ -158,6 +163,7 @@ class RecommendationEngine:
             if "static" in active_strategies:
                 strategies_used.append("static")
                 static_candidates = self._get_static_recommendations(form_code, field_code)
+                logger.debug(f"[RecommendationEngine] 静态推荐获取到 {len(static_candidates)} 个候选")
                 for item in static_candidates:
                     if item.priority is None or item.priority > 4:
                         item.priority = 4  # 最低优先级
@@ -167,11 +173,20 @@ class RecommendationEngine:
             seen_values = set()
             final_recommendations = []
             
+            # 优先级到策略名称的映射
+            priority_strategy_map = {
+                1: "AI智能推荐",
+                2: "近期常用",
+                3: "用户高频",
+                4: "静态配置"
+            }
+            
             for priority in [1, 2, 3, 4]:
                 candidates = candidates_by_priority.get(priority, [])
                 candidates.sort(key=lambda x: (x.confidence, x.score), reverse=True)
                 
-                logger.debug(f"[RecommendationEngine] 处理优先级 {priority}, 候选项数={len(candidates)}")
+                strategy_name = priority_strategy_map.get(priority, "未知策略")
+                logger.debug(f"[RecommendationEngine] 处理优先级 {priority} ({strategy_name}), 候选项数={len(candidates)}")
                 
                 for item in candidates:
                     logger.debug(f"[RecommendationEngine] 检查候选项: value={item.value}, reason='{item.reason}', confidence={item.confidence}")
@@ -236,9 +251,13 @@ class RecommendationEngine:
     def _get_static_recommendations(self, form_code: str, field_code: str) -> List[RecommendationItem]:
         """获取静态推荐值（兜底策略）"""
         try:
+            logger.info(f"[RecommendationEngine] 尝试获取静态推荐: form_code={form_code}, field_code={field_code}")
             static_values = config_loader.get_recommendations(form_code, field_code)
             
+            logger.info(f"[RecommendationEngine] 静态推荐值: {static_values}")
+            
             if not static_values:
+                logger.info(f"[RecommendationEngine] 无静态推荐值（form_code={form_code}, field_code={field_code}）")
                 return []
             
             recommendations = []
@@ -330,37 +349,6 @@ class RecommendationEngine:
         
         return value
     
-    def _get_static_recommendations(
-        self,
-        form_code: str,
-        field_code: str
-    ) -> List[RecommendationItem]:
-        try:
-            static_values = config_loader.get_recommendations(form_code, field_code)
-
-            if not static_values:
-                return []
-
-            recommendations = []
-
-            for i, value in enumerate(static_values):
-                recommendations.append(RecommendationItem(
-                    value=value,
-                    field_code=field_code,
-                    score=0.3 - (i * 0.05),
-                    source="static",
-                    confidence=0.5,
-                    match_type="exact",
-                    reason="常用选项",
-                    metadata={"staticRank": i + 1}
-                ))
-
-            return recommendations
-
-        except Exception as e:
-            logger.warning(f"[RecommendationEngine] 静态推荐失败: {e}")
-            return []
-
     def batch_recommend(
         self,
         form_code: str,

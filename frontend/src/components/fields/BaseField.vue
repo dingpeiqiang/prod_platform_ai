@@ -188,16 +188,28 @@ const placeholder = computed(() => `请输入${fieldName.value}`)
 
 const options = computed(() => {
   const field = props.field
+  let rawOptions = []
+  
   if (field.enumConfig) {
     if (field.enumConfig.type === 'static' && Array.isArray(field.enumConfig.options)) {
-      return field.enumConfig.options
+      rawOptions = field.enumConfig.options
     }
     if (field.enumConfig.type === 'api') {
       const fallback = field.enumConfig.api?.fallback
-      if (Array.isArray(fallback)) return fallback
+      if (Array.isArray(fallback)) rawOptions = fallback
     }
   }
-  return field.options || []
+  
+  if (!rawOptions.length) {
+    rawOptions = field.options || []
+  }
+  
+  return rawOptions.map(opt => {
+    if (typeof opt === 'string') {
+      return { value: opt, label: opt }
+    }
+    return opt
+  })
 })
 
 const hasOptions = computed(() => options.value.length > 0)

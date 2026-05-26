@@ -22,6 +22,9 @@ class LLMService:
         self.fallback_to_rules = self.llm_config.get('fallbackToRules', True)
         self._provider = None
         
+        # 优先从数据库加载配置
+        self._load_config_from_db()
+        
         provider_name = self.llm_config.get('provider', 'openai')
         logger.info(f"LLM 配置加载: enabled={self.enabled}, provider={provider_name}, fallbackToRules={self.fallback_to_rules}")
         
@@ -36,6 +39,42 @@ class LLMService:
         self._init_provider()
         logger.info("LLM Service 初始化完成")
         logger.info("=" * 60)
+    
+    def _load_config_from_db(self):
+        """从数据库加载 LLM 配置"""
+        try:
+            from app.core.database import SessionLocal
+            from app.models.llm_user_config import LLMUserConfig
+            
+            db = SessionLocal()
+            try:
+                # 获取第一个激活的配置
+                model_db_config = db.query(LLMUserConfig).filter(
+                    LLMUserConfig.is_active == True
+                ).first()
+                
+                if model_db_config:
+                    logger.info(f"[LLM Service] 从数据库加载配置: {model_db_config.model}")
+                    
+                    # 覆盖配置文件中的值
+                    self.llm_config['provider'] = model_db_config.provider or 'openai'
+                    self.llm_config['model'] = model_db_config.model
+                    self.llm_config['apiKey'] = (model_db_config.api_key or '').strip().strip('`')
+                    self.llm_config['baseUrl'] = model_db_config.base_url or ''
+                    self.llm_config['authType'] = model_db_config.auth_type if hasattr(model_db_config, 'auth_type') else 'bearer'
+                    self.llm_config['authHeader'] = getattr(model_db_config, 'auth_header', None)
+                    self.llm_config['apiFormat'] = getattr(model_db_config, 'api_format', 'openai')
+                    self.llm_config['isFullUrl'] = getattr(model_db_config, 'is_full_url', False)
+                    self.llm_config['temperature'] = getattr(model_db_config, 'temperature', 0.3)
+                    self.llm_config['maxTokens'] = getattr(model_db_config, 'max_tokens', 2048)
+                    self.llm_config['thinking'] = getattr(model_db_config, 'thinking', False)
+                    self.enabled = True
+                else:
+                    logger.info("[LLM Service] 数据库中未找到激活的配置，使用配置文件")
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning(f"[LLM Service] 从数据库加载配置失败: {e}，使用配置文件")
     
     def _init_provider(self):
         """初始化 Provider"""
