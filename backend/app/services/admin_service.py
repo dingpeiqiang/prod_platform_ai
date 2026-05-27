@@ -4,7 +4,9 @@
 支持数据库和文件系统双存储
 """
 import json
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 import os
 import shutil
 from datetime import datetime
@@ -13,7 +15,6 @@ from typing import Dict, Any, List, Optional
 
 from app.core.config_loader import config_loader
 
-logger = logging.getLogger("admin_service")
 
 # 配置根路径
 _BASE_DIR = Path(__file__).parent.parent.parent / "config"

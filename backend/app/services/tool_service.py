@@ -1,10 +1,11 @@
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from app.models.tool import Tool
 
-logger = logging.getLogger("tool_service")
 
 
 class ToolService:

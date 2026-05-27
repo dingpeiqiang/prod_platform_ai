@@ -3,10 +3,11 @@
 
 from typing import Dict, Any, List, Optional
 import requests
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from .tool_hub import mcptool
 
-logger = logging.getLogger("mcp_tools")
 
 
 # ============================================================

@@ -2,12 +2,13 @@ from typing import Optional, Dict, Any, List
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.runnables import RunnableSequence
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from .llm_wrapper import get_langchain_llm
 from .chains import FormRecognitionChain, FieldExtractionChain, FormValidationChain, IntentRecognitionChain
 from app.core.config_loader import config_loader
 
-logger = logging.getLogger("langchain.agents")
 
 
 class FormAgent:

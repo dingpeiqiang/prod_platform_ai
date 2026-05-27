@@ -2,10 +2,11 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
-import logging
 import tempfile
 import os
 from pathlib import Path
+
+from app.core.logger import get_logger
 from app.core.config_loader import config_loader
 from app.core.data_source import DataSourceType
 from app.services.ontology_service import OntologyService
@@ -16,7 +17,7 @@ from app.core.database import get_db
 # 项目根目录
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
-logger = logging.getLogger("config_api")
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/config", tags=["config"])
 

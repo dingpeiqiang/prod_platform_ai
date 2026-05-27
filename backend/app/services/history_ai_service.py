@@ -14,7 +14,9 @@ AI 历史数据智能维护服务
 
 import json
 import uuid
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from pathlib import Path
@@ -22,7 +24,6 @@ from pathlib import Path
 from app.core.config_loader import config_loader
 from app.services.llm_service import llm_service
 
-logger = logging.getLogger("history_ai_service")
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "config" / "import_data"

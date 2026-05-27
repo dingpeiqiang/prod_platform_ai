@@ -10,13 +10,14 @@ from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 import asyncio
 import json
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 from app.langchain.workflow_engine import WorkflowEngine, WorkflowStatus
 from app.langchain.workflow_converter import WorkflowConverter
 from app.langchain.workflow_init import workflow_engine
 
-logger = logging.getLogger("execution_api")
 
 router = APIRouter(prefix="/api/execution", tags=["execution"])
 

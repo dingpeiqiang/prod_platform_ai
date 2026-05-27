@@ -2,7 +2,9 @@
 # 从 chat.py 提取的通用 SSE 帧格式化、思考步骤、推理等工具函数
 
 import json
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 import datetime
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, AsyncGenerator
@@ -10,7 +12,6 @@ from typing import Any, Dict, Optional, AsyncGenerator
 from app.services.llm_service import llm_service, StreamStats
 from app.core.config_loader import config_loader
 
-logger = logging.getLogger("intent_utils")
 
 
 # ── SSE 帧格式化 ──────────────────────────────────────

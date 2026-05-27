@@ -23,10 +23,11 @@ from app.intent import get_intent_registry
 from app.intent.base import IntentContext
 from datetime import datetime
 import uuid
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 import asyncio
 
-logger = logging.getLogger("form_api")
 
 router = APIRouter(prefix="/api/v1", tags=["form"])
 

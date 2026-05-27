@@ -10,7 +10,9 @@ AI 原生架构中，不再需要“表单”概念，只有“本体”和“�
 
 注意：此文件保留仅作为占位符，所有方法都已禁用。
 """
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -20,7 +22,6 @@ import uuid
 import json
 from datetime import datetime
 
-logger = logging.getLogger("form_service")
 
 
 class FormService:

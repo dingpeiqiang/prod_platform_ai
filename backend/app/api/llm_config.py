@@ -5,12 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 from app.core.database import get_db
 from app.models.llm_user_config import LLMUserConfig
 
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/llm-config", tags=["llm-config"])
 
@@ -43,6 +44,7 @@ async def save_llm_config(request: LLMConfigRequest, db: Session = Depends(get_d
     
     - 如果用户已有激活配置，先停用
     - 保存新配置并设为激活状态
+    - 自动刷新缓存
     """
     try:
         # 停用该用户的其他激活配置
@@ -71,6 +73,11 @@ async def save_llm_config(request: LLMConfigRequest, db: Session = Depends(get_d
         db.refresh(new_config)
         
         logger.info(f"LLM config saved for user: {request.user_identifier}, model: {request.model}")
+        
+        # 刷新全局缓存
+        from app.services.llm_service import llm_service
+        if llm_service.refresh_config():
+            logger.info("LLM 缓存已刷新")
         
         return {
             "success": True,

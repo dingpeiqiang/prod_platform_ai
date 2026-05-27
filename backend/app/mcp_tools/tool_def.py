@@ -2,11 +2,12 @@
 # 符合 MCP 协议标准
 
 import inspect
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from typing import Any, Callable, Dict, List, Optional, get_type_hints
 from dataclasses import dataclass, field
 
-logger = logging.getLogger("mcp_tools")
 
 
 @dataclass

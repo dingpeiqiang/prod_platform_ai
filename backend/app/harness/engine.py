@@ -17,7 +17,9 @@ from typing import Dict, Any, Optional, List, Callable, Union
 from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 import json
 
 from .context import ContextManager
@@ -74,7 +76,6 @@ from .approval import (
     ApprovalLevel,
 )
 
-logger = logging.getLogger("harness.engine")
 
 
 class RequestType(Enum):

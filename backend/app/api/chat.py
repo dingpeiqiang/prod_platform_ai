@@ -5,7 +5,9 @@ from typing import List, Dict, Any, Optional, AsyncGenerator
 from sqlalchemy.orm import Session
 import json
 import asyncio
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 import time
 
 from app.services.llm_service import llm_service
@@ -30,7 +32,6 @@ from app.api.chat_service import (
     execute_tool_calls, get_scene_prompt_by_code
 )
 
-logger = logging.getLogger("chat_api")
 
 
 class ChatStreamStats:
@@ -535,22 +536,15 @@ async def chat(request: ChatRequest):
                 last_user_message = msg.content
                 break
 
-        fallback_enabled = llm_service.fallback_to_rules
-
         if not llm_service.enabled:
-            if fallback_enabled:
-                logger.info("LLM service is disabled, using skills result")
-                skills_result = call_skills_only(last_user_message, ontologies)
-                return ChatResponse(**skills_result)
-            else:
-                logger.error("LLM service is disabled and fallbackToRules is false")
-                return ChatResponse(
-                    success=False,
-                    message="LLM 服务已禁用，且未启用降级处理",
-                    method="llm_disabled_no_fallback"
-                )
+            logger.error("LLM service is disabled")
+            return ChatResponse(
+                success=False,
+                message="LLM 服务已禁用",
+                method="llm_disabled"
+            )
 
-        logger.info("Attempting LLM call for intent recognition (fallbackToRules: %s)", fallback_enabled)
+        logger.info("Attempting LLM call for intent recognition")
         try:
             intent_prompt = build_intent_prompt(messages_text, last_user_message)
             if intent_prompt:
@@ -593,52 +587,59 @@ async def chat(request: ChatRequest):
                                     reply=chat_reply.strip(),
                                     method="llm"
                                 )
-                    else:
-                        if not fallback_enabled:
+                        else:
+                            logger.error("[LLM Error] 未找到智能对话回复模板")
                             return ChatResponse(
                                 success=False,
-                                message="LLM 意图解析失败",
-                                method="llm_parse_error_no_fallback"
+                                message="未找到智能对话回复模板",
+                                method="llm_no_template"
                             )
+                    else:
+                        logger.error("[LLM Error] LLM 意图解析失败，返回结果无法解析为有效 JSON")
+                        return ChatResponse(
+                            success=False,
+                            message="LLM 意图解析失败",
+                            method="llm_parse_error"
+                        )
             else:
-                if not fallback_enabled:
-                    return ChatResponse(
-                        success=False,
-                        message="未找到意图识别模板",
-                        method="llm_call_error_no_fallback"
-                    )
-        except Exception as e:
-            logger.error("LLM call failed: %s", e)
-            if not fallback_enabled:
+                logger.error("[LLM Error] 未找到意图识别模板")
                 return ChatResponse(
                     success=False,
-                    message=f"LLM 调用失败: {str(e)}",
-                    method="llm_call_error_no_fallback"
+                    message="未找到意图识别模板",
+                    method="llm_no_prompt"
                 )
-
-        if fallback_enabled:
-            skills_result = call_skills_only(last_user_message, ontologies)
-            skills_result["method"] = "skills_fallback"
-            return ChatResponse(**skills_result)
-        else:
-            logger.error("LLM processing failed and fallbackToRules is false")
+        except Exception as e:
+            import traceback
+            error_trace = traceback.format_exc()
+            logger.error("[LLM Error] LLM 调用失败: %s", str(e))
+            logger.error("[LLM Error] 错误堆栈:\n%s", error_trace)
+            logger.error("[LLM Error] Provider: %s, Model: %s, BaseURL: %s", 
+                        llm_service.llm_config.get('provider'),
+                        llm_service.llm_config.get('model'),
+                        llm_service.llm_config.get('baseUrl'))
             return ChatResponse(
                 success=False,
-                message="LLM 处理失败且未启用降级处理",
-                method="llm_failed_no_fallback"
+                message=f"LLM 调用失败: {str(e)}",
+                method="llm_call_error"
             )
+
+        logger.error("[LLM Error] LLM 处理流程失败，返回结果为空")
+        return ChatResponse(
+            success=False,
+            message="LLM 处理流程失败",
+            method="llm_processing_error"
+        )
 
     except Exception as e:
-        logger.error("Chat error: %s", e)
-        if not llm_service.fallback_to_rules:
-            return ChatResponse(
-                success=False,
-                message=f"处理请求时发生错误: {str(e)}",
-                method="unknown_error_no_fallback"
-            )
-        skills_result = call_skills_only(last_user_message, {})
-        skills_result["method"] = "fallback"
-        return ChatResponse(**skills_result)
+        import traceback
+        error_trace = traceback.format_exc()
+        logger.error("[Chat Error] 处理请求时发生错误: %s", str(e))
+        logger.error("[Chat Error] 错误堆栈:\n%s", error_trace)
+        return ChatResponse(
+            success=False,
+            message=f"处理请求时发生错误: {str(e)}",
+            method="chat_error"
+        )
 
 
 @router.post("/chat/stream")
@@ -648,25 +649,64 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
         
         start_time = time.time()
         stream_stats = ChatStreamStats()
-        fallback_enabled = llm_service.fallback_to_rules
 
         logger.info("=" * 60)
         logger.info("[chat/stream] 收到流式聊天请求")
         logger.info(f"[chat/stream] 时间戳: {start_time:.3f}")
         logger.info(f"[chat/stream] 消息数量: {len(request.messages)}")
-        logger.info(f"[chat/stream] fallbackToRules: {fallback_enabled}")
 
         current_provider = llm_service.provider
         model_config = request.modelConfig
         
         if model_config:
-            try:
+            # 检查前端配置是否包含敏感信息
+            has_api_key = model_config.get('apiKey') or model_config.get('api_key')
+            
+            if has_api_key:
+                # 前端传递了完整配置（包含 API Key）
+                try:
+                    provider_name = model_config.get('provider', 'openai')
+                    current_provider = ProviderFactory.create(provider_name, model_config)
+                    logger.info(f"[chat/stream] 使用前端传递的完整模型配置: provider={provider_name}, model={model_config.get('model')}")
+                except Exception as e:
+                    logger.warning(f"[chat/stream] 前端配置失败，使用缓存配置: {e}")
+                    model_config = None
+            else:
+                # 前端配置不包含 API Key（安全考虑），使用缓存配置
+                logger.info(f"[chat/stream] 前端配置不包含 API Key，使用缓存配置: provider={model_config.get('provider')}, model={model_config.get('model')}")
+                model_config = None
+        
+        # 如果没有传递模型配置或配置失败，使用缓存的配置
+        if not model_config:
+            # 优先使用缓存配置（避免每次查询数据库）
+            cached_config = llm_service.get_cached_config(include_api_key=True)
+            
+            logger.info(f"[chat/stream] 缓存配置状态: enabled={cached_config.get('enabled')}")
+            logger.info(f"[chat/stream] 缓存 API Key: {'已设置' if cached_config.get('api_key') else '❌ 为空'} (长度: {len(cached_config.get('api_key', ''))})")
+            logger.info(f"[chat/stream] 缓存 BaseURL: {'已设置' if cached_config.get('base_url') else '❌ 为空'}")
+            logger.info(f"[chat/stream] 缓存 Model: {cached_config.get('model', '未设置')}")
+            
+            if cached_config.get('enabled') and cached_config.get('api_key'):
+                model_config = cached_config
                 provider_name = model_config.get('provider', 'openai')
                 current_provider = ProviderFactory.create(provider_name, model_config)
-                logger.info(f"[chat/stream] 使用动态模型配置: provider={provider_name}, model={model_config.get('model')}")
-            except Exception as e:
-                logger.warning(f"[chat/stream] 动态模型配置失败，使用默认配置: {e}")
-                current_provider = llm_service.provider
+                logger.info(f"[chat/stream] 使用缓存的模型配置: provider={provider_name}, model={model_config.get('model')}")
+            else:
+                # 缓存配置不完整，尝试从数据库刷新
+                logger.info("[chat/stream] 缓存配置不完整，尝试从数据库刷新...")
+                if llm_service.refresh_config():
+                    cached_config = llm_service.get_cached_config(include_api_key=True)
+                    logger.info(f"[chat/stream] 刷新后状态: enabled={cached_config.get('enabled')}")
+                    logger.info(f"[chat/stream] 刷新后 API Key: {'已设置' if cached_config.get('api_key') else '❌ 为空'}")
+                    if cached_config.get('enabled') and cached_config.get('api_key'):
+                        model_config = cached_config
+                        provider_name = model_config.get('provider', 'openai')
+                        current_provider = ProviderFactory.create(provider_name, model_config)
+                        logger.info(f"[chat/stream] 刷新后使用数据库配置: provider={provider_name}, model={model_config.get('model')}")
+                    else:
+                        logger.warning("[chat/stream] 刷新后配置仍不完整，使用默认配置")
+                else:
+                    logger.warning("[chat/stream] 刷新配置失败，使用默认配置")
 
         try:
             ontologies = config_loader.get_all_ontologies()
@@ -691,26 +731,28 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
             })
 
             if not llm_service.enabled:
-                if fallback_enabled:
-                    yield thinking("⚙️ LLM 不可用，切换到 Skills 模式处理")
-                else:
-                    yield thinking("❌ LLM 服务已禁用，且未启用降级处理")
-                    stream_stats.total_elapsed = time.time() - start_time
-                    error = create_error(
-                        category=ErrorCategory.LLM.value,
-                        code=ErrorCode.LLM_DISABLED,
-                        message="LLM 服务已禁用，且未启用降级处理",
-                        level=ErrorLevel.CRITICAL.value,
-                        recoverable=False,
-                        recovery_hint="请在配置中启用 LLM 服务或启用 fallback 降级处理"
-                    )
-                    error_handler.emit(error)
-                    stream_stats.error = error.message
-                    yield sse({"type": "stats", "content": stream_stats.to_dict()})
-                    yield sse(error.to_sse())
-                    return
+                logger.error("[chat/stream] LLM 服务已禁用")
+                yield thinking("❌ LLM 服务已禁用")
+                stream_stats.total_elapsed = time.time() - start_time
+                error = create_error(
+                    category=ErrorCategory.LLM.value,
+                    code=ErrorCode.LLM_DISABLED,
+                    message="LLM 服务已禁用",
+                    level=ErrorLevel.CRITICAL.value,
+                    recoverable=False,
+                    recovery_hint="请在配置中启用 LLM 服务"
+                )
+                error_handler.emit(error)
+                stream_stats.error = error.message
+                yield sse({"type": "stats", "content": stream_stats.to_dict()})
+                yield sse(error.to_sse())
+                return
 
+            logger.info("[chat/stream] 开始构建意图识别 Prompt...")
             intent_prompt = build_intent_prompt(messages_text, last_user_message)
+            logger.info("[chat/stream] Prompt 构建完成: %s, 长度: %d", 
+                        "成功" if intent_prompt else "失败(为空)", 
+                        len(intent_prompt) if intent_prompt else 0)
             _llm_error = None  # 移到 if intent_prompt 块外面，确保总是被初始化
             if intent_prompt:
                 loop = asyncio.get_event_loop()
@@ -1274,58 +1316,82 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                 return
                             
                             # 重试仍然失败
+                            logger.error("[chat/stream] JSON 解析失败（已重试 %d 次）: %s", _retry_count-1, _llm_error)
+                            logger.error("[chat/stream] LLM 返回内容: %s", intent_result[:500] if intent_result else "None")
                             yield thinking(f"❌ JSON 解析失败（已重试 {_retry_count-1} 次）", result={
                                 "error": _llm_error,
                                 "elapsed": round(time.time() - _t0, 2) if '_t0' in dir() else 0
                             })
-                            if not fallback_enabled:
-                                stream_stats.total_elapsed = time.time() - start_time
-                                error = create_error(
-                                    category=ErrorCategory.LLM.value,
-                                    code=ErrorCode.LLM_PARSE_ERROR,
-                                    message="LLM 意图解析失败",
-                                    level=ErrorLevel.ERROR.value,
-                                    recoverable=False,
-                                    recovery_hint="请稍后重试，或联系管理员检查 AI 服务配置",
-                                    raw_response=intent_result[:200] if intent_result else ""
-                                )
-                                error_handler.emit(error)
-                                stream_stats.error = error.message
-                                yield sse({"type": "stats", "content": stream_stats.to_dict()})
-                                yield sse(error.to_sse())
-                                return
-                    else:
-                        logger.warning("[chat/stream] LLM 返回为空，耗时 %.1fs", intent_elapsed)
-                        _llm_error = f"LLM 返回为空（耗时 {intent_elapsed:.1f}s）"
-                        yield thinking(f"❌ {_llm_error}", result={
-                            "error": "LLM 返回为空",
-                            "elapsed": round(intent_elapsed, 1) if intent_elapsed else 0,
-                            "suggestion": "请稍后重试，或联系管理员检查 AI 服务配置"
-                        })
-                        if not fallback_enabled:
                             stream_stats.total_elapsed = time.time() - start_time
                             error = create_error(
                                 category=ErrorCategory.LLM.value,
-                                code=ErrorCode.LLM_EMPTY_RESPONSE,
-                                message=_llm_error + "，且未启用降级处理",
+                                code=ErrorCode.LLM_PARSE_ERROR,
+                                message="LLM 意图解析失败",
                                 level=ErrorLevel.ERROR.value,
                                 recoverable=False,
-                                recovery_hint="请稍后重试，或联系管理员检查 AI 服务",
-                                provider=llm_service.llm_config.get('provider'),
-                                model=llm_service.llm_config.get('model'),
-                                base_url=llm_service.llm_config.get('baseUrl'),
-                                elapsed_time=intent_elapsed
+                                recovery_hint="请稍后重试，或联系管理员检查 AI 服务配置",
+                                raw_response=intent_result[:200] if intent_result else ""
                             )
                             error_handler.emit(error)
                             stream_stats.error = error.message
                             yield sse({"type": "stats", "content": stream_stats.to_dict()})
                             yield sse(error.to_sse())
                             return
+                    else:
+                        logger.error("[chat/stream] ====== LLM 返回为空 ======")
+                        logger.error("[chat/stream] 耗时: %.1fs", intent_elapsed)
+                        logger.error("[chat/stream] Provider: %s, Model: %s", 
+                                    llm_service.llm_config.get('provider'),
+                                    llm_service.llm_config.get('model'))
+                        logger.error("[chat/stream] BaseURL: %s", llm_service.llm_config.get('baseUrl'))
+                        logger.error("[chat/stream] API Key: %s", "已设置" if llm_service.llm_config.get('apiKey') else "❌ 未设置")
+                        logger.error("[chat/stream] ====== 请检查模型配置 ======")
+                        
+                        api_key_set = bool(llm_service.llm_config.get('apiKey'))
+                        _llm_error = f"LLM 返回为空（耗时 {intent_elapsed:.1f}s）"
+                        suggestion = "请稍后重试，或联系管理员检查 AI 服务配置"
+                        if not api_key_set:
+                            _llm_error = "LLM 配置不完整，请先配置 API Key"
+                            suggestion = "请访问前端界面，在侧边栏'模型配置'面板中设置 API Key"
+                            
+                        yield thinking(f"❌ {_llm_error}", result={
+                            "error": _llm_error,
+                            "elapsed": round(intent_elapsed, 1) if intent_elapsed else 0,
+                            "suggestion": suggestion
+                        })
+                        stream_stats.total_elapsed = time.time() - start_time
+                        error = create_error(
+                            category=ErrorCategory.LLM.value,
+                            code=ErrorCode.LLM_EMPTY_RESPONSE,
+                            message=_llm_error,
+                            level=ErrorLevel.ERROR.value,
+                            recoverable=False,
+                            recovery_hint=suggestion,
+                            provider=llm_service.llm_config.get('provider'),
+                            model=llm_service.llm_config.get('model'),
+                            base_url=llm_service.llm_config.get('baseUrl'),
+                            api_key_set=api_key_set,
+                            elapsed_time=intent_elapsed
+                        )
+                        error_handler.emit(error)
+                        stream_stats.error = error.message
+                        yield sse({"type": "stats", "content": stream_stats.to_dict()})
+                        yield sse(error.to_sse())
+                        return
                 except Exception as e:
-                    logger.exception("LLM 调用异常: %s", e)
-                    _llm_error = str(e)
                     import traceback
-                    error_trace = traceback.format_exc()[:500]
+                    error_trace = traceback.format_exc()
+                    _llm_error = str(e)
+                    
+                    logger.error("[chat/stream] ====== LLM 调用失败 ======")
+                    logger.error("[chat/stream] 错误类型: %s", type(e).__name__)
+                    logger.error("[chat/stream] 错误信息: %s", str(e))
+                    logger.error("[chat/stream] 错误堆栈:\n%s", error_trace)
+                    logger.error("[chat/stream] Provider: %s, Model: %s, BaseURL: %s", 
+                                llm_service.llm_config.get('provider'),
+                                llm_service.llm_config.get('model'),
+                                llm_service.llm_config.get('baseUrl'))
+                    logger.error("[chat/stream] 用户输入: %s", last_user_message[:200])
                     
                     if '余额不足' in _llm_error or 'quota' in _llm_error.lower():
                         error_code = ErrorCode.LLM_QUOTA_EXCEEDED
@@ -1344,142 +1410,60 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                         "error": str(e),
                         "suggestion": recovery_hint
                     })
-                    if not fallback_enabled:
-                        stream_stats.total_elapsed = time.time() - start_time
-                        error = create_error(
-                            category=ErrorCategory.LLM.value,
-                            code=error_code,
-                            message=f"LLM 调用失败: {str(e)}",
-                            level=ErrorLevel.ERROR.value,
-                            recoverable=False,
-                            recovery_hint=recovery_hint,
-                            provider=llm_service.llm_config.get('provider'),
-                            model=llm_service.llm_config.get('model'),
-                            base_url=llm_service.llm_config.get('baseUrl'),
-                            error_detail=error_trace,
-                            user_input=last_user_message[:200]
-                        )
-                        error_handler.emit(error)
-                        stream_stats.error = error.message
-                        yield sse({"type": "stats", "content": stream_stats.to_dict()})
-                        yield sse(error.to_sse())
-                        return
-
-            if fallback_enabled:
-                form_keywords = ['订单', '请假', '报销', '合同', '项目', '表单', '填写', '生成']
-                matched_keywords = [kw for kw in form_keywords if kw in last_user_message]
-
-                yield thinking("⚙️ Skills 模式处理（LLM 不可用）", result={
-                    "mode": "skills",
-                    "matchedKeywords": matched_keywords,
-                    "error": _llm_error or "LLM 处理失败"
-                })
-
-                skills_result = call_skills_only(last_user_message, ontologies)
-
-                # 根据是否有场景编码判断是否为表单意图
-                if skills_result.get("sceneCode"):
-                    form_code = skills_result["formCode"]
-                    form_name = ""
-                    if form_code and form_code in ontologies:
-                        form_name = ontologies[form_code].get("formName", form_code)
-
-                    extracted = skills_result["extractedFields"] or {}
-                    yield thinking(f"📋 识别到表单: {form_name or form_code}", result={
-                        "formCode": form_code,
-                        "formName": form_name,
-                        "extractedFields": list(extracted.keys()),
-                        "confidence": skills_result["confidence"] or 0.7
-                    })
-
-                    field_recommendations = {}
-                    try:
-                        rec_engine = get_recommendation_engine()
-                        ontology_def = ontologies.get(form_code, {})
-                        all_field_codes = [
-                            f.get("fieldCode")
-                            for entity in ontology_def.get("entities", [])
-                            for f in entity.get("fields", [])
-                        ]
-                        rec_result = rec_engine.batch_recommend(
-                            form_code=form_code,
-                            extracted_fields=extracted,
-                            user_input=last_user_message,
-                            user_id=None,
-                            conversation_context={"messages": [], "extractedFields": extracted, "lastUserMessage": last_user_message},
-                            max_per_field=5,
-                            db=db,
-                            field_codes=all_field_codes if all_field_codes else None
-                        )
-                        for fc, rec in rec_result.items():
-                            if rec.success and rec.recommendations:
-                                field_recommendations[fc] = {
-                                    "items": [r.to_dict() for r in rec.recommendations],
-                                    "strategyUsed": rec.strategy_used,
-                                    "totalCandidates": rec.total_candidates,
-                                    "processingTimeMs": round(rec.processing_time_ms, 2)
-                                }
-                        logger.info(f"[chat/stream] 推荐生成完成 fieldCount={len(field_recommendations)}")
-                    except Exception as rec_err:
-                        logger.warning(f"[chat/stream] 推荐生成失败: {rec_err}")
-
-                    intent_data = {
-                        "formCode": form_code,
-                        "formName": form_name,
-                        "extractedFields": extracted,
-                        "confidence": skills_result["confidence"] or 0.7,
-                        "fieldRecommendations": field_recommendations
-                    }
                     stream_stats.total_elapsed = time.time() - start_time
-                    stream_stats.is_form = True
+                    error = create_error(
+                        category=ErrorCategory.LLM.value,
+                        code=error_code,
+                        message=f"LLM 调用失败: {str(e)}",
+                        level=ErrorLevel.ERROR.value,
+                        recoverable=False,
+                        recovery_hint=recovery_hint,
+                        provider=llm_service.llm_config.get('provider'),
+                        model=llm_service.llm_config.get('model'),
+                        base_url=llm_service.llm_config.get('baseUrl'),
+                        error_detail=error_trace[:1000],
+                        user_input=last_user_message[:200]
+                    )
+                    error_handler.emit(error)
+                    stream_stats.error = error.message
                     yield sse({"type": "stats", "content": stream_stats.to_dict()})
-                    yield sse({"type": "result",
-                                "content": json.dumps(skills_result, ensure_ascii=False)})
-                    yield sse({"type": "done", "isForm": True, "intentData": intent_data})
-                else:
-                    yield thinking("💬 生成聊天回复...", result={
-                        "mode": "skills"
-                    })
-                    reply_text = skills_result["reply"] or ""
-                    yield sse({"type": "text_start"})
-                    chunk_size = 5
-                    for i in range(0, len(reply_text), chunk_size):
-                        chunk = reply_text[i:i + chunk_size]
-                        yield sse({"type": "text", "content": chunk})
-                        await asyncio.sleep(0)
-                    yield sse({"type": "text_end"})
-                    stream_stats.total_elapsed = time.time() - start_time
-                    stream_stats.is_form = False
-                    stream_stats.llm_chars = len(reply_text)
-                    yield sse({"type": "stats", "content": stream_stats.to_dict()})
-                    yield sse({"type": "done", "isForm": False})
-            else:
-                yield thinking("❌ LLM 处理失败且未启用降级处理", result={
-                    "error": _llm_error or "未知错误"
-                })
-                stream_stats.total_elapsed = time.time() - start_time
-                error = create_error(
-                    category=ErrorCategory.LLM.value,
-                    code=ErrorCode.LLM_UNAVAILABLE,
-                    message="LLM 处理流程失败，且未启用降级处理",
-                    level=ErrorLevel.ERROR.value,
-                    recoverable=False,
-                    recovery_hint="请稍后重试，或联系管理员检查 AI 服务"
-                )
-                error_handler.emit(error)
-                stream_stats.error = error.message
-                yield sse({"type": "stats", "content": stream_stats.to_dict()})
-                yield sse(error.to_sse())
+                    yield sse(error.to_sse())
+                    return
+
+            # intent_prompt 为空或 LLM 处理失败
+            logger.error("[chat/stream] LLM 处理流程失败")
+            yield thinking("❌ LLM 处理流程失败", result={
+                "error": _llm_error or "未知错误"
+            })
+            stream_stats.total_elapsed = time.time() - start_time
+            error = create_error(
+                category=ErrorCategory.LLM.value,
+                code=ErrorCode.LLM_UNAVAILABLE,
+                message="LLM 处理流程失败",
+                level=ErrorLevel.ERROR.value,
+                recoverable=False,
+                recovery_hint="请稍后重试，或联系管理员检查 AI 服务"
+            )
+            error_handler.emit(error)
+            stream_stats.error = error.message
+            yield sse({"type": "stats", "content": stream_stats.to_dict()})
+            yield sse(error.to_sse())
 
         except Exception as e:
-            logger.exception("Stream error: %s", e)
+            import traceback
+            error_trace = traceback.format_exc()
+            logger.error("[chat/stream] ====== Stream 处理异常 ======")
+            logger.error("[chat/stream] 错误类型: %s", type(e).__name__)
+            logger.error("[chat/stream] 错误信息: %s", str(e))
+            logger.error("[chat/stream] 错误堆栈:\n%s", error_trace)
             error = create_error(
                 category=ErrorCategory.SYSTEM.value,
                 code="ERR_STREAM_ERROR",
                 message=f"Stream 处理异常: {str(e)}",
                 level=ErrorLevel.ERROR.value,
                 recoverable=False,
-                recovery_hint="请刷新页面后重试"
+                recovery_hint="请刷新页面后重试",
+                error_detail=error_trace[:1000]
             )
             error_handler.emit(error)
             stream_stats.error = error.message

@@ -1,10 +1,11 @@
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from app.models.prompt import Prompt, PromptVersion, PromptTemplate
 
-logger = logging.getLogger("prompt_service")
 
 
 class PromptService:

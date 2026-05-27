@@ -5,10 +5,11 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from app.core.config_loader import config_loader
 
-logger = logging.getLogger("langchain.llm_wrapper")
 
 
 class LangChainLLM:

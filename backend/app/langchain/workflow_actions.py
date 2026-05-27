@@ -11,11 +11,12 @@
 7. workflow.set_variable / workflow.http_request - 变量设置和 HTTP 请求
 """
 from typing import Dict, Any, List, Optional
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 import json
 import re
 
-logger = logging.getLogger("workflow_actions")
 
 
 async def action_workflow_start(context: Any, **kwargs) -> Dict[str, Any]:

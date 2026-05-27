@@ -1,7 +1,9 @@
 """
 工作流管理服务
 """
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 import uuid
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
@@ -10,7 +12,6 @@ from datetime import datetime
 
 from app.models.workflow import Workflow, WorkflowHistory, WorkflowExecution
 
-logger = logging.getLogger("workflow_service")
 
 
 class WorkflowService:

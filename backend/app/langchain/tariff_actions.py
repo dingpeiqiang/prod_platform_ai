@@ -8,7 +8,9 @@
 4. 表单校验 → 验证所有字段
 """
 from typing import Dict, Any
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 import re
 
 from app.config.tariff_rules_loader import (
@@ -22,7 +24,6 @@ from app.config.tariff_rules_loader import (
 )
 from app.mcp_tools.tariff_tools import query_tariff_by_code
 
-logger = logging.getLogger("tariff_actions")
 
 
 async def action_parse_input(context: Any, **kwargs) -> Dict[str, Any]:

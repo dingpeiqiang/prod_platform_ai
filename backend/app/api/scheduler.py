@@ -7,11 +7,12 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 from app.engine.llm_workflow_scheduler import get_workflow_scheduler, DynamicWorkflowGenerator
 
-logger = logging.getLogger("scheduler_api")
 
 router = APIRouter(prefix="/api/scheduler", tags=["scheduler"])
 

@@ -2,12 +2,13 @@
 场景提示词管理器
 """
 import json
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
 
-logger = logging.getLogger("scene_prompt_manager")
 
 
 class ScenePromptManager:

@@ -1,12 +1,13 @@
 # IntentHandlerRegistry - 意图处理器注册器
 # 单例模式 + @intent_handler 装饰器，参考 MCPToolHub 的 @mcptool 模式
 
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from typing import Type, Dict, Optional, AsyncGenerator, Any
 
 from .base import BaseIntentHandler, IntentContext
 
-logger = logging.getLogger("intent_registry")
 
 
 class IntentHandlerRegistry:

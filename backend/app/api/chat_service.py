@@ -1,5 +1,7 @@
 import json
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from typing import Dict, Any, Optional, AsyncGenerator
 
 from app.services.llm_service import llm_service, StreamStats
@@ -15,7 +17,6 @@ from app.api.chat_utils import (
     FALLBACK_RESPONSES, sse, thinking, reasoning
 )
 
-logger = logging.getLogger("chat_service")
 
 
 def call_skills_only(last_user_message: str, ontologies: Dict) -> Dict:
@@ -65,8 +66,28 @@ def call_skills_only(last_user_message: str, ontologies: Dict) -> Dict:
 
 def build_intent_prompt(messages_text: str, last_user_message: str) -> Optional[str]:
     """构建意图识别的 prompt"""
-    intent_prompt_template = config_loader.get_prompt('smart_intent_recognition')
+    # 意图模板直接从文件加载，不依赖数据库
+    import os
+    # 当前文件路径: backend/app/api/chat_service.py
+    # 需要到达: backend/config/prompts/smart_intent_recognition.txt
+    prompt_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        'config', 'prompts', 'smart_intent_recognition.txt'
+    )
+    
+    intent_prompt_template = None
+    if os.path.exists(prompt_path):
+        try:
+            with open(prompt_path, 'r', encoding='utf-8') as f:
+                intent_prompt_template = f.read()
+            logger.info(f"[build_intent_prompt] 从文件加载模板成功: {prompt_path}")
+        except Exception as e:
+            logger.error(f"[build_intent_prompt] 读取模板文件失败: {e}")
+    else:
+        logger.error(f"[build_intent_prompt] 模板文件不存在: {prompt_path}")
+    
     if not intent_prompt_template:
+        logger.error("[build_intent_prompt] 意图识别模板 'smart_intent_recognition' 不存在！")
         return None
 
     ontologies_info = build_ontologies_info()
@@ -74,8 +95,17 @@ def build_intent_prompt(messages_text: str, last_user_message: str) -> Optional[
     scene_keywords = build_scene_keywords()
     separators = build_separators()
     mcp_info_raw = get_toolhub().get_tool_schemas_for_llm()
+    
+    logger.info(f"[build_intent_prompt] 模板加载成功，长度: {len(intent_prompt_template)}")
+    logger.info(f"[build_intent_prompt] ontologies_info 长度: {len(ontologies_info)}")
+    logger.info(f"[build_intent_prompt] scene_hierarchy 长度: {len(scene_hierarchy)}")
+    logger.info(f"[build_intent_prompt] scene_keywords 长度: {len(scene_keywords)}")
+    logger.info(f"[build_intent_prompt] separators: {separators}")
+    logger.info(f"[build_intent_prompt] mcp_info_raw 长度: {len(mcp_info_raw) if mcp_info_raw else 0}")
+    logger.info(f"[build_intent_prompt] messages_text 长度: {len(messages_text) if messages_text else 0}")
+    logger.info(f"[build_intent_prompt] last_user_message: {last_user_message}")
 
-    return (
+    result = (
         intent_prompt_template
         .replace("{ontologies_info}", ontologies_info)
         .replace("{scene_hierarchy}", scene_hierarchy)
@@ -85,6 +115,9 @@ def build_intent_prompt(messages_text: str, last_user_message: str) -> Optional[
         .replace("{messages_text}", messages_text or "[]")
         .replace("{last_user_message}", last_user_message or "")
     )
+    
+    logger.info(f"[build_intent_prompt] 最终 Prompt 构建完成，长度: {len(result)}")
+    return result
 
 
 def get_scene_prompt_by_code(scene_code: str) -> Optional[str]:

@@ -1,10 +1,11 @@
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 import re
 from typing import Dict, Any, Optional, List, Callable
 
 from .data_source import BaseDataSource, DataSourceType, DataSourceFactory
 
-logger = logging.getLogger("database_data_source")
 
 
 class DatabaseDataSource(BaseDataSource):

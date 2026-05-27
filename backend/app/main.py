@@ -4,79 +4,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
-import logging
-import logging.handlers
-import os
 
-# ── 日志配置 ─────────────────────────────────────────────────────────────────
-import logging
-import logging.handlers
-import os
+# ── 统一日志框架 ──────────────────────────────────────────────────────────────
+from app.core.logger import get_logger, logger_manager
 
-_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# logs 目录放在 backend/logs/（与 app/ 同级），避免 app/app/logs 的嵌套问题
-_LOG_DIR = os.path.join(_BASE_DIR, "..", "logs")
-os.makedirs(_LOG_DIR, exist_ok=True)
-
-_FMT = "%(asctime)s.%(msecs)03d [%(levelname)-8s] %(name)-25s: %(message)s"
-_DATE_FMT = "%H:%M:%S"
-
-# 清除所有现有handlers
-_root_logger = logging.getLogger()
-_root_logger.handlers.clear()
-
-# 终端输出
-_console_handler = logging.StreamHandler()
-_console_handler.setLevel(logging.DEBUG)
-_console_handler.setFormatter(logging.Formatter(_FMT, _DATE_FMT))
-_root_logger.addHandler(_console_handler)
-
-# 文件输出（简化版，避免文件占用问题）
-try:
-    _file_handler = logging.FileHandler(
-        filename=os.path.join(_LOG_DIR, "app.log"),
-        mode="a",
-        encoding="utf-8",
-        delay=True,
-    )
-    _file_handler.setLevel(logging.DEBUG)
-    _file_handler.setFormatter(logging.Formatter(_FMT, _DATE_FMT))
-    _root_logger.addHandler(_file_handler)
-except Exception as e:
-    print(f"Failed to create file handler: {e}")
-
-# 设置根日志级别
-_root_logger.setLevel(logging.DEBUG)
-
-# 详细配置各模块的日志级别
-_LOG_MODULES = [
-    "main", "llm_service", "chat_api", "config_loader", "agent_executor",
-    "form_service", "form_api", "chat_with_tools_api", "config_api",
-    "history_service", "ontology_service",
-    "validation_service", "harness.engine", "harness.observability",
-    "llm_call",
-    "intent.form_handler", "recommendation_engine",
-    "app.api.chat",  # 确保 chat.py 中的 logger 也能输出 DEBUG
-    "app.api.chat",  # 重复配置确保所有 chat.py 中的 logger 都能输出 DEBUG
-]
-
-for _name in _LOG_MODULES:
-    logger_instance = logging.getLogger(_name)
-    logger_instance.setLevel(logging.DEBUG)
-
-# 降低第三方库的日志级别
-logging.getLogger("uvicorn.access").setLevel(logging.INFO)
-logging.getLogger("uvicorn.autodiscover").setLevel(logging.WARNING)
-logging.getLogger("watchfiles.main").setLevel(logging.WARNING)
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("urllib3").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
-
-_logger = logging.getLogger("main")
+_logger = get_logger(__name__)
 _logger.info("=" * 60)
-_logger.info("日志系统初始化完成")
-_logger.info("日志文件: %s", os.path.join(_LOG_DIR, "app.log"))
-_logger.info("日志级别: DEBUG")
+_logger.info("应用启动开始")
 _logger.info("=" * 60)
 
 # ── 其他导入（在日志配置之后）─────────────────────────────────────────────────

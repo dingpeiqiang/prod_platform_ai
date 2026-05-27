@@ -1,13 +1,13 @@
 import time
-import logging
 from typing import Optional, Dict, Any, Tuple, AsyncGenerator
 
+from app.core.logger import get_logger
 from app.core.config import get_settings
 from app.core.config_loader import config_loader
 from app.services.llm.factory import ProviderFactory
 from app.services.llm.base import StreamStats, extract_json
 
-logger = logging.getLogger("llm_service")
+logger = get_logger(__name__)
 
 
 class LLMService:
@@ -19,14 +19,13 @@ class LLMService:
         self.app_config = config_loader.get_app_config()
         self.llm_config = self.app_config.get('llm', {})
         self.enabled = self.llm_config.get('enabled', False)
-        self.fallback_to_rules = self.llm_config.get('fallbackToRules', True)
         self._provider = None
         
         # 优先从数据库加载配置
         self._load_config_from_db()
         
         provider_name = self.llm_config.get('provider', 'openai')
-        logger.info(f"LLM 配置加载: enabled={self.enabled}, provider={provider_name}, fallbackToRules={self.fallback_to_rules}")
+        logger.info(f"LLM 配置加载: enabled={self.enabled}, provider={provider_name}")
         
         if self.enabled:
             logger.info(f"  - 模型: {self.llm_config.get('model')}")
@@ -59,7 +58,11 @@ class LLMService:
                     # 覆盖配置文件中的值
                     self.llm_config['provider'] = model_db_config.provider or 'openai'
                     self.llm_config['model'] = model_db_config.model
-                    self.llm_config['apiKey'] = (model_db_config.api_key or '').strip().strip('`')
+                    db_api_key = (model_db_config.api_key or '').strip().strip('`')
+                    self.llm_config['apiKey'] = db_api_key
+                    logger.info(f"[LLM Service] 数据库 API Key: {'已设置' if db_api_key else '❌ 为空'} (长度: {len(db_api_key) if db_api_key else 0})")
+                    logger.info(f"[LLM Service] 数据库 BaseURL: {'已设置' if model_db_config.base_url else '❌ 为空'}")
+                    
                     self.llm_config['baseUrl'] = model_db_config.base_url or ''
                     self.llm_config['authType'] = model_db_config.auth_type if hasattr(model_db_config, 'auth_type') else 'bearer'
                     self.llm_config['authHeader'] = getattr(model_db_config, 'auth_header', None)
@@ -111,6 +114,81 @@ class LLMService:
         """获取 API Key"""
         settings = get_settings()
         return settings.LLM_API_KEY.strip() if settings.LLM_API_KEY else self.llm_config.get('apiKey', '')
+    
+    def get_cached_config(self, include_api_key: bool = False) -> Dict[str, Any]:
+        """获取缓存的模型配置
+        
+        Args:
+            include_api_key: 是否包含敏感信息（API Key），默认不包含
+        
+        Returns:
+            缓存的配置字典
+        """
+        config = {
+            'provider': self.llm_config.get('provider', 'openai'),
+            'model': self.llm_config.get('model', ''),
+            'base_url': self.llm_config.get('baseUrl', ''),
+            'temperature': self.llm_config.get('temperature', 0.3),
+            'max_tokens': self.llm_config.get('maxTokens', 2048),
+            'thinking': self.llm_config.get('thinking', False),
+            'max_input_tokens': self.llm_config.get('maxInputTokens', 180000),
+            'auth_type': self.llm_config.get('authType', 'bearer'),
+            'auth_header': self.llm_config.get('authHeader', None),
+            'api_format': self.llm_config.get('apiFormat', 'openai'),
+            'is_full_url': self.llm_config.get('isFullUrl', False),
+            'enabled': self.enabled
+        }
+        
+        if include_api_key:
+            config['api_key'] = self.llm_config.get('apiKey', '')
+        
+        return config
+    
+    def refresh_config(self) -> bool:
+        """刷新缓存配置（从数据库重新加载）
+        
+        Returns:
+            是否成功刷新
+        """
+        logger.info("[LLM Service] 刷新配置...")
+        try:
+            from app.core.database import SessionLocal
+            from app.models.llm_user_config import LLMUserConfig
+            
+            db = SessionLocal()
+            try:
+                model_db_config = db.query(LLMUserConfig).filter(
+                    LLMUserConfig.is_active == True
+                ).first()
+                
+                if model_db_config:
+                    logger.info(f"[LLM Service] 从数据库刷新配置: {model_db_config.model}")
+                    
+                    # 更新缓存
+                    self.llm_config['provider'] = model_db_config.provider or 'openai'
+                    self.llm_config['model'] = model_db_config.model
+                    self.llm_config['apiKey'] = (model_db_config.api_key or '').strip().strip('`')
+                    self.llm_config['baseUrl'] = model_db_config.base_url or ''
+                    self.llm_config['authType'] = model_db_config.auth_type if hasattr(model_db_config, 'auth_type') else 'bearer'
+                    self.llm_config['authHeader'] = getattr(model_db_config, 'auth_header', None)
+                    self.llm_config['apiFormat'] = getattr(model_db_config, 'api_format', 'openai')
+                    self.llm_config['isFullUrl'] = getattr(model_db_config, 'is_full_url', False)
+                    self.llm_config['temperature'] = getattr(model_db_config, 'temperature', 0.3)
+                    self.llm_config['maxTokens'] = getattr(model_db_config, 'max_tokens', 2048)
+                    self.llm_config['thinking'] = getattr(model_db_config, 'thinking', False)
+                    self.enabled = True
+                    
+                    # 重新初始化 Provider
+                    self._init_provider()
+                    return True
+                else:
+                    logger.info("[LLM Service] 数据库中未找到激活的配置")
+                    return False
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"[LLM Service] 刷新配置失败: {e}")
+            return False
     
     async def call_llm_stream(self, prompt: str, system_prompt: Optional[str] = None, 
                               max_tokens: Optional[int] = None, use_buffer: bool = True) -> AsyncGenerator[str, None]:
@@ -366,9 +444,14 @@ class LLMService:
                 return response
         
         except Exception as e:
+            import traceback
+            error_trace = traceback.format_exc()
             llm_elapsed = time.time() - llm_start
             logger.error("[LLM DYNAMIC] ====== FAILED ======")
-            logger.error("[LLM DYNAMIC] Error: %s", str(e))
+            logger.error("[LLM DYNAMIC] Model: %s, MaxTokens: %s", model, max_tokens)
+            logger.error("[LLM DYNAMIC] Error Type: %s", type(e).__name__)
+            logger.error("[LLM DYNAMIC] Error Message: %s", str(e))
+            logger.error("[LLM DYNAMIC] Error Stack:\n%s", error_trace)
             logger.error("[LLM DYNAMIC] Elapsed: %.2fs", llm_elapsed)
             raise  # 让异常向上传播，不吞掉
 

@@ -2,7 +2,6 @@
 场景管理服务 - 支持三层树形结构（center / business / scene
 """
 import json
-import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
@@ -10,8 +9,9 @@ from sqlalchemy import desc
 
 from app.models.scene import Scene, SceneHistory
 from app.core.config_loader import config_loader
+from app.core.logger import get_logger, log_errors
 
-logger = logging.getLogger("scene_service")
+logger = get_logger(__name__)
 
 # 配置根路径
 _BASE_DIR = Path(__file__).parent.parent.parent / "config"
@@ -291,12 +291,21 @@ class SceneService:
     def create_scene(cls, scene_data: Dict[str, Any], db: Session, user: Optional[str] = None) -> Dict[str, Any]:
         """创建场景"""
         try:
-            scene_code = scene_data.get("sceneCode")
+            scene_code = scene_data.get("scene_code")
+            scene_name = scene_data.get("scene_name", scene_code)
+            scene_type = scene_data.get("type", "scene")
+            parent_id = scene_data.get("parent_id")
+            
+            logger.info("[create_scene] 开始创建场景 scene_code=%s scene_name=%s type=%s parent_id=%s", 
+                        scene_code, scene_name, scene_type, parent_id)
+            
             if not scene_code:
-                return {"success": False, "message": "sceneCode is required"}
+                logger.warning("[create_scene] scene_code 为空")
+                return {"success": False, "message": "scene_code is required"}
 
             existing = db.query(Scene).filter(Scene.scene_code == scene_code).first()
             if existing:
+                logger.warning("[create_scene] 场景已存在 scene_code=%s", scene_code)
                 return {"success": False, "message": f"Scene {scene_code} already exists"}
 
             # 处理工作流配置（支持多个）
@@ -310,17 +319,19 @@ class SceneService:
                 default_workflow = next((w for w in workflows if w.get("isDefault")), workflows[0])
                 config["workflowCode"] = default_workflow.get("code")
                 config["workflowConfig"] = default_workflow.get("config", {})
+                
+                logger.debug("[create_scene] 配置工作流 workflows=%s", workflows)
 
             scene = Scene(
                 scene_code=scene_code,
-                scene_name=scene_data.get("sceneName", scene_code),
+                scene_name=scene_name,
                 description=scene_data.get("description"),
                 keywords=scene_data.get("keywords", []),
                 priority=scene_data.get("priority", 10),
-                is_active=scene_data.get("isActive", True),
-                prompt_code=scene_data.get("promptCode"),
-                type=scene_data.get("type", "scene"),
-                parent_id=scene_data.get("parentId"),
+                is_active=scene_data.get("is_active", True),
+                prompt_code=scene_data.get("prompt_code"),
+                type=scene_type,
+                parent_id=parent_id,
                 config=config,
                 version=1,
                 created_by=user
@@ -337,11 +348,12 @@ class SceneService:
             cls._write_scene_to_file(scene)
             config_loader.reload_config("scene_mappings")
             
-            logger.info(f"Created scene: {scene_code}")
+            logger.info("[create_scene] 创建场景成功 scene_code=%s scene_id=%d", scene_code, scene.id)
             return {"success": True, "data": scene.to_dict(), "message": "Scene created successfully"}
         except Exception as e:
             db.rollback()
-            logger.exception(f"Failed to create scene: {e}")
+            logger.exception("[create_scene] 创建场景失败 scene_code=%s error=%s", 
+                           scene_data.get("scene_code"), str(e))
             return {"success": False, "message": str(e)}
 
     @classmethod
@@ -379,18 +391,18 @@ class SceneService:
                 scene.config = config
                 has_changes = True
             
-            # 字段映射表
+            # 字段映射表（admin.py 已将 camelCase 转换为 snake_case）
             field_mapping = {
-                "sceneName": ("scene_name", str),
+                "scene_name": ("scene_name", str),
                 "description": ("description", str),
                 "keywords": ("keywords", list),
                 "priority": ("priority", int),
-                "promptCode": ("prompt_code", str),
+                "prompt_code": ("prompt_code", str),
                 "type": ("type", str),
-                "parentId": ("parent_id", int),
+                "parent_id": ("parent_id", int),
                 "config": ("config", dict),
             }
-            
+
             for key, value in scene_data.items():
                 if key in field_mapping:
                     model_field, _ = field_mapping[key]
@@ -398,7 +410,7 @@ class SceneService:
                     if current_value != value:
                         setattr(scene, model_field, value)
                         has_changes = True
-                elif key == "isActive":
+                elif key == "is_active":
                     scene.is_active = value
                     has_changes = True
             

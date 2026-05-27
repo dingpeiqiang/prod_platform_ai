@@ -1,13 +1,14 @@
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 from collections import defaultdict
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from sqlalchemy.orm import Session
 from app.core.config_loader import config_loader
 from app.models.ontology_instance import OntologyInstance, OntologyInstanceHistory
 from app.services.ontology_service import OntologyService
 
-logger = logging.getLogger("history_service")
 
 
 class HistoryService:

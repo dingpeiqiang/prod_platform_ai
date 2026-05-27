@@ -4,10 +4,11 @@
 # 不再使用 @mcptool() 装饰器注册为内部工具
 
 import requests
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from typing import Dict, Any, Optional
 
-logger = logging.getLogger("mcp_tools")
 
 # 套餐查询 API 配置
 TARIFF_API_CONFIG = {

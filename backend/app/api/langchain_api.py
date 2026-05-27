@@ -4,10 +4,11 @@ from typing import List, Dict, Any, Optional
 from app.langchain import FormAgent, TaskAgent, ChatAgent, FormWorkflow, ValidationWorkflow
 from app.langchain.chains import FormRecognitionChain, FieldExtractionChain, IntentRecognitionChain
 from app.harness.observability.tracer import get_tracer, SpanStatus
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 import uuid
 
-logger = logging.getLogger("langchain_api")
 
 router = APIRouter(prefix="/api/v1/langchain", tags=["langchain"])
 

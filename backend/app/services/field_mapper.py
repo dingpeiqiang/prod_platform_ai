@@ -16,10 +16,11 @@ from typing import Dict, Any, List, Optional, Tuple, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from collections import defaultdict
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 import re
 
-logger = logging.getLogger("field_mapper")
 
 
 @dataclass

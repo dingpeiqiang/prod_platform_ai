@@ -135,6 +135,9 @@
             <el-form-item label="名称" prop="sceneName" required>
               <el-input v-model="formData.sceneName" placeholder="请输入名称" />
             </el-form-item>
+            <el-form-item label="父级">
+              <el-input v-model="parentInfo" disabled placeholder="无" />
+            </el-form-item>
             <el-form-item label="描述">
               <el-input v-model="formData.description" type="textarea" :rows="3" placeholder="请输入描述" />
             </el-form-item>
@@ -695,6 +698,7 @@ const loadingPrompt = ref(false)
 const isEditing = ref(false)
 
 const creatingType = ref('scene')
+const parentInfo = ref('')
 
 const currentType = computed(() => {
   if (editingNode.value) {
@@ -950,6 +954,7 @@ const handleNodeClick = async (data, node) => {
 const handleAddCenter = () => {
   editingNode.value = null
   creatingType.value = 'center'
+  parentInfo.value = ''
   Object.assign(formData, {
     sceneCode: '',
     sceneName: '',
@@ -971,6 +976,7 @@ const handleAddCenter = () => {
 const handleAddBusiness = (parentData) => {
   editingNode.value = null
   creatingType.value = 'business'
+  parentInfo.value = `${parentData.sceneName || parentData.label} (${typeLabel(parentData.type)})`
   Object.assign(formData, {
     sceneCode: '',
     sceneName: '',
@@ -992,6 +998,7 @@ const handleAddBusiness = (parentData) => {
 const handleAddScene = (parentData) => {
   editingNode.value = null
   creatingType.value = 'scene'
+  parentInfo.value = `${parentData.sceneName || parentData.label} (${typeLabel(parentData.type)})`
   Object.assign(formData, {
     sceneCode: '',
     sceneName: '',
@@ -1057,14 +1064,12 @@ const handleWorkflowChange = (index, workflowCode) => {
 }
 
 const updateDefaultPromptCode = () => {
-  if (formData.type === 'scene' && formData.sceneCode && !formData.promptCode) {
-    formData.promptCode = `${formData.sceneCode}_prompt`
-  }
 }
 
 // 编辑
 const handleEdit = async (data) => {
   editingNode.value = data
+  parentInfo.value = getParentInfo(data) || ''
   Object.assign(formData, {
     sceneCode: data.sceneCode,
     sceneName: data.sceneName,

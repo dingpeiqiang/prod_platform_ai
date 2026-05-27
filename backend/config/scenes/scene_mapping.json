@@ -1,0 +1,30 @@
+{
+  "sceneMappings": [
+    {
+      "sceneCode": "tariff_filing_apply",
+      "sceneName": "资费备案申请",
+      "description": "新资费的备案申请流程",
+      "keywords": [
+        "资费备案",
+        "申请",
+        "新资费"
+      ],
+      "priority": 8,
+      "isActive": false,
+      "promptCode": "tariff_filing_apply_prompt",
+      "type": "scene",
+      "parentId": 11,
+      "config": {
+        "workflow": [
+          "提交申请",
+          "初审",
+          "复核",
+          "公示"
+        ],
+        "sla_hours": 48,
+        "auto_approve": false
+      }
+    }
+  ],
+  "version": "4.0"
+}

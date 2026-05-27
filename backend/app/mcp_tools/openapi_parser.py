@@ -5,9 +5,10 @@ OpenAPI 规范解析器
 import json
 import yaml
 from typing import Dict, Any, List, Optional
-import logging
+from app.core.logger import get_logger
 
-logger = logging.getLogger("openapi_parser")
+logger = get_logger(__name__)
+
 
 
 class OpenAPIParser:

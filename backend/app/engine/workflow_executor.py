@@ -12,7 +12,9 @@ from typing import Dict, Any, List, Optional, AsyncGenerator
 from abc import ABC, abstractmethod
 from datetime import datetime
 import json
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 import re
 from enum import Enum
 
@@ -23,7 +25,6 @@ from app.langchain.llm_wrapper import get_langchain_llm
 from app.core.config_loader import config_loader
 from app.services.recommendations import HighPerformanceRecommendationEngine
 
-logger = logging.getLogger("workflow_executor")
 
 
 class ExecutionStatus(str, Enum):

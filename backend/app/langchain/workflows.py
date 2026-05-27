@@ -2,13 +2,14 @@ from typing import Optional, Dict, Any, List, Callable, AsyncGenerator
 from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from .agents import FormAgent, TaskAgent, ChatAgent
 from .chains import FormRecognitionChain, FieldExtractionChain, FormValidationChain
 from app.services.recommendation_engine import get_recommendation_engine
 from app.core.config_loader import config_loader
 
-logger = logging.getLogger("langchain.workflows")
 
 
 class WorkflowStatus(str, Enum):

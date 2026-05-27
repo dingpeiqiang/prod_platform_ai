@@ -5,11 +5,12 @@
 import requests
 import json
 import time
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from typing import Dict, Any, Optional
 from jinja2 import Template
 
-logger = logging.getLogger("external_api_executor")
 
 
 class ExternalAPIExecutor:

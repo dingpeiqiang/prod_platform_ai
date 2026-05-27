@@ -1,10 +1,11 @@
 from typing import Dict, Any, List, Optional, Callable
 import re
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from datetime import datetime
 from app.core.config_loader import config_loader
 
-logger = logging.getLogger("validation_service")
 
 
 class ValidationRule:

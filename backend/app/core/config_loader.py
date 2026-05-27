@@ -1,14 +1,14 @@
 import json
-import logging
 import os
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 import threading
 import time
 
+from app.core.logger import get_logger
 from .data_source import DataSourceType, DataSourceFactory
 
-logger = logging.getLogger("config_loader")
+logger = get_logger(__name__)
 
 
 class ConfigLoader:

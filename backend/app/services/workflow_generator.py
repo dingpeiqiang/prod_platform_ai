@@ -3,14 +3,15 @@
 """
 
 import json
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 import re
 from typing import Dict, Any, Optional
 
 from app.services.llm_service import llm_service
 from app.core.config_loader import config_loader
 
-logger = logging.getLogger("workflow_generator")
 
 
 class WorkflowGenerator:

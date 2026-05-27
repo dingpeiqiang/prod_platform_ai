@@ -4,7 +4,9 @@
 在应用启动时调用此模块，注册动作处理器和工作流定义
 """
 import os
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 from .workflow_engine import workflow_engine
 from .tariff_actions import (
@@ -32,7 +34,6 @@ from .workflow_actions import (
     action_set_prompt
 )
 
-logger = logging.getLogger("workflow_init")
 
 
 def init_workflow_engine():

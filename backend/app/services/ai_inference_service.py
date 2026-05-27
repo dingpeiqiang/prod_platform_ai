@@ -8,12 +8,13 @@ AI Field Inference Service - 基于本体的智能字段推断服务
 - 返回完整的 extractedFields（不允许空值）
 """
 
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from typing import Dict, Any, Optional
 from app.services.llm_service import llm_service
 from app.core.config_loader import config_loader
 
-logger = logging.getLogger("ai_inference")
 
 
 class AIInferenceService:

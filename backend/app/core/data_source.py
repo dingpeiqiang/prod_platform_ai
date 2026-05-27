@@ -1,9 +1,10 @@
 from enum import Enum
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List
-import logging
 
-logger = logging.getLogger("data_source")
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class DataSourceType(Enum):

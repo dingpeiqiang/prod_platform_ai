@@ -1,12 +1,13 @@
 import json
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from typing import Dict, Any, List, AsyncGenerator
 from app.services.llm_service import llm_service
 from app.skills.tool_registry import ToolRegistry
 from app.core.config_loader import config_loader
 from app.mcp_tools import get_toolhub
 
-logger = logging.getLogger("agent_executor")
 
 
 def _truncate(text: str, max_len: int = 200) -> str:
@@ -51,11 +52,15 @@ class AgentExecutor:
                     llm_elapsed, len(response) if response else 0)
 
         if not response:
-            logger.error("[AgentExecutor] LLM 返回为空 (耗时 %.2fs), fallback_to_rules=%s",
-                        llm_elapsed, llm_service.fallback_to_rules)
+            logger.error("[AgentExecutor] ====== LLM 返回为空 ======")
+            logger.error("[AgentExecutor] 耗时: %.2fs", llm_elapsed)
+            logger.error("[AgentExecutor] Provider: %s, Model: %s, BaseURL: %s", 
+                        llm_service.llm_config.get('provider'),
+                        llm_service.llm_config.get('model'),
+                        llm_service.llm_config.get('baseUrl'))
             yield {
                 "type": "error",
-                "content": f"LLM 返回为空（耗时 {llm_elapsed:.1f}s），且未启用降级处理"
+                "content": f"LLM 返回为空（耗时 {llm_elapsed:.1f}s）"
             }
             yield {
                 "type": "stats",

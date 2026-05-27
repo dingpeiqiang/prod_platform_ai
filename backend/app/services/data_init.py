@@ -6,14 +6,15 @@ import json
 import sys
 from pathlib import Path
 from typing import Optional
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 from app.core.database import SessionLocal
 from app.models.scene import Scene
 from app.models.prompt import Prompt
 from app.models.ontology import Ontology
 
-logger = logging.getLogger(__name__)
 
 
 def init_scenes(db):

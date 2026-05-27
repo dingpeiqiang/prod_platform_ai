@@ -5,12 +5,13 @@
 支持从本体配置中获取业务规则
 """
 from typing import Dict, Any, List, Optional
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 from app.services.ontology_service import OntologyService
 from sqlalchemy.orm import Session
 
-logger = logging.getLogger("workflow_converter")
 
 
 class WorkflowConverter:

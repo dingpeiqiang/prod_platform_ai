@@ -9,11 +9,12 @@ from app.core.database import get_db
 from app.models.mcp_call_log import MCPCallLog, MCPToolStats
 from datetime import datetime, timedelta
 import time
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 import json
 
 router = APIRouter(prefix="/api/v1/mcp-management", tags=["mcp-management"])
-logger = logging.getLogger("mcp_management")
 
 
 @router.get("/tools")

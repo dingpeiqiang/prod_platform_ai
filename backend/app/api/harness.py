@@ -7,7 +7,9 @@ Harness API - 将 Harness Engine 集成到 FastAPI
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 from ..harness.engine import (
     HarnessEngine, 
@@ -18,7 +20,6 @@ from ..harness.engine import (
 )
 from ..harness.tools import PermissionLevel
 
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/harness", tags=["Harness"])
 

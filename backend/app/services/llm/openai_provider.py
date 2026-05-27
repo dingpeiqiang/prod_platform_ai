@@ -221,7 +221,12 @@ class OpenAIProvider(BaseProvider):
         _logger = logging.getLogger("llm.openai")
         _logger.info(f"[OpenAIProvider] call_with_reasoning - base_url='{self.base_url}', api_key_set={bool(self.api_key)}, model={self.model}")
         if not self.base_url or not self.api_key:
-            _logger.warning(f"[OpenAIProvider] base_url 或 api_key 为空，拒绝调用")
+            _logger.error("[OpenAIProvider] ====== 配置错误 ======")
+            _logger.error("[OpenAIProvider] base_url: %s", "已设置" if self.base_url else "❌ 未设置")
+            _logger.error("[OpenAIProvider] api_key: %s", "已设置" if self.api_key else "❌ 未设置")
+            _logger.error("[OpenAIProvider] model: %s", self.model)
+            _logger.error("[OpenAIProvider] ====== 请通过前端界面配置模型参数 ======")
+            _logger.error("[OpenAIProvider] 访问 http://localhost:5173，在侧边栏找到'模型配置'面板进行设置")
             return None, None
         
         url = f"{self.base_url}/chat/completions"

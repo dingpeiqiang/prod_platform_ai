@@ -5,10 +5,11 @@
 
 from typing import Dict, Any, List, Optional
 from pathlib import Path
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from ..harness.memory.vector_store import get_vector_store, MemoryEntry
 
-logger = logging.getLogger(__name__)
 
 
 class KBService:

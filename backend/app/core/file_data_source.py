@@ -1,5 +1,4 @@
 import json
-import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
@@ -9,9 +8,10 @@ try:
 except ImportError:
     HAS_YAML = False
 
+from app.core.logger import get_logger
 from .data_source import BaseDataSource, DataSourceType, DataSourceFactory
 
-logger = logging.getLogger("file_data_source")
+logger = get_logger(__name__)
 
 
 class FileDataSource(BaseDataSource):

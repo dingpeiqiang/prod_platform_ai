@@ -2,14 +2,15 @@
 MCP 工具注册管理器
 负责从代码注解和数据库配置中注册工具到 ToolHub
 """
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
 from app.mcp_tools import get_toolhub
 from app.models.mcp_call_log import MCPToolDefinition
 from app.mcp_tools.external_api_executor import create_external_tool_handler
 
-logger = logging.getLogger("tool_registry_manager")
 
 
 class ToolRegistryManager:

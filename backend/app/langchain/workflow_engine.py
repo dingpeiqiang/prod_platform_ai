@@ -13,10 +13,11 @@ from dataclasses import dataclass, field, asdict
 from enum import Enum
 from datetime import datetime
 import json
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 import asyncio
 
-logger = logging.getLogger("workflow_engine")
 
 
 class WorkflowStatus(str, Enum):

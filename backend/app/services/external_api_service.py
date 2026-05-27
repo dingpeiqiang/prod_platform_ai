@@ -2,9 +2,10 @@ from typing import Dict, Any, List, Optional, Callable
 import httpx
 import json
 from app.core.config_loader import config_loader
-import logging
+from app.core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
+
 
 
 class APIConfig:

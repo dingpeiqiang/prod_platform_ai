@@ -7,7 +7,9 @@ ChatServiceV2 - 通用聊天服务
 """
 import uuid
 import json
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session, joinedload
@@ -15,7 +17,6 @@ from sqlalchemy import or_, func
 
 from app.models.chat_v2 import ChatSessionV2, ChatMessageV2, ChatMessageMetadata
 
-logger = logging.getLogger("chat_service_v2")
 
 
 class ChatServiceV2:

@@ -2,7 +2,9 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import json
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from app.services.llm_service import llm_service
 from app.core.config_loader import config_loader
 from app.skills import ToolRegistry
@@ -11,7 +13,6 @@ from app.skills.field_extraction import FieldExtractionSkill
 from app.services.scene_service import SceneService
 from app.core.database import get_db
 
-logger = logging.getLogger("chat_with_tools_api")
 
 router = APIRouter(prefix="/api/v1", tags=["chat_with_tools"])
 

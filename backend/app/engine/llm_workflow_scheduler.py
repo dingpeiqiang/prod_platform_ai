@@ -11,14 +11,15 @@
 from typing import Dict, Any, List, Optional, Tuple
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 import json
 
 from app.langchain.llm_wrapper import get_langchain_llm
 from app.langchain.workflow_engine import WorkflowEngine
 from app.langchain.workflow_converter import WorkflowConverter
 
-logger = logging.getLogger("llm_workflow_scheduler")
 
 
 class WorkflowScheduler:

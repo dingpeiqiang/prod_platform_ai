@@ -1,11 +1,12 @@
 # MCP Tool Hub - 统一工具注册与调度中心
 # 管理所有 MCP 工具的注册、查询、执行
 
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from typing import Any, Callable, Dict, List, Optional
 from .tool_def import MCPTool
 
-logger = logging.getLogger("mcp_tools")
 
 # 导入框架错误处理
 from app.core.errors import ErrorCategory, ErrorLevel, ErrorCode

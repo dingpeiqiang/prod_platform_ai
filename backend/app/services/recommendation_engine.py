@@ -19,9 +19,9 @@ from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
 from collections import defaultdict
-import logging
 import time
 
+from app.core.logger import get_logger
 from sqlalchemy.orm import Session
 from app.core.config_loader import config_loader
 
@@ -34,7 +34,7 @@ from app.services.recommendations.strategies import (
     ContextAwareStrategy
 )
 
-logger = logging.getLogger("recommendation_engine")
+logger = get_logger(__name__)
 
 
 @dataclass

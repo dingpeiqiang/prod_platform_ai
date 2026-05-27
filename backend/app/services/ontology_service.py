@@ -1,11 +1,12 @@
 from typing import Dict, Any, List, Optional
-import logging
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from app.models.ontology import Ontology
 from app.core.config_loader import config_loader
 
-logger = logging.getLogger("ontology_service")
 
 
 class OntologyService:

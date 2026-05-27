@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
-import logging
 
 from app.core.database import get_db
 from app.services.admin_service import AdminService
@@ -19,8 +18,9 @@ from app.services.history_ai_service import (
     list_available_data,
     get_history_summary
 )
+from app.core.logger import get_logger, log_api
 
-logger = logging.getLogger("admin_api")
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["admin"])
 
@@ -280,8 +280,21 @@ async def create_scene(request: SceneCreateRequest, db: Session = Depends(get_db
         scene_data['prompt_code'] = scene_data.pop('promptCode')
     scene_data['parent_id'] = scene_data.pop('parentId')
     
-    result = SceneService.create_scene(scene_data, db)
-    return result
+    logger.info("[scenes/create] 创建场景开始 scene_code=%s scene_name=%s type=%s parent_id=%s", 
+                scene_data.get('scene_code'), scene_data.get('scene_name'), 
+                scene_data.get('type'), scene_data.get('parent_id'))
+    
+    try:
+        result = SceneService.create_scene(scene_data, db)
+        if result.get("success"):
+            logger.info("[scenes/create] 创建场景成功 scene_code=%s", scene_data.get('scene_code'))
+        else:
+            logger.warning("[scenes/create] 创建场景失败 scene_code=%s message=%s", 
+                          scene_data.get('scene_code'), result.get('message', '未知错误'))
+        return result
+    except Exception as e:
+        logger.exception("[scenes/create] 创建场景异常 scene_code=%s error=%s", scene_data.get('scene_code'), str(e))
+        return {"success": False, "message": f"创建场景异常: {str(e)}"}
 
 
 @router.put("/scenes/{scene_code}")

@@ -15,7 +15,7 @@
     "temperature": 0.5,
     "maxTokens": 4096,
     "maxInputTokens": 180000,
-    "fallbackToRules": false,
+    
     "bufferSize": 20,
     "flushInterval": 0.05,
     "_note": "LLM 配置已迁移至前端动态管理，此处仅保留默认参数"
