@@ -1,20 +1,14 @@
 """
 场景管理服务 - 支持三层树形结构（center / business / scene
 """
-import json
-from pathlib import Path
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from app.models.scene import Scene, SceneHistory
-from app.core.config_loader import config_loader
 from app.core.logger import get_logger, log_errors
 
 logger = get_logger(__name__)
-
-# 配置根路径
-_BASE_DIR = Path(__file__).parent.parent.parent / "config"
 
 
 class SceneService:
@@ -344,10 +338,6 @@ class SceneService:
             # 创建第一个历史版本
             cls._create_history(db, scene, "Initial version", user)
             
-            # 同时写入文件
-            cls._write_scene_to_file(scene)
-            config_loader.reload_config("scene_mappings")
-            
             logger.info("[create_scene] 创建场景成功 scene_code=%s scene_id=%d", scene_code, scene.id)
             return {"success": True, "data": scene.to_dict(), "message": "Scene created successfully"}
         except Exception as e:
@@ -422,10 +412,6 @@ class SceneService:
             db.commit()
             db.refresh(scene)
             
-            # 同时写入文件
-            cls._write_scene_to_file(scene)
-            config_loader.reload_config("scene_mappings")
-            
             logger.info(f"Updated scene: {scene_code}")
             return {"success": True, "data": scene.to_dict(), "message": "Scene updated successfully"}
         except Exception as e:
@@ -445,10 +431,6 @@ class SceneService:
             cls._delete_with_children(scene.id, db)
             
             db.commit()
-            
-            # 更新文件，移除该场景
-            cls._remove_scene_from_file(scene_code)
-            config_loader.reload_config("scene_mappings")
             
             logger.info(f"Deleted scene: {scene_code}")
             return {"success": True, "message": f"Scene {scene_code} deleted successfully"}
@@ -480,9 +462,6 @@ class SceneService:
             
             scene.is_active = not scene.is_active
             db.commit()
-            
-            cls._write_scene_to_file(scene)
-            config_loader.reload_config("scene_mappings")
             
             logger.info(f"Toggled scene {scene_code} active: {scene.is_active}")
             return {"success": True, "data": scene.to_dict(), "message": f"Scene {'activated' if scene.is_active else 'deactivated'} successfully"}
@@ -612,75 +591,6 @@ class SceneService:
             return {"success": False, "message": str(e)}
 
     @classmethod
-    def _write_scene_to_file(cls, scene: Scene):
-        """将场景配置写入文件"""
-        try:
-            scenes_dir = _BASE_DIR / "scenes"
-            scenes_dir.mkdir(parents=True, exist_ok=True)
-            file_path = scenes_dir / "scene_mapping.json"
-            
-            # 读取现有配置
-            if file_path.exists():
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-            else:
-                data = {"sceneMappings": [], "version": "4.0"}
-            
-            scene_mappings = data.get("sceneMappings", [])
-            
-            # 更新或添加场景
-            scene_data = {
-                "sceneCode": scene.scene_code,
-                "sceneName": scene.scene_name,
-                "description": scene.description,
-                "keywords": scene.keywords,
-                "priority": scene.priority,
-                "isActive": scene.is_active,
-                "promptCode": scene.prompt_code,
-                "type": scene.type,
-                "parentId": scene.parent_id,
-                "config": scene.config
-            }
-            found = False
-            for i, existing in enumerate(scene_mappings):
-                if existing.get("sceneCode") == scene.scene_code:
-                    scene_mappings[i] = scene_data
-                    found = True
-                    break
-            
-            if not found:
-                scene_mappings.append(scene_data)
-            
-            data["sceneMappings"] = scene_mappings
-            
-            with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            
-        except Exception as e:
-            logger.warning(f"Failed to write scene to file: {e}")
-
-    @classmethod
-    def _remove_scene_from_file(cls, scene_code: str):
-        """从文件中移除场景"""
-        try:
-            file_path = _BASE_DIR / "scenes" / "scene_mapping.json"
-            if not file_path.exists():
-                return
-            
-            with open(file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            scene_mappings = data.get("sceneMappings", [])
-            scene_mappings = [s for s in scene_mappings if s.get("sceneCode") != scene_code]
-            data["sceneMappings"] = scene_mappings
-            
-            with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            
-        except Exception as e:
-            logger.warning(f"Failed to remove scene from file: {e}")
-
-    @classmethod
     def _create_history(cls, db: Session, scene: Scene, change_note: str, user: Optional[str]):
         """创建历史版本记录"""
         history = SceneHistory(
@@ -756,10 +666,6 @@ class SceneService:
             
             db.commit()
             db.refresh(scene)
-
-            # 同时写入文件
-            cls._write_scene_to_file(scene)
-            config_loader.reload_config("scene_mappings")
 
             logger.info(f"Rolled back scene {scene_code} to version {version}")
             return {"success": True, "data": scene.to_dict(), "message": f"Rolled back to version {version} successfully"}
