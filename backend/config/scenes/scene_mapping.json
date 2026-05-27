@@ -24,6 +24,33 @@
         "sla_hours": 48,
         "auto_approve": false
       }
+    },
+    {
+      "sceneCode": "tariff_filing_apply_v2",
+      "sceneName": "资费备案申请V2",
+      "description": "资费备案申请",
+      "keywords": [
+        "资费备案",
+        "申请"
+      ],
+      "priority": 10,
+      "isActive": true,
+      "promptCode": "",
+      "type": "scene",
+      "parentId": 11,
+      "config": {
+        "workflows": [
+          {
+            "code": "tariff_filing_workflow",
+            "name": "资费备案工作流",
+            "config": {},
+            "isDefault": true,
+            "description": "资费备案申请完整业务流程：解析输入 → 查询套餐 → 生成表单 → 表单校验"
+          }
+        ],
+        "workflowCode": "tariff_filing_workflow",
+        "workflowConfig": {}
+      }
     }
   ],
   "version": "4.0"

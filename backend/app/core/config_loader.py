@@ -257,6 +257,9 @@ class ConfigLoader:
             self._load_recommendations()
         elif config_type == 'prompts':
             self._load_prompts()
+        elif config_type == 'scene_mappings':
+            if self._current_data_source:
+                self._config_cache['scenes'] = self._current_data_source.load_scenes()
 
 
 config_loader = ConfigLoader()

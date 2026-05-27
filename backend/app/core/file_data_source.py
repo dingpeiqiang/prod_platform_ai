@@ -70,11 +70,38 @@ class FileDataSource(BaseDataSource):
     
     def load_scenes(self) -> List[Dict[str, Any]]:
         scenes = []
-        scenes_path = self.base_path / "versions"
         
+        # 首先从 scene_mapping.json 加载（支持新创建的场景）
+        scene_mapping_path = self.base_path / "scenes" / "scene_mapping.json"
+        if scene_mapping_path.exists():
+            try:
+                with open(scene_mapping_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    scene_mappings = data.get("sceneMappings", [])
+                    for scene_data in scene_mappings:
+                        scenes.append({
+                            "sceneCode": scene_data.get("sceneCode"),
+                            "sceneName": scene_data.get("sceneName", scene_data.get("sceneCode", "")),
+                            "description": scene_data.get("description", ""),
+                            "keywords": scene_data.get("keywords", []),
+                            "priority": scene_data.get("priority", 1),
+                            "isActive": scene_data.get("isActive", True),
+                            "promptCode": scene_data.get("promptCode", ""),
+                            "type": scene_data.get("type", "scene"),
+                            "parentId": scene_data.get("parentId"),
+                            "config": scene_data.get("config", {}),
+                            "actionPrompt": scene_data.get("promptCode") or scene_data.get("sceneCode", "")
+                        })
+                logger.info("[FileDataSource] 从 scene_mapping.json 加载场景 count=%d", len(scenes))
+            except Exception as e:
+                logger.warning("[FileDataSource] 读取 scene_mapping.json 失败: %s", e)
+        
+        # 从 versions 目录加载（历史兼容）
+        scenes_path = self.base_path / "versions"
         if scenes_path.exists():
+            scene_codes_from_mapping = {s["sceneCode"] for s in scenes if s.get("sceneCode")}
             for scene_dir in scenes_path.iterdir():
-                if scene_dir.is_dir():
+                if scene_dir.is_dir() and scene_dir.name not in scene_codes_from_mapping:
                     for file in scene_dir.glob("*.json"):
                         data = self._load_json(file)
                         if data:
@@ -90,9 +117,9 @@ class FileDataSource(BaseDataSource):
                                 "promptCode": scene_data.get("promptCode", scene_code),
                                 "actionPrompt": scene_code
                             })
-        
+
         self._cache['scenes'] = scenes
-        logger.info("[FileDataSource] 从文件加载场景 count=%d", len(scenes))
+        logger.info("[FileDataSource] 从文件加载场景总数 count=%d", len(scenes))
         return scenes
     
     def load_prompts(self) -> Dict[str, str]:
