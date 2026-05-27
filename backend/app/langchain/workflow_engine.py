@@ -350,6 +350,21 @@ class WorkflowEngine:
                     
                     context.step_results[current_step_id] = result
                     
+                    # 将步骤的输出参数添加到上下文中
+                    step_output = result.get('output', result)
+                    if isinstance(step_output, dict):
+                        if step_def.output_params:
+                            # 如果配置了 output_params，只添加指定的参数
+                            for param_name in step_def.output_params:
+                                if param_name in step_output:
+                                    context.outputs[param_name] = step_output[param_name]
+                                    logger.debug(f"[WorkflowEngine] 步骤 [{current_step_id}] 输出参数 '{param_name}' 已添加到上下文")
+                        else:
+                            # 如果没有配置 output_params，自动将所有输出字段添加到上下文
+                            for key, value in step_output.items():
+                                context.outputs[key] = value
+                                logger.debug(f"[WorkflowEngine] 步骤 [{current_step_id}] 自动添加输出字段 '{key}' 到上下文")
+                    
                     log_event = {"type": "step_complete", "step": current_step_id, "name": step_def.name, "result": result}
                     context.add_log(**log_event)
                     logger.info(f"[WorkflowEngine] 步骤完成: {current_step_id} ({step_def.name}), 结果: {str(result)[:100]}")
@@ -372,6 +387,22 @@ class WorkflowEngine:
                             try:
                                 result = await self._execute_step(step_def, context)
                                 context.step_results[current_step_id] = result
+                                
+                                # 将步骤的输出参数添加到上下文中
+                                step_output = result.get('output', result)
+                                if isinstance(step_output, dict):
+                                    if step_def.output_params:
+                                        # 如果配置了 output_params，只添加指定的参数
+                                        for param_name in step_def.output_params:
+                                            if param_name in step_output:
+                                                context.outputs[param_name] = step_output[param_name]
+                                                logger.debug(f"[WorkflowEngine] 步骤 [{current_step_id}] 输出参数 '{param_name}' 已添加到上下文")
+                                    else:
+                                        # 如果没有配置 output_params，自动将所有输出字段添加到上下文
+                                        for key, value in step_output.items():
+                                            context.outputs[key] = value
+                                            logger.debug(f"[WorkflowEngine] 步骤 [{current_step_id}] 自动添加输出字段 '{key}' 到上下文")
+                                
                                 log_event = {"type": "step_retry_success", "step": current_step_id, "name": step_def.name}
                                 context.add_log(**log_event)
                                 yield log_event
@@ -487,6 +518,21 @@ class WorkflowEngine:
                         return
                     
                     context.step_results[current_step_id] = result
+                    
+                    # 将步骤的输出参数添加到上下文中
+                    step_output = result.get('output', result)
+                    if isinstance(step_output, dict):
+                        if step_def.output_params:
+                            # 如果配置了 output_params，只添加指定的参数
+                            for param_name in step_def.output_params:
+                                if param_name in step_output:
+                                    context.outputs[param_name] = step_output[param_name]
+                                    logger.debug(f"[WorkflowEngine] 步骤 [{current_step_id}] 输出参数 '{param_name}' 已添加到上下文")
+                        else:
+                            # 如果没有配置 output_params，自动将所有输出字段添加到上下文
+                            for key, value in step_output.items():
+                                context.outputs[key] = value
+                                logger.debug(f"[WorkflowEngine] 步骤 [{current_step_id}] 自动添加输出字段 '{key}' 到上下文")
                     
                     log_event = {"type": "step_complete", "step": current_step_id, "name": step_def.name, "result": result}
                     context.add_log(**log_event)
