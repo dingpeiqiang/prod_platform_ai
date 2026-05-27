@@ -25,6 +25,15 @@ logger = logging.getLogger("admin_api")
 router = APIRouter(prefix="/api/v1", tags=["admin"])
 
 
+class WorkflowConfig(BaseModel):
+    """工作流配置模型"""
+    code: str                      # 工作流编码
+    name: Optional[str] = None     # 工作流名称（用于展示）
+    description: Optional[str] = None  # 工作流描述
+    config: Optional[Dict[str, Any]] = None  # 工作流特定配置
+    isDefault: bool = False        # 是否为默认工作流
+
+
 class SceneCreateRequest(BaseModel):
     sceneCode: str
     sceneName: str
@@ -32,15 +41,13 @@ class SceneCreateRequest(BaseModel):
     keywords: List[str] = []
     priority: int = 10
     isActive: bool = True
-    intentType: Optional[str] = None
-    actionType: Optional[str] = None
     promptCode: Optional[str] = None
-    requiredTools: Optional[List[Any]] = None
-    availableTools: Optional[List[Any]] = None
-    preActionSteps: Optional[List[Any]] = None
-    postActionSteps: Optional[List[Any]] = None
     type: str = "scene"
     parentId: Optional[int] = None
+    
+    # 工作流配置（支持多个）
+    workflows: Optional[List[WorkflowConfig]] = None
+    
     config: Optional[Dict[str, Any]] = None
 
 
@@ -50,16 +57,14 @@ class SceneUpdateRequest(BaseModel):
     keywords: Optional[List[str]] = None
     priority: Optional[int] = None
     isActive: Optional[bool] = None
-    intentType: Optional[str] = None
-    actionType: Optional[str] = None
     promptCode: Optional[str] = None
-    requiredTools: Optional[List[Any]] = None
-    availableTools: Optional[List[Any]] = None
-    preActionSteps: Optional[List[Any]] = None
-    postActionSteps: Optional[List[Any]] = None
     type: Optional[str] = None
     parentId: Optional[int] = None
     changeNote: Optional[str] = None
+    
+    # 工作流配置（支持多个）
+    workflows: Optional[List[WorkflowConfig]] = None
+    
     config: Optional[Dict[str, Any]] = None
 
 

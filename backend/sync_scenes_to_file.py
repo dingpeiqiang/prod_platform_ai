@@ -37,9 +37,6 @@ def sync_scenes_to_file():
                 "keywords": scene.keywords,
                 "priority": scene.priority,
                 "isActive": scene.is_active,
-                "intentType": scene.intent_type,
-                "actionType": scene.action_type,
-                "actionPrompt": scene.action_prompt_file,
                 "type": scene.type,
                 "parentId": scene.parent_id,
                 "config": scene.config

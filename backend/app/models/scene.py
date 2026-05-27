@@ -17,13 +17,7 @@ class Scene(Base):
     is_active = Column(Boolean, default=True)
     
     # 业务字段
-    intent_type = Column(String(50))
     prompt_code = Column(String(100), index=True)  # 提示词编码
-    action_type = Column(String(50))  # 场景触发的动作类型：form, tool, message 等
-    required_tools = Column(JSON, nullable=False, default=list)
-    available_tools = Column(JSON, nullable=False, default=list)
-    pre_action_steps = Column(JSON, nullable=False, default=list)
-    post_action_steps = Column(JSON, nullable=False, default=list)
     
     # 树形结构字段
     type = Column(String(20), nullable=False, default='scene', index=True)  # center/business/scene
@@ -54,13 +48,7 @@ class Scene(Base):
             "keywords": self.keywords,
             "priority": self.priority,
             "isActive": self.is_active,
-            "intentType": self.intent_type,
             "promptCode": self.prompt_code,
-            "actionType": self.action_type,
-            "requiredTools": self.required_tools,
-            "availableTools": self.available_tools,
-            "preActionSteps": self.pre_action_steps,
-            "postActionSteps": self.post_action_steps,
             "type": self.type,
             "parentId": self.parent_id,
             "config": self.config,
@@ -73,6 +61,9 @@ class Scene(Base):
 
     def to_tree_node(self):
         """转换为树节点格式"""
+        config = self.config if isinstance(self.config, dict) else {}
+        workflows = config.get("workflows", [])
+        
         return {
             "id": self.id,
             "sceneCode": self.scene_code,
@@ -84,6 +75,8 @@ class Scene(Base):
             "isActive": self.is_active,
             "promptCode": self.prompt_code,
             "config": self.config,
+            "parentId": self.parent_id,
+            "workflows": workflows,
             "children": []
         }
 
@@ -103,13 +96,7 @@ class SceneHistory(Base):
     keywords = Column(JSON, nullable=False, default=list)
     priority = Column(Integer, default=10)
     is_active = Column(Boolean, default=True)
-    intent_type = Column(String(50))
     prompt_code = Column(String(100))  # 提示词编码快照
-    action_type = Column(String(50))
-    required_tools = Column(JSON, nullable=False, default=list)
-    available_tools = Column(JSON, nullable=False, default=list)
-    pre_action_steps = Column(JSON, nullable=False, default=list)
-    post_action_steps = Column(JSON, nullable=False, default=list)
     type = Column(String(20), nullable=False, default='scene')
     parent_id = Column(Integer, nullable=True)
     config = Column(JSON, nullable=False, default=dict)  # 配置信息快照
@@ -132,13 +119,7 @@ class SceneHistory(Base):
             "keywords": self.keywords,
             "priority": self.priority,
             "isActive": self.is_active,
-            "intentType": self.intent_type,
             "promptCode": self.prompt_code,
-            "actionType": self.action_type,
-            "requiredTools": self.required_tools,
-            "availableTools": self.available_tools,
-            "preActionSteps": self.pre_action_steps,
-            "postActionSteps": self.post_action_steps,
             "type": self.type,
             "parentId": self.parent_id,
             "config": self.config,

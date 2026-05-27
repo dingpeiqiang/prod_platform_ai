@@ -113,7 +113,174 @@
 
       <!-- 右侧：详情区 -->
       <div class="detail-section">
-        <div v-if="selectedNode" class="scene-detail">
+        <!-- 编辑表单（新增/编辑） -->
+        <div v-if="isEditing" class="edit-form-container">
+          <div class="edit-header">
+            <div class="header-title">
+              <el-icon><Edit /></el-icon>
+              <h2>{{ editingNode ? '编辑' : '新增' }} {{ typeLabel(currentType) }}</h2>
+            </div>
+            <div class="header-actions">
+              <el-button @click="cancelEdit">
+                <el-icon><ArrowLeft /></el-icon>
+                取消
+              </el-button>
+            </div>
+          </div>
+          
+          <el-form :model="formData" label-width="110px" ref="formRef" class="scene-form">
+            <el-form-item label="编码" prop="sceneCode" required>
+              <el-input v-model="formData.sceneCode" :disabled="!!editingNode" placeholder="请输入编码" @input="updateDefaultPromptCode" />
+            </el-form-item>
+            <el-form-item label="名称" prop="sceneName" required>
+              <el-input v-model="formData.sceneName" placeholder="请输入名称" />
+            </el-form-item>
+            <el-form-item label="描述">
+              <el-input v-model="formData.description" type="textarea" :rows="3" placeholder="请输入描述" />
+            </el-form-item>
+            <el-form-item label="关键词">
+              <div class="keyword-input-wrapper">
+                <el-tag
+                  v-for="(tag, index) in formData.keywords"
+                  :key="index"
+                  closable
+                  @close="removeKeyword(index)"
+                  style="margin-right: 8px"
+                >
+                  {{ tag }}
+                </el-tag>
+                <el-input
+                  v-if="keywordInputVisible"
+                  ref="keywordInputRef"
+                  v-model="keywordInput"
+                  size="small"
+                  style="width: 200px"
+                  @keyup.enter="confirmKeyword"
+                  @blur="confirmKeyword"
+                />
+                <el-button v-else size="small" icon="Plus" @click="showKeywordInput" />
+              </div>
+            </el-form-item>
+            <el-form-item label="优先级">
+              <el-slider v-model="formData.priority" :min="1" :max="100" show-stops />
+            </el-form-item>
+            <el-form-item label="状态">
+              <el-switch v-model="formData.isActive" />
+            </el-form-item>
+            <template v-if="currentType === 'scene'">
+              <el-form-item label="关联提示词">
+                <el-select v-model="formData.promptCode" placeholder="选择提示词" clearable filterable style="width: 100%">
+                  <el-option
+                    v-for="prompt in prompts"
+                    :key="prompt.code"
+                    :label="`${prompt.name} (${prompt.code})`"
+                    :value="prompt.code"
+                  />
+                </el-select>
+                <el-button v-if="formData.promptCode" link @click="openPromptEditor">编辑提示词</el-button>
+              </el-form-item>
+              
+              <!-- 工作流配置 -->
+              <el-form-item label="关联工作流">
+                <div class="workflows-section">
+                  <div class="workflows-intro">
+                    <el-icon class="intro-icon"><Pointer /></el-icon>
+                    <span class="intro-text">选择场景关联的工作流，支持多个工作流，默认工作流将优先被调用</span>
+                  </div>
+                  <div class="workflows-list">
+                    <div
+                      v-for="(workflow, index) in formData.workflows"
+                      :key="index"
+                      class="workflow-card"
+                    >
+                      <div class="workflow-card-header">
+                        <div class="workflow-select-wrapper">
+                          <el-select
+                            v-model="workflow.code"
+                            placeholder="请选择工作流"
+                            size="small"
+                            class="workflow-select"
+                            @change="handleWorkflowChange(index, $event)"
+                          >
+                            <el-option
+                              v-for="w in getAvailableWorkflows(index)"
+                              :key="w.workflowCode"
+                              :label="`${w.workflowCode} - ${w.workflowName}`"
+                              :value="w.workflowCode"
+                            />
+                          </el-select>
+                        </div>
+                        <div class="workflow-card-actions">
+                          <div class="default-badge" v-if="workflow.isDefault">
+                            <el-tag type="primary" size="small">默认</el-tag>
+                          </div>
+                          <el-button
+                            v-if="formData.workflows.length > 1"
+                            size="small"
+                            type="text"
+                            icon="Delete"
+                            @click="removeWorkflow(index)"
+                            class="remove-btn"
+                          />
+                        </div>
+                      </div>
+                      <div v-if="workflow.code" class="workflow-card-body">
+                        <div class="workflow-info-row">
+                          <span class="info-label">工作流名称：</span>
+                          <span class="info-value">{{ workflow.name }}</span>
+                        </div>
+                        <div class="workflow-info-row">
+                          <span class="info-label">描述：</span>
+                          <span class="info-value">{{ workflow.description || '暂无描述' }}</span>
+                        </div>
+                        <div class="workflow-custom-desc">
+                          <el-input
+                            v-model="workflow.description"
+                            placeholder="添加自定义描述（可选）"
+                            size="small"
+                          />
+                        </div>
+                        <div class="workflow-default-toggle">
+                          <el-switch
+                            v-model="workflow.isDefault"
+                            active-text="设为默认"
+                            inactive-text="取消默认"
+                            size="small"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="add-workflow-wrapper">
+                    <el-button
+                      size="small"
+                      type="primary"
+                      icon="Plus"
+                      @click="addWorkflow"
+                      :disabled="getAvailableWorkflows().length === 0"
+                      class="add-workflow-btn"
+                    >
+                      添加工作流
+                    </el-button>
+                    <span v-if="getAvailableWorkflows().length === 0" class="no-workflow-tip">
+                      已关联所有可用工作流
+                    </span>
+                  </div>
+                </div>
+              </el-form-item>
+            </template>
+          </el-form>
+          
+          <div class="form-footer">
+            <el-button @click="cancelEdit">取消</el-button>
+            <el-button type="primary" @click="handleSave" :loading="saving">
+              {{ editingNode ? '保存修改' : '创建' }}
+            </el-button>
+          </div>
+        </div>
+
+        <!-- 详情视图 -->
+        <div v-else-if="selectedNode" class="scene-detail">
           <div class="detail-header">
             <div class="header-title">
               <span class="scene-icon">
@@ -152,6 +319,10 @@
             </template>
             <el-descriptions :column="1" border>
               <el-descriptions-item label="编码">{{ selectedNode.sceneCode }}</el-descriptions-item>
+              <el-descriptions-item label="父级">
+                <span v-if="getParentInfo(selectedNode)">{{ getParentInfo(selectedNode) }}</span>
+                <span v-else class="text-gray">无</span>
+              </el-descriptions-item>
               <el-descriptions-item label="优先级">
                 <el-badge :value="selectedNode.priority" :type="priorityType(selectedNode.priority)" />
               </el-descriptions-item>
@@ -174,6 +345,26 @@
                 {{ kw }}
               </el-tag>
               <span v-if="!selectedNode.keywords || selectedNode.keywords.length === 0" class="empty-tip">暂无关键词</span>
+            </div>
+          </el-card>
+
+          <!-- 关联工作流 -->
+          <el-card v-if="selectedNode.workflows && selectedNode.workflows.length > 0" class="info-card">
+            <template #header>
+              <span class="card-title">关联工作流</span>
+            </template>
+            <div class="workflows-display">
+              <div
+                v-for="(workflow, index) in selectedNode.workflows"
+                :key="index"
+                class="workflow-display-item"
+              >
+                <div class="workflow-info">
+                  <span class="workflow-name">{{ workflow.name || workflow.code }}</span>
+                  <span v-if="workflow.isDefault" class="workflow-default-tag">默认</span>
+                </div>
+                <span v-if="workflow.description" class="workflow-desc">{{ workflow.description }}</span>
+              </div>
             </div>
           </el-card>
 
@@ -282,17 +473,82 @@
         </el-form-item>
         <template v-if="currentType === 'scene'">
           <el-form-item label="关联提示词">
-            <el-select v-model="formData.promptCode" placeholder="选择提示词" clearable filterable style="width: 100%">
-              <el-option
-                v-for="prompt in prompts"
-                :key="prompt.code"
-                :label="`${prompt.name} (${prompt.code})`"
-                :value="prompt.code"
-              />
-            </el-select>
-            <el-button v-if="formData.promptCode" link @click="openPromptEditor">编辑提示词</el-button>
-          </el-form-item>
-        </template>
+              <el-select v-model="formData.promptCode" placeholder="选择提示词" clearable filterable style="width: 100%">
+                <el-option
+                  v-for="prompt in prompts"
+                  :key="prompt.code"
+                  :label="`${prompt.name} (${prompt.code})`"
+                  :value="prompt.code"
+                />
+              </el-select>
+              <el-button v-if="formData.promptCode" link @click="openPromptEditor">编辑提示词</el-button>
+            </el-form-item>
+            
+            <!-- 工作流配置 -->
+            <el-form-item label="关联工作流">
+              <div class="workflows-container">
+                <div
+                  v-for="(workflow, index) in formData.workflows"
+                  :key="index"
+                  class="workflow-item"
+                >
+                  <el-row :gutter="12">
+                    <el-col :span="10">
+                      <el-select
+                        v-model="workflow.code"
+                        placeholder="请选择工作流"
+                        size="small"
+                        class="workflow-select"
+                        @change="handleWorkflowChange(index, $event)"
+                      >
+                        <el-option
+                          v-for="w in getAvailableWorkflows(index)"
+                          :key="w.workflowCode"
+                          :label="`${w.workflowCode} - ${w.workflowName}`"
+                          :value="w.workflowCode"
+                        />
+                      </el-select>
+                    </el-col>
+                    <el-col :span="8">
+                      <el-input
+                        v-model="workflow.description"
+                        placeholder="描述（可选）"
+                        size="small"
+                        :disabled="!workflow.code"
+                      />
+                    </el-col>
+                    <el-col :span="4">
+                      <div class="workflow-actions">
+                        <el-switch
+                          v-model="workflow.isDefault"
+                          active-text="默认"
+                          inactive-text=""
+                          size="small"
+                        />
+                        <el-button
+                          v-if="formData.workflows.length > 1"
+                          size="small"
+                          type="danger"
+                          icon="Delete"
+                          @click="removeWorkflow(index)"
+                        />
+                      </div>
+                    </el-col>
+                  </el-row>
+                </div>
+                <el-button
+                  size="small"
+                  type="primary"
+                  icon="Plus"
+                  @click="addWorkflow"
+                  class="add-workflow-btn"
+                  :disabled="getAvailableWorkflows().length === 0"
+                >
+                  添加工作流
+                </el-button>
+              </div>
+            </el-form-item>
+          </template>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -401,6 +657,7 @@ import { Plus, Edit, Delete, View, ArrowLeft, Pointer, Search } from '@element-p
 import { listScenesTree, createScene, updateScene, deleteScene, toggleScene, testSceneRecognition, getSceneStats } from '../services/sceneApi.js'
 import { listPrompts, getPrompt, savePrompt } from '../services/promptApi.js'
 import { listForms } from '../services/formApi.js'
+import { workflowApi } from '../services/workflowApi.js'
 
 const emit = defineEmits(['go-back'])
 
@@ -426,6 +683,7 @@ const keywordInput = ref('')
 const keywordInputRef = ref(null)
 const forms = ref([])
 const prompts = ref([])
+const workflows = ref([])
 const formRef = ref(null)
 const stats = ref(null)
 const promptEditorVisible = ref(false)
@@ -434,9 +692,15 @@ const editingPromptContent = ref('')
 const savingPrompt = ref(false)
 const currentPromptContent = ref('')
 const loadingPrompt = ref(false)
+const isEditing = ref(false)
+
+const creatingType = ref('scene')
 
 const currentType = computed(() => {
-  return editingNode.value ? editingNode.value.type : 'scene'
+  if (editingNode.value) {
+    return editingNode.value.type
+  }
+  return creatingType.value
 })
 
 const filteredTreeData = computed(() => {
@@ -476,7 +740,8 @@ const formData = reactive({
   formCode: '',
   actionPromptFile: '',
   type: 'scene',
-  parentId: null
+  parentId: null,
+  workflows: []
 })
 
 const treeProps = {
@@ -493,6 +758,26 @@ const typeLabel = (type) => {
     'scene': '场景'
   }
   return labels[type] || type
+}
+
+// 获取父级信息
+const getParentInfo = (node) => {
+  if (!node || !node.parentId) return null
+  
+  const findParent = (nodes, parentId) => {
+    for (const n of nodes) {
+      if (n.id === parentId) {
+        return `${n.sceneName || n.label} (${typeLabel(n.type)})`
+      }
+      if (n.children) {
+        const found = findParent(n.children, parentId)
+        if (found) return found
+      }
+    }
+    return null
+  }
+  
+  return findParent(treeData.value, node.parentId)
 }
 const typeColor = (type) => {
   const colors = {
@@ -540,6 +825,17 @@ const loadPrompts = async () => {
     const res = await listPrompts()
     if (res.success) {
       prompts.value = res.data || []
+    }
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+const loadWorkflows = async () => {
+  try {
+    const res = await workflowApi.getAllWorkflows()
+    if (res.success) {
+      workflows.value = res.data || []
     }
   } catch (e) {
     console.error(e)
@@ -640,6 +936,8 @@ const savePromptChanges = async () => {
 
 // 节点点击
 const handleNodeClick = async (data, node) => {
+  isEditing.value = false
+  editingNode.value = null
   selectedNode.value = data
   if (data.type === 'scene' && data.promptCode) {
     await loadPromptContent(data.promptCode)
@@ -651,6 +949,7 @@ const handleNodeClick = async (data, node) => {
 // 新增中心域
 const handleAddCenter = () => {
   editingNode.value = null
+  creatingType.value = 'center'
   Object.assign(formData, {
     sceneCode: '',
     sceneName: '',
@@ -662,14 +961,16 @@ const handleAddCenter = () => {
     type: 'center',
     parentId: null
   })
-  Promise.all([loadForms(), loadPrompts()]).then(() => {
-    dialogVisible.value = true
+  Promise.all([loadForms(), loadPrompts(), loadWorkflows()]).then(() => {
+    isEditing.value = true
+    selectedNode.value = null
   })
 }
 
 // 新增业务域
 const handleAddBusiness = (parentData) => {
   editingNode.value = null
+  creatingType.value = 'business'
   Object.assign(formData, {
     sceneCode: '',
     sceneName: '',
@@ -681,14 +982,16 @@ const handleAddBusiness = (parentData) => {
     type: 'business',
     parentId: parentData.id
   })
-  Promise.all([loadForms(), loadPrompts()]).then(() => {
-    dialogVisible.value = true
+  Promise.all([loadForms(), loadPrompts(), loadWorkflows()]).then(() => {
+    isEditing.value = true
+    selectedNode.value = null
   })
 }
 
 // 新增场景
 const handleAddScene = (parentData) => {
   editingNode.value = null
+  creatingType.value = 'scene'
   Object.assign(formData, {
     sceneCode: '',
     sceneName: '',
@@ -698,11 +1001,59 @@ const handleAddScene = (parentData) => {
     isActive: true,
     promptCode: '',
     type: 'scene',
-    parentId: parentData.id
+    parentId: parentData.id,
+    workflows: []
   })
-  Promise.all([loadForms(), loadPrompts()]).then(() => {
-    dialogVisible.value = true
+  Promise.all([loadForms(), loadPrompts(), loadWorkflows()]).then(() => {
+    isEditing.value = true
+    selectedNode.value = null
   })
+}
+
+// 取消编辑
+const cancelEdit = () => {
+  isEditing.value = false
+  editingNode.value = null
+  selectedNode.value = null
+}
+
+// 工作流管理
+const addWorkflow = () => {
+  const existingCodes = formData.workflows.map(w => w.code)
+  const availableWorkflows = workflows.value.filter(w => !existingCodes.includes(w.workflowCode))
+  
+  formData.workflows.push({
+    code: availableWorkflows.length > 0 ? availableWorkflows[0].workflowCode : '',
+    name: availableWorkflows.length > 0 ? availableWorkflows[0].workflowName : '',
+    description: availableWorkflows.length > 0 ? availableWorkflows[0].description : '',
+    config: {},
+    isDefault: formData.workflows.length === 0
+  })
+}
+
+const removeWorkflow = (index) => {
+  formData.workflows.splice(index, 1)
+  // 如果删除的是默认工作流，设置第一个为默认
+  if (formData.workflows.length > 0 && !formData.workflows.some(w => w.isDefault)) {
+    formData.workflows[0].isDefault = true
+  }
+}
+
+const getAvailableWorkflows = (excludeIndex = -1) => {
+  const existingCodes = formData.workflows
+    .filter((_, i) => i !== excludeIndex)
+    .map(w => w.code)
+  return workflows.value.filter(w => !existingCodes.includes(w.workflowCode))
+}
+
+const handleWorkflowChange = (index, workflowCode) => {
+  const workflow = workflows.value.find(w => w.workflowCode === workflowCode)
+  if (workflow && formData.workflows[index]) {
+    formData.workflows[index].name = workflow.workflowName
+    if (!formData.workflows[index].description) {
+      formData.workflows[index].description = workflow.description || ''
+    }
+  }
 }
 
 const updateDefaultPromptCode = () => {
@@ -723,10 +1074,11 @@ const handleEdit = async (data) => {
     isActive: data.isActive,
     promptCode: data.promptCode,
     type: data.type,
-    parentId: data.parentId
+    parentId: data.parentId,
+    workflows: data.workflows ? [...data.workflows] : []
   })
-  await Promise.all([loadForms(), loadPrompts()])
-  dialogVisible.value = true
+  await Promise.all([loadForms(), loadPrompts(), loadWorkflows()])
+  isEditing.value = true
 }
 
 // 删除
@@ -821,7 +1173,8 @@ const handleSave = async () => {
 
     if (result.success) {
       ElMessage.success(editingNode.value ? '更新成功' : '创建成功')
-      dialogVisible.value = false
+      isEditing.value = false
+      editingNode.value = null
       await loadData()
       await loadStats()
       if (result.data && result.data.id) {
@@ -1106,6 +1459,10 @@ onMounted(() => {
   font-size: 14px;
 }
 
+.text-gray {
+  color: #999;
+}
+
 .children-section {
   margin-top: 20px;
 }
@@ -1308,5 +1665,225 @@ onMounted(() => {
   padding: 12px;
   color: #999;
   text-align: center;
+}
+
+/* 工作流配置区域 */
+.workflows-section {
+  margin-top: 8px;
+}
+
+.workflows-intro {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #e8f4fd;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.intro-icon {
+  color: #409eff;
+  font-size: 14px;
+}
+
+.intro-text {
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.5;
+}
+
+.workflows-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.workflow-card {
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.workflow-card:hover {
+  border-color: #dcdfe6;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+
+.workflow-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: #fafafa;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.workflow-select-wrapper {
+  flex: 1;
+  max-width: 400px;
+}
+
+.workflow-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.default-badge {
+  margin-right: 8px;
+}
+
+.remove-btn {
+  color: #909399;
+  transition: color 0.2s;
+}
+
+.remove-btn:hover {
+  color: #f56c6c;
+}
+
+.workflow-card-body {
+  padding: 16px;
+}
+
+.workflow-info-row {
+  display: flex;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.info-label {
+  color: #909399;
+  min-width: 70px;
+}
+
+.info-value {
+  color: #303133;
+  flex: 1;
+}
+
+.workflow-custom-desc {
+  margin: 12px 0;
+}
+
+.workflow-default-toggle {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 12px;
+  border-top: 1px dashed #ebeef5;
+}
+
+.add-workflow-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.add-workflow-btn {
+  width: 160px;
+}
+
+.no-workflow-tip {
+  font-size: 13px;
+  color: #909399;
+}
+
+/* 工作流选择器样式 */
+.workflow-select {
+  width: 100%;
+}
+
+/* 工作流显示样式 */
+.workflows-display {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.workflow-display-item {
+  padding: 12px;
+  background: #f9fafc;
+  border-radius: 8px;
+}
+
+.workflow-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.workflow-name {
+  font-weight: 500;
+  color: #303133;
+}
+
+.workflow-default-tag {
+  font-size: 12px;
+  color: #fff;
+  background: #409eff;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.workflow-desc {
+  font-size: 13px;
+  color: #909399;
+}
+
+/* 编辑表单样式 */
+.edit-form-container {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  padding: 20px;
+}
+
+.edit-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #eee;
+}
+
+.edit-header .header-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.edit-header .header-title h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.scene-form {
+  max-height: calc(100vh - 280px);
+  overflow-y: auto;
+  padding-right: 10px;
+}
+
+.scene-form :deep(.el-form-item) {
+  margin-bottom: 16px;
+}
+
+.form-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #eee;
+}
+
+.form-footer .el-button {
+  min-width: 100px;
 }
 </style>

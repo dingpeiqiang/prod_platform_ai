@@ -1,0 +1,69 @@
+{
+  "id": "tariff_filing_workflow",
+  "name": "资费备案工作流",
+  "description": "资费备案申请完整业务流程：解析输入→查询套餐→生成表单→校验提交",
+  "version": "1.0",
+  "start_step": "parse_input",
+  "steps": {
+    "parse_input": {
+      "id": "parse_input",
+      "name": "解析用户输入",
+      "type": "action",
+      "action": "tariff.parse_input",
+      "action_params": {},
+      "next_step": "check_need_ask"
+    },
+    "check_need_ask": {
+      "id": "check_need_ask",
+      "name": "检查是否需要询问用户",
+      "type": "conditional",
+      "condition": "step_results.get('parse_input', {}).get('action') == 'ask_user'",
+      "next_steps": {
+        "True": "handle_missing_code",
+        "False": "query_tariff"
+      }
+    },
+    "handle_missing_code": {
+      "id": "handle_missing_code",
+      "name": "处理缺失套餐编码",
+      "type": "action",
+      "action": "tariff.handle_missing_code",
+      "action_params": {},
+      "next_step": "query_tariff"
+    },
+    "query_tariff": {
+      "id": "query_tariff",
+      "name": "查询套餐信息",
+      "type": "action",
+      "action": "tariff.query_tariff",
+      "action_params": {},
+      "next_step": "generate_form"
+    },
+    "generate_form": {
+      "id": "generate_form",
+      "name": "生成表单数据",
+      "type": "action",
+      "action": "tariff.generate_form",
+      "action_params": {},
+      "next_step": "validate_form"
+    },
+    "validate_form": {
+      "id": "validate_form",
+      "name": "表单校验",
+      "type": "action",
+      "action": "tariff.validate_form",
+      "action_params": {},
+      "next_step": "merge_results"
+    },
+    "merge_results": {
+      "id": "merge_results",
+      "name": "合并结果",
+      "type": "action",
+      "action": "tariff.merge_results",
+      "action_params": {}
+    }
+  },
+  "variables": {
+    "formCode": "tariff_filing_publicity"
+  }
+}

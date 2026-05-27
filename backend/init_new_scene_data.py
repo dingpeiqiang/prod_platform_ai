@@ -37,7 +37,6 @@ def init_new_scene_data():
             keywords=["产商品", "产品", "商品", "中心"],
             priority=10,
             is_active=True,
-            intent_type="center",
             type="center",
             parent_id=None,
             config={
@@ -61,7 +60,6 @@ def init_new_scene_data():
             keywords=["资费", "备案", "价格"],
             priority=9,
             is_active=True,
-            intent_type="business",
             type="business",
             parent_id=center.id,
             config={
@@ -86,8 +84,6 @@ def init_new_scene_data():
                 "keywords": ["资费备案", "申请", "新资费"],
                 "priority": 8,
                 "is_active": True,
-                "intent_type": "tariff_filing",
-                "form_code": "tariff_filing_publicity",
                 "type": "scene",
                 "parent_id": business.id,
                 "config": {
@@ -103,8 +99,6 @@ def init_new_scene_data():
                 "keywords": ["资费变更", "备案变更", "修改资费"],
                 "priority": 7,
                 "is_active": True,
-                "intent_type": "tariff_filing",
-                "form_code": "tariff_filing_publicity",
                 "type": "scene",
                 "parent_id": business.id,
                 "config": {
@@ -120,8 +114,6 @@ def init_new_scene_data():
                 "keywords": ["资费查询", "备案查询", "查看"],
                 "priority": 6,
                 "is_active": True,
-                "intent_type": "query",
-                "form_code": None,
                 "type": "scene",
                 "parent_id": business.id,
                 "config": {
@@ -139,8 +131,6 @@ def init_new_scene_data():
                 keywords=scene_data["keywords"],
                 priority=scene_data["priority"],
                 is_active=scene_data["is_active"],
-                intent_type=scene_data["intent_type"],
-                form_code=scene_data["form_code"],
                 type=scene_data["type"],
                 parent_id=scene_data["parent_id"],
                 config=scene_data["config"],

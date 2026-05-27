@@ -123,24 +123,39 @@ class SceneService:
             scene_data = scene.to_dict()
             prompt_code = scene.prompt_code
             
-            if not prompt_code:
-                logger.warning(f"[get_scene_prompt] 场景 {scene_code} 未配置提示词编码")
-                return {
-                    "success": True,
-                    "scene": scene_data,
-                    "prompt_code": None,
-                    "prompt_content": None,
-                    "message": "场景未配置提示词编码"
-                }
+            # 【提示词叠加机制】
+            # 最终提示词 = 自动生成部分（工具/工作流） + 用户配置部分（场景提示词）
             
-            logger.debug(f"[get_scene_prompt] 使用提示词编码: {prompt_code}")
+            # 1. 获取用户配置的场景提示词
+            user_prompt_content = None
+            if prompt_code:
+                logger.debug(f"[get_scene_prompt] 使用提示词编码: {prompt_code}")
+                user_prompt_content = cls._get_prompt_from_db(prompt_code, db)
+                
+                if user_prompt_content:
+                    logger.info(f"[get_scene_prompt] 成功获取用户配置提示词，长度={len(user_prompt_content)}")
+                else:
+                    logger.warning(f"[get_scene_prompt] 未找到用户配置提示词内容 prompt_code={prompt_code}")
             
-            prompt_content = cls._get_prompt_from_db(prompt_code, db)
+            # 2. 自动生成提示词（基于关联的工具和工作流）
+            auto_prompt_content = cls._generate_auto_prompt(scene_data)
             
-            if prompt_content:
-                logger.info(f"[get_scene_prompt] 成功获取提示词，长度={len(prompt_content)}")
-            else:
-                logger.warning(f"[get_scene_prompt] 未找到提示词内容 prompt_code={prompt_code}")
+            # 3. 叠加组合：自动生成部分 + 用户配置部分
+            prompt_content = ""
+            if auto_prompt_content:
+                prompt_content = auto_prompt_content
+                logger.info(f"[get_scene_prompt] 自动生成提示词长度: {len(auto_prompt_content)}")
+            
+            if user_prompt_content:
+                if prompt_content:
+                    prompt_content = f"{prompt_content}\n\n{user_prompt_content}"
+                else:
+                    prompt_content = user_prompt_content
+                logger.info(f"[get_scene_prompt] 叠加用户配置提示词后长度: {len(prompt_content)}")
+            
+            # 如果没有任何提示词内容
+            if not prompt_content:
+                logger.warning(f"[get_scene_prompt] 场景 {scene_code} 未配置提示词且无关联工具/工作流")
             
             return {
                 "success": True,
@@ -182,6 +197,95 @@ class SceneService:
         except Exception as e:
             logger.exception(f"[_get_prompt_from_db] 查询失败 prompt_code={prompt_code}: {e}")
             return None
+    
+    @classmethod
+    def _build_workflow_prompt(cls, workflow_code: str) -> str:
+        """构建工作流调用提示词
+        
+        当场景关联了工作流时，自动拼接此提示词，指导 LLM 调用工作流
+        
+        Args:
+            workflow_code: 工作流编码
+            
+        Returns:
+            工作流调用提示词
+        """
+        return f"""## 工作流调用指令
+
+识别到当前场景需要执行工作流，请直接输出调用工作流的 JSON：
+
+```json
+{{
+  "action": "call_tool",
+  "tool_name": "execute_workflow",
+  "tool_args": {{
+    "workflow_code": "{workflow_code}",
+    "inputs": {{
+      "user_input": "<<用户原始输入>>"
+    }}
+  }},
+  "message": "正在执行工作流..."
+}}
+```
+
+**替换说明：**
+- 将 `<<用户原始输入>>` 替换为实际的用户输入内容
+
+**注意：**
+- 不要添加任何解释性文字
+- 直接输出 JSON 格式
+- 确保 JSON 格式正确"""
+    
+    @classmethod
+    def _generate_auto_prompt(cls, scene_data: Dict[str, Any]) -> str:
+        """根据场景关联的工作流自动生成提示词
+        
+        自动生成逻辑：
+        1. 如果关联了多个工作流 → 生成工作流选择指令
+        
+        Args:
+            scene_data: 场景数据
+            
+        Returns:
+            自动生成的提示词内容，如果没有关联工作流则返回空字符串
+        """
+        prompt_parts = []
+        scene_name = scene_data.get("sceneName", "")
+        config = scene_data.get("config", {})
+        workflows = config.get("workflows", [])
+        
+        # 如果没有关联任何工作流，返回空
+        if not (isinstance(workflows, list) and len(workflows) > 0):
+            return ""
+        
+        # 场景描述
+        if scene_name:
+            prompt_parts.append(f"你是专业的{scene_name}场景助手。")
+            prompt_parts.append(f"场景名称：{scene_name}")
+        
+        # 工作流调用部分（支持多个）
+        if isinstance(workflows, list) and len(workflows) > 0:
+            prompt_parts.append("\n## 可用工作流")
+            prompt_parts.append("当前场景可用以下工作流：")
+            
+            for wf in workflows:
+                wf_code = wf.get("code", "")
+                wf_name = wf.get("name", wf_code)
+                wf_desc = wf.get("description", "")
+                is_default = wf.get("isDefault", False)
+                
+                default_mark = " (默认)" if is_default else ""
+                prompt_parts.append(f"- {wf_code}{default_mark}: {wf_name}")
+                if wf_desc:
+                    prompt_parts.append(f"  - {wf_desc}")
+            
+            # 使用默认工作流
+            default_workflow = next((w for w in workflows if w.get("isDefault")), workflows[0])
+            default_code = default_workflow.get("code", "")
+            workflow_prompt = cls._build_workflow_prompt(default_code)
+            prompt_parts.append(workflow_prompt)
+        
+        return "\n".join(prompt_parts)
 
     @classmethod
     def create_scene(cls, scene_data: Dict[str, Any], db: Session, user: Optional[str] = None) -> Dict[str, Any]:
@@ -195,6 +299,18 @@ class SceneService:
             if existing:
                 return {"success": False, "message": f"Scene {scene_code} already exists"}
 
+            # 处理工作流配置（支持多个）
+            config = scene_data.get("config", {}).copy()
+            workflows = scene_data.get("workflows")
+            
+            if workflows and isinstance(workflows, list) and len(workflows) > 0:
+                config["workflows"] = workflows
+                
+                # 设置默认工作流
+                default_workflow = next((w for w in workflows if w.get("isDefault")), workflows[0])
+                config["workflowCode"] = default_workflow.get("code")
+                config["workflowConfig"] = default_workflow.get("config", {})
+
             scene = Scene(
                 scene_code=scene_code,
                 scene_name=scene_data.get("sceneName", scene_code),
@@ -202,16 +318,10 @@ class SceneService:
                 keywords=scene_data.get("keywords", []),
                 priority=scene_data.get("priority", 10),
                 is_active=scene_data.get("isActive", True),
-                intent_type=scene_data.get("intentType"),
                 prompt_code=scene_data.get("promptCode"),
-                action_type=scene_data.get("actionType"),
-                required_tools=scene_data.get("requiredTools", []),
-                available_tools=scene_data.get("availableTools", []),
-                pre_action_steps=scene_data.get("preActionSteps", []),
-                post_action_steps=scene_data.get("postActionSteps", []),
                 type=scene_data.get("type", "scene"),
                 parent_id=scene_data.get("parentId"),
-                config=scene_data.get("config", {}),
+                config=config,
                 version=1,
                 created_by=user
             )
@@ -247,19 +357,35 @@ class SceneService:
             # 检查是否有内容变更
             has_changes = False
             
+            # 处理工作流配置（支持多个）
+            workflows = scene_data.pop("workflows", None)
+            
+            if workflows is not None:
+                config = scene.config.copy() if scene.config else {}
+                
+                if isinstance(workflows, list) and len(workflows) > 0:
+                    config["workflows"] = workflows
+                    
+                    # 设置默认工作流
+                    default_workflow = next((w for w in workflows if w.get("isDefault")), workflows[0])
+                    config["workflowCode"] = default_workflow.get("code")
+                    config["workflowConfig"] = default_workflow.get("config", {})
+                else:
+                    # 清空工作流配置
+                    config.pop("workflows", None)
+                    config.pop("workflowCode", None)
+                    config.pop("workflowConfig", None)
+                
+                scene.config = config
+                has_changes = True
+            
             # 字段映射表
             field_mapping = {
                 "sceneName": ("scene_name", str),
                 "description": ("description", str),
                 "keywords": ("keywords", list),
                 "priority": ("priority", int),
-                "intentType": ("intent_type", str),
                 "promptCode": ("prompt_code", str),
-                "actionType": ("action_type", str),
-                "requiredTools": ("required_tools", list),
-                "availableTools": ("available_tools", list),
-                "preActionSteps": ("pre_action_steps", list),
-                "postActionSteps": ("post_action_steps", list),
                 "type": ("type", str),
                 "parentId": ("parent_id", int),
                 "config": ("config", dict),
@@ -274,6 +400,7 @@ class SceneService:
                         has_changes = True
                 elif key == "isActive":
                     scene.is_active = value
+                    has_changes = True
             
             if has_changes:
                 scene.version = scene.version + 1
@@ -497,9 +624,7 @@ class SceneService:
                 "keywords": scene.keywords,
                 "priority": scene.priority,
                 "isActive": scene.is_active,
-                "intentType": scene.intent_type,
                 "promptCode": scene.prompt_code,
-                "actionType": scene.action_type,
                 "type": scene.type,
                 "parentId": scene.parent_id,
                 "config": scene.config
@@ -555,13 +680,7 @@ class SceneService:
             keywords=scene.keywords,
             priority=scene.priority,
             is_active=scene.is_active,
-            intent_type=scene.intent_type,
             prompt_code=scene.prompt_code,
-            action_type=scene.action_type,
-            required_tools=scene.required_tools,
-            available_tools=scene.available_tools,
-            pre_action_steps=scene.pre_action_steps,
-            post_action_steps=scene.post_action_steps,
             type=scene.type,
             parent_id=scene.parent_id,
             config=scene.config,
@@ -613,13 +732,7 @@ class SceneService:
             scene.keywords = target_history.keywords
             scene.priority = target_history.priority
             scene.is_active = target_history.is_active
-            scene.intent_type = target_history.intent_type
             scene.prompt_code = target_history.prompt_code
-            scene.action_type = target_history.action_type
-            scene.required_tools = target_history.required_tools
-            scene.available_tools = target_history.available_tools
-            scene.pre_action_steps = target_history.pre_action_steps
-            scene.post_action_steps = target_history.post_action_steps
             scene.type = target_history.type
             scene.parent_id = target_history.parent_id
             scene.config = target_history.config
