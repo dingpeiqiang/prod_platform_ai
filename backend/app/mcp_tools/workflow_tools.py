@@ -26,7 +26,7 @@ async def execute_workflow(workflow_code: str, inputs: Dict[str, Any] = None) ->
         执行结果，包含 execution_id、status、outputs 等信息
     """
     from ..services.workflow_service import WorkflowService
-    from ..langchain.workflow_engine import workflow_engine
+    from ..langchain.workflow_init import workflow_engine
     from ..langchain.workflow_converter import WorkflowConverter
     from app.core.database import SessionLocal
     

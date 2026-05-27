@@ -13,7 +13,7 @@ from typing import Optional
 from app.core.database import get_db
 from app.services.workflow_service import WorkflowService
 from app.services.workflow_generator import get_workflow_generator
-from app.langchain.workflow_engine import workflow_engine
+from app.langchain.workflow_init import workflow_engine
 from app.langchain.workflow_converter import WorkflowConverter
 from pydantic import BaseModel
 from typing import List, Dict, Any
@@ -1058,7 +1058,7 @@ async def resume_workflow(request: WorkflowResumeRequest):
     2. 用户提交后调用此接口恢复执行
     """
     try:
-        from app.langchain.workflow_engine import workflow_engine
+        from app.langchain.workflow_init import workflow_engine
         
         logger.info(f"[resume_workflow] 收到表单提交，workflow_id={request.workflow_id}, form_code={request.form_code}")
         

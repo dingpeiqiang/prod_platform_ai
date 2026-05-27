@@ -275,9 +275,15 @@ class WorkflowConverter:
         
         if 'variableName' in node_data:
             params['variable_name'] = node_data['variableName']
+        # 兼容前端使用的 varName
+        elif 'varName' in node_data:
+            params['variable_name'] = node_data['varName']
         
         if 'variableValue' in node_data:
             params['variable_value'] = node_data['variableValue']
+        # 兼容前端使用的 varValue
+        elif 'varValue' in node_data:
+            params['variable_value'] = node_data['varValue']
         
         if 'outputVar' in node_data:
             params['output_var'] = node_data['outputVar']

@@ -17,7 +17,7 @@ logger = get_logger(__name__)
 import json
 
 from app.langchain.llm_wrapper import get_langchain_llm
-from app.langchain.workflow_engine import workflow_engine
+from app.langchain.workflow_init import workflow_engine
 from app.langchain.workflow_converter import WorkflowConverter
 
 

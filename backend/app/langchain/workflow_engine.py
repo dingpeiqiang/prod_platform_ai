@@ -209,14 +209,8 @@ class WorkflowEngine:
     """
     
     def __init__(self):
-        self._action_registry = {}
         self._workflow_registry = {}
         self._context_storage = {}
-    
-    def register_action(self, action_name: str, handler: Callable):
-        """注册动作处理器"""
-        self._action_registry[action_name] = handler
-        logger.info(f"[WorkflowEngine] 注册动作: {action_name}")
     
     def register_workflow(self, definition: WorkflowDefinition):
         """注册工作流定义"""
@@ -534,23 +528,65 @@ class WorkflowEngine:
             timestamp = log_entry.get("timestamp", "")
             step = log_entry.get("step", "")
             name = log_entry.get("name", "")
+            step_type = log_entry.get("type", "")
             
             if log_type == "workflow_start":
                 lines.append(f"  🚀 [{timestamp}] 工作流开始: {log_entry.get('definition_id', '')}")
             elif log_type == "workflow_complete":
+                outputs = log_entry.get("outputs", {})
                 lines.append(f"  ✅ [{timestamp}] 工作流完成")
+                if outputs:
+                    lines.append(f"         └── 输出结果: {json.dumps(outputs, ensure_ascii=False)[:100]}")
             elif log_type == "workflow_failed":
                 lines.append(f"  ❌ [{timestamp}] 工作流失败: {log_entry.get('error', '')}")
             elif log_type == "workflow_waiting":
-                lines.append(f"  ⏳ [{timestamp}] 等待用户输入: {step}")
+                input_data = log_entry.get("input", {})
+                processing = log_entry.get("processing", "")
+                output_data = log_entry.get("output", {})
+                
+                lines.append(f"  ⏳ [{timestamp}] 等待用户输入: {step} ({name})")
+                if input_data:
+                    lines.append(f"         ├── 📥 输入: {json.dumps(input_data, ensure_ascii=False)[:80]}")
+                if processing:
+                    lines.append(f"         ├── ⚙️ 处理逻辑: {processing}")
+                if output_data:
+                    lines.append(f"         └── 📤 输出: {json.dumps(output_data, ensure_ascii=False)[:80]}")
             elif log_type == "step_start":
-                lines.append(f"    ▶ [{timestamp}] 开始执行: {step} ({name})")
+                input_data = log_entry.get("input", {})
+                lines.append(f"    ▶ [{timestamp}] 开始执行: {step} ({name}) [{step_type}]")
+                if input_data:
+                    input_str = json.dumps(input_data, ensure_ascii=False)
+                    input_str = input_str[:80] + "..." if len(input_str) > 80 else input_str
+                    lines.append(f"         └── 📥 输入: {input_str}")
             elif log_type == "step_complete":
                 result = log_entry.get("result", {})
-                result_str = str(result)[:50] + "..." if len(str(result)) > 50 else str(result)
-                lines.append(f"    ✅ [{timestamp}] 执行完成: {step} ({name}) - 结果: {result_str}")
+                input_data = log_entry.get("input", {})
+                processing = log_entry.get("processing", "")
+                output_data = log_entry.get("output", {})
+                
+                lines.append(f"    ✅ [{timestamp}] 执行完成: {step} ({name}) [{step_type}]")
+                
+                if input_data:
+                    input_str = json.dumps(input_data, ensure_ascii=False)
+                    input_str = input_str[:80] + "..." if len(input_str) > 80 else input_str
+                    lines.append(f"         ├── 📥 输入: {input_str}")
+                
+                if processing:
+                    lines.append(f"         ├── ⚙️ 处理逻辑: {processing}")
+                
+                if output_data:
+                    output_str = json.dumps(output_data, ensure_ascii=False)
+                    output_str = output_str[:80] + "..." if len(output_str) > 80 else output_str
+                    lines.append(f"         └── 📤 输出: {output_str}")
             elif log_type == "step_failed":
-                lines.append(f"    ❌ [{timestamp}] 执行失败: {step} ({name}) - 错误: {log_entry.get('error', '')}")
+                input_data = log_entry.get("input", {})
+                error = log_entry.get("error", "")
+                
+                lines.append(f"    ❌ [{timestamp}] 执行失败: {step} ({name})")
+                if input_data:
+                    input_str = json.dumps(input_data, ensure_ascii=False)[:80]
+                    lines.append(f"         ├── 📥 输入: {input_str}")
+                lines.append(f"         └── ❌ 错误: {error}")
             elif log_type == "step_skipped":
                 lines.append(f"    ⏭️ [{timestamp}] 跳过步骤: {step} ({name})")
             elif log_type == "step_retry_success":
@@ -581,90 +617,329 @@ class WorkflowEngine:
     
     async def _execute_start(self, step_def: StepDefinition, context: ExecutionContext) -> Any:
         """执行开始步骤"""
+        # 构建输入信息
+        input_context = {
+            "initial_inputs": context.inputs,
+            "defined_params": step_def.input_params,
+            "workflow_variables": context.definition.variables
+        }
+        
+        # 记录输入日志
+        logger.info(f"[WorkflowEngine] 开始步骤 [{step_def.id}] 输入信息:")
+        logger.info(f"  ├── 初始输入: {json.dumps(context.inputs, ensure_ascii=False)}")
+        logger.info(f"  ├── 定义参数: {json.dumps(step_def.input_params, ensure_ascii=False)}")
+        logger.info(f"  └── 工作流变量: {json.dumps(context.definition.variables, ensure_ascii=False)}")
+        
+        # 构建处理逻辑描述
+        processing = f"初始化工作流，设置输入参数 {list(step_def.input_params.keys())} 和工作流变量 {list(context.definition.variables.keys())}"
+        
+        # 记录处理日志
+        logger.info(f"[WorkflowEngine] 开始步骤 [{step_def.id}] 处理逻辑:")
+        logger.info(f"  └── {processing}")
+        
         # 初始化输入参数到上下文中
         if step_def.input_params:
             for param_name, param_value in step_def.input_params.items():
                 if param_name not in context.outputs:
                     context.outputs[param_name] = param_value
-        return {"status": "started", "inputs": context.inputs}
+        
+        # 记录输出日志
+        logger.info(f"[WorkflowEngine] 开始步骤 [{step_def.id}] 输出信息:")
+        logger.info(f"  └── 初始化后上下文: {json.dumps(context.outputs, ensure_ascii=False)[:200]}")
+        
+        return {
+            "status": "started",
+            "inputs": context.inputs,
+            "outputs": context.outputs,
+            "input": input_context,
+            "processing": processing,
+            "output": context.outputs
+        }
     
     async def _execute_end(self, step_def: StepDefinition, context: ExecutionContext) -> Any:
         """执行结束步骤"""
+        # 构建输入信息
+        input_context = {
+            "requested_outputs": step_def.output_params,
+            "available_context": context.outputs
+        }
+        
+        # 记录输入日志
+        logger.info(f"[WorkflowEngine] 结束步骤 [{step_def.id}] 输入信息:")
+        logger.info(f"  ├── 请求输出参数: {step_def.output_params}")
+        logger.info(f"  └── 当前上下文变量数: {len(context.outputs)}")
+        
+        # 构建处理逻辑描述
+        processing = f"收集输出参数 {step_def.output_params}，从上下文中提取并组装最终输出"
+        
+        # 记录处理日志
+        logger.info(f"[WorkflowEngine] 结束步骤 [{step_def.id}] 处理逻辑:")
+        logger.info(f"  └── {processing}")
+        
         # 收集输出参数
         outputs = {}
         if step_def.output_params:
             for param_name in step_def.output_params:
                 if param_name in context.outputs:
                     outputs[param_name] = context.outputs[param_name]
+        
         context.status = WorkflowStatus.COMPLETED
-        return {"status": "completed", "outputs": outputs}
+        
+        # 记录输出日志
+        logger.info(f"[WorkflowEngine] 结束步骤 [{step_def.id}] 输出信息:")
+        logger.info(f"  └── 最终输出: {json.dumps(outputs, ensure_ascii=False)}")
+        
+        return {
+            "status": "completed",
+            "outputs": outputs,
+            "input": input_context,
+            "processing": processing,
+            "output": outputs
+        }
     
     async def _execute_action(self, step_def: StepDefinition, context: ExecutionContext) -> Any:
-        """执行动作步骤"""
+        """执行动作步骤 - 使用新节点架构"""
         if not step_def.action:
             raise ValueError(f"步骤 {step_def.id} 未指定动作")
         
-        if step_def.action not in self._action_registry:
-            raise ValueError(f"动作未注册: {step_def.action}")
+        from app.langchain.workflow_nodes import get_node
         
+        node_class = get_node(step_def.action)
+        if not node_class:
+            raise ValueError(f"节点未注册: {step_def.action}")
+        
+        # 记录原始参数和解析后的参数
+        original_params = step_def.action_params.copy()
         params = self._resolve_params(step_def.action_params, context)
         
-        handler = self._action_registry[step_def.action]
+        # 记录详细的输入日志
+        logger.info(f"[WorkflowEngine] 步骤 [{step_def.id}] 输入信息:")
+        logger.info(f"  ├── 动作名称: {step_def.action}")
+        logger.info(f"  ├── 原始参数: {json.dumps(original_params, ensure_ascii=False)}")
+        logger.info(f"  └── 解析后参数: {json.dumps(params, ensure_ascii=False)}")
         
-        if asyncio.iscoroutinefunction(handler):
-            return await handler(context, **params)
-        else:
-            return handler(context, **params)
+        # 创建节点实例并执行
+        node = node_class()
+        result = await node.execute(context, **params)
+        
+        # 记录详细的输出日志
+        logger.info(f"[WorkflowEngine] 步骤 [{step_def.id}] 输出信息:")
+        logger.info(f"  ├── 处理逻辑: {result.get('processing', '')}")
+        logger.info(f"  └── 执行结果: {json.dumps(result, ensure_ascii=False, default=str)[:200]}")
+        
+        return result
     
     async def _execute_conditional(self, step_def: StepDefinition, context: ExecutionContext) -> Any:
         """执行条件分支步骤"""
         if not step_def.condition:
             raise ValueError(f"条件步骤 {step_def.id} 未指定条件")
         
-        result = self._eval_expression(step_def.condition, context)
-        return {"condition_result": result}
+        # 构建输入信息
+        condition_expr = step_def.condition
+        input_context = {
+            "condition_expression": condition_expr,
+            "available_variables": {k: v for k, v in {**context.inputs, **context.outputs}.items() if k in condition_expr}
+        }
+        
+        # 记录输入日志
+        logger.info(f"[WorkflowEngine] 条件分支 [{step_def.id}] 输入信息:")
+        logger.info(f"  ├── 条件表达式: {condition_expr}")
+        logger.info(f"  └── 相关变量: {json.dumps(input_context['available_variables'], ensure_ascii=False)}")
+        
+        # 执行条件判断
+        result = self._eval_expression(condition_expr, context)
+        
+        # 构建详细的条件分支日志信息
+        branch_info = []
+        
+        # 解析 next_steps 获取分支信息
+        if step_def.next_steps:
+            for branch_value, next_step_id in step_def.next_steps.items():
+                branch_label = ""
+                if branch_value == "true":
+                    branch_label = "分支 1: 如果"
+                elif branch_value == "false":
+                    branch_label = "分支 2: 否则"
+                else:
+                    branch_label = f"分支: {branch_value}"
+                
+                branch_info.append({
+                    "branch_value": branch_value,
+                    "branch_label": branch_label,
+                    "next_step": next_step_id,
+                    "matched": str(result) == branch_value
+                })
+        
+        # 构建处理逻辑描述
+        processing = f"评估条件表达式 '{condition_expr}'，变量上下文包含 {list(input_context['available_variables'].keys())}"
+        
+        # 记录处理日志
+        logger.info(f"[WorkflowEngine] 条件分支 [{step_def.id}] 处理逻辑:")
+        logger.info(f"  └── {processing}")
+        
+        # 记录详细输出日志
+        logger.info(f"[WorkflowEngine] 条件分支 [{step_def.id}] 输出信息:")
+        logger.info(f"  ├── 执行结果: {result}")
+        logger.info(f"  └── 分支路由:")
+        for branch in branch_info:
+            match_mark = "✓" if branch["matched"] else "✗"
+            logger.info(f"      {match_mark} {branch['branch_label']} -> {branch['next_step']}")
+        
+        return {
+            "condition_result": result,
+            "condition_expression": condition_expr,
+            "branches": branch_info,
+            "matched_branch": str(result) if result is not None else None,
+            "input": input_context,
+            "processing": processing,
+            "output": {"result": result, "matched_branch": str(result) if result is not None else None}
+        }
     
     async def _execute_loop(self, step_def: StepDefinition, context: ExecutionContext) -> Any:
         """执行循环步骤"""
+        # 构建输入信息
+        input_context = {
+            "loop_count": step_def.loop_count,
+            "loop_condition": step_def.loop_condition,
+            "loop_step": step_def.next_step,
+            "initial_context": {k: v for k, v in context.outputs.items()}
+        }
+        
+        # 记录输入日志
+        logger.info(f"[WorkflowEngine] 循环步骤 [{step_def.id}] 输入信息:")
+        logger.info(f"  ├── 循环次数: {step_def.loop_count}")
+        logger.info(f"  ├── 循环条件: {step_def.loop_condition or '无'}")
+        logger.info(f"  └── 循环体步骤: {step_def.next_step}")
+        
         results = []
         count = step_def.loop_count
+        
+        # 构建处理逻辑描述
+        processing = f"执行循环 {count} 次，循环体为步骤 '{step_def.next_step}'"
+        if step_def.loop_condition:
+            processing += f"，循环条件为 '{step_def.loop_condition}'"
+        
+        # 记录处理日志
+        logger.info(f"[WorkflowEngine] 循环步骤 [{step_def.id}] 处理逻辑:")
+        logger.info(f"  └── {processing}")
         
         for i in range(count):
             context.outputs["loop_index"] = i
             context.outputs["loop_count"] = count
             
-            if step_def.loop_condition and not self._eval_expression(step_def.loop_condition, context):
-                break
+            logger.info(f"[WorkflowEngine] 循环步骤 [{step_def.id}] 第 {i+1}/{count} 次迭代")
+            
+            if step_def.loop_condition:
+                condition_result = self._eval_expression(step_def.loop_condition, context)
+                logger.info(f"[WorkflowEngine] 循环步骤 [{step_def.id}] 迭代 {i+1} 条件判断: {step_def.loop_condition} = {condition_result}")
+                if not condition_result:
+                    logger.info(f"[WorkflowEngine] 循环步骤 [{step_def.id}] 条件不满足，提前退出循环")
+                    break
             
             if step_def.next_step and step_def.next_step in context.definition.steps:
                 sub_step = context.definition.steps[step_def.next_step]
                 result = await self._execute_step(sub_step, context)
                 results.append(result)
+                logger.info(f"[WorkflowEngine] 循环步骤 [{step_def.id}] 迭代 {i+1} 完成，结果: {str(result)[:100]}")
         
-        return {"loop_results": results}
+        # 记录输出日志
+        logger.info(f"[WorkflowEngine] 循环步骤 [{step_def.id}] 输出信息:")
+        logger.info(f"  ├── 实际迭代次数: {len(results)}")
+        logger.info(f"  └── 迭代结果数量: {len(results)}")
+        
+        return {
+            "loop_results": results,
+            "actual_iterations": len(results),
+            "input": input_context,
+            "processing": processing,
+            "output": {"results": results, "actual_iterations": len(results)}
+        }
     
     async def _execute_parallel(self, step_def: StepDefinition, context: ExecutionContext) -> Any:
         """执行并行步骤"""
-        tasks = []
+        # 构建输入信息
+        input_context = {
+            "parallel_steps": step_def.parallel_steps,
+            "step_count": len(step_def.parallel_steps),
+            "initial_context": {k: v for k, v in context.outputs.items()}
+        }
         
+        # 记录输入日志
+        logger.info(f"[WorkflowEngine] 并行步骤 [{step_def.id}] 输入信息:")
+        logger.info(f"  ├── 并行步骤列表: {step_def.parallel_steps}")
+        logger.info(f"  └── 步骤数量: {len(step_def.parallel_steps)}")
+        
+        # 构建处理逻辑描述
+        processing = f"并行执行 {len(step_def.parallel_steps)} 个步骤: {', '.join(step_def.parallel_steps)}"
+        
+        # 记录处理日志
+        logger.info(f"[WorkflowEngine] 并行步骤 [{step_def.id}] 处理逻辑:")
+        logger.info(f"  └── {processing}")
+        
+        tasks = []
         for step_id in step_def.parallel_steps:
             if step_id in context.definition.steps:
                 sub_step = context.definition.steps[step_id]
                 tasks.append(self._execute_step(sub_step, context))
+                logger.info(f"[WorkflowEngine] 并行步骤 [{step_def.id}] 启动子步骤: {step_id}")
         
         results = await asyncio.gather(*tasks)
-        return {"parallel_results": dict(zip(step_def.parallel_steps, results))}
+        parallel_results = dict(zip(step_def.parallel_steps, results))
+        
+        # 记录输出日志
+        logger.info(f"[WorkflowEngine] 并行步骤 [{step_def.id}] 输出信息:")
+        logger.info(f"  ├── 完成步骤数量: {len(results)}")
+        logger.info(f"  └── 结果摘要: {json.dumps({k: str(v)[:50] for k, v in parallel_results.items()}, ensure_ascii=False)}")
+        
+        return {
+            "parallel_results": parallel_results,
+            "completed_count": len(results),
+            "input": input_context,
+            "processing": processing,
+            "output": parallel_results
+        }
     
     async def _execute_subworkflow(self, step_def: StepDefinition, context: ExecutionContext) -> Any:
         """执行子工作流"""
         if not step_def.subworkflow:
             raise ValueError(f"子工作流步骤 {step_def.id} 未指定子工作流")
         
+        # 构建输入信息
+        input_context = {
+            "subworkflow_id": step_def.subworkflow,
+            "inputs": context.inputs,
+            "current_context": {k: v for k, v in context.outputs.items()}
+        }
+        
+        # 记录输入日志
+        logger.info(f"[WorkflowEngine] 子工作流步骤 [{step_def.id}] 输入信息:")
+        logger.info(f"  ├── 子工作流ID: {step_def.subworkflow}")
+        logger.info(f"  └── 输入参数: {json.dumps(context.inputs, ensure_ascii=False)}")
+        
+        # 构建处理逻辑描述
+        processing = f"调用子工作流 '{step_def.subworkflow}'，传入输入参数 {list(context.inputs.keys())}"
+        
+        # 记录处理日志
+        logger.info(f"[WorkflowEngine] 子工作流步骤 [{step_def.id}] 处理逻辑:")
+        logger.info(f"  └── {processing}")
+        
+        outputs = {}
         async for event in self.run(step_def.subworkflow, context.inputs):
             if event["type"] == "workflow_complete":
-                return event.get("outputs", {})
+                outputs = event.get("outputs", {})
+                break
         
-        return {}
+        # 记录输出日志
+        logger.info(f"[WorkflowEngine] 子工作流步骤 [{step_def.id}] 输出信息:")
+        logger.info(f"  └── 子工作流输出: {json.dumps(outputs, ensure_ascii=False)[:200]}")
+        
+        return {
+            "subworkflow_id": step_def.subworkflow,
+            "subworkflow_outputs": outputs,
+            "input": input_context,
+            "processing": processing,
+            "output": outputs
+        }
     
     def _determine_next_step(self, step_def: StepDefinition, context: ExecutionContext) -> Optional[str]:
         """确定下一步骤"""
@@ -702,17 +977,128 @@ class WorkflowEngine:
             return False
     
     def _resolve_params(self, params: Dict[str, Any], context: ExecutionContext) -> Dict[str, Any]:
-        """解析参数（支持变量引用）"""
+        """解析参数（支持变量引用）
+        
+        支持的变量引用方式：
+        1. {{variable_name}} - 从 context.outputs 或 context.inputs 获取
+        2. {{variable_name.field_name}} - 获取变量的字段值
+        3. {{__node_output__}} - 获取前一个节点的输出
+        4. {{__output__.field_name}} - 获取前一个节点输出的字段
+        """
         resolved = {}
+        
+        # 获取前一个节点的输出
+        previous_output = self._get_previous_node_output(context)
         
         for key, value in params.items():
             if isinstance(value, str) and value.startswith("{{") and value.endswith("}}"):
-                var_name = value[2:-2].strip()
-                resolved[key] = context.outputs.get(var_name, context.inputs.get(var_name, value))
+                var_expr = value[2:-2].strip()
+                
+                # 处理 __node_output__ 引用（前一个节点输出）
+                if var_expr == "__node_output__":
+                    resolved[key] = previous_output
+                    logger.debug(f"[_resolve_params] 参数 {key} 解析为前一个节点输出: {type(previous_output).__name__}")
+                # 处理 __output__.field_name 引用
+                elif var_expr.startswith("__output__."):
+                    # __output__. 是 11 个字符
+                    field_name = var_expr[11:]
+                    if isinstance(previous_output, dict) and field_name in previous_output:
+                        resolved[key] = previous_output[field_name]
+                        logger.debug(f"[_resolve_params] 参数 {key} 解析为前一个节点输出字段 '{field_name}': {resolved[key]}")
+                    else:
+                        resolved[key] = value
+                        logger.warning(f"[_resolve_params] 前一个节点输出中不存在字段 '{field_name}'")
+                else:
+                    # 检查是否包含字段访问（如 {{variable.field}}）
+                    if '.' in var_expr:
+                        parts = var_expr.split('.', 1)
+                        var_name = parts[0]
+                        field_path = parts[1]
+                        
+                        # 先从 outputs 获取变量，然后是 inputs
+                        var_value = context.outputs.get(var_name, context.inputs.get(var_name))
+                        
+                        if var_value is not None:
+                            # 解析字段路径
+                            resolved_value = self._resolve_field_path(var_value, field_path)
+                            if resolved_value is not None:
+                                resolved[key] = resolved_value
+                                logger.debug(f"[_resolve_params] 参数 {key} 解析为变量 '{var_name}' 的字段 '{field_path}': {resolved_value}")
+                            else:
+                                resolved[key] = value
+                                logger.warning(f"[_resolve_params] 变量 '{var_name}' 中不存在字段路径 '{field_path}'")
+                        else:
+                            # 尝试从前一个节点的输出中查找
+                            if field_path in previous_output:
+                                resolved[key] = previous_output[field_path]
+                                logger.debug(f"[_resolve_params] 参数 {key} 从节点输出获取字段 '{field_path}': {resolved[key]}")
+                            else:
+                                resolved[key] = value
+                                logger.warning(f"[_resolve_params] 未找到变量 '{var_name}'")
+                    else:
+                        # 从 outputs 获取，然后是 inputs
+                        resolved_value = context.outputs.get(var_expr, context.inputs.get(var_expr))
+                        if resolved_value is not None:
+                            resolved[key] = resolved_value
+                            logger.debug(f"[_resolve_params] 参数 {key} 解析为变量 '{var_expr}': {resolved_value}")
+                        else:
+                            # 尝试从前一个节点的输出中查找
+                            if var_expr in previous_output:
+                                resolved[key] = previous_output[var_expr]
+                                logger.debug(f"[_resolve_params] 参数 {key} 从节点输出获取字段 '{var_expr}': {resolved[key]}")
+                            else:
+                                resolved[key] = value
+                                logger.warning(f"[_resolve_params] 未找到变量 '{var_expr}'")
             else:
                 resolved[key] = value
         
         return resolved
-
-
-workflow_engine = WorkflowEngine()
+    
+    def _resolve_field_path(self, obj: Any, field_path: str) -> Any:
+        """解析字段路径（支持嵌套访问）
+        
+        例如：field_path = "user.name" 会返回 obj["user"]["name"] 或 obj.user.name
+        
+        Args:
+            obj: 要访问的对象（dict 或 object）
+            field_path: 字段路径，如 "field" 或 "nested.field"
+        
+        Returns:
+            字段值，如果路径不存在返回 None
+        """
+        try:
+            parts = field_path.split('.')
+            value = obj
+            
+            for part in parts:
+                if isinstance(value, dict):
+                    if part in value:
+                        value = value[part]
+                    else:
+                        return None
+                elif hasattr(value, part):
+                    value = getattr(value, part)
+                else:
+                    return None
+            
+            return value
+        except Exception as e:
+            logger.debug(f"[_resolve_field_path] 解析字段路径失败: {e}")
+            return None
+    
+    def _get_previous_node_output(self, context: ExecutionContext) -> Any:
+        """获取前一个节点的输出
+        
+        从 context.step_results 中获取最近执行完成的节点输出
+        """
+        if not context.step_results:
+            return {}
+        
+        # 获取最近的步骤结果
+        steps = list(context.step_results.keys())
+        if steps:
+            last_step_id = steps[-1]
+            result = context.step_results.get(last_step_id, {})
+            return result
+        
+        return {}

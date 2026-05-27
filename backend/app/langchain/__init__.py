@@ -2,8 +2,8 @@ from .llm_wrapper import LangChainLLM
 from .chains import FormRecognitionChain, FieldExtractionChain, FormValidationChain, IntentRecognitionChain
 from .agents import FormAgent, TaskAgent, ChatAgent
 from .workflows import FormWorkflow, ValidationWorkflow
-from .workflow_engine import WorkflowEngine, workflow_engine
-from .workflow_init import init_workflow_engine
+from .workflow_engine import WorkflowEngine
+from .workflow_init import workflow_engine, init_workflow_engine
 
 __all__ = [
     "LangChainLLM",
