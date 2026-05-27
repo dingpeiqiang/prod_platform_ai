@@ -309,7 +309,7 @@ class SceneService:
                 return {"success": False, "message": f"Scene {scene_code} already exists"}
 
             # 处理工作流配置（支持多个）
-            config = scene_data.get("config", {}).copy()
+            config = (scene_data.get("config") or {}).copy()
             workflows = scene_data.get("workflows")
             
             if workflows and isinstance(workflows, list) and len(workflows) > 0:
