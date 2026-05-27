@@ -711,6 +711,7 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                     return
 
             intent_prompt = build_intent_prompt(messages_text, last_user_message)
+            _llm_error = None  # 移到 if intent_prompt 块外面，确保总是被初始化
             if intent_prompt:
                 loop = asyncio.get_event_loop()
                 _t0 = time.time()
@@ -730,8 +731,6 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                 
                 # 【新增】发送 prompt 内容到前端（可展开查看）
                 yield reasoning(f"📥 Prompt 输入（{len(intent_prompt)} 字符）:\n\n{intent_prompt[:2000]}{'...' if len(intent_prompt) > 2000 else ''}")
-
-                _llm_error = None
                 try:
                     intent_result, intent_reasoning = await loop.run_in_executor(
                         None, llm_service.call_with_provider, current_provider, intent_prompt, None, None, True
