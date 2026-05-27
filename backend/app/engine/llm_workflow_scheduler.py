@@ -17,7 +17,7 @@ logger = get_logger(__name__)
 import json
 
 from app.langchain.llm_wrapper import get_langchain_llm
-from app.langchain.workflow_engine import WorkflowEngine
+from app.langchain.workflow_engine import workflow_engine
 from app.langchain.workflow_converter import WorkflowConverter
 
 
@@ -198,12 +198,13 @@ class WorkflowScheduler:
         workflow_def = self.workflow_registry[workflow_id]["definition"]
         
         try:
-            # 转换为 WorkflowEngine 格式并执行
+            # 转换为 WorkflowEngine 格式并执行（使用全局单例引擎）
             converter = WorkflowConverter()
-            engine_workflow = converter.convert(workflow_def)
+            engine_workflow = converter.convert(workflow_def, workflow_id, workflow_id)
             
-            engine = WorkflowEngine(engine_workflow)
-            result = await engine.run(params)
+            workflow_def = workflow_engine._parse_workflow_definition(engine_workflow)
+            workflow_engine.register_workflow(workflow_def)
+            result = await workflow_engine.run(workflow_id, params)
             
             return {
                 "status": result.status,

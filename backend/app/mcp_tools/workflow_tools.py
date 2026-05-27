@@ -14,7 +14,7 @@ from .tool_hub import mcptool
     description="执行指定的工作流。当需要运行预定义的业务流程时使用，如订单处理、审批流程、数据校验等复杂多步骤任务。",
     category="workflow"
 )
-def execute_workflow(workflow_code: str, inputs: Dict[str, Any] = None) -> Dict[str, Any]:
+async def execute_workflow(workflow_code: str, inputs: Dict[str, Any] = None) -> Dict[str, Any]:
     """
     执行工作流
     
@@ -26,17 +26,15 @@ def execute_workflow(workflow_code: str, inputs: Dict[str, Any] = None) -> Dict[
         执行结果，包含 execution_id、status、outputs 等信息
     """
     from ..services.workflow_service import WorkflowService
-    from ..langchain.workflow_engine import WorkflowEngine
+    from ..langchain.workflow_engine import workflow_engine
     from ..langchain.workflow_converter import WorkflowConverter
     from app.core.database import SessionLocal
-    import asyncio
     
     if inputs is None:
         inputs = {}
     
     db = SessionLocal()
     try:
-        # 1. 获取工作流定义
         workflow_result = WorkflowService.get_workflow(workflow_code, db)
         
         if not workflow_result["success"]:
@@ -47,38 +45,55 @@ def execute_workflow(workflow_code: str, inputs: Dict[str, Any] = None) -> Dict[
         
         workflow_data = workflow_result["data"]
         
-        # 检查工作流是否激活
         if not workflow_data.get("isActive", True):
             return {
                 "success": False,
                 "error": f"工作流 '{workflow_code}' 已被禁用"
             }
         
-        # 2. 获取工作流定义（nodes 和 edges）
-        workflow_def = workflow_data.get("workflowData", {})
+        workflow_def_raw = workflow_data.get("workflowData", {})
         
-        if not workflow_def or not workflow_def.get("nodes"):
+        if not workflow_def_raw or not workflow_def_raw.get("nodes"):
             return {
                 "success": False,
                 "error": f"工作流 '{workflow_code}' 定义不完整"
             }
         
-        # 3. 转换为 WorkflowEngine 格式
-        converter = WorkflowConverter()
-        engine_workflow = converter.convert(workflow_def)
+        workflow_id = workflow_data.get("workflowCode", workflow_code)
+        workflow_name = workflow_data.get("workflowName", "未命名工作流")
+        engine_workflow = WorkflowConverter.convert(workflow_def_raw, workflow_id, workflow_name, db)
         
-        # 4. 执行工作流
-        engine = WorkflowEngine(engine_workflow)
-        result = asyncio.run(engine.run(inputs))
+        workflow_def = workflow_engine._parse_workflow_definition(engine_workflow)
+        workflow_engine.register_workflow(workflow_def)
         
-        # 5. 返回执行结果
+        results = []
+        async for item in workflow_engine.run(workflow_id, inputs):
+            results.append(item)
+        
+        execution_id = None
+        status = "completed"
+        outputs = {}
+        errors = []
+        
+        for item in results:
+            item_type = item.get("type")
+            if item_type == "workflow_start":
+                execution_id = item.get("workflow_id")
+            elif item_type == "step_complete":
+                outputs.update(item.get("result", {}))
+            elif item_type == "step_failed":
+                errors.append(item.get("error", "未知错误"))
+                status = "failed"
+            elif item_type == "workflow_complete":
+                outputs.update(item.get("outputs", {}))
+        
         return {
-            "success": result.status == "completed",
+            "success": status == "completed",
             "result": {
-                "execution_id": result.workflow_id,
-                "status": result.status,
-                "outputs": result.outputs,
-                "error": result.errors[0] if result.errors else None,
+                "execution_id": execution_id or workflow_id,
+                "status": status,
+                "outputs": outputs,
+                "error": errors[0] if errors else None,
                 "node_statuses": None
             }
         }

@@ -185,7 +185,7 @@ async def execute_tool_calls(intent_data: Dict) -> Dict:
             tool_name = tc.get("name")
             tool_args = tc.get("arguments", {})
             if tool_name and hub.has_tool(tool_name):
-                exec_result = hub.execute_sync(tool_name, tool_args)
+                exec_result = await hub.execute(tool_name, tool_args)
                 if exec_result.get("success"):
                     tool_result = exec_result.get("result", {})
                     if not isinstance(tool_result, dict) or not tool_result:

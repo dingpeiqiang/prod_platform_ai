@@ -46,6 +46,8 @@ class StepType(str, Enum):
     LOOP = "loop"
     PARALLEL = "parallel"
     SUBWORKFLOW = "subworkflow"
+    START = "start"
+    END = "end"
 
 
 @dataclass
@@ -477,8 +479,32 @@ class WorkflowEngine:
             return await self._execute_parallel(step_def, context)
         elif step_def.type == StepType.SUBWORKFLOW:
             return await self._execute_subworkflow(step_def, context)
+        elif step_def.type == StepType.START:
+            return await self._execute_start(step_def, context)
+        elif step_def.type == StepType.END:
+            return await self._execute_end(step_def, context)
         else:
             raise ValueError(f"未知步骤类型: {step_def.type}")
+    
+    async def _execute_start(self, step_def: StepDefinition, context: ExecutionContext) -> Any:
+        """执行开始步骤"""
+        # 初始化输入参数到上下文中
+        if step_def.input_params:
+            for param_name, param_value in step_def.input_params.items():
+                if param_name not in context.outputs:
+                    context.outputs[param_name] = param_value
+        return {"status": "started", "inputs": context.inputs}
+    
+    async def _execute_end(self, step_def: StepDefinition, context: ExecutionContext) -> Any:
+        """执行结束步骤"""
+        # 收集输出参数
+        outputs = {}
+        if step_def.output_params:
+            for param_name in step_def.output_params:
+                if param_name in context.outputs:
+                    outputs[param_name] = context.outputs[param_name]
+        context.status = WorkflowStatus.COMPLETED
+        return {"status": "completed", "outputs": outputs}
     
     async def _execute_action(self, step_def: StepDefinition, context: ExecutionContext) -> Any:
         """执行动作步骤"""

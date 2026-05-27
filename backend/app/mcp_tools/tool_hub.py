@@ -177,11 +177,11 @@ class MCPToolHub:
 
     def execute_sync(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
-        同步执行指定工具
+        同步执行指定工具（支持异步handler自动等待完成）
         """
+        import asyncio
         tool = self.get_tool(name)
         if not tool:
-            # 使用框架错误处理
             error = create_error(
                 category=ErrorCategory.TOOL.value,
                 code=ErrorCode.TOOL_NOT_FOUND,
@@ -197,6 +197,19 @@ class MCPToolHub:
             }
 
         try:
+            if asyncio.iscoroutinefunction(tool.handler):
+                # 异步handler：在新线程中创建独立事件循环执行
+                import concurrent.futures
+                def run_async_handler():
+                    new_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(new_loop)
+                    try:
+                        return new_loop.run_until_complete(tool.execute(arguments))
+                    finally:
+                        new_loop.close()
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    return executor.submit(run_async_handler).result()
+
             result = tool.handler(**arguments)
             if isinstance(result, dict) and "success" in result:
                 if result["success"]:

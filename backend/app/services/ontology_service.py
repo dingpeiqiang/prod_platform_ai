@@ -135,6 +135,68 @@ class OntologyService:
             return {"success": False, "message": str(e)}
     
     @classmethod
+    def get_business_rules(cls, db: Session, ontology_code: str) -> Dict[str, Any]:
+        """从本体获取业务规则"""
+        try:
+            ontology = db.query(Ontology).filter(Ontology.ontology_code == ontology_code).first()
+            if not ontology:
+                return {"success": False, "message": f"本体 {ontology_code} 不存在"}
+            
+            ontology_data = ontology.to_dict()
+            entities = ontology_data.get("entities", [])
+            
+            # 提取业务规则
+            default_values = {}
+            validation_rules = {}
+            field_mappings = {}
+            business_rules = []
+            
+            for entity in entities:
+                for field in entity.get("fields", []):
+                    field_code = field.get("fieldCode")
+                    if field_code:
+                        # 默认值
+                        if "defaultValue" in field:
+                            default_values[field_code] = field["defaultValue"]
+                        
+                        # 校验规则
+                        field_rules = {}
+                        if field.get("required"):
+                            field_rules["required"] = True
+                        if "minLength" in field:
+                            field_rules["minLength"] = field["minLength"]
+                        if "maxLength" in field:
+                            field_rules["maxLength"] = field["maxLength"]
+                        if "pattern" in field:
+                            field_rules["pattern"] = field["pattern"]
+                        if "min" in field:
+                            field_rules["min"] = field["min"]
+                        if "max" in field:
+                            field_rules["max"] = field["max"]
+                        if field_rules:
+                            validation_rules[field_code] = field_rules
+                        
+                        # 字段映射
+                        if "label" in field:
+                            field_mappings[field_code] = field["label"]
+            
+            # 获取本体级别的业务规则
+            business_rules.extend(ontology_data.get("businessRules", []))
+            
+            return {
+                "success": True,
+                "data": {
+                    "default_values": default_values,
+                    "validation_rules": validation_rules,
+                    "field_mappings": field_mappings,
+                    "business_rules": business_rules
+                }
+            }
+        except Exception as e:
+            logger.exception(f"Failed to get business rules: {e}")
+            return {"success": False, "message": str(e)}
+    
+    @classmethod
     def get_form_constraint(cls, form_code: str) -> Dict[str, Any]:
         ontology = config_loader.get_ontology(form_code)
         if ontology:

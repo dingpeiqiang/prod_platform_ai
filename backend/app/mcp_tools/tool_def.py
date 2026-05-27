@@ -113,6 +113,18 @@ class MCPTool:
             if asyncio.iscoroutine(result):
                 result = await result
 
+            if isinstance(result, dict) and "success" in result:
+                if result["success"]:
+                    return {
+                        "success": True,
+                        "result": {k: v for k, v in result.items() if k != "success"}
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": result.get("error", "未知错误")
+                    }
+
             return {
                 "success": True,
                 "result": result
