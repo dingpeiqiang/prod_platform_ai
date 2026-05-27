@@ -691,7 +691,12 @@ class WorkflowEngine:
                 **context.step_results,
                 '__builtins__': {}
             }
-            return bool(eval(expression, env))
+            expr = expression.strip()
+            if expr == 'true':
+                return True
+            elif expr == 'false':
+                return False
+            return bool(eval(expr, env))
         except Exception as e:
             logger.error(f"表达式计算失败 '{expression}': {e}")
             return False

@@ -200,8 +200,9 @@ class WorkflowConverter:
         if node_type == 'condition':
             step['condition'] = node_data.get('condition') or 'true'
             # 获取条件分支的下一个节点
-            true_edges = [e for e in edges if e['source'] == node_id and e.get('sourceHandle') == 'true']
-            false_edges = [e for e in edges if e['source'] == node_id and e.get('sourceHandle') == 'false']
+            # 支持多种 sourceHandle 格式: 'true'/'false' 或 'branch_0'/'branch_else'
+            true_edges = [e for e in edges if e['source'] == node_id and e.get('sourceHandle') in ('true', 'branch_0', '0')]
+            false_edges = [e for e in edges if e['source'] == node_id and e.get('sourceHandle') in ('false', 'branch_else', 'else', '1')]
             
             if true_edges:
                 step['next_steps']['True'] = true_edges[0]['target']
@@ -225,10 +226,11 @@ class WorkflowConverter:
         # 处理普通节点
         else:
             # 获取下一个节点（不包含条件分支的边）
+            # 支持多种 sourceHandle 格式: None, '', 'default', 'source'
             normal_edges = [
                 e for e in edges 
                 if e['source'] == node_id 
-                and e.get('sourceHandle') in (None, '', 'default')
+                and e.get('sourceHandle') in (None, '', 'default', 'source')
             ]
             
             if normal_edges:

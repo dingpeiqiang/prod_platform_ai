@@ -104,21 +104,9 @@ async def handle_missing_code_action(context, **kwargs):
 
 
 def load_workflows():
-    """加载工作流定义"""
-    # 获取工作流配置目录
-    config_dir = os.path.join(os.path.dirname(__file__), "../config/workflows")
+    """加载工作流定义
     
-    if not os.path.exists(config_dir):
-        logger.warning(f"[WorkflowInit] 工作流配置目录不存在: {config_dir}")
-        return
-    
-    # 加载所有 JSON 文件
-    for filename in os.listdir(config_dir):
-        if filename.endswith(".json"):
-            filepath = os.path.join(config_dir, filename)
-            try:
-                workflow = workflow_engine.load_workflow_from_file(filepath)
-                workflow_engine.register_workflow(workflow)
-                logger.info(f"[WorkflowInit] 加载工作流: {workflow.id} ({workflow.name})")
-            except Exception as e:
-                logger.error(f"[WorkflowInit] 加载工作流失败 {filename}: {e}")
+    工作流配置已迁移至数据库管理，此函数保留为空以保持兼容性。
+    工作流将在运行时从数据库动态加载。
+    """
+    logger.info("[WorkflowInit] 工作流配置已迁移至数据库，跳过文件加载")

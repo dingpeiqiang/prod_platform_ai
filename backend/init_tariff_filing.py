@@ -66,33 +66,8 @@ def import_ontology(db):
 
 
 def import_workflow(db):
-    """导入资费备案工作流"""
-    workflow_path = os.path.join(os.path.dirname(__file__), "config/workflows/tariff_filing_workflow.json")
-    
-    if not os.path.exists(workflow_path):
-        print(f"工作流配置文件不存在: {workflow_path}")
-        return
-    
-    with open(workflow_path, 'r', encoding='utf-8') as f:
-        workflow_data = json.load(f)
-    
-    # 检查是否已存在
-    existing = db.query(Workflow).filter(Workflow.workflow_code == workflow_data["workflowCode"]).first()
-    if existing:
-        print(f"工作流 {workflow_data['workflowCode']} 已存在，跳过")
-        return
-    
-    # 创建工作流
-    workflow = Workflow(
-        workflow_code=workflow_data["workflowCode"],
-        workflow_name=workflow_data["workflowName"],
-        description=workflow_data.get("description"),
-        workflow_data=workflow_data,
-        version=1
-    )
-    db.add(workflow)
-    db.commit()
-    print(f"工作流 {workflow_data['workflowCode']} 导入成功")
+    """导入资费备案工作流（已迁移至数据库管理）"""
+    print("工作流配置已迁移至数据库管理，请通过前端编辑器管理工作流")
 
 
 if __name__ == "__main__":
