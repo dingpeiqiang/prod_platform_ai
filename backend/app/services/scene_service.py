@@ -42,12 +42,15 @@ class SceneService:
         node_map = {}
         tree = []
         
-        # 单次遍历完成节点创建和树形构建
+        # 第一次遍历：创建所有节点
         for scene in scenes:
             node = scene.to_tree_node()
             node_map[scene.id] = node
+        
+        # 第二次遍历：构建树形结构
+        for scene in scenes:
+            node = node_map[scene.id]
             
-            # 同时构建树
             if scene.parent_id is None and scene.type == 'center':
                 tree.append(node)
             elif scene.parent_id in node_map:
