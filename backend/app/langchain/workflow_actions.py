@@ -42,7 +42,7 @@ async def action_call_llm(context: Any, **kwargs) -> Dict[str, Any]:
     temperature = kwargs.get("temperature", 0.7)
     
     try:
-        from app.engine.llm_factory import get_langchain_llm
+        from app.langchain.llm_wrapper import get_langchain_llm
         llm = get_langchain_llm().llm
         
         from langchain_core.prompts import ChatPromptTemplate

@@ -421,10 +421,10 @@ async def get_available_models():
                     "apiKey": bool(config.api_key),
                     "baseUrl": config.base_url
                 }
-                logger_warning.warning(f"[model/available] 添加模型: {model_info}")
+                logger.warning(f"[model/available] 添加模型: {model_info}")
                 add_model(model_info)
     except Exception as e:
-        logger_warning.warning(f"获取用户模型配置失败: {e}")
+        logger.warning(f"获取用户模型配置失败: {e}")
     
     # 3. 添加常见的预设模型（如果不在列表中）
     # 已删除兜底逻辑，API返回什么就显示什么，为空也可以

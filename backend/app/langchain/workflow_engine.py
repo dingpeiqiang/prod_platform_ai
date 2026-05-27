@@ -69,6 +69,8 @@ class StepDefinition:
     retry_delay: int = 1
     skip_if: Optional[str] = None
     timeout: Optional[int] = None
+    input_params: Dict[str, Any] = field(default_factory=dict)
+    output_params: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
@@ -132,11 +134,20 @@ class ExecutionContext:
     current_step_id: Optional[str] = None
     step_results: Dict[str, Any] = field(default_factory=dict)
     errors: List[Dict[str, Any]] = field(default_factory=list)
+    logs: List[Dict[str, Any]] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     waiting_step_id: Optional[str] = None
     waiting_form: Optional[Dict[str, Any]] = None
+    
+    def add_log(self, **kwargs):
+        """添加执行日志"""
+        log_entry = {
+            'timestamp': datetime.now().isoformat(),
+            **kwargs
+        }
+        self.logs.append(log_entry)
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典（用于持久化）"""
@@ -149,6 +160,7 @@ class ExecutionContext:
             'current_step_id': self.current_step_id,
             'step_results': self.step_results,
             'errors': self.errors,
+            'logs': self.logs,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'started_at': self.started_at.isoformat() if self.started_at else None,
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
@@ -174,6 +186,7 @@ class ExecutionContext:
             current_step_id=data.get('current_step_id'),
             step_results=data.get('step_results', {}),
             errors=data.get('errors', []),
+            logs=data.get('logs', []),
             created_at=created_at,
             started_at=started_at,
             completed_at=completed_at,
@@ -290,7 +303,10 @@ class WorkflowEngine:
         
         context.outputs.update(definition.variables)
         
-        yield {"type": "workflow_start", "workflow_id": context.workflow_id, "definition_id": workflow_id}
+        log_event = {"type": "workflow_start", "workflow_id": context.workflow_id, "definition_id": workflow_id}
+        context.add_log(**log_event)
+        logger.info(f"[WorkflowEngine] 开始执行工作流: {workflow_id}, 执行ID: {context.workflow_id}, 输入参数: {inputs}")
+        yield log_event
         
         try:
             current_step_id = definition.start_step
@@ -304,11 +320,17 @@ class WorkflowEngine:
                 step_def = definition.steps[current_step_id]
                 
                 if step_def.skip_if and self._eval_expression(step_def.skip_if, context):
-                    yield {"type": "step_skipped", "step": current_step_id, "name": step_def.name}
+                    log_event = {"type": "step_skipped", "step": current_step_id, "name": step_def.name}
+                    context.add_log(**log_event)
+                    logger.info(f"[WorkflowEngine] 跳过步骤: {current_step_id} ({step_def.name})")
+                    yield log_event
                     current_step_id = step_def.next_step
                     continue
                 
-                yield {"type": "step_start", "step": current_step_id, "name": step_def.name}
+                log_event = {"type": "step_start", "step": current_step_id, "name": step_def.name}
+                context.add_log(**log_event)
+                logger.info(f"[WorkflowEngine] 执行步骤: {current_step_id} ({step_def.name}), 类型: {step_def.type}")
+                yield log_event
                 
                 try:
                     result = await self._execute_step(step_def, context)
@@ -320,25 +342,33 @@ class WorkflowEngine:
                         
                         self.save_context(context)
                         
-                        yield {
+                        log_event = {
                             "type": "workflow_waiting",
                             "workflow_id": context.workflow_id,
                             "step": current_step_id,
                             "waiting_form": result.get("form_schema"),
                             "message": result.get("message", "请填写表单")
                         }
+                        context.add_log(**log_event)
+                        logger.info(f"[WorkflowEngine] 工作流等待用户输入: {context.workflow_id}, 当前步骤: {current_step_id}")
+                        yield log_event
                         return
                     
                     context.step_results[current_step_id] = result
                     
-                    yield {"type": "step_complete", "step": current_step_id, "name": step_def.name, "result": result}
+                    log_event = {"type": "step_complete", "step": current_step_id, "name": step_def.name, "result": result}
+                    context.add_log(**log_event)
+                    logger.info(f"[WorkflowEngine] 步骤完成: {current_step_id} ({step_def.name}), 结果: {str(result)[:100]}")
+                    yield log_event
                     
                     current_step_id = self._determine_next_step(step_def, context)
                     
                 except Exception as e:
                     logger.error(f"步骤执行失败 {current_step_id}: {e}")
                     context.errors.append({"step": current_step_id, "error": str(e)})
-                    yield {"type": "step_failed", "step": current_step_id, "name": step_def.name, "error": str(e)}
+                    log_event = {"type": "step_failed", "step": current_step_id, "name": step_def.name, "error": str(e)}
+                    context.add_log(**log_event)
+                    yield log_event
                     
                     if step_def.retry_count > 0:
                         retry_count = step_def.retry_count
@@ -348,7 +378,9 @@ class WorkflowEngine:
                             try:
                                 result = await self._execute_step(step_def, context)
                                 context.step_results[current_step_id] = result
-                                yield {"type": "step_retry_success", "step": current_step_id, "name": step_def.name}
+                                log_event = {"type": "step_retry_success", "step": current_step_id, "name": step_def.name}
+                                context.add_log(**log_event)
+                                yield log_event
                                 current_step_id = self._determine_next_step(step_def, context)
                                 break
                             except Exception as retry_e:
@@ -361,13 +393,22 @@ class WorkflowEngine:
             context.status = WorkflowStatus.COMPLETED
             context.completed_at = datetime.now()
             
-            yield {"type": "workflow_complete", "workflow_id": context.workflow_id, "outputs": context.outputs}
+            log_event = {"type": "workflow_complete", "workflow_id": context.workflow_id, "outputs": context.outputs}
+            context.add_log(**log_event)
+            
+            # 组装节点执行日志汇总
+            execution_summary = self._build_execution_summary(context)
+            logger.info(f"[WorkflowEngine] 工作流执行完成: {workflow_id}, 执行ID: {context.workflow_id}, 耗时: {(context.completed_at - context.started_at).total_seconds():.2f}s")
+            logger.info(f"[WorkflowEngine] 节点执行日志汇总:\n{execution_summary}")
+            yield log_event
             
         except Exception as e:
             logger.error(f"工作流执行失败: {e}")
             context.status = WorkflowStatus.FAILED
             context.error = str(e)
-            yield {"type": "workflow_failed", "workflow_id": context.workflow_id, "error": str(e)}
+            log_event = {"type": "workflow_failed", "workflow_id": context.workflow_id, "error": str(e)}
+            context.add_log(**log_event)
+            yield log_event
     
     async def resume(self, workflow_id: str, user_input: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
         """恢复执行（用户提交表单后调用）"""
@@ -417,11 +458,17 @@ class WorkflowEngine:
                 step_def = definition.steps[current_step_id]
                 
                 if step_def.skip_if and self._eval_expression(step_def.skip_if, context):
-                    yield {"type": "step_skipped", "step": current_step_id, "name": step_def.name}
+                    log_event = {"type": "step_skipped", "step": current_step_id, "name": step_def.name}
+                    context.add_log(**log_event)
+                    logger.info(f"[WorkflowEngine] 跳过步骤: {current_step_id} ({step_def.name})")
+                    yield log_event
                     current_step_id = step_def.next_step
                     continue
                 
-                yield {"type": "step_start", "step": current_step_id, "name": step_def.name}
+                log_event = {"type": "step_start", "step": current_step_id, "name": step_def.name}
+                context.add_log(**log_event)
+                logger.info(f"[WorkflowEngine] 执行步骤: {current_step_id} ({step_def.name}), 类型: {step_def.type}")
+                yield log_event
                 
                 try:
                     result = await self._execute_step(step_def, context)
@@ -433,31 +480,40 @@ class WorkflowEngine:
                         
                         self.save_context(context)
                         
-                        yield {
+                        log_event = {
                             "type": "workflow_waiting",
                             "workflow_id": context.workflow_id,
                             "step": current_step_id,
                             "waiting_form": result.get("form_schema"),
                             "message": result.get("message", "请填写表单")
                         }
+                        context.add_log(**log_event)
+                        logger.info(f"[WorkflowEngine] 工作流等待用户输入: {context.workflow_id}, 当前步骤: {current_step_id}")
+                        yield log_event
                         return
                     
                     context.step_results[current_step_id] = result
                     
-                    yield {"type": "step_complete", "step": current_step_id, "name": step_def.name, "result": result}
+                    log_event = {"type": "step_complete", "step": current_step_id, "name": step_def.name, "result": result}
+                    context.add_log(**log_event)
+                    logger.info(f"[WorkflowEngine] 步骤完成: {current_step_id} ({step_def.name}), 结果: {str(result)[:100]}")
+                    yield log_event
                     
                     current_step_id = self._determine_next_step(step_def, context)
                     
                 except Exception as e:
                     logger.error(f"步骤执行失败 {current_step_id}: {e}")
                     context.errors.append({"step": current_step_id, "error": str(e)})
-                    yield {"type": "step_failed", "step": current_step_id, "name": step_def.name, "error": str(e)}
+                    log_event = {"type": "step_failed", "step": current_step_id, "name": step_def.name, "error": str(e)}
+                    context.add_log(**log_event)
+                    yield log_event
                     raise e
             
             context.status = WorkflowStatus.COMPLETED
             context.completed_at = datetime.now()
             self.remove_context(workflow_id)
             
+            logger.info(f"[WorkflowEngine] 工作流恢复执行完成: {workflow_id}, 耗时: {(context.completed_at - context.started_at).total_seconds():.2f}s")
             yield {"type": "workflow_complete", "workflow_id": context.workflow_id, "outputs": context.outputs}
             
         except Exception as e:
@@ -466,6 +522,43 @@ class WorkflowEngine:
             context.error = str(e)
             self.remove_context(workflow_id)
             yield {"type": "workflow_failed", "workflow_id": context.workflow_id, "error": str(e)}
+    
+    def _build_execution_summary(self, context: ExecutionContext) -> str:
+        """组装节点执行日志汇总"""
+        if not context.logs:
+            return "  无执行日志"
+        
+        lines = []
+        for log_entry in context.logs:
+            log_type = log_entry.get("type", "unknown")
+            timestamp = log_entry.get("timestamp", "")
+            step = log_entry.get("step", "")
+            name = log_entry.get("name", "")
+            
+            if log_type == "workflow_start":
+                lines.append(f"  🚀 [{timestamp}] 工作流开始: {log_entry.get('definition_id', '')}")
+            elif log_type == "workflow_complete":
+                lines.append(f"  ✅ [{timestamp}] 工作流完成")
+            elif log_type == "workflow_failed":
+                lines.append(f"  ❌ [{timestamp}] 工作流失败: {log_entry.get('error', '')}")
+            elif log_type == "workflow_waiting":
+                lines.append(f"  ⏳ [{timestamp}] 等待用户输入: {step}")
+            elif log_type == "step_start":
+                lines.append(f"    ▶ [{timestamp}] 开始执行: {step} ({name})")
+            elif log_type == "step_complete":
+                result = log_entry.get("result", {})
+                result_str = str(result)[:50] + "..." if len(str(result)) > 50 else str(result)
+                lines.append(f"    ✅ [{timestamp}] 执行完成: {step} ({name}) - 结果: {result_str}")
+            elif log_type == "step_failed":
+                lines.append(f"    ❌ [{timestamp}] 执行失败: {step} ({name}) - 错误: {log_entry.get('error', '')}")
+            elif log_type == "step_skipped":
+                lines.append(f"    ⏭️ [{timestamp}] 跳过步骤: {step} ({name})")
+            elif log_type == "step_retry_success":
+                lines.append(f"    🔄 [{timestamp}] 重试成功: {step} ({name})")
+            else:
+                lines.append(f"    📝 [{timestamp}] {log_type}: {step}")
+        
+        return "\n".join(lines)
     
     async def _execute_step(self, step_def: StepDefinition, context: ExecutionContext) -> Any:
         """执行单个步骤"""

@@ -229,7 +229,8 @@ async def get_workflow_status(workflow_id: str):
             "waiting_form": context.waiting_form,
             "current_step_id": context.current_step_id,
             "outputs": context.outputs,
-            "errors": context.errors
+            "errors": context.errors,
+            "logs": context.logs
         }
     
     except Exception as e:

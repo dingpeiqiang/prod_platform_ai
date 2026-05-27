@@ -93,6 +93,7 @@
                         </div>
                     </div>
                     <h3 class="item-name">{{ item[nameField] }}</h3>
+                    <span class="item-code">{{ item[codeField] }}</span>
                     <p class="item-desc">{{ item.description || '暂无描述' }}</p>
                     <div class="item-meta">
                         <span>{{ formatDate(item.updatedAt) }}</span>
@@ -828,8 +829,16 @@ onMounted(() => {
 .item-name {
     font-size: 15px;
     font-weight: 500;
-    margin: 0 0 6px 0;
+    margin: 0 0 4px 0;
     color: var(--text-primary);
+}
+
+.item-code {
+    font-size: 12px;
+    color: #6b7280;
+    margin-bottom: 6px;
+    display: block;
+    font-family: monospace;
 }
 
 .item-desc {

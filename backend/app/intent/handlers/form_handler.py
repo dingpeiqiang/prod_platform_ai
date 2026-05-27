@@ -47,45 +47,51 @@ class FormHandler(BaseIntentHandler):
         yield thinking("🧠 正在分析字段推断...")
         
         try:
-            ai_service = get_ai_inference_service()
+            # 防御性检查：确保 form_code 有效
+            if not form_code:
+                logger.warning(f"[form_handler] form_code 为空，跳过 AI 推断")
+                yield thinking("⚠️ 表单编码未指定，跳过字段推断")
+                inferred_fields = {}
+            else:
+                ai_service = get_ai_inference_service()
             
-            # 获取 prompt 内容用于日志记录
-            ontology = config_loader.get_ontology(form_code)
-            if ontology:
-                inference_prompt = ai_service._build_inference_prompt(
-                    ontology=ontology,
+                # 获取 prompt 内容用于日志记录
+                ontology = config_loader.get_ontology(form_code)
+                if ontology:
+                    inference_prompt = ai_service._build_inference_prompt(
+                        ontology=ontology,
+                        user_input=ctx.last_user_message or "",
+                        context={
+                            "userId": ctx.request.userId if ctx.request and hasattr(ctx.request, 'userId') else None,
+                            "sessionId": ctx.request.sessionId if ctx.request and hasattr(ctx.request, 'sessionId') else None,
+                        }
+                    )
+                    logger.debug(f"[form_handler] AI 推断 Prompt 输入（{len(inference_prompt)} 字符）: {inference_prompt[:2000]}")
+                
+                inference_result = ai_service.infer_fields(
+                    form_code=form_code,
                     user_input=ctx.last_user_message or "",
                     context={
                         "userId": ctx.request.userId if ctx.request and hasattr(ctx.request, 'userId') else None,
                         "sessionId": ctx.request.sessionId if ctx.request and hasattr(ctx.request, 'sessionId') else None,
+                        "extractedFields": extracted,  # 传递已提取的字段（如 bossid）
                     }
                 )
-                logger.debug(f"[form_handler] AI 推断 Prompt 输入（{len(inference_prompt)} 字符）: {inference_prompt[:2000]}")
-            
-            inference_result = ai_service.infer_fields(
-                form_code=form_code,
-                user_input=ctx.last_user_message or "",
-                context={
-                    "userId": ctx.request.userId if ctx.request and hasattr(ctx.request, 'userId') else None,
-                    "sessionId": ctx.request.sessionId if ctx.request and hasattr(ctx.request, 'sessionId') else None,
-                    "extractedFields": extracted,  # 传递已提取的字段（如 bossid）
-                }
-            )
-            
-            inferred_fields = inference_result.get("extractedFields", {})
-            reasoning = inference_result.get("reasoning", "")
-            
-            logger.debug(f"[form_handler] AI 推断 Response 输出（{len(str(inference_result))} 字符）: {str(inference_result)[:2000]}")
-            
-            # 如果有推理过程，发送给前端显示（附加到上一个 thinking 步骤）
-            if reasoning:
-                from ..utils import reasoning as reasoning_event
-                yield reasoning_event(reasoning)
-            
-            # 合并 LLM 意图识别的结果和 AI 推断的结果
-            # AI 推断的优先级更高（因为是基于本体的完整推断）
-            extracted = {**extracted, **inferred_fields}
-            ctx.intent_data["extractedFields"] = extracted
+                
+                inferred_fields = inference_result.get("extractedFields", {})
+                reasoning = inference_result.get("reasoning", "")
+                
+                logger.debug(f"[form_handler] AI 推断 Response 输出（{len(str(inference_result))} 字符）: {str(inference_result)[:2000]}")
+                
+                # 如果有推理过程，发送给前端显示（附加到上一个 thinking 步骤）
+                if reasoning:
+                    from ..utils import reasoning as reasoning_event
+                    yield reasoning_event(reasoning)
+                
+                # 合并 LLM 意图识别的结果和 AI 推断的结果
+                # AI 推断的优先级更高（因为是基于本体的完整推断）
+                extracted = {**extracted, **inferred_fields}
+                ctx.intent_data["extractedFields"] = extracted
             
             yield thinking(
                 f"✅ AI 推断完成，共 {len(inferred_fields)} 个字段",

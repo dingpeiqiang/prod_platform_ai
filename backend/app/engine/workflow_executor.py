@@ -210,7 +210,18 @@ class WorkflowContext:
 
 
 class NodeExecutor(ABC):
-    """节点执行器基类"""
+    """节点执行器基类
+    
+    实现此基类来创建自定义节点类型，遵循节点自治原则：
+    - 每个节点自己管理执行逻辑和配置
+    - 新增节点不需要修改编辑器和工作流执行器
+    - 通过注册机制自动发现
+    
+    子类必须实现：
+    - NODE_TYPE: 节点类型标识符（唯一）
+    - execute(): 执行节点逻辑
+    - get_node_metadata(): 返回节点元数据（用于编辑器）
+    """
     
     NODE_TYPE = ""
     
@@ -224,6 +235,32 @@ class NodeExecutor(ABC):
         # 显性配置的输入输出映射
         self.input_mappings = self.node_data.get("inputs", {})
         self.output_mappings = self.node_data.get("outputs", {})
+    
+    @classmethod
+    def get_node_metadata(cls) -> Dict[str, Any]:
+        """获取节点元数据，用于编辑器显示
+        
+        Returns:
+            节点元数据字典，包含：
+            - type: 节点类型（与NODE_TYPE一致）
+            - label: 显示名称
+            - category: 分类（start, end, action, control, data等）
+            - icon: 图标名称
+            - description: 描述
+            - inputs: 输入参数定义
+            - outputs: 输出参数定义
+            - config: 配置项定义
+        """
+        return {
+            "type": cls.NODE_TYPE,
+            "label": cls.NODE_TYPE,
+            "category": "action",
+            "icon": "circle",
+            "description": "",
+            "inputs": [],
+            "outputs": [],
+            "config": []
+        }
     
     @abstractmethod
     async def execute(self, context: WorkflowContext, edges: List[Dict[str, Any]]) -> List[str]:
@@ -2288,6 +2325,33 @@ class WorkflowExecutor:
     def register_executor(cls, node_type: str, executor_class):
         """注册自定义节点执行器"""
         cls._executor_registry[node_type] = executor_class
+    
+    @classmethod
+    def get_registered_nodes(cls) -> List[Dict[str, Any]]:
+        """获取所有已注册的节点类型元数据
+        
+        Returns:
+            所有节点类型的元数据列表，用于编辑器动态加载节点类型
+        """
+        return [
+            executor_class.get_node_metadata()
+            for executor_class in cls._executor_registry.values()
+        ]
+    
+    @classmethod
+    def get_node_metadata(cls, node_type: str) -> Optional[Dict[str, Any]]:
+        """获取指定节点类型的元数据
+        
+        Args:
+            node_type: 节点类型标识符
+        
+        Returns:
+            节点元数据，如果未找到返回None
+        """
+        executor_class = cls._executor_registry.get(node_type)
+        if executor_class:
+            return executor_class.get_node_metadata()
+        return None
     
     def __init__(self, workflow_def: Dict[str, Any], use_lcel: bool = False):
         self.workflow_def = workflow_def
