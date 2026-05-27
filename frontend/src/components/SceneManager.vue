@@ -233,6 +233,10 @@
                           <span class="info-value">{{ workflow.name }}</span>
                         </div>
                         <div class="workflow-info-row">
+                          <span class="info-label">工作流编码：</span>
+                          <span class="info-value">{{ workflow.code }}</span>
+                        </div>
+                        <div class="workflow-info-row">
                           <span class="info-label">描述：</span>
                           <span class="info-value">{{ workflow.description || '暂无描述' }}</span>
                         </div>
@@ -364,6 +368,7 @@
               >
                 <div class="workflow-info">
                   <span class="workflow-name">{{ workflow.name || workflow.code }}</span>
+                  <span class="workflow-code-tag">{{ workflow.code }}</span>
                   <span v-if="workflow.isDefault" class="workflow-default-tag">默认</span>
                 </div>
                 <span v-if="workflow.description" class="workflow-desc">{{ workflow.description }}</span>
@@ -1825,6 +1830,14 @@ onMounted(() => {
 .workflow-name {
   font-weight: 500;
   color: #303133;
+}
+
+.workflow-code-tag {
+  font-size: 12px;
+  color: #909399;
+  background: #f2f6fc;
+  padding: 2px 8px;
+  border-radius: 4px;
 }
 
 .workflow-default-tag {

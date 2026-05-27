@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="workflow-library">
     <div class="library-header">
       <h3>📚 工作流库</h3>
@@ -61,6 +61,7 @@
             <div class="workflow-icon">🔄</div>
             <div class="workflow-info">
               <div class="workflow-name">{{ workflow.workflowName }}</div>
+              <div class="workflow-code">{{ workflow.workflowCode }}</div>
               <div class="workflow-meta">
                 <span class="category-tag">{{ getCategoryName(workflow.category) }}</span>
                 <span class="status-badge" :class="workflow.isActive ? 'active' : 'inactive'">
@@ -484,6 +485,15 @@ onMounted(() => {
   font-size: 13px;
   font-weight: 600;
   color: #334155;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workflow-code {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
