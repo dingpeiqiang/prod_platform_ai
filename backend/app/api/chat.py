@@ -393,14 +393,13 @@ async def get_available_models():
         })
     
     # 2. 从数据库获取用户保存的模型配置（只取激活状态的）
-    logger_warning = logging.getLogger(__name__)
     try:
         with Session(engine) as db:
             user_configs = db.query(LLMUserConfig).filter(
                 LLMUserConfig.is_active == True
             ).limit(50).all()
             
-            logger_warning.warning(f"[model/available] 从数据库查询到 {len(user_configs)} 个用户模型配置")
+            logger.warning(f"[model/available] 从数据库查询到 {len(user_configs)} 个用户模型配置")
             
             provider_names = {
                 'custom': '自定义',
