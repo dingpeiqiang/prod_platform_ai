@@ -31,6 +31,8 @@ from app.api.chat_service import (
     call_skills_only, build_intent_prompt, parse_intent_result,
     execute_tool_calls, get_scene_prompt_by_code
 )
+from app.langchain.workflow_init import workflow_engine
+from app.langchain.workflow_engine import WorkflowStatus
 
 
 
@@ -443,6 +445,7 @@ class ChatRequest(BaseModel):
     formCode: Optional[str] = None
     formData: Optional[Dict[str, Any]] = None
     modelConfig: Optional[Dict[str, Any]] = None
+    workflowResume: Optional[Dict[str, Any]] = None
 
 
 class ChatResponse(BaseModel):
@@ -708,6 +711,47 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                     logger.warning("[chat/stream] 刷新配置失败，使用默认配置")
 
         try:
+            workflow_resume = request.workflowResume
+            if workflow_resume:
+                execution_id = workflow_resume.get("execution_id") or workflow_resume.get("workflow_id", "")
+                form_data = workflow_resume.get("form_data", {})
+
+                if execution_id:
+                    context = workflow_engine.get_context(execution_id)
+                    if context and context.status == WorkflowStatus.WAITING:
+                        logger.info(f"[chat/stream] 恢复工作流: {execution_id}, 用户输入: {form_data}")
+                        yield thinking("🔄 正在继续工作流处理...")
+
+                        async for event in workflow_engine.resume(execution_id, form_data):
+                            yield sse(event)
+                            if event.get("type") == "workflow_waiting":
+                                logger.info(f"[chat/stream] 工作流再次等待用户输入: {execution_id}")
+                                stream_stats.total_elapsed = time.time() - start_time
+                                yield sse({"type": "stats", "content": stream_stats.to_dict()})
+                                yield done_event("workflow", is_form=False, intent_data={
+                                    "workflow_waiting": {
+                                        "execution_id": execution_id,
+                                        "waiting_form": event.get("waiting_form"),
+                                        "message": event.get("message", ""),
+                                    }
+                                })
+                                return
+                            elif event.get("type") == "workflow_complete":
+                                logger.info(f"[chat/stream] 工作流恢复完成: {execution_id}")
+                                yield thinking("✅ 工作流执行完成")
+                                stream_stats.total_elapsed = time.time() - start_time
+                                yield sse({"type": "stats", "content": stream_stats.to_dict()})
+                                yield sse({"type": "text_end"})
+                                yield done_event("workflow", is_form=False)
+                                return
+                            elif event.get("type") == "workflow_failed":
+                                logger.error(f"[chat/stream] 工作流恢复失败: {execution_id}: {event.get('error')}")
+                                yield thinking(f"❌ 工作流执行失败: {event.get('error')}")
+                                stream_stats.total_elapsed = time.time() - start_time
+                                yield sse({"type": "stats", "content": stream_stats.to_dict()})
+                                yield done_event("workflow", is_form=False)
+                                return
+
             ontologies = config_loader.get_all_ontologies()
             logger.info(f"[chat/stream] 加载本体数量: {len(ontologies)}")
 
@@ -1168,6 +1212,19 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                             tool_result = await execute_tool_calls(intent_data)
                             tool_results = tool_result["tool_results"]
                             extracted = tool_result["extracted"]
+
+                            workflow_waiting = tool_result.get("workflow_waiting")
+                            if workflow_waiting:
+                                message = workflow_waiting.get("message", "请提供以下信息")
+                                execution_id = workflow_waiting.get("execution_id", "")
+
+                                yield thinking(f"⏳ {message}")
+                                intent_data["workflow_waiting"] = workflow_waiting
+                                stream_stats.total_elapsed = time.time() - start_time
+                                yield sse({"type": "stats", "content": stream_stats.to_dict()})
+                                yield intent_event("workflow", "awaiting_input", intent_data, is_form=False)
+                                yield done_event("workflow", is_form=False, intent_data=intent_data)
+                                return
 
                             yield thinking(
                                 f"🔧 已执行 {len(tool_results)} 个工具，" + (f"成功 {sum(1 for r in tool_results if r['success'])} 个" if tool_results else "无工具调用"),

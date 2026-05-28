@@ -104,7 +104,6 @@ class MCPTool:
         }
 
     async def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """执行工具"""
         try:
             self._validate_arguments(arguments)
             result = self.handler(**arguments)
@@ -114,16 +113,7 @@ class MCPTool:
                 result = await result
 
             if isinstance(result, dict) and "success" in result:
-                if result["success"]:
-                    return {
-                        "success": True,
-                        "result": {k: v for k, v in result.items() if k != "success"}
-                    }
-                else:
-                    return {
-                        "success": False,
-                        "error": result.get("error", "未知错误")
-                    }
+                return result
 
             return {
                 "success": True,

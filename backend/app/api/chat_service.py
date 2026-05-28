@@ -178,6 +178,7 @@ async def execute_tool_calls(intent_data: Dict) -> Dict:
     tool_calls = intent_data.get("tool_calls", [])
     extracted = intent_data.get("extractedFields", {})
     tool_results = []
+    workflow_waiting = None
 
     if tool_calls:
         hub = get_toolhub()
@@ -187,16 +188,53 @@ async def execute_tool_calls(intent_data: Dict) -> Dict:
             if tool_name and hub.has_tool(tool_name):
                 exec_result = await hub.execute(tool_name, tool_args)
                 if exec_result.get("success"):
-                    tool_result = exec_result.get("result", {})
-                    if not isinstance(tool_result, dict) or not tool_result:
-                        tool_result = {k: v for k, v in exec_result.items() if k != "success"}
-                    if isinstance(tool_result, dict):
-                        extracted.update(tool_result)
-                    tool_results.append({
-                        "name": tool_name,
-                        "success": True,
-                        "fields": list(tool_result.keys()) if isinstance(tool_result, dict) else []
-                    })
+                    # 检查是直接透传的格式，还是包装后的格式
+                    if exec_result.get("status") == "waiting":
+                        # 直接透传格式（handler 返回完整数据）
+                        tool_result = exec_result
+                        workflow_waiting = {
+                            "execution_id": tool_result.get("execution_id"),
+                            "waiting_form": tool_result.get("waiting_form"),
+                            "message": tool_result.get("message"),
+                        }
+                        tool_results.append({
+                            "name": tool_name,
+                            "success": True,
+                            "waiting": True,
+                            "fields": list(tool_result.keys()) if isinstance(tool_result, dict) else []
+                        })
+                    else:
+                        # 包装格式（正常工具返回）
+                        tool_result = exec_result.get("result", {})
+                        if isinstance(tool_result, dict) and tool_result.get("status") == "waiting":
+                            workflow_waiting = {
+                                "execution_id": tool_result.get("execution_id"),
+                                "waiting_form": tool_result.get("waiting_form"),
+                                "message": tool_result.get("message"),
+                            }
+                            tool_results.append({
+                                "name": tool_name,
+                                "success": True,
+                                "waiting": True,
+                                "fields": list(tool_result.keys()) if isinstance(tool_result, dict) else []
+                            })
+                        else:
+                            # 检查是否是直接透传的非 waiting 格式（handler 返回带 success 键）
+                            if "result" not in exec_result:
+                                # 直接透传格式（handler 返回完整数据，不带 result 包装）
+                                tool_result = {k: v for k, v in exec_result.items() if k != "success"}
+                            else:
+                                # 正常包装格式
+                                tool_result = exec_result.get("result", {})
+                                if not isinstance(tool_result, dict) or not tool_result:
+                                    tool_result = {k: v for k, v in exec_result.items() if k != "success"}
+                            if isinstance(tool_result, dict):
+                                extracted.update(tool_result)
+                            tool_results.append({
+                                "name": tool_name,
+                                "success": True,
+                                "fields": list(tool_result.keys()) if isinstance(tool_result, dict) else []
+                            })
                 else:
                     err = exec_result.get("error", "未知错误")
                     tool_results.append({"name": tool_name, "success": False, "error": str(err)})
@@ -227,7 +265,8 @@ async def execute_tool_calls(intent_data: Dict) -> Dict:
     intent_data["extractedFields"] = extracted
     return {
         "tool_results": tool_results,
-        "extracted": extracted
+        "extracted": extracted,
+        "workflow_waiting": workflow_waiting
     }
 
 

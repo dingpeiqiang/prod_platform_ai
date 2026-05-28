@@ -20,6 +20,7 @@ class AskUserNode(WorkflowNode):
         "required_fields": ParamSchema(type="list", required=False, description="必填字段列表", default=[]),
     }
     output_fields = {
+        "action": ParamSchema(type="str", description="动作类型（固定为 ask_user，触发引擎暂停）"),
         "message": ParamSchema(type="str", description="提示消息"),
         "required_fields": ParamSchema(type="list", description="必填字段列表"),
         "waiting_for_input": ParamSchema(type="bool", description="是否等待用户输入"),

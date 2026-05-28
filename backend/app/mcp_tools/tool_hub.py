@@ -212,12 +212,7 @@ class MCPToolHub:
 
             result = tool.handler(**arguments)
             if isinstance(result, dict) and "success" in result:
-                if result["success"]:
-                    return {
-                        "success": True,
-                        "result": {k: v for k, v in result.items() if k != "success"}
-                    }
-                else:
+                if not result["success"]:
                     err = result.get("error", "未知错误")
                     logger.warning(f"工具执行失败 [{name}]: {err}")
                     error = create_error(
@@ -231,10 +226,7 @@ class MCPToolHub:
                         tool_args=arguments
                     )
                     error_handler.emit(error)
-                    return {
-                        "success": False,
-                        "error": str(err)
-                    }
+                return result
             return {
                 "success": True,
                 "result": result

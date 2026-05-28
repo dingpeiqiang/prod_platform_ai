@@ -69,12 +69,22 @@ async def execute_workflow(workflow_code: str, inputs: Dict[str, Any] = None) ->
         results = []
         async for item in workflow_engine.run(workflow_id, inputs):
             results.append(item)
-        
+            if item.get("type") == "workflow_waiting":
+                return {
+                    "success": True,
+                    "execution_id": item.get("workflow_id", workflow_id),
+                    "status": "waiting",
+                    "waiting_step": item.get("step"),
+                    "waiting_form": item.get("waiting_form"),
+                    "message": item.get("message", "等待用户输入"),
+                    "node_statuses": None
+                }
+
         execution_id = None
         status = "completed"
         outputs = {}
         errors = []
-        
+
         for item in results:
             item_type = item.get("type")
             if item_type == "workflow_start":
@@ -87,16 +97,19 @@ async def execute_workflow(workflow_code: str, inputs: Dict[str, Any] = None) ->
             elif item_type == "workflow_complete":
                 outputs.update(item.get("outputs", {}))
         
-        return {
-            "success": status == "completed",
-            "result": {
+        if status == "completed":
+            return {
+                "success": True,
                 "execution_id": execution_id or workflow_id,
                 "status": status,
                 "outputs": outputs,
-                "error": errors[0] if errors else None,
                 "node_statuses": None
             }
-        }
+        else:
+            return {
+                "success": False,
+                "error": errors[0] if errors else "工作流执行失败"
+            }
         
     except Exception as e:
         return {
@@ -156,10 +169,8 @@ def list_workflows(category: str = None, active_only: bool = True) -> Dict[str, 
         
         return {
             "success": True,
-            "result": {
-                "total": result.get("total", 0),
-                "workflows": workflows
-            }
+            "total": result.get("total", 0),
+            "workflows": workflows
         }
         
     except Exception as e:
@@ -238,19 +249,17 @@ def get_workflow_detail(workflow_code: str) -> Dict[str, Any]:
         
         return {
             "success": True,
-            "result": {
-                "workflowCode": workflow_data.get("workflowCode"),
-                "workflowName": workflow_data.get("workflowName"),
-                "description": workflow_data.get("description"),
-                "category": workflow_data.get("category"),
-                "tags": workflow_data.get("tags", []),
-                "version": workflow_data.get("version"),
-                "isActive": workflow_data.get("isActive"),
-                "inputParams": input_params,
-                "outputParams": output_params,
-                "nodeCount": len(nodes),
-                "edgeCount": len(workflow_def.get("edges", []))
-            }
+            "workflowCode": workflow_data.get("workflowCode"),
+            "workflowName": workflow_data.get("workflowName"),
+            "description": workflow_data.get("description"),
+            "category": workflow_data.get("category"),
+            "tags": workflow_data.get("tags", []),
+            "version": workflow_data.get("version"),
+            "isActive": workflow_data.get("isActive"),
+            "inputParams": input_params,
+            "outputParams": output_params,
+            "nodeCount": len(nodes),
+            "edgeCount": len(workflow_def.get("edges", []))
         }
         
     except Exception as e:
@@ -309,10 +318,8 @@ def get_workflow_execution_history(workflow_code: str, limit: int = 10) -> Dict[
         
         return {
             "success": True,
-            "result": {
-                "total": len(executions),
-                "executions": executions
-            }
+            "total": len(executions),
+            "executions": executions
         }
         
     except Exception as e:
