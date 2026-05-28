@@ -1379,7 +1379,7 @@ const getAvailableVariables = (nodeId) => {
         }
         break;
       case 'variable':
-        outputVarName = node.data?.varName || node.data?.variableName || node.data?.outputVar || node.data?.label || nodeType;
+        outputVarName = node.data?.variable_name || node.data?.varName || node.data?.variableName || node.data?.outputVar || node.data?.label || nodeType;
         variables.push({
           id: outputVarName,
           name: `${outputVarName} (输出)`,
