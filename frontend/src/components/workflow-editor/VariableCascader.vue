@@ -44,21 +44,16 @@ const cascaderOptions = computed(() => {
   if (!props.availableVariables || !Array.isArray(props.availableVariables)) return [];
   
   const nodeMap = new Map();
+  const nodeOrder = [];
   
   props.availableVariables.forEach(variable => {
-    if (variable && variable.nodeId && variable.id && variable.name) {
+    if (variable && variable.nodeId && variable.id) {
+      const varName = variable.name || variable.varName || '未知变量';
       if (!nodeMap.has(variable.nodeId)) {
-        let nodeLabel = getNodeLabelById(variable.nodeId);
+        let nodeLabel = variable.sourceNodeName || variable.nodeName || getNodeLabelById(variable.nodeId);
         
         if (variable.nodeType === 'start') {
           nodeLabel = '开始节点';
-        } else if (variable.sourceNodeName) {
-          nodeLabel = variable.sourceNodeName;
-        } else {
-          const namePart = variable.name.split('(')[0].trim();
-          if (namePart && !namePart.includes('输出') && !namePart.includes('入参')) {
-            nodeLabel = namePart;
-          }
         }
         
         nodeMap.set(variable.nodeId, {
@@ -66,15 +61,16 @@ const cascaderOptions = computed(() => {
           label: nodeLabel,
           children: []
         });
+        nodeOrder.push(variable.nodeId);
       }
       nodeMap.get(variable.nodeId).children.push({
         value: variable.id,
-        label: variable.name
+        label: varName
       });
     }
   });
   
-  return Array.from(nodeMap.values());
+  return nodeOrder.map(nodeId => nodeMap.get(nodeId)).filter(Boolean);
 });
 
 const getNodeLabelById = (nodeId) => {

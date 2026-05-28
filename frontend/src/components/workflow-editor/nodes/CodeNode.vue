@@ -197,7 +197,7 @@
               </thead>
               <tbody>
                 <transition-group name="param-list">
-                  <tr v-for="(param, index) in localOutputParams" :key="index" class="param-row">
+                  <tr v-for="(param, index) in localOutputs" :key="index" class="param-row">
                     <td class="col-name">
                       <input
                         v-model="param.name"
@@ -409,7 +409,7 @@ const localOutputType = ref(props.data.outputType || 'auto');
 const localReturnJson = ref(props.data.returnJson || false);
 const localEnvVars = ref(props.data.envVars || []);
 const localInputParams = ref(props.data.inputParams || []);
-const localOutputParams = ref(props.data.outputParams || []);
+const localOutputs = ref(props.data.outputs || []);
 const detectedParams = ref([]);
 
 const codeSummary = computed(() => {
@@ -478,19 +478,19 @@ const toggleRequired = (index) => {
 };
 
 const addOutputParam = () => {
-  localOutputParams.value.push({ name: '', type: 'string', description: '', required: false });
+  localOutputs.value.push({ name: '', type: 'string', description: '', required: false });
   emitUpdate();
 };
 
 const removeOutputParam = (index) => {
-  if (localOutputParams.value.length > 0) {
-    localOutputParams.value.splice(index, 1);
+  if (localOutputs.value.length > 0) {
+    localOutputs.value.splice(index, 1);
     emitUpdate();
   }
 };
 
 const toggleOutputRequired = (index) => {
-  localOutputParams.value[index].required = !localOutputParams.value[index].required;
+  localOutputs.value[index].required = !localOutputs.value[index].required;
   emitUpdate();
 };
 
@@ -616,7 +616,7 @@ const inferTypeFromValue = (value) => {
 };
 
 const applyDetectedParams = () => {
-  localOutputParams.value = [...detectedParams.value];
+  localOutputs.value = [...detectedParams.value];
   detectedParams.value = [];
   emitUpdate();
 };
@@ -660,7 +660,7 @@ const emitUpdate = () => {
     language: localLanguage.value,
     code: localCode.value,
     inputParams: localInputParams.value,
-    outputParams: localOutputParams.value
+    outputs: localOutputs.value
   });
 };
 
@@ -668,7 +668,7 @@ watch(() => props.data, (d) => {
   localLanguage.value = d.language || 'javascript';
   localCode.value = d.code || '';
   localInputParams.value = d.inputParams || [];
-  localOutputParams.value = d.outputParams || [];
+  localOutputs.value = d.outputs || [];
 }, { deep: true });
 </script>
 

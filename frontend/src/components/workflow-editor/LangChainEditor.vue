@@ -1351,8 +1351,34 @@ const getAvailableVariables = (nodeId) => {
     let outputVarName = '';
     
     switch (nodeType) {
-      case 'start':
+      case 'start': {
+        const startParams = node.data?.parameters;
+        let paramsToAdd = [];
+        
+        if (!startParams || !Array.isArray(startParams) || startParams.length === 0) {
+          paramsToAdd = [{ name: 'input', type: 'string', description: '用户输入', default: '', required: true }];
+        } else {
+          paramsToAdd = startParams;
+        }
+        
+        paramsToAdd.forEach((param, index) => {
+          if (param && param.name) {
+            variables.push({
+              id: `${node.id}.param.${index}`,
+              name: `${param.name} (入参)`,
+              nodeId: node.id,
+              nodeType: 'start',
+              nodeName: '开始节点',
+              type: param.type || 'string',
+              source: 'workflow_input',
+              sourceNodeType: 'start',
+              sourceNodeName: '开始节点',
+              varName: param.name
+            });
+          }
+        });
         break;
+      }
       case 'variable':
         const outputs = node.data?.outputs || [];
         if (outputs.length > 0) {
@@ -1394,7 +1420,79 @@ const getAvailableVariables = (nodeId) => {
       case 'http':
       case 'code':
       case 'parser':
-      case 'userInput':
+      case 'userInput': {
+        const outputs = node.data?.outputs || [];
+        if (outputs.length > 0) {
+          outputs.forEach((output, index) => {
+            if (output && output.name) {
+              variables.push({
+                id: `${node.id}.output.${index}`,
+                name: `${output.name} (输出)`,
+                nodeId: node.id,
+                nodeType: nodeType,
+                nodeName: nodeName,
+                type: output.type || 'any',
+                source: 'node_output',
+                sourceNodeType: nodeType,
+                sourceNodeName: nodeName,
+                varName: output.name
+              });
+            }
+          });
+        } else {
+          outputVarName = node.data?.outputVar || node.data?.label || nodeType;
+          variables.push({
+            id: `${node.id}.output`,
+            name: `${outputVarName} (输出)`,
+            nodeId: node.id,
+            nodeType: nodeType,
+            nodeName: nodeName,
+            type: 'any',
+            source: 'node_output',
+            sourceNodeType: nodeType,
+            sourceNodeName: nodeName,
+            varName: outputVarName
+          });
+        }
+        break;
+      }
+      case 'condition': {
+        const outputs = node.data?.outputs || [];
+        if (outputs.length > 0) {
+          outputs.forEach((output, index) => {
+            if (output && output.name) {
+              variables.push({
+                id: `${node.id}.output.${index}`,
+                name: `${output.name} (输出)`,
+                nodeId: node.id,
+                nodeType: nodeType,
+                nodeName: nodeName,
+                type: output.type || 'any',
+                source: 'node_output',
+                sourceNodeType: nodeType,
+                sourceNodeName: nodeName,
+                varName: output.name
+              });
+            }
+          });
+        } else {
+          outputVarName = node.data?.label || '条件';
+          variables.push({
+            id: `${node.id}.result`,
+            name: `${outputVarName} (结果)`,
+            nodeId: node.id,
+            nodeType: 'condition',
+            nodeName: nodeName,
+            type: 'boolean',
+            source: 'node_output',
+            sourceNodeType: 'condition',
+            sourceNodeName: nodeName,
+            varName: outputVarName
+          });
+        }
+        break;
+      }
+      default:
         outputVarName = node.data?.outputVar || node.data?.label || nodeType;
         variables.push({
           id: `${node.id}.output`,
@@ -1405,60 +1503,11 @@ const getAvailableVariables = (nodeId) => {
           type: 'any',
           source: 'node_output',
           sourceNodeType: nodeType,
-          sourceNodeName: nodeName
-        });
-        break;
-      case 'condition':
-        variables.push({
-          id: `${node.id}.result`,
-          name: `${node.data?.label || '条件'} (结果)`,
-          nodeId: node.id,
-          nodeType: 'condition',
-          nodeName: nodeName,
-          type: 'boolean',
-          source: 'node_output',
-          sourceNodeType: 'condition',
-          sourceNodeName: nodeName
+          sourceNodeName: nodeName,
+          varName: outputVarName
         });
         break;
     }
-  }
-  
-  const startNode = nodes.find(n => n.type === 'start');
-  if (startNode) {
-    const startParams = startNode.data?.parameters;
-    let paramsToAdd = [];
-    
-    if (!startParams || !Array.isArray(startParams) || startParams.length === 0) {
-      paramsToAdd = [{ name: 'input', type: 'string', description: '用户输入', default: '', required: true }];
-    } else {
-      paramsToAdd = startParams;
-    }
-    
-    const existingStartVarIds = new Set(
-      variables
-        .filter(v => v.nodeType === 'start')
-        .map(v => v.id)
-    );
-    paramsToAdd.forEach((param, index) => {
-      if (param && param.name) {
-        const varId = `${startNode.id}.param.${index}`;
-        if (!existingStartVarIds.has(varId)) {
-          variables.push({
-            id: varId,
-            name: `${param.name} (入参)`,
-            nodeId: startNode.id,
-            nodeType: 'start',
-            nodeName: '开始节点',
-            type: param.type || 'string',
-            source: 'workflow_input',
-            sourceNodeType: 'start',
-            sourceNodeName: '开始节点',
-            varName: param.name
-          });
-        }
-      }
-    });
   }
   
   return variables;
