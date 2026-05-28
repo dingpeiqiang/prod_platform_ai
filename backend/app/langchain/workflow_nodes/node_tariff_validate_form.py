@@ -19,6 +19,7 @@ class TariffValidateFormNode(WorkflowNode):
     
     name = "tariff.validate_form"
     description = "验证资费备案表单数据"
+    _legacy = True
     inputs = {}
     outputs = {
         "validationResults": {"type": "list", "description": "校验结果列表"},

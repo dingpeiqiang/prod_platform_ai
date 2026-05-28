@@ -18,6 +18,7 @@ class TariffGenerateFormNode(WorkflowNode):
     
     name = "tariff.generate_form"
     description = "生成资费备案表单数据"
+    _legacy = True
     inputs = {}
     outputs = {
         "formCode": {"type": "str", "description": "表单编码"},

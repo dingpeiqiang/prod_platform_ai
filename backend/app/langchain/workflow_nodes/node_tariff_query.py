@@ -17,6 +17,7 @@ class TariffQueryNode(WorkflowNode):
     
     name = "tariff.query_tariff"
     description = "查询套餐信息"
+    _legacy = True
     inputs = {}
     outputs = {
         "success": {"type": "bool", "description": "是否成功"},

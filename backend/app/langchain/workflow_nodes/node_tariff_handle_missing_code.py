@@ -18,6 +18,7 @@ class TariffHandleMissingCodeNode(WorkflowNode):
     
     name = "tariff.handle_missing_code"
     description = "处理缺失套餐编码的情况"
+    _legacy = True
     inputs = {}
     outputs = {
         "action": {"type": "str", "description": "动作类型"},

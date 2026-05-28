@@ -21,6 +21,7 @@ class TariffMergeResultsNode(WorkflowNode):
     
     name = "tariff.merge_results"
     description = "合并资费备案表单和校验结果"
+    _legacy = True
     inputs = {}
     outputs = {
         "action": {"type": "str", "description": "动作类型"},

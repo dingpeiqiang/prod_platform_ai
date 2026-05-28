@@ -21,6 +21,7 @@ class TariffParseInputNode(WorkflowNode):
     
     name = "tariff.parse_input"
     description = "解析用户输入，提取套餐编码"
+    _legacy = True
     inputs = {}
     outputs = {
         "action": {"type": "str", "description": "动作类型"},

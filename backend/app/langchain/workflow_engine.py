@@ -149,6 +149,26 @@ class ExecutionContext:
         }
         self.logs.append(log_entry)
 
+    def get_variable(self, name: str, default=None) -> Any:
+        """获取变量（按优先级：outputs → inputs → step_results）"""
+        val = self.outputs.get(name)
+        if val is not None:
+            return val
+        val = self.inputs.get(name)
+        if val is not None:
+            return val
+        for step_id, result in self.step_results.items():
+            if isinstance(result, dict):
+                val = result.get(name)
+                if val is not None:
+                    return val
+                output = result.get('output', {})
+                if isinstance(output, dict):
+                    val = output.get(name)
+                    if val is not None:
+                        return val
+        return default
+
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典（用于持久化）"""
         return {
@@ -766,11 +786,48 @@ class WorkflowEngine:
         
         # 创建节点实例并执行
         node = node_class()
-        result = await node.execute(context, **params)
         
-        # 记录详细的输出日志
+        if getattr(node, '_legacy', False):
+            # === 旧风格节点（tariff 节点）===
+            # execute(context, **kwargs) -> dict
+            result = await node.execute(context, **params)
+            logger.info(f"[WorkflowEngine] 步骤 [{step_def.id}] 输出信息:")
+            logger.info(f"  ├── 处理逻辑: {result.get('processing', '')}")
+            logger.info(f"  └── 执行结果: {json.dumps(result, ensure_ascii=False, default=str)[:200]}")
+            return result
+        
+        # === 新风格节点 ===
+        # execute(execution: DelegateExecution) -> None
+        from app.langchain.workflow_nodes import DelegateExecution
+        execution = DelegateExecution(context, step_def)
+        
+        for key, value in params.items():
+            execution.set(key, value)
+        
+        await node.execute(execution)
+        
+        # 收集输出：output_fields + dynamic_outputs + 其余变量透传
+        output = {}
+        for name in list(node.output_fields.keys()):
+            if name in execution.variables:
+                output[name] = execution.variables[name]
+        
+        dynamic_outputs = node.get_dynamic_outputs(step_def.action_params)
+        for name in list(dynamic_outputs.keys()):
+            if name in execution.variables:
+                output[name] = execution.variables[name]
+        
+        for name, value in execution.variables.items():
+            if name not in output:
+                output[name] = value
+        
+        result = {
+            "success": True,
+            "output": output,
+        }
+        result.update(output)
+        
         logger.info(f"[WorkflowEngine] 步骤 [{step_def.id}] 输出信息:")
-        logger.info(f"  ├── 处理逻辑: {result.get('processing', '')}")
         logger.info(f"  └── 执行结果: {json.dumps(result, ensure_ascii=False, default=str)[:200]}")
         
         return result

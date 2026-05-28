@@ -245,72 +245,20 @@ class WorkflowConverter:
     
     @classmethod
     def _extract_params(cls, node_data: Dict[str, Any]) -> Dict[str, Any]:
-        """提取节点参数"""
+        """提取节点参数（动态提取所有非内部字段）"""
         params = {}
         
-        # 通用参数
-        if 'prompt' in node_data:
-            params['prompt'] = node_data['prompt']
+        # 前端编辑器内部字段（不传递到节点）
+        internal_fields = {
+            'label', 'type', 'id', 'position',
+            'sourcePosition', 'targetPosition',
+            'measured', 'dragging', 'selected',
+        }
         
-        if 'model' in node_data:
-            params['model'] = node_data['model']
-        
-        if 'temperature' in node_data:
-            params['temperature'] = float(node_data['temperature'])
-        
-        if 'url' in node_data:
-            params['url'] = node_data['url']
-        
-        if 'method' in node_data:
-            params['method'] = node_data['method']
-        
-        if 'code' in node_data:
-            params['code'] = node_data['code']
-        
-        if 'condition' in node_data:
-            params['condition'] = node_data['condition']
-        
-        if 'loopCount' in node_data:
-            params['loop_count'] = int(node_data['loopCount'])
-        
-        if 'variableName' in node_data:
-            params['variable_name'] = node_data['variableName']
-        # 兼容前端使用的 varName
-        elif 'varName' in node_data:
-            params['variable_name'] = node_data['varName']
-        
-        if 'variableValue' in node_data:
-            params['variable_value'] = node_data['variableValue']
-        # 兼容前端使用的 varValue
-        elif 'varValue' in node_data:
-            params['variable_value'] = node_data['varValue']
-        
-        if 'outputVar' in node_data:
-            params['output_var'] = node_data['outputVar']
-        
-        if 'toolType' in node_data:
-            params['tool_type'] = node_data['toolType']
-        
-        if 'toolName' in node_data:
-            params['tool_name'] = node_data['toolName']
-        
-        if 'knowledgeBase' in node_data:
-            params['knowledge_base'] = node_data['knowledgeBase']
-        
-        if 'queryMode' in node_data:
-            params['query_mode'] = node_data['queryMode']
-        
-        if 'queryText' in node_data:
-            params['query_text'] = node_data['queryText']
-        
-        if 'required' in node_data:
-            params['required'] = node_data['required']
-        
-        if 'inputType' in node_data:
-            params['input_type'] = node_data['inputType']
-        
-        if 'options' in node_data:
-            params['options'] = node_data['options']
+        # 动态提取所有非内部字段
+        for key, value in node_data.items():
+            if key not in internal_fields and value is not None:
+                params[key] = value
         
         return params
     
