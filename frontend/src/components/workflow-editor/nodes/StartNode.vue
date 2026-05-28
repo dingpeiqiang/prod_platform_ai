@@ -177,7 +177,8 @@ const { sourcePosition } = useNodeAnchorMode(props);
 
 const emit = defineEmits(['update', 'close']);
 
-const localParams = ref([
+// 优先使用外部数据，没有则使用默认值
+const defaultParams = [
   {
     name: 'input',
     type: 'string',
@@ -185,15 +186,18 @@ const localParams = ref([
     default: '',
     required: true
   }
-]);
+];
+
+const localParams = ref(
+  (props.data.parameters && Array.isArray(props.data.parameters) && props.data.parameters.length > 0)
+    ? JSON.parse(JSON.stringify(props.data.parameters))
+    : JSON.parse(JSON.stringify(defaultParams))
+);
+
 const inputSectionExpanded = ref(true);
 
-// 初始化时，如果外部数据没有参数，自动同步默认参数到节点数据
-if (!props.data.parameters || !Array.isArray(props.data.parameters) || props.data.parameters.length === 0) {
-  emit('update', props.data.id, {
-    parameters: localParams.value
-  });
-}
+// 不再自动同步默认参数到节点数据，避免覆盖用户已有的配置
+// 用户修改后会通过 emitUpdate() 手动触发更新
 
 const toggleInputSection = () => {
   inputSectionExpanded.value = !inputSectionExpanded.value;
