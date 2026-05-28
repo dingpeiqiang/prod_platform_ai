@@ -461,57 +461,9 @@ class WorkflowEngine:
         definition = context.definition
         step_def = definition.steps[waiting_step_id]
         
-        # 处理 ask_user 节点的用户输入，设置到输出变量中
-        if step_def.action == "workflow.ask_user":
-            # 从 user_input 中获取用户输入文本，支持多种可能的字段名
-            user_text = (
-                user_input.get("user_input") 
-                or user_input.get("text") 
-                or user_input.get("input")
-                or (next(iter(user_input.values())) if user_input else "")
-            )
-            
-            # 从节点配置中获取输出变量名，默认为 user_input
-            output_var = step_def.action_params.get("output_var", "user_input")
-            
-            # 将用户输入设置为 ask_user 节点的输出
-            result = {
-                "action": "input_received",
-                "message": user_text,
-                "output": user_text,
-                "user_input": user_text,
-                output_var: user_text  # 也设置到自定义输出变量中
-            }
-            
-            # 将步骤结果包装成 {'output': result} 格式，支持表达式引用: node-id.output.field
-            wrapped_result = {"output": result}
-            context.step_results[waiting_step_id] = wrapped_result
-            
-            # 将输出参数添加到上下文中
-            if step_def.output_params:
-                for param_name in step_def.output_params:
-                    if param_name in result:
-                        context.outputs[param_name] = result[param_name]
-                        logger.debug(f"[WorkflowEngine] 步骤 [{waiting_step_id}] 输出参数 '{param_name}' 已添加到上下文")
-            else:
-                # 如果没有配置 output_params，至少将用户输入添加到上下文
-                context.outputs["output"] = user_text
-                context.outputs["user_input"] = user_text
-                context.outputs[output_var] = user_text
-                logger.debug(f"[WorkflowEngine] 步骤 [{waiting_step_id}] 用户输入已添加到上下文变量: {output_var}")
-            
-            # 同时，为了兼容性，仍然将 user_input 更新到上下文中
-            context.inputs.update(user_input)
-            context.outputs.update(user_input)
-        else:
-            # 处理其他类型节点的情况（如表单节点）
-            context.step_results[waiting_step_id] = {
-                "action": "form_submit",
-                "form_data": user_input,
-                "submitted_at": datetime.now().isoformat()
-            }
-            context.inputs.update(user_input)
-            context.outputs.update(user_input)
+        # 将用户输入添加到上下文中，供节点使用
+        context.inputs.update(user_input)
+        context.outputs.update(user_input)
         
         context.status = WorkflowStatus.RUNNING
         context.waiting_step_id = None
@@ -526,6 +478,62 @@ class WorkflowEngine:
             "user_input": user_input
         }
         
+        # 首先处理等待的节点（ask_user 节点恢复执行）
+        if step_def.action == "workflow.ask_user":
+            log_event = {"type": "step_start", "step": waiting_step_id, "name": step_def.name}
+            context.add_log(**log_event)
+            logger.info(f"[WorkflowEngine] 恢复执行步骤: {waiting_step_id} ({step_def.name}), 类型: {step_def.type}")
+            yield log_event
+            
+            try:
+                result = await self._execute_step(step_def, context, is_resume=True)
+                
+                # 检查是否需要继续询问（校验失败）
+                if isinstance(result, dict) and result.get("action") == "ask_user":
+                    context.status = WorkflowStatus.WAITING
+                    context.waiting_step_id = waiting_step_id
+                    context.waiting_form = result.get("form_schema")
+                    
+                    self.save_context(context)
+                    
+                    log_event = {
+                        "type": "workflow_waiting",
+                        "workflow_id": context.workflow_id,
+                        "step": waiting_step_id,
+                        "waiting_form": result.get("form_schema"),
+                        "message": result.get("message", "请重新输入")
+                    }
+                    context.add_log(**log_event)
+                    logger.info(f"[WorkflowEngine] 校验失败，继续等待用户输入: {context.workflow_id}, 当前步骤: {waiting_step_id}")
+                    yield log_event
+                    return
+                
+                # 将步骤结果包装成 {'output': result} 格式
+                wrapped_result = {"output": result} if result is not None else {"output": {}}
+                context.step_results[waiting_step_id] = wrapped_result
+                
+                # 将输出参数添加到上下文中
+                step_output = result
+                if isinstance(step_output, dict) and step_def.output_params:
+                    for param_name in step_def.output_params:
+                        if param_name in step_output:
+                            context.outputs[param_name] = step_output[param_name]
+                            logger.debug(f"[WorkflowEngine] 步骤 [{waiting_step_id}] 输出参数 '{param_name}' 已添加到上下文")
+                
+                log_event = {"type": "step_complete", "step": waiting_step_id, "name": step_def.name, "result": result}
+                context.add_log(**log_event)
+                logger.info(f"[WorkflowEngine] 步骤完成: {waiting_step_id} ({step_def.name}), 结果: {str(result)[:100]}")
+                yield log_event
+                
+            except Exception as e:
+                logger.error(f"步骤执行失败 {waiting_step_id}: {e}")
+                context.errors.append({"step": waiting_step_id, "error": str(e)})
+                log_event = {"type": "step_failed", "step": waiting_step_id, "name": step_def.name, "error": str(e)}
+                context.add_log(**log_event)
+                yield log_event
+                raise e
+        
+        # 确定下一个步骤
         current_step_id = self._determine_next_step(step_def, context)
         
         try:
@@ -693,10 +701,10 @@ class WorkflowEngine:
         
         return "\n".join(lines)
     
-    async def _execute_step(self, step_def: StepDefinition, context: ExecutionContext) -> Any:
+    async def _execute_step(self, step_def: StepDefinition, context: ExecutionContext, is_resume: bool = False) -> Any:
         """执行单个步骤"""
         if step_def.type == StepType.ACTION:
-            return await self._execute_action(step_def, context)
+            return await self._execute_action(step_def, context, is_resume)
         elif step_def.type == StepType.CONDITIONAL:
             return await self._execute_conditional(step_def, context)
         elif step_def.type == StepType.LOOP:
@@ -794,7 +802,7 @@ class WorkflowEngine:
             "output": outputs
         }
     
-    async def _execute_action(self, step_def: StepDefinition, context: ExecutionContext) -> Any:
+    async def _execute_action(self, step_def: StepDefinition, context: ExecutionContext, is_resume: bool = False) -> Any:
         """执行动作步骤 - 使用新节点架构"""
         if not step_def.action:
             raise ValueError(f"步骤 {step_def.id} 未指定动作")
@@ -818,7 +826,7 @@ class WorkflowEngine:
         
         # === 新风格节点 ===
         from app.langchain.workflow_nodes import DelegateExecution
-        execution = DelegateExecution(context, step_def)
+        execution = DelegateExecution(context, step_def, is_resume)
         
         for key, value in params.items():
             execution.set(key, value)

@@ -295,13 +295,43 @@ class WorkflowConverter:
             if key not in internal_fields and value is not None:
                 params[key] = value
         
-        # userInput 节点：将 prompt 字段映射为 message 字段
+        # userInput 节点：字段映射
         if node_type == 'userInput':
+            # 消息字段映射
             if 'prompt' in params and 'message' not in params:
                 params['message'] = params['prompt']
-            # 将 outputVar 映射为 output_var
+            # 输出变量映射
             if 'outputVar' in params and 'output_var' not in params:
                 params['output_var'] = params['outputVar']
+            # 输入类型映射
+            if 'inputType' in params and 'input_type' not in params:
+                params['input_type'] = params['inputType']
+            # 必填字段映射
+            if 'required' in params and 'required_fields' not in params:
+                params['required_fields'] = []
+                if params['required']:
+                    params['required_fields'] = ['user_input']
+            # 校验配置映射
+            if 'validationEnabled' in params and 'validation_enabled' not in params:
+                params['validation_enabled'] = params['validationEnabled']
+            if 'validationErrorMessage' in params and 'validation_error_message' not in params:
+                params['validation_error_message'] = params['validationErrorMessage']
+            if 'validationRules' in params and 'validation_rules' not in params:
+                params['validation_rules'] = params['validationRules']
+            # 大模型解析配置映射
+            if 'parseWithLLM' in params and 'parse_with_llm' not in params:
+                params['parse_with_llm'] = params['parseWithLLM']
+            if 'parsePrompt' in params and 'parse_prompt' not in params:
+                params['parse_prompt'] = params['parsePrompt']
+            if 'parseSchema' in params and 'parse_schema' not in params:
+                params['parse_schema'] = params['parseSchema']
+            
+            # 处理选项列表：将换行分隔的字符串转换为数组
+            if 'options' in params and isinstance(params['options'], str):
+                options_str = params['options']
+                options_list = [opt.strip() for opt in options_str.split('\n') if opt.strip()]
+                if options_list:
+                    params['options'] = options_list
         
         return params
     

@@ -117,10 +117,11 @@ class DelegateExecution:
       execution 本地变量 → context.step_results → context.outputs → context.inputs
     """
 
-    def __init__(self, context: 'ExecutionContext', step_def: 'StepDefinition'):
+    def __init__(self, context: 'ExecutionContext', step_def: 'StepDefinition', is_resume: bool = False):
         self._context = context
         self._step_def = step_def
         self._variables: Dict[str, Any] = {}
+        self.is_resume = is_resume  # 是否是恢复执行
 
     def get(self, name: str, default=None) -> Any:
         """获取变量"""

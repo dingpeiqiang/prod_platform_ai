@@ -2,58 +2,117 @@
   <div class="node user-input-node" :class="{ selected, 'is-config-mode': configMode, 'is-compact': compact && !configMode }">
     <div v-if="!configMode" class="node-header">
       <span class="node-icon">👤</span>
-      <span class="node-title">{{ data.label }}</span>
+      <span class="node-title">{{ data.label || '用户输入' }}</span>
     </div>
     <div v-if="compact && !configMode" class="node-compact-body">
-      <span class="compact-summary">{{ localInputType === 'text' ? '文本输入' : localInputType === 'select' ? '选择' : '确认' }}</span>
+      <span class="compact-summary">{{ localInputType === 'text' ? '文本输入' : localInputType === 'select' ? '下拉选择' : '确认框' }}</span>
       <span class="compact-hint">双击配置</span>
     </div>
     
     <div v-if="configMode" class="user-input-config">
       <div class="config-section collapsible-section">
-        <div class="section-header">
-          <button @click="toggleSection('basic')" class="section-toggle-btn">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.basic }">
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-            <span>基本配置</span>
-          </button>
+        <div class="section-header" @click="toggleSection('basic')">
+          <svg class="section-icon" :class="{ rotated: expandedSections.basic }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+          <span>基本配置</span>
         </div>
-        
         <div v-if="expandedSections.basic" class="section-content">
+          <div class="param-row">
+            <label class="param-label">节点名称</label>
+            <input v-model="localLabel" @input="emitUpdate" placeholder="用户输入" class="param-input" />
+          </div>
+          
+          <div class="param-row">
+            <label class="param-label">提示消息</label>
+            <textarea v-model="localPrompt" @input="emitUpdate" placeholder="请输入提示用户的文本..." class="multiline-input" rows="3"></textarea>
+          </div>
+          
           <div class="param-row">
             <label class="param-label">输入类型</label>
             <select v-model="localInputType" @change="emitUpdate" class="param-select">
               <option value="text">文本输入</option>
               <option value="select">下拉选择</option>
-              <option value="confirm">确认框</option>
+              <option value="confirm">确认框（是/否）</option>
             </select>
+          </div>
+          
+          <div v-if="localInputType === 'select'" class="param-row">
+            <label class="param-label">选项列表</label>
+            <textarea v-model="localOptions" @input="emitUpdate" placeholder="每行一个选项，例如：
+选项1
+选项2
+选项3" class="multiline-input" rows="4"></textarea>
+          </div>
+          
+          <div class="param-row">
+            <label class="param-label">
+              <input v-model="localRequired" @change="emitUpdate" type="checkbox" class="checkbox-input" />
+              必填项
+            </label>
           </div>
           
           <div class="param-row">
             <label class="param-label">输出变量名</label>
             <input v-model="localOutputVar" @input="emitUpdate" placeholder="user_input" class="param-input" />
           </div>
-          
+        </div>
+      </div>
+      
+      <div class="config-section collapsible-section">
+        <div class="section-header" @click="toggleSection('validation')">
+          <svg class="section-icon" :class="{ rotated: expandedSections.validation }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+          <span>输入校验</span>
+        </div>
+        <div v-if="expandedSections.validation" class="section-content">
           <div class="param-row">
             <label class="param-label">
-              <input v-model="localRequired" @change="emitUpdate" type="checkbox" class="checkbox-input"/>
-              必填项
+              <input v-model="localValidationEnabled" @change="emitUpdate" type="checkbox" class="checkbox-input" />
+              启用校验
             </label>
+          </div>
+          
+          <div v-if="localValidationEnabled" class="param-row">
+            <label class="param-label">校验失败提示</label>
+            <input v-model="localValidationErrorMessage" @input="emitUpdate" placeholder="您的输入不符合要求，请重新输入" class="param-input" />
+          </div>
+          
+          <div v-if="localValidationEnabled" class="param-row">
+            <label class="param-label">校验规则（JSON格式）</label>
+            <textarea v-model="localValidationRulesJson" @input="emitUpdate" placeholder='[{"type": "required", "message": "必填"}, {"type": "minLength", "value": 2, "message": "至少2个字符"}]' class="multiline-input" rows="4"></textarea>
           </div>
         </div>
       </div>
-
-      <div class="config-section">
-        <label class="section-label">提示文本</label>
-        <textarea v-model="localPrompt" @input="emitUpdate" placeholder="请输入提示用户的文本..." class="multiline-input" rows="4"></textarea>
+      
+      <div class="config-section collapsible-section">
+        <div class="section-header" @click="toggleSection('llm')">
+          <svg class="section-icon" :class="{ rotated: expandedSections.llm }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+          <span>大模型解析</span>
+        </div>
+        <div v-if="expandedSections.llm" class="section-content">
+          <div class="param-row">
+            <label class="param-label">
+              <input v-model="localParseWithLLM" @change="emitUpdate" type="checkbox" class="checkbox-input" />
+              使用大模型解析
+            </label>
+          </div>
+          
+          <div v-if="localParseWithLLM" class="param-row">
+            <label class="param-label">解析提示词</label>
+            <textarea v-model="localParsePrompt" @input="emitUpdate" placeholder="将用户输入解析为结构化数据，提取name和age字段" class="multiline-input" rows="3"></textarea>
+          </div>
+          
+          <div v-if="localParseWithLLM" class="param-row">
+            <label class="param-label">输出JSON Schema</label>
+            <textarea v-model="localParseSchemaJson" @input="emitUpdate" placeholder='{"type": "object", "properties": {"name": {"type": "string"}}}' class="multiline-input" rows="4"></textarea>
+          </div>
+        </div>
       </div>
-
-      <div v-if="localInputType === 'select'" class="config-section">
-        <label class="section-label">选项列表（每行一个选项）</label>
-        <textarea v-model="localOptions" @input="emitUpdate" placeholder="选项1&#10;选项2&#10;选项3" class="multiline-input" rows="4"></textarea>
-      </div>
-
+      
       <div class="collapse-btn">
         <button @click="$emit('close')">收起</button>
       </div>
@@ -78,8 +137,8 @@
 <script setup>
 import { ref, watch } from 'vue';
 import { Handle } from '@vue-flow/core';
-import { nodeDisplayProps } from './nodeDisplayProps.js';
-import { useNodeAnchorMode } from './useHandlePosition.js';
+import { nodeDisplayProps } from './nodeDisplayProps';
+import { useNodeAnchorMode } from './useHandlePos';
 
 const props = defineProps({
   data: { type: Object, required: true },
@@ -93,51 +152,123 @@ const { targetPosition, sourcePosition, isVertical } = useNodeAnchorMode(props);
 const emit = defineEmits(['update', 'close']);
 
 const localLabel = ref(props.data.label || '用户输入');
-const localPrompt = ref(props.data.prompt || '请输入：');
+const localPrompt = ref(props.data.prompt || props.data.message || '请输入：');
 const localInputType = ref(props.data.inputType || 'text');
 const localOptions = ref(props.data.options || '');
 const localRequired = ref(props.data.required ?? true);
 const localOutputVar = ref(props.data.outputVar || props.data.output_var || 'user_input');
 
+// 校验配置
+const localValidationEnabled = ref(props.data.validationEnabled ?? props.data.validation_enabled ?? false);
+const localValidationErrorMessage = ref(props.data.validationErrorMessage || props.data.validation_error_message || '您的输入不符合要求，请重新输入');
+const localValidationRulesJson = ref('');
+
+// 大模型解析配置
+const localParseWithLLM = ref(props.data.parseWithLLM ?? props.data.parse_with_llm ?? false);
+const localParsePrompt = ref(props.data.parsePrompt || props.data.parse_prompt || '');
+const localParseSchemaJson = ref('');
+
 const expandedSections = ref({
-  basic: true
+  basic: true,
+  validation: false,
+  llm: false
 });
+
+// 初始化JSON字段
+const initJsonFields = () => {
+  if (props.data.validationRules || props.data.validation_rules) {
+    const rules = props.data.validationRules || props.data.validation_rules;
+    if (typeof rules === 'string') {
+      localValidationRulesJson.value = rules;
+    } else if (Array.isArray(rules)) {
+      try {
+        localValidationRulesJson.value = JSON.stringify(rules, null, 2);
+      } catch (e) {
+        localValidationRulesJson.value = '';
+      }
+    }
+  }
+  
+  if (props.data.parseSchema || props.data.parse_schema) {
+    const schema = props.data.parseSchema || props.data.parse_schema;
+    if (typeof schema === 'string') {
+      localParseSchemaJson.value = schema;
+    } else if (schema && typeof schema === 'object') {
+      try {
+        localParseSchemaJson.value = JSON.stringify(schema, null, 2);
+      } catch (e) {
+        localParseSchemaJson.value = '';
+      }
+    }
+  }
+};
+
+initJsonFields();
 
 const toggleSection = (section) => {
   expandedSections.value[section] = !expandedSections.value[section];
 };
 
+const parseJson = (jsonStr) => {
+  if (!jsonStr || !jsonStr.trim()) return null;
+  try {
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    return null;
+  }
+};
+
 const emitUpdate = () => {
- emit('update', props.data.id, {
- label: localLabel.value,
- prompt: localPrompt.value,
- message: localPrompt.value, // 同时设置 message 字段，供后端使用
- inputType: localInputType.value,
- options: localOptions.value,
- required: localRequired.value,
- outputVar: localOutputVar.value,
- output_var: localOutputVar.value // 同时设置 output_var 字段，保持兼容
- });
+  const validationRules = parseJson(localValidationRulesJson.value);
+  const parseSchema = parseJson(localParseSchemaJson.value);
+  
+  emit('update', props.data.id, {
+    label: localLabel.value,
+    prompt: localPrompt.value,
+    message: localPrompt.value,
+    inputType: localInputType.value,
+    options: localOptions.value,
+    required: localRequired.value,
+    outputVar: localOutputVar.value,
+    output_var: localOutputVar.value,
+    // 校验配置
+    validationEnabled: localValidationEnabled.value,
+    validation_enabled: localValidationEnabled.value,
+    validationErrorMessage: localValidationErrorMessage.value,
+    validation_error_message: localValidationErrorMessage.value,
+    validationRules: validationRules,
+    validation_rules: validationRules,
+    // 大模型解析配置
+    parseWithLLM: localParseWithLLM.value,
+    parse_with_llm: localParseWithLLM.value,
+    parsePrompt: localParsePrompt.value,
+    parse_prompt: localParsePrompt.value,
+    parseSchema: parseSchema,
+    parse_schema: parseSchema
+  });
 };
 
 watch(() => props.data, (newData) => {
- localLabel.value = newData.label || '用户输入';
- localPrompt.value = newData.prompt || newData.message || '请输入：';
- localInputType.value = newData.inputType || 'text';
- localOptions.value = newData.options || '';
- localRequired.value = newData.required ?? true;
- localOutputVar.value = newData.outputVar || newData.output_var || 'user_input';
+  localLabel.value = newData.label || '用户输入';
+  localPrompt.value = newData.prompt || newData.message || '请输入：';
+  localInputType.value = newData.inputType || 'text';
+  localOptions.value = newData.options || '';
+  localRequired.value = newData.required ?? true;
+  localOutputVar.value = newData.outputVar || newData.output_var || 'user_input';
+  localValidationEnabled.value = newData.validationEnabled ?? newData.validation_enabled ?? false;
+  localValidationErrorMessage.value = newData.validationErrorMessage || newData.validation_error_message || '您的输入不符合要求，请重新输入';
+  localParseWithLLM.value = newData.parseWithLLM ?? newData.parse_with_llm ?? false;
+  localParsePrompt.value = newData.parsePrompt || newData.parse_prompt || '';
+  initJsonFields();
 }, { deep: true });
 
-// 计算 Handle 的垂直位置百分比（水平布局时用于 source handle 的 top 定位）
+// 计算Handle的垂直位置百分比（水平布局时用于source handle的top定位）
 const getHandleTop = (index) => {
-  // 单个 handle 居中
   return 50;
 };
 
-// 计算 Handle 的水平位置百分比（垂直布局时用于 source handle 的 left 定位）
+// 计算Handle的水平位置百分比（垂直布局时用于source handle的left定位）
 const getHandleLeft = (index) => {
-  // 单个 handle 居中
   return 50;
 };
 </script>
@@ -148,7 +279,7 @@ const getHandleLeft = (index) => {
   border: 2px solid #e2e8f0;
   border-radius: 8px;
   min-width: 180px;
-  min-height: 120px; /* 统一节点最小高度 */
+  min-height: 120px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   transition: all 0.2s ease;
 }
@@ -225,39 +356,25 @@ const getHandleLeft = (index) => {
 .section-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   padding: 12px 16px;
   background: #fafafa;
   border-bottom: 1px solid #e8e8e8;
-}
-
-.section-toggle-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border: none;
-  background: transparent;
-  color: #333;
-  font-size: 14px;
-  font-weight: 600;
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 4px;
-  transition: background 0.2s;
+  user-select: none;
 }
 
-.section-toggle-btn:hover {
-  background: #f0f0f0;
-}
-
-.section-toggle-btn svg {
-  width: 16px;
-  height: 16px;
+.section-icon {
+  margin-right: 8px;
   transition: transform 0.2s;
 }
 
-.section-toggle-btn svg.rotated {
+.section-icon.rotated {
   transform: rotate(180deg);
+}
+
+.section-header:hover {
+  background: #f5f5f5;
 }
 
 .section-content {
@@ -402,45 +519,35 @@ const getHandleLeft = (index) => {
   box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.5) !important;
 }
 
-:deep(.vue-flow__handle[type="target"]) {
+:deep(.vue-flow__handle[type='target']) {
   background-color: #fb923c !important;
 }
 
-:deep(.vue-flow__handle[type="target"]:hover) {
+:deep(.vue-flow__handle[type='target']:hover) {
   background-color: #f97316 !important;
 }
 
-:deep(.vue-flow__handle[type="source"]) {
+:deep(.vue-flow__handle[type='source']) {
   background-color: #f97316 !important;
 }
 
-:deep(.vue-flow__handle[type="source"]:hover) {
+:deep(.vue-flow__handle[type='source']:hover) {
   background-color: #ea580c !important;
 }
 
-/* ========== 水平和垂直布局支持 ========== */
-
-/* 水平布局时 Source Handle 位置调整 - 居中垂直定位 */
-:deep(.vue-flow--horizontal) .user-input-node .vue-flow__handle[type="source"] {
+/* 水平和垂直布局支持 */
+:deep(.vue-flow--horizontal) .user-input-node .vue-flow__handle[type='source'] {
   top: 50%;
   transform: translateY(-50%);
 }
 
-/* 垂直布局时 Source Handle 位置调整 - 居中水平定位 */
-:deep(.vue-flow--vertical) .user-input-node .vue-flow__handle[type="source"] {
+:deep(.vue-flow--vertical) .user-input-node .vue-flow__handle[type='source'] {
   left: 50%;
   transform: translateX(-50%);
 }
 
-/* 水平布局时 Target Handle 位置微调 */
-:deep(.vue-flow--horizontal) .user-input-node .vue-flow__handle[type="target"] {
+:deep(.vue-flow--horizontal) .user-input-node .vue-flow__handle[type='target'] {
   top: 50%;
   transform: translateY(-50%);
-}
-
-/* 垂直布局时 Target Handle 保持默认 */
-:deep(.vue-flow--vertical) .user-input-node .vue-flow__handle[type="target"] {
-  top: 0;
-  transform: translateX(-50%);
 }
 </style>

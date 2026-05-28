@@ -127,52 +127,54 @@ case 'executing': {
  }
  }
  };
- const sendStreamMessage = async (text, { formCode = null, formData = null, modelConfig = null } = {}) => {
- if (!currentDbSessionIdRef.value)
- return;
- const aiMsg = {
- id: genId(), role: 'assistant',
- reasoning: [], streamText: '', content: '',
- showReasoning: false,
- done: false, type: 'chat'
- };
- messagesRef.value.push(aiMsg);
- const msgIdx = messagesRef.value.length - 1;
- let dbMessageId = null;
- if (currentDbSessionIdRef.value) {
- try {
- const saved = await saveMessage(currentDbSessionIdRef.value, {
- role: 'assistant',
- content: '',
- reasoning: [],
- metadata: { stream_status: 'streaming' }
- });
- if (saved?.message_id) {
- dbMessageId = saved.message_id;
- aiMsg.dbMessageId = dbMessageId;
- }
- }
- catch (e) {
- console.warn('[SSE] 初始保存 AI 消息失败:', e);
- }
- }
- isStreaming.value = true;
- abortCtrl = new AbortController();
- try {
- const chatHistory = messagesRef.value
- .filter(m => m.role === 'user' || (m.role === 'assistant' && m.done && m.content))
- .slice(0, -1)
- .slice(-20)
- .map(m => ({ role: m.role, content: m.content || m.streamText || '' }));
- const requestBody = {
- messages: [...chatHistory, { role: 'user', content: text }]
- };
- if (formCode)
- requestBody.formCode = formCode;
- if (formData)
- requestBody.formData = formData;
- if (modelConfig)
- requestBody.modelConfig = modelConfig;
+ const sendStreamMessage = async (text, { formCode = null, formData = null, modelConfig = null, workflowResume = null } = {}) => {
+    if (!currentDbSessionIdRef.value)
+        return;
+    const aiMsg = {
+      id: genId(), role: 'assistant',
+      reasoning: [], streamText: '', content: '',
+      showReasoning: false,
+      done: false, type: 'chat'
+    };
+    messagesRef.value.push(aiMsg);
+    const msgIdx = messagesRef.value.length - 1;
+    let dbMessageId = null;
+    if (currentDbSessionIdRef.value) {
+      try {
+        const saved = await saveMessage(currentDbSessionIdRef.value, {
+          role: 'assistant',
+          content: '',
+          reasoning: [],
+          metadata: { stream_status: 'streaming' }
+        });
+        if (saved?.message_id) {
+          dbMessageId = saved.message_id;
+          aiMsg.dbMessageId = dbMessageId;
+        }
+      }
+      catch (e) {
+        console.warn('[SSE] 初始保存 AI 消息失败:', e);
+      }
+    }
+    isStreaming.value = true;
+    abortCtrl = new AbortController();
+    try {
+      const chatHistory = messagesRef.value
+        .filter(m => m.role === 'user' || (m.role === 'assistant' && m.done && m.content))
+        .slice(0, -1)
+        .slice(-20)
+        .map(m => ({ role: m.role, content: m.content || m.streamText || '' }));
+      const requestBody = {
+        messages: [...chatHistory, { role: 'user', content: text }]
+      };
+      if (formCode)
+        requestBody.formCode = formCode;
+      if (formData)
+        requestBody.formData = formData;
+      if (modelConfig)
+        requestBody.modelConfig = modelConfig;
+      if (workflowResume)
+        requestBody.workflowResume = workflowResume;
  const resp = await fetch('/api/v1/chat/stream', {
  method: 'POST',
  headers: { 'Content-Type': 'application/json' },
