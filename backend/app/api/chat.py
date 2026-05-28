@@ -1219,6 +1219,10 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                 execution_id = workflow_waiting.get("execution_id", "")
 
                                 yield thinking(f"⏳ {message}")
+                                # 发送 text 事件，让用户在聊天窗口看到消息
+                                yield sse({"type": "text_start"})
+                                yield sse({"type": "text", "content": message})
+                                yield sse({"type": "text_end"})
                                 intent_data["workflow_waiting"] = workflow_waiting
                                 stream_stats.total_elapsed = time.time() - start_time
                                 yield sse({"type": "stats", "content": stream_stats.to_dict()})

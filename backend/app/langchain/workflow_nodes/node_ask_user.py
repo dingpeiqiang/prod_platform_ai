@@ -17,6 +17,7 @@ class AskUserNode(WorkflowNode):
     description = "向用户提问并等待输入"
     config_fields = {
         "message": ParamSchema(type="str", required=True, description="提示消息"),
+        "prompt": ParamSchema(type="str", required=False, description="提示消息（兼容旧格式，推荐使用 message）"),
         "required_fields": ParamSchema(type="list", required=False, description="必填字段列表", default=[]),
     }
     output_fields = {
@@ -27,7 +28,7 @@ class AskUserNode(WorkflowNode):
     }
 
     async def execute(self, execution: DelegateExecution) -> None:
-        message = execution.get("message", "请提供信息")
+        message = execution.get("message") or execution.get("prompt") or "请提供信息"
         required_fields = execution.get("required_fields", [])
 
         self._log_input(message=message, required_fields=required_fields)

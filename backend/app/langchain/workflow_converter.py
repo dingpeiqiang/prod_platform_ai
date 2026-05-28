@@ -170,7 +170,7 @@ class WorkflowConverter:
             'name': node_data.get('label') or node_type,
             'type': cls.NODE_TYPE_MAP.get(node_type, 'action'),
             'action': cls.NODE_ACTION_MAP.get(node_type),
-            'action_params': cls._extract_params(node_data),
+            'action_params': cls._extract_params(node_data, node_type),
             'next_step': None,
             'next_steps': {}
         }
@@ -279,7 +279,7 @@ class WorkflowConverter:
         return step
     
     @classmethod
-    def _extract_params(cls, node_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _extract_params(cls, node_data: Dict[str, Any], node_type: str) -> Dict[str, Any]:
         """提取节点参数（动态提取所有非内部字段）"""
         params = {}
         
@@ -294,6 +294,10 @@ class WorkflowConverter:
         for key, value in node_data.items():
             if key not in internal_fields and value is not None:
                 params[key] = value
+        
+        # userInput 节点：将 prompt 字段映射为 message 字段
+        if node_type == 'userInput' and 'prompt' in params and 'message' not in params:
+            params['message'] = params['prompt']
         
         return params
     
