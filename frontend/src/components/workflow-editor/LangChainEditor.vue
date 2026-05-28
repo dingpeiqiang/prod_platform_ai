@@ -925,7 +925,7 @@ const generateDefaultElements = () => {
   const elements = [];
   
   template.nodes.forEach((node, idx) => {
-    const nodeId = `${node.type}-${uuidv4().slice(0, 8)}`;
+    const nodeId = `${node.type}_${uuidv4().slice(0, 6)}`;
     elements.push({
       id: nodeId,
       type: node.type,
@@ -1341,6 +1341,9 @@ const getAvailableVariables = (nodeId) => {
   // 获取当前节点之前的所有节点 ID
   const precedingNodeIds = topoOrder.slice(0, currentIndex);
   
+  // 记录已添加的变量引用，处理同名变量
+  const addedVarRefs = new Set();
+  
   // 遍历所有在当前节点之前的节点，收集它们的输出变量
   for (const precedingId of precedingNodeIds) {
     const node = nodes.find(n => n.id === precedingId);
@@ -1363,8 +1366,14 @@ const getAvailableVariables = (nodeId) => {
         
         paramsToAdd.forEach((param, index) => {
           if (param && param.name) {
+            const varName = param.name;
+            // 变量引用格式: ${nodeId}.output.${variableName}
+            const varRef = `${node.id}.output.${varName}`;
+            if (addedVarRefs.has(varRef)) return;
+            addedVarRefs.add(varRef);
+            
             variables.push({
-              id: `${node.id}.param.${index}`,
+              id: varRef,
               name: `${param.name} (入参)`,
               nodeId: node.id,
               nodeType: 'start',
@@ -1373,19 +1382,24 @@ const getAvailableVariables = (nodeId) => {
               source: 'workflow_input',
               sourceNodeType: 'start',
               sourceNodeName: '开始节点',
-              varName: param.name
+              varName: varName
             });
           }
         });
         break;
       }
       case 'variable':
-        const outputs = node.data?.outputs || [];
-        if (outputs.length > 0) {
-          outputs.forEach((output, index) => {
+        const varOutputs = node.data?.outputParams || [];
+        if (varOutputs.length > 0) {
+          varOutputs.forEach((output, index) => {
             if (output && output.name) {
+              const varName = output.name;
+              const varRef = `${node.id}.output.${varName}`;
+              if (addedVarRefs.has(varRef)) return;
+              addedVarRefs.add(varRef);
+              
               variables.push({
-                id: `${node.id}.output.${index}`,
+                id: varRef,
                 name: `${output.name} (输出)`,
                 nodeId: node.id,
                 nodeType: nodeType,
@@ -1394,14 +1408,18 @@ const getAvailableVariables = (nodeId) => {
                 source: 'node_output',
                 sourceNodeType: nodeType,
                 sourceNodeName: nodeName,
-                varName: output.name
+                varName: varName
               });
             }
           });
         } else {
           const outputVarName = node.data?.outputVar || node.data?.variable_name || node.data?.varName || node.data?.variableName || node.data?.label || nodeType;
+          const varRef = `${node.id}.output.${outputVarName}`;
+          if (addedVarRefs.has(varRef)) continue;
+          addedVarRefs.add(varRef);
+          
           variables.push({
-            id: `${node.id}.output`,
+            id: varRef,
             name: `${outputVarName} (输出)`,
             nodeId: node.id,
             nodeType: nodeType,
@@ -1421,12 +1439,17 @@ const getAvailableVariables = (nodeId) => {
       case 'code':
       case 'parser':
       case 'userInput': {
-        const outputs = node.data?.outputs || [];
-        if (outputs.length > 0) {
-          outputs.forEach((output, index) => {
+        const nodeOutputs = node.data?.outputParams || [];
+        if (nodeOutputs.length > 0) {
+          nodeOutputs.forEach((output, index) => {
             if (output && output.name) {
+              const varName = output.name;
+              const varRef = `${node.id}.output.${varName}`;
+              if (addedVarRefs.has(varRef)) return;
+              addedVarRefs.add(varRef);
+              
               variables.push({
-                id: `${node.id}.output.${index}`,
+                id: varRef,
                 name: `${output.name} (输出)`,
                 nodeId: node.id,
                 nodeType: nodeType,
@@ -1435,14 +1458,18 @@ const getAvailableVariables = (nodeId) => {
                 source: 'node_output',
                 sourceNodeType: nodeType,
                 sourceNodeName: nodeName,
-                varName: output.name
+                varName: varName
               });
             }
           });
         } else {
           outputVarName = node.data?.outputVar || node.data?.label || nodeType;
+          const varRef = `${node.id}.output.${outputVarName}`;
+          if (addedVarRefs.has(varRef)) continue;
+          addedVarRefs.add(varRef);
+          
           variables.push({
-            id: `${node.id}.output`,
+            id: varRef,
             name: `${outputVarName} (输出)`,
             nodeId: node.id,
             nodeType: nodeType,
@@ -1457,12 +1484,17 @@ const getAvailableVariables = (nodeId) => {
         break;
       }
       case 'condition': {
-        const outputs = node.data?.outputs || [];
-        if (outputs.length > 0) {
-          outputs.forEach((output, index) => {
+        const condOutputs = node.data?.outputParams || [];
+        if (condOutputs.length > 0) {
+          condOutputs.forEach((output, index) => {
             if (output && output.name) {
+              const varName = output.name;
+              const varRef = `${node.id}.output.${varName}`;
+              if (addedVarRefs.has(varRef)) return;
+              addedVarRefs.add(varRef);
+              
               variables.push({
-                id: `${node.id}.output.${index}`,
+                id: varRef,
                 name: `${output.name} (输出)`,
                 nodeId: node.id,
                 nodeType: nodeType,
@@ -1471,14 +1503,18 @@ const getAvailableVariables = (nodeId) => {
                 source: 'node_output',
                 sourceNodeType: nodeType,
                 sourceNodeName: nodeName,
-                varName: output.name
+                varName: varName
               });
             }
           });
         } else {
           outputVarName = node.data?.label || '条件';
+          const varRef = `${node.id}.output.${outputVarName}`;
+          if (addedVarRefs.has(varRef)) continue;
+          addedVarRefs.add(varRef);
+          
           variables.push({
-            id: `${node.id}.result`,
+            id: varRef,
             name: `${outputVarName} (结果)`,
             nodeId: node.id,
             nodeType: 'condition',
@@ -1494,8 +1530,12 @@ const getAvailableVariables = (nodeId) => {
       }
       default:
         outputVarName = node.data?.outputVar || node.data?.label || nodeType;
+        const varRef = `${node.id}.output.${outputVarName}`;
+        if (addedVarRefs.has(varRef)) continue;
+        addedVarRefs.add(varRef);
+        
         variables.push({
-          id: `${node.id}.output`,
+          id: varRef,
           name: `${outputVarName} (输出)`,
           nodeId: node.id,
           nodeType: nodeType,
@@ -1869,8 +1909,14 @@ const updateNodeData = (nodeId, data) => {
   const oldOutputVar = outputVarNodes.includes(node?.type) ? node.data?.outputVar : null;
   const newOutputVar = outputVarNodes.includes(node?.type) ? data?.outputVar : null;
   
+  // 记录变量节点的旧变量名（用于检测变化）
+  const oldVarName = node?.type === 'variable' ? node.data?.variable_name || node.data?.varName || node.data?.outputVar : null;
+  const newVarName = node?.type === 'variable' ? data?.variable_name || data?.varName || data?.outputVar : null;
+  
   if (node) {
     node.data = { ...node.data, ...data };
+    // 删除旧的 outputs 字段，统一使用 outputParams
+    delete node.data.outputs;
     markDirty();
     
     // 处理变量节点的变量名变化
@@ -1963,6 +2009,13 @@ const saveWorkflow = async (isAuto = false) => {
     savedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
+
+  // 清理所有节点的旧 outputs 字段，统一使用 outputParams
+  workflowData.nodes.forEach(node => {
+    if (node.data && 'outputs' in node.data) {
+      delete node.data.outputs;
+    }
+  });
 
   try {
     if (currentWorkflowId.value) {
@@ -2866,7 +2919,7 @@ const applyTemplate = (template) => {
   const newElements = [];
   
   template.nodes.forEach((node, idx) => {
-    const nodeId = `${node.type}-${uuidv4().slice(0, 8)}`;
+    const nodeId = `${node.type}_${uuidv4().slice(0, 6)}`;
     newElements.push({
       id: nodeId,
       type: node.type,

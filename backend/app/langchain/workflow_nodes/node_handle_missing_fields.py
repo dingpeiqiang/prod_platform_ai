@@ -37,6 +37,8 @@ class HandleMissingFieldsNode(WorkflowNode):
         validate_form_step = execution.get("validate_form_step", "validate_form")
 
         validate_result = context.step_results.get(validate_form_step, {})
+        # 支持新的输出格式 {'output': value}
+        validate_result = validate_result.get("output", validate_result)
         if not validate_result:
             validate_result = context.outputs.get("validation_result", {})
 

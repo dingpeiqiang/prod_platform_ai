@@ -31,8 +31,10 @@ class TariffHandleMissingCodeNode(WorkflowNode):
         processing = "处理缺失套餐编码"
         self._log_processing(processing)
         
-        # 从上下文获取解析结果
+        # 从上下文获取解析结果（支持新的输出格式 {'output': value}）
         parse_result = context.step_results.get("parse_input", {})
+        # 从 output 字段获取实际数据
+        parse_result = parse_result.get("output", parse_result)
         
         missing_fields = parse_result.get("missing_fields", [])
         

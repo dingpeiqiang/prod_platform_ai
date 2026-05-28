@@ -376,10 +376,18 @@ class NodeExecutor(ABC):
         同时也将结果存储到 context.outputs 中供外部访问。
         
         如果配置了output_mappings，则按照映射关系设置变量。
+        
+        输出格式: {'output': <实际结果>}，支持表达式引用格式: node-id.output.field
         """
-        context.set_variable(self.OUTPUT_VAR_NAME, value)
+        # 包装输出格式为 {'output': value}，支持表达式引用
+        wrapped_output = {"output": value} if value is not None else {"output": {}}
+        
+        context.set_variable(self.OUTPUT_VAR_NAME, wrapped_output)
         # 同时更新节点专属输出（保持向后兼容）
-        context.outputs[self.NODE_TYPE] = value
+        context.outputs[self.NODE_TYPE] = wrapped_output
+        
+        # 保存原始输出到节点专属变量（保持向后兼容）
+        context.set_variable(f"{self.node_id}_output", value)
         
         # 处理显性输出映射
         if self.output_mappings:
@@ -420,12 +428,18 @@ class NodeExecutor(ABC):
             
             # 处理 __node_output__ 引用（前一个节点输出）
             if var_path == self.OUTPUT_VAR_NAME:
-                return self.get_previous_output(context)
+                # 返回原始输出值（去掉 output 包装）
+                prev_output = self.get_previous_output(context)
+                if isinstance(prev_output, dict) and "output" in prev_output:
+                    return prev_output["output"]
+                return prev_output
             elif var_path.startswith(self.OUTPUT_VAR_NAME + "."):
                 field_name = var_path[len(self.OUTPUT_VAR_NAME) + 1:]
                 prev_output = self.get_previous_output(context)
-                if isinstance(prev_output, dict) and field_name in prev_output:
-                    return prev_output[field_name]
+                # 从 output 字段中获取实际数据
+                actual_output = prev_output.get("output", prev_output) if isinstance(prev_output, dict) else prev_output
+                if isinstance(actual_output, dict) and field_name in actual_output:
+                    return actual_output[field_name]
                 return ""
             
             # 尝试从上下文变量获取
@@ -433,10 +447,11 @@ class NodeExecutor(ABC):
             if value is not None:
                 return value
             
-            # 尝试从前一个节点输出的字段获取
+            # 尝试从前一个节点输出的字段获取（支持新的 output 包装格式）
             prev_output = self.get_previous_output(context)
-            if isinstance(prev_output, dict) and var_path in prev_output:
-                return prev_output[var_path]
+            actual_output = prev_output.get("output", prev_output) if isinstance(prev_output, dict) else prev_output
+            if isinstance(actual_output, dict) and var_path in actual_output:
+                return actual_output[var_path]
             
             return ""
         
@@ -891,20 +906,12 @@ class ConditionNodeExecutor(NodeExecutor):
                         continue
                     
                     # 获取左操作数（变量值）
-                    left_operand = context.get_variable(var_name, "")
-                    if not left_operand and var_name != "":
-                        prev_output = self.get_previous_output(context)
-                        if isinstance(prev_output, dict) and var_name in prev_output:
-                            left_operand = prev_output[var_name]
+                    left_operand = self._get_variable_value(var_name, context)
                     
                     # 获取右操作数
                     if value_type == "reference":
                         # 引用变量
-                        right_operand = context.get_variable(value, "")
-                        if not right_operand and value != "":
-                            prev_output = self.get_previous_output(context)
-                            if isinstance(prev_output, dict) and value in prev_output:
-                                right_operand = prev_output[value]
+                        right_operand = self._get_variable_value(value, context)
                     else:
                         # 直接输入值
                         right_operand = value
@@ -935,24 +942,75 @@ class ConditionNodeExecutor(NodeExecutor):
         right_type = self.node_data.get("rightType", "constant")
         right_value = self.node_data.get("rightValue", "")
         
-        # 获取左操作数
+        # 获取左操作数（使用统一的变量获取方法）
         if left_type == "variable":
-            left_operand = context.get_variable(left_value, "")
-            if not left_operand and left_value != "":
-                prev_output = self.get_previous_output(context)
-                if isinstance(prev_output, dict) and left_value in prev_output:
-                    left_operand = prev_output[left_value]
+            left_operand = self._get_variable_value(left_value, context)
         else:
             left_operand = left_value
         
-        # 获取右操作数
+        # 获取右操作数（使用统一的变量获取方法）
         if right_type == "variable":
-            right_operand = context.get_variable(right_value, "")
+            right_operand = self._get_variable_value(right_value, context)
         else:
             right_operand = right_value
         
         result = self._evaluate_condition(left_operand, operator, right_operand)
         return result, 0
+    
+    def _get_variable_value(self, var_path: str, context: WorkflowContext) -> Any:
+        """获取变量值，支持多种引用格式：
+        
+        1. 普通变量名：直接从上下文获取
+        2. 节点ID + 输出路径：如 "code-211a6b31.output.tariff_code"
+           从指定节点的输出中获取值
+        
+        Args:
+            var_path: 变量路径
+            context: 工作流上下文
+            
+        Returns:
+            变量值，如果未找到返回空字符串
+        """
+        if not var_path:
+            return ""
+        
+        # 尝试从上下文直接获取
+        value = context.get_variable(var_path, None)
+        if value is not None:
+            return value
+        
+        # 尝试从前一个节点输出获取
+        prev_output = self.get_previous_output(context)
+        if isinstance(prev_output, dict) and var_path in prev_output:
+            return prev_output[var_path]
+        
+        # 检查是否是节点ID + 输出路径格式（如 "code-211a6b31.output.tariff_code"）
+        # 节点ID通常包含短横线，这是区分普通变量和节点引用的特征
+        if '-' in var_path:
+            parts = var_path.split('.', 1)  # 分割成2部分：节点ID 和 剩余路径
+            if len(parts) >= 2:
+                node_id = parts[0]
+                rest_path = parts[1]
+                
+                # 从节点输出中查找
+                node_output = context.get_node_output(node_id)
+                if node_output:
+                    # 解析剩余路径
+                    path_parts = rest_path.split('.')
+                    current_value = node_output
+                    for part in path_parts:
+                        if isinstance(current_value, dict) and part in current_value:
+                            current_value = current_value[part]
+                        elif hasattr(current_value, part):
+                            current_value = getattr(current_value, part)
+                        else:
+                            current_value = None
+                            break
+                    
+                    if current_value is not None:
+                        return current_value
+        
+        return ""
     
     def _evaluate_condition(self, left, operator, right) -> bool:
         """评估条件表达式"""

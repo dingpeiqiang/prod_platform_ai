@@ -150,7 +150,10 @@ class ExecutionContext:
         self.logs.append(log_entry)
 
     def get_variable(self, name: str, default=None) -> Any:
-        """获取变量（按优先级：outputs → inputs → step_results）"""
+        """获取变量（按优先级：outputs → inputs → step_results）
+        
+        支持新的输出格式 {'output': value}，自动从 output 字段中获取实际数据。
+        """
         val = self.outputs.get(name)
         if val is not None:
             return val
@@ -159,14 +162,11 @@ class ExecutionContext:
             return val
         for step_id, result in self.step_results.items():
             if isinstance(result, dict):
-                val = result.get(name)
+                # 支持新的输出格式 {'output': value}
+                actual_result = result.get("output", result)
+                val = actual_result.get(name)
                 if val is not None:
                     return val
-                output = result.get('output', {})
-                if isinstance(output, dict):
-                    val = output.get(name)
-                    if val is not None:
-                        return val
         return default
 
     def to_dict(self) -> Dict[str, Any]:
@@ -368,22 +368,18 @@ class WorkflowEngine:
                         yield log_event
                         return
                     
-                    context.step_results[current_step_id] = result
+                    # 将步骤结果包装成 {'output': result} 格式，支持表达式引用: node-id.output.field
+                    wrapped_result = {"output": result} if result is not None else {"output": {}}
+                    context.step_results[current_step_id] = wrapped_result
                     
                     # 将步骤的输出参数添加到上下文中
-                    step_output = result.get('output', result)
-                    if isinstance(step_output, dict):
-                        if step_def.output_params:
-                            # 如果配置了 output_params，只添加指定的参数
-                            for param_name in step_def.output_params:
-                                if param_name in step_output:
-                                    context.outputs[param_name] = step_output[param_name]
-                                    logger.debug(f"[WorkflowEngine] 步骤 [{current_step_id}] 输出参数 '{param_name}' 已添加到上下文")
-                        else:
-                            # 如果没有配置 output_params，自动将所有输出字段添加到上下文
-                            for key, value in step_output.items():
-                                context.outputs[key] = value
-                                logger.debug(f"[WorkflowEngine] 步骤 [{current_step_id}] 自动添加输出字段 '{key}' 到上下文")
+                    step_output = result
+                    if isinstance(step_output, dict) and step_def.output_params:
+                        # 仅当配置了 output_params 时，才将指定参数添加到上下文
+                        for param_name in step_def.output_params:
+                            if param_name in step_output:
+                                context.outputs[param_name] = step_output[param_name]
+                                logger.debug(f"[WorkflowEngine] 步骤 [{current_step_id}] 输出参数 '{param_name}' 已添加到上下文")
                     
                     log_event = {"type": "step_complete", "step": current_step_id, "name": step_def.name, "result": result}
                     context.add_log(**log_event)
@@ -406,22 +402,18 @@ class WorkflowEngine:
                             retry_count -= 1
                             try:
                                 result = await self._execute_step(step_def, context)
-                                context.step_results[current_step_id] = result
+                                # 将步骤结果包装成 {'output': result} 格式
+                                wrapped_result = {"output": result} if result is not None else {"output": {}}
+                                context.step_results[current_step_id] = wrapped_result
                                 
                                 # 将步骤的输出参数添加到上下文中
-                                step_output = result.get('output', result)
-                                if isinstance(step_output, dict):
-                                    if step_def.output_params:
-                                        # 如果配置了 output_params，只添加指定的参数
-                                        for param_name in step_def.output_params:
-                                            if param_name in step_output:
-                                                context.outputs[param_name] = step_output[param_name]
-                                                logger.debug(f"[WorkflowEngine] 步骤 [{current_step_id}] 输出参数 '{param_name}' 已添加到上下文")
-                                    else:
-                                        # 如果没有配置 output_params，自动将所有输出字段添加到上下文
-                                        for key, value in step_output.items():
-                                            context.outputs[key] = value
-                                            logger.debug(f"[WorkflowEngine] 步骤 [{current_step_id}] 自动添加输出字段 '{key}' 到上下文")
+                                step_output = result
+                                if isinstance(step_output, dict) and step_def.output_params:
+                                    # 仅当配置了 output_params 时，才将指定参数添加到上下文
+                                    for param_name in step_def.output_params:
+                                        if param_name in step_output:
+                                            context.outputs[param_name] = step_output[param_name]
+                                            logger.debug(f"[WorkflowEngine] 步骤 [{current_step_id}] 输出参数 '{param_name}' 已添加到上下文")
                                 
                                 log_event = {"type": "step_retry_success", "step": current_step_id, "name": step_def.name}
                                 context.add_log(**log_event)
@@ -537,22 +529,18 @@ class WorkflowEngine:
                         yield log_event
                         return
                     
-                    context.step_results[current_step_id] = result
+                    # 将步骤结果包装成 {'output': result} 格式，支持表达式引用: node-id.output.field
+                    wrapped_result = {"output": result} if result is not None else {"output": {}}
+                    context.step_results[current_step_id] = wrapped_result
                     
                     # 将步骤的输出参数添加到上下文中
-                    step_output = result.get('output', result)
-                    if isinstance(step_output, dict):
-                        if step_def.output_params:
-                            # 如果配置了 output_params，只添加指定的参数
-                            for param_name in step_def.output_params:
-                                if param_name in step_output:
-                                    context.outputs[param_name] = step_output[param_name]
-                                    logger.debug(f"[WorkflowEngine] 步骤 [{current_step_id}] 输出参数 '{param_name}' 已添加到上下文")
-                        else:
-                            # 如果没有配置 output_params，自动将所有输出字段添加到上下文
-                            for key, value in step_output.items():
-                                context.outputs[key] = value
-                                logger.debug(f"[WorkflowEngine] 步骤 [{current_step_id}] 自动添加输出字段 '{key}' 到上下文")
+                    step_output = result
+                    if isinstance(step_output, dict) and step_def.output_params:
+                        # 仅当配置了 output_params 时，才将指定参数添加到上下文
+                        for param_name in step_def.output_params:
+                            if param_name in step_output:
+                                context.outputs[param_name] = step_output[param_name]
+                                logger.debug(f"[WorkflowEngine] 步骤 [{current_step_id}] 输出参数 '{param_name}' 已添加到上下文")
                     
                     log_event = {"type": "step_complete", "step": current_step_id, "name": step_def.name, "result": result}
                     context.add_log(**log_event)
@@ -774,30 +762,18 @@ class WorkflowEngine:
         if not node_class:
             raise ValueError(f"节点未注册: {step_def.action}")
         
-        # 记录原始参数和解析后的参数
-        original_params = step_def.action_params.copy()
+        # 解析参数
         params = self._resolve_params(step_def.action_params, context)
-        
-        # 记录详细的输入日志
-        logger.info(f"[WorkflowEngine] 步骤 [{step_def.id}] 输入信息:")
-        logger.info(f"  ├── 动作名称: {step_def.action}")
-        logger.info(f"  ├── 原始参数: {json.dumps(original_params, ensure_ascii=False)}")
-        logger.info(f"  └── 解析后参数: {json.dumps(params, ensure_ascii=False)}")
         
         # 创建节点实例并执行
         node = node_class()
         
         if getattr(node, '_legacy', False):
             # === 旧风格节点（tariff 节点）===
-            # execute(context, **kwargs) -> dict
             result = await node.execute(context, **params)
-            logger.info(f"[WorkflowEngine] 步骤 [{step_def.id}] 输出信息:")
-            logger.info(f"  ├── 处理逻辑: {result.get('processing', '')}")
-            logger.info(f"  └── 执行结果: {json.dumps(result, ensure_ascii=False, default=str)[:200]}")
             return result
         
         # === 新风格节点 ===
-        # execute(execution: DelegateExecution) -> None
         from app.langchain.workflow_nodes import DelegateExecution
         execution = DelegateExecution(context, step_def)
         
@@ -806,7 +782,7 @@ class WorkflowEngine:
         
         await node.execute(execution)
         
-        # 收集输出：output_fields + dynamic_outputs + 其余变量透传
+        # 收集输出：output_fields + dynamic_outputs（只返回定义的输出字段，不透传所有变量）
         output = {}
         for name in list(node.output_fields.keys()):
             if name in execution.variables:
@@ -817,44 +793,80 @@ class WorkflowEngine:
             if name in execution.variables:
                 output[name] = execution.variables[name]
         
-        for name, value in execution.variables.items():
-            if name not in output:
-                output[name] = value
-        
-        result = {
-            "success": True,
-            "output": output,
-        }
-        result.update(output)
-        
-        logger.info(f"[WorkflowEngine] 步骤 [{step_def.id}] 输出信息:")
-        logger.info(f"  └── 执行结果: {json.dumps(result, ensure_ascii=False, default=str)[:200]}")
-        
-        return result
+        return output
     
     async def _execute_conditional(self, step_def: StepDefinition, context: ExecutionContext) -> Any:
         """执行条件分支步骤"""
         if not step_def.condition:
             raise ValueError(f"条件步骤 {step_def.id} 未指定条件")
-        
+
         # 构建输入信息
         condition_expr = step_def.condition
+        all_variables = {**context.inputs, **context.outputs}
+
+        # 收集条件表达式中引用的变量
+        referenced_variables = {k: v for k, v in all_variables.items() if k in condition_expr}
+
+        # 解析参数：从 condition 中提取变量引用
+        # 支持形如 ${variable_name} 或普通变量名的格式
+        import re
+        param_pattern = r'\$\{([^}]+)\}'
+        param_matches = re.findall(param_pattern, condition_expr)
+        # 同时检查非 ${} 格式的变量引用（简单单词匹配）
+        simple_vars = re.findall(r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b', condition_expr)
+        # 过滤掉 Python 关键字和硬编码值
+        keywords = {'true', 'false', 'null', 'none', 'and', 'or', 'not', 'in', 'if', 'else', 'for', 'while'}
+        extracted_params = set()
+        for m in param_matches + simple_vars:
+            if m.lower() not in keywords and m not in all_variables and m == condition_expr.strip():
+                # 保留候选变量名（用于展示）
+                pass
+        # 使用实际引用关系
+        identified_params = {k: v for k, v in all_variables.items() if k in condition_expr}
+
         input_context = {
             "condition_expression": condition_expr,
-            "available_variables": {k: v for k, v in {**context.inputs, **context.outputs}.items() if k in condition_expr}
+            "available_variables": all_variables,
+            "referenced_variables": referenced_variables,
+            "identified_params": list(identified_params.keys())
         }
-        
+
         # 记录输入日志
         logger.info(f"[WorkflowEngine] 条件分支 [{step_def.id}] 输入信息:")
-        logger.info(f"  ├── 条件表达式: {condition_expr}")
-        logger.info(f"  └── 相关变量: {json.dumps(input_context['available_variables'], ensure_ascii=False)}")
-        
+        logger.info(f"  ├── 条件表达式(原始): {condition_expr}")
+
+        # 区分常量表达式和变量表达式
+        has_template_syntax = '{{' in condition_expr or '${' in condition_expr
+        if condition_expr.strip() in ('true', 'false'):
+            logger.info(f"  ├── 表达式类型: 常量表达式（硬编码值，无变量引用）")
+        elif has_template_syntax:
+            # 显示解析后的表达式（替换变量为实际值）
+            resolved_expr = self._resolve_template_expression(condition_expr, all_variables)
+            logger.info(f"  ├── 表达式类型: 变量表达式（含模板语法）")
+            logger.info(f"  ├── 条件表达式(解析后): {resolved_expr}")
+            # 显示被替换的变量及其值
+            var_pattern = r'\{\{([^}]+)\}\}|\$\{([^}]+)\}'
+            var_matches = re.findall(var_pattern, condition_expr)
+            if var_matches:
+                replaced_vars = []
+                for match_tuple in var_matches:
+                    var_name = match_tuple[0] or match_tuple[1]
+                    var_value = all_variables.get(var_name, '<未找到>')
+                    replaced_vars.append(f"{var_name}={repr(var_value)}")
+                logger.info(f"  └── 变量替换: {', '.join(replaced_vars)}")
+        else:
+            logger.info(f"  ├── 表达式类型: 动态表达式（无模板语法）")
+
+        logger.info(f"  ├── 引用变量: {json.dumps(referenced_variables, ensure_ascii=False)}")
+        logger.info(f"  ├── 可用变量数: {len(all_variables)}")
+        logger.info(f"  └── 参数识别结果: {list(identified_params.keys())}")
+
         # 执行条件判断
         result = self._eval_expression(condition_expr, context)
-        
+
         # 构建详细的条件分支日志信息
         branch_info = []
-        
+
         # 解析 next_steps 获取分支信息
         if step_def.next_steps:
             for branch_value, next_step_id in step_def.next_steps.items():
@@ -865,21 +877,21 @@ class WorkflowEngine:
                     branch_label = "分支 2: 否则"
                 else:
                     branch_label = f"分支: {branch_value}"
-                
+
                 branch_info.append({
                     "branch_value": branch_value,
                     "branch_label": branch_label,
                     "next_step": next_step_id,
                     "matched": str(result) == branch_value
                 })
-        
+
         # 构建处理逻辑描述
-        processing = f"评估条件表达式 '{condition_expr}'，变量上下文包含 {list(input_context['available_variables'].keys())}"
-        
+        processing = f"评估条件表达式 '{condition_expr}'，参数上下文: {list(identified_params.keys())}"
+
         # 记录处理日志
         logger.info(f"[WorkflowEngine] 条件分支 [{step_def.id}] 处理逻辑:")
         logger.info(f"  └── {processing}")
-        
+
         # 记录详细输出日志
         logger.info(f"[WorkflowEngine] 条件分支 [{step_def.id}] 输出信息:")
         logger.info(f"  ├── 执行结果: {result}")
@@ -887,7 +899,7 @@ class WorkflowEngine:
         for branch in branch_info:
             match_mark = "✓" if branch["matched"] else "✗"
             logger.info(f"      {match_mark} {branch['branch_label']} -> {branch['next_step']}")
-        
+
         return {
             "condition_result": result,
             "condition_expression": condition_expr,
@@ -1047,7 +1059,10 @@ class WorkflowEngine:
     def _determine_next_step(self, step_def: StepDefinition, context: ExecutionContext) -> Optional[str]:
         """确定下一步骤"""
         if step_def.type == StepType.CONDITIONAL and step_def.next_steps:
-            condition_result = context.step_results.get(step_def.id, {}).get("condition_result")
+            # 支持新的输出格式 {'output': value}
+            step_result = context.step_results.get(step_def.id, {})
+            actual_output = step_result.get("output", step_result)
+            condition_result = actual_output.get("condition_result")
             return step_def.next_steps.get(str(condition_result), step_def.next_step)
         
         if step_def.type == StepType.LOOP:
@@ -1061,23 +1076,146 @@ class WorkflowEngine:
         return step_def.next_step
     
     def _eval_expression(self, expression: str, context: ExecutionContext) -> bool:
-        """计算条件表达式"""
+        """计算条件表达式，支持节点ID+输出路径格式（如 code-211a6b31.output.tariff_code）"""
         try:
             env = {
                 **context.inputs,
                 **context.outputs,
-                **context.step_results,
                 '__builtins__': {}
             }
+            
+            # 将步骤输出的字段添加到环境中，支持条件表达式引用前序步骤的输出
+            for step_id, result in context.step_results.items():
+                if isinstance(result, dict):
+                    # 支持新的输出格式 {'output': value}
+                    actual_result = result.get("output", result)
+                    if isinstance(actual_result, dict):
+                        env.update(actual_result)
+            
             expr = expression.strip()
             if expr == 'true':
                 return True
             elif expr == 'false':
                 return False
+            
+            # 解析表达式中的变量引用（包括节点ID+路径格式）
+            expr = self._resolve_expression_variables(expr, context, env)
+            
             return bool(eval(expr, env))
         except Exception as e:
             logger.error(f"表达式计算失败 '{expression}': {e}")
             return False
+
+    def _resolve_expression_variables(self, expression: str, context: ExecutionContext, env: Dict[str, Any]) -> str:
+        """解析表达式中的变量引用，支持多种格式：
+        1. 普通变量名：直接从环境中获取
+        2. 节点ID + 输出路径：如 code-211a6b31.output.tariff_code
+        3. {{variable}} 模板语法
+        """
+        import re
+        
+        resolved_expr = expression
+        
+        # 先处理 {{variable}} 模板语法
+        resolved_expr = self._resolve_template_expression(resolved_expr, env)
+        
+        # 处理节点ID + 输出路径格式（节点ID包含短横线）
+        # 匹配模式：word-word.output.field 或 word-word.output
+        # 使用 (?<![a-zA-Z0-9]) 替代 \b 来处理非单词字符开头的情况
+        node_pattern = r'(?<![a-zA-Z0-9])([a-zA-Z][a-zA-Z0-9]*-[a-zA-Z0-9-]+(\.[a-zA-Z_][a-zA-Z0-9_]*)*)(?![a-zA-Z0-9_])'
+        
+        def replace_node_var(match):
+            var_path = match.group(1)
+            value = self._get_node_output_value(var_path, context)
+            return repr(value) if value is not None else 'None'
+        
+        resolved_expr = re.sub(node_pattern, replace_node_var, resolved_expr)
+        
+        logger.debug(f"[_resolve_expression_variables] 原始表达式: {expression}, 解析后: {resolved_expr}")
+        return resolved_expr
+
+    def _get_node_output_value(self, var_path: str, context: ExecutionContext) -> Any:
+        """获取节点输出值，支持节点ID+路径格式（严格匹配）
+        
+        支持以下格式：
+        - code-211a6b31.output.tariff_code （标准格式）
+        - code-211a6b31.tariff_code （直接字段访问）
+        """
+        if not var_path:
+            logger.debug(f"[_get_node_output_value] var_path 为空")
+            return None
+        
+        # 检查是否是节点ID + 输出路径格式（节点ID包含短横线）
+        if '-' in var_path:
+            parts = var_path.split('.', 1)
+            if len(parts) >= 2:
+                node_id = parts[0]
+                rest_path = parts[1]
+                
+                logger.debug(f"[_get_node_output_value] 解析 var_path: node_id={node_id}, rest_path={rest_path}")
+                logger.debug(f"[_get_node_output_value] 可用的 step_results 键: {list(context.step_results.keys())}")
+                
+                # 从 step_results 中获取节点输出
+                node_output = context.step_results.get(node_id)
+                logger.debug(f"[_get_node_output_value] node_output[{node_id}] = {node_output}")
+                
+                if node_output:
+                    # 解析路径
+                    path_parts = rest_path.split('.')
+                    logger.debug(f"[_get_node_output_value] 路径分段: {path_parts}")
+                    
+                    current_value = node_output
+                    for part in path_parts:
+                        if isinstance(current_value, dict):
+                            logger.debug(f"[_get_node_output_value] 当前值是字典，检查键 '{part}' 是否存在: {part in current_value}")
+                            if part in current_value:
+                                current_value = current_value[part]
+                            else:
+                                logger.debug(f"[_get_node_output_value] 键 '{part}' 不存在于字典中")
+                                return None
+                        elif hasattr(current_value, part):
+                            logger.debug(f"[_get_node_output_value] 当前值是对象，获取属性 '{part}'")
+                            current_value = getattr(current_value, part)
+                        else:
+                            logger.debug(f"[_get_node_output_value] 无法找到路径段 '{part}'")
+                            return None
+                    
+                    logger.debug(f"[_get_node_output_value] 成功获取值: {current_value}")
+                    return current_value
+                else:
+                    logger.debug(f"[_get_node_output_value] node_id {node_id} 不在 step_results 中")
+        
+        logger.debug(f"[_get_node_output_value] 无法解析 var_path: {var_path}")
+        return None
+    
+    def _resolve_template_expression(self, expression: str, env: Dict[str, Any]) -> str:
+        """解析表达式中的 {{variable}} 模板语法"""
+        import re
+        
+        def replace_var(match):
+            var_name = match.group(1).strip()
+            # 支持嵌套属性访问，如 {{user.name}}
+            if '.' in var_name:
+                parts = var_name.split('.')
+                value = env.get(parts[0])
+                if value is not None:
+                    for part in parts[1:]:
+                        if isinstance(value, dict) and part in value:
+                            value = value[part]
+                        elif hasattr(value, part):
+                            value = getattr(value, part)
+                        else:
+                            value = None
+                            break
+                return repr(value) if value is not None else 'None'
+            else:
+                value = env.get(var_name)
+                return repr(value) if value is not None else 'None'
+        
+        # 替换所有 {{variable}} 模板
+        resolved_expr = re.sub(r'\{\{([^}]+)\}\}', replace_var, expression)
+        logger.debug(f"[_resolve_template_expression] 原始表达式: {expression}, 解析后: {resolved_expr}")
+        return resolved_expr
     
     def _resolve_params(self, params: Dict[str, Any], context: ExecutionContext) -> Dict[str, Any]:
         """解析参数（支持变量引用）
@@ -1193,6 +1331,8 @@ class WorkflowEngine:
         """获取前一个节点的输出
         
         从 context.step_results 中获取最近执行完成的节点输出
+        
+        返回格式：支持新的输出格式 {'output': value}，自动提取实际输出值
         """
         if not context.step_results:
             return {}
@@ -1202,6 +1342,7 @@ class WorkflowEngine:
         if steps:
             last_step_id = steps[-1]
             result = context.step_results.get(last_step_id, {})
-            return result
+            # 支持新的输出格式 {'output': value}
+            return result.get("output", result)
         
         return {}

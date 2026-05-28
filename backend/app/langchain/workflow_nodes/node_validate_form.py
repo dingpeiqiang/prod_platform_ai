@@ -36,6 +36,8 @@ class ValidateFormNode(WorkflowNode):
         generate_form_step = execution.get("generate_form_step", "generate_form")
 
         form_result = context.step_results.get(generate_form_step, {})
+        # 支持新的输出格式 {'output': value}
+        form_result = form_result.get("output", form_result)
         if not form_result:
             form_result = context.outputs.get("form_result", {})
 

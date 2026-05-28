@@ -198,7 +198,7 @@ const emitUpdate = () => {
     queryMode: localQueryMode.value,
     queryText: localQueryText.value,
     outputVar: localOutputVar.value,
-    outputs: Object.keys(outputs).length > 0 ? outputs : undefined
+    outputParams: Object.keys(outputs).length > 0 ? outputs : undefined
   });
 };
 

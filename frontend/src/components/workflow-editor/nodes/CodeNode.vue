@@ -3,9 +3,6 @@
     <div v-if="!configMode" class="node-header">
       <span class="node-icon">💻</span>
       <span class="node-title">{{ data.label }}</span>
-      <button @click="toggleAdvanced" class="advanced-toggle" :class="{ active: showAdvanced }">
-        ⚙
-      </button>
     </div>
     <div v-if="compact && !configMode" class="node-compact-body">
       <span class="compact-summary">{{ codeSummary }}</span>
@@ -77,6 +74,7 @@
                   v-else
                   v-model="param.value"
                   :available-variables="availableVariables"
+                  :available-nodes="availableNodes"
                   placeholder="请选择变量"
                   class="param-value-cascader"
                   @change="emitUpdate"
@@ -96,11 +94,7 @@
       <!-- 代码编辑区 -->
       <div class="config-section">
         <label class="section-label">编程语言</label>
-        <select v-model="localLanguage" @change="emitUpdate" class="config-select">
-          <option value="python">Python</option>
-          <option value="javascript">JavaScript</option>
-          <option value="bash">Bash</option>
-        </select>
+        <div class="config-select disabled">Python</div>
       </div>
 
       <div class="config-section">
@@ -122,7 +116,7 @@
           <div class="section-title">代码模板</div>
           <div class="template-list">
             <button 
-              v-for="template in filteredTemplates" 
+              v-for="template in codeTemplates" 
               :key="template.name" 
               @click="applyTemplate(template)"
               class="template-item"
@@ -130,9 +124,6 @@
               <span class="template-name">{{ template.name }}</span>
               <span class="template-desc">{{ template.description }}</span>
             </button>
-            <div v-if="filteredTemplates.length === 0" class="no-templates">
-              暂无 {{ localLanguage }} 语言的模板
-            </div>
           </div>
         </div>
       </div>
@@ -291,7 +282,7 @@
         <div class="section-title">代码模板</div>
         <div class="template-list">
           <button 
-            v-for="template in filteredTemplates" 
+            v-for="template in codeTemplates" 
             :key="template.name" 
             @click="applyTemplate(template)"
             class="template-item"
@@ -299,73 +290,6 @@
             <span class="template-name">{{ template.name }}</span>
             <span class="template-desc">{{ template.description }}</span>
           </button>
-          <div v-if="filteredTemplates.length === 0" class="no-templates">
-            暂无 {{ localLanguage }} 语言的模板
-          </div>
-        </div>
-      </div>
-
-      <div v-if="showAdvanced" class="advanced-panel">
-        <div class="section-title">执行配置</div>
-        <div class="timeout-row">
-          <label>超时时间</label>
-          <input 
-            v-model.number="localTimeout" 
-            @input="emitUpdate" 
-            type="number" 
-            min="1" 
-            max="600" 
-            class="timeout-input"
-          />
-          <span class="timeout-unit">秒</span>
-        </div>
-
-        <label class="checkbox-label">
-          <input v-model="localAsync" @change="emitUpdate" type="checkbox" />
-          <span>异步执行</span>
-        </label>
-
-        <label class="checkbox-label">
-          <input v-model="localSandbox" @change="emitUpdate" type="checkbox" />
-          <span>沙箱模式</span>
-        </label>
-
-        <div class="section-title">输出配置</div>
-        <select v-model="localOutputType" @change="emitUpdate" class="node-select">
-          <option value="auto">自动检测</option>
-          <option value="string">字符串</option>
-          <option value="json">JSON对象</option>
-          <option value="number">数字</option>
-          <option value="array">数组</option>
-        </select>
-
-        <label class="checkbox-label">
-          <input v-model="localReturnJson" @change="emitUpdate" type="checkbox" />
-          <span>返回JSON格式</span>
-        </label>
-
-        <div class="section-title">环境变量</div>
-        <div class="env-container">
-          <div 
-            v-for="(env, index) in localEnvVars" 
-            :key="index" 
-            class="env-row"
-          >
-            <input 
-              v-model="env.name" 
-              @input="emitUpdate" 
-              placeholder="变量名" 
-              class="env-name" 
-            />
-            <input 
-              v-model="env.value" 
-              @input="emitUpdate" 
-              placeholder="变量值" 
-              class="env-value" 
-            />
-            <button @click="removeEnv(index)" class="remove-env-btn">✕</button>
-          </div>
-          <button @click="addEnv" class="add-env-btn">+ 添加环境变量</button>
         </div>
       </div>
     </div>
@@ -388,6 +312,10 @@ const props = defineProps({
     type: Array,
     default: () => []
   },
+  availableNodes: {
+    type: Array,
+    default: () => []
+  },
   ...nodeDisplayProps
 });
 
@@ -400,40 +328,25 @@ const showTemplates = ref(false);
 const inputSectionExpanded = ref(true);
 const outputSectionExpanded = ref(true);
 
-const localLanguage = ref(props.data.language || 'javascript');
+const localLanguage = ref('python');
 const localCode = ref(props.data.code || '');
-const localTimeout = ref(props.data.timeout || 30);
-const localAsync = ref(props.data.isAsync || false);
-const localSandbox = ref(props.data.sandbox !== false);
-const localOutputType = ref(props.data.outputType || 'auto');
-const localReturnJson = ref(props.data.returnJson || false);
-const localEnvVars = ref(props.data.envVars || []);
 const localInputParams = ref(props.data.inputParams || []);
-const localOutputs = ref(props.data.outputs || []);
+const localOutputs = ref(props.data.outputParams || []);
 const detectedParams = ref([]);
 
 const codeSummary = computed(() => {
-  const lang = localLanguage.value || 'python';
   const lines = (localCode.value || '').split('\n').length;
-  return `${lang} · ${lines} 行`;
-});
-
-const filteredTemplates = computed(() => {
-  return codeTemplates.filter(template => template.language === localLanguage.value);
+  return `Python · ${lines} 行`;
 });
 
 const codeTemplates = [
   { name: '数据处理', description: 'Python数据处理示例', language: 'python', code: "# 输入数据处理\ninput_data = input\nresult = {\n    'count': len(input_data) if isinstance(input_data, list) else 1,\n    'processed': True,\n    'timestamp': __import__('datetime').datetime.now().isoformat()\n}" },
   { name: 'HTTP请求', description: '发送HTTP请求', language: 'python', code: "import requests\nresponse = requests.get('https://api.example.com/data')\nresult = response.json()" },
   { name: 'JSON解析', description: '解析JSON字符串', language: 'python', code: "import json\njson_string = '{{input}}'\ntry:\n    result = json.loads(json_string)\nexcept Exception as e:\n    result = {'error': str(e)}" },
-  { name: 'HTTP请求', description: '发送HTTP请求', language: 'javascript', code: "const response = await fetch('https://api.example.com/data', {\n  method: 'GET',\n  headers: { 'Content-Type': 'application/json' }\n});\nconst data = await response.json();\nreturn data;" },
-  { name: '数据转换', description: '转换数据格式', language: 'javascript', code: "const inputData = {{input}};\nconst output = {\n  id: inputData.id,\n  fullName: `${inputData.firstName} ${inputData.lastName}`,\n  createdAt: new Date(inputData.createdAt).toISOString()\n};\nreturn output;" },
-  { name: '命令执行', description: '执行系统命令', language: 'bash', code: "# 执行系统命令\nresult=$(ls -la)\necho \"$result\"" }
+  { name: '变量提取', description: '从输入数据中提取变量', language: 'python', code: "# 从输入数据中提取变量\ninput_data = input\ntariff_code = input_data.get('tariff_code', '')\nresult = {\n    'tariff_code': tariff_code\n}" },
+  { name: '数据过滤', description: '过滤和转换数据', language: 'python', code: "# 过滤和转换数据\ninput_data = input\n\n# 过滤空值\nfiltered = {k: v for k, v in input_data.items() if v is not None and v != ''}\n\n# 添加时间戳\nfiltered['processed_at'] = __import__('datetime').datetime.now().isoformat()\n\nresult = filtered" },
+  { name: '列表处理', description: '处理列表数据', language: 'python', code: "# 处理列表数据\ninput_list = input\n\n# 假设输入是列表\nif isinstance(input_list, list):\n    processed = []\n    for item in input_list:\n        # 处理每个元素\n        processed.append({\n            'value': item,\n            'processed': True\n        })\n    result = {'items': processed, 'count': len(processed)}\nelse:\n    result = {'error': '输入不是列表'}" }
 ];
-
-const toggleAdvanced = () => {
-  showAdvanced.value = !showAdvanced.value;
-};
 
 const toggleInputSection = () => {
   inputSectionExpanded.value = !inputSectionExpanded.value;
@@ -496,15 +409,8 @@ const toggleOutputRequired = (index) => {
 
 const autoDetectOutputParams = () => {
   const code = localCode.value || '';
-  const language = localLanguage.value || 'javascript';
   const detected = [];
-  
-  if (language === 'python') {
-    detectPythonVariables(code, detected);
-  } else if (language === 'javascript') {
-    detectJavaScriptVariables(code, detected);
-  }
-  
+  detectPythonVariables(code, detected);
   detectedParams.value = detected;
 };
 
@@ -548,60 +454,6 @@ const detectPythonVariables = (code, detected) => {
   }
 };
 
-const detectJavaScriptVariables = (code, detected) => {
-  const lines = code.split('\n');
-  const reservedWords = new Set([
-    'true', 'false', 'null', 'undefined', 'if', 'else', 'for', 'while', 'function',
-    'const', 'let', 'var', 'return', 'yield', 'try', 'catch', 'finally', 'class',
-    'import', 'export', 'from', 'async', 'await', 'new', 'this', 'super', 'extends',
-    'throw', 'instanceof', 'typeof', 'delete', 'in', 'of', 'with', 'debugger',
-    'context', 'variables', '__node_output__', 'set_var', 'get_var'
-  ]);
-  
-  const constLetPattern = /^\s*(?:const|let|var)\s+([a-zA-Z_][a-zA-Z0-9_]*)/;
-  const assignmentPattern = /([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)/;
-  
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('//')) continue;
-    
-    let varName = null;
-    
-    const declMatch = trimmed.match(constLetPattern);
-    if (declMatch) {
-      varName = declMatch[1];
-    } else {
-      const assignMatch = trimmed.match(assignmentPattern);
-      if (assignMatch && !trimmed.includes('function') && !trimmed.includes('=>') && !trimmed.includes(':') && !trimmed.includes('(')) {
-        varName = assignMatch[1];
-      }
-    }
-    
-    if (varName && !reservedWords.has(varName)) {
-      const typeMatch = trimmed.match(assignmentPattern);
-      let inferredType = 'string';
-      
-      if (typeMatch) {
-        const value = typeMatch[2].trim();
-        inferredType = inferTypeFromValue(value);
-        
-        if (inferredType === 'string' && value.startsWith('{{')) {
-          inferredType = 'any';
-        }
-      }
-      
-      if (!detected.find(p => p.name === varName)) {
-        detected.push({
-          name: varName,
-          type: inferredType,
-          description: `自动检测: ${varName}`,
-          required: false
-        });
-      }
-    }
-  }
-};
-
 const inferTypeFromValue = (value) => {
   if (!value) return 'string';
   
@@ -622,53 +474,28 @@ const applyDetectedParams = () => {
 };
 
 const getPlaceholder = () => {
-  switch (localLanguage.value) {
-    case 'python':
-      return '# 输入 Python 代码\n# 使用 input 访问输入数据\n# 设置 result 变量返回结果';
-    case 'javascript':
-      return '// 输入 JavaScript 代码\n// 使用 {{input}} 访问输入数据\n// 使用 return 返回结果';
-    case 'bash':
-      return '# 输入 Bash 命令\n# 使用 $INPUT 访问输入';
-    default:
-      return '输入代码...';
-  }
+  return '# 输入 Python 代码\n# 使用 input 访问输入数据\n# 设置 result 变量返回结果\n\n# 示例:\n# input_data = input\n# result = {}\n# result[\"output_key\"] = input_data.get(\"key\")';
 };
 
 const applyTemplate = (template) => {
-  if (template.language === localLanguage.value || confirm(`切换语言为 ${template.language}？`)) {
-    localLanguage.value = template.language;
-    localCode.value = template.code;
-    showTemplates.value = false;
-    emitUpdate();
-  }
-};
-
-const addEnv = () => {
-  localEnvVars.value.push({ name: '', value: '' });
+  localCode.value = template.code;
+  showTemplates.value = false;
   emitUpdate();
-};
-
-const removeEnv = (index) => {
-  if (localEnvVars.value.length > 0) {
-    localEnvVars.value.splice(index, 1);
-    emitUpdate();
-  }
 };
 
 const emitUpdate = () => {
   emit('update', props.data.id, {
-    language: localLanguage.value,
+    language: 'python',
     code: localCode.value,
     inputParams: localInputParams.value,
-    outputs: localOutputs.value
+    outputParams: localOutputs.value
   });
 };
 
 watch(() => props.data, (d) => {
-  localLanguage.value = d.language || 'javascript';
   localCode.value = d.code || '';
   localInputParams.value = d.inputParams || [];
-  localOutputs.value = d.outputs || [];
+  localOutputs.value = d.outputParams || [];
 }, { deep: true });
 </script>
 
@@ -1552,5 +1379,14 @@ watch(() => props.data, (d) => {
 
 :deep(.vue-flow__handle[type="source"]:hover) {
   background-color: #2563eb !important;
+}
+
+.lang-badge {
+  padding: 3px 8px;
+  background: #374151;
+  color: white;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
 }
 </style>

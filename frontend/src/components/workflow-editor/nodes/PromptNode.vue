@@ -105,7 +105,7 @@ const emitUpdate = () => {
     inputVar: localInputVar.value,
     outputVar: localOutputVar.value,
     inputs: Object.keys(inputs).length > 0 ? inputs : undefined,
-    outputs: Object.keys(outputs).length > 0 ? outputs : undefined
+    outputParams: Object.keys(outputs).length > 0 ? outputs : undefined
   });
 };
 

@@ -94,6 +94,8 @@ class GenerateFormNode(WorkflowNode):
             tool_result = None
             if tool_name:
                 tool_result = context.step_results.get("call_tool", {})
+                # 支持新的输出格式 {'output': value}
+                tool_result = tool_result.get("output", tool_result)
                 if not tool_result:
                     tool_result = context.outputs.get("tool_result", {})
 

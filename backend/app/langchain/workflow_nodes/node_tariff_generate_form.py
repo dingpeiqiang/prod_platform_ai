@@ -31,8 +31,10 @@ class TariffGenerateFormNode(WorkflowNode):
         processing = "生成资费备案表单数据"
         self._log_processing(processing)
         
-        # 从上下文获取数据
+        # 从上下文获取数据（支持新的输出格式 {'output': value}）
         query_result = context.step_results.get("query_tariff", {})
+        # 从 output 字段获取实际数据
+        query_result = query_result.get("output", query_result)
         extracted_fields = context.outputs.get("extracted_fields", {})
         
         if query_result.get("success"):

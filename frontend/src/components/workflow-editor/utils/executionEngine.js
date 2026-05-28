@@ -371,7 +371,7 @@ export class ExecutionEngine {
           
           let finalOutput = context.output;
           
-          const outputs = node.data.outputs || [];
+          const outputs = node.data.outputParams || [];
           const needJsonParse = outputs.some(param => param && param.type === 'json');
           
           if (needJsonParse && context.output && typeof context.output === 'string') {

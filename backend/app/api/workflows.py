@@ -408,7 +408,7 @@ def _extract_node_variables(node_type: str, node_data: Dict[str, Any], node_id: 
     node_label = node_data.get("label", node_type)
     
     # 根据节点类型提取变量
-    output_mappings = node_data.get("outputs", {})
+    output_mappings = node_data.get("outputParams", {})
     if output_mappings:
         for var_name, source_expr in output_mappings.items():
             var_info = {

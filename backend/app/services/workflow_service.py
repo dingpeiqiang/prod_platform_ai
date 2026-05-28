@@ -451,7 +451,17 @@ class WorkflowService:
                 return {"success": False, "message": f"Workflow {workflow_code} not found"}
             
             logger.info(f"Loaded workflow {workflow_code} from database")
-            return {"success": True, "data": workflow.to_dict()}
+            workflow_dict = workflow.to_dict()
+            
+            # 清理旧的 outputs 字段，统一使用 outputParams
+            workflow_data = workflow_dict.get("workflowData", {})
+            nodes = workflow_data.get("nodes", [])
+            for node in nodes:
+                node_data = node.get("data", {})
+                if "outputs" in node_data:
+                    del node_data["outputs"]
+            
+            return {"success": True, "data": workflow_dict}
         except Exception as e:
             logger.exception(f"Failed to get workflow {workflow_code}: {e}")
             return {"success": False, "message": str(e)}

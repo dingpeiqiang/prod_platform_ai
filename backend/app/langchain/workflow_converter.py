@@ -198,7 +198,42 @@ class WorkflowConverter:
         
         # 处理条件分支
         if node_type == 'condition':
-            step['condition'] = node_data.get('condition') or 'true'
+            # 优先使用 branches 格式（前端 Vue Flow 风格）
+            branches = node_data.get('branches', [])
+            if branches:
+                # 将 branches 格式转换为条件表达式字符串
+                condition_parts = []
+                has_else = False
+                for branch in branches:
+                    branch_type = branch.get('type', '')
+                    conditions = branch.get('conditions', [])
+                    if branch_type == 'else':
+                        has_else = True
+                    elif conditions:
+                        cond_strings = []
+                        for cond in conditions:
+                            var_name = cond.get('variable', '')
+                            operator = cond.get('operator', '==')
+                            value_type = cond.get('valueType', 'input')
+                            value = cond.get('value', '')
+                            if var_name and operator:
+                                if value_type == 'reference':
+                                    cond_strings.append(f"{var_name} {operator} {value}")
+                                else:
+                                    cond_strings.append(f"{var_name} {operator} '{value}'")
+                        if cond_strings:
+                            condition_parts.append('(' + ' and '.join(cond_strings) + ')')
+                
+                if condition_parts:
+                    step['condition'] = ' or '.join(condition_parts)
+                elif has_else:
+                    # 如果只有 else 分支，条件总是为 True
+                    step['condition'] = 'true'
+                else:
+                    step['condition'] = 'true'
+            else:
+                step['condition'] = node_data.get('condition') or 'true'
+            
             # 获取条件分支的下一个节点
             # 支持多种 sourceHandle 格式: 'true'/'false' 或 'branch_0'/'branch_else'
             true_edges = [e for e in edges if e['source'] == node_id and e.get('sourceHandle') in ('true', 'branch_0', '0')]

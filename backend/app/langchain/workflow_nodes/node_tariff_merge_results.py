@@ -37,9 +37,14 @@ class TariffMergeResultsNode(WorkflowNode):
         processing = "合并资费备案表单和校验结果"
         self._log_processing(processing)
         
-        # 从上下文获取数据
+        # 从上下文获取数据（支持新的输出格式 {'output': value}）
         form_result = context.step_results.get("generate_form", {})
+        # 从 output 字段获取实际数据
+        form_result = form_result.get("output", form_result)
+        
         validate_result = context.step_results.get("validate_form", {})
+        # 从 output 字段获取实际数据
+        validate_result = validate_result.get("output", validate_result)
         
         result = {
             "success": True,

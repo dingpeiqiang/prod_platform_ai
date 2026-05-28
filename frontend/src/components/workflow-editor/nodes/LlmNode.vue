@@ -353,7 +353,7 @@ const localPrompt = ref(safeData.prompt || '');
 const localKeepHistory = ref(safeData.keepHistory ?? false);
 
 const localInputs = ref((safeData.inputs && Array.isArray(safeData.inputs)) ? safeData.inputs : []);
-const localOutputs = ref((safeData.outputs && Array.isArray(safeData.outputs)) ? safeData.outputs : []);
+const localOutputs = ref((safeData.outputParams && Array.isArray(safeData.outputParams)) ? safeData.outputParams : []);
 
 const expandedSections = ref({
   model: true,
@@ -478,7 +478,7 @@ const emitUpdate = () => {
     prompt: localPrompt.value,
     keepHistory: localKeepHistory.value,
     inputs: localInputs.value,
-    outputs: localOutputs.value
+    outputParams: localOutputs.value
   });
 };
 
@@ -494,7 +494,7 @@ watch(() => props.data, (newData) => {
   localPrompt.value = newData.prompt || '';
   localKeepHistory.value = newData.keepHistory ?? false;
   localInputs.value = newData.inputs || [];
-  localOutputs.value = newData.outputs || [];
+  localOutputs.value = newData.outputParams || [];
 }, { deep: true });
 </script>
 
