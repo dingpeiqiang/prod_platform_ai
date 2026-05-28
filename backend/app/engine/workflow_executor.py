@@ -1083,69 +1083,6 @@ class UserInputNodeExecutor(NodeExecutor):
         return []
 
 
-class VariableNodeExecutor(NodeExecutor):
-    """变量赋值节点执行器"""
-    
-    NODE_TYPE = "variable"
-    
-    async def execute(self, context: WorkflowContext, edges: List[Dict[str, Any]]) -> List[str]:
-        context.update_node_status(self.node_id, ExecutionStatus.RUNNING)
-        
-        # 如果配置了显性输入映射，先解析输入变量
-        if self.input_mappings:
-            resolved_inputs = self.resolve_inputs(context)
-            for key, value in resolved_inputs.items():
-                context.set_variable(key, value)
-        
-        var_name = self.node_data.get("variable_name", self.node_data.get("varName", self.node_data.get("variableName", "result")))
-        var_value = self.node_data.get("variable_value", self.node_data.get("varValue", self.node_data.get("variableValue", "")))
-
-        # 根据不同引用方式获取值
-        if var_value == "{{output}}" or var_value == "output":
-            rendered_value = context.get_variable("output", "")
-            logger.info(f"Variable [{var_name}] resolved from 'output': {rendered_value[:50] if rendered_value else '(empty)'}...")
-        elif var_value == "{{__node_output__}}" or var_value == "__node_output__":
-            rendered_value = self.get_previous_output(context)
-            logger.info(f"Variable [{var_name}] resolved from '__node_output__': {rendered_value[:50] if rendered_value else '(empty)'}...")
-        elif var_value.startswith("{{") and var_value.endswith("}}"):
-            # 其他模板引用
-            rendered_value = self.render_template(var_value, context)
-            logger.info(f"Variable [{var_name}] resolved from template '{var_value}': {rendered_value[:50] if rendered_value else '(empty)'}...")
-        else:
-            # 普通字符串或空值
-            rendered_value = var_value
-            logger.info(f"Variable [{var_name}] set to direct value: {rendered_value[:50] if rendered_value else '(empty)'}...")
-        
-        # 如果配置了显性输出映射，优先使用映射配置
-        if self.output_mappings:
-            # 遍历输出映射，设置变量
-            for target_var, source_expr in self.output_mappings.items():
-                resolved_value = self._resolve_expression(source_expr, context, rendered_value)
-                context.set_variable(target_var, resolved_value)
-                context.outputs[target_var] = resolved_value
-            
-            # 构建输出值
-            output_value = {}
-            for target_var in self.output_mappings.keys():
-                output_value[target_var] = context.get_variable(target_var, "")
-        else:
-            # 使用传统方式设置变量
-            context.set_variable(var_name, rendered_value)
-            context.outputs[var_name] = rendered_value
-            output_value = {var_name: rendered_value}
-        
-        # 使用标准输出变量传递数据
-        self.set_output(context, output_value)
-        
-        logger.info(f"Variable set: {var_name} = {rendered_value[:50]}...")
-        
-        context.update_node_status(self.node_id, ExecutionStatus.COMPLETED)
-        return self._get_next_nodes(edges)
-    
-    def _get_next_nodes(self, edges: List[Dict[str, Any]]) -> List[str]:
-        return [e["target"] for e in edges if e["source"] == self.node_id]
-
-
 class HttpNodeExecutor(NodeExecutor):
     """HTTP请求节点执行器"""
     
@@ -1234,36 +1171,42 @@ class CodeNodeExecutor(NodeExecutor):
         
         code = self.node_data.get("code", "")
         language = self.node_data.get("language", "python").lower()
+        output_params = self.node_data.get("outputParams", [])
         
         try:
             if language == "python":
-                # 创建安全的执行环境
+                # 创建安全的执行环境（仅暴露必要的变量）
                 exec_locals = {
                     "context": context,
                     "variables": context.variables,
                     "output": context.get_variable("output", ""),
                     "input": context.get_variable("input", ""),
-                    "__node_output__": self.get_previous_output(context),  # 添加前一个节点的输出
+                    "__node_output__": self.get_previous_output(context),
+                    "set_var": lambda k, v: context.set_variable(k, v),
+                    "get_var": lambda k, d=None: context.get_variable(k, d),
                 }
                 
                 # 执行代码
                 exec(code, {}, exec_locals)
                 
-                # 收集结果
+                # 收集结果 - 仅处理显式的 result 变量
                 if "result" in exec_locals:
-                    context.set_variable("codeResult", exec_locals["result"])
-                    context.outputs["codeResult"] = exec_locals["result"]
+                    result_value = exec_locals["result"]
+                    context.set_variable("codeResult", result_value)
+                    context.outputs["codeResult"] = result_value
                     
                     # 使用标准输出变量传递数据（同时处理显性输出映射）
-                    self.set_output(context, exec_locals["result"])
+                    self.set_output(context, result_value)
+                    
+                    # 如果配置了输出参数，验证并提取指定字段
+                    if output_params and isinstance(output_params, list):
+                        for param in output_params:
+                            param_name = param.get("name")
+                            if param_name and isinstance(result_value, dict) and param_name in result_value:
+                                context.set_variable(param_name, result_value[param_name])
                 else:
                     # 如果没有显式设置result，使用前一个节点的输出作为默认输出
                     self.set_output(context, self.get_previous_output(context))
-                
-                # 更新上下文中的变量
-                for key, value in exec_locals.items():
-                    if key not in ["context", "variables", "__node_output__"]:
-                        context.set_variable(key, value)
             
             logger.info(f"Code executed successfully")
             
@@ -2312,7 +2255,6 @@ class WorkflowExecutor:
         "condition": ConditionNodeExecutor,
         "loop": LoopNodeExecutor,
         "user_input": UserInputNodeExecutor,
-        "variable": VariableNodeExecutor,
         "http": HttpNodeExecutor,
         "code": CodeNodeExecutor,
         "parser": ParserNodeExecutor,

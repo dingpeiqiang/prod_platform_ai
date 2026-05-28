@@ -387,15 +387,6 @@
             />
           </template>
 
-          <template #node-variable="props">
-            <VariableNode
-              :data="enrichNodeData(props.data, props.id)"
-              :selected="props.selected"
-              compact
-              @update="updateNodeData"
-            />
-          </template>
-
           <template #node-http="props">
             <HttpNode
               :data="enrichNodeData(props.data, props.id)"
@@ -712,7 +703,6 @@ import LlmNode from './nodes/LlmNode.vue';
 import ToolNode from './nodes/ToolNode.vue';
 import ConditionNode from './nodes/ConditionNode.vue';
 import LoopNode from './nodes/LoopNode.vue';
-import VariableNode from './nodes/VariableNode.vue';
 import HttpNode from './nodes/HttpNode.vue';
 import CodeNode from './nodes/CodeNode.vue';
 import ParserNode from './nodes/ParserNode.vue';
@@ -1362,35 +1352,41 @@ const getAvailableVariables = (nodeId) => {
     
     switch (nodeType) {
       case 'start':
-        if (node.data.parameters && Array.isArray(node.data.parameters)) {
-          node.data.parameters.forEach(param => {
-            variables.push({
-              id: `${node.id}.${param.name}`,
-              name: `${param.name} (入参)`,
-              nodeId: node.id,
-              nodeType: 'start',
-              nodeName: '开始节点',
-              type: param.type || 'string',
-              source: 'workflow_input',
-              sourceNodeType: 'start',
-              sourceNodeName: '开始节点'
-            });
-          });
-        }
         break;
       case 'variable':
-        outputVarName = node.data?.variable_name || node.data?.varName || node.data?.variableName || node.data?.outputVar || node.data?.label || nodeType;
-        variables.push({
-          id: outputVarName,
-          name: `${outputVarName} (输出)`,
-          nodeId: node.id,
-          nodeType: nodeType,
-          nodeName: nodeName,
-          type: node.data?.varType || 'any',
-          source: 'node_output',
-          sourceNodeType: nodeType,
-          sourceNodeName: nodeName
-        });
+        const outputs = node.data?.outputs || [];
+        if (outputs.length > 0) {
+          outputs.forEach((output, index) => {
+            if (output && output.name) {
+              variables.push({
+                id: `${node.id}.output.${index}`,
+                name: `${output.name} (输出)`,
+                nodeId: node.id,
+                nodeType: nodeType,
+                nodeName: nodeName,
+                type: node.data?.varType || 'any',
+                source: 'node_output',
+                sourceNodeType: nodeType,
+                sourceNodeName: nodeName,
+                varName: output.name
+              });
+            }
+          });
+        } else {
+          const outputVarName = node.data?.outputVar || node.data?.variable_name || node.data?.varName || node.data?.variableName || node.data?.label || nodeType;
+          variables.push({
+            id: `${node.id}.output`,
+            name: `${outputVarName} (输出)`,
+            nodeId: node.id,
+            nodeType: nodeType,
+            nodeName: nodeName,
+            type: node.data?.varType || 'any',
+            source: 'node_output',
+            sourceNodeType: nodeType,
+            sourceNodeName: nodeName,
+            varName: outputVarName
+          });
+        }
         break;
       case 'llm':
       case 'prompt':
@@ -1428,14 +1424,11 @@ const getAvailableVariables = (nodeId) => {
     }
   }
   
-  // 始终添加开始节点的输入参数（如果存在开始节点）
-  // 确保其他节点总是能引用到开始节点的入参，不依赖拓扑顺序
   const startNode = nodes.find(n => n.type === 'start');
   if (startNode) {
     const startParams = startNode.data?.parameters;
     let paramsToAdd = [];
     
-    // 如果没有配置参数，添加默认的 input 参数
     if (!startParams || !Array.isArray(startParams) || startParams.length === 0) {
       paramsToAdd = [{ name: 'input', type: 'string', description: '用户输入', default: '', required: true }];
     } else {
@@ -1447,9 +1440,9 @@ const getAvailableVariables = (nodeId) => {
         .filter(v => v.nodeType === 'start')
         .map(v => v.id)
     );
-    paramsToAdd.forEach(param => {
+    paramsToAdd.forEach((param, index) => {
       if (param && param.name) {
-        const varId = `${startNode.id}.${param.name}`;
+        const varId = `${startNode.id}.param.${index}`;
         if (!existingStartVarIds.has(varId)) {
           variables.push({
             id: varId,
@@ -1460,7 +1453,8 @@ const getAvailableVariables = (nodeId) => {
             type: param.type || 'string',
             source: 'workflow_input',
             sourceNodeType: 'start',
-            sourceNodeName: '开始节点'
+            sourceNodeName: '开始节点',
+            varName: param.name
           });
         }
       }
@@ -1784,14 +1778,73 @@ const onDrop = (event) => {
   }
 };
 
+const replaceVariableReferences = (oldName, newName) => {
+  const regex = new RegExp(`{{\\s*${oldName}\\s*}}`, 'g');
+  
+  elements.value.forEach(el => {
+    if (el.source) return;
+    
+    const replaceInObj = (obj) => {
+      if (typeof obj === 'string') {
+        return obj.replace(regex, `{{${newName}}}`);
+      } else if (typeof obj === 'object' && obj !== null) {
+        if (Array.isArray(obj)) {
+          return obj.map(item => replaceInObj(item));
+        } else {
+          const result = {};
+          for (const key in obj) {
+            if (obj.hasOwnProperty(key)) {
+              result[key] = replaceInObj(obj[key]);
+            }
+          }
+          return result;
+        }
+      }
+      return obj;
+    };
+    
+    el.data = replaceInObj(el.data);
+  });
+};
+
 const updateNodeData = (nodeId, data) => {
   saveHistory();
+  
   const node = elements.value.find(el => el.id === nodeId);
+  
+  // 记录开始节点的旧参数（用于检测变化）
+  const oldStartParams = node?.type === 'start' ? node.data?.parameters || [] : [];
+  
+  // 记录其他节点的旧 outputVar（用于检测变化）
+  const outputVarNodes = ['llm', 'prompt', 'tool', 'http', 'code', 'parser', 'userInput', 'knowledgeBase'];
+  const oldOutputVar = outputVarNodes.includes(node?.type) ? node.data?.outputVar : null;
+  const newOutputVar = outputVarNodes.includes(node?.type) ? data?.outputVar : null;
+  
   if (node) {
     node.data = { ...node.data, ...data };
     markDirty();
     
-    // 触发 Vue Flow 重新渲染，确保变量列表更新
+    // 处理变量节点的变量名变化
+    if (oldVarName && newVarName && oldVarName !== newVarName) {
+      replaceVariableReferences(oldVarName, newVarName);
+    }
+    
+    // 处理开始节点的参数名变化
+    if (node.type === 'start' && data.parameters && Array.isArray(data.parameters)) {
+      const newStartParams = data.parameters;
+      newStartParams.forEach((newParam, index) => {
+        const oldParam = oldStartParams[index];
+        if (oldParam && oldParam.name && newParam.name && oldParam.name !== newParam.name) {
+          replaceVariableReferences(oldParam.name, newParam.name);
+        }
+      });
+    }
+    
+    // 处理其他节点的 outputVar 变化
+    if (oldOutputVar && newOutputVar && oldOutputVar !== newOutputVar) {
+      replaceVariableReferences(oldOutputVar, newOutputVar);
+    }
+    
     setTimeout(() => {
       elements.value = [...elements.value];
     }, 100);

@@ -97,14 +97,9 @@
       <div class="config-section">
         <label class="section-label">编程语言</label>
         <select v-model="localLanguage" @change="emitUpdate" class="config-select">
-          <option value="javascript">JavaScript</option>
           <option value="python">Python</option>
+          <option value="javascript">JavaScript</option>
           <option value="bash">Bash</option>
-          <option value="json">JSON</option>
-          <option value="sql">SQL</option>
-          <option value="yaml">YAML</option>
-          <option value="xml">XML</option>
-          <option value="html">HTML</option>
         </select>
       </div>
 
@@ -127,7 +122,7 @@
           <div class="section-title">代码模板</div>
           <div class="template-list">
             <button 
-              v-for="template in codeTemplates" 
+              v-for="template in filteredTemplates" 
               :key="template.name" 
               @click="applyTemplate(template)"
               class="template-item"
@@ -135,6 +130,9 @@
               <span class="template-name">{{ template.name }}</span>
               <span class="template-desc">{{ template.description }}</span>
             </button>
+            <div v-if="filteredTemplates.length === 0" class="no-templates">
+              暂无 {{ localLanguage }} 语言的模板
+            </div>
           </div>
         </div>
       </div>
@@ -165,15 +163,25 @@
               </svg>
             </button>
             <button @click="addOutputParam" class="add-param-btn" title="添加输出参数">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="12" y1="5" x2="12" y2="19"/>
-                <line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
-            </button>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="12" y1="5" x2="12" y2="19"/>
+                  <line x1="5" y1="12"/>
+                </svg>
+              </button>
+              <button @click="autoDetectOutputParams" class="auto-detect-btn" title="从代码中自动识别输出参数">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+                自动识别
+              </button>
           </div>
         </div>
         
         <div v-if="outputSectionExpanded" class="section-content">
+          <div v-if="detectedParams.length > 0" class="detected-params-banner">
+            <span class="detected-count">检测到 {{ detectedParams.length }} 个输出字段</span>
+            <button @click="applyDetectedParams" class="apply-btn">应用检测结果</button>
+          </div>
           <div class="params-table-wrapper">
             <table class="params-table">
               <thead>
@@ -262,14 +270,9 @@
     <div v-else-if="!compact" class="node-body">
       <div class="code-header">
         <select v-model="localLanguage" @change="emitUpdate" class="lang-select">
-          <option value="javascript">JavaScript</option>
           <option value="python">Python</option>
+          <option value="javascript">JavaScript</option>
           <option value="bash">Bash</option>
-          <option value="json">JSON</option>
-          <option value="sql">SQL</option>
-          <option value="yaml">YAML</option>
-          <option value="xml">XML</option>
-          <option value="html">HTML</option>
         </select>
         <button @click="showTemplates = !showTemplates" class="template-btn">
           📋 模板
@@ -288,7 +291,7 @@
         <div class="section-title">代码模板</div>
         <div class="template-list">
           <button 
-            v-for="template in codeTemplates" 
+            v-for="template in filteredTemplates" 
             :key="template.name" 
             @click="applyTemplate(template)"
             class="template-item"
@@ -296,6 +299,9 @@
             <span class="template-name">{{ template.name }}</span>
             <span class="template-desc">{{ template.description }}</span>
           </button>
+          <div v-if="filteredTemplates.length === 0" class="no-templates">
+            暂无 {{ localLanguage }} 语言的模板
+          </div>
         </div>
       </div>
 
@@ -404,22 +410,25 @@ const localReturnJson = ref(props.data.returnJson || false);
 const localEnvVars = ref(props.data.envVars || []);
 const localInputParams = ref(props.data.inputParams || []);
 const localOutputParams = ref(props.data.outputParams || []);
+const detectedParams = ref([]);
 
 const codeSummary = computed(() => {
-  const lang = localLanguage.value || 'javascript';
+  const lang = localLanguage.value || 'python';
   const lines = (localCode.value || '').split('\n').length;
   return `${lang} · ${lines} 行`;
 });
 
+const filteredTemplates = computed(() => {
+  return codeTemplates.filter(template => template.language === localLanguage.value);
+});
+
 const codeTemplates = [
+  { name: '数据处理', description: 'Python数据处理示例', language: 'python', code: "# 输入数据处理\ninput_data = input\nresult = {\n    'count': len(input_data) if isinstance(input_data, list) else 1,\n    'processed': True,\n    'timestamp': __import__('datetime').datetime.now().isoformat()\n}" },
+  { name: 'HTTP请求', description: '发送HTTP请求', language: 'python', code: "import requests\nresponse = requests.get('https://api.example.com/data')\nresult = response.json()" },
+  { name: 'JSON解析', description: '解析JSON字符串', language: 'python', code: "import json\njson_string = '{{input}}'\ntry:\n    result = json.loads(json_string)\nexcept Exception as e:\n    result = {'error': str(e)}" },
   { name: 'HTTP请求', description: '发送HTTP请求', language: 'javascript', code: "const response = await fetch('https://api.example.com/data', {\n  method: 'GET',\n  headers: { 'Content-Type': 'application/json' }\n});\nconst data = await response.json();\nreturn data;" },
-  { name: 'JSON解析', description: '解析JSON字符串', language: 'javascript', code: "const jsonString = '{{input}}';\ntry {\n  const result = JSON.parse(jsonString);\n  return result;\n} catch (e) {\n  console.error('JSON解析失败:', e);\n  return null;\n}" },
-  { name: '数组处理', description: '过滤和映射数组', language: 'javascript', code: "const items = {{input}};\nconst filtered = items\n  .filter(item => item.active)\n  .map(item => ({ id: item.id, name: item.name }));\nreturn filtered;" },
-  { name: '日期格式化', description: '格式化日期时间', language: 'javascript', code: "const date = new Date();\nconst formatted = date.toLocaleString('zh-CN', {\n  year: 'numeric',\n  month: '2-digit',\n  day: '2-digit',\n  hour: '2-digit',\n  minute: '2-digit'\n});\nreturn formatted;" },
-  { name: '数据库查询', description: '执行SQL查询', language: 'sql', code: "SELECT id, name, created_at\nFROM users\nWHERE status = 'active'\nAND created_at >= '{{startDate}}'\nORDER BY created_at DESC\nLIMIT 10;" },
-  { name: '文件读取', description: '读取文件内容', language: 'python', code: "with open('{{filePath}}', 'r', encoding='utf-8') as f:\n    content = f.read()\nprint(content)\nreturn content" },
-  { name: '环境变量', description: '获取环境变量', language: 'javascript', code: "const apiKey = process.env.API_KEY;\nconst baseUrl = process.env.BASE_URL || 'https://api.example.com';\nreturn { apiKey, baseUrl };" },
-  { name: '数据转换', description: '转换数据格式', language: 'javascript', code: "const input = {{input}};\nconst output = {\n  id: input.id,\n  fullName: `${input.firstName} ${input.lastName}`,\n  email: input.email?.toLowerCase(),\n  createdAt: new Date(input.createdAt).toISOString()\n};\nreturn output;" }
+  { name: '数据转换', description: '转换数据格式', language: 'javascript', code: "const inputData = {{input}};\nconst output = {\n  id: inputData.id,\n  fullName: `${inputData.firstName} ${inputData.lastName}`,\n  createdAt: new Date(inputData.createdAt).toISOString()\n};\nreturn output;" },
+  { name: '命令执行', description: '执行系统命令', language: 'bash', code: "# 执行系统命令\nresult=$(ls -la)\necho \"$result\"" }
 ];
 
 const toggleAdvanced = () => {
@@ -485,24 +494,141 @@ const toggleOutputRequired = (index) => {
   emitUpdate();
 };
 
+const autoDetectOutputParams = () => {
+  const code = localCode.value || '';
+  const language = localLanguage.value || 'javascript';
+  const detected = [];
+  
+  if (language === 'python') {
+    detectPythonVariables(code, detected);
+  } else if (language === 'javascript') {
+    detectJavaScriptVariables(code, detected);
+  }
+  
+  detectedParams.value = detected;
+};
+
+const detectPythonVariables = (code, detected) => {
+  const lines = code.split('\n');
+  const reservedWords = new Set([
+    'True', 'False', 'None', 'if', 'else', 'elif', 'for', 'while', 'def', 
+    'class', 'import', 'from', 'return', 'yield', 'try', 'except', 'finally',
+    'with', 'as', 'lambda', 'pass', 'break', 'continue', 'and', 'or', 'not',
+    'is', 'in', 'del', 'global', 'nonlocal', 'context', 'variables', 'output',
+    'input', '__node_output__', 'set_var', 'get_var', 'result'
+  ]);
+  
+  const varPattern = /^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*=/;
+  const assignmentPattern = /([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)/;
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    
+    const varMatch = trimmed.match(varPattern);
+    if (varMatch) {
+      const varName = varMatch[1];
+      if (!reservedWords.has(varName)) {
+        const typeMatch = trimmed.match(assignmentPattern);
+        if (typeMatch) {
+          const value = typeMatch[2].trim();
+          const inferredType = inferTypeFromValue(value);
+          
+          if (!detected.find(p => p.name === varName)) {
+            detected.push({
+              name: varName,
+              type: inferredType,
+              description: `自动检测: ${varName}`,
+              required: false
+            });
+          }
+        }
+      }
+    }
+  }
+};
+
+const detectJavaScriptVariables = (code, detected) => {
+  const lines = code.split('\n');
+  const reservedWords = new Set([
+    'true', 'false', 'null', 'undefined', 'if', 'else', 'for', 'while', 'function',
+    'const', 'let', 'var', 'return', 'yield', 'try', 'catch', 'finally', 'class',
+    'import', 'export', 'from', 'async', 'await', 'new', 'this', 'super', 'extends',
+    'throw', 'instanceof', 'typeof', 'delete', 'in', 'of', 'with', 'debugger',
+    'context', 'variables', '__node_output__', 'set_var', 'get_var'
+  ]);
+  
+  const constLetPattern = /^\s*(?:const|let|var)\s+([a-zA-Z_][a-zA-Z0-9_]*)/;
+  const assignmentPattern = /([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)/;
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('//')) continue;
+    
+    let varName = null;
+    
+    const declMatch = trimmed.match(constLetPattern);
+    if (declMatch) {
+      varName = declMatch[1];
+    } else {
+      const assignMatch = trimmed.match(assignmentPattern);
+      if (assignMatch && !trimmed.includes('function') && !trimmed.includes('=>') && !trimmed.includes(':') && !trimmed.includes('(')) {
+        varName = assignMatch[1];
+      }
+    }
+    
+    if (varName && !reservedWords.has(varName)) {
+      const typeMatch = trimmed.match(assignmentPattern);
+      let inferredType = 'string';
+      
+      if (typeMatch) {
+        const value = typeMatch[2].trim();
+        inferredType = inferTypeFromValue(value);
+        
+        if (inferredType === 'string' && value.startsWith('{{')) {
+          inferredType = 'any';
+        }
+      }
+      
+      if (!detected.find(p => p.name === varName)) {
+        detected.push({
+          name: varName,
+          type: inferredType,
+          description: `自动检测: ${varName}`,
+          required: false
+        });
+      }
+    }
+  }
+};
+
+const inferTypeFromValue = (value) => {
+  if (!value) return 'string';
+  
+  if (/^\d+$/.test(value)) return 'int';
+  if (/^\d+\.\d+$/.test(value)) return 'float';
+  if (/^(true|false)$/i.test(value)) return 'boolean';
+  if (/^\[.*\]$/.test(value)) return 'array';
+  if (/^\{.*\}$/.test(value)) return 'object';
+  if (/^['"].*['"]$/.test(value)) return 'string';
+  
+  return 'string';
+};
+
+const applyDetectedParams = () => {
+  localOutputParams.value = [...detectedParams.value];
+  detectedParams.value = [];
+  emitUpdate();
+};
+
 const getPlaceholder = () => {
   switch (localLanguage.value) {
+    case 'python':
+      return '# 输入 Python 代码\n# 使用 input 访问输入数据\n# 设置 result 变量返回结果';
     case 'javascript':
       return '// 输入 JavaScript 代码\n// 使用 {{input}} 访问输入数据\n// 使用 return 返回结果';
-    case 'python':
-      return '# 输入 Python 代码\n# 使用 input 访问输入数据\n# 使用 return 返回结果';
     case 'bash':
       return '# 输入 Bash 命令\n# 使用 $INPUT 访问输入';
-    case 'sql':
-      return '-- 输入 SQL 查询语句';
-    case 'json':
-      return '{\n  "key": "value"\n}';
-    case 'yaml':
-      return 'key:\n  subkey: value';
-    case 'xml':
-      return '<root>\n  <item>value</item>\n</root>';
-    case 'html':
-      return '<div>\n  <p>Hello</p>\n</div>';
     default:
       return '输入代码...';
   }
@@ -707,6 +833,57 @@ watch(() => props.data, (d) => {
 .help-btn:hover {
   background: #f1f5f9;
   color: #64748b;
+}
+
+.auto-detect-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid #10b981;
+  border-radius: 4px;
+  background: white;
+  color: #10b981;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.2s;
+}
+
+.auto-detect-btn:hover {
+  background: #ecfdf5;
+  border-color: #059669;
+}
+
+.detected-params-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #ecfdf5;
+  border: 1px solid #86efac;
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+
+.detected-count {
+  font-size: 12px;
+  color: #065f46;
+  font-weight: 500;
+}
+
+.apply-btn {
+  padding: 4px 12px;
+  background: #10b981;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.apply-btn:hover {
+  background: #059669;
 }
 
 .add-param-btn {
@@ -1057,6 +1234,15 @@ watch(() => props.data, (d) => {
 .template-item:hover {
   background: #dbeafe;
   border-color: #3b82f6;
+}
+
+.no-templates {
+  padding: 16px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 12px;
+  background: #f8fafc;
+  border-radius: 6px;
 }
 
 .template-name {

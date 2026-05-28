@@ -97,9 +97,21 @@ const getNodeLabelById = (nodeId) => {
 
 const buildPath = (variableId) => {
   if (!variableId) return [];
-  const variable = props.availableVariables.find(v => v.id === variableId);
+  
+  let variable = props.availableVariables.find(v => v.id === variableId);
+  
+  if (!variable) {
+    variable = props.availableVariables.find(v => v.varName === variableId);
+  }
+  
+  if (!variable) {
+    variable = props.availableVariables.find(v => 
+      v.name && v.name.startsWith(variableId + ' ')
+    );
+  }
+  
   if (variable && variable.nodeId) {
-    return [variable.nodeId, variableId];
+    return [variable.nodeId, variable.id];
   }
   return [];
 };

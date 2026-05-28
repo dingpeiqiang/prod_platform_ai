@@ -5,7 +5,6 @@ import LlmNode from './nodes/LlmNode.vue';
 import ToolNode from './nodes/ToolNode.vue';
 import ConditionNode from './nodes/ConditionNode.vue';
 import LoopNode from './nodes/LoopNode.vue';
-import VariableNode from './nodes/VariableNode.vue';
 import HttpNode from './nodes/HttpNode.vue';
 import CodeNode from './nodes/CodeNode.vue';
 import ParserNode from './nodes/ParserNode.vue';
@@ -23,7 +22,6 @@ export const NODE_CONFIG_COMPONENTS = {
   condition: ConditionNode,
   loop: LoopNode,
   userInput: UserInputNode,
-  variable: VariableNode,
   http: HttpNode,
   code: CodeNode,
   parser: ParserNode,
@@ -42,7 +40,6 @@ export const NODE_TYPE_LABELS = {
   tool: '工具调用',
   http: 'HTTP请求',
   code: '代码执行',
-  variable: '变量赋值',
   parser: '输出解析',
   form: '表单',
   knowledgeBase: '知识库',
