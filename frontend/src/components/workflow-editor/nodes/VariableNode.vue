@@ -14,7 +14,7 @@
     <div v-if="!compact || configMode" class="node-body">
       <div class="var-name-row">
         <input
-          v-model="data.varName"
+          v-model="data.variable_name"
           class="var-name-input"
           placeholder="变量名"
         />
@@ -38,7 +38,7 @@
       </select>
 
       <textarea
-        v-model="data.varValue"
+        v-model="data.variable_value"
         class="var-value-textarea"
         :placeholder="getPlaceholder()"
       ></textarea>
@@ -130,7 +130,7 @@ const availableFunctions = [
   { name: '{{random()}}', description: '生成随机数' }
 ];
 
-const variableSummary = computed(() => props.data.varName || '未命名变量');
+const variableSummary = computed(() => props.data.variable_name || '未命名变量');
 
 const toggleAdvanced = () => {
   showAdvanced.value = !showAdvanced.value;
@@ -149,8 +149,8 @@ const getPlaceholder = () => {
 };
 
 const insertFunction = (func) => {
-  if (!props.data.varValue) props.data.varValue = '';
-  props.data.varValue += func.name;
+  if (!props.data.variable_value) props.data.variable_value = '';
+  props.data.variable_value += func.name;
 };
 </script>
 

@@ -195,6 +195,46 @@ self.base_url = config.get('baseUrl') or config.get('base_url') or ''
 2. 🥈 **活跃维护的代码**：添加 alias 支持
 3. 🥉 **稳定不常修改的代码**：保持现状，逐步替换
 
+#### 2.5 特殊约定：workflow_data JSON 命名规范
+
+**`workflow_data` JSON 是前后端共享的数据契约**，同时被 Vue 编辑器（`v-model`）
+和 Python 后端（`_extract_params` → 节点 `config_fields`）使用。
+
+**规则**：所有 `workflow_data` 中的字段统一使用 snake_case。
+
+```typescript
+// ✅ 正确：workflow_data 中的字段
+data: {
+  variable_name: 'tariff_code',          // 非 varName
+  variable_value: '{{parsed_result}}',   // 非 varValue
+  tool_name: 'file_write',              // 非 toolName
+  tool_type: 'mcp',                     // 非 toolType
+  max_tokens: 1024,                     // 非 maxTokens
+  system_prompt: '你是...',              // 非 systemPrompt
+  selected_form_code: 'tariff_filing',  // 非 selectedFormCode
+  form_mode: 'reference',               // 非 formMode
+  output_var: 'result',                 // 非 outputVar
+}
+```
+
+```typescript
+// ✅ 正确：Vue 模板中直接使用 snake_case
+v-model="data.variable_name"
+v-model="data.tool_name"
+```
+
+```typescript
+// ✅ 正确：Vue script 中前端内部变量仍用 camelCase
+const localToolName = ref('')
+const showAdvanced = ref(false)
+```
+
+**原则**：
+1. **数据层（`data`）** → snake_case（JSON 契约）
+2. **组件内部（local/ref）** → camelCase（JS 习惯）
+3. **节点 `config_fields` 的 key** → 与 `data` 中字段名完全一致
+4. **不设转换层**：约定即接口，无需映射表或兼容代码
+
 ### 3. 代码审查规范
 
 #### PR 提交要求

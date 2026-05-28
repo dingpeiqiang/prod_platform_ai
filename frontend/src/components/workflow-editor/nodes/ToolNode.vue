@@ -153,7 +153,7 @@ const showAdvanced = ref(false)
 
 // 选择状态（对应后端 toolType 字段）
 const localCategory = ref('')
-const localToolName = ref(props.data.toolType || props.data.toolName || '')
+const localToolName = ref(props.data.tool_type || props.data.tool_name || '')
 const localParams = ref([])
 const localTimeout = ref(props.data.timeout || 60)
 const localAsync = ref(props.data.isAsync || false)
@@ -300,8 +300,8 @@ const emitUpdate = () => {
   }
 
   emit('update', props.data.id, {
-    toolType: localToolName.value,   // 后端字段名
-    toolName: localToolName.value,   // 兼容旧格式
+    tool_type: localToolName.value,
+    tool_name: localToolName.value,
     params,
     timeout: localTimeout.value,
     isAsync: localAsync.value,
@@ -310,7 +310,7 @@ const emitUpdate = () => {
 }
 
 watch(() => props.data, (d) => {
-  localToolName.value = d.toolType || d.toolName || ''
+  localToolName.value = d.tool_type || d.tool_name || ''
   localTimeout.value = d.timeout || 60
   localAsync.value = d.isAsync || false
   localSilent.value = d.silent || false

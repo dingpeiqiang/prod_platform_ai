@@ -1,17 +1,9 @@
-"""
-设置变量节点
-"""
-from typing import Dict, Any
+from typing import Any, Dict
 from app.langchain.workflow_nodes import WorkflowNode, register_node, DelegateExecution, ParamSchema
 
 
 @register_node
 class SetVariableNode(WorkflowNode):
-    """设置变量节点
-
-    动态输出：用户配置的 variable_name 即为输出变量名。
-    """
-
     name = "workflow.set_variable"
     display_name = "设置变量"
     description = "设置工作流上下文变量"
@@ -27,29 +19,29 @@ class SetVariableNode(WorkflowNode):
     }
 
     async def execute(self, execution: DelegateExecution) -> None:
-        variable_name = execution.get("variable_name", "")
-        variable_value = execution.get("variable_value", "")
+        var_name = execution.get("variable_name", "")
+        var_value = execution.get("variable_value", "")
 
-        self._log_input(variable_name=variable_name, variable_value=variable_value)
+        self._log_input(variable_name=var_name, variable_value=var_value)
 
-        previous_value = execution.get(variable_name, "（未设置）")
-        processing = f"设置变量 '{variable_name}'，原值: {previous_value}，新值: {variable_value}"
+        previous_value = execution.get(var_name, "（未设置）")
+        processing = "设置变量 '%s'，原值: %s，新值: %s" % (var_name, previous_value, var_value)
         self._log_processing(processing)
 
-        if not variable_name:
+        if not var_name:
             self._log_output(success=False, error="variable_name is required")
             return
 
-        execution.set(variable_name, variable_value)
-        execution.set("variable_name", variable_name)
-        execution.set("variable_value", variable_value)
+        execution.set(var_name, var_value)
+        execution.set("variable_name", var_name)
+        execution.set("variable_value", var_value)
         execution.set("previous_value", previous_value)
 
-        self._log_output(success=True, variable_name=variable_name, variable_value=variable_value,
+        self._log_output(success=True, variable_name=var_name, variable_value=var_value,
                         previous_value=previous_value)
 
     def get_dynamic_outputs(self, config_data: Dict[str, Any]) -> Dict[str, ParamSchema]:
         var_name = config_data.get("variable_name", "")
         if var_name:
-            return {var_name: ParamSchema(type="any", description=f"动态变量 {var_name}")}
+            return {var_name: ParamSchema(type="any", description="动态变量 " + var_name)}
         return {}
