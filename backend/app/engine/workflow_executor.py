@@ -1097,8 +1097,8 @@ class VariableNodeExecutor(NodeExecutor):
             for key, value in resolved_inputs.items():
                 context.set_variable(key, value)
         
-        var_name = self.node_data.get("varName", self.node_data.get("variableName", "result"))
-        var_value = self.node_data.get("varValue", self.node_data.get("variableValue", ""))
+        var_name = self.node_data.get("variable_name", self.node_data.get("varName", self.node_data.get("variableName", "result")))
+        var_value = self.node_data.get("variable_value", self.node_data.get("varValue", self.node_data.get("variableValue", "")))
 
         # 根据不同引用方式获取值
         if var_value == "{{output}}" or var_value == "output":

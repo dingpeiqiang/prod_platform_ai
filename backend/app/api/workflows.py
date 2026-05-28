@@ -992,13 +992,19 @@ async def execute_form_node(request: FormNodeExecutionRequest):
         
         # 创建节点数据
         node_data = {
+            "ontology_code": request.ontology_code,
             "ontologyCode": request.ontology_code,
+            "tool_type": request.tool_name,
             "toolType": request.tool_name,
+            "tool_name": request.tool_name,
             "toolName": request.tool_name,
+            "enable_validation": request.enable_validation,
             "enableValidation": request.enable_validation,
             "model": request.model,
             "temperature": request.temperature,
+            "validation_prompt": request.validation_prompt,
             "validationPrompt": request.validation_prompt,
+            "input_variable": request.input_variable,
             "inputVariable": request.input_variable
         }
         
