@@ -19,12 +19,15 @@ class AskUserNode(WorkflowNode):
         "message": ParamSchema(type="str", required=True, description="提示消息"),
         "prompt": ParamSchema(type="str", required=False, description="提示消息（兼容旧格式，推荐使用 message）"),
         "required_fields": ParamSchema(type="list", required=False, description="必填字段列表", default=[]),
+        "output_var": ParamSchema(type="str", required=False, description="输出变量名称", default="user_input"),
     }
     output_fields = {
         "action": ParamSchema(type="str", description="动作类型（固定为 ask_user，触发引擎暂停）"),
         "message": ParamSchema(type="str", description="提示消息"),
         "required_fields": ParamSchema(type="list", description="必填字段列表"),
         "waiting_for_input": ParamSchema(type="bool", description="是否等待用户输入"),
+        "output": ParamSchema(type="any", description="用户输入内容"),
+        "user_input": ParamSchema(type="any", description="用户输入内容"),
     }
 
     async def execute(self, execution: DelegateExecution) -> None:

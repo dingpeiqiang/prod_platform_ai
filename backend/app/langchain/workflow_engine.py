@@ -458,15 +458,60 @@ class WorkflowEngine:
             raise ValueError(f"工作流不在等待状态: {context.status}")
         
         waiting_step_id = context.waiting_step_id
+        definition = context.definition
+        step_def = definition.steps[waiting_step_id]
         
-        context.step_results[waiting_step_id] = {
-            "action": "form_submit",
-            "form_data": user_input,
-            "submitted_at": datetime.now().isoformat()
-        }
-        
-        context.inputs.update(user_input)
-        context.outputs.update(user_input)
+        # 处理 ask_user 节点的用户输入，设置到输出变量中
+        if step_def.action == "workflow.ask_user":
+            # 从 user_input 中获取用户输入文本，支持多种可能的字段名
+            user_text = (
+                user_input.get("user_input") 
+                or user_input.get("text") 
+                or user_input.get("input")
+                or (next(iter(user_input.values())) if user_input else "")
+            )
+            
+            # 从节点配置中获取输出变量名，默认为 user_input
+            output_var = step_def.action_params.get("output_var", "user_input")
+            
+            # 将用户输入设置为 ask_user 节点的输出
+            result = {
+                "action": "input_received",
+                "message": user_text,
+                "output": user_text,
+                "user_input": user_text,
+                output_var: user_text  # 也设置到自定义输出变量中
+            }
+            
+            # 将步骤结果包装成 {'output': result} 格式，支持表达式引用: node-id.output.field
+            wrapped_result = {"output": result}
+            context.step_results[waiting_step_id] = wrapped_result
+            
+            # 将输出参数添加到上下文中
+            if step_def.output_params:
+                for param_name in step_def.output_params:
+                    if param_name in result:
+                        context.outputs[param_name] = result[param_name]
+                        logger.debug(f"[WorkflowEngine] 步骤 [{waiting_step_id}] 输出参数 '{param_name}' 已添加到上下文")
+            else:
+                # 如果没有配置 output_params，至少将用户输入添加到上下文
+                context.outputs["output"] = user_text
+                context.outputs["user_input"] = user_text
+                context.outputs[output_var] = user_text
+                logger.debug(f"[WorkflowEngine] 步骤 [{waiting_step_id}] 用户输入已添加到上下文变量: {output_var}")
+            
+            # 同时，为了兼容性，仍然将 user_input 更新到上下文中
+            context.inputs.update(user_input)
+            context.outputs.update(user_input)
+        else:
+            # 处理其他类型节点的情况（如表单节点）
+            context.step_results[waiting_step_id] = {
+                "action": "form_submit",
+                "form_data": user_input,
+                "submitted_at": datetime.now().isoformat()
+            }
+            context.inputs.update(user_input)
+            context.outputs.update(user_input)
         
         context.status = WorkflowStatus.RUNNING
         context.waiting_step_id = None
@@ -481,8 +526,6 @@ class WorkflowEngine:
             "user_input": user_input
         }
         
-        definition = context.definition
-        step_def = definition.steps[waiting_step_id]
         current_step_id = self._determine_next_step(step_def, context)
         
         try:

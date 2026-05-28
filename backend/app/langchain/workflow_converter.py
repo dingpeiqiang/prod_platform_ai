@@ -296,8 +296,12 @@ class WorkflowConverter:
                 params[key] = value
         
         # userInput 节点：将 prompt 字段映射为 message 字段
-        if node_type == 'userInput' and 'prompt' in params and 'message' not in params:
-            params['message'] = params['prompt']
+        if node_type == 'userInput':
+            if 'prompt' in params and 'message' not in params:
+                params['message'] = params['prompt']
+            # 将 outputVar 映射为 output_var
+            if 'outputVar' in params and 'output_var' not in params:
+                params['output_var'] = params['outputVar']
         
         return params
     

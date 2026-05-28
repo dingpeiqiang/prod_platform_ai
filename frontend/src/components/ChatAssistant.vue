@@ -78,6 +78,7 @@ const suggestions = [
  { key: 'config', icon: '🛠️', text: '我想添加一种新表单' },
  { key: 'help', icon: '💬', text: '我能为你做什么？' },
 ];
+const pendingWorkflowResume = ref(null);
 const storageKey = computed(() => `chat_session_${props.sessionId}`);
 const formStorageKey = computed(() => `chat_form_${props.sessionId}`);
 const saveMessages = () => {
@@ -338,6 +339,17 @@ const sendMessage = async (text) => {
  emit('create-session-from-home', messageText);
  return;
  }
+ if (pendingWorkflowResume.value) {
+ const resumeData = { ...pendingWorkflowResume.value };
+ // 将用户输入添加到 form_data 中
+ resumeData.form_data = {
+ ...resumeData.form_data,
+ user_input: messageText
+ };
+ pendingWorkflowResume.value = null;
+ await doSendMessageAfterHome(messageText, { workflowResume: resumeData });
+ return;
+ }
  await doSendMessage(messageText);
 };
 const sendMessageAfterSessionCreated = async (text, sessionId) => {
@@ -391,7 +403,7 @@ const doSendMessage = async (text) => {
  }
  await doSendMessageAfterHome(text);
 };
-const doSendMessageAfterHome = async (text, { skipUserPush = false, formCode = null, formData = null } = {}) => {
+const doSendMessageAfterHome = async (text, { skipUserPush = false, formCode = null, formData = null, workflowResume = null } = {}) => {
  console.log('[ChatAssistant] doSendMessageAfterHome called:', { text, skipUserPush, sessionId: props.sessionId, currentDbSessionId: currentDbSessionId.value });
  await ensureDbSession(props.sessionId);
  console.log('[ChatAssistant] after ensureDbSession:', { currentDbSessionId: currentDbSessionId.value });
@@ -411,7 +423,7 @@ const doSendMessageAfterHome = async (text, { skipUserPush = false, formCode = n
  emit('title-update', props.sessionId, text.slice(0, 20));
  }
  scrollToBottom();
- await sendStreamMessage(text, { formCode, formData, modelConfig: props.modelConfig });
+ await sendStreamMessage(text, { formCode, formData, modelConfig: props.modelConfig, workflowResume });
 };
 const scrollToBottom = (smooth = false) => {
  if (messageListRef.value) {
@@ -595,6 +607,19 @@ registerPostProcessor('validate', async (msg, intentData) => {
  else {
  msg.content = msg.streamText || '';
  }
+ }
+});
+registerPostProcessor('workflow', async (msg, intentData) => {
+ const workflowWaiting = intentData?.workflow_waiting;
+ if (workflowWaiting) {
+ msg.content = workflowWaiting.message || '请提供以下信息';
+ pendingWorkflowResume.value = {
+ execution_id: workflowWaiting.execution_id,
+ form_data: {}
+ };
+ }
+ else {
+ msg.content = msg.streamText || '';
  }
 });
 onMounted(async () => {

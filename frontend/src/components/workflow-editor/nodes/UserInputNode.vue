@@ -97,7 +97,7 @@ const localPrompt = ref(props.data.prompt || '请输入：');
 const localInputType = ref(props.data.inputType || 'text');
 const localOptions = ref(props.data.options || '');
 const localRequired = ref(props.data.required ?? true);
-const localOutputVar = ref(props.data.outputVar || 'user_input');
+const localOutputVar = ref(props.data.outputVar || props.data.output_var || 'user_input');
 
 const expandedSections = ref({
   basic: true
@@ -108,23 +108,25 @@ const toggleSection = (section) => {
 };
 
 const emitUpdate = () => {
-  emit('update', props.data.id, {
-    label: localLabel.value,
-    prompt: localPrompt.value,
-    inputType: localInputType.value,
-    options: localOptions.value,
-    required: localRequired.value,
-    outputVar: localOutputVar.value
-  });
+ emit('update', props.data.id, {
+ label: localLabel.value,
+ prompt: localPrompt.value,
+ message: localPrompt.value, // 同时设置 message 字段，供后端使用
+ inputType: localInputType.value,
+ options: localOptions.value,
+ required: localRequired.value,
+ outputVar: localOutputVar.value,
+ output_var: localOutputVar.value // 同时设置 output_var 字段，保持兼容
+ });
 };
 
 watch(() => props.data, (newData) => {
-  localLabel.value = newData.label || '用户输入';
-  localPrompt.value = newData.prompt || '请输入：';
-  localInputType.value = newData.inputType || 'text';
-  localOptions.value = newData.options || '';
-  localRequired.value = newData.required ?? true;
-  localOutputVar.value = newData.outputVar || 'user_input';
+ localLabel.value = newData.label || '用户输入';
+ localPrompt.value = newData.prompt || newData.message || '请输入：';
+ localInputType.value = newData.inputType || 'text';
+ localOptions.value = newData.options || '';
+ localRequired.value = newData.required ?? true;
+ localOutputVar.value = newData.outputVar || newData.output_var || 'user_input';
 }, { deep: true });
 
 // 计算 Handle 的垂直位置百分比（水平布局时用于 source handle 的 top 定位）
