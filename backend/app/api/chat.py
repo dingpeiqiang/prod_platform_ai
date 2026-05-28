@@ -811,7 +811,9 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                             
                             # 根据是否有场景编码判断意图类型
                             # 如果有场景编码，走场景处理流程；否则走聊天流程
-                            intent_type = "form" if scene_code else "chat"
+                            # 注意：有场景编码不代表一定是表单，也可能是工作流执行等
+                            # intent_type 由后续场景处理结果最终决定
+                            intent_type = "scene" if scene_code else "chat"
 
                             logger.info(f"[chat/stream] intent_type={intent_type}, form_code={form_code}, scene_code={scene_code}")
                             
@@ -1178,26 +1180,28 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                 }
                             )
 
-                            # 【关键】如果场景响应是 call_tool action，工具调用后应该继续生成表单
+                            # 【关键】如果场景响应是 call_tool action，工具调用后根据是否有表单编码决定是否生成表单
                             if scene_handled and intent_data.get("action") == "call_tool":
-                                logger.info(f"[chat/stream] 工具调用完成，准备生成表单")
+                                has_form_code = bool(intent_data.get("formCode") or intent_data.get("detectedFormCode") or intent_data.get("form_code"))
                                 
-                                # 检查是否有工具调用成功
-                                success_count = sum(1 for r in tool_results if r["success"])
-                                failed_count = sum(1 for r in tool_results if not r["success"])
-                                
-                                if failed_count > 0:
-                                    yield thinking(f"⚠️ {failed_count} 个工具调用失败，将生成空表单供手动填写")
-                                
-                                # 注意：场景不再直接映射表单
-                                    # 表单应由提示词或LLM根据用户意图动态决定
-                                    # 如果提示词返回了 formCode，则使用它
-                                    # 这样场景可以灵活支持多种动作（表单、工具调用等）
-                                
-                                # 设置 intent_type 为 form，让 FormHandler 处理表单生成（显示处理步骤）
-                                intent_type = "form"
-                                logger.info(f"[chat/stream] 设置 intent_type=form，准备通过 FormHandler 处理")
-                                # 继续执行后续逻辑，不直接返回
+                                if has_form_code:
+                                    logger.info(f"[chat/stream] 工具调用完成，准备生成表单")
+                                    
+                                    # 检查是否有工具调用成功
+                                    success_count = sum(1 for r in tool_results if r["success"])
+                                    failed_count = sum(1 for r in tool_results if not r["success"])
+                                    
+                                    if failed_count > 0:
+                                        yield thinking(f"⚠️ {failed_count} 个工具调用失败，将生成空表单供手动填写")
+                                    
+                                    # 设置 intent_type 为 form，让 FormHandler 处理表单生成
+                                    intent_type = "form"
+                                    logger.info(f"[chat/stream] 设置 intent_type=form，准备通过 FormHandler 处理")
+                                else:
+                                    logger.info(f"[chat/stream] 工具调用完成，无需生成表单（无表单编码）")
+                                    # 非表单场景（如工作流执行），走正常对话流程
+                                    if intent_type != "chat":
+                                        intent_type = "chat"
 
                             # 【关键】如果场景响应已经处理完成（generate_form action），通过 FormHandler 处理（显示处理步骤）
                             if scene_handled and intent_data.get("action") == "generate_form":
@@ -1237,9 +1241,11 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                             if form_code and form_code in ontologies:
                                 form_name = ontologies[form_code].get("formName", form_code)
                             
-                            # 【关键修改】在调用 FormHandler 之前先发送"正在生成表单"的提示
-                            # 这样处理步骤会显示在这个提示的下方
-                            yield thinking(f"正在为你生成 {form_name or form_code} 表单...")
+                            # 根据 intent_type 发送相应的处理提示
+                            if intent_type == "form":
+                                yield thinking(f"正在为你生成 {form_name or form_code} 表单...")
+                            else:
+                                yield thinking(f"正在为你处理...")
                             
                             ctx = IntentContext(
                                 intent_data=intent_data,
@@ -1291,7 +1297,8 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                 form_code = intent_data.get("formCode") or intent_data.get("form_code")
                                 scene_code = intent_data.get("sceneCode")
                                 # 根据是否有场景编码判断意图类型
-                                intent_type = "form" if scene_code else "chat"
+                                # 注意：有场景编码不代表一定是表单
+                                intent_type = "scene" if scene_code else "chat"
                                 
                                 # 重新构建 ctx 并继续处理
                                 ctx = IntentContext(
