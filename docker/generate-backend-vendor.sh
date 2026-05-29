@@ -1,10 +1,16 @@
 #!/bin/bash
 # ============================================================
 # AI驱动动态表单 - 后端依赖包生成脚本
-# 使用方式: sh generate-backend-vendor.sh 或 ./generate-backend-vendor.sh
+# 使用方式: bash generate-backend-vendor.sh 或 ./generate-backend-vendor.sh
 # 说明: 在 Linux 主机上运行，生成后端所需的所有依赖包
 # 目标Python版本: 3.10
 # ============================================================
+
+# 检查是否使用 bash 执行
+if [ -z "$BASH_VERSION" ]; then
+    echo "错误: 请使用 bash 执行此脚本，例如: bash generate-backend-vendor.sh"
+    exit 1
+fi
 
 set -eo pipefail  # 严格模式：命令失败立即退出，管道失败也退出
 
