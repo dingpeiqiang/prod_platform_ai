@@ -3,13 +3,13 @@
 # 包含所有依赖包，用于加速构建
 # ============================================================
 
-# 使用官方 Python 3.11 镜像
-FROM python:3.11-slim
+# 使用官方 Python 3.10 镜像（更稳定，兼容性更好）
+FROM python:3.10-slim
 
 # 设置工作目录
 WORKDIR /app
 
-# 安装系统依赖（如需编译某些包）
+# 安装系统依赖
 RUN apt-get update && apt-get install -y \
     gcc \
     libssl-dev \
@@ -19,11 +19,11 @@ RUN apt-get update && apt-get install -y \
 # 复制 requirements.txt
 COPY backend/requirements.txt .
 
-# 升级 pip 到稳定版本（避免 24.0 和 26.x 的兼容性问题）
+# 升级 pip 到稳定版本
 RUN pip install --upgrade pip==23.3.1
 
-# 安装所有依赖
-RUN pip install --no-cache-dir -r requirements.txt
+# 安装所有依赖（带详细输出）
+RUN pip install --no-cache-dir -v -r requirements.txt
 
 # 设置环境变量
 ENV PYTHONUNBUFFERED=1
