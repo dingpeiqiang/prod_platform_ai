@@ -2,7 +2,7 @@
 # ============================================================
 # AI驱动动态表单 - 后端依赖包生成脚本
 # 使用方式: sh generate-backend-vendor.sh 或 ./generate-backend-vendor.sh
-# 说明: 在 Linux 主机上运行，生成后端所需的所有依赖包
+# 说明: 在 Linux 主机上运行，生成后端所需的所有依赖包（仅下载 wheel 包）
 # 目标Python版本: 3.10
 # ============================================================
 
@@ -64,29 +64,18 @@ rm -f "$VENDOR_DIR"/*.tar.gz
 rm -f "$VENDOR_DIR"/*.zip
 
 # 使用 pip 下载依赖到 vendor 目录
-# --prefer-binary 优先下载预编译的 wheel 包
-# --platform linux_x86_64 指定下载 Linux 版本
-echo "开始下载依赖包（优先 wheel 包）..."
+# 只下载预编译的 wheel 包，不下载源代码包
+echo "开始下载依赖包（仅 wheel 包）..."
 $PIP_CMD download \
     --no-cache-dir \
     --no-deps \
-    --prefer-binary \
+    --only-binary=:all: \
     --platform linux_x86_64 \
     --python-version 310 \
     --implementation cp \
     --abi cp310 \
     -r "$REQ_FILE" \
     -d "$VENDOR_DIR"
-
-# 对于没有预编译 wheel 的包，回退到源代码包（静默模式）
-echo "下载源代码包作为补充（可能需要一些时间）..."
-$PIP_CMD download \
-    --no-cache-dir \
-    --no-deps \
-    --no-binary=:all: \
-    -r "$REQ_FILE" \
-    -d "$VENDOR_DIR" \
-    2>/dev/null || echo "部分包可能已存在或无需源代码版本"
 
 echo "========================================"
 echo "依赖包下载完成！"
@@ -99,4 +88,4 @@ ls -la "$VENDOR_DIR" | head -50
 
 # 统计包数量
 echo ""
-echo "总下载包数: $(ls -la "$VENDOR_DIR"/*.whl "$VENDOR_DIR"/*.tar.gz 2>/dev/null | wc -l)"
+echo "总下载包数: $(ls -la "$VENDOR_DIR"/*.whl 2>/dev/null | wc -l)"
