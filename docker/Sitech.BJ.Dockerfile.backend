@@ -7,6 +7,11 @@ FROM  10.86.12.11:20200/aipaas-cloud/python:3.10-slim
 
 WORKDIR /app
 
+# 安装系统依赖（gcc用于编译Python扩展）
+RUN apt-get update && \
+    apt-get install -y gcc python3-dev && \
+    rm -rf /var/lib/apt/lists/*
+
 # 复制依赖文件
 COPY backend/requirements.txt .
 
@@ -18,7 +23,7 @@ RUN pip install \
     --no-cache-dir \
     --no-index \
     --find-links=./vendor \
-    setuptools wheel cython
+    setuptools wheel
 
 # 从本地 vendor 目录安装依赖（--no-index 禁止访问 PyPI）
 RUN pip install \
