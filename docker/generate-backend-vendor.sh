@@ -103,16 +103,11 @@ mkdir -p "$VENDOR_DIR"
 log_info "清理旧的依赖包..."
 rm -f "$VENDOR_DIR"/*.whl "$VENDOR_DIR"/*.tar.gz "$VENDOR_DIR"/*.zip 2>/dev/null || true
 
-# 使用 pip 下载依赖到 vendor 目录（仅 wheel 包）
-log_info "开始下载依赖包（仅 wheel 包）..."
+# 使用 pip 下载依赖到 vendor 目录
+log_info "开始下载依赖包..."
 if ! $PIP_CMD download \
     --no-cache-dir \
     --no-deps \
-    --only-binary=:all: \
-    --platform linux_x86_64 \
-    --python-version 310 \
-    --implementation cp \
-    --abi cp310 \
     -r "$REQ_FILE" \
     -d "$VENDOR_DIR" 2>&1 | tee -a "$LOG_FILE"; then
     log_warn "部分包可能下载失败，继续处理..."
