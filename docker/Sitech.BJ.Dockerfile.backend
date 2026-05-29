@@ -1,24 +1,14 @@
 # ============================================================
 # AI驱动动态表单 - 后端容器
-# 直接使用 pip install 安装依赖
+# 依赖已在本地安装，直接复制到镜像中
 # ============================================================
 
 FROM 10.86.12.11:20200/aipaas-cloud/python:3.10-slim
 
 WORKDIR /app
 
-# 安装系统依赖（gcc用于编译Python扩展）
-RUN apt-get update && \
-    apt-get install -y gcc python3-dev && \
-    rm -rf /var/lib/apt/lists/*
-
-# 复制依赖文件
-COPY backend/requirements.txt .
-
-# 安装所有依赖
-RUN pip install \
-    --no-cache-dir \
-    -r requirements.txt
+# 复制本地安装的依赖到容器
+COPY backend-deps/ /usr/local/lib/python3.10/site-packages/
 
 # 复制后端代码
 COPY backend/ ./backend/
