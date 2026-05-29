@@ -94,6 +94,10 @@ fi
 log_info "找到 pip: $PIP_CMD"
 $PIP_CMD --version | tee -a "$LOG_FILE"
 
+# 升级 pip 到最新版本（解决 Python 3.10 兼容性问题）
+log_info "升级 pip 到最新版本..."
+$PIP_CMD install --upgrade pip 2>&1 | tee -a "$LOG_FILE" || log_warn "pip 升级失败，继续使用当前版本"
+
 # 创建 vendor 目录
 log_info "创建 vendor 目录..."
 mkdir -p "$VENDOR_DIR"
