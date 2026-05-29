@@ -1,0 +1,48 @@
+from setuptools import setup, find_packages
+
+setup(
+    name="ai-form-backend",
+    version="1.0.0",
+    description="AI驱动动态表单后端服务",
+    author="Sitech",
+    author_email="dev@sitech.com",
+    packages=find_packages(),
+    include_package_data=True,
+    install_requires=[
+        "fastapi==0.115.0",
+        "uvicorn[standard]==0.32.0",
+        "gunicorn==23.0.0",
+        "sqlalchemy==2.0.50",
+        "pydantic==2.10.1",
+        "pydantic-settings==2.6.0",
+        "python-dotenv==1.0.1",
+        "alembic==1.14.0",
+        "aiosqlite==0.20.0",
+        "websockets==13.1",
+        "openai==1.54.3",
+        "redis==5.2.0",
+        "neo4j==5.26.0",
+        "pymysql==1.1.1",
+        "cryptography==44.0.0",
+        "httpx==0.27.2",
+        "requests==2.32.3",
+        "langchain==0.3.1",
+        "langchain-openai==0.2.2",
+        "langchain-anthropic==0.2.3",
+        "langchain-core==0.3.10",
+        "langchain-community==0.3.1",
+        "tenacity==8.5.0",
+        "PyYAML==6.0.2",
+        "PyExecJS==1.5.1",
+    ],
+    entry_points={
+        "console_scripts": [
+            "ai-form-backend=app.main:main",
+        ],
+    },
+    classifiers=[
+        "Programming Language :: Python :: 3.10",
+        "Operating System :: OS Independent",
+    ],
+    python_requires=">=3.10",
+)

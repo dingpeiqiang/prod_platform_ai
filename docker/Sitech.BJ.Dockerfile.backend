@@ -1,21 +1,23 @@
 # ============================================================
 # AI驱动动态表单 - 后端容器
-# 依赖已在本地安装，直接复制到镜像中
+# 使用 wheel 包安装
 # ============================================================
 
 FROM 10.86.12.11:20200/aipaas-cloud/python:3.10-slim
 
 WORKDIR /app
 
-# 复制本地安装的依赖到容器
-COPY backend-deps/ /usr/local/lib/python3.10/site-packages/
+# 复制 wheel 包
+COPY backend/dist/*.whl ./
 
-# 复制后端代码
-COPY backend/ ./backend/
+# 安装 wheel 包
+RUN pip install --no-cache-dir *.whl
+
+# 复制配置文件
 COPY config/ ./config/
 
 # 创建必要目录
-RUN mkdir -p backend/logs backend/app/logs
+RUN mkdir -p backend/logs app/logs
 
 # 环境变量
 ENV PYTHONUNBUFFERED=1
@@ -24,4 +26,4 @@ ENV DEBUG=False
 
 EXPOSE 6173
 
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "6173", "--log-level", "info"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "6173", "--log-level", "info"]
