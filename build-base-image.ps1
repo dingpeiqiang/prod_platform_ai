@@ -34,8 +34,8 @@ try {
     exit 1
 }
 
-# 获取项目根目录
-$ProjectRoot = (Get-Item $PSScriptRoot).Parent.FullName
+# 获取项目根目录（脚本所在目录即为项目根目录）
+$ProjectRoot = $PSScriptRoot
 Write-Host "项目根目录: $ProjectRoot" -ForegroundColor Green
 
 # 切换到项目根目录
