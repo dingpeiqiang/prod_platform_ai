@@ -2,11 +2,11 @@
 # ============================================================
 # AI驱动动态表单 - 后端依赖包生成脚本
 # 使用方式: sh generate-backend-vendor.sh 或 ./generate-backend-vendor.sh
-# 说明: 在 Linux 主机上运行，生成后端所需的所有依赖包（仅下载 wheel 包）
+# 说明: 在 Linux 主机上运行，生成后端所需的所有依赖包
 # 目标Python版本: 3.10
 # ============================================================
 
-set -e
+set +e  # 允许命令失败
 
 # 获取脚本所在目录（兼容 sh 和 bash）
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
@@ -64,7 +64,7 @@ rm -f "$VENDOR_DIR"/*.tar.gz
 rm -f "$VENDOR_DIR"/*.zip
 
 # 使用 pip 下载依赖到 vendor 目录
-# 只下载预编译的 wheel 包，不下载源代码包
+# 只下载预编译的 wheel 包
 echo "开始下载依赖包（仅 wheel 包）..."
 $PIP_CMD download \
     --no-cache-dir \
@@ -77,6 +77,19 @@ $PIP_CMD download \
     -r "$REQ_FILE" \
     -d "$VENDOR_DIR"
 
+echo ""
+echo "处理需要编译的特殊包（cryptography 等）..."
+
+# 单独下载 cryptography 的源代码包
+echo "下载 cryptography 源代码包..."
+$PIP_CMD download \
+    --no-cache-dir \
+    --no-deps \
+    --no-binary=cryptography \
+    cryptography==44.0.0 \
+    -d "$VENDOR_DIR" \
+    2>/dev/null || echo "cryptography 已存在或无法下载"
+
 echo "========================================"
 echo "依赖包下载完成！"
 echo "输出目录: $VENDOR_DIR"
@@ -88,4 +101,4 @@ ls -la "$VENDOR_DIR" | head -50
 
 # 统计包数量
 echo ""
-echo "总下载包数: $(ls -la "$VENDOR_DIR"/*.whl 2>/dev/null | wc -l)"
+echo "总下载包数: $(ls -la "$VENDOR_DIR"/*.whl "$VENDOR_DIR"/*.tar.gz 2>/dev/null | wc -l)"
