@@ -1,9 +1,10 @@
+# -*- coding: utf-8 -*-
 from setuptools import setup, find_packages
 
 setup(
     name="ai-form-backend",
     version="1.0.0",
-    description="AI驱动动态表单后端服务",
+    description="AI-powered Dynamic Form Backend Service",
     author="Sitech",
     author_email="dev@sitech.com",
     packages=find_packages(),
