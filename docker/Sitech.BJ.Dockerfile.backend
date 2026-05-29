@@ -18,7 +18,7 @@ RUN pip install \
     --no-cache-dir \
     --no-index \
     --find-links=./vendor \
-    setuptools wheel
+    setuptools wheel cython
 
 # 从本地 vendor 目录安装依赖（--no-index 禁止访问 PyPI）
 RUN pip install \
