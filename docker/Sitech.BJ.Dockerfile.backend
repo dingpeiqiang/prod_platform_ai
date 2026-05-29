@@ -25,12 +25,15 @@ RUN pip install \
     --find-links=./vendor \
     setuptools wheel
 
+# 创建不包含 greenlet 的临时 requirements 文件（greenlet 需要编译，离线环境无法安装）
+RUN grep -v greenlet requirements.txt > requirements-no-greenlet.txt
+
 # 从本地 vendor 目录安装依赖（--no-index 禁止访问 PyPI）
 RUN pip install \
     --no-cache-dir \
     --no-index \
     --find-links=./vendor \
-    -r requirements.txt
+    -r requirements-no-greenlet.txt
 
 # 复制后端代码
 COPY backend/ ./backend/
