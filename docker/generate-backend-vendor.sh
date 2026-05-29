@@ -2,6 +2,7 @@
 # ============================================================
 # AI驱动动态表单 - 后端依赖包生成脚本
 # 使用方式: bash generate-backend-vendor.sh
+# 说明: 直接使用当前环境的 pip 下载所有依赖包（包括子依赖）
 # ============================================================
 
 # 获取脚本所在目录
@@ -22,29 +23,14 @@ if [ ! -f "$REQ_FILE" ]; then
     exit 1
 fi
 
-# 选择 Python
-PYTHON_CMD=""
-if command -v python3.10 >/dev/null 2>&1; then
-    PYTHON_CMD="python3.10"
-elif command -v python3 >/dev/null 2>&1; then
-    PYTHON_CMD="python3"
-else
-    PYTHON_CMD="python"
+# 检查 pip 是否可用
+if ! command -v pip >/dev/null 2>&1; then
+    echo "错误: 未找到 pip，请激活正确的 Python 虚拟环境"
+    exit 1
 fi
 
-echo "使用 Python: $PYTHON_CMD"
-$PYTHON_CMD --version
-echo ""
-
-# 强制重新安装 pip（解决系统 pip 版本兼容问题）
-echo "强制重新安装 pip..."
-$PYTHON_CMD -m pip install --force-reinstall --no-cache-dir pip==24.0 -q
-
-if [ $? -eq 0 ]; then
-    echo "pip 安装成功"
-else
-    echo "警告: pip 安装失败，尝试使用当前版本"
-fi
+echo "使用 pip: $(which pip)"
+pip --version
 echo ""
 
 # 创建 vendor 目录
@@ -53,12 +39,12 @@ mkdir -p "$VENDOR_DIR"
 
 # 清理旧文件
 echo "清理旧依赖包..."
-rm -f "$VENDOR_DIR"/*.whl "$VENDOR_DIR"/*.tar.gz 2>/dev/null || true
+rm -f "$VENDOR_DIR"/*.whl "$VENDOR_DIR"/*.tar.gz "$VENDOR_DIR"/*.zip 2>/dev/null || true
 
-# 下载依赖
+# 下载依赖（包含所有子依赖）
 echo "开始下载依赖包..."
 echo ""
-$PYTHON_CMD -m pip download \
+pip download \
     --no-cache-dir \
     -r "$REQ_FILE" \
     -d "$VENDOR_DIR"
@@ -66,10 +52,15 @@ $PYTHON_CMD -m pip download \
 if [ $? -eq 0 ]; then
     echo ""
     echo "=== 下载完成 ==="
-    echo "依赖包列表:"
-    ls -la "$VENDOR_DIR" | head -30
+    WHEEL_COUNT=$(ls -la "$VENDOR_DIR"/*.whl 2>/dev/null | wc -l)
+    TAR_COUNT=$(ls -la "$VENDOR_DIR"/*.tar.gz 2>/dev/null | wc -l)
+    echo "下载统计:"
+    echo "  Wheel 包: $WHEEL_COUNT 个"
+    echo "  Source 包: $TAR_COUNT 个"
+    echo "  总计: $((WHEEL_COUNT + TAR_COUNT)) 个"
     echo ""
-    echo "包数量: $(ls -la "$VENDOR_DIR"/*.whl 2>/dev/null | wc -l) 个 wheel + $(ls -la "$VENDOR_DIR"/*.tar.gz 2>/dev/null | wc -l) 个 source"
+    echo "依赖包列表（前30个）:"
+    ls -la "$VENDOR_DIR" | head -30
 else
     echo ""
     echo "错误: 下载失败"
