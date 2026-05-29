@@ -76,14 +76,21 @@ $failCount = 0
 foreach ($dep in $dependencies) {
     Write-Host "Downloading: $dep" -NoNewline
     try {
-        python -m pip download "$dep" -d "$vendorDir" 2>&1 | Out-Null
+        python -m pip download "$dep" -d "$vendorDir" --platform manylinux_x86_64 --python-version 310 --implementation cp --abi cp310 --only-binary=:all: 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) {
             Write-Host " [OK]" -ForegroundColor Green
             $successCount++
         }
         else {
-            Write-Host " [FAIL]" -ForegroundColor Red
-            $failCount++
+            python -m pip download "$dep" -d "$vendorDir" 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host " [OK (fallback)]" -ForegroundColor Yellow
+                $successCount++
+            }
+            else {
+                Write-Host " [FAIL]" -ForegroundColor Red
+                $failCount++
+            }
         }
     }
     catch {

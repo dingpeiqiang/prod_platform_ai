@@ -1,11 +1,11 @@
 ﻿# Backend offline packages list
-# Generated: 2026-05-29T15:20:03.909Z
+# Generated: 2026-05-29T15:49:57.334Z
 # Count: 27
 
 fastapi==0.115.0
 uvicorn[standard]==0.32.0
 gunicorn==23.0.0
-sqlalchemy==2.0.36
+sqlalchemy==2.0.50
 pydantic==2.10.1
 pydantic-settings==2.6.0
 python-dotenv==1.0.1
