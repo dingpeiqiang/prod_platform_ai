@@ -12,7 +12,7 @@ PROJECT_ROOT=$(dirname "$SCRIPT_DIR")
 BACKEND_DIR="$PROJECT_ROOT/backend"
 VENDOR_DIR="$BACKEND_DIR/vendor"
 REQ_FILE="$BACKEND_DIR/requirements.txt"
-DOCKER_IMAGE="10.86.12.11:20200/aipaas-cloud/python:3.10-slim"
+DOCKER_IMAGE="python:3.10-slim"
 
 # 解析参数
 USE_DOCKER=false
