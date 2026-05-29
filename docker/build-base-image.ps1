@@ -7,7 +7,7 @@
 #>
 
 param(
-    [string]$ImageName = "prod-platform-base",
+    [string]$ImageName = "prod-platform-backend-base",
     [string]$ImageTag = "1.0",
     [string]$DockerfilePath = "docker/Dockerfile.base"
 )

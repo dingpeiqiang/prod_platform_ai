@@ -4,7 +4,7 @@
 # ============================================================
 
 # 使用自定义基础镜像
-FROM prod-platform-base:1.0
+FROM prod-platform-backend-base:1.0
 
 WORKDIR /app
 
