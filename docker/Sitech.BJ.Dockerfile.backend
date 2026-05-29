@@ -1,17 +1,20 @@
 # ============================================================
 # AI驱动动态表单 - 后端容器
-# 使用 wheel 包安装
+# 使用 vendor 目录的依赖包和源代码
 # ============================================================
 
 FROM 10.86.12.11:20200/aipaas-cloud/python:3.10-slim
 
 WORKDIR /app
 
-# 复制 wheel 包
-COPY backend/dist/*.whl ./
+# 复制 vendor 目录（预下载的依赖包）
+COPY backend/vendor/ ./vendor/
 
-# 安装 wheel 包
-RUN pip install --no-cache-dir *.whl
+# 安装 vendor 目录中的依赖包
+RUN pip install --no-cache-dir --find-links=./vendor/ -r backend/requirements.txt
+
+# 复制源代码
+COPY backend/app/ ./app/
 
 # 复制配置文件
 COPY config/ ./config/
