@@ -19,8 +19,9 @@ RUN apt-get update && apt-get install -y \
 # 复制 requirements.txt
 COPY backend/requirements.txt .
 
-# 安装所有依赖
-RUN pip install --no-cache-dir -r requirements.txt
+# 升级 pip 并安装所有依赖
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 # 设置环境变量
 ENV PYTHONUNBUFFERED=1
