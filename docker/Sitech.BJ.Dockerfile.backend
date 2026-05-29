@@ -1,40 +1,22 @@
 # ============================================================
 # AI驱动动态表单 - 后端容器
-# Multi-stage Build:
-#   Stage 1: 构建 wheel 包
-#   Stage 2: 安装 wheel 包并运行
+# 直接使用 requirements.txt 安装依赖
 # ============================================================
 
-# Stage 1: 构建阶段
-FROM 10.86.12.11:20200/devops/python:3.7.0 AS builder
-
-WORKDIR /app
-
-# 安装 setuptools 和 wheel
-RUN pip install --no-cache-dir setuptools wheel
-
-# 复制后端代码
-COPY backend/ ./backend/
-
-# 构建 wheel 包
-RUN cd backend && python backend_setup.py bdist_wheel
-
-# Stage 2: 运行阶段
 FROM 10.86.12.11:20200/devops/python:3.7.0
 
 WORKDIR /app
 
-# 从构建阶段复制 wheel 包
-COPY --from=builder /app/backend/dist/*.whl ./
+# 安装系统依赖（gcc用于编译Python扩展）
+RUN pip install --no-cache-dir setuptools wheel && \
+    pip install --no-cache-dir -r requirements.txt
 
-# 安装 wheel 包
-RUN pip install --no-cache-dir *.whl
-
-# 复制配置文件
+# 复制后端代码
+COPY backend/ ./backend/
 COPY config/ ./config/
 
 # 创建必要目录
-RUN mkdir -p backend/logs app/logs
+RUN mkdir -p backend/logs backend/app/logs
 
 # 环境变量
 ENV PYTHONUNBUFFERED=1
@@ -43,4 +25,4 @@ ENV DEBUG=False
 
 EXPOSE 6173
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "6173", "--log-level", "info"]
+CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "6173", "--log-level", "info"]
