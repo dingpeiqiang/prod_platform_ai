@@ -1,29 +1,24 @@
 # ============================================================
-# AI驱动动态表单 - 后端容器（内网离线构建版）
-# 依赖包已预置于 backend/vendor/，构建时不访问外部网络
+# AI驱动动态表单 - 后端容器
+# 直接使用 pip install 安装依赖
 # ============================================================
 
-FROM  10.86.12.11:20200/aipaas-cloud/python:3.10-slim
+FROM 10.86.12.11:20200/aipaas-cloud/python:3.10-slim
 
 WORKDIR /app
+
+# 安装系统依赖（gcc用于编译Python扩展）
+RUN apt-get update && \
+    apt-get install -y gcc python3-dev && \
+    rm -rf /var/lib/apt/lists/*
 
 # 复制依赖文件
 COPY backend/requirements.txt .
 
-# 复制离线依赖包
-COPY backend/vendor/ ./vendor/
-
-# 创建不包含需要编译的包的临时 requirements 文件
-# greenlet 和 cryptography 需要 C 编译器，离线环境无法安装
-RUN grep -v -E 'greenlet|cryptography' requirements.txt > requirements-no-compile.txt
-
-# 从本地 vendor 目录安装依赖（--no-index 禁止访问 PyPI）
-# 设置环境变量禁用 PyYAML 的 C 扩展编译，使用纯 Python 版本
-RUN YAML_FORCE_PURE_PYTHON=1 pip install \
+# 安装所有依赖
+RUN pip install \
     --no-cache-dir \
-    --no-index \
-    --find-links=./vendor \
-    -r requirements-no-compile.txt
+    -r requirements.txt
 
 # 复制后端代码
 COPY backend/ ./backend/
