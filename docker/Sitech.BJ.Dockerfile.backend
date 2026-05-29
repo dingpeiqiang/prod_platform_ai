@@ -18,7 +18,8 @@ COPY backend/vendor/ ./vendor/
 RUN grep -v -E 'greenlet|cryptography' requirements.txt > requirements-no-compile.txt
 
 # 从本地 vendor 目录安装依赖（--no-index 禁止访问 PyPI）
-RUN pip install \
+# 设置环境变量禁用 PyYAML 的 C 扩展编译，使用纯 Python 版本
+RUN YAML_FORCE_PURE_PYTHON=1 pip install \
     --no-cache-dir \
     --no-index \
     --find-links=./vendor \
