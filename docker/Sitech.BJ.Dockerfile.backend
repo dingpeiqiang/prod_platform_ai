@@ -13,15 +13,16 @@ COPY backend/requirements.txt .
 # 复制离线依赖包
 COPY backend/vendor/ ./vendor/
 
-# 创建不包含 greenlet 的临时 requirements 文件（greenlet 需要编译，离线环境无法安装）
-RUN grep -v greenlet requirements.txt > requirements-no-greenlet.txt
+# 创建不包含需要编译的包的临时 requirements 文件
+# greenlet 和 cryptography 需要 C 编译器，离线环境无法安装
+RUN grep -v -E 'greenlet|cryptography' requirements.txt > requirements-no-compile.txt
 
 # 从本地 vendor 目录安装依赖（--no-index 禁止访问 PyPI）
 RUN pip install \
     --no-cache-dir \
     --no-index \
     --find-links=./vendor \
-    -r requirements-no-greenlet.txt
+    -r requirements-no-compile.txt
 
 # 复制后端代码
 COPY backend/ ./backend/
