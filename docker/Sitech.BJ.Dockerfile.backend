@@ -7,23 +7,11 @@ FROM  10.86.12.11:20200/aipaas-cloud/python:3.10-slim
 
 WORKDIR /app
 
-# 安装系统依赖（gcc用于编译Python扩展）
-RUN apt-get update && \
-    apt-get install -y gcc python3-dev && \
-    rm -rf /var/lib/apt/lists/*
-
 # 复制依赖文件
 COPY backend/requirements.txt .
 
 # 复制离线依赖包
 COPY backend/vendor/ ./vendor/
-
-# 先安装构建工具（用于编译源代码包）
-RUN pip install \
-    --no-cache-dir \
-    --no-index \
-    --find-links=./vendor \
-    setuptools wheel
 
 # 创建不包含 greenlet 的临时 requirements 文件（greenlet 需要编译，离线环境无法安装）
 RUN grep -v greenlet requirements.txt > requirements-no-greenlet.txt
