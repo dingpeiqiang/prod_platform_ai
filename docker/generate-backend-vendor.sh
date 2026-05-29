@@ -3,6 +3,7 @@
 # AI驱动动态表单 - 后端依赖包生成脚本
 # 使用方式: sh generate-backend-vendor.sh 或 ./generate-backend-vendor.sh
 # 说明: 在 Linux 主机上运行，生成后端所需的所有依赖包
+# 目标Python版本: 3.10
 # ============================================================
 
 set -e
@@ -19,11 +20,14 @@ echo "AI驱动动态表单 - 后端依赖包生成脚本"
 echo "项目根目录: $PROJECT_ROOT"
 echo "后端目录: $BACKEND_DIR"
 echo "目标目录: $VENDOR_DIR"
+echo "目标Python版本: 3.10"
 echo "========================================"
 
 # 检查 Python 环境
 PYTHON_CMD=""
-if command -v python3 >/dev/null 2>&1; then
+if command -v python3.10 >/dev/null 2>&1; then
+    PYTHON_CMD="python3.10"
+elif command -v python3 >/dev/null 2>&1; then
     PYTHON_CMD="python3"
 elif command -v python >/dev/null 2>&1; then
     PYTHON_CMD="python"
@@ -33,6 +37,7 @@ else
 fi
 
 echo "找到 Python: $PYTHON_CMD"
+$PYTHON_CMD --version
 
 # 检查 pip
 PIP_CMD=""
@@ -65,9 +70,9 @@ $PIP_CMD download \
     --no-cache-dir \
     --no-deps \
     --platform linux_x86_64 \
-    --python-version 37 \
+    --python-version 310 \
     --implementation cp \
-    --abi cp37m \
+    --abi cp310 \
     -r "$REQ_FILE" \
     -d "$VENDOR_DIR"
 
