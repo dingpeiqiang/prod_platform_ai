@@ -2,7 +2,7 @@
 # ============================================================
 # AI驱动动态表单 - 后端依赖包生成脚本
 # 使用方式: bash generate-backend-vendor.sh 或 ./generate-backend-vendor.sh
-# 说明: 在 Linux 主机上运行，生成后端所需的所有依赖包和项目 wheel
+# 说明: 在 Linux 主机上运行，生成后端所需的所有依赖包
 # 目标Python版本: 3.10
 # ============================================================
 
@@ -32,7 +32,6 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(dirname "$SCRIPT_DIR")
 BACKEND_DIR="$PROJECT_ROOT/backend"
 VENDOR_DIR="$BACKEND_DIR/vendor"
-DIST_DIR="$BACKEND_DIR/dist"
 REQ_FILE="$BACKEND_DIR/requirements.txt"
 LOG_FILE="$SCRIPT_DIR/generate-vendor.log"
 
@@ -138,42 +137,6 @@ if [ "$TOTAL_COUNT" -eq 0 ]; then
     log_error "错误: 没有下载到任何依赖包，请检查网络连接和 requirements.txt"
     exit 1
 fi
-
-# 构建项目 wheel 包
-log_info "========================================"
-log_info "开始构建项目 wheel 包..."
-log_info "========================================"
-
-# 创建 dist 目录
-mkdir -p "$DIST_DIR"
-
-# 清理旧的 wheel 包
-rm -f "$DIST_DIR"/*.whl 2>/dev/null || true
-
-# 检查 pyproject.toml 是否存在
-if [ ! -f "$BACKEND_DIR/pyproject.toml" ]; then
-    log_error "错误: 未找到 pyproject.toml 文件: $BACKEND_DIR/pyproject.toml"
-    exit 1
-fi
-
-# 构建 wheel 包
-cd "$BACKEND_DIR"
-if ! $PYTHON_CMD -m build --wheel --outdir "$DIST_DIR" 2>&1 | tee -a "$LOG_FILE"; then
-    log_error "错误: 构建 wheel 包失败"
-    exit 1
-fi
-
-# 检查是否生成了 wheel 包
-DIST_WHEEL_COUNT=$(ls -la "$DIST_DIR"/*.whl 2>/dev/null | wc -l)
-if [ "$DIST_WHEEL_COUNT" -eq 0 ]; then
-    log_error "错误: 没有生成 wheel 包"
-    exit 1
-fi
-
-log_info "项目 wheel 包构建成功！"
-log_info "输出目录: $DIST_DIR"
-log_info "生成的 wheel 包:"
-ls -la "$DIST_DIR"/*.whl | tee -a "$LOG_FILE"
 
 log_info "========================================"
 log_info "脚本执行完成！"
