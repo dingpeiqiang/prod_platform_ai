@@ -3,7 +3,7 @@
 # 包含所有依赖包，用于加速构建
 # ============================================================
 
-# 使用官方 Python 3.11 镜像（带有更新版本的 pip）
+# 使用官方 Python 3.11 镜像
 FROM python:3.11-slim
 
 # 设置工作目录
@@ -19,7 +19,10 @@ RUN apt-get update && apt-get install -y \
 # 复制 requirements.txt
 COPY backend/requirements.txt .
 
-# 安装所有依赖（Python 3.11 默认 pip 版本较高）
+# 升级 pip 到最新版本（修复 pip 24.0 的兼容性问题）
+RUN pip install --upgrade pip==26.1.1
+
+# 安装所有依赖
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 设置环境变量
