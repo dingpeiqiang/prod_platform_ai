@@ -13,8 +13,8 @@ COPY backend/vendor/ ./vendor/
 # 复制 requirements.txt
 COPY backend/requirements.txt ./backend/requirements.txt
 
-# 安装 vendor 目录中的依赖包
-RUN pip install --no-cache-dir --find-links=./vendor/ -r backend/requirements.txt
+# 安装 vendor 目录中的依赖包（--no-index 禁止访问网络，仅从 vendor 目录安装）
+RUN pip install --no-cache-dir --no-index --find-links=./vendor/ -r backend/requirements.txt
 
 # 复制源代码
 COPY backend/app/ ./app/
