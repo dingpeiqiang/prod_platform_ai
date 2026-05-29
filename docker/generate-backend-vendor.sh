@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # ============================================================
 # AI驱动动态表单 - 后端依赖包生成脚本
 # 使用方式: sh generate-backend-vendor.sh 或 ./generate-backend-vendor.sh
@@ -6,22 +6,46 @@
 # 目标Python版本: 3.10
 # ============================================================
 
-set +e  # 允许命令失败
+set -eo pipefail  # 严格模式：命令失败立即退出，管道失败也退出
 
-# 获取脚本所在目录（兼容 sh 和 bash）
-SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+# 日志函数
+log_info() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO] $1"
+}
+
+log_error() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] $1" >&2
+}
+
+log_warn() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [WARN] $1"
+}
+
+# 获取脚本所在目录
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(dirname "$SCRIPT_DIR")
 BACKEND_DIR="$PROJECT_ROOT/backend"
 VENDOR_DIR="$BACKEND_DIR/vendor"
 REQ_FILE="$BACKEND_DIR/requirements.txt"
+LOG_FILE="$SCRIPT_DIR/generate-vendor.log"
 
-echo "========================================"
-echo "AI驱动动态表单 - 后端依赖包生成脚本"
-echo "项目根目录: $PROJECT_ROOT"
-echo "后端目录: $BACKEND_DIR"
-echo "目标目录: $VENDOR_DIR"
-echo "目标Python版本: 3.10"
-echo "========================================"
+# 清空日志文件
+> "$LOG_FILE"
+
+log_info "========================================"
+log_info "AI驱动动态表单 - 后端依赖包生成脚本"
+log_info "项目根目录: $PROJECT_ROOT"
+log_info "后端目录: $BACKEND_DIR"
+log_info "目标目录: $VENDOR_DIR"
+log_info "目标Python版本: 3.10"
+log_info "日志文件: $LOG_FILE"
+log_info "========================================"
+
+# 检查 requirements.txt 是否存在
+if [ ! -f "$REQ_FILE" ]; then
+    log_error "错误: 未找到 requirements.txt 文件: $REQ_FILE"
+    exit 1
+fi
 
 # 检查 Python 环境
 PYTHON_CMD=""
@@ -29,15 +53,24 @@ if command -v python3.10 >/dev/null 2>&1; then
     PYTHON_CMD="python3.10"
 elif command -v python3 >/dev/null 2>&1; then
     PYTHON_CMD="python3"
+    log_warn "未找到 Python 3.10，使用 python3"
 elif command -v python >/dev/null 2>&1; then
     PYTHON_CMD="python"
+    log_warn "未找到 Python 3.10，使用 python"
 else
-    echo "错误: 未找到 Python"
+    log_error "错误: 未找到 Python"
     exit 1
 fi
 
-echo "找到 Python: $PYTHON_CMD"
-$PYTHON_CMD --version
+log_info "找到 Python: $PYTHON_CMD"
+$PYTHON_CMD --version | tee -a "$LOG_FILE"
+
+# 检查 Python 版本
+PYTHON_VERSION=$($PYTHON_CMD -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+log_info "Python 版本: $PYTHON_VERSION"
+if [ "$PYTHON_VERSION" != "3.10" ]; then
+    log_warn "警告: 当前 Python 版本为 $PYTHON_VERSION，推荐使用 3.10"
+fi
 
 # 检查 pip
 PIP_CMD=""
@@ -48,25 +81,24 @@ elif command -v pip3 >/dev/null 2>&1; then
 elif command -v pip >/dev/null 2>&1; then
     PIP_CMD="pip"
 else
-    echo "错误: 未找到 pip"
+    log_error "错误: 未找到 pip"
     exit 1
 fi
 
-echo "找到 pip: $PIP_CMD"
+log_info "找到 pip: $PIP_CMD"
+$PIP_CMD --version | tee -a "$LOG_FILE"
 
 # 创建 vendor 目录
+log_info "创建 vendor 目录..."
 mkdir -p "$VENDOR_DIR"
 
 # 清理旧的依赖包
-echo "清理旧的依赖包..."
-rm -f "$VENDOR_DIR"/*.whl
-rm -f "$VENDOR_DIR"/*.tar.gz
-rm -f "$VENDOR_DIR"/*.zip
+log_info "清理旧的依赖包..."
+rm -f "$VENDOR_DIR"/*.whl "$VENDOR_DIR"/*.tar.gz "$VENDOR_DIR"/*.zip 2>/dev/null || true
 
-# 使用 pip 下载依赖到 vendor 目录
-# 只下载预编译的 wheel 包
-echo "开始下载依赖包（仅 wheel 包）..."
-$PIP_CMD download \
+# 使用 pip 下载依赖到 vendor 目录（仅 wheel 包）
+log_info "开始下载依赖包（仅 wheel 包）..."
+if ! $PIP_CMD download \
     --no-cache-dir \
     --no-deps \
     --only-binary=:all: \
@@ -75,30 +107,34 @@ $PIP_CMD download \
     --implementation cp \
     --abi cp310 \
     -r "$REQ_FILE" \
-    -d "$VENDOR_DIR"
+    -d "$VENDOR_DIR" 2>&1 | tee -a "$LOG_FILE"; then
+    log_warn "部分包可能下载失败，继续处理..."
+fi
 
-echo ""
-echo "处理需要编译的特殊包（cryptography 等）..."
-
-# 单独下载 cryptography 的源代码包
-echo "下载 cryptography 源代码包..."
-$PIP_CMD download \
-    --no-cache-dir \
-    --no-deps \
-    --no-binary=cryptography \
-    cryptography==44.0.0 \
-    -d "$VENDOR_DIR" \
-    2>/dev/null || echo "cryptography 已存在或无法下载"
-
-echo "========================================"
-echo "依赖包下载完成！"
-echo "输出目录: $VENDOR_DIR"
-echo "========================================"
+log_info "========================================"
+log_info "依赖包下载完成！"
+log_info "输出目录: $VENDOR_DIR"
+log_info "========================================"
 
 # 列出下载的包
-echo "下载的依赖包列表:"
-ls -la "$VENDOR_DIR" | head -50
+log_info "下载的依赖包列表:"
+ls -la "$VENDOR_DIR" | head -50 | tee -a "$LOG_FILE"
 
 # 统计包数量
-echo ""
-echo "总下载包数: $(ls -la "$VENDOR_DIR"/*.whl "$VENDOR_DIR"/*.tar.gz 2>/dev/null | wc -l)"
+WHEEL_COUNT=$(ls -la "$VENDOR_DIR"/*.whl 2>/dev/null | wc -l)
+TAR_COUNT=$(ls -la "$VENDOR_DIR"/*.tar.gz 2>/dev/null | wc -l)
+TOTAL_COUNT=$(( WHEEL_COUNT + TAR_COUNT ))
+
+log_info ""
+log_info "下载统计:"
+log_info "  Wheel 包数量: $WHEEL_COUNT"
+log_info "  Source 包数量: $TAR_COUNT"
+log_info "  总下载包数: $TOTAL_COUNT"
+
+# 检查是否有下载失败的包
+if [ "$TOTAL_COUNT" -eq 0 ]; then
+    log_error "错误: 没有下载到任何依赖包，请检查网络连接和 requirements.txt"
+    exit 1
+fi
+
+log_info "脚本执行完成！"
