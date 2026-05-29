@@ -36,9 +36,16 @@ echo "使用 Python: $PYTHON_CMD"
 $PYTHON_CMD --version
 echo ""
 
-# 升级 pip
-echo "升级 pip..."
-$PYTHON_CMD -m pip install --upgrade pip -q
+# 强制重新安装 pip（解决系统 pip 版本兼容问题）
+echo "强制重新安装 pip..."
+$PYTHON_CMD -m pip install --force-reinstall --no-cache-dir pip==24.0 -q
+
+if [ $? -eq 0 ]; then
+    echo "pip 安装成功"
+else
+    echo "警告: pip 安装失败，尝试使用当前版本"
+fi
+echo ""
 
 # 创建 vendor 目录
 echo "创建 vendor 目录..."
@@ -48,7 +55,7 @@ mkdir -p "$VENDOR_DIR"
 echo "清理旧依赖包..."
 rm -f "$VENDOR_DIR"/*.whl "$VENDOR_DIR"/*.tar.gz 2>/dev/null || true
 
-# 下载依赖（简单模式，不带版本约束）
+# 下载依赖
 echo "开始下载依赖包..."
 echo ""
 $PYTHON_CMD -m pip download \
