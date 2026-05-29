@@ -102,11 +102,10 @@ mkdir -p "$VENDOR_DIR"
 log_info "清理旧的依赖包..."
 rm -f "$VENDOR_DIR"/*.whl "$VENDOR_DIR"/*.tar.gz "$VENDOR_DIR"/*.zip 2>/dev/null || true
 
-# 使用 pip 下载依赖到 vendor 目录（指定 Python 3.10 版本兼容）
-log_info "开始下载依赖包（目标 Python 3.10）..."
+# 使用 pip 下载依赖到 vendor 目录（指定 Python 3.10 版本兼容，包含所有子依赖）
+log_info "开始下载依赖包（目标 Python 3.10，包含所有子依赖）..."
 if ! $PIP_CMD download \
     --no-cache-dir \
-    --no-deps \
     --python-version 310 \
     --platform manylinux_x86_64 \
     --implementation cp \
@@ -117,7 +116,6 @@ if ! $PIP_CMD download \
     # 如果指定版本下载失败，尝试不带版本约束下载（可能会下载兼容的 wheel）
     $PIP_CMD download \
         --no-cache-dir \
-        --no-deps \
         -r "$REQ_FILE" \
         -d "$VENDOR_DIR" 2>&1 | tee -a "$LOG_FILE" || true
 fi
