@@ -4,8 +4,7 @@
 # ============================================================
 
 # 使用自定义基础镜像
-FROM prod-platform-backend-base:1.0
-
+FROM 10.86.12.11:20200/crm-pgcent/prod-platform-backend-base:1.0
 WORKDIR /app
 
 # 复制源代码
