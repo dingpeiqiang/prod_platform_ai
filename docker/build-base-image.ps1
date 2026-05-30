@@ -3,7 +3,7 @@
 Build AI dynamic form backend base image
 
 .DESCRIPTION
-Build base image with all dependencies using Python 3.11 slim image
+Build base image with all dependencies using Python 3.12 slim image (Tsinghua mirror)
 #>
 
 param(

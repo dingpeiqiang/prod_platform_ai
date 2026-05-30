@@ -3,27 +3,26 @@
 # 包含所有依赖包，用于加速构建
 # ============================================================
 
-# 使用官方 Python 3.11 镜像（更稳定，兼容性更好，性能更优）
-FROM python:3.11-slim
+# 使用官方 Python 3.12 镜像（更新的 Python 版本，更好的性能）
+FROM python:3.12-slim
 
 # 设置工作目录
 WORKDIR /app
 
-# 安装系统依赖
-RUN apt-get update && apt-get install -y \
-    gcc \
-    libssl-dev \
-    libffi-dev \
-    && rm -rf /var/lib/apt/lists/*
-
 # 复制 requirements.txt
 COPY backend/requirements.txt .
 
-# 升级 pip 到兼容版本（使用国内镜像加速）
-RUN python -m pip install --upgrade pip==24.0 -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn
-
-# 安装所有依赖（带详细输出）
-RUN pip install --no-cache-dir -v -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn
+# 安装系统依赖 + pip 安装 + 清理（单层构建，减小体积）
+RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update && apt-get install -y \
+        gcc \
+        libssl-dev \
+        libffi-dev \
+    && pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn \
+    && apt-get purge -y --auto-remove gcc \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /root/.cache/pip
 
 # 设置环境变量
 ENV PYTHONUNBUFFERED=1
