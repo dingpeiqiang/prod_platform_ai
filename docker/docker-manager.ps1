@@ -5,28 +5,16 @@ Docker Image Management Script for AI Dynamic Form Platform
 .DESCRIPTION
 A unified script to build and push Docker images with menu-based selection.
 Supports both backend and frontend base images with separate configurations.
-Automatically generates version numbers using datetime format.
 #>
-
-# ==============================================
-# Auto Version Number Generation
-# ==============================================
-function Get-AutoVersion {
-    param(
-        [string]$Major = "1",
-        [string]$Minor = "1"
-    )
-    $Timestamp = Get-Date -Format "yyyyMMddHHmm"
-    return "$Major.$Minor.$Timestamp"
-}
 
 # ==============================================
 # Configuration Section - Separated for easy management
 # ==============================================
+# WARNING: 修改版本号时，请同步更新 Sitech.BJ.Dockerfile.backend 和 Sitech.BJ.Dockerfile.frontend 中的 FROM 指令
 $Config = @{
     BackendBase = @{
         ImageName     = "prod-platform-backend-base"
-        ImageTag      = Get-AutoVersion -Major "1" -Minor "1"
+        ImageTag      = "1.2"  # 手动修改版本号，每次更新基础镜像时递增
         Dockerfile    = "docker/Dockerfile.base.backend"
         Registry      = "10.86.12.11:20200"
         Namespace     = "y21127-crmpos"
@@ -35,7 +23,7 @@ $Config = @{
     }
     FrontendBase = @{
         ImageName     = "prod-platform-frontend-base"
-        ImageTag      = Get-AutoVersion -Major "1" -Minor "1"
+        ImageTag      = "1.2"  # 手动修改版本号，每次更新基础镜像时递增
         Dockerfile    = "docker/Dockerfile.base.frontend"
         Registry      = "10.86.12.11:20200"
         Namespace     = "y21127-crmpos"
@@ -78,7 +66,24 @@ function Invoke-BuildImage {
     Set-Location $ProjectRoot
     
     $FullTag = "$ImageName`:$ImageTag"
-    Write-Host "`nBuilding image: $FullTag" -ForegroundColor Yellow
+    
+    # ==============================================
+    # Warning message - update ImageTag before build
+    # ==============================================
+    Write-Host "`n" -ForegroundColor Red
+    Write-Host "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" -ForegroundColor Red
+    Write-Host "!!!                         WARNING                                  !!!" -ForegroundColor Red
+    Write-Host "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" -ForegroundColor Red
+    Write-Host "!!!  Current version: $FullTag" -ForegroundColor Yellow
+    Write-Host "!!!" -ForegroundColor Red
+    Write-Host "!!!  Update ImageTag in docker-manager.ps1 before building!          !!!" -ForegroundColor Red
+    Write-Host "!!!  e.g. Change 1.2 to 1.3 for a new version.                      !!!" -ForegroundColor Red
+    Write-Host "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" -ForegroundColor Red
+    Write-Host "`n" -ForegroundColor Red
+    
+    Write-Host "==============================================" -ForegroundColor Cyan
+    Write-Host "Building image: $FullTag" -ForegroundColor Yellow
+    Write-Host "==============================================" -ForegroundColor Cyan
     
     docker buildx build -f $DockerfilePath -t $FullTag --no-cache --pull --provenance=false --sbom=false --output type=image,name=$FullTag,oci-mediatypes=false .
     
@@ -151,7 +156,7 @@ function Invoke-PushImage {
         return $true
     } else {
         Write-Error "[FAIL] Failed to push image!"
-        Write-Warning "If the error mentions 'unsupported content type' or 'OCI manifest', rebuild the image"
+        Write-Warning "If the error mentions unsupported content type or OCI manifest, rebuild the image"
         return $false
     }
 }
