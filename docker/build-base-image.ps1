@@ -41,11 +41,13 @@ Write-Host "Project root: $ProjectRoot" -ForegroundColor Green
 # Switch to project root
 Set-Location $ProjectRoot
 
-# Build image
+# Build image (DOCKER_BUILDKIT=0 for Docker V2 manifest, compatible with older private registries)
 $FullTag = "$ImageName`:$ImageTag"
 Write-Host "`nBuilding image: $FullTag" -ForegroundColor Yellow
 
+$Env:DOCKER_BUILDKIT = 0
 docker build -f $DockerfilePath -t $FullTag .
+Remove-Item Env:DOCKER_BUILDKIT -ErrorAction SilentlyContinue
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "`n[OK] Base image built successfully!" -ForegroundColor Green

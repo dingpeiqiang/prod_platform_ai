@@ -81,6 +81,9 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "Remote image: $RemoteTag" -ForegroundColor Green
 } else {
     Write-Error "Failed to push image!"
+    Write-Warning "If the error mentions 'unsupported content type' or 'OCI manifest', rebuild the image with Docker V2 format:"
+    Write-Warning "  .\docker\build-base-image.ps1 -ImageTag $ImageTag"
+    Write-Warning "  (the build script already handles format compatibility)"
     exit 1
 }
 
