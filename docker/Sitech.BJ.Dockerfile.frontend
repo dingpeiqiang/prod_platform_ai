@@ -3,7 +3,9 @@
 # 基础镜像已包含：Nginx + Node.js 20 + npm依赖
 # ============================================================
 
-FROM 10.86.12.11:20200/y21127-crmpos/prod-platform-frontend-base:1.0
+# 使用自定义基础镜像（版本号通过构建参数传递）
+ARG BASE_IMAGE_VERSION=1.1
+FROM 10.86.12.11:20200/y21127-crmpos/prod-platform-frontend-base:${BASE_IMAGE_VERSION}
 
 LABEL maintainer="AI Platform"
 LABEL version="1.0"

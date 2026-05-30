@@ -5,7 +5,20 @@ Docker Image Management Script for AI Dynamic Form Platform
 .DESCRIPTION
 A unified script to build and push Docker images with menu-based selection.
 Supports both backend and frontend base images with separate configurations.
+Automatically generates version numbers using datetime format.
 #>
+
+# ==============================================
+# Auto Version Number Generation
+# ==============================================
+function Get-AutoVersion {
+    param(
+        [string]$Major = "1",
+        [string]$Minor = "1"
+    )
+    $Timestamp = Get-Date -Format "yyyyMMddHHmm"
+    return "$Major.$Minor.$Timestamp"
+}
 
 # ==============================================
 # Configuration Section - Separated for easy management
@@ -13,7 +26,7 @@ Supports both backend and frontend base images with separate configurations.
 $Config = @{
     BackendBase = @{
         ImageName     = "prod-platform-backend-base"
-        ImageTag      = "1.0"
+        ImageTag      = Get-AutoVersion -Major "1" -Minor "1"
         Dockerfile    = "docker/Dockerfile.base.backend"
         Registry      = "10.86.12.11:20200"
         Namespace     = "y21127-crmpos"
@@ -22,7 +35,7 @@ $Config = @{
     }
     FrontendBase = @{
         ImageName     = "prod-platform-frontend-base"
-        ImageTag      = "1.0"
+        ImageTag      = Get-AutoVersion -Major "1" -Minor "1"
         Dockerfile    = "docker/Dockerfile.base.frontend"
         Registry      = "10.86.12.11:20200"
         Namespace     = "y21127-crmpos"
@@ -67,7 +80,7 @@ function Invoke-BuildImage {
     $FullTag = "$ImageName`:$ImageTag"
     Write-Host "`nBuilding image: $FullTag" -ForegroundColor Yellow
     
-    docker buildx build -f $DockerfilePath -t $FullTag --provenance=false --sbom=false --output type=image,name=$FullTag,oci-mediatypes=false .
+    docker buildx build -f $DockerfilePath -t $FullTag --no-cache --pull --provenance=false --sbom=false --output type=image,name=$FullTag,oci-mediatypes=false .
     
     if ($LASTEXITCODE -eq 0) {
         Write-Host "`n[OK] Image built successfully!" -ForegroundColor Green
