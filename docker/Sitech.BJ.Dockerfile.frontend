@@ -3,7 +3,7 @@
 # 基础镜像已包含：Nginx + Node.js 20 + npm依赖
 # ============================================================
 
-FROM  10.86.12.11:20200/crm-pgcent/prod-platform-frontend-base:1.0
+FROM 10.86.12.11:20200/y21127-crmpos/prod-platform-frontend-base:1.0
 
 LABEL maintainer="AI Platform"
 LABEL version="1.0"

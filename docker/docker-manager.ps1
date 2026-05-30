@@ -16,7 +16,7 @@ $Config = @{
         ImageTag      = "1.0"
         Dockerfile    = "docker/Dockerfile.base.backend"
         Registry      = "10.86.12.11:20200"
-        Namespace     = "crm-pgcent"
+        Namespace     = "y21127-crmpos"
         Username      = "dingpq"
         Password      = "Docker.2022!"
     }
@@ -25,7 +25,7 @@ $Config = @{
         ImageTag      = "1.0"
         Dockerfile    = "docker/Dockerfile.base.frontend"
         Registry      = "10.86.12.11:20200"
-        Namespace     = "crm-pgcent"
+        Namespace     = "y21127-crmpos"
         Username      = "dingpq"
         Password      = "Docker.2022!"
     }
