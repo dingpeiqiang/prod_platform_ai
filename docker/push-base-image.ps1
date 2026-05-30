@@ -1,14 +1,14 @@
 <#
 .SYNOPSIS
-推送基础镜像到私有镜像仓库
+Push base image to private registry
 
 .DESCRIPTION
-将构建好的基础镜像推送到指定的私有镜像仓库 (HTTP)
-默认配置：10.86.12.11:20200 / crm-pgcent / dingpq
+Push the built base image to a private HTTP registry
+Default: 10.86.12.11:20200 / crm-pgcent / dingpq
 
 .NOTES
-如果仓库为 HTTP (非 HTTPS)，需配置 Docker daemon：
-  在 daemon.json 中添加 "insecure-registries": ["10.86.12.11:20200"]
+For HTTP (non-HTTPS) registry, configure Docker daemon:
+  Add "insecure-registries": ["10.86.12.11:20200"] to daemon.json
 #>
 
 param(
@@ -20,70 +20,70 @@ param(
 )
 
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "推送基础镜像到仓库" -ForegroundColor Cyan
+Write-Host "Push Base Image to Registry" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
-# 检查 Docker 是否可用
+# Check Docker availability
 try {
     docker --version | Out-Null
 } catch {
-    Write-Error "Docker 不可用，请确保 Docker 已安装并运行"
+    Write-Error "Docker is not available, please ensure Docker is installed and running"
     exit 1
 }
 
-# 检查镜像是否存在
+# Check local image
 $LocalTag = "$ImageName`:$ImageTag"
-Write-Host "检查本地镜像: $LocalTag" -ForegroundColor Yellow
+Write-Host "Checking local image: $LocalTag" -ForegroundColor Yellow
 
 $ImageExists = docker images -q $LocalTag
 if (-not $ImageExists) {
-    Write-Error "❌ 本地镜像不存在: $LocalTag"
-    Write-Error "请先运行 build-base-image.ps1 构建镜像"
+    Write-Error "Local image not found: $LocalTag"
+    Write-Error "Please run build-base-image.ps1 first"
     exit 1
 }
 
-Write-Host "✅ 本地镜像存在" -ForegroundColor Green
+Write-Host "Local image exists" -ForegroundColor Green
 
-# 构建完整的仓库标签
+# Build remote tag
 $RemoteTag = "$Registry`/$Namespace`/$ImageName`:$ImageTag"
-Write-Host "`n远程镜像标签: $RemoteTag" -ForegroundColor Yellow
+Write-Host "`nRemote image tag: $RemoteTag" -ForegroundColor Yellow
 
-# 打标签
-Write-Host "打标签..." -ForegroundColor Cyan
+# Tag image
+Write-Host "Tagging image..." -ForegroundColor Cyan
 docker tag $LocalTag $RemoteTag
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "❌ 打标签失败！"
+    Write-Error "Failed to tag image!"
     exit 1
 }
 
-# 登录仓库
-Write-Host "`n登录 $Registry ..." -ForegroundColor Cyan
-Write-Host "用户名: $Username" -ForegroundColor Yellow
+# Login to registry
+Write-Host "`nLogging in to $Registry ..." -ForegroundColor Cyan
+Write-Host "Username: $Username" -ForegroundColor Yellow
 $Password = "Docker.2022!"
 $Password | docker login $Registry --username $Username --password-stdin
 $Password = $null
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Warning "登录失败，请检查以下原因："
-    Write-Warning "  1. 仓库地址是否正确：$Registry"
-    Write-Warning "  2. 是否为 HTTP 仓库？需要配置 Docker daemon 添加 --insecure-registry $Registry"
-    Write-Warning "  3. 网络是否连通？"
+    Write-Warning "Login failed, check the following:"
+    Write-Warning "  1. Registry URL: $Registry"
+    Write-Warning "  2. For HTTP registry, add --insecure-registry $Registry to Docker daemon config"
+    Write-Warning "  3. Network connectivity"
     exit 1
 }
 
-# 推送镜像
-Write-Host "`n推送镜像..." -ForegroundColor Cyan
+# Push image
+Write-Host "`nPushing image..." -ForegroundColor Cyan
 docker push $RemoteTag
 
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "`n✅ 镜像推送成功！" -ForegroundColor Green
-    Write-Host "远程镜像: $RemoteTag" -ForegroundColor Green
+    Write-Host "`nImage pushed successfully!" -ForegroundColor Green
+    Write-Host "Remote image: $RemoteTag" -ForegroundColor Green
 } else {
-    Write-Error "❌ 镜像推送失败！"
+    Write-Error "Failed to push image!"
     exit 1
 }
 
 Write-Host "`n========================================" -ForegroundColor Cyan
-Write-Host "推送完成" -ForegroundColor Cyan
+Write-Host "Done" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
