@@ -1274,6 +1274,8 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                         yield thinking(f"❌ 工具调用失败:\n{error_msg}")
                                         # 设置意图为 chat，让后续处理错误回复
                                         intent_type = "chat"
+                                        # 保存错误信息，传递给后续处理器
+                                        intent_data["error_info"] = error_msg
                                     else:
                                         logger.info(f"[chat/stream] 工具调用完成，无需生成表单（无表单编码）")
                                         # 非表单场景（如工作流执行），走正常对话流程
@@ -1338,7 +1340,8 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                 messages_text=messages_text,
                                 intent_prompt=intent_prompt,
                                 start_time=start_time,
-                                stream_stats=stream_stats
+                                stream_stats=stream_stats,
+                                error_info=intent_data.get("error_info")
                             )
                             async for chunk in get_intent_registry().dispatch(intent_type, ctx):
                                 yield chunk

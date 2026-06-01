@@ -35,6 +35,9 @@ class IntentContext:
     # 统计与时间
     start_time: float = 0.0
     stream_stats: Any = None
+    
+    # 错误信息
+    error_info: Optional[str] = None  # 用于传递工具调用失败等错误信息
 
 
 class BaseIntentHandler(ABC):
