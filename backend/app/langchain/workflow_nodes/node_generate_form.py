@@ -76,7 +76,7 @@ class GenerateFormNode(WorkflowNode):
             return
 
         try:
-            from app.config.config_loader import config_loader
+            from app.core.config_loader import config_loader
 
             ontology = config_loader.get_ontology(ontology_code)
             if not ontology:

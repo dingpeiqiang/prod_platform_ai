@@ -368,6 +368,30 @@ class WorkflowEngine:
                         yield log_event
                         return
                     
+                    if isinstance(result, dict) and result.get("action") == "error":
+                        context.status = WorkflowStatus.FAILED
+                        context.error = result.get("error", "步骤执行失败")
+                        
+                        log_event = {
+                            "type": "step_failed",
+                            "step": current_step_id,
+                            "name": step_def.name,
+                            "error": context.error
+                        }
+                        context.add_log(**log_event)
+                        logger.error(f"[WorkflowEngine] 步骤执行失败: {current_step_id} ({step_def.name}), 错误: {context.error}")
+                        yield log_event
+                        
+                        log_event = {
+                            "type": "workflow_failed",
+                            "workflow_id": context.workflow_id,
+                            "error": context.error
+                        }
+                        context.add_log(**log_event)
+                        logger.error(f"[WorkflowEngine] 工作流执行失败: {context.workflow_id}, 错误: {context.error}")
+                        yield log_event
+                        return
+                    
                     # 将步骤结果包装成 {'output': result} 格式，支持表达式引用: node-id.output.field
                     wrapped_result = {"output": result} if result is not None else {"output": {}}
                     context.step_results[current_step_id] = wrapped_result
@@ -508,6 +532,30 @@ class WorkflowEngine:
                     yield log_event
                     return
                 
+                if isinstance(result, dict) and result.get("action") == "error":
+                    context.status = WorkflowStatus.FAILED
+                    context.error = result.get("error", "步骤执行失败")
+                    
+                    log_event = {
+                        "type": "step_failed",
+                        "step": waiting_step_id,
+                        "name": step_def.name,
+                        "error": context.error
+                    }
+                    context.add_log(**log_event)
+                    logger.error(f"[WorkflowEngine] 步骤执行失败: {waiting_step_id} ({step_def.name}), 错误: {context.error}")
+                    yield log_event
+                    
+                    log_event = {
+                        "type": "workflow_failed",
+                        "workflow_id": context.workflow_id,
+                        "error": context.error
+                    }
+                    context.add_log(**log_event)
+                    logger.error(f"[WorkflowEngine] 工作流执行失败: {context.workflow_id}, 错误: {context.error}")
+                    yield log_event
+                    return
+                
                 # 将步骤结果包装成 {'output': result} 格式
                 wrapped_result = {"output": result} if result is not None else {"output": {}}
                 context.step_results[waiting_step_id] = wrapped_result
@@ -577,6 +625,30 @@ class WorkflowEngine:
                         }
                         context.add_log(**log_event)
                         logger.info(f"[WorkflowEngine] 工作流等待用户输入: {context.workflow_id}, 当前步骤: {current_step_id}")
+                        yield log_event
+                        return
+                    
+                    if isinstance(result, dict) and result.get("action") == "error":
+                        context.status = WorkflowStatus.FAILED
+                        context.error = result.get("error", "步骤执行失败")
+                        
+                        log_event = {
+                            "type": "step_failed",
+                            "step": current_step_id,
+                            "name": step_def.name,
+                            "error": context.error
+                        }
+                        context.add_log(**log_event)
+                        logger.error(f"[WorkflowEngine] 步骤执行失败: {current_step_id} ({step_def.name}), 错误: {context.error}")
+                        yield log_event
+                        
+                        log_event = {
+                            "type": "workflow_failed",
+                            "workflow_id": context.workflow_id,
+                            "error": context.error
+                        }
+                        context.add_log(**log_event)
+                        logger.error(f"[WorkflowEngine] 工作流执行失败: {context.workflow_id}, 错误: {context.error}")
                         yield log_event
                         return
                     

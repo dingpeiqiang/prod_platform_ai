@@ -16,6 +16,8 @@ class CallToolNode(WorkflowNode):
     output_fields = {
         "result": ParamSchema(type="any", description="工具执行结果"),
         "tool_name": ParamSchema(type="str", description="使用的工具名称"),
+        "action": ParamSchema(type="str", description="动作类型"),
+        "error": ParamSchema(type="str", description="错误信息"),
     }
 
     @staticmethod
@@ -51,11 +53,20 @@ class CallToolNode(WorkflowNode):
 
             execution.set("result", result)
             execution.set("tool_name", tool_name)
-            self._log_output(success=True, tool_name=tool_name, result=str(result))
+            
+            # 检查工具执行是否成功
+            if isinstance(result, dict) and result.get("success") == False:
+                error_msg = result.get("error", "工具执行失败")
+                execution.set("error", error_msg)
+                execution.set("action", "error")
+                self._log_output(success=False, error=error_msg)
+            else:
+                self._log_output(success=True, tool_name=tool_name, result=str(result))
 
         except Exception as e:
             error_msg = str(e)
             execution.set("result", None)
             execution.set("tool_name", tool_name)
             execution.set("error", error_msg)
+            execution.set("action", "error")
             self._log_output(success=False, error=error_msg)

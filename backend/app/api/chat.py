@@ -1259,10 +1259,26 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                     intent_type = "form"
                                     logger.info(f"[chat/stream] 设置 intent_type=form，准备通过 FormHandler 处理")
                                 else:
-                                    logger.info(f"[chat/stream] 工具调用完成，无需生成表单（无表单编码）")
-                                    # 非表单场景（如工作流执行），走正常对话流程
-                                    if intent_type != "chat":
+                                    # 非表单场景（如工作流执行），检查是否有工具调用失败
+                                    success_count = sum(1 for r in tool_results if r["success"])
+                                    failed_count = sum(1 for r in tool_results if not r["success"])
+                                    
+                                    if failed_count > 0:
+                                        # 收集所有错误信息
+                                        error_messages = []
+                                        for r in tool_results:
+                                            if not r["success"]:
+                                                error_messages.append(f"• {r['name']}: {r.get('error', '未知错误')}")
+                                        error_msg = "\n".join(error_messages)
+                                        logger.error(f"[chat/stream] 工具调用失败: {error_msg}")
+                                        yield thinking(f"❌ 工具调用失败:\n{error_msg}")
+                                        # 设置意图为 chat，让后续处理错误回复
                                         intent_type = "chat"
+                                    else:
+                                        logger.info(f"[chat/stream] 工具调用完成，无需生成表单（无表单编码）")
+                                        # 非表单场景（如工作流执行），走正常对话流程
+                                        if intent_type != "chat":
+                                            intent_type = "chat"
 
                             # 【关键】如果场景响应已经处理完成（generate_form action），通过 FormHandler 处理（显示处理步骤）
                             if scene_handled and intent_data.get("action") == "generate_form":
