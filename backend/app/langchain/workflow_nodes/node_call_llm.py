@@ -4,6 +4,7 @@ LLM 调用节点
 from typing import Dict, Any
 from app.langchain.workflow_nodes import WorkflowNode, register_node, DelegateExecution, ParamSchema
 import json
+import re
 
 
 @register_node
@@ -32,7 +33,10 @@ class CallLLMNode(WorkflowNode):
         model = execution.get("model", "qwen-plus")
         temperature = execution.get("temperature", 0.7)
 
-        self._log_input(prompt=prompt[:100] + "..." if len(prompt) > 100 else prompt,
+        # 渲染模板变量（如 {{user_input}}）
+        rendered_prompt = self._render_template(prompt, execution)
+
+        self._log_input(prompt=rendered_prompt[:100] + "..." if len(rendered_prompt) > 100 else rendered_prompt,
                        model=model, temperature=temperature)
 
         processing = f"使用模型 '{model}'，温度参数 {temperature}，执行 LLM 调用生成响应"
@@ -50,7 +54,7 @@ class CallLLMNode(WorkflowNode):
             ])
 
             chain = prompt_template | llm | StrOutputParser()
-            response = await chain.ainvoke({"prompt": prompt})
+            response = await chain.ainvoke({"prompt": rendered_prompt})
 
             parsed_result = self._try_parse_json(response)
 
@@ -70,6 +74,34 @@ class CallLLMNode(WorkflowNode):
             execution.set("model", model)
             execution.set("error", error_msg)
             raise
+
+    def _render_template(self, template: str, execution: DelegateExecution) -> str:
+        """渲染模板，替换变量引用
+
+        支持的变量引用方式：
+        - {{variable_name}} - 标准模板语法
+
+        从 execution context 中查找变量值进行替换。
+        """
+        if not template:
+            return ""
+
+        logger = execution.context._logger if hasattr(execution.context, '_logger') else None
+
+        def replace_var(match):
+            var_name = match.group(1).strip()
+            # 从 execution context 中获取变量值
+            value = execution.get(var_name, "")
+            if logger:
+                logger.debug(f"[CallLLMNode._render_template] 查找变量 '{var_name}'，找到值: {repr(value)[:50]}")
+            if value is None:
+                return ""
+            return str(value)
+
+        # 支持 {{variable}} 语法（双花括号）
+        result = re.sub(r"\{\{([^{}]+)\}\}", replace_var, template)
+
+        return result
 
     def _try_parse_json(self, text: str) -> dict:
         cleaned = text.strip()
