@@ -1271,11 +1271,17 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                                 error_messages.append(f"• {r['name']}: {r.get('error', '未知错误')}")
                                         error_msg = "\n".join(error_messages)
                                         logger.error(f"[chat/stream] 工具调用失败: {error_msg}")
-                                        yield thinking(f"❌ 工具调用失败:\n{error_msg}")
-                                        # 设置意图为 chat，让后续处理错误回复
-                                        intent_type = "chat"
-                                        # 保存错误信息，传递给后续处理器
-                                        intent_data["error_info"] = error_msg
+                                        
+                                        # 发送友好的错误提示消息
+                                        yield sse({"type": "text_start"})
+                                        yield sse({"type": "text", "content": "😔 抱歉，当前服务暂时无法连接，请稍后重试。如果问题持续存在，请联系管理员。"})
+                                        yield sse({"type": "text_end"})
+                                        
+                                        # 更新统计信息并结束对话
+                                        stream_stats.total_elapsed = time.time() - start_time
+                                        yield sse({"type": "stats", "content": stream_stats.to_dict()})
+                                        yield done_event("chat", is_form=False)
+                                        return
                                     else:
                                         logger.info(f"[chat/stream] 工具调用完成，无需生成表单（无表单编码）")
                                         # 非表单场景（如工作流执行），走正常对话流程
