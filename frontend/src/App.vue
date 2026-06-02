@@ -91,7 +91,6 @@
         @create-session="onNewSession"
         @open-scene-manager="openSceneManager"
         @open-prompt-manager="openPromptManager"
-        @open-tool-manager="openToolManager"
         @open-ontology-manager="openOntologyManager"
         @open-workflow-manager="openWorkflowManager"
         @open-mcp-manager="openMCPManager"
@@ -107,18 +106,6 @@
         <!-- 提示词管理界面 -->
         <PromptManager 
           v-if="!isInitializing && currentView === 'prompt-manager'" 
-          @go-back="returnToDashboard"
-        />
-
-        <!-- 工具管理界面 -->
-        <GenericManager 
-          v-if="!isInitializing && currentView === 'tool-manager'" 
-          title="🔧 工具管理"
-          item-type="工具"
-          code-field="toolCode"
-          name-field="toolName"
-          :show-tools="true"
-          :api-service="toolApiService"
           @go-back="returnToDashboard"
         />
 
@@ -222,7 +209,7 @@ import { useUserStore } from './stores/user'
 import { useLoadingStore } from './stores/loading'
 import { useTheme } from './composables/useTheme'
 import { createSession as apiCreateSession, getSessions as apiGetSessions, deleteSession as apiDeleteSession, updateSessionTitle as apiUpdateSessionTitle } from './services/chatApi.js'
-import * as toolApi from './services/toolApi.js'
+// import * as toolApi from './services/toolApi.js' // 已迁移到 MCP 管理
 // import * as formApi from './services/formApi.js' // 已废弃
 import * as ontologyApi from './services/ontologyApi.js'
 import * as workflowApi from './services/workflowApi.js'
@@ -332,14 +319,6 @@ const openPromptManager = () => {
   saveActiveSessionId()
 }
 
-// ── 打开工具管理 ─────────────────────────────────────────
-const openToolManager = () => {
-  currentView.value = 'tool-manager'
-  activeSessionId.value = ''
-  activeDbSessionId.value = ''
-  saveActiveSessionId()
-}
-
 // ── 打开表单管理（已废弃） ───────────────────────────────
 // const openFormManager = () => {
 //   currentView.value = 'form-manager'
@@ -426,16 +405,6 @@ const returnToWorkflowManager = () => {
 }
 
 // ── API 服务适配器 ─────────────────────────────────────────
-const toolApiService = {
-  getCategories: toolApi.getToolCategories,
-  list: toolApi.listTools,
-  get: toolApi.getTool,
-  create: toolApi.createTool,
-  update: toolApi.updateTool,
-  delete: toolApi.deleteTool,
-  toggle: toolApi.toggleTool
-}
-
 // const formApiService = {
 //   getCategories: formApi.getFormCategories,
 //   list: formApi.listForms,

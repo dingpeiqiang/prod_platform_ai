@@ -197,6 +197,8 @@ class MCPToolHub:
             }
 
         try:
+            tool._validate_arguments(arguments)
+            
             if asyncio.iscoroutinefunction(tool.handler):
                 # 异步handler：在新线程中创建独立事件循环执行
                 import concurrent.futures

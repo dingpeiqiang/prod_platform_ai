@@ -8,7 +8,6 @@ from app.services.admin_service import AdminService
 from app.services.scene_service import SceneService
 from app.services.scene_prompt_manager import ScenePromptManager
 from app.services.prompt_service import PromptService
-from app.services.tool_service import ToolService
 # FormService 已废弃，不再使用
 # from app.services.form_service import FormService
 from app.services.ontology_service import OntologyService
@@ -499,84 +498,6 @@ async def generate_with_ai(request: AIGenerateRequest, db: Session = Depends(get
 async def optimize_with_ai(request: AIOptimizeRequest, db: Session = Depends(get_db)):
     """AI优化提示词"""
     result = PromptService.optimize_prompt(db, request.dict())
-    return result
-
-
-# ============ 工具管理 API ============
-
-class ToolCreateRequest(BaseModel):
-    toolCode: str
-    toolName: str
-    description: Optional[str] = None
-    category: str = "general"
-    toolType: str = "custom"
-    config: Dict[str, Any] = {}
-    parameters: List[Dict[str, Any]] = []
-    returnSchema: Dict[str, Any] = {}
-    endpoint: Optional[str] = None
-    handler: Optional[str] = None
-    isAsync: bool = True
-
-
-class ToolUpdateRequest(BaseModel):
-    toolName: Optional[str] = None
-    description: Optional[str] = None
-    category: Optional[str] = None
-    toolType: Optional[str] = None
-    config: Optional[Dict[str, Any]] = None
-    parameters: Optional[List[Dict[str, Any]]] = None
-    returnSchema: Optional[Dict[str, Any]] = None
-    endpoint: Optional[str] = None
-    handler: Optional[str] = None
-    isAsync: Optional[bool] = None
-    isActive: Optional[bool] = None
-
-
-@router.get("/tools")
-async def list_tools(category: Optional[str] = None, isActive: Optional[bool] = None, db: Session = Depends(get_db)):
-    """获取工具列表"""
-    result = ToolService.list_tools(db, category=category, is_active=isActive)
-    return result
-
-
-@router.get("/tools/categories")
-async def get_tool_categories():
-    """获取工具分类"""
-    return {"success": True, "data": ToolService.get_categories()}
-
-
-@router.get("/tools/{tool_code}")
-async def get_tool(tool_code: str, db: Session = Depends(get_db)):
-    """获取工具详情"""
-    result = ToolService.get_tool(db, tool_code)
-    return result
-
-
-@router.post("/tools")
-async def create_tool(request: ToolCreateRequest, db: Session = Depends(get_db)):
-    """创建工具"""
-    result = ToolService.create_tool(db, request.dict())
-    return result
-
-
-@router.put("/tools/{tool_code}")
-async def update_tool(tool_code: str, request: ToolUpdateRequest, db: Session = Depends(get_db)):
-    """更新工具"""
-    result = ToolService.update_tool(db, tool_code, request.dict())
-    return result
-
-
-@router.delete("/tools/{tool_code}")
-async def delete_tool(tool_code: str, db: Session = Depends(get_db)):
-    """删除工具"""
-    result = ToolService.delete_tool(db, tool_code)
-    return result
-
-
-@router.patch("/tools/{tool_code}/toggle")
-async def toggle_tool(tool_code: str, db: Session = Depends(get_db)):
-    """切换工具启用状态"""
-    result = ToolService.toggle_active(db, tool_code)
     return result
 
 
