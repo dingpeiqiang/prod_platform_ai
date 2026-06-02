@@ -1,12 +1,7 @@
 <template>
   <div class="messages-area" ref="messagesEl">
-    <WelcomeScreen
-      v-if="!messages.length"
-      :suggestions="suggestions"
-      @suggestion-click="handleSuggestionClick"
-    />
 
-    <div v-else class="messages-list">
+    <div class="messages-list">
       <div
         v-for="(msg, idx) in messages"
         :key="msg.id"
@@ -179,15 +174,13 @@
 
 <script setup>import { ref, nextTick, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
-import WelcomeScreen from './WelcomeScreen.vue';
 import IntentPanel from './intent-panels/IntentPanel.vue';
 import { stepIcon, renderMarkdown, formatTime, getFormStatusText } from '../utils/chatUtils.js';
 import { listIntentPanels } from '../composables/useIntentRegistry.js';
 const props = defineProps({
- messages: { type: Array, required: true },
- suggestions: { type: Array, default: () => [] }
+ messages: { type: Array, required: true }
 });
-const emit = defineEmits(['suggestion-click', 'form-card-click', 'intent-action']);
+const emit = defineEmits(['form-card-click', 'intent-action']);
 const messagesEl = ref(null);
 const intentPanelTypes = listIntentPanels();
 const scrollToBottom = (smooth = false) => {
@@ -211,9 +204,6 @@ const copyText = async (text) => {
  catch {
  ElMessage.error('复制失败');
  }
-};
-const handleSuggestionClick = (text) => {
- emit('suggestion-click', text);
 };
 onMounted(() => {
  scrollToBottom();

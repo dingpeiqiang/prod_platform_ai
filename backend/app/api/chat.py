@@ -747,6 +747,10 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                             elif event.get("type") == "workflow_failed":
                                 logger.error(f"[chat/stream] 工作流恢复失败: {execution_id}: {event.get('error')}")
                                 yield thinking(f"❌ 工作流执行失败: {event.get('error')}")
+                                # 发送文本消息到聊天窗口，让用户看到错误信息
+                                yield sse({"type": "text_start"})
+                                yield sse({"type": "text", "content": f"抱歉，工具执行失败，无法完成您的请求。错误信息：{event.get('error')}"})
+                                yield sse({"type": "text_end"})
                                 stream_stats.total_elapsed = time.time() - start_time
                                 yield sse({"type": "stats", "content": stream_stats.to_dict()})
                                 yield done_event("workflow", is_form=False)

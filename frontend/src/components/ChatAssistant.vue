@@ -16,8 +16,6 @@
       <ChatMessageList
         ref="messageListRef"
         :messages="messages"
-        :suggestions="suggestions"
-        @suggestion-click="sendSuggestion"
         @form-card-click="handleFormCardClick"
         @intent-action="handleIntentEvent"
       />
@@ -353,6 +351,7 @@ const sendMessage = async (text) => {
  await doSendMessage(messageText);
 };
 const sendMessageAfterSessionCreated = async (text, sessionId) => {
+ isCreatingFromHome = true;
  await new Promise(resolve => setTimeout(resolve, 50));
  await doSendMessageAfterHome(text);
 };
