@@ -233,6 +233,7 @@
                 />
                 <VariableCascader
                   v-if="param.valueType === 'reference'"
+                  :key="'input-ref-' + index + '-' + cascaderRefreshKey"
                   v-model="param.refValue"
                   :available-variables="availableVariables"
                   placeholder="请选择变量"
@@ -307,6 +308,7 @@
                   />
                   <VariableCascader
                     v-else
+                    :key="'output-ref-' + index + '-' + cascaderRefreshKey"
                     v-model="param.nameRef"
                     :available-variables="customParamVariables"
                     placeholder="选择变量"
@@ -405,6 +407,12 @@ const customParamVariables = computed(() => {
     return sourceType === 'start' || sourceType === 'variable' || sourceType === 'set';
   });
 });
+
+// 强制 VariableCascader 刷新 key，当 availableVariables 变化时重新挂载
+const cascaderRefreshKey = ref(0);
+watch(customParamVariables, () => {
+  cascaderRefreshKey.value++;
+}, { deep: true });
 
 onMounted(() => {
   isUnmounted = false;
