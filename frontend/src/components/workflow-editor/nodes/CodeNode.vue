@@ -173,82 +173,51 @@
             <span class="detected-count">检测到 {{ detectedParams.length }} 个输出字段</span>
             <button @click="applyDetectedParams" class="apply-btn">应用检测结果</button>
           </div>
-          <div class="params-table-wrapper">
-            <table class="params-table">
-              <thead>
-                <tr>
-                  <th class="col-name">
-                    <span class="required-marker">*</span>参数名
-                  </th>
-                  <th class="col-type">类型</th>
-                  <th class="col-desc">参数描述</th>
-                  <th class="col-required">是否必传</th>
-                  <th class="col-action">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <transition-group name="param-list">
-                  <tr v-for="(param, index) in localOutputs" :key="index" class="param-row">
-                    <td class="col-name">
-                      <input
-                        v-model="param.name"
-                        @input="emitUpdate"
-                        type="text"
-                        placeholder="请输入"
-                        class="param-name-input"
-                      />
-                    </td>
-                    <td class="col-type">
-                      <select
-                        v-model="param.type"
-                        @change="emitUpdate"
-                        class="param-type-select"
-                      >
-                        <option value="string">string</option>
-                        <option value="int">int</option>
-                        <option value="float">float</option>
-                        <option value="date">date</option>
-                        <option value="datetime">datetime</option>
-                        <option value="tel">tel</option>
-                        <option value="boolean">boolean</option>
-                        <option value="object">object</option>
-                        <option value="array">array</option>
-                      </select>
-                    </td>
-                    <td class="col-desc">
-                      <input
-                        v-model="param.description"
-                        @input="emitUpdate"
-                        type="text"
-                        placeholder="请输入参数说明"
-                        class="param-desc-input"
-                      />
-                    </td>
-                    <td class="col-required">
-                      <div 
-                        class="required-toggle" 
-                        :class="{ active: param.required }"
-                        @click="toggleOutputRequired(index)"
-                      >
-                      </div>
-                    </td>
-                    <td class="col-action">
-                      <button 
-                        @click="removeOutputParam(index)" 
-                        class="action-btn delete-btn" 
-                        title="删除"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                          <line x1="18" y1="6" x2="6" y2="18"/>
-                          <line x1="6" y1="6" x2="18" y2="18"/>
-                        </svg>
-                      </button>
-                    </td>
-                  </tr>
-                </transition-group>
-              </tbody>
-            </table>
-          </div>
+          <template v-for="(param, index) in localOutputs" :key="index">
+            <div v-if="param" class="output-param-item">
+              <div class="param-name-group">
+                <select v-model="param.nameType" @change="handleOutputNameTypeChange(index)" class="param-name-type-select">
+                  <option value="input">输入</option>
+                  <option value="reference">引用</option>
+                </select>
+                <input 
+                  v-if="param.nameType === 'input'" 
+                  v-model="param.name" 
+                  @input="emitUpdate"
+                  type="text"
+                  placeholder="参数名"
+                  class="param-name-input"
+                />
+                <VariableCascader
+                  v-else
+                  :key="'output-ref-' + index + '-' + cascaderRefreshKey"
+                  v-model="param.nameRef"
+                  :available-variables="customParamVariables"
+                  placeholder="选择变量"
+                  class="param-name-cascader"
+                  @change="emitUpdate"
+                />
+              </div>
+              <select v-model="param.type" @change="emitUpdate" class="param-type-select">
+                <option value="string">string</option>
+                <option value="int">int</option>
+                <option value="float">float</option>
+                <option value="date">date</option>
+                <option value="datetime">datetime</option>
+                <option value="tel">tel</option>
+                <option value="boolean">boolean</option>
+                <option value="object">object</option>
+                <option value="array">array</option>
+              </select>
+              <input v-if="param.nameType === 'input'" v-model="param.desc" @input="emitUpdate" placeholder="描述" class="param-desc-input" />
+              <button @click="removeOutputParam(index)" class="action-btn delete-btn" title="删除">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+          </template>
         </div>
       </div>
 
@@ -334,6 +303,21 @@ const localInputParams = ref(props.data.inputParams || []);
 const localOutputs = ref(props.data.outputParams || []);
 const detectedParams = ref([]);
 
+// 输出参数引用模式可用变量：仅展示自定义参数名，排除节点输出参数中的引用变量
+const customParamVariables = computed(() => {
+  if (!props.availableVariables || !Array.isArray(props.availableVariables)) return [];
+  return props.availableVariables.filter(v => {
+    const sourceType = v.sourceNodeType || v.nodeType || '';
+    return sourceType === 'start' || sourceType === 'variable' || sourceType === 'set';
+  });
+});
+
+// 强制 VariableCascader 刷新 key，当 availableVariables 变化时重新挂载
+const cascaderRefreshKey = ref(0);
+watch(customParamVariables, () => {
+  cascaderRefreshKey.value++;
+}, { deep: true });
+
 const codeSummary = computed(() => {
   const lines = (localCode.value || '').split('\n').length;
   return `Python · ${lines} 行`;
@@ -391,7 +375,18 @@ const toggleRequired = (index) => {
 };
 
 const addOutputParam = () => {
-  localOutputs.value.push({ name: '', type: 'string', description: '', required: false });
+  localOutputs.value.push({ name: '', nameType: 'input', nameRef: '', type: 'string', desc: '' });
+  emitUpdate();
+};
+
+const handleOutputNameTypeChange = (index) => {
+  const param = localOutputs.value[index];
+  if (param.nameType === 'reference') {
+    param.name = '';   // 清除输入值
+    param.desc = '';   // 清除描述
+  } else {
+    param.nameRef = ''; // 清除引用值
+  }
   emitUpdate();
 };
 
@@ -400,11 +395,6 @@ const removeOutputParam = (index) => {
     localOutputs.value.splice(index, 1);
     emitUpdate();
   }
-};
-
-const toggleOutputRequired = (index) => {
-  localOutputs.value[index].required = !localOutputs.value[index].required;
-  emitUpdate();
 };
 
 const autoDetectOutputParams = () => {
@@ -443,9 +433,10 @@ const detectPythonVariables = (code, detected) => {
           if (!detected.find(p => p.name === varName)) {
             detected.push({
               name: varName,
+              nameType: 'input',
+              nameRef: '',
               type: inferredType,
-              description: `自动检测: ${varName}`,
-              required: false
+              desc: `自动检测: ${varName}`
             });
           }
         }
@@ -495,7 +486,13 @@ const emitUpdate = () => {
 watch(() => props.data, (d) => {
   localCode.value = d.code || '';
   localInputParams.value = d.inputParams || [];
-  localOutputs.value = d.outputParams || [];
+  localOutputs.value = (d.outputParams || []).map(p => ({ 
+    name: p.name || '', 
+    nameType: p.nameType || 'input', 
+    nameRef: p.nameRef || '', 
+    type: p.type || 'string', 
+    desc: p.desc || p.description || '' 
+  }));
 }, { deep: true });
 </script>
 

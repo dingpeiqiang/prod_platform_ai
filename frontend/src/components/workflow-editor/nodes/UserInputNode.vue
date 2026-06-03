@@ -181,7 +181,7 @@
           <template v-for="(param, index) in localOutputs" :key="index">
             <div v-if="param" class="output-param-item">
               <div class="param-name-group">
-                <select v-model="param.nameType" @change="emitUpdate" class="param-name-type-select">
+                <select v-model="param.nameType" @change="handleOutputNameTypeChange(index)" class="param-name-type-select">
                   <option value="input">输入</option>
                   <option value="reference">引用</option>
                 </select>
@@ -194,8 +194,9 @@
                 />
                 <VariableCascader
                   v-else
+                  :key="'output-ref-' + index + '-' + cascaderRefreshKey"
                   v-model="param.nameRef"
-                  :available-variables="availableVariables"
+                  :available-variables="customParamVariables"
                   placeholder="选择变量"
                   class="param-name-cascader"
                   @change="emitUpdate"
@@ -208,29 +209,7 @@
                 <option value="object">object</option>
                 <option value="array">array</option>
               </select>
-              <div class="param-source-group">
-                <select v-model="param.sourceType" @change="emitUpdate" class="param-source-select">
-                  <option value="node">节点输出</option>
-                  <option value="reference">引用</option>
-                  <option value="constant">常量</option>
-                  <option value="expression">表达式</option>
-                </select>
-                <VariableCascader
-                  v-if="param.sourceType === 'reference'"
-                  v-model="param.value"
-                  :available-variables="availableVariables"
-                  placeholder="选择变量"
-                  class="param-value-cascader"
-                  @change="emitUpdate"
-                />
-                <input 
-                  v-else
-                  v-model="param.value" 
-                  @input="emitUpdate"
-                  class="param-value-input"
-                  placeholder="输入值"
-                />
-              </div>
+              <input v-if="param.nameType === 'input'" v-model="param.desc" @input="emitUpdate" placeholder="描述" class="param-desc-input" />
               <button @click="removeOutputParam(index)" class="action-btn delete-btn" title="删除">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="18" y1="6" x2="6" y2="18"/>
@@ -254,7 +233,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { Handle } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
 import { useNodeAnchorMode } from './useHandlePosition.js';
@@ -285,6 +264,21 @@ const localParseSchemaJson = ref('');
 
 const localInputs = ref((safeData.inputs && Array.isArray(safeData.inputs)) ? safeData.inputs : []);
 const localOutputs = ref((safeData.outputParams && Array.isArray(safeData.outputParams)) ? safeData.outputParams : []);
+
+// 输出参数引用模式可用变量：仅展示自定义参数名，排除节点输出参数中的引用变量
+const customParamVariables = computed(() => {
+  if (!props.availableVariables || !Array.isArray(props.availableVariables)) return [];
+  return props.availableVariables.filter(v => {
+    const sourceType = v.sourceNodeType || v.nodeType || '';
+    return sourceType === 'start' || sourceType === 'variable' || sourceType === 'set';
+  });
+});
+
+// 强制 VariableCascader 刷新 key，当 availableVariables 变化时重新挂载
+const cascaderRefreshKey = ref(0);
+watch(customParamVariables, () => {
+  cascaderRefreshKey.value++;
+}, { deep: true });
 
 const expandedSections = ref({
   inputs: true,
@@ -364,7 +358,18 @@ const removeInputParam = (index) => {
 };
 
 const addOutputParam = () => {
-  localOutputs.value.push({ name: '', nameType: 'input', type: 'string', sourceType: 'node', value: '' });
+  localOutputs.value.push({ name: '', nameType: 'input', nameRef: '', type: 'string', desc: '' });
+  emitUpdate();
+};
+
+const handleOutputNameTypeChange = (index) => {
+  const param = localOutputs.value[index];
+  if (param.nameType === 'reference') {
+    param.name = '';   // 清除输入值
+    param.desc = '';   // 清除描述
+  } else {
+    param.nameRef = ''; // 清除引用值
+  }
   emitUpdate();
 };
 
@@ -411,7 +416,13 @@ watch(() => props.data, (newData) => {
   localParseWithLLM.value = newData.parseWithLLM ?? newData.parse_with_llm ?? false;
   localParsePrompt.value = newData.parsePrompt || newData.parse_prompt || '';
   localInputs.value = newData.inputs || [];
-  localOutputs.value = newData.outputParams || [];
+  localOutputs.value = (newData.outputParams || []).map(p => ({ 
+    name: p.name || '', 
+    nameType: p.nameType || 'input', 
+    nameRef: p.nameRef || '', 
+    type: p.type || 'string', 
+    desc: p.desc || '' 
+  }));
   initJsonFields();
 }, { deep: true });
 </script>
