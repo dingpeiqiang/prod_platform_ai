@@ -295,7 +295,7 @@
             <template v-for="(param, index) in localOutputs" :key="index">
               <div v-if="param" class="output-param-item">
                 <div class="param-name-group">
-                  <select v-model="param.nameType" @change="emitUpdate" class="param-name-type-select">
+                  <select v-model="param.nameType" @change="handleOutputNameTypeChange(index)" class="param-name-type-select">
                     <option value="input">输入</option>
                     <option value="reference">引用</option>
                   </select>
@@ -495,7 +495,17 @@ const removeInputParam = (index) => {
 };
 
 const addOutputParam = () => {
-  localOutputs.value.push({ name: '', nameType: 'input', type: 'string' });
+  localOutputs.value.push({ name: '', nameType: 'input', nameRef: '', type: 'string' });
+  emitUpdate();
+};
+
+const handleOutputNameTypeChange = (index) => {
+  const param = localOutputs.value[index];
+  if (param.nameType === 'reference') {
+    param.name = '';   // 清除输入值
+  } else {
+    param.nameRef = ''; // 清除引用值
+  }
   emitUpdate();
 };
 
@@ -533,7 +543,12 @@ watch(() => props.data, (newData) => {
   localPrompt.value = newData.prompt || '';
   localKeepHistory.value = newData.keepHistory ?? false;
   localInputs.value = newData.inputs || [];
-  localOutputs.value = (newData.outputParams || []).map(p => ({ name: p.name || '', nameType: p.nameType || 'input', type: p.type || 'string' }));
+  localOutputs.value = (newData.outputParams || []).map(p => ({ 
+    name: p.name || '', 
+    nameType: p.nameType || 'input', 
+    nameRef: p.nameRef || '', 
+    type: p.type || 'string' 
+  }));
 }, { deep: true });
 </script>
 
