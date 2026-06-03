@@ -81,12 +81,27 @@
               :key="index"
               class="table-row"
             >
-              <input 
-                v-model="param.name" 
-                @input="emitUpdate"
-                class="param-name-input"
-                placeholder="参数名"
-              />
+              <div class="param-name-group">
+                <select v-model="param.nameType" @change="emitUpdate" class="param-name-type-select">
+                  <option value="input">输入</option>
+                  <option value="reference">引用</option>
+                </select>
+                <input 
+                  v-if="param.nameType === 'input'" 
+                  v-model="param.name" 
+                  @input="emitUpdate"
+                  class="param-name-input"
+                  placeholder="参数名"
+                />
+                <VariableCascader
+                  v-else
+                  v-model="param.nameRef"
+                  :available-variables="availableVariables"
+                  placeholder="选择变量"
+                  class="param-name-cascader"
+                  @change="emitUpdate"
+                />
+              </div>
               <div class="param-value-group">
                 <select v-model="param.sourceType" @change="emitUpdate" class="param-source-select">
                   <option value="reference">引用</option>
@@ -272,6 +287,7 @@ const toggleAnswerSection = () => {
 const addOutputParam = () => {
   localOutputParams.value.push({
     name: '',
+    nameType: 'input',
     sourceType: 'reference',
     value: ''
   });

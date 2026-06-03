@@ -132,9 +132,17 @@
         item-type="工作流"
         code-field="workflowCode"
         name-field="workflowName"
-        :use-external-editor="false"
+        :use-external-editor="true"
         :api-service="workflowApiService"
         @go-back="returnToDashboard"
+        @edit-item="openWorkflowEditor"
+      />
+
+      <!-- 工作流编辑器 -->
+      <LangChainEditor 
+        v-if="!isInitializing && currentView === 'workflow-editor'"
+        :workflow-code="editingWorkflowCode"
+        @go-back="returnToWorkflowManager"
       />
 
         
@@ -181,6 +189,7 @@ import PromptManager from './components/PromptManager.vue'
 import GenericManager from './components/GenericManager.vue'
 import OntologyManager from './components/OntologyManager.vue'
 import Loading from './components/Loading.vue'
+import LangChainEditor from './components/workflow-editor/LangChainEditor.vue'
 
 import MCPToolDashboard from './components/MCPToolDashboard.vue'
 import KBManager from './components/KBManager.vue'
@@ -219,6 +228,9 @@ const activeSessionId = ref('')
 const isSidebarPinned = ref(true)  // 聊天时侧边栏是否固定显示
 const isDashboardSidebarVisible = ref(true)  // 首页时侧边栏是否可见
 const isInitializing = ref(true)  // 初始化状态标志
+
+// 当前正在编辑的工作流代码
+const editingWorkflowCode = ref('')
 
 // 当前数据库会话 ID（与 activeSessionId 对应）
 const activeDbSessionId = ref('')
@@ -316,6 +328,21 @@ const openWorkflowManager = () => {
   activeSessionId.value = ''
   activeDbSessionId.value = ''
   saveActiveSessionId()
+}
+
+// ── 打开工作流编辑器 ─────────────────────────────────────────
+const openWorkflowEditor = (workflowCode) => {
+  editingWorkflowCode.value = workflowCode || ''
+  currentView.value = 'workflow-editor'
+  activeSessionId.value = ''
+  activeDbSessionId.value = ''
+  saveActiveSessionId()
+}
+
+// ── 返回工作流管理 ─────────────────────────────────────────
+const returnToWorkflowManager = () => {
+  editingWorkflowCode.value = ''
+  currentView.value = 'workflow-manager'
 }
 
 // ── 打开 MCP 工具管理平台 ─────────────────────────────────

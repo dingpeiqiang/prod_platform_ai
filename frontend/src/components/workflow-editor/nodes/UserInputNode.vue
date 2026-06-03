@@ -180,7 +180,27 @@
         <div v-if="expandedSections.outputs" class="section-content">
           <template v-for="(param, index) in localOutputs" :key="index">
             <div v-if="param" class="output-param-item">
-              <input v-model="param.name" @input="emitUpdate" placeholder="参数名" class="param-name-input"/>
+              <div class="param-name-group">
+                <select v-model="param.nameType" @change="emitUpdate" class="param-name-type-select">
+                  <option value="input">输入</option>
+                  <option value="reference">引用</option>
+                </select>
+                <input 
+                  v-if="param.nameType === 'input'" 
+                  v-model="param.name" 
+                  @input="emitUpdate" 
+                  placeholder="参数名" 
+                  class="param-name-input"
+                />
+                <VariableCascader
+                  v-else
+                  v-model="param.nameRef"
+                  :available-variables="availableVariables"
+                  placeholder="选择变量"
+                  class="param-name-cascader"
+                  @change="emitUpdate"
+                />
+              </div>
               <select v-model="param.type" @change="emitUpdate" class="param-type-select">
                 <option value="string">string</option>
                 <option value="number">number</option>
@@ -188,6 +208,29 @@
                 <option value="object">object</option>
                 <option value="array">array</option>
               </select>
+              <div class="param-source-group">
+                <select v-model="param.sourceType" @change="emitUpdate" class="param-source-select">
+                  <option value="node">节点输出</option>
+                  <option value="reference">引用</option>
+                  <option value="constant">常量</option>
+                  <option value="expression">表达式</option>
+                </select>
+                <VariableCascader
+                  v-if="param.sourceType === 'reference'"
+                  v-model="param.value"
+                  :available-variables="availableVariables"
+                  placeholder="选择变量"
+                  class="param-value-cascader"
+                  @change="emitUpdate"
+                />
+                <input 
+                  v-else
+                  v-model="param.value" 
+                  @input="emitUpdate"
+                  class="param-value-input"
+                  placeholder="输入值"
+                />
+              </div>
               <button @click="removeOutputParam(index)" class="action-btn delete-btn" title="删除">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="18" y1="6" x2="6" y2="18"/>
@@ -321,7 +364,7 @@ const removeInputParam = (index) => {
 };
 
 const addOutputParam = () => {
-  localOutputs.value.push({ name: '', type: 'string' });
+  localOutputs.value.push({ name: '', nameType: 'input', type: 'string', sourceType: 'node', value: '' });
   emitUpdate();
 };
 

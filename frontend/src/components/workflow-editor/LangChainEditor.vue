@@ -965,7 +965,7 @@ const nodeTypeDefinitions = [
   { id: 'loop', name: '循环' },
   { id: 'prompt', name: '提示词' },
   { id: 'llm', name: 'LLM调用' },
-  { id: 'tool', name: '工具调用' },
+  { id: 'tool', name: 'MCP工具' },
   { id: 'http', name: 'HTTP请求' },
   { id: 'code', name: '代码执行' },
   { id: 'variable', name: '变量赋值' },

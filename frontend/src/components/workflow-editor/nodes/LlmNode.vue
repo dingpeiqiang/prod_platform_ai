@@ -293,20 +293,41 @@
           </div>
             <template v-for="(param, index) in localOutputs" :key="index">
               <div v-if="param" class="output-param-item">
-                <input v-model="param.name" @input="emitUpdate" placeholder="参数名" class="param-name-input"/>
+                <div class="param-name-group">
+                  <select v-model="param.nameType" @change="emitUpdate" class="param-name-type-select">
+                    <option value="input">输入</option>
+                    <option value="reference">引用</option>
+                  </select>
+                  <input 
+                    v-if="param.nameType === 'input'" 
+                    v-model="param.name" 
+                    @input="emitUpdate" 
+                    placeholder="参数名" 
+                    class="param-name-input"
+                  />
+                  <VariableCascader
+                    v-else
+                    v-model="param.nameRef"
+                    :available-variables="availableVariables"
+                    placeholder="选择变量"
+                    class="param-name-cascader"
+                    @change="emitUpdate"
+                  />
+                </div>
                 <select v-model="param.type" @change="emitUpdate" class="param-type-select">
-                <option value="string">string</option>
-                <option value="number">number</option>
-                <option value="boolean">boolean</option>
-                <option value="object">object</option>
-                <option value="array">array</option>
-              </select>
-              <button @click="removeOutputParam(index)" class="action-btn delete-btn" title="删除">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18"/>
-                  <line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
+                  <option value="string">string</option>
+                  <option value="number">number</option>
+                  <option value="boolean">boolean</option>
+                  <option value="object">object</option>
+                  <option value="array">array</option>
+                  <option value="json">json</option>
+                </select>
+                <button @click="removeOutputParam(index)" class="action-btn delete-btn" title="删除">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
               </div>
             </template>
         </div>
@@ -456,7 +477,7 @@ const removeInputParam = (index) => {
 };
 
 const addOutputParam = () => {
-  localOutputs.value.push({ name: '', type: 'string' });
+  localOutputs.value.push({ name: '', nameType: 'input', type: 'string' });
   emitUpdate();
 };
 
@@ -1057,6 +1078,41 @@ watch(() => props.data, (newData) => {
   margin-bottom: 8px;
 }
 
+.param-name-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.param-name-type-select {
+  padding: 8px 4px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 12px;
+  background: white;
+  flex-shrink: 0;
+  width: 56px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 4px center;
+  background-repeat: no-repeat;
+  background-size: 10px;
+  padding-right: 18px;
+}
+
+.param-name-type-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.param-name-cascader {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+}
+
 .param-name-input {
   flex: 1;
   padding: 8px 10px;
@@ -1080,6 +1136,8 @@ watch(() => props.data, (newData) => {
   border-radius: 4px;
   font-size: 13px;
   background: white;
+  flex-shrink: 0;
+  width: 100px;
   appearance: none;
   background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
   background-position: right 8px center;

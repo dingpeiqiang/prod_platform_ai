@@ -389,6 +389,48 @@ export class ExecutionEngine {
             context.variables[node.data.outputVar] = finalOutput;
           }
           
+          for (const outputParam of outputs) {
+            if (!outputParam.name && !outputParam.nameRef) continue;
+            
+            let paramName = outputParam.name;
+            if (outputParam.nameType === 'reference' && outputParam.nameRef) {
+              const keys = outputParam.nameRef.split('.');
+              let nameValue = context.variables;
+              for (const key of keys) {
+                if (nameValue === undefined || nameValue === null) break;
+                nameValue = nameValue[key];
+              }
+              paramName = nameValue || paramName;
+            }
+            
+            if (!paramName) continue;
+            
+            let paramValue = outputParam.value;
+            
+            if (outputParam.sourceType === 'reference') {
+              if (outputParam.value) {
+                const keys = outputParam.value.split('.');
+                let value = context.variables;
+                for (const key of keys) {
+                  if (value === undefined || value === null) break;
+                  value = value[key];
+                }
+                paramValue = value;
+              }
+            } else if (outputParam.sourceType === 'expression') {
+              paramValue = this.evaluateExpression(outputParam.value || '', context.variables);
+            } else if (outputParam.sourceType === 'node') {
+              paramValue = finalOutput;
+            }
+            
+            if (paramValue === undefined || paramValue === null) {
+              paramValue = finalOutput;
+            }
+            
+            context.variables[paramName] = paramValue;
+            this.addNodeLog(nodeId, { type: 'info', message: `输出参数 ${paramName} = ${paramValue}` });
+          }
+          
           this.updateNodeData(nodeId, { output: finalOutput });
           this.addNodeLog(nodeId, { type: 'info', message: 'LLM 响应完成' });
           this.addLog('info', 'LLM 响应完成', null, { output: finalOutput });
@@ -426,6 +468,50 @@ export class ExecutionEngine {
             this.resumeCallback = (userInputValue) => {
               context.variables[outputVar] = userInputValue;
               context.output = userInputValue;
+              
+              const outputParams = node.data.outputParams || [];
+              for (const param of outputParams) {
+                if (!param.name && !param.nameRef) continue;
+                
+                let paramName = param.name;
+                if (param.nameType === 'reference' && param.nameRef) {
+                  const keys = param.nameRef.split('.');
+                  let nameValue = context.variables;
+                  for (const key of keys) {
+                    if (nameValue === undefined || nameValue === null) break;
+                    nameValue = nameValue[key];
+                  }
+                  paramName = nameValue || paramName;
+                }
+                
+                if (!paramName) continue;
+                
+                let paramValue = param.value;
+                
+                if (param.sourceType === 'reference') {
+                  if (param.value) {
+                    const keys = param.value.split('.');
+                    let value = context.variables;
+                    for (const key of keys) {
+                      if (value === undefined || value === null) break;
+                      value = value[key];
+                    }
+                    paramValue = value;
+                  }
+                } else if (param.sourceType === 'expression') {
+                  paramValue = this.evaluateExpression(param.value || '', context.variables);
+                } else if (param.sourceType === 'node') {
+                  paramValue = userInputValue;
+                }
+                
+                if (paramValue === undefined || paramValue === null) {
+                  paramValue = userInputValue;
+                }
+                
+                context.variables[paramName] = paramValue;
+                this.addNodeLog(nodeId, { type: 'info', message: `输出参数 ${paramName} = ${paramValue}` });
+              }
+              
               this.updateNodeData(nodeId, { output: userInputValue });
               this.addNodeLog(nodeId, { type: 'info', message: `用户输入: ${userInputValue}` });
               
@@ -950,12 +1036,57 @@ export class ExecutionEngine {
         }
 
         case 'end': {
+          const outputParams = node.data.outputParams || [];
+          const outputResult = {};
+          
+          for (const param of outputParams) {
+            if (!param.name && !param.nameRef) continue;
+            
+            let paramName = param.name;
+            if (param.nameType === 'reference' && param.nameRef) {
+              const keys = param.nameRef.split('.');
+              let nameValue = context.variables;
+              for (const key of keys) {
+                if (nameValue === undefined || nameValue === null) break;
+                nameValue = nameValue[key];
+              }
+              paramName = nameValue || param.name;
+            }
+            
+            if (!paramName) continue;
+            
+            let paramValue = param.value;
+            
+            if (param.sourceType === 'reference') {
+              if (param.value) {
+                const keys = param.value.split('.');
+                let value = context.variables;
+                for (const key of keys) {
+                  if (value === undefined || value === null) break;
+                  value = value[key];
+                }
+                paramValue = value;
+              }
+            } else if (param.sourceType === 'expression') {
+              paramValue = this.evaluateExpression(param.value || '', context.variables);
+            }
+            
+            outputResult[paramName] = paramValue;
+          }
+          
           this.updateNodeData(nodeId, {
             input: context.variables,
-            output: '工作流结束'
+            config: { outputParams },
+            output: Object.keys(outputResult).length > 0 ? outputResult : '工作流结束'
           });
+          
+          Object.assign(context.variables, outputResult);
+          
           this.addNodeLog(nodeId, { type: 'info', message: '工作流执行完毕' });
-          this.addLog('info', '到达结束节点', null, null);
+          if (Object.keys(outputResult).length > 0) {
+            this.addNodeLog(nodeId, { type: 'info', message: `输出参数: ${JSON.stringify(outputResult)}` });
+          }
+          this.addLog('info', '到达结束节点', null, { output: outputResult });
           this.setNodeStatus(nodeId, 'completed');
           return;
         }

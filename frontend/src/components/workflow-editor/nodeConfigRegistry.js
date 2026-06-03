@@ -37,7 +37,7 @@ export const NODE_TYPE_LABELS = {
   loop: '循环',
   prompt: '提示词',
   llm: 'LLM调用',
-  tool: '工具调用',
+  tool: 'MCP工具',
   http: 'HTTP请求',
   code: '代码执行',
   parser: '输出解析',

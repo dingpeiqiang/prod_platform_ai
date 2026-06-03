@@ -81,7 +81,7 @@ export const NODE_CONFIG = {
     ]
   },
   [NODE_TYPES.TOOL]: {
-    name: '工具调用节点',
+    name: 'MCP工具节点',
     canConnectFrom: ['start', 'prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'knowledgeBase', 'userInput', 'form'],
     canConnectTo: ['prompt', 'llm', 'tool', 'http', 'code', 'variable', 'condition', 'loop', 'parser', 'end', 'knowledgeBase', 'userInput', 'form'],
     maxInputs: 10,
