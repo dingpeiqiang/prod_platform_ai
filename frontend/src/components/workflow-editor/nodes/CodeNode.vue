@@ -807,7 +807,98 @@ watch(() => props.data, (d) => {
   }
 }
 
-/* 参数表格样式 */
+/* 输出参数样式 */
+.output-param-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.param-name-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.param-name-type-select {
+  padding: 8px 4px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 12px;
+  background: white;
+  flex-shrink: 0;
+  width: 56px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 4px center;
+  background-repeat: no-repeat;
+  background-size: 10px;
+  padding-right: 18px;
+}
+
+.param-name-type-select:focus {
+  outline: none;
+  border-color: #8b5cf6;
+}
+
+.param-name-cascader {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.param-type-select {
+  padding: 8px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+  background: white;
+  flex-shrink: 0;
+  width: 100px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 8px center;
+  background-repeat: no-repeat;
+  background-size: 12px;
+  padding-right: 28px;
+}
+
+.param-type-select:focus {
+  outline: none;
+  border-color: #8b5cf6;
+}
+
+.param-desc-input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+  min-width: 80px;
+}
+
+.param-desc-input:focus {
+  outline: none;
+  border-color: #8b5cf6;
+}
+
+.param-name-input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.param-name-input:focus {
+  outline: none;
+  border-color: #8b5cf6;
+}
+
+/* 参数表格样式(已废弃，保留以防回退) */
 .params-table-wrapper {
   overflow-x: auto;
 }
