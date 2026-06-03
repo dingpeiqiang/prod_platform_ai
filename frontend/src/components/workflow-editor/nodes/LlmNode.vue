@@ -324,6 +324,7 @@
                   <option value="array">array</option>
                   <option value="json">json</option>
                 </select>
+                <input v-model="param.desc" @input="emitUpdate" placeholder="描述" class="param-desc-input" />
                 <button @click="removeOutputParam(index)" class="action-btn delete-btn" title="删除">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="18" y1="6" x2="6" y2="18"/>
@@ -495,7 +496,7 @@ const removeInputParam = (index) => {
 };
 
 const addOutputParam = () => {
-  localOutputs.value.push({ name: '', nameType: 'input', nameRef: '', type: 'string' });
+  localOutputs.value.push({ name: '', nameType: 'input', nameRef: '', type: 'string', desc: '' });
   emitUpdate();
 };
 
@@ -547,7 +548,8 @@ watch(() => props.data, (newData) => {
     name: p.name || '', 
     nameType: p.nameType || 'input', 
     nameRef: p.nameRef || '', 
-    type: p.type || 'string' 
+    type: p.type || 'string', 
+    desc: p.desc || '' 
   }));
 }, { deep: true });
 </script>
@@ -1200,6 +1202,20 @@ watch(() => props.data, (newData) => {
 }
 
 .param-ref-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.param-desc-input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+  min-width: 80px;
+}
+
+.param-desc-input:focus {
   outline: none;
   border-color: #3b82f6;
 }
