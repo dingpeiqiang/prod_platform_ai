@@ -525,7 +525,7 @@ watch(() => props.data, (newData) => {
   localPrompt.value = newData.prompt || '';
   localKeepHistory.value = newData.keepHistory ?? false;
   localInputs.value = newData.inputs || [];
-  localOutputs.value = newData.outputParams || [];
+  localOutputs.value = (newData.outputParams || []).map(p => ({ name: p.name || '', nameType: p.nameType || 'input', type: p.type || 'string' }));
 }, { deep: true });
 </script>
 
