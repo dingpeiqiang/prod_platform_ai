@@ -324,7 +324,7 @@
                   <option value="array">array</option>
                   <option value="json">json</option>
                 </select>
-                <input v-model="param.desc" @input="emitUpdate" placeholder="描述" class="param-desc-input" />
+                <input v-if="param.nameType === 'input'" v-model="param.desc" @input="emitUpdate" placeholder="描述" class="param-desc-input" />
                 <button @click="removeOutputParam(index)" class="action-btn delete-btn" title="删除">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="18" y1="6" x2="6" y2="18"/>
@@ -504,6 +504,7 @@ const handleOutputNameTypeChange = (index) => {
   const param = localOutputs.value[index];
   if (param.nameType === 'reference') {
     param.name = '';   // 清除输入值
+    param.desc = '';   // 清除描述
   } else {
     param.nameRef = ''; // 清除引用值
   }
