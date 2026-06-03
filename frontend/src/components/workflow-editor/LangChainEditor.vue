@@ -1940,9 +1940,8 @@ const updateNodeData = (nodeId, data) => {
       replaceVariableReferences(oldOutputVar, newOutputVar);
     }
     
-    setTimeout(() => {
-      elements.value = [...elements.value];
-    }, 100);
+    // 触发响应式更新，确保 getAvailableVariables 等读取到最新数据
+    elements.value = [...elements.value];
   }
 };
 
