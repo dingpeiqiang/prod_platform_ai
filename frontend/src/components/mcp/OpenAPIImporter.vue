@@ -27,10 +27,34 @@
             <div class="guide-content">
               <div class="guide-section">
                 <h4>支持的规范版本</h4>
-                <ul>
-                  <li><strong>OpenAPI 3.0 / 3.1</strong> - 推荐使用，功能最完善</li>
-                  <li><strong>Swagger 2.0</strong> - 兼容支持</li>
-                </ul>
+                <div class="version-grid">
+                  <div class="version-card recommended">
+                    <div class="version-header">
+                      <span class="version-badge recommended-badge">推荐</span>
+                      <strong>OpenAPI 3.0.x / 3.1.x</strong>
+                    </div>
+                    <p>功能最完善，支持所有现代特性</p>
+                    <ul class="version-features">
+                      <li>参数类型定义在 schema 中</li>
+                      <li>响应使用 content 字段</li>
+                      <li>组件定义在 components/schemas</li>
+                      <li>基础路径在 servers[0].url</li>
+                    </ul>
+                  </div>
+                  <div class="version-card compatible">
+                    <div class="version-header">
+                      <span class="version-badge compatible-badge">兼容</span>
+                      <strong>Swagger 2.0</strong>
+                    </div>
+                    <p>兼容旧版规范，功能有限</p>
+                    <ul class="version-features">
+                      <li>参数类型直接定义</li>
+                      <li>支持 formData 参数</li>
+                      <li>组件定义在 definitions</li>
+                      <li>基础路径由 host + basePath + schemes</li>
+                    </ul>
+                  </div>
+                </div>
               </div>
               <div class="guide-section">
                 <h4>文件格式</h4>
@@ -43,16 +67,26 @@
                 <h4>必填字段</h4>
                 <ul>
                   <li><code>openapi</code> 或 <code>swagger</code> - 版本标识</li>
+                  <li><code>info</code> - API 基本信息（title, version）</li>
                   <li><code>paths</code> - API 路径定义</li>
-                  <li><code>servers</code> 或 <code>host</code> - 服务器地址</li>
+                  <li><code>servers</code>（3.x）或 <code>host</code>（2.0）- 服务器地址</li>
                 </ul>
               </div>
               <div class="guide-section">
+                <h4>校验流程</h4>
+                <ol class="validation-steps">
+                  <li><span class="step-number">1</span>检查内容是否为空</li>
+                  <li><span class="step-number">2</span>快速提取版本并检查是否支持</li>
+                  <li><span class="step-number">3</span>解析 JSON/YAML</li>
+                  <li><span class="step-number">4</span>校验结构是否符合规范</li>
+                </ol>
+              </div>
+              <div class="guide-section">
                 <h4>示例格式</h4>
-                <pre class="code-example">openapi: 3.0.0
+                <pre class="code-example">openapi: "3.0.3"
 info:
   title: 示例API
-  version: 1.0.0
+  version: "1.0.0"
 servers:
   - url: https://api.example.com/v1
 paths:
@@ -60,9 +94,18 @@ paths:
     get:
       operationId: getUsers
       summary: 获取用户列表
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
       responses:
-        '200':
-          description: 成功响应</pre>
+        "200":
+          description: 成功响应
+          content:
+            application/json:
+              schema:
+                type: object</pre>
               </div>
             </div>
           </div>
@@ -485,6 +528,109 @@ const reset = () => {
   font-family: 'Monaco', 'Menlo', monospace;
   font-size: 12px;
   color: #374151;
+}
+
+/* 版本卡片样式 */
+.version-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.version-card {
+  background: white;
+  border-radius: 8px;
+  padding: 14px;
+  border: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.version-card.recommended {
+  border-color: #6366f1;
+  background: linear-gradient(135deg, #f0f5ff 0%, #ffffff 100%);
+}
+
+.version-card.compatible {
+  border-color: #f59e0b;
+  background: linear-gradient(135deg, #fffbeb 0%, #ffffff 100%);
+}
+
+.version-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.version-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.recommended-badge {
+  background: #6366f1;
+  color: white;
+}
+
+.compatible-badge {
+  background: #f59e0b;
+  color: white;
+}
+
+.version-card p {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.version-features {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.version-features li {
+  font-size: 11px;
+  color: #6b7280;
+  line-height: 1.6;
+  margin-bottom: 3px;
+}
+
+/* 校验流程样式 */
+.validation-steps {
+  margin: 0;
+  padding-left: 0;
+  counter-reset: step;
+}
+
+.validation-steps li {
+  list-style: none;
+  position: relative;
+  padding-left: 28px;
+  padding-bottom: 8px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.validation-steps li:last-child {
+  padding-bottom: 0;
+}
+
+.step-number {
+  position: absolute;
+  left: 0;
+  width: 20px;
+  height: 20px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .code-example {

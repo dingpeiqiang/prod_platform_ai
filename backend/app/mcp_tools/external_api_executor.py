@@ -193,7 +193,15 @@ def create_external_tool_handler(tool_definition: Dict[str, Any]):
         可调用的处理函数
     """
     def handler(**kwargs) -> Dict[str, Any]:
-        config = tool_definition.get("config", {})
+        # 优先使用新的明确字段，回退到 config
+        config = tool_definition.get("config", {}).copy()
+        
+        # 从明确字段填充 config
+        if "url" in tool_definition and tool_definition["url"] is not None:
+            config["url"] = tool_definition["url"]
+        if "request_method" in tool_definition and tool_definition["request_method"] is not None:
+            config["method"] = tool_definition["request_method"]
+        
         executor = ExternalAPIExecutor(config)
         return executor.execute(kwargs)
     

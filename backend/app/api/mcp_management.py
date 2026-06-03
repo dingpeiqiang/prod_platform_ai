@@ -121,6 +121,9 @@ async def test_mcp_tool(tool_name: str, arguments: Dict[str, Any] = {}, db: Sess
             "error": f"工具 '{tool_name}' 不存在"
         }
     
+    # 获取工具信息（包含 URL）
+    tool_info = hub.get_tool(tool_name)
+    
     start_time = time.time()
     try:
         result = hub.execute_sync(tool_name, arguments)
@@ -131,7 +134,10 @@ async def test_mcp_tool(tool_name: str, arguments: Dict[str, Any] = {}, db: Sess
         
         return {
             **result,
-            "execution_time_ms": round(elapsed_ms, 2)
+            "execution_time_ms": round(elapsed_ms, 2),
+            # 包含工具配置信息
+            "tool_url": tool_info.url if tool_info else "",
+            "tool_name": tool_name
         }
     except Exception as e:
         elapsed_ms = (time.time() - start_time) * 1000
@@ -140,7 +146,9 @@ async def test_mcp_tool(tool_name: str, arguments: Dict[str, Any] = {}, db: Sess
         return {
             "success": False,
             "error": str(e),
-            "execution_time_ms": round(elapsed_ms, 2)
+            "execution_time_ms": round(elapsed_ms, 2),
+            "tool_url": tool_info.url if tool_info else "",
+            "tool_name": tool_name
         }
 
 
@@ -284,6 +292,12 @@ async def create_external_tool(tool_data: Dict[str, Any], db: Session = Depends(
     from app.mcp_tools.tool_registry_manager import ToolRegistryManager
     
     try:
+        # 必填字段验证
+        required_fields = ["tool_code", "tool_name", "url"]
+        for field in required_fields:
+            if not tool_data.get(field):
+                return {"success": False, "error": f"缺少必填字段: {field}"}
+        
         # 检查是否已存在
         existing = db.query(MCPToolDefinition).filter(
             MCPToolDefinition.tool_name == tool_data["tool_name"]
@@ -302,8 +316,18 @@ async def create_external_tool(tool_data: Dict[str, Any], db: Session = Depends(
             is_public=tool_data.get("is_public", True),
             input_schema=tool_data.get("input_schema"),
             output_schema=tool_data.get("output_schema"),
+            # 外部工具配置字段
+            tool_type=tool_data.get("tool_type", "url"),
+            protocol=tool_data.get("protocol", "http"),
+            request_method=tool_data.get("request_method", "POST").upper(),
+            url=tool_data.get("url"),
+            auth_type=tool_data.get("auth_type", "none"),
+            auth_info=tool_data.get("auth_info"),
+            need_summary=tool_data.get("need_summary", False),
+            prompt=tool_data.get("prompt"),
+            # 保留兼容性字段
             config=tool_data.get("config"),
-            metadata=tool_data.get("metadata")
+            extra_metadata=tool_data.get("extra_metadata")
         )
         
         db.add(new_tool)
@@ -341,7 +365,7 @@ async def update_external_tool(tool_name: str, tool_data: Dict[str, Any], db: Se
         return {"success": False, "error": f"工具 '{tool_name}' 不存在"}
     
     try:
-        # 更新字段
+        # 更新基本字段
         if "description" in tool_data:
             tool.description = tool_data["description"]
         if "category" in tool_data:
@@ -354,6 +378,26 @@ async def update_external_tool(tool_name: str, tool_data: Dict[str, Any], db: Se
             tool.input_schema = tool_data["input_schema"]
         if "output_schema" in tool_data:
             tool.output_schema = tool_data["output_schema"]
+        
+        # 更新外部工具配置字段（明确的数据库字段）
+        if "tool_type" in tool_data:
+            tool.tool_type = tool_data["tool_type"]
+        if "protocol" in tool_data:
+            tool.protocol = tool_data["protocol"]
+        if "request_method" in tool_data:
+            tool.request_method = tool_data["request_method"].upper()
+        if "url" in tool_data:
+            tool.url = tool_data["url"]
+        if "auth_type" in tool_data:
+            tool.auth_type = tool_data["auth_type"]
+        if "auth_info" in tool_data:
+            tool.auth_info = tool_data["auth_info"]
+        if "need_summary" in tool_data:
+            tool.need_summary = tool_data["need_summary"]
+        if "prompt" in tool_data:
+            tool.prompt = tool_data["prompt"]
+        
+        # 保留对 config 和 extra_metadata 的直接更新支持（兼容性）
         if "config" in tool_data:
             tool.config = tool_data["config"]
         if "extra_metadata" in tool_data:
@@ -444,7 +488,7 @@ async def toggle_external_tool(tool_name: str, data: Dict[str, bool], db: Sessio
 @router.post("/external-tools/import")
 async def import_external_tools(import_data: Dict[str, Any], db: Session = Depends(get_db)):
     """
-    从 OpenAPI 规范导入外部工具
+    从 OpenAPI 规范导入外部工具（带版本校验）
     
     Args:
         import_data: 包含 OpenAPI 规范内容的字典
@@ -464,8 +508,11 @@ async def import_external_tools(import_data: Dict[str, Any], db: Session = Depen
         return {"success": False, "error": "OpenAPI 规范内容不能为空"}
     
     try:
-        # 解析 OpenAPI 规范并生成工具定义
-        tools = generate_tools_from_openapi(spec_content)
+        # 解析 OpenAPI 规范并生成工具定义（带版本校验）
+        tools, error_msg = generate_tools_from_openapi(spec_content)
+        
+        if error_msg:
+            return {"success": False, "error": f"规范校验失败: {error_msg}"}
         
         if not tools:
             return {"success": False, "error": "未能从 OpenAPI 规范中解析出任何工具"}
@@ -504,7 +551,16 @@ async def import_external_tools(import_data: Dict[str, Any], db: Session = Depen
                     input_schema=tool_data.get("input_schema"),
                     output_schema=tool_data.get("output_schema"),
                     config=tool_data.get("config"),
-                    extra_metadata=tool_data.get("extra_metadata")
+                    extra_metadata=tool_data.get("extra_metadata"),
+                    # 新的明确字段
+                    tool_type=tool_data.get("tool_type"),
+                    protocol=tool_data.get("protocol"),
+                    request_method=tool_data.get("request_method"),
+                    url=tool_data.get("url"),
+                    auth_type=tool_data.get("auth_type"),
+                    auth_info=tool_data.get("auth_info"),
+                    need_summary=tool_data.get("need_summary"),
+                    prompt=tool_data.get("prompt")
                 )
                 
                 db.add(new_tool)
@@ -542,13 +598,13 @@ async def import_external_tools(import_data: Dict[str, Any], db: Session = Depen
 @router.post("/external-tools/parse")
 async def parse_openapi_spec(import_data: Dict[str, Any]):
     """
-    解析 OpenAPI 规范并预览工具定义（不保存）
+    解析 OpenAPI 规范并预览工具定义（不保存，带版本校验）
     
     Args:
         import_data: 包含 OpenAPI 规范内容的字典
             - spec_content: OpenAPI 规范内容（JSON 或 YAML 格式字符串）
     """
-    from app.mcp_tools.openapi_parser import generate_tools_from_openapi
+    from app.mcp_tools.openapi_parser import generate_tools_from_openapi, get_supported_versions
     
     spec_content = import_data.get("spec_content", "")
     
@@ -556,8 +612,11 @@ async def parse_openapi_spec(import_data: Dict[str, Any]):
         return {"success": False, "error": "OpenAPI 规范内容不能为空"}
     
     try:
-        # 解析 OpenAPI 规范并生成工具定义
-        tools = generate_tools_from_openapi(spec_content)
+        # 解析 OpenAPI 规范并生成工具定义（带版本校验）
+        tools, error_msg = generate_tools_from_openapi(spec_content)
+        
+        if error_msg:
+            return {"success": False, "error": f"规范校验失败: {error_msg}"}
         
         if not tools:
             return {"success": False, "error": "未能从 OpenAPI 规范中解析出任何工具"}
@@ -565,9 +624,24 @@ async def parse_openapi_spec(import_data: Dict[str, Any]):
         return {
             "success": True,
             "tools": tools,
-            "total": len(tools)
+            "total": len(tools),
+            "supported_versions": get_supported_versions()
         }
         
     except Exception as e:
         logger.error(f"Failed to parse OpenAPI spec: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
+
+
+@router.get("/external-tools/supported-versions")
+async def get_supported_openapi_versions():
+    """
+    获取支持的 OpenAPI 规范版本列表
+    """
+    from app.mcp_tools.openapi_parser import get_supported_versions
+    
+    return {
+        "success": True,
+        "versions": get_supported_versions(),
+        "description": "支持的 OpenAPI 规范版本"
+    }

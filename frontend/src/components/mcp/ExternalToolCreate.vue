@@ -74,8 +74,8 @@
             
             <el-form-item label="请求方式" required>
               <el-radio-group v-model="formData.request_method">
-                <el-radio value="post">post</el-radio>
-                <el-radio value="get">get</el-radio>
+                <el-radio value="POST">POST</el-radio>
+                <el-radio value="GET">GET</el-radio>
               </el-radio-group>
             </el-form-item>
             
@@ -105,8 +105,8 @@
             
             <el-form-item label="是否归纳总结" required>
               <el-radio-group v-model="formData.need_summary">
-                <el-radio value="true">是</el-radio>
-                <el-radio value="false">否</el-radio>
+                <el-radio :value="true">是</el-radio>
+                <el-radio :value="false">否</el-radio>
               </el-radio-group>
             </el-form-item>
             
@@ -265,11 +265,11 @@ const formData = reactive({
   description: '',
   tool_type: 'url',
   protocol: 'http',
-  request_method: 'post',
+  request_method: 'POST',
   url: '',
   auth_info: '',
   auth_type: 'none',
-  need_summary: 'false',
+  need_summary: false,
   prompt: ''
 })
 
@@ -285,11 +285,11 @@ const loadEditData = async () => {
       formData.description = tool.description || ''
       formData.tool_type = tool.tool_type || 'url'
       formData.protocol = tool.protocol || 'http'
-      formData.request_method = tool.request_method || 'post'
+      formData.request_method = tool.request_method || 'POST'
       formData.url = tool.url || ''
       formData.auth_info = tool.auth_info || ''
       formData.auth_type = tool.auth_type || 'none'
-      formData.need_summary = String(tool.need_summary || false)
+      formData.need_summary = tool.need_summary || false
       formData.prompt = tool.prompt || ''
       
       inputParams.value = schemaToParams(tool.input_schema || {})
@@ -629,7 +629,7 @@ const saveTool = async () => {
       url: formData.url,
       auth_info: formData.auth_info,
       auth_type: formData.auth_type,
-      need_summary: formData.need_summary === 'true',
+      need_summary: formData.need_summary,
       prompt: formData.prompt,
       input_schema: buildSchema(inputParams.value),
       output_schema: buildSchema(outputParams.value)

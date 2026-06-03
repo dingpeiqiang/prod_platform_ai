@@ -22,6 +22,22 @@
           <h4>工具信息</h4>
           <p><strong>描述:</strong> {{ currentTool.description }}</p>
           <p><strong>分类:</strong> {{ getCategoryName(currentTool.metadata?.category) }}</p>
+          <p v-if="currentTool.url" class="url-info">
+            <strong>URL:</strong> 
+            <a :href="currentTool.url" target="_blank" rel="noopener noreferrer">
+              {{ currentTool.url }}
+            </a>
+          </p>
+          <p v-if="currentTool.requestMethod" class="method-info">
+            <strong>请求方法:</strong> 
+            <el-tag :type="getMethodTagType(currentTool.requestMethod)">{{ currentTool.requestMethod }}</el-tag>
+          </p>
+          <p v-if="currentTool.protocol" class="protocol-info">
+            <strong>协议:</strong> {{ currentTool.protocol }}
+          </p>
+          <p v-if="currentTool.authType && currentTool.authType !== 'none'" class="auth-info">
+            <strong>鉴权类型:</strong> {{ getAuthTypeName(currentTool.authType) }}
+          </p>
         </div>
 
         <!-- 入参 Schema 可视化 -->
@@ -72,6 +88,14 @@
               {{ testResult.success ? '成功' : '失败' }}
             </el-tag>
             <span class="execution-time">耗时: {{ testResult.execution_time_ms }} ms</span>
+          </div>
+
+          <!-- 显示调用的URL -->
+          <div v-if="testResult.tool_url" class="call-url">
+            <strong>调用地址:</strong>
+            <a :href="testResult.tool_url" target="_blank" rel="noopener noreferrer">
+              {{ testResult.tool_url }}
+            </a>
           </div>
 
           <div v-if="testResult.error" class="error-message">
@@ -198,6 +222,28 @@ const getCategoryName = (category) => {
   }
   return categoryNames[category] || category
 }
+
+const getMethodTagType = (method) => {
+  const methodTypes = {
+    GET: 'success',
+    POST: 'primary',
+    PUT: 'warning',
+    DELETE: 'danger',
+    PATCH: 'info'
+  }
+  return methodTypes[method] || 'info'
+}
+
+const getAuthTypeName = (authType) => {
+  const authNames = {
+    none: '无',
+    api_key: 'API Key',
+    bearer: 'Bearer Token',
+    basic: 'Basic Auth',
+    oauth2: 'OAuth2'
+  }
+  return authNames[authType] || authType
+}
 </script>
 
 <style scoped>
@@ -250,6 +296,29 @@ const getCategoryName = (category) => {
   color: #606266;
 }
 
+.tool-info .url-info a {
+  color: #409EFF;
+  text-decoration: none;
+  word-break: break-all;
+  display: block;
+  margin-top: 4px;
+}
+
+.tool-info .url-info a:hover {
+  text-decoration: underline;
+}
+
+.tool-info .method-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tool-info .method-info .el-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
 .schema-section {
   margin-top: 12px;
 }
@@ -270,6 +339,32 @@ const getCategoryName = (category) => {
 .execution-time {
   font-size: 12px;
   color: #909399;
+}
+
+.call-url {
+  margin-bottom: 12px;
+  padding: 10px;
+  background: #f0f5ff;
+  border: 1px solid #dbeafe;
+  border-radius: 6px;
+}
+
+.call-url strong {
+  color: #3b82f6;
+  font-size: 12px;
+}
+
+.call-url a {
+  display: block;
+  margin-top: 4px;
+  color: #3b82f6;
+  font-size: 12px;
+  word-break: break-all;
+  text-decoration: none;
+}
+
+.call-url a:hover {
+  text-decoration: underline;
 }
 
 .error-message {

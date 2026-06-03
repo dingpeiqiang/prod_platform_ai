@@ -295,14 +295,14 @@ const syncFromJson = () => {
 // ============ 工具方法 ============
 const getTypeTagType = (type) => {
   const map = {
-    string: '',
+    string: 'primary',
     integer: 'success',
     number: 'success',
     boolean: 'warning',
     array: 'info',
     object: 'info'
   }
-  return map[type] || ''
+  return map[type] || 'primary'
 }
 </script>
 

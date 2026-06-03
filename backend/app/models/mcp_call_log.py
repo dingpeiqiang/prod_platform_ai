@@ -27,7 +27,17 @@ class MCPToolDefinition(Base):
     input_schema = Column(JSON, nullable=True, comment="输入参数 Schema")
     output_schema = Column(JSON, nullable=True, comment="输出结果 Schema")
     
-    # 配置信息
+    # 外部工具配置字段
+    tool_type = Column(String(20), nullable=True, default="url", comment="工具类型")
+    protocol = Column(String(10), nullable=True, default="http", comment="接口协议")
+    request_method = Column(String(16), nullable=True, default="POST", comment="请求方法")
+    url = Column(String(500), nullable=True, comment="接口地址")
+    auth_type = Column(String(20), nullable=True, default="none", comment="鉴权类型")
+    auth_info = Column(Text, nullable=True, comment="鉴权信息")
+    need_summary = Column(Boolean, nullable=False, default=False, comment="是否需要归纳总结")
+    prompt = Column(Text, nullable=True, comment="工具提示词")
+    
+    # 配置信息（保留用于兼容性）
     config = Column(JSON, nullable=True, comment="工具配置（超时、重试等）")
     extra_metadata = Column(JSON, nullable=True, comment="扩展元数据")
     
@@ -66,15 +76,15 @@ class MCPToolDefinition(Base):
             "last_called_at": self.last_called_at.isoformat() if self.last_called_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            # 兼容前端显示，从 config 中提取 URL 和请求方法
-            "url": config.get("url", ""),
-            "request_method": config.get("method", "POST").lower(),
-            "tool_type": "url",
-            "protocol": "http",
-            "auth_info": "",
-            "auth_type": "none",
-            "need_summary": False,
-            "prompt": ""
+            # 外部工具配置字段
+            "tool_type": self.tool_type or "url",
+            "protocol": self.protocol or "http",
+            "request_method": self.request_method or "POST",
+            "url": self.url or "",
+            "auth_type": self.auth_type or "none",
+            "auth_info": self.auth_info or "",
+            "need_summary": self.need_summary,
+            "prompt": self.prompt or ""
         }
 
 

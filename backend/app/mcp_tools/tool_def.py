@@ -40,6 +40,11 @@ class MCPTool:
     category: str = "general"
     examples: List[Dict] = field(default_factory=list)
     output_schema: Dict[str, Any] = field(default_factory=dict)  # 出参 Schema 定义
+    # 外部工具配置字段
+    url: str = ""
+    request_method: str = "POST"
+    protocol: str = "http"
+    auth_type: str = "none"
 
     def __post_init__(self):
         if not self.input_schema or self.input_schema == {"type": "object", "properties": {}, "required": []}:
@@ -125,7 +130,12 @@ class MCPTool:
             "metadata": {
                 "category": self.category,
                 "examples": self.examples
-            }
+            },
+            # 外部工具配置字段
+            "url": self.url,
+            "requestMethod": self.request_method,
+            "protocol": self.protocol,
+            "authType": self.auth_type
         }
 
     async def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:

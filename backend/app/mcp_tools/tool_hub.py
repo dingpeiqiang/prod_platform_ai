@@ -48,7 +48,12 @@ class MCPToolHub:
         category: str = "general",
         input_schema: Dict[str, Any] = None,
         examples: List[Dict] = None,
-        output_schema: Dict[str, Any] = None
+        output_schema: Dict[str, Any] = None,
+        # 外部工具配置字段
+        url: str = "",
+        request_method: str = "POST",
+        protocol: str = "http",
+        auth_type: str = "none"
     ) -> None:
         """
         注册一个 MCP 工具
@@ -61,6 +66,10 @@ class MCPToolHub:
             input_schema: 参数 schema（可选，自动从 handler 推断）
             examples: 使用示例
             output_schema: 出参 schema（可选）
+            url: 外部 API 地址（仅外部工具使用）
+            request_method: HTTP 请求方法
+            protocol: 接口协议（http/https）
+            auth_type: 鉴权类型
         """
         if name in self._tools:
             logger.warning(f"[MCPToolHub] 工具 {name} 已存在，将被覆盖")
@@ -75,7 +84,11 @@ class MCPToolHub:
             handler=handler,
             category=category,
             examples=examples or [],
-            output_schema=output_schema or {}
+            output_schema=output_schema or {},
+            url=url,
+            request_method=request_method,
+            protocol=protocol,
+            auth_type=auth_type
         )
         
         logger.info(f"[MCPToolHub] 工具 {name} 创建完成，最终 schema={tool.input_schema}")
