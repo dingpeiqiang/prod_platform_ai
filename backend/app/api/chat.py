@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional, AsyncGenerator
 from sqlalchemy.orm import Session
 import json
 import asyncio
+from functools import lru_cache
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -357,34 +358,27 @@ async def get_default_model():
 
 
 @router.get("/chat/model/available")
-async def get_available_models():
-    """获取可用的模型列表
-    
-    从以下来源聚合模型：
-    1. 系统配置中的默认模型
-    2. 用户在数据库中保存的自定义模型配置
-    """
+@lru_cache(maxsize=1)
+def _get_available_models_cached():
+    """获取可用模型列表（带缓存）"""
     from app.core.config_loader import config_loader
     from app.models.llm_user_config import LLMUserConfig
-    from app.core.database import get_db
     from sqlalchemy.orm import Session
     from app.core.database import engine
-    
+
     llm_config = config_loader.get_app_config().get('llm', {})
     default_provider = llm_config.get('provider', 'custom')
     default_model = llm_config.get('model', '')
-    
+
     available_models = []
     seen_model_keys = set()
-    
+
     def add_model(model_info: dict):
-        """添加模型去重"""
         key = f"{model_info.get('provider', '')}:{model_info.get('name', '')}"
         if key and key not in seen_model_keys:
             seen_model_keys.add(key)
             available_models.append(model_info)
-    
-    # 1. 添加系统默认模型
+
     if default_provider and default_model:
         add_model({
             "id": f"{default_provider}-{default_model}",
@@ -393,16 +387,13 @@ async def get_available_models():
             "name": default_model,
             "isDefault": True
         })
-    
-    # 2. 从数据库获取用户保存的模型配置（只取激活状态的）
+
     try:
         with Session(engine) as db:
             user_configs = db.query(LLMUserConfig).filter(
                 LLMUserConfig.is_active == True
             ).limit(50).all()
-            
-            logger.warning(f"[model/available] 从数据库查询到 {len(user_configs)} 个用户模型配置")
-            
+
             provider_names = {
                 'custom': '自定义',
                 'openai': 'OpenAI',
@@ -411,7 +402,7 @@ async def get_available_models():
                 'ollama': 'Ollama',
                 'websocket': 'WebSocket'
             }
-            
+
             for config in user_configs:
                 provider_label = provider_names.get(config.provider, config.provider or '自定义')
                 model_info = {
@@ -423,15 +414,25 @@ async def get_available_models():
                     "apiKey": bool(config.api_key),
                     "baseUrl": config.base_url
                 }
-                logger.warning(f"[model/available] 添加模型: {model_info}")
                 add_model(model_info)
     except Exception as e:
         logger.warning(f"获取用户模型配置失败: {e}")
-    
-    # 3. 添加常见的预设模型（如果不在列表中）
-    # 已删除兜底逻辑，API返回什么就显示什么，为空也可以
-    
-    return {"success": True, "models": available_models}
+
+    return available_models
+
+
+async def get_available_models():
+    """获取可用的模型列表
+
+    从以下来源聚合模型：
+    1. 系统配置中的默认模型
+    2. 用户在数据库中保存的自定义模型配置
+
+    使用 LRU 缓存
+    """
+    models = _get_available_models_cached()
+    logger.info(f"[model/available] 返回 {len(models)} 个可用模型")
+    return {"success": True, "models": models}
 
 
 class ChatMessage(BaseModel):
@@ -1275,10 +1276,10 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                                 error_messages.append(f"• {r['name']}: {r.get('error', '未知错误')}")
                                         error_msg = "\n".join(error_messages)
                                         logger.error(f"[chat/stream] 工具调用失败: {error_msg}")
-                                        
-                                        # 发送友好的错误提示消息
+
+                                        # 发送具体的错误信息给前端
                                         yield sse({"type": "text_start"})
-                                        yield sse({"type": "text", "content": "😔 抱歉，当前服务暂时无法连接，请稍后重试。如果问题持续存在，请联系管理员。"})
+                                        yield sse({"type": "text", "content": f"工具执行失败:\n{error_msg}"})
                                         yield sse({"type": "text_end"})
                                         
                                         # 更新统计信息并结束对话

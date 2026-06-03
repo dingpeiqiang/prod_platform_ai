@@ -49,31 +49,9 @@
       新建对话
     </button>
 
-    <button class="langchain-btn" @click="$emit('open-langchain')">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-        <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-      </svg>
-      LangChain
-    </button>
+    
 
-    <button class="visualization-btn" @click="$emit('open-visualization')">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-        <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
-        <polyline points="16 7 22 7 22 13"/>
-      </svg>
-      可视化
-    </button>
-
-    <button class="editor-btn" @click="$emit('open-langchain-editor')">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-        <line x1="9" y1="9" x2="15" y2="9"/>
-        <line x1="9" y1="15" x2="13" y2="15"/>
-      </svg>
-      工作流编辑器
-    </button>
-
-    <div class="session-list">
+    <div class="session-list" ref="sessionListRef">
       <div class="session-group-label" v-if="todaySessions.length">今天</div>
       <div
         v-for="s in todaySessions"
@@ -217,6 +195,18 @@
         </div>
       </div>
 
+      <!-- 加载更多提示 -->
+      <div v-if="isLoading" class="loading-more">
+        <svg class="loading-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle class="spin" cx="12" cy="12" r="10"/>
+        </svg>
+        <span>加载中...</span>
+      </div>
+      <!-- 还有更多提示 -->
+      <div v-if="hasMore && !isLoading" class="load-more-tip" @click="loadMore">
+        点击加载更多 ({{ props.sessions.length - displayedSessions.length }} 条)
+      </div>
+      
       <div class="empty-tip" v-if="!sessions.length">暂无历史对话</div>
     </div>
 
@@ -325,19 +315,31 @@
   </div>
 </template>
 
-<script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useUserStore } from '../stores/user'
-import { useTheme } from '../composables/useTheme'
-import ModelSelector from './ModelSelector.vue'
-
-const userStore = useUserStore()
-const { isDark, toggleTheme } = useTheme()
-const showUserMenu = ref(false)
-const showModelSelector = ref(false)
-const showModelSwitch = ref(false)
-const activeSessionMenu = ref(null)
-const userInfoRef = ref(null)
+<script setup>import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { useUserStore } from '../stores/user';
+import { useTheme } from '../composables/useTheme';
+import ModelSelector from './ModelSelector.vue';
+const userStore = useUserStore();
+const { isDark, toggleTheme } = useTheme();
+const showUserMenu = ref(false);
+const showModelSelector = ref(false);
+const showModelSwitch = ref(false);
+const activeSessionMenu = ref(null);
+const userInfoRef = ref(null);
+const sessionListRef = ref(null);
+// 流式加载相关
+const pageSize = ref(20); // 每页加载数量
+const currentPage = ref(1); // 当前页码
+const isLoading = ref(false); // 是否正在加载
+// 计算当前显示的会话列表
+const displayedSessions = computed(() => {
+ const total = pageSize.value * currentPage.value;
+ return props.sessions.slice(0, total);
+});
+// 是否还有更多数据
+const hasMore = computed(() => {
+ return displayedSessions.value.length < props.sessions.length;
+});
 
 const currentModel = ref(null)
 const MODEL_CONFIG_KEY = 'chat_model_config'
@@ -371,7 +373,7 @@ const props = defineProps({
 // 调试：打印 sessions 数量
 console.log('[Sidebar] sessions 数量:', props.sessions.length, 'activeId:', props.activeId)
 
-const emit = defineEmits(['new-session', 'switch-session', 'delete-session', 'logout', 'pin-session', 'share-session', 'report-session', 'rename-session', 'open-langchain', 'open-visualization', 'open-langchain-editor', 'toggle-sidebar', 'model-change'])
+const emit = defineEmits(['new-session', 'switch-session', 'delete-session', 'logout', 'pin-session', 'share-session', 'report-session', 'rename-session', 'toggle-sidebar', 'model-change'])
 
 const handlePinSession = (sessionId) => {
   console.log('[Sidebar.vue] handlePinSession called with sessionId:', sessionId)
@@ -580,19 +582,51 @@ const handleClickOutside = (e) => {
   showModelSwitch.value = false
 }
 onMounted(() => {
-  document.addEventListener('click', handleClickOutside)
-  loadSavedModel()
-})
-onUnmounted(() => document.removeEventListener('click', handleClickOutside))
+ document.addEventListener('click', handleClickOutside);
+ loadSavedModel();
+ // 添加滚动监听
+ if (sessionListRef.value) {
+ sessionListRef.value.addEventListener('scroll', handleScroll);
+ }
+});
+onUnmounted(() => {
+ document.removeEventListener('click', handleClickOutside);
+ // 移除滚动监听
+ if (sessionListRef.value) {
+ sessionListRef.value.removeEventListener('scroll', handleScroll);
+ }
+});
 
-const today = new Date().toDateString()
-
-const todaySessions = computed(() =>
-  props.sessions.filter(s => new Date(s.updatedAt).toDateString() === today)
-)
-const olderSessions = computed(() =>
-  props.sessions.filter(s => new Date(s.updatedAt).toDateString() !== today)
-)
+const today = new Date().toDateString();
+// 根据显示的会话列表计算今天和更早的会话
+const todaySessions = computed(() => {
+ return displayedSessions.value.filter(s => new Date(s.updatedAt).toDateString() === today);
+});
+const olderSessions = computed(() => {
+ return displayedSessions.value.filter(s => new Date(s.updatedAt).toDateString() !== today);
+});
+// 滚动加载更多
+const handleScroll = () => {
+ if (!sessionListRef.value || isLoading.value || !hasMore.value)
+ return;
+ const { scrollTop, scrollHeight, clientHeight } = sessionListRef.value;
+ // 当滚动到底部附近时加载更多（距离底部50px）
+ if (scrollTop + clientHeight >= scrollHeight - 50) {
+ loadMore();
+ }
+};
+// 加载更多会话
+const loadMore = async () => {
+ isLoading.value = true;
+ // 模拟加载延迟
+ await new Promise(resolve => setTimeout(resolve, 300));
+ currentPage.value++;
+ isLoading.value = false;
+};
+// 监听 sessions 变化，重置分页
+watch(() => props.sessions.length, () => {
+ currentPage.value = 1;
+});
 </script>
 
 <style scoped>
@@ -702,69 +736,6 @@ const olderSessions = computed(() =>
 .new-chat-btn:hover {
   background: rgba(255,255,255,0.1);
   border-color: rgba(255,255,255,0.15);
-}
-
-.langchain-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  padding: 10px var(--space-3-5);
-  background: linear-gradient(135deg, rgba(91, 124, 250, 0.15), rgba(91, 124, 250, 0.05));
-  border: 1px solid rgba(91, 124, 250, 0.3);
-  border-radius: var(--radius-lg);
-  color: var(--color-primary-400);
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  margin-bottom: var(--space-3-5);
-}
-.langchain-btn:hover {
-  background: linear-gradient(135deg, rgba(91, 124, 250, 0.25), rgba(91, 124, 250, 0.1));
-  border-color: rgba(91, 124, 250, 0.5);
-  color: var(--color-primary-300);
-}
-
-.visualization-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  padding: 10px var(--space-3-5);
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(34, 197, 94, 0.05));
-  border: 1px solid rgba(34, 197, 94, 0.3);
-  border-radius: var(--radius-lg);
-  color: var(--color-success-400);
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  margin-bottom: var(--space-3-5);
-}
-.visualization-btn:hover {
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.25), rgba(34, 197, 94, 0.1));
-  border-color: rgba(34, 197, 94, 0.5);
-  color: var(--color-success-300);
-}
-
-.editor-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  padding: 10px var(--space-3-5);
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(139, 92, 246, 0.05));
-  border: 1px solid rgba(139, 92, 246, 0.3);
-  border-radius: var(--radius-lg);
-  color: var(--color-purple-400);
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  margin-bottom: var(--space-3-5);
-}
-.editor-btn:hover {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(139, 92, 246, 0.1));
-  border-color: rgba(139, 92, 246, 0.5);
-  color: var(--color-purple-300);
 }
 
 .session-list {
@@ -980,6 +951,40 @@ const olderSessions = computed(() =>
   color: var(--sidebar-text-muted);
   font-size: var(--font-size-sm);
   padding: var(--space-8) 0;
+}
+
+/* 加载更多相关样式 */
+.loading-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+  color: var(--sidebar-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.loading-icon .spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.load-more-tip {
+  text-align: center;
+  color: var(--color-primary-500);
+  font-size: var(--font-size-sm);
+  padding: var(--space-3) 0;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.load-more-tip:hover {
+  color: var(--color-primary-400);
+  text-decoration: underline;
 }
 
 .sidebar-footer {

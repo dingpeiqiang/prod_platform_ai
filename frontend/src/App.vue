@@ -63,9 +63,7 @@
         @share-session="shareSession"
         @rename-session="renameSession"
         @report-session="reportSession"
-        @open-langchain="openLangChain"
-        @open-visualization="openVisualization"
-        @open-langchain-editor="openLangChainEditor"
+        
         @toggle-sidebar="toggleDashboardSidebar"
         @model-change="onModelChange"
       />
@@ -134,29 +132,12 @@
         item-type="工作流"
         code-field="workflowCode"
         name-field="workflowName"
-        :use-external-editor="true"
+        :use-external-editor="false"
         :api-service="workflowApiService"
         @go-back="returnToDashboard"
-        @edit-item="openWorkflowEditor"
       />
 
-        <!-- LangChain 测试界面 -->
-        <LangChainPanel 
-          v-if="!isInitializing && currentView === 'langchain'" 
-        />
         
-        <!-- 可视化面板 -->
-        <VisualizationPanel 
-          v-if="!isInitializing && currentView === 'visualization'" 
-        />
-        
-        <!-- LangChain 工作流编辑器 -->
-        <LangChainEditor 
-          v-if="!isInitializing && currentView === 'langchain-editor'" 
-          :key="`editor-${currentWorkflowCode}-${editorKey}`"
-          :workflow-code="currentWorkflowCode"
-          @go-back="returnToWorkflowManager"
-        />
         
         <!-- MCP 工具管理平台 -->
         <MCPToolDashboard
@@ -200,9 +181,7 @@ import PromptManager from './components/PromptManager.vue'
 import GenericManager from './components/GenericManager.vue'
 import OntologyManager from './components/OntologyManager.vue'
 import Loading from './components/Loading.vue'
-import LangChainPanel from './components/intent-panels/LangChainPanel.vue'
-import LangChainEditor from './components/workflow-editor/LangChainEditor.vue'
-import VisualizationPanel from './components/visualization/VisualizationPanel.vue'
+
 import MCPToolDashboard from './components/MCPToolDashboard.vue'
 import KBManager from './components/KBManager.vue'
 import { useUserStore } from './stores/user'
@@ -215,7 +194,6 @@ import * as ontologyApi from './services/ontologyApi.js'
 import * as workflowApi from './services/workflowApi.js'
 
 const currentView = ref('dashboard')
-const currentWorkflowCode = ref('')  // 当前编辑的工作流编码
 
 // 网络状态
 const isOnline = ref(navigator.onLine)
@@ -248,9 +226,6 @@ const activeDbSessionId = ref('')
 // 当前模型配置
 const currentModelConfig = ref(null)
 const MODEL_CONFIG_KEY = 'chat_model_config'
-
-// 工作流编辑器 key，用于强制组件重建
-const editorKey = ref(0)
 
 // ── 加载本地会话列表 ──────────────────────────────────────
 const loadSessions = () => {
@@ -359,50 +334,7 @@ const openKBManager = () => {
   saveActiveSessionId()
 }
 
-// ── 打开 LangChain 测试界面 ──────────────────────────────
-const openLangChain = () => {
-  currentView.value = 'langchain'
-  activeSessionId.value = ''
-  activeDbSessionId.value = ''
-  saveActiveSessionId()
-}
 
-// ── 打开可视化面板 ──────────────────────────────────────
-const openVisualization = () => {
-  currentView.value = 'visualization'
-  activeSessionId.value = ''
-  activeDbSessionId.value = ''
-  saveActiveSessionId()
-}
-
-// ── 打开 LangChain 工作流编辑器 ──────────────────────────────
-const openLangChainEditor = () => {
-  currentView.value = 'langchain-editor'
-  activeSessionId.value = ''
-  activeDbSessionId.value = ''
-  currentWorkflowCode.value = ''  // 清空工作流编码，新建模式
-  isDashboardSidebarVisible.value = false
-  editorKey.value++  // 强制组件重建，确保编辑器重置
-  saveActiveSessionId()
-}
-
-// ── 打开工作流编辑器（从管理列表）──────────────────────────────
-const openWorkflowEditor = (workflowCode) => {
-  currentView.value = 'langchain-editor'
-  activeSessionId.value = ''
-  activeDbSessionId.value = ''
-  currentWorkflowCode.value = workflowCode || ''  // 设置要编辑的工作流编码，null表示新建
-  isDashboardSidebarVisible.value = false
-  editorKey.value++  // 强制组件重建，确保编辑器重置
-  saveActiveSessionId()
-}
-
-// ── 返回工作流管理 ─────────────────────────────────────────
-const returnToWorkflowManager = () => {
-  currentView.value = 'workflow-manager'
-  currentWorkflowCode.value = ''  // 清空工作流编码
-  isDashboardSidebarVisible.value = true  // 恢复侧边栏显示
-}
 
 // ── API 服务适配器 ─────────────────────────────────────────
 // const formApiService = {

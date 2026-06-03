@@ -1,0 +1,107 @@
+{
+  "_mock": {
+    "statusCode": 200,
+    "delayMs": 500
+  },
+  "success": true,
+  "message": "查询成功",
+  "data": [
+    {
+      "packageCode": "TC001",
+      "packageName": "基础资费套餐",
+      "category": "基础服务",
+      "price": 99.0,
+      "unit": "月",
+      "description": "适合个人用户的基础资费方案，包含基础语音、短信和流量服务",
+      "features": [
+        "语音通话 200 分钟/月",
+        "短信 100 条/月",
+        "数据流量 5GB/月",
+        "国内漫游免费"
+      ],
+      "isActive": true,
+      "createTime": "2024-01-15",
+      "updateTime": "2025-03-20"
+    },
+    {
+      "packageCode": "TC002",
+      "packageName": "商务精英套餐",
+      "category": "商务服务",
+      "price": 199.0,
+      "unit": "月",
+      "description": "适合商务人士的高端资费方案，包含更多语音和流量",
+      "features": [
+        "语音通话 1000 分钟/月",
+        "短信 500 条/月",
+        "数据流量 20GB/月",
+        "国内漫游免费",
+        "国际漫游优惠",
+        "专属客服"
+      ],
+      "isActive": true,
+      "createTime": "2024-02-20",
+      "updateTime": "2025-04-10"
+    },
+    {
+      "packageCode": "TC003",
+      "packageName": "家庭共享套餐",
+      "category": "家庭服务",
+      "price": 299.0,
+      "unit": "月",
+      "description": "适合家庭用户的共享资费方案，支持多终端共享",
+      "features": [
+        "最多支持 5 个成员共享",
+        "语音通话 2000 分钟/月",
+        "短信 1000 条/月",
+        "数据流量 50GB/月",
+        "家庭云存储 100GB",
+        "亲情号码免费通话"
+      ],
+      "isActive": true,
+      "createTime": "2024-03-10",
+      "updateTime": "2025-05-05"
+    },
+    {
+      "packageCode": "TC004",
+      "packageName": "企业尊享套餐",
+      "category": "企业服务",
+      "price": 599.0,
+      "unit": "月",
+      "description": "适合中小企业的企业级资费方案",
+      "features": [
+        "无限语音通话",
+        "无限短信",
+        "数据流量 100GB/月",
+        "企业专属客户经理",
+        "优先故障处理",
+        "企业账单管理",
+        "API 接口对接"
+      ],
+      "isActive": true,
+      "createTime": "2024-04-05",
+      "updateTime": "2025-06-01"
+    },
+    {
+      "packageCode": "TC005",
+      "packageName": "5G 畅享套餐",
+      "category": "5G服务",
+      "price": 169.0,
+      "unit": "月",
+      "description": "体验 5G 高速网络的专属套餐",
+      "features": [
+        "5G 网络优先接入",
+        "数据流量 30GB/月（5G）",
+        "语音通话 500 分钟/月",
+        "短信 300 条/月",
+        "高清视频彩铃",
+        "5G 云游戏体验"
+      ],
+      "isActive": true,
+      "createTime": "2024-05-15",
+      "updateTime": "2025-05-20"
+    }
+  ],
+  "total": 5,
+  "page": 1,
+  "pageSize": 10
+}

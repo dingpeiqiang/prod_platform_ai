@@ -65,15 +65,20 @@ class MCPToolHub:
         if name in self._tools:
             logger.warning(f"[MCPToolHub] 工具 {name} 已存在，将被覆盖")
         
+        input_schema_to_use = input_schema or {"type": "object", "properties": {}, "required": []}
+        logger.info(f"[MCPToolHub] 注册工具 {name}: 输入 schema={input_schema_to_use}")
+        
         tool = MCPTool(
             name=name,
             description=description,
-            input_schema=input_schema or {"type": "object", "properties": {}, "required": []},
+            input_schema=input_schema_to_use,
             handler=handler,
             category=category,
             examples=examples or [],
             output_schema=output_schema or {}
         )
+        
+        logger.info(f"[MCPToolHub] 工具 {name} 创建完成，最终 schema={tool.input_schema}")
         
         self._tools[name] = tool
         

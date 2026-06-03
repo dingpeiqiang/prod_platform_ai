@@ -6,7 +6,7 @@ import re
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
-from typing import Any, Callable, Dict, List, Optional, get_type_hints
+from typing import Any, Callable, Dict, List, Optional, Union, get_type_hints, get_origin, get_args
 from dataclasses import dataclass, field
 
 
@@ -45,6 +45,41 @@ class MCPTool:
         if not self.input_schema or self.input_schema == {"type": "object", "properties": {}, "required": []}:
             self.input_schema = self._generate_schema_from_handler()
 
+    def _get_schema_type(self, param_type) -> str:
+        """从 Python 类型获取 schema 类型字符串"""
+        origin = get_origin(param_type)
+
+        # 处理 Optional/Union 类型，提取内部真实类型（忽略 None）
+        if origin is not None and origin is Union:
+            # 获取类型参数，过滤掉 NoneType
+            args = get_args(param_type)
+            for arg_type in args:
+                if arg_type is not type(None):
+                    return self._get_schema_type(arg_type)
+
+        if origin is not None:
+            if origin is dict or origin is Dict:
+                return "object"
+            elif origin is list or origin is List:
+                return "array"
+            elif origin is tuple:
+                return "array"
+
+        if param_type is str or param_type == 'str' or param_type == 'String':
+            return "string"
+        elif param_type is int or param_type == 'int' or param_type == 'Integer':
+            return "integer"
+        elif param_type is float or param_type == 'float' or param_type == 'Number':
+            return "number"
+        elif param_type is bool or param_type == 'bool' or param_type == 'Boolean':
+            return "boolean"
+        elif param_type is list or param_type == 'list' or param_type == 'List':
+            return "array"
+        elif param_type is dict or param_type == 'dict' or param_type == 'Dict' or param_type == 'Dict[str, Any]':
+            return "object"
+
+        return "string"
+
     def _generate_schema_from_handler(self) -> Dict[str, Any]:
         """从 handler 函数签名自动生成 schema"""
         try:
@@ -59,20 +94,7 @@ class MCPTool:
                     continue
 
                 param_type = hints.get(param_name, param.annotation)
-                if param_type == str or param_type == 'str':
-                    schema_type = "string"
-                elif param_type == int or param_type == 'int':
-                    schema_type = "integer"
-                elif param_type == float or param_type == 'float':
-                    schema_type = "number"
-                elif param_type == bool or param_type == 'bool':
-                    schema_type = "boolean"
-                elif param_type == List or param_type == 'list':
-                    schema_type = "array"
-                elif param_type == Dict or param_type == 'dict':
-                    schema_type = "object"
-                else:
-                    schema_type = "string"
+                schema_type = self._get_schema_type(param_type)
 
                 properties[param_name] = {
                     "type": schema_type,
@@ -82,11 +104,13 @@ class MCPTool:
                 if param.default == inspect.Parameter.empty:
                     required.append(param_name)
 
-            return {
+            schema = {
                 "type": "object",
                 "properties": properties,
                 "required": required
             }
+            logger.info(f"[MCPTool] 为工具 {self.name} 生成的 schema: {schema}")
+            return schema
         except Exception as e:
             logger.warning(f"无法从 handler 生成 schema: {e}")
             return {"type": "object", "properties": {}, "required": []}
@@ -147,6 +171,10 @@ class MCPTool:
         """
         errors = []
         properties = self.input_schema.get("properties", {})
+        
+        # 调试日志：查看当前工具的 schema
+        logger.info(f"[MCPTool] 工具 {self.name} 的 input_schema: {self.input_schema}")
+        logger.info(f"[MCPTool] 工具 {self.name} 收到的参数: {arguments}")
         required = self.input_schema.get("required", [])
 
         # 1. 必填参数检查

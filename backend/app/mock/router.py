@@ -148,3 +148,52 @@ async def mock_delete(
     """通用 DELETE mock 端点"""
     body, code, headers = mock_service.resolve(name, delay_ms=delay, status_code=status)
     return JSONResponse(content=body, status_code=code, headers=headers)
+
+
+# ── 资费备案套餐查询 API ───────────────────────────────────────────────────────
+
+from pydantic import BaseModel
+
+
+class TariffPackageQuery(BaseModel):
+    """资费套餐查询请求体"""
+    package_code: Optional[str] = None
+    category: Optional[str] = None
+    active_only: Optional[bool] = True
+
+
+@router.post("/tariff/packages")
+async def mock_tariff_packages(
+    query: TariffPackageQuery,
+    delay: int = Query(default=0, description="模拟延迟（毫秒）"),
+):
+    """模拟资费备案套餐信息查询
+    
+    查询资费备案相关的套餐信息，支持按套餐编码、分类等条件过滤。
+    
+    Args:
+        query: 查询条件
+            - package_code: 套餐编码（精确匹配）
+            - category: 套餐分类（模糊匹配）
+            - active_only: 是否只返回激活状态的套餐
+        delay: 模拟延迟（毫秒）
+    """
+    body, code, headers = mock_service.resolve("tariff_packages", delay_ms=delay)
+    
+    # 应用过滤条件
+    if "data" in body:
+        filtered = body["data"]
+        
+        if query.package_code:
+            filtered = [p for p in filtered if p.get("packageCode") == query.package_code]
+        
+        if query.category:
+            filtered = [p for p in filtered if query.category.lower() in p.get("category", "").lower()]
+        
+        if query.active_only:
+            filtered = [p for p in filtered if p.get("isActive", True)]
+        
+        body["data"] = filtered
+        body["total"] = len(filtered)
+    
+    return JSONResponse(content=body, status_code=code, headers=headers)

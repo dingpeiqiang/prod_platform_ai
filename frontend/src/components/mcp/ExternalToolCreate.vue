@@ -419,35 +419,9 @@ onMounted(() => {
   }
 })
 
-const inputParams = ref([
-  { 
-    id: 'input-root',
-    name: 'ROOT', 
-    description: 'ROOT', 
-    enum_values: '', 
-    data_type: 'object', 
-    required: false, 
-    prompt: false,
-    default_value: '',
-    parentId: null,
-    children: [],
-    expanded: true
-  }
-])
+const inputParams = ref([])
 
-const outputParams = ref([
-  { 
-    id: 'output-root',
-    name: 'ROOT', 
-    description: 'ROOT', 
-    data_type: 'object', 
-    required: false,
-    prompt: false,
-    parentId: null,
-    children: [],
-    expanded: true
-  }
-])
+const outputParams = ref([])
 
 const generateId = () => {
   return 'param-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9)
@@ -867,8 +841,41 @@ const saveTool = async () => {
   padding: 10px 12px;
   border-bottom: 1px solid #f0f0f0;
   vertical-align: middle;
-  background: white;
   text-align: left;
+}
+
+.param-table tbody tr.level-0 > td {
+  background-color: #ffffff !important;
+  border-left: 4px solid #5b7cfa !important;
+}
+
+.param-table tbody tr.level-1 > td {
+  background-color: #f0f5ff !important;
+  border-left: 4px solid #60a5fa !important;
+  box-shadow: inset 0 0 20px rgba(91, 124, 250, 0.05) !important;
+}
+
+.param-table tbody tr.level-2 > td {
+  background-color: #e0f2fe !important;
+  border-left: 4px solid #22d3ee !important;
+  box-shadow: inset 0 0 20px rgba(34, 211, 238, 0.1) !important;
+}
+
+.param-table tbody tr.level-3 > td {
+  background-color: #dcfce7 !important;
+  border-left: 4px solid #4ade80 !important;
+  box-shadow: inset 0 0 20px rgba(74, 222, 128, 0.1) !important;
+}
+
+.param-table tbody tr.level-4 > td,
+.param-table tbody tr.level-5 > td,
+.param-table tbody tr.level-6 > td,
+.param-table tbody tr.level-7 > td,
+.param-table tbody tr.level-8 > td,
+.param-table tbody tr.level-9 > td {
+  background-color: #fef3c7 !important;
+  border-left: 4px solid #fbbf24 !important;
+  box-shadow: inset 0 0 20px rgba(251, 191, 36, 0.15) !important;
 }
 
 .param-table td :deep(.el-input),
@@ -897,8 +904,39 @@ const saveTool = async () => {
   margin: 0;
 }
 
-.param-table tr:hover td {
-  background-color: #fafbfc;
+.param-table tbody tr.level-0:hover > td {
+  background-color: #f5f7ff !important;
+  transform: scale(1.002);
+  transition: all 0.3s ease;
+}
+
+.param-table tbody tr.level-1:hover > td {
+  background-color: #e0f0ff !important;
+  transform: scale(1.002);
+  transition: all 0.3s ease;
+}
+
+.param-table tbody tr.level-2:hover > td {
+  background-color: #d0f0ff !important;
+  transform: scale(1.002);
+  transition: all 0.3s ease;
+}
+
+.param-table tbody tr.level-3:hover > td {
+  background-color: #c0f0e8 !important;
+  transform: scale(1.002);
+  transition: all 0.3s ease;
+}
+
+.param-table tbody tr.level-4:hover > td,
+.param-table tbody tr.level-5:hover > td,
+.param-table tbody tr.level-6:hover > td,
+.param-table tbody tr.level-7:hover > td,
+.param-table tbody tr.level-8:hover > td,
+.param-table tbody tr.level-9:hover > td {
+  background-color: #fff3c0 !important;
+  transform: scale(1.002);
+  transition: all 0.3s ease;
 }
 
 .add-btn {

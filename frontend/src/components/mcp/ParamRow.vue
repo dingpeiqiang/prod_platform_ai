@@ -1,6 +1,6 @@
 <template>
-  <tr :key="param.id">
-    <td :style="{ paddingLeft: (level * 24 + 16) + 'px' }">
+  <tr :key="param.id" :class="'level-' + level">
+    <td class="param-name-td" :data-level="level">
       <div class="param-name-cell">
         <span 
           v-if="param.children && param.children.length > 0"
@@ -71,7 +71,6 @@
         icon="Delete" 
         type="danger"
         @click="remove(param)"
-        :disabled="!param.parentId"
       />
     </td>
     <td>
@@ -196,5 +195,64 @@ const onTypeChange = (param) => {
 
 :deep(.el-button) {
   margin: 0;
+}
+
+.param-name-td {
+  min-width: 150px;
+}
+
+.param-name-td[data-level="0"] {
+  padding-left: 16px !important;
+}
+
+.param-name-td[data-level="1"] {
+  padding-left: 36px !important;
+}
+
+.param-name-td[data-level="2"] {
+  padding-left: 56px !important;
+}
+
+.param-name-td[data-level="3"] {
+  padding-left: 76px !important;
+}
+
+.param-name-td[data-level="4"],
+.param-name-td[data-level="5"],
+.param-name-td[data-level="6"],
+.param-name-td[data-level="7"],
+.param-name-td[data-level="8"],
+.param-name-td[data-level="9"] {
+  padding-left: 96px !important;
+}
+
+:deep(.level-0 > td) {
+  background-color: #ffffff !important;
+  border-left: 4px solid #5b7cfa !important;
+}
+
+:deep(.level-1 > td) {
+  background-color: #f0f5ff !important;
+  border-left: 4px solid #60a5fa !important;
+}
+
+:deep(.level-2 > td) {
+  background-color: #e0f2fe !important;
+  border-left: 4px solid #22d3ee !important;
+}
+
+:deep(.level-3 > td) {
+  background-color: #dcfce7 !important;
+  border-left: 4px solid #4ade80 !important;
+}
+
+:deep(.level-4 > td),
+:deep(.level-5 > td),
+:deep(.level-6 > td),
+:deep(.level-7 > td),
+:deep(.level-8 > td),
+:deep(.level-9 > td) {
+  background-color: #fef3c7 !important;
+  border-left: 4px solid #fbbf24 !important;
 }
 </style>
