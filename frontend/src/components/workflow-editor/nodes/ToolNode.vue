@@ -157,33 +157,47 @@
               此工具未定义输出schema
             </div>
             
-            <div class="output-mappings">
-              <div class="section-subtitle">输出映射</div>
-              <template v-for="(mapping, index) in localOutputMappings" :key="index">
-                <div v-if="mapping" class="output-mapping-item">
-                  <select v-model="mapping.source" @change="emitUpdate" class="output-source-select">
-                    <option value="">选择源字段</option>
-                    <option v-for="(prop, name) in outputSchemaProperties" :key="name" :value="name">
-                      {{ name }}
-                    </option>
+            <template v-for="(param, index) in localOutputMappings" :key="index">
+              <div v-if="param" class="output-param-item">
+                <div class="param-name-group">
+                  <select v-model="param.nameType" @change="handleOutputNameTypeChange(index)" class="param-name-type-select">
+                    <option value="input">输入</option>
+                    <option value="reference">引用</option>
                   </select>
-                  <input v-model="mapping.target" @input="emitUpdate" placeholder="目标变量名" class="output-target-input"/>
-                  <select v-model="mapping.type" @change="emitUpdate" class="output-type-select">
-                    <option value="string">string</option>
-                    <option value="number">number</option>
-                    <option value="boolean">boolean</option>
-                    <option value="object">object</option>
-                    <option value="array">array</option>
-                  </select>
-                  <button @click="removeOutputMapping(index)" class="action-btn delete-btn" title="删除">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <line x1="18" y1="6" x2="6" y2="18"/>
-                      <line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                  </button>
+                  <input 
+                    v-if="param.nameType === 'input'" 
+                    v-model="param.name" 
+                    @input="emitUpdate"
+                    type="text"
+                    placeholder="参数名"
+                    class="param-name-input"
+                  />
+                  <VariableCascader
+                    v-else
+                    :key="'output-ref-' + index + '-' + cascaderRefreshKey"
+                    v-model="param.nameRef"
+                    :available-variables="customParamVariables"
+                    placeholder="选择变量"
+                    class="param-name-cascader"
+                    @change="emitUpdate"
+                  />
                 </div>
-              </template>
-            </div>
+                <select v-model="param.type" @change="emitUpdate" class="param-type-select">
+                  <option value="string">string</option>
+                  <option value="number">number</option>
+                  <option value="boolean">boolean</option>
+                  <option value="object">object</option>
+                  <option value="array">array</option>
+                </select>
+                <input v-if="param.nameType === 'input'" v-model="param.desc" @input="emitUpdate" placeholder="描述" class="param-desc-input" />
+                <button @click="removeOutputParam(index)" class="action-btn delete-btn" title="删除">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+            </template>
           </div>
         </div>
 
@@ -275,10 +289,25 @@ const expandedSections = ref({
 const localCategory = ref('')
 const localToolName = ref(props.data.tool_type || props.data.tool_name || '')
 const localParams = ref([])
-const localOutputMappings = ref((props.data.outputMappings && Array.isArray(props.data.outputMappings)) ? props.data.outputMappings : [])
+const localOutputMappings = ref([])
 const localTimeout = ref(props.data.timeout || 60)
 const localAsync = ref(props.data.isAsync || false)
 const localSilent = ref(props.data.silent || false)
+
+// 输出参数引用模式可用变量：仅展示自定义参数名，排除节点输出参数中的引用变量
+const customParamVariables = computed(() => {
+  if (!props.availableVariables || !Array.isArray(props.availableVariables)) return [];
+  return props.availableVariables.filter(v => {
+    const sourceType = v.sourceNodeType || v.nodeType || '';
+    return sourceType === 'start' || sourceType === 'variable' || sourceType === 'set';
+  });
+});
+
+// 强制 VariableCascader 刷新 key，当 availableVariables 变化时重新挂载
+const cascaderRefreshKey = ref(0);
+watch(customParamVariables, () => {
+  cascaderRefreshKey.value++;
+}, { deep: true });
 
 // 分类
 const categories = computed(() => {
@@ -469,28 +498,39 @@ const handleCascaderChange = (index, value) => {
 
 // 添加输出参数
 const addOutputParam = () => {
-  localOutputMappings.value.push({ source: '', target: '', type: 'string' })
+  localOutputMappings.value.push({ name: '', nameType: 'input', nameRef: '', type: 'string', desc: '', source: '' })
   emitUpdate()
 }
 
-// 删除输出映射
-const removeOutputMapping = (index) => {
+const handleOutputNameTypeChange = (index) => {
+  const param = localOutputMappings.value[index]
+  if (param.nameType === 'reference') {
+    param.name = ''   // 清除输入值
+    param.desc = ''   // 清除描述
+  } else {
+    param.nameRef = '' // 清除引用值
+  }
+  emitUpdate()
+}
+
+// 删除输出参数
+const removeOutputParam = (index) => {
   localOutputMappings.value.splice(index, 1)
   emitUpdate()
 }
 
 // 检查输出字段是否被选中
 const isOutputSelected = (name) => {
-  return localOutputMappings.value.some(m => m.source === name)
+  return localOutputMappings.value.some(m => m.source === name || m.name === name)
 }
 
 // 切换输出字段选中状态
 const toggleOutputField = (name) => {
-  const index = localOutputMappings.value.findIndex(m => m.source === name)
+  const index = localOutputMappings.value.findIndex(m => m.source === name || m.name === name)
   if (index >= 0) {
     localOutputMappings.value.splice(index, 1)
   } else {
-    localOutputMappings.value.push({ source: name, target: name, type: 'string' })
+    localOutputMappings.value.push({ name, nameType: 'input', nameRef: '', type: 'string', desc: '', source: name })
   }
   emitUpdate()
 }
@@ -516,7 +556,16 @@ const emitUpdate = () => {
   }
 
   // 过滤有效的输出映射
-  const outputMappings = localOutputMappings.value.filter(m => m.source && m.target)
+  const outputMappings = localOutputMappings.value
+    .filter(m => m.name || m.nameRef)
+    .map(m => ({
+      name: m.name || '',
+      nameType: m.nameType || 'input',
+      nameRef: m.nameRef || '',
+      type: m.type || 'string',
+      desc: m.desc || '',
+      source: m.source || ''
+    }))
 
   emit('update', props.data.id, {
     tool_type: localToolName.value,
@@ -534,7 +583,16 @@ watch(() => props.data, (d) => {
   localTimeout.value = d.timeout || 60
   localAsync.value = d.isAsync || false
   localSilent.value = d.silent || false
-  localOutputMappings.value = (d.outputMappings && Array.isArray(d.outputMappings)) ? d.outputMappings : []
+  localOutputMappings.value = (d.outputMappings && Array.isArray(d.outputMappings)) 
+    ? d.outputMappings.map(m => ({ 
+      name: m.name || m.target || '', 
+      nameType: m.nameType || 'input', 
+      nameRef: m.nameRef || '', 
+      type: m.type || 'string', 
+      desc: m.desc || '', 
+      source: m.source || '' 
+    }))
+    : []
 
   // 同步参数
   if (localToolName.value && mcpToolMap.value[localToolName.value]) {
@@ -1074,45 +1132,100 @@ onMounted(() => {
   text-align: center;
 }
 
-/* 输出映射 */
-.output-mappings {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed #cbd5e1;
-}
-
-.output-mapping-item {
+/* 输出参数样式 */
+.output-param-item {
   display: flex;
-  gap: 4px;
   align-items: center;
-  margin-bottom: 4px;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
-.output-source-select,
-.output-target-input,
-.output-type-select {
-  padding: 4px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  font-size: 11px;
-}
-
-.output-source-select {
-  width: 100px;
-}
-
-.output-target-input {
+.param-name-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   flex: 1;
+  min-width: 0;
+}
+
+.param-name-type-select {
+  padding: 8px 4px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 12px;
+  background: white;
+  flex-shrink: 0;
+  width: 56px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 4px center;
+  background-repeat: no-repeat;
+  background-size: 10px;
+  padding-right: 18px;
+}
+
+.param-name-type-select:focus {
+  outline: none;
+  border-color: #8b5cf6;
+}
+
+.param-name-cascader {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.param-name-input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.param-name-input:focus {
+  outline: none;
+  border-color: #8b5cf6;
+}
+
+.param-type-select {
+  padding: 8px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+  background: white;
+  flex-shrink: 0;
+  width: 100px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 8px center;
+  background-repeat: no-repeat;
+  background-size: 12px;
+  padding-right: 28px;
+}
+
+.param-type-select:focus {
+  outline: none;
+  border-color: #8b5cf6;
+}
+
+.param-desc-input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
   min-width: 80px;
 }
 
-.output-type-select {
-  width: 70px;
+.param-desc-input:focus {
+  outline: none;
+  border-color: #8b5cf6;
 }
 
 .action-btn {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border: none;
   background: transparent;
   color: #64748b;
@@ -1122,15 +1235,20 @@ onMounted(() => {
   justify-content: center;
   border-radius: 3px;
   transition: all 0.2s;
+  flex-shrink: 0;
 }
 
 .action-btn:hover {
   background: #f1f5f9;
 }
 
-.action-btn.delete-btn:hover {
-  background: #fee2e2;
-  color: #dc2626;
+.delete-btn {
+  color: #94a3b8;
+}
+
+.delete-btn:hover {
+  color: #ef4444;
+  background: #fef2f2;
 }
 
 .param-value-cascader {
