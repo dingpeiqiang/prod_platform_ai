@@ -129,7 +129,25 @@
 
           <div v-if="localValidationEnabled" class="param-row">
             <label class="param-label">校验规则（JSON格式）</label>
-            <textarea v-model="localValidationRulesJson" @input="emitUpdate" placeholder='[{"type": "required", "message": "必填"}, {"type": "minLength", "value": 2, "message": "至少2个字符"}]' class="multiline-input" rows="3"></textarea>
+            <div class="validation-rules-container">
+              <textarea v-model="localValidationRulesJson" @input="emitUpdate" placeholder='[{"type": "required", "message": "必填"}, {"type": "minLength", "value": 2, "message": "至少2个字符"}]' class="multiline-input" rows="3"></textarea>
+              <button @click="showAiGenerator = !showAiGenerator" class="ai-generate-btn" :title="showAiGenerator ? '关闭' : 'AI生成校验规则'">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 18h.01M12 6v8M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                </svg>
+                AI生成
+              </button>
+            </div>
+            <div v-if="showAiGenerator" class="ai-generator-panel">
+              <textarea v-model="aiDescription" @input="onAiDescriptionInput" placeholder="请描述校验规则要求，例如：用户输入必须是有效的手机号码，11位数字，以1开头..." class="multiline-input ai-desc-input" rows="2"></textarea>
+              <div class="ai-generator-actions">
+                <button @click="generateValidationRules" :disabled="aiGenerating || !aiDescription.trim()" class="generate-btn">
+                  <span v-if="aiGenerating" class="loading-spinner"></span>
+                  {{ aiGenerating ? '生成中...' : '生成' }}
+                </button>
+                <button @click="showAiGenerator = false" class="cancel-btn">取消</button>
+              </div>
+            </div>
           </div>
 
           <div class="param-row">
@@ -196,7 +214,7 @@
                   v-else
                   :key="'output-ref-' + index + '-' + cascaderRefreshKey"
                   v-model="param.nameRef"
-                  :available-variables="customParamVariables"
+                  :available-variables="availableVariables"
                   placeholder="选择变量"
                   class="param-name-cascader"
                   @change="emitUpdate"
@@ -238,6 +256,7 @@ import { Handle } from '@vue-flow/core';
 import { nodeDisplayProps } from './nodeDisplayProps.js';
 import { useNodeAnchorMode } from './useHandlePosition.js';
 import VariableCascader from '../VariableCascader.vue';
+import { workflowApi } from '@/services/workflowApi.js';
 
 const props = defineProps({
   data: { type: Object, required: true },
@@ -265,18 +284,14 @@ const localParseSchemaJson = ref('');
 const localInputs = ref((safeData.inputs && Array.isArray(safeData.inputs)) ? safeData.inputs : []);
 const localOutputs = ref((safeData.outputParams && Array.isArray(safeData.outputParams)) ? safeData.outputParams : []);
 
-// 输出参数引用模式可用变量：仅展示自定义参数名，排除节点输出参数中的引用变量
-const customParamVariables = computed(() => {
-  if (!props.availableVariables || !Array.isArray(props.availableVariables)) return [];
-  return props.availableVariables.filter(v => {
-    const sourceType = v.sourceNodeType || v.nodeType || '';
-    return sourceType === 'start' || sourceType === 'variable' || sourceType === 'set';
-  });
-});
+// AI 校验规则生成
+const showAiGenerator = ref(false);
+const aiDescription = ref('');
+const aiGenerating = ref(false);
 
 // 强制 VariableCascader 刷新 key，当 availableVariables 变化时重新挂载
 const cascaderRefreshKey = ref(0);
-watch(customParamVariables, () => {
+watch(() => props.availableVariables, () => {
   cascaderRefreshKey.value++;
 }, { deep: true });
 
@@ -376,6 +391,39 @@ const handleOutputNameTypeChange = (index) => {
 const removeOutputParam = (index) => {
   localOutputs.value.splice(index, 1);
   emitUpdate();
+};
+
+// AI生成校验规则
+const onAiDescriptionInput = () => {
+  // 自动调整 textarea 高度
+};
+
+const generateValidationRules = async () => {
+  if (!aiDescription.value.trim() || aiGenerating.value) return;
+  
+  aiGenerating.value = true;
+  try {
+    const response = await workflowApi.generateValidationRules(
+      aiDescription.value.trim(),
+      localInputType.value
+    );
+    
+    if (response.success && response.rules && response.rules.length > 0) {
+      localValidationRulesJson.value = JSON.stringify(response.rules, null, 2);
+      if (response.errorMessage) {
+        localValidationErrorMessage.value = response.errorMessage;
+      }
+      showAiGenerator.value = false;
+      aiDescription.value = '';
+      emitUpdate();
+    } else {
+      console.warn('AI生成校验规则失败:', response.message);
+    }
+  } catch (error) {
+    console.error('AI生成校验规则出错:', error);
+  } finally {
+    aiGenerating.value = false;
+  }
 };
 
 const emitUpdate = () => {
@@ -892,5 +940,114 @@ watch(() => props.data, (newData) => {
 
 :deep(.vue-flow__handle[type="source"]:hover) {
   background-color: #ea580c !important;
+}
+
+/* AI 校验规则生成器样式 */
+.validation-rules-container {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.validation-rules-container .multiline-input {
+  flex: 1;
+}
+
+.ai-generate-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border: 1px solid #6366f1;
+  background: #f0f0ff;
+  color: #6366f1;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.ai-generate-btn:hover {
+  background: #6366f1;
+  color: white;
+}
+
+.ai-generator-panel {
+  margin-top: 8px;
+  padding: 12px;
+  background: #f8f9ff;
+  border: 1px solid #e0e0ff;
+  border-radius: 8px;
+}
+
+.ai-desc-input {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 48px;
+}
+
+.ai-generator-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  justify-content: flex-end;
+}
+
+.generate-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  background: #6366f1;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.generate-btn:hover:not(:disabled) {
+  background: #4f46e5;
+}
+
+.generate-btn:disabled {
+  background: #a5b4fc;
+  cursor: not-allowed;
+}
+
+.cancel-btn {
+  padding: 6px 16px;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.cancel-btn:hover {
+  background: #e2e8f0;
+}
+
+.loading-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>

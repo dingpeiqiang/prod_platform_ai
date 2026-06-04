@@ -120,6 +120,13 @@ export const workflowApi = {
     })
   },
 
+  generateValidationRules(description, inputType = 'text') {
+    return post('/api/workflows/generate-validation-rules', { description, inputType }, {
+      baseURL: '',
+      loadingText: 'AI生成校验规则中...'
+    })
+  },
+
   optimize(workflowData) {
     return post('/api/scheduler/optimize', workflowData, { 
       baseURL: '',

@@ -1121,6 +1121,9 @@ class UserInputNodeExecutor(NodeExecutor):
         options = self.node_data.get("options", "")
         required = self.node_data.get("required", True)
         output_var = self.node_data.get("outputVar", "user_input")
+        validation_enabled = self.node_data.get("validationEnabled", self.node_data.get("validation_enabled", False))
+        validation_rules = self.node_data.get("validationRules", self.node_data.get("validation_rules", []))
+        validation_error_message = self.node_data.get("validationErrorMessage", self.node_data.get("validation_error_message", ""))
         
         # 将暂停信息存入上下文，供外部调用获取
         context.set_variable(
@@ -1131,7 +1134,10 @@ class UserInputNodeExecutor(NodeExecutor):
                 "input_type": input_type,
                 "options": [opt.strip() for opt in options.split('\n') if opt.strip()] if options else [],
                 "required": required,
-                "output_var": output_var
+                "output_var": output_var,
+                "validation_enabled": validation_enabled,
+                "validation_rules": validation_rules,
+                "validation_error_message": validation_error_message
             }
         )
         

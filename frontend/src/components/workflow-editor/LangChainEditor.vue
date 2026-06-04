@@ -1438,7 +1438,11 @@ const getAvailableVariables = (nodeId) => {
       case 'http':
       case 'code':
       case 'parser':
-      case 'userInput': {
+      case 'userInput':
+      case 'form':
+      case 'knowledgeBase':
+      case 'loop':
+      case 'end': {
         const nodeOutputs = node.data?.outputParams || [];
         if (nodeOutputs.length > 0) {
           nodeOutputs.forEach((output, index) => {

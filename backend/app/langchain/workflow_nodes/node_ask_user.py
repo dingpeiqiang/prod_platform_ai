@@ -201,19 +201,56 @@ class AskUserNode(WorkflowNode):
         )
     
     async def _validate_input(self, user_input: Any, execution: DelegateExecution) -> tuple[bool, Optional[str]]:
-        """校验用户输入"""
+        """校验用户输入，支持多种规则类型"""
         try:
             validation_rules = execution.get("validation_rules", [])
             
             if not validation_rules:
                 return True, None
             
-            # 简单实现：检查输入是否为空
+            # 输入值为空时的处理
             if not user_input or str(user_input).strip() == "":
-                return False, "输入不能为空"
+                # 检查是否有 required 规则
+                has_required = any(
+                    r.get("type") == "required" 
+                    for r in validation_rules 
+                    if isinstance(r, dict)
+                )
+                if has_required:
+                    return False, "输入不能为空"
+                return True, None
             
-            # 可以根据 validation_rules 实现更复杂的校验
-            # 例如：正则匹配、范围检查等
+            # 导入校验引擎
+            from app.services.validation_service import ValidationEngine
+            
+            # 转换规则格式：将前端规则的 type/value/message 映射到引擎的 rule_type/rule_value/message
+            engine_rules = []
+            for rule in validation_rules:
+                if not isinstance(rule, dict):
+                    continue
+                rule_type = rule.get("type", "")
+                rule_value = rule.get("value")
+                message = rule.get("message", f"校验失败: {rule_type}")
+                
+                # 跳过 required 类型（已在上方处理）
+                if rule_type == "required":
+                    continue
+                
+                engine_rules.append({
+                    "rule_type": rule_type,
+                    "rule_value": rule_value,
+                    "message": message
+                })
+            
+            if not engine_rules:
+                return True, None
+            
+            # 执行校验
+            result = ValidationEngine.validate_field(str(user_input), engine_rules)
+            
+            if not result.valid and result.errors:
+                error_msg = result.errors[0]
+                return False, error_msg
             
             return True, None
         except Exception as e:

@@ -17,6 +17,10 @@ from app.langchain.workflow_init import workflow_engine
 from app.langchain.workflow_converter import WorkflowConverter
 from pydantic import BaseModel
 from typing import List, Dict, Any
+from app.core.logger import get_logger
+from app.services.llm.base import extract_json
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
@@ -813,6 +817,79 @@ async def generate_workflow(request: WorkflowGenerationRequest):
         "description": result["data"].get("description", ""),
         "validation": validation
     }
+
+
+class GenerateValidationRulesRequest(BaseModel):
+    """生成校验规则请求"""
+    description: str
+    inputType: Optional[str] = "text"
+
+
+@router.post("/generate-validation-rules")
+async def generate_validation_rules(request: GenerateValidationRulesRequest):
+    """根据自然语言描述生成用户输入校验规则"""
+    try:
+        from app.services.llm_service import llm_service
+        
+        system_prompt = """你是一个校验规则生成专家。根据用户的需求描述，生成适用于用户输入校验的规则数组。
+
+可用的规则类型：
+1. required - 必填校验，value 可为空
+2. minLength - 最小长度，value 为数字
+3. maxLength - 最大长度，value 为数字  
+4. min - 最小值，value 为数字
+5. max - 最大值，value 为数字
+6. pattern - 正则匹配，value 为正则表达式字符串
+7. email - 邮箱格式，value 可为空
+8. phone - 手机号格式，value 可为空
+9. url - URL格式，value 可为空
+10. enum - 枚举值，value 为数组
+
+请严格按照以下 JSON 格式输出，不要有其他文本：
+{"rules": [{"type": "required", "value": null, "message": "中文错误提示"}, ...], "errorMessage": "默认校验失败提示消息"}"""
+
+        prompt = f"""用户需求：{request.description}
+输入类型：{request.inputType}
+
+请生成合适的校验规则。"""
+
+        result_text = llm_service._call_llm_sync(prompt, system_prompt=system_prompt)
+        
+        if not result_text:
+            return {
+                "success": False,
+                "message": "AI生成失败，请重试",
+                "rules": [],
+                "errorMessage": "您的输入不符合要求，请重新输入"
+            }
+        
+        parsed = extract_json(result_text)
+        
+        if not parsed or not isinstance(parsed, dict):
+            return {
+                "success": False,
+                "message": "AI返回格式异常",
+                "rules": [],
+                "errorMessage": "您的输入不符合要求，请重新输入"
+            }
+        
+        rules = parsed.get("rules", [])
+        error_message = parsed.get("errorMessage", "您的输入不符合要求，请重新输入")
+        
+        return {
+            "success": True,
+            "message": "校验规则生成成功",
+            "rules": rules,
+            "errorMessage": error_message
+        }
+    except Exception as e:
+        logger.error(f"生成校验规则失败: {e}")
+        return {
+            "success": False,
+            "message": f"生成失败: {str(e)}",
+            "rules": [],
+            "errorMessage": "您的输入不符合要求，请重新输入"
+        }
 
 
 class WorkflowExecuteRequest(BaseModel):

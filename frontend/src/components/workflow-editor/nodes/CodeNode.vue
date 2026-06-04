@@ -192,7 +192,7 @@
                   v-else
                   :key="'output-ref-' + index + '-' + cascaderRefreshKey"
                   v-model="param.nameRef"
-                  :available-variables="customParamVariables"
+                  :available-variables="availableVariables"
                   placeholder="选择变量"
                   class="param-name-cascader"
                   @change="emitUpdate"
@@ -303,18 +303,9 @@ const localInputParams = ref(props.data.inputParams || []);
 const localOutputs = ref(props.data.outputParams || []);
 const detectedParams = ref([]);
 
-// 输出参数引用模式可用变量：仅展示自定义参数名，排除节点输出参数中的引用变量
-const customParamVariables = computed(() => {
-  if (!props.availableVariables || !Array.isArray(props.availableVariables)) return [];
-  return props.availableVariables.filter(v => {
-    const sourceType = v.sourceNodeType || v.nodeType || '';
-    return sourceType === 'start' || sourceType === 'variable' || sourceType === 'set';
-  });
-});
-
 // 强制 VariableCascader 刷新 key，当 availableVariables 变化时重新挂载
 const cascaderRefreshKey = ref(0);
-watch(customParamVariables, () => {
+watch(() => props.availableVariables, () => {
   cascaderRefreshKey.value++;
 }, { deep: true });
 
