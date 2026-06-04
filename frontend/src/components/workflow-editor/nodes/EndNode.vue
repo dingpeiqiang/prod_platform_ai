@@ -111,6 +111,7 @@
               </div>
             </template>
         </div>
+      </div>
 
       <div class="config-section">
         <label class="section-label">是否流式输出</label>
