@@ -1166,6 +1166,16 @@ async def resume_workflow(request: WorkflowResumeRequest):
                     "error": last_event.get("error"),
                     "executionLog": execution_results
                 }
+            elif last_event.get("type") == "workflow_waiting":
+                # 校验失败，工作流重新等待用户输入
+                return {
+                    "success": True,
+                    "message": last_event.get("message", "输入校验失败，请重新输入"),
+                    "executionLog": execution_results,
+                    "re_waiting": True,
+                    "waiting_form": last_event.get("waiting_form"),
+                    "waiting_message": last_event.get("message", "您的输入不符合要求，请重新输入")
+                }
         
         return {
             "success": True,

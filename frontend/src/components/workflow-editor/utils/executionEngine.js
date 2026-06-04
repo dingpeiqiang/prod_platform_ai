@@ -137,6 +137,96 @@ export class ExecutionEngine {
     return Object.values(this.nodeExecutionData);
   }
 
+  // 校验用户输入，返回错误消息或 null
+  validateUserInput(inputValue, rules, defaultMessage) {
+    if (!rules || !Array.isArray(rules) || rules.length === 0) return null;
+    
+    const value = (inputValue === null || inputValue === undefined) ? '' : String(inputValue);
+    
+    for (const rule of rules) {
+      if (!rule || typeof rule !== 'object') continue;
+      
+      const type = rule.type || '';
+      const ruleValue = rule.value;
+      const message = rule.message || defaultMessage || `校验失败: ${type}`;
+      
+      switch (type) {
+        case 'required':
+          if (value.trim() === '') {
+            return message;
+          }
+          break;
+          
+        case 'minLength':
+          if (value.length < Number(ruleValue)) {
+            return message;
+          }
+          break;
+          
+        case 'maxLength':
+          if (value.length > Number(ruleValue)) {
+            return message;
+          }
+          break;
+          
+        case 'min':
+          if (isNaN(Number(value)) || Number(value) < Number(ruleValue)) {
+            return message;
+          }
+          break;
+          
+        case 'max':
+          if (isNaN(Number(value)) || Number(value) > Number(ruleValue)) {
+            return message;
+          }
+          break;
+          
+        case 'pattern':
+          try {
+            if (!new RegExp(ruleValue).test(value)) {
+              return message;
+            }
+          } catch (e) {
+            console.warn(`[executionEngine] 正则校验规则无效: ${ruleValue}`, e);
+          }
+          break;
+          
+        case 'email': {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(value)) {
+            return message;
+          }
+          break;
+        }
+          
+        case 'phone': {
+          const phoneRegex = /^1\d{10}$/;
+          if (!phoneRegex.test(value)) {
+            return message;
+          }
+          break;
+        }
+          
+        case 'url': {
+          try {
+            new URL(value);
+          } catch {
+            return message;
+          }
+          break;
+        }
+          
+        case 'enum':
+          if (Array.isArray(ruleValue) && !ruleValue.includes(value)) {
+            return message;
+          }
+          break;
+      }
+    }
+    
+    return null;
+  }
+
   setCallbacks(onStatusChange, onLog, onNodeDataChange = null) {
     this.onStatusChange = onStatusChange;
     this.onLog = onLog;
@@ -466,6 +556,28 @@ export class ExecutionEngine {
 
           const userInputPromise = new Promise((resolve) => {
             this.resumeCallback = (userInputValue) => {
+              // --- 输入校验 ---
+              const validationEnabled = node.data.validationEnabled ?? node.data.validation_enabled ?? false;
+              const validationRules = node.data.validationRules || node.data.validation_rules || [];
+              const validationErrorMessage = node.data.validationErrorMessage || node.data.validation_error_message || '您的输入不符合要求，请重新输入';
+              
+              if (validationEnabled && Array.isArray(validationRules) && validationRules.length > 0) {
+                const error = this.validateUserInput(userInputValue, validationRules, validationErrorMessage);
+                if (error) {
+                  // 校验不通过：更新 pendingInput 显示错误消息，不 resolve 继续等待
+                  this.pendingInput = {
+                    ...this.pendingInput,
+                    validationError: error
+                  };
+                  this.addNodeLog(nodeId, { type: 'warn', message: `校验不通过: ${error}` });
+                  this.addLog('warn', '用户输入校验失败', error, { userInput: userInputValue });
+                  // 触发 UI 更新
+                  if (this.onLog) this.onLog({ type: 'info', message: '请重新输入' });
+                  return; // 不 resolve，继续等待
+                }
+              }
+              // --- 校验结束 ---
+              
               context.variables[outputVar] = userInputValue;
               context.output = userInputValue;
               
@@ -902,6 +1014,28 @@ export class ExecutionEngine {
                   }
                   
                   const submitResult = await submitResponse.json();
+                  
+                  // 处理后端校验失败重新等待的情况
+                  if (submitResult.re_waiting) {
+                    const waitingMessage = submitResult.waiting_message || '您的输入不符合要求，请重新输入';
+                    
+                    this.addNodeLog(nodeId, { type: 'warn', message: `校验不通过: ${waitingMessage}` });
+                    this.addLog('warn', '表单校验失败', waitingMessage, submitResult);
+                    
+                    // 重新设置等待状态，不清除 pendingForm
+                    this.isPaused = true;
+                    // 保持 pendingForm 不变，用于下次重新提交
+                    this.pendingForm = {
+                      ...this.pendingForm,
+                      validationError: waitingMessage,
+                      waitingMessage: waitingMessage
+                    };
+                    
+                    // 重新设置 resumeCallback 以支持再次提交
+                    // 注意：不 resolve，不 reject，保持 promise 挂起等待下次提交
+                    // 这里走的是表单提交重新等待，不需要 resolve
+                    return;
+                  }
                   
                   context.output = submitResult;
                   context.variables['formSubmitResult'] = submitResult;

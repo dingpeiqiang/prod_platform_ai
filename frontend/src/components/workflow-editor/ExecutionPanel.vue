@@ -186,6 +186,14 @@
       </div>
       
       <div class="form-panel-content">
+        <div v-if="waitingForm?.validationError" class="validation-error-banner">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span>{{ waitingForm.validationError }}</span>
+        </div>
         <p v-if="waitingMessage" class="form-message">{{ waitingMessage }}</p>
         
         <DynamicForm
@@ -212,6 +220,15 @@
       
       <div class="input-panel-content">
         <div class="prompt-text">{{ pendingInput.prompt }}</div>
+        
+        <div v-if="pendingInput.validationError" class="validation-error-banner">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span>{{ pendingInput.validationError }}</span>
+        </div>
         
         <div v-if="pendingInput.inputType === 'text'" class="input-field">
           <textarea 
@@ -938,6 +955,26 @@ watch(() => props.logs.length + props.nodeExecutionData.length, async () => {
   margin-bottom: 12px;
   font-size: 14px;
   color: #595959;
+}
+
+.validation-error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: #fff2f0;
+  border: 1px solid #ffccc7;
+  border-radius: 4px;
+  color: #cf1322;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.validation-error-banner svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: #ff4d4f;
 }
 
 .input-field {
