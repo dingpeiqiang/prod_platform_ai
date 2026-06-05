@@ -88,24 +88,24 @@ const placeholderText = '输入提示词，使用 {{变量名}} 引用变量...'
 const displayVarSyntax = '{{变量名}}';
 
 const emitUpdate = () => {
-  // 构建输入输出映射
-  const inputs = {};
-  const outputs = {};
+  // 构建输入输出映射（数组格式）
+  const inputParams = [];
+  const outputParams = [];
   
   if (localInputVar.value) {
-    inputs['input'] = `{{${localInputVar.value}}}`;
+    inputParams.push({ name: 'input', value: `{{${localInputVar.value}}}` });
   }
   
   if (localOutputVar.value) {
-    outputs[localOutputVar.value] = '{{__output__}}';
+    outputParams.push({ name: localOutputVar.value, source: '{{__output__}}' });
   }
   
   emit('update', props.data.id, {
     prompt: localPrompt.value,
     inputVar: localInputVar.value,
     outputVar: localOutputVar.value,
-    inputs: Object.keys(inputs).length > 0 ? inputs : undefined,
-    outputParams: Object.keys(outputs).length > 0 ? outputs : undefined
+    inputParams: inputParams.length > 0 ? inputParams : undefined,
+    outputParams: outputParams.length > 0 ? outputParams : undefined
   });
 };
 

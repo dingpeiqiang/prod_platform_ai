@@ -83,11 +83,6 @@ class AskUserNode(WorkflowNode):
             description="输出变量名称", 
             default="user_input"
         ),
-        "outputParams": ParamSchema(
-            type="list", 
-            required=False, 
-            description="输出参数配置列表（用于LLM解析时）"
-        ),
         
         "required_fields": ParamSchema(
             type="list", 

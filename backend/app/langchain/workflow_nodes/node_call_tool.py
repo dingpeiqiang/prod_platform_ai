@@ -29,7 +29,7 @@ class CallToolNode(WorkflowNode):
             for item in raw_params:
                 if isinstance(item, dict):
                     key = item.get("name") or ""
-                    val = item.get("value") or item.get("val") or ""
+                    val = item.get("value") or ""
                     if key:
                         result[key] = val
             return result

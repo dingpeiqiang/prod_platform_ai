@@ -1919,8 +1919,9 @@ const updateNodeData = (nodeId, data) => {
   
   if (node) {
     node.data = { ...node.data, ...data };
-    // 删除旧的 outputs 字段，统一使用 outputParams
+    // 删除旧的 outputs/inputs 字段，统一使用 outputParams/inputParams
     delete node.data.outputs;
+    delete node.data.inputs;
     markDirty();
     
     // 处理变量节点的变量名变化
@@ -2013,10 +2014,13 @@ const saveWorkflow = async (isAuto = false) => {
     updatedAt: new Date().toISOString()
   };
 
-  // 清理所有节点的旧 outputs 字段，统一使用 outputParams
+  // 清理所有节点的旧 outputs/inputs 字段，统一使用 outputParams/inputParams
   workflowData.nodes.forEach(node => {
     if (node.data && 'outputs' in node.data) {
       delete node.data.outputs;
+    }
+    if (node.data && 'inputs' in node.data) {
+      delete node.data.inputs;
     }
   });
 

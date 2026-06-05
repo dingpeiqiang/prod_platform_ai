@@ -188,9 +188,9 @@ const clearQuery = () => {
 };
 
 const emitUpdate = () => {
-  const outputs = {};
+  const outputParams = [];
   if (localOutputVar.value) {
-    outputs[localOutputVar.value] = '{{__output__}}';
+    outputParams.push({ name: localOutputVar.value, source: '{{__output__}}' });
   }
   
   emit('update', props.data.id, {
@@ -198,7 +198,7 @@ const emitUpdate = () => {
     queryMode: localQueryMode.value,
     queryText: localQueryText.value,
     outputVar: localOutputVar.value,
-    outputParams: Object.keys(outputs).length > 0 ? outputs : undefined
+    outputParams: outputParams.length > 0 ? outputParams : undefined
   });
 };
 
