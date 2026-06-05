@@ -159,29 +159,21 @@
             
             <template v-for="(param, index) in localOutputMappings" :key="index">
               <div v-if="param" class="output-param-item">
-                <div class="param-name-group">
-                  <select v-model="param.nameType" @change="handleOutputNameTypeChange(index)" class="param-name-type-select">
-                    <option value="input">输入</option>
-                    <option value="reference">引用</option>
-                  </select>
-                  <input 
-                    v-if="param.nameType === 'input'" 
-                    v-model="param.name" 
-                    @input="emitUpdate"
-                    type="text"
-                    placeholder="参数名"
-                    class="param-name-input"
-                  />
-                  <VariableCascader
-                    v-else
-                    :key="'output-ref-' + index + '-' + cascaderRefreshKey"
-                    v-model="param.nameRef"
-                    :available-variables="availableVariables"
-                    placeholder="选择变量"
-                    class="param-name-cascader"
-                    @change="emitUpdate"
-                  />
-                </div>
+                <input 
+                  v-model="param.name" 
+                  @input="emitUpdate"
+                  type="text"
+                  placeholder="参数名"
+                  class="param-name-input"
+                />
+                <VariableCascader
+                  :key="'output-source-' + index + '-' + cascaderRefreshKey"
+                  v-model="param.source"
+                  :available-variables="availableVariables"
+                  placeholder="选择来源"
+                  class="param-source-cascader"
+                  @change="emitUpdate"
+                />
                 <select v-model="param.type" @change="emitUpdate" class="param-type-select">
                   <option value="string">string</option>
                   <option value="number">number</option>
@@ -189,7 +181,7 @@
                   <option value="object">object</option>
                   <option value="array">array</option>
                 </select>
-                <input v-if="param.nameType === 'input'" v-model="param.desc" @input="emitUpdate" placeholder="描述" class="param-desc-input" />
+                <input v-model="param.description" @input="emitUpdate" placeholder="描述" class="param-desc-input" />
                 <button @click="removeOutputParam(index)" class="action-btn delete-btn" title="删除">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="18" y1="6" x2="6" y2="18"/>
@@ -489,18 +481,7 @@ const handleCascaderChange = (index, value) => {
 
 // 添加输出参数
 const addOutputParam = () => {
-  localOutputMappings.value.push({ name: '', nameType: 'input', nameRef: '', type: 'string', desc: '', source: '' })
-  emitUpdate()
-}
-
-const handleOutputNameTypeChange = (index) => {
-  const param = localOutputMappings.value[index]
-  if (param.nameType === 'reference') {
-    param.name = ''   // 清除输入值
-    param.desc = ''   // 清除描述
-  } else {
-    param.nameRef = '' // 清除引用值
-  }
+  localOutputMappings.value.push({ name: '', source: '', type: 'string', description: '' })
   emitUpdate()
 }
 
@@ -521,7 +502,7 @@ const toggleOutputField = (name) => {
   if (index >= 0) {
     localOutputMappings.value.splice(index, 1)
   } else {
-    localOutputMappings.value.push({ name, nameType: 'input', nameRef: '', type: 'string', desc: '', source: name })
+    localOutputMappings.value.push({ name, source: name, type: 'string', description: '' })
   }
   emitUpdate()
 }
@@ -538,35 +519,33 @@ const getParamPlaceholder = (type) => {
 }
 
 const emitUpdate = () => {
-  // 转换为 params 对象（key-value 形式）供后端使用
-  const params = {}
-  for (const p of localParams.value) {
-    if (p.name) {
-      params[p.name] = p.type === 'variable' ? p.refValue : p.value
-    }
-  }
+  // 转换为规范的 inputParams 数组格式
+  const inputParams = localParams.value
+    .filter(p => p.name)
+    .map(p => ({
+      name: p.name,
+      value: p.sourceType === 'ref' ? p.refValue : (p.value || '')
+    }));
 
-  // 过滤有效的输出映射
-  const outputMappings = localOutputMappings.value
-    .filter(m => m.name || m.nameRef)
+  // 转换为规范的 outputParams 数组格式
+  const outputParams = localOutputMappings.value
+    .filter(m => m.name)
     .map(m => ({
       name: m.name || '',
-      nameType: m.nameType || 'input',
-      nameRef: m.nameRef || '',
+      source: m.source || '',
       type: m.type || 'string',
-      desc: m.desc || '',
-      source: m.source || ''
-    }))
+      description: m.description || ''
+    }));
 
   emit('update', props.data.id, {
     tool_type: localToolName.value,
     tool_name: localToolName.value,
-    params,
-    outputMappings,
+    inputParams: inputParams.length > 0 ? inputParams : undefined,
+    outputParams: outputParams.length > 0 ? outputParams : undefined,
     timeout: localTimeout.value,
     isAsync: localAsync.value,
     silent: localSilent.value
-  })
+  });
 }
 
 watch(() => props.data, (d) => {
@@ -574,14 +553,12 @@ watch(() => props.data, (d) => {
   localTimeout.value = d.timeout || 60
   localAsync.value = d.isAsync || false
   localSilent.value = d.silent || false
-  localOutputMappings.value = (d.outputMappings && Array.isArray(d.outputMappings)) 
-    ? d.outputMappings.map(m => ({ 
-      name: m.name || m.target || '', 
-      nameType: m.nameType || 'input', 
-      nameRef: m.nameRef || '', 
-      type: m.type || 'string', 
-      desc: m.desc || '', 
-      source: m.source || '' 
+  localOutputMappings.value = (d.outputParams && Array.isArray(d.outputParams))
+    ? d.outputParams.map(m => ({
+      name: m.name || m.target || '',
+      source: m.source || '',
+      type: m.type || 'string',
+      description: m.description || m.desc || ''
     }))
     : []
 
@@ -591,10 +568,15 @@ watch(() => props.data, (d) => {
     syncParamsFromSchema(tool)
     
     // 如果有已保存的参数值，覆盖默认值
-    if (d.params && Object.keys(d.params).length > 0) {
-      for (const param of localParams.value) {
-        if (d.params[param.name] !== undefined) {
-          param.value = d.params[param.name]
+    if (d.inputParams && Array.isArray(d.inputParams) && d.inputParams.length > 0) {
+      for (const inputParam of d.inputParams) {
+        const existingParam = localParams.value.find(p => p.name === inputParam.name);
+        if (existingParam) {
+          existingParam.value = inputParam.value || '';
+          existingParam.sourceType = (inputParam.value && inputParam.value.startsWith('{{')) ? 'ref' : 'input';
+          if (existingParam.sourceType === 'ref') {
+            existingParam.refValue = inputParam.value || '';
+          }
         }
       }
     }

@@ -294,28 +294,20 @@
           </div>
             <template v-for="(param, index) in localOutputs" :key="index">
               <div v-if="param" class="output-param-item">
-                <div class="param-name-group">
-                  <select v-model="param.nameType" @change="handleOutputNameTypeChange(index)" class="param-name-type-select">
-                    <option value="input">输入</option>
-                    <option value="reference">引用</option>
-                  </select>
-                  <input 
-                    v-if="param.nameType === 'input'" 
-                    v-model="param.name" 
-                    @input="emitUpdate" 
-                    placeholder="参数名" 
-                    class="param-name-input"
-                  />
-                  <VariableCascader
-                    v-else
-                    :key="'output-ref-' + index + '-' + cascaderRefreshKey"
-                    v-model="param.nameRef"
-                    :available-variables="availableVariables"
-                    placeholder="选择变量"
-                    class="param-name-cascader"
-                    @change="emitUpdate"
-                  />
-                </div>
+                <input 
+                  v-model="param.name" 
+                  @input="emitUpdate" 
+                  placeholder="参数名" 
+                  class="param-name-input"
+                />
+                <VariableCascader
+                  :key="'output-source-' + index + '-' + cascaderRefreshKey"
+                  v-model="param.source"
+                  :available-variables="availableVariables"
+                  placeholder="选择来源"
+                  class="param-source-cascader"
+                  @change="emitUpdate"
+                />
                 <select v-model="param.type" @change="emitUpdate" class="param-type-select">
                   <option value="string">string</option>
                   <option value="number">number</option>
@@ -324,7 +316,7 @@
                   <option value="array">array</option>
                   <option value="json">json</option>
                 </select>
-                <input v-if="param.nameType === 'input'" v-model="param.desc" @input="emitUpdate" placeholder="描述" class="param-desc-input" />
+                <input v-model="param.description" @input="emitUpdate" placeholder="描述" class="param-desc-input" />
                 <button @click="removeOutputParam(index)" class="action-btn delete-btn" title="删除">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="18" y1="6" x2="6" y2="18"/>
@@ -486,18 +478,7 @@ const removeInputParam = (index) => {
 };
 
 const addOutputParam = () => {
-  localOutputs.value.push({ name: '', nameType: 'input', nameRef: '', type: 'string', desc: '' });
-  emitUpdate();
-};
-
-const handleOutputNameTypeChange = (index) => {
-  const param = localOutputs.value[index];
-  if (param.nameType === 'reference') {
-    param.name = '';   // 清除输入值
-    param.desc = '';   // 清除描述
-  } else {
-    param.nameRef = ''; // 清除引用值
-  }
+  localOutputs.value.push({ name: '', source: '', type: 'string', description: '' });
   emitUpdate();
 };
 
@@ -508,6 +489,25 @@ const removeOutputParam = (index) => {
 
 const emitUpdate = () => {
   if (!props.data || !props.data.id) return;
+
+  // 将前端输入参数格式映射为规范的 inputParams 格式
+  const inputParams = localInputs.value
+    .filter(p => p && p.name)
+    .map(p => ({
+      name: p.name,
+      value: p.valueType === 'reference' ? p.refValue : (p.defaultValue || '')
+    }));
+
+  // 将前端输出参数格式映射为规范的 outputParams 格式
+  const outputParams = localOutputs.value
+    .filter(p => p && p.name)
+    .map(p => ({
+      name: p.name || '',
+      source: p.source || '',
+      type: p.type || 'string',
+      description: p.description || ''
+    }));
+
   emit('update', props.data.id, {
     label: localLabel.value,
     model: localModel.value,
@@ -518,8 +518,8 @@ const emitUpdate = () => {
     systemPrompt: localSystemPrompt.value,
     prompt: localPrompt.value,
     keepHistory: localKeepHistory.value,
-    inputs: localInputs.value,
-    outputParams: localOutputs.value
+    inputParams: inputParams.length > 0 ? inputParams : undefined,
+    outputParams: outputParams.length > 0 ? outputParams : undefined
   });
 };
 
@@ -534,13 +534,21 @@ watch(() => props.data, (newData) => {
   localSystemPrompt.value = newData.systemPrompt || '';
   localPrompt.value = newData.prompt || '';
   localKeepHistory.value = newData.keepHistory ?? false;
-  localInputs.value = newData.inputs || [];
-  localOutputs.value = (newData.outputParams || []).map(p => ({ 
-    name: p.name || '', 
-    nameType: p.nameType || 'input', 
-    nameRef: p.nameRef || '', 
-    type: p.type || 'string', 
-    desc: p.desc || '' 
+  // 从规范的 inputParams 格式还原为前端表单格式
+  localInputs.value = (newData.inputParams || []).map(p => ({
+    name: p.name || '',
+    valueType: (p.value && p.value.startsWith('{{')) ? 'reference' : 'input',
+    defaultValue: (p.value && !p.value.startsWith('{{')) ? p.value : '',
+    refValue: (p.value && p.value.startsWith('{{')) ? p.value : '',
+    selectedNodeId: '',
+    cascaderValue: []
+  }));
+  // 从规范的 outputParams 格式还原为前端表单格式
+  localOutputs.value = (newData.outputParams || []).map(p => ({
+    name: p.name || '',
+    source: p.source || '',
+    type: p.type || 'string',
+    description: p.description || p.desc || ''
   }));
 }, { deep: true });
 </script>

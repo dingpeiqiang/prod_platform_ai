@@ -327,13 +327,25 @@ class WorkflowConverter:
                 params['parse_prompt'] = params['parsePrompt']
             if 'parseSchema' in params and 'parse_schema' not in params:
                 params['parse_schema'] = params['parseSchema']
-            
+
             # 处理选项列表：将换行分隔的字符串转换为数组
             if 'options' in params and isinstance(params['options'], str):
                 options_str = params['options']
                 options_list = [opt.strip() for opt in options_str.split('\n') if opt.strip()]
                 if options_list:
                     params['options'] = options_list
+
+        # variable 节点：字段映射 (varName→variable_name, varValue→variable_value)
+        if node_type == 'variable':
+            if 'varName' in params and 'variable_name' not in params:
+                params['variable_name'] = params['varName']
+            if 'varValue' in params and 'variable_value' not in params:
+                params['variable_value'] = params['varValue']
+            # 兼容 variableName/variableValue 格式
+            if 'variableName' in params and 'variable_name' not in params:
+                params['variable_name'] = params['variableName']
+            if 'variableValue' in params and 'variable_value' not in params:
+                params['variable_value'] = params['variableValue']
         
         return params
     

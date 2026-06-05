@@ -73,27 +73,21 @@
           <template v-for="(param, index) in localOutputParams" :key="index">
             <div v-if="param" class="output-param-item">
               <div class="param-name-group">
-                <select v-model="param.nameType" @change="handleOutputNameTypeChange(index)" class="param-name-type-select">
-                  <option value="input">输入</option>
-                  <option value="reference">引用</option>
-                </select>
                 <input 
-                  v-if="param.nameType === 'input'" 
                   v-model="param.name" 
                   @input="emitUpdate"
                   class="param-name-input"
                   placeholder="参数名"
                 />
-                <VariableCascader
-                  v-else
-                  :key="'output-ref-' + index + '-' + cascaderRefreshKey"
-                  v-model="param.nameRef"
-                  :available-variables="availableVariables"
-                  placeholder="选择变量"
-                  class="param-name-cascader"
-                  @change="emitUpdate"
-                />
               </div>
+              <VariableCascader
+                :key="'output-source-' + index + '-' + cascaderRefreshKey"
+                v-model="param.source"
+                :available-variables="availableVariables"
+                placeholder="选择来源变量"
+                class="param-source-cascader"
+                @change="emitUpdate"
+              />
               <select v-model="param.type" @change="emitUpdate" class="param-type-select">
                 <option value="string">string</option>
                 <option value="number">number</option>
@@ -101,7 +95,7 @@
                 <option value="object">object</option>
                 <option value="array">array</option>
               </select>
-              <input v-if="param.nameType === 'input'" v-model="param.desc" @input="emitUpdate" placeholder="描述" class="param-desc-input" />
+              <input v-model="param.description" @input="emitUpdate" placeholder="描述" class="param-desc-input" />
               <button @click="removeOutputParam(index)" class="action-btn delete-btn" title="删除">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="18" y1="6" x2="6" y2="18"/>
@@ -271,22 +265,10 @@ const toggleAnswerSection = () => {
 const addOutputParam = () => {
   localOutputParams.value.push({
     name: '',
-    nameType: 'input',
-    nameRef: '',
+    source: '',
     type: 'string',
-    desc: ''
+    description: ''
   });
-  emitUpdate();
-};
-
-const handleOutputNameTypeChange = (index) => {
-  const param = localOutputParams.value[index];
-  if (param.nameType === 'reference') {
-    param.name = '';   // 清除输入值
-    param.desc = '';   // 清除描述
-  } else {
-    param.nameRef = ''; // 清除引用值
-  }
   emitUpdate();
 };
 
@@ -301,12 +283,11 @@ watch(() => props.data, (newData) => {
   if (newData) {
     localLabel.value = newData.label || '结束节点';
     localResponseMode.value = newData.responseMode || 'text';
-    localOutputParams.value = (newData.outputParams || []).map(p => ({ 
-    name: p.name || '', 
-    nameType: p.nameType || 'input', 
-    nameRef: p.nameRef || '', 
-    type: p.type || 'string', 
-    desc: p.desc || '' 
+    localOutputParams.value = (newData.outputParams || []).map(p => ({
+    name: p.name || '',
+    source: p.source || '',
+    type: p.type || 'string',
+    description: p.description || p.desc || ''
   }));
     localStreaming.value = newData.streaming !== undefined ? newData.streaming : false;
     localAnswerContent.value = newData.answerContent || '';
@@ -540,28 +521,13 @@ watch(() => props.data, (newData) => {
   min-width: 0;
 }
 
-.param-name-type-select {
-  padding: 8px 4px;
-  border: 1px solid #d9d9d9;
-  border-radius: 4px;
-  font-size: 12px;
-  background: white;
-  flex-shrink: 0;
-  width: 56px;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-  background-position: right 4px center;
-  background-repeat: no-repeat;
-  background-size: 10px;
-  padding-right: 18px;
-}
-
+.param-name-type-select,
 .param-name-type-select:focus {
-  outline: none;
-  border-color: #7c3aed;
+  /* deprecated - kept for backwards compatibility */
 }
 
-.param-name-cascader {
+.param-name-cascader,
+.param-source-cascader {
   flex: 1;
   min-width: 0;
   font-size: 13px;

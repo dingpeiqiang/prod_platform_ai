@@ -468,7 +468,8 @@ export class ExecutionEngine {
           }
           
           let finalOutput = context.output;
-          
+
+          // 使用规范的 outputParams 格式处理输出
           const outputs = node.data.outputParams || [];
           const needJsonParse = outputs.some(param => param && param.type === 'json');
           
@@ -487,46 +488,53 @@ export class ExecutionEngine {
             context.variables[node.data.outputVar] = finalOutput;
           }
           
+          // 解析 LLM 响应为 JSON
+          let responseJson = null;
+          try {
+            if (typeof finalOutput === 'string') {
+              responseJson = extractJson(finalOutput);
+            } else if (typeof finalOutput === 'object') {
+              responseJson = finalOutput;
+            }
+          } catch (e) {
+            // ignore parse errors
+          }
+          
           for (const outputParam of outputs) {
-            if (!outputParam.name && !outputParam.nameRef) continue;
+            if (!outputParam || !outputParam.name) continue;
             
-            let paramName = outputParam.name;
-            if (outputParam.nameType === 'reference' && outputParam.nameRef) {
-              const keys = outputParam.nameRef.split('.');
-              let nameValue = context.variables;
-              for (const key of keys) {
-                if (nameValue === undefined || nameValue === null) break;
-                nameValue = nameValue[key];
-              }
-              paramName = nameValue || paramName;
-            }
+            const paramName = outputParam.name;
+            const source = outputParam.source || '';
+            const outType = outputParam.type || 'string';
             
-            if (!paramName) continue;
-            
-            let paramValue = outputParam.value;
-            
-            if (outputParam.sourceType === 'reference') {
-              if (outputParam.value) {
-                const keys = outputParam.value.split('.');
-                let value = context.variables;
-                for (const key of keys) {
-                  if (value === undefined || value === null) break;
-                  value = value[key];
-                }
-                paramValue = value;
-              }
-            } else if (outputParam.sourceType === 'expression') {
-              paramValue = this.evaluateExpression(outputParam.value || '', context.variables);
-            } else if (outputParam.sourceType === 'node') {
+            let paramValue;
+            // 根据 source 获取值
+            if (source === 'response_json' || source === 'parsed_result') {
+              paramValue = responseJson;
+            } else if (source === 'response') {
+              paramValue = finalOutput;
+            } else if (source === 'model') {
+              paramValue = node.data.model || 'qwen-plus';
+            } else if (source && responseJson && typeof responseJson === 'object') {
+              // 从解析后的 JSON 中提取特定字段
+              paramValue = responseJson[source];
+            } else {
               paramValue = finalOutput;
             }
             
-            if (paramValue === undefined || paramValue === null) {
-              paramValue = finalOutput;
+            // 类型转换
+            if (outType === 'string' && typeof paramValue === 'object') {
+              paramValue = JSON.stringify(paramValue);
+            } else if (outType === 'object' && typeof paramValue === 'string') {
+              try {
+                paramValue = JSON.parse(paramValue);
+              } catch (e) {
+                // keep as string if parse fails
+              }
             }
             
             context.variables[paramName] = paramValue;
-            this.addNodeLog(nodeId, { type: 'info', message: `输出参数 ${paramName} = ${paramValue}` });
+            this.addNodeLog(nodeId, { type: 'info', message: `输出参数 ${paramName} = ${typeof paramValue === 'object' ? JSON.stringify(paramValue).substring(0, 50) : paramValue}` });
           }
           
           this.updateNodeData(nodeId, { output: finalOutput });
@@ -589,47 +597,37 @@ export class ExecutionEngine {
               context.variables[outputVar] = userInputValue;
               context.output = userInputValue;
               
+              // 使用规范的 outputParams 格式处理输出
               const outputParams = node.data.outputParams || [];
               for (const param of outputParams) {
-                if (!param.name && !param.nameRef) continue;
+                if (!param || !param.name) continue;
                 
-                let paramName = param.name;
-                if (param.nameType === 'reference' && param.nameRef) {
-                  const keys = param.nameRef.split('.');
-                  let nameValue = context.variables;
-                  for (const key of keys) {
-                    if (nameValue === undefined || nameValue === null) break;
-                    nameValue = nameValue[key];
-                  }
-                  paramName = nameValue || paramName;
-                }
+                const paramName = param.name;
+                const source = param.source || '';
+                const outType = param.type || 'string';
                 
-                if (!paramName) continue;
-                
-                let paramValue = param.value;
-                
-                if (param.sourceType === 'reference') {
-                  if (param.value) {
-                    const keys = param.value.split('.');
-                    let value = context.variables;
-                    for (const key of keys) {
-                      if (value === undefined || value === null) break;
-                      value = value[key];
-                    }
-                    paramValue = value;
-                  }
-                } else if (param.sourceType === 'expression') {
-                  paramValue = this.evaluateExpression(param.value || '', context.variables);
-                } else if (param.sourceType === 'node') {
+                let paramValue;
+                if (source === 'user_input' || source === 'output') {
+                  paramValue = userInputValue;
+                } else if (source && context.variables[source] !== undefined) {
+                  paramValue = context.variables[source];
+                } else {
                   paramValue = userInputValue;
                 }
                 
-                if (paramValue === undefined || paramValue === null) {
-                  paramValue = userInputValue;
+                // 类型转换
+                if (outType === 'string' && typeof paramValue === 'object') {
+                  paramValue = JSON.stringify(paramValue);
+                } else if (outType === 'object' && typeof paramValue === 'string') {
+                  try {
+                    paramValue = JSON.parse(paramValue);
+                  } catch (e) {
+                    // keep as string
+                  }
                 }
                 
                 context.variables[paramName] = paramValue;
-                this.addNodeLog(nodeId, { type: 'info', message: `输出参数 ${paramName} = ${paramValue}` });
+                this.addNodeLog(nodeId, { type: 'info', message: `输出参数 ${paramName} = ${typeof paramValue === 'object' ? JSON.stringify(paramValue).substring(0, 50) : paramValue}` });
               }
               
               this.updateNodeData(nodeId, { output: userInputValue });
@@ -1187,35 +1185,39 @@ export class ExecutionEngine {
           const outputResult = {};
           
           for (const param of outputParams) {
-            if (!param.name && !param.nameRef) continue;
+            if (!param || !param.name) continue;
             
-            let paramName = param.name;
-            if (param.nameType === 'reference' && param.nameRef) {
-              const keys = param.nameRef.split('.');
-              let nameValue = context.variables;
+            const paramName = param.name;
+            const source = param.source || '';
+            const outType = param.type || 'string';
+            
+            let paramValue;
+            // 根据 source 获取值
+            if (source) {
+              // source 可能是 {{variable}} 格式或直接变量名
+              const sourceRef = source.replace(/^\{\{|\}\}$/g, '');
+              const keys = sourceRef.split('.');
+              let value = context.variables;
               for (const key of keys) {
-                if (nameValue === undefined || nameValue === null) break;
-                nameValue = nameValue[key];
+                if (value === undefined || value === null) break;
+                value = value[key];
               }
-              paramName = nameValue || param.name;
+              paramValue = value;
             }
             
-            if (!paramName) continue;
+            if (paramValue === undefined || paramValue === null) {
+              paramValue = context.variables[paramName] || context.output;
+            }
             
-            let paramValue = param.value;
-            
-            if (param.sourceType === 'reference') {
-              if (param.value) {
-                const keys = param.value.split('.');
-                let value = context.variables;
-                for (const key of keys) {
-                  if (value === undefined || value === null) break;
-                  value = value[key];
-                }
-                paramValue = value;
+            // 类型转换
+            if (outType === 'string' && typeof paramValue === 'object') {
+              paramValue = JSON.stringify(paramValue);
+            } else if (outType === 'object' && typeof paramValue === 'string') {
+              try {
+                paramValue = JSON.parse(paramValue);
+              } catch (e) {
+                // keep as string
               }
-            } else if (param.sourceType === 'expression') {
-              paramValue = this.evaluateExpression(param.value || '', context.variables);
             }
             
             outputResult[paramName] = paramValue;

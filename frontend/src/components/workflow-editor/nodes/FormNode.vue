@@ -290,23 +290,23 @@ const getParamPlaceholder = (type) => {
 }
 
 const emitUpdate = () => {
-  const params = {}
-  for (const p of localParams.value) {
-    if (p.name) {
-      params[p.name] = p.value
-    }
-  }
+  const inputParams = localParams.value
+    .filter(p => p.name)
+    .map(p => ({
+      name: p.name,
+      value: p.value || ''
+    }));
 
   emit('update', props.data.id, {
     ontologyCode: localOntologyCode.value,
     toolType: localToolName.value,
     toolName: localToolName.value,
-    params,
+    inputParams: inputParams.length > 0 ? inputParams : undefined,
     timeout: localTimeout.value,
     model: localModel.value,
     temperature: localTemperature.value,
     inputVariable: localInputVariable.value
-  })
+  });
 }
 
 const toggleAdvanced = () => {
@@ -328,7 +328,7 @@ watch(() => props.data, (d) => {
     const schema = tool.input_schema || {}
     const properties = schema.properties || {}
 
-    if (d.params && Object.keys(d.params).length > 0) {
+    if (d.inputParams && Array.isArray(d.inputParams) && d.inputParams.length > 0) {
       localParams.value = Object.entries(properties).map(([name, prop]) => {
         const inferType = (p) => {
           const t = p.type || 'string'
@@ -338,10 +338,11 @@ watch(() => props.data, (d) => {
           if (t === 'object') return 'object'
           return 'string'
         }
+        const inputParam = d.inputParams.find(p => p.name === name);
         return {
           name,
           type: inferType(prop),
-          value: d.params[name] !== undefined ? d.params[name] : prop.default || ''
+          value: inputParam ? inputParam.value : (prop.default || '')
         }
       })
     }

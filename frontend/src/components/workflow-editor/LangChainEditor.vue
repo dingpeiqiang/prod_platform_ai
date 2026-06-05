@@ -1618,10 +1618,10 @@ const handleNodeRun = async () => {
   executionEngine.setCallbacks(onStatusChange, onLog, onNodeDataChange);
 
   const inputData = {};
-  if (node.data.inputs && Array.isArray(node.data.inputs)) {
-    node.data.inputs.forEach(param => {
-      if (param.valueType === 'input' && param.defaultValue) {
-        inputData[param.name] = param.defaultValue;
+  if (node.data.inputParams && Array.isArray(node.data.inputParams)) {
+    node.data.inputParams.forEach(param => {
+      if (param.value && !param.value.startsWith('{{')) {
+        inputData[param.name] = param.value;
       }
     });
   }
