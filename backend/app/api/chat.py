@@ -1214,17 +1214,81 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                 yield done_event(intent_type, is_form=False, intent_data=intent_data)
                                 return
 
-                            tool_result = await execute_tool_calls(intent_data)
-                            tool_results = tool_result["tool_results"]
-                            extracted = tool_result["extracted"]
+                            # 执行工具调用（支持流式工作流步骤）
+                            tool_results = []
+                            extracted = {}
+                            workflow_waiting = None
+                            
+                            tool_calls = intent_data.get("tool_calls", [])
+                            if tool_calls:
+                                for tc in tool_calls:
+                                    tool_name = tc.get("name")
+                                    tool_args = tc.get("arguments", {})
+                                    
+                                    # 特殊处理工作流执行工具，实时发送步骤事件
+                                    if tool_name == "execute_workflow":
+                                        yield thinking(f"🔄 开始执行工作流: {tool_args.get('workflow_code', 'unknown')}")
+                                        workflow_result = _execute_workflow_with_stream(tool_args.get("workflow_code"), tool_args.get("inputs", {}))
+                                        async for event in workflow_result:
+                                            if event["type"] == "workflow_step":
+                                                # 发送工作流步骤事件到前端（会被 useChatStream.js 处理）
+                                                yield sse({
+                                                    "type": event["step_type"],
+                                                    "step": event["step"],
+                                                    "name": event["name"],
+                                                    "result": event.get("result"),
+                                                    "error": event.get("error")
+                                                })
+                                            elif event["type"] == "workflow_waiting":
+                                                workflow_waiting = {
+                                                    "execution_id": event.get("execution_id"),
+                                                    "waiting_form": event.get("waiting_form"),
+                                                    "message": event.get("message"),
+                                                }
+                                                tool_results.append({
+                                                    "name": tool_name,
+                                                    "success": True,
+                                                    "waiting": True
+                                                })
+                                            elif event["type"] == "workflow_result":
+                                                tool_results.append({
+                                                    "name": tool_name,
+                                                    "success": event.get("success", True),
+                                                    "fields": list(event.get("outputs", {}).keys())
+                                                })
+                                                if event.get("success"):
+                                                    extracted.update(event.get("outputs", {}))
+                                                else:
+                                                    extracted["error"] = event.get("error")
+                                            elif event["type"] == "workflow_complete":
+                                                yield sse({"type": "workflow_complete", "workflow_id": event.get("workflow_id")})
+                                    else:
+                                        # 普通工具调用
+                                        hub = get_toolhub()
+                                        if hub.has_tool(tool_name):
+                                            exec_result = await hub.execute(tool_name, tool_args)
+                                            if exec_result.get("success"):
+                                                tool_result = exec_result.get("result", {})
+                                                if isinstance(tool_result, dict):
+                                                    extracted.update(tool_result)
+                                                tool_results.append({
+                                                    "name": tool_name,
+                                                    "success": True,
+                                                    "fields": list(tool_result.keys()) if isinstance(tool_result, dict) else []
+                                                })
+                                            else:
+                                                err = exec_result.get("error", "未知错误")
+                                                tool_results.append({"name": tool_name, "success": False, "error": str(err)})
+                                        else:
+                                            tool_results.append({"name": tool_name, "success": False, "error": "工具不存在"})
 
-                            workflow_waiting = tool_result.get("workflow_waiting")
+                            intent_data["extractedFields"] = extracted
+
                             if workflow_waiting:
                                 message = workflow_waiting.get("message", "请提供以下信息")
                                 execution_id = workflow_waiting.get("execution_id", "")
 
                                 yield thinking(f"⏳ {message}")
-                                # 发送 text 事件，让用户在聊天窗口看到消息
                                 yield sse({"type": "text_start"})
                                 yield sse({"type": "text", "content": message})
                                 yield sse({"type": "text_end"})
@@ -1621,3 +1685,157 @@ async def test_llm_call():
         "result": result,
         "message": "请查看后端控制台日志"
     }
+
+
+async def _execute_workflow_with_stream(workflow_code: str, inputs: dict = None) -> AsyncGenerator[dict, None]:
+    """
+    执行工作流并实时返回步骤事件
+    
+    Args:
+        workflow_code: 工作流编码
+        inputs: 输入参数字典
+        
+    Yields:
+        工作流步骤事件，包含步骤开始、完成、失败等信息
+    """
+    from app.services.workflow_service import WorkflowService
+    from app.langchain.workflow_init import workflow_engine
+    from app.langchain.workflow_converter import WorkflowConverter
+    from app.core.database import SessionLocal
+    
+    if inputs is None:
+        inputs = {}
+    
+    db = SessionLocal()
+    try:
+        workflow_result = WorkflowService.get_workflow(workflow_code, db)
+        
+        if not workflow_result["success"]:
+            yield {
+                "type": "workflow_result",
+                "success": False,
+                "error": f"工作流 '{workflow_code}' 不存在或已被禁用"
+            }
+            return
+        
+        workflow_data = workflow_result["data"]
+        
+        if not workflow_data.get("isActive", True):
+            yield {
+                "type": "workflow_result",
+                "success": False,
+                "error": f"工作流 '{workflow_code}' 已被禁用"
+            }
+            return
+        
+        workflow_def_raw = workflow_data.get("workflowData", {})
+        
+        if not workflow_def_raw or not workflow_def_raw.get("nodes"):
+            yield {
+                "type": "workflow_result",
+                "success": False,
+                "error": f"工作流 '{workflow_code}' 定义不完整"
+            }
+            return
+        
+        workflow_id = workflow_data.get("workflowCode", workflow_code)
+        workflow_name = workflow_data.get("workflowName", "未命名工作流")
+        engine_workflow = WorkflowConverter.convert(workflow_def_raw, workflow_id, workflow_name, db)
+        
+        workflow_def = workflow_engine._parse_workflow_definition(engine_workflow)
+        workflow_engine.register_workflow(workflow_def)
+        
+        execution_id = None
+        outputs = {}
+        errors = []
+        
+        async for event in workflow_engine.run(workflow_id, inputs):
+            event_type = event.get("type")
+            
+            if event_type == "workflow_start":
+                execution_id = event.get("workflow_id")
+                yield {
+                    "type": "workflow_step",
+                    "step_type": "workflow_start",
+                    "step": execution_id,
+                    "name": workflow_name
+                }
+                
+            elif event_type == "step_start":
+                yield {
+                    "type": "workflow_step",
+                    "step_type": "step_start",
+                    "step": event.get("step"),
+                    "name": event.get("name", "")
+                }
+                
+            elif event_type == "step_complete":
+                yield {
+                    "type": "workflow_step",
+                    "step_type": "step_complete",
+                    "step": event.get("step"),
+                    "name": event.get("name", ""),
+                    "result": event.get("result")
+                }
+                outputs.update(event.get("result", {}))
+                
+            elif event_type == "step_failed":
+                yield {
+                    "type": "workflow_step",
+                    "step_type": "step_failed",
+                    "step": event.get("step"),
+                    "name": event.get("name", ""),
+                    "error": event.get("error")
+                }
+                errors.append(event.get("error", "未知错误"))
+                
+            elif event_type == "step_skipped":
+                yield {
+                    "type": "workflow_step",
+                    "step_type": "step_skipped",
+                    "step": event.get("step"),
+                    "name": event.get("name", "")
+                }
+                
+            elif event_type == "workflow_waiting":
+                yield {
+                    "type": "workflow_waiting",
+                    "execution_id": event.get("workflow_id"),
+                    "waiting_form": event.get("waiting_form"),
+                    "message": event.get("message", "等待用户输入")
+                }
+                return
+                
+            elif event_type == "workflow_complete":
+                outputs.update(event.get("outputs", {}))
+                yield {
+                    "type": "workflow_step",
+                    "step_type": "workflow_complete",
+                    "step": execution_id,
+                    "name": workflow_name,
+                    "result": outputs
+                }
+        
+        if errors:
+            yield {
+                "type": "workflow_result",
+                "success": False,
+                "error": errors[0] if errors else "工作流执行失败",
+                "execution_id": execution_id
+            }
+        else:
+            yield {
+                "type": "workflow_result",
+                "success": True,
+                "outputs": outputs,
+                "execution_id": execution_id
+            }
+            
+    except Exception as e:
+        yield {
+            "type": "workflow_result",
+            "success": False,
+            "error": f"工作流执行失败: {str(e)}"
+        }
+    finally:
+        db.close()

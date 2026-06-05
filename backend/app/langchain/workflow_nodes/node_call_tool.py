@@ -11,7 +11,7 @@ class CallToolNode(WorkflowNode):
     config_fields = {
         "tool_name": ParamSchema(type="str", required=True, description="工具名称"),
         "tool_type": ParamSchema(type="str", required=False, description="工具类型"),
-        "params": ParamSchema(type="list", required=False, description="工具参数", default=[]),
+        "inputParams": ParamSchema(type="list", required=False, description="输入参数列表", default=[]),
     }
     output_fields = {
         "result": ParamSchema(type="any", description="工具执行结果"),
@@ -38,7 +38,7 @@ class CallToolNode(WorkflowNode):
     async def execute(self, execution: DelegateExecution) -> None:
         tool_name = execution.get("tool_name", "")
         tool_type = execution.get("tool_type", "")
-        raw_params = execution.get("params", [])
+        raw_params = execution.get("inputParams", [])
         params = self._params_list_to_dict(raw_params)
 
         self._log_input(tool_name=tool_name, tool_type=tool_type,

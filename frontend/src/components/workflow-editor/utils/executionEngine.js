@@ -98,6 +98,10 @@ export class ExecutionEngine {
       logs: [],         // 执行日志
       error: null
     };
+    // 触发节点数据变化回调，实现流式更新
+    if (this.onNodeDataChange) {
+      this.onNodeDataChange(this.getNodeExecutionData());
+    }
   }
 
   // 更新节点执行数据
@@ -130,6 +134,10 @@ export class ExecutionEngine {
     nodeData.status = status;
     nodeData.endTime = Date.now();
     nodeData.duration = nodeData.endTime - nodeData.startTime;
+    // 触发节点数据变化回调，实现流式更新
+    if (this.onNodeDataChange) {
+      this.onNodeDataChange(this.getNodeExecutionData());
+    }
   }
 
   // 获取所有节点的执行数据（用于ExecutionPanel）
@@ -805,6 +813,7 @@ export class ExecutionEngine {
             this.addLog('error', '条件分支执行失败', '没有找到匹配的分支条件', { branches: node.data.branches });
             this.addNodeLog(nodeId, { type: 'error', message: '没有找到匹配的分支条件' });
             this.setNodeStatus(nodeId, 'completed');
+            this.completeNodeExecution(nodeId, 'error');
             console.log('[DEBUG] ==================== 条件节点执行结束（无匹配分支） ====================');
             return;
           }
@@ -817,6 +826,7 @@ export class ExecutionEngine {
             this.addLog('error', '条件分支执行失败', '分支配置不完整，缺少 handle 属性', { branch: currentBranch });
             this.addNodeLog(nodeId, { type: 'error', message: '分支配置不完整，缺少 handle 属性' });
             this.setNodeStatus(nodeId, 'completed');
+            this.completeNodeExecution(nodeId, 'error');
             console.log('[DEBUG] ==================== 条件节点执行结束（分支配置错误） ====================');
             return;
           }
@@ -835,6 +845,7 @@ export class ExecutionEngine {
             this.addLog('error', '条件分支执行失败', `未找到 handle 为 "${branchHandle}" 的输出边`, { branchHandle, edges: allOutgoingEdges });
             this.addNodeLog(nodeId, { type: 'error', message: `未找到 handle 为 "${branchHandle}" 的输出边` });
             this.setNodeStatus(nodeId, 'completed');
+            this.completeNodeExecution(nodeId, 'error');
             console.log('[DEBUG] ==================== 条件节点执行结束（无输出边） ====================');
             return;
           }
@@ -845,6 +856,7 @@ export class ExecutionEngine {
             await this.executeNode(edge.target, nodes, edges, context);
           }
           this.setNodeStatus(nodeId, 'completed');
+          this.completeNodeExecution(nodeId, 'completed');
           console.log('[DEBUG] ==================== 条件节点执行结束（成功） ====================');
           return;
         }
@@ -878,6 +890,7 @@ export class ExecutionEngine {
             await this.executeNode(edge.target, nodes, edges, context);
           }
           this.setNodeStatus(nodeId, 'completed');
+          this.completeNodeExecution(nodeId, 'completed');
           return;
         }
 
@@ -1222,6 +1235,7 @@ export class ExecutionEngine {
           }
           this.addLog('info', '到达结束节点', null, { output: outputResult });
           this.setNodeStatus(nodeId, 'completed');
+          this.completeNodeExecution(nodeId, 'completed');
           return;
         }
 

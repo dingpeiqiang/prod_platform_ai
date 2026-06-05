@@ -900,8 +900,12 @@ class WorkflowEngine:
         from app.langchain.workflow_nodes import DelegateExecution
         execution = DelegateExecution(context, step_def, is_resume)
         
+        # 设置参数到执行上下文
         for key, value in params.items():
             execution.set(key, value)
+            logger.debug(f"[WorkflowEngine._execute_action] 设置参数 '{key}' = {type(value).__name__}: {repr(value)[:100]}")
+        
+
         
         await node.execute(execution)
         

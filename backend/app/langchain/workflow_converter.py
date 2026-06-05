@@ -295,6 +295,8 @@ class WorkflowConverter:
             if key not in internal_fields and value is not None:
                 params[key] = value
         
+
+        
         # userInput 节点：字段映射
         if node_type == 'userInput':
             # 消息字段映射

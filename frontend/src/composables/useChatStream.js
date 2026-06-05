@@ -18,11 +18,20 @@ export function useChatStream(messagesRef, currentDbSessionIdRef) {
  switch (data.type) {
  case 'thinking':
 case 'decision':
-case 'executing': {
+case 'executing':
+case 'step_start': {
  const last = msg.reasoning[msg.reasoning.length - 1];
+ if (data.type === 'step_start') {
+ // 处理工作流节点开始事件
+ const content = `🚀 执行节点: ${data.name || data.step}`;
+ if (last && last.content === content)
+ break;
+ msg.reasoning.push({ type: 'thinking', content, result: null });
+ } else {
  if (last && last.content === data.content)
  break;
  msg.reasoning.push({ type: 'thinking', content: data.content, result: data.result || null });
+ }
  // 保持处理步骤默认折叠，用户需手动展开
  // msg.showReasoning = true;
  msg.latestStepIndex = msg.reasoning.length - 1;
@@ -101,6 +110,32 @@ case 'executing': {
  if (handler) {
  handler(data, msg);
  }
+ break;
+ }
+ case 'step_complete': {
+ // 处理工作流节点完成事件
+ const resultStr = data.result ? ` (结果: ${JSON.stringify(data.result)})` : '';
+ msg.reasoning.push({ type: 'thinking', content: `✅ 节点完成: ${data.name || data.step}${resultStr}`, result: data.result });
+ msg.latestStepIndex = msg.reasoning.length - 1;
+ break;
+ }
+ case 'step_failed': {
+ // 处理工作流节点失败事件
+ const errorMsg = data.error ? `: ${data.error}` : '';
+ msg.reasoning.push({ type: 'error', content: `❌ 节点失败: ${data.name || data.step}${errorMsg}` });
+ msg.latestStepIndex = msg.reasoning.length - 1;
+ break;
+ }
+ case 'workflow_start': {
+ // 处理工作流开始事件
+ msg.reasoning.push({ type: 'thinking', content: `🔄 开始执行工作流: ${data.definition_id || data.workflow_id}` });
+ msg.latestStepIndex = msg.reasoning.length - 1;
+ break;
+ }
+ case 'workflow_complete': {
+ // 处理工作流完成事件
+ msg.reasoning.push({ type: 'thinking', content: `🎉 工作流执行完成` });
+ msg.latestStepIndex = msg.reasoning.length - 1;
  break;
  }
  case 'error': {
