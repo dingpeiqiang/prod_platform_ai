@@ -97,11 +97,12 @@
                   />
                   <VariableCascader
                     v-else
+                    :key="'input-ref-' + index + '-' + cascaderRefreshKey"
                     v-model="param.refValue"
                     :available-variables="availableVariables"
                     placeholder="请选择变量"
                     class="param-value-cascader"
-                    @change="(val) => handleCascaderChange(index, val)"
+                    @change="emitUpdate"
                   />
                 </div>
               </div>
@@ -161,6 +162,7 @@
             <div class="output-param-container">
               <!-- 输出参数表头 -->
               <div class="output-param-header">
+                <span class="header-col header-source">工具出参</span>
                 <span class="header-col header-type">类型</span>
                 <span class="header-col header-name">参数名/变量</span>
                 <span class="header-col header-data-type">数据类型</span>
@@ -170,6 +172,14 @@
               
               <template v-for="(param, index) in localOutputMappings" :key="index">
               <div v-if="param" class="output-param-item">
+                <VariableCascader
+                  :key="'output-source-' + index + '-' + cascaderRefreshKey"
+                  v-model="param.source"
+                  :available-variables="outputSchemaVariables"
+                  placeholder="选择工具出参"
+                  class="param-source-cascader"
+                  @change="emitUpdate"
+                />
                 <select v-model="param.nameType" @change="handleOutputNameTypeChange(index)" class="param-name-type-select">
                   <option value="input">输入</option>
                   <option value="reference">引用</option>
@@ -195,10 +205,7 @@
                 </div>
                 <select v-model="param.type" @change="emitUpdate" class="param-type-select">
                   <option value="string">string</option>
-                  <option value="number">number</option>
-                  <option value="boolean">boolean</option>
-                  <option value="object">object</option>
-                  <option value="array">array</option>
+                  <option value="json">json</option>
                 </select>
                 <input v-model="param.description" @input="emitUpdate" placeholder="描述" class="param-desc-input" />
                 <div class="param-action-cell">
@@ -286,6 +293,8 @@ const { targetPosition, sourcePosition } = useNodeAnchorMode(props)
 
 const emit = defineEmits(['update'])
 
+
+
 // MCP 工具数据
 const mcpTools = ref([])
 const mcpToolMap = ref({})
@@ -353,6 +362,28 @@ const outputSchemaProperties = computed(() => {
   const schema = selectedTool.value.output_schema || selectedTool.value.outputSchema || selectedTool.value.schema || {}
   const properties = schema.properties || {}
   return properties
+})
+
+// 工具出参级联选项（用于输出参数"工具出参"列的 VariableCascader）
+const outputSchemaVariables = computed(() => {
+  if (!selectedTool.value) return []
+  const schema = selectedTool.value.output_schema || selectedTool.value.outputSchema || selectedTool.value.schema || {}
+  const properties = schema.properties || {}
+  if (Object.keys(properties).length === 0) return []
+
+  const nodeId = props.data.id
+  const nodeName = localToolName.value || '工具节点'
+
+  return Object.entries(properties).map(([name, prop]) => ({
+    id: name,
+    name: `${name} (${prop.type || 'any'})`,
+    nodeId: nodeId,
+    nodeType: 'tool',
+    nodeName: nodeName,
+    sourceNodeType: 'tool',
+    sourceNodeName: nodeName,
+    varName: name
+  }))
 })
 
 // 加载 MCP 工具列表
@@ -443,7 +474,7 @@ const syncParamsFromSchema = (tool) => {
       schemaType,
       type: existingParam?.type || inferType(schemaType),
       required: requiredFields.includes(name),
-      sourceType: existingParam?.sourceType || 'constant',
+      sourceType: existingParam?.sourceType || 'input',
       value: existingParam?.value || prop.default || '',
       refValue: existingParam?.refValue || ''
     }
@@ -453,17 +484,6 @@ const syncParamsFromSchema = (tool) => {
 // 切换展开状态
 const toggleSection = (section) => {
   expandedSections.value[section] = !expandedSections.value[section]
-}
-
-// 处理参数类型变化
-const handleParamTypeChange = (index) => {
-  const param = localParams.value[index]
-  if (param.type === 'variable') {
-    param.value = ''
-  } else {
-    param.refValue = ''
-  }
-  emitUpdate()
 }
 
 // 获取类型显示名称
@@ -484,26 +504,22 @@ const getTypeDisplayName = (type) => {
 // 处理取值来源变化
 const handleSourceTypeChange = (index) => {
   const param = localParams.value[index]
-  if (param.sourceType === 'ref') {
-    param.value = ''
+  const newSourceType = param.sourceType;
+  
+  if (newSourceType === 'ref') {
+    param.value = '';
   } else {
-    param.refValue = ''
+    param.refValue = '';
   }
-  emitUpdate()
-}
-
-// 处理级联选择变化
-const handleCascaderChange = (index, value) => {
-  const param = localParams.value[index]
-  if (param) {
-    param.refValue = value || ''
-    emitUpdate()
-  }
+  
+  // 强制触发响应式更新
+  localParams.value = [...localParams.value];
+  emitUpdate();
 }
 
 // 添加输出参数
 const addOutputParam = () => {
-  localOutputMappings.value.push({ name: '', nameType: 'input', nameRef: '', source: '{{__output__}}', type: 'string', description: '' })
+  localOutputMappings.value.push({ name: '', nameType: 'input', nameRef: '', source: '', type: 'string', description: '' })
   emitUpdate()
 }
 
@@ -511,8 +527,6 @@ const handleOutputNameTypeChange = (index) => {
   const param = localOutputMappings.value[index]
   if (param.nameType === 'reference') {
     param.name = ''
-    param.source = ''
-    param.description = ''
   } else {
     param.nameRef = ''
   }
@@ -558,6 +572,7 @@ const emitUpdate = () => {
     .filter(p => p.name)
     .map(p => ({
       name: p.name,
+      sourceType: p.sourceType || 'input',
       value: p.sourceType === 'ref' ? p.refValue : (p.value || '')
     }));
 
@@ -610,8 +625,10 @@ watch(() => props.data, (d) => {
       for (const inputParam of d.inputParams) {
         const existingParam = localParams.value.find(p => p.name === inputParam.name);
         if (existingParam) {
+          // 优先使用后端返回的 sourceType，否则根据值推断
+          const savedSourceType = inputParam.sourceType || ((inputParam.value && inputParam.value.startsWith('{{')) ? 'ref' : 'input');
+          existingParam.sourceType = savedSourceType;
           existingParam.value = inputParam.value || '';
-          existingParam.sourceType = (inputParam.value && inputParam.value.startsWith('{{')) ? 'ref' : 'input';
           if (existingParam.sourceType === 'ref') {
             existingParam.refValue = inputParam.value || '';
           }
@@ -1169,7 +1186,7 @@ onMounted(() => {
 }
 
 .header-type {
-  width: 60px;
+  width: 64px;
 }
 
 .header-name {
@@ -1177,7 +1194,7 @@ onMounted(() => {
 }
 
 .header-source {
-  width: 180px;
+  width: 200px;
 }
 
 .header-data-type {
@@ -1254,8 +1271,15 @@ onMounted(() => {
 }
 
 .param-source-cell {
-  width: 180px;
-  min-width: 180px;
+  width: 200px;
+  min-width: 200px;
+}
+
+.param-source-cascader {
+  width: 200px;
+  min-width: 200px;
+  flex-shrink: 0;
+  font-size: 13px;
 }
 
 .param-source-placeholder {
