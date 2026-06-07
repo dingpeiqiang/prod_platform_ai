@@ -139,26 +139,7 @@
             </div>
           </div>
           <div v-if="expandedSections.outputs" class="section-content">
-            <div v-if="outputSchemaProperties && Object.keys(outputSchemaProperties).length > 0" class="output-schema-info">
-              <div class="schema-label">工具输出字段：</div>
-              <div class="schema-fields">
-                <span
-                  v-for="(prop, name) in outputSchemaProperties"
-                  :key="name"
-                  class="schema-field"
-                  :class="{ selected: isOutputSelected(name) }"
-                  @click="toggleOutputField(name)"
-                >
-                  {{ name }}
-                  <span class="field-type">{{ prop.type || 'any' }}</span>
-                </span>
-              </div>
-            </div>
-            <div v-else class="no-output-hint">
-              此工具未定义输出schema
-            </div>
             
-            <!-- 输出参数容器 -->
             <div class="output-param-container">
               <!-- 输出参数表头 -->
               <div class="output-param-header">
@@ -536,22 +517,6 @@ const handleOutputNameTypeChange = (index) => {
 // 删除输出参数
 const removeOutputParam = (index) => {
   localOutputMappings.value.splice(index, 1)
-  emitUpdate()
-}
-
-// 检查输出字段是否被选中
-const isOutputSelected = (name) => {
-  return localOutputMappings.value.some(m => m.source === name || m.name === name)
-}
-
-// 切换输出字段选中状态
-const toggleOutputField = (name) => {
-  const index = localOutputMappings.value.findIndex(m => m.source === name || m.name === name)
-  if (index >= 0) {
-    localOutputMappings.value.splice(index, 1)
-  } else {
-    localOutputMappings.value.push({ name, source: name, type: 'string', description: '' })
-  }
   emitUpdate()
 }
 
@@ -1099,65 +1064,6 @@ onMounted(() => {
   color: #64748b;
   font-weight: 500;
   margin-bottom: 6px;
-}
-
-/* 输出schema信息 */
-.output-schema-info {
-  margin-bottom: 10px;
-  padding: 8px;
-  background: #f8fafc;
-  border-radius: 4px;
-}
-
-.schema-label {
-  font-size: 10px;
-  color: #94a3b8;
-  margin-bottom: 6px;
-}
-
-.schema-fields {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.schema-field {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  font-size: 11px;
-  color: #475569;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.schema-field:hover {
-  border-color: #8b5cf6;
-}
-
-.schema-field.selected {
-  background: #ede9fe;
-  border-color: #8b5cf6;
-  color: #7c3aed;
-}
-
-.field-type {
-  font-size: 10px;
-  color: #94a3b8;
-  font-style: italic;
-}
-
-.no-output-hint {
-  font-size: 11px;
-  color: #94a3b8;
-  padding: 8px;
-  background: #f8fafc;
-  border-radius: 4px;
-  text-align: center;
 }
 
 /* 输出参数样式 */
