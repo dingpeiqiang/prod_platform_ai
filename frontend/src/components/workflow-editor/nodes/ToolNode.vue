@@ -157,23 +157,42 @@
               此工具未定义输出schema
             </div>
             
-            <template v-for="(param, index) in localOutputMappings" :key="index">
+            <!-- 输出参数容器 -->
+            <div class="output-param-container">
+              <!-- 输出参数表头 -->
+              <div class="output-param-header">
+                <span class="header-col header-type">类型</span>
+                <span class="header-col header-name">参数名/变量</span>
+                <span class="header-col header-data-type">数据类型</span>
+                <span class="header-col header-desc">描述</span>
+                <span class="header-col header-action">操作</span>
+              </div>
+              
+              <template v-for="(param, index) in localOutputMappings" :key="index">
               <div v-if="param" class="output-param-item">
-                <input 
-                  v-model="param.name" 
-                  @input="emitUpdate"
-                  type="text"
-                  placeholder="参数名"
-                  class="param-name-input"
-                />
-                <VariableCascader
-                  :key="'output-source-' + index + '-' + cascaderRefreshKey"
-                  v-model="param.source"
-                  :available-variables="availableVariables"
-                  placeholder="选择来源"
-                  class="param-source-cascader"
-                  @change="emitUpdate"
-                />
+                <select v-model="param.nameType" @change="handleOutputNameTypeChange(index)" class="param-name-type-select">
+                  <option value="input">输入</option>
+                  <option value="reference">引用</option>
+                </select>
+                <div class="param-name-group">
+                  <input
+                    v-if="param.nameType === 'input'"
+                    v-model="param.name"
+                    @input="emitUpdate"
+                    type="text"
+                    placeholder="参数名"
+                    class="param-name-input"
+                  />
+                  <VariableCascader
+                    v-else
+                    :key="'output-ref-' + index + '-' + cascaderRefreshKey"
+                    v-model="param.nameRef"
+                    :available-variables="availableVariables"
+                    placeholder="选择变量"
+                    class="param-name-cascader"
+                    @change="emitUpdate"
+                  />
+                </div>
                 <select v-model="param.type" @change="emitUpdate" class="param-type-select">
                   <option value="string">string</option>
                   <option value="number">number</option>
@@ -182,14 +201,17 @@
                   <option value="array">array</option>
                 </select>
                 <input v-model="param.description" @input="emitUpdate" placeholder="描述" class="param-desc-input" />
-                <button @click="removeOutputParam(index)" class="action-btn delete-btn" title="删除">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="18" y1="6" x2="6" y2="18"/>
-                    <line x1="6" y1="6" x2="18" y2="18"/>
-                  </svg>
-                </button>
+                <div class="param-action-cell">
+                  <button @click="removeOutputParam(index)" class="action-btn delete-btn" title="删除">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="18" y1="6" x2="6" y2="18"/>
+                      <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                </div>
               </div>
             </template>
+          </div>
           </div>
         </div>
 
@@ -481,7 +503,19 @@ const handleCascaderChange = (index, value) => {
 
 // 添加输出参数
 const addOutputParam = () => {
-  localOutputMappings.value.push({ name: '', source: '', type: 'string', description: '' })
+  localOutputMappings.value.push({ name: '', nameType: 'input', nameRef: '', source: '{{__output__}}', type: 'string', description: '' })
+  emitUpdate()
+}
+
+const handleOutputNameTypeChange = (index) => {
+  const param = localOutputMappings.value[index]
+  if (param.nameType === 'reference') {
+    param.name = ''
+    param.source = ''
+    param.description = ''
+  } else {
+    param.nameRef = ''
+  }
   emitUpdate()
 }
 
@@ -529,9 +563,11 @@ const emitUpdate = () => {
 
   // 转换为规范的 outputParams 数组格式
   const outputParams = localOutputMappings.value
-    .filter(m => m.name)
+    .filter(m => m)
     .map(m => ({
       name: m.name || '',
+      nameType: m.nameType || 'input',
+      nameRef: m.nameRef || '',
       source: m.source || '',
       type: m.type || 'string',
       description: m.description || ''
@@ -556,6 +592,8 @@ watch(() => props.data, (d) => {
   localOutputMappings.value = (d.outputParams && Array.isArray(d.outputParams))
     ? d.outputParams.map(m => ({
       name: m.name || m.target || '',
+      nameType: m.nameType || 'input',
+      nameRef: m.nameRef || '',
       source: m.source || '',
       type: m.type || 'string',
       description: m.description || m.desc || ''
@@ -1106,19 +1144,73 @@ onMounted(() => {
 }
 
 /* 输出参数样式 */
+/* 输出参数容器支持横向滚动 */
+.output-param-container {
+  overflow-x: auto;
+  border-radius: 4px;
+  border: 1px solid #e5e7eb;
+}
+
+.output-param-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f1f5f9;
+  font-weight: 600;
+  font-size: 12px;
+  color: #64748b;
+  padding: 6px 8px;
+  min-width: max-content;
+}
+
+.header-col {
+  display: flex;
+  align-items: center;
+}
+
+.header-type {
+  width: 60px;
+}
+
+.header-name {
+  width: 200px;
+}
+
+.header-source {
+  width: 180px;
+}
+
+.header-data-type {
+  width: 90px;
+}
+
+.header-desc {
+  width: 150px;
+}
+
+.header-action {
+  width: 40px;
+}
+
 .output-param-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
+  padding: 6px 8px;
+  min-width: max-content;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.output-param-item:last-child {
+  border-bottom: none;
 }
 
 .param-name-group {
   display: flex;
   align-items: center;
   gap: 4px;
-  flex: 1;
-  min-width: 0;
+  width: 200px;
+  min-width: 200px;
 }
 
 .param-name-type-select {
@@ -1161,20 +1253,38 @@ onMounted(() => {
   border-color: #8b5cf6;
 }
 
+.param-source-cell {
+  width: 180px;
+  min-width: 180px;
+}
+
+.param-source-placeholder {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 4px;
+  font-size: 13px;
+  background: transparent;
+  color: #94a3b8;
+  text-align: center;
+  box-sizing: border-box;
+}
+
 .param-type-select {
+  width: 90px;
+  min-width: 90px;
   padding: 8px 10px;
   border: 1px solid #d9d9d9;
   border-radius: 4px;
   font-size: 13px;
   background: white;
-  flex-shrink: 0;
-  width: 100px;
   appearance: none;
   background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
   background-position: right 8px center;
   background-repeat: no-repeat;
   background-size: 12px;
   padding-right: 28px;
+  box-sizing: border-box;
 }
 
 .param-type-select:focus {
@@ -1183,17 +1293,53 @@ onMounted(() => {
 }
 
 .param-desc-input {
-  flex: 1;
+  width: 150px;
+  min-width: 150px;
   padding: 8px 10px;
   border: 1px solid #d9d9d9;
   border-radius: 4px;
   font-size: 13px;
-  min-width: 80px;
+  box-sizing: border-box;
+}
+
+.param-desc-placeholder {
+  width: 150px;
+  min-width: 150px;
+}
+
+.param-action-cell {
+  width: 40px;
+  min-width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .param-desc-input:focus {
   outline: none;
   border-color: #8b5cf6;
+}
+
+.param-source-readonly {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  font-size: 13px;
+  background: #f9fafb;
+  color: #6b7280;
+  font-family: monospace;
+}
+
+.param-source-placeholder {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 4px;
+  font-size: 13px;
+  background: transparent;
+  color: #94a3b8;
+  text-align: center;
 }
 
 .action-btn {

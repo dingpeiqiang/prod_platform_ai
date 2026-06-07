@@ -82,6 +82,21 @@ export class ExecutionEngine {
     this.cancelCallback = null;
   }
 
+  // 解析输出参数名称，支持两种模式：input（新增出参）和 reference（引用已有变量）
+  _resolveOutputParamName(param, context) {
+    let paramName = param.name;
+    if (param.nameType === 'reference' && param.nameRef) {
+      const keys = param.nameRef.split('.');
+      let nameValue = context.variables;
+      for (const key of keys) {
+        if (nameValue === undefined || nameValue === null) break;
+        nameValue = nameValue[key];
+      }
+      paramName = nameValue || param.name;
+    }
+    return paramName;
+  }
+
   // 初始化节点执行数据记录
   initNodeExecution(nodeId, nodeType, nodeLabel) {
     this.nodeExecutionData[nodeId] = {
@@ -501,25 +516,38 @@ export class ExecutionEngine {
           }
           
           for (const outputParam of outputs) {
-            if (!outputParam || !outputParam.name) continue;
+            if (!outputParam || (!outputParam.name && !outputParam.nameRef)) continue;
             
-            const paramName = outputParam.name;
+            const paramName = this._resolveOutputParamName(outputParam, context);
+            if (!paramName) continue;
+            
             const source = outputParam.source || '';
             const outType = outputParam.type || 'string';
             
             let paramValue;
-            // 根据 source 获取值
-            if (source === 'response_json' || source === 'parsed_result') {
-              paramValue = responseJson;
-            } else if (source === 'response') {
-              paramValue = finalOutput;
-            } else if (source === 'model') {
-              paramValue = node.data.model || 'qwen-plus';
-            } else if (source && responseJson && typeof responseJson === 'object') {
-              // 从解析后的 JSON 中提取特定字段
-              paramValue = responseJson[source];
+            // 当 nameType === 'reference' 时，值也从引用的变量中获取
+            if (outputParam.nameType === 'reference' && outputParam.nameRef) {
+              const keys = outputParam.nameRef.split('.');
+              let value = context.variables;
+              for (const key of keys) {
+                if (value === undefined || value === null) break;
+                value = value[key];
+              }
+              paramValue = value;
             } else {
-              paramValue = finalOutput;
+              // 根据 source 获取值
+              if (source === 'response_json' || source === 'parsed_result') {
+                paramValue = responseJson;
+              } else if (source === 'response') {
+                paramValue = finalOutput;
+              } else if (source === 'model') {
+                paramValue = node.data.model || 'qwen-plus';
+              } else if (source && responseJson && typeof responseJson === 'object') {
+                // 从解析后的 JSON 中提取特定字段
+                paramValue = responseJson[source];
+              } else {
+                paramValue = finalOutput;
+              }
             }
             
             // 类型转换
@@ -600,14 +628,25 @@ export class ExecutionEngine {
               // 使用规范的 outputParams 格式处理输出
               const outputParams = node.data.outputParams || [];
               for (const param of outputParams) {
-                if (!param || !param.name) continue;
+                if (!param || (!param.name && !param.nameRef)) continue;
                 
-                const paramName = param.name;
+                const paramName = this._resolveOutputParamName(param, context);
+                if (!paramName) continue;
+                
                 const source = param.source || '';
                 const outType = param.type || 'string';
                 
                 let paramValue;
-                if (source === 'user_input' || source === 'output') {
+                // 当 nameType === 'reference' 时，值从引用的变量中获取
+                if (param.nameType === 'reference' && param.nameRef) {
+                  const keys = param.nameRef.split('.');
+                  let value = context.variables;
+                  for (const key of keys) {
+                    if (value === undefined || value === null) break;
+                    value = value[key];
+                  }
+                  paramValue = value;
+                } else if (source === 'user_input' || source === 'output') {
                   paramValue = userInputValue;
                 } else if (source && context.variables[source] !== undefined) {
                   paramValue = context.variables[source];
@@ -1185,15 +1224,25 @@ export class ExecutionEngine {
           const outputResult = {};
           
           for (const param of outputParams) {
-            if (!param || !param.name) continue;
+            if (!param || (!param.name && !param.nameRef)) continue;
             
-            const paramName = param.name;
+            const paramName = this._resolveOutputParamName(param, context);
+            if (!paramName) continue;
+            
             const source = param.source || '';
             const outType = param.type || 'string';
             
             let paramValue;
-            // 根据 source 获取值
-            if (source) {
+            // 当 nameType === 'reference' 时，值从引用的变量中获取
+            if (param.nameType === 'reference' && param.nameRef) {
+              const keys = param.nameRef.split('.');
+              let value = context.variables;
+              for (const key of keys) {
+                if (value === undefined || value === null) break;
+                value = value[key];
+              }
+              paramValue = value;
+            } else if (source) {
               // source 可能是 {{variable}} 格式或直接变量名
               const sourceRef = source.replace(/^\{\{|\}\}$/g, '');
               const keys = sourceRef.split('.');
