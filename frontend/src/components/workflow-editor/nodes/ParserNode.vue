@@ -854,7 +854,7 @@ watch(() => props.data, (d) => {
   width: 120px;
 }
 
-.header-col.header-type {
+.input-param-header .header-col.header-type {
   width: 90px;
 }
 

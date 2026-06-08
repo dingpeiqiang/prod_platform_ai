@@ -1200,13 +1200,14 @@ watch(() => props.data, (newData) => {
 .header-col {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .header-col.header-name {
   width: 120px;
 }
 
-.header-col.header-type {
+.input-param-header .header-col.header-type {
   width: 90px;
 }
 
@@ -1334,35 +1335,43 @@ watch(() => props.data, (newData) => {
   color: #64748b;
   padding: 6px 8px;
   min-width: max-content;
+  box-sizing: border-box;
 }
 
-.header-col {
+.output-param-header .header-col {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
 }
 
-.header-type {
+.output-param-header .header-type {
   width: 60px;
+  min-width: 60px;
 }
 
-.header-name {
+.output-param-header .header-name {
   width: 200px;
+  min-width: 200px;
 }
 
-.header-source {
+.output-param-header .header-source {
   width: 180px;
+  min-width: 180px;
 }
 
-.header-data-type {
+.output-param-header .header-data-type {
   width: 90px;
+  min-width: 90px;
 }
 
-.header-desc {
+.output-param-header .header-desc {
   width: 150px;
+  min-width: 150px;
 }
 
-.header-action {
+.output-param-header .header-action {
   width: 40px;
+  min-width: 40px;
 }
 
 .output-param-item {
@@ -1372,6 +1381,7 @@ watch(() => props.data, (newData) => {
   padding: 6px 8px;
   min-width: max-content;
   border-bottom: 1px solid #f1f5f9;
+  box-sizing: border-box;
 }
 
 .output-param-item:last-child {
@@ -1384,6 +1394,7 @@ watch(() => props.data, (newData) => {
   gap: 4px;
   width: 200px;
   min-width: 200px;
+  box-sizing: border-box;
 }
 
 .param-name-type-select {
@@ -1393,13 +1404,15 @@ watch(() => props.data, (newData) => {
   font-size: 12px;
   background: white;
   flex-shrink: 0;
-  width: 56px;
+  width: 60px;
+  min-width: 60px;
   appearance: none;
   background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
   background-position: right 4px center;
   background-repeat: no-repeat;
   background-size: 10px;
   padding-right: 18px;
+  box-sizing: border-box;
 }
 
 .param-name-type-select:focus {
@@ -1419,6 +1432,7 @@ watch(() => props.data, (newData) => {
   border: 1px solid #d9d9d9;
   border-radius: 4px;
   font-size: 13px;
+  box-sizing: border-box;
 }
 
 .param-name-input:focus {
@@ -1473,12 +1487,13 @@ watch(() => props.data, (newData) => {
 }
 
 .param-desc-input {
-  flex: 1;
+  width: 150px;
+  min-width: 150px;
   padding: 8px 10px;
   border: 1px solid #d9d9d9;
   border-radius: 4px;
   font-size: 13px;
-  min-width: 80px;
+  box-sizing: border-box;
 }
 
 .param-desc-input:focus {
