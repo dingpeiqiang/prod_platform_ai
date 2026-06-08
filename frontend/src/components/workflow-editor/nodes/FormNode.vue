@@ -93,7 +93,7 @@
             <span>输入参数</span>
           </button>
           <div class="header-actions">
-            <button class="help-btn" title="配置输入参数">
+            <button class="help-btn" title="配置输入参数，支持输入固定值或引用变量">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="10"/>
                 <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
@@ -109,38 +109,64 @@
           </div>
         </div>
         <div v-if="expandedSections.inputs" class="section-content">
-          <template v-for="(param, index) in localInputs" :key="index">
-            <div v-if="param" class="input-param-item">
-              <input v-model="param.name" @input="emitUpdate" placeholder="参数名" class="param-name-input" :class="{ error: !param.name }"/>
-              <select v-model="param.valueType" @change="handleValueTypeChange(index)" class="param-type-select">
-                <option value="input">输入</option>
-                <option value="reference">引用</option>
-              </select>
-              <input 
-                v-if="param.valueType === 'input'" 
-                v-model="param.defaultValue" 
-                @input="emitUpdate" 
-                placeholder="默认值" 
-                class="param-default-input"
-              />
-              <VariableCascader
-                v-if="param.valueType === 'reference'"
-                :key="'input-ref-' + index + '-' + cascaderRefreshKey"
-                v-model="param.refValue"
-                :available-variables="availableVariables"
-                placeholder="请选择变量"
-                class="param-cascader"
-                @change="(val) => handleCascaderChange(index, val)"
-              />
-              <button @click="removeInputParam(index)" class="action-btn delete-btn" title="删除">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18"/>
-                  <line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
+          <div class="params-container">
+            <!-- 参数表头 -->
+            <div class="param-header-row">
+              <span class="param-col param-code">参数编码</span>
+              <span class="param-col param-name">参数名称</span>
+              <span class="param-col param-type">参数类型</span>
+              <span class="param-col param-required">是否必填</span>
+              <span class="param-col param-source">取值来源</span>
+              <span class="param-col param-content">取值内容</span>
+              <span class="param-col param-action">操作</span>
             </div>
-          </template>
-          <div v-if="localInputs.length === 0" class="no-params-hint">暂无输入参数，点击上方"+"添加</div>
+            <!-- 参数行 -->
+            <template v-for="(param, index) in localInputs" :key="index">
+              <div v-if="param" class="param-row">
+                <input v-model="param.name" @input="emitUpdate" placeholder="参数编码" class="param-col param-code-input" />
+                <input v-model="param.description" @input="emitUpdate" placeholder="参数名称" class="param-col param-name-input" />
+                <select v-model="param.type" @change="emitUpdate" class="param-col param-type-select">
+                  <option value="string">字符串</option>
+                  <option value="number">数字</option>
+                  <option value="boolean">布尔值</option>
+                  <option value="array">数组</option>
+                  <option value="object">对象</option>
+                </select>
+                <span class="param-col param-required">{{ param.required ? '是' : '否' }}</span>
+                <select v-model="param.sourceType" @change="handleSourceTypeChange(index)" class="param-col param-source-select">
+                  <option value="input">输入</option>
+                  <option value="ref">引用</option>
+                </select>
+                <div class="param-col param-content">
+                  <input
+                    v-if="param.sourceType !== 'ref'"
+                    v-model="param.value"
+                    @input="emitUpdate"
+                    :placeholder="getParamPlaceholder(param.type)"
+                    class="param-value-input"
+                  />
+                  <VariableCascader
+                    v-else
+                    :key="'input-ref-' + index + '-' + cascaderRefreshKey"
+                    v-model="param.refValue"
+                    :available-variables="availableVariables"
+                    placeholder="请选择变量"
+                    class="param-value-cascader"
+                    @change="emitUpdate"
+                  />
+                </div>
+                <div class="param-col param-action">
+                  <button @click="removeInputParam(index)" class="action-btn delete-btn" title="删除">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="18" y1="6" x2="6" y2="18"/>
+                      <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </template>
+            <div v-if="localInputs.length === 0" class="no-params-hint">暂无输入参数，点击上方"+"添加</div>
+          </div>
         </div>
       </div>
 
@@ -341,11 +367,12 @@ const localInputVariable = ref(props.data.inputVariable || '')
 // 输入输出参数
 const localInputs = ref((props.data.inputParams && Array.isArray(props.data.inputParams)) ? props.data.inputParams.map(p => ({
   name: p.name || '',
-  valueType: (p.value && p.value.startsWith('{{')) ? 'reference' : 'input',
-  defaultValue: (p.value && !p.value.startsWith('{{')) ? p.value : '',
-  refValue: (p.value && p.value.startsWith('{{')) ? p.value : '',
-  selectedNodeId: '',
-  cascaderValue: []
+  description: p.description || '',
+  type: p.type || 'string',
+  required: !!p.required,
+  sourceType: p.sourceType || ((p.value && p.value.startsWith('{{')) ? 'ref' : 'input'),
+  value: (p.sourceType !== 'ref' || !p.value?.startsWith('{{')) ? (p.value || '') : '',
+  refValue: (p.sourceType === 'ref' || p.value?.startsWith('{{')) ? (p.value || '') : ''
 })) : [])
 
 const localOutputs = ref((props.data.outputParams || []).map(p => ({
@@ -466,27 +493,24 @@ const toggleSection = (section) => {
 
 // 添加输入参数
 const addInputParam = () => {
-  localInputs.value.push({ name: '', valueType: 'input', defaultValue: '', refValue: '', selectedNodeId: '', cascaderValue: [] })
+  localInputs.value.push({ name: '', description: '', type: 'string', required: false, sourceType: 'input', value: '', refValue: '' })
   emitUpdate()
 }
 
-// 处理值类型变化
-const handleValueTypeChange = (index) => {
+// 处理取值来源变化
+const handleSourceTypeChange = (index) => {
   const param = localInputs.value[index]
-  if (param.valueType === 'reference') {
-    param.selectedNodeId = ''
-    param.refValue = ''
+  const newSourceType = param.sourceType;
+  
+  if (newSourceType === 'ref') {
+    param.value = '';
+  } else {
+    param.refValue = '';
   }
-  emitUpdate()
-}
-
-// 处理级联选择器变化
-const handleCascaderChange = (index, value) => {
-  const param = localInputs.value[index]
-  if (param) {
-    param.refValue = value || ''
-    emitUpdate()
-  }
+  
+  // 强制触发响应式更新
+  localInputs.value = [...localInputs.value];
+  emitUpdate();
 }
 
 // 删除输入参数
@@ -523,10 +547,14 @@ const removeOutputParam = (index) => {
 const emitUpdate = () => {
   // 将前端输入参数格式映射为规范的 inputParams 格式
   const inputParams = localInputs.value
-    .filter(p => p)
+    .filter(p => p && p.name)
     .map(p => ({
-      name: p.name || '',
-      value: p.valueType === 'reference' ? p.refValue : (p.defaultValue || '')
+      name: p.name,
+      description: p.description || '',
+      type: p.type || 'string',
+      required: !!p.required,
+      sourceType: p.sourceType || 'input',
+      value: p.sourceType === 'ref' ? p.refValue : (p.value || '')
     }));
 
   // 将前端输出参数格式映射为规范的 outputParams 格式
@@ -580,11 +608,12 @@ watch(() => props.data, (d) => {
   // 输入参数
   localInputs.value = (d.inputParams && Array.isArray(d.inputParams)) ? d.inputParams.map(p => ({
     name: p.name || '',
-    valueType: (p.value && p.value.startsWith('{{')) ? 'reference' : 'input',
-    defaultValue: (p.value && !p.value.startsWith('{{')) ? p.value : '',
-    refValue: (p.value && p.value.startsWith('{{')) ? p.value : '',
-    selectedNodeId: '',
-    cascaderValue: []
+    description: p.description || '',
+    type: p.type || 'string',
+    required: !!p.required,
+    sourceType: p.sourceType || ((p.value && p.value.startsWith('{{')) ? 'ref' : 'input'),
+    value: (p.sourceType !== 'ref' || !p.value?.startsWith('{{')) ? (p.value || '') : '',
+    refValue: (p.sourceType === 'ref' || p.value?.startsWith('{{')) ? (p.value || '') : ''
   })) : []
 
   // 输出参数
@@ -1025,63 +1054,145 @@ onUnmounted(() => {
   animation: slideDown 0.2s ease;
 }
 
-/* 输入参数样式 */
-.input-param-item {
+/* 输入参数表格样式 */
+.params-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.param-header-row {
+  display: flex;
+  background: #f1f5f9;
+  font-weight: 600;
+  font-size: 10px;
+  color: #64748b;
+}
+
+.param-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  flex-wrap: wrap;
+  border-top: 1px solid #f1f5f9;
+}
+
+.param-row:nth-child(odd):not(.param-header-row) {
+  background: #fafafa;
+}
+
+.param-col {
+  padding: 4px 6px;
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  flex-shrink: 0;
+}
+
+.param-code {
+  width: 75px;
+  font-size: 11px;
+  color: #475569;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.param-code-input {
+  width: 75px;
+  padding: 3px 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 3px;
+  font-size: 11px;
+  background: white;
+}
+
+.param-name {
+  width: 90px;
+  font-size: 11px;
+  color: #475569;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .param-name-input {
-  padding: 8px 10px;
-  border: 1px solid #d9d9d9;
-  border-radius: 4px;
-  font-size: 13px;
-  min-width: 120px;
+  width: 90px;
+  padding: 3px 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 3px;
+  font-size: 11px;
+  background: white;
 }
 
-.param-name-input:focus {
-  outline: none;
-  border-color: #10b981;
-}
-
-.param-name-input.error {
-  border-color: #ff4d4f;
+.param-type {
+  width: 55px;
+  font-size: 11px;
+  color: #475569;
+  text-align: center;
 }
 
 .param-type-select {
-  padding: 8px 10px;
-  border: 1px solid #d9d9d9;
-  border-radius: 4px;
-  font-size: 13px;
+  width: 55px;
+  padding: 3px 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 3px;
+  font-size: 10px;
   background: white;
-  min-width: 80px;
+  color: #475569;
 }
 
-.param-type-select:focus {
-  outline: none;
-  border-color: #10b981;
+.param-required {
+  width: 50px;
+  font-size: 11px;
+  color: #475569;
+  text-align: center;
 }
 
-.param-default-input {
-  padding: 8px 10px;
-  border: 1px solid #d9d9d9;
-  border-radius: 4px;
-  font-size: 13px;
+.param-source {
+  width: 75px;
+  font-size: 11px;
+  color: #475569;
+}
+
+.param-source-select {
+  width: 100%;
+  min-width: 60px;
+  max-width: 80px;
+  padding: 3px 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 3px;
+  font-size: 10px;
   background: white;
-  min-width: 120px;
+  color: #475569;
+  box-sizing: border-box;
 }
 
-.param-default-input:focus {
-  outline: none;
-  border-color: #10b981;
+.param-content {
+  flex: 1;
+  min-width: 100px;
 }
 
-.param-cascader {
-  min-width: 200px;
-  font-size: 13px;
+.param-value-input {
+  width: 100%;
+  padding: 3px 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 3px;
+  font-size: 11px;
+  background: white;
+}
+
+.param-value-cascader {
+  width: 100%;
+}
+
+.param-action {
+  width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* 输出参数样式 */
