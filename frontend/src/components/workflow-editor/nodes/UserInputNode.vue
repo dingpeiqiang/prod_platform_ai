@@ -88,8 +88,6 @@
             <div v-if="localInputs.some(p => p && p.valueType === 'reference' && !p.refValue)" class="error-message">引用变量不能为空</div>
         </div>
       </div>
-    </div>
-
       <!-- 用户输入提示配置 -->
       <div class="config-section collapsible-section">
         <div class="section-header">
@@ -271,6 +269,7 @@
       <div class="collapse-btn">
         <button @click="$emit('close')">收起</button>
       </div>
+    </div>
     
     <Handle v-if="!configMode" type="target" :position="targetPosition" id="target" />
     <Handle v-if="!configMode" type="source" :position="sourcePosition" id="source" />
