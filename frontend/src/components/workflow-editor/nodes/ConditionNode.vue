@@ -109,7 +109,7 @@
                       @change="emitUpdate"
                       class="value-type-select"
                     >
-                      <option value="input">输入</option>
+                      <option value="input">自定义</option>
                       <option value="reference">引用变量</option>
                     </select>
                     <input

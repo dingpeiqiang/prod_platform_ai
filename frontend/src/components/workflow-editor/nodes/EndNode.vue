@@ -83,7 +83,7 @@
             <template v-for="(param, index) in localOutputParams" :key="index">
               <div v-if="param" class="output-param-item">
                 <select v-model="param.nameType" @change="handleOutputNameTypeChange(index)" class="param-name-type-select">
-                  <option value="input">输入</option>
+                  <option value="input">自定义</option>
                   <option value="reference">引用</option>
                 </select>
                 <div class="param-name-group">

@@ -134,7 +134,7 @@
                 </select>
                 <span class="param-col param-required">{{ param.required ? '是' : '否' }}</span>
                 <select v-model="param.sourceType" @change="handleSourceTypeChange(index)" class="param-col param-source-select">
-                  <option value="input">输入</option>
+                  <option value="input">自定义</option>
                   <option value="ref">引用</option>
                 </select>
                 <div class="param-col param-content">
@@ -207,7 +207,7 @@
             <template v-for="(param, index) in localOutputs" :key="index">
               <div v-if="param" class="output-param-item">
                 <select v-model="param.nameType" @change="handleOutputNameTypeChange(index)" class="param-name-type-select">
-                  <option value="input">输入</option>
+                  <option value="input">自定义</option>
                   <option value="reference">引用</option>
                 </select>
                 <div class="param-name-group">
