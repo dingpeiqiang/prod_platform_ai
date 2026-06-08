@@ -523,9 +523,9 @@ const removeOutputParam = (index) => {
 const emitUpdate = () => {
   // 将前端输入参数格式映射为规范的 inputParams 格式
   const inputParams = localInputs.value
-    .filter(p => p && p.name)
+    .filter(p => p)
     .map(p => ({
-      name: p.name,
+      name: p.name || '',
       value: p.valueType === 'reference' ? p.refValue : (p.defaultValue || '')
     }));
 
