@@ -205,41 +205,6 @@
           </div>
         </div>
 
-        <!-- 执行配置 -->
-        <div class="config-section collapsible-section">
-          <div class="section-header">
-            <button @click="toggleSection('execution')" class="section-toggle-btn">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.execution }">
-                <polyline points="6 9 12 15 18 9"/>
-              </svg>
-              <span>执行配置</span>
-            </button>
-          </div>
-          <div v-if="expandedSections.execution" class="section-content">
-            <div class="timeout-row">
-              <label>超时时间</label>
-              <input
-                v-model.number="localTimeout"
-                @input="emitUpdate"
-                type="number"
-                min="1"
-                max="600"
-                class="timeout-input"
-              />
-              <span class="timeout-unit">秒</span>
-            </div>
-
-            <label class="checkbox-label">
-              <input v-model="localAsync" @change="emitUpdate" type="checkbox" />
-              <span>异步执行</span>
-            </label>
-
-            <label class="checkbox-label">
-              <input v-model="localSilent" @change="emitUpdate" type="checkbox" />
-              <span>静默模式（不输出日志）</span>
-            </label>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -287,8 +252,7 @@ const showAdvanced = ref(false)
 // 展开状态
 const expandedSections = ref({
   inputs: true,
-  outputs: true,
-  execution: true
+  outputs: true
 })
 
 // 选择状态（对应后端 toolType 字段）
@@ -296,9 +260,6 @@ const localCategory = ref('')
 const localToolName = ref(props.data.tool_type || props.data.tool_name || '')
 const localParams = ref([])
 const localOutputMappings = ref([])
-const localTimeout = ref(props.data.timeout || 60)
-const localAsync = ref(props.data.isAsync || false)
-const localSilent = ref(props.data.silent || false)
 
 // 强制 VariableCascader 刷新 key，当 availableVariables 变化时重新挂载
 const cascaderRefreshKey = ref(0);
@@ -559,18 +520,12 @@ const emitUpdate = () => {
     tool_type: localToolName.value,
     tool_name: localToolName.value,
     inputParams: inputParams.length > 0 ? inputParams : undefined,
-    outputParams: outputParams.length > 0 ? outputParams : undefined,
-    timeout: localTimeout.value,
-    isAsync: localAsync.value,
-    silent: localSilent.value
+    outputParams: outputParams.length > 0 ? outputParams : undefined
   });
 }
 
 watch(() => props.data, (d) => {
   localToolName.value = d.tool_type || d.tool_name || ''
-  localTimeout.value = d.timeout || 60
-  localAsync.value = d.isAsync || false
-  localSilent.value = d.silent || false
   localOutputMappings.value = (d.outputParams && Array.isArray(d.outputParams))
     ? d.outputParams.map(m => ({
       name: m.name || m.target || '',
@@ -888,32 +843,6 @@ onMounted(() => {
   color: #94a3b8;
   padding: 4px 0;
   text-align: center;
-}
-
-.timeout-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
-}
-
-.timeout-row label {
-  font-size: 11px;
-  color: #64748b;
-  font-weight: 500;
-}
-
-.timeout-input {
-  width: 60px;
-  padding: 4px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  font-size: 11px;
-}
-
-.timeout-unit {
-  font-size: 11px;
-  color: #64748b;
 }
 
 .checkbox-label {
