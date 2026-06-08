@@ -1,13 +1,18 @@
 <template>
-  <el-cascader
-    v-model="cascaderValue"
-    :options="cascaderOptions"
-    :props="{ expandTrigger: 'click', label: 'label', value: 'value' }"
-    :placeholder="placeholder"
-    :disabled="disabled"
-    :class="className"
-    @change="handleChange"
-  ></el-cascader>
+  <div class="cascader-wrapper">
+    <el-cascader
+      v-model="cascaderValue"
+      :options="cascaderOptions"
+      :props="{ expandTrigger: 'click', label: 'label', value: 'value', checkStrictly: true }"
+      :placeholder="placeholder"
+      :disabled="disabled"
+      :class="className"
+      @change="handleChange"
+      @visible-change="handleVisibleChange"
+      @blur="handleBlur"
+      @focus="handleFocus"
+    ></el-cascader>
+  </div>
 </template>
 
 <script setup>
@@ -41,7 +46,9 @@ const emit = defineEmits(['update:modelValue', 'change']);
 const cascaderValue = ref([]);
 
 const cascaderOptions = computed(() => {
-  if (!props.availableVariables || !Array.isArray(props.availableVariables)) return [];
+  if (!props.availableVariables || !Array.isArray(props.availableVariables)) {
+    return [];
+  }
   
   const nodeMap = new Map();
   const nodeOrder = [];
@@ -109,18 +116,34 @@ const buildPath = (variableId) => {
   if (variable && variable.nodeId) {
     return [variable.nodeId, variable.id];
   }
+  
+  // 如果 variableId 匹配某个父节点的 nodeId，则选中父节点本身
+  const parentNode = props.availableVariables.find(v => v.nodeId === variableId);
+  if (parentNode) {
+    return [parentNode.nodeId];
+  }
+  
   return [];
 };
 
 const handleChange = (value) => {
-  if (value && value.length === 2) {
-    emit('update:modelValue', value[1]);
-    emit('change', value[1]);
+  if (value && Array.isArray(value) && value.length >= 1) {
+    // 选中子节点: [nodeId, childId] -> 取 childId
+    // 选中父节点: [nodeId] -> 取 nodeId
+    const selectedValue = value.length === 2 ? value[1] : value[0];
+    emit('update:modelValue', selectedValue);
+    emit('change', selectedValue);
   } else {
     emit('update:modelValue', '');
     emit('change', '');
   }
 };
+
+const handleVisibleChange = (visible) => {};
+
+const handleBlur = () => {};
+
+const handleFocus = () => {};
 
 watch(() => props.modelValue, (newVal) => {
   cascaderValue.value = buildPath(newVal);
@@ -132,4 +155,18 @@ watch(cascaderOptions, () => {
 </script>
 
 <style scoped>
+.cascader-wrapper {
+  width: 100%;
+  min-width: 200px;
+  z-index: 1000;
+}
+
+:deep(.el-cascader) {
+  width: 100%;
+  min-width: 200px;
+}
+
+:deep(.el-cascader__input) {
+  width: 100%;
+}
 </style>

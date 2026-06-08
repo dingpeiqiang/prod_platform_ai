@@ -210,14 +210,7 @@
               </div>
               <select v-model="param.type" @change="emitUpdate" class="param-type-select">
                 <option value="string">string</option>
-                <option value="int">int</option>
-                <option value="float">float</option>
-                <option value="date">date</option>
-                <option value="datetime">datetime</option>
-                <option value="tel">tel</option>
-                <option value="boolean">boolean</option>
-                <option value="object">object</option>
-                <option value="array">array</option>
+                <option value="json">json</option>
               </select>
               <input v-model="param.description" @input="emitUpdate" placeholder="描述" class="param-desc-input" />
               <div class="param-action-cell">

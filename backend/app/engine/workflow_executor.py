@@ -1266,8 +1266,16 @@ class CodeNodeExecutor(NodeExecutor):
                     if output_params and isinstance(output_params, list):
                         for param in output_params:
                             param_name = param.get("name")
+                            param_type = param.get("type", "string")
                             if param_name and isinstance(result_value, dict) and param_name in result_value:
-                                context.set_variable(param_name, result_value[param_name])
+                                param_value = result_value[param_name]
+                                # 如果类型为 json，尝试将字符串转换为 JSON 对象
+                                if param_type == "json" and isinstance(param_value, str):
+                                    try:
+                                        param_value = json.loads(param_value)
+                                    except (json.JSONDecodeError, TypeError):
+                                        logger.warning(f"Failed to parse JSON for output param: {param_name}")
+                                context.set_variable(param_name, param_value)
                 else:
                     # 如果没有显式设置result，使用前一个节点的输出作为默认输出
                     self.set_output(context, self.get_previous_output(context))

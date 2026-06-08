@@ -154,10 +154,13 @@
               <template v-for="(param, index) in localOutputMappings" :key="index">
               <div v-if="param" class="output-param-item">
                 <div class="output-schema-tree-wrapper">
-                <OutputSchemaTree
+                <VariableCascader
                   :key="'output-source-' + index + '-' + cascaderRefreshKey"
                   v-model="param.source"
                   :available-variables="outputSchemaVariables"
+                  placeholder="选择工具出参"
+                  class="param-source-cascader"
+                  @change="emitUpdate"
                 />
               </div>
                 <select v-model="param.nameType" @change="handleOutputNameTypeChange(index)" class="param-name-type-select">
@@ -251,7 +254,6 @@ import { Handle, Position } from '@vue-flow/core'
 import { nodeDisplayProps } from './nodeDisplayProps.js'
 import { useNodeAnchorMode } from './useHandlePosition.js'
 import VariableCascader from '../VariableCascader.vue'
-import OutputSchemaTree from '../OutputSchemaTree.vue'
 import * as mcpApi from '@/services/mcpManagementApi'
 
 const props = defineProps({
@@ -1185,6 +1187,10 @@ onMounted(() => {
   width: 200px;
   min-width: 200px;
   flex-shrink: 0;
+}
+
+.param-source-cascader {
+  width: 100%;
 }
 
 .param-source-placeholder {

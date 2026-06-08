@@ -363,6 +363,7 @@
             <ToolNode
               :data="enrichNodeData(props.data, props.id)"
               :selected="props.selected"
+              :available-variables="getAvailableVariables(props.id)"
               compact
               @update="updateNodeData"
             />
