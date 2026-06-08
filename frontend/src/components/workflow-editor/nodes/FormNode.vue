@@ -83,7 +83,146 @@
         </div>
       </div>
 
-      <!-- 高级配置：参数编辑 -->
+      <!-- 输入参数配置 -->
+      <div v-if="(configMode || showAdvanced)" class="config-section collapsible-section">
+        <div class="section-header">
+          <button @click="toggleSection('inputs')" class="section-toggle-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.inputs }">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>输入参数</span>
+          </button>
+          <div class="header-actions">
+            <button class="help-btn" title="配置输入参数">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </button>
+            <button @click.stop="addInputParam" class="add-param-btn" title="添加输入参数">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div v-if="expandedSections.inputs" class="section-content">
+          <template v-for="(param, index) in localInputs" :key="index">
+            <div v-if="param" class="input-param-item">
+              <input v-model="param.name" @input="emitUpdate" placeholder="参数名" class="param-name-input" :class="{ error: !param.name }"/>
+              <select v-model="param.valueType" @change="handleValueTypeChange(index)" class="param-type-select">
+                <option value="input">输入</option>
+                <option value="reference">引用</option>
+              </select>
+              <input 
+                v-if="param.valueType === 'input'" 
+                v-model="param.defaultValue" 
+                @input="emitUpdate" 
+                placeholder="默认值" 
+                class="param-default-input"
+              />
+              <VariableCascader
+                v-if="param.valueType === 'reference'"
+                :key="'input-ref-' + index + '-' + cascaderRefreshKey"
+                v-model="param.refValue"
+                :available-variables="availableVariables"
+                placeholder="请选择变量"
+                class="param-cascader"
+                @change="(val) => handleCascaderChange(index, val)"
+              />
+              <button @click="removeInputParam(index)" class="action-btn delete-btn" title="删除">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+          </template>
+          <div v-if="localInputs.length === 0" class="no-params-hint">暂无输入参数，点击上方"+"添加</div>
+        </div>
+      </div>
+
+      <!-- 输出参数配置 -->
+      <div v-if="(configMode || showAdvanced)" class="config-section collapsible-section">
+        <div class="section-header">
+          <button @click="toggleSection('outputs')" class="section-toggle-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.outputs }">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>输出参数</span>
+          </button>
+          <div class="header-actions">
+            <button class="help-btn" title="配置输出参数">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </button>
+            <button @click.stop="addOutputParam" class="add-param-btn" title="添加输出参数">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div v-if="expandedSections.outputs" class="section-content">
+          <div class="output-param-container">
+            <div class="output-param-header">
+              <span class="header-col header-type">类型</span>
+              <span class="header-col header-name">参数名/变量</span>
+              <span class="header-col header-data-type">数据类型</span>
+              <span class="header-col header-desc">描述</span>
+              <span class="header-col header-action">操作</span>
+            </div>
+            <template v-for="(param, index) in localOutputs" :key="index">
+              <div v-if="param" class="output-param-item">
+                <select v-model="param.nameType" @change="handleOutputNameTypeChange(index)" class="param-name-type-select">
+                  <option value="input">输入</option>
+                  <option value="reference">引用</option>
+                </select>
+                <div class="param-name-group">
+                  <input
+                    v-if="param.nameType === 'input'"
+                    v-model="param.name"
+                    @input="emitUpdate"
+                    placeholder="参数名"
+                    class="param-name-input"
+                  />
+                  <VariableCascader
+                    v-else
+                    :key="'output-ref-' + index + '-' + cascaderRefreshKey"
+                    v-model="param.nameRef"
+                    :available-variables="availableVariables"
+                    placeholder="选择变量"
+                    class="param-name-cascader"
+                    @change="emitUpdate"
+                  />
+                </div>
+                <select v-model="param.type" @change="emitUpdate" class="param-type-select">
+                  <option value="string">string</option>
+                  <option value="json">json</option>
+                </select>
+                <input v-model="param.description" @input="emitUpdate" placeholder="描述" class="param-desc-input" />
+                <div class="param-action-cell">
+                  <button @click="removeOutputParam(index)" class="action-btn delete-btn" title="删除">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="18" y1="6" x2="6" y2="18"/>
+                      <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </template>
+          </div>
+          <div v-if="localOutputs.length === 0" class="no-params-hint">暂无输出参数，点击上方"+"添加</div>
+        </div>
+      </div>
+
+      <!-- 高级配置：工具参数 -->
       <div v-if="(configMode || showAdvanced) && localToolName" class="advanced-panel">
         <div class="section-title">工具参数</div>
         <div class="params-container">
@@ -184,6 +323,12 @@ const workflowDataStore = useWorkflowDataStore()
 const isUnmounted = ref(false)
 const showAdvanced = ref(false)
 
+// 展开状态
+const expandedSections = ref({
+  inputs: true,
+  outputs: true
+})
+
 const localOntologyCode = ref(props.data.ontologyCode || '')
 const localToolName = ref(props.data.toolType || props.data.toolName || '')
 const localParams = ref([])
@@ -192,6 +337,31 @@ const localTimeout = ref(props.data.timeout || 60)
 const localModel = ref(props.data.model || '')
 const localTemperature = ref(props.data.temperature || 0.3)
 const localInputVariable = ref(props.data.inputVariable || '')
+
+// 输入输出参数
+const localInputs = ref((props.data.inputParams && Array.isArray(props.data.inputParams)) ? props.data.inputParams.map(p => ({
+  name: p.name || '',
+  valueType: (p.value && p.value.startsWith('{{')) ? 'reference' : 'input',
+  defaultValue: (p.value && !p.value.startsWith('{{')) ? p.value : '',
+  refValue: (p.value && p.value.startsWith('{{')) ? p.value : '',
+  selectedNodeId: '',
+  cascaderValue: []
+})) : [])
+
+const localOutputs = ref((props.data.outputParams || []).map(p => ({
+  name: p.name || '',
+  nameType: p.nameType || 'input',
+  nameRef: p.nameRef || '',
+  source: p.source || '',
+  type: p.type || 'string',
+  description: p.description || p.desc || ''
+})))
+
+// 强制 VariableCascader 刷新 key
+const cascaderRefreshKey = ref(0);
+watch(() => props.availableVariables, () => {
+  cascaderRefreshKey.value++;
+}, { deep: true });
 
 const modelOptions = computed(() => modelsStore.modelOptions)
 const modelsLoading = computed(() => modelsStore.loading)
@@ -289,8 +459,90 @@ const getParamPlaceholder = (type) => {
   }
 }
 
+// 切换展开状态
+const toggleSection = (section) => {
+  expandedSections.value[section] = !expandedSections.value[section]
+}
+
+// 添加输入参数
+const addInputParam = () => {
+  localInputs.value.push({ name: '', valueType: 'input', defaultValue: '', refValue: '', selectedNodeId: '', cascaderValue: [] })
+  emitUpdate()
+}
+
+// 处理值类型变化
+const handleValueTypeChange = (index) => {
+  const param = localInputs.value[index]
+  if (param.valueType === 'reference') {
+    param.selectedNodeId = ''
+    param.refValue = ''
+  }
+  emitUpdate()
+}
+
+// 处理级联选择器变化
+const handleCascaderChange = (index, value) => {
+  const param = localInputs.value[index]
+  if (param) {
+    param.refValue = value || ''
+    emitUpdate()
+  }
+}
+
+// 删除输入参数
+const removeInputParam = (index) => {
+  localInputs.value.splice(index, 1)
+  emitUpdate()
+}
+
+// 添加输出参数
+const addOutputParam = () => {
+  localOutputs.value.push({ name: '', nameType: 'input', nameRef: '', source: '{{__output__}}', type: 'string', description: '' })
+  emitUpdate()
+}
+
+// 处理输出参数名称类型变化
+const handleOutputNameTypeChange = (index) => {
+  const param = localOutputs.value[index]
+  if (param.nameType === 'reference') {
+    param.name = ''
+    param.source = ''
+    param.description = ''
+  } else {
+    param.nameRef = ''
+  }
+  emitUpdate()
+}
+
+// 删除输出参数
+const removeOutputParam = (index) => {
+  localOutputs.value.splice(index, 1)
+  emitUpdate()
+}
+
 const emitUpdate = () => {
-  const inputParams = localParams.value
+  // 将前端输入参数格式映射为规范的 inputParams 格式
+  const inputParams = localInputs.value
+    .filter(p => p && p.name)
+    .map(p => ({
+      name: p.name,
+      value: p.valueType === 'reference' ? p.refValue : (p.defaultValue || '')
+    }));
+
+  // 将前端输出参数格式映射为规范的 outputParams 格式
+  const outputParams = localOutputs.value
+    .filter(p => p)
+    .map(p => ({
+      name: p.name || '',
+      nameType: p.nameType || 'input',
+      nameRef: p.nameRef || '',
+      source: p.source || '',
+      type: p.type || 'string',
+      description: p.description || ''
+    }));
+
+  // 工具参数
+  const toolInputParams = localParams.value
     .filter(p => p.name)
     .map(p => ({
       name: p.name,
@@ -302,6 +554,8 @@ const emitUpdate = () => {
     toolType: localToolName.value,
     toolName: localToolName.value,
     inputParams: inputParams.length > 0 ? inputParams : undefined,
+    outputParams: outputParams.length > 0 ? outputParams : undefined,
+    toolInputParams: toolInputParams.length > 0 ? toolInputParams : undefined,
     timeout: localTimeout.value,
     model: localModel.value,
     temperature: localTemperature.value,
@@ -323,12 +577,34 @@ watch(() => props.data, (d) => {
   localTemperature.value = d.temperature || 0.3
   localInputVariable.value = d.inputVariable || ''
 
+  // 输入参数
+  localInputs.value = (d.inputParams && Array.isArray(d.inputParams)) ? d.inputParams.map(p => ({
+    name: p.name || '',
+    valueType: (p.value && p.value.startsWith('{{')) ? 'reference' : 'input',
+    defaultValue: (p.value && !p.value.startsWith('{{')) ? p.value : '',
+    refValue: (p.value && p.value.startsWith('{{')) ? p.value : '',
+    selectedNodeId: '',
+    cascaderValue: []
+  })) : []
+
+  // 输出参数
+  localOutputs.value = (d.outputParams || []).map(p => ({
+    name: p.name || '',
+    nameType: p.nameType || 'input',
+    nameRef: p.nameRef || '',
+    source: p.source || '',
+    type: p.type || 'string',
+    description: p.description || p.desc || ''
+  }))
+
   if (localToolName.value && mcpToolMap.value[localToolName.value]) {
     const tool = mcpToolMap.value[localToolName.value]
     const schema = tool.input_schema || {}
     const properties = schema.properties || {}
 
-    if (d.inputParams && Array.isArray(d.inputParams) && d.inputParams.length > 0) {
+    if ((d.inputParams && Array.isArray(d.inputParams) && d.inputParams.length > 0) || 
+        (d.toolInputParams && Array.isArray(d.toolInputParams) && d.toolInputParams.length > 0)) {
+      const savedParams = d.toolInputParams || d.inputParams || []
       localParams.value = Object.entries(properties).map(([name, prop]) => {
         const inferType = (p) => {
           const t = p.type || 'string'
@@ -338,7 +614,7 @@ watch(() => props.data, (d) => {
           if (t === 'object') return 'object'
           return 'string'
         }
-        const inputParam = d.inputParams.find(p => p.name === name);
+        const inputParam = savedParams.find(p => p.name === name);
         return {
           name,
           type: inferType(prop),
@@ -649,6 +925,305 @@ onUnmounted(() => {
 .timeout-unit {
   font-size: 11px;
   color: #64748b;
+}
+
+/* 配置区域样式 */
+.config-section {
+  margin-bottom: 8px;
+}
+
+.collapsible-section {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.section-header:hover {
+  background: #f1f5f9;
+}
+
+.section-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.section-toggle-btn svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.2s;
+}
+
+.section-toggle-btn svg.rotated {
+  transform: rotate(180deg);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.help-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  cursor: help;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.help-btn:hover {
+  background: #e2e8f0;
+  color: #64748b;
+}
+
+.add-param-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: #10b981;
+  color: white;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.add-param-btn:hover {
+  background: #059669;
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+}
+
+.section-content {
+  padding: 10px;
+  animation: slideDown 0.2s ease;
+}
+
+/* 输入参数样式 */
+.input-param-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.param-name-input {
+  padding: 8px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+  min-width: 120px;
+}
+
+.param-name-input:focus {
+  outline: none;
+  border-color: #10b981;
+}
+
+.param-name-input.error {
+  border-color: #ff4d4f;
+}
+
+.param-type-select {
+  padding: 8px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+  background: white;
+  min-width: 80px;
+}
+
+.param-type-select:focus {
+  outline: none;
+  border-color: #10b981;
+}
+
+.param-default-input {
+  padding: 8px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+  background: white;
+  min-width: 120px;
+}
+
+.param-default-input:focus {
+  outline: none;
+  border-color: #10b981;
+}
+
+.param-cascader {
+  min-width: 200px;
+  font-size: 13px;
+}
+
+/* 输出参数样式 */
+.output-param-container {
+  overflow-x: auto;
+  border-radius: 4px;
+  border: 1px solid #e5e7eb;
+}
+
+.output-param-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f1f5f9;
+  font-weight: 600;
+  font-size: 12px;
+  color: #64748b;
+  padding: 6px 8px;
+  min-width: max-content;
+}
+
+.header-col {
+  display: flex;
+  align-items: center;
+}
+
+.header-type {
+  width: 60px;
+}
+
+.header-name {
+  width: 200px;
+}
+
+.header-data-type {
+  width: 90px;
+}
+
+.header-desc {
+  width: 150px;
+}
+
+.header-action {
+  width: 40px;
+}
+
+.output-param-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  min-width: max-content;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.output-param-item:last-child {
+  border-bottom: none;
+}
+
+.param-name-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 200px;
+  min-width: 200px;
+}
+
+.param-name-type-select {
+  padding: 8px 4px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 12px;
+  background: white;
+  flex-shrink: 0;
+  width: 56px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 4px center;
+  background-repeat: no-repeat;
+  background-size: 10px;
+  padding-right: 18px;
+}
+
+.param-name-type-select:focus {
+  outline: none;
+  border-color: #10b981;
+}
+
+.param-name-cascader {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.param-desc-input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+  min-width: 80px;
+}
+
+.param-desc-input:focus {
+  outline: none;
+  border-color: #10b981;
+}
+
+.param-action-cell {
+  width: 40px;
+  min-width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.action-btn:hover {
+  background: #f1f5f9;
+}
+
+.delete-btn {
+  color: #94a3b8;
+}
+
+.delete-btn:hover {
+  color: #ef4444;
+  background: #fef2f2;
 }
 
 :deep(.vue-flow__handle) {
