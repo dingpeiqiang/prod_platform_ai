@@ -99,38 +99,55 @@
       </div>
 
       <!-- 代码编辑区 -->
-      <div class="config-section">
-        <label class="section-label">编程语言</label>
-        <div class="config-select disabled">Python</div>
-      </div>
-
-      <div class="config-section">
-        <div class="section-header-inline">
-          <label class="section-label">代码</label>
-          <button @click="showTemplates = !showTemplates" class="template-btn-inline">
-            📋 模板
+      <div class="config-section collapsible-section">
+        <div class="section-header">
+          <button @click="toggleCodeSection" class="section-toggle-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: codeSectionExpanded }">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>代码</span>
           </button>
-        </div>
-        <textarea 
-          v-model="localCode" 
-          @input="emitUpdate" 
-          :placeholder="getPlaceholder()"
-          class="code-textarea"
-          spellcheck="false"
-        ></textarea>
-
-        <div v-if="showTemplates" class="templates-panel">
-          <div class="section-title">代码模板</div>
-          <div class="template-list">
-            <button 
-              v-for="template in codeTemplates" 
-              :key="template.name" 
-              @click="applyTemplate(template)"
-              class="template-item"
-            >
-              <span class="template-name">{{ template.name }}</span>
-              <span class="template-desc">{{ template.description }}</span>
+          <div class="header-actions">
+            <button class="help-btn" title="编写Python代码，可通过inputs获取输入参数，返回字典作为输出">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
             </button>
+          </div>
+        </div>
+        <div v-if="codeSectionExpanded" class="section-content">
+          <label class="section-label">编程语言</label>
+          <div class="config-select disabled">Python</div>
+          
+          <div class="section-header-inline">
+            <label class="section-label">代码内容</label>
+            <button @click="showTemplates = !showTemplates" class="template-btn-inline">
+              📋 模板
+            </button>
+          </div>
+          <textarea 
+            v-model="localCode" 
+            @input="emitUpdate" 
+            :placeholder="getPlaceholder()"
+            class="code-textarea"
+            spellcheck="false"
+          ></textarea>
+
+          <div v-if="showTemplates" class="templates-panel">
+            <div class="section-title">代码模板</div>
+            <div class="template-list">
+              <button 
+                v-for="template in codeTemplates" 
+                :key="template.name" 
+                @click="applyTemplate(template)"
+                class="template-item"
+              >
+                <span class="template-name">{{ template.name }}</span>
+                <span class="template-desc">{{ template.description }}</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -234,8 +251,13 @@
         </div>
       </div>
 
-      <div class="collapse-btn">
-        <button @click="$emit('close')">收起</button>
+      <div class="collapse-section">
+        <button @click="$emit('close')" class="collapse-all-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="18 15 12 9 6 15"/>
+          </svg>
+          <span>收起</span>
+        </button>
       </div>
     </div>
     
@@ -308,6 +330,7 @@ const emit = defineEmits(['update']);
 const showAdvanced = ref(false);
 const showTemplates = ref(false);
 const inputSectionExpanded = ref(true);
+const codeSectionExpanded = ref(true);
 const outputSectionExpanded = ref(true);
 
 const localLanguage = ref('python');
@@ -351,6 +374,10 @@ const codeTemplates = [
 
 const toggleInputSection = () => {
   inputSectionExpanded.value = !inputSectionExpanded.value;
+};
+
+const toggleCodeSection = () => {
+  codeSectionExpanded.value = !codeSectionExpanded.value;
 };
 
 const toggleOutputSection = () => {
@@ -650,37 +677,33 @@ watch(() => props.data, (d) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
-  background: white;
-  border-bottom: 1px solid transparent;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.section-header:hover {
-  background: #f8fafc;
-}
-
-.collapsible-section .section-content + .section-header,
-.section-header:not(:last-child) {
-  border-bottom: 1px solid #e2e8f0;
+  padding: 12px 16px;
+  background: #fafafa;
+  border-bottom: 1px solid #e8e8e8;
 }
 
 .section-toggle-btn {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: none;
   border: none;
-  font-size: 13px;
-  font-weight: 500;
-  color: #334155;
+  background: transparent;
+  color: #333;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
-  padding: 0;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.section-toggle-btn:hover {
+  background: #f0f0f0;
 }
 
 .section-toggle-btn svg {
-  transition: transform 0.2s;
+  width: 16px;
+  height: 16px;
 }
 
 .section-toggle-btn svg.rotated {
@@ -1404,27 +1427,32 @@ watch(() => props.data, (d) => {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.collapse-btn {
+.collapse-section {
   display: flex;
   justify-content: center;
-  padding-top: 12px;
-  border-top: 1px solid #e2e8f0;
+  padding: 16px;
+  border-top: 1px solid #e8e8e8;
+  background: #fafafa;
 }
 
-.collapse-btn button {
-  padding: 6px 16px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  background: white;
-  color: #64748b;
-  font-size: 12px;
+.collapse-all-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 48px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
 }
 
-.collapse-btn button:hover {
-  background: #f8fafc;
-  border-color: #cbd5e1;
+.collapse-all-btn:hover {
+  background: #2563eb;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 
 /* 非配置模式的原有样式 */

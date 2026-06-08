@@ -183,8 +183,13 @@
         </div>
       </div>
 
-      <div class="collapse-btn">
-        <button @click="$emit('close')">收起</button>
+      <div class="collapse-section">
+        <button @click="$emit('close')" class="collapse-all-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="18 15 12 9 6 15"/>
+          </svg>
+          <span>收起</span>
+        </button>
       </div>
     </div>
 
@@ -835,14 +840,18 @@ watch(() => props.data, (d) => {
   color: #999;
 }
 
-.collapse-btn {
+.collapse-section {
   display: flex;
   justify-content: center;
-  padding-top: 12px;
-  border-top: 1px solid #e2e8f0;
+  padding: 16px;
+  border-top: 1px solid #e8e8e8;
+  background: #fafafa;
 }
 
-.collapse-btn button {
+.collapse-all-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 8px 48px;
   background: #f59e0b;
   color: white;
@@ -854,7 +863,7 @@ watch(() => props.data, (d) => {
   transition: all 0.2s;
 }
 
-.collapse-btn button:hover {
+.collapse-all-btn:hover {
   background: #d97706;
   box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
 }

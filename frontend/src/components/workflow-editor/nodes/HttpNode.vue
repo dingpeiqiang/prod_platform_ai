@@ -28,95 +28,155 @@
       </div>
 
       <div v-if="configMode || showAdvanced" class="advanced-panel">
-        <div class="section-title">认证方式</div>
-        <select v-model="localAuthType" @change="emitUpdate" class="node-select">
-          <option value="none">无</option>
-          <option value="basic">Basic Auth</option>
-          <option value="bearer">Bearer Token</option>
-          <option value="api-key">API Key</option>
-        </select>
-
-        <div v-if="localAuthType === 'basic'" class="auth-fields">
-          <input v-model="localAuthUser" @input="emitUpdate" placeholder="用户名" class="node-input" />
-          <input v-model="localAuthPass" @input="emitUpdate" type="password" placeholder="密码" class="node-input" />
-        </div>
-
-        <div v-if="localAuthType === 'bearer'" class="auth-fields">
-          <input v-model="localBearerToken" @input="emitUpdate" placeholder="Bearer Token" class="node-input" />
-        </div>
-
-        <div v-if="localAuthType === 'api-key'" class="auth-fields">
-          <input v-model="localApiKeyName" @input="emitUpdate" placeholder="Key 名称" class="node-input" />
-          <input v-model="localApiKeyValue" @input="emitUpdate" type="password" placeholder="Key 值" class="node-input" />
-          <select v-model="localApiKeyLocation" @change="emitUpdate" class="node-select">
-            <option value="header">请求头</option>
-            <option value="query">URL 参数</option>
-          </select>
-        </div>
-
-        <div class="section-title">请求头</div>
-        <div class="headers-container">
-          <div 
-            v-for="(header, index) in localHeaders" 
-            :key="index" 
-            class="header-row"
-          >
-            <input 
-              v-model="header.key" 
-              @input="emitUpdate" 
-              placeholder="Key" 
-              class="header-key" 
-            />
-            <input 
-              v-model="header.value" 
-              @input="emitUpdate" 
-              placeholder="Value" 
-              class="header-value" 
-            />
-            <button @click="removeHeader(index)" class="remove-header-btn">✕</button>
+        <!-- 认证方式 -->
+        <div class="config-section collapsible-section">
+          <div class="section-header">
+            <button @click="toggleSection('auth')" class="section-toggle-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.auth }">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+              <span>认证方式</span>
+            </button>
           </div>
-          <button @click="addHeader" class="add-header-btn">+ 添加请求头</button>
+          <div v-if="expandedSections.auth" class="section-content">
+            <select v-model="localAuthType" @change="emitUpdate" class="node-select">
+              <option value="none">无</option>
+              <option value="basic">Basic Auth</option>
+              <option value="bearer">Bearer Token</option>
+              <option value="api-key">API Key</option>
+            </select>
+
+            <div v-if="localAuthType === 'basic'" class="auth-fields">
+              <input v-model="localAuthUser" @input="emitUpdate" placeholder="用户名" class="node-input" />
+              <input v-model="localAuthPass" @input="emitUpdate" type="password" placeholder="密码" class="node-input" />
+            </div>
+
+            <div v-if="localAuthType === 'bearer'" class="auth-fields">
+              <input v-model="localBearerToken" @input="emitUpdate" placeholder="Bearer Token" class="node-input" />
+            </div>
+
+            <div v-if="localAuthType === 'api-key'" class="auth-fields">
+              <input v-model="localApiKeyName" @input="emitUpdate" placeholder="Key 名称" class="node-input" />
+              <input v-model="localApiKeyValue" @input="emitUpdate" type="password" placeholder="Key 值" class="node-input" />
+              <select v-model="localApiKeyLocation" @change="emitUpdate" class="node-select">
+                <option value="header">请求头</option>
+                <option value="query">URL 参数</option>
+              </select>
+            </div>
+          </div>
         </div>
 
-        <div class="section-title">请求体</div>
-        <select v-model="localBodyType" @change="emitUpdate" class="node-select">
-          <option value="none">无</option>
-          <option value="json">JSON</option>
-          <option value="form">表单数据</option>
-          <option value="raw">原始文本</option>
-        </select>
-
-        <div v-if="localBodyType !== 'none'" class="body-content">
-          <textarea 
-            v-model="localBody" 
-            @input="emitUpdate" 
-            :placeholder="getBodyPlaceholder()"
-            class="node-textarea"
-          ></textarea>
+        <!-- 请求头 -->
+        <div class="config-section collapsible-section">
+          <div class="section-header">
+            <button @click="toggleSection('headers')" class="section-toggle-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.headers }">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+              <span>请求头</span>
+            </button>
+          </div>
+          <div v-if="expandedSections.headers" class="section-content">
+            <div class="headers-container">
+              <div 
+                v-for="(header, index) in localHeaders" 
+                :key="index" 
+                class="header-row"
+              >
+                <input 
+                  v-model="header.key" 
+                  @input="emitUpdate" 
+                  placeholder="Key" 
+                  class="header-key" 
+                />
+                <input 
+                  v-model="header.value" 
+                  @input="emitUpdate" 
+                  placeholder="Value" 
+                  class="header-value" 
+                />
+                <button @click="removeHeader(index)" class="remove-header-btn">✕</button>
+              </div>
+              <button @click="addHeader" class="add-header-btn">+ 添加请求头</button>
+            </div>
+          </div>
         </div>
 
-        <div class="section-title">超时配置</div>
-        <div class="timeout-row">
-          <input 
-            v-model.number="localTimeout" 
-            @input="emitUpdate" 
-            type="number" 
-            min="1" 
-            max="300" 
-            class="timeout-input"
-          />
-          <span class="timeout-unit">秒</span>
+        <!-- 请求体 -->
+        <div class="config-section collapsible-section">
+          <div class="section-header">
+            <button @click="toggleSection('body')" class="section-toggle-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.body }">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+              <span>请求体</span>
+            </button>
+          </div>
+          <div v-if="expandedSections.body" class="section-content">
+            <select v-model="localBodyType" @change="emitUpdate" class="node-select">
+              <option value="none">无</option>
+              <option value="json">JSON</option>
+              <option value="form">表单数据</option>
+              <option value="raw">原始文本</option>
+            </select>
+
+            <div v-if="localBodyType !== 'none'" class="body-content">
+              <textarea 
+                v-model="localBody" 
+                @input="emitUpdate" 
+                :placeholder="getBodyPlaceholder()"
+                class="node-textarea"
+              ></textarea>
+            </div>
+          </div>
         </div>
 
-        <div class="section-title">高级选项</div>
-        <label class="checkbox-label">
-          <input v-model="localFollowRedirects" @change="emitUpdate" type="checkbox" />
-          <span>跟随重定向</span>
-        </label>
-        <label class="checkbox-label">
-          <input v-model="localVerifySSL" @change="emitUpdate" type="checkbox" />
-          <span>验证 SSL 证书</span>
-        </label>
+        <!-- 超时配置 -->
+        <div class="config-section collapsible-section">
+          <div class="section-header">
+            <button @click="toggleSection('timeout')" class="section-toggle-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.timeout }">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+              <span>超时配置</span>
+            </button>
+          </div>
+          <div v-if="expandedSections.timeout" class="section-content">
+            <div class="timeout-row">
+              <input 
+                v-model.number="localTimeout" 
+                @input="emitUpdate" 
+                type="number" 
+                min="1" 
+                max="300" 
+                class="timeout-input"
+              />
+              <span class="timeout-unit">秒</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 高级选项 -->
+        <div class="config-section collapsible-section">
+          <div class="section-header">
+            <button @click="toggleSection('advanced')" class="section-toggle-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.advanced }">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+              <span>高级选项</span>
+            </button>
+          </div>
+          <div v-if="expandedSections.advanced" class="section-content">
+            <label class="checkbox-label">
+              <input v-model="localFollowRedirects" @change="emitUpdate" type="checkbox" />
+              <span>跟随重定向</span>
+            </label>
+            <label class="checkbox-label">
+              <input v-model="localVerifySSL" @change="emitUpdate" type="checkbox" />
+              <span>验证 SSL 证书</span>
+            </label>
+          </div>
+        </div>
       </div>
     </div>
     <Handle v-if="!configMode" type="target" :position="targetPosition" id="target" />
@@ -141,6 +201,17 @@ const { targetPosition, sourcePosition } = useNodeAnchorMode(props);
 const emit = defineEmits(['update']);
 
 const showAdvanced = ref(false);
+const expandedSections = ref({
+  auth: true,
+  headers: true,
+  body: true,
+  timeout: true,
+  advanced: true
+});
+
+const toggleSection = (section) => {
+  expandedSections.value[section] = !expandedSections.value[section];
+};
 
 const localMethod = ref(props.data.httpMethod || 'GET');
 const localUrl = ref(props.data.httpUrl || '');

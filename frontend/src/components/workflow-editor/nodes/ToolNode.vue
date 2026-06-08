@@ -1,5 +1,6 @@
 <template>
   <div class="node tool-node" :class="{ selected, 'is-config-mode': configMode, 'is-compact': compact && !configMode }">
+    <!-- 非配置模式 -->
     <div v-if="!configMode" class="node-header">
       <span class="node-icon">🔌</span>
       <span class="node-title">{{ data.label }}</span>
@@ -13,7 +14,8 @@
       <span class="compact-hint">双击配置</span>
     </div>
 
-    <div v-if="!compact || configMode" class="node-body">
+    <!-- 非配置模式的详细视图 -->
+    <div v-if="!compact && !configMode" class="node-body">
       <!-- 加载状态 -->
       <div v-if="loading" class="loading-state">
         <span class="loading-text">加载工具中...</span>
@@ -21,13 +23,10 @@
 
       <!-- 工具选择器 -->
       <div v-else class="tool-selector">
-        <!-- 分类选择 -->
         <select v-model="localCategory" @change="onCategoryChange" class="node-select category-select">
           <option value="">全部分类</option>
           <option v-for="cat in categories" :key="cat" :value="cat">{{ getCategoryDisplayName(cat) }}</option>
         </select>
-
-        <!-- 工具选择 -->
         <select v-model="localToolName" @change="onToolChange" class="node-select">
           <option value="">选择 MCP 工具</option>
           <optgroup v-for="(tools, cat) in groupedTools" :key="cat" :label="getCategoryDisplayName(cat)">
@@ -38,131 +37,181 @@
         </select>
       </div>
 
-      <!-- 工具描述 -->
       <div v-if="selectedTool" class="tool-desc">{{ selectedTool.description }}</div>
 
-      <!-- 高级配置 -->
-      <div v-if="localToolName" class="advanced-panel">
-        <!-- 输入参数配置 -->
-        <div class="config-section collapsible-section">
-          <div class="section-header">
-            <button @click="toggleSection('inputs')" class="section-toggle-btn">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.inputs }">
-                <polyline points="6 9 12 15 18 9"/>
-              </svg>
-              <span>输入参数</span>
-            </button>
-            <div class="header-actions">
-              <button class="help-btn" title="配置输入参数，根据工具的入参自动生成">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-                  <line x1="12" y1="17" x2="12.01" y2="17"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-          <div v-if="expandedSections.inputs" class="section-content">
-            <div class="params-container">
-              <!-- 参数表头 -->
-              <div class="param-header-row">
-                <span class="param-col param-code">参数编码</span>
-                <span class="param-col param-name">参数名称</span>
-                <span class="param-col param-type">参数类型</span>
-                <span class="param-col param-required">是否必填</span>
-                <span class="param-col param-source">取值来源</span>
-                <span class="param-col param-content">取值内容</span>
-              </div>
-              <!-- 参数行 -->
-              <div
-                v-for="(param, index) in localParams"
-                :key="index"
-                class="param-row"
-              >
-                <span class="param-col param-code">{{ param.name }}</span>
-                <span class="param-col param-name">{{ param.description || param.title || param.name }}</span>
-                <span class="param-col param-type">{{ getTypeDisplayName(param.schemaType) }}</span>
-                <span class="param-col param-required">{{ param.required ? '是' : '否' }}</span>
-                <select v-model="param.sourceType" @change="handleSourceTypeChange(index)" class="param-col param-source-select">
-                  <option value="input">自定义</option>
-                  <option value="ref">引用</option>
-                </select>
-                <div class="param-col param-content">
-                  <input
-                    v-if="param.sourceType !== 'ref'"
-                    v-model="param.value"
-                    @input="emitUpdate"
-                    :placeholder="getParamPlaceholder(param.schemaType)"
-                    class="param-value-input"
-                  />
-                  <VariableCascader
-                    v-else
-                    :key="'input-ref-' + index + '-' + cascaderRefreshKey"
-                    v-model="param.refValue"
-                    :available-variables="availableVariables"
-                    placeholder="请选择变量"
-                    class="param-value-cascader"
-                    @change="emitUpdate"
-                  />
-                </div>
-              </div>
-              <div v-if="localParams.length === 0" class="no-params-hint">
-                此工具无需参数
-              </div>
-            </div>
+      <!-- 高级配置预览 -->
+      <div v-if="localToolName && showAdvanced" class="advanced-panel">
+        <div class="section-title">输入参数</div>
+        <div v-if="localParams.length === 0" class="no-params-hint">此工具无需参数</div>
+        <div v-else class="params-preview">
+          <div v-for="param in localParams" :key="param.name" class="param-preview-item">
+            <span class="param-name">{{ param.description || param.name }}</span>
+            <span class="param-value">{{ param.value || param.refValue || '未设置' }}</span>
           </div>
         </div>
+      </div>
+    </div>
 
-        <!-- 输出参数配置 -->
-        <div class="config-section collapsible-section">
-          <div class="section-header">
-            <button @click="toggleSection('outputs')" class="section-toggle-btn">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.outputs }">
-                <polyline points="6 9 12 15 18 9"/>
-              </svg>
-              <span>输出参数</span>
-            </button>
-            <div class="header-actions">
-              <button class="help-btn" title="配置输出参数，选择工具出参节点">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-                  <line x1="12" y1="17" x2="12.01" y2="17"/>
-                </svg>
-              </button>
-              <button @click.stop="addOutputParam" class="add-param-btn" title="添加输出参数">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="12" y1="5" x2="12" y2="19"/>
-                  <line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-              </button>
-            </div>
+    <!-- 配置模式 -->
+    <div v-if="configMode" class="tool-node-config">
+      <!-- 工具选择器 -->
+      <div class="config-section collapsible-section">
+        <div class="section-header">
+          <button @click="toggleSection('tool')" class="section-toggle-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.tool }">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>工具选择</span>
+          </button>
+        </div>
+        <div v-if="expandedSections.tool" class="section-content">
+          <!-- 加载状态 -->
+          <div v-if="loading" class="loading-state">
+            <span class="loading-text">加载工具中...</span>
           </div>
-          <div v-if="expandedSections.outputs" class="section-content">
-            
-            <div class="output-param-container">
-              <!-- 输出参数表头 -->
-              <div class="output-param-header">
-                <span class="header-col header-source">工具出参</span>
-                <span class="header-col header-type">类型</span>
-                <span class="header-col header-name">参数名/变量</span>
-                <span class="header-col header-data-type">数据类型</span>
-                <span class="header-col header-desc">描述</span>
-                <span class="header-col header-action">操作</span>
-              </div>
-              
-              <template v-for="(param, index) in localOutputMappings" :key="index">
-              <div v-if="param" class="output-param-item">
-                <div class="output-schema-tree-wrapper">
+
+          <div v-else>
+            <!-- 分类选择 -->
+            <select v-model="localCategory" @change="onCategoryChange" class="node-select category-select">
+              <option value="">全部分类</option>
+              <option v-for="cat in categories" :key="cat" :value="cat">{{ getCategoryDisplayName(cat) }}</option>
+            </select>
+
+            <!-- 工具选择 -->
+            <select v-model="localToolName" @change="onToolChange" class="node-select">
+              <option value="">选择 MCP 工具</option>
+              <optgroup v-for="(tools, cat) in groupedTools" :key="cat" :label="getCategoryDisplayName(cat)">
+                <option v-for="tool in tools" :key="tool.name" :value="tool.name">
+                  {{ tool.name }}
+                </option>
+              </optgroup>
+            </select>
+
+            <!-- 工具描述 -->
+            <div v-if="selectedTool" class="tool-desc">{{ selectedTool.description }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 输入参数配置 -->
+      <div v-if="localToolName" class="config-section collapsible-section">
+        <div class="section-header">
+          <button @click="toggleSection('inputs')" class="section-toggle-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.inputs }">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>输入参数</span>
+          </button>
+          <div class="header-actions">
+            <button class="help-btn" title="配置输入参数，根据工具的入参自动生成">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div v-if="expandedSections.inputs" class="section-content">
+          <div class="params-container">
+            <!-- 参数表头 -->
+            <div class="param-header-row">
+              <span class="param-col param-code">参数编码</span>
+              <span class="param-col param-name">参数名称</span>
+              <span class="param-col param-type">参数类型</span>
+              <span class="param-col param-required">是否必填</span>
+              <span class="param-col param-source">取值来源</span>
+              <span class="param-col param-content">取值内容</span>
+            </div>
+            <!-- 参数行 -->
+            <div
+              v-for="(param, index) in localParams"
+              :key="index"
+              class="param-row"
+            >
+              <span class="param-col param-code">{{ param.name }}</span>
+              <span class="param-col param-name">{{ param.description || param.title || param.name }}</span>
+              <span class="param-col param-type">{{ getTypeDisplayName(param.schemaType) }}</span>
+              <span class="param-col param-required">{{ param.required ? '是' : '否' }}</span>
+              <select v-model="param.sourceType" @change="handleSourceTypeChange(index)" class="param-col param-source-select">
+                <option value="input">自定义</option>
+                <option value="ref">引用</option>
+              </select>
+              <div class="param-col param-content">
+                <input
+                  v-if="param.sourceType !== 'ref'"
+                  v-model="param.value"
+                  @input="emitUpdate"
+                  :placeholder="getParamPlaceholder(param.schemaType)"
+                  class="param-value-input"
+                />
                 <VariableCascader
-                  :key="'output-source-' + index + '-' + cascaderRefreshKey"
-                  v-model="param.source"
-                  :available-variables="outputSchemaVariables"
-                  placeholder="选择工具出参"
-                  class="param-source-cascader"
+                  v-else
+                  :key="'input-ref-' + index + '-' + cascaderRefreshKey"
+                  v-model="param.refValue"
+                  :available-variables="availableVariables"
+                  placeholder="请选择变量"
+                  class="param-value-cascader"
                   @change="emitUpdate"
                 />
               </div>
+            </div>
+            <div v-if="localParams.length === 0" class="no-params-hint">
+              此工具无需参数
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 输出参数配置 -->
+      <div class="config-section collapsible-section">
+        <div class="section-header">
+          <button @click="toggleSection('outputs')" class="section-toggle-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.outputs }">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>输出参数</span>
+          </button>
+          <div class="header-actions">
+            <button class="help-btn" title="配置输出参数，选择工具出参节点">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </button>
+            <button @click.stop="addOutputParam" class="add-param-btn" title="添加输出参数">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div v-if="expandedSections.outputs" class="section-content">
+          <div class="output-param-container">
+            <!-- 输出参数表头 -->
+            <div class="output-param-header">
+              <span class="header-col header-source">工具出参</span>
+              <span class="header-col header-type">类型</span>
+              <span class="header-col header-name">参数名/变量</span>
+              <span class="header-col header-data-type">数据类型</span>
+              <span class="header-col header-desc">描述</span>
+              <span class="header-col header-action">操作</span>
+            </div>
+            
+            <template v-for="(param, index) in localOutputMappings" :key="index">
+              <div v-if="param" class="output-param-item">
+                <div class="output-schema-tree-wrapper">
+                  <VariableCascader
+                    :key="'output-source-' + index + '-' + cascaderRefreshKey"
+                    v-model="param.source"
+                    :available-variables="outputSchemaVariables"
+                    placeholder="选择工具出参"
+                    class="param-source-cascader"
+                    @change="emitUpdate"
+                  />
+                </div>
                 <select v-model="param.nameType" @change="handleOutputNameTypeChange(index)" class="param-name-type-select">
                   <option value="input">自定义</option>
                   <option value="reference">引用</option>
@@ -202,9 +251,17 @@
               </div>
             </template>
           </div>
-          </div>
         </div>
+      </div>
 
+      <!-- 收起按钮 -->
+      <div class="collapse-section">
+        <button @click="$emit('close')" class="collapse-all-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="18 15 12 9 6 15"/>
+          </svg>
+          <span>收起</span>
+        </button>
       </div>
     </div>
 
@@ -239,7 +296,7 @@ const props = defineProps({
 
 const { targetPosition, sourcePosition } = useNodeAnchorMode(props)
 
-const emit = defineEmits(['update'])
+const emit = defineEmits(['update', 'close'])
 
 
 
@@ -615,6 +672,11 @@ onMounted(() => {
   box-shadow: none;
 }
 
+.tool-node-config {
+  padding: 0;
+  background: #fff;
+}
+
 .node-header {
   display: flex;
   align-items: center;
@@ -907,34 +969,33 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 10px;
-  background: #f8fafc;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.section-header:hover {
-  background: #f1f5f9;
+  padding: 12px 16px;
+  background: #fafafa;
+  border-bottom: 1px solid #e8e8e8;
 }
 
 .section-toggle-btn {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   border: none;
   background: transparent;
-  color: #475569;
-  font-size: 12px;
-  font-weight: 500;
+  color: #333;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 3px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.section-toggle-btn:hover {
+  background: #f0f0f0;
 }
 
 .section-toggle-btn svg {
-  width: 14px;
-  height: 14px;
-  transition: transform 0.2s;
+  width: 16px;
+  height: 16px;
 }
 
 .section-toggle-btn svg.rotated {
@@ -1247,5 +1308,34 @@ onMounted(() => {
 .param-value-cascader {
   flex: 1;
   font-size: 11px;
+}
+
+/* 收起按钮 */
+.collapse-section {
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+  border-top: 1px solid #e8e8e8;
+  background: #fafafa;
+}
+
+.collapse-all-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 48px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.collapse-all-btn:hover {
+  background: #2563eb;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 </style>

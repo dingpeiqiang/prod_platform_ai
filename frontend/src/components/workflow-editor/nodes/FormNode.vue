@@ -13,78 +13,158 @@
       <span class="compact-hint">双击配置</span>
     </div>
 
-    <div v-if="!compact || configMode" class="node-body">
-      <!-- 本体选择 -->
-      <div class="section-title">选择本体</div>
-      <div v-if="loadingOntologies" class="loading-state">
-        <span class="loading-text">加载本体中...</span>
-      </div>
-      <select v-model="localOntologyCode" @change="onOntologyChange" class="node-select">
-        <option value="">选择本体</option>
-        <option v-for="ontology in ontologies" :key="ontology.ontologyCode" :value="ontology.ontologyCode">
-          {{ ontology.ontologyName }}
-        </option>
-      </select>
-
-      <!-- MCP 工具选择 -->
-      <div class="section-title">选择提交工具</div>
-      <div v-if="loadingMcpTools" class="loading-state">
-        <span class="loading-text">加载工具中...</span>
-      </div>
-      <select v-model="localToolName" @change="onToolChange" class="node-select">
-        <option value="">选择 MCP 工具</option>
-        <optgroup v-for="(tools, cat) in groupedTools" :key="cat" :label="getCategoryDisplayName(cat)">
-          <option v-for="tool in tools" :key="tool.name" :value="tool.name">
-            {{ tool.name }}
-          </option>
-        </optgroup>
-      </select>
-
-      <!-- 工具描述 -->
-      <div v-if="selectedTool" class="tool-desc">{{ selectedTool.description }}</div>
-
-      <!-- 大模型配置（用于表单智能推荐和智能校验） -->
-      <div class="section-title">大模型配置</div>
-      <div class="llm-config-section">
-        <div class="llm-config-row">
-          <label class="config-label">模型选择</label>
-          <select v-model="localModel" @change="emitUpdate" class="node-select" :disabled="modelsLoading">
-            <option value="" disabled>请选择模型</option>
-            <option
-              v-for="opt in modelOptions"
-              :key="opt.value"
-              :value="opt.value"
-            >{{ opt.label }}</option>
-          </select>
+    <div v-if="!compact || configMode" class="form-node-config">
+      <!-- 本体和工具选择 -->
+      <div class="config-section collapsible-section">
+        <div class="section-header">
+          <button @click="toggleSection('basic')" class="section-toggle-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.basic }">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>基础配置</span>
+          </button>
+          <div class="header-actions">
+            <button class="help-btn" title="配置本体和提交工具">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </button>
+          </div>
         </div>
         
-        <div class="llm-config-row">
-          <label class="config-label">温度值</label>
-          <input 
-            v-model.number="localTemperature" 
-            @input="emitUpdate" 
-            type="number" 
-            min="0" 
-            max="1" 
-            step="0.1" 
-            class="config-input-small"
-          />
+        <div v-if="expandedSections.basic" class="section-content">
+          <div class="param-grid">
+            <!-- 本体选择 -->
+            <div class="param-row">
+              <label class="param-label">选择本体</label>
+              <div v-if="loadingOntologies" class="loading-state">
+                <span class="loading-text">加载本体中...</span>
+              </div>
+              <select v-model="localOntologyCode" @change="onOntologyChange" class="param-select" :disabled="loadingOntologies">
+                <option value="">选择本体</option>
+                <option v-for="ontology in ontologies" :key="ontology.ontologyCode" :value="ontology.ontologyCode">
+                  {{ ontology.ontologyName }}
+                </option>
+              </select>
+            </div>
+
+            <!-- MCP 工具选择 -->
+            <div class="param-row">
+              <label class="param-label">选择提交工具</label>
+              <div v-if="loadingMcpTools" class="loading-state">
+                <span class="loading-text">加载工具中...</span>
+              </div>
+              <select v-model="localToolName" @change="onToolChange" class="param-select" :disabled="loadingMcpTools">
+                <option value="">选择 MCP 工具</option>
+                <optgroup v-for="(tools, cat) in groupedTools" :key="cat" :label="getCategoryDisplayName(cat)">
+                  <option v-for="tool in tools" :key="tool.name" :value="tool.name">
+                    {{ tool.name }}
+                  </option>
+                </optgroup>
+              </select>
+            </div>
+          </div>
+          
+          <!-- 工具描述 -->
+          <div v-if="selectedTool" class="tool-desc">{{ selectedTool.description }}</div>
+        </div>
+      </div>
+
+      <!-- 大模型配置 -->
+      <div class="config-section collapsible-section">
+        <div class="section-header">
+          <button @click="toggleSection('llm')" class="section-toggle-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.llm }">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>大模型配置</span>
+          </button>
+          <div class="header-actions">
+            <div class="help-container">
+              <button 
+                class="help-btn" 
+                @mouseenter="handleTooltipEnter" 
+                @mouseleave="handleTooltipLeave"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+              </button>
+              <div v-if="showModelTooltip" class="model-tooltip" @mouseenter="handleTooltipEnter" @mouseleave="handleTooltipLeave">
+                <div class="tooltip-header">📌 大模型配置说明</div>
+                <div class="tooltip-section">
+                  <div class="tooltip-section-title">【模型选择】</div>
+                  <div class="tooltip-item">• Qwen-VL-Plus: 多模态任务（图文理解）</div>
+                  <div class="tooltip-item">• Qwen-Plus: 通用文本任务</div>
+                  <div class="tooltip-item">• GPT-4o/GPT-4: 复杂推理任务</div>
+                  <div class="tooltip-item">• GPT-3.5 Turbo: 日常对话（性价比高）</div>
+                </div>
+                <div class="tooltip-section">
+                  <div class="tooltip-section-title">【温度值】控制随机性</div>
+                  <div class="tooltip-item">• 0.0-0.3: 确定性强（事实问答、智能校验）</div>
+                  <div class="tooltip-item">• 0.4-0.7: 平衡创意与稳定</div>
+                  <div class="tooltip-item">• 0.8-1.0: 高度随机（创意写作）</div>
+                </div>
+                <div class="tooltip-section">
+                  <div class="tooltip-section-title">【输入变量】</div>
+                  <div class="tooltip-item">• 选择作为表单智能推荐的输入数据源</div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         
-        <div class="llm-config-row">
-          <label class="config-label">输入变量</label>
-          <VariableCascader
-            v-model="localInputVariable"
-            :available-variables="availableVariables"
-            placeholder="选择输入变量"
-            class="param-value-cascader"
-            @change="emitUpdate"
-          />
+        <div v-if="expandedSections.llm" class="section-content">
+          <div class="param-grid">
+            <div class="param-row">
+              <label class="param-label">模型选择</label>
+              <select v-model="localModel" @change="emitUpdate" class="param-select" :disabled="modelsLoading">
+                <option value="" disabled>请选择模型</option>
+                <option
+                  v-for="opt in modelOptions"
+                  :key="opt.value"
+                  :value="opt.value"
+                >{{ opt.label }}</option>
+              </select>
+            </div>
+
+            <div class="param-row">
+              <label class="param-label">
+                温度值
+                <span class="help-icon" title="控制生成文本的随机性">?</span>
+              </label>
+              <div class="slider-control">
+                <input v-model.number="localTemperature" type="range" min="0" max="1" step="0.1" @input="emitUpdate" class="param-slider"/>
+                <div class="slider-value-group">
+                  <input v-model.number="localTemperature" type="number" min="0" max="1" step="0.1" @input="emitUpdate" class="value-input"/>
+                  <div class="adjust-buttons">
+                    <button @click="adjustValue('temperature', -0.1)" class="adjust-btn">-</button>
+                    <button @click="adjustValue('temperature', 0.1)" class="adjust-btn">+</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="param-row full-width">
+              <label class="param-label">输入变量</label>
+              <VariableCascader
+                v-model="localInputVariable"
+                :available-variables="availableVariables"
+                placeholder="选择输入变量"
+                class="param-cascader"
+                @change="emitUpdate"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
       <!-- 输入参数配置 -->
-      <div v-if="(configMode || showAdvanced)" class="config-section collapsible-section">
+      <div class="config-section collapsible-section">
         <div class="section-header">
           <button @click="toggleSection('inputs')" class="section-toggle-btn">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.inputs }">
@@ -108,36 +188,47 @@
             </button>
           </div>
         </div>
+        
         <div v-if="expandedSections.inputs" class="section-content">
-          <div class="params-container">
+          <div class="input-param-container">
             <!-- 参数表头 -->
-            <div class="param-header-row">
-              <span class="param-col param-code">参数编码</span>
-              <span class="param-col param-name">参数名称</span>
-              <span class="param-col param-type">参数类型</span>
-              <span class="param-col param-required">是否必填</span>
-              <span class="param-col param-source">取值来源</span>
-              <span class="param-col param-content">取值内容</span>
-              <span class="param-col param-action">操作</span>
+            <div class="input-param-header">
+              <span class="header-col header-code">参数编码</span>
+              <span class="header-col header-name">参数名称</span>
+              <span class="header-col header-type">参数类型</span>
+              <span class="header-col header-required">是否必填</span>
+              <span class="header-col header-source">取值来源</span>
+              <span class="header-col header-value">取值内容</span>
+              <span class="header-col header-action">操作</span>
             </div>
             <!-- 参数行 -->
             <template v-for="(param, index) in localInputs" :key="index">
-              <div v-if="param" class="param-row">
-                <input v-model="param.name" @input="emitUpdate" placeholder="参数编码" class="param-col param-code-input" />
-                <input v-model="param.description" @input="emitUpdate" placeholder="参数名称" class="param-col param-name-input" />
-                <select v-model="param.type" @change="emitUpdate" class="param-col param-type-select">
-                  <option value="string">字符串</option>
-                  <option value="number">数字</option>
-                  <option value="boolean">布尔值</option>
-                  <option value="array">数组</option>
-                  <option value="object">对象</option>
-                </select>
-                <span class="param-col param-required">{{ param.required ? '是' : '否' }}</span>
-                <select v-model="param.sourceType" @change="handleSourceTypeChange(index)" class="param-col param-source-select">
-                  <option value="input">自定义</option>
-                  <option value="ref">引用</option>
-                </select>
-                <div class="param-col param-content">
+              <div v-if="param" class="input-param-item">
+                <div class="param-code-cell">
+                  <input v-model="param.name" @input="emitUpdate" placeholder="参数编码" class="param-code-input" :class="{ error: !param.name }"/>
+                </div>
+                <div class="param-name-cell">
+                  <input v-model="param.description" @input="emitUpdate" placeholder="参数名称" class="param-name-input"/>
+                </div>
+                <div class="param-type-cell">
+                  <select v-model="param.type" @change="emitUpdate" class="param-type-select">
+                    <option value="string">字符串</option>
+                    <option value="number">数字</option>
+                    <option value="boolean">布尔值</option>
+                    <option value="array">数组</option>
+                    <option value="object">对象</option>
+                  </select>
+                </div>
+                <div class="param-required-cell">
+                  <span>{{ param.required ? '是' : '否' }}</span>
+                </div>
+                <div class="param-source-cell">
+                  <select v-model="param.sourceType" @change="handleSourceTypeChange(index)" class="param-source-select">
+                    <option value="input">自定义</option>
+                    <option value="ref">引用</option>
+                  </select>
+                </div>
+                <div class="param-value-cell">
                   <input
                     v-if="param.sourceType !== 'ref'"
                     v-model="param.value"
@@ -151,11 +242,11 @@
                     v-model="param.refValue"
                     :available-variables="availableVariables"
                     placeholder="请选择变量"
-                    class="param-value-cascader"
+                    class="param-cascader"
                     @change="emitUpdate"
                   />
                 </div>
-                <div class="param-col param-action">
+                <div class="param-action-cell">
                   <button @click="removeInputParam(index)" class="action-btn delete-btn" title="删除">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <line x1="18" y1="6" x2="6" y2="18"/>
@@ -171,7 +262,7 @@
       </div>
 
       <!-- 输出参数配置 -->
-      <div v-if="(configMode || showAdvanced)" class="config-section collapsible-section">
+      <div class="config-section collapsible-section">
         <div class="section-header">
           <button @click="toggleSection('outputs')" class="section-toggle-btn">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.outputs }">
@@ -195,6 +286,7 @@
             </button>
           </div>
         </div>
+        
         <div v-if="expandedSections.outputs" class="section-content">
           <div class="output-param-container">
             <div class="output-param-header">
@@ -248,64 +340,98 @@
         </div>
       </div>
 
-      <!-- 高级配置：工具参数 -->
-      <div v-if="(configMode || showAdvanced) && localToolName" class="advanced-panel">
-        <div class="section-title">工具参数</div>
-        <div class="params-container">
-          <div
-            v-for="(param, index) in localParams"
-            :key="index"
-            class="param-row"
-          >
-            <input
-              v-model="param.name"
-              @input="emitUpdate"
-              placeholder="参数名"
-              class="param-name"
-              readonly
-            />
-            <select v-model="param.type" @change="emitUpdate" class="param-type" disabled>
-              <option value="string">字符串</option>
-              <option value="number">数字</option>
-              <option value="boolean">布尔值</option>
-              <option value="array">数组</option>
-              <option value="object">对象</option>
-              <option value="variable">变量引用</option>
-            </select>
-            <input
-              v-if="param.type !== 'variable'"
-              v-model="param.value"
-              @input="emitUpdate"
-              :placeholder="getParamPlaceholder(param.type)"
-              class="param-value"
-            />
-            <VariableCascader
-              v-else
-              v-model="param.value"
-              :available-variables="availableVariables"
-              placeholder="请选择变量"
-              class="param-value-cascader"
-              @change="emitUpdate"
-            />
-          </div>
-          <div v-if="localParams.length === 0" class="no-params-hint">
-            此工具无需参数
+      <!-- 工具参数配置 -->
+      <div v-if="localToolName" class="config-section collapsible-section">
+        <div class="section-header">
+          <button @click="toggleSection('toolParams')" class="section-toggle-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.toolParams }">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>工具参数</span>
+          </button>
+          <div class="header-actions">
+            <button class="help-btn" title="配置工具执行参数">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </button>
           </div>
         </div>
+        
+        <div v-if="expandedSections.toolParams" class="section-content">
+          <div class="tool-param-container">
+            <div
+              v-for="(param, index) in localParams"
+              :key="index"
+              class="tool-param-item"
+            >
+              <input
+                v-model="param.name"
+                @input="emitUpdate"
+                placeholder="参数名"
+                class="param-name-input"
+                readonly
+              />
+              <select v-model="param.type" @change="emitUpdate" class="param-type-select" disabled>
+                <option value="string">字符串</option>
+                <option value="number">数字</option>
+                <option value="boolean">布尔值</option>
+                <option value="array">数组</option>
+                <option value="object">对象</option>
+                <option value="variable">变量引用</option>
+              </select>
+              <input
+                v-if="param.type !== 'variable'"
+                v-model="param.value"
+                @input="emitUpdate"
+                :placeholder="getParamPlaceholder(param.type)"
+                class="param-value-input"
+              />
+              <VariableCascader
+                v-else
+                v-model="param.value"
+                :available-variables="availableVariables"
+                placeholder="请选择变量"
+                class="param-cascader"
+                @change="emitUpdate"
+              />
+            </div>
+            <div v-if="localParams.length === 0" class="no-params-hint">此工具无需参数</div>
+          </div>
 
-        <div class="section-title">执行配置</div>
-        <div class="timeout-row">
-          <label>超时时间</label>
-          <input
-            v-model.number="localTimeout"
-            @input="emitUpdate"
-            type="number"
-            min="1"
-            max="600"
-            class="timeout-input"
-          />
-          <span class="timeout-unit">秒</span>
+          <!-- 执行配置 -->
+          <div class="execution-config">
+            <div class="param-row">
+              <label class="param-label">
+                超时时间
+                <span class="help-icon" title="工具执行超时时间（秒）">?</span>
+              </label>
+              <div class="slider-control">
+                <input v-model.number="localTimeout" type="range" min="1" max="600" step="1" @input="emitUpdate" class="param-slider"/>
+                <div class="slider-value-group">
+                  <input v-model.number="localTimeout" type="number" min="1" max="600" step="1" @input="emitUpdate" class="value-input"/>
+                  <div class="adjust-buttons">
+                    <button @click="adjustValue('timeout', -10)" class="adjust-btn">-</button>
+                    <button @click="adjustValue('timeout', 10)" class="adjust-btn">+</button>
+                  </div>
+                  <span class="unit-text">秒</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
+      </div>
+
+      <!-- 收起按钮 -->
+      <div v-if="configMode" class="collapse-section">
+        <button @click="$emit('close')" class="collapse-all-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="18 15 12 9 6 15"/>
+          </svg>
+          <span>收起</span>
+        </button>
       </div>
     </div>
 
@@ -341,7 +467,7 @@ const props = defineProps({
 
 const { targetPosition, sourcePosition } = useNodeAnchorMode(props)
 
-const emit = defineEmits(['update'])
+const emit = defineEmits(['update', 'close'])
 
 const modelsStore = useModelsStore()
 const workflowDataStore = useWorkflowDataStore()
@@ -351,9 +477,15 @@ const showAdvanced = ref(false)
 
 // 展开状态
 const expandedSections = ref({
+  basic: true,
+  llm: true,
   inputs: true,
-  outputs: true
+  outputs: true,
+  toolParams: true
 })
+
+const showModelTooltip = ref(false)
+let hideTimer = null
 
 const localOntologyCode = ref(props.data.ontologyCode || '')
 const localToolName = ref(props.data.toolType || props.data.toolName || '')
@@ -486,6 +618,33 @@ const getParamPlaceholder = (type) => {
   }
 }
 
+const handleTooltipEnter = () => {
+  if (hideTimer) {
+    clearTimeout(hideTimer)
+    hideTimer = null
+  }
+  showModelTooltip.value = true
+}
+
+const handleTooltipLeave = () => {
+  hideTimer = setTimeout(() => {
+    showModelTooltip.value = false
+    hideTimer = null
+  }, 1000)
+}
+
+const adjustValue = (field, delta) => {
+  const fieldMap = {
+    temperature: localTemperature,
+    timeout: localTimeout
+  }
+  const ref = fieldMap[field]
+  if (ref) {
+    ref.value = Math.round((ref.value + delta) * 100) / 100
+    emitUpdate()
+  }
+}
+
 // 切换展开状态
 const toggleSection = (section) => {
   expandedSections.value[section] = !expandedSections.value[section]
@@ -508,7 +667,6 @@ const handleSourceTypeChange = (index) => {
     param.refValue = '';
   }
   
-  // 强制触发响应式更新
   localInputs.value = [...localInputs.value];
   emitUpdate();
 }
@@ -664,6 +822,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   isUnmounted.value = true
+  if (hideTimer) {
+    clearTimeout(hideTimer)
+    hideTimer = null
+  }
 })
 </script>
 
@@ -679,8 +841,8 @@ onUnmounted(() => {
 }
 
 .form-node.selected {
-  border-color: #10b981;
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
 .form-node.is-compact {
@@ -709,8 +871,16 @@ onUnmounted(() => {
 
 .form-node.is-config-mode {
   min-width: unset;
-  border: none;
+  width: 100%;
   box-shadow: none;
+  border-radius: 0;
+  background: #ffffff;
+  color: #333;
+}
+
+.form-node-config {
+  padding: 0;
+  background: #fff;
 }
 
 .node-header {
@@ -753,251 +923,48 @@ onUnmounted(() => {
   background: rgba(255, 255, 255, 0.3);
 }
 
-.node-body {
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.section-title {
-  font-size: 10px;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 2px;
-}
-
-.llm-config-section {
-  padding: 8px;
-  background: #f8fafc;
-  border-radius: 4px;
-  margin-bottom: 8px;
-}
-
-.llm-config-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.llm-config-row:last-child {
-  margin-bottom: 0;
-}
-
-.config-label {
-  font-size: 11px;
-  color: #64748b;
-  min-width: 60px;
-  padding-top: 4px;
-}
-
-.config-checkbox {
-  width: 16px;
-  height: 16px;
-  margin-top: 4px;
-}
-
-.config-input-small {
-  width: 80px;
-  padding: 4px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  font-size: 11px;
-}
-
-.config-textarea {
-  flex: 1;
-  padding: 6px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  font-size: 11px;
-  resize: vertical;
-  min-height: 60px;
-  font-family: inherit;
-}
-
-.config-textarea:focus {
-  outline: none;
-  border-color: #10b981;
-}
-
-.llm-config-panel {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px dashed #cbd5e1;
-}
-
-.loading-state {
-  padding: 8px;
-  text-align: center;
-}
-
-.loading-text {
-  font-size: 11px;
-  color: #94a3b8;
-}
-
-.node-select {
-  width: 100%;
-  padding: 6px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  font-size: 12px;
-  background: white;
-}
-
-.node-select:focus {
-  outline: none;
-  border-color: #10b981;
-}
-
-.tool-desc {
-  font-size: 11px;
-  color: #64748b;
-  padding: 6px 8px;
-  background: #f8fafc;
-  border-radius: 4px;
-  line-height: 1.4;
-  max-height: 60px;
-  overflow-y: auto;
-}
-
-.advanced-panel {
-  margin-top: 4px;
-  padding-top: 10px;
-  border-top: 1px dashed #cbd5e1;
-  animation: slideDown 0.2s ease;
-}
-
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.params-container {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 8px;
-}
-
-.param-row {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-}
-
-.param-name {
-  width: 60px;
-  padding: 4px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  font-size: 11px;
-  background: #f8fafc;
-  color: #64748b;
-}
-
-.param-type {
-  width: 70px;
-  padding: 4px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  font-size: 10px;
-  background: #f8fafc;
-  color: #64748b;
-}
-
-.param-value {
-  flex: 1;
-  padding: 4px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  font-size: 11px;
-}
-
-.no-params-hint {
-  font-size: 11px;
-  color: #94a3b8;
-  padding: 4px 0;
-  text-align: center;
-}
-
-.timeout-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
-}
-
-.timeout-row label {
-  font-size: 11px;
-  color: #64748b;
-  font-weight: 500;
-}
-
-.timeout-input {
-  width: 60px;
-  padding: 4px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  font-size: 11px;
-}
-
-.timeout-unit {
-  font-size: 11px;
-  color: #64748b;
-}
-
 /* 配置区域样式 */
 .config-section {
-  margin-bottom: 8px;
-}
-
-.collapsible-section {
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  overflow: hidden;
+  padding: 0;
+  border-bottom: 1px solid #f0f0f0;
 }
 
 .section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 10px;
-  background: #f8fafc;
+  padding: 12px 16px;
+  background: #fafafa;
+  border-bottom: 1px solid #e8e8e8;
   cursor: pointer;
-  transition: background 0.2s;
 }
 
 .section-header:hover {
-  background: #f1f5f9;
+  background: #f5f5f5;
 }
 
 .section-toggle-btn {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   border: none;
   background: transparent;
-  color: #475569;
-  font-size: 12px;
-  font-weight: 500;
+  color: #333;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 3px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.section-toggle-btn:hover {
+  background: #f0f0f0;
 }
 
 .section-toggle-btn svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   transition: transform 0.2s;
 }
 
@@ -1008,191 +975,532 @@ onUnmounted(() => {
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
 }
 
 .help-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border: none;
   background: transparent;
-  color: #94a3b8;
+  color: #999;
   cursor: help;
   border-radius: 50%;
   transition: all 0.2s;
 }
 
 .help-btn:hover {
-  background: #e2e8f0;
-  color: #64748b;
+  background: #f0f0f0;
+  color: #666;
+}
+
+.help-container {
+  position: relative;
+}
+
+.model-tooltip {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  width: 400px;
+  max-height: 500px;
+  overflow-y: auto;
+  background: #ffffff;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  padding: 16px;
+  z-index: 1000;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.model-tooltip::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  right: 12px;
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 8px solid #e8e8e8;
+}
+
+.model-tooltip::after {
+  content: '';
+  position: absolute;
+  top: -6px;
+  right: 14px;
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 6px solid #ffffff;
+}
+
+.tooltip-header {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.tooltip-section {
+  margin-bottom: 12px;
+}
+
+.tooltip-section:last-child {
+  margin-bottom: 0;
+}
+
+.tooltip-section-title {
+  font-weight: 500;
+  color: #3b82f6;
+  margin-bottom: 6px;
+}
+
+.tooltip-item {
+  color: #475569;
+  padding-left: 8px;
+  margin-bottom: 4px;
+}
+
+.tooltip-item:last-child {
+  margin-bottom: 0;
 }
 
 .add-param-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   border: none;
-  background: #10b981;
+  background: #3b82f6;
   color: white;
-  border-radius: 3px;
+  border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .add-param-btn:hover {
-  background: #059669;
-  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+  background: #2563eb;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
 }
 
 .section-content {
-  padding: 10px;
-  animation: slideDown 0.2s ease;
+  padding: 16px;
+  animation: slideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* 输入参数表格样式 */
-.params-container {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 8px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  overflow: hidden;
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.param-header-row {
-  display: flex;
-  background: #f1f5f9;
-  font-weight: 600;
-  font-size: 10px;
-  color: #64748b;
+/* 参数网格布局 */
+.param-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
 }
 
 .param-row {
   display: flex;
-  align-items: center;
-  border-top: 1px solid #f1f5f9;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.param-row:nth-child(odd):not(.param-header-row) {
-  background: #fafafa;
+.param-row.full-width {
+  grid-column: 1 / -1;
 }
 
-.param-col {
-  padding: 4px 6px;
+.param-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
   display: flex;
   align-items: center;
-  min-height: 28px;
+  gap: 4px;
+}
+
+.help-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #e8e8e8;
+  color: #999;
+  font-size: 11px;
+  cursor: help;
+  transition: all 0.2s;
+}
+
+.help-icon:hover {
+  background: #3b82f6;
+  color: white;
+}
+
+.param-select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+  background: white;
+  transition: all 0.2s;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 8px center;
+  background-repeat: no-repeat;
+  background-size: 12px;
+  padding-right: 28px;
+  box-sizing: border-box;
+}
+
+.param-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.param-select:disabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* 滑块控件 */
+.slider-control {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.param-slider {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: #e8e8e8;
+  outline: none;
+  -webkit-appearance: none;
+}
+
+.param-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #3b82f6;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.param-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+}
+
+.slider-value-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.value-input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+  text-align: center;
+}
+
+.value-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.adjust-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.adjust-btn {
+  width: 24px;
+  height: 24px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  background: white;
+  color: #666;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.adjust-btn:hover {
+  border-color: #3b82f6;
+  color: #3b82f6;
+  background: #e6f7ff;
+}
+
+.unit-text {
+  font-size: 13px;
+  color: #666;
+}
+
+/* 加载状态 */
+.loading-state {
+  padding: 8px;
+  text-align: center;
+}
+
+.loading-text {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+/* 工具描述 */
+.tool-desc {
+  font-size: 13px;
+  color: #64748b;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border-radius: 6px;
+  line-height: 1.4;
+  margin-top: 8px;
+}
+
+/* 输入参数容器 */
+.input-param-container {
+  overflow-x: auto;
+  border-radius: 4px;
+  border: 1px solid #e5e7eb;
+}
+
+.input-param-header {
+  display: flex;
+  align-items: center;
+  background: #f1f5f9;
+  font-weight: 600;
+  font-size: 12px;
+  color: #64748b;
+  padding: 8px;
+  min-width: max-content;
+}
+
+.header-col {
+  display: flex;
+  align-items: center;
   flex-shrink: 0;
 }
 
-.param-code {
-  width: 75px;
-  font-size: 11px;
-  color: #475569;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.input-param-header .header-code {
+  width: 100px;
+}
+
+.input-param-header .header-name {
+  width: 100px;
+}
+
+.input-param-header .header-type {
+  width: 70px;
+}
+
+.input-param-header .header-required {
+  width: 60px;
+}
+
+.input-param-header .header-source {
+  width: 70px;
+}
+
+.input-param-header .header-value {
+  flex: 1;
+  min-width: 150px;
+}
+
+.input-param-header .header-action {
+  width: 40px;
+  display: flex;
+  justify-content: center;
+}
+
+.input-param-item {
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  border-top: 1px solid #e5e7eb;
+  min-width: max-content;
+}
+
+.input-param-item:first-child {
+  border-top: none;
+}
+
+.param-code-cell {
+  width: 100px;
 }
 
 .param-code-input {
-  width: 75px;
-  padding: 3px 6px;
-  border: 1px solid #e2e8f0;
-  border-radius: 3px;
-  font-size: 11px;
-  background: white;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+  box-sizing: border-box;
 }
 
-.param-name {
-  width: 90px;
-  font-size: 11px;
-  color: #475569;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.param-code-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.param-code-input.error {
+  border-color: #ff4d4f;
+}
+
+.param-name-cell {
+  width: 100px;
 }
 
 .param-name-input {
-  width: 90px;
-  padding: 3px 6px;
-  border: 1px solid #e2e8f0;
-  border-radius: 3px;
-  font-size: 11px;
-  background: white;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+  box-sizing: border-box;
 }
 
-.param-type {
-  width: 55px;
-  font-size: 11px;
-  color: #475569;
-  text-align: center;
+.param-name-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.param-type-cell {
+  width: 70px;
 }
 
 .param-type-select {
-  width: 55px;
-  padding: 3px 6px;
-  border: 1px solid #e2e8f0;
-  border-radius: 3px;
-  font-size: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 12px;
   background: white;
-  color: #475569;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 4px center;
+  background-repeat: no-repeat;
+  background-size: 10px;
+  box-sizing: border-box;
 }
 
-.param-required {
-  width: 50px;
-  font-size: 11px;
-  color: #475569;
+.param-type-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.param-required-cell {
+  width: 60px;
+  font-size: 12px;
+  color: #64748b;
   text-align: center;
 }
 
-.param-source {
-  width: 75px;
-  font-size: 11px;
-  color: #475569;
+.param-source-cell {
+  width: 70px;
 }
 
 .param-source-select {
   width: 100%;
-  min-width: 60px;
-  max-width: 80px;
-  padding: 3px 6px;
-  border: 1px solid #e2e8f0;
-  border-radius: 3px;
-  font-size: 10px;
+  padding: 6px 8px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 12px;
   background: white;
-  color: #475569;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23666' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 4px center;
+  background-repeat: no-repeat;
+  background-size: 10px;
   box-sizing: border-box;
 }
 
-.param-content {
+.param-source-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.param-value-cell {
   flex: 1;
-  min-width: 100px;
+  min-width: 150px;
+  margin-left: 8px;
 }
 
 .param-value-input {
   width: 100%;
-  padding: 3px 6px;
-  border: 1px solid #e2e8f0;
-  border-radius: 3px;
-  font-size: 11px;
-  background: white;
+  padding: 6px 8px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+  box-sizing: border-box;
 }
 
-.param-value-cascader {
+.param-value-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.param-cascader {
   width: 100%;
 }
 
-.param-action {
+.param-action-cell {
   width: 40px;
+  display: flex;
+  justify-content: center;
+  margin-left: 8px;
+}
+
+.action-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: #3b82f6;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.action-btn:hover:not(:disabled) {
+  background: #f0f9ff;
+}
+
+.action-btn.delete-btn:hover {
+  background: #fff1f0;
+  color: #f5222d;
 }
 
 /* 输出参数样式 */
@@ -1212,6 +1520,7 @@ onUnmounted(() => {
   color: #64748b;
   padding: 6px 8px;
   min-width: max-content;
+  box-sizing: border-box;
 }
 
 .output-param-header .header-col {
@@ -1252,6 +1561,7 @@ onUnmounted(() => {
   padding: 6px 8px;
   min-width: max-content;
   border-bottom: 1px solid #f1f5f9;
+  box-sizing: border-box;
 }
 
 .output-param-item:last-child {
@@ -1287,7 +1597,7 @@ onUnmounted(() => {
 
 .param-name-type-select:focus {
   outline: none;
-  border-color: #10b981;
+  border-color: #3b82f6;
 }
 
 .param-name-cascader {
@@ -1308,45 +1618,86 @@ onUnmounted(() => {
 
 .param-desc-input:focus {
   outline: none;
-  border-color: #10b981;
+  border-color: #3b82f6;
 }
 
-.param-action-cell {
-  width: 40px;
-  min-width: 40px;
+/* 工具参数容器 */
+.tool-param-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.tool-param-item {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 8px;
+  padding: 8px;
+  background: #fafafa;
+  border-radius: 4px;
 }
 
-.action-btn {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  color: #64748b;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 3px;
-  transition: all 0.2s;
-  flex-shrink: 0;
+.tool-param-item .param-name-input {
+  width: 120px;
+  background: #f0f0f0;
+  cursor: not-allowed;
 }
 
-.action-btn:hover {
-  background: #f1f5f9;
+.tool-param-item .param-type-select {
+  width: 90px;
+  background: #f0f0f0;
+  cursor: not-allowed;
 }
 
-.delete-btn {
+.tool-param-item .param-value-input {
+  flex: 1;
+}
+
+/* 执行配置 */
+.execution-config {
+  padding-top: 16px;
+  border-top: 1px dashed #e8e8e8;
+}
+
+/* 无参数提示 */
+.no-params-hint {
+  font-size: 13px;
   color: #94a3b8;
+  padding: 16px;
+  text-align: center;
 }
 
-.delete-btn:hover {
-  color: #ef4444;
-  background: #fef2f2;
+/* 收起按钮 */
+.collapse-section {
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+  border-top: 1px solid #e8e8e8;
+  background: #fafafa;
 }
 
+.collapse-all-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 48px;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.collapse-all-btn:hover {
+  background: #2563eb;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+/* Handle 样式 */
 :deep(.vue-flow__handle) {
   width: 12px !important;
   height: 12px !important;

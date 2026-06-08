@@ -26,14 +26,24 @@
     </div>
     
     <div v-if="configMode" class="end-node-config">
-      <div class="config-section">
-        <label class="section-label">选择回答模式</label>
+      <div class="config-section collapsible-section">
+        <div class="section-header">
+          <button @click="toggleResponseModeSection" class="section-toggle-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: showResponseModeSection }">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>回答模式</span>
+          </button>
+        </div>
+        <div v-if="showResponseModeSection" class="section-content">
+          <label class="section-label">选择回答模式</label>
         <select v-model="localResponseMode" @change="emitUpdate" class="config-select">
           <option value="text">文本</option>
           <option value="json">JSON</option>
           <option value="markdown">Markdown</option>
           <option value="html">HTML</option>
         </select>
+        </div>
       </div>
 
       <div class="config-section collapsible-section">
@@ -123,27 +133,37 @@
         </div>
       </div>
 
-      <div class="config-section">
-        <label class="section-label">是否流式输出</label>
-        <div class="radio-group">
-          <label class="radio-option">
-            <input 
-              type="radio" 
-              :value="true" 
-              v-model="localStreaming" 
-              @change="emitUpdate"
-            />
-            <span class="radio-label">是</span>
-          </label>
-          <label class="radio-option">
-            <input 
-              type="radio" 
-              :value="false" 
-              v-model="localStreaming" 
-              @change="emitUpdate"
-            />
-            <span class="radio-label">否</span>
-          </label>
+      <div class="config-section collapsible-section">
+        <div class="section-header">
+          <button @click="toggleStreamingSection" class="section-toggle-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: showStreamingSection }">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>流式输出</span>
+          </button>
+        </div>
+        <div v-if="showStreamingSection" class="section-content">
+          <label class="section-label">是否流式输出</label>
+          <div class="radio-group">
+            <label class="radio-option">
+              <input 
+                type="radio" 
+                :value="true" 
+                v-model="localStreaming" 
+                @change="emitUpdate"
+              />
+              <span class="radio-label">是</span>
+            </label>
+            <label class="radio-option">
+              <input 
+                type="radio" 
+                :value="false" 
+                v-model="localStreaming" 
+                @change="emitUpdate"
+              />
+              <span class="radio-label">否</span>
+            </label>
+          </div>
         </div>
       </div>
 
@@ -185,8 +205,13 @@
         </div>
       </div>
 
-      <div class="collapse-btn">
-        <button @click="$emit('close')">收起</button>
+      <div class="collapse-section">
+        <button @click="$emit('close')" class="collapse-all-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="18 15 12 9 6 15"/>
+          </svg>
+          <span>收起</span>
+        </button>
       </div>
     </div>
     
@@ -246,7 +271,9 @@ watch(() => props.availableVariables, () => {
 }, { deep: true });
 
 // 折叠状态
+const showResponseModeSection = ref(true);
 const showOutputSection = ref(true);
+const showStreamingSection = ref(true);
 const showAnswerSection = ref(true);
 
 // 更新数据
@@ -270,9 +297,19 @@ const emitUpdate = () => {
   });
 };
 
+// 切换回答模式区域
+const toggleResponseModeSection = () => {
+  showResponseModeSection.value = !showResponseModeSection.value;
+};
+
 // 切换输出区域
 const toggleOutputSection = () => {
   showOutputSection.value = !showOutputSection.value;
+};
+
+// 切换流式输出区域
+const toggleStreamingSection = () => {
+  showStreamingSection.value = !showStreamingSection.value;
 };
 
 // 切换回答内容区域
@@ -874,7 +911,7 @@ watch(() => props.data, (newData) => {
   color: #bbb;
 }
 
-.collapse-btn {
+.collapse-section {
   display: flex;
   justify-content: center;
   padding: 16px;
@@ -882,7 +919,10 @@ watch(() => props.data, (newData) => {
   background: #fafafa;
 }
 
-.collapse-btn button {
+.collapse-all-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 8px 48px;
   background: #7c3aed;
   color: white;
@@ -894,7 +934,7 @@ watch(() => props.data, (newData) => {
   transition: all 0.2s;
 }
 
-.collapse-btn button:hover {
+.collapse-all-btn:hover {
   background: #6d28d9;
   box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3);
 }
