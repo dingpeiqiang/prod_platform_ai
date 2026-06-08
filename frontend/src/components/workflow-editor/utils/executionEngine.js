@@ -408,22 +408,6 @@ export class ExecutionEngine {
           break;
         }
 
-        case 'prompt': {
-          const promptTemplate = node.data.prompt || '请输入内容';
-          const resolvedPrompt = promptTemplate.replace(/\{\{(\w+)\}\}/g, (_, key) => context.variables[key] || '');
-          
-          this.updateNodeData(nodeId, {
-            input: { template: promptTemplate, variables: context.variables },
-            config: { template: promptTemplate },
-            output: resolvedPrompt
-          });
-          this.addNodeLog(nodeId, { type: 'info', message: `解析变量后的提示词: ${resolvedPrompt}` });
-          
-          context.input = resolvedPrompt;
-          this.addLog('info', '构建提示词', promptTemplate, { resolved: resolvedPrompt });
-          break;
-        }
-
         case 'llm': {
           const model = node.data.model || 'qwen-vl-plus';
           const temperature = node.data.temperature || 0.7;

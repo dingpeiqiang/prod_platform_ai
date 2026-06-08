@@ -270,10 +270,29 @@
         </div>
       </div>
 
-      <div class="config-section">
-        <label class="section-label">提示词内容</label>
-        <textarea v-model="localPrompt" @input="emitUpdate" placeholder="可以使用{变量名}引用输入参数" class="answer-textarea" rows="6"></textarea>
-        <div v-if="!localPrompt" class="error-message">提示词不能为空</div>
+      <div class="config-section collapsible-section">
+        <div class="section-header">
+          <button @click="toggleSection('prompt')" class="section-toggle-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.prompt }">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>用户提示词</span>
+          </button>
+          <div class="header-actions">
+            <button class="help-btn" title="输入发送给模型的用户提示词，支持使用{变量名}引用输入参数">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        
+        <div v-if="expandedSections.prompt" class="section-content">
+          <textarea v-model="localPrompt" @input="emitUpdate" placeholder="可以使用{变量名}引用输入参数" class="answer-textarea" rows="6"></textarea>
+          <div v-if="!localPrompt" class="error-message">提示词不能为空</div>
+        </div>
       </div>
 
       <div class="config-section collapsible-section">
@@ -416,6 +435,7 @@ const expandedSections = ref({
   model: true,
   systemPrompt: true,
   inputs: true,
+  prompt: true,
   outputs: true
 });
 

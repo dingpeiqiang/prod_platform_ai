@@ -650,7 +650,6 @@ const nodeGroups = ref([
     id: 'llm',
     name: 'LLM 相关',
     nodes: [
-      { id: 'prompt', name: '提示词', icon: '📝', type: 'prompt' },
       { id: 'llm', name: 'LLM 调用', icon: '🤖', type: 'llm' }
     ]
   },
