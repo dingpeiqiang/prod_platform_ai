@@ -108,7 +108,7 @@ const headerIcon = computed(() => {
 const configTitle = computed(() => {
   const titles = {
     start: '输入参数',
-    end: '输出配置',
+    end: '输出参数',
     prompt: '提示词配置',
     llm: '模型配置',
     tool: '工具配置',

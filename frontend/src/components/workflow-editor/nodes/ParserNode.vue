@@ -245,7 +245,7 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.outputs }">
               <polyline points="6 9 12 15 18 9"/>
             </svg>
-            <span>输出配置</span>
+            <span>输出参数</span>
           </button>
           <div class="header-actions">
             <button class="help-btn" title="配置输出格式和错误处理">

@@ -6,6 +6,41 @@ export const debounce = (fn, delay) => {
   };
 };
 
+export const generateUniqueNodeId = (nodeType, existingIds, maxRetries = 10) => {
+  for (let i = 0; i < maxRetries; i++) {
+    const uuid = Math.random().toString(36).substring(2, 10);
+    const id = `${nodeType}-${uuid}`;
+    if (!existingIds.includes(id)) {
+      return id;
+    }
+  }
+  return `${nodeType}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+};
+
+export const ensureUniqueNodeIds = (nodes, existingIds = []) => {
+  const allExistingIds = [...existingIds];
+  const result = [];
+  const idMapping = new Map();
+  
+  nodes.forEach(node => {
+    let newId = node.id;
+    
+    if (allExistingIds.includes(node.id)) {
+      newId = generateUniqueNodeId(node.type, allExistingIds);
+    }
+    
+    idMapping.set(node.id, newId);
+    allExistingIds.push(newId);
+    
+    result.push({
+      ...node,
+      id: newId
+    });
+  });
+  
+  return { nodes: result, idMapping };
+};
+
 export const validateWorkflow = (elements) => {
   const errors = [];
   const warnings = [];
@@ -15,6 +50,21 @@ export const validateWorkflow = (elements) => {
   if (nodes.length === 0) {
     errors.push({ type: 'empty', message: '工作流为空', suggestion: '请从左侧面板拖拽节点到画布' });
     return { errors, warnings };
+  }
+  
+  // 检查节点ID唯一性
+  const nodeIdCounts = {};
+  nodes.forEach(node => {
+    nodeIdCounts[node.id] = (nodeIdCounts[node.id] || 0) + 1;
+  });
+  
+  const duplicateIds = Object.keys(nodeIdCounts).filter(id => nodeIdCounts[id] > 1);
+  if (duplicateIds.length > 0) {
+    errors.push({ 
+      type: 'duplicate_node_ids', 
+      message: `存在重复的节点ID: ${duplicateIds.join(', ')}`, 
+      suggestion: '每个节点必须有唯一的ID' 
+    });
   }
   
   const startNodes = nodes.filter(n => n.type === 'start');

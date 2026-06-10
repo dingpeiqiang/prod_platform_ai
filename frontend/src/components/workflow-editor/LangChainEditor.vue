@@ -701,7 +701,7 @@ import UserInputNode from './nodes/UserInputNode.vue';
 import FormNode from './nodes/FormNode.vue';
 import ValidateNode from './nodes/ValidateNode.vue';
 
-import { debounce, validateWorkflow, alignNodes, distributeNodes, autoLayoutNodes } from './utils/editorUtils';
+import { debounce, validateWorkflow, alignNodes, distributeNodes, autoLayoutNodes, ensureUniqueNodeIds } from './utils/editorUtils';
 import { ExecutionEngine } from './utils/executionEngine';
 import { KeyboardShortcuts } from './utils/keyboardShortcuts';
 import { validateConnection as validateConnectionRules } from './utils/connectionRules';
@@ -1822,6 +1822,46 @@ const onDrop = (event) => {
             conditions: []
           }
         ]
+      },
+      form: {
+        ontologyCode: '',
+        toolType: '',
+        toolName: '',
+        timeout: 60,
+        model: '',
+        temperature: 0.3,
+        systemPrompt: `你是一个表单智能生成助手。请根据输入的本体信息和业务数据，完成以下任务：
+1. 分析本体结构，生成合理的表单字段配置
+2. 根据业务规则生成表单校验规则
+3. 基于输入数据和推荐算法生成表单默认值和推荐填写内容
+4. 调用MCP工具完成表单数据的提交和处理
+
+请使用JSON格式输出结果，包含表单字段配置、校验规则、默认值和推荐建议。`,
+        prompt: `根据以下本体信息和输入数据，生成表单配置和智能推荐：
+
+【本体信息】
+{ontology}
+
+【输入参数】
+{inputs}
+
+请输出：
+1. 表单字段配置（字段名、类型、标签、必填性）
+2. 表单校验规则（格式验证、范围限制）
+3. 字段默认值（基于输入数据推导）
+4. 智能推荐建议（根据业务规则生成）
+
+输出格式为JSON。`,
+        inputParams: [
+          { name: 'ontology', description: '本体编码', type: 'string', required: true, sourceType: 'input', value: '', refValue: '' },
+          { name: 'inputs', description: '输入数据（JSON格式）', type: 'string', required: false, sourceType: 'input', value: '', refValue: '' }
+        ],
+        outputParams: [
+          { name: 'formConfig', nameType: 'input', nameRef: '', source: '', type: 'object', description: '表单配置模型' },
+          { name: 'validationRules', nameType: 'input', nameRef: '', source: '', type: 'object', description: '表单校验规则' },
+          { name: 'defaultValues', nameType: 'input', nameRef: '', source: '', type: 'object', description: '字段默认值' },
+          { name: 'recommendations', nameType: 'input', nameRef: '', source: '', type: 'object', description: '智能推荐建议' }
+        ]
       }
     };
     
@@ -2163,17 +2203,22 @@ const handleLoadFromLibrary = (workflow, isCopy = false) => {
   workflowName.value = workflow.workflowName;
   
   const workflowData = workflow.workflowData || {};
-  const nodes = (workflowData.nodes || []).map(node => ({
+  const importNodes = (workflowData.nodes || []).map(node => ({
     id: node.id,
     type: node.type,
     position: node.position || { x: 0, y: 0 },
     // 深拷贝 data 对象，确保响应式更新正确触发
     data: JSON.parse(JSON.stringify(node.data || {}))
   }));
+  
+  // 确保工作流内部节点ID唯一（处理工作流文件本身可能存在的重复ID）
+  const { nodes, idMapping } = ensureUniqueNodeIds(importNodes);
+  
+  // 更新边的引用
   const edges = (workflowData.edges || []).map(edge => ({
     id: edge.id,
-    source: edge.source,
-    target: edge.target,
+    source: idMapping.get(edge.source) || edge.source,
+    target: idMapping.get(edge.target) || edge.target,
     sourceHandle: edge.sourceHandle,
     targetHandle: edge.targetHandle,
     markerEnd: edge.markerEnd || {
@@ -2191,10 +2236,17 @@ const handleLoadFromLibrary = (workflow, isCopy = false) => {
   
   if (isCopy) {
     isReadOnly.value = false; // 复制的工作流可编辑
-    ElMessage.success(`工作流复制成功: ${workflow.workflowName}`);
+    const message = idMapping.size > 0 
+      ? `工作流复制成功: ${workflow.workflowName}（${idMapping.size} 个节点ID已自动修正）`
+      : `工作流复制成功: ${workflow.workflowName}`;
+    ElMessage.success(message);
   } else {
     isReadOnly.value = true; // 直接加载的工作流设为只读模式
-    ElMessage.info('工作流库中的工作流为只读模式，仅支持查看');
+    if (idMapping.size > 0) {
+      ElMessage.warning(`工作流加载成功，但发现 ${idMapping.size} 个重复节点ID已自动修正`);
+    } else {
+      ElMessage.info('工作流库中的工作流为只读模式，仅支持查看');
+    }
   }
 };
 
@@ -2295,16 +2347,27 @@ const importWorkflow = () => {
           const workflow = JSON.parse(event.target.result);
           if (workflow.nodes && Array.isArray(workflow.nodes)) {
             saveHistory();
-            const nodes = workflow.nodes.map(node => ({
+            
+            // 获取当前画布中已有的节点ID
+            const existingNodeIds = elements.value
+              .filter(el => !el.source && !el.target)
+              .map(el => el.id);
+            
+            // 确保导入的节点ID唯一
+            const importNodes = workflow.nodes.map(node => ({
               id: node.id,
               type: node.type,
               position: node.position,
               data: node.data
             }));
+            
+            const { nodes, idMapping } = ensureUniqueNodeIds(importNodes, existingNodeIds);
+            
+            // 更新边的引用
             const edges = workflow.edges ? workflow.edges.map(edge => ({
               id: edge.id,
-              source: edge.source,
-              target: edge.target,
+              source: idMapping.get(edge.source) || edge.source,
+              target: idMapping.get(edge.target) || edge.target,
               sourceHandle: edge.sourceHandle,
               targetHandle: edge.targetHandle,
               markerEnd: edge.markerEnd || {
@@ -2312,8 +2375,14 @@ const importWorkflow = () => {
                 color: '#94a3b8'
               }
             })) : [];
-            elements.value = [...nodes, ...edges];
+            
+            elements.value = [...elements.value, ...nodes, ...edges];
             markDirty();
+            
+            // 提示用户是否有ID冲突被处理
+            if (idMapping.size > 0) {
+              ElMessage.info(`导入完成，${idMapping.size} 个节点ID因冲突已自动重新生成`);
+            }
           } else {
             alert('无效的工作流文件格式');
           }
@@ -2413,17 +2482,21 @@ const applyJson = () => {
     
     saveHistory();
     
-    const nodes = workflow.nodes.map(node => ({
+    const importNodes = workflow.nodes.map(node => ({
       id: node.id,
       type: node.type,
       position: node.position || { x: 0, y: 0 },
       data: node.data || {}
     }));
     
+    // 确保工作流内部节点ID唯一
+    const { nodes, idMapping } = ensureUniqueNodeIds(importNodes);
+    
+    // 更新边的引用
     const edges = workflow.edges ? workflow.edges.map(edge => ({
       id: edge.id,
-      source: edge.source,
-      target: edge.target,
+      source: idMapping.get(edge.source) || edge.source,
+      target: idMapping.get(edge.target) || edge.target,
       sourceHandle: edge.sourceHandle,
       targetHandle: edge.targetHandle,
       markerEnd: edge.markerEnd || {
@@ -2438,7 +2511,13 @@ const applyJson = () => {
     markDirty();
     
     closeFullscreenJson();
-    ElMessage.success('工作流已更新');
+    
+    // 根据是否有ID冲突给出不同提示
+    if (idMapping.size > 0) {
+      ElMessage.success(`工作流已更新（${idMapping.size} 个重复节点ID已自动修正）`);
+    } else {
+      ElMessage.success('工作流已更新');
+    }
   } catch (error) {
     ElMessage.error('应用失败：' + error.message);
   }
