@@ -469,7 +469,19 @@ const localPrompt = ref(props.data.prompt || `根据以下本体信息和输入�
 输出格式为JSON。`)
 
 // 输入输出参数
-const localInputs = ref((props.data.inputParams && Array.isArray(props.data.inputParams)) ? props.data.inputParams.map(p => ({
+const defaultInputs = [
+  { name: 'ontology', description: '本体编码', type: 'string', required: true, sourceType: 'input', value: '', refValue: '' },
+  { name: 'inputs', description: '输入数据（JSON格式）', type: 'string', required: false, sourceType: 'input', value: '', refValue: '' }
+]
+
+const defaultOutputs = [
+  { name: 'formConfig', nameType: 'input', nameRef: '', source: '', type: 'object', description: '表单配置模型' },
+  { name: 'validationRules', nameType: 'input', nameRef: '', source: '', type: 'object', description: '表单校验规则' },
+  { name: 'defaultValues', nameType: 'input', nameRef: '', source: '', type: 'object', description: '字段默认值' },
+  { name: 'recommendations', nameType: 'input', nameRef: '', source: '', type: 'object', description: '智能推荐建议' }
+]
+
+const localInputs = ref((props.data.inputParams && Array.isArray(props.data.inputParams) && props.data.inputParams.length > 0) ? props.data.inputParams.map(p => ({
   name: p.name || '',
   description: p.description || '',
   type: p.type || 'string',
@@ -477,16 +489,16 @@ const localInputs = ref((props.data.inputParams && Array.isArray(props.data.inpu
   sourceType: p.sourceType || ((p.value && p.value.startsWith('{{')) ? 'ref' : 'input'),
   value: (p.sourceType !== 'ref' || !p.value?.startsWith('{{')) ? (p.value || '') : '',
   refValue: (p.sourceType === 'ref' || p.value?.startsWith('{{')) ? (p.value || '') : ''
-})) : [])
+})) : defaultInputs)
 
-const localOutputs = ref((props.data.outputParams || []).map(p => ({
+const localOutputs = ref((props.data.outputParams && props.data.outputParams.length > 0) ? props.data.outputParams.map(p => ({
   name: p.name || '',
   nameType: p.nameType || 'input',
   nameRef: p.nameRef || '',
   source: p.source || '',
   type: p.type || 'string',
   description: p.description || p.desc || ''
-})))
+})) : defaultOutputs)
 
 // 强制 VariableCascader 刷新 key
 const cascaderRefreshKey = ref(0);
