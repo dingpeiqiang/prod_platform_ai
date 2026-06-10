@@ -79,7 +79,7 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.llm }">
               <polyline points="6 9 12 15 18 9"/>
             </svg>
-            <span>大模型配置</span>
+            <span>模型配置</span>
           </button>
           <div class="header-actions">
             <div class="help-container">
@@ -160,6 +160,55 @@
               />
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- 系统提示词 -->
+      <div class="config-section collapsible-section">
+        <div class="section-header">
+          <button @click="toggleSection('systemPrompt')" class="section-toggle-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.systemPrompt }">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>系统提示词</span>
+          </button>
+          <div class="header-actions">
+            <button class="help-btn" title="设置模型角色和行为规则（表单智能推荐）">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div v-if="expandedSections.systemPrompt" class="section-content">
+          <textarea v-model="localSystemPrompt" @input="emitUpdate" placeholder="设置模型的角色和行为规则" class="multiline-input" rows="4"></textarea>
+          <div v-if="!localSystemPrompt" class="weak-hint">建议配置系统提示词</div>
+        </div>
+      </div>
+
+      <!-- 用户提示词 -->
+      <div class="config-section collapsible-section">
+        <div class="section-header">
+          <button @click="toggleSection('prompt')" class="section-toggle-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.prompt }">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>用户提示词</span>
+          </button>
+          <div class="header-actions">
+            <button class="help-btn" title="输入发送给模型的用户提示词，支持使用{变量名}或输入参数编码引用">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div v-if="expandedSections.prompt" class="section-content">
+          <textarea v-model="localPrompt" @input="emitUpdate" placeholder="可以使用{变量名}引用输入参数或输入变量" class="answer-textarea" rows="6"></textarea>
         </div>
       </div>
 
@@ -441,7 +490,7 @@
 </template>
 
 <script setup>
-import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, watch, computed, onMounted, onUnmounted } from 'vue'
 import { Handle } from '@vue-flow/core'
 import { nodeDisplayProps } from './nodeDisplayProps.js'
 import { useNodeAnchorMode } from './useHandlePosition.js'
@@ -476,9 +525,11 @@ const isUnmounted = ref(false)
 const showAdvanced = ref(false)
 
 // 展开状态
-const expandedSections = ref({
+const expandedSections = reactive({
   basic: true,
   llm: true,
+  systemPrompt: true,
+  prompt: true,
   inputs: true,
   outputs: true,
   toolParams: true
@@ -495,6 +546,8 @@ const localTimeout = ref(props.data.timeout || 60)
 const localModel = ref(props.data.model || '')
 const localTemperature = ref(props.data.temperature || 0.3)
 const localInputVariable = ref(props.data.inputVariable || '')
+const localSystemPrompt = ref(props.data.systemPrompt || '')
+const localPrompt = ref(props.data.prompt || '')
 
 // 输入输出参数
 const localInputs = ref((props.data.inputParams && Array.isArray(props.data.inputParams)) ? props.data.inputParams.map(p => ({
@@ -647,7 +700,7 @@ const adjustValue = (field, delta) => {
 
 // 切换展开状态
 const toggleSection = (section) => {
-  expandedSections.value[section] = !expandedSections.value[section]
+  expandedSections[section] = !expandedSections[section]
 }
 
 // 添加输入参数
@@ -705,7 +758,7 @@ const removeOutputParam = (index) => {
 const emitUpdate = () => {
   // 将前端输入参数格式映射为规范的 inputParams 格式
   const inputParams = localInputs.value
-    .filter(p => p && p.name)
+    .filter(p => p)
     .map(p => ({
       name: p.name,
       description: p.description || '',
@@ -745,7 +798,9 @@ const emitUpdate = () => {
     timeout: localTimeout.value,
     model: localModel.value,
     temperature: localTemperature.value,
-    inputVariable: localInputVariable.value
+    inputVariable: localInputVariable.value,
+    systemPrompt: localSystemPrompt.value,
+    prompt: localPrompt.value
   });
 }
 
@@ -758,10 +813,12 @@ watch(() => props.data, (d) => {
   localToolName.value = d.toolType || d.toolName || ''
   localTimeout.value = d.timeout || 60
 
-  // 大模型配置
+  // 模型配置
   localModel.value = d.model || ''
   localTemperature.value = d.temperature || 0.3
   localInputVariable.value = d.inputVariable || ''
+  localSystemPrompt.value = d.systemPrompt || ''
+  localPrompt.value = d.prompt || ''
 
   // 输入参数
   localInputs.value = (d.inputParams && Array.isArray(d.inputParams)) ? d.inputParams.map(p => ({
@@ -1260,6 +1317,48 @@ onUnmounted(() => {
 .unit-text {
   font-size: 13px;
   color: #666;
+}
+
+.multiline-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  transition: all 0.2s;
+  box-sizing: border-box;
+}
+
+.multiline-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.answer-textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  transition: all 0.2s;
+  box-sizing: border-box;
+}
+
+.answer-textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.weak-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #999;
 }
 
 /* 加载状态 */
