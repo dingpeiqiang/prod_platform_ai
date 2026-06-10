@@ -149,31 +149,6 @@
         </div>
       </div>
 
-      <!-- 系统提示词 -->
-      <div class="config-section collapsible-section">
-        <div class="section-header">
-          <button @click="toggleSection('systemPrompt')" class="section-toggle-btn">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.systemPrompt }">
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-            <span>系统提示词</span>
-          </button>
-          <div class="header-actions">
-            <button class="help-btn" title="设置模型角色和行为规则（表单智能推荐）">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-                <line x1="12" y1="17" x2="12.01" y2="17"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-        <div v-if="expandedSections.systemPrompt" class="section-content">
-          <textarea v-model="localSystemPrompt" @input="emitUpdate" placeholder="设置模型的角色和行为规则" class="multiline-input" rows="4"></textarea>
-          <div v-if="!localSystemPrompt" class="weak-hint">建议配置系统提示词</div>
-        </div>
-      </div>
-
       <!-- 输入参数配置 -->
       <div class="config-section collapsible-section">
         <div class="section-header">
@@ -269,30 +244,6 @@
             </template>
             <div v-if="localInputs.length === 0" class="no-params-hint">暂无输入参数，点击上方"+"添加</div>
           </div>
-        </div>
-      </div>
-
-      <!-- 用户提示词 -->
-      <div class="config-section collapsible-section">
-        <div class="section-header">
-          <button @click="toggleSection('prompt')" class="section-toggle-btn">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.prompt }">
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-            <span>用户提示词</span>
-          </button>
-          <div class="header-actions">
-            <button class="help-btn" title="输入发送给模型的用户提示词，支持使用{变量名}或输入参数编码引用">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-                <line x1="12" y1="17" x2="12.01" y2="17"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-        <div v-if="expandedSections.prompt" class="section-content">
-          <textarea v-model="localPrompt" @input="emitUpdate" placeholder="可以使用{变量名}引用输入参数或输入变量" class="answer-textarea" rows="6"></textarea>
         </div>
       </div>
 
@@ -430,8 +381,6 @@ const showAdvanced = ref(false)
 const expandedSections = reactive({
   basic: true,
   llm: true,
-  systemPrompt: true,
-  prompt: true,
   inputs: true,
   outputs: true
 })
@@ -445,28 +394,6 @@ const localTimeout = ref(props.data.timeout || 60)
 
 const localModel = ref(props.data.model || '')
 const localTemperature = ref(props.data.temperature || 0.3)
-const localSystemPrompt = ref(props.data.systemPrompt || `你是一个专业的表单智能推荐引擎，擅长：
-1. 根据本体结构生成表单配置模型
-2. 根据业务规则生成表单校验规则
-3. 基于输入数据和推荐算法生成表单默认值和推荐填写内容
-4. 调用MCP工具完成表单数据的提交和处理
-
-请使用JSON格式输出结果，包含表单字段配置、校验规则、默认值和推荐建议。`)
-const localPrompt = ref(props.data.prompt || `根据以下本体信息和输入数据，生成表单配置和智能推荐：
-
-【本体信息】
-{ontology}
-
-【输入参数】
-{inputs}
-
-请输出：
-1. 表单字段配置（字段名、类型、标签、必填性）
-2. 表单校验规则（格式验证、范围限制）
-3. 字段默认值（基于输入数据推导）
-4. 智能推荐建议（根据业务规则生成）
-
-输出格式为JSON。`)
 
 // 输入输出参数
 const defaultInputs = [
@@ -680,9 +607,7 @@ const emitUpdate = () => {
     outputParams: outputParams.length > 0 ? outputParams : undefined,
     timeout: localTimeout.value,
     model: localModel.value,
-    temperature: localTemperature.value,
-    systemPrompt: localSystemPrompt.value,
-    prompt: localPrompt.value
+    temperature: localTemperature.value
   });
 }
 
@@ -698,8 +623,6 @@ watch(() => props.data, (d) => {
   // 模型配置
   localModel.value = d.model || ''
   localTemperature.value = d.temperature || 0.3
-  localSystemPrompt.value = d.systemPrompt || ''
-  localPrompt.value = d.prompt || ''
 
   // 输入参数
   localInputs.value = (d.inputParams && Array.isArray(d.inputParams)) ? d.inputParams.map(p => ({
