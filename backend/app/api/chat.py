@@ -357,9 +357,7 @@ async def get_default_model():
     }
 
 
-@router.get("/chat/model/available")
-@lru_cache(maxsize=1)
-def _get_available_models_cached():
+def _get_available_models():
     """获取可用模型列表（带缓存）"""
     from app.core.config_loader import config_loader
     from app.models.llm_user_config import LLMUserConfig
@@ -421,6 +419,7 @@ def _get_available_models_cached():
     return available_models
 
 
+@router.get("/chat/model/available")
 async def get_available_models():
     """获取可用的模型列表
 
@@ -430,9 +429,13 @@ async def get_available_models():
 
     使用 LRU 缓存
     """
-    models = _get_available_models_cached()
-    logger.info(f"[model/available] 返回 {len(models)} 个可用模型")
-    return {"success": True, "models": models}
+    try:
+        models = _get_available_models()
+        logger.info(f"[model/available] 返回 {len(models)} 个可用模型")
+        return {"success": True, "models": list(models)}
+    except Exception as e:
+        logger.error(f"[model/available] 获取模型列表失败: {e}", exc_info=True)
+        return {"success": False, "models": [], "message": str(e)}
 
 
 class ChatMessage(BaseModel):

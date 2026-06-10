@@ -188,30 +188,6 @@
         </div>
       </div>
 
-      <!-- 用户提示词 -->
-      <div class="config-section collapsible-section">
-        <div class="section-header">
-          <button @click="toggleSection('prompt')" class="section-toggle-btn">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.prompt }">
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-            <span>用户提示词</span>
-          </button>
-          <div class="header-actions">
-            <button class="help-btn" title="输入发送给模型的用户提示词，支持使用{变量名}或输入参数编码引用">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-                <line x1="12" y1="17" x2="12.01" y2="17"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-        <div v-if="expandedSections.prompt" class="section-content">
-          <textarea v-model="localPrompt" @input="emitUpdate" placeholder="可以使用{变量名}引用输入参数或输入变量" class="answer-textarea" rows="6"></textarea>
-        </div>
-      </div>
-
       <!-- 输入参数配置 -->
       <div class="config-section collapsible-section">
         <div class="section-header">
@@ -310,6 +286,30 @@
         </div>
       </div>
 
+      <!-- 用户提示词 -->
+      <div class="config-section collapsible-section">
+        <div class="section-header">
+          <button @click="toggleSection('prompt')" class="section-toggle-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.prompt }">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span>用户提示词</span>
+          </button>
+          <div class="header-actions">
+            <button class="help-btn" title="输入发送给模型的用户提示词，支持使用{变量名}或输入参数编码引用">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div v-if="expandedSections.prompt" class="section-content">
+          <textarea v-model="localPrompt" @input="emitUpdate" placeholder="可以使用{变量名}引用输入参数或输入变量" class="answer-textarea" rows="6"></textarea>
+        </div>
+      </div>
+
       <!-- 输出参数配置 -->
       <div class="config-section collapsible-section">
         <div class="section-header">
@@ -389,90 +389,6 @@
         </div>
       </div>
 
-      <!-- 工具参数配置 -->
-      <div v-if="localToolName" class="config-section collapsible-section">
-        <div class="section-header">
-          <button @click="toggleSection('toolParams')" class="section-toggle-btn">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ rotated: expandedSections.toolParams }">
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-            <span>工具参数</span>
-          </button>
-          <div class="header-actions">
-            <button class="help-btn" title="配置工具执行参数">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-                <line x1="12" y1="17" x2="12.01" y2="17"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-        
-        <div v-if="expandedSections.toolParams" class="section-content">
-          <div class="tool-param-container">
-            <div
-              v-for="(param, index) in localParams"
-              :key="index"
-              class="tool-param-item"
-            >
-              <input
-                v-model="param.name"
-                @input="emitUpdate"
-                placeholder="参数名"
-                class="param-name-input"
-                readonly
-              />
-              <select v-model="param.type" @change="emitUpdate" class="param-type-select" disabled>
-                <option value="string">字符串</option>
-                <option value="number">数字</option>
-                <option value="boolean">布尔值</option>
-                <option value="array">数组</option>
-                <option value="object">对象</option>
-                <option value="variable">变量引用</option>
-              </select>
-              <input
-                v-if="param.type !== 'variable'"
-                v-model="param.value"
-                @input="emitUpdate"
-                :placeholder="getParamPlaceholder(param.type)"
-                class="param-value-input"
-              />
-              <VariableCascader
-                v-else
-                v-model="param.value"
-                :available-variables="availableVariables"
-                placeholder="请选择变量"
-                class="param-cascader"
-                @change="emitUpdate"
-              />
-            </div>
-            <div v-if="localParams.length === 0" class="no-params-hint">此工具无需参数</div>
-          </div>
-
-          <!-- 执行配置 -->
-          <div class="execution-config">
-            <div class="param-row">
-              <label class="param-label">
-                超时时间
-                <span class="help-icon" title="工具执行超时时间（秒）">?</span>
-              </label>
-              <div class="slider-control">
-                <input v-model.number="localTimeout" type="range" min="1" max="600" step="1" @input="emitUpdate" class="param-slider"/>
-                <div class="slider-value-group">
-                  <input v-model.number="localTimeout" type="number" min="1" max="600" step="1" @input="emitUpdate" class="value-input"/>
-                  <div class="adjust-buttons">
-                    <button @click="adjustValue('timeout', -10)" class="adjust-btn">-</button>
-                    <button @click="adjustValue('timeout', 10)" class="adjust-btn">+</button>
-                  </div>
-                  <span class="unit-text">秒</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <!-- 收起按钮 -->
       <div v-if="configMode" class="collapse-section">
         <button @click="$emit('close')" class="collapse-all-btn">
@@ -531,8 +447,7 @@ const expandedSections = reactive({
   systemPrompt: true,
   prompt: true,
   inputs: true,
-  outputs: true,
-  toolParams: true
+  outputs: true
 })
 
 const showModelTooltip = ref(false)
@@ -540,7 +455,6 @@ let hideTimer = null
 
 const localOntologyCode = ref(props.data.ontologyCode || '')
 const localToolName = ref(props.data.toolType || props.data.toolName || '')
-const localParams = ref([])
 const localTimeout = ref(props.data.timeout || 60)
 
 const localModel = ref(props.data.model || '')
@@ -610,13 +524,7 @@ const loadOntologies = async () => {
 }
 
 const loadMCPTools = async () => {
-  const tools = await workflowDataStore.loadMCPTools()
-  if (tools && localToolName.value) {
-    const tool = workflowDataStore.getToolByName(localToolName.value)
-    if (tool) {
-      syncParamsFromSchema(tool)
-    }
-  }
+  await workflowDataStore.loadMCPTools()
 }
 
 const onOntologyChange = () => {
@@ -624,40 +532,7 @@ const onOntologyChange = () => {
 }
 
 const onToolChange = () => {
-  const tool = mcpToolMap.value[localToolName.value]
-  if (tool) {
-    syncParamsFromSchema(tool)
-  } else {
-    localParams.value = []
-  }
   emitUpdate()
-}
-
-const syncParamsFromSchema = (tool) => {
-  const schema = tool.input_schema || {}
-  const properties = schema.properties || {}
-
-  const existing = {}
-  for (const p of localParams.value) {
-    existing[p.name] = p
-  }
-
-  localParams.value = Object.entries(properties).map(([name, prop]) => {
-    const inferType = (p) => {
-      const t = p.type || 'string'
-      if (t === 'number' || t === 'integer') return 'number'
-      if (t === 'boolean') return 'boolean'
-      if (t === 'array') return 'array'
-      if (t === 'object') return 'object'
-      return 'string'
-    }
-
-    return {
-      name,
-      type: inferType(prop),
-      value: existing[name]?.value || prop.default || ''
-    }
-  })
 }
 
 const getParamPlaceholder = (type) => {
@@ -780,21 +655,12 @@ const emitUpdate = () => {
       description: p.description || ''
     }));
 
-  // 工具参数
-  const toolInputParams = localParams.value
-    .filter(p => p.name)
-    .map(p => ({
-      name: p.name,
-      value: p.value || ''
-    }));
-
   emit('update', props.data.id, {
     ontologyCode: localOntologyCode.value,
     toolType: localToolName.value,
     toolName: localToolName.value,
     inputParams: inputParams.length > 0 ? inputParams : undefined,
     outputParams: outputParams.length > 0 ? outputParams : undefined,
-    toolInputParams: toolInputParams.length > 0 ? toolInputParams : undefined,
     timeout: localTimeout.value,
     model: localModel.value,
     temperature: localTemperature.value,
@@ -840,33 +706,6 @@ watch(() => props.data, (d) => {
     type: p.type || 'string',
     description: p.description || p.desc || ''
   }))
-
-  if (localToolName.value && mcpToolMap.value[localToolName.value]) {
-    const tool = mcpToolMap.value[localToolName.value]
-    const schema = tool.input_schema || {}
-    const properties = schema.properties || {}
-
-    if ((d.inputParams && Array.isArray(d.inputParams) && d.inputParams.length > 0) || 
-        (d.toolInputParams && Array.isArray(d.toolInputParams) && d.toolInputParams.length > 0)) {
-      const savedParams = d.toolInputParams || d.inputParams || []
-      localParams.value = Object.entries(properties).map(([name, prop]) => {
-        const inferType = (p) => {
-          const t = p.type || 'string'
-          if (t === 'number' || t === 'integer') return 'number'
-          if (t === 'boolean') return 'boolean'
-          if (t === 'array') return 'array'
-          if (t === 'object') return 'object'
-          return 'string'
-        }
-        const inputParam = savedParams.find(p => p.name === name);
-        return {
-          name,
-          type: inferType(prop),
-          value: inputParam ? inputParam.value : (prop.default || '')
-        }
-      })
-    }
-  }
 }, { deep: true })
 
 onMounted(() => {
