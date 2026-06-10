@@ -109,10 +109,6 @@
                   <div class="tooltip-item">• 0.4-0.7: 平衡创意与稳定</div>
                   <div class="tooltip-item">• 0.8-1.0: 高度随机（创意写作）</div>
                 </div>
-                <div class="tooltip-section">
-                  <div class="tooltip-section-title">【输入变量】</div>
-                  <div class="tooltip-item">• 选择作为表单智能推荐的输入数据源</div>
-                </div>
               </div>
             </div>
           </div>
@@ -149,16 +145,6 @@
               </div>
             </div>
 
-            <div class="param-row full-width">
-              <label class="param-label">输入变量</label>
-              <VariableCascader
-                v-model="localInputVariable"
-                :available-variables="availableVariables"
-                placeholder="选择输入变量"
-                class="param-cascader"
-                @change="emitUpdate"
-              />
-            </div>
           </div>
         </div>
       </div>
@@ -459,7 +445,6 @@ const localTimeout = ref(props.data.timeout || 60)
 
 const localModel = ref(props.data.model || '')
 const localTemperature = ref(props.data.temperature || 0.3)
-const localInputVariable = ref(props.data.inputVariable || '')
 const localSystemPrompt = ref(props.data.systemPrompt || '')
 const localPrompt = ref(props.data.prompt || '')
 
@@ -664,7 +649,6 @@ const emitUpdate = () => {
     timeout: localTimeout.value,
     model: localModel.value,
     temperature: localTemperature.value,
-    inputVariable: localInputVariable.value,
     systemPrompt: localSystemPrompt.value,
     prompt: localPrompt.value
   });
@@ -682,7 +666,6 @@ watch(() => props.data, (d) => {
   // 模型配置
   localModel.value = d.model || ''
   localTemperature.value = d.temperature || 0.3
-  localInputVariable.value = d.inputVariable || ''
   localSystemPrompt.value = d.systemPrompt || ''
   localPrompt.value = d.prompt || ''
 
