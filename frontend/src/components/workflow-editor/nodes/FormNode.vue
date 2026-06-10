@@ -445,8 +445,28 @@ const localTimeout = ref(props.data.timeout || 60)
 
 const localModel = ref(props.data.model || '')
 const localTemperature = ref(props.data.temperature || 0.3)
-const localSystemPrompt = ref(props.data.systemPrompt || '')
-const localPrompt = ref(props.data.prompt || '')
+const localSystemPrompt = ref(props.data.systemPrompt || `你是一个专业的表单智能推荐引擎，擅长：
+1. 根据本体结构生成表单配置模型
+2. 根据业务规则生成表单校验规则
+3. 基于输入数据和推荐算法生成表单默认值和推荐填写内容
+4. 调用MCP工具完成表单数据的提交和处理
+
+请使用JSON格式输出结果，包含表单字段配置、校验规则、默认值和推荐建议。`)
+const localPrompt = ref(props.data.prompt || `根据以下本体信息和输入数据，生成表单配置和智能推荐：
+
+【本体信息】
+{ontology}
+
+【输入参数】
+{inputs}
+
+请输出：
+1. 表单字段配置（字段名、类型、标签、必填性）
+2. 表单校验规则（格式验证、范围限制）
+3. 字段默认值（基于输入数据推导）
+4. 智能推荐建议（根据业务规则生成）
+
+输出格式为JSON。`)
 
 // 输入输出参数
 const localInputs = ref((props.data.inputParams && Array.isArray(props.data.inputParams)) ? props.data.inputParams.map(p => ({
