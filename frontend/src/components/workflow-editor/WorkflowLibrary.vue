@@ -60,8 +60,8 @@
           <div class="card-header">
             <div class="workflow-icon">🔄</div>
             <div class="workflow-info">
-              <div class="workflow-name">{{ workflow.workflowName }}</div>
-              <div class="workflow-code">{{ workflow.workflowCode }}</div>
+              <div class="workflow-name" :title="workflow.workflowName">{{ workflow.workflowName }}</div>
+              <div class="workflow-code" :title="workflow.workflowCode">{{ workflow.workflowCode }}</div>
               <div class="workflow-meta">
                 <span class="category-tag">{{ getCategoryName(workflow.category) }}</span>
                 <span class="status-badge" :class="workflow.isActive ? 'active' : 'inactive'">
@@ -223,7 +223,7 @@ const refreshWorkflows = async () => {
   try {
     const result = await workflowApi.workflowApi.getAllWorkflows()
     if (result.success) {
-      workflows.value = result.data
+      workflows.value = result.data.data || []
     } else {
       ElMessage.error('加载工作流列表失败')
     }
@@ -470,6 +470,11 @@ onMounted(() => {
   gap: 10px;
   padding: 10px;
   border-bottom: 1px solid #f1f5f9;
+  justify-content: space-between;
+}
+
+.card-header > * {
+  flex-shrink: 0;
 }
 
 .workflow-icon {
@@ -479,15 +484,17 @@ onMounted(() => {
 .workflow-info {
   flex: 1;
   min-width: 0;
+  flex-shrink: 1;
 }
 
 .workflow-name {
   font-size: 13px;
   font-weight: 600;
   color: #334155;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.6;
+  padding-bottom: 1px;
 }
 
 .workflow-code {
