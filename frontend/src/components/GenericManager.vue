@@ -760,7 +760,7 @@ onMounted(() => {
     position: relative;
     display: flex;
     flex-direction: column;
-    height: 220px;
+    min-height: 220px;
 }
 
 .item-card:hover {
@@ -831,6 +831,8 @@ onMounted(() => {
     font-weight: 500;
     margin: 0 0 4px 0;
     color: var(--text-primary);
+    line-height: 1.5;
+    word-break: break-word;
 }
 
 .item-code {
