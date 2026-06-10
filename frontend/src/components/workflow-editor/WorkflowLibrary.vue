@@ -466,9 +466,9 @@ onMounted(() => {
 
 .card-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
-  padding: 10px;
+  padding: 12px 10px;
   border-bottom: 1px solid #f1f5f9;
   justify-content: space-between;
 }
@@ -479,6 +479,8 @@ onMounted(() => {
 
 .workflow-icon {
   font-size: 20px;
+  line-height: 1;
+  margin-top: 2px;
 }
 
 .workflow-info {
@@ -493,8 +495,9 @@ onMounted(() => {
   color: #334155;
   white-space: normal;
   word-break: break-word;
-  line-height: 1.6;
-  padding-bottom: 1px;
+  line-height: 1.5;
+  padding-top: 1px;
+  padding-bottom: 2px;
 }
 
 .workflow-code {
