@@ -34,20 +34,7 @@
 
 ### 第 1 步：创建数据库表
 
-#### 方式 A：使用 SQL 脚本（推荐）
-
-1. 连接到 MySQL 数据库
-2. 执行 SQL 脚本：
-
-```bash
-mysql -u prodplatformai -p prodplatformai < backend/create_llm_config_table.sql
-```
-
-或者在 MySQL 客户端中手动执行 `backend/create_llm_config_table.sql` 文件中的 SQL。
-
-#### 方式 B：使用 Alembic 迁移
-
-如果 Alembic 迁移正常工作：
+使用 Alembic 迁移创建数据库表：
 
 ```bash
 cd backend
