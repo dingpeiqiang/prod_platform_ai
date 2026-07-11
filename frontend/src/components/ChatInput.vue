@@ -14,6 +14,51 @@
     </div>
 
     <div class="input-box" :class="{ focused: inputFocused }">
+      <div class="input-actions">
+        <button 
+          class="action-btn" 
+          @click="triggerFileUpload" 
+          title="上传文件"
+          :disabled="disabled"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+        </button>
+        <button 
+          class="action-btn" 
+          @click="triggerImageUpload" 
+          title="上传图片"
+          :disabled="disabled"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <circle cx="8.5" cy="8.5" r="1.5"/>
+            <polyline points="21 15 16 10 5 21"/>
+          </svg>
+        </button>
+        <button 
+          class="action-btn voice-btn" 
+          :class="{ recording: isRecording }"
+          @mousedown="startRecording"
+          @mouseup="stopRecording"
+          @mouseleave="stopRecording"
+          @touchstart.prevent="startRecording"
+          @touchend="stopRecording"
+          :disabled="disabled || isRecording"
+          :title="isRecording ? '停止录制' : '录制语音'"
+        >
+          <svg v-if="!isRecording" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+          </svg>
+          <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="6" y="6" width="12" height="12" rx="2"/>
+          </svg>
+        </button>
+      </div>
+      
       <div class="textarea-wrap">
         <textarea
           ref="inputEl"
@@ -34,8 +79,8 @@
         <button
           v-else
           class="send-btn"
-          :class="{ active: inputText.trim() }"
-          :disabled="!inputText.trim()"
+          :class="{ active: inputText.trim() || hasAttachment }"
+          :disabled="!inputText.trim() && !hasAttachment"
           @click="handleSend"
           title="发送 (Enter)"
         >
@@ -45,11 +90,34 @@
         </button>
       </div>
     </div>
+
+    <div v-if="isRecording" class="recording-indicator">
+      <span class="recording-dot"></span>
+      <span>正在录音...</span>
+      <span class="recording-time">{{ recordingTime }}</span>
+    </div>
+
+    <input 
+      ref="fileInput" 
+      type="file" 
+      class="hidden-input" 
+      accept="*" 
+      @change="handleFileSelect" 
+      multiple
+    />
+    <input 
+      ref="imageInput" 
+      type="file" 
+      class="hidden-input" 
+      accept="image/*" 
+      @change="handleImageSelect" 
+      multiple
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, nextTick, watch } from 'vue'
+import { ref, nextTick, watch, computed } from 'vue'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
@@ -57,19 +125,30 @@ const props = defineProps({
   placeholder: { type: String, default: '描述你想做的事...' }
 })
 
-const emit = defineEmits(['update:modelValue', 'send', 'stop', 'quick-action'])
+const emit = defineEmits(['update:modelValue', 'send', 'stop', 'quick-action', 'file-upload', 'image-upload', 'voice-record'])
 
 const inputEl = ref(null)
+const fileInput = ref(null)
+const imageInput = ref(null)
 const inputFocused = ref(false)
 const inputText = ref(props.modelValue)
+const isRecording = ref(false)
+const recordingTime = ref('00:00')
+const attachments = ref([])
 
-watch(() => props.modelValue, (val) => {
-  inputText.value = val
-})
+let recordingTimer = null
+let mediaRecorder = null
+let audioChunks = []
+
+const hasAttachment = computed(() => attachments.value.length > 0)
 
 const quickActions = [
   { key: 'config', label: '+ 新表单', content: '我想添加一种新的业务表单', color: '#f472b6' },
 ]
+
+watch(() => props.modelValue, (val) => {
+  inputText.value = val
+})
 
 const autoResize = () => {
   const el = inputEl.value
@@ -80,6 +159,7 @@ const autoResize = () => {
 
 const resetInput = () => {
   inputText.value = ''
+  attachments.value = []
   nextTick(() => {
     if (inputEl.value) {
       inputEl.value.style.height = 'auto'
@@ -97,13 +177,120 @@ const handleKeydown = (e) => {
 
 const handleSend = () => {
   const text = inputText.value.trim()
-  if (!text || props.disabled) return
-  emit('send', text)
+  if (!text && !hasAttachment.value || props.disabled) return
+  
+  emit('send', { text, attachments: [...attachments.value] })
   resetInput()
 }
 
 const focus = () => {
   nextTick(() => inputEl.value?.focus())
+}
+
+const triggerFileUpload = () => {
+  fileInput.value?.click()
+}
+
+const triggerImageUpload = () => {
+  imageInput.value?.click()
+}
+
+const handleFileSelect = (e) => {
+  const files = Array.from(e.target.files || [])
+  files.forEach(file => {
+    attachments.value.push({
+      type: 'file',
+      name: file.name,
+      size: file.size,
+      file: file,
+      preview: null
+    })
+  })
+  e.target.value = ''
+}
+
+const handleImageSelect = (e) => {
+  const files = Array.from(e.target.files || [])
+  files.forEach(file => {
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      attachments.value.push({
+        type: 'image',
+        name: file.name,
+        size: file.size,
+        file: file,
+        preview: event.target?.result
+      })
+    }
+    reader.readAsDataURL(file)
+  })
+  e.target.value = ''
+}
+
+const startRecording = async () => {
+  if (isRecording.value || props.disabled) return
+  
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    mediaRecorder = new MediaRecorder(stream)
+    audioChunks = []
+    
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        audioChunks.push(event.data)
+      }
+    }
+    
+    mediaRecorder.start(100)
+    isRecording.value = true
+    recordingTime.value = '00:00'
+    
+    let seconds = 0
+    recordingTimer = setInterval(() => {
+      seconds++
+      const mins = Math.floor(seconds / 60).toString().padStart(2, '0')
+      const secs = (seconds % 60).toString().padStart(2, '0')
+      recordingTime.value = `${mins}:${secs}`
+    }, 1000)
+    
+  } catch (error) {
+    console.error('录音失败:', error)
+    alert('无法访问麦克风，请检查权限设置')
+  }
+}
+
+const stopRecording = () => {
+  if (!isRecording.value) return
+  
+  isRecording.value = false
+  
+  if (recordingTimer) {
+    clearInterval(recordingTimer)
+    recordingTimer = null
+  }
+  
+  if (mediaRecorder) {
+    mediaRecorder.stop()
+    
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(audioChunks, { type: 'audio/webm' })
+      const url = URL.createObjectURL(blob)
+      
+      attachments.value.push({
+        type: 'voice',
+        name: `录音_${new Date().toLocaleString()}.webm`,
+        size: blob.size,
+        blob: blob,
+        url: url,
+        duration: recordingTime.value
+      })
+      
+      mediaRecorder = null
+      audioChunks = []
+    }
+    
+    mediaRecorder.stream.getTracks().forEach(track => track.stop())
+  }
 }
 
 defineExpose({ focus, resetInput })
@@ -166,11 +353,53 @@ defineExpose({ focus, resetInput })
   box-shadow: 0 0 0 3px rgba(99,102,241,.1);
 }
 
+.input-actions {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3) 0;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.action-btn:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.action-btn.voice-btn.recording {
+  background: var(--color-error-500);
+  color: var(--text-inverse);
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
 .textarea-wrap {
   display: flex;
   align-items: flex-end;
   gap: var(--space-2);
   padding: var(--space-3);
+  padding-top: var(--space-1);
 }
 
 .textarea-wrap textarea {
@@ -229,10 +458,37 @@ defineExpose({ focus, resetInput })
   background: var(--color-error-600);
 }
 
-.input-hint {
-  text-align: center;
-  font-size: var(--font-size-xs);
-  color: var(--text-tertiary);
+.recording-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--color-error-50);
+  border-radius: var(--radius-md);
   margin-top: var(--space-2);
+  color: var(--color-error-600);
+  font-size: var(--font-size-xs);
+}
+
+.recording-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-error-500);
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.recording-time {
+  font-family: var(--font-mono);
+}
+
+.hidden-input {
+  display: none;
 }
 </style>

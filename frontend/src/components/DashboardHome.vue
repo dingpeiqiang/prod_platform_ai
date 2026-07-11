@@ -49,25 +49,107 @@
     <!-- 底部输入区 -->
     <div class="bottom-input">
       <div class="chat-input-bar">
-        <textarea
-          ref="inputEl"
-          v-model="inputText"
-          :placeholder="placeholder"
-          rows="1"
-          @keydown.enter.exact.prevent="handleSend"
-          @input="autoResize"
-        />
-        <button
-          class="send-btn"
-          :class="{ active: inputText.trim() }"
-          :disabled="!inputText.trim()"
-          @click="handleSend"
+        <!-- 左侧工具按钮 -->
+        <div class="input-tools">
+          <input
+            ref="fileInput"
+            type="file"
+            class="hidden-input"
+            accept="*"
+            @change="handleFileSelect"
+          />
+          <button class="tool-btn" title="上传文件" @click="triggerFileInput">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </button>
+          
+          <input
+            ref="imageInput"
+            type="file"
+            class="hidden-input"
+            accept="image/*"
+            @change="handleImageSelect"
+          />
+          <button class="tool-btn" title="上传图片" @click="triggerImageInput">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
+            </svg>
+          </button>
+          
+          <button 
+            class="tool-btn voice-btn" 
+            :class="{ recording: isRecording }"
+            title="语音录制"
+            @mousedown="startRecording"
+            @mouseup="stopRecording"
+            @mouseleave="stopRecording"
+            @touchstart.prevent="startRecording"
+            @touchend="stopRecording"
+          >
+            <svg v-if="!isRecording" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+            <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="6" y="19" width="12" height="2" rx="1"/>
+              <rect x="8" y="15" width="8" height="2" rx="1"/>
+              <rect x="10" y="11" width="4" height="2" rx="1"/>
+            </svg>
+          </button>
+        </div>
+        
+        <div class="textarea-wrap">
+          <textarea
+            ref="inputEl"
+            v-model="inputText"
+            :placeholder="placeholder"
+            rows="1"
+            @keydown.enter.exact.prevent="handleSend"
+            @input="autoResize"
+          />
+          <button
+            class="send-btn"
+            :disabled="!inputText.trim() && attachments.length === 0"
+            @click="handleSend"
+            title="发送 (Enter)"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      
+      <!-- 附件预览区 -->
+      <div v-if="attachments.length > 0" class="attachments-preview">
+        <div 
+          v-for="(attachment, index) in attachments" 
+          :key="index" 
+          class="attachment-item"
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <line x1="22" y1="2" x2="11" y2="13"/>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-          </svg>
-        </button>
+          <img v-if="attachment.type === 'image'" :src="attachment.preview" class="attachment-image" />
+          <div v-else class="attachment-file">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+              <polyline points="10 9 9 9 8 9"/>
+            </svg>
+            <span class="attachment-filename">{{ attachment.name }}</span>
+          </div>
+          <button class="attachment-remove" @click="removeAttachment(index)">×</button>
+        </div>
+      </div>
+      
+      <!-- 录音时长 -->
+      <div v-if="isRecording" class="recording-indicator">
+        <span class="recording-dot"></span>
+        <span>录音中 {{ recordingTime }}</span>
       </div>
     </div>
 
@@ -205,6 +287,15 @@ const emit = defineEmits(['send-message', 'switch-chat', 'create-session', 'open
 const inputEl = ref(null)
 const inputText = ref('')
 const newTodo = ref('')
+const fileInput = ref(null)
+const imageInput = ref(null)
+
+const attachments = ref([])
+const isRecording = ref(false)
+const recordingTime = ref('00:00')
+let mediaRecorder = null
+let audioChunks = []
+let recordingTimer = null
 
 // 快捷建议
 const suggestions = [
@@ -286,17 +377,143 @@ const placeholder = computed(() => {
   return tips[Math.floor(Math.random() * tips.length)]
 })
 
-const handleSend = () => {
+const handleSend = async () => {
   const text = inputText.value.trim()
-  if (!text) return
-  emit('send-message', text)
+  if (!text && attachments.value.length === 0) return
+  
+  const messageData = {
+    text,
+    attachments: [...attachments.value]
+  }
+  
+  emit('send-message', messageData)
   inputText.value = ''
+  attachments.value = []
   nextTick(() => {
     if (inputEl.value) {
       inputEl.value.style.height = 'auto'
       inputEl.value.focus()
     }
   })
+}
+
+const triggerFileInput = () => {
+  fileInput.value?.click()
+}
+
+const triggerImageInput = () => {
+  imageInput.value?.click()
+}
+
+const handleFileSelect = (event) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+  
+  attachments.value.push({
+    name: file.name,
+    file,
+    type: 'file',
+    size: file.size
+  })
+  
+  event.target.value = ''
+}
+
+const handleImageSelect = (event) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+  
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    attachments.value.push({
+      name: file.name,
+      file,
+      type: 'image',
+      preview: e.target.result,
+      size: file.size
+    })
+  }
+  reader.readAsDataURL(file)
+  
+  event.target.value = ''
+}
+
+const removeAttachment = (index) => {
+  attachments.value.splice(index, 1)
+}
+
+const formatTime = (seconds) => {
+  const mins = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+}
+
+const startRecording = async () => {
+  if (isRecording.value) return
+  
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    mediaRecorder = new MediaRecorder(stream)
+    audioChunks = []
+    
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        audioChunks.push(event.data)
+      }
+    }
+    
+    mediaRecorder.start(100)
+    isRecording.value = true
+    recordingTime.value = '00:00'
+    
+    let seconds = 0
+    recordingTimer = setInterval(() => {
+      seconds++
+      recordingTime.value = formatTime(seconds)
+    }, 1000)
+    
+    stream.getTracks().forEach(track => {
+      track.onended = () => {
+        if (isRecording.value) {
+          stopRecording()
+        }
+      }
+    })
+  } catch (error) {
+    console.error('录音失败:', error)
+    alert('无法访问麦克风，请检查权限设置')
+  }
+}
+
+const stopRecording = () => {
+  if (!isRecording.value || !mediaRecorder) return
+  
+  isRecording.value = false
+  
+  if (recordingTimer) {
+    clearInterval(recordingTimer)
+    recordingTimer = null
+  }
+  
+  mediaRecorder.stop()
+  
+  mediaRecorder.stream.getTracks().forEach(track => track.stop())
+  
+  if (audioChunks.length > 0) {
+    const blob = new Blob(audioChunks, { type: 'audio/webm' })
+    const audioName = `voice_${Date.now()}.webm`
+    
+    attachments.value.push({
+      name: audioName,
+      file: blob,
+      type: 'voice',
+      duration: recordingTime.value,
+      preview: URL.createObjectURL(blob)
+    })
+  }
+  
+  mediaRecorder = null
+  audioChunks = []
 }
 
 const handleSuggestion = (s) => {
@@ -443,68 +660,67 @@ onMounted(() => {
 }
 
 .chat-input-bar {
+  position: relative;
   width: 100%;
   max-width: 720px;
-  background: var(--bg-elevated);
-  border-radius: 24px;
-  padding: 16px 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
   display: flex;
-  align-items: flex-end;
-  gap: 14px;
-  box-shadow: var(--shadow-lg);
-  border: 2px solid var(--border-light);
-  transition: all .2s;
+  flex-direction: column;
+  transition: all var(--transition-fast);
 }
 
 .chat-input-bar:focus-within {
-  border-color: #818cf8;
-  box-shadow: 0 8px 40px rgba(99,102,241,.2);
+  border-color: var(--color-primary-400);
+  box-shadow: 0 0 0 3px rgba(99,102,241,.1);
 }
 
-.chat-input-bar textarea {
+.textarea-wrap {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  padding-top: var(--space-1);
+}
+
+.textarea-wrap textarea {
   flex: 1;
+  min-width: 0;
+  background: transparent;
   border: none;
   outline: none;
-  font-size: 16px;
-  line-height: 1.6;
   resize: none;
-  background: transparent;
-  font-family: inherit;
-  max-height: 120px;
-  min-height: 48px;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
   color: var(--text-primary);
 }
 
-.chat-input-bar textarea::placeholder {
+.textarea-wrap textarea::placeholder {
   color: var(--text-tertiary);
 }
 
 .send-btn {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  border: none;
-  background: #e8e8e8;
-  color: #bbb;
-  cursor: pointer;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all .2s;
-  flex-shrink: 0;
-}
-
-.send-btn.active {
-  background: linear-gradient(135deg, #818cf8, #6366f1);
+  background: var(--color-primary-500);
+  border: none;
+  border-radius: var(--radius-lg);
   color: var(--text-inverse);
-  box-shadow: 0 4px 16px rgba(99,102,241,.4);
+  cursor: pointer;
+  transition: all var(--transition-fast);
 }
 
-.send-btn.active:hover {
-  transform: scale(1.05);
+.send-btn:hover:not(:disabled) {
+  background: var(--color-primary-600);
 }
 
 .send-btn:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
@@ -512,6 +728,150 @@ onMounted(() => {
   margin-top: 12px;
   font-size: 12px;
   color: var(--text-tertiary);
+}
+
+/* 工具按钮 */
+.hidden-input {
+  display: none;
+}
+
+.input-tools {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3) 0;
+}
+
+.tool-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.tool-btn:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.tool-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tool-btn.voice-btn.recording {
+  background: var(--color-error-500);
+  color: var(--text-inverse);
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* 附件预览区 */
+.attachments-preview {
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: var(--bg-elevated);
+  border-radius: 16px;
+  border: 1px solid var(--border-light);
+}
+
+.attachment-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-radius: 10px;
+  position: relative;
+}
+
+.attachment-image {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.attachment-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+
+.attachment-filename {
+  font-size: 13px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: #ef4444;
+  color: white;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform .2s;
+}
+
+.attachment-remove:hover {
+  transform: scale(1.1);
+}
+
+/* 录音指示器 */
+.recording-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 8px 16px;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: 20px;
+  color: #ef4444;
+  font-size: 14px;
+}
+
+.recording-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  animation: blink 1s ease-in-out infinite;
+}
+
+@keyframes blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 
 /* 右侧小部件 */

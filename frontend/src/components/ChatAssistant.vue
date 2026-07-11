@@ -326,36 +326,36 @@ const sendSuggestion = (text) => {
  inputText.value = text;
  sendMessage();
 };
-const sendMessage = async (text) => {
- const messageText = text || inputText.value.trim();
- console.log('[ChatAssistant] sendMessage called:', { text: messageText, sessionId: props.sessionId, isStreaming: isStreaming.value, messagesLength: messages.value.length });
- if (!messageText || isStreaming.value)
+const sendMessage = async (messageData) => {
+ const text = typeof messageData === 'string' ? messageData : (messageData?.text || inputText.value.trim());
+ const attachments = typeof messageData === 'object' ? messageData.attachments : [];
+ console.log('[ChatAssistant] sendMessage called:', { text, attachments: attachments?.length || 0, sessionId: props.sessionId, isStreaming: isStreaming.value, messagesLength: messages.value.length });
+ if (!text && (!attachments || attachments.length === 0) || isStreaming.value)
  return;
  if (!props.sessionId) {
  isCreatingFromHome = true;
- messages.value.push({ id: genId(), role: 'user', content: messageText, done: true });
- emit('create-session-from-home', messageText);
+ messages.value.push({ id: genId(), role: 'user', content: text, attachments, done: true });
+ emit('create-session-from-home', { text, attachments });
  return;
  }
  if (pendingWorkflowResume.value) {
  const resumeData = { ...pendingWorkflowResume.value };
- // 将用户输入添加到 form_data 中
  resumeData.form_data = {
  ...resumeData.form_data,
- user_input: messageText
+ user_input: text
  };
  pendingWorkflowResume.value = null;
- await doSendMessageAfterHome(messageText, { workflowResume: resumeData });
+ await doSendMessageAfterHome(text, { workflowResume: resumeData, attachments });
  return;
  }
- await doSendMessage(messageText);
+ await doSendMessage(text, attachments);
 };
 const sendMessageAfterSessionCreated = async (text, sessionId) => {
  isCreatingFromHome = true;
  await new Promise(resolve => setTimeout(resolve, 50));
  await doSendMessageAfterHome(text);
 };
-const doSendMessage = async (text) => {
+const doSendMessage = async (text, attachments = []) => {
  if (pendingConfirmForm.value && checkUserConfirmation(text)) {
  await handleDoConfirmSubmit();
  return;
@@ -367,10 +367,10 @@ const doSendMessage = async (text) => {
  const hasExplicitSubmit = lowerText.includes('完成') || lowerText.includes('提交') || lowerText.includes('确认');
  if (pendingConfirmForm.value) {
  if (hasExplicitCancel) {
- messages.value.push({ id: genId(), role: 'user', content: text, done: true });
+ messages.value.push({ id: genId(), role: 'user', content: text, attachments, done: true });
  scrollToBottom();
  if (currentDbSessionId.value) {
- await saveMessage(currentDbSessionId.value, { role: 'user', content: text }).catch(() => { });
+ await saveMessage(currentDbSessionId.value, { role: 'user', content: text, attachments }).catch(() => { });
  }
  await handleCancelSubmit();
  return;
@@ -379,15 +379,15 @@ const doSendMessage = async (text) => {
  await handleDoConfirmSubmit();
  return;
  }
- await doSendMessageAfterHome(text);
+ await doSendMessageAfterHome(text, { attachments });
  return;
  }
  if (activeFormCard.value?.status === 'filling') {
  if (hasExplicitCancel) {
- messages.value.push({ id: genId(), role: 'user', content: text, done: true });
+ messages.value.push({ id: genId(), role: 'user', content: text, attachments, done: true });
  scrollToBottom();
  if (currentDbSessionId.value) {
- await saveMessage(currentDbSessionId.value, { role: 'user', content: text }).catch(() => { });
+ await saveMessage(currentDbSessionId.value, { role: 'user', content: text, attachments }).catch(() => { });
  }
  await handleFormCancel();
  return;
@@ -396,30 +396,32 @@ const doSendMessage = async (text) => {
  handleConfirmSubmitForActiveForm();
  return;
  }
- await doSendMessageAfterHome(text);
+ await doSendMessageAfterHome(text, { attachments });
  return;
  }
  }
- await doSendMessageAfterHome(text);
+ await doSendMessageAfterHome(text, { attachments });
 };
-const doSendMessageAfterHome = async (text, { skipUserPush = false, formCode = null, formData = null, workflowResume = null } = {}) => {
- console.log('[ChatAssistant] doSendMessageAfterHome called:', { text, skipUserPush, sessionId: props.sessionId, currentDbSessionId: currentDbSessionId.value });
+const doSendMessageAfterHome = async (text, { skipUserPush = false, formCode = null, formData = null, workflowResume = null, attachments = [] } = {}) => {
+ console.log('[ChatAssistant] doSendMessageAfterHome called:', { text, skipUserPush, sessionId: props.sessionId, currentDbSessionId: currentDbSessionId.value, attachments: attachments?.length || 0 });
  await ensureDbSession(props.sessionId);
  console.log('[ChatAssistant] after ensureDbSession:', { currentDbSessionId: currentDbSessionId.value });
  if (!skipUserPush) {
  console.log('[ChatAssistant] pushing user message:', { text });
- messages.value.push({ id: genId(), role: 'user', content: text, done: true });
+ messages.value.push({ id: genId(), role: 'user', content: text, attachments, done: true });
  console.log('[ChatAssistant] messages after push:', messages.value.length);
  scrollToBottom();
  }
  if (currentDbSessionId.value) {
  await saveMessage(currentDbSessionId.value, {
  role: 'user',
- content: text
+ content: text,
+ attachments
  });
  }
  if (messages.value.filter(m => m.role === 'user').length === 1) {
- emit('title-update', props.sessionId, text.slice(0, 20));
+ const titleText = text?.slice(0, 20) || (attachments?.length ? `发送了${attachments.length}个文件` : '新对话');
+ emit('title-update', props.sessionId, titleText);
  }
  scrollToBottom();
  await sendStreamMessage(text, { formCode, formData, modelConfig: props.modelConfig, workflowResume });

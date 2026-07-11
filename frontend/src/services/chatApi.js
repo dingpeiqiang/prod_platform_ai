@@ -344,6 +344,24 @@ export async function sendMessageWithModel(messages, modelConfig = null) {
   }
 }
 
+export async function uploadFile(file) {
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    const resp = await fetch('/api/v2/chat/upload', {
+      method: 'POST',
+      body: formData
+    })
+    
+    const result = await resp.json()
+    return result
+  } catch (e) {
+    console.warn('[chatApi] uploadFile failed:', e)
+    throw e
+  }
+}
+
 export async function switchModel(modelConfig) {
   try {
     const resp = await fetch('/api/v1/chat/model/switch', {

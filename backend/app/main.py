@@ -97,6 +97,14 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def set_utf8_encoding(request: Request, call_next):
+    """确保所有响应都使用UTF-8编码"""
+    response = await call_next(request)
+    response.headers["Content-Type"] = "application/json; charset=utf-8"
+    return response
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """全局验证异常处理器 - 显示详细的验证错误信息"""

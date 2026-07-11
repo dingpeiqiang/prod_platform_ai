@@ -578,11 +578,11 @@ const onSessionInit = ({ localId, dbSessionId }) => {
 }
 
 // ── 从首页发送消息 ────────────────────────────────────────
-const onSendMessageFromHome = async (text) => {
+const onSendMessageFromHome = async (messageData) => {
   const newSession = createLocalSession()
   await new Promise(resolve => setTimeout(resolve, 50))
   if (chatRef.value && chatRef.value.sendMessageAfterSessionCreated) {
-    chatRef.value.sendMessageAfterSessionCreated(text, newSession.id)
+    chatRef.value.sendMessageAfterSessionCreated(messageData, newSession.id)
   }
 }
 

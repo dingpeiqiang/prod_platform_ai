@@ -34,8 +34,11 @@ const apiClient = axios.create({
   baseURL: API_BASE,
   timeout: 30000,
   headers: {
-    'Content-Type': 'application/json'
-  }
+    'Content-Type': 'application/json',
+    'Accept': 'application/json;charset=utf-8'
+  },
+  responseType: 'json',
+  responseEncoding: 'utf8'
 })
 
 apiClient.interceptors.request.use(

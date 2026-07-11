@@ -8,14 +8,20 @@ from app.core.logger import get_logger
 logger = get_logger(__name__)
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, Query, Body, HTTPException
+from fastapi import APIRouter, Depends, Query, Body, HTTPException, File, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+import os
+import uuid
+from pathlib import Path
 
 from app.core.database import get_db
 from app.services.chat_service_v2 import ChatServiceV2
 
 router = APIRouter(prefix="/api/v2/chat", tags=["chat-v2"])
+
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
 
 
 # ── Request / Response Models ──────────────────────────────────
@@ -333,3 +339,62 @@ async def get_session_stats(
 ):
     """会话统计"""
     return ChatServiceV2.get_session_stats(session_id, db=db)
+
+
+# ── 文件上传 API ────────────────────────────────────────────────
+
+class UploadResponse(BaseModel):
+    success: bool
+    filename: Optional[str] = None
+    url: Optional[str] = None
+    size: Optional[int] = None
+    message: Optional[str] = None
+
+
+@router.post("/upload", response_model=UploadResponse)
+async def upload_file(
+    file: UploadFile = File(...),
+    session_id: Optional[str] = Query(None)
+):
+    """上传文件（支持图片、文档、语音等）"""
+    try:
+        # 生成唯一文件名
+        file_ext = os.path.splitext(file.filename)[1]
+        new_filename = f"{uuid.uuid4().hex}{file_ext}"
+        file_path = UPLOAD_DIR / new_filename
+        
+        # 保存文件
+        content = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(content)
+        
+        # 构建访问 URL
+        file_url = f"/api/v2/chat/files/{new_filename}"
+        
+        logger.info(f"[chat_v2] 文件上传成功: {file.filename} -> {new_filename}, 大小: {len(content)} bytes")
+        
+        return UploadResponse(
+            success=True,
+            filename=file.filename,
+            url=file_url,
+            size=len(content)
+        )
+    
+    except Exception as e:
+        logger.error(f"[chat_v2] 文件上传失败: {e}")
+        return UploadResponse(
+            success=False,
+            message=f"上传失败: {str(e)}"
+        )
+
+
+@router.get("/files/{filename}")
+async def serve_file(filename: str):
+    """提供上传文件的访问"""
+    from fastapi.responses import FileResponse
+    
+    file_path = UPLOAD_DIR / filename
+    if not file_path.exists():
+        raise HTTPException(404, detail="文件不存在")
+    
+    return FileResponse(file_path)

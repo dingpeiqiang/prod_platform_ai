@@ -28,19 +28,70 @@
         </div>
 
         <div class="msg-body">
-          <div v-if="msg.role === 'user'" class="bubble user-bubble">
-            {{ msg.content }}
-            <button class="copy-btn" @click="copyText(msg.content)" title="复制">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-              </svg>
-            </button>
+          <div v-if="msg.role === 'user'" class="user-message-content">
+            <div v-if="msg.content" class="bubble user-bubble">
+              {{ msg.content }}
+              <button class="copy-btn" @click="copyText(msg.content)" title="复制">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+              </button>
+            </div>
+            
+            <div v-if="msg.attachments && msg.attachments.length" class="attachments-container">
+              <div 
+                v-for="(attachment, aidx) in msg.attachments" 
+                :key="aidx"
+                :class="['attachment-item', 'attachment-' + attachment.type]"
+              >
+                <div v-if="attachment.type === 'image'" class="image-attachment">
+                  <img :src="attachment.preview || attachment.url" :alt="attachment.name" />
+                  <div class="image-info">
+                    <span>{{ attachment.name }}</span>
+                    <span>{{ formatFileSize(attachment.size) }}</span>
+                  </div>
+                </div>
+                
+                <div v-else-if="attachment.type === 'file'" class="file-attachment">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                  </svg>
+                  <div class="file-info">
+                    <span class="file-name">{{ attachment.name }}</span>
+                    <span class="file-size">{{ formatFileSize(attachment.size) }}</span>
+                  </div>
+                </div>
+                
+                <div v-else-if="attachment.type === 'voice'" class="voice-attachment">
+                  <div class="voice-wave" :class="{ playing: playingVoiceId === attachment.name }">
+                    <span v-for="i in 20" :key="i" class="wave-bar" :style="{ animationDelay: i * 0.1 + 's' }"></span>
+                  </div>
+                  <button 
+                    class="voice-play-btn" 
+                    @click="toggleVoicePlay(attachment)"
+                    :class="{ playing: playingVoiceId === attachment.name }"
+                  >
+                    <svg v-if="playingVoiceId !== attachment.name" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                    <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="6" y="4" width="4" height="16"/>
+                      <rect x="14" y="4" width="4" height="16"/>
+                    </svg>
+                  </button>
+                  <span class="voice-duration">{{ attachment.duration || '00:00' }}</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div v-else class="ai-message">
             <div v-if="msg.reasoning && msg.reasoning.length" class="reasoning-wrap">
               <button class="reasoning-toggle" @click="toggleReasoning(idx)">
-                <!-- loading状态显示旋转的圆环，完成后显示箭头 -->
                 <svg
                   v-if="!msg.done"
                   class="loading-icon"
@@ -106,6 +157,57 @@
                 v-html="renderMarkdown(msg.streamText || msg.content)"
               />
             </div>
+            
+            <div v-if="msg.attachments && msg.attachments.length" class="attachments-container ai-attachments">
+              <div 
+                v-for="(attachment, aidx) in msg.attachments" 
+                :key="aidx"
+                :class="['attachment-item', 'attachment-' + attachment.type]"
+              >
+                <div v-if="attachment.type === 'image'" class="image-attachment">
+                  <img :src="attachment.preview || attachment.url" :alt="attachment.name" />
+                  <div class="image-info">
+                    <span>{{ attachment.name }}</span>
+                    <span>{{ formatFileSize(attachment.size) }}</span>
+                  </div>
+                </div>
+                
+                <div v-else-if="attachment.type === 'file'" class="file-attachment">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                  </svg>
+                  <div class="file-info">
+                    <span class="file-name">{{ attachment.name }}</span>
+                    <span class="file-size">{{ formatFileSize(attachment.size) }}</span>
+                  </div>
+                </div>
+                
+                <div v-else-if="attachment.type === 'voice'" class="voice-attachment">
+                  <div class="voice-wave" :class="{ playing: playingVoiceId === attachment.name }">
+                    <span v-for="i in 20" :key="i" class="wave-bar" :style="{ animationDelay: i * 0.1 + 's' }"></span>
+                  </div>
+                  <button 
+                    class="voice-play-btn" 
+                    @click="toggleVoicePlay(attachment)"
+                    :class="{ playing: playingVoiceId === attachment.name }"
+                  >
+                    <svg v-if="playingVoiceId !== attachment.name" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                    <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="6" y="4" width="4" height="16"/>
+                      <rect x="14" y="4" width="4" height="16"/>
+                    </svg>
+                  </button>
+                  <span class="voice-duration">{{ attachment.duration || '00:00' }}</span>
+                </div>
+              </div>
+            </div>
+            
             <div v-if="msg.loading" class="loading-indicator">
               <span class="loading-dot"/><span class="loading-dot"/><span class="loading-dot"/>
             </div>
@@ -172,7 +274,7 @@
   </div>
 </template>
 
-<script setup>import { ref, nextTick, onMounted } from 'vue';
+<script setup>import { ref, nextTick, onMounted, onUnmounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import IntentPanel from './intent-panels/IntentPanel.vue';
 import { stepIcon, renderMarkdown, formatTime, getFormStatusText } from '../utils/chatUtils.js';
@@ -183,6 +285,8 @@ const props = defineProps({
 const emit = defineEmits(['form-card-click', 'intent-action']);
 const messagesEl = ref(null);
 const intentPanelTypes = listIntentPanels();
+const playingVoiceId = ref(null);
+let audioPlayer = null;
 const scrollToBottom = (smooth = false) => {
  nextTick(() => {
  if (messagesEl.value) {
@@ -205,8 +309,52 @@ const copyText = async (text) => {
  ElMessage.error('复制失败');
  }
 };
+const formatFileSize = (bytes) => {
+ if (!bytes) return '0 B';
+ const k = 1024;
+ const sizes = ['B', 'KB', 'MB', 'GB'];
+ const i = Math.floor(Math.log(bytes) / Math.log(k));
+ return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+const toggleVoicePlay = async (attachment) => {
+ if (playingVoiceId.value === attachment.name) {
+ if (audioPlayer) {
+ audioPlayer.pause();
+ audioPlayer = null;
+ }
+ playingVoiceId.value = null;
+ return;
+ }
+ if (audioPlayer) {
+ audioPlayer.pause();
+ }
+ playingVoiceId.value = attachment.name;
+ try {
+ audioPlayer = new Audio(attachment.url);
+ audioPlayer.onended = () => {
+ playingVoiceId.value = null;
+ audioPlayer = null;
+ };
+ audioPlayer.onerror = () => {
+ playingVoiceId.value = null;
+ audioPlayer = null;
+ ElMessage.error('播放失败');
+ };
+ await audioPlayer.play();
+ } catch (error) {
+ console.error('音频播放失败:', error);
+ playingVoiceId.value = null;
+ ElMessage.error('播放失败');
+ }
+};
 onMounted(() => {
  scrollToBottom();
+});
+onUnmounted(() => {
+ if (audioPlayer) {
+ audioPlayer.pause();
+ audioPlayer = null;
+ }
 });
 defineExpose({ scrollToBottom });
 </script>
@@ -271,6 +419,12 @@ defineExpose({ scrollToBottom });
 
 .msg-body { flex: 1; min-width: 0; }
 
+.user-message-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 .bubble.user-bubble {
   display: inline-flex;
   align-items: center;
@@ -308,6 +462,133 @@ defineExpose({ scrollToBottom });
     opacity: 1;
     visibility: visible;
   }
+}
+
+.attachments-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.attachments-container.ai-attachments {
+  margin-top: var(--space-3);
+}
+
+.attachment-item {
+  flex-shrink: 0;
+}
+
+.image-attachment {
+  max-width: 200px;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.image-attachment img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.image-info {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+
+.file-attachment {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  min-width: 180px;
+}
+
+.file-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.file-name {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.file-size {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+
+.voice-attachment {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  min-width: 200px;
+}
+
+.voice-wave {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+}
+
+.wave-bar {
+  width: 3px;
+  height: 8px;
+  background: var(--color-primary-300);
+  border-radius: 2px;
+  transition: height 0.1s;
+}
+
+.voice-wave.playing .wave-bar {
+  animation: waveAnimate 0.5s ease-in-out infinite;
+}
+
+@keyframes waveAnimate {
+  0%, 100% { height: 8px; }
+  50% { height: 24px; }
+}
+
+.voice-play-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-primary-500);
+  border: none;
+  border-radius: 50%;
+  color: var(--text-inverse);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.voice-play-btn:hover {
+  background: var(--color-primary-600);
+}
+
+.voice-play-btn.playing {
+  background: var(--color-error-500);
+}
+
+.voice-duration {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
 }
 
 .ai-message {
