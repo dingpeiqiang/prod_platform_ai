@@ -210,4 +210,4 @@ LLM 意图识别（基于本体规则）
 - [架构设计规范](file:///d:/工作/sitech/项目/研发/git_workspace/AI/prod_platform_ai/ARCHITECTURE.md)
 - [编码质量规范](file:///d:/工作/sitech/项目/研发/git_workspace/AI/prod_platform_ai/AGENTS.md)
 - [工具使用规范](file:///d:/工作/sitech/项目/研发/git_workspace/AI/prod_platform_ai/TOOLS.md)
-- [开发指南](file:///d:/工作/sitech/项目/研发/git_workspace/AI/prod_platform_ai/DEVELOPMENT.md)
+- [开发指南](file:///d:/工作/sitech/项目/研发/git_workspace/AI/prod_platform_ai/DEVELOP_GUIDE.md)
