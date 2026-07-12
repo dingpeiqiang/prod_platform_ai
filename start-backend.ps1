@@ -141,7 +141,7 @@ function Main {
     
     Write-Status '[4/4] Checking startup parameters...'
     
-    if ($args[0] -in 'dev', '--dev', '-d') {
+    if ($args.Count -gt 0 -and $args[0] -in 'dev', '--dev', '-d') {
         Start-DevelopmentMode
     }
     else {

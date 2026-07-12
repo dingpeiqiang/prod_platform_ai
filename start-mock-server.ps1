@@ -79,7 +79,7 @@ function Main {
     Write-Status "  Default port: $MockServerPort"
     Write-Host ''
     
-    if ($args[0] -match '^\d+$') {
+    if ($args.Count -gt 0 -and $args[0] -match '^\d+$') {
         $script:MockServerPort = [int]$args[0]
     }
     

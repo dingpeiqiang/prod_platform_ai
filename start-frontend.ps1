@@ -85,9 +85,9 @@ function Test-BackendHealth {
 
 function Main {
     Write-Host ''
-    Write-Status '╔═══════════════════════════════════════════════════════════╗' -Color Cyan
-    Write-Status '║       AI驱动动态表单底层框架 - 前端启动脚本                 ║' -Color Cyan
-    Write-Status '╚═══════════════════════════════════════════════════════════╝' -Color Cyan
+    Write-Status '=============================================================' -Color Cyan
+    Write-Status '       AI Platform - Frontend Startup Script' -Color Cyan
+    Write-Status '=============================================================' -Color Cyan
     Write-Host ''
     
     Set-Location $FrontendDir
