@@ -1743,7 +1743,7 @@ async def _execute_workflow_with_stream(workflow_code: str, inputs: dict = None)
         
         workflow_id = workflow_data.get("workflowCode", workflow_code)
         workflow_name = workflow_data.get("workflowName", "未命名工作流")
-        engine_workflow = WorkflowConverter.convert(workflow_def_raw, workflow_id, workflow_name, db)
+        engine_workflow = WorkflowConverter.convert(workflow_def_raw, workflow_id, workflow_name)
         
         workflow_def = workflow_engine._parse_workflow_definition(engine_workflow)
         workflow_engine.register_workflow(workflow_def)

@@ -13,6 +13,9 @@
         </div>
       </div>
 
+      <!-- 欢迎卡片 -->
+      <WelcomeCards v-if="showWelcome" @card-click="handleWelcomeCardClick" />
+
       <ChatMessageList
         ref="messageListRef"
         :messages="messages"
@@ -24,9 +27,11 @@
         ref="inputRef"
         v-model="inputText"
         :disabled="isStreaming"
+        :current-skill="currentSkill"
         @send="sendMessage"
         @stop="stopStream"
         @quick-action="sendSuggestion"
+        @remove-skill="currentSkill = ''"
       />
     </div>
 
@@ -48,6 +53,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import ChatMessageList from './ChatMessageList.vue';
 import ChatInput from './ChatInput.vue';
 import FormPanel from './FormPanel.vue';
+import WelcomeCards from './WelcomeCards.vue';
 import { genId, formatTime, getFormStatusText } from '../utils/chatUtils.js';
 import { createSession as apiCreateSession, saveMessage, loadMessages as apiLoadMessages } from '../services/chatApi.js';
 import { registerEventHandler, registerPostProcessor } from '../composables/useIntentRegistry.js';
@@ -65,6 +71,7 @@ const emit = defineEmits(['title-update', 'session-init', 'create-session-from-h
 const messages = ref([]);
 const inputText = ref('');
 const currentDbSessionId = ref('');
+const currentSkill = ref('');
 let isCreatingFromHome = false;
 const dbLoaded = ref(false);
 const messageListRef = ref(null);
@@ -323,6 +330,24 @@ const clearHistory = async () => {
  catch { }
 };
 const sendSuggestion = (text) => {
+ inputText.value = text;
+ sendMessage();
+};
+const showWelcome = computed(() => messages.value.length === 0);
+const handleWelcomeCardClick = (type) => {
+ currentSkill.value = type;
+ let text = '';
+ switch (type) {
+ case 'query':
+ text = '我想查询历史商品';
+ break;
+ case 'file':
+ text = '我想导入配置方案';
+ break;
+ case 'chat':
+ text = '我想添加一种新的业务表单';
+ break;
+ }
  inputText.value = text;
  sendMessage();
 };

@@ -6,7 +6,6 @@ import threading
 import time
 
 from app.core.logger import get_logger
-from .data_source import DataSourceType, DataSourceFactory
 
 logger = get_logger(__name__)
 
@@ -31,88 +30,15 @@ class ConfigLoader:
         self.base_path = Path(__file__).parent.parent.parent / "config"
         self._config_cache: Dict[str, Any] = {}
         self._last_modified: Dict[str, float] = {}
-        self._db_session_factory = None
-        self._current_data_source = None
-        self._data_source_type = None
         
         self._load_app_config()
         self._load_recommendations()
         self._load_prompts()
-        
-        self._init_data_source()
-    
-    def _init_data_source(self):
-        app_config = self.get_app_config()
-        data_source_config = app_config.get('dataSource', {})
-        source_type = data_source_config.get('type', 'file').lower()
-        
-        try:
-            self._data_source_type = DataSourceType(source_type)
-            logger.info("[ConfigLoader] 数据源类型: %s", self._data_source_type.value)
-            
-            if self._data_source_type == DataSourceType.FILE:
-                from .file_data_source import FileDataSource
-                self._current_data_source = FileDataSource(str(self.base_path))
-            elif self._data_source_type == DataSourceType.DATABASE:
-                if self._db_session_factory:
-                    from .database_data_source import DatabaseDataSource
-                    self._current_data_source = DatabaseDataSource(self._db_session_factory)
-                else:
-                    logger.warning("[ConfigLoader] 数据库数据源需要设置session_factory，暂时使用文件数据源")
-                    from .file_data_source import FileDataSource
-                    self._current_data_source = FileDataSource(str(self.base_path))
-            
-            if self._current_data_source:
-                self._config_cache['ontologies'] = self._current_data_source.load_ontologies()
-                self._config_cache['scenes'] = self._current_data_source.load_scenes()
-                
-        except ValueError:
-            logger.error("[ConfigLoader] 无效的数据源类型: %s，使用文件数据源", source_type)
-            from .file_data_source import FileDataSource
-            self._current_data_source = FileDataSource(str(self.base_path))
-            self._data_source_type = DataSourceType.FILE
-    
-    def set_db_session_factory(self, session_factory):
-        """设置数据库会话工厂并加载本体"""
-        self._db_session_factory = session_factory
-        
-        if self._data_source_type == DataSourceType.DATABASE or \
-           self.get_app_config().get('dataSource', {}).get('type') == 'database':
-            try:
-                from .database_data_source import DatabaseDataSource
-                self._current_data_source = DatabaseDataSource(session_factory)
-                self._data_source_type = DataSourceType.DATABASE
-                self._config_cache['ontologies'] = self._current_data_source.load_ontologies()
-                self._config_cache['scenes'] = self._current_data_source.load_scenes()
-                logger.info("[ConfigLoader] 切换到数据库数据源")
-            except Exception as e:
-                logger.error("[ConfigLoader] 初始化数据库数据源失败: %s", e)
-                raise
-    
-    def switch_data_source(self, source_type: DataSourceType):
-        """切换数据源类型"""
-        if source_type == self._data_source_type:
-            logger.info("[ConfigLoader] 数据源类型已为: %s", source_type.value)
-            return
-        
-        self._data_source_type = source_type
-        
-        if source_type == DataSourceType.FILE:
-            from .file_data_source import FileDataSource
-            self._current_data_source = FileDataSource(str(self.base_path))
-        elif source_type == DataSourceType.DATABASE:
-            if not self._db_session_factory:
-                raise RuntimeError("[ConfigLoader] 切换到数据库数据源需要先设置session_factory")
-            from .database_data_source import DatabaseDataSource
-            self._current_data_source = DatabaseDataSource(self._db_session_factory)
-        
-        self._config_cache['ontologies'] = self._current_data_source.load_ontologies()
-        self._config_cache['scenes'] = self._current_data_source.load_scenes()
-        logger.info("[ConfigLoader] 已切换数据源类型: %s", source_type.value)
+        self._load_ontologies()
+        self._load_scenes()
     
     def get_current_data_source_type(self) -> str:
-        """获取当前数据源类型"""
-        return self._data_source_type.value if self._data_source_type else 'unknown'
+        return 'file'
     
     def _load_json(self, path: Path) -> Optional[Dict]:
         try:
@@ -174,58 +100,95 @@ class ConfigLoader:
         self._config_cache['prompts'] = prompts
         self._config_cache['scene_prompts'] = scene_prompts
     
+    def _load_ontologies(self):
+        ontologies = {}
+        ontologies_path = self.base_path / "ontologies"
+        if ontologies_path.exists():
+            for file in ontologies_path.glob("*.json"):
+                data = self._load_json(file)
+                if data:
+                    ontology_code = file.stem
+                    ontologies[ontology_code] = data
+                    logger.debug("[ConfigLoader] 加载本体: %s", ontology_code)
+        
+        self._config_cache['ontologies'] = ontologies
+        logger.info("[ConfigLoader] 从文件加载本体 count=%d", len(ontologies))
+    
+    def _load_scenes(self):
+        scenes = []
+        scene_mapping_path = self.base_path / "scenes" / "scene_mapping.json"
+        if scene_mapping_path.exists():
+            data = self._load_json(scene_mapping_path)
+            if data:
+                scenes = data.get("sceneMappings", [])
+        
+        versions_path = self.base_path / "versions"
+        if versions_path.exists():
+            for scene_dir in versions_path.iterdir():
+                if scene_dir.is_dir():
+                    for file in scene_dir.glob("*.json"):
+                        data = self._load_json(file)
+                        if data:
+                            scene_data = data.get("data", data)
+                            scene_code = scene_data.get("sceneCode", scene_dir.name)
+                            scenes.append({
+                                "sceneCode": scene_code,
+                                "sceneName": scene_data.get("sceneName", scene_code),
+                                "description": scene_data.get("description", ""),
+                                "keywords": scene_data.get("keywords", []),
+                                "priority": scene_data.get("priority", 1),
+                                "isActive": scene_data.get("isActive", True),
+                                "promptCode": scene_data.get("promptCode", scene_code),
+                                "actionPrompt": scene_code,
+                                "config": scene_data.get("config", {})
+                            })
+        
+        self._config_cache['scenes'] = scenes
+        logger.info("[ConfigLoader] 从文件加载场景 count=%d", len(scenes))
+    
     def get_app_config(self) -> Dict[str, Any]:
         return self._config_cache.get('app_config', {})
     
     def get_scene_mappings(self) -> List[Dict]:
-        """获取场景映射列表"""
-        if self._current_data_source:
-            return self._current_data_source.load_scenes()
         return self._config_cache.get('scenes', [])
     
     def get_scene_by_code(self, scene_code: str) -> Optional[Dict]:
-        """获取指定场景"""
-        if self._current_data_source:
-            return self._current_data_source.get_scene(scene_code)
+        scenes = self._config_cache.get('scenes', [])
+        for scene in scenes:
+            if scene.get('sceneCode') == scene_code:
+                return scene
         return None
     
     def get_all_scenes(self) -> List[Dict]:
-        """获取所有场景（别名）"""
         return self.get_scene_mappings()
     
     def get_scene_prompt(self, scene_code: str) -> Optional[str]:
-        """获取场景提示词"""
         scene = self.get_scene_by_code(scene_code)
         if scene:
             prompt_file = scene.get('actionPrompt')
             if prompt_file:
                 scene_prompts = self._config_cache.get('scene_prompts', {})
-                from pathlib import Path
                 prompt_name = Path(prompt_file).stem
                 return scene_prompts.get(prompt_name)
         return None
     
     def get_ontology(self, form_code: str) -> Optional[Dict]:
-        if self._current_data_source:
-            return self._current_data_source.get_ontology(form_code)
         return self._config_cache.get('ontologies', {}).get(form_code)
     
     def get_all_ontologies(self) -> Dict[str, Dict]:
-        if self._current_data_source:
-            return self._current_data_source.load_ontologies()
         return self._config_cache.get('ontologies', {})
     
     def get_recommendations(self, form_code: str, field_code: str) -> List[str]:
-        if self._current_data_source:
-            return self._current_data_source.get_recommendation(form_code, field_code)
         recommendations = self._config_cache.get('recommendations', {})
         form_recommendations = recommendations.get(form_code, {})
         return form_recommendations.get(field_code, [])
     
     def get_prompt(self, prompt_name: str) -> Optional[str]:
-        if self._current_data_source:
-            return self._current_data_source.get_prompt(prompt_name)
-        return self._config_cache.get('prompts', {}).get(prompt_name)
+        prompts = self._config_cache.get('prompts', {})
+        if prompt_name in prompts:
+            return prompts[prompt_name]
+        scene_prompts = self._config_cache.get('scene_prompts', {})
+        return scene_prompts.get(prompt_name)
     
     def get_system_config(self) -> Dict[str, Any]:
         return self._config_cache.get('system_config', {})
@@ -244,19 +207,20 @@ class ConfigLoader:
             self._load_app_config()
             self._load_recommendations()
             self._load_prompts()
-            self._init_data_source()
+            self._load_ontologies()
+            self._load_scenes()
         elif config_type == 'system_config':
             self._load_app_config()
         elif config_type == 'app_config':
             self._load_app_config()
-            self._init_data_source()
         elif config_type == 'ontologies':
-            if self._current_data_source:
-                self._config_cache['ontologies'] = self._current_data_source.load_ontologies()
+            self._load_ontologies()
         elif config_type == 'recommendations':
             self._load_recommendations()
         elif config_type == 'prompts':
             self._load_prompts()
+        elif config_type == 'scenes':
+            self._load_scenes()
 
 
 config_loader = ConfigLoader()

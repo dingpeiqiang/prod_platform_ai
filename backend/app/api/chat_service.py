@@ -124,7 +124,7 @@ def get_scene_prompt_by_code(scene_code: str) -> Optional[str]:
     """
     根据场景编码获取场景提示词内容
     
-    流程：场景编码 → 查询场景表获取提示词编码 → 根据提示词编码获取提示词内容
+    流程：场景编码 → 查询场景配置获取提示词编码 → 根据提示词编码获取提示词内容
     
     Args:
         scene_code: 场景编码
@@ -134,19 +134,13 @@ def get_scene_prompt_by_code(scene_code: str) -> Optional[str]:
     """
     try:
         from app.services.scene_service import SceneService
-        from app.core.database import get_db
         
-        db_gen = get_db()
-        db = next(db_gen)
-        try:
-            prompt_result = SceneService.get_scene_prompt(scene_code, db)
-            if prompt_result["success"]:
-                return prompt_result.get("prompt_content")
-            else:
-                logger.warning(f"[get_scene_prompt_by_code] 获取提示词失败: {prompt_result.get('message')}")
-                return None
-        finally:
-            db.close()
+        prompt_result = SceneService.get_scene_prompt(scene_code)
+        if prompt_result["success"]:
+            return prompt_result.get("prompt_content")
+        else:
+            logger.warning(f"[get_scene_prompt_by_code] 获取提示词失败: {prompt_result.get('message')}")
+            return None
     except Exception as e:
         logger.exception(f"[get_scene_prompt_by_code] 异常 scene_code={scene_code}: {e}")
         return None

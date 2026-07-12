@@ -5,7 +5,7 @@
     "debug": true
   },
   "dataSource": {
-    "type": "database",
+    "type": "file",
     "fallbackToFile": false
   },
   "llm": {

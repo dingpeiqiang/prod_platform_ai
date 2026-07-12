@@ -64,8 +64,18 @@ class FileDataSource(BaseDataSource):
     
     def load_ontologies(self) -> Dict[str, Any]:
         ontologies = {}
+        ontologies_path = self.base_path / "ontologies"
+        
+        if ontologies_path.exists():
+            for file in ontologies_path.glob("*.json"):
+                data = self._load_json(file)
+                if data:
+                    ontology_code = file.stem
+                    ontologies[ontology_code] = data
+                    logger.debug("[FileDataSource] 加载本体: %s", ontology_code)
+        
         self._cache['ontologies'] = ontologies
-        logger.info("[FileDataSource] 本体仅支持从数据库加载")
+        logger.info("[FileDataSource] 从文件加载本体 count=%d", len(ontologies))
         return ontologies
     
     def load_scenes(self) -> List[Dict[str, Any]]:

@@ -6,6 +6,49 @@
  */
 
 /* ══════════════════════════════════════════════════════════════
+ * Chat 组件专用变量 - Chat Component Variables
+ * 来自 prodai-cfg-demo 整合
+ * ══════════════════════════════════════════════════════════════ */
+:root {
+  /* Chat 主题色 */
+  --primary-color: #25b2fe;
+  --primary-dark: #1e8fd6;
+  --primary-light: #e6f4ff;
+  --ai-bg: #e6f4ff;
+  
+  /* Chat 通用变量别名 */
+  --primary: var(--primary-color);
+  --primary-hover: var(--primary-dark);
+  --primary-muted: var(--primary-light);
+  --primary-glow: rgba(37, 178, 254, 0.2);
+  --surface: #ffffff;
+  --surface-elevated: #fafafa;
+  --surface-muted: #f5f7fa;
+  --border: #e5e5e5;
+  --border-color: #e5e5e5;
+  --text: #333333;
+  --text-primary: #333333;
+  --text-secondary: #666666;
+  --text-muted: #999999;
+  --success: #52c41a;
+  --warning: #faad14;
+  --error: #ff4d4f;
+  --success-bg: #f6ffed;
+  --warning-bg: #fffbe6;
+  --error-bg: #fff1f0;
+  --ai-bubble: var(--ai-bg);
+  --header-gradient: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --shadow-lg: -4px 0 20px rgba(0, 0, 0, 0.1);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --transition: all 0.2s;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* ══════════════════════════════════════════════════════════════
  * 基础重置 - CSS Reset
  * ══════════════════════════════════════════════════════════════ */
 *, *::before, *::after {
@@ -323,6 +366,28 @@ a:focus-visible {
   }
 }
 
+/* Chat 组件专用动画 */
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes bounce-dot {
+  0%,
+  80%,
+  100% {
+    transform: scale(0);
+  }
+  40% {
+    transform: scale(1);
+  }
+}
+
 .animate-fade-in {
   animation: fadeIn var(--transition-normal) ease forwards;
 }
@@ -341,6 +406,14 @@ a:focus-visible {
 
 .animate-spin {
   animation: spin 1s linear infinite;
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+.animate-bounce-dot {
+  animation: bounce-dot 1.4s ease-in-out infinite;
 }
 
 /* ══════════════════════════════════════════════════════════════

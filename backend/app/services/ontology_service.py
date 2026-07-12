@@ -1,12 +1,9 @@
 from typing import Dict, Any, List, Optional
-from app.core.logger import get_logger
 
-logger = get_logger(__name__)
-from sqlalchemy.orm import Session
-from sqlalchemy import desc
-from app.models.ontology import Ontology
+from app.core.logger import get_logger
 from app.core.config_loader import config_loader
 
+logger = get_logger(__name__)
 
 
 class OntologyService:
@@ -21,131 +18,83 @@ class OntologyService:
         ]
     
     @classmethod
-    def list_ontologies(cls, db: Session, category: Optional[str] = None, is_active: Optional[bool] = None) -> Dict[str, Any]:
+    def list_ontologies(cls, category: Optional[str] = None, is_active: Optional[bool] = None) -> Dict[str, Any]:
         try:
-            query = db.query(Ontology)
-            if category and category != "":
-                query = query.filter(Ontology.category == category)
-            if is_active is not None:
-                query = query.filter(Ontology.is_active == is_active)
+            ontologies = config_loader.get_all_ontologies()
             
-            ontologies = query.order_by(desc(Ontology.created_at)).all()
+            result = []
+            for code, data in ontologies.items():
+                ontology_info = {
+                    "ontologyCode": code,
+                    "ontologyName": data.get("formName", code),
+                    "category": data.get("category", "general"),
+                    "description": data.get("description", ""),
+                    "entities": data.get("entities", []),
+                    "isActive": True
+                }
+                if category and category != "" and ontology_info["category"] != category:
+                    continue
+                result.append(ontology_info)
+            
             return {
                 "success": True,
-                "data": [o.to_dict() for o in ontologies]
+                "data": result
             }
         except Exception as e:
             logger.exception(f"Failed to list ontologies: {e}")
             return {"success": False, "message": str(e)}
     
     @classmethod
-    def get_ontology(cls, db: Session, ontology_code: str) -> Dict[str, Any]:
+    def get_ontology(cls, ontology_code: str) -> Dict[str, Any]:
         try:
-            ontology = db.query(Ontology).filter(Ontology.ontology_code == ontology_code).first()
+            ontology = config_loader.get_ontology(ontology_code)
             if not ontology:
                 return {"success": False, "message": f"本体 {ontology_code} 不存在"}
-            return {"success": True, "data": ontology.to_dict()}
+            
+            return {
+                "success": True,
+                "data": {
+                    "ontologyCode": ontology_code,
+                    "ontologyName": ontology.get("formName", ontology_code),
+                    "category": ontology.get("category", "general"),
+                    "description": ontology.get("description", ""),
+                    "entities": ontology.get("entities", []),
+                    "isActive": True
+                }
+            }
         except Exception as e:
             logger.exception(f"Failed to get ontology: {e}")
             return {"success": False, "message": str(e)}
     
     @classmethod
-    def create_ontology(cls, db: Session, ontology_data: Dict[str, Any], user: Optional[str] = None) -> Dict[str, Any]:
-        try:
-            ontology_code = ontology_data.get("ontologyCode")
-            if not ontology_code:
-                return {"success": False, "message": "本体编码不能为空"}
-            
-            existing = db.query(Ontology).filter(Ontology.ontology_code == ontology_code).first()
-            if existing:
-                return {"success": False, "message": f"本体 {ontology_code} 已存在"}
-            
-            ontology = Ontology(
-                ontology_code=ontology_code,
-                ontology_name=ontology_data.get("ontologyName", ontology_code),
-                category=ontology_data.get("category", "general"),
-                description=ontology_data.get("description"),
-                entities=ontology_data.get("entities", [])
-            )
-            db.add(ontology)
-            db.commit()
-            db.refresh(ontology)
-            
-            return {"success": True, "data": ontology.to_dict(), "message": "创建成功"}
-        except Exception as e:
-            db.rollback()
-            logger.exception(f"Failed to create ontology: {e}")
-            return {"success": False, "message": str(e)}
+    def create_ontology(cls, ontology_data: Dict[str, Any], user: Optional[str] = None) -> Dict[str, Any]:
+        logger.warning("[create_ontology] 本体管理功能已切换为文件数据源，不支持创建本体")
+        return {"success": False, "message": "本体管理功能已切换为文件数据源，不支持创建本体"}
     
     @classmethod
-    def update_ontology(cls, db: Session, ontology_code: str, ontology_data: Dict[str, Any], user: Optional[str] = None) -> Dict[str, Any]:
+    def update_ontology(cls, ontology_code: str, ontology_data: Dict[str, Any], user: Optional[str] = None) -> Dict[str, Any]:
+        logger.warning("[update_ontology] 本体管理功能已切换为文件数据源，不支持更新本体")
+        return {"success": False, "message": "本体管理功能已切换为文件数据源，不支持更新本体"}
+    
+    @classmethod
+    def delete_ontology(cls, ontology_code: str) -> Dict[str, Any]:
+        logger.warning("[delete_ontology] 本体管理功能已切换为文件数据源，不支持删除本体")
+        return {"success": False, "message": "本体管理功能已切换为文件数据源，不支持删除本体"}
+    
+    @classmethod
+    def toggle_active(cls, ontology_code: str) -> Dict[str, Any]:
+        logger.warning("[toggle_active] 本体管理功能已切换为文件数据源，不支持切换本体状态")
+        return {"success": False, "message": "本体管理功能已切换为文件数据源，不支持切换本体状态"}
+    
+    @classmethod
+    def get_business_rules(cls, ontology_code: str) -> Dict[str, Any]:
         try:
-            ontology = db.query(Ontology).filter(Ontology.ontology_code == ontology_code).first()
+            ontology = config_loader.get_ontology(ontology_code)
             if not ontology:
                 return {"success": False, "message": f"本体 {ontology_code} 不存在"}
             
-            if "ontologyName" in ontology_data:
-                ontology.ontology_name = ontology_data["ontologyName"]
-            if "category" in ontology_data:
-                ontology.category = ontology_data["category"]
-            # formCode/formName 字段已删除，不再更新
-            if "description" in ontology_data:
-                ontology.description = ontology_data["description"]
-            if "entities" in ontology_data:
-                ontology.entities = ontology_data["entities"]
-            if "isActive" in ontology_data:
-                ontology.is_active = ontology_data["isActive"]
+            entities = ontology.get("entities", [])
             
-            ontology.version += 1
-            db.commit()
-            db.refresh(ontology)
-            
-            return {"success": True, "data": ontology.to_dict(), "message": "更新成功"}
-        except Exception as e:
-            db.rollback()
-            logger.exception(f"Failed to update ontology: {e}")
-            return {"success": False, "message": str(e)}
-    
-    @classmethod
-    def delete_ontology(cls, db: Session, ontology_code: str) -> Dict[str, Any]:
-        try:
-            ontology = db.query(Ontology).filter(Ontology.ontology_code == ontology_code).first()
-            if not ontology:
-                return {"success": False, "message": f"本体 {ontology_code} 不存在"}
-            db.delete(ontology)
-            db.commit()
-            return {"success": True, "message": "删除成功"}
-        except Exception as e:
-            db.rollback()
-            logger.exception(f"Failed to delete ontology: {e}")
-            return {"success": False, "message": str(e)}
-    
-    @classmethod
-    def toggle_active(cls, db: Session, ontology_code: str) -> Dict[str, Any]:
-        try:
-            ontology = db.query(Ontology).filter(Ontology.ontology_code == ontology_code).first()
-            if not ontology:
-                return {"success": False, "message": f"本体 {ontology_code} 不存在"}
-            ontology.is_active = not ontology.is_active
-            db.commit()
-            return {"success": True, "data": ontology.to_dict()}
-        except Exception as e:
-            db.rollback()
-            logger.exception(f"Failed to toggle ontology: {e}")
-            return {"success": False, "message": str(e)}
-    
-    @classmethod
-    def get_business_rules(cls, db: Session, ontology_code: str) -> Dict[str, Any]:
-        """从本体获取业务规则"""
-        try:
-            ontology = db.query(Ontology).filter(Ontology.ontology_code == ontology_code).first()
-            if not ontology:
-                return {"success": False, "message": f"本体 {ontology_code} 不存在"}
-            
-            ontology_data = ontology.to_dict()
-            entities = ontology_data.get("entities", [])
-            
-            # 提取业务规则
             default_values = {}
             validation_rules = {}
             field_mappings = {}
@@ -155,11 +104,9 @@ class OntologyService:
                 for field in entity.get("fields", []):
                     field_code = field.get("fieldCode")
                     if field_code:
-                        # 默认值
                         if "defaultValue" in field:
                             default_values[field_code] = field["defaultValue"]
                         
-                        # 校验规则
                         field_rules = {}
                         if field.get("required"):
                             field_rules["required"] = True
@@ -176,12 +123,10 @@ class OntologyService:
                         if field_rules:
                             validation_rules[field_code] = field_rules
                         
-                        # 字段映射
                         if "label" in field:
                             field_mappings[field_code] = field["label"]
             
-            # 获取本体级别的业务规则
-            business_rules.extend(ontology_data.get("businessRules", []))
+            business_rules.extend(ontology.get("businessRules", []))
             
             return {
                 "success": True,
@@ -220,11 +165,11 @@ class OntologyService:
             "success": True,
             "ontologies": [
                 {
-                    "formCode": ont.get("formCode"),
-                    "formName": ont.get("formName"),
+                    "formCode": code,
+                    "formName": ont.get("formName", code),
                     "description": ont.get("description", "")
                 }
-                for ont in ontologies.values()
+                for code, ont in ontologies.items()
             ]
         }
     

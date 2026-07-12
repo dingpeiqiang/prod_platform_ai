@@ -11,7 +11,6 @@ from app.skills import ToolRegistry
 from app.skills.scene_recognition import SceneRecognitionSkill
 from app.skills.field_extraction import FieldExtractionSkill
 from app.services.scene_service import SceneService
-from app.core.database import get_db
 
 
 router = APIRouter(prefix="/api/v1", tags=["chat_with_tools"])
@@ -61,24 +60,19 @@ def _call_tools_manually(user_message: str, ontologies: Dict) -> Dict:
     form_code = None
     
     if scene_code:
-        db_gen = get_db()
-        db = next(db_gen)
-        try:
-            prompt_result = SceneService.get_scene_prompt(scene_code, db)
-            if prompt_result["success"]:
-                prompt_content = prompt_result.get("prompt_content")
-                form_code = prompt_result.get("scene", {}).get("formCode")
-                
-                logger.info("[chat_with_tools] 获取提示词成功 prompt_code=%s", prompt_result.get("prompt_code"))
-                tool_calls.append({
-                    "tool": "get_scene_prompt",
-                    "input": {"scene_code": scene_code},
-                    "output": {"prompt_code": prompt_result.get("prompt_code"), "has_prompt": prompt_content is not None}
-                })
-            else:
-                logger.warning("[chat_with_tools] 获取提示词失败: %s", prompt_result.get("message"))
-        finally:
-            db.close()
+        prompt_result = SceneService.get_scene_prompt(scene_code)
+        if prompt_result["success"]:
+            prompt_content = prompt_result.get("prompt_content")
+            form_code = prompt_result.get("scene", {}).get("formCode")
+            
+            logger.info("[chat_with_tools] 获取提示词成功 prompt_code=%s", prompt_result.get("prompt_code"))
+            tool_calls.append({
+                "tool": "get_scene_prompt",
+                "input": {"scene_code": scene_code},
+                "output": {"prompt_code": prompt_result.get("prompt_code"), "has_prompt": prompt_content is not None}
+            })
+        else:
+            logger.warning("[chat_with_tools] 获取提示词失败: %s", prompt_result.get("message"))
     
     llm_response = None
     if prompt_content:

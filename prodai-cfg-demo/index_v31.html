@@ -1,0 +1,2708 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>产品智能配置助手</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #25b2fe;
+            --primary-dark: #1e8fd6;
+            --primary-light: #e6f4ff;
+            --text-primary: #333;
+            --text-secondary: #666;
+            --text-muted: #999;
+            --border-color: #e5e5e5;
+            --bg-gray: #f5f7fa;
+            --success: #52c41a;
+            --warning: #faad14;
+            --error: #ff4d4f;
+            --ai-bg: #e6f4ff;
+            --shadow: 0 2px 8px rgba(0,0,0,0.1);
+            --radius: 8px;
+        }
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: var(--bg-gray);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: var(--shadow);
+        }
+        
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .header-title h1 { font-size: 20px; font-weight: 600; }
+        
+        .header-title .icon {
+            width: 36px;
+            height: 36px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .header-title .icon i { font-size: 20px; }
+        
+        .header-actions { display: flex; gap: 12px; }
+        
+        .header-btn {
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        .header-btn:hover { background: rgba(255,255,255,0.25); }
+        
+        .main-container { display: flex; height: calc(100vh - 68px); }
+        
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            transition: all 0.3s ease;
+        }
+        
+        .chat-container.split {
+            flex: 0.4;
+            min-width: 300px;
+            border-right: 1px solid var(--border-color);
+        }
+        
+        .messages { flex: 1; overflow-y: auto; padding: 20px; }
+        
+        .message {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .message-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        
+        .message-avatar.ai { background: var(--primary-color); color: white; }
+        .message-avatar.ai i { font-size: 18px; }
+        
+        .message-avatar.user { background: var(--bg-gray); color: var(--text-secondary); }
+        .message-avatar.user i { font-size: 16px; }
+        
+        .message-content { max-width: 80%; }
+        
+        .message-bubble {
+            padding: 12px 16px;
+            border-radius: var(--radius);
+            line-height: 1.6;
+        }
+        
+        .message.ai .message-bubble { background: var(--ai-bg); border-top-left-radius: 4px; }
+        
+        .message.user { flex-direction: row-reverse; }
+        
+        .message.user .message-bubble {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-top-right-radius: 4px;
+        }
+        
+        .welcome-cards {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-top: 16px;
+        }
+        
+        .welcome-card {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .welcome-card:hover {
+            border-color: var(--primary-color);
+            box-shadow: 0 2px 8px rgba(37, 178, 254, 0.2);
+        }
+        
+        .welcome-card .card-icon {
+            width: 40px;
+            height: 40px;
+            background: var(--primary-light);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 12px;
+        }
+        
+        .welcome-card .card-icon i { font-size: 20px; color: var(--primary-color); }
+        
+        .welcome-card h4 { font-size: 14px; margin-bottom: 4px; }
+        .welcome-card p { font-size: 12px; color: var(--text-muted); }
+        
+        .input-area {
+            padding: 16px 20px;
+            background: white;
+            border-top: 1px solid var(--border-color);
+        }
+        
+        .input-shortcuts {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .shortcut-btn {
+            padding: 6px 12px;
+            background: var(--bg-gray);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .shortcut-btn:hover {
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+            background: var(--primary-light);
+        }
+        
+        .input-wrapper { display: flex; gap: 12px; align-items: flex-end; }
+        
+        .input-main { flex: 1; position: relative; }
+        
+        .input-field {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            font-size: 14px;
+            min-height: 48px;
+            max-height: 120px;
+            outline: none;
+            transition: border-color 0.2s;
+            resize: none;
+        }
+        
+        .input-field:focus { border-color: var(--primary-color); }
+        
+        .input-actions { display: flex; gap: 8px; }
+        
+        .input-btn {
+            width: 48px;
+            height: 48px;
+            border: 1px solid var(--border-color);
+            background: white;
+            border-radius: var(--radius);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+        }
+        
+        .input-btn:hover { border-color: var(--primary-color); color: var(--primary-color); }
+        
+        .send-btn { background: var(--primary-color); color: white; border: none; }
+        .send-btn:hover { background: var(--primary-dark); }
+        
+        .config-container {
+            flex: 0.6;
+            background: var(--bg-gray);
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .config-container.show { display: flex; }
+        
+        .config-header {
+            background: white;
+            padding: 12px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .scheme-info { display: flex; align-items: center; gap: 12px; }
+        .scheme-name { font-weight: 600; color: var(--text-primary); }
+        
+        .template-badge {
+            background: var(--primary-color);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        
+        .draft-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--warning);
+        }
+        
+        .draft-indicator .dot {
+            width: 8px;
+            height: 8px;
+            background: var(--warning);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .tabs {
+            background: white;
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            padding: 0 20px;
+        }
+        
+        .tab {
+            padding: 14px 20px;
+            cursor: pointer;
+            font-size: 14px;
+            color: var(--text-secondary);
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        
+        .tab:hover { color: var(--primary-color); }
+        .tab.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
+        
+        .form-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        .form-section {
+            background: white;
+            border-radius: var(--radius);
+            margin-bottom: 16px;
+            overflow: hidden;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+        }
+        
+        .section-header {
+            padding: 14px 16px;
+            background: var(--bg-gray);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .section-header:hover { background: #eef2f7; }
+        
+        .section-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+        }
+        
+        .section-toggle { color: var(--text-muted); transition: transform 0.2s; }
+        .section-header.open .section-toggle { transform: rotate(180deg); }
+        
+        .section-content { padding: 16px; display: none; }
+        .section-content.open { display: block; }
+        
+        .form-row { margin-bottom: 16px; }
+        .form-row:last-child { margin-bottom: 0; }
+        
+        .form-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+        
+        .form-label .required { color: var(--error); }
+        
+        .ai-badge {
+            font-size: 10px;
+            padding: 2px 6px;
+            background: var(--warning);
+            color: white;
+            border-radius: 3px;
+            cursor: help;
+        }
+        
+        .form-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        
+        .form-input:focus { border-color: var(--primary-color); }
+        .form-input.modified { border-color: var(--warning); background: #fffbf0; }
+        
+        .form-input-row {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+        
+        .form-select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            outline: none;
+        }
+        
+        .form-select:focus { border-color: var(--primary-color); }
+        
+        .config-footer {
+            background: white;
+            padding: 16px 20px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .footer-left { display: flex; gap: 12px; }
+        .footer-right { display: flex; gap: 12px; }
+        
+        .footer-btn {
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        .btn-draft {
+            background: white;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+        
+        .btn-draft:hover { border-color: var(--primary-color); color: var(--primary-color); }
+        
+        .btn-check {
+            background: white;
+            border: 1px solid var(--warning);
+            color: var(--warning);
+        }
+        
+        .btn-check:hover { background: #fffbe6; }
+        
+        .btn-submit {
+            background: var(--primary-color);
+            border: none;
+            color: white;
+            padding: 10px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        .btn-submit:hover { background: var(--primary-dark); }
+        
+        .status-tag {
+            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 4px;
+        }
+        
+        .status-pending { background: var(--bg-gray); color: var(--text-secondary); }
+        .status-pass { background: #f6ffed; color: var(--success); }
+        .status-fail { background: #fff1f0; color: var(--error); }
+        .status-draft { background: #fffbe6; color: var(--warning); }
+        .status-submitted { background: #f6ffed; color: var(--success); }
+        .status-approval { background: #e6f4ff; color: var(--primary-color); }
+        
+        .product-list-panel {
+            position: fixed;
+            right: -500px;
+            top: 0;
+            width: 500px;
+            height: 100%;
+            background: white;
+            box-shadow: -4px 0 20px rgba(0,0,0,0.1);
+            z-index: 100;
+            transition: right 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .product-list-panel.show { right: 0; }
+        
+        .product-list-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .product-list-header h3 { font-size: 16px; display: flex; align-items: center; gap: 8px; }
+        
+        .product-list-header .count {
+            background: var(--primary-color);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 12px;
+        }
+        
+        .product-list-close {
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: var(--bg-gray);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 18px;
+        }
+        
+        .product-list-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+        }
+        
+        .empty-state i { font-size: 48px; margin-bottom: 16px; }
+        
+        .list-item {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .list-item:hover { border-color: var(--primary-color); }
+        .list-item.active { border-color: var(--primary-color); background: var(--primary-light); }
+        
+        .list-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+        
+        .list-item-name { font-weight: 600; font-size: 14px; }
+        
+        .list-item-desc { 
+            font-size: 12px; 
+            color: var(--text-secondary); 
+            margin-bottom: 10px;
+            line-height: 1.4;
+        }
+        
+        .list-item-tags { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+        
+        .list-item-actions { 
+            display: flex; 
+            gap: 8px; 
+            justify-content: flex-end;
+        }
+        
+        .list-action-btn {
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            border: none;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+        
+        .list-action-btn.copy { background: var(--primary-light); color: var(--primary-color); }
+        .list-action-btn.copy:hover { background: var(--primary-color); color: white; }
+        .list-action-btn.edit { background: #fffbe6; color: var(--warning); }
+        .list-action-btn.edit:hover { background: var(--warning); color: white; }
+        .list-action-btn.delete { background: #fff1f0; color: var(--error); }
+        .list-action-btn.delete:hover { background: var(--error); color: white; }
+        
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.3);
+            z-index: 99;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+        }
+        
+        .overlay.show { opacity: 1; visibility: visible; }
+        
+        .audit-panel {
+            position: fixed;
+            right: -400px;
+            top: 0;
+            width: 400px;
+            height: 100%;
+            background: white;
+            box-shadow: -4px 0 20px rgba(0,0,0,0.1);
+            z-index: 100;
+            transition: right 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .audit-panel.show { right: 0; }
+        
+        .audit-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .audit-header h3 { font-size: 16px; display: flex; align-items: center; gap: 8px; }
+        
+        .audit-close {
+            width: 32px;
+            height: 32px;
+            border: none;
+            background: var(--bg-gray);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 18px;
+        }
+        
+        .audit-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        .audit-progress {
+            text-align: center;
+            padding: 40px 20px;
+        }
+        
+        .audit-progress i { font-size: 48px; color: var(--primary-color); margin-bottom: 20px; }
+        .audit-progress p { margin-bottom: 16px; }
+        .audit-progress .text { color: var(--text-muted); font-size: 13px; }
+        
+        .audit-item {
+            display: flex;
+            gap: 12px;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+        }
+        
+        .audit-item.error { background: #fff1f0; }
+        .audit-item.warning { background: #fffbe6; }
+        .audit-item.success { background: #f6ffed; }
+        
+        .audit-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+        
+        .audit-item.error .audit-icon { background: var(--error); color: white; }
+        .audit-item.warning .audit-icon { background: var(--warning); color: white; }
+        .audit-item.success .audit-icon { background: var(--success); color: white; }
+        
+        .audit-text { flex: 1; }
+        .audit-title { font-weight: 600; margin-bottom: 4px; }
+        .audit-desc { font-size: 13px; color: var(--text-secondary); }
+        
+        .loading-dots {
+            display: flex;
+            gap: 4px;
+            justify-content: center;
+            margin: 16px 0;
+        }
+        
+        .loading-dots span {
+            width: 8px;
+            height: 8px;
+            background: var(--primary-color);
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        
+        .loading-dots span:nth-child(1) { animation-delay: -0.32s; }
+        .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+        
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+        
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 200;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal.show { display: flex; }
+        
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            width: 420px;
+            max-width: 90%;
+            overflow: hidden;
+        }
+        
+        .modal-title {
+            padding: 16px 20px;
+            background: var(--bg-gray);
+            font-size: 16px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .modal-title i { color: var(--warning); }
+        
+        .modal-body {
+            padding: 20px;
+        }
+        
+        .modal-body p { margin-bottom: 12px; }
+        .modal-body ul { margin: 12px 0; padding-left: 20px; }
+        .modal-body li { margin-bottom: 8px; color: var(--text-secondary); }
+        
+        .modal-footer {
+            padding: 16px 20px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+        
+        .modal-btn {
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        .modal-btn.cancel {
+            background: white;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+        
+        .modal-btn.cancel:hover { border-color: var(--primary-color); color: var(--primary-color); }
+        
+        .modal-btn.confirm {
+            background: var(--primary-color);
+            border: none;
+            color: white;
+        }
+        
+        .modal-btn.confirm:hover { background: var(--primary-dark); }
+        
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 6px;
+            z-index: 1000;
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+        
+        .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+        
+        .summary-list { display: flex; flex-direction: column; gap: 12px; }
+        
+        .summary-item {
+            display: flex;
+            padding: 10px 12px;
+            background: var(--bg-gray);
+            border-radius: 6px;
+        }
+        
+        .summary-item .label { width: 140px; flex-shrink: 0; color: var(--text-secondary); font-size: 13px; }
+        .summary-item .value { flex: 1; font-size: 14px; font-weight: 500; word-break: break-all; }
+
+        .scene-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            background: var(--primary-light);
+            border-radius: 20px;
+            font-size: 12px;
+            color: var(--primary-color);
+            margin-bottom: 12px;
+        }
+        
+        .scene-indicator i { font-size: 14px; }
+
+        .query-template {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 16px;
+            background: #fafafa;
+            border-radius: 8px;
+            border: 1px dashed var(--primary-color);
+        }
+
+        .query-template-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+
+        .query-slots {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .query-slot {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .query-slot-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .query-slot-input {
+            padding: 8px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 13px;
+            min-width: 180px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .query-slot-input:focus {
+            border-color: var(--primary-color);
+        }
+
+        .query-slot-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .query-hint {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 8px;
+        }
+
+        .skill-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .skill-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: var(--primary-light);
+            border: 1px solid var(--primary-color);
+            border-radius: 20px;
+            font-size: 13px;
+            color: var(--primary-color);
+            cursor: default;
+        }
+
+        .skill-tag .close-btn {
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 12px;
+        }
+
+        .skill-tag .close-btn:hover {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .product-list-view {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .product-list-view-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .product-list-view-header h3 {
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .product-list-view-header .count {
+            background: var(--primary-color);
+            color: white;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 13px;
+        }
+
+        .back-btn {
+            padding: 8px 16px;
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .back-btn:hover {
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+        }
+
+        .product-list-scroll {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-title">
+            <div class="icon"><i class="fa-solid fa-microchip"></i></div>
+            <h1>产品智能配置助手</h1>
+        </div>
+        <div class="header-actions">
+            <button class="header-btn" onclick="showProductListPanel()">
+                <i class="fa-solid fa-list"></i> 商品列表
+                <span id="productCount" style="background:rgba(255,255,255,0.2);padding:2px 8px;border-radius:10px;margin-left:4px;">0</span>
+            </button>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="chat-container" id="chatContainer">
+            <div class="messages" id="messages">
+                <div class="message ai">
+                    <div class="message-avatar ai"><i class="fa-solid fa-head-side-conceptual"></i></div>
+                    <div class="message-content">
+                        <div class="message-bubble">
+                            <p>您好！我是产品智能配置助手，可以帮您快速完成商品配置。</p>
+                            <div class="welcome-cards">
+                                <div class="welcome-card" onclick="handleCardClick('query')">
+                                    <div class="card-icon"><i class="fa-solid fa-magnifying-glass"></i></div>
+                                    <h4>AI智查</h4>
+                                    <p>查询历史商品，快速复制配置</p>
+                                </div>
+                                <div class="welcome-card" onclick="handleCardClick('file')">
+                                    <div class="card-icon"><i class="fa-solid fa-file-import"></i></div>
+                                    <h4>AI方案导入</h4>
+                                    <p>上传文档，批量导入配置</p>
+                                </div>
+                                <div class="welcome-card" onclick="handleCardClick('chat')">
+                                    <div class="card-icon"><i class="fa-solid fa-comments"></i></div>
+                                    <h4>对话式配置</h4>
+                                    <p>自然语言描述，智能生成配置</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-area">
+                <div class="skill-tags" id="skillTags"></div>
+                <div class="input-wrapper">
+                    <div class="input-main">
+                        <input type="text" class="input-field" id="chatInput" placeholder="输入商品名称进行模糊查询..." onkeypress="handleKeyPress(event)">
+                    </div>
+                    <div class="input-actions">
+                        <button class="input-btn" onclick="triggerFileUpload()" title="上传附件"><i class="fa-solid fa-paperclip"></i></button>
+                        <input type="file" id="fileInput" accept=".docx,.pdf,.xlsx,.doc" style="display:none" onchange="handleFileUpload(this.files[0])">
+                        <button class="input-btn send-btn" onclick="sendMessage()" title="发送"><i class="fa-solid fa-paper-plane"></i></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="config-container" id="configContainer">
+            <div class="config-header">
+                <div class="scheme-info">
+                    <span class="scheme-name" id="schemeName">暑期促销活动方案</span>
+                    <span class="template-badge" id="templateBadge">个人主资费</span>
+                    <span class="status-tag status-pending" id="auditStatus">未稽核</span>
+                    <div class="draft-indicator" id="draftIndicator" style="display: none;">
+                        <span class="dot"></span>
+                        <span>有未保存的修改</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab('base')">基础信息</div>
+                <div class="tab" onclick="switchTab('release')">发布信息</div>
+                <div class="tab" onclick="switchTab('optional')">可选配置</div>
+                <div class="tab" onclick="switchTab('summary')">信息预览</div>
+            </div>
+
+            <div class="product-list-view" id="productListView" style="display:none;"></div>
+
+            <div class="form-area" id="formArea">
+                <div class="tab-content" id="tab-base">
+                    <div class="form-section">
+                        <div class="section-header open" onclick="toggleSection(this)">
+                            <div class="section-title"><i class="fa-solid fa-file-lines"></i> 基本信息</div>
+                            <span class="section-toggle"><i class="fa-solid fa-chevron-down"></i></span>
+                        </div>
+                        <div class="section-content open">
+                            <div class="form-row">
+                                <div class="form-label">
+                                    <span>工单编号</span>
+                                    <span class="ai-badge">AI推荐</span>
+                                </div>
+                                <input type="text" class="form-input" id="workOrderId" oninput="markModified(this)">
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span class="required">*</span><span>资费名称</span></div>
+                                <input type="text" class="form-input" id="prodPrcName" placeholder="请输入资费名称" oninput="markModified(this)">
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span class="required">*</span><span>订购生效方式</span></div>
+                                <select class="form-select" id="effRuleId" onchange="markModified(this)">
+                                    <option value="1001">立即生效</option>
+                                    <option value="1002">次月生效</option>
+                                    <option value="1003">预约生效</option>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span>退订生效方式</span></div>
+                                <select class="form-select" id="expRuleId" onchange="markModified(this)">
+                                    <option value="1023">立即失效</option>
+                                    <option value="1024">次月失效</option>
+                                </select>
+                            </div>
+                            <div class="form-input-row">
+                                <div class="form-row">
+                                    <div class="form-label"><span>销售开始日期</span><span class="ai-badge">AI推荐</span></div>
+                                    <input type="date" class="form-input" id="effDate" oninput="markModified(this)">
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-label"><span>销售终止日期</span><span class="ai-badge">AI推荐</span></div>
+                                    <input type="date" class="form-input" id="expDate" oninput="markModified(this)">
+                                </div>
+                            </div>
+                            <div class="form-input-row">
+                                <div class="form-row">
+                                    <div class="form-label"><span>产品代码</span><span class="ai-badge">AI推荐</span></div>
+                                    <input type="text" class="form-input" id="prodId" oninput="markModified(this)">
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-label"><span>资费代码</span><span class="ai-badge">AI推荐</span></div>
+                                    <input type="text" class="form-input" id="prodPrcId" oninput="markModified(this)">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-content" id="tab-release" style="display:none;">
+                    <div class="form-section">
+                        <div class="section-header open" onclick="toggleSection(this)">
+                            <div class="section-title"><i class="fa-solid fa-globe"></i> 发布渠道</div>
+                            <span class="section-toggle"><i class="fa-solid fa-chevron-down"></i></span>
+                        </div>
+                        <div class="section-content open">
+                            <div class="form-row">
+                                <div class="form-label"><span>发布渠道</span></div>
+                                <select class="form-select" id="chnClassLimit" onchange="markModified(this)">
+                                    <option value="A7">全渠道</option>
+                                    <option value="A1">线下营业厅</option>
+                                    <option value="A2">线上渠道</option>
+                                    <option value="A3">代理商</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-section">
+                        <div class="section-header open" onclick="toggleSection(this)">
+                            <div class="section-title"><i class="fa-solid fa-map-marker-alt"></i> 发布地市</div>
+                            <span class="section-toggle"><i class="fa-solid fa-chevron-down"></i></span>
+                        </div>
+                        <div class="section-content open">
+                            <div class="form-row">
+                                <div class="form-label"><span>发布地市</span></div>
+                                <select class="form-select" id="groupId" onchange="markModified(this)">
+                                    <option value="10001">四川</option>
+                                    <option value="10002">成都</option>
+                                    <option value="10003">绵阳</option>
+                                    <option value="10004">德阳</option>
+                                    <option value="10005">南充</option>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span>地市明细</span></div>
+                                <input type="text" class="form-input" id="groupIdMessage" placeholder="多个地市用逗号分隔" oninput="markModified(this)">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-content" id="tab-optional" style="display:none;">
+                    <div class="form-section">
+                        <div class="section-header" onclick="toggleSection(this)">
+                            <div class="section-title"><i class="fa-solid fa-file-alt"></i> 免填单 <span style="font-weight:normal;color:#999;font-size:12px;">（展示给用户的文案）</span></div>
+                            <span class="section-toggle"><i class="fa-solid fa-chevron-down"></i></span>
+                        </div>
+                        <div class="section-content">
+                            <div class="form-row">
+                                <div class="form-label"><span>套餐月费</span><span class="ai-badge">AI推荐</span></div>
+                                <input type="text" class="form-input" id="prcMonthFee" placeholder="如：99元/月" oninput="markModified(this)">
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span>包含资源</span><span class="ai-badge">AI推荐</span></div>
+                                <input type="text" class="form-input" id="containResource" placeholder="如：20G流量" oninput="markModified(this)">
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span>超套收费标准</span><span class="ai-badge">AI推荐</span></div>
+                                <input type="text" class="form-input" id="chargeStandard" placeholder="如：0.29元/MB" oninput="markModified(this)">
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span>限定条件</span></div>
+                                <textarea class="form-input" rows="2" id="limitCondition" oninput="markModified(this)"></textarea>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span>其他权益</span></div>
+                                <textarea class="form-input" rows="2" id="otherEquity" oninput="markModified(this)"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <div class="section-header" onclick="toggleSection(this)">
+                            <div class="section-title"><i class="fa-solid fa-comment-sms"></i> 短信提醒</div>
+                            <span class="section-toggle"><i class="fa-solid fa-chevron-down"></i></span>
+                        </div>
+                        <div class="section-content">
+                            <div class="form-row">
+                                <div class="form-label"><span>短信内容</span></div>
+                                <textarea class="form-input" rows="2" id="smsContent" oninput="markModified(this)"></textarea>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span>成功短信（立即）</span><span class="ai-badge">AI推荐</span></div>
+                                <textarea class="form-input" rows="2" id="sysNoteNow" oninput="markModified(this)"></textarea>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span>成功短信（预约）</span><span class="ai-badge">AI推荐</span></div>
+                                <textarea class="form-input" rows="2" id="sysNoteNext" oninput="markModified(this)"></textarea>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span>退订短信</span><span class="ai-badge">AI推荐</span></div>
+                                <textarea class="form-input" rows="2" id="sysNoteCancle" oninput="markModified(this)"></textarea>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span>前台二确短信</span></div>
+                                <textarea class="form-input" rows="2" id="sysNoteErke" oninput="markModified(this)"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <div class="section-header" onclick="toggleSection(this)">
+                            <div class="section-title"><i class="fa-solid fa-yen-sign"></i> 月租 <span style="font-weight:normal;color:#999;font-size:12px;">（定价与账务）</span></div>
+                            <span class="section-toggle"><i class="fa-solid fa-chevron-down"></i></span>
+                        </div>
+                        <div class="section-content">
+                            <div class="form-row">
+                                <div class="form-label"><span>收费方式</span></div>
+                                <select class="form-select" id="chargeType" onchange="markModified(this)">
+                                    <option value="monthly">月付</option>
+                                    <option value="quarterly">季付</option>
+                                    <option value="yearly">年付</option>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span class="required">*</span><span>套餐固定费</span><span class="ai-badge">AI推荐</span></div>
+                                <input type="number" class="form-input" id="monthlyFee" placeholder="0.00" step="0.01" oninput="markModified(this)">
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span>收费科目</span></div>
+                                <select class="form-select" id="feeSubject" onchange="markModified(this)">
+                                    <option value="001">通讯费</option>
+                                    <option value="002">增值业务费</option>
+                                    <option value="003">代收费</option>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span>税率</span></div>
+                                <select class="form-select" id="taxRate" onchange="markModified(this)">
+                                    <option value="6">6%</option>
+                                    <option value="9">9%</option>
+                                    <option value="13">13%</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <div class="section-header" onclick="toggleSection(this)">
+                            <div class="section-title"><i class="fa-solid fa-tags"></i> 账务优惠</div>
+                            <span class="section-toggle"><i class="fa-solid fa-chevron-down"></i></span>
+                        </div>
+                        <div class="section-content">
+                            <div class="form-row">
+                                <div class="form-label"><span>优惠条件</span></div>
+                                <input type="text" class="form-input" id="discountCondition" oninput="markModified(this)">
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span>优惠类型</span></div>
+                                <select class="form-select" id="discountType" onchange="markModified(this)">
+                                    <option value="cash">返费</option>
+                                    <option value="discount">打折</option>
+                                    <option value="free">赠送</option>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span>优惠费用</span></div>
+                                <input type="number" class="form-input" id="discountAmount" step="0.01" oninput="markModified(this)">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <div class="section-header" onclick="toggleSection(this)">
+                            <div class="section-title"><i class="fa-solid fa-arrow-down-wide-short"></i> 保底</div>
+                            <span class="section-toggle"><i class="fa-solid fa-chevron-down"></i></span>
+                        </div>
+                        <div class="section-content">
+                            <div class="form-row">
+                                <div class="form-label"><span>保底方式</span></div>
+                                <select class="form-select" id="minConsumeType" onchange="markModified(this)">
+                                    <option value="none">无保底</option>
+                                    <option value="monthly">月保底</option>
+                                    <option value="total">总额保底</option>
+                                </select>
+                            </div>
+                            <div class="form-row" id="minConsumeAmountRow" style="display:none;">
+                                <div class="form-label"><span>保底费用</span></div>
+                                <input type="number" class="form-input" id="minConsumeAmount" step="0.01" oninput="markModified(this)">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <div class="section-header" onclick="toggleSection(this)">
+                            <div class="section-title"><i class="fa-solid fa-mobile-screen"></i> 流量资源配置</div>
+                            <span class="section-toggle"><i class="fa-solid fa-chevron-down"></i></span>
+                        </div>
+                        <div class="section-content">
+                            <div class="form-row">
+                                <div class="form-label"><span>流量类型</span></div>
+                                <select class="form-select" id="flowType" onchange="markModified(this)">
+                                    <option value="general">通用流量</option>
+                                    <option value="定向">定向流量</option>
+                                    <option value="专属">专属流量</option>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span class="required">*</span><span>资源量</span><span class="ai-badge">AI推荐</span></div>
+                                <input type="number" class="form-input" id="flowAmount" oninput="markModified(this)">
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span>流量单位</span></div>
+                                <select class="form-select" id="flowUnit" onchange="markModified(this)">
+                                    <option value="GB">GB</option>
+                                    <option value="MB">MB</option>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span>套外计费标准</span><span class="ai-badge">AI推荐</span></div>
+                                <input type="text" class="form-input" id="flowOvercharge" placeholder="如：0.29元/MB" oninput="markModified(this)">
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span>是否结转到次月</span></div>
+                                <select class="form-select" id="flowCarryover" onchange="markModified(this)">
+                                    <option value="yes">是</option>
+                                    <option value="no">否</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <div class="section-header" onclick="toggleSection(this)">
+                            <div class="section-title"><i class="fa-solid fa-phone"></i> 语音资源配置</div>
+                            <span class="section-toggle"><i class="fa-solid fa-chevron-down"></i></span>
+                        </div>
+                        <div class="section-content">
+                            <div class="form-row">
+                                <div class="form-label"><span>资源类型</span></div>
+                                <select class="form-select" id="voiceType" onchange="markModified(this)">
+                                    <option value="local">本地语音</option>
+                                    <option value="longdistance">长途语音</option>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span>资源量</span><span class="ai-badge">AI推荐</span></div>
+                                <input type="number" class="form-input" id="voiceAmount" oninput="markModified(this)">
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span>套外计费费率</span></div>
+                                <input type="text" class="form-input" id="voiceOvercharge" placeholder="如：0.15元/分钟" oninput="markModified(this)">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <div class="section-header" onclick="toggleSection(this)">
+                            <div class="section-title"><i class="fa-solid fa-comment-dots"></i> 短信资源配置</div>
+                            <span class="section-toggle"><i class="fa-solid fa-chevron-down"></i></span>
+                        </div>
+                        <div class="section-content">
+                            <div class="form-row">
+                                <div class="form-label"><span>资源量</span><span class="ai-badge">AI推荐</span></div>
+                                <input type="number" class="form-input" id="smsAmount" oninput="markModified(this)">
+                            </div>
+                            <div class="form-row">
+                                <div class="form-label"><span>套外计费费率</span></div>
+                                <input type="text" class="form-input" id="smsOvercharge" oninput="markModified(this)">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-content" id="tab-summary" style="display:none;">
+                    <div class="form-section">
+                        <div class="section-header open" onclick="toggleSection(this)">
+                            <div class="section-title"><i class="fa-solid fa-file-lines"></i> 基本信息</div>
+                            <span class="section-toggle"><i class="fa-solid fa-chevron-down"></i></span>
+                        </div>
+                        <div class="section-content open">
+                            <div class="summary-list" id="summary-base"></div>
+                        </div>
+                    </div>
+                    <div class="form-section">
+                        <div class="section-header open" onclick="toggleSection(this)">
+                            <div class="section-title"><i class="fa-solid fa-globe"></i> 发布信息</div>
+                            <span class="section-toggle"><i class="fa-solid fa-chevron-down"></i></span>
+                        </div>
+                        <div class="section-content open">
+                            <div class="summary-list" id="summary-release"></div>
+                        </div>
+                    </div>
+                    <div class="form-section">
+                        <div class="section-header open" onclick="toggleSection(this)">
+                            <div class="section-title"><i class="fa-solid fa-file-alt"></i> 免填单</div>
+                            <span class="section-toggle"><i class="fa-solid fa-chevron-down"></i></span>
+                        </div>
+                        <div class="section-content open">
+                            <div class="summary-list" id="summary-optional"></div>
+                        </div>
+                    </div>
+                    <div class="form-section">
+                        <div class="section-header open" onclick="toggleSection(this)">
+                            <div class="section-title"><i class="fa-solid fa-comment-sms"></i> 短信提醒</div>
+                            <span class="section-toggle"><i class="fa-solid fa-chevron-down"></i></span>
+                        </div>
+                        <div class="section-content open">
+                            <div class="summary-list" id="summary-sms-template"></div>
+                        </div>
+                    </div>
+                    <div class="form-section">
+                        <div class="section-header open" onclick="toggleSection(this)">
+                            <div class="section-title"><i class="fa-solid fa-yen-sign"></i> 月租</div>
+                            <span class="section-toggle"><i class="fa-solid fa-chevron-down"></i></span>
+                        </div>
+                        <div class="section-content open">
+                            <div class="summary-list" id="summary-monthly"></div>
+                        </div>
+                    </div>
+                    <div class="form-section">
+                        <div class="section-header open" onclick="toggleSection(this)">
+                            <div class="section-title"><i class="fa-solid fa-mobile-screen"></i> 流量资源</div>
+                            <span class="section-toggle"><i class="fa-solid fa-chevron-down"></i></span>
+                        </div>
+                        <div class="section-content open">
+                            <div class="summary-list" id="summary-flow"></div>
+                        </div>
+                    </div>
+                    <div class="form-section">
+                        <div class="section-header open" onclick="toggleSection(this)">
+                            <div class="section-title"><i class="fa-solid fa-phone"></i> 语音资源</div>
+                            <span class="section-toggle"><i class="fa-solid fa-chevron-down"></i></span>
+                        </div>
+                        <div class="section-content open">
+                            <div class="summary-list" id="summary-voice"></div>
+                        </div>
+                    </div>
+                    <div class="form-section">
+                        <div class="section-header open" onclick="toggleSection(this)">
+                            <div class="section-title"><i class="fa-solid fa-comment-dots"></i> 短信资源</div>
+                            <span class="section-toggle"><i class="fa-solid fa-chevron-down"></i></span>
+                        </div>
+                        <div class="section-content open">
+                            <div class="summary-list" id="summary-sms"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="config-footer">
+                <div class="footer-left">
+                    <button class="footer-btn btn-draft" onclick="saveDraft()"><i class="fa-regular fa-floppy-disk"></i> 保存草稿</button>
+                    <button class="footer-btn btn-check" onclick="showAuditPanel()"><i class="fa-solid fa-clipboard-check"></i> 智能稽核</button>
+                </div>
+                <div class="footer-right">
+                    <button class="btn-submit" onclick="showSubmitModal()"><i class="fa-solid fa-paper-plane"></i> 提交配置</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="overlay" id="overlay" onclick="hideProductListPanel()"></div>
+    <div class="product-list-panel" id="productListPanel">
+        <div class="product-list-header">
+            <h3><i class="fa-solid fa-list"></i> 商品列表 <span class="count" id="listCount">0</span></h3>
+            <button class="product-list-close" onclick="hideProductListPanel()"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="product-list-content" id="productListContent">
+            <div class="empty-state" id="emptyProductList">
+                <i class="fa-solid fa-inbox"></i>
+                <p>暂无商品，请通过左侧功能创建</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="overlay" id="auditOverlay" onclick="hideAuditPanel()"></div>
+    <div class="audit-panel" id="auditPanel">
+        <div class="audit-header">
+            <h3><i class="fa-solid fa-clipboard-list"></i> 智能稽核</h3>
+            <button class="audit-close" onclick="hideAuditPanel()"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="audit-content" id="auditContent"></div>
+    </div>
+
+    <div class="modal" id="submitModal">
+        <div class="modal-content">
+            <div class="modal-title">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                提交确认
+            </div>
+            <div class="modal-body">
+                <p>提交配置前，将进行智能稽核检查：</p>
+                <ul>
+                    <li>基础信息完整性校验</li>
+                    <li>必填字段检查</li>
+                    <li>业务规则校验</li>
+                    <li>短信模板合规性检查</li>
+                </ul>
+                <p>是否立即进行智能稽核？</p>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn cancel" onclick="closeSubmitModal()">取消</button>
+                <button class="modal-btn confirm" onclick="confirmSubmit()"><i class="fa-solid fa-check"></i> 开始稽核</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        let state = {
+            mode: 'full',
+            products: [],
+            currentProductIndex: 0,
+            currentProductId: null,
+            isModified: false,
+            auditStatus: 'pending',
+            scene1Submitted: false,
+            currentSkill: null,
+            auditPassed: false
+        };
+
+        const mockProducts = [
+            { 
+                id: 'P001', 
+                code: 'WO20250115001', 
+                name: '动感地带青春卡99元G', 
+                template: 'personMainPrc', 
+                desc: '月费99元 | 20G流量 | 500分钟语音 | 合约24个月', 
+                status: 'submitted', 
+                auditStatus: 'pass',
+                data: {
+                    workOrderId: 'WO20250115001',
+                    prodPrcName: '动感地带青春卡99元G',
+                    effRuleId: '1001',
+                    expRuleId: '1023',
+                    effDate: '2026-07-01',
+                    expDate: '2099-12-31',
+                    prodId: 'APAP00001',
+                    prodPrcId: 'ACAG00001',
+                    chnClassLimit: 'A7',
+                    groupId: '10001',
+                    groupIdMessage: '1,2,3',
+                    prcMonthFee: '99元/月',
+                    containResource: '20G流量+500分钟语音',
+                    chargeStandard: '0.29元/MB',
+                    limitCondition: '四川省范围内使用，合约期内不可销户',
+                    otherEquity: '生日特权、流量结转、优先客服',
+                    smsContent: '尊敬的用户，您的套餐已办理成功',
+                    sysNoteNow: '恭喜您成功办理动感地带青春卡99元G套餐，月费99元，含20G流量和500分钟语音，感谢您的支持！',
+                    sysNoteNext: '您的动感地带青春卡99元G套餐已生效，月费99元，生效当月起享受套餐权益。',
+                    sysNoteCancle: '您好，您的动感地带青春卡99元G套餐已退订，如有疑问请致电10086。',
+                    sysNoteErke: '尊敬的客户，您正在办理动感地带青春卡99元G套餐，月费99元，是否确认办理？',
+                    chargeType: 'monthly',
+                    monthlyFee: '99.00',
+                    feeSubject: '001',
+                    taxRate: '6',
+                    minConsumeType: 'none',
+                    flowType: 'general',
+                    flowAmount: '20',
+                    flowUnit: 'GB',
+                    flowOvercharge: '0.29元/MB',
+                    flowCarryover: 'yes',
+                    voiceType: 'local',
+                    voiceAmount: '500',
+                    voiceOvercharge: '0.15元/分钟',
+                    smsAmount: '100',
+                    smsOvercharge: '0.1元/条'
+                }
+            },
+            { 
+                id: 'P002', 
+                code: 'WO20250115002', 
+                name: '动感地带青春卡129元G', 
+                template: 'personMainPrc', 
+                desc: '月费129元 | 30G流量 | 800分钟语音 | 合约36个月', 
+                status: 'submitted', 
+                auditStatus: 'pass',
+                data: {
+                    workOrderId: 'WO20250115002',
+                    prodPrcName: '动感地带青春卡129元G',
+                    effRuleId: '1001',
+                    expRuleId: '1023',
+                    effDate: '2026-07-01',
+                    expDate: '2099-12-31',
+                    prodId: 'APAP00002',
+                    prodPrcId: 'ACAG00002',
+                    chnClassLimit: 'A7',
+                    groupId: '10001',
+                    groupIdMessage: '1,2,3,4,5',
+                    prcMonthFee: '129元/月',
+                    containResource: '30G流量+800分钟语音',
+                    chargeStandard: '0.29元/MB',
+                    limitCondition: '四川省范围内使用，合约期内不可销户',
+                    otherEquity: '生日特权、流量结转、视频会员',
+                    smsContent: '尊敬的用户，您的套餐已办理成功',
+                    sysNoteNow: '恭喜您成功办理动感地带青春卡129元G套餐，月费129元，含30G流量和800分钟语音，感谢您的支持！',
+                    sysNoteNext: '您的动感地带青春卡129元G套餐已生效，月费129元，生效当月起享受套餐权益。',
+                    sysNoteCancle: '您好，您的动感地带青春卡129元G套餐已退订，如有疑问请致电10086。',
+                    sysNoteErke: '尊敬的客户，您正在办理动感地带青春卡129元G套餐，月费129元，是否确认办理？',
+                    chargeType: 'monthly',
+                    monthlyFee: '129.00',
+                    feeSubject: '001',
+                    taxRate: '6',
+                    minConsumeType: 'none',
+                    flowType: 'general',
+                    flowAmount: '30',
+                    flowUnit: 'GB',
+                    flowOvercharge: '0.29元/MB',
+                    flowCarryover: 'yes',
+                    voiceType: 'local',
+                    voiceAmount: '800',
+                    voiceOvercharge: '0.15元/分钟',
+                    smsAmount: '200',
+                    smsOvercharge: '0.1元/条'
+                }
+            }
+        ];
+
+        const scene2Products = [
+            { 
+                id: 'P101', 
+                name: '畅享校园卡39元套餐', 
+                desc: '月费39元 | 10G流量 | 100分钟语音 | 仅限大学生', 
+                status: 'draft', 
+                auditStatus: 'pending',
+                data: {
+                    workOrderId: 'WO20260624001',
+                    prodPrcName: '畅享校园卡39元套餐',
+                    effRuleId: '1001',
+                    expRuleId: '1023',
+                    effDate: '2026-09-01',
+                    expDate: '2099-12-31',
+                    prodId: 'APAP00101',
+                    prodPrcId: 'ACAG00101',
+                    chnClassLimit: 'A1',
+                    groupId: '10001',
+                    prcMonthFee: '39元/月',
+                    containResource: '10G流量+100分钟语音',
+                    chargeStandard: '0.29元/MB',
+                    limitCondition: '仅限四川在校大学生办理，需学生证认证',
+                    otherEquity: '生日特权、流量结转',
+                    smsContent: '尊敬的用户，您的套餐已办理成功',
+                    sysNoteNow: '恭喜您成功办理畅享校园卡39元套餐，月费39元，含10G流量和100分钟语音，感谢您的支持！',
+                    sysNoteNext: '您的畅享校园卡39元套餐已生效，月费39元，生效当月起享受套餐权益。',
+                    sysNoteCancle: '您好，您的畅享校园卡39元套餐已退订，如有疑问请致电10086。',
+                    sysNoteErke: '尊敬的客户，您正在办理畅享校园卡39元套餐，月费39元，是否确认办理？',
+                    chargeType: 'monthly',
+                    monthlyFee: '39.00',
+                    feeSubject: '001',
+                    taxRate: '6',
+                    minConsumeType: 'none',
+                    flowType: 'general',
+                    flowAmount: '10',
+                    flowUnit: 'GB',
+                    flowOvercharge: '0.29元/MB',
+                    flowCarryover: 'yes',
+                    voiceType: 'local',
+                    voiceAmount: '100',
+                    voiceOvercharge: '0.15元/分钟',
+                    smsAmount: '20',
+                    smsOvercharge: '0.1元/条'
+                }
+            },
+            { 
+                id: 'P102', 
+                name: '畅享校园卡59元套餐', 
+                desc: '月费59元 | 20G流量 | 100分钟语音 | 含宽带', 
+                status: 'draft', 
+                auditStatus: 'pending',
+                data: {
+                    workOrderId: 'WO20260624002',
+                    prodPrcName: '畅享校园卡59元套餐',
+                    effRuleId: '1001',
+                    expRuleId: '1023',
+                    effDate: '2026-09-01',
+                    expDate: '2099-12-31',
+                    prodId: 'APAP00102',
+                    prodPrcId: 'ACAG00102',
+                    chnClassLimit: 'A1',
+                    groupId: '10001',
+                    prcMonthFee: '59元/月',
+                    containResource: '20G流量+100分钟语音+宽带使用权',
+                    chargeStandard: '0.29元/MB',
+                    limitCondition: '仅限四川在校大学生办理，含宽带安装服务',
+                    otherEquity: '生日特权、流量结转、视频会员',
+                    smsContent: '尊敬的用户，您的套餐已办理成功',
+                    sysNoteNow: '恭喜您成功办理畅享校园卡59元套餐，月费59元，含20G流量和100分钟语音，含宽带使用权，感谢您的支持！',
+                    sysNoteNext: '您的畅享校园卡59元套餐已生效，月费59元，生效当月起享受套餐权益。',
+                    sysNoteCancle: '您好，您的畅享校园卡59元套餐已退订，如有疑问请致电10086。',
+                    sysNoteErke: '尊敬的客户，您正在办理畅享校园卡59元套餐，月费59元，是否确认办理？',
+                    chargeType: 'monthly',
+                    monthlyFee: '59.00',
+                    feeSubject: '001',
+                    taxRate: '6',
+                    minConsumeType: 'none',
+                    flowType: 'general',
+                    flowAmount: '20',
+                    flowUnit: 'GB',
+                    flowOvercharge: '0.29元/MB',
+                    flowCarryover: 'yes',
+                    voiceType: 'local',
+                    voiceAmount: '100',
+                    voiceOvercharge: '0.15元/分钟',
+                    smsAmount: '20',
+                    smsOvercharge: '0.1元/条'
+                }
+            },
+            { 
+                id: 'P103', 
+                name: '畅享校园卡79元套餐', 
+                desc: '月费79元 | 30G流量 | 300分钟语音 | 含视频会员', 
+                status: 'draft', 
+                auditStatus: 'pending',
+                data: {
+                    workOrderId: 'WO20260624003',
+                    prodPrcName: '畅享校园卡79元套餐',
+                    effRuleId: '1001',
+                    expRuleId: '1023',
+                    effDate: '2026-09-01',
+                    expDate: '2099-12-31',
+                    prodId: 'APAP00103',
+                    prodPrcId: 'ACAG00103',
+                    chnClassLimit: 'A1',
+                    groupId: '10001',
+                    prcMonthFee: '79元/月',
+                    containResource: '30G流量+300分钟语音+视频会员',
+                    chargeStandard: '0.29元/MB',
+                    limitCondition: '仅限四川在校大学生办理，含视频会员月卡',
+                    otherEquity: '生日特权、流量结转、视频会员',
+                    smsContent: '尊敬的用户，您的套餐已办理成功',
+                    sysNoteNow: '恭喜您成功办理畅享校园卡79元套餐，月费79元，含30G流量和300分钟语音，含视频会员权益，感谢您的支持！',
+                    sysNoteNext: '您的畅享校园卡79元套餐已生效，月费79元，生效当月起享受套餐权益。',
+                    sysNoteCancle: '您好，您的畅享校园卡79元套餐已退订，如有疑问请致电10086。',
+                    sysNoteErke: '尊敬的客户，您正在办理畅享校园卡79元套餐，月费79元，是否确认办理？',
+                    chargeType: 'monthly',
+                    monthlyFee: '79.00',
+                    feeSubject: '001',
+                    taxRate: '6',
+                    minConsumeType: 'none',
+                    flowType: 'general',
+                    flowAmount: '30',
+                    flowUnit: 'GB',
+                    flowOvercharge: '0.29元/MB',
+                    flowCarryover: 'yes',
+                    voiceType: 'local',
+                    voiceAmount: '300',
+                    voiceOvercharge: '0.15元/分钟',
+                    smsAmount: '50',
+                    smsOvercharge: '0.1元/条'
+                }
+            }
+        ];
+
+        function init() {
+            renderProductList();
+            document.querySelectorAll('.form-input, .form-select').forEach(el => {
+                el.addEventListener('input', () => markModified(el));
+            });
+        }
+
+        function handleCardClick(type) {
+            const input = document.getElementById('chatInput');
+            switch(type) {
+                case 'query':
+                    setSkill('query');
+                    input.placeholder = '请输入商品名称、编码或关键词...';
+                    input.focus();
+                    const queryLoading = addAIMessage('<i class="fa-solid fa-spinner fa-spin"></i> 正在准备智查模式...', 'loading');
+                    setTimeout(() => {
+                        queryLoading.remove();
+                        addAIMessage(`<i class="fa-solid fa-wand-magic-sparkles"></i> <strong>好的，让我帮您查询历史商品，您可以快速复制配置。</strong><br><br>
+                            <span style="font-size:13px;">您可以在下方输入框输入以下任一信息进行查询：</span><br>
+                            <span style="font-size:13px;color:#666;">• 商品名称关键词（如：动感地带、5G套餐）</span><br>
+                            <span style="font-size:13px;color:#666;">• 商品编码（如：WO20250115001）</span><br>
+                            <span style="font-size:13px;color:#666;">• 部分名称（如：青春卡、校园卡）</span><br><br>
+                            <span style="font-size:12px;color:#999;">请在下方输入框输入查询条件，然后点击发送</span>`);
+                    }, 500);
+                    break;
+                case 'file':
+                    setSkill('file');
+                    input.placeholder = '或在此输入方案描述...';
+                    input.focus();
+                    const fileLoading = addAIMessage('<i class="fa-solid fa-spinner fa-spin"></i> 正在准备文档导入模式...', 'loading');
+                    setTimeout(() => {
+                        fileLoading.remove();
+                        addAIMessage(`<i class="fa-solid fa-file-import"></i> <strong>好的，让我帮您导入AI方案文档。</strong><br><br>
+                            <span style="font-size:13px;">请按以下步骤操作：</span><br>
+                            <span style="font-size:13px;color:#666;">1. 点击左侧的 <i class="fa-solid fa-paperclip"></i> 附件按钮</span><br>
+                            <span style="font-size:13px;color:#666;">2. 选择您的活动方案文档（支持 .docx、.pdf、.xlsx、.doc 格式）</span><br>
+                            <span style="font-size:13px;color:#666;">3. 系统将自动解析并批量生成商品配置</span><br><br>
+                            <span style="font-size:12px;color:#999;">请开始上传您的方案文档</span>`);
+                    }, 500);
+                    break;
+                case 'chat':
+                    setSkill('chat');
+                    input.placeholder = '请输入您的配置需求，如：我要一个大学生套餐';
+                    input.focus();
+                    const chatLoading = addAIMessage('<i class="fa-solid fa-spinner fa-spin"></i> 正在准备对话模式...', 'loading');
+                    setTimeout(() => {
+                        chatLoading.remove();
+                        addAIMessage(`<i class="fa-solid fa-comments"></i> <strong>好的，让我帮您通过自然语言生成商品配置。</strong><br><br>
+                            <span style="font-size:13px;">您可以用自然语言描述您的需求，例如：</span><br>
+                            <span style="font-size:13px;color:#666;">• "我要一个大学生套餐，月费50元左右"</span><br>
+                            <span style="font-size:13px;color:#666;">• "创建一个5G合约套餐，含30G流量"</span><br>
+                            <span style="font-size:13px;color:#666;">• "做一个月费99元的动感地带套餐"</span><br><br>
+                            <span style="font-size:12px;color:#999;">请在下方输入框描述您的配置需求，然后点击发送</span>`);
+                    }, 500);
+                    break;
+            }
+        }
+
+        function setSkill(type) {
+            state.currentSkill = type;
+            renderSkillTags();
+        }
+
+        function removeSkill() {
+            state.currentSkill = null;
+            renderSkillTags();
+            document.getElementById('chatInput').placeholder = '输入商品名称进行模糊查询...';
+        }
+
+        function renderSkillTags() {
+            const container = document.getElementById('skillTags');
+            if (!state.currentSkill) {
+                container.innerHTML = '';
+                return;
+            }
+            
+            const skillConfig = {
+                'query': { icon: 'fa-magnifying-glass', label: '智查', desc: 'AI智能查询' },
+                'file': { icon: 'fa-file-import', label: 'AI方案导入', desc: '文档批量导入' },
+                'chat': { icon: 'fa-comments', label: '对话式配置', desc: '自然语言生成' }
+            };
+            
+            const skill = skillConfig[state.currentSkill];
+            container.innerHTML = `
+                <span class="skill-tag">
+                    <i class="fa-solid ${skill.icon}"></i>
+                    ${skill.label}
+                    <span class="close-btn" onclick="removeSkill()"><i class="fa-solid fa-xmark"></i></span>
+                </span>
+            `;
+        }
+
+        function triggerFileUpload() {
+            document.getElementById('fileInput').click();
+        }
+
+        function handleFileUpload(file) {
+            if (!file) return;
+            
+            addUserMessage(`上传了文件：${file.name}`);
+            const loadingMsg = addAIMessage(`<i class="fa-solid fa-spinner fa-spin"></i> 正在接收文件「${file.name}」...`, 'loading');
+            
+            setTimeout(() => {
+                loadingMsg.remove();
+                addAIMessage(`<i class="fa-solid fa-file-check"></i> 文件接收成功！正在开始解析...<p style="margin-top:8px;font-size:13px;color:#999;">文件大小：${(file.size/1024).toFixed(1)} KB</p>`);
+                
+                setTimeout(() => {
+                    addAIMessage(`<i class="fa-solid fa-brain"></i> <strong>AI正在分析文档内容...</strong><br>
+                    <span style="font-size:12px;color:#666;">• 正在提取商品清单<br>
+                    • 正在识别关键字段信息<br>
+                    • 正在匹配业务类型</span>`);
+                    
+                    setTimeout(() => {
+                        addAIMessage(`<i class="fa-solid fa-search"></i> <strong>检测到3个待生成商品：</strong><br>
+                        <div class="scene-indicator"><i class="fa-solid fa-file-import"></i> AI文案导入解析结果</div><br>
+                        
+                        <span style="font-size:13px;color:#666;">
+                        • 畅享校园卡39元套餐<br>
+                        • 畅享校园卡59元套餐<br>
+                        • 畅享校园卡79元套餐</span>`);
+                        
+                        setTimeout(() => {
+                            addAIMessage(`<i class="fa-solid fa-check-circle" style="color:#52c41a;"></i> 文档解析完成！<br><span style="font-size:13px;">已将3个商品添加到商品列表</span>`);
+                            
+                            switchToSplitMode();
+                            
+                            scene2Products.forEach(p => state.products.push(p));
+                            
+                            updateProductCount();
+                            renderProductList();
+                            showProductListPanel();
+                            
+                            state.currentProductId = scene2Products[0].id;
+                            updateFormWithProduct(scene2Products[0]);
+                        }, 1500);
+                    }, 2000);
+                }, 2000);
+            }, 1500);
+        }
+
+        function simulateQuery(keyword) {
+            addAIMessage(`<i class="fa-solid fa-search"></i> 正在为您搜索包含「<strong>${keyword}</strong>」的商品...`);
+            
+            setTimeout(() => {
+                addAIMessage(`<i class="fa-solid fa-database"></i> 在历史商品库中检索到 <strong>2</strong> 个相关商品：`);
+                
+                setTimeout(() => {
+                    const content = `
+                        <div style="display:flex;flex-direction:column;gap:12px;margin-top:16px;">
+                            ${mockProducts.map((p, i) => `
+                                <div style="background:white;border:1px solid var(--border-color);border-radius:8px;padding:16px;">
+                                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                                        <span style="font-weight:600;">${p.name}</span>
+                                        <span style="font-size:12px;padding:2px 8px;background:#f6ffed;color:#52c41a;border-radius:4px;">已提交</span>
+                                    </div>
+                                    <div style="font-size:13px;color:#666;margin-bottom:12px;">${p.desc}</div>
+                                    <div style="display:flex;gap:8px;">
+                                        <button onclick="prepareProduct(${i})" style="flex:1;padding:8px;border:none;border-radius:4px;background:var(--primary-light);color:var(--primary-color);cursor:pointer;font-size:13px;">
+                                            <i class="fa-solid fa-copy"></i> 复制配置
+                                        </button>
+                                        <button onclick="viewMockProduct(${i})" style="flex:1;padding:8px;border:1px solid var(--border-color);border-radius:4px;background:white;color:#666;cursor:pointer;font-size:13px;">
+                                            <i class="fa-solid fa-eye"></i> 查看详情
+                                        </button>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                    addAIMessage(content);
+                }, 800);
+            }, 1200);
+        }
+
+        function prepareProduct(index) {
+            const product = mockProducts[index];
+            const loadingMsg = addAIMessage(`<i class="fa-solid fa-spinner fa-spin"></i> 正在准备商品「${product.name}」的配置...`, 'loading');
+            
+            setTimeout(() => {
+                loadingMsg.remove();
+                
+                const newProduct = {
+                    id: 'P' + Date.now(),
+                    name: product.name,
+                    code: 'NEW' + Date.now(),
+                    desc: product.desc,
+                    template: product.template,
+                    status: 'draft',
+                    auditStatus: 'pending',
+                    data: JSON.parse(JSON.stringify(product.data))
+                };
+                
+                state.products.push(newProduct);
+                state.currentProductId = newProduct.id;
+                updateProductCount();
+                renderProductList();
+                
+                addAIMessage(`<i class="fa-solid fa-check-circle" style="color:#52c41a;"></i> 已将商品「${product.name}」添加到配置列表！<br><span style="font-size:12px;">正在打开配置界面...</span>`);
+                
+                switchToSplitMode();
+                updateFormWithProduct(newProduct);
+                updateAuditStatus();
+                hideProductListPanel();
+                
+                showToast('商品已准备完成');
+            }, 1000);
+        }
+
+        function viewMockProduct(index) {
+            const product = mockProducts[index];
+            showToast(`查看商品：${product.name}`);
+        }
+
+        function switchToSplitMode() {
+            document.getElementById('chatContainer').classList.add('split');
+            document.getElementById('configContainer').classList.add('show');
+            state.mode = 'split';
+        }
+
+        function addUserMessage(text) {
+            const messages = document.getElementById('messages');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message user';
+            msgDiv.innerHTML = `<div class="message-avatar user"><i class="fa-solid fa-user"></i></div><div class="message-content"><div class="message-bubble">${text}</div></div>`;
+            messages.appendChild(msgDiv);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function addAIMessage(content, type = 'text') {
+            const messages = document.getElementById('messages');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message ai';
+            msgDiv.innerHTML = `<div class="message-avatar ai"><i class="fa-solid fa-head-side-conceptual"></i></div><div class="message-content"><div class="message-bubble">${content}</div></div>`;
+            messages.appendChild(msgDiv);
+            messages.scrollTop = messages.scrollHeight;
+            return msgDiv;
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const text = input.value.trim();
+            
+            if (!text) return;
+            
+            addUserMessage(text);
+            input.value = '';
+            
+            if (state.currentSkill === 'query') {
+                removeSkill();
+                const keyword = text;
+                simulateQuery(keyword);
+                return;
+            }
+            
+            if (text.includes('查询') || text.includes('智查')) {
+                const keyword = text.replace(/查询|智查/g, '').trim() || '动感地带';
+                simulateQuery(keyword);
+                return;
+            }
+            
+            const loadingMsg = addAIMessage(`<i class="fa-solid fa-brain"></i> <strong>正在分析您的需求...</strong><br>
+                <span style="font-size:12px;color:#666;">• 理解语义意图<br>
+                • 提取关键配置参数<br>
+                • 匹配业务模板<br>
+                • 生成配置方案</span>`, 'loading');
+            
+            setTimeout(() => {
+                loadingMsg.remove();
+                
+                if (text.includes('大学生') || text.includes('校园')) {
+                    addAIMessage(`<i class="fa-solid fa-check-circle" style="color:#52c41a;"></i> 已分析您的需求！<br>
+                    <span style="font-size:13px;">检测到关键词：<strong>大学生/校园</strong><br>
+                    匹配业务：<strong>个人主资费</strong><br>
+                    已提取参数：月费49元/月、通用流量15GB，本地语音200分钟，短信20条</span>`);
+                    
+                    setTimeout(() => {
+                        addAIMessage(`<i class="fa-solid fa-sparkles"></i> <strong>正在根据历史案例推算配置...</strong><br>
+                        <span style="font-size:12px;color:#666;">• 参考同类型套餐定价策略<br>
+                        • 分析校园用户消费习惯<br>
+                        • 计算资源包最优配比</span>`);
+                        
+                        setTimeout(() => {
+                            addAIMessage(`<i class="fa-solid fa-check-circle" style="color:#52c41a;"></i> 配置生成完成！<br><span style="font-size:13px;">已在右侧生成商品列表，请点击编辑查看详情</span>`);
+                            
+                            switchToSplitMode();
+                            const newProduct = {
+                                id: 'P' + Date.now(),
+                                name: '5G-A校园卡49元G（大学生专享）',
+                                desc: '月费49元 | 15G流量 | 200分钟语音 | 合约36个月',
+                                template: 'personMainPrc',
+                                status: 'draft',
+                                auditStatus: 'pending',
+                                data: {
+                                    workOrderId: 'WO' + Date.now(),
+                                    prodPrcName: '5G-A校园卡49元G（大学生专享）',
+                                    effRuleId: '1001',
+                                    expRuleId: '1023',
+                                    effDate: new Date().toISOString().split('T')[0],
+                                    expDate: '2099-12-31',
+                                    prodId: 'APAP00201',
+                                    prodPrcId: 'ACAG00201',
+                                    chnClassLimit: 'A7',
+                                    groupId: '10001',
+                                    prcMonthFee: '49元/月',
+                                    containResource: '15G流量+200分钟语音',
+                                    chargeStandard: '0.29元/MB',
+                                    limitCondition: '仅限四川在校大学生办理，合约期内不可销户',
+                                    otherEquity: '生日特权、流量结转',
+                                    smsContent: '尊敬的用户，您的套餐已办理成功',
+                                    sysNoteNow: '恭喜您成功办理5G-A校园卡49元G套餐，月费49元，含15G流量和200分钟语音，感谢您的支持！',
+                                    sysNoteNext: '您的5G-A校园卡49元G套餐已生效，月费49元，生效当月起享受套餐权益。',
+                                    sysNoteCancle: '您好，您的5G-A校园卡49元G套餐已退订，合约期内退订需支付违约金。',
+                                    sysNoteErke: '尊敬的客户，您正在办理5G-A校园卡49元G套餐，月费49元，是否确认办理？',
+                                    chargeType: 'monthly',
+                                    monthlyFee: '49.00',
+                                    feeSubject: '001',
+                                    taxRate: '6',
+                                    minConsumeType: 'none',
+                                    flowType: 'general',
+                                    flowAmount: '15',
+                                    flowUnit: 'GB',
+                                    flowOvercharge: '0.29元/MB',
+                                    flowCarryover: 'yes',
+                                    voiceType: 'local',
+                                    voiceAmount: '200',
+                                    voiceOvercharge: '0.15元/分钟',
+                                    smsAmount: '20',
+                                    smsOvercharge: '0.1元/条'
+                                }
+                            };
+                            state.products.push(newProduct);
+                            state.currentProductId = newProduct.id;
+                            updateProductCount();
+                            renderProductList();
+                            showProductListPanel();
+                        }, 1500);
+                    }, 1500);
+                } else {
+                    addAIMessage(`<i class="fa-solid fa-circle-info"></i> 已收到您的需求，正在分析中...<br><span style="font-size:12px;">请提供更多细节，如：套餐名称、月费、包含资源等</span>`);
+                }
+            }, 2000);
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+
+        function setInputAndFocus(text) {
+            const input = document.getElementById('chatInput');
+            input.value = text;
+            input.focus();
+        }
+
+        function switchTab(tabName) {
+            if (tabName === 'products') {
+                showProductListView();
+                return;
+            }
+            
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.toggle('active', 
+                    (tabName === 'base' && tab.textContent.includes('基础信息')) ||
+                    (tabName === 'release' && tab.textContent.includes('发布信息')) ||
+                    (tabName === 'optional' && tab.textContent.includes('可选配置')) ||
+                    (tabName === 'summary' && tab.textContent.includes('信息预览'))
+                );
+            });
+            
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.style.display = 'none';
+            });
+            
+            const targetContent = document.getElementById(`tab-${tabName}`);
+            if (targetContent) {
+                targetContent.style.display = 'block';
+            }
+            
+            if (tabName === 'summary') {
+                updateSummary();
+            }
+        }
+
+        function showProductListView() {
+            const configHeader = document.querySelector('.config-header');
+            const tabs = document.querySelector('.tabs');
+            const formArea = document.getElementById('formArea');
+            const configFooter = document.querySelector('.config-footer');
+            const productListView = document.getElementById('productListView');
+            
+            configHeader.style.display = 'none';
+            tabs.style.display = 'none';
+            formArea.style.display = 'none';
+            configFooter.style.display = 'none';
+            productListView.style.display = 'block';
+            
+            renderFullProductListView();
+        }
+
+        function hideProductListView() {
+            const configHeader = document.querySelector('.config-header');
+            const tabs = document.querySelector('.tabs');
+            const formArea = document.getElementById('formArea');
+            const configFooter = document.querySelector('.config-footer');
+            const productListView = document.getElementById('productListView');
+            
+            configHeader.style.display = 'flex';
+            tabs.style.display = 'flex';
+            formArea.style.display = 'block';
+            configFooter.style.display = 'flex';
+            productListView.style.display = 'none';
+            
+            switchTab('base');
+        }
+
+        function renderFullProductListView() {
+            const container = document.getElementById('productListView');
+            
+            let html = `
+                <div class="product-list-view-header">
+                    <h3><i class="fa-solid fa-list"></i> 商品列表 <span class="count">${state.products.length}</span></h3>
+                    <button class="back-btn" onclick="hideProductListView()">
+                        <i class="fa-solid fa-arrow-left"></i> 返回配置
+                    </button>
+                </div>
+            `;
+            
+            if (state.products.length === 0) {
+                html += `
+                    <div class="empty-state" style="padding:60px 0;">
+                        <i class="fa-solid fa-inbox" style="font-size:64px;margin-bottom:20px;"></i>
+                        <p style="font-size:16px;color:var(--text-muted);">暂无商品，请通过左侧功能创建</p>
+                    </div>
+                `;
+            } else {
+                html += '<div class="product-list-scroll">';
+                state.products.forEach(p => {
+                    const statusText = p.status === 'draft' ? '草稿' : (p.status === 'submitted' ? '待审批' : '已完成');
+                    const statusClass = p.status === 'draft' ? 'status-draft' : (p.status === 'submitted' ? 'status-approval' : 'status-submitted');
+                    const auditText = p.auditStatus === 'pass' ? '已通过' : (p.auditStatus === 'fail' ? '不通过' : '未稽核');
+                    const auditClass = p.auditStatus === 'pass' ? 'status-pass' : (p.auditStatus === 'fail' ? 'status-fail' : 'status-pending');
+                    
+                    html += `
+                        <div class="list-item ${p.id === state.currentProductId ? 'active' : ''}" onclick="selectProductFromView('${p.id}')">
+                            <div class="list-item-header">
+                                <span class="list-item-name">${p.name}</span>
+                            </div>
+                            <div class="list-item-desc">${p.desc}</div>
+                            <div class="list-item-tags">
+                                <span class="status-tag ${statusClass}">${statusText}</span>
+                                <span class="status-tag ${auditClass}">${auditText}</span>
+                            </div>
+                            <div class="list-item-actions">
+                                <button class="list-action-btn copy" onclick="event.stopPropagation(); copyProduct('${p.id}'); renderFullProductListView();"><i class="fa-solid fa-copy"></i> 复制</button>
+                                <button class="list-action-btn edit" onclick="event.stopPropagation(); showProductEditor('${p.id}')"><i class="fa-solid fa-pen"></i> 编辑</button>
+                                <button class="list-action-btn delete" onclick="event.stopPropagation(); deleteProduct('${p.id}'); renderFullProductListView();"><i class="fa-solid fa-trash"></i> 删除</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            }
+            
+            container.innerHTML = html;
+        }
+
+        function selectProductFromView(id) {
+            selectListItem(id);
+            hideProductListView();
+        }
+
+        function toggleSection(header) {
+            header.classList.toggle('open');
+            const content = header.nextElementSibling;
+            content.classList.toggle('open');
+        }
+
+        function markModified(el) {
+            el.classList.add('modified');
+            state.isModified = true;
+            document.getElementById('draftIndicator').style.display = 'flex';
+        }
+
+        function updateSummary() {
+            const g = id => document.getElementById(id)?.value || '';
+            const sel = (id, map) => map[g(id)] || '-';
+            const effRuleMap = { '1001': '立即生效', '1002': '次月生效', '1003': '预约生效' };
+            const expRuleMap = { '1023': '立即失效', '1024': '次月失效' };
+            const channelMap = { 'A7': '全渠道', 'A1': '线下营业厅', 'A2': '线上渠道', 'A3': '代理商' };
+            const cityMap = { '10001': '四川', '10002': '成都', '10003': '绵阳', '10004': '德阳', '10005': '南充' };
+            const chargeTypeMap = { 'monthly': '月付', 'quarterly': '季付', 'yearly': '年付' };
+            const flowTypeMap = { 'general': '通用流量', '定向': '定向流量', '专属': '专属流量' };
+            const voiceTypeMap = { 'local': '本地语音', 'longdistance': '长途语音' };
+
+            document.getElementById('summary-base').innerHTML = [
+                { label: '工单编号', value: g('workOrderId') || '-' },
+                { label: '资费名称', value: g('prodPrcName') || '-' },
+                { label: '产品代码', value: g('prodId') || '-' },
+                { label: '资费代码', value: g('prodPrcId') || '-' },
+                { label: '订购生效方式', value: sel('effRuleId', effRuleMap) },
+                { label: '退订生效方式', value: sel('expRuleId', expRuleMap) },
+                { label: '销售开始日期', value: g('effDate') || '-' },
+                { label: '销售终止日期', value: g('expDate') || '-' }
+            ].map(i => `<div class="summary-item"><span class="label">${i.label}</span><span class="value">${i.value}</span></div>`).join('');
+
+            document.getElementById('summary-release').innerHTML = [
+                { label: '发布渠道', value: sel('chnClassLimit', channelMap) },
+                { label: '发布地市', value: sel('groupId', cityMap) },
+                { label: '地市明细', value: g('groupIdMessage') || '-' }
+            ].map(i => `<div class="summary-item"><span class="label">${i.label}</span><span class="value">${i.value}</span></div>`).join('');
+
+            document.getElementById('summary-optional').innerHTML = [
+                { label: '套餐月费', value: g('prcMonthFee') || '-' },
+                { label: '包含资源', value: g('containResource') || '-' },
+                { label: '超套收费标准', value: g('chargeStandard') || '-' },
+                { label: '限定条件', value: g('limitCondition') || '-' },
+                { label: '其他权益', value: g('otherEquity') || '-' }
+            ].map(i => `<div class="summary-item"><span class="label">${i.label}</span><span class="value">${i.value}</span></div>`).join('');
+
+            document.getElementById('summary-sms-template').innerHTML = [
+                { label: '成功短信（立即）', value: g('sysNoteNow') || '-' },
+                { label: '成功短信（预约）', value: g('sysNoteNext') || '-' },
+                { label: '退订短信', value: g('sysNoteCancle') || '-' },
+                { label: '前台二确短信', value: g('sysNoteErke') || '-' }
+            ].map(i => `<div class="summary-item"><span class="label">${i.label}</span><span class="value">${i.value}</span></div>`).join('');
+
+            document.getElementById('summary-monthly').innerHTML = [
+                { label: '收费方式', value: sel('chargeType', chargeTypeMap) },
+                { label: '套餐固定费', value: g('monthlyFee') ? g('monthlyFee') + '元' : '-' },
+                { label: '收费科目', value: g('feeSubject') === '001' ? '通讯费' : g('feeSubject') === '002' ? '增值业务费' : g('feeSubject') === '003' ? '代收费' : '-' },
+                { label: '税率', value: g('taxRate') ? g('taxRate') + '%' : '-' }
+            ].map(i => `<div class="summary-item"><span class="label">${i.label}</span><span class="value">${i.value}</span></div>`).join('');
+
+            document.getElementById('summary-flow').innerHTML = [
+                { label: '流量类型', value: sel('flowType', flowTypeMap) },
+                { label: '资源量', value: g('flowAmount') ? g('flowAmount') + ' ' + g('flowUnit') : '-' },
+                { label: '套外计费标准', value: g('flowOvercharge') || '-' },
+                { label: '是否结转到次月', value: g('flowCarryover') === 'yes' ? '是' : '否' }
+            ].map(i => `<div class="summary-item"><span class="label">${i.label}</span><span class="value">${i.value}</span></div>`).join('');
+
+            document.getElementById('summary-voice').innerHTML = [
+                { label: '资源类型', value: sel('voiceType', voiceTypeMap) },
+                { label: '资源量', value: g('voiceAmount') ? g('voiceAmount') + ' 分钟' : '-' },
+                { label: '套外计费费率', value: g('voiceOvercharge') || '-' }
+            ].map(i => `<div class="summary-item"><span class="label">${i.label}</span><span class="value">${i.value}</span></div>`).join('');
+
+            document.getElementById('summary-sms').innerHTML = [
+                { label: '资源量', value: g('smsAmount') ? g('smsAmount') + ' 条' : '-' },
+                { label: '套外计费费率', value: g('smsOvercharge') || '-' }
+            ].map(i => `<div class="summary-item"><span class="label">${i.label}</span><span class="value">${i.value}</span></div>`).join('');
+        }
+
+        function saveDraft() {
+            showToast('草稿保存成功');
+            state.isModified = false;
+            document.getElementById('draftIndicator').style.display = 'none';
+            document.querySelectorAll('.modified').forEach(el => el.classList.remove('modified'));
+            
+            if (state.currentProductId) {
+                const product = state.products.find(p => p.id === state.currentProductId);
+                if (product) {
+                    product.status = 'draft';
+                    product.auditStatus = 'pending';
+                    updateProductCount();
+                    renderProductList();
+                }
+            }
+        }
+
+        function showAuditPanel() {
+            const overlay = document.getElementById('auditOverlay');
+            const panel = document.getElementById('auditPanel');
+            const content = document.getElementById('auditContent');
+            
+            content.innerHTML = `
+                <div class="audit-progress">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                    <p>正在执行智能稽核...</p>
+                    <div class="loading-dots"><span></span><span></span><span></span></div>
+                    <p class="text">正在检查配置完整性...</p>
+                </div>
+            `;
+            
+            overlay.classList.add('show');
+            panel.classList.add('show');
+            
+            setTimeout(() => {
+                content.innerHTML = `
+                    <div class="audit-progress">
+                        <i class="fa-solid fa-search"></i>
+                        <p>基础信息完整性校验</p>
+                        <div class="loading-dots"><span></span><span></span><span></span></div>
+                        <p class="text">正在检查必填字段...</p>
+                    </div>
+                `;
+            }, 1500);
+            
+            setTimeout(() => {
+                content.innerHTML = `
+                    <div class="audit-progress">
+                        <i class="fa-solid fa-shield-check"></i>
+                        <p>业务规则校验</p>
+                        <div class="loading-dots"><span></span><span></span><span></span></div>
+                        <p class="text">正在验证字段联动规则...</p>
+                    </div>
+                `;
+            }, 3000);
+            
+            setTimeout(() => {
+                content.innerHTML = `
+                    <div class="audit-progress">
+                        <i class="fa-solid fa-comment-sms"></i>
+                        <p>短信模板合规性检查</p>
+                        <div class="loading-dots"><span></span><span></span><span></span></div>
+                        <p class="text">正在检查关键词合规性...</p>
+                    </div>
+                `;
+            }, 4500);
+            
+            setTimeout(() => {
+                const smsAmountVal = document.getElementById('smsAmount').value;
+                const prodPrcNameVal = document.getElementById('prodPrcName').value;
+                const monthlyFeeVal = document.getElementById('monthlyFee').value;
+                const flowAmountVal = document.getElementById('flowAmount').value;
+                
+                const auditResults = [];
+                
+                if (!prodPrcNameVal) {
+                    auditResults.push({ type: 'error', title: '缺少资费名称', desc: '资费名称未填写，根据规范必填' });
+                }
+                if (!monthlyFeeVal) {
+                    auditResults.push({ type: 'error', title: '缺少套餐固定费', desc: '套餐固定费未填写，根据规范必填' });
+                }
+                if (!flowAmountVal) {
+                    auditResults.push({ type: 'error', title: '缺少流量资源配置', desc: '流量资源配置未填写，根据规范必填' });
+                }
+                if (!smsAmountVal) {
+                    auditResults.push({ type: 'error', title: '缺少短信资源配置', desc: '短信资源配置未填写，根据规范必填' });
+                }
+                
+                if (auditResults.length === 0) {
+                    auditResults.push({ type: 'success', title: '必填项检查通过', desc: '所有必填字段已填写' });
+                    auditResults.push({ type: 'success', title: '日期配置合规', desc: '销售日期配置符合业务规范' });
+                    auditResults.push({ type: 'success', title: '资源配额检查通过', desc: '流量、语音、短信资源配置完整' });
+                }
+                
+                content.innerHTML = auditResults.map(item => `
+                    <div class="audit-item ${item.type}">
+                        <div class="audit-icon"><i class="fa-solid fa-${item.type === 'error' ? 'xmark' : item.type === 'warning' ? 'exclamation' : 'check'}"></i></div>
+                        <div class="audit-text">
+                            <div class="audit-title">${item.title}</div>
+                            <div class="audit-desc">${item.desc}</div>
+                        </div>
+                    </div>
+                `).join('');
+                
+                const hasError = auditResults.some(r => r.type === 'error');
+                state.auditStatus = hasError ? 'fail' : 'pass';
+                updateAuditStatus();
+                
+                if (state.currentProductId) {
+                    const product = state.products.find(p => p.id === state.currentProductId);
+                    if (product) {
+                        if (!hasError) {
+                            product.status = 'submitted';
+                            product.auditStatus = 'pass';
+                            state.scene1Submitted = true;
+                            state.auditPassed = true;
+                        }
+                        updateProductCount();
+                        renderProductList();
+                        
+                        if (!hasError) {
+                            content.innerHTML += `
+                                <div class="audit-item success" style="margin-top: 20px;">
+                                    <div class="audit-icon"><i class="fa-solid fa-check"></i></div>
+                                    <div class="audit-text">
+                                        <div class="audit-title">配置提交成功</div>
+                                        <div class="audit-desc">商品状态已更新为待审批</div>
+                                    </div>
+                                </div>
+                                <div style="text-align: center; margin-top: 20px;">
+                                    <button class="btn-submit" onclick="hideAuditPanel()" style="padding: 10px 30px;">关闭</button>
+                                </div>
+                            `;
+                            showToast('配置提交成功！');
+                        } else {
+                            content.innerHTML += `
+                                <div style="text-align: center; margin-top: 20px; color: #ff4d4f; font-size: 13px;">
+                                    请修正上述错误项后重新提交配置
+                                </div>
+                            `;
+                        }
+                    }
+                }
+            }, 6000);
+        }
+
+        function updateAuditStatus() {
+            const statusEl = document.getElementById('auditStatus');
+            const statusMap = {
+                'pending': { text: '未稽核', class: 'status-pending' },
+                'pass': { text: '已通过', class: 'status-pass' },
+                'fail': { text: '不通过', class: 'status-fail' }
+            };
+            
+            statusEl.textContent = statusMap[state.auditStatus].text;
+            statusEl.className = `status-tag ${statusMap[state.auditStatus].class}`;
+            
+            if (state.currentProductId) {
+                const product = state.products.find(p => p.id === state.currentProductId);
+                if (product) {
+                    product.auditStatus = state.auditStatus;
+                    renderProductList();
+                    renderFullProductListView();
+                }
+            }
+        }
+
+        function hideAuditPanel() {
+            document.getElementById('auditOverlay').classList.remove('show');
+            document.getElementById('auditPanel').classList.remove('show');
+            if (state.auditPassed) {
+                switchTab('products');
+                state.auditPassed = false;
+            }
+        }
+
+        function showSubmitModal() {
+            document.getElementById('submitModal').classList.add('show');
+        }
+
+        function closeSubmitModal() {
+            document.getElementById('submitModal').classList.remove('show');
+        }
+
+        function confirmSubmit() {
+            closeSubmitModal();
+            showAuditPanel();
+        }
+
+        function showProductListPanel() {
+            document.getElementById('overlay').classList.add('show');
+            document.getElementById('productListPanel').classList.add('show');
+        }
+
+        function hideProductListPanel() {
+            document.getElementById('overlay').classList.remove('show');
+            document.getElementById('productListPanel').classList.remove('show');
+        }
+
+        function updateProductCount() {
+            document.getElementById('productCount').textContent = state.products.length;
+            document.getElementById('listCount').textContent = state.products.length;
+        }
+
+        function renderProductList() {
+            const content = document.getElementById('productListContent');
+            const emptyState = document.getElementById('emptyProductList');
+            
+            if (state.products.length === 0) {
+                emptyState.style.display = 'block';
+                content.querySelectorAll('.list-item').forEach(el => el.remove());
+                return;
+            }
+            
+            emptyState.style.display = 'none';
+            
+            let html = '';
+            state.products.forEach((p, i) => {
+                const statusText = p.status === 'draft' ? '草稿' : (p.status === 'submitted' ? '待审批' : '已完成');
+                const statusClass = p.status === 'draft' ? 'status-draft' : (p.status === 'submitted' ? 'status-approval' : 'status-submitted');
+                const auditText = p.auditStatus === 'pass' ? '已通过' : (p.auditStatus === 'fail' ? '不通过' : '未稽核');
+                const auditClass = p.auditStatus === 'pass' ? 'status-pass' : (p.auditStatus === 'fail' ? 'status-fail' : 'status-pending');
+                
+                html += `
+                    <div class="list-item ${p.id === state.currentProductId ? 'active' : ''}" onclick="selectListItem('${p.id}')">
+                        <div class="list-item-header">
+                            <span class="list-item-name">${p.name}</span>
+                        </div>
+                        <div class="list-item-desc">${p.desc}</div>
+                        <div class="list-item-tags">
+                            <span class="status-tag ${statusClass}">${statusText}</span>
+                            <span class="status-tag ${auditClass}">${auditText}</span>
+                        </div>
+                        <div class="list-item-actions">
+                            <button class="list-action-btn copy" onclick="event.stopPropagation(); copyProduct('${p.id}')"><i class="fa-solid fa-copy"></i> 复制</button>
+                            <button class="list-action-btn edit" onclick="event.stopPropagation(); showProductEditor('${p.id}')"><i class="fa-solid fa-pen"></i> 编辑</button>
+                            <button class="list-action-btn delete" onclick="event.stopPropagation(); deleteProduct('${p.id}')"><i class="fa-solid fa-trash"></i> 删除</button>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            content.innerHTML = html + '<div class="empty-state" id="emptyProductList" style="display:none;"><i class="fa-solid fa-inbox"></i><p>暂无商品，请通过左侧功能创建</p></div>';
+        }
+
+        function selectListItem(id) {
+            const product = state.products.find(p => p.id === id);
+            if (!product) return;
+            
+            state.currentProductId = id;
+            state.auditStatus = product.auditStatus || 'pending';
+            updateFormWithProduct(product);
+            updateAuditStatus();
+            renderProductList();
+        }
+
+        function copyProduct(id) {
+            const product = state.products.find(p => p.id === id);
+            if (!product) return;
+            
+            const newProduct = {
+                id: 'P' + Date.now(),
+                name: product.name + ' (副本)',
+                desc: product.desc,
+                template: product.template,
+                status: 'draft',
+                auditStatus: 'pending',
+                data: JSON.parse(JSON.stringify(product.data))
+            };
+            
+            state.products.push(newProduct);
+            updateProductCount();
+            renderProductList();
+            showToast('商品复制成功');
+        }
+
+        function deleteProduct(id) {
+            const product = state.products.find(p => p.id === id);
+            if (!product) return;
+            
+            if (confirm(`确定要删除商品「${product.name}」吗？`)) {
+                state.products = state.products.filter(p => p.id !== id);
+                
+                if (state.currentProductId === id) {
+                    state.currentProductId = state.products.length > 0 ? state.products[0].id : null;
+                    if (state.currentProductId) {
+                        updateFormWithProduct(state.products[0]);
+                    }
+                }
+                
+                updateProductCount();
+                renderProductList();
+                showToast('商品删除成功');
+            }
+        }
+
+        function showProductEditor(id) {
+            const product = state.products.find(p => p.id === id);
+            if (!product) return;
+            
+            state.currentProductId = id;
+            state.auditStatus = product.auditStatus || 'pending';
+            
+            hideProductListPanel();
+            hideProductListView();
+            switchToSplitMode();
+            updateFormWithProduct(product);
+            updateAuditStatus();
+            renderProductList();
+            
+            showToast(`正在编辑：${product.name}`);
+        }
+
+        function updateFormWithProduct(product) {
+            const data = product.data || {};
+            
+            document.getElementById('workOrderId').value = data.workOrderId || '';
+            document.getElementById('prodPrcName').value = data.prodPrcName || '';
+            document.getElementById('effRuleId').value = data.effRuleId || '1001';
+            document.getElementById('expRuleId').value = data.expRuleId || '1023';
+            document.getElementById('effDate').value = data.effDate || '';
+            document.getElementById('expDate').value = data.expDate || '2099-12-31';
+            document.getElementById('prodId').value = data.prodId || '';
+            document.getElementById('prodPrcId').value = data.prodPrcId || '';
+            
+            document.getElementById('chnClassLimit').value = data.chnClassLimit || 'A7';
+            document.getElementById('groupId').value = data.groupId || '10001';
+            document.getElementById('groupIdMessage').value = data.groupIdMessage || '';
+            
+            document.getElementById('prcMonthFee').value = data.prcMonthFee || '';
+            document.getElementById('containResource').value = data.containResource || '';
+            document.getElementById('chargeStandard').value = data.chargeStandard || '';
+            document.getElementById('limitCondition').value = data.limitCondition || '';
+            document.getElementById('otherEquity').value = data.otherEquity || '';
+            
+            document.getElementById('smsContent').value = data.smsContent || '';
+            document.getElementById('sysNoteNow').value = data.sysNoteNow || '';
+            document.getElementById('sysNoteNext').value = data.sysNoteNext || '';
+            document.getElementById('sysNoteCancle').value = data.sysNoteCancle || '';
+            document.getElementById('sysNoteErke').value = data.sysNoteErke || '';
+            
+            document.getElementById('chargeType').value = data.chargeType || 'monthly';
+            document.getElementById('monthlyFee').value = data.monthlyFee || '';
+            document.getElementById('feeSubject').value = data.feeSubject || '001';
+            document.getElementById('taxRate').value = data.taxRate || '6';
+            
+            document.getElementById('discountCondition').value = data.discountCondition || '';
+            document.getElementById('discountType').value = data.discountType || 'cash';
+            document.getElementById('discountAmount').value = data.discountAmount || '';
+            
+            document.getElementById('minConsumeType').value = data.minConsumeType || 'none';
+            const minConsumeRow = document.getElementById('minConsumeAmountRow');
+            minConsumeRow.style.display = data.minConsumeType === 'none' ? 'none' : 'block';
+            document.getElementById('minConsumeAmount').value = data.minConsumeAmount || '';
+            
+            document.getElementById('flowType').value = data.flowType || 'general';
+            document.getElementById('flowAmount').value = data.flowAmount || '';
+            document.getElementById('flowUnit').value = data.flowUnit || 'GB';
+            document.getElementById('flowOvercharge').value = data.flowOvercharge || '';
+            document.getElementById('flowCarryover').value = data.flowCarryover || 'yes';
+            
+            document.getElementById('voiceType').value = data.voiceType || 'local';
+            document.getElementById('voiceAmount').value = data.voiceAmount || '';
+            document.getElementById('voiceOvercharge').value = data.voiceOvercharge || '';
+            
+            document.getElementById('smsAmount').value = data.smsAmount || '';
+            document.getElementById('smsOvercharge').value = data.smsOvercharge || '';
+            
+            document.querySelectorAll('.form-input, .form-select').forEach(el => {
+                el.classList.remove('modified');
+            });
+            state.isModified = false;
+            document.getElementById('draftIndicator').style.display = 'none';
+            
+            document.getElementById('templateBadge').textContent = product.template === 'personMainPrc' ? '个人主资费' : '个人主资费';
+            document.getElementById('schemeName').textContent = product.name;
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2000);
+        }
+
+        init();
+    </script>
+</body>
+</html>

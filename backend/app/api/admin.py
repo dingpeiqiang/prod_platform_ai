@@ -248,104 +248,72 @@ async def rollback_form_endpoint(request: RollbackFormRequest):
 # ============ 场景管理 API ============
 
 @router.get("/scenes/tree")
-async def list_scenes_tree(is_active: Optional[bool] = None, db: Session = Depends(get_db)):
+async def list_scenes_tree(is_active: Optional[bool] = None):
     """获取场景树状结构"""
-    result = SceneService.list_scenes_tree(db, is_active=is_active)
+    result = SceneService.list_scenes_tree(is_active=is_active)
     return result
 
 
 @router.get("/scenes")
-async def list_scenes(is_active: Optional[bool] = None, db: Session = Depends(get_db)):
+async def list_scenes(is_active: Optional[bool] = None):
     """获取场景列表"""
-    result = SceneService.list_scenes(db, is_active=is_active)
+    result = SceneService.list_scenes(is_active=is_active)
     return result
 
 
 @router.get("/scenes/{scene_code}")
-async def get_scene(scene_code: str, db: Session = Depends(get_db)):
+async def get_scene(scene_code: str):
     """获取单个场景详情"""
-    result = SceneService.get_scene(scene_code, db)
+    result = SceneService.get_scene(scene_code)
     return result
 
 
 @router.post("/scenes")
-async def create_scene(request: SceneCreateRequest, db: Session = Depends(get_db)):
+async def create_scene(request: SceneCreateRequest):
     """创建新场景"""
-    scene_data = request.dict()
-    # 转换字段名（驼峰转下划线）
-    scene_data['scene_code'] = scene_data.pop('sceneCode')
-    scene_data['scene_name'] = scene_data.pop('sceneName')
-    if 'promptCode' in scene_data:
-        scene_data['prompt_code'] = scene_data.pop('promptCode')
-    scene_data['parent_id'] = scene_data.pop('parentId')
-    
-    logger.info("[scenes/create] 创建场景开始 scene_code=%s scene_name=%s type=%s parent_id=%s", 
-                scene_data.get('scene_code'), scene_data.get('scene_name'), 
-                scene_data.get('type'), scene_data.get('parent_id'))
-    
-    try:
-        result = SceneService.create_scene(scene_data, db)
-        if result.get("success"):
-            logger.info("[scenes/create] 创建场景成功 scene_code=%s", scene_data.get('scene_code'))
-        else:
-            logger.warning("[scenes/create] 创建场景失败 scene_code=%s message=%s", 
-                          scene_data.get('scene_code'), result.get('message', '未知错误'))
-        return result
-    except Exception as e:
-        logger.exception("[scenes/create] 创建场景异常 scene_code=%s error=%s", scene_data.get('scene_code'), str(e))
-        return {"success": False, "message": f"创建场景异常: {str(e)}"}
+    logger.warning("[scenes/create] 场景管理功能已切换为文件数据源，不支持创建场景")
+    return {"success": False, "message": "场景管理功能已切换为文件数据源，不支持创建场景"}
 
 
 @router.put("/scenes/{scene_code}")
-async def update_scene(scene_code: str, request: SceneUpdateRequest, db: Session = Depends(get_db)):
+async def update_scene(scene_code: str, request: SceneUpdateRequest):
     """更新场景"""
-    scene_data = request.dict(exclude_none=True)
-    # 转换字段名
-    if 'sceneName' in scene_data:
-        scene_data['scene_name'] = scene_data.pop('sceneName')
-    if 'promptCode' in scene_data:
-        scene_data['prompt_code'] = scene_data.pop('promptCode')
-    if 'isActive' in scene_data:
-        scene_data['is_active'] = scene_data.pop('isActive')
-    if 'parentId' in scene_data:
-        scene_data['parent_id'] = scene_data.pop('parentId')
-    
-    result = SceneService.update_scene(scene_code, scene_data, db)
-    return result
+    logger.warning("[scenes/update] 场景管理功能已切换为文件数据源，不支持更新场景")
+    return {"success": False, "message": "场景管理功能已切换为文件数据源，不支持更新场景"}
 
 
 @router.delete("/scenes/{scene_code}")
-async def delete_scene(scene_code: str, db: Session = Depends(get_db)):
+async def delete_scene(scene_code: str):
     """删除场景"""
-    result = SceneService.delete_scene(scene_code, db)
-    return result
+    logger.warning("[scenes/delete] 场景管理功能已切换为文件数据源，不支持删除场景")
+    return {"success": False, "message": "场景管理功能已切换为文件数据源，不支持删除场景"}
 
 
 @router.patch("/scenes/{scene_code}/toggle")
-async def toggle_scene(scene_code: str, db: Session = Depends(get_db)):
+async def toggle_scene(scene_code: str):
     """切换场景启用状态"""
-    result = SceneService.toggle_active(scene_code, db)
-    return result
+    logger.warning("[scenes/toggle] 场景管理功能已切换为文件数据源，不支持切换场景状态")
+    return {"success": False, "message": "场景管理功能已切换为文件数据源，不支持切换场景状态"}
 
 
 @router.post("/scenes/test")
-async def test_scene_recognition(request: SceneRecognitionTestRequest, db: Session = Depends(get_db)):
+async def test_scene_recognition(request: SceneRecognitionTestRequest):
     """测试场景识别"""
-    result = SceneService.test_scene_recognition(request.userInput, db)
+    result = SceneService.test_scene_recognition(request.userInput)
     return result
 
 
 @router.get("/scenes/stats/summary")
-async def get_scene_stats(db: Session = Depends(get_db)):
+async def get_scene_stats():
     """获取场景统计"""
-    result = SceneService.get_scene_stats(db)
+    result = SceneService.get_scene_stats()
     return result
 
 
 @router.get("/scenes/{scene_code}/history")
-async def get_scene_history(scene_code: str, db: Session = Depends(get_db)):
+async def get_scene_history(scene_code: str):
     """获取场景版本历史"""
-    result = SceneService.get_history(scene_code, db)
+    result = SceneService.get_history(scene_code)
     return result
 
 
@@ -354,9 +322,9 @@ class SceneRollbackRequest(BaseModel):
 
 
 @router.post("/scenes/{scene_code}/rollback")
-async def rollback_scene(scene_code: str, request: SceneRollbackRequest, db: Session = Depends(get_db)):
+async def rollback_scene(scene_code: str, request: SceneRollbackRequest):
     """回滚场景到指定版本"""
-    result = SceneService.rollback_to_version(scene_code, request.version, db)
+    result = SceneService.rollback_to_version(scene_code, request.version)
     return result
 
 
@@ -598,9 +566,9 @@ class OntologyUpdateRequest(BaseModel):
 
 
 @router.get("/ontologies")
-async def list_ontologies(category: Optional[str] = None, isActive: Optional[bool] = None, db: Session = Depends(get_db)):
+async def list_ontologies(category: Optional[str] = None, isActive: Optional[bool] = None):
     """获取本体列表"""
-    result = OntologyService.list_ontologies(db, category=category, is_active=isActive)
+    result = OntologyService.list_ontologies(category=category, is_active=isActive)
     return result
 
 
@@ -611,35 +579,35 @@ async def get_ontology_categories():
 
 
 @router.get("/ontologies/{ontology_code}")
-async def get_ontology(ontology_code: str, db: Session = Depends(get_db)):
+async def get_ontology(ontology_code: str):
     """获取本体详情"""
-    result = OntologyService.get_ontology(db, ontology_code)
+    result = OntologyService.get_ontology(ontology_code)
     return result
 
 
 @router.post("/ontologies")
-async def create_ontology(request: OntologyCreateRequest, db: Session = Depends(get_db)):
+async def create_ontology(request: OntologyCreateRequest):
     """创建本体"""
-    result = OntologyService.create_ontology(db, request.dict())
-    return result
+    logger.warning("[ontologies/create] 本体管理功能已切换为文件数据源，不支持创建本体")
+    return {"success": False, "message": "本体管理功能已切换为文件数据源，不支持创建本体"}
 
 
 @router.put("/ontologies/{ontology_code}")
-async def update_ontology(ontology_code: str, request: OntologyUpdateRequest, db: Session = Depends(get_db)):
+async def update_ontology(ontology_code: str, request: OntologyUpdateRequest):
     """更新本体"""
-    result = OntologyService.update_ontology(db, ontology_code, request.dict())
-    return result
+    logger.warning("[ontologies/update] 本体管理功能已切换为文件数据源，不支持更新本体")
+    return {"success": False, "message": "本体管理功能已切换为文件数据源，不支持更新本体"}
 
 
 @router.delete("/ontologies/{ontology_code}")
-async def delete_ontology(ontology_code: str, db: Session = Depends(get_db)):
+async def delete_ontology(ontology_code: str):
     """删除本体"""
-    result = OntologyService.delete_ontology(db, ontology_code)
-    return result
+    logger.warning("[ontologies/delete] 本体管理功能已切换为文件数据源，不支持删除本体")
+    return {"success": False, "message": "本体管理功能已切换为文件数据源，不支持删除本体"}
 
 
 @router.patch("/ontologies/{ontology_code}/toggle")
-async def toggle_ontology(ontology_code: str, db: Session = Depends(get_db)):
+async def toggle_ontology(ontology_code: str):
     """切换本体启用状态"""
-    result = OntologyService.toggle_active(db, ontology_code)
-    return result
+    logger.warning("[ontologies/toggle] 本体管理功能已切换为文件数据源，不支持切换本体状态")
+    return {"success": False, "message": "本体管理功能已切换为文件数据源，不支持切换本体状态"}

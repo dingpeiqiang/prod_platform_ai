@@ -8,43 +8,81 @@
       </div>
     </div>
 
+    <!-- 欢迎卡片 - 来自 prodai-cfg-demo -->
+    <div class="welcome-cards-area">
+      <p class="welcome-cards-title">您好！我是产品智能配置助手，可以帮您快速完成商品配置。</p>
+      <div class="welcome-cards-grid">
+        <button type="button" class="welcome-card" @click="handleWelcomeCard('query')">
+          <div class="welcome-card-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+          </div>
+          <h4>AI智查</h4>
+          <p>查询历史商品，快速复制配置</p>
+        </button>
+        <button type="button" class="welcome-card" @click="handleWelcomeCard('file')">
+          <div class="welcome-card-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="12" y1="18" x2="12" y2="12"/>
+              <line x1="9" y1="15" x2="15" y2="15"/>
+            </svg>
+          </div>
+          <h4>AI方案导入</h4>
+          <p>上传文档，批量导入配置</p>
+        </button>
+        <button type="button" class="welcome-card" @click="handleWelcomeCard('chat')">
+          <div class="welcome-card-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+            </svg>
+          </div>
+          <h4>对话式配置</h4>
+          <p>自然语言描述，智能生成配置</p>
+        </button>
+      </div>
+    </div>
+
     <!-- 快捷建议 -->
     <div class="suggestions-area">
-    <div class="suggestions-grid">
-      <button
-        v-for="s in suggestions"
-        :key="s.key"
-        class="suggestion-item"
-        @click="handleSuggestion(s)"
-      >
-        <span class="suggestion-icon">
-          <svg v-if="s.icon === 'form'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-            <line x1="16" y1="13" x2="8" y2="13"/>
-            <line x1="16" y1="17" x2="8" y2="17"/>
-            <polyline points="10 9 9 9 8 9"/>
-          </svg>
-          <svg v-else-if="s.icon === 'calendar'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-            <line x1="16" y1="2" x2="16" y2="6"/>
-            <line x1="8" y1="2" x2="8" y2="6"/>
-            <line x1="3" y1="10" x2="21" y2="10"/>
-          </svg>
-          <svg v-else-if="s.icon === 'wallet'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M20 7h-9a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
-            <path d="M16 21V5a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2z"/>
-          </svg>
-          <svg v-else-if="s.icon === 'help'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/>
-            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-            <line x1="12" y1="17" x2="12.01" y2="17"/>
-          </svg>
-        </span>
-        <span class="suggestion-text">{{ s.text }}</span>
-      </button>
+      <div class="suggestions-grid">
+        <button
+          v-for="s in suggestions"
+          :key="s.key"
+          class="suggestion-item"
+          @click="handleSuggestion(s)"
+        >
+          <span class="suggestion-icon">
+            <svg v-if="s.icon === 'form'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+              <polyline points="10 9 9 9 8 9"/>
+            </svg>
+            <svg v-else-if="s.icon === 'calendar'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+              <line x1="16" y1="2" x2="16" y2="6"/>
+              <line x1="8" y1="2" x2="8" y2="6"/>
+              <line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+            <svg v-else-if="s.icon === 'wallet'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 7h-9a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
+              <path d="M16 21V5a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2z"/>
+            </svg>
+            <svg v-else-if="s.icon === 'help'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+          </span>
+          <span class="suggestion-text">{{ s.text }}</span>
+        </button>
+      </div>
     </div>
-  </div>
 
     <!-- 底部输入区 -->
     <div class="bottom-input">
@@ -520,6 +558,22 @@ const handleSuggestion = (s) => {
   emit('send-message', s.text)
 }
 
+const handleWelcomeCard = (type) => {
+  let text = ''
+  switch (type) {
+    case 'query':
+      text = '我想查询历史商品'
+      break
+    case 'file':
+      text = '我想导入配置方案'
+      break
+    case 'chat':
+      text = '我想添加一种新的业务表单'
+      break
+  }
+  emit('send-message', text)
+}
+
 const handleShortcut = (sc) => {
   if (sc.key === 'scene') {
     emit('open-scene-manager')
@@ -639,6 +693,79 @@ onMounted(() => {
   border-color: #818cf8;
   box-shadow: 0 4px 16px rgba(99,102,241,.15);
   transform: translateY(-2px);
+}
+
+/* 欢迎卡片样式 */
+.welcome-cards-area {
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.welcome-cards-title {
+  font-size: var(--font-size-base);
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.welcome-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  max-width: 640px;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .welcome-cards-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.welcome-card {
+  text-align: left;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  transition: all var(--transition-fast);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.welcome-card:hover {
+  border-color: var(--color-primary-400);
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.15);
+  transform: translateY(-2px);
+}
+
+.welcome-card-icon {
+  width: 42px;
+  height: 42px;
+  background: var(--color-primary-100);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  color: var(--color-primary-600);
+}
+
+.welcome-card h4 {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: 4px;
+  color: var(--text-primary);
+}
+
+.welcome-card p {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
 }
 
 .suggestion-icon {

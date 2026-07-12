@@ -258,19 +258,14 @@ def build_scene_keywords() -> str:
 
 
 def build_scene_hierarchy() -> str:
-    from app.models.scene import Scene
-    from app.core.database import get_db
+    from app.core.config_loader import config_loader
     
     try:
-        db_gen = get_db()
-        db = next(db_gen)
-        scene_mappings = db.query(Scene).filter(Scene.is_active == True).all()
-        scene_mappings = [scene.to_dict() for scene in scene_mappings]
+        scene_mappings = config_loader.get_all_scenes()
+        if not scene_mappings:
+            return "暂无场景配置"
     except Exception as e:
         return "场景加载失败"
-    
-    if not scene_mappings:
-        return "暂无场景配置"
     
     scenes_by_parent = {}
     root_scenes = []

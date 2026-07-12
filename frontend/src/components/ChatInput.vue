@@ -13,6 +13,16 @@
       </button>
     </div>
 
+    <div v-if="skillTag" class="skill-tags">
+      <span class="skill-tag">
+        <i :class="`fa-solid ${skillTag.icon}`" />
+        {{ skillTag.label }}
+        <button type="button" class="close-btn" aria-label="关闭技能" @click="$emit('remove-skill')" :disabled="disabled">
+          <i class="fa-solid fa-xmark" />
+        </button>
+      </span>
+    </div>
+
     <div class="input-box" :class="{ focused: inputFocused }">
       <div class="input-actions">
         <button 
@@ -122,10 +132,23 @@ import { ref, nextTick, watch, computed } from 'vue'
 const props = defineProps({
   modelValue: { type: String, default: '' },
   disabled: { type: Boolean, default: false },
-  placeholder: { type: String, default: '描述你想做的事...' }
+  placeholder: { type: String, default: '描述你想做的事...' },
+  currentSkill: { type: String, default: '' }
 })
 
-const emit = defineEmits(['update:modelValue', 'send', 'stop', 'quick-action', 'file-upload', 'image-upload', 'voice-record'])
+const emit = defineEmits(['update:modelValue', 'send', 'stop', 'quick-action', 'file-upload', 'image-upload', 'voice-record', 'remove-skill'])
+
+const skillConfig = {
+  query: { icon: 'fa-magnifying-glass', label: 'AI智查' },
+  file: { icon: 'fa-file-import', label: 'AI方案导入' },
+  chat: { icon: 'fa-comments', label: '对话式配置' }
+}
+
+const skillTag = computed(() =>
+  props.currentSkill && skillConfig[props.currentSkill]
+    ? skillConfig[props.currentSkill]
+    : null
+)
 
 const inputEl = ref(null)
 const fileInput = ref(null)
@@ -346,6 +369,46 @@ defineExpose({ focus, resetInput })
   border: 1px solid var(--border-default);
   border-radius: var(--radius-xl);
   transition: all var(--transition-fast);
+}
+
+.skill-tags {
+  margin-bottom: 10px;
+}
+
+.skill-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--color-primary-100);
+  border: 1px solid var(--color-primary-400);
+  border-radius: 999px;
+  font-size: var(--font-size-xs);
+  color: var(--color-primary-700);
+}
+
+.skill-tag .close-btn {
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.skill-tag .close-btn:hover:not(:disabled) {
+  background: var(--color-primary-500);
+  color: white;
+}
+
+.skill-tag .close-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .input-box.focused {

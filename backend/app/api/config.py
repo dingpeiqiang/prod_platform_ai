@@ -108,14 +108,14 @@ async def get_app_config():
 
 
 @router.get("/ontologies", response_model=OntologyListResponse)
-async def list_ontologies(db: Session = Depends(get_db)):
+async def list_ontologies():
     """
-    获取所有本体列表（从数据库）
+    获取所有本体列表（从文件）
     返回完整的本体信息，含 category / isActive / entities 等所有字段
     """
     logger.debug("[config/ontologies] 获取本体列表")
     try:
-        result = OntologyService.list_ontologies(db)
+        result = OntologyService.list_ontologies()
         ontologies = result.get("data", [])
         logger.debug("[config/ontologies] 返回 %d 个本体", len(ontologies))
         return OntologyListResponse(
