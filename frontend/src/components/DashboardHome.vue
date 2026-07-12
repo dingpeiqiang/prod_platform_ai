@@ -282,7 +282,7 @@
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue'
 
-const emit = defineEmits(['send-message', 'switch-chat', 'create-session', 'open-scene-manager', 'open-prompt-manager', 'open-ontology-manager', 'open-workflow-manager', 'open-mcp-manager', 'open-kb-manager'])
+const emit = defineEmits(['send-message', 'switch-chat', 'create-session', 'open-scene-manager', 'open-prompt-manager', 'open-ontology-manager', 'open-workflow-manager', 'open-mcp-manager', 'open-kb-manager', 'open-demo-dashboard'])
 
 const inputEl = ref(null)
 const inputText = ref('')
@@ -304,6 +304,7 @@ const suggestions = [
 
 // 快捷入口
 const shortcuts = [
+  { key: 'demo', icon: 'chart', label: '智能配置助手' },
   { key: 'scene', icon: 'chart', label: '场景管理' },
   { key: 'prompt', icon: 'file', label: '提示词管理' },
   // { key: 'tool', icon: 'chart', label: '工具管理' }, // 已迁移到 MCP 管理
@@ -521,6 +522,10 @@ const handleSuggestion = (s) => {
 }
 
 const handleShortcut = (sc) => {
+  if (sc.key === 'demo') {
+    emit('open-demo-dashboard')
+    return
+  }
   if (sc.key === 'scene') {
     emit('open-scene-manager')
     return

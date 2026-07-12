@@ -93,6 +93,28 @@
         @open-workflow-manager="openWorkflowManager"
         @open-mcp-manager="openMCPManager"
         @open-kb-manager="openKBManager"
+        @open-demo-dashboard="openDemoDashboard"
+      />
+
+      <DemoDashboard
+        v-if="!isInitializing && currentView === 'demo-dashboard'"
+        @go-back="returnToDashboard"
+        @enter-scenario="enterDemoScenario"
+      />
+
+      <SmartSearchView
+        v-if="!isInitializing && currentView === 'demo-search'"
+        @go-back="returnToDemoDashboard"
+      />
+
+      <DocReaderView
+        v-if="!isInitializing && currentView === 'demo-doc'"
+        @go-back="returnToDemoDashboard"
+      />
+
+      <DialogConfigView
+        v-if="!isInitializing && currentView === 'demo-dialog'"
+        @go-back="returnToDemoDashboard"
       />
 
         <!-- 场景管理界面 -->
@@ -193,6 +215,10 @@ import LangChainEditor from './components/workflow-editor/LangChainEditor.vue'
 
 import MCPToolDashboard from './components/MCPToolDashboard.vue'
 import KBManager from './components/KBManager.vue'
+import DemoDashboard from './components/DemoDashboard.vue'
+import SmartSearchView from './components/demo-search/SmartSearchView.vue'
+import DocReaderView from './components/demo-doc/DocReaderView.vue'
+import DialogConfigView from './components/demo-dialog/DialogConfigView.vue'
 import { useUserStore } from './stores/user'
 import { useLoadingStore } from './stores/loading'
 import { useTheme } from './composables/useTheme'
@@ -359,6 +385,30 @@ const openKBManager = () => {
   activeSessionId.value = ''
   activeDbSessionId.value = ''
   saveActiveSessionId()
+}
+
+// ── 打开演示仪表盘 ─────────────────────────────────────────
+const openDemoDashboard = () => {
+  currentView.value = 'demo-dashboard'
+  activeSessionId.value = ''
+  activeDbSessionId.value = ''
+  saveActiveSessionId()
+}
+
+// ── 返回演示仪表盘 ─────────────────────────────────────────
+const returnToDemoDashboard = () => {
+  currentView.value = 'demo-dashboard'
+}
+
+// ── 进入演示场景 ─────────────────────────────────────────
+const enterDemoScenario = (scenarioKey) => {
+  if (scenarioKey === 'search') {
+    currentView.value = 'demo-search'
+  } else if (scenarioKey === 'doc') {
+    currentView.value = 'demo-doc'
+  } else if (scenarioKey === 'dialog') {
+    currentView.value = 'demo-dialog'
+  }
 }
 
 

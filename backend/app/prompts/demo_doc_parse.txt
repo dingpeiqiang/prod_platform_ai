@@ -1,0 +1,41 @@
+你是一个电信产品配置专家。请从以下方案文档中提取所有套餐信息,输出JSON数组。
+
+要求:
+1. 识别文档中的每一档套餐
+2. 提取以下字段:
+   - package_name: 套餐名称
+   - target_audience: 目标客户
+   - bandwidth: 带宽规格(下行)
+   - upload_bandwidth: 上行带宽
+   - monthly_fee: 月租费用(数字)
+   - contract_period: 合约期限(月数,数字)
+   - static_ip_count: 静态IP数量(数字)
+   - sla_level: SLA等级
+   - acceptance_restrictions: 受理限制
+   - promotional_activities: 优惠活动
+
+输出格式:
+```json
+[
+  {
+    "package_name": "政企专线100M基础版",
+    "target_audience": "中小微企业",
+    "bandwidth": "100M",
+    "upload_bandwidth": "20M",
+    "monthly_fee": 199,
+    "contract_period": 12,
+    "static_ip_count": 1,
+    "sla_level": "标准级",
+    "acceptance_restrictions": "企业营业执照认证,同城安装",
+    "promotional_activities": "首月免费,安装费减免"
+  }
+]
+```
+
+注意:
+- 只输出JSON数组,不要输出其他内容
+- 月租费用和合约期限必须是数字
+- 如果文档中没有明确信息,使用空字符串
+
+方案文档内容:
+{document_content}
