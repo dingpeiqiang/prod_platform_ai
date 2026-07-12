@@ -4,7 +4,7 @@
     <div class="welcome-area">
       <div class="welcome-content">
         <h1 class="welcome-title">有什么可以帮你的？</h1>
-        <p class="welcome-subtitle">AI 驱动的智能助手，随时为你效劳</p>
+        <p class="welcome-subtitle">产商品智能助手，随时为你效劳</p>
       </div>
     </div>
 

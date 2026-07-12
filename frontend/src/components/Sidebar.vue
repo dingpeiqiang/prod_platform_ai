@@ -23,7 +23,7 @@
             <circle cx="16.5" cy="15.5" r="1"/>
           </svg>
         </div>
-        <span class="logo-text">产商品研发助手</span>
+        <span class="logo-text">产商品智能助手</span>
       </div>
       
       <!-- 切换按钮 - 在允许显示的视图中始终可见 -->

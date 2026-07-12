@@ -27,7 +27,7 @@
             <circle cx="16.5" cy="15.5" r="1"/>
           </svg>
         </div>
-        <h1 class="logo-title">产商品研发助手</h1>
+        <h1 class="logo-title">产商品智能助手</h1>
         <p class="logo-subtitle">AI 驱动的智能助手</p>
       </div>
 

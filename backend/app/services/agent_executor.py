@@ -188,7 +188,7 @@ class AgentExecutor:
         else:
             tools_desc = "暂无可用工具"
         
-        return f"""你是一个智能助手，可以通过调用工具来完成任务。
+        return f"""你是产商品智能助手，可以通过调用工具来完成任务。
 
 ## 可用工具
 {tools_desc}
@@ -223,7 +223,7 @@ class AgentExecutor:
     @classmethod
     def _build_result_prompt(cls, user_input: str, tool_name: str, result: Any, reasoning: str) -> str:
         result_json = json.dumps(result, ensure_ascii=False, indent=2)
-        return f"""你是一个智能助手，用户刚才请求了帮助。
+        return f"""你是产商品智能助手，用户刚才请求了帮助。
 
 ## 用户原始输入
 {user_input}
