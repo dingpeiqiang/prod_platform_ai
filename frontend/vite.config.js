@@ -20,7 +20,7 @@ export default defineConfig({
     strictPort: false,  // 端口被占用时自动尝试下一个
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:6173',
         changeOrigin: true,
         rewrite: (path) => path,
         configure: (proxy) => {
@@ -33,7 +33,7 @@ export default defineConfig({
         }
       },
       '/ws': {
-        target: 'ws://localhost:8000',
+        target: 'ws://localhost:6173',
         ws: true,
         changeOrigin: true
       }
