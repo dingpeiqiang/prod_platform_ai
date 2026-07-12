@@ -2,80 +2,104 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 
-export default defineConfig({
-  plugins: [vue()],
-  
-  // 路径别名配置
-  resolve: {
-    alias: {
-      '@': resolve(__dirname, 'src')
-    }
-  },
-  
-  // 开发服务器配置
-  server: {
-    host: '0.0.0.0',  // 允许外部访问
-    port: 5173,
-    open: false,  // 不自动打开浏览器
-    strictPort: false,  // 端口被占用时自动尝试下一个
-    proxy: {
-      '/api': {
-        target: 'http://localhost:6173',
-        changeOrigin: true,
-        rewrite: (path) => path,
-        configure: (proxy) => {
-          proxy.on('proxyRes', (proxyRes) => {
-            if (proxyRes.headers['content-type']?.includes('text/event-stream')) {
-              proxyRes.headers['cache-control'] = 'no-cache'
-              proxyRes.headers['x-accel-buffering'] = 'no'
-            }
-          })
+export default defineConfig(({ command, mode }) => {
+  const isProd = mode === 'production'
+
+  return {
+    plugins: [vue()],
+
+    resolve: {
+      alias: {
+        '@': resolve(__dirname, 'src')
+      },
+      extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json', '.vue']
+    },
+
+    cacheDir: './node_modules/.vite',
+
+    server: {
+      host: '0.0.0.0',
+      port: 5173,
+      open: false,
+      strictPort: false,
+      proxy: {
+        '/api': {
+          target: 'http://localhost:6173',
+          changeOrigin: true,
+          rewrite: (path) => path,
+          configure: (proxy) => {
+            proxy.on('proxyRes', (proxyRes) => {
+              if (proxyRes.headers['content-type']?.includes('text/event-stream')) {
+                proxyRes.headers['cache-control'] = 'no-cache'
+                proxyRes.headers['x-accel-buffering'] = 'no'
+              }
+            })
+          }
+        },
+        '/ws': {
+          target: 'ws://localhost:6173',
+          ws: true,
+          changeOrigin: true
         }
       },
-      '/ws': {
-        target: 'ws://localhost:6173',
-        ws: true,
-        changeOrigin: true
+      hmr: {
+        overlay: true
+      },
+      warmup: {
+        clientFiles: [
+          './index.html',
+          './src/main.js',
+          './src/App.vue'
+        ]
       }
     },
-    // 热更新配置
-    hmr: {
-      overlay: true  // 显示错误覆盖层
-    }
-  },
-  
-  // 构建配置
-  build: {
-    outDir: 'dist',
-    assetsDir: 'assets',
-    sourcemap: false,  // 生产环境不生成 sourcemap
-    minify: 'terser',  // 使用 terser 压缩
-    terserOptions: {
-      compress: {
-        drop_console: true,  // 移除 console.log
-        drop_debugger: true  // 移除 debugger
-      }
-    },
-    rollupOptions: {
-      output: {
-        // 分包策略
-        manualChunks: {
-          'vue-vendor': ['vue'],
-          'element-plus': ['element-plus', '@element-plus/icons-vue'],
-          'axios': ['axios']
+
+    build: {
+      outDir: 'dist',
+      assetsDir: 'assets',
+      sourcemap: isProd ? false : 'inline',
+      minify: isProd ? 'esbuild' : false,
+      chunkSizeWarningLimit: 1500,
+      cache: true,
+      reportCompressedSize: isProd,
+      esbuild: {
+        drop: isProd ? ['console', 'debugger'] : []
+      },
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vue-core': ['vue', 'pinia'],
+            'element-plus': ['element-plus', '@element-plus/icons-vue'],
+            'vue-flow': ['@vue-flow/core', '@vue-flow/background', '@vue-flow/controls', '@vue-flow/minimap'],
+            'codemirror': ['codemirror', '@codemirror/autocomplete', '@codemirror/commands', '@codemirror/lang-json', '@codemirror/language', '@codemirror/state', '@codemirror/theme-one-dark', '@codemirror/view'],
+            'monaco': ['monaco-editor'],
+            'ace': ['ace-builds'],
+            'jsoneditor': ['jsoneditor'],
+            'form-create': ['form-create-designer'],
+            'axios': ['axios'],
+            'marked': ['marked'],
+            'lucide': ['lucide-vue-next'],
+            'uuid': ['uuid']
+          },
+          chunkFileNames: 'assets/js/[name]-[hash].js',
+          entryFileNames: 'assets/js/[name]-[hash].js',
+          assetFileNames: 'assets/[ext]/[name]-[hash].[ext]'
         }
       }
     },
-    chunkSizeWarningLimit: 1000  // chunk 大小警告限制（KB）
-  },
-  
-  // 优化依赖预构建
-  optimizeDeps: {
-    include: [
-      'vue',
-      'element-plus',
-      '@element-plus/icons-vue',
-      'axios'
-    ]
+
+    optimizeDeps: {
+      include: [
+        'vue', 'pinia', 'element-plus', '@element-plus/icons-vue',
+        '@vue-flow/core', '@vue-flow/background', '@vue-flow/controls', '@vue-flow/minimap',
+        'axios', 'marked', 'lucide-vue-next', 'uuid',
+        'codemirror', '@codemirror/autocomplete', '@codemirror/commands', '@codemirror/lang-json',
+        '@codemirror/language', '@codemirror/state', '@codemirror/theme-one-dark', '@codemirror/view'
+      ],
+      exclude: [],
+      esbuildOptions: {
+        target: 'esnext'
+      }
+    }
   }
 })
