@@ -3,7 +3,7 @@
 ## 一键启动（推荐）
 
 ```bash
-start-all.bat
+start-all.ps1
 ```
 
 这将同时启动前后端服务，在独立窗口中运行。
@@ -14,14 +14,14 @@ start-all.bat
 
 ### 后端
 ```bash
-start-backend.bat
+start-backend.ps1
 ```
 - API: http://localhost:8000
 - 文档: http://localhost:8000/docs
 
 ### 前端
 ```bash
-start-frontend.bat
+start-frontend.ps1
 ```
 - 界面: http://localhost:5173
 - 自动打开浏览器

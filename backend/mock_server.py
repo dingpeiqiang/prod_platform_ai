@@ -6,7 +6,7 @@
 启动方式：
     python mock_server.py
     或
-    start-mock-server.bat
+    start-mock-server.ps1
 
 默认端口：6174
 可通过环境变量 MOCK_SERVER_PORT 自定义端口

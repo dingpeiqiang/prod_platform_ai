@@ -69,21 +69,21 @@ optimizeDeps: {
 
 ### 2. **启动脚本优化**
 
-#### start-backend.bat
+#### start-backend.ps1
 - ✅ UTF-8 编码支持（中文显示正常）
 - ✅ 虚拟环境自动创建和激活
 - ✅ 依赖智能检查（避免重复安装）
 - ✅ 详细的服务信息展示
 - ✅ 使用 Uvicorn 重载模式（代码修改自动重启）
 
-#### start-frontend.bat
+#### start-frontend.ps1
 - ✅ UTF-8 编码支持
 - ✅ Node.js 环境检查
 - ✅ 依赖智能检查
 - ✅ 自动打开浏览器
 - ✅ 清晰的服务信息提示
 
-#### start-all.bat（新增）
+#### start-all.ps1（新增）
 - 🎉 **一键启动前后端**
 - 在独立窗口中运行各个服务
 - 统一的服务信息展示
@@ -104,18 +104,18 @@ optimizeDeps: {
 
 ### 方式一：一键启动（推荐）
 
-双击运行 `start-all.bat`，将自动启动前后端服务。
+双击运行 `start-all.ps1`，将自动启动前后端服务。
 
 ### 方式二：分别启动
 
 **后端**：
 ```bash
-start-backend.bat
+start-backend.ps1
 ```
 
 **前端**：
 ```bash
-start-frontend.bat
+start-frontend.ps1
 ```
 
 ### 方式三：命令行启动

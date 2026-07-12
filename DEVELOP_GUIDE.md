@@ -402,12 +402,12 @@ curl -X POST http://localhost:6173/api/v1/chat/stream \
 ```bash
 # 后端
 cd backend
-start-backend.bat
+start-backend.ps1
 # 或: python -m uvicorn app.main:app --reload
 
 # 前端
 cd frontend
-start-frontend.bat
+start-frontend.ps1
 # 或: npm run dev
 
 # 访问
