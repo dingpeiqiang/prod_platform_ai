@@ -183,7 +183,8 @@ const emit = defineEmits([
 
 const skillConfig = {
   query: { icon: 'fa-magnifying-glass', label: 'AI智查' },
-  file: { icon: 'fa-file-import', label: 'AI方案导入' }
+  file: { icon: 'fa-file-import', label: 'AI方案导入' },
+  chat: { icon: 'fa-comments', label: '对话式配置' }
 }
 
 const skillTag = computed(() =>
@@ -207,7 +208,8 @@ let audioChunks = []
 
 const quickActions = [
   { key: 'query', label: '智能查询', content: '帮我查询一个表单配置', color: '#f59e0b' },
-  { key: 'import', label: '方案导入', content: '帮我导入一个配置方案', color: '#10b981' }
+  { key: 'import', label: '方案导入', content: '帮我导入一个配置方案', color: '#10b981' },
+  { key: 'chat', label: '对话配置', content: '帮我配置一个大学生套餐', color: '#8b5cf6' }
 ]
 
 const hasContent = computed(() => inputText.value.trim().length > 0 || attachments.value.length > 0)

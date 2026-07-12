@@ -35,6 +35,15 @@
             <h4>AI方案导入</h4>
             <p>上传文档，批量导入配置</p>
           </button>
+          <button type="button" class="welcome-card" @click="handleWelcomeCard('chat')">
+            <div class="welcome-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </div>
+            <h4>对话式配置</h4>
+            <p>自然语言描述需求，AI 生成配置</p>
+          </button>
         </div>
       </div>
 
@@ -322,6 +331,9 @@ const handleWelcomeCard = (type) => {
     case 'file':
       text = '我想导入配置方案'
       break
+    case 'chat':
+      text = '我要配置一个大学生套餐'
+      break
   }
   emit('send-message', text)
 }
@@ -444,7 +456,7 @@ onMounted(() => {
 
 .welcome-cards-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
   width: 100%;
 }

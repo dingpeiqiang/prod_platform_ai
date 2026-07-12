@@ -146,6 +146,29 @@
                 </div>
               </div>
             </div>
+
+            <!-- 查询结果卡片列表 -->
+            <div v-if="msg.queryResults?.length" class="query-results">
+              <div
+                v-for="p in msg.queryResults"
+                :key="p.id"
+                class="query-result-item"
+                @click="$emit('query-result-click', p)"
+              >
+                <div class="qr-header">
+                  <span class="qr-name">{{ p.name }}</span>
+                  <span v-if="p.code" class="qr-code">{{ p.code }}</span>
+                </div>
+                <p v-if="p.desc" class="qr-desc">{{ p.desc }}</p>
+                <button type="button" class="qr-copy-btn" @click.stop="$emit('query-result-click', p)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                  复制配置
+                </button>
+              </div>
+            </div>
           </div>
         </template>
 
@@ -208,7 +231,7 @@ const props = defineProps({
   showWelcome: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['form-card-click', 'intent-action', 'regenerate', 'suggest'])
+const emit = defineEmits(['form-card-click', 'intent-action', 'regenerate', 'suggest', 'query-result-click'])
 
 const messagesEl = ref(null)
 const intentPanelTypes = listIntentPanels()
@@ -657,6 +680,79 @@ defineExpose({ scrollToBottom })
 
 .form-card-meta .dot {
   color: var(--border-default);
+}
+
+/* 查询结果卡片列表 */
+.query-results {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.query-result-item {
+  padding: 12px 14px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.query-result-item:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+  background: rgba(59, 130, 246, 0.03);
+}
+
+.qr-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.qr-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.qr-code {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: #f1f5f9;
+  color: #64748b;
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+}
+
+.qr-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0 0 8px;
+  line-height: 1.45;
+}
+
+.qr-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: #dbeafe;
+  color: #3b82f6;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.qr-copy-btn:hover {
+  background: #3b82f6;
+  color: white;
 }
 
 /* 深色模式适配 */

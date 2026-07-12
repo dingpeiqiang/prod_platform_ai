@@ -4,6 +4,32 @@
       <div class="chat-topbar">
         <span class="session-name">{{ sessionTitle }}</span>
         <div class="topbar-actions">
+          <button
+            class="icon-btn product-list-btn"
+            title="商品列表"
+            @click="productConfig.showProductListPanel.value = true"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="8" y1="6" x2="21" y2="6"/>
+              <line x1="8" y1="12" x2="21" y2="12"/>
+              <line x1="8" y1="18" x2="21" y2="18"/>
+              <line x1="3" y1="6" x2="3.01" y2="6"/>
+              <line x1="3" y1="12" x2="3.01" y2="12"/>
+              <line x1="3" y1="18" x2="3.01" y2="18"/>
+            </svg>
+            <span v-if="productConfig.products.value.length" class="badge">{{ productConfig.products.value.length }}</span>
+          </button>
+          <button
+            class="icon-btn audit-btn"
+            title="智能稽核"
+            :disabled="!canRunAudit"
+            @click="handleRunAudit"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 11l3 3L22 4"/>
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+            </svg>
+          </button>
           <button class="icon-btn" title="清空记录" @click="clearHistory">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>
@@ -21,6 +47,7 @@
         :messages="messages"
         @form-card-click="handleFormCardClick"
         @intent-action="handleIntentEvent"
+        @query-result-click="handleQueryResultClick"
       />
 
       <ChatInput
@@ -42,8 +69,28 @@
       :formCancelled="activeFormCard?.status === 'cancelled'"
       @submit="handleFormSubmit"
       @cancel="handleFormCancel"
-      @field-change="handleFormFieldChange"
+      @field-change="handleFormFieldChangeWithSync"
       @confirm-submit="(data) => handleConfirmSubmit(data).then(msg => msg && doSendMessageAfterHome(msg))"
+    />
+
+    <ProductListPanel
+      v-model="productConfig.showProductListPanel.value"
+      :products="productConfig.products.value"
+      :current-product-id="productConfig.currentProductId.value"
+      @select="handleProductSelect"
+      @copy="handleProductCopy"
+      @edit="handleProductSelect"
+      @delete="handleProductDelete"
+    />
+
+    <AuditPanel
+      v-model="productConfig.showAuditPanel.value"
+      :product-name="productConfig.currentProduct.value?.name || ''"
+      :results="productConfig.auditResults.value"
+      :phase="productConfig.auditPhase.value"
+      :has-error="productConfig.auditResults.value.some(r => r.type === 'error')"
+      @close="handleAuditClose"
+      @audit-complete="handleAuditComplete"
     />
   </div>
 </template>
@@ -54,12 +101,16 @@ import ChatMessageList from './ChatMessageList.vue';
 import ChatInput from './ChatInput.vue';
 import FormPanel from './FormPanel.vue';
 import WelcomeCards from './WelcomeCards.vue';
+import ProductListPanel from './ProductListPanel.vue';
+import AuditPanel from './AuditPanel.vue';
 import { genId, formatTime, getFormStatusText } from '../utils/chatUtils.js';
 import { createSession as apiCreateSession, saveMessage, loadMessages as apiLoadMessages } from '../services/chatApi.js';
 import { registerEventHandler, registerPostProcessor } from '../composables/useIntentRegistry.js';
 import { useChatStream } from '../composables/useChatStream.js';
 import { useFormHandling } from '../composables/useFormHandling.js';
 import { useIntentHandlers } from '../composables/useIntentHandlers.js';
+import { useProductConfig } from '../composables/useProductConfig.js';
+import { mockProducts } from '../data/productMockData.js';
 const props = defineProps({
  sessionId: { type: String, required: true },
  dbSessionId: { type: String, default: '' },
@@ -79,6 +130,9 @@ const inputRef = ref(null);
 const { isStreaming, stopStream, sendStreamMessage } = useChatStream(messages, currentDbSessionId);
 const { currentFormId, currentFormSchema, currentFormSubmitted, activeFormCard, activeFormMsgId, pendingConfirmForm, generateForm, updateFormFields, handleConfirmSubmit, checkUserConfirmation, handleDoConfirmSubmit, handleCancelSubmit, handleFormSubmit, handleFormCancel, handleConfirmSubmitForActiveForm, handleFormFieldChange, updateFormCardStatus } = useFormHandling(messages, currentDbSessionId);
 const { handleIntentEvent: handleIntentAction } = useIntentHandlers(messages, currentDbSessionId, emit);
+const productConfig = useProductConfig();
+const canRunAudit = computed(() => !!(activeFormCard.value && productConfig.currentProduct.value));
+const auditTimers = ref([]);
 const suggestions = [
  { key: 'help', icon: '💬', text: '我能为你做什么？' },
 ];
@@ -166,6 +220,14 @@ watch(() => props.sessionId, async (newSessionId, oldSessionId) => {
  currentFormSchema.value = null;
  activeFormCard.value = null;
  activeFormMsgId.value = '';
+ // 清空产品配置 mock 状态
+ productConfig.products.value = [];
+ productConfig.currentProductId.value = null;
+ clearAuditTimers();
+ productConfig.showProductListPanel.value = false;
+ productConfig.showAuditPanel.value = false;
+ productConfig.auditPhase.value = 'idle';
+ productConfig.auditResults.value = [];
  if (!newSessionId) {
  currentDbSessionId.value = '';
  currentFormSubmitted.value = false;
@@ -343,6 +405,9 @@ const handleWelcomeCardClick = (type) => {
  case 'file':
  text = '我想导入配置方案';
  break;
+ case 'chat':
+ text = '我要配置一个大学生套餐';
+ break;
  }
  inputText.value = text;
  sendMessage();
@@ -353,6 +418,23 @@ const sendMessage = async (messageData) => {
  console.log('[ChatAssistant] sendMessage called:', { text, attachments: attachments?.length || 0, sessionId: props.sessionId, isStreaming: isStreaming.value, messagesLength: messages.value.length });
  if (!text && (!attachments || attachments.length === 0) || isStreaming.value)
  return;
+ // 产品配置场景拦截（mock MVP）
+ const scenario = productConfig.detectScenario(text);
+ if (scenario) {
+ inputText.value = '';
+ currentSkill.value = '';
+ await handleProductScenario(scenario, text);
+ return;
+ }
+ if (attachments && attachments.length > 0) {
+ const doc = attachments.find(a => /\.(docx|pdf|xlsx|doc)$/i.test(a.name || ''));
+ if (doc) {
+ inputText.value = '';
+ currentSkill.value = '';
+ await handleFileParseScenario(doc);
+ return;
+ }
+ }
  if (!props.sessionId) {
  isCreatingFromHome = true;
  messages.value.push({ id: genId(), role: 'user', content: text, attachments, done: true });
@@ -635,6 +717,159 @@ registerPostProcessor('workflow', async (msg, intentData) => {
  msg.content = msg.streamText || '';
  }
 });
+// ========== 产品配置场景处理（mock MVP） ==========
+const handleFormFieldChangeWithSync = (fieldCode, value) => {
+ handleFormFieldChange(fieldCode, value);
+ productConfig.updateFormField(fieldCode, value);
+};
+const pushProductMessages = async (msgs) => {
+ for (const m of msgs) {
+ messages.value.push(m);
+ if (currentDbSessionId.value) {
+ await saveMessage(currentDbSessionId.value, {
+ role: m.role,
+ content: m.content,
+ reasoning: [],
+ formCard: m.formCard,
+ queryResults: m.queryResults
+ }).catch(() => { });
+ }
+ }
+ scrollToBottom();
+};
+const applyFormCard = (formCard) => {
+ if (!formCard) return;
+ activeFormCard.value = formCard;
+ activeFormMsgId.value = formCard.msgId;
+ currentFormId.value = formCard.formId;
+ currentFormSchema.value = formCard.formSchema;
+ currentFormSubmitted.value = false;
+};
+const handleProductScenario = async (scenario, text) => {
+ if (!props.sessionId) {
+ isCreatingFromHome = true;
+ messages.value.push({ id: genId(), role: 'user', content: text, done: true });
+ emit('create-session-from-home', { text, attachments: [] });
+ return;
+ }
+ await ensureDbSession(props.sessionId);
+ messages.value.push({ id: genId(), role: 'user', content: text, done: true });
+ scrollToBottom();
+ if (currentDbSessionId.value) {
+ await saveMessage(currentDbSessionId.value, { role: 'user', content: text }).catch(() => { });
+ }
+ if (messages.value.filter(m => m.role === 'user').length === 1) {
+ emit('title-update', props.sessionId, text?.slice(0, 20) || '产品配置');
+ }
+ if (scenario === 'query') {
+ const keyword = text.replace(/查询|智查|历史商品/g, '').trim() || '动感地带';
+ const msgs = productConfig.simulateQuery(keyword);
+ await pushProductMessages(msgs);
+ return;
+ }
+ if (scenario === 'chat-generate') {
+ const result = productConfig.generateProductFromChat(text);
+ await pushProductMessages(result.messages);
+ if (result.formCard) applyFormCard(result.formCard);
+ return;
+ }
+ // file-parse 场景由 sendMessage 中单独处理，此处兜底
+ await doSendMessage(text, []);
+};
+const handleFileParseScenario = async (doc) => {
+ if (!props.sessionId) {
+ isCreatingFromHome = true;
+ messages.value.push({ id: genId(), role: 'user', content: `上传了文件：${doc.name}`, done: true });
+ emit('create-session-from-home', { text: `上传了文件：${doc.name}`, attachments: [doc] });
+ return;
+ }
+ await ensureDbSession(props.sessionId);
+ messages.value.push({ id: genId(), role: 'user', content: `上传了文件：${doc.name}`, done: true });
+ scrollToBottom();
+ if (currentDbSessionId.value) {
+ await saveMessage(currentDbSessionId.value, { role: 'user', content: `上传了文件：${doc.name}` }).catch(() => { });
+ }
+ const result = productConfig.simulateFileParse(doc.name, doc.size || 0);
+ await pushProductMessages(result.messages);
+ if (result.formCard) applyFormCard(result.formCard);
+};
+const handleQueryResultClick = async (product) => {
+ const index = mockProducts.findIndex(p => p.id === product.id);
+ if (index < 0) {
+ ElMessage.warning('未找到商品模板');
+ return;
+ }
+ const result = productConfig.prepareProduct(index);
+ if (!result) return;
+ await pushProductMessages(result.messages);
+ if (result.formCard) applyFormCard(result.formCard);
+ ElMessage({ message: `已复制「${product.name}」配置`, type: 'success', duration: 1500, plain: true });
+};
+const handleProductSelect = (id) => {
+ const formCard = productConfig.selectProduct(id);
+ if (formCard) applyFormCard(formCard);
+ productConfig.showProductListPanel.value = false;
+ ElMessage({ message: `已切换到「${productConfig.currentProduct.value?.name || ''}」`, duration: 1500, plain: true });
+};
+const handleProductCopy = (id) => {
+ const newProduct = productConfig.copyProduct(id);
+ if (newProduct) {
+ ElMessage({ message: `已复制为「${newProduct.name}」`, type: 'success', duration: 1500, plain: true });
+ }
+};
+const handleProductDelete = (id) => {
+ const product = productConfig.products.value.find(p => p.id === id);
+ if (!product) return;
+ ElMessageBox.confirm(`确定要删除商品「${product.name}」吗？`, '删除商品', {
+ confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning'
+ }).then(() => {
+ const formCard = productConfig.deleteProduct(id);
+ if (formCard) applyFormCard(formCard);
+ else if (productConfig.currentProductId.value === null) {
+ activeFormCard.value = null;
+ activeFormMsgId.value = '';
+ currentFormId.value = '';
+ currentFormSchema.value = null;
+ }
+ ElMessage({ message: '已删除', type: 'success', duration: 1500, plain: true });
+ }).catch(() => { });
+};
+const clearAuditTimers = () => {
+ auditTimers.value.forEach(t => clearTimeout(t));
+ auditTimers.value = [];
+};
+const handleRunAudit = () => {
+ if (!canRunAudit.value) return;
+ productConfig.saveDraft();
+ productConfig.showAuditPanel.value = true;
+ productConfig.auditPhase.value = 'progress';
+ clearAuditTimers();
+ auditTimers.value.push(setTimeout(() => { productConfig.auditPhase.value = 'results'; }, 6000));
+};
+const handleAuditClose = () => {
+ productConfig.showAuditPanel.value = false;
+ clearAuditTimers();
+};
+const handleAuditComplete = async () => {
+ const productName = productConfig.currentProduct.value?.name || '配置';
+ const successMsg = {
+ id: genId(), role: 'assistant',
+ content: `✅ 「${productName}」智能稽核通过，已成功提交！\n\n商品状态已更新为待审批。`,
+ done: true, type: 'chat'
+ };
+ messages.value.push(successMsg);
+ if (currentDbSessionId.value) {
+ await saveMessage(currentDbSessionId.value, {
+ role: 'assistant',
+ content: successMsg.content,
+ reasoning: []
+ }).catch(() => { });
+ }
+ scrollToBottom();
+ activeFormCard.value = null;
+ activeFormMsgId.value = '';
+ ElMessage({ message: '配置提交成功！', type: 'success', duration: 2000, plain: true });
+};
 onMounted(async () => {
  if (!props.sessionId) {
  currentDbSessionId.value = '';
@@ -775,9 +1010,34 @@ defineExpose({ requestValidation: () => { }, sendMessageAfterSessionCreated });
   display: flex; align-items: center; justify-content: center;
   transition: background var(--transition-fast), color var(--transition-fast);
   flex-shrink: 0;
+  position: relative;
 }
 
 .icon-btn:hover { background: var(--bg-secondary); color: var(--text-secondary); }
+
+.icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.icon-btn:disabled:hover { background: none; color: var(--text-tertiary); }
+
+.product-list-btn .badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  background: #3b82f6;
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.audit-btn:not(:disabled) { color: #f59e0b; }
+.audit-btn:not(:disabled):hover { background: rgba(245, 158, 11, 0.1); color: #d97706; }
 
 /* 响应式适配 */
 @media (max-width: 1024px) {
