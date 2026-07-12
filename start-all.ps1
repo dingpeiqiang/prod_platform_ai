@@ -33,14 +33,25 @@ function Test-PortAvailability {
                  Select-Object -ExpandProperty OwningProcess -Unique
     
     if ($processes) {
-        Write-Error "Port $Port is already in use!"
-        Write-Host ''
-        Write-Status 'Please close the process occupying this port first:'
-        Write-Status "  netstat -ano | findstr :$Port"
-        Write-Status "  taskkill /F /PID <ProcessID>"
-        Write-Host ''
-        Read-Host 'Press Enter to exit'
-        exit 1
+        Write-Warning "Port $Port is already in use, cleaning up..."
+        foreach ($processId in $processes) {
+            Write-Status "  Killing process PID: $processId"
+            try {
+                Stop-Process -Id $processId -Force -ErrorAction Stop
+                Write-Success "  Process $processId terminated"
+            }
+            catch {
+                Write-Error "  Failed to terminate process $processId"
+                Write-Host ''
+                Write-Status 'Please close the process occupying this port manually:'
+                Write-Status "  netstat -ano | findstr :$Port"
+                Write-Status "  taskkill /F /PID <ProcessID>"
+                Write-Host ''
+                Read-Host 'Press Enter to exit'
+                exit 1
+            }
+        }
+        Start-Sleep -Seconds 1
     }
     
     Write-Success "Port $Port available"
