@@ -48,11 +48,11 @@ function Test-PortAvailability {
 
 function Main {
     Write-Host ''
-    Write-Status '╔═══════════════════════════════════════════════════════════╗' -Color Cyan
-    Write-Status '║                                                           ║' -Color Cyan
-    Write-Status '║       AI驱动动态表单底层框架 - 一键启动脚本                 ║' -Color Cyan
-    Write-Status '║                                                           ║' -Color Cyan
-    Write-Status '╚═══════════════════════════════════════════════════════════╝' -Color Cyan
+    Write-Status '=============================================================' -Color Cyan
+    Write-Status '' -Color Cyan
+    Write-Status '       AI Platform - One-click Startup Script' -Color Cyan
+    Write-Status '' -Color Cyan
+    Write-Status '=============================================================' -Color Cyan
     Write-Host ''
     
     Test-PortAvailability -Port $BackendPort
