@@ -30,6 +30,9 @@ class ConfigLoader:
         self.base_path = Path(__file__).parent.parent.parent / "config"
         self._config_cache: Dict[str, Any] = {}
         self._last_modified: Dict[str, float] = {}
+        self._current_data_source_type = 'file'
+        self._db_session_factory = None
+        self._data_source = None
         
         self._load_app_config()
         self._load_recommendations()
@@ -38,7 +41,41 @@ class ConfigLoader:
         self._load_scenes()
     
     def get_current_data_source_type(self) -> str:
-        return 'file'
+        return self._current_data_source_type
+    
+    def set_db_session_factory(self, session_factory):
+        self._db_session_factory = session_factory
+    
+    def switch_data_source(self, source_type):
+        from app.core.data_source import DataSourceType
+        
+        if source_type == DataSourceType.DATABASE:
+            if not self._db_session_factory:
+                raise RuntimeError("[ConfigLoader] 切换到数据库数据源前，必须先调用 set_db_session_factory 设置会话工厂")
+            
+            from app.core.database_data_source import DatabaseDataSource
+            self._data_source = DatabaseDataSource(self._db_session_factory)
+            
+            self._config_cache['ontologies'] = self._data_source.load_ontologies()
+            self._config_cache['scenes'] = self._data_source.load_scenes()
+            self._config_cache['prompts'] = self._data_source.load_prompts()
+            self._config_cache['recommendations'] = self._data_source.load_recommendations()
+            
+            self._current_data_source_type = 'database'
+            logger.info("[ConfigLoader] 数据源已切换为 database")
+        
+        elif source_type == DataSourceType.FILE:
+            self._data_source = None
+            self._load_app_config()
+            self._load_recommendations()
+            self._load_prompts()
+            self._load_ontologies()
+            self._load_scenes()
+            self._current_data_source_type = 'file'
+            logger.info("[ConfigLoader] 数据源已切换为 file")
+        
+        else:
+            raise ValueError(f"[ConfigLoader] 不支持的数据源类型: {source_type}")
     
     def _load_json(self, path: Path) -> Optional[Dict]:
         try:
