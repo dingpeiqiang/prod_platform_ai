@@ -72,14 +72,14 @@ function Clear-Port {
     
     if ($processes) {
         Write-Warning "Port $Port is in use, cleaning up..."
-        foreach ($pid in $processes) {
-            Write-Status "  Killing process PID: $pid"
+        foreach ($processId in $processes) {
+            Write-Status "  Killing process PID: $processId"
             try {
-                Stop-Process -Id $pid -Force -ErrorAction Stop
-                Write-Success "  Process $pid terminated"
+                Stop-Process -Id $processId -Force -ErrorAction Stop
+                Write-Success "  Process $processId terminated"
             }
             catch {
-                Write-Error "  Failed to terminate process $pid, please handle manually"
+                Write-Error "  Failed to terminate process $processId, please handle manually"
                 Read-Host 'Press Enter to exit'
                 exit 1
             }
