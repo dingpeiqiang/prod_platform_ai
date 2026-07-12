@@ -1,222 +1,124 @@
 <template>
-  <div class="messages-area" ref="messagesEl">
+  <div class="messages-container" ref="messagesEl">
+    <!-- 欢迎状态 -->
+    <WelcomeCards 
+      v-if="showWelcome"
+      @suggest="handleSuggest"
+    />
 
-    <div class="messages-list">
+    <!-- 消息列表 -->
+    <div v-else class="messages-list">
       <div
         v-for="(msg, idx) in messages"
         :key="msg.id"
-        :class="['msg-row', msg.role]"
+        :class="['message-wrapper', msg.role]"
       >
-        <div v-if="msg.role === 'assistant'" class="avatar ai-avatar">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/>
-            <circle cx="12" cy="12" r="6"/>
-            <circle cx="12" cy="12" r="2"/>
-            <path d="M12 6a6 6 0 0 1 4 1.5"/>
-            <path d="M12 6a6 6 0 0 0-4 1.5"/>
-            <path d="M12 18a6 6 0 0 1 4-1.5"/>
-            <path d="M12 18a6 6 0 0 0-4-1.5"/>
-            <path d="M6 12a6 6 0 0 1 1.5 4"/>
-            <path d="M6 12a6 6 0 0 0 1.5-4"/>
-            <path d="M18 12a6 6 0 0 1-1.5 4"/>
-            <path d="M18 12a6 6 0 0 0-1.5-4"/>
-            <circle cx="7.5" cy="8.5" r="1"/>
-            <circle cx="16.5" cy="8.5" r="1"/>
-            <circle cx="7.5" cy="15.5" r="1"/>
-            <circle cx="16.5" cy="15.5" r="1"/>
-          </svg>
-        </div>
-
-        <div class="msg-body">
-          <div v-if="msg.role === 'user'" class="user-message-content">
-            <div v-if="msg.content" class="bubble user-bubble">
-              {{ msg.content }}
-              <button class="copy-btn" @click="copyText(msg.content)" title="复制">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                </svg>
-              </button>
-            </div>
-            
-            <div v-if="msg.attachments && msg.attachments.length" class="attachments-container">
-              <div 
-                v-for="(attachment, aidx) in msg.attachments" 
-                :key="aidx"
-                :class="['attachment-item', 'attachment-' + attachment.type]"
-              >
-                <div v-if="attachment.type === 'image'" class="image-attachment">
-                  <img :src="attachment.preview || attachment.url" :alt="attachment.name" />
-                  <div class="image-info">
-                    <span>{{ attachment.name }}</span>
-                    <span>{{ formatFileSize(attachment.size) }}</span>
-                  </div>
-                </div>
-                
-                <div v-else-if="attachment.type === 'file'" class="file-attachment">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                    <line x1="16" y1="13" x2="8" y2="13"/>
-                    <line x1="16" y1="17" x2="8" y2="17"/>
-                    <polyline points="10 9 9 9 8 9"/>
-                  </svg>
-                  <div class="file-info">
-                    <span class="file-name">{{ attachment.name }}</span>
-                    <span class="file-size">{{ formatFileSize(attachment.size) }}</span>
-                  </div>
-                </div>
-                
-                <div v-else-if="attachment.type === 'voice'" class="voice-attachment">
-                  <div class="voice-wave" :class="{ playing: playingVoiceId === attachment.name }">
-                    <span v-for="i in 20" :key="i" class="wave-bar" :style="{ animationDelay: i * 0.1 + 's' }"></span>
-                  </div>
-                  <button 
-                    class="voice-play-btn" 
-                    @click="toggleVoicePlay(attachment)"
-                    :class="{ playing: playingVoiceId === attachment.name }"
-                  >
-                    <svg v-if="playingVoiceId !== attachment.name" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <polygon points="5 3 19 12 5 21 5 3"/>
-                    </svg>
-                    <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="6" y="4" width="4" height="16"/>
-                      <rect x="14" y="4" width="4" height="16"/>
-                    </svg>
-                  </button>
-                  <span class="voice-duration">{{ attachment.duration || '00:00' }}</span>
-                </div>
-              </div>
+        <!-- AI 消息 -->
+        <template v-if="msg.role === 'assistant'">
+          <!-- AI 头像 -->
+          <div class="avatar ai-avatar">
+            <div class="avatar-inner">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <circle cx="12" cy="12" r="6"/>
+                <circle cx="12" cy="12" r="2"/>
+              </svg>
             </div>
           </div>
 
-          <div v-else class="ai-message">
-            <div v-if="msg.reasoning && msg.reasoning.length" class="reasoning-wrap">
+          <!-- AI 消息内容 -->
+          <div class="message-content">
+            <!-- 头部：AI 标识 + 时间 -->
+            <div class="message-header">
+              <span class="ai-label">AI 助手</span>
+              <span class="message-time">{{ formatTime(msg.timestamp) }}</span>
+            </div>
+
+            <!-- 推理过程（折叠面板） -->
+            <div v-if="msg.reasoning && msg.reasoning.length" class="reasoning-panel">
               <button class="reasoning-toggle" @click="toggleReasoning(idx)">
-                <svg
-                  v-if="!msg.done"
-                  class="loading-icon"
-                  width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                >
-                  <circle class="loading-ring" cx="12" cy="12" r="10" stroke-linecap="round"/>
-                </svg>
-                <svg
-                  v-else
-                  :style="{ transform: msg.showReasoning ? 'rotate(90deg)' : 'rotate(0deg)' }"
-                  width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                  style="transition:transform .2s"
+                <svg 
+                  class="toggle-icon" 
+                  :class="{ expanded: msg.showReasoning }"
+                  width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                 >
                   <polyline points="9 18 15 12 9 6"/>
                 </svg>
-                <span class="reasoning-label">
-                  🔄 处理步骤
-                  <span class="reasoning-count">({{ msg.reasoning.length }} 步)</span>
-                </span>
-                <span v-if="!msg.done" class="thinking-dots"><span/><span/><span/></span>
+                <span class="reasoning-title">思考过程</span>
+                <span class="reasoning-count">({{ msg.reasoning.length }} 步)</span>
               </button>
-              <transition name="collapse">
-                <div v-if="msg.showReasoning" class="reasoning-body">
-                  <div
-                    v-for="(step, si) in msg.reasoning"
-                    :key="si"
-                    :class="['reasoning-step', 'step-' + step.type, { 'step-latest': si === msg.latestStepIndex && !msg.done }]"
-                  >
-                    <div class="step-content">
-                      <span class="step-icon">{{ stepIcon(step.type) }}</span>
-                      <div class="step-main">
-                        <span class="step-text">{{ step.content }}</span>
-                      </div>
-                      <span v-if="si === msg.latestStepIndex && !msg.done" class="step-loading">
-                        <span/><span/><span/>
-                      </span>
-                    </div>
-                    <div v-if="step.reasoning" class="step-reasoning-inline">
-                      <span class="step-reasoning-toggle" @click="step._showReasoning = !step._showReasoning">
-                        <svg
-                          :style="{ transform: step._showReasoning ? 'rotate(90deg)' : 'rotate(0deg)' }"
-                          width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                          style="transition:transform .2s;vertical-align:middle"
-                        ><polyline points="9 18 15 12 9 6"/></svg>
-                        模型思考 ({{ step.reasoning.length }} 字)
-                      </span>
-                      <transition name="collapse">
-                        <div v-if="step._showReasoning" class="step-reasoning-body">
-                          <pre class="step-reasoning-text">{{ step.reasoning }}</pre>
-                        </div>
-                      </transition>
-                    </div>
-                  </div>
-                </div>
-              </transition>
-            </div>
-
-            <div v-if="msg.streamText || msg.content || msg.loading" class="bubble ai-bubble">
-              <div
-                v-if="msg.streamText || msg.content"
-                class="ai-text"
-                :class="{ 'loading-text': msg.loading }"
-                v-html="renderMarkdown(msg.streamText || msg.content)"
-              />
-            </div>
-            
-            <div v-if="msg.attachments && msg.attachments.length" class="attachments-container ai-attachments">
-              <div 
-                v-for="(attachment, aidx) in msg.attachments" 
-                :key="aidx"
-                :class="['attachment-item', 'attachment-' + attachment.type]"
-              >
-                <div v-if="attachment.type === 'image'" class="image-attachment">
-                  <img :src="attachment.preview || attachment.url" :alt="attachment.name" />
-                  <div class="image-info">
-                    <span>{{ attachment.name }}</span>
-                    <span>{{ formatFileSize(attachment.size) }}</span>
-                  </div>
-                </div>
-                
-                <div v-else-if="attachment.type === 'file'" class="file-attachment">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                    <line x1="16" y1="13" x2="8" y2="13"/>
-                    <line x1="16" y1="17" x2="8" y2="17"/>
-                    <polyline points="10 9 9 9 8 9"/>
-                  </svg>
-                  <div class="file-info">
-                    <span class="file-name">{{ attachment.name }}</span>
-                    <span class="file-size">{{ formatFileSize(attachment.size) }}</span>
-                  </div>
-                </div>
-                
-                <div v-else-if="attachment.type === 'voice'" class="voice-attachment">
-                  <div class="voice-wave" :class="{ playing: playingVoiceId === attachment.name }">
-                    <span v-for="i in 20" :key="i" class="wave-bar" :style="{ animationDelay: i * 0.1 + 's' }"></span>
-                  </div>
-                  <button 
-                    class="voice-play-btn" 
-                    @click="toggleVoicePlay(attachment)"
-                    :class="{ playing: playingVoiceId === attachment.name }"
-                  >
-                    <svg v-if="playingVoiceId !== attachment.name" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <polygon points="5 3 19 12 5 21 5 3"/>
-                    </svg>
-                    <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <rect x="6" y="4" width="4" height="16"/>
-                      <rect x="14" y="4" width="4" height="16"/>
-                    </svg>
-                  </button>
-                  <span class="voice-duration">{{ attachment.duration || '00:00' }}</span>
+              <div v-show="msg.showReasoning" class="reasoning-body">
+                <div
+                  v-for="(step, si) in msg.reasoning"
+                  :key="si"
+                  class="reasoning-step"
+                >
+                  <span class="step-number">{{ si + 1 }}</span>
+                  <span class="step-text">{{ step.content }}</span>
                 </div>
               </div>
             </div>
-            
-            <div v-if="msg.loading" class="loading-indicator">
-              <span class="loading-dot"/><span class="loading-dot"/><span class="loading-dot"/>
-            </div>
-            <span v-if="!msg.done && (msg.streamText || !msg.reasoning?.length)" class="cursor-blink">▌</span>
 
-            <div v-if="!msg.done && !msg.streamText && !msg.reasoning?.length" class="dots-loading">
-              <span/><span/><span/>
+            <!-- 正文内容 -->
+            <div class="message-bubble ai-bubble">
+              <div 
+                v-if="msg.streamText || msg.content" 
+                class="message-text"
+                v-html="renderMarkdown(msg.streamText || msg.content)"
+              />
+              <!-- 加载状态 -->
+              <div v-if="msg.loading" class="typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
             </div>
 
+            <!-- 附件展示 -->
+            <div v-if="msg.attachments?.length" class="attachments-container">
+              <div 
+                v-for="(attachment, aidx) in msg.attachments" 
+                :key="aidx"
+                class="attachment-item"
+              >
+                <img v-if="attachment.type === 'image'" :src="attachment.preview || attachment.url" />
+                <div v-else class="file-preview">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                  <span>{{ attachment.name }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 底部工具栏 -->
+            <div v-if="msg.done && (msg.streamText || msg.content)" class="message-actions">
+              <button class="action-btn" @click="handleFeedback(msg, 'like')" title="赞同">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+                </svg>
+              </button>
+              <button class="action-btn" @click="handleFeedback(msg, 'dislike')" title="不赞同">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"/>
+                </svg>
+              </button>
+              <button class="action-btn" @click="copyText(msg.streamText || msg.content)" title="复制">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2"/>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+              </button>
+              <button class="action-btn" @click="$emit('regenerate', msg)" title="重新生成">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="23 4 23 10 17 10"/>
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                </svg>
+              </button>
+            </div>
+
+            <!-- Intent Panel -->
             <IntentPanel
               v-for="intentType in intentPanelTypes"
               :key="intentType"
@@ -225,706 +127,772 @@
               @intent-action="$emit('intent-action', $event)"
             />
 
+            <!-- 表单卡片 -->
             <div v-if="msg.formCard" class="form-card" @click="$emit('form-card-click', msg)">
               <div class="form-card-header">
                 <div class="form-card-icon">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                     <polyline points="14 2 14 8 20 8"/>
-                    <line x1="16" y1="13" x2="8" y2="13"/>
-                    <line x1="16" y1="17" x2="8" y2="17"/>
-                    <polyline points="10 9 9 9 8 9"/>
                   </svg>
                 </div>
                 <div class="form-card-info">
                   <div class="form-card-name">{{ msg.formCard.formName }}</div>
                   <div class="form-card-meta">
-                    <span class="form-card-code">{{ msg.formCard.formCode }}</span>
-                    <span class="form-card-sep">·</span>
                     <span>{{ msg.formCard.fieldCount }} 个字段</span>
-                    <span class="form-card-sep">·</span>
+                    <span class="dot">·</span>
                     <span>{{ formatTime(msg.formCard.createdAt) }}</span>
                   </div>
                 </div>
-                <div class="form-card-status" :class="'status-' + msg.formCard.status">
-                  <span class="status-dot"></span>
-                  <span class="status-text">{{ getFormStatusText(msg.formCard.status) }}</span>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- 用户消息 -->
+        <template v-else>
+          <div class="message-content user-content">
+            <div class="message-bubble user-bubble">
+              <div v-if="msg.content" class="message-text">{{ msg.content }}</div>
+              
+              <!-- 用户附件 -->
+              <div v-if="msg.attachments?.length" class="user-attachments">
+                <div 
+                  v-for="(attachment, aidx) in msg.attachments" 
+                  :key="aidx"
+                  class="user-attachment-item"
+                >
+                  <img v-if="attachment.type === 'image'" :src="attachment.preview || attachment.url" />
+                  <div v-else-if="attachment.type === 'voice'" class="voice-preview">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                    </svg>
+                    <span>{{ attachment.duration || '00:00' }}</span>
+                  </div>
+                  <div v-else class="file-preview">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    </svg>
+                    <span>{{ attachment.name }}</span>
+                  </div>
                 </div>
               </div>
             </div>
-
-            <div v-if="msg.done && (msg.streamText || msg.content)" class="msg-actions">
-              <button class="action-btn" @click="copyText(msg.streamText || msg.content)" title="复制">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                </svg>
-              </button>
+          </div>
+          
+          <!-- 用户头像 -->
+          <div class="avatar user-avatar">
+            <div class="avatar-inner">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="8" r="4"/>
+                <path d="M20 21a8 8 0 1 0-16 0"/>
+              </svg>
             </div>
           </div>
-        </div>
-
-        <div v-if="msg.role === 'user'" class="avatar user-avatar">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/>
-          </svg>
-        </div>
+        </template>
       </div>
-      <div style="height: 24px"/>
     </div>
   </div>
 </template>
 
-<script setup>import { ref, nextTick, onMounted, onUnmounted } from 'vue';
-import { ElMessage } from 'element-plus';
-import IntentPanel from './intent-panels/IntentPanel.vue';
-import { stepIcon, renderMarkdown, formatTime, getFormStatusText } from '../utils/chatUtils.js';
-import { listIntentPanels } from '../composables/useIntentRegistry.js';
+<script setup>
+import { ref, nextTick, onMounted, onUnmounted, computed } from 'vue'
+import { ElMessage } from 'element-plus'
+import WelcomeCards from './WelcomeCards.vue'
+import IntentPanel from './intent-panels/IntentPanel.vue'
+import { renderMarkdown } from '../utils/chatUtils.js'
+import { listIntentPanels } from '../composables/useIntentRegistry.js'
+
 const props = defineProps({
- messages: { type: Array, required: true }
-});
-const emit = defineEmits(['form-card-click', 'intent-action']);
-const messagesEl = ref(null);
-const intentPanelTypes = listIntentPanels();
-const playingVoiceId = ref(null);
-let audioPlayer = null;
+  messages: { type: Array, required: true },
+  showWelcome: { type: Boolean, default: false }
+})
+
+const emit = defineEmits(['form-card-click', 'intent-action', 'regenerate', 'suggest'])
+
+const messagesEl = ref(null)
+const intentPanelTypes = listIntentPanels()
+
+const showWelcome = computed(() => props.showWelcome || props.messages.length === 0)
+
+const formatTime = (timestamp) => {
+  if (!timestamp) return ''
+  const date = new Date(timestamp)
+  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
+const handleSuggest = (content) => {
+  emit('suggest', content)
+}
+
 const scrollToBottom = (smooth = false) => {
- nextTick(() => {
- if (messagesEl.value) {
- messagesEl.value.scrollTo({
- top: messagesEl.value.scrollHeight,
- behavior: smooth ? 'smooth' : 'auto'
- });
- }
- });
-};
+  nextTick(() => {
+    if (messagesEl.value) {
+      messagesEl.value.scrollTo({
+        top: messagesEl.value.scrollHeight,
+        behavior: smooth ? 'smooth' : 'auto'
+      })
+    }
+  })
+}
+
 const toggleReasoning = (idx) => {
- props.messages[idx].showReasoning = !props.messages[idx].showReasoning;
-};
+  props.messages[idx].showReasoning = !props.messages[idx].showReasoning
+}
+
 const copyText = async (text) => {
- try {
- await navigator.clipboard.writeText(text);
- ElMessage({ message: '已复制', type: 'success', duration: 1500, plain: true });
- }
- catch {
- ElMessage.error('复制失败');
- }
-};
-const formatFileSize = (bytes) => {
- if (!bytes) return '0 B';
- const k = 1024;
- const sizes = ['B', 'KB', 'MB', 'GB'];
- const i = Math.floor(Math.log(bytes) / Math.log(k));
- return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-};
-const toggleVoicePlay = async (attachment) => {
- if (playingVoiceId.value === attachment.name) {
- if (audioPlayer) {
- audioPlayer.pause();
- audioPlayer = null;
- }
- playingVoiceId.value = null;
- return;
- }
- if (audioPlayer) {
- audioPlayer.pause();
- }
- playingVoiceId.value = attachment.name;
- try {
- audioPlayer = new Audio(attachment.url);
- audioPlayer.onended = () => {
- playingVoiceId.value = null;
- audioPlayer = null;
- };
- audioPlayer.onerror = () => {
- playingVoiceId.value = null;
- audioPlayer = null;
- ElMessage.error('播放失败');
- };
- await audioPlayer.play();
- } catch (error) {
- console.error('音频播放失败:', error);
- playingVoiceId.value = null;
- ElMessage.error('播放失败');
- }
-};
+  try {
+    await navigator.clipboard.writeText(text.replace(/<[^>]*>/g, ''))
+    ElMessage({ message: '已复制', type: 'success', duration: 1500 })
+  } catch {
+    ElMessage.error('复制失败')
+  }
+}
+
+const handleFeedback = (msg, type) => {
+  ElMessage({ message: type === 'like' ? '感谢反馈' : '我们会继续改进', type: 'success', duration: 1500 })
+}
+
 onMounted(() => {
- scrollToBottom();
-});
-onUnmounted(() => {
- if (audioPlayer) {
- audioPlayer.pause();
- audioPlayer = null;
- }
-});
-defineExpose({ scrollToBottom });
+  scrollToBottom()
+})
+
+defineExpose({ scrollToBottom })
 </script>
 
 <style scoped>
-.messages-area {
+.messages-container {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   overflow-y: auto;
+  overflow-x: hidden;
+  padding: 24px 0;
   min-height: 0;
 }
 
-.messages-area::-webkit-scrollbar { width: 6px; }
-.messages-area::-webkit-scrollbar-track { background: transparent; }
-.messages-area::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
-.messages-area::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+.messages-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.messages-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.messages-container::-webkit-scrollbar-thumb {
+  background: var(--border-light);
+  border-radius: 3px;
+}
 
 .messages-list {
-  padding: var(--space-5) 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  max-width: 780px;
-  margin: 0 auto;
+  gap: 24px;
+  margin: 0;
+  padding: 0 24px;
   width: 100%;
-  padding-left: var(--space-6);
-  padding-right: var(--space-6);
 }
 
-.msg-row {
+/* 消息包装器 */
+.message-wrapper {
   display: flex;
+  gap: 12px;
   align-items: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-1) 0;
-}
-
-.msg-row.user {
-  justify-content: flex-end;
-}
-
-.msg-row.user .msg-body {
-  flex: none;
-  max-width: 85%;
-}
-
-.avatar {
-  width: 32px; height: 32px;
-  border-radius: var(--radius-lg);
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.ai-avatar {
-  background: linear-gradient(135deg, var(--color-primary-400), var(--color-primary-500));
-  color: var(--text-inverse);
-}
-
-.user-avatar {
-  background: var(--color-primary-100);
-  color: var(--color-primary-600);
-}
-
-.msg-body { flex: 1; min-width: 0; }
-
-.user-message-content {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.bubble.user-bubble {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  max-width: 100%;
-  background: var(--bg-user-bubble);
-  color: var(--text-primary);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-xl) 4px var(--radius-xl) var(--radius-xl);
-  font-size: var(--font-size-sm);
-  line-height: 1.7;
-  white-space: pre-wrap;
-  word-break: break-word;
-  box-shadow: var(--shadow-sm);
-
-  .copy-btn {
-    flex-shrink: 0;
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.2s, visibility 0.2s;
-    background: rgba(0,0,0,0.08);
-    border: none;
-    color: var(--text-tertiary);
-    cursor: pointer;
-    padding: 4px;
-    border-radius: var(--radius-sm);
-
-    &:hover {
-      color: var(--text-primary);
-      background: rgba(0,0,0,0.12);
-    }
-  }
-
-  &:hover .copy-btn {
-    opacity: 1;
-    visibility: visible;
-  }
-}
-
-.attachments-container {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-}
-
-.attachments-container.ai-attachments {
-  margin-top: var(--space-3);
-}
-
-.attachment-item {
-  flex-shrink: 0;
-}
-
-.image-attachment {
-  max-width: 200px;
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  box-shadow: var(--shadow-sm);
-}
-
-.image-attachment img {
   width: 100%;
-  height: auto;
-  display: block;
 }
 
-.image-info {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 12px;
-  background: var(--bg-secondary);
-  font-size: var(--font-size-xs);
-  color: var(--text-tertiary);
+.message-wrapper.assistant {
+  justify-content: flex-start;
 }
 
-.file-attachment {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  background: var(--bg-secondary);
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  min-width: 180px;
+.message-wrapper.user {
+  justify-content: flex-end;
+  flex-direction: row-reverse;
 }
 
-.file-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.file-name {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-}
-
-.file-size {
-  font-size: var(--font-size-xs);
-  color: var(--text-tertiary);
-}
-
-.voice-attachment {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  background: var(--bg-secondary);
-  border-radius: var(--radius-lg);
-  min-width: 200px;
-}
-
-.voice-wave {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  height: 32px;
-}
-
-.wave-bar {
-  width: 3px;
-  height: 8px;
-  background: var(--color-primary-300);
-  border-radius: 2px;
-  transition: height 0.1s;
-}
-
-.voice-wave.playing .wave-bar {
-  animation: waveAnimate 0.5s ease-in-out infinite;
-}
-
-@keyframes waveAnimate {
-  0%, 100% { height: 8px; }
-  50% { height: 24px; }
-}
-
-.voice-play-btn {
+/* 头像 */
+.avatar {
+  flex-shrink: 0;
   width: 36px;
   height: 36px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-primary-500);
-  border: none;
+}
+
+.avatar-inner {
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
-  color: var(--text-inverse);
-  cursor: pointer;
-  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.voice-play-btn:hover {
-  background: var(--color-primary-600);
+.ai-avatar .avatar-inner {
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  color: white;
 }
 
-.voice-play-btn.playing {
-  background: var(--color-error-500);
+.user-avatar .avatar-inner {
+  background: #e0e7ff;
+  color: #4f46e5;
 }
 
-.voice-duration {
-  font-size: var(--font-size-xs);
+/* 消息内容区 */
+.message-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 70%;
+  flex-shrink: 1;
+}
+
+.message-content.user-content {
+  align-items: flex-end;
+}
+
+/* 消息头部 */
+.message-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.ai-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.message-time {
+  font-size: 12px;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
 }
 
-.ai-message {
-  max-width: 90%;
+/* 消息气泡 */
+.message-bubble {
+  padding: 14px 18px;
+  border-radius: 18px;
+  font-size: 15px;
+  line-height: 1.7;
+  word-break: break-word;
 }
 
-.reasoning-wrap {
-  margin-bottom: var(--space-2-5);
-  background: var(--bg-reasoning);
-  border: 1px solid rgba(99, 102, 241, 0.15);
-  border-radius: var(--radius-lg);
+.ai-bubble {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-light);
+  border-bottom-left-radius: 4px;
+}
+
+.user-bubble {
+  background: #3b82f6;
+  color: white;
+  border-bottom-right-radius: 4px;
+}
+
+.user-bubble .message-text {
+  white-space: pre-wrap;
+}
+
+/* 推理面板 */
+.reasoning-panel {
+  background: rgba(59, 130, 246, 0.05);
+  border: 1px solid rgba(59, 130, 246, 0.1);
+  border-radius: 12px;
   overflow: hidden;
 }
 
 .reasoning-toggle {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
-  padding: 10px var(--space-3-5);
-  background: none; border: none;
+  padding: 10px 14px;
+  background: none;
+  border: none;
   cursor: pointer;
-  color: var(--color-primary-700);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+  color: #3b82f6;
+  font-size: 13px;
+  font-weight: 500;
   text-align: left;
+  transition: background 0.2s;
 }
 
-.reasoning-toggle:hover { background: rgba(99,102,241,.06); }
-.reasoning-label { flex: 1; display: flex; align-items: center; gap: 4px; }
-.reasoning-count { color: var(--color-primary-300); font-size: var(--font-size-xs); }
-
-.thinking-dots span { animation: dotPulse 1.2s infinite; }
-.thinking-dots span:nth-child(2) { animation-delay: .2s; }
-.thinking-dots span:nth-child(3) { animation-delay: .4s; }
-
-.loading-icon {
-  animation: spin 1s linear infinite;
+.reasoning-toggle:hover {
+  background: rgba(59, 130, 246, 0.05);
 }
 
-.loading-ring {
-  stroke-dasharray: 50;
-  stroke-dashoffset: 10;
+.toggle-icon {
+  transition: transform 0.2s;
+}
+
+.toggle-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.reasoning-title {
+  flex: 1;
+}
+
+.reasoning-count {
+  color: #93c5fd;
+  font-size: 12px;
 }
 
 .reasoning-body {
-  padding: var(--space-1) var(--space-3-5) var(--space-3-5);
-  border-top: 1px solid var(--color-primary-100);
+  padding: 0 14px 12px;
 }
 
 .reasoning-step {
-  padding: var(--space-2) 0;
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-
-  &:not(:last-child) { border-bottom: 1px dashed var(--color-primary-100); }
-}
-
-.step-content {
   display: flex;
   align-items: flex-start;
-  gap: var(--space-2);
+  gap: 10px;
+  padding: 8px 0;
+  font-size: 13px;
+  color: var(--text-secondary);
 }
 
-.step-icon {
-  width: 20px; height: 20px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-secondary);
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-  font-size: 10px;
+.reasoning-step:not(:last-child) {
+  border-bottom: 1px dashed rgba(59, 130, 246, 0.1);
 }
 
-.step-text { flex: 1; line-height: 1.5; }
-.step-main { flex: 1; }
-
-.step-result {
-  margin-top: var(--space-1);
-  padding: var(--space-2);
-  background: rgba(99, 102, 241, 0.05);
-  border: 1px solid var(--color-primary-100);
-  border-radius: var(--radius-md);
-  font-size: 11px;
-}
-
-.step-result-text {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-all;
-  color: var(--color-primary-700);
-  line-height: 1.4;
-}
-
-.step-loading span {
-  display: inline-block;
-  width: 4px; height: 4px;
+.step-number {
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
-  background: var(--color-primary-400);
-  animation: dotPulse 1.2s infinite;
-  margin-right: 2px;
+  background: #3b82f6;
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
-.step-loading span:nth-child(2) { animation-delay: .2s; }
-.step-loading span:nth-child(3) { animation-delay: .4s; }
-
-.step-reasoning-inline {
-  margin-top: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border-top: 1px dashed var(--border-light);
-  background: rgba(99, 102, 241, 0.03);
-  border-radius: var(--radius-sm);
+.step-text {
+  flex: 1;
+  line-height: 1.5;
 }
 
-.step-reasoning-toggle {
+/* 打字指示器 */
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3b82f6;
+  animation: typing 1.4s infinite ease-in-out both;
+}
+
+.typing-indicator span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes typing {
+  0%, 80%, 100% {
+    transform: scale(0.6);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* 附件 */
+.attachments-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.attachment-item {
+  max-width: 200px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border-light);
+}
+
+.attachment-item img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.file-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-tertiary);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* 用户附件 */
+.user-attachments {
+  margin-top: 8px;
+}
+
+.user-attachment-item {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--font-size-xs);
-  color: var(--text-tertiary);
-  cursor: pointer;
-  white-space: nowrap;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  font-size: 13px;
 }
 
-.step-reasoning-body {
-  margin-top: var(--space-2);
-  padding: var(--space-2);
-  background: var(--bg-primary);
-  border-radius: var(--radius-md);
+.user-attachment-item img {
+  max-width: 180px;
+  max-height: 120px;
+  border-radius: 6px;
 }
 
-.step-reasoning-text {
-  margin: 0;
-  padding: 0;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-  white-space: pre-wrap;
-  word-break: break-all;
+.voice-preview {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.ai-text {
-  font-size: var(--font-size-sm);
-  line-height: 1.7;
-  color: var(--text-primary);
-  word-break: break-word;
-  white-space: pre-wrap;
-}
-
-.ai-text.loading-text {
-  min-height: 0;
-}
-
-.bubble.ai-bubble {
-  background: var(--bg-ai-bubble);
-  color: var(--text-primary);
-  padding: var(--space-2) var(--space-3);
-  border-radius: 4px var(--radius-xl) var(--radius-xl) var(--radius-xl);
-  font-size: var(--font-size-sm);
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
-  border: 1px solid var(--border-default);
-}
-
-.loading-indicator {
+/* 消息操作栏 */
+.message-actions {
   display: flex;
   gap: 4px;
-  padding: var(--space-2) 0;
+  padding: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
 }
 
-.loading-dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: var(--color-primary-400);
-  animation: dotPulse 1.2s infinite;
+.message-wrapper.assistant:hover .message-actions {
+  opacity: 1;
 }
 
-.loading-dot:nth-child(2) { animation-delay: .2s; }
-.loading-dot:nth-child(3) { animation-delay: .4s; }
-
-.cursor-blink {
-  display: inline-block;
-  animation: blink 1s infinite;
-  color: var(--color-primary-400);
-}
-
-.dots-loading {
+.action-btn {
+  width: 28px;
+  height: 28px;
   display: flex;
-  gap: 6px;
-  padding: var(--space-3) 0;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
-.dots-loading span {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: var(--color-primary-300);
-  animation: dotPulse 1.2s infinite;
+.action-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
 }
 
-.dots-loading span:nth-child(2) { animation-delay: .2s; }
-.dots-loading span:nth-child(3) { animation-delay: .4s; }
-
-@keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
-}
-
-@keyframes dotPulse {
-  0%, 60%, 100% { opacity: 0.4; transform: scale(1); }
-  30% { opacity: 1; transform: scale(1.1); }
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
+/* 表单卡片 */
 .form-card {
-  margin-top: var(--space-3);
-  padding: var(--space-4);
+  margin-top: 12px;
+  padding: 16px;
   background: var(--bg-primary);
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-lg);
+  border-radius: 12px;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all 0.2s;
 }
 
 .form-card:hover {
-  border-color: var(--color-primary-300);
-  box-shadow: 0 2px 12px rgba(99,102,241,.08);
+  border-color: #3b82f6;
+  box-shadow: 0 2px 12px rgba(59, 130, 246, 0.1);
 }
 
 .form-card-header {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 12px;
 }
 
 .form-card-icon {
-  width: 44px; height: 44px;
-  border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--color-primary-50), var(--color-primary-100));
-  display: flex; align-items: center; justify-content: center;
-  color: var(--color-primary-600);
-  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #3b82f6;
 }
 
-.form-card-info { flex: 1; min-width: 0; }
+.form-card-info {
+  flex: 1;
+}
+
 .form-card-name {
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
+  font-size: 15px;
+  font-weight: 600;
   color: var(--text-primary);
-  margin-bottom: 2px;
+  margin-bottom: 4px;
 }
 
 .form-card-meta {
   display: flex;
   align-items: center;
-  gap: var(--space-1-5);
-  font-size: var(--font-size-xs);
+  gap: 8px;
+  font-size: 13px;
   color: var(--text-tertiary);
 }
 
-.form-card-code {
-  padding: 2px 8px;
-  background: var(--bg-secondary);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
+.form-card-meta .dot {
+  color: var(--border-default);
 }
 
-.form-card-sep { color: var(--border-default); }
+/* 深色模式适配 */
+@media (prefers-color-scheme: dark) {
+  .user-bubble {
+    background: #3b82f6;
+  }
 
-.form-card-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: var(--radius-full);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
+  .ai-bubble {
+    background: var(--bg-tertiary);
+    border-color: var(--border-default);
+  }
 }
 
-.form-card-status.status-filling {
-  background: var(--color-primary-50);
-  color: var(--color-primary-700);
+/* 响应式 */
+@media (max-width: 1024px) {
+  .messages-container {
+    padding: 16px 0;
+  }
+
+  .messages-list {
+    padding: 0 20px;
+  }
+
+  .message-content {
+    max-width: 75%;
+  }
 }
 
-.form-card-status.status-submitted {
-  background: var(--color-success-50);
-  color: var(--color-success-700);
+@media (max-width: 768px) {
+  .messages-container {
+    padding: 12px 0;
+  }
+
+  .messages-list {
+    padding: 0 12px;
+    gap: 16px;
+  }
+
+  .message-wrapper {
+    gap: 8px;
+  }
+
+  .avatar {
+    width: 32px;
+    height: 32px;
+  }
+
+  .message-content {
+    max-width: 85%;
+  }
+
+  .message-header {
+    padding: 0 2px;
+  }
+
+  .ai-label {
+    font-size: 12px;
+  }
+
+  .message-time {
+    font-size: 11px;
+  }
+
+  .message-bubble {
+    padding: 10px 12px;
+    font-size: 14px;
+    line-height: 1.6;
+    border-radius: 14px;
+  }
+
+  .ai-bubble {
+    border-bottom-left-radius: 3px;
+  }
+
+  .user-bubble {
+    border-bottom-right-radius: 3px;
+  }
+
+  .reasoning-panel {
+    border-radius: 10px;
+  }
+
+  .reasoning-toggle {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  .reasoning-body {
+    padding: 0 12px 10px;
+  }
+
+  .reasoning-step {
+    padding: 6px 0;
+    font-size: 12px;
+    gap: 8px;
+  }
+
+  .step-number {
+    width: 16px;
+    height: 16px;
+    font-size: 10px;
+  }
+
+  .message-actions {
+    opacity: 1;
+    padding: 2px;
+  }
+
+  .action-btn {
+    width: 26px;
+    height: 26px;
+  }
+
+  .form-card {
+    padding: 12px;
+    border-radius: 10px;
+  }
+
+  .form-card-icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .form-card-name {
+    font-size: 14px;
+  }
+
+  .form-card-meta {
+    font-size: 12px;
+  }
+
+  .attachment-item {
+    max-width: 150px;
+  }
+
+  .user-attachment-item img {
+    max-width: 140px;
+    max-height: 100px;
+  }
 }
 
-.form-card-status.status-cancelled {
-  background: var(--color-gray-50);
-  color: var(--text-tertiary);
+@media (max-width: 480px) {
+  .messages-container {
+    padding: 8px 0;
+  }
+
+  .messages-list {
+    padding: 0 10px;
+    gap: 12px;
+  }
+
+  .message-wrapper {
+    gap: 6px;
+  }
+
+  .avatar {
+    width: 28px;
+    height: 28px;
+  }
+
+  .avatar-inner svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .message-content {
+    max-width: 90%;
+  }
+
+  .message-bubble {
+    padding: 8px 10px;
+    font-size: 13px;
+    border-radius: 12px;
+  }
+
+  .reasoning-toggle {
+    padding: 6px 10px;
+  }
+
+  .reasoning-body {
+    padding: 0 10px 8px;
+  }
+
+  .attachment-item {
+    max-width: 120px;
+  }
+
+  .user-attachment-item img {
+    max-width: 120px;
+    max-height: 80px;
+  }
 }
 
-.status-dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
+/* 移动端触摸优化 */
+@media (pointer: coarse) {
+  .message-actions {
+    opacity: 1;
+  }
+
+  .action-btn {
+    min-width: 32px;
+    min-height: 32px;
+  }
+
+  .form-card {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .reasoning-toggle {
+    min-height: 40px;
+  }
 }
 
-.status-filling .status-dot { background: var(--color-primary-500); }
-.status-submitted .status-dot { background: var(--color-success-500); }
-.status-cancelled .status-dot { background: var(--border-default); }
-
-.msg-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-1);
-  margin-top: var(--space-1);
+/* 平板横屏优化 */
+@media (min-width: 769px) and (max-width: 1024px) and (orientation: landscape) {
+  .message-content {
+    max-width: 75%;
+  }
 }
 
-.action-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-sm);
-  color: var(--text-quaternary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  opacity: 0;
+/* 大屏幕优化 - 限制最大宽度保证阅读体验 */
+@media (min-width: 1400px) {
+  .message-content {
+    max-width: 65%;
+  }
 }
 
-.bubble:hover + .msg-actions .action-btn,
-.msg-actions:hover .action-btn {
-  opacity: 1;
-}
+/* 小高度屏幕优化 */
+@media (max-height: 600px) {
+  .messages-container {
+    padding: 8px 0;
+  }
 
-.action-btn:hover {
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
+  .messages-list {
+    gap: 12px;
+  }
 }
 </style>

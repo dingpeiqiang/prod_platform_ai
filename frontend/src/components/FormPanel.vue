@@ -114,9 +114,9 @@ const emit = defineEmits(['submit', 'cancel', 'field-change', 'ai-validation', '
 const visible = ref(true)
 
 // 面板宽度（支持拖拽调整）
-const DEFAULT_WIDTH = 420
-const MIN_WIDTH = 320
-const MAX_WIDTH = 600
+const DEFAULT_WIDTH = 360
+const MIN_WIDTH = 280
+const MAX_WIDTH = 520
 const panelWidth = ref(DEFAULT_WIDTH)
 
 // 拖拽状态

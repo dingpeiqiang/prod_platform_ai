@@ -80,7 +80,6 @@ const { isStreaming, stopStream, sendStreamMessage } = useChatStream(messages, c
 const { currentFormId, currentFormSchema, currentFormSubmitted, activeFormCard, activeFormMsgId, pendingConfirmForm, generateForm, updateFormFields, handleConfirmSubmit, checkUserConfirmation, handleDoConfirmSubmit, handleCancelSubmit, handleFormSubmit, handleFormCancel, handleConfirmSubmitForActiveForm, handleFormFieldChange, updateFormCardStatus } = useFormHandling(messages, currentDbSessionId);
 const { handleIntentEvent: handleIntentAction } = useIntentHandlers(messages, currentDbSessionId, emit);
 const suggestions = [
- { key: 'config', icon: '🛠️', text: '我想添加一种新表单' },
  { key: 'help', icon: '💬', text: '我能为你做什么？' },
 ];
 const pendingWorkflowResume = ref(null);
@@ -344,9 +343,6 @@ const handleWelcomeCardClick = (type) => {
  case 'file':
  text = '我想导入配置方案';
  break;
- case 'chat':
- text = '我想添加一种新的业务表单';
- break;
  }
  inputText.value = text;
  sendMessage();
@@ -375,10 +371,10 @@ const sendMessage = async (messageData) => {
  }
  await doSendMessage(text, attachments);
 };
-const sendMessageAfterSessionCreated = async (text, sessionId) => {
+const sendMessageAfterSessionCreated = async (text, sessionId, attachments = []) => {
  isCreatingFromHome = true;
  await new Promise(resolve => setTimeout(resolve, 50));
- await doSendMessageAfterHome(text);
+ await doSendMessageAfterHome(text, { attachments });
 };
 const doSendMessage = async (text, attachments = []) => {
  if (pendingConfirmForm.value && checkUserConfirmation(text)) {
@@ -459,12 +455,6 @@ const scrollToBottom = (smooth = false) => {
 const handleIntentEvent = (event) => {
  handleIntentAction(event, inputText, sendMessage, currentFormId, currentFormSchema);
 };
-registerEventHandler('config', (data, msg) => {
- if (!msg._intentData)
- msg._intentData = {};
- msg._intentData['config'] = { ...data.content, deployed: false, deploying: false };
- scrollToBottom();
-}, { panel: null });
 registerEventHandler('delete_form', (data, msg) => {
  if (!msg._intentData)
  msg._intentData = {};
@@ -544,9 +534,6 @@ registerPostProcessor('manage_history', (msg) => {
  else {
  msg.content = msg.streamText || '';
  }
-});
-registerPostProcessor('configure', (msg) => {
- msg.content = msg.streamText || '';
 });
 registerPostProcessor('form', async (msg, intentData) => {
  const hasActiveForm = activeFormCard.value?.status === 'filling';
@@ -767,12 +754,17 @@ defineExpose({ requestValidation: () => { }, sendMessageAfterSessionCreated });
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 50vw;
 }
 
 .topbar-actions {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  flex-shrink: 0;
 }
 
 .icon-btn {
@@ -782,7 +774,77 @@ defineExpose({ requestValidation: () => { }, sendMessageAfterSessionCreated });
   color: var(--text-tertiary); cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   transition: background var(--transition-fast), color var(--transition-fast);
+  flex-shrink: 0;
 }
 
 .icon-btn:hover { background: var(--bg-secondary); color: var(--text-secondary); }
+
+/* 响应式适配 */
+@media (max-width: 1024px) {
+  .chat-layout {
+    flex-direction: column;
+  }
+
+  .chat-topbar {
+    height: 52px;
+    padding: 0 16px;
+  }
+
+  .session-name {
+    max-width: 60vw;
+  }
+}
+
+@media (max-width: 768px) {
+  .chat-topbar {
+    height: 48px;
+    padding: 0 12px;
+  }
+
+  .session-name {
+    font-size: 15px;
+    max-width: 50vw;
+  }
+
+  .icon-btn {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+@media (max-width: 480px) {
+  .chat-topbar {
+    height: 44px;
+    padding: 0 10px;
+  }
+
+  .session-name {
+    font-size: 14px;
+    max-width: 45vw;
+  }
+
+  .icon-btn {
+    width: 28px;
+    height: 28px;
+  }
+
+  .icon-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+/* 平板横屏优化 */
+@media (min-width: 769px) and (max-width: 1024px) and (orientation: landscape) {
+  .chat-layout {
+    flex-direction: row;
+  }
+}
+
+/* 深色模式适配 */
+@media (prefers-color-scheme: dark) {
+  .chat-main {
+    background: var(--bg-primary);
+  }
+}
 </style>

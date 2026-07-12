@@ -7,98 +7,6 @@ export function useIntentHandlers(messagesRef, currentDbSessionIdRef, emit) {
  msg._intentData = {};
  msg._intentData[intentType] = { ...msg._intentData[intentType], ...partial };
  };
- const handleConfigDeploy = async (msg, { config, keywords }) => {
- try {
- await ElMessageBox.confirm(`确定部署表单「${config.formName || config.formCode}」？部署后即可在对话中直接使用。`, '确认部署', { confirmButtonText: '部署', cancelButtonText: '取消', type: 'info' });
- }
- catch {
- return;
- }
- _updateIntentData(msg, 'config', { deploying: true });
- try {
- const resp = await fetch('/api/v1/chat/deploy-config', {
- method: 'POST',
- headers: { 'Content-Type': 'application/json' },
- body: JSON.stringify({ config, keywords })
- });
- const result = await resp.json();
- if (result.success) {
- _updateIntentData(msg, 'config', { deployed: true, deploying: false });
- ElMessage({ message: result.message, type: 'success', duration: 3000, plain: true });
- const successMsg = {
- id: genId(), role: 'assistant',
- content: `🎉 表单「${config.formName}」已部署成功！现在你可以说"帮我填一个${config.formName}"来测试了。`,
- done: true, type: 'chat'
- };
- messagesRef.value.push(successMsg);
- if (currentDbSessionIdRef.value) {
- await saveMessage(currentDbSessionIdRef.value, {
- role: 'assistant',
- content: successMsg.content,
- reasoning: []
- }).catch(() => { });
- }
- }
- else {
- _updateIntentData(msg, 'config', { deploying: false });
- ElMessage.error(result.message || '部署失败');
- }
- }
- catch {
- _updateIntentData(msg, 'config', { deploying: false });
- ElMessage.error('部署请求失败，请重试');
- }
- };
- const handleConfigModify = (msg, inputTextRef) => {
- inputTextRef.value = `修改表单配置「${msg.configData?.config?.formName || ''}」：`;
- };
- const handleConfigTest = (formCode, sendMessage) => {
- sendMessage(`帮我填一个${formCode}`);
- };
- const convertConfigToSchema = (config) => {
- const fields = [];
- for (const entity of (config.entities || [])) {
- for (const field of (entity.fields || [])) {
- fields.push({
- fieldCode: field.fieldCode,
- fieldName: field.fieldName,
- fieldType: field.fieldType,
- required: !!field.required,
- disabled: false,
- hidden: false,
- ruleDescription: field.ruleDescription || '',
- ...(field.options ? { options: field.options } : {}),
- ...(field.enumConfig ? { enumConfig: field.enumConfig } : {}),
- recommend: [],
- defaultValue: null
- });
- }
- }
- return {
- formCode: config.formCode || '',
- formName: config.formName || '预览',
- fields,
- _preview: true
- };
- };
- const handleConfigPreview = async (config, currentFormIdRef, currentFormSchemaRef) => {
- const schema = convertConfigToSchema(config);
- currentFormIdRef.value = `preview_${Date.now()}`;
- currentFormSchemaRef.value = schema;
- const previewMsg = {
- id: genId(), role: 'assistant',
- content: `👁️ 已将「**${config.formName}**」表单加载到右侧面板进行预览，你可以查看字段布局并填写测试。确认无误后点击部署即可正式使用。`,
- done: true, type: 'chat'
- };
- messagesRef.value.push(previewMsg);
- if (currentDbSessionIdRef.value) {
- await saveMessage(currentDbSessionIdRef.value, {
- role: 'assistant',
- content: previewMsg.content,
- reasoning: []
- }).catch(() => { });
- }
- };
  const loadVersions = async (msg) => {
  const intentData = msg._intentData?.['delete_form'];
  const formCode = intentData?.formCode || msg.intentData?.formCode;
@@ -251,22 +159,6 @@ export function useIntentHandlers(messagesRef, currentDbSessionIdRef, emit) {
  };
  const handleIntentEvent = ({ intentType, action, payload, msg }, inputTextRef, sendMessage, currentFormIdRef, currentFormSchemaRef) => {
  switch (intentType) {
- case 'config': {
- const cfg = payload;
- if (action === 'deploy') {
- handleConfigDeploy(msg, cfg);
- }
- else if (action === 'modify') {
- handleConfigModify(msg, inputTextRef);
- }
- else if (action === 'preview') {
- handleConfigPreview(cfg, currentFormIdRef, currentFormSchemaRef);
- }
- else if (action === 'test') {
- handleConfigTest(cfg, sendMessage);
- }
- break;
- }
  case 'delete_form': {
  if (action === 'rollback') {
  handleRollback(msg, payload);
@@ -300,10 +192,6 @@ export function useIntentHandlers(messagesRef, currentDbSessionIdRef, emit) {
  }
  };
  return {
- handleConfigDeploy,
- handleConfigModify,
- handleConfigTest,
- handleConfigPreview,
  handleRollback,
  loadVersions,
  handleAnalyzeHistory,

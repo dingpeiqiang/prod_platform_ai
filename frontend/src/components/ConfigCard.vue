@@ -68,7 +68,7 @@
     </div>
 
     <!-- 操作按钮 -->
-    <div v-if="!deployed" class="config-actions">
+    <div v-if="!deployed && !deleted" class="config-actions">
       <button class="deploy-btn" :disabled="hasErrors || deploying" @click="$emit('deploy', { config, keywords })">
         <span v-if="deploying" class="btn-loading">⏳</span>
         <span v-else>🚀</span>
@@ -83,10 +83,27 @@
     </div>
 
     <!-- 已部署后的测试按钮 -->
-    <div v-if="deployed" class="deployed-actions">
+    <div v-if="deployed && !deleted" class="deployed-actions">
       <button class="test-btn" @click="$emit('test', config.formCode)">
         🧪 立即测试
       </button>
+      <button class="delete-btn" :disabled="deleting" @click="$emit('delete', config)">
+        <span v-if="deleting" class="btn-loading">⏳</span>
+        <span v-else>🗑️</span>
+        {{ deleting ? '删除中...' : '删除表单' }}
+      </button>
+    </div>
+
+    <!-- 已删除状态 -->
+    <div v-if="deleted" class="deleted-actions">
+      <div class="deleted-status">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>
+          <path d="M9 6V4h6v2"/>
+        </svg>
+        <span>已删除</span>
+      </div>
+      <p class="deleted-tip">数据已备份，可随时回退恢复</p>
     </div>
   </div>
 </template>
@@ -99,10 +116,12 @@ const props = defineProps({
   keywords:     { type: Array, default: () => [] },
   validationErrors: { type: Array, default: () => [] },
   deployed:     { type: Boolean, default: false },
-  deploying:    { type: Boolean, default: false }
+  deploying:    { type: Boolean, default: false },
+  deleting:     { type: Boolean, default: false },
+  deleted:      { type: Boolean, default: false }
 })
 
-defineEmits(['deploy', 'modify', 'test', 'preview'])
+defineEmits(['deploy', 'modify', 'test', 'preview', 'delete'])
 
 const collapsedEntities = reactive({})
 
@@ -377,8 +396,12 @@ const toggleEntity = (idx) => {
   border-top: 1px solid var(--border-light);
   background: var(--bg-secondary);
 }
+.deployed-actions {
+  display: flex;
+  gap: 10px;
+}
 .test-btn {
-  width: 100%;
+  flex: 1;
   padding: 10px;
   background: linear-gradient(135deg, #34d399, #059669);
   color: var(--text-inverse);
@@ -392,6 +415,47 @@ const toggleEntity = (idx) => {
 .test-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 14px rgba(5,150,105,.35);
+}
+.delete-btn {
+  padding: 10px 18px;
+  background: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .2s;
+}
+.delete-btn:hover:not(:disabled) {
+  background: #fecaca;
+  border-color: #f87171;
+}
+.delete-btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+/* 已删除状态 */
+.deleted-actions {
+  padding: 14px 18px;
+  border-top: 1px solid var(--border-light);
+  background: #f9fafb;
+  text-align: center;
+}
+.deleted-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #6b7280;
+  font-size: 14px;
+  font-weight: 500;
+}
+.deleted-tip {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #9ca3af;
 }
 
 /* 折叠动画 */

@@ -1,193 +1,90 @@
 <template>
   <div class="dashboard-home">
-    <!-- 顶部欢迎区 -->
-    <div class="welcome-area">
-      <div class="welcome-content">
-        <h1 class="welcome-title">有什么可以帮你的？</h1>
-        <p class="welcome-subtitle">产商品智能助手，随时为你效劳</p>
+    <div class="main-content">
+      <!-- 顶部欢迎区 -->
+      <div class="welcome-area">
+        <div class="welcome-content">
+          <h1 class="welcome-title">有什么可以帮你的？</h1>
+          <p class="welcome-subtitle">产商品智能助手，随时为你效劳</p>
+        </div>
       </div>
-    </div>
 
-    <!-- 欢迎卡片 - 来自 prodai-cfg-demo -->
-    <div class="welcome-cards-area">
-      <p class="welcome-cards-title">您好！我是产品智能配置助手，可以帮您快速完成商品配置。</p>
-      <div class="welcome-cards-grid">
-        <button type="button" class="welcome-card" @click="handleWelcomeCard('query')">
-          <div class="welcome-card-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"/>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-          </div>
-          <h4>AI智查</h4>
-          <p>查询历史商品，快速复制配置</p>
-        </button>
-        <button type="button" class="welcome-card" @click="handleWelcomeCard('file')">
-          <div class="welcome-card-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="12" y1="18" x2="12" y2="12"/>
-              <line x1="9" y1="15" x2="15" y2="15"/>
-            </svg>
-          </div>
-          <h4>AI方案导入</h4>
-          <p>上传文档，批量导入配置</p>
-        </button>
-        <button type="button" class="welcome-card" @click="handleWelcomeCard('chat')">
-          <div class="welcome-card-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
-            </svg>
-          </div>
-          <h4>对话式配置</h4>
-          <p>自然语言描述，智能生成配置</p>
-        </button>
-      </div>
-    </div>
-
-    <!-- 快捷建议 -->
-    <div class="suggestions-area">
-      <div class="suggestions-grid">
-        <button
-          v-for="s in suggestions"
-          :key="s.key"
-          class="suggestion-item"
-          @click="handleSuggestion(s)"
-        >
-          <span class="suggestion-icon">
-            <svg v-if="s.icon === 'form'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="16" y1="13" x2="8" y2="13"/>
-              <line x1="16" y1="17" x2="8" y2="17"/>
-              <polyline points="10 9 9 9 8 9"/>
-            </svg>
-            <svg v-else-if="s.icon === 'calendar'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-              <line x1="16" y1="2" x2="16" y2="6"/>
-              <line x1="8" y1="2" x2="8" y2="6"/>
-              <line x1="3" y1="10" x2="21" y2="10"/>
-            </svg>
-            <svg v-else-if="s.icon === 'wallet'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M20 7h-9a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
-              <path d="M16 21V5a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2z"/>
-            </svg>
-            <svg v-else-if="s.icon === 'help'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-              <line x1="12" y1="17" x2="12.01" y2="17"/>
-            </svg>
-          </span>
-          <span class="suggestion-text">{{ s.text }}</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- 底部输入区 -->
-    <div class="bottom-input">
-      <div class="chat-input-bar">
-        <!-- 左侧工具按钮 -->
-        <div class="input-tools">
-          <input
-            ref="fileInput"
-            type="file"
-            class="hidden-input"
-            accept="*"
-            @change="handleFileSelect"
-          />
-          <button class="tool-btn" title="上传文件" @click="triggerFileInput">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
+      <!-- 欢迎卡片 - 来自 prodai-cfg-demo -->
+      <div class="welcome-cards-area">
+        <p class="welcome-cards-title">您好！我是产品智能配置助手，可以帮您快速完成商品配置。</p>
+        <div class="welcome-cards-grid">
+          <button type="button" class="welcome-card" @click="handleWelcomeCard('query')">
+            <div class="welcome-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+            </div>
+            <h4>AI智查</h4>
+            <p>查询历史商品，快速复制配置</p>
           </button>
-          
-          <input
-            ref="imageInput"
-            type="file"
-            class="hidden-input"
-            accept="image/*"
-            @change="handleImageSelect"
-          />
-          <button class="tool-btn" title="上传图片" @click="triggerImageInput">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-              <circle cx="8.5" cy="8.5" r="1.5"/>
-              <polyline points="21 15 16 10 5 21"/>
-            </svg>
-          </button>
-          
-          <button 
-            class="tool-btn voice-btn" 
-            :class="{ recording: isRecording }"
-            title="语音录制"
-            @mousedown="startRecording"
-            @mouseup="stopRecording"
-            @mouseleave="stopRecording"
-            @touchstart.prevent="startRecording"
-            @touchend="stopRecording"
-          >
-            <svg v-if="!isRecording" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-            </svg>
-            <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="6" y="19" width="12" height="2" rx="1"/>
-              <rect x="8" y="15" width="8" height="2" rx="1"/>
-              <rect x="10" y="11" width="4" height="2" rx="1"/>
-            </svg>
+          <button type="button" class="welcome-card" @click="handleWelcomeCard('file')">
+            <div class="welcome-card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="12" y1="18" x2="12" y2="12"/>
+                <line x1="9" y1="15" x2="15" y2="15"/>
+              </svg>
+            </div>
+            <h4>AI方案导入</h4>
+            <p>上传文档，批量导入配置</p>
           </button>
         </div>
-        
-        <div class="textarea-wrap">
-          <textarea
-            ref="inputEl"
-            v-model="inputText"
-            :placeholder="placeholder"
-            rows="1"
-            @keydown.enter.exact.prevent="handleSend"
-            @input="autoResize"
-          />
+      </div>
+
+      <!-- 快捷建议 -->
+      <div class="suggestions-area">
+        <div class="suggestions-grid">
           <button
-            class="send-btn"
-            :disabled="!inputText.trim() && attachments.length === 0"
-            @click="handleSend"
-            title="发送 (Enter)"
+            v-for="s in suggestions"
+            :key="s.key"
+            class="suggestion-item"
+            @click="handleSuggestion(s)"
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-            </svg>
+            <span class="suggestion-icon">
+              <svg v-if="s.icon === 'form'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+                <polyline points="10 9 9 9 8 9"/>
+              </svg>
+              <svg v-else-if="s.icon === 'calendar'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                <line x1="16" y1="2" x2="16" y2="6"/>
+                <line x1="8" y1="2" x2="8" y2="6"/>
+                <line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+              <svg v-else-if="s.icon === 'wallet'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 7h-9a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
+                <path d="M16 21V5a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2z"/>
+              </svg>
+              <svg v-else-if="s.icon === 'help'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </span>
+            <span class="suggestion-text">{{ s.text }}</span>
           </button>
         </div>
       </div>
-      
-      <!-- 附件预览区 -->
-      <div v-if="attachments.length > 0" class="attachments-preview">
-        <div 
-          v-for="(attachment, index) in attachments" 
-          :key="index" 
-          class="attachment-item"
-        >
-          <img v-if="attachment.type === 'image'" :src="attachment.preview" class="attachment-image" />
-          <div v-else class="attachment-file">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="16" y1="13" x2="8" y2="13"/>
-              <line x1="16" y1="17" x2="8" y2="17"/>
-              <polyline points="10 9 9 9 8 9"/>
-            </svg>
-            <span class="attachment-filename">{{ attachment.name }}</span>
-          </div>
-          <button class="attachment-remove" @click="removeAttachment(index)">×</button>
-        </div>
-      </div>
-      
-      <!-- 录音时长 -->
-      <div v-if="isRecording" class="recording-indicator">
-        <span class="recording-dot"></span>
-        <span>录音中 {{ recordingTime }}</span>
+
+      <!-- 底部输入区 -->
+      <div class="bottom-input">
+        <ChatInput
+          ref="inputRef"
+          v-model="inputText"
+          :placeholder="placeholder"
+          @send="handleSend"
+          @quick-action="handleSuggestion"
+        />
       </div>
     </div>
 
@@ -319,21 +216,13 @@
 
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue'
+import ChatInput from './ChatInput.vue'
 
 const emit = defineEmits(['send-message', 'switch-chat', 'create-session', 'open-scene-manager', 'open-prompt-manager', 'open-ontology-manager', 'open-workflow-manager', 'open-mcp-manager', 'open-kb-manager'])
 
-const inputEl = ref(null)
+const inputRef = ref(null)
 const inputText = ref('')
 const newTodo = ref('')
-const fileInput = ref(null)
-const imageInput = ref(null)
-
-const attachments = ref([])
-const isRecording = ref(false)
-const recordingTime = ref('00:00')
-let mediaRecorder = null
-let audioChunks = []
-let recordingTimer = null
 
 // 快捷建议
 const suggestions = [
@@ -415,147 +304,13 @@ const placeholder = computed(() => {
   return tips[Math.floor(Math.random() * tips.length)]
 })
 
-const handleSend = async () => {
-  const text = inputText.value.trim()
-  if (!text && attachments.value.length === 0) return
-  
-  const messageData = {
-    text,
-    attachments: [...attachments.value]
-  }
-  
+const handleSend = (messageData) => {
+  if (!messageData || (!messageData.text && (!messageData.attachments || messageData.attachments.length === 0))) return
   emit('send-message', messageData)
-  inputText.value = ''
-  attachments.value = []
-  nextTick(() => {
-    if (inputEl.value) {
-      inputEl.value.style.height = 'auto'
-      inputEl.value.focus()
-    }
-  })
 }
 
-const triggerFileInput = () => {
-  fileInput.value?.click()
-}
-
-const triggerImageInput = () => {
-  imageInput.value?.click()
-}
-
-const handleFileSelect = (event) => {
-  const file = event.target.files?.[0]
-  if (!file) return
-  
-  attachments.value.push({
-    name: file.name,
-    file,
-    type: 'file',
-    size: file.size
-  })
-  
-  event.target.value = ''
-}
-
-const handleImageSelect = (event) => {
-  const file = event.target.files?.[0]
-  if (!file) return
-  
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    attachments.value.push({
-      name: file.name,
-      file,
-      type: 'image',
-      preview: e.target.result,
-      size: file.size
-    })
-  }
-  reader.readAsDataURL(file)
-  
-  event.target.value = ''
-}
-
-const removeAttachment = (index) => {
-  attachments.value.splice(index, 1)
-}
-
-const formatTime = (seconds) => {
-  const mins = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-}
-
-const startRecording = async () => {
-  if (isRecording.value) return
-  
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    mediaRecorder = new MediaRecorder(stream)
-    audioChunks = []
-    
-    mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        audioChunks.push(event.data)
-      }
-    }
-    
-    mediaRecorder.start(100)
-    isRecording.value = true
-    recordingTime.value = '00:00'
-    
-    let seconds = 0
-    recordingTimer = setInterval(() => {
-      seconds++
-      recordingTime.value = formatTime(seconds)
-    }, 1000)
-    
-    stream.getTracks().forEach(track => {
-      track.onended = () => {
-        if (isRecording.value) {
-          stopRecording()
-        }
-      }
-    })
-  } catch (error) {
-    console.error('录音失败:', error)
-    alert('无法访问麦克风，请检查权限设置')
-  }
-}
-
-const stopRecording = () => {
-  if (!isRecording.value || !mediaRecorder) return
-  
-  isRecording.value = false
-  
-  if (recordingTimer) {
-    clearInterval(recordingTimer)
-    recordingTimer = null
-  }
-  
-  mediaRecorder.stop()
-  
-  mediaRecorder.stream.getTracks().forEach(track => track.stop())
-  
-  if (audioChunks.length > 0) {
-    const blob = new Blob(audioChunks, { type: 'audio/webm' })
-    const audioName = `voice_${Date.now()}.webm`
-    
-    attachments.value.push({
-      name: audioName,
-      file: blob,
-      type: 'voice',
-      duration: recordingTime.value,
-      preview: URL.createObjectURL(blob)
-    })
-  }
-  
-  mediaRecorder = null
-  audioChunks = []
-}
-
-const handleSuggestion = (s) => {
-  emit('send-message', s.text)
+const handleSuggestion = (text) => {
+  emit('send-message', text)
 }
 
 const handleWelcomeCard = (type) => {
@@ -566,9 +321,6 @@ const handleWelcomeCard = (type) => {
       break
     case 'file':
       text = '我想导入配置方案'
-      break
-    case 'chat':
-      text = '我想添加一种新的业务表单'
       break
   }
   emit('send-message', text)
@@ -615,34 +367,50 @@ const handleShortcut = (sc) => {
 
 onMounted(() => {
   loadTodos()
-  nextTick(() => inputEl.value?.focus())
+  nextTick(() => inputRef.value?.focus())
 })
 </script>
 
 <style scoped>
 .dashboard-home {
-  display: grid;
-  grid-template-columns: 1fr 280px;
-  grid-template-rows: auto auto 1fr;
-  gap: 24px;
+  display: flex;
   height: 100%;
+  width: 100%;
   padding: 40px 48px;
   background: var(--bg-secondary);
   overflow: hidden;
 }
 
+/* 左侧主内容区 */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow-y: auto;
+  width: 100%;
+}
+
+.main-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.main-content::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 3px;
+}
+
 /* 顶部欢迎区 */
 .welcome-area {
-  grid-column: 1;
-  grid-row: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  align-items: flex-start;
   padding-top: 20px;
+  margin-bottom: 24px;
 }
 
 .welcome-content {
-  text-align: center;
+  text-align: left;
 }
 
 .welcome-title {
@@ -658,64 +426,26 @@ onMounted(() => {
   color: var(--text-secondary);
 }
 
-/* 快捷建议 */
-.suggestions-area {
-  grid-column: 1;
-  grid-row: 2;
-  display: flex;
-  justify-content: center;
-}
-
-.suggestions-grid {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-  justify-content: center;
-  max-width: 640px;
-}
-
-.suggestion-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 20px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-default);
-  border-radius: 14px;
-  font-size: 14px;
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: all .2s;
-  box-shadow: var(--shadow-sm);
-}
-
-.suggestion-item:hover {
-  border-color: #818cf8;
-  box-shadow: 0 4px 16px rgba(99,102,241,.15);
-  transform: translateY(-2px);
-}
-
 /* 欢迎卡片样式 */
 .welcome-cards-area {
-  grid-column: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  margin-bottom: 8px;
+  align-items: flex-start;
+  margin-bottom: 24px;
+  width: 100%;
 }
 
 .welcome-cards-title {
   font-size: var(--font-size-base);
   color: var(--text-secondary);
   margin-bottom: 16px;
-  text-align: center;
+  text-align: left;
 }
 
 .welcome-cards-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 12px;
-  max-width: 640px;
   width: 100%;
 }
 
@@ -736,6 +466,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  min-width: 0;
 }
 
 .welcome-card:hover {
@@ -768,6 +499,43 @@ onMounted(() => {
   color: var(--text-tertiary);
 }
 
+/* 快捷建议 */
+.suggestions-area {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 24px;
+  width: 100%;
+}
+
+.suggestions-grid {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.suggestion-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  font-size: 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all .2s;
+  box-shadow: var(--shadow-sm);
+}
+
+.suggestion-item:hover {
+  border-color: #818cf8;
+  box-shadow: 0 4px 16px rgba(99,102,241,.15);
+  transform: translateY(-2px);
+}
+
 .suggestion-icon {
   font-size: 18px;
 }
@@ -778,238 +546,30 @@ onMounted(() => {
 
 /* 底部输入区 */
 .bottom-input {
-  grid-column: 1;
-  grid-row: 3;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   padding-bottom: 20px;
-}
-
-.chat-input-bar {
-  position: relative;
   width: 100%;
-  max-width: 720px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-xl);
-  display: flex;
-  flex-direction: column;
-  transition: all var(--transition-fast);
-}
-
-.chat-input-bar:focus-within {
-  border-color: var(--color-primary-400);
-  box-shadow: 0 0 0 3px rgba(99,102,241,.1);
-}
-
-.textarea-wrap {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  padding-top: var(--space-1);
-}
-
-.textarea-wrap textarea {
-  flex: 1;
-  min-width: 0;
-  background: transparent;
-  border: none;
-  outline: none;
-  resize: none;
-  font-size: var(--font-size-sm);
-  line-height: 1.5;
-  color: var(--text-primary);
-}
-
-.textarea-wrap textarea::placeholder {
-  color: var(--text-tertiary);
-}
-
-.send-btn {
-  flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--color-primary-500);
-  border: none;
-  border-radius: var(--radius-lg);
-  color: var(--text-inverse);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.send-btn:hover:not(:disabled) {
-  background: var(--color-primary-600);
-}
-
-.send-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.input-hint {
-  margin-top: 12px;
-  font-size: 12px;
-  color: var(--text-tertiary);
-}
-
-/* 工具按钮 */
-.hidden-input {
-  display: none;
-}
-
-.input-tools {
-  display: flex;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-3) 0;
-}
-
-.tool-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-md);
-  color: var(--text-tertiary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.tool-btn:hover:not(:disabled) {
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-}
-
-.tool-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.tool-btn.voice-btn.recording {
-  background: var(--color-error-500);
-  color: var(--text-inverse);
-  animation: pulse 1s infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
-}
-
-/* 附件预览区 */
-.attachments-preview {
-  width: 100%;
-  max-width: 720px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 12px;
-  padding: 12px 16px;
-  background: var(--bg-elevated);
-  border-radius: 16px;
-  border: 1px solid var(--border-light);
-}
-
-.attachment-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: #f8f9fa;
-  border-radius: 10px;
-  position: relative;
-}
-
-.attachment-image {
-  width: 48px;
-  height: 48px;
-  object-fit: cover;
-  border-radius: 8px;
-}
-
-.attachment-file {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-secondary);
-}
-
-.attachment-filename {
-  font-size: 13px;
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.attachment-remove {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: none;
-  background: #ef4444;
-  color: white;
-  font-size: 14px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform .2s;
-}
-
-.attachment-remove:hover {
-  transform: scale(1.1);
-}
-
-/* 录音指示器 */
-.recording-indicator {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-  padding: 8px 16px;
-  background: rgba(239, 68, 68, 0.1);
-  border-radius: 20px;
-  color: #ef4444;
-  font-size: 14px;
-}
-
-.recording-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #ef4444;
-  animation: blink 1s ease-in-out infinite;
-}
-
-@keyframes blink {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.3;
-  }
+  margin-top: auto;
 }
 
 /* 右侧小部件 */
 .sidebar-widgets {
-  grid-column: 2;
-  grid-row: 1 / 4;
+  width: 240px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
   overflow-y: auto;
+  padding-left: 24px;
   padding-right: 4px;
+  height: 100%;
+}
+
+.sidebar-widgets .widget-card:last-child {
+  flex: 1;
+  min-height: 0;
 }
 
 .sidebar-widgets::-webkit-scrollbar {
@@ -1063,6 +623,10 @@ onMounted(() => {
 
 .widget-body {
   min-height: 80px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
 }
 
 /* 待办 */
@@ -1246,23 +810,10 @@ onMounted(() => {
 /* 响应式 */
 @media (max-width: 1024px) {
   .dashboard-home {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto 1fr auto;
     padding: 24px;
     gap: 20px;
   }
-  .welcome-area {
-    grid-column: 1;
-  }
-  .suggestions-area {
-    grid-column: 1;
-  }
-  .bottom-input {
-    grid-column: 1;
-  }
   .sidebar-widgets {
-    grid-column: 1;
-    grid-row: 4;
     flex-direction: row;
     overflow-x: auto;
     padding-right: 0;

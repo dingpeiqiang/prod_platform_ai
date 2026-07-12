@@ -1,22 +1,8 @@
 <template>
   <div class="intent-panel-wrapper">
-    <!-- config -->
-    <ConfigCard
-      v-if="intentType === 'config' && panelData"
-      :config="panelData.config"
-      :keywords="panelData.keywords"
-      :validationErrors="panelData.validationErrors"
-      :deployed="panelData.deployed"
-      :deploying="panelData.deploying"
-      @deploy="(cfg) => emit('intent-action', { intentType, action: 'deploy', payload: cfg, msg })"
-      @modify="() => emit('intent-action', { intentType, action: 'modify', payload: panelData, msg })"
-      @preview="(cfg) => emit('intent-action', { intentType, action: 'preview', payload: cfg, msg })"
-      @test="(formCode) => emit('intent-action', { intentType, action: 'test', payload: formCode, msg })"
-    />
-
     <!-- delete_form -->
     <DeleteResultPanel
-      v-else-if="intentType === 'delete_form' && panelData"
+      v-if="intentType === 'delete_form' && panelData"
       :formCode="panelData.formCode"
       :formName="panelData.formName"
       :versionList="panelData.versionList || []"
@@ -54,7 +40,6 @@
 
 <script setup>
 import { computed } from 'vue'
-import ConfigCard from '../ConfigCard.vue'
 import DeleteResultPanel from './DeleteResultPanel.vue'
 import HistoryPanel from './HistoryPanel.vue'
 import ValidationResultPanel from './ValidationResultPanel.vue'

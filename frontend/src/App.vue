@@ -1,455 +1,286 @@
 <template>
-  <div id="app">
-    <!-- 统一 Loading -->
+  <div class="app-container">
+    <!-- 加载状态 -->
     <Loading :visible="isLoading" :text="loadingText" />
     
     <!-- 网络状态提示 -->
     <transition name="slide-down">
-      <div v-if="!isOnline" class="network-status-bar offline">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="18" y1="20" x2="21" y2="23"/>
-          <line x1="12" y1="14" x2="12" y2="23"/>
-          <line x1="6" y1="8" x2="6" y2="23"/>
-          <line x1="2" y1="2" x2="23" y2="23"/>
+      <div v-if="!isOnline" class="network-banner offline">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="1" y1="1" x2="23" y2="23"/>
+          <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/>
+          <path d="M10.71 5.05A16 16 0 0 1 22.58 9M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/>
         </svg>
-        <span>网络连接已断开，请检查网络设置</span>
-        <button class="reconnect-btn" @click="checkNetwork">重新连接</button>
+        <span>网络已断开</span>
+        <button @click="checkNetwork">重连</button>
       </div>
-      <div v-else-if="!isBackendOnline" class="network-status-bar warning">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin-icon">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-          <path d="M9 12l2 2 4-4"/>
+      <div v-else-if="!isBackendOnline" class="network-banner warning">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin">
+          <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
         </svg>
-        <span>服务器连接异常，正在自动重连...</span>
+        <span>服务器连接异常，正在重连...</span>
       </div>
     </transition>
 
-    <!-- 未登录：显示登录页 -->
+    <!-- 登录页 -->
     <LoginScreen v-if="!userStore.isLoggedIn" />
 
-    <!-- 已登录：主界面 -->
-    <template v-else>
-      <!-- 侧边栏切换按钮（仅在聊天视图且侧边栏隐藏时显示） -->
-      <button 
-        v-if="isChatView && !isSidebarPinned"
-        class="sidebar-toggle-btn"
-        @click="isSidebarPinned = true"
-        title="显示会话列表"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="9 18 15 12 9 6"></polyline>
-        </svg>
-      </button>
-
-      <!-- 侧边栏（固定显示在左侧） -->
+    <!-- 主界面 -->
+    <div class="main-layout">
+      <!-- 左侧导航侧边栏 -->
       <Sidebar
-        :class="['sidebar-wrapper', { 
-          'sidebar-hidden': isChatView && !isSidebarPinned
-        }]"
-        :style="canShowSidebarToggle ? {
-          width: isDashboardSidebarVisible ? 'var(--sidebar-width)' : '56px',
-          minWidth: isDashboardSidebarVisible ? 'var(--sidebar-width)' : '56px'
-        } : {}"
         :sessions="sessionList"
         :activeId="activeSessionId"
-        :is-dashboard-view="isDashboardView"
-        :can-show-sidebar-toggle="canShowSidebarToggle"
-        :is-sidebar-visible="isDashboardSidebarVisible"
+        :isSidebarVisible="isSidebarVisible"
+        :username="userStore.username"
         @new-session="onNewSession"
         @switch-session="onSwitchSession"
         @delete-session="deleteSession"
-        @logout="handleLogout"
         @pin-session="pinSession"
         @share-session="shareSession"
         @rename-session="renameSession"
-        @report-session="reportSession"
-        
-        @toggle-sidebar="toggleDashboardSidebar"
-        @model-change="onModelChange"
-      />
-      
-      <!-- 聊天时隐藏侧边栏的按钮 -->
-      <button 
-        v-if="isChatView && isSidebarPinned"
-        class="sidebar-toggle-btn chat-mode-toggle"
-        @click="isSidebarPinned = false"
-        title="隐藏会话列表"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="15 18 9 12 15 6"></polyline>
-        </svg>
-      </button>
-
-      <div class="main-area">
-        <!-- 首页：没有活动会话时显示 -->
-      <DashboardHome
-        v-if="!isInitializing && currentView === 'dashboard' && !activeSessionId"
-        @send-message="onSendMessageFromHome"
-        @switch-chat="onSwitchChat"
-        @create-session="onNewSession"
-        @open-scene-manager="openSceneManager"
-        @open-prompt-manager="openPromptManager"
-        @open-ontology-manager="openOntologyManager"
-        @open-workflow-manager="openWorkflowManager"
-        @open-mcp-manager="openMCPManager"
-        @open-kb-manager="openKBManager"
+        @logout="handleLogout"
+        @toggle-sidebar="toggleSidebar"
+        @theme-toggle="toggleTheme"
       />
 
-        <!-- 场景管理界面 -->
-        <SceneManager 
-          v-if="!isInitializing && currentView === 'scene-manager'" 
-          @go-back="returnToDashboard"
-        />
+      <!-- 中间主聊天区 -->
+      <div class="main-content">
+        <!-- 聊天区域 -->
+        <div v-if="activeSessionId" class="chat-area">
+          <!-- 顶部标题栏 -->
+          <div class="chat-header">
+            <div class="header-left">
+              <span class="session-title">{{ activeSessionTitle }}</span>
+            </div>
+            
+            <div class="header-actions">
+              <button class="header-btn" @click="clearContext" title="清空上下文">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+              </button>
+              <button class="header-btn" @click="shareSession(activeSessionId)" title="分享">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+                  <polyline points="16 6 12 2 8 6"/>
+                  <line x1="12" y1="2" x2="12" y2="15"/>
+                </svg>
+              </button>
+              <button class="header-btn" @click="activeSessionId = ''" title="关闭对话">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+          </div>
 
-        <!-- 提示词管理界面 -->
-        <PromptManager 
-          v-if="!isInitializing && currentView === 'prompt-manager'" 
-          @go-back="returnToDashboard"
-        />
+          <!-- 消息列表 -->
+          <ChatMessageList
+            ref="messageListRef"
+            :messages="currentMessages"
+            :showWelcome="showWelcome"
+            @suggest="handleSuggest"
+            @regenerate="handleRegenerate"
+            @form-card-click="handleFormCardClick"
+            @intent-action="handleIntentAction"
+          />
 
-        <!-- 表单管理界面（已废弃） -->
-        <!-- <GenericManager 
-          v-if="!isInitializing && currentView === 'form-manager'" 
-          title="📝 表单管理"
-          item-type="表单"
-          code-field="formCode"
-          name-field="formName"
-          :show-entities="true"
-          :api-service="formApiService"
-          @go-back="returnToDashboard"
-        /> -->
+          <!-- 输入区域 -->
+          <ChatInput
+            ref="chatInputRef"
+            v-model="inputMessage"
+            :disabled="isSending"
+            :currentSkill="currentSkill"
+            @send="handleSend"
+            @stop="handleStop"
+            @quick-action="handleQuickAction"
+            @file-upload="handleFileUpload"
+            @image-upload="handleImageUpload"
+            @voice-record="handleVoiceRecord"
+            @remove-skill="currentSkill = ''"
+          />
+        </div>
 
-        <!-- 本体管理界面 -->
-      <OntologyManager 
-        v-if="!isInitializing && currentView === 'ontology-manager'" 
-        @go-back="returnToDashboard"
-      />
-
-      <!-- 工作流管理界面 -->
-      <GenericManager 
-        v-if="!isInitializing && currentView === 'workflow-manager'" 
-        title="🔀 工作流管理"
-        item-type="工作流"
-        code-field="workflowCode"
-        name-field="workflowName"
-        :use-external-editor="true"
-        :api-service="workflowApiService"
-        @go-back="returnToDashboard"
-        @edit-item="openWorkflowEditor"
-      />
-
-      <!-- 工作流编辑器 -->
-      <LangChainEditor 
-        v-if="!isInitializing && currentView === 'workflow-editor'"
-        :workflow-code="editingWorkflowCode"
-        @go-back="returnToWorkflowManager"
-      />
-
-        
-        
-        <!-- MCP 工具管理平台 -->
-        <MCPToolDashboard
-          v-if="!isInitializing && currentView === 'mcp-dashboard'"
-          @go-back="returnToDashboard"
-        />
-        
-        <!-- 知识库管理界面 -->
-        <KBManager
-          v-if="!isInitializing && currentView === 'kb-manager'"
-          @go-back="returnToDashboard"
-        />
-        
-        <!-- 聊天界面：有活动会话时显示 -->
-        <ChatAssistant
-          v-if="!isInitializing && currentView === 'dashboard' && activeSessionId"
-          ref="chatRef"
-          :sessionId="activeSessionId"
-          :dbSessionId="activeDbSessionId"
-          :userId="userStore.username"
-          :sessionTitle="activeSessionTitle"
-          :modelConfig="currentModelConfig"
-          @title-update="onTitleUpdate"
-          @session-init="onSessionInit"
-          @create-session-from-home="onCreateSessionFromHome"
-        />
+        <!-- 首页/欢迎页 -->
+        <div v-else class="welcome-area">
+          <DashboardHome
+            @send-message="onSendMessageFromHome"
+            @switch-chat="onSwitchChat"
+            @create-session="onNewSession"
+            @open-scene-manager="openSceneManager"
+            @open-prompt-manager="openPromptManager"
+            @open-ontology-manager="openOntologyManager"
+            @open-workflow-manager="openWorkflowManager"
+            @open-mcp-manager="openMCPManager"
+            @open-kb-manager="openKBManager"
+          />
+        </div>
       </div>
-    </template>
+
+      <!-- 右侧附属面板（可选） -->
+      <div v-if="showRightPanel" class="right-panel">
+        <div class="panel-header">
+          <span>{{ rightPanelTitle }}</span>
+          <button class="close-btn" @click="showRightPanel = false">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="panel-content">
+          <!-- 右侧面板内容 -->
+          <slot name="right-panel">
+            <div class="panel-placeholder">
+              <p>选择功能以查看详情</p>
+            </div>
+          </slot>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, provide, onMounted, watch, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
 import Sidebar from './components/Sidebar.vue'
-import ChatAssistant from './components/ChatAssistant.vue'
-import LoginScreen from './components/LoginScreen.vue'
+import ChatMessageList from './components/ChatMessageList.vue'
+import ChatInput from './components/ChatInput.vue'
 import DashboardHome from './components/DashboardHome.vue'
-import SceneManager from './components/SceneManager.vue'
-import PromptManager from './components/PromptManager.vue'
-import GenericManager from './components/GenericManager.vue'
-import OntologyManager from './components/OntologyManager.vue'
+import LoginScreen from './components/LoginScreen.vue'
 import Loading from './components/Loading.vue'
-import LangChainEditor from './components/workflow-editor/LangChainEditor.vue'
-
-import MCPToolDashboard from './components/MCPToolDashboard.vue'
-import KBManager from './components/KBManager.vue'
 import { useUserStore } from './stores/user'
 import { useLoadingStore } from './stores/loading'
-import { useTheme } from './composables/useTheme'
-import { createSession as apiCreateSession, getSessions as apiGetSessions, deleteSession as apiDeleteSession, updateSessionTitle as apiUpdateSessionTitle } from './services/chatApi.js'
-// import * as toolApi from './services/toolApi.js' // 已迁移到 MCP 管理
-// import * as formApi from './services/formApi.js' // 已废弃
-import * as ontologyApi from './services/ontologyApi.js'
-import * as workflowApi from './services/workflowApi.js'
-
-const currentView = ref('dashboard')
-
-// 网络状态
-const isOnline = ref(navigator.onLine)
-const isBackendOnline = ref(true)
-const reconnectAttempts = ref(0)
-const isReconnecting = ref(false)
-let backendCheckInterval = null
-let reconnectTimeout = null
+import { 
+  createSession as apiCreateSession, 
+  getSessions as apiGetSessions, 
+  deleteSession as apiDeleteSession,
+  sendMessage as apiSendMessage,
+  updateSessionTitle as apiUpdateSessionTitle 
+} from './services/chatApi.js'
 
 const userStore = useUserStore()
 const loadingStore = useLoadingStore()
 const { isLoading, loadingText } = storeToRefs(loadingStore)
-const { initTheme } = useTheme()
+
+// 状态
+const sessions = ref([])
+const activeSessionId = ref('')
+const isSidebarVisible = ref(true)
+const isOnline = ref(navigator.onLine)
+const isBackendOnline = ref(true)
+const inputMessage = ref('')
+const isSending = ref(false)
+const currentSkill = ref('')
+const showRightPanel = ref(false)
+const rightPanelTitle = ref('工具面板')
+const messageListRef = ref(null)
+const chatInputRef = ref(null)
 
 const SESSIONS_KEY = 'chat_sessions'
 const ACTIVE_SESSION_KEY = 'chat_active_session'
 
-// ── 本地会话列表 ──────────────────────────────────────────
-// 每项：{ id, title, createdAt, updatedAt, dbSessionId }
-// dbSessionId: 数据库 session_id，已知则直接用，未知则首次发消息时创建
-const sessions = ref([])
-const activeSessionId = ref('')
-const isSidebarPinned = ref(true)  // 聊天时侧边栏是否固定显示
-const isDashboardSidebarVisible = ref(true)  // 首页时侧边栏是否可见
-const isInitializing = ref(true)  // 初始化状态标志
+// 计算属性
+const sessionList = computed(() => 
+  [...sessions.value].sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+    return b.updatedAt - a.updatedAt
+  })
+)
 
-// 当前正在编辑的工作流代码
-const editingWorkflowCode = ref('')
+const activeSessionTitle = computed(() => {
+  const s = sessions.value.find(s => s.id === activeSessionId.value)
+  return s?.title || '新对话'
+})
 
-// 当前数据库会话 ID（与 activeSessionId 对应）
-const activeDbSessionId = ref('')
+const currentMessages = computed(() => {
+  const session = sessions.value.find(s => s.id === activeSessionId.value)
+  return session?.messages || []
+})
 
-// 当前模型配置
-const currentModelConfig = ref(null)
-const MODEL_CONFIG_KEY = 'chat_model_config'
+const showWelcome = computed(() => 
+  !activeSessionId.value || currentMessages.value.length === 0
+)
 
-// ── 加载本地会话列表 ──────────────────────────────────────
+// 方法
+const genId = () => `sess_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+
 const loadSessions = () => {
   try {
     const raw = localStorage.getItem(SESSIONS_KEY)
-    if (raw) sessions.value = JSON.parse(raw)
-  } catch {}
-  if (!sessions.value.length) {
-    sessions.value = []
+    if (raw) {
+      sessions.value = JSON.parse(raw).map(s => ({
+        ...s,
+        messages: s.messages || []
+      }))
+    }
+  } catch (e) {
+    console.error('加载会话失败:', e)
   }
 }
 
-// ── 保存本地会话列表 ──────────────────────────────────────
 const saveSessions = () => {
-  try { localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions.value)) } catch {}
-}
-
-// ── 保存当前激活的会话 ID ─────────────────────────────────
-const saveActiveSessionId = () => {
-  try { localStorage.setItem(ACTIVE_SESSION_KEY, activeSessionId.value) } catch {}
-}
-
-// ── 恢复当前激活的会话 ID ─────────────────────────────────
-const loadActiveSessionId = () => {
   try {
-    const raw = localStorage.getItem(ACTIVE_SESSION_KEY)
-    return raw || ''
-  } catch { return '' }
+    const sessionsToSave = sessions.value.map(s => ({
+      ...s,
+      messages: s.messages.slice(-50) // 只保留最近50条
+    }))
+    localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessionsToSave))
+  } catch (e) {
+    console.error('保存会话失败:', e)
+  }
 }
 
-// ── 生成 ID ──────────────────────────────────────────────
-const genId = () => `sess_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+const saveActiveSessionId = () => {
+  try {
+    localStorage.setItem(ACTIVE_SESSION_KEY, activeSessionId.value)
+  } catch {}
+}
 
-// ── 创建本地会话 ──────────────────────────────────────────
-const createLocalSession = (dbSessionId = null) => {
+const createLocalSession = () => {
   const now = Date.now()
   const s = {
     id: genId(),
     title: '新对话',
     createdAt: now,
     updatedAt: now,
-    dbSessionId,
+    messages: [],
     pinned: false
   }
   sessions.value.unshift(s)
   activeSessionId.value = s.id
-  activeDbSessionId.value = dbSessionId || ''
   saveSessions()
-  saveActiveSessionId()  // 保存当前激活会话
+  saveActiveSessionId()
   return s
 }
 
-// ── 打开场景管理 ─────────────────────────────────────────
-const openSceneManager = () => {
-  currentView.value = 'scene-manager'
-  activeSessionId.value = ''
-  activeDbSessionId.value = ''
-  saveActiveSessionId()
-}
-
-// ── 打开提示词管理 ─────────────────────────────────────────
-const openPromptManager = () => {
-  currentView.value = 'prompt-manager'
-  activeSessionId.value = ''
-  activeDbSessionId.value = ''
-  saveActiveSessionId()
-}
-
-// ── 打开表单管理（已废弃） ───────────────────────────────
-// const openFormManager = () => {
-//   currentView.value = 'form-manager'
-//   activeSessionId.value = ''
-//   activeDbSessionId.value = ''
-//   saveActiveSessionId()
-// }
-
-// ── 打开本体管理 ─────────────────────────────────────────
-const openOntologyManager = () => {
-  currentView.value = 'ontology-manager'
-  activeSessionId.value = ''
-  activeDbSessionId.value = ''
-  saveActiveSessionId()
-}
-
-// ── 打开工作流管理 ─────────────────────────────────────────
-const openWorkflowManager = () => {
-  currentView.value = 'workflow-manager'
-  activeSessionId.value = ''
-  activeDbSessionId.value = ''
-  saveActiveSessionId()
-}
-
-// ── 打开工作流编辑器 ─────────────────────────────────────────
-const openWorkflowEditor = (workflowCode) => {
-  editingWorkflowCode.value = workflowCode || ''
-  currentView.value = 'workflow-editor'
-  activeSessionId.value = ''
-  activeDbSessionId.value = ''
-  saveActiveSessionId()
-}
-
-// ── 返回工作流管理 ─────────────────────────────────────────
-const returnToWorkflowManager = () => {
-  editingWorkflowCode.value = ''
-  currentView.value = 'workflow-manager'
-}
-
-// ── 打开 MCP 工具管理平台 ─────────────────────────────────
-const openMCPManager = () => {
-  currentView.value = 'mcp-dashboard'
-  activeSessionId.value = ''
-  activeDbSessionId.value = ''
-  saveActiveSessionId()
-}
-
-// ── 打开知识库管理 ─────────────────────────────────────────
-const openKBManager = () => {
-  currentView.value = 'kb-manager'
-  activeSessionId.value = ''
-  activeDbSessionId.value = ''
-  saveActiveSessionId()
-}
-
-
-
-// ── API 服务适配器 ─────────────────────────────────────────
-// const formApiService = {
-//   getCategories: formApi.getFormCategories,
-//   list: formApi.listForms,
-//   get: formApi.getForm,
-//   create: formApi.createForm,
-//   update: formApi.updateForm,
-//   delete: formApi.deleteForm,
-//   toggle: formApi.toggleForm
-// }
-
-const ontologyApiService = {
-  getCategories: ontologyApi.getOntologyCategories,
-  list: ontologyApi.listOntologies,
-  get: ontologyApi.getOntology,
-  create: ontologyApi.createOntology,
-  update: ontologyApi.updateOntology,
-  delete: ontologyApi.deleteOntology,
-  toggle: ontologyApi.toggleOntology
-}
-
-const workflowApiService = {
-  getCategories: workflowApi.workflowApi.getCategories,
-  list: workflowApi.workflowApi.list,
-  get: workflowApi.workflowApi.get,
-  create: workflowApi.workflowApi.create,
-  update: workflowApi.workflowApi.update,
-  delete: workflowApi.workflowApi.delete,
-  toggle: workflowApi.workflowApi.toggle,
-  getHistory: workflowApi.workflowApi.getHistory,
-  rollback: workflowApi.workflowApi.rollback
-}
-
-// ── 切换首页侧边栏可见性 ─────────────────────────────────
-const toggleDashboardSidebar = () => {
-  isDashboardSidebarVisible.value = !isDashboardSidebarVisible.value
-}
-
-// ── 返回首页 ─────────────────────────────────────────────
-const returnToDashboard = () => {
-  currentView.value = 'dashboard'
-}
-
-// ── 新建按钮 ──────────────────────────────────────────────
 const onNewSession = () => {
-  // 点击新建会话不创建新会话，只跳转到首页
-  currentView.value = 'dashboard'
   activeSessionId.value = ''
-  activeDbSessionId.value = ''
   saveActiveSessionId()
 }
 
-// ── 切换会话 ──────────────────────────────────────────────
 const onSwitchSession = (id) => {
-  const s = sessions.value.find(s => s.id === id)
-  currentView.value = 'dashboard'
   activeSessionId.value = id
-  activeDbSessionId.value = s?.dbSessionId || ''
-  saveActiveSessionId()  // 保存当前激活会话
+  saveActiveSessionId()
 }
 
-// ── 删除会话 ──────────────────────────────────────────────
 const deleteSession = async (id) => {
   const s = sessions.value.find(s => s.id === id)
   if (s?.dbSessionId) {
     await apiDeleteSession(s.dbSessionId)
   }
   sessions.value = sessions.value.filter(s => s.id !== id)
-  localStorage.removeItem(`chat_session_${id}`)
   saveSessions()
   if (activeSessionId.value === id) {
-    if (sessions.value.length > 0) {
-      // 还有其他会话，切换到第一个
-      activeSessionId.value = sessions.value[0].id
-      const first = sessions.value.find(s => s.id === activeSessionId.value)
-      activeDbSessionId.value = first?.dbSessionId || ''
-      saveActiveSessionId()
-    } else {
-      // 删除了最后一个会话，跳转回首页
-      activeSessionId.value = ''
-      activeDbSessionId.value = ''
-      saveActiveSessionId()
-    }
+    activeSessionId.value = ''
+    saveActiveSessionId()
   }
 }
 
-// ── 置顶会话 ──────────────────────────────────────────────
 const pinSession = (id) => {
   const s = sessions.value.find(s => s.id === id)
   if (s) {
@@ -459,464 +290,476 @@ const pinSession = (id) => {
   }
 }
 
-// ── 分享会话 ──────────────────────────────────────────────
+const renameSession = async (id, newTitle) => {
+  const s = sessions.value.find(s => s.id === id)
+  if (s) {
+    s.title = newTitle
+    s.updatedAt = Date.now()
+    saveSessions()
+    if (s.dbSessionId) {
+      await apiUpdateSessionTitle(s.dbSessionId, newTitle)
+    }
+  }
+}
+
 const shareSession = (id) => {
   const s = sessions.value.find(s => s.id === id)
   if (s?.dbSessionId) {
     const shareUrl = `${window.location.origin}/chat/${s.dbSessionId}`
     navigator.clipboard.writeText(shareUrl).then(() => {
-      alert('分享链接已复制到剪贴板')
-    }).catch(() => {
-      prompt('分享链接:', shareUrl)
+      alert('分享链接已复制')
     })
-  } else {
-    alert('该会话尚未保存到服务器，无法分享')
   }
 }
 
-// ── 重命名会话 ──────────────────────────────────────────────
-const renameSession = async (id, newTitle) => {
-  if (!newTitle.trim()) {
-    alert('会话名称不能为空')
-    return
-  }
-  const s = sessions.value.find(s => s.id === id)
-  if (s) {
-    s.title = newTitle.trim()
-    s.updatedAt = Date.now()
-    saveSessions()
-    if (s.dbSessionId) {
-      await apiUpdateSessionTitle(s.dbSessionId, s.title)
-    }
-  }
+const toggleSidebar = () => {
+  isSidebarVisible.value = !isSidebarVisible.value
 }
 
-// ── 举报会话 ──────────────────────────────────────────────
-const reportSession = (id) => {
-  const reason = prompt('请说明举报原因：', '')
-  if (reason !== null) {
-    alert(`已收到您的举报，原因：${reason}\n\n我们会尽快处理，感谢您的反馈！`)
-  }
+const toggleTheme = (isDark) => {
+  document.documentElement.classList.toggle('dark', isDark)
 }
 
-// ── 加载模型配置 ──────────────────────────────────────────
-const loadModelConfig = async () => {
+// 消息处理
+const handleSend = async ({ text, attachments }) => {
+  if (!text.trim() && !attachments?.length) return
+
+  // 如果没有活动会话，创建新会话
+  let session = sessions.value.find(s => s.id === activeSessionId.value)
+  if (!session) {
+    session = createLocalSession()
+  }
+
+  // 添加用户消息
+  const userMessage = {
+    id: genId(),
+    role: 'user',
+    content: text,
+    attachments: attachments || [],
+    timestamp: Date.now()
+  }
+  session.messages.push(userMessage)
+  session.updatedAt = Date.now()
+  saveSessions()
+
+  // 发送请求
+  isSending.value = true
   try {
-    // 先尝试从 localStorage 加载
-    const raw = localStorage.getItem(MODEL_CONFIG_KEY)
-    if (raw) {
-      currentModelConfig.value = JSON.parse(raw)
-      return
+    const response = await apiSendMessage({
+      sessionId: session.dbSessionId,
+      message: text,
+      attachments
+    })
+
+    // 添加 AI 回复
+    const aiMessage = {
+      id: genId(),
+      role: 'assistant',
+      content: response.content,
+      timestamp: Date.now(),
+      done: true
     }
-    
-    // 如果没有保存的配置，从后端获取系统默认配置
-    const response = await fetch('/api/v1/chat/model/default')
-    const result = await response.json()
-    
-    if (result.success) {
-      currentModelConfig.value = {
-        provider: result.provider,
-        model: result.model,
-        baseUrl: result.baseUrl
-      }
+    session.messages.push(aiMessage)
+    saveSessions()
+
+    // 更新会话标题
+    if (session.title === '新对话' && text) {
+      const newTitle = text.slice(0, 20) + (text.length > 20 ? '...' : '')
+      renameSession(session.id, newTitle)
     }
-  } catch (e) {
-    console.error('加载模型配置失败:', e)
+  } catch (error) {
+    console.error('发送消息失败:', error)
+  } finally {
+    isSending.value = false
+    nextTick(() => messageListRef.value?.scrollToBottom(true))
   }
 }
 
-// ── 保存模型配置 ──────────────────────────────────────────
-const saveModelConfig = (config) => {
-  try {
-    localStorage.setItem(MODEL_CONFIG_KEY, JSON.stringify(config))
-  } catch (e) {
-    console.error('保存模型配置失败:', e)
-  }
+const handleStop = () => {
+  // 停止生成
+  isSending.value = false
 }
 
-// ── 模型配置变更 ──────────────────────────────────────────
-const onModelChange = (modelConfig) => {
-  currentModelConfig.value = modelConfig
-  saveModelConfig(modelConfig)
+const handleSuggest = (content) => {
+  inputMessage.value = content
+  chatInputRef.value?.focus()
 }
 
-// ── 标题更新 ──────────────────────────────────────────────
-const onTitleUpdate = async (id, title) => {
-  const s = sessions.value.find(s => s.id === id)
-  if (s) { 
-    s.title = title; 
-    s.updatedAt = Date.now(); 
-    saveSessions();
-    // 如果有数据库会话ID，同步更新到数据库
-    if (s.dbSessionId) {
-      await apiUpdateSessionTitle(s.dbSessionId, title);
+const handleQuickAction = (content) => {
+  handleSend({ text: content, attachments: [] })
+}
+
+const handleRegenerate = (msg) => {
+  // 重新生成消息
+  const session = sessions.value.find(s => s.id === activeSessionId.value)
+  if (session) {
+    const index = session.messages.findIndex(m => m.id === msg.id)
+    if (index > 0) {
+      // 找到对应的问题重新发送
+      const userMsg = session.messages[index - 1]
+      handleSend({ text: userMsg.content, attachments: userMsg.attachments || [] })
     }
   }
 }
 
-// ── ChatAssistant 在首页发消息时，需要先创建本地会话 ──────
-const onCreateSessionFromHome = async (initialText) => {
-  const newSession = createLocalSession()
-  // 等待一下让 props 传递更新
-  await new Promise(resolve => setTimeout(resolve, 50))
-  // 告诉 ChatAssistant 可以继续发消息了
-  if (chatRef.value && chatRef.value.sendMessageAfterSessionCreated) {
-    chatRef.value.sendMessageAfterSessionCreated(initialText, newSession.id)
-  }
+const handleFileUpload = (files) => {
+  console.log('文件上传:', files)
 }
 
-// ── ChatAssistant 首次发消息后回调：回填 dbSessionId ──────
-const onSessionInit = ({ localId, dbSessionId }) => {
-  const s = sessions.value.find(s => s.id === localId)
-  if (s && dbSessionId && !s.dbSessionId) {
-    s.dbSessionId = dbSessionId
+const handleImageUpload = (files) => {
+  console.log('图片上传:', files)
+}
+
+const handleVoiceRecord = (attachment) => {
+  console.log('语音录制:', attachment)
+}
+
+const handleFormCardClick = (msg) => {
+  console.log('表单卡片点击:', msg)
+}
+
+const handleIntentAction = (event) => {
+  console.log('意图动作:', event)
+}
+
+const clearContext = () => {
+  const session = sessions.value.find(s => s.id === activeSessionId.value)
+  if (session) {
+    session.messages = []
     saveSessions()
   }
-  if (localId === activeSessionId.value) {
-    activeDbSessionId.value = dbSessionId || ''
-  }
 }
 
-// ── 从首页发送消息 ────────────────────────────────────────
+// 从首页发送消息
 const onSendMessageFromHome = async (messageData) => {
-  const newSession = createLocalSession()
-  await new Promise(resolve => setTimeout(resolve, 50))
-  if (chatRef.value && chatRef.value.sendMessageAfterSessionCreated) {
-    chatRef.value.sendMessageAfterSessionCreated(messageData, newSession.id)
+  const session = createLocalSession()
+  const text = typeof messageData === 'string' ? messageData : messageData?.text
+  if (text) {
+    await handleSend({ text, attachments: [] })
   }
 }
 
-// ── 切换聊天 ──────────────────────────────────────────────
 const onSwitchChat = (sessionId) => {
   activeSessionId.value = sessionId
-  const s = sessions.value.find(s => s.id === sessionId)
-  activeDbSessionId.value = s?.dbSessionId || ''
   saveActiveSessionId()
 }
 
-// ── 计算属性 ──────────────────────────────────────────────
-const sessionList = computed(() =>
-  [...sessions.value].sort((a, b) => {
-    if (a.pinned !== b.pinned) {
-      return a.pinned ? -1 : 1
-    }
-    return b.updatedAt - a.updatedAt
-  })
-)
+// 管理页面跳转
+const openSceneManager = () => { /* ... */ }
+const openPromptManager = () => { /* ... */ }
+const openOntologyManager = () => { /* ... */ }
+const openWorkflowManager = () => { /* ... */ }
+const openMCPManager = () => { /* ... */ }
+const openKBManager = () => { /* ... */ }
 
-// 判断当前是否为聊天视图
-const isChatView = computed(() => {
-  return currentView.value === 'dashboard' && activeSessionId.value
-})
-
-// 判断当前是否为首页视图（无活动会话）
-const isDashboardView = computed(() => {
-  return currentView.value === 'dashboard' && !activeSessionId.value
-})
-
-// 判断当前是否可以显示侧边栏切换按钮（非聊天视图）
-const canShowSidebarToggle = computed(() => {
-  return !isChatView.value
-})
-
-const activeSessionTitle = computed(() => {
-  const s = sessions.value.find(s => s.id === activeSessionId.value)
-  return s?.title || '新对话'
-})
-
-const chatRef = ref(null)
-provide('chatRef', chatRef)
-
-// ── 登出 ──────────────────────────────────────────────────
+// 登出
 const handleLogout = () => {
   sessions.value = []
   activeSessionId.value = ''
-  activeDbSessionId.value = ''
   userStore.logout()
 }
 
-// ── 初始化：加载本地会话 + 同步 DB 会话 ────────────────────
-const initDbSessions = async () => {
-  isInitializing.value = true  // 开始初始化
-  loadingStore.show('正在初始化...')
-  
-  try {
-    // 0. 恢复之前激活的会话 ID
-    const savedActiveId = loadActiveSessionId()
-
-    // 1. 加载本地会话
-    loadSessions()
-
-    // 2. 查询 DB 中该用户的会话列表
-    const dbSessions = await apiGetSessions(userStore.username)
-
-    // 3. 为本地会话匹配 dbSessionId（按 dbSessionId 精确匹配 + 时间戳兜底）
-    for (const s of sessions.value) {
-      if (s.dbSessionId) {
-        // 已有映射，检查 DB 中是否还存在（可能被删了）
-        const stillExists = dbSessions.some(d => d.session_id === s.dbSessionId)
-        if (!stillExists) s.dbSessionId = null
-        continue
-      }
-      // 无 dbSessionId → 用时间戳匹配（误差 5s 内视为同一会话）
-      const matched = dbSessions.find(d =>
-        Math.abs(new Date(d.created_at).getTime() - s.createdAt) < 5000
-      )
-      if (matched) s.dbSessionId = matched.session_id
-    }
-
-    // 4. 找出 DB 中有但本地没有的会话（跨设备/跨浏览器场景），追加到本地
-    for (const d of dbSessions) {
-      const alreadyLocal = sessions.value.some(s => s.dbSessionId === d.session_id)
-      if (!alreadyLocal) {
-        const createdAt = new Date(d.created_at).getTime()
-        sessions.value.push({
-          id: genId(),                            // 生成本地 ID（避免与旧的冲突）
-          title: d.title || '新对话',
-          createdAt,
-          updatedAt: new Date(d.updated_at || d.created_at).getTime(),
-          dbSessionId: d.session_id
-        })
-      }
-    }
-
-    saveSessions()
-
-    // 5. 刷新页面默认显示首页，不自动激活任何会话
-    // 用户需要主动点击会话列表中的会话才能进入聊天界面
-    activeSessionId.value = ''
-    activeDbSessionId.value = ''
-  } finally {
-    isInitializing.value = false  // 初始化完成
-    loadingStore.hide()
+// 网络检查
+const checkNetwork = () => {
+  isOnline.value = navigator.onLine
+  if (isOnline.value) {
+    checkBackendOnline()
   }
 }
 
-// ── 检查后端服务是否在线 ──────────────────────────────────
 const checkBackendOnline = async () => {
-  if (!isOnline.value) {
-    isBackendOnline.value = false
-    return
-  }
-  try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 5000)
-    const response = await fetch('/api/v1/health', { 
-      method: 'HEAD', 
-      signal: controller.signal 
-    })
-    clearTimeout(timeoutId)
-    
-    if (response.ok && !isBackendOnline.value) {
-      // 从离线恢复到在线
-      reconnectAttempts.value = 0
-      isReconnecting.value = false
-    }
-    isBackendOnline.value = response.ok
-  } catch {
-    const shouldReconnect = isBackendOnline.value || reconnectAttempts.value === 0
-    if (shouldReconnect) {
-      // 刚刚断开连接，或者是首次检查失败，开始重连流程
-      // 先设置重连次数，再设置离线状态，确保 UI 显示正确
-      reconnectAttempts.value = 1
-      isReconnecting.value = true
-      isBackendOnline.value = false
-      attemptReconnect()
-    } else {
-      isBackendOnline.value = false
-    }
-  }
-}
-
-// ── 开始重连流程（带指数退避）──────────────────────────────
-const startReconnect = () => {
-  if (isReconnecting.value) return
-  
-  isReconnecting.value = true
-  reconnectAttempts.value = 1  // 从第1次开始
-  attemptReconnect()
-}
-
-// ── 尝试重连 ──────────────────────────────────────────────
-const attemptReconnect = async () => {
-  if (!isOnline.value) {
-    // 网络离线，等待网络恢复
-    isReconnecting.value = false
-    return
-  }
-  
   try {
     const response = await fetch('/api/v1/health', { method: 'HEAD' })
-    if (response.ok) {
-      // 重连成功
-      isBackendOnline.value = true
-      isReconnecting.value = false
-      reconnectAttempts.value = 0
-      return
-    }
+    isBackendOnline.value = response.ok
   } catch {
-    // 重连失败，继续尝试
-  }
-  
-  // 指数退避：1s, 2s, 4s, 8s, 16s, 最大30s
-  reconnectAttempts.value++
-  const delay = Math.min(Math.pow(2, reconnectAttempts.value - 1) * 1000, 30000)
-  
-  reconnectTimeout = setTimeout(() => {
-    if (!isBackendOnline.value) {
-      attemptReconnect()
-    }
-  }, delay)
-}
-
-// ── 手动检查网络 ──────────────────────────────────────────
-const checkNetwork = () => {
-  if (navigator.onLine) {
-    checkBackendOnline()
+    isBackendOnline.value = false
   }
 }
 
-// ── 网络状态变化处理 ──────────────────────────────────────
-const handleOnline = () => {
-  isOnline.value = true
-  if (!isBackendOnline.value) {
-    startReconnect()
-  } else {
-    checkBackendOnline()
-  }
-}
-
-const handleOffline = () => {
-  isOnline.value = false
-  isBackendOnline.value = false
-  isReconnecting.value = false
-  if (reconnectTimeout) {
-    clearTimeout(reconnectTimeout)
-  }
-}
-
-// ── 监听登录状态 ───────────────────────────────────────────
-let wasLoggedIn = false
-
-watch(() => userStore.isLoggedIn, (loggedIn) => {
-  if (loggedIn && !wasLoggedIn) {
-    wasLoggedIn = true
-    initDbSessions()
-  } else if (!loggedIn) {
-    wasLoggedIn = false
-    sessions.value = []
-    activeSessionId.value = ''
-    activeDbSessionId.value = ''
-  }
-}, { immediate: true })   // immediate: true 确保 onMounted 之前也触发一次
-
+// 生命周期
 onMounted(() => {
-  // 初始化主题（在应用加载时立即执行）
-  initTheme()
+  loadSessions()
+  const savedActiveId = localStorage.getItem(ACTIVE_SESSION_KEY)
+  if (savedActiveId && sessions.value.find(s => s.id === savedActiveId)) {
+    activeSessionId.value = savedActiveId
+  }
   
-  // 加载模型配置
-  loadModelConfig()
+  window.addEventListener('online', () => isOnline.value = true)
+  window.addEventListener('offline', () => isOnline.value = false)
   
-  // 添加网络状态监听
-  window.addEventListener('online', handleOnline)
-  window.addEventListener('offline', handleOffline)
-  
-  // 初始检查后端服务状态
-  checkBackendOnline()
-  
-  // 定期检查后端服务状态（每30秒）
-  backendCheckInterval = setInterval(checkBackendOnline, 30000)
+  // 定期检查后端
+  setInterval(checkBackendOnline, 30000)
 })
 
 onUnmounted(() => {
-  // 清理网络状态监听
-  window.removeEventListener('online', handleOnline)
-  window.removeEventListener('offline', handleOffline)
-  
-  // 清理定时器
-  if (backendCheckInterval) {
-    clearInterval(backendCheckInterval)
-  }
-  if (reconnectTimeout) {
-    clearTimeout(reconnectTimeout)
-  }
+  window.removeEventListener('online', () => {})
+  window.removeEventListener('offline', () => {})
 })
 </script>
 
-<style scoped>
-/* 网络状态提示条 */
-.network-status-bar {
+<style>
+/* 全局样式变量 */
+:root {
+  /* 主色调 - 天蓝色 */
+  --primary-500: #3b82f6;
+  --primary-600: #2563eb;
+  --primary-100: #dbeafe;
+  
+  /* 背景色 */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafc;
+  --bg-tertiary: #f1f5f9;
+  
+  /* 边框 */
+  --border-light: #e2e8f0;
+  --border-default: #cbd5e1;
+  
+  /* 文字 */
+  --text-primary: #1e293b;
+  --text-secondary: #64748b;
+  --text-tertiary: #94a3b8;
+  --text-inverse: #ffffff;
+  
+  /* 侧边栏 */
+  --sidebar-bg: #f8fafc;
+  --sidebar-width: 280px;
+  
+  /* 过渡 */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.2s ease;
+  
+  /* 层级 */
+  --z-dropdown: 100;
+  --z-modal: 200;
+}
+
+/* 深色模式 */
+:root.dark {
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  
+  --border-light: #334155;
+  --border-default: #475569;
+  
+  --text-primary: #f1f5f9;
+  --text-secondary: #cbd5e1;
+  --text-tertiary: #94a3b8;
+  
+  --sidebar-bg: #0f172a;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  display: flex;
+  height: 100vh;
+  height: 100dvh;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+.app-container {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+.main-layout {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+/* 网络状态条 */
+.network-banner {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  z-index: var(--z-modal);
+  z-index: 1000;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 6px 16px;
-  font-size: 12px;
+  padding: 8px 16px;
+  font-size: 13px;
   font-weight: 500;
 }
 
-.network-status-bar.offline {
-  background: var(--color-error-500);
-  color: var(--text-inverse);
+.network-banner.offline {
+  background: #ef4444;
+  color: white;
 }
 
-.network-status-bar.warning {
-  background: var(--color-warning-500);
-  color: var(--text-inverse);
+.network-banner.warning {
+  background: #f59e0b;
+  color: white;
 }
 
-.network-status-bar svg {
-  flex-shrink: 0;
-}
-
-.network-status-bar span {
-  flex: 1;
-}
-
-.reconnect-btn {
-  flex-shrink: 0;
-  padding: 3px 8px;
+.network-banner button {
+  padding: 4px 12px;
   background: rgba(255, 255, 255, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 4px;
-  color: var(--text-inverse);
-  font-size: 11px;
+  color: white;
+  font-size: 12px;
   cursor: pointer;
-  transition: background 0.2s;
 }
 
-.reconnect-btn:hover:not(:disabled) {
+.network-banner button:hover {
   background: rgba(255, 255, 255, 0.3);
 }
 
-.reconnect-btn:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-.reconnect-status {
-  font-size: var(--font-size-xs);
-  opacity: 0.8;
-}
-
-.spin-icon {
+.spin {
   animation: spin 2s linear infinite;
 }
 
 @keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
-/* 动画 */
+/* 主内容区 */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg-primary);
+}
+
+/* 聊天区域 */
+.chat-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 聊天头部 */
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border-light);
+  background: var(--bg-primary);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.session-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.header-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.header-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+/* 欢迎区域 */
+.welcome-area {
+  flex: 1;
+  overflow-y: auto;
+  width: 100%;
+}
+
+/* 右侧面板 */
+.right-panel {
+  width: 320px;
+  min-width: 320px;
+  border-left: 1px solid var(--border-light);
+  background: var(--bg-secondary);
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.panel-header span {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.close-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.close-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.panel-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-tertiary);
+}
+
+/* 过渡动画 */
 .slide-down-enter-active,
 .slide-down-leave-active {
   transition: transform 0.3s ease, opacity 0.3s ease;
@@ -928,82 +771,184 @@ onUnmounted(() => {
   opacity: 0;
 }
 
-/* App 主容器 */
-#app {
-  display: flex;
-  height: 100vh;
-  height: 100dvh;
-  width: 100vw;
-  background: var(--bg-secondary);
-}
-
-.sidebar-wrapper { 
-  flex-shrink: 0; 
-  transition: width 0.3s ease, min-width 0.3s ease, transform 0.3s ease, opacity 0.3s ease;
-  position: relative;
-  z-index: 50;
-  overflow: hidden;
-}
-
-/* 聊天时隐藏侧边栏的样式 */
-.sidebar-wrapper.sidebar-hidden {
-  transform: translateX(-100%);
-  opacity: 0;
-  pointer-events: none;
-}
-
-.main-area {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-secondary);
-  position: relative;
-  transition: flex 0.3s ease;
-}
-
-/* 聊天模式切换按钮样式 */
-.sidebar-toggle-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 56px;
-  background: white;
-  border: 1px solid #e0e0e0;
-  border-left: none;
-  border-radius: 0 8px 8px 0;
-  cursor: pointer;
-  color: #666;
-  transition: all 0.2s;
-  z-index: 100;
-  flex-shrink: 0;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.08);
-  align-self: center;
-}
-
-.sidebar-toggle-btn:hover {
-  background: #f8f9fa;
-  color: #3b82f6;
-  border-color: #d0d0d0;
-}
-
-.sidebar-toggle-btn.chat-mode-toggle {
-  margin-left: -1px;
-}
-
-@media (max-width: 768px) {
-  .sidebar-wrapper {
-    position: fixed;
-    top: 0; left: 0;
-    height: 100vh; height: 100dvh;
-    z-index: var(--z-fixed);
-    transform: translateX(-100%);
-    transition: transform 0.25s cubic-bezier(.4,0,.2,1);
+/* 响应式 - 平板 */
+@media (max-width: 1024px) {
+  .right-panel {
+    display: none;
   }
-  
-  .sidebar-wrapper:not(.sidebar-hidden) { 
-    transform: translateX(0); 
+
+  .chat-header {
+    padding: 12px 20px;
+  }
+
+  .session-title {
+    font-size: 15px;
+  }
+}
+
+/* 响应式 - 手机横屏/小平板 */
+@media (max-width: 768px) {
+  :root {
+    --sidebar-width: 0px;
+  }
+
+  .network-banner {
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+
+  .network-banner button {
+    padding: 3px 10px;
+    font-size: 11px;
+  }
+
+  .chat-header {
+    padding: 10px 16px;
+    height: 52px;
+  }
+
+  .header-left {
+    gap: 8px;
+  }
+
+  .session-title {
+    font-size: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 50vw;
+  }
+
+  .header-actions {
+    gap: 6px;
+  }
+
+  .header-btn {
+    width: 34px;
+    height: 34px;
+  }
+
+  .header-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+/* 响应式 - 手机 */
+@media (max-width: 480px) {
+  .network-banner {
+    font-size: 11px;
+    padding: 6px 10px;
+    gap: 6px;
+  }
+
+  .network-banner svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .chat-header {
+    padding: 8px 12px;
+    height: 48px;
+  }
+
+  .session-title {
+    font-size: 14px;
+    max-width: 45vw;
+  }
+
+  .header-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .header-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .main-content {
+    min-width: 100%;
+  }
+}
+
+/* 移动端触摸优化 */
+@media (pointer: coarse) {
+  .header-btn {
+    min-height: 36px;
+    min-width: 36px;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .header-btn:active {
+    background: var(--bg-tertiary);
+  }
+
+  .network-banner button {
+    min-height: 28px;
+  }
+}
+
+/* iPhone X+ 刘海屏适配 */
+@supports (padding-top: env(safe-area-inset-top)) {
+  @media (max-width: 768px) {
+    .network-banner {
+      padding-top: calc(8px + env(safe-area-inset-top));
+    }
+
+    .chat-header {
+      padding-top: calc(10px + env(safe-area-inset-top) * 0.5);
+    }
+  }
+
+  @media (max-width: 480px) {
+    .network-banner {
+      padding-top: calc(6px + env(safe-area-inset-top));
+    }
+  }
+}
+
+/* 小高度屏幕优化 - 横屏手机 */
+@media (max-height: 500px) and (orientation: landscape) {
+  .chat-header {
+    height: 44px;
+    padding: 6px 12px;
+  }
+
+  .session-title {
+    font-size: 13px;
+  }
+
+  .network-banner {
+    position: relative;
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+}
+
+/* 平板横屏优化 */
+@media (min-width: 769px) and (max-width: 1024px) and (orientation: landscape) {
+  :root {
+    --sidebar-width: 240px;
+  }
+}
+
+/* 大屏幕优化 */
+@media (min-width: 1400px) {
+  .chat-header {
+    padding: 16px 32px;
+  }
+
+  .session-title {
+    font-size: 17px;
+  }
+}
+
+/* 深色模式适配 */
+@media (prefers-color-scheme: dark) {
+  .main-content,
+  .chat-header {
+    background: var(--bg-primary);
   }
 }
 </style>
