@@ -1,224 +1,226 @@
 <template>
   <div class="dashboard-home">
-    <div class="main-content">
-      <!-- 顶部欢迎区 -->
-      <div class="welcome-area">
-        <div class="welcome-content">
-          <h1 class="welcome-title">有什么可以帮你的？</h1>
-          <p class="welcome-subtitle">产商品智能助手，随时为你效劳</p>
-        </div>
-      </div>
-
-      <!-- 欢迎卡片 - 来自 prodai-cfg-demo -->
-      <div class="welcome-cards-area">
-        <p class="welcome-cards-title">您好！我是产品智能配置助手，可以帮您快速完成商品配置。</p>
-        <div class="welcome-cards-grid">
-          <button type="button" class="welcome-card" @click="handleWelcomeCard('query')">
-            <div class="welcome-card-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="11" cy="11" r="8"/>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              </svg>
-            </div>
-            <h4>AI智查</h4>
-            <p>查询历史商品，快速复制配置</p>
-          </button>
-          <button type="button" class="welcome-card" @click="handleWelcomeCard('file')">
-            <div class="welcome-card-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-                <line x1="12" y1="18" x2="12" y2="12"/>
-                <line x1="9" y1="15" x2="15" y2="15"/>
-              </svg>
-            </div>
-            <h4>AI方案导入</h4>
-            <p>上传文档，批量导入配置</p>
-          </button>
-          <button type="button" class="welcome-card" @click="handleWelcomeCard('chat')">
-            <div class="welcome-card-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-              </svg>
-            </div>
-            <h4>对话式配置</h4>
-            <p>自然语言描述需求，AI 生成配置</p>
-          </button>
-        </div>
-      </div>
-
-      <!-- 快捷建议 -->
-      <div class="suggestions-area">
-        <div class="suggestions-grid">
-          <button
-            v-for="s in suggestions"
-            :key="s.key"
-            class="suggestion-item"
-            @click="handleSuggestion(s)"
-          >
-            <span class="suggestion-icon">
-              <svg v-if="s.icon === 'form'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-                <line x1="16" y1="13" x2="8" y2="13"/>
-                <line x1="16" y1="17" x2="8" y2="17"/>
-                <polyline points="10 9 9 9 8 9"/>
-              </svg>
-              <svg v-else-if="s.icon === 'calendar'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                <line x1="16" y1="2" x2="16" y2="6"/>
-                <line x1="8" y1="2" x2="8" y2="6"/>
-                <line x1="3" y1="10" x2="21" y2="10"/>
-              </svg>
-              <svg v-else-if="s.icon === 'wallet'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M20 7h-9a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
-                <path d="M16 21V5a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2z"/>
-              </svg>
-              <svg v-else-if="s.icon === 'help'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-                <line x1="12" y1="17" x2="12.01" y2="17"/>
-              </svg>
-            </span>
-            <span class="suggestion-text">{{ s.text }}</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- 底部输入区 -->
-      <div class="bottom-input">
-        <ChatInput
-          ref="inputRef"
-          v-model="inputText"
-          :placeholder="placeholder"
-          @send="handleSend"
-          @quick-action="handleSuggestion"
-        />
-      </div>
-    </div>
-
-    <!-- 待办、快捷、预警侧边栏 -->
-    <div class="sidebar-widgets">
-      <!-- 待办 -->
-      <div class="widget-card">
-        <div class="widget-header">
-          <span class="widget-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-              <path d="M9 3v6h6"/>
-            </svg>
-          </span>
-          <span class="widget-title">待办</span>
-          <span class="widget-count">{{ pendingTodos.length }}</span>
-        </div>
-        <div class="widget-body">
-          <div class="todo-input-row">
-            <input
-              v-model="newTodo"
-              class="todo-input"
-              placeholder="添加待办..."
-              @keydown.enter="addTodo"
-            />
-            <button class="todo-add-btn" @click="addTodo">+</button>
-          </div>
-          <div class="todo-list">
-            <div v-for="todo in todos" :key="todo.id" class="todo-item" :class="{ done: todo.done }">
-              <input
-                type="checkbox"
-                :checked="todo.done"
-                @change="toggleTodo(todo.id)"
-              />
-              <span class="todo-text">{{ todo.text }}</span>
-              <button class="todo-delete" @click="deleteTodo(todo.id)">×</button>
-            </div>
-            <div v-if="!todos.length" class="empty-tip">暂无待办</div>
+    <div class="dashboard-shell">
+      <section class="dashboard-main">
+        <!-- 顶部欢迎区 -->
+        <div class="welcome-area">
+          <div class="welcome-content">
+            <h1 class="welcome-title">有什么可以帮你的？</h1>
+            <p class="welcome-subtitle">产商品智能助手，随时为你效劳</p>
           </div>
         </div>
-      </div>
 
-      <!-- 快捷入口 -->
-      <div class="widget-card">
-        <div class="widget-header">
-          <span class="widget-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-            </svg>
-          </span>
-          <span class="widget-title">快捷</span>
+        <!-- 欢迎卡片 - 来自 prodai-cfg-demo -->
+        <div class="welcome-cards-area">
+          <p class="welcome-cards-title">您好！我是产品智能配置助手，可以帮您快速完成商品配置。</p>
+          <div class="welcome-cards-grid">
+            <button type="button" class="welcome-card" @click="handleWelcomeCard('query')">
+              <div class="welcome-card-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="11" cy="11" r="8"/>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+              </div>
+              <h4>AI智查</h4>
+              <p>查询历史商品，快速复制配置</p>
+            </button>
+            <button type="button" class="welcome-card" @click="handleWelcomeCard('file')">
+              <div class="welcome-card-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="12" y1="18" x2="12" y2="12"/>
+                  <line x1="9" y1="15" x2="15" y2="15"/>
+                </svg>
+              </div>
+              <h4>AI方案导入</h4>
+              <p>上传文档，批量导入配置</p>
+            </button>
+            <button type="button" class="welcome-card" @click="handleWelcomeCard('chat')">
+              <div class="welcome-card-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+              </div>
+              <h4>对话式配置</h4>
+              <p>自然语言描述需求，AI 生成配置</p>
+            </button>
+          </div>
         </div>
-        <div class="widget-body">
-          <div class="shortcut-grid">
+
+        <!-- 快捷建议 -->
+        <div class="suggestions-area">
+          <div class="suggestions-grid">
             <button
-              v-for="sc in shortcuts"
-              :key="sc.key"
-              class="shortcut-btn"
-              @click="handleShortcut(sc)"
+              v-for="s in suggestions"
+              :key="s.key"
+              class="suggestion-item"
+              @click="handleSuggestion(s)"
             >
-              <span class="shortcut-icon">
-                <svg v-if="sc.icon === 'form'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <span class="suggestion-icon">
+                <svg v-if="s.icon === 'form'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                   <polyline points="14 2 14 8 20 8"/>
                   <line x1="16" y1="13" x2="8" y2="13"/>
                   <line x1="16" y1="17" x2="8" y2="17"/>
                   <polyline points="10 9 9 9 8 9"/>
                 </svg>
-                <svg v-else-if="sc.icon === 'calendar'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg v-else-if="s.icon === 'calendar'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
                   <line x1="16" y1="2" x2="16" y2="6"/>
                   <line x1="8" y1="2" x2="8" y2="6"/>
                   <line x1="3" y1="10" x2="21" y2="10"/>
                 </svg>
-                <svg v-else-if="sc.icon === 'wallet'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg v-else-if="s.icon === 'wallet'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M20 7h-9a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
                   <path d="M16 21V5a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2z"/>
                 </svg>
-                <svg v-else-if="sc.icon === 'chart'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="18" y1="20" x2="18" y2="10"/>
-                  <line x1="12" y1="20" x2="12" y2="4"/>
-                  <line x1="6" y1="20" x2="6" y2="16"/>
-                </svg>
-                <svg v-else-if="sc.icon === 'file'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                  <polyline points="14 2 14 8 20 8"/>
-                  <line x1="16" y1="13" x2="8" y2="13"/>
-                  <line x1="16" y1="17" x2="8" y2="17"/>
-                  <polyline points="10 9 9 9 8 9"/>
-                </svg>
-                <svg v-else-if="sc.icon === 'help'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg v-else-if="s.icon === 'help'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <circle cx="12" cy="12" r="10"/>
                   <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
                   <line x1="12" y1="17" x2="12.01" y2="17"/>
                 </svg>
               </span>
-              <span class="shortcut-label">{{ sc.label }}</span>
+              <span class="suggestion-text">{{ s.text }}</span>
             </button>
           </div>
         </div>
-      </div>
 
-      <!-- 预警 -->
-      <div class="widget-card">
-        <div class="widget-header">
-          <span class="widget-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-            </svg>
-          </span>
-          <span class="widget-title">预警</span>
-          <span v-if="alerts.length" class="widget-count alert">{{ alerts.length }}</span>
+        <!-- 底部输入区 -->
+        <div class="bottom-input">
+          <ChatInput
+            ref="inputRef"
+            v-model="inputText"
+            :placeholder="placeholder"
+            @send="handleSend"
+            @quick-action="handleSuggestion"
+          />
         </div>
-        <div class="widget-body">
-          <div class="alert-list">
-            <div v-for="alert in alerts" :key="alert.id" class="alert-item">
-              <span class="alert-tag" :class="alert.type">{{ alert.tag }}</span>
-              <span class="alert-text">{{ alert.text }}</span>
-              <button class="alert-dismiss" @click="dismissAlert(alert.id)">×</button>
+      </section>
+
+      <!-- 待办、快捷、预警侧边栏 -->
+      <aside class="sidebar-widgets">
+        <!-- 待办 -->
+        <div class="widget-card">
+          <div class="widget-header">
+            <span class="widget-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <path d="M9 3v6h6"/>
+              </svg>
+            </span>
+            <span class="widget-title">待办</span>
+            <span class="widget-count">{{ pendingTodos.length }}</span>
+          </div>
+          <div class="widget-body">
+            <div class="todo-input-row">
+              <input
+                v-model="newTodo"
+                class="todo-input"
+                placeholder="添加待办..."
+                @keydown.enter="addTodo"
+              />
+              <button class="todo-add-btn" @click="addTodo">+</button>
             </div>
-            <div v-if="!alerts.length" class="empty-tip">暂无预警</div>
+            <div class="todo-list">
+              <div v-for="todo in todos" :key="todo.id" class="todo-item" :class="{ done: todo.done }">
+                <input
+                  type="checkbox"
+                  :checked="todo.done"
+                  @change="toggleTodo(todo.id)"
+                />
+                <span class="todo-text">{{ todo.text }}</span>
+                <button class="todo-delete" @click="deleteTodo(todo.id)">×</button>
+              </div>
+              <div v-if="!todos.length" class="empty-tip">暂无待办</div>
+            </div>
           </div>
         </div>
-      </div>
+
+        <!-- 快捷入口 -->
+        <div class="widget-card">
+          <div class="widget-header">
+            <span class="widget-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+              </svg>
+            </span>
+            <span class="widget-title">快捷</span>
+          </div>
+          <div class="widget-body">
+            <div class="shortcut-grid">
+              <button
+                v-for="sc in shortcuts"
+                :key="sc.key"
+                class="shortcut-btn"
+                @click="handleShortcut(sc)"
+              >
+                <span class="shortcut-icon">
+                  <svg v-if="sc.icon === 'form'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                  </svg>
+                  <svg v-else-if="sc.icon === 'calendar'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                    <line x1="16" y1="2" x2="16" y2="6"/>
+                    <line x1="8" y1="2" x2="8" y2="6"/>
+                    <line x1="3" y1="10" x2="21" y2="10"/>
+                  </svg>
+                  <svg v-else-if="sc.icon === 'wallet'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 7h-9a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
+                    <path d="M16 21V5a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2z"/>
+                  </svg>
+                  <svg v-else-if="sc.icon === 'chart'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="20" x2="18" y2="10"/>
+                    <line x1="12" y1="20" x2="12" y2="4"/>
+                    <line x1="6" y1="20" x2="6" y2="16"/>
+                  </svg>
+                  <svg v-else-if="sc.icon === 'file'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                  </svg>
+                  <svg v-else-if="sc.icon === 'help'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                  </svg>
+                </span>
+                <span class="shortcut-label">{{ sc.label }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 预警 -->
+        <div class="widget-card">
+          <div class="widget-header">
+            <span class="widget-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+            </span>
+            <span class="widget-title">预警</span>
+            <span v-if="alerts.length" class="widget-count alert">{{ alerts.length }}</span>
+          </div>
+          <div class="widget-body">
+            <div class="alert-list">
+              <div v-for="alert in alerts" :key="alert.id" class="alert-item">
+                <span class="alert-tag" :class="alert.type">{{ alert.tag }}</span>
+                <span class="alert-text">{{ alert.text }}</span>
+                <button class="alert-dismiss" @click="dismissAlert(alert.id)">×</button>
+              </div>
+              <div v-if="!alerts.length" class="empty-tip">暂无预警</div>
+            </div>
+          </div>
+        </div>
+      </aside>
     </div>
   </div>
 </template>
@@ -335,7 +337,7 @@ const handleWelcomeCard = (type) => {
       text = '我要配置一个大学生套餐'
       break
   }
-  emit('send-message', text)
+  emit('send-message', { text, skill: type })
 }
 
 const handleShortcut = (sc) => {
@@ -385,219 +387,182 @@ onMounted(() => {
 
 <style scoped>
 .dashboard-home {
-  display: flex;
-  height: 100%;
   width: 100%;
-  padding: 40px 48px;
-  background: var(--bg-secondary);
+  height: 100%;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+}
+
+.dashboard-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 24px;
+  width: 100%;
+  height: 100%;
+  padding: 32px 40px;
+  min-width: 0;
+}
+
+.dashboard-main {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
   overflow: hidden;
 }
 
-/* 左侧主内容区 */
-.main-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  overflow-y: auto;
-  width: 100%;
+.dashboard-main > * {
+  min-width: 0;
 }
 
-.main-content::-webkit-scrollbar {
+.dashboard-main {
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.dashboard-main::-webkit-scrollbar,
+.sidebar-widgets::-webkit-scrollbar {
   width: 6px;
 }
 
-.main-content::-webkit-scrollbar-thumb {
+.dashboard-main::-webkit-scrollbar-thumb,
+.sidebar-widgets::-webkit-scrollbar-thumb {
   background: var(--border-default);
-  border-radius: 3px;
+  border-radius: 999px;
 }
 
-/* 顶部欢迎区 */
 .welcome-area {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  padding-top: 20px;
-  margin-bottom: 24px;
-}
-
-.welcome-content {
-  text-align: left;
+  gap: 10px;
+  padding-top: 4px;
 }
 
 .welcome-title {
-  font-size: var(--font-size-3xl);
-  font-weight: var(--font-weight-bold);
+  font-size: clamp(28px, 3vw, 40px);
+  font-weight: 700;
   color: var(--text-primary);
-  margin-bottom: 12px;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.04em;
 }
 
-.welcome-subtitle {
-  font-size: var(--font-size-sm);
+.welcome-subtitle,
+.welcome-cards-title {
   color: var(--text-secondary);
+  line-height: 1.6;
 }
 
-/* 欢迎卡片样式 */
-.welcome-cards-area {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  margin-bottom: 24px;
+.welcome-cards-area,
+.suggestions-area,
+.bottom-input {
   width: 100%;
 }
 
-.welcome-cards-title {
-  font-size: var(--font-size-base);
-  color: var(--text-secondary);
-  margin-bottom: 16px;
-  text-align: left;
+.welcome-cards-area {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .welcome-cards-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  width: 100%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
 }
 
-@media (max-width: 768px) {
-  .welcome-cards-grid {
-    grid-template-columns: 1fr;
-  }
+.welcome-card,
+.suggestion-item,
+.widget-card,
+.shortcut-btn,
+.todo-input,
+.alert-item {
+  border: 1px solid var(--border-light);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(10px);
 }
 
 .welcome-card {
   text-align: left;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
+  border-radius: 18px;
   padding: 20px;
-  transition: all var(--transition-fast);
   cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  min-width: 0;
+  gap: 12px;
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
 }
 
-.welcome-card:hover {
-  border-color: var(--color-primary-400);
-  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.15);
+.welcome-card:hover,
+.suggestion-item:hover,
+.shortcut-btn:hover {
   transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+  border-color: rgba(99, 102, 241, 0.35);
 }
 
 .welcome-card-icon {
-  width: 42px;
-  height: 42px;
-  background: var(--color-primary-100);
-  border-radius: var(--radius-sm);
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 12px;
-  color: var(--color-primary-600);
+  background: var(--primary-100);
+  color: var(--primary-600);
 }
 
 .welcome-card h4 {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  margin-bottom: 4px;
+  font-size: 15px;
+  font-weight: 600;
   color: var(--text-primary);
 }
 
 .welcome-card p {
-  font-size: var(--font-size-xs);
-  color: var(--text-tertiary);
-}
-
-/* 快捷建议 */
-.suggestions-area {
-  display: flex;
-  justify-content: flex-start;
-  margin-bottom: 24px;
-  width: 100%;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
 }
 
 .suggestions-grid {
   display: flex;
-  gap: 12px;
   flex-wrap: wrap;
-  justify-content: flex-start;
-  width: 100%;
+  gap: 12px;
 }
 
 .suggestion-item {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 20px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-default);
+  padding: 12px 16px;
   border-radius: 14px;
-  font-size: 14px;
-  color: var(--text-primary);
   cursor: pointer;
-  transition: all .2s;
-  box-shadow: var(--shadow-sm);
-}
-
-.suggestion-item:hover {
-  border-color: #818cf8;
-  box-shadow: 0 4px 16px rgba(99,102,241,.15);
-  transform: translateY(-2px);
-}
-
-.suggestion-icon {
-  font-size: 18px;
+  color: var(--text-primary);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
 }
 
 .suggestion-text {
   white-space: nowrap;
 }
 
-/* 底部输入区 */
 .bottom-input {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  padding-bottom: 20px;
-  width: 100%;
   margin-top: auto;
+  padding-bottom: 2px;
 }
 
-/* 右侧小部件 */
 .sidebar-widgets {
-  width: 240px;
-  flex-shrink: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
   overflow-y: auto;
-  padding-left: 24px;
   padding-right: 4px;
-  height: 100%;
-}
-
-.sidebar-widgets .widget-card:last-child {
-  flex: 1;
-  min-height: 0;
-}
-
-.sidebar-widgets::-webkit-scrollbar {
-  width: 4px;
-}
-
-.sidebar-widgets::-webkit-scrollbar-thumb {
-  background: var(--border-default);
-  border-radius: 2px;
 }
 
 .widget-card {
-  background: var(--bg-elevated);
-  border-radius: 16px;
+  border-radius: 18px;
   padding: 16px;
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.05);
 }
 
 .widget-header {
@@ -609,10 +574,6 @@ onMounted(() => {
   border-bottom: 1px solid var(--border-light);
 }
 
-.widget-icon {
-  font-size: 16px;
-}
-
 .widget-title {
   font-size: 14px;
   font-weight: 600;
@@ -621,12 +582,12 @@ onMounted(() => {
 }
 
 .widget-count {
-  background: var(--color-primary-400);
+  background: var(--primary-500);
   color: var(--text-inverse);
   font-size: 11px;
   padding: 2px 8px;
-  border-radius: 10px;
-  font-weight: 500;
+  border-radius: 999px;
+  font-weight: 600;
 }
 
 .widget-count.alert {
@@ -634,53 +595,45 @@ onMounted(() => {
 }
 
 .widget-body {
-  min-height: 80px;
-  height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  gap: 12px;
 }
 
-/* 待办 */
 .todo-input-row {
   display: flex;
   gap: 8px;
-  margin-bottom: 12px;
 }
 
 .todo-input {
   flex: 1;
-  padding: 8px 12px;
-  border: 1px solid #eaeaea;
-  border-radius: 8px;
-  font-size: 13px;
+  padding: 10px 12px;
+  border-radius: 12px;
   outline: none;
 }
 
 .todo-input:focus {
-  border-color: #818cf8;
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
 }
 
 .todo-add-btn {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border: none;
-  background: #818cf8;
+  background: var(--primary-500);
   color: var(--text-inverse);
-  border-radius: 8px;
+  border-radius: 12px;
   cursor: pointer;
   font-size: 18px;
-  line-height: 1;
-  transition: background .2s;
 }
 
-.todo-add-btn:hover {
-  background: #6366f1;
-}
-
-.todo-list {
-  max-height: 120px;
-  overflow-y: auto;
+.todo-list,
+.alert-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .todo-item {
@@ -696,165 +649,94 @@ onMounted(() => {
   color: var(--text-tertiary);
 }
 
-.todo-item input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  accent-color: #818cf8;
-}
-
-.todo-text {
-  flex: 1;
-  font-size: 13px;
+.todo-text,
+.alert-text,
+.shortcut-label {
   color: var(--text-primary);
 }
 
-.todo-delete {
-  background: none;
-  border: none;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  font-size: 16px;
-  padding: 0 4px;
-}
-
-.todo-delete:hover {
-  color: var(--color-error-500);
-}
-
-/* 快捷入口 */
 .shortcut-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
 .shortcut-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 12px 8px;
-  background: #f8f8ff;
-  border: 1px solid #eaeaea;
-  border-radius: 10px;
+  border-radius: 14px;
+  padding: 12px 10px;
   cursor: pointer;
-  transition: all .2s;
-}
-
-.shortcut-btn:hover {
-  background: #f0f0ff;
-  border-color: #c7c7fa;
-  transform: translateY(-1px);
-}
-
-.shortcut-icon {
-  font-size: 18px;
-}
-
-.shortcut-label {
-  font-size: 11px;
-  color: #555;
-}
-
-/* 预警 */
-.alert-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 
 .alert-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  background: #f9f9f9;
-  border-radius: 8px;
-  font-size: 12px;
+  border-radius: 12px;
+  padding: 10px 12px;
 }
 
-.alert-tag {
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 500;
-  flex-shrink: 0;
-}
-
-.alert-tag.warning {
-  background: #fef3c7;
-  color: #d97706;
-}
-
-.alert-tag.danger {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
-.alert-text {
-  flex: 1;
-  color: #444;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.alert-dismiss {
-  background: none;
-  border: none;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  font-size: 14px;
-  padding: 0 2px;
-}
-
-.alert-dismiss:hover {
-  color: var(--text-secondary);
-}
-
-.empty-tip {
-  text-align: center;
-  color: var(--text-tertiary);
-  font-size: 12px;
-  padding: 16px 0;
-}
-
-/* 响应式 */
-@media (max-width: 1024px) {
-  .dashboard-home {
+@media (max-width: 1180px) {
+  .dashboard-shell {
+    grid-template-columns: minmax(0, 1fr) 240px;
     padding: 24px;
-    gap: 20px;
+    gap: 18px;
   }
+}
+
+@media (max-width: 1024px) {
+  .dashboard-shell {
+    grid-template-columns: 1fr;
+  }
+
   .sidebar-widgets {
-    flex-direction: row;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(220px, 1fr));
     overflow-x: auto;
-    padding-right: 0;
+    overflow-y: hidden;
+    padding-bottom: 4px;
   }
+
   .widget-card {
-    min-width: 200px;
-    flex-shrink: 0;
+    min-width: 220px;
   }
 }
 
 @media (max-width: 768px) {
-  .welcome-title {
-    font-size: 28px;
+  .dashboard-shell {
+    padding: 18px 14px 14px;
+    gap: 16px;
   }
+
+  .welcome-cards-grid {
+    grid-template-columns: 1fr;
+  }
+
   .suggestions-grid {
     gap: 8px;
   }
+
   .suggestion-item {
-    padding: 12px 16px;
-    font-size: 13px;
+    width: 100%;
+    justify-content: flex-start;
   }
-  .chat-input-bar {
-    padding: 14px 16px;
-  }
+
   .sidebar-widgets {
+    display: flex;
     flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
+
   .widget-card {
-    min-width: unset;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .welcome-title {
+    font-size: 24px;
+  }
+
+  .welcome-card,
+  .widget-card {
+    border-radius: 16px;
   }
 }
 </style>

@@ -1,12 +1,11 @@
 <template>
   <div class="chat-input-container">
-    <!-- 快捷操作栏 -->
     <div class="quick-actions-bar">
       <button
         v-for="action in quickActions"
         :key="action.key"
         class="quick-action-chip"
-        @click="handleQuickAction(action.content)"
+        @click="handleQuickAction(action)"
         :disabled="disabled"
       >
         <span class="chip-icon" :style="{ color: action.color }">+</span>
@@ -14,37 +13,29 @@
       </button>
     </div>
 
-    <!-- 技能标签 -->
-    <div v-if="skillTag" class="skill-tag-container">
-      <span class="skill-tag">
-        <i :class="`fa-solid ${skillTag.icon}`" />
-        <span>{{ skillTag.label }}</span>
-        <button 
-          class="skill-close" 
-          @click="$emit('remove-skill')" 
-          :disabled="disabled"
-          title="关闭技能"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-      </span>
-    </div>
+    <div class="input-box" :class="{ focused: isFocused, disabled }">
+      <div class="composer-row">
+        <textarea
+          ref="inputEl"
+          v-model="inputText"
+          class="message-input"
+          :placeholder="placeholder"
+          rows="1"
+          @focus="isFocused = true"
+          @blur="isFocused = false"
+          @keydown="handleKeydown"
+          @input="handleInput"
+          :disabled="disabled || isRecording"
+        />
 
-    <!-- 输入框主体 -->
-    <div class="input-box" :class="{ focused: isFocused, 'has-content': hasContent }">
-      <div class="input-wrapper">
-        <!-- 左侧功能按钮 -->
-        <div class="input-tools left">
+        <div class="composer-actions">
           <button
             class="tool-btn"
             @click="triggerFileUpload"
             title="上传文件"
             :disabled="disabled"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="17 8 12 3 7 8" />
               <line x1="12" y1="3" x2="12" y2="15" />
@@ -56,7 +47,7 @@
             title="上传图片"
             :disabled="disabled"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
               <circle cx="8.5" cy="8.5" r="1.5" />
               <polyline points="21 15 16 10 5 21" />
@@ -73,90 +64,77 @@
             :disabled="disabled"
             :title="isRecording ? '停止录制' : '语音输入'"
           >
-            <svg v-if="!isRecording" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg v-if="!isRecording" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
               <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
               <line x1="12" y1="19" x2="12" y2="23" />
               <line x1="8" y1="23" x2="16" y2="23" />
             </svg>
-            <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="6" y="6" width="12" height="12" rx="2" />
             </svg>
           </button>
         </div>
 
-        <!-- 文本输入区 -->
-        <div class="textarea-container">
-          <textarea
-            ref="inputEl"
-            v-model="inputText"
-            :placeholder="placeholder"
-            rows="1"
-            @focus="isFocused = true"
-            @blur="isFocused = false"
-            @keydown="handleKeydown"
-            @input="handleInput"
-            :disabled="disabled || isRecording"
-          />
-          
-          <!-- 录音状态显示 -->
-          <div v-if="isRecording" class="recording-status">
-            <span class="recording-dot"></span>
-            <span class="recording-text">正在录音 {{ recordingTime }}</span>
-          </div>
-        </div>
+        <button
+          v-if="disabled"
+          class="send-btn stop-btn"
+          @click="$emit('stop')"
+          title="停止生成"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="6" y="6" width="12" height="12" rx="2" />
+          </svg>
+        </button>
+        <button
+          v-else
+          class="send-btn"
+          :class="{ active: hasContent }"
+          :disabled="!canSend"
+          @click="handleSend"
+          title="发送 (Enter)"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="22" y1="2" x2="11" y2="13" />
+            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+          </svg>
+        </button>
+      </div>
 
-        <!-- 右侧发送按钮 -->
-        <div class="input-tools right">
-          <button
-            v-if="disabled"
-            class="send-btn stop-btn"
-            @click="$emit('stop')"
-            title="停止生成"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="6" y="6" width="12" height="12" rx="2" />
+      <div v-if="skillTag" class="skill-strip">
+        <div class="skill-chip" role="button" tabindex="0" @click="handleSkillSelect(currentSkill)" @keydown.enter.prevent="handleSkillSelect(currentSkill)" @keydown.space.prevent="handleSkillSelect(currentSkill)">
+          <span class="skill-chip-icon" aria-hidden="true">
+            <svg v-if="skillIconPaths[currentSkill]" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path v-for="(d, idx) in skillIconPaths[currentSkill]" :key="idx" :d="d" />
             </svg>
-          </button>
-          <button
-            v-else
-            class="send-btn"
-            :class="{ active: hasContent }"
-            :disabled="!canSend"
-            @click="handleSend"
-            title="发送 (Enter)"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <line x1="22" y1="2" x2="11" y2="13" />
-              <polygon points="22 2 15 22 11 13 2 9 22 2" />
+          </span>
+          <span class="skill-chip-text">{{ skillTag.label }}</span>
+          <span class="skill-chip-arrow" aria-hidden="true">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </span>
+          <button class="skill-chip-close" type="button" @click.stop="$emit('remove-skill')" :disabled="disabled" title="关闭技能">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
         </div>
       </div>
+
+      <div v-if="isRecording" class="recording-status">
+        <span class="recording-dot"></span>
+        <span class="recording-text">正在录音 {{ recordingTime }}</span>
+      </div>
     </div>
 
-    <!-- 底部提示 -->
     <div class="input-footer">
       <span class="footer-hint">按 Enter 发送，Shift + Enter 换行</span>
     </div>
 
-    <!-- 隐藏的文件输入 -->
-    <input
-      ref="fileInput"
-      type="file"
-      class="hidden-input"
-      accept="*"
-      @change="handleFileSelect"
-      multiple
-    />
-    <input
-      ref="imageInput"
-      type="file"
-      class="hidden-input"
-      accept="image/*"
-      @change="handleImageSelect"
-      multiple
-    />
+    <input ref="fileInput" type="file" class="hidden-input" accept="*" @change="handleFileSelect" multiple />
+    <input ref="imageInput" type="file" class="hidden-input" accept="image/*" @change="handleImageSelect" multiple />
   </div>
 </template>
 
@@ -178,11 +156,12 @@ const emit = defineEmits([
   'file-upload',
   'image-upload',
   'voice-record',
-  'remove-skill'
+  'remove-skill',
+  'skill-select'
 ])
 
 const skillConfig = {
-  query: { icon: 'fa-magnifying-glass', label: 'AI智查' },
+  query: { icon: 'fa-magnifying-glass', label: '智查' },
   file: { icon: 'fa-file-import', label: 'AI方案导入' },
   chat: { icon: 'fa-comments', label: '对话式配置' }
 }
@@ -192,6 +171,14 @@ const skillTag = computed(() =>
     ? skillConfig[props.currentSkill]
     : null
 )
+
+const handleSkillSelect = (skill) => emit('skill-select', skill)
+
+const skillIconPaths = {
+  query: ['M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z', 'm20 20-3.5-3.5'],
+  file: ['M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z', 'M14 2v6h6', 'M12 11v6', 'M9 14h6'],
+  chat: ['M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z']
+}
 
 const inputEl = ref(null)
 const fileInput = ref(null)
@@ -226,8 +213,7 @@ const autoResize = () => {
   const el = inputEl.value
   if (!el) return
   el.style.height = 'auto'
-  const newHeight = Math.min(el.scrollHeight, 200)
-  el.style.height = newHeight + 'px'
+  el.style.height = Math.min(el.scrollHeight, 160) + 'px'
 }
 
 const handleInput = () => {
@@ -258,37 +244,19 @@ const handleSend = () => {
   const text = inputText.value.trim()
   if (!text && attachments.value.length === 0) return
   if (props.disabled) return
-
   emit('send', { text, attachments: [...attachments.value] })
   resetInput()
 }
 
-const handleQuickAction = (content) => {
-  emit('quick-action', content)
-}
-
-const focus = () => {
-  nextTick(() => inputEl.value?.focus())
-}
-
-const triggerFileUpload = () => {
-  fileInput.value?.click()
-}
-
-const triggerImageUpload = () => {
-  imageInput.value?.click()
-}
+const handleQuickAction = (action) => emit('quick-action', action)
+const focus = () => nextTick(() => inputEl.value?.focus())
+const triggerFileUpload = () => fileInput.value?.click()
+const triggerImageUpload = () => imageInput.value?.click()
 
 const handleFileSelect = (e) => {
   const files = Array.from(e.target.files || [])
   files.forEach(file => {
-    attachments.value.push({
-      type: 'file',
-      name: file.name,
-      size: file.size,
-      file: file,
-      preview: null
-    })
+    attachments.value.push({ type: 'file', name: file.name, size: file.size, file, preview: null })
   })
   e.target.value = ''
   emit('file-upload', files)
@@ -299,13 +267,7 @@ const handleImageSelect = (e) => {
   files.forEach(file => {
     const reader = new FileReader()
     reader.onload = (event) => {
-      attachments.value.push({
-        type: 'image',
-        name: file.name,
-        size: file.size,
-        file: file,
-        preview: event.target?.result
-      })
+      attachments.value.push({ type: 'image', name: file.name, size: file.size, file, preview: event.target?.result })
     }
     reader.readAsDataURL(file)
   })
@@ -315,22 +277,16 @@ const handleImageSelect = (e) => {
 
 const startRecording = async () => {
   if (isRecording.value || props.disabled) return
-
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     mediaRecorder = new MediaRecorder(stream)
     audioChunks = []
-
     mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        audioChunks.push(event.data)
-      }
+      if (event.data.size > 0) audioChunks.push(event.data)
     }
-
     mediaRecorder.start(100)
     isRecording.value = true
     recordingTime.value = '00:00'
-
     let seconds = 0
     recordingTimer = setInterval(() => {
       seconds++
@@ -338,7 +294,6 @@ const startRecording = async () => {
       const secs = (seconds % 60).toString().padStart(2, '0')
       recordingTime.value = `${mins}:${secs}`
     }, 1000)
-
   } catch (error) {
     console.error('录音失败:', error)
     alert('无法访问麦克风，请检查权限设置')
@@ -347,37 +302,29 @@ const startRecording = async () => {
 
 const stopRecording = () => {
   if (!isRecording.value) return
-
   isRecording.value = false
-
   if (recordingTimer) {
     clearInterval(recordingTimer)
     recordingTimer = null
   }
-
   if (mediaRecorder) {
     mediaRecorder.stop()
-
     mediaRecorder.onstop = () => {
       const blob = new Blob(audioChunks, { type: 'audio/webm' })
       const url = URL.createObjectURL(blob)
-
       const attachment = {
         type: 'voice',
         name: `录音_${new Date().toLocaleString()}.webm`,
         size: blob.size,
-        blob: blob,
-        url: url,
+        blob,
+        url,
         duration: recordingTime.value
       }
-
       attachments.value.push(attachment)
       emit('voice-record', attachment)
-
       mediaRecorder = null
       audioChunks = []
     }
-
     mediaRecorder.stream.getTracks().forEach(track => track.stop())
   }
 }
@@ -392,7 +339,6 @@ defineExpose({ focus, resetInput })
   border-top: 1px solid var(--border-light);
 }
 
-/* 快捷操作栏 */
 .quick-actions-bar {
   display: flex;
   gap: 8px;
@@ -407,16 +353,15 @@ defineExpose({ focus, resetInput })
   padding: 6px 14px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-default);
-  border-radius: 20px;
+  border-radius: 999px;
   font-size: 13px;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
 }
 
 .quick-action-chip:hover:not(:disabled) {
   background: var(--bg-tertiary);
-  border-color: var(--border-strong);
   color: var(--text-primary);
 }
 
@@ -430,159 +375,178 @@ defineExpose({ focus, resetInput })
   font-size: 14px;
 }
 
-/* 技能标签 */
-.skill-tag-container {
-  margin-bottom: 12px;
-}
-
-.skill-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  background: rgba(59, 130, 246, 0.1);
-  border: 1px solid rgba(59, 130, 246, 0.2);
-  border-radius: 20px;
-  font-size: 13px;
-  color: #3b82f6;
-}
-
-.skill-close {
-  width: 18px;
-  height: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: none;
-  border: none;
-  border-radius: 50%;
-  color: inherit;
-  cursor: pointer;
-  opacity: 0.6;
-  transition: all 0.2s;
-}
-
-.skill-close:hover {
-  opacity: 1;
-  background: rgba(59, 130, 246, 0.1);
-}
-
-.skill-close:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-/* 输入框主体 */
 .input-box {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-default);
-  border-radius: 20px;
-  padding: 4px;
-  transition: all 0.2s;
+  background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.98));
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 24px;
+  padding: 12px 14px 10px;
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.06);
+  transition: all 0.2s ease;
 }
 
 .input-box.focused {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  border-color: rgba(99, 102, 241, 0.45);
+  box-shadow: 0 10px 36px rgba(99, 102, 241, 0.12);
 }
 
-.input-wrapper {
+.composer-row {
   display: flex;
   align-items: flex-end;
-  gap: 8px;
-  min-height: 44px;
+  gap: 10px;
 }
 
-/* 输入工具按钮 */
-.input-tools {
+.message-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 15px;
+  line-height: 1.6;
+  min-height: 56px;
+  max-height: 160px;
+  padding: 10px 0;
+}
+
+.message-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.composer-actions {
   display: flex;
   align-items: center;
-  padding: 8px 4px;
+  gap: 4px;
+  padding-bottom: 6px;
 }
 
-.input-tools.left {
-  gap: 4px;
+.tool-btn,
+.send-btn {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.18s ease;
 }
 
 .tool-btn {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   background: transparent;
-  border: none;
-  border-radius: 10px;
   color: var(--text-tertiary);
-  cursor: pointer;
-  transition: all 0.2s;
 }
 
 .tool-btn:hover:not(:disabled) {
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-}
-
-.tool-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+  background: rgba(15, 23, 42, 0.04);
+  color: var(--text-primary);
 }
 
 .tool-btn.recording {
   background: rgba(239, 68, 68, 0.1);
   color: #ef4444;
-  animation: pulse 1s infinite;
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
+.send-btn {
+  background: #eef2ff;
+  color: #94a3b8;
 }
 
-/* 文本输入区 */
-.textarea-container {
-  flex: 1;
-  min-width: 0;
-  padding: 10px 4px;
-  display: flex;
-  align-items: center;
+.send-btn.active {
+  background: #4f46e5;
+  color: #fff;
 }
 
-textarea {
-  width: 100%;
-  background: transparent;
-  border: none;
-  outline: none;
-  resize: none;
-  font-size: 15px;
-  line-height: 1.5;
-  color: var(--text-primary);
-  max-height: 200px;
-  padding: 0;
+.send-btn.stop-btn {
+  background: #ef4444;
+  color: #fff;
 }
 
-textarea::placeholder {
-  color: var(--text-tertiary);
-}
-
-textarea:disabled {
-  opacity: 0.5;
+.send-btn:disabled,
+.tool-btn:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
-/* 录音状态 */
+.skill-strip {
+  display: flex;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.skill-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px 0 6px;
+  background: #eef2ff;
+  border: 1px solid rgba(99, 102, 241, 0.16);
+  border-radius: 999px;
+  font-size: 13px;
+  color: #4f46e5;
+  cursor: pointer;
+}
+
+.skill-chip-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.12);
+  flex-shrink: 0;
+}
+
+.skill-chip-icon svg {
+  display: block;
+}
+
+.skill-chip-text {
+  font-weight: 500;
+}
+
+.skill-chip-arrow {
+  width: 12px;
+  height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #818cf8;
+}
+
+.skill-chip-close {
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  border-radius: 999px;
+  color: #818cf8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.skill-chip-close:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.1);
+}
+
 .recording-status {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
-  background: rgba(239, 68, 68, 0.1);
-  border-radius: 10px;
+  margin-top: 10px;
+  color: #ef4444;
+  font-size: 13px;
 }
 
 .recording-dot {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: #ef4444;
   animation: blink 1s infinite;
@@ -593,52 +557,6 @@ textarea:disabled {
   51%, 100% { opacity: 0.3; }
 }
 
-.recording-text {
-  font-size: 14px;
-  color: #ef4444;
-  font-weight: 500;
-}
-
-/* 发送按钮 */
-.send-btn {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #e5e7eb;
-  border: none;
-  border-radius: 12px;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.send-btn.active {
-  background: #3b82f6;
-  color: white;
-}
-
-.send-btn.active:hover:not(:disabled) {
-  background: #2563eb;
-  transform: scale(1.05);
-}
-
-.send-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.send-btn.stop-btn {
-  background: #ef4444;
-  color: white;
-}
-
-.send-btn.stop-btn:hover {
-  background: #dc2626;
-}
-
-/* 底部提示 */
 .input-footer {
   margin-top: 8px;
   text-align: center;
@@ -649,38 +567,10 @@ textarea:disabled {
   color: var(--text-tertiary);
 }
 
-/* 隐藏输入 */
 .hidden-input {
   display: none;
 }
 
-/* 深色模式适配 */
-@media (prefers-color-scheme: dark) {
-  .send-btn.active {
-    background: #3b82f6;
-  }
-
-  .send-btn.active:hover:not(:disabled) {
-    background: #2563eb;
-  }
-}
-
-/* 响应式 - 平板 */
-@media (max-width: 1024px) {
-  .chat-input-container {
-    padding: 14px 20px 22px;
-  }
-
-  .quick-actions-bar {
-    gap: 8px;
-  }
-
-  .quick-action-chip {
-    padding: 6px 12px;
-  }
-}
-
-/* 响应式 - 手机横屏/小平板 */
 @media (max-width: 768px) {
   .chat-input-container {
     padding: 12px 16px 20px;
@@ -696,14 +586,14 @@ textarea:disabled {
     font-size: 12px;
   }
 
-  .skill-tag {
-    padding: 5px 10px;
-    font-size: 12px;
+  .input-box {
+    padding: 10px 12px 8px;
+    border-radius: 20px;
   }
 
-  .input-wrapper {
-    min-height: 40px;
-    gap: 6px;
+  .message-input {
+    min-height: 52px;
+    font-size: 16px;
   }
 
   .tool-btn,
@@ -711,195 +601,34 @@ textarea:disabled {
     width: 32px;
     height: 32px;
   }
-
-  .tool-btn svg,
-  .send-btn svg {
-    width: 18px;
-    height: 18px;
-  }
-
-  .textarea-container {
-    padding: 8px 4px;
-  }
-
-  textarea {
-    font-size: 16px; /* 防止 iOS 缩放 */
-    line-height: 1.5;
-  }
-
-  .recording-status {
-    padding: 6px 10px;
-  }
-
-  .recording-text {
-    font-size: 13px;
-  }
-
-  .input-footer {
-    margin-top: 6px;
-  }
-
-  .footer-hint {
-    font-size: 11px;
-  }
 }
 
-/* 响应式 - 手机 */
 @media (max-width: 480px) {
   .chat-input-container {
     padding: 10px 12px 16px;
-    border-top: 1px solid var(--border-light);
   }
 
   .quick-actions-bar {
-    gap: 6px;
-    margin-bottom: 8px;
     overflow-x: auto;
     flex-wrap: nowrap;
-    padding-bottom: 4px;
-    scrollbar-width: none; /* Firefox */
+    scrollbar-width: none;
   }
 
   .quick-actions-bar::-webkit-scrollbar {
-    display: none; /* Chrome/Safari */
-  }
-
-  .quick-action-chip {
-    flex-shrink: 0;
-    padding: 5px 10px;
-    font-size: 12px;
-  }
-
-  .skill-tag-container {
-    margin-bottom: 8px;
-  }
-
-  .skill-tag {
-    padding: 5px 10px;
-    font-size: 12px;
-    gap: 6px;
-  }
-
-  .skill-close {
-    width: 16px;
-    height: 16px;
-  }
-
-  .input-wrapper {
-    min-height: 38px;
-    gap: 4px;
-  }
-
-  .tool-btn,
-  .send-btn {
-    width: 28px;
-    height: 28px;
-  }
-
-  .tool-btn svg,
-  .send-btn svg {
-    width: 16px;
-    height: 16px;
-  }
-
-  .input-tools {
-    padding: 6px 2px;
-  }
-
-  .input-tools.left {
-    gap: 2px;
-  }
-
-  .textarea-container {
-    padding: 6px 2px;
-  }
-
-  textarea {
-    font-size: 16px;
-    line-height: 1.5;
-  }
-
-  .recording-status {
-    padding: 6px 8px;
-    border-radius: 8px;
-  }
-
-  .recording-text {
-    font-size: 12px;
-  }
-
-  .input-footer {
-    margin-top: 6px;
-  }
-
-  .footer-hint {
-    font-size: 10px;
-  }
-}
-
-/* 移动端触摸优化 */
-@media (pointer: coarse) {
-  .tool-btn,
-  .send-btn,
-  .quick-action-chip,
-  .skill-close {
-    min-height: 36px;
-    min-width: 36px;
-  }
-
-  .tool-btn:active:not(:disabled),
-  .send-btn:active:not(:disabled) {
-    transform: scale(0.95);
-  }
-
-  textarea {
-    -webkit-tap-highlight-color: transparent;
-  }
-}
-
-/* iPhone X+ 刘海屏适配 */
-@supports (padding-bottom: env(safe-area-inset-bottom)) {
-  @media (max-width: 768px) {
-    .chat-input-container {
-      padding-bottom: calc(16px + env(safe-area-inset-bottom));
-    }
-  }
-
-  @media (max-width: 480px) {
-    .chat-input-container {
-      padding-bottom: calc(12px + env(safe-area-inset-bottom));
-    }
-  }
-}
-
-/* 小高度屏幕优化 - 横屏手机 */
-@media (max-height: 500px) and (orientation: landscape) {
-  .chat-input-container {
-    padding: 8px 12px;
-  }
-
-  .quick-actions-bar {
-    display: none; /* 横屏时隐藏快捷操作栏节省空间 */
-  }
-
-  .input-wrapper {
-    min-height: 36px;
-  }
-
-  .input-footer {
-    display: none; /* 横屏时隐藏底部提示 */
-  }
-}
-
-/* 键盘弹起时的适配（部分浏览器支持） */
-@media (max-height: 400px) {
-  .chat-input-container {
-    padding: 8px 12px;
-  }
-
-  .quick-actions-bar,
-  .input-footer {
     display: none;
+  }
+
+  .composer-row {
+    gap: 8px;
+  }
+
+  .input-box {
+    padding: 10px 10px 8px;
+  }
+
+  .message-input {
+    min-height: 48px;
+    padding: 8px 0;
   }
 }
 </style>

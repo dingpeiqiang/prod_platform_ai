@@ -14,60 +14,47 @@
         <p class="brand-subtitle">基于 AI 的智能产商品配置平台，让配置更简单</p>
       </div>
 
-      <!-- 快捷推荐问题卡片 -->
+      <!-- 快捷推荐问题卡片 - 与 index_v31.html 一致 -->
       <div class="suggestions-section">
         <div class="suggestion-cards">
           <div
-            v-for="(card, index) in suggestionCards"
-            :key="index"
             class="suggestion-card"
-            @click="handleClick(card.content)"
+            @click="handleCardClick('query')"
           >
-            <div class="card-icon" :style="{ background: card.bgColor, color: card.iconColor }">
-              <i :class="card.icon"></i>
+            <div class="card-icon" style="background: var(--primary-light); color: var(--primary-color);">
+              <i class="fa-solid fa-magnifying-glass"></i>
             </div>
             <div class="card-content">
-              <div class="card-title">{{ card.title }}</div>
-              <div class="card-desc">{{ card.desc }}</div>
+              <div class="card-title">AI智查</div>
+              <div class="card-desc">查询历史商品，快速复制配置</div>
             </div>
-            <svg class="card-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="9 18 15 12 9 6"/>
-            </svg>
           </div>
-        </div>
-      </div>
 
-      <!-- 快捷功能入口 -->
-      <div class="quick-features">
-        <div class="feature-item" @click="handleClick('帮我查询一个表单配置')">
-          <div class="feature-icon" style="background: #fef3c7; color: #f59e0b;">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"/>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
+          <div
+            class="suggestion-card"
+            @click="handleCardClick('file')"
+          >
+            <div class="card-icon" style="background: var(--primary-light); color: var(--primary-color);">
+              <i class="fa-solid fa-file-import"></i>
+            </div>
+            <div class="card-content">
+              <div class="card-title">AI方案导入</div>
+              <div class="card-desc">上传文档，批量导入配置</div>
+            </div>
           </div>
-          <span class="feature-text">智能查询</span>
-        </div>
-        <div class="feature-item" @click="handleClick('帮我导入一个方案')">
-          <div class="feature-icon" style="background: #dbeafe; color: #3b82f6;">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="17 8 12 3 7 8"/>
-              <line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
-          </div>
-          <span class="feature-text">方案导入</span>
-        </div>
 
-        <div class="feature-item" @click="handleClick('帮我分析这些数据')">
-          <div class="feature-icon" style="background: #fce7f3; color: #ec4899;">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M18 20V10"/>
-              <path d="M12 20V4"/>
-              <path d="M6 20v-6"/>
-            </svg>
+          <div
+            class="suggestion-card"
+            @click="handleCardClick('chat')"
+          >
+            <div class="card-icon" style="background: var(--primary-light); color: var(--primary-color);">
+              <i class="fa-solid fa-comments"></i>
+            </div>
+            <div class="card-content">
+              <div class="card-title">对话式配置</div>
+              <div class="card-desc">自然语言描述，智能生成配置</div>
+            </div>
           </div>
-          <span class="feature-text">数据分析</span>
         </div>
       </div>
     </div>
@@ -75,41 +62,20 @@
 </template>
 
 <script setup>
-const emit = defineEmits(['suggest'])
+const emit = defineEmits(['card-click'])
 
-const suggestionCards = [
-  {
-    title: '导入Excel方案',
-    desc: '上传Excel文件，智能解析并导入',
-    content: '帮我导入一个Excel配置方案',
-    icon: 'fa-solid fa-file-excel',
-    bgColor: '#d1fae5',
-    iconColor: '#10b981'
-  },
-  {
-    title: '查询已有配置',
-    desc: '搜索并查看现有的表单配置',
-    content: '帮我查询现有的表单配置',
-    icon: 'fa-solid fa-magnifying-glass',
-    bgColor: '#fef3c7',
-    iconColor: '#f59e0b'
-  },
-  {
-    title: '修改字段属性',
-    desc: '快速调整表单的字段和属性',
-    content: '我想修改表单的字段属性',
-    icon: 'fa-solid fa-pen-to-square',
-    bgColor: '#fce7f3',
-    iconColor: '#ec4899'
-  }
-]
-
-const handleClick = (content) => {
-  emit('suggest', content)
+// 处理卡片点击 - 与 index_v31.html 的 handleCardClick 一致
+const handleCardClick = (type) => {
+  emit('card-click', type)
 }
 </script>
 
 <style scoped>
+:root {
+  --primary-color: #25b2fe;
+  --primary-light: #e6f4ff;
+}
+
 .welcome-container {
   flex: 1;
   display: flex;
@@ -157,42 +123,42 @@ const handleClick = (content) => {
   line-height: 1.6;
 }
 
-/* 推荐卡片 */
+/* 推荐卡片 - 与 index_v31.html 的 welcome-cards 样式一致 */
 .suggestions-section {
   margin-bottom: 32px;
 }
 
 .suggestion-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px;
-  max-width: 900px;
+  max-width: 800px;
   margin: 0 auto;
 }
 
 .suggestion-card {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 14px;
-  padding: 16px;
-  background: var(--bg-primary);
+  gap: 12px;
+  padding: 24px;
+  background: white;
   border: 1px solid var(--border-default);
-  border-radius: 16px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: all 0.2s ease;
-  text-align: left;
+  transition: all 0.2s;
+  text-align: center;
 }
 
 .suggestion-card:hover {
-  border-color: #3b82f6;
-  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.1);
-  transform: translateY(-2px);
+  border-color: #25b2fe;
+  box-shadow: 0 2px 8px rgba(37, 178, 254, 0.2);
 }
 
 .card-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -200,13 +166,8 @@ const handleClick = (content) => {
   flex-shrink: 0;
 }
 
-.card-content {
-  flex: 1;
-  min-width: 0;
-}
-
 .card-title {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 4px;
@@ -218,76 +179,15 @@ const handleClick = (content) => {
   line-height: 1.4;
 }
 
-.card-arrow {
-  color: var(--text-tertiary);
-  flex-shrink: 0;
-  transition: transform 0.2s;
-}
-
-.suggestion-card:hover .card-arrow {
-  transform: translateX(4px);
-  color: #3b82f6;
-}
-
-/* 快捷功能 */
-.quick-features {
-  display: flex;
-  justify-content: center;
-  gap: 24px;
-  flex-wrap: wrap;
-}
-
-.feature-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  transition: transform 0.2s;
-}
-
-.feature-item:hover {
-  transform: translateY(-4px);
-}
-
-.feature-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: box-shadow 0.2s;
-}
-
-.feature-item:hover .feature-icon {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
-}
-
-.feature-text {
-  font-size: 13px;
-  color: var(--text-secondary);
-  font-weight: 500;
-}
-
 /* 响应式 */
 @media (max-width: 768px) {
   .suggestion-cards {
     grid-template-columns: 1fr;
+    max-width: 400px;
   }
-  
+
   .brand-title {
     font-size: 24px;
-  }
-  
-  .quick-features {
-    gap: 16px;
-  }
-  
-  .feature-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
   }
 }
 </style>

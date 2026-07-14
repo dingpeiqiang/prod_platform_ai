@@ -101,6 +101,7 @@
             @image-upload="handleImageUpload"
             @voice-record="handleVoiceRecord"
             @remove-skill="currentSkill = ''"
+            @skill-select="applySkill"
           />
         </div>
 
@@ -176,6 +177,7 @@ const isBackendOnline = ref(true)
 const inputMessage = ref('')
 const isSending = ref(false)
 const currentSkill = ref('')
+const skillLabelMap = { query: '智查', file: 'AI方案导入', chat: '对话式配置' }
 const showRightPanel = ref(false)
 const rightPanelTitle = ref('工具面板')
 const messageListRef = ref(null)
@@ -380,13 +382,28 @@ const handleStop = () => {
   isSending.value = false
 }
 
+const applySkill = (skill) => {
+  currentSkill.value = skill || ''
+}
+
 const handleSuggest = (content) => {
   inputMessage.value = content
   chatInputRef.value?.focus()
 }
 
-const handleQuickAction = (content) => {
-  handleSend({ text: content, attachments: [] })
+const handleQuickAction = (action) => {
+  if (action?.key) {
+    applySkill(action.key)
+  }
+  handleSend({ text: action?.content || '', attachments: [] })
+}
+
+const handleSkillAction = async ({ text, skill }) => {
+  if (skill) applySkill(skill)
+  inputMessage.value = ''
+  if (text) {
+    await handleSend({ text, attachments: [] })
+  }
 }
 
 const handleRegenerate = (msg) => {
@@ -434,6 +451,8 @@ const clearContext = () => {
 const onSendMessageFromHome = async (messageData) => {
   const session = createLocalSession()
   const text = typeof messageData === 'string' ? messageData : messageData?.text
+  const skill = typeof messageData === 'object' ? messageData?.skill : ''
+  if (skill) applySkill(skill)
   if (text) {
     await handleSend({ text, attachments: [] })
   }
