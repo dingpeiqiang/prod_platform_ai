@@ -1,0 +1,14 @@
+spring:
+  ai:
+    openai:
+      api-key: ${LLM_API_KEY:sk-placeholder}
+      base-url: ${LLM_BASE_URL:https://api.openai.com}
+      chat:
+        options:
+          model: ${LLM_MODEL:gpt-4o-mini}
+          temperature: 0.5
+
+prodai:
+  llm:
+    enabled: ${LLM_ENABLED:false}
+    system-prompt: You are a helpful assistant for telecom product configuration.

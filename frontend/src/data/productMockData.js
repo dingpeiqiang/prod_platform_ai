@@ -326,6 +326,130 @@ export const CAMPUS_PRODUCT_DATA = () => ({
 })
 
 /**
+ * 将本体草稿映射为旧版产品表单字段（兼容展示）
+ */
+export function draftToFormData(draft = {}) {
+  const data = createEmptyFormData()
+  data.prodPrcName = draft.offeringName || ''
+  data.monthlyFee = draft.monthlyFee != null ? String(draft.monthlyFee) : ''
+  data.prcMonthFee = draft.monthlyFee != null ? `${draft.monthlyFee}元/月` : ''
+  data.containResource = [draft.includeData, draft.includeVoice, draft.includeBroadband]
+    .filter(Boolean)
+    .join('+')
+  data.flowAmount = String(draft.includeData || '').replace(/[^\d.]/g, '') || data.flowAmount
+  data.voiceAmount = String(draft.includeVoice || '').replace(/[^\d.]/g, '') || data.voiceAmount
+  data.offeringName = draft.offeringName || ''
+  data.offeringType = draft.offeringType || ''
+  data.bizScenario = draft.bizScenario || ''
+  data.targetUser = draft.targetUser || ''
+  data.channelScope = draft.channelScope || ''
+  data.includeVoice = draft.includeVoice || ''
+  data.includeData = draft.includeData || ''
+  data.includeBroadband = draft.includeBroadband || ''
+  data.mutexGroup = draft.mutexGroup || ''
+  data.dependOn = draft.dependOn || ''
+  data.hasContract = draft.hasContract || '0'
+  data.contractMonths = draft.contractMonths || ''
+  data.discountPercent = draft.discountPercent || ''
+  data.repeatable = draft.repeatable || 'false'
+  data.basedOnTemplate = draft.basedOnTemplate || ''
+  data.bindExistingMainPkg = draft.bindExistingMainPkg || ''
+  data.oneTimeFee = draft.oneTimeFee != null ? draft.oneTimeFee : 0
+  data.fillSources = draft.fillSources
+    ? JSON.stringify(draft.fillSources, null, 2)
+    : ''
+  return data
+}
+
+/**
+ * 本体 OfferingConfig 表单 schema（智聊画布）
+ */
+export function createOfferingFormSchema(draft = {}) {
+  const d = { ...draft }
+  const fill = d.fillSources || {}
+  const mark = (code) => (fill[code] ? ` [${fill[code]}]` : '')
+  const withSrc = (field) => ({
+    ...field,
+    fillSource: fill[field.fieldCode] || '',
+    fieldName: field.fieldName + mark(field.fieldCode),
+  })
+  return {
+    formName: '商品配置草稿（本体）',
+    formCode: 'offering_config',
+    fields: [
+      withSrc({ fieldCode: 'offeringName', fieldName: '商品名称', fieldType: 'input', required: true, value: d.offeringName || '' }),
+      withSrc({
+        fieldCode: 'offeringType', fieldName: '商品类型', fieldType: 'select', required: true, value: d.offeringType || 'fusion',
+        options: [
+          { label: '主套餐', value: 'main_pkg' },
+          { label: '附加包', value: 'addon' },
+          { label: '融合套餐', value: 'fusion' },
+          { label: '促销商品', value: 'promo' },
+        ],
+      }),
+      withSrc({
+        fieldCode: 'bizScenario', fieldName: '业务场景', fieldType: 'select', required: true, value: d.bizScenario || '',
+        options: [
+          { label: '家庭融合', value: '家庭融合' },
+          { label: '校园体验', value: '校园体验' },
+          { label: '5G个人主套餐', value: '5G个人主套餐' },
+        ],
+      }),
+      withSrc({
+        fieldCode: 'targetUser', fieldName: '目标用户', fieldType: 'select', required: true, value: d.targetUser || '',
+        options: [
+          { label: '家庭', value: '家庭' },
+          { label: '校园', value: '校园' },
+          { label: '个人', value: '个人' },
+          { label: '政企', value: '政企' },
+        ],
+      }),
+      withSrc({
+        fieldCode: 'channelScope', fieldName: '销售渠道', fieldType: 'select', required: true, value: d.channelScope || '',
+        options: [
+          { label: '全渠道', value: '全渠道' },
+          { label: '仅电渠', value: '仅电渠' },
+          { label: '电渠+厅店', value: '电渠+厅店' },
+          { label: '内部验证', value: '内部验证' },
+        ],
+      }),
+      withSrc({ fieldCode: 'monthlyFee', fieldName: '月费', fieldType: 'number', required: true, value: d.monthlyFee }),
+      withSrc({ fieldCode: 'oneTimeFee', fieldName: '一次性费用', fieldType: 'number', required: false, value: d.oneTimeFee ?? 0 }),
+      withSrc({ fieldCode: 'includeVoice', fieldName: '包含语音', fieldType: 'input', required: false, value: d.includeVoice || '' }),
+      withSrc({ fieldCode: 'includeData', fieldName: '包含流量', fieldType: 'input', required: false, value: d.includeData || '' }),
+      withSrc({ fieldCode: 'includeBroadband', fieldName: '包含宽带', fieldType: 'input', required: false, value: d.includeBroadband || '' }),
+      withSrc({ fieldCode: 'mutexGroup', fieldName: '互斥组', fieldType: 'input', required: false, value: d.mutexGroup || 'MAIN_PKG' }),
+      withSrc({ fieldCode: 'dependOn', fieldName: '依赖商品', fieldType: 'input', required: false, value: d.dependOn || '' }),
+      withSrc({
+        fieldCode: 'hasContract', fieldName: '是否有合约', fieldType: 'select', required: false, value: d.hasContract || '0',
+        options: [
+          { label: '无合约', value: '0' },
+          { label: '有合约', value: '1' },
+        ],
+      }),
+      withSrc({ fieldCode: 'contractMonths', fieldName: '协议期(月)', fieldType: 'number', required: false, value: d.contractMonths }),
+      withSrc({ fieldCode: 'discountPercent', fieldName: '优惠折扣%', fieldType: 'number', required: false, value: d.discountPercent }),
+      withSrc({
+        fieldCode: 'repeatable', fieldName: '可重复订购', fieldType: 'select', required: false, value: d.repeatable || 'false',
+        options: [
+          { label: '否', value: 'false' },
+          { label: '是', value: 'true' },
+        ],
+      }),
+      withSrc({ fieldCode: 'basedOnTemplate', fieldName: '基于模板', fieldType: 'input', required: false, value: d.basedOnTemplate || '' }),
+      withSrc({
+        fieldCode: 'bindExistingMainPkg',
+        fieldName: '绑定在架主套餐',
+        fieldType: 'input',
+        required: false,
+        value: d.bindExistingMainPkg || '',
+        placeholder: '如 OF-HF-128（演示互斥）',
+      }),
+    ],
+  }
+}
+
+/**
  * 生成 DynamicForm 兼容的产品配置表单 schema
  * 将 demo 的 4-tab ConfigForm 扁平化为单表单
  * @param {Object} formData - 初始表单数据（可选）

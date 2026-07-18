@@ -10,7 +10,7 @@
             <circle cx="12" cy="12" r="2"/>
           </svg>
         </div>
-        <span class="logo-text">产商品助手</span>
+        <span class="logo-text">产商品智能助手</span>
       </div>
       
       <button 
@@ -32,6 +32,34 @@
       </svg>
       <span>新建对话</span>
     </button>
+
+    <!-- 功能菜单 -->
+    <div class="feature-menu" v-if="isSidebarVisible">
+      <div class="group-label">功能菜单</div>
+      <button
+        v-for="item in featureMenus"
+        :key="item.key"
+        type="button"
+        class="feature-menu-item"
+        :class="{ active: activeAssistant === item.key }"
+        @click="$emit('select-assistant', item.key)"
+      >
+        <div class="feature-menu-icon">
+          <svg v-if="item.key === 'rd'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+          </svg>
+          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 3v18h18"/>
+            <path d="M18 17V9"/>
+            <path d="M13 17V5"/>
+            <path d="M8 17v-3"/>
+          </svg>
+        </div>
+        <span>{{ item.label }}</span>
+      </button>
+    </div>
 
     <!-- 对话列表 -->
     <div class="session-list" v-if="isSidebarVisible" ref="sessionListRef">
@@ -234,7 +262,8 @@ const props = defineProps({
   sessions: { type: Array, default: () => [] },
   activeId: { type: String, default: '' },
   isSidebarVisible: { type: Boolean, default: true },
-  username: { type: String, default: '用户' }
+  username: { type: String, default: '用户' },
+  activeAssistant: { type: String, default: 'rd' }
 })
 
 const emit = defineEmits([
@@ -246,8 +275,14 @@ const emit = defineEmits([
   'rename-session',
   'logout',
   'toggle-sidebar',
-  'theme-toggle'
+  'theme-toggle',
+  'select-assistant'
 ])
+
+const featureMenus = [
+  { key: 'rd', label: '产商品研发助手' },
+  { key: 'ops', label: '产商品运营助手' }
+]
 
 // 状态
 const activeMenu = ref(null)
@@ -460,6 +495,59 @@ onUnmounted(() => {
 .new-chat-btn:hover {
   border-color: #3b82f6;
   background: rgba(59, 130, 246, 0.05);
+}
+
+/* 功能菜单 */
+.feature-menu {
+  padding: 0 12px 8px;
+}
+
+.feature-menu .group-label {
+  padding: 4px 12px 8px;
+}
+
+.feature-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 4px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary, #64748b);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+}
+
+.feature-menu-item:hover {
+  background: rgba(59, 130, 246, 0.08);
+  color: var(--text-primary, #1e293b);
+}
+
+.feature-menu-item.active {
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+  font-weight: 500;
+}
+
+.feature-menu-icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(59, 130, 246, 0.1);
+  color: inherit;
+  flex-shrink: 0;
+}
+
+.feature-menu-item.active .feature-menu-icon {
+  background: rgba(59, 130, 246, 0.18);
 }
 
 /* 对话列表 */

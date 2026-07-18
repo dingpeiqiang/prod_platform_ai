@@ -34,30 +34,15 @@
               <span class="message-time">{{ formatTime(msg.timestamp) }}</span>
             </div>
 
-            <!-- 推理过程（折叠面板） -->
-            <div v-if="msg.reasoning && msg.reasoning.length" class="reasoning-panel">
-              <button class="reasoning-toggle" @click="toggleReasoning(idx)">
-                <svg 
-                  class="toggle-icon" 
-                  :class="{ expanded: msg.showReasoning }"
-                  width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                >
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
-                <span class="reasoning-title">思考过程</span>
-                <span class="reasoning-count">({{ msg.reasoning.length }} 步)</span>
-              </button>
-              <div v-show="msg.showReasoning" class="reasoning-body">
-                <div
-                  v-for="(step, si) in msg.reasoning"
-                  :key="si"
-                  class="reasoning-step"
-                >
-                  <span class="step-number">{{ si + 1 }}</span>
-                  <span class="step-text">{{ step.content }}</span>
-                </div>
-              </div>
-            </div>
+            <!-- 思考过程（时间线；本体推理为其中一环，含网络图 + 推理预览） -->
+            <ThinkingProcessPanel
+              v-if="msg.reasoning && msg.reasoning.length"
+              :steps="msg.reasoning"
+              :show="msg.showReasoning !== false"
+              :streaming="msg.loading || !msg.done"
+              :localize="localizeStepText"
+              @toggle="toggleReasoning(idx)"
+            />
 
             <!-- 正文内容 -->
             <div class="message-bubble ai-bubble">
@@ -169,6 +154,20 @@
                 </button>
               </div>
             </div>
+
+            <!-- 下一步体验引导 -->
+            <div v-if="msg.done && msg.nextSteps?.length" class="next-steps">
+              <span class="next-label">下一步可以：</span>
+              <button
+                v-for="step in msg.nextSteps"
+                :key="step"
+                type="button"
+                class="next-chip"
+                @click="$emit('suggest', step)"
+              >
+                {{ step }}
+              </button>
+            </div>
           </div>
         </template>
 
@@ -223,6 +222,7 @@ import { ref, nextTick, onMounted, onUnmounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import WelcomeCards from './WelcomeCards.vue'
 import IntentPanel from './intent-panels/IntentPanel.vue'
+import ThinkingProcessPanel from './ThinkingProcessPanel.vue'
 import { renderMarkdown } from '../utils/chatUtils.js'
 import { listIntentPanels } from '../composables/useIntentRegistry.js'
 
@@ -260,7 +260,34 @@ const scrollToBottom = (smooth = false) => {
 }
 
 const toggleReasoning = (idx) => {
-  props.messages[idx].showReasoning = !props.messages[idx].showReasoning
+  const msg = props.messages[idx]
+  if (!msg) return
+  msg.showReasoning = msg.showReasoning === false
+}
+
+/** 思考步骤文案里的英文字段转中文，方便客户阅读 */
+const localizeStepText = (text) => {
+  if (!text) return ''
+  return String(text)
+    .replace(/includeVoice/g, '语音')
+    .replace(/includeData/g, '流量')
+    .replace(/includeBroadband/g, '宽带')
+    .replace(/offeringName/g, '商品名称')
+    .replace(/monthlyFee/g, '月费')
+    .replace(/bizScenario/g, '业务场景')
+    .replace(/targetUser/g, '目标用户')
+    .replace(/channelScope/g, '销售渠道')
+    .replace(/mutexGroup/g, '互斥组')
+    .replace(/bindExistingMainPkg/g, '绑定在架主套餐')
+    .replace(/basedOnTemplate/g, '配置模板')
+    .replace(/scenario_default/g, '场景缺省')
+    .replace(/user_said/g, '用户表述')
+    .replace(/create_offering_config/g, '创建商品配置')
+    .replace(/OfferingConfig/g, '商品配置草稿')
+    .replace(/BizScenario/g, '业务场景')
+    .replace(/MAIN_PKG/g, '主套餐互斥组')
+    .replace(/compliancePass/g, '合规通过')
+    .replace(/OF-HF-128/g, '家庭融合畅享128')
 }
 
 const copyText = async (text) => {
@@ -330,7 +357,6 @@ defineExpose({ scrollToBottom })
 
 .message-wrapper.user {
   justify-content: flex-end;
-  flex-direction: row-reverse;
 }
 
 /* 头像 */
@@ -374,6 +400,7 @@ defineExpose({ scrollToBottom })
 
 .message-content.user-content {
   align-items: flex-end;
+  max-width: min(70%, 560px);
 }
 
 /* 消息头部 */
@@ -412,9 +439,11 @@ defineExpose({ scrollToBottom })
 }
 
 .user-bubble {
-  background: #3b82f6;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
   color: white;
   border-bottom-right-radius: 4px;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.18);
+  text-align: left;
 }
 
 .user-bubble .message-text {
@@ -466,8 +495,72 @@ defineExpose({ scrollToBottom })
   font-size: 12px;
 }
 
+.reasoning-live {
+  font-size: 11px;
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.12);
+  padding: 1px 8px;
+  border-radius: 999px;
+  animation: pulse-live 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+.reasoning-panel.streaming {
+  border-color: rgba(59, 130, 246, 0.35);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.08);
+}
+
 .reasoning-body {
   padding: 0 14px 12px;
+}
+
+.reasoning-onto-tag {
+  font-size: 11px;
+  color: #1d4ed8;
+  background: #dbeafe;
+  padding: 1px 8px;
+  border-radius: 999px;
+}
+
+.reasoning-step.is-ontology {
+  background: rgba(37, 99, 235, 0.04);
+  border-radius: 10px;
+  padding: 8px 8px 10px;
+  margin: 4px 0;
+}
+
+.step-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px 8px;
+}
+
+.step-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+  line-height: 1.6;
+}
+
+.step-badge.llm {
+  background: #f3e8ff;
+  color: #7c3aed;
+}
+
+.step-badge.ontology {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.step-body .onto-chain {
+  margin-top: 8px;
 }
 
 .reasoning-step {
@@ -477,6 +570,11 @@ defineExpose({ scrollToBottom })
   padding: 8px 0;
   font-size: 13px;
   color: var(--text-secondary);
+}
+
+.reasoning-step.latest .step-text {
+  color: var(--text-primary);
+  font-weight: 500;
 }
 
 .reasoning-step:not(:last-child) {
@@ -497,9 +595,24 @@ defineExpose({ scrollToBottom })
   flex-shrink: 0;
 }
 
+.step-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .step-text {
   flex: 1;
   line-height: 1.5;
+}
+
+.step-detail {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.45;
+  white-space: pre-wrap;
 }
 
 /* 打字指示器 */
@@ -753,6 +866,36 @@ defineExpose({ scrollToBottom })
 .qr-copy-btn:hover {
   background: #3b82f6;
   color: white;
+}
+
+.next-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 0 2px;
+}
+
+.next-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.next-chip {
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.next-chip:hover {
+  background: #dbeafe;
+  border-color: #93c5fd;
 }
 
 /* 深色模式适配 */

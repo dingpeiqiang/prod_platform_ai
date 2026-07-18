@@ -6,44 +6,93 @@
         <div class="welcome-area">
           <div class="welcome-content">
             <h1 class="welcome-title">有什么可以帮你的？</h1>
-            <p class="welcome-subtitle">产商品智能助手，随时为你效劳</p>
+            <p class="welcome-subtitle">{{ welcomeSubtitle }}</p>
           </div>
+          <div v-if="!isOpsMode" class="demo-launch-row">
+            <button type="button" class="demo-launch-btn primary" @click="startGuidedDemo('chat')">
+              ▶ 一键体验 · 智聊冲突拦截（约1分钟）
+            </button>
+            <button type="button" class="demo-launch-btn" @click="startGuidedDemo('file')">
+              ▶ 一键体验 · 智读批量（导入→修正→入库）
+            </button>
+          </div>
+          <div v-else class="demo-launch-row">
+            <button type="button" class="demo-launch-btn primary" @click="startGuidedDemo('ops-rootcause')">
+              ▶ 一键体验 · 异动根因分析（约1分钟）
+            </button>
+            <button type="button" class="demo-launch-btn" @click="startGuidedDemo('ops-risk')">
+              ▶ 一键体验 · 风险稽核优胜劣汰
+            </button>
+          </div>
+          <div v-if="isOpsMode" class="ops-kpi-row">
+            <div class="ops-kpi">
+              <b>{{ opsDash.anomalyOfferingCount ?? '-' }}</b>
+              <span>今日异动商品</span>
+            </div>
+            <div class="ops-kpi high">
+              <b>{{ opsDash.highRiskCount ?? '-' }}</b>
+              <span>高风险在架</span>
+            </div>
+            <div class="ops-kpi med">
+              <b>{{ opsDash.suggestDelistCount ?? '-' }}</b>
+              <span>建议下架</span>
+            </div>
+            <div class="ops-kpi">
+              <b>{{ opsDash.shelfCount ?? 80 }}</b>
+              <span>在架扫描样本</span>
+            </div>
+          </div>
+          <p v-if="isOpsMode" class="ops-kpi-meta">
+            规则 {{ opsDash.ruleVersion || 'RiskRules-v1.2' }} · 本体负责推理，大模型负责表达
+          </p>
+          <p class="demo-hint">
+            {{ isOpsMode
+              ? '不用背话术：点上面按钮自动演示；也可点告警卡片或下方场景自己动手试。本体负责推理，大模型负责表达。'
+              : '不用背话术：点上面按钮会自动演完整闭环；也可点下方卡片自己动手试。' }}
+          </p>
         </div>
 
-        <!-- 欢迎卡片 - 来自 prodai-cfg-demo -->
-        <div class="welcome-cards-area">
-          <p class="welcome-cards-title">您好！我是产品智能配置助手，可以帮您快速完成商品配置。</p>
-          <div class="welcome-cards-grid">
-            <button type="button" class="welcome-card" @click="handleWelcomeCard('query')">
-              <div class="welcome-card-icon">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <!-- 技能场景 -->
+        <div class="skill-scenarios-area">
+          <p class="welcome-cards-title">{{ welcomeCardsTitle }}</p>
+          <div class="skill-scenarios-grid">
+            <button
+              v-for="scenario in skillScenarios"
+              :key="scenario.id || scenario.key"
+              type="button"
+              class="skill-scenario-card"
+              @click="launchSkill(scenario)"
+            >
+              <div class="skill-scenario-icon">
+                <svg v-if="scenario.key === 'query'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <circle cx="11" cy="11" r="8"/>
                   <line x1="21" y1="21" x2="16.65" y2="16.65"/>
                 </svg>
-              </div>
-              <h4>AI智查</h4>
-              <p>查询历史商品，快速复制配置</p>
-            </button>
-            <button type="button" class="welcome-card" @click="handleWelcomeCard('file')">
-              <div class="welcome-card-icon">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg v-else-if="scenario.key === 'file'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                   <polyline points="14 2 14 8 20 8"/>
                   <line x1="12" y1="18" x2="12" y2="12"/>
                   <line x1="9" y1="15" x2="15" y2="15"/>
                 </svg>
-              </div>
-              <h4>AI方案导入</h4>
-              <p>上传文档，批量导入配置</p>
-            </button>
-            <button type="button" class="welcome-card" @click="handleWelcomeCard('chat')">
-              <div class="welcome-card-icon">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg v-else-if="scenario.id === 'ops-risk'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/>
+                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                <svg v-else-if="scenario.key === 'ops'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 3v18h18"/>
+                  <path d="M18 17V9"/>
+                  <path d="M13 17V5"/>
+                  <path d="M8 17v-3"/>
+                </svg>
+                <svg v-else width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                 </svg>
               </div>
-              <h4>对话式配置</h4>
-              <p>自然语言描述需求，AI 生成配置</p>
+              <div class="skill-scenario-body">
+                <h4>{{ scenario.title }}</h4>
+                <p>{{ scenario.desc }}</p>
+              </div>
             </button>
           </div>
         </div>
@@ -53,7 +102,7 @@
           <div class="suggestions-grid">
             <button
               v-for="s in suggestions"
-              :key="s.key"
+              :key="s.id || s.key + s.text"
               class="suggestion-item"
               @click="handleSuggestion(s)"
             >
@@ -92,8 +141,12 @@
             ref="inputRef"
             v-model="inputText"
             :placeholder="placeholder"
+            :currentSkill="currentSkill"
+            :assistant-mode="assistantMode"
             @send="handleSend"
             @quick-action="handleSuggestion"
+            @skill-select="(skill) => (currentSkill = skill || '')"
+            @remove-skill="currentSkill = ''"
           />
         </div>
       </section>
@@ -211,10 +264,16 @@
           </div>
           <div class="widget-body">
             <div class="alert-list">
-              <div v-for="alert in alerts" :key="alert.id" class="alert-item">
+              <div
+                v-for="alert in alerts"
+                :key="alert.id"
+                class="alert-item"
+                :class="{ clickable: !!alert.actionText }"
+                @click="onAlertClick(alert)"
+              >
                 <span class="alert-tag" :class="alert.type">{{ alert.tag }}</span>
                 <span class="alert-text">{{ alert.text }}</span>
-                <button class="alert-dismiss" @click="dismissAlert(alert.id)">×</button>
+                <button class="alert-dismiss" @click.stop="dismissAlert(alert.id)">×</button>
               </div>
               <div v-if="!alerts.length" class="empty-tip">暂无预警</div>
             </div>
@@ -226,19 +285,84 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import ChatInput from './ChatInput.vue'
+import { getOpsDashboard } from '../services/ontologyMvpApi.js'
 
-const emit = defineEmits(['send-message', 'switch-chat', 'create-session', 'open-scene-manager', 'open-prompt-manager', 'open-ontology-manager', 'open-workflow-manager', 'open-mcp-manager', 'open-kb-manager'])
+const props = defineProps({
+  assistantMode: { type: String, default: 'rd' }
+})
+
+const emit = defineEmits(['send-message', 'switch-chat', 'create-session', 'launch-skill', 'guided-demo', 'open-scene-manager', 'open-prompt-manager', 'open-ontology-manager', 'open-workflow-manager', 'open-mcp-manager', 'open-kb-manager'])
+
+const startGuidedDemo = (type) => {
+  emit('guided-demo', { type })
+}
 
 const inputRef = ref(null)
 const inputText = ref('')
+const currentSkill = ref('')
 const newTodo = ref('')
 
-// 快捷建议
-const suggestions = [
-  { key: 'help', icon: 'help', text: '我能为你做什么？' },
+const isOpsMode = computed(() => props.assistantMode === 'ops')
+const opsDash = ref({
+  anomalyOfferingCount: 1,
+  highRiskCount: 13,
+  suggestDelistCount: 7,
+  shelfCount: 80,
+  ruleVersion: 'RiskRules-v1.2',
+})
+
+const welcomeSubtitle = computed(() =>
+  isOpsMode.value
+    ? '产商品运营助手，指标异动与风险稽核随问随答'
+    : '产商品研发助手，智能配置随时为你效劳'
+)
+
+const welcomeCardsTitle = computed(() =>
+  isOpsMode.value
+    ? '您好！我是产商品运营助手，可以帮您做指标异动根因分析与高风险商品稽核。'
+    : '您好！我是产商品研发助手，可以帮您快速完成商品配置。'
+)
+
+const rdSkillScenarios = [
+  { key: 'chat', title: '智聊·对话配置', desc: '说业务话，本体填字段、拦冲突', text: '给家庭用户做一个融合套餐，月费158，带500M宽带，全渠道销售' },
+  { key: 'file', title: '智读·批量生成', desc: '方案文档一键映射为多套合规配置', text: '帮我导入校园迎新方案' },
+  { key: 'query', title: 'AI智查', desc: '查询历史商品，快速复制配置', text: '查一下近30天大学生套餐配置' },
 ]
+
+const opsSkillScenarios = [
+  { id: 'ops-rootcause', key: 'ops', title: '指标异动根因', desc: '多跳关联推理，定位收入/留存异动原因', text: '分析家庭融合畅享128本月收入下滑原因' },
+  { id: 'ops-risk', key: 'ops', title: '高风险商品稽核', desc: '零元资费、长期零销等风险识别与处置建议', text: '筛查所有在架的0元资费风险商品' },
+]
+
+const skillScenarios = computed(() =>
+  isOpsMode.value ? opsSkillScenarios : rdSkillScenarios
+)
+
+const launchSkill = (scenario) => {
+  if (!scenario) return
+  emit('launch-skill', { skill: scenario.key, text: scenario.text })
+  setSkillAndPrefill(scenario.key, scenario.text)
+}
+
+watch(() => props.assistantMode, () => {
+  currentSkill.value = ''
+  inputText.value = ''
+})
+
+// 快捷建议
+const suggestions = computed(() =>
+  isOpsMode.value
+    ? [
+        { id: 'sug-ops-1', key: 'ops', icon: 'help', text: '分析家庭融合畅享128本月收入下滑原因' },
+        { id: 'sug-ops-2', key: 'ops', icon: 'wallet', text: '筛查所有在架的0元资费风险商品' },
+      ]
+    : [
+        { id: 'sug-rd-1', key: 'help', icon: 'help', text: '我能为你做什么？' },
+        { id: 'sug-rd-2', key: 'chat', icon: 'form', text: '给家庭用户做一个融合套餐，月费158' },
+      ]
+)
 
 // 快捷入口
 const shortcuts = [
@@ -253,10 +377,52 @@ const shortcuts = [
 ]
 
 // 预警列表
-const alerts = ref([
+const rdAlerts = [
   { id: 1, tag: '待审批', text: '销售订单 #1023 等待审批', type: 'warning' },
   { id: 2, tag: '超时', text: '报销单 #201 审批超时 2 天', type: 'danger' },
-])
+]
+
+const opsAlerts = [
+  { id: 1, tag: '异动', text: 'OF-HF-128 累计收入环比 -18%', type: 'warning', actionText: '分析家庭融合畅享128本月收入下滑原因' },
+  { id: 2, tag: '风险', text: '高风险在架商品待处置（零元/零销）', type: 'danger', actionText: '筛查所有在架的0元资费风险商品' },
+]
+
+const alerts = ref([...rdAlerts])
+
+async function loadOpsDashboard() {
+  if (!isOpsMode.value) return
+  try {
+    const data = await getOpsDashboard()
+    if (data?.success !== false) {
+      opsDash.value = {
+        anomalyOfferingCount: data.anomalyOfferingCount ?? 1,
+        highRiskCount: data.highRiskCount ?? 13,
+        suggestDelistCount: data.suggestDelistCount ?? 7,
+        shelfCount: data.shelfCount ?? 80,
+        ruleVersion: data.ruleVersion || 'RiskRules-v1.2',
+      }
+      if (Array.isArray(data.alerts) && data.alerts.length) {
+        alerts.value = data.alerts.map((a, idx) => ({
+          id: a.id || idx + 1,
+          tag: a.tag || (a.type === 'anomaly' ? '异动' : '风险'),
+          text: a.text,
+          type: a.type === 'anomaly' ? 'warning' : 'danger',
+          actionText:
+            a.type === 'anomaly'
+              ? '分析家庭融合畅享128本月收入下滑原因'
+              : '筛查所有在架的0元资费风险商品',
+        }))
+      }
+    }
+  } catch {
+    /* 本地默认口径已覆盖 */
+  }
+}
+
+watch(() => props.assistantMode, (mode) => {
+  alerts.value = mode === 'ops' ? [...opsAlerts] : [...rdAlerts]
+  if (mode === 'ops') loadOpsDashboard()
+}, { immediate: true })
 
 // 待办
 const todos = ref([])
@@ -300,6 +466,12 @@ const dismissAlert = (id) => {
   alerts.value = alerts.value.filter(a => a.id !== id)
 }
 
+const onAlertClick = (alert) => {
+  if (!alert?.actionText) return
+  emit('launch-skill', { skill: 'ops', text: alert.actionText })
+  setSkillAndPrefill('ops', alert.actionText)
+}
+
 const autoResize = () => {
   const el = inputEl.value
   if (!el) return
@@ -307,37 +479,37 @@ const autoResize = () => {
   el.style.height = Math.min(el.scrollHeight, 120) + 'px'
 }
 
-const placeholder = computed(() => {
-  const tips = [
-    '描述你想做的事...',
-    '问问「我能为你做什么」',
-  ]
-  return tips[Math.floor(Math.random() * tips.length)]
-})
+const placeholder = computed(() =>
+  isOpsMode.value
+    ? '试试：分析家庭融合畅享128本月收入下滑原因...'
+    : '描述你想做的事，或选择上方技能场景...'
+)
+
+const setSkillAndPrefill = (skill, text) => {
+  currentSkill.value = skill || ''
+  inputText.value = text || ''
+  nextTick(() => inputRef.value?.focus())
+}
 
 const handleSend = (messageData) => {
   if (!messageData || (!messageData.text && (!messageData.attachments || messageData.attachments.length === 0))) return
   emit('send-message', messageData)
 }
 
-const handleSuggestion = (text) => {
-  emit('send-message', text)
+const handleSuggestion = (item) => {
+  if (!item) return
+  if (typeof item === 'string') {
+    setSkillAndPrefill('', item)
+    return
+  }
+  setSkillAndPrefill(item.key || '', item.text || '')
 }
 
 const handleWelcomeCard = (type) => {
-  let text = ''
-  switch (type) {
-    case 'query':
-      text = '我想查询历史商品'
-      break
-    case 'file':
-      text = '我想导入配置方案'
-      break
-    case 'chat':
-      text = '我要配置一个大学生套餐'
-      break
-  }
-  emit('send-message', { text, skill: type })
+  const scenario = skillScenarios.value.find(item => item.key === type)
+  if (!scenario) return
+  emit('launch-skill', { skill: scenario.key, text: scenario.text })
+  setSkillAndPrefill(type, scenario.text || '')
 }
 
 const handleShortcut = (sc) => {
@@ -386,6 +558,45 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.ops-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+.ops-kpi {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px 10px;
+  text-align: center;
+}
+.ops-kpi b {
+  display: block;
+  font-size: 22px;
+  color: #0f172a;
+  line-height: 1.2;
+}
+.ops-kpi span {
+  font-size: 12px;
+  color: #64748b;
+}
+.ops-kpi.high b {
+  color: #dc2626;
+}
+.ops-kpi.med b {
+  color: #7c3aed;
+}
+.ops-kpi-meta {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #64748b;
+}
+@media (max-width: 900px) {
+  .ops-kpi-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 .dashboard-home {
   width: 100%;
   height: 100%;
@@ -439,6 +650,42 @@ onMounted(() => {
   padding-top: 4px;
 }
 
+.demo-launch-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.demo-launch-btn {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f172a;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.demo-launch-btn.primary {
+  background: linear-gradient(135deg, #2563eb, #4f46e5);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.25);
+}
+
+.demo-launch-btn:hover {
+  transform: translateY(-1px);
+}
+
+.demo-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
 .welcome-title {
   font-size: clamp(28px, 3vw, 40px);
   font-weight: 700;
@@ -452,25 +699,25 @@ onMounted(() => {
   line-height: 1.6;
 }
 
-.welcome-cards-area,
+.skill-scenarios-area,
 .suggestions-area,
 .bottom-input {
   width: 100%;
 }
 
-.welcome-cards-area {
+.skill-scenarios-area {
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
 
-.welcome-cards-grid {
+.skill-scenarios-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
 }
 
-.welcome-card,
+.skill-scenario-card,
 .suggestion-item,
 .widget-card,
 .shortcut-btn,
@@ -481,19 +728,18 @@ onMounted(() => {
   backdrop-filter: blur(10px);
 }
 
-.welcome-card {
+.skill-scenario-card {
   text-align: left;
   border-radius: 18px;
   padding: 20px;
   cursor: pointer;
   display: flex;
-  flex-direction: column;
   align-items: flex-start;
   gap: 12px;
   transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
 }
 
-.welcome-card:hover,
+.skill-scenario-card:hover,
 .suggestion-item:hover,
 .shortcut-btn:hover {
   transform: translateY(-2px);
@@ -501,7 +747,7 @@ onMounted(() => {
   border-color: rgba(99, 102, 241, 0.35);
 }
 
-.welcome-card-icon {
+.skill-scenario-icon {
   width: 44px;
   height: 44px;
   border-radius: 14px;
@@ -510,15 +756,17 @@ onMounted(() => {
   justify-content: center;
   background: var(--primary-100);
   color: var(--primary-600);
+  flex-shrink: 0;
 }
 
-.welcome-card h4 {
+.skill-scenario-body h4 {
   font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
+  margin-bottom: 4px;
 }
 
-.welcome-card p {
+.skill-scenario-body p {
   font-size: 13px;
   line-height: 1.5;
   color: var(--text-secondary);
@@ -672,6 +920,15 @@ onMounted(() => {
   padding: 10px 12px;
 }
 
+.alert-item.clickable {
+  cursor: pointer;
+}
+
+.alert-item.clickable:hover {
+  border-color: #0ea5e9;
+  background: #f0f9ff;
+}
+
 @media (max-width: 1180px) {
   .dashboard-shell {
     grid-template-columns: minmax(0, 1fr) 240px;
@@ -704,7 +961,7 @@ onMounted(() => {
     gap: 16px;
   }
 
-  .welcome-cards-grid {
+  .skill-scenarios-grid {
     grid-template-columns: 1fr;
   }
 
@@ -734,7 +991,7 @@ onMounted(() => {
     font-size: 24px;
   }
 
-  .welcome-card,
+  .skill-scenario-card,
   .widget-card {
     border-radius: 16px;
   }

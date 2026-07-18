@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -61,26 +61,18 @@ function Initialize-NpmDependencies {
 function Test-BackendHealth {
     Write-Status '[3/3] Checking backend service...'
     
-    $healthUrls = @(
-        'http://localhost:6173/api/v1/health',
-        'http://localhost:6174/api/v1/health'
-    )
-    
-    foreach ($url in $healthUrls) {
-        try {
-            $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
-            if ($response.StatusCode -eq 200) {
-                Write-Success "Backend service running ($url)"
-                return
-            }
-        }
-        catch {
-            continue
+    $url = 'http://localhost:6174/api/v1/health'
+    try {
+        $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
+        if ($response.StatusCode -eq 200) {
+            Write-Success "Backend service running ($url)"
+            return
         }
     }
-    
-    Write-Warning 'Backend service not detected'
-    Write-Status '[INFO] Please ensure backend is started'
+    catch {
+        Write-Warning 'Backend service not detected'
+        Write-Status '[INFO] Please start Spring Boot first: .\start-backend-app.ps1'
+    }
 }
 
 function Main {
@@ -104,8 +96,8 @@ function Main {
     Write-Host ''
     Write-Status '[READY] Starting Vite development server...'
     Write-Host ''
-    Write-Status '    Frontend:  http://localhost:5173'
-    Write-Status '    Backend API:   http://localhost:6173'
+    Write-Status '    Frontend:     http://localhost:5173'
+    Write-Status '    Backend API:  http://localhost:6174  (Spring Boot)'
     Write-Host ''
     Write-Status '========================================' -Color Yellow
     Write-Host ''

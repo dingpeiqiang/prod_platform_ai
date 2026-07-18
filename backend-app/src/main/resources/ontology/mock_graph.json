@@ -1,0 +1,255 @@
+{
+  "bizScenarios": {
+    "家庭融合": {
+      "scenarioId": "SCN-HF",
+      "defaults": {
+        "includeVoice": "500分钟",
+        "includeData": "40GB",
+        "includeBroadband": "500M",
+        "offeringType": "fusion",
+        "mutexGroup": "MAIN_PKG",
+        "targetUser": "家庭"
+      },
+      "templateId": "TPL-HF-128"
+    },
+    "校园体验": {
+      "scenarioId": "SCN-CAMPUS",
+      "defaults": {
+        "includeVoice": "200分钟",
+        "includeData": "20GB",
+        "offeringType": "main_pkg",
+        "mutexGroup": "MAIN_PKG",
+        "targetUser": "校园",
+        "monthlyFee": 59
+      },
+      "templateId": "TPL-CAMPUS-59"
+    },
+    "5G个人主套餐": {
+      "scenarioId": "SCN-5G",
+      "defaults": {
+        "includeVoice": "500分钟",
+        "includeData": "30GB",
+        "offeringType": "main_pkg",
+        "mutexGroup": "MAIN_PKG",
+        "targetUser": "个人"
+      },
+      "templateId": "TPL-5G-99"
+    }
+  },
+  "templates": {
+    "TPL-HF-128": {
+      "templateId": "TPL-HF-128",
+      "name": "家庭融合畅享128",
+      "monthlyFee": 128,
+      "includeVoice": "500分钟",
+      "includeData": "30GB",
+      "includeBroadband": "300M",
+      "mutexGroup": "MAIN_PKG",
+      "channelScope": "全渠道"
+    },
+    "TPL-CAMPUS-59": {
+      "templateId": "TPL-CAMPUS-59",
+      "name": "校园青春59",
+      "monthlyFee": 59,
+      "includeVoice": "200分钟",
+      "includeData": "20GB",
+      "mutexGroup": "MAIN_PKG",
+      "channelScope": "电渠+厅店"
+    }
+  },
+  "shelfOfferings": [
+    {
+      "offeringId": "OF-HF-128",
+      "offeringName": "家庭融合畅享128",
+      "state": "上架",
+      "monthlyFee": 128,
+      "oneTimeFee": 0,
+      "mutexGroup": "MAIN_PKG",
+      "offeringType": "main_pkg",
+      "shelfDays": 210,
+      "salesCnt30d": 860,
+      "revenue30d": 110080,
+      "hasContract": true,
+      "strategicTag": true,
+      "category": "normal"
+    },
+    {
+      "offeringId": "OF-RISK-001",
+      "offeringName": "校园体验流量包0元",
+      "state": "上架",
+      "monthlyFee": 0,
+      "oneTimeFee": 0,
+      "mutexGroup": "ADDON",
+      "offeringType": "addon",
+      "shelfDays": 45,
+      "salesCnt30d": 120,
+      "revenue30d": 0,
+      "hasContract": false,
+      "strategicTag": false,
+      "category": "zero_fee",
+      "nameHint": "体验"
+    },
+    {
+      "offeringId": "OF-LOW-019",
+      "offeringName": "旧版彩铃包-2019",
+      "state": "上架",
+      "monthlyFee": 3,
+      "oneTimeFee": 0,
+      "mutexGroup": "ADDON",
+      "offeringType": "addon",
+      "shelfDays": 287,
+      "salesCnt30d": 0,
+      "revenue30d": 0,
+      "hasContract": false,
+      "strategicTag": false,
+      "category": "low_eff"
+    },
+    {
+      "offeringId": "OF-GIFT-WL",
+      "offeringName": "会员权益赠送流量包",
+      "state": "上架",
+      "monthlyFee": 0,
+      "oneTimeFee": 0,
+      "mutexGroup": "ADDON",
+      "offeringType": "addon",
+      "shelfDays": 60,
+      "salesCnt30d": 200,
+      "revenue30d": 0,
+      "hasContract": false,
+      "strategicTag": true,
+      "whitelistTag": "权益赠送",
+      "category": "whitelist"
+    },
+    {
+      "offeringId": "OF-DISC-001",
+      "offeringName": "全额赠送可重复体验包",
+      "state": "上架",
+      "monthlyFee": 19,
+      "oneTimeFee": 0,
+      "discountPercent": 100,
+      "repeatable": true,
+      "targetCustomerGroup": "",
+      "mutexGroup": "ADDON",
+      "offeringType": "addon",
+      "shelfDays": 40,
+      "salesCnt30d": 55,
+      "revenue30d": 0,
+      "hasContract": false,
+      "strategicTag": false,
+      "category": "abnormal_discount"
+    }
+  ],
+  "samplePlan": {
+    "total": 80,
+    "normal": 60,
+    "zeroFee": 8,
+    "abnormalDiscount": 5,
+    "lowEff": 7
+  },
+  "opsGraph": {
+    "OF-HF-128": {
+      "metrics": [
+        {
+          "metricCode": "累计收入",
+          "metricValue": 38200,
+          "metricDelta": -0.18,
+          "anomaly": true
+        },
+        {
+          "metricCode": "留存率",
+          "metricValue": 0.86,
+          "metricDeltaPp": -3.2,
+          "anomaly": true
+        }
+      ],
+      "channels": [
+        {
+          "channelId": "CH-HALL",
+          "name": "营业厅",
+          "orderDelta": -0.35,
+          "contribRatio": 0.42,
+          "weightHint": 0.42
+        },
+        {
+          "channelId": "CH-ONLINE",
+          "name": "电渠",
+          "orderDelta": -0.05,
+          "contribRatio": 0.38,
+          "weightHint": 0.05
+        }
+      ],
+      "promotions": [
+        {
+          "promoId": "PR-HF-GIFT",
+          "name": "家庭融合加装礼",
+          "daysToExpire": 5,
+          "drivenOrderRatio": 0.31,
+          "weightHint": 0.31
+        }
+      ],
+      "behaviors": [
+        {
+          "behaviorId": "UB-RENEW",
+          "name": "宽带续约率下降",
+          "weightHint": 0.09
+        },
+        {
+          "behaviorId": "UB-CHURN",
+          "name": "主角成员退订率上升",
+          "weightHint": 0.09
+        }
+      ],
+      "competitors": [
+        {
+          "competitorId": "CP-F120",
+          "name": "友商融合120",
+          "priceGap": 20,
+          "priceGapRatio": 0.156,
+          "penetrationDeltaPp": 2.1,
+          "weightHint": 0.18
+        }
+      ],
+      "market": {
+        "scopeId": "MK-HF-LOCAL",
+        "name": "本地家庭融合",
+        "penetration": 0.78
+      }
+    }
+  },
+  "equityGiftWhitelist": ["权益赠送", "内部体验", "内部验证"],
+  "actionSuggestions": {
+    "Channel": ["加强厅店专项激励", "检查厅店品类是否被下沉"],
+    "Promotion": ["续期或替换促销模板", "评估团购/满减替代"],
+    "Competitor": ["启动动态定价/优惠随意搭", "输出对标分析"],
+    "UserBehavior": ["针对退订高发成员角色做挽留包"]
+  },
+  "riskActions": {
+    "零元资费": {
+      "level": "HIGH",
+      "defaultAction": "建议立即下架或转验证渠道",
+      "needConfirm": true
+    },
+    "异常全额赠送": {
+      "level": "HIGH",
+      "defaultAction": "限售 + 复核优惠规则",
+      "needConfirm": true
+    },
+    "长期零销": {
+      "level": "MEDIUM",
+      "defaultAction": "建议下架/归档",
+      "needConfirm": false
+    },
+    "低效产商品": {
+      "level": "MEDIUM",
+      "defaultAction": "纳入优胜劣汰池",
+      "needConfirm": false
+    }
+  },
+  "riskRuleDefaults": {
+    "ruleVersion": "RiskRules-v1.2",
+    "zeroSalesShelfDays": 180,
+    "zeroSalesDaysWindow": 30,
+    "highRiskReviewDays": 30,
+    "lowRevenuePercentile": 0.05
+  }
+}

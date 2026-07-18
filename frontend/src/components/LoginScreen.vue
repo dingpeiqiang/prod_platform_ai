@@ -59,9 +59,13 @@
             <span></span><span></span><span></span>
           </span>
         </button>
+
+        <button class="guest-btn" type="button" :disabled="loading" @click="handleGuest">
+          访客一键进入体验
+        </button>
       </div>
 
-      <p class="login-tip">模拟登录，输入任意用户名即可进入</p>
+      <p class="login-tip">演示环境：任意用户名可进；也可点「访客一键进入体验」，无需填写</p>
     </div>
   </div>
 </template>
@@ -89,13 +93,20 @@ const handleLogin = async () => {
     return
   }
   loading.value = true
-  // 模拟网络延迟
-  await new Promise(r => setTimeout(r, 600))
+  await new Promise(r => setTimeout(r, 400))
   loading.value = false
   const result = userStore.login(name)
   if (!result.success) {
     errorMsg.value = result.message
   }
+}
+
+const handleGuest = async () => {
+  errorMsg.value = ''
+  loading.value = true
+  await new Promise(r => setTimeout(r, 200))
+  loading.value = false
+  userStore.login('体验访客')
 }
 </script>
 
@@ -274,6 +285,29 @@ const handleLogin = async () => {
 }
 .login-btn:disabled {
   opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.guest-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 11px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--radius-md);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.guest-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+.guest-btn:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 

@@ -34,6 +34,7 @@ from app.api.scheduler import router as scheduler_router
 from app.api.mcp_management import router as mcp_management_router
 from app.api.kb import router as kb_router
 from app.api.llm_config import router as llm_config_router
+from app.api.ontology_mvp import router as ontology_mvp_router
 from app.mock import router as mock_router
 
 settings = get_settings()
@@ -143,6 +144,7 @@ app.include_router(execution_router)  # 工作流执行 API
 app.include_router(scheduler_router)  # 工作流调度器 API
 app.include_router(kb_router)  # 知识库 API
 app.include_router(llm_config_router)  # LLM 配置管理 API
+app.include_router(ontology_mvp_router)  # 本体 MVP（配置/运营推理）
 
 # ── Mock API（条件注册）──────────────────────────────────────────────────────
 if settings.MOCK_API_ENABLED:

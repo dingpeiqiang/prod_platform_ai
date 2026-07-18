@@ -1,0 +1,9 @@
+﻿# DEPRECATED
+
+Python FastAPI backend launcher has been retired from the commercial path.
+
+Use:
+  .\start-backend-app.ps1
+  .\start-all.ps1
+
+The `backend/` directory is retained temporarily as reference only and is no longer started by default.

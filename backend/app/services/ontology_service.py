@@ -13,6 +13,7 @@ class OntologyService:
         return [
             {"code": "general", "name": "通用本体"},
             {"code": "tariff", "name": "资费备案"},
+            {"code": "product", "name": "产商品配置"},
             {"code": "customer", "name": "客户信息"},
             {"code": "business", "name": "业务流程"}
         ]

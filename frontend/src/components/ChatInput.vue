@@ -2,8 +2,8 @@
   <div class="chat-input-container">
     <div class="quick-actions-bar">
       <button
-        v-for="action in quickActions"
-        :key="action.key"
+        v-for="(action, idx) in quickActions"
+        :key="action.key + '-' + idx"
         class="quick-action-chip"
         @click="handleQuickAction(action)"
         :disabled="disabled"
@@ -145,7 +145,8 @@ const props = defineProps({
   modelValue: { type: String, default: '' },
   disabled: { type: Boolean, default: false },
   placeholder: { type: String, default: '描述你想做的事...' },
-  currentSkill: { type: String, default: '' }
+  currentSkill: { type: String, default: '' },
+  assistantMode: { type: String, default: '' }
 })
 
 const emit = defineEmits([
@@ -161,9 +162,10 @@ const emit = defineEmits([
 ])
 
 const skillConfig = {
-  query: { icon: 'fa-magnifying-glass', label: '智查' },
-  file: { icon: 'fa-file-import', label: 'AI方案导入' },
-  chat: { icon: 'fa-comments', label: '对话式配置' }
+  query: { icon: 'fa-magnifying-glass', label: 'AI智查' },
+  file: { icon: 'fa-file-import', label: '智读·批量生成' },
+  chat: { icon: 'fa-comments', label: '智聊·对话配置' },
+  ops: { icon: 'fa-chart-line', label: '运营助手' }
 }
 
 const skillTag = computed(() =>
@@ -177,7 +179,8 @@ const handleSkillSelect = (skill) => emit('skill-select', skill)
 const skillIconPaths = {
   query: ['M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z', 'm20 20-3.5-3.5'],
   file: ['M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z', 'M14 2v6h6', 'M12 11v6', 'M9 14h6'],
-  chat: ['M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z']
+  chat: ['M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'],
+  ops: ['M3 3v18h18', 'M18 17V9', 'M13 17V5', 'M8 17v-3']
 }
 
 const inputEl = ref(null)
@@ -193,11 +196,19 @@ let recordingTimer = null
 let mediaRecorder = null
 let audioChunks = []
 
-const quickActions = [
-  { key: 'query', label: '智能查询', content: '帮我查询一个表单配置', color: '#f59e0b' },
-  { key: 'import', label: '方案导入', content: '帮我导入一个配置方案', color: '#10b981' },
-  { key: 'chat', label: '对话配置', content: '帮我配置一个大学生套餐', color: '#8b5cf6' }
+const allQuickActions = [
+  { key: 'chat', label: '智聊配置', content: '给家庭用户做一个融合套餐，月费158，带500M宽带，全渠道销售', color: '#8b5cf6', modes: ['rd'] },
+  { key: 'file', label: '智读批量', content: '帮我导入校园迎新方案', color: '#10b981', modes: ['rd'] },
+  { key: 'query', label: 'AI智查', content: '帮我查询近30天大学生套餐配置', color: '#f59e0b', modes: ['rd'] },
+  { key: 'ops', label: '指标异动根因', content: '分析家庭融合畅享128本月收入下滑原因', color: '#0ea5e9', modes: ['ops'] },
+  { key: 'ops', label: '高风险商品稽核', content: '筛查所有在架的0元资费风险商品', color: '#ef4444', modes: ['ops'] }
 ]
+
+const quickActions = computed(() => {
+  const mode = props.assistantMode
+  if (!mode) return allQuickActions
+  return allQuickActions.filter(a => a.modes.includes(mode))
+})
 
 const hasContent = computed(() => inputText.value.trim().length > 0 || attachments.value.length > 0)
 const canSend = computed(() => hasContent.value && !props.disabled)

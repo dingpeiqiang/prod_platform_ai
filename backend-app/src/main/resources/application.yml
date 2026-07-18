@@ -1,0 +1,27 @@
+server:
+  port: 6174
+
+spring:
+  application:
+    name: prod-platform-ai
+  profiles:
+    active: dev
+  jackson:
+    default-property-inclusion: non_null
+
+prodai:
+  ontology:
+    graph-path: classpath:ontology/mock_graph.json
+  llm:
+    enabled: ${LLM_ENABLED:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+logging:
+  level:
+    root: INFO
+    com.sitech.prodai: DEBUG

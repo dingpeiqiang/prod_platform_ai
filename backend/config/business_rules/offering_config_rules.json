@@ -1,0 +1,46 @@
+{
+  "form_code": "offering_config",
+  "description": "产商品配置本体 MVP 业务规则（与 ontology_mvp_service 对齐）",
+  "rules": [
+    {
+      "ruleId": "R-C01",
+      "name": "家庭融合场景缺省",
+      "description": "业务场景=家庭融合且未指定宽带/语音/流量时，按场景缺省补全"
+    },
+    {
+      "ruleId": "R-C02",
+      "name": "校园月费推荐",
+      "description": "目标用户=校园且月费为空时推荐模板价59"
+    },
+    {
+      "ruleId": "R-C03",
+      "name": "主套餐互斥",
+      "description": "同一互斥组内不可再挂已有主套餐"
+    },
+    {
+      "ruleId": "R-C04",
+      "name": "依赖缺失",
+      "description": "附加包必须声明 dependOn"
+    },
+    {
+      "ruleId": "R-C05",
+      "name": "零元高风险",
+      "description": "月费与一次性费为0且无合约，非白名单则阻断"
+    },
+    {
+      "ruleId": "R-C06",
+      "name": "必填缺失",
+      "description": "名称/月费/目标用户/渠道不可为空"
+    },
+    {
+      "ruleId": "R-C07",
+      "name": "异常优惠",
+      "description": "折扣100%且可重复订购触发漏洞警告"
+    },
+    {
+      "ruleId": "R-C08",
+      "name": "合规通过",
+      "description": "无HIGH问题且必填齐全则允许提交"
+    }
+  ]
+}

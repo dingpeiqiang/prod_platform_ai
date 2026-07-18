@@ -9,15 +9,21 @@
         :required="field.required"
         :prop="field.fieldCode"
         :error="fieldErrors[field.fieldCode]"
+        :class="fieldFillClass(field)"
       >
         <template v-if="!field.hidden">
-          <BaseField
-            :field="field"
-            :model-value="localFormData[field.fieldCode]"
-            :disabled="field.disabled || isFormDisabled()"
-            @update:model-value="(value) => handleFieldValueUpdate(field.fieldCode, value)"
-            @field-change="handleFieldChange"
-          />
+          <div class="field-wrap">
+            <BaseField
+              :field="field"
+              :model-value="localFormData[field.fieldCode]"
+              :disabled="field.disabled || isFormDisabled()"
+              @update:model-value="(value) => handleFieldValueUpdate(field.fieldCode, value)"
+              @field-change="handleFieldChange"
+            />
+            <span v-if="field.fillSource" class="fill-tag" :class="`src-${field.fillSource}`">
+              {{ field.fillSource }}
+            </span>
+          </div>
         </template>
       </el-form-item>
       
@@ -30,11 +36,14 @@
           native-type="button"
           @click="handleSubmit" 
           :loading="submitting"
-          :disabled="formSubmitted || formCancelled"
+          :disabled="isSubmitDisabled"
         >
-          {{ formSubmitted ? '已提交' : (formCancelled ? '已取消' : '提交表单') }}
+          {{ submitButtonText }}
         </el-button>
       </el-form-item>
+      <p v-if="requireCompliance && !compliancePass && !formSubmitted" class="compliance-block-hint">
+        合规未通过，提交已禁用（规则由本体判定，不可口头放过）
+      </p>
       
       <div v-if="formSubmitted" class="submitted-hint">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -56,7 +65,7 @@
 </template>
 
 <script setup>
-import { ref, watch, reactive, nextTick } from 'vue'
+import { ref, watch, reactive, nextTick, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import BaseField from './fields/BaseField.vue'
 import { validateField } from './../utils'
@@ -85,6 +94,18 @@ const props = defineProps({
   formCancelled: {
     type: Boolean,
     default: false
+  },
+  requireCompliance: {
+    type: Boolean,
+    default: false
+  },
+  compliancePass: {
+    type: Boolean,
+    default: false
+  },
+  submitLabel: {
+    type: String,
+    default: ''
   }
 })
 
@@ -95,6 +116,30 @@ const localFormData = reactive({})
 const fieldErrors = reactive({})
 const isFormDisabled = () => props.formSubmitted || props.formCancelled
 const submitting = ref(false)
+
+const isSubmitDisabled = computed(() =>
+  props.formSubmitted ||
+  props.formCancelled ||
+  (props.requireCompliance && !props.compliancePass),
+)
+
+const submitButtonText = computed(() => {
+  if (props.formSubmitted) return '已生成草稿'
+  if (props.formCancelled) return '已取消'
+  if (props.submitLabel) return props.submitLabel
+  if (props.requireCompliance) {
+    return props.compliancePass ? '生成配置草稿' : '合规未通过'
+  }
+  return '提交表单'
+})
+
+function fieldFillClass(field) {
+  const src = field?.fillSource
+  if (!src) return ''
+  if (src === 'scenario_default' || src === 'template') return 'field-inferred'
+  if (src === 'user_said') return 'field-user'
+  return ''
+}
 
 watch(() => props.formData, (newData) => {
   const numberFields = new Set()
@@ -376,6 +421,52 @@ defineExpose({ doSubmit })
 
 .dynamic-form :deep(.el-form-item.is-error .el-input__wrapper) {
   box-shadow: 0 0 0 1px var(--color-error-500) inset !important;
+}
+
+.field-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.fill-tag {
+  align-self: flex-start;
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  color: #4b5563;
+}
+
+.fill-tag.src-scenario_default,
+.fill-tag.src-template {
+  background: #d1fae5;
+  color: #047857;
+}
+
+.fill-tag.src-user_said {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.dynamic-form :deep(.field-inferred .el-input__wrapper),
+.dynamic-form :deep(.field-inferred .el-select__wrapper),
+.dynamic-form :deep(.field-inferred .el-textarea__inner) {
+  box-shadow: 0 0 0 1px #34d399 inset !important;
+  background: #ecfdf5;
+}
+
+.dynamic-form :deep(.field-user .el-input__wrapper),
+.dynamic-form :deep(.field-user .el-select__wrapper) {
+  box-shadow: 0 0 0 1px #93c5fd inset !important;
+}
+
+.compliance-block-hint {
+  margin: -4px 0 12px;
+  font-size: 12px;
+  color: #b45309;
+  line-height: 1.4;
 }
 
 .submitted-hint {

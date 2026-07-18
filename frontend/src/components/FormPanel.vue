@@ -60,11 +60,20 @@
 
       <!-- 表单区域 -->
       <div v-else class="form-area">
+        <CompliancePanel
+          v-if="showCompliance"
+          :issues="issues"
+          :compliance-pass="compliancePass"
+          :inferred-fields="inferredFields"
+        />
         <DynamicForm
           :schema="formSchema"
           :formId="formId"
           :formSubmitted="formSubmitted"
           :formCancelled="formCancelled"
+          :require-compliance="requireCompliance"
+          :compliance-pass="compliancePass"
+          :submit-label="submitLabel"
           @submit="handleFormSubmit"
           @cancel="handleFormCancel"
           @field-change="handleFieldChange"
@@ -88,6 +97,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import DynamicForm from './DynamicForm.vue'
+import CompliancePanel from './CompliancePanel.vue'
 
 const props = defineProps({
   formSchema: {
@@ -105,6 +115,30 @@ const props = defineProps({
   formCancelled: {
     type: Boolean,
     default: false
+  },
+  issues: {
+    type: Array,
+    default: () => []
+  },
+  compliancePass: {
+    type: Boolean,
+    default: false
+  },
+  inferredFields: {
+    type: Array,
+    default: () => []
+  },
+  showCompliance: {
+    type: Boolean,
+    default: false
+  },
+  requireCompliance: {
+    type: Boolean,
+    default: false
+  },
+  submitLabel: {
+    type: String,
+    default: ''
   }
 })
 

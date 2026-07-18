@@ -1,9 +1,12 @@
-import { defineConfig } from 'vite'
+﻿import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 
-export default defineConfig(({ command, mode }) => {
+export default defineConfig(({ mode }) => {
   const isProd = mode === 'production'
+  // Commercial backend: Spring Boot backend-app only (6174)
+  const apiTarget = 'http://localhost:6174'
+  const wsTarget = 'ws://localhost:6174'
 
   return {
     plugins: [vue()],
@@ -24,7 +27,7 @@ export default defineConfig(({ command, mode }) => {
       strictPort: false,
       proxy: {
         '/api': {
-          target: 'http://localhost:6173',
+          target: apiTarget,
           changeOrigin: true,
           rewrite: (path) => path,
           configure: (proxy) => {
@@ -37,7 +40,7 @@ export default defineConfig(({ command, mode }) => {
           }
         },
         '/ws': {
-          target: 'ws://localhost:6173',
+          target: wsTarget,
           ws: true,
           changeOrigin: true
         }

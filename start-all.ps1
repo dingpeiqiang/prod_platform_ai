@@ -1,9 +1,9 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $script:ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
-$script:BackendPort = 6173
+$script:BackendPort = 6174
 $script:FrontendPort = 5173
 
 function Write-Status {
@@ -61,7 +61,7 @@ function Main {
     Write-Host ''
     Write-Status '=============================================================' -Color Cyan
     Write-Status '' -Color Cyan
-    Write-Status '       AI Platform - One-click Startup Script' -Color Cyan
+    Write-Status '  AI Platform - One-click Startup (Spring Boot + Frontend)' -Color Cyan
     Write-Status '' -Color Cyan
     Write-Status '=============================================================' -Color Cyan
     Write-Host ''
@@ -69,10 +69,10 @@ function Main {
     Test-PortAvailability -Port $BackendPort
     Write-Host ''
     
-    $backendScript = Join-Path $ProjectRoot 'start-backend.ps1'
+    $backendScript = Join-Path $ProjectRoot 'start-backend-app.ps1'
     $frontendScript = Join-Path $ProjectRoot 'start-frontend.ps1'
     
-    Write-Status "[Starting] Backend service (port $BackendPort)..."
+    Write-Status "[Starting] Spring Boot backend (port $BackendPort)..."
     $backendArgs = @(
         '-ExecutionPolicy', 'Bypass',
         '-File', "`"$backendScript`""
@@ -93,9 +93,11 @@ function Main {
     Write-Host ''
     Write-Status '============================================' -Color Yellow
     Write-Host ''
-    Write-Status "    Backend API:  http://localhost:$BackendPort"
-    Write-Status "    Frontend: http://localhost:$FrontendPort"
-    Write-Status "    API Docs: http://localhost:$BackendPort/docs"
+    Write-Status "    Backend API:  http://localhost:$BackendPort  (Spring Boot)"
+    Write-Status "    Frontend:     http://localhost:$FrontendPort"
+    Write-Status "    Health:       http://localhost:$BackendPort/api/v1/health"
+    Write-Status "    Ontology:     http://localhost:$BackendPort/api/v1/ontology-mvp/graph"
+    Write-Status "    Chat v2:      http://localhost:$BackendPort/api/v2/chat/sessions"
     Write-Host ''
     Write-Status '    Waiting 5 seconds for services to fully start...'
     Write-Status '============================================' -Color Yellow
