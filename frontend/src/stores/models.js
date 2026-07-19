@@ -5,12 +5,48 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
+const PROVIDER_LABELS = {
+  openai: 'OpenAI Compatible',
+  azure: 'Azure OpenAI',
+  custom: 'Custom OpenAI Compatible',
+  local: 'Local / Mock'
+}
+
+function getProviderLabel(provider) {
+  return PROVIDER_LABELS[provider] || provider || '自定义'
+}
+
+/**
+ * 从 localStorage 读取兜底模型配置
+ * 当后端接口不可用时，使用本地缓存的配置作为兜底
+ */
+function buildFallbackModels() {
+  try {
+    const raw = localStorage.getItem('chat_model_config')
+    if (raw) {
+      const cfg = JSON.parse(raw)
+      if (cfg.model) {
+        const provider = cfg.provider || 'custom'
+        return [{
+          id: `${provider}-${cfg.model}`,
+          provider,
+          providerName: getProviderLabel(provider),
+          name: cfg.model,
+          isDefault: true
+        }]
+      }
+    }
+  } catch {}
+  return []
+}
+
 export const useModelsStore = defineStore('models', () => {
   // ── 状态 ──────────────────────────────────
   const models = ref([])  // 模型列表
   const loading = ref(false)  // 加载中
   const lastLoaded = ref(0)  // 最后加载时间（用于缓存）
   const loadError = ref(null)  // 加载错误
+  let loadingPromise = null  // 进行中的加载请求（用于并发去重，避免丢弃刷新）
 
   // ── 计算属性 ──────────────────────────────────
   const modelOptions = computed(() => {
@@ -37,32 +73,43 @@ export const useModelsStore = defineStore('models', () => {
       return models.value
     }
 
-    if (loading.value) {
-      return null
+    // 并发去重：已有进行中的请求时复用同一个 promise，
+    // 避免旧逻辑 `if (loading) return null` 把 force 刷新请求直接丢弃。
+    if (loadingPromise) {
+      return loadingPromise
     }
 
-    loading.value = true
-    loadError.value = null
+    loadingPromise = (async () => {
+      loading.value = true
+      loadError.value = null
 
-    try {
-      const response = await fetch('/api/v1/chat/model/available')
-      const result = await response.json()
+      try {
+        const response = await fetch('/api/v1/chat/model/available')
+        const result = await response.json()
 
-      if (result.success && result.models) {
-        models.value = result.models
-        lastLoaded.value = now
-        loadError.value = null
-      } else {
-        throw new Error(result.message || '加载模型列表失败')
+        if (result.success && result.models) {
+          models.value = result.models
+          lastLoaded.value = now
+          loadError.value = null
+        } else {
+          throw new Error(result.message || '加载模型列表失败')
+        }
+      } catch (e) {
+        console.error('加载可用模型列表失败:', e)
+        loadError.value = e.message || '加载失败'
+        // 接口失败且无缓存数据时，尝试从 localStorage 读取兜底配置
+        if (models.value.length === 0) {
+          models.value = buildFallbackModels()
+        }
+      } finally {
+        loading.value = false
+        loadingPromise = null
       }
-    } catch (e) {
-      console.error('加载可用模型列表失败:', e)
-      loadError.value = e.message || '加载失败'
-    } finally {
-      loading.value = false
-    }
 
-    return models.value
+      return models.value
+    })()
+
+    return loadingPromise
   }
 
   /**
@@ -81,11 +128,33 @@ export const useModelsStore = defineStore('models', () => {
     loadError.value = null
   }
 
+  /**
+   * 手动添加模型配置到列表（用于保存配置后立即更新）
+   */
+  const addModelConfig = (config) => {
+    const provider = config.provider || 'custom'
+    const modelId = `${provider}-${config.model}`
+    const existingIndex = models.value.findIndex(m => m.id === modelId)
+    const newModel = {
+      id: modelId,
+      provider,
+      providerName: getProviderLabel(provider),
+      name: config.model,
+      isDefault: true
+    }
+    if (existingIndex >= 0) {
+      models.value[existingIndex] = newModel
+    } else {
+      models.value.unshift(newModel)
+    }
+    lastLoaded.value = Date.now()
+  }
+
   // ── 导出 ──────────────────────────────────
   return {
     models, loading, lastLoaded, loadError,
     modelOptions, hasModels,
-    loadModels, getModelById, clearModels
+    loadModels, getModelById, clearModels, addModelConfig
   }
 })
 

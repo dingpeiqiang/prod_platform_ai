@@ -22,6 +22,96 @@
       </div>
     </transition>
 
+    <!-- 模型配置弹窗 -->
+    <div
+      v-if="showModelConfig"
+      class="model-selector-overlay"
+      @click="closeModelConfig"
+    >
+      <div class="model-selector-popup" @click.stop>
+        <div class="popup-header">
+          <span class="popup-title">模型配置</span>
+          <button type="button" class="popup-close" @click="closeModelConfig" title="关闭">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="popup-content">
+          <ModelSelector @model-change="handleModelChange" @open-model-config="openModelConfigManager" />
+        </div>
+      </div>
+    </div>
+
+    <!-- 模型管理弹窗挂到 body，避免聊天区层叠上下文遮挡 -->
+    <Teleport to="body">
+      <div
+        v-if="showModelManager"
+        class="model-selector-overlay"
+        @click.self="closeModelManager"
+      >
+        <div class="model-manager-popup" role="dialog" aria-modal="true" aria-label="模型管理">
+          <div class="popup-header">
+            <span class="popup-title">模型配置</span>
+            <button type="button" class="popup-close" @click="closeModelManager" title="关闭">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <div class="popup-content manager-content">
+            <div class="manager-intro">
+              <div class="manager-title">模型配置</div>
+              <div class="manager-desc">这里的配置会同步到会话输入框的模型选择与发送参数。</div>
+            </div>
+
+            <div class="manager-grid">
+              <label class="manager-field">
+                <span>提供方</span>
+                <input v-model="modelForm.provider" type="text" placeholder="例如 openai / azure / custom" />
+              </label>
+              <label class="manager-field">
+                <span>模型名称</span>
+                <input v-model="modelForm.model" type="text" placeholder="例如 gpt-4o-mini" />
+              </label>
+              <label class="manager-field manager-span-2">
+                <span>API Key</span>
+                <input v-model="modelForm.api_key" type="password" placeholder="可留空，保存在本地" />
+              </label>
+              <label class="manager-field manager-span-2">
+                <span>Base URL</span>
+                <input v-model="modelForm.base_url" type="text" placeholder="https://api.example.com/v1" />
+              </label>
+              <label class="manager-field">
+                <span>温度</span>
+                <input v-model.number="modelForm.temperature" type="number" min="0" max="2" step="0.1" />
+              </label>
+              <label class="manager-field">
+                <span>最大输出 tokens</span>
+                <input v-model.number="modelForm.max_tokens" type="number" min="128" step="64" />
+              </label>
+            </div>
+
+            <div class="manager-actions">
+              <button type="button" class="secondary-btn" :disabled="testingModel || savingConfig" @click="resetModelForm">恢复默认</button>
+              <button type="button" class="secondary-btn" :disabled="testingModel || savingConfig" @click="testModelConnection">
+                {{ testingModel ? '测试中…' : '测试连接' }}
+              </button>
+              <button type="button" class="primary-btn" :disabled="testingModel || savingConfig" @click="saveModelConfigFromManager">
+                {{ savingConfig ? '保存中…' : '保存配置' }}
+              </button>
+            </div>
+            <div v-if="testResult" class="manager-test-result" :class="testResult.success ? 'test-ok' : 'test-fail'">
+              <span class="test-result-icon">{{ testResult.success ? '✓' : '✗' }}</span>
+              <span class="test-result-text">{{ testResult.message }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- 登录页 -->
     <LoginScreen v-if="!userStore.isLoggedIn" />
 
@@ -44,6 +134,7 @@
         @toggle-sidebar="toggleSidebar"
         @theme-toggle="toggleTheme"
         @select-assistant="onSelectAssistant"
+        @model-change="onModelChange"
       />
 
       <!-- 中间主聊天区 -->
@@ -146,6 +237,7 @@
                 @voice-record="handleVoiceRecord"
                 @remove-skill="currentSkill = ''"
                 @skill-select="applySkill"
+                @open-model-config="openModelConfigManager"
               />
             </div>
 
@@ -200,22 +292,11 @@
           />
         </div>
 
-        <!-- 管理台 -->
+        <!-- 管理台：仅挂已迁到 Spring Boot 的模块；workflow / mcp / kb / langchain 暂不暴露 -->
         <div v-else-if="activeManager" class="manager-area">
           <SceneManager v-if="activeManager === 'scene'" @go-back="closeManager" />
           <PromptManager v-else-if="activeManager === 'prompt'" @go-back="closeManager" />
           <OntologyManager v-else-if="activeManager === 'ontology'" @goBack="closeManager" />
-          <GenericManager
-            v-else-if="activeManager === 'workflow'"
-            title="工作流管理"
-            item-type="工作流"
-            code-field="workflowCode"
-            name-field="workflowName"
-            :api-service="workflowApi"
-            @goBack="closeManager"
-          />
-          <MCPToolDashboard v-else-if="activeManager === 'mcp'" @go-back="closeManager" />
-          <KBManager v-else-if="activeManager === 'kb'" @go-back="closeManager" />
         </div>
 
         <!-- 首页/欢迎页 -->
@@ -231,9 +312,7 @@
             @open-scene-manager="openSceneManager"
             @open-prompt-manager="openPromptManager"
             @open-ontology-manager="openOntologyManager"
-            @open-workflow-manager="openWorkflowManager"
-            @open-mcp-manager="openMCPManager"
-            @open-kb-manager="openKBManager"
+            @open-model-config="openModelConfigManager"
           />
         </div>
       </div>
@@ -242,7 +321,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import Sidebar from './components/Sidebar.vue'
 import ChatMessageList from './components/ChatMessageList.vue'
@@ -259,12 +338,10 @@ import OpsRiskAuditPanel from './components/OpsRiskAuditPanel.vue'
 import SceneManager from './components/SceneManager.vue'
 import PromptManager from './components/PromptManager.vue'
 import OntologyManager from './components/OntologyManager.vue'
-import KBManager from './components/KBManager.vue'
-import MCPToolDashboard from './components/MCPToolDashboard.vue'
-import GenericManager from './components/GenericManager.vue'
-import { workflowApi } from './services/workflowApi.js'
+import ModelSelector from './components/ModelSelector.vue'
 import { useUserStore } from './stores/user'
 import { useLoadingStore } from './stores/loading'
+import { useModelsStore } from './stores/models.js'
 import { useProductConfig } from './composables/useProductConfig.js'
 import { mockProducts } from './data/productMockData.js'
 import { createStreamingPlaceholder, playSimulatedReply, sleep } from './utils/simulateReply.js'
@@ -278,6 +355,7 @@ import {
 
 const userStore = useUserStore()
 const loadingStore = useLoadingStore()
+const modelsStore = useModelsStore()
 const { isLoading, loadingText } = storeToRefs(loadingStore)
 const productConfig = useProductConfig()
 const {
@@ -471,6 +549,283 @@ const toggleSidebar = () => {
 
 const toggleTheme = (isDark) => {
   document.documentElement.classList.toggle('dark', isDark)
+}
+
+const MODEL_CONFIG_KEY = 'chat_model_config'
+const currentModelConfig = ref(null)
+
+const loadModelConfig = async () => {
+  const username = userStore.username
+  // 优先从后端加载该用户的激活配置
+  if (username) {
+    try {
+      const resp = await fetch(`/api/v1/llm-config/active/${encodeURIComponent(username)}`)
+      const text = await resp.text()
+      let result = null
+      try {
+        result = text ? JSON.parse(text) : null
+      } catch (parseError) {
+        throw new Error(`后端返回非 JSON 响应: ${parseError.message}`)
+      }
+      if (result?.success && result.config) {
+        const cfg = result.config
+        currentModelConfig.value = {
+          provider: cfg.provider || 'custom',
+          model: cfg.model || '',
+          api_key: cfg.api_key || '',
+          base_url: cfg.base_url || '',
+          temperature: cfg.temperature ?? 0.3,
+          max_tokens: cfg.max_tokens ?? 2048,
+          thinking: !!cfg.thinking,
+        }
+        // 同步到 localStorage 作离线缓存
+        try { localStorage.setItem(MODEL_CONFIG_KEY, JSON.stringify(currentModelConfig.value)) } catch {}
+        return
+      }
+    } catch (e) {
+      console.error('从后端加载模型配置失败，回退 localStorage:', e)
+    }
+  }
+  // fallback：localStorage → 默认配置
+  try {
+    const raw = localStorage.getItem(MODEL_CONFIG_KEY)
+    if (raw) {
+      currentModelConfig.value = JSON.parse(raw)
+      return
+    }
+    const response = await fetch('/api/v1/chat/model/default')
+    const result = await response.json()
+    if (result.success) {
+      currentModelConfig.value = {
+        provider: result.provider || result.config?.provider,
+        model: result.model || result.config?.model,
+        baseUrl: result.baseUrl || result.config?.baseUrl || result.config?.base_url,
+      }
+    }
+  } catch (e) {
+    console.error('加载模型配置失败:', e)
+  }
+}
+
+const saveModelConfig = (config) => {
+  try {
+    localStorage.setItem(MODEL_CONFIG_KEY, JSON.stringify(config))
+  } catch (e) {
+    console.error('保存模型配置失败:', e)
+  }
+}
+
+const onModelChange = (modelConfig) => {
+  currentModelConfig.value = modelConfig
+  saveModelConfig(modelConfig)
+  try {
+    const provider = modelConfig?.provider || 'custom'
+    const model = modelConfig?.model
+    if (model) {
+      localStorage.setItem('chat_selected_model_id', `${provider}-${model}`)
+    }
+  } catch {}
+  nextTick(() => chatInputRef.value?.reloadModels?.())
+}
+
+const handleModelChange = onModelChange
+
+const showModelConfig = ref(false)
+const showModelManager = ref(false)
+const MODEL_DEBUG_PREFIX = '[ModelDebug][App]'
+
+const modelDebug = (step, details = {}) => {
+  console.log(`${MODEL_DEBUG_PREFIX} ${step}`, {
+    timestamp: new Date().toISOString(),
+    showModelConfig: showModelConfig.value,
+    showModelManager: showModelManager.value,
+    bodyDialogCount: typeof document === 'undefined'
+      ? -1
+      : document.body.querySelectorAll('.model-manager-popup').length,
+    overlayCount: typeof document === 'undefined'
+      ? -1
+      : document.body.querySelectorAll('.model-selector-overlay').length,
+    ...details,
+  })
+}
+
+watch(showModelManager, (visible, previous) => {
+  modelDebug('showModelManager state changed', { previous, visible })
+  nextTick(() => {
+    const dialog = document.body.querySelector('.model-manager-popup')
+    const overlay = dialog?.closest('.model-selector-overlay')
+    modelDebug('model manager DOM inspection after state change', {
+      dialogExists: !!dialog,
+      dialogConnected: !!dialog?.isConnected,
+      dialogDisplay: dialog ? getComputedStyle(dialog).display : null,
+      dialogVisibility: dialog ? getComputedStyle(dialog).visibility : null,
+      dialogOpacity: dialog ? getComputedStyle(dialog).opacity : null,
+      dialogZIndex: dialog ? getComputedStyle(dialog).zIndex : null,
+      dialogRect: dialog?.getBoundingClientRect?.().toJSON?.(),
+      overlayExists: !!overlay,
+      overlayDisplay: overlay ? getComputedStyle(overlay).display : null,
+      overlayVisibility: overlay ? getComputedStyle(overlay).visibility : null,
+      overlayOpacity: overlay ? getComputedStyle(overlay).opacity : null,
+      overlayZIndex: overlay ? getComputedStyle(overlay).zIndex : null,
+      overlayRect: overlay?.getBoundingClientRect?.().toJSON?.(),
+      activeElement: document.activeElement?.tagName,
+    })
+  })
+})
+
+const modelForm = ref({
+  provider: 'custom',
+  model: '',
+  api_key: '',
+  base_url: '',
+  temperature: 0.3,
+  max_tokens: 2048,
+  thinking: false,
+})
+
+// 模型配置弹窗的测试/保存状态
+const testingModel = ref(false)
+const savingConfig = ref(false)
+const testResult = ref(null) // { success: boolean, message: string, latency_ms?: number }
+
+const syncModelForm = (config = {}) => {
+  modelForm.value = {
+    provider: config.provider || 'custom',
+    model: config.model || '',
+    api_key: config.api_key || config.apiKey || '',
+    base_url: config.base_url || config.baseUrl || '',
+    temperature: config.temperature ?? 0.3,
+    max_tokens: config.max_tokens || config.maxTokens || 2048,
+    thinking: !!config.thinking,
+  }
+}
+
+const openModelConfig = () => {
+  showModelConfig.value = true
+}
+
+const closeModelConfig = () => {
+  showModelConfig.value = false
+}
+
+const closeModelManager = (event) => {
+  modelDebug('closeModelManager called', {
+    eventType: event?.type,
+    target: event?.target?.tagName,
+    currentTarget: event?.currentTarget?.tagName,
+  })
+  showModelManager.value = false
+}
+
+const openModelConfigManager = (payload) => {
+  modelDebug('openModelConfigManager handler entered', {
+    payload,
+    currentModelConfig: currentModelConfig.value,
+    bodyConnected: typeof document !== 'undefined' && document.body.isConnected,
+  })
+  try {
+    syncModelForm(currentModelConfig.value || {})
+    modelDebug('model form synchronized', {
+      provider: modelForm.value.provider,
+      model: modelForm.value.model,
+      hasApiKey: !!modelForm.value.api_key,
+      baseUrl: modelForm.value.base_url,
+    })
+    showModelConfig.value = false
+    showModelManager.value = true
+    modelDebug('showModelManager assigned true')
+    nextTick(() => {
+      modelDebug('openModelConfigManager nextTick completed', {
+        dialogHtml: document.body.querySelector('.model-manager-popup')?.outerHTML?.slice(0, 300),
+      })
+    })
+  } catch (error) {
+    console.error(`${MODEL_DEBUG_PREFIX} openModelConfigManager failed`, error)
+  }
+}
+
+const resetModelForm = () => {
+  syncModelForm(currentModelConfig.value || {})
+}
+
+const saveModelConfigFromManager = async () => {
+  const username = userStore.username
+  if (!username) {
+    testResult.value = { success: false, message: '未登录，无法保存配置到后端' }
+    return
+  }
+  savingConfig.value = true
+  testResult.value = null
+  const nextConfig = {
+    ...modelForm.value,
+    temperature: Number(modelForm.value.temperature) || 0,
+    max_tokens: Number(modelForm.value.max_tokens) || 0,
+    thinking: !!modelForm.value.thinking,
+  }
+  try {
+    const resp = await fetch('/api/v1/llm-config/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_identifier: username,
+        provider: nextConfig.provider || 'custom',
+        model: nextConfig.model,
+        api_key: nextConfig.api_key || null,
+        base_url: nextConfig.base_url || null,
+        temperature: nextConfig.temperature,
+        max_tokens: nextConfig.max_tokens,
+        thinking: nextConfig.thinking,
+      }),
+    })
+    const result = await resp.json()
+    if (result.success) {
+      currentModelConfig.value = nextConfig
+      saveModelConfig(nextConfig)
+      const modelId = `${nextConfig.provider || 'custom'}-${nextConfig.model}`
+      try {
+        localStorage.setItem('chat_selected_model_id', modelId)
+      } catch {}
+      showModelManager.value = false
+      testResult.value = null
+      modelsStore.addModelConfig(nextConfig)
+      nextTick(() => chatInputRef.value?.reloadModels?.())
+    } else {
+      testResult.value = { success: false, message: result.message || '保存失败' }
+    }
+  } catch (e) {
+    testResult.value = { success: false, message: `保存失败: ${e.message || e}` }
+  } finally {
+    savingConfig.value = false
+  }
+}
+
+const testModelConnection = async () => {
+  testingModel.value = true
+  testResult.value = null
+  try {
+    const resp = await fetch('/api/v1/llm-config/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        provider: modelForm.value.provider || 'custom',
+        model: modelForm.value.model || '',
+        api_key: modelForm.value.api_key || null,
+        base_url: modelForm.value.base_url || null,
+      }),
+    })
+
+    const rawText = await resp.text()
+    const result = rawText ? JSON.parse(rawText) : { success: false, message: '测试接口返回空响应' }
+    testResult.value = {
+      success: !!result.success,
+      message: result.message || (result.success ? '连接成功' : '连接失败'),
+      latency_ms: result.latency_ms,
+    }
+  } catch (e) {
+    testResult.value = { success: false, message: `测试请求失败: ${e.message || e}` }
+  } finally {
+    testingModel.value = false
+  }
 }
 
 const appendAssistantMessages = (session, msgs = []) => {
@@ -709,7 +1064,7 @@ const handleProductScenario = async (scenario, text, attachments, session) => {
 }
 
 // 消息处理
-const handleSend = async ({ text, attachments }) => {
+const handleSend = async ({ text, attachments, modelConfig }) => {
   if (!text.trim() && !attachments?.length) return
 
   let session = sessions.value.find(s => s.id === activeSessionId.value)
@@ -754,10 +1109,12 @@ const handleSend = async ({ text, attachments }) => {
       return
     }
 
+    const effectiveModelConfig = modelConfig || currentModelConfig.value || null
     const response = await apiSendMessage({
       sessionId: session.dbSessionId,
       message: text,
-      attachments
+      attachments,
+      modelConfig: effectiveModelConfig
     })
 
     const aiMessage = {
@@ -1210,9 +1567,14 @@ const onSendMessageFromHome = async (messageData) => {
   createLocalSession()
   const text = typeof messageData === 'string' ? messageData : messageData?.text
   const skill = typeof messageData === 'object' ? messageData?.skill : ''
+  const modelConfig = typeof messageData === 'object' ? messageData?.modelConfig : null
   if (skill) applySkill(skill)
   if (text) {
-    await handleSend({ text, attachments: [] })
+    await handleSend({
+      text,
+      attachments: typeof messageData === 'object' ? (messageData.attachments || []) : [],
+      modelConfig: modelConfig || currentModelConfig.value || null
+    })
   }
 }
 
@@ -1226,9 +1588,6 @@ const activeManager = ref('')
 const openSceneManager = () => { activeManager.value = 'scene' }
 const openPromptManager = () => { activeManager.value = 'prompt' }
 const openOntologyManager = () => { activeManager.value = 'ontology' }
-const openWorkflowManager = () => { activeManager.value = 'workflow' }
-const openMCPManager = () => { activeManager.value = 'mcp' }
-const openKBManager = () => { activeManager.value = 'kb' }
 const closeManager = () => { activeManager.value = '' }
 
 // 登出
@@ -1258,6 +1617,7 @@ const checkBackendOnline = async () => {
 // 生命周期
 onMounted(() => {
   loadSessions()
+  loadModelConfig()
   const savedActiveId = localStorage.getItem(ACTIVE_SESSION_KEY)
   if (savedActiveId && sessions.value.find(s => s.id === savedActiveId)) {
     activeSessionId.value = savedActiveId
@@ -1427,6 +1787,9 @@ body {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(99, 102, 241, 0.06), transparent 30%),
+    var(--bg-primary);
 }
 
 .chat-body {
@@ -1434,6 +1797,8 @@ body {
   display: flex;
   min-height: 0;
   overflow: hidden;
+  gap: 0;
+  padding: 0 14px 12px 14px;
 }
 
 .chat-main {
@@ -1442,6 +1807,11 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  gap: 10px;
+}
+
+.chat-main > :deep(.chat-input-container) {
+  margin-top: auto;
 }
 
 .chat-body :deep(.messages-container) {
@@ -1519,6 +1889,198 @@ body {
   color: var(--text-secondary);
 }
 
+/* 模型选择弹窗 */
+.model-selector-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.52);
+  backdrop-filter: blur(6px);
+  padding: 20px;
+}
+
+.model-selector-popup,
+.model-manager-popup {
+  width: min(560px, 100%);
+  max-height: min(88vh, 760px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-default, #cbd5e1);
+  border-radius: 18px;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.26);
+}
+
+.model-manager-popup {
+  width: min(720px, 100%);
+}
+
+.popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border-light, #e2e8f0);
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.9), rgba(248, 250, 252, 0.7));
+}
+
+.popup-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary, #1e293b);
+}
+
+.popup-close {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-tertiary, #94a3b8);
+  cursor: pointer;
+}
+
+.popup-close:hover {
+  background: var(--bg-secondary, #f1f5f9);
+  color: var(--text-primary, #1e293b);
+}
+
+.popup-content {
+  padding: 16px 18px 18px;
+  overflow: auto;
+}
+
+.manager-content {
+  gap: 18px;
+}
+
+.manager-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.manager-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary, #1e293b);
+}
+
+.manager-desc {
+  font-size: 12px;
+  color: var(--text-secondary, #64748b);
+  line-height: 1.6;
+}
+
+.manager-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.manager-span-2 {
+  grid-column: span 2;
+}
+
+.manager-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary, #475569);
+}
+
+.manager-field input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-light, #e2e8f0);
+  border-radius: 10px;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #1e293b);
+  outline: none;
+}
+
+.manager-field input:focus {
+  border-color: rgba(91, 124, 250, 0.45);
+  box-shadow: 0 0 0 3px rgba(91, 124, 250, 0.12);
+}
+
+.manager-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.manager-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.manager-test-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.manager-test-result.test-ok {
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.manager-test-result.test-fail {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.manager-test-result .test-result-icon {
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.manager-test-result .test-result-text {
+  flex: 1;
+  word-break: break-word;
+}
+
+.primary-btn,
+.secondary-btn {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.primary-btn {
+  background: var(--color-primary-600, #5b7cfa);
+  color: #fff;
+}
+
+.secondary-btn {
+  background: var(--bg-secondary, #f8fafc);
+  color: var(--text-primary, #1e293b);
+  border-color: var(--border-light, #e2e8f0);
+}
+
+.popup-content :deep(.model-selector) {
+  padding: 0;
+}
+
 /* 欢迎区域 */
 .manager-area {
   flex: 1;
@@ -1551,6 +2113,10 @@ body {
     padding: 12px 20px;
   }
 
+  .chat-body {
+    padding: 0 10px 10px;
+  }
+
   .session-title {
     font-size: 15px;
   }
@@ -1570,6 +2136,10 @@ body {
   .network-banner button {
     padding: 3px 10px;
     font-size: 11px;
+  }
+
+  .chat-body {
+    padding: 0 8px 8px;
   }
 
   .chat-header {
@@ -1615,6 +2185,10 @@ body {
   .network-banner svg {
     width: 12px;
     height: 12px;
+  }
+
+  .chat-body {
+    padding: 0 6px 6px;
   }
 
   .chat-header {
