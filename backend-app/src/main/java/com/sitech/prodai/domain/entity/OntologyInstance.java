@@ -1,73 +1,49 @@
 package com.sitech.prodai.domain.entity;
 
-import com.sitech.prodai.common.JsonConverters;
-import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Index;
 import jakarta.persistence.Table;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * 本体实例 —— 对齐 Python {@code app/models/ontology_instance.py::OntologyInstance}。
- *
- * <p>OntologyInstance = Object/Record（存储符合本体约束的实际业务数据），
- * 取代旧的 FormInstance 概念。
- */
-@Getter
-@Setter
-@NoArgsConstructor
 @Entity
-@Table(name = "ontology_instances", indexes = {
-        @Index(name = "idx_oi_ontology_code", columnList = "ontology_code"),
-        @Index(name = "idx_oi_user_id", columnList = "user_id"),
-        @Index(name = "idx_oi_session_id", columnList = "session_id")
-})
-@EntityListeners(AuditingEntityListener.class)
+@Table(name = "ontology_instance")
 public class OntologyInstance {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer id;
-
-    @Column(name = "ontology_code", nullable = false, length = 100)
+    private Long id;
     private String ontologyCode;
-
-    @Column(name = "user_id", length = 100)
     private String userId;
-
-    @Column(name = "session_id", length = 100)
     private String sessionId;
-
-    /** 实例数据（符合本体约束的字段值），JSON 列 */
-    @Column(name = "data", columnDefinition = "TEXT")
-    @Convert(converter = JsonConverters.JsonMapConverter.class)
-    private Map<String, Object> data;
-
-    /** draft / submitted / cancelled */
-    @Column(name = "status", length = 50)
-    private String status = "draft";
-
-    @Column(name = "submitted_at")
+    private String status;
     private LocalDateTime submittedAt;
 
-    @CreatedDate
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
+    @ElementCollection
+    private Map<String, String> data = new LinkedHashMap<>();
 
-    @LastModifiedDate
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    public String getOntologyCode() { return ontologyCode; }
+    public void setOntologyCode(String ontologyCode) { this.ontologyCode = ontologyCode; }
+    public String getUserId() { return userId; }
+    public void setUserId(String userId) { this.userId = userId; }
+    public String getSessionId() { return sessionId; }
+    public void setSessionId(String sessionId) { this.sessionId = sessionId; }
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
+    public LocalDateTime getSubmittedAt() { return submittedAt; }
+    public void setSubmittedAt(LocalDateTime submittedAt) { this.submittedAt = submittedAt; }
+    public Map<String, String> getData() { return data; }
+    public void setData(Map<String, Object> input) {
+        this.data = new LinkedHashMap<>();
+        if (input != null) {
+            input.forEach((k, v) -> this.data.put(k, v == null ? null : String.valueOf(v)));
+        }
+    }
 }

@@ -298,7 +298,9 @@
         <div v-else-if="activeManager" class="manager-area">
           <SceneManager v-if="activeManager === 'scene'" @go-back="closeManager" />
           <PromptManager v-else-if="activeManager === 'prompt'" @go-back="closeManager" />
-          <OntologyManager v-else-if="activeManager === 'ontology'" @goBack="closeManager" />
+          <InferencePlatformManager v-else-if="activeManager === 'inference'" @go-back="closeManager" />
+          <ApiDoc v-else-if="activeManager === 'api-doc'" @go-back="closeManager" />
+            <OntologyReasoningManager v-else-if="activeManager === 'ontology'" @go-back="closeManager" />
         </div>
 
         <!-- 首页/欢迎页 -->
@@ -313,6 +315,8 @@
             @guided-demo="handleGuidedDemo"
             @open-scene-manager="openSceneManager"
             @open-prompt-manager="openPromptManager"
+            @open-inference-manager="openInferenceManager"
+            @open-api-doc="openApiDocManager"
             @open-ontology-manager="openOntologyManager"
             @open-model-config="openModelConfigManager"
           />
@@ -339,7 +343,9 @@ import OpsRootCausePanel from './components/OpsRootCausePanel.vue'
 import OpsRiskAuditPanel from './components/OpsRiskAuditPanel.vue'
 import SceneManager from './components/SceneManager.vue'
 import PromptManager from './components/PromptManager.vue'
-import OntologyManager from './components/OntologyManager.vue'
+import InferencePlatformManager from './components/InferencePlatformManager.vue'
+import ApiDoc from './components/ApiDoc.vue'
+import OntologyReasoningManager from './components/OntologyReasoningManager.vue'
 import ModelSelector from './components/ModelSelector.vue'
 import { useUserStore } from './stores/user'
 import { useLoadingStore } from './stores/loading'
@@ -1596,6 +1602,8 @@ const onSwitchChat = (sessionId) => {
 const activeManager = ref('')
 const openSceneManager = () => { activeManager.value = 'scene' }
 const openPromptManager = () => { activeManager.value = 'prompt' }
+const openInferenceManager = () => { activeManager.value = 'inference' }
+const openApiDocManager = () => { activeManager.value = 'api-doc' }
 const openOntologyManager = () => { activeManager.value = 'ontology' }
 const closeManager = () => { activeManager.value = '' }
 

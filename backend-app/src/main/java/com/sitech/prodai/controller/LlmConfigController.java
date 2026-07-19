@@ -4,6 +4,7 @@ import com.sitech.prodai.domain.entity.LlmUserConfig;
 import com.sitech.prodai.domain.entity.ModelProvider;
 import com.sitech.prodai.repository.LlmUserConfigRepository;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -14,7 +15,9 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * LLM 用户配置接口，持久化到数据库。
@@ -107,6 +110,73 @@ public class LlmConfigController {
         body.put("api_key_present", StringUtils.hasText(apiKey));
         body.put("latency_ms", 120);
         return body;
+    }
+
+    @GetMapping("/list/{userIdentifier}")
+    public Map<String, Object> list(@PathVariable String userIdentifier) {
+        List<LlmUserConfig> configs = repository.findByUserIdentifier(userIdentifier);
+        List<Map<String, Object>> configList = configs.stream()
+                .map(this::toPublicMap)
+                .collect(Collectors.toList());
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", true);
+        body.put("message", "获取成功");
+        body.put("data", configList);
+        return body;
+    }
+
+    @DeleteMapping("/{configId}")
+    public Map<String, Object> delete(@PathVariable Integer configId) {
+        if (repository.existsById(configId)) {
+            repository.deleteById(configId);
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("success", true);
+            body.put("message", "删除成功");
+            return body;
+        } else {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("success", false);
+            body.put("message", "配置不存在");
+            return body;
+        }
+    }
+
+    @PostMapping("/activate")
+    public Map<String, Object> activate(@RequestBody Map<String, Object> request) {
+        String userId = str(request.get("user_identifier"));
+        Integer configId = intOrDefault(request.get("config_id"), null);
+
+        if (userId == null || userId.isBlank()) {
+            return fail("user_identifier is required");
+        }
+        if (configId == null) {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("success", false);
+            body.put("message", "config_id is required");
+            return body;
+        }
+
+        return repository.findById(configId)
+                .map(config -> {
+                    repository.findByUserIdentifier(userId).forEach(item -> {
+                        item.setIsActive(false);
+                        repository.save(item);
+                    });
+                    config.setIsActive(true);
+                    config.setLastUsedAt(LocalDateTime.now());
+                    LlmUserConfig saved = repository.save(config);
+                    Map<String, Object> body = new LinkedHashMap<>();
+                    body.put("success", true);
+                    body.put("message", "激活成功");
+                    body.put("config", toPublicMap(saved));
+                    return body;
+                })
+                .orElseGet(() -> {
+                    Map<String, Object> body = new LinkedHashMap<>();
+                    body.put("success", false);
+                    body.put("message", "配置不存在");
+                    return body;
+                });
     }
 
     private Map<String, Object> ok(LlmUserConfig config, String message) {
