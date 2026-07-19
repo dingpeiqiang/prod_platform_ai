@@ -69,7 +69,7 @@ public class ConfigureHandler implements BaseIntentHandler {
         }
         aiRequest.setMessages(aiMessages);
 
-        return reactor.core.publisher.Mono.fromCallable(() -> llmService.complete(aiRequest))
+        return reactor.core.publisher.Mono.<Map<String, Object>>fromCallable(() -> llmService.complete(aiRequest))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMapMany(aiResult -> {
                     List<Map<String, Object>> events = new ArrayList<>();
