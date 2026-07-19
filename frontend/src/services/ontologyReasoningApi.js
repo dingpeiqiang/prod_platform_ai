@@ -1,6 +1,6 @@
 import { request } from './httpClient'
 
-const ONTOLOGY_BASE = '/api/v1/ontology'
+const ONTOLOGY_BASE = ''
 
 export async function retrieveFacts(req) {
   try {
@@ -199,7 +199,7 @@ export async function getTrace(trace_id, tenant_id) {
 
 export async function nlQuery(question) {
   try {
-    const resp = await request(`${ONTOLOGY_BASE}/nl-query`, {
+    const resp = await request(`${ONTOLOGY_BASE}/nl/query`, {
       method: 'POST',
       data: { question },
       showLoading: true,

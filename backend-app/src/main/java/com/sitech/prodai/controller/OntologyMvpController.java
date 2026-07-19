@@ -1,117 +1,195 @@
 package com.sitech.prodai.controller;
 
-import com.sitech.prodai.dto.BatchDocumentRequest;
-import com.sitech.prodai.dto.ChatConfigureRequest;
-import com.sitech.prodai.dto.ComplianceRequest;
-import com.sitech.prodai.dto.InferRequest;
-import com.sitech.prodai.dto.RiskAuditRequest;
-import com.sitech.prodai.dto.RiskRulesRequest;
-import com.sitech.prodai.dto.RootCauseRequest;
-import com.sitech.prodai.service.OntologyMvpService;
+import com.sitech.prodai.service.OntologyService;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/v1/ontology-mvp")
+@RequestMapping("/api/v1")
 public class OntologyMvpController {
 
-    private final OntologyMvpService ontologyMvpService;
+    private final OntologyService ontologyService;
 
-    public OntologyMvpController(OntologyMvpService ontologyMvpService) {
-        this.ontologyMvpService = ontologyMvpService;
+    public OntologyMvpController(OntologyService ontologyService) {
+        this.ontologyService = ontologyService;
     }
 
-    @GetMapping("/graph")
-    public Map<String, Object> graph() {
-        return ontologyMvpService.getGraphSummary();
+    @PostMapping("/facts/retrieve")
+    public Map<String, Object> retrieveFacts(@RequestBody Map<String, Object> request) {
+        Map<String, Object> entity = firstEntity(request);
+        return ontologyService.retrieve(
+                asString(entity.get("id"), "Customer_Li"),
+                asString(entity.get("type"), "Customer"),
+                asString(entity.get("source"), "ontology"),
+                asString(trace(request).get("tenant_id"), "marketing_tenant"),
+                asString(trace(request).get("trace_id"), "")
+        );
     }
 
-    @GetMapping("/meta")
-    public Map<String, Object> meta() {
-        return ontologyMvpService.getOntologyMeta();
+    @PostMapping("/policy/evaluate")
+    public Map<String, Object> evaluatePolicy(@RequestBody Map<String, Object> request) {
+        Map<String, Object> facts = castMap(request.getOrDefault("facts", Map.of()));
+        Map<String, Object> context = castMap(request.getOrDefault("context", Map.of()));
+        String traceId = trace(request).containsKey("trace_id") ? asString(trace(request).get("trace_id"), "") : asString(trace(request).get("trace_id"), "");
+        String tenantId = asString(trace(request).get("tenant_id"), "marketing_tenant");
+        return ontologyService.evaluate(
+                facts,
+                asString(context.get("policy_set_id"), "UNKNOWN"),
+                asString(context.get("expectation_type"), "validation"),
+                traceId,
+                tenantId
+        );
     }
 
-    @PostMapping("/config/infer")
-    public Map<String, Object> infer(@RequestBody(required = false) InferRequest request) {
-        InferRequest safe = request == null ? new InferRequest() : request;
-        return ontologyMvpService.inferFields(safe.getSlots(), safe.getDraft());
+    @PostMapping("/evaluate")
+    public Map<String, Object> evaluateWithFacts(@RequestBody Map<String, Object> request) {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> entities = (List<Map<String, Object>>) request.getOrDefault("entities", List.of());
+        Map<String, Object> trace = trace(request);
+        return ontologyService.evaluateWithFacts(
+                entities,
+                asString(request.get("policy_set_id"), "UNKNOWN"),
+                asString(trace.get("trace_id"), ""),
+                asString(trace.get("tenant_id"), "marketing_tenant")
+        );
     }
 
-    @PostMapping("/config/compliance")
-    public Map<String, Object> compliance(@RequestBody ComplianceRequest request) {
-        if (request == null || request.getDraft() == null) {
-            throw new IllegalArgumentException("draft is required");
+    @PostMapping("/compare-state")
+    public Map<String, Object> compareState(@RequestBody Map<String, Object> request) {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> patches = (List<Map<String, Object>>) request.getOrDefault("patches", List.of());
+        Map<String, Object> trace = trace(request);
+        return ontologyService.compareState(
+                asString(request.get("base_snapshot_id"), ""),
+                patches,
+                asString(request.get("policy_set_id"), "UNKNOWN"),
+                asString(trace.get("trace_id"), ""),
+                asString(trace.get("tenant_id"), "marketing_tenant")
+        );
+    }
+
+    @PostMapping("/swrl/evaluate")
+    public Map<String, Object> evaluateSwrl(@RequestBody Map<String, Object> request) {
+        return Map.of("results", List.of(), "fired_rule_ids", List.of(), "rules", List.of());
+    }
+
+    @PostMapping("/shacl/validate")
+    public Map<String, Object> validateShacl(@RequestBody Map<String, Object> request) {
+        Map<String, Object> data = castMap(request.getOrDefault("data", Map.of()));
+        boolean emailInvalid = data.containsKey("email") && !String.valueOf(data.get("email")).contains("@");
+        if (emailInvalid) {
+            return Map.of("conforms", false, "results", List.of(Map.of("severity", "violation", "path", "email", "message", "邮箱格式不正确", "source_shape", asString(request.get("shapes"), "default"))));
         }
-        return ontologyMvpService.checkCompliance(request.getDraft());
+        return Map.of("conforms", true, "results", List.of());
     }
 
-    @PostMapping("/config/chat")
-    public Map<String, Object> chatConfigure(@RequestBody ChatConfigureRequest request) {
-        if (request == null || request.getText() == null || request.getText().isBlank()) {
-            throw new IllegalArgumentException("text is required");
+    @PostMapping("/hypothetical/evaluate")
+    public Map<String, Object> hypotheticalEvaluate(@RequestBody Map<String, Object> request) {
+        return Map.of("facts", Map.of(), "decision", Map.of("verdict", "review", "confidence", 0.7, "triggered_rules", List.of("R000"), "reason", "假设推演结果"));
+    }
+
+    @GetMapping("/schema")
+    public Map<String, Object> schema() {
+        return ontologyService.schema();
+    }
+
+    @GetMapping("/schema/catalog")
+    public Map<String, Object> schemaCatalog() {
+        return ontologyService.schemaCatalog();
+    }
+
+    @PostMapping("/schema/detail")
+    public Map<String, Object> schemaDetail(@RequestBody Map<String, Object> request) {
+        return ontologyService.schemaDetail(asString(request.get("class_name"), "Customer"));
+    }
+
+    @PostMapping("/sparql/query")
+    public Map<String, Object> sparqlQuery(@RequestBody Map<String, Object> request) {
+        return ontologyService.sparqlQuery(asString(request.get("query"), "SELECT * WHERE { ?s ?p ?o } LIMIT 100"));
+    }
+
+    @PostMapping("/nl/query")
+    public Map<String, Object> nlQuery(@RequestBody Map<String, Object> request) {
+        return ontologyService.nlQuery(asString(request.get("question"), ""));
+    }
+
+    @PostMapping("/nl-discover")
+    public Map<String, Object> nlDiscover(@RequestBody Map<String, Object> request) {
+        return ontologyService.nlDiscoverAndRetrieve(
+                asString(request.get("question"), ""),
+                request.get("max_entities") instanceof Number n ? n.intValue() : 5
+        );
+    }
+
+    @PostMapping("/quick-evaluate")
+    public Map<String, Object> quickEvaluate(@RequestBody Map<String, Object> request) {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> entities = (List<Map<String, Object>>) request.getOrDefault("entities", List.of());
+        String entityId = "Customer_Li";
+        String type = "Customer";
+        if (!entities.isEmpty()) {
+            entityId = asString(entities.get(0).get("id"), "Customer_Li");
+            type = asString(entities.get(0).get("type"), "Customer");
         }
-        return ontologyMvpService.chatConfigure(request.getText(), request.getDraft());
+        return ontologyService.quickEvaluate(
+                entityId, type,
+                asString(request.get("policy_set_id"), "UNKNOWN"),
+                asString(request.get("tenant_id"), "marketing_tenant")
+        );
     }
 
-    @PostMapping("/config/batch")
-    public Map<String, Object> batch(@RequestBody(required = false) BatchDocumentRequest request) {
-        BatchDocumentRequest safe = request == null ? new BatchDocumentRequest() : request;
-        return ontologyMvpService.batchFromDocument(safe.getDocumentText(), safe.getPackages());
+    @GetMapping("/policy/sets")
+    public Map<String, Object> policySets() {
+        return ontologyService.getPolicySets();
     }
 
-    @GetMapping("/ops/dashboard")
-    public Map<String, Object> dashboard() {
-        return ontologyMvpService.getOpsDashboard();
+    @GetMapping("/swrl/rules")
+    public Map<String, Object> swrlRules() {
+        return ontologyService.getSwrlRules();
     }
 
-    @PostMapping("/ops/root-cause")
-    public Map<String, Object> rootCause(@RequestBody(required = false) RootCauseRequest request) {
-        RootCauseRequest safe = request == null ? new RootCauseRequest() : request;
-        return ontologyMvpService.analyzeRootCause(safe.getOfferingId());
+    @PostMapping("/explain")
+    public Map<String, Object> explain(@RequestBody Map<String, Object> request) {
+        return ontologyService.explain(asString(request.get("trace_id"), ""), asString(request.get("audience"), "end_user"), asString(request.get("tenant_id"), "marketing_tenant"));
     }
 
-    @PostMapping("/ops/risk-audit")
-    public Map<String, Object> riskAudit(@RequestBody(required = false) RiskAuditRequest request) {
-        RiskAuditRequest safe = request == null ? new RiskAuditRequest() : request;
-        return ontologyMvpService.auditRisks(safe.getOfferingIds());
+    @GetMapping("/trace/{traceId}")
+    public Map<String, Object> trace(@PathVariable String traceId) {
+        return ontologyService.getTrace(traceId);
     }
 
-    @GetMapping("/ops/risk-rules")
-    public Map<String, Object> getRiskRules() {
-        return ontologyMvpService.updateRiskRules(null);
+    @GetMapping("/health")
+    public Map<String, Object> health() {
+        return Map.of("status", "ok");
     }
 
-    @PostMapping("/ops/risk-rules")
-    public Map<String, Object> updateRiskRules(@RequestBody(required = false) RiskRulesRequest request) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        if (request != null) {
-            if (request.getZeroSalesShelfDays() != null) {
-                payload.put("zeroSalesShelfDays", request.getZeroSalesShelfDays());
-            }
-            if (request.getZeroSalesDaysWindow() != null) {
-                payload.put("zeroSalesDaysWindow", request.getZeroSalesDaysWindow());
-            }
-            if (request.getHighRiskReviewDays() != null) {
-                payload.put("highRiskReviewDays", request.getHighRiskReviewDays());
-            }
-            if (request.getLowRevenuePercentile() != null) {
-                payload.put("lowRevenuePercentile", request.getLowRevenuePercentile());
-            }
-            if (request.getRuleVersion() != null) {
-                payload.put("ruleVersion", request.getRuleVersion());
-            }
+    private static Map<String, Object> firstEntity(Map<String, Object> request) {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> entities = (List<Map<String, Object>>) request.getOrDefault("entities", List.of());
+        if (!entities.isEmpty()) {
+            return entities.get(0);
         }
-        return ontologyMvpService.updateRiskRules(payload);
+        return Map.of("id", request.getOrDefault("entity_id", "Customer_Li"), "type", request.getOrDefault("entity_type", "Customer"));
     }
 
-    @PostMapping("/ops/risk-rules/reset")
-    public Map<String, Object> resetRiskRules() {
-        return ontologyMvpService.resetRiskRules();
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castMap(Object value) {
+        return value instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
+    }
+
+    private static Map<String, Object> trace(Map<String, Object> request) {
+        Object trace = request.get("trace_context");
+        return trace instanceof Map<?, ?> map ? castMap(map) : Map.of();
+    }
+
+    private static String asString(Object value, String defaultValue) {
+        return value == null ? defaultValue : String.valueOf(value);
     }
 }
