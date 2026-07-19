@@ -239,6 +239,34 @@
                     <line x1="16" y1="17" x2="8" y2="17"/>
                     <polyline points="10 9 9 9 8 9"/>
                   </svg>
+                  <svg v-else-if="sc.icon === 'cpu'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/>
+                    <circle cx="12" cy="12" r="4"/>
+                    <line x1="16" y1="12" x2="20" y2="12"/>
+                    <line x1="4" y1="12" x2="8" y2="12"/>
+                    <line x1="12" y1="16" x2="12" y2="20"/>
+                    <line x1="12" y1="4" x2="12" y2="8"/>
+                  </svg>
+                  <svg v-else-if="sc.icon === 'network'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <circle cx="12" cy="12" r="4"/>
+                    <circle cx="12" cy="12" r="2"/>
+                    <path d="M12 2v2"/>
+                    <path d="M12 20v2"/>
+                    <path d="m4.93 4.93 1.41 1.41"/>
+                    <path d="m17.66 17.66 1.41 1.41"/>
+                    <path d="M2 12h2"/>
+                    <path d="M20 12h2"/>
+                    <path d="m6.34 17.66-1.41 1.41"/>
+                    <path d="m19.07 4.93-1.41 1.41"/>
+                  </svg>
+                  <svg v-else-if="sc.icon === 'docs'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                  </svg>
                   <svg v-else-if="sc.icon === 'help'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="10"/>
                     <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
@@ -294,7 +322,7 @@ const props = defineProps({
   assistantMode: { type: String, default: 'rd' }
 })
 
-const emit = defineEmits(['send-message', 'switch-chat', 'create-session', 'launch-skill', 'guided-demo', 'open-scene-manager', 'open-prompt-manager', 'open-ontology-manager', 'open-model-config'])
+const emit = defineEmits(['send-message', 'switch-chat', 'create-session', 'launch-skill', 'guided-demo', 'open-scene-manager', 'open-prompt-manager', 'open-inference-manager', 'open-api-doc', 'open-ontology-manager', 'open-model-config'])
 
 const startGuidedDemo = (type) => {
   emit('guided-demo', { type })
@@ -369,7 +397,9 @@ const suggestions = computed(() =>
 const shortcuts = [
   { key: 'scene', icon: 'chart', label: '场景管理' },
   { key: 'prompt', icon: 'file', label: '提示词管理' },
-  { key: 'ontology', icon: 'help', label: '本体管理' },
+  { key: 'inference', icon: 'cpu', label: '模型管理' },
+  { key: 'ontology', icon: 'network', label: '本体推理平台' },
+  { key: 'api-doc', icon: 'docs', label: 'API 文档' },
   // 以下依赖未完整迁移的 API，暂不暴露入口：
   // workflow（高级 publish/execute）、mcp（外部工具 CRUD）、kb（import-dir）
 ]
@@ -519,6 +549,18 @@ const handleShortcut = (sc) => {
     emit('open-prompt-manager')
     return
   }
+  if (sc.key === 'inference') {
+    emit('open-inference-manager')
+    return
+  }
+  if (sc.key === 'ontology') {
+    emit('open-ontology-manager')
+    return
+  }
+  if (sc.key === 'api-doc') {
+    emit('open-api-doc')
+    return
+  }
   // if (sc.key === 'tool') {
   //   emit('open-tool-manager') // 已迁移到 MCP 管理
   //   return
@@ -527,10 +569,6 @@ const handleShortcut = (sc) => {
   //   emit('open-form-manager') // 已废弃
   //   return
   // }
-  if (sc.key === 'ontology') {
-    emit('open-ontology-manager')
-    return
-  }
   // workflow / mcp / kb 入口已隐藏（后端未完整迁移）
   const msg = shortcuts.find(s => s.key === sc.key)
   if (msg) {
