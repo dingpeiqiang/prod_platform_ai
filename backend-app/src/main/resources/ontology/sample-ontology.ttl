@@ -1,0 +1,172 @@
+@prefix ex: <http://example.org/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+
+<http://example.org/Ontology> rdf:type owl:Ontology ;
+    rdfs:label "示例本体"@zh ;
+    rdfs:comment "本体推理平台示例本体，包含客户、账户、账单、支付等实体"@zh ;
+    owl:versionInfo "1.0" .
+
+#################################################################
+#    Classes
+#################################################################
+
+ex:Customer rdf:type owl:Class ;
+    rdfs:label "客户"@zh ;
+    rdfs:comment "客户实体，包含会员等级、年消费、信用分等属性"@zh .
+
+ex:Account rdf:type owl:Class ;
+    rdfs:label "账户"@zh ;
+    rdfs:comment "账户实体，包含账户状态、余额等信息"@zh .
+
+ex:Invoice rdf:type owl:Class ;
+    rdfs:label "账单"@zh ;
+    rdfs:comment "账单实体，包含账单金额、到期日等信息"@zh .
+
+ex:Payment rdf:type owl:Class ;
+    rdfs:label "支付"@zh ;
+    rdfs:comment "支付记录实体，包含支付金额、支付方式等信息"@zh .
+
+#################################################################
+#    Object Properties
+#################################################################
+
+ex:hasAccount rdf:type owl:ObjectProperty ;
+    rdfs:domain ex:Customer ;
+    rdfs:range ex:Account ;
+    rdfs:label "拥有账户"@zh .
+
+ex:hasInvoice rdf:type owl:ObjectProperty ;
+    rdfs:domain ex:Account ;
+    rdfs:range ex:Invoice ;
+    rdfs:label "拥有账单"@zh .
+
+ex:hasPayment rdf:type owl:ObjectProperty ;
+    rdfs:domain ex:Invoice ;
+    rdfs:range ex:Payment ;
+    rdfs:label "拥有支付"@zh .
+
+#################################################################
+#    Datatype Properties
+#################################################################
+
+ex:vipLevel rdf:type owl:DatatypeProperty ;
+    rdfs:domain ex:Customer ;
+    rdfs:range xsd:string ;
+    rdfs:label "会员等级"@zh .
+
+ex:annualSpend rdf:type owl:DatatypeProperty ;
+    rdfs:domain ex:Customer ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "年消费额"@zh .
+
+ex:memberYears rdf:type owl:DatatypeProperty ;
+    rdfs:domain ex:Customer ;
+    rdfs:range xsd:integer ;
+    rdfs:label "会员年限"@zh .
+
+ex:creditScore rdf:type owl:DatatypeProperty ;
+    rdfs:domain ex:Customer ;
+    rdfs:range xsd:integer ;
+    rdfs:label "信用分"@zh .
+
+ex:accountStatus rdf:type owl:DatatypeProperty ;
+    rdfs:domain ex:Account ;
+    rdfs:range xsd:string ;
+    rdfs:label "账户状态"@zh .
+
+ex:outstandingBalance rdf:type owl:DatatypeProperty ;
+    rdfs:domain ex:Account ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "未结余额"@zh .
+
+ex:creditLimit rdf:type owl:DatatypeProperty ;
+    rdfs:domain ex:Account ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "信用额度"@zh .
+
+ex:invoiceAmount rdf:type owl:DatatypeProperty ;
+    rdfs:domain ex:Invoice ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "账单金额"@zh .
+
+ex:dueDate rdf:type owl:DatatypeProperty ;
+    rdfs:domain ex:Invoice ;
+    rdfs:range xsd:date ;
+    rdfs:label "到期日"@zh .
+
+ex:invoiceStatus rdf:type owl:DatatypeProperty ;
+    rdfs:domain ex:Invoice ;
+    rdfs:range xsd:string ;
+    rdfs:label "账单状态"@zh .
+
+ex:paymentAmount rdf:type owl:DatatypeProperty ;
+    rdfs:domain ex:Payment ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "支付金额"@zh .
+
+ex:paymentMethod rdf:type owl:DatatypeProperty ;
+    rdfs:domain ex:Payment ;
+    rdfs:range xsd:string ;
+    rdfs:label "支付方式"@zh .
+
+ex:paymentDate rdf:type owl:DatatypeProperty ;
+    rdfs:domain ex:Payment ;
+    rdfs:range xsd:dateTime ;
+    rdfs:label "支付日期"@zh .
+
+#################################################################
+#    Individuals
+#################################################################
+
+### 客户实例
+ex:Customer_Li rdf:type ex:Customer ;
+    ex:vipLevel "Gold" ;
+    ex:annualSpend 80000 ;
+    ex:memberYears 3 ;
+    ex:creditScore 750 ;
+    ex:hasAccount ex:Account_Li_001 .
+
+ex:Customer_Wang rdf:type ex:Customer ;
+    ex:vipLevel "Silver" ;
+    ex:annualSpend 35000 ;
+    ex:memberYears 1 ;
+    ex:creditScore 620 .
+
+ex:Customer_Zhao rdf:type ex:Customer ;
+    ex:vipLevel "Platinum" ;
+    ex:annualSpend 120000 ;
+    ex:memberYears 5 ;
+    ex:creditScore 820 .
+
+### 账户实例
+ex:Account_Li_001 rdf:type ex:Account ;
+    ex:accountStatus "active" ;
+    ex:outstandingBalance 1200.50 ;
+    ex:creditLimit 50000 ;
+    ex:hasInvoice ex:Invoice_Li_001 .
+
+ex:Account_Wang_001 rdf:type ex:Account ;
+    ex:accountStatus "overdue" ;
+    ex:outstandingBalance 3500.00 ;
+    ex:creditLimit 20000 .
+
+### 账单实例
+ex:Invoice_Li_001 rdf:type ex:Invoice ;
+    ex:invoiceAmount 1200.50 ;
+    ex:dueDate "2026-07-01"^^xsd:date ;
+    ex:invoiceStatus "paid" ;
+    ex:hasPayment ex:Payment_Li_001 .
+
+ex:Invoice_Wang_001 rdf:type ex:Invoice ;
+    ex:invoiceAmount 3500.00 ;
+    ex:dueDate "2026-06-01"^^xsd:date ;
+    ex:invoiceStatus "overdue" .
+
+### 支付实例
+ex:Payment_Li_001 rdf:type ex:Payment ;
+    ex:paymentAmount 1200.50 ;
+    ex:paymentMethod "alipay" ;
+    ex:paymentDate "2026-07-01T10:30:00"^^xsd:dateTime .

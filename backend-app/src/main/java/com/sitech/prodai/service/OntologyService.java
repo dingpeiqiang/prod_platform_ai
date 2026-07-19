@@ -8,31 +8,32 @@ import java.util.UUID;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class OntologyService {
 
-    private final Map<String, Map<String, Object>> entities = new ConcurrentHashMap<>();
+    private final Rdf4jOntologyStore rdf4jStore;
+
+    private final Map<String, Map<String, Object>> ontologies = new ConcurrentHashMap<>();
     private final Map<String, Map<String, Object>> snapshots = new ConcurrentHashMap<>();
     private final Map<String, List<Map<String, Object>>> audits = new ConcurrentHashMap<>();
-    private final Map<String, Map<String, Object>> ontologies = new ConcurrentHashMap<>();
-    private final Set<String> classes = ConcurrentHashMap.newKeySet();
-    private final Set<String> properties = ConcurrentHashMap.newKeySet();
 
-    public OntologyService() {
-        classes.addAll(List.of("Customer", "Account", "Invoice", "Payment"));
-        properties.addAll(List.of("vipLevel", "annualSpend", "memberYears", "creditLimit", "accountStatus", "outstandingBalance"));
-        entities.put("http://example.org/Customer_Li", defaultFact("Customer_Li", "Customer", "ontology"));
+    public OntologyService(Rdf4jOntologyStore rdf4jStore) {
+        this.rdf4jStore = rdf4jStore;
+        // 初始化本体元数据
         Map<String, Object> customer = new LinkedHashMap<>();
         customer.put("ontologyCode", "Customer");
         customer.put("ontologyName", "Customer Ontology");
         customer.put("isActive", true);
         customer.put("category", "default");
-        customer.put("entities", List.of(Map.of("entityCode", "Customer", "fields", List.of(Map.of("fieldCode", "vipLevel", "fieldName", "会员等级", "required", true, "fieldType", "input"), Map.of("fieldCode", "annualSpend", "fieldName", "年消费", "required", false, "fieldType", "input")))));
+        customer.put("entities", List.of(Map.of("entityCode", "Customer", "fields", List.of(
+                Map.of("fieldCode", "vipLevel", "fieldName", "会员等级", "required", true, "fieldType", "input"),
+                Map.of("fieldCode", "annualSpend", "fieldName", "年消费", "required", false, "fieldType", "input")))));
         ontologies.put("Customer", customer);
     }
+
+    // ========== 本体管理（保留原有逻辑） ==========
 
     public Map<String, Object> getCategories() {
         return Map.of("success", true, "data", List.of(Map.of("code", "default", "name", "默认")));
@@ -48,20 +49,41 @@ public class OntologyService {
         return Map.of("success", true, "data", data, "message", "ok");
     }
 
-    public Map<String, Object> createOntology(Map<String, Object> body, String operator) { return Map.of("success", true, "data", body, "message", "created"); }
-    public Map<String, Object> updateOntology(String code, Map<String, Object> body, String operator) { return Map.of("success", true, "data", body, "message", "updated"); }
-    public Map<String, Object> deleteOntology(String code) { return Map.of("success", true, "message", "deleted"); }
-    public Map<String, Object> toggleActive(String code) { return Map.of("success", true, "message", "toggled"); }
-
-    public Map<String, Object> getFormConstraint(String formCode) {
-        return Map.of("success", true, "constraints", Map.of("formName", formCode, "entities", List.of(Map.of("fields", List.of(Map.of("fieldCode", "vipLevel", "fieldName", "会员等级", "required", true, "fieldType", "input"), Map.of("fieldCode", "annualSpend", "fieldName", "年消费", "required", false, "fieldType", "input"))))));
+    public Map<String, Object> createOntology(Map<String, Object> body, String operator) {
+        return Map.of("success", true, "data", body, "message", "created");
     }
 
-    public Map<String, Object> getAllOntologies() { return Map.of("success", true, "ontologies", new ArrayList<>(ontologies.values())); }
+    public Map<String, Object> updateOntology(String code, Map<String, Object> body, String operator) {
+        return Map.of("success", true, "data", body, "message", "updated");
+    }
+
+    public Map<String, Object> deleteOntology(String code) {
+        return Map.of("success", true, "message", "deleted");
+    }
+
+    public Map<String, Object> toggleActive(String code) {
+        return Map.of("success", true, "message", "toggled");
+    }
+
+    public Map<String, Object> getFormConstraint(String formCode) {
+        return Map.of("success", true, "constraints", Map.of("formName", formCode, "entities", List.of(
+                Map.of("fields", List.of(
+                        Map.of("fieldCode", "vipLevel", "fieldName", "会员等级", "required", true, "fieldType", "input"),
+                        Map.of("fieldCode", "annualSpend", "fieldName", "年消费", "required", false, "fieldType", "input"))))));
+    }
+
+    public Map<String, Object> getAllOntologies() {
+        return Map.of("success", true, "ontologies", new ArrayList<>(ontologies.values()));
+    }
+
+    // ========== 基于 RDF4J 的本体推理操作 ==========
 
     public Map<String, Object> retrieve(String entityId, String type, String source, String tenantId, String traceId) {
         String uri = entityId.startsWith("http") ? entityId : "http://example.org/" + entityId;
-        Map<String, Object> fact = new LinkedHashMap<>(entities.getOrDefault(uri, defaultFact(entityId, type, source)));
+        Map<String, Object> fact = rdf4jStore.getEntity(uri);
+        if (fact.isEmpty()) {
+            fact = defaultFact(uri, type, source);
+        }
         String snapshotId = buildSnapshotId();
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("snapshot_id", snapshotId);
@@ -114,29 +136,99 @@ public class OntologyService {
         return Map.of("success", true, "natural_language", text, "referenced_rules", rules.stream().distinct().toList());
     }
 
-    public Map<String, Object> schema() { return Map.of("classes", new ArrayList<>(classes), "properties", new ArrayList<>(properties)); }
-    public Map<String, Object> schemaDetail(String className) { return Map.of("class_name", className, "samples", List.of(Map.of("class_name", className, "example_id", className + "_001", "vipLevel", "Gold", "annualSpend", 80000))); }
-    public Map<String, Object> schemaCatalog() { return Map.of("classes", new ArrayList<>(classes), "properties", new ArrayList<>(properties)); }
-    public Map<String, Object> nlQuery(String question) { return Map.of("answer", "Customer_Li 的会员等级是 Gold。", "sparql", "SELECT ?entity ?vipLevel WHERE { ?entity a Customer . OPTIONAL { ?entity vipLevel ?vipLevel } } LIMIT 100", "results", List.of(Map.of("entity", "http://example.org/Customer_Li", "vipLevel", "Gold"))); }
-    public Map<String, Object> sparqlQuery(String query) { return Map.of("results", List.of(Map.of("entity", "http://example.org/Customer_Li", "vipLevel", "Gold"))); }
-    public Map<String, Object> getTrace(String traceId) { return Map.of("trace_id", traceId, "steps", audits.getOrDefault(traceId, List.of()), "total_steps", audits.getOrDefault(traceId, List.of()).size()); }
+    public Map<String, Object> schema() {
+        return Map.of("classes", rdf4jStore.getClasses(), "properties", rdf4jStore.getProperties());
+    }
+
+    public Map<String, Object> schemaDetail(String className) {
+        List<Map<String, Object>> samples = rdf4jStore.getInstances(className);
+        return Map.of("class_name", className, "samples", samples);
+    }
+
+    public Map<String, Object> schemaCatalog() {
+        return Map.of("classes", rdf4jStore.getClasses(), "properties", rdf4jStore.getProperties());
+    }
+
+    public Map<String, Object> sparqlQuery(String query) {
+        List<Map<String, Object>> results = rdf4jStore.sparqlQuery(query);
+        return Map.of("results", results);
+    }
+
+    public Map<String, Object> nlQuery(String question) {
+        String normalized = question == null ? "" : question.toLowerCase();
+        // 简单的 NL→SPARQL 映射，可替换为 LLM 调用
+        String sparql;
+        String answer;
+        if (normalized.contains("会员等级") || normalized.contains("vip")) {
+            sparql = "SELECT ?entity ?vipLevel WHERE { ?entity rdf:type <http://example.org/Customer> . ?entity <http://example.org/vipLevel> ?vipLevel }";
+            answer = "查询所有客户的会员等级";
+        } else if (normalized.contains("年消费") || normalized.contains("annual") || normalized.contains("spend")) {
+            sparql = "SELECT ?entity ?annualSpend WHERE { ?entity rdf:type <http://example.org/Customer> . ?entity <http://example.org/annualSpend> ?annualSpend } ORDER BY DESC(?annualSpend)";
+            answer = "查询所有客户的年消费额";
+        } else if (normalized.contains("信用") || normalized.contains("credit")) {
+            sparql = "SELECT ?entity ?creditScore WHERE { ?entity rdf:type <http://example.org/Customer> . ?entity <http://example.org/creditScore> ?creditScore } ORDER BY DESC(?creditScore)";
+            answer = "查询所有客户的信用分";
+        } else {
+            sparql = "SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 50";
+            answer = "查询所有三元组数据";
+        }
+        List<Map<String, Object>> results = rdf4jStore.sparqlQuery(sparql);
+        return Map.of("answer", answer, "sparql", sparql, "results", results);
+    }
 
     public Map<String, Object> nlDiscoverAndRetrieve(String question, int maxEntities) {
-        // 模拟 NL 发现实体
         String normalized = question == null ? "" : question.toLowerCase();
-        String entityId = "http://example.org/Customer_Li";
-        Map<String, Object> fact = new LinkedHashMap<>(entities.getOrDefault(entityId, defaultFact("Customer_Li", "Customer", "ontology")));
-        String answer = "年消费超过5万的客户有：Customer_Li（8万）。";
-        String sparql = "SELECT ?entity ?annualSpend WHERE { ?entity a Customer . OPTIONAL { ?entity annualSpend ?annualSpend } FILTER(?annualSpend > 50000) } LIMIT " + maxEntities;
-        return Map.of("success", true, "nl_answer", answer, "entity_ids", List.of(entityId), "sparql", sparql,
-                "raw_results", List.of(Map.of("entity", entityId, "annualSpend", 80000)),
-                "snapshot", Map.of("snapshot_id", buildSnapshotId(), "facts_map", Map.of(entityId, fact)),
-                "facts_flat", fact);
+        String sparql;
+        String answer;
+        String targetClass;
+
+        if (normalized.contains("高消费") || normalized.contains("年消费") || normalized.contains("annual")) {
+            targetClass = "Customer";
+            sparql = "SELECT ?entity ?annualSpend WHERE { ?entity rdf:type <http://example.org/Customer> . ?entity <http://example.org/annualSpend> ?annualSpend FILTER(?annualSpend > 50000) } ORDER BY DESC(?annualSpend) LIMIT " + maxEntities;
+            answer = "年消费超过5万的客户，按消费额降序排列";
+        } else if (normalized.contains("vip") || normalized.contains("会员") || normalized.contains("gold")) {
+            targetClass = "Customer";
+            sparql = "SELECT ?entity ?vipLevel WHERE { ?entity rdf:type <http://example.org/Customer> . ?entity <http://example.org/vipLevel> ?vipLevel } LIMIT " + maxEntities;
+            answer = "查询所有客户的会员等级信息";
+        } else if (normalized.contains("客户") || normalized.contains("customer")) {
+            targetClass = "Customer";
+            sparql = "SELECT ?entity ?vipLevel ?annualSpend WHERE { ?entity rdf:type <http://example.org/Customer> . OPTIONAL { ?entity <http://example.org/vipLevel> ?vipLevel } OPTIONAL { ?entity <http://example.org/annualSpend> ?annualSpend } } LIMIT " + maxEntities;
+            answer = "所有客户信息";
+        } else if (normalized.contains("账户") || normalized.contains("account")) {
+            targetClass = "Account";
+            sparql = "SELECT ?entity ?accountStatus ?outstandingBalance WHERE { ?entity rdf:type <http://example.org/Account> . OPTIONAL { ?entity <http://example.org/accountStatus> ?accountStatus } OPTIONAL { ?entity <http://example.org/outstandingBalance> ?outstandingBalance } } LIMIT " + maxEntities;
+            answer = "所有账户信息";
+        } else {
+            targetClass = "Customer";
+            sparql = "SELECT ?entity WHERE { ?entity rdf:type ?type . ?type rdf:type owl:Class } LIMIT " + maxEntities;
+            answer = "查询所有实体";
+        }
+
+        List<Map<String, Object>> rawResults = rdf4jStore.sparqlQuery(sparql);
+        List<String> entityIds = new ArrayList<>();
+        for (Map<String, Object> row : rawResults) {
+            String entity = String.valueOf(row.get("entity"));
+            if (!entity.isEmpty()) entityIds.add(entity);
+        }
+
+        // 获取第一个实体的详细信息作为 snapshot
+        Map<String, Object> firstFact = Map.of();
+        if (!entityIds.isEmpty()) {
+            firstFact = rdf4jStore.getEntity(entityIds.get(0));
+        }
+
+        return Map.of("success", true, "nl_answer", answer, "entity_ids", entityIds, "sparql", sparql,
+                "raw_results", rawResults,
+                "snapshot", Map.of("snapshot_id", buildSnapshotId(), "facts_map", Map.of(entityIds.isEmpty() ? "" : entityIds.get(0), firstFact)),
+                "facts_flat", firstFact);
     }
 
     public Map<String, Object> quickEvaluate(String entityId, String type, String policySetId, String tenantId) {
         String uri = entityId.startsWith("http") ? entityId : "http://example.org/" + entityId;
-        Map<String, Object> fact = new LinkedHashMap<>(entities.getOrDefault(uri, defaultFact(entityId, type, "ontology")));
+        Map<String, Object> fact = rdf4jStore.getEntity(uri);
+        if (fact.isEmpty()) {
+            fact = defaultFact(uri, type, "ontology");
+        }
         String traceId = UUID.randomUUID().toString();
         String verdict = decide(policySetId, fact, "validation");
         List<String> rules = switch (policySetId) {
@@ -167,17 +259,25 @@ public class OntologyService {
         Map<String, Object> snapshot = snapshots.get(snapshotId);
         if (snapshot == null) throw new IllegalStateException("Snapshot not found or expired");
         List<Map<String, Object>> comparisons = new ArrayList<>();
-        @SuppressWarnings("unchecked") Map<String, Map<String, Object>> facts = (Map<String, Map<String, Object>>) snapshot.get("facts");
+        @SuppressWarnings("unchecked")
+        Map<String, Map<String, Object>> facts = (Map<String, Map<String, Object>>) snapshot.get("facts");
         for (Map<String, Object> patch : patches) {
             String entityId = String.valueOf(patch.get("entity_id"));
             Map<String, Object> base = new LinkedHashMap<>(facts.values().stream().findFirst().orElse(Map.of()));
-            @SuppressWarnings("unchecked") Map<String, Object> changes = (Map<String, Object>) patch.getOrDefault("changes", Map.of());
+            @SuppressWarnings("unchecked")
+            Map<String, Object> changes = (Map<String, Object>) patch.getOrDefault("changes", Map.of());
             base.putAll(changes);
             Map<String, Object> decision = evaluate(base, policySetId, "candidate_check", traceId, tenantId);
             comparisons.add(Map.of("patch_description", String.valueOf(patch.getOrDefault("description", "")), "resulting_state", Map.of(entityId, base), "evaluation", decision.get("decision")));
         }
         return Map.of("success", true, "comparisons", comparisons);
     }
+
+    public Map<String, Object> getTrace(String traceId) {
+        return Map.of("trace_id", traceId, "steps", audits.getOrDefault(traceId, List.of()), "total_steps", audits.getOrDefault(traceId, List.of()).size());
+    }
+
+    // ========== 私有方法 ==========
 
     private Map<String, Object> defaultFact(String entityId, String type, String source) {
         Map<String, Object> fact = new LinkedHashMap<>();
@@ -191,8 +291,14 @@ public class OntologyService {
         return fact;
     }
 
-    private String buildSnapshotId() { return "snap_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8) + "_" + Instant.now().getEpochSecond(); }
-    private void appendAudit(String traceId, Map<String, Object> entry) { audits.computeIfAbsent(traceId, key -> new ArrayList<>()).add(new LinkedHashMap<>(entry)); }
+    private String buildSnapshotId() {
+        return "snap_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8) + "_" + Instant.now().getEpochSecond();
+    }
+
+    private void appendAudit(String traceId, Map<String, Object> entry) {
+        audits.computeIfAbsent(traceId, key -> new ArrayList<>()).add(new LinkedHashMap<>(entry));
+    }
+
     private String decide(String policySetId, Map<String, Object> facts, String expectationType) {
         double spend = number(facts.get("annualSpend"));
         double creditScore = number(facts.get("creditScore"));
@@ -202,7 +308,8 @@ public class OntologyService {
         return switch (policySetId) {
             case "PS_MARKETING_RECOMMEND_V1" -> {
                 if ("candidate_check".equals(expectationType)) {
-                    if ("premium_upgrade".equals(candidateActionType) && spend >= 50000 && ("Gold".equalsIgnoreCase(vipLevel) || "Platinum".equalsIgnoreCase(vipLevel))) yield "allow";
+                    if ("premium_upgrade".equals(candidateActionType) && spend >= 50000 && ("Gold".equalsIgnoreCase(vipLevel) || "Platinum".equalsIgnoreCase(vipLevel)))
+                        yield "allow";
                     if ("membership_bundle".equals(candidateActionType) && spend >= 30000) yield "allow";
                     yield "review";
                 }
@@ -218,5 +325,12 @@ public class OntologyService {
         };
     }
 
-    private double number(Object value) { if (value instanceof Number n) return n.doubleValue(); try { return Double.parseDouble(String.valueOf(value)); } catch (Exception e) { return -1; } }
+    private double number(Object value) {
+        if (value instanceof Number n) return n.doubleValue();
+        try {
+            return Double.parseDouble(String.valueOf(value));
+        } catch (Exception e) {
+            return -1;
+        }
+    }
 }

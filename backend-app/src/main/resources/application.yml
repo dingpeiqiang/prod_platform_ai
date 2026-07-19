@@ -36,6 +36,8 @@ spring:
 prodai:
   ontology:
     graph-path: classpath:ontology/mock_graph.json
+    rdf4j:
+      ttl-path: classpath:ontology/sample-ontology.ttl
   llm:
     enabled: ${LLM_ENABLED:true}
 
