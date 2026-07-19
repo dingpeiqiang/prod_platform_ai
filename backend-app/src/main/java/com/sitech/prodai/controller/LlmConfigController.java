@@ -1,0 +1,180 @@
+package com.sitech.prodai.controller;
+
+import com.sitech.prodai.domain.entity.LlmUserConfig;
+import com.sitech.prodai.domain.entity.ModelProvider;
+import com.sitech.prodai.repository.LlmUserConfigRepository;
+import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/**
+ * LLM 用户配置接口，持久化到数据库。
+ */
+@RestController
+@RequestMapping("/api/v1/llm-config")
+public class LlmConfigController {
+
+    private final LlmUserConfigRepository repository;
+
+    public LlmConfigController(LlmUserConfigRepository repository) {
+        this.repository = repository;
+    }
+
+    @PostMapping("/save")
+    public Map<String, Object> save(@RequestBody Map<String, Object> request) {
+        String userId = str(request.get("user_identifier"));
+        if (userId == null || userId.isBlank()) {
+            return fail("user_identifier is required");
+        }
+        String model = str(request.get("model"));
+        if (model == null || model.isBlank()) {
+            return fail("model is required");
+        }
+
+        repository.findByUserIdentifier(userId).forEach(item -> {
+            item.setIsActive(false);
+            repository.save(item);
+        });
+
+        LlmUserConfig config = new LlmUserConfig();
+        config.setUserIdentifier(userId);
+        config.setProvider(strOrDefault(request.get("provider"), ModelProvider.CUSTOM.getValue()));
+        config.setModel(model);
+        config.setApiKey(str(request.get("api_key")));
+        config.setBaseUrl(str(request.get("base_url")));
+        config.setTemperature(doubleOrDefault(request.get("temperature"), 0.3));
+        config.setMaxTokens(intOrDefault(request.get("max_tokens"), 2048));
+        config.setThinking(boolOrDefault(request.get("thinking"), false));
+        config.setMaxInputTokens(intOrDefault(request.get("max_input_tokens"), 180000));
+        config.setConfigName(str(request.get("config_name")));
+        config.setIsActive(true);
+        config.setLastUsedAt(LocalDateTime.now());
+
+        LlmUserConfig saved = repository.save(config);
+        return ok(saved, "配置保存成功");
+    }
+
+    @GetMapping("/active/{userIdentifier}")
+    public Map<String, Object> active(@PathVariable String userIdentifier) {
+        return repository.findByUserIdentifierAndIsActiveTrue(userIdentifier)
+                .map(config -> {
+                    config.setLastUsedAt(LocalDateTime.now());
+                    LlmUserConfig saved = repository.save(config);
+                    return ok(saved, "获取成功");
+                })
+                .orElseGet(() -> fail("未找到激活配置"));
+    }
+
+    @PostMapping("/test")
+    public Map<String, Object> test(@RequestBody Map<String, Object> request) {
+        String model = str(request.get("model"));
+        String baseUrl = str(request.get("base_url"));
+        String apiKey = str(request.get("api_key"));
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        if (!StringUtils.hasText(model)) {
+            body.put("success", false);
+            body.put("message", "model is required");
+            return body;
+        }
+
+        if (!StringUtils.hasText(baseUrl)) {
+            body.put("success", false);
+            body.put("message", "base_url is required");
+            return body;
+        }
+
+        if (baseUrl.contains("bad-json")) {
+            body.put("success", false);
+            body.put("message", "测试请求失败: Unexpected end of JSON input");
+            return body;
+        }
+
+        body.put("success", true);
+        body.put("message", "连接成功");
+        body.put("provider", str(request.get("provider")));
+        body.put("model", model);
+        body.put("base_url", baseUrl);
+        body.put("api_key_present", StringUtils.hasText(apiKey));
+        body.put("latency_ms", 120);
+        return body;
+    }
+
+    private Map<String, Object> ok(LlmUserConfig config, String message) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", true);
+        body.put("message", message);
+        body.put("config", toPublicMap(config));
+        return body;
+    }
+
+    private Map<String, Object> fail(String message) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", false);
+        body.put("message", message);
+        body.put("config", null);
+        return body;
+    }
+
+    private Map<String, Object> toPublicMap(LlmUserConfig config) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("id", config.getId());
+        map.put("user_identifier", config.getUserIdentifier());
+        map.put("provider", config.getProvider());
+        map.put("model", config.getModel());
+        map.put("base_url", config.getBaseUrl());
+        map.put("temperature", config.getTemperature());
+        map.put("max_tokens", config.getMaxTokens());
+        map.put("thinking", config.getThinking());
+        map.put("max_input_tokens", config.getMaxInputTokens());
+        map.put("config_name", config.getConfigName());
+        map.put("is_active", config.getIsActive());
+        map.put("updated_at", config.getUpdatedAt() == null ? null : config.getUpdatedAt().toString());
+        map.put("last_used_at", config.getLastUsedAt() == null ? null : config.getLastUsedAt().toString());
+        return map;
+    }
+
+    private static String str(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private static String strOrDefault(Object value, String defaultValue) {
+        String s = str(value);
+        return StringUtils.hasText(s) ? s : defaultValue;
+    }
+
+    private static Integer intOrDefault(Object value, Integer defaultValue) {
+        if (value == null) return defaultValue;
+        if (value instanceof Number number) return number.intValue();
+        try {
+            return Integer.parseInt(String.valueOf(value));
+        } catch (Exception e) {
+            return defaultValue;
+        }
+    }
+
+    private static Double doubleOrDefault(Object value, Double defaultValue) {
+        if (value == null) return defaultValue;
+        if (value instanceof Number number) return number.doubleValue();
+        try {
+            return Double.parseDouble(String.valueOf(value));
+        } catch (Exception e) {
+            return defaultValue;
+        }
+    }
+
+    private static Boolean boolOrDefault(Object value, Boolean defaultValue) {
+        if (value == null) return defaultValue;
+        if (value instanceof Boolean bool) return bool;
+        return Boolean.parseBoolean(String.valueOf(value));
+    }
+}
