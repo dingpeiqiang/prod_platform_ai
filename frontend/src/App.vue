@@ -70,7 +70,9 @@
             <div class="manager-grid">
               <label class="manager-field">
                 <span>提供方</span>
-                <input v-model="modelForm.provider" type="text" placeholder="例如 openai / azure / custom" />
+                <ElSelect v-model="modelForm.provider" placeholder="请选择提供方" style="width: 100%;">
+                  <ElOption v-for="option in providerOptions" :key="option.value" :label="option.label" :value="option.value" />
+                </ElSelect>
               </label>
               <label class="manager-field">
                 <span>模型名称</span>
@@ -682,6 +684,13 @@ const modelForm = ref({
   max_tokens: 2048,
   thinking: false,
 })
+
+const providerOptions = [
+  { label: 'OpenAI Compatible', value: 'openai' },
+  { label: 'Azure OpenAI', value: 'azure' },
+  { label: 'Custom OpenAI Compatible', value: 'custom' },
+  { label: 'Local / Mock', value: 'local' },
+]
 
 // 模型配置弹窗的测试/保存状态
 const testingModel = ref(false)
