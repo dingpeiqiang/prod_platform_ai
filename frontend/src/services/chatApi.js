@@ -318,40 +318,44 @@ export async function getFormSchema(formCode) {
   }
 }
 
-export async function sendMessage({ sessionId, message, attachments }) {
+export async function sendMessage({ sessionId, message, attachments, modelConfig }) {
   try {
     const body = {
       messages: [{ role: 'user', content: message }],
       session_id: sessionId
     }
-    
+
     if (attachments && attachments.length > 0) {
       body.attachments = attachments
     }
-    
+
+    if (modelConfig) {
+      body.modelConfig = modelConfig
+    }
+
     const resp = await fetch('/api/v1/chat/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     })
-    
+
     if (!resp.ok) {
       const error = await resp.json()
       throw new Error(error.message || '请求失败')
     }
-    
+
     const reader = resp.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
     let content = ''
-    
+
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
       buffer += decoder.decode(value, { stream: true })
       const frames = buffer.split('\n\n')
       buffer = frames.pop()
-      
+
       for (const frame of frames) {
         if (!frame.startsWith('data:')) continue
         try {
@@ -366,7 +370,7 @@ export async function sendMessage({ sessionId, message, attachments }) {
         }
       }
     }
-    
+
     return { content }
   } catch (e) {
     console.warn('[chatApi] sendMessage failed:', e)

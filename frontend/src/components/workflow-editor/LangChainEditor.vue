@@ -679,6 +679,7 @@ import { ElMessage } from 'element-plus';
 import { Undo2, Redo2, Save, Download, Upload, Code } from 'lucide-vue-next';
 import * as workflowApi from '@/services/workflowApi';
 import { useWorkflowDataStore } from '@/stores/workflowData.js';
+import { useModelsStore } from '@/stores/models.js';
 
 import NodePanel from './NodePanel.vue';
 import NodeConfigPanel from './NodeConfigPanel.vue';
@@ -824,6 +825,14 @@ const handleResume = (userInputValue) => {
 };
 const keyboardShortcuts = new KeyboardShortcuts();
 
+// 模型 store：给工作流模板中的 LLM 节点填充后台默认模型，避免硬编码模型名
+const modelsStore = useModelsStore();
+const defaultModelName = computed(() => {
+  const list = modelsStore.models;
+  if (!list || list.length === 0) return '';
+  return (list.find(m => m.isDefault) || list[0]).name || '';
+});
+
 const quickTemplates = ref([
   {
     id: 'simple-qa',
@@ -831,7 +840,7 @@ const quickTemplates = ref([
     description: '基础的问答流程，适合快速上手',
     nodes: [
       { type: 'start', x: 50, y: 200, title: '开始', parameters: [{ name: 'input', type: 'string', description: '用户输入', default: '', required: true }] },
-      { type: 'llm', x: 450, y: 200, title: 'LLM', model: 'qwen-vl-plus', temperature: 0.7, prompt: '请回答以下问题：{{question}}' },
+      { type: 'llm', x: 450, y: 200, title: 'LLM', model: '', temperature: 0.7, prompt: '请回答以下问题：{{question}}' },
       { type: 'end', x: 650, y: 200, title: '结束' }
     ],
     connections: [
@@ -847,7 +856,7 @@ const quickTemplates = ref([
       { type: 'start', x: 50, y: 200, title: '开始' },
       { type: 'http', x: 250, y: 200, title: '获取数据', method: 'GET', url: '{{apiUrl}}' },
       { type: 'parser', x: 450, y: 200, title: '解析数据' },
-      { type: 'llm', x: 650, y: 200, title: 'LLM分析', model: 'qwen-vl-plus', temperature: 0.5, prompt: '请分析以下数据：{{data}}' },
+      { type: 'llm', x: 650, y: 200, title: 'LLM分析', model: '', temperature: 0.5, prompt: '请分析以下数据：{{data}}' },
       { type: 'end', x: 850, y: 200, title: '结束' }
     ],
     connections: [
@@ -863,11 +872,11 @@ const quickTemplates = ref([
     description: '根据条件判断走不同流程',
     nodes: [
       { type: 'start', x: 50, y: 250, title: '开始' },
-      { type: 'llm', x: 350, y: 250, title: '意图识别', model: 'qwen-vl-plus', temperature: 0.3, prompt: '{{question}}' },
+      { type: 'llm', x: 350, y: 250, title: '意图识别', model: '', temperature: 0.3, prompt: '{{question}}' },
       { type: 'condition', x: 550, y: 250, title: '判断意图' },
       { type: 'http', x: 750, y: 150, title: '查询数据', method: 'GET' },
-      { type: 'llm', x: 750, y: 350, title: '闲聊回复', model: 'qwen-vl-plus', temperature: 0.9, prompt: '用友好的语气回复：{{input}}' },
-      { type: 'llm', x: 950, y: 150, title: '生成答案', model: 'qwen-vl-plus', temperature: 0.7 },
+      { type: 'llm', x: 750, y: 350, title: '闲聊回复', model: '', temperature: 0.9, prompt: '用友好的语气回复：{{input}}' },
+      { type: 'llm', x: 950, y: 150, title: '生成答案', model: '', temperature: 0.7 },
       { type: 'end', x: 1150, y: 250, title: '结束' }
     ],
     connections: [
@@ -886,7 +895,7 @@ const quickTemplates = ref([
     description: '生成并执行代码获取结果',
     nodes: [
       { type: 'start', x: 50, y: 200, title: '开始' },
-      { type: 'llm', x: 250, y: 200, title: '生成代码', model: 'qwen-vl-plus', temperature: 0.3, prompt: '{{requirement}}' },
+      { type: 'llm', x: 250, y: 200, title: '生成代码', model: '', temperature: 0.3, prompt: '{{requirement}}' },
       { type: 'code', x: 450, y: 200, title: '执行代码', language: 'javascript' },
       { type: 'parser', x: 650, y: 200, title: '解析结果' },
       { type: 'end', x: 850, y: 200, title: '结束' }
@@ -912,7 +921,8 @@ const generateDefaultElements = () => {
       position: { x: node.x, y: node.y },
       data: { 
         label: node.title || node.type,
-        ...node
+        ...node,
+        model: node.type === 'llm' ? (node.model || defaultModelName.value) : node.model
       }
     });
   });
@@ -2992,7 +3002,8 @@ const applyTemplate = (template) => {
       data: { 
         label: node.title || node.type,
         anchorMode: currentAnchorMode.value,
-        ...node
+        ...node,
+        model: node.type === 'llm' ? (node.model || defaultModelName.value) : node.model
       }
     });
   });
@@ -3165,7 +3176,8 @@ onMounted(async () => {
   const workflowDataStore = useWorkflowDataStore();
   await Promise.all([
     workflowDataStore.loadOntologies(),
-    workflowDataStore.loadMCPTools()
+    workflowDataStore.loadMCPTools(),
+    modelsStore.loadModels()
   ]);
   
   await loadWorkflows();

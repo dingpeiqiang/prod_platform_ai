@@ -10,5 +10,5 @@ spring:
 
 prodai:
   llm:
-    enabled: ${LLM_ENABLED:false}
+    enabled: ${LLM_ENABLED:true}
     system-prompt: You are a helpful assistant for telecom product configuration.

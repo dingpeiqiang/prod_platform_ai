@@ -1,3 +1,34 @@
+// ── 默认模型获取（从后台查询，避免硬编码具体模型名）──────────
+let _defaultModelCache = null;
+let _defaultModelPromise = null;
+const _DEFAULT_MODEL_TTL = 5 * 60 * 1000;
+
+/**
+ * 从后台获取系统默认模型名（带 5 分钟缓存 + 请求去重）
+ * 接口失败时返回空串，交由后端用自身默认配置处理
+ */
+async function getDefaultModel() {
+  const now = Date.now();
+  if (_defaultModelCache && (now - _defaultModelCache.ts) < _DEFAULT_MODEL_TTL) {
+    return _defaultModelCache.value;
+  }
+  if (_defaultModelPromise) return _defaultModelPromise;
+  _defaultModelPromise = (async () => {
+    try {
+      const res = await fetch('/api/v1/chat/model/default');
+      const data = await res.json();
+      const model = (data && data.success && data.model) ? data.model : '';
+      _defaultModelCache = { ts: Date.now(), value: model };
+      return model;
+    } catch (e) {
+      return '';
+    } finally {
+      _defaultModelPromise = null;
+    }
+  })();
+  return _defaultModelPromise;
+}
+
 function extractJson(text) {
   if (!text || typeof text !== 'string') {
     return null;
@@ -409,7 +440,7 @@ export class ExecutionEngine {
         }
 
         case 'llm': {
-          const model = node.data.model || 'qwen-vl-plus';
+          const model = node.data.model || await getDefaultModel();
           const temperature = node.data.temperature || 0.7;
           const systemPrompt = node.data.systemPrompt || '';
           const nodePrompt = node.data.prompt || '';
@@ -525,7 +556,7 @@ export class ExecutionEngine {
               } else if (source === 'response') {
                 paramValue = finalOutput;
               } else if (source === 'model') {
-                paramValue = node.data.model || 'qwen-plus';
+                paramValue = node.data.model || model;
               } else if (source && responseJson && typeof responseJson === 'object') {
                 // 从解析后的 JSON 中提取特定字段
                 paramValue = responseJson[source];
@@ -1542,7 +1573,7 @@ export class ExecutionEngine {
 
       switch (node.type) {
         case 'llm': {
-          const model = node.data.model || 'qwen-vl-plus';
+          const model = node.data.model || await getDefaultModel();
           const temperature = node.data.temperature || 0.7;
           const systemPrompt = node.data.systemPrompt || '';
           const nodePrompt = node.data.prompt || '';

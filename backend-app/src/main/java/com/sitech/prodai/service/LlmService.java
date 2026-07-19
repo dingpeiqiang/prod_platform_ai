@@ -2,11 +2,15 @@ package com.sitech.prodai.service;
 
 import com.sitech.prodai.config.ProdAiProperties;
 import com.sitech.prodai.dto.ChatCompletionRequest;
+import com.sitech.prodai.domain.entity.LlmUserConfig;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -14,22 +18,30 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Optional;
 
 @Service
+@ConditionalOnProperty(name = "prodai.llm.enabled", havingValue = "true", matchIfMissing = false)
 public class LlmService {
 
-    private final ChatClient chatClient;
     private final ProdAiProperties properties;
+    private final LlmConfigService configService;
+    private final ConcurrentHashMap<String, ChatClient> clientCache = new ConcurrentHashMap<>();
 
-    public LlmService(ChatClient.Builder chatClientBuilder, ProdAiProperties properties) {
-        this.chatClient = chatClientBuilder.build();
+    public LlmService(ProdAiProperties properties, LlmConfigService configService) {
         this.properties = properties;
+        this.configService = configService;
     }
 
     public Map<String, Object> complete(ChatCompletionRequest request) {
         ensureEnabled();
-        String content = chatClient.prompt()
-                .messages(toMessages(request))
+        ChatClient client = getChatClient(request.getModelConfig());
+        List<Message> messages = toMessages(request);
+        OpenAiChatOptions options = buildOptions(request.getModelConfig());
+        String content = client.prompt()
+                .messages(messages)
+                .options(options)
                 .call()
                 .content();
 
@@ -40,13 +52,38 @@ public class LlmService {
         return body;
     }
 
+    public String completePrompt(String prompt) {
+        ChatCompletionRequest req = new ChatCompletionRequest();
+        req.setPrompt(prompt);
+        Map<String, Object> result = complete(req);
+        return String.valueOf(result.getOrDefault("content", ""));
+    }
+
+    public Flux<String> streamChatText(String prompt) {
+        ensureEnabled();
+        ChatCompletionRequest req = new ChatCompletionRequest();
+        req.setPrompt(prompt);
+        ChatClient client = getChatClient(req.getModelConfig());
+        List<Message> messages = toMessages(req);
+        OpenAiChatOptions options = buildOptions(req.getModelConfig());
+        return client.prompt()
+                .messages(messages)
+                .options(options)
+                .stream()
+                .content()
+                .filter(text -> text != null && !text.isEmpty());
+    }
+
     public Flux<Map<String, Object>> streamEvents(ChatCompletionRequest request) {
         ensureEnabled();
+        ChatClient client = getChatClient(request.getModelConfig());
         List<Message> messages = toMessages(request);
+        OpenAiChatOptions options = buildOptions(request.getModelConfig());
 
         Flux<Map<String, Object>> start = Flux.just(event("text_start", null));
-        Flux<Map<String, Object>> chunks = chatClient.prompt()
+        Flux<Map<String, Object>> chunks = client.prompt()
                 .messages(messages)
+                .options(options)
                 .stream()
                 .content()
                 .filter(text -> text != null && !text.isEmpty())
@@ -63,6 +100,132 @@ public class LlmService {
                         event("text_end", null),
                         doneEvent()
                 ));
+    }
+
+    private ChatClient getChatClient(Map<String, Object> modelConfig) {
+        Map<String, Object> effectiveConfig = getEffectiveConfig(modelConfig);
+
+        String baseUrl = getStringFromConfig(effectiveConfig, "base_url", "baseUrl",
+                System.getenv().getOrDefault("LLM_BASE_URL", "https://api.openai.com"));
+        String apiKey = getStringFromConfig(effectiveConfig, "api_key", "apiKey",
+                System.getenv().getOrDefault("LLM_API_KEY", "sk-placeholder"));
+        Boolean isFullUrl = effectiveConfig != null && parseBoolean(effectiveConfig.get("is_full_url"));
+
+        String normalizedBaseUrl = normalizeBaseUrl(baseUrl, isFullUrl);
+
+        String cacheKey = normalizedBaseUrl + "|" + apiKey;
+        return clientCache.computeIfAbsent(cacheKey, key -> {
+            OpenAiApi api = OpenAiApi.builder()
+                    .baseUrl(normalizedBaseUrl)
+                    .apiKey(apiKey)
+                    .build();
+            org.springframework.ai.openai.OpenAiChatModel model = org.springframework.ai.openai.OpenAiChatModel.builder()
+                    .openAiApi(api)
+                    .build();
+            return ChatClient.create(model);
+        });
+    }
+
+    private String normalizeBaseUrl(String baseUrl, boolean isFullUrl) {
+        baseUrl = baseUrl.replaceAll("/v1/chat/completions$", "");
+        baseUrl = baseUrl.replaceAll("/v1/completions$", "");
+        if (!baseUrl.endsWith("/")) {
+            baseUrl = baseUrl + "/";
+        }
+        return baseUrl;
+    }
+
+    private Map<String, Object> getEffectiveConfig(Map<String, Object> modelConfig) {
+        Map<String, Object> effective = new LinkedHashMap<>();
+
+        if (modelConfig != null) {
+            effective.putAll(modelConfig);
+        }
+
+        String apiKey = getStringFromConfig(effective, "api_key", "apiKey", null);
+        String baseUrl = getStringFromConfig(effective, "base_url", "baseUrl", null);
+
+        if ((apiKey == null || apiKey.isBlank()) || (baseUrl == null || baseUrl.isBlank())) {
+            Optional<LlmUserConfig> activeDbConfig = configService.getActiveConfig();
+            if (activeDbConfig.isPresent()) {
+                LlmUserConfig config = activeDbConfig.get();
+                if (apiKey == null || apiKey.isBlank()) {
+                    effective.put("api_key", config.getApiKey());
+                }
+                if (baseUrl == null || baseUrl.isBlank()) {
+                    effective.put("base_url", config.getBaseUrl());
+                }
+                if (!effective.containsKey("model")) {
+                    effective.put("model", config.getModel());
+                }
+                if (!effective.containsKey("is_full_url")) {
+                    effective.put("is_full_url", config.getIsFullUrl());
+                }
+                if (!effective.containsKey("temperature")) {
+                    effective.put("temperature", config.getTemperature());
+                }
+                if (!effective.containsKey("max_tokens")) {
+                    effective.put("max_tokens", config.getMaxTokens());
+                }
+            }
+        }
+
+        return effective;
+    }
+
+    private OpenAiChatOptions buildOptions(Map<String, Object> modelConfig) {
+        Map<String, Object> effectiveConfig = getEffectiveConfig(modelConfig);
+
+        String model = getStringFromConfig(effectiveConfig, "model", "model",
+                System.getenv().getOrDefault("LLM_MODEL", "gpt-4o-mini"));
+        Double temperature = getDoubleFromConfig(effectiveConfig, "temperature", 0.5);
+
+        OpenAiChatOptions options = new OpenAiChatOptions();
+        options.setModel(model);
+        options.setTemperature(temperature);
+        return options;
+    }
+
+    private String getStringFromConfig(Map<String, Object> config, String keySnake, String keyCamel, String defaultValue) {
+        if (config == null) {
+            return defaultValue;
+        }
+        Object value = config.get(keySnake);
+        if (value == null || String.valueOf(value).isBlank()) {
+            value = config.get(keyCamel);
+        }
+        if (value == null || String.valueOf(value).isBlank()) {
+            return defaultValue;
+        }
+        return String.valueOf(value);
+    }
+
+    private boolean parseBoolean(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        return Boolean.parseBoolean(String.valueOf(value).trim().toLowerCase());
+    }
+
+    private Double getDoubleFromConfig(Map<String, Object> config, String key, Double defaultValue) {
+        if (config == null) {
+            return defaultValue;
+        }
+        Object value = config.get(key);
+        if (value == null) {
+            return defaultValue;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).doubleValue();
+        }
+        try {
+            return Double.parseDouble(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
     }
 
     private void ensureEnabled() {

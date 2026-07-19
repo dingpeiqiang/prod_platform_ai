@@ -8,20 +8,53 @@ spring:
     active: dev
   jackson:
     default-property-inclusion: non_null
+    # 保持与 Python to_dict() 一致的 camelCase 输出
+    property-naming-strategy: LOWER_CAMEL_CASE
+    serialization:
+      # 日期输出 ISO 字符串，对齐 Python isoformat()
+      write-dates-as-timestamps: false
+    time-zone: GMT+8
+    deserialization:
+      fail-on-unknown-properties: false
+  # 数据源：与 backend 保持一致，默认连接 MySQL；如需本地开发可通过环境变量切换
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/prodplatformai?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: ${SPRING_DATASOURCE_USERNAME:prodplatformai}
+    password: ${SPRING_DATASOURCE_PASSWORD:prodplatformai@134}
+  jpa:
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
+    show-sql: false
+    open-in-view: false
+    query-lookup-strategy: CREATE
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQLDialect
 
 prodai:
   ontology:
     graph-path: classpath:ontology/mock_graph.json
   llm:
-    enabled: ${LLM_ENABLED:false}
+    enabled: ${LLM_ENABLED:true}
 
 management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,loggers
+  endpoint:
+    loggers:
+      enabled: true
 
 logging:
   level:
-    root: INFO
+    root: DEBUG
     com.sitech.prodai: DEBUG
+    # 抑制过于吵闹的框架 DEBUG 噪音，保留关键诊断信息
+    org.apache.catalina: INFO
+    org.apache.coyote: INFO
+    org.apache.tomcat: INFO
+    org.hibernate.orm.deprecation: WARN
+    org.springframework.context.annotation: WARN

@@ -1,10 +1,9 @@
 /**
  * 前端意图注册器
  * 管理 SSE 事件类型 → 面板组件 + 事件处理器的映射
+ *
+ * 注：langchain / langchain_editor 依赖 Python 未迁模块，已停用面板注册，避免打开缺失 API 的 UI。
  */
-
-import LangChainPanel from './LangChainPanel.vue'
-import LangChainEditor from '../workflow-editor/LangChainEditor.vue'
 
 // ── 事件处理器注册表 ──────────────────────────────────
 // key: SSE event type (如 'config', 'delete_form', 'manage_history')
@@ -16,14 +15,14 @@ const _eventHandlers = new Map()
 // value: Function(msg, intentData)
 const _postProcessors = new Map()
 
-// ── 注册事件处理器 ──────────────────────────────────
-registerEventHandler('langchain', (data, msg) => {
-  console.log('[LangChain Event]', data)
-}, { panel: LangChainPanel })
+// langchain / visualization 等未迁 Java 的能力：仅打日志，不挂面板
+registerEventHandler('langchain', (data) => {
+  console.warn('[LangChain] 当前 Spring Boot 后端未迁移 /api/v1/langchain，已忽略事件', data)
+})
 
-registerEventHandler('langchain_editor', (data, msg) => {
-  console.log('[LangChain Editor Event]', data)
-}, { panel: LangChainEditor })
+registerEventHandler('langchain_editor', (data) => {
+  console.warn('[LangChain Editor] 工作流编辑器未在商用主路径启用，已忽略事件', data)
+})
 
 /**
  * 注册 SSE 事件处理器

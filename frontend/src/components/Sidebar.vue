@@ -233,13 +233,6 @@
             </svg>
             <span>{{ isDark ? '切换亮色' : '切换暗色' }}</span>
           </button>
-          <button class="menu-item" @click="showModelConfig = true">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <circle cx="12" cy="12" r="4"/>
-            </svg>
-            <span>模型设置</span>
-          </button>
           <div class="menu-divider"></div>
           <button class="menu-item danger" @click="handleLogout">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -252,6 +245,7 @@
         </div>
       </div>
     </div>
+
   </div>
 </template>
 
@@ -276,7 +270,8 @@ const emit = defineEmits([
   'logout',
   'toggle-sidebar',
   'theme-toggle',
-  'select-assistant'
+  'select-assistant',
+  'model-change'
 ])
 
 const featureMenus = [
@@ -288,7 +283,6 @@ const featureMenus = [
 const activeMenu = ref(null)
 const showUserMenu = ref(false)
 const isDark = ref(false)
-const showModelConfig = ref(false)
 const sessionListRef = ref(null)
 const userSectionRef = ref(null)
 
@@ -378,12 +372,17 @@ const toggleTheme = () => {
   emit('theme-toggle', isDark.value)
 }
 
+
 // 点击外部关闭菜单
 const handleClickOutside = (e) => {
   if (!e.target.closest('.session-menu') && !e.target.closest('.menu-trigger')) {
     activeMenu.value = null
   }
-  if (userSectionRef.value && !userSectionRef.value.contains(e.target)) {
+  if (
+    userSectionRef.value &&
+    !userSectionRef.value.contains(e.target) &&
+    !e.target.closest('.user-menu')
+  ) {
     showUserMenu.value = false
   }
 }
@@ -789,6 +788,8 @@ onUnmounted(() => {
   left: 16px;
   right: 16px;
 }
+
+/* 模型配置弹窗 */
 
 /* 响应式 */
 @media (max-width: 768px) {

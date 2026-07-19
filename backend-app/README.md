@@ -65,19 +65,27 @@ mvn -s .mvn/local-settings.xml spring-boot:run
 |------|------|------|
 | * | `/sessions*` `/messages*` `/upload` | 内存会话，契约对齐 `chatApi.js` |
 
-### 表单 / 配置（可替换 Mock）
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/v1/form/schema/{formCode}` | 表单 schema（classpath:ontologies） |
-| GET | `/api/v1/config/ontologies` | 本体/表单列表 |
-
 ### LLM
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | `/api/v1/chat/completion` | 同步补全 |
 | POST | `/api/v1/chat/stream` | SSE 流式 |
 | GET | `/api/v1/chat/model/providers` | 模型提供商列表（Mock） |
+| GET | `/api/v1/chat/model/default` | 系统默认模型（Mock） |
+| GET | `/api/v1/chat/model/available` | 可用模型列表（Mock） |
+| POST | `/api/v1/chat/model/test` | 连通性测试（LLM 启用时真实调用） |
 | POST | `/api/v1/chat/model/switch` | 切换模型（内存 Mock） |
+| POST | `/api/v1/llm-config/save` | 保存用户模型配置（内存 Mock） |
+| GET | `/api/v1/llm-config/active/{userId}` | 获取激活配置（内存 Mock） |
+
+### 表单 / 配置（可替换 Mock）
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v1/form/schema/{formCode}` | 表单 schema（classpath:ontologies） |
+| POST | `/api/v1/form/generate` | 生成表单实例（内存） |
+| POST | `/api/v1/form/submit` | 提交表单（内存） |
+| POST | `/api/v1/validation/llm` | 智能校验 Mock（必填规则） |
+| GET | `/api/v1/config/ontologies` | 本体/表单列表 |
 
 ## 前端联调
 
@@ -115,4 +123,5 @@ mvn -s .mvn/local-settings.xml -q test
 | * | /api/kb* | 知识库 Mock |
 | * | /api/v1/mcp-management* | MCP 管理 Mock |
 
-前端首页快捷入口已接通：场景 / 提示词 / 本体 / 工作流 / MCP / 知识库。
+前端首页快捷入口已接通：场景 / 提示词 / 本体。  
+工作流 / MCP / 知识库 / LangChain / 可视化 入口已隐藏（本阶段不做完整迁移）。

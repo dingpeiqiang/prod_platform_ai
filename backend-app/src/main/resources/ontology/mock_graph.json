@@ -55,6 +55,15 @@
       "includeData": "20GB",
       "mutexGroup": "MAIN_PKG",
       "channelScope": "电渠+厅店"
+    },
+    "TPL-5G-99": {
+      "templateId": "TPL-5G-99",
+      "name": "5G畅享99",
+      "monthlyFee": 99,
+      "includeVoice": "500分钟",
+      "includeData": "30GB",
+      "mutexGroup": "MAIN_PKG",
+      "channelScope": "全渠道"
     }
   },
   "shelfOfferings": [
@@ -216,12 +225,27 @@
       }
     }
   },
-  "equityGiftWhitelist": ["权益赠送", "内部体验", "内部验证"],
+  "equityGiftWhitelist": [
+    "权益赠送",
+    "内部体验",
+    "内部验证"
+  ],
   "actionSuggestions": {
-    "Channel": ["加强厅店专项激励", "检查厅店品类是否被下沉"],
-    "Promotion": ["续期或替换促销模板", "评估团购/满减替代"],
-    "Competitor": ["启动动态定价/优惠随意搭", "输出对标分析"],
-    "UserBehavior": ["针对退订高发成员角色做挽留包"]
+    "Channel": [
+      "加强厅店专项激励",
+      "检查厅店品类是否被下沉"
+    ],
+    "Promotion": [
+      "续期或替换促销模板",
+      "评估团购/满减替代"
+    ],
+    "Competitor": [
+      "启动动态定价/优惠随意搭",
+      "输出对标分析"
+    ],
+    "UserBehavior": [
+      "针对退订高发成员角色做挽留包"
+    ]
   },
   "riskActions": {
     "零元资费": {

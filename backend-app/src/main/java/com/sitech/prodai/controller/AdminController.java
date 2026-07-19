@@ -1,6 +1,8 @@
 package com.sitech.prodai.controller;
 
-import com.sitech.prodai.service.AdminMockService;
+import com.sitech.prodai.service.OntologyService;
+import com.sitech.prodai.service.PromptService;
+import com.sitech.prodai.service.SceneService;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -12,98 +14,115 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * 管理后台 API —— 对齐 Python {@code app/api/admin.py}。
+ *
+ * <p>三组端点：场景管理 / 提示词管理 / 本体管理。
+ * 全部委托给 {@link SceneService} / {@link PromptService} / {@link OntologyService}。
+ */
 @RestController
 @RequestMapping("/api/v1")
 public class AdminController {
 
-    private final AdminMockService adminMockService;
+    private final SceneService sceneService;
+    private final PromptService promptService;
+    private final OntologyService ontologyService;
 
-    public AdminController(AdminMockService adminMockService) {
-        this.adminMockService = adminMockService;
+    public AdminController(SceneService sceneService,
+                           PromptService promptService,
+                           OntologyService ontologyService) {
+        this.sceneService = sceneService;
+        this.promptService = promptService;
+        this.ontologyService = ontologyService;
     }
+
+    // ==================== 场景管理 ====================
 
     @GetMapping("/scenes/tree")
     public Map<String, Object> scenesTree(@RequestParam(required = false) Boolean isActive) {
-        return adminMockService.listScenesTree(isActive);
+        return sceneService.listScenesTree(isActive);
     }
 
     @GetMapping("/scenes")
     public Map<String, Object> scenes(@RequestParam(required = false) Boolean isActive) {
-        return adminMockService.listScenes(isActive);
+        return sceneService.listScenes(isActive);
     }
 
     @GetMapping("/scenes/stats/summary")
     public Map<String, Object> sceneStats() {
-        return adminMockService.getSceneStats();
+        return sceneService.getSceneStats();
     }
 
     @GetMapping("/scenes/{sceneCode}")
     public Map<String, Object> getScene(@PathVariable String sceneCode) {
-        return adminMockService.getScene(sceneCode);
+        return sceneService.getScene(sceneCode);
     }
 
     @PostMapping("/scenes")
     public Map<String, Object> createScene(@RequestBody Map<String, Object> body) {
-        return adminMockService.unsupportedWrite("创建场景");
+        return sceneService.createScene(body, "admin");
     }
 
     @PutMapping("/scenes/{sceneCode}")
     public Map<String, Object> updateScene(@PathVariable String sceneCode, @RequestBody Map<String, Object> body) {
-        return adminMockService.unsupportedWrite("更新场景");
+        return sceneService.updateScene(sceneCode, body, "admin");
     }
 
     @DeleteMapping("/scenes/{sceneCode}")
     public Map<String, Object> deleteScene(@PathVariable String sceneCode) {
-        return adminMockService.unsupportedWrite("删除场景");
+        return sceneService.deleteScene(sceneCode);
     }
 
     @PatchMapping("/scenes/{sceneCode}/toggle")
     public Map<String, Object> toggleScene(@PathVariable String sceneCode) {
-        return adminMockService.unsupportedWrite("切换场景状态");
+        return sceneService.toggleActive(sceneCode);
     }
 
     @PostMapping("/scenes/test")
     public Map<String, Object> testScene(@RequestBody Map<String, Object> body) {
-        return adminMockService.testSceneRecognition(body == null ? null : String.valueOf(body.get("userInput")));
+        return sceneService.testSceneRecognition(body == null ? null : String.valueOf(body.get("userInput")));
     }
+
+    // ==================== 提示词管理 ====================
 
     @GetMapping("/prompts/categories")
     public Map<String, Object> promptCategories() {
-        return adminMockService.promptCategories();
+        return promptService.getCategories();
     }
 
     @GetMapping("/prompts")
     public Map<String, Object> listPrompts(
             @RequestParam(required = false) String category,
             @RequestParam(required = false) Boolean isActive) {
-        return adminMockService.listPrompts(category, isActive);
+        return promptService.listPrompts(category, isActive);
     }
 
     @GetMapping("/prompts/{code}")
     public Map<String, Object> getPrompt(@PathVariable String code) {
-        return adminMockService.getPrompt(code);
+        return promptService.getPrompt(code);
     }
 
     @PostMapping("/prompts")
     public Map<String, Object> createPrompt(@RequestBody Map<String, Object> body) {
-        return adminMockService.createPrompt(body == null ? Map.of() : body);
+        return promptService.createPrompt(body == null ? Map.of() : body, "admin");
     }
 
     @PutMapping("/prompts/{code}")
     public Map<String, Object> updatePrompt(@PathVariable String code, @RequestBody Map<String, Object> body) {
-        return adminMockService.updatePrompt(code, body == null ? Map.of() : body);
+        return promptService.updatePrompt(code, body == null ? Map.of() : body, "admin");
     }
 
     @DeleteMapping("/prompts/{code}")
     public Map<String, Object> deletePrompt(@PathVariable String code) {
-        return adminMockService.deletePrompt(code);
+        return promptService.deletePrompt(code);
     }
 
     @GetMapping("/prompts/{code}/versions")
     public Map<String, Object> promptVersions(@PathVariable String code) {
-        return adminMockService.promptVersions(code);
+        return promptService.getVersions(code);
     }
 
     @PostMapping("/prompts/{code}/preview")
@@ -111,53 +130,58 @@ public class AdminController {
         Object vars = body == null ? null : body.get("variables");
         @SuppressWarnings("unchecked")
         Map<String, Object> variables = vars instanceof Map<?, ?> m ? (Map<String, Object>) m : Map.of();
-        return adminMockService.previewPrompt(code, variables);
+        return promptService.previewPrompt(code, variables);
     }
 
     @PostMapping("/prompts/generate")
     public Map<String, Object> generatePrompt(@RequestBody Map<String, Object> body) {
-        return adminMockService.aiStub("# AI 生成提示词（Mock）\n\n" + String.valueOf(body == null ? "" : body.getOrDefault("prompt", "")));
+        return promptService.generateWithAi(body == null ? Map.of() : body);
     }
 
     @PostMapping("/prompts/optimize")
     public Map<String, Object> optimizePrompt(@RequestBody Map<String, Object> body) {
-        return adminMockService.aiStub(String.valueOf(body == null ? "" : body.getOrDefault("content", "")));
+        return promptService.optimizePrompt(body == null ? Map.of() : body);
     }
+
+    // ==================== 本体管理 ====================
 
     @GetMapping("/ontologies/categories")
     public Map<String, Object> ontologyCategories() {
-        return adminMockService.ontologyCategories();
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", true);
+        body.put("data", ontologyService.getCategories());
+        return body;
     }
 
     @GetMapping("/ontologies")
     public Map<String, Object> listOntologies(
             @RequestParam(required = false) String category,
             @RequestParam(required = false) Boolean isActive) {
-        return adminMockService.listOntologies(category, isActive);
+        return ontologyService.listOntologies(category, isActive);
     }
 
     @GetMapping("/ontologies/{ontologyCode}")
     public Map<String, Object> getOntology(@PathVariable String ontologyCode) {
-        return adminMockService.getOntology(ontologyCode);
+        return ontologyService.getOntology(ontologyCode);
     }
 
     @PostMapping("/ontologies")
     public Map<String, Object> createOntology(@RequestBody Map<String, Object> body) {
-        return adminMockService.unsupportedWrite("创建本体");
+        return ontologyService.createOntology(body, "admin");
     }
 
     @PutMapping("/ontologies/{ontologyCode}")
     public Map<String, Object> updateOntology(@PathVariable String ontologyCode, @RequestBody Map<String, Object> body) {
-        return adminMockService.unsupportedWrite("更新本体");
+        return ontologyService.updateOntology(ontologyCode, body, "admin");
     }
 
     @DeleteMapping("/ontologies/{ontologyCode}")
     public Map<String, Object> deleteOntology(@PathVariable String ontologyCode) {
-        return adminMockService.unsupportedWrite("删除本体");
+        return ontologyService.deleteOntology(ontologyCode);
     }
 
     @PatchMapping("/ontologies/{ontologyCode}/toggle")
     public Map<String, Object> toggleOntology(@PathVariable String ontologyCode) {
-        return adminMockService.unsupportedWrite("切换本体状态");
+        return ontologyService.toggleActive(ontologyCode);
     }
 }

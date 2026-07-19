@@ -24,36 +24,80 @@ function Write-Error {
     Write-Host "[ERROR] $Message" -ForegroundColor Red
 }
 
-function Test-PortAvailability {
+function Get-ListeningPids {
     param([int]$Port)
-    Write-Status "[Checking] Port $Port availability..."
-    
-    $processes = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue |
-                 Where-Object { $_.State -eq 'Listen' } |
-                 Select-Object -ExpandProperty OwningProcess -Unique
-    
-    if ($processes) {
-        Write-Warning "Port $Port is already in use, cleaning up..."
-        foreach ($processId in $processes) {
-            Write-Status "  Killing process PID: $processId"
-            try {
-                Stop-Process -Id $processId -Force -ErrorAction Stop
-                Write-Success "  Process $processId terminated"
-            }
-            catch {
-                Write-Error "  Failed to terminate process $processId"
-                Write-Host ''
-                Write-Status 'Please close the process occupying this port manually:'
-                Write-Status "  netstat -ano | findstr :$Port"
-                Write-Status "  taskkill /F /PID <ProcessID>"
-                Write-Host ''
-                Read-Host 'Press Enter to exit'
-                exit 1
+    $pids = @()
+    try {
+        $pids = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty OwningProcess -Unique |
+            Where-Object { $_ -and $_ -gt 0 })
+    }
+    catch { }
+
+    if (-not $pids -or $pids.Count -eq 0) {
+        $netstat = netstat -ano 2>$null | Select-String ":$Port\s+.*LISTENING\s+(\d+)$"
+        foreach ($m in $netstat) {
+            $pidText = $m.Matches[0].Groups[1].Value
+            if ($pidText -match '^\d+$' -and [int]$pidText -gt 0) {
+                $pids += [int]$pidText
             }
         }
+        $pids = @($pids | Select-Object -Unique)
+    }
+    return $pids
+}
+
+function Clear-Port {
+    param(
+        [int]$Port,
+        [int]$MaxRetries = 5
+    )
+    Write-Status "[Checking] Port $Port availability..."
+
+    for ($attempt = 1; $attempt -le $MaxRetries; $attempt++) {
+        $processes = @(Get-ListeningPids -Port $Port)
+        if (-not $processes -or $processes.Count -eq 0) {
+            Write-Success "Port $Port available"
+            return
+        }
+
+        Write-Warning "Port $Port is in use (attempt $attempt/$MaxRetries), cleaning up..."
+        foreach ($processId in $processes) {
+            if ($processId -eq $PID) { continue }
+            Write-Status "  Killing process PID: $processId"
+            $killed = $false
+            try {
+                Stop-Process -Id $processId -Force -ErrorAction Stop
+                $killed = $true
+            }
+            catch {
+                $null = cmd /c "taskkill /F /T /PID $processId >nul 2>&1"
+                if ($LASTEXITCODE -eq 0) { $killed = $true }
+            }
+
+            if ($killed) {
+                Write-Success "  Process $processId terminated"
+            }
+            else {
+                Write-Error "  Failed to terminate process $processId"
+            }
+        }
+
         Start-Sleep -Seconds 1
     }
-    
+
+    $stillBusy = @(Get-ListeningPids -Port $Port)
+    if ($stillBusy -and $stillBusy.Count -gt 0) {
+        Write-Error "Port $Port still occupied by PID(s): $($stillBusy -join ', ')"
+        Write-Host ''
+        Write-Status 'Please close the process occupying this port manually:'
+        Write-Status "  netstat -ano | findstr :$Port"
+        Write-Status "  taskkill /F /T /PID <ProcessID>"
+        Write-Host ''
+        Read-Host 'Press Enter to exit'
+        exit 1
+    }
+
     Write-Success "Port $Port available"
 }
 
@@ -66,7 +110,9 @@ function Main {
     Write-Status '=============================================================' -Color Cyan
     Write-Host ''
     
-    Test-PortAvailability -Port $BackendPort
+    Clear-Port -Port $BackendPort
+    Write-Host ''
+    Clear-Port -Port $FrontendPort
     Write-Host ''
     
     $backendScript = Join-Path $ProjectRoot 'start-backend-app.ps1'

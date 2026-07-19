@@ -1,13 +1,14 @@
 <template>
   <div class="history-mgmt-panel">
-    <!-- 导入入口 -->
+    <!-- 导入入口（config/import 未迁 Java，暂不可用） -->
     <template v-if="historyData.type === 'import_entry'">
-      <DataImportEntry
-        :formCode="historyData.formCode"
-        :formName="historyData.formName"
-        :message="historyData.message"
-        @import-complete="handleImportComplete"
-      />
+      <div class="history-mgmt-header">
+        <span>数据导入</span>
+      </div>
+      <div class="export-result">
+        <p>当前商用后端尚未迁移配置导入接口（<code>/api/v1/config/import/*</code>）。</p>
+        <p class="export-hint">请使用本体管理或智聊表单完成配置；导入能力将在后续迭代恢复。</p>
+      </div>
     </template>
 
     <!-- 导出结果下载 -->
@@ -138,8 +139,6 @@
 </template>
 
 <script setup>
-import DataImportEntry from '../DataImportEntry.vue'
-
 const props = defineProps({
   historyData: { type: Object, required: true },
   importing: Boolean,
@@ -147,10 +146,6 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['import', 'analyze', 'export'])
-
-const handleImportComplete = (result) => {
-  console.log('[HistoryPanel] 导入完成:', result)
-}
 
 // 下载导出文件
 const downloadExport = () => {

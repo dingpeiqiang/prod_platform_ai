@@ -1,6 +1,8 @@
 package com.sitech.prodai.controller;
 
 import com.sitech.prodai.service.ChatV2Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -30,10 +32,13 @@ import java.util.Map;
 @RequestMapping("/api/v2/chat")
 public class ChatV2Controller {
 
+    private static final Logger log = LoggerFactory.getLogger(ChatV2Controller.class);
+
     private final ChatV2Service chatV2Service;
 
     public ChatV2Controller(ChatV2Service chatV2Service) {
         this.chatV2Service = chatV2Service;
+        log.info("[ChatV2Controller] initialized");
     }
 
     @GetMapping("/sessions")
@@ -50,12 +55,19 @@ public class ChatV2Controller {
 
     @PostMapping("/sessions")
     public Map<String, Object> createSession(@RequestBody Map<String, Object> request) {
-        return chatV2Service.createSession(
-                str(request.get("user_id")),
-                str(request.get("title")),
-                castStringList(request.get("context_tags")),
-                castMap(request.get("metadata"))
-        );
+        log.info("[ChatV2Controller] createSession called, userId={}, title={}",
+                request.get("user_id"), request.get("title"));
+        try {
+            return chatV2Service.createSession(
+                    str(request.get("user_id")),
+                    str(request.get("title")),
+                    castStringList(request.get("context_tags")),
+                    castMap(request.get("metadata"))
+            );
+        } catch (Exception e) {
+            log.error("[ChatV2Controller] createSession failed", e);
+            throw e;
+        }
     }
 
     @GetMapping("/sessions/{sessionId}")

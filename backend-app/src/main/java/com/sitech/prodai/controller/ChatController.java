@@ -53,6 +53,9 @@ public class ChatController {
     public Map<String, Object> completion(@RequestBody ChatCompletionRequest request) {
         log.info("[ChatController] completion called, prompt_length={}, llmEnabled={}",
                 request.getPrompt() != null ? request.getPrompt().length() : 0, properties.getLlm().isEnabled());
+        if (request.getModelConfig() == null || request.getModelConfig().isEmpty()) {
+            request.setModelConfig(activeModel.get());
+        }
         try {
             return llmService
                     .map(s -> s.complete(request))
@@ -71,6 +74,9 @@ public class ChatController {
     public SseEmitter stream(@RequestBody ChatCompletionRequest request) {
         log.info("[ChatController] stream called, prompt_length={}",
                 request.getPrompt() != null ? request.getPrompt().length() : 0);
+        if (request.getModelConfig() == null || request.getModelConfig().isEmpty()) {
+            request.setModelConfig(activeModel.get());
+        }
         SseEmitter emitter = new SseEmitter(300_000L);
         Flux<Map<String, Object>> events = llmService
                 .map(s -> s.streamEvents(request))
@@ -184,6 +190,7 @@ public class ChatController {
             try {
                 ChatCompletionRequest req = new ChatCompletionRequest();
                 req.setPrompt("Hello, this is a test message.");
+                req.setModelConfig(modelConfig);
                 Map<String, Object> result = llmService.orElseThrow(() ->
                         new IllegalStateException("LLM is enabled but LlmService is not available"))
                         .complete(req);

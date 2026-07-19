@@ -1,12 +1,14 @@
-﻿import { defineConfig } from 'vite'
+import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 
 export default defineConfig(({ mode }) => {
   const isProd = mode === 'production'
-  // Commercial backend: Spring Boot backend-app only (6174)
+  // Commercial backend: Spring Boot backend-app (6174)
   const apiTarget = 'http://localhost:6174'
   const wsTarget = 'ws://localhost:6174'
+  // FastAPI backend (LLM 配置管理等 Python 专属接口)
+  const fastApiTarget = 'http://localhost:8000'
 
   return {
     plugins: [vue()],

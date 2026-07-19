@@ -147,6 +147,7 @@
             @quick-action="handleSuggestion"
             @skill-select="(skill) => (currentSkill = skill || '')"
             @remove-skill="currentSkill = ''"
+            @open-model-config="emit('open-model-config', $event)"
           />
         </div>
       </section>
@@ -293,7 +294,7 @@ const props = defineProps({
   assistantMode: { type: String, default: 'rd' }
 })
 
-const emit = defineEmits(['send-message', 'switch-chat', 'create-session', 'launch-skill', 'guided-demo', 'open-scene-manager', 'open-prompt-manager', 'open-ontology-manager', 'open-workflow-manager', 'open-mcp-manager', 'open-kb-manager'])
+const emit = defineEmits(['send-message', 'switch-chat', 'create-session', 'launch-skill', 'guided-demo', 'open-scene-manager', 'open-prompt-manager', 'open-ontology-manager', 'open-model-config'])
 
 const startGuidedDemo = (type) => {
   emit('guided-demo', { type })
@@ -364,16 +365,13 @@ const suggestions = computed(() =>
       ]
 )
 
-// 快捷入口
+// 快捷入口 — 仅展示已迁到 Spring Boot 的管理台
 const shortcuts = [
   { key: 'scene', icon: 'chart', label: '场景管理' },
   { key: 'prompt', icon: 'file', label: '提示词管理' },
-  // { key: 'tool', icon: 'chart', label: '工具管理' }, // 已迁移到 MCP 管理
-  // { key: 'form', icon: 'file', label: '表单管理' }, // 已废弃，使用本体管理替代
   { key: 'ontology', icon: 'help', label: '本体管理' },
-  { key: 'workflow', icon: 'chart', label: '工作流管理' },
-  { key: 'mcp', icon: 'chart', label: 'MCP 管理' },
-  { key: 'kb', icon: 'file', label: '知识库' },
+  // 以下依赖未完整迁移的 API，暂不暴露入口：
+  // workflow（高级 publish/execute）、mcp（外部工具 CRUD）、kb（import-dir）
 ]
 
 // 预警列表
@@ -533,18 +531,7 @@ const handleShortcut = (sc) => {
     emit('open-ontology-manager')
     return
   }
-  if (sc.key === 'workflow') {
-    emit('open-workflow-manager')
-    return
-  }
-  if (sc.key === 'mcp') {
-    emit('open-mcp-manager')
-    return
-  }
-  if (sc.key === 'kb') {
-    emit('open-kb-manager')
-    return
-  }
+  // workflow / mcp / kb 入口已隐藏（后端未完整迁移）
   const msg = shortcuts.find(s => s.key === sc.key)
   if (msg) {
     emit('send-message', `帮我填一个${sc.label}`)
