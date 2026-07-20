@@ -78,6 +78,62 @@ public class InMemoryOntologyStore implements OntologyStore {
         return fact;
     }
 
+    @Override
+    public void addClass(String className) {
+        classes.add(className);
+    }
+
+    @Override
+    public void addProperty(String propertyName) {
+        properties.add(propertyName);
+    }
+
+    @Override
+    public List<Map<String, Object>> allInstances() {
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (Map.Entry<String, Map<String, Object>> entry : entities.entrySet()) {
+            Map<String, Object> item = new LinkedHashMap<>(entry.getValue());
+            item.put("uri", entry.getKey());
+            list.add(item);
+        }
+        return list;
+    }
+
+    @Override
+    public void addInstance(String uri, String type, Map<String, Object> facts) {
+        Map<String, Object> fact = new LinkedHashMap<>(facts);
+        fact.putIfAbsent("entityId", uri.contains("/") ? uri.substring(uri.lastIndexOf('/') + 1) : uri);
+        fact.putIfAbsent("entityType", type);
+        fact.putIfAbsent("source", "ontology");
+        entities.put(uri, fact);
+        classes.add(type);
+    }
+
+    @Override
+    public void updateInstance(String uri, Map<String, Object> facts) {
+        entities.computeIfPresent(uri, (k, v) -> {
+            Map<String, Object> merged = new LinkedHashMap<>(v);
+            merged.putAll(facts);
+            return merged;
+        });
+    }
+
+    @Override
+    public void deleteInstance(String uri) {
+        entities.remove(uri);
+    }
+
+    @Override
+    public Map<String, Object> stats() {
+        Map<String, Object> s = new LinkedHashMap<>();
+        s.put("classCount", classes.size());
+        s.put("propertyCount", properties.size());
+        s.put("instanceCount", entities.size());
+        s.put("classes", List.copyOf(classes));
+        s.put("properties", List.copyOf(properties));
+        return s;
+    }
+
     private void seed() {
         classes.addAll(List.of("Customer", "Account", "Invoice", "Payment"));
         properties.addAll(List.of("vipLevel", "annualSpend", "memberYears", "creditLimit", "accountStatus", "outstandingBalance"));

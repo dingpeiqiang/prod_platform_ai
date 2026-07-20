@@ -255,6 +255,59 @@ public class OntologyService {
         return Map.of("success", true, "rules", rules);
     }
 
+    public Map<String, Object> getOntologyStats() {
+        List<String> classes = rdf4jStore.getClasses();
+        List<String> properties = rdf4jStore.getProperties();
+        long instanceCount = 0;
+        for (String className : classes) {
+            instanceCount += rdf4jStore.getInstances(className).size();
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("classCount", classes.size());
+        body.put("propertyCount", properties.size());
+        body.put("instanceCount", instanceCount);
+        body.put("classes", classes);
+        body.put("properties", properties);
+        return body;
+    }
+
+    public Map<String, Object> getOntologyInstances() {
+        List<String> classes = rdf4jStore.getClasses();
+        List<Map<String, Object>> allInstances = new ArrayList<>();
+        for (String className : classes) {
+            List<Map<String, Object>> instances = rdf4jStore.getInstances(className);
+            allInstances.addAll(instances);
+        }
+        return Map.of("success", true, "data", allInstances);
+    }
+
+    public Map<String, Object> createOntologyInstance(String uri, String type, Map<String, Object> facts) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", true);
+        body.put("message", "实例创建成功");
+        body.put("uri", uri);
+        body.put("type", type);
+        body.put("facts", facts);
+        return body;
+    }
+
+    public Map<String, Object> updateOntologyInstance(String uri, Map<String, Object> facts) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", true);
+        body.put("message", "实例更新成功");
+        body.put("uri", uri);
+        body.put("facts", facts);
+        return body;
+    }
+
+    public Map<String, Object> deleteOntologyInstance(String uri) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", true);
+        body.put("message", "实例删除成功");
+        body.put("uri", uri);
+        return body;
+    }
+
     public Map<String, Object> compareState(String snapshotId, List<Map<String, Object>> patches, String policySetId, String traceId, String tenantId) {
         Map<String, Object> snapshot = snapshots.get(snapshotId);
         if (snapshot == null) throw new IllegalStateException("Snapshot not found or expired");

@@ -1,9 +1,11 @@
 package com.sitech.prodai.controller;
 
 import com.sitech.prodai.service.OntologyService;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -148,6 +150,37 @@ public class OntologyMvpController {
     @GetMapping("/policy/sets")
     public Map<String, Object> policySets() {
         return ontologyService.getPolicySets();
+    }
+
+    @GetMapping("/ontology/stats")
+    public Map<String, Object> ontologyStats() {
+        return ontologyService.getOntologyStats();
+    }
+
+    @GetMapping("/ontology/instances")
+    public Map<String, Object> ontologyInstances() {
+        return ontologyService.getOntologyInstances();
+    }
+
+    @PostMapping("/ontology/instances")
+    public Map<String, Object> createOntologyInstance(@RequestBody Map<String, Object> request) {
+        String uri = asString(request.get("uri"), "");
+        String type = asString(request.get("type"), "");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> facts = (Map<String, Object>) request.getOrDefault("facts", Map.of());
+        return ontologyService.createOntologyInstance(uri, type, facts);
+    }
+
+    @PutMapping("/ontology/instances/{uri}")
+    public Map<String, Object> updateOntologyInstance(@PathVariable String uri, @RequestBody Map<String, Object> request) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> facts = (Map<String, Object>) request.getOrDefault("facts", Map.of());
+        return ontologyService.updateOntologyInstance(uri, facts);
+    }
+
+    @DeleteMapping("/ontology/instances/{uri}")
+    public Map<String, Object> deleteOntologyInstance(@PathVariable String uri) {
+        return ontologyService.deleteOntologyInstance(uri);
     }
 
     @GetMapping("/swrl/rules")

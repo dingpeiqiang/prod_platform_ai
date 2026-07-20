@@ -1,0 +1,28 @@
+warning: in the working copy of 'backend-app/src/main/java/com/sitech/prodai/service/FormService.java', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend-app/src/main/java/com/sitech/prodai/service/HistoryService.java', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'backend-app/src/main/java/com/sitech/prodai/service/RecommendationEngine.java', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/components/OntologyReasoningBlock.vue', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/services/ontologyMvpApi.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/services/ontologyMvpLocal.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'ontology-reasoning-app/pom.xml', LF will be replaced by CRLF the next time Git touches it
+ .../prodai/controller/LlmConfigController.java     |   70 [32m+[m
+ .../com/sitech/prodai/domain/entity/Ontology.java  |   70 [31m-[m
+ .../prodai/domain/entity/OntologyInstance.java     |   78 [32m+[m[31m-[m
+ .../domain/entity/OntologyInstanceHistory.java     |   58 [32m+[m[31m-[m
+ .../OntologyInstanceHistoryRepository.java         |   18 [32m+[m[31m-[m
+ .../repository/OntologyInstanceRepository.java     |   24 [32m+[m[31m-[m
+ .../prodai/repository/OntologyRepository.java      |   13 [31m-[m
+ .../com/sitech/prodai/service/FormService.java     |  303 [32m+[m[31m---[m
+ .../com/sitech/prodai/service/HistoryService.java  |  340 [32m+[m[31m---[m
+ .../sitech/prodai/service/OntologyMvpService.java  | 1344 [31m---------------[m
+ .../prodai/service/RecommendationEngine.java       |  748 [32m+[m[31m-------[m
+ frontend/src/App.vue                               |   12 [32m+[m[31m-[m
+ frontend/src/components/OntologyChainViz.vue       |  357 [31m----[m
+ frontend/src/components/OntologyManager.vue        | 1781 [31m--------------------[m
+ frontend/src/components/OntologyReasoningBlock.vue |   42 [32m+[m[31m-[m
+ frontend/src/components/OntologyRelNode.vue        |   89 [31m-[m
+ frontend/src/services/ontologyApi.js               |   39 [31m-[m
+ frontend/src/services/ontologyMvpApi.js            |  126 [32m+[m[31m-[m
+ frontend/src/services/ontologyMvpLocal.js          | 1289 [32m+[m[31m-------------[m
+ ontology-reasoning-app/pom.xml                     |   41 [32m+[m[31m-[m
+ 20 files changed, 313 insertions(+), 6529 deletions(-)

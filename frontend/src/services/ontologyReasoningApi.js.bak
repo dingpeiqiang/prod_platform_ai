@@ -315,75 +315,90 @@ export async function getSwrlRules() {
     }
   }
 }
+// === ±¾Ìå¹ÜÀí API ===
 
 export async function getOntologyStats() {
   try {
-    return await request(`${ONTOLOGY_BASE}/ontology/stats`, { method: 'GET' })
+    return await request(\\/ontology/stats\, { method: 'GET' })
   } catch (e) {
-    console.error('è·å–æœ¬ä½“ç»Ÿè®¡å¤±è´¥:', e)
+    console.error('»ñÈ¡±¾ÌåÍ³¼ÆÊ§°Ü:', e)
     return { classCount: 0, propertyCount: 0, instanceCount: 0, classes: [], properties: [] }
   }
 }
 
 export async function addOntologyClass(name) {
   try {
-    return await request(`${ONTOLOGY_BASE}/ontology/classes`, { method: 'POST', data: { name } })
+    return await request(\\/ontology/classes\, {
+      method: 'POST',
+      data: { name }
+    })
   } catch (e) {
-    return { success: false, message: e.message || 'åˆ›å»ºç±»å¤±è´¥' }
+    return { success: false, message: e.message || '´´½¨ÀàÊ§°Ü' }
   }
 }
 
 export async function addOntologyProperty(name) {
   try {
-    return await request(`${ONTOLOGY_BASE}/ontology/properties`, { method: 'POST', data: { name } })
+    return await request(\\/ontology/properties\, {
+      method: 'POST',
+      data: { name }
+    })
   } catch (e) {
-    return { success: false, message: e.message || 'åˆ›å»ºå±æ€§å¤±è´¥' }
+    return { success: false, message: e.message || '´´½¨ÊôĞÔÊ§°Ü' }
   }
 }
 
 export async function getAllInstances() {
   try {
-    return await request(`${ONTOLOGY_BASE}/ontology/instances`, { method: 'GET' })
+    return await request(\\/ontology/instances\, { method: 'GET' })
   } catch (e) {
-    console.error('è·å–å®ä¾‹åˆ—è¡¨å¤±è´¥:', e)
+    console.error('»ñÈ¡ÊµÀıÁĞ±íÊ§°Ü:', e)
     return []
   }
 }
 
 export async function addInstance(uri, type, facts) {
   try {
-    return await request(`${ONTOLOGY_BASE}/ontology/instances`, { method: 'POST', data: { uri, type, facts } })
+    return await request(\\/ontology/instances\, {
+      method: 'POST',
+      data: { uri, type, facts }
+    })
   } catch (e) {
-    return { success: false, message: e.message || 'åˆ›å»ºå®ä¾‹å¤±è´¥' }
+    return { success: false, message: e.message || '´´½¨ÊµÀıÊ§°Ü' }
   }
 }
 
 export async function updateInstance(uri, facts) {
   try {
-    return await request(`${ONTOLOGY_BASE}/ontology/instances/${encodeURIComponent(uri)}`, { method: 'PUT', data: { facts } })
+    return await request(\\/ontology/instances/\\, {
+      method: 'PUT',
+      data: { facts }
+    })
   } catch (e) {
-    return { success: false, message: e.message || 'æ›´æ–°å®ä¾‹å¤±è´¥' }
+    return { success: false, message: e.message || '¸üĞÂÊµÀıÊ§°Ü' }
   }
 }
 
 export async function deleteInstance(uri) {
   try {
-    return await request(`${ONTOLOGY_BASE}/ontology/instances/${encodeURIComponent(uri)}`, { method: 'DELETE' })
+    return await request(\\/ontology/instances/\\, {
+      method: 'DELETE'
+    })
   } catch (e) {
-    return { success: false, message: e.message || 'åˆ é™¤å®ä¾‹å¤±è´¥' }
+    return { success: false, message: e.message || 'É¾³ıÊµÀıÊ§°Ü' }
   }
 }
 
 export async function sparqlQuery(query) {
   try {
-    return await request(`${ONTOLOGY_BASE}/sparql/query`, {
+    return await request(\\/sparql/query\, {
       method: 'POST',
       data: { query },
       showLoading: true,
-      loadingText: 'æ‰§è¡ŒSPARQLæŸ¥è¯¢...'
+      loadingText: 'Ö´ĞĞSPARQL²éÑ¯...'
     })
   } catch (e) {
-    console.error('SPARQLæŸ¥è¯¢å¤±è´¥:', e)
+    console.error('SPARQL²éÑ¯Ê§°Ü:', e)
     return { results: [] }
   }
 }

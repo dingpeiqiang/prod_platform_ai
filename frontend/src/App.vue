@@ -300,7 +300,7 @@
           <PromptManager v-else-if="activeManager === 'prompt'" @go-back="closeManager" />
           <InferencePlatformManager v-else-if="activeManager === 'inference'" @go-back="closeManager" />
           <ApiDoc v-else-if="activeManager === 'api-doc'" @go-back="closeManager" />
-            <OntologyReasoningManager v-else-if="activeManager === 'ontology'" @go-back="closeManager" />
+          <OntologyReasoningManager v-else-if="activeManager === 'ontology'" @go-back="closeManager" />
         </div>
 
         <!-- 首页/欢迎页 -->

@@ -8,9 +8,11 @@ import org.example.model.Models.EvaluatePolicyResponse;
 import org.example.model.Models.RetrieveFactsRequest;
 import org.example.model.Models.RetrieveFactsResponse;
 import org.example.model.PlatformModels;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -49,6 +51,47 @@ public class OntologyReasoningController {
     @PostMapping("/explain") public PlatformModels.ExplainResponse explain(@RequestBody PlatformModels.ExplainRequest request) { return engine.explain(request); }
     @GetMapping("/trace/{traceId}") public List<Map<String, Object>> trace(@PathVariable String traceId) { return engine.getTrace(traceId); }
     @GetMapping("/health") public Map<String, Object> health() { return Map.of("status", "ok"); }
+
+    // === 本体管理端点 ===
+
+    @GetMapping("/ontology/stats") public Map<String, Object> stats() { return engine.stats(); }
+
+    @PostMapping("/ontology/classes") public Map<String, Object> addClass(@RequestBody Map<String, String> body) {
+        String name = body.getOrDefault("name", "").trim();
+        if (name.isEmpty()) return Map.of("success", false, "message", "类名不能为空");
+        engine.addClass(name);
+        return Map.of("success", true, "message", "类 " + name + " 创建成功");
+    }
+
+    @PostMapping("/ontology/properties") public Map<String, Object> addProperty(@RequestBody Map<String, String> body) {
+        String name = body.getOrDefault("name", "").trim();
+        if (name.isEmpty()) return Map.of("success", false, "message", "属性名不能为空");
+        engine.addProperty(name);
+        return Map.of("success", true, "message", "属性 " + name + " 创建成功");
+    }
+
+    @GetMapping("/ontology/instances") public List<Map<String, Object>> allInstances() { return engine.allInstances(); }
+
+    @PostMapping("/ontology/instances") public Map<String, Object> addInstance(@RequestBody Map<String, Object> body) {
+        String uri = asString(body.get("uri"), "").trim();
+        String type = asString(body.get("type"), "Entity").trim();
+        if (uri.isEmpty()) return Map.of("success", false, "message", "实例URI不能为空");
+        @SuppressWarnings("unchecked") Map<String, Object> facts = (Map<String, Object>) body.getOrDefault("facts", Map.of());
+        engine.addInstance(uri, type, facts);
+        return Map.of("success", true, "message", "实例 " + uri + " 创建成功");
+    }
+
+    @PutMapping("/ontology/instances/{uri}") public Map<String, Object> updateInstance(@PathVariable String uri, @RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked") Map<String, Object> facts = (Map<String, Object>) body.getOrDefault("facts", Map.of());
+        engine.updateInstance(uri, facts);
+        return Map.of("success", true, "message", "实例 " + uri + " 更新成功");
+    }
+
+    @DeleteMapping("/ontology/instances/{uri}") public Map<String, Object> deleteInstance(@PathVariable String uri) {
+        engine.deleteInstance(uri);
+        return Map.of("success", true, "message", "实例 " + uri + " 删除成功");
+    }
+
     private static String asString(Object value, String defaultValue) { return value == null ? defaultValue : String.valueOf(value); }
     private static boolean asBoolean(Object value, boolean defaultValue) { return value == null ? defaultValue : Boolean.parseBoolean(String.valueOf(value)); }
 }

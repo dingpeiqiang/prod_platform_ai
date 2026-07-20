@@ -148,6 +148,22 @@ public class IntegrativeReasonEngine {
     }
     public List<Map<String, Object>> getTrace(String traceId) { return Models.auditEntriesToMaps(auditStore.get(traceId)); }
 
+    // === 本体管理方法 ===
+
+    public void addClass(String className) { ontologyStore.addClass(className); }
+
+    public void addProperty(String propertyName) { ontologyStore.addProperty(propertyName); }
+
+    public List<Map<String, Object>> allInstances() { return ontologyStore.allInstances(); }
+
+    public void addInstance(String uri, String type, Map<String, Object> facts) { ontologyStore.addInstance(uri, type, facts); }
+
+    public void updateInstance(String uri, Map<String, Object> facts) { ontologyStore.updateInstance(uri, facts); }
+
+    public void deleteInstance(String uri) { ontologyStore.deleteInstance(uri); }
+
+    public Map<String, Object> stats() { return ontologyStore.stats(); }
+
     private void appendAudit(Models.TraceContext context, Models.AuditEntry entry) { auditStore.append(context.traceId(), entry); }
     private String buildSnapshotId() { return "snap_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8) + "_" + Instant.now().getEpochSecond(); }
     private PolicyDecision applyPolicy(String policySetId, Map<String, Object> facts, String expectationType) {

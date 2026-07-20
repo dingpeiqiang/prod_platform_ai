@@ -87,7 +87,11 @@ public class Rdf4jOntologyStore {
                     Map<String, Object> row = new LinkedHashMap<>();
                     for (String name : bindingNames) {
                         org.eclipse.rdf4j.model.Value value = bs.getValue(name);
-                        row.put(name, valueToString(value));
+                        if (value instanceof IRI) {
+                            row.put(name, value.stringValue());
+                        } else {
+                            row.put(name, valueToString(value));
+                        }
                     }
                     results.add(row);
                 }
