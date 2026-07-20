@@ -40,13 +40,9 @@ public class OntologyService {
 
     public Map<String, Object> evaluate(Map<String, Object> facts, String policySetId, String expectationType, String traceId, String tenantId) {
         String verdict = decide(policySetId, facts, expectationType);
-        List<String> rules = switch (policySetId) {
-            case "PS_BILLING_REFUND_V1" -> List.of("B001");
-            case "PS_MARKETING_RECOMMEND_V1" -> List.of("R001", "R003");
-            default -> List.of("R000");
-        };
+        List<String> rules = triggeredRules(policySetId, facts, expectationType);
         appendAudit(traceId, Map.of("step", "policy.evaluate", "timestamp", Instant.now().toString(), "policy_set_id", policySetId, "verdict", verdict, "triggered_rules", rules));
-        return Map.of("success", true, "message", "评估完成", "decision", Map.of("verdict", verdict, "confidence", 1.0, "triggered_rules", rules, "reason", policySetId + " 评估完成"));
+        return Map.of("success", true, "message", "评估完成", "decision", Map.of("verdict", verdict, "confidence", 1.0, "triggered_rules", rules, "reason", reasoning(policySetId, facts, expectationType)));
     }
 
     @SuppressWarnings("unchecked")
@@ -99,7 +95,13 @@ public class OntologyService {
         String normalized = question == null ? "" : question.toLowerCase();
         String sparql;
         String answer;
-        if (normalized.contains("会员等级") || normalized.contains("vip")) {
+        if (normalized.contains("5g") || normalized.contains("套餐") || normalized.contains("product")) {
+            sparql = "SELECT ?product ?name ?growth ?users WHERE { ?product a <http://example.org/Product> . OPTIONAL { ?product <http://example.org/productName> ?name } OPTIONAL { ?product <http://example.org/revenueGrowth> ?growth } OPTIONAL { ?product <http://example.org/newUserMonth> ?users } } ORDER BY ASC(?growth) LIMIT 20";
+            answer = "查询在售产品及其增长指标";
+        } else if (normalized.contains("风险") || normalized.contains("零资费") || normalized.contains("稽核")) {
+            sparql = "SELECT ?product ?name ?isZeroFee ?status WHERE { ?product a <http://example.org/Product> . OPTIONAL { ?product <http://example.org/productName> ?name } OPTIONAL { ?product <http://example.org/isZeroFee> ?isZeroFee } OPTIONAL { ?product <http://example.org/status> ?status } } LIMIT 50";
+            answer = "查询零资费或风险相关产品";
+        } else if (normalized.contains("会员等级") || normalized.contains("vip")) {
             sparql = "SELECT ?entity ?vipLevel WHERE { ?entity rdf:type <http://example.org/Customer> . ?entity <http://example.org/vipLevel> ?vipLevel }";
             answer = "查询所有客户的会员等级";
         } else if (normalized.contains("年消费") || normalized.contains("annual") || normalized.contains("spend")) {
@@ -121,16 +123,14 @@ public class OntologyService {
         Map<String, Object> fact = rdf4jStore.getEntity(uri);
         if (fact.isEmpty()) fact = defaultFact(uri, type, "ontology");
         String verdict = decide(policySetId, fact, "validation");
-        List<String> rules = switch (policySetId) {
-            case "PS_BILLING_REFUND_V1" -> List.of("B001");
-            case "PS_MARKETING_RECOMMEND_V1" -> List.of("R001", "R003");
-            default -> List.of("R000");
-        };
-        return Map.of("success", true, "verdict", verdict, "triggered_rules", rules, "reason", policySetId + " 评估完成");
+        List<String> rules = triggeredRules(policySetId, fact, "validation");
+        return Map.of("success", true, "verdict", verdict, "triggered_rules", rules, "reason", reasoning(policySetId, fact, "validation"));
     }
 
     public Map<String, Object> getPolicySets() {
         return Map.of("success", true, "policy_sets", List.of(
+                Map.of("id", "PS_PRODUCT_ONLINE_V1", "name", "新品立项策略集", "description", "用于产商品新品立项门槛校验"),
+                Map.of("id", "PS_PRODUCT_RISK_V1", "name", "产品风险稽核策略集", "description", "用于零资费与低效产品风险判定"),
                 Map.of("id", "PS_MARKETING_RECOMMEND_V1", "name", "营销推荐策略集", "description", "用于营销推荐场景的规则校验"),
                 Map.of("id", "PS_BILLING_REFUND_V1", "name", "账单退款策略集", "description", "用于账单退款场景的规则校验")
         ));
@@ -232,12 +232,30 @@ public class OntologyService {
     }
 
     private String decide(String policySetId, Map<String, Object> facts, String expectationType) {
+        double marketSize = number(facts.get("targetMarketSize"));
+        double zeroFeeMonths = number(facts.get("onlineMonths"));
+        double newUsers = number(facts.get("newUserMonth"));
+        double churnRate = number(facts.get("userChurnRate"));
+        double revenueGrowth = number(facts.get("revenueGrowth"));
         double spend = number(facts.get("annualSpend"));
         double creditScore = number(facts.get("creditScore"));
         String vipLevel = String.valueOf(facts.getOrDefault("vipLevel", ""));
         String candidateActionType = String.valueOf(facts.getOrDefault("candidateActionType", ""));
         String billingActionType = String.valueOf(facts.getOrDefault("billingActionType", ""));
+        boolean isZeroFee = Boolean.parseBoolean(String.valueOf(facts.getOrDefault("isZeroFee", false)));
+        String productType = String.valueOf(facts.getOrDefault("productType", ""));
+        String status = String.valueOf(facts.getOrDefault("status", ""));
         return switch (policySetId) {
+            case "PS_PRODUCT_ONLINE_V1" -> {
+                if ("candidate_check".equals(expectationType) && "5G套餐".equals(productType) && marketSize < 100000) yield "deny";
+                if ("candidate_check".equals(expectationType) && marketSize >= 100000) yield "allow";
+                yield "review";
+            }
+            case "PS_PRODUCT_RISK_V1" -> {
+                if (isZeroFee && "在售".equals(status) && zeroFeeMonths >= 3 && newUsers < 50) yield "review";
+                if (revenueGrowth < 0.03 && churnRate > 0.08) yield "review";
+                yield "allow";
+            }
             case "PS_MARKETING_RECOMMEND_V1" -> {
                 if ("candidate_check".equals(expectationType)) {
                     if ("premium_upgrade".equals(candidateActionType) && spend >= 50000 && ("Gold".equalsIgnoreCase(vipLevel) || "Platinum".equalsIgnoreCase(vipLevel))) yield "allow";
@@ -299,11 +317,48 @@ public class OntologyService {
     public Map<String, Object> getFormConstraint(String formCode) {
         Map<String, Object> constraints = new LinkedHashMap<>();
         constraints.put("formName", formCode);
-        constraints.put("entities", List.of());
+        if ("product_online_form".equals(formCode)) {
+            constraints.put("entities", List.of(Map.of(
+                    "entityCode", "productDraft",
+                    "entityName", "产商品立项信息",
+                    "fields", List.of(
+                            Map.of("fieldCode", "productName", "fieldName", "产品名称", "fieldType", "input", "required", true),
+                            Map.of("fieldCode", "productType", "fieldName", "产品类型", "fieldType", "select", "required", true, "options", List.of("5G套餐", "宽带", "增值业务", "物联网")),
+                            Map.of("fieldCode", "targetMarket", "fieldName", "目标市场", "fieldType", "select", "required", true, "options", List.of("个人客户", "家庭客户", "政企客户")),
+                            Map.of("fieldCode", "targetMarketSize", "fieldName", "预估市场规模", "fieldType", "number", "required", true),
+                            Map.of("fieldCode", "price", "fieldName", "标准资费", "fieldType", "number", "required", true),
+                            Map.of("fieldCode", "isZeroFee", "fieldName", "是否零资费", "fieldType", "switch", "required", false),
+                            Map.of("fieldCode", "onlineMonths", "fieldName", "在售月数", "fieldType", "number", "required", false),
+                            Map.of("fieldCode", "newUserMonth", "fieldName", "月新增用户", "fieldType", "number", "required", false)
+                    )
+            )));
+        } else {
+            constraints.put("entities", List.of());
+        }
         return Map.of("success", true, "constraints", constraints);
     }
 
     public Map<String, Object> getAllOntologies() {
         return listOntologies(null, null);
+    }
+
+    private List<String> triggeredRules(String policySetId, Map<String, Object> facts, String expectationType) {
+        return switch (policySetId) {
+            case "PS_PRODUCT_ONLINE_V1" -> List.of("R-ONLINE-001");
+            case "PS_PRODUCT_RISK_V1" -> List.of("R-RISK-001", "R-RISK-002");
+            case "PS_MARKETING_RECOMMEND_V1" -> List.of("R001", "R003");
+            case "PS_BILLING_REFUND_V1" -> List.of("B001");
+            default -> List.of("R000");
+        };
+    }
+
+    private String reasoning(String policySetId, Map<String, Object> facts, String expectationType) {
+        return switch (policySetId) {
+            case "PS_PRODUCT_ONLINE_V1" -> "新品立项依据市场规模、产品类型和上线门槛进行校验";
+            case "PS_PRODUCT_RISK_V1" -> "依据零资费、在售周期、新增和流失情况进行风险判定";
+            case "PS_MARKETING_RECOMMEND_V1" -> "依据消费能力、会员等级和候选动作进行推荐校验";
+            case "PS_BILLING_REFUND_V1" -> "依据退款类型与信用分进行合规校验";
+            default -> policySetId + " 评估完成";
+        };
     }
 }

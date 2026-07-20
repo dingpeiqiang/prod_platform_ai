@@ -2,7 +2,7 @@ package org.example.config;
 
 import org.example.engine.IntegrativeReasonEngine;
 import org.example.client.OntologyReasoningClient;
-import org.example.store.OntologyStore;
+import com.sitech.prodai.service.OntologyStore;
 import org.example.store.InMemorySnapshotStore;
 import org.example.store.InMemoryAuditStore;
 import com.sitech.prodai.service.Rdf4jOntologyStore;
@@ -24,7 +24,7 @@ public class AppConfig {
     public IntegrativeReasonEngine integrativeReasonEngine(
             @Value("${onto.namespace:http://example.org/}") String namespace,
             OntologyStore ontologyStore) {
-        return new IntegrativeReasonEngine(namespace, ontologyStore, new InMemorySnapshotStore(), new InMemoryAuditStore());
+        return new IntegrativeReasonEngine(namespace, new InMemorySnapshotStore(), new InMemoryAuditStore());
     }
 
     @Bean
