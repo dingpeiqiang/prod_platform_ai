@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -245,5 +246,187 @@ public class Rdf4jOntologyStore {
             return lit.getLabel();
         }
         return value.stringValue();
+    }
+
+    public Map<String, Object> importTtl(String ttlContent, boolean replace) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        try (RepositoryConnection conn = repository.getConnection()) {
+            if (replace) {
+                conn.clear();
+                log.info("已清空现有本体数据");
+            }
+            
+            long beforeCount = conn.size();
+            conn.add(new StringReader(ttlContent), "", RDFFormat.TURTLE);
+            long afterCount = conn.size();
+            long addedCount = afterCount - beforeCount;
+            
+            log.info("TTL 导入完成，新增 {} 条三元组，当前总数: {}", addedCount, afterCount);
+            
+            result.put("success", true);
+            result.put("message", "TTL 导入成功");
+            result.put("addedTriples", addedCount);
+            result.put("totalTriples", afterCount);
+            result.put("mode", replace ? "replace" : "merge");
+            
+        } catch (Exception e) {
+            log.error("TTL 导入失败: {}", e.getMessage(), e);
+            result.put("success", false);
+            result.put("message", "TTL 导入失败: " + e.getMessage());
+        }
+        return result;
+    }
+
+    public Map<String, Object> getGraphData() {
+        Map<String, Object> graph = new LinkedHashMap<>();
+        List<Map<String, Object>> nodes = new ArrayList<>();
+        List<Map<String, Object>> edges = new ArrayList<>();
+        
+        Set<String> classUris = new TreeSet<>();
+        String classQuery = """
+                SELECT DISTINCT ?class ?label WHERE {
+                  { ?class rdf:type owl:Class } UNION { ?class rdf:type rdfs:Class }
+                  OPTIONAL { ?class rdfs:label ?label }
+                }
+                """;
+        List<Map<String, Object>> classResults = sparqlQuery(classQuery);
+        for (Map<String, Object> row : classResults) {
+            String classUri = String.valueOf(row.get("class"));
+            String label = String.valueOf(row.getOrDefault("label", ""));
+            String localName = extractLocalName(classUri);
+            classUris.add(classUri);
+            
+            Map<String, Object> node = new LinkedHashMap<>();
+            node.put("id", classUri);
+            node.put("name", localName);
+            node.put("label", label.isEmpty() ? localName : label);
+            node.put("type", "class");
+            node.put("color", "#6366f1");
+            nodes.add(node);
+        }
+        
+        Set<String> propertyUris = new TreeSet<>();
+        String propertyQuery = """
+                SELECT DISTINCT ?prop ?label ?domain ?range ?propType WHERE {
+                  { ?prop rdf:type owl:ObjectProperty . BIND("object" AS ?propType) } UNION
+                  { ?prop rdf:type owl:DatatypeProperty . BIND("datatype" AS ?propType) }
+                  OPTIONAL { ?prop rdfs:label ?label }
+                  OPTIONAL { ?prop rdfs:domain ?domain }
+                  OPTIONAL { ?prop rdfs:range ?range }
+                }
+                """;
+        List<Map<String, Object>> propertyResults = sparqlQuery(propertyQuery);
+        for (Map<String, Object> row : propertyResults) {
+            String propUri = String.valueOf(row.get("prop"));
+            String label = String.valueOf(row.getOrDefault("label", ""));
+            String domain = String.valueOf(row.getOrDefault("domain", ""));
+            String range = String.valueOf(row.getOrDefault("range", ""));
+            String propType = String.valueOf(row.getOrDefault("propType", "datatype"));
+            String localName = extractLocalName(propUri);
+            
+            propertyUris.add(propUri);
+            
+            Map<String, Object> node = new LinkedHashMap<>();
+            node.put("id", propUri);
+            node.put("name", localName);
+            node.put("label", label.isEmpty() ? localName : label);
+            node.put("type", propType.equals("object") ? "object_property" : "datatype_property");
+            node.put("color", propType.equals("object") ? "#22c55e" : "#f59e0b");
+            nodes.add(node);
+            
+            if (!domain.isEmpty() && classUris.contains(domain)) {
+                Map<String, Object> edge = new LinkedHashMap<>();
+                edge.put("id", "edge_" + domain + "_" + propUri);
+                edge.put("source", domain);
+                edge.put("target", propUri);
+                edge.put("label", localName);
+                edge.put("type", "domain");
+                edges.add(edge);
+            }
+            
+            if (!range.isEmpty()) {
+                Map<String, Object> edge = new LinkedHashMap<>();
+                edge.put("id", "edge_" + propUri + "_" + range);
+                edge.put("source", propUri);
+                edge.put("target", range);
+                edge.put("label", "range");
+                edge.put("type", propType.equals("object") ? "object_range" : "datatype_range");
+                edges.add(edge);
+            }
+        }
+        
+        String instanceQuery = """
+                SELECT DISTINCT ?instance ?class ?label WHERE {
+                  ?instance rdf:type ?class .
+                  ?class rdf:type owl:Class .
+                  OPTIONAL { ?instance rdfs:label ?label }
+                }
+                """;
+        List<Map<String, Object>> instanceResults = sparqlQuery(instanceQuery);
+        for (Map<String, Object> row : instanceResults) {
+            String instanceUri = String.valueOf(row.get("instance"));
+            String classUri = String.valueOf(row.get("class"));
+            String label = String.valueOf(row.getOrDefault("label", ""));
+            String localName = extractLocalName(instanceUri);
+            
+            Map<String, Object> node = new LinkedHashMap<>();
+            node.put("id", instanceUri);
+            node.put("name", localName);
+            node.put("label", label.isEmpty() ? localName : label);
+            node.put("type", "instance");
+            node.put("color", "#8b5cf6");
+            nodes.add(node);
+            
+            Map<String, Object> edge = new LinkedHashMap<>();
+            edge.put("id", "edge_instance_" + instanceUri);
+            edge.put("source", classUri);
+            edge.put("target", instanceUri);
+            edge.put("label", "instanceOf");
+            edge.put("type", "instance_of");
+            edges.add(edge);
+        }
+        
+        String objectRelationQuery = """
+                SELECT DISTINCT ?subject ?predicate ?object WHERE {
+                  ?subject ?predicate ?object .
+                  ?predicate rdf:type owl:ObjectProperty .
+                  FILTER(isIRI(?object))
+                }
+                """;
+        List<Map<String, Object>> relationResults = sparqlQuery(objectRelationQuery);
+        for (Map<String, Object> row : relationResults) {
+            String subject = String.valueOf(row.get("subject"));
+            String predicate = String.valueOf(row.get("predicate"));
+            String object = String.valueOf(row.get("object"));
+            String predLocalName = extractLocalName(predicate);
+            
+            Map<String, Object> edge = new LinkedHashMap<>();
+            edge.put("id", "edge_relation_" + subject + "_" + predicate);
+            edge.put("source", subject);
+            edge.put("target", object);
+            edge.put("label", predLocalName);
+            edge.put("type", "relation");
+            edges.add(edge);
+        }
+        
+        graph.put("nodes", nodes);
+        graph.put("edges", edges);
+        graph.put("classCount", classUris.size());
+        graph.put("propertyCount", propertyUris.size());
+        graph.put("instanceCount", instanceResults.size());
+        graph.put("edgeCount", edges.size());
+        
+        return graph;
+    }
+
+    private String extractLocalName(String uri) {
+        if (uri == null || uri.isEmpty()) return "";
+        int hashIdx = uri.indexOf('#');
+        int slashIdx = uri.lastIndexOf('/');
+        int idx = Math.max(hashIdx, slashIdx);
+        if (idx >= 0 && idx < uri.length() - 1) {
+            return uri.substring(idx + 1);
+        }
+        return uri;
     }
 }

@@ -2,156 +2,216 @@ import { request } from './httpClient'
 
 const ONTOLOGY_BASE = ''
 
-export async function retrieveFacts(req) {
+export async function nlDiscover(req) {
   try {
-    const resp = await request(`${ONTOLOGY_BASE}/facts/retrieve`, {
+    const resp = await request(`${ONTOLOGY_BASE}/nl-discover`, {
       method: 'POST',
       data: req,
       showLoading: true,
-      loadingText: '检索事实数据...'
+      loadingText: '自然语言发现...'
     })
     return resp
   } catch (e) {
-    console.error('检索事实失败:', e)
-    return {
-      success: false,
-      message: e.message || '检索事实失败',
-      snapshot_id: null,
-      facts_map: {}
-    }
+    console.error('自然语言发现失败:', e)
+    return { success: false, message: e.message || '自然语言发现失败' }
   }
 }
 
-export async function evaluatePolicy(req) {
+export async function quickEvaluate(req) {
   try {
-    const resp = await request(`${ONTOLOGY_BASE}/policy/evaluate`, {
+    const resp = await request(`${ONTOLOGY_BASE}/quick-evaluate`, {
       method: 'POST',
       data: req,
       showLoading: true,
-      loadingText: '执行规则评估...'
+      loadingText: '快速评估...'
     })
     return resp
   } catch (e) {
-    console.error('规则评估失败:', e)
-    return {
-      success: false,
-      message: e.message || '规则评估失败',
-      decision: {
-        verdict: 'deny',
-        confidence: 0,
-        triggered_rules: [],
-        reason: '评估失败'
-      }
-    }
+    console.error('快速评估失败:', e)
+    return { success: false, message: e.message || '快速评估失败' }
   }
 }
 
-export async function evaluatePolicyWithFacts(req, policy_set_id) {
+export async function getPolicySets() {
   try {
-    const resp = await request(`${ONTOLOGY_BASE}/evaluate`, {
+    return await request(`${ONTOLOGY_BASE}/policy/sets`, { method: 'GET' })
+  } catch (e) {
+    console.error('获取策略集失败:', e)
+    return []
+  }
+}
+
+export async function getSwrlRules() {
+  try {
+    return await request(`${ONTOLOGY_BASE}/swrl/rules`, { method: 'GET' })
+  } catch (e) {
+    console.error('获取SWRL规则失败:', e)
+    return []
+  }
+}
+
+export async function getOntologyStats() {
+  try {
+    return await request(`${ONTOLOGY_BASE}/ontology/stats`, { method: 'GET' })
+  } catch (e) {
+    console.error('获取统计信息失败:', e)
+    return { classCount: 0, propertyCount: 0, instanceCount: 0, tripleCount: 0 }
+  }
+}
+
+export async function addOntologyClass(name) {
+  try {
+    return await request(`${ONTOLOGY_BASE}/ontology/classes`, {
       method: 'POST',
-      data: { ...req, policy_set_id },
-      showLoading: true,
-      loadingText: '执行合并评估...'
+      data: { name }
     })
-    return resp
   } catch (e) {
-    console.error('合并评估失败:', e)
-    return {
-      success: false,
-      message: e.message || '合并评估失败',
-      decision: {
-        verdict: 'deny',
-        confidence: 0,
-        triggered_rules: [],
-        reason: '评估失败'
-      }
-    }
+    console.error('创建类失败:', e)
+    return { success: false, message: e.message || '创建类失败' }
   }
 }
 
-export async function evaluateSwrl(req) {
+export async function addOntologyProperty(name) {
   try {
-    const resp = await request(`${ONTOLOGY_BASE}/swrl/evaluate`, {
+    return await request(`${ONTOLOGY_BASE}/ontology/properties`, {
+      method: 'POST',
+      data: { name }
+    })
+  } catch (e) {
+    console.error('创建属性失败:', e)
+    return { success: false, message: e.message || '创建属性失败' }
+  }
+}
+
+export async function getAllInstances() {
+  try {
+    return await request(`${ONTOLOGY_BASE}/ontology/instances`, { method: 'GET' })
+  } catch (e) {
+    console.error('获取实例失败:', e)
+    return []
+  }
+}
+
+export async function addInstance(uri, type, facts = {}) {
+  try {
+    return await request(`${ONTOLOGY_BASE}/ontology/instances`, {
+      method: 'POST',
+      data: { uri, type, facts }
+    })
+  } catch (e) {
+    console.error('创建实例失败:', e)
+    return { success: false, message: e.message || '创建实例失败' }
+  }
+}
+
+export async function updateInstance(uri, facts = {}) {
+  try {
+    return await request(`${ONTOLOGY_BASE}/ontology/instances/${encodeURIComponent(uri)}`, {
+      method: 'PUT',
+      data: { facts }
+    })
+  } catch (e) {
+    console.error('更新实例失败:', e)
+    return { success: false, message: e.message || '更新实例失败' }
+  }
+}
+
+export async function deleteInstance(uri) {
+  try {
+    return await request(`${ONTOLOGY_BASE}/ontology/instances/${encodeURIComponent(uri)}`, {
+      method: 'DELETE'
+    })
+  } catch (e) {
+    console.error('删除实例失败:', e)
+    return { success: false, message: e.message || '删除实例失败' }
+  }
+}
+
+export async function sparqlQuery(query) {
+  try {
+    return await request(`${ONTOLOGY_BASE}/sparql/query`, {
+      method: 'POST',
+      data: { query },
+      showLoading: true,
+      loadingText: '执行SPARQL查询...'
+    })
+  } catch (e) {
+    console.error('SPARQL查询失败:', e)
+    return { results: [] }
+  }
+}
+
+export async function importTtl(ttlContent, replace = false) {
+  try {
+    return await request(`${ONTOLOGY_BASE}/ontology/import-ttl`, {
+      method: 'POST',
+      data: { ttlContent, replace },
+      showLoading: true,
+      loadingText: '导入TTL本体...'
+    })
+  } catch (e) {
+    console.error('TTL导入失败:', e)
+    return { success: false, message: e.message || 'TTL导入失败' }
+  }
+}
+
+export async function getOntologyGraph() {
+  try {
+    return await request(`${ONTOLOGY_BASE}/ontology/graph`, {
+      method: 'GET',
+      showLoading: true,
+      loadingText: '加载本体图数据...'
+    })
+  } catch (e) {
+    console.error('获取本体图数据失败:', e)
+    return { nodes: [], edges: [], classCount: 0, propertyCount: 0, instanceCount: 0, edgeCount: 0 }
+  }
+}
+
+export async function getOntologySchema() {
+  try {
+    return await request(`${ONTOLOGY_BASE}/schema`, { method: 'GET' })
+  } catch (e) {
+    console.error('获取Schema失败:', e)
+    return { classes: [], properties: [] }
+  }
+}
+
+export async function getSchemaCatalog() {
+  try {
+    return await request(`${ONTOLOGY_BASE}/schema/catalog`, { method: 'GET' })
+  } catch (e) {
+    console.error('获取Schema目录失败:', e)
+    return { categories: [], classes: [] }
+  }
+}
+
+export async function getSchemaDetail(req) {
+  try {
+    return await request(`${ONTOLOGY_BASE}/schema/detail`, {
       method: 'POST',
       data: req,
       showLoading: true,
-      loadingText: '执行SWRL推理...'
+      loadingText: '获取Schema详情...'
     })
-    return resp
   } catch (e) {
-    console.error('SWRL推理失败:', e)
-    return {
-      success: false,
-      message: e.message || 'SWRL推理失败',
-      results: [],
-      fired_rule_ids: [],
-      rules: []
-    }
+    console.error('获取Schema详情失败:', e)
+    return { success: false, message: e.message || '获取Schema详情失败' }
   }
 }
 
-export async function validateShacl(req) {
+export async function nlQuery(req) {
   try {
-    const resp = await request(`${ONTOLOGY_BASE}/shacl/validate`, {
+    const resp = await request(`${ONTOLOGY_BASE}/nl/query`, {
       method: 'POST',
       data: req,
       showLoading: true,
-      loadingText: '执行SHACL验证...'
+      loadingText: '自然语言查询...'
     })
     return resp
   } catch (e) {
-    console.error('SHACL验证失败:', e)
-    return {
-      success: false,
-      message: e.message || 'SHACL验证失败',
-      conforms: false,
-      results: []
-    }
-  }
-}
-
-export async function compareState(req) {
-  try {
-    const resp = await request(`${ONTOLOGY_BASE}/compare-state`, {
-      method: 'POST',
-      data: req,
-      showLoading: true,
-      loadingText: '执行假设推理...'
-    })
-    return resp
-  } catch (e) {
-    console.error('假设推理失败:', e)
-    return {
-      success: false,
-      message: e.message || '假设推理失败',
-      comparisons: []
-    }
-  }
-}
-
-export async function hypotheticalEvaluate(req) {
-  try {
-    const resp = await request(`${ONTOLOGY_BASE}/hypothetical/evaluate`, {
-      method: 'POST',
-      data: req,
-      showLoading: true,
-      loadingText: '执行本体假设推理...'
-    })
-    return resp
-  } catch (e) {
-    console.error('本体假设推理失败:', e)
-    return {
-      success: false,
-      message: e.message || '本体假设推理失败',
-      facts: {},
-      decision: {
-        verdict: 'deny',
-        confidence: 0,
-        triggered_rules: [],
-        reason: '评估失败'
-      }
-    }
+    console.error('自然语言查询失败:', e)
+    return { success: false, message: e.message || '自然语言查询失败' }
   }
 }
 
@@ -165,13 +225,8 @@ export async function explain(req) {
     })
     return resp
   } catch (e) {
-    console.error('生成解释失败:', e)
-    return {
-      success: false,
-      message: e.message || '生成解释失败',
-      natural_language: '',
-      referenced_rules: []
-    }
+    console.error('解释生成失败:', e)
+    return { success: false, message: e.message || '解释生成失败' }
   }
 }
 
@@ -189,201 +244,7 @@ export async function getTrace(trace_id, tenant_id) {
     return {
       success: false,
       message: e.message || '查询审计日志失败',
-      trace_id,
-      tenant_id,
-      steps: [],
-      total_steps: 0
+      results: []
     }
-  }
-}
-
-export async function nlQuery(question) {
-  try {
-    const resp = await request(`${ONTOLOGY_BASE}/nl/query`, {
-      method: 'POST',
-      data: { question },
-      showLoading: true,
-      loadingText: '执行自然语言查询...'
-    })
-    return resp
-  } catch (e) {
-    console.error('自然语言查询失败:', e)
-    return {
-      success: false,
-      message: e.message || '自然语言查询失败',
-      answer: ''
-    }
-  }
-}
-
-export async function nlDiscoverAndRetrieve(question, max_entities = 5) {
-  try {
-    const resp = await request(`${ONTOLOGY_BASE}/nl-discover`, {
-      method: 'POST',
-      data: { question, max_entities },
-      showLoading: true,
-      loadingText: '执行实体发现...'
-    })
-    return resp
-  } catch (e) {
-    console.error('实体发现失败:', e)
-    return {
-      success: false,
-      message: e.message || '实体发现失败',
-      nl_answer: '',
-      entity_ids: [],
-      sparql: '',
-      raw_results: [],
-      snapshot: null,
-      facts_flat: {}
-    }
-  }
-}
-
-export async function quickEvaluate(req) {
-  try {
-    const resp = await request(`${ONTOLOGY_BASE}/quick-evaluate`, {
-      method: 'POST',
-      data: req,
-      showLoading: true,
-      loadingText: '执行快捷评估...'
-    })
-    return resp
-  } catch (e) {
-    console.error('快捷评估失败:', e)
-    return {
-      success: false,
-      message: e.message || '快捷评估失败',
-      verdict: 'deny',
-      triggered_rules: [],
-      reason: '评估失败'
-    }
-  }
-}
-
-export async function getSchemaCatalog() {
-  try {
-    const resp = await request(`${ONTOLOGY_BASE}/schema/catalog`, {
-      method: 'GET',
-      showLoading: true,
-      loadingText: '加载Schema目录...'
-    })
-    return resp
-  } catch (e) {
-    console.error('加载Schema目录失败:', e)
-    return {
-      success: false,
-      message: e.message || '加载Schema目录失败',
-      classes: [],
-      properties: []
-    }
-  }
-}
-
-export async function getPolicySets() {
-  try {
-    const resp = await request(`${ONTOLOGY_BASE}/policy/sets`, {
-      method: 'GET',
-      showLoading: true,
-      loadingText: '加载策略集...'
-    })
-    return resp
-  } catch (e) {
-    console.error('加载策略集失败:', e)
-    return {
-      success: false,
-      message: e.message || '加载策略集失败',
-      policy_sets: []
-    }
-  }
-}
-
-export async function getSwrlRules() {
-  try {
-    const resp = await request(`${ONTOLOGY_BASE}/swrl/rules`, {
-      method: 'GET',
-      showLoading: true,
-      loadingText: '加载SWRL规则...'
-    })
-    return resp
-  } catch (e) {
-    console.error('加载SWRL规则失败:', e)
-    return {
-      success: false,
-      message: e.message || '加载SWRL规则失败',
-      rules: []
-    }
-  }
-}
-
-export async function getOntologyStats() {
-  try {
-    return await request(`${ONTOLOGY_BASE}/ontology/stats`, { method: 'GET' })
-  } catch (e) {
-    console.error('获取本体统计失败:', e)
-    return { classCount: 0, propertyCount: 0, instanceCount: 0, classes: [], properties: [] }
-  }
-}
-
-export async function addOntologyClass(name) {
-  try {
-    return await request(`${ONTOLOGY_BASE}/ontology/classes`, { method: 'POST', data: { name } })
-  } catch (e) {
-    return { success: false, message: e.message || '创建类失败' }
-  }
-}
-
-export async function addOntologyProperty(name) {
-  try {
-    return await request(`${ONTOLOGY_BASE}/ontology/properties`, { method: 'POST', data: { name } })
-  } catch (e) {
-    return { success: false, message: e.message || '创建属性失败' }
-  }
-}
-
-export async function getAllInstances() {
-  try {
-    return await request(`${ONTOLOGY_BASE}/ontology/instances`, { method: 'GET' })
-  } catch (e) {
-    console.error('获取实例列表失败:', e)
-    return []
-  }
-}
-
-export async function addInstance(uri, type, facts) {
-  try {
-    return await request(`${ONTOLOGY_BASE}/ontology/instances`, { method: 'POST', data: { uri, type, facts } })
-  } catch (e) {
-    return { success: false, message: e.message || '创建实例失败' }
-  }
-}
-
-export async function updateInstance(uri, facts) {
-  try {
-    return await request(`${ONTOLOGY_BASE}/ontology/instances/${encodeURIComponent(uri)}`, { method: 'PUT', data: { facts } })
-  } catch (e) {
-    return { success: false, message: e.message || '更新实例失败' }
-  }
-}
-
-export async function deleteInstance(uri) {
-  try {
-    return await request(`${ONTOLOGY_BASE}/ontology/instances/${encodeURIComponent(uri)}`, { method: 'DELETE' })
-  } catch (e) {
-    return { success: false, message: e.message || '删除实例失败' }
-  }
-}
-
-export async function sparqlQuery(query) {
-  try {
-    return await request(`${ONTOLOGY_BASE}/sparql/query`, {
-      method: 'POST',
-      data: { query },
-      showLoading: true,
-      loadingText: '执行SPARQL查询...'
-    })
-  } catch (e) {
-    console.error('SPARQL查询失败:', e)
-    return { results: [] }
   }
 }

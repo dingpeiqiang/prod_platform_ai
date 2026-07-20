@@ -29,42 +29,66 @@
         />
 
         <div class="composer-footer">
-          <div class="composer-tools">
-            <button class="tool-btn" @click="triggerFileUpload" title="上传文件" :disabled="disabled">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="17 8 12 3 7 8" />
-                <line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
-            </button>
-            <button class="tool-btn" @click="triggerImageUpload" title="上传图片" :disabled="disabled">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                <circle cx="8.5" cy="8.5" r="1.5" />
-                <polyline points="21 15 16 10 5 21" />
-              </svg>
-            </button>
-            <button
-              class="tool-btn"
-              :class="{ recording: isRecording }"
-              @mousedown="startRecording"
-              @mouseup="stopRecording"
-              @mouseleave="stopRecording"
-              @touchstart.passive="startRecording"
-              @touchend="stopRecording"
-              :disabled="disabled"
-              :title="isRecording ? '停止录制' : '语音输入'"
-            >
-              <svg v-if="!isRecording" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                <line x1="12" y1="19" x2="12" y2="23" />
-                <line x1="8" y1="23" x2="16" y2="23" />
-              </svg>
-              <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="6" y="6" width="12" height="12" rx="2" />
-              </svg>
-            </button>
+          <div class="composer-left">
+            <div class="composer-tools">
+              <button class="tool-btn" @click="triggerFileUpload" title="上传文件" :disabled="disabled">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+              </button>
+              <button class="tool-btn" @click="triggerImageUpload" title="上传图片" :disabled="disabled">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <polyline points="21 15 16 10 5 21" />
+                </svg>
+              </button>
+              <button
+                class="tool-btn"
+                :class="{ recording: isRecording }"
+                @mousedown="startRecording"
+                @mouseup="stopRecording"
+                @mouseleave="stopRecording"
+                @touchstart.passive="startRecording"
+                @touchend="stopRecording"
+                :disabled="disabled"
+                :title="isRecording ? '停止录制' : '语音输入'"
+              >
+                <svg v-if="!isRecording" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <line x1="12" y1="19" x2="12" y2="23" />
+                  <line x1="8" y1="23" x2="16" y2="23" />
+                </svg>
+                <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+              </button>
+            </div>
+
+            <div v-if="skillTag" class="skill-strip">
+              <div class="skill-chip" role="button" tabindex="0" @click="handleSkillSelect(currentSkill)" @keydown.enter.prevent="handleSkillSelect(currentSkill)" @keydown.space.prevent="handleSkillSelect(currentSkill)">
+                <span class="skill-chip-icon" aria-hidden="true">
+                  <svg v-if="skillIconPaths[currentSkill]" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path v-for="(d, idx) in skillIconPaths[currentSkill]" :key="idx" :d="d" />
+                  </svg>
+                </span>
+                <span class="skill-chip-text">{{ skillTag.label }}</span>
+                <span class="skill-chip-arrow" aria-hidden="true">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </span>
+                <button class="skill-chip-close" type="button" @click.stop="$emit('remove-skill')" :disabled="disabled" title="关闭技能">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+            </div>
           </div>
 
           <div class="composer-right">
@@ -126,28 +150,6 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <line x1="22" y1="2" x2="11" y2="13" />
                 <polygon points="22 2 15 22 11 13 2 9 22 2" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        <div v-if="skillTag" class="skill-strip">
-          <div class="skill-chip" role="button" tabindex="0" @click="handleSkillSelect(currentSkill)" @keydown.enter.prevent="handleSkillSelect(currentSkill)" @keydown.space.prevent="handleSkillSelect(currentSkill)">
-            <span class="skill-chip-icon" aria-hidden="true">
-              <svg v-if="skillIconPaths[currentSkill]" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path v-for="(d, idx) in skillIconPaths[currentSkill]" :key="idx" :d="d" />
-              </svg>
-            </span>
-            <span class="skill-chip-text">{{ skillTag.label }}</span>
-            <span class="skill-chip-arrow" aria-hidden="true">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </span>
-            <button class="skill-chip-close" type="button" @click.stop="$emit('remove-skill')" :disabled="disabled" title="关闭技能">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
               </svg>
             </button>
           </div>
@@ -647,13 +649,33 @@ defineExpose({ focus, resetInput, reloadModels: () => loadAvailableModels(true) 
   gap: 12px;
 }
 
-.composer-tools, .composer-right {
+.composer-left,
+.composer-right {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.composer-right { margin-left: auto; }
+.composer-left {
+  min-width: 0;
+  flex: 1;
+}
+
+.composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.composer-right {
+  margin-left: auto;
+}
+
+.skill-strip {
+  display: flex;
+  align-items: center;
+  margin-top: 0;
+}
 
 .tool-btn,
 .send-btn {
@@ -825,18 +847,30 @@ defineExpose({ focus, resetInput, reloadModels: () => loadAvailableModels(true) 
   line-height: 1.5;
 }
 
-.skill-strip { display: flex; align-items: center; margin-top: 10px; }
 .skill-chip {
-  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 6px;
-  background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: 999px;
-  font-size: 12px; color: var(--text-secondary); cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px 0 6px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
 }
 .skill-chip-icon {
   width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center;
   border-radius: 999px; background: var(--bg-secondary); flex-shrink: 0;
 }
 .skill-chip-icon svg { display: block; }
-.skill-chip-text { font-weight: 500; }
+.skill-chip-text {
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
 .skill-chip-arrow { width: 12px; height: 12px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-tertiary); }
 .skill-chip-close { width: 18px; height: 18px; border: none; background: transparent; border-radius: 999px; color: var(--text-tertiary); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .skill-chip-close:hover:not(:disabled) { background: var(--bg-tertiary); }
