@@ -322,7 +322,7 @@ const props = defineProps({
   assistantMode: { type: String, default: 'rd' }
 })
 
-const emit = defineEmits(['send-message', 'switch-chat', 'create-session', 'launch-skill', 'guided-demo', 'open-scene-manager', 'open-prompt-manager', 'open-inference-manager', 'open-api-doc', 'open-ontology-manager', 'open-model-config'])
+const emit = defineEmits(['send-message', 'switch-chat', 'create-session', 'launch-skill', 'guided-demo', 'open-scene-manager', 'open-prompt-manager', 'open-inference-manager', 'open-api-doc', 'open-model-config'])
 
 const startGuidedDemo = (type) => {
   emit('guided-demo', { type })
@@ -398,7 +398,6 @@ const shortcuts = [
   { key: 'scene', icon: 'chart', label: '场景管理' },
   { key: 'prompt', icon: 'file', label: '提示词管理' },
   { key: 'inference', icon: 'cpu', label: '模型管理' },
-  { key: 'ontology', icon: 'network', label: '本体推理平台' },
   { key: 'api-doc', icon: 'docs', label: 'API 文档' },
   // 以下依赖未完整迁移的 API，暂不暴露入口：
   // workflow（高级 publish/execute）、mcp（外部工具 CRUD）、kb（import-dir）
@@ -551,10 +550,6 @@ const handleShortcut = (sc) => {
   }
   if (sc.key === 'inference') {
     emit('open-inference-manager')
-    return
-  }
-  if (sc.key === 'ontology') {
-    emit('open-ontology-manager')
     return
   }
   if (sc.key === 'api-doc') {

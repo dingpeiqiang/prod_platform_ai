@@ -4,9 +4,7 @@ import org.example.model.Models;
 import org.example.model.PlatformModels;
 import org.example.store.AuditStore;
 import org.example.store.InMemoryAuditStore;
-import org.example.store.InMemoryOntologyStore;
 import org.example.store.InMemorySnapshotStore;
-import org.example.store.OntologyStore;
 import org.example.store.SnapshotStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,15 +20,13 @@ public class IntegrativeReasonEngine {
     private static final Logger log = LoggerFactory.getLogger(IntegrativeReasonEngine.class);
 
     private final String namespace;
-    private final OntologyStore ontologyStore;
     private final SnapshotStore snapshotStore;
     private final AuditStore auditStore;
 
     public IntegrativeReasonEngine() { this("http://example.org/"); }
-    public IntegrativeReasonEngine(String namespace) { this(namespace, new InMemoryOntologyStore(), new InMemorySnapshotStore(), new InMemoryAuditStore()); }
-    public IntegrativeReasonEngine(String namespace, OntologyStore ontologyStore, SnapshotStore snapshotStore, AuditStore auditStore) {
+    public IntegrativeReasonEngine(String namespace) { this(namespace, new InMemorySnapshotStore(), new InMemoryAuditStore()); }
+    public IntegrativeReasonEngine(String namespace, SnapshotStore snapshotStore, AuditStore auditStore) {
         this.namespace = namespace.endsWith("/") ? namespace : namespace + "/";
-        this.ontologyStore = ontologyStore;
         this.snapshotStore = snapshotStore;
         this.auditStore = auditStore;
         log.info("[IntegrativeReasonEngine] 初始化完成, namespace={}", this.namespace);
@@ -39,7 +35,10 @@ public class IntegrativeReasonEngine {
     public Models.RetrieveFactsResponse retrieveFacts(Models.RetrieveFactsRequest req) {
         log.info("[retrieveFacts] 开始检索事实, entities={}, traceId={}", req.entities(), req.traceContext().traceId());
         long start = System.currentTimeMillis();
-        Map<String, Models.FactSet> factsMap = ontologyStore.retrieve(req.entities(), namespace);
+        Map<String, Models.FactSet> factsMap = new LinkedHashMap<>();
+        for (Models.EntityRef entity : req.entities()) {
+            factsMap.put(entity.normalizedUri(namespace), new Models.FactSet(Map.of()));
+        }
         String snapshotId = buildSnapshotId();
         Models.Snapshot snapshot = new Models.Snapshot(snapshotId, req.traceContext(), factsMap, 3600L);
         snapshotStore.save(snapshot);
@@ -232,46 +231,34 @@ public class IntegrativeReasonEngine {
     }
 
     public List<Map<String, Object>> allInstances() {
-        log.debug("[allInstances] 获取所有实例");
-        return ontologyStore.allInstances();
+        log.debug("[allInstances] 本体推理平台已移除");
+        return List.of();
     }
 
-    public void addInstance(String uri, String type, Map<String, Object> facts) {
-        log.info("[addInstance] 添加实例, uri={}, type={}, facts={}", uri, type, facts);
-        ontologyStore.addInstance(uri, type, facts);
-        log.info("[addInstance] 实例添加成功, uri={}", uri);
-    }
-
-    public void updateInstance(String uri, Map<String, Object> facts) {
-        log.info("[updateInstance] 更新实例, uri={}, facts={}", uri, facts);
-        ontologyStore.updateInstance(uri, facts);
-        log.info("[updateInstance] 实例更新成功, uri={}", uri);
-    }
-
-    public void deleteInstance(String uri) {
-        log.info("[deleteInstance] 删除实例, uri={}", uri);
-        ontologyStore.deleteInstance(uri);
-        log.info("[deleteInstance] 实例删除成功, uri={}", uri);
-    }
+    public void addInstance(String uri, String type, Map<String, Object> facts) { throw new UnsupportedOperationException("本体推理平台已移除"); }
+    public void updateInstance(String uri, Map<String, Object> facts) { throw new UnsupportedOperationException("本体推理平台已移除"); }
+    public void deleteInstance(String uri) { throw new UnsupportedOperationException("本体推理平台已移除"); }
 
     public Map<String, Object> stats() {
         log.debug("[stats] 获取统计信息");
-        Map<String, Object> stats = ontologyStore.stats();
-        log.debug("[stats] 统计信息: classCount={}, propertyCount={}, instanceCount={}",
-                stats.get("classCount"), stats.get("propertyCount"), stats.get("instanceCount"));
+        Map<String, Object> stats = new LinkedHashMap<>();
+        stats.put("classCount", 0);
+        stats.put("propertyCount", 0);
+        stats.put("instanceCount", 0);
+        stats.put("classes", List.of());
+        stats.put("properties", List.of());
+        log.debug("[stats] 统计信息: classCount={}, propertyCount={}, instanceCount={}", 0, 0, 0);
         return stats;
     }
 
     public Map<String, Object> importTtl(String ttlContent, boolean replace) {
-        log.info("[importTtl] 开始导入TTL, contentLength={}, replace={}",
-                ttlContent != null ? ttlContent.length() : 0, replace);
-        if (ttlContent == null || ttlContent.isBlank()) {
-            log.warn("[importTtl] TTL内容为空");
-            return Map.of("success", false, "message", "TTL内容不能为空");
-        }
-        Map<String, Object> result = Map.of("success", true, "message", "TTL导入功能待实现", "importedTriples", 0);
-        log.info("[importTtl] TTL导入完成, result={}", result);
-        return result;
+        log.info("[importTtl] 本体推理平台已移除, 不再支持TTL导入");
+        return Map.of("success", false, "message", "本体推理平台已移除");
+    }
+
+    public Map<String, Object> getGraphData() {
+        log.debug("[getGraphData] 获取本体图数据");
+        return ontologyStore.getGraphData();
     }
 
     private void appendAudit(Models.TraceContext context, Models.AuditEntry entry) { auditStore.append(context.traceId(), entry); }

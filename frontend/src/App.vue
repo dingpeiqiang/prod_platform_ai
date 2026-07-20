@@ -300,7 +300,6 @@
           <PromptManager v-else-if="activeManager === 'prompt'" @go-back="closeManager" />
           <InferencePlatformManager v-else-if="activeManager === 'inference'" @go-back="closeManager" />
           <ApiDoc v-else-if="activeManager === 'api-doc'" @go-back="closeManager" />
-          <OntologyReasoningManager v-else-if="activeManager === 'ontology'" @go-back="closeManager" />
         </div>
 
         <!-- 首页/欢迎页 -->
@@ -317,7 +316,6 @@
             @open-prompt-manager="openPromptManager"
             @open-inference-manager="openInferenceManager"
             @open-api-doc="openApiDocManager"
-            @open-ontology-manager="openOntologyManager"
             @open-model-config="openModelConfigManager"
           />
         </div>
@@ -345,7 +343,6 @@ import SceneManager from './components/SceneManager.vue'
 import PromptManager from './components/PromptManager.vue'
 import InferencePlatformManager from './components/InferencePlatformManager.vue'
 import ApiDoc from './components/ApiDoc.vue'
-import OntologyReasoningManager from './components/OntologyReasoningManager.vue'
 import ModelSelector from './components/ModelSelector.vue'
 import { useUserStore } from './stores/user'
 import { useLoadingStore } from './stores/loading'
@@ -1604,7 +1601,6 @@ const openSceneManager = () => { activeManager.value = 'scene' }
 const openPromptManager = () => { activeManager.value = 'prompt' }
 const openInferenceManager = () => { activeManager.value = 'inference' }
 const openApiDocManager = () => { activeManager.value = 'api-doc' }
-const openOntologyManager = () => { activeManager.value = 'ontology' }
 const closeManager = () => { activeManager.value = '' }
 
 // 登出
