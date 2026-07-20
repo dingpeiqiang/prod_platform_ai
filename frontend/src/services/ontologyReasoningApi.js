@@ -1,6 +1,6 @@
 import { request } from './httpClient'
 
-const ONTOLOGY_BASE = '/api/v1/reasoning'
+const ONTOLOGY_BASE = '/reasoning'
 
 export async function nlDiscover(req) {
   try {
