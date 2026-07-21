@@ -127,7 +127,7 @@ public class IntegrativeReasonEngine {
             @SuppressWarnings("unchecked")
             Map<String, Map<String, Object>> retrieved = ontologyStore == null
                     ? Map.of()
-                    : (Map<String, Map<String, Object>>) ontologyStore.retrieve(List.of(new Models.EntityRef(entityId, "Entity", "ontology")), namespace);
+                    : (Map<String, Map<String, Object>>) (Map<?, ?>) ontologyStore.retrieve(List.of(new Models.EntityRef(entityId, "Entity", "ontology")), namespace);
             facts.put(entityId, new LinkedHashMap<>(retrieved.values().stream().findFirst().orElse(Map.of())));
         }
         for (PlatformModels.HypotheticalTriple triple : triples) {
