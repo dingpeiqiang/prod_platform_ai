@@ -228,7 +228,8 @@ public class OntologyService {
     }
 
     private void appendAudit(String traceId, Map<String, Object> entry) {
-        audits.computeIfAbsent(traceId, key -> new ArrayList<>()).add(new LinkedHashMap<>(entry));
+        String key = traceId != null ? traceId : "default";
+        audits.computeIfAbsent(key, k -> new ArrayList<>()).add(new LinkedHashMap<>(entry));
     }
 
     private String decide(String policySetId, Map<String, Object> facts, String expectationType) {

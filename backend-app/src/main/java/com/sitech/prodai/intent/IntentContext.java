@@ -237,7 +237,7 @@ public class IntentContext {
                 return String.valueOf(val);
             }
         }
-        return null;
+        return "user-" + java.util.UUID.randomUUID().toString().substring(0, 8);
     }
 
     /** 从 request map 中提取 sessionId */
@@ -254,6 +254,6 @@ public class IntentContext {
                 return String.valueOf(val);
             }
         }
-        return null;
+        return "session-" + java.util.UUID.randomUUID().toString().substring(0, 8);
     }
 }
