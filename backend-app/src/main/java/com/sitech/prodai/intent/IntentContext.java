@@ -16,6 +16,10 @@ public class IntentContext {
     private String intentResult = "";  // 原始 LLM JSON 字符串
     private String intentType = "";
     private double confidence;
+    private String action = "";
+    private String formCode = "";
+    private String formName = "";
+    private Map<String, Object> extractedFields = new HashMap<>();
 
     // ── 本体与场景数据 ────────────────────────────────
     private Map<String, Map<String, Object>> ontologies = new HashMap<>();
@@ -81,6 +85,38 @@ public class IntentContext {
 
     public void setConfidence(double confidence) {
         this.confidence = confidence;
+    }
+
+    public String getAction() {
+        return action;
+    }
+
+    public void setAction(String action) {
+        this.action = action != null ? action : "";
+    }
+
+    public String getFormCode() {
+        return formCode;
+    }
+
+    public void setFormCode(String formCode) {
+        this.formCode = formCode != null ? formCode : "";
+    }
+
+    public String getFormName() {
+        return formName;
+    }
+
+    public void setFormName(String formName) {
+        this.formName = formName != null ? formName : "";
+    }
+
+    public Map<String, Object> getExtractedFields() {
+        return extractedFields;
+    }
+
+    public void setExtractedFields(Map<String, Object> extractedFields) {
+        this.extractedFields = extractedFields != null ? extractedFields : new HashMap<>();
     }
 
     public Map<String, Map<String, Object>> getOntologies() {

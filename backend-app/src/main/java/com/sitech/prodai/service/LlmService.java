@@ -11,7 +11,9 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
 import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
@@ -115,9 +117,17 @@ public class LlmService {
 
         String cacheKey = normalizedBaseUrl + "|" + apiKey;
         return clientCache.computeIfAbsent(cacheKey, key -> {
+            SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+            requestFactory.setConnectTimeout(30_000);
+            requestFactory.setReadTimeout(120_000);
+
+            RestClient.Builder restClientBuilder = RestClient.builder()
+                    .requestFactory(requestFactory);
+
             OpenAiApi api = OpenAiApi.builder()
                     .baseUrl(normalizedBaseUrl)
                     .apiKey(apiKey)
+                    .restClientBuilder(restClientBuilder)
                     .build();
             org.springframework.ai.openai.OpenAiChatModel model = org.springframework.ai.openai.OpenAiChatModel.builder()
                     .openAiApi(api)
@@ -232,10 +242,6 @@ public class LlmService {
         if (!properties.getLlm().isEnabled()) {
             throw new IllegalStateException(
                     "LLM is disabled. Set LLM_ENABLED=true and configure LLM_API_KEY / LLM_BASE_URL / LLM_MODEL.");
-        }
-        String key = System.getenv().getOrDefault("LLM_API_KEY", "");
-        if (key.isBlank() || "sk-placeholder".equals(System.getProperty("spring.ai.openai.api-key", ""))) {
-            // soft check: allow placeholder when enabled=true for local wiring tests against real env
         }
     }
 

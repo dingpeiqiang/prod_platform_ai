@@ -34,6 +34,10 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
 
         try {
             filterChain.doFilter(request, response);
+        } catch (Exception e) {
+            log.error("[REQUEST-ERROR] {} {} | exception={} | message={} | requestId={}",
+                    method, uri, e.getClass().getSimpleName(), e.getMessage(), requestId, e);
+            throw e;
         } finally {
             long duration = System.currentTimeMillis() - startTime;
             int status = response.getStatus();

@@ -1,372 +1,181 @@
-import { ref } from 'vue';
-import { genId, formatMarkdownText } from '../utils/chatUtils.js';
-import { saveMessage, updateMessage } from '../services/chatApi.js';
-import { getEventHandler, getPostProcessor, registerEventHandler, registerPostProcessor } from './useIntentRegistry.js';
-export function useChatStream(messagesRef, currentDbSessionIdRef) {
- const isStreaming = ref(false);
- let abortCtrl = null;
- const stopStream = () => {
- if (abortCtrl) {
- abortCtrl.abort();
- abortCtrl = null;
- }
- };
- const handleEvent = (data, idx) => {
- const msg = messagesRef.value[idx];
- if (!msg)
- return;
- switch (data.type) {
- case 'thinking':
-case 'decision':
-case 'executing':
-case 'step_start': {
- const last = msg.reasoning[msg.reasoning.length - 1];
- if (data.type === 'step_start') {
- // 处理工作流节点开始事件
- const content = `🚀 执行节点: ${data.name || data.step}`;
- if (last && last.content === content)
- break;
- msg.reasoning.push({ type: 'thinking', content, result: null });
- } else {
- if (last && last.content === data.content)
- break;
- msg.reasoning.push({ type: 'thinking', content: data.content, result: data.result || null });
- }
- // 保持处理步骤默认折叠，用户需手动展开
- // msg.showReasoning = true;
- msg.latestStepIndex = msg.reasoning.length - 1;
- if (currentDbSessionIdRef.value && msg.dbMessageId) {
- const stepTypeMap = { thinking: 'thinking', decision: 'decision', executing: 'action' };
- const existingMeta = msg.metadata || {};
- let reasoningFull = [];
- if (existingMeta.reasoning_full) {
- try {
- reasoningFull = JSON.parse(existingMeta.reasoning_full);
- }
- catch { }
- }
- reasoningFull.push({
- type: stepTypeMap[data.type] || 'thinking',
- content: data.content,
- result: data.result || null,
- _index: reasoningFull.length
- });
- updateMessage(currentDbSessionIdRef.value, msg.dbMessageId, {
- metadata: {
- ...existingMeta,
- reasoning_full: JSON.stringify(reasoningFull),
- stream_status: 'streaming'
- }
- }).catch(err => console.warn('[SSE] 更新 thinking 步骤失败:', err));
- }
- break;
- }
- case 'reasoning': {
- const steps = msg.reasoning;
- if (steps && steps.length) {
- const lastThinkingIdx = steps.reduce((acc, s, i) => s.type === 'thinking' ? i : acc, -1);
- if (lastThinkingIdx >= 0) {
- const target = steps[lastThinkingIdx];
- if (!target.reasoning) {
- target.reasoning = '';
- target._showReasoning = false;
- }
- target.reasoning += data.content || '';
- }
- }
- break;
- }
- case 'text_start':
- msg.streamText = '';
- break;
- case 'text':
- msg.streamText = (msg.streamText || '') + (data.content || '');
- break;
- case 'text_end':
- if (msg.streamText && !msg._formatted) {
- msg.streamText = formatMarkdownText(msg.streamText);
- msg._formatted = true;
- }
- break;
- case 'intent': {
- const { intentType, action, data: intentData } = data;
- const handler = getEventHandler(intentType);
- if (handler) {
- handler({ type: intentType, action, content: intentData }, msg);
- }
- break;
- }
- case 'result': {
- const parsed = typeof data.content === 'string' ? JSON.parse(data.content) : data.content;
- msg.intentResult = parsed;
- break;
- }
- case 'config':
- case 'delete_form':
- case 'manage_history':
- case 'validation_fail':
- case 'validation_pass': {
- const handler = getEventHandler(data.type);
- if (handler) {
- handler(data, msg);
- }
- break;
- }
- case 'step_complete': {
- // 处理工作流节点完成事件
- const resultStr = data.result ? ` (结果: ${JSON.stringify(data.result)})` : '';
- msg.reasoning.push({ type: 'thinking', content: `✅ 节点完成: ${data.name || data.step}${resultStr}`, result: data.result });
- msg.latestStepIndex = msg.reasoning.length - 1;
- break;
- }
- case 'step_failed': {
- // 处理工作流节点失败事件
- const errorMsg = data.error ? `: ${data.error}` : '';
- msg.reasoning.push({ type: 'error', content: `❌ 节点失败: ${data.name || data.step}${errorMsg}` });
- msg.latestStepIndex = msg.reasoning.length - 1;
- break;
- }
- case 'workflow_start': {
- // 处理工作流开始事件
- msg.reasoning.push({ type: 'thinking', content: `🔄 开始执行工作流: ${data.definition_id || data.workflow_id}` });
- msg.latestStepIndex = msg.reasoning.length - 1;
- break;
- }
- case 'workflow_complete': {
- // 处理工作流完成事件
- msg.reasoning.push({ type: 'thinking', content: `🎉 工作流执行完成` });
- msg.latestStepIndex = msg.reasoning.length - 1;
- break;
- }
- case 'error': {
- let errMsg = data.content || data.message || '未知错误';
- if (data.error_code) {
- errMsg += ` [${data.error_code}]`;
- }
- if (data.recoverable === false) {
- errMsg += ' (不可恢复)';
- }
- msg.reasoning.push({ type: 'error', content: errMsg });
- break;
- }
- case 'tool_error': {
- let errorContent = `⚠️ 工具 ${data.tool} 执行失败: ${data.error}`;
- if (data.error_code) {
- errorContent += ` [${data.error_code}]`;
- }
- if (data.recoverable === false) {
- errorContent += ' (不可恢复)';
- }
- msg.reasoning.push({ type: 'error', content: errorContent });
- break;
- }
- }
- };
- const sendStreamMessage = async (text, { formCode = null, formData = null, modelConfig = null, workflowResume = null } = {}) => {
-    if (!currentDbSessionIdRef.value)
-        return;
-    const aiMsg = {
-      id: genId(), role: 'assistant',
-      reasoning: [], streamText: '', content: '',
-      showReasoning: false,
-      done: false, type: 'chat'
-    };
-    messagesRef.value.push(aiMsg);
-    const msgIdx = messagesRef.value.length - 1;
-    let dbMessageId = null;
-    if (currentDbSessionIdRef.value) {
-      try {
-        const saved = await saveMessage(currentDbSessionIdRef.value, {
-          role: 'assistant',
-          content: '',
-          reasoning: [],
-          metadata: { stream_status: 'streaming' }
-        });
-        if (saved?.message_id) {
-          dbMessageId = saved.message_id;
-          aiMsg.dbMessageId = dbMessageId;
-        }
-      }
-      catch (e) {
-        console.warn('[SSE] 初始保存 AI 消息失败:', e);
-      }
-    }
-    isStreaming.value = true;
-    abortCtrl = new AbortController();
-    try {
-      const chatHistory = messagesRef.value
-        .filter(m => m.role === 'user' || (m.role === 'assistant' && m.done && m.content))
-        .slice(0, -1)
-        .slice(-20)
-        .map(m => ({ role: m.role, content: m.content || m.streamText || '' }));
-      const requestBody = {
-        messages: [...chatHistory, { role: 'user', content: text }]
-      };
-      if (formCode)
-        requestBody.formCode = formCode;
-      if (formData)
-        requestBody.formData = formData;
-      if (modelConfig)
-        requestBody.modelConfig = modelConfig;
-      if (workflowResume)
-        requestBody.workflowResume = workflowResume;
- const resp = await fetch('/api/v1/chat/stream', {
- method: 'POST',
- headers: { 'Content-Type': 'application/json' },
- body: JSON.stringify(requestBody),
- signal: abortCtrl.signal
- });
- if (!resp.ok)
- throw new Error(`HTTP ${resp.status}`);
- const reader = resp.body.getReader();
- const decoder = new TextDecoder();
- let buffer = '';
- let intentData = null;
- let intentType = 'form';
- let eventCount = 0;
- while (true) {
- const { done, value } = await reader.read();
- if (done)
- break;
- buffer += decoder.decode(value, { stream: true });
- const frames = buffer.split('\n\n');
- buffer = frames.pop();
- for (const frame of frames) {
- if (!frame.startsWith('data:'))
- continue;
- try {
- const data = JSON.parse(frame.slice(5).trim());
- eventCount++;
- if (eventCount <= 3)
- console.log('[SSE] 事件 #' + eventCount + ':', data.type, data.content?.substring?.(0, 50) || '');
- handleEvent(data, msgIdx);
- if (data.type === 'done') {
- if (!intentType && data.intentType) {
- intentType = data.intentType;
- }
- else if (!intentType && data.isForm) {
- intentType = 'form';
- }
- if (data.intentData)
- intentData = data.intentData;
- }
- if (data.type === 'intent' && data.intentType) {
- intentType = data.intentType;
- if (data.data) {
- intentData = data.data;
- const msg = messagesRef.value[msgIdx];
- if (msg) {
- msg.metadata = {
- intentType: data.data.intentType,
- formCode: data.data.formCode,
- extractedFields: data.data.extractedFields,
- confidence: data.data.confidence,
- model: data.data.model
- };
- }
- }
- }
- if (data.type === 'result') {
- try {
- const parsed = typeof data.content === 'string' ? JSON.parse(data.content) : data.content;
- if (parsed?.formCode && !intentData) {
- intentData = parsed;
- }
- }
- catch { }
- }
- }
- catch { }
- }
- }
- const msg = messagesRef.value[msgIdx];
- if (msg) {
- msg.done = true;
- // 处理步骤默认保持折叠，只有发生错误时才自动展开
- // const hasReasoning = msg.reasoning.some(r => r.reasoning && r.reasoning.trim());
- // msg.showReasoning = msg.reasoning.some(r => r.type === 'error') || hasReasoning || false;
- msg.showReasoning = msg.reasoning.some(r => r.type === 'error') || false;
- const postProcessor = getPostProcessor(intentType);
- if (postProcessor) {
- try {
- await postProcessor(msg, intentData);
- }
- catch (e) {
- console.error('[SSE 流结束] 后处理器执行异常:', e);
- }
- }
- else {
- msg.content = msg.streamText;
- }
- if (currentDbSessionIdRef.value) {
- const finalMetadata = {
- ...(msg.metadata || {}),
- reasoning_full: JSON.stringify(msg.reasoning.map((r, i) => ({ ...r, _index: i }))),
- reasoning: msg.reasoning.map(s => s.content || '').join('\n'),
- stream_status: 'done',
- done: 'true',
- intent_type: intentType || undefined,
- form_code: intentData?.formCode || undefined,
- extracted_fields: intentData?.extractedFields || undefined,
- confidence: intentData?.confidence != null ? String(intentData.confidence) : undefined,
- model: intentData?.model || undefined
- };
- Object.keys(finalMetadata).forEach(k => finalMetadata[k] === undefined && delete finalMetadata[k]);
- if (msg.dbMessageId) {
- await updateMessage(currentDbSessionIdRef.value, msg.dbMessageId, {
- content: msg.content || msg.streamText || '',
- metadata: finalMetadata
- });
- }
- else {
- await saveMessage(currentDbSessionIdRef.value, {
- role: 'assistant',
- content: msg.content || msg.streamText || '',
- reasoning: msg.reasoning,
- metadata: finalMetadata
- });
- }
- }
- }
- }
- catch (err) {
- if (err.name !== 'AbortError') {
- console.error(err);
- const msg = messagesRef.value[msgIdx];
- if (msg) {
- msg.done = true;
- msg.showReasoning = true;
- msg.reasoning.push({ type: 'error', content: '请求出错：' + err.message });
- msg.content = '抱歉，遇到了一些问题，请稍后重试。';
- if (currentDbSessionIdRef.value) {
- await saveMessage(currentDbSessionIdRef.value, {
- role: 'assistant',
- content: msg.content,
- reasoning: msg.reasoning,
- metadata: msg.metadata || null
- }).catch(() => { });
- }
- }
- }
- else {
- const msg = messagesRef.value[msgIdx];
- if (msg) {
- msg.done = true;
- msg.showReasoning = false;
- if (!msg.content)
- msg.content = msg.streamText || '（已停止）';
- }
- }
- }
- finally {
- isStreaming.value = false;
- abortCtrl = null;
- }
- };
- return {
- isStreaming,
- stopStream,
- sendStreamMessage
- };
+import { ref } from 'vue'
+import { sendMessageWithModel } from '../services/chatApi.js'
+import { getEventHandler, getPostProcessor } from './useIntentRegistry.js'
+
+function uid(prefix = 'msg') {
+  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
 }
 
+export function useChatStream() {
+  const messages = ref([])
+  const streaming = ref(false)
+  const abortRef = ref(null)
+
+  const pushUserMessage = (text, meta = {}) => {
+    const msg = {
+      id: uid('user'),
+      role: 'user',
+      type: 'chat',
+      content: text,
+      done: true,
+      timestamp: Date.now(),
+      ...meta,
+    }
+    messages.value = [...messages.value, msg]
+    return msg
+  }
+
+  const upsertAssistantMessage = (patch) => {
+    const list = [...messages.value]
+    let idx = list.findIndex(m => m.role === 'assistant' && !m.done)
+    if (idx === -1) {
+      list.push({
+        id: uid('ai'),
+        role: 'assistant',
+        type: 'chat',
+        content: '',
+        streamText: '',
+        reasoning: [],
+        showReasoning: true,
+        loading: true,
+        done: false,
+        timestamp: Date.now(),
+        intentType: '',
+        intentData: null,
+        contentType: '',
+        stats: null,
+      })
+      idx = list.length - 1
+    }
+    const current = { ...list[idx] }
+    for (const [key, value] of Object.entries(patch)) {
+      if (key === 'reasoningStep') {
+        current.reasoning = [...(current.reasoning || []), value]
+        current.showReasoning = true
+      } else {
+        current[key] = value
+      }
+    }
+    list[idx] = current
+    messages.value = list
+    return list[idx]
+  }
+
+  const applyIntentEvent = (data) => {
+    const type = data.intentType || data.type
+    const handler = getEventHandler(type)
+    const current = messages.value.find(m => m.role === 'assistant' && !m.done) || {}
+    if (handler) handler(data, current)
+    upsertAssistantMessage({
+      intentType: type,
+      action: data.action || current.action || '',
+      intentData: { ...(current.intentData || {}), ...(data.data || data) },
+      stats: { ...(current.stats || {}), ...(data.stats || {}) },
+    })
+  }
+
+  const sendMessage = async ({ text, scene = '', modelConfig = null, history = [] }) => {
+    if (!text || streaming.value) return
+    streaming.value = true
+    pushUserMessage(text)
+    let streamText = ''
+
+    try {
+      const payload = [
+        ...history.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content || '' })),
+        { role: 'user', content: text },
+      ]
+
+      upsertAssistantMessage({ loading: true, streamText: '' })
+
+      const resp = await sendMessageWithModel(payload, { modelConfig, scene })
+      abortRef.value = resp?.abortCtrl || null
+      const reader = resp.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const frames = buffer.split('\n\n')
+        buffer = frames.pop()
+
+        for (const frame of frames) {
+          if (!frame.startsWith('data:')) continue
+          try {
+            const data = JSON.parse(frame.slice(5).trim())
+            if (data.type === 'thinking') {
+              upsertAssistantMessage({
+                reasoningStep: {
+                  type: 'thinking',
+                  content: data.content,
+                  metadata: data.metadata || {},
+                  timestamp: Date.now(),
+                },
+              })
+            } else if (data.type === 'text') {
+              streamText += data.content || ''
+              upsertAssistantMessage({ streamText, loading: false })
+            } else if (data.type === 'stats') {
+              upsertAssistantMessage({ stats: data })
+            } else if (data.type === 'done') {
+              const doneIntent = data.intentType || (data.intentData && data.intentData.intentType) || ''
+              const doneAction = (data.intentData && data.intentData.action) || data.action || ''
+              const doneStats = (data.intentData && data.intentData.stats) || data.stats || null
+              const doneIntentData = data.intentData || null
+              upsertAssistantMessage({
+                done: true,
+                loading: false,
+                intentType: doneIntent,
+                action: doneAction,
+                stats: doneStats,
+                intentData: doneIntentData,
+                contentType: data.contentType || 'chat',
+              })
+            } else if (data.type === 'intent') {
+              applyIntentEvent(data)
+            } else if (data.type === 'product_ops_query' || data.type === 'product_ops_policy' || data.type === 'product_ops_reason') {
+              applyIntentEvent({ ...data, intentType: data.type })
+            }
+          } catch (err) {
+            console.warn('[useChatStream] SSE frame parse error:', err)
+          }
+        }
+      }
+
+      const finalMsg = messages.value.find(m => m.role === 'assistant' && m.done) || messages.value[messages.value.length - 1]
+      if (finalMsg) {
+        const post = getPostProcessor(finalMsg.intentType)
+        if (post) post(finalMsg, finalMsg)
+      }
+
+      upsertAssistantMessage({ done: true, loading: false })
+    } catch (e) {
+      console.warn('[useChatStream] sendMessage error:', e)
+      upsertAssistantMessage({
+        done: true,
+        loading: false,
+        content: streamText || '处理过程中出现异常，请稍后重试。',
+        streamText: streamText || '处理过程中出现异常，请稍后重试。',
+      })
+    } finally {
+      streaming.value = false
+      abortRef.value = null
+    }
+  }
+
+  const stop = () => {
+    if (abortRef.value && typeof abortRef.value.abort === 'function') {
+      abortRef.value.abort()
+    }
+    streaming.value = false
+  }
+
+  return {
+    messages,
+    streaming,
+    sendMessage,
+    stop,
+  }
+}

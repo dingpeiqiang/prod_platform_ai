@@ -1,6 +1,7 @@
 package com.sitech.prodai.service;
 
 import org.example.model.Models.EntityRef;
+import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -8,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+@Service
 public class Rdf4jOntologyStore implements OntologyStore {
 
     private final Map<String, String> classRegistry = new ConcurrentHashMap<>();
@@ -54,7 +56,11 @@ public class Rdf4jOntologyStore implements OntologyStore {
 
     @Override
     public List<Map<String, Object>> sparqlSelect(String query) {
-        return new ArrayList<>(instances.values()).stream().map(LinkedHashMap::new).toList();
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Map<String, Object> item : instances.values()) {
+            rows.add(new LinkedHashMap<>(item));
+        }
+        return rows;
     }
 
     @Override
@@ -69,7 +75,11 @@ public class Rdf4jOntologyStore implements OntologyStore {
 
     @Override
     public List<Map<String, Object>> allInstances() {
-        return new ArrayList<>(instances.values()).stream().map(LinkedHashMap::new).toList();
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Map<String, Object> item : instances.values()) {
+            rows.add(new LinkedHashMap<>(item));
+        }
+        return rows;
     }
 
     @Override
@@ -130,5 +140,9 @@ public class Rdf4jOntologyStore implements OntologyStore {
 
     public Map<String, Object> importTtl(String ttlContent, boolean replace) {
         return Map.of("success", true, "message", "TTL 导入成功", "replace", replace);
+    }
+
+    public List<Map<String, Object>> sparqlQuery(String query) {
+        return sparqlSelect(query);
     }
 }

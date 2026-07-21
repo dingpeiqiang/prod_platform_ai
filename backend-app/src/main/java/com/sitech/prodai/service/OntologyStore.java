@@ -18,4 +18,7 @@ public interface OntologyStore {
     void updateInstance(String uri, Map<String, Object> facts);
     void deleteInstance(String uri);
     Map<String, Object> stats();
+    Map<String, Object> getGraphData();
+    Map<String, Object> importTtl(String ttlContent, boolean replace);
+    Map<String, Object> getEntity(String uri);
 }

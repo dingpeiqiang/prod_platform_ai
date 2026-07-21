@@ -6,6 +6,7 @@ import org.example.store.AuditStore;
 import org.example.store.InMemoryAuditStore;
 import org.example.store.InMemorySnapshotStore;
 import org.example.store.SnapshotStore;
+import com.sitech.prodai.service.OntologyStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,13 +23,16 @@ public class IntegrativeReasonEngine {
     private final String namespace;
     private final SnapshotStore snapshotStore;
     private final AuditStore auditStore;
+    private final OntologyStore ontologyStore;
 
     public IntegrativeReasonEngine() { this("http://example.org/"); }
-    public IntegrativeReasonEngine(String namespace) { this(namespace, new InMemorySnapshotStore(), new InMemoryAuditStore()); }
-    public IntegrativeReasonEngine(String namespace, SnapshotStore snapshotStore, AuditStore auditStore) {
+    public IntegrativeReasonEngine(String namespace) { this(namespace, new InMemorySnapshotStore(), new InMemoryAuditStore(), null); }
+    public IntegrativeReasonEngine(String namespace, SnapshotStore snapshotStore, AuditStore auditStore) { this(namespace, snapshotStore, auditStore, null); }
+    public IntegrativeReasonEngine(String namespace, SnapshotStore snapshotStore, AuditStore auditStore, OntologyStore ontologyStore) {
         this.namespace = namespace.endsWith("/") ? namespace : namespace + "/";
         this.snapshotStore = snapshotStore;
         this.auditStore = auditStore;
+        this.ontologyStore = ontologyStore;
         log.info("[IntegrativeReasonEngine] 初始化完成, namespace={}", this.namespace);
     }
 
@@ -120,7 +124,10 @@ public class IntegrativeReasonEngine {
                 entityIds, triples.size(), policySetId, tenantId);
         Map<String, Map<String, Object>> facts = new LinkedHashMap<>();
         for (String entityId : entityIds) {
-            facts.put(entityId, new LinkedHashMap<>(ontologyStore.retrieve(List.of(new Models.EntityRef(entityId, "Entity", "ontology")), namespace).values().iterator().next().root()));
+            Map<String, Object> retrieved = ontologyStore == null
+                    ? Map.of()
+                    : ontologyStore.retrieve(List.of(new Models.EntityRef(entityId, "Entity", "ontology")), namespace);
+            facts.put(entityId, new LinkedHashMap<>(retrieved.values().stream().findFirst().map(v -> (Map<String, Object>) v).orElse(Map.of())));
         }
         for (PlatformModels.HypotheticalTriple triple : triples) {
             String uri = triple.subject().startsWith("http") ? triple.subject() : namespace + triple.subject();
@@ -136,17 +143,17 @@ public class IntegrativeReasonEngine {
 
     public PlatformModels.SchemaResponse schema() {
         log.debug("[schema] 获取Schema信息");
-        return new PlatformModels.SchemaResponse(ontologyStore.classes(), ontologyStore.properties(), Instant.now());
+        return new PlatformModels.SchemaResponse(ontologyStore == null ? List.of() : ontologyStore.classes(), ontologyStore == null ? List.of() : ontologyStore.properties(), Instant.now());
     }
 
     public PlatformModels.CatalogResponse schemaCatalog() {
         log.debug("[schemaCatalog] 获取Schema目录");
-        return new PlatformModels.CatalogResponse(ontologyStore.classes(), ontologyStore.properties());
+        return new PlatformModels.CatalogResponse(ontologyStore == null ? List.of() : ontologyStore.classes(), ontologyStore == null ? List.of() : ontologyStore.properties());
     }
 
     public PlatformModels.SchemaDetailResponse schemaDetail(String className) {
         log.debug("[schemaDetail] 获取Schema详情, className={}", className);
-        return new PlatformModels.SchemaDetailResponse(className, ontologyStore.samplesFor(className));
+        return new PlatformModels.SchemaDetailResponse(className, ontologyStore == null ? List.of() : ontologyStore.samplesFor(className));
     }
 
     public PlatformModels.NlQueryResponse nlQuery(String question) {
@@ -155,7 +162,7 @@ public class IntegrativeReasonEngine {
         String className = normalized.contains("customer") || normalized.contains("客户") ? "Customer" : ontologyStore.classes().stream().findFirst().orElse("Customer");
         schemaDetail(className);
         String sparql = "SELECT ?entity ?vipLevel WHERE { ?entity a " + className + " . OPTIONAL { ?entity vipLevel ?vipLevel } } LIMIT 100";
-        List<Map<String, Object>> results = ontologyStore.sparqlSelect(sparql);
+        List<Map<String, Object>> results = ontologyStore == null ? List.of() : ontologyStore.sparqlSelect(sparql);
         String answer = results.isEmpty() ? "查询结果为空。" : className + " 的示例实体是 Customer_Li，会员等级为 Gold。";
         appendAudit(new Models.TraceContext(null, "marketing_tenant", null), new Models.AuditEntry("nl.query", Instant.now(), Map.of("question", question, "sparql", sparql)));
         log.info("[nlQuery] 完成自然语言查询, sparql={}, resultsCount={}", sparql, results.size());
@@ -258,7 +265,7 @@ public class IntegrativeReasonEngine {
 
     public Map<String, Object> getGraphData() {
         log.debug("[getGraphData] 获取本体图数据");
-        return ontologyStore.getGraphData();
+        return ontologyStore == null ? Map.of() : ontologyStore.getGraphData();
     }
 
     private void appendAudit(Models.TraceContext context, Models.AuditEntry entry) { auditStore.append(context.traceId(), entry); }

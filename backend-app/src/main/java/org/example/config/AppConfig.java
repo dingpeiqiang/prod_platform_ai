@@ -24,7 +24,7 @@ public class AppConfig {
     public IntegrativeReasonEngine integrativeReasonEngine(
             @Value("${onto.namespace:http://example.org/}") String namespace,
             OntologyStore ontologyStore) {
-        return new IntegrativeReasonEngine(namespace, new InMemorySnapshotStore(), new InMemoryAuditStore());
+        return new IntegrativeReasonEngine(namespace, new InMemorySnapshotStore(), new InMemoryAuditStore(), ontologyStore);
     }
 
     @Bean
