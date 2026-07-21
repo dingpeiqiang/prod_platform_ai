@@ -46,6 +46,12 @@ public class ChatCompletionRequest {
         private String role;
         private String content;
 
+        public ChatMessage() {}
+        public ChatMessage(String role, String content) {
+            this.role = role;
+            this.content = content;
+        }
+
         public String getRole() {
             return role;
         }

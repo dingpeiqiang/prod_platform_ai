@@ -93,12 +93,38 @@ public class OntologyService {
 
     public Map<String, Object> nlQuery(String question) {
         String normalized = question == null ? "" : question.toLowerCase();
+        boolean wantProduct = normalized.contains("5g") || normalized.contains("套餐") || normalized.contains("product")
+                || normalized.contains("在售") || normalized.contains("商品");
+        boolean wantRisk = normalized.contains("风险") || normalized.contains("零资费") || normalized.contains("稽核");
+
+        // 复合问法（如「在售5G套餐和风险商品」）合并两路结果
+        if (wantProduct && wantRisk) {
+            String productSparql = "SELECT ?product ?name ?growth ?users ?status WHERE { ?product a <http://example.org/Product> . OPTIONAL { ?product <http://example.org/productName> ?name } OPTIONAL { ?product <http://example.org/revenueGrowth> ?growth } OPTIONAL { ?product <http://example.org/newUserMonth> ?users } OPTIONAL { ?product <http://example.org/status> ?status } } ORDER BY ASC(?growth) LIMIT 20";
+            String riskSparql = "SELECT ?product ?name ?isZeroFee ?status WHERE { ?product a <http://example.org/Product> . OPTIONAL { ?product <http://example.org/productName> ?name } OPTIONAL { ?product <http://example.org/isZeroFee> ?isZeroFee } OPTIONAL { ?product <http://example.org/status> ?status } } LIMIT 50";
+            List<Map<String, Object>> merged = new ArrayList<>();
+            for (Map<String, Object> row : rdf4jStore.sparqlQuery(productSparql)) {
+                Map<String, Object> tagged = new LinkedHashMap<>(row);
+                tagged.putIfAbsent("_bucket", "在售/增长");
+                merged.add(tagged);
+            }
+            for (Map<String, Object> row : rdf4jStore.sparqlQuery(riskSparql)) {
+                Map<String, Object> tagged = new LinkedHashMap<>(row);
+                tagged.putIfAbsent("_bucket", "风险/零资费");
+                merged.add(tagged);
+            }
+            return Map.of(
+                    "answer", "已查询在售产品增长指标与风险/零资费相关商品",
+                    "sparql", productSparql + "\n---\n" + riskSparql,
+                    "results", merged
+            );
+        }
+
         String sparql;
         String answer;
-        if (normalized.contains("5g") || normalized.contains("套餐") || normalized.contains("product")) {
+        if (wantProduct) {
             sparql = "SELECT ?product ?name ?growth ?users WHERE { ?product a <http://example.org/Product> . OPTIONAL { ?product <http://example.org/productName> ?name } OPTIONAL { ?product <http://example.org/revenueGrowth> ?growth } OPTIONAL { ?product <http://example.org/newUserMonth> ?users } } ORDER BY ASC(?growth) LIMIT 20";
             answer = "查询在售产品及其增长指标";
-        } else if (normalized.contains("风险") || normalized.contains("零资费") || normalized.contains("稽核")) {
+        } else if (wantRisk) {
             sparql = "SELECT ?product ?name ?isZeroFee ?status WHERE { ?product a <http://example.org/Product> . OPTIONAL { ?product <http://example.org/productName> ?name } OPTIONAL { ?product <http://example.org/isZeroFee> ?isZeroFee } OPTIONAL { ?product <http://example.org/status> ?status } } LIMIT 50";
             answer = "查询零资费或风险相关产品";
         } else if (normalized.contains("会员等级") || normalized.contains("vip")) {
@@ -228,7 +254,8 @@ public class OntologyService {
     }
 
     private void appendAudit(String traceId, Map<String, Object> entry) {
-        String key = traceId != null ? traceId : "default";
+        // ConcurrentHashMap 不允许 null key；请求未带 session/trace 时用默认桶
+        String key = (traceId != null && !traceId.isBlank()) ? traceId : "default";
         audits.computeIfAbsent(key, k -> new ArrayList<>()).add(new LinkedHashMap<>(entry));
     }
 

@@ -163,14 +163,19 @@ public class ChatStreamController {
 
     private String buildIntentPrompt(String messagesText, String lastUserMessage, String ontologiesInfo, String scene) {
         String sceneHint = scene == null || scene.isBlank() ? "" : "（当前前端场景：" + scene + "）";
+        String historyBlock = "";
+        if (!messagesText.isBlank()) {
+            historyBlock = "\n\n对话上下文（按时间顺序，最新在最后）：\n" + messagesText;
+        }
         return "你是一个 AI 原生意图识别助手。请根据用户输入判断意图类型，并优先识别产商品运营场景" + sceneHint + "。\n\n"
                 + "可用意图类型：\n"
                 + "- chat: 纯聊天/问答\n"
                 + "- form: 生成表单\n"
                 + "- product_ops_query: 产商品市场洞察、在售查询、竞品对比、指标查询\n"
                 + "- product_ops_policy: 产商品立项研判、规则评估、风险稽核\n"
-                + "- product_ops_reason: 产商品异动归因、证据链解释、审计追溯\n\n"
-                + "用户最后一条消息：" + lastUserMessage + "\n\n"
+                + "- product_ops_reason: 产商品异动归因、证据链解释、审计追溯\n"
+                + historyBlock + "\n\n"
+                + "用户最新消息：" + lastUserMessage + "\n\n"
                 + "请输出 JSON 格式的意图识别结果：\n"
                 + "{\"intentType\": \"意图类型\", \"action\": \"子操作\", \"confidence\": 0.0-1.0, \"extractedFields\": {}}\n"
                 + "仅输出 JSON，不要其他内容。";

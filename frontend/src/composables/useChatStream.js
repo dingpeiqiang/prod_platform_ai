@@ -74,15 +74,19 @@ export function useChatStream() {
     })
   }
 
-  const sendMessage = async ({ text, scene = '', modelConfig = null, history = [] }) => {
+  const sendMessage = async ({ text, scene = '', modelConfig = null, history = null }) => {
     if (!text || streaming.value) return
     streaming.value = true
     pushUserMessage(text)
     let streamText = ''
 
     try {
+      const autoHistory = history != null ? history : messages.value.slice(-20).map(m => ({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: m.streamText || m.content || '',
+      }))
       const payload = [
-        ...history.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content || '' })),
+        ...autoHistory,
         { role: 'user', content: text },
       ]
 
@@ -120,10 +124,19 @@ export function useChatStream() {
             } else if (data.type === 'stats') {
               upsertAssistantMessage({ stats: data })
             } else if (data.type === 'done') {
-              const doneIntent = data.intentType || (data.intentData && data.intentData.intentType) || ''
-              const doneAction = (data.intentData && data.intentData.action) || data.action || ''
-              const doneStats = (data.intentData && data.intentData.stats) || data.stats || null
-              const doneIntentData = data.intentData || null
+              const current = messages.value.find(m => m.role === 'assistant' && !m.done) || {}
+              const doneIntent = data.intentType || (data.intentData && data.intentData.intentType) || current.intentType || ''
+              const doneAction = (data.intentData && data.intentData.action) || data.action || current.action || ''
+              const doneStats = {
+                ...(current.stats || {}),
+                ...((data.intentData && data.intentData.stats) || {}),
+                ...(data.stats || {}),
+              }
+              // 合并而非覆盖，避免丢失 intent 事件里的 results/sparql
+              const doneIntentData = {
+                ...(current.intentData || {}),
+                ...(data.intentData || {}),
+              }
               upsertAssistantMessage({
                 done: true,
                 loading: false,
@@ -144,13 +157,18 @@ export function useChatStream() {
         }
       }
 
-      const finalMsg = messages.value.find(m => m.role === 'assistant' && m.done) || messages.value[messages.value.length - 1]
+      const finalMsg = messages.value.find(m => m.role === 'assistant' && m.done)
+        || messages.value.find(m => m.role === 'assistant' && !m.done)
+        || messages.value[messages.value.length - 1]
       if (finalMsg) {
         const post = getPostProcessor(finalMsg.intentType)
         if (post) post(finalMsg, finalMsg)
       }
 
-      upsertAssistantMessage({ done: true, loading: false })
+      // 仅在流未收到 done 时收尾；已 done 时再 upsert 会新建一条空气泡
+      if (!messages.value.some(m => m.role === 'assistant' && m.done)) {
+        upsertAssistantMessage({ done: true, loading: false })
+      }
     } catch (e) {
       console.warn('[useChatStream] sendMessage error:', e)
       upsertAssistantMessage({

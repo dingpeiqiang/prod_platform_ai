@@ -61,10 +61,71 @@ public class LlmService {
         return String.valueOf(result.getOrDefault("content", ""));
     }
 
+    /**
+     * 基于结构化消息列表完成 LLM 调用（支持多轮对话上下文）
+     */
+    public String completeMessages(String systemPrompt, List<Map<String, String>> history, String userMessage) {
+        ensureEnabled();
+        ChatCompletionRequest req = new ChatCompletionRequest();
+        req.setSystemPrompt(systemPrompt);
+        List<ChatCompletionRequest.ChatMessage> chatMessages = new ArrayList<>();
+        if (history != null) {
+            for (Map<String, String> h : history) {
+                ChatCompletionRequest.ChatMessage m = new ChatCompletionRequest.ChatMessage();
+                m.setRole(h.getOrDefault("role", "user"));
+                m.setContent(h.getOrDefault("content", ""));
+                chatMessages.add(m);
+            }
+        }
+        ChatCompletionRequest.ChatMessage last = new ChatCompletionRequest.ChatMessage();
+        last.setRole("user");
+        last.setContent(userMessage);
+        chatMessages.add(last);
+        req.setMessages(chatMessages);
+        Map<String, Object> result = complete(req);
+        return String.valueOf(result.getOrDefault("content", ""));
+    }
+
+    /**
+     * 流式输出：基于结构化消息列表（支持多轮对话上下文）
+     */
     public Flux<String> streamChatText(String prompt) {
         ensureEnabled();
         ChatCompletionRequest req = new ChatCompletionRequest();
         req.setPrompt(prompt);
+        ChatClient client = getChatClient(req.getModelConfig());
+        List<Message> messages = toMessages(req);
+        OpenAiChatOptions options = buildOptions(req.getModelConfig());
+        return client.prompt()
+                .messages(messages)
+                .options(options)
+                .stream()
+                .content()
+                .filter(text -> text != null && !text.isEmpty());
+    }
+
+    /**
+     * 流式输出：基于系统提示 + 历史消息 + 用户消息（多轮对话）
+     */
+    public Flux<String> streamWithMessages(String systemPrompt, List<Map<String, String>> history, String userMessage) {
+        ensureEnabled();
+        ChatCompletionRequest req = new ChatCompletionRequest();
+        req.setSystemPrompt(systemPrompt);
+        List<ChatCompletionRequest.ChatMessage> chatMessages = new ArrayList<>();
+        if (history != null) {
+            for (Map<String, String> h : history) {
+                ChatCompletionRequest.ChatMessage m = new ChatCompletionRequest.ChatMessage();
+                m.setRole(h.getOrDefault("role", "user"));
+                m.setContent(h.getOrDefault("content", ""));
+                chatMessages.add(m);
+            }
+        }
+        ChatCompletionRequest.ChatMessage last = new ChatCompletionRequest.ChatMessage();
+        last.setRole("user");
+        last.setContent(userMessage);
+        chatMessages.add(last);
+        req.setMessages(chatMessages);
+
         ChatClient client = getChatClient(req.getModelConfig());
         List<Message> messages = toMessages(req);
         OpenAiChatOptions options = buildOptions(req.getModelConfig());
