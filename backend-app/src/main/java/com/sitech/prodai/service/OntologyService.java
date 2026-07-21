@@ -141,7 +141,63 @@ public class OntologyService {
     }
 
     public Map<String, Object> nlDiscoverAndRetrieve(String question, int maxEntities) {
-        return Map.of("success", true, "nl_answer", question, "entity_ids", List.of(), "sparql", "", "raw_results", List.of(), "snapshot", Map.of(), "facts_flat", Map.of());
+        Map<String, Object> nlResult = nlQuery(question);
+        List<String> entityIds = new ArrayList<>();
+        List<Map<String, Object>> rawResults = new ArrayList<>();
+
+        if (nlResult.get("results") instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof Map<?, ?> row) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> rowMap = (Map<String, Object>) row;
+                    Object productUri = row.get("product");
+                    Object entityUri = row.get("entity");
+                    String uri = productUri != null ? String.valueOf(productUri) : (entityUri != null ? String.valueOf(entityUri) : null);
+                    if (uri != null && !uri.isBlank()) {
+                        entityIds.add(uri);
+                        Map<String, Object> entityFacts = rdf4jStore.getEntity(uri);
+                        if (!entityFacts.isEmpty()) {
+                            rawResults.add(entityFacts);
+                        } else {
+                            rawResults.add(rowMap);
+                        }
+                    } else {
+                        rawResults.add(rowMap);
+                    }
+                }
+            }
+        }
+
+        String snapshotId = buildSnapshotId();
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("snapshot_id", snapshotId);
+        snapshot.put("question", question);
+        snapshot.put("entity_count", entityIds.size());
+
+        Map<String, Object> factsFlat = new LinkedHashMap<>();
+        for (int i = 0; i < Math.min(entityIds.size(), rawResults.size()); i++) {
+            factsFlat.put(entityIds.get(i), rawResults.get(i));
+        }
+        snapshot.put("facts", factsFlat);
+        snapshots.put(snapshotId, snapshot);
+
+        appendAudit(snapshotId, Map.of(
+                "step", "nl_discover_and_retrieve",
+                "timestamp", Instant.now().toString(),
+                "question", question,
+                "entity_count", entityIds.size(),
+                "snapshot_id", snapshotId
+        ));
+
+        return Map.of(
+                "success", true,
+                "nl_answer", nlResult.getOrDefault("answer", ""),
+                "entity_ids", entityIds.stream().limit(maxEntities).toList(),
+                "sparql", nlResult.getOrDefault("sparql", ""),
+                "raw_results", rawResults.stream().limit(maxEntities).toList(),
+                "snapshot", snapshot,
+                "facts_flat", factsFlat
+        );
     }
 
     public Map<String, Object> quickEvaluate(String entityId, String type, String policySetId, String tenantId) {

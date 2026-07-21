@@ -124,10 +124,11 @@ public class IntegrativeReasonEngine {
                 entityIds, triples.size(), policySetId, tenantId);
         Map<String, Map<String, Object>> facts = new LinkedHashMap<>();
         for (String entityId : entityIds) {
-            Map<String, Object> retrieved = ontologyStore == null
+            @SuppressWarnings("unchecked")
+            Map<String, Map<String, Object>> retrieved = ontologyStore == null
                     ? Map.of()
-                    : ontologyStore.retrieve(List.of(new Models.EntityRef(entityId, "Entity", "ontology")), namespace);
-            facts.put(entityId, new LinkedHashMap<>(retrieved.values().stream().findFirst().map(v -> (Map<String, Object>) v).orElse(Map.of())));
+                    : (Map<String, Map<String, Object>>) ontologyStore.retrieve(List.of(new Models.EntityRef(entityId, "Entity", "ontology")), namespace);
+            facts.put(entityId, new LinkedHashMap<>(retrieved.values().stream().findFirst().orElse(Map.of())));
         }
         for (PlatformModels.HypotheticalTriple triple : triples) {
             String uri = triple.subject().startsWith("http") ? triple.subject() : namespace + triple.subject();
