@@ -254,9 +254,10 @@ export async function sendMessage({ sessionId, message, attachments, modelConfig
   }
 }
 
-export async function sendMessageWithModel(messages, { modelConfig = null, scene = '' } = {}) {
+export async function sendMessageWithModel(messages, { modelConfig = null, scene = '', sessionId = '' } = {}) {
   const body = { messages, scene }
   if (modelConfig) body.modelConfig = modelConfig
+  if (sessionId) body.sessionId = sessionId
   const resp = await fetch('/api/v1/chat/agent/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

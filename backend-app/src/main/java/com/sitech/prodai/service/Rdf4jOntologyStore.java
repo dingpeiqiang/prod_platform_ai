@@ -132,9 +132,74 @@ public class Rdf4jOntologyStore implements OntologyStore {
     }
 
     public Map<String, Object> getGraphData() {
+        List<Map<String, Object>> nodes = new ArrayList<>();
+        List<Map<String, Object>> edges = new ArrayList<>();
+
+        // 添加类节点
+        for (String className : classRegistry.keySet()) {
+            Map<String, Object> node = new LinkedHashMap<>();
+            node.put("id", "class_" + className);
+            node.put("name", className);
+            node.put("label", className);
+            node.put("type", "class");
+            nodes.add(node);
+        }
+
+        // 添加属性节点
+        for (String propertyName : propertyRegistry.keySet()) {
+            Map<String, Object> node = new LinkedHashMap<>();
+            node.put("id", "prop_" + propertyName);
+            node.put("name", propertyName);
+            node.put("label", propertyName);
+            node.put("type", propertyName.contains(":") ? "object_property" : "datatype_property");
+            nodes.add(node);
+
+            // 添加属性到类的边
+            String className = propertyName.contains(":") ? propertyName.split(":")[0] : "Thing";
+            if (classRegistry.containsKey(className)) {
+                Map<String, Object> edge = new LinkedHashMap<>();
+                edge.put("id", "edge_" + className + "_" + propertyName);
+                edge.put("source", "class_" + className);
+                edge.put("target", "prop_" + propertyName);
+                edge.put("label", "hasProperty");
+                edge.put("type", "domain");
+                edges.add(edge);
+            }
+        }
+
+        // 添加实例节点和边
+        for (Map.Entry<String, Map<String, Object>> entry : instances.entrySet()) {
+            String uri = entry.getKey();
+            Map<String, Object> facts = entry.getValue();
+            String type = String.valueOf(facts.getOrDefault("type", "Unknown"));
+
+            Map<String, Object> node = new LinkedHashMap<>();
+            node.put("id", "inst_" + uri);
+            node.put("name", uri);
+            node.put("label", uri);
+            node.put("type", "instance");
+            node.put("classId", "class_" + type);
+            nodes.add(node);
+
+            // 添加实例到类的边
+            if (classRegistry.containsKey(type)) {
+                Map<String, Object> edge = new LinkedHashMap<>();
+                edge.put("id", "edge_inst_" + uri + "_" + type);
+                edge.put("source", "class_" + type);
+                edge.put("target", "inst_" + uri);
+                edge.put("label", "instanceOf");
+                edge.put("type", "relation");
+                edges.add(edge);
+            }
+        }
+
         return Map.of(
-                "nodes", new ArrayList<>(instances.values()),
-                "links", List.of()
+                "nodes", nodes,
+                "edges", edges,
+                "classCount", classRegistry.size(),
+                "propertyCount", propertyRegistry.size(),
+                "instanceCount", instances.size(),
+                "edgeCount", edges.size()
         );
     }
 

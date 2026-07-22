@@ -35,6 +35,19 @@
       :rule_engine_passed="panelData.rule_engine_passed"
       :validationTable="panelData.validationTable"
     />
+
+    <!-- product_ops_query / product_ops_policy / product_ops_reason / product_ops_compare -->
+    <ProductOpsPanel
+      v-else-if="isProductOps"
+      :intentType="intentType"
+      :msg="msg"
+      @intent-action="(e) => emit('intent-action', e)"
+    />
+
+    <!-- form / form_update -->
+    <FormIntentPanel
+      v-else-if="intentType === 'form' || intentType === 'form_update'"
+    />
   </div>
 </template>
 
@@ -43,6 +56,8 @@ import { computed } from 'vue'
 import DeleteResultPanel from './DeleteResultPanel.vue'
 import HistoryPanel from './HistoryPanel.vue'
 import ValidationResultPanel from './ValidationResultPanel.vue'
+import ProductOpsPanel from './ProductOpsPanel.vue'
+import FormIntentPanel from './FormIntentPanel.vue'
 
 const props = defineProps({
   intentType: { type: String, required: true },
@@ -50,6 +65,9 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['intent-action'])
+
+const productOpsTypes = ['product_ops_query', 'product_ops_policy', 'product_ops_reason', 'product_ops_compare']
+const isProductOps = computed(() => productOpsTypes.includes(props.intentType))
 
 // 从 msg._intentData[intentType] 取意图数据
 const panelData = computed(() => {

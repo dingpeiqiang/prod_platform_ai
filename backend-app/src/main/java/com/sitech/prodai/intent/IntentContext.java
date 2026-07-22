@@ -25,6 +25,7 @@ public class IntentContext {
     private Map<String, Map<String, Object>> ontologies = new HashMap<>();
     private String ontologiesInfo = "";
     private String sceneKeywords = "";
+    private String scene = "";
 
     // ── 原始请求相关 ──────────────────────────────────
     private Map<String, Object> request;  // ChatRequest 透传
@@ -143,6 +144,14 @@ public class IntentContext {
         this.sceneKeywords = sceneKeywords != null ? sceneKeywords : "";
     }
 
+    public String getScene() {
+        return scene;
+    }
+
+    public void setScene(String scene) {
+        this.scene = scene != null ? scene : "";
+    }
+
     public Map<String, Object> getRequest() {
         return request;
     }
@@ -255,5 +264,19 @@ public class IntentContext {
             }
         }
         return "session-" + java.util.UUID.randomUUID().toString().substring(0, 8);
+    }
+
+    /** 从 request map 中提取 scene（兼容多种 key） */
+    public String resolveScene() {
+        if (scene != null && !scene.isEmpty()) {
+            return scene;
+        }
+        if (request != null) {
+            Object val = request.get("scene");
+            if (val != null) {
+                return String.valueOf(val);
+            }
+        }
+        return "";
     }
 }

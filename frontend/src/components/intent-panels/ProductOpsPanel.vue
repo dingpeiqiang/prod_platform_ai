@@ -36,6 +36,10 @@
           其余 {{ queryResults.length - 8 }} 条结果已省略
         </div>
       </div>
+      <div v-if="queryGraphData && queryGraphData.nodes?.length" class="graph-section">
+        <div class="section-title">关系图谱</div>
+        <SparqlResultGraph :results="queryResults" :query="queryQuestion" />
+      </div>
       <div v-else class="empty-state">暂无匹配数据</div>
     </div>
 
@@ -74,8 +78,38 @@
       </div>
     </div>
 
+    <!-- ==================== 假设分析 ==================== -->
+    <div v-else-if="isCompare" class="card-body">
+      <div class="field">
+        <span class="field-label">分析问题</span>
+        <span class="field-value highlight">{{ compareQuestion }}</span>
+      </div>
+      <div v-if="comparePatches.length" class="field">
+        <span class="field-label">假设变更</span>
+        <div class="compare-patches">
+          <div v-for="(patch, idx) in comparePatches" :key="idx" class="patch-item">
+            <div class="patch-desc">{{ patch.description }}</div>
+            <div v-if="patch.changes" class="patch-changes">
+              <span v-for="(val, key) in patch.changes" :key="key" class="tag tag-blue">{{ key }}: {{ val }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div v-if="compareComparisons.length" class="field">
+        <span class="field-label">评估结果</span>
+        <div class="compare-results">
+          <div v-for="(comp, idx) in compareComparisons" :key="idx" class="compare-item">
+            <span class="compare-desc">{{ comp.patch_description }}</span>
+            <span class="verdict-badge" :class="'verdict-' + (comp.evaluation?.verdict || 'review')">
+              {{ comp.evaluation?.verdict === 'allow' ? '通过' : comp.evaluation?.verdict === 'deny' ? '拒绝' : '待审' }}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ==================== 异动归因 ==================== -->
-    <div v-else class="card-body">
+    <div v-else-if="!isCompare" class="card-body">
       <div class="field">
         <span class="field-label">分析目标</span>
         <span class="field-value highlight">{{ reasonTarget }}</span>
@@ -113,6 +147,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import SparqlResultGraph from '../SparqlResultGraph.vue'
 
 const props = defineProps({
   intentType: { type: String, default: '' },
@@ -122,23 +157,27 @@ const props = defineProps({
 const emit = defineEmits(['intent-action'])
 
 const normalizedIntent = computed(() => props.intentType || props.msg?.intentType || '')
-const visible = computed(() => ['product_ops_query', 'product_ops_policy', 'product_ops_reason'].includes(normalizedIntent.value))
+const visible = computed(() => ['product_ops_query', 'product_ops_policy', 'product_ops_reason', 'product_ops_compare'].includes(normalizedIntent.value))
 const isQuery = computed(() => normalizedIntent.value === 'product_ops_query')
 const isPolicy = computed(() => normalizedIntent.value === 'product_ops_policy')
+const isCompare = computed(() => normalizedIntent.value === 'product_ops_compare')
 
 const cardIcon = computed(() => {
   if (isQuery.value) return '\u{1F50D}'
   if (isPolicy.value) return '\u{1F6E1}'
+  if (isCompare.value) return '\u{1F504}'
   return '\u{1F500}'
 })
 const title = computed(() => {
   if (isQuery.value) return '市场洞察结果'
   if (isPolicy.value) return '立项研判与风险评估'
+  if (isCompare.value) return '假设分析与场景模拟'
   return '异动归因与证据链'
 })
 const badgeLabel = computed(() => {
   if (isQuery.value) return '查询'
   if (isPolicy.value) return '研判'
+  if (isCompare.value) return '假设'
   return '归因'
 })
 
@@ -147,6 +186,7 @@ const queryCount = computed(() => props.msg?.intentData?.count ?? props.msg?.sta
 const queryResults = computed(() => props.msg?.intentData?.results || props.msg?.results || [])
 const queryColumns = computed(() => props.msg?.intentData?.columns || [])
 const visibleColumns = computed(() => queryColumns.value.slice(0, 5))
+const queryGraphData = computed(() => props.msg?.intentData?.graphData || props.msg?.graphData || null)
 
 const policySetId = computed(() => props.msg?.intentData?.policySetId || props.msg?.stats?.policySetId || '')
 const expectationType = computed(() => props.msg?.intentData?.expectationType || props.msg?.stats?.expectationType || '')
@@ -168,6 +208,10 @@ const explanation = computed(() => props.msg?.intentData?.explanation || '')
 const explanationRules = computed(() => props.msg?.intentData?.referencedRules || props.msg?.intentData?.referenced_rules || [])
 const evidenceCount = computed(() => props.msg?.intentData?.evidenceCount ?? props.msg?.stats?.evidenceCount ?? 0)
 const traceId = computed(() => props.msg?.intentData?.traceId || props.msg?.stats?.traceId || '')
+
+const compareQuestion = computed(() => props.msg?.intentData?.question || props.msg?.stats?.question || '')
+const comparePatches = computed(() => props.msg?.intentData?.patches || [])
+const compareComparisons = computed(() => props.msg?.intentData?.comparisons || [])
 
 const formatTime = (timestamp) => {
   if (!timestamp) return ''
@@ -210,6 +254,7 @@ const handleFollowUp = () => {
     product_ops_query: '帮我进一步分析这些数据的趋势',
     product_ops_policy: '详细解释为什么会被拒绝',
     product_ops_reason: '给我更详细的证据链和时间线',
+    product_ops_compare: '如果改变更多条件会怎样',
   }
   emit('intent-action', {
     type: normalizedIntent.value,
@@ -281,6 +326,34 @@ const handleFollowUp = () => {
 .explanation-text { font-size: 13px; color: #1e293b; line-height: 1.6; }
 
 .empty-state { text-align: center; color: #94a3b8; padding: 20px; font-size: 13px; }
+
+/* Graph section */
+.graph-section { margin-top: 12px; }
+.graph-section .section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.graph-section .section-title::before {
+  content: '';
+  width: 3px;
+  height: 12px;
+  background: linear-gradient(180deg, #6366f1 0%, #8b5cf6 100%);
+  border-radius: 2px;
+}
+
+/* Compare section */
+.compare-patches { display: flex; flex-direction: column; gap: 8px; }
+.patch-item { background: #f8fafc; border-radius: 8px; padding: 8px 10px; border: 1px solid #e2e8f0; }
+.patch-desc { font-size: 12px; color: #475569; margin-bottom: 4px; }
+.patch-changes { display: flex; flex-wrap: wrap; gap: 4px; }
+.compare-results { display: flex; flex-direction: column; gap: 6px; }
+.compare-item { display: flex; align-items: center; gap: 8px; background: #f8fafc; padding: 8px 10px; border-radius: 8px; }
+.compare-desc { font-size: 12px; color: #334155; flex: 1; }
 
 /* Footer */
 .card-footer { padding: 10px 16px; border-top: 1px solid #f1f5f9; display: flex; justify-content: flex-end; gap: 8px; }

@@ -1,5 +1,6 @@
 package com.sitech.prodai.controller;
 
+import com.sitech.prodai.service.IntentPromptManager;
 import com.sitech.prodai.service.OntologyService;
 import com.sitech.prodai.service.PromptService;
 import com.sitech.prodai.service.SceneService;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * 管理后台 API —— 对齐 Python {@code app/api/admin.py}。
@@ -30,13 +32,16 @@ public class AdminController {
     private final SceneService sceneService;
     private final PromptService promptService;
     private final OntologyService ontologyService;
+    private final Optional<IntentPromptManager> intentPromptManager;
 
     public AdminController(SceneService sceneService,
                            PromptService promptService,
-                           OntologyService ontologyService) {
+                           OntologyService ontologyService,
+                           Optional<IntentPromptManager> intentPromptManager) {
         this.sceneService = sceneService;
         this.promptService = promptService;
         this.ontologyService = ontologyService;
+        this.intentPromptManager = intentPromptManager;
     }
 
     // ==================== 场景管理 ====================
@@ -141,6 +146,23 @@ public class AdminController {
     @PostMapping("/prompts/optimize")
     public Map<String, Object> optimizePrompt(@RequestBody Map<String, Object> body) {
         return promptService.optimizePrompt(body == null ? Map.of() : body);
+    }
+
+    /**
+     * 热加载意图识别 prompt 模板（修改 classpath:prompts/intent_recognition_prompt.txt 后调用）。
+     */
+    @PostMapping("/prompts/reload")
+    public Map<String, Object> reloadPrompts() {
+        Map<String, Object> body = new LinkedHashMap<>();
+        if (intentPromptManager.isPresent()) {
+            intentPromptManager.get().reload();
+            body.put("success", true);
+            body.put("message", "Prompt 模板已重新加载");
+        } else {
+            body.put("success", false);
+            body.put("message", "IntentPromptManager 未启用");
+        }
+        return body;
     }
 
     // ==================== 本体管理 ====================

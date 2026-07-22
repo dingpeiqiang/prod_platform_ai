@@ -1,0 +1,62 @@
+{
+  "scene_rules": {
+    "ops": {
+      "model": "deepseek-chat",
+      "temperature": 0.3,
+      "max_tokens": 4096,
+      "description": "运营场景：使用 DeepSeek 进行数据分析"
+    },
+    "rd": {
+      "model": "gpt-4o",
+      "temperature": 0.5,
+      "max_tokens": 8192,
+      "description": "研发场景：使用 GPT-4o 进行代码生成"
+    }
+  },
+  "intent_rules": {
+    "product_ops_policy": {
+      "model": "deepseek-reasoner",
+      "temperature": 0.1,
+      "max_tokens": 4096,
+      "description": "立项研判：使用 DeepSeek Reasoner 进行强推理"
+    },
+    "product_ops_reason": {
+      "model": "deepseek-reasoner",
+      "temperature": 0.1,
+      "max_tokens": 4096,
+      "description": "异动归因：使用 DeepSeek Reasoner 进行根因分析"
+    },
+    "form": {
+      "model": "gpt-4o-mini",
+      "temperature": 0.3,
+      "max_tokens": 2048,
+      "description": "表单生成：使用轻量模型进行字段推断"
+    },
+    "validate": {
+      "model": "gpt-4o-mini",
+      "temperature": 0.1,
+      "max_tokens": 2048,
+      "description": "表单校验：使用轻量模型进行规则校验"
+    }
+  },
+  "complexity_rules": {
+    "long_context": {
+      "model": "gpt-4o",
+      "temperature": 0.5,
+      "max_tokens": 16384,
+      "description": "长文本：使用大上下文模型"
+    },
+    "medium": {
+      "model": "deepseek-chat",
+      "temperature": 0.5,
+      "max_tokens": 4096,
+      "description": "中等文本：使用标准模型"
+    }
+  },
+  "default": {
+    "model": "gpt-4o-mini",
+    "temperature": 0.5,
+    "max_tokens": 4096,
+    "description": "默认配置"
+  }
+}

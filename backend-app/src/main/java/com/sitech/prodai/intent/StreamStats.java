@@ -1,5 +1,7 @@
 package com.sitech.prodai.intent;
 
+import com.sitech.prodai.util.TokenCounter;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -27,6 +29,15 @@ public class StreamStats {
     private int llmTokens;
     private int llmChars;
     private double llmTps;
+
+    // LLM 成本统计
+    private int inputTokens;
+    private int outputTokens;
+    private double estimatedCost;
+
+    // Token 精确计数器（可选注入）
+    private TokenCounter tokenCounter;
+    private String model = "gpt-4o-mini";
 
     public StreamStats() {
         this.startTime = Instant.now();
@@ -71,6 +82,10 @@ public class StreamStats {
         m.put("llmTokens", llmTokens);
         m.put("llmChars", llmChars);
         m.put("llmTps", Math.round(llmTps * 10.0) / 10.0);
+        m.put("inputTokens", inputTokens);
+        m.put("outputTokens", outputTokens);
+        m.put("totalTokens", inputTokens + outputTokens);
+        m.put("estimatedCost", estimatedCost);
         return m;
     }
 
@@ -106,6 +121,99 @@ public class StreamStats {
         this.llmTps = llmTps;
     }
 
+    public int getInputTokens() {
+        return inputTokens;
+    }
+
+    public void setInputTokens(int inputTokens) {
+        this.inputTokens = inputTokens;
+    }
+
+    public int getOutputTokens() {
+        return outputTokens;
+    }
+
+    public void setOutputTokens(int outputTokens) {
+        this.outputTokens = outputTokens;
+    }
+
+    public double getEstimatedCost() {
+        return estimatedCost;
+    }
+
+    public void setEstimatedCost(double estimatedCost) {
+        this.estimatedCost = estimatedCost;
+    }
+
+    /**
+     * 设置 Token 精确计数器。
+     */
+    public void setTokenCounter(TokenCounter tokenCounter) {
+        this.tokenCounter = tokenCounter;
+    }
+
+    /**
+     * 设置模型名称（用于选择合适的编码）。
+     */
+    public void setModel(String model) {
+        this.model = model;
+    }
+
+    /**
+     * 记录输出 token。
+     * 优先使用 jtokkit 精确计数，降级到字符估算。
+     */
+    public void recordOutputText(String text) {
+        if (text == null || text.isBlank()) return;
+        int tokens;
+        if (tokenCounter != null) {
+            tokens = tokenCounter.countForModel(text, model);
+        } else {
+            tokens = estimateTokens(text);
+        }
+        this.outputTokens += tokens;
+        this.llmTokens += tokens;
+        this.llmChars += text.length();
+        updateEstimatedCost();
+    }
+
+    /**
+     * 记录输入 token。
+     * 优先使用 jtokkit 精确计数，降级到字符估算。
+     */
+    public void recordInputTokens(String prompt) {
+        if (prompt == null || prompt.isBlank()) return;
+        int tokens;
+        if (tokenCounter != null) {
+            tokens = tokenCounter.countForModel(prompt, model);
+        } else {
+            tokens = estimateTokens(prompt);
+        }
+        this.inputTokens += tokens;
+        updateEstimatedCost();
+    }
+
+    private int estimateTokens(String text) {
+        int chinese = 0, ascii = 0;
+        for (char c : text.toCharArray()) {
+            if (c > 0x4e00 && c < 0x9fff) {
+                chinese++;
+            } else if (c > 32) {
+                ascii++;
+            }
+        }
+        return (int) Math.ceil(chinese * 2.0 + ascii * 0.35);
+    }
+
+    /**
+     * 基于 token 数估算成本（以 gpt-4o-mini 为例：$0.15/1M input, $0.60/1M output）。
+     */
+    private void updateEstimatedCost() {
+        this.estimatedCost = Math.round(
+                (inputTokens * 0.15 + outputTokens * 0.60) / 1_000_000.0 * 1_000_000.0
+        ) / 1_000_000.0;
+    }
+
     public long getStartTimeMillis() {
         return startTime.toEpochMilli();
     }
@@ -132,5 +240,13 @@ public class StreamStats {
 
     public void setChunkCount(int chunkCount) {
         this.chunkCount = chunkCount;
+    }
+
+    public void recordToken() {
+        this.tokenCount++;
+    }
+
+    public int getTokensUsed() {
+        return tokenCount;
     }
 }

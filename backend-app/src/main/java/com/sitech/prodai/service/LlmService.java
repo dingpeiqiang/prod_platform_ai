@@ -3,6 +3,7 @@ package com.sitech.prodai.service;
 import com.sitech.prodai.config.ProdAiProperties;
 import com.sitech.prodai.dto.ChatCompletionRequest;
 import com.sitech.prodai.domain.entity.LlmUserConfig;
+import com.sitech.prodai.util.TokenCounter;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
@@ -29,11 +30,23 @@ public class LlmService {
 
     private final ProdAiProperties properties;
     private final LlmConfigService configService;
+    private final Optional<ModelRouter> modelRouter;
+    private final Optional<TokenCounter> tokenCounter;
     private final ConcurrentHashMap<String, ChatClient> clientCache = new ConcurrentHashMap<>();
 
-    public LlmService(ProdAiProperties properties, LlmConfigService configService) {
+    public LlmService(ProdAiProperties properties, LlmConfigService configService,
+                      Optional<ModelRouter> modelRouter, Optional<TokenCounter> tokenCounter) {
         this.properties = properties;
         this.configService = configService;
+        this.modelRouter = modelRouter;
+        this.tokenCounter = tokenCounter;
+    }
+
+    /**
+     * 获取 Token 计数器（供外部使用）。
+     */
+    public Optional<TokenCounter> getTokenCounter() {
+        return tokenCounter;
     }
 
     public Map<String, Object> complete(ChatCompletionRequest request) {
@@ -247,9 +260,28 @@ public class LlmService {
     private OpenAiChatOptions buildOptions(Map<String, Object> modelConfig) {
         Map<String, Object> effectiveConfig = getEffectiveConfig(modelConfig);
 
-        String model = getStringFromConfig(effectiveConfig, "model", "model",
-                System.getenv().getOrDefault("LLM_MODEL", "gpt-4o-mini"));
-        Double temperature = getDoubleFromConfig(effectiveConfig, "temperature", 0.5);
+        // 检查是否有路由信息，使用 ModelRouter 选择最优模型
+        String scene = modelConfig != null ? String.valueOf(modelConfig.get("_scene")) : null;
+        String intentType = modelConfig != null ? String.valueOf(modelConfig.get("_intentType")) : null;
+        int inputLength = modelConfig != null && modelConfig.containsKey("_inputLength")
+                ? ((Number) modelConfig.get("_inputLength")).intValue() : 0;
+
+        Map<String, Object> routedConfig = Map.of();
+        if (modelRouter.isPresent() && (scene != null || intentType != null)) {
+            routedConfig = modelRouter.get().route(scene, intentType, inputLength);
+        }
+
+        // 路由配置 > 用户配置 > 默认配置
+        String model = getStringFromConfig(routedConfig, "model", "model", null);
+        if (model == null || model.isBlank()) {
+            model = getStringFromConfig(effectiveConfig, "model", "model",
+                    System.getenv().getOrDefault("LLM_MODEL", "gpt-4o-mini"));
+        }
+
+        Double temperature = getDoubleFromConfig(routedConfig, "temperature", null);
+        if (temperature == null) {
+            temperature = getDoubleFromConfig(effectiveConfig, "temperature", 0.5);
+        }
 
         OpenAiChatOptions options = new OpenAiChatOptions();
         options.setModel(model);

@@ -9,6 +9,8 @@ public class ChatCompletionRequest {
     private String prompt;
     private String systemPrompt;
     private Map<String, Object> modelConfig;
+    private String scene;
+    private String intentType;
 
     public List<ChatMessage> getMessages() {
         return messages;
@@ -40,6 +42,22 @@ public class ChatCompletionRequest {
 
     public void setModelConfig(Map<String, Object> modelConfig) {
         this.modelConfig = modelConfig;
+    }
+
+    public String getScene() {
+        return scene;
+    }
+
+    public void setScene(String scene) {
+        this.scene = scene;
+    }
+
+    public String getIntentType() {
+        return intentType;
+    }
+
+    public void setIntentType(String intentType) {
+        this.intentType = intentType;
     }
 
     public static class ChatMessage {

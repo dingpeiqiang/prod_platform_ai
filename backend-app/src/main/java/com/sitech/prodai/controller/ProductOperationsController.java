@@ -1,8 +1,11 @@
 package com.sitech.prodai.controller;
 
 import com.sitech.prodai.service.OntologyService;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -80,6 +83,39 @@ public class ProductOperationsController {
     @GetMapping("/form-constraint")
     public Map<String, Object> formConstraint(@RequestParam("form_code") String formCode) {
         return ontologyService.getFormConstraint(formCode);
+    }
+
+    @GetMapping("/ontology/instances")
+    public Map<String, Object> getOntologyInstances() {
+        return ontologyService.getOntologyInstances();
+    }
+
+    @PostMapping("/ontology/instances")
+    public Map<String, Object> createOntologyInstance(@RequestBody Map<String, Object> request) {
+        String uri = str(request.get("uri"));
+        String type = str(request.get("type"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> facts = (Map<String, Object>) request.getOrDefault("facts", Map.of());
+        return ontologyService.createOntologyInstance(uri, type, facts);
+    }
+
+    @PutMapping("/ontology/instances/{uri}")
+    public Map<String, Object> updateOntologyInstance(
+            @PathVariable("uri") String uri,
+            @RequestBody Map<String, Object> request) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> facts = (Map<String, Object>) request.getOrDefault("facts", Map.of());
+        return ontologyService.updateOntologyInstance(uri, facts);
+    }
+
+    @DeleteMapping("/ontology/instances/{uri}")
+    public Map<String, Object> deleteOntologyInstance(@PathVariable("uri") String uri) {
+        return ontologyService.deleteOntologyInstance(uri);
+    }
+
+    @GetMapping("/ontology/graph")
+    public Map<String, Object> getOntologyGraph() {
+        return ontologyService.getOntologyGraph();
     }
 
     private Map<String, Object> castMap(Object value) {

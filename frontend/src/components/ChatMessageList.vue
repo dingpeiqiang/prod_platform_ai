@@ -3,6 +3,7 @@
     <!-- 欢迎状态 -->
     <WelcomeCards 
       v-if="showWelcome"
+      :mode="mode"
       @suggest="handleSuggest"
     />
 
@@ -46,13 +47,13 @@
 
             <!-- 正文内容 -->
             <div class="message-bubble ai-bubble">
-              <div 
-                v-if="msg.streamText || msg.content" 
-                class="message-text"
-                v-html="renderMarkdown(msg.streamText || msg.content)"
+              <MessageCard 
+                v-if="msg.streamText || msg.content"
+                :content="msg.streamText || msg.content"
+                :streaming="msg.loading || !msg.done"
               />
               <!-- 加载状态 -->
-              <div v-if="msg.loading" class="typing-indicator">
+              <div v-if="msg.loading && !msg.streamText && !msg.content" class="typing-indicator">
                 <span></span>
                 <span></span>
                 <span></span>
@@ -223,12 +224,14 @@ import { ElMessage } from 'element-plus'
 import WelcomeCards from './WelcomeCards.vue'
 import IntentPanel from './intent-panels/IntentPanel.vue'
 import ThinkingProcessPanel from './ThinkingProcessPanel.vue'
+import MessageCard from './MessageCard.vue'
 import { renderMarkdown } from '../utils/chatUtils.js'
 import { listIntentPanels } from '../composables/useIntentRegistry.js'
 
 const props = defineProps({
   messages: { type: Array, required: true },
-  showWelcome: { type: Boolean, default: false }
+  showWelcome: { type: Boolean, default: false },
+  mode: { type: String, default: 'rd' }
 })
 
 const emit = defineEmits(['form-card-click', 'intent-action', 'regenerate', 'suggest', 'query-result-click'])
@@ -432,17 +435,23 @@ defineExpose({ scrollToBottom })
 }
 
 .ai-bubble {
-  background: var(--bg-secondary);
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
   color: var(--text-primary);
-  border: 1px solid var(--border-light);
+  border: 1px solid rgba(0, 0, 0, 0.06);
   border-bottom-left-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+  transition: box-shadow 0.2s ease;
+}
+
+.ai-bubble:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.03);
 }
 
 .user-bubble {
   background: linear-gradient(135deg, #3b82f6, #2563eb);
   color: white;
   border-bottom-right-radius: 4px;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.18);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.22), 0 2px 6px rgba(37, 99, 235, 0.12);
   text-align: left;
 }
 
@@ -618,15 +627,16 @@ defineExpose({ scrollToBottom })
 /* 打字指示器 */
 .typing-indicator {
   display: flex;
-  gap: 4px;
-  padding: 4px 0;
+  gap: 5px;
+  padding: 6px 0;
+  align-items: center;
 }
 
 .typing-indicator span {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: #3b82f6;
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
   animation: typing 1.4s infinite ease-in-out both;
 }
 
@@ -640,11 +650,11 @@ defineExpose({ scrollToBottom })
 
 @keyframes typing {
   0%, 80%, 100% {
-    transform: scale(0.6);
-    opacity: 0.5;
+    transform: scale(0.5);
+    opacity: 0.4;
   }
   40% {
-    transform: scale(1);
+    transform: scale(1.1);
     opacity: 1;
   }
 }

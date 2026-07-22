@@ -1,5 +1,8 @@
 package com.sitech.prodai.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -7,18 +10,27 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class OntologyService {
 
+    private static final Logger log = LoggerFactory.getLogger(OntologyService.class);
+
     private final Rdf4jOntologyStore rdf4jStore;
+    private final Optional<LlmService> llmService;
+    private final Optional<SwrlRuleEngine> swrlRuleEngine;
     private final Map<String, Map<String, Object>> snapshots = new ConcurrentHashMap<>();
     private final Map<String, List<Map<String, Object>>> audits = new ConcurrentHashMap<>();
 
-    public OntologyService(Rdf4jOntologyStore rdf4jStore) {
+    public OntologyService(Rdf4jOntologyStore rdf4jStore,
+                           @Autowired(required = false) Optional<LlmService> llmService,
+                           @Autowired(required = false) Optional<SwrlRuleEngine> swrlRuleEngine) {
         this.rdf4jStore = rdf4jStore;
+        this.llmService = llmService;
+        this.swrlRuleEngine = swrlRuleEngine;
     }
 
     public Map<String, Object> retrieve(String entityId, String type, String source, String tenantId, String traceId) {
@@ -140,39 +152,76 @@ public class OntologyService {
         return Map.of("answer", answer, "sparql", sparql, "results", rdf4jStore.sparqlQuery(sparql));
     }
 
+    /**
+     * NL→实体发现→本体检索（LLM 增强版）。
+     * <p>
+     * 流程：LLM 从自然语言中提取实体类型 + 筛选条件 → 构建 SPARQL → 检索本体 → 返回事实。
+     * 若 LLM 不可用或调用失败，降级到关键词匹配的 nlQuery。
+     */
     public Map<String, Object> nlDiscoverAndRetrieve(String question, int maxEntities) {
-        Map<String, Object> nlResult = nlQuery(question);
+        // Step 1: 获取本体 schema 信息
+        List<String> classes = rdf4jStore.getClasses();
+        List<String> properties = rdf4jStore.getProperties();
+
+        // Step 2: 尝试用 LLM 做实体发现
+        Map<String, Object> llmDiscovery = llmDiscoverEntities(question, classes, properties);
+
         List<String> entityIds = new ArrayList<>();
         List<Map<String, Object>> rawResults = new ArrayList<>();
+        String sparql = "";
+        String nlAnswer = "";
 
-        if (nlResult.get("results") instanceof List<?> list) {
-            for (Object item : list) {
-                if (item instanceof Map<?, ?> row) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> rowMap = (Map<String, Object>) row;
-                    Object productUri = row.get("product");
-                    Object entityUri = row.get("entity");
-                    String uri = productUri != null ? String.valueOf(productUri) : (entityUri != null ? String.valueOf(entityUri) : null);
+        if (llmDiscovery != null && !llmDiscovery.isEmpty()) {
+            // LLM 成功提取了实体信息，构建 SPARQL
+            sparql = buildSparqlFromDiscovery(llmDiscovery);
+            nlAnswer = String.valueOf(llmDiscovery.getOrDefault("answer", ""));
+
+            if (!sparql.isBlank()) {
+                List<Map<String, Object>> sparqlResults = rdf4jStore.sparqlQuery(sparql);
+                for (Map<String, Object> row : sparqlResults) {
+                    String uri = extractUri(row);
                     if (uri != null && !uri.isBlank()) {
                         entityIds.add(uri);
                         Map<String, Object> entityFacts = rdf4jStore.getEntity(uri);
-                        if (!entityFacts.isEmpty()) {
-                            rawResults.add(entityFacts);
-                        } else {
-                            rawResults.add(rowMap);
-                        }
+                        rawResults.add(entityFacts.isEmpty() ? row : entityFacts);
                     } else {
-                        rawResults.add(rowMap);
+                        rawResults.add(row);
                     }
                 }
             }
         }
 
+        // Step 3: 降级 — 若 LLM 未返回有效结果，使用关键词匹配
+        if (rawResults.isEmpty()) {
+            Map<String, Object> fallback = nlQuery(question);
+            nlAnswer = String.valueOf(fallback.getOrDefault("answer", ""));
+            sparql = String.valueOf(fallback.getOrDefault("sparql", ""));
+
+            if (fallback.get("results") instanceof List<?> list) {
+                for (Object item : list) {
+                    if (item instanceof Map<?, ?> row) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> rowMap = (Map<String, Object>) row;
+                        String uri = extractUri(row);
+                        if (uri != null && !uri.isBlank()) {
+                            entityIds.add(uri);
+                            Map<String, Object> entityFacts = rdf4jStore.getEntity(uri);
+                            rawResults.add(entityFacts.isEmpty() ? rowMap : entityFacts);
+                        } else {
+                            rawResults.add(rowMap);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Step 4: 构建 snapshot + audit
         String snapshotId = buildSnapshotId();
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("snapshot_id", snapshotId);
         snapshot.put("question", question);
         snapshot.put("entity_count", entityIds.size());
+        snapshot.put("discovery_method", llmDiscovery != null ? "llm" : "keyword_fallback");
 
         Map<String, Object> factsFlat = new LinkedHashMap<>();
         for (int i = 0; i < Math.min(entityIds.size(), rawResults.size()); i++) {
@@ -186,18 +235,130 @@ public class OntologyService {
                 "timestamp", Instant.now().toString(),
                 "question", question,
                 "entity_count", entityIds.size(),
-                "snapshot_id", snapshotId
+                "snapshot_id", snapshotId,
+                "discovery_method", snapshot.get("discovery_method")
         ));
 
         return Map.of(
                 "success", true,
-                "nl_answer", nlResult.getOrDefault("answer", ""),
+                "nl_answer", nlAnswer,
                 "entity_ids", entityIds.stream().limit(maxEntities).toList(),
-                "sparql", nlResult.getOrDefault("sparql", ""),
+                "sparql", sparql,
                 "raw_results", rawResults.stream().limit(maxEntities).toList(),
                 "snapshot", snapshot,
-                "facts_flat", factsFlat
+                "facts_flat", factsFlat,
+                "discovery_method", snapshot.get("discovery_method")
         );
+    }
+
+    /**
+     * LLM 实体发现：让 LLM 从自然语言中提取实体类型、属性和筛选条件。
+     */
+    private Map<String, Object> llmDiscoverEntities(String question, List<String> classes, List<String> properties) {
+        if (llmService.isEmpty()) {
+            return null;
+        }
+
+        String schemaHint = "本体类: " + String.join(", ", classes)
+                + "\n本体属性: " + String.join(", ", properties);
+
+        String prompt = "你是一个本体查询助手。根据用户问题和本体 Schema，提取查询意图。\n\n"
+                + schemaHint + "\n\n"
+                + "用户问题: " + question + "\n\n"
+                + "请输出 JSON 格式（仅输出 JSON，不要其他内容）：\n"
+                + "{\n"
+                + "  \"entities\": [{\"type\": \"类名\", \"filters\": {\"属性名\": \"值\"}}],\n"
+                + "  \"select\": [\"需要返回的属性\"],\n"
+                + "  \"answer\": \"一句话概括查询意图\"\n"
+                + "}\n"
+                + "如果无法从本体 Schema 中找到匹配的类，返回空 JSON: {}";
+
+        try {
+            String result = llmService.get().completePrompt(prompt);
+            return parseJsonFromLlm(result);
+        } catch (Exception e) {
+            log.warn("[OntologyService] LLM 实体发现失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 从 LLM 输出中解析 JSON 结果。
+     */
+    private Map<String, Object> parseJsonFromLlm(String llmOutput) {
+        if (llmOutput == null || llmOutput.isBlank()) return null;
+        int start = llmOutput.indexOf('{');
+        int end = llmOutput.lastIndexOf('}');
+        if (start < 0 || end <= start) return null;
+        try {
+            String json = llmOutput.substring(start, end + 1);
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            return mapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+        } catch (Exception e) {
+            log.warn("[OntologyService] LLM 输出 JSON 解析失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 基于 LLM 实体发现结果构建 SPARQL 查询。
+     */
+    private String buildSparqlFromDiscovery(Map<String, Object> discovery) {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> entities = (List<Map<String, Object>>) discovery.get("entities");
+        @SuppressWarnings("unchecked")
+        List<String> selectFields = (List<String>) discovery.get("select");
+
+        if (entities == null || entities.isEmpty()) return "";
+
+        StringBuilder sparql = new StringBuilder("SELECT ");
+        if (selectFields != null && !selectFields.isEmpty()) {
+            for (String field : selectFields) {
+                sparql.append("?").append(field).append(" ");
+            }
+        } else {
+            sparql.append("?s ?p ?o ");
+        }
+        sparql.append("WHERE { ");
+
+        for (int i = 0; i < entities.size(); i++) {
+            Map<String, Object> entity = entities.get(i);
+            String type = String.valueOf(entity.getOrDefault("type", ""));
+            @SuppressWarnings("unchecked")
+            Map<String, Object> filters = (Map<String, Object>) entity.getOrDefault("filters", Map.of());
+
+            String var = "s" + (i == 0 ? "" : i);
+            sparql.append("?").append(var).append(" a <http://example.org/").append(type).append("> . ");
+
+            for (Map.Entry<String, Object> filter : filters.entrySet()) {
+                String prop = filter.getKey();
+                Object val = filter.getValue();
+                String propUri = "<http://example.org/" + prop + ">";
+                if (val instanceof Number || (val instanceof String && val.toString().matches("-?\\d+(\\.\\d+)?"))) {
+                    sparql.append("?").append(var).append(" ").append(propUri).append(" ").append(val).append(" . ");
+                } else {
+                    sparql.append("?").append(var).append(" ").append(propUri).append(" \"").append(val).append("\" . ");
+                }
+            }
+        }
+
+        sparql.append("} LIMIT 50");
+        return sparql.toString();
+    }
+
+    /**
+     * 从查询结果行中提取实体 URI。
+     */
+    @SuppressWarnings("unchecked")
+    private String extractUri(Map<?, ?> row) {
+        Map<String, Object> map = (Map<String, Object>) row;
+        for (String key : List.of("product", "entity", "s", "uri")) {
+            Object val = map.get(key);
+            if (val != null && !String.valueOf(val).isBlank()) {
+                return String.valueOf(val);
+            }
+        }
+        return null;
     }
 
     public Map<String, Object> quickEvaluate(String entityId, String type, String policySetId, String tenantId) {
@@ -444,5 +605,39 @@ public class OntologyService {
             case "PS_BILLING_REFUND_V1" -> "依据退款类型与信用分进行合规校验";
             default -> policySetId + " 评估完成";
         };
+    }
+
+    /**
+     * 执行 SWRL 规则推理。
+     *
+     * @param facts 事实数据
+     * @return 规则执行结果
+     */
+    public Map<String, Object> executeSwrlRules(Map<String, Object> facts) {
+        if (swrlRuleEngine.isEmpty()) {
+            return Map.of("success", false, "message", "SWRL 规则引擎未启用");
+        }
+
+        try {
+            List<SwrlRuleEngine.SwrlRuleResult> results = swrlRuleEngine.get().executeAll(new LinkedHashMap<>(facts));
+
+            long triggeredCount = results.stream().filter(SwrlRuleEngine.SwrlRuleResult::triggered).count();
+
+            return Map.of(
+                    "success", true,
+                    "totalRules", results.size(),
+                    "triggeredRules", triggeredCount,
+                    "results", results.stream().map(r -> Map.of(
+                            "ruleId", r.ruleId(),
+                            "ruleName", r.ruleName(),
+                            "triggered", r.triggered(),
+                            "reason", r.reason(),
+                            "elapsedMs", r.elapsedMs()
+                    )).toList()
+            );
+        } catch (Exception e) {
+            log.warn("[OntologyService] SWRL 规则执行失败: {}", e.getMessage());
+            return Map.of("success", false, "message", e.getMessage());
+        }
     }
 }

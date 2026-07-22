@@ -21,6 +21,16 @@ public final class SseUtils {
 
     // ==================== 基础事件 ====================
 
+    /** 通用事件构造器 */
+    public static Map<String, Object> event(String type, Object content) {
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("type", type);
+        if (content != null) {
+            event.put("content", content);
+        }
+        return event;
+    }
+
     /** 系统步骤日志（type=thinking），对齐 Python thinking() */
     public static Map<String, Object> thinking(String content) {
         Map<String, Object> event = new LinkedHashMap<>();

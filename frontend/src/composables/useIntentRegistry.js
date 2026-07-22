@@ -3,6 +3,12 @@
  * 管理 SSE 事件类型 → 面板组件 + 事件处理器的映射
  */
 import { reactive } from 'vue'
+import ChatPanel from '../components/intent-panels/ChatPanel.vue'
+import FormIntentPanel from '../components/intent-panels/FormIntentPanel.vue'
+import DeleteResultPanel from '../components/intent-panels/DeleteResultPanel.vue'
+import HistoryPanel from '../components/intent-panels/HistoryPanel.vue'
+import ValidationResultPanel from '../components/intent-panels/ValidationResultPanel.vue'
+import ProductOpsPanel from '../components/intent-panels/ProductOpsPanel.vue'
 
 // ── 事件处理器注册表 ──────────────────────────────────
 const _eventHandlers = reactive({})
@@ -66,3 +72,49 @@ export function listIntentPanels() {
 export function listIntentTypes() {
   return Object.keys(_postProcessors)
 }
+
+// ── 默认面板注册 ──────────────────────────────────────
+// 注册所有意图类型的面板组件，确保 IntentPanel.vue 能正确渲染
+registerEventHandler('chat', (data, msg) => {
+  // 聊天意图由流式文本渲染，无需额外处理
+}, { panel: ChatPanel })
+
+registerEventHandler('form', (data, msg) => {
+  // 表单意图由 FormPanel 渲染，此处为占位
+}, { panel: FormIntentPanel })
+
+registerEventHandler('configure', (data, msg) => {
+  // 配置意图由流式文本渲染
+}, { panel: ChatPanel })
+
+registerEventHandler('validate', (data, msg) => {
+  // 校验意图由 ValidationResultPanel 渲染
+}, { panel: ValidationResultPanel })
+
+registerEventHandler('delete_form', (data, msg) => {
+  // 删除意图由 DeleteResultPanel 渲染
+}, { panel: DeleteResultPanel })
+
+registerEventHandler('manage_history', (data, msg) => {
+  // 历史管理由 HistoryPanel 渲染
+}, { panel: HistoryPanel })
+
+registerEventHandler('form_update', (data, msg) => {
+  // 表单更新由 FormIntentPanel 渲染
+}, { panel: FormIntentPanel })
+
+registerEventHandler('product_ops_query', (data, msg) => {
+  // 市场洞察由 ProductOpsPanel 渲染
+}, { panel: ProductOpsPanel })
+
+registerEventHandler('product_ops_policy', (data, msg) => {
+  // 立项研判由 ProductOpsPanel 渲染
+}, { panel: ProductOpsPanel })
+
+registerEventHandler('product_ops_reason', (data, msg) => {
+  // 异动归因由 ProductOpsPanel 渲染
+}, { panel: ProductOpsPanel })
+
+registerEventHandler('product_ops_compare', (data, msg) => {
+  // 假设分析由 ProductOpsPanel 渲染
+}, { panel: ProductOpsPanel })

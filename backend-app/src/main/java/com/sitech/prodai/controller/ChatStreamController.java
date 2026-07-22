@@ -4,7 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sitech.prodai.config.ConfigLoader;
 import com.sitech.prodai.intent.IntentContext;
 import com.sitech.prodai.intent.IntentHandlerRegistry;
+import com.sitech.prodai.intent.StreamStats;
 import com.sitech.prodai.intent.SseUtils;
+import com.sitech.prodai.service.ChatPersistenceService;
+import com.sitech.prodai.service.IntentPromptManager;
 import com.sitech.prodai.service.LlmService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,38 +37,84 @@ public class ChatStreamController {
     private final Optional<LlmService> llmService;
     private final ConfigLoader configLoader;
     private final ObjectMapper objectMapper;
+    private final IntentPromptManager intentPromptManager;
+    private final Optional<ChatPersistenceService> persistenceService;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     public ChatStreamController(IntentHandlerRegistry intentRegistry,
                                 Optional<LlmService> llmService,
                                 ConfigLoader configLoader,
-                                ObjectMapper objectMapper) {
+                                ObjectMapper objectMapper,
+                                IntentPromptManager intentPromptManager,
+                                Optional<ChatPersistenceService> persistenceService) {
         this.intentRegistry = intentRegistry;
         this.llmService = llmService;
         this.configLoader = configLoader;
         this.objectMapper = objectMapper;
+        this.intentPromptManager = intentPromptManager;
+        this.persistenceService = persistenceService;
     }
 
     @PostMapping(value = "/agent/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter agentStream(@RequestBody Map<String, Object> request) {
         SseEmitter emitter = new SseEmitter(300_000L);
 
+        // SSE 异步异常回调 —— 防止 ControllerAdvice 无法捕获 SSE 线程内的异常
+        emitter.onTimeout(() -> {
+            log.warn("[chat/agent/stream] SSE 超时，客户端 sessionId={}", request.get("sessionId"));
+            emitter.complete();
+        });
+        emitter.onError(e -> {
+            log.warn("[chat/agent/stream] SSE 错误: {}", e.getMessage());
+        });
+        emitter.onCompletion(() -> {
+            log.debug("[chat/agent/stream] SSE 连接完成");
+        });
+
         executor.execute(() -> {
+            String sessionId = str(request.get("sessionId"), str(request.get("session_id")));
+            String userId = str(request.get("userId"), str(request.get("user_id")));
+            if (userId.isBlank()) userId = "default";
+
+            // 自动分配 sessionId
+            if (sessionId.isBlank()) {
+                sessionId = "sess_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+            }
+
+            String intentType = "chat";
+            Map<String, Object> intentData = new LinkedHashMap<>();
+
+            // 提前提取 lastUserMessage（effectively final，供 lambda 捕获）
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> allMessages = (List<Map<String, Object>>) request.getOrDefault("messages", List.of());
+            String lastUserMessage = "";
+            for (int i = allMessages.size() - 1; i >= 0; i--) {
+                Map<String, Object> msg = allMessages.get(i);
+                if ("user".equals(str(msg.get("role")))) {
+                    lastUserMessage = str(msg.get("content"));
+                    break;
+                }
+            }
+
             try {
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> messages = (List<Map<String, Object>>) request.getOrDefault("messages", List.of());
-                String userId = str(request.get("userId"), str(request.get("user_id")));
-                String sessionId = str(request.get("sessionId"), str(request.get("session_id")));
-                String scene = str(request.get("scene"));
 
-                String lastUserMessage = "";
-                for (int i = messages.size() - 1; i >= 0; i--) {
-                    Map<String, Object> msg = messages.get(i);
-                    if ("user".equals(str(msg.get("role")))) {
-                        lastUserMessage = str(msg.get("content"));
-                        break;
+                // 若前端未传消息体，尝试从 DB 加载历史上下文
+                if (messages.isEmpty() && persistenceService.isPresent()) {
+                    try {
+                        List<Map<String, String>> dbHistory = persistenceService.get().getRecentMessages(sessionId, 20);
+                        List<Map<String, Object>> converted = new ArrayList<>();
+                        for (Map<String, String> m : dbHistory) {
+                            converted.add(new LinkedHashMap<>(m));
+                        }
+                        messages = converted;
+                    } catch (Exception e) {
+                        log.debug("[chat/agent/stream] 从 DB 加载历史消息失败: {}", e.getMessage());
                     }
                 }
+
+                String scene = str(request.get("scene"));
 
                 StringBuilder messagesText = new StringBuilder();
                 for (Map<String, Object> msg : messages) {
@@ -85,21 +135,32 @@ public class ChatStreamController {
                         "lastUserMessage", lastUserMessage.length() > 100 ? lastUserMessage.substring(0, 100) : lastUserMessage
                 )));
 
-                String intentPrompt = buildIntentPrompt(messagesText.toString(), lastUserMessage, ontologiesInfo.toString(), scene);
+                String intentPrompt = intentPromptManager.renderIntentPrompt(messagesText.toString(), lastUserMessage, ontologiesInfo.toString(), scene);
                 sendEvent(emitter, SseUtils.thinking("... 调用 LLM 进行意图识别...", Map.of(
                         "promptLength", intentPrompt.length(),
                         "scene", scene
                 )));
 
+                StreamStats streamStats = new StreamStats();
+                streamStats.recordInputTokens(intentPrompt);
+
                 String intentResult = "";
                 try {
                     intentResult = llmService.map(s -> s.completePrompt(intentPrompt)).orElse("");
+                    streamStats.recordOutputText(intentResult);
                 } catch (Exception e) {
                     log.warn("[chat/agent/stream] LLM 意图识别失败: {}，降级到 chat", e.getMessage());
                 }
 
-                Map<String, Object> intentData = parseIntentResult(intentResult);
-                String intentType = normalizeIntentType(str(intentData.get("intentType"), str(intentData.get("intent_type"))));
+                // 记录意图识别阶段的 token 用量
+                com.sitech.prodai.intent.StreamStats intentStats = new com.sitech.prodai.intent.StreamStats();
+                intentStats.recordInputTokens(intentPrompt);
+                intentStats.recordOutputText(intentResult);
+                log.debug("[chat/agent/stream] 意图识别 token 估算: input={}, output={}",
+                        intentStats.getInputTokens(), intentStats.getOutputTokens());
+
+                intentData = parseIntentResult(intentResult);
+                intentType = normalizeIntentType(str(intentData.get("intentType"), str(intentData.get("intent_type"))));
                 if (intentType.isEmpty()) {
                     intentType = resolveDefaultIntentByScene(scene);
                 }
@@ -145,6 +206,27 @@ public class ChatStreamController {
                     }
                 });
 
+                // 对话持久化（JPA 可选）
+                final String pSessionId = sessionId;
+                final String pUserId = userId;
+                final String pLastMsg = lastUserMessage;
+                final String finalIntentType = intentType;
+                final Map<String, Object> finalIntentData = intentData;
+                persistenceService.ifPresent(svc -> {
+                    try {
+                        svc.getOrCreateSession(pSessionId, pUserId,
+                                pLastMsg.length() > 50 ? pLastMsg.substring(0, 50) : pLastMsg);
+                        svc.saveMessage(pSessionId, "user", pLastMsg, "text");
+                        String assistantContent = "意图: " + finalIntentType;
+                        if (finalIntentData.containsKey("verdict")) {
+                            assistantContent += " | 结论: " + finalIntentData.get("verdict");
+                        }
+                        svc.saveMessage(pSessionId, "assistant", assistantContent, "json");
+                    } catch (Exception e) {
+                        log.warn("[chat/agent/stream] 对话持久化失败: {}", e.getMessage());
+                    }
+                });
+
                 emitter.complete();
             } catch (Exception e) {
                 log.error("[chat/agent/stream] 处理失败", e);
@@ -159,26 +241,6 @@ public class ChatStreamController {
         });
 
         return emitter;
-    }
-
-    private String buildIntentPrompt(String messagesText, String lastUserMessage, String ontologiesInfo, String scene) {
-        String sceneHint = scene == null || scene.isBlank() ? "" : "（当前前端场景：" + scene + "）";
-        String historyBlock = "";
-        if (!messagesText.isBlank()) {
-            historyBlock = "\n\n对话上下文（按时间顺序，最新在最后）：\n" + messagesText;
-        }
-        return "你是一个 AI 原生意图识别助手。请根据用户输入判断意图类型，并优先识别产商品运营场景" + sceneHint + "。\n\n"
-                + "可用意图类型：\n"
-                + "- chat: 纯聊天/问答\n"
-                + "- form: 生成表单\n"
-                + "- product_ops_query: 产商品市场洞察、在售查询、竞品对比、指标查询\n"
-                + "- product_ops_policy: 产商品立项研判、规则评估、风险稽核\n"
-                + "- product_ops_reason: 产商品异动归因、证据链解释、审计追溯\n"
-                + historyBlock + "\n\n"
-                + "用户最新消息：" + lastUserMessage + "\n\n"
-                + "请输出 JSON 格式的意图识别结果：\n"
-                + "{\"intentType\": \"意图类型\", \"action\": \"子操作\", \"confidence\": 0.0-1.0, \"extractedFields\": {}}\n"
-                + "仅输出 JSON，不要其他内容。";
     }
 
     @SuppressWarnings("unchecked")
@@ -227,6 +289,7 @@ public class ChatStreamController {
             case "query", "nl_query", "product_ops_query", "market_insight" -> "product_ops_query";
             case "policy", "evaluate", "product_ops_policy", "risk_audit", "online_check" -> "product_ops_policy";
             case "reason", "explain", "product_ops_reason", "root_cause" -> "product_ops_reason";
+            case "compare", "compare_state", "product_ops_compare", "what_if", "hypothesis" -> "product_ops_compare";
             default -> normalized;
         };
     }
@@ -238,6 +301,7 @@ public class ChatStreamController {
             case "query", "market", "market_insight", "rd" -> "product_ops_query";
             case "online", "policy", "risk", "audit", "ops" -> "product_ops_policy";
             case "reason", "root_cause", "explain" -> "product_ops_reason";
+            case "compare", "compare_state", "what_if", "hypothesis" -> "product_ops_compare";
             default -> "";
         };
     }

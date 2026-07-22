@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { sendMessageWithModel } from '../services/chatApi.js'
+import { sendMessageWithModel, loadMessages as apiLoadMessages, createSession, getSessions } from '../services/chatApi.js'
 import { getEventHandler, getPostProcessor } from './useIntentRegistry.js'
 
 function uid(prefix = 'msg') {
@@ -10,6 +10,8 @@ export function useChatStream() {
   const messages = ref([])
   const streaming = ref(false)
   const abortRef = ref(null)
+  const sessionId = ref('')
+  const sessionList = ref([])
 
   const pushUserMessage = (text, meta = {}) => {
     const msg = {
@@ -74,6 +76,46 @@ export function useChatStream() {
     })
   }
 
+  // ── 会话管理 ──────────────────────────────────────
+
+  /** 加载会话列表（供侧边栏使用） */
+  const loadSessions = async (userId = '', limit = 50) => {
+    try {
+      sessionList.value = await getSessions(userId, limit)
+    } catch { /* 静默 */ }
+  }
+
+  /** 切换到指定会话：清空当前消息，从后端加载历史 */
+  const switchSession = async (targetSessionId) => {
+    if (!targetSessionId) return
+    if (streaming.value) return
+    sessionId.value = targetSessionId
+    messages.value = []
+    try {
+      const historyMsgs = await apiLoadMessages(targetSessionId)
+      if (historyMsgs.length) {
+        messages.value = historyMsgs
+      }
+    } catch { /* 静默 */ }
+  }
+
+  /** 新建一个空会话 */
+  const newSession = async (userId = '') => {
+    if (streaming.value) return
+    try {
+      const result = await createSession(userId, '新对话')
+      if (result.success) {
+        sessionId.value = result.session_id
+        messages.value = []
+      }
+    } catch { /* 静默 */ }
+  }
+
+  /** 获取当前 sessionId（供发送消息时传入后端） */
+  const getSessionId = () => sessionId.value
+
+  // ── 消息发送 ──────────────────────────────────────
+
   const sendMessage = async ({ text, scene = '', modelConfig = null, history = null }) => {
     if (!text || streaming.value) return
     streaming.value = true
@@ -92,7 +134,12 @@ export function useChatStream() {
 
       upsertAssistantMessage({ loading: true, streamText: '' })
 
-      const resp = await sendMessageWithModel(payload, { modelConfig, scene })
+      // 传 sessionId 给后端，让后端做持久化
+      const resp = await sendMessageWithModel(payload, {
+        modelConfig,
+        scene,
+        sessionId: sessionId.value,
+      })
       abortRef.value = resp?.abortCtrl || null
       const reader = resp.body.getReader()
       const decoder = new TextDecoder()
@@ -125,14 +172,17 @@ export function useChatStream() {
               upsertAssistantMessage({ stats: data })
             } else if (data.type === 'done') {
               const current = messages.value.find(m => m.role === 'assistant' && !m.done) || {}
-              const doneIntent = data.intentType || (data.intentData && data.intentData.intentType) || current.intentType || ''
+              // done 事件的 intentType 来自后端 Handler，优先级最高
+              const doneIntent = data.intentType
+                || (data.intentData && data.intentData.intentType)
+                || current.intentType
+                || ''
               const doneAction = (data.intentData && data.intentData.action) || data.action || current.action || ''
               const doneStats = {
                 ...(current.stats || {}),
                 ...((data.intentData && data.intentData.stats) || {}),
                 ...(data.stats || {}),
               }
-              // 合并而非覆盖，避免丢失 intent 事件里的 results/sparql
               const doneIntentData = {
                 ...(current.intentData || {}),
                 ...(data.intentData || {}),
@@ -148,7 +198,7 @@ export function useChatStream() {
               })
             } else if (data.type === 'intent') {
               applyIntentEvent(data)
-            } else if (data.type === 'product_ops_query' || data.type === 'product_ops_policy' || data.type === 'product_ops_reason') {
+            } else if (data.type === 'product_ops_query' || data.type === 'product_ops_policy' || data.type === 'product_ops_reason' || data.type === 'product_ops_compare') {
               applyIntentEvent({ ...data, intentType: data.type })
             }
           } catch (err) {
@@ -165,7 +215,6 @@ export function useChatStream() {
         if (post) post(finalMsg, finalMsg)
       }
 
-      // 仅在流未收到 done 时收尾；已 done 时再 upsert 会新建一条空气泡
       if (!messages.value.some(m => m.role === 'assistant' && m.done)) {
         upsertAssistantMessage({ done: true, loading: false })
       }
@@ -193,7 +242,13 @@ export function useChatStream() {
   return {
     messages,
     streaming,
+    sessionId,
+    sessionList,
     sendMessage,
     stop,
+    loadSessions,
+    switchSession,
+    newSession,
+    getSessionId,
   }
 }
