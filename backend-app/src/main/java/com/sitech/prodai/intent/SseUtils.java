@@ -50,6 +50,47 @@ public final class SseUtils {
         return event;
     }
 
+    /**
+     * 富思考事件 —— 包含元数据、耗时、详情，供前端展示更丰富的思考过程。
+     *
+     * @param content   步骤描述文本
+     * @param metadata  元数据（如 intentType、confidence、scene、tokenUsage 等）
+     * @param elapsedMs 该步骤耗时（毫秒），-1 表示仍在进行
+     * @param details   可展开的详细信息（如 prompt 片段、LLM 原始返回等）
+     */
+    public static Map<String, Object> thinkingRich(String content,
+                                                     Map<String, Object> metadata,
+                                                     long elapsedMs,
+                                                     String details) {
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("type", "thinking");
+        event.put("content", content);
+        if (metadata != null && !metadata.isEmpty()) {
+            event.put("metadata", metadata);
+        }
+        if (elapsedMs >= 0) {
+            event.put("elapsed", Math.round(elapsedMs / 1000.0 * 1000.0) / 1000.0);
+        }
+        if (details != null && !details.isBlank()) {
+            event.put("details", details);
+        }
+        return event;
+    }
+
+    /** 简化版富思考事件（无详情） */
+    public static Map<String, Object> thinkingRich(String content,
+                                                     Map<String, Object> metadata,
+                                                     long elapsedMs) {
+        return thinkingRich(content, metadata, elapsedMs, null);
+    }
+
+    /** 简化版富思考事件（带详情，无耗时） */
+    public static Map<String, Object> thinkingRich(String content,
+                                                     Map<String, Object> metadata,
+                                                     String details) {
+        return thinkingRich(content, metadata, -1, details);
+    }
+
     /** 直接回复用户的消息（type=text），对齐 Python ask_user() */
     public static Map<String, Object> askUser(String content) {
         Map<String, Object> event = new LinkedHashMap<>();

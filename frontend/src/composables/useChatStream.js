@@ -162,6 +162,9 @@ export function useChatStream() {
                   type: 'thinking',
                   content: data.content,
                   metadata: data.metadata || {},
+                  elapsed: data.elapsed != null ? data.elapsed : null,
+                  details: data.details || null,
+                  result: data.result || null,
                   timestamp: Date.now(),
                 },
               })
@@ -237,6 +240,11 @@ export function useChatStream() {
       abortRef.value.abort()
     }
     streaming.value = false
+    // 将当前未完成的助手消息标记为 done，避免下次发送时串到旧消息
+    const current = messages.value.find(m => m.role === 'assistant' && !m.done)
+    if (current) {
+      upsertAssistantMessage({ done: true, loading: false })
+    }
   }
 
   return {

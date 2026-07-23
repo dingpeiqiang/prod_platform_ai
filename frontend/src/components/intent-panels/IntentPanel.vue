@@ -69,9 +69,9 @@ const emit = defineEmits(['intent-action'])
 const productOpsTypes = ['product_ops_query', 'product_ops_policy', 'product_ops_reason', 'product_ops_compare']
 const isProductOps = computed(() => productOpsTypes.includes(props.intentType))
 
-// 从 msg._intentData[intentType] 取意图数据
+// 从 msg.intentData 取意图数据
 const panelData = computed(() => {
-  return props.msg._intentData?.[props.intentType] || null
+  return props.msg.intentData || null
 })
 </script>
 

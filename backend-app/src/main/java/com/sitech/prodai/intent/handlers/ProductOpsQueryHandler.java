@@ -71,7 +71,18 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
         donePayload.put("graphData", buildGraphData(results));
 
         return Flux.just(
-                SseUtils.thinking("正在通过 " + ("llm".equals(discoveryMethod) ? "LLM 实体发现" : "关键词匹配") + " 检索本体事实..."),
+                SseUtils.thinkingRich(
+                        "正在通过 " + ("llm".equals(discoveryMethod) ? "LLM 实体发现" : "关键词匹配") + " 检索本体事实...",
+                        Map.of(
+                                "step", 5,
+                                "totalSteps", 6,
+                                "discoveryMethod", discoveryMethod,
+                                "resultCount", results.size(),
+                                "question", question.length() > 60 ? question.substring(0, 60) + "..." : question
+                        ),
+                        -1,
+                        result.get("sparql") != null ? "SPARQL: " + truncateStr(String.valueOf(result.get("sparql")), 150) : null
+                ),
                 SseUtils.intentEvent(getIntentType(), "query", intentData, false),
                 SseUtils.textStart(),
                 SseUtils.text(answerText),
@@ -161,5 +172,10 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
         graphData.put("nodes", nodes);
         graphData.put("edges", edges);
         return graphData;
+    }
+
+    private String truncateStr(String text, int maxLen) {
+        if (text == null) return "";
+        return text.length() <= maxLen ? text : text.substring(0, maxLen) + "...";
     }
 }

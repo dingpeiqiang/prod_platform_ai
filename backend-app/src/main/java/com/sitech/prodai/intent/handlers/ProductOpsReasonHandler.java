@@ -67,7 +67,19 @@ public class ProductOpsReasonHandler implements BaseIntentHandler {
         );
 
         return Flux.just(
-                SseUtils.thinking("... 正在追溯产商品异动根因并构建证据链..."),
+                SseUtils.thinkingRich(
+                        "正在追溯产商品异动根因并构建证据链...",
+                        Map.of(
+                                "step", 5,
+                                "totalSteps", 6,
+                                "traceId", traceId.length() > 12 ? traceId.substring(0, 12) + "..." : traceId,
+                                "target", target.length() > 50 ? target.substring(0, 50) + "..." : target,
+                                "ruleCount", referencedRules.size(),
+                                "evidenceCount", results.size()
+                        ),
+                        -1,
+                        referencedRules.isEmpty() ? null : "引用规则: " + String.join(", ", referencedRules)
+                ),
                 SseUtils.intentEvent(getIntentType(), "root_cause", intentData, false),
                 SseUtils.textStart(),
                 SseUtils.text(answerText),

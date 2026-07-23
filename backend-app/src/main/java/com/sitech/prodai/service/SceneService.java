@@ -12,13 +12,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 场景服务 —— 对齐 Python {@code app/services/scene_service.py::SceneService}。
+ * 场景服务 —— 纯文件数据源，对齐 Python app/services/scene_service.py::SceneService。
  *
  * <p>从 {@link ConfigLoader} 读取场景文件数据源（scene_mapping.json），
  * 提供场景树构建、场景识别、统计、自动提示词生成等能力。
  *
- * <p>注意：Python 版本中 create/update/delete/toggle_active 等写操作
- * 在文件数据源模式下已禁用，Java 版本对齐此行为。
+ * <p>场景数据完全由文件管理，不支持数据库 CRUD。
  */
 @Service
 public class SceneService {
@@ -33,7 +32,6 @@ public class SceneService {
 
     // ==================== 查询方法 ====================
 
-    /** 对齐 Python list_scenes_tree */
     public Map<String, Object> listScenesTree(Boolean isActive) {
         try {
             List<Map<String, Object>> all = filterScenesByActive(configLoader.getAllScenes(), isActive);
@@ -44,12 +42,11 @@ public class SceneService {
             body.put("data", tree);
             return body;
         } catch (Exception e) {
-            log.error("[SceneService] list_scenes_tree 失败", e);
+            log.error("[SceneService] listScenesTree 失败", e);
             return fail(str(e));
         }
     }
 
-    /** 对齐 Python list_scenes */
     public Map<String, Object> listScenes(Boolean isActive) {
         try {
             List<Map<String, Object>> scenes = filterScenesByActive(configLoader.getAllScenes(), isActive);
@@ -59,12 +56,11 @@ public class SceneService {
             body.put("data", scenes);
             return body;
         } catch (Exception e) {
-            log.error("[SceneService] list_scenes 失败", e);
+            log.error("[SceneService] listScenes 失败", e);
             return fail(str(e));
         }
     }
 
-    /** 对齐 Python get_scene */
     public Map<String, Object> getScene(String sceneCode) {
         try {
             Map<String, Object> scene = configLoader.getSceneByCode(sceneCode);
@@ -76,12 +72,11 @@ public class SceneService {
             body.put("data", scene);
             return body;
         } catch (Exception e) {
-            log.error("[SceneService] get_scene {} 失败", sceneCode, e);
+            log.error("[SceneService] getScene {} 失败", sceneCode, e);
             return fail(str(e));
         }
     }
 
-    /** 对齐 Python get_scene_prompt */
     public Map<String, Object> getScenePrompt(String sceneCode) {
         try {
             Map<String, Object> scene = configLoader.getSceneByCode(sceneCode);
@@ -122,12 +117,11 @@ public class SceneService {
             body.put("message", "获取成功");
             return body;
         } catch (Exception e) {
-            log.error("[SceneService] get_scene_prompt {} 失败", sceneCode, e);
+            log.error("[SceneService] getScenePrompt {} 失败", sceneCode, e);
             return fail(str(e));
         }
     }
 
-    /** 对齐 Python test_scene_recognition */
     public Map<String, Object> testSceneRecognition(String userInput) {
         try {
             List<Map<String, Object>> all = new ArrayList<>();
@@ -137,103 +131,48 @@ public class SceneService {
                 }
             }
 
-            List<Map<String, Object>> centers = filterByType(all, "center");
-            List<Map<String, Object>> businesses = filterByType(all, "business");
-            List<Map<String, Object>> scenes = filterByType(all, "scene");
-
             String userInputLower = userInput == null ? "" : userInput.toLowerCase();
-
-            Map<String, Object> matchedCenter = findBestMatch(centers, userInputLower);
-            Map<String, Object> matchedBusiness = findBusiness(businesses, matchedCenter, userInputLower);
-            List<Map<String, Object>> targetScenes = getTargetScenes(scenes, businesses, matchedCenter, matchedBusiness);
-            List<Map<String, Object>> matchedScenes = matchScenes(targetScenes, userInputLower);
-
+            List<Map<String, Object>> matchedScenes = matchScenes(all, userInputLower);
             Map<String, Object> bestMatch = matchedScenes.isEmpty() ? null : matchedScenes.get(0);
 
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("success", true);
             body.put("bestMatch", bestMatch);
             body.put("allMatches", matchedScenes);
-            body.put("matchedCenter", matchedCenter == null ? null : matchedCenter.get("sceneName"));
-            body.put("matchedBusiness", matchedBusiness == null ? null : matchedBusiness.get("sceneName"));
             body.put("totalScanned", all.size());
             return body;
         } catch (Exception e) {
-            log.error("[SceneService] test_scene_recognition 失败", e);
+            log.error("[SceneService] testSceneRecognition 失败", e);
             return fail(str(e));
         }
     }
 
-    /** 对齐 Python get_scene_stats */
     public Map<String, Object> getSceneStats() {
         try {
             List<Map<String, Object>> all = configLoader.getAllScenes();
             int total = all.size();
             int active = 0;
-            int centerCount = 0;
-            int businessCount = 0;
-            int sceneCount = 0;
             for (Map<String, Object> s : all) {
                 if (Boolean.TRUE.equals(s.getOrDefault("isActive", true))) {
                     active++;
                 }
-                String type = str(s.get("type"));
-                if ("center".equals(type)) {
-                    centerCount++;
-                } else if ("business".equals(type)) {
-                    businessCount++;
-                } else if ("scene".equals(type)) {
-                    sceneCount++;
-                }
             }
-            Map<String, Object> byType = new LinkedHashMap<>();
-            byType.put("center", centerCount);
-            byType.put("business", businessCount);
-            byType.put("scene", sceneCount);
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("total", total);
             data.put("active", active);
             data.put("inactive", total - active);
-            data.put("byType", byType);
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("success", true);
             body.put("data", data);
             return body;
         } catch (Exception e) {
-            log.error("[SceneService] get_scene_stats 失败", e);
+            log.error("[SceneService] getSceneStats 失败", e);
             return fail(str(e));
         }
     }
 
-    // ==================== 不支持的操作（文件数据源，对齐 Python） ====================
-
-    public Map<String, Object> createScene(Map<String, Object> data, String user) {
-        return fail("场景管理功能已切换为文件数据源，不支持创建场景");
-    }
-
-    public Map<String, Object> updateScene(String sceneCode, Map<String, Object> data, String user) {
-        return fail("场景管理功能已切换为文件数据源，不支持更新场景");
-    }
-
-    public Map<String, Object> deleteScene(String sceneCode) {
-        return fail("场景管理功能已切换为文件数据源，不支持删除场景");
-    }
-
-    public Map<String, Object> toggleActive(String sceneCode) {
-        return fail("场景管理功能已切换为文件数据源，不支持切换场景状态");
-    }
-
-    public Map<String, Object> getHistory(String sceneCode) {
-        return fail("场景历史功能已切换为文件数据源，不支持查看历史");
-    }
-
-    public Map<String, Object> rollbackToVersion(String sceneCode, Integer version, String user) {
-        return fail("场景回滚功能已切换为文件数据源，不支持回滚");
-    }
-
     // ==================== 内部方法 ====================
 
-    /** 对齐 Python _build_tree */
     private List<Map<String, Object>> buildTree(List<Map<String, Object>> scenes) {
         Map<String, Map<String, Object>> nodeMap = new LinkedHashMap<>();
         for (Map<String, Object> scene : scenes) {
@@ -246,6 +185,8 @@ public class SceneService {
             node.put("sceneName", scene.get("sceneName"));
             node.put("priority", scene.getOrDefault("priority", 1));
             node.put("isActive", scene.getOrDefault("isActive", true));
+            node.put("keywords", scene.getOrDefault("keywords", List.of()));
+            node.put("description", scene.get("description"));
             node.put("children", new ArrayList<Map<String, Object>>());
             nodeMap.put(sceneCode, node);
         }
@@ -265,12 +206,13 @@ public class SceneService {
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> children = (List<Map<String, Object>>) nodeMap.get(parentId).get("children");
                 children.add(node);
+            } else {
+                tree.add(node);
             }
         }
         return tree;
     }
 
-    /** 对齐 Python _generate_auto_prompt */
     @SuppressWarnings("unchecked")
     private String generateAutoPrompt(Map<String, Object> sceneData) {
         Object configObj = sceneData.get("config");
@@ -313,7 +255,6 @@ public class SceneService {
         return String.join("\n", parts);
     }
 
-    /** 对齐 Python _build_workflow_prompt */
     private String buildWorkflowPrompt(String workflowCode) {
         return """
                 ## 工作流调用指令
@@ -343,7 +284,6 @@ public class SceneService {
                 - 确保 JSON 格式正确""".formatted(workflowCode);
     }
 
-    /** 对齐 Python _match_keyword */
     private String matchKeyword(Map<String, Object> scene, String userInputLower) {
         Object keywordsObj = scene.get("keywords");
         if (!(keywordsObj instanceof List<?> keywords)) {
@@ -361,69 +301,6 @@ public class SceneService {
         return null;
     }
 
-    private Map<String, Object> findBestMatch(List<Map<String, Object>> items, String userInputLower) {
-        for (Map<String, Object> item : items) {
-            if (matchKeyword(item, userInputLower) != null) {
-                return item;
-            }
-        }
-        return null;
-    }
-
-    private Map<String, Object> findBusiness(List<Map<String, Object>> businesses,
-                                              Map<String, Object> matchedCenter,
-                                              String userInputLower) {
-        if (matchedCenter != null) {
-            String centerCode = str(matchedCenter.get("sceneCode"));
-            List<Map<String, Object>> centerBusinesses = new ArrayList<>();
-            for (Map<String, Object> b : businesses) {
-                if (centerCode.equals(b.get("parentId"))) {
-                    centerBusinesses.add(b);
-                }
-            }
-            Map<String, Object> matched = findBestMatch(centerBusinesses, userInputLower);
-            if (matched != null) {
-                return matched;
-            }
-        }
-        return findBestMatch(businesses, userInputLower);
-    }
-
-    private List<Map<String, Object>> getTargetScenes(List<Map<String, Object>> scenes,
-                                                       List<Map<String, Object>> businesses,
-                                                       Map<String, Object> matchedCenter,
-                                                       Map<String, Object> matchedBusiness) {
-        if (matchedBusiness != null) {
-            String businessCode = str(matchedBusiness.get("sceneCode"));
-            List<Map<String, Object>> result = new ArrayList<>();
-            for (Map<String, Object> s : scenes) {
-                if (businessCode.equals(s.get("parentId"))) {
-                    result.add(s);
-                }
-            }
-            return result;
-        }
-        if (matchedCenter != null) {
-            String centerCode = str(matchedCenter.get("sceneCode"));
-            java.util.Set<String> businessCodes = new java.util.HashSet<>();
-            for (Map<String, Object> b : businesses) {
-                if (centerCode.equals(b.get("parentId")) && b.get("sceneCode") != null) {
-                    businessCodes.add(String.valueOf(b.get("sceneCode")));
-                }
-            }
-            List<Map<String, Object>> result = new ArrayList<>();
-            for (Map<String, Object> s : scenes) {
-                Object parentId = s.get("parentId");
-                if (parentId != null && businessCodes.contains(String.valueOf(parentId))) {
-                    result.add(s);
-                }
-            }
-            return result.isEmpty() ? scenes : result;
-        }
-        return scenes;
-    }
-
-    /** 对齐 Python _match_scenes */
     private List<Map<String, Object>> matchScenes(List<Map<String, Object>> targetScenes, String userInputLower) {
         List<Map<String, Object>> matched = new ArrayList<>();
         for (Map<String, Object> scene : targetScenes) {
@@ -453,16 +330,6 @@ public class SceneService {
         List<Map<String, Object>> result = new ArrayList<>();
         for (Map<String, Object> s : scenes) {
             if (isActive.equals(s.getOrDefault("isActive", true))) {
-                result.add(s);
-            }
-        }
-        return result;
-    }
-
-    private List<Map<String, Object>> filterByType(List<Map<String, Object>> scenes, String type) {
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (Map<String, Object> s : scenes) {
-            if (type.equals(s.get("type"))) {
                 result.add(s);
             }
         }

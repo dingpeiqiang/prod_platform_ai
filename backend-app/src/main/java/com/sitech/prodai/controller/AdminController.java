@@ -6,7 +6,6 @@ import com.sitech.prodai.service.PromptService;
 import com.sitech.prodai.service.SceneService;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -20,10 +19,10 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 管理后台 API —— 对齐 Python {@code app/api/admin.py}。
+ * 管理后台 API。
  *
- * <p>三组端点：场景管理 / 提示词管理 / 本体管理。
- * 全部委托给 {@link SceneService} / {@link PromptService} / {@link OntologyService}。
+ * <p>场景管理（只读）/ 提示词管理 / 本体管理。
+ * 场景数据完全由文件管理，不支持数据库 CRUD。
  */
 @RestController
 @RequestMapping("/api/v1")
@@ -44,7 +43,7 @@ public class AdminController {
         this.intentPromptManager = intentPromptManager;
     }
 
-    // ==================== 场景管理 ====================
+    // ==================== 场景查询（文件数据源，只读）====================
 
     @GetMapping("/scenes/tree")
     public Map<String, Object> scenesTree(@RequestParam(required = false) Boolean isActive) {
@@ -64,26 +63,6 @@ public class AdminController {
     @GetMapping("/scenes/{sceneCode}")
     public Map<String, Object> getScene(@PathVariable String sceneCode) {
         return sceneService.getScene(sceneCode);
-    }
-
-    @PostMapping("/scenes")
-    public Map<String, Object> createScene(@RequestBody Map<String, Object> body) {
-        return sceneService.createScene(body, "admin");
-    }
-
-    @PutMapping("/scenes/{sceneCode}")
-    public Map<String, Object> updateScene(@PathVariable String sceneCode, @RequestBody Map<String, Object> body) {
-        return sceneService.updateScene(sceneCode, body, "admin");
-    }
-
-    @DeleteMapping("/scenes/{sceneCode}")
-    public Map<String, Object> deleteScene(@PathVariable String sceneCode) {
-        return sceneService.deleteScene(sceneCode);
-    }
-
-    @PatchMapping("/scenes/{sceneCode}/toggle")
-    public Map<String, Object> toggleScene(@PathVariable String sceneCode) {
-        return sceneService.toggleActive(sceneCode);
     }
 
     @PostMapping("/scenes/test")

@@ -129,18 +129,49 @@ public class ChatStreamController {
                             .append(str(e.getValue().get("formName"))).append("\n");
                 }
 
-                sendEvent(emitter, SseUtils.thinking("... 正在分析用户意图...", Map.of(
-                        "messagesCount", messages.size(),
-                        "scene", scene,
-                        "lastUserMessage", lastUserMessage.length() > 100 ? lastUserMessage.substring(0, 100) : lastUserMessage
-                )));
+                // ── 步骤 1：分析输入 ──────────────────────────────
+                long stepStart = System.currentTimeMillis();
+                sendEvent(emitter, SseUtils.thinkingRich(
+                        "正在分析用户输入...",
+                        Map.of(
+                                "step", 1,
+                                "totalSteps", 4,
+                                "messagesCount", messages.size(),
+                                "scene", scene.isEmpty() ? "未指定" : scene,
+                                "inputPreview", lastUserMessage.length() > 80
+                                        ? lastUserMessage.substring(0, 80) + "..." : lastUserMessage
+                        ),
+                        0));
 
-                String intentPrompt = intentPromptManager.renderIntentPrompt(messagesText.toString(), lastUserMessage, ontologiesInfo.toString(), scene);
-                sendEvent(emitter, SseUtils.thinking("... 调用 LLM 进行意图识别...", Map.of(
-                        "promptLength", intentPrompt.length(),
-                        "scene", scene
-                )));
+                // ── 步骤 2：构建意图识别 Prompt ─────────────────
+                long step2Start = System.currentTimeMillis();
+                String intentPrompt = intentPromptManager.renderIntentPrompt(
+                        messagesText.toString(), lastUserMessage, ontologiesInfo.toString(), scene);
+                long step2Elapsed = System.currentTimeMillis() - step2Start;
 
+                // 统计本体加载情况
+                int ontologyCount = ontologies.size();
+                StringBuilder ontologyNames = new StringBuilder();
+                for (String key : ontologies.keySet()) {
+                    if (!ontologyNames.isEmpty()) ontologyNames.append(", ");
+                    ontologyNames.append(key);
+                }
+
+                sendEvent(emitter, SseUtils.thinkingRich(
+                        "已加载 " + ontologyCount + " 个本体，构建意图识别 Prompt...",
+                        Map.of(
+                                "step", 2,
+                                "totalSteps", 4,
+                                "promptLength", intentPrompt.length(),
+                                "ontologyCount", ontologyCount,
+                                "ontologyNames", ontologyNames.toString(),
+                                "scene", scene.isEmpty() ? "通用" : scene,
+                                "conversationDepth", messages.size()
+                        ),
+                        step2Elapsed));
+
+                // ── 步骤 3：调用 LLM 意图识别 ─────────────────
+                long step3Start = System.currentTimeMillis();
                 StreamStats streamStats = new StreamStats();
                 streamStats.recordInputTokens(intentPrompt);
 
@@ -151,6 +182,7 @@ public class ChatStreamController {
                 } catch (Exception e) {
                     log.warn("[chat/agent/stream] LLM 意图识别失败: {}，降级到 chat", e.getMessage());
                 }
+                long step3Elapsed = System.currentTimeMillis() - step3Start;
 
                 // 记录意图识别阶段的 token 用量
                 com.sitech.prodai.intent.StreamStats intentStats = new com.sitech.prodai.intent.StreamStats();
@@ -170,6 +202,46 @@ public class ChatStreamController {
 
                 double confidence = toDouble(intentData.get("confidence"));
                 log.info("[chat/agent/stream] 意图识别结果: type={}, confidence={}, scene={}", intentType, confidence, scene);
+
+                // 意图类型标签映射（前端中文展示）
+                String intentLabel = switch (intentType) {
+                    case "product_ops_query" -> "数据查询";
+                    case "product_ops_policy" -> "政策评估";
+                    case "product_ops_reason" -> "原因分析";
+                    case "product_ops_compare" -> "对比分析";
+                    case "form" -> "表单操作";
+                    case "validate" -> "校验";
+                    case "configure" -> "配置管理";
+                    default -> "通用对话";
+                };
+
+                sendEvent(emitter, SseUtils.thinkingRich(
+                        "意图识别完成：" + intentLabel + "（置信度 " + String.format("%.0f", confidence * 100) + "%）",
+                        Map.of(
+                                "step", 3,
+                                "totalSteps", 4,
+                                "intentType", intentType,
+                                "intentLabel", intentLabel,
+                                "confidence", Math.round(confidence * 100) / 100.0,
+                                "inputTokens", intentStats.getInputTokens(),
+                                "outputTokens", intentStats.getOutputTokens(),
+                                "elapsed", Math.round(step3Elapsed / 1000.0 * 1000.0) / 1000.0
+                        ),
+                        step3Elapsed,
+                        intentResult.isEmpty() ? null : truncateForLog(intentResult, 200)
+                ));
+
+                // ── 步骤 4：分发到处理器 ────────────────────────
+                long step4Start = System.currentTimeMillis();
+                sendEvent(emitter, SseUtils.thinkingRich(
+                        "正在分发到「" + intentLabel + "」处理器执行...",
+                        Map.of(
+                                "step", 4,
+                                "totalSteps", 4,
+                                "handler", intentType,
+                                "action", str(intentData.get("action"))
+                        ),
+                        0));
 
                 IntentContext ctx = new IntentContext();
                 ctx.setIntentData(intentData);
@@ -286,10 +358,14 @@ public class ChatStreamController {
         if (intentType == null || intentType.isBlank()) return "";
         String normalized = intentType.trim().toLowerCase();
         return switch (normalized) {
-            case "query", "nl_query", "product_ops_query", "market_insight" -> "product_ops_query";
-            case "policy", "evaluate", "product_ops_policy", "risk_audit", "online_check" -> "product_ops_policy";
-            case "reason", "explain", "product_ops_reason", "root_cause" -> "product_ops_reason";
-            case "compare", "compare_state", "product_ops_compare", "what_if", "hypothesis" -> "product_ops_compare";
+            case "query", "nl_query", "product_ops_query",
+                 "market_insight", "offering_ops_root_cause" -> "product_ops_query";
+            case "policy", "evaluate", "product_ops_policy",
+                 "risk_audit", "online_check", "offering_ops_risk_audit" -> "product_ops_policy";
+            case "reason", "explain", "product_ops_reason",
+                 "root_cause" -> "product_ops_reason";
+            case "compare", "compare_state", "product_ops_compare",
+                 "what_if", "hypothesis" -> "product_ops_compare";
             default -> normalized;
         };
     }
@@ -298,9 +374,26 @@ public class ChatStreamController {
         if (scene == null || scene.isBlank()) return "";
         String normalized = scene.trim().toLowerCase();
         return switch (normalized) {
-            case "query", "market", "market_insight", "rd" -> "product_ops_query";
-            case "online", "policy", "risk", "audit", "ops" -> "product_ops_policy";
-            case "reason", "root_cause", "explain" -> "product_ops_reason";
+            // ── 配置类场景 → 表单/配置意图 ───────────────────
+            case "rd", "rd_center", "rd_offering_config",
+                 "rd_tariff_filing", "rd.chat", "rd.import",
+                 "offering_config", "offering_config_chat",
+                 "offering_config_batch",
+                 "tariff_filing_apply", "tariff_filing_apply_v2" -> "form";
+            // ── 分析查询类场景 ────────────────────────────────
+            case "query", "market", "market_insight",
+                 "offering_ops_center", "offering_ops_analysis",
+                 "offering_ops_query",
+                 "tariff_center", "tariff_filing" -> "product_ops_query";
+            // ── 风险稽核 / 政策评估类场景 ────────────────────
+            case "online", "online_check", "policy", "risk", "audit",
+                 "risk_audit",
+                 "ops", "ops_center", "ops_insight",
+                 "offering_ops_risk_audit" -> "product_ops_policy";
+            // ── 异动归因类场景 ────────────────────────────────
+            case "reason", "root_cause", "explain",
+                 "offering_ops_root_cause" -> "product_ops_reason";
+            // ── 对比分析类场景 ────────────────────────────────
             case "compare", "compare_state", "what_if", "hypothesis" -> "product_ops_compare";
             default -> "";
         };
@@ -312,5 +405,12 @@ public class ChatStreamController {
             if (v != null) return v;
         }
         return null;
+    }
+
+    /** 截断文本用于日志/思考步骤的 details 字段，避免过长 */
+    private String truncateForLog(String text, int maxLen) {
+        if (text == null) return "";
+        if (text.length() <= maxLen) return text;
+        return text.substring(0, maxLen) + "...";
     }
 }

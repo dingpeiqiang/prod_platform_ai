@@ -36,7 +36,7 @@
           其余 {{ queryResults.length - 8 }} 条结果已省略
         </div>
       </div>
-      <div v-if="queryGraphData && queryGraphData.nodes?.length" class="graph-section">
+      <div v-if="queryResults.length" class="graph-section">
         <div class="section-title">关系图谱</div>
         <SparqlResultGraph :results="queryResults" :query="queryQuestion" />
       </div>
@@ -294,11 +294,11 @@ const handleFollowUp = () => {
 
 /* Data table */
 .data-table { border: 1px solid #f1f5f9; border-radius: 10px; overflow: hidden; }
-.table-header { display: grid; gap: 0; background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 6px 0; }
-.table-row { display: grid; gap: 0; padding: 7px 0; border-bottom: 1px solid #f8fafc; }
+.table-header { display: grid; grid-template-columns: 40px repeat(5, 1fr); gap: 0; background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 6px 0; }
+.table-row { display: grid; grid-template-columns: 40px repeat(5, 1fr); gap: 0; padding: 7px 0; border-bottom: 1px solid #f8fafc; }
 .table-row:last-child { border-bottom: none; }
 .table-row:hover { background: #f8fafc; }
-.th-idx, .td-idx { width: 32px; text-align: center; color: #94a3b8; font-size: 12px; grid-column: span 1; }
+.th-idx, .td-idx { text-align: center; color: #94a3b8; font-size: 12px; }
 .th-cell, .td-cell { font-size: 12px; padding: 0 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .th-cell { color: #64748b; font-weight: 600; }
 .td-cell { color: #334155; }

@@ -106,9 +106,8 @@
 
             <!-- Intent Panel -->
             <IntentPanel
-              v-for="intentType in intentPanelTypes"
-              :key="intentType"
-              :intentType="intentType"
+              v-if="msg.intentType && msg.intentData"
+              :intentType="msg.intentType"
               :msg="msg"
               @intent-action="$emit('intent-action', $event)"
             />
@@ -226,7 +225,6 @@ import IntentPanel from './intent-panels/IntentPanel.vue'
 import ThinkingProcessPanel from './ThinkingProcessPanel.vue'
 import MessageCard from './MessageCard.vue'
 import { renderMarkdown } from '../utils/chatUtils.js'
-import { listIntentPanels } from '../composables/useIntentRegistry.js'
 
 const props = defineProps({
   messages: { type: Array, required: true },
@@ -237,7 +235,6 @@ const props = defineProps({
 const emit = defineEmits(['form-card-click', 'intent-action', 'regenerate', 'suggest', 'query-result-click'])
 
 const messagesEl = ref(null)
-const intentPanelTypes = listIntentPanels()
 
 const showWelcome = computed(() => props.showWelcome || props.messages.length === 0)
 

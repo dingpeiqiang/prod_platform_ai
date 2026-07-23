@@ -71,8 +71,27 @@ public class ProductOpsPolicyHandler implements BaseIntentHandler {
                 "triggered_rules", triggeredRules
         );
 
+        // 政策结论标签
+        String verdictLabel = switch (verdict) {
+            case "allow" -> "通过";
+            case "deny" -> "拒绝";
+            default -> "待审";
+        };
+
         return Flux.just(
-                SseUtils.thinking("正在调用规则引擎进行政策评估..."),
+                SseUtils.thinkingRich(
+                        "正在调用规则引擎进行政策评估...",
+                        Map.of(
+                                "step", 5,
+                                "totalSteps", 6,
+                                "policySetId", policySetId,
+                                "expectationType", expectationType,
+                                "verdict", verdictLabel,
+                                "triggeredRules", triggeredRules.size()
+                        ),
+                        -1,
+                        reason != null && !reason.isBlank() ? "原因: " + truncatePolicyStr(reason, 200) : null
+                ),
                 SseUtils.intentEvent(getIntentType(), expectationType, intentData, false),
                 SseUtils.textStart(),
                 SseUtils.text(answerText),
@@ -108,5 +127,10 @@ public class ProductOpsPolicyHandler implements BaseIntentHandler {
             sb.append("\n命中规则：").append(String.join(", ", rules));
         }
         return sb.toString();
+    }
+
+    private String truncatePolicyStr(String text, int maxLen) {
+        if (text == null) return "";
+        return text.length() <= maxLen ? text : text.substring(0, maxLen) + "...";
     }
 }

@@ -15,11 +15,14 @@
       "type": "scene",
       "parentId": 11,
       "config": {
-        "workflow": [
-          "提交申请",
-          "初审",
-          "复核",
-          "公示"
+        "workflows": [
+          {
+            "code": "tariff_filing_workflow",
+            "name": "资费备案工作流",
+            "config": {},
+            "isDefault": true,
+            "description": "新资费备案申请完整业务流程：提交申请 → 初审 → 复核 → 公示"
+          }
         ],
         "sla_hours": 48,
         "auto_approve": false
@@ -104,11 +107,14 @@
         "指标异动",
         "累计收入",
         "离网率",
-        "运营分析"
+        "运营分析",
+        "收入下滑",
+        "异动归因",
+        "原因分析"
       ],
       "priority": 10,
       "isActive": true,
-      "promptCode": "",
+      "promptCode": "offering_ops_root_cause_prompt",
       "type": "scene",
       "config": {
         "ontologyMvp": true,
@@ -123,11 +129,14 @@
         "风险稽核",
         "零元资费",
         "下架建议",
-        "优胜劣汰"
+        "优胜劣汰",
+        "合规校验",
+        "立项研判",
+        "商品稽核"
       ],
       "priority": 10,
       "isActive": true,
-      "promptCode": "",
+      "promptCode": "offering_ops_risk_audit_prompt",
       "type": "scene",
       "config": {
         "ontologyMvp": true,
