@@ -1,93 +1,115 @@
-export async function getOpsDashboard() {
-  return {
-    anomalyOfferingCount: 1,
-    highRiskCount: 13,
-    suggestDelistCount: 7,
-    shelfCount: 80,
-    ruleVersion: 'RiskRules-v1.2',
-    alerts: []
-  }
-}
+import { get, post } from './httpClient.js'
+import {
+  chatConfigureLocal,
+  checkComplianceLocal,
+  batchFromDocumentLocal,
+  analyzeRootCauseLocal,
+  auditRisksLocal,
+  updateRiskRulesLocal,
+  getOpsDashboardLocal,
+} from './ontologyMvpLocal.js'
 
-export async function chatConfigure() { return {} }
-export async function checkCompliance() { return { issues: [], compliancePass: true } }
-export async function batchFromDocument() { return [] }
-export async function analyzeRootCause() { return {} }
-export async function auditRisks() { return { violations: [], passes: [] } }
-export async function updateRiskRules() { return {} }
+const BASE = 'ontology-mvp'
 
-export async function getOntologyInstances() {
+async function withLocalFallback(remoteCall, localCall) {
   try {
-    const response = await fetch('/api/v1/product-ops/ontology/instances')
-    if (!response.ok) throw new Error('加载失败')
-    return await response.json()
+    return await remoteCall()
   } catch (e) {
-    console.error('获取本体实例失败:', e)
-    return []
-  }
-}
-
-export async function getOntologyInstance(uri) {
-  try {
-    const response = await fetch(`/api/v1/product-ops/ontology/instances/${encodeURIComponent(uri)}`)
-    if (!response.ok) throw new Error('加载失败')
-    return await response.json()
-  } catch (e) {
-    console.error('获取实例详情失败:', e)
-    return null
-  }
-}
-
-export async function createOntologyInstance(data) {
-  try {
-    const response = await fetch('/api/v1/product-ops/ontology/instances', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    })
-    if (!response.ok) throw new Error('创建失败')
-    return await response.json()
-  } catch (e) {
-    console.error('创建实例失败:', e)
-    throw e
-  }
-}
-
-export async function updateOntologyInstance(uri, data) {
-  try {
-    const response = await fetch(`/api/v1/product-ops/ontology/instances/${encodeURIComponent(uri)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    })
-    if (!response.ok) throw new Error('更新失败')
-    return await response.json()
-  } catch (e) {
-    console.error('更新实例失败:', e)
-    throw e
-  }
-}
-
-export async function deleteOntologyInstance(uri) {
-  try {
-    const response = await fetch(`/api/v1/product-ops/ontology/instances/${encodeURIComponent(uri)}`, {
-      method: 'DELETE'
-    })
-    if (!response.ok) throw new Error('删除失败')
-    return await response.json()
-  } catch (e) {
-    console.error('删除实例失败:', e)
-    throw e
+    console.warn('[ontology-mvp] 后端不可用，切换本地推理:', e.message)
+    return localCall()
   }
 }
 
 export async function getOntologyGraph() {
-  try {
-    const response = await fetch('/api/v1/product-ops/ontology/graph')
-    if (!response.ok) throw new Error('加载失败')
-    return await response.json()
-  } catch (e) {
-    console.error('获取图谱数据失败:', e)
-    return { nodes: [], edges: [], classCount: 0, propertyCount: 0, instanceCount: 0, edgeCount: 0 }
-  }
+  return withLocalFallback(
+    () => get(`${BASE}/graph`, { showLoading: false }),
+    () => ({
+      success: true,
+      scenarios: ['家庭融合', '校园体验', '5G个人主套餐'],
+      templates: ['TPL-HF-128', 'TPL-CAMPUS-59'],
+      shelfCount: 80,
+      ruleVersion: 'RiskRules-v1.2',
+      shelfOfferings: [
+        { offeringId: 'OF-HF-128', offeringName: '家庭融合畅享128' },
+        { offeringId: 'OF-RISK-001', offeringName: '校园体验流量包0元' },
+        { offeringId: 'OF-LOW-019', offeringName: '旧版彩铃包-2019' },
+      ],
+      local: true,
+    }),
+  )
+}
+
+export async function getOntologyMeta() {
+  return withLocalFallback(
+    () => get(`${BASE}/meta`, { showLoading: false }),
+    () => ({
+      success: true,
+      classes: [
+        { classCode: 'OfferingConfig', className: '商品配置草稿' },
+        { classCode: 'ConfigRule', className: '配置规则' },
+        { classCode: 'BizScenario', className: '业务场景' },
+      ],
+      local: true,
+    }),
+  )
+}
+
+export async function getOpsDashboard() {
+  return withLocalFallback(
+    () => get(`${BASE}/ops/dashboard`, { showLoading: false }),
+    () => getOpsDashboardLocal(),
+  )
+}
+
+export async function chatConfigure(text, draft = null) {
+  return withLocalFallback(
+    () => post(`${BASE}/config/chat`, { text, draft }, { showLoading: false, loadingText: '本体推理中...' }),
+    () => chatConfigureLocal(text, draft),
+  )
+}
+
+export async function checkCompliance(draft) {
+  return withLocalFallback(
+    () => post(`${BASE}/config/compliance`, { draft }, { showLoading: false }),
+    () => checkComplianceLocal(draft),
+  )
+}
+
+export async function batchFromDocument(documentText = '', packages = null) {
+  return withLocalFallback(
+    () => post(
+      `${BASE}/config/batch`,
+      { documentText, packages },
+      { showLoading: false, loadingText: '文档映射中...' },
+    ),
+    () => batchFromDocumentLocal(documentText, packages),
+  )
+}
+
+export async function analyzeRootCause(offeringId = 'OF-HF-128') {
+  return withLocalFallback(
+    () => post(`${BASE}/ops/root-cause`, { offeringId }, { showLoading: false, loadingText: '根因推理中...' }),
+    () => analyzeRootCauseLocal(offeringId),
+  )
+}
+
+export async function auditRisks(offeringIds = null) {
+  return withLocalFallback(
+    () => post(`${BASE}/ops/risk-audit`, { offeringIds }, { showLoading: false, loadingText: '风险稽核中...' }),
+    () => auditRisksLocal(offeringIds),
+  )
+}
+
+export async function updateRiskRules(overrides = {}) {
+  return withLocalFallback(
+    () => post(`${BASE}/ops/risk-rules`, overrides, { showLoading: false }),
+    () => updateRiskRulesLocal(overrides),
+  )
+}
+
+export async function resetRiskRules() {
+  return withLocalFallback(
+    () => post(`${BASE}/ops/risk-rules/reset`, {}, { showLoading: false }),
+    () => updateRiskRulesLocal({ reset: true }),
+  )
 }

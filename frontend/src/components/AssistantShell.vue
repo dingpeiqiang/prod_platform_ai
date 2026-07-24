@@ -72,6 +72,10 @@
           />
         </div>
       </main>
+
+      <aside v-if="$slots.right" class="workbench-right">
+        <slot name="right" />
+      </aside>
     </div>
   </div>
 </template>
@@ -115,8 +119,10 @@ const formatSessionTime = (t) => {
 
 <style scoped>
 .assistant-workbench { display: flex; flex-direction: column; height: 100%; }
-.workbench-body { display: grid; grid-template-columns: 240px 1fr; flex: 1; min-height: 0; overflow: hidden; }
-.workbench-side { border-right: 1px solid #e5e7eb; padding: 16px; overflow-y: auto; background: #fafafa; display: flex; flex-direction: column; gap: 20px; }
+.workbench-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+.workbench-side { width: 240px; flex-shrink: 0; border-right: 1px solid #e5e7eb; padding: 16px; overflow-y: auto; background: #fafafa; display: flex; flex-direction: column; gap: 20px; }
+.workbench-right { flex-shrink: 0; display: flex; min-height: 0; overflow: hidden; height: 100%; }
+.workbench-right :deep(.form-panel) { height: 100%; }
 .side-section { display: flex; flex-direction: column; gap: 10px; }
 .side-title { font-weight: 700; color: #334155; font-size: 13px; }
 .side-btn { border: 1px solid #e2e8f0; background: #fff; padding: 10px 12px; border-radius: 12px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 4px; transition: border-color 0.15s; }
@@ -136,6 +142,6 @@ const formatSessionTime = (t) => {
 .history-empty { font-size: 12px; color: #94a3b8; text-align: center; padding: 8px 0; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .spin { animation: spin 1s linear infinite; }
-.workbench-main { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.workbench-main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
 .workbench-input { padding: 16px; border-top: 1px solid #e5e7eb; background: #fff; flex-shrink: 0; }
 </style>

@@ -1,7 +1,7 @@
 <template>
   <ElDrawer
     v-model="visible"
-    title="商品列表"
+    title="已配置商品"
     direction="rtl"
     size="480px"
     :with-header="true"
@@ -17,7 +17,7 @@
             <line x1="3" y1="12" x2="3.01" y2="12"/>
             <line x1="3" y1="18" x2="3.01" y2="18"/>
           </svg>
-          商品列表
+          已配置商品
           <span class="count-badge">{{ products.length }}</span>
         </h3>
       </div>
@@ -27,7 +27,7 @@
       <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
         <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
       </svg>
-      <p>暂无商品，请通过左侧功能创建</p>
+      <p>暂无已配置商品，请先通过对话配置生成草稿</p>
     </div>
 
     <div v-else class="product-list">
