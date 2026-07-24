@@ -79,12 +79,37 @@ public class OntologyService {
                 for (Object item : list) rules.add(String.valueOf(item));
             }
         }
+        List<String> distinctRules = rules.stream().distinct().toList();
         String text = switch (String.valueOf(audience)) {
             case "audit" -> steps.toString();
-            case "business" -> "基于追踪ID " + traceId + "，系统根据事实与规则完成了评估。引用规则：" + rules;
-            default -> steps.isEmpty() ? "Trace not found" : "根据您的画像和业务规则，系统做出了推荐。";
+            case "business" -> {
+                if (distinctRules.isEmpty()) {
+                    yield "已根据业务事实与规则完成归因评估，暂无额外命中规则。";
+                }
+                yield "已根据业务事实与规则完成归因评估。引用规则："
+                        + distinctRules.stream().map(this::formatRuleLabel).reduce((a, b) -> a + "、" + b).orElse("");
+            }
+            default -> steps.isEmpty() ? "未找到对应评估记录" : "根据您的画像和业务规则，系统做出了推荐。";
         };
-        return Map.of("success", true, "natural_language", text, "referenced_rules", rules.stream().distinct().toList());
+        return Map.of("success", true, "natural_language", text, "referenced_rules", distinctRules);
+    }
+
+    /** 规则 ID → 业务可读标签 */
+    private String formatRuleLabel(String ruleId) {
+        if (ruleId == null || ruleId.isBlank()) return "";
+        String cn = switch (ruleId) {
+            case "R-A01" -> "异动确认";
+            case "R-A02" -> "渠道归因";
+            case "R-A03" -> "促销归因";
+            case "R-A04" -> "竞品冲击";
+            case "R-A05" -> "行为变化";
+            case "R-B01" -> "高风险命中";
+            case "R-B02", "R-B03" -> "中风险命中";
+            case "R-B04" -> "优胜劣汰";
+            case "R-B05" -> "风险复核";
+            default -> null;
+        };
+        return cn == null ? ruleId : cn + "（" + ruleId + "）";
     }
 
     public Map<String, Object> schema() {

@@ -1,28 +1,14 @@
 <template>
   <div class="assistant-page assistant-workbench">
-    <AssistantNavBar :mode="mode" :title="config.navTitle" />
+    <AssistantNavBar :mode="mode" :title="config.navTitle">
+      <template v-if="$slots['nav-actions']" #actions>
+        <slot name="nav-actions" />
+      </template>
+    </AssistantNavBar>
 
     <div class="workbench-body">
       <aside class="workbench-side">
-        <div class="side-section">
-          <div class="side-title">快捷场景</div>
-          <button
-            v-for="item in config.sceneShortcuts"
-            :key="item.label"
-            class="side-btn"
-            @click="$emit('shortcut', item)"
-          >
-            <span class="btn-label">{{ item.label }}</span>
-            <span class="btn-scene">{{ item.scene }}</span>
-          </button>
-        </div>
-
-        <div class="side-section side-tips">
-          <div class="side-title">使用提示</div>
-          <p v-for="(tip, i) in config.tips" :key="i" class="tip-text">{{ tip }}</p>
-        </div>
-
-        <div class="side-section">
+        <div class="side-section side-session">
           <button class="new-session-btn" @click="$emit('new-session')" :disabled="streaming">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -30,7 +16,7 @@
             新建会话
           </button>
 
-          <div class="side-title" style="display:flex;align-items:center;justify-content:space-between">
+          <div class="side-title history-title">
             <span>历史对话</span>
             <button class="refresh-btn" @click="$emit('refresh-sessions')" :disabled="sessionsLoading" title="刷新">
               <svg :class="{ spin: sessionsLoading }" width="12" height="12" viewBox="0 0 24 24"
@@ -41,19 +27,39 @@
             </button>
           </div>
 
-          <div v-if="sessionsLoading" class="history-empty">加载中...</div>
-          <div v-else-if="!sessions.length" class="history-empty">暂无历史对话</div>
-          <template v-else>
-            <button
-              v-for="s in sessions.slice(0, 8)"
-              :key="s.session_id"
-              class="side-btn history-btn"
-              @click="$emit('switch-session', s.session_id)"
-            >
-              <span class="btn-label history-label">{{ s.title || '新对话' }}</span>
-              <span class="btn-scene">{{ formatSessionTime(s.updated_at) }}</span>
-            </button>
-          </template>
+          <div class="history-list">
+            <div v-if="sessionsLoading" class="history-empty">加载中...</div>
+            <div v-else-if="!sessions.length" class="history-empty">暂无历史对话</div>
+            <template v-else>
+              <button
+                v-for="s in sessions.slice(0, 8)"
+                :key="s.session_id"
+                class="side-btn history-btn"
+                @click="$emit('switch-session', s.session_id)"
+              >
+                <span class="btn-label history-label">{{ s.title || '新对话' }}</span>
+                <span class="btn-scene">{{ formatSessionTime(s.updated_at) }}</span>
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <div class="side-section">
+          <div class="side-title">快捷场景</div>
+          <button
+            v-for="item in config.sceneShortcuts"
+            :key="item.label"
+            class="side-btn"
+            @click="$emit('shortcut', item)"
+          >
+            <span class="btn-label">{{ item.label }}</span>
+            <span class="btn-scene">{{ item.desc || item.scene }}</span>
+          </button>
+        </div>
+
+        <div class="side-section side-tips">
+          <div class="side-title">使用提示</div>
+          <p v-for="(tip, i) in config.tips" :key="i" class="tip-text">{{ tip }}</p>
         </div>
       </aside>
 
@@ -122,19 +128,23 @@ const formatSessionTime = (t) => {
 .workbench-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
 .workbench-side { width: 240px; flex-shrink: 0; border-right: 1px solid #e5e7eb; padding: 16px; overflow-y: auto; background: #fafafa; display: flex; flex-direction: column; gap: 20px; }
 .workbench-right { flex-shrink: 0; display: flex; min-height: 0; overflow: hidden; height: 100%; }
-.workbench-right :deep(.form-panel) { height: 100%; }
+.workbench-right :deep(.form-panel),
+.workbench-right :deep(.ops-panel) { height: 100%; }
 .side-section { display: flex; flex-direction: column; gap: 10px; }
+.side-session { flex-shrink: 0; }
 .side-title { font-weight: 700; color: #334155; font-size: 13px; }
+.history-title { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
 .side-btn { border: 1px solid #e2e8f0; background: #fff; padding: 10px 12px; border-radius: 12px; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 4px; transition: border-color 0.15s; }
 .side-btn:hover { border-color: #93c5fd; background: #f0f9ff; }
-.new-session-btn { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px dashed #93c5fd; background: #eff6ff; color: #2563eb; font-weight: 600; font-size: 13px; cursor: pointer; transition: all 0.15s; }
+.new-session-btn { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid #93c5fd; background: #eff6ff; color: #2563eb; font-weight: 600; font-size: 13px; cursor: pointer; transition: all 0.15s; }
 .new-session-btn:hover { background: #dbeafe; border-color: #60a5fa; }
 .new-session-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.history-list { display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto; }
 .side-btn.history-btn { padding: 8px 10px; }
 .btn-label { font-weight: 600; color: #0f172a; font-size: 13px; }
 .btn-label.history-label { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; display: block; }
-.btn-scene { font-size: 11px; color: #64748b; font-family: monospace; }
-.side-tips { border-top: 1px solid #e5e7eb; padding-top: 14px; }
+.btn-scene { font-size: 11px; color: #64748b; line-height: 1.4; }
+.side-tips { border-top: 1px solid #e5e7eb; padding-top: 14px; margin-top: auto; }
 .tip-text { font-size: 12px; color: #94a3b8; line-height: 1.6; }
 .refresh-btn { background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 2px; border-radius: 4px; display: flex; align-items: center; }
 .refresh-btn:hover { background: #e2e8f0; color: #475569; }

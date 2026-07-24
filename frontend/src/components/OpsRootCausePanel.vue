@@ -1,5 +1,5 @@
 /**
- * 运营 MVP-1：根因路径 / 证据链 / 工单草稿面板
+ * 运营 MVP-1：根因路径 / 证据链 / 工单草稿面板（业务可读）
  */
 <template>
   <aside v-if="visible && result" class="ops-panel root-cause-panel">
@@ -16,14 +16,15 @@
         <span class="tag">异动确认</span>
         <ul>
           <li v-for="(a, i) in result.anomalies || []" :key="i">
-            {{ a.message || a.metricCode }} <code>{{ a.ruleId }}</code>
+            {{ a.message || a.metricCode }}
+            <span class="rule-hint">{{ formatRule(a.ruleId) }}</span>
           </li>
         </ul>
       </section>
 
       <section class="scope-box">
-        <h4>本体检索范围</h4>
-        <p class="hint">沿本体关系受控遍历（非全文检索）· 中心节点 {{ result.offeringId }}</p>
+        <h4>分析维度</h4>
+        <p class="hint">按渠道 / 促销 / 竞品 / 行为下钻，定位异动集中的维度</p>
         <div class="scope-chips">
           <span
             v-for="n in scopeNodes"
@@ -42,7 +43,7 @@
           :key="p.rank"
           class="path-card"
           :class="{ primary: p.isPrimary || p.rank === 1, active: activeRank === p.rank }"
-          @click="activeRank = p.rank"
+          @click="setActiveRank(p.rank)"
         >
           <div class="path-rank">#{{ p.rank }}</div>
           <div class="path-main">
@@ -50,7 +51,10 @@
             <div class="weight-bar">
               <i :style="{ width: `${(p.weight || 0) * 100}%` }" />
             </div>
-            <p class="meta">权重 {{ p.weight }} · {{ p.ruleId }}{{ p.rank === 1 ? ' · ★主因' : '' }}</p>
+            <p class="meta">
+              影响权重 {{ formatWeight(p.weight) }} · {{ formatRule(p.ruleId) }}
+              <template v-if="p.rank === 1"> · 主因</template>
+            </p>
             <ul class="evidence">
               <li v-for="(e, ei) in p.evidence || []" :key="ei">{{ e }}</li>
             </ul>
@@ -58,9 +62,21 @@
         </article>
       </section>
 
+      <section v-if="ontologyChain" class="graph-box">
+        <h4>当前路径关系</h4>
+        <OntologyChainViz
+          :chain="ontologyChain"
+          :focus-relation-ids="focusRelationIds"
+          hide-status
+          compact
+        />
+      </section>
+
       <section v-if="activePath" class="drill-box">
         <h4>下钻：{{ activePath.name }}</h4>
-        <code v-for="(step, si) in activePath.path || []" :key="si">{{ step }}</code>
+        <ol v-if="pathSteps.length" class="path-steps">
+          <li v-for="(step, si) in pathSteps" :key="si">{{ step }}</li>
+        </ol>
         <div v-if="activePath.drill" class="drill-metrics">
           <div v-if="activePath.drill.orderDelta != null" class="metric">
             <b>{{ Math.round(activePath.drill.orderDelta * 100) }}%</b>
@@ -85,7 +101,7 @@
       </section>
 
       <section class="report-box">
-        <h4>分析报告（证据约束）</h4>
+        <h4>分析报告</h4>
         <div class="report-md" v-html="reportHtml" />
       </section>
 
@@ -102,13 +118,15 @@
 
       <section class="evidence-box">
         <button type="button" class="link-btn" @click="showEvidence = !showEvidence">
-          {{ showEvidence ? '收起证据链' : '打开证据链面板' }}
+          {{ showEvidence ? '收起支撑数据' : '查看支撑数据' }}
         </button>
         <div v-if="showEvidence" class="triples">
-          <p class="hint">每个结论都能点回图谱边 · 快照 {{ result.snapshotAt || '-' }}</p>
-          <code v-for="(t, ti) in result.evidenceTriples || []" :key="ti">
-            ({{ t.s }})-{{ t.p }}→({{ t.o }})
-          </code>
+          <p class="hint">数据快照 {{ snapshotLabel }}</p>
+          <ul class="triple-list">
+            <li v-for="(t, ti) in result.evidenceTriples || []" :key="ti">
+              {{ formatTriple(t) }}
+            </li>
+          </ul>
         </div>
       </section>
     </div>
@@ -116,22 +134,53 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, inject, ref, watch } from 'vue'
+import OntologyChainViz from './OntologyChainViz.vue'
+import {
+  classCn,
+  formatPathStep,
+  formatRule,
+  formatTriple,
+  formatWeight,
+} from '../utils/ontologyLabels.js'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
   result: { type: Object, default: null },
+  ontologyChain: { type: Object, default: null },
+  activeRank: { type: Number, default: null },
 })
 
-defineEmits(['close', 'create-work-order'])
+const emit = defineEmits(['close', 'create-work-order', 'update:activeRank', 'path-select'])
 
-const activeRank = ref(1)
+const injectedRank = inject('rootCauseActiveRank', null)
+const localRank = ref(1)
 const showEvidence = ref(false)
+
+const activeRank = computed({
+  get() {
+    if (props.activeRank != null) return props.activeRank
+    if (injectedRank?.value != null) return injectedRank.value
+    return localRank.value
+  },
+  set(v) {
+    localRank.value = v
+    if (injectedRank && typeof injectedRank === 'object' && 'value' in injectedRank) {
+      injectedRank.value = v
+    }
+    emit('update:activeRank', v)
+    emit('path-select', v)
+  },
+})
+
+function setActiveRank(rank) {
+  activeRank.value = rank
+}
 
 watch(
   () => props.result,
   () => {
-    activeRank.value = 1
+    setActiveRank(1)
     showEvidence.value = false
   },
 )
@@ -140,32 +189,42 @@ const activePath = computed(() =>
   (props.result?.paths || []).find((p) => p.rank === activeRank.value),
 )
 
+const pathSteps = computed(() =>
+  (activePath.value?.path || []).map((step) => formatPathStep(step)).filter(Boolean),
+)
+
+const focusRelationIds = computed(() => {
+  const paths = props.result?.paths || []
+  const idx = paths.findIndex((p) => p.rank === activeRank.value)
+  if (idx < 0) return []
+  return ['rel-metric', `rel-cause-${idx}`]
+})
+
 const scopeNodes = computed(() =>
   props.result?.graphScope?.nodes || ['Metric', 'Channel', 'Promotion', 'Competitor', 'UserBehavior', 'MarketScope'],
 )
 
+const snapshotLabel = computed(() => {
+  const raw = props.result?.snapshotAt
+  if (!raw) return '-'
+  try {
+    return new Date(raw).toLocaleString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return String(raw)
+  }
+})
+
 function typeCn(t) {
-  return (
-    {
-      Channel: '渠道',
-      Promotion: '促销',
-      Competitor: '竞品',
-      UserBehavior: '行为',
-    }[t] || t
-  )
+  return classCn(t) || t || ''
 }
 
 function scopeCn(n) {
-  return (
-    {
-      Metric: '指标',
-      Channel: '渠道',
-      Promotion: '促销',
-      Competitor: '竞品',
-      UserBehavior: '行为',
-      MarketScope: '市场',
-    }[n] || n
-  )
+  return classCn(n) || n || ''
 }
 
 const reportHtml = computed(() => {
@@ -173,15 +232,15 @@ const reportHtml = computed(() => {
   if (!r) return ''
   const anomaly = r.anomalies?.[0]
   const lines = [
-    `<p><strong>异动结论</strong>：${r.offeringName} ${anomaly?.message || '指标异动'}（规则 ${anomaly?.ruleId || 'R-A01'}）。</p>`,
+    `<p><strong>异动结论</strong>：${r.offeringName} ${anomaly?.message || '指标异动'}（${formatRule(anomaly?.ruleId || 'R-A01')}）。</p>`,
     '<p><strong>根因排序</strong>：</p><ol>',
     ...(r.paths || []).map(
       (p) =>
-        `<li>${p.name}（权重 ${p.weight}，${p.ruleId}）— ${(p.evidence || []).join('；')}</li>`,
+        `<li>${p.name}（权重 ${formatWeight(p.weight)}，${formatRule(p.ruleId)}）— ${(p.evidence || []).join('；')}</li>`,
     ),
     '</ol>',
     `<p><strong>策略建议</strong>：${(r.actionList || []).join('；')}</p>`,
-    '<p class="note">以上数字均来自本体推理证据 JSON，大模型未改写关键指标。</p>',
+    '<p class="note">以上数字均来自业务事实与规则推理，大模型未改写关键指标。</p>',
   ]
   return lines.join('')
 })
@@ -234,7 +293,8 @@ const reportHtml = computed(() => {
 .report-box,
 .wo-box,
 .evidence-box,
-.scope-box {
+.scope-box,
+.graph-box {
   background: #fff;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
@@ -243,7 +303,8 @@ const reportHtml = computed(() => {
 .scope-box h4,
 .drill-box h4,
 .report-box h4,
-.wo-box h4 {
+.wo-box h4,
+.graph-box h4 {
   margin: 0 0 6px;
   font-size: 13px;
 }
@@ -283,7 +344,7 @@ const reportHtml = computed(() => {
   font-size: 13px;
   color: #334155;
 }
-.anomaly-box code {
+.rule-hint {
   margin-left: 6px;
   font-size: 11px;
   color: #0369a1;
@@ -338,15 +399,29 @@ const reportHtml = computed(() => {
   font-size: 11px;
   color: #64748b;
 }
-.drill-box code,
-.triples code {
-  display: block;
-  font-size: 11px;
-  background: #f1f5f9;
-  padding: 4px 6px;
-  margin: 4px 0;
-  border-radius: 4px;
-  word-break: break-all;
+.path-steps {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.path-steps li {
+  font-size: 12px;
+  color: #334155;
+  line-height: 1.4;
+}
+.triple-list {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.triple-list li {
+  font-size: 12px;
+  color: #334155;
+  line-height: 1.4;
 }
 .drill-metrics {
   display: grid;

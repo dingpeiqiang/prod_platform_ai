@@ -12,8 +12,8 @@
     @switch-session="onSwitchSession"
     @shortcut="onShortcut"
   >
-    <div class="rd-toolbar">
-      <button type="button" class="toolbar-btn" @click="showProductListPanel = true">
+    <template #nav-actions>
+      <button type="button" class="nav-product-btn" @click="showProductListPanel = true">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="8" y1="6" x2="21" y2="6"/>
           <line x1="8" y1="12" x2="21" y2="12"/>
@@ -25,7 +25,7 @@
         已配置商品
         <span class="count-badge">{{ products.length }}</span>
       </button>
-    </div>
+    </template>
 
     <ChatMessageList
       mode="rd"
@@ -48,8 +48,24 @@
     />
 
     <template #right>
+      <OpsRootCausePanel
+        v-if="showRootCausePanel && rootCauseResult"
+        :visible="showRootCausePanel"
+        :result="rootCauseResult"
+        :ontology-chain="rootCauseOntologyChain"
+        v-model:active-rank="activeRootCauseRank"
+        @close="showRootCausePanel = false"
+        @create-work-order="onCreateWorkOrder"
+      />
+      <OpsRiskAuditPanel
+        v-else-if="showRiskAuditPanel && riskAuditResult"
+        :visible="showRiskAuditPanel"
+        :result="riskAuditResult"
+        @close="showRiskAuditPanel = false"
+        @re-audit="onReAudit"
+      />
       <FormPanel
-        v-if="activeFormCard"
+        v-else-if="activeFormCard"
         :form-schema="activeFormCard.formSchema"
         :form-id="activeFormCard.formId"
         :form-submitted="!!activeFormCard.formSubmitted"
@@ -72,11 +88,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, provide } from 'vue'
 import AssistantShell from './AssistantShell.vue'
 import ChatMessageList from './ChatMessageList.vue'
 import FormPanel from './FormPanel.vue'
 import ProductListPanel from './ProductListPanel.vue'
+import OpsRootCausePanel from './OpsRootCausePanel.vue'
+import OpsRiskAuditPanel from './OpsRiskAuditPanel.vue'
 import { useChatStream } from '../composables/useChatStream.js'
 import { useProductConfig } from '../composables/useProductConfig.js'
 import { checkCompliance } from '../services/ontologyMvpApi.js'
@@ -104,6 +122,13 @@ const products = productConfig.products
 const currentProductId = productConfig.currentProductId
 const currentProduct = productConfig.currentProduct
 const showProductListPanel = productConfig.showProductListPanel
+const showRootCausePanel = productConfig.showRootCausePanel
+const showRiskAuditPanel = productConfig.showRiskAuditPanel
+const rootCauseResult = productConfig.rootCauseResult
+const riskAuditResult = productConfig.riskAuditResult
+const rootCauseOntologyChain = productConfig.rootCauseOntologyChain
+const activeRootCauseRank = productConfig.activeRootCauseRank
+provide('rootCauseActiveRank', activeRootCauseRank)
 const config = assistantModes.rd
 
 onMounted(async () => {
@@ -326,6 +351,16 @@ async function playProductReply(playbook = {}) {
   if (playbook.formCard) {
     applyFormCard(playbook.formCard)
   }
+  if (playbook.showRootCausePanel) {
+    showRootCausePanel.value = true
+    showRiskAuditPanel.value = false
+    closeActiveForm()
+  }
+  if (playbook.showRiskAuditPanel) {
+    showRiskAuditPanel.value = true
+    showRootCausePanel.value = false
+    closeActiveForm()
+  }
   messages.value = [...messages.value]
 }
 
@@ -351,6 +386,10 @@ async function runProductScenario(text, scenario) {
       playbook = await productConfig.simulateFileParse('校园迎新产商品方案_2026.md', 12 * 1024)
     } else if (scenario === 'confirm-batch') {
       playbook = productConfig.confirmPassedDrafts()
+    } else if (scenario === 'root-cause') {
+      playbook = await productConfig.runRootCauseAnalysis()
+    } else if (scenario === 'risk-audit') {
+      playbook = await productConfig.runRiskAuditFlow()
     } else {
       playbook = await productConfig.generateProductFromChat(text)
     }
@@ -411,6 +450,8 @@ const onSwitchSession = (sessionId) => {
 
 const onNewSession = () => {
   closeActiveForm()
+  showRootCausePanel.value = false
+  showRiskAuditPanel.value = false
   productConfig.resetState()
   newSession()
 }
@@ -420,16 +461,30 @@ const onIntentAction = (event) => {
     onSuggest(event.payload.text)
   }
 }
+
+function onCreateWorkOrder(wo) {
+  const title = wo?.title || '产品优化工单草稿'
+  messages.value = [
+    ...messages.value,
+    {
+      id: genId(),
+      role: 'assistant',
+      type: 'chat',
+      content: `已生成工单草稿：**${title}**\n\n${(wo?.actions || []).map((a) => `- ${a}`).join('\n')}`,
+      done: true,
+      timestamp: Date.now(),
+    },
+  ]
+}
+
+async function onReAudit(payload) {
+  const playbook = await productConfig.runRiskAuditFlow(payload || {})
+  await playProductReply(playbook)
+}
 </script>
 
 <style scoped>
-.rd-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  padding: 8px 16px 0;
-  flex-shrink: 0;
-}
-.toolbar-btn {
+.nav-product-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -437,14 +492,15 @@ const onIntentAction = (event) => {
   background: #fff;
   color: #0f172a;
   border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 12px;
+  padding: 8px 14px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
 }
-.toolbar-btn:hover {
-  border-color: #93c5fd;
-  background: #f0f9ff;
+.nav-product-btn:hover {
+  border-color: #5eead4;
+  background: #f0fdfa;
 }
 .count-badge {
   min-width: 18px;

@@ -3,6 +3,8 @@
  * 后端不可用时仍可完整演示智聊 / 智读，保证客户可体验。
  */
 
+import { classCn, formatWeight, formatPathStep } from '../utils/ontologyLabels.js'
+
 const SCENARIOS = {
   家庭融合: {
     defaults: {
@@ -707,10 +709,34 @@ export function buildOntologyPreview(result, chain) {
     lines.push(`待处理：${issues.map((i) => i.ruleId).join('、') || '见链上结论'}`)
   }
 
+  const conclusion = high.length
+    ? `冲突阻断：${high.map((i) => i.ruleId).join('、')}`
+    : (result.compliancePass ? '合规通过，可提交草稿' : `待处理 ${issues.length || 0} 项`)
+  const reasoningSteps = [
+    {
+      id: 'cfg-1',
+      label: '场景映射',
+      detail: `场景「${draft.bizScenario || '未绑定'}」` + (draft.basedOnTemplate ? ` → 模板 ${draft.basedOnTemplate}` : ''),
+    },
+  ]
+  if (inferred.length) {
+    reasoningSteps.push({
+      id: 'cfg-2',
+      label: '字段补全',
+      detail: inferred.slice(0, 3).map((f) => `${cnField(f.field)}=${f.value}`).join('、'),
+    })
+  }
+  reasoningSteps.push({
+    id: 'cfg-3',
+    label: '合规结论',
+    detail: conclusion,
+  })
   return {
     title: '本体推理链',
     path: (chain?.nodes || []).map((n) => n.label).join(' → '),
     narrative: lines.join('；') + '。',
+    conclusion,
+    reasoningSteps,
     steps: chain?.nodes || [],
     edges: [],
     triples: chain?.triples || [],
@@ -722,11 +748,18 @@ export function buildOntologyPreview(result, chain) {
 
 export function buildBatchOntologyPreview(batch, chain) {
   if (!batch?.items?.length) return null
+  const conclusion = `生成 ${batch.total} 条草稿，通过 ${batch.passedCount} / 待修 ${batch.pendingCount}`
   return {
     title: '本体推理链',
     path: (chain?.nodes || []).map((n) => n.label).join(' → '),
     narrative:
       `场景映射 → 生成 ${batch.total} 条草稿 → 合规筛查（通过 ${batch.passedCount} / 待修 ${batch.pendingCount}）。`,
+    conclusion,
+    reasoningSteps: [
+      { id: 'batch-1', label: '场景映射', detail: '文档要点映射业务场景' },
+      { id: 'batch-2', label: '批量生成', detail: `实例化 ${batch.total} 条配置草稿` },
+      { id: 'batch-3', label: '合规筛查', detail: conclusion },
+    ],
     steps: chain?.nodes || [],
     edges: [],
     triples: [],
@@ -1133,10 +1166,10 @@ export function getOpsDashboardLocal() {
 
 export function buildRootCauseOntologyChain(result) {
   if (!result?.paths?.length) return null
-  const ent = (id, label, className, classCn, extra = {}) => ({
-    id, label, className, classCn, ...extra,
+  const ent = (id, label, className, classCnLabel, extra = {}) => ({
+    id, label, className, classCn: classCnLabel, ...extra,
   })
-  const hub = ent('offering', result.offeringName || 'OF-HF-128', 'Offering', '产商品主体', { hub: true })
+  const hub = ent('offering', result.offeringName || '家庭融合畅享128', 'Offering', '产商品', { hub: true })
   const metric = ent('metric', result.anomalies?.[0]?.metricCode || '累计收入', 'Metric', '运营指标', { status: 'warn' })
   const relations = [
     {
@@ -1147,21 +1180,24 @@ export function buildRootCauseOntologyChain(result) {
       o: metric,
       rule: 'R-A01',
       status: 'warn',
+      pathRank: 0,
+      shared: true,
     },
   ]
   result.paths.forEach((p, idx) => {
+    const typeCnLabel = classCn(p.rootCauseType) || p.rootCauseType || '根因'
     const o = ent(
       `cause-${idx}`,
       p.name,
       p.rootCauseType,
-      p.rootCauseType,
+      typeCnLabel,
       { status: idx === 0 ? 'warn' : 'idle' },
     )
     const predMap = {
-      Channel: ['soldOn', '销售渠道'],
+      Channel: ['soldOn', '销售于'],
       Promotion: ['participatesIn', '参与促销'],
       Competitor: ['competesWith', '竞争对标'],
-      UserBehavior: ['influencedBy', '用户行为'],
+      UserBehavior: ['influencedBy', '受影响于'],
     }
     const [pCode, pCn] = predMap[p.rootCauseType] || ['relatedTo', '关联']
     relations.push({
@@ -1172,6 +1208,7 @@ export function buildRootCauseOntologyChain(result) {
       o,
       rule: p.ruleId,
       status: idx === 0 ? 'warn' : 'idle',
+      pathRank: p.rank,
     })
   })
   const hops = relations.map((r) => ({
@@ -1183,7 +1220,9 @@ export function buildRootCauseOntologyChain(result) {
     objectKind: r.o.className,
     rule: r.rule,
     status: r.status,
+    pathRank: r.pathRank,
   }))
+  const primary = result.paths[0]
   return {
     relations,
     hops,
@@ -1201,15 +1240,60 @@ export function buildRootCauseOntologyChain(result) {
     compliancePass: false,
     blocked: false,
     summary: `根因 Top${result.paths.length}`,
+    conclusion: primary
+      ? `主因是「${primary.name}」（${classCn(primary.rootCauseType) || primary.rootCauseType}），影响权重 ${formatWeight(primary.weight)}`
+      : '',
   }
 }
 
 export function buildRootCauseOntologyPreview(result, chain) {
   if (!result) return null
+  const primary = result.paths?.[0]
+  const anomaly = result.anomalies?.[0]
+  const pathOptions = (result.paths || []).map((p, idx) => ({
+    rank: p.rank,
+    name: p.name,
+    type: p.rootCauseType,
+    typeCn: classCn(p.rootCauseType) || p.rootCauseType || '',
+    weight: p.weight,
+    ruleId: p.ruleId,
+    isPrimary: !!(p.isPrimary || p.rank === 1),
+    relationIds: ['rel-metric', `rel-cause-${idx}`],
+    steps: (p.path || []).map((s) => formatPathStep(s)).filter(Boolean),
+    evidence: p.evidence || [],
+  }))
+  const reasoningSteps = [
+    {
+      id: 'rc-1',
+      label: '异动确认',
+      detail: anomaly?.message || '指标异动已确认',
+      ruleId: anomaly?.ruleId || 'R-A01',
+    },
+    {
+      id: 'rc-2',
+      label: '多维下钻',
+      detail: '按渠道 / 促销 / 竞品 / 行为定位异动集中维度',
+    },
+    {
+      id: 'rc-3',
+      label: '根因排序',
+      detail: (result.paths || [])
+        .map((p) => `${p.name} ${formatWeight(p.weight)}`)
+        .join(' · '),
+    },
+  ]
+  const conclusion = chain?.conclusion
+    || (primary
+      ? `主因是「${primary.name}」（${classCn(primary.rootCauseType) || primary.rootCauseType}），影响权重 ${formatWeight(primary.weight)}`
+      : '')
   return {
-    title: '本体推理链',
+    title: '归因解释链',
     path: (chain?.nodes || []).map((n) => n.label).join(' → '),
-    narrative: `异动确认 → 多跳归因 → Top3 根因（${(result.paths || []).map((p) => p.name).join(' / ')}）。`,
+    narrative: reasoningSteps.map((s) => s.label).join(' → ')
+      + `（${(result.paths || []).map((p) => p.name).join(' / ')}）。`,
+    conclusion,
+    reasoningSteps,
+    pathOptions,
     steps: chain?.nodes || [],
     edges: [],
     triples: result.evidenceTriples || [],
@@ -1265,10 +1349,17 @@ export function buildRiskAuditOntologyChain(result) {
 
 export function buildRiskAuditOntologyPreview(result, chain) {
   if (!result) return null
+  const conclusion = `高风险 ${result.highCount || 0} · 中风险 ${result.mediumCount || 0} · 建议下架 ${result.suggestDelistCount || 0}`
   return {
     title: '本体推理链',
     path: (chain?.nodes || []).map((n) => n.label).join(' → '),
     narrative: `全量扫描 ${result.scannedCount || 80} 条 → 规则 R-B01~B05 → 高风险 ${result.highCount} / 中风险 ${result.mediumCount}。`,
+    conclusion,
+    reasoningSteps: [
+      { id: 'risk-1', label: '全量扫描', detail: `在架商品 ${result.scannedCount || 80} 条` },
+      { id: 'risk-2', label: '规则命中', detail: 'R-B01 ~ R-B05 批次推理' },
+      { id: 'risk-3', label: '风险分层', detail: conclusion },
+    ],
     steps: chain?.nodes || [],
     edges: [],
     triples: [],

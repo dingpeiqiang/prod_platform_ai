@@ -111,26 +111,45 @@
     <!-- ==================== 异动归因 ==================== -->
     <div v-else-if="!isCompare" class="card-body">
       <div class="field">
-        <span class="field-label">分析目标</span>
-        <span class="field-value highlight">{{ reasonTarget }}</span>
+        <span class="field-label">异动现象</span>
+        <span class="field-value highlight">{{ reasonTargetDisplay }}</span>
       </div>
       <div v-if="explanation" class="explanation-block">
         <div class="explanation-title">归因结论</div>
         <div class="explanation-text">{{ explanation }}</div>
       </div>
+      <div v-if="evidenceRows.length" class="evidence-section">
+        <div class="evidence-title">支撑证据</div>
+        <ol class="evidence-list">
+          <li v-for="(row, idx) in evidenceRows" :key="idx">{{ row }}</li>
+        </ol>
+      </div>
+      <div v-else-if="evidenceCount > 0" class="field">
+        <span class="field-label">支撑证据</span>
+        <span class="field-value">共 {{ evidenceCount }} 条业务事实</span>
+      </div>
       <div v-if="explanationRules.length" class="field">
         <span class="field-label">引用规则</span>
         <div class="tag-group">
-          <span v-for="rule in explanationRules" :key="rule" class="tag tag-purple">{{ rule }}</span>
+          <span v-for="rule in explanationRules" :key="rule" class="tag tag-purple" :title="rule">
+            {{ formatRuleLabel(rule) }}
+          </span>
         </div>
       </div>
-      <div v-if="evidenceCount > 0" class="field">
-        <span class="field-label">关联证据</span>
-        <span class="field-value">{{ evidenceCount }} 条事实数据</span>
-      </div>
-      <div v-if="traceId" class="field">
-        <span class="field-label">审计追踪</span>
-        <span class="field-value mono trace-id">{{ traceId }}</span>
+      <div v-if="traceId || sparqlText" class="tech-fold">
+        <button type="button" class="tech-toggle" @click="showTech = !showTech">
+          {{ showTech ? '收起技术信息' : '展开技术信息' }}
+        </button>
+        <div v-if="showTech" class="tech-body">
+          <div v-if="traceId" class="field">
+            <span class="field-label">追踪编号</span>
+            <span class="field-value mono trace-id">{{ traceId }}</span>
+          </div>
+          <div v-if="sparqlText" class="field">
+            <span class="field-label">查询语句</span>
+            <pre class="sparql-pre">{{ sparqlText }}</pre>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -146,8 +165,9 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import SparqlResultGraph from '../SparqlResultGraph.vue'
+import { formatEvidenceRow, formatRule } from '../../utils/ontologyLabels.js'
 
 const props = defineProps({
   intentType: { type: String, default: '' },
@@ -155,6 +175,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['intent-action'])
+const showTech = ref(false)
 
 const normalizedIntent = computed(() => props.intentType || props.msg?.intentType || '')
 const visible = computed(() => ['product_ops_query', 'product_ops_policy', 'product_ops_reason', 'product_ops_compare'].includes(normalizedIntent.value))
@@ -204,10 +225,25 @@ const triggeredRules = computed(() => props.msg?.intentData?.triggeredRules || p
 const factsSummary = computed(() => props.msg?.intentData?.factsSummary || null)
 
 const reasonTarget = computed(() => props.msg?.intentData?.target || props.msg?.stats?.target || '')
+const reasonTargetDisplay = computed(() => {
+  const t = reasonTarget.value
+  if (!t) return ''
+  return t.length > 80 ? `${t.slice(0, 80)}…` : t
+})
 const explanation = computed(() => props.msg?.intentData?.explanation || '')
 const explanationRules = computed(() => props.msg?.intentData?.referencedRules || props.msg?.intentData?.referenced_rules || [])
-const evidenceCount = computed(() => props.msg?.intentData?.evidenceCount ?? props.msg?.stats?.evidenceCount ?? 0)
+const evidenceResults = computed(() => props.msg?.intentData?.results || props.msg?.results || [])
+const evidenceCount = computed(() => {
+  const n = props.msg?.intentData?.evidenceCount ?? props.msg?.stats?.evidenceCount
+  if (n != null) return n
+  return evidenceResults.value.length
+})
+const evidenceRows = computed(() =>
+  evidenceResults.value.slice(0, 8).map((row) => formatEvidenceRow(row)),
+)
 const traceId = computed(() => props.msg?.intentData?.traceId || props.msg?.stats?.traceId || '')
+const sparqlText = computed(() => props.msg?.intentData?.sparql || '')
+const formatRuleLabel = (id) => formatRule(id)
 
 const compareQuestion = computed(() => props.msg?.intentData?.question || props.msg?.stats?.question || '')
 const comparePatches = computed(() => props.msg?.intentData?.patches || [])
@@ -324,6 +360,63 @@ const handleFollowUp = () => {
 .explanation-block { background: #faf5ff; border: 1px solid #f3e8ff; border-radius: 10px; padding: 12px; }
 .explanation-title { font-size: 12px; color: #7c3aed; font-weight: 700; margin-bottom: 6px; }
 .explanation-text { font-size: 13px; color: #1e293b; line-height: 1.6; }
+
+/* Evidence section */
+.evidence-section {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.evidence-title {
+  font-size: 12px;
+  color: #475569;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.evidence-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.evidence-list li {
+  font-size: 12px;
+  color: #334155;
+  line-height: 1.45;
+}
+
+.tech-fold { margin-top: 2px; }
+.tech-toggle {
+  border: none;
+  background: none;
+  color: #64748b;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+.tech-toggle:hover { color: #334155; }
+.tech-body {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px dashed #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sparql-pre {
+  margin: 0;
+  font-size: 11px;
+  color: #475569;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: 'SF Mono', Consolas, monospace;
+  max-height: 120px;
+  overflow: auto;
+}
 
 .empty-state { text-align: center; color: #94a3b8; padding: 20px; font-size: 13px; }
 

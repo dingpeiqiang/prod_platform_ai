@@ -32,6 +32,7 @@ import {
   buildRiskAuditOntologyChain,
   buildRiskAuditOntologyPreview,
 } from '../services/ontologyMvpLocal.js'
+import { classCn, formatRule, formatWeight } from '../utils/ontologyLabels.js'
 
 export function useProductConfig() {
   const products = ref([])
@@ -50,6 +51,8 @@ export function useProductConfig() {
   const showRiskAuditPanel = ref(false)
   const rootCauseResult = ref(null)
   const riskAuditResult = ref(null)
+  const activeRootCauseRank = ref(1)
+  const rootCauseOntologyChain = ref(null)
 
   const currentProduct = computed(() =>
     products.value.find((p) => p.id === currentProductId.value) ?? null,
@@ -661,10 +664,12 @@ export function useProductConfig() {
       showRootCausePanel.value = true
       showRiskAuditPanel.value = false
       const chain = buildRootCauseOntologyChain(result)
+      rootCauseOntologyChain.value = chain
+      activeRootCauseRank.value = 1
       const pathLines = (result.paths || [])
         .map(
           (p) =>
-            `${p.rank}. **${p.name}**（${p.rootCauseType}）权重 ${p.weight} ← ${p.ruleId}` +
+            `${p.rank}. **${p.name}**（${classCn(p.rootCauseType) || p.rootCauseType}）权重 ${formatWeight(p.weight)} ← ${formatRule(p.ruleId)}` +
             (p.rank === 1 ? ' ★主因' : '') +
             `\n   证据：${(p.evidence || []).join('；')}`,
         )
@@ -674,22 +679,22 @@ export function useProductConfig() {
         thinkingSteps: [
           {
             type: 'llm',
-            content: '识别意图=根因分析，槽位=OF-HF-128、累计收入',
+            content: '识别意图=根因分析，商品=家庭融合畅享128，关注指标=累计收入',
           },
           {
             type: 'llm',
-            content: '锁定异动商品：家庭融合畅享128，准备沿本体关系受控遍历（非全文检索）',
+            content: '锁定异动商品：家庭融合畅享128，按渠道 / 促销 / 竞品 / 行为维度下钻',
           },
           {
             type: 'ontology',
-            title: '本体推理',
-            content: '调用本体平台',
+            title: '归因关系',
+            content: '构建产商品与根因关系',
             ontologyChain: chain,
             ontologyPreview: buildRootCauseOntologyPreview(result, chain),
           },
           {
             type: 'llm',
-            content: '基于固定证据 JSON 生成报告话术（不改写关键数字）',
+            content: '基于业务事实生成分析报告（不改写关键数字）',
           },
         ],
         content:
@@ -984,6 +989,8 @@ export function useProductConfig() {
     showRiskAuditPanel.value = false
     rootCauseResult.value = null
     riskAuditResult.value = null
+    rootCauseOntologyChain.value = null
+    activeRootCauseRank.value = 1
     Object.assign(formData, createEmptyFormData())
   }
 
@@ -1005,6 +1012,8 @@ export function useProductConfig() {
     showRiskAuditPanel,
     rootCauseResult,
     riskAuditResult,
+    rootCauseOntologyChain,
+    activeRootCauseRank,
     getSkillGuideMessage,
     detectScenario,
     simulateQuery,

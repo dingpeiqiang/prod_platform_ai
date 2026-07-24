@@ -1,24 +1,38 @@
 /**
- * 本体类节点（Vue Flow）
+ * 本体类节点（Vue Flow）— 中文类型优先
  */
 <template>
   <div
     class="onto-node"
     :class="[`cls-${data.clsKey}`, `st-${data.status || 'idle'}`, { hub: data.hub, latest: data.latest }]"
+    :title="tooltip"
   >
     <Handle type="target" :position="Position.Left" class="h" />
-    <div class="cls">{{ data.className }}</div>
+    <div class="cls">{{ displayClass }}</div>
     <div class="name">{{ data.label }}</div>
-    <div class="cn">{{ data.classCn }}</div>
     <Handle type="source" :position="Position.Right" class="h" />
   </div>
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
+import { classCn } from '../utils/ontologyLabels.js'
 
-defineProps({
+const props = defineProps({
   data: { type: Object, default: () => ({}) },
+})
+
+const displayClass = computed(() => {
+  const d = props.data || {}
+  return d.classCn || classCn(d.className) || d.className || '实体'
+})
+
+const tooltip = computed(() => {
+  const d = props.data || {}
+  const en = d.className
+  if (!en || en === displayClass.value) return d.label || ''
+  return `${displayClass.value} · ${en}`
 })
 </script>
 
@@ -57,10 +71,10 @@ defineProps({
 .onto-node.st-pass { border-color: #059669; background: #ecfdf5; }
 
 .cls {
-  font-size: 9px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
   color: #64748b;
   line-height: 1.2;
+  font-weight: 600;
 }
 
 .name {
@@ -70,12 +84,6 @@ defineProps({
   color: #0f172a;
   line-height: 1.25;
   word-break: break-word;
-}
-
-.cn {
-  margin-top: 1px;
-  font-size: 9px;
-  color: #94a3b8;
 }
 
 .h {

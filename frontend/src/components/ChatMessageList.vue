@@ -317,7 +317,7 @@ defineExpose({ scrollToBottom })
   flex-direction: column;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 24px 0;
+  padding: 12px 0 24px;
   min-height: 0;
 }
 

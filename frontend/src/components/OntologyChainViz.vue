@@ -3,10 +3,10 @@
  * 节点 = 本体类实例，边 = ObjectProperty
  */
 <template>
-  <div v-if="chain" class="onto-net" :class="[{ streaming }, statusClass]">
+  <div v-if="chain" class="onto-net" :class="[{ streaming, compact }, statusClass]">
     <header class="onto-net-head">
-      <span class="title">本体推理链</span>
-      <span class="sub">类关系网络</span>
+      <span class="title">归因关系图</span>
+      <span class="sub">{{ focusRelationIds.length ? '当前路径高亮' : '产商品与根因关系' }}</span>
       <span v-if="passLabel" class="badge">{{ passLabel }}</span>
     </header>
 
@@ -40,6 +40,7 @@ import { VueFlow, MarkerType, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import OntologyRelNode from './OntologyRelNode.vue'
+import { classCn, predicateCn } from '../utils/ontologyLabels.js'
 import '@vue-flow/controls/dist/style.css'
 
 const props = defineProps({
@@ -48,6 +49,8 @@ const props = defineProps({
   streaming: { type: Boolean, default: false },
   compact: { type: Boolean, default: false },
   hideStatus: { type: Boolean, default: false },
+  /** 高亮的关系 id；非空时其余边/节点降不透明度 */
+  focusRelationIds: { type: Array, default: () => [] },
 })
 
 const flowId = `onto-rel-${Math.random().toString(36).slice(2, 9)}`
@@ -62,22 +65,33 @@ const defaultEdgeOptions = {
 }
 
 const relations = computed(() => {
-  if (props.chain?.relations?.length) return props.chain.relations
+  if (props.chain?.relations?.length) {
+    return props.chain.relations.map((r) => ({
+      ...r,
+      pCn: r.pCn || predicateCn(r.p),
+      s: r.s
+        ? { ...r.s, classCn: r.s.classCn || classCn(r.s.className) }
+        : r.s,
+      o: r.o
+        ? { ...r.o, classCn: r.o.classCn || classCn(r.o.className) }
+        : r.o,
+    }))
+  }
   return (props.chain?.hops || []).map((h, i) => ({
     id: h.id || `h-${i}`,
     s: {
       id: `s-${i}-${h.subjectKind}`,
       label: h.subject,
       className: h.subjectKind,
-      classCn: '',
+      classCn: classCn(h.subjectKind),
     },
     p: h.predicate,
-    pCn: h.predicate,
+    pCn: predicateCn(h.predicate) || h.predicate,
     o: {
       id: `o-${i}-${h.objectKind}`,
       label: h.object,
       className: h.objectKind,
-      classCn: '',
+      classCn: classCn(h.objectKind),
     },
     rule: h.rule,
     status: h.status,
@@ -217,37 +231,73 @@ function rebuild() {
   const ents = collectEntities(rels, props.chain?.hub)
   const pos = layout(ents)
   const latestId = rels.length ? rels[rels.length - 1].o?.id : ''
+  const focusSet = new Set((props.focusRelationIds || []).filter(Boolean))
+  const hasFocus = focusSet.size > 0
+  const focusedNodeIds = new Set()
+  if (hasFocus) {
+    rels.forEach((r) => {
+      const rid = r.id || ''
+      if (focusSet.has(rid) || r.shared) {
+        if (r.s?.id) focusedNodeIds.add(r.s.id)
+        if (r.o?.id) focusedNodeIds.add(r.o.id)
+      }
+    })
+    // shared 边（如异动指标）始终视为焦点一部分
+    rels.forEach((r) => {
+      if (r.shared) {
+        if (r.s?.id) focusedNodeIds.add(r.s.id)
+        if (r.o?.id) focusedNodeIds.add(r.o.id)
+      }
+    })
+  }
 
-  flowNodes.value = ents.map((e) => ({
-    id: e.id,
-    type: 'onto',
-    position: pos[e.id] || { x: 0, y: 0 },
-    data: {
-      label: e.label,
-      className: e.className,
-      classCn: e.classCn || '',
-      clsKey: classKey(e.className),
-      hub: !!e.hub,
-      status: e.status || 'idle',
-      latest: props.streaming && e.id === latestId,
-    },
-    draggable: true,
-    selectable: false,
-  }))
+  flowNodes.value = ents.map((e) => {
+    const dimmed = hasFocus && !focusedNodeIds.has(e.id) && !e.hub
+    return {
+      id: e.id,
+      type: 'onto',
+      position: pos[e.id] || { x: 0, y: 0 },
+      data: {
+        label: e.label,
+        className: e.className,
+        classCn: e.classCn || classCn(e.className) || '',
+        clsKey: classKey(e.className),
+        hub: !!e.hub,
+        status: e.status || 'idle',
+        latest: props.streaming && e.id === latestId,
+        dimmed,
+        focused: hasFocus && focusedNodeIds.has(e.id),
+      },
+      style: dimmed ? { opacity: 0.28 } : { opacity: 1 },
+      draggable: true,
+      selectable: false,
+    }
+  })
 
   flowEdges.value = rels.map((r, i) => {
-    const st = edgeStyle(r.status)
+    const rid = r.id || `e-${i}`
+    const focused = !hasFocus || focusSet.has(rid) || !!r.shared
+    const st = edgeStyle(focused ? r.status : 'idle')
     return {
-      id: r.id || `e-${i}`,
+      id: rid,
       source: r.s.id,
       target: r.o.id,
       label: r.pCn || r.p,
       type: 'smoothstep',
-      animated: props.streaming && i === rels.length - 1,
-      style: { stroke: st.stroke, strokeWidth: 1.4 },
+      animated: (props.streaming && i === rels.length - 1) || (hasFocus && focused && !r.shared),
+      style: {
+        stroke: st.stroke,
+        strokeWidth: focused && hasFocus ? 2 : 1.4,
+        opacity: focused ? 1 : 0.22,
+      },
       markerEnd: st.markerEnd,
-      labelStyle: { fill: '#475569', fontSize: 9, fontWeight: 650 },
-      labelBgStyle: { fill: '#fff', fillOpacity: 0.92 },
+      labelStyle: {
+        fill: focused ? '#475569' : '#94a3b8',
+        fontSize: 9,
+        fontWeight: 650,
+        opacity: focused ? 1 : 0.35,
+      },
+      labelBgStyle: { fill: '#fff', fillOpacity: focused ? 0.92 : 0.5 },
       labelBgPadding: [3, 5],
       labelBgBorderRadius: 4,
     }
@@ -265,7 +315,7 @@ function fit() {
 }
 
 watch(
-  () => [props.chain, props.revealCount, props.streaming],
+  () => [props.chain, props.revealCount, props.streaming, props.focusRelationIds],
   () => {
     rebuild()
     fit()
@@ -325,6 +375,10 @@ watch(
 .onto-net-canvas {
   height: 360px;
   position: relative;
+}
+
+.onto-net.compact .onto-net-canvas {
+  height: 220px;
 }
 
 .flow {
