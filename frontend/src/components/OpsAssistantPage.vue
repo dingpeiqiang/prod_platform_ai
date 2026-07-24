@@ -149,7 +149,7 @@ async function runOpsScenario(text, scenario) {
   try {
     let playbook
     if (scenario === 'root-cause') {
-      playbook = await productConfig.runRootCauseAnalysis()
+      playbook = await productConfig.runRootCauseAnalysis(text)
     } else if (scenario === 'risk-audit') {
       playbook = await productConfig.runRiskAuditFlow()
     } else {

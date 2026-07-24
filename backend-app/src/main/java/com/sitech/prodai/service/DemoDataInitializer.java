@@ -1,20 +1,33 @@
 package com.sitech.prodai.service;
 
+import com.sitech.prodai.config.ProdAiProperties;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * RDF4J 演示实例灌数。仅在 {@code prodai.ontology.demo-enabled=true} 时启用，避免污染生产库。
+ * URI 前缀读 {@code prodai.ontology.base-iri}。
+ */
 @Component
+@ConditionalOnProperty(prefix = "prodai.ontology", name = "demo-enabled", havingValue = "true")
 public class DemoDataInitializer implements ApplicationRunner {
 
     private final Rdf4jOntologyStore rdf4jStore;
+    private final ProdAiProperties properties;
 
-    public DemoDataInitializer(Rdf4jOntologyStore rdf4jStore) {
+    public DemoDataInitializer(Rdf4jOntologyStore rdf4jStore, ProdAiProperties properties) {
         this.rdf4jStore = rdf4jStore;
+        this.properties = properties;
+    }
+
+    private String uri(String path) {
+        return properties.getOntology().normalizedBaseIri() + path;
     }
 
     @Override
@@ -40,7 +53,7 @@ public class DemoDataInitializer implements ApplicationRunner {
     }
 
     private void seedProducts() {
-        seedInstance("http://example.org/product/PROD_5G_001", "Product", Map.of(
+        seedInstance(uri("product/PROD_5G_001"), "Product", Map.of(
                 "productName", "畅享5G套餐A",
                 "productType", "5G套餐",
                 "status", "在售",
@@ -52,7 +65,7 @@ public class DemoDataInitializer implements ApplicationRunner {
                 "userChurnRate", 0.05,
                 "revenueGrowth", 0.021
         ));
-        seedInstance("http://example.org/product/PROD_5G_002", "Product", Map.of(
+        seedInstance(uri("product/PROD_5G_002"), "Product", Map.of(
                 "productName", "畅享5G套餐B",
                 "productType", "5G套餐",
                 "status", "在售",
@@ -64,7 +77,7 @@ public class DemoDataInitializer implements ApplicationRunner {
                 "userChurnRate", 0.04,
                 "revenueGrowth", 0.067
         ));
-        seedInstance("http://example.org/product/PROD_5G_003", "Product", Map.of(
+        seedInstance(uri("product/PROD_5G_003"), "Product", Map.of(
                 "productName", "青春5G套餐",
                 "productType", "5G套餐",
                 "status", "在售",
@@ -76,7 +89,7 @@ public class DemoDataInitializer implements ApplicationRunner {
                 "userChurnRate", 0.12,
                 "revenueGrowth", 0.01
         ));
-        seedInstance("http://example.org/product/PROD_BB_001", "Product", Map.of(
+        seedInstance(uri("product/PROD_BB_001"), "Product", Map.of(
                 "productName", "千兆宽带套餐",
                 "productType", "宽带",
                 "status", "在售",
@@ -88,7 +101,7 @@ public class DemoDataInitializer implements ApplicationRunner {
                 "userChurnRate", 0.06,
                 "revenueGrowth", 0.035
         ));
-        seedInstance("http://example.org/product/PROD_BB_002", "Product", Map.of(
+        seedInstance(uri("product/PROD_BB_002"), "Product", Map.of(
                 "productName", "家庭融合套餐",
                 "productType", "宽带",
                 "status", "在售",
@@ -100,7 +113,7 @@ public class DemoDataInitializer implements ApplicationRunner {
                 "userChurnRate", 0.05,
                 "revenueGrowth", 0.028
         ));
-        seedInstance("http://example.org/product/PROD_IOT_001", "Product", Map.of(
+        seedInstance(uri("product/PROD_IOT_001"), "Product", Map.of(
                 "productName", "物联网基础包",
                 "productType", "物联网",
                 "status", "在售",
@@ -115,21 +128,21 @@ public class DemoDataInitializer implements ApplicationRunner {
     }
 
     private void seedChannels() {
-        seedInstance("http://example.org/channel/CH_001", "SalesChannel", Map.of("channelName", "旗舰厅", "commissionChanged", true, "monthlyVolumeDrop", 0.42));
-        seedInstance("http://example.org/channel/CH_002", "SalesChannel", Map.of("channelName", "线上营业厅", "commissionChanged", false, "monthlyVolumeDrop", 0.08));
-        seedInstance("http://example.org/channel/CH_003", "SalesChannel", Map.of("channelName", "代理渠道", "commissionChanged", true, "monthlyVolumeDrop", 0.31));
+        seedInstance(uri("channel/CH_001"), "SalesChannel", Map.of("channelName", "旗舰厅", "commissionChanged", true, "monthlyVolumeDrop", 0.42));
+        seedInstance(uri("channel/CH_002"), "SalesChannel", Map.of("channelName", "线上营业厅", "commissionChanged", false, "monthlyVolumeDrop", 0.08));
+        seedInstance(uri("channel/CH_003"), "SalesChannel", Map.of("channelName", "代理渠道", "commissionChanged", true, "monthlyVolumeDrop", 0.31));
     }
 
     private void seedIndicators() {
-        seedInstance("http://example.org/indicator/IND_001", "OperationIndicator", Map.of("indicatorName", "营收增长率", "indicatorCode", "REVENUE_GROWTH", "currentMonthValue", 0.021));
-        seedInstance("http://example.org/indicator/IND_002", "OperationIndicator", Map.of("indicatorName", "月新增用户", "indicatorCode", "NEW_USER_MONTH", "currentMonthValue", 38));
-        seedInstance("http://example.org/indicator/IND_003", "OperationIndicator", Map.of("indicatorName", "用户流失率", "indicatorCode", "USER_CHURN", "currentMonthValue", 0.12));
+        seedInstance(uri("indicator/IND_001"), "OperationIndicator", Map.of("indicatorName", "营收增长率", "indicatorCode", "REVENUE_GROWTH", "currentMonthValue", 0.021));
+        seedInstance(uri("indicator/IND_002"), "OperationIndicator", Map.of("indicatorName", "月新增用户", "indicatorCode", "NEW_USER_MONTH", "currentMonthValue", 38));
+        seedInstance(uri("indicator/IND_003"), "OperationIndicator", Map.of("indicatorName", "用户流失率", "indicatorCode", "USER_CHURN", "currentMonthValue", 0.12));
     }
 
     private void seedCompetitors() {
-        seedInstance("http://example.org/competitor/CP_001", "CompetitorProduct", Map.of("competitorName", "友商5G畅销包", "price", 19, "sellingPoint", "短期促销"));
-        seedInstance("http://example.org/competitor/CP_002", "CompetitorProduct", Map.of("competitorName", "友商千兆宽带", "price", 89, "sellingPoint", "合约赠送"));
-        seedInstance("http://example.org/competitor/CP_003", "CompetitorProduct", Map.of("competitorName", "友商物联网包", "price", 15, "sellingPoint", "大流量"));
+        seedInstance(uri("competitor/CP_001"), "CompetitorProduct", Map.of("competitorName", "友商5G畅销包", "price", 19, "sellingPoint", "短期促销"));
+        seedInstance(uri("competitor/CP_002"), "CompetitorProduct", Map.of("competitorName", "友商千兆宽带", "price", 89, "sellingPoint", "合约赠送"));
+        seedInstance(uri("competitor/CP_003"), "CompetitorProduct", Map.of("competitorName", "友商物联网包", "price", 15, "sellingPoint", "大流量"));
     }
 
     private void seedInstance(String uri, String type, Map<String, Object> facts) {

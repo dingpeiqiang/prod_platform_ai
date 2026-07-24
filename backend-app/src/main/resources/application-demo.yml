@@ -1,0 +1,11 @@
+# 显式演示 profile：spring.profiles.active=demo 或 spring.profiles.include=demo
+prodai:
+  ontology:
+    demo-enabled: true
+    data-source: classpath
+    graph-path: classpath:ontology/mock_graph.json
+    rules-path: classpath:ontology/ops_rules.json
+    product-ops-owl-path: classpath:ontology/product-ops.ttl
+    swrl-enabled: true
+    llm-extract-enabled: true
+    base-iri: http://example.org/

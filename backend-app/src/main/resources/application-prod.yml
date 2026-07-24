@@ -1,0 +1,13 @@
+# 生产 profile：显式关闭演示，禁止依赖 mock_graph
+# 启动示例：--spring.profiles.active=prod
+
+prodai:
+  ontology:
+    demo-enabled: false
+    data-source: ${ONTOLOGY_DATA_SOURCE:http}
+    graph-path: ${ONTOLOGY_GRAPH_PATH:}
+    product-center-base-url: ${PRODUCT_CENTER_BASE_URL:}
+    llm-extract-enabled: ${ONTOLOGY_LLM_EXTRACT:true}
+    base-iri: ${ONTOLOGY_BASE_IRI:http://example.org/}
+  llm:
+    enabled: ${LLM_ENABLED:true}

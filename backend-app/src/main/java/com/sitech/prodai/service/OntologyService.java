@@ -1,5 +1,6 @@
 package com.sitech.prodai.service;
 
+import com.sitech.prodai.config.ProdAiProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,21 +21,47 @@ public class OntologyService {
     private static final Logger log = LoggerFactory.getLogger(OntologyService.class);
 
     private final Rdf4jOntologyStore rdf4jStore;
+    private final ProdAiProperties properties;
     private final Optional<LlmService> llmService;
+    @SuppressWarnings("deprecation")
     private final Optional<SwrlRuleEngine> swrlRuleEngine;
+    private final Optional<OpsRulesService> opsRules;
     private final Map<String, Map<String, Object>> snapshots = new ConcurrentHashMap<>();
     private final Map<String, List<Map<String, Object>>> audits = new ConcurrentHashMap<>();
 
     public OntologyService(Rdf4jOntologyStore rdf4jStore,
+                           ProdAiProperties properties,
                            @Autowired(required = false) Optional<LlmService> llmService,
-                           @Autowired(required = false) Optional<SwrlRuleEngine> swrlRuleEngine) {
+                           @Autowired(required = false) @SuppressWarnings("deprecation") Optional<SwrlRuleEngine> swrlRuleEngine,
+                           @Autowired(required = false) Optional<OpsRulesService> opsRules) {
         this.rdf4jStore = rdf4jStore;
+        this.properties = properties;
         this.llmService = llmService;
         this.swrlRuleEngine = swrlRuleEngine;
+        this.opsRules = opsRules;
+    }
+
+    private String baseIri() {
+        return properties.getOntology().normalizedBaseIri();
+    }
+
+    private String entityUri(String entityId) {
+        if (entityId == null || entityId.isBlank()) {
+            return baseIri();
+        }
+        return entityId.startsWith("http") ? entityId : baseIri() + entityId;
+    }
+
+    private String typeIri(String type) {
+        return "<" + baseIri() + type + ">";
+    }
+
+    private String propIri(String prop) {
+        return "<" + baseIri() + prop + ">";
     }
 
     public Map<String, Object> retrieve(String entityId, String type, String source, String tenantId, String traceId) {
-        String uri = entityId.startsWith("http") ? entityId : "http://example.org/" + entityId;
+        String uri = entityUri(entityId);
         Map<String, Object> fact = rdf4jStore.getEntity(uri);
         if (fact.isEmpty()) {
             fact = defaultFact(uri, type, source);
@@ -94,22 +121,27 @@ public class OntologyService {
         return Map.of("success", true, "natural_language", text, "referenced_rules", distinctRules);
     }
 
-    /** 规则 ID → 业务可读标签 */
+    /** 规则 ID → 业务可读标签（优先 ops_rules.json） */
     private String formatRuleLabel(String ruleId) {
         if (ruleId == null || ruleId.isBlank()) return "";
-        String cn = switch (ruleId) {
-            case "R-A01" -> "异动确认";
-            case "R-A02" -> "渠道归因";
-            case "R-A03" -> "促销归因";
-            case "R-A04" -> "竞品冲击";
-            case "R-A05" -> "行为变化";
-            case "R-B01" -> "高风险命中";
-            case "R-B02", "R-B03" -> "中风险命中";
-            case "R-B04" -> "优胜劣汰";
-            case "R-B05" -> "风险复核";
-            default -> null;
-        };
-        return cn == null ? ruleId : cn + "（" + ruleId + "）";
+        if (opsRules.isPresent()) {
+            return opsRules.get().formatRuleLabel(ruleId);
+        }
+        return ruleId;
+    }
+
+    public Map<String, Object> getSwrlRules() {
+        // 遗留条件 DSL，非 Openllet OWL SWRL；产商品运营规则见 /api/v1/ontology-mvp/ops/rules
+        return Map.of(
+                "success", true,
+                "engine_type", "condition_dsl",
+                "deprecated", true,
+                "message", "非 OWL SWRL；正式引擎为 OpsSwrlReasoner（openllet-swrl），规则目录见 ops_rules.json",
+                "rules", List.of(
+                        Map.of("rule_id", "COND_001", "label", "高消费推导升级资格", "module", "marketing_rules"),
+                        Map.of("rule_id", "COND_002", "label", "信用分推导额度调整", "module", "marketing_rules")
+                )
+        );
     }
 
     public Map<String, Object> schema() {
@@ -136,8 +168,17 @@ public class OntologyService {
 
         // 复合问法（如「在售5G套餐和风险商品」）合并两路结果
         if (wantProduct && wantRisk) {
-            String productSparql = "SELECT ?product ?name ?growth ?users ?status WHERE { ?product a <http://example.org/Product> . OPTIONAL { ?product <http://example.org/productName> ?name } OPTIONAL { ?product <http://example.org/revenueGrowth> ?growth } OPTIONAL { ?product <http://example.org/newUserMonth> ?users } OPTIONAL { ?product <http://example.org/status> ?status } } ORDER BY ASC(?growth) LIMIT 20";
-            String riskSparql = "SELECT ?product ?name ?isZeroFee ?status WHERE { ?product a <http://example.org/Product> . OPTIONAL { ?product <http://example.org/productName> ?name } OPTIONAL { ?product <http://example.org/isZeroFee> ?isZeroFee } OPTIONAL { ?product <http://example.org/status> ?status } } LIMIT 50";
+            String productSparql = "SELECT ?product ?name ?growth ?users ?status WHERE { ?product a "
+                    + typeIri("Product") + " . OPTIONAL { ?product " + propIri("productName")
+                    + " ?name } OPTIONAL { ?product " + propIri("revenueGrowth")
+                    + " ?growth } OPTIONAL { ?product " + propIri("newUserMonth")
+                    + " ?users } OPTIONAL { ?product " + propIri("status")
+                    + " ?status } } ORDER BY ASC(?growth) LIMIT 20";
+            String riskSparql = "SELECT ?product ?name ?isZeroFee ?status WHERE { ?product a "
+                    + typeIri("Product") + " . OPTIONAL { ?product " + propIri("productName")
+                    + " ?name } OPTIONAL { ?product " + propIri("isZeroFee")
+                    + " ?isZeroFee } OPTIONAL { ?product " + propIri("status")
+                    + " ?status } } LIMIT 50";
             List<Map<String, Object>> merged = new ArrayList<>();
             for (Map<String, Object> row : rdf4jStore.sparqlQuery(productSparql)) {
                 Map<String, Object> tagged = new LinkedHashMap<>(row);
@@ -159,16 +200,26 @@ public class OntologyService {
         String sparql;
         String answer;
         if (wantProduct) {
-            sparql = "SELECT ?product ?name ?growth ?users WHERE { ?product a <http://example.org/Product> . OPTIONAL { ?product <http://example.org/productName> ?name } OPTIONAL { ?product <http://example.org/revenueGrowth> ?growth } OPTIONAL { ?product <http://example.org/newUserMonth> ?users } } ORDER BY ASC(?growth) LIMIT 20";
+            sparql = "SELECT ?product ?name ?growth ?users WHERE { ?product a "
+                    + typeIri("Product") + " . OPTIONAL { ?product " + propIri("productName")
+                    + " ?name } OPTIONAL { ?product " + propIri("revenueGrowth")
+                    + " ?growth } OPTIONAL { ?product " + propIri("newUserMonth")
+                    + " ?users } } ORDER BY ASC(?growth) LIMIT 20";
             answer = "查询在售产品及其增长指标";
         } else if (wantRisk) {
-            sparql = "SELECT ?product ?name ?isZeroFee ?status WHERE { ?product a <http://example.org/Product> . OPTIONAL { ?product <http://example.org/productName> ?name } OPTIONAL { ?product <http://example.org/isZeroFee> ?isZeroFee } OPTIONAL { ?product <http://example.org/status> ?status } } LIMIT 50";
+            sparql = "SELECT ?product ?name ?isZeroFee ?status WHERE { ?product a "
+                    + typeIri("Product") + " . OPTIONAL { ?product " + propIri("productName")
+                    + " ?name } OPTIONAL { ?product " + propIri("isZeroFee")
+                    + " ?isZeroFee } OPTIONAL { ?product " + propIri("status")
+                    + " ?status } } LIMIT 50";
             answer = "查询零资费或风险相关产品";
         } else if (normalized.contains("会员等级") || normalized.contains("vip")) {
-            sparql = "SELECT ?entity ?vipLevel WHERE { ?entity rdf:type <http://example.org/Customer> . ?entity <http://example.org/vipLevel> ?vipLevel }";
+            sparql = "SELECT ?entity ?vipLevel WHERE { ?entity rdf:type " + typeIri("Customer")
+                    + " . ?entity " + propIri("vipLevel") + " ?vipLevel }";
             answer = "查询所有客户的会员等级";
         } else if (normalized.contains("年消费") || normalized.contains("annual") || normalized.contains("spend")) {
-            sparql = "SELECT ?entity ?annualSpend WHERE { ?entity rdf:type <http://example.org/Customer> . ?entity <http://example.org/annualSpend> ?annualSpend } ORDER BY DESC(?annualSpend)";
+            sparql = "SELECT ?entity ?annualSpend WHERE { ?entity rdf:type " + typeIri("Customer")
+                    + " . ?entity " + propIri("annualSpend") + " ?annualSpend } ORDER BY DESC(?annualSpend)";
             answer = "查询所有客户的年消费额";
         } else {
             sparql = "SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 50";
@@ -353,12 +404,12 @@ public class OntologyService {
             Map<String, Object> filters = (Map<String, Object>) entity.getOrDefault("filters", Map.of());
 
             String var = "s" + (i == 0 ? "" : i);
-            sparql.append("?").append(var).append(" a <http://example.org/").append(type).append("> . ");
+            sparql.append("?").append(var).append(" a ").append(typeIri(type)).append(" . ");
 
             for (Map.Entry<String, Object> filter : filters.entrySet()) {
                 String prop = filter.getKey();
                 Object val = filter.getValue();
-                String propUri = "<http://example.org/" + prop + ">";
+                String propUri = propIri(prop);
                 if (val instanceof Number || (val instanceof String && val.toString().matches("-?\\d+(\\.\\d+)?"))) {
                     sparql.append("?").append(var).append(" ").append(propUri).append(" ").append(val).append(" . ");
                 } else {
@@ -387,7 +438,7 @@ public class OntologyService {
     }
 
     public Map<String, Object> quickEvaluate(String entityId, String type, String policySetId, String tenantId) {
-        String uri = entityId.startsWith("http") ? entityId : "http://example.org/" + entityId;
+        String uri = entityUri(entityId);
         Map<String, Object> fact = rdf4jStore.getEntity(uri);
         if (fact.isEmpty()) fact = defaultFact(uri, type, "ontology");
         String verdict = decide(policySetId, fact, "validation");
@@ -396,19 +447,10 @@ public class OntologyService {
     }
 
     public Map<String, Object> getPolicySets() {
-        return Map.of("success", true, "policy_sets", List.of(
-                Map.of("id", "PS_PRODUCT_ONLINE_V1", "name", "新品立项策略集", "description", "用于产商品新品立项门槛校验"),
-                Map.of("id", "PS_PRODUCT_RISK_V1", "name", "产品风险稽核策略集", "description", "用于零资费与低效产品风险判定"),
-                Map.of("id", "PS_MARKETING_RECOMMEND_V1", "name", "营销推荐策略集", "description", "用于营销推荐场景的规则校验"),
-                Map.of("id", "PS_BILLING_REFUND_V1", "name", "账单退款策略集", "description", "用于账单退款场景的规则校验")
-        ));
-    }
-
-    public Map<String, Object> getSwrlRules() {
-        return Map.of("success", true, "rules", List.of(
-                Map.of("rule_id", "SWRL_001", "label", "高消费推导升级资格", "module", "marketing_rules"),
-                Map.of("rule_id", "SWRL_002", "label", "信用分推导额度调整", "module", "marketing_rules")
-        ));
+        if (opsRules.isPresent()) {
+            return Map.of("success", true, "policy_sets", opsRules.get().listPolicySets());
+        }
+        return Map.of("success", true, "policy_sets", List.of());
     }
 
     public Map<String, Object> getOntologyStats() {
@@ -502,6 +544,7 @@ public class OntologyService {
     }
 
     private String decide(String policySetId, Map<String, Object> facts, String expectationType) {
+        Map<String, Object> th = opsRules.map(r -> r.policyThresholds(policySetId)).orElse(Map.of());
         double marketSize = number(facts.get("targetMarketSize"));
         double zeroFeeMonths = number(facts.get("onlineMonths"));
         double newUsers = number(facts.get("newUserMonth"));
@@ -515,33 +558,90 @@ public class OntologyService {
         boolean isZeroFee = Boolean.parseBoolean(String.valueOf(facts.getOrDefault("isZeroFee", false)));
         String productType = String.valueOf(facts.getOrDefault("productType", ""));
         String status = String.valueOf(facts.getOrDefault("status", ""));
+
+        double marketSizeGte = thresholdNum(th, "marketSizeGte", 100000);
+        String denyType = String.valueOf(th.getOrDefault("denyProductTypeOnLowMarket", "5G套餐"));
+        double zeroMonthsGte = thresholdNum(th, "zeroFeeOnlineMonthsGte", 3);
+        double zeroUsersLt = thresholdNum(th, "zeroFeeNewUsersLt", 50);
+        double growthLt = thresholdNum(th, "revenueGrowthLt", 0.03);
+        double churnGt = thresholdNum(th, "churnRateGt", 0.08);
+        String onSale = String.valueOf(th.getOrDefault("onSaleStatus", "在售"));
+        double premiumSpend = thresholdNum(th, "premiumSpendGte", 50000);
+        double bundleSpend = thresholdNum(th, "bundleSpendGte", 30000);
+        double refundScore = thresholdNum(th, "fullRefundCreditScoreGte", 700);
+
         return switch (policySetId) {
             case "PS_PRODUCT_ONLINE_V1" -> {
-                if ("candidate_check".equals(expectationType) && "5G套餐".equals(productType) && marketSize < 100000) yield "deny";
-                if ("candidate_check".equals(expectationType) && marketSize >= 100000) yield "allow";
+                if ("candidate_check".equals(expectationType)
+                        && denyType.equals(productType)
+                        && marketSize < marketSizeGte) {
+                    yield "deny";
+                }
+                if ("candidate_check".equals(expectationType) && marketSize >= marketSizeGte) {
+                    yield "allow";
+                }
                 yield "review";
             }
             case "PS_PRODUCT_RISK_V1" -> {
-                if (isZeroFee && "在售".equals(status) && zeroFeeMonths >= 3 && newUsers < 50) yield "review";
-                if (revenueGrowth < 0.03 && churnRate > 0.08) yield "review";
+                if (isZeroFee && onSale.equals(status)
+                        && zeroFeeMonths >= zeroMonthsGte
+                        && newUsers < zeroUsersLt) {
+                    yield "review";
+                }
+                if (revenueGrowth < growthLt && churnRate > churnGt) {
+                    yield "review";
+                }
                 yield "allow";
             }
             case "PS_MARKETING_RECOMMEND_V1" -> {
                 if ("candidate_check".equals(expectationType)) {
-                    if ("premium_upgrade".equals(candidateActionType) && spend >= 50000 && ("Gold".equalsIgnoreCase(vipLevel) || "Platinum".equalsIgnoreCase(vipLevel))) yield "allow";
-                    if ("membership_bundle".equals(candidateActionType) && spend >= 30000) yield "allow";
+                    if ("premium_upgrade".equals(candidateActionType)
+                            && spend >= premiumSpend
+                            && vipInList(vipLevel, th.get("allowVipLevels"), List.of("Gold", "Platinum"))) {
+                        yield "allow";
+                    }
+                    if ("membership_bundle".equals(candidateActionType) && spend >= bundleSpend) {
+                        yield "allow";
+                    }
                     yield "review";
                 }
-                if (spend >= 50000 || "Platinum".equalsIgnoreCase(vipLevel)) yield "allow";
+                if (spend >= premiumSpend
+                        || vipInList(vipLevel, th.get("allowVipAlone"), List.of("Platinum"))) {
+                    yield "allow";
+                }
                 yield "deny";
             }
             case "PS_BILLING_REFUND_V1" -> {
-                if ("full_refund".equals(billingActionType) && creditScore >= 700) yield "allow";
-                if ("partial_refund".equals(billingActionType)) yield "review";
+                if ("full_refund".equals(billingActionType) && creditScore >= refundScore) {
+                    yield "allow";
+                }
+                if ("partial_refund".equals(billingActionType)) {
+                    yield "review";
+                }
                 yield "deny";
             }
             default -> "review";
         };
+    }
+
+    private double thresholdNum(Map<String, Object> th, String key, double defaultValue) {
+        if (th == null || !th.containsKey(key)) {
+            return defaultValue;
+        }
+        return number(th.get(key));
+    }
+
+    private boolean vipInList(String vipLevel, Object configured, List<String> defaults) {
+        List<String> levels = defaults;
+        if (configured instanceof List<?> list && !list.isEmpty()) {
+            levels = list.stream().map(String::valueOf).toList();
+        }
+        for (String level : levels) {
+            if (level.equalsIgnoreCase(vipLevel)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private double number(Object value) {
@@ -613,43 +713,37 @@ public class OntologyService {
     }
 
     private List<String> triggeredRules(String policySetId, Map<String, Object> facts, String expectationType) {
-        return switch (policySetId) {
-            case "PS_PRODUCT_ONLINE_V1" -> List.of("R-ONLINE-001");
-            case "PS_PRODUCT_RISK_V1" -> List.of("R-RISK-001", "R-RISK-002");
-            case "PS_MARKETING_RECOMMEND_V1" -> List.of("R001", "R003");
-            case "PS_BILLING_REFUND_V1" -> List.of("B001");
-            default -> List.of("R000");
-        };
+        if (opsRules.isPresent()) {
+            return opsRules.get().policyTriggeredRules(policySetId);
+        }
+        return List.of("R000");
     }
 
     private String reasoning(String policySetId, Map<String, Object> facts, String expectationType) {
-        return switch (policySetId) {
-            case "PS_PRODUCT_ONLINE_V1" -> "新品立项依据市场规模、产品类型和上线门槛进行校验";
-            case "PS_PRODUCT_RISK_V1" -> "依据零资费、在售周期、新增和流失情况进行风险判定";
-            case "PS_MARKETING_RECOMMEND_V1" -> "依据消费能力、会员等级和候选动作进行推荐校验";
-            case "PS_BILLING_REFUND_V1" -> "依据退款类型与信用分进行合规校验";
-            default -> policySetId + " 评估完成";
-        };
+        if (opsRules.isPresent()) {
+            return opsRules.get().policyReasoning(policySetId);
+        }
+        return policySetId + " 评估完成";
     }
 
     /**
-     * 执行 SWRL 规则推理。
-     *
-     * @param facts 事实数据
-     * @return 规则执行结果
+     * 执行条件 DSL 规则（非 OWL SWRL；遗留营销路径）。
      */
     public Map<String, Object> executeSwrlRules(Map<String, Object> facts) {
         if (swrlRuleEngine.isEmpty()) {
-            return Map.of("success", false, "message", "SWRL 规则引擎未启用");
+            return Map.of("success", false, "message", "条件 DSL 引擎未启用（非 Openllet SWRL）");
         }
 
         try {
+            @SuppressWarnings("deprecation")
             List<SwrlRuleEngine.SwrlRuleResult> results = swrlRuleEngine.get().executeAll(new LinkedHashMap<>(facts));
 
             long triggeredCount = results.stream().filter(SwrlRuleEngine.SwrlRuleResult::triggered).count();
 
             return Map.of(
                     "success", true,
+                    "engine_type", "condition_dsl",
+                    "deprecated", true,
                     "totalRules", results.size(),
                     "triggeredRules", triggeredCount,
                     "results", results.stream().map(r -> Map.of(
@@ -661,7 +755,7 @@ public class OntologyService {
                     )).toList()
             );
         } catch (Exception e) {
-            log.warn("[OntologyService] SWRL 规则执行失败: {}", e.getMessage());
+            log.warn("[OntologyService] 条件 DSL 规则执行失败: {}", e.getMessage());
             return Map.of("success", false, "message", e.getMessage());
         }
     }

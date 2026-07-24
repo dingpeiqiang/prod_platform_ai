@@ -99,6 +99,46 @@
       <artifactId>rdf4j-rio-turtle</artifactId>
       <version>4.3.4</version>
     </dependency>
+    <!-- OWL API + Openllet：真 SWRL 规则推理（R-A01/R-A02） -->
+    <!-- 排除 OWLAPI 传递的 RDF4J 3.7.4，由项目显式声明的 RDF4J 4.3.4 统一提供 -->
+    <dependency>
+      <groupId>net.sourceforge.owlapi</groupId>
+      <artifactId>owlapi-distribution</artifactId>
+      <version>5.1.20</version>
+      <exclusions>
+        <exclusion>
+          <groupId>org.eclipse.rdf4j</groupId>
+          <artifactId>*</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>com.github.galigator.openllet</groupId>
+      <artifactId>openllet-owlapi</artifactId>
+      <version>2.6.5</version>
+      <exclusions>
+        <exclusion>
+          <groupId>net.sourceforge.owlapi</groupId>
+          <artifactId>owlapi-distribution</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>net.sourceforge.owlapi</groupId>
+          <artifactId>owlapi-api</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>net.sourceforge.owlapi</groupId>
+          <artifactId>owlapi-apibinding</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>net.sourceforge.owlapi</groupId>
+          <artifactId>owlapi-impl</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>org.eclipse.rdf4j</groupId>
+          <artifactId>*</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
     <!-- 数据访问层：JPA + Hibernate（对齐 Python SQLAlchemy） -->
     <dependency>
       <groupId>org.springframework.boot</groupId>

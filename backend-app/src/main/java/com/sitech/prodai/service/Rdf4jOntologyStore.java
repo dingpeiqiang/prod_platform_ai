@@ -1,6 +1,6 @@
 package com.sitech.prodai.service;
 
-import org.example.model.Models.EntityRef;
+import com.sitech.prodai.domain.EntityRef;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;

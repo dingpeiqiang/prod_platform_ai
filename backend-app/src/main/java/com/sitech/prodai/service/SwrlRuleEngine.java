@@ -8,11 +8,18 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+/**
+ * 伪条件 DSL 引擎（字符串 AND/比较表达式），<b>不是</b> OWL/SWRL。
+ * <p>产商品运营归因请使用 {@link OpsSwrlReasoner}（Openllet）+ {@link OpsRulesService}。
+ * 本类仅保留营销策略遗留路径兼容。
+ *
+ * @deprecated 使用 {@link OpsSwrlReasoner} / {@link OpsRulesService}；本类计划在后续迭代移除。
+ */
+@Deprecated(since = "2026-07", forRemoval = false)
 @Service
 public class SwrlRuleEngine {
 
@@ -77,19 +84,19 @@ public class SwrlRuleEngine {
         List<SwrlRule> rules = new ArrayList<>();
 
         SwrlRule r1 = new SwrlRule();
-        r1.setRuleId("SWRL_001");
+        r1.setRuleId("COND_001");
         r1.setRuleName("高消费推导升级资格");
         r1.setModule("marketing_rules");
-        r1.setDescription("年消费 >= 50000 且会员等级为 Gold/Platinum 的客户，推导为升级候选");
+        r1.setDescription("条件 DSL（非 OWL SWRL）：年消费 >= 50000 且会员等级为 Gold/Platinum");
         r1.setConditionExpr("annualSpend >= 50000 AND vipLevel IN (Gold, Platinum)");
         r1.setEnabled(true);
         rules.add(r1);
 
         SwrlRule r2 = new SwrlRule();
-        r2.setRuleId("SWRL_002");
+        r2.setRuleId("COND_002");
         r2.setRuleName("信用分推导额度调整");
         r2.setModule("marketing_rules");
-        r2.setDescription("信用分 >= 700 的客户，推导为额度上调候选");
+        r2.setDescription("条件 DSL（非 OWL SWRL）：信用分 >= 700");
         r2.setConditionExpr("creditScore >= 700");
         r2.setEnabled(true);
         rules.add(r2);

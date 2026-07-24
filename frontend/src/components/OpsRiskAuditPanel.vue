@@ -60,7 +60,7 @@
           <input v-model.number="shelfDays" type="number" min="30" max="365" />
           <button type="button" class="re-btn" @click="applyRule">重新推理</button>
         </div>
-        <p class="hint">演示：180→90 后清单变化，证明规则可配置、非写死页面</p>
+        <p class="hint">调整在架天数阈值后重新稽核，可验证规则可配置</p>
       </section>
 
       <section class="list">
@@ -104,7 +104,7 @@
         </div>
       </section>
 
-      <section v-if="result.coverageCompare" class="compare">
+      <section v-if="result.coverageCompare && !result.demoMode" class="compare">
         <h4>人工抽检 vs 规则全量</h4>
         <div class="compare-grid">
           <div>

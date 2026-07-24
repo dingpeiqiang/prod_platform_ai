@@ -9,7 +9,6 @@ import {
   scene2Products,
   createEmptyFormData,
   createProductFormSchema,
-  CAMPUS_PRODUCT_DATA,
   createOfferingFormSchema,
   draftToFormData,
 } from '../data/productMockData.js'
@@ -206,7 +205,11 @@ export function useProductConfig() {
       const batch = await batchFromDocument(`校园迎新方案 文档名=${fileName}`)
       return buildBatchPlaybook(batch, fileName, fileSize)
     } catch (e) {
-      return fallbackFileParsePlaybook(e.message)
+      return {
+        thinkingSteps: ['文档映射调用本体服务失败'],
+        content: `文档映射失败：${e.message || '本体服务不可用'}`,
+        formCard: null,
+      }
     }
   }
 
@@ -286,93 +289,6 @@ export function useProductConfig() {
       showBatchPanel: true,
       nextSteps: ['补协议期12个月并取消可重复', '确认月费19元', '确认通过项入库'],
     }
-  }
-
-  function fallbackFileParsePlaybook(errMsg) {
-    // 与后端 _default_campus_packages 对齐的 A/B/C，保证演示口径
-    const campusMock = {
-      total: 3,
-      passedCount: 1,
-      pendingCount: 2,
-      confirmableDrafts: [{ index: 1, offeringName: '校园青春59' }],
-      items: [
-        {
-          index: 1,
-          status: '通过',
-          compliancePass: true,
-          sourceExcerpt: '套餐A：校园青春59元；含20GB+200分钟；目标校园；电渠+厅店',
-          issues: [],
-          inferredFields: [],
-          draft: {
-            offeringName: '校园青春59',
-            monthlyFee: 59,
-            includeData: '20GB',
-            includeVoice: '200分钟',
-            targetUser: '校园',
-            channelScope: '电渠+厅店',
-            bizScenario: '校园体验',
-            offeringType: 'main_pkg',
-            hasContract: '1',
-            basedOnTemplate: 'TPL-CAMPUS-59',
-            fillSources: { monthlyFee: 'user_said', includeData: 'scenario_default' },
-          },
-        },
-        {
-          index: 2,
-          status: '待修正',
-          compliancePass: false,
-          sourceExcerpt: '套餐B：校园体验0元流量包；无合约；可重复订购',
-          issues: [
-            { ruleId: 'R-C05', issueType: '高风险资费', issueLevel: 'HIGH', field: 'monthlyFee', message: '月费为0且无合约' },
-            { ruleId: 'R-C07', issueType: '异常优惠漏洞', issueLevel: 'HIGH', field: 'discountPercent', message: '折扣100%且可重复订购' },
-          ],
-          inferredFields: [],
-          draft: {
-            offeringName: '校园体验0元流量包',
-            monthlyFee: 0,
-            includeData: '5GB',
-            targetUser: '校园',
-            channelScope: '全渠道',
-            bizScenario: '校园体验',
-            offeringType: 'addon',
-            hasContract: '0',
-            repeatable: 'true',
-            discountPercent: 100,
-            dependOn: '',
-          },
-        },
-        {
-          index: 3,
-          status: '待修正',
-          compliancePass: false,
-          sourceExcerpt: '套餐C：校园融合加装包；依赖宽带；未写月费',
-          issues: [
-            { ruleId: 'R-C06', issueType: '必填缺失', issueLevel: 'MEDIUM', field: 'monthlyFee', message: '缺少必填字段：月费' },
-            { ruleId: 'R-C04', issueType: '规则漏洞', issueLevel: 'HIGH', field: 'dependOn', message: '附加包缺少依赖' },
-          ],
-          inferredFields: [],
-          draft: {
-            offeringName: '校园融合加装包',
-            targetUser: '校园',
-            channelScope: '电渠+厅店',
-            bizScenario: '校园体验',
-            offeringType: 'addon',
-            dependOn: '',
-          },
-        },
-      ],
-      appliedRules: ['R-D01', 'R-D02', 'R-D03', 'R-D04', 'R-D05'],
-    }
-    const playbook = buildBatchPlaybook(campusMock, '校园迎新产商品方案_2026.md', 12 * 1024)
-    playbook.thinkingSteps = [
-      {
-        type: 'llm',
-        content: `本体服务暂不可用（${errMsg}），切换本地校园迎新 A/B/C mock`,
-      },
-      ...playbook.thinkingSteps.slice(1),
-    ]
-    playbook.content = `已回退本地演示文档映射。\n\n${playbook.content}`
-    return playbook
   }
 
   async function applyBatchFix(productId, fixKey) {
@@ -457,7 +373,11 @@ export function useProductConfig() {
       const result = await chatConfigure(text, ontologyDraft.value)
       return buildChatPlaybook(result)
     } catch (e) {
-      return fallbackChatPlaybook(text, e.message)
+      return {
+        thinkingSteps: ['对话配置调用本体服务失败'],
+        content: `配置生成失败：${e.message || '本体服务不可用'}`,
+        formCard: null,
+      }
     }
   }
 
@@ -625,48 +545,56 @@ export function useProductConfig() {
     return lines.join('\n\n')
   }
 
-  function fallbackChatPlaybook(text, errMsg) {
-    const isCampus = /大学生|校园/.test(text)
-    if (!isCampus) {
-      return {
-        thinkingSteps: [
-          `本体服务暂不可用（${errMsg}）`,
-          '尝试本地关键词匹配…',
-          '信息不足，需要更具体的业务描述',
-        ],
-        content: '请描述更具体的需求，例如：给家庭用户做一个融合套餐，月费158，带500M宽带，全渠道销售。',
-        formCard: null,
-      }
-    }
-    const newProduct = {
-      id: 'P' + Date.now(),
-      name: '5G-A校园卡49元G（大学生专享）',
-      desc: '月费49元 | 15G流量 | 200分钟语音',
-      status: 'draft',
-      auditStatus: 'pending',
-      data: CAMPUS_PRODUCT_DATA(),
-    }
-    const formCard = addProductAndActivate(newProduct)
-    return {
-      thinkingSteps: [
-        `本体服务暂不可用（${errMsg}），回退校园模板`,
-        '匹配大学生套餐模板并填充默认字段',
-      ],
-      content: '已按校园模板生成配置草稿，右侧打开表单，可继续微调。',
-      formCard,
-    }
-  }
-
-  async function runRootCauseAnalysis() {
+  async function runRootCauseAnalysis(text = '') {
     try {
-      const result = await analyzeRootCause('OF-HF-128')
+      const result = await analyzeRootCause(null, text || null)
+      if (result?.success === false) {
+        rootCauseResult.value = null
+        showRootCausePanel.value = false
+        return {
+          thinkingSteps: [
+            { type: 'llm', content: `解析用户目标：${text || '（空）'}` },
+            { type: 'ontology', title: '图谱检索', content: result.message || '未找到产商品事实' },
+          ],
+          content: `根因分析失败：${result.message || '无法解析产商品或缺少图谱事实'}`,
+          formCard: null,
+          showRootCausePanel: false,
+        }
+      }
+
+      const offeringName = result.offeringName || result.offeringId || '目标商品'
+      const anomalies = result.anomalies || []
+      const paths = result.paths || []
+
+      if (!anomalies.length || !paths.length) {
+        rootCauseResult.value = result
+        showRootCausePanel.value = false
+        showRiskAuditPanel.value = false
+        return {
+          thinkingSteps: [
+            { type: 'llm', content: `识别意图=根因分析，商品=${offeringName}` },
+            {
+              type: 'ontology',
+              title: '异动判定',
+              content: result.message || '图谱事实不足，无法归因',
+            },
+          ],
+          content:
+            `### ${offeringName} 异动根因分析\n\n` +
+            (result.message || '未检出异动或未命中归因规则'),
+          formCard: null,
+          rootCauseResult: result,
+          showRootCausePanel: false,
+        }
+      }
+
       rootCauseResult.value = result
       showRootCausePanel.value = true
       showRiskAuditPanel.value = false
       const chain = buildRootCauseOntologyChain(result)
       rootCauseOntologyChain.value = chain
       activeRootCauseRank.value = 1
-      const pathLines = (result.paths || [])
+      const pathLines = paths
         .map(
           (p) =>
             `${p.rank}. **${p.name}**（${classCn(p.rootCauseType) || p.rootCauseType}）权重 ${formatWeight(p.weight)} ← ${formatRule(p.ruleId)}` +
@@ -674,21 +602,21 @@ export function useProductConfig() {
             `\n   证据：${(p.evidence || []).join('；')}`,
         )
         .join('\n')
-      const anomaly = result.anomalies?.[0]
+      const anomaly = anomalies[0]
       return {
         thinkingSteps: [
           {
             type: 'llm',
-            content: '识别意图=根因分析，商品=家庭融合畅享128，关注指标=累计收入',
+            content: `识别意图=根因分析，商品=${offeringName}，关注指标=${anomaly?.metricCode || '异动指标'}`,
           },
           {
             type: 'llm',
-            content: '锁定异动商品：家庭融合畅享128，按渠道 / 促销 / 竞品 / 行为维度下钻',
+            content: `锁定异动商品：${offeringName}（${result.offeringId}），按渠道 / 促销 / 竞品 / 行为维度下钻`,
           },
           {
             type: 'ontology',
             title: '归因关系',
-            content: '构建产商品与根因关系',
+            content: '基于 opsGraph 事实构建根因路径',
             ontologyChain: chain,
             ontologyPreview: buildRootCauseOntologyPreview(result, chain),
           },
@@ -698,9 +626,9 @@ export function useProductConfig() {
           },
         ],
         content:
-          `### ${result.offeringName} 异动根因分析\n\n` +
-          `**异动结论**：${anomaly?.message || '累计收入环比 -18%'}（${anomaly?.ruleId || 'R-A01'}）\n\n` +
-          `**根因路径 Top3**\n${pathLines}\n\n` +
+          `### ${offeringName} 异动根因分析\n\n` +
+          `**异动结论**：${anomaly?.message || '—'}（${anomaly?.ruleId || '—'}）\n\n` +
+          `**根因路径 Top${paths.length}**\n${pathLines}\n\n` +
           `**策略建议**\n${(result.actionList || []).map((a) => `- ${a}`).join('\n')}\n\n` +
           '右侧已打开根因面板：可下钻路径、查看证据链，并一键生成优化工单草稿。',
         formCard: null,
@@ -938,26 +866,19 @@ export function useProductConfig() {
       auditResults.value = results
       return { results, hasError }
     } catch (e) {
-      const results = buildLocalAuditResults()
-      const hasError = results.some((r) => r.type === 'error')
-      auditStatus.value = hasError ? 'fail' : 'pass'
+      const results = [{
+        type: 'error',
+        title: '合规校验失败',
+        desc: e.message || '本体服务不可用',
+      }]
+      auditStatus.value = 'fail'
       auditResults.value = results
-      return { results, hasError }
+      if (product) {
+        product.auditStatus = 'fail'
+        product.compliancePass = false
+      }
+      return { results, hasError: true }
     }
-  }
-
-  function buildLocalAuditResults() {
-    const results = []
-    if (!formData.prodPrcName && !formData.offeringName) {
-      results.push({ type: 'error', title: '缺少商品名称', desc: 'R-C06 必填缺失' })
-    }
-    if (!formData.monthlyFee && formData.monthlyFee !== 0) {
-      results.push({ type: 'error', title: '缺少月费', desc: 'R-C06 必填缺失' })
-    }
-    if (!results.length) {
-      results.push({ type: 'success', title: '必填项检查通过', desc: '本地回退校验通过' })
-    }
-    return results
   }
 
   function updateFormField(fieldCode, value) {

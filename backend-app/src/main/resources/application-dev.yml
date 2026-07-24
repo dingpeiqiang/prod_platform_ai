@@ -9,6 +9,13 @@ spring:
           temperature: 0.5
 
 prodai:
+  ontology:
+    # 本地/联调：打开演示数据（mock_graph + DemoOpsFixture 造数 + RDF 灌数）
+    demo-enabled: true
+    data-source: classpath
+    graph-path: classpath:ontology/mock_graph.json
+    llm-extract-enabled: true
+    base-iri: http://example.org/
   llm:
     enabled: ${LLM_ENABLED:true}
     system-prompt: You are a helpful assistant for telecom product configuration.

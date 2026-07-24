@@ -1,0 +1,62 @@
+@prefix : <http://prodai.sitech.com/ontology/product-ops#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<http://prodai.sitech.com/ontology/product-ops> rdf:type owl:Ontology ;
+    rdfs:label "产商品运营归因本体"@zh ;
+    owl:versionInfo "1.0" ;
+    rdfs:comment "TBox：产商品 / 指标 / 渠道。SWRL 规则由运行时按 ops_rules.json 阈值注入。"@zh .
+
+#################################################################
+# Classes
+#################################################################
+
+:Offering rdf:type owl:Class ; rdfs:label "产商品"@zh .
+:Metric rdf:type owl:Class ; rdfs:label "指标"@zh .
+:Channel rdf:type owl:Class ; rdfs:label "渠道"@zh .
+:AnomalyOffering rdf:type owl:Class ;
+    rdfs:subClassOf :Offering ;
+    rdfs:label "异动产商品"@zh ;
+    rdfs:comment "R-A01 点火后归入此类"@zh .
+:ChannelRootCause rdf:type owl:Class ;
+    rdfs:subClassOf :Channel ;
+    rdfs:label "渠道根因候选"@zh ;
+    rdfs:comment "R-A02 点火后归入此类"@zh .
+
+#################################################################
+# Object properties
+#################################################################
+
+:hasMetric rdf:type owl:ObjectProperty ;
+    rdfs:domain :Offering ; rdfs:range :Metric ; rdfs:label "拥有指标"@zh .
+:soldOn rdf:type owl:ObjectProperty ;
+    rdfs:domain :Offering ; rdfs:range :Channel ; rdfs:label "销售渠道"@zh .
+
+#################################################################
+# Datatype properties
+#################################################################
+
+:offeringId rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:string .
+:offeringName rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:string .
+:metricCode rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Metric ; rdfs:range xsd:string .
+:metricDelta rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Metric ; rdfs:range xsd:decimal .
+:metricDeltaPp rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Metric ; rdfs:range xsd:decimal .
+:anomalyFlag rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Metric ; rdfs:range xsd:boolean .
+:channelId rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Channel ; rdfs:range xsd:string .
+:channelName rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Channel ; rdfs:range xsd:string .
+:orderDelta rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Channel ; rdfs:range xsd:decimal .
+:contribRatio rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Channel ; rdfs:range xsd:decimal .
+:weightHint rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Channel ; rdfs:range xsd:decimal .

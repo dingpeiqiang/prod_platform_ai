@@ -1,6 +1,6 @@
 package com.sitech.prodai.service;
 
-import org.example.model.Models.EntityRef;
+import com.sitech.prodai.domain.EntityRef;
 
 import java.util.List;
 import java.util.Map;

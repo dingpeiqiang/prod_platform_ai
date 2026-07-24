@@ -2,22 +2,30 @@ package com.sitech.prodai.intent.handlers;
 
 import com.sitech.prodai.intent.BaseIntentHandler;
 import com.sitech.prodai.intent.IntentContext;
+import com.sitech.prodai.intent.SseStreamSupport;
 import com.sitech.prodai.intent.SseUtils;
-import com.sitech.prodai.service.OntologyService;
+import com.sitech.prodai.service.OntologyMvpService;
+import com.sitech.prodai.service.OpsRulesService;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 异动归因意图：先推 thinking，图谱/SWRL 异步执行，正文分片输出。
+ */
 @Component
 public class ProductOpsReasonHandler implements BaseIntentHandler {
 
-    private final OntologyService ontologyService;
+    private final OntologyMvpService ontologyMvpService;
+    private final OpsRulesService opsRules;
 
-    public ProductOpsReasonHandler(OntologyService ontologyService) {
-        this.ontologyService = ontologyService;
+    public ProductOpsReasonHandler(OntologyMvpService ontologyMvpService, OpsRulesService opsRules) {
+        this.ontologyMvpService = ontologyMvpService;
+        this.opsRules = opsRules;
     }
 
     @Override
@@ -26,172 +34,187 @@ public class ProductOpsReasonHandler implements BaseIntentHandler {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public Flux<Map<String, Object>> handle(IntentContext ctx) {
         String target = ctx.getExtractedFields().containsKey("target")
                 ? String.valueOf(ctx.getExtractedFields().get("target"))
                 : ctx.getLastUserMessage();
+        String offeringHint = ctx.getExtractedFields().containsKey("offeringId")
+                ? String.valueOf(ctx.getExtractedFields().get("offeringId"))
+                : null;
         String traceId = ctx.resolveSessionId();
-        String tenantId = ctx.resolveUserId();
 
-        Map<String, Object> nlResult = ontologyService.nlQuery(target);
-        String answer = String.valueOf(nlResult.getOrDefault("answer", ""));
-
-        Map<String, Object> explainResult = ontologyService.explain(traceId, "business", tenantId);
-        String explanation = String.valueOf(explainResult.getOrDefault("natural_language", answer));
-        List<String> referencedRules = List.of();
-        if (explainResult.get("referenced_rules") instanceof List<?> list) {
-            referencedRules = list.stream().filter(String.class::isInstance).map(String.class::cast).toList();
-        }
-
-        List<Map<String, Object>> results = List.of();
-        if (nlResult.get("results") instanceof List<?> list) {
-            results = list.stream().filter(Map.class::isInstance).map(e -> (Map<String, Object>) e).toList();
-        }
-
-        Map<String, Object> intentData = new LinkedHashMap<>();
-        intentData.put("target", target);
-        intentData.put("explanation", explanation);
-        intentData.put("referencedRules", referencedRules);
-        intentData.put("sparql", nlResult.get("sparql"));
-        intentData.put("results", results);
-        intentData.put("traceId", traceId);
-
-        String answerText = formatReasonAnswer(explanation, referencedRules, results);
-
-        Map<String, Object> statsPayload = Map.of(
-                "traceId", traceId,
-                "referenced_rules", referencedRules,
-                "target", target,
-                "evidenceCount", results.size()
-        );
-
-        return Flux.just(
+        List<Map<String, Object>> prelude = List.of(
                 SseUtils.thinkingRich(
-                        "正在追溯产商品异动根因并构建证据链...",
+                        "正在基于图谱事实追溯异动根因...",
                         Map.of(
                                 "step", 5,
                                 "totalSteps", 6,
-                                "traceId", traceId.length() > 12 ? traceId.substring(0, 12) + "..." : traceId,
-                                "target", target.length() > 50 ? target.substring(0, 50) + "..." : target,
-                                "ruleCount", referencedRules.size(),
-                                "evidenceCount", results.size()
+                                "traceId", shortId(traceId),
+                                "target", shortText(target, 50),
+                                "phase", "running"
                         ),
-                        -1,
-                        referencedRules.isEmpty() ? null : "引用规则: " + referencedRules.stream()
-                                .map(this::formatRuleLabel)
-                                .reduce((a, b) -> a + "、" + b)
-                                .orElse("")
-                ),
-                SseUtils.intentEvent(getIntentType(), "root_cause", intentData, false),
-                SseUtils.textStart(),
-                SseUtils.text(answerText),
-                SseUtils.textEnd(),
-                SseUtils.stats(ctx.getStreamStats()),
-                SseUtils.doneEvent(getIntentType(), false, Map.of(
-                        "intentType", getIntentType(),
-                        "action", "root_cause",
-                        "stats", statsPayload,
-                        "explanation", explanation,
-                        "referencedRules", referencedRules,
-                        "sparql", nlResult.get("sparql"),
-                        "results", results,
-                        "traceId", traceId,
-                        "target", target,
-                        "evidenceCount", results.size()
-                ))
+                        -1
+                )
+        );
+
+        return SseStreamSupport.deferWork(
+                prelude,
+                () -> ontologyMvpService.analyzeRootCause(offeringHint, target),
+                root -> buildAfterEvents(ctx, target, traceId, root)
         );
     }
 
-    private String formatReasonAnswer(String explanation, List<String> rules, List<Map<String, Object>> evidence) {
+    private List<Map<String, Object>> buildAfterEvents(
+            IntentContext ctx, String target, String traceId, Map<String, Object> root
+    ) {
+        boolean ok = Boolean.TRUE.equals(root.get("success"));
+        List<String> referencedRules = toStringList(root.get("appliedRules"));
+        List<Map<String, Object>> paths = toMapList(root.get("paths"));
+        List<Map<String, Object>> anomalies = toMapList(root.get("anomalies"));
+
+        Map<String, Object> intentData = new LinkedHashMap<>();
+        intentData.put("target", target);
+        intentData.put("offeringId", root.get("offeringId"));
+        intentData.put("offeringName", root.get("offeringName"));
+        intentData.put("success", ok);
+        intentData.put("message", root.get("message"));
+        intentData.put("explanation", formatReasonAnswer(root));
+        intentData.put("referencedRules", referencedRules);
+        intentData.put("anomalies", anomalies);
+        intentData.put("paths", paths);
+        intentData.put("results", paths);
+        intentData.put("rootCause", root);
+        intentData.put("traceId", traceId);
+
+        String answerText = formatReasonAnswer(root);
+        Map<String, Object> statsPayload = new LinkedHashMap<>();
+        statsPayload.put("traceId", traceId);
+        statsPayload.put("referenced_rules", referencedRules);
+        statsPayload.put("target", target);
+        statsPayload.put("offeringId", root.get("offeringId"));
+        statsPayload.put("evidenceCount", paths.size());
+        statsPayload.put("success", ok);
+
+        List<Map<String, Object>> events = new ArrayList<>();
+        events.add(SseUtils.thinkingRich(
+                ok ? "根因分析完成，正在组织答复..." : "产商品解析或事实检索未通过",
+                Map.of(
+                        "step", 6,
+                        "totalSteps", 6,
+                        "ruleCount", referencedRules.size(),
+                        "evidenceCount", paths.size(),
+                        "success", ok
+                ),
+                0,
+                referencedRules.isEmpty() ? null : "引用规则: " + referencedRules.stream()
+                        .map(this::formatRuleLabel)
+                        .reduce((a, b) -> a + "、" + b)
+                        .orElse("")
+        ));
+        events.add(SseUtils.intentEvent(getIntentType(), "root_cause", intentData, false));
+        events.addAll(SseStreamSupport.chunkedTextEvents(answerText));
+        events.add(SseUtils.stats(ctx.getStreamStats()));
+        events.add(SseUtils.doneEvent(getIntentType(), false, Map.of(
+                "intentType", getIntentType(),
+                "action", "root_cause",
+                "stats", statsPayload,
+                "rootCause", root,
+                "referencedRules", referencedRules,
+                "results", paths,
+                "traceId", traceId,
+                "target", target,
+                "evidenceCount", paths.size()
+        )));
+        return events;
+    }
+
+    private String formatReasonAnswer(Map<String, Object> root) {
+        if (!Boolean.TRUE.equals(root.get("success"))) {
+            return "根因分析失败：" + root.getOrDefault("message", "未知错误");
+        }
+        String name = String.valueOf(root.getOrDefault("offeringName", root.getOrDefault("offeringId", "目标商品")));
+        List<Map<String, Object>> anomalies = toMapList(root.get("anomalies"));
+        List<Map<String, Object>> paths = toMapList(root.get("paths"));
+        List<String> rules = toStringList(root.get("appliedRules"));
+
         StringBuilder sb = new StringBuilder();
-        if (explanation != null && !explanation.isBlank()) {
-            sb.append(explanation);
-        } else {
-            sb.append("根因分析完成");
+        sb.append("### ").append(name).append(" 异动根因分析\n\n");
+        if (anomalies.isEmpty()) {
+            sb.append(root.getOrDefault("message", "未检出异动指标"));
+            return sb.toString();
+        }
+        Map<String, Object> anomaly = anomalies.get(0);
+        sb.append("**异动结论**：").append(anomaly.getOrDefault("message", "—"));
+        if (anomaly.get("ruleId") != null) {
+            sb.append("（").append(formatRuleLabel(String.valueOf(anomaly.get("ruleId")))).append("）");
+        }
+        sb.append("\n\n");
+        if (paths.isEmpty()) {
+            sb.append(root.getOrDefault("message", "暂无命中归因路径"));
+            return sb.toString();
+        }
+        sb.append("**根因路径**\n");
+        for (Map<String, Object> p : paths) {
+            sb.append(p.getOrDefault("rank", "-")).append(". **")
+                    .append(p.getOrDefault("name", "—")).append("**")
+                    .append(" 权重 ").append(p.getOrDefault("weight", "—"))
+                    .append(" ← ").append(formatRuleLabel(String.valueOf(p.getOrDefault("ruleId", ""))))
+                    .append("\n");
+            Object evidence = p.get("evidence");
+            if (evidence instanceof List<?> list && !list.isEmpty()) {
+                sb.append("   证据：").append(String.join("；", list.stream().map(String::valueOf).toList())).append("\n");
+            }
+        }
+        Object actions = root.get("actionList");
+        if (actions instanceof List<?> list && !list.isEmpty()) {
+            sb.append("\n**策略建议**\n");
+            for (Object a : list) {
+                sb.append("- ").append(a).append("\n");
+            }
         }
         if (!rules.isEmpty()) {
-            sb.append("\n\n引用规则：");
+            sb.append("\n引用规则：");
             for (int i = 0; i < rules.size(); i++) {
                 if (i > 0) sb.append("、");
                 sb.append(formatRuleLabel(rules.get(i)));
             }
         }
-        if (!evidence.isEmpty()) {
-            sb.append("\n\n支撑证据：");
-            int limit = Math.min(5, evidence.size());
-            for (int i = 0; i < limit; i++) {
-                Map<String, Object> row = evidence.get(i);
-                sb.append("\n").append(i + 1).append(". ").append(summarizeEvidenceRow(row));
-            }
-            if (evidence.size() > limit) {
-                sb.append("\n…其余 ").append(evidence.size() - limit).append(" 条见结果卡片");
-            }
-        }
         return sb.toString();
     }
 
-    private String summarizeEvidenceRow(Map<String, Object> row) {
-        if (row == null || row.isEmpty()) {
-            return "—";
+    private List<String> toStringList(Object value) {
+        if (!(value instanceof List<?> list)) return List.of();
+        List<String> out = new ArrayList<>();
+        for (Object item : list) {
+            if (item != null) out.add(String.valueOf(item));
         }
-        Object message = row.get("message");
-        if (message != null && !String.valueOf(message).isBlank()) {
-            return String.valueOf(message);
-        }
-        Object name = row.get("name");
-        if (name == null) name = row.get("productName");
-        if (name == null) name = row.get("offeringName");
-        StringBuilder line = new StringBuilder();
-        if (name != null) {
-            line.append(name);
-        }
-        String[] prefer = {"status", "revenueGrowth", "growth", "users", "newUserMonth", "isZeroFee", "_bucket"};
-        for (String key : prefer) {
-            Object val = row.get(key);
-            if (val == null || String.valueOf(val).isBlank()) continue;
-            if (!line.isEmpty()) line.append(" · ");
-            line.append(fieldLabel(key)).append("：").append(val);
-            if (line.length() > 80) break;
-        }
-        if (line.isEmpty()) {
-            for (Map.Entry<String, Object> e : row.entrySet()) {
-                if (e.getValue() == null) continue;
-                if (!line.isEmpty()) line.append(" · ");
-                line.append(fieldLabel(e.getKey())).append("：").append(e.getValue());
-                if (line.length() > 80) break;
-            }
-        }
-        return line.isEmpty() ? "—" : line.toString();
+        return out;
     }
 
-    private String fieldLabel(String key) {
-        return switch (key) {
-            case "name", "productName" -> "名称";
-            case "offeringName" -> "产商品";
-            case "status" -> "状态";
-            case "revenueGrowth", "growth" -> "收入增长";
-            case "users", "newUserMonth" -> "用户数";
-            case "isZeroFee" -> "零资费";
-            case "_bucket" -> "分类";
-            default -> key;
-        };
+    private List<Map<String, Object>> toMapList(Object value) {
+        if (!(value instanceof List<?> list)) return List.of();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> map) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                map.forEach((k, v) -> row.put(String.valueOf(k), v));
+                out.add(row);
+            }
+        }
+        return out;
+    }
+
+    private String shortId(String id) {
+        if (id == null) return "";
+        return id.length() > 12 ? id.substring(0, 12) + "..." : id;
+    }
+
+    private String shortText(String text, int max) {
+        if (text == null) return "";
+        return text.length() > max ? text.substring(0, max) + "..." : text;
     }
 
     private String formatRuleLabel(String ruleId) {
-        if (ruleId == null || ruleId.isBlank()) return "";
-        String cn = switch (ruleId) {
-            case "R-A01" -> "异动确认";
-            case "R-A02" -> "渠道归因";
-            case "R-A03" -> "促销归因";
-            case "R-A04" -> "竞品冲击";
-            case "R-A05" -> "行为变化";
-            case "R-B01" -> "高风险命中";
-            case "R-B02", "R-B03" -> "中风险命中";
-            case "R-B04" -> "优胜劣汰";
-            case "R-B05" -> "风险复核";
-            default -> null;
-        };
-        return cn == null ? ruleId : cn + "（" + ruleId + "）";
+        return opsRules.formatRuleLabel(ruleId);
     }
 }

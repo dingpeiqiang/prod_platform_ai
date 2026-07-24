@@ -46,18 +46,24 @@ export async function playSimulatedReply({
   formCard = null,
   queryResults = null,
   onTick,
-  thinkDelay = 520,
-  typeDelay = 28,
+  thinkDelay = 160,
+  typeDelay = 8,
+  /** 保留已有 thinking（用于请求进行中已展示的进度） */
+  preserveReasoning = false,
+  /** 跳过本体链逐步揭示，直接展示 */
+  skipChainReveal = false,
 }) {
   if (!msg) return
 
   msg.loading = true
   msg.done = false
   msg.showReasoning = true
-  msg.reasoning = []
-  msg.content = ''
-  msg.streamText = ''
-  msg.ontologyChain = null
+  if (!preserveReasoning) {
+    msg.reasoning = []
+    msg.content = ''
+    msg.streamText = ''
+    msg.ontologyChain = null
+  }
   onTick?.()
 
   for (const raw of thinkingSteps) {
@@ -72,7 +78,7 @@ export async function playSimulatedReply({
       chainRevealCount: 0,
       focus: step.focus,
     }
-    msg.reasoning.push(item)
+    msg.reasoning = [...(msg.reasoning || []), item]
     onTick?.()
 
     if (step.type !== 'ontology') continue
@@ -85,9 +91,15 @@ export async function playSimulatedReply({
       step.ontologyChain?.nodes?.length ||
       0
 
-    for (let n = 1; n <= Math.max(chainTotal, 1); n++) {
-      await sleep(Math.min(200, thinkDelay / 2))
-      if (chainTotal) item.chainRevealCount = Math.min(chainTotal, n)
+    if (skipChainReveal || chainTotal <= 1) {
+      item.chainRevealCount = 0
+      onTick?.()
+      continue
+    }
+
+    for (let n = 1; n <= chainTotal; n++) {
+      await sleep(Math.min(80, thinkDelay / 2))
+      item.chainRevealCount = Math.min(chainTotal, n)
       onTick?.()
     }
     item.chainRevealCount = 0
@@ -97,7 +109,7 @@ export async function playSimulatedReply({
   msg.loading = false
   onTick?.()
 
-  const chunks = splitChunks(content, 5)
+  const chunks = splitChunks(content, 12)
   for (const chunk of chunks) {
     await sleep(typeDelay)
     msg.streamText = (msg.streamText || '') + chunk

@@ -100,7 +100,7 @@ import { useProductConfig } from '../composables/useProductConfig.js'
 import { checkCompliance } from '../services/ontologyMvpApi.js'
 import { assistantModes } from '../config/assistantModes.js'
 import { genId } from '../utils/chatUtils.js'
-import { playSimulatedReply } from '../utils/simulateReply.js'
+import { createStreamingPlaceholder, playSimulatedReply } from '../utils/simulateReply.js'
 
 const inputText = ref('')
 const historyLoading = ref(false)
@@ -319,32 +319,11 @@ function resolveProductScenario(text, scene = '') {
   return productConfig.detectScenario(text)
 }
 
-async function playProductReply(playbook = {}) {
-  const aiMsg = {
-    id: genId(),
-    role: 'assistant',
-    type: 'chat',
-    content: '',
-    streamText: '',
-    reasoning: [],
-    showReasoning: true,
-    loading: true,
-    done: false,
-    timestamp: Date.now(),
-  }
-  messages.value = [...messages.value, aiMsg]
+function tickMessages() {
+  messages.value = [...messages.value]
+}
 
-  await playSimulatedReply({
-    msg: aiMsg,
-    thinkingSteps: playbook.thinkingSteps || [],
-    content: playbook.content || '',
-    formCard: playbook.formCard || null,
-    queryResults: playbook.queryResults || null,
-    onTick: () => {
-      messages.value = [...messages.value]
-    },
-  })
-
+function applyPlaybookSideEffects(aiMsg, playbook = {}) {
   if (playbook.nextSteps?.length) {
     aiMsg.nextSteps = playbook.nextSteps
   }
@@ -361,7 +340,65 @@ async function playProductReply(playbook = {}) {
     showRootCausePanel.value = false
     closeActiveForm()
   }
-  messages.value = [...messages.value]
+  tickMessages()
+}
+
+/** 已有占位气泡时续播剧本（保留请求中的进度 thinking） */
+async function finishProductReply(aiMsg, playbook = {}) {
+  const allSteps = playbook.thinkingSteps || []
+  // 进度已在请求期间展示，结果阶段只补本体链，避免再叠一层慢速 thinking
+  const ontologySteps = allSteps.filter((s) => typeof s === 'object' && s.type === 'ontology')
+  const thinkingSteps = ontologySteps.length
+    ? ontologySteps
+    : allSteps.slice(-1)
+
+  await playSimulatedReply({
+    msg: aiMsg,
+    thinkingSteps,
+    content: playbook.content || '',
+    formCard: playbook.formCard || null,
+    queryResults: playbook.queryResults || null,
+    onTick: tickMessages,
+    thinkDelay: 60,
+    typeDelay: 3,
+    preserveReasoning: true,
+    skipChainReveal: true,
+  })
+  applyPlaybookSideEffects(aiMsg, playbook)
+}
+
+async function playProductReply(playbook = {}) {
+  const aiMsg = createStreamingPlaceholder(genId)
+  messages.value = [...messages.value, aiMsg]
+  await finishProductReply(aiMsg, playbook)
+}
+
+async function loadScenarioPlaybook(text, scenario) {
+  if (scenario === 'query') {
+    return productConfig.simulateQuery(text)
+  }
+  if (scenario === 'file-parse') {
+    return productConfig.simulateFileParse('校园迎新产商品方案_2026.md', 12 * 1024)
+  }
+  if (scenario === 'confirm-batch') {
+    return productConfig.confirmPassedDrafts()
+  }
+  if (scenario === 'root-cause') {
+    return productConfig.runRootCauseAnalysis(text)
+  }
+  if (scenario === 'risk-audit') {
+    return productConfig.runRiskAuditFlow()
+  }
+  return productConfig.generateProductFromChat(text)
+}
+
+const SCENARIO_PROGRESS = {
+  query: ['正在解析查询条件...', '检索本体图谱...'],
+  'file-parse': ['正在读取方案文档...', '抽取套餐结构...'],
+  'confirm-batch': ['正在确认批量草稿...'],
+  'root-cause': ['正在分析异动指标...', '本体归因推理中...'],
+  'risk-audit': ['正在筛查风险规则...', '聚合稽核结果...'],
+  'chat-generate': ['正在理解配置诉求...', '调用本体配置服务...'],
 }
 
 async function runProductScenario(text, scenario) {
@@ -378,29 +415,50 @@ async function runProductScenario(text, scenario) {
     },
   ]
 
-  try {
-    let playbook
-    if (scenario === 'query') {
-      playbook = productConfig.simulateQuery(text)
-    } else if (scenario === 'file-parse') {
-      playbook = await productConfig.simulateFileParse('校园迎新产商品方案_2026.md', 12 * 1024)
-    } else if (scenario === 'confirm-batch') {
-      playbook = productConfig.confirmPassedDrafts()
-    } else if (scenario === 'root-cause') {
-      playbook = await productConfig.runRootCauseAnalysis()
-    } else if (scenario === 'risk-audit') {
-      playbook = await productConfig.runRiskAuditFlow()
+  const aiMsg = createStreamingPlaceholder(genId)
+  const progressSteps = SCENARIO_PROGRESS[scenario] || SCENARIO_PROGRESS['chat-generate']
+  // 阶段只追加一次；等待秒数原地刷新，避免刷屏
+  aiMsg.reasoning = [{ type: 'llm', content: progressSteps[0] }]
+  messages.value = [...messages.value, aiMsg]
+
+  let progressIdx = 0
+  const startedAt = Date.now()
+  const heartbeat = setInterval(() => {
+    const sec = ((Date.now() - startedAt) / 1000).toFixed(1)
+    const list = [...(aiMsg.reasoning || [])]
+    if (progressIdx < progressSteps.length - 1) {
+      progressIdx += 1
+      list.push({ type: 'llm', content: progressSteps[progressIdx] })
     } else {
-      playbook = await productConfig.generateProductFromChat(text)
+      const waitingIdx = list.findIndex((s) => s._waiting)
+      const waitingText = `本体推理进行中（${sec}s）...`
+      if (waitingIdx >= 0) {
+        list[waitingIdx] = { ...list[waitingIdx], content: waitingText }
+      } else {
+        list.push({ type: 'llm', content: waitingText, _waiting: true })
+      }
     }
-    await playProductReply(playbook)
+    aiMsg.reasoning = list
+    tickMessages()
+  }, 700)
+
+  try {
+    const playbook = await loadScenarioPlaybook(text, scenario)
+    clearInterval(heartbeat)
+    // 去掉等待行，再续播本体结果
+    aiMsg.reasoning = (aiMsg.reasoning || []).filter((s) => !s._waiting)
+    tickMessages()
+    await finishProductReply(aiMsg, playbook)
   } catch (e) {
+    clearInterval(heartbeat)
+    aiMsg.reasoning = (aiMsg.reasoning || []).filter((s) => !s._waiting)
     console.warn('[RdAssistant] product scenario failed:', e)
-    await playProductReply({
+    await finishProductReply(aiMsg, {
       thinkingSteps: ['本体配置推理失败'],
       content: `处理失败：${e?.message || '请稍后重试'}`,
     })
   } finally {
+    clearInterval(heartbeat)
     streaming.value = false
   }
 }

@@ -170,28 +170,50 @@ public class ChatStreamController {
                         ),
                         step2Elapsed));
 
-                // ── 步骤 3：调用 LLM 意图识别 ─────────────────
+                // ── 步骤 3：意图识别（关键词快路径 / LLM + 心跳） ──
                 long step3Start = System.currentTimeMillis();
                 StreamStats streamStats = new StreamStats();
                 streamStats.recordInputTokens(intentPrompt);
 
+                Map<String, Object> fastIntent = tryFastIntent(lastUserMessage, scene);
                 String intentResult = "";
-                try {
-                    intentResult = llmService.map(s -> s.completePrompt(intentPrompt)).orElse("");
+                boolean usedFastPath = false;
+
+                if (fastIntent != null && !str(fastIntent.get("intentType")).isBlank()) {
+                    usedFastPath = true;
+                    intentData = new LinkedHashMap<>(fastIntent);
+                    intentResult = "";
+                    sendEvent(emitter, SseUtils.thinkingRich(
+                            "已按关键词快速识别意图，跳过整轮 LLM 等待...",
+                            Map.of(
+                                    "step", 3,
+                                    "totalSteps", 4,
+                                    "fastPath", true,
+                                    "intentType", str(fastIntent.get("intentType"))
+                            ),
+                            0
+                    ));
+                } else {
+                    sendEvent(emitter, SseUtils.thinkingRich(
+                            "正在调用大模型识别意图...",
+                            Map.of(
+                                    "step", 3,
+                                    "totalSteps", 4,
+                                    "phase", "running",
+                                    "promptLength", intentPrompt.length()
+                            ),
+                            -1
+                    ));
+                    intentResult = completePromptWithHeartbeat(emitter, intentPrompt, step3Start);
                     streamStats.recordOutputText(intentResult);
-                } catch (Exception e) {
-                    log.warn("[chat/agent/stream] LLM 意图识别失败: {}，降级到 chat", e.getMessage());
+                    intentData = parseIntentResult(intentResult);
                 }
                 long step3Elapsed = System.currentTimeMillis() - step3Start;
 
-                // 记录意图识别阶段的 token 用量
                 com.sitech.prodai.intent.StreamStats intentStats = new com.sitech.prodai.intent.StreamStats();
                 intentStats.recordInputTokens(intentPrompt);
                 intentStats.recordOutputText(intentResult);
-                log.debug("[chat/agent/stream] 意图识别 token 估算: input={}, output={}",
-                        intentStats.getInputTokens(), intentStats.getOutputTokens());
 
-                intentData = parseIntentResult(intentResult);
                 intentType = normalizeIntentType(str(intentData.get("intentType"), str(intentData.get("intent_type"))));
                 if (intentType.isEmpty()) {
                     intentType = resolveDefaultIntentByScene(scene);
@@ -200,10 +222,15 @@ public class ChatStreamController {
                     intentType = "chat";
                 }
 
-                double confidence = toDouble(intentData.get("confidence"));
-                log.info("[chat/agent/stream] 意图识别结果: type={}, confidence={}, scene={}", intentType, confidence, scene);
+                double confidence = usedFastPath
+                        ? toDouble(intentData.getOrDefault("confidence", 0.92))
+                        : toDouble(intentData.get("confidence"));
+                if (usedFastPath && confidence <= 0) {
+                    confidence = 0.92;
+                }
+                log.info("[chat/agent/stream] 意图识别结果: type={}, confidence={}, scene={}, fastPath={}",
+                        intentType, confidence, scene, usedFastPath);
 
-                // 意图类型标签映射（前端中文展示）
                 String intentLabel = switch (intentType) {
                     case "product_ops_query" -> "数据查询";
                     case "product_ops_policy" -> "政策评估";
@@ -215,21 +242,37 @@ public class ChatStreamController {
                     default -> "通用对话";
                 };
 
-                sendEvent(emitter, SseUtils.thinkingRich(
-                        "意图识别完成：" + intentLabel + "（置信度 " + String.format("%.0f", confidence * 100) + "%）",
-                        Map.of(
-                                "step", 3,
-                                "totalSteps", 4,
-                                "intentType", intentType,
-                                "intentLabel", intentLabel,
-                                "confidence", Math.round(confidence * 100) / 100.0,
-                                "inputTokens", intentStats.getInputTokens(),
-                                "outputTokens", intentStats.getOutputTokens(),
-                                "elapsed", Math.round(step3Elapsed / 1000.0 * 1000.0) / 1000.0
-                        ),
-                        step3Elapsed,
-                        intentResult.isEmpty() ? null : truncateForLog(intentResult, 200)
-                ));
+                if (!usedFastPath) {
+                    sendEvent(emitter, SseUtils.thinkingRich(
+                            "意图识别完成：" + intentLabel + "（置信度 " + String.format("%.0f", confidence * 100) + "%）",
+                            Map.of(
+                                    "step", 3,
+                                    "totalSteps", 4,
+                                    "intentType", intentType,
+                                    "intentLabel", intentLabel,
+                                    "confidence", Math.round(confidence * 100) / 100.0,
+                                    "inputTokens", intentStats.getInputTokens(),
+                                    "outputTokens", intentStats.getOutputTokens(),
+                                    "elapsed", Math.round(step3Elapsed / 1000.0 * 1000.0) / 1000.0
+                            ),
+                            step3Elapsed,
+                            intentResult.isEmpty() ? null : truncateForLog(intentResult, 200)
+                    ));
+                } else {
+                    sendEvent(emitter, SseUtils.thinkingRich(
+                            "快速意图：" + intentLabel,
+                            Map.of(
+                                    "step", 3,
+                                    "totalSteps", 4,
+                                    "intentType", intentType,
+                                    "intentLabel", intentLabel,
+                                    "confidence", confidence,
+                                    "fastPath", true,
+                                    "elapsed", Math.round(step3Elapsed / 1000.0 * 1000.0) / 1000.0
+                            ),
+                            step3Elapsed
+                    ));
+                }
 
                 // ── 步骤 4：分发到处理器 ────────────────────────
                 long step4Start = System.currentTimeMillis();
@@ -359,15 +402,139 @@ public class ChatStreamController {
         String normalized = intentType.trim().toLowerCase();
         return switch (normalized) {
             case "query", "nl_query", "product_ops_query",
-                 "market_insight", "offering_ops_root_cause" -> "product_ops_query";
+                 "market_insight" -> "product_ops_query";
             case "policy", "evaluate", "product_ops_policy",
                  "risk_audit", "online_check", "offering_ops_risk_audit" -> "product_ops_policy";
             case "reason", "explain", "product_ops_reason",
-                 "root_cause" -> "product_ops_reason";
+                 "root_cause", "offering_ops_root_cause" -> "product_ops_reason";
             case "compare", "compare_state", "product_ops_compare",
                  "what_if", "hypothesis" -> "product_ops_compare";
             default -> normalized;
         };
+    }
+
+    /**
+     * 高置信关键词快路径：跳过整轮意图 LLM，显著缩短首包等待。
+     */
+    private Map<String, Object> tryFastIntent(String text, String scene) {
+        if (text == null || text.isBlank()) {
+            String byScene = resolveDefaultIntentByScene(scene);
+            if (byScene.isEmpty()) return null;
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("intentType", byScene);
+            data.put("confidence", 0.85);
+            data.put("action", byScene.contains("reason") ? "root_cause"
+                    : byScene.contains("policy") ? "risk_audit" : "query");
+            return data;
+        }
+        String t = text.trim();
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("confidence", 0.93);
+        Map<String, Object> fields = new LinkedHashMap<>();
+
+        if (containsAny(t, "根因", "异动", "下滑", "下降", "环比", "归因", "为何下降", "为什么跌", "收入下滑")) {
+            data.put("intentType", "product_ops_reason");
+            data.put("action", "root_cause");
+            fields.put("target", t);
+            data.put("extractedFields", fields);
+            return data;
+        }
+        if (containsAny(t, "零元", "0元", "零资费", "风险稽核", "优胜劣汰", "建议下架", "长期零销", "筛查风险")) {
+            data.put("intentType", "product_ops_policy");
+            data.put("action", "risk_audit");
+            fields.put("question", t);
+            data.put("extractedFields", fields);
+            return data;
+        }
+        if (containsAny(t, "查一下", "查询", "有哪些", "在售", "列出", "检索", "SPARQL", "图谱里")) {
+            data.put("intentType", "product_ops_query");
+            data.put("action", "query");
+            fields.put("question", t);
+            data.put("extractedFields", fields);
+            return data;
+        }
+        // 研发助手配置话术：家庭融合 / 校园 / 月费 / 上一个套餐 → form，跳过意图 LLM
+        if (containsAny(t, "家庭融合", "校园", "上一个", "配置一个", "帮我配", "月费", "宽带", "融合套餐", "批量导入", "一文多包")) {
+            String byScene = resolveDefaultIntentByScene(scene);
+            data.put("intentType", byScene.isEmpty() || "chat".equals(byScene) ? "form" : byScene);
+            if ("form".equals(data.get("intentType"))) {
+                data.put("formCode", "offering_config");
+                data.put("form_code", "offering_config");
+            }
+            data.put("action", "generate");
+            data.put("confidence", 0.9);
+            fields.put("question", t);
+            data.put("extractedFields", fields);
+            return data;
+        }
+
+        String byScene = resolveDefaultIntentByScene(scene);
+        if (!byScene.isEmpty() && scene != null && (scene.contains("ops") || scene.contains("offering_ops")
+                || scene.contains("rd") || scene.contains("offering_config"))) {
+            data.put("intentType", byScene);
+            data.put("confidence", 0.88);
+            data.put("action", byScene.contains("reason") ? "root_cause"
+                    : byScene.contains("policy") ? "risk_audit" : "query");
+            fields.put(byScene.contains("reason") ? "target" : "question", t);
+            data.put("extractedFields", fields);
+            return data;
+        }
+        return null;
+    }
+
+    private boolean containsAny(String text, String... keys) {
+        for (String key : keys) {
+            if (text.contains(key)) return true;
+        }
+        return false;
+    }
+
+    /** LLM 意图识别期间定时推 thinking，避免长时间无反馈。 */
+    private String completePromptWithHeartbeat(SseEmitter emitter, String intentPrompt, long step3Start) {
+        if (llmService.isEmpty()) {
+            return "";
+        }
+        java.util.concurrent.Future<String> future = executor.submit(() -> {
+            try {
+                return llmService.get().completePrompt(intentPrompt);
+            } catch (Exception e) {
+                log.warn("[chat/agent/stream] LLM 意图识别失败: {}，降级到 chat", e.getMessage());
+                return "";
+            }
+        });
+        int tick = 0;
+        while (!future.isDone()) {
+            try {
+                return future.get(2, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (java.util.concurrent.TimeoutException te) {
+                tick++;
+                long elapsed = System.currentTimeMillis() - step3Start;
+                try {
+                    sendEvent(emitter, SseUtils.thinkingRich(
+                            "意图识别仍在进行（已等待 " + (elapsed / 1000) + "s）...",
+                            Map.of(
+                                    "step", 3,
+                                    "totalSteps", 4,
+                                    "phase", "waiting_llm",
+                                    "waitSeconds", elapsed / 1000,
+                                    "tick", tick
+                            ),
+                            -1
+                    ));
+                } catch (Exception sendEx) {
+                    future.cancel(true);
+                    return "";
+                }
+            } catch (Exception e) {
+                log.warn("[chat/agent/stream] 等待意图识别异常: {}", e.getMessage());
+                return "";
+            }
+        }
+        try {
+            return future.get();
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     private String resolveDefaultIntentByScene(String scene) {

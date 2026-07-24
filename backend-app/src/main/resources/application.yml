@@ -35,7 +35,18 @@ spring:
 
 prodai:
   ontology:
-    graph-path: classpath:ontology/mock_graph.json
+    # 生产默认关闭演示；本地开发见 application-dev.yml；上线用 --spring.profiles.active=prod
+    demo-enabled: false
+    # classpath | http | empty
+    data-source: ${ONTOLOGY_DATA_SOURCE:classpath}
+    graph-path: ${ONTOLOGY_GRAPH_PATH:}
+    product-center-base-url: ${PRODUCT_CENTER_BASE_URL:}
+    product-center-timeout-ms: ${PRODUCT_CENTER_TIMEOUT_MS:5000}
+    llm-extract-enabled: ${ONTOLOGY_LLM_EXTRACT:true}
+    rules-path: classpath:ontology/ops_rules.json
+    product-ops-owl-path: classpath:ontology/product-ops.ttl
+    swrl-enabled: true
+    base-iri: ${ONTOLOGY_BASE_IRI:http://example.org/}
     rdf4j:
       ttl-path: classpath:ontology/sample-ontology.ttl
   llm:

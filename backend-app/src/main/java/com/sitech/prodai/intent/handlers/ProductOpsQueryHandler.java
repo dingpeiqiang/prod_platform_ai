@@ -2,6 +2,7 @@ package com.sitech.prodai.intent.handlers;
 
 import com.sitech.prodai.intent.BaseIntentHandler;
 import com.sitech.prodai.intent.IntentContext;
+import com.sitech.prodai.intent.SseStreamSupport;
 import com.sitech.prodai.intent.SseUtils;
 import com.sitech.prodai.service.OntologyService;
 import org.springframework.stereotype.Component;
@@ -28,14 +29,35 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public Flux<Map<String, Object>> handle(IntentContext ctx) {
         String question = ctx.getExtractedFields().containsKey("question")
                 ? String.valueOf(ctx.getExtractedFields().get("question"))
                 : ctx.getLastUserMessage();
 
-        // 使用 LLM 增强的实体发现 + 本体检索
-        Map<String, Object> result = ontologyService.nlDiscoverAndRetrieve(question, 20);
+        List<Map<String, Object>> prelude = List.of(
+                SseUtils.thinkingRich(
+                        "正在检索本体事实...",
+                        Map.of(
+                                "step", 5,
+                                "totalSteps", 6,
+                                "phase", "running",
+                                "question", question.length() > 60 ? question.substring(0, 60) + "..." : question
+                        ),
+                        -1
+                )
+        );
+
+        return SseStreamSupport.deferWork(
+                prelude,
+                () -> ontologyService.nlDiscoverAndRetrieve(question, 20),
+                result -> buildAfterEvents(ctx, question, result)
+        );
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> buildAfterEvents(
+            IntentContext ctx, String question, Map<String, Object> result
+    ) {
         List<Map<String, Object>> results = List.of();
         if (result.get("raw_results") instanceof List<?> list) {
             results = list.stream().filter(Map.class::isInstance).map(e -> (Map<String, Object>) e).toList();
@@ -70,26 +92,24 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
         donePayload.put("discoveryMethod", discoveryMethod);
         donePayload.put("graphData", buildGraphData(results));
 
-        return Flux.just(
-                SseUtils.thinkingRich(
-                        "正在通过 " + ("llm".equals(discoveryMethod) ? "LLM 实体发现" : "关键词匹配") + " 检索本体事实...",
-                        Map.of(
-                                "step", 5,
-                                "totalSteps", 6,
-                                "discoveryMethod", discoveryMethod,
-                                "resultCount", results.size(),
-                                "question", question.length() > 60 ? question.substring(0, 60) + "..." : question
-                        ),
-                        -1,
-                        result.get("sparql") != null ? "SPARQL: " + truncateStr(String.valueOf(result.get("sparql")), 150) : null
+        List<Map<String, Object>> events = new ArrayList<>();
+        events.add(SseUtils.thinkingRich(
+                "检索完成（" + ("llm".equals(discoveryMethod) ? "LLM 实体发现" : "关键词匹配") + "），共 "
+                        + results.size() + " 条",
+                Map.of(
+                        "step", 6,
+                        "totalSteps", 6,
+                        "discoveryMethod", discoveryMethod,
+                        "resultCount", results.size()
                 ),
-                SseUtils.intentEvent(getIntentType(), "query", intentData, false),
-                SseUtils.textStart(),
-                SseUtils.text(answerText),
-                SseUtils.textEnd(),
-                SseUtils.stats(ctx.getStreamStats()),
-                SseUtils.doneEvent(getIntentType(), false, donePayload)
-        );
+                0,
+                result.get("sparql") != null ? "SPARQL: " + truncateStr(String.valueOf(result.get("sparql")), 150) : null
+        ));
+        events.add(SseUtils.intentEvent(getIntentType(), "query", intentData, false));
+        events.addAll(SseStreamSupport.chunkedTextEvents(answerText));
+        events.add(SseUtils.stats(ctx.getStreamStats()));
+        events.add(SseUtils.doneEvent(getIntentType(), false, donePayload));
+        return events;
     }
 
     private String formatAnswer(String summary, List<Map<String, Object>> results) {
@@ -129,15 +149,11 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
         return String.join(", ", parts);
     }
 
-    /**
-     * 将查询结果转换为图谱数据（用于 SparqlResultGraph 组件）
-     */
     private Map<String, Object> buildGraphData(List<Map<String, Object>> results) {
         List<Map<String, Object>> nodes = new ArrayList<>();
         List<Map<String, Object>> edges = new ArrayList<>();
 
         for (Map<String, Object> row : results) {
-            // 提取实体 URI 作为节点
             String entityId = String.valueOf(row.getOrDefault("entity", row.getOrDefault("uri", "")));
             if (entityId != null && !entityId.isBlank() && !entityId.equals("null")) {
                 String label = String.valueOf(row.getOrDefault("name", row.getOrDefault("productName", entityId)));
@@ -149,13 +165,11 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
                 nodes.add(node);
             }
 
-            // 提取属性作为边
             for (Map.Entry<String, Object> entry : row.entrySet()) {
                 String key = entry.getKey();
                 Object value = entry.getValue();
                 if (value != null && !key.startsWith("_") && !key.equals("entity") && !key.equals("uri")) {
                     String valueStr = String.valueOf(value);
-                    // 如果值是 URI，创建边
                     if (valueStr.startsWith("http")) {
                         Map<String, Object> edge = new LinkedHashMap<>();
                         edge.put("id", entityId + "-" + key + "-" + valueStr);

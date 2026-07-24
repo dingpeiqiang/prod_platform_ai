@@ -38,12 +38,13 @@
               <span>建议下架</span>
             </div>
             <div class="ops-kpi">
-              <b>{{ opsDash.shelfCount ?? 80 }}</b>
+              <b>{{ opsDash.shelfCount ?? '-' }}</b>
               <span>在架扫描样本</span>
             </div>
           </div>
           <p v-if="isOpsMode" class="ops-kpi-meta">
-            规则 {{ opsDash.ruleVersion || 'RiskRules-v1.2' }} · 本体负责推理，大模型负责表达
+            <template v-if="opsDash.loadError">看板加载失败：{{ opsDash.loadError }}</template>
+            <template v-else>规则 {{ opsDash.ruleVersion || '—' }} · 本体负责推理，大模型负责表达</template>
           </p>
           <p class="demo-hint">
             {{ isOpsMode
@@ -335,11 +336,13 @@ const newTodo = ref('')
 
 const isOpsMode = computed(() => props.assistantMode === 'ops')
 const opsDash = ref({
-  anomalyOfferingCount: 1,
-  highRiskCount: 13,
-  suggestDelistCount: 7,
-  shelfCount: 80,
-  ruleVersion: 'RiskRules-v1.2',
+  anomalyOfferingCount: null,
+  highRiskCount: null,
+  suggestDelistCount: null,
+  shelfCount: null,
+  ruleVersion: '',
+  demoMode: false,
+  loadError: '',
 })
 
 const welcomeSubtitle = computed(() =>
@@ -409,11 +412,7 @@ const rdAlerts = [
   { id: 2, tag: '超时', text: '报销单 #201 审批超时 2 天', type: 'danger' },
 ]
 
-const opsAlerts = [
-  { id: 1, tag: '异动', text: 'OF-HF-128 累计收入环比 -18%', type: 'warning', actionText: '分析家庭融合畅享128本月收入下滑原因' },
-  { id: 2, tag: '风险', text: '高风险在架商品待处置（零元/零销）', type: 'danger', actionText: '筛查所有在架的0元资费风险商品' },
-]
-
+// 运营告警不再硬编码 OF-HF-128；由 getOpsDashboard 按图谱事实填充
 const alerts = ref([...rdAlerts])
 
 async function loadOpsDashboard() {
@@ -422,11 +421,13 @@ async function loadOpsDashboard() {
     const data = await getOpsDashboard()
     if (data?.success !== false) {
       opsDash.value = {
-        anomalyOfferingCount: data.anomalyOfferingCount ?? 1,
-        highRiskCount: data.highRiskCount ?? 13,
-        suggestDelistCount: data.suggestDelistCount ?? 7,
-        shelfCount: data.shelfCount ?? 80,
-        ruleVersion: data.ruleVersion || 'RiskRules-v1.2',
+        anomalyOfferingCount: data.anomalyOfferingCount ?? null,
+        highRiskCount: data.highRiskCount ?? null,
+        suggestDelistCount: data.suggestDelistCount ?? null,
+        shelfCount: data.shelfCount ?? null,
+        ruleVersion: data.ruleVersion || '',
+        demoMode: data.demoMode === true,
+        loadError: '',
       }
       if (Array.isArray(data.alerts) && data.alerts.length) {
         alerts.value = data.alerts.map((a, idx) => ({
@@ -435,19 +436,31 @@ async function loadOpsDashboard() {
           text: a.text,
           type: a.type === 'anomaly' ? 'warning' : 'danger',
           actionText:
-            a.type === 'anomaly'
-              ? '分析家庭融合畅享128本月收入下滑原因'
-              : '筛查所有在架的0元资费风险商品',
+            a.actionText ||
+            (a.type === 'anomaly'
+              ? `分析${a.offeringName || a.offeringId || '该商品'}本月收入下滑原因`
+              : '筛查所有在架的0元资费风险商品'),
         }))
+      } else {
+        alerts.value = []
       }
     }
-  } catch {
-    /* 本地默认口径已覆盖 */
+  } catch (e) {
+    alerts.value = []
+    opsDash.value = {
+      anomalyOfferingCount: null,
+      highRiskCount: null,
+      suggestDelistCount: null,
+      shelfCount: null,
+      ruleVersion: '',
+      demoMode: false,
+      loadError: e.message || '本体服务不可用',
+    }
   }
 }
 
 watch(() => props.assistantMode, (mode) => {
-  alerts.value = mode === 'ops' ? [...opsAlerts] : [...rdAlerts]
+  alerts.value = mode === 'ops' ? [] : [...rdAlerts]
   if (mode === 'ops') loadOpsDashboard()
 }, { immediate: true })
 
