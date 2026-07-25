@@ -16,6 +16,12 @@ import {
   chatConfigure,
   checkCompliance,
   batchFromDocument,
+  batchFromUpload,
+  discoverConfigs,
+  copyAsDraft,
+  publishConfigDraft,
+  getConfigTrace,
+  explainConfig,
   analyzeRootCause,
   auditRisks,
   updateRiskRules,
@@ -52,6 +58,11 @@ export function useProductConfig() {
   const riskAuditResult = ref(null)
   const activeRootCauseRank = ref(1)
   const rootCauseOntologyChain = ref(null)
+  /** 配置审计 trace（智查/复制/入库） */
+  const lastConfigTraceId = ref(null)
+  const configTraceSteps = ref([])
+  const configExplainText = ref('')
+  const showConfigTracePanel = ref(false)
 
   const currentProduct = computed(() =>
     products.value.find((p) => p.id === currentProductId.value) ?? null,
@@ -159,6 +170,7 @@ export function useProductConfig() {
       return 'compliance'
     }
     if (/确认.*入库|入库通过|确认通过项/.test(text)) return 'confirm-batch'
+    if (/审计追溯|查看审计|查看校验依据|配置追溯|get_trace/.test(text)) return 'config-trace'
     // 「查一下」是首页/智查示例常用说法，需在 chat-generate 之前命中
     if (
       /查询|查一下|查下|查找|检索|智查|历史商品|复制配置/.test(text) ||
@@ -176,45 +188,134 @@ export function useProductConfig() {
     return null
   }
 
-  function simulateQuery(keyword) {
+  async function simulateQuery(keyword) {
+    const q = keyword || '近30天大学生套餐'
     const thinkingSteps = [
-      `识别查询意图：检索历史商品配置`,
-      `解析关键词：「${keyword || '近30天大学生套餐'}」`,
-      `在历史库中匹配模板与商品档案…`,
-      `命中 ${mockProducts.length} 条可复制配置，准备展示卡片`,
+      `识别查询意图：检索历史商品配置（nl_discover_and_retrieve）`,
+      `解析关键词：「${q}」`,
+      `调用本体事实图 /config/discover…`,
     ]
-    const content =
-      `已为您找到 **${mockProducts.length}** 个相关历史商品，可点击下方卡片「复制配置」快速开稿。`
-    return {
-      thinkingSteps,
-      content,
-      queryResults: mockProducts,
-      formCard: null,
+    try {
+      const result = await discoverConfigs(q, 20)
+      if (result?.success === false) {
+        throw new Error(result.message || '智查失败')
+      }
+      const items = result.items || []
+      lastConfigTraceId.value = result.trace_id || null
+      thinkingSteps.push(`命中 ${items.length} 条可复制配置（trace: ${result.trace_id || '-'}）`)
+      const content =
+        items.length > 0
+          ? `已从本体事实图找到 **${items.length}** 个相关历史方案，可点击「复制配置」一键开稿并自动合规校验。\n\n` +
+            `审计 trace：\`${result.trace_id || '-'}\``
+          : `未命中「${q}」相关历史方案。可换关键词如「校园」「家庭融合」「59」。`
+      return {
+        thinkingSteps,
+        content,
+        queryResults: items,
+        formCard: null,
+        nextSteps: items.length
+          ? ['点击上方卡片复制配置', '校验当前配置是否符合在架规则']
+          : ['查一下校园套餐', '给家庭用户做一个融合套餐，月费158'],
+        traceId: result.trace_id,
+      }
+    } catch (e) {
+      // 降级：本地 mock，保证演示不中断
+      thinkingSteps.push(`本体智查不可用，降级本地样本：${e.message || e}`)
+      return {
+        thinkingSteps,
+        content:
+          `本体智查暂不可用（${e.message || '服务异常'}），已展示本地样本。可点击「复制配置」开稿。`,
+        queryResults: mockProducts,
+        formCard: null,
+      }
     }
   }
 
-  function prepareProduct(index) {
-    const product = mockProducts[index]
-    if (!product) return null
-    const newProduct = {
-      id: 'P' + Date.now(),
-      name: product.name,
-      code: 'NEW' + Date.now(),
-      desc: product.desc,
-      template: product.template,
-      status: 'draft',
-      auditStatus: 'pending',
-      data: JSON.parse(JSON.stringify(product.data)),
+  async function prepareProduct(indexOrItem) {
+    let offeringId = null
+    let fallback = null
+    if (typeof indexOrItem === 'number') {
+      fallback = mockProducts[indexOrItem]
+      offeringId = fallback?.code || fallback?.id
+    } else if (indexOrItem && typeof indexOrItem === 'object') {
+      offeringId = indexOrItem.offeringId || indexOrItem.offering_id || indexOrItem.code || indexOrItem.id
+      fallback = indexOrItem
     }
-    const formCard = addProductAndActivate(newProduct)
-    return {
-      thinkingSteps: [
-        `选中历史商品「${product.name}」`,
-        '结构化复制字段到新草稿（不含在架状态）',
-        '打开右侧配置画布供微调',
-      ],
-      content: `已将「${product.name}」复制为新草稿，右侧打开配置表单，可继续修改后稽核提交。`,
-      formCard,
+    if (!offeringId && !fallback) return null
+
+    try {
+      const result = await copyAsDraft(offeringId, fallback?.name || null)
+      if (result?.success === false) {
+        throw new Error(result.message || '复制失败')
+      }
+      const draft = result.draft || {}
+      lastConfigTraceId.value = result.trace_id || null
+      const newProduct = {
+        id: 'P' + Date.now(),
+        name: draft.offeringName || fallback?.name || '配置草稿',
+        code: 'NEW' + Date.now(),
+        desc: `基于 ${result.source_offering_name || offeringId} 复制`,
+        template: draft.basedOnTemplate,
+        status: 'draft',
+        auditStatus: result.compliancePass ? 'pass' : 'fail',
+        compliancePass: !!result.compliancePass,
+        issues: result.issues || [],
+        ontologyDraft: draft,
+        data: draftToFormData(draft),
+        copiedFrom: result.source_offering_id,
+        traceId: result.trace_id,
+        diffs: result.diffs || [],
+      }
+      const formCard = addProductAndActivate(newProduct)
+      formCard.compliancePass = newProduct.compliancePass
+      formCard.issues = newProduct.issues
+      showAuditPanel.value = true
+      auditResults.value = mapIssuesToAuditResults(result.issues, result.compliancePass)
+      auditStatus.value = newProduct.auditStatus
+      const passLabel = result.compliancePass ? '✅ 合规通过' : '⚠️ 存在待处理项'
+      const diffHint =
+        result.diffs?.length > 0
+          ? `\n差异字段：${result.diffs
+              .slice(0, 6)
+              .map((d) => d.field)
+              .join('、')}`
+          : ''
+      return {
+        thinkingSteps: [
+          `选中历史方案「${result.source_offering_name || offeringId}」`,
+          'retrieve_facts → 深拷贝生成草稿',
+          'evaluate_policy 执行 R-C* 合规校验',
+          `结果：${passLabel}`,
+        ],
+        content:
+          `已将「${result.source_offering_name || offeringId}」复制为新草稿（标注基于源方案复制），` +
+          `右侧打开配置画布。${passLabel}。\n\n审计 trace：\`${result.trace_id || '-'}\`${diffHint}\n\n` +
+          `规则说明：配置侧 Java R-C*（方案别名 R-CONF-001→R-C09，R-CONF-002→R-C03）。`,
+        formCard,
+        traceId: result.trace_id,
+        nextSteps: ['校验当前配置是否符合在架规则', '查看审计追溯'],
+      }
+    } catch (e) {
+      if (!fallback?.data && !fallback?.name) return null
+      const newProduct = {
+        id: 'P' + Date.now(),
+        name: fallback.name,
+        code: 'NEW' + Date.now(),
+        desc: fallback.desc,
+        template: fallback.template,
+        status: 'draft',
+        auditStatus: 'pending',
+        data: JSON.parse(JSON.stringify(fallback.data || {})),
+      }
+      const formCard = addProductAndActivate(newProduct)
+      return {
+        thinkingSteps: [
+          `后端复制失败，降级本地拷贝：${e.message || e}`,
+          '打开右侧配置画布供微调',
+        ],
+        content: `已将「${fallback.name}」复制为新草稿（本地降级）。可继续修改后稽核提交。`,
+        formCard,
+      }
     }
   }
 
@@ -239,11 +340,19 @@ export function useProductConfig() {
     }
   }
 
+  function isBinaryOfficeFile(name = '') {
+    return /\.(docx|pdf|xlsx|xlsm)$/i.test(name)
+  }
+
   async function readAttachmentTexts(attachments = []) {
     const files = (attachments || []).filter((a) => a?.file instanceof Blob)
     if (!files.length) return ''
     const parts = []
     for (const a of files) {
+      // 二进制办公文档交给后端解析，前端不再 Blob.text()
+      if (isBinaryOfficeFile(a.name || a.file?.name || '')) {
+        continue
+      }
       try {
         const content = await a.file.text()
         parts.push(`【${a.name || '附件'}】\n${content}`)
@@ -256,6 +365,54 @@ export function useProductConfig() {
 
   async function simulateFileParse(documentText = '', attachments = []) {
     try {
+      const binaryFiles = (attachments || []).filter(
+        (a) => a?.file instanceof Blob && isBinaryOfficeFile(a.name || a.file?.name || ''),
+      )
+      // 优先走后端真解析（docx/pdf/xlsx）
+      if (binaryFiles.length) {
+        const batches = []
+        for (const a of binaryFiles) {
+          const batch = await batchFromUpload(a.file)
+          if (batch?.success === false) {
+            throw new Error(batch.message || `解析失败：${a.name}`)
+          }
+          batches.push({ batch, fileName: a.name || 'upload.bin', fileSize: a.size || a.file.size || 0 })
+        }
+        // 多文件时合并 items
+        if (batches.length === 1) {
+          const playbook = buildBatchPlaybook(
+            batches[0].batch,
+            batches[0].fileName,
+            batches[0].fileSize,
+          )
+          lastConfigTraceId.value = batches[0].batch.trace_id || null
+          return {
+            ...playbook,
+            thinkingSteps: [
+              `解析文档引擎：${batches[0].batch.parseEngine || 'binary'}`,
+              ...(playbook.thinkingSteps || []),
+            ],
+          }
+        }
+        const merged = {
+          success: true,
+          total: 0,
+          passedCount: 0,
+          pendingCount: 0,
+          items: [],
+          confirmableDrafts: [],
+          extractEngine: 'multi-upload',
+        }
+        for (const b of batches) {
+          merged.total += b.batch.total || 0
+          merged.passedCount += b.batch.passedCount || 0
+          merged.pendingCount += b.batch.pendingCount || 0
+          merged.items.push(...(b.batch.items || []))
+          merged.confirmableDrafts.push(...(b.batch.confirmableDrafts || []))
+        }
+        return buildBatchPlaybook(merged, `${batches.length}份文档`, batches.reduce((s, b) => s + b.fileSize, 0))
+      }
+
       const attachmentText = await readAttachmentTexts(attachments)
       const mergedText = [String(documentText || '').trim(), attachmentText]
         .filter(Boolean)
@@ -263,12 +420,13 @@ export function useProductConfig() {
       if (!mergedText) {
         return {
           thinkingSteps: ['未收到可解析的方案内容'],
-          content: '请粘贴方案正文，或上传可读取的文本/Markdown 方案文档后再试。',
+          content: '请粘贴方案正文，或上传 Word/PDF/Excel/文本方案文档后再试。',
           formCard: null,
         }
       }
       const { fileName, fileSize } = deriveDocMeta(mergedText, attachments)
       const batch = await batchFromDocument(mergedText)
+      lastConfigTraceId.value = batch?.trace_id || null
       return buildBatchPlaybook(batch, fileName, fileSize)
     } catch (e) {
       return {
@@ -615,6 +773,9 @@ export function useProductConfig() {
     const inferred = result.inferredFields || []
     const chain = buildOntologyChain(result)
     const preview = buildOntologyPreview(result, chain)
+    if (result.trace_id) {
+      lastConfigTraceId.value = result.trace_id
+    }
 
     // 思考过程：模型思考 vs 本体推理（仅推理链）
     const thinkingSteps = [
@@ -944,7 +1105,7 @@ export function useProductConfig() {
     }
   }
 
-  function confirmPassedDrafts() {
+  async function confirmPassedDrafts() {
     const passed = products.value.filter((p) => p.compliancePass && p.status !== 'submitted')
     if (!passed.length) {
       return {
@@ -953,8 +1114,20 @@ export function useProductConfig() {
         formCard: null,
       }
     }
-    const lines = passed.map((p) => {
-      const draftId = `DRAFT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`
+    const lines = []
+    const publishedIds = []
+    for (const p of passed) {
+      let draftId = `DRAFT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`
+      try {
+        const pub = await publishConfigDraft(p.ontologyDraft || p.data || {})
+        if (pub?.success) {
+          draftId = pub.offeringId || draftId
+          lastConfigTraceId.value = pub.trace_id || lastConfigTraceId.value
+          publishedIds.push(draftId)
+        }
+      } catch {
+        // 降级本地入库标记
+      }
       p.status = 'submitted'
       p.draftId = draftId
       const bi = batchItems.value.findIndex((i) => i.productId === p.id)
@@ -965,19 +1138,24 @@ export function useProductConfig() {
           status: '已入库',
         }
       }
-      return `- ${p.name} → \`${draftId}\``
-    })
+      lines.push(`- ${p.name} → \`${draftId}\``)
+    }
     showBatchPanel.value = true
     return {
       thinkingSteps: [
         '筛选 compliancePass=true 且未入库草稿',
-        `确认 ${passed.length} 条通过项写入 Mock 产商品中心`,
-        '待修正项跳过，不生成 draftId',
+        `确认 ${passed.length} 条通过项沉淀至事实图/ConfigScheme（知识自迭代）`,
+        publishedIds.length
+          ? `已写入本体 ${publishedIds.length} 条，可供后续智查复用`
+          : '本体写入降级为本地入库标记',
       ],
       content:
-        `已确认 **${passed.length}** 条通过项入库（Mock）：\n${lines.join('\n')}\n\n` +
-        '待修正项**不会入库**。冲突与漏洞在配置当下被本体拦住，而不是事后稽核。',
+        `已确认 **${passed.length}** 条通过项入库并尝试沉淀本体：\n${lines.join('\n')}\n\n` +
+        '待修正项**不会入库**。新方案进入事实图后，智查可检索复用（知识自迭代）。' +
+        (lastConfigTraceId.value ? `\n\n审计 trace：\`${lastConfigTraceId.value}\`` : ''),
       formCard: null,
+      nextSteps: lastConfigTraceId.value ? ['查看审计追溯'] : undefined,
+      traceId: lastConfigTraceId.value,
     }
   }
 
@@ -1051,11 +1229,38 @@ export function useProductConfig() {
         { type: 'success', title: '合规通过 (R-C08)', desc: '无 HIGH 问题且必填齐全，允许提交配置草稿' },
       ]
     }
-    return (issues || []).map((i) => ({
-      type: i.issueLevel === 'HIGH' ? 'error' : i.issueLevel === 'MEDIUM' ? 'warning' : 'success',
-      title: `${i.ruleId} · ${i.issueType}`,
-      desc: i.message + (i.evidence?.length ? ` | 证据：${i.evidence.join('；')}` : ''),
-    }))
+    return (issues || []).map((i) => {
+      const alias = i.proposalAlias ? ` / ${i.proposalAlias}` : ''
+      return {
+        type: i.issueLevel === 'HIGH' ? 'error' : i.issueLevel === 'MEDIUM' ? 'warning' : 'success',
+        title: `${i.ruleId}${alias} · ${i.issueType}`,
+        desc: i.message + (i.evidence?.length ? ` | 证据：${i.evidence.join('；')}` : ''),
+      }
+    })
+  }
+
+  async function loadConfigTrace(traceId = lastConfigTraceId.value) {
+    if (!traceId) {
+      configTraceSteps.value = []
+      configExplainText.value = '暂无审计 trace，请先执行智查/复制/入库。'
+      showConfigTracePanel.value = true
+      return { steps: [], explanation: configExplainText.value }
+    }
+    try {
+      const [trace, explain] = await Promise.all([
+        getConfigTrace(traceId),
+        explainConfig(traceId, 'business'),
+      ])
+      configTraceSteps.value = trace?.steps || []
+      configExplainText.value = explain?.explanation || ''
+      lastConfigTraceId.value = traceId
+      showConfigTracePanel.value = true
+      return { steps: configTraceSteps.value, explanation: configExplainText.value, traceId }
+    } catch (e) {
+      configExplainText.value = `加载审计失败：${e.message || e}`
+      showConfigTracePanel.value = true
+      return { steps: [], explanation: configExplainText.value, error: e }
+    }
   }
 
   async function runAudit() {
@@ -1142,6 +1347,10 @@ export function useProductConfig() {
     riskAuditResult.value = null
     rootCauseOntologyChain.value = null
     activeRootCauseRank.value = 1
+    lastConfigTraceId.value = null
+    configTraceSteps.value = []
+    configExplainText.value = ''
+    showConfigTracePanel.value = false
     Object.assign(formData, createEmptyFormData())
   }
 
@@ -1165,6 +1374,10 @@ export function useProductConfig() {
     riskAuditResult,
     rootCauseOntologyChain,
     activeRootCauseRank,
+    lastConfigTraceId,
+    configTraceSteps,
+    configExplainText,
+    showConfigTracePanel,
     getSkillGuideMessage,
     detectScenario,
     simulateQuery,
@@ -1175,6 +1388,7 @@ export function useProductConfig() {
     confirmPassedDrafts,
     runRootCauseAnalysis,
     runRiskAuditFlow,
+    loadConfigTrace,
     selectProduct,
     copyProduct,
     deleteProduct,

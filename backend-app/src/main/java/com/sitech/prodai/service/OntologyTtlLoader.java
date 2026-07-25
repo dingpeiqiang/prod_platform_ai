@@ -36,21 +36,26 @@ public class OntologyTtlLoader implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
-        String path = properties.getOntology().getTtlPath();
+        // 均叠加导入（replace=false），避免清空 OntologySeedLoader 已灌实例
+        loadOne(properties.getOntology().getTtlPath(), "ttl-path");
+        loadOne(properties.getOntology().getConfigTtlPath(), "config-ttl-path");
+    }
+
+    private void loadOne(String path, String label) throws Exception {
         if (path == null || path.isBlank()) {
-            log.info("[OntologyTtlLoader] ttl-path 未配置，跳过 TTL 导入");
+            log.info("[OntologyTtlLoader] {} 未配置，跳过", label);
             return;
         }
         Resource resource = resourceLoader.getResource(path);
         if (!resource.exists()) {
-            throw new IllegalStateException("TTL not found: " + path);
+            throw new IllegalStateException("TTL not found (" + label + "): " + path);
         }
         String content = new String(resource.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         MapResult result = MapResult.of(rdf4jStore.importTtl(content, false));
         if (!result.success()) {
-            throw new IllegalStateException("TTL import failed: " + result.message());
+            throw new IllegalStateException("TTL import failed (" + label + "): " + result.message());
         }
-        log.info("[OntologyTtlLoader] loaded TTL from {} — {}", path, result.message());
+        log.info("[OntologyTtlLoader] loaded {} from {} — {}", label, path, result.message());
     }
 
     private record MapResult(boolean success, String message) {

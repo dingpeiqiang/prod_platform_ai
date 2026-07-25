@@ -64,6 +64,14 @@
         @close="showRiskAuditPanel = false"
         @re-audit="onReAudit"
       />
+      <ConfigTracePanel
+        v-else-if="showConfigTracePanel"
+        :visible="showConfigTracePanel"
+        :trace-id="lastConfigTraceId"
+        :steps="configTraceSteps"
+        :explanation="configExplainText"
+        @close="showConfigTracePanel = false"
+      />
       <FormPanel
         v-else-if="activeFormCard"
         :form-schema="activeFormCard.formSchema"
@@ -95,6 +103,7 @@ import FormPanel from './FormPanel.vue'
 import ProductListPanel from './ProductListPanel.vue'
 import OpsRootCausePanel from './OpsRootCausePanel.vue'
 import OpsRiskAuditPanel from './OpsRiskAuditPanel.vue'
+import ConfigTracePanel from './ConfigTracePanel.vue'
 import { useChatStream } from '../composables/useChatStream.js'
 import { useProductConfig } from '../composables/useProductConfig.js'
 import { checkCompliance } from '../services/ontologyMvpApi.js'
@@ -126,6 +135,10 @@ const currentProduct = productConfig.currentProduct
 const showProductListPanel = productConfig.showProductListPanel
 const showRootCausePanel = productConfig.showRootCausePanel
 const showRiskAuditPanel = productConfig.showRiskAuditPanel
+const showConfigTracePanel = productConfig.showConfigTracePanel
+const lastConfigTraceId = productConfig.lastConfigTraceId
+const configTraceSteps = productConfig.configTraceSteps
+const configExplainText = productConfig.configExplainText
 const rootCauseResult = productConfig.rootCauseResult
 const riskAuditResult = productConfig.riskAuditResult
 const rootCauseOntologyChain = productConfig.rootCauseOntologyChain
@@ -284,27 +297,21 @@ function handleProductDelete(id) {
   else closeActiveForm()
 }
 
-function onQueryResultClick(item) {
-  if (!item) return
-  if (item.data || item.name) {
-    const newProduct = {
-      id: 'P' + Date.now(),
-      name: item.name || '历史商品草稿',
-      code: item.code || `NEW${Date.now()}`,
-      desc: item.desc || '',
-      template: item.template,
-      status: 'draft',
-      auditStatus: 'pending',
-      data: JSON.parse(JSON.stringify(item.data || {})),
+async function onQueryResultClick(item) {
+  if (!item || streaming.value) return
+  streaming.value = true
+  try {
+    // 本体智查结果：走 copy-as-draft + 合规；本地 mock 带 data 时同样优先后端
+    const playbook = await productConfig.prepareProduct(item)
+    if (playbook?.formCard) {
+      applyFormCard(playbook.formCard)
     }
-    products.value.push(newProduct)
-    currentProductId.value = newProduct.id
-    productConfig.syncFormFromProduct(newProduct)
-    applyFormCard(productConfig.buildProductFormCard(newProduct))
-    return
+    if (playbook) {
+      await playProductReply(playbook)
+    }
+  } finally {
+    streaming.value = false
   }
-  const playbook = productConfig.prepareProduct(0)
-  if (playbook?.formCard) applyFormCard(playbook.formCard)
 }
 
 /** 研发快捷场景 / 文案 → 本体演示剧本 */
@@ -345,12 +352,19 @@ function applyPlaybookSideEffects(aiMsg, playbook = {}) {
   if (playbook.showRootCausePanel) {
     showRootCausePanel.value = true
     showRiskAuditPanel.value = false
+    showConfigTracePanel.value = false
     closeActiveForm()
   }
   if (playbook.showRiskAuditPanel) {
     showRiskAuditPanel.value = true
     showRootCausePanel.value = false
+    showConfigTracePanel.value = false
     closeActiveForm()
+  }
+  if (playbook.showConfigTracePanel || productConfig.showConfigTracePanel.value) {
+    showConfigTracePanel.value = true
+    showRootCausePanel.value = false
+    showRiskAuditPanel.value = false
   }
   tickMessages()
 }
@@ -395,6 +409,18 @@ async function loadScenarioPlaybook(text, scenario, attachments = []) {
   if (scenario === 'confirm-batch') {
     return productConfig.confirmPassedDrafts()
   }
+  if (scenario === 'config-trace') {
+    const result = await productConfig.loadConfigTrace()
+    return {
+      thinkingSteps: ['加载配置审计链路 get_trace', '生成业务说明 explain(audience=business)'],
+      content:
+        result.explanation ||
+        '已打开右侧「配置审计追溯」面板。' +
+          (result.traceId ? `\n\ntrace：\`${result.traceId}\`` : ''),
+      formCard: null,
+      showConfigTracePanel: true,
+    }
+  }
   if (scenario === 'compliance') {
     return productConfig.runComplianceCheck(text)
   }
@@ -408,9 +434,10 @@ async function loadScenarioPlaybook(text, scenario, attachments = []) {
 }
 
 const SCENARIO_PROGRESS = {
-  query: ['正在解析查询条件...', '检索本体图谱...'],
+  query: ['正在解析查询条件...', '检索本体事实图...'],
   'file-parse': ['正在读取方案文档...', '抽取套餐结构...'],
-  'confirm-batch': ['正在确认批量草稿...'],
+  'confirm-batch': ['正在确认批量草稿...', '沉淀至配置本体...'],
+  'config-trace': ['正在加载审计链路...', '生成业务说明...'],
   compliance: ['正在定位套餐信息...', '执行配置合规规则...'],
   'root-cause': ['正在分析异动指标...', '本体归因推理中...'],
   'risk-audit': ['正在筛查风险规则...', '聚合稽核结果...'],

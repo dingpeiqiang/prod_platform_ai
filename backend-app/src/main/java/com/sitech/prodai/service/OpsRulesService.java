@@ -83,7 +83,16 @@ public class OpsRulesService {
         body.put("swrlEnabled", properties.getOntology().isSwrlEnabled());
         body.put("primarySwrlEngine", "openllet-swrl");
         body.put("productOpsOwlPath", properties.getOntology().getProductOpsOwlPath());
+        body.put("configTtlPath", properties.getOntology().getConfigTtlPath());
+        Map<String, Object> config = castMap(rules.get("config"));
+        body.put("proposalMapping", castMap(config.get("proposalMapping")));
+        body.put("engineNarrative", config.get("engineNarrative"));
         return body;
+    }
+
+    /** 方案文档规则别名（如 R-CONF-001），无则空串。 */
+    public String configProposalAlias(String ruleId) {
+        return str(configRule(ruleId).get("proposalAlias"));
     }
 
     public Map<String, Object> policySet(String policySetId) {

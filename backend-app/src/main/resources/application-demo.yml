@@ -8,6 +8,7 @@ prodai:
     ops-graph-path: classpath:ontology/mock_graph.json
     rdf-seed-path: classpath:ontology/rdf_seed.json
     ttl-path: classpath:ontology/sample-ontology.ttl
+    config-ttl-path: classpath:ontology/product-config.ttl
     rules-path: classpath:ontology/ops_rules.json
     product-ops-owl-path: classpath:ontology/product-ops.ttl
     swrl-enabled: true

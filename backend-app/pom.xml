@@ -151,6 +151,12 @@
       <artifactId>mysql-connector-j</artifactId>
       <scope>runtime</scope>
     </dependency>
+    <!-- PDF 文本抽取（智读·文件配置） -->
+    <dependency>
+      <groupId>org.apache.pdfbox</groupId>
+      <artifactId>pdfbox</artifactId>
+      <version>3.0.3</version>
+    </dependency>
     <!-- Lombok：简化 Entity/DTO 样板代码 -->
     <dependency>
       <groupId>org.projectlombok</groupId>

@@ -43,6 +43,16 @@ const apiClient = axios.create({
 
 apiClient.interceptors.request.use(
   async (config) => {
+    if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+      // 去掉默认 application/json，让浏览器写入 multipart boundary
+      if (config.headers) {
+        delete config.headers['Content-Type']
+        delete config.headers['content-type']
+        if (typeof config.headers.set === 'function') {
+          config.headers.set('Content-Type', undefined)
+        }
+      }
+    }
     if (config.showLoading !== false) {
       await showLoading(config.loadingText || '加载中...')
     }
@@ -83,10 +93,16 @@ export async function request(url, options = {}) {
     baseURL = API_BASE
   } = options
 
+  const finalHeaders = { ...headers }
+  // FormData 须由浏览器自动带 boundary，不能沿用默认 application/json
+  if (typeof FormData !== 'undefined' && data instanceof FormData) {
+    delete finalHeaders['Content-Type']
+  }
+
   return await apiClient({
     url,
     method,
-    headers,
+    headers: finalHeaders,
     data,
     params,
     showLoading,

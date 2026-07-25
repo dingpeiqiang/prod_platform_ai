@@ -1,0 +1,120 @@
+@prefix : <http://example.org/config/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<http://example.org/config> rdf:type owl:Ontology ;
+    rdfs:label "产商品配置本体"@zh ;
+    owl:versionInfo "1.0" ;
+    rdfs:comment "对齐配置方案七类实体与核心关系；实例可由上线沉淀写入 RDF4J。"@zh .
+
+#################################################################
+# Classes（方案实体 + 现有元类别名）
+#################################################################
+
+:ProductConfigTemplate rdf:type owl:Class ; rdfs:label "产品配置模板"@zh .
+:ConfigTemplate rdf:type owl:Class ; rdfs:subClassOf :ProductConfigTemplate ; rdfs:label "配置模板(兼容)"@zh .
+:ConfigItem rdf:type owl:Class ; rdfs:label "配置项"@zh .
+:ParamConstraint rdf:type owl:Class ; rdfs:label "参数约束"@zh .
+:ConfigScheme rdf:type owl:Class ; rdfs:label "历史配置方案"@zh .
+:OfferingConfig rdf:type owl:Class ; rdfs:subClassOf :ConfigScheme ; rdfs:label "商品配置草稿(兼容)"@zh .
+:TariffElement rdf:type owl:Class ; rdfs:label "资费要素"@zh .
+:ComplianceRule rdf:type owl:Class ; rdfs:label "合规规则"@zh .
+:BusinessScene rdf:type owl:Class ; rdfs:label "业务场景"@zh .
+:BizScenario rdf:type owl:Class ; rdfs:subClassOf :BusinessScene ; rdfs:label "业务场景(兼容)"@zh .
+
+#################################################################
+# Object properties
+#################################################################
+
+:containsItem rdf:type owl:ObjectProperty ;
+    rdfs:domain :ProductConfigTemplate ; rdfs:range :ConfigItem ; rdfs:label "包含配置项"@zh .
+:hasConstraint rdf:type owl:ObjectProperty ;
+    rdfs:domain :ConfigItem ; rdfs:range :ParamConstraint ; rdfs:label "关联参数约束"@zh .
+:appliesTo rdf:type owl:ObjectProperty ;
+    rdfs:domain :ComplianceRule ; rdfs:range :ConfigItem ; rdfs:label "适用于配置项"@zh .
+:basedOnTemplate rdf:type owl:ObjectProperty ;
+    rdfs:domain :ConfigScheme ; rdfs:range :ProductConfigTemplate ; rdfs:label "基于模板"@zh .
+:hasTariff rdf:type owl:ObjectProperty ;
+    rdfs:domain :ConfigScheme ; rdfs:range :TariffElement ; rdfs:label "包含资费要素"@zh .
+:appliesScene rdf:type owl:ObjectProperty ;
+    rdfs:domain :ConfigScheme ; rdfs:range :BusinessScene ; rdfs:label "适用业务场景"@zh .
+:similarTo rdf:type owl:ObjectProperty ;
+    rdfs:domain :ConfigScheme ; rdfs:range :ConfigScheme ; rdfs:label "方案相似度关联"@zh .
+:hasElement rdf:type owl:ObjectProperty ;
+    rdfs:subPropertyOf :containsItem ; rdfs:label "包含要素(兼容)"@zh .
+:inScenario rdf:type owl:ObjectProperty ;
+    rdfs:subPropertyOf :appliesScene ; rdfs:label "所属场景(兼容)"@zh .
+
+#################################################################
+# Datatype properties
+#################################################################
+
+:schemeId rdf:type owl:DatatypeProperty ; rdfs:range xsd:string .
+:productType rdf:type owl:DatatypeProperty ; rdfs:range xsd:string .
+:schemeName rdf:type owl:DatatypeProperty ; rdfs:range xsd:string .
+:status rdf:type owl:DatatypeProperty ; rdfs:range xsd:string .
+:itemCode rdf:type owl:DatatypeProperty ; rdfs:range xsd:string .
+:itemName rdf:type owl:DatatypeProperty ; rdfs:range xsd:string .
+:monthlyFee rdf:type owl:DatatypeProperty ; rdfs:range xsd:decimal .
+:isRequired rdf:type owl:DatatypeProperty ; rdfs:range xsd:boolean .
+
+#################################################################
+# Seed individuals（演示模板 / 场景 / 规则）
+#################################################################
+
+:TEMPLATE_5G_STANDARD rdf:type :ProductConfigTemplate ;
+    rdfs:label "5G套餐标准模板"@zh ;
+    :schemeId "TPL-5G-99" ;
+    :schemeName "5G畅享99" ;
+    :monthlyFee "99"^^xsd:decimal .
+
+:TEMPLATE_CAMPUS_59 rdf:type :ProductConfigTemplate ;
+    rdfs:label "校园套餐模板"@zh ;
+    :schemeId "TPL-CAMPUS-59" ;
+    :schemeName "校园青春59" ;
+    :monthlyFee "59"^^xsd:decimal .
+
+:TEMPLATE_HF_128 rdf:type :ProductConfigTemplate ;
+    rdfs:label "家庭融合模板"@zh ;
+    :schemeId "TPL-HF-128" ;
+    :schemeName "家庭融合畅享128" ;
+    :monthlyFee "128"^^xsd:decimal .
+
+:ITEM_MONTHLY_FEE rdf:type :ConfigItem ;
+    :itemCode "MONTHLY_FEE" ; :itemName "月费" ; :isRequired true .
+:ITEM_FREE_VALUE_ADDED rdf:type :ConfigItem ;
+    :itemCode "FREE_VALUE_ADDED" ; :itemName "增值权益" ; :isRequired false .
+
+:CONSTRAINT_FEE_RANGE rdf:type :ParamConstraint ;
+    rdfs:label "月费9-599"@zh .
+:ITEM_MONTHLY_FEE :hasConstraint :CONSTRAINT_FEE_RANGE .
+
+:RULE_R_CONF_001 rdf:type :ComplianceRule ;
+    rdfs:label "资费上下限校验"@zh .
+:RULE_R_CONF_001 :appliesTo :ITEM_MONTHLY_FEE .
+
+:SCENE_CAMPUS rdf:type :BusinessScene ; rdfs:label "校园体验"@zh .
+:SCENE_HF rdf:type :BusinessScene ; rdfs:label "家庭融合"@zh .
+:SCENE_5G rdf:type :BusinessScene ; rdfs:label "5G个人主套餐"@zh .
+
+:SCHEME_CAMPUS_59 rdf:type :ConfigScheme ;
+    :schemeId "OF-RISK-001" ;
+    :schemeName "校园体验流量包0元" ;
+    :productType "5G套餐" ;
+    :status "已上线" ;
+    :basedOnTemplate :TEMPLATE_CAMPUS_59 ;
+    :appliesScene :SCENE_CAMPUS .
+
+:SCHEME_HF_128 rdf:type :ConfigScheme ;
+    :schemeId "OF-HF-128" ;
+    :schemeName "家庭融合畅享128" ;
+    :productType "融合套餐" ;
+    :status "已上线" ;
+    :basedOnTemplate :TEMPLATE_HF_128 ;
+    :appliesScene :SCENE_HF .
+
+:SCHEME_CAMPUS_59 :similarTo :SCHEME_HF_128 .
+:TEMPLATE_5G_STANDARD :containsItem :ITEM_MONTHLY_FEE .
+:TEMPLATE_5G_STANDARD :containsItem :ITEM_FREE_VALUE_ADDED .

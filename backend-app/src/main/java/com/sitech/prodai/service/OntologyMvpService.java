@@ -35,14 +35,21 @@ public class OntologyMvpService {
 
     private static final List<Map<String, String>> ONTOLOGY_CLASSES = List.of(
             metaClass("OfferingConfig", "商品配置草稿"),
+            metaClass("ConfigScheme", "历史配置方案"),
+            metaClass("ProductConfigTemplate", "产品配置模板"),
+            metaClass("ConfigItem", "配置项"),
+            metaClass("ParamConstraint", "参数约束"),
+            metaClass("TariffElement", "资费要素"),
+            metaClass("ComplianceRule", "合规规则"),
+            metaClass("BusinessScene", "业务场景"),
             metaClass("ProductElement", "产品要素属性"),
             metaClass("ConfigRule", "配置规则"),
             metaClass("TargetUser", "目标用户"),
-            metaClass("BizScenario", "业务场景"),
+            metaClass("BizScenario", "业务场景(兼容)"),
             metaClass("MarketPolicy", "营销政策"),
             metaClass("PricePlan", "商品定价"),
             metaClass("GoodsRelation", "商品关系"),
-            metaClass("ConfigTemplate", "配置模板"),
+            metaClass("ConfigTemplate", "配置模板(兼容)"),
             metaClass("ComplianceIssue", "合规问题")
     );
 
@@ -52,23 +59,31 @@ public class OntologyMvpService {
     private final OpsRulesService opsRules;
     private final OpsProductGraphLoader graphLoader;
     private final OpsExtractionService extractionService;
+    private final ConfigDocumentParser documentParser;
+    private final Rdf4jOntologyStore rdf4jStore;
 
     private Map<String, Object> graphCache;
     private String graphSourceId = "empty";
     private final Map<String, Object> riskRuleOverrides = new ConcurrentHashMap<>();
+    /** 配置场景审计链路（内存）；对齐方案 get_trace / explain。 */
+    private final Map<String, List<Map<String, Object>>> configTraces = new ConcurrentHashMap<>();
 
     public OntologyMvpService(ObjectMapper objectMapper,
                               ProdAiProperties properties,
                               OpsSwrlReasoner opsSwrlReasoner,
                               OpsRulesService opsRules,
                               OpsProductGraphLoader graphLoader,
-                              OpsExtractionService extractionService) {
+                              OpsExtractionService extractionService,
+                              ConfigDocumentParser documentParser,
+                              Rdf4jOntologyStore rdf4jStore) {
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.opsSwrlReasoner = opsSwrlReasoner;
         this.opsRules = opsRules;
         this.graphLoader = graphLoader;
         this.extractionService = extractionService;
+        this.documentParser = documentParser;
+        this.rdf4jStore = rdf4jStore;
     }
 
     @PostConstruct
@@ -394,6 +409,25 @@ public class OntologyMvpService {
                     List.of("discountPercent=100", "repeatable=true"), null));
         }
 
+        // R-C09 ≈ 方案 R-CONF-001：资费上下限
+        if (opsRules.isConfigEnabled("R-C09") && monthly >= 0) {
+            double minFee = opsRules.configDefaultNum("monthlyFeeMin", 9);
+            double maxFee = opsRules.configDefaultNum("monthlyFeeMax", 599);
+            if (monthly < minFee || monthly > maxFee) {
+                issues.add(issue("R-C09", "资费区间违规", "HIGH", "monthlyFee",
+                        "月费取值超出合规范围，允许区间为" + (int) minFee + "-" + (int) maxFee + "元",
+                        List.of("monthlyFee=" + monthly, "min=" + minFee, "max=" + maxFee), null));
+            }
+        }
+
+        // R-C03 扩展 ≈ 方案 R-CONF-002：折扣与赠费并存需复核
+        double freeFee = num(firstNonEmpty(draft.get("freeFeeAmount"), draft.get("giftFee")), -1);
+        if (opsRules.isConfigEnabled("R-C03") && discount > 0 && freeFee > 0) {
+            issues.add(issue("R-C03", "资费冲突", "MEDIUM", "discountPercent",
+                    "同时配置了折扣与赠费，存在资费冲突风险，需人工复核（方案别名 R-CONF-002）",
+                    List.of("discountPercent=" + discount, "freeFeeAmount=" + freeFee), null));
+        }
+
         boolean hasHigh = issues.stream().anyMatch(i -> "HIGH".equals(i.get("issueLevel")));
         boolean requiredOk = issues.stream().noneMatch(i -> "R-C06".equals(i.get("ruleId")));
         boolean compliancePass = !hasHigh && requiredOk;
@@ -554,6 +588,413 @@ public class OntologyMvpService {
         return draft;
     }
 
+    /**
+     * 智查：按关键词检索在架商品与配置模板（对齐 nl_discover_and_retrieve 配置侧）。
+     */
+    public Map<String, Object> discoverConfigs(String query, int limit) {
+        String q = query == null ? "" : query.trim();
+        int lim = limit <= 0 ? 20 : Math.min(limit, 50);
+        Map<String, Object> graph = loadGraph();
+        List<Map<String, Object>> offerings = castListOfMaps(graph.get("shelfOfferings"));
+        Map<String, Object> templates = castMap(graph.get("templates"));
+
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (Map<String, Object> o : offerings) {
+            int score = matchScore(q, o);
+            if (score <= 0 && !q.isBlank()) {
+                continue;
+            }
+            if (q.isBlank()) {
+                score = 1;
+            }
+            Map<String, Object> row = toQueryCard(o, score);
+            items.add(row);
+        }
+        items.sort((a, b) -> Integer.compare((int) num(b.get("score"), 0), (int) num(a.get("score"), 0)));
+        if (items.size() > lim) {
+            items = new ArrayList<>(items.subList(0, lim));
+        }
+
+        List<Map<String, Object>> tplHits = new ArrayList<>();
+        for (Map.Entry<String, Object> e : templates.entrySet()) {
+            Map<String, Object> t = castMap(e.getValue());
+            String blob = (str(t.get("templateId")) + " " + str(t.get("name"))).toLowerCase(Locale.ROOT);
+            if (q.isBlank() || blob.contains(q.toLowerCase(Locale.ROOT))
+                    || q.contains("模板") || q.contains("套餐")) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("template_id", t.get("templateId"));
+                row.put("name", t.get("name"));
+                row.put("monthly_fee", t.get("monthlyFee"));
+                tplHits.add(row);
+            }
+        }
+
+        String traceId = "cfg-discover-" + Instant.now().toEpochMilli();
+        appendConfigAudit(traceId, Map.of(
+                "step", "nl_discover_and_retrieve",
+                "query", q,
+                "hit_count", items.size(),
+                "timestamp", Instant.now().toString()
+        ));
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", true);
+        body.put("query", q);
+        body.put("items", items);
+        body.put("templates", tplHits.stream().limit(10).collect(Collectors.toList()));
+        body.put("trace_id", traceId);
+        body.put("total", items.size());
+        return body;
+    }
+
+    /**
+     * 一键复制为新配置草稿 + 合规校验（对齐 retrieve_facts → copy → evaluate_policy）。
+     */
+    public Map<String, Object> copyAsDraft(String offeringId, String text) {
+        String oid = resolveOfferingId(offeringId, text);
+        Map<String, Object> shelf = findShelfOffering(oid);
+        if (shelf == null) {
+            Map<String, Object> fail = new LinkedHashMap<>();
+            fail.put("success", false);
+            fail.put("message", "未找到可复制的历史方案：" + firstNonEmpty(offeringId, text));
+            return fail;
+        }
+
+        Map<String, Object> sourceDraft = shelfOfferingToDraft(shelf);
+        Map<String, Object> draft = deepCopy(sourceDraft);
+        draft.remove("state");
+        draft.put("status", "draft");
+        draft.put("copiedFrom", shelf.get("offeringId"));
+        String baseName = str(firstNonEmpty(draft.get("offeringName"), "配置方案"));
+        draft.put("offeringName", baseName + " (副本)");
+        draft.put("offeringId", null);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> fill = draft.get("fillSources") instanceof Map<?, ?>
+                ? new LinkedHashMap<>((Map<String, Object>) draft.get("fillSources"))
+                : new LinkedHashMap<>();
+        fill.put("_source", "copy_as_draft");
+        fill.put("copiedFrom", shelf.get("offeringId"));
+        draft.put("fillSources", fill);
+
+        // 关联模板
+        Map<String, Object> infer = inferFields(Map.of(
+                "bizScenario", draft.get("bizScenario"),
+                "targetUser", draft.get("targetUser"),
+                "offeringType", draft.get("offeringType")
+        ), draft);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> inferredDraft = (Map<String, Object>) infer.get("draft");
+        if (inferredDraft != null) {
+            draft = inferredDraft;
+            draft.put("status", "draft");
+            draft.put("copiedFrom", shelf.get("offeringId"));
+            if (!str(draft.get("offeringName")).contains("副本")) {
+                draft.put("offeringName", baseName + " (副本)");
+            }
+        }
+
+        Map<String, Object> compliance = checkCompliance(draft);
+        List<Map<String, Object>> diffs = compareDraftFields(sourceDraft, draft);
+
+        String traceId = "cfg-copy-" + Instant.now().toEpochMilli();
+        appendConfigAudit(traceId, Map.of(
+                "step", "retrieve_facts",
+                "offering_id", shelf.get("offeringId"),
+                "timestamp", Instant.now().toString()
+        ));
+        appendConfigAudit(traceId, Map.of(
+                "step", "copy_as_draft",
+                "copied_from", shelf.get("offeringId"),
+                "timestamp", Instant.now().toString()
+        ));
+        appendConfigAudit(traceId, Map.of(
+                "step", "evaluate_policy",
+                "compliance_pass", compliance.get("compliancePass"),
+                "applied_rules", compliance.get("appliedRules"),
+                "timestamp", Instant.now().toString()
+        ));
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", true);
+        body.put("source", "shelf");
+        body.put("source_offering_id", shelf.get("offeringId"));
+        body.put("source_offering_name", shelf.get("offeringName"));
+        body.put("draft", draft);
+        body.put("diffs", diffs);
+        body.put("issues", compliance.get("issues"));
+        body.put("compliancePass", compliance.get("compliancePass"));
+        body.put("appliedRules", compliance.get("appliedRules"));
+        body.put("canSubmit", compliance.get("canSubmit"));
+        body.put("trace_id", traceId);
+        return body;
+    }
+
+    /** 智读：先解析文档再批量映射。 */
+    public Map<String, Object> batchFromDocumentBytes(byte[] bytes, String fileName) {
+        ConfigDocumentParser.ParseResult parsed = documentParser.parse(bytes, fileName);
+        if (!parsed.success()) {
+            Map<String, Object> fail = new LinkedHashMap<>();
+            fail.put("success", false);
+            fail.put("message", parsed.message());
+            fail.put("parseEngine", parsed.engine());
+            return fail;
+        }
+        Map<String, Object> body = batchFromDocument(parsed.text(), null);
+        body.put("parseEngine", parsed.engine());
+        body.put("fileName", fileName);
+        body.put("extractedChars", parsed.text() == null ? 0 : parsed.text().length());
+        String traceId = "cfg-batch-" + Instant.now().toEpochMilli();
+        appendConfigAudit(traceId, Map.of(
+                "step", "document_parse",
+                "file_name", fileName,
+                "engine", parsed.engine(),
+                "timestamp", Instant.now().toString()
+        ));
+        appendConfigAudit(traceId, Map.of(
+                "step", "evaluate_policy_with_facts",
+                "total", body.get("total"),
+                "passed", body.get("passedCount"),
+                "timestamp", Instant.now().toString()
+        ));
+        body.put("trace_id", traceId);
+        return body;
+    }
+
+    /**
+     * 知识自迭代：合规通过的草稿沉淀至事实图 + RDF ConfigScheme。
+     */
+    public synchronized Map<String, Object> publishConfigDraft(Map<String, Object> draftInput) {
+        Map<String, Object> draft = draftInput == null ? Map.of() : deepCopy(draftInput);
+        Map<String, Object> compliance = checkCompliance(draft);
+        if (!Boolean.TRUE.equals(compliance.get("compliancePass"))) {
+            Map<String, Object> fail = new LinkedHashMap<>();
+            fail.put("success", false);
+            fail.put("message", "合规未通过，拒绝沉淀至本体");
+            fail.put("issues", compliance.get("issues"));
+            fail.put("compliancePass", false);
+            return fail;
+        }
+
+        Map<String, Object> graph = loadGraph();
+        List<Map<String, Object>> shelf = castListOfMaps(graph.get("shelfOfferings"));
+        String newId = str(draft.get("offeringId"));
+        if (newId.isBlank()) {
+            newId = "OF-DRAFT-" + Instant.now().toEpochMilli();
+        }
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("offeringId", newId);
+        row.put("offeringName", firstNonEmpty(draft.get("offeringName"), newId));
+        row.put("state", "上架");
+        row.put("monthlyFee", draft.get("monthlyFee"));
+        row.put("oneTimeFee", firstNonEmpty(draft.get("oneTimeFee"), 0));
+        row.put("mutexGroup", firstNonEmpty(draft.get("mutexGroup"), "MAIN_PKG"));
+        row.put("offeringType", firstNonEmpty(draft.get("offeringType"), "main_pkg"));
+        row.put("shelfDays", 0);
+        row.put("salesCnt30d", 0);
+        row.put("revenue30d", 0);
+        row.put("hasContract", draft.get("hasContract"));
+        row.put("strategicTag", false);
+        row.put("category", "normal");
+        row.put("bizScenario", draft.get("bizScenario"));
+        row.put("targetUser", draft.get("targetUser"));
+        row.put("channelScope", draft.get("channelScope"));
+        row.put("discountPercent", draft.get("discountPercent"));
+        row.put("basedOnTemplate", draft.get("basedOnTemplate"));
+        row.put("copiedFrom", draft.get("copiedFrom"));
+        shelf.add(0, row);
+        graph.put("shelfOfferings", shelf);
+        graphCache = graph;
+
+        String baseIri = properties.getOntology().normalizedBaseIri() + "config/";
+        String uri = baseIri + newId;
+        Map<String, Object> facts = new LinkedHashMap<>();
+        facts.put("schemeId", newId);
+        facts.put("schemeName", row.get("offeringName"));
+        facts.put("status", "已上线");
+        facts.put("productType", row.get("offeringType"));
+        facts.put("monthlyFee", row.get("monthlyFee"));
+        facts.put("basedOnTemplate", draft.get("basedOnTemplate"));
+        facts.put("appliesScene", draft.get("bizScenario"));
+        Object copiedFrom = draft.get("copiedFrom");
+        if (!empty(copiedFrom)) {
+            facts.put("similarTo", baseIri + copiedFrom);
+        }
+        rdf4jStore.addClass("ConfigScheme");
+        rdf4jStore.addProperty("basedOnTemplate");
+        rdf4jStore.addProperty("similarTo");
+        rdf4jStore.addProperty("appliesScene");
+        rdf4jStore.addInstance(uri, "ConfigScheme", facts);
+
+        String traceId = "cfg-publish-" + Instant.now().toEpochMilli();
+        appendConfigAudit(traceId, Map.of(
+                "step", "knowledge_iterate",
+                "offering_id", newId,
+                "uri", uri,
+                "timestamp", Instant.now().toString()
+        ));
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", true);
+        body.put("offeringId", newId);
+        body.put("uri", uri);
+        body.put("shelfCount", shelf.size());
+        body.put("trace_id", traceId);
+        body.put("message", "已沉淀至事实图与配置本体 ConfigScheme");
+        return body;
+    }
+
+    public Map<String, Object> getConfigTrace(String traceId) {
+        List<Map<String, Object>> steps = configTraces.getOrDefault(traceId, List.of());
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", !steps.isEmpty());
+        body.put("trace_id", traceId);
+        body.put("steps", steps);
+        if (steps.isEmpty()) {
+            body.put("message", "trace not found");
+        }
+        return body;
+    }
+
+    public Map<String, Object> explainConfig(String traceId, String audience) {
+        List<Map<String, Object>> steps = configTraces.getOrDefault(traceId, List.of());
+        String aud = audience == null || audience.isBlank() ? "business" : audience;
+        StringBuilder sb = new StringBuilder();
+        if ("business".equalsIgnoreCase(aud)) {
+            sb.append("配置审计说明（业务视角）：\n");
+        } else {
+            sb.append("配置审计说明（技术视角）：\n");
+        }
+        if (steps.isEmpty()) {
+            sb.append("未找到 trace=").append(traceId);
+        } else {
+            for (Map<String, Object> step : steps) {
+                sb.append("- ").append(step.getOrDefault("step", "?"));
+                if (step.containsKey("compliance_pass")) {
+                    sb.append(" → 合规=").append(step.get("compliance_pass"));
+                }
+                if (step.containsKey("applied_rules")) {
+                    sb.append(" 规则=").append(step.get("applied_rules"));
+                }
+                if (step.containsKey("query")) {
+                    sb.append(" 查询=").append(step.get("query"));
+                }
+                if (step.containsKey("offering_id")) {
+                    sb.append(" 商品=").append(step.get("offering_id"));
+                }
+                sb.append('\n');
+            }
+            sb.append("\n规则引擎说明：配置侧使用 Java R-C*（方案别名见 proposalMapping），非 Drools；")
+                    .append("Openllet SWRL 仅用于运营归因。");
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", true);
+        body.put("trace_id", traceId);
+        body.put("audience", aud);
+        body.put("explanation", sb.toString().trim());
+        body.put("proposalMapping", castMap(castMap(opsRules.load().get("config")).get("proposalMapping")));
+        return body;
+    }
+
+    private int matchScore(String query, Map<String, Object> offering) {
+        if (query == null || query.isBlank()) {
+            return 1;
+        }
+        String q = query.toLowerCase(Locale.ROOT);
+        String id = str(offering.get("offeringId")).toLowerCase(Locale.ROOT);
+        String name = str(offering.get("offeringName")).toLowerCase(Locale.ROOT);
+        String cat = str(offering.get("category")).toLowerCase(Locale.ROOT);
+        String type = str(offering.get("offeringType")).toLowerCase(Locale.ROOT);
+        int score = 0;
+        if (id.equals(q) || name.equals(q)) {
+            score += 100;
+        }
+        if (!id.isBlank() && (q.contains(id) || id.contains(q))) {
+            score += 40;
+        }
+        if (!name.isBlank() && (name.contains(q) || q.contains(name))) {
+            score += 50;
+        }
+        for (String token : q.split("[\\s,，、]+")) {
+            if (token.length() < 2) {
+                continue;
+            }
+            if (name.contains(token) || id.contains(token)) {
+                score += 15;
+            }
+            if (("校园".equals(token) || "学生".equals(token) || "大学".equals(token))
+                    && (name.contains("校园") || name.contains("青春") || name.contains("学生"))) {
+                score += 25;
+            }
+            if (("5g".equals(token) || "套餐".equals(token)) && (name.contains("5g") || name.contains("畅享"))) {
+                score += 10;
+            }
+            if (("家庭".equals(token) || "融合".equals(token)) && (name.contains("家庭") || name.contains("融合"))) {
+                score += 20;
+            }
+            if (token.matches("\\d+") && str(offering.get("monthlyFee")).contains(token)) {
+                score += 30;
+            }
+        }
+        if (q.contains("在售") || q.contains("在架") || q.contains("上线")) {
+            if ("上架".equals(str(offering.get("state")))) {
+                score += 5;
+            }
+        }
+        if (score == 0 && (cat.contains(q) || type.contains(q))) {
+            score = 5;
+        }
+        return score;
+    }
+
+    private Map<String, Object> toQueryCard(Map<String, Object> o, int score) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        String id = str(o.get("offeringId"));
+        row.put("id", id);
+        row.put("code", id);
+        row.put("name", o.get("offeringName"));
+        row.put("offeringId", id);
+        row.put("offering_id", id);
+        row.put("monthlyFee", o.get("monthlyFee"));
+        row.put("state", o.get("state"));
+        row.put("category", o.get("category"));
+        row.put("score", score);
+        row.put("desc", "月费" + o.get("monthlyFee") + "元 | " + o.get("state")
+                + " | " + firstNonEmpty(o.get("offeringType"), o.get("category")));
+        row.put("template", o.get("basedOnTemplate"));
+        // 前端复制时优先走后端 copy-as-draft，不再依赖本地 data
+        row.put("source", "shelf");
+        return row;
+    }
+
+    private List<Map<String, Object>> compareDraftFields(Map<String, Object> before, Map<String, Object> after) {
+        List<Map<String, Object>> diffs = new ArrayList<>();
+        Set<String> keys = new LinkedHashSet<>();
+        keys.addAll(before.keySet());
+        keys.addAll(after.keySet());
+        for (String k : keys) {
+            if ("fillSources".equals(k)) {
+                continue;
+            }
+            String a = str(before.get(k));
+            String b = str(after.get(k));
+            if (!a.equals(b)) {
+                Map<String, Object> d = new LinkedHashMap<>();
+                d.put("field", k);
+                d.put("before", before.get(k));
+                d.put("after", after.get(k));
+                diffs.add(d);
+            }
+        }
+        return diffs;
+    }
+
+    private void appendConfigAudit(String traceId, Map<String, Object> step) {
+        if (traceId == null || traceId.isBlank()) {
+            return;
+        }
+        configTraces.computeIfAbsent(traceId, k -> new ArrayList<>()).add(new LinkedHashMap<>(step));
+    }
+
     public Map<String, Object> chatConfigure(String text, Map<String, Object> draft) {
         OpsExtractionService.SlotExtractResult extracted = extractionService.extractSlots(text == null ? "" : text);
         Map<String, Object> slots = extracted.slots();
@@ -578,6 +1019,19 @@ public class OntologyMvpService {
         body.put("compliancePass", compliance.get("compliancePass"));
         body.put("appliedRules", applied.stream().sorted().collect(Collectors.toList()));
         body.put("canSubmit", compliance.get("canSubmit"));
+        String traceId = "cfg-chat-" + Instant.now().toEpochMilli();
+        appendConfigAudit(traceId, Map.of(
+                "step", "chat_configure",
+                "text", text == null ? "" : text,
+                "timestamp", Instant.now().toString()
+        ));
+        appendConfigAudit(traceId, Map.of(
+                "step", "evaluate_policy",
+                "compliance_pass", compliance.get("compliancePass"),
+                "applied_rules", compliance.get("appliedRules"),
+                "timestamp", Instant.now().toString()
+        ));
+        body.put("trace_id", traceId);
         return body;
     }
 
@@ -1396,6 +1850,10 @@ public class OntologyMvpService {
                                       String message, List<String> evidence, List<Map<String, Object>> triples) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("ruleId", ruleId);
+        String alias = opsRules.configProposalAlias(ruleId);
+        if (!alias.isBlank()) {
+            row.put("proposalAlias", alias);
+        }
         row.put("issueType", issueType);
         row.put("issueLevel", level);
         row.put("field", field);

@@ -17,6 +17,7 @@ prodai:
     ops-graph-path: classpath:ontology/mock_graph.json
     rdf-seed-path: classpath:ontology/rdf_seed.json
     ttl-path: classpath:ontology/sample-ontology.ttl
+    config-ttl-path: classpath:ontology/product-config.ttl
     llm-extract-enabled: true
     base-iri: http://example.org/
   kb:

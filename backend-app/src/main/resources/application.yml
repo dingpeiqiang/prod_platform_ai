@@ -67,6 +67,7 @@ prodai:
     # 空=不灌 RDF；演示 profile 指向 rdf_seed.json
     rdf-seed-path: ${ONTOLOGY_RDF_SEED_PATH:}
     ttl-path: ${ONTOLOGY_TTL_PATH:}
+    config-ttl-path: ${ONTOLOGY_CONFIG_TTL_PATH:}
   kb:
     seed-path: ${KB_SEED_PATH:}
   mcp:

@@ -62,6 +62,10 @@ public class ProdAiProperties {
          * Turtle 本体/实例文件。为空则不导入；演示可指向 sample-ontology.ttl。
          */
         private String ttlPath = "";
+        /**
+         * 产商品配置本体 TTL（方案七类实体）。为空则跳过；与 {@link #ttlPath} 叠加导入 RDF4J。
+         */
+        private String configTtlPath = "";
 
         public boolean isDemoEnabled() {
             return demoEnabled;
@@ -165,6 +169,14 @@ public class ProdAiProperties {
 
         public void setTtlPath(String ttlPath) {
             this.ttlPath = ttlPath == null ? "" : ttlPath;
+        }
+
+        public String getConfigTtlPath() {
+            return configTtlPath;
+        }
+
+        public void setConfigTtlPath(String configTtlPath) {
+            this.configTtlPath = configTtlPath == null ? "" : configTtlPath;
         }
 
         /** 保证以 / 结尾，便于拼接相对实体路径。 */
