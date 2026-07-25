@@ -4,42 +4,44 @@
  * 研发助手 / 运营助手的所有差异化数据集中定义。
  * AssistantShell、RdAssistantPage、OpsAssistantPage 读取此配置实现模式切换。
  */
+import { ZHIDU_TEST_PROMPT } from '../data/zhiduTestDoc.js'
 
 export const assistantModes = {
   rd: {
     navTitle: '产商品研发 · 配置与合规',
-    inputPlaceholder: '描述研发配置需求，例如：给家庭用户做 500M 融合套餐，月费158',
+    inputPlaceholder: '描述研发配置需求；智读可粘贴/拖入方案文件',
     defaultScene: 'rd',
     sceneShortcuts: [
       {
-        label: '对话配置',
+        label: '智聊·对话配置',
         scene: 'rd.chat',
         desc: '自然语言生成配置',
         text: '给家庭用户做一个融合套餐，月费158，带500M宽带，全渠道销售',
       },
       {
-        label: '批量生成',
+        label: '智读·文件配置',
         scene: 'rd.import',
-        desc: '方案文档一键映射',
-        text: '帮我导入校园迎新方案',
+        desc: '按文档内容映射草稿',
+        text: ZHIDU_TEST_PROMPT,
       },
       {
-        label: 'AI智查',
-        scene: 'market_insight',
+        label: '智查·历史复用',
+        scene: 'rd.query',
         desc: '检索并复用历史配置',
         text: '查一下近30天大学生套餐配置',
       },
       {
-        label: '合规校验',
-        scene: 'online_check',
-        desc: '事前拦截在架冲突',
-        text: '校验当前配置是否符合在架规则',
+        label: '智检·合规校验',
+        scene: 'rd.compliance',
+        desc: '按套餐信息校验已入库/未入库配置',
+        text: '校验校园体验流量包0元是否符合在架规则',
       },
     ],
     tips: [
-      '点击左侧场景可一键带入示例问题。',
-      '对话配置时，本体自动填字段并拦截冲突；大模型负责理解业务表达。',
-      '也可上传方案文档，走批量生成映射为多套配置草稿。',
+      '点击左侧场景可把示例填入输入框，确认后再发送。',
+      '智聊·对话配置时，本体自动填字段并拦截冲突；大模型负责理解业务表达。',
+      '智读·文件配置：粘贴或上传方案文档（测试稿见 docs/testdata/智读测试方案_家庭融合.md）。',
+      '智检·合规校验：可校验在架已入库套餐（如校园体验流量包0元），或先智聊/智读后再说「校验当前配置」。',
     ],
   },
 

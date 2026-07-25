@@ -105,6 +105,8 @@ import { createStreamingPlaceholder, playSimulatedReply } from '../utils/simulat
 const inputText = ref('')
 const historyLoading = ref(false)
 const activeFormCard = ref(null)
+/** 侧边快捷场景码，发送时优先使用（如 rd.import） */
+const activeScene = ref(assistantModes.rd.defaultScene)
 
 const {
   messages,
@@ -161,6 +163,9 @@ async function refreshCompliance() {
   if (!draft || !activeFormCard.value) return null
 
   const result = await checkCompliance(draft)
+  if (result?.success === false) {
+    throw new Error(result.message || '合规校验失败')
+  }
   product.compliancePass = !!result.compliancePass
   product.issues = result.issues || []
   product.auditStatus = result.compliancePass ? 'pass' : 'pending'
@@ -316,6 +321,13 @@ function resolveProductScenario(text, scene = '') {
   if (s === 'rd.import' || s === 'offering_config_batch') {
     return 'file-parse'
   }
+  if (s === 'rd.compliance' || s === 'offering_config_compliance') {
+    return productConfig.detectScenario(text) || 'compliance'
+  }
+  // 智查快捷场景：优先按文案识别，避免示例「查一下…」落到对话配置
+  if (s === 'market_insight' || s === 'rd.query') {
+    return productConfig.detectScenario(text) || 'query'
+  }
   return productConfig.detectScenario(text)
 }
 
@@ -373,15 +385,18 @@ async function playProductReply(playbook = {}) {
   await finishProductReply(aiMsg, playbook)
 }
 
-async function loadScenarioPlaybook(text, scenario) {
+async function loadScenarioPlaybook(text, scenario, attachments = []) {
   if (scenario === 'query') {
     return productConfig.simulateQuery(text)
   }
   if (scenario === 'file-parse') {
-    return productConfig.simulateFileParse('校园迎新产商品方案_2026.md', 12 * 1024)
+    return productConfig.simulateFileParse(text, attachments)
   }
   if (scenario === 'confirm-batch') {
     return productConfig.confirmPassedDrafts()
+  }
+  if (scenario === 'compliance') {
+    return productConfig.runComplianceCheck(text)
   }
   if (scenario === 'root-cause') {
     return productConfig.runRootCauseAnalysis(text)
@@ -396,12 +411,13 @@ const SCENARIO_PROGRESS = {
   query: ['正在解析查询条件...', '检索本体图谱...'],
   'file-parse': ['正在读取方案文档...', '抽取套餐结构...'],
   'confirm-batch': ['正在确认批量草稿...'],
+  compliance: ['正在定位套餐信息...', '执行配置合规规则...'],
   'root-cause': ['正在分析异动指标...', '本体归因推理中...'],
   'risk-audit': ['正在筛查风险规则...', '聚合稽核结果...'],
   'chat-generate': ['正在理解配置诉求...', '调用本体配置服务...'],
 }
 
-async function runProductScenario(text, scenario) {
+async function runProductScenario(text, scenario, attachments = []) {
   streaming.value = true
   messages.value = [
     ...messages.value,
@@ -443,7 +459,7 @@ async function runProductScenario(text, scenario) {
   }, 700)
 
   try {
-    const playbook = await loadScenarioPlaybook(text, scenario)
+    const playbook = await loadScenarioPlaybook(text, scenario, attachments)
     clearInterval(heartbeat)
     // 去掉等待行，再续播本体结果
     aiMsg.reasoning = (aiMsg.reasoning || []).filter((s) => !s._waiting)
@@ -465,36 +481,57 @@ async function runProductScenario(text, scenario) {
 
 const onSend = async (payload) => {
   const text = (payload?.text || inputText.value || '').trim()
-  if (!text || streaming.value) return
+  const attachments = payload?.attachments || []
+  if ((!text && !attachments.length) || streaming.value) return
   inputText.value = ''
 
-  const scene = payload?.scene || config.defaultScene
-  const scenario = resolveProductScenario(text, scene)
-  if (scenario) {
-    await runProductScenario(text, scenario)
+  const scene = payload?.scene || activeScene.value || config.defaultScene
+  const scenario = resolveProductScenario(text || '智读', scene)
+  // 有附件时优先走智读·文件配置
+  const effectiveScenario =
+    attachments.length && (!scenario || scenario === 'chat-generate')
+      ? 'file-parse'
+      : scenario
+  if (effectiveScenario) {
+    await runProductScenario(
+      text || `导入文档：${attachments[0]?.name || '方案'}`,
+      effectiveScenario,
+      attachments,
+    )
     return
   }
   sendMessage({ text, scene })
 }
 
-const onSuggest = async (text) => {
+const onSuggest = (text) => {
+  // 生产：场景卡只填入输入框，由用户确认后发送
   if (!text || streaming.value) return
-  const scenario = resolveProductScenario(text, config.defaultScene)
-  if (scenario) {
-    await runProductScenario(text, scenario)
-    return
+  inputText.value = text
+  const scenario = resolveProductScenario(text, activeScene.value || config.defaultScene)
+  if (scenario === 'file-parse') {
+    activeScene.value = 'rd.import'
+  } else if (scenario === 'query') {
+    activeScene.value = 'rd.query'
+  } else if (scenario === 'compliance') {
+    activeScene.value = 'rd.compliance'
+  } else if (scenario === 'chat-generate') {
+    activeScene.value = 'rd.chat'
+    productConfig.createEmptyOfferingCanvas()
   }
-  sendMessage({ text, scene: config.defaultScene })
 }
 
-const onShortcut = async (item) => {
-  if (!item?.text || streaming.value) return
-  const scenario = resolveProductScenario(item.text, item.scene)
-  if (scenario) {
-    await runProductScenario(item.text, scenario)
-    return
+const onShortcut = (item) => {
+  // 生产：快捷场景只进入/预填，不自动发送示例话术
+  if (!item || streaming.value) return
+  if (item.scene) {
+    activeScene.value = item.scene
   }
-  sendMessage({ text: item.text, scene: item.scene })
+  if (item.text) {
+    inputText.value = item.text
+  }
+  if (item.scene === 'rd.chat' || item.label === '智聊·对话配置' || item.label === '智聊配置' || item.label === '对话配置') {
+    productConfig.createEmptyOfferingCanvas()
+  }
 }
 
 const onFormCardClick = (msg) => {
@@ -510,6 +547,7 @@ const onNewSession = () => {
   closeActiveForm()
   showRootCausePanel.value = false
   showRiskAuditPanel.value = false
+  activeScene.value = config.defaultScene
   productConfig.resetState()
   newSession()
 }

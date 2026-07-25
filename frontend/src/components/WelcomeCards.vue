@@ -13,7 +13,7 @@
       <section class="scenarios-section" aria-labelledby="welcome-scenarios-title">
         <div class="section-head">
           <h2 id="welcome-scenarios-title" class="section-title">从这里开始</h2>
-          <p class="section-hint">点击场景即可带入示例问题，也可在下方直接输入</p>
+          <p class="section-hint">点击场景将示例填入输入框，确认后再发送；也可直接输入</p>
         </div>
         <div class="suggestion-cards">
           <button
@@ -79,6 +79,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { ZHIDU_TEST_PROMPT } from '../data/zhiduTestDoc.js'
 
 const props = defineProps({
   mode: { type: String, default: 'rd' },
@@ -91,8 +92,8 @@ const modeClass = computed(() => (props.mode === 'ops' ? 'mode-ops' : 'mode-rd')
 const rdMeta = {
   eyebrow: 'AI 原生 · 产商品研发',
   title: '产商品研发助手',
-  subtitle: '对话配置、方案导入、历史复用与合规校验一体完成，让商品上架更快、更准、更合规。',
-  tags: ['智聊配置', '智读批量', '历史复用', '事前合规'],
+  subtitle: '智聊·对话配置、智读·文件配置、智查·历史复用与智检·合规校验一体完成，让商品上架更快、更准、更合规。',
+  tags: ['智聊·对话配置', '智读·文件配置', '智查·历史复用', '智检·合规校验'],
   footer: '本体负责填字段与拦冲突，大模型负责理解业务表达。',
 }
 
@@ -106,7 +107,7 @@ const opsMeta = {
 
 const rdCards = [
   {
-    label: '对话配置',
+    label: '智聊·对话配置',
     desc: '直接说业务诉求，自动补全配置字段并拦截冲突',
     example: '家庭融合套餐 158 元 / 500M',
     text: '给家庭用户做一个融合套餐，月费158，带500M宽带，全渠道销售',
@@ -115,16 +116,16 @@ const rdCards = [
     color: '#2563eb',
   },
   {
-    label: '批量生成',
-    desc: '导入方案文档，一次映射为多套合规配置草稿',
-    example: '校园迎新方案批量入库',
-    text: '帮我导入校园迎新方案',
+    label: '智读·文件配置',
+    desc: '粘贴或上传方案文档，按你的内容映射为多套合规配置草稿',
+    example: '家庭融合测试方案',
+    text: ZHIDU_TEST_PROMPT,
     icon: 'file',
     bg: '#ecfdf5',
     color: '#059669',
   },
   {
-    label: 'AI智查',
+    label: '智查·历史复用',
     desc: '检索历史商品与成熟配置，快速复制复用',
     example: '近30天大学生套餐',
     text: '查一下近30天大学生套餐配置',
@@ -133,10 +134,10 @@ const rdCards = [
     color: '#0284c7',
   },
   {
-    label: '合规校验',
-    desc: '配置当下完成规则校验，事前拦截在架冲突',
-    example: '校验当前配置是否可上架',
-    text: '校验当前配置是否符合在架规则',
+    label: '智检·合规校验',
+    desc: '按套餐信息校验：已入库在架套餐或未入库草稿',
+    example: '校园体验流量包0元 / 当前配置',
+    text: '校验校园体验流量包0元是否符合在架规则',
     icon: 'shield',
     bg: '#fff7ed',
     color: '#c2410c',

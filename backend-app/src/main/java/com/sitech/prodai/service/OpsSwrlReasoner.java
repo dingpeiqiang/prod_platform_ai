@@ -21,6 +21,7 @@ import org.semanticweb.owlapi.model.SWRLDArgument;
 import org.semanticweb.owlapi.model.SWRLRule;
 import org.semanticweb.owlapi.model.SWRLVariable;
 import org.semanticweb.owlapi.reasoner.NodeSet;
+import org.semanticweb.owlapi.vocab.OWL2Datatype;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
@@ -317,7 +318,11 @@ public class OpsSwrlReasoner {
     }
 
     private OWLDataPropertyAssertionAxiom dataAssert(OWLDataFactory df, OWLNamedIndividual s, String prop, String value) {
-        return df.getOWLDataPropertyAssertionAxiom(dataProp(df, prop), s, df.getOWLLiteral(value));
+        // 显式 xsd:string，与 TBox range 对齐
+        return df.getOWLDataPropertyAssertionAxiom(
+                dataProp(df, prop),
+                s,
+                df.getOWLLiteral(value == null ? "" : value, OWL2Datatype.XSD_STRING));
     }
 
     private OWLDataPropertyAssertionAxiom dataAssertDecimal(
@@ -331,7 +336,10 @@ public class OpsSwrlReasoner {
     }
 
     private OWLLiteral decimalLiteral(OWLDataFactory df, double value) {
-        return df.getOWLLiteral(value);
+        // 属性 range 为 xsd:decimal；getOWLLiteral(double) 会生成 xsd:double，
+        // Openllet 认为 double/decimal 值域不相交 → InconsistentOntologyException
+        java.math.BigDecimal bd = java.math.BigDecimal.valueOf(value);
+        return df.getOWLLiteral(bd.toPlainString(), OWL2Datatype.XSD_DECIMAL);
     }
 
     private double ruleNum(Map<String, Object> rule, String key, double defaultValue) {

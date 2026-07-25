@@ -253,27 +253,30 @@ public class OpsRulesService {
                 .orElse(null);
     }
 
-    /**
-     * R-B04 等风险分类：生产只用规则 categories；演示模式额外合并 demo.riskExtraCategories。
-     */
+    /** R-B04 等风险分类：以规则 categories 为准（演示分类写进规则/数据，不靠代码分支）。 */
     public Set<String> riskCategories(String ruleId, Set<String> fallback) {
-        Set<String> cats = new LinkedHashSet<>(ruleStringSet(riskRule(ruleId), "categories", fallback));
-        if (properties.getOntology().isDemoEnabled()) {
-            cats.addAll(demoRiskExtraCategories());
+        return new LinkedHashSet<>(ruleStringSet(riskRule(ruleId), "categories", fallback));
+    }
+
+    /** 首页货架预览优先展示的 offeringId（ops_rules.ui）。 */
+    public List<String> previewOfferingIds() {
+        Map<String, Object> ui = castMap(load().get("ui"));
+        if (ui.isEmpty()) {
+            ui = castMap(load().get("demo"));
         }
-        return cats;
+        return stringList(ui.get("previewOfferingIds"));
     }
 
-    public List<String> demoRiskExtraCategories() {
-        return stringList(castMap(load().get("demo")).get("riskExtraCategories"));
-    }
-
-    public List<String> demoPreviewOfferingIds() {
-        return stringList(castMap(load().get("demo")).get("previewOfferingIds"));
-    }
-
-    public List<String> demoShelfPriorityIds() {
-        return stringList(castMap(load().get("demo")).get("shelfPriorityIds"));
+    public int previewLimit(int defaultLimit) {
+        Map<String, Object> ui = castMap(load().get("ui"));
+        if (ui.isEmpty()) {
+            ui = castMap(load().get("demo"));
+        }
+        Object lim = ui.get("previewLimit");
+        if (lim instanceof Number n) {
+            return Math.max(1, n.intValue());
+        }
+        return defaultLimit;
     }
 
     private List<String> stringList(Object raw) {

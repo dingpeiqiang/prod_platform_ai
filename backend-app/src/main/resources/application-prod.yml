@@ -1,13 +1,36 @@
-# 生产 profile：显式关闭演示，禁止依赖 mock_graph
-# 启动示例：--spring.profiles.active=prod
+# 上线 / 生产 profile（application.yml 默认 active=prod）
+# 演示：spring.profiles.active=dev|demo（换 mock_graph 数据即可）
+#
+# 本项目已实现 GET /api/v1/product-center/ops-graph（及 /ops-graph）。
+# 默认 classpath 读生产导出图；接外部中心：ONTOLOGY_DATA_SOURCE=http + PRODUCT_CENTER_BASE_URL=...
+
+spring:
+  ai:
+    openai:
+      api-key: ${LLM_API_KEY:sk-placeholder}
+      base-url: ${LLM_BASE_URL:https://api.openai.com}
+      chat:
+        options:
+          model: ${LLM_MODEL:gpt-4o-mini}
+          temperature: 0.5
 
 prodai:
   ontology:
     demo-enabled: false
-    data-source: ${ONTOLOGY_DATA_SOURCE:http}
-    graph-path: ${ONTOLOGY_GRAPH_PATH:}
+    data-source: ${ONTOLOGY_DATA_SOURCE:classpath}
+    graph-path: ${ONTOLOGY_GRAPH_PATH:classpath:ontology/ops_graph_export.json}
+    ops-graph-path: ${ONTOLOGY_OPS_GRAPH_PATH:classpath:ontology/ops_graph_export.json}
     product-center-base-url: ${PRODUCT_CENTER_BASE_URL:}
+    product-center-timeout-ms: ${PRODUCT_CENTER_TIMEOUT_MS:5000}
     llm-extract-enabled: ${ONTOLOGY_LLM_EXTRACT:true}
     base-iri: ${ONTOLOGY_BASE_IRI:http://example.org/}
+    # 生产默认不灌演示 RDF；如需导入真实实例：ONTOLOGY_RDF_SEED_PATH=file:/data/rdf_seed.json
+    rdf-seed-path: ${ONTOLOGY_RDF_SEED_PATH:}
+    ttl-path: ${ONTOLOGY_TTL_PATH:}
+  kb:
+    seed-path: ${KB_SEED_PATH:}
+  mcp:
+    seed-path: ${MCP_SEED_PATH:}
   llm:
     enabled: ${LLM_ENABLED:true}
+    function-calling-enabled: ${LLM_FC_ENABLED:true}

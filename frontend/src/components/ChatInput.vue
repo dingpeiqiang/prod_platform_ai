@@ -14,7 +14,47 @@
         </button>
       </div>
 
-      <div class="composer-panel" :class="{ focused: isFocused, disabled }">
+      <div
+        class="composer-panel"
+        :class="{ focused: isFocused, disabled, 'drag-over': isDragOver }"
+        @dragenter.prevent="onDragEnter"
+        @dragover.prevent="onDragOver"
+        @dragleave.prevent="onDragLeave"
+        @drop.prevent="onDrop"
+        @paste.capture="handlePaste"
+      >
+        <div v-if="attachments.length" class="attachment-list">
+          <div
+            v-for="(att, idx) in attachments"
+            :key="`${att.name}-${idx}`"
+            class="attachment-chip"
+            :title="att.name"
+          >
+            <img v-if="att.type === 'image' && att.preview" :src="att.preview" class="att-thumb" alt="" />
+            <span v-else class="att-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+              </svg>
+            </span>
+            <span class="att-meta">
+              <span class="att-name">{{ att.name }}</span>
+              <span v-if="att.size" class="att-size">{{ formatFileSize(att.size) }}</span>
+            </span>
+            <button
+              type="button"
+              class="att-remove"
+              title="移除"
+              :disabled="disabled"
+              @click="removeAttachment(idx)"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+
+        <p v-if="pasteHint" class="paste-hint">{{ pasteHint }}</p>
+
         <textarea
           ref="inputEl"
           v-model="inputText"
@@ -27,6 +67,8 @@
           @input="handleInput"
           :disabled="disabled || isRecording"
         />
+
+        <div v-if="isDragOver" class="drop-hint">松开以添加文件</div>
 
         <div class="composer-footer">
           <div class="composer-left">
@@ -162,7 +204,7 @@
       </div>
 
       <div class="footer-hint-row">
-        <span class="footer-hint">@ # / 快捷能力，Enter 发送，Shift + Enter 换行</span>
+        <span class="footer-hint">支持粘贴/拖入文件；Enter 发送，Shift + Enter 换行</span>
       </div>
 
       <input ref="fileInput" type="file" class="hidden-input" accept="*" @change="handleFileSelect" multiple />
@@ -174,6 +216,7 @@
 <script setup>
 import { ref, nextTick, watch, computed, onMounted, onBeforeUnmount, getCurrentInstance } from 'vue'
 import { useModelsStore } from '@/stores/models.js'
+import { ZHIDU_TEST_PROMPT } from '../data/zhiduTestDoc.js'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
@@ -197,9 +240,10 @@ const emit = defineEmits([
 ])
 
 const skillConfig = {
-  query: { icon: 'fa-magnifying-glass', label: 'AI智查' },
-  file: { icon: 'fa-file-import', label: '智读·批量生成' },
+  query: { icon: 'fa-magnifying-glass', label: '智查·历史复用' },
+  file: { icon: 'fa-file-import', label: '智读·文件配置' },
   chat: { icon: 'fa-comments', label: '智聊·对话配置' },
+  compliance: { icon: 'fa-shield-halved', label: '智检·合规校验' },
   ops: { icon: 'fa-chart-line', label: '运营助手' }
 }
 
@@ -394,14 +438,6 @@ const buildModelConfig = () => {
   return { provider: m.provider, model: m.name }
 }
 
-onMounted(() => {
-  loadAvailableModels()
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('click', handleDocumentClick)
-})
-
 const inputEl = ref(null)
 const fileInput = ref(null)
 const imageInput = ref(null)
@@ -410,27 +446,262 @@ const inputText = ref(props.modelValue)
 const isRecording = ref(false)
 const recordingTime = ref('00:00')
 const attachments = ref([])
+const isDragOver = ref(false)
+const pasteHint = ref('')
+let dragDepth = 0
+let pasteHintTimer = null
 
 let recordingTimer = null
 let mediaRecorder = null
 let audioChunks = []
 
 const allQuickActions = [
-  { key: 'chat', label: '智聊配置', content: '给家庭用户做一个融合套餐，月费158，带500M宽带，全渠道销售', color: '#8b5cf6', modes: ['rd'] },
-  { key: 'file', label: '智读批量', content: '帮我导入校园迎新方案', color: '#10b981', modes: ['rd'] },
-  { key: 'query', label: 'AI智查', content: '帮我查询近30天大学生套餐配置', color: '#f59e0b', modes: ['rd'] },
+  { key: 'chat', label: '智聊·对话配置', content: '给家庭用户做一个融合套餐，月费158，带500M宽带，全渠道销售', color: '#8b5cf6', modes: ['rd'] },
+  { key: 'file', label: '智读·文件配置', content: ZHIDU_TEST_PROMPT, color: '#10b981', modes: ['rd'] },
+  { key: 'query', label: '智查·历史复用', content: '帮我查询近30天大学生套餐配置', color: '#f59e0b', modes: ['rd'] },
+  { key: 'compliance', label: '智检·合规校验', content: '校验校园体验流量包0元是否符合在架规则', color: '#c2410c', modes: ['rd'] },
   { key: 'ops', label: '指标异动根因', content: '分析家庭融合畅享128本月收入下滑原因', color: '#0ea5e9', modes: ['ops'] },
-  { key: 'ops', label: '高风险商品稽核', content: '筛查所有在架的0元资费风险商品', color: '#ef4444', modes: ['ops'] }
+  { key: 'ops', label: '高风险商品稽核', content: '筛查所有在架的0元资费风险商品', color: '#ef4444', modes: ['ops'] },
 ]
 
 const quickActions = computed(() => {
   const mode = props.assistantMode
   if (!mode) return allQuickActions
-  return allQuickActions.filter(a => a.modes.includes(mode))
+  return allQuickActions.filter((a) => a.modes.includes(mode))
 })
 
 const hasContent = computed(() => inputText.value.trim().length > 0 || attachments.value.length > 0)
 const canSend = computed(() => hasContent.value && !props.disabled)
+
+function formatFileSize(size) {
+  const n = Number(size) || 0
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function removeAttachment(idx) {
+  attachments.value.splice(idx, 1)
+}
+
+const FILE_PATH_RE = /^(?:[a-zA-Z]:\\|\\\\)[^\n\r*]+\.[A-Za-z0-9]{1,8}$/
+const DOC_EXT_RE = /\.(md|txt|json|csv|docx?|xlsx?|pdf|ya?ml|xml|log)$/i
+
+function showPasteHint(msg) {
+  pasteHint.value = msg
+  if (pasteHintTimer) clearTimeout(pasteHintTimer)
+  pasteHintTimer = setTimeout(() => {
+    pasteHint.value = ''
+  }, 4000)
+}
+
+function extractFilesFromClipboardData(cd) {
+  if (!cd) return []
+  const found = []
+  const seen = new Set()
+
+  const pushFile = (file) => {
+    if (!file) return
+    const key = `${file.name}|${file.size}|${file.type}|${file.lastModified || 0}`
+    if (seen.has(key)) return
+    seen.add(key)
+    found.push(file)
+  }
+
+  // 1) DataTransfer.files（部分浏览器在 textarea 上为空）
+  if (cd.files?.length) {
+    Array.from(cd.files).forEach(pushFile)
+  }
+
+  // 2) items：必须始终遍历，不能放在 files 的 else 里
+  if (cd.items?.length) {
+    for (const item of cd.items) {
+      if (item.kind === 'file') {
+        pushFile(item.getAsFile())
+      }
+    }
+  }
+
+  return found
+}
+
+async function extractFilesFromClipboardApi() {
+  if (!navigator.clipboard?.read) return []
+  try {
+    const items = await navigator.clipboard.read()
+    const files = []
+    let idx = 0
+    for (const item of items) {
+      for (const type of item.types) {
+        if (type === 'text/plain' || type === 'text/html' || type === 'text/uri-list') continue
+        try {
+          const blob = await item.getType(type)
+          if (!blob || blob.size === 0) continue
+          const ext =
+            type === 'image/png' ? '.png'
+              : type === 'image/jpeg' ? '.jpg'
+                : type === 'image/webp' ? '.webp'
+                  : type === 'image/gif' ? '.gif'
+                    : type.includes('markdown') ? '.md'
+                      : type.includes('json') ? '.json'
+                        : type.startsWith('text/') ? '.txt'
+                          : ''
+          const name = `粘贴文件_${Date.now()}_${idx++}${ext}`
+          files.push(new File([blob], name, { type: blob.type || type }))
+        } catch {
+          // 单个 type 失败继续
+        }
+      }
+    }
+    return files
+  } catch {
+    // 无权限或非安全上下文
+    return []
+  }
+}
+
+function lookLikeLocalFilePath(text) {
+  const t = String(text || '').trim().replace(/^["']|["']$/g, '')
+  if (!t || t.includes('\n')) return false
+  return FILE_PATH_RE.test(t) && DOC_EXT_RE.test(t)
+}
+
+function addFiles(fileList, { emitUpload = true } = {}) {
+  const files = Array.from(fileList || []).filter(Boolean)
+  if (!files.length) return false
+
+  const plainFiles = []
+  const images = []
+
+  files.forEach((file) => {
+    const isImage = file.type?.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp)$/i.test(file.name || '')
+    if (isImage) {
+      images.push(file)
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        attachments.value.push({
+          type: 'image',
+          name: file.name || `粘贴图片_${Date.now()}.png`,
+          size: file.size,
+          file,
+          preview: event.target?.result,
+        })
+      }
+      reader.readAsDataURL(file)
+    } else {
+      plainFiles.push(file)
+      attachments.value.push({
+        type: 'file',
+        name: file.name || `粘贴文件_${Date.now()}`,
+        size: file.size,
+        file,
+        preview: null,
+      })
+    }
+  })
+
+  if (emitUpload) {
+    if (plainFiles.length) emit('file-upload', plainFiles)
+    if (images.length) emit('image-upload', images)
+  }
+  pasteHint.value = ''
+  return true
+}
+
+const handlePaste = (e) => {
+  if (props.disabled) return
+
+  const cd = e.clipboardData
+  const types = Array.from(cd?.types || [])
+  const files = extractFilesFromClipboardData(cd)
+
+  if (files.length) {
+    e.preventDefault()
+    e.stopPropagation()
+    addFiles(files)
+    return
+  }
+
+  // types 声明有 Files，但 FileList 为空：常见于 Windows 资源管理器 → textarea
+  if (types.includes('Files')) {
+    e.preventDefault()
+    e.stopPropagation()
+    extractFilesFromClipboardApi().then((apiFiles) => {
+      if (apiFiles.length) {
+        addFiles(apiFiles)
+        return
+      }
+      showPasteHint('当前浏览器限制：复制的本地文件无法直接粘贴，请拖拽到输入框，或在弹出的窗口中选择该文件')
+      nextTick(() => fileInput.value?.click())
+    })
+    return
+  }
+
+  // 截图等：仅有 image/* 类型时再尝试 Clipboard API
+  if (types.some((t) => t.startsWith('image/'))) {
+    e.preventDefault()
+    e.stopPropagation()
+    extractFilesFromClipboardApi().then((apiFiles) => {
+      if (apiFiles.length) addFiles(apiFiles)
+    })
+    return
+  }
+
+  const plain = cd?.getData?.('text/plain') || ''
+  if (lookLikeLocalFilePath(plain)) {
+    e.preventDefault()
+    e.stopPropagation()
+    showPasteHint('粘贴的是本地路径，浏览器无法直接读取。请拖拽文件，或点击上传选择该文件')
+    nextTick(() => fileInput.value?.click())
+  }
+}
+
+/** 输入框聚焦时，在 document 捕获阶段再拦一次，避免 textarea 吃掉 Files */
+const onDocumentPasteCapture = (e) => {
+  if (props.disabled || !isFocused.value) return
+  // 与面板 handlePaste 共用提取逻辑；此处只处理已能拿到 File 的情况
+  const files = extractFilesFromClipboardData(e.clipboardData)
+  if (!files.length) return
+  e.preventDefault()
+  e.stopPropagation()
+  addFiles(files)
+}
+
+onMounted(() => {
+  loadAvailableModels()
+  document.addEventListener('paste', onDocumentPasteCapture, true)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleDocumentClick)
+  document.removeEventListener('paste', onDocumentPasteCapture, true)
+  if (pasteHintTimer) clearTimeout(pasteHintTimer)
+})
+
+const onDragEnter = (e) => {
+  if (props.disabled) return
+  if (![...e.dataTransfer.types].includes('Files')) return
+  dragDepth += 1
+  isDragOver.value = true
+}
+
+const onDragOver = (e) => {
+  if (props.disabled) return
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+}
+
+const onDragLeave = () => {
+  dragDepth = Math.max(0, dragDepth - 1)
+  if (dragDepth === 0) isDragOver.value = false
+}
+
+const onDrop = (e) => {
+  dragDepth = 0
+  isDragOver.value = false
+  if (props.disabled) return
+  const files = e.dataTransfer?.files
+  if (files?.length) addFiles(files)
+}
 
 watch(() => props.modelValue, (val) => {
   if (val !== inputText.value) {
@@ -485,25 +756,13 @@ const triggerFileUpload = () => fileInput.value?.click()
 const triggerImageUpload = () => imageInput.value?.click()
 
 const handleFileSelect = (e) => {
-  const files = Array.from(e.target.files || [])
-  files.forEach(file => {
-    attachments.value.push({ type: 'file', name: file.name, size: file.size, file, preview: null })
-  })
+  addFiles(e.target.files || [])
   e.target.value = ''
-  emit('file-upload', files)
 }
 
 const handleImageSelect = (e) => {
-  const files = Array.from(e.target.files || [])
-  files.forEach(file => {
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      attachments.value.push({ type: 'image', name: file.name, size: file.size, file, preview: event.target?.result })
-    }
-    reader.readAsDataURL(file)
-  })
+  addFiles(e.target.files || [])
   e.target.value = ''
-  emit('image-upload', files)
 }
 
 const startRecording = async () => {
@@ -611,6 +870,7 @@ defineExpose({ focus, resetInput, reloadModels: () => loadAvailableModels(true) 
 .chip-icon { font-weight: 500; font-size: 13px; }
 
 .composer-panel {
+  position: relative;
   border: 1px solid var(--border-light);
   border-radius: 12px;
   background: var(--bg-secondary);
@@ -624,7 +884,102 @@ defineExpose({ focus, resetInput, reloadModels: () => loadAvailableModels(true) 
   box-shadow: 0 0 0 1px rgba(91, 124, 250, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 
+.composer-panel.drag-over {
+  border-color: rgba(16, 185, 129, 0.55);
+  background: rgba(236, 253, 245, 0.65);
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.12);
+}
+
 .composer-panel.disabled { opacity: 0.92; }
+
+.attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 240px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+}
+
+.att-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.att-icon {
+  display: inline-flex;
+  color: #059669;
+}
+
+.att-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.att-name {
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.att-size {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.att-remove {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.att-remove:hover:not(:disabled) { color: #dc2626; }
+.att-remove:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.paste-hint {
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #c2410c;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.drop-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: rgba(236, 253, 245, 0.88);
+  color: #047857;
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+  z-index: 2;
+}
 
 .message-input {
   width: 100%;

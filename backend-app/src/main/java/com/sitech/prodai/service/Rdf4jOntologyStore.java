@@ -1,12 +1,25 @@
 package com.sitech.prodai.service;
 
-import com.sitech.prodai.domain.EntityRef;
+import org.eclipse.rdf4j.model.IRI;
+import org.eclipse.rdf4j.model.Literal;
+import org.eclipse.rdf4j.model.Model;
+import org.eclipse.rdf4j.model.Resource;
+import org.eclipse.rdf4j.model.Statement;
+import org.eclipse.rdf4j.model.Value;
+import org.eclipse.rdf4j.model.vocabulary.OWL;
+import org.eclipse.rdf4j.model.vocabulary.RDF;
+import org.eclipse.rdf4j.model.vocabulary.RDFS;
+import org.eclipse.rdf4j.rio.RDFFormat;
+import org.eclipse.rdf4j.rio.Rio;
 import org.springframework.stereotype.Service;
 
+import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
@@ -17,10 +30,12 @@ public class Rdf4jOntologyStore implements OntologyStore {
     private final Map<String, Map<String, Object>> instances = new ConcurrentHashMap<>();
 
     @Override
-    public Map<String, Object> retrieve(List<EntityRef> entities, String namespace) {
+    public Map<String, Object> retrieve(List<com.sitech.prodai.domain.EntityRef> entities, String namespace) {
         Map<String, Object> facts = new LinkedHashMap<>();
-        if (entities == null) return facts;
-        for (EntityRef entity : entities) {
+        if (entities == null) {
+            return facts;
+        }
+        for (com.sitech.prodai.domain.EntityRef entity : entities) {
             String uri = entity.normalizedUri(namespace);
             Map<String, Object> fact = new LinkedHashMap<>(instances.getOrDefault(uri, Map.of()));
             if (fact.isEmpty()) {
@@ -65,12 +80,16 @@ public class Rdf4jOntologyStore implements OntologyStore {
 
     @Override
     public void addClass(String className) {
-        if (className != null && !className.isBlank()) classRegistry.put(className, className);
+        if (className != null && !className.isBlank()) {
+            classRegistry.put(className, className);
+        }
     }
 
     @Override
     public void addProperty(String propertyName) {
-        if (propertyName != null && !propertyName.isBlank()) propertyRegistry.put(propertyName, propertyName);
+        if (propertyName != null && !propertyName.isBlank()) {
+            propertyRegistry.put(propertyName, propertyName);
+        }
     }
 
     @Override
@@ -85,7 +104,9 @@ public class Rdf4jOntologyStore implements OntologyStore {
     @Override
     public void addInstance(String uri, String type, Map<String, Object> facts) {
         Map<String, Object> row = new LinkedHashMap<>();
-        if (facts != null) row.putAll(facts);
+        if (facts != null) {
+            row.putAll(facts);
+        }
         row.put("uri", uri);
         row.put("type", type);
         instances.put(uri, row);
@@ -94,7 +115,9 @@ public class Rdf4jOntologyStore implements OntologyStore {
     @Override
     public void updateInstance(String uri, Map<String, Object> facts) {
         Map<String, Object> row = instances.getOrDefault(uri, new LinkedHashMap<>());
-        if (facts != null) row.putAll(facts);
+        if (facts != null) {
+            row.putAll(facts);
+        }
         row.put("uri", uri);
         instances.put(uri, row);
     }
@@ -131,11 +154,16 @@ public class Rdf4jOntologyStore implements OntologyStore {
         return samplesFor(className);
     }
 
+    public void clear() {
+        classRegistry.clear();
+        propertyRegistry.clear();
+        instances.clear();
+    }
+
     public Map<String, Object> getGraphData() {
         List<Map<String, Object>> nodes = new ArrayList<>();
         List<Map<String, Object>> edges = new ArrayList<>();
 
-        // 添加类节点
         for (String className : classRegistry.keySet()) {
             Map<String, Object> node = new LinkedHashMap<>();
             node.put("id", "class_" + className);
@@ -145,7 +173,6 @@ public class Rdf4jOntologyStore implements OntologyStore {
             nodes.add(node);
         }
 
-        // 添加属性节点
         for (String propertyName : propertyRegistry.keySet()) {
             Map<String, Object> node = new LinkedHashMap<>();
             node.put("id", "prop_" + propertyName);
@@ -154,7 +181,6 @@ public class Rdf4jOntologyStore implements OntologyStore {
             node.put("type", propertyName.contains(":") ? "object_property" : "datatype_property");
             nodes.add(node);
 
-            // 添加属性到类的边
             String className = propertyName.contains(":") ? propertyName.split(":")[0] : "Thing";
             if (classRegistry.containsKey(className)) {
                 Map<String, Object> edge = new LinkedHashMap<>();
@@ -167,7 +193,6 @@ public class Rdf4jOntologyStore implements OntologyStore {
             }
         }
 
-        // 添加实例节点和边
         for (Map.Entry<String, Map<String, Object>> entry : instances.entrySet()) {
             String uri = entry.getKey();
             Map<String, Object> facts = entry.getValue();
@@ -181,7 +206,6 @@ public class Rdf4jOntologyStore implements OntologyStore {
             node.put("classId", "class_" + type);
             nodes.add(node);
 
-            // 添加实例到类的边
             if (classRegistry.containsKey(type)) {
                 Map<String, Object> edge = new LinkedHashMap<>();
                 edge.put("id", "edge_inst_" + uri + "_" + type);
@@ -203,11 +227,170 @@ public class Rdf4jOntologyStore implements OntologyStore {
         );
     }
 
+    /**
+     * 用 RDF4J Rio 解析 Turtle，写入本存储的 class/property/instance 视图。
+     */
+    @Override
     public Map<String, Object> importTtl(String ttlContent, boolean replace) {
-        return Map.of("success", true, "message", "TTL 导入成功", "replace", replace);
+        if (ttlContent == null || ttlContent.isBlank()) {
+            return Map.of("success", false, "message", "TTL 内容为空");
+        }
+        if (replace) {
+            clear();
+        }
+        try {
+            Model model = Rio.parse(new StringReader(ttlContent), "", RDFFormat.TURTLE);
+            int classCount = 0;
+            int propCount = 0;
+            int instanceCount = 0;
+
+            Set<String> schemaTypes = Set.of(
+                    OWL.CLASS.stringValue(),
+                    RDFS.CLASS.stringValue(),
+                    OWL.OBJECTPROPERTY.stringValue(),
+                    OWL.DATATYPEPROPERTY.stringValue(),
+                    RDF.PROPERTY.stringValue(),
+                    OWL.ONTOLOGY.stringValue()
+            );
+
+            // 1) 类 / 属性
+            for (Statement st : model.filter(null, RDF.TYPE, null)) {
+                Resource subject = st.getSubject();
+                Value object = st.getObject();
+                if (!(subject instanceof IRI subIri) || !(object instanceof IRI typeIri)) {
+                    continue;
+                }
+                String type = typeIri.stringValue();
+                String local = localName(subIri);
+                if (OWL.CLASS.stringValue().equals(type) || RDFS.CLASS.stringValue().equals(type)) {
+                    addClass(local);
+                    classCount++;
+                } else if (OWL.OBJECTPROPERTY.stringValue().equals(type)
+                        || OWL.DATATYPEPROPERTY.stringValue().equals(type)
+                        || RDF.PROPERTY.stringValue().equals(type)) {
+                    addProperty(local);
+                    propCount++;
+                }
+            }
+
+            // 2) 实例（rdf:type 指向已登记类，或非 schema 类型）
+            Set<String> knownClasses = new LinkedHashSet<>(classRegistry.keySet());
+            Map<String, Map<String, Object>> pending = new LinkedHashMap<>();
+            for (Statement st : model.filter(null, RDF.TYPE, null)) {
+                Resource subject = st.getSubject();
+                Value object = st.getObject();
+                if (!(subject instanceof IRI subIri) || !(object instanceof IRI typeIri)) {
+                    continue;
+                }
+                String typeLocal = localName(typeIri);
+                String typeUri = typeIri.stringValue();
+                if (schemaTypes.contains(typeUri)) {
+                    continue;
+                }
+                if (!knownClasses.contains(typeLocal)) {
+                    addClass(typeLocal);
+                    knownClasses.add(typeLocal);
+                }
+                String uri = subIri.stringValue();
+                Map<String, Object> row = pending.computeIfAbsent(uri, k -> new LinkedHashMap<>());
+                row.put("type", typeLocal);
+                row.put("uri", uri);
+            }
+
+            // 3) 实例属性三元组
+            for (Statement st : model) {
+                if (RDF.TYPE.equals(st.getPredicate())) {
+                    continue;
+                }
+                Resource subject = st.getSubject();
+                if (!(subject instanceof IRI subIri)) {
+                    continue;
+                }
+                String uri = subIri.stringValue();
+                if (!pending.containsKey(uri) && !instances.containsKey(uri)) {
+                    continue;
+                }
+                Map<String, Object> row = pending.computeIfAbsent(uri, k -> {
+                    Map<String, Object> existing = instances.get(k);
+                    return existing != null ? new LinkedHashMap<>(existing) : new LinkedHashMap<>();
+                });
+                String prop = localName(st.getPredicate());
+                addProperty(prop);
+                Object converted = valueToJava(st.getObject());
+                Object prev = row.get(prop);
+                if (prev == null) {
+                    row.put(prop, converted);
+                } else if (prev instanceof List<?> list) {
+                    List<Object> copy = new ArrayList<>(list);
+                    copy.add(converted);
+                    row.put(prop, copy);
+                } else {
+                    row.put(prop, List.of(prev, converted));
+                }
+            }
+
+            for (Map.Entry<String, Map<String, Object>> e : pending.entrySet()) {
+                String type = String.valueOf(e.getValue().getOrDefault("type", "Thing"));
+                addInstance(e.getKey(), type, e.getValue());
+                instanceCount++;
+            }
+
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("success", true);
+            body.put("message", "TTL 导入成功");
+            body.put("replace", replace);
+            body.put("classesAdded", classCount);
+            body.put("propertiesAdded", propCount);
+            body.put("instancesAdded", instanceCount);
+            body.put("stats", stats());
+            return body;
+        } catch (Exception e) {
+            return Map.of("success", false, "message", "TTL 解析失败: " + e.getMessage());
+        }
     }
 
     public List<Map<String, Object>> sparqlQuery(String query) {
         return sparqlSelect(query);
+    }
+
+    private static String localName(Value v) {
+        if (v instanceof IRI iri) {
+            String local = iri.getLocalName();
+            if (local != null && !local.isBlank()) {
+                return local;
+            }
+            String s = iri.stringValue();
+            int hash = s.lastIndexOf('#');
+            int slash = s.lastIndexOf('/');
+            int idx = Math.max(hash, slash);
+            return idx >= 0 && idx < s.length() - 1 ? s.substring(idx + 1) : s;
+        }
+        return String.valueOf(v);
+    }
+
+    private static Object valueToJava(Value v) {
+        if (v instanceof Literal lit) {
+            try {
+                if (lit.getDatatype() != null) {
+                    String dt = lit.getDatatype().stringValue();
+                    if (dt.endsWith("#integer") || dt.endsWith("#int") || dt.endsWith("#long")) {
+                        return lit.longValue();
+                    }
+                    if (dt.endsWith("#decimal") || dt.endsWith("#double") || dt.endsWith("#float")) {
+                        return lit.doubleValue();
+                    }
+                    if (dt.endsWith("#boolean")) {
+                        return lit.booleanValue();
+                    }
+                }
+            } catch (Exception ignored) {
+                // fall through to label
+            }
+            return lit.getLabel();
+        }
+        if (v instanceof IRI iri) {
+            return iri.stringValue();
+        }
+        return String.valueOf(v);
     }
 }

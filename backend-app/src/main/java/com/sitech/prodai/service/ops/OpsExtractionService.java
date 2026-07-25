@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
 
 /**
  * 配置槽位 / 批量文档套餐抽取。
- * 优先 LLM 结构化 JSON；失败或关闭时回退正则 /（仅 demo）样例包。
+ * 优先 LLM；失败时回退正则切分。不灌入演示样例数据。
  * 商品别名与绑定触发词来自 {@link OpsRulesService}（ops_rules.extraction）。
  */
 @Service
@@ -116,9 +116,16 @@ public class OpsExtractionService {
         }
     }
 
-    public PackageExtractResult extractPackages(String documentText, List<Map<String, Object>> demoFallback) {
+    /**
+     * @param configFallback 保留兼容；当前不使用样例灌入。
+     */
+    public PackageExtractResult extractPackages(String documentText, List<Map<String, Object>> configFallback) {
         if (documentText == null || documentText.isBlank()) {
             return new PackageExtractResult(List.of(), "empty");
+        }
+        // 忽略历史样例回退参数，避免校园等演示数据顶替用户文档
+        if (configFallback != null && !configFallback.isEmpty()) {
+            log.debug("[OpsExtractionService] 忽略 extractFallbackPackages（{} 条），按文档内容抽取", configFallback.size());
         }
         if (llmExtractEnabled()) {
             try {
@@ -139,14 +146,62 @@ public class OpsExtractionService {
                 log.warn("[OpsExtractionService] LLM 文档抽取失败: {}", e.getMessage());
             }
         }
-        // 仅演示模式允许关键词样例回退
-        if (properties.getOntology().isDemoEnabled() && demoFallback != null && !demoFallback.isEmpty()) {
-            String t = documentText;
-            if (t.contains("校园青春") || t.contains("套餐A") || t.contains("0元")) {
-                return new PackageExtractResult(demoFallback, "demo-fallback");
+        List<Map<String, Object>> regexPkgs = parsePackagesByRegex(documentText);
+        if (!regexPkgs.isEmpty()) {
+            return new PackageExtractResult(regexPkgs, "regex");
+        }
+        // 不再灌入校园等演示样例；生产/联调均按文档内容抽取
+        return new PackageExtractResult(List.of(), "none");
+    }
+
+    /**
+     * 按「套餐A/1/一：…」等段落切分，并用槽位正则填充字段。
+     */
+    private List<Map<String, Object>> parsePackagesByRegex(String documentText) {
+        if (documentText == null || documentText.isBlank()) {
+            return List.of();
+        }
+        Pattern split = Pattern.compile(
+                "(?:^|[\\n；;])\\s*(?:套餐\\s*[A-Za-z0-9一二三四五六七八九十]+|[A-Za-z]\\s*[、.．]|\\d+\\s*[、.．])\\s*[:：]?"
+        );
+        Matcher m = split.matcher(documentText);
+        List<Integer> starts = new ArrayList<>();
+        while (m.find()) {
+            starts.add(m.start());
+        }
+        List<String> segments = new ArrayList<>();
+        if (starts.isEmpty()) {
+            // 单段文档：有月费/套餐关键词时也尝试抽一条
+            if (containsAny(documentText, "月费", "套餐", "元", "GB", "流量")) {
+                segments.add(documentText.trim());
+            }
+        } else {
+            for (int i = 0; i < starts.size(); i++) {
+                int from = starts.get(i);
+                int to = i + 1 < starts.size() ? starts.get(i + 1) : documentText.length();
+                String seg = documentText.substring(from, to).replaceFirst("^[\\n；;]+", "").trim();
+                if (!seg.isBlank()) {
+                    segments.add(seg);
+                }
             }
         }
-        return new PackageExtractResult(List.of(), "none");
+        List<Map<String, Object>> pkgs = new ArrayList<>();
+        for (String seg : segments) {
+            Map<String, Object> slots = parseSlotsByRegex(seg);
+            if (slots.isEmpty()) {
+                continue;
+            }
+            slots.putIfAbsent("sourceExcerpt", seg.length() > 120 ? seg.substring(0, 120) + "…" : seg);
+            if (!slots.containsKey("offeringName")) {
+                Matcher nameInSeg = Pattern.compile("套餐\\s*([A-Za-z0-9一二三四五六七八九十]+)[：:]\\s*([^；;，,。\\n]{2,30})")
+                        .matcher(seg);
+                if (nameInSeg.find()) {
+                    slots.put("offeringName", nameInSeg.group(2).trim());
+                }
+            }
+            pkgs.add(slots);
+        }
+        return pkgs;
     }
 
     public Map<String, Object> parseSlotsByRegex(String text) {

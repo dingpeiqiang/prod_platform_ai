@@ -62,7 +62,8 @@ function launch(skill) {
     emit('open-online')
     return
   }
-  emit('launch-skill', { skill: 'ops', text: prompts[skill] })
+  // 生产：只预填示例，不自动发送
+  emit('launch-skill', { skill: 'ops', text: prompts[skill], autoSend: false })
 }
 </script>
 

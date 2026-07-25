@@ -48,7 +48,7 @@
             "name": "资费备案工作流",
             "config": {},
             "isDefault": true,
-            "description": "资费备案申请完整业务流程：解析输入 → 查询套餐 → 生成表单 → 表单校验"
+            "description": "新资费备案申请完整业务流程：解析输入 → 查询套餐 → 生成表单 → 表单校验"
           }
         ],
         "workflowCode": "tariff_filing_workflow",
@@ -65,6 +65,8 @@
         "家庭融合",
         "校园套餐",
         "对话配置",
+        "智聊配置",
+        "智聊·对话配置",
         "配置草稿"
       ],
       "priority": 12,
@@ -79,14 +81,17 @@
     },
     {
       "sceneCode": "offering_config_batch",
-      "sceneName": "智读·批量生成",
-      "description": "方案文档映射为多条商品配置草稿并批量合规",
+      "sceneName": "智读·文件配置",
+      "description": "按用户粘贴或上传的方案文档抽取套餐，映射为多条商品配置草稿并批量合规",
       "keywords": [
         "方案导入",
         "批量生成",
         "文档配置",
-        "校园迎新",
-        "智读"
+        "家庭融合方案",
+        "智读",
+        "智读配置",
+        "智读·文件配置",
+        "AI智读"
       ],
       "priority": 11,
       "isActive": true,
@@ -96,6 +101,28 @@
       "config": {
         "ontologyMvp": true,
         "capability": "batch_generate"
+      }
+    },
+    {
+      "sceneCode": "offering_config_compliance",
+      "sceneName": "智检·合规校验",
+      "description": "根据套餐信息做合规校验，支持已入库在架套餐与未入库配置草稿",
+      "keywords": [
+        "合规校验",
+        "智检",
+        "在架规则",
+        "是否可上架",
+        "校验当前配置",
+        "合规检查"
+      ],
+      "priority": 13,
+      "isActive": true,
+      "promptCode": "offering_config_prompt",
+      "type": "scene",
+      "formCode": "offering_config",
+      "config": {
+        "ontologyMvp": true,
+        "capability": "compliance_check"
       }
     },
     {
@@ -130,7 +157,6 @@
         "零元资费",
         "下架建议",
         "优胜劣汰",
-        "合规校验",
         "立项研判",
         "商品稽核"
       ],
@@ -144,5 +170,5 @@
       }
     }
   ],
-  "version": "4.1"
+  "version": "4.2"
 }

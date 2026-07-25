@@ -18,8 +18,9 @@ export async function chatConfigure(text, draft = null) {
   return post(`${BASE}/config/chat`, { text, draft }, { showLoading: false, loadingText: '本体推理中...' })
 }
 
-export async function checkCompliance(draft) {
-  return post(`${BASE}/config/compliance`, { draft }, { showLoading: false })
+export async function checkCompliance(draft, extras = {}) {
+  const body = { draft: draft || null, ...extras }
+  return post(`${BASE}/config/compliance`, body, { showLoading: false })
 }
 
 export async function batchFromDocument(documentText = '', packages = null) {

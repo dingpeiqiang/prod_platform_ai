@@ -365,7 +365,7 @@ export function buildBatchOntologyPreview(batch, chain) {
     conclusion,
     reasoningSteps: [
       { id: 'batch-1', label: '场景映射', detail: '文档要点映射业务场景' },
-      { id: 'batch-2', label: '批量生成', detail: `实例化 ${batch.total} 条配置草稿` },
+      { id: 'batch-2', label: '智读·文件配置', detail: `实例化 ${batch.total} 条配置草稿` },
       { id: 'batch-3', label: '合规筛查', detail: conclusion },
     ],
     steps: chain?.nodes || [],
@@ -383,8 +383,13 @@ export function buildBatchOntologyChain(batch) {
   const ent = (id, label, className, classCn, extra = {}) => ({
     id, label, className, classCn, ...extra,
   })
-  const doc = ent('doc', '校园迎新方案', 'Document', '方案文档')
-  const scn = ent('scn', '校园体验', 'BizScenario', '业务场景')
+  const firstDraft = items[0]?.draft || {}
+  const docLabel = firstDraft.offeringName
+    ? `方案·${firstDraft.offeringName}`
+    : `方案文档×${items.length}`
+  const scnLabel = firstDraft.bizScenario || batch.scenario || '业务场景'
+  const doc = ent('doc', docLabel, 'Document', '方案文档')
+  const scn = ent('scn', scnLabel, 'BizScenario', '业务场景')
   const hub = ent('batch', `草稿×${items.length}`, 'OfferingConfig', '商品配置', { hub: true })
 
   const relations = [

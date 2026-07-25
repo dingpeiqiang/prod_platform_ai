@@ -13,7 +13,7 @@
               ▶ 一键体验 · 智聊冲突拦截（约1分钟）
             </button>
             <button type="button" class="demo-launch-btn" @click="startGuidedDemo('file')">
-              ▶ 一键体验 · 智读批量（导入→修正→入库）
+              ▶ 一键体验 · 智读·文件配置（导入→修正→入库）
             </button>
           </div>
           <div v-else class="demo-launch-row">
@@ -318,6 +318,7 @@
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import ChatInput from './ChatInput.vue'
 import { getOpsDashboard } from '../services/ontologyMvpApi.js'
+import { ZHIDU_TEST_PROMPT } from '../data/zhiduTestDoc.js'
 
 const props = defineProps({
   assistantMode: { type: String, default: 'rd' }
@@ -359,8 +360,8 @@ const welcomeCardsTitle = computed(() =>
 
 const rdSkillScenarios = [
   { key: 'chat', title: '智聊·对话配置', desc: '说业务话，本体填字段、拦冲突', text: '给家庭用户做一个融合套餐，月费158，带500M宽带，全渠道销售' },
-  { key: 'file', title: '智读·批量生成', desc: '方案文档一键映射为多套合规配置', text: '帮我导入校园迎新方案' },
-  { key: 'query', title: 'AI智查', desc: '查询历史商品，快速复制配置', text: '查一下近30天大学生套餐配置' },
+  { key: 'file', title: '智读·文件配置', desc: '按你粘贴/上传的方案内容映射配置草稿', text: ZHIDU_TEST_PROMPT },
+  { key: 'query', title: '智查·历史复用', desc: '查询历史商品，快速复制配置', text: '查一下近30天大学生套餐配置' },
 ]
 
 const opsSkillScenarios = [
@@ -374,8 +375,9 @@ const skillScenarios = computed(() =>
 
 const launchSkill = (scenario) => {
   if (!scenario) return
-  emit('launch-skill', { skill: scenario.key, text: scenario.text })
-  setSkillAndPrefill(scenario.key, scenario.text)
+  // 生产：只预填，不自动发送
+  setSkillAndPrefill(scenario.key, scenario.text || '')
+  emit('launch-skill', { skill: scenario.key, text: scenario.text, autoSend: false })
 }
 
 watch(() => props.assistantMode, () => {
@@ -508,7 +510,8 @@ const dismissAlert = (id) => {
 
 const onAlertClick = (alert) => {
   if (!alert?.actionText) return
-  emit('launch-skill', { skill: 'ops', text: alert.actionText })
+  // 生产：只预填，不自动发送
+  emit('launch-skill', { skill: 'ops', text: alert.actionText, autoSend: false })
   setSkillAndPrefill('ops', alert.actionText)
 }
 
@@ -548,8 +551,9 @@ const handleSuggestion = (item) => {
 const handleWelcomeCard = (type) => {
   const scenario = skillScenarios.value.find(item => item.key === type)
   if (!scenario) return
-  emit('launch-skill', { skill: scenario.key, text: scenario.text })
+  // 生产：只预填，不自动发送
   setSkillAndPrefill(type, scenario.text || '')
+  emit('launch-skill', { skill: scenario.key, text: scenario.text, autoSend: false })
 }
 
 const handleShortcut = (sc) => {

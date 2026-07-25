@@ -3,7 +3,6 @@ package com.sitech.prodai.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sitech.prodai.config.ProdAiProperties;
-import com.sitech.prodai.service.ops.DemoOpsFixture;
 import com.sitech.prodai.service.ops.OpsExtractionService;
 import com.sitech.prodai.service.ops.OpsProductGraphLoader;
 import jakarta.annotation.PostConstruct;
@@ -17,7 +16,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
@@ -28,7 +26,7 @@ import java.util.stream.Collectors;
  * 本体平台 + 推理引擎（对齐 Python OntologyMvpService）。
  * 配置规则 R-C01~C08 / R-D01~D05；运营规则 R-A01~A05 / R-B01~B05。
  * <p>规则阈值与启用开关统一读 {@link OpsRulesService}（ops_rules.json）。
- * 演示造数仅通过可选 {@link DemoOpsFixture}（demo-enabled=true 时存在）。
+ * 事实数据统一来自 {@link OpsProductGraphLoader}；演示与生产仅差 graph-path / data-source 配置。
  */
 @Service
 public class OntologyMvpService {
@@ -54,7 +52,6 @@ public class OntologyMvpService {
     private final OpsRulesService opsRules;
     private final OpsProductGraphLoader graphLoader;
     private final OpsExtractionService extractionService;
-    private final Optional<DemoOpsFixture> demoFixture;
 
     private Map<String, Object> graphCache;
     private String graphSourceId = "empty";
@@ -65,15 +62,13 @@ public class OntologyMvpService {
                               OpsSwrlReasoner opsSwrlReasoner,
                               OpsRulesService opsRules,
                               OpsProductGraphLoader graphLoader,
-                              OpsExtractionService extractionService,
-                              Optional<DemoOpsFixture> demoFixture) {
+                              OpsExtractionService extractionService) {
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.opsSwrlReasoner = opsSwrlReasoner;
         this.opsRules = opsRules;
         this.graphLoader = graphLoader;
         this.extractionService = extractionService;
-        this.demoFixture = demoFixture == null ? Optional.empty() : demoFixture;
     }
 
     @PostConstruct
@@ -111,14 +106,8 @@ public class OntologyMvpService {
         OpsProductGraphLoader.LoadedGraph loaded = graphLoader.load();
         Map<String, Object> raw = new LinkedHashMap<>(loaded.graph());
         graphSourceId = loaded.sourceId();
-        List<Map<String, Object>> base = castListOfMaps(raw.get("shelfOfferings"));
-        // 仅演示 bean 存在时按 samplePlan 程序造数；生产只使用图中真实在架清单
-        if (demoFixture.isPresent()) {
-            Map<String, Object> plan = castMap(raw.get("samplePlan"));
-            raw.put("shelfOfferings", demoFixture.get().expandShelfOfferings(base, plan));
-        } else {
-            raw.put("shelfOfferings", base);
-        }
+        // 事实图原样使用；演示扩容写在 mock_graph.json，不在代码造数
+        raw.put("shelfOfferings", castListOfMaps(raw.get("shelfOfferings")));
         graphCache = raw;
         return graphCache;
     }
@@ -139,18 +128,18 @@ public class OntologyMvpService {
         Map<String, Object> opsGraph = castMap(graph.get("opsGraph"));
         int anomalyCount = opsGraph == null ? 0 : opsGraph.size();
 
-        Set<String> previewCats = Set.of("zero_fee", "low_eff", "abnormal_discount", "whitelist");
-        Set<String> demoPreviewIds = new LinkedHashSet<>(opsRules.demoPreviewOfferingIds());
+        Set<String> previewCats = Set.of("zero_fee", "low_eff", "abnormal_discount", "whitelist", "threshold_demo");
+        Set<String> previewIds = new LinkedHashSet<>(opsRules.previewOfferingIds());
+        int previewLimit = opsRules.previewLimit(20);
         List<Map<String, Object>> shelfPreview = offerings.stream()
                 .filter(o -> {
                     String category = str(o.get("category"));
                     if (previewCats.contains(category)) {
                         return true;
                     }
-                    // 演示图保留配置中的样例主套餐预览；非演示取前若干条即可
-                    return isDemoEnabled() && demoPreviewIds.contains(str(o.get("offeringId")));
+                    return previewIds.contains(str(o.get("offeringId")));
                 })
-                .limit(isDemoEnabled() ? 40 : 20)
+                .limit(previewLimit)
                 .map(o -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("offeringId", o.get("offeringId"));
@@ -422,6 +411,149 @@ public class OntologyMvpService {
         return body;
     }
 
+    /**
+     * 按套餐信息做合规校验，支持已入库（在架）与未入库（草稿）两类来源。
+     * <ul>
+     *   <li>文案含「当前配置/当前草稿/未入库」且草稿有实质字段 → 校验未入库草稿</li>
+     *   <li>能解析到在架编码/名称 → 校验已入库套餐</li>
+     *   <li>否则若草稿有实质字段 → 校验未入库草稿</li>
+     * </ul>
+     */
+    public Map<String, Object> checkComplianceSmart(String offeringId, String text, Map<String, Object> draftInput) {
+        Map<String, Object> draft = draftInput == null ? Map.of() : draftInput;
+        String q = text == null ? "" : text.trim();
+        boolean preferDraft = q.matches("(?s).*(当前配置|当前草稿|未入库|校验当前).*")
+                || "校验当前配置是否符合在架规则".equals(q);
+        boolean forceShelf = q.matches("(?s).*(已入库|在架商品|在架套餐).*");
+
+        String oid = resolveOfferingId(offeringId, q);
+        Map<String, Object> targetDraft;
+        String source;
+        String sourceLabel;
+        String resolvedId = null;
+        String resolvedName = null;
+
+        if (!forceShelf && preferDraft && hasDraftContent(draft)) {
+            targetDraft = new LinkedHashMap<>(draft);
+            source = "draft";
+            sourceLabel = "未入库草稿";
+            resolvedName = str(firstNonEmpty(draft.get("offeringName"), "当前草稿"));
+        } else if (oid != null) {
+            Map<String, Object> shelf = findShelfOffering(oid);
+            if (shelf == null) {
+                Map<String, Object> fail = new LinkedHashMap<>();
+                fail.put("success", false);
+                fail.put("message", "已解析到编码 " + oid + "，但图谱中无对应在架套餐");
+                fail.put("offeringId", oid);
+                fail.put("query", q);
+                return fail;
+            }
+            targetDraft = shelfOfferingToDraft(shelf);
+            source = "shelf";
+            sourceLabel = "已入库（在架）";
+            resolvedId = oid;
+            resolvedName = str(shelf.get("offeringName"));
+        } else if (hasDraftContent(draft)) {
+            targetDraft = new LinkedHashMap<>(draft);
+            source = "draft";
+            sourceLabel = "未入库草稿";
+            resolvedName = str(firstNonEmpty(draft.get("offeringName"), "当前草稿"));
+        } else {
+            Map<String, Object> fail = new LinkedHashMap<>();
+            fail.put("success", false);
+            fail.put("message", empty(q)
+                    ? "请提供套餐名称/编码，或先通过智聊/智读生成未入库草稿后再校验"
+                    : "未能解析套餐，也未找到可校验的未入库草稿。可试：「校验校园体验流量包0元是否符合在架规则」，或先配置后再说「校验当前配置」");
+            fail.put("query", q);
+            fail.put("hintExamples", List.of(
+                    "校验校园体验流量包0元是否符合在架规则",
+                    "校验家庭融合畅享128是否符合在架规则",
+                    "校验当前配置是否符合在架规则"
+            ));
+            return fail;
+        }
+
+        Map<String, Object> compliance = checkCompliance(targetDraft);
+        Map<String, Object> body = new LinkedHashMap<>(compliance);
+        body.put("success", true);
+        body.put("source", source);
+        body.put("sourceLabel", sourceLabel);
+        body.put("offeringId", resolvedId);
+        body.put("offeringName", resolvedName);
+        body.put("draft", targetDraft);
+        body.put("query", q.isEmpty() ? null : q);
+        body.put("intent", "compliance_check");
+        return body;
+    }
+
+    private boolean hasDraftContent(Map<String, Object> draft) {
+        if (draft == null || draft.isEmpty()) {
+            return false;
+        }
+        return !empty(draft.get("offeringName"))
+                || !empty(draft.get("monthlyFee"))
+                || !empty(draft.get("bizScenario"))
+                || !empty(draft.get("targetUser"))
+                || !empty(draft.get("channelScope"))
+                || !empty(draft.get("offeringType"))
+                || !empty(draft.get("includeBroadband"))
+                || !empty(draft.get("bindExistingMainPkg"));
+    }
+
+    private Map<String, Object> findShelfOffering(String offeringId) {
+        if (empty(offeringId)) {
+            return null;
+        }
+        return castListOfMaps(loadGraph().get("shelfOfferings")).stream()
+                .filter(o -> offeringId.equals(str(o.get("offeringId"))))
+                .findFirst()
+                .orElse(null);
+    }
+
+    /** 将已入库在架套餐映射为合规校验所需的配置字段。 */
+    private Map<String, Object> shelfOfferingToDraft(Map<String, Object> shelf) {
+        Map<String, Object> draft = new LinkedHashMap<>();
+        draft.put("offeringId", shelf.get("offeringId"));
+        draft.put("offeringName", shelf.get("offeringName"));
+        draft.put("offeringType", firstNonEmpty(shelf.get("offeringType"), "main_pkg"));
+        draft.put("monthlyFee", shelf.get("monthlyFee"));
+        draft.put("oneTimeFee", firstNonEmpty(shelf.get("oneTimeFee"), 0));
+        draft.put("mutexGroup", firstNonEmpty(shelf.get("mutexGroup"), "MAIN_PKG"));
+        draft.put("hasContract", shelf.get("hasContract"));
+        draft.put("discountPercent", shelf.get("discountPercent"));
+        draft.put("repeatable", shelf.get("repeatable"));
+        if (!empty(shelf.get("dependOn"))) {
+            draft.put("dependOn", shelf.get("dependOn"));
+        }
+        if (!empty(shelf.get("bindExistingMainPkg"))) {
+            draft.put("bindExistingMainPkg", shelf.get("bindExistingMainPkg"));
+        }
+
+        String whitelistTag = str(shelf.get("whitelistTag"));
+        String bizScenario = str(firstNonEmpty(shelf.get("bizScenario"), whitelistTag));
+        if (bizScenario.isEmpty() && "whitelist".equals(str(shelf.get("category")))) {
+            bizScenario = "权益赠送";
+        }
+        draft.put("bizScenario", bizScenario);
+
+        String targetUser = str(firstNonEmpty(shelf.get("targetUser"), shelf.get("targetCustomerGroup")));
+        if (targetUser.isEmpty()) {
+            String name = str(shelf.get("offeringName"));
+            if (name.contains("家庭")) {
+                targetUser = "家庭";
+            } else if (name.contains("校园")) {
+                targetUser = "校园";
+            } else {
+                targetUser = "个人";
+            }
+        }
+        draft.put("targetUser", targetUser);
+        draft.put("channelScope", firstNonEmpty(shelf.get("channelScope"), "全渠道"));
+        draft.put("state", shelf.get("state"));
+        draft.put("fillSources", Map.of("_source", "shelf"));
+        return draft;
+    }
+
     public Map<String, Object> chatConfigure(String text, Map<String, Object> draft) {
         OpsExtractionService.SlotExtractResult extracted = extractionService.extractSlots(text == null ? "" : text);
         Map<String, Object> slots = extracted.slots();
@@ -455,30 +587,16 @@ public class OntologyMvpService {
         String extractEngine = "provided";
         if (pkgs == null || pkgs.isEmpty()) {
             pkgs = List.of();
-            List<Map<String, Object>> demoFallback = demoFixture
-                    .map(DemoOpsFixture::defaultCampusPackages)
-                    .orElse(List.of());
             OpsExtractionService.PackageExtractResult extracted =
-                    extractionService.extractPackages(documentText, demoFallback);
+                    extractionService.extractPackages(documentText, List.of());
             pkgs = extracted.packages();
             extractEngine = extracted.engine();
-            // 演示且无文档命中时，仍可用默认校园样例（与旧行为对齐）
-            if (pkgs.isEmpty() && demoFixture.isPresent()
-                    && (documentText == null || documentText.isBlank())) {
-                pkgs = demoFixture.get().defaultCampusPackages();
-                extractEngine = "demo-default";
-            }
         }
 
         List<Map<String, Object>> items = new ArrayList<>();
         for (int idx = 0; idx < pkgs.size(); idx++) {
             Map<String, Object> slots = deepCopy(pkgs.get(idx));
-            if (empty(slots.get("bizScenario"))) {
-                String scenario = opsRules.configDefaultStr("batchBizScenario", "");
-                if (!scenario.isBlank()) {
-                    slots.put("bizScenario", scenario);
-                }
-            }
+            // 业务场景以文档抽取结果为准，不再默认灌入校园体验
             Map<String, Object> infer = inferFields(slots, null);
             @SuppressWarnings("unchecked")
             Map<String, Object> draft = (Map<String, Object>) infer.get("draft");
@@ -516,7 +634,20 @@ public class OntologyMvpService {
             return row;
         }).collect(Collectors.toList());
 
-        Map<String, Object> campus = castMap(castMap(graph.get("bizScenarios")).get("校园体验"));
+        String scenarioId = null;
+        if (!items.isEmpty()) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> firstDraft = (Map<String, Object>) items.get(0).get("draft");
+            String bizScenario = firstDraft == null ? null : str(firstDraft.get("bizScenario"));
+            if (bizScenario != null && !bizScenario.isBlank()) {
+                Map<String, Object> scenarioMeta = castMap(castMap(graph.get("bizScenarios")).get(bizScenario));
+                scenarioId = str(scenarioMeta.get("scenarioId"));
+                if (scenarioId == null || scenarioId.isBlank()) {
+                    scenarioId = bizScenario;
+                }
+            }
+        }
+
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("success", true);
         body.put("total", items.size());
@@ -527,7 +658,7 @@ public class OntologyMvpService {
                 .filter(id -> opsRules.isRuleEnabled(opsRules.batchRule(id)))
                 .toList());
         body.put("confirmableDrafts", confirmable);
-        body.put("scenario", campus.get("scenarioId"));
+        body.put("scenario", scenarioId);
         body.put("extractEngine", extractEngine);
         return body;
     }
@@ -764,8 +895,6 @@ public class OntologyMvpService {
                 Object trend = c.get("trend");
                 if (trend != null) {
                     drill.put("trend", trend);
-                } else if (demoFixture.isPresent()) {
-                    drill.put("trend", demoFixture.get().fakeChannelTrend(orderDelta));
                 } else {
                     drill.put("trend", List.of());
                 }
@@ -838,9 +967,6 @@ public class OntologyMvpService {
                         Object trend = ch.get("trend");
                         if (trend != null) {
                             drill.put("trend", trend);
-                        } else if (demoFixture.isPresent()) {
-                            // 演示缺趋势时补假曲线；生产无 DemoOpsFixture，不造数
-                            drill.put("trend", demoFixture.get().fakeChannelTrend(orderDelta));
                         } else {
                             drill.put("trend", List.of());
                         }

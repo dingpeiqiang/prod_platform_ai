@@ -236,9 +236,9 @@ export const scene2Products = [
 ]
 
 export const SKILL_CONFIG = {
-  query: { icon: 'fa-magnifying-glass', label: 'AI智查', placeholder: '请输入商品名称、编码或关键词...' },
-  file: { icon: 'fa-file-import', label: 'AI方案导入', placeholder: '或在此输入方案描述...' },
-  chat: { icon: 'fa-comments', label: '对话式配置', placeholder: '请输入您的配置需求，如：我要一个大学生套餐' },
+  query: { icon: 'fa-magnifying-glass', label: '智查·历史复用', placeholder: '请输入商品名称、编码或关键词...' },
+  file: { icon: 'fa-file-import', label: '智读·文件配置', placeholder: '或在此输入方案描述...' },
+  chat: { icon: 'fa-comments', label: '智聊·对话配置', placeholder: '请输入您的配置需求，如：我要一个大学生套餐' },
 }
 
 export function createEmptyFormData() {
@@ -367,11 +367,10 @@ export function draftToFormData(draft = {}) {
 export function createOfferingFormSchema(draft = {}) {
   const d = { ...draft }
   const fill = d.fillSources || {}
-  const mark = (code) => (fill[code] ? ` [${fill[code]}]` : '')
+  // 仅挂 fillSource 供边框着色，不把来源码拼进标签（避免表单显示异常）
   const withSrc = (field) => ({
     ...field,
     fillSource: fill[field.fieldCode] || '',
-    fieldName: field.fieldName + mark(field.fieldCode),
   })
   return {
     formName: '商品配置草稿（本体）',

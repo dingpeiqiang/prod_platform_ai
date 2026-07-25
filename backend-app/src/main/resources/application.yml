@@ -5,7 +5,22 @@ spring:
   application:
     name: prod-platform-ai
   profiles:
-    active: dev
+    # 上线默认 prod（demo 关闭）；本地演示改 active:dev 或 --spring.profiles.active=dev
+    active: prod
+  # Spring AI OpenAI 自动配置要求 api-key 非空（含未使用的 Speech 模型）
+  ai:
+    openai:
+      api-key: ${LLM_API_KEY:sk-placeholder}
+      base-url: ${LLM_BASE_URL:https://api.openai.com}
+      chat:
+        options:
+          model: ${LLM_MODEL:gpt-4o-mini}
+          temperature: 0.5
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
   jackson:
     default-property-inclusion: non_null
     # 保持与 Python to_dict() 一致的 camelCase 输出
@@ -35,11 +50,13 @@ spring:
 
 prodai:
   ontology:
-    # 生产默认关闭演示；本地开发见 application-dev.yml；上线用 --spring.profiles.active=prod
+    # 生产默认关闭演示数据护栏；本地演示见 application-dev.yml / application-demo.yml
+    # 演示与生产共用同一套业务代码，仅 graph-path / data-source 不同
     demo-enabled: false
     # classpath | http | empty
     data-source: ${ONTOLOGY_DATA_SOURCE:classpath}
     graph-path: ${ONTOLOGY_GRAPH_PATH:}
+    ops-graph-path: ${ONTOLOGY_OPS_GRAPH_PATH:}
     product-center-base-url: ${PRODUCT_CENTER_BASE_URL:}
     product-center-timeout-ms: ${PRODUCT_CENTER_TIMEOUT_MS:5000}
     llm-extract-enabled: ${ONTOLOGY_LLM_EXTRACT:true}
@@ -47,10 +64,16 @@ prodai:
     product-ops-owl-path: classpath:ontology/product-ops.ttl
     swrl-enabled: true
     base-iri: ${ONTOLOGY_BASE_IRI:http://example.org/}
-    rdf4j:
-      ttl-path: classpath:ontology/sample-ontology.ttl
+    # 空=不灌 RDF；演示 profile 指向 rdf_seed.json
+    rdf-seed-path: ${ONTOLOGY_RDF_SEED_PATH:}
+    ttl-path: ${ONTOLOGY_TTL_PATH:}
+  kb:
+    seed-path: ${KB_SEED_PATH:}
+  mcp:
+    seed-path: ${MCP_SEED_PATH:}
   llm:
     enabled: ${LLM_ENABLED:true}
+    function-calling-enabled: ${LLM_FC_ENABLED:true}
 
 management:
   endpoints:

@@ -1,11 +1,19 @@
-# 显式演示 profile：spring.profiles.active=demo 或 spring.profiles.include=demo
+# 演示 profile：同一套代码，仅切换数据配置
+# spring.profiles.active=demo 或 include=demo
 prodai:
   ontology:
     demo-enabled: true
     data-source: classpath
     graph-path: classpath:ontology/mock_graph.json
+    ops-graph-path: classpath:ontology/mock_graph.json
+    rdf-seed-path: classpath:ontology/rdf_seed.json
+    ttl-path: classpath:ontology/sample-ontology.ttl
     rules-path: classpath:ontology/ops_rules.json
     product-ops-owl-path: classpath:ontology/product-ops.ttl
     swrl-enabled: true
     llm-extract-enabled: true
     base-iri: http://example.org/
+  kb:
+    seed-path: classpath:ontology/kb_seed.json
+  mcp:
+    seed-path: classpath:ontology/mcp_tools_seed.json

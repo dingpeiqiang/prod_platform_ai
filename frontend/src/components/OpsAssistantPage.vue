@@ -188,24 +188,16 @@ const onSend = async (payload) => {
   sendMessage({ text, scene })
 }
 
-const onSuggest = async (text) => {
+const onSuggest = (text) => {
+  // 生产：场景卡只填入输入框，由用户确认后发送
   if (!text || streaming.value) return
-  const scenario = resolveOpsScenario(text, config.defaultScene)
-  if (scenario === 'root-cause' || scenario === 'risk-audit') {
-    await runOpsScenario(text, scenario)
-    return
-  }
-  sendMessage({ text, scene: config.defaultScene })
+  inputText.value = text
 }
 
-const onShortcut = async (item) => {
+const onShortcut = (item) => {
+  // 生产：快捷场景只预填示例，不自动发送
   if (!item?.text || streaming.value) return
-  const scenario = resolveOpsScenario(item.text, item.scene)
-  if (scenario === 'root-cause' || scenario === 'risk-audit') {
-    await runOpsScenario(item.text, scenario)
-    return
-  }
-  sendMessage({ text: item.text, scene: item.scene })
+  inputText.value = item.text
 }
 
 const onSwitchSession = (sessionId) => {

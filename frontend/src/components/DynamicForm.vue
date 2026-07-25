@@ -12,18 +12,13 @@
         :class="fieldFillClass(field)"
       >
         <template v-if="!field.hidden">
-          <div class="field-wrap">
-            <BaseField
-              :field="field"
-              :model-value="localFormData[field.fieldCode]"
-              :disabled="field.disabled || isFormDisabled()"
-              @update:model-value="(value) => handleFieldValueUpdate(field.fieldCode, value)"
-              @field-change="handleFieldChange"
-            />
-            <span v-if="field.fillSource" class="fill-tag" :class="`src-${field.fillSource}`">
-              {{ field.fillSource }}
-            </span>
-          </div>
+          <BaseField
+            :field="field"
+            :model-value="localFormData[field.fieldCode]"
+            :disabled="field.disabled || isFormDisabled()"
+            @update:model-value="(value) => handleFieldValueUpdate(field.fieldCode, value)"
+            @field-change="handleFieldChange"
+          />
         </template>
       </el-form-item>
       
@@ -421,33 +416,6 @@ defineExpose({ doSubmit })
 
 .dynamic-form :deep(.el-form-item.is-error .el-input__wrapper) {
   box-shadow: 0 0 0 1px var(--color-error-500) inset !important;
-}
-
-.field-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: 100%;
-}
-
-.fill-tag {
-  align-self: flex-start;
-  font-size: 11px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: #e5e7eb;
-  color: #4b5563;
-}
-
-.fill-tag.src-scenario_default,
-.fill-tag.src-template {
-  background: #d1fae5;
-  color: #047857;
-}
-
-.fill-tag.src-user_said {
-  background: #dbeafe;
-  color: #1d4ed8;
 }
 
 .dynamic-form :deep(.field-inferred .el-input__wrapper),

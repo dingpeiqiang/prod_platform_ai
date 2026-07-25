@@ -1,13 +1,15 @@
 package com.sitech.prodai.intent.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sitech.prodai.intent.SseStreamSupport;
+import com.sitech.prodai.intent.SseUtils;
 import com.sitech.prodai.service.LlmService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
@@ -15,28 +17,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Function Calling 编排服务 —— 协调 LLM 与工具调用。
  *
- * <p>处理流程：
- * <ol>
- *   <li>构建包含工具定义的系统提示词</li>
- *   <li>调用 LLM 获取响应</li>
- *   <li>解析响应中的工具调用请求</li>
- *   <li>执行工具并获取结果</li>
- *   <li>将工具结果反馈给 LLM 获取最终回复</li>
- *   <li>支持多轮工具调用（最多 5 轮）</li>
- * </ol>
- *
  * <p>工具调用格式（LLM 输出）：
  * <pre>
  * [TOOL_CALL] ontology_query {"question": "查询所有5G套餐"}
- * </pre>
- *
- * <p>工具调用格式（执行结果反馈）：
- * <pre>
- * [TOOL_RESULT] ontology_query {"success": true, "results": [...]}
  * </pre>
  */
 @Service
@@ -46,6 +35,12 @@ public class FunctionCallingService {
     private static final Logger log = LoggerFactory.getLogger(FunctionCallingService.class);
     private static final ObjectMapper mapper = new ObjectMapper();
     private static final int MAX_TOOL_ROUNDS = 5;
+
+    /** 匹配 [TOOL_CALL] name {json...}，JSON 可跨行。 */
+    private static final Pattern TOOL_CALL_PATTERN = Pattern.compile(
+            "\\[TOOL_CALL]\\s+(\\w+)\\s+(\\{[\\s\\S]*?})(?=\\s*(?:\\[TOOL_CALL]|\\[TOOL_RESULT]|$))",
+            Pattern.MULTILINE
+    );
 
     private final LlmService llmService;
     private final ToolRegistry toolRegistry;
@@ -57,12 +52,38 @@ public class FunctionCallingService {
 
     /**
      * 带 Function Calling 的同步调用。
-     *
-     * @param systemPrompt 系统提示词
-     * @param userMessage  用户消息
-     * @return 最终回复文本
      */
     public String completeWithTools(String systemPrompt, String userMessage) {
+        ToolLoopResult result = runToolLoop(systemPrompt, userMessage);
+        return result.finalReply();
+    }
+
+    /**
+     * 带 Function Calling 的流式调用：thinking（含工具步骤）→ text 分片。
+     */
+    public Flux<Map<String, Object>> streamWithTools(String systemPrompt, String userMessage) {
+        return Mono.fromCallable(() -> runToolLoop(systemPrompt, userMessage))
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMapMany(result -> {
+                    List<Map<String, Object>> events = new ArrayList<>(result.events());
+                    events.addAll(SseStreamSupport.chunkedTextEvents(result.finalReply()));
+                    return Flux.fromIterable(events);
+                })
+                .onErrorResume(error -> {
+                    log.error("[FunctionCallingService] 流式工具调用失败", error);
+                    return Flux.fromIterable(List.of(
+                            SseUtils.thinking("工具调用失败，尝试直接回复..."),
+                            SseUtils.textStart(),
+                            SseUtils.text("抱歉，处理时遇到问题：" + error.getMessage()),
+                            SseUtils.textEnd()
+                    ));
+                });
+    }
+
+    private ToolLoopResult runToolLoop(String systemPrompt, String userMessage) {
+        List<Map<String, Object>> events = new ArrayList<>();
+        events.add(SseUtils.thinking("正在分析是否需要调用工具..."));
+
         List<Map<String, String>> conversation = new ArrayList<>();
         String enhancedSystemPrompt = buildSystemPromptWithTools(systemPrompt);
         String currentReply = llmService.completeMessages(enhancedSystemPrompt, conversation, userMessage);
@@ -76,66 +97,60 @@ public class FunctionCallingService {
 
             log.info("[FunctionCallingService] 第 {} 轮工具调用，共 {} 个工具", round + 1, toolCalls.size());
 
-            // 执行工具并构建结果消息
             StringBuilder toolResults = new StringBuilder();
             for (ToolCall toolCall : toolCalls) {
+                events.add(SseUtils.thinkingRich(
+                        "调用工具: " + toolCall.name(),
+                        Map.of(
+                                "phase", "tool_call",
+                                "tool", toolCall.name(),
+                                "round", round + 1
+                        ),
+                        -1,
+                        summarizeArgs(toolCall.args())
+                ));
+
                 Optional<String> result = toolRegistry.execute(toolCall.name(), toolCall.args());
                 String resultStr = result.orElse("{\"error\": \"tool_not_found\"}");
-                toolResults.append("[TOOL_RESULT] ").append(toolCall.name()).append(" ").append(resultStr).append("\n");
+                toolResults.append("[TOOL_RESULT] ")
+                        .append(toolCall.name())
+                        .append(" ")
+                        .append(resultStr)
+                        .append("\n");
+
+                events.add(SseUtils.thinkingRich(
+                        "工具 " + toolCall.name() + " 执行完成",
+                        Map.of(
+                                "phase", "tool_result",
+                                "tool", toolCall.name(),
+                                "round", round + 1
+                        ),
+                        0,
+                        truncate(resultStr, 200)
+                ));
             }
 
-            // 将 LLM 回复和工具结果添加到对话历史
             conversation.add(Map.of("role", "assistant", "content", currentReply));
             conversation.add(Map.of("role", "user", "content", toolResults.toString()));
-
-            // 继续对话
-            currentReply = llmService.completeMessages(enhancedSystemPrompt, conversation, "");
+            currentReply = llmService.completeMessages(enhancedSystemPrompt, conversation, "请基于工具结果给出最终回答，不要再输出 [TOOL_CALL]。");
             round++;
         }
 
-        return currentReply;
+        String finalReply = stripToolCallArtifacts(currentReply);
+        if (finalReply.isBlank()) {
+            finalReply = "已完成处理，但未能生成有效回复。";
+        }
+        return new ToolLoopResult(events, finalReply);
     }
 
-    /**
-     * 带 Function Calling 的流式调用。
-     *
-     * @param systemPrompt 系统提示词
-     * @param userMessage  用户消息
-     * @return SSE 事件流
-     */
-    public Flux<Map<String, Object>> streamWithTools(String systemPrompt, String userMessage) {
-        List<Map<String, String>> conversation = new ArrayList<>();
-        String enhancedSystemPrompt = buildSystemPromptWithTools(systemPrompt);
-
-        return Flux.defer(() -> {
-            // 第一次调用
-            Flux<String> stream = llmService.streamWithMessages(enhancedSystemPrompt, conversation, userMessage);
-
-            return stream
-                    .doOnNext(chunk -> {
-                        // 检查是否包含工具调用
-                        // 注意：流式输出中工具调用可能不完整，需要在 done 事件后处理
-                    })
-                    .map(chunk -> {
-                        Map<String, Object> event = new LinkedHashMap<>();
-                        event.put("type", "text");
-                        event.put("content", chunk);
-                        return event;
-                    });
-        });
-    }
-
-    /**
-     * 构建包含工具定义的系统提示词。
-     */
     private String buildSystemPromptWithTools(String basePrompt) {
         List<Map<String, Object>> toolDefs = toolRegistry.getAllToolDefinitions();
         if (toolDefs.isEmpty()) {
-            return basePrompt;
+            return basePrompt != null ? basePrompt : "";
         }
 
         StringBuilder sb = new StringBuilder();
-        sb.append(basePrompt);
+        sb.append(basePrompt != null ? basePrompt : "");
         sb.append("\n\n## 可用工具\n\n");
         sb.append("你可以调用以下工具来获取数据。当需要查询数据或执行操作时，请使用工具调用格式：\n\n");
         sb.append("```\n[TOOL_CALL] <tool_name> <json_args>\n```\n\n");
@@ -166,42 +181,55 @@ public class FunctionCallingService {
         }
 
         sb.append("\n注意：\n");
-        sb.append("1. 每次只能调用一个工具\n");
-        sb.append("2. 工具调用结果会自动反馈给你，请基于结果继续回答\n");
-        sb.append("3. 如果不需要工具，请直接回答，不要输出工具调用格式\n");
+        sb.append("1. 需要数据时输出 [TOOL_CALL]，不要编造业务数据\n");
+        sb.append("2. 工具结果会反馈给你，请基于结果回答用户\n");
+        sb.append("3. 若不需要工具，请直接回答，不要输出工具调用格式\n");
+        sb.append("4. 最终回答中不要包含 [TOOL_CALL] 或 [TOOL_RESULT]\n");
 
         return sb.toString();
     }
 
-    /**
-     * 解析 LLM 响应中的工具调用。
-     *
-     * <p>格式：[TOOL_CALL] tool_name {"arg1": "value1", ...}
-     */
-    private List<ToolCall> parseToolCalls(String response) {
+    List<ToolCall> parseToolCalls(String response) {
         List<ToolCall> toolCalls = new ArrayList<>();
         if (response == null || response.isBlank()) {
             return toolCalls;
         }
 
-        String[] lines = response.split("\n");
-        for (String line : lines) {
-            line = line.trim();
-            if (line.startsWith("[TOOL_CALL]")) {
+        String normalized = response.replace("```", "");
+        Matcher matcher = TOOL_CALL_PATTERN.matcher(normalized);
+        while (matcher.find()) {
+            String toolName = matcher.group(1).trim();
+            String argsJson = matcher.group(2).trim();
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> args = mapper.readValue(argsJson, Map.class);
+                toolCalls.add(new ToolCall(toolName, args));
+                log.debug("[FunctionCallingService] 解析到工具调用: {} args={}", toolName, args);
+            } catch (Exception e) {
+                log.warn("[FunctionCallingService] 工具调用参数解析失败: {} error={}", argsJson, e.getMessage());
+            }
+        }
+
+        // 回退：逐行解析单行 JSON
+        if (toolCalls.isEmpty()) {
+            for (String line : normalized.split("\n")) {
+                line = line.trim();
+                if (!line.startsWith("[TOOL_CALL]")) {
+                    continue;
+                }
                 String remainder = line.substring("[TOOL_CALL]".length()).trim();
                 int spaceIdx = remainder.indexOf(' ');
-                if (spaceIdx > 0) {
-                    String toolName = remainder.substring(0, spaceIdx).trim();
-                    String argsJson = remainder.substring(spaceIdx + 1).trim();
-
-                    try {
-                        @SuppressWarnings("unchecked")
-                        Map<String, Object> args = mapper.readValue(argsJson, Map.class);
-                        toolCalls.add(new ToolCall(toolName, args));
-                        log.debug("[FunctionCallingService] 解析到工具调用: {} args={}", toolName, args);
-                    } catch (Exception e) {
-                        log.warn("[FunctionCallingService] 工具调用参数解析失败: {} error={}", argsJson, e.getMessage());
-                    }
+                if (spaceIdx <= 0) {
+                    continue;
+                }
+                String toolName = remainder.substring(0, spaceIdx).trim();
+                String argsJson = remainder.substring(spaceIdx + 1).trim();
+                try {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> args = mapper.readValue(argsJson, Map.class);
+                    toolCalls.add(new ToolCall(toolName, args));
+                } catch (Exception e) {
+                    log.warn("[FunctionCallingService] 单行工具调用解析失败: {} error={}", argsJson, e.getMessage());
                 }
             }
         }
@@ -209,9 +237,42 @@ public class FunctionCallingService {
         return toolCalls;
     }
 
-    /**
-     * 工具调用记录。
-     */
-    private record ToolCall(String name, Map<String, Object> args) {
+    static String stripToolCallArtifacts(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String line : text.split("\n")) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("[TOOL_CALL]") || trimmed.startsWith("[TOOL_RESULT]")) {
+                continue;
+            }
+            sb.append(line).append('\n');
+        }
+        return sb.toString().trim();
+    }
+
+    private static String summarizeArgs(Map<String, Object> args) {
+        if (args == null || args.isEmpty()) {
+            return "";
+        }
+        try {
+            return truncate(mapper.writeValueAsString(args), 160);
+        } catch (Exception e) {
+            return args.toString();
+        }
+    }
+
+    private static String truncate(String s, int max) {
+        if (s == null) {
+            return "";
+        }
+        return s.length() <= max ? s : s.substring(0, max) + "...";
+    }
+
+    private record ToolLoopResult(List<Map<String, Object>> events, String finalReply) {
+    }
+
+    record ToolCall(String name, Map<String, Object> args) {
     }
 }

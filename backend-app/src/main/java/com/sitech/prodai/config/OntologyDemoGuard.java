@@ -11,7 +11,8 @@ import java.util.Arrays;
 import java.util.Locale;
 
 /**
- * 生产护栏：prod profile 禁止 demo；非 demo 禁止 mock_graph 路径。
+ * 数据护栏：prod profile 禁止 demo-enabled；非演示禁止加载 mock_graph 路径。
+ * 业务逻辑与演示/生产无关——仅 graph-path / data-source 不同。
  */
 @Component
 public class OntologyDemoGuard implements ApplicationRunner {

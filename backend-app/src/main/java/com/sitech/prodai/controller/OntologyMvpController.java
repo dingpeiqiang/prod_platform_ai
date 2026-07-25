@@ -18,8 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 本体 MVP API。响应带 {@code demoMode}/{@code dataSource}；
- * mock 造数仅在 {@code prodai.ontology.demo-enabled=true} 时启用。
+ * 本体运营 API。响应带 {@code demoMode}/{@code dataSource}（标识当前数据配置，非另一套逻辑）。
  */
 @RestController
 @RequestMapping("/api/v1/ontology-mvp")
@@ -61,11 +60,10 @@ public class OntologyMvpController {
     }
 
     @PostMapping("/config/compliance")
-    public Map<String, Object> compliance(@RequestBody ComplianceRequest request) {
-        if (request == null || request.getDraft() == null) {
-            throw new IllegalArgumentException("draft is required");
-        }
-        return ok(ontologyMvpService.checkCompliance(request.getDraft()));
+    public Map<String, Object> compliance(@RequestBody(required = false) ComplianceRequest request) {
+        ComplianceRequest safe = request == null ? new ComplianceRequest() : request;
+        return ok(ontologyMvpService.checkComplianceSmart(
+                safe.getOfferingId(), safe.getText(), safe.getDraft()));
     }
 
     @PostMapping("/config/chat")

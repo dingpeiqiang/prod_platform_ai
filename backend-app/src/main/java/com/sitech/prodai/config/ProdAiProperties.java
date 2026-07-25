@@ -9,6 +9,8 @@ public class ProdAiProperties {
 
     private final Ontology ontology = new Ontology();
     private final Llm llm = new Llm();
+    private final Kb kb = new Kb();
+    private final Mcp mcp = new Mcp();
 
     public Ontology getOntology() {
         return ontology;
@@ -18,8 +20,16 @@ public class ProdAiProperties {
         return llm;
     }
 
+    public Kb getKb() {
+        return kb;
+    }
+
+    public Mcp getMcp() {
+        return mcp;
+    }
+
     public static class Ontology {
-        /** 演示模式：允许 mock_graph、程序造数、RDF 演示灌数。生产必须为 false。 */
+        /** 是否使用演示数据路径（mock_graph 等）。仅影响数据源护栏与响应 meta，不改变业务逻辑。 */
         private boolean demoEnabled = false;
         /**
          * 事实图数据源：classpath | http | empty。
@@ -28,6 +38,11 @@ public class ProdAiProperties {
         private String dataSource = "classpath";
         /** 产商品事实图；生产应指向真实导出，勿默认 mock_graph。 */
         private String graphPath = "";
+        /**
+         * 本服务对外发布的 ops-graph 数据文件（GET /ops-graph）。
+         * 与 {@link #graphPath} 可相同；勿与 data-source=http 自指形成启动环。
+         */
+        private String opsGraphPath = "";
         private String rulesPath = "classpath:ontology/ops_rules.json";
         private String productOpsOwlPath = "classpath:ontology/product-ops.ttl";
         private boolean swrlEnabled = true;
@@ -38,6 +53,15 @@ public class ProdAiProperties {
         private boolean llmExtractEnabled = true;
         /** RDF / SPARQL 命名空间基址，勿在业务代码写死 example.org。 */
         private String baseIri = "http://example.org/";
+        /**
+         * RDF 实例种子文件（JSON：classes/properties/instances）。
+         * 为空则不灌数；演示指向 classpath:ontology/rdf_seed.json，生产可换真实导出或留空。
+         */
+        private String rdfSeedPath = "";
+        /**
+         * Turtle 本体/实例文件。为空则不导入；演示可指向 sample-ontology.ttl。
+         */
+        private String ttlPath = "";
 
         public boolean isDemoEnabled() {
             return demoEnabled;
@@ -61,6 +85,14 @@ public class ProdAiProperties {
 
         public void setGraphPath(String graphPath) {
             this.graphPath = graphPath;
+        }
+
+        public String getOpsGraphPath() {
+            return opsGraphPath;
+        }
+
+        public void setOpsGraphPath(String opsGraphPath) {
+            this.opsGraphPath = opsGraphPath;
         }
 
         public String getRulesPath() {
@@ -119,6 +151,22 @@ public class ProdAiProperties {
             this.baseIri = baseIri == null || baseIri.isBlank() ? "http://example.org/" : baseIri;
         }
 
+        public String getRdfSeedPath() {
+            return rdfSeedPath;
+        }
+
+        public void setRdfSeedPath(String rdfSeedPath) {
+            this.rdfSeedPath = rdfSeedPath == null ? "" : rdfSeedPath;
+        }
+
+        public String getTtlPath() {
+            return ttlPath;
+        }
+
+        public void setTtlPath(String ttlPath) {
+            this.ttlPath = ttlPath == null ? "" : ttlPath;
+        }
+
         /** 保证以 / 结尾，便于拼接相对实体路径。 */
         public String normalizedBaseIri() {
             String b = getBaseIri();
@@ -126,8 +174,39 @@ public class ProdAiProperties {
         }
     }
 
+    public static class Kb {
+        /** 知识库种子 JSON；空则启动时空库。 */
+        private String seedPath = "";
+
+        public String getSeedPath() {
+            return seedPath;
+        }
+
+        public void setSeedPath(String seedPath) {
+            this.seedPath = seedPath == null ? "" : seedPath;
+        }
+    }
+
+    public static class Mcp {
+        /**
+         * 外部 MCP 工具种子 JSON（写入 mcp_tool_definitions）；
+         * 空则仅暴露内存 {@code ToolRegistry} 工具。
+         */
+        private String seedPath = "";
+
+        public String getSeedPath() {
+            return seedPath;
+        }
+
+        public void setSeedPath(String seedPath) {
+            this.seedPath = seedPath == null ? "" : seedPath;
+        }
+    }
+
     public static class Llm {
         private boolean enabled;
+        /** chat 意图是否启用 Function Calling 工具循环。 */
+        private boolean functionCallingEnabled = true;
         private String systemPrompt = "You are a helpful assistant.";
 
         public boolean isEnabled() {
@@ -136,6 +215,14 @@ public class ProdAiProperties {
 
         public void setEnabled(boolean enabled) {
             this.enabled = enabled;
+        }
+
+        public boolean isFunctionCallingEnabled() {
+            return functionCallingEnabled;
+        }
+
+        public void setFunctionCallingEnabled(boolean functionCallingEnabled) {
+            this.functionCallingEnabled = functionCallingEnabled;
         }
 
         public String getSystemPrompt() {

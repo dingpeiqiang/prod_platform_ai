@@ -10,12 +10,20 @@ spring:
 
 prodai:
   ontology:
-    # 本地/联调：打开演示数据（mock_graph + DemoOpsFixture 造数 + RDF 灌数）
+    # 本地联调：指向演示数据文件（与生产同一套代码，只换配置）
     demo-enabled: true
     data-source: classpath
     graph-path: classpath:ontology/mock_graph.json
+    ops-graph-path: classpath:ontology/mock_graph.json
+    rdf-seed-path: classpath:ontology/rdf_seed.json
+    ttl-path: classpath:ontology/sample-ontology.ttl
     llm-extract-enabled: true
     base-iri: http://example.org/
+  kb:
+    seed-path: classpath:ontology/kb_seed.json
+  mcp:
+    seed-path: classpath:ontology/mcp_tools_seed.json
   llm:
     enabled: ${LLM_ENABLED:true}
+    function-calling-enabled: ${LLM_FC_ENABLED:true}
     system-prompt: You are a helpful assistant for telecom product configuration.

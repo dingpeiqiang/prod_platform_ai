@@ -1,6 +1,7 @@
 package com.sitech.prodai.intent.tools;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sitech.prodai.service.FormService;
 import com.sitech.prodai.service.OntologyService;
 import com.sitech.prodai.service.ValidationService;
 import org.slf4j.Logger;
@@ -117,10 +118,10 @@ public class ToolConfig {
     /**
      * form_validate - 校验表单数据
      *
-     * <p>LLM 传入表单数据，工具自动执行规则引擎校验。
+     * <p>LLM 传入表单数据，工具通过 FormService 加载字段定义后执行 ValidationService 校验。
      */
     @Bean
-    public ToolDefinition formValidateTool(ValidationService validationService) {
+    public ToolDefinition formValidateTool(FormService formService, ValidationService validationService) {
         return new ToolDefinition(
                 "form_validate",
                 "校验表单数据是否符合规则。输入表单编码和字段数据，返回校验结果（通过/失败）及错误详情。",
@@ -129,7 +130,7 @@ public class ToolConfig {
                         "properties", Map.of(
                                 "form_code", Map.of(
                                         "type", "string",
-                                        "description", "表单编码，如 leave, sales_order"
+                                        "description", "表单编码，如 leave, sales_order, offering_config"
                                 ),
                                 "form_data", Map.of(
                                         "type", "object",
@@ -141,16 +142,38 @@ public class ToolConfig {
                 (args) -> {
                     String formCode = String.valueOf(args.getOrDefault("form_code", ""));
                     @SuppressWarnings("unchecked")
-                    Map<String, Object> formData = (Map<String, Object>) args.getOrDefault("form_data", Map.of());
+                    Map<String, Object> formData = args.get("form_data") instanceof Map<?, ?>
+                            ? (Map<String, Object>) args.get("form_data")
+                            : Map.of();
 
-                    // 简单校验：检查必填字段
                     Map<String, Object> result = new LinkedHashMap<>();
                     result.put("formCode", formCode);
-                    result.put("fieldCount", formData.size());
-                    result.put("passed", true);
-                    result.put("errors", List.of());
-                    result.put("warnings", List.of());
 
+                    Map<String, Object> schema = formService.getFormSchema(formCode);
+                    if (!Boolean.TRUE.equals(schema.get("success"))) {
+                        result.put("passed", false);
+                        result.put("errors", List.of(String.valueOf(schema.getOrDefault("message", "表单不存在"))));
+                        result.put("warnings", List.of());
+                        return toJsonString(result);
+                    }
+
+                    List<Map<String, Object>> fields = new ArrayList<>();
+                    Object fieldsObj = schema.get("fields");
+                    if (fieldsObj instanceof List<?> raw) {
+                        for (Object item : raw) {
+                            if (item instanceof Map<?, ?> m) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> cast = (Map<String, Object>) m;
+                                fields.add(cast);
+                            }
+                        }
+                    }
+
+                    ValidationService.ValidationResult vr = validationService.validateForm(formData, fields);
+                    result.put("passed", vr.valid);
+                    result.put("errors", vr.errors);
+                    result.put("warnings", List.of());
+                    result.put("fieldCount", formData.size());
                     return toJsonString(result);
                 }
         );

@@ -155,7 +155,7 @@
         "name": "优胜劣汰",
         "enabled": true,
         "engine": "java",
-        "categories": ["low_eff"],
+        "categories": ["low_eff", "threshold_demo"],
         "requireNoStrategicTag": true,
         "useLowRevenuePercentile": true
       },
@@ -173,8 +173,7 @@
       "channelScope": "全渠道",
       "mutexGroup": "MAIN_PKG",
       "includeBroadband": "500M",
-      "campusMonthlyFee": 59,
-      "batchBizScenario": "校园体验"
+      "campusMonthlyFee": 59
     },
     "rules": {
       "R-C01": { "name": "场景默认补全", "enabled": true, "engine": "java" },
@@ -197,10 +196,9 @@
     "bindTriggers": ["再绑", "再加", "一起上"],
     "clearBindTriggers": ["不加128", "不加畅享128", "不绑128", "单独上", "取消绑定", "解除互斥"]
   },
-  "demo": {
+  "ui": {
     "previewOfferingIds": ["OF-HF-128"],
-    "riskExtraCategories": ["threshold_demo"],
-    "shelfPriorityIds": ["OF-HF-128", "OF-RISK-001", "OF-LOW-019", "OF-GIFT-WL", "OF-DISC-001"]
+    "previewLimit": 40
   },
   "batch": {
     "rules": {

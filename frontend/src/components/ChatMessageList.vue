@@ -1,5 +1,5 @@
 <template>
-  <div class="messages-container" ref="messagesEl">
+  <div class="messages-container" ref="messagesEl" @scroll.passive="onScroll">
     <!-- 欢迎状态 -->
     <WelcomeCards 
       v-if="showWelcome"
@@ -218,13 +218,12 @@
 </template>
 
 <script setup>
-import { ref, nextTick, onMounted, onUnmounted, computed } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import WelcomeCards from './WelcomeCards.vue'
 import IntentPanel from './intent-panels/IntentPanel.vue'
 import ThinkingProcessPanel from './ThinkingProcessPanel.vue'
 import MessageCard from './MessageCard.vue'
-import { renderMarkdown } from '../utils/chatUtils.js'
 
 const props = defineProps({
   messages: { type: Array, required: true },
@@ -234,7 +233,17 @@ const props = defineProps({
 
 const emit = defineEmits(['form-card-click', 'intent-action', 'regenerate', 'suggest', 'query-result-click'])
 
+const BOTTOM_THRESHOLD = 140
+
 const messagesEl = ref(null)
+const stickToBottom = ref(true)
+let resizeObserver = null
+let scheduleRaf = 0
+let smoothTimer = 0
+let prevMessageCount = 0
+let programmaticScroll = false
+/** 流式跟滚期间忽略 scroll 事件，避免未贴底时被误判为用户上翻 */
+let followLockUntil = 0
 
 const showWelcome = computed(() => props.showWelcome || props.messages.length === 0)
 
@@ -248,14 +257,65 @@ const handleSuggest = (content) => {
   emit('suggest', content)
 }
 
-const scrollToBottom = (smooth = false) => {
+const isNearBottom = () => {
+  const el = messagesEl.value
+  if (!el) return true
+  return el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_THRESHOLD
+}
+
+const onScroll = () => {
+  if (programmaticScroll || Date.now() < followLockUntil) return
+  stickToBottom.value = isNearBottom()
+}
+
+const jumpToBottom = () => {
+  const el = messagesEl.value
+  if (!el) return
+  programmaticScroll = true
+  followLockUntil = Date.now() + 80
+  el.scrollTop = el.scrollHeight
+  programmaticScroll = false
+  stickToBottom.value = true
+}
+
+/** 粘底滚动：流式增高时瞬时贴底，保证研发助手思考面板/本体图不掉队 */
+const scrollToBottom = (smooth = false, force = false) => {
+  if (force) stickToBottom.value = true
+  if (!force && !stickToBottom.value) return
+
   nextTick(() => {
-    if (messagesEl.value) {
-      messagesEl.value.scrollTo({
-        top: messagesEl.value.scrollHeight,
-        behavior: smooth ? 'smooth' : 'auto'
-      })
+    const el = messagesEl.value
+    if (!el) return
+
+    if (smooth) {
+      programmaticScroll = true
+      followLockUntil = Date.now() + 450
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+      if (smoothTimer) clearTimeout(smoothTimer)
+      smoothTimer = setTimeout(() => {
+        programmaticScroll = false
+        jumpToBottom()
+        smoothTimer = 0
+      }, 420)
+      return
     }
+
+    jumpToBottom()
+    // 布局/图谱异步撑高后再贴一次
+    requestAnimationFrame(() => {
+      if (stickToBottom.value) jumpToBottom()
+    })
+  })
+}
+
+const scheduleScrollToBottom = (force = false) => {
+  if (force) stickToBottom.value = true
+  if (!force && !stickToBottom.value) return
+
+  if (scheduleRaf) cancelAnimationFrame(scheduleRaf)
+  scheduleRaf = requestAnimationFrame(() => {
+    scheduleRaf = 0
+    scrollToBottom(false, force)
   })
 }
 
@@ -303,8 +363,64 @@ const handleFeedback = (msg, type) => {
   ElMessage({ message: type === 'like' ? '感谢反馈' : '我们会继续改进', type: 'success', duration: 1500 })
 }
 
+// 消息数量 / 流式内容 / 思考步骤变化时粘底滚动
+watch(
+  () => {
+    const last = props.messages[props.messages.length - 1]
+    const reasoning = last?.reasoning || []
+    // 研发助手会原地刷新等待文案 / 本体链揭示，需纳入依赖
+    const reasoningSig = reasoning
+      .map((s) => `${s?.content?.length || 0}:${s?.chainRevealCount || 0}`)
+      .join('|')
+    return [
+      props.messages.length,
+      last?.id,
+      last?.streamText?.length ?? 0,
+      last?.content?.length ?? 0,
+      reasoning.length,
+      reasoningSig,
+      last?.loading,
+      last?.done,
+      last?.showReasoning,
+      !!last?.formCard,
+      last?.queryResults?.length ?? 0,
+    ]
+  },
+  () => {
+    const count = props.messages.length
+    const force = count > prevMessageCount
+    prevMessageCount = count
+    scheduleScrollToBottom(force)
+  }
+)
+
+const bindResizeObserver = () => {
+  if (typeof ResizeObserver === 'undefined' || !messagesEl.value) return
+  resizeObserver?.disconnect()
+  resizeObserver = new ResizeObserver(() => {
+    if (stickToBottom.value) scheduleScrollToBottom()
+  })
+  const target = messagesEl.value.querySelector('.messages-list') || messagesEl.value
+  resizeObserver.observe(target)
+}
+
 onMounted(() => {
-  scrollToBottom()
+  prevMessageCount = props.messages.length
+  nextTick(() => jumpToBottom())
+  bindResizeObserver()
+})
+
+watch(showWelcome, async () => {
+  await nextTick()
+  bindResizeObserver()
+  if (!showWelcome.value) scheduleScrollToBottom(true)
+})
+
+onUnmounted(() => {
+  if (scheduleRaf) cancelAnimationFrame(scheduleRaf)
+  if (smoothTimer) clearTimeout(smoothTimer)
+  resizeObserver?.disconnect()
+  resizeObserver = null
 })
 
 defineExpose({ scrollToBottom })

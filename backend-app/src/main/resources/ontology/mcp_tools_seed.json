@@ -1,0 +1,28 @@
+{
+  "tools": [
+    {
+      "tool_name": "external_health_ping",
+      "tool_code": "EXT_HEALTH_PING",
+      "description": "外部健康检查占位工具（演示种子）",
+      "category": "external",
+      "is_enabled": true,
+      "is_public": true,
+      "tool_type": "url",
+      "protocol": "http",
+      "request_method": "GET",
+      "url": "https://httpbin.org/get",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "ping": { "type": "string", "description": "可选探测标记" }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "ok": { "type": "boolean" }
+        }
+      }
+    }
+  ]
+}

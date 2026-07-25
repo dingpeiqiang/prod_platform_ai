@@ -107,17 +107,14 @@ export function useProductConfig() {
 
   function getSkillGuideMessage(type) {
     if (type === 'query') {
-      return '好的，让我帮您查询历史商品，您可以快速复制配置。\n\n可输入：商品名称关键词、编码，或「查一下近30天大学生套餐」。'
+      return '好的，进入**智查·历史复用**。让我帮您查询历史商品，您可以快速复制配置。\n\n可输入：商品名称关键词、编码，或「查一下近30天大学生套餐」。'
     }
     if (type === 'file') {
       return (
-        '好的，进入**智读·批量生成**。\n\n' +
-        '发送「帮我导入校园迎新方案」，或点首页「一键体验」。\n' +
-        '演示闭环：\n' +
-        '1. 一文映射 3 条草稿（三列：原文 | 映射 | 场景/模板）\n' +
-        '2. 批量合规：A 通过 / B·C 待修正（含规则 ID + 证据链）\n' +
-        '3. 一键修正后重跑 → 仅通过项可「确认入库」\n\n' +
-        '演示文档：`校园迎新产商品方案_2026.md`'
+        '好的，进入**智读·文件配置**。\n\n' +
+        '可粘贴或拖入方案文件到输入框，也可直接粘贴方案正文后发送。\n\n' +
+        '测试文档：`docs/testdata/智读测试方案_家庭融合.md`\n' +
+        '示例话术见左侧「智读·文件配置」快捷入口。'
       )
     }
     if (type === 'ops') {
@@ -128,6 +125,14 @@ export function useProductConfig() {
         '- 「分析家庭融合畅享128本月收入下滑原因」\n' +
         '- 「筛查所有在架的0元资费风险商品」\n' +
         '- 或点首页「一键体验」自动演示完整闭环'
+      )
+    }
+    if (type === 'compliance') {
+      return (
+        '好的，进入**智检·合规校验**。\n\n' +
+        '支持两类对象：\n' +
+        '- **已入库（在架）**：直接说套餐名称/编码，如「校验校园体验流量包0元是否符合在架规则」\n' +
+        '- **未入库草稿**：先智聊/智读生成配置后，再说「校验当前配置是否符合在架规则」'
       )
     }
     return (
@@ -145,9 +150,22 @@ export function useProductConfig() {
     if (!text) return null
     const t = text.toLowerCase()
     if (/根因|异动|离网|累计收入|归因|下滑原因|收入下滑/.test(text)) return 'root-cause'
-    if (/稽核|零元|风险|下架|优胜劣汰|筛查/.test(text)) return 'risk-audit'
+    if (/稽核|零元资费|高风险|优胜劣汰|筛查.*在架|风险商品|下架建议/.test(text)) return 'risk-audit'
+    // 智检·合规校验：按套餐信息校验（已入库/未入库），须在 chat-generate 之前
+    if (
+      /合规校验|智检|在架规则|是否可上架|校验当前配置|校验.*是否符合|合规检查/.test(text) ||
+      /校验.*(套餐|配置|商品|流量包|畅享)/.test(text)
+    ) {
+      return 'compliance'
+    }
     if (/确认.*入库|入库通过|确认通过项/.test(text)) return 'confirm-batch'
-    if (/查询|智查|历史商品/.test(text) || t.includes('query')) return 'query'
+    // 「查一下」是首页/智查示例常用说法，需在 chat-generate 之前命中
+    if (
+      /查询|查一下|查下|查找|检索|智查|历史商品|复制配置/.test(text) ||
+      t.includes('query')
+    ) {
+      return 'query'
+    }
     if (/导入|方案|文档|智读|批量/.test(text)) return 'file-parse'
     if (
       /套餐|校园|大学生|动感地带|流量|月费|配置|融合|家庭|宽带|畅享|不加|单独上|协议期|内部验证/.test(text) ||
@@ -200,9 +218,57 @@ export function useProductConfig() {
     }
   }
 
-  async function simulateFileParse(fileName = '校园迎新产商品方案_2026.md', fileSize = 12 * 1024) {
+  function deriveDocMeta(documentText = '', attachments = []) {
+    const files = (attachments || []).filter((a) => a?.type === 'file' || a?.file || a?.name)
+    if (files.length) {
+      const first = files[0]
+      const totalSize = files.reduce((sum, f) => sum + (Number(f.size) || 0), 0)
+      return {
+        fileName: first.name || '上传方案文档',
+        fileSize: totalSize || Math.max(1, new Blob([documentText || '']).size),
+      }
+    }
+    const text = String(documentText || '').trim()
+    const titleMatch = text.match(/[《「"]([^》」"]{2,40})[》」"]/)
+    const fileName = titleMatch?.[1]
+      ? `${titleMatch[1]}.txt`
+      : text.slice(0, 24).replace(/\s+/g, '_') || '用户方案描述'
+    return {
+      fileName: fileName.endsWith('.txt') || fileName.endsWith('.md') ? fileName : `${fileName}.txt`,
+      fileSize: Math.max(1, new Blob([text]).size),
+    }
+  }
+
+  async function readAttachmentTexts(attachments = []) {
+    const files = (attachments || []).filter((a) => a?.file instanceof Blob)
+    if (!files.length) return ''
+    const parts = []
+    for (const a of files) {
+      try {
+        const content = await a.file.text()
+        parts.push(`【${a.name || '附件'}】\n${content}`)
+      } catch {
+        parts.push(`【${a.name || '附件'}】（无法读取文本内容，已保留文件名）`)
+      }
+    }
+    return parts.join('\n\n')
+  }
+
+  async function simulateFileParse(documentText = '', attachments = []) {
     try {
-      const batch = await batchFromDocument(`校园迎新方案 文档名=${fileName}`)
+      const attachmentText = await readAttachmentTexts(attachments)
+      const mergedText = [String(documentText || '').trim(), attachmentText]
+        .filter(Boolean)
+        .join('\n\n')
+      if (!mergedText) {
+        return {
+          thinkingSteps: ['未收到可解析的方案内容'],
+          content: '请粘贴方案正文，或上传可读取的文本/Markdown 方案文档后再试。',
+          formCard: null,
+        }
+      }
+      const { fileName, fileSize } = deriveDocMeta(mergedText, attachments)
+      const batch = await batchFromDocument(mergedText)
       return buildBatchPlaybook(batch, fileName, fileSize)
     } catch (e) {
       return {
@@ -214,6 +280,27 @@ export function useProductConfig() {
   }
 
   function buildBatchPlaybook(batch, fileName, fileSize) {
+    if (!batch?.items?.length) {
+      return {
+        thinkingSteps: [
+          {
+            type: 'llm',
+            content: `已接收「${fileName}」，按原文尝试抽取套餐段落`,
+          },
+          {
+            type: 'llm',
+            content: '未识别到可映射套餐，请补充名称、月费、客群等要点后重试',
+          },
+        ],
+        content:
+          `已按「${fileName}」解析，但未抽取到套餐草稿。\n\n` +
+          '请直接粘贴方案中的套餐段落（含名称、月费、流量/语音、客群、渠道等），或上传完整方案文档。',
+        formCard: null,
+        batch,
+        showBatchPanel: false,
+      }
+    }
+
     let formCard = null
     const mapped = []
     for (const it of batch.items || []) {
@@ -258,7 +345,7 @@ export function useProductConfig() {
     const content =
       `文档已映射完成。共 **${batch.total}** 条草稿：通过 ${batch.passedCount}，待修正 ${batch.pendingCount}。\n\n` +
       `${lines.join('\n')}\n\n` +
-      '下方打开「智读批量映射清单」：可对照原文 / 映射字段 / 场景模板，对待修正项一键修正并重跑合规。\n' +
+      '下方打开「智读·文件配置映射清单」：可对照原文 / 映射字段 / 场景模板，对待修正项一键修正并重跑合规。\n' +
       (confirmable.length
         ? `当前可入库：${confirmable.map((d) => d.offeringName).join('、')}。`
         : '当前暂无通过项，请先修正后再入库。')
@@ -287,7 +374,10 @@ export function useProductConfig() {
       formCard,
       batch,
       showBatchPanel: true,
-      nextSteps: ['补协议期12个月并取消可重复', '确认月费19元', '确认通过项入库'],
+      nextSteps: [
+        ...(batch.pendingCount > 0 ? ['修正待修正项后重跑合规'] : []),
+        ...(confirmable.length ? ['确认通过项入库'] : ['完善方案字段后重新智读']),
+      ],
     }
   }
 
@@ -374,8 +464,145 @@ export function useProductConfig() {
       return buildChatPlaybook(result)
     } catch (e) {
       return {
-        thinkingSteps: ['对话配置调用本体服务失败'],
+        thinkingSteps: ['智聊·对话配置调用本体服务失败'],
         content: `配置生成失败：${e.message || '本体服务不可用'}`,
+        formCard: null,
+      }
+    }
+  }
+
+  /**
+   * 智检·合规校验：按套餐信息校验。
+   * - 文案含套餐名/编码 → 已入库（在架）
+   * - 「校验当前配置」或仅有草稿 → 未入库草稿
+   */
+  async function runComplianceCheck(text = '') {
+    const localDraft = ontologyDraft.value || currentProduct.value?.ontologyDraft || null
+    try {
+      const result = await checkCompliance(localDraft, { text: text || null })
+      if (result?.success === false) {
+        const examples = (result.hintExamples || []).map((e) => `- 「${e}」`).join('\n')
+        return {
+          thinkingSteps: [
+            { type: 'llm', content: `解析校验目标：${text || '（空）'}` },
+            { type: 'ontology', title: '套餐定位', content: result.message || '未找到可校验套餐' },
+          ],
+          content:
+            `合规校验未能启动：${result.message || '缺少套餐信息'}\n\n` +
+            (examples ? `可试：\n${examples}` : ''),
+          formCard: null,
+          result,
+        }
+      }
+
+      const draft = result.draft || localDraft || {}
+      const sourceLabel = result.sourceLabel || (result.source === 'shelf' ? '已入库（在架）' : '未入库草稿')
+      const name = result.offeringName || draft.offeringName || '目标套餐'
+      const issues = result.issues || []
+      const chain = buildOntologyChain({
+        ...result,
+        draft,
+        intent: 'compliance_check',
+        slots: { bizScenario: draft.bizScenario, offeringName: draft.offeringName },
+        inferredFields: [],
+      })
+      const preview = buildOntologyPreview({
+        ...result,
+        draft,
+        intent: 'compliance_check',
+        slots: {},
+        inferredFields: [],
+      }, chain)
+
+      const product = {
+        id:
+          result.source === 'draft' && currentProductId.value
+            ? currentProductId.value
+            : 'P' + Date.now(),
+        name,
+        desc: `${sourceLabel} | 月费${draft.monthlyFee ?? '-'} | ${result.compliancePass ? '通过' : '未通过'}`,
+        status: result.source === 'shelf' ? 'shelf' : (currentProduct.value?.status || 'draft'),
+        auditStatus: result.compliancePass ? 'pass' : 'fail',
+        compliancePass: !!result.compliancePass,
+        issues,
+        inferredFields: [],
+        ontologyDraft: draft,
+        data: draftToFormData(draft),
+        offeringId: result.offeringId || draft.offeringId,
+      }
+
+      const existingIdx = products.value.findIndex((p) => p.id === product.id)
+      if (existingIdx >= 0) {
+        products.value[existingIdx] = { ...products.value[existingIdx], ...product }
+      } else {
+        products.value.push(product)
+      }
+      currentProductId.value = product.id
+      ontologyDraft.value = draft
+      syncFormFromProduct(products.value.find((p) => p.id === product.id) || product)
+      const formCard = buildProductFormCard(products.value.find((p) => p.id === product.id) || product)
+
+      const high = issues.filter((i) => i.issueLevel === 'HIGH')
+      const lines = [
+        `已对 **${sourceLabel}**「${name}」完成合规校验。`,
+      ]
+      if (result.offeringId) {
+        lines.push(`套餐编码：\`${result.offeringId}\``)
+      }
+      if (result.compliancePass) {
+        lines.push('✅ **合规通过**（R-C08）。配置满足在架规则，可继续提交流程。')
+      } else if (high.length) {
+        lines.push(
+          '⚠️ **合规已阻断**：' +
+            high.map((i) => `${i.ruleId} ${i.message}`).join('；'),
+        )
+      }
+      const others = issues.filter((i) => i.issueLevel !== 'HIGH')
+      if (others.length) {
+        lines.push('待补充/关注：' + others.map((i) => i.message).join('；'))
+      }
+      lines.push('规则由本体判定；已入库套餐与未入库草稿共用同一套配置合规规则（R-C03~C08）。')
+
+      const nextSteps = []
+      if (!result.compliancePass && result.source === 'draft') {
+        nextSteps.push('在右侧画布修正字段后再次校验')
+        if (high.some((i) => i.ruleId === 'R-C03')) nextSteps.push('那不加128了，就单独上158')
+      }
+      if (result.compliancePass && result.source === 'draft') {
+        nextSteps.push('生成配置草稿')
+      }
+      if (result.source === 'shelf' && !result.compliancePass) {
+        nextSteps.push('筛查所有在架的0元资费风险商品')
+      }
+
+      return {
+        thinkingSteps: [
+          { type: 'llm', content: `识别智检意图：按套餐信息做合规校验` },
+          {
+            type: 'llm',
+            content: `定位校验对象：${sourceLabel}${result.offeringId ? ` / ${result.offeringId}` : ''}「${name}」`,
+          },
+          {
+            type: 'ontology',
+            title: '本体合规',
+            content: '调用配置合规规则 R-C03~C08',
+            ontologyChain: chain,
+            ontologyPreview: preview,
+          },
+          {
+            type: 'llm',
+            content: result.compliancePass ? '组织通过结论' : '组织阻断说明（不改写本体判定）',
+          },
+        ],
+        content: lines.join('\n\n'),
+        formCard,
+        result,
+        nextSteps,
+      }
+    } catch (e) {
+      return {
+        thinkingSteps: ['智检·合规校验调用本体服务失败'],
+        content: `合规校验失败：${e.message || '本体服务不可用'}`,
         formCard: null,
       }
     }
@@ -722,7 +949,7 @@ export function useProductConfig() {
     if (!passed.length) {
       return {
         thinkingSteps: ['检查商品列表中合规通过且未入库的草稿…', '未找到可入库项'],
-        content: '当前没有「合规通过」且未入库的草稿。请先完成智读批量或修正待修正项后重跑。',
+        content: '当前没有「合规通过」且未入库的草稿。请先完成智读·文件配置或修正待修正项后重跑。',
         formCard: null,
       }
     }
@@ -854,6 +1081,9 @@ export function useProductConfig() {
 
     try {
       const result = await checkCompliance(draft)
+      if (result?.success === false) {
+        throw new Error(result.message || '合规校验失败')
+      }
       const results = mapIssuesToAuditResults(result.issues, result.compliancePass)
       const hasError = !result.compliancePass
       auditStatus.value = hasError ? 'fail' : 'pass'
@@ -868,7 +1098,7 @@ export function useProductConfig() {
     } catch (e) {
       const results = [{
         type: 'error',
-        title: '合规校验失败',
+        title: '智检·合规校验失败',
         desc: e.message || '本体服务不可用',
       }]
       auditStatus.value = 'fail'
@@ -941,6 +1171,7 @@ export function useProductConfig() {
     prepareProduct,
     simulateFileParse,
     generateProductFromChat,
+    runComplianceCheck,
     confirmPassedDrafts,
     runRootCauseAnalysis,
     runRiskAuditFlow,

@@ -15,7 +15,7 @@
 
     <div v-else-if="!issues.length" class="cp-empty">
       <p>等待本体推理结果</p>
-      <p class="cp-hint">对话配置后，冲突与必填问题将显示在此</p>
+      <p class="cp-hint">智聊·对话配置后，冲突与必填问题将显示在此</p>
     </div>
 
     <ul v-else class="cp-list">

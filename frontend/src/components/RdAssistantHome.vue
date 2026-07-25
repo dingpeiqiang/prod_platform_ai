@@ -5,56 +5,58 @@
         <p class="eyebrow">AI 原生 · 产商品研发</p>
         <h1>产商品研发助手</h1>
         <p class="subtitle">
-          对话配置、方案导入、历史复用与合规校验一体完成，让商品上架更快、更准、更合规。
+          智聊·对话配置、智读·文件配置、智查·历史复用与智检·合规校验一体完成，让商品上架更快、更准、更合规。
         </p>
         <ul class="tags">
-          <li>智聊配置</li>
-          <li>智读批量</li>
-          <li>历史复用</li>
-          <li>事前合规</li>
+          <li>智聊·对话配置</li>
+          <li>智读·文件配置</li>
+          <li>智查·历史复用</li>
+          <li>智检·合规校验</li>
         </ul>
       </div>
       <div class="hero-actions">
-        <button class="primary" type="button" @click="launch('chat')">对话配置</button>
-        <button type="button" @click="launch('file')">批量生成</button>
-        <button type="button" @click="launch('query')">AI智查</button>
-        <button type="button" @click="launch('compliance')">合规校验</button>
+        <button class="primary" type="button" @click="launch('chat')">智聊·对话配置</button>
+        <button type="button" @click="launch('file')">智读·文件配置</button>
+        <button type="button" @click="launch('query')">智查·历史复用</button>
+        <button type="button" @click="launch('compliance')">智检·合规校验</button>
       </div>
     </section>
 
     <section class="cards" aria-label="研发场景">
       <button class="card" type="button" @click="launch('chat')">
-        <strong>对话配置</strong>
+        <strong>智聊·对话配置</strong>
         <span>直接说业务诉求，本体自动填字段并拦截冲突</span>
         <em>示例：家庭融合套餐 158 元 / 500M</em>
       </button>
       <button class="card" type="button" @click="launch('file')">
-        <strong>批量生成</strong>
-        <span>导入方案文档，一次映射多套合规配置草稿</span>
-        <em>示例：校园迎新方案批量入库</em>
+        <strong>智读·文件配置</strong>
+        <span>粘贴或上传方案文档，按内容映射多套配置草稿</span>
+        <em>示例：粘贴方案段落 / 家庭融合测试稿</em>
       </button>
       <button class="card" type="button" @click="launch('query')">
-        <strong>AI智查</strong>
+        <strong>智查·历史复用</strong>
         <span>检索历史商品与成熟配置，快速复制复用</span>
         <em>示例：近30天大学生套餐</em>
       </button>
       <button class="card" type="button" @click="launch('compliance')">
-        <strong>合规校验</strong>
-        <span>配置当下完成规则校验，事前拦截在架冲突</span>
-        <em>示例：校验当前配置是否可上架</em>
+        <strong>智检·合规校验</strong>
+        <span>按套餐信息校验：已入库在架套餐或未入库配置草稿</span>
+        <em>示例：校验校园体验流量包0元 / 校验当前配置</em>
       </button>
     </section>
   </div>
 </template>
 
 <script setup>
+import { ZHIDU_TEST_PROMPT } from '../data/zhiduTestDoc.js'
+
 const emit = defineEmits(['launch-skill'])
 
 const prompts = {
   chat: '给家庭用户做一个融合套餐，月费158，带500M宽带，全渠道销售',
-  file: '帮我导入校园迎新方案',
+  file: ZHIDU_TEST_PROMPT,
   query: '查一下近30天大学生套餐配置',
-  compliance: '校验当前配置是否符合在架规则',
+  compliance: '校验校园体验流量包0元是否符合在架规则',
 }
 
 function launch(skill) {
@@ -62,9 +64,14 @@ function launch(skill) {
     chat: 'chat',
     file: 'file',
     query: 'query',
-    compliance: 'chat',
+    compliance: 'compliance',
   }
-  emit('launch-skill', { skill: map[skill] || 'chat', text: prompts[skill] })
+  // 生产：只进入场景并预填示例，不自动发送
+  emit('launch-skill', {
+    skill: map[skill] || 'chat',
+    text: prompts[skill],
+    autoSend: false,
+  })
 }
 </script>
 

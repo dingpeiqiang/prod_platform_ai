@@ -1,0 +1,18 @@
+{
+  "documents": [
+    {
+      "id": "doc-demo-1",
+      "title": "产商品配置知识",
+      "content": "家庭融合套餐配置需校验月费、带宽、互斥组与合约约束。",
+      "source": "seed",
+      "importance": 1.0
+    },
+    {
+      "id": "doc-demo-2",
+      "title": "校园套餐上架要点",
+      "content": "校园青春套餐需明确目标用户、渠道范围，零元包需合约或白名单约束。",
+      "source": "seed",
+      "importance": 0.9
+    }
+  ]
+}

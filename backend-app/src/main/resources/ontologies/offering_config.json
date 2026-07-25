@@ -1,7 +1,7 @@
 {
   "formCode": "offering_config",
   "formName": "商品配置草稿",
-  "description": "产商品配置本体MVP：智聊对话配置与智读批量生成，覆盖字段推理填报与全链路合规校验",
+  "description": "产商品配置本体MVP：智聊·对话配置与智读·文件配置，覆盖字段推理填报与全链路合规校验",
   "category": "product",
   "entities": [
     {
