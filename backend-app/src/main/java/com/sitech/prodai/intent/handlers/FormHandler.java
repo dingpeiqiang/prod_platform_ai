@@ -2,6 +2,7 @@ package com.sitech.prodai.intent.handlers;
 
 import com.sitech.prodai.intent.BaseIntentHandler;
 import com.sitech.prodai.intent.IntentContext;
+import com.sitech.prodai.intent.IntentRecognitionSupport;
 import com.sitech.prodai.intent.SseUtils;
 import com.sitech.prodai.intent.StreamStats;
 import com.sitech.prodai.service.LlmService;
@@ -57,6 +58,9 @@ public class FormHandler implements BaseIntentHandler {
 
     @Override
     public Flux<Map<String, Object>> handle(IntentContext ctx) {
+        if (IntentRecognitionSupport.isMetaGuideRequest(ctx.getLastUserMessage())) {
+            return Flux.fromIterable(IntentRecognitionSupport.metaGuideSkipEvents("表单/配置生成"));
+        }
         Map<String, Object> intentData = ctx.getIntentData();
         String formCode = str(intentData.get("formCode"));
         String formName = "";

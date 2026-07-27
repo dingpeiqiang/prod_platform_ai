@@ -22,6 +22,12 @@ function buildMessageMetadata(msg) {
   if (msg.formCard) metadata.formCard = JSON.stringify(msg.formCard)
 
   if (msg.intentType || msg.intent_type) metadata.intent_type = msg.intentType || msg.intent_type
+  if (msg.action) metadata.action = msg.action
+  if (msg.intentData || msg.intent_data) {
+    metadata.intent_data = typeof (msg.intentData || msg.intent_data) === 'string'
+      ? (msg.intentData || msg.intent_data)
+      : JSON.stringify(msg.intentData || msg.intent_data)
+  }
   if (msg.formCode || msg.form_code) metadata.form_code = msg.formCode || msg.form_code
   if (msg.extractedFields || msg.extracted_fields) metadata.extracted_fields = msg.extractedFields || msg.extracted_fields
   if (msg.confidence != null) metadata.confidence = String(msg.confidence)
@@ -37,12 +43,21 @@ function restoreMessageMetadata(meta = {}) {
   let reasoning = []
   if (meta.reasoning_full) {
     try {
-      reasoning = JSON.parse(meta.reasoning_full)
-      reasoning.sort((a, b) => (a._index ?? 0) - (b._index ?? 0))
-    } catch {}
+      reasoning = typeof meta.reasoning_full === 'string'
+        ? JSON.parse(meta.reasoning_full)
+        : meta.reasoning_full
+      if (Array.isArray(reasoning)) {
+        reasoning.sort((a, b) => (a._index ?? 0) - (b._index ?? 0))
+      } else {
+        reasoning = []
+      }
+    } catch {
+      reasoning = []
+    }
   }
   if (!reasoning.length && meta.reasoning) {
-    reasoning = meta.reasoning.split('\n').filter(Boolean).map((c, index) => ({
+    const raw = typeof meta.reasoning === 'string' ? meta.reasoning : String(meta.reasoning)
+    reasoning = raw.split('\n').filter(Boolean).map((c, index) => ({
       type: 'thinking',
       content: c,
       _index: index,
@@ -52,33 +67,50 @@ function restoreMessageMetadata(meta = {}) {
   let formSchema = null
   if (meta.formSchema !== undefined) {
     try {
-      formSchema = JSON.parse(meta.formSchema)
+      formSchema = typeof meta.formSchema === 'string' ? JSON.parse(meta.formSchema) : meta.formSchema
     } catch {}
   }
 
   let formCard = null
   if (meta.formCard) {
     try {
-      formCard = JSON.parse(meta.formCard)
+      formCard = typeof meta.formCard === 'string' ? JSON.parse(meta.formCard) : meta.formCard
     } catch {}
+  }
+
+  let intentData = null
+  if (meta.intent_data != null) {
+    try {
+      intentData = typeof meta.intent_data === 'string' ? JSON.parse(meta.intent_data) : meta.intent_data
+    } catch {
+      intentData = meta.intent_data
+    }
+  }
+
+  let extractedFields = meta.extracted_fields
+  if (typeof extractedFields === 'string') {
+    try { extractedFields = JSON.parse(extractedFields) } catch {}
   }
 
   const hasError = reasoning.some(r => r.type === 'error')
   return {
     reasoning,
-    showReasoning: hasError || false,
-    done: meta.done === 'true' || meta.done === true || true,
-    intentType: meta.intent_type,
+    showReasoning: hasError || reasoning.length > 0,
+    done: meta.done === 'true' || meta.done === true || meta.done === undefined || true,
+    intentType: meta.intent_type || intentData?.intentType || '',
+    action: meta.action || intentData?.action || '',
+    intentData,
     formCode: meta.form_code,
-    extractedFields: meta.extracted_fields,
+    extractedFields,
     confidence: meta.confidence,
     model: meta.model,
-    contentType: meta.content_type,
-    streamText: meta.stream_text,
+    contentType: meta.content_type || 'chat',
+    streamText: meta.stream_text || '',
     formId: meta.formId,
     formSchema,
     formSubmitted: meta.formSubmitted === 'true' || meta.formSubmitted === true,
     formCard,
+    stats: intentData?.stats || null,
   }
 }
 
@@ -164,21 +196,27 @@ export async function loadMessages(sessionId) {
     const result = await resp.json()
     const msgs = result.messages || []
     return msgs.map(m => {
-      const restored = restoreMessageMetadata(m.metadata)
+      const restored = restoreMessageMetadata(m.metadata || {})
+      const content = m.content || ''
+      const streamText = restored.streamText || content
       return {
         id: m.message_id,
         role: m.role === 'assistant' ? 'assistant' : 'user',
-        content: m.content || '',
+        content,
         ...restored,
+        // 历史还原：确保 MessageCard / IntentPanel 都能拿到正文与意图数据
+        streamText,
+        done: true,
+        loading: false,
         type: 'chat',
         parentId: m.parent_id,
         createdAt: m.created_at,
+        timestamp: m.created_at ? Date.parse(m.created_at) || Date.now() : Date.now(),
         metadata: m.metadata,
       }
     }).filter(m => {
-      // 历史中无内容且无表单卡片的消息不展示
       const hasText = String(m.content || m.streamText || '').trim().length > 0
-      return hasText || !!m.formCard
+      return hasText || !!m.formCard || !!m.intentData
     })
   } catch {
     return []

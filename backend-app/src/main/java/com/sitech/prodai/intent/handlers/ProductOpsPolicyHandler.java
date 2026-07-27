@@ -3,6 +3,7 @@ package com.sitech.prodai.intent.handlers;
 import com.sitech.prodai.intent.BaseIntentContextBuilder;
 import com.sitech.prodai.intent.BaseIntentHandler;
 import com.sitech.prodai.intent.IntentContext;
+import com.sitech.prodai.intent.IntentRecognitionSupport;
 import com.sitech.prodai.intent.SseStreamSupport;
 import com.sitech.prodai.intent.SseUtils;
 import com.sitech.prodai.service.OntologyService;
@@ -45,6 +46,10 @@ public class ProductOpsPolicyHandler implements BaseIntentHandler {
 
     @Override
     public Flux<Map<String, Object>> handle(IntentContext ctx) {
+        // 门闩：使用说明/勿执行类请求禁止跑规则引擎
+        if (IntentRecognitionSupport.isMetaGuideRequest(ctx.getLastUserMessage())) {
+            return Flux.fromIterable(IntentRecognitionSupport.metaGuideSkipEvents("立项研判/风险稽核"));
+        }
         String expectationType = BaseIntentContextBuilder.resolveExpectationType(ctx);
         if ("risk_audit".equals(expectationType)) {
             return handleRiskAudit(ctx);

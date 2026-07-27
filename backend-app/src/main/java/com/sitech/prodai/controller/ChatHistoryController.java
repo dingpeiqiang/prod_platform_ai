@@ -70,15 +70,16 @@ public class ChatHistoryController {
             body.put("messages", List.of());
             return body;
         }
-        List<ChatMessage> messages = persistenceService.get().getSessionMessages(sessionId);
+        List<Map<String, Object>> messages = persistenceService.get().getSessionMessageMaps(sessionId);
         body.put("success", true);
         body.put("messages", messages.stream().map(m -> {
             Map<String, Object> msg = new LinkedHashMap<>();
-            msg.put("messageId", m.getMessageId());
-            msg.put("role", m.getRole());
-            msg.put("content", m.getContent());
-            msg.put("contentType", m.getContentType());
-            msg.put("createdAt", m.getCreatedAt());
+            msg.put("messageId", m.get("message_id"));
+            msg.put("role", m.get("role"));
+            msg.put("content", m.get("content"));
+            msg.put("contentType", m.get("content_type"));
+            msg.put("createdAt", m.get("created_at"));
+            msg.put("metadata", m.get("metadata"));
             return msg;
         }).toList());
         return body;

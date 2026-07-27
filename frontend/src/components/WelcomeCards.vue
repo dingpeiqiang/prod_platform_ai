@@ -13,7 +13,7 @@
       <section class="scenarios-section" aria-labelledby="welcome-scenarios-title">
         <div class="section-head">
           <h2 id="welcome-scenarios-title" class="section-title">从这里开始</h2>
-          <p class="section-hint">点击场景将示例填入输入框，确认后再发送；也可直接输入</p>
+          <p class="section-hint">点击场景将展示该场景的欢迎说明；也可直接输入业务诉求</p>
         </div>
         <div class="suggestion-cards">
           <button
@@ -21,7 +21,7 @@
             :key="card.label"
             type="button"
             class="suggestion-card"
-            @click="emit('suggest', card.text)"
+            @click="emit('suggest', { ...card, autoSend: true })"
           >
             <div class="card-icon" :style="{ background: card.bg, color: card.color }" aria-hidden="true">
               <svg v-if="card.icon === 'chat'" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -79,7 +79,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { ZHIDU_TEST_PROMPT } from '../data/zhiduTestDoc.js'
+import { assistantModes, buildSceneWelcome } from '../config/assistantModes.js'
 
 const props = defineProps({
   mode: { type: String, default: 'rd' },
@@ -105,86 +105,59 @@ const opsMeta = {
   footer: '本体负责推理与追溯，规则负责红线判定，大模型负责解释与表达。',
 }
 
-const rdCards = [
-  {
-    label: '智聊·对话配置',
-    desc: '直接说业务诉求，自动补全配置字段并拦截冲突',
-    example: '家庭融合套餐 158 元 / 500M',
-    text: '给家庭用户做一个融合套餐，月费158，带500M宽带，全渠道销售',
-    icon: 'chat',
-    bg: '#eff6ff',
-    color: '#2563eb',
-  },
-  {
-    label: '智读·文件配置',
-    desc: '粘贴或上传方案文档，按你的内容映射为多套合规配置草稿',
-    example: '家庭融合测试方案',
-    text: ZHIDU_TEST_PROMPT,
-    icon: 'file',
-    bg: '#ecfdf5',
-    color: '#059669',
-  },
-  {
-    label: '智查·历史复用',
-    desc: '检索历史商品与成熟配置，快速复制复用',
-    example: '近30天大学生套餐',
-    text: '查一下近30天大学生套餐配置',
-    icon: 'search',
-    bg: '#f0f9ff',
-    color: '#0284c7',
-  },
-  {
-    label: '智检·合规校验',
-    desc: '按套餐信息校验：已入库在架套餐或未入库草稿',
-    example: '校园体验流量包0元 / 当前配置',
-    text: '校验校园体验流量包0元是否符合在架规则',
-    icon: 'shield',
-    bg: '#fff7ed',
-    color: '#c2410c',
-  },
-]
+/** 欢迎页卡片与左侧快捷场景共用配置，保证欢迎信息一致 */
+const cards = computed(() => {
+  const mode = props.mode === 'ops' ? 'ops' : 'rd'
+  const shortcuts = assistantModes[mode]?.sceneShortcuts || []
+  const iconByScene = {
+    'rd.chat': 'chat',
+    'rd.import': 'file',
+    'rd.query': 'search',
+    'rd.compliance': 'shield',
+    'rd.compare': 'chart',
+    market_insight: 'chart',
+    online_check: 'check',
+    root_cause: 'trace',
+    risk_audit: 'warn',
+    ops_monitor: 'chart',
+    ops_rules: 'check',
+  }
+  const styleByScene = {
+    'rd.chat': { bg: '#eff6ff', color: '#2563eb' },
+    'rd.import': { bg: '#ecfdf5', color: '#059669' },
+    'rd.query': { bg: '#f0f9ff', color: '#0284c7' },
+    'rd.compliance': { bg: '#fff7ed', color: '#c2410c' },
+    'rd.compare': { bg: '#f5f3ff', color: '#6d28d9' },
+    market_insight: { bg: '#ecfeff', color: '#0e7490' },
+    online_check: { bg: '#fefce8', color: '#a16207' },
+    root_cause: { bg: '#f0fdf4', color: '#15803d' },
+    risk_audit: { bg: '#fff1f2', color: '#be123c' },
+    ops_monitor: { bg: '#eff6ff', color: '#2563eb' },
+    ops_rules: { bg: '#f8fafc', color: '#475569' },
+  }
+  // 欢迎页只展示核心入口卡（对比/规则等仍可从侧边栏进入）
+  const welcomeScenes = mode === 'ops'
+    ? ['market_insight', 'online_check', 'root_cause', 'risk_audit']
+    : ['rd.chat', 'rd.import', 'rd.query', 'rd.compliance']
 
-const opsCards = [
-  {
-    label: '市场洞察',
-    desc: '自然语言检索在售商品、增长指标与竞品态势',
-    example: '在售5G套餐与风险商品',
-    text: '查一下在售5G套餐的增长趋势和风险商品',
-    icon: 'chart',
-    bg: '#ecfeff',
-    color: '#0e7490',
-  },
-  {
-    label: '立项研判',
-    desc: '评估新品是否满足上线门槛与风险红线',
-    example: '青春卡套餐能否立项',
-    text: '评估新推出的青春卡套餐能否通过立项审核',
-    icon: 'check',
-    bg: '#fefce8',
-    color: '#a16207',
-  },
-  {
-    label: '异动归因',
-    desc: '多跳关联推理，定位收入、留存、渠道变化主因',
-    example: '家庭融合畅享128收入下滑',
-    text: '分析家庭融合畅享128本月收入下滑原因',
-    icon: 'trace',
-    bg: '#f0fdf4',
-    color: '#15803d',
-  },
-  {
-    label: '风险稽核',
-    desc: '批量识别零费、低效与长期零销商品并给处置建议',
-    example: '筛查在架0元资费风险',
-    text: '筛查所有在架的0元资费风险商品',
-    icon: 'warn',
-    bg: '#fff1f2',
-    color: '#be123c',
-  },
-]
+  return shortcuts
+    .filter((s) => welcomeScenes.includes(s.scene))
+    .map((s) => {
+      const welcome = buildSceneWelcome(s)
+      const style = styleByScene[s.scene] || { bg: '#f8fafc', color: '#475569' }
+      return {
+        ...s,
+        icon: iconByScene[s.scene] || 'chat',
+        bg: style.bg,
+        color: style.color,
+        example: s.example || (s.nextSteps && s.nextSteps[0]) || s.text || '',
+        welcome: welcome.content,
+        nextSteps: welcome.nextSteps,
+      }
+    })
+})
 
 const meta = computed(() => (props.mode === 'ops' ? opsMeta : rdMeta))
-const cards = computed(() => (props.mode === 'ops' ? opsCards : rdCards))
 </script>
 
 <style scoped>

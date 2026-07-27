@@ -11,6 +11,7 @@
     @refresh-sessions="loadSessions"
     @switch-session="onSwitchSession"
     @shortcut="onShortcut"
+    @quick-action="onQuickAction"
   >
     <ChatMessageList
       mode="ops"
@@ -73,7 +74,7 @@ import OpsRulesPanel from './OpsRulesPanel.vue'
 import { useChatStream } from '../composables/useChatStream.js'
 import { useProductConfig } from '../composables/useProductConfig.js'
 import { registerPostProcessor } from '../composables/useIntentRegistry.js'
-import { assistantModes } from '../config/assistantModes.js'
+import { assistantModes, buildSceneWelcome } from '../config/assistantModes.js'
 import { genId } from '../utils/chatUtils.js'
 
 const inputText = ref('')
@@ -125,7 +126,25 @@ function scenarioToScene(scenario, fallback = '') {
   return fallback || config.defaultScene
 }
 
+function isGuideOnlyRequest(text) {
+  const t = String(text || '')
+  return /使用指导|使用说明|操作步骤|怎么用|如何使用|使用手册|只输出使用说明|仅输出使用说明|只要使用说明|不要直接执行|不要执行|勿执行|不要生成配置结果|仅说明|只要说明/.test(t)
+}
+
 function resolveOpsScenario(text, scene = '') {
+  // 使用说明/勿执行：不按关键词强制改写场景，保留 UI 当前 scene 作软提示
+  if (isGuideOnlyRequest(text)) {
+    const s = String(scene || '')
+    if (s === 'ops_rules' || s === 'rules') return 'ops-rules'
+    if (s === 'ops_monitor' || s === 'ops.monitor' || s === 'monitor') return 'ops-monitor'
+    if (s === 'root_cause' || s === 'offering_ops_root_cause') return 'root-cause'
+    if (s === 'risk_audit' || s === 'offering_ops_risk' || s === 'offering_ops_risk_audit') return 'risk-audit'
+    if (s === 'market_insight' || s === 'market') return 'market-insight'
+    if (s === 'online_check' || s === 'online') return 'online-check'
+    if (s === 'compare' || s === 'compare_state' || s === 'what_if') return 'compare'
+    return null
+  }
+
   const s = String(scene || '')
   if (s === 'ops_rules' || s === 'rules') return 'ops-rules'
   if (s === 'ops_monitor' || s === 'ops.monitor' || s === 'monitor') return 'ops-monitor'
@@ -205,6 +224,14 @@ const onSend = async (payload) => {
   inputText.value = ''
 
   const scene = payload?.scene || activeScene.value || config.defaultScene
+
+  // 使用说明/勿执行：保留当前 scene 作软提示，禁止关键词强制改写为业务场景
+  if (isGuideOnlyRequest(text)) {
+    activeScene.value = scene
+    await sendMessage({ text, scene })
+    return
+  }
+
   const scenario = resolveOpsScenario(text, scene)
 
   if (scenario === 'ops-rules') {
@@ -238,24 +265,71 @@ const onSend = async (payload) => {
   await sendMessage({ text, scene: streamScene })
 }
 
-const onSuggest = (text) => {
-  if (!text || streaming.value) return
+const onSuggest = (payload) => {
+  if (!payload || streaming.value) return
+  if (typeof payload === 'object' && (payload.guide || payload.autoSend || payload.welcome || payload.scene)) {
+    showSceneWelcome(payload)
+    return
+  }
+  const text = typeof payload === 'string' ? payload : payload?.text
+  if (!text) return
   inputText.value = text
 }
 
-const onShortcut = async (item) => {
+/** 点击场景标签：本地展示欢迎信息（不请求模型） */
+async function showSceneWelcome(item) {
   if (!item || streaming.value) return
   if (item.scene) {
     activeScene.value = item.scene
   }
   if (item.scene === 'ops_rules') {
     await productConfig.openRulesPanel()
-    if (item.text) inputText.value = item.text
-    return
   }
-  if (item.text) {
-    inputText.value = item.text
-  }
+
+  const welcome = buildSceneWelcome(item)
+  inputText.value = ''
+  messages.value = [
+    ...messages.value,
+    {
+      id: genId(),
+      role: 'assistant',
+      type: 'chat',
+      content: welcome.content,
+      streamText: welcome.content,
+      done: true,
+      loading: false,
+      timestamp: Date.now(),
+      intentType: '',
+      nextSteps: welcome.nextSteps || [],
+      sceneWelcome: true,
+      scene: item.scene || activeScene.value,
+    },
+  ]
+}
+
+const onShortcut = async (item) => {
+  await showSceneWelcome(item)
+}
+
+/** 输入区快捷芯片 → 同场景欢迎信息 */
+const onQuickAction = async (action) => {
+  if (!action || streaming.value) return
+  let scene = action.scene
+  if (/市场洞察|在售|增长/.test(action.label || action.content || '')) scene = 'market_insight'
+  else if (/立项|上线/.test(action.label || action.content || '')) scene = 'online_check'
+  else if (/监控|告警/.test(action.label || action.content || '')) scene = 'ops_monitor'
+  else if (/稽核|风险|零元/.test(action.label || action.content || '')) scene = 'risk_audit'
+  else if (/归因|根因|异动/.test(action.label || action.content || '')) scene = 'root_cause'
+  else if (/规则/.test(action.label || action.content || '')) scene = 'ops_rules'
+  else if (action.key === 'ops') scene = action.label?.includes('稽核') ? 'risk_audit' : 'root_cause'
+
+  const matched = config.sceneShortcuts.find((s) => s.scene === scene || s.label === action.label)
+  await showSceneWelcome(matched || {
+    label: action.label,
+    scene: scene || activeScene.value,
+    desc: action.desc || action.label,
+    text: action.content || action.text || '',
+  })
 }
 
 const onSwitchSession = (sessionId) => {

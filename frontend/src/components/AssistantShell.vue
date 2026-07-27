@@ -75,6 +75,7 @@
             @update:modelValue="$emit('update:inputText', $event)"
             @send="$emit('send', $event)"
             @stop="$emit('stop')"
+            @quick-action="$emit('quick-action', $event)"
           />
         </div>
       </main>
@@ -108,6 +109,7 @@ defineEmits([
   'refresh-sessions',
   'switch-session',
   'shortcut',
+  'quick-action',
 ])
 
 const config = computed(() => assistantModes[props.mode] || assistantModes.rd)

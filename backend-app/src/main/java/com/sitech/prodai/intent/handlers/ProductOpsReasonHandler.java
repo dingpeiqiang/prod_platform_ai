@@ -2,6 +2,7 @@ package com.sitech.prodai.intent.handlers;
 
 import com.sitech.prodai.intent.BaseIntentHandler;
 import com.sitech.prodai.intent.IntentContext;
+import com.sitech.prodai.intent.IntentRecognitionSupport;
 import com.sitech.prodai.intent.SseStreamSupport;
 import com.sitech.prodai.intent.SseUtils;
 import com.sitech.prodai.service.ProductOntologyService;
@@ -35,6 +36,9 @@ public class ProductOpsReasonHandler implements BaseIntentHandler {
 
     @Override
     public Flux<Map<String, Object>> handle(IntentContext ctx) {
+        if (IntentRecognitionSupport.isMetaGuideRequest(ctx.getLastUserMessage())) {
+            return Flux.fromIterable(IntentRecognitionSupport.metaGuideSkipEvents("异动归因"));
+        }
         String target = ctx.getExtractedFields().containsKey("target")
                 ? String.valueOf(ctx.getExtractedFields().get("target"))
                 : ctx.getLastUserMessage();

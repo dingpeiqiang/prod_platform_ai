@@ -2,6 +2,7 @@ package com.sitech.prodai.intent.handlers;
 
 import com.sitech.prodai.intent.BaseIntentHandler;
 import com.sitech.prodai.intent.IntentContext;
+import com.sitech.prodai.intent.IntentRecognitionSupport;
 import com.sitech.prodai.intent.SseStreamSupport;
 import com.sitech.prodai.intent.SseUtils;
 import com.sitech.prodai.service.ProductOntologyService;
@@ -33,6 +34,9 @@ public class ProductOpsMonitorHandler implements BaseIntentHandler {
 
     @Override
     public Flux<Map<String, Object>> handle(IntentContext ctx) {
+        if (IntentRecognitionSupport.isMetaGuideRequest(ctx.getLastUserMessage())) {
+            return Flux.fromIterable(IntentRecognitionSupport.metaGuideSkipEvents("运营监控"));
+        }
         List<Map<String, Object>> prelude = List.of(
                 SseUtils.thinkingRich(
                         "正在加载运营监控告警与处置工单...",

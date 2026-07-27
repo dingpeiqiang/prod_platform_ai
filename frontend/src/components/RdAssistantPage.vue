@@ -11,6 +11,7 @@
     @refresh-sessions="loadSessions"
     @switch-session="onSwitchSession"
     @shortcut="onShortcut"
+    @quick-action="onQuickAction"
   >
     <template #nav-actions>
       <button type="button" class="nav-product-btn" @click="showProductListPanel = true">
@@ -114,7 +115,7 @@ import ConfigComparePanel from './ConfigComparePanel.vue'
 import { useChatStream } from '../composables/useChatStream.js'
 import { useProductConfig } from '../composables/useProductConfig.js'
 import { checkCompliance } from '../services/productOntologyApi.js'
-import { assistantModes } from '../config/assistantModes.js'
+import { assistantModes, buildSceneWelcome } from '../config/assistantModes.js'
 import { genId } from '../utils/chatUtils.js'
 import { createStreamingPlaceholder, playSimulatedReply } from '../utils/simulateReply.js'
 
@@ -571,9 +572,16 @@ const onSend = async (payload) => {
   sendMessage({ text, scene })
 }
 
-const onSuggest = (text) => {
-  // 生产：场景卡只填入输入框，由用户确认后发送
-  if (!text || streaming.value) return
+const onSuggest = (payload) => {
+  if (!payload || streaming.value) return
+  // 欢迎页场景卡：直接展示场景欢迎信息
+  if (typeof payload === 'object' && (payload.guide || payload.autoSend || payload.welcome || payload.scene)) {
+    showSceneWelcome(payload)
+    return
+  }
+  const text = typeof payload === 'string' ? payload : payload.text
+  if (!text) return
+  // 跟进建议 / 推荐话术：预填输入框
   inputText.value = text
   const scenario = resolveProductScenario(text, activeScene.value || config.defaultScene)
   if (scenario === 'file-parse') {
@@ -588,18 +596,64 @@ const onSuggest = (text) => {
   }
 }
 
-const onShortcut = (item) => {
-  // 生产：快捷场景只进入/预填，不自动发送示例话术
+/** 点击场景标签：本地展示欢迎信息（不请求模型） */
+function showSceneWelcome(item) {
   if (!item || streaming.value) return
   if (item.scene) {
     activeScene.value = item.scene
   }
-  if (item.text) {
-    inputText.value = item.text
-  }
-  if (item.scene === 'rd.chat' || item.label === '智聊·对话配置' || item.label === '智聊配置' || item.label === '对话配置') {
+  if (item.scene === 'rd.chat' || item.label === '智聊·对话配置') {
     productConfig.createEmptyOfferingCanvas()
   }
+
+  const welcome = buildSceneWelcome(item)
+  if (welcome.placeholder) {
+    // 仅更新占位提示感：把推荐首条放入输入框可选；按需求不回显写死业务消息，保持输入框清空
+    inputText.value = ''
+  } else {
+    inputText.value = ''
+  }
+
+  messages.value = [
+    ...messages.value,
+    {
+      id: genId(),
+      role: 'assistant',
+      type: 'chat',
+      content: welcome.content,
+      streamText: welcome.content,
+      done: true,
+      loading: false,
+      timestamp: Date.now(),
+      intentType: '',
+      nextSteps: welcome.nextSteps || [],
+      sceneWelcome: true,
+      scene: item.scene || activeScene.value,
+    },
+  ]
+}
+
+const onShortcut = (item) => {
+  showSceneWelcome(item)
+}
+
+/** 输入区快捷芯片 → 同场景欢迎信息 */
+const onQuickAction = (action) => {
+  if (!action || streaming.value) return
+  const sceneMap = {
+    chat: 'rd.chat',
+    file: 'rd.import',
+    query: 'rd.query',
+    compliance: 'rd.compliance',
+  }
+  const scene = sceneMap[action.key] || action.scene || activeScene.value
+  const matched = config.sceneShortcuts.find((s) => s.scene === scene || s.label === action.label)
+  showSceneWelcome(matched || {
+    label: action.label,
+    scene,
+    desc: action.desc || action.label,
+    text: action.content || action.text || '',
+  })
 }
 
 const onFormCardClick = (msg) => {

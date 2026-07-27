@@ -142,9 +142,12 @@ public class ChatV2Controller {
             @RequestParam(value = "after_ts", required = false) String afterTs,
             @RequestParam(value = "include_metadata", defaultValue = "true") boolean includeMetadata) {
         if (persistenceService.isPresent()) {
-            List<ChatMessage> messages = persistenceService.get().getSessionMessages(sessionId);
+            List<Map<String, Object>> messages = persistenceService.get().getSessionMessageMaps(sessionId);
+            if (messages.size() > limit) {
+                messages = messages.subList(Math.max(0, messages.size() - limit), messages.size());
+            }
             Map<String, Object> body = new LinkedHashMap<>();
-            body.put("messages", messages.stream().map(this::messageToMap).toList());
+            body.put("messages", messages);
             body.put("total", messages.size());
             body.put("has_more_before", false);
             body.put("has_more_after", false);
@@ -166,11 +169,14 @@ public class ChatV2Controller {
             // 首条有效消息时再确保会话存在，避免空会话进入历史
             persistenceService.get().getOrCreateSession(sessionId, "default",
                     content.length() > 50 ? content.substring(0, 50) : content);
-            ChatMessage msg = persistenceService.get().saveMessage(sessionId, role, content, contentType);
+            ChatMessage msg = persistenceService.get().saveMessage(
+                    sessionId, role, content, contentType, castMap(request.get("metadata")));
             if (msg == null) {
                 return Map.of("success", false, "skipped", true, "reason", "empty_content");
             }
             Map<String, Object> result = messageToMap(msg);
+            Map<String, Object> meta = persistenceService.get().getMessageMetadata(msg.getMessageId());
+            result.put("metadata", meta);
             result.put("success", true);
             return result;
         }
@@ -308,10 +314,14 @@ public class ChatV2Controller {
         out.put("role", m.getRole());
         out.put("content", m.getContent());
         out.put("content_type", m.getContentType());
-        out.put("parent_id", null);
+        out.put("parent_id", m.getParentId());
         out.put("step_type", null);
         out.put("created_at", m.getCreatedAt() != null ? m.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant().toString() : null);
-        out.put("metadata", Map.of());
+        Map<String, Object> meta = Map.of();
+        if (persistenceService.isPresent()) {
+            meta = persistenceService.get().getMessageMetadata(m.getMessageId());
+        }
+        out.put("metadata", meta);
         return out;
     }
 

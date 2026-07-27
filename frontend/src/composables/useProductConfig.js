@@ -325,6 +325,14 @@ export function useProductConfig() {
 
   function detectScenario(text) {
     if (!text) return null
+    // 使用说明/勿执行：不做业务场景关键词强制匹配
+    if (
+      /使用指导|使用说明|操作步骤|怎么用|如何使用|使用手册|只输出使用说明|仅输出使用说明|只要使用说明|不要直接执行|不要执行|勿执行|不要生成配置结果|仅说明|只要说明/.test(
+        text
+      )
+    ) {
+      return null
+    }
     const t = text.toLowerCase()
     if (/运营监控|告警列表|查看告警|监控看板|异动告警/.test(text)) return 'ops-monitor'
     if (/根因|异动|离网|累计收入|归因|下滑原因|收入下滑/.test(text)) return 'root-cause'

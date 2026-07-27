@@ -10,6 +10,49 @@ function genSessionId() {
   return `sess_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 10)}`
 }
 
+/** 等待心跳原地刷新；同一步完成时替换进行中条目，避免刷屏 */
+function mergeReasoningStep(steps, value) {
+  const list = [...(steps || [])]
+  const meta = value?.metadata || {}
+  const isWaiting = meta.phase === 'waiting_llm'
+
+  if (isWaiting) {
+    const step = { ...value, _waiting: true }
+    const waitingIdx = list.findIndex(
+      (s) => s._waiting || s.metadata?.phase === 'waiting_llm',
+    )
+    if (waitingIdx >= 0) {
+      list[waitingIdx] = step
+      return list
+    }
+    const runningIdx = list.findIndex(
+      (s) => s.metadata?.step === meta.step && s.metadata?.phase === 'running',
+    )
+    if (runningIdx >= 0) {
+      list[runningIdx] = step
+      return list
+    }
+    list.push(step)
+    return list
+  }
+
+  const withoutWaiting = list.filter(
+    (s) => !(s._waiting || s.metadata?.phase === 'waiting_llm'),
+  )
+  const lastIdx = withoutWaiting.length - 1
+  if (
+    lastIdx >= 0
+    && meta.step != null
+    && withoutWaiting[lastIdx].metadata?.step === meta.step
+    && withoutWaiting[lastIdx].metadata?.phase === 'running'
+  ) {
+    withoutWaiting[lastIdx] = value
+    return withoutWaiting
+  }
+  withoutWaiting.push(value)
+  return withoutWaiting
+}
+
 export function useChatStream() {
   const messages = ref([])
   const streaming = ref(false)
@@ -56,7 +99,7 @@ export function useChatStream() {
     const current = { ...list[idx] }
     for (const [key, value] of Object.entries(patch)) {
       if (key === 'reasoningStep') {
-        current.reasoning = [...(current.reasoning || []), value]
+        current.reasoning = mergeReasoningStep(current.reasoning, value)
         current.showReasoning = true
       } else {
         current[key] = value

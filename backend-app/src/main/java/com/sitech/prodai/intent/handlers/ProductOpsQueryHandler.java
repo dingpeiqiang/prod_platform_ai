@@ -2,6 +2,7 @@ package com.sitech.prodai.intent.handlers;
 
 import com.sitech.prodai.intent.BaseIntentHandler;
 import com.sitech.prodai.intent.IntentContext;
+import com.sitech.prodai.intent.IntentRecognitionSupport;
 import com.sitech.prodai.intent.SseStreamSupport;
 import com.sitech.prodai.intent.SseUtils;
 import com.sitech.prodai.service.OntologyService;
@@ -35,6 +36,9 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
 
     @Override
     public Flux<Map<String, Object>> handle(IntentContext ctx) {
+        if (IntentRecognitionSupport.isMetaGuideRequest(ctx.getLastUserMessage())) {
+            return Flux.fromIterable(IntentRecognitionSupport.metaGuideSkipEvents("市场洞察"));
+        }
         String question = ctx.getExtractedFields().containsKey("question")
                 ? String.valueOf(ctx.getExtractedFields().get("question"))
                 : ctx.getLastUserMessage();
