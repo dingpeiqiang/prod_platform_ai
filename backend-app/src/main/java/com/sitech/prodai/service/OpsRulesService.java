@@ -327,6 +327,20 @@ public class OpsRulesService {
         return name + "（" + ruleId + "）";
     }
 
+    /** 仅业务名称，不含规则编码（给业务人员看的思考过程用） */
+    public String formatRuleName(String ruleId) {
+        if (ruleId == null || ruleId.isBlank()) {
+            return "";
+        }
+        String name = firstNonBlank(
+                str(rootCauseRule(ruleId).get("name")),
+                str(riskRule(ruleId).get("name")),
+                str(configRule(ruleId).get("name")),
+                str(batchRule(ruleId).get("name"))
+        );
+        return name.isBlank() ? ruleId : name;
+    }
+
     public List<String> ruleIds(String section) {
         Map<String, Object> rules = castMap(castMap(load().get(section)).get("rules"));
         return new ArrayList<>(rules.keySet());

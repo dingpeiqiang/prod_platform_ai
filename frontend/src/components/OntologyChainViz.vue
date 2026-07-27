@@ -5,12 +5,12 @@
 <template>
   <div v-if="chain" class="onto-net" :class="[{ streaming, compact }, statusClass]">
     <header class="onto-net-head">
-      <span class="title">归因关系图</span>
-      <span class="sub">{{ focusRelationIds.length ? '当前路径高亮' : '产商品与根因关系' }}</span>
+      <span class="title">{{ chartTitle }}</span>
+      <span class="sub">{{ chartSub }}</span>
       <span v-if="passLabel" class="badge">{{ passLabel }}</span>
     </header>
 
-    <div class="onto-net-canvas">
+    <div class="onto-net-canvas" :style="canvasStyle">
       <VueFlow
         :id="flowId"
         v-model:nodes="flowNodes"
@@ -59,7 +59,7 @@ const { fitView } = useVueFlow({ id: flowId })
 const nodeTypes = { onto: markRaw(OntologyRelNode) }
 
 const defaultEdgeOptions = {
-  type: 'smoothstep',
+  type: 'default',
   style: { stroke: '#94a3b8', strokeWidth: 1.4 },
   markerEnd: { type: MarkerType.ArrowClosed, color: '#94a3b8', width: 14, height: 14 },
 }
@@ -119,6 +119,25 @@ const statusClass = computed(() => {
   return 'is-warn'
 })
 
+const chartTitle = computed(() => {
+  const hubClass = props.chain?.hub?.className || ''
+  if (/OfferingConfig/.test(hubClass)) return '配置关系图'
+  const kinds = [
+    hubClass,
+    ...(props.chain?.relations || []).flatMap((r) => [r.s?.className, r.o?.className]),
+  ].join(' ')
+  if (/BizScenario|ConfigTemplate|ConfigRule|ComplianceIssue/.test(kinds)) return '配置关系图'
+  if (/Metric|Channel|Promotion|Competitor|UserBehavior/.test(kinds)) return '归因关系图'
+  return '本体关系图'
+})
+
+const chartSub = computed(() => {
+  if (props.focusRelationIds?.length) return '当前路径高亮'
+  if (chartTitle.value === '配置关系图') return '场景 · 模板 · 规则 · 合规'
+  if (chartTitle.value === '归因关系图') return '产商品与根因关系'
+  return '实体与关系'
+})
+
 function classKey(className) {
   const k = String(className || '')
   if (/OfferingConfig/.test(k)) return 'cfg'
@@ -156,16 +175,89 @@ function collectEntities(rels, hub) {
   return [...map.values()]
 }
 
-function layout(entities) {
-  const hub = entities.find((e) => e.hub) || entities[0]
+function statusRank(status) {
+  if (status === 'block' || status === 'conflict') return 0
+  if (status === 'warn') return 1
+  if (status === 'pass') return 2
+  return 3
+}
+
+/** 异动归因 / 风险稽核：星型图（中心产商品 → 右侧指标与根因） */
+function isAttributionStar(entities, hub) {
+  if (!hub) return false
+  const others = entities.filter((e) => e.id !== hub.id)
+  if (!others.length) return false
+  const configKinds = /BizScenario|Template|Element|Property|Compliance|Shelf/
+  const starKinds = /Metric|Channel|Promotion|Competitor|UserBehavior|RiskFeature|Risk|Price/
+  const starN = others.filter((e) => starKinds.test(e.className || '')).length
+  const configN = others.filter((e) => configKinds.test(e.className || '')).length
+  return configN === 0 && starN >= Math.ceil(others.length * 0.5)
+}
+
+function placeColumn(list, x, startY, rowGap, pos) {
+  if (!list.length) return
+  const total = (list.length - 1) * rowGap
+  const y0 = startY - total / 2
+  list.forEach((e, i) => {
+    pos[e.id] = { x, y: list.length === 1 ? startY : y0 + i * rowGap }
+  })
+}
+
+function placeRow(list, centerX, y, colGap, pos) {
+  if (!list.length) return
+  const total = (list.length - 1) * colGap
+  const x0 = centerX - total / 2
+  list.forEach((e, i) => {
+    pos[e.id] = { x: list.length === 1 ? centerX : x0 + i * colGap, y }
+  })
+}
+
+/** 按相对方位选锚点，避免「右出左进」绕圈交叉 */
+function pickHandles(src, tgt) {
+  const dx = (tgt?.x || 0) - (src?.x || 0)
+  const dy = (tgt?.y || 0) - (src?.y || 0)
+  if (Math.abs(dx) >= Math.abs(dy) * 0.85) {
+    if (dx >= 0) return { sourceHandle: 's-right', targetHandle: 't-left' }
+    return { sourceHandle: 's-left', targetHandle: 't-right' }
+  }
+  if (dy >= 0) return { sourceHandle: 's-bottom', targetHandle: 't-top' }
+  return { sourceHandle: 's-top', targetHandle: 't-bottom' }
+}
+
+function layoutAttribution(entities, hub) {
+  const pos = {}
+  const colGap = 240
+  const rowGap = 108
+  const others = entities.filter((e) => e.id !== hub?.id)
+
+  const metrics = others.filter((e) => /Metric|Price/.test(e.className || ''))
+  const causes = others
+    .filter((e) => !metrics.some((m) => m.id === e.id))
+    .slice()
+    .sort((a, b) => statusRank(a.status) - statusRank(b.status))
+
+  // 右列：指标在上，根因按严重度向下排列，避免边与标签挤在一起
+  const rightCol = [...metrics, ...causes]
+  placeColumn(rightCol, colGap, 0, rowGap, pos)
+
+  if (hub) {
+    const first = rightCol[0]
+    const last = rightCol[rightCol.length - 1]
+    const midY = first && last ? (pos[first.id].y + pos[last.id].y) / 2 : 0
+    pos[hub.id] = { x: 0, y: midY }
+  }
+  return pos
+}
+
+function layoutConfig(entities, hub) {
   const others = entities.filter((e) => e.id !== hub?.id)
   const pos = {}
-  const colGap = 200
-  const rowGap = 78
+  const colGap = 230
+  const rowGap = 100
 
   if (hub) pos[hub.id] = { x: 0, y: 0 }
 
-  // 左：场景/模板；右：要素/定价/客群；下：规则/关系/合规
+  // 左：场景/模板；右：要素/定价/客群；下横排：规则 → 合规
   const leftKinds = /BizScenario|Template/
   const bottomKinds = /Rule|Relation|Compliance|Issue|Shelf/
   const left = []
@@ -178,24 +270,40 @@ function layout(entities) {
     else right.push(e)
   })
 
-  const placeColumn = (list, x, startY) => {
-    const total = (list.length - 1) * rowGap
-    const y0 = startY - total / 2
-    list.forEach((e, i) => {
-      pos[e.id] = { x, y: list.length === 1 ? startY : y0 + i * rowGap }
-    })
-  }
+  // 模板在下、场景在上，阅读顺序更自然
+  left.sort((a, b) => {
+    const score = (e) => (/Template/.test(e.className || '') ? 1 : 0)
+    return score(a) - score(b)
+  })
+  right.sort((a, b) => {
+    const score = (e) => (/Price|Metric/.test(e.className || '') ? 0 : 1)
+    return score(a) - score(b)
+  })
 
-  placeColumn(left, -colGap, 0)
-  placeColumn(right, colGap, 0)
-  placeColumn(bottom, 0, Math.max(110, 70 + Math.max(left.length, right.length) * 20))
+  placeColumn(left, -colGap, 0, rowGap, pos)
+  placeColumn(right, colGap, 0, rowGap, pos)
 
-  // 若某侧为空导致挤在一起，把剩余节点均匀排到右侧
+  const rules = bottom.filter((e) => /Rule/.test(e.className || ''))
+  const issues = bottom.filter((e) => /Compliance|Issue/.test(e.className || ''))
+  const restBottom = bottom.filter(
+    (e) => !rules.some((r) => r.id === e.id) && !issues.some((r) => r.id === e.id),
+  )
+  const bottomRow = [...rules, ...restBottom, ...issues]
+  const sideH = Math.max(left.length, right.length, 1)
+  const bottomY = 56 + sideH * (rowGap / 2) + 72
+  placeRow(bottomRow, 0, bottomY, 200, pos)
+
   const placed = new Set(Object.keys(pos))
   const rest = others.filter((e) => !placed.has(e.id))
-  if (rest.length) placeColumn(rest, colGap, 0)
+  if (rest.length) placeColumn(rest, colGap, 0, rowGap, pos)
 
   return pos
+}
+
+function layout(entities) {
+  const hub = entities.find((e) => e.hub) || entities[0]
+  if (isAttributionStar(entities, hub)) return layoutAttribution(entities, hub)
+  return layoutConfig(entities, hub)
 }
 
 function edgeStyle(status) {
@@ -226,9 +334,20 @@ function edgeStyle(status) {
 const flowNodes = ref([])
 const flowEdges = ref([])
 
+const canvasStyle = computed(() => {
+  // 关系数 + hub ≈ 节点数；画布随节点增高，避免紧凑模式下挤成一团
+  const n = visibleRelations.value.length + 1
+  const base = props.compact ? 280 : 360
+  const per = props.compact ? 48 : 52
+  const h = Math.min(560, Math.max(base, 120 + n * per))
+  return { height: `${h}px` }
+})
+
 function rebuild() {
   const rels = visibleRelations.value
   const ents = collectEntities(rels, props.chain?.hub)
+  const hub = ents.find((e) => e.hub) || ents[0]
+  const star = isAttributionStar(ents, hub)
   const pos = layout(ents)
   const latestId = rels.length ? rels[rels.length - 1].o?.id : ''
   const focusSet = new Set((props.focusRelationIds || []).filter(Boolean))
@@ -238,13 +357,6 @@ function rebuild() {
     rels.forEach((r) => {
       const rid = r.id || ''
       if (focusSet.has(rid) || r.shared) {
-        if (r.s?.id) focusedNodeIds.add(r.s.id)
-        if (r.o?.id) focusedNodeIds.add(r.o.id)
-      }
-    })
-    // shared 边（如异动指标）始终视为焦点一部分
-    rels.forEach((r) => {
-      if (r.shared) {
         if (r.s?.id) focusedNodeIds.add(r.s.id)
         if (r.o?.id) focusedNodeIds.add(r.o.id)
       }
@@ -268,37 +380,44 @@ function rebuild() {
         dimmed,
         focused: hasFocus && focusedNodeIds.has(e.id),
       },
-      style: dimmed ? { opacity: 0.28 } : { opacity: 1 },
+      style: dimmed ? { opacity: 0.22 } : { opacity: 1 },
       draggable: true,
       selectable: false,
     }
   })
 
+  // 按相对方位选锚点；配置图用正交折线更整齐，星型图用贝塞尔
+  const edgeType = star ? 'default' : 'smoothstep'
   flowEdges.value = rels.map((r, i) => {
     const rid = r.id || `e-${i}`
     const focused = !hasFocus || focusSet.has(rid) || !!r.shared
     const st = edgeStyle(focused ? r.status : 'idle')
+    const showLabel = focused
+    const srcPos = pos[r.s?.id] || { x: 0, y: 0 }
+    const tgtPos = pos[r.o?.id] || { x: 0, y: 0 }
+    const handles = pickHandles(srcPos, tgtPos)
     return {
       id: rid,
       source: r.s.id,
       target: r.o.id,
-      label: r.pCn || r.p,
-      type: 'smoothstep',
+      sourceHandle: handles.sourceHandle,
+      targetHandle: handles.targetHandle,
+      label: showLabel ? (r.pCn || r.p) : undefined,
+      type: edgeType,
       animated: (props.streaming && i === rels.length - 1) || (hasFocus && focused && !r.shared),
       style: {
         stroke: st.stroke,
-        strokeWidth: focused && hasFocus ? 2 : 1.4,
-        opacity: focused ? 1 : 0.22,
+        strokeWidth: focused && hasFocus ? 2.2 : 1.35,
+        opacity: focused ? 1 : 0.14,
       },
       markerEnd: st.markerEnd,
       labelStyle: {
-        fill: focused ? '#475569' : '#94a3b8',
-        fontSize: 9,
+        fill: '#334155',
+        fontSize: 10,
         fontWeight: 650,
-        opacity: focused ? 1 : 0.35,
       },
-      labelBgStyle: { fill: '#fff', fillOpacity: focused ? 0.92 : 0.5 },
-      labelBgPadding: [3, 5],
+      labelBgStyle: { fill: '#fff', fillOpacity: 0.95 },
+      labelBgPadding: [4, 6],
       labelBgBorderRadius: 4,
     }
   })
@@ -307,7 +426,12 @@ function rebuild() {
 function fit() {
   nextTick(() => {
     try {
-      fitView({ padding: 0.28, duration: props.streaming ? 160 : 260, maxZoom: 1 })
+      fitView({
+        padding: 0.22,
+        duration: props.streaming ? 160 : 280,
+        maxZoom: 1.05,
+        minZoom: 0.55,
+      })
     } catch (_) {
       /* ignore */
     }
@@ -373,12 +497,8 @@ watch(
 .is-warn .badge { background: #fef3c7; color: #92400e; }
 
 .onto-net-canvas {
-  height: 360px;
+  height: 380px;
   position: relative;
-}
-
-.onto-net.compact .onto-net-canvas {
-  height: 220px;
 }
 
 .flow {

@@ -118,7 +118,15 @@ import { checkCompliance } from '../services/productOntologyApi.js'
 import { assistantModes, buildSceneWelcome } from '../config/assistantModes.js'
 import { ZHIDU_TEST_PROMPT } from '../data/zhiduTestDoc.js'
 import { genId } from '../utils/chatUtils.js'
-import { createStreamingPlaceholder, playSimulatedReply } from '../utils/simulateReply.js'
+import { createStreamingPlaceholder } from '../utils/simulateReply.js'
+import { sleep } from '../utils/simulateReply.js'
+import {
+  applyScheduleResults,
+  createSchedule,
+  revealOntologyChain,
+  scenarioLabel,
+  startScheduleTicker,
+} from '../utils/thinkingSchedule.js'
 
 /** 智读引导话术：点击后填入可解析演示正文，而非空指令 */
 const ZHIDU_GUIDE_RE =
@@ -411,37 +419,49 @@ function applyPlaybookSideEffects(aiMsg, playbook = {}) {
   tickMessages()
 }
 
-/** 已有占位气泡时续播剧本（保留请求中的进度 thinking） */
+/** 结果回填到同一条调度时间线，再流式输出正文（不再另起一套「思考过程」） */
 async function finishProductReply(aiMsg, playbook = {}) {
-  if (playbook.replaceProgress) {
-    aiMsg.reasoning = []
-  }
   const allSteps = playbook.thinkingSteps || []
-  // 进度已在请求期间展示，结果阶段只补本体链，避免再叠一层慢速 thinking
-  const ontologySteps = allSteps.filter((s) => typeof s === 'object' && s.type === 'ontology')
-  const thinkingSteps = ontologySteps.length
-    ? ontologySteps
-    : allSteps.slice(-1)
+  aiMsg.reasoning = applyScheduleResults(aiMsg.reasoning || [], allSteps)
+  aiMsg.showReasoning = true
+  tickMessages()
 
-  await playSimulatedReply({
-    msg: aiMsg,
-    thinkingSteps,
-    content: playbook.content || '',
-    formCard: playbook.formCard || null,
-    queryResults: playbook.queryResults || null,
-    onTick: tickMessages,
-    thinkDelay: 60,
-    typeDelay: 3,
-    preserveReasoning: !playbook.replaceProgress,
-    skipChainReveal: true,
-  })
+  const onto = (aiMsg.reasoning || []).find((s) => s.type === 'ontology' && s.ontologyChain)
+  if (onto?.id) {
+    await revealOntologyChain(aiMsg, onto.id, { onTick: tickMessages, delay: 90 })
+  }
+
+  aiMsg.loading = false
+  tickMessages()
+
+  const content = playbook.content || ''
+  for (let i = 0; i < content.length; i += 12) {
+    await sleep(8)
+    const chunk = content.slice(i, i + 12)
+    aiMsg.streamText = (aiMsg.streamText || '') + chunk
+    aiMsg.content = aiMsg.streamText
+    tickMessages()
+  }
+
+  if (playbook.formCard) aiMsg.formCard = playbook.formCard
+  if (playbook.queryResults) aiMsg.queryResults = playbook.queryResults
+  aiMsg.done = true
+  aiMsg.loading = false
+  tickMessages()
   applyPlaybookSideEffects(aiMsg, playbook)
 }
 
-async function playProductReply(playbook = {}) {
+async function playProductReply(playbook = {}, scenario = 'chat-generate') {
   const aiMsg = createStreamingPlaceholder(genId)
+  aiMsg._scenario = scenario
+  aiMsg.reasoning = createSchedule(scenario)
   messages.value = [...messages.value, aiMsg]
-  await finishProductReply(aiMsg, playbook)
+  tickMessages()
+  await sleep(280)
+  await finishProductReply(aiMsg, {
+    ...playbook,
+    thinkingSteps: normalizePlaybookSteps(playbook.thinkingSteps, scenario),
+  })
 }
 
 async function loadScenarioPlaybook(text, scenario, attachments = []) {
@@ -482,18 +502,6 @@ async function loadScenarioPlaybook(text, scenario, attachments = []) {
   return productConfig.generateProductFromChat(text)
 }
 
-const SCENARIO_PROGRESS = {
-  query: ['正在解析查询条件...', '检索本体事实图...'],
-  'file-parse': ['正在解析方案内容...', '抽取套餐结构...'],
-  'confirm-batch': ['正在确认批量草稿...', '提交备案闭环...'],
-  compare: ['正在构建候选方案...', '合规评估与收益测算...'],
-  'config-trace': ['正在加载审计链路...', '生成业务说明...'],
-  compliance: ['正在定位套餐信息...', '执行配置合规规则...'],
-  'root-cause': ['正在分析异动指标...', '本体归因推理中...'],
-  'risk-audit': ['正在筛查风险规则...', '聚合稽核结果...'],
-  'chat-generate': ['正在理解配置诉求...', '调用本体配置服务...'],
-}
-
 function toDisplayAttachments(attachments = []) {
   return (attachments || []).map((a) => ({
     type: a.type || 'file',
@@ -505,6 +513,60 @@ function toDisplayAttachments(attachments = []) {
     uploadStatus: a.uploadStatus || null,
     duration: a.duration,
   }))
+}
+
+/** 将 playbook 步骤对齐到场景模板 id，保证与调度表同一条时间线 */
+function normalizePlaybookSteps(thinkingSteps = [], scenario = 'chat-generate') {
+  const schedule = createSchedule(scenario)
+  const raw = (thinkingSteps || []).map((src) => {
+    if (typeof src === 'string') {
+      return { id: null, type: 'llm', content: src, result: src }
+    }
+    return { ...src, id: src.id || null }
+  })
+  const byId = new Map(raw.filter((s) => s.id).map((s) => [s.id, s]))
+  const hasIntent = byId.has('intent')
+  // 与模板等长 → 按下标对齐；短一截 → 视为缺意图步，对齐到 intent 之后
+  const useIndex = !hasIntent && raw.length === schedule.length
+  let bodyCursor = 0
+
+  return schedule.map((tpl, i) => {
+    let src = byId.get(tpl.id) || null
+    if (!src && useIndex) {
+      src = raw[i] || null
+    } else if (!src && tpl.id === 'intent') {
+      src = { result: scenarioLabel(scenario) }
+    } else if (!src && !hasIntent) {
+      src = raw[bodyCursor] || null
+      bodyCursor += 1
+    }
+    if (!src) {
+      return {
+        id: tpl.id,
+        type: tpl.type,
+        title: tpl.title,
+        content: tpl.content,
+        result: tpl.id === 'intent' ? scenarioLabel(scenario) : null,
+      }
+    }
+    return {
+      id: tpl.id,
+      type: src.type || tpl.type,
+      title: src.title || tpl.title,
+      content: src.content || tpl.content,
+      result:
+        src.result !== undefined && src.result !== null
+          ? src.result
+          : tpl.id === 'intent'
+            ? scenarioLabel(scenario)
+            : null,
+      metadata: src.metadata || null,
+      details: src.details || null,
+      elapsed: src.elapsed,
+      ontologyChain: src.ontologyChain || null,
+      ontologyPreview: src.ontologyPreview || null,
+    }
+  })
 }
 
 async function runProductScenario(text, scenario, attachments = []) {
@@ -523,62 +585,37 @@ async function runProductScenario(text, scenario, attachments = []) {
   ]
 
   const aiMsg = createStreamingPlaceholder(genId)
-  const progressSteps = SCENARIO_PROGRESS[scenario] || SCENARIO_PROGRESS['chat-generate']
-  // 阶段只追加一次；等待秒数原地刷新，避免刷屏
-  aiMsg.reasoning = [{ type: 'llm', content: progressSteps[0] }]
+  aiMsg._scenario = scenario
+  // 同一条「思考过程」：意图 + 场景模板调度表挂上，结果原地回填
+  aiMsg.reasoning = createSchedule(scenario)
   messages.value = [...messages.value, aiMsg]
+  tickMessages()
 
-  let progressIdx = 0
-  const startedAt = Date.now()
-  const heartbeat = setInterval(() => {
-    const sec = Math.floor((Date.now() - startedAt) / 1000)
-    const list = [...(aiMsg.reasoning || [])]
-    if (progressIdx < progressSteps.length - 1) {
-      progressIdx += 1
-      list.push({ type: 'llm', content: progressSteps[progressIdx] })
-    } else {
-      const waitingIdx = list.findIndex((s) => s._waiting)
-      const waitingText = `本体推理进行中（${sec}s）...`
-      if (waitingIdx >= 0) {
-        list[waitingIdx] = {
-          ...list[waitingIdx],
-          content: waitingText,
-          waitingStartedAt: list[waitingIdx].waitingStartedAt || startedAt,
-          stepStartedAt: list[waitingIdx].stepStartedAt || startedAt,
-          timestamp: list[waitingIdx].timestamp || startedAt,
-        }
-      } else {
-        list.push({
-          type: 'llm',
-          content: waitingText,
-          _waiting: true,
-          waitingStartedAt: startedAt,
-          stepStartedAt: startedAt,
-          timestamp: startedAt,
-        })
-      }
-    }
-    aiMsg.reasoning = list
-    tickMessages()
-  }, 1000)
+  const ticker = startScheduleTicker(aiMsg, {
+    onTick: tickMessages,
+    stepDelay: 380,
+  })
 
   try {
     const playbook = await loadScenarioPlaybook(text, scenario, attachments)
-    clearInterval(heartbeat)
-    // 去掉等待行，再续播本体结果
-    aiMsg.reasoning = (aiMsg.reasoning || []).filter((s) => !s._waiting)
-    tickMessages()
-    await finishProductReply(aiMsg, playbook)
+    ticker.stop()
+    const normalizedSteps = normalizePlaybookSteps(playbook.thinkingSteps, scenario)
+    await finishProductReply(aiMsg, { ...playbook, thinkingSteps: normalizedSteps })
   } catch (e) {
-    clearInterval(heartbeat)
-    aiMsg.reasoning = (aiMsg.reasoning || []).filter((s) => !s._waiting)
+    ticker.stop()
     console.warn('[RdAssistant] product scenario failed:', e)
     await finishProductReply(aiMsg, {
-      thinkingSteps: ['本体配置推理失败'],
+      thinkingSteps: normalizePlaybookSteps(
+        [
+          { id: 'intent', result: scenarioLabel(scenario) },
+          { id: 'ontology', content: '本体配置推理失败', result: e?.message || '请稍后重试' },
+        ],
+        scenario,
+      ),
       content: `处理失败：${e?.message || '请稍后重试'}`,
     })
   } finally {
-    clearInterval(heartbeat)
+    ticker.stop()
     streaming.value = false
   }
 }

@@ -2,7 +2,7 @@
  * 思考过程面板：时间线样式；本体推理为其中一环，内嵌网络图 + 推理预览
  *
  * 支持富元数据展示：
- * - step / totalSteps：步骤进度（如 2/4）
+ * - 步骤进度按面板内相对序号展示（如 1/2），不依赖后端全局 step/totalSteps
  * - metadata：关键数据标签（意图类型、置信度等）
  * - elapsed：步骤耗时
  * - details：可展开的详细信息（SPARQL、LLM 原始返回等）
@@ -22,8 +22,8 @@
       >
         <polyline points="9 18 15 12 9 6" />
       </svg>
-      <span class="think-title">{{ streaming ? '正在思考' : '思考过程' }}</span>
-      <span class="think-count">{{ steps.length }} 步</span>
+      <span class="think-title">思考过程</span>
+      <span class="think-count">{{ visibleStepCount }} 步</span>
       <span v-if="ontoCount" class="think-onto-tag">含本体环节 {{ ontoCount }}</span>
       <span v-if="streaming" class="think-live">进行中</span>
     </button>
@@ -31,45 +31,66 @@
     <div v-show="show !== false" class="think-body">
       <ol class="think-timeline">
         <li
-          v-for="(step, si) in steps"
-          :key="si"
+          v-for="(step, si) in visibleSteps"
+          :key="stepKey(step, si)"
           class="think-step"
           :class="{
-            latest: streaming && si === steps.length - 1,
-            done: !streaming || si < steps.length - 1,
+            latest: isRunning(step, si),
+            done: isDone(step, si),
+            pending: isPending(step, si),
             'is-ontology': step.type === 'ontology',
+            'step-enter': isRunning(step, si),
           }"
         >
           <div class="rail" aria-hidden="true">
             <span class="rail-dot" />
-            <span v-if="si < steps.length - 1" class="rail-line" />
+            <span v-if="si < visibleSteps.length - 1" class="rail-line" />
           </div>
 
           <div class="step-main">
             <div class="step-meta">
-              <span class="step-progress" v-if="step.metadata?.step">
-                {{ step.metadata.step }}{{ step.metadata.totalSteps ? '/' + Math.min(step.metadata.totalSteps, steps.length) : '' }}
+              <span class="step-progress">
+                {{ si + 1 }}/{{ steps.length || visibleSteps.length }}
               </span>
               <span class="type-chip" :class="step.type === 'ontology' ? 'ontology' : 'llm'">
-                {{ step.type === 'ontology' ? '本体推理' : '模型思考' }}
+                {{ step.type === 'ontology' ? '知识推理' : '处理步骤' }}
+              </span>
+              <span
+                v-if="step.title"
+                class="step-action"
+              >
+                {{ step.title }}
               </span>
               <span v-if="displayElapsed(step, si) != null" class="step-elapsed">
                 {{ formatElapsed(displayElapsed(step, si)) }}
               </span>
             </div>
 
-            <!-- 本体环节：内嵌网络图 -->
+            <!-- 本体环节：动作说明 + 内嵌推理块（结论由 OntologyReasoningBlock 展示） -->
             <template v-if="step.type === 'ontology' && step.ontologyChain">
+              <div v-if="step.content" class="step-text">{{ step.content }}</div>
               <OntologyReasoningBlock
                 :preview="step.ontologyPreview"
                 :chain="step.ontologyChain"
                 :chain-reveal-count="step.chainRevealCount || 0"
-                :streaming="streaming && si === steps.length - 1"
+                :streaming="streaming && isRunning(step, si)"
               />
             </template>
             <template v-else>
-              <!-- 主文本 -->
-              <div class="step-text">{{ displayStepContent(step, si) }}</div>
+              <!-- 主文本：动作说明（无独立 title 时作为标题） -->
+              <div
+                v-if="displayStepContent(step, si)"
+                class="step-text"
+                :class="{ 'as-action': !step.title && !formatStepResult(step) }"
+              >
+                {{ displayStepContent(step, si) }}
+              </div>
+
+              <!-- 步骤结果：明确展示「做了什么之后得到什么」 -->
+              <div v-if="formatStepResult(step)" class="step-result">
+                <span class="result-label">结果</span>
+                <span class="result-value">{{ formatStepResult(step) }}</span>
+              </div>
 
               <!-- 元数据标签 -->
               <div v-if="hasMetadata(step)" class="step-metadata">
@@ -105,7 +126,7 @@
                   {{ expandedDetails[si] ? '收起详情' : '展开详情' }}
                 </button>
                 <div v-show="expandedDetails[si]" class="step-details-content">
-                  <pre>{{ step.details }}</pre>
+                  <pre>{{ localizeDetails(step.details) }}</pre>
                 </div>
               </div>
             </template>
@@ -131,9 +152,49 @@ defineEmits(['toggle'])
 
 const ontoCount = computed(() => props.steps.filter((s) => s.type === 'ontology').length)
 
+/**
+ * 调度中：只展示已激活步骤（done/running），pending 不提前铺开；
+ * 完成后：展示全部步骤（同一条时间线回填结果后）。
+ */
+const visibleSteps = computed(() => {
+  const list = props.steps || []
+  if (!props.streaming) return list
+  const hasStatus = list.some((s) => s.status)
+  if (!hasStatus) return list
+  const active = list.filter((s) => s.status !== 'pending')
+  return active.length ? active : list.slice(0, 1)
+})
+
+const visibleStepCount = computed(() => {
+  if (!props.streaming) return (props.steps || []).length
+  return Math.max(visibleSteps.value.length, (props.steps || []).length)
+})
+
 const expandedDetails = reactive({})
 const liveNow = ref(Date.now())
 let liveTimer = null
+
+/** 稳定 key：避免整表刷新时已有步骤被当成新节点反复播入场动画 */
+const stepKey = (step, si) =>
+  step.id
+  || step.stepStartedAt
+  || `${step.type || 'llm'}-${step.title || ''}-${si}`
+
+const isRunning = (step, si) => {
+  if (step.status === 'running' || step.metadata?.phase === 'running' || step.metadata?.phase === 'waiting_llm') {
+    return true
+  }
+  if (step.status === 'done' || step.status === 'pending') return false
+  return props.streaming && si === visibleSteps.value.length - 1
+}
+
+const isDone = (step, si) => {
+  if (step.status === 'done') return true
+  if (step.status === 'running' || step.status === 'pending') return false
+  return !props.streaming || si < visibleSteps.value.length - 1
+}
+
+const isPending = (step) => step.status === 'pending'
 
 watch(
   () => props.streaming,
@@ -160,7 +221,11 @@ const toggleDetails = (idx) => {
   expandedDetails[idx] = !expandedDetails[idx]
 }
 
-const isWaitingStep = (step) => step._waiting || step.metadata?.phase === 'waiting_llm'
+const isWaitingStep = (step) =>
+  step._waiting
+  || step.status === 'running'
+  || step.metadata?.phase === 'waiting_llm'
+  || step.metadata?.phase === 'running'
 
 const stepStartedAt = (step) => step.waitingStartedAt || step.stepStartedAt || step.timestamp || null
 
@@ -172,11 +237,11 @@ const liveElapsedSeconds = (step) => {
 
 /** 流式进行中步骤：本地 1 秒读秒，不依赖 SSE 推送间隔 */
 const displayElapsed = (step, index) => {
-  if (step.elapsed != null && step.elapsed >= 0 && (!props.streaming || index < props.steps.length - 1)) {
+  if (step.elapsed != null && step.elapsed >= 0 && isDone(step, index)) {
     return step.elapsed
   }
-  if (!props.streaming || index !== props.steps.length - 1) return null
-  if (isWaitingStep(step) || step.metadata?.phase === 'running') {
+  if (!props.streaming || !isRunning(step, index)) return step.elapsed != null ? step.elapsed : null
+  if (isWaitingStep(step)) {
     return liveElapsedSeconds(step)
   }
   return null
@@ -184,7 +249,7 @@ const displayElapsed = (step, index) => {
 
 const displayStepContent = (step, index) => {
   const text = props.localize(step.content)
-  if (!props.streaming || index !== props.steps.length - 1 || !isWaitingStep(step)) {
+  if (!props.streaming || !isRunning(step, index) || !isWaitingStep(step)) {
     return text
   }
   const sec = liveElapsedSeconds(step)
@@ -197,6 +262,32 @@ const displayStepContent = (step, index) => {
   return text
 }
 
+/** 格式化步骤结果：支持 string / number / 对象摘要 */
+const formatStepResult = (step) => {
+  const raw = step.result
+  if (raw == null || raw === '') return ''
+  if (typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean') {
+    return String(raw)
+  }
+  if (Array.isArray(raw)) {
+    if (!raw.length) return '（空）'
+    if (raw.every((x) => typeof x === 'string' || typeof x === 'number')) {
+      return raw.join('，')
+    }
+    return JSON.stringify(raw, null, 0)
+  }
+  if (typeof raw === 'object') {
+    const keys = Object.keys(raw)
+    if (!keys.length) return '（空）'
+    // 常见摘要字段优先
+    if (raw.summary) return String(raw.summary)
+    if (raw.message) return String(raw.message)
+    const pairs = keys.slice(0, 6).map((k) => `${k}=${raw[k]}`)
+    return pairs.join('，') + (keys.length > 6 ? '…' : '')
+  }
+  return String(raw)
+}
+
 /** 格式化耗时显示 */
 const formatElapsed = (seconds) => {
   if (seconds == null || seconds < 0) return ''
@@ -207,46 +298,41 @@ const formatElapsed = (seconds) => {
   return Math.floor(seconds / 60) + 'm ' + Math.round(seconds % 60) + 's'
 }
 
-/** 检查步骤是否有有效的 metadata */
+/** 检查步骤是否有业务侧可展示的 metadata（隐藏 Token 等技术字段） */
 const hasMetadata = (step) => {
   if (!step.metadata) return false
   const meta = step.metadata
-  // 只显示有意义的字段
-  return meta.intentLabel || meta.confidence != null || meta.inputTokens || meta.resultCount != null || meta.policySetId || meta.ruleCount != null || meta.evidenceCount != null
+  return meta.intentLabel
+    || meta.confidence != null
+    || meta.resultCount != null
+    || meta.ruleCount != null
+    || meta.evidenceCount != null
+    || meta.verdict
 }
 
-/** 提取 metadata 为标签数组 */
+/** 提取 metadata 为业务可读标签 */
 const metadataEntries = (step) => {
   if (!step.metadata) return []
   const meta = step.metadata
   const entries = []
 
   if (meta.intentLabel) {
-    entries.push({ key: 'intent', label: '意图', value: meta.intentLabel })
+    entries.push({ key: 'intent', label: '业务意图', value: meta.intentLabel })
   }
   if (meta.confidence != null) {
-    entries.push({ key: 'confidence', label: '置信度', value: Math.round(meta.confidence * 100) + '%' })
-  }
-  if (meta.inputTokens) {
-    entries.push({ key: 'tokens', label: 'Token', value: meta.inputTokens + ' in / ' + (meta.outputTokens || 0) + ' out' })
+    entries.push({ key: 'confidence', label: '把握度', value: Math.round(meta.confidence * 100) + '%' })
   }
   if (meta.resultCount != null) {
     entries.push({ key: 'result', label: '结果', value: meta.resultCount + ' 条' })
-  }
-  if (meta.policySetId) {
-    entries.push({ key: 'policy', label: '策略集', value: meta.policySetId })
   }
   if (meta.verdict) {
     entries.push({ key: 'verdict', label: '结论', value: meta.verdict })
   }
   if (meta.ruleCount != null) {
-    entries.push({ key: 'rule', label: '规则', value: meta.ruleCount + ' 条' })
+    entries.push({ key: 'rule', label: '参考规则', value: meta.ruleCount + ' 条' })
   }
   if (meta.evidenceCount != null) {
-    entries.push({ key: 'evidence', label: '证据', value: meta.evidenceCount + ' 条' })
-  }
-  if (meta.ontologyCount != null) {
-    entries.push({ key: 'ontology', label: '本体', value: meta.ontologyCount + ' 个' })
+    entries.push({ key: 'evidence', label: '支撑证据', value: meta.evidenceCount + ' 条' })
   }
 
   return entries
@@ -257,15 +343,28 @@ const metaTagClass = (key) => {
   switch (key) {
     case 'intent': return 'meta-intent'
     case 'confidence': return 'meta-confidence'
-    case 'tokens': return 'meta-tokens'
     case 'policy':
     case 'verdict': return 'meta-policy'
     case 'rule':
     case 'evidence': return 'meta-rule'
     case 'result': return 'meta-result'
-    case 'ontology': return 'meta-ontology'
     default: return ''
   }
+}
+
+/** 详情文案：去掉规则编码等技术后缀，便于业务阅读 */
+const localizeDetails = (raw) => {
+  if (!raw) return ''
+  let text = props.localize(String(raw))
+  text = text
+    .replace(/引用规则\s*[:：]/g, '参考规则：')
+    .replace(/命中规则\s*[:：]/g, '命中规则：')
+    .replace(/（R-[A-Z0-9-]+）/gi, '')
+    .replace(/\bR-[A-Z0-9-]+\b/gi, '')
+    .replace(/SPARQL|Prompt|Token|LLM|ontology/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+  return text
 }
 </script>
 
@@ -346,6 +445,10 @@ const metaTagClass = (key) => {
   display: grid;
   grid-template-columns: 16px 1fr;
   gap: 8px;
+}
+
+/* 仅最新一步播入场，避免列表更新时已有步骤「全部刷新」闪动 */
+.think-step.step-enter {
   animation: step-in 0.24s ease;
 }
 
@@ -390,6 +493,15 @@ const metaTagClass = (key) => {
 .think-step.latest .rail-dot {
   border-color: #2563eb;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+}
+
+.think-step.pending {
+  opacity: 0.45;
+}
+
+.think-step.pending .rail-dot {
+  border-color: #cbd5e1;
+  background: #fff;
 }
 
 .step-main {
@@ -440,10 +552,20 @@ const metaTagClass = (key) => {
   margin-left: auto;
 }
 
+.step-action {
+  font-size: 12px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
 .step-text {
   font-size: 13px;
   color: #334155;
   line-height: 1.5;
+}
+
+.step-text.as-action {
+  font-weight: 550;
 }
 
 .think-step.latest .step-text {
@@ -451,8 +573,41 @@ const metaTagClass = (key) => {
   font-weight: 550;
 }
 
+.step-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.result-label {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.6;
+  color: #15803d;
+  background: #dcfce7;
+  padding: 0 6px;
+  border-radius: 4px;
+}
+
+.result-value {
+  font-size: 12px;
+  color: #334155;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
 .think-step.is-ontology .step-meta {
   margin-bottom: 0;
+}
+
+.think-step.is-ontology .step-text {
+  margin-bottom: 6px;
 }
 
 /* 元数据标签 */
@@ -574,7 +729,7 @@ const metaTagClass = (key) => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .think-step,
+  .think-step.step-enter,
   .think-live {
     animation: none;
   }

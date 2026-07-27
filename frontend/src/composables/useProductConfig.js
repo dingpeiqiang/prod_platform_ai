@@ -208,9 +208,15 @@ export function useProductConfig() {
       const rec = result.recommended || {}
       return {
         thinkingSteps: [
-          { type: 'llm', content: '识别多方案对比意图（定价/立项）' },
-          { type: 'ontology', title: '方案评估', content: `对比 ${result.comparisons?.length || 0} 套方案并执行合规` },
-          { type: 'llm', content: '生成可解释推荐结论' },
+          { id: 'intent', type: 'llm', content: '识别多方案对比意图（定价/立项）', result: '多方案对比' },
+          {
+            id: 'ontology',
+            type: 'ontology',
+            title: '方案评估',
+            content: `对比 ${result.comparisons?.length || 0} 套方案并执行合规`,
+            result: rec.label || `已对比 ${result.comparisons?.length || 0} 套`,
+          },
+          { id: 'reply', type: 'llm', content: '生成可解释推荐结论', result: rec.label || '已生成说明' },
         ],
         content:
           `### 多方案对比结果\n\n${lines.join('\n')}\n\n` +
@@ -786,20 +792,34 @@ export function useProductConfig() {
     return {
       thinkingSteps: [
         {
+          id: 'parse',
           type: 'llm',
-          content: `接收文档「${fileName}」（${(fileSize / 1024).toFixed(1)} KB），识别业务场景「${scenarioHint}」`,
+          title: '接收与识别文档',
+          content: '解析上传文件并识别业务场景',
+          result: `「${fileName}」（${(fileSize / 1024).toFixed(1)} KB）→ 场景「${scenarioHint}」`,
         },
-        { type: 'llm', content: '按家庭融合方案抽取套餐段落（名称 / 月费 / 要素 / 客群 / 渠道）' },
         {
+          id: 'extract',
+          type: 'llm',
+          title: '抽取套餐段落',
+          content: '按家庭融合方案抽取名称 / 月费 / 要素 / 客群 / 渠道',
+          result: `识别 ${batch.total} 条候选草稿`,
+        },
+        {
+          id: 'ontology',
           type: 'ontology',
-          title: '本体推理',
-          content: '调用本体平台',
+          title: '业务映射',
+          content: '场景映射、字段补全与合规筛查',
+          result: `通过 ${batch.passedCount} / 待修 ${batch.pendingCount}`,
           ontologyChain: chain,
           ontologyPreview: buildBatchOntologyPreview(batch, chain),
         },
         {
+          id: 'reply',
           type: 'llm',
-          content: `整理清单话术：通过 ${batch.passedCount}，待修正 ${batch.pendingCount}；报文按 familyBasePrc / familyAddPrc 投影`,
+          title: '整理映射清单',
+          content: '生成可读清单话术，并投影场景报文结构',
+          result: `通过 ${batch.passedCount}，待修正 ${batch.pendingCount}；报文按 familyBasePrc / familyAddPrc 投影`,
         },
       ],
       content,
@@ -1009,21 +1029,39 @@ export function useProductConfig() {
 
       return {
         thinkingSteps: [
-          { type: 'llm', content: `识别智检意图：按套餐信息做合规校验` },
           {
+            id: 'intent',
             type: 'llm',
-            content: `定位校验对象：${sourceLabel}${result.offeringId ? ` / ${result.offeringId}` : ''}「${name}」`,
+            title: '意图识别',
+            content: '解析用户输入，确定合规校验目标',
+            result: '按套餐信息做合规校验',
           },
           {
+            id: 'locate',
+            type: 'llm',
+            title: '定位校验对象',
+            content: '从草稿或在架商品中定位待检套餐',
+            result: `${sourceLabel}${result.offeringId ? ` / ${result.offeringId}` : ''}「${name}」`,
+          },
+          {
+            id: 'ontology',
             type: 'ontology',
-            title: '本体合规',
-            content: '调用配置合规规则 R-C03~C08',
+            title: '合规校验',
+            content: '执行配置合规规则检查',
+            result: result.compliancePass
+              ? '合规通过'
+              : `待处理 ${(result.issues || []).length} 项`,
             ontologyChain: chain,
             ontologyPreview: preview,
           },
           {
+            id: 'reply',
             type: 'llm',
-            content: result.compliancePass ? '组织通过结论' : '组织阻断说明（不改写本体判定）',
+            title: '组织校验结论',
+            content: result.compliancePass
+              ? '汇总通过说明'
+              : '汇总阻断说明（不改写本体判定）',
+            result: result.compliancePass ? '可继续完善或入库' : '需先修正阻断项',
           },
         ],
         content: lines.join('\n\n'),
@@ -1051,26 +1089,52 @@ export function useProductConfig() {
       lastConfigTraceId.value = result.trace_id
     }
 
-    // 思考过程：模型思考 vs 本体推理（仅推理链）
+    // 思考过程：每步带 title（动作）+ result（结果），便于面板展示
+    const intentLabel =
+      result.intent === 'create_offering_config'
+        ? '创建 / 更新商品配置'
+        : result.intent || '配置'
+    const slotSummary = summarizeSlots(slots)
+    const inferredSummary = inferred.length
+      ? inferred.map((f) => `${fieldCn(f.field || f.code || f)}←${sourceCn(f.source)}`).join('，')
+      : '本轮无自动补全字段'
+    const issueSummary = issues.length
+      ? `待处理 ${issues.length} 项：${issues
+          .slice(0, 3)
+          .map((i) => i.ruleId || i.message || i)
+          .join('、')}${issues.length > 3 ? '…' : ''}`
+      : '合规通过，无阻断项'
+
     const thinkingSteps = [
       {
+        id: 'intent',
         type: 'llm',
-        content: `理解用户意图：${result.intent === 'create_offering_config' ? '创建 / 更新商品配置' : (result.intent || '配置')}`,
+        title: '意图识别',
+        content: '解析用户输入，识别配置意图',
+        result: intentLabel,
       },
       {
+        id: 'slots',
         type: 'llm',
-        content: `抽取业务槽位：${summarizeSlots(slots)}`,
+        title: '抽取业务槽位',
+        content: '从对话中抽取场景、品类、固费等关键槽位',
+        result: slotSummary,
       },
       {
+        id: 'ontology',
         type: 'ontology',
-        title: '本体推理',
-        content: '调用本体平台',
+        title: '业务推理',
+        content: '调用配置服务完成字段补全与合规判定',
+        result: `${inferredSummary}；${issueSummary}`,
         ontologyChain: chain,
         ontologyPreview: preview,
       },
       {
+        id: 'reply',
         type: 'llm',
-        content: '组织回复话术（不改写本体合规结论）',
+        title: '组织回复话术',
+        content: '汇总本体结论，生成用户可读说明（不改写合规判定）',
+        result: result.compliancePass ? '合规通过，可继续完善或入库' : '存在待处理项，需先修正',
       },
     ]
 
@@ -1388,23 +1452,36 @@ export function useProductConfig() {
       return {
         thinkingSteps: [
           {
+            id: 'intent',
             type: 'llm',
-            content: `识别意图=根因分析，商品=${offeringName}，关注指标=${anomaly?.metricCode || '异动指标'}`,
+            title: '意图识别',
+            content: '解析用户目标与关注指标',
+            result: `根因分析 · 商品=${offeringName} · 指标=${anomaly?.metricCode || '异动指标'}`,
           },
           {
+            id: 'locate',
             type: 'llm',
-            content: `锁定异动商品：${offeringName}（${result.offeringId}），按渠道 / 促销 / 竞品 / 行为维度下钻`,
+            title: '锁定异动商品',
+            content: '按渠道 / 促销 / 竞品 / 行为维度准备下钻',
+            result: `${offeringName}（${result.offeringId}）`,
           },
           {
+            id: 'ontology',
             type: 'ontology',
-            title: '归因关系',
-            content: '基于 opsGraph 事实构建根因路径',
+            title: '原因分析',
+            content: '梳理异动指标与可能原因',
+            result: paths.length
+              ? `主因「${paths[0]?.name || '-'}」，共 ${paths.length} 条路径`
+              : '未形成有效归因路径',
             ontologyChain: chain,
             ontologyPreview: buildRootCauseOntologyPreview(result, chain),
           },
           {
+            id: 'reply',
             type: 'llm',
-            content: '基于业务事实生成分析报告（不改写关键数字）',
+            title: '生成分析报告',
+            content: '基于业务事实组织可读报告（不改写关键数字）',
+            result: anomaly?.message || '已汇总归因结论',
           },
         ],
         content:

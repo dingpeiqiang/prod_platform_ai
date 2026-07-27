@@ -2,6 +2,8 @@
  * chatApi - 聊天记录持久化 + AI 原生流式意图处理
  */
 
+import { normalizeReasoningList } from '../utils/normalizeThinkingStep.js'
+
 const BASE = '/api/v2/chat'
 
 function buildMessageMetadata(msg) {
@@ -58,11 +60,14 @@ function restoreMessageMetadata(meta = {}) {
   if (!reasoning.length && meta.reasoning) {
     const raw = typeof meta.reasoning === 'string' ? meta.reasoning : String(meta.reasoning)
     reasoning = raw.split('\n').filter(Boolean).map((c, index) => ({
-      type: 'thinking',
+      type: 'llm',
       content: c,
       _index: index,
     }))
   }
+
+  // 与研发助手同一套步骤结构，便于 ThinkingProcessPanel 展示
+  reasoning = normalizeReasoningList(reasoning)
 
   let formSchema = null
   if (meta.formSchema !== undefined) {
@@ -96,7 +101,7 @@ function restoreMessageMetadata(meta = {}) {
   return {
     reasoning,
     showReasoning: hasError || reasoning.length > 0,
-    done: meta.done === 'true' || meta.done === true || meta.done === undefined || true,
+    done: true,
     intentType: meta.intent_type || intentData?.intentType || '',
     action: meta.action || intentData?.action || '',
     intentData,
@@ -197,15 +202,20 @@ export async function loadMessages(sessionId) {
     const msgs = result.messages || []
     return msgs.map(m => {
       const restored = restoreMessageMetadata(m.metadata || {})
-      const content = m.content || ''
+      const content = m.content || restored.streamText || ''
       const streamText = restored.streamText || content
+      // 占位正文「意图: xxx」时，优先用 intent 摘要补全展示
+      let displayContent = content
+      if (/^意图\s*[:：]/.test(String(content).trim()) && restored.intentData) {
+        const d = restored.intentData
+        displayContent = d.explanation || d.nl_answer || d.message || content
+      }
       return {
         id: m.message_id,
         role: m.role === 'assistant' ? 'assistant' : 'user',
-        content,
         ...restored,
-        // 历史还原：确保 MessageCard / IntentPanel 都能拿到正文与意图数据
-        streamText,
+        content: displayContent,
+        streamText: restored.streamText || displayContent,
         done: true,
         loading: false,
         type: 'chat',
@@ -216,7 +226,7 @@ export async function loadMessages(sessionId) {
       }
     }).filter(m => {
       const hasText = String(m.content || m.streamText || '').trim().length > 0
-      return hasText || !!m.formCard || !!m.intentData
+      return hasText || !!m.formCard || !!m.intentData || (m.reasoning && m.reasoning.length)
     })
   } catch {
     return []

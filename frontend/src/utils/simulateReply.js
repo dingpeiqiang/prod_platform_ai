@@ -24,6 +24,10 @@ function normalizeStep(step) {
     type: step.type || 'llm',
     title: step.title || (step.type === 'ontology' ? '本体推理' : ''),
     content: step.content || '',
+    result: step.result != null ? step.result : null,
+    metadata: step.metadata || null,
+    details: step.details || null,
+    elapsed: step.elapsed != null ? step.elapsed : null,
     ontologyChain: step.ontologyChain || null,
     ontologyPreview: step.ontologyPreview || null,
     focus: step.focus || '',
@@ -59,13 +63,14 @@ export async function playSimulatedReply({
   msg.done = false
   msg.showReasoning = true
   if (!preserveReasoning) {
-    msg.reasoning = []
+    // 不清空 reasoning：首步到达时再整表替换，避免面板 v-if 闪空后「全部刷新」
     msg.content = ''
     msg.streamText = ''
     msg.ontologyChain = null
   }
   onTick?.()
 
+  let replacedProgress = preserveReasoning
   for (const raw of thinkingSteps) {
     await sleep(thinkDelay)
     const step = normalizeStep(raw)
@@ -73,12 +78,22 @@ export async function playSimulatedReply({
       type: step.type,
       title: step.title,
       content: step.content,
+      result: step.result,
+      metadata: step.metadata,
+      details: step.details,
+      elapsed: step.elapsed,
       ontologyChain: null,
       ontologyPreview: null,
       chainRevealCount: 0,
       focus: step.focus,
     }
-    msg.reasoning = [...(msg.reasoning || []), item]
+    if (!replacedProgress) {
+      // 用第一条结果步骤替换请求中的进度占位，后续逐步追加
+      msg.reasoning = [item]
+      replacedProgress = true
+    } else {
+      msg.reasoning = [...(msg.reasoning || []), item]
+    }
     onTick?.()
 
     if (step.type !== 'ontology') continue
@@ -98,11 +113,20 @@ export async function playSimulatedReply({
     }
 
     for (let n = 1; n <= chainTotal; n++) {
-      await sleep(Math.min(80, thinkDelay / 2))
+      await sleep(Math.min(120, Math.max(60, thinkDelay / 2)))
       item.chainRevealCount = Math.min(chainTotal, n)
+      // 触发引用更新，确保面板能感知 chainRevealCount 变化
+      msg.reasoning = [...(msg.reasoning || [])]
       onTick?.()
     }
     item.chainRevealCount = 0
+    msg.reasoning = [...(msg.reasoning || [])]
+    onTick?.()
+  }
+
+  // 无结果步骤时清掉进度占位，避免残留「正在…」
+  if (!preserveReasoning && !replacedProgress) {
+    msg.reasoning = []
     onTick?.()
   }
 

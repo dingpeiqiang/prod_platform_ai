@@ -55,7 +55,7 @@ public class ProductOpsCompareHandler implements BaseIntentHandler {
 
         List<Map<String, Object>> prelude = List.of(
                 SseUtils.thinkingRich(
-                        "正在构建方案对比快照并评估规则...",
+                        "正在对比方案并评估合规与收益...",
                         Map.of(
                                 "step", 5,
                                 "totalSteps", 6,

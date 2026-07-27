@@ -45,7 +45,7 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
 
         List<Map<String, Object>> prelude = List.of(
                 SseUtils.thinkingRich(
-                        "正在检索在售商品与增长/风险指标...",
+                        "正在检索相关商品与经营指标...",
                         Map.of(
                                 "step", 5,
                                 "totalSteps", 6,
@@ -124,15 +124,15 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
         donePayload.put("trendSummary", trendSummary);
 
         String methodLabel = switch (discoveryMethod) {
-            case "ops_graph" -> "运营事实图";
-            case "llm" -> "LLM 实体发现";
+            case "ops_graph" -> "经营数据";
+            case "llm" -> "智能检索";
             case "keyword_fallback" -> "关键词匹配";
-            default -> discoveryMethod;
+            default -> "业务检索";
         };
 
         List<Map<String, Object>> events = new ArrayList<>();
         events.add(SseUtils.thinkingRich(
-                "检索完成（" + methodLabel + "），共 " + results.size() + " 条",
+                "检索完成，共找到 " + results.size() + " 条（" + methodLabel + "）",
                 Map.of(
                         "step", 6,
                         "totalSteps", 6,
@@ -140,7 +140,7 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
                         "resultCount", results.size()
                 ),
                 elapsedMs,
-                result.get("sparql") != null ? "来源: " + truncateStr(String.valueOf(result.get("sparql")), 150) : null
+                null
         ));
         events.add(SseUtils.intentEvent(getIntentType(), "query", intentData, false));
         events.addAll(SseStreamSupport.chunkedTextEvents(answerText));

@@ -60,7 +60,7 @@ public class ProductOpsPolicyHandler implements BaseIntentHandler {
     private Flux<Map<String, Object>> handleRiskAudit(IntentContext ctx) {
         List<Map<String, Object>> prelude = List.of(
                 SseUtils.thinkingRich(
-                        "正在按风险规则全量稽核在架商品...",
+                        "正在按风险规则排查在架商品...",
                         Map.of(
                                 "step", 5,
                                 "totalSteps", 6,
@@ -85,7 +85,7 @@ public class ProductOpsPolicyHandler implements BaseIntentHandler {
 
         List<Map<String, Object>> prelude = List.of(
                 SseUtils.thinkingRich(
-                        "正在调用规则引擎进行政策评估...",
+                        "正在评估业务规则与政策要求...",
                         Map.of(
                                 "step", 5,
                                 "totalSteps", 6,
@@ -149,7 +149,7 @@ public class ProductOpsPolicyHandler implements BaseIntentHandler {
 
         List<Map<String, Object>> events = new ArrayList<>();
         events.add(SseUtils.thinkingRich(
-                ok ? "风险稽核完成，正在组织答复..." : "风险稽核未通过",
+                ok ? "风险排查完成，正在整理结论..." : "风险排查未完成",
                 Map.of(
                         "step", 6,
                         "totalSteps", 6,
@@ -159,8 +159,8 @@ public class ProductOpsPolicyHandler implements BaseIntentHandler {
                         "success", ok
                 ),
                 elapsedMs,
-                triggeredRules.isEmpty() ? null : "命中规则: " + String.join("、",
-                        triggeredRules.stream().map(opsRules::formatRuleLabel).limit(6).toList())
+                triggeredRules.isEmpty() ? null : "命中规则：" + String.join("、",
+                        triggeredRules.stream().map(opsRules::formatRuleName).limit(6).toList())
         ));
         events.add(SseUtils.intentEvent(getIntentType(), "risk_audit", intentData, false));
         events.addAll(SseStreamSupport.chunkedTextEvents(answerText));

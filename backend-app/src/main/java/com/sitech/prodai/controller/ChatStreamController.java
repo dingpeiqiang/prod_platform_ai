@@ -139,7 +139,7 @@ public class ChatStreamController {
                 // ── 步骤 1：分析输入 ──────────────────────────────
                 long stepStart = System.currentTimeMillis();
                 sendEvent(emitter, SseUtils.thinkingRich(
-                        "正在分析用户输入...",
+                        "正在理解您的需求...",
                         Map.of(
                                 "step", 1,
                                 "totalSteps", 4,
@@ -165,7 +165,7 @@ public class ChatStreamController {
                 }
 
                 sendEvent(emitter, SseUtils.thinkingRich(
-                        "已加载 " + ontologyCount + " 个本体，构建意图识别 Prompt...",
+                        "正在匹配业务知识与规则库...",
                         Map.of(
                                 "step", 2,
                                 "totalSteps", 4,
@@ -184,15 +184,13 @@ public class ChatStreamController {
 
                 String intentResult = "";
                 String intentSource = IntentRecognitionSupport.SOURCE_LLM;
-                boolean skippedLlm = false;
 
                 if (IntentRecognitionSupport.isMetaGuideRequest(lastUserMessage)) {
                     // meta：只要说明/勿执行 → 强制 chat，禁止业务 Handler
                     intentData = IntentRecognitionSupport.chatMetaResult();
                     intentSource = IntentRecognitionSupport.SOURCE_META;
-                    skippedLlm = true;
                     sendEvent(emitter, SseUtils.thinkingRich(
-                            "识别为使用说明/勿执行请求，走通用对话，跳过业务意图...",
+                            "识别为使用说明类问题，改为一般对话...",
                             Map.of(
                                     "step", 3,
                                     "totalSteps", 4,
@@ -206,9 +204,8 @@ public class ChatStreamController {
                     if (byScene != null) {
                         intentData = byScene;
                         intentSource = IntentRecognitionSupport.SOURCE_SCENE_DEFAULT;
-                        skippedLlm = true;
                         sendEvent(emitter, SseUtils.thinkingRich(
-                                "空输入，按当前场景默认意图...",
+                                "按当前业务场景继续处理...",
                                 Map.of(
                                         "step", 3,
                                         "totalSteps", 4,
@@ -223,9 +220,8 @@ public class ChatStreamController {
                     if (whitelist != null && !str(whitelist.get("intentType")).isBlank()) {
                         intentData = whitelist;
                         intentSource = IntentRecognitionSupport.SOURCE_WHITELIST;
-                        skippedLlm = true;
                         sendEvent(emitter, SseUtils.thinkingRich(
-                                "命中短指令白名单，跳过意图 LLM...",
+                                "已识别为常用业务指令，开始处理...",
                                 Map.of(
                                         "step", 3,
                                         "totalSteps", 4,
@@ -236,7 +232,7 @@ public class ChatStreamController {
                         ));
                     } else {
                         sendEvent(emitter, SseUtils.thinkingRich(
-                                "正在调用大模型识别意图...",
+                                "正在识别业务意图...",
                                 Map.of(
                                         "step", 3,
                                         "totalSteps", 4,
@@ -259,7 +255,7 @@ public class ChatStreamController {
                                 intentData = fallback;
                                 intentSource = IntentRecognitionSupport.SOURCE_FALLBACK;
                                 sendEvent(emitter, SseUtils.thinkingRich(
-                                        "意图 LLM 无有效结果，已关键词降级...",
+                                        "已按关键词确认业务意图...",
                                         Map.of(
                                                 "step", 3,
                                                 "totalSteps", 4,
@@ -284,10 +280,6 @@ public class ChatStreamController {
                     }
                 }
                 long step3Elapsed = System.currentTimeMillis() - step3Start;
-
-                com.sitech.prodai.intent.StreamStats intentStats = new com.sitech.prodai.intent.StreamStats();
-                intentStats.recordInputTokens(intentPrompt);
-                intentStats.recordOutputText(intentResult);
 
                 intentType = IntentRecognitionSupport.normalizeIntentType(
                         str(intentData.get("intentType"), str(intentData.get("intent_type"))));
@@ -320,26 +312,18 @@ public class ChatStreamController {
                 step3Meta.put("confidence", Math.round(confidence * 100) / 100.0);
                 step3Meta.put("source", intentSource);
                 step3Meta.put("elapsed", Math.round(step3Elapsed / 1000.0 * 1000.0) / 1000.0);
-                if (!skippedLlm) {
-                    step3Meta.put("inputTokens", intentStats.getInputTokens());
-                    step3Meta.put("outputTokens", intentStats.getOutputTokens());
-                }
+                // Token 等技术指标不推给业务侧思考过程
                 sendEvent(emitter, SseUtils.thinkingRich(
-                        "意图识别完成：" + intentLabel
-                                + "（来源 " + intentSource
-                                + (confidence > 0
-                                ? "，置信度 " + String.format("%.0f", confidence * 100) + "%"
-                                : "")
-                                + "）",
+                        "已确认业务意图：" + intentLabel,
                         step3Meta,
                         step3Elapsed,
-                        intentResult.isEmpty() ? null : truncateForLog(intentResult, 200)
+                        null
                 ));
 
                 // ── 步骤 4：分发到处理器 ────────────────────────
                 long step4Start = System.currentTimeMillis();
                 sendEvent(emitter, SseUtils.thinkingRich(
-                        "正在分发到「" + intentLabel + "」处理器执行...",
+                        "开始执行「" + intentLabel + "」...",
                         Map.of(
                                 "step", 4,
                                 "totalSteps", 4,
@@ -384,10 +368,15 @@ public class ChatStreamController {
                 final String[] collectedAction = {str(intentData.get("action"))};
 
                 eventFlux.toStream().forEach(event -> {
+                    // 先收集再发送：避免客户端断连导致历史正文/思考步骤缺失
                     try {
-                        sendEvent(emitter, event);
                         collectForPersistence(event, assistantText, collectedIntentData,
                                 reasoningSteps, collectedIntentType, collectedAction);
+                    } catch (Exception collectEx) {
+                        log.warn("[chat/agent/stream] 持久化收集失败: {}", collectEx.getMessage());
+                    }
+                    try {
+                        sendEvent(emitter, event);
                     } catch (Exception e) {
                         log.error("[chat/agent/stream] SSE 发送失败", e);
                     }
@@ -406,9 +395,22 @@ public class ChatStreamController {
 
                             String replyText = assistantText.toString().trim();
                             if (replyText.isBlank() && !collectedIntentData.isEmpty()) {
-                                replyText = "意图: " + collectedIntentType[0];
-                                if (collectedIntentData.containsKey("verdict")) {
-                                    replyText += " | 结论: " + collectedIntentData.get("verdict");
+                                Object explanation = collectedIntentData.get("explanation");
+                                if (explanation == null) {
+                                    explanation = collectedIntentData.get("nl_answer");
+                                }
+                                if (explanation == null) {
+                                    explanation = collectedIntentData.get("message");
+                                }
+                                if (explanation != null && !String.valueOf(explanation).isBlank()) {
+                                    replyText = String.valueOf(explanation).trim();
+                                } else {
+                                    String label = IntentRecognitionSupport.resolveIntentLabel(
+                                            collectedIntentType[0], collectedAction[0]);
+                                    replyText = "已完成「" + (label.isBlank() ? collectedIntentType[0] : label) + "」处理。";
+                                    if (collectedIntentData.containsKey("verdict")) {
+                                        replyText += "\n结论：" + collectedIntentData.get("verdict");
+                                    }
                                 }
                             }
                             if (!replyText.isBlank()) {
@@ -496,14 +498,56 @@ public class ChatStreamController {
             }
             case "thinking" -> {
                 Map<String, Object> step = new LinkedHashMap<>();
-                step.put("type", "thinking");
+                // 与前端研发助手时间线字段对齐，便于历史还原
+                Object metaObj = event.get("metadata");
+                Integer stepNo = null;
+                if (metaObj instanceof Map<?, ?> m) {
+                    Object stepVal = m.get("step");
+                    if (stepVal instanceof Number n) stepNo = n.intValue();
+                    else if (stepVal != null) {
+                        try { stepNo = Integer.parseInt(String.valueOf(stepVal)); } catch (Exception ignored) {}
+                    }
+                }
+                String[] titles = {
+                        "", "理解需求", "匹配知识", "意图识别", "开始执行", "业务分析", "整理结论"
+                };
+                String title = (stepNo != null && stepNo >= 1 && stepNo < titles.length)
+                        ? titles[stepNo] : "处理步骤";
+                step.put("type", (stepNo != null && stepNo == 5) ? "ontology" : "llm");
+                step.put("id", stepNo != null ? switch (stepNo) {
+                    case 1 -> "understand";
+                    case 2 -> "match";
+                    case 3 -> "intent";
+                    case 4 -> "start";
+                    case 5 -> "analyze";
+                    case 6 -> "reply";
+                    default -> "step_" + stepNo;
+                } : null);
+                step.put("title", title);
                 step.put("content", str(event.get("content")));
-                if (event.get("metadata") instanceof Map<?, ?> m) {
+                step.put("status", "done");
+                if (metaObj instanceof Map<?, ?> m) {
                     step.put("metadata", new LinkedHashMap<>((Map<String, Object>) m));
                 }
                 if (event.get("elapsed") != null) step.put("elapsed", event.get("elapsed"));
                 if (event.get("details") != null) step.put("details", event.get("details"));
-                if (event.get("result") != null) step.put("result", event.get("result"));
+                if (event.get("result") != null) {
+                    step.put("result", event.get("result"));
+                } else {
+                    // 从业务文案中抽取结果，对齐研发助手「动作 + 结果」展示
+                    String c = str(event.get("content"));
+                    if (c.contains("已确认业务意图：")) {
+                        step.put("result", c.substring(c.indexOf('：') + 1).trim());
+                        step.put("content", "确认业务意图");
+                    } else if (c.contains("开始执行「") && c.contains("」")) {
+                        int a = c.indexOf('「') + 1;
+                        int b = c.indexOf('」', a);
+                        if (a > 0 && b > a) {
+                            step.put("result", c.substring(a, b));
+                            step.put("content", "启动对应业务处理");
+                        }
+                    }
+                }
                 step.put("_index", reasoningSteps.size());
                 reasoningSteps.add(step);
             }
@@ -586,7 +630,7 @@ public class ChatStreamController {
                 long elapsed = System.currentTimeMillis() - step3Start;
                 try {
                     sendEvent(emitter, SseUtils.thinkingRich(
-                            "意图识别仍在进行（已等待 " + (elapsed / 1000) + "s）...",
+                            "业务意图识别进行中（已等待 " + (elapsed / 1000) + "s）...",
                             Map.of(
                                     "step", 3,
                                     "totalSteps", 4,

@@ -49,7 +49,7 @@ public class ProductOpsReasonHandler implements BaseIntentHandler {
 
         List<Map<String, Object>> prelude = List.of(
                 SseUtils.thinkingRich(
-                        "正在基于图谱事实追溯异动根因...",
+                        "正在分析异动原因...",
                         Map.of(
                                 "step", 5,
                                 "totalSteps", 6,
@@ -102,7 +102,7 @@ public class ProductOpsReasonHandler implements BaseIntentHandler {
 
         List<Map<String, Object>> events = new ArrayList<>();
         events.add(SseUtils.thinkingRich(
-                ok ? "根因分析完成，正在组织答复..." : "产商品解析或事实检索未通过",
+                ok ? "异动原因分析完成，正在整理结论..." : "未能完成异动原因分析",
                 Map.of(
                         "step", 6,
                         "totalSteps", 6,
@@ -111,8 +111,8 @@ public class ProductOpsReasonHandler implements BaseIntentHandler {
                         "success", ok
                 ),
                 elapsedMs,
-                referencedRules.isEmpty() ? null : "引用规则: " + referencedRules.stream()
-                        .map(this::formatRuleLabel)
+                referencedRules.isEmpty() ? null : "参考规则：" + referencedRules.stream()
+                        .map(opsRules::formatRuleName)
                         .reduce((a, b) -> a + "、" + b)
                         .orElse("")
         ));

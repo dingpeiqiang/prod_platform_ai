@@ -1,6 +1,10 @@
 import { ref } from 'vue'
 import { sendMessageWithModel, loadMessages as apiLoadMessages, getSessions } from '../services/chatApi.js'
 import { getEventHandler, getPostProcessor } from './useIntentRegistry.js'
+import {
+  finalizeReasoningList,
+  normalizeThinkingStep,
+} from '../utils/normalizeThinkingStep.js'
 
 function uid(prefix = 'msg') {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
@@ -27,17 +31,17 @@ function resolveElapsedSeconds(prev, next) {
   const startedAt = prev?.waitingStartedAt || prev?.stepStartedAt || prev?.timestamp || next?.stepStartedAt
   if (!startedAt) return next?.elapsed ?? null
   const sec = Math.max(0, (Date.now() - startedAt) / 1000)
-  // 保留毫秒精度，避免亚秒推理显示成 0.0s
   return Math.round(sec * 1000) / 1000
 }
 
 function mergeReasoningStep(steps, value) {
+  const normalized = normalizeThinkingStep(value)
   const list = [...(steps || [])]
-  const meta = value?.metadata || {}
-  const isWaiting = meta.phase === 'waiting_llm'
+  const meta = normalized.metadata || {}
+  const isWaiting = meta.phase === 'waiting_llm' || normalized._waiting
 
   if (isWaiting) {
-    const step = { ...value, _waiting: true }
+    const step = { ...normalized, _waiting: true, status: 'running' }
     const waitingIdx = list.findIndex(
       (s) => s._waiting || s.metadata?.phase === 'waiting_llm',
     )
@@ -45,8 +49,13 @@ function mergeReasoningStep(steps, value) {
       list[waitingIdx] = preserveStepTiming(list[waitingIdx], step)
       return list
     }
+    const byId = step.id ? list.findIndex((s) => s.id === step.id) : -1
+    if (byId >= 0) {
+      list[byId] = preserveStepTiming(list[byId], step)
+      return list
+    }
     const runningIdx = list.findIndex(
-      (s) => s.metadata?.step === meta.step && s.metadata?.phase === 'running',
+      (s) => s.metadata?.step === meta.step && (s.metadata?.phase === 'running' || s.status === 'running'),
     )
     if (runningIdx >= 0) {
       list[runningIdx] = preserveStepTiming(list[runningIdx], step)
@@ -60,20 +69,33 @@ function mergeReasoningStep(steps, value) {
   const withoutWaiting = list.filter(
     (s) => !(s._waiting || s.metadata?.phase === 'waiting_llm'),
   )
+
+  // 同 id / 同 step 原地更新（对齐研发助手「一条时间线」）
+  const byId = normalized.id
+    ? withoutWaiting.findIndex((s) => s.id === normalized.id)
+    : -1
+  if (byId >= 0) {
+    const merged = preserveStepTiming(withoutWaiting[byId], normalized)
+    merged.elapsed = resolveElapsedSeconds(withoutWaiting[byId], normalized)
+    withoutWaiting[byId] = merged
+    return withoutWaiting
+  }
+
   const lastIdx = withoutWaiting.length - 1
   if (
     lastIdx >= 0
     && meta.step != null
     && withoutWaiting[lastIdx].metadata?.step === meta.step
-    && withoutWaiting[lastIdx].metadata?.phase === 'running'
+    && (withoutWaiting[lastIdx].metadata?.phase === 'running' || withoutWaiting[lastIdx].status === 'running')
   ) {
-    const merged = preserveStepTiming(withoutWaiting[lastIdx], value)
-    merged.elapsed = resolveElapsedSeconds(withoutWaiting[lastIdx], value)
+    const merged = preserveStepTiming(withoutWaiting[lastIdx], normalized)
+    merged.elapsed = resolveElapsedSeconds(withoutWaiting[lastIdx], normalized)
     withoutWaiting[lastIdx] = merged
     return withoutWaiting
   }
+
   const ts = value.timestamp || Date.now()
-  withoutWaiting.push({ ...value, stepStartedAt: ts, timestamp: ts })
+  withoutWaiting.push({ ...normalized, stepStartedAt: ts, timestamp: ts })
   return withoutWaiting
 }
 
@@ -156,18 +178,28 @@ export function useChatStream() {
     } catch { /* 静默 */ }
   }
 
-  /** 切换到指定会话：清空当前消息，从后端加载历史 */
+  /** 切换到指定会话：清空当前消息，从后端加载历史，并回放意图后处理 */
   const switchSession = async (targetSessionId) => {
-    if (!targetSessionId) return
-    if (streaming.value) return
+    if (!targetSessionId) return []
+    if (streaming.value) return messages.value
     sessionId.value = targetSessionId
     messages.value = []
     try {
       const historyMsgs = await apiLoadMessages(targetSessionId)
       if (historyMsgs.length) {
         messages.value = historyMsgs
+        // 回放最近一条带意图的助手消息，恢复右侧面板
+        for (let i = historyMsgs.length - 1; i >= 0; i--) {
+          const m = historyMsgs[i]
+          if (m.role === 'assistant' && m.intentType) {
+            const post = getPostProcessor(m.intentType)
+            if (post) post(m, m)
+            break
+          }
+        }
       }
     } catch { /* 静默 */ }
+    return messages.value
   }
 
   /**
@@ -257,7 +289,7 @@ export function useChatStream() {
               })
             } else if (data.type === 'text') {
               streamText += data.content || ''
-              upsertAssistantMessage({ streamText, loading: false })
+              upsertAssistantMessage({ streamText, content: streamText, loading: false })
             } else if (data.type === 'stats') {
               upsertAssistantMessage({ stats: data })
             } else if (data.type === 'done') {
@@ -280,9 +312,13 @@ export function useChatStream() {
               if (data.sessionId) {
                 sessionId.value = data.sessionId
               }
+              const finalText = streamText || current.streamText || current.content || ''
               upsertAssistantMessage({
                 done: true,
                 loading: false,
+                streamText: finalText,
+                content: finalText,
+                reasoning: finalizeReasoningList(current.reasoning || []),
                 intentType: doneIntent,
                 action: doneAction,
                 stats: doneStats,
@@ -309,7 +345,15 @@ export function useChatStream() {
       }
 
       if (!messages.value.some(m => m.role === 'assistant' && m.done)) {
-        upsertAssistantMessage({ done: true, loading: false })
+        upsertAssistantMessage({
+          done: true,
+          loading: false,
+          content: streamText,
+          streamText,
+          reasoning: finalizeReasoningList(
+            (messages.value.find(m => m.role === 'assistant' && !m.done) || {}).reasoning || [],
+          ),
+        })
       }
       // 首条消息落库后刷新侧边栏，空会话不会出现在列表
       await loadSessions()
@@ -332,10 +376,16 @@ export function useChatStream() {
       abortRef.value.abort()
     }
     streaming.value = false
-    // 将当前未完成的助手消息标记为 done，避免下次发送时串到旧消息
     const current = messages.value.find(m => m.role === 'assistant' && !m.done)
     if (current) {
-      upsertAssistantMessage({ done: true, loading: false })
+      const text = current.streamText || current.content || ''
+      upsertAssistantMessage({
+        done: true,
+        loading: false,
+        content: text,
+        streamText: text,
+        reasoning: finalizeReasoningList(current.reasoning || []),
+      })
     }
   }
 

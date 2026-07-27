@@ -332,13 +332,18 @@ const onQuickAction = async (action) => {
   })
 }
 
-const onSwitchSession = (sessionId) => {
+const onSwitchSession = async (sessionId) => {
   closeRootCausePanel()
   closeRiskAuditPanel()
   closeMonitorPanel()
   closeRulesPanel()
   activeScene.value = config.defaultScene
-  switchSession(sessionId)
+  historyLoading.value = true
+  try {
+    await switchSession(sessionId)
+  } finally {
+    historyLoading.value = false
+  }
 }
 
 const onNewSession = () => {
