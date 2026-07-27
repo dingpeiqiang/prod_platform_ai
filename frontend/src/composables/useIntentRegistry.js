@@ -35,6 +35,10 @@ export function registerEventHandler(intentType, handler, options = {}) {
  * @param {Function} processor - 后处理函数 (msg, intentData) => void | Promise
  */
 export function registerPostProcessor(intentType, processor) {
+  if (processor == null) {
+    delete _postProcessors[intentType]
+    return
+  }
   _postProcessors[intentType] = processor
 }
 
@@ -117,4 +121,8 @@ registerEventHandler('product_ops_reason', (data, msg) => {
 
 registerEventHandler('product_ops_compare', (data, msg) => {
   // 假设分析由 ProductOpsPanel 渲染
+}, { panel: ProductOpsPanel })
+
+registerEventHandler('product_ops_monitor', (data, msg) => {
+  // 运营监控由 ProductOpsPanel 渲染
 }, { panel: ProductOpsPanel })

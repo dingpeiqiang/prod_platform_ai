@@ -1,4 +1,4 @@
-# backend-app（Spring Boot）
+﻿# backend-app（Spring Boot）
 
 商用主路径唯一后端：业务 API + LLM（Spring AI）均在 Java 内实现。  
 `backend/`（Python FastAPI）已退出默认启动链路，仅作历史对照。
@@ -44,7 +44,7 @@ cd backend-app
 mvn -s .mvn/local-settings.xml spring-boot:run
 ```
 
-未设置 `LLM_ENABLED=true` 时，`/api/v1/chat/completion|stream` 返回 503；本体 MVP、会话 v2、表单 schema 等 Mock 接口仍可用。
+未设置 `LLM_ENABLED=true` 时，`/api/v1/chat/completion|stream` 返回 503；产商品本体、会话 v2、表单 schema 等 Mock 接口仍可用。
 
 ## 已实现接口
 
@@ -53,7 +53,7 @@ mvn -s .mvn/local-settings.xml spring-boot:run
 |------|------|------|
 | GET | `/health`、`/api/v1/health` | 健康检查 |
 
-### 本体 MVP `/api/v1/ontology-mvp`
+### 产商品本体 `/api/v1/product-ontology`
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/graph` `/meta` | 图谱 / 元数据 |

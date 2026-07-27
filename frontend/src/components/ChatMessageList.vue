@@ -78,6 +78,14 @@
               </div>
             </div>
 
+            <!-- 意图结果卡紧跟正文，避免「详见下方」与卡片被操作栏隔开 -->
+            <IntentPanel
+              v-if="msg.intentType && msg.intentData"
+              :intentType="msg.intentType"
+              :msg="msg"
+              @intent-action="$emit('intent-action', $event)"
+            />
+
             <!-- 底部工具栏 -->
             <div v-if="msg.done && (msg.streamText || msg.content)" class="message-actions">
               <button class="action-btn" @click="handleFeedback(msg, 'like')" title="赞同">
@@ -103,14 +111,6 @@
                 </svg>
               </button>
             </div>
-
-            <!-- Intent Panel -->
-            <IntentPanel
-              v-if="msg.intentType && msg.intentData"
-              :intentType="msg.intentType"
-              :msg="msg"
-              @intent-action="$emit('intent-action', $event)"
-            />
 
             <!-- 表单卡片 -->
             <div v-if="msg.formCard" class="form-card" @click="$emit('form-card-click', msg)">

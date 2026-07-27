@@ -8,8 +8,6 @@ import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -49,7 +47,13 @@ public class OpsGraphPublishService {
             Resource resource = resourceLoader.getResource(path);
             try (InputStream in = resource.getInputStream()) {
                 Map<String, Object> raw = objectMapper.readValue(in, new TypeReference<>() {});
-                return normalize(raw);
+                OpsGraphSchemaValidator.ValidationResult vr = OpsGraphSchemaValidator.validateAndNormalize(raw);
+                if (!vr.ok()) {
+                    throw new IllegalStateException(
+                            "Published ops-graph schema invalid from " + path + ": "
+                                    + String.join("; ", vr.errors()));
+                }
+                return vr.normalized();
             }
         } catch (IllegalStateException e) {
             throw e;
@@ -73,16 +77,5 @@ public class OpsGraphPublishService {
             return graph.trim();
         }
         return "";
-    }
-
-    private Map<String, Object> normalize(Map<String, Object> raw) {
-        Map<String, Object> out = new LinkedHashMap<>(raw == null ? Map.of() : raw);
-        out.putIfAbsent("shelfOfferings", List.of());
-        out.putIfAbsent("opsGraph", Map.of());
-        out.putIfAbsent("bizScenarios", Map.of());
-        out.putIfAbsent("templates", Map.of());
-        out.putIfAbsent("equityGiftWhitelist", List.of());
-        out.putIfAbsent("riskRuleDefaults", Map.of());
-        return out;
     }
 }

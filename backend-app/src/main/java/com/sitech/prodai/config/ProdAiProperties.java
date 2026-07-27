@@ -66,6 +66,13 @@ public class ProdAiProperties {
          * 产商品配置本体 TTL（方案七类实体）。为空则跳过；与 {@link #ttlPath} 叠加导入 RDF4J。
          */
         private String configTtlPath = "";
+        /**
+         * 是否启用定时批量风险稽核（对齐方案每日全量筛查）。
+         * 默认 false，避免生产误开；demo/dev 可显式打开。
+         */
+        private boolean batchAuditEnabled = false;
+        /** 批量稽核 cron，默认每天 02:00。 */
+        private String batchAuditCron = "0 0 2 * * ?";
 
         public boolean isDemoEnabled() {
             return demoEnabled;
@@ -177,6 +184,22 @@ public class ProdAiProperties {
 
         public void setConfigTtlPath(String configTtlPath) {
             this.configTtlPath = configTtlPath == null ? "" : configTtlPath;
+        }
+
+        public boolean isBatchAuditEnabled() {
+            return batchAuditEnabled;
+        }
+
+        public void setBatchAuditEnabled(boolean batchAuditEnabled) {
+            this.batchAuditEnabled = batchAuditEnabled;
+        }
+
+        public String getBatchAuditCron() {
+            return batchAuditCron == null || batchAuditCron.isBlank() ? "0 0 2 * * ?" : batchAuditCron;
+        }
+
+        public void setBatchAuditCron(String batchAuditCron) {
+            this.batchAuditCron = batchAuditCron == null ? "" : batchAuditCron;
         }
 
         /** 保证以 / 结尾，便于拼接相对实体路径。 */

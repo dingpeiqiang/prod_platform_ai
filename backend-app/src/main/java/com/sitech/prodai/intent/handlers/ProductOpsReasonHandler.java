@@ -4,7 +4,7 @@ import com.sitech.prodai.intent.BaseIntentHandler;
 import com.sitech.prodai.intent.IntentContext;
 import com.sitech.prodai.intent.SseStreamSupport;
 import com.sitech.prodai.intent.SseUtils;
-import com.sitech.prodai.service.OntologyMvpService;
+import com.sitech.prodai.service.ProductOntologyService;
 import com.sitech.prodai.service.OpsRulesService;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
@@ -20,11 +20,11 @@ import java.util.Map;
 @Component
 public class ProductOpsReasonHandler implements BaseIntentHandler {
 
-    private final OntologyMvpService ontologyMvpService;
+    private final ProductOntologyService productOntologyService;
     private final OpsRulesService opsRules;
 
-    public ProductOpsReasonHandler(OntologyMvpService ontologyMvpService, OpsRulesService opsRules) {
-        this.ontologyMvpService = ontologyMvpService;
+    public ProductOpsReasonHandler(ProductOntologyService productOntologyService, OpsRulesService opsRules) {
+        this.productOntologyService = productOntologyService;
         this.opsRules = opsRules;
     }
 
@@ -59,7 +59,7 @@ public class ProductOpsReasonHandler implements BaseIntentHandler {
 
         return SseStreamSupport.deferWork(
                 prelude,
-                () -> ontologyMvpService.analyzeRootCause(offeringHint, target),
+                () -> productOntologyService.analyzeRootCause(offeringHint, target),
                 root -> buildAfterEvents(ctx, target, traceId, root)
         );
     }
@@ -78,7 +78,8 @@ public class ProductOpsReasonHandler implements BaseIntentHandler {
         intentData.put("offeringName", root.get("offeringName"));
         intentData.put("success", ok);
         intentData.put("message", root.get("message"));
-        intentData.put("explanation", formatReasonAnswer(root));
+        // 面板用短结论；完整 Markdown 报告只走流式正文，避免与聊天区重复且被当纯文本展示
+        intentData.put("explanation", formatReasonSummary(root));
         intentData.put("referencedRules", referencedRules);
         intentData.put("anomalies", anomalies);
         intentData.put("paths", paths);
@@ -126,6 +127,36 @@ public class ProductOpsReasonHandler implements BaseIntentHandler {
                 "evidenceCount", paths.size()
         )));
         return events;
+    }
+
+    /** 意图卡片用：一两句纯文本摘要，不含 Markdown。 */
+    private String formatReasonSummary(Map<String, Object> root) {
+        if (!Boolean.TRUE.equals(root.get("success"))) {
+            return "根因分析失败：" + root.getOrDefault("message", "未知错误");
+        }
+        List<Map<String, Object>> anomalies = toMapList(root.get("anomalies"));
+        List<Map<String, Object>> paths = toMapList(root.get("paths"));
+        if (anomalies.isEmpty()) {
+            return String.valueOf(root.getOrDefault("message", "未检出异动指标"));
+        }
+        Map<String, Object> anomaly = anomalies.get(0);
+        StringBuilder sb = new StringBuilder();
+        sb.append(anomaly.getOrDefault("message", "指标异动"));
+        if (anomaly.get("ruleId") != null) {
+            sb.append("（").append(formatRuleLabel(String.valueOf(anomaly.get("ruleId")))).append("）");
+        }
+        if (paths.isEmpty()) {
+            sb.append("。").append(root.getOrDefault("message", "暂无命中归因路径"));
+            return sb.toString();
+        }
+        Map<String, Object> primary = paths.get(0);
+        sb.append("。主因：").append(primary.getOrDefault("name", "—"))
+                .append("（权重 ").append(primary.getOrDefault("weight", "—")).append("）");
+        if (paths.size() > 1) {
+            sb.append("；另有 ").append(paths.size() - 1).append(" 条次因路径，详见上方报告与支撑证据");
+        }
+        sb.append("。");
+        return sb.toString();
     }
 
     private String formatReasonAnswer(Map<String, Object> root) {

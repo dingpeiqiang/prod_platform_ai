@@ -1,6 +1,6 @@
-/**
- * 本体 MVP 前端展示辅助（推理链 / 预览文案）
- * 仅做结果可视化，不做业务推理兜底；推理请走 ontologyMvpApi。
+﻿/**
+ * 产商品本体前端展示辅助（推理链 / 预览文案）
+ * 仅做结果可视化，不做业务推理兜底；推理请走 productOntologyApi。
  */
 
 import { classCn, formatWeight, formatPathStep } from '../utils/ontologyLabels.js'

@@ -66,7 +66,13 @@ const props = defineProps({
 
 const emit = defineEmits(['intent-action'])
 
-const productOpsTypes = ['product_ops_query', 'product_ops_policy', 'product_ops_reason', 'product_ops_compare']
+const productOpsTypes = [
+  'product_ops_query',
+  'product_ops_policy',
+  'product_ops_reason',
+  'product_ops_compare',
+  'product_ops_monitor',
+]
 const isProductOps = computed(() => productOpsTypes.includes(props.intentType))
 
 // 从 msg.intentData 取意图数据

@@ -19,105 +19,63 @@
     "newUserMonth",
     "userChurnRate",
     "revenueGrowth",
+    "lifecycleStage",
     "channelName",
     "competitorName",
-    "activityName"
+    "activityName",
+    "indicatorName",
+    "indicatorCode",
+    "currentMonthValue",
+    "segmentName",
+    "scaleEstimate",
+    "ruleCode",
+    "ruleName",
+    "hasIndicator",
+    "soldThrough",
+    "targets",
+    "competesWith",
+    "compliesWith",
+    "promotedBy"
   ],
   "instances": [
     {
-      "id": "product/PROD_5G_001",
-      "type": "Product",
+      "id": "segment/SEG_PERSONAL",
+      "type": "MarketSegment",
       "facts": {
-        "productName": "畅享5G套餐A",
-        "productType": "5G套餐",
-        "status": "在售",
-        "price": 39,
-        "isZeroFee": false,
-        "onlineMonths": 12,
-        "targetMarketSize": 150000,
-        "newUserMonth": 1200,
-        "userChurnRate": 0.05,
-        "revenueGrowth": 0.021
+        "segmentName": "个人客户",
+        "scaleEstimate": 2500000
       }
     },
     {
-      "id": "product/PROD_5G_002",
-      "type": "Product",
+      "id": "segment/SEG_FAMILY",
+      "type": "MarketSegment",
       "facts": {
-        "productName": "畅享5G套餐B",
-        "productType": "5G套餐",
-        "status": "在售",
-        "price": 59,
-        "isZeroFee": false,
-        "onlineMonths": 10,
-        "targetMarketSize": 180000,
-        "newUserMonth": 2400,
-        "userChurnRate": 0.04,
-        "revenueGrowth": 0.067
+        "segmentName": "家庭客户",
+        "scaleEstimate": 800000
       }
     },
     {
-      "id": "product/PROD_5G_003",
-      "type": "Product",
+      "id": "risk/RR_ZERO_FEE",
+      "type": "RiskRule",
       "facts": {
-        "productName": "青春5G套餐",
-        "productType": "5G套餐",
-        "status": "在售",
-        "price": 29,
-        "isZeroFee": true,
-        "onlineMonths": 4,
-        "targetMarketSize": 80000,
-        "newUserMonth": 38,
-        "userChurnRate": 0.12,
-        "revenueGrowth": 0.01
+        "ruleCode": "R-RISK-002",
+        "ruleName": "零资费产品高风险稽核"
       }
     },
     {
-      "id": "product/PROD_BB_001",
-      "type": "Product",
+      "id": "risk/RR_LOW_EFF",
+      "type": "RiskRule",
       "facts": {
-        "productName": "千兆宽带套餐",
-        "productType": "宽带",
-        "status": "在售",
-        "price": 99,
-        "isZeroFee": false,
-        "onlineMonths": 18,
-        "targetMarketSize": 90000,
-        "newUserMonth": 860,
-        "userChurnRate": 0.06,
-        "revenueGrowth": 0.035
+        "ruleCode": "R-RISK-001",
+        "ruleName": "低效产品判定"
       }
     },
     {
-      "id": "product/PROD_BB_002",
-      "type": "Product",
+      "id": "activity/ACT_SPRING",
+      "type": "OperationActivity",
       "facts": {
-        "productName": "家庭融合套餐",
-        "productType": "宽带",
-        "status": "在售",
-        "price": 129,
-        "isZeroFee": false,
-        "onlineMonths": 22,
-        "targetMarketSize": 120000,
-        "newUserMonth": 920,
-        "userChurnRate": 0.05,
-        "revenueGrowth": 0.028
-      }
-    },
-    {
-      "id": "product/PROD_IOT_001",
-      "type": "Product",
-      "facts": {
-        "productName": "物联网基础包",
-        "productType": "物联网",
-        "status": "在售",
-        "price": 19,
-        "isZeroFee": true,
-        "onlineMonths": 6,
-        "targetMarketSize": 60000,
-        "newUserMonth": 25,
-        "userChurnRate": 0.09,
-        "revenueGrowth": 0.005
+        "activityName": "春季5G促装活动",
+        "status": "进行中"
       }
     },
     {
@@ -175,6 +133,15 @@
       }
     },
     {
+      "id": "indicator/IND_004",
+      "type": "OperationIndicator",
+      "facts": {
+        "indicatorName": "营收增长率-B",
+        "indicatorCode": "REVENUE_GROWTH",
+        "currentMonthValue": 0.067
+      }
+    },
+    {
       "id": "competitor/CP_001",
       "type": "CompetitorProduct",
       "facts": {
@@ -199,6 +166,135 @@
         "competitorName": "友商物联网包",
         "price": 15,
         "sellingPoint": "大流量"
+      }
+    },
+    {
+      "id": "product/PROD_5G_001",
+      "type": "Product",
+      "facts": {
+        "productName": "畅享5G套餐A",
+        "productType": "5G套餐",
+        "status": "在售",
+        "price": 39,
+        "isZeroFee": false,
+        "onlineMonths": 12,
+        "targetMarketSize": 150000,
+        "newUserMonth": 1200,
+        "userChurnRate": 0.05,
+        "revenueGrowth": 0.021,
+        "lifecycleStage": "成熟期",
+        "hasIndicator": "indicator/IND_001",
+        "soldThrough": ["channel/CH_001", "channel/CH_002"],
+        "targets": "segment/SEG_PERSONAL",
+        "competesWith": "competitor/CP_001",
+        "compliesWith": "risk/RR_LOW_EFF",
+        "promotedBy": "activity/ACT_SPRING"
+      }
+    },
+    {
+      "id": "product/PROD_5G_002",
+      "type": "Product",
+      "facts": {
+        "productName": "畅享5G套餐B",
+        "productType": "5G套餐",
+        "status": "在售",
+        "price": 59,
+        "isZeroFee": false,
+        "onlineMonths": 10,
+        "targetMarketSize": 180000,
+        "newUserMonth": 2400,
+        "userChurnRate": 0.04,
+        "revenueGrowth": 0.067,
+        "lifecycleStage": "成长期",
+        "hasIndicator": "indicator/IND_004",
+        "soldThrough": ["channel/CH_002", "channel/CH_003"],
+        "targets": "segment/SEG_PERSONAL",
+        "competesWith": "competitor/CP_001",
+        "compliesWith": "risk/RR_LOW_EFF",
+        "promotedBy": "activity/ACT_SPRING"
+      }
+    },
+    {
+      "id": "product/PROD_5G_003",
+      "type": "Product",
+      "facts": {
+        "productName": "青春5G套餐",
+        "productType": "5G套餐",
+        "status": "在售",
+        "price": 29,
+        "isZeroFee": true,
+        "onlineMonths": 4,
+        "targetMarketSize": 80000,
+        "newUserMonth": 38,
+        "userChurnRate": 0.12,
+        "revenueGrowth": 0.01,
+        "lifecycleStage": "引入期",
+        "hasIndicator": ["indicator/IND_001", "indicator/IND_002", "indicator/IND_003"],
+        "soldThrough": "channel/CH_003",
+        "targets": "segment/SEG_PERSONAL",
+        "competesWith": "competitor/CP_001",
+        "compliesWith": ["risk/RR_ZERO_FEE", "risk/RR_LOW_EFF"]
+      }
+    },
+    {
+      "id": "product/PROD_BB_001",
+      "type": "Product",
+      "facts": {
+        "productName": "千兆宽带套餐",
+        "productType": "宽带",
+        "status": "在售",
+        "price": 99,
+        "isZeroFee": false,
+        "onlineMonths": 18,
+        "targetMarketSize": 90000,
+        "newUserMonth": 860,
+        "userChurnRate": 0.06,
+        "revenueGrowth": 0.035,
+        "lifecycleStage": "成熟期",
+        "soldThrough": ["channel/CH_001", "channel/CH_002"],
+        "targets": "segment/SEG_FAMILY",
+        "competesWith": "competitor/CP_002"
+      }
+    },
+    {
+      "id": "product/PROD_BB_002",
+      "type": "Product",
+      "facts": {
+        "productName": "家庭融合套餐",
+        "productType": "宽带",
+        "status": "在售",
+        "price": 129,
+        "isZeroFee": false,
+        "onlineMonths": 22,
+        "targetMarketSize": 120000,
+        "newUserMonth": 920,
+        "userChurnRate": 0.05,
+        "revenueGrowth": 0.028,
+        "lifecycleStage": "成熟期",
+        "soldThrough": "channel/CH_001",
+        "targets": "segment/SEG_FAMILY",
+        "competesWith": "competitor/CP_002",
+        "promotedBy": "activity/ACT_SPRING"
+      }
+    },
+    {
+      "id": "product/PROD_IOT_001",
+      "type": "Product",
+      "facts": {
+        "productName": "物联网基础包",
+        "productType": "物联网",
+        "status": "在售",
+        "price": 19,
+        "isZeroFee": true,
+        "onlineMonths": 6,
+        "targetMarketSize": 60000,
+        "newUserMonth": 25,
+        "userChurnRate": 0.09,
+        "revenueGrowth": 0.005,
+        "lifecycleStage": "引入期",
+        "soldThrough": "channel/CH_002",
+        "competesWith": "competitor/CP_003",
+        "compliesWith": "risk/RR_ZERO_FEE"
       }
     }
   ]

@@ -9,38 +9,111 @@
 
     <!-- ==================== 市场洞察 ==================== -->
     <div v-if="isQuery" class="card-body">
-      <div class="field">
-        <span class="field-label">查询问题</span>
-        <span class="field-value highlight">{{ queryQuestion }}</span>
+      <div class="query-meta">
+        <span class="meta-chip">{{ queryCount }} 条结果</span>
+        <span v-if="queryQuestion" class="meta-question" :title="queryQuestion">{{ queryQuestion }}</span>
       </div>
-      <div class="field">
-        <span class="field-label">结果数</span>
-        <span class="field-value">{{ queryCount }} 条</span>
-      </div>
-      <div v-if="queryColumns.length" class="field">
-        <span class="field-label">关键字段</span>
-        <div class="tag-group">
-          <span v-for="col in queryColumns" :key="col" class="tag tag-blue">{{ col }}</span>
+
+      <!-- 有增长数据时优先展示趋势条，避免与表格重复刷屏 -->
+      <div v-if="trendRows.length" class="trend-section">
+        <div class="section-title">增长趋势</div>
+        <div class="trend-kpis">
+          <div class="kpi">
+            <span class="kpi-label">样本</span>
+            <span class="kpi-val">{{ trendRows.length }}</span>
+          </div>
+          <div class="kpi">
+            <span class="kpi-label">平均增长</span>
+            <span class="kpi-val" :class="avgGrowth >= 0 ? 'up' : 'down'">{{ formatPct(avgGrowth) }}</span>
+          </div>
+          <div class="kpi">
+            <span class="kpi-label">负增长</span>
+            <span class="kpi-val down">{{ negativeGrowthCount }}</span>
+          </div>
+          <div class="kpi">
+            <span class="kpi-label">零资费</span>
+            <span class="kpi-val">{{ zeroFeeCount }}</span>
+          </div>
+        </div>
+        <div class="trend-bars">
+          <div v-for="row in trendRows.slice(0, 8)" :key="row.key" class="trend-row">
+            <span class="trend-name" :title="row.name">{{ row.name }}</span>
+            <div class="trend-track">
+              <div
+                class="trend-fill"
+                :class="row.growth >= 0 ? 'pos' : 'neg'"
+                :style="{ width: barWidth(row.growth) }"
+              />
+            </div>
+            <span class="trend-val" :class="row.growth >= 0 ? 'up' : 'down'">{{ formatPct(row.growth) }}</span>
+            <span v-if="row.users != null" class="trend-users">+{{ row.users }}</span>
+          </div>
         </div>
       </div>
-      <div v-if="queryResults.length" class="data-table">
-        <div class="table-header">
+
+      <!-- 无趋势时展示精简表；有趋势时默认折叠明细 -->
+      <div v-if="queryResults.length && (!trendRows.length || showQueryTable)" class="data-table">
+        <div class="table-header" :style="tableGridStyle">
           <span class="th-idx">#</span>
           <span v-for="col in visibleColumns" :key="col" class="th-cell">{{ columnLabel(col) }}</span>
         </div>
-        <div v-for="(row, idx) in queryResults.slice(0, 8)" :key="idx" class="table-row">
+        <div v-for="(row, idx) in queryResults.slice(0, 8)" :key="idx" class="table-row" :style="tableGridStyle">
           <span class="td-idx">{{ idx + 1 }}</span>
-          <span v-for="col in visibleColumns" :key="col" class="td-cell">{{ row[col] || '-' }}</span>
+          <span v-for="col in visibleColumns" :key="col" class="td-cell">{{ formatCell(row[col], col) }}</span>
         </div>
         <div v-if="queryResults.length > 8" class="table-more">
           其余 {{ queryResults.length - 8 }} 条结果已省略
         </div>
       </div>
+      <button
+        v-if="queryResults.length && trendRows.length"
+        type="button"
+        class="toggle-btn"
+        @click="showQueryTable = !showQueryTable"
+      >
+        {{ showQueryTable ? '收起明细表' : '展开明细表' }}
+      </button>
+
       <div v-if="queryResults.length" class="graph-section">
-        <div class="section-title">关系图谱</div>
-        <SparqlResultGraph :results="queryResults" :query="queryQuestion" />
+        <button type="button" class="toggle-btn" @click="showQueryGraph = !showQueryGraph">
+          {{ showQueryGraph ? '收起关系图谱' : '展开关系图谱' }}
+        </button>
+        <SparqlResultGraph v-if="showQueryGraph" :results="queryResults" :query="queryQuestion" />
       </div>
-      <div v-else class="empty-state">暂无匹配数据</div>
+      <div v-else-if="!queryResults.length" class="empty-state">暂无匹配数据</div>
+    </div>
+
+    <!-- ==================== 运营监控 ==================== -->
+    <div v-else-if="isMonitor" class="card-body">
+      <div class="trend-kpis">
+        <div class="kpi">
+          <span class="kpi-label">告警</span>
+          <span class="kpi-val">{{ monitorAlertCount }}</span>
+        </div>
+        <div class="kpi">
+          <span class="kpi-label">高优先级</span>
+          <span class="kpi-val down">{{ monitorHighCount }}</span>
+        </div>
+        <div class="kpi">
+          <span class="kpi-label">进行中工单</span>
+          <span class="kpi-val">{{ monitorOpenWo }}</span>
+        </div>
+      </div>
+      <div v-if="monitorAlerts.length" class="data-table">
+        <div class="table-header monitor-grid">
+          <span class="th-idx">#</span>
+          <span class="th-cell">商品</span>
+          <span class="th-cell">类型</span>
+          <span class="th-cell">摘要</span>
+        </div>
+        <div v-for="(row, idx) in monitorAlerts.slice(0, 6)" :key="row.id || idx" class="table-row monitor-grid">
+          <span class="td-idx">{{ idx + 1 }}</span>
+          <span class="td-cell">{{ row.offeringName || row.offeringId || '-' }}</span>
+          <span class="td-cell">{{ row.tag || row.type || '-' }}</span>
+          <span class="td-cell">{{ row.text || '-' }}</span>
+        </div>
+      </div>
+      <div v-else class="empty-state">暂无告警，右侧可查看工单</div>
     </div>
 
     <!-- ==================== 风险研判 ==================== -->
@@ -67,6 +140,23 @@
         <span class="field-label">命中规则</span>
         <div class="tag-group">
           <span v-for="rule in triggeredRules" :key="rule" class="tag tag-orange">{{ rule }}</span>
+        </div>
+      </div>
+      <div v-if="isRiskAudit && riskAuditItems.length" class="data-table">
+        <div class="table-header">
+          <span class="th-idx">#</span>
+          <span class="th-cell">商品</span>
+          <span class="th-cell">风险</span>
+          <span class="th-cell">分值</span>
+        </div>
+        <div v-for="(row, idx) in riskAuditItems.slice(0, 8)" :key="row.offeringId || idx" class="table-row">
+          <span class="td-idx">{{ idx + 1 }}</span>
+          <span class="td-cell">{{ row.offeringName || row.offeringId || '-' }}</span>
+          <span class="td-cell">{{ row.riskLevel || '-' }}</span>
+          <span class="td-cell">{{ row.riskScore ?? '-' }}</span>
+        </div>
+        <div v-if="riskAuditItems.length > 8" class="table-more">
+          其余 {{ riskAuditItems.length - 8 }} 条详见右侧清单
         </div>
       </div>
       <div v-if="factsSummary" class="facts-grid">
@@ -109,14 +199,14 @@
     </div>
 
     <!-- ==================== 异动归因 ==================== -->
-    <div v-else-if="!isCompare" class="card-body">
+    <div v-else-if="!isCompare && !isMonitor" class="card-body">
       <div class="field">
         <span class="field-label">异动现象</span>
         <span class="field-value highlight">{{ reasonTargetDisplay }}</span>
       </div>
-      <div v-if="explanation" class="explanation-block">
+      <div v-if="reasonSummary" class="explanation-block">
         <div class="explanation-title">归因结论</div>
-        <div class="explanation-text">{{ explanation }}</div>
+        <div class="explanation-text">{{ reasonSummary }}</div>
       </div>
       <div v-if="evidenceRows.length" class="evidence-section">
         <div class="evidence-title">支撑证据</div>
@@ -167,7 +257,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import SparqlResultGraph from '../SparqlResultGraph.vue'
-import { formatEvidenceRow, formatRule } from '../../utils/ontologyLabels.js'
+import { classCn, formatEvidenceRow, formatRule, formatWeight } from '../../utils/ontologyLabels.js'
 
 const props = defineProps({
   intentType: { type: String, default: '' },
@@ -176,27 +266,49 @@ const props = defineProps({
 
 const emit = defineEmits(['intent-action'])
 const showTech = ref(false)
+const showQueryTable = ref(false)
+const showQueryGraph = ref(false)
 
 const normalizedIntent = computed(() => props.intentType || props.msg?.intentType || '')
-const visible = computed(() => ['product_ops_query', 'product_ops_policy', 'product_ops_reason', 'product_ops_compare'].includes(normalizedIntent.value))
+const visible = computed(() => [
+  'product_ops_query',
+  'product_ops_policy',
+  'product_ops_reason',
+  'product_ops_compare',
+  'product_ops_monitor',
+].includes(normalizedIntent.value))
 const isQuery = computed(() => normalizedIntent.value === 'product_ops_query')
 const isPolicy = computed(() => normalizedIntent.value === 'product_ops_policy')
 const isCompare = computed(() => normalizedIntent.value === 'product_ops_compare')
+const isMonitor = computed(() => normalizedIntent.value === 'product_ops_monitor')
+const isRiskAudit = computed(() => {
+  const expectation = props.msg?.intentData?.expectationType || props.msg?.action || ''
+  return isPolicy.value && (expectation === 'risk_audit' || Array.isArray(props.msg?.intentData?.items))
+})
+const riskAuditItems = computed(() => {
+  const items = props.msg?.intentData?.items || props.msg?.intentData?.riskAudit?.items
+  return Array.isArray(items) ? items : []
+})
 
 const cardIcon = computed(() => {
   if (isQuery.value) return '\u{1F50D}'
+  if (isMonitor.value) return '\u{1F4CA}'
   if (isPolicy.value) return '\u{1F6E1}'
   if (isCompare.value) return '\u{1F504}'
   return '\u{1F500}'
 })
 const title = computed(() => {
   if (isQuery.value) return '市场洞察结果'
+  if (isMonitor.value) return '运营监控摘要'
+  if (isRiskAudit.value) return '风险稽核结果'
   if (isPolicy.value) return '立项研判与风险评估'
   if (isCompare.value) return '假设分析与场景模拟'
   return '异动归因与证据链'
 })
 const badgeLabel = computed(() => {
   if (isQuery.value) return '查询'
+  if (isMonitor.value) return '监控'
+  if (isRiskAudit.value) return '稽核'
   if (isPolicy.value) return '研判'
   if (isCompare.value) return '假设'
   return '归因'
@@ -206,8 +318,104 @@ const queryQuestion = computed(() => props.msg?.intentData?.question || props.ms
 const queryCount = computed(() => props.msg?.intentData?.count ?? props.msg?.stats?.count ?? 0)
 const queryResults = computed(() => props.msg?.intentData?.results || props.msg?.results || [])
 const queryColumns = computed(() => props.msg?.intentData?.columns || [])
-const visibleColumns = computed(() => queryColumns.value.slice(0, 5))
-const queryGraphData = computed(() => props.msg?.intentData?.graphData || props.msg?.graphData || null)
+
+const DISPLAY_COL_PRIORITY = ['name', 'status', 'growth', 'users', 'isZeroFee', '_bucket']
+const HIDDEN_COLS = new Set([
+  'product', 'entity', 'uri', 'productName', 'revenueGrowth', 'newUserMonth', 'category', 'price',
+])
+
+const visibleColumns = computed(() => {
+  const fromBackend = (queryColumns.value || []).filter(
+    (c) => c && (!String(c).startsWith('_') || c === '_bucket'),
+  )
+  const preferred = DISPLAY_COL_PRIORITY.filter((c) => {
+    if (fromBackend.includes(c)) return true
+    return queryResults.value.some((row) => row?.[c] != null && String(row[c]).trim() !== '')
+  })
+  if (preferred.length) return preferred.slice(0, 5)
+  const fallback = fromBackend.filter((c) => !HIDDEN_COLS.has(c))
+  if (fallback.length) return fallback.slice(0, 5)
+  const keys = queryResults.value[0] ? Object.keys(queryResults.value[0]) : []
+  return keys.filter((k) => !k.startsWith('_') && !HIDDEN_COLS.has(k)).slice(0, 5)
+})
+const tableGridStyle = computed(() => ({
+  gridTemplateColumns: `40px repeat(${Math.max(visibleColumns.value.length, 1)}, 1fr)`,
+}))
+
+function parseNum(val) {
+  if (val == null || val === '') return null
+  if (typeof val === 'number') return Number.isFinite(val) ? val : null
+  const s = String(val).replace(/%/g, '').trim()
+  const n = Number(s)
+  return Number.isFinite(n) ? n : null
+}
+
+function pickGrowth(row) {
+  const g = parseNum(row.growth ?? row.revenueGrowth ?? row.growthRate)
+  if (g == null) return null
+  // 本体里增长多为小数（0.05=5%）；若绝对值>1 则视为已是百分数
+  return Math.abs(g) > 1 ? g / 100 : g
+}
+
+const trendRows = computed(() => {
+  const rows = []
+  queryResults.value.forEach((row, idx) => {
+    const growth = pickGrowth(row)
+    if (growth == null) return
+    const name = String(row.name || row.productName || row.offeringName || row.product || `商品${idx + 1}`)
+    const users = parseNum(row.users ?? row.newUserMonth)
+    rows.push({ key: `${name}-${idx}`, name, growth, users })
+  })
+  return rows.sort((a, b) => a.growth - b.growth)
+})
+const avgGrowth = computed(() => {
+  if (!trendRows.value.length) return 0
+  const sum = trendRows.value.reduce((acc, r) => acc + r.growth, 0)
+  return sum / trendRows.value.length
+})
+const negativeGrowthCount = computed(() => trendRows.value.filter((r) => r.growth < 0).length)
+const zeroFeeCount = computed(() =>
+  queryResults.value.filter((r) => {
+    const z = r.isZeroFee
+    return z === true || z === 'true' || z === 1 || z === '1' || z === '是'
+  }).length,
+)
+const maxAbsGrowth = computed(() => {
+  const vals = trendRows.value.map((r) => Math.abs(r.growth))
+  return vals.length ? Math.max(...vals, 0.01) : 0.01
+})
+function barWidth(growth) {
+  const pct = Math.min(100, (Math.abs(growth) / maxAbsGrowth.value) * 100)
+  return `${Math.max(6, pct)}%`
+}
+function formatPct(v) {
+  if (v == null || Number.isNaN(v)) return '-'
+  return `${(v * 100).toFixed(1)}%`
+}
+function formatCell(val, col) {
+  if (val == null || val === '') return '-'
+  if (['growth', 'revenueGrowth', 'growthRate'].includes(col)) {
+    const g = pickGrowth({ [col]: val, growth: val })
+    return g == null ? String(val) : formatPct(g)
+  }
+  if (col === 'isZeroFee') {
+    const z = val === true || val === 'true' || val === 1 || val === '1' || val === '是'
+    return z ? '是' : '否'
+  }
+  return String(val)
+}
+
+const monitorAlerts = computed(() => {
+  const items = props.msg?.intentData?.alertItems
+    || props.msg?.intentData?.alerts?.items
+    || []
+  return Array.isArray(items) ? items : []
+})
+const monitorAlertCount = computed(() =>
+  props.msg?.intentData?.alertCount ?? monitorAlerts.value.length,
+)
+const monitorHighCount = computed(() => props.msg?.intentData?.highPriorityCount ?? 0)
+const monitorOpenWo = computed(() => props.msg?.intentData?.openWorkOrderCount ?? 0)
 
 const policySetId = computed(() => props.msg?.intentData?.policySetId || props.msg?.stats?.policySetId || '')
 const expectationType = computed(() => props.msg?.intentData?.expectationType || props.msg?.stats?.expectationType || '')
@@ -230,16 +438,57 @@ const reasonTargetDisplay = computed(() => {
   if (!t) return ''
   return t.length > 80 ? `${t.slice(0, 80)}…` : t
 })
-const explanation = computed(() => props.msg?.intentData?.explanation || '')
 const explanationRules = computed(() => props.msg?.intentData?.referencedRules || props.msg?.intentData?.referenced_rules || [])
-const evidenceResults = computed(() => props.msg?.intentData?.results || props.msg?.results || [])
+const evidenceResults = computed(() => {
+  const paths = props.msg?.intentData?.paths || props.msg?.intentData?.rootCause?.paths
+  if (Array.isArray(paths) && paths.length) return paths
+  return props.msg?.intentData?.results || props.msg?.results || []
+})
 const evidenceCount = computed(() => {
   const n = props.msg?.intentData?.evidenceCount ?? props.msg?.stats?.evidenceCount
   if (n != null) return n
   return evidenceResults.value.length
 })
+/** 面板只展示短结论；若后端仍回传整份 Markdown 报告则改从结构化字段拼摘要，避免与聊天正文重复 */
+const reasonSummary = computed(() => {
+  const raw = String(props.msg?.intentData?.explanation || '').trim()
+  const looksLikeFullReport = /^#{1,6}\s/.test(raw) || /\*\*异动结论\*\*/.test(raw) || /\*\*根因路径\*\*/.test(raw)
+  if (raw && !looksLikeFullReport) return raw
+
+  const root = props.msg?.intentData?.rootCause || props.msg?.intentData || {}
+  const anomalies = root.anomalies || props.msg?.intentData?.anomalies || []
+  const paths = evidenceResults.value
+  const anomaly = anomalies[0]
+  if (!anomaly && !paths.length) return raw || String(root.message || props.msg?.intentData?.message || '')
+
+  const parts = []
+  if (anomaly?.message) {
+    const rule = anomaly.ruleId ? `（${formatRule(anomaly.ruleId)}）` : ''
+    parts.push(`${anomaly.message}${rule}`)
+  }
+  if (paths[0]?.name) {
+    const w = paths[0].weight != null ? `，权重 ${formatWeight(paths[0].weight)}` : ''
+    parts.push(`主因：${paths[0].name}${w}`)
+    if (paths.length > 1) parts.push(`另有 ${paths.length - 1} 条次因，见支撑证据`)
+  }
+  return parts.join('。') + (parts.length ? '。' : '')
+})
 const evidenceRows = computed(() =>
-  evidenceResults.value.slice(0, 8).map((row) => formatEvidenceRow(row)),
+  evidenceResults.value.slice(0, 8).map((row) => {
+    if (row && (row.rootCauseType || row.weight != null || Array.isArray(row.evidence))) {
+      const type = classCn(row.rootCauseType) || row.rootCauseType || ''
+      const bits = [row.name || '—']
+      if (row.rank != null) bits.push(`#${row.rank}`)
+      if (type) bits.push(type)
+      if (row.weight != null) bits.push(`权重 ${formatWeight(row.weight)}`)
+      if (row.ruleId) bits.push(formatRule(row.ruleId))
+      const ev = Array.isArray(row.evidence) && row.evidence.length
+        ? `；证据：${row.evidence.join('；')}`
+        : ''
+      return `${bits.join(' · ')}${ev}`
+    }
+    return formatEvidenceRow(row)
+  }),
 )
 const traceId = computed(() => props.msg?.intentData?.traceId || props.msg?.stats?.traceId || '')
 const sparqlText = computed(() => props.msg?.intentData?.sparql || '')
@@ -258,7 +507,7 @@ const columnLabel = (col) => {
   const map = {
     name: '名称', productName: '产品名', _bucket: '分类', status: '状态',
     revenueGrowth: '收入增长', newUserMonth: '月新增', isZeroFee: '零资费',
-    growth: '增长率', users: '用户数',
+    growth: '增长率', users: '月新增',
   }
   return map[col] || col
 }
@@ -268,6 +517,8 @@ const factLabel = (key) => {
     productType: '产品类型', targetMarketSize: '目标市场规模',
     isZeroFee: '零资费', onlineMonths: '在售月数',
     newUserMonth: '月新增用户', annualSpend: '年消费', vipLevel: '会员等级',
+    scannedCount: '扫描数', highCount: '高风险', mediumCount: '中风险',
+    suggestDelistCount: '建议下架', ruleVersion: '规则版本',
   }
   return map[key] || key
 }
@@ -291,6 +542,7 @@ const handleFollowUp = () => {
     product_ops_policy: '详细解释为什么会被拒绝',
     product_ops_reason: '给我更详细的证据链和时间线',
     product_ops_compare: '如果改变更多条件会怎样',
+    product_ops_monitor: '对高优先级告警做智能归因',
   }
   emit('intent-action', {
     type: normalizedIntent.value,
@@ -306,14 +558,55 @@ const handleFollowUp = () => {
 .header-product_ops_query { background: linear-gradient(135deg, #eff6ff, #f0f9ff); }
 .header-product_ops_policy { background: linear-gradient(135deg, #fefce8, #fff7ed); }
 .header-product_ops_reason { background: linear-gradient(135deg, #faf5ff, #fdf2f8); }
+.header-product_ops_monitor { background: linear-gradient(135deg, #ecfdf5, #f0fdf4); }
+.header-product_ops_compare { background: linear-gradient(135deg, #f8fafc, #eff6ff); }
 .card-icon { font-size: 18px; }
 .card-title { font-weight: 700; color: #0f172a; flex: 1; font-size: 14px; }
 .card-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
 .badge-product_ops_query { background: #dbeafe; color: #1d4ed8; }
 .badge-product_ops_policy { background: #fef3c7; color: #b45309; }
 .badge-product_ops_reason { background: #f3e8ff; color: #7c3aed; }
+.badge-product_ops_monitor { background: #d1fae5; color: #047857; }
+.badge-product_ops_compare { background: #e2e8f0; color: #334155; }
 .card-time { color: #94a3b8; font-size: 12px; }
 .card-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.query-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.meta-chip {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+.meta-question {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.toggle-btn {
+  align-self: flex-start;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.toggle-btn:hover { background: #f1f5f9; color: #0f172a; }
 .field { display: grid; grid-template-columns: 85px 1fr; gap: 8px; align-items: start; }
 .field-label { color: #64748b; font-size: 13px; white-space: nowrap; padding-top: 1px; }
 .field-value { color: #1e293b; font-size: 13px; line-height: 1.5; }
@@ -330,15 +623,42 @@ const handleFollowUp = () => {
 
 /* Data table */
 .data-table { border: 1px solid #f1f5f9; border-radius: 10px; overflow: hidden; }
-.table-header { display: grid; grid-template-columns: 40px repeat(5, 1fr); gap: 0; background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 6px 0; }
-.table-row { display: grid; grid-template-columns: 40px repeat(5, 1fr); gap: 0; padding: 7px 0; border-bottom: 1px solid #f8fafc; }
+.table-header { display: grid; gap: 0; background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 6px 0; }
+.table-row { display: grid; gap: 0; padding: 7px 0; border-bottom: 1px solid #f8fafc; }
 .table-row:last-child { border-bottom: none; }
 .table-row:hover { background: #f8fafc; }
+.monitor-grid { grid-template-columns: 40px 1.2fr 0.7fr 2fr; }
 .th-idx, .td-idx { text-align: center; color: #94a3b8; font-size: 12px; }
 .th-cell, .td-cell { font-size: 12px; padding: 0 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .th-cell { color: #64748b; font-weight: 600; }
 .td-cell { color: #334155; }
 .table-more { text-align: center; color: #94a3b8; font-size: 12px; padding: 6px; background: #fafbfc; }
+
+/* Trend */
+.trend-section { margin-top: 4px; }
+.trend-section .section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 8px;
+}
+.trend-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 10px; }
+.kpi { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px 10px; }
+.kpi-label { display: block; font-size: 11px; color: #64748b; margin-bottom: 2px; }
+.kpi-val { font-size: 15px; font-weight: 700; color: #0f172a; }
+.kpi-val.up { color: #15803d; }
+.kpi-val.down { color: #dc2626; }
+.trend-bars { display: flex; flex-direction: column; gap: 6px; }
+.trend-row { display: grid; grid-template-columns: 96px 1fr 52px 48px; gap: 8px; align-items: center; }
+.trend-name { font-size: 12px; color: #334155; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trend-track { height: 8px; background: #f1f5f9; border-radius: 999px; overflow: hidden; }
+.trend-fill { height: 100%; border-radius: 999px; }
+.trend-fill.pos { background: linear-gradient(90deg, #86efac, #22c55e); }
+.trend-fill.neg { background: linear-gradient(90deg, #fda4af, #ef4444); }
+.trend-val { font-size: 12px; font-weight: 600; text-align: right; }
+.trend-val.up { color: #15803d; }
+.trend-val.down { color: #dc2626; }
+.trend-users { font-size: 11px; color: #64748b; text-align: right; }
 
 /* Verdict */
 .verdict-section { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #f8fafc; border-radius: 10px; }
@@ -359,7 +679,7 @@ const handleFollowUp = () => {
 /* Explanation block */
 .explanation-block { background: #faf5ff; border: 1px solid #f3e8ff; border-radius: 10px; padding: 12px; }
 .explanation-title { font-size: 12px; color: #7c3aed; font-weight: 700; margin-bottom: 6px; }
-.explanation-text { font-size: 13px; color: #1e293b; line-height: 1.6; }
+.explanation-text { font-size: 13px; color: #1e293b; line-height: 1.6; white-space: pre-wrap; }
 
 /* Evidence section */
 .evidence-section {
@@ -421,7 +741,7 @@ const handleFollowUp = () => {
 .empty-state { text-align: center; color: #94a3b8; padding: 20px; font-size: 13px; }
 
 /* Graph section */
-.graph-section { margin-top: 12px; }
+.graph-section { margin-top: 4px; display: flex; flex-direction: column; gap: 8px; }
 .graph-section .section-title {
   font-size: 13px;
   font-weight: 600;

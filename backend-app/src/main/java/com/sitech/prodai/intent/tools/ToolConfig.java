@@ -256,7 +256,8 @@ public class ToolConfig {
                     patch.put("changes", proposedChanges);
                     patches.add(patch);
 
-                    Map<String, Object> result = ontologyService.compareState(snapshotId, patches, policySetId, null, null);
+                    Map<String, Object> result = ontologyService.compareState(
+                            snapshotId, patches, policySetId, null, null, currentFacts);
                     return toJsonString(result);
                 }
         );

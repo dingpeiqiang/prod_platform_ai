@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="dashboard-home">
     <div class="dashboard-shell">
       <section class="dashboard-main">
@@ -317,7 +317,7 @@
 <script setup>
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import ChatInput from './ChatInput.vue'
-import { getOpsDashboard } from '../services/ontologyMvpApi.js'
+import { getOpsDashboard } from '../services/productOntologyApi.js'
 import { ZHIDU_TEST_PROMPT } from '../data/zhiduTestDoc.js'
 
 const props = defineProps({

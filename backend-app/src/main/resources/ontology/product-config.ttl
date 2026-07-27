@@ -1,120 +1,1207 @@
-@prefix : <http://example.org/config/> .
+@prefix : <http://www.telecom-ontology.org/prod-config#> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@base <http://www.telecom-ontology.org/prod-config#> .
 
-<http://example.org/config> rdf:type owl:Ontology ;
-    rdfs:label "产商品配置本体"@zh ;
-    owl:versionInfo "1.0" ;
-    rdfs:comment "对齐配置方案七类实体与核心关系；实例可由上线沉淀写入 RDF4J。"@zh .
+<http://www.telecom-ontology.org/prod-config> rdf:type owl:Ontology ;
+  rdfs:label "产商品配置本体模型"@zh ;
+  rdfs:comment "v2.2业务视角优化：四层架构；拆分胖类；工单归方案；主附关系与配置变更显式建模；报文为投影。"@zh ;
+  owl:versionInfo "2.2" .
 
-#################################################################
-# Classes（方案实体 + 现有元类别名）
-#################################################################
+# Object Properties
+:configuresProduct rdf:type owl:ObjectProperty ;
+  rdfs:domain :ConfigScheme ; rdfs:range :PricingProduct ;
+  rdfs:comment "方案配置产商品资费"@zh ; rdfs:label "configuresProduct"@en .
 
-:ProductConfigTemplate rdf:type owl:Class ; rdfs:label "产品配置模板"@zh .
-:ConfigTemplate rdf:type owl:Class ; rdfs:subClassOf :ProductConfigTemplate ; rdfs:label "配置模板(兼容)"@zh .
-:ConfigItem rdf:type owl:Class ; rdfs:label "配置项"@zh .
-:ParamConstraint rdf:type owl:Class ; rdfs:label "参数约束"@zh .
-:ConfigScheme rdf:type owl:Class ; rdfs:label "历史配置方案"@zh .
-:OfferingConfig rdf:type owl:Class ; rdfs:subClassOf :ConfigScheme ; rdfs:label "商品配置草稿(兼容)"@zh .
-:TariffElement rdf:type owl:Class ; rdfs:label "资费要素"@zh .
-:ComplianceRule rdf:type owl:Class ; rdfs:label "合规规则"@zh .
-:BusinessScene rdf:type owl:Class ; rdfs:label "业务场景"@zh .
-:BizScenario rdf:type owl:Class ; rdfs:subClassOf :BusinessScene ; rdfs:label "业务场景(兼容)"@zh .
+:belongsToCategory rdf:type owl:ObjectProperty ;
+  rdfs:domain :PricingProduct ; rdfs:range :ProductCategory ;
+  rdfs:comment "资费属于品类"@zh ; rdfs:label "belongsToCategory"@en .
 
-#################################################################
-# Object properties
-#################################################################
+:hasSalesPolicy rdf:type owl:ObjectProperty ;
+  rdfs:domain :ConfigScheme ; rdfs:range :SalesPolicy ;
+  rdfs:comment "方案含销售策略"@zh ; rdfs:label "hasSalesPolicy"@en .
 
-:containsItem rdf:type owl:ObjectProperty ;
-    rdfs:domain :ProductConfigTemplate ; rdfs:range :ConfigItem ; rdfs:label "包含配置项"@zh .
-:hasConstraint rdf:type owl:ObjectProperty ;
-    rdfs:domain :ConfigItem ; rdfs:range :ParamConstraint ; rdfs:label "关联参数约束"@zh .
-:appliesTo rdf:type owl:ObjectProperty ;
-    rdfs:domain :ComplianceRule ; rdfs:range :ConfigItem ; rdfs:label "适用于配置项"@zh .
-:basedOnTemplate rdf:type owl:ObjectProperty ;
-    rdfs:domain :ConfigScheme ; rdfs:range :ProductConfigTemplate ; rdfs:label "基于模板"@zh .
-:hasTariff rdf:type owl:ObjectProperty ;
-    rdfs:domain :ConfigScheme ; rdfs:range :TariffElement ; rdfs:label "包含资费要素"@zh .
+:hasReleaseScope rdf:type owl:ObjectProperty ;
+  rdfs:domain :ConfigScheme ; rdfs:range :ReleaseScope ;
+  rdfs:comment "方案含发布范围"@zh ; rdfs:label "hasReleaseScope"@en .
+
+:hasNetworkCapability rdf:type owl:ObjectProperty ;
+  rdfs:domain :ConfigScheme ; rdfs:range :NetworkCapability ;
+  rdfs:comment "方案含网络能力"@zh ; rdfs:label "hasNetworkCapability"@en .
+
+:hasFamilyOfferPolicy rdf:type owl:ObjectProperty ;
+  rdfs:domain :ConfigScheme ; rdfs:range :FamilyOfferPolicy ;
+  rdfs:comment "方案含家庭资费策略"@zh ; rdfs:label "hasFamilyOfferPolicy"@en .
+
+:hasChargePlan rdf:type owl:ObjectProperty ;
+  rdfs:domain :ConfigScheme ; rdfs:range :ChargePlan ;
+  rdfs:comment "方案含固费方案"@zh ; rdfs:label "hasChargePlan"@en .
+
+:hasPreferentialPlan rdf:type owl:ObjectProperty ;
+  rdfs:domain :ConfigScheme ; rdfs:range :PreferentialPlan ;
+  rdfs:comment "方案含优惠（含子类实例）"@zh ; rdfs:label "hasPreferentialPlan"@en .
+
+:hasResourceEntitlement rdf:type owl:ObjectProperty ;
+  rdfs:domain :ConfigScheme ; rdfs:range :ResourceEntitlement ;
+  rdfs:comment "方案含资源权益（含子类）"@zh ; rdfs:label "hasResourceEntitlement"@en .
+
+:hasPrintNotice rdf:type owl:ObjectProperty ;
+  rdfs:domain :ConfigScheme ; rdfs:range :PrintNotice ;
+  rdfs:comment "方案含免填单告知"@zh ; rdfs:label "hasPrintNotice"@en .
+
+:hasSmsNotice rdf:type owl:ObjectProperty ;
+  rdfs:domain :ConfigScheme ; rdfs:range :SmsNotice ;
+  rdfs:comment "方案含短信告知"@zh ; rdfs:label "hasSmsNotice"@en .
+
+:hasValueAddedEquity rdf:type owl:ObjectProperty ;
+  rdfs:domain :ConfigScheme ; rdfs:range :ValueAddedEquity ;
+  rdfs:comment "方案含增值权益"@zh ; rdfs:label "hasValueAddedEquity"@en .
+
+:hasOfferCompatibility rdf:type owl:ObjectProperty ;
+  rdfs:domain :ConfigScheme ; rdfs:range :OfferCompatibility ;
+  rdfs:comment "方案含资费相容关系"@zh ; rdfs:label "hasOfferCompatibility"@en .
+
+:hasConfigChange rdf:type owl:ObjectProperty ;
+  rdfs:domain :ConfigScheme ; rdfs:range :ConfigChange ;
+  rdfs:comment "方案含变更意图"@zh ; rdfs:label "hasConfigChange"@en .
+
+:governedBy rdf:type owl:ObjectProperty ;
+  rdfs:domain :ConfigScheme ; rdfs:range :ComplianceRule ;
+  rdfs:comment "受合规治理"@zh ; rdfs:label "governedBy"@en .
+
 :appliesScene rdf:type owl:ObjectProperty ;
-    rdfs:domain :ConfigScheme ; rdfs:range :BusinessScene ; rdfs:label "适用业务场景"@zh .
+  rdfs:domain :ConfigScheme ; rdfs:range :BusinessScene ;
+  rdfs:comment "适用业务场景"@zh ; rdfs:label "appliesScene"@en .
+
 :similarTo rdf:type owl:ObjectProperty ;
-    rdfs:domain :ConfigScheme ; rdfs:range :ConfigScheme ; rdfs:label "方案相似度关联"@zh .
-:hasElement rdf:type owl:ObjectProperty ;
-    rdfs:subPropertyOf :containsItem ; rdfs:label "包含要素(兼容)"@zh .
-:inScenario rdf:type owl:ObjectProperty ;
-    rdfs:subPropertyOf :appliesScene ; rdfs:label "所属场景(兼容)"@zh .
+  rdfs:domain :ConfigScheme ; rdfs:range :ConfigScheme ;
+  rdfs:comment "方案相似复用"@zh ; rdfs:label "similarTo"@en .
 
-#################################################################
-# Datatype properties
-#################################################################
+:appliesConstraint rdf:type owl:ObjectProperty ;
+  rdfs:domain :ProductCategory ; rdfs:range :BusinessConstraint ;
+  rdfs:comment "品类适用业务约束"@zh ; rdfs:label "appliesConstraint"@en .
 
-:schemeId rdf:type owl:DatatypeProperty ; rdfs:range xsd:string .
-:productType rdf:type owl:DatatypeProperty ; rdfs:range xsd:string .
-:schemeName rdf:type owl:DatatypeProperty ; rdfs:range xsd:string .
-:status rdf:type owl:DatatypeProperty ; rdfs:range xsd:string .
-:itemCode rdf:type owl:DatatypeProperty ; rdfs:range xsd:string .
-:itemName rdf:type owl:DatatypeProperty ; rdfs:range xsd:string .
-:monthlyFee rdf:type owl:DatatypeProperty ; rdfs:range xsd:decimal .
-:isRequired rdf:type owl:DatatypeProperty ; rdfs:range xsd:boolean .
+:constrainsScheme rdf:type owl:ObjectProperty ;
+  rdfs:domain :BusinessConstraint ; rdfs:range :ConfigScheme ;
+  rdfs:comment "约束作用于配置方案"@zh ; rdfs:label "constrainsScheme"@en .
 
-#################################################################
-# Seed individuals（演示模板 / 场景 / 规则）
-#################################################################
+# Data Properties
+:offerName rdf:type owl:DatatypeProperty ;
+  rdfs:domain :PricingProduct ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:prodPrcName"@zh ;
+  rdfs:label "offerName"@en , "资费名称"@zh .
 
-:TEMPLATE_5G_STANDARD rdf:type :ProductConfigTemplate ;
-    rdfs:label "5G套餐标准模板"@zh ;
-    :schemeId "TPL-5G-99" ;
-    :schemeName "5G畅享99" ;
-    :monthlyFee "99"^^xsd:decimal .
+:productCode rdf:type owl:DatatypeProperty ;
+  rdfs:domain :PricingProduct ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:prodId"@zh ;
+  rdfs:label "productCode"@en , "产品代码"@zh .
 
-:TEMPLATE_CAMPUS_59 rdf:type :ProductConfigTemplate ;
-    rdfs:label "校园套餐模板"@zh ;
-    :schemeId "TPL-CAMPUS-59" ;
-    :schemeName "校园青春59" ;
-    :monthlyFee "59"^^xsd:decimal .
+:pricingCode rdf:type owl:DatatypeProperty ;
+  rdfs:domain :PricingProduct ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:prodPrcId"@zh ;
+  rdfs:label "pricingCode"@en , "资费代码"@zh .
 
-:TEMPLATE_HF_128 rdf:type :ProductConfigTemplate ;
-    rdfs:label "家庭融合模板"@zh ;
-    :schemeId "TPL-HF-128" ;
-    :schemeName "家庭融合畅享128" ;
-    :monthlyFee "128"^^xsd:decimal .
+:splitCode rdf:type owl:DatatypeProperty ;
+  rdfs:domain :PricingProduct ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:pricingId"@zh ;
+  rdfs:label "splitCode"@en , "拆分代码"@zh .
 
-:ITEM_MONTHLY_FEE rdf:type :ConfigItem ;
-    :itemCode "MONTHLY_FEE" ; :itemName "月费" ; :isRequired true .
-:ITEM_FREE_VALUE_ADDED rdf:type :ConfigItem ;
-    :itemCode "FREE_VALUE_ADDED" ; :itemName "增值权益" ; :isRequired false .
+:is5GOffer rdf:type owl:DatatypeProperty ;
+  rdfs:domain :PricingProduct ;
+  rdfs:range xsd:boolean ;
+  rdfs:comment "报文键:planFlag"@zh ;
+  rdfs:label "is5GOffer"@en , "是否5G资费"@zh .
 
-:CONSTRAINT_FEE_RANGE rdf:type :ParamConstraint ;
-    rdfs:label "月费9-599"@zh .
-:ITEM_MONTHLY_FEE :hasConstraint :CONSTRAINT_FEE_RANGE .
+:addonProductType rdf:type owl:DatatypeProperty ;
+  rdfs:domain :PricingProduct ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:prodType"@zh ;
+  rdfs:label "addonProductType"@en , "附加产品类型"@zh .
 
-:RULE_R_CONF_001 rdf:type :ComplianceRule ;
-    rdfs:label "资费上下限校验"@zh .
-:RULE_R_CONF_001 :appliesTo :ITEM_MONTHLY_FEE .
+:categoryCode rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ProductCategory ;
+  rdfs:range xsd:string ;
+  rdfs:label "categoryCode"@en , "品类编码"@zh .
 
-:SCENE_CAMPUS rdf:type :BusinessScene ; rdfs:label "校园体验"@zh .
-:SCENE_HF rdf:type :BusinessScene ; rdfs:label "家庭融合"@zh .
-:SCENE_5G rdf:type :BusinessScene ; rdfs:label "5G个人主套餐"@zh .
+:categoryName rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ProductCategory ;
+  rdfs:range xsd:string ;
+  rdfs:label "categoryName"@en , "品类名称"@zh .
 
-:SCHEME_CAMPUS_59 rdf:type :ConfigScheme ;
-    :schemeId "OF-RISK-001" ;
-    :schemeName "校园体验流量包0元" ;
-    :productType "5G套餐" ;
-    :status "已上线" ;
-    :basedOnTemplate :TEMPLATE_CAMPUS_59 ;
-    :appliesScene :SCENE_CAMPUS .
+:productLine rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ProductCategory ;
+  rdfs:range xsd:string ;
+  rdfs:label "productLine"@en , "产品线"@zh .
 
-:SCHEME_HF_128 rdf:type :ConfigScheme ;
-    :schemeId "OF-HF-128" ;
-    :schemeName "家庭融合畅享128" ;
-    :productType "融合套餐" ;
-    :status "已上线" ;
-    :basedOnTemplate :TEMPLATE_HF_128 ;
-    :appliesScene :SCENE_HF .
+:isMainOffer rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ProductCategory ;
+  rdfs:range xsd:boolean ;
+  rdfs:label "isMainOffer"@en , "是否主资费"@zh .
 
-:SCHEME_CAMPUS_59 :similarTo :SCHEME_HF_128 .
-:TEMPLATE_5G_STANDARD :containsItem :ITEM_MONTHLY_FEE .
-:TEMPLATE_5G_STANDARD :containsItem :ITEM_FREE_VALUE_ADDED .
+:messageRootKey rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ProductCategory ;
+  rdfs:range xsd:string ;
+  rdfs:label "messageRootKey"@en , "对接报文根键"@zh .
+
+:relationType rdf:type owl:DatatypeProperty ;
+  rdfs:domain :OfferCompatibility ;
+  rdfs:range xsd:string ;
+  rdfs:label "relationType"@en , "关系类型"@zh .
+
+:sourceOfferRef rdf:type owl:DatatypeProperty ;
+  rdfs:domain :OfferCompatibility ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:canBaseFamilyPrc/outProdPrcId"@zh ;
+  rdfs:label "sourceOfferRef"@en , "源资费引用"@zh .
+
+:targetOfferRef rdf:type owl:DatatypeProperty ;
+  rdfs:domain :OfferCompatibility ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:canAddFamilyPrc/inProdPrcId"@zh ;
+  rdfs:label "targetOfferRef"@en , "目标资费引用"@zh .
+
+:upgradeEndsAddon rdf:type owl:DatatypeProperty ;
+  rdfs:domain :OfferCompatibility ;
+  rdfs:range xsd:boolean ;
+  rdfs:comment "报文键:familyUpIfEnd"@zh ;
+  rdfs:label "upgradeEndsAddon"@en , "升档是否结束附加"@zh .
+
+:allowChangeMainOffer rdf:type owl:DatatypeProperty ;
+  rdfs:domain :OfferCompatibility ;
+  rdfs:range xsd:boolean ;
+  rdfs:comment "报文键:ifChangeBasePrc"@zh ;
+  rdfs:label "allowChangeMainOffer"@en , "是否允许变更主资费"@zh .
+
+:contractAllowDowngrade rdf:type owl:DatatypeProperty ;
+  rdfs:domain :OfferCompatibility ;
+  rdfs:range xsd:boolean ;
+  rdfs:comment "报文键:chgYueIfCanDown"@zh ;
+  rdfs:label "contractAllowDowngrade"@en , "合约期是否允许降档"@zh .
+
+:schemeId rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ConfigScheme ;
+  rdfs:range xsd:string ;
+  rdfs:label "schemeId"@en , "方案编码"@zh .
+
+:workOrderId rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ConfigScheme ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:templateId"@zh ;
+  rdfs:label "workOrderId"@en , "需求工单编号"@zh .
+
+:status rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ConfigScheme ;
+  rdfs:range xsd:string ;
+  rdfs:label "status"@en , "方案状态"@zh .
+
+:version rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ConfigScheme ;
+  rdfs:range xsd:string ;
+  rdfs:label "version"@en , "方案版本"@zh .
+
+:createTime rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ConfigScheme ;
+  rdfs:range xsd:dateTime ;
+  rdfs:label "createTime"@en , "创建时间"@zh .
+
+:creator rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ConfigScheme ;
+  rdfs:range xsd:string ;
+  rdfs:label "creator"@en , "创建人"@zh .
+
+:changeOpType rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ConfigChange ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:opType"@zh ;
+  rdfs:label "changeOpType"@en , "变更操作类型"@zh .
+
+:changedAttributes rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ConfigChange ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:opContent"@zh ;
+  rdfs:label "changedAttributes"@en , "变更属性列表"@zh .
+
+:changeComponentRef rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ConfigChange ;
+  rdfs:range xsd:string ;
+  rdfs:label "changeComponentRef"@en , "变更组件引用"@zh .
+
+:orderEffectMode rdf:type owl:DatatypeProperty ;
+  rdfs:domain :SalesPolicy ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:effRuleId"@zh ;
+  rdfs:label "orderEffectMode"@en , "订购生效方式"@zh .
+
+:cancelEffectMode rdf:type owl:DatatypeProperty ;
+  rdfs:domain :SalesPolicy ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:cancelRuleId"@zh ;
+  rdfs:label "cancelEffectMode"@en , "退订生效方式"@zh .
+
+:saleStartDate rdf:type owl:DatatypeProperty ;
+  rdfs:domain :SalesPolicy ;
+  rdfs:range xsd:dateTime ;
+  rdfs:comment "报文键:effDate"@zh ;
+  rdfs:label "saleStartDate"@en , "销售开始日期"@zh .
+
+:saleEndDate rdf:type owl:DatatypeProperty ;
+  rdfs:domain :SalesPolicy ;
+  rdfs:range xsd:dateTime ;
+  rdfs:comment "报文键:expDate"@zh ;
+  rdfs:label "saleEndDate"@en , "销售终止日期"@zh .
+
+:validityCycle rdf:type owl:DatatypeProperty ;
+  rdfs:domain :SalesPolicy ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:prcEffCycle"@zh ;
+  rdfs:label "validityCycle"@en , "资费有效周期"@zh .
+
+:validityUnit rdf:type owl:DatatypeProperty ;
+  rdfs:domain :SalesPolicy ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:prcEffType"@zh ;
+  rdfs:label "validityUnit"@en , "有效期单位"@zh .
+
+:validityValue rdf:type owl:DatatypeProperty ;
+  rdfs:domain :SalesPolicy ;
+  rdfs:range xsd:integer ;
+  rdfs:comment "报文键:prcEffNum"@zh ;
+  rdfs:label "validityValue"@en , "有效期数值"@zh .
+
+:absoluteExpireDate rdf:type owl:DatatypeProperty ;
+  rdfs:domain :SalesPolicy ;
+  rdfs:range xsd:dateTime ;
+  rdfs:comment "报文键:prcEffDate"@zh ;
+  rdfs:label "absoluteExpireDate"@en , "绝对失效日期"@zh .
+
+:maxRepeatOrder rdf:type owl:DatatypeProperty ;
+  rdfs:domain :SalesPolicy ;
+  rdfs:range xsd:integer ;
+  rdfs:comment "报文键:effNum"@zh ;
+  rdfs:label "maxRepeatOrder"@en , "允许重复订购数量"@zh .
+
+:repeatChargeFlag rdf:type owl:DatatypeProperty ;
+  rdfs:domain :SalesPolicy ;
+  rdfs:range xsd:boolean ;
+  rdfs:comment "报文键:reFeeFlag"@zh ;
+  rdfs:label "repeatChargeFlag"@en , "重复订购是否重复收费"@zh .
+
+:unifiedQueryCancel rdf:type owl:DatatypeProperty ;
+  rdfs:domain :SalesPolicy ;
+  rdfs:range xsd:boolean ;
+  rdfs:comment "报文键:unifiedQryCancle"@zh ;
+  rdfs:label "unifiedQueryCancel"@en , "是否支持统一查询退订"@zh .
+
+:channelScope rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ReleaseScope ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:chnClassLimit"@zh ;
+  rdfs:label "channelScope"@en , "发布渠道"@zh .
+
+:regionScope rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ReleaseScope ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:groupId"@zh ;
+  rdfs:label "regionScope"@en , "发布地市范围"@zh .
+
+:regionDetail rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ReleaseScope ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:groupIdMessage"@zh ;
+  rdfs:label "regionDetail"@en , "发布地市明细"@zh .
+
+:domainName rdf:type owl:DatatypeProperty ;
+  rdfs:domain :NetworkCapability ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:domainName"@zh ;
+  rdfs:label "domainName"@en , "域名"@zh .
+
+:downstreamBandwidth rdf:type owl:DatatypeProperty ;
+  rdfs:domain :NetworkCapability ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:downStreamId"@zh ;
+  rdfs:label "downstreamBandwidth"@en , "下行带宽"@zh .
+
+:upstreamBandwidth rdf:type owl:DatatypeProperty ;
+  rdfs:domain :NetworkCapability ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:upStreamId"@zh ;
+  rdfs:label "upstreamBandwidth"@en , "上行带宽"@zh .
+
+:fiveGSpeed rdf:type owl:DatatypeProperty ;
+  rdfs:domain :NetworkCapability ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:5GUser"@zh ;
+  rdfs:label "fiveGSpeed"@en , "5G速率"@zh .
+
+:allowJoinFamily rdf:type owl:DatatypeProperty ;
+  rdfs:domain :NetworkCapability ;
+  rdfs:range xsd:boolean ;
+  rdfs:comment "报文键:ifAddFamily"@zh ;
+  rdfs:label "allowJoinFamily"@en , "是否允许加入家庭"@zh .
+
+:familyPackageType rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FamilyOfferPolicy ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:teamType"@zh ;
+  rdfs:label "familyPackageType"@en , "家庭套餐类型"@zh .
+
+:isFloorOffer rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FamilyOfferPolicy ;
+  rdfs:range xsd:boolean ;
+  rdfs:comment "报文键:ifFloorsPrc"@zh ;
+  rdfs:label "isFloorOffer"@en , "是否保底资费"@zh .
+
+:isUnifiedPay rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FamilyOfferPolicy ;
+  rdfs:range xsd:boolean ;
+  rdfs:comment "报文键:payFlag"@zh ;
+  rdfs:label "isUnifiedPay"@en , "是否统付"@zh .
+
+:contractMonths rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FamilyOfferPolicy ;
+  rdfs:range xsd:integer ;
+  rdfs:comment "报文键:dateLimit"@zh ;
+  rdfs:label "contractMonths"@en , "协议期月数"@zh .
+
+:contractCancelPrivilege rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FamilyOfferPolicy ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:powerCode"@zh ;
+  rdfs:label "contractCancelPrivilege"@en , "协议期内退订权限"@zh .
+
+:familyCatalog rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FamilyOfferPolicy ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:familyCata"@zh ;
+  rdfs:label "familyCatalog"@en , "家客中心展示目录"@zh .
+
+:maxFamilyMembers rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FamilyOfferPolicy ;
+  rdfs:range xsd:integer ;
+  rdfs:comment "报文键:roleMax"@zh ;
+  rdfs:label "maxFamilyMembers"@en , "家庭最大成员数"@zh .
+
+:minFamilyMembers rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FamilyOfferPolicy ;
+  rdfs:range xsd:integer ;
+  rdfs:comment "报文键:roleMin"@zh ;
+  rdfs:label "minFamilyMembers"@en , "家庭最小成员数"@zh .
+
+:allowFamilyAddon rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FamilyOfferPolicy ;
+  rdfs:range xsd:boolean ;
+  rdfs:comment "报文键:canAddFamilyPrc"@zh ;
+  rdfs:label "allowFamilyAddon"@en , "允许办理家庭附加"@zh .
+
+:allowTvOffer rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FamilyOfferPolicy ;
+  rdfs:range xsd:boolean ;
+  rdfs:comment "报文键:tvPrc"@zh ;
+  rdfs:label "allowTvOffer"@en , "允许办理电视资费"@zh .
+
+:secondBroadbandOffer rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FamilyOfferPolicy ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:sencondKdPrc"@zh ;
+  rdfs:label "secondBroadbandOffer"@en , "第二条副宽资费"@zh .
+
+:thirdBroadbandOffer rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FamilyOfferPolicy ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:thirdKdPrc"@zh ;
+  rdfs:label "thirdBroadbandOffer"@en , "第三条副宽资费"@zh .
+
+:maxPhoneMembers rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FamilyOfferPolicy ;
+  rdfs:range xsd:integer ;
+  rdfs:comment "报文键:phoneMbrMax"@zh ;
+  rdfs:label "maxPhoneMembers"@en , "手机最大成员数"@zh .
+
+:minPhoneMembers rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FamilyOfferPolicy ;
+  rdfs:range xsd:integer ;
+  rdfs:comment "报文键:phoneMbrMin"@zh ;
+  rdfs:label "minPhoneMembers"@en , "手机最小成员数"@zh .
+
+:freePhoneMembers rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FamilyOfferPolicy ;
+  rdfs:range xsd:integer ;
+  rdfs:comment "报文键:freeMbrCnt"@zh ;
+  rdfs:label "freePhoneMembers"@en , "免费手机成员数"@zh .
+
+:extraPhoneMemberFee rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FamilyOfferPolicy ;
+  rdfs:range xsd:float ;
+  rdfs:comment "报文键:phoneMbrFee"@zh ;
+  rdfs:label "extraPhoneMemberFee"@en , "超出手机成员月租"@zh .
+
+:maxBroadbandMembers rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FamilyOfferPolicy ;
+  rdfs:range xsd:integer ;
+  rdfs:comment "报文键:kdMbrMax"@zh ;
+  rdfs:label "maxBroadbandMembers"@en , "宽带最大成员数"@zh .
+
+:minBroadbandMembers rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FamilyOfferPolicy ;
+  rdfs:range xsd:integer ;
+  rdfs:comment "报文键:kdMbrMin"@zh ;
+  rdfs:label "minBroadbandMembers"@en , "宽带最小成员数"@zh .
+
+:hasMainBroadband rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FamilyOfferPolicy ;
+  rdfs:range xsd:boolean ;
+  rdfs:comment "报文键:mainKd"@zh ;
+  rdfs:label "hasMainBroadband"@en , "是否主宽带"@zh .
+
+:addonContractMonths rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FamilyOfferPolicy ;
+  rdfs:range xsd:integer ;
+  rdfs:comment "报文键:chgYue"@zh ;
+  rdfs:label "addonContractMonths"@en , "附加合约期月数"@zh .
+
+:chargeMode rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ChargePlan ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:calcMode"@zh ;
+  rdfs:label "chargeMode"@en , "收费方式"@zh .
+
+:fixedFeeAmount rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ChargePlan ;
+  rdfs:range xsd:float ;
+  rdfs:comment "报文键:fixFee"@zh ;
+  rdfs:label "fixedFeeAmount"@en , "套餐固定费"@zh .
+
+:accountItem rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ChargePlan ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:acctItem"@zh ;
+  rdfs:label "accountItem"@en , "收费科目"@zh .
+
+:taxSplitFlag rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ChargePlan ;
+  rdfs:range xsd:boolean ;
+  rdfs:comment "报文键:isSplitRate"@zh ;
+  rdfs:label "taxSplitFlag"@en , "是否拆分税率"@zh .
+
+:voiceTaxRatio rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ChargePlan ;
+  rdfs:range xsd:float ;
+  rdfs:comment "报文键:splitRate9"@zh ;
+  rdfs:label "voiceTaxRatio"@en , "语音税率占比"@zh .
+
+:dataTaxRatio rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ChargePlan ;
+  rdfs:range xsd:float ;
+  rdfs:comment "报文键:splitRate6"@zh ;
+  rdfs:label "dataTaxRatio"@en , "数据税率占比"@zh .
+
+:chargeValidityType rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ChargePlan ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:fixValidity"@zh ;
+  rdfs:label "chargeValidityType"@en , "月租有效期类型"@zh .
+
+:chargeValidityValue rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ChargePlan ;
+  rdfs:range xsd:integer ;
+  rdfs:comment "报文键:fixValidityVAlue"@zh ;
+  rdfs:label "chargeValidityValue"@en , "月租有效期值"@zh .
+
+:chargeIntervalMonths rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ChargePlan ;
+  rdfs:range xsd:integer ;
+  rdfs:comment "报文键:fixCircle"@zh ;
+  rdfs:label "chargeIntervalMonths"@en , "收费间隔月数"@zh .
+
+:prefValidityType rdf:type owl:DatatypeProperty ;
+  rdfs:domain :PreferentialPlan ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:favValidity"@zh ;
+  rdfs:label "prefValidityType"@en , "优惠有效期类型"@zh .
+
+:prefValidityValue rdf:type owl:DatatypeProperty ;
+  rdfs:domain :PreferentialPlan ;
+  rdfs:range xsd:integer ;
+  rdfs:comment "报文键:favValidityVAlue"@zh ;
+  rdfs:label "prefValidityValue"@en , "优惠有效期值"@zh .
+
+:prefDescription rdf:type owl:DatatypeProperty ;
+  rdfs:domain :PreferentialPlan ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:favDesc"@zh ;
+  rdfs:label "prefDescription"@en , "优惠说明"@zh .
+
+:prefCondition rdf:type owl:DatatypeProperty ;
+  rdfs:domain :AccountPreferential ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:favCondition"@zh ;
+  rdfs:label "prefCondition"@en , "优惠条件"@zh .
+
+:prefItemType rdf:type owl:DatatypeProperty ;
+  rdfs:domain :AccountPreferential ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:favItemType"@zh ;
+  rdfs:label "prefItemType"@en , "优惠科目类型"@zh .
+
+:prefItemGroup rdf:type owl:DatatypeProperty ;
+  rdfs:domain :AccountPreferential ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:favGroup"@zh ;
+  rdfs:label "prefItemGroup"@en , "优惠科目集合"@zh .
+
+:prefType rdf:type owl:DatatypeProperty ;
+  rdfs:domain :AccountPreferential ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:favType"@zh ;
+  rdfs:label "prefType"@en , "优惠类型"@zh .
+
+:discountRate rdf:type owl:DatatypeProperty ;
+  rdfs:domain :AccountPreferential ;
+  rdfs:range xsd:float ;
+  rdfs:comment "报文键:favDiscount"@zh ;
+  rdfs:label "discountRate"@en , "折扣比例"@zh .
+
+:giftFeeAmount rdf:type owl:DatatypeProperty ;
+  rdfs:domain :AccountPreferential ;
+  rdfs:range xsd:float ;
+  rdfs:comment "报文键:favFee"@zh ;
+  rdfs:label "giftFeeAmount"@en , "赠费金额"@zh .
+
+:floorMethod rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FloorGuarantee ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:fav1Method"@zh ;
+  rdfs:label "floorMethod"@en , "保底方式"@zh .
+
+:floorAmount rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FloorGuarantee ;
+  rdfs:range xsd:float ;
+  rdfs:comment "报文键:fav1Fee"@zh ;
+  rdfs:label "floorAmount"@en , "保底费用"@zh .
+
+:floorItemType rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FloorGuarantee ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:fav1ItemType"@zh ;
+  rdfs:label "floorItemType"@en , "保底科目类型"@zh .
+
+:floorItemGroup rdf:type owl:DatatypeProperty ;
+  rdfs:domain :FloorGuarantee ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:fav1Group"@zh ;
+  rdfs:label "floorItemGroup"@en , "保底科目集合"@zh .
+
+:cdrDiscountFlag rdf:type owl:DatatypeProperty ;
+  rdfs:domain :CdrPreferential ;
+  rdfs:range xsd:boolean ;
+  rdfs:comment "报文键:wkBillFlag"@zh ;
+  rdfs:label "cdrDiscountFlag"@en , "是否话单优惠"@zh .
+
+:resourceAmount rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ResourceEntitlement ;
+  rdfs:range xsd:integer ;
+  rdfs:comment "报文键:theshold"@zh ;
+  rdfs:label "resourceAmount"@en , "资源量"@zh .
+
+:firstMonthGrantMode rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ResourceEntitlement ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:adjust"@zh ;
+  rdfs:label "firstMonthGrantMode"@en , "首月赠送方式"@zh .
+
+:remindFlag rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ResourceEntitlement ;
+  rdfs:range xsd:boolean ;
+  rdfs:comment "报文键:remindFlag"@zh ;
+  rdfs:label "remindFlag"@en , "是否提醒"@zh .
+
+:splitPricingCode rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ResourceEntitlement ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:prodPrc"@zh ;
+  rdfs:label "splitPricingCode"@en , "拆分资费代码"@zh .
+
+:batchBillingCode rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ResourceEntitlement ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:billPrcId"@zh ;
+  rdfs:label "batchBillingCode"@en , "二批代码"@zh .
+
+:subBillingCodes rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ResourceEntitlement ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:subBillPrcIds"@zh ;
+  rdfs:label "subBillingCodes"@en , "子记账资费"@zh .
+
+:conditionCode rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ResourceEntitlement ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:conditionCode"@zh ;
+  rdfs:label "conditionCode"@en , "附件条件ID"@zh .
+
+:subConditionCodes rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ResourceEntitlement ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:subConditionCodes"@zh ;
+  rdfs:label "subConditionCodes"@en , "子附件条件ID"@zh .
+
+:resourceType rdf:type owl:DatatypeProperty ;
+  rdfs:domain [ rdf:type owl:Class ; owl:unionOf ( :DataResource :SmsResource :VoiceResource ) ] ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:resourceType"@zh ;
+  rdfs:label "resourceType"@en , "短信类型"@zh .
+
+:resourceUnit rdf:type owl:DatatypeProperty ;
+  rdfs:domain :DataResource ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:unit"@zh ;
+  rdfs:label "resourceUnit"@en , "流量单位"@zh .
+
+:directedContentCode rdf:type owl:DatatypeProperty ;
+  rdfs:domain :DataResource ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:sid"@zh ;
+  rdfs:label "directedContentCode"@en , "定向内容编码"@zh .
+
+:geoScope rdf:type owl:DatatypeProperty ;
+  rdfs:domain :DataResource ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:location"@zh ;
+  rdfs:label "geoScope"@en , "地域范围"@zh .
+
+:cellCodes rdf:type owl:DatatypeProperty ;
+  rdfs:domain :DataResource ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:locationCodes"@zh ;
+  rdfs:label "cellCodes"@en , "小区编码"@zh .
+
+:periodUnit rdf:type owl:DatatypeProperty ;
+  rdfs:domain :DataResource ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:periodUnit"@zh ;
+  rdfs:label "periodUnit"@en , "资源周期单位"@zh .
+
+:periodLength rdf:type owl:DatatypeProperty ;
+  rdfs:domain :DataResource ;
+  rdfs:range xsd:integer ;
+  rdfs:comment "报文键:period"@zh ;
+  rdfs:label "periodLength"@en , "资源周期时长"@zh .
+
+:carryOverFlag rdf:type owl:DatatypeProperty ;
+  rdfs:domain :DataResource ;
+  rdfs:range xsd:boolean ;
+  rdfs:comment "报文键:carryFlag"@zh ;
+  rdfs:label "carryOverFlag"@en , "是否结转次月"@zh .
+
+:overageChargeMode rdf:type owl:DatatypeProperty ;
+  rdfs:domain :DataResource ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:outChargeMode"@zh ;
+  rdfs:label "overageChargeMode"@en , "套外计费标准"@zh .
+
+:overageRate rdf:type owl:DatatypeProperty ;
+  rdfs:domain :VoiceResource ;
+  rdfs:range xsd:float ;
+  rdfs:comment "报文键:outCharge"@zh ;
+  rdfs:label "overageRate"@en , "套外计费费率"@zh .
+
+:printMonthlyFeeText rdf:type owl:DatatypeProperty ;
+  rdfs:domain :PrintNotice ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:prcMonthFee"@zh ;
+  rdfs:label "printMonthlyFeeText"@en , "月费描述"@zh .
+
+:printResourceText rdf:type owl:DatatypeProperty ;
+  rdfs:domain :PrintNotice ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:containResource"@zh ;
+  rdfs:label "printResourceText"@en , "包含资源描述"@zh .
+
+:printOverageText rdf:type owl:DatatypeProperty ;
+  rdfs:domain :PrintNotice ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:chargeStandard"@zh ;
+  rdfs:label "printOverageText"@en , "超套标准描述"@zh .
+
+:printLimitText rdf:type owl:DatatypeProperty ;
+  rdfs:domain :PrintNotice ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:limitCondition"@zh ;
+  rdfs:label "printLimitText"@en , "限定条件描述"@zh .
+
+:printEquityText rdf:type owl:DatatypeProperty ;
+  rdfs:domain :PrintNotice ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:otherEquity"@zh ;
+  rdfs:label "printEquityText"@en , "其他权益描述"@zh .
+
+:smsOpTypes rdf:type owl:DatatypeProperty ;
+  rdfs:domain :SmsNotice ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:opType"@zh ;
+  rdfs:label "smsOpTypes"@en , "短信类型选择"@zh .
+
+:successSmsImmediate rdf:type owl:DatatypeProperty ;
+  rdfs:domain :SmsNotice ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:sysNoteNow"@zh ;
+  rdfs:label "successSmsImmediate"@en , "立即成功短信"@zh .
+
+:successSmsReserved rdf:type owl:DatatypeProperty ;
+  rdfs:domain :SmsNotice ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:sysNoteNext"@zh ;
+  rdfs:label "successSmsReserved"@en , "预约成功短信"@zh .
+
+:cancelSms rdf:type owl:DatatypeProperty ;
+  rdfs:domain :SmsNotice ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:sysNoteCancle"@zh ;
+  rdfs:label "cancelSms"@en , "退订短信"@zh .
+
+:expireSms rdf:type owl:DatatypeProperty ;
+  rdfs:domain :SmsNotice ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:sysNoteExpire"@zh ;
+  rdfs:label "expireSms"@en , "到期短信"@zh .
+
+:confirmSms rdf:type owl:DatatypeProperty ;
+  rdfs:domain :SmsNotice ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:sysNoteErke"@zh ;
+  rdfs:label "confirmSms"@en , "前台二确短信"@zh .
+
+:smsInstructionName rdf:type owl:DatatypeProperty ;
+  rdfs:domain :SmsNotice ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:SvcName"@zh ;
+  rdfs:label "smsInstructionName"@en , "业务指令名称"@zh .
+
+:smsInstructionContent rdf:type owl:DatatypeProperty ;
+  rdfs:domain :SmsNotice ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:SmsInst"@zh ;
+  rdfs:label "smsInstructionContent"@en , "短信指令内容"@zh .
+
+:smsConfirmHint rdf:type owl:DatatypeProperty ;
+  rdfs:domain :SmsNotice ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:SmsContent"@zh ;
+  rdfs:label "smsConfirmHint"@en , "二确提示短信"@zh .
+
+:equityContent rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ValueAddedEquity ;
+  rdfs:range xsd:string ;
+  rdfs:comment "报文键:equityContent"@zh ;
+  rdfs:label "equityContent"@en , "权益内容"@zh .
+
+:constraintId rdf:type owl:DatatypeProperty ;
+  rdfs:domain :BusinessConstraint ;
+  rdfs:range xsd:string ;
+  rdfs:label "constraintId"@en , "约束编码"@zh .
+
+:constraintType rdf:type owl:DatatypeProperty ;
+  rdfs:domain :BusinessConstraint ;
+  rdfs:range xsd:string ;
+  rdfs:label "constraintType"@en , "约束类型"@zh .
+
+:targetAttribute rdf:type owl:DatatypeProperty ;
+  rdfs:domain :BusinessConstraint ;
+  rdfs:range xsd:string ;
+  rdfs:label "targetAttribute"@en , "作用业务属性"@zh .
+
+:expression rdf:type owl:DatatypeProperty ;
+  rdfs:domain :BusinessConstraint ;
+  rdfs:range xsd:string ;
+  rdfs:label "expression"@en , "约束表达式"@zh .
+
+:errorMsg rdf:type owl:DatatypeProperty ;
+  rdfs:domain :BusinessConstraint ;
+  rdfs:range xsd:string ;
+  rdfs:label "errorMsg"@en , "校验失败提示"@zh .
+
+:ruleId rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ComplianceRule ;
+  rdfs:range xsd:string ;
+  rdfs:label "ruleId"@en , "规则编码"@zh .
+
+:ruleName rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ComplianceRule ;
+  rdfs:range xsd:string ;
+  rdfs:label "ruleName"@en , "规则名称"@zh .
+
+:ruleType rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ComplianceRule ;
+  rdfs:range xsd:string ;
+  rdfs:label "ruleType"@en , "规则类型"@zh .
+
+:ruleLevel rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ComplianceRule ;
+  rdfs:range xsd:string ;
+  rdfs:label "ruleLevel"@en , "规则等级"@zh .
+
+:triggerCondition rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ComplianceRule ;
+  rdfs:range xsd:string ;
+  rdfs:label "triggerCondition"@en , "触发条件"@zh .
+
+:action rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ComplianceRule ;
+  rdfs:range xsd:string ;
+  rdfs:label "action"@en , "执行动作"@zh .
+
+:description rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ComplianceRule ;
+  rdfs:range xsd:string ;
+  rdfs:label "description"@en , "规则说明"@zh .
+
+:updateTime rdf:type owl:DatatypeProperty ;
+  rdfs:domain :ComplianceRule ;
+  rdfs:range xsd:dateTime ;
+  rdfs:label "updateTime"@en , "更新时间"@zh .
+
+:sceneId rdf:type owl:DatatypeProperty ;
+  rdfs:domain :BusinessScene ;
+  rdfs:range xsd:string ;
+  rdfs:label "sceneId"@en , "场景编码"@zh .
+
+:sceneName rdf:type owl:DatatypeProperty ;
+  rdfs:domain :BusinessScene ;
+  rdfs:range xsd:string ;
+  rdfs:label "sceneName"@en , "场景名称"@zh .
+
+:sceneType rdf:type owl:DatatypeProperty ;
+  rdfs:domain :BusinessScene ;
+  rdfs:range xsd:string ;
+  rdfs:label "sceneType"@en , "场景类型"@zh .
+
+:channelType rdf:type owl:DatatypeProperty ;
+  rdfs:domain :BusinessScene ;
+  rdfs:range xsd:string ;
+  rdfs:label "channelType"@en , "渠道类型"@zh .
+
+:userGroup rdf:type owl:DatatypeProperty ;
+  rdfs:domain :BusinessScene ;
+  rdfs:range xsd:string ;
+  rdfs:label "userGroup"@en , "用户群"@zh .
+
+:region rdf:type owl:DatatypeProperty ;
+  rdfs:domain :BusinessScene ;
+  rdfs:range xsd:string ;
+  rdfs:label "region"@en , "适用地域"@zh .
+
+:enumCode rdf:type owl:DatatypeProperty ;
+  rdfs:domain :CodeDictionary ;
+  rdfs:range xsd:string ;
+  rdfs:label "enumCode"@en , "枚举编码"@zh .
+
+:enumLabel rdf:type owl:DatatypeProperty ;
+  rdfs:domain :CodeDictionary ;
+  rdfs:range xsd:string ;
+  rdfs:label "enumLabel"@en , "枚举标签"@zh .
+
+:tableCode rdf:type owl:DatatypeProperty ;
+  rdfs:domain :CodeDictionary ;
+  rdfs:range xsd:string ;
+  rdfs:label "tableCode"@en , "码表编码"@zh .
+
+:parentCode rdf:type owl:DatatypeProperty ;
+  rdfs:domain :CodeDictionary ;
+  rdfs:range xsd:string ;
+  rdfs:label "parentCode"@en , "父级编码"@zh .
+
+# Classes
+:PricingProduct rdf:type owl:Class ;
+  rdfs:comment "可销售的产商品资费业务主体，仅承载资费身份与命名；不承载工单、销售期等过程或策略信息"@zh ;
+  rdfs:label "PricingProduct"@en , "产商品资费"@zh .
+
+:ProductCategory rdf:type owl:Class ;
+  rdfs:comment "按产品线与主附关系划分的品类，决定配置方案须装配的业务要素组合；对接时映射逻辑报文根键"@zh ;
+  rdfs:label "ProductCategory"@en , "产品品类"@zh .
+
+:OfferCompatibility rdf:type owl:Class ;
+  rdfs:comment "描述主资费与附加资费、升档/变更之间的可办、互斥与连带业务关系"@zh ;
+  rdfs:label "OfferCompatibility"@en , "资费相容关系"@zh .
+
+:ConfigScheme rdf:type owl:Class ;
+  rdfs:comment "一次产商品配置的过程与结果载体：关联需求工单、装配业务要素、经历审核上线，并可投影为逻辑报文"@zh ;
+  rdfs:label "ConfigScheme"@en , "配置方案"@zh .
+
+:ConfigChange rdf:type owl:Class ;
+  rdfs:comment "对已有资费配置的增量变更意图，记录变更操作类型与变更内容，对应业务上的改资费/改组件"@zh ;
+  rdfs:label "ConfigChange"@en , "配置变更"@zh .
+
+:SalesPolicy rdf:type owl:Class ;
+  rdfs:comment "规范订购、退订、销售期、资费有效期与重复订购等销售侧规则"@zh ;
+  rdfs:label "SalesPolicy"@en , "销售策略"@zh .
+
+:ReleaseScope rdf:type owl:Class ;
+  rdfs:comment "资费可销售的渠道与地域边界"@zh ;
+  rdfs:label "ReleaseScope"@en , "发布范围"@zh .
+
+:NetworkCapability rdf:type owl:Class ;
+  rdfs:comment "资费承诺的网络侧能力规格，如带宽、域名、5G速率、是否可加入家庭组网"@zh ;
+  rdfs:label "NetworkCapability"@en , "网络能力"@zh .
+
+:FamilyOfferPolicy rdf:type owl:Class ;
+  rdfs:comment "家庭类资费的组网与成员业务约定：套餐类型、成员规模、统付、协议期、主副宽及成员月租等"@zh ;
+  rdfs:label "FamilyOfferPolicy"@en , "家庭资费策略"@zh .
+
+:ChargePlan rdf:type owl:Class ;
+  rdfs:comment "账务固费收取安排：收费方式、固定费、科目、税率拆分与收费有效期"@zh ;
+  rdfs:label "ChargePlan"@en , "固费收费方案"@zh .
+
+:PreferentialPlan rdf:type owl:Class ;
+  rdfs:comment "账务侧让利安排的抽象父类；具体分为账务优惠、保底、话单优惠等子类"@zh ;
+  rdfs:label "PreferentialPlan"@en , "优惠方案"@zh .
+
+:AccountPreferential rdf:type owl:Class ;
+  rdfs:subClassOf :PreferentialPlan ;
+  rdfs:comment "无条件/首月等账务优惠，含送费或打折及作用科目"@zh ;
+  rdfs:label "AccountPreferential"@en , "账务优惠"@zh .
+
+:FloorGuarantee rdf:type owl:Class ;
+  rdfs:subClassOf :PreferentialPlan ;
+  rdfs:comment "消费保底方式、保底金额与作用科目及有效期"@zh ;
+  rdfs:label "FloorGuarantee"@en , "保底约定"@zh .
+
+:CdrPreferential rdf:type owl:Class ;
+  rdfs:subClassOf :PreferentialPlan ;
+  rdfs:comment "基于话单维度的优惠开关与安排"@zh ;
+  rdfs:label "CdrPreferential"@en , "话单优惠"@zh .
+
+:ResourceEntitlement rdf:type owl:Class ;
+  rdfs:comment "通信资源赠送与套外计费的抽象父类；按流量/语音/短信分子类"@zh ;
+  rdfs:label "ResourceEntitlement"@en , "资源权益"@zh .
+
+:DataResource rdf:type owl:Class ;
+  rdfs:subClassOf :ResourceEntitlement ;
+  rdfs:comment "流量类资源权益：类型、单位、定向内容、地域、周期、结转与套外标准"@zh ;
+  rdfs:label "DataResource"@en , "流量资源"@zh .
+
+:VoiceResource rdf:type owl:Class ;
+  rdfs:subClassOf :ResourceEntitlement ;
+  rdfs:comment "语音类资源权益：资源类型、套外费率等"@zh ;
+  rdfs:label "VoiceResource"@en , "语音资源"@zh .
+
+:SmsResource rdf:type owl:Class ;
+  rdfs:subClassOf :ResourceEntitlement ;
+  rdfs:comment "短信/彩信类资源权益"@zh ;
+  rdfs:label "SmsResource"@en , "短信资源"@zh .
+
+:PrintNotice rdf:type owl:Class ;
+  rdfs:comment "免填单等书面对客展示文案，属于告知材料，不等于账务/资源真值"@zh ;
+  rdfs:label "PrintNotice"@en , "免填单告知"@zh .
+
+:SmsNotice rdf:type owl:Class ;
+  rdfs:comment "订购/退订/二确/到期等短信通知内容与指令配置"@zh ;
+  rdfs:label "SmsNotice"@en , "短信告知"@zh .
+
+:ValueAddedEquity rdf:type owl:Class ;
+  rdfs:comment "非基础通信类增值权益内容配置"@zh ;
+  rdfs:label "ValueAddedEquity"@en , "增值权益"@zh .
+
+:BusinessConstraint rdf:type owl:Class ;
+  rdfs:comment "配置合法性约束：条件必填、互斥、派生、跨要素连带，供推理与页面联动"@zh ;
+  rdfs:label "BusinessConstraint"@en , "业务约束"@zh .
+
+:ComplianceRule rdf:type owl:Class ;
+  rdfs:comment "监管与企业红线，由规则引擎刚性执行，不可被大模型覆盖"@zh ;
+  rdfs:label "ComplianceRule"@en , "合规规则"@zh .
+
+:BusinessScene rdf:type owl:Class ;
+  rdfs:comment "投放与检索用的场景标签：渠道/用户群/地域"@zh ;
+  rdfs:label "BusinessScene"@en , "业务场景"@zh .
+
+:CodeDictionary rdf:type owl:Class ;
+  rdfs:comment "业务枚举字典，统一配置取值口径"@zh ;
+  rdfs:label "CodeDictionary"@en , "业务码表"@zh .
+
+# Individuals - categories
+:personMainPrc rdf:type owl:NamedIndividual , :ProductCategory ;
+  :categoryCode "personMainPrc" ; :categoryName "个人主资费" ;
+  :productLine "个人" ;
+  :isMainOffer "true"^^xsd:boolean ;
+  :messageRootKey "personMainPrc" ;
+  rdfs:comment "必备要素:SalesPolicy,ReleaseScope,ChargePlan,AccountPreferential,FloorGuarantee,DataResource,VoiceResource,SmsResource,PrintNotice,SmsNotice"@zh ;
+  rdfs:label "个人主资费"@zh .
+
+:broadBandMainPrc rdf:type owl:NamedIndividual , :ProductCategory ;
+  :categoryCode "broadBandMainPrc" ; :categoryName "宽带主资费" ;
+  :productLine "宽带" ;
+  :isMainOffer "true"^^xsd:boolean ;
+  :messageRootKey "broadBandMainPrc" ;
+  rdfs:comment "必备要素:SalesPolicy,ReleaseScope,NetworkCapability,ChargePlan,AccountPreferential,CdrPreferential,PrintNotice,SmsNotice"@zh ;
+  rdfs:label "宽带主资费"@zh .
+
+:personAddPrc rdf:type owl:NamedIndividual , :ProductCategory ;
+  :categoryCode "personAddPrc" ; :categoryName "个人附加资费" ;
+  :productLine "个人" ;
+  :isMainOffer "false"^^xsd:boolean ;
+  :messageRootKey "personAddPrc" ;
+  rdfs:comment "必备要素:SalesPolicy,ReleaseScope,NetworkCapability,ChargePlan,AccountPreferential,FloorGuarantee,DataResource,VoiceResource,SmsResource,PrintNotice,SmsNotice"@zh ;
+  rdfs:label "个人附加资费"@zh .
+
+:broadBandOptSpeedPrc rdf:type owl:NamedIndividual , :ProductCategory ;
+  :categoryCode "broadBandOptSpeedPrc" ; :categoryName "宽带加速包" ;
+  :productLine "宽带" ;
+  :isMainOffer "false"^^xsd:boolean ;
+  :messageRootKey "broadBandOptSpeedPrc" ;
+  rdfs:comment "必备要素:SalesPolicy,ReleaseScope,NetworkCapability,ChargePlan,AccountPreferential,PrintNotice,SmsNotice"@zh ;
+  rdfs:label "宽带加速包"@zh .
+
+:familyBasePrc rdf:type owl:NamedIndividual , :ProductCategory ;
+  :categoryCode "familyBasePrc" ; :categoryName "家庭基础套餐" ;
+  :productLine "家庭" ;
+  :isMainOffer "true"^^xsd:boolean ;
+  :messageRootKey "familyBasePrc" ;
+  rdfs:comment "必备要素:SalesPolicy,ReleaseScope,FamilyOfferPolicy,OfferCompatibility,ChargePlan,AccountPreferential,FloorGuarantee,DataResource,VoiceResource,PrintNotice,SmsNotice"@zh ;
+  rdfs:label "家庭基础套餐"@zh .
+
+:familyAddPrc rdf:type owl:NamedIndividual , :ProductCategory ;
+  :categoryCode "familyAddPrc" ; :categoryName "家庭附加业务" ;
+  :productLine "家庭" ;
+  :isMainOffer "false"^^xsd:boolean ;
+  :messageRootKey "familyAddPrc" ;
+  rdfs:comment "必备要素:SalesPolicy,ReleaseScope,FamilyOfferPolicy,OfferCompatibility,ChargePlan,AccountPreferential,DataResource,VoiceResource,ValueAddedEquity,PrintNotice,SmsNotice"@zh ;
+  rdfs:label "家庭附加业务"@zh .
+
+:PROD_SCHEME_PMP_001 rdf:type owl:NamedIndividual , :PricingProduct ;
+  :offerName "测试资费" ;
+  :productCode "APAP00001" ; :pricingCode "ACAG00001" ;
+  :belongsToCategory :personMainPrc ;
+  rdfs:label "测试资费"@zh .
+
+:SALES_SCHEME_PMP_001 rdf:type owl:NamedIndividual , :SalesPolicy ;
+  :orderEffectMode "1001" ;
+  :cancelEffectMode "1023" ;
+  :saleStartDate "20230907" ;
+  :saleEndDate "20991231" ;
+  rdfs:label "销售-SCHEME_PMP_001"@zh .
+
+:REL_SCHEME_PMP_001 rdf:type owl:NamedIndividual , :ReleaseScope ;
+  :channelScope "A7" ;
+  :regionScope "10001" ;
+  :regionDetail "2,3" ;
+  rdfs:label "发布-SCHEME_PMP_001"@zh .
+
+:CHG_SCHEME_PMP_001 rdf:type owl:NamedIndividual , :ChargePlan ;
+  :chargeMode "a" ;
+  :fixedFeeAmount "40" ;
+  :accountItem "月租费" ;
+  :taxSplitFlag "0" ;
+  :chargeValidityType "0" ;
+  rdfs:label "固费-SCHEME_PMP_001"@zh .
+
+:SCHEME_PMP_001 rdf:type owl:NamedIndividual , :ConfigScheme ;
+  :schemeId "SCHEME_PMP_001" ; :workOrderId "20230823197104" ;
+  :status "已上线" ; :version "V1.0" ;
+  :createTime "2023-09-07T00:00:00"^^xsd:dateTime ;
+  :creator "配置管理员" ;
+  :configuresProduct :PROD_SCHEME_PMP_001 ;
+  :hasSalesPolicy :SALES_SCHEME_PMP_001 ;
+  :hasReleaseScope :REL_SCHEME_PMP_001 ;
+  :hasChargePlan :CHG_SCHEME_PMP_001 ;
+  :appliesScene :SCENE_002 ;
+  :hasPrintNotice :PRT_SCHEME_PMP_001 ;
+  :hasSmsNotice :SMS_SCHEME_PMP_001 ;
+  rdfs:label "测试资费"@zh .
+
+:PRT_SCHEME_PMP_001 rdf:type owl:NamedIndividual , :PrintNotice ;
+  :printMonthlyFeeText "40元/月" ;
+  :printResourceText "包含优酷视频彩铃订阅包会员" ;
+  :printOverageText "0.29元/MB" ;
+  :printLimitText "四川省范围内使用" ;
+  :printEquityText "和教育智慧家校权益" ;
+  rdfs:label "免填单-SCHEME_PMP_001"@zh .
+
+:SMS_SCHEME_PMP_001 rdf:type owl:NamedIndividual , :SmsNotice ;
+  :smsOpTypes "0" ;
+  :successSmsImmediate "立即成功短信内容" ;
+  :successSmsReserved "预约成功短信内容" ;
+  :cancelSms "退订短信内容" ;
+  :confirmSms "前台二确短信内容" ;
+  rdfs:label "短信-SCHEME_PMP_001"@zh .
+
+:PROD_SCHEME_FBP_001 rdf:type owl:NamedIndividual , :PricingProduct ;
+  :offerName "家庭亲情网基础套餐" ;
+  :productCode "FAMP00001" ; :pricingCode "FAMC00001" ;
+  :belongsToCategory :familyBasePrc ;
+  rdfs:label "家庭亲情网基础套餐"@zh .
+
+:SALES_SCHEME_FBP_001 rdf:type owl:NamedIndividual , :SalesPolicy ;
+  :orderEffectMode "1001" ;
+  :cancelEffectMode "1023" ;
+  :saleStartDate "20240115" ;
+  :saleEndDate "20991231" ;
+  :validityCycle "长期有效" ;
+  rdfs:label "销售-SCHEME_FBP_001"@zh .
+
+:REL_SCHEME_FBP_001 rdf:type owl:NamedIndividual , :ReleaseScope ;
+  :channelScope "A7" ;
+  :regionScope "10001" ;
+  :regionDetail "2,3" ;
+  rdfs:label "发布-SCHEME_FBP_001"@zh .
+
+:CHG_SCHEME_FBP_001 rdf:type owl:NamedIndividual , :ChargePlan ;
+  :chargeMode "R" ;
+  :fixedFeeAmount "99" ;
+  :accountItem "家庭套餐月租" ;
+  :taxSplitFlag "0" ;
+  :chargeValidityType "0" ;
+  rdfs:label "固费-SCHEME_FBP_001"@zh .
+
+:SCHEME_FBP_001 rdf:type owl:NamedIndividual , :ConfigScheme ;
+  :schemeId "SCHEME_FBP_001" ; :workOrderId "20240101100001" ;
+  :status "已上线" ; :version "V1.0" ;
+  :createTime "2024-01-15T00:00:00"^^xsd:dateTime ;
+  :creator "配置管理员" ;
+  :configuresProduct :PROD_SCHEME_FBP_001 ;
+  :hasSalesPolicy :SALES_SCHEME_FBP_001 ;
+  :hasReleaseScope :REL_SCHEME_FBP_001 ;
+  :hasChargePlan :CHG_SCHEME_FBP_001 ;
+  :appliesScene :SCENE_003 ;
+  :hasFamilyOfferPolicy :FAM_SCHEME_FBP_001 ;
+  rdfs:label "家庭亲情网基础套餐"@zh .
+
+:FAM_SCHEME_FBP_001 rdf:type owl:NamedIndividual , :FamilyOfferPolicy ;
+  :familyPackageType "亲情网" ;
+  :isFloorOffer "否" ;
+  :isUnifiedPay "是" ;
+  :maxFamilyMembers "5" ;
+  :minFamilyMembers "2" ;
+  :maxPhoneMembers "4" ;
+  :minPhoneMembers "1" ;
+  :freePhoneMembers "2" ;
+  :extraPhoneMemberFee "10" ;
+  :maxBroadbandMembers "2" ;
+  :minBroadbandMembers "0" ;
+  :hasMainBroadband "是" ;
+  rdfs:label "家庭策略-SCHEME_FBP_001"@zh .
+
+:SCENE_001 rdf:type owl:NamedIndividual , :BusinessScene ;
+  :sceneId "SCENE_001" ; :sceneName "校园-个人附加" ; :sceneType "用户群" ;
+  :channelType "APP" ; :userGroup "校园用户" ; :region "全省" ;
+  rdfs:label "校园-个人附加"@zh .
+
+:SCENE_002 rdf:type owl:NamedIndividual , :BusinessScene ;
+  :sceneId "SCENE_002" ; :sceneName "大众-个人主资费" ; :sceneType "用户群" ;
+  :channelType "营业厅,APP" ; :userGroup "新用户" ; :region "全省" ;
+  rdfs:label "大众-个人主资费"@zh .
+
+:SCENE_003 rdf:type owl:NamedIndividual , :BusinessScene ;
+  :sceneId "SCENE_003" ; :sceneName "家庭-基础套餐" ; :sceneType "用户群" ;
+  :channelType "营业厅,APP" ; :userGroup "家庭客户" ; :region "全省" ;
+  rdfs:label "家庭-基础套餐"@zh .
+
+:SCENE_004 rdf:type owl:NamedIndividual , :BusinessScene ;
+  :sceneId "SCENE_004" ; :sceneName "家庭-宽带主资费" ; :sceneType "用户群" ;
+  :channelType "营业厅" ; :userGroup "家庭客户" ; :region "全省" ;
+  rdfs:label "家庭-宽带主资费"@zh .

@@ -14,6 +14,16 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * @deprecated 遗留产商品运营 API。新代码请使用 {@code /api/v1/product-ontology}：
+ * <ul>
+ *   <li>对比 → {@code POST /api/v1/product-ontology/ops/compare}</li>
+ *   <li>假设推演 → {@code POST /api/v1/product-ontology/ops/hypothetical}</li>
+ *   <li>风险稽核 → {@code POST /api/v1/product-ontology/ops/risk-audit}</li>
+ *   <li>根因 → {@code POST /api/v1/product-ontology/ops/root-cause}</li>
+ * </ul>
+ */
+@Deprecated(since = "2026-07", forRemoval = false)
 @RestController
 @RequestMapping("/api/v1/product-ops")
 public class ProductOperationsController {
@@ -28,6 +38,8 @@ public class ProductOperationsController {
     public Map<String, Object> overview() {
         return Map.of(
                 "success", true,
+                "deprecated", true,
+                "successor", "/api/v1/product-ontology",
                 "policySets", ontologyService.getPolicySets(),
                 "ontologyStats", ontologyService.getOntologyStats(),
                 "graph", ontologyService.getOntologyGraph()
@@ -55,6 +67,10 @@ public class ProductOperationsController {
         return ontologyService.evaluateWithFacts(entities, "PS_PRODUCT_RISK_V1", traceId, tenantId);
     }
 
+    /**
+     * @deprecated 请改用 {@code POST /api/v1/product-ontology/ops/compare}
+     */
+    @Deprecated(since = "2026-07", forRemoval = false)
     @PostMapping("/compare")
     public Map<String, Object> compare(@RequestBody Map<String, Object> request) {
         String snapshotId = str(request.get("snapshot_id"));
@@ -62,7 +78,12 @@ public class ProductOperationsController {
         String traceId = str(request.getOrDefault("trace_id", "product-compare-trace"));
         String tenantId = str(request.getOrDefault("tenant_id", "product_ops"));
         String policySetId = str(request.getOrDefault("policy_set_id", "PS_PRODUCT_ONLINE_V1"));
-        return ontologyService.compareState(snapshotId, patches, policySetId, traceId, tenantId);
+        Map<String, Object> inlineFacts = null;
+        if (request.get("current_facts") instanceof Map<?, ?> || request.get("facts") instanceof Map<?, ?>) {
+            inlineFacts = castMap(request.get("current_facts") != null
+                    ? request.get("current_facts") : request.get("facts"));
+        }
+        return ontologyService.compareState(snapshotId, patches, policySetId, traceId, tenantId, inlineFacts);
     }
 
     @PostMapping("/explain")

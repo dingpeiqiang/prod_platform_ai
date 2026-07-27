@@ -192,13 +192,19 @@ public class ChatServiceV2Jpa {
                                             String contentType, Map<String, Object> metadata,
                                             String parentId, String userId, String stepType) {
         try {
+            if (content == null || content.isBlank()) {
+                log.debug("[ChatServiceV2Jpa] 跳过空内容消息 session_id={}, role={}", sessionId, role);
+                return Map.of("success", false, "skipped", true, "reason", "empty_content");
+            }
+
             // 确保会话存在（不存在则自动创建）
             ChatSession session = sessionRepository.findBySessionId(sessionId).orElse(null);
             if (session == null) {
                 session = new ChatSession();
                 session.setSessionId(sessionId);
                 session.setUserId(userId);
-                session.setTitle("会话 " + LocalDateTime.now().format(TITLE_FMT));
+                String title = content.length() > 50 ? content.substring(0, 50) : content;
+                session.setTitle(title.isBlank() ? ("会话 " + LocalDateTime.now().format(TITLE_FMT)) : title);
                 session.setStatus("active");
                 session = sessionRepository.save(session);
                 log.debug("[ChatServiceV2Jpa] 自动创建会话 session_id={}", sessionId);
@@ -212,7 +218,7 @@ public class ChatServiceV2Jpa {
             message.setMessageId(messageId);
             message.setSessionId(sessionId);
             message.setRole(role);
-            message.setContent(content == null ? "" : content);
+            message.setContent(content);
             message.setContentType(contentType == null || contentType.isEmpty() ? "text" : contentType);
             message.setParentId(parentId);
             message.setSortOrder(sortOrder);

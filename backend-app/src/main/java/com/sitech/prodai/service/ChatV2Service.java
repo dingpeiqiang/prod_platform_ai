@@ -110,6 +110,9 @@ public class ChatV2Service {
     public Map<String, Object> saveMessage(String sessionId, String role, String content,
                                            String contentType, Map<String, Object> metadata,
                                            String parentId, String stepType) {
+        if (content == null || content.isBlank()) {
+            return Map.of("success", false, "skipped", true, "reason", "empty_content");
+        }
         ensureSession(sessionId);
         String messageId = "msg-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         String now = Instant.now().toString();
@@ -117,7 +120,7 @@ public class ChatV2Service {
         message.put("message_id", messageId);
         message.put("session_id", sessionId);
         message.put("role", role);
-        message.put("content", content == null ? "" : content);
+        message.put("content", content);
         message.put("content_type", empty(contentType) ? "text" : contentType);
         message.put("parent_id", parentId);
         message.put("step_type", stepType);
@@ -135,16 +138,22 @@ public class ChatV2Service {
         List<String> ids = new ArrayList<>();
         if (messages != null) {
             for (Map<String, Object> msg : messages) {
+                String content = str(msg.get("content"));
+                if (content == null || content.isBlank()) {
+                    continue;
+                }
                 Map<String, Object> saved = saveMessage(
                         sessionId,
                         str(msg.get("role")),
-                        str(msg.get("content")),
+                        content,
                         str(msg.getOrDefault("content_type", "text")),
                         castMap(msg.get("metadata")),
                         msg.get("parent_id") == null ? null : str(msg.get("parent_id")),
                         msg.get("step_type") == null ? null : str(msg.get("step_type"))
                 );
-                ids.add(str(saved.get("message_id")));
+                if (saved != null && saved.get("message_id") != null) {
+                    ids.add(str(saved.get("message_id")));
+                }
             }
         }
         Map<String, Object> body = new LinkedHashMap<>();

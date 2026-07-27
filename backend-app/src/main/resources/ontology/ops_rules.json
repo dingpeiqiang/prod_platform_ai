@@ -9,7 +9,7 @@
     },
     "java-rules": {
       "primary": false,
-      "impl": "OntologyMvpService",
+      "impl": "ProductOntologyService",
       "covers": ["R-A03", "R-A04", "R-A05", "R-B01", "R-B02", "R-B03", "R-B04", "R-B05", "R-C01", "R-C02", "R-C03", "R-C04", "R-C05", "R-C06", "R-C07", "R-C08", "R-C09", "R-D01", "R-D05"],
       "note": "阈值全部外置；配置侧 R-C* 对应方案 R-CONF（见 config.proposalMapping）；非 Drools"
     },
@@ -175,31 +175,81 @@
       "includeBroadband": "500M",
       "campusMonthlyFee": 59,
       "monthlyFeeMin": 9,
-      "monthlyFeeMax": 599
+      "monthlyFeeMax": 599,
+      "fixedFeeMin": 9,
+      "fixedFeeMax": 599
     },
     "rules": {
-      "R-C01": { "name": "场景默认补全", "enabled": true, "engine": "java", "proposalAlias": "SWRL-模板匹配" },
-      "R-C02": { "name": "模板补全", "enabled": true, "engine": "java", "proposalAlias": "SWRL-模板补全" },
-      "R-C03": { "name": "互斥/资费冲突", "enabled": true, "engine": "java", "proposalAlias": "R-CONF-002" },
-      "R-C04": { "name": "附加包依赖", "enabled": true, "engine": "java" },
-      "R-C05": { "name": "高风险零资费", "enabled": true, "engine": "java" },
-      "R-C06": { "name": "必填缺失", "enabled": true, "engine": "java" },
-      "R-C07": { "name": "异常优惠漏洞", "enabled": true, "engine": "java" },
-      "R-C08": { "name": "合规通过", "enabled": true, "engine": "java" },
-      "R-C09": { "name": "资费上下限校验", "enabled": true, "engine": "java", "proposalAlias": "R-CONF-001" }
+      "R-C01": {
+        "name": "场景/品类默认补全",
+        "enabled": true,
+        "engine": "java",
+        "proposalAlias": "SWRL-模板匹配",
+        "fields": ["messageRootKey", "categoryCode", "requiredElements", "channelScope", "mutexGroup"]
+      },
+      "R-C02": {
+        "name": "品类模板补全",
+        "enabled": true,
+        "engine": "java",
+        "proposalAlias": "SWRL-模板补全",
+        "fields": ["fixedFeeAmount", "includeVoice", "includeData", "includeBroadband", "downstreamBandwidth"]
+      },
+      "R-C03": {
+        "name": "互斥/优惠冲突",
+        "enabled": true,
+        "engine": "java",
+        "proposalAlias": "R-CONF-002",
+        "fields": ["mutexGroup", "prefDiscount", "prefFee", "bindExistingMainPkg"]
+      },
+      "R-C04": {
+        "name": "附加依赖主资费",
+        "enabled": true,
+        "engine": "java",
+        "fields": ["isMainOffer", "dependOn", "sourceOfferRef", "offeringType"]
+      },
+      "R-C05": {
+        "name": "高风险零固费",
+        "enabled": true,
+        "engine": "java",
+        "fields": ["fixedFeeAmount", "oneTimeFee", "hasContract", "channelScope"]
+      },
+      "R-C06": {
+        "name": "必填缺失",
+        "enabled": true,
+        "engine": "java",
+        "fields": ["offeringName", "offerName", "messageRootKey", "fixedFeeAmount", "channelScope"]
+      },
+      "R-C07": {
+        "name": "异常优惠漏洞",
+        "enabled": true,
+        "engine": "java",
+        "fields": ["prefDiscount", "discountPercent", "repeatChargeFlag", "repeatable"]
+      },
+      "R-C08": {
+        "name": "合规通过",
+        "enabled": true,
+        "engine": "java"
+      },
+      "R-C09": {
+        "name": "固费上下限校验",
+        "enabled": true,
+        "engine": "java",
+        "proposalAlias": "R-CONF-001",
+        "fields": ["fixedFeeAmount", "monthlyFee", "chargePlan.fixedFeeAmount"]
+      }
     },
     "proposalMapping": {
-      "R-CONF-001": { "impl": "R-C09", "name": "资费上下限校验", "engineNote": "Java规则（非Drools），刚性校验不可被大模型覆盖" },
-      "R-CONF-002": { "impl": "R-C03", "name": "折扣与赠费/互斥冲突", "engineNote": "Java规则（非Drools），冲突需人工复核或拦截" },
-      "SWRL-模板匹配": { "impl": "R-C01/R-C02", "name": "场景与模板补全", "engineNote": "配置侧由Java推理补全；Openllet SWRL仅用于运营归因R-A*" }
+      "R-CONF-001": { "impl": "R-C09", "name": "固费上下限校验", "engineNote": "Java规则（非Drools），刚性校验不可被大模型覆盖；字段对齐 ChargePlan.fixedFeeAmount" },
+      "R-CONF-002": { "impl": "R-C03", "name": "折扣与赠费/互斥冲突", "engineNote": "Java规则（非Drools），冲突需人工复核或拦截；对齐 PreferentialPlan" },
+      "SWRL-模板匹配": { "impl": "R-C01/R-C02", "name": "场景与品类模板补全", "engineNote": "配置侧由Java按 ProductCategory.messageRootKey 推理补全；Openllet SWRL仅用于运营归因R-A*" }
     },
-    "engineNarrative": "配置合规由 OntologyMvpService Java 规则执行（R-C*），与方案文档 Drools 示例功能等价；存储引擎为 RDF4J（非 Jena）。"
+    "engineNarrative": "配置合规由 ProductOntologyService Java 规则执行（R-C*），业务属性对齐配置本体 v2.2；报文经 ConfigMessageProjector 投影；存储引擎为 RDF4J（非 Jena）。"
   },
   "extraction": {
     "aliases": {
       "畅享128": "OF-HF-128",
       "家庭融合128": "OF-HF-128",
-      "家庭融合畅享": "OF-HF-128",
+      "家庭融合畅享128": "OF-HF-128",
       "OF-HF-128": "OF-HF-128"
     },
     "bindTriggers": ["再绑", "再加", "一起上"],
@@ -211,11 +261,11 @@
   },
   "batch": {
     "rules": {
-      "R-D01": { "name": "批量映射", "enabled": true, "engine": "java" },
-      "R-D02": { "name": "批量推理", "enabled": true, "engine": "java" },
-      "R-D03": { "name": "批量合规", "enabled": true, "engine": "java" },
-      "R-D04": { "name": "批量证据", "enabled": true, "engine": "java" },
-      "R-D05": { "name": "批量汇总", "enabled": true, "engine": "java" }
+      "R-D01": { "name": "批量映射", "enabled": true, "engine": "java", "note": "文档抽取槽位 → 业务属性（含 messageRootKey/fixedFeeAmount）" },
+      "R-D02": { "name": "批量推理", "enabled": true, "engine": "java", "note": "按 ProductCategory 补全必备要素" },
+      "R-D03": { "name": "批量合规", "enabled": true, "engine": "java", "note": "逐案执行 R-C* 合规" },
+      "R-D04": { "name": "批量证据", "enabled": true, "engine": "java", "note": "汇总 issues/appliedRules/messagePreview" },
+      "R-D05": { "name": "批量汇总", "enabled": true, "engine": "java", "note": "通过数/待修正数/品类分布" }
     }
   }
 }

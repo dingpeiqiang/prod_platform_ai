@@ -97,6 +97,12 @@ public class ChatStreamController {
             }
 
             try {
+                // 告知前端最终 sessionId（新建对话时由首条消息绑定）
+                Map<String, Object> sessionEvent = new LinkedHashMap<>();
+                sessionEvent.put("type", "session");
+                sessionEvent.put("sessionId", sessionId);
+                sendEvent(emitter, sessionEvent);
+
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> messages = (List<Map<String, Object>>) request.getOrDefault("messages", List.of());
 
@@ -235,6 +241,7 @@ public class ChatStreamController {
                     case "product_ops_query" -> "数据查询";
                     case "product_ops_policy" -> "政策评估";
                     case "product_ops_reason" -> "原因分析";
+                    case "product_ops_monitor" -> "运营监控";
                     case "product_ops_compare" -> "对比分析";
                     case "form" -> "表单操作";
                     case "validate" -> "校验";
@@ -321,26 +328,32 @@ public class ChatStreamController {
                     }
                 });
 
-                // 对话持久化（JPA 可选）
+                // 对话持久化（JPA 可选）：仅在有实际用户消息内容时创建/写入历史
                 final String pSessionId = sessionId;
                 final String pUserId = userId;
-                final String pLastMsg = lastUserMessage;
+                final String pLastMsg = lastUserMessage == null ? "" : lastUserMessage.trim();
                 final String finalIntentType = intentType;
                 final Map<String, Object> finalIntentData = intentData;
-                persistenceService.ifPresent(svc -> {
-                    try {
-                        svc.getOrCreateSession(pSessionId, pUserId,
-                                pLastMsg.length() > 50 ? pLastMsg.substring(0, 50) : pLastMsg);
-                        svc.saveMessage(pSessionId, "user", pLastMsg, "text");
-                        String assistantContent = "意图: " + finalIntentType;
-                        if (finalIntentData.containsKey("verdict")) {
-                            assistantContent += " | 结论: " + finalIntentData.get("verdict");
+                if (!pLastMsg.isBlank()) {
+                    persistenceService.ifPresent(svc -> {
+                        try {
+                            String title = pLastMsg.length() > 50 ? pLastMsg.substring(0, 50) : pLastMsg;
+                            svc.getOrCreateSession(pSessionId, pUserId, title);
+                            svc.saveMessage(pSessionId, "user", pLastMsg, "text");
+                            String assistantContent = "意图: " + finalIntentType;
+                            if (finalIntentData.containsKey("verdict")) {
+                                assistantContent += " | 结论: " + finalIntentData.get("verdict");
+                            }
+                            if (assistantContent != null && !assistantContent.isBlank()) {
+                                svc.saveMessage(pSessionId, "assistant", assistantContent, "json");
+                            }
+                        } catch (Exception e) {
+                            log.warn("[chat/agent/stream] 对话持久化失败: {}", e.getMessage());
                         }
-                        svc.saveMessage(pSessionId, "assistant", assistantContent, "json");
-                    } catch (Exception e) {
-                        log.warn("[chat/agent/stream] 对话持久化失败: {}", e.getMessage());
-                    }
-                });
+                    });
+                } else {
+                    log.debug("[chat/agent/stream] 用户消息为空，跳过历史持久化 sessionId={}", sessionId);
+                }
 
                 emitter.complete();
             } catch (Exception e) {
@@ -407,6 +420,7 @@ public class ChatStreamController {
                  "risk_audit", "online_check", "offering_ops_risk_audit" -> "product_ops_policy";
             case "reason", "explain", "product_ops_reason",
                  "root_cause", "offering_ops_root_cause" -> "product_ops_reason";
+            case "monitor", "ops_monitor", "product_ops_monitor" -> "product_ops_monitor";
             case "compare", "compare_state", "product_ops_compare",
                  "what_if", "hypothesis" -> "product_ops_compare";
             default -> normalized;
@@ -423,8 +437,22 @@ public class ChatStreamController {
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("intentType", byScene);
             data.put("confidence", 0.85);
-            data.put("action", byScene.contains("reason") ? "root_cause"
-                    : byScene.contains("policy") ? "risk_audit" : "query");
+            String sceneNorm = normalizedScene(scene);
+            String action;
+            if (byScene.contains("monitor")) {
+                action = "ops_monitor";
+            } else if (byScene.contains("reason")) {
+                action = "root_cause";
+            } else if (sceneNorm.contains("online")) {
+                action = "online_check";
+            } else if (byScene.contains("compare")) {
+                action = "compare";
+            } else if (byScene.contains("policy")) {
+                action = "risk_audit";
+            } else {
+                action = "query";
+            }
+            data.put("action", action);
             return data;
         }
         String t = text.trim();
@@ -432,6 +460,13 @@ public class ChatStreamController {
         data.put("confidence", 0.93);
         Map<String, Object> fields = new LinkedHashMap<>();
 
+        if (containsAny(t, "运营监控", "告警列表", "查看告警", "监控看板", "异动告警", "打开运营监控")) {
+            data.put("intentType", "product_ops_monitor");
+            data.put("action", "ops_monitor");
+            fields.put("question", t);
+            data.put("extractedFields", fields);
+            return data;
+        }
         if (containsAny(t, "根因", "异动", "下滑", "下降", "环比", "归因", "为何下降", "为什么跌", "收入下滑")) {
             data.put("intentType", "product_ops_reason");
             data.put("action", "root_cause");
@@ -439,14 +474,32 @@ public class ChatStreamController {
             data.put("extractedFields", fields);
             return data;
         }
-        if (containsAny(t, "零元", "0元", "零资费", "风险稽核", "优胜劣汰", "建议下架", "长期零销", "筛查风险")) {
+        if (containsAny(t, "零元", "0元", "零资费", "风险稽核", "优胜劣汰", "建议下架", "长期零销", "筛查风险")
+                && !containsAny(t, "假设", "如果", "对比", "方案A", "方案B", "推演", "改价后")) {
             data.put("intentType", "product_ops_policy");
             data.put("action", "risk_audit");
             fields.put("question", t);
             data.put("extractedFields", fields);
             return data;
         }
-        if (containsAny(t, "查一下", "查询", "有哪些", "在售", "列出", "检索", "SPARQL", "图谱里")) {
+        if (containsAny(t, "假设", "如果", "多方案", "方案对比", "方案A", "方案B", "对比一下",
+                "改价", "下调后", "what if", "推演", "市场规模改为", "放宽门槛")) {
+            data.put("intentType", "product_ops_compare");
+            data.put("action", "compare");
+            fields.put("question", t);
+            data.put("extractedFields", fields);
+            return data;
+        }
+        if (containsAny(t, "立项", "上线门槛", "能否通过审核", "新品研判", "立项研判")
+                && !containsAny(t, "假设", "如果", "方案A", "方案B", "对比")) {
+            data.put("intentType", "product_ops_policy");
+            data.put("action", "online_check");
+            fields.put("question", t);
+            data.put("extractedFields", fields);
+            return data;
+        }
+        if (containsAny(t, "查一下", "查询", "有哪些", "在售", "列出", "检索", "SPARQL", "图谱里",
+                "增长趋势", "市场洞察", "竞品")) {
             data.put("intentType", "product_ops_query");
             data.put("action", "query");
             fields.put("question", t);
@@ -469,17 +522,47 @@ public class ChatStreamController {
         }
 
         String byScene = resolveDefaultIntentByScene(scene);
-        if (!byScene.isEmpty() && scene != null && (scene.contains("ops") || scene.contains("offering_ops")
-                || scene.contains("rd") || scene.contains("offering_config"))) {
+        String sceneNorm = normalizedScene(scene);
+        if (!byScene.isEmpty() && !sceneNorm.isEmpty() && (
+                sceneNorm.contains("ops")
+                        || sceneNorm.contains("offering")
+                        || sceneNorm.contains("rd")
+                        || sceneNorm.contains("market")
+                        || sceneNorm.contains("online")
+                        || sceneNorm.contains("root_cause")
+                        || sceneNorm.contains("risk")
+                        || sceneNorm.contains("compare")
+                        || sceneNorm.contains("monitor")
+                        || sceneNorm.contains("tariff")
+        )) {
             data.put("intentType", byScene);
             data.put("confidence", 0.88);
-            data.put("action", byScene.contains("reason") ? "root_cause"
-                    : byScene.contains("policy") ? "risk_audit" : "query");
+            String action;
+            if (byScene.contains("monitor")) {
+                action = "ops_monitor";
+            } else if (byScene.contains("reason")) {
+                action = "root_cause";
+            } else if (sceneNorm.contains("online")) {
+                action = "online_check";
+            } else if (byScene.contains("compare")) {
+                action = "compare";
+            } else if (byScene.contains("policy") && sceneNorm.contains("risk")) {
+                action = "risk_audit";
+            } else if (byScene.contains("policy")) {
+                action = sceneNorm.contains("online") ? "online_check" : "risk_audit";
+            } else {
+                action = "query";
+            }
+            data.put("action", action);
             fields.put(byScene.contains("reason") ? "target" : "question", t);
             data.put("extractedFields", fields);
             return data;
         }
         return null;
+    }
+
+    private String normalizedScene(String scene) {
+        return scene == null ? "" : scene.trim().toLowerCase();
     }
 
     private boolean containsAny(String text, String... keys) {
@@ -553,10 +636,14 @@ public class ChatStreamController {
                  "offering_ops_query",
                  "tariff_center", "tariff_filing" -> "product_ops_query";
             // ── 风险稽核 / 政策评估类场景 ────────────────────
-            case "online", "online_check", "policy", "risk", "audit",
+            case "policy", "risk", "audit",
                  "risk_audit",
                  "ops", "ops_center", "ops_insight",
                  "offering_ops_risk_audit" -> "product_ops_policy";
+            // ── 立项研判（门槛评估，多方案对比走 compare 场景）──
+            case "online", "online_check" -> "product_ops_policy";
+            // ── 运营监控 ─────────────────────────────────────
+            case "ops_monitor", "ops.monitor", "monitor" -> "product_ops_monitor";
             // ── 异动归因类场景 ────────────────────────────────
             case "reason", "root_cause", "explain",
                  "offering_ops_root_cause" -> "product_ops_reason";

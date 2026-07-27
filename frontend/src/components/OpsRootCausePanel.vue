@@ -1,5 +1,5 @@
 /**
- * 运营 MVP-1：根因路径 / 证据链 / 工单草稿面板（业务可读）
+ * 运营：根因路径 / 证据链 / 工单草稿面板（业务可读）
  */
 <template>
   <aside v-if="visible && result" class="ops-panel root-cause-panel">

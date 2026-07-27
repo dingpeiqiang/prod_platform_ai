@@ -77,21 +77,35 @@ public class ChatPersistenceService {
     }
 
     /**
-     * 获取用户最近的会话列表。
+     * 获取用户最近的会话列表（仅返回至少有一条消息的会话）。
      */
     public List<ChatSession> getRecentSessions(String userId, int limit) {
-        return sessionRepo.findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(0, limit)).getContent();
+        int safeLimit = Math.max(1, Math.min(limit, 200));
+        // 多取一些再过滤空会话，避免空历史占满列表
+        List<ChatSession> sessions = sessionRepo
+                .findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(0, safeLimit * 3))
+                .getContent();
+        return sessions.stream()
+                .filter(s -> messageRepo.countBySessionId(s.getSessionId()) > 0)
+                .limit(safeLimit)
+                .toList();
     }
 
     // ── Message ──────────────────────────────────────
 
     /**
      * 保存一条消息。自动生成 messageId 和 sortOrder。
+     * 内容为空时不落库，返回 null。
      */
     @Transactional
     public ChatMessage saveMessage(String sessionId, String role, String content, String contentType) {
+        if (content == null || content.isBlank()) {
+            log.debug("[ChatPersistence] 跳过空内容消息: sessionId={}, role={}", sessionId, role);
+            return null;
+        }
         String messageId = "msg_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
         Integer maxOrder = messageRepo.findMaxSortOrderBySessionId(sessionId);
+        int sortOrder = (maxOrder == null ? 0 : maxOrder) + 1;
 
         ChatMessage msg = new ChatMessage();
         msg.setMessageId(messageId);
@@ -99,7 +113,7 @@ public class ChatPersistenceService {
         msg.setRole(role);
         msg.setContent(content);
         msg.setContentType(contentType != null ? contentType : "text");
-        msg.setSortOrder(maxOrder + 1);
+        msg.setSortOrder(sortOrder);
         messageRepo.save(msg);
         return msg;
     }

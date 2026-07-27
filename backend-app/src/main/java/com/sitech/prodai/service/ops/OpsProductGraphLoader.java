@@ -30,9 +30,23 @@ public class OpsProductGraphLoader {
     public LoadedGraph load() {
         String mode = normalizeMode(properties.getOntology().getDataSource());
         return switch (mode) {
-            case "http" -> new LoadedGraph(httpSource.loadRawGraph(), httpSource.sourceId());
+            case "http" -> {
+                Map<String, Object> raw = httpSource.loadRawGraph();
+                yield new LoadedGraph(raw, httpSource.sourceId());
+            }
             case "empty" -> new LoadedGraph(emptyGraph(), "empty");
-            default -> new LoadedGraph(classpathSource.loadRawGraph(), classpathSource.sourceId());
+            default -> {
+                Map<String, Object> raw = classpathSource.loadRawGraph();
+                OpsGraphSchemaValidator.ValidationResult vr = OpsGraphSchemaValidator.validateAndNormalize(raw);
+                if (!vr.warnings().isEmpty()) {
+                    // classpath 缺键时软补齐
+                }
+                if (!vr.ok()) {
+                    throw new IllegalStateException(
+                            "classpath ops-graph schema invalid: " + String.join("; ", vr.errors()));
+                }
+                yield new LoadedGraph(vr.normalized(), classpathSource.sourceId());
+            }
         };
     }
 

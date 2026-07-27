@@ -94,6 +94,11 @@ export async function createSession(userId, title) {
 }
 
 export async function saveMessage(sessionId, msg) {
+  const content = String(msg.content || msg.streamText || '').trim()
+  // 无实际内容的消息不落库，避免空历史
+  if (!sessionId || !content) {
+    return { success: false, skipped: true }
+  }
   try {
     const metadata = buildMessageMetadata(msg)
     const resp = await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/messages`, {
@@ -101,7 +106,7 @@ export async function saveMessage(sessionId, msg) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         role: msg.role,
-        content: msg.content || msg.streamText || '',
+        content,
         content_type: msg.contentType || 'text',
         parent_id: msg.parentId || null,
         step_type: msg.step_type || null,
@@ -125,7 +130,12 @@ export async function updateMessage(sessionId, messageId, { content, metadata })
 }
 
 export async function saveMessages(sessionId, messages) {
-  const done = messages.filter(m => m.done !== false)
+  if (!sessionId) return
+  const done = messages.filter(m => {
+    if (m.done === false) return false
+    return String(m.content || m.streamText || '').trim().length > 0
+  })
+  if (!done.length) return
   if (done.length > 3) {
     const batchData = done.map(msg => ({
       role: msg.role,
@@ -165,6 +175,10 @@ export async function loadMessages(sessionId) {
         createdAt: m.created_at,
         metadata: m.metadata,
       }
+    }).filter(m => {
+      // 历史中无内容且无表单卡片的消息不展示
+      const hasText = String(m.content || m.streamText || '').trim().length > 0
+      return hasText || !!m.formCard
     })
   } catch {
     return []

@@ -13,9 +13,11 @@ import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 从配置的 RDF 种子文件灌入内存本体库。
@@ -92,11 +94,34 @@ public class OntologySeedLoader implements ApplicationRunner {
             Map<String, Object> facts = new LinkedHashMap<>();
             Object factsObj = row.get("facts");
             if (factsObj instanceof Map<?, ?> fm) {
-                fm.forEach((k, v) -> facts.put(String.valueOf(k), v));
+                fm.forEach((k, v) -> facts.put(String.valueOf(k), resolveFactValue(String.valueOf(k), v)));
             }
             facts.put("type", type);
             rdf4jStore.addInstance(toUri(id), type, facts);
         }
+    }
+
+    private Object resolveFactValue(String key, Object value) {
+        if (value instanceof List<?> list) {
+            List<Object> resolved = new ArrayList<>();
+            for (Object item : list) {
+                resolved.add(resolveFactValue(key, item));
+            }
+            return resolved;
+        }
+        if (value instanceof String s) {
+            if (isRelationProperty(key) && !s.startsWith("http://") && !s.startsWith("https://") && !s.isBlank()) {
+                return toUri(s);
+            }
+        }
+        return value;
+    }
+
+    private boolean isRelationProperty(String key) {
+        return Set.of(
+                "hasIndicator", "soldThrough", "targets", "competesWith",
+                "compliesWith", "promotedBy", "hasMetric", "soldOn"
+        ).contains(key);
     }
 
     private String toUri(String id) {

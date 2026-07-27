@@ -1,4 +1,4 @@
-{
+﻿{
   "sceneMappings": [
     {
       "sceneCode": "tariff_filing_apply",
@@ -75,7 +75,7 @@
       "type": "scene",
       "formCode": "offering_config",
       "config": {
-        "ontologyMvp": true,
+        "productOntology": true,
         "capability": "chat_configure"
       }
     },
@@ -99,7 +99,7 @@
       "type": "scene",
       "formCode": "offering_config",
       "config": {
-        "ontologyMvp": true,
+        "productOntology": true,
         "capability": "batch_generate"
       }
     },
@@ -121,7 +121,7 @@
       "type": "scene",
       "formCode": "offering_config",
       "config": {
-        "ontologyMvp": true,
+        "productOntology": true,
         "capability": "compliance_check"
       }
     },
@@ -144,7 +144,7 @@
       "promptCode": "offering_ops_root_cause_prompt",
       "type": "scene",
       "config": {
-        "ontologyMvp": true,
+        "productOntology": true,
         "capability": "root_cause"
       }
     },
@@ -165,10 +165,31 @@
       "promptCode": "offering_ops_risk_audit_prompt",
       "type": "scene",
       "config": {
-        "ontologyMvp": true,
+        "productOntology": true,
         "capability": "risk_audit"
+      }
+    },
+    {
+      "sceneCode": "offering_config_compare",
+      "sceneName": "多方案对比",
+      "description": "对配置草稿应用不同资费补丁，合规校验与收益估算后输出推荐",
+      "keywords": [
+        "方案对比",
+        "多方案",
+        "资费对比",
+        "立项对比",
+        "哪个方案"
+      ],
+      "priority": 11,
+      "isActive": true,
+      "promptCode": "offering_config_prompt",
+      "type": "scene",
+      "formCode": "offering_config",
+      "config": {
+        "productOntology": true,
+        "capability": "compare_schemes"
       }
     }
   ],
-  "version": "4.2"
+  "version": "4.3"
 }

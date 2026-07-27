@@ -1,0 +1,269 @@
+﻿import { get, post, put, del } from './httpClient.js'
+
+const BASE = 'product-ontology'
+
+export async function getOntologyGraph() {
+  return get(`${BASE}/graph`, { showLoading: false })
+}
+
+export async function getOntologyMeta() {
+  return get(`${BASE}/meta`, { showLoading: false })
+}
+
+export async function getOpsDashboard() {
+  return get(`${BASE}/ops/dashboard`, { showLoading: false })
+}
+
+export async function chatConfigure(text, draft = null) {
+  return post(`${BASE}/config/chat`, { text, draft }, { showLoading: false, loadingText: '本体推理中...' })
+}
+
+export async function checkCompliance(draft, extras = {}) {
+  const body = { draft: draft || null, ...extras }
+  return post(`${BASE}/config/compliance`, body, { showLoading: false })
+}
+
+export async function batchFromDocument(documentText = '', packages = null) {
+  return post(
+    `${BASE}/config/batch`,
+    { documentText, packages },
+    { showLoading: false, loadingText: '文档映射中...' },
+  )
+}
+
+/** 智查：检索历史配置方案 */
+export async function discoverConfigs(q = '', limit = 20) {
+  return post(
+    `${BASE}/config/discover`,
+    { q, question: q, limit },
+    { showLoading: false, loadingText: '检索历史配置...' },
+  )
+}
+
+/** 一键复制为草稿并合规校验 */
+export async function copyAsDraft(offeringId, text = null) {
+  return post(
+    `${BASE}/config/copy-as-draft`,
+    { offering_id: offeringId, offeringId, text },
+    { showLoading: false, loadingText: '复制配置草稿...' },
+  )
+}
+
+/** 智读：上传文件批量映射（docx/pdf/xlsx/txt） */
+export async function batchFromUpload(file) {
+  const form = new FormData()
+  form.append('file', file)
+  // 不设 Content-Type，由浏览器自动带 multipart boundary
+  return post(`${BASE}/config/batch-upload`, form, {
+    showLoading: false,
+    loadingText: '解析文档并映射...',
+  })
+}
+
+/** 知识沉淀：合规草稿写入事实图/本体 */
+export async function publishConfigDraft(draft) {
+  return post(
+    `${BASE}/config/publish`,
+    { draft },
+    { showLoading: false, loadingText: '沉淀至本体...' },
+  )
+}
+
+/** 草稿列表（按会话/用户） */
+export async function listConfigDrafts({ sessionId = null, userId = null, status = null } = {}) {
+  const params = {}
+  if (sessionId) params.session_id = sessionId
+  if (userId) params.user_id = userId
+  if (status) params.status = status
+  return get(`${BASE}/config/drafts`, { params, showLoading: false })
+}
+
+export async function getConfigDraft(draftId) {
+  return get(`${BASE}/config/drafts/${encodeURIComponent(draftId)}`, { showLoading: false })
+}
+
+/** 持久化配置草稿 */
+export async function saveConfigDraft({
+  draft,
+  draftId = null,
+  clientId = null,
+  sessionId = null,
+  userId = null,
+  compliancePass = null,
+} = {}) {
+  const body = { draft }
+  if (draftId != null) body.draftId = draftId
+  if (clientId) body.clientId = clientId
+  if (sessionId) body.sessionId = sessionId
+  if (userId) body.userId = userId
+  if (compliancePass != null) body.compliancePass = compliancePass
+  if (draftId != null) {
+    return put(`${BASE}/config/drafts/${encodeURIComponent(draftId)}`, body, {
+      showLoading: false,
+      loadingText: '保存草稿...',
+    })
+  }
+  return post(`${BASE}/config/drafts`, body, {
+    showLoading: false,
+    loadingText: '保存草稿...',
+  })
+}
+
+export async function deleteConfigDraft(draftId) {
+  return del(`${BASE}/config/drafts/${encodeURIComponent(draftId)}`, {
+    showLoading: false,
+  })
+}
+
+/** 合规通过后提交：沉淀 + 备案工单 */
+export async function submitConfigDraft({
+  draft,
+  draftId = null,
+  clientId = null,
+  sessionId = null,
+  userId = null,
+} = {}) {
+  const body = { draft }
+  if (draftId != null) body.draftId = draftId
+  if (clientId) body.clientId = clientId
+  if (sessionId) body.sessionId = sessionId
+  if (userId) body.userId = userId
+  return post(`${BASE}/config/submit`, body, {
+    showLoading: false,
+    loadingText: '提交备案中...',
+  })
+}
+
+/** 多方案对比 */
+export async function compareConfigSchemes({
+  draft = null,
+  patches = null,
+  fees = null,
+  text = null,
+  marketScale = null,
+} = {}) {
+  const body = {}
+  if (draft) body.draft = draft
+  if (patches) body.patches = patches
+  if (fees) body.fees = fees
+  if (text) body.text = text
+  if (marketScale != null) body.marketScale = marketScale
+  return post(`${BASE}/config/compare`, body, {
+    showLoading: false,
+    loadingText: '多方案对比中...',
+  })
+}
+
+export async function getConfigTrace(traceId) {
+  return get(`${BASE}/config/trace`, {
+    params: { trace_id: traceId },
+    showLoading: false,
+  })
+}
+
+export async function explainConfig(traceId, audience = 'business') {
+  return post(
+    `${BASE}/config/explain`,
+    { trace_id: traceId, audience },
+    { showLoading: false, loadingText: '生成审计说明...' },
+  )
+}
+
+export async function analyzeRootCause(offeringId = null, text = null) {
+  const body = {}
+  if (offeringId) body.offeringId = offeringId
+  if (text) body.text = text
+  return post(`${BASE}/ops/root-cause`, body, { showLoading: false, loadingText: '根因推理中...' })
+}
+
+export async function auditRisks(offeringIds = null) {
+  return post(`${BASE}/ops/risk-audit`, { offeringIds }, { showLoading: false, loadingText: '风险稽核中...' })
+}
+
+/** 假设推演：退市 / 改价后重跑风险稽核 */
+export async function evaluateHypothetical({ mode = 'delist', patches = null, offeringId = null, changes = null, monthlyFee = null } = {}) {
+  const body = { mode }
+  if (patches) body.patches = patches
+  if (offeringId) body.offeringId = offeringId
+  if (changes) body.changes = changes
+  if (monthlyFee != null) body.monthlyFee = monthlyFee
+  return post(`${BASE}/ops/hypothetical`, body, { showLoading: false, loadingText: '假设推演中...' })
+}
+
+/**
+ * 立项/策略多方案对比（替代旧 /api/v1/product-ops/compare）
+ */
+export async function comparePolicyState({
+  snapshotId = 'current',
+  patches = null,
+  policySetId = 'PS_PRODUCT_ONLINE_V1',
+  currentFacts = null,
+  description = '假设变更',
+  changes = null,
+  entityId = null,
+  traceId = 'product-compare-trace',
+  tenantId = 'product_ops',
+} = {}) {
+  const body = {
+    snapshot_id: snapshotId,
+    policy_set_id: policySetId,
+    trace_id: traceId,
+    tenant_id: tenantId,
+    patches: patches || [{
+      description,
+      changes: changes || {},
+      entity_id: entityId,
+    }],
+  }
+  if (currentFacts) body.current_facts = currentFacts
+  return post(`${BASE}/ops/compare`, body, { showLoading: false, loadingText: '方案对比中...' })
+}
+
+export async function listOpsAlerts(offeringId = null) {
+  const params = {}
+  if (offeringId) params.offering_id = offeringId
+  return get(`${BASE}/ops/alerts`, { params, showLoading: false })
+}
+
+export async function listWorkOrders(status = null) {
+  const params = {}
+  if (status && status !== 'all') params.status = status
+  return get(`${BASE}/ops/work-orders`, { params, showLoading: false })
+}
+
+export async function createWorkOrder(payload = {}) {
+  return post(`${BASE}/ops/work-orders`, payload, { showLoading: false, loadingText: '生成处置工单...' })
+}
+
+export async function updateWorkOrderStatus(workOrderId, status, remark = null) {
+  const body = { status }
+  if (remark) body.remark = remark
+  return put(`${BASE}/ops/work-orders/${encodeURIComponent(workOrderId)}`, body, {
+    showLoading: false,
+    loadingText: '更新工单状态...',
+  })
+}
+
+export async function runBatchRiskAudit(trigger = 'manual') {
+  return post(`${BASE}/ops/batch-audit`, { trigger }, { showLoading: false, loadingText: '全量批量稽核中...' })
+}
+
+export async function getLastBatchAudit() {
+  return get(`${BASE}/ops/batch-audit`, { showLoading: false })
+}
+
+export async function updateRiskRules(overrides = {}) {
+  return post(`${BASE}/ops/risk-rules`, overrides, { showLoading: false })
+}
+
+export async function resetRiskRules() {
+  return post(`${BASE}/ops/risk-rules/reset`, {}, { showLoading: false })
+}
+
+export async function getOpsRules() {
+  return get(`${BASE}/ops/rules`, { showLoading: false })
+}
+
+export async function reloadOpsRules() {
+  return post(`${BASE}/ops/rules/reload`, {}, { showLoading: false, loadingText: '重载规则中...' })
+}

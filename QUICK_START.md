@@ -66,7 +66,7 @@ $env:LLM_MODEL="..."
 
 ## 本体平台 / 推理引擎 API
 
-前缀：`/api/v1/ontology-mvp`
+前缀：`/api/v1/product-ontology`
 
 | 能力 | 方法 | 路径 |
 |------|------|------|
@@ -76,10 +76,27 @@ $env:LLM_MODEL="..."
 | 合规校验 | POST | `/config/compliance` |
 | 智聊配置 | POST | `/config/chat` |
 | 智读批量 | POST | `/config/batch` |
+| 智读上传 | POST | `/config/batch-upload` |
+| 草稿列表/保存 | GET/POST | `/config/drafts` |
+| 提交备案闭环 | POST | `/config/submit` |
+| 多方案对比 | POST | `/config/compare` |
 | 运营看板 | GET | `/ops/dashboard` |
 | 根因分析 | POST | `/ops/root-cause` |
 | 风险稽核 | POST | `/ops/risk-audit` |
 | 风险规则 | GET/POST | `/ops/risk-rules` |
+| 规则目录 | GET | `/ops/rules` |
+| 规则热重载 | POST | `/ops/rules/reload` |
+| 多方案对比 | POST | `/ops/compare` |
+| 假设推演 | POST | `/ops/hypothetical` |
+
+产商品中心事实图契约：
+
+| 能力 | 方法 | 路径 |
+|------|------|------|
+| 发布事实图 | GET | `/api/v1/product-center/ops-graph` |
+| 契约说明 | GET | `/api/v1/product-center/ops-graph/contract` |
+
+> 遗留 `/api/v1/product-ops/*` 已标记 `@Deprecated`，请改用 `product-ontology`。
 
 ## 会话持久化 API（可替换 Mock）
 
@@ -103,7 +120,7 @@ $env:LLM_MODEL="..."
 ✅ **热更新** - 修改代码自动刷新  
 ✅ **智能代理** - 前端请求自动转发到 Spring Boot  
 ✅ **路径别名** - 使用 `@/` 代替相对路径  
-✅ **可替换 Mock** - 会话/本体 MVP 等缺失依赖先走契约稳定的 Mock  
+✅ **可替换 Mock** - 会话/产商品本体 等缺失依赖先走契约稳定的 Mock  
 
 ---
 

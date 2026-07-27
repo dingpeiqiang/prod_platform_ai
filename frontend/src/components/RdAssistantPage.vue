@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <AssistantShell
     mode="rd"
     :streaming="streaming"
@@ -72,6 +72,12 @@
         :explanation="configExplainText"
         @close="showConfigTracePanel = false"
       />
+      <ConfigComparePanel
+        v-else-if="showComparePanel && compareResult"
+        :visible="showComparePanel"
+        :result="compareResult"
+        @close="showComparePanel = false"
+      />
       <FormPanel
         v-else-if="activeFormCard"
         :form-schema="activeFormCard.formSchema"
@@ -104,9 +110,10 @@ import ProductListPanel from './ProductListPanel.vue'
 import OpsRootCausePanel from './OpsRootCausePanel.vue'
 import OpsRiskAuditPanel from './OpsRiskAuditPanel.vue'
 import ConfigTracePanel from './ConfigTracePanel.vue'
+import ConfigComparePanel from './ConfigComparePanel.vue'
 import { useChatStream } from '../composables/useChatStream.js'
 import { useProductConfig } from '../composables/useProductConfig.js'
-import { checkCompliance } from '../services/ontologyMvpApi.js'
+import { checkCompliance } from '../services/productOntologyApi.js'
 import { assistantModes } from '../config/assistantModes.js'
 import { genId } from '../utils/chatUtils.js'
 import { createStreamingPlaceholder, playSimulatedReply } from '../utils/simulateReply.js'
@@ -125,6 +132,7 @@ const {
   switchSession,
   newSession,
   sessionList,
+  sessionId,
   stop,
 } = useChatStream()
 
@@ -136,6 +144,8 @@ const showProductListPanel = productConfig.showProductListPanel
 const showRootCausePanel = productConfig.showRootCausePanel
 const showRiskAuditPanel = productConfig.showRiskAuditPanel
 const showConfigTracePanel = productConfig.showConfigTracePanel
+const showComparePanel = productConfig.showComparePanel
+const compareResult = productConfig.compareResult
 const lastConfigTraceId = productConfig.lastConfigTraceId
 const configTraceSteps = productConfig.configTraceSteps
 const configExplainText = productConfig.configExplainText
@@ -150,6 +160,10 @@ onMounted(async () => {
   historyLoading.value = true
   try {
     await loadSessions()
+    if (sessionId.value) {
+      productConfig.setSessionContext({ sessionId: sessionId.value })
+      await productConfig.loadPersistedDrafts(sessionId.value)
+    }
   } finally {
     historyLoading.value = false
   }
@@ -228,13 +242,21 @@ async function handleConfirmSubmit(payload) {
     if (!result?.compliancePass) return
   }
 
-  productConfig.saveDraft()
+  productConfig.saveDraftLocal()
+  productConfig.setSessionContext({ sessionId: sessionId.value })
+  const resp = await productConfig.submitCurrentDraft(sessionId.value)
+  if (resp?.success === false) {
+    await playProductReply({
+      thinkingSteps: ['提交备案被拒'],
+      content: `提交失败：${resp.message || '合规未通过或服务异常'}`,
+      formCard: activeFormCard.value,
+    })
+    return
+  }
+
   const draft = product.ontologyDraft || product.data || {}
-  const draftId = `DRAFT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`
-  product.draftId = draftId
-  product.status = 'submitted'
-  product.auditStatus = 'pass'
-  product.compliancePass = true
+  const offeringId = resp.offeringId || product.offeringId
+  const woId = resp.workOrder?.workOrderId || product.workOrderId || '-'
   product.name = draft.offeringName || product.name
 
   if (activeFormCard.value) {
@@ -248,22 +270,24 @@ async function handleConfirmSubmit(payload) {
   await playProductReply({
     thinkingSteps: [
       '核对 compliancePass=true（R-C08）',
-      '序列化 OfferingConfig 草稿字段',
-      `Mock 生成草稿 draftId=${draftId}`,
+      '沉淀 ConfigScheme 至事实图/本体',
+      `生成资费备案工单 ${woId}`,
     ],
     content:
-      `已生成配置草稿 **\`${draftId}\`**，可在「已配置商品」中查看。\n\n` +
+      `已完成提交闭环：\n\n` +
+      `- 商品编码：\`${offeringId}\`\n` +
+      `- 备案工单：\`${woId}\`\n` +
+      `- 草稿 ID：\`${resp.draftId || product.draftId || '-'}\`\n\n` +
+      '可在「已配置商品」查看；运营侧工单列表可跟进备案进度。\n\n' +
       '```json\n' +
       JSON.stringify(
         {
-          draftId,
+          offeringId,
+          workOrderId: woId,
+          draftId: resp.draftId,
           offeringName: draft.offeringName,
-          offeringType: draft.offeringType,
-          bizScenario: draft.bizScenario,
-          targetUser: draft.targetUser,
-          monthlyFee: draft.monthlyFee,
-          includeBroadband: draft.includeBroadband,
-          channelScope: draft.channelScope,
+          monthlyFee: draft.monthlyFee ?? draft.fixedFeeAmount,
+          status: 'filing',
         },
         null,
         2,
@@ -275,6 +299,7 @@ async function handleConfirmSubmit(payload) {
       compliancePass: true,
       issues: [],
     },
+    nextSteps: ['查看审计追溯', '查一下近30天大学生套餐'],
   })
 }
 
@@ -328,6 +353,9 @@ function resolveProductScenario(text, scene = '') {
   if (s === 'rd.import' || s === 'offering_config_batch') {
     return 'file-parse'
   }
+  if (s === 'rd.compare') {
+    return 'compare'
+  }
   if (s === 'rd.compliance' || s === 'offering_config_compliance') {
     return productConfig.detectScenario(text) || 'compliance'
   }
@@ -365,6 +393,14 @@ function applyPlaybookSideEffects(aiMsg, playbook = {}) {
     showConfigTracePanel.value = true
     showRootCausePanel.value = false
     showRiskAuditPanel.value = false
+    showComparePanel.value = false
+  }
+  if (playbook.showComparePanel || productConfig.showComparePanel.value) {
+    showComparePanel.value = true
+    showConfigTracePanel.value = false
+    showRootCausePanel.value = false
+    showRiskAuditPanel.value = false
+    closeActiveForm()
   }
   tickMessages()
 }
@@ -400,6 +436,7 @@ async function playProductReply(playbook = {}) {
 }
 
 async function loadScenarioPlaybook(text, scenario, attachments = []) {
+  productConfig.setSessionContext({ sessionId: sessionId.value })
   if (scenario === 'query') {
     return productConfig.simulateQuery(text)
   }
@@ -408,6 +445,9 @@ async function loadScenarioPlaybook(text, scenario, attachments = []) {
   }
   if (scenario === 'confirm-batch') {
     return productConfig.confirmPassedDrafts()
+  }
+  if (scenario === 'compare') {
+    return productConfig.runCompareSchemes(text)
   }
   if (scenario === 'config-trace') {
     const result = await productConfig.loadConfigTrace()
@@ -436,7 +476,8 @@ async function loadScenarioPlaybook(text, scenario, attachments = []) {
 const SCENARIO_PROGRESS = {
   query: ['正在解析查询条件...', '检索本体事实图...'],
   'file-parse': ['正在读取方案文档...', '抽取套餐结构...'],
-  'confirm-batch': ['正在确认批量草稿...', '沉淀至配置本体...'],
+  'confirm-batch': ['正在确认批量草稿...', '提交备案闭环...'],
+  compare: ['正在构建候选方案...', '合规评估与收益测算...'],
   'config-trace': ['正在加载审计链路...', '生成业务说明...'],
   compliance: ['正在定位套餐信息...', '执行配置合规规则...'],
   'root-cause': ['正在分析异动指标...', '本体归因推理中...'],
@@ -565,9 +606,12 @@ const onFormCardClick = (msg) => {
   if (msg?.formCard) applyFormCard(msg.formCard)
 }
 
-const onSwitchSession = (sessionId) => {
+const onSwitchSession = async (sid) => {
   closeActiveForm()
-  switchSession(sessionId)
+  await switchSession(sid)
+  productConfig.resetState()
+  productConfig.setSessionContext({ sessionId: sid || sessionId.value })
+  await productConfig.loadPersistedDrafts(sid || sessionId.value)
 }
 
 const onNewSession = () => {
@@ -577,6 +621,7 @@ const onNewSession = () => {
   activeScene.value = config.defaultScene
   productConfig.resetState()
   newSession()
+  productConfig.setSessionContext({ sessionId: sessionId.value })
 }
 
 const onIntentAction = (event) => {

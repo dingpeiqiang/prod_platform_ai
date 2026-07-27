@@ -330,19 +330,29 @@ export const CAMPUS_PRODUCT_DATA = () => ({
  */
 export function draftToFormData(draft = {}) {
   const data = createEmptyFormData()
-  data.prodPrcName = draft.offeringName || ''
-  data.monthlyFee = draft.monthlyFee != null ? String(draft.monthlyFee) : ''
-  data.prcMonthFee = draft.monthlyFee != null ? `${draft.monthlyFee}元/月` : ''
+  const fee = draft.fixedFeeAmount != null ? draft.fixedFeeAmount : draft.monthlyFee
+  const name = draft.offerName || draft.offeringName || ''
+  data.prodPrcName = name
+  data.workOrderId = draft.workOrderId || data.workOrderId
+  data.monthlyFee = fee != null ? String(fee) : ''
+  data.prcMonthFee = fee != null ? `${fee}元/月` : ''
   data.containResource = [draft.includeData, draft.includeVoice, draft.includeBroadband]
     .filter(Boolean)
     .join('+')
   data.flowAmount = String(draft.includeData || '').replace(/[^\d.]/g, '') || data.flowAmount
   data.voiceAmount = String(draft.includeVoice || '').replace(/[^\d.]/g, '') || data.voiceAmount
-  data.offeringName = draft.offeringName || ''
+  data.offerName = name
+  data.offeringName = name
   data.offeringType = draft.offeringType || ''
   data.bizScenario = draft.bizScenario || ''
   data.targetUser = draft.targetUser || ''
   data.channelScope = draft.channelScope || ''
+  data.regionScope = draft.regionScope || ''
+  data.messageRootKey = draft.messageRootKey || ''
+  data.categoryCode = draft.categoryCode || ''
+  data.categoryName = draft.categoryName || ''
+  data.productLine = draft.productLine || ''
+  data.fixedFeeAmount = fee != null ? fee : ''
   data.includeVoice = draft.includeVoice || ''
   data.includeData = draft.includeData || ''
   data.includeBroadband = draft.includeBroadband || ''
@@ -362,40 +372,50 @@ export function draftToFormData(draft = {}) {
 }
 
 /**
- * 本体 OfferingConfig 表单 schema（智聊画布）
+ * 本体 ConfigScheme 表单 schema（智聊画布，v2.2）
  */
 export function createOfferingFormSchema(draft = {}) {
   const d = { ...draft }
+  const fee = d.fixedFeeAmount != null ? d.fixedFeeAmount : d.monthlyFee
+  const name = d.offerName || d.offeringName || ''
   const fill = d.fillSources || {}
-  // 仅挂 fillSource 供边框着色，不把来源码拼进标签（避免表单显示异常）
   const withSrc = (field) => ({
     ...field,
     fillSource: fill[field.fieldCode] || '',
   })
   return {
-    formName: '商品配置草稿（本体）',
+    formName: '配置方案草稿（本体 v2.2）',
     formCode: 'offering_config',
     fields: [
-      withSrc({ fieldCode: 'offeringName', fieldName: '商品名称', fieldType: 'input', required: true, value: d.offeringName || '' }),
+      withSrc({ fieldCode: 'offerName', fieldName: '资费名称', fieldType: 'input', required: true, value: name }),
+      withSrc({ fieldCode: 'offeringName', fieldName: '资费名称(兼容)', fieldType: 'input', required: false, value: name }),
       withSrc({
-        fieldCode: 'offeringType', fieldName: '商品类型', fieldType: 'select', required: true, value: d.offeringType || 'fusion',
+        fieldCode: 'categoryCode', fieldName: '产品品类', fieldType: 'select', required: true,
+        value: d.categoryCode || d.messageRootKey || 'personMainPrc',
         options: [
-          { label: '主套餐', value: 'main_pkg' },
-          { label: '附加包', value: 'addon' },
-          { label: '融合套餐', value: 'fusion' },
-          { label: '促销商品', value: 'promo' },
+          { label: '个人主资费', value: 'personMainPrc' },
+          { label: '宽带主资费', value: 'broadBandMainPrc' },
+          { label: '个人附加资费', value: 'personAddPrc' },
+          { label: '宽带加速包', value: 'broadBandOptSpeedPrc' },
+          { label: '家庭基础套餐', value: 'familyBasePrc' },
+          { label: '家庭附加业务', value: 'familyAddPrc' },
         ],
       }),
+      withSrc({ fieldCode: 'messageRootKey', fieldName: '报文根键', fieldType: 'input', required: true, value: d.messageRootKey || d.categoryCode || '' }),
       withSrc({
-        fieldCode: 'bizScenario', fieldName: '业务场景', fieldType: 'select', required: true, value: d.bizScenario || '',
+        fieldCode: 'bizScenario', fieldName: '业务场景', fieldType: 'select', required: false, value: d.bizScenario || '',
         options: [
-          { label: '家庭融合', value: '家庭融合' },
-          { label: '校园体验', value: '校园体验' },
+          { label: '大众-个人主资费', value: '大众-个人主资费' },
           { label: '5G个人主套餐', value: '5G个人主套餐' },
+          { label: '校园-个人附加', value: '校园-个人附加' },
+          { label: '校园体验', value: '校园体验' },
+          { label: '家庭-基础套餐', value: '家庭-基础套餐' },
+          { label: '家庭融合', value: '家庭融合' },
+          { label: '家庭-宽带主资费', value: '家庭-宽带主资费' },
         ],
       }),
       withSrc({
-        fieldCode: 'targetUser', fieldName: '目标用户', fieldType: 'select', required: true, value: d.targetUser || '',
+        fieldCode: 'targetUser', fieldName: '目标用户', fieldType: 'select', required: false, value: d.targetUser || '',
         options: [
           { label: '家庭', value: '家庭' },
           { label: '校园', value: '校园' },
@@ -406,33 +426,37 @@ export function createOfferingFormSchema(draft = {}) {
       withSrc({
         fieldCode: 'channelScope', fieldName: '销售渠道', fieldType: 'select', required: true, value: d.channelScope || '',
         options: [
+          { label: '营业前台+电渠等(A7)', value: 'A7' },
           { label: '全渠道', value: '全渠道' },
           { label: '仅电渠', value: '仅电渠' },
           { label: '电渠+厅店', value: '电渠+厅店' },
           { label: '内部验证', value: '内部验证' },
         ],
       }),
-      withSrc({ fieldCode: 'monthlyFee', fieldName: '月费', fieldType: 'number', required: true, value: d.monthlyFee }),
+      withSrc({ fieldCode: 'regionScope', fieldName: '发布地市', fieldType: 'input', required: false, value: d.regionScope || '' }),
+      withSrc({ fieldCode: 'fixedFeeAmount', fieldName: '固费金额(元)', fieldType: 'number', required: true, value: fee }),
+      withSrc({ fieldCode: 'monthlyFee', fieldName: '月费(兼容)', fieldType: 'number', required: false, value: fee }),
       withSrc({ fieldCode: 'oneTimeFee', fieldName: '一次性费用', fieldType: 'number', required: false, value: d.oneTimeFee ?? 0 }),
       withSrc({ fieldCode: 'includeVoice', fieldName: '包含语音', fieldType: 'input', required: false, value: d.includeVoice || '' }),
       withSrc({ fieldCode: 'includeData', fieldName: '包含流量', fieldType: 'input', required: false, value: d.includeData || '' }),
       withSrc({ fieldCode: 'includeBroadband', fieldName: '包含宽带', fieldType: 'input', required: false, value: d.includeBroadband || '' }),
       withSrc({ fieldCode: 'mutexGroup', fieldName: '互斥组', fieldType: 'input', required: false, value: d.mutexGroup || 'MAIN_PKG' }),
-      withSrc({ fieldCode: 'dependOn', fieldName: '依赖商品', fieldType: 'input', required: false, value: d.dependOn || '' }),
+      withSrc({ fieldCode: 'dependOn', fieldName: '依赖主资费', fieldType: 'input', required: false, value: d.dependOn || '' }),
+      withSrc({ fieldCode: 'workOrderId', fieldName: '需求工单号', fieldType: 'input', required: false, value: d.workOrderId || '' }),
+      withSrc({
+        fieldCode: 'offeringType', fieldName: '主附类型(兼容)', fieldType: 'select', required: false, value: d.offeringType || 'main_pkg',
+        options: [
+          { label: '主套餐', value: 'main_pkg' },
+          { label: '附加包', value: 'addon' },
+          { label: '融合套餐', value: 'fusion' },
+          { label: '促销商品', value: 'promo' },
+        ],
+      }),
       withSrc({
         fieldCode: 'hasContract', fieldName: '是否有合约', fieldType: 'select', required: false, value: d.hasContract || '0',
         options: [
           { label: '无合约', value: '0' },
           { label: '有合约', value: '1' },
-        ],
-      }),
-      withSrc({ fieldCode: 'contractMonths', fieldName: '协议期(月)', fieldType: 'number', required: false, value: d.contractMonths }),
-      withSrc({ fieldCode: 'discountPercent', fieldName: '优惠折扣%', fieldType: 'number', required: false, value: d.discountPercent }),
-      withSrc({
-        fieldCode: 'repeatable', fieldName: '可重复订购', fieldType: 'select', required: false, value: d.repeatable || 'false',
-        options: [
-          { label: '否', value: 'false' },
-          { label: '是', value: 'true' },
         ],
       }),
       withSrc({ fieldCode: 'basedOnTemplate', fieldName: '基于模板', fieldType: 'input', required: false, value: d.basedOnTemplate || '' }),

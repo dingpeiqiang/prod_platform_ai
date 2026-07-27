@@ -5,6 +5,7 @@ import com.sitech.prodai.intent.IntentContext;
 import com.sitech.prodai.intent.SseStreamSupport;
 import com.sitech.prodai.intent.SseUtils;
 import com.sitech.prodai.service.OntologyService;
+import com.sitech.prodai.service.ProductOntologyService;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
@@ -12,14 +13,18 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
+/**
+ * 市场洞察：优先 ops 事实图（与归因/稽核同源），RDF 空库时不再误报「暂无匹配」。
+ */
 @Component
 public class ProductOpsQueryHandler implements BaseIntentHandler {
 
+    private final ProductOntologyService productOntologyService;
     private final OntologyService ontologyService;
 
-    public ProductOpsQueryHandler(OntologyService ontologyService) {
+    public ProductOpsQueryHandler(ProductOntologyService productOntologyService, OntologyService ontologyService) {
+        this.productOntologyService = productOntologyService;
         this.ontologyService = ontologyService;
     }
 
@@ -36,7 +41,7 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
 
         List<Map<String, Object>> prelude = List.of(
                 SseUtils.thinkingRich(
-                        "正在检索本体事实...",
+                        "正在检索在售商品与增长/风险指标...",
                         Map.of(
                                 "step", 5,
                                 "totalSteps", 6,
@@ -49,9 +54,32 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
 
         return SseStreamSupport.deferWork(
                 prelude,
-                () -> ontologyService.nlDiscoverAndRetrieve(question, 20),
+                () -> retrieveMarketInsight(question),
                 result -> buildAfterEvents(ctx, question, result)
         );
+    }
+
+    /**
+     * 主路径：ops 图谱；若无命中再尝试 RDF NL（兼容仍灌有 rdf_seed 的环境）。
+     */
+    private Map<String, Object> retrieveMarketInsight(String question) {
+        Map<String, Object> ops = productOntologyService.marketInsight(question, 20);
+        List<Map<String, Object>> opsRows = toMapList(ops.get("raw_results"));
+        if (!opsRows.isEmpty()) {
+            return ops;
+        }
+
+        Map<String, Object> rdf = ontologyService.nlDiscoverAndRetrieve(question, 20);
+        List<Map<String, Object>> rdfRows = toMapList(rdf.get("raw_results"));
+        if (!rdfRows.isEmpty()) {
+            return rdf;
+        }
+
+        // 两边皆空：保留 ops 侧话术与 discovery_method，便于前端提示同源数据源
+        if (ops.get("nl_answer") != null) {
+            return ops;
+        }
+        return rdf;
     }
 
     @SuppressWarnings("unchecked")
@@ -62,15 +90,12 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
         if (result.get("raw_results") instanceof List<?> list) {
             results = list.stream().filter(Map.class::isInstance).map(e -> (Map<String, Object>) e).toList();
         }
-        String answerText = formatAnswer(String.valueOf(result.getOrDefault("nl_answer", "")), results);
+        Map<String, Object> trendSummary = buildTrendSummary(results);
+        String answerText = formatAnswer(String.valueOf(result.getOrDefault("nl_answer", "")), results, trendSummary);
         String discoveryMethod = String.valueOf(result.getOrDefault("discovery_method", "unknown"));
 
-        List<String> columns = new ArrayList<>();
-        if (!results.isEmpty()) {
-            for (String key : results.get(0).keySet()) {
-                if (!key.startsWith("_")) columns.add(key);
-            }
-        }
+        // 面板展示列：业务字段优先，避免 product/entity/uri 等内部 ID 占满前几列
+        List<String> columns = buildDisplayColumns(results);
 
         Map<String, Object> intentData = new LinkedHashMap<>();
         intentData.put("question", question);
@@ -80,6 +105,7 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
         intentData.put("columns", columns);
         intentData.put("discoveryMethod", discoveryMethod);
         intentData.put("graphData", buildGraphData(results));
+        intentData.put("trendSummary", trendSummary);
 
         Map<String, Object> donePayload = new LinkedHashMap<>();
         donePayload.put("intentType", getIntentType());
@@ -91,11 +117,18 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
         donePayload.put("columns", columns);
         donePayload.put("discoveryMethod", discoveryMethod);
         donePayload.put("graphData", buildGraphData(results));
+        donePayload.put("trendSummary", trendSummary);
+
+        String methodLabel = switch (discoveryMethod) {
+            case "ops_graph" -> "运营事实图";
+            case "llm" -> "LLM 实体发现";
+            case "keyword_fallback" -> "关键词匹配";
+            default -> discoveryMethod;
+        };
 
         List<Map<String, Object>> events = new ArrayList<>();
         events.add(SseUtils.thinkingRich(
-                "检索完成（" + ("llm".equals(discoveryMethod) ? "LLM 实体发现" : "关键词匹配") + "），共 "
-                        + results.size() + " 条",
+                "检索完成（" + methodLabel + "），共 " + results.size() + " 条",
                 Map.of(
                         "step", 6,
                         "totalSteps", 6,
@@ -103,7 +136,7 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
                         "resultCount", results.size()
                 ),
                 0,
-                result.get("sparql") != null ? "SPARQL: " + truncateStr(String.valueOf(result.get("sparql")), 150) : null
+                result.get("sparql") != null ? "来源: " + truncateStr(String.valueOf(result.get("sparql")), 150) : null
         ));
         events.add(SseUtils.intentEvent(getIntentType(), "query", intentData, false));
         events.addAll(SseStreamSupport.chunkedTextEvents(answerText));
@@ -112,41 +145,107 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
         return events;
     }
 
-    private String formatAnswer(String summary, List<Map<String, Object>> results) {
+    /**
+     * 正文只给短摘要；明细交给「市场洞察结果」面板，避免 key=value 列表与表格重复。
+     */
+    private String formatAnswer(String summary, List<Map<String, Object>> results, Map<String, Object> trend) {
         StringBuilder sb = new StringBuilder();
-        sb.append(summary == null || summary.isBlank() ? "查询完成" : summary);
-        sb.append("\n共 ").append(results.size()).append(" 条结果。");
+        sb.append(summary == null || summary.isBlank() ? "查询完成" : summary.trim());
         if (results.isEmpty()) {
-            sb.append("\n（本体库暂无匹配数据，可先导入 TTL 或换个问法）");
+            sb.append("\n当前事实图暂无匹配在售/风险商品，可换个品类关键词或先同步 ops-graph。");
             return sb.toString();
         }
-        int limit = Math.min(results.size(), 10);
-        for (int i = 0; i < limit; i++) {
-            sb.append("\n").append(i + 1).append(". ").append(summarizeRow(results.get(i)));
-        }
-        if (results.size() > limit) {
-            sb.append("\n… 其余 ").append(results.size() - limit).append(" 条见下方结果面板");
+        sb.append("\n共 ").append(results.size()).append(" 条，详见下方市场洞察结果。");
+        Object avg = trend.get("avgGrowth");
+        Object neg = trend.get("negativeCount");
+        Object zero = trend.get("zeroFeeCount");
+        if (avg instanceof Number n) {
+            sb.append("\n平均增长 ").append(String.format("%.1f%%", n.doubleValue() * 100));
+            if (neg instanceof Number negN && negN.intValue() > 0) {
+                sb.append("，负增长 ").append(negN.intValue()).append(" 个");
+            }
+            if (zero instanceof Number z && z.intValue() > 0) {
+                sb.append("，零资费 ").append(z.intValue()).append(" 个");
+            }
+            sb.append("。");
         }
         return sb.toString();
     }
 
-    private String summarizeRow(Map<String, Object> row) {
-        List<String> parts = new ArrayList<>();
-        for (String key : List.of("name", "productName", "status", "growth", "revenueGrowth",
-                "users", "newUserMonth", "isZeroFee", "product", "entity", "_bucket")) {
-            Object val = row.get(key);
-            if (val != null && !String.valueOf(val).isBlank()) {
-                parts.add(key + "=" + val);
+    private List<String> buildDisplayColumns(List<Map<String, Object>> results) {
+        if (results.isEmpty()) return List.of();
+        Map<String, Object> sample = results.get(0);
+        List<String> preferred = List.of("name", "status", "growth", "users", "isZeroFee", "_bucket");
+        List<String> columns = new ArrayList<>();
+        for (String key : preferred) {
+            if (hasDisplayValue(sample, key) || results.stream().anyMatch(r -> hasDisplayValue(r, key))) {
+                columns.add(key);
             }
         }
-        if (parts.isEmpty()) {
-            return row.entrySet().stream()
-                    .filter(e -> e.getValue() != null)
-                    .limit(4)
-                    .map(e -> e.getKey() + "=" + e.getValue())
-                    .collect(Collectors.joining(", "));
+        if (columns.isEmpty()) {
+            for (String key : sample.keySet()) {
+                if (!key.startsWith("_") && !List.of("product", "entity", "uri", "productName",
+                        "revenueGrowth", "newUserMonth").contains(key)) {
+                    columns.add(key);
+                }
+            }
         }
-        return String.join(", ", parts);
+        return columns;
+    }
+
+    private boolean hasDisplayValue(Map<String, Object> row, String key) {
+        Object val = row.get(key);
+        if (val == null) return false;
+        String s = String.valueOf(val).trim();
+        return !s.isEmpty() && !"null".equalsIgnoreCase(s);
+    }
+
+    private Map<String, Object> buildTrendSummary(List<Map<String, Object>> results) {
+        List<Double> growths = new ArrayList<>();
+        int zeroFee = 0;
+        for (Map<String, Object> row : results) {
+            Double g = parseGrowth(row.get("growth"));
+            if (g == null) g = parseGrowth(row.get("revenueGrowth"));
+            if (g != null) growths.add(g);
+            Object z = row.get("isZeroFee");
+            if (Boolean.TRUE.equals(z) || "true".equalsIgnoreCase(String.valueOf(z))
+                    || "1".equals(String.valueOf(z)) || "是".equals(String.valueOf(z))) {
+                zeroFee++;
+            }
+        }
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("sampleCount", growths.size());
+        summary.put("zeroFeeCount", zeroFee);
+        if (growths.isEmpty()) {
+            summary.put("avgGrowth", null);
+            summary.put("negativeCount", 0);
+            return summary;
+        }
+        double sum = 0;
+        int neg = 0;
+        for (Double g : growths) {
+            sum += g;
+            if (g < 0) neg++;
+        }
+        summary.put("avgGrowth", sum / growths.size());
+        summary.put("negativeCount", neg);
+        return summary;
+    }
+
+    private Double parseGrowth(Object raw) {
+        if (raw == null) return null;
+        if (raw instanceof Number n) {
+            double v = n.doubleValue();
+            return Math.abs(v) > 1 ? v / 100.0 : v;
+        }
+        try {
+            String s = String.valueOf(raw).replace("%", "").trim();
+            if (s.isEmpty()) return null;
+            double v = Double.parseDouble(s);
+            return Math.abs(v) > 1 ? v / 100.0 : v;
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private Map<String, Object> buildGraphData(List<Map<String, Object>> results) {
@@ -186,6 +285,19 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
         graphData.put("nodes", nodes);
         graphData.put("edges", edges);
         return graphData;
+    }
+
+    private List<Map<String, Object>> toMapList(Object value) {
+        if (!(value instanceof List<?> list)) return List.of();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> map) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                map.forEach((k, v) -> row.put(String.valueOf(k), v));
+                out.add(row);
+            }
+        }
+        return out;
     }
 
     private String truncateStr(String text, int maxLen) {

@@ -1,5 +1,6 @@
 package com.sitech.prodai.config;
 
+import com.sitech.prodai.service.ops.OpsGraphSchemaValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
@@ -11,8 +12,8 @@ import java.util.Arrays;
 import java.util.Locale;
 
 /**
- * 数据护栏：prod profile 禁止 demo-enabled；非演示禁止加载 mock_graph 路径。
- * 业务逻辑与演示/生产无关——仅 graph-path / data-source 不同。
+ * 数据护栏：prod profile 禁止 demo-enabled；非演示禁止加载 mock_graph 路径；
+ * data-source=http 时必须配置 product-center-base-url；生产禁止指向本机 product-center。
  */
 @Component
 public class OntologyDemoGuard implements ApplicationRunner {
@@ -35,6 +36,13 @@ public class OntologyDemoGuard implements ApplicationRunner {
         String graphPath = properties.getOntology().getGraphPath() == null
                 ? ""
                 : properties.getOntology().getGraphPath().toLowerCase(Locale.ROOT);
+        String opsGraphPath = properties.getOntology().getOpsGraphPath() == null
+                ? ""
+                : properties.getOntology().getOpsGraphPath().toLowerCase(Locale.ROOT);
+        String dataSource = properties.getOntology().getDataSource() == null
+                ? "classpath"
+                : properties.getOntology().getDataSource().trim().toLowerCase(Locale.ROOT);
+        String baseUrl = properties.getOntology().getProductCenterBaseUrl();
 
         if (prodProfile && demo) {
             throw new IllegalStateException(
@@ -45,9 +53,33 @@ public class OntologyDemoGuard implements ApplicationRunner {
                     "Refuse mock_graph when prodai.ontology.demo-enabled=false. "
                             + "Use a real graph-path or enable demo (dev/demo profile).");
         }
+        if (!demo && opsGraphPath.contains("mock_graph")) {
+            throw new IllegalStateException(
+                    "Refuse ops-graph-path mock_graph when prodai.ontology.demo-enabled=false. "
+                            + "Publish a real export for GET /api/v1/product-center/ops-graph.");
+        }
+        if ("http".equals(dataSource) && (baseUrl == null || baseUrl.isBlank())) {
+            throw new IllegalStateException(
+                    "prodai.ontology.data-source=http requires prodai.ontology.product-center-base-url "
+                            + "(GET {base}/ops-graph returns " + OpsGraphSchemaValidator.CONTRACT_VERSION + " JSON).");
+        }
+        if ("http".equals(dataSource) && OpsGraphSchemaValidator.looksLikeLocalProductCenter(baseUrl)) {
+            if (prodProfile) {
+                throw new IllegalStateException(
+                        "prodai.ontology.product-center-base-url must not point to local product-center in prod. "
+                                + "Use external BOSS/CRM ops-graph URL (contract "
+                                + OpsGraphSchemaValidator.CONTRACT_VERSION + ").");
+            }
+            log.warn("[OntologyDemoGuard] http data-source points to local product-center ({}) — "
+                            + "allowed for integration test only; production must use external URL",
+                    baseUrl);
+        }
         if (demo) {
-            log.warn("[OntologyDemoGuard] demo-enabled=true — mock/fixture paths are active (profiles={})",
-                    Arrays.toString(environment.getActiveProfiles()));
+            log.warn("[OntologyDemoGuard] demo-enabled=true — mock/fixture paths are active (profiles={}, dataSource={})",
+                    Arrays.toString(environment.getActiveProfiles()), dataSource);
+        } else {
+            log.info("[OntologyDemoGuard] production-safe ontology config: dataSource={}, graphPath={}, contract={}",
+                    dataSource, properties.getOntology().getGraphPath(), OpsGraphSchemaValidator.CONTRACT_VERSION);
         }
     }
 }

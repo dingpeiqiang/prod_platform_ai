@@ -1,12 +1,10 @@
-/**
- * 产品配置 / 本体 MVP 状态管理
- * 对接后端 ontology-mvp 推理 API，兼容 DynamicForm formCard
+﻿/**
+ * 产品配置 / 产商品本体 状态管理
+ * 对接后端 product-ontology 推理 API，兼容 DynamicForm formCard
  */
 import { ref, reactive, computed } from 'vue'
 import { genId } from '../utils/chatUtils.js'
 import {
-  mockProducts,
-  scene2Products,
   createEmptyFormData,
   createProductFormSchema,
   createOfferingFormSchema,
@@ -19,13 +17,23 @@ import {
   batchFromUpload,
   discoverConfigs,
   copyAsDraft,
-  publishConfigDraft,
+  saveConfigDraft,
+  listConfigDrafts,
+  getConfigDraft,
+  deleteConfigDraft,
+  submitConfigDraft,
+  compareConfigSchemes,
   getConfigTrace,
   explainConfig,
   analyzeRootCause,
   auditRisks,
   updateRiskRules,
-} from '../services/ontologyMvpApi.js'
+  listOpsAlerts,
+  listWorkOrders,
+  createWorkOrder,
+  evaluateHypothetical,
+  getOpsRules,
+} from '../services/productOntologyApi.js'
 import {
   nextStepHints,
   buildOntologyChain,
@@ -36,7 +44,7 @@ import {
   buildRootCauseOntologyPreview,
   buildRiskAuditOntologyChain,
   buildRiskAuditOntologyPreview,
-} from '../services/ontologyMvpLocal.js'
+} from '../services/productOntologyLocal.js'
 import { classCn, formatRule, formatWeight } from '../utils/ontologyLabels.js'
 
 export function useProductConfig() {
@@ -54,8 +62,15 @@ export function useProductConfig() {
   const showBatchPanel = ref(false)
   const showRootCausePanel = ref(false)
   const showRiskAuditPanel = ref(false)
+  const showMonitorPanel = ref(false)
+  const showRulesPanel = ref(false)
+  const opsRulesCatalog = ref(null)
+  const rulesLoading = ref(false)
   const rootCauseResult = ref(null)
   const riskAuditResult = ref(null)
+  const monitorResult = ref(null)
+  const monitorWorkOrders = ref([])
+  const monitorLoading = ref(false)
   const activeRootCauseRank = ref(1)
   const rootCauseOntologyChain = ref(null)
   /** 配置审计 trace（智查/复制/入库） */
@@ -63,10 +78,161 @@ export function useProductConfig() {
   const configTraceSteps = ref([])
   const configExplainText = ref('')
   const showConfigTracePanel = ref(false)
+  /** 会话绑定，用于草稿持久化 */
+  const boundSessionId = ref(null)
+  const boundUserId = ref('anonymous')
+  const compareResult = ref(null)
+  const showComparePanel = ref(false)
 
   const currentProduct = computed(() =>
     products.value.find((p) => p.id === currentProductId.value) ?? null,
   )
+
+  function setSessionContext({ sessionId = null, userId = 'anonymous' } = {}) {
+    if (sessionId) boundSessionId.value = sessionId
+    if (userId) boundUserId.value = userId
+  }
+
+  async function persistCurrentDraft(sessionId = boundSessionId.value) {
+    const product = currentProduct.value
+    if (!product?.ontologyDraft && !product?.data) return null
+    try {
+      const resp = await saveConfigDraft({
+        draft: product.ontologyDraft || product.data || {},
+        draftId: product.draftId || null,
+        clientId: product.id,
+        sessionId: sessionId || boundSessionId.value,
+        userId: boundUserId.value,
+        compliancePass: !!product.compliancePass,
+      })
+      if (resp?.success === false) {
+        throw new Error(resp.message || '保存失败')
+      }
+      if (resp?.draftId != null) product.draftId = resp.draftId
+      if (resp?.clientId) product.id = product.id || resp.clientId
+      product.persisted = true
+      return resp
+    } catch (e) {
+      console.warn('[useProductConfig] persist draft failed:', e.message || e)
+      return null
+    }
+  }
+
+  async function loadPersistedDrafts(sessionId = boundSessionId.value) {
+    if (!sessionId) return []
+    try {
+      const resp = await listConfigDrafts({ sessionId, userId: boundUserId.value })
+      const items = resp?.items || []
+      if (!items.length) return []
+      const restored = []
+      for (const item of items) {
+        if (!item.draftId) continue
+        const full = await getConfigDraft(item.draftId)
+        const draft = full?.draft || item.draft || {}
+        const product = {
+          id: item.clientId || `P${item.draftId}`,
+          draftId: item.draftId,
+          name: item.offeringName || draft.offeringName || '配置草稿',
+          desc: `月费${item.monthlyFee || draft.monthlyFee || '-'} | ${item.status || 'draft'}`,
+          status: item.status === 'filing' || item.status === 'submitted' ? 'submitted' : 'draft',
+          auditStatus: item.compliancePass ? 'pass' : 'pending',
+          compliancePass: !!item.compliancePass,
+          issues: [],
+          ontologyDraft: draft,
+          data: draftToFormData(draft),
+          offeringId: item.offeringId,
+          workOrderId: item.workOrderId,
+          persisted: true,
+        }
+        restored.push(product)
+      }
+      const byId = new Map(products.value.map((p) => [p.id, p]))
+      for (const p of restored) {
+        byId.set(p.id, { ...(byId.get(p.id) || {}), ...p })
+      }
+      products.value = Array.from(byId.values())
+      if (!currentProductId.value && products.value.length) {
+        currentProductId.value = products.value[0].id
+        syncFormFromProduct(products.value[0])
+      }
+      return restored
+    } catch (e) {
+      console.warn('[useProductConfig] load drafts failed:', e.message || e)
+      return []
+    }
+  }
+
+  async function submitCurrentDraft(sessionId = boundSessionId.value) {
+    saveDraftLocal()
+    const product = currentProduct.value
+    if (!product) {
+      return { success: false, message: '没有可提交的配置' }
+    }
+    const resp = await submitConfigDraft({
+      draft: product.ontologyDraft || product.data || {},
+      draftId: product.draftId || null,
+      clientId: product.id,
+      sessionId: sessionId || boundSessionId.value,
+      userId: boundUserId.value,
+    })
+    if (resp?.success === false) {
+      return resp
+    }
+    product.status = 'submitted'
+    product.auditStatus = 'pass'
+    product.compliancePass = true
+    product.draftId = resp.draftId || product.draftId
+    product.offeringId = resp.offeringId
+    product.workOrderId = resp.workOrder?.workOrderId || resp.workOrder?.work_order_id
+    lastConfigTraceId.value = resp.trace_id || lastConfigTraceId.value
+    return resp
+  }
+
+  async function runCompareSchemes(text = '') {
+    const draft = ontologyDraft.value || currentProduct.value?.ontologyDraft || null
+    try {
+      const result = await compareConfigSchemes({ draft, text: text || null })
+      if (result?.success === false) {
+        throw new Error(result.message || '对比失败')
+      }
+      compareResult.value = result
+      showComparePanel.value = true
+      lastConfigTraceId.value = result.trace_id || lastConfigTraceId.value
+      const lines = (result.comparisons || []).map(
+        (c) =>
+          `- **${c.label}**：月费 ${c.monthlyFee} · 合规=${c.compliancePass ? '通过' : '未通过'} · ` +
+          `预估年营收 ${c.estimatedAnnualRevenue} · 转化率 ${c.conversionRate}`,
+      )
+      const rec = result.recommended || {}
+      return {
+        thinkingSteps: [
+          { type: 'llm', content: '识别多方案对比意图（定价/立项）' },
+          { type: 'ontology', title: '方案评估', content: `对比 ${result.comparisons?.length || 0} 套方案并执行合规` },
+          { type: 'llm', content: '生成可解释推荐结论' },
+        ],
+        content:
+          `### 多方案对比结果\n\n${lines.join('\n')}\n\n` +
+          (rec.label
+            ? `**推荐**：${rec.label}` +
+              (rec.compliancePass ? '（合规通过且预期收益更优）' : '（需先修正合规项）')
+            : '') +
+          `\n\n${result.explanation || ''}` +
+          (result.trace_id ? `\n\n审计 trace：\`${result.trace_id}\`` : ''),
+        formCard: null,
+        compareResult: result,
+        showComparePanel: true,
+        nextSteps: rec.compliancePass
+          ? ['按推荐方案更新当前草稿', '校验当前配置是否符合在架规则']
+          : ['修正合规项后再对比', '给家庭用户做一个融合套餐，月费158'],
+      }
+    } catch (e) {
+      return {
+        thinkingSteps: ['多方案对比调用失败'],
+        content: `多方案对比失败：${e.message || '服务异常'}`,
+        formCard: null,
+      }
+    }
+  }
 
   function syncFormFromProduct(product) {
     const data = product?.data || createEmptyFormData()
@@ -160,8 +326,14 @@ export function useProductConfig() {
   function detectScenario(text) {
     if (!text) return null
     const t = text.toLowerCase()
+    if (/运营监控|告警列表|查看告警|监控看板|异动告警/.test(text)) return 'ops-monitor'
     if (/根因|异动|离网|累计收入|归因|下滑原因|收入下滑/.test(text)) return 'root-cause'
     if (/稽核|零元资费|高风险|优胜劣汰|筛查.*在架|风险商品|下架建议/.test(text)) return 'risk-audit'
+    if (/立项|上线门槛|新品.*套餐|能否通过审核|PS_PRODUCT_ONLINE/.test(text)) return 'online-check'
+    if (/在售|增长趋势|市场洞察|竞品|增长指标/.test(text)) return 'market-insight'
+    if (/方案对比|多方案|对比.*元|资费对比|立项对比|compare_state|哪个方案/.test(text)) {
+      return 'compare'
+    }
     // 智检·合规校验：按套餐信息校验（已入库/未入库），须在 chat-generate 之前
     if (
       /合规校验|智检|在架规则|是否可上架|校验当前配置|校验.*是否符合|合规检查/.test(text) ||
@@ -169,7 +341,7 @@ export function useProductConfig() {
     ) {
       return 'compliance'
     }
-    if (/确认.*入库|入库通过|确认通过项/.test(text)) return 'confirm-batch'
+    if (/确认.*入库|入库通过|确认通过项|提交备案|发起备案/.test(text)) return 'confirm-batch'
     if (/审计追溯|查看审计|查看校验依据|配置追溯|get_trace/.test(text)) return 'config-trace'
     // 「查一下」是首页/智查示例常用说法，需在 chat-generate 之前命中
     if (
@@ -219,13 +391,11 @@ export function useProductConfig() {
         traceId: result.trace_id,
       }
     } catch (e) {
-      // 降级：本地 mock，保证演示不中断
-      thinkingSteps.push(`本体智查不可用，降级本地样本：${e.message || e}`)
+      thinkingSteps.push(`本体智查失败：${e.message || e}`)
       return {
         thinkingSteps,
-        content:
-          `本体智查暂不可用（${e.message || '服务异常'}），已展示本地样本。可点击「复制配置」开稿。`,
-        queryResults: mockProducts,
+        content: `本体智查失败：${e.message || '服务异常'}。请确认后端 /config/discover 可用后重试。`,
+        queryResults: [],
         formCard: null,
       }
     }
@@ -233,18 +403,22 @@ export function useProductConfig() {
 
   async function prepareProduct(indexOrItem) {
     let offeringId = null
-    let fallback = null
+    let label = null
     if (typeof indexOrItem === 'number') {
-      fallback = mockProducts[indexOrItem]
-      offeringId = fallback?.code || fallback?.id
-    } else if (indexOrItem && typeof indexOrItem === 'object') {
-      offeringId = indexOrItem.offeringId || indexOrItem.offering_id || indexOrItem.code || indexOrItem.id
-      fallback = indexOrItem
+      return {
+        thinkingSteps: ['复制配置需要本体方案编码'],
+        content: '请从智查结果卡片点击「复制配置」，或提供 offeringId。',
+        formCard: null,
+      }
     }
-    if (!offeringId && !fallback) return null
+    if (indexOrItem && typeof indexOrItem === 'object') {
+      offeringId = indexOrItem.offeringId || indexOrItem.offering_id || indexOrItem.code || indexOrItem.id
+      label = indexOrItem.name || indexOrItem.offeringName || indexOrItem.offering_name
+    }
+    if (!offeringId) return null
 
     try {
-      const result = await copyAsDraft(offeringId, fallback?.name || null)
+      const result = await copyAsDraft(offeringId, label || null)
       if (result?.success === false) {
         throw new Error(result.message || '复制失败')
       }
@@ -252,7 +426,7 @@ export function useProductConfig() {
       lastConfigTraceId.value = result.trace_id || null
       const newProduct = {
         id: 'P' + Date.now(),
-        name: draft.offeringName || fallback?.name || '配置草稿',
+        name: draft.offeringName || label || '配置草稿',
         code: 'NEW' + Date.now(),
         desc: `基于 ${result.source_offering_name || offeringId} 复制`,
         template: draft.basedOnTemplate,
@@ -272,6 +446,7 @@ export function useProductConfig() {
       showAuditPanel.value = true
       auditResults.value = mapIssuesToAuditResults(result.issues, result.compliancePass)
       auditStatus.value = newProduct.auditStatus
+      await persistCurrentDraft(null)
       const passLabel = result.compliancePass ? '✅ 合规通过' : '⚠️ 存在待处理项'
       const diffHint =
         result.diffs?.length > 0
@@ -285,6 +460,7 @@ export function useProductConfig() {
           `选中历史方案「${result.source_offering_name || offeringId}」`,
           'retrieve_facts → 深拷贝生成草稿',
           'evaluate_policy 执行 R-C* 合规校验',
+          '草稿已持久化至 /config/drafts',
           `结果：${passLabel}`,
         ],
         content:
@@ -296,25 +472,10 @@ export function useProductConfig() {
         nextSteps: ['校验当前配置是否符合在架规则', '查看审计追溯'],
       }
     } catch (e) {
-      if (!fallback?.data && !fallback?.name) return null
-      const newProduct = {
-        id: 'P' + Date.now(),
-        name: fallback.name,
-        code: 'NEW' + Date.now(),
-        desc: fallback.desc,
-        template: fallback.template,
-        status: 'draft',
-        auditStatus: 'pending',
-        data: JSON.parse(JSON.stringify(fallback.data || {})),
-      }
-      const formCard = addProductAndActivate(newProduct)
       return {
-        thinkingSteps: [
-          `后端复制失败，降级本地拷贝：${e.message || e}`,
-          '打开右侧配置画布供微调',
-        ],
-        content: `已将「${fallback.name}」复制为新草稿（本地降级）。可继续修改后稽核提交。`,
-        formCard,
+        thinkingSteps: [`复制配置失败：${e.message || e}`],
+        content: `复制配置失败：${e.message || '本体服务不可用'}。请确认历史方案编码有效。`,
+        formCard: null,
       }
     }
   }
@@ -491,19 +652,25 @@ export function useProductConfig() {
     batchItems.value = mapped
     showBatchPanel.value = true
 
-    const lines = mapped.map(
-      (it) =>
+    const lines = mapped.map((it) => {
+      const cat = it.draft?.categoryName || it.categoryName || it.draft?.messageRootKey || ''
+      const fee = it.draft?.monthlyFee ?? it.draft?.fixedFeeAmount
+      return (
         `- **${it.draft?.offeringName || '未命名'}** → ${it.status}` +
+        (cat ? ` · 报文「${cat}」` : '') +
+        (fee != null && fee !== '' ? ` · 月费${fee}` : '') +
         (it.issues?.length
           ? `（${it.issues.map((i) => `${i.ruleId}`).join('、')}）`
           : '') +
-        (it.sourceExcerpt ? `\n  > ${it.sourceExcerpt}` : ''),
-    )
+        (it.sourceExcerpt ? `\n  > ${it.sourceExcerpt}` : '')
+      )
+    })
     const confirmable = batch.confirmableDrafts || []
+    const scenarioHint = batch.scenario || mapped[0]?.draft?.bizScenario || '家庭融合'
     const content =
-      `文档已映射完成。共 **${batch.total}** 条草稿：通过 ${batch.passedCount}，待修正 ${batch.pendingCount}。\n\n` +
+      `文档已映射完成（场景 **${scenarioHint}**）。共 **${batch.total}** 条草稿：通过 ${batch.passedCount}，待修正 ${batch.pendingCount}。\n\n` +
       `${lines.join('\n')}\n\n` +
-      '下方打开「智读·文件配置映射清单」：可对照原文 / 映射字段 / 场景模板，对待修正项一键修正并重跑合规。\n' +
+      '下方打开「智读·文件配置映射清单」：可对照原文 / 映射字段 / 场景报文，对待修正项一键修正并重跑合规。\n' +
       (confirmable.length
         ? `当前可入库：${confirmable.map((d) => d.offeringName).join('、')}。`
         : '当前暂无通过项，请先修正后再入库。')
@@ -513,9 +680,9 @@ export function useProductConfig() {
       thinkingSteps: [
         {
           type: 'llm',
-          content: `接收文档「${fileName}」（${(fileSize / 1024).toFixed(1)} KB），准备按配置本体做段落抽取`,
+          content: `接收文档「${fileName}」（${(fileSize / 1024).toFixed(1)} KB），识别业务场景「${scenarioHint}」`,
         },
-        { type: 'llm', content: '大模型分段理解套餐段落（名称 / 月费 / 要素 / 客群 / 渠道）' },
+        { type: 'llm', content: '按家庭融合方案抽取套餐段落（名称 / 月费 / 要素 / 客群 / 渠道）' },
         {
           type: 'ontology',
           title: '本体推理',
@@ -525,7 +692,7 @@ export function useProductConfig() {
         },
         {
           type: 'llm',
-          content: `整理清单话术：通过 ${batch.passedCount}，待修正 ${batch.pendingCount}`,
+          content: `整理清单话术：通过 ${batch.passedCount}，待修正 ${batch.pendingCount}；报文按 familyBasePrc / familyAddPrc 投影`,
         },
       ],
       content,
@@ -801,19 +968,21 @@ export function useProductConfig() {
     ]
 
     ontologyDraft.value = draft
-    const name = draft.offeringName || '商品配置草稿'
+    const name = draft.offerName || draft.offeringName || '配置方案草稿'
+    const fee = draft.fixedFeeAmount ?? draft.monthlyFee
     const product = {
       id: currentProductId.value && currentProduct.value?.ontologyDraft
         ? currentProductId.value
         : 'P' + Date.now(),
       name,
-      desc: `月费${draft.monthlyFee ?? '-'} | ${draft.bizScenario || ''} | ${draft.channelScope || ''}`,
+      desc: `固费${fee ?? '-'} | ${draft.categoryName || draft.messageRootKey || ''} | ${draft.bizScenario || ''} | ${draft.channelScope || ''}`,
       status: 'draft',
       auditStatus: result.compliancePass ? 'pass' : 'pending',
       compliancePass: result.compliancePass,
       issues,
       inferredFields: inferred,
       ontologyDraft: draft,
+      messagePreview: result.messagePreview || null,
       data: draftToFormData(draft),
     }
 
@@ -826,6 +995,7 @@ export function useProductConfig() {
     currentProductId.value = product.id
     syncFormFromProduct(product)
     const formCard = buildProductFormCard(product)
+    persistCurrentDraft()
 
     return {
       thinkingSteps,
@@ -839,10 +1009,13 @@ export function useProductConfig() {
   function summarizeSlots(slots) {
     const parts = []
     if (slots.bizScenario) parts.push(`场景=${slots.bizScenario}`)
-    if (slots.monthlyFee !== undefined && slots.monthlyFee !== '') parts.push(`月费=${slots.monthlyFee}`)
+    if (slots.categoryCode) parts.push(`品类=${slots.categoryCode}`)
+    if (slots.messageRootKey) parts.push(`报文根键=${slots.messageRootKey}`)
+    const fee = slots.fixedFeeAmount ?? slots.monthlyFee
+    if (fee !== undefined && fee !== '') parts.push(`固费=${fee}`)
     if (slots.includeBroadband) parts.push(`宽带=${slots.includeBroadband}`)
     if (slots.channelScope) parts.push(`渠道=${slots.channelScope}`)
-    if (slots.offeringName) parts.push(`名称=${slots.offeringName}`)
+    if (slots.offerName || slots.offeringName) parts.push(`名称=${slots.offerName || slots.offeringName}`)
     if (slots.bindExistingMainPkg) parts.push(`绑定在架=${slots.bindExistingMainPkg === 'OF-HF-128' ? '家庭融合畅享128' : slots.bindExistingMainPkg}`)
     if (slots.clearBindExisting) parts.push('解除主套餐绑定')
     return parts.length ? parts.join('，') : '（本轮无明显新槽位，沿用草稿）'
@@ -853,14 +1026,22 @@ export function useProductConfig() {
       includeVoice: '语音',
       includeData: '流量',
       includeBroadband: '宽带',
-      offeringName: '商品名称',
+      offeringName: '资费名称',
+      offerName: '资费名称',
       monthlyFee: '月费',
+      fixedFeeAmount: '固费金额',
+      messageRootKey: '报文根键',
+      categoryCode: '产品品类',
+      categoryName: '品类名称',
       bizScenario: '业务场景',
       targetUser: '目标用户',
       channelScope: '销售渠道',
+      regionScope: '发布地市',
+      workOrderId: '需求工单',
       mutexGroup: '互斥组',
       basedOnTemplate: '配置模板',
       bindExistingMainPkg: '绑定在架主套餐',
+      dependOn: '依赖主资费',
     }
     return map[code] || code
   }
@@ -879,28 +1060,37 @@ export function useProductConfig() {
     const inferred = result.inferredFields || []
     const issues = result.issues || []
     const lines = []
+    const name = draft.offerName || draft.offeringName
+    const fee = draft.fixedFeeAmount ?? draft.monthlyFee
 
-    if (draft.offeringName) {
-      lines.push(`已更新商品配置草稿 **「${draft.offeringName}」**。`)
+    if (name) {
+      lines.push(`已更新配置方案草稿 **「${name}」**。`)
     } else {
-      lines.push('已根据您的描述起草商品配置。')
+      lines.push('已根据您的描述起草配置方案。')
     }
 
-    if (draft.bizScenario || draft.monthlyFee != null) {
+    if (draft.bizScenario || fee != null || draft.messageRootKey) {
       const bits = []
+      if (draft.categoryName || draft.messageRootKey) {
+        bits.push(`品类「${draft.categoryName || draft.messageRootKey}」`)
+      }
       if (draft.bizScenario) bits.push(`场景「${draft.bizScenario}」`)
       if (draft.targetUser) bits.push(`客群「${draft.targetUser}」`)
-      if (draft.monthlyFee != null && draft.monthlyFee !== '') bits.push(`月费 ${draft.monthlyFee} 元`)
+      if (fee != null && fee !== '') bits.push(`固费 ${fee} 元`)
       if (draft.includeBroadband) bits.push(`宽带 ${draft.includeBroadband}`)
       if (draft.channelScope) bits.push(`渠道「${draft.channelScope}」`)
       lines.push(bits.join(' · ') + '。')
     }
 
+    if (result.messagePreview && draft.messageRootKey) {
+      lines.push(`已按规范生成报文投影根键 **${draft.messageRootKey}**（可在发布时落库）。`)
+    }
+
     const autoFilled = inferred.filter((f) => f.fillSource === 'scenario_default' || f.fillSource === 'template')
     if (autoFilled.length) {
       lines.push(
-        '本体按场景缺省补全了：' +
-          autoFilled.map((f) => `**${f.field}**=${f.value}`).join('、') +
+        '本体按品类/场景缺省补全了：' +
+          autoFilled.map((f) => `**${fieldCn(f.field)}**=${f.value}`).join('、') +
           '（非模型臆造，可在画布查看字段来源）。',
       )
     }
@@ -920,8 +1110,8 @@ export function useProductConfig() {
             others.map((i) => i.message).join('；'),
         )
       }
-      if (issues.some((i) => i.field === 'offeringName')) {
-        lines.push('请直接回复商品名称，例如：就叫家庭融合畅享158')
+      if (issues.some((i) => i.field === 'offeringName' || i.field === 'offerName')) {
+        lines.push('请直接回复资费名称，例如：就叫家庭融合畅享158')
       } else if (high.some((i) => i.ruleId === 'R-C03')) {
         lines.push('如需解除互斥，可回复：那不加128了，就单独上158')
       }
@@ -931,6 +1121,102 @@ export function useProductConfig() {
 
     lines.push('复杂规则由本体判定，大模型不会把未通过说成可提交。')
     return lines.join('\n\n')
+  }
+
+  /** SSE 完成后灌入右侧根因面板（与 REST 同源结果结构） */
+  function applyRootCauseFromSse(root) {
+    if (!root || typeof root !== 'object') return false
+    if (root.success === false) {
+      rootCauseResult.value = null
+      showRootCausePanel.value = false
+      return false
+    }
+    rootCauseResult.value = root
+    const paths = root.paths || []
+    const anomalies = root.anomalies || []
+    if (!paths.length && !anomalies.length) {
+      showRootCausePanel.value = false
+      return true
+    }
+    rootCauseOntologyChain.value = buildRootCauseOntologyChain(root)
+    activeRootCauseRank.value = 1
+    showRootCausePanel.value = true
+    showRiskAuditPanel.value = false
+    showMonitorPanel.value = false
+    showRulesPanel.value = false
+    return true
+  }
+
+  /** SSE 完成后灌入右侧风险稽核面板 */
+  function applyRiskAuditFromSse(result) {
+    if (!result || typeof result !== 'object') return false
+    if (result.success === false) {
+      riskAuditResult.value = null
+      showRiskAuditPanel.value = false
+      return false
+    }
+    riskAuditResult.value = result
+    showRiskAuditPanel.value = true
+    showRootCausePanel.value = false
+    showMonitorPanel.value = false
+    showRulesPanel.value = false
+    return true
+  }
+
+  /** 打开规则运营面板（REST，不走 SSE） */
+  async function openRulesPanel() {
+    showRulesPanel.value = true
+    showMonitorPanel.value = false
+    showRootCausePanel.value = false
+    showRiskAuditPanel.value = false
+    rulesLoading.value = true
+    try {
+      const resp = await getOpsRules()
+      opsRulesCatalog.value = resp?.data || resp
+      return opsRulesCatalog.value
+    } finally {
+      rulesLoading.value = false
+    }
+  }
+
+  function applyRulesCatalog(catalog) {
+    if (catalog && typeof catalog === 'object') {
+      opsRulesCatalog.value = catalog
+    }
+  }
+
+  /** SSE 完成后灌入右侧运营监控面板（与 REST /ops/alerts、/ops/work-orders 同源） */
+  function applyMonitorFromSse(data) {
+    if (!data || typeof data !== 'object') return false
+    if (data.success === false) {
+      monitorResult.value = null
+      showMonitorPanel.value = false
+      return false
+    }
+    const alerts = data.alerts && typeof data.alerts === 'object' ? data.alerts : null
+    const items = Array.isArray(data.alertItems)
+      ? data.alertItems
+      : Array.isArray(alerts?.items)
+        ? alerts.items
+        : []
+    monitorResult.value = {
+      items,
+      total: data.alertCount ?? alerts?.total ?? items.length,
+      generatedAt: data.generatedAt || alerts?.generatedAt || new Date().toISOString(),
+      highPriorityCount: data.highPriorityCount,
+      openWorkOrderCount: data.openWorkOrderCount,
+    }
+    const woItems = Array.isArray(data.workOrderItems)
+      ? data.workOrderItems
+      : Array.isArray(data.workOrders?.items)
+        ? data.workOrders.items
+        : []
+    monitorWorkOrders.value = woItems
+    showMonitorPanel.value = true
+    showRootCausePanel.value = false
+    showRiskAuditPanel.value = false
+    showRulesPanel.value = false
+    return true
   }
 
   async function runRootCauseAnalysis(text = '') {
@@ -979,6 +1265,7 @@ export function useProductConfig() {
       rootCauseResult.value = result
       showRootCausePanel.value = true
       showRiskAuditPanel.value = false
+      showMonitorPanel.value = false
       const chain = buildRootCauseOntologyChain(result)
       rootCauseOntologyChain.value = chain
       activeRootCauseRank.value = 1
@@ -1033,6 +1320,91 @@ export function useProductConfig() {
     }
   }
 
+  /**
+   * 刷新监控面板（REST）。对话主路径已走 SSE product_ops_monitor；
+   * silent=true 时只更新右侧面板，不生成剧本回复。
+   */
+  async function runOpsMonitorFlow(options = {}) {
+    const silent = Boolean(options.silent)
+    monitorLoading.value = true
+    try {
+      const [alertsResp, woResp] = await Promise.all([listOpsAlerts(), listWorkOrders()])
+      const alerts = alertsResp?.items || alertsResp?.data?.items || alertsResp?.alerts || []
+      const pack = alertsResp?.items
+        ? alertsResp
+        : { items: alerts, generatedAt: alertsResp?.generatedAt || new Date().toISOString(), total: alerts.length }
+      monitorResult.value = pack
+      monitorWorkOrders.value = woResp?.items || woResp?.data?.items || []
+      showMonitorPanel.value = true
+      showRootCausePanel.value = false
+      showRiskAuditPanel.value = false
+      showRulesPanel.value = false
+      if (silent) {
+        return { ok: true, pack }
+      }
+      const high = (pack.items || []).filter((a) => a.severity === 'HIGH' || a.type === 'anomaly')
+      const lines = (pack.items || [])
+        .slice(0, 6)
+        .map((a) => `- [${a.tag || a.type}] **${a.offeringName || a.id}**：${a.text}`)
+        .join('\n')
+      return {
+        thinkingSteps: [
+          { type: 'llm', content: '识别意图=运营监控，加载异动告警与处置工单' },
+          { type: 'ontology', title: '告警事实', content: `从 opsGraph 指标异动生成告警 ${pack.total || alerts.length} 条` },
+          { type: 'llm', content: `高优先级 ${high.length} 条，可一键跳转智能归因` },
+        ],
+        content:
+          `### 运营监控告警\n\n` +
+          `共 **${pack.total || alerts.length}** 条告警，其中高优先级约 **${high.length}** 条。\n\n` +
+          `${lines || '（暂无告警）'}\n\n` +
+          '右侧已打开监控面板：选择告警后点击「智能归因」即可下钻。',
+        showMonitorPanel: true,
+        nextSteps: ['智能归因', '打开风险稽核', '刷新告警'],
+      }
+    } catch (e) {
+      return {
+        thinkingSteps: ['告警列表加载失败'],
+        content: `运营监控加载失败：${e.message}`,
+      }
+    } finally {
+      monitorLoading.value = false
+    }
+  }
+
+  async function submitWorkOrder(payload = {}) {
+    const resp = await createWorkOrder(payload)
+    const wo = resp?.workOrder || resp?.data?.workOrder || resp
+    // 刷新工单列表
+    try {
+      const woResp = await listWorkOrders()
+      monitorWorkOrders.value = woResp?.items || woResp?.data?.items || []
+    } catch {
+      /* ignore */
+    }
+    return wo
+  }
+
+  async function runHypotheticalAndOrder({ mode = 'delist', offeringId, changes, autoOrder = false } = {}) {
+    const hypo = await evaluateHypothetical({ mode, offeringId, changes })
+    const data = hypo?.data || hypo
+    if (autoOrder && offeringId) {
+      const wo = await submitWorkOrder({
+        offeringId,
+        source: mode === 'delist' ? 'risk_delist' : 'risk_price',
+        title: undefined,
+        summary: data?.summary || '',
+        actions: [
+          mode === 'delist' ? '启动退市流程并做好用户迁转' : '按推演结果调整资费并复核风险',
+          ...(data?.impacts || []).slice(0, 2).map((i) => i.conclusion).filter(Boolean),
+        ],
+        hypoMode: mode,
+        impacts: data?.impacts,
+      })
+      return { hypo: data, workOrder: wo }
+    }
+    return { hypo: data, workOrder: null }
+  }
+
   async function runRiskAuditFlow(options = {}) {
     try {
       if (options.zeroSalesShelfDays) {
@@ -1042,6 +1414,7 @@ export function useProductConfig() {
       riskAuditResult.value = result
       showRiskAuditPanel.value = true
       showRootCausePanel.value = false
+      showMonitorPanel.value = false
       const chain = buildRiskAuditOntologyChain(result)
       const focus = (result.items || []).find((i) => i.offeringId === 'OF-RISK-001')
       const low = (result.items || []).find((i) => i.offeringId === 'OF-LOW-019')
@@ -1115,43 +1488,53 @@ export function useProductConfig() {
       }
     }
     const lines = []
-    const publishedIds = []
+    const filed = []
     for (const p of passed) {
-      let draftId = `DRAFT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`
+      currentProductId.value = p.id
+      syncFormFromProduct(p)
       try {
-        const pub = await publishConfigDraft(p.ontologyDraft || p.data || {})
-        if (pub?.success) {
-          draftId = pub.offeringId || draftId
-          lastConfigTraceId.value = pub.trace_id || lastConfigTraceId.value
-          publishedIds.push(draftId)
+        const resp = await submitConfigDraft({
+          draft: p.ontologyDraft || p.data || {},
+          draftId: p.draftId || null,
+          clientId: p.id,
+          sessionId: boundSessionId.value,
+          userId: boundUserId.value,
+        })
+        if (resp?.success === false) {
+          lines.push(`- ${p.name} → 失败：${resp.message || '提交被拒'}`)
+          continue
         }
-      } catch {
-        // 降级本地入库标记
-      }
-      p.status = 'submitted'
-      p.draftId = draftId
-      const bi = batchItems.value.findIndex((i) => i.productId === p.id)
-      if (bi >= 0) {
-        batchItems.value[bi] = {
-          ...batchItems.value[bi],
-          draftId,
-          status: '已入库',
+        const offeringId = resp.offeringId || p.offeringId
+        const woId = resp.workOrder?.workOrderId || resp.workOrder?.work_order_id || '-'
+        p.status = 'submitted'
+        p.draftId = resp.draftId || p.draftId
+        p.offeringId = offeringId
+        p.workOrderId = woId
+        lastConfigTraceId.value = resp.trace_id || lastConfigTraceId.value
+        filed.push(offeringId)
+        const bi = batchItems.value.findIndex((i) => i.productId === p.id)
+        if (bi >= 0) {
+          batchItems.value[bi] = {
+            ...batchItems.value[bi],
+            draftId: offeringId,
+            status: '已备案',
+          }
         }
+        lines.push(`- ${p.name} → 商品 \`${offeringId}\` · 工单 \`${woId}\``)
+      } catch (e) {
+        lines.push(`- ${p.name} → 失败：${e.message || e}`)
       }
-      lines.push(`- ${p.name} → \`${draftId}\``)
     }
     showBatchPanel.value = true
     return {
       thinkingSteps: [
         '筛选 compliancePass=true 且未入库草稿',
-        `确认 ${passed.length} 条通过项沉淀至事实图/ConfigScheme（知识自迭代）`,
-        publishedIds.length
-          ? `已写入本体 ${publishedIds.length} 条，可供后续智查复用`
-          : '本体写入降级为本地入库标记',
+        `提交 ${passed.length} 条：合规 → 沉淀本体 → 资费备案工单`,
+        filed.length ? `成功闭环 ${filed.length} 条` : '本批无成功提交',
       ],
       content:
-        `已确认 **${passed.length}** 条通过项入库并尝试沉淀本体：\n${lines.join('\n')}\n\n` +
-        '待修正项**不会入库**。新方案进入事实图后，智查可检索复用（知识自迭代）。' +
+        `已处理 **${passed.length}** 条通过项（提交/备案闭环）：\n${lines.join('\n')}\n\n` +
+        '待修正项**不会入库**。成功项可被智查复用，并已生成备案工单。' +
         (lastConfigTraceId.value ? `\n\n审计 trace：\`${lastConfigTraceId.value}\`` : ''),
       formCard: null,
       nextSteps: lastConfigTraceId.value ? ['查看审计追溯'] : undefined,
@@ -1182,6 +1565,12 @@ export function useProductConfig() {
   }
 
   function deleteProduct(id) {
+    const target = products.value.find((p) => p.id === id)
+    if (target?.draftId) {
+      deleteConfigDraft(target.draftId).catch((e) =>
+        console.warn('[useProductConfig] delete draft failed:', e.message || e),
+      )
+    }
     products.value = products.value.filter((p) => p.id !== id)
     if (currentProductId.value === id) {
       const first = products.value[0]
@@ -1195,7 +1584,7 @@ export function useProductConfig() {
     return null
   }
 
-  function saveDraft() {
+  function saveDraftLocal() {
     const product = currentProduct.value
     if (!product) return
     if (product.ontologyDraft) {
@@ -1218,9 +1607,15 @@ export function useProductConfig() {
     }
     product.data = JSON.parse(JSON.stringify(formData))
     product.name = formData.prodPrcName || formData.offeringName || product.name
-    product.auditStatus = 'pending'
-    auditStatus.value = 'pending'
+    product.auditStatus = product.compliancePass ? product.auditStatus : 'pending'
+    auditStatus.value = product.auditStatus || 'pending'
     isModified.value = false
+  }
+
+  function saveDraft() {
+    saveDraftLocal()
+    // 异步落库，不阻塞 UI
+    persistCurrentDraft()
   }
 
   function mapIssuesToAuditResults(issues, pass) {
@@ -1264,7 +1659,7 @@ export function useProductConfig() {
   }
 
   async function runAudit() {
-    saveDraft()
+    saveDraftLocal()
     const product = currentProduct.value
     const draft = product?.ontologyDraft || {
       offeringName: formData.prodPrcName || formData.offeringName,
@@ -1296,9 +1691,9 @@ export function useProductConfig() {
         product.auditStatus = auditStatus.value
         product.compliancePass = result.compliancePass
         product.issues = result.issues || []
-        if (!hasError) product.status = 'submitted'
       }
       auditResults.value = results
+      await persistCurrentDraft()
       return { results, hasError }
     } catch (e) {
       const results = [{
@@ -1343,14 +1738,21 @@ export function useProductConfig() {
     showBatchPanel.value = false
     showRootCausePanel.value = false
     showRiskAuditPanel.value = false
+    showMonitorPanel.value = false
+    showRulesPanel.value = false
     rootCauseResult.value = null
     riskAuditResult.value = null
+    monitorResult.value = null
+    monitorWorkOrders.value = []
+    opsRulesCatalog.value = null
     rootCauseOntologyChain.value = null
     activeRootCauseRank.value = 1
     lastConfigTraceId.value = null
     configTraceSteps.value = []
     configExplainText.value = ''
     showConfigTracePanel.value = false
+    compareResult.value = null
+    showComparePanel.value = false
     Object.assign(formData, createEmptyFormData())
   }
 
@@ -1370,16 +1772,31 @@ export function useProductConfig() {
     showBatchPanel,
     showRootCausePanel,
     showRiskAuditPanel,
+    showMonitorPanel,
+    showRulesPanel,
+    opsRulesCatalog,
+    rulesLoading,
     rootCauseResult,
     riskAuditResult,
+    monitorResult,
+    monitorWorkOrders,
+    monitorLoading,
     rootCauseOntologyChain,
     activeRootCauseRank,
     lastConfigTraceId,
     configTraceSteps,
     configExplainText,
     showConfigTracePanel,
+    compareResult,
+    showComparePanel,
+    boundSessionId,
     getSkillGuideMessage,
     detectScenario,
+    setSessionContext,
+    persistCurrentDraft,
+    loadPersistedDrafts,
+    submitCurrentDraft,
+    runCompareSchemes,
     simulateQuery,
     prepareProduct,
     simulateFileParse,
@@ -1387,12 +1804,21 @@ export function useProductConfig() {
     runComplianceCheck,
     confirmPassedDrafts,
     runRootCauseAnalysis,
+    applyRootCauseFromSse,
+    applyRiskAuditFromSse,
+    applyMonitorFromSse,
+    openRulesPanel,
+    applyRulesCatalog,
     runRiskAuditFlow,
+    runOpsMonitorFlow,
+    submitWorkOrder,
+    runHypotheticalAndOrder,
     loadConfigTrace,
     selectProduct,
     copyProduct,
     deleteProduct,
     saveDraft,
+    saveDraftLocal,
     runAudit,
     updateFormField,
     buildProductFormCard,

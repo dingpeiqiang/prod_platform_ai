@@ -1,9 +1,13 @@
 import { ref } from 'vue'
-import { sendMessageWithModel, loadMessages as apiLoadMessages, createSession, getSessions } from '../services/chatApi.js'
+import { sendMessageWithModel, loadMessages as apiLoadMessages, getSessions } from '../services/chatApi.js'
 import { getEventHandler, getPostProcessor } from './useIntentRegistry.js'
 
 function uid(prefix = 'msg') {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
+}
+
+function genSessionId() {
+  return `sess_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 10)}`
 }
 
 export function useChatStream() {
@@ -99,16 +103,14 @@ export function useChatStream() {
     } catch { /* 静默 */ }
   }
 
-  /** 新建一个空会话 */
-  const newSession = async (userId = '') => {
+  /**
+   * 新建本地空会话（不落库）。
+   * 会话仅在首条有效消息发送并由后端持久化后出现在历史列表。
+   */
+  const newSession = async () => {
     if (streaming.value) return
-    try {
-      const result = await createSession(userId, '新对话')
-      if (result.success) {
-        sessionId.value = result.session_id
-        messages.value = []
-      }
-    } catch { /* 静默 */ }
+    sessionId.value = ''
+    messages.value = []
   }
 
   /** 获取当前 sessionId（供发送消息时传入后端） */
@@ -117,19 +119,24 @@ export function useChatStream() {
   // ── 消息发送 ──────────────────────────────────────
 
   const sendMessage = async ({ text, scene = '', modelConfig = null, history = null }) => {
-    if (!text || streaming.value) return
+    const content = (text || '').trim()
+    if (!content || streaming.value) return
     streaming.value = true
-    pushUserMessage(text)
+    // 首条有效消息时再分配 sessionId，避免空会话进入历史
+    if (!sessionId.value) {
+      sessionId.value = genSessionId()
+    }
+    pushUserMessage(content)
     let streamText = ''
 
     try {
       const autoHistory = history != null ? history : messages.value.slice(-20).map(m => ({
         role: m.role === 'assistant' ? 'assistant' : 'user',
         content: m.streamText || m.content || '',
-      }))
+      })).filter(m => String(m.content || '').trim())
       const payload = [
         ...autoHistory,
-        { role: 'user', content: text },
+        { role: 'user', content },
       ]
 
       upsertAssistantMessage({ loading: true, streamText: '' })
@@ -156,7 +163,9 @@ export function useChatStream() {
           if (!frame.startsWith('data:')) continue
           try {
             const data = JSON.parse(frame.slice(5).trim())
-            if (data.type === 'thinking') {
+            if (data.type === 'session' && data.sessionId) {
+              sessionId.value = data.sessionId
+            } else if (data.type === 'thinking') {
               upsertAssistantMessage({
                 reasoningStep: {
                   type: 'thinking',
@@ -190,6 +199,9 @@ export function useChatStream() {
                 ...(current.intentData || {}),
                 ...(data.intentData || {}),
               }
+              if (data.sessionId) {
+                sessionId.value = data.sessionId
+              }
               upsertAssistantMessage({
                 done: true,
                 loading: false,
@@ -221,6 +233,8 @@ export function useChatStream() {
       if (!messages.value.some(m => m.role === 'assistant' && m.done)) {
         upsertAssistantMessage({ done: true, loading: false })
       }
+      // 首条消息落库后刷新侧边栏，空会话不会出现在列表
+      await loadSessions()
     } catch (e) {
       console.warn('[useChatStream] sendMessage error:', e)
       upsertAssistantMessage({

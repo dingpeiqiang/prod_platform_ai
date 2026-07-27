@@ -1,5 +1,5 @@
-/**
- * 运营 MVP-2：风险稽核清单 / 下钻 / 规则配置 / 导出
+﻿/**
+ * 运营：风险稽核清单 / 下钻 / 规则配置 / 导出
  */
 <template>
   <aside v-if="visible && result" class="ops-panel risk-panel">
@@ -51,7 +51,10 @@
             {{ f.label }}
           </button>
         </div>
-        <button type="button" class="export-btn" @click="exportJson">导出清单</button>
+        <div class="toolbar-actions">
+          <button type="button" class="re-btn" @click="runBatch">全量稽核</button>
+          <button type="button" class="export-btn" @click="exportJson">导出清单</button>
+        </div>
       </section>
 
       <section class="rule-box">
@@ -101,6 +104,32 @@
           <h5>处置建议</h5>
           <p>{{ activeItem.disposition?.defaultAction || (activeItem.actions || []).join('、') }}</p>
           <span v-if="activeItem.disposition?.needConfirm" class="need-confirm">需人工确认</span>
+          <div class="hypo-actions">
+            <button type="button" class="hypo-btn" :disabled="hypoLoading" @click="runHypothetical('delist')">
+              退市影响推演
+            </button>
+            <button type="button" class="hypo-btn secondary" :disabled="hypoLoading" @click="runHypothetical('price')">
+              改价为19元推演
+            </button>
+          </div>
+        </div>
+        <div v-if="hypoResult" class="hypo-result">
+          <h5>假设推演结果</h5>
+          <p class="hypo-summary">{{ hypoResult.summary }}</p>
+          <ul v-if="hypoResult.impacts?.length" class="kv">
+            <li v-for="(imp, idx) in hypoResult.impacts" :key="idx">
+              {{ imp.offeringName }}：营收影响 {{ formatImpact(imp.revenueImpact30d) }}；
+              {{ imp.userMigrationHint }}；{{ imp.conclusion }}
+            </li>
+          </ul>
+          <p class="hint">
+            推演前后风险项：{{ hypoResult.before?.total || 0 }} → {{ hypoResult.after?.total || 0 }}
+            （高风险 {{ hypoResult.before?.highCount || 0 }} → {{ hypoResult.after?.highCount || 0 }}）
+          </p>
+          <button type="button" class="hypo-btn" @click="emitCreateOrder">生成处置工单</button>
+        </div>
+        <div v-else class="hypo-actions" style="margin-top: 8px">
+          <button type="button" class="hypo-btn secondary" @click="emitCreateOrder">生成处置工单</button>
         </div>
       </section>
 
@@ -125,13 +154,14 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { evaluateHypothetical, runBatchRiskAudit } from '../services/productOntologyApi.js'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
   result: { type: Object, default: null },
 })
 
-const emit = defineEmits(['close', 're-audit', 'export'])
+const emit = defineEmits(['close', 're-audit', 'export', 'create-work-order'])
 
 const filter = ref('all')
 const activeId = ref('')
@@ -139,6 +169,8 @@ const shelfDays = ref(180)
 const scanning = ref(false)
 const hitRules = ref([])
 const scanRules = ['R-B01', 'R-B02', 'R-B03', 'R-B04', 'R-B05']
+const hypoLoading = ref(false)
+const hypoResult = ref(null)
 let scanTimer = null
 
 const filters = [
@@ -193,12 +225,17 @@ watch(
   (r) => {
     if (!r) return
     shelfDays.value = r.riskRules?.zeroSalesShelfDays ?? 180
+    hypoResult.value = null
     playScanAnim()
     const prefer = preferActive(r)
     activeId.value = prefer?.offeringId || ''
   },
   { immediate: true },
 )
+
+watch(activeId, () => {
+  hypoResult.value = null
+})
 
 const filteredItems = computed(() => {
   const items = props.result?.items || []
@@ -217,6 +254,55 @@ function formatTime(iso) {
     return new Date(iso).toLocaleString('zh-CN', { hour12: false })
   } catch {
     return iso
+  }
+}
+
+function formatImpact(v) {
+  const n = Number(v) || 0
+  if (n === 0) return '0'
+  return n > 0 ? `+${n}` : `${n}`
+}
+
+async function runHypothetical(mode) {
+  if (!activeItem.value?.offeringId || hypoLoading.value) return
+  hypoLoading.value = true
+  try {
+    const payload =
+      mode === 'price'
+        ? {
+            mode: 'price',
+            offeringId: activeItem.value.offeringId,
+            changes: { monthlyFee: 19, oneTimeFee: 0 },
+          }
+        : {
+            mode: 'delist',
+            offeringId: activeItem.value.offeringId,
+            changes: { state: '下架' },
+          }
+    const resp = await evaluateHypothetical(payload)
+    hypoResult.value = resp?.data || resp
+  } catch (e) {
+    hypoResult.value = { summary: e?.message || '假设推演失败' }
+  } finally {
+    hypoLoading.value = false
+  }
+}
+
+function emitCreateOrder() {
+  if (!activeItem.value) return
+  emit('create-work-order', {
+    item: activeItem.value,
+    hypo: hypoResult.value,
+    mode: hypoResult.value?.mode || 'delist',
+  })
+}
+
+async function runBatch() {
+  try {
+    await runBatchRiskAudit('ui')
+    emit('re-audit', { zeroSalesShelfDays: Number(shelfDays.value) || 180 })
+  } catch (e) {
+    console.warn('[OpsRiskAudit] batch audit failed', e)
   }
 }
 
@@ -361,6 +447,11 @@ function exportJson() {
   gap: 8px;
   align-items: center;
 }
+.toolbar-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
 .filters {
   display: flex;
   gap: 4px;
@@ -493,6 +584,45 @@ function exportJson() {
   margin-top: 6px;
   font-size: 11px;
   color: #b91c1c;
+}
+.hypo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.hypo-btn {
+  border: 1px solid #0f766e;
+  background: #0f766e;
+  color: #fff;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.hypo-btn.secondary {
+  background: #fff;
+  color: #0f766e;
+}
+.hypo-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.hypo-result {
+  margin-top: 10px;
+  padding: 8px;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 6px;
+}
+.hypo-result h5 {
+  margin: 0 0 6px;
+  font-size: 12px;
+}
+.hypo-summary {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: #0c4a6e;
 }
 .compare-grid {
   display: grid;

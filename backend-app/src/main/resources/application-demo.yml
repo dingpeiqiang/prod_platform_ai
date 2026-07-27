@@ -14,6 +14,9 @@ prodai:
     swrl-enabled: true
     llm-extract-enabled: true
     base-iri: http://example.org/
+    # 演示开启定时批量稽核（默认每小时）；生产请保持 false
+    batch-audit-enabled: true
+    batch-audit-cron: "0 0 * * * ?"
   kb:
     seed-path: classpath:ontology/kb_seed.json
   mcp:

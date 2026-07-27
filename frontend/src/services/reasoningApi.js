@@ -1,4 +1,4 @@
-import { request } from './httpClient'
+﻿import { request } from './httpClient'
 
 const REASONING_BASE = '/reasoning'
 
@@ -87,13 +87,24 @@ export async function validateShacl(req) {
 
 export async function compareState(req) {
   try {
-    const resp = await request(`${REASONING_BASE}/compare-state`, {
+    const resp = await request('/api/v1/product-ontology/ops/compare', {
       method: 'POST',
-      data: req,
+      data: {
+        snapshot_id: req?.snapshot_id || req?.snapshotId || 'current',
+        patches: req?.patches || [{
+          description: req?.description || '假设变更',
+          changes: req?.proposed_changes || req?.changes || {},
+          entity_id: req?.entity_id,
+        }],
+        policy_set_id: req?.policy_set_id || req?.policySetId || 'PS_PRODUCT_ONLINE_V1',
+        current_facts: req?.current_facts || req?.facts,
+        trace_id: req?.trace_id || 'product-compare-trace',
+        tenant_id: req?.tenant_id || 'product_ops',
+      },
       showLoading: true,
       loadingText: '比较状态...'
     })
-    return resp
+    return resp?.data || resp
   } catch (e) {
     console.error('状态比较失败:', e)
     return { success: false, message: e.message || '状态比较失败' }
@@ -102,13 +113,19 @@ export async function compareState(req) {
 
 export async function hypotheticalEvaluate(req) {
   try {
-    const resp = await request(`${REASONING_BASE}/hypothetical/evaluate`, {
+    const resp = await request('/api/v1/product-ontology/ops/hypothetical', {
       method: 'POST',
-      data: req,
+      data: {
+        mode: req?.mode || 'delist',
+        patches: req?.patches,
+        offeringId: req?.offeringId || req?.offering_id,
+        changes: req?.changes,
+        monthlyFee: req?.monthlyFee,
+      },
       showLoading: true,
       loadingText: '假设评估...'
     })
-    return resp
+    return resp?.data || resp
   } catch (e) {
     console.error('假设评估失败:', e)
     return { success: false, message: e.message || '假设评估失败' }

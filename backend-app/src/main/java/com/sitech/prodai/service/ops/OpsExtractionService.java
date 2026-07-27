@@ -13,7 +13,6 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -33,6 +32,12 @@ public class OpsExtractionService {
     private static final Pattern FEE_PATTERN = Pattern.compile("月费\\s*(\\d+(?:\\.\\d+)?)");
     private static final Pattern YUAN_PATTERN = Pattern.compile("(\\d+(?:\\.\\d+)?)\\s*元");
     private static final Pattern BB_PATTERN = Pattern.compile("(\\d+)\\s*[Mm](?:宽带)?");
+    private static final Pattern DATA_PATTERN =
+            Pattern.compile("(\\d+(?:\\.\\d+)?)\\s*[Gg][Bb]\\s*流量|含\\s*(\\d+(?:\\.\\d+)?)\\s*[Gg][Bb]");
+    private static final Pattern VOICE_PATTERN = Pattern.compile("(\\d+)\\s*分钟");
+    private static final Pattern DISCOUNT_PATTERN = Pattern.compile("折扣\\s*(\\d+(?:\\.\\d+)?)\\s*%");
+    /** 匹配独立 5G，避免「5GB」误判为 5G 场景 */
+    private static final Pattern FIVE_G_PATTERN = Pattern.compile("(?i)(?<!\\d)5g(?![0-9a-z])|5G套餐|5G个人");
     private static final Pattern NAME_PATTERN =
             Pattern.compile("(?:叫|名称[是为]?)\\s*[「\"]?([^「」\"，。\\s]+)[」\"]?");
     private static final Pattern MONTHS_PATTERN = Pattern.compile("(\\d+)\\s*个?月");
@@ -210,18 +215,23 @@ public class OpsExtractionService {
             return slots;
         }
 
-        if (containsAny(text, "家庭融合", "家庭用户", "融合套餐")) {
+        boolean isFamily = containsAny(text, "家庭融合", "家庭用户", "融合套餐", "目标家庭", "家庭体验", "家庭加装");
+        boolean isAddon = containsAny(text, "加装", "附加包", "附加资费")
+                || (text.contains("流量包") && !containsAny(text, "主套餐", "融合畅享"));
+        if (isFamily) {
             slots.put("bizScenario", "家庭融合");
             slots.put("targetUser", "家庭");
-            slots.put("offeringType", "fusion");
+            slots.put("offeringType", isAddon ? "addon" : "fusion");
         } else if (containsAny(text, "校园", "大学生", "迎新")) {
             slots.put("bizScenario", "校园体验");
             slots.put("targetUser", "校园");
-            slots.put("offeringType", "main_pkg");
-        } else if (text.toLowerCase(Locale.ROOT).contains("5g")) {
+            slots.put("offeringType", isAddon ? "addon" : "main_pkg");
+        } else if (FIVE_G_PATTERN.matcher(text).find()) {
             slots.put("bizScenario", "5G个人主套餐");
             slots.put("targetUser", "个人");
-            slots.put("offeringType", "main_pkg");
+            slots.put("offeringType", isAddon ? "addon" : "main_pkg");
+        } else if (isAddon) {
+            slots.put("offeringType", "addon");
         }
 
         Matcher feeM = FEE_PATTERN.matcher(text);
@@ -232,6 +242,16 @@ public class OpsExtractionService {
             if (yuanM.find()) {
                 slots.put("monthlyFee", Double.parseDouble(yuanM.group(1)));
             }
+        }
+
+        Matcher dataM = DATA_PATTERN.matcher(text);
+        if (dataM.find()) {
+            String gb = dataM.group(1) != null ? dataM.group(1) : dataM.group(2);
+            slots.put("includeData", gb + "GB");
+        }
+        Matcher voiceM = VOICE_PATTERN.matcher(text);
+        if (voiceM.find()) {
+            slots.put("includeVoice", voiceM.group(1) + "分钟");
         }
 
         Matcher bbM = BB_PATTERN.matcher(text);
@@ -259,8 +279,8 @@ public class OpsExtractionService {
         if (containsAny(text, clearTriggers.toArray(String[]::new))) {
             slots.put("bindExistingMainPkg", "");
             slots.put("clearBindExisting", true);
-        } else if (containsAny(text, bindTriggers.toArray(String[]::new))
-                || opsRules.resolveAliasOfferingId(text) != null) {
+        } else if (containsAny(text, bindTriggers.toArray(String[]::new))) {
+            // 仅在明确「再绑/一起上」等触发词时绑定，避免套餐名含「家庭融合畅享」误绑在架商品
             String bindId = opsRules.resolveAliasOfferingId(text);
             if (bindId != null) {
                 slots.put("bindExistingMainPkg", bindId);
@@ -285,6 +305,18 @@ public class OpsExtractionService {
         }
         if (text.contains("0元") || text.contains("零元")) {
             slots.put("monthlyFee", 0);
+        }
+        Matcher discountM = DISCOUNT_PATTERN.matcher(text);
+        if (discountM.find()) {
+            slots.put("discountPercent", Double.parseDouble(discountM.group(1)));
+        }
+        if (text.contains("依赖宽带")) {
+            slots.put("dependOn", "宽带");
+        } else if (text.contains("依赖")) {
+            Matcher depM = Pattern.compile("依赖\\s*([^；;，,。\\n]{1,20})").matcher(text);
+            if (depM.find()) {
+                slots.put("dependOn", depM.group(1).trim());
+            }
         }
         if (text.contains("内部验证")) {
             slots.put("channelScope", "内部验证");

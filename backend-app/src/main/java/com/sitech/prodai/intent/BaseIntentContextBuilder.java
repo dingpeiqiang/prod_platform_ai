@@ -34,6 +34,13 @@ public final class BaseIntentContextBuilder {
     public static String resolvePolicySetId(IntentContext ctx) {
         String action = ctx.getAction() != null ? ctx.getAction().toLowerCase() : "";
         String message = ctx.getLastUserMessage() != null ? ctx.getLastUserMessage() : "";
+        String intent = ctx.getIntentType() != null ? ctx.getIntentType().toLowerCase() : "";
+        if (intent.contains("compare") || action.contains("compare")
+                || message.contains("方案") || message.contains("对比") || message.contains("立项")) {
+            if (!(action.contains("risk") || message.contains("零资费") || message.contains("风险稽核"))) {
+                return "PS_PRODUCT_ONLINE_V1";
+            }
+        }
         if (action.contains("risk") || message.contains("零资费") || message.contains("风险")) {
             return "PS_PRODUCT_RISK_V1";
         }

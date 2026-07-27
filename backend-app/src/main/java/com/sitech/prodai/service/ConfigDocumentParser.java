@@ -31,6 +31,9 @@ public class ConfigDocumentParser {
         }
         String name = fileName == null ? "document.txt" : fileName.toLowerCase(Locale.ROOT);
         try {
+            if (name.endsWith(".doc") && !name.endsWith(".docx")) {
+                return ParseResult.fail("legacy .doc 暂不支持，请另存为 .docx / .pdf / .md / .txt");
+            }
             if (name.endsWith(".docx")) {
                 return ParseResult.ok(extractDocx(bytes), "docx");
             }
@@ -45,8 +48,12 @@ public class ConfigDocumentParser {
             if (text.isEmpty()) {
                 return ParseResult.fail("document text is empty");
             }
+            // 去掉 UTF-8 BOM 残留
+            if (text.charAt(0) == '\uFEFF') {
+                text = text.substring(1).trim();
+            }
             String engine = name.endsWith(".md") ? "markdown" : "text";
-            return ParseResult.ok(text, engine);
+            return ParseResult.ok(normalizeExtractedText(text), engine);
         } catch (Exception e) {
             return ParseResult.fail("parse failed: " + e.getMessage());
         }
@@ -58,19 +65,36 @@ public class ConfigDocumentParser {
             while ((entry = zis.getNextEntry()) != null) {
                 if ("word/document.xml".equals(entry.getName())) {
                     String xml = new String(zis.readAllBytes(), StandardCharsets.UTF_8);
-                    Matcher m = DOCX_TEXT.matcher(xml);
+                    // 段落边界保留换行，便于套餐分段抽取
+                    String withBreaks = xml
+                            .replaceAll("</w:p>", "\n")
+                            .replaceAll("<w:br[^/]*/>", "\n")
+                            .replaceAll("<w:tab[^/]*/>", "\t");
+                    Matcher m = DOCX_TEXT.matcher(withBreaks);
                     StringBuilder sb = new StringBuilder();
                     while (m.find()) {
-                        if (sb.length() > 0) {
-                            sb.append(' ');
-                        }
                         sb.append(m.group(1));
                     }
-                    return sb.toString().replaceAll("\\s+", " ").trim();
+                    return normalizeExtractedText(sb.toString());
                 }
             }
         }
         throw new IOException("word/document.xml not found in docx");
+    }
+
+    /** 折叠多余空白，保留段落换行。 */
+    private String normalizeExtractedText(String text) {
+        if (text == null) {
+            return "";
+        }
+        String normalized = text
+                .replace("\r\n", "\n")
+                .replace('\r', '\n')
+                .replaceAll("[ \\t\\x0B\\f]+", " ")
+                .replaceAll(" *\\n *", "\n")
+                .replaceAll("\\n{3,}", "\n\n")
+                .trim();
+        return normalized;
     }
 
     private String extractXlsx(byte[] bytes) throws IOException {

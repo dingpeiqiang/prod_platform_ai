@@ -18,7 +18,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * 产商品运营规则单源：加载 {@code ops_rules.json}，供 OntologyMvp / Openllet SWRL / 意图层共用。
+ * 产商品运营规则单源：加载 {@code ops_rules.json}，供 ProductOntology / Openllet SWRL / 意图层共用。
  * <p>正式 OWL SWRL 引擎为 {@link OpsSwrlReasoner}；旧 {@link SwrlRuleEngine} 为伪条件 DSL，勿混用。
  */
 @Service

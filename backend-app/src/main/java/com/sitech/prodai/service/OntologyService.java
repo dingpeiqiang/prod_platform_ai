@@ -131,7 +131,7 @@ public class OntologyService {
     }
 
     public Map<String, Object> getSwrlRules() {
-        // 遗留条件 DSL，非 Openllet OWL SWRL；产商品运营规则见 /api/v1/ontology-mvp/ops/rules
+        // 遗留条件 DSL，非 Openllet OWL SWRL；产商品运营规则见 /api/v1/product-ontology/ops/rules
         return Map.of(
                 "success", true,
                 "engine_type", "condition_dsl",
@@ -200,18 +200,22 @@ public class OntologyService {
         String sparql;
         String answer;
         if (wantProduct) {
-            sparql = "SELECT ?product ?name ?growth ?users WHERE { ?product a "
+            sparql = "SELECT ?product ?name ?growth ?users ?status ?price WHERE { ?product a "
                     + typeIri("Product") + " . OPTIONAL { ?product " + propIri("productName")
                     + " ?name } OPTIONAL { ?product " + propIri("revenueGrowth")
                     + " ?growth } OPTIONAL { ?product " + propIri("newUserMonth")
-                    + " ?users } } ORDER BY ASC(?growth) LIMIT 20";
+                    + " ?users } OPTIONAL { ?product " + propIri("status")
+                    + " ?status } OPTIONAL { ?product " + propIri("price")
+                    + " ?price } FILTER(!BOUND(?status) || ?status = \"在售\") } ORDER BY ASC(?growth) LIMIT 20";
             answer = "查询在售产品及其增长指标";
         } else if (wantRisk) {
-            sparql = "SELECT ?product ?name ?isZeroFee ?status WHERE { ?product a "
+            sparql = "SELECT ?product ?name ?isZeroFee ?status ?newUsers ?churn WHERE { ?product a "
                     + typeIri("Product") + " . OPTIONAL { ?product " + propIri("productName")
                     + " ?name } OPTIONAL { ?product " + propIri("isZeroFee")
                     + " ?isZeroFee } OPTIONAL { ?product " + propIri("status")
-                    + " ?status } } LIMIT 50";
+                    + " ?status } OPTIONAL { ?product " + propIri("newUserMonth")
+                    + " ?newUsers } OPTIONAL { ?product " + propIri("userChurnRate")
+                    + " ?churn } FILTER(?isZeroFee = true || BOUND(?churn)) } LIMIT 50";
             answer = "查询零资费或风险相关产品";
         } else if (normalized.contains("会员等级") || normalized.contains("vip")) {
             sparql = "SELECT ?entity ?vipLevel WHERE { ?entity rdf:type " + typeIri("Customer")
@@ -268,10 +272,12 @@ public class OntologyService {
         }
 
         // Step 3: 降级 — 若 LLM 未返回有效结果，使用关键词匹配
+        boolean usedKeywordFallback = false;
         if (rawResults.isEmpty()) {
             Map<String, Object> fallback = nlQuery(question);
             nlAnswer = String.valueOf(fallback.getOrDefault("answer", ""));
             sparql = String.valueOf(fallback.getOrDefault("sparql", ""));
+            usedKeywordFallback = true;
 
             if (fallback.get("results") instanceof List<?> list) {
                 for (Object item : list) {
@@ -297,7 +303,8 @@ public class OntologyService {
         snapshot.put("snapshot_id", snapshotId);
         snapshot.put("question", question);
         snapshot.put("entity_count", entityIds.size());
-        snapshot.put("discovery_method", llmDiscovery != null ? "llm" : "keyword_fallback");
+        String discoveryMethod = usedKeywordFallback || llmDiscovery == null ? "keyword_fallback" : "llm";
+        snapshot.put("discovery_method", discoveryMethod);
 
         Map<String, Object> factsFlat = new LinkedHashMap<>();
         for (int i = 0; i < Math.min(entityIds.size(), rawResults.size()); i++) {
@@ -499,22 +506,130 @@ public class OntologyService {
         return rdf4jStore.getGraphData();
     }
 
-    public Map<String, Object> compareState(String snapshotId, List<Map<String, Object>> patches, String policySetId, String traceId, String tenantId) {
-        Map<String, Object> snapshot = snapshots.get(snapshotId);
-        if (snapshot == null) throw new IllegalStateException("Snapshot not found or expired");
-        List<Map<String, Object>> comparisons = new ArrayList<>();
-        @SuppressWarnings("unchecked")
-        Map<String, Map<String, Object>> facts = (Map<String, Map<String, Object>>) snapshot.get("facts");
-        for (Map<String, Object> patch : patches) {
-            String entityId = String.valueOf(patch.get("entity_id"));
-            Map<String, Object> base = new LinkedHashMap<>(facts.values().stream().findFirst().orElse(Map.of()));
-            @SuppressWarnings("unchecked")
-            Map<String, Object> changes = (Map<String, Object>) patch.getOrDefault("changes", Map.of());
-            base.putAll(changes);
-            Map<String, Object> decision = evaluate(base, policySetId, "candidate_check", traceId, tenantId);
-            comparisons.add(Map.of("patch_description", String.valueOf(patch.getOrDefault("description", "")), "resulting_state", Map.of(entityId, base), "evaluation", decision.get("decision")));
+    /**
+     * 从内联事实创建临时快照（供 compare_state 工具 / 无事前 retrieve 场景使用）。
+     */
+    public String createSnapshotFromFacts(Map<String, Object> facts, String traceId, String tenantId) {
+        String snapshotId = buildSnapshotId();
+        Map<String, Object> factRow = facts == null ? new LinkedHashMap<>() : new LinkedHashMap<>(facts);
+        String uri = String.valueOf(factRow.getOrDefault("uri",
+                factRow.getOrDefault("entityId", baseIri() + "inline/" + snapshotId)));
+        factRow.putIfAbsent("uri", uri);
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("snapshot_id", snapshotId);
+        snapshot.put("trace_id", traceId);
+        snapshot.put("tenant_id", tenantId);
+        snapshot.put("facts", Map.of(uri, factRow));
+        snapshots.put(snapshotId, snapshot);
+        appendAudit(traceId, Map.of(
+                "step", "snapshot.create_from_facts",
+                "timestamp", Instant.now().toString(),
+                "snapshot_id", snapshotId
+        ));
+        return snapshotId;
+    }
+
+    public Map<String, Object> compareState(String snapshotId, List<Map<String, Object>> patches,
+                                           String policySetId, String traceId, String tenantId) {
+        return compareState(snapshotId, patches, policySetId, traceId, tenantId, null);
+    }
+
+    /**
+     * @param inlineFacts 当 snapshot 缺失时，用此事实临时建快照（兼容 ToolConfig snapshot_id=current）
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> compareState(String snapshotId, List<Map<String, Object>> patches,
+                                            String policySetId, String traceId, String tenantId,
+                                            Map<String, Object> inlineFacts) {
+        Map<String, Object> snapshot = snapshotId == null ? null : snapshots.get(snapshotId);
+        if (snapshot == null && inlineFacts != null && !inlineFacts.isEmpty()) {
+            String created = createSnapshotFromFacts(inlineFacts, traceId, tenantId);
+            snapshot = snapshots.get(created);
+            snapshotId = created;
         }
-        return Map.of("success", true, "comparisons", comparisons);
+        if (snapshot == null && ("current".equals(snapshotId) || snapshotId == null || snapshotId.isBlank())) {
+            // 兜底：取第一个 Product 实例作为基准
+            List<Map<String, Object>> products = rdf4jStore.getInstances("Product");
+            if (!products.isEmpty()) {
+                String created = createSnapshotFromFacts(products.get(0), traceId, tenantId);
+                snapshot = snapshots.get(created);
+                snapshotId = created;
+            }
+        }
+        if (snapshot == null) {
+            throw new IllegalStateException("Snapshot not found or expired: " + snapshotId);
+        }
+
+        String safePolicy = (policySetId == null || policySetId.isBlank())
+                ? "PS_PRODUCT_ONLINE_V1" : policySetId;
+        List<Map<String, Object>> comparisons = new ArrayList<>();
+        Map<String, Map<String, Object>> facts =
+                (Map<String, Map<String, Object>>) snapshot.getOrDefault("facts", Map.of());
+
+        List<Map<String, Object>> safePatches = patches == null ? List.of() : patches;
+        if (safePatches.isEmpty()) {
+            // 无补丁时返回基准评估
+            Map<String, Object> base = new LinkedHashMap<>(
+                    facts.values().stream().findFirst().orElse(Map.of()));
+            Map<String, Object> decision = evaluate(base, safePolicy, "candidate_check", traceId, tenantId);
+            comparisons.add(Map.of(
+                    "patch_description", "基准方案（无变更）",
+                    "resulting_state", Map.of("baseline", base),
+                    "evaluation", decision.get("decision")
+            ));
+        } else {
+            for (Map<String, Object> patch : safePatches) {
+                String entityId = String.valueOf(patch.getOrDefault("entity_id",
+                        patch.getOrDefault("entityId", "")));
+                Map<String, Object> base = resolveBaseFact(facts, entityId);
+                Map<String, Object> changes = patch.get("changes") instanceof Map<?, ?>
+                        ? new LinkedHashMap<>((Map<String, Object>) patch.get("changes"))
+                        : new LinkedHashMap<>();
+                base.putAll(changes);
+                Map<String, Object> decision = evaluate(base, safePolicy, "candidate_check", traceId, tenantId);
+                String key = entityId.isBlank() || "null".equals(entityId) ? "patched" : entityId;
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("patch_description", String.valueOf(patch.getOrDefault("description", "方案变更")));
+                row.put("resulting_state", Map.of(key, base));
+                row.put("evaluation", decision.get("decision"));
+                comparisons.add(row);
+            }
+        }
+
+        appendAudit(traceId, Map.of(
+                "step", "compare_state",
+                "timestamp", Instant.now().toString(),
+                "snapshot_id", snapshotId,
+                "policy_set_id", safePolicy,
+                "patch_count", safePatches.size()
+        ));
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", true);
+        body.put("snapshot_id", snapshotId);
+        body.put("policy_set_id", safePolicy);
+        body.put("comparisons", comparisons);
+        return body;
+    }
+
+    private Map<String, Object> resolveBaseFact(Map<String, Map<String, Object>> facts, String entityId) {
+        if (facts == null || facts.isEmpty()) {
+            return new LinkedHashMap<>();
+        }
+        if (entityId != null && !entityId.isBlank() && !"null".equals(entityId)) {
+            if (facts.containsKey(entityId)) {
+                return new LinkedHashMap<>(facts.get(entityId));
+            }
+            String asUri = entityUri(entityId);
+            if (facts.containsKey(asUri)) {
+                return new LinkedHashMap<>(facts.get(asUri));
+            }
+            for (Map.Entry<String, Map<String, Object>> e : facts.entrySet()) {
+                if (e.getKey().endsWith("/" + entityId) || e.getKey().endsWith(entityId)) {
+                    return new LinkedHashMap<>(e.getValue());
+                }
+            }
+        }
+        return new LinkedHashMap<>(facts.values().iterator().next());
     }
 
     public Map<String, Object> getTrace(String traceId) {
@@ -570,14 +685,17 @@ public class OntologyService {
         double bundleSpend = thresholdNum(th, "bundleSpendGte", 30000);
         double refundScore = thresholdNum(th, "fullRefundCreditScoreGte", 700);
 
+        boolean candidateLike = expectationType == null || expectationType.isBlank()
+                || "candidate_check".equals(expectationType)
+                || "online_check".equals(expectationType);
+
         return switch (policySetId) {
             case "PS_PRODUCT_ONLINE_V1" -> {
-                if ("candidate_check".equals(expectationType)
-                        && denyType.equals(productType)
+                if (candidateLike && denyType.equals(productType) && marketSize >= 0
                         && marketSize < marketSizeGte) {
                     yield "deny";
                 }
-                if ("candidate_check".equals(expectationType) && marketSize >= marketSizeGte) {
+                if (candidateLike && marketSize >= marketSizeGte) {
                     yield "allow";
                 }
                 yield "review";
@@ -588,7 +706,8 @@ public class OntologyService {
                         && newUsers < zeroUsersLt) {
                     yield "review";
                 }
-                if (revenueGrowth < growthLt && churnRate > churnGt) {
+                if (revenueGrowth >= 0 && churnRate >= 0
+                        && revenueGrowth < growthLt && churnRate > churnGt) {
                     yield "review";
                 }
                 yield "allow";
@@ -713,17 +832,99 @@ public class OntologyService {
     }
 
     private List<String> triggeredRules(String policySetId, Map<String, Object> facts, String expectationType) {
-        if (opsRules.isPresent()) {
-            return opsRules.get().policyTriggeredRules(policySetId);
+        Map<String, Object> th = opsRules.map(r -> r.policyThresholds(policySetId)).orElse(Map.of());
+        List<String> hit = new ArrayList<>();
+        double marketSize = number(facts.get("targetMarketSize"));
+        double zeroFeeMonths = number(facts.get("onlineMonths"));
+        double newUsers = number(facts.get("newUserMonth"));
+        double churnRate = number(facts.get("userChurnRate"));
+        double revenueGrowth = number(facts.get("revenueGrowth"));
+        boolean isZeroFee = Boolean.parseBoolean(String.valueOf(facts.getOrDefault("isZeroFee", false)));
+        String productType = String.valueOf(facts.getOrDefault("productType", ""));
+        String status = String.valueOf(facts.getOrDefault("status", ""));
+        double marketSizeGte = thresholdNum(th, "marketSizeGte", 100000);
+        String denyType = String.valueOf(th.getOrDefault("denyProductTypeOnLowMarket", "5G套餐"));
+        double zeroMonthsGte = thresholdNum(th, "zeroFeeOnlineMonthsGte", 3);
+        double zeroUsersLt = thresholdNum(th, "zeroFeeNewUsersLt", 50);
+        double growthLt = thresholdNum(th, "revenueGrowthLt", 0.03);
+        double churnGt = thresholdNum(th, "churnRateGt", 0.08);
+        String onSale = String.valueOf(th.getOrDefault("onSaleStatus", "在售"));
+
+        if ("PS_PRODUCT_ONLINE_V1".equals(policySetId)
+                && denyType.equals(productType)
+                && marketSize >= 0
+                && marketSize < marketSizeGte) {
+            hit.add("R-ONLINE-001");
         }
-        return List.of("R000");
+        if ("PS_PRODUCT_RISK_V1".equals(policySetId)) {
+            if (isZeroFee && onSale.equals(status)
+                    && zeroFeeMonths >= zeroMonthsGte
+                    && newUsers < zeroUsersLt) {
+                hit.add("R-RISK-002");
+            }
+            if (revenueGrowth >= 0 && churnRate >= 0
+                    && revenueGrowth < growthLt && churnRate > churnGt) {
+                hit.add("R-RISK-001");
+            }
+        }
+        if (!hit.isEmpty()) {
+            return hit;
+        }
+        // 未命中红线时不回传策略集「关联规则」清单，避免误显示为已触发
+        return List.of();
     }
 
     private String reasoning(String policySetId, Map<String, Object> facts, String expectationType) {
-        if (opsRules.isPresent()) {
-            return opsRules.get().policyReasoning(policySetId);
+        Map<String, Object> th = opsRules.map(r -> r.policyThresholds(policySetId)).orElse(Map.of());
+        List<String> hit = triggeredRules(policySetId, facts, expectationType);
+        String verdict = decide(policySetId, facts, expectationType);
+
+        double marketSize = number(facts.get("targetMarketSize"));
+        double marketSizeGte = thresholdNum(th, "marketSizeGte", 100000);
+        double zeroFeeMonths = number(facts.get("onlineMonths"));
+        double newUsers = number(facts.get("newUserMonth"));
+        double zeroMonthsGte = thresholdNum(th, "zeroFeeOnlineMonthsGte", 3);
+        double zeroUsersLt = thresholdNum(th, "zeroFeeNewUsersLt", 50);
+        double revenueGrowth = number(facts.get("revenueGrowth"));
+        double churnRate = number(facts.get("userChurnRate"));
+        double growthLt = thresholdNum(th, "revenueGrowthLt", 0.03);
+        double churnGt = thresholdNum(th, "churnRateGt", 0.08);
+
+        // 对齐方案文档的确定性话术（不可被大模型覆盖）
+        if (hit.contains("R-ONLINE-001")) {
+            long sizeWan = marketSize >= 0 ? Math.round(marketSize / 10000.0) : -1;
+            long gateWan = Math.round(marketSizeGte / 10000.0);
+            return String.format(
+                    "触发规则 R-ONLINE-001：目标市场规模预估%s万户，低于%s万户立项门槛，不满足新品立项基础门槛",
+                    sizeWan >= 0 ? String.valueOf(sizeWan) : "未知",
+                    gateWan);
         }
-        return policySetId + " 评估完成";
+        if (hit.contains("R-RISK-002")) {
+            return String.format(
+                    "触发规则 R-RISK-002：零资费产品已在售%.0f个月，单月新增%.0f户（阈值：在售≥%.0f月且新增<%.0f户），触发高风险人工复核",
+                    zeroFeeMonths, newUsers, zeroMonthsGte, zeroUsersLt);
+        }
+        if (hit.contains("R-RISK-001")) {
+            return String.format(
+                    "触发规则 R-RISK-001：营收同比增速%.1f%%低于%.0f%%且用户流失率%.1f%%高于%.0f%%，判定为低效待优化产品",
+                    revenueGrowth * 100, growthLt * 100, churnRate * 100, churnGt * 100);
+        }
+        if ("allow".equals(verdict) && "PS_PRODUCT_ONLINE_V1".equals(policySetId)) {
+            return String.format(
+                    "立项门槛校验通过：目标市场规模预估%.0f户，不低于门槛%.0f户",
+                    marketSize, marketSizeGte);
+        }
+        if ("allow".equals(verdict) && "PS_PRODUCT_RISK_V1".equals(policySetId)) {
+            return "风险稽核通过：未命中零资费高风险或低效产品红线";
+        }
+        if (opsRules.isPresent()) {
+            String base = opsRules.get().policyReasoning(policySetId);
+            if (!hit.isEmpty()) {
+                return base + "；本次命中：" + String.join(",", hit) + " → " + verdict;
+            }
+            return base + "；裁决：" + verdict;
+        }
+        return policySetId + " 评估完成 → " + verdict;
     }
 
     /**

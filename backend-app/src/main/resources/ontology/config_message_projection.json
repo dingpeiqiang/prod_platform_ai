@@ -1,0 +1,230 @@
+{
+  "version": "2.2",
+  "description": "业务属性 → 六类逻辑模型报文路径投影（报文是投影，不进 OWL 骨架）",
+  "categories": {
+    "personMainPrc": {
+      "label": "个人主资费",
+      "isMainOffer": true,
+      "productLine": "个人",
+      "requiredElements": [
+        "SalesPolicy", "ReleaseScope", "ChargePlan", "AccountPreferential",
+        "FloorGuarantee", "DataResource", "VoiceResource", "SmsResource",
+        "PrintNotice", "SmsNotice"
+      ]
+    },
+    "broadBandMainPrc": {
+      "label": "宽带主资费",
+      "isMainOffer": true,
+      "productLine": "宽带",
+      "requiredElements": [
+        "SalesPolicy", "ReleaseScope", "NetworkCapability", "ChargePlan",
+        "AccountPreferential", "CdrPreferential", "PrintNotice", "SmsNotice"
+      ]
+    },
+    "personAddPrc": {
+      "label": "个人附加资费",
+      "isMainOffer": false,
+      "productLine": "个人",
+      "requiredElements": [
+        "SalesPolicy", "ReleaseScope", "NetworkCapability", "ChargePlan",
+        "AccountPreferential", "FloorGuarantee", "DataResource", "VoiceResource",
+        "SmsResource", "PrintNotice", "SmsNotice"
+      ]
+    },
+    "broadBandOptSpeedPrc": {
+      "label": "宽带加速包",
+      "isMainOffer": false,
+      "productLine": "宽带",
+      "requiredElements": [
+        "SalesPolicy", "ReleaseScope", "NetworkCapability", "ChargePlan",
+        "AccountPreferential", "PrintNotice", "SmsNotice"
+      ]
+    },
+    "familyBasePrc": {
+      "label": "家庭基础套餐",
+      "isMainOffer": true,
+      "productLine": "家庭",
+      "requiredElements": [
+        "SalesPolicy", "ReleaseScope", "FamilyOfferPolicy", "OfferCompatibility",
+        "ChargePlan", "AccountPreferential", "FloorGuarantee", "DataResource",
+        "VoiceResource", "PrintNotice", "SmsNotice"
+      ]
+    },
+    "familyAddPrc": {
+      "label": "家庭附加业务",
+      "isMainOffer": false,
+      "productLine": "家庭",
+      "requiredElements": [
+        "SalesPolicy", "ReleaseScope", "FamilyOfferPolicy", "OfferCompatibility",
+        "ChargePlan", "AccountPreferential", "DataResource", "VoiceResource",
+        "ValueAddedEquity", "PrintNotice", "SmsNotice"
+      ]
+    }
+  },
+  "sharedMappings": [
+    { "business": "workOrderId", "path": "baseInfo.templateId" },
+    { "business": "offerName", "path": "baseInfo.prodPrcName", "aliases": ["offeringName"] },
+    { "business": "orderEffectMode", "path": "baseInfo.effRuleId" },
+    { "business": "cancelEffectMode", "path": "baseInfo.cancelRuleId", "aliases": ["expRuleId"] },
+    { "business": "saleStartDate", "path": "baseInfo.effDate" },
+    { "business": "saleEndDate", "path": "baseInfo.expDate" },
+    { "business": "productCode", "path": "baseInfo.prodId" },
+    { "business": "pricingCode", "path": "baseInfo.prodPrcId" },
+    { "business": "splitCode", "path": "baseInfo.pricingId" },
+    { "business": "channelScope", "path": "releaseInfo.chnClassLimit" },
+    { "business": "regionScope", "path": "releaseInfo.groupId" },
+    { "business": "regionDetail", "path": "releaseInfo.groupIdMessage" },
+    { "business": "printMonthlyFeeText", "path": "optionalInfo.printContent.prcMonthFee" },
+    { "business": "printResourceText", "path": "optionalInfo.printContent.containResource" },
+    { "business": "printOverageText", "path": "optionalInfo.printContent.chargeStandard" },
+    { "business": "printLimitText", "path": "optionalInfo.printContent.limitCondition" },
+    { "business": "printEquityText", "path": "optionalInfo.printContent.otherEquity" },
+    { "business": "smsOpTypes", "path": "optionalInfo.prcSmsCfg.opType" },
+    { "business": "successSmsImmediate", "path": "optionalInfo.prcSmsCfg.sysNoteNow" },
+    { "business": "successSmsReserved", "path": "optionalInfo.prcSmsCfg.sysNoteNext" },
+    { "business": "cancelSms", "path": "optionalInfo.prcSmsCfg.sysNoteCancle" },
+    { "business": "confirmSms", "path": "optionalInfo.prcSmsCfg.sysNoteErke" },
+    { "business": "chargeMode", "path": "optionalInfo.acctMonth.calcMode" },
+    { "business": "fixedFeeAmount", "path": "optionalInfo.acctMonth.fixFee", "aliases": ["monthlyFee"] },
+    { "business": "accountItem", "path": "optionalInfo.acctMonth.acctItem" },
+    { "business": "taxSplitFlag", "path": "optionalInfo.acctMonth.isSplitRate" },
+    { "business": "voiceTaxRatio", "path": "optionalInfo.acctMonth.splitRate9" },
+    { "business": "dataTaxRatio", "path": "optionalInfo.acctMonth.splitRate6" },
+    { "business": "chargeValidityType", "path": "optionalInfo.acctMonth.fixValidity" },
+    { "business": "chargeValidityValue", "path": "optionalInfo.acctMonth.fixValidityVAlue" },
+    { "business": "prefCondition", "path": "optionalInfo.acctFav.favCondition" },
+    { "business": "prefItemType", "path": "optionalInfo.acctFav.favItemType" },
+    { "business": "prefItemGroup", "path": "optionalInfo.acctFav.favGroup" },
+    { "business": "prefType", "path": "optionalInfo.acctFav.favType" },
+    { "business": "prefDiscount", "path": "optionalInfo.acctFav.favDiscount", "aliases": ["discountPercent"] },
+    { "business": "prefFee", "path": "optionalInfo.acctFav.favFee", "aliases": ["freeFeeAmount", "giftFee"] },
+    { "business": "prefValidityType", "path": "optionalInfo.acctFav.favValidity" },
+    { "business": "prefValidityValue", "path": "optionalInfo.acctFav.favValidityVAlue" }
+  ],
+  "categoryMappings": {
+    "personMainPrc": [],
+    "broadBandMainPrc": [
+      { "business": "domainName", "path": "baseInfo.domainName" },
+      { "business": "downstreamBandwidth", "path": "baseInfo.downStreamId" },
+      { "business": "upstreamBandwidth", "path": "baseInfo.upStreamId" },
+      { "business": "allowJoinFamily", "path": "baseInfo.ifAddFamily" }
+    ],
+    "personAddPrc": [
+      { "business": "validityCycle", "path": "baseInfo.prcEffCycle" },
+      { "business": "validityUnit", "path": "baseInfo.prcEffType" },
+      { "business": "validityValue", "path": "baseInfo.prcEffNum" },
+      { "business": "absoluteExpireDate", "path": "baseInfo.prcEffDate" },
+      { "business": "maxRepeatOrder", "path": "baseInfo.effNum" },
+      { "business": "is5GOffer", "path": "baseInfo.planFlag" },
+      { "business": "fiveGSpeed", "path": "baseInfo.5GUser" },
+      { "business": "unifiedQueryCancel", "path": "baseInfo.unifiedQryCancle" },
+      { "business": "repeatChargeFlag", "path": "baseInfo.reFeeFlag" },
+      { "business": "expireSms", "path": "optionalInfo.prcSmsCfg.sysNoteExpire" },
+      { "business": "chargeIntervalMonths", "path": "optionalInfo.acctMonth.fixCircle" }
+    ],
+    "broadBandOptSpeedPrc": [
+      { "business": "validityCycle", "path": "baseInfo.prcEffCycle" },
+      { "business": "validityUnit", "path": "baseInfo.prcEffType" },
+      { "business": "validityValue", "path": "baseInfo.prcEffNum" },
+      { "business": "absoluteExpireDate", "path": "baseInfo.prcEffDate" },
+      { "business": "downstreamBandwidth", "path": "baseInfo.downStreamId" },
+      { "business": "upstreamBandwidth", "path": "baseInfo.upStreamId" },
+      { "business": "expireSms", "path": "optionalInfo.prcSmsCfg.sysNoteExpire" }
+    ],
+    "familyBasePrc": [
+      { "business": "familyPackageType", "path": "baseInfo.teamType" },
+      { "business": "isFloorOffer", "path": "baseInfo.ifFloorsPrc" },
+      { "business": "validityCycle", "path": "baseInfo.prcEffCycle" },
+      { "business": "validityUnit", "path": "baseInfo.prcEffType" },
+      { "business": "validityValue", "path": "baseInfo.prcEffNum" },
+      { "business": "absoluteExpireDate", "path": "baseInfo.prcEffDate" },
+      { "business": "isUnifiedPay", "path": "baseInfo.payFlag" },
+      { "business": "contractMonths", "path": "baseInfo.dateLimit" },
+      { "business": "contractCancelPrivilege", "path": "baseInfo.powerCode" },
+      { "business": "familyCatalog", "path": "baseInfo.familyCata" },
+      { "business": "maxFamilyMembers", "path": "baseInfo.roleMax" },
+      { "business": "minFamilyMembers", "path": "baseInfo.roleMin" },
+      { "business": "allowFamilyAddon", "path": "baseInfo.canAddFamilyPrc" },
+      { "business": "allowChangeMainOffer", "path": "phoneMbrInfo.ifChangeBasePrc" },
+      { "business": "targetOfferRef", "path": "phoneMbrInfo.inProdPrcId" },
+      { "business": "sourceOfferRef", "path": "phoneMbrInfo.outProdPrcId" },
+      { "business": "maxPhoneMembers", "path": "phoneMbrInfo.phoneMbrMax" },
+      { "business": "minPhoneMembers", "path": "phoneMbrInfo.phoneMbrMin" },
+      { "business": "freePhoneMembers", "path": "phoneMbrInfo.freeMbrCnt" },
+      { "business": "extraPhoneMemberFee", "path": "phoneMbrInfo.phoneMbrFee" },
+      { "business": "maxBroadbandMembers", "path": "broadBandMbrInfo.kdMbrMax" },
+      { "business": "minBroadbandMembers", "path": "broadBandMbrInfo.kdMbrMin" },
+      { "business": "hasMainBroadband", "path": "broadBandMbrInfo.mainKd" },
+      { "business": "allowTvOffer", "path": "broadBandMbrInfo.tvPrc" },
+      { "business": "secondBroadbandOffer", "path": "broadBandMbrInfo.sencondKdPrc" },
+      { "business": "thirdBroadbandOffer", "path": "broadBandMbrInfo.thirdKdPrc" }
+    ],
+    "familyAddPrc": [
+      { "business": "addonProductType", "path": "baseInfo.prodType" },
+      { "business": "validityCycle", "path": "baseInfo.prcEffCycle" },
+      { "business": "validityUnit", "path": "baseInfo.prcEffType" },
+      { "business": "validityValue", "path": "baseInfo.prcEffNum" },
+      { "business": "absoluteExpireDate", "path": "baseInfo.prcEffDate" },
+      { "business": "maxRepeatOrder", "path": "baseInfo.effNum" },
+      { "business": "repeatChargeFlag", "path": "baseInfo.reFeeFlag" },
+      { "business": "sourceOfferRef", "path": "baseInfo.canBaseFamilyPrc" },
+      { "business": "upgradeEndsAddon", "path": "baseInfo.familyUpIfEnd" },
+      { "business": "contractAllowDowngrade", "path": "baseInfo.chgYueIfCanDown" },
+      { "business": "addonContractMonths", "path": "baseInfo.chgYue" },
+      { "business": "kdEquity", "path": "optionalInfo.equityContent.kdEquity" },
+      { "business": "tvEquity", "path": "optionalInfo.equityContent.tvEquity" },
+      { "business": "chargeIntervalMonths", "path": "optionalInfo.acctMonth.fixCircle" }
+    ]
+  },
+  "defaultsByCategory": {
+    "personMainPrc": {
+      "orderEffectMode": "1001",
+      "cancelEffectMode": "1023",
+      "saleEndDate": "20991231",
+      "chargeMode": "2",
+      "taxSplitFlag": "0",
+      "chargeValidityType": "0",
+      "smsOpTypes": "0"
+    },
+    "broadBandMainPrc": {
+      "orderEffectMode": "1001",
+      "cancelEffectMode": "1023",
+      "saleEndDate": "20991231",
+      "domainName": "cmcc",
+      "taxSplitFlag": "0",
+      "smsOpTypes": "0"
+    },
+    "personAddPrc": {
+      "orderEffectMode": "1001",
+      "cancelEffectMode": "1023",
+      "saleEndDate": "20991231",
+      "validityCycle": "长期有效",
+      "taxSplitFlag": "0",
+      "smsOpTypes": "0"
+    },
+    "broadBandOptSpeedPrc": {
+      "orderEffectMode": "1001",
+      "cancelEffectMode": "1023",
+      "saleEndDate": "20991231",
+      "taxSplitFlag": "0",
+      "smsOpTypes": "0"
+    },
+    "familyBasePrc": {
+      "orderEffectMode": "1001",
+      "cancelEffectMode": "1023",
+      "saleEndDate": "20991231",
+      "contractMonths": "36",
+      "contractCancelPrivilege": "18",
+      "minFamilyMembers": "1",
+      "taxSplitFlag": "0",
+      "smsOpTypes": "0"
+    },
+    "familyAddPrc": {
+      "orderEffectMode": "1001",
+      "cancelEffectMode": "1023",
+      "saleEndDate": "20991231",
+      "taxSplitFlag": "0",
+      "smsOpTypes": "0"
+    }
+  }
+}

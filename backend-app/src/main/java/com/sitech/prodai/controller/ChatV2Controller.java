@@ -160,14 +160,27 @@ public class ChatV2Controller {
             String role = str(request.get("role"));
             String content = str(request.get("content"));
             String contentType = str(request.getOrDefault("content_type", "text"));
+            if (content == null || content.isBlank()) {
+                return Map.of("success", false, "skipped", true, "reason", "empty_content");
+            }
+            // 首条有效消息时再确保会话存在，避免空会话进入历史
+            persistenceService.get().getOrCreateSession(sessionId, "default",
+                    content.length() > 50 ? content.substring(0, 50) : content);
             ChatMessage msg = persistenceService.get().saveMessage(sessionId, role, content, contentType);
+            if (msg == null) {
+                return Map.of("success", false, "skipped", true, "reason", "empty_content");
+            }
             Map<String, Object> result = messageToMap(msg);
             result.put("success", true);
             return result;
         }
+        String content = str(request.get("content"));
+        if (content == null || content.isBlank()) {
+            return Map.of("success", false, "skipped", true, "reason", "empty_content");
+        }
         return chatV2Service.saveMessage(sessionId,
                 str(request.get("role")),
-                str(request.get("content")),
+                content,
                 str(request.getOrDefault("content_type", "text")),
                 castMap(request.get("metadata")),
                 request.get("parent_id") == null ? null : str(request.get("parent_id")),

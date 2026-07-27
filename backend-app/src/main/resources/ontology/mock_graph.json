@@ -1,45 +1,284 @@
 {
   "bizScenarios": {
-    "家庭融合": {
-      "scenarioId": "SCN-HF",
+    "大众-个人主资费": {
+      "scenarioId": "SCENE_002",
+      "messageRootKey": "personMainPrc",
+      "categoryCode": "personMainPrc",
       "defaults": {
+        "offeringType": "main_pkg",
+        "mutexGroup": "MAIN_PKG",
+        "targetUser": "个人",
+        "productLine": "个人",
+        "messageRootKey": "personMainPrc",
+        "categoryCode": "personMainPrc",
+        "includeVoice": "500分钟",
+        "includeData": "30GB",
+        "channelScope": "A7",
+        "regionScope": "10001",
+        "fixedFeeAmount": 99,
+        "monthlyFee": 99
+      },
+      "templateId": "TPL-PERSON-MAIN-99"
+    },
+    "5G个人主套餐": {
+      "scenarioId": "SCENE_002",
+      "messageRootKey": "personMainPrc",
+      "categoryCode": "personMainPrc",
+      "defaults": {
+        "offeringType": "main_pkg",
+        "mutexGroup": "MAIN_PKG",
+        "targetUser": "个人",
+        "productLine": "个人",
+        "messageRootKey": "personMainPrc",
+        "categoryCode": "personMainPrc",
+        "includeVoice": "500分钟",
+        "includeData": "30GB",
+        "channelScope": "A7",
+        "fixedFeeAmount": 99,
+        "monthlyFee": 99
+      },
+      "templateId": "TPL-PERSON-MAIN-99"
+    },
+    "校园-个人附加": {
+      "scenarioId": "SCENE_001",
+      "messageRootKey": "personAddPrc",
+      "categoryCode": "personAddPrc",
+      "defaults": {
+        "offeringType": "addon",
+        "mutexGroup": "ADDON",
+        "targetUser": "校园",
+        "productLine": "个人",
+        "messageRootKey": "personAddPrc",
+        "categoryCode": "personAddPrc",
+        "includeVoice": "200分钟",
+        "includeData": "20GB",
+        "fixedFeeAmount": 19,
+        "monthlyFee": 19,
+        "dependOn": "MAIN_PKG"
+      },
+      "templateId": "TPL-PERSON-ADD-19"
+    },
+    "校园体验": {
+      "scenarioId": "SCENE_001",
+      "messageRootKey": "personAddPrc",
+      "categoryCode": "personAddPrc",
+      "defaults": {
+        "offeringType": "addon",
+        "mutexGroup": "ADDON",
+        "targetUser": "校园",
+        "productLine": "个人",
+        "messageRootKey": "personAddPrc",
+        "categoryCode": "personAddPrc",
+        "includeData": "20GB",
+        "fixedFeeAmount": 0,
+        "monthlyFee": 0,
+        "dependOn": "MAIN_PKG"
+      },
+      "templateId": "TPL-PERSON-ADD-0"
+    },
+    "家庭-基础套餐": {
+      "scenarioId": "SCENE_003",
+      "messageRootKey": "familyBasePrc",
+      "categoryCode": "familyBasePrc",
+      "defaults": {
+        "offeringType": "fusion",
+        "mutexGroup": "MAIN_PKG",
+        "targetUser": "家庭",
+        "productLine": "家庭",
+        "messageRootKey": "familyBasePrc",
+        "categoryCode": "familyBasePrc",
         "includeVoice": "500分钟",
         "includeData": "40GB",
         "includeBroadband": "500M",
+        "fixedFeeAmount": 128,
+        "monthlyFee": 128,
+        "maxFamilyMembers": "6",
+        "minFamilyMembers": "1"
+      },
+      "templateId": "TPL-FAMILY-BASE-128"
+    },
+    "家庭融合": {
+      "scenarioId": "SCENE_003",
+      "messageRootKey": "familyBasePrc",
+      "categoryCode": "familyBasePrc",
+      "defaults": {
         "offeringType": "fusion",
         "mutexGroup": "MAIN_PKG",
-        "targetUser": "家庭"
-      },
-      "templateId": "TPL-HF-128"
-    },
-    "校园体验": {
-      "scenarioId": "SCN-CAMPUS",
-      "defaults": {
-        "includeVoice": "200分钟",
-        "includeData": "20GB",
-        "offeringType": "main_pkg",
-        "mutexGroup": "MAIN_PKG",
-        "targetUser": "校园",
-        "monthlyFee": 59
-      },
-      "templateId": "TPL-CAMPUS-59"
-    },
-    "5G个人主套餐": {
-      "scenarioId": "SCN-5G",
-      "defaults": {
+        "targetUser": "家庭",
+        "productLine": "家庭",
+        "messageRootKey": "familyBasePrc",
+        "categoryCode": "familyBasePrc",
         "includeVoice": "500分钟",
-        "includeData": "30GB",
+        "includeData": "40GB",
+        "includeBroadband": "500M",
+        "fixedFeeAmount": 128,
+        "monthlyFee": 128
+      },
+      "templateId": "TPL-FAMILY-BASE-128"
+    },
+    "家庭-宽带主资费": {
+      "scenarioId": "SCENE_004",
+      "messageRootKey": "broadBandMainPrc",
+      "categoryCode": "broadBandMainPrc",
+      "defaults": {
         "offeringType": "main_pkg",
         "mutexGroup": "MAIN_PKG",
-        "targetUser": "个人"
+        "targetUser": "家庭",
+        "productLine": "宽带",
+        "messageRootKey": "broadBandMainPrc",
+        "categoryCode": "broadBandMainPrc",
+        "downstreamBandwidth": "500",
+        "upstreamBandwidth": "100",
+        "includeBroadband": "500M",
+        "fixedFeeAmount": 80,
+        "monthlyFee": 80,
+        "domainName": "cmcc"
       },
-      "templateId": "TPL-5G-99"
+      "templateId": "TPL-BB-MAIN-80"
     }
   },
   "templates": {
+    "TPL-PERSON-MAIN-99": {
+      "templateId": "TPL-PERSON-MAIN-99",
+      "name": "5G畅享99",
+      "messageRootKey": "personMainPrc",
+      "categoryCode": "personMainPrc",
+      "fixedFeeAmount": 99,
+      "monthlyFee": 99,
+      "includeVoice": "500分钟",
+      "includeData": "30GB",
+      "mutexGroup": "MAIN_PKG",
+      "channelScope": "A7",
+      "requiredElements": [
+        "SalesPolicy",
+        "ReleaseScope",
+        "ChargePlan",
+        "AccountPreferential",
+        "PrintNotice",
+        "SmsNotice"
+      ]
+    },
+    "TPL-PERSON-ADD-19": {
+      "templateId": "TPL-PERSON-ADD-19",
+      "name": "校园流量加餐19",
+      "messageRootKey": "personAddPrc",
+      "categoryCode": "personAddPrc",
+      "fixedFeeAmount": 19,
+      "monthlyFee": 19,
+      "includeData": "20GB",
+      "mutexGroup": "ADDON",
+      "channelScope": "A7",
+      "requiredElements": [
+        "SalesPolicy",
+        "ReleaseScope",
+        "ChargePlan",
+        "PrintNotice",
+        "SmsNotice"
+      ]
+    },
+    "TPL-PERSON-ADD-0": {
+      "templateId": "TPL-PERSON-ADD-0",
+      "name": "校园体验流量包0元",
+      "messageRootKey": "personAddPrc",
+      "categoryCode": "personAddPrc",
+      "fixedFeeAmount": 0,
+      "monthlyFee": 0,
+      "includeData": "10GB",
+      "mutexGroup": "ADDON",
+      "channelScope": "内部验证",
+      "requiredElements": [
+        "SalesPolicy",
+        "ReleaseScope",
+        "ChargePlan",
+        "PrintNotice",
+        "SmsNotice"
+      ]
+    },
+    "TPL-FAMILY-BASE-128": {
+      "templateId": "TPL-FAMILY-BASE-128",
+      "name": "家庭融合畅享128",
+      "messageRootKey": "familyBasePrc",
+      "categoryCode": "familyBasePrc",
+      "fixedFeeAmount": 128,
+      "monthlyFee": 128,
+      "includeVoice": "500分钟",
+      "includeData": "40GB",
+      "includeBroadband": "500M",
+      "mutexGroup": "MAIN_PKG",
+      "channelScope": "A7",
+      "requiredElements": [
+        "SalesPolicy",
+        "ReleaseScope",
+        "FamilyOfferPolicy",
+        "ChargePlan",
+        "PrintNotice",
+        "SmsNotice"
+      ]
+    },
+    "TPL-BB-MAIN-80": {
+      "templateId": "TPL-BB-MAIN-80",
+      "name": "宽带主资费80",
+      "messageRootKey": "broadBandMainPrc",
+      "categoryCode": "broadBandMainPrc",
+      "fixedFeeAmount": 80,
+      "monthlyFee": 80,
+      "downstreamBandwidth": "500",
+      "upstreamBandwidth": "100",
+      "mutexGroup": "MAIN_PKG",
+      "channelScope": "A7",
+      "requiredElements": [
+        "SalesPolicy",
+        "ReleaseScope",
+        "NetworkCapability",
+        "ChargePlan",
+        "PrintNotice",
+        "SmsNotice"
+      ]
+    },
+    "TPL-BB-SPEED-30": {
+      "templateId": "TPL-BB-SPEED-30",
+      "name": "宽带提速包30",
+      "messageRootKey": "broadBandOptSpeedPrc",
+      "categoryCode": "broadBandOptSpeedPrc",
+      "fixedFeeAmount": 30,
+      "monthlyFee": 30,
+      "downstreamBandwidth": "1000",
+      "mutexGroup": "ADDON",
+      "channelScope": "A7",
+      "requiredElements": [
+        "SalesPolicy",
+        "ReleaseScope",
+        "NetworkCapability",
+        "ChargePlan",
+        "PrintNotice",
+        "SmsNotice"
+      ]
+    },
+    "TPL-FAMILY-ADD-20": {
+      "templateId": "TPL-FAMILY-ADD-20",
+      "name": "家庭增值权益20",
+      "messageRootKey": "familyAddPrc",
+      "categoryCode": "familyAddPrc",
+      "fixedFeeAmount": 20,
+      "monthlyFee": 20,
+      "mutexGroup": "ADDON",
+      "channelScope": "A7",
+      "requiredElements": [
+        "SalesPolicy",
+        "ReleaseScope",
+        "OfferCompatibility",
+        "ChargePlan",
+        "ValueAddedEquity",
+        "PrintNotice",
+        "SmsNotice"
+      ]
+    },
     "TPL-HF-128": {
       "templateId": "TPL-HF-128",
       "name": "家庭融合畅享128",
+      "messageRootKey": "familyBasePrc",
+      "categoryCode": "familyBasePrc",
+      "fixedFeeAmount": 128,
       "monthlyFee": 128,
       "includeVoice": "500分钟",
       "includeData": "30GB",
@@ -50,6 +289,9 @@
     "TPL-CAMPUS-59": {
       "templateId": "TPL-CAMPUS-59",
       "name": "校园青春59",
+      "messageRootKey": "personMainPrc",
+      "categoryCode": "personMainPrc",
+      "fixedFeeAmount": 59,
       "monthlyFee": 59,
       "includeVoice": "200分钟",
       "includeData": "20GB",
@@ -59,6 +301,9 @@
     "TPL-5G-99": {
       "templateId": "TPL-5G-99",
       "name": "5G畅享99",
+      "messageRootKey": "personMainPrc",
+      "categoryCode": "personMainPrc",
+      "fixedFeeAmount": 99,
       "monthlyFee": 99,
       "includeVoice": "500分钟",
       "includeData": "30GB",
@@ -67,6 +312,226 @@
     }
   },
   "shelfOfferings": [
+    {
+      "offeringId": "SCHEME_FAP_001",
+      "offeringName": "家庭增值权益20",
+      "state": "上架",
+      "monthlyFee": 20,
+      "fixedFeeAmount": 20,
+      "oneTimeFee": 0,
+      "mutexGroup": "ADDON",
+      "offeringType": "addon",
+      "shelfDays": 40,
+      "salesCnt30d": 90,
+      "revenue30d": 1800,
+      "hasContract": false,
+      "strategicTag": false,
+      "category": "normal",
+      "messageRootKey": "familyAddPrc",
+      "categoryCode": "familyAddPrc",
+      "categoryName": "家庭附加业务",
+      "productLine": "家庭",
+      "bizScenario": "家庭融合",
+      "targetUser": "家庭",
+      "channelScope": "A7",
+      "basedOnTemplate": "TPL-FAMILY-ADD-20",
+      "dependOn": "MAIN_PKG",
+      "addonProductType": "家庭权益类产品",
+      "chargePlan": {
+        "fixedFeeAmount": 20,
+        "chargeMode": "R",
+        "taxSplitFlag": "0"
+      },
+      "valueAddedEquity": {
+        "kdEquity": "ACCZ02321",
+        "tvEquity": "ACCZ02322"
+      }
+    },
+    {
+      "offeringId": "SCHEME_FBP_001",
+      "offeringName": "家庭亲情网基础套餐",
+      "state": "上架",
+      "monthlyFee": 99,
+      "fixedFeeAmount": 99,
+      "oneTimeFee": 0,
+      "mutexGroup": "MAIN_PKG",
+      "offeringType": "fusion",
+      "shelfDays": 120,
+      "salesCnt30d": 150,
+      "revenue30d": 14850,
+      "hasContract": true,
+      "strategicTag": true,
+      "category": "normal",
+      "messageRootKey": "familyBasePrc",
+      "categoryCode": "familyBasePrc",
+      "categoryName": "家庭基础套餐",
+      "productLine": "家庭",
+      "bizScenario": "家庭-基础套餐",
+      "targetUser": "家庭",
+      "channelScope": "A7",
+      "basedOnTemplate": "TPL-FAMILY-BASE-128",
+      "workOrderId": "20240101100001",
+      "chargePlan": {
+        "fixedFeeAmount": 99,
+        "chargeMode": "R",
+        "accountItem": "家庭套餐月租",
+        "taxSplitFlag": "0"
+      },
+      "familyOfferPolicy": {
+        "familyPackageType": "亲情网",
+        "isFloorOffer": "否",
+        "isUnifiedPay": "是",
+        "maxFamilyMembers": "5",
+        "minFamilyMembers": "2"
+      }
+    },
+    {
+      "offeringId": "SCHEME_BOS_001",
+      "offeringName": "宽带提速包30",
+      "state": "上架",
+      "monthlyFee": 30,
+      "fixedFeeAmount": 30,
+      "oneTimeFee": 0,
+      "mutexGroup": "ADDON",
+      "offeringType": "addon",
+      "shelfDays": 50,
+      "salesCnt30d": 80,
+      "revenue30d": 2400,
+      "hasContract": false,
+      "strategicTag": false,
+      "category": "normal",
+      "messageRootKey": "broadBandOptSpeedPrc",
+      "categoryCode": "broadBandOptSpeedPrc",
+      "categoryName": "宽带加速包",
+      "productLine": "宽带",
+      "bizScenario": "家庭-宽带主资费",
+      "targetUser": "家庭",
+      "channelScope": "A7",
+      "basedOnTemplate": "TPL-BB-SPEED-30",
+      "dependOn": "MAIN_PKG",
+      "downstreamBandwidth": "1000",
+      "chargePlan": {
+        "fixedFeeAmount": 30,
+        "chargeMode": "R",
+        "taxSplitFlag": "0"
+      },
+      "networkCapability": {
+        "downstreamBandwidth": "1000",
+        "upstreamBandwidth": "100"
+      }
+    },
+    {
+      "offeringId": "SCHEME_PAP_001",
+      "offeringName": "个人附加流量包19",
+      "state": "上架",
+      "monthlyFee": 19,
+      "fixedFeeAmount": 19,
+      "oneTimeFee": 0,
+      "mutexGroup": "ADDON",
+      "offeringType": "addon",
+      "shelfDays": 60,
+      "salesCnt30d": 300,
+      "revenue30d": 5700,
+      "hasContract": false,
+      "strategicTag": false,
+      "category": "normal",
+      "messageRootKey": "personAddPrc",
+      "categoryCode": "personAddPrc",
+      "categoryName": "个人附加资费",
+      "productLine": "个人",
+      "bizScenario": "校园-个人附加",
+      "targetUser": "校园",
+      "channelScope": "A7",
+      "basedOnTemplate": "TPL-PERSON-ADD-19",
+      "dependOn": "MAIN_PKG",
+      "chargePlan": {
+        "fixedFeeAmount": 19,
+        "chargeMode": "R",
+        "taxSplitFlag": "0"
+      }
+    },
+    {
+      "offeringId": "SCHEME_BBM_001",
+      "offeringName": "宽带主资费80",
+      "state": "上架",
+      "monthlyFee": 80,
+      "fixedFeeAmount": 80,
+      "oneTimeFee": 0,
+      "mutexGroup": "MAIN_PKG",
+      "offeringType": "main_pkg",
+      "shelfDays": 90,
+      "salesCnt30d": 120,
+      "revenue30d": 9600,
+      "hasContract": true,
+      "strategicTag": false,
+      "category": "normal",
+      "messageRootKey": "broadBandMainPrc",
+      "categoryCode": "broadBandMainPrc",
+      "categoryName": "宽带主资费",
+      "productLine": "宽带",
+      "bizScenario": "家庭-宽带主资费",
+      "targetUser": "家庭",
+      "channelScope": "A7",
+      "basedOnTemplate": "TPL-BB-MAIN-80",
+      "downstreamBandwidth": "500",
+      "upstreamBandwidth": "100",
+      "domainName": "cmcc",
+      "chargePlan": {
+        "fixedFeeAmount": 80,
+        "chargeMode": "R",
+        "taxSplitFlag": "0"
+      },
+      "networkCapability": {
+        "downstreamBandwidth": "500",
+        "upstreamBandwidth": "100",
+        "domainName": "cmcc"
+      }
+    },
+    {
+      "offeringId": "SCHEME_PMP_001",
+      "offeringName": "测试资费-个人主",
+      "state": "上架",
+      "monthlyFee": 40,
+      "fixedFeeAmount": 40,
+      "oneTimeFee": 0,
+      "mutexGroup": "MAIN_PKG",
+      "offeringType": "main_pkg",
+      "shelfDays": 100,
+      "salesCnt30d": 200,
+      "revenue30d": 8000,
+      "hasContract": true,
+      "strategicTag": true,
+      "category": "normal",
+      "messageRootKey": "personMainPrc",
+      "categoryCode": "personMainPrc",
+      "categoryName": "个人主资费",
+      "productLine": "个人",
+      "bizScenario": "大众-个人主资费",
+      "targetUser": "个人",
+      "channelScope": "A7",
+      "regionScope": "10001",
+      "basedOnTemplate": "TPL-PERSON-MAIN-99",
+      "workOrderId": "20230823197104",
+      "chargePlan": {
+        "fixedFeeAmount": 40,
+        "chargeMode": "2",
+        "accountItem": "套餐月租",
+        "taxSplitFlag": "0"
+      },
+      "releaseScope": {
+        "channelScope": "A7",
+        "regionScope": "10001",
+        "regionDetail": "2,3"
+      },
+      "printNotice": {
+        "printMonthlyFeeText": "40元/月",
+        "printResourceText": "包含优酷视频彩铃"
+      },
+      "smsNotice": {
+        "smsOpTypes": "0",
+        "successSmsImmediate": "立即成功短信内容"
+      }
+    },
     {
       "offeringId": "OF-HF-128",
       "offeringName": "家庭融合畅享128",
@@ -80,7 +545,36 @@
       "revenue30d": 110080,
       "hasContract": true,
       "strategicTag": true,
-      "category": "normal"
+      "category": "normal",
+      "messageRootKey": "familyBasePrc",
+      "categoryCode": "familyBasePrc",
+      "categoryName": "家庭基础套餐",
+      "productLine": "家庭",
+      "bizScenario": "家庭融合",
+      "targetUser": "家庭",
+      "channelScope": "A7",
+      "regionScope": "10001",
+      "fixedFeeAmount": 128,
+      "basedOnTemplate": "TPL-FAMILY-BASE-128",
+      "chargePlan": {
+        "fixedFeeAmount": 128,
+        "chargeMode": "R",
+        "accountItem": "家庭套餐月租",
+        "taxSplitFlag": "0"
+      },
+      "releaseScope": {
+        "channelScope": "A7",
+        "regionScope": "10001",
+        "regionDetail": "2,3"
+      },
+      "familyOfferPolicy": {
+        "familyPackageType": "全家福",
+        "maxFamilyMembers": "6",
+        "minFamilyMembers": "1"
+      },
+      "includeVoice": "500分钟",
+      "includeData": "40GB",
+      "includeBroadband": "500M"
     },
     {
       "offeringId": "OF-RISK-001",
@@ -96,7 +590,22 @@
       "hasContract": false,
       "strategicTag": false,
       "category": "zero_fee",
-      "nameHint": "体验"
+      "nameHint": "体验",
+      "messageRootKey": "personAddPrc",
+      "categoryCode": "personAddPrc",
+      "categoryName": "个人附加资费",
+      "productLine": "个人",
+      "bizScenario": "校园体验",
+      "targetUser": "校园",
+      "channelScope": "内部验证",
+      "fixedFeeAmount": 0,
+      "basedOnTemplate": "TPL-PERSON-ADD-0",
+      "dependOn": "MAIN_PKG",
+      "chargePlan": {
+        "fixedFeeAmount": 0,
+        "chargeMode": "R",
+        "taxSplitFlag": "0"
+      }
     },
     {
       "offeringId": "OF-LOW-019",
@@ -1441,5 +1950,275 @@
     "highRiskReviewDays": 30,
     "lowRevenuePercentile": 0.05
   },
-  "extractFallbackPackages": []
+  "extractFallbackPackages": [],
+  "configSchemes": [
+    {
+      "schemeId": "SCHEME_PMP_001",
+      "schemeName": "测试资费-个人主",
+      "status": "已上线",
+      "messageRootKey": "personMainPrc",
+      "categoryCode": "personMainPrc",
+      "categoryName": "个人主资费",
+      "productLine": "个人",
+      "fixedFeeAmount": 40,
+      "monthlyFee": 40,
+      "bizScenario": "大众-个人主资费",
+      "targetUser": "个人",
+      "channelScope": "A7",
+      "regionScope": "10001",
+      "basedOnTemplate": "TPL-PERSON-MAIN-99",
+      "workOrderId": "20230823197104",
+      "chargePlan": {
+        "fixedFeeAmount": 40,
+        "chargeMode": "2",
+        "accountItem": "套餐月租",
+        "taxSplitFlag": "0"
+      },
+      "releaseScope": {
+        "channelScope": "A7",
+        "regionScope": "10001",
+        "regionDetail": "2,3"
+      },
+      "familyOfferPolicy": null,
+      "networkCapability": null,
+      "printNotice": {
+        "printMonthlyFeeText": "40元/月",
+        "printResourceText": "包含优酷视频彩铃"
+      },
+      "smsNotice": {
+        "smsOpTypes": "0",
+        "successSmsImmediate": "立即成功短信内容"
+      },
+      "valueAddedEquity": null,
+      "offeringType": "main_pkg",
+      "mutexGroup": "MAIN_PKG",
+      "includeVoice": null,
+      "includeData": null,
+      "includeBroadband": null
+    },
+    {
+      "schemeId": "SCHEME_BBM_001",
+      "schemeName": "宽带主资费80",
+      "status": "已上线",
+      "messageRootKey": "broadBandMainPrc",
+      "categoryCode": "broadBandMainPrc",
+      "categoryName": "宽带主资费",
+      "productLine": "宽带",
+      "fixedFeeAmount": 80,
+      "monthlyFee": 80,
+      "bizScenario": "家庭-宽带主资费",
+      "targetUser": "家庭",
+      "channelScope": "A7",
+      "regionScope": null,
+      "basedOnTemplate": "TPL-BB-MAIN-80",
+      "workOrderId": null,
+      "chargePlan": {
+        "fixedFeeAmount": 80,
+        "chargeMode": "R",
+        "taxSplitFlag": "0"
+      },
+      "releaseScope": null,
+      "familyOfferPolicy": null,
+      "networkCapability": {
+        "downstreamBandwidth": "500",
+        "upstreamBandwidth": "100",
+        "domainName": "cmcc"
+      },
+      "printNotice": null,
+      "smsNotice": null,
+      "valueAddedEquity": null,
+      "offeringType": "main_pkg",
+      "mutexGroup": "MAIN_PKG",
+      "includeVoice": null,
+      "includeData": null,
+      "includeBroadband": null
+    },
+    {
+      "schemeId": "SCHEME_PAP_001",
+      "schemeName": "个人附加流量包19",
+      "status": "已上线",
+      "messageRootKey": "personAddPrc",
+      "categoryCode": "personAddPrc",
+      "categoryName": "个人附加资费",
+      "productLine": "个人",
+      "fixedFeeAmount": 19,
+      "monthlyFee": 19,
+      "bizScenario": "校园-个人附加",
+      "targetUser": "校园",
+      "channelScope": "A7",
+      "regionScope": null,
+      "basedOnTemplate": "TPL-PERSON-ADD-19",
+      "workOrderId": null,
+      "chargePlan": {
+        "fixedFeeAmount": 19,
+        "chargeMode": "R",
+        "taxSplitFlag": "0"
+      },
+      "releaseScope": null,
+      "familyOfferPolicy": null,
+      "networkCapability": null,
+      "printNotice": null,
+      "smsNotice": null,
+      "valueAddedEquity": null,
+      "offeringType": "addon",
+      "mutexGroup": "ADDON",
+      "includeVoice": null,
+      "includeData": null,
+      "includeBroadband": null
+    },
+    {
+      "schemeId": "SCHEME_BOS_001",
+      "schemeName": "宽带提速包30",
+      "status": "已上线",
+      "messageRootKey": "broadBandOptSpeedPrc",
+      "categoryCode": "broadBandOptSpeedPrc",
+      "categoryName": "宽带加速包",
+      "productLine": "宽带",
+      "fixedFeeAmount": 30,
+      "monthlyFee": 30,
+      "bizScenario": "家庭-宽带主资费",
+      "targetUser": "家庭",
+      "channelScope": "A7",
+      "regionScope": null,
+      "basedOnTemplate": "TPL-BB-SPEED-30",
+      "workOrderId": null,
+      "chargePlan": {
+        "fixedFeeAmount": 30,
+        "chargeMode": "R",
+        "taxSplitFlag": "0"
+      },
+      "releaseScope": null,
+      "familyOfferPolicy": null,
+      "networkCapability": {
+        "downstreamBandwidth": "1000",
+        "upstreamBandwidth": "100"
+      },
+      "printNotice": null,
+      "smsNotice": null,
+      "valueAddedEquity": null,
+      "offeringType": "addon",
+      "mutexGroup": "ADDON",
+      "includeVoice": null,
+      "includeData": null,
+      "includeBroadband": null
+    },
+    {
+      "schemeId": "SCHEME_FBP_001",
+      "schemeName": "家庭亲情网基础套餐",
+      "status": "已上线",
+      "messageRootKey": "familyBasePrc",
+      "categoryCode": "familyBasePrc",
+      "categoryName": "家庭基础套餐",
+      "productLine": "家庭",
+      "fixedFeeAmount": 99,
+      "monthlyFee": 99,
+      "bizScenario": "家庭-基础套餐",
+      "targetUser": "家庭",
+      "channelScope": "A7",
+      "regionScope": null,
+      "basedOnTemplate": "TPL-FAMILY-BASE-128",
+      "workOrderId": "20240101100001",
+      "chargePlan": {
+        "fixedFeeAmount": 99,
+        "chargeMode": "R",
+        "accountItem": "家庭套餐月租",
+        "taxSplitFlag": "0"
+      },
+      "releaseScope": null,
+      "familyOfferPolicy": {
+        "familyPackageType": "亲情网",
+        "isFloorOffer": "否",
+        "isUnifiedPay": "是",
+        "maxFamilyMembers": "5",
+        "minFamilyMembers": "2"
+      },
+      "networkCapability": null,
+      "printNotice": null,
+      "smsNotice": null,
+      "valueAddedEquity": null,
+      "offeringType": "fusion",
+      "mutexGroup": "MAIN_PKG",
+      "includeVoice": null,
+      "includeData": null,
+      "includeBroadband": null
+    },
+    {
+      "schemeId": "SCHEME_FAP_001",
+      "schemeName": "家庭增值权益20",
+      "status": "已上线",
+      "messageRootKey": "familyAddPrc",
+      "categoryCode": "familyAddPrc",
+      "categoryName": "家庭附加业务",
+      "productLine": "家庭",
+      "fixedFeeAmount": 20,
+      "monthlyFee": 20,
+      "bizScenario": "家庭融合",
+      "targetUser": "家庭",
+      "channelScope": "A7",
+      "regionScope": null,
+      "basedOnTemplate": "TPL-FAMILY-ADD-20",
+      "workOrderId": null,
+      "chargePlan": {
+        "fixedFeeAmount": 20,
+        "chargeMode": "R",
+        "taxSplitFlag": "0"
+      },
+      "releaseScope": null,
+      "familyOfferPolicy": null,
+      "networkCapability": null,
+      "printNotice": null,
+      "smsNotice": null,
+      "valueAddedEquity": {
+        "kdEquity": "ACCZ02321",
+        "tvEquity": "ACCZ02322"
+      },
+      "offeringType": "addon",
+      "mutexGroup": "ADDON",
+      "includeVoice": null,
+      "includeData": null,
+      "includeBroadband": null
+    },
+    {
+      "schemeId": "OF-HF-128",
+      "schemeName": "家庭融合畅享128",
+      "status": "已上线",
+      "messageRootKey": "familyBasePrc",
+      "categoryCode": "familyBasePrc",
+      "categoryName": "家庭基础套餐",
+      "productLine": "家庭",
+      "fixedFeeAmount": 128,
+      "monthlyFee": 128,
+      "bizScenario": "家庭融合",
+      "targetUser": "家庭",
+      "channelScope": "A7",
+      "regionScope": "10001",
+      "basedOnTemplate": "TPL-FAMILY-BASE-128",
+      "workOrderId": null,
+      "chargePlan": {
+        "fixedFeeAmount": 128,
+        "chargeMode": "R",
+        "accountItem": "家庭套餐月租",
+        "taxSplitFlag": "0"
+      },
+      "releaseScope": {
+        "channelScope": "A7",
+        "regionScope": "10001",
+        "regionDetail": "2,3"
+      },
+      "familyOfferPolicy": {
+        "familyPackageType": "全家福",
+        "maxFamilyMembers": "6",
+        "minFamilyMembers": "1"
+      },
+      "networkCapability": null,
+      "printNotice": null,
+      "smsNotice": null,
+      "valueAddedEquity": null,
+      "offeringType": "main_pkg",
+      "mutexGroup": "MAIN_PKG",
+      "includeVoice": "500分钟",
+      "includeData": "40GB",
+      "includeBroadband": "500M"
+    }
+  ]
 }

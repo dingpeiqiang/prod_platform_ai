@@ -20,6 +20,8 @@ prodai:
     config-ttl-path: classpath:ontology/product-config.ttl
     llm-extract-enabled: true
     base-iri: http://example.org/
+    batch-audit-enabled: true
+    batch-audit-cron: "0 0 * * * ?"
   kb:
     seed-path: classpath:ontology/kb_seed.json
   mcp:

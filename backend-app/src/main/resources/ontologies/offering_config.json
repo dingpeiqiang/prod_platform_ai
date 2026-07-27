@@ -1,47 +1,68 @@
-{
+﻿{
   "formCode": "offering_config",
-  "formName": "商品配置草稿",
-  "description": "产商品配置本体MVP：智聊·对话配置与智读·文件配置，覆盖字段推理填报与全链路合规校验",
+  "formName": "产商品配置方案",
+  "description": "产商品配置本体 v2.2：业务四层建模，报文为投影；覆盖智聊/智读/智查与合规校验",
   "category": "product",
   "entities": [
     {
       "entityCode": "offering_config",
-      "entityName": "商品配置草稿",
+      "entityName": "配置方案草稿",
       "fields": [
         {
-          "fieldCode": "offeringName",
-          "fieldName": "商品名称",
+          "fieldCode": "offerName",
+          "fieldName": "资费名称",
           "fieldType": "input",
           "required": true,
-          "ruleDescription": "商品配置草稿名称，如：家庭融合畅享158"
+          "ruleDescription": "对应报文 prodPrcName，如：家庭融合畅享158"
         },
         {
-          "fieldCode": "offeringType",
-          "fieldName": "商品类型",
+          "fieldCode": "offeringName",
+          "fieldName": "资费名称(兼容)",
+          "fieldType": "input",
+          "required": false,
+          "ruleDescription": "兼容旧字段，与 offerName 同步"
+        },
+        {
+          "fieldCode": "categoryCode",
+          "fieldName": "产品品类",
           "fieldType": "select",
           "required": true,
           "enumConfig": {
             "type": "static",
             "options": [
-              { "value": "main_pkg", "label": "主套餐" },
-              { "value": "addon", "label": "附加包" },
-              { "value": "fusion", "label": "融合套餐" },
-              { "value": "promo", "label": "促销商品" }
+              { "value": "personMainPrc", "label": "个人主资费" },
+              { "value": "broadBandMainPrc", "label": "宽带主资费" },
+              { "value": "personAddPrc", "label": "个人附加资费" },
+              { "value": "broadBandOptSpeedPrc", "label": "宽带加速包" },
+              { "value": "familyBasePrc", "label": "家庭基础套餐" },
+              { "value": "familyAddPrc", "label": "家庭附加业务" }
             ]
           },
-          "defaultValue": "fusion"
+          "defaultValue": "personMainPrc",
+          "ruleDescription": "决定 messageRootKey 与必备要素组合"
+        },
+        {
+          "fieldCode": "messageRootKey",
+          "fieldName": "报文根键",
+          "fieldType": "input",
+          "required": true,
+          "ruleDescription": "与品类一致：personMainPrc / familyBasePrc 等"
         },
         {
           "fieldCode": "bizScenario",
           "fieldName": "业务场景",
           "fieldType": "select",
-          "required": true,
+          "required": false,
           "enumConfig": {
             "type": "static",
             "options": [
-              { "value": "家庭融合", "label": "家庭融合" },
+              { "value": "大众-个人主资费", "label": "大众-个人主资费" },
+              { "value": "5G个人主套餐", "label": "5G个人主套餐" },
+              { "value": "校园-个人附加", "label": "校园-个人附加" },
               { "value": "校园体验", "label": "校园体验" },
-              { "value": "5G个人主套餐", "label": "5G个人主套餐" }
+              { "value": "家庭-基础套餐", "label": "家庭-基础套餐" },
+              { "value": "家庭融合", "label": "家庭融合" },
+              { "value": "家庭-宽带主资费", "label": "家庭-宽带主资费" }
             ]
           }
         },
@@ -49,7 +70,7 @@
           "fieldCode": "targetUser",
           "fieldName": "目标用户",
           "fieldType": "select",
-          "required": true,
+          "required": false,
           "enumConfig": {
             "type": "static",
             "options": [
@@ -68,6 +89,7 @@
           "enumConfig": {
             "type": "static",
             "options": [
+              { "value": "A7", "label": "营业前台+电渠等(A7)" },
               { "value": "全渠道", "label": "全渠道" },
               { "value": "仅电渠", "label": "仅电渠" },
               { "value": "电渠+厅店", "label": "电渠+厅店" },
@@ -76,11 +98,25 @@
           }
         },
         {
-          "fieldCode": "monthlyFee",
-          "fieldName": "月费",
+          "fieldCode": "regionScope",
+          "fieldName": "发布地市",
+          "fieldType": "input",
+          "required": false,
+          "ruleDescription": "对应报文 groupId，如 10001=全省"
+        },
+        {
+          "fieldCode": "fixedFeeAmount",
+          "fieldName": "固费金额(元)",
           "fieldType": "number",
           "required": true,
-          "ruleDescription": "商品月费（元），用于资费冲突与零元稽核"
+          "ruleDescription": "ChargePlan.fixedFeeAmount → acctMonth.fixFee"
+        },
+        {
+          "fieldCode": "monthlyFee",
+          "fieldName": "月费(兼容)",
+          "fieldType": "number",
+          "required": false,
+          "ruleDescription": "兼容旧字段，与 fixedFeeAmount 同步"
         },
         {
           "fieldCode": "oneTimeFee",
@@ -94,21 +130,34 @@
           "fieldName": "包含语音",
           "fieldType": "input",
           "required": false,
-          "ruleDescription": "语音分钟数，如 500分钟；可由场景缺省推理补全"
+          "ruleDescription": "语音资源摘要，如 500分钟"
         },
         {
           "fieldCode": "includeData",
           "fieldName": "包含流量",
           "fieldType": "input",
           "required": false,
-          "ruleDescription": "国内流量，如 40GB；可由场景缺省推理补全"
+          "ruleDescription": "流量资源摘要，如 40GB"
         },
         {
           "fieldCode": "includeBroadband",
           "fieldName": "包含宽带",
           "fieldType": "input",
           "required": false,
-          "ruleDescription": "宽带带宽，如 500M"
+          "ruleDescription": "宽带带宽摘要，如 500M"
+        },
+        {
+          "fieldCode": "downstreamBandwidth",
+          "fieldName": "下行带宽",
+          "fieldType": "input",
+          "required": false,
+          "ruleDescription": "NetworkCapability → baseInfo.downStreamId"
+        },
+        {
+          "fieldCode": "upstreamBandwidth",
+          "fieldName": "上行带宽",
+          "fieldType": "input",
+          "required": false
         },
         {
           "fieldCode": "mutexGroup",
@@ -116,80 +165,38 @@
           "fieldType": "input",
           "required": false,
           "defaultValue": "MAIN_PKG",
-          "ruleDescription": "主套餐互斥组标识，同组不可同时上架"
+          "ruleDescription": "主资费互斥组；附加资费一般为 ADDON"
         },
         {
           "fieldCode": "dependOn",
-          "fieldName": "依赖商品",
+          "fieldName": "依赖主资费",
           "fieldType": "input",
           "required": false,
-          "ruleDescription": "依赖的主服务/宽带等，缺失则规则漏洞"
+          "ruleDescription": "附加品类必填，指向主资费互斥组或编码"
         },
         {
-          "fieldCode": "hasContract",
-          "fieldName": "是否有合约",
+          "fieldCode": "workOrderId",
+          "fieldName": "需求工单号",
+          "fieldType": "input",
+          "required": false,
+          "ruleDescription": "ConfigScheme.workOrderId → baseInfo.templateId"
+        },
+        {
+          "fieldCode": "offeringType",
+          "fieldName": "主附类型(兼容)",
           "fieldType": "select",
           "required": false,
           "enumConfig": {
             "type": "static",
             "options": [
-              { "value": "0", "label": "无合约" },
-              { "value": "1", "label": "有合约" }
+              { "value": "main_pkg", "label": "主套餐" },
+              { "value": "addon", "label": "附加包" },
+              { "value": "fusion", "label": "融合套餐" },
+              { "value": "promo", "label": "促销商品" }
             ]
-          },
-          "defaultValue": "0"
-        },
-        {
-          "fieldCode": "contractMonths",
-          "fieldName": "协议期(月)",
-          "fieldType": "number",
-          "required": false
-        },
-        {
-          "fieldCode": "discountPercent",
-          "fieldName": "优惠折扣%",
-          "fieldType": "number",
-          "required": false,
-          "ruleDescription": "100 表示全免；与可重复订购组合会触发异常优惠漏洞"
-        },
-        {
-          "fieldCode": "repeatable",
-          "fieldName": "可重复订购",
-          "fieldType": "select",
-          "required": false,
-          "enumConfig": {
-            "type": "static",
-            "options": [
-              { "value": "false", "label": "否" },
-              { "value": "true", "label": "是" }
-            ]
-          },
-          "defaultValue": "false"
-        },
-        {
-          "fieldCode": "basedOnTemplate",
-          "fieldName": "基于模板",
-          "fieldType": "input",
-          "required": false
-        },
-        {
-          "fieldCode": "fillSources",
-          "fieldName": "字段来源",
-          "fieldType": "textarea",
-          "required": false,
-          "ruleDescription": "JSON：各字段 fillSource，如 scenario_default / user_said / template"
+          }
         }
       ]
     }
-  ],
-  "businessRules": [
-    "R-C01: 业务场景=家庭融合且未指定宽带 → 缺省补全 broadband=500M 及语音/流量",
-    "R-C02: 目标用户=校园且月费为空 → 推荐模板价 59",
-    "R-C03: 同一互斥组内不可再挂已有主套餐 → 资费/关系冲突阻断",
-    "R-C04: 附加包缺失依赖主服务/宽带 → 规则漏洞阻断",
-    "R-C05: monthlyFee=0 且无合约且场景非权益赠送 → 高风险资费",
-    "R-C06: 必填要素(名称/定价/目标用户/渠道)空值 → 必填缺失",
-    "R-C07: 优惠折扣=100% 且可重复订购 → 异常优惠漏洞",
-    "R-C08: 无 HIGH 问题且必填齐全 → compliancePass=true"
   ]
 }

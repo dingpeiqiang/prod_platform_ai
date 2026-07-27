@@ -61,6 +61,9 @@
             · {{ activeItem.draft?.targetUser || '—' }}
             · {{ activeItem.draft?.channelScope || '—' }}
           </p>
+          <p class="msg-root">
+            报文 {{ activeItem.draft?.categoryName || activeItem.categoryName || activeItem.draft?.messageRootKey || '—' }}
+          </p>
         </div>
         <div class="col">
           <div class="col-title">场景 / 规则</div>
@@ -69,6 +72,9 @@
             <template v-if="activeItem.draft?.basedOnTemplate">
               · {{ activeItem.draft.basedOnTemplate }}
             </template>
+          </p>
+          <p v-if="activeItem.draft?.successSmsImmediate" class="sms-preview">
+            {{ activeItem.draft.successSmsImmediate }}
           </p>
           <div v-if="activeItem.issues?.length" class="issue-list">
             <span
@@ -493,6 +499,22 @@ function fixesFor(item) {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.msg-root {
+  margin-top: 4px !important;
+  color: #0f766e !important;
+  font-weight: 600;
+}
+
+.sms-preview {
+  margin-top: 6px !important;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: #475569 !important;
+  font-size: 11px !important;
+  -webkit-line-clamp: 3 !important;
 }
 
 .issue-list {
