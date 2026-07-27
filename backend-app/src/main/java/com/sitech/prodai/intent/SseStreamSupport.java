@@ -8,7 +8,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 /**
@@ -22,19 +22,24 @@ public final class SseStreamSupport {
     /**
      * @param prelude     立刻发出的前置事件（如 thinking）
      * @param work        阻塞重活
-     * @param afterWork   重活结果 → 后续事件（intent / text / done）
+     * @param afterWork   重活结果 + 耗时毫秒 → 后续事件（intent / text / done）
      */
     public static <T> Flux<Map<String, Object>> deferWork(
             List<Map<String, Object>> prelude,
             Supplier<T> work,
-            Function<T, List<Map<String, Object>>> afterWork
+            BiFunction<T, Long, List<Map<String, Object>>> afterWork
     ) {
         Flux<Map<String, Object>> head = prelude == null || prelude.isEmpty()
                 ? Flux.empty()
                 : Flux.fromIterable(prelude);
-        Flux<Map<String, Object>> body = Mono.fromCallable(work::get)
+        Flux<Map<String, Object>> body = Mono.fromCallable(() -> {
+                    long start = System.currentTimeMillis();
+                    T result = work.get();
+                    long elapsedMs = Math.max(0L, System.currentTimeMillis() - start);
+                    return afterWork.apply(result, elapsedMs);
+                })
                 .subscribeOn(Schedulers.boundedElastic())
-                .flatMapMany(result -> Flux.fromIterable(afterWork.apply(result)));
+                .flatMapMany(Flux::fromIterable);
         return Flux.concat(head, body);
     }
 

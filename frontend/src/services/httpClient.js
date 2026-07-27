@@ -44,12 +44,20 @@ const apiClient = axios.create({
 apiClient.interceptors.request.use(
   async (config) => {
     if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
-      // 去掉默认 application/json，让浏览器写入 multipart boundary
-      if (config.headers) {
-        delete config.headers['Content-Type']
-        delete config.headers['content-type']
-        if (typeof config.headers.set === 'function') {
-          config.headers.set('Content-Type', undefined)
+      // axios 默认 Content-Type: application/json 会导致 Spring 拒绝 multipart
+      // 必须彻底删除，让运行时自动带 boundary
+      const headers = config.headers
+      if (headers) {
+        if (typeof headers.delete === 'function') {
+          headers.delete('Content-Type')
+          headers.delete('content-type')
+        } else {
+          delete headers['Content-Type']
+          delete headers['content-type']
+        }
+        if (typeof headers.set === 'function') {
+          // axios 约定：false 表示不设置该头
+          headers.set('Content-Type', false)
         }
       }
     }
@@ -97,6 +105,7 @@ export async function request(url, options = {}) {
   // FormData 须由浏览器自动带 boundary，不能沿用默认 application/json
   if (typeof FormData !== 'undefined' && data instanceof FormData) {
     delete finalHeaders['Content-Type']
+    delete finalHeaders['content-type']
   }
 
   return await apiClient({

@@ -64,12 +64,12 @@ public class ProductOpsReasonHandler implements BaseIntentHandler {
         return SseStreamSupport.deferWork(
                 prelude,
                 () -> productOntologyService.analyzeRootCause(offeringHint, target),
-                root -> buildAfterEvents(ctx, target, traceId, root)
+                (root, elapsedMs) -> buildAfterEvents(ctx, target, traceId, root, elapsedMs)
         );
     }
 
     private List<Map<String, Object>> buildAfterEvents(
-            IntentContext ctx, String target, String traceId, Map<String, Object> root
+            IntentContext ctx, String target, String traceId, Map<String, Object> root, long elapsedMs
     ) {
         boolean ok = Boolean.TRUE.equals(root.get("success"));
         List<String> referencedRules = toStringList(root.get("appliedRules"));
@@ -110,7 +110,7 @@ public class ProductOpsReasonHandler implements BaseIntentHandler {
                         "evidenceCount", paths.size(),
                         "success", ok
                 ),
-                0,
+                elapsedMs,
                 referencedRules.isEmpty() ? null : "引用规则: " + referencedRules.stream()
                         .map(this::formatRuleLabel)
                         .reduce((a, b) -> a + "、" + b)

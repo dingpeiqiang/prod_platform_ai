@@ -15,6 +15,8 @@ import {
   checkCompliance,
   batchFromDocument,
   batchFromUpload,
+  batchFromUploadedFile,
+  uploadConfigFile,
   discoverConfigs,
   copyAsDraft,
   saveConfigDraft,
@@ -488,6 +490,30 @@ export function useProductConfig() {
     }
   }
 
+  function hasUploadAttachments(attachments = []) {
+    return (attachments || []).some(
+      (a) => a?.file instanceof Blob || a?.type === 'file' || (a?.name && a?.size != null),
+    )
+  }
+
+  /** 判断文本是否像可抽取的方案正文（含资费/资源等要素），而非「请按文档生成」类操作话术 */
+  function looksLikePlanContent(text = '') {
+    const t = String(text || '').trim()
+    if (!t) return false
+    const signals = [
+      /月费|资费|定价|固定费/,
+      /\d+\s*元/,
+      /\d+\s*GB|\d+\s*G\b|流量/,
+      /分钟|语音|通话/,
+      /宽带|\d+\s*M(?:bps)?/i,
+      /套餐[A-Za-z0-9甲乙丙丁一二三四五六七八九十]|套餐名称|商品名称|offering/i,
+      /目标客群|客群|渠道|合约|订购|互斥|依赖/,
+    ]
+    const hits = signals.filter((re) => re.test(t)).length
+    if (hits >= 2) return true
+    return t.length >= 80 && hits >= 1
+  }
+
   function deriveDocMeta(documentText = '', attachments = []) {
     const files = (attachments || []).filter((a) => a?.type === 'file' || a?.file || a?.name)
     if (files.length) {
@@ -500,17 +526,19 @@ export function useProductConfig() {
     }
     const text = String(documentText || '').trim()
     const titleMatch = text.match(/[《「"]([^》」"]{2,40})[》」"]/)
+    // 粘贴正文：用文档标题或中性名，避免把操作话术切片成「xxx.txt」冒充已上传文件
     const fileName = titleMatch?.[1]
       ? `${titleMatch[1]}.txt`
-      : text.slice(0, 24).replace(/\s+/g, '_') || '用户方案描述'
+      : '粘贴方案正文.txt'
     return {
       fileName: fileName.endsWith('.txt') || fileName.endsWith('.md') ? fileName : `${fileName}.txt`,
       fileSize: Math.max(1, new Blob([text]).size),
     }
   }
 
-  function isBinaryOfficeFile(name = '') {
-    return /\.(docx|pdf|xlsx|xlsm)$/i.test(name)
+  /** 需走后端 ConfigDocumentParser 的附件扩展名 */
+  function needsServerParse(name = '') {
+    return /\.(docx|pdf|xlsx|xlsm|csv|md|txt)$/i.test(name)
   }
 
   async function readAttachmentTexts(attachments = []) {
@@ -518,8 +546,8 @@ export function useProductConfig() {
     if (!files.length) return ''
     const parts = []
     for (const a of files) {
-      // 二进制办公文档交给后端解析，前端不再 Blob.text()
-      if (isBinaryOfficeFile(a.name || a.file?.name || '')) {
+      // 已上传或需服务端解析的文档，不在前端 Blob.text()
+      if (a.fileId || needsServerParse(a.name || a.file?.name || '')) {
         continue
       }
       try {
@@ -534,20 +562,23 @@ export function useProductConfig() {
 
   async function simulateFileParse(documentText = '', attachments = []) {
     try {
-      const binaryFiles = (attachments || []).filter(
-        (a) => a?.file instanceof Blob && isBinaryOfficeFile(a.name || a.file?.name || ''),
+      // 优先：选择时已上传成功的文件，按 fileId 映射（不再二次上传原文）
+      const uploadedFiles = (attachments || []).filter(
+        (a) => a?.fileId && a.uploadStatus === 'success' && a.type !== 'image',
       )
-      // 优先走后端真解析（docx/pdf/xlsx）
-      if (binaryFiles.length) {
+      if (uploadedFiles.length) {
         const batches = []
-        for (const a of binaryFiles) {
-          const batch = await batchFromUpload(a.file)
+        for (const a of uploadedFiles) {
+          const batch = await batchFromUploadedFile(a.fileId, a.name || a.fileName)
           if (batch?.success === false) {
             throw new Error(batch.message || `解析失败：${a.name}`)
           }
-          batches.push({ batch, fileName: a.name || 'upload.bin', fileSize: a.size || a.file.size || 0 })
+          batches.push({
+            batch,
+            fileName: a.name || a.fileName || 'upload.bin',
+            fileSize: a.size || 0,
+          })
         }
-        // 多文件时合并 items
         if (batches.length === 1) {
           const playbook = buildBatchPlaybook(
             batches[0].batch,
@@ -558,7 +589,59 @@ export function useProductConfig() {
           return {
             ...playbook,
             thinkingSteps: [
-              `解析文档引擎：${batches[0].batch.parseEngine || 'binary'}`,
+              `读取已上传文件：${batches[0].fileName}`,
+              `解析文档引擎：${batches[0].batch.parseEngine || 'document'}`,
+              ...(playbook.thinkingSteps || []),
+            ],
+          }
+        }
+        const merged = {
+          success: true,
+          total: 0,
+          passedCount: 0,
+          pendingCount: 0,
+          items: [],
+          confirmableDrafts: [],
+          extractEngine: 'multi-upload',
+        }
+        for (const b of batches) {
+          merged.total += b.batch.total || 0
+          merged.passedCount += b.batch.passedCount || 0
+          merged.pendingCount += b.batch.pendingCount || 0
+          merged.items.push(...(b.batch.items || []))
+          merged.confirmableDrafts.push(...(b.batch.confirmableDrafts || []))
+        }
+        return buildBatchPlaybook(
+          merged,
+          `${batches.length}份文档`,
+          batches.reduce((s, b) => s + b.fileSize, 0),
+        )
+      }
+
+      // 兼容：仍持有本地 File 且未预上传时，走一步上传+映射
+      const localFiles = (attachments || []).filter(
+        (a) => a?.file instanceof Blob && needsServerParse(a.name || a.file?.name || ''),
+      )
+      if (localFiles.length) {
+        const batches = []
+        for (const a of localFiles) {
+          const batch = await batchFromUpload(a.file)
+          if (batch?.success === false) {
+            throw new Error(batch.message || `解析失败：${a.name}`)
+          }
+          batches.push({ batch, fileName: a.name || 'upload.bin', fileSize: a.size || a.file.size || 0 })
+        }
+        if (batches.length === 1) {
+          const playbook = buildBatchPlaybook(
+            batches[0].batch,
+            batches[0].fileName,
+            batches[0].fileSize,
+          )
+          lastConfigTraceId.value = batches[0].batch.trace_id || null
+          return {
+            ...playbook,
+            thinkingSteps: [
+              `解析文档引擎：${batches[0].batch.parseEngine || 'document'}`,
               ...(playbook.thinkingSteps || []),
             ],
           }
@@ -583,14 +666,30 @@ export function useProductConfig() {
       }
 
       const attachmentText = await readAttachmentTexts(attachments)
-      const mergedText = [String(documentText || '').trim(), attachmentText]
-        .filter(Boolean)
-        .join('\n\n')
+      const userText = String(documentText || '').trim()
+      const mergedText = [userText, attachmentText].filter(Boolean).join('\n\n')
       if (!mergedText) {
         return {
           thinkingSteps: ['未收到可解析的方案内容'],
-          content: '请粘贴方案正文，或上传 Word/PDF/Excel/文本方案文档后再试。',
+          content: '请粘贴方案正文，或上传 .md/.txt/.csv/.docx/.pdf/.xlsx 方案文档后再试。',
           formCard: null,
+          nextSteps: ['演示：导入家庭融合方案并生成配置草稿'],
+          replaceProgress: true,
+        }
+      }
+      // 无真实附件、且输入只是操作指引时，不伪造「已上传 xxx.txt」
+      if (!hasUploadAttachments(attachments) && !attachmentText && !looksLikePlanContent(userText)) {
+        return {
+          thinkingSteps: ['未检测到已上传文档或可解析的方案正文'],
+          content:
+            '当前消息未包含方案正文，也未上传文档，无法执行智读映射。\n\n' +
+            '请任选一种方式后重试：\n' +
+            '1. **粘贴**方案中的套餐段落（含名称、月费、流量/语音、客群、渠道等）\n' +
+            '2. **上传** Word / PDF / Excel / Markdown / 文本方案文件\n' +
+            '3. 点击下方演示话术，填入样例方案后再发送',
+          formCard: null,
+          nextSteps: ['演示：导入家庭融合方案并生成配置草稿'],
+          replaceProgress: true,
         }
       }
       const { fileName, fileSize } = deriveDocMeta(mergedText, attachments)

@@ -53,8 +53,8 @@
               <span class="type-chip" :class="step.type === 'ontology' ? 'ontology' : 'llm'">
                 {{ step.type === 'ontology' ? '本体推理' : '模型思考' }}
               </span>
-              <span v-if="step.elapsed != null && step.elapsed >= 0" class="step-elapsed">
-                {{ formatElapsed(step.elapsed) }}
+              <span v-if="displayElapsed(step, si) != null" class="step-elapsed">
+                {{ formatElapsed(displayElapsed(step, si)) }}
               </span>
             </div>
 
@@ -69,7 +69,7 @@
             </template>
             <template v-else>
               <!-- 主文本 -->
-              <div class="step-text">{{ localize(step.content) }}</div>
+              <div class="step-text">{{ displayStepContent(step, si) }}</div>
 
               <!-- 元数据标签 -->
               <div v-if="hasMetadata(step)" class="step-metadata">
@@ -117,7 +117,7 @@
 </template>
 
 <script setup>
-import { computed, reactive } from 'vue'
+import { computed, reactive, ref, watch, onUnmounted } from 'vue'
 import OntologyReasoningBlock from './OntologyReasoningBlock.vue'
 
 const props = defineProps({
@@ -132,17 +132,78 @@ defineEmits(['toggle'])
 const ontoCount = computed(() => props.steps.filter((s) => s.type === 'ontology').length)
 
 const expandedDetails = reactive({})
+const liveNow = ref(Date.now())
+let liveTimer = null
+
+watch(
+  () => props.streaming,
+  (active) => {
+    if (liveTimer) {
+      clearInterval(liveTimer)
+      liveTimer = null
+    }
+    if (active) {
+      liveNow.value = Date.now()
+      liveTimer = setInterval(() => {
+        liveNow.value = Date.now()
+      }, 1000)
+    }
+  },
+  { immediate: true },
+)
+
+onUnmounted(() => {
+  if (liveTimer) clearInterval(liveTimer)
+})
 
 const toggleDetails = (idx) => {
   expandedDetails[idx] = !expandedDetails[idx]
 }
 
+const isWaitingStep = (step) => step._waiting || step.metadata?.phase === 'waiting_llm'
+
+const stepStartedAt = (step) => step.waitingStartedAt || step.stepStartedAt || step.timestamp || null
+
+const liveElapsedSeconds = (step) => {
+  const startedAt = stepStartedAt(step)
+  if (!startedAt) return 0
+  return Math.max(0, Math.floor((liveNow.value - startedAt) / 1000))
+}
+
+/** 流式进行中步骤：本地 1 秒读秒，不依赖 SSE 推送间隔 */
+const displayElapsed = (step, index) => {
+  if (step.elapsed != null && step.elapsed >= 0 && (!props.streaming || index < props.steps.length - 1)) {
+    return step.elapsed
+  }
+  if (!props.streaming || index !== props.steps.length - 1) return null
+  if (isWaitingStep(step) || step.metadata?.phase === 'running') {
+    return liveElapsedSeconds(step)
+  }
+  return null
+}
+
+const displayStepContent = (step, index) => {
+  const text = props.localize(step.content)
+  if (!props.streaming || index !== props.steps.length - 1 || !isWaitingStep(step)) {
+    return text
+  }
+  const sec = liveElapsedSeconds(step)
+  if (/已等待\s*\d+s/.test(text)) {
+    return text.replace(/已等待\s*\d+s/, `已等待 ${sec}s`)
+  }
+  if (/进行中\s*[（(]\d+(?:\.\d+)?s[）)]/.test(text)) {
+    return text.replace(/([（(])\d+(?:\.\d+)?s([）)])/, `$1${sec}s$2`)
+  }
+  return text
+}
+
 /** 格式化耗时显示 */
 const formatElapsed = (seconds) => {
   if (seconds == null || seconds < 0) return ''
+  if (seconds === 0) return '0s'
   if (seconds < 0.01) return '<10ms'
   if (seconds < 1) return Math.round(seconds * 1000) + 'ms'
-  if (seconds < 60) return seconds.toFixed(1) + 's'
+  if (seconds < 60) return (Number.isInteger(seconds) ? seconds : seconds.toFixed(1)) + 's'
   return Math.floor(seconds / 60) + 'm ' + Math.round(seconds % 60) + 's'
 }
 

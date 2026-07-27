@@ -116,8 +116,13 @@ import { useChatStream } from '../composables/useChatStream.js'
 import { useProductConfig } from '../composables/useProductConfig.js'
 import { checkCompliance } from '../services/productOntologyApi.js'
 import { assistantModes, buildSceneWelcome } from '../config/assistantModes.js'
+import { ZHIDU_TEST_PROMPT } from '../data/zhiduTestDoc.js'
 import { genId } from '../utils/chatUtils.js'
 import { createStreamingPlaceholder, playSimulatedReply } from '../utils/simulateReply.js'
+
+/** 智读引导话术：点击后填入可解析演示正文，而非空指令 */
+const ZHIDU_GUIDE_RE =
+  /粘贴方案文档后说|请按文档内容生成配置草稿|上传家庭融合方案|按文档映射为配置草稿|演示：导入家庭融合方案/
 
 const inputText = ref('')
 const historyLoading = ref(false)
@@ -408,6 +413,9 @@ function applyPlaybookSideEffects(aiMsg, playbook = {}) {
 
 /** 已有占位气泡时续播剧本（保留请求中的进度 thinking） */
 async function finishProductReply(aiMsg, playbook = {}) {
+  if (playbook.replaceProgress) {
+    aiMsg.reasoning = []
+  }
   const allSteps = playbook.thinkingSteps || []
   // 进度已在请求期间展示，结果阶段只补本体链，避免再叠一层慢速 thinking
   const ontologySteps = allSteps.filter((s) => typeof s === 'object' && s.type === 'ontology')
@@ -424,7 +432,7 @@ async function finishProductReply(aiMsg, playbook = {}) {
     onTick: tickMessages,
     thinkDelay: 60,
     typeDelay: 3,
-    preserveReasoning: true,
+    preserveReasoning: !playbook.replaceProgress,
     skipChainReveal: true,
   })
   applyPlaybookSideEffects(aiMsg, playbook)
@@ -476,7 +484,7 @@ async function loadScenarioPlaybook(text, scenario, attachments = []) {
 
 const SCENARIO_PROGRESS = {
   query: ['正在解析查询条件...', '检索本体事实图...'],
-  'file-parse': ['正在读取方案文档...', '抽取套餐结构...'],
+  'file-parse': ['正在解析方案内容...', '抽取套餐结构...'],
   'confirm-batch': ['正在确认批量草稿...', '提交备案闭环...'],
   compare: ['正在构建候选方案...', '合规评估与收益测算...'],
   'config-trace': ['正在加载审计链路...', '生成业务说明...'],
@@ -484,6 +492,19 @@ const SCENARIO_PROGRESS = {
   'root-cause': ['正在分析异动指标...', '本体归因推理中...'],
   'risk-audit': ['正在筛查风险规则...', '聚合稽核结果...'],
   'chat-generate': ['正在理解配置诉求...', '调用本体配置服务...'],
+}
+
+function toDisplayAttachments(attachments = []) {
+  return (attachments || []).map((a) => ({
+    type: a.type || 'file',
+    name: a.name || '附件',
+    size: a.size,
+    preview: a.preview || null,
+    url: a.url || null,
+    fileId: a.fileId || null,
+    uploadStatus: a.uploadStatus || null,
+    duration: a.duration,
+  }))
 }
 
 async function runProductScenario(text, scenario, attachments = []) {
@@ -495,6 +516,7 @@ async function runProductScenario(text, scenario, attachments = []) {
       role: 'user',
       type: 'chat',
       content: text,
+      attachments: toDisplayAttachments(attachments),
       done: true,
       timestamp: Date.now(),
     },
@@ -509,7 +531,7 @@ async function runProductScenario(text, scenario, attachments = []) {
   let progressIdx = 0
   const startedAt = Date.now()
   const heartbeat = setInterval(() => {
-    const sec = ((Date.now() - startedAt) / 1000).toFixed(1)
+    const sec = Math.floor((Date.now() - startedAt) / 1000)
     const list = [...(aiMsg.reasoning || [])]
     if (progressIdx < progressSteps.length - 1) {
       progressIdx += 1
@@ -518,14 +540,27 @@ async function runProductScenario(text, scenario, attachments = []) {
       const waitingIdx = list.findIndex((s) => s._waiting)
       const waitingText = `本体推理进行中（${sec}s）...`
       if (waitingIdx >= 0) {
-        list[waitingIdx] = { ...list[waitingIdx], content: waitingText }
+        list[waitingIdx] = {
+          ...list[waitingIdx],
+          content: waitingText,
+          waitingStartedAt: list[waitingIdx].waitingStartedAt || startedAt,
+          stepStartedAt: list[waitingIdx].stepStartedAt || startedAt,
+          timestamp: list[waitingIdx].timestamp || startedAt,
+        }
       } else {
-        list.push({ type: 'llm', content: waitingText, _waiting: true })
+        list.push({
+          type: 'llm',
+          content: waitingText,
+          _waiting: true,
+          waitingStartedAt: startedAt,
+          stepStartedAt: startedAt,
+          timestamp: startedAt,
+        })
       }
     }
     aiMsg.reasoning = list
     tickMessages()
-  }, 700)
+  }, 1000)
 
   try {
     const playbook = await loadScenarioPlaybook(text, scenario, attachments)
@@ -552,6 +587,10 @@ const onSend = async (payload) => {
   const text = (payload?.text || inputText.value || '').trim()
   const attachments = payload?.attachments || []
   if ((!text && !attachments.length) || streaming.value) return
+  // 有附件时必须全部上传成功才允许发送
+  if (attachments.length && attachments.some((a) => a.uploadStatus && a.uploadStatus !== 'success')) {
+    return
+  }
   inputText.value = ''
 
   const scene = payload?.scene || activeScene.value || config.defaultScene
@@ -569,7 +608,7 @@ const onSend = async (payload) => {
     )
     return
   }
-  sendMessage({ text, scene })
+  sendMessage({ text, scene, attachments })
 }
 
 const onSuggest = (payload) => {
@@ -579,8 +618,13 @@ const onSuggest = (payload) => {
     showSceneWelcome(payload)
     return
   }
-  const text = typeof payload === 'string' ? payload : payload.text
+  let text = typeof payload === 'string' ? payload : payload.text
   if (!text) return
+  // 智读引导芯片：预填可解析的演示方案，避免用户发送空指令后被当成「已上传文档」
+  if (ZHIDU_GUIDE_RE.test(text)) {
+    text = ZHIDU_TEST_PROMPT
+    activeScene.value = 'rd.import'
+  }
   // 跟进建议 / 推荐话术：预填输入框
   inputText.value = text
   const scenario = resolveProductScenario(text, activeScene.value || config.defaultScene)

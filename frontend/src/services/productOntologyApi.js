@@ -49,15 +49,78 @@ export async function copyAsDraft(offeringId, text = null) {
   )
 }
 
-/** 智读：上传文件批量映射（docx/pdf/xlsx/txt） */
-export async function batchFromUpload(file) {
+/** 解包 Vue Proxy，并重建原生 File，避免 FormData 传出空 part */
+async function toNativeUploadFile(file) {
+  let blob = file
+  // Vue 3 reactive Proxy 带 __v_raw
+  if (blob && typeof blob === 'object' && blob.__v_raw) {
+    blob = blob.__v_raw
+  }
+  if (!(blob instanceof Blob)) {
+    throw new Error('无效的本地文件对象')
+  }
+  if (blob.size <= 0) {
+    throw new Error('文件内容为空，无法上传')
+  }
+  const filename = blob instanceof File && blob.name ? blob.name : 'upload.bin'
+  const type = blob.type || 'application/octet-stream'
+  const buffer = await blob.arrayBuffer()
+  return new File([buffer], filename, { type, lastModified: Date.now() })
+}
+
+/** 智读：选择文件后立即上传，返回 file_id */
+export async function uploadConfigFile(file) {
+  const nativeFile = await toNativeUploadFile(file)
   const form = new FormData()
-  form.append('file', file)
-  // 不设 Content-Type，由浏览器自动带 multipart boundary
-  return post(`${BASE}/config/batch-upload`, form, {
+  form.append('file', nativeFile, nativeFile.name)
+  const resp = await fetch('/api/v1/product-ontology/config/upload', {
+    method: 'POST',
+    body: form,
+  })
+  let data = {}
+  try {
+    data = await resp.json()
+  } catch {
+    data = {}
+  }
+  if (!resp.ok || data?.success === false) {
+    throw new Error(data?.message || `上传失败（HTTP ${resp.status}）`)
+  }
+  return data
+}
+
+/** 智读：按已上传 file_id 批量映射（发送时调用） */
+export async function batchFromUploadedFile(fileId, fileName = null) {
+  const body = { file_id: fileId, fileId }
+  if (fileName) {
+    body.fileName = fileName
+    body.file_name = fileName
+  }
+  return post(`${BASE}/config/batch-by-file`, body, {
     showLoading: false,
     loadingText: '解析文档并映射...',
   })
+}
+
+/** 智读：上传文件并一步映射（兼容旧入口） */
+export async function batchFromUpload(file) {
+  const nativeFile = await toNativeUploadFile(file)
+  const form = new FormData()
+  form.append('file', nativeFile, nativeFile.name)
+  const resp = await fetch('/api/v1/product-ontology/config/batch-upload', {
+    method: 'POST',
+    body: form,
+  })
+  let data = {}
+  try {
+    data = await resp.json()
+  } catch {
+    data = {}
+  }
+  if (!resp.ok || data?.success === false) {
+    throw new Error(data?.message || `解析失败（HTTP ${resp.status}）`)
+  }
+  return data
 }
 
 /** 知识沉淀：合规草稿写入事实图/本体 */

@@ -11,6 +11,26 @@ function genSessionId() {
 }
 
 /** 等待心跳原地刷新；同一步完成时替换进行中条目，避免刷屏 */
+function preserveStepTiming(prev, next) {
+  const startedAt = prev?.waitingStartedAt || prev?.stepStartedAt || prev?.timestamp || next.timestamp || Date.now()
+  return {
+    ...next,
+    stepStartedAt: prev?.stepStartedAt || prev?.timestamp || startedAt,
+    waitingStartedAt: prev?.waitingStartedAt || (next._waiting || next.metadata?.phase === 'waiting_llm' ? startedAt : undefined),
+    timestamp: startedAt,
+  }
+}
+
+/** 后端若未回传耗时（或写死 0），用本地 stepStartedAt 回退估算 */
+function resolveElapsedSeconds(prev, next) {
+  if (next?.elapsed != null && next.elapsed > 0) return next.elapsed
+  const startedAt = prev?.waitingStartedAt || prev?.stepStartedAt || prev?.timestamp || next?.stepStartedAt
+  if (!startedAt) return next?.elapsed ?? null
+  const sec = Math.max(0, (Date.now() - startedAt) / 1000)
+  // 保留毫秒精度，避免亚秒推理显示成 0.0s
+  return Math.round(sec * 1000) / 1000
+}
+
 function mergeReasoningStep(steps, value) {
   const list = [...(steps || [])]
   const meta = value?.metadata || {}
@@ -22,17 +42,18 @@ function mergeReasoningStep(steps, value) {
       (s) => s._waiting || s.metadata?.phase === 'waiting_llm',
     )
     if (waitingIdx >= 0) {
-      list[waitingIdx] = step
+      list[waitingIdx] = preserveStepTiming(list[waitingIdx], step)
       return list
     }
     const runningIdx = list.findIndex(
       (s) => s.metadata?.step === meta.step && s.metadata?.phase === 'running',
     )
     if (runningIdx >= 0) {
-      list[runningIdx] = step
+      list[runningIdx] = preserveStepTiming(list[runningIdx], step)
       return list
     }
-    list.push(step)
+    const ts = value.timestamp || Date.now()
+    list.push({ ...step, stepStartedAt: ts, waitingStartedAt: ts, timestamp: ts })
     return list
   }
 
@@ -46,10 +67,13 @@ function mergeReasoningStep(steps, value) {
     && withoutWaiting[lastIdx].metadata?.step === meta.step
     && withoutWaiting[lastIdx].metadata?.phase === 'running'
   ) {
-    withoutWaiting[lastIdx] = value
+    const merged = preserveStepTiming(withoutWaiting[lastIdx], value)
+    merged.elapsed = resolveElapsedSeconds(withoutWaiting[lastIdx], value)
+    withoutWaiting[lastIdx] = merged
     return withoutWaiting
   }
-  withoutWaiting.push(value)
+  const ts = value.timestamp || Date.now()
+  withoutWaiting.push({ ...value, stepStartedAt: ts, timestamp: ts })
   return withoutWaiting
 }
 
@@ -161,15 +185,26 @@ export function useChatStream() {
 
   // ── 消息发送 ──────────────────────────────────────
 
-  const sendMessage = async ({ text, scene = '', modelConfig = null, history = null }) => {
+  const sendMessage = async ({ text, scene = '', modelConfig = null, history = null, attachments = [] }) => {
     const content = (text || '').trim()
-    if (!content || streaming.value) return
+    if ((!content && !attachments?.length) || streaming.value) return
     streaming.value = true
     // 首条有效消息时再分配 sessionId，避免空会话进入历史
     if (!sessionId.value) {
       sessionId.value = genSessionId()
     }
-    pushUserMessage(content)
+    const displayAttachments = (attachments || []).map((a) => ({
+      type: a.type || 'file',
+      name: a.name || '附件',
+      size: a.size,
+      preview: a.preview || null,
+      url: a.url || null,
+      duration: a.duration,
+    }))
+    const userContent = content || `导入文档：${displayAttachments[0]?.name || '附件'}`
+    pushUserMessage(userContent, {
+      attachments: displayAttachments,
+    })
     let streamText = ''
 
     try {
@@ -179,7 +214,7 @@ export function useChatStream() {
       })).filter(m => String(m.content || '').trim())
       const payload = [
         ...autoHistory,
-        { role: 'user', content },
+        { role: 'user', content: userContent },
       ]
 
       upsertAssistantMessage({ loading: true, streamText: '' })

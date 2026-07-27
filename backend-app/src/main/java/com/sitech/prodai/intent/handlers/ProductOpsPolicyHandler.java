@@ -75,7 +75,7 @@ public class ProductOpsPolicyHandler implements BaseIntentHandler {
         return SseStreamSupport.deferWork(
                 prelude,
                 () -> productOntologyService.auditRisks(null),
-                result -> buildRiskAuditEvents(ctx, result)
+                (result, elapsedMs) -> buildRiskAuditEvents(ctx, result, elapsedMs)
         );
     }
 
@@ -101,12 +101,12 @@ public class ProductOpsPolicyHandler implements BaseIntentHandler {
                 prelude,
                 () -> ontologyService.evaluate(facts, policySetId, expectationType,
                         ctx.resolveSessionId(), ctx.resolveUserId()),
-                result -> buildPolicyEvents(ctx, facts, policySetId, expectationType, result)
+                (result, elapsedMs) -> buildPolicyEvents(ctx, facts, policySetId, expectationType, result, elapsedMs)
         );
     }
 
     @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> buildRiskAuditEvents(IntentContext ctx, Map<String, Object> result) {
+    private List<Map<String, Object>> buildRiskAuditEvents(IntentContext ctx, Map<String, Object> result, long elapsedMs) {
         boolean ok = !Boolean.FALSE.equals(result.get("success"));
         List<Map<String, Object>> items = toMapList(result.get("items"));
         List<String> triggeredRules = collectTriggeredRules(items);
@@ -158,7 +158,7 @@ public class ProductOpsPolicyHandler implements BaseIntentHandler {
                         "itemCount", items.size(),
                         "success", ok
                 ),
-                0,
+                elapsedMs,
                 triggeredRules.isEmpty() ? null : "命中规则: " + String.join("、",
                         triggeredRules.stream().map(opsRules::formatRuleLabel).limit(6).toList())
         ));
@@ -194,7 +194,8 @@ public class ProductOpsPolicyHandler implements BaseIntentHandler {
             Map<String, Object> facts,
             String policySetId,
             String expectationType,
-            Map<String, Object> result
+            Map<String, Object> result,
+            long elapsedMs
     ) {
         Map<String, Object> decision = (Map<String, Object>) result.get("decision");
         if (decision == null) {
@@ -251,7 +252,7 @@ public class ProductOpsPolicyHandler implements BaseIntentHandler {
                         "verdict", verdictLabel,
                         "triggeredRules", triggeredRules.size()
                 ),
-                0,
+                elapsedMs,
                 reason != null && !reason.isBlank() ? "原因: " + truncatePolicyStr(reason, 200) : null
         ));
         events.add(SseUtils.intentEvent(getIntentType(), expectationType, intentData, false));

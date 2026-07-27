@@ -806,6 +806,9 @@ defineExpose({ scrollToBottom })
 /* 用户附件 */
 .user-attachments {
   margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .user-attachment-item {
@@ -816,6 +819,13 @@ defineExpose({ scrollToBottom })
   background: rgba(255, 255, 255, 0.2);
   border-radius: 8px;
   font-size: 13px;
+}
+
+.user-attachment-item .file-preview {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  gap: 6px;
 }
 
 .user-attachment-item img {

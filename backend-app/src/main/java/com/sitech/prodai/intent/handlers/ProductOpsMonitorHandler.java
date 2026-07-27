@@ -53,7 +53,7 @@ public class ProductOpsMonitorHandler implements BaseIntentHandler {
         return SseStreamSupport.deferWork(
                 prelude,
                 this::loadMonitorPack,
-                pack -> buildAfterEvents(ctx, pack)
+                (pack, elapsedMs) -> buildAfterEvents(ctx, pack, elapsedMs)
         );
     }
 
@@ -68,7 +68,7 @@ public class ProductOpsMonitorHandler implements BaseIntentHandler {
         return pack;
     }
 
-    private List<Map<String, Object>> buildAfterEvents(IntentContext ctx, Map<String, Object> pack) {
+    private List<Map<String, Object>> buildAfterEvents(IntentContext ctx, Map<String, Object> pack, long elapsedMs) {
         Map<String, Object> alerts = castMap(pack.get("alerts"));
         Map<String, Object> workOrders = castMap(pack.get("workOrders"));
         List<Map<String, Object>> alertItems = toMapList(alerts.get("items"));
@@ -111,7 +111,7 @@ public class ProductOpsMonitorHandler implements BaseIntentHandler {
                         "openWorkOrderCount", openWo,
                         "success", ok
                 ),
-                0
+                elapsedMs
         ));
         events.add(SseUtils.intentEvent(getIntentType(), "ops_monitor", intentData, false));
         events.addAll(SseStreamSupport.chunkedTextEvents(answerText));

@@ -73,6 +73,7 @@ class ZhiduBatchRegressionTest {
                 graphLoader,
                 extractionService,
                 documentParser,
+                new ConfigDocumentStorage(),
                 rdf4jStore,
                 workOrderRepository,
                 instanceRepository,

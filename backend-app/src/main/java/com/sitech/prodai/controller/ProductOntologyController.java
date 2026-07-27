@@ -123,7 +123,40 @@ public class ProductOntologyController {
         return ok(productOntologyService.copyAsDraft(offeringId, text));
     }
 
-    /** 智读：上传 Word/PDF/Excel 等文件后批量映射 */
+    /** 智读：选择文件后立即上传，返回 file_id 供发送时映射 */
+    @PostMapping(value = "/config/upload", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Map<String, Object> uploadConfigFile(@RequestParam("file") MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            String name = file == null ? "null" : file.getOriginalFilename();
+            long size = file == null ? -1L : file.getSize();
+            org.slf4j.LoggerFactory.getLogger(ProductOntologyController.class)
+                    .warn("[智读上传] 空文件 part: name={}, size={}, empty={}", name, size, file != null && file.isEmpty());
+            throw new IllegalArgumentException("file is required");
+        }
+        org.slf4j.LoggerFactory.getLogger(ProductOntologyController.class)
+                .info("[智读上传] name={}, size={}", file.getOriginalFilename(), file.getSize());
+        Map<String, Object> stored = productOntologyService.uploadConfigDocument(file);
+        org.slf4j.LoggerFactory.getLogger(ProductOntologyController.class)
+                .info("[智读上传] 成功 fileId={}, fileName={}", stored.get("fileId"), stored.get("fileName"));
+        return ok(stored);
+    }
+
+    /** 智读：按已上传 file_id 解析并批量映射（发送消息时调用） */
+    @PostMapping("/config/batch-by-file")
+    public Map<String, Object> batchByFile(@RequestBody(required = false) Map<String, Object> request) {
+        Map<String, Object> body = request == null ? Map.of() : request;
+        String fileId = body.get("file_id") != null ? String.valueOf(body.get("file_id"))
+                : body.get("fileId") != null ? String.valueOf(body.get("fileId")) : null;
+        String fileName = body.get("fileName") != null ? String.valueOf(body.get("fileName"))
+                : body.get("file_name") != null ? String.valueOf(body.get("file_name"))
+                : body.get("filename") != null ? String.valueOf(body.get("filename")) : null;
+        if (fileId == null || fileId.isBlank()) {
+            throw new IllegalArgumentException("file_id is required");
+        }
+        return ok(productOntologyService.batchFromUploadedFile(fileId, fileName));
+    }
+
+    /** 智读：上传 Word/PDF/Excel 等文件后批量映射（兼容旧入口：上传+映射一步完成） */
     @PostMapping("/config/batch-upload")
     public Map<String, Object> batchUpload(@RequestParam("file") MultipartFile file) throws Exception {
         if (file == null || file.isEmpty()) {

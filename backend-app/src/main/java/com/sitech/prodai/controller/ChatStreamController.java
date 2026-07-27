@@ -580,7 +580,7 @@ public class ChatStreamController {
         int tick = 0;
         while (!future.isDone()) {
             try {
-                return future.get(2, java.util.concurrent.TimeUnit.SECONDS);
+                return future.get(1, java.util.concurrent.TimeUnit.SECONDS);
             } catch (java.util.concurrent.TimeoutException te) {
                 tick++;
                 long elapsed = System.currentTimeMillis() - step3Start;

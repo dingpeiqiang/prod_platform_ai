@@ -59,7 +59,7 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
         return SseStreamSupport.deferWork(
                 prelude,
                 () -> retrieveMarketInsight(question),
-                result -> buildAfterEvents(ctx, question, result)
+                (result, elapsedMs) -> buildAfterEvents(ctx, question, result, elapsedMs)
         );
     }
 
@@ -88,7 +88,7 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
 
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> buildAfterEvents(
-            IntentContext ctx, String question, Map<String, Object> result
+            IntentContext ctx, String question, Map<String, Object> result, long elapsedMs
     ) {
         List<Map<String, Object>> results = List.of();
         if (result.get("raw_results") instanceof List<?> list) {
@@ -139,7 +139,7 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
                         "discoveryMethod", discoveryMethod,
                         "resultCount", results.size()
                 ),
-                0,
+                elapsedMs,
                 result.get("sparql") != null ? "来源: " + truncateStr(String.valueOf(result.get("sparql")), 150) : null
         ));
         events.add(SseUtils.intentEvent(getIntentType(), "query", intentData, false));

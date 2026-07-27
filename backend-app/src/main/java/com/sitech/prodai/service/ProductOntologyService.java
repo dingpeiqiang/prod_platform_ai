@@ -82,6 +82,7 @@ public class ProductOntologyService {
     private final OpsProductGraphLoader graphLoader;
     private final OpsExtractionService extractionService;
     private final ConfigDocumentParser documentParser;
+    private final ConfigDocumentStorage documentStorage;
     private final Rdf4jOntologyStore rdf4jStore;
     private final OpsWorkOrderRepository workOrderRepository;
     private final OntologyInstanceRepository instanceRepository;
@@ -109,6 +110,7 @@ public class ProductOntologyService {
                               OpsProductGraphLoader graphLoader,
                               OpsExtractionService extractionService,
                               ConfigDocumentParser documentParser,
+                              ConfigDocumentStorage documentStorage,
                               Rdf4jOntologyStore rdf4jStore,
                               OpsWorkOrderRepository workOrderRepository,
                               OntologyInstanceRepository instanceRepository,
@@ -120,6 +122,7 @@ public class ProductOntologyService {
         this.graphLoader = graphLoader;
         this.extractionService = extractionService;
         this.documentParser = documentParser;
+        this.documentStorage = documentStorage;
         this.rdf4jStore = rdf4jStore;
         this.workOrderRepository = workOrderRepository;
         this.instanceRepository = instanceRepository;
@@ -1233,6 +1236,20 @@ public class ProductOntologyService {
                 "timestamp", Instant.now().toString()
         ));
         body.put("trace_id", traceId);
+        return body;
+    }
+
+    /** 智读：选择文件后预上传，发送时按 fileId 解析映射（不再二次传原文）。 */
+    public Map<String, Object> uploadConfigDocument(org.springframework.web.multipart.MultipartFile file) {
+        return documentStorage.store(file);
+    }
+
+    public Map<String, Object> batchFromUploadedFile(String fileId, String fileName) {
+        byte[] bytes = documentStorage.readBytes(fileId);
+        String name = (fileName == null || fileName.isBlank()) ? fileId : fileName;
+        Map<String, Object> body = batchFromDocumentBytes(bytes, name);
+        body.put("file_id", fileId);
+        body.put("fileId", fileId);
         return body;
     }
 

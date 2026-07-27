@@ -26,9 +26,10 @@
         <div v-if="attachments.length" class="attachment-list">
           <div
             v-for="(att, idx) in attachments"
-            :key="`${att.name}-${idx}`"
+            :key="att.id || `${att.name}-${idx}`"
             class="attachment-chip"
-            :title="att.name"
+            :class="[`status-${att.uploadStatus || 'pending'}`]"
+            :title="attachmentTitle(att)"
           >
             <img v-if="att.type === 'image' && att.preview" :src="att.preview" class="att-thumb" alt="" />
             <span v-else class="att-icon" aria-hidden="true">
@@ -39,13 +40,26 @@
             </span>
             <span class="att-meta">
               <span class="att-name">{{ att.name }}</span>
-              <span v-if="att.size" class="att-size">{{ formatFileSize(att.size) }}</span>
+              <span class="att-status-line">
+                <span v-if="att.size" class="att-size">{{ formatFileSize(att.size) }}</span>
+                <span class="att-status">{{ uploadStatusLabel(att) }}</span>
+              </span>
             </span>
+            <button
+              v-if="att.uploadStatus === 'error'"
+              type="button"
+              class="att-retry"
+              title="重试上传"
+              :disabled="disabled"
+              @click="retryUpload(idx)"
+            >
+              重试
+            </button>
             <button
               type="button"
               class="att-remove"
               title="移除"
-              :disabled="disabled"
+              :disabled="disabled || att.uploadStatus === 'uploading'"
               @click="removeAttachment(idx)"
             >
               ×
@@ -53,6 +67,7 @@
           </div>
         </div>
 
+        <p v-if="uploadBlockHint" class="paste-hint upload-block-hint">{{ uploadBlockHint }}</p>
         <p v-if="pasteHint" class="paste-hint">{{ pasteHint }}</p>
 
         <textarea
@@ -204,7 +219,7 @@
       </div>
 
       <div class="footer-hint-row">
-        <span class="footer-hint">支持粘贴/拖入文件；Enter 发送，Shift + Enter 换行</span>
+        <span class="footer-hint">选择文件后自动上传；全部上传成功后才可发送。Enter 发送，Shift + Enter 换行</span>
       </div>
 
       <input ref="fileInput" type="file" class="hidden-input" accept="*" @change="handleFileSelect" multiple />
@@ -214,9 +229,10 @@
 </template>
 
 <script setup>
-import { ref, nextTick, watch, computed, onMounted, onBeforeUnmount, getCurrentInstance } from 'vue'
+import { ref, nextTick, watch, computed, onMounted, onBeforeUnmount, getCurrentInstance, markRaw, toRaw } from 'vue'
 import { useModelsStore } from '@/stores/models.js'
 import { ZHIDU_TEST_PROMPT } from '../data/zhiduTestDoc.js'
+import { uploadConfigFile } from '../services/productOntologyApi.js'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
@@ -232,6 +248,7 @@ const emit = defineEmits([
   'stop',
   'quick-action',
   'file-upload',
+  'file-uploaded',
   'image-upload',
   'voice-record',
   'remove-skill',
@@ -471,7 +488,24 @@ const quickActions = computed(() => {
 })
 
 const hasContent = computed(() => inputText.value.trim().length > 0 || attachments.value.length > 0)
-const canSend = computed(() => hasContent.value && !props.disabled)
+const hasUploading = computed(() =>
+  attachments.value.some((a) => a.uploadStatus === 'uploading' || a.uploadStatus === 'pending'),
+)
+const hasUploadError = computed(() => attachments.value.some((a) => a.uploadStatus === 'error'))
+const attachmentsReady = computed(() =>
+  attachments.value.every((a) => a.uploadStatus === 'success'),
+)
+const canSend = computed(() => {
+  if (!hasContent.value || props.disabled) return false
+  if (!attachments.value.length) return true
+  return attachmentsReady.value && !hasUploading.value && !hasUploadError.value
+})
+const uploadBlockHint = computed(() => {
+  if (!attachments.value.length) return ''
+  if (hasUploading.value) return '文件上传中，请等待全部上传完成后再发送'
+  if (hasUploadError.value) return '有文件上传失败，请重试或移除后再发送'
+  return ''
+})
 
 function formatFileSize(size) {
   const n = Number(size) || 0
@@ -480,8 +514,82 @@ function formatFileSize(size) {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`
 }
 
+function uploadStatusLabel(att) {
+  switch (att?.uploadStatus) {
+    case 'uploading':
+    case 'pending':
+      return '上传中…'
+    case 'success':
+      return '已上传'
+    case 'error':
+      return att.uploadError ? `失败：${att.uploadError}` : '上传失败'
+    default:
+      return ''
+  }
+}
+
+function attachmentTitle(att) {
+  const status = uploadStatusLabel(att)
+  return status ? `${att.name}（${status}）` : att.name
+}
+
 function removeAttachment(idx) {
+  const att = attachments.value[idx]
+  if (att?.uploadStatus === 'uploading') return
   attachments.value.splice(idx, 1)
+}
+
+function genAttachmentId() {
+  return `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+/** 必须改 attachments 里的响应式项，直接改 push 前的普通对象不会触发 computed */
+function patchAttachment(id, patch) {
+  const idx = attachments.value.findIndex((a) => a.id === id)
+  if (idx < 0) return null
+  const current = attachments.value[idx]
+  Object.assign(current, patch)
+  return current
+}
+
+async function startUpload(attachment) {
+  const id = attachment?.id
+  const rawFile = toRaw(attachment?.file)
+  if (!(rawFile instanceof Blob) || rawFile.size <= 0) {
+    patchAttachment(id, { uploadStatus: 'error', uploadError: '无本地文件或文件为空' })
+    return
+  }
+  patchAttachment(id, { uploadStatus: 'uploading', uploadError: null })
+  try {
+    const res = await uploadConfigFile(rawFile)
+    if (res?.success === false) {
+      throw new Error(res.message || '上传失败')
+    }
+    const fileId = res?.file_id || res?.fileId
+    if (!fileId) {
+      throw new Error('未返回 file_id')
+    }
+    const updated = patchAttachment(id, {
+      fileId,
+      url: res.url || null,
+      fileName: res.fileName || res.filename || attachment.name,
+      uploadStatus: 'success',
+      uploadError: null,
+    })
+    if (!updated) return
+    emit('file-uploaded', { ...updated })
+  } catch (e) {
+    patchAttachment(id, {
+      uploadStatus: 'error',
+      uploadError: e?.message || '上传失败',
+    })
+  }
+}
+
+async function retryUpload(idx) {
+  const att = attachments.value[idx]
+  if (!att || props.disabled) return
+  await startUpload(att)
 }
 
 const FILE_PATH_RE = /^(?:[a-zA-Z]:\\|\\\\)[^\n\r*]+\.[A-Za-z0-9]{1,8}$/
@@ -575,28 +683,43 @@ function addFiles(fileList, { emitUpload = true } = {}) {
 
   files.forEach((file) => {
     const isImage = file.type?.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp)$/i.test(file.name || '')
+    // File/Blob 不可被 Vue 做成响应式 Proxy，否则 FormData 会传出空文件
+    const rawFile = markRaw(file)
+    const base = {
+      id: genAttachmentId(),
+      name: file.name || `粘贴文件_${Date.now()}`,
+      size: file.size,
+      file: rawFile,
+      fileId: null,
+      url: null,
+      uploadStatus: 'pending',
+      uploadError: null,
+    }
     if (isImage) {
       images.push(file)
+      const attachment = {
+        ...base,
+        type: 'image',
+        name: file.name || `粘贴图片_${Date.now()}.png`,
+        preview: null,
+      }
+      attachments.value.push(attachment)
       const reader = new FileReader()
       reader.onload = (event) => {
-        attachments.value.push({
-          type: 'image',
-          name: file.name || `粘贴图片_${Date.now()}.png`,
-          size: file.size,
-          file,
-          preview: event.target?.result,
-        })
+        const found = attachments.value.find((a) => a.id === attachment.id)
+        if (found) found.preview = event.target?.result || null
       }
-      reader.readAsDataURL(file)
+      reader.readAsDataURL(rawFile)
+      startUpload(attachment)
     } else {
       plainFiles.push(file)
-      attachments.value.push({
+      const attachment = {
+        ...base,
         type: 'file',
-        name: file.name || `粘贴文件_${Date.now()}`,
-        size: file.size,
-        file,
         preview: null,
-      })
+      }
+      attachments.value.push(attachment)
+      startUpload(attachment)
     }
   })
 
@@ -745,8 +868,26 @@ const handleSend = () => {
   const text = inputText.value.trim()
   if (!text && attachments.value.length === 0) return
   if (props.disabled) return
+  if (!canSend.value) {
+    if (hasUploading.value) showPasteHint('请等待文件上传完成后再发送')
+    else if (hasUploadError.value) showPasteHint('有文件上传失败，请重试或移除后再发送')
+    return
+  }
   const modelConfig = buildModelConfig()
-  emit('send', { text, attachments: [...attachments.value], modelConfig })
+  // 发送时只带已上传成功的元数据；保留本地 file 作兼容回退
+  const payloadAttachments = attachments.value.map((a) => ({
+    id: a.id,
+    type: a.type || 'file',
+    name: a.name,
+    size: a.size,
+    preview: a.preview || null,
+    fileId: a.fileId,
+    url: a.url || null,
+    fileName: a.fileName || a.name,
+    uploadStatus: a.uploadStatus,
+    file: a.file || null,
+  }))
+  emit('send', { text, attachments: payloadAttachments, modelConfig })
   resetInput()
 }
 
@@ -801,17 +942,23 @@ const stopRecording = () => {
     mediaRecorder.stop()
     mediaRecorder.onstop = () => {
       const blob = new Blob(audioChunks, { type: 'audio/webm' })
-      const url = URL.createObjectURL(blob)
+      const file = markRaw(new File([blob], `录音_${Date.now()}.webm`, { type: 'audio/webm' }))
       const attachment = {
+        id: genAttachmentId(),
         type: 'voice',
-        name: `录音_${new Date().toLocaleString()}.webm`,
-        size: blob.size,
-        blob,
-        url,
-        duration: recordingTime.value
+        name: file.name,
+        size: file.size,
+        file,
+        blob: markRaw(blob),
+        url: URL.createObjectURL(blob),
+        duration: recordingTime.value,
+        fileId: null,
+        uploadStatus: 'pending',
+        uploadError: null,
       }
       attachments.value.push(attachment)
       emit('voice-record', attachment)
+      startUpload(attachment)
       mediaRecorder = null
       audioChunks = []
     }
@@ -903,11 +1050,26 @@ defineExpose({ focus, resetInput, reloadModels: () => loadAvailableModels(true) 
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  max-width: 240px;
+  max-width: 280px;
   padding: 6px 8px;
   border-radius: 10px;
   background: var(--bg-primary);
   border: 1px solid var(--border-light);
+}
+
+.attachment-chip.status-uploading,
+.attachment-chip.status-pending {
+  border-color: rgba(59, 130, 246, 0.35);
+  background: rgba(239, 246, 255, 0.85);
+}
+
+.attachment-chip.status-success {
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.attachment-chip.status-error {
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(254, 242, 242, 0.9);
 }
 
 .att-thumb {
@@ -937,9 +1099,57 @@ defineExpose({ focus, resetInput, reloadModels: () => loadAvailableModels(true) 
   text-overflow: ellipsis;
 }
 
+.att-status-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .att-size {
   font-size: 11px;
   color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.att-status {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attachment-chip.status-uploading .att-status,
+.attachment-chip.status-pending .att-status {
+  color: #2563eb;
+}
+
+.attachment-chip.status-success .att-status {
+  color: #059669;
+}
+
+.attachment-chip.status-error .att-status {
+  color: #dc2626;
+}
+
+.att-retry {
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 2px;
+  flex-shrink: 0;
+}
+
+.att-retry:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.att-retry:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .att-remove {
@@ -964,6 +1174,12 @@ defineExpose({ focus, resetInput, reloadModels: () => loadAvailableModels(true) 
   color: #c2410c;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.upload-block-hint {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
 }
 
 .drop-hint {

@@ -4,9 +4,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
 
 import java.io.IOException;
 import java.util.LinkedHashMap;
@@ -20,11 +23,13 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleBadRequest(IllegalArgumentException ex) {
+        log.warn("[GlobalExceptionHandler] bad_request: {}", ex.getMessage());
         return ResponseEntity.badRequest().body(error("bad_request", ex.getMessage()));
     }
 
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String, Object>> handleIllegalState(IllegalStateException ex) {
+        log.error("[GlobalExceptionHandler] service_unavailable: {}", ex.getMessage(), ex);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(error("service_unavailable", ex.getMessage()));
     }
@@ -35,7 +40,28 @@ public class GlobalExceptionHandler {
                 .findFirst()
                 .map(err -> err.getField() + ": " + err.getDefaultMessage())
                 .orElse("validation failed");
+        log.warn("[GlobalExceptionHandler] validation_error: {}", message);
         return ResponseEntity.badRequest().body(error("validation_error", message));
+    }
+
+    @ExceptionHandler({
+            HttpMediaTypeNotSupportedException.class,
+            MultipartException.class,
+            MaxUploadSizeExceededException.class
+    })
+    public ResponseEntity<Map<String, Object>> handleMultipart(Exception ex) {
+        log.error("[GlobalExceptionHandler] multipart/upload 异常: {}", ex.getMessage(), ex);
+        String message = ex.getMessage();
+        if (ex instanceof HttpMediaTypeNotSupportedException) {
+            message = "上传 Content-Type 不正确，请使用 multipart/form-data（勿强制 application/json）";
+        } else if (ex instanceof MaxUploadSizeExceededException) {
+            message = "文件过大，超出上传限制";
+        } else if (message == null || message.isBlank()) {
+            message = "文件上传失败";
+        } else if (message.contains("Required part") || message.contains("not present")) {
+            message = "缺少上传字段 file";
+        }
+        return ResponseEntity.badRequest().body(error("upload_error", message));
     }
 
     @ExceptionHandler(CompletionException.class)

@@ -72,7 +72,7 @@ public class ProductOpsCompareHandler implements BaseIntentHandler {
         return SseStreamSupport.deferWork(
                 prelude,
                 () -> doCompare(ctx, question, finalPolicy),
-                result -> buildAfterEvents(ctx, question, finalPolicy, result)
+                (result, elapsedMs) -> buildAfterEvents(ctx, question, finalPolicy, result, elapsedMs)
         );
     }
 
@@ -264,7 +264,7 @@ public class ProductOpsCompareHandler implements BaseIntentHandler {
 
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> buildAfterEvents(
-            IntentContext ctx, String question, String policySetId, Map<String, Object> result
+            IntentContext ctx, String question, String policySetId, Map<String, Object> result, long elapsedMs
     ) {
         List<Map<String, Object>> comparisons = List.of();
         if (result.get("comparisons") instanceof List<?> list) {
@@ -298,7 +298,7 @@ public class ProductOpsCompareHandler implements BaseIntentHandler {
                         "policySetId", policySetId,
                         "compareCount", comparisons.size()
                 ),
-                0,
+                elapsedMs,
                 null
         ));
         events.add(SseUtils.intentEvent(getIntentType(), "compare", intentData, false));
