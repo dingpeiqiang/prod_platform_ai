@@ -3,6 +3,7 @@ package com.sitech.prodai.intent.handlers;
 import com.sitech.prodai.intent.BaseIntentHandler;
 import com.sitech.prodai.intent.IntentContext;
 import com.sitech.prodai.intent.SseUtils;
+import com.sitech.prodai.intent.ThinkingStepBuilder;
 import com.sitech.prodai.intent.StreamStats;
 import com.sitech.prodai.service.OntologyService;
 import org.slf4j.Logger;
@@ -57,7 +58,10 @@ public class DeleteFormHandler implements BaseIntentHandler {
         identifyResult.put("autoBackup", true);
 
         return Flux.concat(
-                Flux.just(SseUtils.thinking("🗑\uFE0F 确认删除表单「" + (name.isEmpty() ? code : name) + "」（自动备份）", identifyResult)),
+                Flux.just(ThinkingStepBuilder.done(
+                        "confirm", "确认删除", "确认删除表单（自动备份）",
+                        "表单「" + (name.isEmpty() ? code : name) + "」",
+                        2, 3, 0, null, identifyResult)),
 
                 // Phase 2：执行（在 boundedElastic 线程池中执行阻塞调用）
                 reactor.core.publisher.Mono.fromCallable(() -> ontologyService.deleteOntology(code))
@@ -81,7 +85,11 @@ public class DeleteFormHandler implements BaseIntentHandler {
                                 successResult.put("backupVersionId", backupId);
                                 successResult.put("message", str(deleteResult.get("message")));
 
-                                events.add(SseUtils.thinking("✅ 已删除表单「" + (name.isEmpty() ? code : name) + "」", successResult));
+                                events.add(ThinkingStepBuilder.done(
+                                        "execute", "执行备份删除", "执行删除并备份",
+                                        "已删除「" + (name.isEmpty() ? code : name) + "」"
+                                                + (backupId.isBlank() ? "" : " · 备份 " + backupId),
+                                        3, 3, 0, null, successResult));
                                 if (stats != null) {
                                     events.add(SseUtils.stats(stats));
                                 }
@@ -109,7 +117,9 @@ public class DeleteFormHandler implements BaseIntentHandler {
                                 Map<String, Object> failResult = new LinkedHashMap<>();
                                 failResult.put("success", false);
                                 failResult.put("error", errorMsg);
-                                events.add(SseUtils.thinking("❌ 删除失败: " + errorMsg, failResult));
+                                events.add(ThinkingStepBuilder.done(
+                                        "execute", "执行备份删除", "删除失败",
+                                        errorMsg, 3, 3, 0, null, failResult));
                                 if (stats != null) {
                                     stats.setError(errorMsg);
                                     events.add(SseUtils.stats(stats));

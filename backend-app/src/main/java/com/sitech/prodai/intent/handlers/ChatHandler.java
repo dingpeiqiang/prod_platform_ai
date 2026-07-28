@@ -4,6 +4,7 @@ import com.sitech.prodai.config.ProdAiProperties;
 import com.sitech.prodai.intent.IntentContext;
 import com.sitech.prodai.intent.IntentHandlerRegistry;
 import com.sitech.prodai.intent.SseUtils;
+import com.sitech.prodai.intent.ThinkingStepBuilder;
 import com.sitech.prodai.intent.StreamStats;
 import com.sitech.prodai.intent.tools.FunctionCallingService;
 import com.sitech.prodai.service.LlmService;
@@ -92,7 +93,9 @@ public class ChatHandler implements IntentHandlerRegistry.ChatHandlerFallback {
     }
 
     private Flux<Map<String, Object>> streamPlain(IntentContext ctx, String systemPrompt, String userMessage) {
-        Flux<Map<String, Object>> prefix = Flux.just(SseUtils.thinking("正在生成回复..."));
+        Flux<Map<String, Object>> prefix = Flux.just(ThinkingStepBuilder.running(
+                "reply", "生成回复", "正在生成回复...",
+                2, 3, Map.of()));
 
         List<Map<String, String>> history = toHistory(ctx);
         Flux<Map<String, Object>> textStream = llmService.streamWithMessages(systemPrompt, history, userMessage)

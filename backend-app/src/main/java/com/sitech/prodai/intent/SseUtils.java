@@ -62,9 +62,35 @@ public final class SseUtils {
                                                      Map<String, Object> metadata,
                                                      long elapsedMs,
                                                      String details) {
+        return thinkingRich(null, null, null, content, null, metadata, elapsedMs, details);
+    }
+
+    /**
+     * 场景化富思考事件 —— 带稳定 id/title/type/result，供前端时间线直接展示。
+     */
+    public static Map<String, Object> thinkingRich(String id,
+                                                     String title,
+                                                     String type,
+                                                     String content,
+                                                     Object result,
+                                                     Map<String, Object> metadata,
+                                                     long elapsedMs,
+                                                     String details) {
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("type", "thinking");
+        if (id != null && !id.isBlank()) {
+            event.put("id", id);
+        }
+        if (title != null && !title.isBlank()) {
+            event.put("title", title);
+        }
+        if (type != null && !type.isBlank()) {
+            event.put("stepType", type);
+        }
         event.put("content", content);
+        if (result != null) {
+            event.put("result", result);
+        }
         if (metadata != null && !metadata.isEmpty()) {
             event.put("metadata", metadata);
         }

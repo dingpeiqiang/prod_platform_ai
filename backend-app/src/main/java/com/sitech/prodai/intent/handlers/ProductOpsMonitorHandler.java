@@ -5,6 +5,7 @@ import com.sitech.prodai.intent.IntentContext;
 import com.sitech.prodai.intent.IntentRecognitionSupport;
 import com.sitech.prodai.intent.SseStreamSupport;
 import com.sitech.prodai.intent.SseUtils;
+import com.sitech.prodai.intent.ThinkingStepBuilder;
 import com.sitech.prodai.service.ProductOntologyService;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
@@ -38,16 +39,9 @@ public class ProductOpsMonitorHandler implements BaseIntentHandler {
             return Flux.fromIterable(IntentRecognitionSupport.metaGuideSkipEvents("运营监控"));
         }
         List<Map<String, Object>> prelude = List.of(
-                SseUtils.thinkingRich(
-                        "正在加载运营监控告警与处置工单...",
-                        Map.of(
-                                "step", 5,
-                                "totalSteps", 6,
-                                "phase", "running",
-                                "action", "ops_monitor"
-                        ),
-                        -1
-                )
+                ThinkingStepBuilder.running(
+                        "pull", "拉取告警清单", "正在拉取运营监控告警...",
+                        2, 5, Map.of("action", "ops_monitor"))
         );
 
         return SseStreamSupport.deferWork(
@@ -99,20 +93,29 @@ public class ProductOpsMonitorHandler implements BaseIntentHandler {
         intentData.put("generatedAt", alerts.get("generatedAt"));
 
         String answerText = formatMonitorAnswer(alertItems, high, openWo, alerts);
+        Object alertTotal = alerts.getOrDefault("total", alertItems.size());
+        String concludeResult = ok
+                ? "高优待办 " + high + " 条 · 进行中工单 " + openWo + " 张"
+                : "运营监控加载异常";
 
         List<Map<String, Object>> events = new ArrayList<>();
-        events.add(SseUtils.thinkingRich(
-                ok ? "运营监控数据已就绪" : "运营监控加载异常",
-                Map.of(
-                        "step", 6,
-                        "totalSteps", 6,
-                        "alertCount", alertItems.size(),
-                        "highPriorityCount", high,
-                        "openWorkOrderCount", openWo,
-                        "success", ok
-                ),
-                elapsedMs
-        ));
+        events.add(ThinkingStepBuilder.done(
+                "pull", "拉取告警清单", "拉取运营监控告警",
+                "共 " + alertTotal + " 条告警", 2, 5, 0, null,
+                Map.of("alertCount", alertItems.size())));
+        events.add(ThinkingStepBuilder.done(
+                "grade", "告警分级统计", "按优先级与异动类型分级",
+                "高优先级 " + high + " 条", 3, 5, 0, null,
+                Map.of("highPriorityCount", high)));
+        events.add(ThinkingStepBuilder.done(
+                "link", "关联处置工单", "关联进行中的处置工单",
+                "进行中工单 " + openWo + " 张", 4, 5, 0, null,
+                Map.of("openWorkOrderCount", openWo)));
+        events.add(ThinkingStepBuilder.done(
+                "conclude", "待办摘要", "汇总监控待办",
+                concludeResult, 5, 5, elapsedMs, null,
+                Map.of("alertCount", alertItems.size(), "highPriorityCount", high,
+                        "openWorkOrderCount", openWo, "success", ok)));
         events.add(SseUtils.intentEvent(getIntentType(), "ops_monitor", intentData, false));
         events.addAll(SseStreamSupport.chunkedTextEvents(answerText));
         events.add(SseUtils.stats(ctx.getStreamStats()));

@@ -4,6 +4,7 @@ import com.sitech.prodai.dto.ChatCompletionRequest;
 import com.sitech.prodai.intent.BaseIntentHandler;
 import com.sitech.prodai.intent.IntentContext;
 import com.sitech.prodai.intent.SseUtils;
+import com.sitech.prodai.intent.ThinkingStepBuilder;
 import com.sitech.prodai.intent.StreamStats;
 import com.sitech.prodai.service.LlmService;
 import com.sitech.prodai.service.OntologyService;
@@ -97,22 +98,29 @@ public class ConfigureHandler implements BaseIntentHandler {
                             }
                         }
 
-                        // Phase 1：识别
-                        events.add(SseUtils.thinking(
-                                "🛠\uFE0F 识别到新业务配置请求: " + suggestedName,
-                                Map.of("suggestedCode", suggestedCode, "suggestedName", suggestedName)
-                        ));
+                        // Phase 1：识别配置请求
+                        events.add(ThinkingStepBuilder.done(
+                                "identify", "识别配置请求", "识别新业务配置请求",
+                                suggestedName, 2, 4, 0, null,
+                                Map.of("suggestedCode", suggestedCode, "suggestedName", suggestedName)));
 
-                        // Phase 2：执行
-                        events.add(SseUtils.thinking(
-                                "✅ 配置生成完成: " + str(configData.get("formName")) + " (" + fieldCount + " 个字段)",
+                        // Phase 2：生成配置方案
+                        events.add(ThinkingStepBuilder.done(
+                                "generate", "生成配置方案", "生成表单配置方案",
+                                str(configData.get("formName")) + " · " + fieldCount + " 个字段",
+                                3, 4, 0, null,
                                 Map.of(
                                         "formName", str(configData.get("formName")),
                                         "formCode", str(configData.get("formCode")),
-                                        "fieldCount", fieldCount,
-                                        "entityCount", configData.getOrDefault("entities", List.of()) instanceof List ? ((List<?>) configData.get("entities")).size() : 0
-                                )
-                        ));
+                                        "fieldCount", fieldCount
+                                )));
+
+                        // Phase 3：整理字段说明
+                        events.add(ThinkingStepBuilder.done(
+                                "conclude", "整理字段说明", "汇总配置说明",
+                                "配置已就绪 · " + fieldCount + " 个字段",
+                                4, 4, 0, null,
+                                Map.of("fieldCount", fieldCount, "formCode", str(configData.get("formCode")))));
 
                         // Phase 3：输出
                         String desc = "已为您生成 **" + str(configData.get("formName")) + "** 表单配置，包含 " + fieldCount + " 个字段。";
@@ -137,7 +145,10 @@ public class ConfigureHandler implements BaseIntentHandler {
                         // AI 引导用户补充需求
                         String guideReply = replyText.isEmpty() ? "请描述你想创建的表单类型。" : replyText;
 
-                        events.add(SseUtils.thinking("💬 正在引导您描述需求...", Map.of("mode", "guide", "reply", guideReply)));
+                        events.add(ThinkingStepBuilder.done(
+                                "guide", "引导补充需求", "引导用户补充配置需求",
+                                "等待补充描述", 2, 2, 0, null,
+                                Map.of("mode", "guide")));
 
                         if (stats != null) {
                             events.add(SseUtils.stats(stats));
@@ -160,7 +171,10 @@ public class ConfigureHandler implements BaseIntentHandler {
                         stats.setTotalElapsed((System.currentTimeMillis() - ctx.getStartTime()) / 1000.0);
                         stats.setError(errorMsg);
                     }
-                    events.add(SseUtils.thinking("❌ 配置生成失败: " + errorMsg, Map.of("success", false, "error", errorMsg)));
+                    events.add(ThinkingStepBuilder.done(
+                            "fail", "配置生成失败", "配置生成失败",
+                            errorMsg, 2, 2, 0, null,
+                            Map.of("success", false)));
                     if (stats != null) {
                         events.add(SseUtils.stats(stats));
                     }

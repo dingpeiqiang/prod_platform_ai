@@ -5,13 +5,14 @@
     "openllet-swrl": {
       "primary": true,
       "impl": "OpsSwrlReasoner",
-      "covers": ["R-A01", "R-A02"]
+      "covers": ["R-A01", "R-A02", "R-A03", "R-A04", "R-A05", "R-B01", "R-B02", "R-B03", "R-B04", "R-B05"],
+      "note": "运营归因与风险正式 OWL SWRL；失败回退 java-rules"
     },
     "java-rules": {
       "primary": false,
       "impl": "ProductOntologyService",
-      "covers": ["R-A03", "R-A04", "R-A05", "R-B01", "R-B02", "R-B03", "R-B04", "R-B05", "R-C01", "R-C02", "R-C03", "R-C04", "R-C05", "R-C06", "R-C07", "R-C08", "R-C09", "R-D01", "R-D05"],
-      "note": "阈值全部外置；配置侧 R-C* 对应方案 R-CONF（见 config.proposalMapping）；非 Drools"
+      "covers": ["R-A01", "R-A02", "R-A03", "R-A04", "R-A05", "R-B01", "R-B02", "R-B03", "R-B04", "R-B05", "R-C01", "R-C02", "R-C03", "R-C04", "R-C05", "R-C06", "R-C07", "R-C08", "R-C09", "R-D01", "R-D05"],
+      "note": "SWRL 回退 + 配置侧 R-C*（仍 Java）；阈值全部外置；非 Drools"
     },
     "policy-java": {
       "primary": false,
@@ -92,21 +93,21 @@
       "R-A03": {
         "name": "促销归因",
         "enabled": true,
-        "engine": "java",
+        "engine": "swrl",
         "daysToExpireLte": 7,
         "drivenOrderRatioGte": 0.25
       },
       "R-A04": {
         "name": "竞品冲击",
         "enabled": true,
-        "engine": "java",
+        "engine": "swrl",
         "priceGapRatioGte": 0.15,
         "penetrationDeltaPpGt": 0
       },
       "R-A05": {
         "name": "行为变化",
         "enabled": true,
-        "engine": "java",
+        "engine": "swrl",
         "minWeightHint": 0.08,
         "includeWhenRanked": true
       }
@@ -131,7 +132,7 @@
       "R-B01": {
         "name": "高风险命中",
         "enabled": true,
-        "engine": "java",
+        "engine": "swrl",
         "zeroFeeRequiresWhitelist": true,
         "fullDiscountPercentGte": 100,
         "fullDiscountNeedsRepeatable": true,
@@ -140,21 +141,21 @@
       "R-B02": {
         "name": "零元无合约在架",
         "enabled": true,
-        "engine": "java",
+        "engine": "swrl",
         "requireOnShelf": true,
         "requireNoContract": true
       },
       "R-B03": {
         "name": "长期零销",
         "enabled": true,
-        "engine": "java",
+        "engine": "swrl",
         "salesCntEq": 0,
         "useZeroSalesShelfDays": true
       },
       "R-B04": {
         "name": "优胜劣汰",
         "enabled": true,
-        "engine": "java",
+        "engine": "swrl",
         "categories": ["low_eff", "threshold_demo"],
         "requireNoStrategicTag": true,
         "useLowRevenuePercentile": true
@@ -162,7 +163,7 @@
       "R-B05": {
         "name": "风险复核",
         "enabled": true,
-        "engine": "java",
+        "engine": "swrl",
         "requireHighRisk": true,
         "useHighRiskReviewDays": true
       }

@@ -6,6 +6,7 @@ import com.sitech.prodai.intent.IntentContext;
 import com.sitech.prodai.intent.IntentRecognitionSupport;
 import com.sitech.prodai.intent.SseStreamSupport;
 import com.sitech.prodai.intent.SseUtils;
+import com.sitech.prodai.intent.ThinkingStepBuilder;
 import com.sitech.prodai.service.OntologyService;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
@@ -54,18 +55,12 @@ public class ProductOpsCompareHandler implements BaseIntentHandler {
         }
 
         List<Map<String, Object>> prelude = List.of(
-                SseUtils.thinkingRich(
-                        "正在对比方案并评估合规与收益...",
-                        Map.of(
-                                "step", 5,
-                                "totalSteps", 6,
-                                "phase", "running",
+                ThinkingStepBuilder.running(
+                        "extract", "抽取方案假设", "正在抽取方案假设与对比维度...",
+                        2, 5, Map.of(
                                 "policySetId", policySetId,
                                 "question", question == null ? "" : (question.length() > 60
-                                        ? question.substring(0, 60) + "..." : question)
-                        ),
-                        -1
-                )
+                                        ? question.substring(0, 60) + "..." : question)))
         );
 
         String finalPolicy = policySetId;
@@ -289,18 +284,29 @@ public class ProductOpsCompareHandler implements BaseIntentHandler {
         intentData.put("patches", patches);
         intentData.put("comparisons", comparisons);
 
+        String snapshotId = String.valueOf(result.getOrDefault("snapshot_id", ""));
+        String recommend = findRecommend(comparisons);
+        String concludeResult = recommend != null
+                ? "推荐「" + recommend + "」· 共对比 " + comparisons.size() + " 套"
+                : "共对比 " + comparisons.size() + " 套方案";
+
         List<Map<String, Object>> events = new ArrayList<>();
-        events.add(SseUtils.thinkingRich(
-                "方案对比完成，共 " + comparisons.size() + " 套方案",
-                Map.of(
-                        "step", 6,
-                        "totalSteps", 6,
-                        "policySetId", policySetId,
-                        "compareCount", comparisons.size()
-                ),
-                elapsedMs,
-                null
-        ));
+        events.add(ThinkingStepBuilder.done(
+                "extract", "抽取方案假设", "抽取方案假设与对比维度",
+                "准备 " + Math.max(comparisons.size(), 1) + " 套方案假设", 2, 5, 0, null,
+                Map.of("compareCount", comparisons.size())));
+        events.add(ThinkingStepBuilder.done(
+                "snapshot", "构建事实快照", "构建对比事实快照",
+                snapshotId.isBlank() || "null".equals(snapshotId) ? "已构建事实快照" : "快照 " + snapshotId,
+                3, 5, 0, null, Map.of("snapshotId", snapshotId)));
+        events.add(ThinkingStepBuilder.done(
+                "evaluate", "合规与收益评估", "按策略集评估合规与收益",
+                "策略集 " + policySetId + " · 评估 " + comparisons.size() + " 套",
+                4, 5, 0, null, Map.of("policySetId", policySetId, "compareCount", comparisons.size())));
+        events.add(ThinkingStepBuilder.done(
+                "conclude", "推荐结论", "汇总对比推荐结论",
+                concludeResult, 5, 5, elapsedMs, null,
+                Map.of("policySetId", policySetId, "compareCount", comparisons.size())));
         events.add(SseUtils.intentEvent(getIntentType(), "compare", intentData, false));
         events.addAll(SseStreamSupport.chunkedTextEvents(answerText));
         events.add(SseUtils.stats(ctx.getStreamStats()));
@@ -315,6 +321,18 @@ public class ProductOpsCompareHandler implements BaseIntentHandler {
                 "snapshotId", result.getOrDefault("snapshot_id", "")
         )));
         return events;
+    }
+
+    @SuppressWarnings("unchecked")
+    private String findRecommend(List<Map<String, Object>> comparisons) {
+        for (Map<String, Object> c : comparisons) {
+            Map<String, Object> eval = c.get("evaluation") instanceof Map<?, ?>
+                    ? (Map<String, Object>) c.get("evaluation") : Map.of();
+            if ("allow".equals(String.valueOf(eval.getOrDefault("verdict", "")))) {
+                return String.valueOf(c.getOrDefault("patch_description", "合规方案"));
+            }
+        }
+        return null;
     }
 
     @SuppressWarnings("unchecked")

@@ -182,17 +182,37 @@ public class OpsRulesService {
 
     /**
      * 是否应走 Openllet SWRL：全局开关 + 规则 enabled + engine=swrl。
+     * 依次查 rootCause / risk / config 规则块。
      */
     public boolean preferSwrl(String ruleId) {
         if (!properties.getOntology().isSwrlEnabled()) {
             return false;
         }
         Map<String, Object> rule = rootCauseRule(ruleId);
-        if (!isRuleEnabled(rule)) {
+        if (rule.isEmpty()) {
+            rule = riskRule(ruleId);
+        }
+        if (rule.isEmpty()) {
+            rule = configRule(ruleId);
+        }
+        if (rule.isEmpty() || !isRuleEnabled(rule)) {
             return false;
         }
         String engine = str(rule.getOrDefault("engine", "java")).toLowerCase();
         return "swrl".equals(engine) || "openllet".equals(engine) || "openllet-swrl".equals(engine);
+    }
+
+    /** 任一规则配置为 SWRL 则 true。 */
+    public boolean preferSwrlAny(String... ruleIds) {
+        if (ruleIds == null) {
+            return false;
+        }
+        for (String id : ruleIds) {
+            if (preferSwrl(id)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public double ruleNum(Map<String, Object> rule, String key, double defaultValue) {

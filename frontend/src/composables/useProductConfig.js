@@ -208,15 +208,29 @@ export function useProductConfig() {
       const rec = result.recommended || {}
       return {
         thinkingSteps: [
-          { id: 'intent', type: 'llm', content: '识别多方案对比意图（定价/立项）', result: '多方案对比' },
+          { id: 'intent', type: 'llm', title: '确认业务意图', content: '识别多方案对比意图', result: '多方案对比' },
           {
-            id: 'ontology',
-            type: 'ontology',
-            title: '方案评估',
-            content: `对比 ${result.comparisons?.length || 0} 套方案并执行合规`,
-            result: rec.label || `已对比 ${result.comparisons?.length || 0} 套`,
+            id: 'extract',
+            type: 'llm',
+            title: '抽取方案假设',
+            content: '准备定价 / 立项对比维度',
+            result: `准备 ${result.comparisons?.length || 0} 套方案假设`,
           },
-          { id: 'reply', type: 'llm', content: '生成可解释推荐结论', result: rec.label || '已生成说明' },
+          {
+            id: 'snapshot',
+            type: 'llm',
+            title: '构建事实快照',
+            content: '构建对比用事实快照',
+            result: result.trace_id ? `快照 ${result.trace_id}` : '已构建事实快照',
+          },
+          {
+            id: 'evaluate',
+            type: 'ontology',
+            title: '合规与收益评估',
+            content: `对比 ${result.comparisons?.length || 0} 套方案并执行合规`,
+            result: rec.label || `已评估 ${result.comparisons?.length || 0} 套`,
+          },
+          { id: 'conclude', type: 'llm', title: '推荐结论', content: '生成可解释推荐结论', result: rec.label || '已生成说明' },
         ],
         content:
           `### 多方案对比结果\n\n${lines.join('\n')}\n\n` +
@@ -1454,22 +1468,36 @@ export function useProductConfig() {
           {
             id: 'intent',
             type: 'llm',
-            title: '意图识别',
+            title: '确认业务意图',
             content: '解析用户目标与关注指标',
-            result: `根因分析 · 商品=${offeringName} · 指标=${anomaly?.metricCode || '异动指标'}`,
+            result: `异动归因 · ${offeringName}`,
           },
           {
             id: 'locate',
             type: 'llm',
-            title: '锁定异动商品',
-            content: '按渠道 / 促销 / 竞品 / 行为维度准备下钻',
+            title: '锁定分析对象',
+            content: '定位异动商品与指标快照',
             result: `${offeringName}（${result.offeringId}）`,
           },
           {
-            id: 'ontology',
+            id: 'confirm',
+            type: 'llm',
+            title: '异动确认',
+            content: '对照阈值确认指标异动',
+            result: anomaly?.message || '指标异动已确认',
+          },
+          {
+            id: 'drill',
+            type: 'llm',
+            title: '多维下钻',
+            content: '按渠道 / 促销 / 竞品 / 行为扫描',
+            result: paths.length ? `命中 ${paths.length} 条路径` : '暂无命中维度',
+          },
+          {
+            id: 'reason',
             type: 'ontology',
-            title: '原因分析',
-            content: '梳理异动指标与可能原因',
+            title: '规则推理',
+            content: '执行图谱与 SWRL 归因规则',
             result: paths.length
               ? `主因「${paths[0]?.name || '-'}」，共 ${paths.length} 条路径`
               : '未形成有效归因路径',
@@ -1477,10 +1505,10 @@ export function useProductConfig() {
             ontologyPreview: buildRootCauseOntologyPreview(result, chain),
           },
           {
-            id: 'reply',
+            id: 'conclude',
             type: 'llm',
-            title: '生成分析报告',
-            content: '基于业务事实组织可读报告（不改写关键数字）',
+            title: '归因结论',
+            content: '汇总主因路径与处置建议',
             result: anomaly?.message || '已汇总归因结论',
           },
         ],
@@ -1614,23 +1642,41 @@ export function useProductConfig() {
       return {
         thinkingSteps: [
           {
+            id: 'intent',
             type: 'llm',
-            content: `识别意图=风险稽核，规则版本 ${result.ruleVersion || 'RiskRules-v1.2'}`,
+            title: '确认业务意图',
+            content: '识别为风险稽核',
+            result: `风险稽核 · ${result.ruleVersion || 'RiskRules-v1.2'}`,
           },
           {
+            id: 'load',
             type: 'llm',
-            content: `加载在架清单 ${result.scannedCount || 80} 条，准备全量规则扫描`,
+            title: '加载在架清单',
+            content: '加载在架商品清单',
+            result: `扫描范围 ${result.scannedCount || 80} 条`,
           },
           {
+            id: 'match',
+            type: 'llm',
+            title: '匹配风险规则集',
+            content: '匹配适用稽核规则集',
+            result: result.ruleVersion || 'RiskRules-v1.2',
+          },
+          {
+            id: 'scan',
             type: 'ontology',
-            title: '本体推理',
-            content: '调用本体平台',
+            title: '全量扫描打分',
+            content: '按规则全量扫描打分',
+            result: `高风险 ${result.highCount} / 中风险 ${result.mediumCount}`,
             ontologyChain: chain,
             ontologyPreview: buildRiskAuditOntologyPreview(result, chain),
           },
           {
+            id: 'conclude',
             type: 'llm',
-            content: `汇总话术：高风险 ${result.highCount} / 中风险 ${result.mediumCount} / 建议下架 ${result.suggestDelistCount}`,
+            title: '风险与处置建议',
+            content: '输出风险清单与建议',
+            result: `建议下架 ${result.suggestDelistCount}`,
           },
         ],
         content:

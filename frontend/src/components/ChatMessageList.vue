@@ -43,17 +43,21 @@
               :streaming="msg.loading || !msg.done"
               :localize="localizeStepText"
               @toggle="toggleReasoning(idx)"
+              @complete="(payload) => onThinkingComplete(msg, payload)"
             />
 
-            <!-- 正文内容 -->
+            <!-- 正文内容：有思考过程时等思考播完再自上而下打出 -->
             <div class="message-bubble ai-bubble">
-              <MessageCard 
-                v-if="msg.streamText || msg.content"
-                :content="msg.streamText || msg.content"
-                :streaming="msg.loading || !msg.done"
+              <MessageCard
+                v-if="replyDisplayText(msg)"
+                :content="replyDisplayText(msg)"
+                :streaming="isReplyTyping(msg)"
               />
-              <!-- 加载状态 -->
-              <div v-if="msg.loading && !msg.streamText && !msg.content" class="typing-indicator">
+              <div
+                v-else-if="shouldShowReplyPlaceholder(msg)"
+                class="typing-indicator"
+                :class="{ 'after-think': msg.reasoning?.length }"
+              >
                 <span></span>
                 <span></span>
                 <span></span>
@@ -80,14 +84,14 @@
 
             <!-- 意图结果卡紧跟正文，避免「详见下方」与卡片被操作栏隔开 -->
             <IntentPanel
-              v-if="msg.intentType && msg.intentData"
+              v-if="msg.intentType && msg.intentData && isReplySettled(msg)"
               :intentType="msg.intentType"
               :msg="msg"
               @intent-action="$emit('intent-action', $event)"
             />
 
-            <!-- 底部工具栏 -->
-            <div v-if="msg.done && (msg.streamText || msg.content)" class="message-actions">
+            <!-- 底部工具栏：有思考过程时等正文打完再出现 -->
+            <div v-if="msg.done && isReplySettled(msg) && (msg.streamText || msg.content)" class="message-actions">
               <button class="action-btn" @click="handleFeedback(msg, 'like')" title="赞同">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
@@ -113,7 +117,7 @@
             </div>
 
             <!-- 表单卡片 -->
-            <div v-if="msg.formCard" class="form-card" @click="$emit('form-card-click', msg)">
+            <div v-if="msg.formCard && isReplySettled(msg)" class="form-card" @click="$emit('form-card-click', msg)">
               <div class="form-card-header">
                 <div class="form-card-icon">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -133,7 +137,7 @@
             </div>
 
             <!-- 查询结果卡片列表 -->
-            <div v-if="msg.queryResults?.length" class="query-results">
+            <div v-if="msg.queryResults?.length && isReplySettled(msg)" class="query-results">
               <div
                 v-for="p in msg.queryResults"
                 :key="p.id"
@@ -156,7 +160,7 @@
             </div>
 
             <!-- 下一步体验引导 -->
-            <div v-if="msg.done && msg.nextSteps?.length" class="next-steps">
+            <div v-if="msg.done && msg.nextSteps?.length && isReplySettled(msg)" class="next-steps">
               <span class="next-label">下一步可以：</span>
               <button
                 v-for="step in msg.nextSteps"
@@ -218,7 +222,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick, onMounted, onUnmounted, computed, watch } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted, computed, watch, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import WelcomeCards from './WelcomeCards.vue'
 import IntentPanel from './intent-panels/IntentPanel.vue'
@@ -244,6 +248,134 @@ let prevMessageCount = 0
 let programmaticScroll = false
 /** 流式跟滚期间忽略 scroll 事件，避免未贴底时被误判为用户上翻 */
 let followLockUntil = 0
+
+/**
+ * 有思考过程的消息：等思考播完再打出正文
+ * id -> { unlocked, instant, shown, typing, token }
+ */
+const replyGate = reactive({})
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+const fullReply = (msg) => msg?.streamText || msg?.content || ''
+
+const needsReplyGate = (msg) => !!(msg?.reasoning && msg.reasoning.length)
+
+const ensureGate = (id) => {
+  if (!replyGate[id]) {
+    replyGate[id] = {
+      unlocked: false,
+      instant: false,
+      shown: '',
+      typing: false,
+      token: 0,
+    }
+  }
+  return replyGate[id]
+}
+
+const replyDisplayText = (msg) => {
+  if (!msg) return ''
+  if (!needsReplyGate(msg)) return fullReply(msg)
+  const g = replyGate[msg.id]
+  if (!g?.unlocked) return ''
+  return g.shown || ''
+}
+
+const isReplyTyping = (msg) => {
+  if (!needsReplyGate(msg)) return !!(msg.loading || !msg.done)
+  return !!replyGate[msg.id]?.typing
+}
+
+/** 思考播完且正文打完（或无正文）后再展示附属结果 */
+const isReplySettled = (msg) => {
+  if (!needsReplyGate(msg)) return true
+  const g = replyGate[msg.id]
+  if (!g?.unlocked || g.typing) return false
+  if (fullReply(msg) && !g.shown) return false
+  return true
+}
+
+const shouldShowReplyPlaceholder = (msg) => {
+  if (replyDisplayText(msg)) return false
+  if (!needsReplyGate(msg)) {
+    return !!(msg.loading && !fullReply(msg))
+  }
+  // 思考进行中，或思考已完但正文还在路上 / 正在准备打字
+  const g = replyGate[msg.id]
+  if (!g?.unlocked) return true
+  return !!(msg.loading || !fullReply(msg) || g.typing)
+}
+
+const typeReply = async (msgId, text, instant) => {
+  const g = ensureGate(msgId)
+  const token = ++g.token
+  if (instant || !text) {
+    g.shown = text || ''
+    g.typing = false
+    return
+  }
+  // 已显示到同等长度则跳过
+  if (g.shown === text) {
+    g.typing = false
+    return
+  }
+  g.typing = true
+  // 思考播完后稍顿一下，再接正文，形成连续自上而下节奏
+  if (!g.shown) {
+    await sleep(220)
+    if (replyGate[msgId]?.token !== token) return
+  }
+  // 若已有前缀，从现有长度续打；否则从头
+  let start = 0
+  if (g.shown && text.startsWith(g.shown)) {
+    start = g.shown.length
+  } else {
+    g.shown = ''
+  }
+  const chunk = 8
+  const delay = 16
+  for (let i = start; i < text.length; i += chunk) {
+    if (replyGate[msgId]?.token !== token) return
+    g.shown = text.slice(0, Math.min(i + chunk, text.length))
+    await sleep(delay)
+  }
+  if (replyGate[msgId]?.token !== token) return
+  g.shown = text
+  g.typing = false
+}
+
+const revealReplyFor = (msg, instant = false) => {
+  if (!msg?.id || !needsReplyGate(msg)) return
+  const g = ensureGate(msg.id)
+  if (!g.unlocked) return
+  const text = fullReply(msg)
+  if (!text) return
+  typeReply(msg.id, text, instant || g.instant)
+}
+
+const onThinkingComplete = (msg, payload = {}) => {
+  if (!msg?.id) return
+  const g = ensureGate(msg.id)
+  g.unlocked = true
+  g.instant = !!payload.instant
+  revealReplyFor(msg, g.instant)
+}
+
+/** 正文在思考完成后才到达时，继续打出 */
+watch(
+  () => props.messages.map((m) => `${m.id}:${fullReply(m).length}:${m.done}:${m.loading}`).join('|'),
+  () => {
+    for (const msg of props.messages) {
+      if (msg.role !== 'assistant') continue
+      if (!needsReplyGate(msg)) continue
+      const g = replyGate[msg.id]
+      if (g?.unlocked) {
+        revealReplyFor(msg, g.instant)
+      }
+    }
+  },
+)
 
 const showWelcome = computed(() => props.showWelcome || props.messages.length === 0)
 
@@ -402,6 +534,8 @@ watch(
       last?.showReasoning,
       !!last?.formCard,
       last?.queryResults?.length ?? 0,
+      replyGate[last?.id]?.shown?.length ?? 0,
+      replyGate[last?.id]?.unlocked ? 1 : 0,
     ]
   },
   () => {
@@ -761,6 +895,11 @@ defineExpose({ scrollToBottom })
   gap: 5px;
   padding: 6px 0;
   align-items: center;
+}
+
+.typing-indicator.after-think {
+  margin-top: 2px;
+  opacity: 0.85;
 }
 
 .typing-indicator span {

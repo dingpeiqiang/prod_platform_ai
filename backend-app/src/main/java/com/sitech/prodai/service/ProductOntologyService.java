@@ -32,7 +32,7 @@ import java.util.stream.Collectors;
 
 /**
  * 产商品配置与运营本体推理引擎。
- * 配置规则 R-C01~C08 / R-D01~D05；运营规则 R-A01~A05 / R-B01~B05。
+ * 配置规则 R-C01~C08 / R-D01~D05（Java）；运营归因 R-A01~A05 / 风险 R-B01~B05 优先 Openllet SWRL，失败回退 Java。
  * <p>规则阈值与启用开关统一读 {@link OpsRulesService}（ops_rules.json）。
  * 事实数据统一来自 {@link OpsProductGraphLoader}；演示与生产仅差 graph-path / data-source 配置。
  */
@@ -2744,19 +2744,15 @@ public class ProductOntologyService {
 
         Map<String, Object> a01 = opsRules.rootCauseRule("R-A01");
         Map<String, Object> a02 = opsRules.rootCauseRule("R-A02");
+        Map<String, Object> a03 = opsRules.rootCauseRule("R-A03");
+        Map<String, Object> a04 = opsRules.rootCauseRule("R-A04");
+        Map<String, Object> a05 = opsRules.rootCauseRule("R-A05");
 
-        // R-A01 / R-A02：按 ops_rules.engine 优先 Openllet；否则或失败时回退 Java
-        boolean trySwrl = opsRules.preferSwrl("R-A01") || opsRules.preferSwrl("R-A02");
+        // R-A01~A05：按 ops_rules.engine 优先 Openllet SWRL；失败回退 Java
+        boolean trySwrl = opsRules.preferSwrlAny("R-A01", "R-A02", "R-A03", "R-A04", "R-A05");
         OpsSwrlReasoner.SwrlFireResult swrl = trySwrl
-                ? opsSwrlReasoner.reasonRootCauseA01A02(
-                oid,
-                str(offering.get("offeringName")),
-                node,
-                a01,
-                a02
-        )
-                : new OpsSwrlReasoner.SwrlFireResult(
-                false, "java-rules", false, List.of(), List.of(), List.of(), "规则配置为 java，跳过 SWRL");
+                ? opsSwrlReasoner.reasonRootCause(oid, str(offering.get("offeringName")), node, a01, a02, a03, a04, a05)
+                : OpsSwrlReasoner.SwrlFireResult.skipJava("规则配置为 java，跳过 SWRL");
         if (swrl.success() && "openllet-swrl".equals(swrl.engine())) {
             reasonEngine = "openllet-swrl";
             swrlFired.addAll(swrl.firedRules());
@@ -2774,16 +2770,30 @@ public class ProductOntologyService {
                 drill.put("orderDelta", orderDelta);
                 drill.put("contribRatio", contrib);
                 Object trend = c.get("trend");
-                if (trend != null) {
-                    drill.put("trend", trend);
-                } else {
-                    drill.put("trend", List.of());
-                }
+                drill.put("trend", trend != null ? trend : List.of());
                 c.put("drill", drill);
                 candidates.add(c);
                 triples.add(triple(oid, "soldOn", c.get("id")));
                 triples.add(triple(c.get("id"), "orderDelta", orderDelta));
                 triples.add(triple(c.get("id"), "contribRatio", contrib));
+            }
+            for (Map<String, Object> prCand : swrl.promotionCandidates()) {
+                Map<String, Object> c = enrichPromoCandidate(oid, prCand);
+                candidates.add(c);
+                triples.add(triple(oid, "participatesIn", c.get("id")));
+                triples.add(triple(c.get("id"), "daysToExpire", c.get("daysToExpire")));
+                triples.add(triple(c.get("id"), "drivenOrderRatio", c.get("drivenOrderRatio")));
+            }
+            for (Map<String, Object> cpCand : swrl.competitorCandidates()) {
+                Map<String, Object> c = enrichCompetitorCandidate(oid, cpCand);
+                candidates.add(c);
+                triples.add(triple(oid, "competesWith", c.get("id")));
+                triples.add(triple(c.get("id"), "priceGap", c.get("priceGap")));
+                triples.add(triple(c.get("id"), "penetrationDeltaPp", c.get("penetrationDeltaPp")));
+            }
+            for (Map<String, Object> ubCand : swrl.behaviorCandidates()) {
+                Map<String, Object> c = enrichBehaviorCandidate(oid, ubCand);
+                candidates.add(c);
             }
         } else {
             reasonEngine = trySwrl
@@ -2846,11 +2856,7 @@ public class ProductOntologyService {
                         drill.put("orderDelta", orderDelta);
                         drill.put("contribRatio", contrib);
                         Object trend = ch.get("trend");
-                        if (trend != null) {
-                            drill.put("trend", trend);
-                        } else {
-                            drill.put("trend", List.of());
-                        }
+                        drill.put("trend", trend != null ? trend : List.of());
                         c.put("drill", drill);
                         candidates.add(c);
                         triples.add(triple(oid, "soldOn", ch.get("channelId")));
@@ -2880,8 +2886,9 @@ public class ProductOntologyService {
             return body;
         }
 
-        Map<String, Object> a03 = opsRules.rootCauseRule("R-A03");
-        if (opsRules.isRuleEnabled(a03)) {
+        // Java 回退：仅当整次 SWRL 归因失败时补齐 A03~A05（成功时规则已在本体中求值）
+        boolean swrlRootOk = swrl.success() && "openllet-swrl".equals(swrl.engine());
+        if (!swrlRootOk && opsRules.isRuleEnabled(a03)) {
             int daysLte = (int) opsRules.ruleNum(a03, "daysToExpireLte", 7);
             double drivenGte = opsRules.ruleNum(a03, "drivenOrderRatioGte", 0.25);
             for (Map<String, Object> pr : castListOfMaps(node.get("promotions"))) {
@@ -2897,15 +2904,13 @@ public class ProductOntologyService {
                     c.put("weight", weight);
                     c.put("ruleId", "R-A03");
                     c.put("engine", "java-rules");
+                    c.put("daysToExpire", days);
+                    c.put("drivenOrderRatio", driven);
                     c.put("evidence", List.of(
                             days + " 日后到期",
                             "历史带动订购占比 " + Math.round(driven * 100) + "%"
                     ));
-                    c.put("path", List.of(
-                            oid + "-participatesIn->" + pr.get("promoId"),
-                            pr.get("promoId") + "-daysToExpire->" + days
-                    ));
-                    candidates.add(c);
+                    candidates.add(enrichPromoCandidate(oid, c));
                     triples.add(triple(oid, "participatesIn", pr.get("promoId")));
                     triples.add(triple(pr.get("promoId"), "daysToExpire", days));
                     triples.add(triple(pr.get("promoId"), "drivenOrderRatio", driven));
@@ -2913,8 +2918,7 @@ public class ProductOntologyService {
             }
         }
 
-        Map<String, Object> a04 = opsRules.rootCauseRule("R-A04");
-        if (opsRules.isRuleEnabled(a04)) {
+        if (!swrlRootOk && opsRules.isRuleEnabled(a04)) {
             double gapGte = opsRules.ruleNum(a04, "priceGapRatioGte", 0.15);
             double penetGt = opsRules.ruleNum(a04, "penetrationDeltaPpGt", 0);
             for (Map<String, Object> cp : castListOfMaps(node.get("competitors"))) {
@@ -2929,15 +2933,15 @@ public class ProductOntologyService {
                     c.put("score", weight);
                     c.put("weight", weight);
                     c.put("ruleId", "R-A04");
+                    c.put("engine", "java-rules");
+                    c.put("priceGap", cp.get("priceGap"));
+                    c.put("priceGapRatio", gapRatio);
+                    c.put("penetrationDeltaPp", cp.get("penetrationDeltaPp"));
                     c.put("evidence", List.of(
                             "月费低 " + cp.get("priceGap") + " 元（约 " + String.format("%.1f", gapRatio * 100) + "%）",
                             "本地渗透率 +" + cp.get("penetrationDeltaPp") + "pp"
                     ));
-                    c.put("path", List.of(
-                            oid + "-competesWith->" + cp.get("competitorId"),
-                            cp.get("competitorId") + "-priceGapRatio->" + gapRatio
-                    ));
-                    candidates.add(c);
+                    candidates.add(enrichCompetitorCandidate(oid, c));
                     triples.add(triple(oid, "competesWith", cp.get("competitorId")));
                     triples.add(triple(cp.get("competitorId"), "priceGap", cp.get("priceGap")));
                     triples.add(triple(cp.get("competitorId"), "penetrationDeltaPp", cp.get("penetrationDeltaPp")));
@@ -2945,8 +2949,7 @@ public class ProductOntologyService {
             }
         }
 
-        Map<String, Object> a05 = opsRules.rootCauseRule("R-A05");
-        if (opsRules.isRuleEnabled(a05)) {
+        if (!swrlRootOk && opsRules.isRuleEnabled(a05)) {
             double minWeight = opsRules.ruleNum(a05, "minWeightHint", 0.08);
             for (Map<String, Object> ub : castListOfMaps(node.get("behaviors"))) {
                 double weight = num(ub.get("weightHint"), minWeight);
@@ -2958,9 +2961,9 @@ public class ProductOntologyService {
                 c.put("score", weight);
                 c.put("weight", weight);
                 c.put("ruleId", "R-A05");
+                c.put("engine", "java-rules");
                 c.put("evidence", List.of(str(ub.get("name")), "行为佐证"));
-                c.put("path", List.of(oid + "-influencedBy->" + ub.get("behaviorId")));
-                candidates.add(c);
+                candidates.add(enrichBehaviorCandidate(oid, c));
             }
         }
 
@@ -3278,12 +3281,25 @@ public class ProductOntologyService {
         double lowThreshold = allRevenues.isEmpty() ? 0 : allRevenues.get(cutoffIdx);
 
         List<Map<String, Object>> results = new ArrayList<>();
+        boolean tryRiskSwrl = opsRules.preferSwrlAny("R-B01", "R-B02", "R-B03", "R-B04", "R-B05");
+        Map<String, Object> b01 = opsRules.riskRule("R-B01");
+        Map<String, Object> b02 = opsRules.riskRule("R-B02");
+        Map<String, Object> b03 = opsRules.riskRule("R-B03");
+        Map<String, Object> b04 = opsRules.riskRule("R-B04");
+        Map<String, Object> b05 = opsRules.riskRule("R-B05");
+        Set<String> lowCats = opsRules.riskCategories("R-B04", Set.of("low_eff"));
+        String riskEngine = tryRiskSwrl ? "openllet-swrl" : "java-rules";
+        int swrlOk = 0;
+        int swrlFail = 0;
+
         for (Map<String, Object> o : offerings) {
             List<Map<String, Object>> risks = new ArrayList<>();
             String riskLevel = "LOW";
             List<String> actions = new ArrayList<>();
             List<Map<String, Object>> evidenceTriples = new ArrayList<>();
             boolean suggestDelist = false;
+            boolean urgent = false;
+            boolean usedSwrl = false;
 
             double monthly = num(o.get("monthlyFee"), -1);
             double oneTime = num(o.get("oneTimeFee"), 0);
@@ -3291,72 +3307,121 @@ public class ProductOntologyService {
             String name = str(o.get("offeringName"));
             boolean inWhitelist = whitelist.contains(wlTag)
                     || whitelist.stream().anyMatch(name::contains);
-
-            if (opsRules.isRuleEnabled(opsRules.riskRule("R-B01"))
-                    && monthly == 0 && oneTime == 0 && !inWhitelist) {
-                risks.add(riskFeature("R-B01", "零元资费", "月费与一次性费均为0且非权益赠送白名单"));
-                evidenceTriples.add(triple(o.get("offeringId"), "hasPricePlan", "PP-" + o.get("offeringId")));
-                evidenceTriples.add(triple("PP-" + o.get("offeringId"), "monthlyFee", 0));
-                evidenceTriples.add(triple("PP-" + o.get("offeringId"), "oneTimeFee", 0));
-                if (opsRules.isRuleEnabled(opsRules.riskRule("R-B02"))
-                        && ("上架".equals(str(o.get("state"))) || "在售".equals(str(o.get("state"))))
-                        && !truthy(o.get("hasContract"))) {
-                    risks.add(riskFeature("R-B02", "零元无合约在架", "零元资费已上架且无合约约束"));
-                    evidenceTriples.add(triple(o.get("offeringId"), "hasContract", false));
-                    riskLevel = "HIGH";
-                    Map<String, Object> act = castMap(riskActions.get("零元资费"));
-                    actions.add(str(act.getOrDefault("defaultAction", "建议立即下架或转验证渠道")));
-                }
-            }
-
-            Map<String, Object> b01 = opsRules.riskRule("R-B01");
-            double fullDiscGte = opsRules.ruleNum(b01, "fullDiscountPercentGte", 100);
-            if (opsRules.isRuleEnabled(b01)
-                    && num(o.get("discountPercent"), -1) >= fullDiscGte
-                    && truthy(o.get("repeatable"))
-                    && empty(o.get("targetCustomerGroup"))) {
-                risks.add(riskFeature("R-B01", "异常全额赠送", "折扣100% + 可重复订购 + 无目标客户群"));
-                riskLevel = "HIGH";
-                Map<String, Object> act = castMap(riskActions.get("异常全额赠送"));
-                actions.add(str(act.getOrDefault("defaultAction", "限售 + 复核优惠规则")));
-            }
-
-            if (opsRules.isRuleEnabled(opsRules.riskRule("R-B03"))
-                    && num(o.get("salesCnt30d"), -1) == 0 && num(o.get("shelfDays"), 0) > zeroShelfDays) {
-                risks.add(riskFeature("R-B03", "长期零销",
-                        "近30日销量0且在架" + o.get("shelfDays") + "天（阈值>" + zeroShelfDays + "）"));
-                if (!"HIGH".equals(riskLevel)) {
-                    riskLevel = "MEDIUM";
-                }
-                Map<String, Object> act = castMap(riskActions.get("长期零销"));
-                actions.add(str(act.getOrDefault("defaultAction", "建议下架/归档")));
-                suggestDelist = true;
-                evidenceTriples.add(triple(o.get("offeringId"), "salesCnt30d", 0));
-                evidenceTriples.add(triple(o.get("offeringId"), "shelfDays", o.get("shelfDays")));
-            }
-
+            String state = str(o.get("state"));
+            boolean offeringOnShelf = state.isBlank() || "上架".equals(state) || "在售".equals(state);
             String category = str(o.get("category"));
-            Map<String, Object> b04 = opsRules.riskRule("R-B04");
-            Set<String> lowCats = opsRules.riskCategories("R-B04", Set.of("low_eff"));
-            if (opsRules.isRuleEnabled(b04)
-                    && lowCats.contains(category)
-                    && num(o.get("revenue30d"), 0) <= lowThreshold
-                    && !truthy(o.get("strategicTag"))) {
-                risks.add(riskFeature("R-B04", "低效产商品", "近90日收入贡献排名后5%且无战略标签"));
-                if ("LOW".equals(riskLevel)) {
-                    riskLevel = "MEDIUM";
+            boolean lowEffCategory = lowCats.contains(category);
+            boolean lowRevenue = num(o.get("revenue30d"), 0) <= lowThreshold;
+
+            if (tryRiskSwrl) {
+                Map<String, Object> flags = new LinkedHashMap<>();
+                flags.put("inWhitelist", inWhitelist);
+                flags.put("onShelf", offeringOnShelf);
+                flags.put("lowEffCategoryFlag", lowEffCategory);
+                flags.put("lowRevenueFlag", lowRevenue);
+                OpsSwrlReasoner.SwrlRiskResult rr = opsSwrlReasoner.reasonRiskOffering(
+                        o, flags, b01, b02, b03, b04, b05, rules);
+                if (rr.success() && "openllet-swrl".equals(rr.engine())) {
+                    usedSwrl = true;
+                    swrlOk++;
+                    risks.addAll(rr.risks());
+                    riskLevel = rr.riskLevel();
+                    suggestDelist = rr.suggestDelist();
+                    urgent = rr.urgent();
+                    for (Map<String, Object> risk : risks) {
+                        String feature = str(risk.get("feature"));
+                        // 与 Java 路径一致：零元资费处置话术挂在 B02（无合约在架）上
+                        if ("零元资费".equals(feature)
+                                && risks.stream().noneMatch(r -> "R-B02".equals(str(r.get("ruleId"))))) {
+                            continue;
+                        }
+                        Map<String, Object> act = castMap(riskActions.get(feature));
+                        if (!act.isEmpty()) {
+                            actions.add(str(act.getOrDefault("defaultAction", feature)));
+                        } else if ("预警升级".equals(feature)) {
+                            actions.add("紧急复核");
+                        }
+                    }
+                    if (risks.stream().anyMatch(r -> "R-B01".equals(str(r.get("ruleId")))
+                            && "零元资费".equals(str(r.get("feature"))))) {
+                        evidenceTriples.add(triple(o.get("offeringId"), "hasPricePlan", "PP-" + o.get("offeringId")));
+                        evidenceTriples.add(triple("PP-" + o.get("offeringId"), "monthlyFee", 0));
+                        evidenceTriples.add(triple("PP-" + o.get("offeringId"), "oneTimeFee", 0));
+                    }
+                    if (risks.stream().anyMatch(r -> "R-B02".equals(str(r.get("ruleId"))))) {
+                        evidenceTriples.add(triple(o.get("offeringId"), "hasContract", false));
+                    }
+                    if (risks.stream().anyMatch(r -> "R-B03".equals(str(r.get("ruleId"))))) {
+                        evidenceTriples.add(triple(o.get("offeringId"), "salesCnt30d", 0));
+                        evidenceTriples.add(triple(o.get("offeringId"), "shelfDays", o.get("shelfDays")));
+                    }
+                } else {
+                    swrlFail++;
                 }
-                Map<String, Object> act = castMap(riskActions.get("低效产商品"));
-                actions.add(str(act.getOrDefault("defaultAction", "纳入优胜劣汰池")));
-                suggestDelist = true;
             }
 
-            boolean urgent = false;
-            if (opsRules.isRuleEnabled(opsRules.riskRule("R-B05"))
-                    && "HIGH".equals(riskLevel) && num(o.get("shelfDays"), 0) > reviewDays) {
-                risks.add(riskFeature("R-B05", "预警升级", "高风险且上架超过" + reviewDays + "天未复核"));
-                actions.add("紧急复核");
-                urgent = true;
+            if (!usedSwrl) {
+                if (opsRules.isRuleEnabled(b01)
+                        && monthly == 0 && oneTime == 0 && !inWhitelist) {
+                    risks.add(riskFeature("R-B01", "零元资费", "月费与一次性费均为0且非权益赠送白名单"));
+                    evidenceTriples.add(triple(o.get("offeringId"), "hasPricePlan", "PP-" + o.get("offeringId")));
+                    evidenceTriples.add(triple("PP-" + o.get("offeringId"), "monthlyFee", 0));
+                    evidenceTriples.add(triple("PP-" + o.get("offeringId"), "oneTimeFee", 0));
+                    if (opsRules.isRuleEnabled(b02)
+                            && offeringOnShelf
+                            && !truthy(o.get("hasContract"))) {
+                        risks.add(riskFeature("R-B02", "零元无合约在架", "零元资费已上架且无合约约束"));
+                        evidenceTriples.add(triple(o.get("offeringId"), "hasContract", false));
+                        riskLevel = "HIGH";
+                        Map<String, Object> act = castMap(riskActions.get("零元资费"));
+                        actions.add(str(act.getOrDefault("defaultAction", "建议立即下架或转验证渠道")));
+                    }
+                }
+
+                double fullDiscGte = opsRules.ruleNum(b01, "fullDiscountPercentGte", 100);
+                if (opsRules.isRuleEnabled(b01)
+                        && num(o.get("discountPercent"), -1) >= fullDiscGte
+                        && truthy(o.get("repeatable"))
+                        && empty(o.get("targetCustomerGroup"))) {
+                    risks.add(riskFeature("R-B01", "异常全额赠送", "折扣100% + 可重复订购 + 无目标客户群"));
+                    riskLevel = "HIGH";
+                    Map<String, Object> act = castMap(riskActions.get("异常全额赠送"));
+                    actions.add(str(act.getOrDefault("defaultAction", "限售 + 复核优惠规则")));
+                }
+
+                if (opsRules.isRuleEnabled(b03)
+                        && num(o.get("salesCnt30d"), -1) == 0 && num(o.get("shelfDays"), 0) > zeroShelfDays) {
+                    risks.add(riskFeature("R-B03", "长期零销",
+                            "近30日销量0且在架" + o.get("shelfDays") + "天（阈值>" + zeroShelfDays + "）"));
+                    if (!"HIGH".equals(riskLevel)) {
+                        riskLevel = "MEDIUM";
+                    }
+                    Map<String, Object> act = castMap(riskActions.get("长期零销"));
+                    actions.add(str(act.getOrDefault("defaultAction", "建议下架/归档")));
+                    suggestDelist = true;
+                    evidenceTriples.add(triple(o.get("offeringId"), "salesCnt30d", 0));
+                    evidenceTriples.add(triple(o.get("offeringId"), "shelfDays", o.get("shelfDays")));
+                }
+
+                if (opsRules.isRuleEnabled(b04)
+                        && lowEffCategory
+                        && lowRevenue
+                        && !truthy(o.get("strategicTag"))) {
+                    risks.add(riskFeature("R-B04", "低效产商品", "近90日收入贡献排名后5%且无战略标签"));
+                    if ("LOW".equals(riskLevel)) {
+                        riskLevel = "MEDIUM";
+                    }
+                    Map<String, Object> act = castMap(riskActions.get("低效产商品"));
+                    actions.add(str(act.getOrDefault("defaultAction", "纳入优胜劣汰池")));
+                    suggestDelist = true;
+                }
+
+                if (opsRules.isRuleEnabled(b05)
+                        && "HIGH".equals(riskLevel) && num(o.get("shelfDays"), 0) > reviewDays) {
+                    risks.add(riskFeature("R-B05", "预警升级", "高风险且上架超过" + reviewDays + "天未复核"));
+                    actions.add("紧急复核");
+                    urgent = true;
+                }
             }
 
             if (!risks.isEmpty()) {
@@ -3380,12 +3445,19 @@ public class ProductOntologyService {
                 row.put("risks", risks);
                 row.put("actions", uniqueActions);
                 row.put("evidenceTriples", evidenceTriples);
+                row.put("reasonEngine", usedSwrl ? "openllet-swrl" : "java-rules");
                 Map<String, Object> disposition = new LinkedHashMap<>();
                 disposition.put("defaultAction", uniqueActions.isEmpty() ? "关注" : uniqueActions.get(0));
                 disposition.put("needConfirm", "HIGH".equals(riskLevel));
                 row.put("disposition", disposition);
                 results.add(row);
             }
+        }
+
+        if (tryRiskSwrl && swrlFail > 0 && swrlOk == 0) {
+            riskEngine = "fallback-java";
+        } else if (tryRiskSwrl && swrlFail > 0) {
+            riskEngine = "openllet-swrl+java-fallback";
         }
 
         results.sort((a, b) -> Integer.compare(
@@ -3408,8 +3480,35 @@ public class ProductOntologyService {
         body.put("ruleVersion", rules.getOrDefault("ruleVersion", "RiskRules-v1.2"));
         body.put("riskRules", rules);
         body.put("riskScoring", opsRules.riskScoring());
+        body.put("reasonEngine", riskEngine);
+        body.put("swrlOkCount", swrlOk);
+        body.put("swrlFailCount", swrlFail);
         body.put("auditedAt", Instant.now().toString());
         return withModeMeta(body);
+    }
+
+    private Map<String, Object> enrichPromoCandidate(String oid, Map<String, Object> c) {
+        Map<String, Object> out = new LinkedHashMap<>(c);
+        out.putIfAbsent("path", List.of(
+                oid + "-participatesIn->" + c.get("id"),
+                c.get("id") + "-daysToExpire->" + c.get("daysToExpire")
+        ));
+        return out;
+    }
+
+    private Map<String, Object> enrichCompetitorCandidate(String oid, Map<String, Object> c) {
+        Map<String, Object> out = new LinkedHashMap<>(c);
+        out.putIfAbsent("path", List.of(
+                oid + "-competesWith->" + c.get("id"),
+                c.get("id") + "-priceGapRatio->" + c.get("priceGapRatio")
+        ));
+        return out;
+    }
+
+    private Map<String, Object> enrichBehaviorCandidate(String oid, Map<String, Object> c) {
+        Map<String, Object> out = new LinkedHashMap<>(c);
+        out.putIfAbsent("path", List.of(oid + "-influencedBy->" + c.get("id")));
+        return out;
     }
 
     private Map<String, Object> riskFeature(String ruleId, String feature, String message) {

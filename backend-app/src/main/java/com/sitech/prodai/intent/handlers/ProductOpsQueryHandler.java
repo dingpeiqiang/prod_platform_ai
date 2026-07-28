@@ -5,6 +5,7 @@ import com.sitech.prodai.intent.IntentContext;
 import com.sitech.prodai.intent.IntentRecognitionSupport;
 import com.sitech.prodai.intent.SseStreamSupport;
 import com.sitech.prodai.intent.SseUtils;
+import com.sitech.prodai.intent.ThinkingStepBuilder;
 import com.sitech.prodai.service.OntologyService;
 import com.sitech.prodai.service.ProductOntologyService;
 import org.springframework.stereotype.Component;
@@ -44,16 +45,9 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
                 : ctx.getLastUserMessage();
 
         List<Map<String, Object>> prelude = List.of(
-                SseUtils.thinkingRich(
-                        "正在检索相关商品与经营指标...",
-                        Map.of(
-                                "step", 5,
-                                "totalSteps", 6,
-                                "phase", "running",
-                                "question", question.length() > 60 ? question.substring(0, 60) + "..." : question
-                        ),
-                        -1
-                )
+                ThinkingStepBuilder.running(
+                        "scope", "锁定洞察范围", "正在解析洞察问题与检索范围...",
+                        2, 5, Map.of("question", question.length() > 60 ? question.substring(0, 60) + "..." : question))
         );
 
         return SseStreamSupport.deferWork(
@@ -130,23 +124,56 @@ public class ProductOpsQueryHandler implements BaseIntentHandler {
             default -> "业务检索";
         };
 
+        String scopeResult = question == null || question.isBlank() ? "通用市场洞察" : shortText(question, 40);
+        String retrieveResult = "命中 " + results.size() + " 条（" + methodLabel + "）";
+        String aggregateResult = formatTrendResult(trendSummary);
+        String concludeResult = results.isEmpty()
+                ? "暂无匹配商品，可换关键词或同步事实图"
+                : "共 " + results.size() + " 条洞察结果已就绪";
+
         List<Map<String, Object>> events = new ArrayList<>();
-        events.add(SseUtils.thinkingRich(
-                "检索完成，共找到 " + results.size() + " 条（" + methodLabel + "）",
-                Map.of(
-                        "step", 6,
-                        "totalSteps", 6,
-                        "discoveryMethod", discoveryMethod,
-                        "resultCount", results.size()
-                ),
-                elapsedMs,
-                null
-        ));
+        events.add(ThinkingStepBuilder.done(
+                "scope", "锁定洞察范围", "解析洞察问题与检索范围",
+                scopeResult, 2, 5, 0, null, Map.of("question", scopeResult)));
+        events.add(ThinkingStepBuilder.done(
+                "retrieve", "检索经营事实", "检索经营事实图与在售商品",
+                retrieveResult, 3, 5, 0, null,
+                Map.of("discoveryMethod", discoveryMethod, "resultCount", results.size())));
+        events.add(ThinkingStepBuilder.done(
+                "aggregate", "聚合经营指标", "汇总增长、负增与零资费等指标",
+                aggregateResult, 4, 5, 0, null, Map.of("trendSummary", trendSummary)));
+        events.add(ThinkingStepBuilder.done(
+                "conclude", "生成洞察摘要", "汇总洞察结论",
+                concludeResult, 5, 5, elapsedMs, null,
+                Map.of("resultCount", results.size())));
         events.add(SseUtils.intentEvent(getIntentType(), "query", intentData, false));
         events.addAll(SseStreamSupport.chunkedTextEvents(answerText));
         events.add(SseUtils.stats(ctx.getStreamStats()));
         events.add(SseUtils.doneEvent(getIntentType(), false, donePayload));
         return events;
+    }
+
+    private String formatTrendResult(Map<String, Object> trend) {
+        Object avg = trend.get("avgGrowth");
+        Object neg = trend.get("negativeCount");
+        Object zero = trend.get("zeroFeeCount");
+        if (!(avg instanceof Number n)) {
+            return "样本不足，暂无聚合指标";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("平均增长 ").append(String.format("%.1f%%", n.doubleValue() * 100));
+        if (neg instanceof Number negN && negN.intValue() > 0) {
+            sb.append(" · 负增长 ").append(negN.intValue()).append(" 个");
+        }
+        if (zero instanceof Number z && z.intValue() > 0) {
+            sb.append(" · 零资费 ").append(z.intValue()).append(" 个");
+        }
+        return sb.toString();
+    }
+
+    private String shortText(String text, int max) {
+        if (text == null) return "";
+        return text.length() <= max ? text : text.substring(0, max) + "...";
     }
 
     /**

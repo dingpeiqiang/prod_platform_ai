@@ -8,7 +8,7 @@
  * - details：可展开的详细信息（SPARQL、LLM 原始返回等）
  */
 <template>
-  <div class="think-panel" :class="{ streaming }">
+  <div class="think-panel" :class="{ streaming: streaming || isCatchingUp }">
     <button type="button" class="think-toggle" @click="$emit('toggle')">
       <svg
         class="toggle-icon"
@@ -25,11 +25,11 @@
       <span class="think-title">思考过程</span>
       <span class="think-count">{{ visibleStepCount }} 步</span>
       <span v-if="ontoCount" class="think-onto-tag">含本体环节 {{ ontoCount }}</span>
-      <span v-if="streaming" class="think-live">进行中</span>
+      <span v-if="streaming || isCatchingUp" class="think-live">进行中</span>
     </button>
 
     <div v-show="show !== false" class="think-body">
-      <ol class="think-timeline">
+      <TransitionGroup name="think-step" tag="ol" class="think-timeline">
         <li
           v-for="(step, si) in visibleSteps"
           :key="stepKey(step, si)"
@@ -52,8 +52,8 @@
               <span class="step-progress">
                 {{ si + 1 }}/{{ steps.length || visibleSteps.length }}
               </span>
-              <span class="type-chip" :class="step.type === 'ontology' ? 'ontology' : 'llm'">
-                {{ step.type === 'ontology' ? '知识推理' : '处理步骤' }}
+              <span class="type-chip" :class="step.type === 'ontology' ? 'ontology' : step.type === 'tool' ? 'tool' : 'llm'">
+                {{ step.type === 'ontology' ? '知识推理' : step.type === 'tool' ? '工具调用' : '处理步骤' }}
               </span>
               <span
                 v-if="step.title"
@@ -73,7 +73,7 @@
                 :preview="step.ontologyPreview"
                 :chain="step.ontologyChain"
                 :chain-reveal-count="step.chainRevealCount || 0"
-                :streaming="streaming && isRunning(step, si)"
+                :streaming="(streaming || isCatchingUp) && isRunning(step, si)"
               />
             </template>
             <template v-else>
@@ -81,19 +81,22 @@
               <div
                 v-if="displayStepContent(step, si)"
                 class="step-text"
-                :class="{ 'as-action': !step.title && !formatStepResult(step) }"
+                :class="{
+                  'as-action': !step.title && !formatStepResult(step),
+                  'is-loading': isRunning(step, si),
+                }"
               >
-                {{ displayStepContent(step, si) }}
+                {{ displayStepContent(step, si) }}<span v-if="isRunning(step, si)" class="loading-dots" aria-hidden="true">…</span>
               </div>
 
-              <!-- 步骤结果：明确展示「做了什么之后得到什么」 -->
-              <div v-if="formatStepResult(step)" class="step-result">
+              <!-- 步骤结果：完成后再露出 -->
+              <div v-if="showStepResult(step, si)" class="step-result">
                 <span class="result-label">结果</span>
                 <span class="result-value">{{ formatStepResult(step) }}</span>
               </div>
 
               <!-- 元数据标签 -->
-              <div v-if="hasMetadata(step)" class="step-metadata">
+              <div v-if="hasMetadata(step) && showStepResult(step, si)" class="step-metadata">
                 <span
                   v-for="(entry, ki) in metadataEntries(step)"
                   :key="ki"
@@ -105,7 +108,7 @@
               </div>
 
               <!-- 可展开的详情 -->
-              <div v-if="step.details" class="step-details-wrap">
+              <div v-if="step.details && showStepResult(step, si)" class="step-details-wrap">
                 <button
                   type="button"
                   class="step-details-toggle"
@@ -132,7 +135,7 @@
             </template>
           </div>
         </li>
-      </ol>
+      </TransitionGroup>
     </div>
   </div>
 </template>
@@ -148,56 +151,246 @@ const props = defineProps({
   localize: { type: Function, default: (t) => t },
 })
 
-defineEmits(['toggle'])
+const emit = defineEmits(['toggle', 'complete'])
+
+/** 每步「加载中」停留时长 */
+const STEP_RUN_MS = 520
+/** 完成后到下一步出现的间隔 */
+const STEP_GAP_MS = 180
 
 const ontoCount = computed(() => props.steps.filter((s) => s.type === 'ontology').length)
 
 /**
- * 调度中：只展示已激活步骤（done/running），pending 不提前铺开；
- * 完成后：展示全部步骤（同一条时间线回填结果后）。
+ * 自上而下播放状态：
+ * - displayCount：已出现在时间线上的步数（含当前加载中的那一步）
+ * - headPhase：'running' | 'done' —— 最新一步是加载中还是已完成
+ * - playing：是否处于播放（流式或流结束后补播）
  */
-const visibleSteps = computed(() => {
+const displayCount = ref(0)
+const headPhase = ref('done')
+const playing = ref(false)
+/** 本轮是否走过 streaming（区分历史瞬间全量 vs 需要补播） */
+const sessionPlayed = ref(false)
+
+/**
+ * 待播放源步骤：流式/补播中过滤 pending；历史回放用全量。
+ */
+const sourceSteps = computed(() => {
   const list = props.steps || []
-  if (!props.streaming) return list
+  if (!props.streaming && !sessionPlayed.value) return list
   const hasStatus = list.some((s) => s.status)
   if (!hasStatus) return list
   const active = list.filter((s) => s.status !== 'pending')
   return active.length ? active : list.slice(0, 1)
 })
 
+let playToken = 0
+let playTimer = null
+let completeSent = false
+
+const clearPlayTimer = () => {
+  if (playTimer) {
+    clearTimeout(playTimer)
+    playTimer = null
+  }
+}
+
+const sleepPlay = (ms, token) =>
+  new Promise((resolve) => {
+    clearPlayTimer()
+    playTimer = setTimeout(() => {
+      playTimer = null
+      resolve(token === playToken)
+    }, ms)
+  })
+
+const signalComplete = (instant = false) => {
+  if (completeSent && !instant) return
+  completeSent = true
+  emit('complete', { instant: !!instant })
+}
+
+/**
+ * 自上而下串行播放：出现一步(running) → 完成(done+结果) → 再出现下一步
+ */
+const runPlayback = async () => {
+  const token = ++playToken
+  playing.value = true
+  completeSent = false
+
+  while (token === playToken) {
+    const total = sourceSteps.value.length
+    if (total <= 0) {
+      await sleepPlay(120, token)
+      if (token !== playToken) return
+      if (!props.streaming) break
+      continue
+    }
+
+    // 还没有展示第一步：先挂上 running
+    if (displayCount.value === 0) {
+      displayCount.value = 1
+      headPhase.value = 'running'
+      const ok = await sleepPlay(STEP_RUN_MS, token)
+      if (!ok) return
+      headPhase.value = 'done'
+      const okGap = await sleepPlay(STEP_GAP_MS, token)
+      if (!okGap) return
+      continue
+    }
+
+    // 当前头步仍在 running：等它完成
+    if (headPhase.value === 'running') {
+      const ok = await sleepPlay(STEP_RUN_MS, token)
+      if (!ok) return
+      headPhase.value = 'done'
+      const okGap = await sleepPlay(STEP_GAP_MS, token)
+      if (!okGap) return
+      continue
+    }
+
+    // 头步已 done，还有后续源步骤：再往下挂一步
+    if (displayCount.value < total) {
+      displayCount.value += 1
+      headPhase.value = 'running'
+      continue
+    }
+
+    // 已播完当前源；若仍在 streaming，等新步骤进来
+    if (props.streaming) {
+      const ok = await sleepPlay(160, token)
+      if (!ok) return
+      continue
+    }
+
+    // 流结束且播完
+    break
+  }
+
+  if (token === playToken) {
+    playing.value = false
+    displayCount.value = Math.max(displayCount.value, sourceSteps.value.length)
+    headPhase.value = 'done'
+    signalComplete(false)
+  }
+}
+
+const startOrContinuePlayback = () => {
+  sessionPlayed.value = true
+  if (playing.value) return
+  runPlayback()
+}
+
+const snapToFull = () => {
+  playToken += 1
+  clearPlayTimer()
+  playing.value = false
+  displayCount.value = sourceSteps.value.length
+  headPhase.value = 'done'
+  sessionPlayed.value = false
+  signalComplete(true)
+}
+
+watch(
+  () => [props.streaming, sourceSteps.value.length],
+  ([streaming, len]) => {
+    if (streaming) {
+      completeSent = false
+      startOrContinuePlayback()
+      return
+    }
+    if (!sessionPlayed.value) {
+      snapToFull()
+      return
+    }
+    if (displayCount.value < len || headPhase.value === 'running') {
+      startOrContinuePlayback()
+    } else {
+      playing.value = false
+      signalComplete(false)
+    }
+  },
+  { immediate: true },
+)
+
+const isCatchingUp = computed(
+  () => playing.value || (sessionPlayed.value && displayCount.value < sourceSteps.value.length),
+)
+
+/**
+ * 展示用步骤：自上而下截取；最新一步在 running 时隐藏结果，呈现「加载中」
+ */
+const visibleSteps = computed(() => {
+  const list = sourceSteps.value
+  if (!list.length) return list
+
+  // 历史瞬间全量
+  if (!playing.value && !sessionPlayed.value) {
+    return list
+  }
+
+  const n = Math.min(Math.max(displayCount.value, 0), list.length)
+  if (n <= 0) return []
+
+  return list.slice(0, n).map((step, i) => {
+    const isHead = i === n - 1
+    if (isHead && headPhase.value === 'running') {
+      return {
+        ...step,
+        status: 'running',
+        metadata: { ...(step.metadata || {}), phase: 'running' },
+        // 加载中不展示结果/详情/本体块，完成后再露出
+        result: null,
+        details: null,
+        ontologyChain: null,
+        ontologyPreview: null,
+        _playRunning: true,
+        stepStartedAt: step.stepStartedAt || Date.now(),
+      }
+    }
+    return {
+      ...step,
+      status: 'done',
+      metadata: { ...(step.metadata || {}), phase: 'done' },
+      _playRunning: false,
+    }
+  })
+})
+
 const visibleStepCount = computed(() => {
-  if (!props.streaming) return (props.steps || []).length
-  return Math.max(visibleSteps.value.length, (props.steps || []).length)
+  const total = Math.max((props.steps || []).length, sourceSteps.value.length)
+  if (playing.value || isCatchingUp.value) {
+    return Math.max(visibleSteps.value.length, total)
+  }
+  return total
 })
 
 const expandedDetails = reactive({})
 const liveNow = ref(Date.now())
 let liveTimer = null
 
-/** 稳定 key：避免整表刷新时已有步骤被当成新节点反复播入场动画 */
+/** 稳定 key：按 id 固定，避免 running→done 时整节点重建闪烁 */
 const stepKey = (step, si) =>
   step.id
-  || step.stepStartedAt
-  || `${step.type || 'llm'}-${step.title || ''}-${si}`
+  || `${step.type || 'llm'}-${step.title || 'step'}-${si}`
 
 const isRunning = (step, si) => {
+  if (step._playRunning) return true
   if (step.status === 'running' || step.metadata?.phase === 'running' || step.metadata?.phase === 'waiting_llm') {
     return true
   }
-  if (step.status === 'done' || step.status === 'pending') return false
-  return props.streaming && si === visibleSteps.value.length - 1
+  return false
 }
 
 const isDone = (step, si) => {
-  if (step.status === 'done') return true
-  if (step.status === 'running' || step.status === 'pending') return false
-  return !props.streaming || si < visibleSteps.value.length - 1
+  if (isRunning(step, si)) return false
+  return step.status === 'done' || !step.status
 }
 
 const isPending = (step) => step.status === 'pending'
 
 watch(
-  () => props.streaming,
+  () => props.streaming || playing.value,
   (active) => {
     if (liveTimer) {
       clearInterval(liveTimer)
@@ -215,6 +408,8 @@ watch(
 
 onUnmounted(() => {
   if (liveTimer) clearInterval(liveTimer)
+  playToken += 1
+  clearPlayTimer()
 })
 
 const toggleDetails = (idx) => {
@@ -222,7 +417,8 @@ const toggleDetails = (idx) => {
 }
 
 const isWaitingStep = (step) =>
-  step._waiting
+  step._playRunning
+  || step._waiting
   || step.status === 'running'
   || step.metadata?.phase === 'waiting_llm'
   || step.metadata?.phase === 'running'
@@ -235,31 +431,37 @@ const liveElapsedSeconds = (step) => {
   return Math.max(0, Math.floor((liveNow.value - startedAt) / 1000))
 }
 
-/** 流式进行中步骤：本地 1 秒读秒，不依赖 SSE 推送间隔 */
+/** 流式进行中步骤：本地 1 秒读秒 */
 const displayElapsed = (step, index) => {
-  if (step.elapsed != null && step.elapsed >= 0 && isDone(step, index)) {
+  if (isDone(step, index) && step.elapsed != null && step.elapsed >= 0) {
     return step.elapsed
   }
-  if (!props.streaming || !isRunning(step, index)) return step.elapsed != null ? step.elapsed : null
-  if (isWaitingStep(step)) {
+  if (isRunning(step, index)) {
     return liveElapsedSeconds(step)
   }
-  return null
+  return step.elapsed != null ? step.elapsed : null
 }
 
 const displayStepContent = (step, index) => {
-  const text = props.localize(step.content)
-  if (!props.streaming || !isRunning(step, index) || !isWaitingStep(step)) {
+  let text = props.localize(step.content) || step.title || ''
+  if (isRunning(step, index)) {
+    // 加载中统一给一点进行中感
+    if (text && !/[.。…]$/.test(text) && !/中$/.test(text)) {
+      text = text.replace(/[.。…]?$/, '')
+    }
+    const sec = liveElapsedSeconds(step)
+    if (/已等待\s*\d+s/.test(text)) {
+      return text.replace(/已等待\s*\d+s/, `已等待 ${sec}s`)
+    }
     return text
   }
-  const sec = liveElapsedSeconds(step)
-  if (/已等待\s*\d+s/.test(text)) {
-    return text.replace(/已等待\s*\d+s/, `已等待 ${sec}s`)
-  }
-  if (/进行中\s*[（(]\d+(?:\.\d+)?s[）)]/.test(text)) {
-    return text.replace(/([（(])\d+(?:\.\d+)?s([）)])/, `$1${sec}s$2`)
-  }
   return text
+}
+
+/** 仅完成态展示结果 */
+const showStepResult = (step, si) => {
+  if (isRunning(step, si)) return false
+  return !!formatStepResult(step)
 }
 
 /** 格式化步骤结果：支持 string / number / 对象摘要 */
@@ -279,7 +481,6 @@ const formatStepResult = (step) => {
   if (typeof raw === 'object') {
     const keys = Object.keys(raw)
     if (!keys.length) return '（空）'
-    // 常见摘要字段优先
     if (raw.summary) return String(raw.summary)
     if (raw.message) return String(raw.message)
     const pairs = keys.slice(0, 6).map((k) => `${k}=${raw[k]}`)
@@ -308,6 +509,17 @@ const hasMetadata = (step) => {
     || meta.ruleCount != null
     || meta.evidenceCount != null
     || meta.verdict
+    || meta.offeringName
+    || meta.offeringId
+    || meta.highPriorityCount != null
+    || meta.alertCount != null
+    || meta.openWorkOrderCount != null
+    || meta.compareCount != null
+    || meta.reasonEngine
+    || meta.tool
+    || meta.scannedCount != null
+    || meta.suggestDelistCount != null
+    || meta.policySetId
 }
 
 /** 提取 metadata 为业务可读标签 */
@@ -320,19 +532,55 @@ const metadataEntries = (step) => {
     entries.push({ key: 'intent', label: '业务意图', value: meta.intentLabel })
   }
   if (meta.confidence != null) {
-    entries.push({ key: 'confidence', label: '把握度', value: Math.round(meta.confidence * 100) + '%' })
+    const c = Number(meta.confidence)
+    const pct = c <= 1 ? Math.round(c * 100) : Math.round(c)
+    entries.push({ key: 'confidence', label: '把握度', value: pct + '%' })
+  }
+  if (meta.offeringName || meta.offeringId) {
+    entries.push({
+      key: 'target',
+      label: '分析对象',
+      value: meta.offeringName || meta.offeringId,
+    })
   }
   if (meta.resultCount != null) {
-    entries.push({ key: 'result', label: '结果', value: meta.resultCount + ' 条' })
+    entries.push({ key: 'result', label: '命中', value: meta.resultCount + ' 条' })
+  }
+  if (meta.compareCount != null) {
+    entries.push({ key: 'result', label: '方案', value: meta.compareCount + ' 套' })
+  }
+  if (meta.alertCount != null) {
+    entries.push({ key: 'result', label: '告警', value: meta.alertCount + ' 条' })
+  }
+  if (meta.highPriorityCount != null) {
+    entries.push({ key: 'verdict', label: '高优', value: meta.highPriorityCount + ' 条' })
+  }
+  if (meta.openWorkOrderCount != null) {
+    entries.push({ key: 'result', label: '工单', value: meta.openWorkOrderCount + ' 张' })
+  }
+  if (meta.scannedCount != null) {
+    entries.push({ key: 'result', label: '扫描', value: meta.scannedCount + ' 条' })
+  }
+  if (meta.suggestDelistCount != null) {
+    entries.push({ key: 'verdict', label: '建议下架', value: String(meta.suggestDelistCount) })
   }
   if (meta.verdict) {
     entries.push({ key: 'verdict', label: '结论', value: meta.verdict })
+  }
+  if (meta.policySetId) {
+    entries.push({ key: 'policy', label: '策略集', value: String(meta.policySetId) })
+  }
+  if (meta.reasonEngine) {
+    entries.push({ key: 'engine', label: '推理引擎', value: String(meta.reasonEngine) })
   }
   if (meta.ruleCount != null) {
     entries.push({ key: 'rule', label: '参考规则', value: meta.ruleCount + ' 条' })
   }
   if (meta.evidenceCount != null) {
     entries.push({ key: 'evidence', label: '支撑证据', value: meta.evidenceCount + ' 条' })
+  }
+  if (meta.tool) {
+    entries.push({ key: 'tool', label: '工具', value: String(meta.tool) })
   }
 
   return entries
@@ -347,7 +595,10 @@ const metaTagClass = (key) => {
     case 'verdict': return 'meta-policy'
     case 'rule':
     case 'evidence': return 'meta-rule'
-    case 'result': return 'meta-result'
+    case 'result':
+    case 'target': return 'meta-result'
+    case 'engine':
+    case 'tool': return 'meta-engine'
     default: return ''
   }
 }
@@ -433,6 +684,7 @@ const localizeDetails = (raw) => {
 
 .think-body {
   padding: 0 12px 12px;
+  position: relative;
 }
 
 .think-timeline {
@@ -447,9 +699,30 @@ const localizeDetails = (raw) => {
   gap: 8px;
 }
 
+/* TransitionGroup 入场：分步揭示时每步淡入上移 */
+.think-step-enter-active {
+  transition: opacity 0.38s ease, transform 0.38s ease;
+}
+.think-step-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.think-step-leave-active {
+  transition: opacity 0.18s ease;
+  position: absolute;
+  width: 100%;
+  pointer-events: none;
+}
+.think-step-leave-to {
+  opacity: 0;
+}
+.think-step-move {
+  transition: transform 0.32s ease;
+}
+
 /* 仅最新一步播入场，避免列表更新时已有步骤「全部刷新」闪动 */
 .think-step.step-enter {
-  animation: step-in 0.24s ease;
+  animation: none;
 }
 
 .rail {
@@ -546,6 +819,11 @@ const localizeDetails = (raw) => {
   color: #1d4ed8;
 }
 
+.type-chip.tool {
+  background: #fef3c7;
+  color: #b45309;
+}
+
 .step-elapsed {
   font-size: 10px;
   color: #94a3b8;
@@ -573,6 +851,16 @@ const localizeDetails = (raw) => {
   font-weight: 550;
 }
 
+.step-text.is-loading {
+  color: #2563eb;
+}
+
+.loading-dots {
+  display: inline-block;
+  min-width: 1em;
+  animation: pulse-live 1.2s ease infinite;
+}
+
 .step-result {
   display: flex;
   align-items: flex-start;
@@ -582,6 +870,7 @@ const localizeDetails = (raw) => {
   background: #fff;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
+  animation: result-in 0.32s ease;
 }
 
 .result-label {
@@ -656,6 +945,11 @@ const localizeDetails = (raw) => {
   color: #1d4ed8;
 }
 
+.meta-engine {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
 .meta-ontology {
   background: #e0f2fe;
   color: #0369a1;
@@ -723,6 +1017,17 @@ const localizeDetails = (raw) => {
   }
 }
 
+@keyframes result-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @keyframes pulse-live {
   0%, 100% { opacity: 0.55; }
   50% { opacity: 1; }
@@ -730,8 +1035,14 @@ const localizeDetails = (raw) => {
 
 @media (prefers-reduced-motion: reduce) {
   .think-step.step-enter,
-  .think-live {
+  .think-live,
+  .step-result {
     animation: none;
+  }
+  .think-step-enter-active,
+  .think-step-leave-active,
+  .think-step-move {
+    transition: none;
   }
 }
 </style>

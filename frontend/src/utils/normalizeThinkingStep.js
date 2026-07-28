@@ -1,43 +1,60 @@
 /**
  * 将 SSE / 历史 thinking 步骤规范成与研发助手一致的调度结构：
  * id / title / content / result / status / type
+ *
+ * 原则：后端已下发 title/content/result 时原样保留，禁止旧空壳模板覆盖。
  */
 
-const STEP_TEMPLATES = {
-  1: { id: 'understand', title: '理解需求', type: 'llm', content: '理解您的业务问题' },
-  2: { id: 'match', title: '匹配知识', type: 'llm', content: '匹配业务知识与规则库' },
-  3: { id: 'intent', title: '意图识别', type: 'llm', content: '确认业务意图' },
-  4: { id: 'start', title: '开始执行', type: 'llm', content: '启动对应业务处理' },
-  5: { id: 'analyze', title: '业务分析', type: 'ontology', content: '执行分析与规则判定' },
-  6: { id: 'reply', title: '整理结论', type: 'llm', content: '汇总结果并生成说明' },
+/** 仅作历史兼容：旧消息无 id/title 时按 step 号回退 */
+const LEGACY_STEP_TEMPLATES = {
+  1: { id: 'intent', title: '确认业务意图', type: 'llm', content: '确认业务意图' },
+  2: { id: 'analyze', title: '业务分析', type: 'llm', content: '执行业务分析' },
+  3: { id: 'conclude', title: '整理结论', type: 'llm', content: '汇总结果并生成说明' },
+}
+
+const ID_TITLES = {
+  intent: '确认业务意图',
+  locate: '锁定分析对象',
+  confirm: '异动确认',
+  drill: '多维下钻',
+  reason: '规则推理',
+  conclude: '归因结论',
+  scope: '锁定洞察范围',
+  retrieve: '检索经营事实',
+  aggregate: '聚合经营指标',
+  pull: '拉取告警清单',
+  grade: '告警分级统计',
+  link: '关联处置工单',
+  extract: '抽取方案假设',
+  snapshot: '构建事实快照',
+  evaluate: '合规与收益评估',
+  load: '加载在架清单',
+  match: '匹配风险规则集',
+  scan: '全量扫描打分',
+  facts: '抽取立项要素',
+  policy: '选择策略集',
+  decide: '规则引擎判定',
+  identify: '识别请求',
+  generate: '生成方案',
+  infer: '字段推断',
+  recommend: '历史推荐',
+  assemble: '组装表单',
+  rules: '规则引擎校验',
+  ai: 'AI 辅助校验',
+  reply: '生成回复',
+  tool: '调用工具',
+  skip: '跳过业务执行',
 }
 
 function pickResultFromContent(content) {
   if (!content) return null
   let m = content.match(/已确认业务意图[：:]\s*(.+)$/)
   if (m) return m[1].trim()
-  m = content.match(/开始执行「([^」]+)」/)
-  if (m) return m[1].trim()
   m = content.match(/检索完成[，,].*共找到?\s*(\d+)\s*条/)
   if (m) return `命中 ${m[1]} 条`
   m = content.match(/方案对比完成[，,]\s*共\s*(\d+)\s*套/)
   if (m) return `对比 ${m[1]} 套方案`
   return null
-}
-
-function softenContent(content, tpl) {
-  if (!content) return tpl?.content || ''
-  if (/正在理解您的需求|正在分析用户输入/.test(content)) return tpl?.content || '理解您的业务问题'
-  if (/匹配业务知识|构建意图识别|已加载.*本体/.test(content)) return tpl?.content || '匹配业务知识与规则库'
-  if (/已确认业务意图|意图识别完成/.test(content)) return '确认业务意图'
-  if (/开始执行「|分发到「/.test(content)) return '启动对应业务处理'
-  if (/正在分析异动|正在基于图谱|正在检索|正在对比|正在按风险|正在评估|正在加载运营/.test(content)) {
-    return content.replace(/\.\.\.$/, '') || (tpl?.content || content)
-  }
-  if (/分析完成|整理结论|组织答复|已就绪|检索完成|对比完成|排查完成|评估完成/.test(content)) {
-    return tpl?.content || '汇总结果并生成说明'
-  }
-  return content
 }
 
 /**
@@ -50,7 +67,7 @@ export function normalizeThinkingStep(raw = {}) {
   const stepNum = meta.step != null ? Number(meta.step) : null
   const phase = meta.phase || ''
   const isRunning = phase === 'running' || phase === 'waiting_llm' || raw.status === 'running'
-  const tpl = stepNum != null ? STEP_TEMPLATES[stepNum] : null
+  const legacyTpl = stepNum != null ? LEGACY_STEP_TEMPLATES[stepNum] : null
 
   const extracted = pickResultFromContent(content)
   const result =
@@ -60,16 +77,31 @@ export function normalizeThinkingStep(raw = {}) {
         ? extracted
         : meta.intentLabel || null
 
-  const id = raw.id || tpl?.id || (stepNum != null ? `step_${stepNum}` : null)
-  const type = raw.type === 'ontology' || tpl?.type === 'ontology'
-    ? 'ontology'
-    : (raw.type && raw.type !== 'thinking' ? raw.type : 'llm')
+  const id = raw.id || meta.scheduleId || legacyTpl?.id || (stepNum != null ? `step_${stepNum}` : null)
+
+  const stepTypeRaw = raw.stepType || raw.type
+  let type = 'llm'
+  if (stepTypeRaw === 'ontology' || id === 'reason' || id === 'ontology') {
+    type = 'ontology'
+  } else if (stepTypeRaw === 'tool' || id === 'tool') {
+    type = 'tool'
+  } else if (stepTypeRaw && stepTypeRaw !== 'thinking' && stepTypeRaw !== 'llm') {
+    type = stepTypeRaw
+  }
+
+  const hasBackendTitle = !!(raw.title && String(raw.title).trim())
+  const title = hasBackendTitle
+    ? String(raw.title).trim()
+    : (ID_TITLES[id] || legacyTpl?.title || (type === 'ontology' ? '知识推理' : type === 'tool' ? '工具调用' : '处理步骤'))
+
+  // 后端已给 content 则保留；仅空时回退
+  const resolvedContent = content || legacyTpl?.content || title
 
   return {
     id: id || undefined,
     type,
-    title: raw.title || tpl?.title || (type === 'ontology' ? '业务分析' : '处理步骤'),
-    content: softenContent(content, tpl) || content || (tpl?.content || ''),
+    title,
+    content: resolvedContent,
     result,
     status: isRunning ? 'running' : (raw.status === 'pending' ? 'pending' : 'done'),
     metadata: {
@@ -111,6 +143,27 @@ export function finalizeReasoningList(list = []) {
       status: 'done',
       _waiting: false,
       metadata: { ...(step.metadata || {}), phase: 'done' },
+    }
+  })
+}
+
+/**
+ * 将 rootCause 结果挂到 reason 步骤的 ontology 可视化字段。
+ */
+export function attachRootCauseOntology(steps, rootCause, builders = {}) {
+  if (!rootCause || !steps?.length) return steps || []
+  const { buildChain, buildPreview } = builders
+  if (typeof buildChain !== 'function') return steps
+  const chain = buildChain(rootCause)
+  if (!chain) return steps
+  const preview = typeof buildPreview === 'function' ? buildPreview(rootCause, chain) : null
+  return steps.map((s) => {
+    if (s.id !== 'reason' && s.type !== 'ontology') return s
+    return {
+      ...s,
+      type: 'ontology',
+      ontologyChain: s.ontologyChain || chain,
+      ontologyPreview: s.ontologyPreview || preview,
     }
   })
 }

@@ -198,8 +198,8 @@
       </div>
     </div>
 
-    <!-- ==================== 异动归因 ==================== -->
-    <div v-else-if="!isCompare && !isMonitor" class="card-body">
+    <!-- ==================== 异动归因（仅正文无完整报告时展示） ==================== -->
+    <div v-else-if="isReason" class="card-body">
       <div class="field">
         <span class="field-label">异动现象</span>
         <span class="field-value highlight">{{ reasonTargetDisplay }}</span>
@@ -270,17 +270,33 @@ const showQueryTable = ref(false)
 const showQueryGraph = ref(false)
 
 const normalizedIntent = computed(() => props.intentType || props.msg?.intentType || '')
-const visible = computed(() => [
-  'product_ops_query',
-  'product_ops_policy',
-  'product_ops_reason',
-  'product_ops_compare',
-  'product_ops_monitor',
-].includes(normalizedIntent.value))
 const isQuery = computed(() => normalizedIntent.value === 'product_ops_query')
 const isPolicy = computed(() => normalizedIntent.value === 'product_ops_policy')
 const isCompare = computed(() => normalizedIntent.value === 'product_ops_compare')
 const isMonitor = computed(() => normalizedIntent.value === 'product_ops_monitor')
+const isReason = computed(() => normalizedIntent.value === 'product_ops_reason')
+/** 聊天正文已输出完整 Markdown 报告时，归因卡片无需再展示 */
+const reportAlreadyInChat = computed(() => {
+  const text = String(props.msg?.streamText || props.msg?.content || '')
+  return /\*\*异动结论\*\*/.test(text)
+    || /\*\*根因路径\*\*/.test(text)
+    || /###\s+.+\s*异动根因分析/.test(text)
+})
+const visible = computed(() => {
+  if (isQuery.value || isPolicy.value || isCompare.value || isMonitor.value) return true
+  // 异动归因：仅在正文没有完整报告、且确有结构化结果时展示
+  if (!isReason.value) return false
+  if (reportAlreadyInChat.value) return false
+  const data = props.msg?.intentData || {}
+  const paths = data.paths || data.rootCause?.paths || data.results || []
+  const anomalies = data.anomalies || data.rootCause?.anomalies || []
+  return Boolean(
+    data.explanation
+    || data.message
+    || (Array.isArray(paths) && paths.length)
+    || (Array.isArray(anomalies) && anomalies.length),
+  )
+})
 const isRiskAudit = computed(() => {
   const expectation = props.msg?.intentData?.expectationType || props.msg?.action || ''
   return isPolicy.value && (expectation === 'risk_audit' || Array.isArray(props.msg?.intentData?.items))
@@ -449,7 +465,7 @@ const evidenceCount = computed(() => {
   if (n != null) return n
   return evidenceResults.value.length
 })
-/** 面板只展示短结论；若后端仍回传整份 Markdown 报告则改从结构化字段拼摘要，避免与聊天正文重复 */
+/** 面板只展示短结论；若后端仍回传整份 Markdown 报告则改从结构化字段拼摘要 */
 const reasonSummary = computed(() => {
   const raw = String(props.msg?.intentData?.explanation || '').trim()
   const looksLikeFullReport = /^#{1,6}\s/.test(raw) || /\*\*异动结论\*\*/.test(raw) || /\*\*根因路径\*\*/.test(raw)

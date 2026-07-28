@@ -224,15 +224,10 @@ public final class IntentRecognitionSupport {
     public static List<Map<String, Object>> metaGuideSkipEvents(String businessLabel) {
         String label = businessLabel == null || businessLabel.isBlank() ? "业务操作" : businessLabel;
         return List.of(
-                SseUtils.thinkingRich(
-                        "检测到仅说明/勿执行请求，已跳过「" + label + "」业务执行",
-                        Map.of(
-                                "step", 5,
-                                "totalSteps", 5,
-                                "source", SOURCE_META
-                        ),
-                        0
-                ),
+                ThinkingStepBuilder.done(
+                        "skip", "跳过业务执行", "检测到仅说明/勿执行请求",
+                        "已跳过「" + label + "」", 2, 2, 0, null,
+                        Map.of("source", SOURCE_META)),
                 SseUtils.text(
                         "当前请求只要使用说明，未执行「" + label + "」。"
                                 + "如需正式办理，请直接描述业务需求，并去掉「不要执行」类约束。"

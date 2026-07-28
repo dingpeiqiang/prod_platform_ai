@@ -6,6 +6,7 @@ import com.sitech.prodai.intent.IntentContext;
 import com.sitech.prodai.intent.IntentRecognitionSupport;
 import com.sitech.prodai.intent.SseStreamSupport;
 import com.sitech.prodai.intent.SseUtils;
+import com.sitech.prodai.intent.ThinkingStepBuilder;
 import com.sitech.prodai.service.OntologyService;
 import com.sitech.prodai.service.OpsRulesService;
 import com.sitech.prodai.service.ProductOntologyService;
@@ -59,17 +60,9 @@ public class ProductOpsPolicyHandler implements BaseIntentHandler {
 
     private Flux<Map<String, Object>> handleRiskAudit(IntentContext ctx) {
         List<Map<String, Object>> prelude = List.of(
-                SseUtils.thinkingRich(
-                        "正在按风险规则排查在架商品...",
-                        Map.of(
-                                "step", 5,
-                                "totalSteps", 6,
-                                "phase", "running",
-                                "expectationType", "risk_audit",
-                                "policySetId", "PS_PRODUCT_RISK_V1"
-                        ),
-                        -1
-                )
+                ThinkingStepBuilder.running(
+                        "load", "加载在架清单", "正在加载在架商品清单...",
+                        2, 5, Map.of("expectationType", "risk_audit", "policySetId", "PS_PRODUCT_RISK_V1"))
         );
 
         return SseStreamSupport.deferWork(
@@ -84,17 +77,9 @@ public class ProductOpsPolicyHandler implements BaseIntentHandler {
         String policySetId = BaseIntentContextBuilder.resolvePolicySetId(ctx);
 
         List<Map<String, Object>> prelude = List.of(
-                SseUtils.thinkingRich(
-                        "正在评估业务规则与政策要求...",
-                        Map.of(
-                                "step", 5,
-                                "totalSteps", 6,
-                                "phase", "running",
-                                "policySetId", policySetId,
-                                "expectationType", expectationType
-                        ),
-                        -1
-                )
+                ThinkingStepBuilder.running(
+                        "facts", "抽取立项要素", "正在抽取立项要素与政策事实...",
+                        2, 5, Map.of("policySetId", policySetId, "expectationType", expectationType))
         );
 
         return SseStreamSupport.deferWork(
@@ -146,22 +131,27 @@ public class ProductOpsPolicyHandler implements BaseIntentHandler {
         intentData.put("success", ok);
 
         String answerText = formatRiskAuditAnswer(result, items);
+        String ruleDetails = triggeredRules.isEmpty() ? null : "命中规则：" + String.join("、",
+                triggeredRules.stream().map(opsRules::formatRuleName).limit(6).toList());
 
         List<Map<String, Object>> events = new ArrayList<>();
-        events.add(SseUtils.thinkingRich(
-                ok ? "风险排查完成，正在整理结论..." : "风险排查未完成",
-                Map.of(
-                        "step", 6,
-                        "totalSteps", 6,
-                        "highCount", high,
-                        "mediumCount", medium,
-                        "itemCount", items.size(),
-                        "success", ok
-                ),
-                elapsedMs,
-                triggeredRules.isEmpty() ? null : "命中规则：" + String.join("、",
-                        triggeredRules.stream().map(opsRules::formatRuleName).limit(6).toList())
-        ));
+        events.add(ThinkingStepBuilder.done(
+                "load", "加载在架清单", "加载在架商品清单",
+                "扫描范围 " + scanned + " 条", 2, 5, 0, null,
+                Map.of("scannedCount", scanned)));
+        events.add(ThinkingStepBuilder.done(
+                "match", "匹配风险规则集", "匹配适用风险规则集",
+                ruleVersion, 3, 5, 0, null, Map.of("ruleVersion", ruleVersion)));
+        events.add(ThinkingStepBuilder.done(
+                "scan", "全量扫描打分", "按规则全量扫描打分",
+                "高风险 " + high + " / 中风险 " + medium, 4, 5, 0, ruleDetails,
+                Map.of("highCount", high, "mediumCount", medium)));
+        events.add(ThinkingStepBuilder.done(
+                "conclude", "风险与处置建议", "汇总风险与处置建议",
+                ok ? "建议下架 " + delist + " · 结论 " + verdict : "风险排查未完成",
+                5, 5, elapsedMs, reason,
+                Map.of("highCount", high, "mediumCount", medium, "suggestDelistCount", delist,
+                        "verdict", verdict, "success", ok)));
         events.add(SseUtils.intentEvent(getIntentType(), "risk_audit", intentData, false));
         events.addAll(SseStreamSupport.chunkedTextEvents(answerText));
         events.add(SseUtils.stats(ctx.getStreamStats()));
@@ -243,18 +233,26 @@ public class ProductOpsPolicyHandler implements BaseIntentHandler {
         );
 
         List<Map<String, Object>> events = new ArrayList<>();
-        events.add(SseUtils.thinkingRich(
-                "政策评估完成：" + verdictLabel,
-                Map.of(
-                        "step", 6,
-                        "totalSteps", 6,
-                        "policySetId", policySetId,
-                        "verdict", verdictLabel,
-                        "triggeredRules", triggeredRules.size()
-                ),
-                elapsedMs,
-                reason != null && !reason.isBlank() ? "原因: " + truncatePolicyStr(reason, 200) : null
-        ));
+        events.add(ThinkingStepBuilder.done(
+                "facts", "抽取立项要素", "抽取立项要素与政策事实",
+                String.valueOf(factsSummary.getOrDefault("productType", "-"))
+                        + " · 规模 " + factsSummary.getOrDefault("targetMarketSize", "-"),
+                2, 5, 0, null, Map.of("factsSummary", factsSummary)));
+        events.add(ThinkingStepBuilder.done(
+                "policy", "选择策略集", "选择适用政策策略集",
+                policySetId, 3, 5, 0, null, Map.of("policySetId", policySetId)));
+        events.add(ThinkingStepBuilder.done(
+                "decide", "规则引擎判定", "执行规则引擎判定",
+                triggeredRules.isEmpty() ? "未触发阻断规则" : "命中 " + triggeredRules.size() + " 条规则",
+                4, 5, 0,
+                triggeredRules.isEmpty() ? null : "命中规则：" + String.join("、", triggeredRules),
+                Map.of("triggeredRules", triggeredRules.size())));
+        events.add(ThinkingStepBuilder.done(
+                "conclude", "政策结论", "汇总政策评估结论",
+                "评估结论：" + verdictLabel,
+                5, 5, elapsedMs,
+                reason != null && !reason.isBlank() ? "原因: " + truncatePolicyStr(reason, 200) : null,
+                Map.of("policySetId", policySetId, "verdict", verdictLabel)));
         events.add(SseUtils.intentEvent(getIntentType(), expectationType, intentData, false));
         events.addAll(SseStreamSupport.chunkedTextEvents(answerText));
         events.add(SseUtils.stats(ctx.getStreamStats()));

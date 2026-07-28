@@ -3,6 +3,7 @@ package com.sitech.prodai.intent.tools;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sitech.prodai.intent.SseStreamSupport;
 import com.sitech.prodai.intent.SseUtils;
+import com.sitech.prodai.intent.ThinkingStepBuilder;
 import com.sitech.prodai.service.LlmService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -72,7 +73,10 @@ public class FunctionCallingService {
                 .onErrorResume(error -> {
                     log.error("[FunctionCallingService] 流式工具调用失败", error);
                     return Flux.fromIterable(List.of(
-                            SseUtils.thinking("工具调用失败，尝试直接回复..."),
+                            ThinkingStepBuilder.done(
+                                    "tool", "工具调用失败", "工具调用失败，尝试直接回复",
+                                    error.getMessage() == null ? "工具调用失败" : error.getMessage(),
+                                    2, 3, 0, null, Map.of("success", false)),
                             SseUtils.textStart(),
                             SseUtils.text("抱歉，处理时遇到问题：" + error.getMessage()),
                             SseUtils.textEnd()
@@ -82,7 +86,9 @@ public class FunctionCallingService {
 
     private ToolLoopResult runToolLoop(String systemPrompt, String userMessage) {
         List<Map<String, Object>> events = new ArrayList<>();
-        events.add(SseUtils.thinking("正在分析是否需要调用工具..."));
+        events.add(ThinkingStepBuilder.running(
+                "decide", "判断工具", "正在分析是否需要调用工具...",
+                2, 4, Map.of()));
 
         List<Map<String, String>> conversation = new ArrayList<>();
         String enhancedSystemPrompt = buildSystemPromptWithTools(systemPrompt);
@@ -99,16 +105,9 @@ public class FunctionCallingService {
 
             StringBuilder toolResults = new StringBuilder();
             for (ToolCall toolCall : toolCalls) {
-                events.add(SseUtils.thinkingRich(
-                        "调用工具: " + toolCall.name(),
-                        Map.of(
-                                "phase", "tool_call",
-                                "tool", toolCall.name(),
-                                "round", round + 1
-                        ),
-                        -1,
-                        summarizeArgs(toolCall.args())
-                ));
+                events.add(ThinkingStepBuilder.running(
+                        "tool", "调用工具", "调用工具: " + toolCall.name(),
+                        3, 4, Map.of("tool", toolCall.name(), "round", round + 1)));
 
                 Optional<String> result = toolRegistry.execute(toolCall.name(), toolCall.args());
                 String resultStr = result.orElse("{\"error\": \"tool_not_found\"}");
@@ -118,16 +117,11 @@ public class FunctionCallingService {
                         .append(resultStr)
                         .append("\n");
 
-                events.add(SseUtils.thinkingRich(
-                        "工具 " + toolCall.name() + " 执行完成",
-                        Map.of(
-                                "phase", "tool_result",
-                                "tool", toolCall.name(),
-                                "round", round + 1
-                        ),
-                        0,
-                        truncate(resultStr, 200)
-                ));
+                events.add(ThinkingStepBuilder.doneTool(
+                        "tool", "调用工具", "工具执行完成",
+                        toolCall.name() + " 执行完成",
+                        3, 4, 0, truncate(resultStr, 200),
+                        Map.of("tool", toolCall.name(), "round", round + 1)));
             }
 
             conversation.add(Map.of("role", "assistant", "content", currentReply));
@@ -140,6 +134,13 @@ public class FunctionCallingService {
         if (finalReply.isBlank()) {
             finalReply = "已完成处理，但未能生成有效回复。";
         }
+        events.add(ThinkingStepBuilder.done(
+                "decide", "判断工具", "完成工具分析",
+                events.stream().anyMatch(e -> "tool".equals(e.get("id"))) ? "已调用工具并融合结果" : "无需工具，直接回复",
+                2, 4, 0, null, Map.of()));
+        events.add(ThinkingStepBuilder.done(
+                "reply", "融合结果", "基于工具结果组织回复",
+                "回复已就绪", 4, 4, 0, null, Map.of()));
         return new ToolLoopResult(events, finalReply);
     }
 

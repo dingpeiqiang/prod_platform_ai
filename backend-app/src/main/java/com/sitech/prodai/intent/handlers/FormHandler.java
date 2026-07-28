@@ -4,6 +4,7 @@ import com.sitech.prodai.intent.BaseIntentHandler;
 import com.sitech.prodai.intent.IntentContext;
 import com.sitech.prodai.intent.IntentRecognitionSupport;
 import com.sitech.prodai.intent.SseUtils;
+import com.sitech.prodai.intent.ThinkingStepBuilder;
 import com.sitech.prodai.intent.StreamStats;
 import com.sitech.prodai.service.LlmService;
 import com.sitech.prodai.service.RecommendationEngine;
@@ -83,11 +84,15 @@ public class FormHandler implements BaseIntentHandler {
         identifyResult.put("formName", name);
         identifyResult.put("confidence", confidence);
         identifyResult.put("confidenceLevel", confidence >= 0.8 ? "high" : confidence >= 0.5 ? "medium" : "low");
-        initialEvents.add(SseUtils.thinking("📋 识别到表单「" + name + "」", identifyResult));
+        initialEvents.add(ThinkingStepBuilder.done(
+                "identify", "识别表单", "识别目标表单类型",
+                name + "（" + code + "）", 2, 5, 0, null, identifyResult));
 
         // ═══ Phase 2：执行 ══════════════════════════════════════════
         // Step 1：AI 字段推断
-        initialEvents.add(SseUtils.thinking("🧠 正在分析字段推断..."));
+        initialEvents.add(ThinkingStepBuilder.running(
+                "infer", "字段推断", "正在分析字段推断...",
+                3, 5, Map.of("formCode", code)));
 
         return Flux.concat(
                 Flux.fromIterable(initialEvents),
@@ -104,18 +109,14 @@ public class FormHandler implements BaseIntentHandler {
                             extracted.putAll(inferredFields);
                             ctx.getIntentData().put("extractedFields", extracted);
 
-                            events.add(SseUtils.thinking(
-                                    "✅ AI 推断完成，共 " + inferredFields.size() + " 个字段",
+                            events.add(ThinkingStepBuilder.done(
+                                    "infer", "字段推断", "完成字段推断",
+                                    "推断 " + inferredFields.size() + " 个字段",
+                                    3, 5, 0, null,
                                     Map.of(
-                                            "inferredFields", inferredFields.keySet(),
                                             "inferredCount", inferredFields.size(),
-                                            "sample", inferredFields.entrySet().stream()
-                                                    .limit(5)
-                                                    .collect(java.util.stream.Collectors.toMap(
-                                                            Map.Entry::getKey, Map.Entry::getValue,
-                                                            (a, b) -> a, LinkedHashMap::new))
-                                    )
-                            ));
+                                            "formCode", code
+                                    )));
 
                             if (reasoning != null && !reasoning.isEmpty()) {
                                 events.add(SseUtils.reasoning(reasoning));
@@ -134,7 +135,10 @@ public class FormHandler implements BaseIntentHandler {
                                 events.add(SseUtils.stats(stats));
                             }
 
-                            events.add(SseUtils.thinking("✅ 准备生成 " + name + " 表单..."));
+                            events.add(ThinkingStepBuilder.done(
+                                    "assemble", "组装表单", "准备生成表单",
+                                    "表单「" + name + "」已就绪", 5, 5, 0, null,
+                                    Map.of("formName", name, "formCode", code)));
                             events.add(SseUtils.doneEvent("form", true, ctx.getIntentData()));
 
                             return Flux.fromIterable(events);
@@ -142,7 +146,10 @@ public class FormHandler implements BaseIntentHandler {
                         .onErrorResume(e -> {
                             log.error("[FormHandler] 处理失败", e);
                             List<Map<String, Object>> events = new ArrayList<>();
-                            events.add(SseUtils.thinking("⚠\uFE0F 处理异常: " + e.getMessage()));
+                            events.add(ThinkingStepBuilder.done(
+                                    "fail", "表单处理异常", "表单处理异常",
+                                    e.getMessage() == null ? "未知错误" : e.getMessage(),
+                                    3, 5, 0, null, Map.of("success", false)));
                             events.add(SseUtils.intentEvent("form", "generate", ctx.getIntentData(), true));
                             StreamStats stats = ctx.getStreamStats();
                             if (stats != null) {
@@ -224,16 +231,9 @@ public class FormHandler implements BaseIntentHandler {
                 }
             }
 
-            events.add(SseUtils.thinking("📚 正在查询历史推荐数据...", Map.of(
-                    "step", "recommendation_engine_init",
-                    "formCode", formCode,
-                    "fieldCount", allFieldCodes.size()
-            )));
-
-            events.add(SseUtils.thinking("🔧 推荐引擎执行中...", Map.of(
-                    "step", "recommendation_engine_execute",
-                    "strategies", List.of("ai_recommend", "frequency", "user_personalized", "time_decay", "static")
-            )));
+            events.add(ThinkingStepBuilder.running(
+                    "recommend", "历史推荐", "正在查询历史推荐数据...",
+                    4, 5, Map.of("formCode", formCode, "fieldCount", allFieldCodes.size())));
 
             // 调用推荐引擎批量推荐
             // batchRecommend 签名：(formCode, extractedFields(Map<String,String>), userInput, userId, conversationContext, maxPerField, fieldCodes)
@@ -272,14 +272,11 @@ public class FormHandler implements BaseIntentHandler {
                 }
             }
 
-            events.add(SseUtils.thinking(
-                    "📚 为 " + allRecommendations.size() + " 个字段生成推荐，共 " + totalRecs + " 条",
-                    Map.of(
-                            "step", "recommendation_complete",
-                            "fieldCount", allRecommendations.size(),
-                            "totalRecommendations", totalRecs
-                    )
-            ));
+            events.add(ThinkingStepBuilder.done(
+                    "recommend", "历史推荐", "完成历史推荐",
+                    allRecommendations.size() + " 个字段 · " + totalRecs + " 条推荐",
+                    4, 5, 0, null,
+                    Map.of("fieldCount", allRecommendations.size(), "totalRecommendations", totalRecs)));
 
             // 合并 LLM 推荐和引擎推荐
             @SuppressWarnings("unchecked")
@@ -289,7 +286,10 @@ public class FormHandler implements BaseIntentHandler {
 
         } catch (Exception e) {
             log.error("[FormHandler] 推荐引擎异常", e);
-            events.add(SseUtils.thinking("⚠\uFE0F 推荐引擎异常: " + e.getMessage()));
+            events.add(ThinkingStepBuilder.done(
+                    "recommend", "历史推荐", "推荐引擎异常",
+                    e.getMessage() == null ? "推荐失败" : e.getMessage(),
+                    4, 5, 0, null, Map.of("success", false)));
         }
         return events;
     }

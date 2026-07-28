@@ -2,9 +2,14 @@ import { ref } from 'vue'
 import { sendMessageWithModel, loadMessages as apiLoadMessages, getSessions } from '../services/chatApi.js'
 import { getEventHandler, getPostProcessor } from './useIntentRegistry.js'
 import {
+  attachRootCauseOntology,
   finalizeReasoningList,
   normalizeThinkingStep,
 } from '../utils/normalizeThinkingStep.js'
+import {
+  buildRootCauseOntologyChain,
+  buildRootCauseOntologyPreview,
+} from '../services/productOntologyLocal.js'
 
 function uid(prefix = 'msg') {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
@@ -156,16 +161,27 @@ export function useChatStream() {
     return list[idx]
   }
 
+  const enrichReasoningWithRootCause = (reasoning, intentData) => {
+    const root = intentData?.rootCause || intentData?.data?.rootCause
+    if (!root) return reasoning
+    return attachRootCauseOntology(reasoning || [], root, {
+      buildChain: buildRootCauseOntologyChain,
+      buildPreview: buildRootCauseOntologyPreview,
+    })
+  }
+
   const applyIntentEvent = (data) => {
     const type = data.intentType || data.type
     const handler = getEventHandler(type)
     const current = messages.value.find(m => m.role === 'assistant' && !m.done) || {}
     if (handler) handler(data, current)
+    const intentData = { ...(current.intentData || {}), ...(data.data || data) }
     upsertAssistantMessage({
       intentType: type,
       action: data.action || current.action || '',
-      intentData: { ...(current.intentData || {}), ...(data.data || data) },
+      intentData,
       stats: { ...(current.stats || {}), ...(data.stats || {}) },
+      reasoning: enrichReasoningWithRootCause(current.reasoning, intentData),
     })
   }
 
@@ -278,12 +294,17 @@ export function useChatStream() {
             } else if (data.type === 'thinking') {
               upsertAssistantMessage({
                 reasoningStep: {
-                  type: 'thinking',
+                  type: data.stepType || 'thinking',
+                  id: data.id || data.metadata?.scheduleId || undefined,
+                  title: data.title || undefined,
+                  stepType: data.stepType || undefined,
                   content: data.content,
                   metadata: data.metadata || {},
                   elapsed: data.elapsed != null ? data.elapsed : null,
                   details: data.details || null,
                   result: data.result || null,
+                  ontologyChain: data.ontologyChain || null,
+                  ontologyPreview: data.ontologyPreview || null,
                   timestamp: Date.now(),
                 },
               })
@@ -318,7 +339,10 @@ export function useChatStream() {
                 loading: false,
                 streamText: finalText,
                 content: finalText,
-                reasoning: finalizeReasoningList(current.reasoning || []),
+                reasoning: enrichReasoningWithRootCause(
+                  finalizeReasoningList(current.reasoning || []),
+                  doneIntentData,
+                ),
                 intentType: doneIntent,
                 action: doneAction,
                 stats: doneStats,

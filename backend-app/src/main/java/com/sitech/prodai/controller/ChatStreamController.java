@@ -7,6 +7,7 @@ import com.sitech.prodai.intent.IntentHandlerRegistry;
 import com.sitech.prodai.intent.IntentRecognitionSupport;
 import com.sitech.prodai.intent.StreamStats;
 import com.sitech.prodai.intent.SseUtils;
+import com.sitech.prodai.intent.ThinkingStepBuilder;
 import com.sitech.prodai.service.ChatPersistenceService;
 import com.sitech.prodai.service.IntentPromptManager;
 import com.sitech.prodai.service.LlmService;
@@ -136,49 +137,11 @@ public class ChatStreamController {
                             .append(str(e.getValue().get("formName"))).append("\n");
                 }
 
-                // ── 步骤 1：分析输入 ──────────────────────────────
-                long stepStart = System.currentTimeMillis();
-                sendEvent(emitter, SseUtils.thinkingRich(
-                        "正在理解您的需求...",
-                        Map.of(
-                                "step", 1,
-                                "totalSteps", 4,
-                                "messagesCount", messages.size(),
-                                "scene", scene.isEmpty() ? "未指定" : scene,
-                                "inputPreview", lastUserMessage.length() > 80
-                                        ? lastUserMessage.substring(0, 80) + "..." : lastUserMessage
-                        ),
-                        0));
-
-                // ── 步骤 2：构建意图识别 Prompt ─────────────────
-                long step2Start = System.currentTimeMillis();
+                // ── 确认业务意图（唯一共享前缀步骤）────────────────
                 String intentPrompt = intentPromptManager.renderIntentPrompt(
                         messagesText.toString(), lastUserMessage, ontologiesInfo.toString(), scene);
-                long step2Elapsed = System.currentTimeMillis() - step2Start;
 
-                // 统计本体加载情况
-                int ontologyCount = ontologies.size();
-                StringBuilder ontologyNames = new StringBuilder();
-                for (String key : ontologies.keySet()) {
-                    if (!ontologyNames.isEmpty()) ontologyNames.append(", ");
-                    ontologyNames.append(key);
-                }
-
-                sendEvent(emitter, SseUtils.thinkingRich(
-                        "正在匹配业务知识与规则库...",
-                        Map.of(
-                                "step", 2,
-                                "totalSteps", 4,
-                                "promptLength", intentPrompt.length(),
-                                "ontologyCount", ontologyCount,
-                                "ontologyNames", ontologyNames.toString(),
-                                "scene", scene.isEmpty() ? "通用" : scene,
-                                "conversationDepth", messages.size()
-                        ),
-                        step2Elapsed));
-
-                // ── 步骤 3：意图识别（meta → 窄白名单 → LLM → 关键词 fallback） ──
-                long step3Start = System.currentTimeMillis();
+                long intentStart = System.currentTimeMillis();
                 StreamStats streamStats = new StreamStats();
                 streamStats.recordInputTokens(intentPrompt);
 
@@ -186,62 +149,33 @@ public class ChatStreamController {
                 String intentSource = IntentRecognitionSupport.SOURCE_LLM;
 
                 if (IntentRecognitionSupport.isMetaGuideRequest(lastUserMessage)) {
-                    // meta：只要说明/勿执行 → 强制 chat，禁止业务 Handler
                     intentData = IntentRecognitionSupport.chatMetaResult();
                     intentSource = IntentRecognitionSupport.SOURCE_META;
-                    sendEvent(emitter, SseUtils.thinkingRich(
-                            "识别为使用说明类问题，改为一般对话...",
-                            Map.of(
-                                    "step", 3,
-                                    "totalSteps", 4,
-                                    "source", intentSource,
-                                    "intentType", "chat"
-                            ),
-                            0
-                    ));
+                    sendEvent(emitter, ThinkingStepBuilder.running(
+                            "intent", "确认业务意图", "识别为使用说明类问题，改为一般对话...",
+                            1, 1, Map.of("source", intentSource, "intentType", "chat")));
                 } else if (lastUserMessage == null || lastUserMessage.isBlank()) {
                     Map<String, Object> byScene = IntentRecognitionSupport.resolveBlankInputByScene(scene);
                     if (byScene != null) {
                         intentData = byScene;
                         intentSource = IntentRecognitionSupport.SOURCE_SCENE_DEFAULT;
-                        sendEvent(emitter, SseUtils.thinkingRich(
-                                "按当前业务场景继续处理...",
-                                Map.of(
-                                        "step", 3,
-                                        "totalSteps", 4,
-                                        "source", intentSource,
-                                        "intentType", str(byScene.get("intentType"))
-                                ),
-                                0
-                        ));
+                        sendEvent(emitter, ThinkingStepBuilder.running(
+                                "intent", "确认业务意图", "按当前业务场景继续处理...",
+                                1, 1, Map.of("source", intentSource, "intentType", str(byScene.get("intentType")))));
                     }
                 } else {
                     Map<String, Object> whitelist = IntentRecognitionSupport.tryNarrowWhitelist(lastUserMessage);
                     if (whitelist != null && !str(whitelist.get("intentType")).isBlank()) {
                         intentData = whitelist;
                         intentSource = IntentRecognitionSupport.SOURCE_WHITELIST;
-                        sendEvent(emitter, SseUtils.thinkingRich(
-                                "已识别为常用业务指令，开始处理...",
-                                Map.of(
-                                        "step", 3,
-                                        "totalSteps", 4,
-                                        "source", intentSource,
-                                        "intentType", str(whitelist.get("intentType"))
-                                ),
-                                0
-                        ));
+                        sendEvent(emitter, ThinkingStepBuilder.running(
+                                "intent", "确认业务意图", "已识别为常用业务指令...",
+                                1, 1, Map.of("source", intentSource, "intentType", str(whitelist.get("intentType")))));
                     } else {
-                        sendEvent(emitter, SseUtils.thinkingRich(
-                                "正在识别业务意图...",
-                                Map.of(
-                                        "step", 3,
-                                        "totalSteps", 4,
-                                        "phase", "running",
-                                        "promptLength", intentPrompt.length()
-                                ),
-                                -1
-                        ));
-                        intentResult = completePromptWithHeartbeat(emitter, intentPrompt, step3Start);
+                        sendEvent(emitter, ThinkingStepBuilder.running(
+                                "intent", "确认业务意图", "正在识别业务意图...",
+                                1, 1, Map.of("promptLength", intentPrompt.length())));
+                        intentResult = completePromptWithHeartbeat(emitter, intentPrompt, intentStart);
                         streamStats.recordOutputText(intentResult);
                         intentData = parseIntentResult(intentResult);
                         intentSource = IntentRecognitionSupport.SOURCE_LLM;
@@ -254,16 +188,6 @@ public class ChatStreamController {
                             if (fallback != null && !str(fallback.get("intentType")).isBlank()) {
                                 intentData = fallback;
                                 intentSource = IntentRecognitionSupport.SOURCE_FALLBACK;
-                                sendEvent(emitter, SseUtils.thinkingRich(
-                                        "已按关键词确认业务意图...",
-                                        Map.of(
-                                                "step", 3,
-                                                "totalSteps", 4,
-                                                "source", intentSource,
-                                                "intentType", str(fallback.get("intentType"))
-                                        ),
-                                        0
-                                ));
                             } else {
                                 String sceneDefault = IntentRecognitionSupport.resolveDefaultIntentByScene(scene);
                                 if (!sceneDefault.isEmpty()) {
@@ -279,11 +203,10 @@ public class ChatStreamController {
                         }
                     }
                 }
-                long step3Elapsed = System.currentTimeMillis() - step3Start;
+                long intentElapsed = System.currentTimeMillis() - intentStart;
 
                 intentType = IntentRecognitionSupport.normalizeIntentType(
                         str(intentData.get("intentType"), str(intentData.get("intent_type"))));
-                // meta 再次兜底：防止 LLM/fallback 误判为业务意图
                 if (IntentRecognitionSupport.isMetaGuideRequest(lastUserMessage)) {
                     intentType = "chat";
                     intentData.put("intentType", "chat");
@@ -303,34 +226,18 @@ public class ChatStreamController {
                         intentType, action, confidence, scene, intentSource);
 
                 String intentLabel = IntentRecognitionSupport.resolveIntentLabel(intentType, action);
+                int sceneSteps = sceneStepCount(intentType, action);
+                int totalSteps = 1 + sceneSteps;
 
-                Map<String, Object> step3Meta = new LinkedHashMap<>();
-                step3Meta.put("step", 3);
-                step3Meta.put("totalSteps", 4);
-                step3Meta.put("intentType", intentType);
-                step3Meta.put("intentLabel", intentLabel);
-                step3Meta.put("confidence", Math.round(confidence * 100) / 100.0);
-                step3Meta.put("source", intentSource);
-                step3Meta.put("elapsed", Math.round(step3Elapsed / 1000.0 * 1000.0) / 1000.0);
-                // Token 等技术指标不推给业务侧思考过程
-                sendEvent(emitter, SseUtils.thinkingRich(
-                        "已确认业务意图：" + intentLabel,
-                        step3Meta,
-                        step3Elapsed,
-                        null
-                ));
-
-                // ── 步骤 4：分发到处理器 ────────────────────────
-                long step4Start = System.currentTimeMillis();
-                sendEvent(emitter, SseUtils.thinkingRich(
-                        "开始执行「" + intentLabel + "」...",
-                        Map.of(
-                                "step", 4,
-                                "totalSteps", 4,
-                                "handler", intentType,
-                                "action", str(intentData.get("action"))
-                        ),
-                        0));
+                Map<String, Object> intentExtra = new LinkedHashMap<>();
+                intentExtra.put("intentType", intentType);
+                intentExtra.put("intentLabel", intentLabel);
+                intentExtra.put("confidence", Math.round(confidence * 100) / 100.0);
+                intentExtra.put("source", intentSource);
+                sendEvent(emitter, ThinkingStepBuilder.done(
+                        "intent", "确认业务意图", "确认业务意图",
+                        intentLabel + (confidence > 0 ? " · 把握度 " + Math.round(confidence * 100) + "%" : ""),
+                        1, totalSteps, intentElapsed, null, intentExtra));
 
                 IntentContext ctx = new IntentContext();
                 ctx.setIntentData(intentData);
@@ -498,31 +405,23 @@ public class ChatStreamController {
             }
             case "thinking" -> {
                 Map<String, Object> step = new LinkedHashMap<>();
-                // 与前端研发助手时间线字段对齐，便于历史还原
                 Object metaObj = event.get("metadata");
-                Integer stepNo = null;
+                String id = str(event.get("id"));
+                String title = str(event.get("title"));
+                String stepType = str(event.get("stepType"));
                 if (metaObj instanceof Map<?, ?> m) {
-                    Object stepVal = m.get("step");
-                    if (stepVal instanceof Number n) stepNo = n.intValue();
-                    else if (stepVal != null) {
-                        try { stepNo = Integer.parseInt(String.valueOf(stepVal)); } catch (Exception ignored) {}
+                    if (id.isBlank() && m.get("scheduleId") != null) {
+                        id = str(m.get("scheduleId"));
                     }
                 }
-                String[] titles = {
-                        "", "理解需求", "匹配知识", "意图识别", "开始执行", "业务分析", "整理结论"
-                };
-                String title = (stepNo != null && stepNo >= 1 && stepNo < titles.length)
-                        ? titles[stepNo] : "处理步骤";
-                step.put("type", (stepNo != null && stepNo == 5) ? "ontology" : "llm");
-                step.put("id", stepNo != null ? switch (stepNo) {
-                    case 1 -> "understand";
-                    case 2 -> "match";
-                    case 3 -> "intent";
-                    case 4 -> "start";
-                    case 5 -> "analyze";
-                    case 6 -> "reply";
-                    default -> "step_" + stepNo;
-                } : null);
+                if (title.isBlank()) {
+                    title = !id.isBlank() ? id : "处理步骤";
+                }
+                if (stepType.isBlank()) {
+                    stepType = "ontology".equals(id) || "reason".equals(id) ? "ontology" : "llm";
+                }
+                step.put("type", stepType);
+                if (!id.isBlank()) step.put("id", id);
                 step.put("title", title);
                 step.put("content", str(event.get("content")));
                 step.put("status", "done");
@@ -534,18 +433,10 @@ public class ChatStreamController {
                 if (event.get("result") != null) {
                     step.put("result", event.get("result"));
                 } else {
-                    // 从业务文案中抽取结果，对齐研发助手「动作 + 结果」展示
                     String c = str(event.get("content"));
                     if (c.contains("已确认业务意图：")) {
                         step.put("result", c.substring(c.indexOf('：') + 1).trim());
                         step.put("content", "确认业务意图");
-                    } else if (c.contains("开始执行「") && c.contains("」")) {
-                        int a = c.indexOf('「') + 1;
-                        int b = c.indexOf('」', a);
-                        if (a > 0 && b > a) {
-                            step.put("result", c.substring(a, b));
-                            step.put("content", "启动对应业务处理");
-                        }
                     }
                 }
                 step.put("_index", reasoningSteps.size());
@@ -609,7 +500,7 @@ public class ChatStreamController {
     }
 
     /** LLM 意图识别期间定时推 thinking，避免长时间无反馈。 */
-    private String completePromptWithHeartbeat(SseEmitter emitter, String intentPrompt, long step3Start) {
+    private String completePromptWithHeartbeat(SseEmitter emitter, String intentPrompt, long intentStart) {
         if (llmService.isEmpty()) {
             return "";
         }
@@ -627,19 +518,16 @@ public class ChatStreamController {
                 return future.get(1, java.util.concurrent.TimeUnit.SECONDS);
             } catch (java.util.concurrent.TimeoutException te) {
                 tick++;
-                long elapsed = System.currentTimeMillis() - step3Start;
+                long elapsed = System.currentTimeMillis() - intentStart;
                 try {
-                    sendEvent(emitter, SseUtils.thinkingRich(
+                    Map<String, Object> extra = new LinkedHashMap<>();
+                    extra.put("phase", "waiting_llm");
+                    extra.put("waitSeconds", elapsed / 1000);
+                    extra.put("tick", tick);
+                    sendEvent(emitter, ThinkingStepBuilder.running(
+                            "intent", "确认业务意图",
                             "业务意图识别进行中（已等待 " + (elapsed / 1000) + "s）...",
-                            Map.of(
-                                    "step", 3,
-                                    "totalSteps", 4,
-                                    "phase", "waiting_llm",
-                                    "waitSeconds", elapsed / 1000,
-                                    "tick", tick
-                            ),
-                            -1
-                    ));
+                            1, 1, extra));
                 } catch (Exception sendEx) {
                     future.cancel(true);
                     return "";
@@ -654,6 +542,23 @@ public class ChatStreamController {
         } catch (Exception e) {
             return "";
         }
+    }
+
+    /** 各意图 Handler 场景步骤数（不含共享 intent 前缀） */
+    private int sceneStepCount(String intentType, String action) {
+        return switch (intentType == null ? "" : intentType) {
+            case "product_ops_reason" -> 5;
+            case "product_ops_query", "product_ops_monitor", "product_ops_compare" -> 4;
+            case "product_ops_policy" -> 4;
+            case "configure" -> 3;
+            case "form" -> 4;
+            case "form_update" -> 3;
+            case "validate" -> 4;
+            case "delete_form" -> 2;
+            case "manage_history" -> 2;
+            case "chat" -> 2;
+            default -> 2;
+        };
     }
 
     private Object firstNonNull(Object... values) {

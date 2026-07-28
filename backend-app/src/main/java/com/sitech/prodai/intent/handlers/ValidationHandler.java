@@ -4,6 +4,7 @@ import com.sitech.prodai.config.ConfigLoader;
 import com.sitech.prodai.intent.BaseIntentHandler;
 import com.sitech.prodai.intent.IntentContext;
 import com.sitech.prodai.intent.SseUtils;
+import com.sitech.prodai.intent.ThinkingStepBuilder;
 import com.sitech.prodai.intent.StreamStats;
 import com.sitech.prodai.service.LlmService;
 import com.sitech.prodai.service.ValidationService;
@@ -78,7 +79,10 @@ public class ValidationHandler implements BaseIntentHandler {
         identifyResult.put("fieldCount", data.size());
 
         return Flux.concat(
-                Flux.just(SseUtils.thinking("📋 识别到校验任务，表单类型：" + code, identifyResult)),
+                Flux.just(ThinkingStepBuilder.done(
+                        "locate", "定位校验对象", "定位待校验表单",
+                        "表单类型：" + code + " · " + data.size() + " 个字段",
+                        2, 5, 0, null, identifyResult)),
 
                 // Step 1 + Step 2（异步执行）
                 reactor.core.publisher.Mono.fromCallable(() -> doFullValidation(code, data))
@@ -86,44 +90,42 @@ public class ValidationHandler implements BaseIntentHandler {
                         .flatMapMany(validationResult -> {
                             List<Map<String, Object>> events = new ArrayList<>();
 
-                            // Step 1 结果
-                            events.add(SseUtils.thinking(
-                                    "🔍 Step 1/2：规则引擎校验" + (validationResult.ruleEnginePassed ? "通过" : "失败，" + validationResult.ruleErrors.size() + " 个问题"),
+                            events.add(ThinkingStepBuilder.done(
+                                    "rules", "规则引擎校验", "执行规则引擎校验",
+                                    validationResult.ruleEnginePassed
+                                            ? "规则校验通过"
+                                            : "规则校验失败，" + validationResult.ruleErrors.size() + " 个问题",
+                                    3, 5, 0, null,
                                     Map.of(
                                             "formCode", code,
-                                            "fieldsChecked", data.keySet(),
                                             "fieldCount", data.size(),
                                             "passed", validationResult.ruleEnginePassed,
-                                            "issues", validationResult.ruleErrors,
                                             "issueCount", validationResult.ruleErrors.size()
-                                    )
-                            ));
+                                    )));
 
-                            // Step 2 结果
-                            events.add(SseUtils.thinking(
-                                    "🤖 Step 2/2：AI 智能校验" + (validationResult.llmErrors.isEmpty() ? "通过" : "发现 " + validationResult.llmErrors.size() + " 个错误"),
+                            events.add(ThinkingStepBuilder.done(
+                                    "ai", "AI 辅助校验", "执行 AI 智能校验",
+                                    validationResult.llmErrors.isEmpty()
+                                            ? "AI 校验通过"
+                                            : "发现 " + validationResult.llmErrors.size() + " 个错误",
+                                    4, 5, 0, null,
                                     Map.of(
                                             "llmErrors", validationResult.llmErrors.size(),
-                                            "llmWarnings", validationResult.llmWarnings.size(),
-                                            "ruleEnginePassed", validationResult.ruleEnginePassed
-                                    )
-                            ));
+                                            "llmWarnings", validationResult.llmWarnings.size()
+                                    )));
 
-                            // Step 3：汇总
                             int totalErrors = validationResult.allErrors.size();
-                            events.add(SseUtils.thinking(
-                                    "📋 校验汇总：共 " + totalErrors + " 个错误，" + validationResult.llmWarnings.size() + " 个警告" + (totalErrors == 0 ? "（全部通过）" : ""),
+                            events.add(ThinkingStepBuilder.done(
+                                    "conclude", "汇总结论", "汇总校验结论",
+                                    totalErrors == 0
+                                            ? "全部通过 · " + validationResult.llmWarnings.size() + " 个警告"
+                                            : totalErrors + " 个错误 · " + validationResult.llmWarnings.size() + " 个警告",
+                                    5, 5, 0, null,
                                     Map.of(
                                             "totalErrors", totalErrors,
                                             "totalWarnings", validationResult.llmWarnings.size(),
-                                            "ruleEngineErrors", validationResult.ruleErrors.size(),
-                                            "llmErrors", validationResult.llmErrors.size(),
-                                            "passed", totalErrors == 0,
-                                            "errors", validationResult.allErrors,
-                                            "warnings", validationResult.llmWarnings,
-                                            "validationTable", validationResult.validationTable
-                                    )
-                            ));
+                                            "passed", totalErrors == 0
+                                    )));
 
                             // Phase 3：输出
                             if (totalErrors > 0) {
@@ -160,7 +162,10 @@ public class ValidationHandler implements BaseIntentHandler {
                         .onErrorResume(e -> {
                             log.error("[ValidationHandler] 校验失败", e);
                             List<Map<String, Object>> events = new ArrayList<>();
-                            events.add(SseUtils.thinking("❌ 校验失败: " + e.getMessage(), Map.of("success", false, "error", e.getMessage())));
+                            events.add(ThinkingStepBuilder.done(
+                                    "fail", "校验失败", "校验执行失败",
+                                    e.getMessage() == null ? "未知错误" : e.getMessage(),
+                                    3, 5, 0, null, Map.of("success", false)));
                             events.add(SseUtils.error("校验失败: " + e.getMessage()));
                             events.add(SseUtils.doneEvent("validate", false));
                             return Flux.fromIterable(events);

@@ -5,25 +5,78 @@
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
 <http://prodai.sitech.com/ontology/product-ops> rdf:type owl:Ontology ;
-    rdfs:label "产商品运营归因本体"@zh ;
-    owl:versionInfo "1.0" ;
-    rdfs:comment "TBox：产商品 / 指标 / 渠道。SWRL 规则由运行时按 ops_rules.json 阈值注入。"@zh .
+    rdfs:label "产商品运营归因与风险本体"@zh ;
+    owl:versionInfo "1.1" ;
+    rdfs:comment "TBox：产商品 / 指标 / 渠道 / 促销 / 竞品 / 行为 / 风险。SWRL 由运行时按 ops_rules.json 阈值注入。"@zh .
 
 #################################################################
-# Classes
+# Classes — 主体与证据
 #################################################################
 
 :Offering rdf:type owl:Class ; rdfs:label "产商品"@zh .
 :Metric rdf:type owl:Class ; rdfs:label "指标"@zh .
 :Channel rdf:type owl:Class ; rdfs:label "渠道"@zh .
+:Promotion rdf:type owl:Class ; rdfs:label "促销"@zh .
+:Competitor rdf:type owl:Class ; rdfs:label "竞品"@zh .
+:UserBehavior rdf:type owl:Class ; rdfs:label "用户行为"@zh .
+
+#################################################################
+# Classes — 归因结论（SWRL head）
+#################################################################
+
 :AnomalyOffering rdf:type owl:Class ;
     rdfs:subClassOf :Offering ;
     rdfs:label "异动产商品"@zh ;
-    rdfs:comment "R-A01 点火后归入此类"@zh .
+    rdfs:comment "R-A01 点火"@zh .
 :ChannelRootCause rdf:type owl:Class ;
     rdfs:subClassOf :Channel ;
     rdfs:label "渠道根因候选"@zh ;
-    rdfs:comment "R-A02 点火后归入此类"@zh .
+    rdfs:comment "R-A02 点火"@zh .
+:PromotionRootCause rdf:type owl:Class ;
+    rdfs:subClassOf :Promotion ;
+    rdfs:label "促销根因候选"@zh ;
+    rdfs:comment "R-A03 点火"@zh .
+:CompetitorRootCause rdf:type owl:Class ;
+    rdfs:subClassOf :Competitor ;
+    rdfs:label "竞品根因候选"@zh ;
+    rdfs:comment "R-A04 点火"@zh .
+:BehaviorRootCause rdf:type owl:Class ;
+    rdfs:subClassOf :UserBehavior ;
+    rdfs:label "行为根因候选"@zh ;
+    rdfs:comment "R-A05 点火"@zh .
+
+#################################################################
+# Classes — 风险结论（SWRL head）
+#################################################################
+
+:ZeroFeeRiskOffering rdf:type owl:Class ;
+    rdfs:subClassOf :Offering ;
+    rdfs:label "零元资费风险"@zh ;
+    rdfs:comment "R-B01 零元"@zh .
+:AbnormalDiscountOffering rdf:type owl:Class ;
+    rdfs:subClassOf :Offering ;
+    rdfs:label "异常全额赠送"@zh ;
+    rdfs:comment "R-B01 全额折扣"@zh .
+:ZeroFeeNoContractOffering rdf:type owl:Class ;
+    rdfs:subClassOf :Offering ;
+    rdfs:label "零元无合约在架"@zh ;
+    rdfs:comment "R-B02"@zh .
+:ZeroSalesOffering rdf:type owl:Class ;
+    rdfs:subClassOf :Offering ;
+    rdfs:label "长期零销"@zh ;
+    rdfs:comment "R-B03"@zh .
+:LowEffOffering rdf:type owl:Class ;
+    rdfs:subClassOf :Offering ;
+    rdfs:label "低效产商品"@zh ;
+    rdfs:comment "R-B04"@zh .
+:HighRiskOffering rdf:type owl:Class ;
+    rdfs:subClassOf :Offering ;
+    rdfs:label "高风险产商品"@zh ;
+    rdfs:comment "由 B01/B02 等高风险规则归入"@zh .
+:UrgentReviewOffering rdf:type owl:Class ;
+    rdfs:subClassOf :Offering ;
+    rdfs:label "需紧急复核"@zh ;
+    rdfs:comment "R-B05"@zh .
 
 #################################################################
 # Object properties
@@ -33,9 +86,15 @@
     rdfs:domain :Offering ; rdfs:range :Metric ; rdfs:label "拥有指标"@zh .
 :soldOn rdf:type owl:ObjectProperty ;
     rdfs:domain :Offering ; rdfs:range :Channel ; rdfs:label "销售渠道"@zh .
+:participatesIn rdf:type owl:ObjectProperty ;
+    rdfs:domain :Offering ; rdfs:range :Promotion ; rdfs:label "参与促销"@zh .
+:competesWith rdf:type owl:ObjectProperty ;
+    rdfs:domain :Offering ; rdfs:range :Competitor ; rdfs:label "对标竞品"@zh .
+:influencedBy rdf:type owl:ObjectProperty ;
+    rdfs:domain :Offering ; rdfs:range :UserBehavior ; rdfs:label "受行为影响"@zh .
 
 #################################################################
-# Datatype properties
+# Datatype properties — Offering / Metric / Channel
 #################################################################
 
 :offeringId rdf:type owl:DatatypeProperty ;
@@ -59,4 +118,64 @@
 :contribRatio rdf:type owl:DatatypeProperty ;
     rdfs:domain :Channel ; rdfs:range xsd:decimal .
 :weightHint rdf:type owl:DatatypeProperty ;
-    rdfs:domain :Channel ; rdfs:range xsd:decimal .
+    rdfs:range xsd:decimal .
+
+#################################################################
+# Datatype properties — Promotion / Competitor / Behavior
+#################################################################
+
+:promoId rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Promotion ; rdfs:range xsd:string .
+:promoName rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Promotion ; rdfs:range xsd:string .
+:daysToExpire rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Promotion ; rdfs:range xsd:decimal .
+:drivenOrderRatio rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Promotion ; rdfs:range xsd:decimal .
+:competitorId rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Competitor ; rdfs:range xsd:string .
+:competitorName rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Competitor ; rdfs:range xsd:string .
+:priceGap rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Competitor ; rdfs:range xsd:decimal .
+:priceGapRatio rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Competitor ; rdfs:range xsd:decimal .
+:penetrationDeltaPp rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Competitor ; rdfs:range xsd:decimal .
+:behaviorId rdf:type owl:DatatypeProperty ;
+    rdfs:domain :UserBehavior ; rdfs:range xsd:string .
+:behaviorName rdf:type owl:DatatypeProperty ;
+    rdfs:domain :UserBehavior ; rdfs:range xsd:string .
+
+#################################################################
+# Datatype properties — 风险事实（运行时断言，含预计算布尔）
+#################################################################
+
+:monthlyFee rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:decimal .
+:oneTimeFee rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:decimal .
+:salesCnt30d rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:decimal .
+:shelfDays rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:decimal .
+:revenue30d rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:decimal .
+:discountPercent rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:decimal .
+:hasContract rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+:onShelf rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+:inWhitelist rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+:repeatableFlag rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+:emptyTargetGroup rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+:strategicTagFlag rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+:lowEffCategoryFlag rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean .
+:lowRevenueFlag rdf:type owl:DatatypeProperty ;
+    rdfs:domain :Offering ; rdfs:range xsd:boolean .

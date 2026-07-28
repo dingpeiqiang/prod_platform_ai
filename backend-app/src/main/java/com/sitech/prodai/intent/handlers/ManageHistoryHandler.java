@@ -3,6 +3,7 @@ package com.sitech.prodai.intent.handlers;
 import com.sitech.prodai.intent.BaseIntentHandler;
 import com.sitech.prodai.intent.IntentContext;
 import com.sitech.prodai.intent.SseUtils;
+import com.sitech.prodai.intent.ThinkingStepBuilder;
 import com.sitech.prodai.intent.StreamStats;
 import com.sitech.prodai.service.HistoryService;
 import org.slf4j.Logger;
@@ -79,8 +80,12 @@ public class ManageHistoryHandler implements BaseIntentHandler {
                         stats.setTotalElapsed((System.currentTimeMillis() - ctx.getStartTime()) / 1000.0);
                     }
 
-                    events.add(SseUtils.thinking("📊 开始分析「" + (name.isEmpty() ? code : name) + "」历史数据...", phase1Result));
-                    events.add(SseUtils.thinking("✅ 分析完成", Map.of("success", true, "formCode", code)));
+                    events.add(ThinkingStepBuilder.done(
+                            "start", "开始分析", "开始分析历史数据",
+                            "分析「" + (name.isEmpty() ? code : name) + "」", 2, 3, 0, null, phase1Result));
+                    events.add(ThinkingStepBuilder.done(
+                            "conclude", "完成摘要", "分析完成",
+                            "分析完成", 3, 3, 0, null, Map.of("success", true, "formCode", code)));
                     if (stats != null) {
                         events.add(SseUtils.stats(stats));
                     }
@@ -113,7 +118,9 @@ public class ManageHistoryHandler implements BaseIntentHandler {
         }
 
         return Flux.fromIterable(java.util.List.of(
-                SseUtils.thinking("📥 准备数据导入...", phase1Result),
+                ThinkingStepBuilder.done(
+                        "start", "准备导入", "准备数据导入",
+                        "导入「" + (name.isEmpty() ? code : name) + "」", 2, 2, 0, null, phase1Result),
                 stats != null ? SseUtils.stats(stats) : SseUtils.stats(new StreamStats()),
                 SseUtils.intentEvent("manage_history", "import", importEntry, false),
                 SseUtils.doneEvent("manage_history", false, ctx.getIntentData())
@@ -140,8 +147,12 @@ public class ManageHistoryHandler implements BaseIntentHandler {
                     if (stats != null) {
                         stats.setTotalElapsed((System.currentTimeMillis() - ctx.getStartTime()) / 1000.0);
                     }
-                    events.add(SseUtils.thinking("🔍 查询「" + (name.isEmpty() ? code : name) + "」历史数据...", phase1Result));
-                    events.add(SseUtils.thinking("✅ 查询完成", Map.of("success", true)));
+                    events.add(ThinkingStepBuilder.done(
+                            "start", "开始查询", "查询历史数据",
+                            "查询「" + (name.isEmpty() ? code : name) + "」", 2, 3, 0, null, phase1Result));
+                    events.add(ThinkingStepBuilder.done(
+                            "conclude", "完成摘要", "查询完成",
+                            "查询完成", 3, 3, 0, null, Map.of("success", true)));
                     if (stats != null) {
                         events.add(SseUtils.stats(stats));
                     }
@@ -176,8 +187,15 @@ public class ManageHistoryHandler implements BaseIntentHandler {
         exportData.put("message", "文件已准备好，点击下载：" + code + "_export." + exportFormat);
 
         return Flux.fromIterable(java.util.List.of(
-                SseUtils.thinking("📤 导出历史数据（" + exportFormat.toUpperCase() + "）...", phase1Result),
-                SseUtils.thinking("✅ 导出完成", Map.of("success", true, "filename", code + "_export." + exportFormat)),
+                ThinkingStepBuilder.done(
+                        "start", "开始导出", "导出历史数据（" + exportFormat.toUpperCase() + "）",
+                        "准备导出「" + (name.isEmpty() ? code : name) + "」",
+                        2, 3, 0, null, phase1Result),
+                ThinkingStepBuilder.done(
+                        "conclude", "导出完成", "导出完成",
+                        code + "_export." + exportFormat,
+                        3, 3, 0, null,
+                        Map.of("success", true, "filename", code + "_export." + exportFormat)),
                 stats != null ? SseUtils.stats(stats) : SseUtils.stats(new StreamStats()),
                 SseUtils.intentEvent("manage_history", "export", exportData, false),
                 SseUtils.doneEvent("manage_history", false, ctx.getIntentData())
@@ -197,8 +215,13 @@ public class ManageHistoryHandler implements BaseIntentHandler {
                     if (stats != null) {
                         stats.setTotalElapsed((System.currentTimeMillis() - ctx.getStartTime()) / 1000.0);
                     }
-                    events.add(SseUtils.thinking("📋 查询「" + (name.isEmpty() ? code : name) + "」数据状态...", phase1Result));
-                    events.add(SseUtils.thinking("✅ 数据状态查询完成", Map.of("success", true)));
+                    events.add(ThinkingStepBuilder.done(
+                            "start", "查询数据状态", "查询历史数据状态",
+                            "查询「" + (name.isEmpty() ? code : name) + "」",
+                            2, 3, 0, null, phase1Result));
+                    events.add(ThinkingStepBuilder.done(
+                            "conclude", "状态查询完成", "数据状态查询完成",
+                            "状态已就绪", 3, 3, 0, null, Map.of("success", true)));
                     if (stats != null) {
                         events.add(SseUtils.stats(stats));
                     }
@@ -218,7 +241,9 @@ public class ManageHistoryHandler implements BaseIntentHandler {
             stats.setError(errorMsg);
         }
         return Flux.fromIterable(java.util.List.of(
-                SseUtils.thinking("❌ " + errorMsg, Map.of("success", false, "error", errorMsg)),
+                ThinkingStepBuilder.done(
+                        "fail", "操作失败", "历史数据操作失败",
+                        errorMsg, 2, 2, 0, null, Map.of("success", false)),
                 SseUtils.error(errorMsg),
                 SseUtils.doneEvent(intentType, false, ctx.getIntentData())
         ));
