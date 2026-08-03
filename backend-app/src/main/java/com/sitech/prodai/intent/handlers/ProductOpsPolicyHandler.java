@@ -207,7 +207,8 @@ public class ProductOpsPolicyHandler implements BaseIntentHandler {
         factsSummary.put("annualSpend", facts.getOrDefault("annualSpend", "-"));
         factsSummary.put("vipLevel", facts.getOrDefault("vipLevel", "-"));
 
-        String answerText = formatPolicyAnswer(verdict, reason, policySetId, triggeredRules);
+        String answerText = formatPolicyAnswer(
+                verdict, reason, policySetId, expectationType, triggeredRules, factsSummary);
         String verdictLabel = switch (verdict) {
             case "allow" -> "通过";
             case "deny" -> "拒绝";
@@ -312,22 +313,51 @@ public class ProductOpsPolicyHandler implements BaseIntentHandler {
         return sb.toString();
     }
 
-    private String formatPolicyAnswer(String verdict, String reason, String policySetId, List<String> rules) {
+    private String formatPolicyAnswer(
+            String verdict,
+            String reason,
+            String policySetId,
+            String expectationType,
+            List<String> rules,
+            Map<String, Object> factsSummary
+    ) {
         String verdictLabel = switch (verdict) {
             case "allow" -> "通过";
             case "deny" -> "拒绝";
             default -> "待审";
         };
+        String modeLabel = switch (expectationType == null ? "" : expectationType) {
+            case "online_check", "candidate_check" -> "立项校验";
+            case "risk_audit" -> "风险稽核";
+            default -> expectationType == null || expectationType.isBlank() ? "策略评估" : expectationType;
+        };
         StringBuilder sb = new StringBuilder();
-        sb.append("策略集：").append(policySetId);
-        sb.append("\n评估结论：").append(verdictLabel);
+        sb.append("### 立项研判结论\n\n");
+        sb.append("- **策略集**：`").append(policySetId).append("`\n");
+        sb.append("- **评估模式**：").append(modeLabel).append("\n");
+        sb.append("- **评估结论**：").append(verdictLabel).append("\n");
         if (reason != null && !reason.isBlank()) {
-            sb.append("\n原因：").append(reason);
+            sb.append("- **原因**：").append(reason).append("\n");
         }
-        if (!rules.isEmpty()) {
-            sb.append("\n命中规则：").append(String.join(", ", rules));
+        if (rules != null && !rules.isEmpty()) {
+            sb.append("- **命中规则**：").append(String.join("、", rules)).append("\n");
+        }
+        if (factsSummary != null && !factsSummary.isEmpty()) {
+            sb.append("\n**评估事实**\n\n");
+            appendFactLine(sb, "产品类型", factsSummary.get("productType"));
+            appendFactLine(sb, "目标市场规模", factsSummary.get("targetMarketSize"));
+            appendFactLine(sb, "零资费", factsSummary.get("isZeroFee"));
+            appendFactLine(sb, "在售月数", factsSummary.get("onlineMonths"));
+            appendFactLine(sb, "月新增用户", factsSummary.get("newUserMonth"));
+            appendFactLine(sb, "年消费", factsSummary.get("annualSpend"));
+            appendFactLine(sb, "会员等级", factsSummary.get("vipLevel"));
         }
         return sb.toString();
+    }
+
+    private void appendFactLine(StringBuilder sb, String label, Object value) {
+        String display = value == null || String.valueOf(value).isBlank() ? "-" : String.valueOf(value);
+        sb.append("- ").append(label).append("：").append(display).append("\n");
     }
 
     private List<String> collectTriggeredRules(List<Map<String, Object>> items) {

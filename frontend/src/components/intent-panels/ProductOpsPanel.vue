@@ -1,5 +1,6 @@
 <template>
-  <div v-if="visible" class="intent-card product-ops-card">
+  <div v-if="visible" class="intent-card product-ops-card" :class="{ 'is-compact': compactOnly }">
+    <template v-if="!compactOnly">
     <div class="card-header" :class="'header-' + normalizedIntent">
       <span class="card-icon">{{ cardIcon }}</span>
       <span class="card-title">{{ title }}</span>
@@ -242,8 +243,10 @@
         </div>
       </div>
     </div>
+    </template>
 
-    <div class="card-footer">
+    <div class="card-footer" :class="{ 'footer-compact': compactOnly }">
+      <span v-if="compactOnly" class="compact-label">{{ compactLabel }}</span>
       <button class="action-btn" @click="handleExport">
         <span class="btn-icon">&#8615;</span> 导出结论
       </button>
@@ -275,18 +278,35 @@ const isPolicy = computed(() => normalizedIntent.value === 'product_ops_policy')
 const isCompare = computed(() => normalizedIntent.value === 'product_ops_compare')
 const isMonitor = computed(() => normalizedIntent.value === 'product_ops_monitor')
 const isReason = computed(() => normalizedIntent.value === 'product_ops_reason')
-/** 聊天正文已输出完整 Markdown 报告时，归因卡片无需再展示 */
-const reportAlreadyInChat = computed(() => {
-  const text = String(props.msg?.streamText || props.msg?.content || '')
-  return /\*\*异动结论\*\*/.test(text)
-    || /\*\*根因路径\*\*/.test(text)
-    || /###\s+.+\s*异动根因分析/.test(text)
+const isRiskAudit = computed(() => {
+  const expectation = props.msg?.intentData?.expectationType || props.msg?.action || ''
+  return isPolicy.value && (expectation === 'risk_audit' || Array.isArray(props.msg?.intentData?.items))
 })
-const visible = computed(() => {
-  if (isQuery.value || isPolicy.value || isCompare.value || isMonitor.value) return true
-  // 异动归因：仅在正文没有完整报告、且确有结构化结果时展示
-  if (!isReason.value) return false
-  if (reportAlreadyInChat.value) return false
+const riskAuditItems = computed(() => {
+  const items = props.msg?.intentData?.items || props.msg?.intentData?.riskAudit?.items
+  return Array.isArray(items) ? items : []
+})
+const chatText = computed(() => String(props.msg?.streamText || props.msg?.content || ''))
+
+/** 正文已覆盖结论时，不再重复刷完整结构化卡片 */
+const reportAlreadyInChat = computed(() => {
+  const text = chatText.value
+  if (isReason.value) {
+    return /\*\*异动结论\*\*/.test(text)
+      || /\*\*根因路径\*\*/.test(text)
+      || /###\s+.+\s*异动根因分析/.test(text)
+  }
+  if (isRiskAudit.value) {
+    return /###\s*全量智能稽核结果/.test(text)
+  }
+  if (isPolicy.value) {
+    return /###\s*立项研判结论/.test(text)
+      || (/评估结论[：:]/.test(text) && /策略集[：:]/.test(text))
+  }
+  return false
+})
+
+const hasReasonStructuredResult = computed(() => {
   const data = props.msg?.intentData || {}
   const paths = data.paths || data.rootCause?.paths || data.results || []
   const anomalies = data.anomalies || data.rootCause?.anomalies || []
@@ -297,13 +317,28 @@ const visible = computed(() => {
     || (Array.isArray(anomalies) && anomalies.length),
   )
 })
-const isRiskAudit = computed(() => {
-  const expectation = props.msg?.intentData?.expectationType || props.msg?.action || ''
-  return isPolicy.value && (expectation === 'risk_audit' || Array.isArray(props.msg?.intentData?.items))
+
+/** 结论型意图：正文已有报告时只保留导出/追问条 */
+const compactOnly = computed(() => {
+  if (isQuery.value || isCompare.value || isMonitor.value) return false
+  if (isPolicy.value || isReason.value) return reportAlreadyInChat.value
+  return false
 })
-const riskAuditItems = computed(() => {
-  const items = props.msg?.intentData?.items || props.msg?.intentData?.riskAudit?.items
-  return Array.isArray(items) ? items : []
+
+const visible = computed(() => {
+  if (isQuery.value || isCompare.value || isMonitor.value) return true
+  if (isPolicy.value) return true
+  if (!isReason.value) return false
+  // 异动归因：正文有报告 → 紧凑操作条；否则仅在确有结构化结果时展示完整卡
+  if (reportAlreadyInChat.value) return true
+  return hasReasonStructuredResult.value
+})
+
+const compactLabel = computed(() => {
+  if (isRiskAudit.value) return '稽核结论已写入上方'
+  if (isPolicy.value) return '研判结论已写入上方'
+  if (isReason.value) return '归因结论已写入上方'
+  return '结论已写入上方'
 })
 
 const cardIcon = computed(() => {
@@ -555,7 +590,7 @@ const handleExport = () => {
 const handleFollowUp = () => {
   const followUpMap = {
     product_ops_query: '帮我进一步分析这些数据的趋势',
-    product_ops_policy: '详细解释为什么会被拒绝',
+    product_ops_policy: '请详细解释该评估结论的依据与可改进点',
     product_ops_reason: '给我更详细的证据链和时间线',
     product_ops_compare: '如果改变更多条件会怎样',
     product_ops_monitor: '对高优先级告警做智能归因',
@@ -570,6 +605,7 @@ const handleFollowUp = () => {
 
 <style scoped>
 .intent-card { border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; margin-top: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+.intent-card.is-compact { box-shadow: none; }
 .card-header { padding: 12px 16px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; gap: 8px; }
 .header-product_ops_query { background: linear-gradient(135deg, #eff6ff, #f0f9ff); }
 .header-product_ops_policy { background: linear-gradient(135deg, #fefce8, #fff7ed); }
@@ -785,7 +821,19 @@ const handleFollowUp = () => {
 .compare-desc { font-size: 12px; color: #334155; flex: 1; }
 
 /* Footer */
-.card-footer { padding: 10px 16px; border-top: 1px solid #f1f5f9; display: flex; justify-content: flex-end; gap: 8px; }
+.card-footer { padding: 10px 16px; border-top: 1px solid #f1f5f9; display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
+.card-footer.footer-compact {
+  border-top: none;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: #f8fafc;
+}
+.compact-label {
+  margin-right: auto;
+  font-size: 12px;
+  color: #94a3b8;
+}
 .action-btn { background: transparent; border: 1px solid #e2e8f0; color: #475569; cursor: pointer; padding: 5px 12px; border-radius: 8px; font-size: 12px; display: flex; align-items: center; gap: 4px; transition: all 0.15s; }
 .action-btn:hover { background: #f1f5f9; border-color: #cbd5e1; color: #1e293b; }
 .btn-icon { font-size: 13px; }
