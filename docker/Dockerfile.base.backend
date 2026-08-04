@@ -16,9 +16,8 @@ LABEL description="AI动态表单后端基础镜像 (JDK 17 + Maven offline deps
 # docker build --build-arg MAVEN_MIRROR_URL=http://nexus.company.local/repository/maven-public ...
 ARG MAVEN_MIRROR_URL=
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# 注意：maven:*-eclipse-temurin-17 已含 curl / ca-certificates，勿再 apt-get
+# （国内访问 archive.ubuntu.com 极慢，单步常耗时 10~30 分钟）
 
 WORKDIR /build
 
