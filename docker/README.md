@@ -13,8 +13,35 @@
 
 | 镜像 | Dockerfile | 版本 | 说明 |
 |------|-----------|------|------|
-| 后端 | [Dockerfile.base.backend](Dockerfile.base.backend) | **2.0** | JDK 17 + Maven + 预拉依赖 |
+| 后端 | [Dockerfile.base.backend](Dockerfile.base.backend) | **2.0** | JDK 17 + **完整 Maven 本地仓库** |
 | 前端 | [Dockerfile.base.frontend](Dockerfile.base.frontend) | 1.2 | Node 20 + Nginx + npm 依赖 |
+
+### 无外网说明（后端）
+
+构建日志里的：
+
+```text
+Downloading from aliyun-central: https://maven.aliyun.com/.../jboss-logging-...
+```
+
+表示 **Maven 正在从远程仓库下载依赖**（`jboss-logging` 是 Hibernate/日志传递依赖）。  
+公司容器若不能出网，应用镜像阶段会失败。
+
+正确流程：
+
+1. **有网环境**（或能访问公司 Nexus）构建并推送基础镜像 → 依赖全部打进 `~/.m2`
+2. **无外网环境**只拉基础镜像，应用镜像用 `mvn -o` **离线打包**，不再访问阿里云
+
+```powershell
+# 有网：构建基础镜像（可指定公司 Maven）
+docker build -f docker/Dockerfile.base.backend `
+  --build-arg MAVEN_MIRROR_URL=http://你的Nexus/repository/maven-public `
+  -t prod-platform-backend-base:2.0 .
+# 或用 docker-manager.ps1 推到 10.86.12.11
+
+# 无外网：只构建应用镜像（依赖来自 base）
+docker build -f docker/Sitech.BJ.Dockerfile.backend -t prod-platform-backend:2.0 .
+```
 
 ```powershell
 .\docker\docker-manager.ps1

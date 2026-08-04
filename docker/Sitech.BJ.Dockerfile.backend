@@ -1,7 +1,6 @@
 # ============================================================
 # AI驱动动态表单 - 后端应用镜像（Spring Boot / backend-app）
-# 使用预构建基础镜像：JDK 17 + 已缓存 Maven 依赖
-# 对齐前端：Sitech.BJ.Dockerfile.frontend
+# 依赖已在基础镜像 ~/.m2；本阶段离线打包，不访问外网
 # ============================================================
 
 # 注意：修改版本号时，请同步更新 docker-manager.ps1 中的配置
@@ -13,11 +12,11 @@ LABEL description="AI Dynamic Form Backend (Spring Boot)"
 
 WORKDIR /build
 
-# 复制后端源码（依赖已在基础镜像中）
+# 复制后端源码（依赖已在基础镜像本地仓库）
 COPY backend-app/ ./
 
-# 打包可执行 jar
-RUN mvn -B -DskipTests package \
+# -o / --offline：禁止访问远程仓库，只用基础镜像已缓存的依赖
+RUN mvn -o -B -DskipTests package \
     && mkdir -p /app/logs /app/uploads \
     && cp target/prod-platform-ai-*.jar /app/app.jar
 
@@ -35,5 +34,4 @@ EXPOSE 6174
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
     CMD curl -fsS "http://127.0.0.1:${SERVER_PORT}/health" || exit 1
 
-# 支持环境变量：SPRING_DATASOURCE_* / LLM_* 等
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar --server.port=${SERVER_PORT}"]

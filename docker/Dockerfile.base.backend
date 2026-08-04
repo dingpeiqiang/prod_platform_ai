@@ -1,36 +1,53 @@
 # ============================================================
 # AI驱动动态表单 - 后端基础镜像（Spring Boot / backend-app）
-# 预装 JDK 17 + Maven 依赖，用于加速应用镜像构建
-# 对齐前端：Dockerfile.base.frontend 预装 node_modules
+# 预装 JDK 17 + 完整 Maven 本地仓库（供无外网环境离线打包）
+#
+# 重要：本镜像必须在「能访问 Maven 仓库」的环境构建，再推到私有仓库；
+# 公司无外网机器只拉此镜像做应用构建，不再访问外网。
 # ============================================================
 
 FROM maven:3.9.9-eclipse-temurin-17
 
 LABEL maintainer="prod-platform"
 LABEL version="2.0"
-LABEL description="AI动态表单后端基础镜像 (JDK 17 + Maven deps)"
+LABEL description="AI动态表单后端基础镜像 (JDK 17 + Maven offline deps)"
 
-# 健康检查工具
+# 可选：构建时注入公司内网 Maven（不传则用 settings 默认）
+# docker build --build-arg MAVEN_MIRROR_URL=http://nexus.company.local/repository/maven-public ...
+ARG MAVEN_MIRROR_URL=
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 
-# 国内 Maven 镜像（与 backend-app/.mvn/local-settings.xml 一致）
+# Maven settings：默认阿里云；若传入 MAVEN_MIRROR_URL 则覆盖为公司仓库
 COPY backend-app/.mvn/local-settings.xml /root/.m2/settings.xml
+RUN if [ -n "$MAVEN_MIRROR_URL" ]; then \
+      printf '%s\n' \
+        '<?xml version="1.0" encoding="UTF-8"?>' \
+        '<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0">' \
+        '  <mirrors><mirror>' \
+        '    <id>company-mirror</id>' \
+        '    <name>Company Maven</name>' \
+        "    <url>${MAVEN_MIRROR_URL}</url>" \
+        '    <mirrorOf>*</mirrorOf>' \
+        '  </mirror></mirrors>' \
+        '</settings>' > /root/.m2/settings.xml; \
+    fi
 
-# 仅复制 POM，预拉依赖（该层可被缓存，pom 未变则复用）
-COPY backend-app/pom.xml .
+# 复制完整工程以拉齐编译/插件依赖（比只拷 pom 更完整）
+COPY backend-app/ ./
 
-RUN mvn -B -q dependency:go-offline -DskipTests \
-    || mvn -B -q dependency:resolve -DskipTests \
-    || true
-
-RUN mkdir -p /app/logs /app/uploads
+# 预编译一次：把所有依赖写入 ~/.m2（失败则基础镜像构建失败，避免带残缺仓库上线）
+RUN mvn -B -DskipTests package \
+    && rm -rf /build/target \
+    && mkdir -p /app/logs /app/uploads
 
 ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Dfile.encoding=UTF-8" \
     TZ=Asia/Shanghai \
-    LANG=C.UTF-8
+    LANG=C.UTF-8 \
+    MAVEN_OPTS="-Dmaven.repo.local=/root/.m2/repository"
 
 EXPOSE 6174
