@@ -1,0 +1,36 @@
+# ============================================================
+# AI驱动动态表单 - 后端基础镜像（Spring Boot / backend-app）
+# 预装 JDK 17 + Maven 依赖，用于加速应用镜像构建
+# 对齐前端：Dockerfile.base.frontend 预装 node_modules
+# ============================================================
+
+FROM maven:3.9.9-eclipse-temurin-17
+
+LABEL maintainer="prod-platform"
+LABEL version="2.0"
+LABEL description="AI动态表单后端基础镜像 (JDK 17 + Maven deps)"
+
+# 健康检查工具
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# 国内 Maven 镜像（与 backend-app/.mvn/local-settings.xml 一致）
+COPY backend-app/.mvn/local-settings.xml /root/.m2/settings.xml
+
+# 仅复制 POM，预拉依赖（该层可被缓存，pom 未变则复用）
+COPY backend-app/pom.xml .
+
+RUN mvn -B -q dependency:go-offline -DskipTests \
+    || mvn -B -q dependency:resolve -DskipTests \
+    || true
+
+RUN mkdir -p /app/logs /app/uploads
+
+ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Dfile.encoding=UTF-8" \
+    TZ=Asia/Shanghai \
+    LANG=C.UTF-8
+
+EXPOSE 6174
