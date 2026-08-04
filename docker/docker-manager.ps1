@@ -13,7 +13,7 @@ Docker Image Management Script for AI Dynamic Form Platform
 $Config = @{
     BackendBase = @{
         ImageName     = "prod-platform-backend-base"
-        ImageTag      = "2.0"  # 手动修改版本号，每次更新基础镜像时递增
+        ImageTag      = "2.1"  # 手动修改版本号，每次更新基础镜像时递增
         Dockerfile    = "docker/Dockerfile.base.backend"
         Registry      = "10.86.12.11:20200"
         Namespace     = "y21127-crmpos"

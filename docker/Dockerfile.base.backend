@@ -9,7 +9,7 @@
 FROM maven:3.9.9-eclipse-temurin-17
 
 LABEL maintainer="prod-platform"
-LABEL version="2.0"
+LABEL version="2.1"
 LABEL description="AI动态表单后端基础镜像 (JDK 17 + Maven offline deps)"
 
 # 可选：构建时注入公司内网 Maven（不传则用 settings 默认）
@@ -39,8 +39,10 @@ RUN if [ -n "$MAVEN_MIRROR_URL" ]; then \
 # 复制完整工程以拉齐编译/插件依赖（比只拷 pom 更完整）
 COPY backend-app/ ./
 
-# 预编译一次：把所有依赖写入 ~/.m2（失败则基础镜像构建失败，避免带残缺仓库上线）
-RUN mvn -B -DskipTests package \
+# 1) 在线拉齐依赖与插件并编译
+# 2) 立刻用 mvn -o 自检离线可编（与 Sitech.BJ.Dockerfile.backend 一致），不通过则基础镜像构建失败
+RUN mvn -B -U -DskipTests dependency:resolve dependency:resolve-plugins package \
+    && mvn -o -B -DskipTests clean package \
     && rm -rf /build/target \
     && mkdir -p /app/logs /app/uploads
 
