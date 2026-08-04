@@ -17,16 +17,18 @@ WORKDIR /app
 COPY frontend/ ./
 
 # 构建生产版本（node_modules 已在基础镜像中）
-ARG VITE_API_BASE_URL=http://localhost:6173
+# API 走相对路径，由 Nginx 反代到 backend:6174
+ARG VITE_API_BASE_URL=
 ARG VITE_APP_TITLE="AI动态表单平台"
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 ENV VITE_APP_TITLE=$VITE_APP_TITLE
 
 RUN npm run build
 
-# 将构建产物复制到 nginx 目录
-RUN cp -r dist/* /usr/share/nginx/html/ && \
-    rm -rf dist 2>/dev/null || true
+# 将构建产物复制到 nginx 目录，并启用 API 反代配置（→ backend:6174）
+RUN cp -r dist/* /usr/share/nginx/html/ \
+    && cp nginx.conf /etc/nginx/http.d/default.conf \
+    && rm -rf dist 2>/dev/null || true
 
 # 暴露端口
 EXPOSE 80

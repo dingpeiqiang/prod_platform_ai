@@ -3,24 +3,15 @@
 Docker Image Management Script for AI Dynamic Form Platform
 
 .DESCRIPTION
-A unified script to build and push Docker images with menu-based selection.
-Supports both backend and frontend base images with separate configurations.
+统一构建/推送脚本。后端为多阶段直接构建（无需基础镜像）；
+前端仍使用预装依赖的基础镜像加速构建。
 #>
 
 # ==============================================
-# Configuration Section - Separated for easy management
+# Configuration Section
 # ==============================================
-# WARNING: 修改版本号时，请同步更新 Sitech.BJ.Dockerfile.backend 和 Sitech.BJ.Dockerfile.frontend 中的 FROM 指令
+# WARNING: 修改前端基础镜像版本号时，请同步更新 Sitech.BJ.Dockerfile.frontend 中的 FROM
 $Config = @{
-    BackendBase = @{
-        ImageName     = "prod-platform-backend-base"
-        ImageTag      = "1.2"  # 手动修改版本号，每次更新基础镜像时递增
-        Dockerfile    = "docker/Dockerfile.base.backend"
-        Registry      = "10.86.12.11:20200"
-        Namespace     = "y21127-crmpos"
-        Username      = "dingpq"
-        Password      = "Docker.2022!"
-    }
     FrontendBase = @{
         ImageName     = "prod-platform-frontend-base"
         ImageTag      = "1.2"  # 手动修改版本号，每次更新基础镜像时递增
@@ -67,9 +58,6 @@ function Invoke-BuildImage {
     
     $FullTag = "$ImageName`:$ImageTag"
     
-    # ==============================================
-    # Warning message - update ImageTag before build
-    # ==============================================
     Write-Host "`n" -ForegroundColor Red
     Write-Host "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" -ForegroundColor Red
     Write-Host "!!!                         WARNING                                  !!!" -ForegroundColor Red
@@ -190,19 +178,18 @@ function Show-Menu {
     Write-Host "    Docker Image Management Tool" -ForegroundColor Cyan
     Write-Host "========================================" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "  Backend Base Image:" -ForegroundColor Yellow
-    Write-Host "    1. Build Backend Base Image"
-    Write-Host "    2. Push Backend Base Image"
-    Write-Host "    3. Build & Push Backend Base Image"
-    Write-Host ""
     Write-Host "  Frontend Base Image:" -ForegroundColor Yellow
-    Write-Host "    4. Build Frontend Base Image"
-    Write-Host "    5. Push Frontend Base Image"
-    Write-Host "    6. Build & Push Frontend Base Image"
+    Write-Host "    1. Build Frontend Base Image"
+    Write-Host "    2. Push Frontend Base Image"
+    Write-Host "    3. Build & Push Frontend Base Image"
     Write-Host ""
     Write-Host "  Other:" -ForegroundColor Yellow
-    Write-Host "    7. Show Configurations"
+    Write-Host "    4. Show Configurations"
     Write-Host "    0. Exit"
+    Write-Host ""
+    Write-Host "  Note: Backend = shell 打包 jar + Docker 镜像:" -ForegroundColor DarkGray
+    Write-Host "    ./docker/package-backend.sh   # 仅打包" -ForegroundColor DarkGray
+    Write-Host "    ./docker/build-backend.sh     # 打包并构建镜像" -ForegroundColor DarkGray
     Write-Host ""
     Write-Host "========================================" -ForegroundColor Cyan
 }
@@ -212,34 +199,10 @@ function Show-Menu {
 # ==============================================
 do {
     Show-Menu
-    $choice = Read-Host "Enter your choice (0-7)"
+    $choice = Read-Host "Enter your choice (0-4)"
     
     switch ($choice) {
         "1" {
-            Write-Host "`n========================================" -ForegroundColor Cyan
-            Write-Host "Build Backend Base Image" -ForegroundColor Cyan
-            Write-Host "========================================" -ForegroundColor Cyan
-            
-            if (Test-DockerAvailability) {
-                Invoke-BuildImage -ImageName $Config.BackendBase.ImageName -ImageTag $Config.BackendBase.ImageTag -DockerfilePath $Config.BackendBase.Dockerfile
-            }
-        }
-        
-        "2" {
-            Write-Host "`n========================================" -ForegroundColor Cyan
-            Write-Host "Push Backend Base Image" -ForegroundColor Cyan
-            Write-Host "========================================" -ForegroundColor Cyan
-            
-            if (Test-DockerAvailability) {
-                Invoke-PushImage -ImageName $Config.BackendBase.ImageName -ImageTag $Config.BackendBase.ImageTag -Registry $Config.BackendBase.Registry -Namespace $Config.BackendBase.Namespace -Username $Config.BackendBase.Username -Password $Config.BackendBase.Password
-            }
-        }
-        
-        "3" {
-            Invoke-BuildAndPush -Config $Config.BackendBase -ImageType "Backend Base Image"
-        }
-        
-        "4" {
             Write-Host "`n========================================" -ForegroundColor Cyan
             Write-Host "Build Frontend Base Image" -ForegroundColor Cyan
             Write-Host "========================================" -ForegroundColor Cyan
@@ -249,7 +212,7 @@ do {
             }
         }
         
-        "5" {
+        "2" {
             Write-Host "`n========================================" -ForegroundColor Cyan
             Write-Host "Push Frontend Base Image" -ForegroundColor Cyan
             Write-Host "========================================" -ForegroundColor Cyan
@@ -259,23 +222,14 @@ do {
             }
         }
         
-        "6" {
+        "3" {
             Invoke-BuildAndPush -Config $Config.FrontendBase -ImageType "Frontend Base Image"
         }
         
-        "7" {
+        "4" {
             Write-Host "`n========================================" -ForegroundColor Cyan
             Write-Host "Current Configurations" -ForegroundColor Cyan
             Write-Host "========================================" -ForegroundColor Cyan
-            
-            Write-Host "`n[Backend Base Image]" -ForegroundColor Yellow
-            $Config.BackendBase.GetEnumerator() | ForEach-Object {
-                if ($_.Key -eq "Password") {
-                    Write-Host "  $($_.Key): ********"
-                } else {
-                    Write-Host "  $($_.Key): $($_.Value)"
-                }
-            }
             
             Write-Host "`n[Frontend Base Image]" -ForegroundColor Yellow
             $Config.FrontendBase.GetEnumerator() | ForEach-Object {
@@ -285,6 +239,11 @@ do {
                     Write-Host "  $($_.Key): $($_.Value)"
                 }
             }
+
+            Write-Host "`n[Backend] shell 打包 jar，Docker 仅拷贝运行" -ForegroundColor Yellow
+            Write-Host "  Package   : docker/package-backend.sh"
+            Write-Host "  Build     : docker/build-backend.sh"
+            Write-Host "  Dockerfile: docker/Sitech.BJ.Dockerfile.backend"
         }
         
         "0" {
@@ -293,7 +252,7 @@ do {
         }
         
         default {
-            Write-Error "`nInvalid choice! Please enter a number between 0 and 7."
+            Write-Error "`nInvalid choice! Please enter a number between 0 and 4."
         }
     }
     

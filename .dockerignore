@@ -1,0 +1,32 @@
+# Git / IDE
+.git
+.github
+.idea
+.vscode
+.workbuddy
+**/.DS_Store
+
+# 文档与无关目录
+docs
+*.md
+!docker/README.md
+
+# 旧 Python 后端（容器化已切到 backend-app）
+backend/
+
+# 前端构建产物与依赖（基础镜像已预装 node_modules）
+frontend/node_modules
+frontend/dist
+frontend/.vite
+
+# 后端构建产物与本地上传
+backend-app/target
+backend-app/uploads
+backend-app/.idea
+**/*.iml
+
+# 测试与本地脚本噪音
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/coverage

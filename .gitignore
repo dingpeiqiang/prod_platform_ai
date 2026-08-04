@@ -89,3 +89,7 @@ lpt[0-9]
 backend/app/logs/
 frontend/dist/
 form.db
+
+# Docker 后端打包暂存 jar
+docker/dist/*.jar
+
