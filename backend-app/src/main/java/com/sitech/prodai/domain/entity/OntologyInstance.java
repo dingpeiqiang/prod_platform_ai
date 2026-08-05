@@ -1,10 +1,14 @@
 package com.sitech.prodai.domain.entity;
 
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 
 import java.time.LocalDateTime;
@@ -12,7 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Entity
-@Table(name = "ontology_instance")
+@Table(name = "pd_ai_ontology_instance")
 public class OntologyInstance {
 
     @Id
@@ -25,6 +29,12 @@ public class OntologyInstance {
     private LocalDateTime submittedAt;
 
     @ElementCollection
+    @CollectionTable(
+            name = "pd_ai_ontology_instance_data",
+            joinColumns = @JoinColumn(name = "ontology_instance_id")
+    )
+    @MapKeyColumn(name = "data_key")
+    @Column(name = "data")
     private Map<String, String> data = new LinkedHashMap<>();
 
     public Long getId() { return id; }

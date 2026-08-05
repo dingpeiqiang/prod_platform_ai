@@ -30,7 +30,7 @@ import java.util.Map;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "workflows", indexes = {
+@Table(name = "pd_ai_workflows", indexes = {
         @Index(name = "idx_wf_code", columnList = "workflow_code", unique = true)
 })
 @EntityListeners(AuditingEntityListener.class)

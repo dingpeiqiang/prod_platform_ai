@@ -29,7 +29,7 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "prompts", indexes = {
+@Table(name = "pd_ai_prompts", indexes = {
         @Index(name = "idx_prompt_code", columnList = "code", unique = true)
 })
 @EntityListeners(AuditingEntityListener.class)

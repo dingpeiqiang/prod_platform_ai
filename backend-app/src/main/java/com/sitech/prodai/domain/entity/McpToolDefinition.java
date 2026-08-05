@@ -27,7 +27,7 @@ import java.util.Map;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "mcp_tool_definitions", indexes = {
+@Table(name = "pd_ai_mcp_tool_definitions", indexes = {
         @Index(name = "idx_tool_name", columnList = "tool_name", unique = true),
         @Index(name = "idx_tool_code", columnList = "tool_code"),
         @Index(name = "idx_tool_category", columnList = "category"),

@@ -21,7 +21,7 @@ import java.time.LocalDateTime;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "swrl_rules", indexes = {
+@Table(name = "pd_ai_swrl_rules", indexes = {
         @Index(name = "idx_sr_rule_id", columnList = "rule_id", unique = true),
         @Index(name = "idx_sr_module", columnList = "module")
 })

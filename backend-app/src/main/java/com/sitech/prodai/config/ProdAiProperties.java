@@ -224,7 +224,7 @@ public class ProdAiProperties {
 
     public static class Mcp {
         /**
-         * 外部 MCP 工具种子 JSON（写入 mcp_tool_definitions）；
+         * 外部 MCP 工具种子 JSON（写入 pd_ai_mcp_tool_definitions）；
          * 空则仅暴露内存 {@code ToolRegistry} 工具。
          */
         private String seedPath = "";

@@ -30,7 +30,7 @@ import java.util.Map;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "ops_work_orders", indexes = {
+@Table(name = "pd_ai_ops_work_orders", indexes = {
         @Index(name = "idx_owo_offering", columnList = "offering_id"),
         @Index(name = "idx_owo_status", columnList = "status"),
         @Index(name = "idx_owo_created", columnList = "created_at")

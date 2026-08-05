@@ -26,7 +26,7 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "prompt_templates", indexes = {
+@Table(name = "pd_ai_prompt_templates", indexes = {
         @Index(name = "idx_pt_code", columnList = "code", unique = true)
 })
 @EntityListeners(AuditingEntityListener.class)

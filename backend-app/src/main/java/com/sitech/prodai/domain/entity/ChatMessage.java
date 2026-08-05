@@ -26,7 +26,7 @@ import java.time.LocalDateTime;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "chat_messages", indexes = {
+@Table(name = "pd_ai_chat_messages", indexes = {
         @Index(name = "idx_cm_message_id", columnList = "message_id", unique = true),
         @Index(name = "idx_cm_session_id", columnList = "session_id")
 })

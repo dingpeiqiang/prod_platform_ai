@@ -27,7 +27,7 @@ import java.util.Map;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "spans", indexes = {
+@Table(name = "pd_ai_spans", indexes = {
         @Index(name = "idx_span_trace_id", columnList = "trace_id"),
         @Index(name = "idx_span_parent_id", columnList = "parent_span_id"),
         @Index(name = "idx_span_component", columnList = "component"),

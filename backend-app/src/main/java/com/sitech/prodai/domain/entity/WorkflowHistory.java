@@ -29,7 +29,7 @@ import java.util.Map;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "workflow_history", indexes = {
+@Table(name = "pd_ai_workflow_history", indexes = {
         @Index(name = "idx_wh_workflow_id", columnList = "workflow_id"),
         @Index(name = "idx_wh_workflow_code", columnList = "workflow_code")
 })

@@ -28,7 +28,7 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "prompt_versions", indexes = {
+@Table(name = "pd_ai_prompt_versions", indexes = {
         @Index(name = "idx_pv_prompt_id", columnList = "prompt_id")
 })
 @EntityListeners(AuditingEntityListener.class)

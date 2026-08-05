@@ -23,7 +23,7 @@ import java.time.LocalDateTime;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "mcp_call_logs", indexes = {
+@Table(name = "pd_ai_mcp_call_logs", indexes = {
         @Index(name = "idx_cl_tool_name", columnList = "tool_name"),
         @Index(name = "idx_cl_tool_category", columnList = "tool_category"),
         @Index(name = "idx_tool_timestamp", columnList = "tool_name, timestamp"),

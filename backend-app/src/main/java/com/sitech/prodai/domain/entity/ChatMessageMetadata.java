@@ -27,7 +27,7 @@ import java.time.LocalDateTime;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "chat_message_metadata", indexes = {
+@Table(name = "pd_ai_chat_message_metadata", indexes = {
         @Index(name = "idx_cmm_message_id", columnList = "message_id"),
         @Index(name = "idx_cmm_meta_key", columnList = "meta_key")
 }, uniqueConstraints = {

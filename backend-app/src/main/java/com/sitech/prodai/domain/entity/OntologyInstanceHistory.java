@@ -9,7 +9,7 @@ import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "ontology_instance_history")
+@Table(name = "pd_ai_ontology_instance_history")
 public class OntologyInstanceHistory {
 
     @Id

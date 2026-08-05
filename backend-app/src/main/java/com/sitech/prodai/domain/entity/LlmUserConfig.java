@@ -24,7 +24,7 @@ import java.time.LocalDateTime;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "llm_user_configs", indexes = {
+@Table(name = "pd_ai_llm_user_configs", indexes = {
         @Index(name = "idx_llm_user_identifier", columnList = "user_identifier")
 })
 @EntityListeners(AuditingEntityListener.class)

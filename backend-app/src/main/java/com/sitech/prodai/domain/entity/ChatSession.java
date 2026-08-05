@@ -28,7 +28,7 @@ import java.util.Map;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "chat_sessions", indexes = {
+@Table(name = "pd_ai_chat_sessions", indexes = {
         @Index(name = "idx_cs_session_id", columnList = "session_id", unique = true),
         @Index(name = "idx_cs_user_id", columnList = "user_id")
 })

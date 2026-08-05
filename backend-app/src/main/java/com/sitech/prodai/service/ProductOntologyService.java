@@ -1434,7 +1434,7 @@ public class ProductOntologyService {
     }
 
     /**
-     * 持久化配置草稿（JPA ontology_instance），绑定 session/user，刷新可恢复。
+     * 持久化配置草稿（JPA pd_ai_ontology_instance），绑定 session/user，刷新可恢复。
      */
     public Map<String, Object> saveConfigDraft(Map<String, Object> request) {
         Map<String, Object> req = request == null ? Map.of() : request;
