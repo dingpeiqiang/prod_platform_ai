@@ -1,0 +1,20 @@
+# 演示环境外部配置：挂载整个 docker/config 目录后，
+# 在 application.yml 中将 spring.profiles.active 改为 demo 即可生效。
+
+prodai:
+  ontology:
+    demo-enabled: true
+    data-source: classpath
+    graph-path: classpath:ontology/mock_graph.json
+    ops-graph-path: classpath:ontology/mock_graph.json
+    rdf-seed-path: classpath:ontology/rdf_seed.json
+    ttl-path: classpath:ontology/sample-ontology.ttl
+    config-ttl-path: classpath:ontology/product-config.ttl
+    llm-extract-enabled: true
+    base-iri: http://example.org/
+    batch-audit-enabled: true
+    batch-audit-cron: "0 0 * * * ?"
+  kb:
+    seed-path: classpath:ontology/kb_seed.json
+  mcp:
+    seed-path: classpath:ontology/mcp_tools_seed.json

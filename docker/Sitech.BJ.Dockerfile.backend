@@ -22,16 +22,18 @@ RUN mvn -o -B -DskipTests package \
 
 WORKDIR /app
 
-RUN rm -rf /build
+RUN rm -rf /build \
+    && mkdir -p /config /app/logs /app/uploads
 
+# 业务配置通过挂载 /config 注入，勿在 docker run 里堆 -e application 项
+# 例：-v /path/to/config:/config:ro
 ENV SERVER_PORT=6174 \
     JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Dfile.encoding=UTF-8" \
-    TZ=Asia/Shanghai \
-    SPRING_PROFILES_ACTIVE=prod
+    TZ=Asia/Shanghai
 
 EXPOSE 6174
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
     CMD curl -fsS "http://127.0.0.1:${SERVER_PORT}/health" || exit 1
 
-ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar --server.port=${SERVER_PORT}"]
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar --server.port=${SERVER_PORT} --spring.config.additional-location=optional:file:/config/"]

@@ -1,0 +1,56 @@
+# ============================================================
+# 容器外部配置（挂载到 /config/application.yml）
+# 部署时按环境修改本文件，docker run 无需再传业务相关 -e
+#
+# 挂载示例：
+#   docker run -d --name backend -p 6174:6174 \
+#     -v /path/to/this/dir:/config:ro \
+#     prod-platform-backend:2.0
+# ============================================================
+
+spring:
+  profiles:
+    active: prod
+  datasource:
+    url: jdbc:mysql://host.docker.internal:3306/prodplatformai?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: prodplatformai
+    password: prodplatformai@134
+  jpa:
+    hibernate:
+      ddl-auto: update
+  ai:
+    openai:
+      api-key: sk-xxx
+      base-url: https://your-openai-compatible-host
+      chat:
+        options:
+          model: gpt-4o-mini
+          temperature: 0.5
+
+prodai:
+  ontology:
+    demo-enabled: false
+    data-source: classpath
+    graph-path: classpath:ontology/ops_graph_export.json
+    ops-graph-path: classpath:ontology/ops_graph_export.json
+    # 接外部产商品中心时改为：
+    # data-source: http
+    # product-center-base-url: http://product-center:8080
+    product-center-base-url:
+    product-center-timeout-ms: 5000
+    llm-extract-enabled: true
+    base-iri: http://example.org/
+    rdf-seed-path:
+    ttl-path:
+  kb:
+    seed-path:
+  mcp:
+    seed-path:
+  llm:
+    enabled: true
+    function-calling-enabled: true
+
+logging:
+  level:
+    root: INFO
+    com.sitech.prodai: INFO

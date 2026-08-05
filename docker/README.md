@@ -61,19 +61,26 @@ docker build -f docker/Sitech.BJ.Dockerfile.backend -t prod-platform-backend:2.0
 docker build -f docker/Sitech.BJ.Dockerfile.frontend -t prod-platform-frontend:1.0 .
 ```
 
-### 运行后端
+### 运行后端（外部配置挂载，推荐）
+
+业务配置（数据源、LLM、profile 等）**不要**写在 `docker run -e` 里，改为挂载目录到 `/config`。
+
+镜像启动参数已包含：`--spring.config.additional-location=optional:file:/config/`  
+挂载目录中的 `application.yml` / `application-{profile}.yml` 会覆盖 jar 内同名配置。
+
+1. 按环境修改 [`docker/config/application.yml`](config/application.yml)（库地址、密码、API Key 等）
+2. 启动时只挂载配置目录：
 
 ```powershell
+# 项目根目录执行；先编辑 docker/config/application.yml
 docker run -d --name backend -p 6174:6174 `
-  -e SPRING_DATASOURCE_URL="jdbc:mysql://host.docker.internal:3306/prodplatformai?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true" `
-  -e SPRING_DATASOURCE_USERNAME=prodplatformai `
-  -e SPRING_DATASOURCE_PASSWORD=prodplatformai@134 `
-  -e LLM_ENABLED=true `
-  -e LLM_API_KEY=sk-xxx `
-  -e LLM_BASE_URL=https://your-openai-compatible-host `
-  -e LLM_MODEL=gpt-4o-mini `
+  -v ${PWD}/docker/config:/config:ro `
   prod-platform-backend:2.0
 ```
+
+切换演示环境：把 `docker/config/application.yml` 里 `spring.profiles.active` 改为 `demo`（同目录已有 `application-demo.yml`），重启容器即可，无需重建镜像。
+
+> 仅保留容器运行时变量（可选）：`-e SERVER_PORT=6174`、`-e JAVA_OPTS=...`。业务项一律放外部 yml。
 
 健康检查：`GET http://localhost:6174/health`
 
@@ -83,7 +90,9 @@ docker run -d --name backend -p 6174:6174 `
 
 ```powershell
 docker network create prod-ai
-docker run -d --name backend --network prod-ai -p 6174:6174 prod-platform-backend:2.0
+docker run -d --name backend --network prod-ai -p 6174:6174 `
+  -v ${PWD}/docker/config:/config:ro `
+  prod-platform-backend:2.0
 docker run -d --name frontend --network prod-ai -p 80:80 prod-platform-frontend:1.0
 ```
 
