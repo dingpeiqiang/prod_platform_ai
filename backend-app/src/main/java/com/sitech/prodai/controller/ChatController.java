@@ -2,10 +2,8 @@ package com.sitech.prodai.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sitech.prodai.config.ProdAiProperties;
-import com.sitech.prodai.domain.entity.LlmUserConfig;
 import com.sitech.prodai.domain.entity.ModelProvider;
 import com.sitech.prodai.dto.ChatCompletionRequest;
-import com.sitech.prodai.repository.LlmUserConfigRepository;
 import com.sitech.prodai.service.LlmService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,16 +34,13 @@ public class ChatController {
     private final Optional<LlmService> llmService;
     private final ObjectMapper objectMapper;
     private final ProdAiProperties properties;
-    private final LlmUserConfigRepository llmUserConfigRepository;
     private final ExecutorService executor = Executors.newCachedThreadPool();
     private final AtomicReference<Map<String, Object>> activeModel = new AtomicReference<>(defaultModel());
 
-    public ChatController(Optional<LlmService> llmService, ObjectMapper objectMapper, ProdAiProperties properties,
-                          LlmUserConfigRepository llmUserConfigRepository) {
+    public ChatController(Optional<LlmService> llmService, ObjectMapper objectMapper, ProdAiProperties properties) {
         this.llmService = llmService;
         this.objectMapper = objectMapper;
         this.properties = properties;
-        this.llmUserConfigRepository = llmUserConfigRepository;
         log.info("[ChatController] initialized, llmEnabled={}", properties.getLlm().isEnabled());
     }
 
@@ -146,27 +141,18 @@ public class ChatController {
         return body;
     }
 
-    /** Available models for workflow LLM nodes / model pickers — only from DB. */
+    /** Available models for workflow LLM nodes / model pickers — from config file. */
     @GetMapping("/model/available")
     public Map<String, Object> availableModels() {
-        List<Map<String, Object>> models = llmUserConfigRepository.findAll().stream()
-                .sorted((a, b) -> {
-                    boolean aActive = Boolean.TRUE.equals(a.getIsActive());
-                    boolean bActive = Boolean.TRUE.equals(b.getIsActive());
-                    if (aActive != bActive) {
-                        return aActive ? -1 : 1;
-                    }
-                    if (a.getUpdatedAt() == null && b.getUpdatedAt() == null) return 0;
-                    if (a.getUpdatedAt() == null) return 1;
-                    if (b.getUpdatedAt() == null) return -1;
-                    return b.getUpdatedAt().compareTo(a.getUpdatedAt());
-                })
-                .map(cfg -> toModelRow(
-                        cfg,
-                        Boolean.TRUE.equals(cfg.getIsActive()),
-                        Boolean.TRUE.equals(cfg.getIsActive()) ? "当前激活" : "历史配置"
-                ))
-                .toList();
+        ProdAiProperties.Llm llm = properties.getLlm();
+        List<Map<String, Object>> models = new java.util.ArrayList<>();
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", ModelProvider.CUSTOM.getValue() + "-" + llm.getModel());
+        row.put("provider", ModelProvider.CUSTOM.getValue());
+        row.put("providerName", "当前配置");
+        row.put("name", llm.getModel());
+        row.put("isDefault", true);
+        models.add(row);
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("success", true);
@@ -254,16 +240,6 @@ public class ChatController {
         m.putIfAbsent("maxTokens", 2048);
         m.putIfAbsent("thinking", false);
         return m;
-    }
-
-    private Map<String, Object> toModelRow(LlmUserConfig config, boolean isDefault, String providerName) {
-        Map<String, Object> row = new LinkedHashMap<>();
-        row.put("id", config.getProvider() + "-" + config.getModel());
-        row.put("provider", config.getProvider());
-        row.put("providerName", providerName);
-        row.put("name", config.getModel());
-        row.put("isDefault", isDefault);
-        return row;
     }
 
     private static Map<String, Object> provider(String name, String label, boolean available) {

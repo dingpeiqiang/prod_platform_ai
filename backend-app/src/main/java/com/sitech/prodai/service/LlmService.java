@@ -2,8 +2,9 @@ package com.sitech.prodai.service;
 
 import com.sitech.prodai.config.ProdAiProperties;
 import com.sitech.prodai.dto.ChatCompletionRequest;
-import com.sitech.prodai.domain.entity.LlmUserConfig;
 import com.sitech.prodai.util.TokenCounter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
@@ -14,12 +15,18 @@ import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+import org.springframework.http.HttpRequest;
+import org.springframework.http.client.ClientHttpRequestExecution;
+import org.springframework.http.client.ClientHttpRequestInterceptor;
+import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.web.client.RestClient;
 import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Optional;
@@ -28,16 +35,24 @@ import java.util.Optional;
 @ConditionalOnProperty(name = "prodai.llm.enabled", havingValue = "true", matchIfMissing = false)
 public class LlmService {
 
+    private static final Logger log = LoggerFactory.getLogger(LlmService.class);
+
     private final ProdAiProperties properties;
-    private final LlmConfigService configService;
     private final Optional<ModelRouter> modelRouter;
     private final Optional<TokenCounter> tokenCounter;
     private final ConcurrentHashMap<String, ChatClient> clientCache = new ConcurrentHashMap<>();
 
-    public LlmService(ProdAiProperties properties, LlmConfigService configService,
+    /** 未显式配置输出预算时的默认值（DeepSeek 推理模型单次输出缺省会返回空 choices） */
+    private static final int DEFAULT_MAX_TOKENS = 4096;
+
+    /** 网关瞬时 403 权限错误的有限重试次数 */
+    private static final int TRANSIENT_403_RETRIES = 2;
+    /** 第一次重试的基础退避毫秒（按尝试次数线性放大） */
+    private static final long TRANSIENT_403_BACKOFF_MS = 500L;
+
+    public LlmService(ProdAiProperties properties,
                       Optional<ModelRouter> modelRouter, Optional<TokenCounter> tokenCounter) {
         this.properties = properties;
-        this.configService = configService;
         this.modelRouter = modelRouter;
         this.tokenCounter = tokenCounter;
     }
@@ -54,17 +69,33 @@ public class LlmService {
         ChatClient client = getChatClient(request.getModelConfig());
         List<Message> messages = toMessages(request);
         OpenAiChatOptions options = buildOptions(request.getModelConfig());
-        String content = client.prompt()
-                .messages(messages)
-                .options(options)
-                .call()
-                .content();
 
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("success", true);
-        body.put("content", content == null ? "" : content);
-        body.put("runtime", "spring-ai");
-        return body;
+        // 网关对合法客户端可能偶发返回 403「当前租户已禁止该客户端访问」等瞬时权限错误
+        // （同一 URL/Key/模型下时 200 时 403），此处做有限次退避重试，避免整条流直接失败。
+        int attempts = TRANSIENT_403_RETRIES + 1;
+        for (int attempt = 1; attempt <= attempts; attempt++) {
+            try {
+                String content = client.prompt()
+                        .messages(messages)
+                        .options(options)
+                        .call()
+                        .content();
+                Map<String, Object> body = new LinkedHashMap<>();
+                body.put("success", true);
+                body.put("content", content == null ? "" : content);
+                body.put("runtime", "spring-ai");
+                return body;
+            } catch (Exception e) {
+                if (isTransientPermissionError(e) && attempt < attempts) {
+                    log.warn("[LlmService] 网关瞬时 403 权限错误，第 {} 次重试: {}", attempt, e.getMessage());
+                    sleepQuietly(TRANSIENT_403_BACKOFF_MS * attempt);
+                    continue;
+                }
+                throw e;
+            }
+        }
+        // 不可达：上面 for 循环内必然 return 或 throw
+        throw new IllegalStateException("unreachable");
     }
 
     public String completePrompt(String prompt) {
@@ -90,68 +121,52 @@ public class LlmService {
                 chatMessages.add(m);
             }
         }
-        ChatCompletionRequest.ChatMessage last = new ChatCompletionRequest.ChatMessage();
-        last.setRole("user");
-        last.setContent(userMessage);
-        chatMessages.add(last);
+        appendUserMessage(chatMessages, userMessage);
         req.setMessages(chatMessages);
         Map<String, Object> result = complete(req);
         return String.valueOf(result.getOrDefault("content", ""));
     }
 
     /**
-     * 流式输出：基于结构化消息列表（支持多轮对话上下文）
+     * 追加当前用户消息，避免与历史末条重复。
+     * 调用方约定：历史 history 不应包含当前用户消息（由本方法单独追加）；
+     * 若调用方误把当前消息写入了历史（如 AgentOrchestrator 先 addHistoryEntry 再调用），
+     * 这里做防御性去重，防止同一问题连续发送两次导致大模型返回空 choices。
      */
-    public Flux<String> streamChatText(String prompt) {
-        ensureEnabled();
-        ChatCompletionRequest req = new ChatCompletionRequest();
-        req.setPrompt(prompt);
-        ChatClient client = getChatClient(req.getModelConfig());
-        List<Message> messages = toMessages(req);
-        OpenAiChatOptions options = buildOptions(req.getModelConfig());
-        return client.prompt()
-                .messages(messages)
-                .options(options)
-                .stream()
-                .content()
-                .filter(text -> text != null && !text.isEmpty());
-    }
-
-    /**
-     * 流式输出：基于系统提示 + 历史消息 + 用户消息（多轮对话）
-     */
-    public Flux<String> streamWithMessages(String systemPrompt, List<Map<String, String>> history, String userMessage) {
-        ensureEnabled();
-        ChatCompletionRequest req = new ChatCompletionRequest();
-        req.setSystemPrompt(systemPrompt);
-        List<ChatCompletionRequest.ChatMessage> chatMessages = new ArrayList<>();
-        if (history != null) {
-            for (Map<String, String> h : history) {
-                ChatCompletionRequest.ChatMessage m = new ChatCompletionRequest.ChatMessage();
-                m.setRole(h.getOrDefault("role", "user"));
-                m.setContent(h.getOrDefault("content", ""));
-                chatMessages.add(m);
+    private void appendUserMessage(List<ChatCompletionRequest.ChatMessage> chatMessages, String userMessage) {
+        if (!chatMessages.isEmpty()) {
+            ChatCompletionRequest.ChatMessage last = chatMessages.get(chatMessages.size() - 1);
+            if ("user".equalsIgnoreCase(last.getRole())
+                    && userMessage != null
+                    && userMessage.equals(last.getContent())) {
+                return;
             }
         }
         ChatCompletionRequest.ChatMessage last = new ChatCompletionRequest.ChatMessage();
         last.setRole("user");
         last.setContent(userMessage);
         chatMessages.add(last);
-        req.setMessages(chatMessages);
-
-        ChatClient client = getChatClient(req.getModelConfig());
-        List<Message> messages = toMessages(req);
-        OpenAiChatOptions options = buildOptions(req.getModelConfig());
-        return client.prompt()
-                .messages(messages)
-                .options(options)
-                .stream()
-                .content()
-                .filter(text -> text != null && !text.isEmpty());
     }
 
     public Flux<Map<String, Object>> streamEvents(ChatCompletionRequest request) {
         ensureEnabled();
+        Map<String, Object> effectiveConfig = getEffectiveConfig(request.getModelConfig());
+        boolean streamEnabled = parseBoolean(effectiveConfig.get("stream_enabled"));
+
+        // 模型配置关闭流式时，退化为一次性非流式调用，规避不支持 SSE 的中转网关报错
+        if (!streamEnabled) {
+            return Flux.concat(
+                    Flux.just(event("text_start", null)),
+                    Flux.fromIterable(nonStreamText(request)),
+                    Flux.just(event("text_end", null), doneEvent())
+            ).onErrorResume(ex -> Flux.just(
+                    event("text_start", null),
+                    event("text", "LLM 调用失败: " + ex.getMessage()),
+                    event("text_end", null),
+                    doneEvent()
+            ));
+        }
+
         ChatClient client = getChatClient(request.getModelConfig());
         List<Message> messages = toMessages(request);
         OpenAiChatOptions options = buildOptions(request.getModelConfig());
@@ -178,6 +193,19 @@ public class LlmService {
                 ));
     }
 
+    /** 非流式调用：将完整结果拆分为单个 text 事件。 */
+    private List<Map<String, Object>> nonStreamText(ChatCompletionRequest request) {
+        Map<String, Object> body = complete(request);
+        Object content = body.get("content");
+        String text = content == null ? "" : String.valueOf(content);
+        if (text.isEmpty()) {
+            text = "LLM 未返回内容";
+        }
+        List<Map<String, Object>> events = new ArrayList<>();
+        events.add(event("text", text));
+        return events;
+    }
+
     private ChatClient getChatClient(Map<String, Object> modelConfig) {
         Map<String, Object> effectiveConfig = getEffectiveConfig(modelConfig);
 
@@ -187,22 +215,53 @@ public class LlmService {
                 System.getenv().getOrDefault("LLM_API_KEY", "sk-placeholder"));
         Boolean isFullUrl = effectiveConfig != null && parseBoolean(effectiveConfig.get("is_full_url"));
 
+        // 鉴权方式：bearer（默认，Authorization: Bearer）| custom（auth_header 指定请求头，如网关要求的 token）。
+        String authType = getStringFromConfig(effectiveConfig, "auth_type", "authType", "bearer");
+        String authHeaderName = getStringFromConfig(effectiveConfig, "auth_header", "authHeader", "");
+        boolean customAuth = "custom".equalsIgnoreCase(authType);
+
         String normalizedBaseUrl = normalizeBaseUrl(baseUrl, isFullUrl);
 
-        String cacheKey = normalizedBaseUrl + "|" + apiKey;
+        String cacheKey = normalizedBaseUrl + "|" + apiKey + "|" + authType + "|" + authHeaderName;
         return clientCache.computeIfAbsent(cacheKey, key -> {
             SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
             requestFactory.setConnectTimeout(30_000);
             requestFactory.setReadTimeout(120_000);
 
             RestClient.Builder restClientBuilder = RestClient.builder()
-                    .requestFactory(requestFactory);
+                    .requestFactory(requestFactory)
+                    .requestInterceptor(new ClientHttpRequestInterceptor() {
+                        @Override
+                        public ClientHttpResponse intercept(HttpRequest request, byte[] body,
+                                                            ClientHttpRequestExecution execution) throws java.io.IOException {
+                            String auth = request.getHeaders().getFirst("Authorization");
+                            String masked = auth == null ? "<none>" : (auth.length() > 12
+                                    ? auth.substring(0, 10) + "..." + auth.substring(auth.length() - 4) : "<hidden>");
+                            String modelTag = extractModel(body);
+                            log.info("[LlmService] 出站LLM请求 url={} auth={} model={} bodyLen={}",
+                                    request.getURI(), masked, modelTag, body == null ? 0 : body.length);
+                            ClientHttpResponse resp = execution.execute(request, body);
+                            log.info("[LlmService] 出站LLM响应 status={} url={}",
+                                    resp.getStatusCode(), request.getURI());
+                            return resp;
+                        }
+                    });
 
-            OpenAiApi api = OpenAiApi.builder()
+            OpenAiApi.Builder apiBuilder = OpenAiApi.builder()
                     .baseUrl(normalizedBaseUrl)
-                    .apiKey(apiKey)
-                    .restClientBuilder(restClientBuilder)
-                    .build();
+                    .restClientBuilder(restClientBuilder);
+
+            if (customAuth) {
+                // 自定义检定头：通过 RestClient 默认头发送 token 等，且不附带 Bearer。
+                if (StringUtils.hasText(authHeaderName)) {
+                    restClientBuilder.defaultHeader(authHeaderName, apiKey);
+                }
+                apiBuilder.apiKey("");
+            } else {
+                apiBuilder.apiKey(apiKey);
+            }
+
+            OpenAiApi api = apiBuilder.build();
             org.springframework.ai.openai.OpenAiChatModel model = org.springframework.ai.openai.OpenAiChatModel.builder()
                     .openAiApi(api)
                     .build();
@@ -211,8 +270,14 @@ public class LlmService {
     }
 
     private String normalizeBaseUrl(String baseUrl, boolean isFullUrl) {
+        baseUrl = baseUrl == null ? "" : baseUrl;
         baseUrl = baseUrl.replaceAll("/v1/chat/completions$", "");
         baseUrl = baseUrl.replaceAll("/v1/completions$", "");
+        // Spring AI 的 OpenAI 兼容客户端会在 baseUrl 之后自动拼接 /v1/chat/completions，
+        // 因此这里去掉末尾 /v1，避免生成 …/v1/v1/chat/completions 这类重复路径。
+        if (!isFullUrl) {
+            baseUrl = baseUrl.replaceAll("/v1$", "");
+        }
         if (!baseUrl.endsWith("/")) {
             baseUrl = baseUrl + "/";
         }
@@ -226,32 +291,43 @@ public class LlmService {
             effective.putAll(modelConfig);
         }
 
-        String apiKey = getStringFromConfig(effective, "api_key", "apiKey", null);
-        String baseUrl = getStringFromConfig(effective, "base_url", "baseUrl", null);
+        ProdAiProperties.Llm llm = properties.getLlm();
 
-        if ((apiKey == null || apiKey.isBlank()) || (baseUrl == null || baseUrl.isBlank())) {
-            Optional<LlmUserConfig> activeDbConfig = configService.getActiveConfig();
-            if (activeDbConfig.isPresent()) {
-                LlmUserConfig config = activeDbConfig.get();
-                if (apiKey == null || apiKey.isBlank()) {
-                    effective.put("api_key", config.getApiKey());
-                }
-                if (baseUrl == null || baseUrl.isBlank()) {
-                    effective.put("base_url", config.getBaseUrl());
-                }
-                if (!effective.containsKey("model")) {
-                    effective.put("model", config.getModel());
-                }
-                if (!effective.containsKey("is_full_url")) {
-                    effective.put("is_full_url", config.getIsFullUrl());
-                }
-                if (!effective.containsKey("temperature")) {
-                    effective.put("temperature", config.getTemperature());
-                }
-                if (!effective.containsKey("max_tokens")) {
-                    effective.put("max_tokens", config.getMaxTokens());
-                }
-            }
+        // 从配置文件填充缺失的连接/模型参数（显式传入的 modelConfig 优先）
+        if (!effective.containsKey("api_key") || effective.get("api_key") == null
+                || String.valueOf(effective.get("api_key")).isBlank()) {
+            effective.put("api_key", llm.getApiKey());
+        }
+        if (!effective.containsKey("base_url") || effective.get("base_url") == null
+                || String.valueOf(effective.get("base_url")).isBlank()) {
+            effective.put("base_url", llm.getBaseUrl());
+        }
+        if (!effective.containsKey("model")) {
+            effective.put("model", llm.getModel());
+        }
+        if (!effective.containsKey("is_full_url")) {
+            effective.put("is_full_url", llm.isFullUrl());
+        }
+        if (!effective.containsKey("temperature")) {
+            effective.put("temperature", llm.getTemperature());
+        }
+        if (!effective.containsKey("max_tokens")) {
+            effective.put("max_tokens", llm.getMaxTokens());
+        }
+        if (!effective.containsKey("max_completion_tokens") && llm.getMaxCompletionTokens() != null) {
+            effective.put("max_completion_tokens", llm.getMaxCompletionTokens());
+        }
+        if (!effective.containsKey("thinking")) {
+            effective.put("thinking", llm.isThinking());
+        }
+        if (!effective.containsKey("stream_enabled")) {
+            effective.put("stream_enabled", llm.isStreamEnabled());
+        }
+        if (!effective.containsKey("auth_type")) {
+            effective.put("auth_type", llm.getAuthType());
+        }
+        if (!effective.containsKey("auth_header")) {
+            effective.put("auth_header", llm.getAuthHeader());
         }
 
         return effective;
@@ -283,10 +359,53 @@ public class LlmService {
             temperature = getDoubleFromConfig(effectiveConfig, "temperature", 0.5);
         }
 
+        // 输出 token 预算：路由配置 > 用户配置 > 默认值
+        Integer maxTokens = getIntFromConfig(routedConfig, "max_tokens", null);
+        if (maxTokens == null) {
+            maxTokens = getIntFromConfig(effectiveConfig, "max_tokens", null);
+        }
+        Integer maxCompletionTokens = getIntFromConfig(routedConfig, "max_completion_tokens", null);
+        if (maxCompletionTokens == null) {
+            maxCompletionTokens = getIntFromConfig(effectiveConfig, "max_completion_tokens", null);
+        }
+
         OpenAiChatOptions options = new OpenAiChatOptions();
         options.setModel(model);
         options.setTemperature(temperature);
+
+        // 是否推理模型：优先由模型配置的 thinking 开关决定（custom/自定义模型由用户配置），
+        // 否则回退到模型名匹配（deepseek-reasoner 类）。推理模型必须用 max_completion_tokens，
+        // 否则非流式调用会返回空 choices。
+        boolean reasoning = isReasoningModel(model, effectiveConfig);
+        if (reasoning) {
+            int limit = maxCompletionTokens != null ? maxCompletionTokens
+                    : (maxTokens != null ? maxTokens : DEFAULT_MAX_TOKENS);
+            options.setMaxCompletionTokens(limit);
+        } else {
+            options.setMaxTokens(maxTokens != null ? maxTokens : DEFAULT_MAX_TOKENS);
+        }
         return options;
+    }
+
+    /**
+     * 推理模型判断：优先参考模型配置 {@code thinking} 开关（向 custom 等自定义模型开放，由用户配置驱动），
+     * 其次回退到模型名匹配（deepseek-reasoner 类）。输出前需要单独推理 token 配额（max_completion_tokens）。
+     */
+    private boolean isReasoningModel(String model, Map<String, Object> effectiveConfig) {
+        if (effectiveConfig != null && effectiveConfig.containsKey("thinking")) {
+            Object thinking = effectiveConfig.get("thinking");
+            if (thinking instanceof Boolean) {
+                return (Boolean) thinking;
+            }
+            if (thinking != null) {
+                return Boolean.parseBoolean(String.valueOf(thinking));
+            }
+        }
+        if (model == null) {
+            return false;
+        }
+        String m = model.toLowerCase(Locale.ROOT);
+        return m.contains("reasoner") || m.contains("thinking");
     }
 
     private String getStringFromConfig(Map<String, Object> config, String keySnake, String keyCamel, String defaultValue) {
@@ -313,6 +432,46 @@ public class LlmService {
         return Boolean.parseBoolean(String.valueOf(value).trim().toLowerCase());
     }
 
+    /**
+     * 判定是否为网关瞬时 403 权限错误（「当前租户已禁止该客户端访问」类）。
+     * 该错误在 API Key/模型合法且本机直接调用成功时仍会偶发出现，属于网关瞬时状态，
+     * 需做有限重试；其余 4xx/5xx 不做透明重试。
+     */
+    private boolean isTransientPermissionError(Exception e) {
+        String msg = e == null ? "" : String.valueOf(e.getMessage());
+        return msg.contains("403") && (msg.contains("permission_error") || msg.contains("当前租户已禁止"));
+    }
+
+    private void sleepQuietly(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private String extractModel(byte[] body) {
+        if (body == null || body.length == 0) {
+            return "<empty>";
+        }
+        try {
+            String json = new String(body, java.nio.charset.StandardCharsets.UTF_8);
+            int idx = json.indexOf("\"model\"");
+            if (idx < 0) {
+                return "<no-model-field>";
+            }
+            int colon = json.indexOf(':', idx);
+            int q1 = json.indexOf('"', colon);
+            int q2 = json.indexOf('"', q1 + 1);
+            if (q1 >= 0 && q2 > q1) {
+                return json.substring(q1 + 1, q2);
+            }
+            return "<unparsed>";
+        } catch (Exception e) {
+            return "<parse-error>";
+        }
+    }
+
     private Double getDoubleFromConfig(Map<String, Object> config, String key, Double defaultValue) {
         if (config == null) {
             return defaultValue;
@@ -326,6 +485,24 @@ public class LlmService {
         }
         try {
             return Double.parseDouble(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
+
+    private Integer getIntFromConfig(Map<String, Object> config, String key, Integer defaultValue) {
+        if (config == null) {
+            return defaultValue;
+        }
+        Object value = config.get(key);
+        if (value == null) {
+            return defaultValue;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value).trim());
         } catch (NumberFormatException e) {
             return defaultValue;
         }

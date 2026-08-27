@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 产品配置 / 产商品本体 状态管理
  * 对接后端 product-ontology 推理 API，兼容 DynamicForm formCard
  */
@@ -85,6 +85,53 @@ export function useProductConfig() {
   const boundUserId = ref('anonymous')
   const compareResult = ref(null)
   const showComparePanel = ref(false)
+
+  /** 可逆操作与执行态（v3.2）：
+   * undoStack: [{ id, kind, label, ts, revert }] 已执行、可回退的动作栈
+   * actionStates: product.id (或 actId) -> 'suggested'|'executing'|'executed'|'failed'|'reverted'
+   */
+  const undoStack = ref([])
+  const actionStates = reactive({})
+
+  function setActionState(key, state) {
+    if (key == null) return
+    actionStates[key] = state
+  }
+
+  /** 登记一个可回退动作，返回 actionId；revert 为回退回调（应可幂等） */
+  function trackUndoable({ kind, label, key, revert }) {
+    const id = 'act_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6)
+    undoStack.value = [
+      { id, kind, label, key, ts: Date.now(), revert: typeof revert === 'function' ? revert : null },
+      ...undoStack.value,
+    ]
+    if (key != null) setActionState(key, 'executed')
+    return id
+  }
+
+  /** 撤销最近一个或指定动作；成功返回 { success, label } */
+  async function undoAction(actionId = null) {
+    const entry = actionId
+      ? undoStack.value.find((a) => a.id === actionId)
+      : undoStack.value[0]
+    if (!entry) return { success: false, message: '当前没有可撤销的动作' }
+    if (typeof entry.revert !== 'function') {
+      return { success: false, message: '该动作暂不支持撤销' }
+    }
+    undoStack.value = undoStack.value.filter((a) => a.id !== entry.id)
+    try {
+      await entry.revert()
+      if (entry.key != null) setActionState(entry.key, 'reverted')
+      return { success: true, id: entry.id, label: entry.label }
+    } catch (e) {
+      undoStack.value = [entry, ...undoStack.value]
+      return { success: false, message: e.message || e, id: entry.id }
+    }
+  }
+
+  function clearUndoStack() {
+    undoStack.value = []
+  }
 
   const currentProduct = computed(() =>
     products.value.find((p) => p.id === currentProductId.value) ?? null,
@@ -187,7 +234,22 @@ export function useProductConfig() {
     product.offeringId = resp.offeringId
     product.workOrderId = resp.workOrder?.workOrderId || resp.workOrder?.work_order_id
     lastConfigTraceId.value = resp.trace_id || lastConfigTraceId.value
-    return resp
+    // 可逆操作：登记「入库/备案」动作，撤销时回退为草稿（仅供对话内本地回退，不破坏在架数据）
+    const snapshotId = product.id
+    const actionId = trackUndoable({
+      kind: 'submit',
+      label: `撤销入库 · ${product.name}`,
+      key: snapshotId,
+      revert: () => {
+        const p = products.value.find((x) => x.id === snapshotId)
+        if (!p) return
+        setActionState(snapshotId, 'reverted')
+        p.status = 'draft'
+        p.auditStatus = 'pending'
+        p.compliancePass = false
+      },
+    })
+    return { ...resp, actionId }
   }
 
   async function runCompareSchemes(text = '') {
@@ -335,7 +397,7 @@ export function useProductConfig() {
       )
     }
     return (
-      '好的，进入**智聊·对话配置**。右侧已打开空白配置画布与合规面板。\n\n' +
+      '好的，进入**智聊·对话配置**。配置表单会以卡片内联在消息流中，可直接编辑并一键合规。\n\n' +
       '金句：大模型听懂人话，**本体负责填对字段、拦住冲突**。\n\n' +
       '示例：\n' +
       '- 「给家庭用户做一个融合套餐，月费158，带500M宽带，全渠道销售」\n' +
@@ -495,7 +557,7 @@ export function useProductConfig() {
         ],
         content:
           `已将「${result.source_offering_name || offeringId}」复制为新草稿（标注基于源方案复制），` +
-          `右侧打开配置画布。${passLabel}。\n\n审计 trace：\`${result.trace_id || '-'}\`${diffHint}\n\n` +
+          `配置表单已内联在消息中。${passLabel}。\n\n审计 trace：\`${result.trace_id || '-'}\`${diffHint}\n\n` +
           `规则说明：配置侧 Java R-C*（方案别名 R-CONF-001→R-C09，R-CONF-002→R-C03）。`,
         formCard,
         traceId: result.trace_id,
@@ -743,6 +805,7 @@ export function useProductConfig() {
           '请直接粘贴方案中的套餐段落（含名称、月费、流量/语音、客群、渠道等），或上传完整方案文档。',
         formCard: null,
         batch,
+        fileRef: { fileName, fileSize, counts: { passed: 0, pending: 0, confirmable: 0 } },
         showBatchPanel: false,
       }
     }
@@ -839,10 +902,12 @@ export function useProductConfig() {
       content,
       formCard,
       batch,
+      fileRef: { fileName, fileSize, counts: { passed: batch.passedCount, pending: batch.pendingCount, confirmable: confirmable.length } },
       showBatchPanel: true,
       nextSteps: [
         ...(batch.pendingCount > 0 ? ['修正待修正项后重跑合规'] : []),
         ...(confirmable.length ? ['确认通过项入库'] : ['完善方案字段后重新智读']),
+        '基于这份文件继续分析',
       ],
     }
   }
@@ -1031,7 +1096,7 @@ export function useProductConfig() {
 
       const nextSteps = []
       if (!result.compliancePass && result.source === 'draft') {
-        nextSteps.push('在右侧画布修正字段后再次校验')
+        nextSteps.push('在内联表单修正字段后再次校验')
         if (high.some((i) => i.ruleId === 'R-C03')) nextSteps.push('那不加128了，就单独上158')
       }
       if (result.compliancePass && result.source === 'draft') {
@@ -1301,7 +1366,7 @@ export function useProductConfig() {
         lines.push('如需解除互斥，可回复：那不加128了，就单独上158')
       }
     } else if (result.compliancePass) {
-      lines.push('✅ 合规通过（R-C08）。右侧画布已同步，可点击顶部「智能稽核」提交配置草稿。')
+      lines.push('✅ 合规通过（R-C08）。表单已内联同步，可核对后提交配置草稿。')
     }
 
     lines.push('复杂规则由本体判定，大模型不会把未通过说成可提交。')
@@ -1517,7 +1582,7 @@ export function useProductConfig() {
           `**异动结论**：${anomaly?.message || '—'}（${anomaly?.ruleId || '—'}）\n\n` +
           `**根因路径 Top${paths.length}**\n${pathLines}\n\n` +
           `**策略建议**\n${(result.actionList || []).map((a) => `- ${a}`).join('\n')}\n\n` +
-          '右侧已打开根因面板：可下钻路径、查看证据链，并一键生成优化工单草稿。',
+          '已展示归因路径与证据链，可一键生成优化工单草稿。',
         formCard: null,
         rootCauseResult: result,
         showRootCausePanel: true,
@@ -1569,7 +1634,7 @@ export function useProductConfig() {
           `### 运营监控告警\n\n` +
           `共 **${pack.total || alerts.length}** 条告警，其中高优先级约 **${high.length}** 条。\n\n` +
           `${lines || '（暂无告警）'}\n\n` +
-          '右侧已打开监控面板：选择告警后点击「智能归因」即可下钻。',
+          '已展示告警清单，可继续「智能归因」下钻根因。',
         showMonitorPanel: true,
         nextSteps: ['智能归因', '打开风险稽核', '刷新告警'],
       }
@@ -1684,7 +1749,7 @@ export function useProductConfig() {
           `扫描 **${result.scannedCount || 80}** 条 · 规则 **${result.ruleVersion || 'RiskRules-v1.2'}**\n\n` +
           `| 高风险 | 中风险 | 建议下架 |\n| --- | --- | --- |\n| **${result.highCount}** | **${result.mediumCount}** | **${result.suggestDelistCount}** |\n\n` +
           `${lines}\n` +
-          ((result.items || []).length > 8 ? `\n…共 ${result.total} 项，详见右侧清单\n` : '\n') +
+          ((result.items || []).length > 8 ? `\n…共 ${result.total} 项\n` : '\n') +
           (focus
             ? `\n**重点下钻 A**：\`${focus.offeringId}\` ${focus.offeringName} → ${focus.riskLevel}` +
               (focus.urgent ? '（紧急预警）' : '') +
@@ -1693,7 +1758,7 @@ export function useProductConfig() {
           (low
             ? `**重点下钻 B**：\`${low.offeringId}\` ${low.offeringName} → 在架 ${low.shelfDays} 天、销量 0\n`
             : '') +
-          '\n右侧可筛选「建议下架」、调整零销阈值并重新推理，支持导出 JSON 清单。',
+          '\n可要求「筛选建议下架」「调整零销阈值」并重新推理，也支持导出 JSON 清单。',
         formCard: null,
         riskAuditResult: result,
         showRiskAuditPanel: true,
@@ -1719,6 +1784,7 @@ export function useProductConfig() {
     }
     const lines = []
     const filed = []
+    const submittedIds = []
     for (const p of passed) {
       currentProductId.value = p.id
       syncFormFromProduct(p)
@@ -1742,6 +1808,7 @@ export function useProductConfig() {
         p.workOrderId = woId
         lastConfigTraceId.value = resp.trace_id || lastConfigTraceId.value
         filed.push(offeringId)
+        submittedIds.push(p.id)
         const bi = batchItems.value.findIndex((i) => i.productId === p.id)
         if (bi >= 0) {
           batchItems.value[bi] = {
@@ -1756,6 +1823,29 @@ export function useProductConfig() {
       }
     }
     showBatchPanel.value = true
+    // 可逆操作：登记「批量入库」，撤销时把本次成功项全部回退为草稿（本地回退）
+    let batchActionId = null
+    if (submittedIds.length) {
+      const batchKey = 'batch_' + Date.now()
+      batchActionId = trackUndoable({
+        kind: 'batch-submit',
+        label: `撤销入库 ${submittedIds.length} 条`,
+        key: batchKey,
+        revert: () => {
+          for (const id of submittedIds) {
+            const p = products.value.find((x) => x.id === id)
+            if (!p) continue
+            setActionState(p.id, 'reverted')
+            p.status = 'draft'
+            p.auditStatus = 'pending'
+            p.compliancePass = false
+            const bi = batchItems.value.findIndex((i) => i.productId === id)
+            if (bi >= 0) batchItems.value[bi] = { ...batchItems.value[bi], status: '通过' }
+          }
+          setActionState(batchKey, 'reverted')
+        },
+      })
+    }
     return {
       thinkingSteps: [
         '筛选 compliancePass=true 且未入库草稿',
@@ -1769,6 +1859,14 @@ export function useProductConfig() {
       formCard: null,
       nextSteps: lastConfigTraceId.value ? ['查看审计追溯'] : undefined,
       traceId: lastConfigTraceId.value,
+      _undoable: batchActionId
+        ? {
+            actionId: batchActionId,
+            state: 'executed',
+            label: `入库 ${submittedIds.length} 条`,
+            undoLabel: `撤销入库 ${submittedIds.length} 条`,
+          }
+        : null,
     }
   }
 
@@ -1794,14 +1892,30 @@ export function useProductConfig() {
     return newProduct
   }
 
-  function deleteProduct(id) {
+  function deleteProduct(id, { undoable = true } = {}) {
     const target = products.value.find((p) => p.id === id)
     if (target?.draftId) {
       deleteConfigDraft(target.draftId).catch((e) =>
         console.warn('[useProductConfig] delete draft failed:', e.message || e),
       )
     }
+    const snapshot = target ? JSON.parse(JSON.stringify(target)) : null
     products.value = products.value.filter((p) => p.id !== id)
+    if (undoable && snapshot) {
+      // 可逆操作：登记「删除草稿」，撤销即恢复该条草稿
+      const pid = snapshot.id
+      trackUndoable({
+        kind: 'delete',
+        label: `恢复草稿 · ${snapshot.name}`,
+        key: pid,
+        revert: () => {
+          if (!products.value.find((p) => p.id === pid)) {
+            products.value.push(JSON.parse(JSON.stringify(snapshot)))
+          }
+          setActionState(pid, 'reverted')
+        },
+      })
+    }
     if (currentProductId.value === id) {
       const first = products.value[0]
       currentProductId.value = first?.id ?? null
@@ -1983,6 +2097,8 @@ export function useProductConfig() {
     showConfigTracePanel.value = false
     compareResult.value = null
     showComparePanel.value = false
+    undoStack.value = []
+    Object.keys(actionStates).forEach((k) => delete actionStates[k])
     Object.assign(formData, createEmptyFormData())
   }
 
@@ -2020,6 +2136,12 @@ export function useProductConfig() {
     compareResult,
     showComparePanel,
     boundSessionId,
+    undoStack,
+    actionStates,
+    setActionState,
+    trackUndoable,
+    undoAction,
+    clearUndoStack,
     getSkillGuideMessage,
     detectScenario,
     setSessionContext,

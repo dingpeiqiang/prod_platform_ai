@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { sendMessageWithModel, loadMessages as apiLoadMessages, getSessions } from '../services/chatApi.js'
+import { sendAgentStream, loadMessages as apiLoadMessages, getSessions } from '../services/chatApi.js'
 import { getEventHandler, getPostProcessor } from './useIntentRegistry.js'
 import {
   attachRootCauseOntology,
@@ -39,8 +39,7 @@ function resolveElapsedSeconds(prev, next) {
   return Math.round(sec * 1000) / 1000
 }
 
-function mergeReasoningStep(steps, value) {
-  const normalized = normalizeThinkingStep(value)
+function mergeReasoningStep(steps, value) {  const normalized = normalizeThinkingStep(value)
   const list = [...(steps || [])]
   const meta = normalized.metadata || {}
   const isWaiting = meta.phase === 'waiting_llm' || normalized._waiting
@@ -170,19 +169,114 @@ export function useChatStream() {
     })
   }
 
+  /** 意图类型 → 执行态（v3.2）：分析/扫描类意图完成后即「已执行」；后端可经 actionState 覆盖 */
+  const defaultActionState = (type) => {
+    if (['product_ops_policy', 'product_ops_reason', 'product_ops_monitor', 'product_ops_compare', 'product_ops_query'].includes(type)) {
+      return 'executed'
+    }
+    return null
+  }
+
   const applyIntentEvent = (data) => {
     const type = data.intentType || data.type
     const handler = getEventHandler(type)
     const current = messages.value.find(m => m.role === 'assistant' && !m.done) || {}
     if (handler) handler(data, current)
-    const intentData = { ...(current.intentData || {}), ...(data.data || data) }
+    const intentData = {
+      ...(current.intentData || {}),
+      ...(data.data || data),
+      ...(data.actionState ? { actionState: data.actionState } : {}),
+    }
     upsertAssistantMessage({
       intentType: type,
       action: data.action || current.action || '',
       intentData,
+      // SSE intentData 透传 actionState（后端覆盖优先），否则按意图给默认执行态
+      actionState: data.actionState || defaultActionState(type) || current.actionState || null,
       stats: { ...(current.stats || {}), ...(data.stats || {}) },
       reasoning: enrichReasoningWithRootCause(current.reasoning, intentData),
     })
+  }
+
+  // ── 翻译层事件（/api/v1/agent/chat/stream）──────────────────
+
+  /** 工具名 → 业务展示名 */
+  const TOOL_LABELS = {
+    sparql_query: '知识库查询',
+    swrl_root_cause: '归因推理',
+    swrl_risk_audit: '风险稽核',
+    rule_explain: '规则解释',
+    ontology_explain: '本体解释',
+  }
+
+  /**
+   * 翻译层事件分流（真流式：后端边执行边推送，前端按到达顺序渐进渲染）：
+   * thinking（查询计划）→ tool（running/done）→ text* → done（澄清时 clarify）。
+   * tool 事件同时写入 msg.toolResults（ToolResultPanel）与思考时间线（running → done 原地收尾）。
+   */
+  const applyAgentEvent = async (eventName, data) => {
+    if (eventName === 'thinking') {
+      const intentType = data.intent || currentIntent()
+      const steps = data.steps || []
+      upsertAssistantMessage({
+        queryPlan: data.queryPlan || null,
+        intentType,
+        reasoningStep: {
+          type: 'thinking',
+          title: (steps[0] && steps[0].label) || '正在理解您的需求...',
+          content: data.intent ? `已确认业务意图：${data.intent}` : undefined,
+          metadata: data.queryPlan || {},
+          timestamp: Date.now(),
+        },
+      })
+    } else if (eventName === 'tool') {
+      const current = messages.value.find(m => m.role === 'assistant' && !m.done) || {}
+      const status = data.status === 'running' ? 'running' : (data.status === 'error' ? 'error' : 'done')
+      const list = [...(current.toolResults || [])]
+      const toolEntry = {
+        name: data.name || '',
+        displayName: TOOL_LABELS[data.name] || data.name || '',
+        status,
+        elapsed: data.durationMs != null ? data.durationMs / 1000 : undefined,
+        result: status === 'running' ? null : (data.summary || null),
+        error: data.errorMessage || null,
+        evidence: data.evidence || null,
+      }
+      const idx = list.findIndex(t => t.name === toolEntry.name)
+      if (idx >= 0) {
+        list[idx] = { ...list[idx], ...toolEntry }
+      } else {
+        list.push(toolEntry)
+      }
+      upsertAssistantMessage({ toolResults: list })
+      // 思考时间线同步推进：工具开始即出现（running），完成原地收尾（done/error + 耗时）
+      upsertAssistantMessage({
+        reasoningStep: {
+          id: `tool_${toolEntry.name}`,
+          type: 'tool',
+          title: toolEntry.displayName || toolEntry.name,
+          content: status === 'running' ? '正在调用工具...' : undefined,
+          result: status === 'done' ? (toolEntry.result || '执行完成') : (status === 'error' ? (toolEntry.error || '执行失败') : null),
+          status: status === 'running' ? 'running' : 'done',
+          elapsed: toolEntry.elapsed,
+          timestamp: Date.now(),
+        },
+      })
+    } else if (eventName === 'error') {
+      const errorMsg = data.errorMessage || data.error || '服务异常'
+      upsertAssistantMessage({
+        agentError: errorMsg,
+        done: true,
+        loading: false,
+        content: errorMsg,
+        streamText: errorMsg,
+      })
+    }
+  }
+
+  const currentIntent = () => {
+    const current = messages.value.find(m => m.role === 'assistant' && !m.done)
+    return current?.intentType || ''
   }
 
   // ── 会话管理 ──────────────────────────────────────
@@ -233,174 +327,6 @@ export function useChatStream() {
 
   // ── 消息发送 ──────────────────────────────────────
 
-  const sendMessage = async ({ text, scene = '', modelConfig = null, history = null, attachments = [] }) => {
-    const content = (text || '').trim()
-    if ((!content && !attachments?.length) || streaming.value) return
-    streaming.value = true
-    // 首条有效消息时再分配 sessionId，避免空会话进入历史
-    if (!sessionId.value) {
-      sessionId.value = genSessionId()
-    }
-    const displayAttachments = (attachments || []).map((a) => ({
-      type: a.type || 'file',
-      name: a.name || '附件',
-      size: a.size,
-      preview: a.preview || null,
-      url: a.url || null,
-      duration: a.duration,
-    }))
-    const userContent = content || `导入文档：${displayAttachments[0]?.name || '附件'}`
-    pushUserMessage(userContent, {
-      attachments: displayAttachments,
-    })
-    let streamText = ''
-
-    try {
-      const autoHistory = history != null ? history : messages.value.slice(-20).map(m => ({
-        role: m.role === 'assistant' ? 'assistant' : 'user',
-        content: m.streamText || m.content || '',
-      })).filter(m => String(m.content || '').trim())
-      const payload = [
-        ...autoHistory,
-        { role: 'user', content: userContent },
-      ]
-
-      upsertAssistantMessage({ loading: true, streamText: '' })
-
-      // 传 sessionId 给后端，让后端做持久化
-      const resp = await sendMessageWithModel(payload, {
-        modelConfig,
-        scene,
-        sessionId: sessionId.value,
-      })
-      abortRef.value = resp?.abortCtrl || null
-      const reader = resp.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const frames = buffer.split('\n\n')
-        buffer = frames.pop()
-
-        for (const frame of frames) {
-          if (!frame.startsWith('data:')) continue
-          try {
-            const data = JSON.parse(frame.slice(5).trim())
-            if (data.type === 'session' && data.sessionId) {
-              sessionId.value = data.sessionId
-            } else if (data.type === 'thinking') {
-              upsertAssistantMessage({
-                reasoningStep: {
-                  type: data.stepType || 'thinking',
-                  id: data.id || data.metadata?.scheduleId || undefined,
-                  title: data.title || undefined,
-                  stepType: data.stepType || undefined,
-                  content: data.content,
-                  metadata: data.metadata || {},
-                  elapsed: data.elapsed != null ? data.elapsed : null,
-                  details: data.details || null,
-                  result: data.result || null,
-                  ontologyChain: data.ontologyChain || null,
-                  ontologyPreview: data.ontologyPreview || null,
-                  timestamp: Date.now(),
-                },
-              })
-            } else if (data.type === 'text') {
-              streamText += data.content || ''
-              upsertAssistantMessage({ streamText, content: streamText, loading: false })
-            } else if (data.type === 'stats') {
-              upsertAssistantMessage({ stats: data })
-            } else if (data.type === 'done') {
-              const current = messages.value.find(m => m.role === 'assistant' && !m.done) || {}
-              // done 事件的 intentType 来自后端 Handler，优先级最高
-              const doneIntent = data.intentType
-                || (data.intentData && data.intentData.intentType)
-                || current.intentType
-                || ''
-              const doneAction = (data.intentData && data.intentData.action) || data.action || current.action || ''
-              const doneStats = {
-                ...(current.stats || {}),
-                ...((data.intentData && data.intentData.stats) || {}),
-                ...(data.stats || {}),
-              }
-              const doneIntentData = {
-                ...(current.intentData || {}),
-                ...(data.intentData || {}),
-              }
-              if (data.sessionId) {
-                sessionId.value = data.sessionId
-              }
-              const finalText = streamText || current.streamText || current.content || ''
-              upsertAssistantMessage({
-                done: true,
-                loading: false,
-                streamText: finalText,
-                content: finalText,
-                reasoning: enrichReasoningWithRootCause(
-                  finalizeReasoningList(current.reasoning || []),
-                  doneIntentData,
-                ),
-                intentType: doneIntent,
-                action: doneAction,
-                stats: doneStats,
-                intentData: doneIntentData,
-                contentType: data.contentType || 'chat',
-                // 翻译层产物：理解层查询计划 + 执行层证据摘要
-                queryPlan: current.queryPlan || data.queryPlan || null,
-                evidence: current.evidence || data.evidence || null,
-              })
-            } else if (data.type === 'query_plan') {
-              // 翻译层理解产物：查询计划（中间语言）
-              upsertAssistantMessage({ queryPlan: data.queryPlan || null })
-            } else if (data.type === 'intent') {
-              applyIntentEvent(data)
-            } else if (data.type === 'product_ops_query' || data.type === 'product_ops_policy' || data.type === 'product_ops_reason' || data.type === 'product_ops_compare') {
-              applyIntentEvent({ ...data, intentType: data.type })
-            }
-          } catch (err) {
-            console.warn('[useChatStream] SSE frame parse error:', err)
-          }
-        }
-      }
-
-      const finalMsg = messages.value.find(m => m.role === 'assistant' && m.done)
-        || messages.value.find(m => m.role === 'assistant' && !m.done)
-        || messages.value[messages.value.length - 1]
-      if (finalMsg) {
-        const post = getPostProcessor(finalMsg.intentType)
-        if (post) post(finalMsg, finalMsg)
-      }
-
-      if (!messages.value.some(m => m.role === 'assistant' && m.done)) {
-        upsertAssistantMessage({
-          done: true,
-          loading: false,
-          content: streamText,
-          streamText,
-          reasoning: finalizeReasoningList(
-            (messages.value.find(m => m.role === 'assistant' && !m.done) || {}).reasoning || [],
-          ),
-        })
-      }
-      // 首条消息落库后刷新侧边栏，空会话不会出现在列表
-      await loadSessions()
-    } catch (e) {
-      console.warn('[useChatStream] sendMessage error:', e)
-      upsertAssistantMessage({
-        done: true,
-        loading: false,
-        content: streamText || '处理过程中出现异常，请稍后重试。',
-        streamText: streamText || '处理过程中出现异常，请稍后重试。',
-      })
-    } finally {
-      streaming.value = false
-      abortRef.value = null
-    }
-  }
-
   const stop = () => {
     if (abortRef.value && typeof abortRef.value.abort === 'function') {
       abortRef.value.abort()
@@ -421,12 +347,132 @@ export function useChatStream() {
     }
   }
 
+  // ── 翻译层消息发送（三阶架构：理解 → 执行 → 表达）──────────────
+
+  /**
+   * 通过翻译层统一入口发送消息（POST /api/v1/agent/chat/stream）。
+   * <p>
+   * 事件序列：thinking（查询计划）→ tool（工具卡片）→ text*（正文）→ done（结构化结果）。
+   * CLARIFY 澄清分支：done 事件携带 clarify 参数列表，正文为追问文案。
+   */
+  const sendAgentMessage = async ({ text, sessionId: explicitSessionId = '', params = {} } = {}) => {
+    const content = (text || '').trim()
+    if (!content || streaming.value) return
+    streaming.value = true
+    if (!sessionId.value) {
+      sessionId.value = explicitSessionId || genSessionId()
+    }
+    pushUserMessage(content)
+    let streamText = ''
+
+    try {
+      upsertAssistantMessage({ loading: true, streamText: '' })
+
+      const { response, abortCtrl } = await sendAgentStream(content, { sessionId: sessionId.value, params })
+      abortRef.value = abortCtrl
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const frames = buffer.split('\n\n')
+        buffer = frames.pop()
+
+        for (const frame of frames) {
+          const lines = frame.split('\n')
+          let eventName = ''
+          let dataPayload = ''
+          for (const line of lines) {
+            if (line.startsWith('event:')) {
+              eventName = line.slice(6).trim()
+            } else if (line.startsWith('data:')) {
+              dataPayload += line.slice(5).trim()
+            }
+          }
+          if (!eventName || !dataPayload) continue
+          try {
+            const data = JSON.parse(dataPayload)
+            if (eventName === 'text') {
+              streamText += data.chunk || ''
+              upsertAssistantMessage({ streamText, content: streamText, loading: false })
+            } else if (eventName === 'text_done' || eventName === 'done') {
+              const current = messages.value.find(m => m.role === 'assistant' && !m.done) || {}
+              if (eventName === 'text_done') continue
+              if (data.session_id || data.sessionId) {
+                sessionId.value = data.session_id || data.sessionId
+              }
+              const finalText = streamText || current.streamText || current.content || ''
+              const doneIntent = data.intent || current.intentType || ''
+              upsertAssistantMessage({
+                done: true,
+                loading: false,
+                streamText: finalText,
+                content: finalText,
+                intentType: doneIntent,
+                actionState: current.actionState || data.actionState || defaultActionState(doneIntent) || null,
+                // 澄清分支：待补充参数列表（前端据此展示追问上下文标签）
+                clarify: data.clarify || current.clarify || [],
+                queryPlan: current.queryPlan || null,
+                evidence: current.evidence || data.evidence || null,
+                toolResults: current.toolResults || [],
+                suggestedFollowUps: data.suggested_follow_ups || data.suggestedFollowUps || [],
+                reasoning: finalizeReasoningList(current.reasoning || []),
+              })
+              // 追问建议映射到 nextSteps 渲染
+              const doneMsg = messages.value.find(m => m.role === 'assistant' && m.done)
+              const followUps = data.suggested_follow_ups || []
+              if (doneMsg && followUps.length && !doneMsg.nextSteps?.length) {
+                upsertAssistantMessage({ nextSteps: followUps })
+              }
+            } else {
+              await applyAgentEvent(eventName, data)
+            }
+          } catch (err) {
+            console.warn('[useChatStream] agent SSE frame parse error:', err)
+          }
+        }
+      }
+
+      // 流意外结束但未收到 done：兜底收尾
+      const pending = messages.value.find(m => m.role === 'assistant' && !m.done)
+      if (pending) {
+        upsertAssistantMessage({
+          done: true,
+          loading: false,
+          content: streamText || pending.streamText || '',
+          streamText: streamText || pending.streamText || '',
+          reasoning: finalizeReasoningList(pending.reasoning || []),
+        })
+      }
+      await loadSessions()
+    } catch (e) {
+      if (e?.name === 'AbortError') {
+        streaming.value = false
+        abortRef.value = null
+        return
+      }
+      console.warn('[useChatStream] sendAgentMessage error:', e)
+      upsertAssistantMessage({
+        done: true,
+        loading: false,
+        content: streamText || '翻译层处理异常，请稍后重试。',
+        streamText: streamText || '翻译层处理异常，请稍后重试。',
+      })
+    } finally {
+      streaming.value = false
+      abortRef.value = null
+    }
+  }
+
   return {
     messages,
     streaming,
     sessionId,
     sessionList,
-    sendMessage,
+    sendAgentMessage,
     stop,
     loadSessions,
     switchSession,

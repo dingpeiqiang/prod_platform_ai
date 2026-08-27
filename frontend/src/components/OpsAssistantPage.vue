@@ -5,6 +5,8 @@
     v-model:inputText="inputText"
     :sessions="sessionList"
     :sessionsLoading="historyLoading"
+    :context="contextItems"
+    :summary-stats="summaryStats"
     @send="onSend"
     @stop="stop"
     @new-session="onNewSession"
@@ -13,6 +15,8 @@
     @shortcut="onShortcut"
     @quick-action="onQuickAction"
     @open-model-config="onOpenModelConfig"
+    @context-remove="onRemoveContextItem"
+    @context-clear="onClearContextItems"
   >
     <ChatMessageList
       mode="ops"
@@ -20,59 +24,22 @@
       :showWelcome="messages.length === 0"
       @suggest="onSuggest"
       @intent-action="onIntentAction"
+      @undo-action="onUndoAction"
+      @clarify-submit="onClarifySubmit"
     />
 
     <template #right>
-      <OpsRulesPanel
-        v-if="showRulesPanel"
-        :visible="showRulesPanel"
-        :catalog="opsRulesCatalog"
-        :loading="rulesLoading"
-        @close="closeRulesPanel"
-        @updated="onRulesUpdated"
-      />
-      <OpsMonitorPanel
-        v-else-if="showMonitorPanel"
-        :visible="showMonitorPanel"
-        :loading="monitorLoading"
-        :result="monitorResult"
-        :work-orders="monitorWorkOrders"
-        @close="closeMonitorPanel"
-        @refresh="onRefreshMonitor"
-        @analyze="onAnalyzeAlert"
-        @open-risk="onOpenRiskFromMonitor"
-        @work-orders-updated="onWorkOrdersUpdated"
-      />
-      <OpsRootCausePanel
-        v-else-if="showRootCausePanel && rootCauseResult"
-        :visible="showRootCausePanel"
-        :result="rootCauseResult"
-        :ontology-chain="rootCauseOntologyChain"
-        v-model:active-rank="activeRootCauseRank"
-        @close="closeRootCausePanel"
-        @create-work-order="onCreateWorkOrder"
-      />
-      <OpsRiskAuditPanel
-        v-else-if="showRiskAuditPanel && riskAuditResult"
-        :visible="showRiskAuditPanel"
-        :result="riskAuditResult"
-        @close="closeRiskAuditPanel"
-        @re-audit="onReAudit"
-        @create-work-order="onCreateRiskWorkOrder"
-      />
+      <SceneSummaryPanel mode="ops" :messages="messages" :product-config="productConfig" />
     </template>
   </AssistantShell>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, provide } from 'vue'
+import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
 import { useRouter } from 'vue-router'
 import AssistantShell from './AssistantShell.vue'
 import ChatMessageList from './ChatMessageList.vue'
-import OpsRootCausePanel from './OpsRootCausePanel.vue'
-import OpsRiskAuditPanel from './OpsRiskAuditPanel.vue'
-import OpsMonitorPanel from './OpsMonitorPanel.vue'
-import OpsRulesPanel from './OpsRulesPanel.vue'
+import SceneSummaryPanel from './SceneSummaryPanel.vue'
 import { useChatStream } from '../composables/useChatStream.js'
 import { useProductConfig } from '../composables/useProductConfig.js'
 import { registerPostProcessor } from '../composables/useIntentRegistry.js'
@@ -89,7 +56,7 @@ const onOpenModelConfig = () => router.push('/model-config')
 const {
   messages,
   streaming,
-  sendMessage,
+  sendAgentMessage,
   loadSessions,
   switchSession,
   newSession,
@@ -98,23 +65,100 @@ const {
 } = useChatStream()
 
 const productConfig = useProductConfig()
-const showRootCausePanel = productConfig.showRootCausePanel
-const showRiskAuditPanel = productConfig.showRiskAuditPanel
-const showMonitorPanel = productConfig.showMonitorPanel
-const showRulesPanel = productConfig.showRulesPanel
-const opsRulesCatalog = productConfig.opsRulesCatalog
-const rulesLoading = productConfig.rulesLoading
-const rootCauseResult = productConfig.rootCauseResult
-const riskAuditResult = productConfig.riskAuditResult
-const monitorResult = productConfig.monitorResult
-const monitorWorkOrders = productConfig.monitorWorkOrders
-const monitorLoading = productConfig.monitorLoading
-const rootCauseOntologyChain = productConfig.rootCauseOntologyChain
 const activeRootCauseRank = productConfig.activeRootCauseRank
 
 provide('rootCauseActiveRank', activeRootCauseRank)
 
 const config = assistantModes.ops
+
+/** 手动移除/清除的上下文键（避免自动派生又冒出来） */
+const dismissedContextKeys = ref(new Set())
+
+/** 会话上下文标签（ContextBar）：从最近一条助手消息的翻译层产物派生 */
+const contextItems = computed(() => {
+  const doneMsgs = messages.value.filter(m => m.role === 'assistant' && m.done)
+  const last = doneMsgs[doneMsgs.length - 1]
+  if (!last) return []
+  const items = []
+
+  const plan = last.queryPlan
+  if (plan) {
+    if (Array.isArray(plan.clarify) && plan.clarify.length) {
+      for (const p of plan.clarify) {
+        const key = `clarify:${p}`
+        if (!dismissedContextKeys.value.has(key)) {
+          items.push({ key, label: '待补充', value: paramLabelZh(p), type: 'intent', removable: true })
+        }
+      }
+    }
+    const params = plan.params || {}
+    if (params.offering) {
+      const key = 'entity:offering'
+      if (!dismissedContextKeys.value.has(key)) {
+        items.push({ key, label: '当前分析', value: String(params.offering), type: 'entity', removable: true })
+      }
+    }
+    if (plan.intent && plan.intent !== 'CHAT') {
+      const key = 'intent:plan'
+      if (!dismissedContextKeys.value.has(key)) {
+        items.push({ key, label: '业务意图', value: intentLabelZh(plan.intent), type: 'intent', removable: true })
+      }
+    }
+  }
+  return items
+})
+
+/** 移动端紧凑「会话汇总」状态条：关键计数实时聚合 */
+const summaryStats = computed(() => {
+  const mp = productConfig
+  const wo = mp.monitorWorkOrders?.value || []
+  const monitor = mp.monitorResult?.value
+  const risk = mp.riskAuditResult?.value
+  const analysis = messages.value.filter(
+    (m) => m?.role === 'assistant' && (m.intentType === 'product_ops_reason' || m._scenario === 'root-cause'),
+  ).length
+  return [
+    { label: '工单', value: `${wo.length}` },
+    { label: '告警', value: `${monitor?.total ?? 0}`, tone: (monitor?.highPriorityCount || 0) ? 'warn' : 'neutral' },
+    { label: '扫描', value: `${risk?.scannedCount ?? 0}` },
+    { label: '归因', value: `${analysis}` },
+  ]
+})
+
+function paramLabelZh(key) {
+  const map = {
+    offering: '商品/套餐',
+    ruleId: '规则编号',
+    concept: '本体概念',
+    question: '查询内容',
+  }
+  return map[key] || key
+}
+
+function intentLabelZh(intent) {
+  const map = {
+    SPARQL_QUERY: '数据查询',
+    SWRL_INFER: '异动归因',
+    RULE_EXPLAIN: '规则解释',
+    ONTOLOGY_EXPLAIN: '概念解释',
+    product_ops_query: '数据查询',
+    product_ops_reason: '异动归因',
+    product_ops_policy: '风险稽核',
+    product_ops_monitor: '运营监控',
+    product_ops_compare: '对比分析',
+  }
+  return map[intent] || intent
+}
+
+const onRemoveContextItem = (item) => {
+  if (item?.key) {
+    dismissedContextKeys.value = new Set([...dismissedContextKeys.value, item.key])
+  }
+}
+
+const onClearContextItems = () => {
+  dismissedContextKeys.value = new Set(contextItems.value.map(i => i.key))
+}
 
 /** 前端场景码 → 后端 ChatStream scene */
 function scenarioToScene(scenario, fallback = '') {
@@ -204,6 +248,26 @@ function downloadJson(filename, payload) {
   URL.revokeObjectURL(url)
 }
 
+/** 规则目录 → 对话内可读摘要（右侧面板移除后，目录以对话方式展示） */
+function buildRulesDialogueText(catalog = {}) {
+  const groups = catalog?.rules || catalog?.ruleGroups || catalog?.groups || []
+  if (Array.isArray(groups) && groups.length) {
+    return groups
+      .map((g) => {
+        const name = g.groupName || g.name || g.code || '规则组'
+        const entries = Array.isArray(g.rules) ? g.rules : []
+        return `- **${name}**：${entries.length ? entries.map((r) => r.code || r.ruleId || r.name || r).join('、') : '—'}`
+      })
+      .join('\n')
+  }
+  if (catalog?.ruleList) {
+    return catalog.ruleList
+      .map((r) => `- ${r.code || r.ruleId || r.name}：${r.desc || r.description || ''}`)
+      .join('\n')
+  }
+  return '当前无规则目录数据，可在对话中直接说明要查看或调整的规则。'
+}
+
 onMounted(async () => {
   registerPostProcessor('product_ops_reason', (msg) => openPanelsFromSseMessage(msg))
   registerPostProcessor('product_ops_policy', (msg) => openPanelsFromSseMessage(msg))
@@ -227,13 +291,12 @@ const onSend = async (payload) => {
   const text = (payload?.text || inputText.value || '').trim()
   if (!text || streaming.value) return
   inputText.value = ''
-
   const scene = payload?.scene || activeScene.value || config.defaultScene
 
   // 使用说明/勿执行：保留当前 scene 作软提示，禁止关键词强制改写为业务场景
   if (isGuideOnlyRequest(text)) {
     activeScene.value = scene
-    await sendMessage({ text, scene })
+    await sendAgentMessage({ text })
     return
   }
 
@@ -241,7 +304,8 @@ const onSend = async (payload) => {
 
   if (scenario === 'ops-rules') {
     activeScene.value = 'ops_rules'
-    await productConfig.openRulesPanel()
+    const catalog = await productConfig.openRulesPanel()
+    const rulesText = buildRulesDialogueText(catalog || productConfig.opsRulesCatalog.value)
     messages.value = [
       ...messages.value,
       {
@@ -257,7 +321,9 @@ const onSend = async (payload) => {
         role: 'assistant',
         type: 'chat',
         content:
-          '已打开右侧**规则运营**面板：可查看 R-A/B/C/D 目录、调整风险阈值覆盖、查看变更审计，或热重载 `ops_rules.json`。',
+          '已加载**规则运营**目录：\n\n' +
+          rulesText +
+          '\n\n需要调整风险阈值、查看变更审计或热重载 `ops_rules.json`，可直接用对话说明。',
         done: true,
         timestamp: Date.now(),
       },
@@ -267,7 +333,8 @@ const onSend = async (payload) => {
 
   const streamScene = scenarioToScene(scenario, scene)
   activeScene.value = streamScene
-  await sendMessage({ text, scene: streamScene })
+  // 统一走翻译层入口（三阶架构：理解→执行→表达），scene 由后端理解层自行判定
+  await sendAgentMessage({ text })
 }
 
 const onSuggest = (payload) => {
@@ -279,6 +346,12 @@ const onSuggest = (payload) => {
   const text = typeof payload === 'string' ? payload : payload?.text
   if (!text) return
   inputText.value = text
+}
+
+/** CLARIFY 澄清补参结构化回传：带 params 重发「继续」 */
+const onClarifySubmit = async ({ params }) => {
+  if (!params || streaming.value) return
+  await sendAgentMessage({ text: '继续', params })
 }
 
 /** 点击场景标签：本地展示欢迎信息（不请求模型） */
@@ -338,10 +411,6 @@ const onQuickAction = async (action) => {
 }
 
 const onSwitchSession = async (sessionId) => {
-  closeRootCausePanel()
-  closeRiskAuditPanel()
-  closeMonitorPanel()
-  closeRulesPanel()
   activeScene.value = config.defaultScene
   historyLoading.value = true
   try {
@@ -352,10 +421,6 @@ const onSwitchSession = async (sessionId) => {
 }
 
 const onNewSession = () => {
-  closeRootCausePanel()
-  closeRiskAuditPanel()
-  closeMonitorPanel()
-  closeRulesPanel()
   activeScene.value = config.defaultScene
   productConfig.resetState()
   newSession()
@@ -366,30 +431,26 @@ const onIntentAction = (event) => {
     onSuggest(event.payload.text)
     return
   }
+  if (event.action === 'create_work_order' && event.payload) {
+    onCreateWorkOrder(event.payload)
+    return
+  }
+  if (event.action === 'create_risk_work_order' && event.payload) {
+    onCreateRiskWorkOrder({ item: event.payload, ...event.payload })
+    return
+  }
+  if (event.action === 're_audit' && event.payload?.text) {
+    onReAudit(event.payload)
+    return
+  }
+  if (event.action === 'undo' && event.payload?.actionId) {
+    onUndoAction({ actionId: event.payload.actionId })
+    return
+  }
   if (event.action === 'export' && event.payload) {
     const name = `ops-${event.payload.intentType || 'export'}-${Date.now()}.json`
     downloadJson(name, event.payload)
   }
-}
-
-function closeRootCausePanel() {
-  showRootCausePanel.value = false
-}
-
-function closeRiskAuditPanel() {
-  showRiskAuditPanel.value = false
-}
-
-function closeMonitorPanel() {
-  showMonitorPanel.value = false
-}
-
-function closeRulesPanel() {
-  showRulesPanel.value = false
-}
-
-function onRulesUpdated(catalog) {
-  productConfig.applyRulesCatalog(catalog)
 }
 
 async function onCreateWorkOrder(wo) {
@@ -417,6 +478,7 @@ async function onCreateWorkOrder(wo) {
           '工单状态已回写本体（dispositionStatus=work_order_open）。',
         done: true,
         timestamp: Date.now(),
+        undoable: { state: 'executed', label: `生成工单 · ${title}`, actionId: null },
       },
     ]
   } catch (e) {
@@ -461,6 +523,11 @@ async function onCreateRiskWorkOrder(payload) {
           `${(saved?.actions || []).map((a) => `- ${a}`).join('\n')}`,
         done: true,
         timestamp: Date.now(),
+        undoable: {
+          state: 'executed',
+          label: `生成工单 · ${saved?.title || item.offeringName || ''}`,
+          actionId: null,
+        },
       },
     ]
   } catch (e) {
@@ -479,34 +546,35 @@ async function onCreateRiskWorkOrder(payload) {
 }
 
 async function onReAudit(payload) {
-  activeScene.value = 'risk_audit'
-  const text = payload?.question || '按最新阈值重新稽核在架风险商品'
-  await sendMessage({ text, scene: 'risk_audit' })
-}
-
-async function onRefreshMonitor() {
-  monitorLoading.value = true
-  try {
-    await productConfig.runOpsMonitorFlow({ silent: true })
-  } finally {
-    monitorLoading.value = false
+  const text = payload?.text || payload?.question || '按最新阈值重新稽核在架风险商品'
+  if (/监控|告警/.test(text)) {
+    activeScene.value = 'ops_monitor'
+  } else {
+    activeScene.value = 'risk_audit'
   }
+  await sendAgentMessage({ text })
 }
 
-async function onAnalyzeAlert(alert) {
-  const text = alert?.actionText || `分析${alert?.offeringName || ''}本月收入下滑原因`
-  activeScene.value = 'root_cause'
-  await sendMessage({ text, scene: 'root_cause' })
-}
-
-async function onOpenRiskFromMonitor() {
-  activeScene.value = 'risk_audit'
-  await sendMessage({ text: '筛查所有在架的0元资费风险商品', scene: 'risk_audit' })
-}
-
-function onWorkOrdersUpdated(list) {
-  if (Array.isArray(list)) {
-    productConfig.monitorWorkOrders.value = list
+/** 对话内撤销已执行动作（v3.2 可逆操作） */
+const onUndoAction = async ({ msg, actionId }) => {
+  if (streaming.value || !actionId) return
+  const result = await productConfig.undoAction(actionId)
+  if (msg?.undoable) {
+    msg.undoable.state = result.success ? 'reverted' : 'failed'
+    if (result.success) msg.undoable.actionId = null
   }
+  messages.value = [
+    ...messages.value,
+    {
+      id: genId(),
+      role: 'assistant',
+      type: 'chat',
+      content: result.success
+        ? `已撤销：**${result.label}**。相关草稿/状态已回退。`
+        : `撤销失败：${result.message || '请稍后重试'}。`,
+      done: true,
+      timestamp: Date.now(),
+    },
+  ]
 }
 </script>

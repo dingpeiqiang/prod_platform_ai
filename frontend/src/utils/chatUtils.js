@@ -1,3 +1,5 @@
+import { marked } from 'marked'
+
 export const genId = () => `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 
 export const stepIcon = (type) => {
@@ -56,8 +58,8 @@ export const renderMarkdown = (text) => {
   if (!text) return ''
   try {
     // 尝试使用 marked 库
-    if (window.marked && typeof window.marked.parse === 'function') {
-      let html = window.marked.parse(text)
+    if (typeof marked.parse === 'function') {
+      let html = marked.parse(text)
       html = html.replace(/<script[^>]*>.*?<\/script>/gi, '')
       html = html.replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')
       return html

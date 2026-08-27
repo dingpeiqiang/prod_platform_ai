@@ -34,6 +34,18 @@ public class SwrlRiskAuditTool implements AgentTool {
     }
 
     @Override
+    public List<ToolParam> getParams() {
+        return List.of(
+                ToolParam.builder("offeringIds")
+                        .label("商品范围")
+                        .description("限定风险筛查范围；缺省全量筛查")
+                        .type("list")
+                        .source("context")
+                        .build()
+        );
+    }
+
+    @Override
     @SuppressWarnings("unchecked")
     public ExecutionResult execute(Map<String, Object> params) {
         log.info("[AgentTool] swrl_risk_audit 执行");

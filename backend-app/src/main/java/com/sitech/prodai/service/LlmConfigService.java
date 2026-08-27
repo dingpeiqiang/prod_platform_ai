@@ -133,6 +133,7 @@ public class LlmConfigService {
         empty.put("temperature", 0.3);
         empty.put("max_tokens", 2048);
         empty.put("thinking", false);
+        empty.put("stream_enabled", true);
         empty.put("enabled", false);
         return empty;
     }
@@ -150,6 +151,7 @@ public class LlmConfigService {
         m.put("temperature", c.getTemperature() == null ? 0.3 : c.getTemperature());
         m.put("max_tokens", c.getMaxTokens() == null ? 2048 : c.getMaxTokens());
         m.put("thinking", c.getThinking());
+        m.put("stream_enabled", c.getStreamEnabled() == null ? true : c.getStreamEnabled());
         m.put("max_input_tokens", c.getMaxInputTokens() == null ? 180000 : c.getMaxInputTokens());
         m.put("enabled", true);
         m.put("config_id", c.getId());

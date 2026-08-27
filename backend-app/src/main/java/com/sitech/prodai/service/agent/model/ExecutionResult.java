@@ -12,6 +12,7 @@ public class ExecutionResult {
     private String toolName;
     private Map<String, Object> data;
     private String errorMessage;
+    private long executionTimeMs;
 
     public ExecutionResult() {
         this.data = new LinkedHashMap<>();
@@ -62,6 +63,14 @@ public class ExecutionResult {
 
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
+    }
+
+    public long getExecutionTimeMs() {
+        return executionTimeMs;
+    }
+
+    public void setExecutionTimeMs(long executionTimeMs) {
+        this.executionTimeMs = executionTimeMs;
     }
 
     @Override

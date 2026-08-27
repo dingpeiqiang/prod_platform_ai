@@ -22,6 +22,13 @@
         </div>
       </div>
 
+      <div v-if="plan.clarify && plan.clarify.length" class="qpc-row">
+        <span class="qpc-label">待补充</span>
+        <div class="qpc-tools">
+          <span v-for="param in plan.clarify" :key="param" class="qpc-tool-tag clarify">{{ paramLabel(param) }}</span>
+        </div>
+      </div>
+
       <div v-if="plan.params && Object.keys(plan.params).length" class="qpc-params">
         <div
           v-for="(val, key) in plan.params"
@@ -49,6 +56,14 @@ const intentLabel = computed(() => {
     SPARQL_QUERY: '数据查询',
     SWRL_INFER: '推理分析',
     RULE_EXPLAIN: '规则解释',
+    ONTOLOGY_EXPLAIN: '概念解释',
+    CLARIFY: '待补充信息',
+    REUSE_EVIDENCE: '证据复用',
+    product_ops_query: '数据查询',
+    product_ops_reason: '异动归因',
+    product_ops_policy: '风险稽核',
+    product_ops_monitor: '运营监控',
+    product_ops_compare: '对比分析',
     CHAT: '通用对话'
   }
   return map[props.plan.intent] || props.plan.intent
@@ -67,7 +82,10 @@ const paramLabel = (key) => {
     rule_set: '规则集',
     dimension: '分析维度',
     metric: '指标',
-    maxEntities: '最大实体数'
+    maxEntities: '最大实体数',
+    ruleId: '规则编号',
+    concept: '本体概念',
+    offeringIds: '商品范围'
   }
   return map[key] || key
 }
@@ -156,6 +174,12 @@ const formatParam = (val) => {
   padding: 1px 8px;
   border-radius: 4px;
   font-family: ui-monospace, monospace;
+}
+
+.qpc-tool-tag.clarify {
+  color: #b45309;
+  background: #fef3c7;
+  font-family: inherit;
 }
 
 .qpc-params {

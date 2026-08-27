@@ -33,6 +33,9 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Intege
 
     List<ChatMessage> findBySessionIdAndContentContainingOrderByCreatedAtDesc(String sessionId, String keyword, Pageable pageable);
 
+    @Query("SELECT m.sessionId, COUNT(m) FROM ChatMessage m WHERE m.sessionId IN :sessionIds GROUP BY m.sessionId")
+    List<Object[]> countBySessionIdIn(@Param("sessionIds") List<String> sessionIds);
+
     @Query("SELECT COALESCE(MAX(m.sortOrder), 0) FROM ChatMessage m WHERE m.sessionId = :sessionId")
     Integer findMaxSortOrderBySessionId(@Param("sessionId") String sessionId);
 }

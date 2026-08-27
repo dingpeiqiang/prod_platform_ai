@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 /**
  * Token 精确计数器 —— 基于 jtokkit（tiktoken Java 实现）。
  *
- * <p>替代 StreamStats 中的字符估算逻辑，提供精确的 token 计数。
+ * <p>替代旧版字符估算逻辑，提供精确的 token 计数。
  * 支持多种编码格式：
  * <ul>
  *   <li>{@code CL100K_BASE} - GPT-4, GPT-3.5-turbo, Claude</li>

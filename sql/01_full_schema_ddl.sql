@@ -164,6 +164,7 @@ CREATE TABLE `pd_ai_llm_user_configs` (
     `temperature`        DOUBLE       NOT NULL DEFAULT 0.3,
     `max_tokens`         INT          NOT NULL DEFAULT 2048,
     `thinking`           TINYINT(1)   NOT NULL DEFAULT 0,
+    `stream_enabled`     TINYINT(1)   NOT NULL DEFAULT 1 COMMENT '是否流式输出，0=非流式',
     `max_input_tokens`   INT                   DEFAULT 180000,
     `is_active`          TINYINT(1)   NOT NULL DEFAULT 1,
     `config_name`        VARCHAR(100)          DEFAULT NULL,

@@ -26,6 +26,42 @@ export async function testConfig(config) {
   return res.data
 }
 
+/**
+ * 模型对话测试 - 流式对话（多轮），复用 /api/v1/chat/stream。
+ * 返回 { response, abortCtrl }，支持中止。
+ */
+export function chatTestStream(messages, modelConfig) {
+  const abortCtrl = new AbortController()
+  const body = {
+    messages,
+    modelConfig: modelConfig || {},
+  }
+  const prom = fetch('/api/v1/chat/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    body: JSON.stringify(body),
+    signal: abortCtrl.signal,
+  })
+  return { prom, abortCtrl }
+}
+
+/**
+ * 模型对话测试 - 非流式对话（多轮），复用 /api/v1/chat/completion。
+ * 供流式输出失败（部分提供方不支持 SSE）时的自动降级使用。
+ */
+export async function chatTestCompletion(messages, modelConfig) {
+  const body = {
+    messages,
+    modelConfig: modelConfig || {},
+  }
+  const res = await fetch('/api/v1/chat/completion', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return res.json()
+}
+
 export async function deleteConfig(configId) {
   try {
     const res = await axios.delete(`${BASE_URL}/${configId}`)

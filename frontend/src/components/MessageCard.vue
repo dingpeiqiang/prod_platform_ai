@@ -82,6 +82,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { marked } from 'marked'
 
 const props = defineProps({
   content: { type: String, default: '' },
@@ -135,8 +136,8 @@ const renderedHtml = computed(() => {
   if (!text.trim()) return ''
   
   try {
-    if (window.marked && typeof window.marked.parse === 'function') {
-      let html = window.marked.parse(text)
+    if (typeof marked.parse === 'function') {
+      let html = marked.parse(text)
       // 安全过滤
       html = html.replace(/<script[^>]*>.*?<\/script>/gi, '')
       html = html.replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')

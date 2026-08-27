@@ -3,6 +3,7 @@ package com.sitech.prodai.service.agent.impl;
 import com.sitech.prodai.service.LlmService;
 import com.sitech.prodai.service.agent.Presenter;
 import com.sitech.prodai.service.agent.model.ExecutionResult;
+import com.sitech.prodai.service.agent.model.QueryPlan;
 import com.sitech.prodai.service.agent.model.SessionContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,11 +18,23 @@ import java.util.Map;
  * 默认表达层实现。
  * <p>
  * 将工具执行结果翻译为自然语言，并生成追问建议。
+ * <p>
+ * 特殊分支（设计文档 3.4 / 3.6 节）：
+ * - CLARIFY 意图：生成澄清追问文案（不调用工具）
+ * - 部分工具失败：基于成功结果生成部分结论 + 失败原因说明
  */
 @Component
 public class DefaultPresenter implements Presenter {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultPresenter.class);
+
+    /** 澄清参数的追问文案模板：参数名 → {业务展示名, 示例} */
+    private static final Map<String, String[]> CLARIFY_LABELS = Map.of(
+            "offering", new String[]{"商品/套餐", "例如：5G套餐、家庭融合畅享128"},
+            "ruleId", new String[]{"规则编号", "例如：R-A01、R-B02"},
+            "concept", new String[]{"本体概念", "例如：商品、渠道、订购"},
+            "question", new String[]{"查询内容", "请描述您想查询的内容"}
+    );
 
     private final LlmService llmService;
 
@@ -31,18 +44,26 @@ public class DefaultPresenter implements Presenter {
 
     @Override
     public String present(String question, List<ExecutionResult> results, SessionContext context) {
+        if (context != null && QueryPlan.INTENT_CLARIFY.equals(context.getLastIntent())) {
+            return buildClarifyMessage(context);
+        }
+
         if (results == null || results.isEmpty()) {
-            // 无工具调用，直接 LLM 回复
-            try {
-                return llmService.completeMessages(
-                        "你是一个智能助手，请友好地回答用户的问题。",
-                        toHistory(context),
-                        question
-                );
-            } catch (Exception e) {
-                log.warn("[DefaultPresenter] LLM 回复失败: {}", e.getMessage());
-                return "抱歉，我暂时无法回答这个问题，请稍后再试。";
-            }
+            // 无工具调用，直接 LLM 回复。大模型不可用/返回为空时抛错，不做兜底。
+            String reply = llmService.completeMessages(
+                    "你是一个智能助手，请友好地回答用户的问题。",
+                    toHistory(context),
+                    question
+            );
+            requireNonBlank(reply, "大模型返回为空，无法回答该问题");
+            return reply;
+        }
+
+        // 部分失败场景：成功结果生成部分结论 + 失败说明
+        boolean hasFailure = results.stream().anyMatch(r -> !r.isSuccess());
+        boolean hasSuccess = results.stream().anyMatch(ExecutionResult::isSuccess);
+        if (hasFailure) {
+            log.info("[DefaultPresenter] 存在失败工具（成功={}，失败={}），将生成部分结论", hasSuccess, hasFailure);
         }
 
         // 构建提示词，将工具执行结果提供给 LLM
@@ -63,13 +84,35 @@ public class DefaultPresenter implements Presenter {
         }
 
         prompt.append("请用中文回答，语言简洁明了，重点突出。如果涉及数据，请用具体数字说明。");
-
-        try {
-            return llmService.completePrompt(prompt.toString());
-        } catch (Exception e) {
-            log.warn("[DefaultPresenter] LLM 报告生成失败: {}", e.getMessage());
-            return buildFallbackReport(question, results);
+        if (hasFailure) {
+            prompt.append("\n注意：部分工具执行失败，请先基于成功的结果给出部分结论，")
+                    .append("再简要说明哪些环节失败、可能原因与建议（不要夸大失败影响）。");
         }
+
+        // 大模型生成最终报告。不可用/返回为空时抛错，不做 fallback 兜底。
+        String report = llmService.completePrompt(prompt.toString());
+        requireNonBlank(report, "大模型返回为空，无法生成分析报告");
+        return report;
+    }
+
+    /**
+     * 生成澄清追问文案（CLARIFY 分支，设计文档 3.4 节）。
+     */
+    private String buildClarifyMessage(SessionContext context) {
+        List<String> clarify = context != null ? context.getLastClarifyParams() : null;
+        if (clarify == null || clarify.isEmpty()) {
+            return "请问您想分析哪个商品/套餐？例如：5G套餐、家庭融合畅享128";
+        }
+        StringBuilder sb = new StringBuilder("为了继续处理您的请求，请补充以下信息：\n");
+        for (String param : clarify) {
+            String[] label = CLARIFY_LABELS.getOrDefault(param, new String[]{param, ""});
+            sb.append("· ").append(label[0]);
+            if (!label[1].isEmpty()) {
+                sb.append("（").append(label[1]).append("）");
+            }
+            sb.append("\n");
+        }
+        return sb.toString().trim();
     }
 
     @Override
@@ -79,19 +122,23 @@ public class DefaultPresenter implements Presenter {
         // 根据工具执行结果生成追问建议
         if (results != null) {
             for (ExecutionResult result : results) {
-                if (result.isSuccess() && "swrl_root_cause".equals(result.getToolName())) {
+                if (!result.isSuccess()) {
+                    suggestions.add("重试刚才的查询");
+                    continue;
+                }
+                if ("swrl_root_cause".equals(result.getToolName())) {
                     suggestions.add("具体哪个渠道影响最大？");
                     suggestions.add("和上月对比呢？");
                     suggestions.add("生成产品优化工单");
                     break;
                 }
-                if (result.isSuccess() && "swrl_risk_audit".equals(result.getToolName())) {
+                if ("swrl_risk_audit".equals(result.getToolName())) {
                     suggestions.add("查看高风险商品详情");
                     suggestions.add("导出风险报告");
                     suggestions.add("发起批量下架流程");
                     break;
                 }
-                if (result.isSuccess() && "sparql_query".equals(result.getToolName())) {
+                if ("sparql_query".equals(result.getToolName())) {
                     suggestions.add("查看详细数据");
                     suggestions.add("分析变化趋势");
                     suggestions.add("导出数据报表");
@@ -139,24 +186,13 @@ public class DefaultPresenter implements Presenter {
         return sb.length() > 0 ? sb.toString() : data.toString();
     }
 
-    private String buildFallbackReport(String question, List<ExecutionResult> results) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("已为您完成查询分析。\n\n");
-
-        for (ExecutionResult result : results) {
-            if (result.isSuccess()) {
-                sb.append("✅ ").append(result.getToolName()).append(" 执行成功");
-                if (result.getData() != null && !result.getData().isEmpty()) {
-                    sb.append("，返回 ").append(result.getData().size()).append(" 项数据");
-                }
-                sb.append("\n");
-            } else {
-                sb.append("❌ ").append(result.getToolName()).append(" 执行失败：")
-                        .append(result.getErrorMessage()).append("\n");
-            }
+    /**
+     * 校验 LLM 输出非空；为空时抛错（去兜底，大模型不可用/无输出即报错）。
+     */
+    private void requireNonBlank(String text, String message) {
+        if (text == null || text.isBlank()) {
+            throw new IllegalStateException(message);
         }
-
-        return sb.toString();
     }
 
     private List<Map<String, String>> toHistory(SessionContext context) {

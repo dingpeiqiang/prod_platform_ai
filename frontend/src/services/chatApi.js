@@ -283,71 +283,26 @@ export async function getSessionStats(sessionId) {
   return resp.json()
 }
 
-export async function sendMessage({ sessionId, message, attachments, modelConfig, scene = '' }) {
-  try {
-    const body = {
-      messages: [{ role: 'user', content: message }],
-      session_id: sessionId,
-      scene,
-    }
-    if (attachments?.length) body.attachments = attachments
-    if (modelConfig) body.modelConfig = modelConfig
-
-    const resp = await fetch('/api/v1/chat/agent/stream', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-
-    if (!resp.ok) throw new Error('AI 原生处理链请求失败')
-
-    const reader = resp.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-    let content = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      const frames = buffer.split('\n\n')
-      buffer = frames.pop()
-
-      for (const frame of frames) {
-        if (!frame.startsWith('data:')) continue
-        try {
-          const data = JSON.parse(frame.slice(5).trim())
-          if (data.type === 'thinking') {
-            content += `\n> ${data.content}\n`
-          } else if (data.type === 'text_start' || data.type === 'text_end') {
-            continue
-          } else if (data.type === 'text') {
-            content += data.content || ''
-          } else if (data.type === 'done') {
-            return { content }
-          }
-        } catch {}
-      }
-    }
-
-    return { content }
-  } catch (e) {
-    console.warn('[chatApi] sendMessage failed:', e)
-    throw e
-  }
-}
-
-export async function sendMessageWithModel(messages, { modelConfig = null, scene = '', sessionId = '' } = {}) {
-  const body = { messages, scene }
-  if (modelConfig) body.modelConfig = modelConfig
-  if (sessionId) body.sessionId = sessionId
-  const resp = await fetch('/api/v1/chat/agent/stream', {
+/**
+ * 翻译层统一流式入口（POST /api/v1/agent/chat/stream，SSE）。
+ * <p>
+ * 事件按执行阶段串行推送：thinking → tool → text* → text_done → done，
+ * 与一次性 /api/v1/agent/chat 共用同一 AgentOrchestrator 编排。
+ * 返回 { response, abortCtrl }，abortCtrl 可真正中止请求（fix：旧链路未返回导致 stop 软停止）。
+ */
+export async function sendAgentStream(question, { sessionId = '', params = {} } = {}) {
+  const abortCtrl = new AbortController()
+  const body = { question }
+  if (sessionId) body.session_id = sessionId
+  if (params && typeof params === 'object' && Object.keys(params).length) body.params = params
+  const resp = await fetch('/api/v1/agent/chat/stream', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
     body: JSON.stringify(body),
+    signal: abortCtrl.signal,
   })
-  if (!resp.ok) throw new Error('AI 原生处理链请求失败')
-  return resp
+  if (!resp.ok) throw new Error('翻译层请求失败')
+  return { response: resp, abortCtrl }
 }
 
 export async function uploadFile(file) {

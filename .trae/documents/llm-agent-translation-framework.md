@@ -131,6 +131,27 @@ interface AgentTool {
     ExecutionResult execute(Map<String, Object> params);
 }
 
+// 参数定义（工具显式声明入参规范，供理解层 / 前端生成追问与校验）
+class ToolParam {
+    String name;                  // 参数名（同 params 的 key）
+    String label;                 // 业务展示名（如 "商品/套餐"）
+    String description;           // 说明
+    boolean required;             // 是否必填
+    String type;                  // string | number | boolean | date | list
+    String format;                // 格式约束，如 yyyy-MM、URI、regex
+    String defaultValue;          // 缺省值（缺省时使用，降低追问频率）
+    List<String> enumValues;      // 可选枚举（有界取值时约束）
+    String source;                // 取值来源：question 抽取 | context 缓存 | 前序工具输出
+}
+
+// 增强版工具接口：暴露参数规范（向后兼容，旧工具可不实现返回空列表）
+interface AgentTool {
+    String getName();
+    String getDescription();
+    List<ToolParam> getParams();  // 新增：入参规范声明
+    ExecutionResult execute(Map<String, Object> params);
+}
+
 // 执行层接口
 interface Executor {
     List<ExecutionResult> execute(QueryPlan plan);
@@ -147,6 +168,20 @@ interface Executor {
 | `rule_explain` | 解释规则含义 | `OpsRulesService.formatRuleLabel()` |
 | `ontology_explain` | 解释本体概念 | `OntologyService.explain()` |
 
+**各工具的入参规范（getParams 声明示例）**：
+
+| 工具 | 参数 | 必填 | 类型 | 说明 |
+|------|------|------|------|------|
+| `sparql_query` | `question` | ✅ | string | 自然语言查询语句（NL→SPARQL 入口） |
+| | `maxEntities` | ❌ | number | 返回实体数上限，默认 20 |
+| `swrl_root_cause` | `offering` | ❌* | string | 分析对象商品/套餐；缺省时从 `question` 语义解析 |
+| | `question` | ❌ | string | 原始问题（归因文本） |
+| `swrl_risk_audit` | `offeringIds` | ❌ | list | 限定风险筛查范围；缺省全量筛查 |
+| `rule_explain` | `ruleId` | ✅ | string | 规则编号，如 `R-A01` |
+| `ontology_explain` | `concept` | ✅ | string | 本体概念名 |
+
+> `*`：`offering` 标注为条件必填——当 `question` 中无法解析出明确对象、且 `context.cachedEvidence` 无上轮对象时，才判定缺失并触发澄清追问。
+
 ### 3.3 表达层 (Presenter) — 翻译结果
 
 将工具执行结果翻译为自然语言。
@@ -158,6 +193,108 @@ interface Presenter {
     List<String> suggestFollowUps(String question, List<ExecutionResult> results);
 }
 ```
+
+### 3.4 参数完整性：缺失判定 → 澄清追问（而非直接报错）
+
+**原则**：参数缺失不应该在 `execute` 阶段抛错，而应在**理解层生成计划时**就判断，并转入"澄清分支"（复用追问流程），提升对话自然度。
+
+**流程**：
+
+```
+[DefaultUnderstander]
+  1. 意图 → 工具映射后，依据各 AgentTool.getParams() 校验 required 参数
+  2. 校验对象优先级：params 已填 → context.cachedEvidence 缓存 → 缺省值(defaultValue)
+  3. 仍缺失的必填参数 → 生成 CLARIFY 意图
+       QueryPlan { intent: "CLARIFY", clarify: ["offering"], params: {...}, tools: [] }
+       │
+       ▼
+[Presenter]  请用户补充（示例）：
+   "请问您想分析哪个商品/套餐？例如：5G套餐、家庭融合畅享128"
+       │
+       ▼
+用户补充后（携带 session_id）→ 重新进入理解层，用补充值补全 params
+```
+
+**判定规则**：
+
+| 条件 | 行为 |
+|------|------|
+| 必填参数已提供或可从 `question` 抽取 | 正常执行 |
+| 必填参数缺失，但 `context.cachedEvidence` 有上轮对象 | 自动复用上轮对象，不打扰用户 |
+| 必填参数缺失且无缓存 | 生成 `CLARIFY` 意图，提示用户补充 |
+| 非必填参数缺失 | 使用 `defaultValue` 或工具内部默认，不阻塞 |
+
+**查询计划模型扩展**（新增 `clarify` 字段支持澄清分支）：
+
+```java
+class QueryPlan {
+    String intent;              // SPARQL_QUERY | SWRL_INFER | RULE_EXPLAIN | CLARIFY | CHAT | ...
+    List<String> tools;
+    Map<String, Object> params;
+    List<String> clarify;       // 新增：需向用户补充的参数名列表（intent=CLARIFY 时非空）
+    String userQuestion;
+}
+```
+
+### 3.5 工具间数据传递：执行步骤（ExecStep）与依赖编排
+
+当前 `Executor` 仅将同一份 `plan.params` 原样传入所有工具，**无法表达"前一个工具的输出作为后一个工具入参"**（如 `sparql_query` 的 RDF facts → `swrl_root_cause`）。引入**执行步骤（ExecStep）**支撑依赖编排。
+
+```java
+// 执行步骤：声明某个工具执行时所需的参数来源
+class ExecStep {
+    String tool;                       // 工具名
+    Map<String, String> paramMappings; // 参数名 → 取值来源（见下）
+    Map<String, Object> literalParams; // 直接给定的字面参数（来自理解层抽取）
+}
+
+// 取值来源（paramMappings 的值）
+//  "direct:<name>"        → 用 plan.params.<name>
+//  "result:<X>.<key>"     → 用前序步骤 X 的 ExecutionResult.data.<key>
+//  "evidence:<key>"       → 用 context.cachedEvidence.<key>
+//  "default:<value>"      → 用默认值
+
+// 查询计划持有编排好的步骤
+class QueryPlan {
+    String intent;
+    List<ExecStep> steps;      // 新增：有序执行步骤（替代原 tools 展开）
+    Map<String, Object> params;
+    List<String> clarify;
+    String userQuestion;
+    // 兼容：tools 保留为步骤 tool 名的扁平视图
+}
+```
+
+**执行编排（DefaultExecutor）**：
+
+```
+sparql_query.execute({question})
+   │  success → data（含实体/RDF 事实）
+   ▼
+swrl_root_cause.execute({
+   offering: evidence:lastOffering | direct:offering,
+   facts:    result:sparql_query.raw_results   // 前序工具的输出注入
+})
+   │
+   ▼
+聚合 List<ExecutionResult>
+```
+
+**依赖失败语义**：当步骤 X 依赖的前序步骤失败时，默认策略为 **中止后续依赖链**，并将已成功步骤结果交由表达层生成"部分结论 + 失败原因说明"。
+
+### 3.6 执行失败降级策略
+
+单个工具失败不应使整轮回答失败，按优先级降级：
+
+| 级别 | 场景 | 处理 |
+|------|------|------|
+| 1 | 某工具执行失败 | 该工具返回 `ExecutionResult.fail`，标记 `success=false`；依赖它的下游步骤中止；其他独立工具照常执行 |
+| 2 | 部分工具失败，仍有成功结果 | 表达层基于成功结果生成部分结论，并说明哪些工具失败、可能原因 |
+| 3 | 全部工具失败 或 查询计划无工具 | 表达层直接 LLM 回答（不调用工具），或返回友好兜底文案 |
+| 4 | 理解层 LLM 不可用 | `IntentRecognitionSupport` 关键词兜底（已实现） |
+| 5 | 工具未注册 / 工具名非法 | 返回 `未找到工具`，由表达层翻译为友好提示（防 LLM 编造工具名 → 白名单过滤） |
+
+**关键点**：失败信息通过 `ExecutionResult.errorMessage` 与 `success` 标志透传给表达层，由表达层组装为"哪里失败、卡在哪、建议怎么办"，而非直接抛异常给用户。
 
 ---
 
@@ -234,10 +371,63 @@ interface Presenter {
 [Presenter]
   1. LLM 翻译器（基于历史 + 新数据）:
      "对比分析：上月渠道A下降20%，本月加剧到30%..."
-         │
-         ▼
+          │
+          ▼
 返回: { session_id, turn: 3, report: "...", evidence: {...} }
 ```
+
+### 4.4 追问决策逻辑（证据复用 / 补充数据 / 澄清补参的判定）
+
+多轮对话的关键在于**如何判定"当前证据是否够用"**。采用"LLM 判定 + 规则兜底"两级策略：
+
+```
+用户追问 + session_id
+        │
+        ▼
+[Understander]
+  1. 读取 SessionContext（history + cachedEvidence + lastIntent/lastTools/lastParams）
+  2. 判定属哪种情况：
+     ├─ A. 仅需对上轮已有证据做再解释/下钻
+     │      →  直接走表达层（不调用工具，REUSE_EVIDENCE）
+     ├─ B. 需补充新数据（时间对比、新增维度、切换对象）
+     │      →  生成带工具的执行计划（COMPARE / 新查询）
+     ├─ C. 缺失必填参数（依据 getParams() 校验）
+     │      →  生成 CLARIFY 澄清，向用户追问
+     └─ D. 普通闲聊
+            →  LLM 直接回答（CHAT）
+```
+
+**判定信号**（供理解层参考）：
+- **是否需新数据**：由 LLM 判断追问是否引用了当前 `cachedEvidence`、`lastParams.time` 之外的事实（如"上月"→ 触发新查询）。
+- **是否可复用证据**：追问维度（channel）落在 `cachedEvidence` 已有键内 → 复用。
+- **是否缺参**：连续 `N` 次进入 `CLARIFY` 仍未补齐 → 限次后降级为"按缺省值继续"或友好提示放弃，防止死循环。
+
+**会话上下文结构（SessionContext）**：
+
+```java
+class SessionContext {
+    String sessionId;
+    // 多轮对话历史（role + content），供 LLM 上下文
+    List<Map<String, Object>> history;
+
+    // 证据缓存：toolName → 该工具最近一次成功 data
+    // 追问无需新查询时，直接从此取数，避免重复调用成本
+    Map<String, Object> cachedEvidence;
+
+    // 最近一轮识别的意图 / 工具 / 参数（供追问补全与上下文衔接）
+    String lastIntent;
+    List<String> lastTools;
+    Map<String, Object> lastParams;
+
+    // 已澄清参数缓存：被用户补齐的必填参数（offering 等），跨轮复用
+    Map<String, Object> resolvedParams;
+
+    // 会话级附加元数据（分析对象、对比周期等，前端上下文标签展示）
+    Map<String, Object> meta;
+}
+```
+
+**上下文窗口与遗忘**：`history` 采用滑动窗口截断（如最近 `K` 轮 + 摘要），超长就绪时对早前对话做 LLM 摘要压缩，避免 token 无限膨胀；`SessionManager` 仅保留相关键（evidence、resolvedParams、meta）作为长期记忆，`history` 仅保留近轮。
 
 ---
 
@@ -269,6 +459,52 @@ interface Presenter {
   POST /api/v1/product-ontology/ops/chat          → 配置对话（现有）
   POST /api/v1/product-ontology/graph             → 知识图谱（现有）
 ```
+
+**流式返回（SSE）协议** — 与前端 9.x 渐进式渲染对齐：
+
+```
+POST /api/v1/agent/chat/stream    ← 流式入口（推荐前端使用）
+Header: Accept: text/event-stream
+
+事件按执行阶段串行推送（每条 message 为 JSON）:
+
+event: thinking        // 理解层产物（思考步骤 / 意图 / 查询计划）
+event: tool            // 执行层产物（工具名 / 状态 / 结果摘要 / 证据）
+event: text            // 表达层流式正文片段（多次推送，按块增量）
+event: text_done       // 正文完成
+event: done            // 结尾，附带完整结构化结果（session_id / evidence / conclusion / nextSteps）
+```
+
+```
+具体事件体示例：
+
+event: thinking
+data: {"steps":[{"label":"正在理解您的需求..."},
+                {"label":"已确认业务意图：异动归因","meta":{"confidence":0.92}}],
+       "intent":"SWRL_INFER","queryPlan":{"tools":["sparql_query","swrl_root_cause"]}}
+
+event: tool
+data: {"name":"sparql_query","status":"running"}
+event: tool
+data: {"name":"sparql_query","status":"done","durationMs":1200,"summary":"15 条记录"}
+event: tool
+data: {"name":"swrl_root_cause","status":"done","durationMs":3500,
+       "summary":"渠道A订购量下降(贡献度40%)是主因","evidence":{...}}
+
+event: text
+data: {"chunk":"家庭融合畅享128本月收入下滑30%，"}
+event: text
+data: {"chunk":"主要原因是渠道A订购量下降，贡献度40%..."}
+
+event: done
+data: {"session_id":"session_x","conclusion":"渠道A订购量下降是主因",
+       "evidence":[...],"suggested_follow_ups":[...],"elapsed_ms":5200}
+```
+
+**设计要点**：
+- 前端按 `event` 类型分流渲染（thinking→思考面板、tool→工具卡片、text→正文打字机）。
+- 失败时推送 `event: error`（含阶段的工具名与 `errorMessage`），前端据此展示失败卡片而非空白。
+- 流式与一次性 `/chat` 共用同一 `AgentOrchestrator` 编排，仅在表达层差异（流式增量 vs 一次性完整）。
 
 ### 5.3 不修改的基础设施
 
@@ -746,3 +982,85 @@ nextSteps = [
 | `ChatInput.vue` | 修改 | 添加上下文标签、多模态入口 |
 | `AssistantShell.vue` | 修改 | 可折叠侧栏、键盘快捷键 |
 | `ThinkingProcessPanel.vue` | 修改 | 查询计划卡片 + 跳过按钮 |
+
+---
+
+## 十、安全与鉴权
+
+翻译层同时触发 LLM 与知识库/推理引擎，需约束入口风险：
+
+1. **工具权限控制**
+   - 将工具按用户角色分级（如 `swrl_risk_audit` / 下架流程类仅运营角色可用），执行层在调度前校验当前用户权限。
+   - `DefaultUnderstander` 的工具白名单（`KNOWN_TOOLS`）已防 LLM 编造工具名，进一步收紧为「白名单 × 角色可见」双重要求。
+
+2. **输入校验与注入防护**
+   - `params` 中的 `offering`、`ruleId` 等属业务标识，需做长度、字符集校验；`sparql_query` 内部经 `OntologyService` 生成 SPARQL，严禁将用户输入以字符串直拼进 SPARQL/SWRL。
+   - 对 LLM 返回的 `tools`/`params` 做 Schema 校验（工具名在 `KNOWN_TOOLS`、参数类型符合 `ToolParam.type`），拒绝非法结构。
+
+3. **敏感操作审计**
+   - 记录每次工具调用（用户、时间、工具、参数摘要、结果状态）到审计日志，供追责与异常回溯。
+
+4. **Session 防篡改**
+   - `session_id` 应绑定创建者，服务端校验归属，防止跨用户读取他人 `cachedEvidence`/`history`。
+
+---
+
+## 十一、成本与性能控制
+
+翻译链路多次调用 LLM（理解+表达），需控制成本与耗时：
+
+| 手段 | 说明 |
+|------|------|
+| 缓存复用 | 追问时优先复用 `cachedEvidence`（REUSE_EVIDENCE），避免重复查询/推理 |
+| 参数缺省优先 | `ToolParam.defaultValue` 降低澄清往返次数，减少额外轮次成本 |
+| 模型分级 | 理解层/表达层可按重要性选用低/高配模型（如查询用小模型、报告生成用大模型） |
+| 上下文窗口管理 | `history` 滑动窗口 + 摘要压缩（见 4.4），限制单次 prompt token 上限 |
+| 超时与限流 | 每工具调用设超时；按用户/接口做 QPS 限流，防单会话打爆资源 |
+| 结果大小约束 | 工具返回 `raw_results` 设条数上限（如 `maxEntities`），避免大结果灌入 prompt |
+
+---
+
+## 十二、可观测性、测试与版本管理
+
+### 12.1 可观测性（监控埋点）
+
+| 层 | 监控指标 | 用途 |
+|----|---------|------|
+| 理解层 | 意图识别准确率、实体抽取命中率、LLM 降级次数 | 评估理解质量 |
+| 执行层 | 各工具成功率、耗时 P95、失败原因分布 | 定位底层服务问题 |
+| 表达层 | 报告生成成功率、平均 token、流式首字节时延 | 评估表达成本与体验 |
+| 整链路 | 响应耗时、session 会话数、追问复用率 | 用户体验与资源 |
+
+所有指标带 `intent`、`tool`、`sessionId` 维度，接入统一日志/监控大盘（Prometheus/ELK 等）。
+
+### 12.2 测试策略
+
+- **单元测试**：三层（Understander/Executor/Presenter）各自独立测试；`AgentTool` 参数校验、依赖编排、降级分支。
+- **契约测试**：`QueryPlan` / `ExecutionResult` / SSE 事件体的 JSON 结构做契约锁定。
+- **整链路测试**：对照「八、验证方式」各场景（SPARQL/SWRL/规则解释/追问/澄清/失败降级）做端到端用例。
+- **LLM 结果测试**：意图归一化与实体抽取用固定样例集做回归（mock LLM 或 golden 集比对）。
+
+### 12.3 版本与兼容
+
+- `QueryPlan` / `ToolParam` / SSE 事件体新增字段**向前兼容**（新增字段可缺省，旧结构照常解析）。
+- 工具参数变更（增删必填项）需同步更新 `AgentTool.getParams()` 与理解层 `intent→工具` 映射，并走版本号管理。
+- 新旧意图命名（`SPARQL_QUERY` 旧枚举 ↔ `product_ops_*` 新业务意图）已在 `DefaultUnderstander.parseLlmResult` 做兼容归一，文档保持该映射说明避免后续破坏。
+
+---
+
+## 十三、缺口补齐清单（相对当前实现）
+
+以下为上述设计相较现有代码库的增量项，作为后续落地 checklist：
+
+| # | 缺口 | 设计章节 | 当前实现状态 |
+|---|------|---------|-------------|
+| 1 | `AgentTool.getParams()` 参数元数据 | 3.2 / 3.4 | 未实现（仅 getName/getDescription/execute） |
+| 2 | 必填参数缺失→CLARIFY 澄清追问 | 3.4 | 未实现（缺失时直接走工具/报错） |
+| 3 | 工具间数据传递（ExecStep 依赖编排） | 3.5 | 未实现（当前所有工具共享同一 params） |
+| 4 | 工具失败依赖链降级/部分结论 | 3.6 | 部分（有 errorMessage 但无依赖链语义） |
+| 5 | `SessionContext` 扩展（resolvedParams/meta） | 4.4 | 部分（已有 history/evidence/last*） |
+| 6 | SSE 流式传输协议 | 5.2 | 未接入（当前为一次性 POST /chat） |
+| 7 | 安全鉴权 / 成本控制 / 监控埋点 | 十/十一/十二 | 未实现 |
+| 8 | `FunctionsCallingService` 复用编排 | 5.1 | 待评估接入 |
+
+> 注：本清单仅记录设计层面的增量，是否落地实现由后续迭代按优先级推进。

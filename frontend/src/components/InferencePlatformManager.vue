@@ -90,6 +90,10 @@
               </div>
             </div>
             <div class="config-card-actions">
+              <el-button size="small" type="primary" plain @click.stop="handleChatTest(config)">
+                <el-icon><ChatDotRound /></el-icon>
+                对话测试
+              </el-button>
               <el-button size="small" @click.stop="handleTestConfig(config)">
                 <el-icon><Connection /></el-icon>
                 测试
@@ -170,6 +174,10 @@
               <el-switch v-model="formData.thinking" active-text="开启" inactive-text="关闭" />
               <span class="form-hint">开启后会展示思考过程</span>
             </el-form-item>
+            <el-form-item label="流式输出">
+              <el-switch v-model="formData.stream_enabled" active-text="开启" inactive-text="关闭" />
+              <span class="form-hint">开启后按 SSE 分片返回；关闭用非流式，可兼容不支持流式的中转网关</span>
+            </el-form-item>
             <el-form-item label="设为默认配置">
               <el-switch v-model="formData.is_active" active-text="是" inactive-text="否" />
               <span class="form-hint">开启后将自动激活为当前用户的默认配置</span>
@@ -214,6 +222,10 @@
               </div>
             </div>
             <div class="header-actions">
+              <el-button type="primary" @click="handleChatTest(selectedConfig)">
+                <el-icon><ChatDotRound /></el-icon>
+                对话测试
+              </el-button>
               <el-button @click="handleTestConfig(selectedConfig)">
                 <el-icon><Connection /></el-icon>
                 测试连接
@@ -242,6 +254,7 @@
               <el-descriptions-item label="最大输出 tokens">{{ selectedConfig.max_tokens || 2048 }}</el-descriptions-item>
               <el-descriptions-item label="最大输入 tokens">{{ selectedConfig.max_input_tokens || 180000 }}</el-descriptions-item>
               <el-descriptions-item label="思考模式">{{ selectedConfig.thinking ? '开启' : '关闭' }}</el-descriptions-item>
+              <el-descriptions-item label="流式输出">{{ selectedConfig.stream_enabled === false ? '关闭' : '开启' }}</el-descriptions-item>
               <el-descriptions-item label="更新时间">{{ selectedConfig.updated_at || '-' }}</el-descriptions-item>
               <el-descriptions-item label="最后使用">{{ selectedConfig.last_used_at || '-' }}</el-descriptions-item>
             </el-descriptions>
@@ -258,6 +271,12 @@
         </div>
       </div>
     </div>
+
+    <ModelChatTester
+      :visible="chatTesterVisible"
+      :config="chatTestConfig"
+      @update:visible="chatTesterVisible = $event"
+    />
   </div>
 </template>
 
@@ -265,9 +284,10 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Edit, Delete, ArrowLeft, Search, Connection } from '@element-plus/icons-vue'
+import { Plus, Edit, Delete, ArrowLeft, Search, Connection, ChatDotRound } from '@element-plus/icons-vue'
 import { useUserStore } from '../stores/user'
 import { getUserConfigs, saveConfig, testConfig, deleteConfig } from '../services/inferenceApi.js'
+import ModelChatTester from './ModelChatTester.vue'
 
 const emit = defineEmits(['go-back'])
 const router = useRouter()
@@ -290,6 +310,8 @@ const saving = ref(false)
 const testing = ref(false)
 const testResult = ref(null)
 const formRef = ref(null)
+const chatTesterVisible = ref(false)
+const chatTestConfig = ref(null)
 
 const providerOptions = [
   { label: 'OpenAI', value: 'openai' },
@@ -326,6 +348,7 @@ const formData = reactive({
   max_tokens: 2048,
   max_input_tokens: 180000,
   thinking: false,
+  stream_enabled: true,
   is_active: true
 })
 
@@ -381,6 +404,7 @@ const handleAddConfig = () => {
     max_tokens: 2048,
     max_input_tokens: 180000,
     thinking: false,
+    stream_enabled: true,
     is_active: true
   })
   isEditing.value = true
@@ -400,6 +424,7 @@ const handleEditConfig = (config) => {
     max_tokens: config.max_tokens || 2048,
     max_input_tokens: config.max_input_tokens || 180000,
     thinking: !!config.thinking,
+    stream_enabled: config.stream_enabled !== false,
     is_active: !!config.is_active
   })
   isEditing.value = true
@@ -438,6 +463,15 @@ const handleTestForm = async () => {
   } finally {
     testing.value = false
   }
+}
+
+const handleChatTest = (config) => {
+  if (!config || !config.model) {
+    ElMessage.warning('请先填写模型名称')
+    return
+  }
+  chatTestConfig.value = config
+  chatTesterVisible.value = true
 }
 
 const handleTestConfig = async (config) => {
@@ -479,6 +513,7 @@ const handleSave = async () => {
       max_tokens: Number(formData.max_tokens) || 0,
       max_input_tokens: Number(formData.max_input_tokens) || 0,
       thinking: !!formData.thinking,
+      stream_enabled: !!formData.stream_enabled,
       config_name: formData.config_name || null,
       is_active: !!formData.is_active
     })

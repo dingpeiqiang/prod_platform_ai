@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -31,6 +32,20 @@ public class RuleExplainTool implements AgentTool {
     @Override
     public String getDescription() {
         return "解释业务规则的含义和用途";
+    }
+
+    @Override
+    public List<ToolParam> getParams() {
+        return List.of(
+                ToolParam.builder("ruleId")
+                        .label("规则编号")
+                        .description("规则编号，如 R-A01")
+                        .required()
+                        .type("string")
+                        .format("R-[A-Z]+-?\\d*")
+                        .source("question")
+                        .build()
+        );
     }
 
     @Override

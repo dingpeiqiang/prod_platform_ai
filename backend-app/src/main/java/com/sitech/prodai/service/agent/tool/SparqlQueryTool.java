@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -30,6 +31,25 @@ public class SparqlQueryTool implements AgentTool {
     @Override
     public String getDescription() {
         return "将自然语言转化为 SPARQL 查询，检索 RDF 知识库中的事实数据";
+    }
+
+    @Override
+    public List<ToolParam> getParams() {
+        return List.of(
+                ToolParam.builder("question")
+                        .label("查询语句")
+                        .description("自然语言查询语句（NL→SPARQL 入口）")
+                        .required()
+                        .type("string")
+                        .source("question")
+                        .build(),
+                ToolParam.builder("maxEntities")
+                        .label("返回上限")
+                        .description("返回实体数上限")
+                        .type("number")
+                        .defaultValue("20")
+                        .build()
+        );
     }
 
     @Override

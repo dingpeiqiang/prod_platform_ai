@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -30,6 +31,24 @@ public class SwrlRootCauseTool implements AgentTool {
     @Override
     public String getDescription() {
         return "触发 SWRL 归因推理，分析业务指标异动的根因";
+    }
+
+    @Override
+    public List<ToolParam> getParams() {
+        return List.of(
+                ToolParam.builder("offering")
+                        .label("商品/套餐")
+                        .description("分析对象商品/套餐；缺省时从 question 语义解析")
+                        .type("string")
+                        .source("context")
+                        .build(),
+                ToolParam.builder("question")
+                        .label("归因问题")
+                        .description("原始问题（归因文本）")
+                        .type("string")
+                        .source("question")
+                        .build()
+        );
     }
 
     @Override

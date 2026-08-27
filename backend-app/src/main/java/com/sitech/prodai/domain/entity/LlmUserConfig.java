@@ -70,6 +70,9 @@ public class LlmUserConfig {
     @Column(name = "thinking", nullable = false)
     private Boolean thinking = false;
 
+    @Column(name = "stream_enabled", nullable = false)
+    private Boolean streamEnabled = true;
+
     @Column(name = "max_input_tokens")
     private Integer maxInputTokens = 180000;
 

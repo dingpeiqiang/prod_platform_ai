@@ -2,7 +2,9 @@ package com.sitech.prodai.controller;
 
 import com.sitech.prodai.domain.entity.LlmUserConfig;
 import com.sitech.prodai.domain.entity.ModelProvider;
+import com.sitech.prodai.dto.ChatCompletionRequest;
 import com.sitech.prodai.repository.LlmUserConfigRepository;
+import com.sitech.prodai.service.LlmService;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,6 +19,7 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -27,9 +30,11 @@ import java.util.stream.Collectors;
 public class LlmConfigController {
 
     private final LlmUserConfigRepository repository;
+    private final Optional<LlmService> llmService;
 
-    public LlmConfigController(LlmUserConfigRepository repository) {
+    public LlmConfigController(LlmUserConfigRepository repository, Optional<LlmService> llmService) {
         this.repository = repository;
+        this.llmService = llmService;
     }
 
     @PostMapping("/save")
@@ -57,6 +62,7 @@ public class LlmConfigController {
         config.setTemperature(doubleOrDefault(request.get("temperature"), 0.3));
         config.setMaxTokens(intOrDefault(request.get("max_tokens"), 2048));
         config.setThinking(boolOrDefault(request.get("thinking"), false));
+        config.setStreamEnabled(boolOrDefault(request.get("stream_enabled"), true));
         config.setMaxInputTokens(intOrDefault(request.get("max_input_tokens"), 180000));
         config.setConfigName(str(request.get("config_name")));
         config.setIsActive(true);
@@ -68,7 +74,10 @@ public class LlmConfigController {
 
     @GetMapping("/active/{userIdentifier}")
     public Map<String, Object> active(@PathVariable String userIdentifier) {
-        return repository.findByUserIdentifierAndIsActiveTrue(userIdentifier)
+        // 不按账号过滤：返回全局激活配置
+        return repository.findAll().stream()
+                .filter(config -> Boolean.TRUE.equals(config.getIsActive()))
+                .findFirst()
                 .map(config -> {
                     config.setLastUsedAt(LocalDateTime.now());
                     LlmUserConfig saved = repository.save(config);
@@ -96,25 +105,55 @@ public class LlmConfigController {
             return body;
         }
 
-        if (baseUrl.contains("bad-json")) {
+        if (llmService.isEmpty()) {
             body.put("success", false);
-            body.put("message", "测试请求失败: Unexpected end of JSON input");
+            body.put("message", "LLM 服务未启用");
             return body;
         }
 
-        body.put("success", true);
-        body.put("message", "连接成功");
-        body.put("provider", str(request.get("provider")));
-        body.put("model", model);
-        body.put("base_url", baseUrl);
-        body.put("api_key_present", StringUtils.hasText(apiKey));
-        body.put("latency_ms", 120);
-        return body;
+        Map<String, Object> modelConfig = new LinkedHashMap<>(request);
+        modelConfig.remove("user_identifier");
+        modelConfig.remove("config_name");
+
+        ChatCompletionRequest req = new ChatCompletionRequest();
+        req.setPrompt("Hello, this is a connection test message.");
+        req.setModelConfig(modelConfig);
+
+        long start = System.currentTimeMillis();
+        try {
+            Map<String, Object> result = llmService.get().complete(req);
+            Object content = result.getOrDefault("content", "");
+            String preview = content == null ? "" : String.valueOf(content);
+            if (preview.length() > 100) {
+                preview = preview.substring(0, 100);
+            }
+            body.put("success", true);
+            body.put("message", "连接成功");
+            body.put("provider", str(request.get("provider")));
+            body.put("model", model);
+            body.put("base_url", baseUrl);
+            body.put("api_key_present", StringUtils.hasText(apiKey));
+            body.put("response_preview", preview);
+            body.put("latency_ms", System.currentTimeMillis() - start);
+            return body;
+        } catch (Exception e) {
+            body.put("success", false);
+            body.put("message", "连接失败: " + e.getMessage());
+            body.put("detail", String.valueOf(e.getCause() != null ? e.getCause().getMessage() : e.getMessage()));
+            body.put("provider", str(request.get("provider")));
+            body.put("model", model);
+            body.put("base_url", baseUrl);
+            body.put("api_key_present", StringUtils.hasText(apiKey));
+            body.put("suggestion", "请检查 api_key / base_url / model 是否正确且匹配");
+            body.put("latency_ms", System.currentTimeMillis() - start);
+            return body;
+        }
     }
 
     @GetMapping("/list/{userIdentifier}")
     public Map<String, Object> list(@PathVariable String userIdentifier) {
-        List<LlmUserConfig> configs = repository.findByUserIdentifier(userIdentifier);
+        // 不按账号过滤：返回全部配置
+        List<LlmUserConfig> configs = repository.findAll();
         List<Map<String, Object>> configList = configs.stream()
                 .map(this::toPublicMap)
                 .collect(Collectors.toList());
@@ -158,7 +197,8 @@ public class LlmConfigController {
 
         return repository.findById(configId)
                 .map(config -> {
-                    repository.findByUserIdentifier(userId).forEach(item -> {
+                    // 不按账号过滤：全局置为仅一条激活
+                    repository.findAll().forEach(item -> {
                         item.setIsActive(false);
                         repository.save(item);
                     });
@@ -205,6 +245,7 @@ public class LlmConfigController {
         map.put("temperature", config.getTemperature());
         map.put("max_tokens", config.getMaxTokens());
         map.put("thinking", config.getThinking());
+        map.put("stream_enabled", config.getStreamEnabled());
         map.put("max_input_tokens", config.getMaxInputTokens());
         map.put("config_name", config.getConfigName());
         map.put("is_active", config.getIsActive());

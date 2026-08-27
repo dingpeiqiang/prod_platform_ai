@@ -10,6 +10,9 @@ import java.util.Map;
  */
 public class SessionContext {
 
+    /** 连续澄清上限：超过后降级为按缺省值继续（防死循环，设计文档 4.4 节） */
+    private static final int MAX_CLARIFY_ROUNDS = 3;
+
     private String sessionId;
     private List<Map<String, Object>> history;
     private Map<String, Object> cachedEvidence;
@@ -17,10 +20,24 @@ public class SessionContext {
     private List<String> lastTools;
     private Map<String, Object> lastParams;
 
+    /** 已澄清参数缓存：被用户补齐的必填参数（offering 等），跨轮复用 */
+    private Map<String, Object> resolvedParams;
+
+    /** 会话级附加元数据（分析对象、对比周期等，前端上下文标签展示） */
+    private Map<String, Object> meta;
+
+    /** 连续澄清轮次计数 */
+    private int clarifyRounds;
+
+    /** 最近一次澄清计划中待补充的参数名列表（供表达层生成追问文案） */
+    private List<String> lastClarifyParams;
+
     public SessionContext() {
         this.history = new ArrayList<>();
         this.cachedEvidence = new LinkedHashMap<>();
         this.lastParams = new LinkedHashMap<>();
+        this.resolvedParams = new LinkedHashMap<>();
+        this.meta = new LinkedHashMap<>();
     }
 
     public SessionContext(String sessionId) {
@@ -85,5 +102,58 @@ public class SessionContext {
 
     public void cacheEvidence(String key, Object value) {
         this.cachedEvidence.put(key, value);
+    }
+
+    public Map<String, Object> getResolvedParams() {
+        return resolvedParams;
+    }
+
+    public void setResolvedParams(Map<String, Object> resolvedParams) {
+        this.resolvedParams = resolvedParams != null ? resolvedParams : new LinkedHashMap<>();
+    }
+
+    public Map<String, Object> getMeta() {
+        return meta;
+    }
+
+    public void setMeta(Map<String, Object> meta) {
+        this.meta = meta != null ? meta : new LinkedHashMap<>();
+    }
+
+    public int getClarifyRounds() {
+        return clarifyRounds;
+    }
+
+    public void incrementClarifyRounds() {
+        this.clarifyRounds++;
+    }
+
+    public void resetClarifyRounds() {
+        this.clarifyRounds = 0;
+    }
+
+    /**
+     * 是否已达到澄清上限（超过后应按缺省值继续，防死循环）。
+     */
+    public boolean exceedClarifyLimit() {
+        return clarifyRounds >= MAX_CLARIFY_ROUNDS;
+    }
+
+    /**
+     * 记录用户补齐的澄清参数，跨轮复用。
+     */
+    public void resolveParam(String name, Object value) {
+        if (name != null && value != null) {
+            this.resolvedParams.put(name, value);
+            this.meta.put("last_" + name, value);
+        }
+    }
+
+    public List<String> getLastClarifyParams() {
+        return lastClarifyParams;
+    }
+
+    public void setLastClarifyParams(List<String> lastClarifyParams) {
+        this.lastClarifyParams = lastClarifyParams;
     }
 }

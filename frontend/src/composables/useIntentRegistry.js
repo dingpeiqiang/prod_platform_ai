@@ -84,7 +84,7 @@ registerEventHandler('chat', (data, msg) => {
 }, { panel: ChatPanel })
 
 registerEventHandler('form', (data, msg) => {
-  // 表单意图由 FormPanel 渲染，此处为占位
+  // 表单意图由 InlineFormEditor 在消息流内联渲染，此处为占位
 }, { panel: FormIntentPanel })
 
 registerEventHandler('configure', (data, msg) => {

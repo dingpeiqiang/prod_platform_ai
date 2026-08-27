@@ -1,7 +1,6 @@
 package com.sitech.prodai.intent;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -30,6 +29,15 @@ public final class IntentRecognitionSupport {
             "查看监控看板"
     );
 
+    /** 纯问候/闲聊词集：仅用于剔除后判定整句是否为问候（防误伤业务查询）。 */
+    private static final String[] GREETING_TOKENS = {
+            "你好", "您好", "hello", "hi", "hey",
+            "哈喽", "嗨", "在吗", "在不在",
+            "早上好", "中午好", "下午好", "晚上好", "早安", "午安", "晚安",
+            "再见", "拜拜", "谢谢", "多谢", "感谢", "辛苦", "请问", "没事",
+            "好的", "好哒", "收到", "嗯嗯"
+    };
+
     private IntentRecognitionSupport() {}
 
     /**
@@ -43,6 +51,23 @@ public final class IntentRecognitionSupport {
                 "只输出使用说明", "仅输出使用说明", "只给使用说明", "只要使用说明",
                 "不要直接执行", "不要执行", "勿执行", "不要生成配置结果",
                 "不要执行该场景", "不要直接执行该场景", "仅说明", "只要说明");
+    }
+
+    /**
+     * 纯问候/闲聊判断（LLM 失败降级用）：
+     * 整句剔除问候词后无实质内容才判定为问候，避免误伤业务查询
+     * （如"你好，帮我查5G套餐销量"仍有实质内容，不会落入 CHAT）。
+     */
+    public static boolean isGreetingRequest(String text) {
+        if (text == null) return false;
+        String t = text.trim();
+        if (t.isEmpty() || t.length() > 24) return false;
+        String remaining = t;
+        for (String token : GREETING_TOKENS) {
+            remaining = remaining.replace(token, "");
+        }
+        remaining = remaining.replaceAll("[0-9，。！？,.!?~～\\s——的了吗呢吧啊呀哦嗯哟]", "");
+        return remaining.isBlank();
     }
 
     /**
@@ -216,24 +241,6 @@ public final class IntentRecognitionSupport {
             if (key != null && text.contains(key)) return true;
         }
         return false;
-    }
-
-    /**
-     * Handler 侧门闩：误路由到业务意图时跳过副作用。
-     */
-    public static List<Map<String, Object>> metaGuideSkipEvents(String businessLabel) {
-        String label = businessLabel == null || businessLabel.isBlank() ? "业务操作" : businessLabel;
-        return List.of(
-                ThinkingStepBuilder.done(
-                        "skip", "跳过业务执行", "检测到仅说明/勿执行请求",
-                        "已跳过「" + label + "」", 2, 2, 0, null,
-                        Map.of("source", SOURCE_META)),
-                SseUtils.text(
-                        "当前请求只要使用说明，未执行「" + label + "」。"
-                                + "如需正式办理，请直接描述业务需求，并去掉「不要执行」类约束。"
-                ),
-                SseUtils.doneEvent("chat", true)
-        );
     }
 
     private static Map<String, Object> intentResult(String intentType, String action,

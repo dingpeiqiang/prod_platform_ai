@@ -243,6 +243,28 @@ public class ProdAiProperties {
         /** chat 意图是否启用 Function Calling 工具循环。 */
         private boolean functionCallingEnabled = true;
         private String systemPrompt = "You are a helpful assistant.";
+        /** 模型服务地址（OpenAI 兼容），如 https://api.deepseek.com */
+        private String baseUrl = "https://api.openai.com";
+        /** API Key。 */
+        private String apiKey = "sk-placeholder";
+        /** 模型名称。 */
+        private String model = "gpt-4o-mini";
+        /** 采样温度。 */
+        private double temperature = 0.3;
+        /** 普通模型输出 token 预算（max_tokens）。 */
+        private int maxTokens = 4096;
+        /** 推理模型输出 token 预算（max_completion_tokens），为空则回退到 maxTokens。 */
+        private Integer maxCompletionTokens;
+        /** 是否推理模型（如 DeepSeek 深度思考），true 时使用 max_completion_tokens。 */
+        private boolean thinking = false;
+        /** 是否启用流式输出。 */
+        private boolean streamEnabled = true;
+        /** base_url 是否为完整请求地址（含 /chat/completions）。 */
+        private boolean isFullUrl = false;
+        /** 鉴权类型：bearer（Authorization: Bearer）| custom（使用 authHeader 指定的请求头）。 */
+        private String authType = "bearer";
+        /** 自定义鉴权请求头名（auth-type=custom 时生效），如网关要求的 token。 */
+        private String authHeader = "";
 
         public boolean isEnabled() {
             return enabled;
@@ -266,6 +288,94 @@ public class ProdAiProperties {
 
         public void setSystemPrompt(String systemPrompt) {
             this.systemPrompt = systemPrompt;
+        }
+
+        public String getBaseUrl() {
+            return baseUrl;
+        }
+
+        public void setBaseUrl(String baseUrl) {
+            this.baseUrl = baseUrl;
+        }
+
+        public String getApiKey() {
+            return apiKey;
+        }
+
+        public void setApiKey(String apiKey) {
+            this.apiKey = apiKey;
+        }
+
+        public String getModel() {
+            return model;
+        }
+
+        public void setModel(String model) {
+            this.model = model;
+        }
+
+        public double getTemperature() {
+            return temperature;
+        }
+
+        public void setTemperature(double temperature) {
+            this.temperature = temperature;
+        }
+
+        public int getMaxTokens() {
+            return maxTokens;
+        }
+
+        public void setMaxTokens(int maxTokens) {
+            this.maxTokens = maxTokens;
+        }
+
+        public Integer getMaxCompletionTokens() {
+            return maxCompletionTokens;
+        }
+
+        public void setMaxCompletionTokens(Integer maxCompletionTokens) {
+            this.maxCompletionTokens = maxCompletionTokens;
+        }
+
+        public boolean isThinking() {
+            return thinking;
+        }
+
+        public void setThinking(boolean thinking) {
+            this.thinking = thinking;
+        }
+
+        public boolean isStreamEnabled() {
+            return streamEnabled;
+        }
+
+        public void setStreamEnabled(boolean streamEnabled) {
+            this.streamEnabled = streamEnabled;
+        }
+
+        public boolean isFullUrl() {
+            return isFullUrl;
+        }
+
+        public void setFullUrl(boolean fullUrl) {
+            isFullUrl = fullUrl;
+        }
+
+        public String getAuthType() {
+            return authType;
+        }
+
+        public void setAuthType(String authType) {
+            this.authType = authType;
+        }
+
+        public String getAuthHeader() {
+            return authHeader;
+        }
+
+        public void setAuthHeader(String authHeader) {
+            this.authHeader = authHeader;
         }
     }
 }

@@ -114,7 +114,7 @@
           <span class="td-cell">{{ row.text || '-' }}</span>
         </div>
       </div>
-      <div v-else class="empty-state">暂无告警，右侧可查看工单</div>
+      <div v-else class="empty-state">暂无告警，可通过下方按钮查看工单</div>
     </div>
 
     <!-- ==================== 风险研判 ==================== -->
@@ -157,7 +157,7 @@
           <span class="td-cell">{{ row.riskScore ?? '-' }}</span>
         </div>
         <div v-if="riskAuditItems.length > 8" class="table-more">
-          其余 {{ riskAuditItems.length - 8 }} 条详见右侧清单
+          其余 {{ riskAuditItems.length - 8 }} 条可继续要求展开
         </div>
       </div>
       <div v-if="factsSummary" class="facts-grid">
@@ -247,6 +247,17 @@
 
     <div class="card-footer" :class="{ 'footer-compact': compactOnly }">
       <span v-if="compactOnly" class="compact-label">{{ compactLabel }}</span>
+      <template v-if="isReason || isRiskAudit || isMonitor">
+        <button class="action-btn" @click="handleCreateWorkOrder">
+          <span class="btn-icon">&#9998;</span> {{ isRiskAudit ? '生成处置工单' : '生成本工单' }}
+        </button>
+        <button v-if="isRiskAudit || isPolicy" class="action-btn" @click="handleReAudit">
+          <span class="btn-icon">&#8635;</span> 重新稽核
+        </button>
+        <button v-else-if="isMonitor" class="action-btn" @click="handleReAudit">
+          <span class="btn-icon">&#8635;</span> 重新监控
+        </button>
+      </template>
       <button class="action-btn" @click="handleExport">
         <span class="btn-icon">&#8615;</span> 导出结论
       </button>
@@ -599,6 +610,50 @@ const handleFollowUp = () => {
     type: normalizedIntent.value,
     action: 'follow_up',
     payload: { text: followUpMap[normalizedIntent.value] || '请继续分析' },
+  })
+}
+
+/** 工单/处置：归因→根因处置工单，稽核→风险处置工单（操作走对话，由页面承接提交） */
+const handleCreateWorkOrder = () => {
+  const data = props.msg?.intentData || {}
+  const item = riskAuditItems.value[0] || {}
+  const paths = data.paths || data.rootCause?.paths || []
+  const main = paths[0]
+  let title = ''
+  let actions = []
+  let summary = ''
+  if (isRiskAudit.value) {
+    title = `${item.offeringName || item.offeringId || '风险商品'}风险处置工单`
+    actions = item.actions?.length
+      ? item.actions
+      : [item.disposition?.defaultAction || '启动风险处置']
+  } else {
+    title = `${data.target || data.offeringName || '目标商品'}优化工单`
+    actions = (main?.actions || ['按根因结论落地优化']).map((a) => a)
+  }
+  emit('intent-action', {
+    type: normalizedIntent.value,
+    action: isRiskAudit.value ? 'create_risk_work_order' : 'create_work_order',
+    payload: {
+      offeringId: item.offeringId || data.offeringId,
+      offeringName: item.offeringName || data.offeringName || data.target,
+      title,
+      summary: summary || (main ? `主因：${main.name}` : ''),
+      actions,
+      rootCauses: paths.map((p) => p.name),
+    },
+  })
+}
+
+/** 重新稽核 / 重新监控：走对话意图 → 后端重新执行 */
+const handleReAudit = () => {
+  const text = isMonitor.value
+    ? '重新拉取在架商品运营监控与告警'
+    : '按最新阈值重新稽核在架风险商品'
+  emit('intent-action', {
+    type: normalizedIntent.value,
+    action: 're_audit',
+    payload: { text },
   })
 }
 </script>

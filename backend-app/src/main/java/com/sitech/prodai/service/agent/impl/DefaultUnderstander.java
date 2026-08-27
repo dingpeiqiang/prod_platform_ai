@@ -5,8 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sitech.prodai.intent.IntentRecognitionSupport;
 import com.sitech.prodai.service.LlmService;
 import com.sitech.prodai.service.agent.Understander;
+import com.sitech.prodai.service.agent.model.ExecStep;
 import com.sitech.prodai.service.agent.model.QueryPlan;
 import com.sitech.prodai.service.agent.model.SessionContext;
+import com.sitech.prodai.service.agent.tool.AgentTool;
+import com.sitech.prodai.service.agent.tool.ToolParam;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -25,16 +28,30 @@ import java.util.Set;
  * 1. 意图识别 → 用户想做什么
  * 2. 实体抽取 → 涉及哪些实体
  * 3. 查询计划生成 → 需要调用哪些工具
+ * <p>
+ * 参数完整性（设计文档 3.4 节）：校验必填参数，缺失时优先复用
+ * context 缓存 / 已澄清参数，仍缺失则生成 CLARIFY 澄清计划。
  */
 @Component
 public class DefaultUnderstander implements Understander {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultUnderstander.class);
 
-    private final LlmService llmService;
+    /** 大模型空响应重试上限与间隔（DeepSeek 推理模型偶发返回空 choices） */
+    private static final int MAX_TRANSLATE_ATTEMPTS = 3;
+    private static final long RETRY_DELAY_MS = 1000L;
 
-    public DefaultUnderstander(LlmService llmService) {
+    private final LlmService llmService;
+    private final Map<String, AgentTool> toolMap;
+
+    public DefaultUnderstander(LlmService llmService, List<AgentTool> tools) {
         this.llmService = llmService;
+        this.toolMap = new LinkedHashMap<>();
+        if (tools != null) {
+            for (AgentTool tool : tools) {
+                this.toolMap.put(tool.getName(), tool);
+            }
+        }
     }
 
     @Override
@@ -43,58 +60,125 @@ public class DefaultUnderstander implements Understander {
             return chatPlan(question);
         }
 
-        // Step 1: LLM 优先 — 完整理解（意图 + 实体抽取 + 查询计划生成）
-        try {
-            List<Map<String, String>> history = toHistory(context);
-            String llmResult = llmService.completeMessages(
-                    buildSystemPrompt(),
-                    history,
-                    question
-            );
-            QueryPlan plan = parseLlmResult(llmResult, question);
-            // LLM 识别出业务意图时直接采用；若落到普通聊天（无业务结果），继续走关键词兜底
-            if (plan != null && !"CHAT".equals(plan.getIntent())) {
-                return plan;
+        // 理解层仅依赖大模型：大模型不可用时直接抛错，不做任何关键词/通用对话兜底。
+        // DeepSeek 推理模型偶发返回空 choices，此处做有限重试，仍失败则终止翻译链。
+        String llmResult = null;
+        Exception lastError = null;
+        for (int attempt = 1; attempt <= MAX_TRANSLATE_ATTEMPTS; attempt++) {
+            try {
+                List<Map<String, String>> history = toHistory(context);
+                llmResult = llmService.completeMessages(buildSystemPrompt(), history, question);
+            } catch (Exception e) {
+                lastError = e;
+                log.warn("[DefaultUnderstander] 大模型调用失败（第 {} 次尝试）: {}", attempt, e.getMessage());
             }
-        } catch (Exception e) {
-            log.warn("[DefaultUnderstander] LLM 意图识别失败，降级到关键词: {}", e.getMessage());
+            if (llmResult != null && !llmResult.isBlank()) {
+                log.info("[DefaultUnderstander] 大模型原始输出（第 {} 次尝试）: {}", attempt, llmResult);
+                break;
+            }
+            log.warn("[DefaultUnderstander] 大模型返回为空（第 {} 次尝试）", attempt);
+            llmResult = null;
+            if (attempt < MAX_TRANSLATE_ATTEMPTS) {
+                sleep(RETRY_DELAY_MS);
+            }
         }
 
-        // Step 2: 关键词兜底（LLM 不可用 / 未识别出业务意图时）
-        Map<String, Object> keywordResult = IntentRecognitionSupport.tryKeywordFallback(question, null);
-        if (keywordResult != null) {
-            String intentType = String.valueOf(keywordResult.getOrDefault("intentType", ""));
-            String action = String.valueOf(keywordResult.getOrDefault("action", ""));
-            return mapKeywordToPlan(intentType, action, question);
+        if (llmResult == null && lastError != null) {
+            throw new IllegalStateException("大模型不可用，理解层调用失败: " + lastError.getMessage(), lastError);
+        }
+        if (llmResult == null || llmResult.isBlank()) {
+            log.error("[DefaultUnderstander] 大模型返回为空，翻译链终止");
+            throw new IllegalStateException("大模型返回为空，无法理解用户需求");
         }
 
-        // Step 3: 降级到通用对话
-        return chatPlan(question);
+        QueryPlan plan = parseLlmResult(llmResult, question);
+        if (plan == null) {
+            log.error("[DefaultUnderstander] 大模型输出无法解析为查询计划，翻译链终止");
+            throw new IllegalStateException("大模型输出无法解析为查询计划，请重试或检查模型配置");
+        }
+
+        // 参数完整性校验 — 缺失必填参数时转入澄清分支（而非直接报错）
+        return validateParams(plan, context, question);
     }
 
     /**
-     * 将关键词降级结果映射为查询计划。
+     * 参数完整性校验（设计文档 3.4 节）：
+     * 校验优先级：params 已填 → context.cachedEvidence / resolvedParams 缓存 → defaultValue。
+     * 仍缺失的必填参数 → 生成 CLARIFY 意图；超过澄清上限则按缺省值继续（防死循环）。
      */
-    private QueryPlan mapKeywordToPlan(String intentType, String action, String question) {
-        String normalized = IntentRecognitionSupport.normalizeIntentType(intentType);
-        Map<String, Object> params = new LinkedHashMap<>();
-        params.put("question", question);
+    private QueryPlan validateParams(QueryPlan plan, SessionContext context, String question) {
+        List<String> tools = plan.getTools();
+        if (tools == null || tools.isEmpty()) {
+            return plan;
+        }
 
-        return switch (normalized) {
-            case "product_ops_query" -> new QueryPlan("SPARQL_QUERY",
-                    List.of("sparql_query"), params, question);
-            case "product_ops_reason" -> new QueryPlan("SWRL_INFER",
-                    List.of("sparql_query", "swrl_root_cause"), params, question);
-            case "product_ops_policy" -> {
-                if ("risk_audit".equals(action) || "product_ops_policy".equals(normalized)) {
-                    yield new QueryPlan("SWRL_INFER",
-                            List.of("swrl_risk_audit"), params, question);
-                }
-                yield new QueryPlan("SPARQL_QUERY",
-                        List.of("sparql_query"), params, question);
+        List<String> missing = new ArrayList<>();
+        for (String toolName : tools) {
+            AgentTool tool = toolMap.get(toolName);
+            if (tool == null) {
+                continue;
             }
-            default -> chatPlan(question);
-        };
+            for (ToolParam param : tool.getParams()) {
+                if (!param.isRequired()) {
+                    continue;
+                }
+                if (hasValue(plan.getParams().get(param.getName()))) {
+                    continue;
+                }
+                // 缓存优先级：resolvedParams（用户已补齐） > cachedEvidence（上轮证据）
+                Object cached = context != null ? context.getResolvedParams().get(param.getName()) : null;
+                if (!hasValue(cached) && context != null) {
+                    cached = context.getCachedEvidence().get(param.getName());
+                }
+                if (hasValue(cached)) {
+                    plan.getParams().put(param.getName(), cached);
+                    continue;
+                }
+                // 有缺省值则不阻塞
+                if (param.getDefaultValue() != null && !param.getDefaultValue().isBlank()) {
+                    plan.getParams().put(param.getName(), param.getDefaultValue());
+                    continue;
+                }
+                if (!missing.contains(param.getName())) {
+                    missing.add(param.getName());
+                }
+            }
+        }
+
+        if (missing.isEmpty()) {
+            if (context != null) {
+                context.resetClarifyRounds();
+            }
+            return plan;
+        }
+
+        // 超过澄清上限：按缺省值继续（缺省缺失时放弃该参数），防死循环
+        if (context != null && context.exceedClarifyLimit()) {
+            log.info("[DefaultUnderstander] 澄清轮次已达上限，按缺省继续: {}", missing);
+            context.resetClarifyRounds();
+            return plan;
+        }
+        if (context != null) {
+            context.incrementClarifyRounds();
+        }
+
+        // 生成 CLARIFY 澄清计划
+        QueryPlan clarifyPlan = new QueryPlan();
+        clarifyPlan.setIntent(QueryPlan.INTENT_CLARIFY);
+        clarifyPlan.setTools(List.of());
+        clarifyPlan.setClarify(missing);
+        clarifyPlan.setParams(new LinkedHashMap<>(plan.getParams()));
+        clarifyPlan.setUserQuestion(question);
+        log.info("[DefaultUnderstander] 必填参数缺失，生成澄清计划: {}", missing);
+        return clarifyPlan;
+    }
+
+    private boolean hasValue(Object value) {
+        if (value == null) {
+            return false;
+        }
+        String s = String.valueOf(value);
+        return !s.isBlank() && !"null".equals(s);
     }
 
     /** 翻译层可调用的真实工具白名单（防 LLM 编造工具名） */
@@ -154,7 +238,7 @@ public class DefaultUnderstander implements Understander {
         } else if ("ONTOLOGY_EXPLAIN".equals(legacy)) {
             return new QueryPlan("ONTOLOGY_EXPLAIN", sanitizeTools(tools, List.of("ontology_explain")), params, question);
         } else if ("CHAT".equals(legacy)) {
-            return null;
+            return chatPlan(question);
         }
 
         return mapIntentToPlan(intent, action, tools, params, question);
@@ -166,7 +250,7 @@ public class DefaultUnderstander implements Understander {
     private QueryPlan mapIntentToPlan(String intent, String action, List<String> tools,
                                       Map<String, Object> params, String question) {
         String normalized = IntentRecognitionSupport.normalizeIntentType(intent);
-        // 保留业务意图标签与动作，供上层（ChatStreamController）反向还原 intentData
+        // 保留业务意图标签与动作，供上层（AgentOrchestrator）反向还原 intentData
         params.put("intent_type", normalized);
         if (action != null && !action.isBlank()) {
             params.put("action", action);
@@ -227,6 +311,14 @@ public class DefaultUnderstander implements Understander {
                 + "- rule_explain: 业务规则解释\n"
                 + "- ontology_explain: 本体概念解释\n\n"
                 + "如果用户只是打招呼或闲聊，intent 设为 CHAT，tools 设为空列表。请从问题中抽取 offering/metric/time 等实体填入 params。";
+    }
+
+    private void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private List<Map<String, String>> toHistory(SessionContext context) {

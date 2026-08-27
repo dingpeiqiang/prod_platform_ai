@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -97,8 +98,15 @@ public class ChatPersistenceService {
         List<ChatSession> sessions = sessionRepo
                 .findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(0, safeLimit * 3))
                 .getContent();
+        if (sessions.isEmpty()) {
+            return List.of();
+        }
+        List<String> sessionIds = sessions.stream().map(ChatSession::getSessionId).toList();
+        Set<String> nonEmpty = messageRepo.countBySessionIdIn(sessionIds).stream()
+                .map(row -> (String) row[0])
+                .collect(java.util.stream.Collectors.toSet());
         return sessions.stream()
-                .filter(s -> messageRepo.countBySessionId(s.getSessionId()) > 0)
+                .filter(s -> nonEmpty.contains(s.getSessionId()))
                 .limit(safeLimit)
                 .toList();
     }

@@ -5,6 +5,8 @@
     v-model:inputText="inputText"
     :sessions="sessionList"
     :sessionsLoading="historyLoading"
+    :context="contextItems"
+    :summary-stats="summaryStats"
     @send="onSend"
     @stop="stop"
     @new-session="onNewSession"
@@ -13,6 +15,8 @@
     @shortcut="onShortcut"
     @quick-action="onQuickAction"
     @open-model-config="onOpenModelConfig"
+    @context-remove="onRemoveContextItem"
+    @context-clear="onClearContextItems"
   >
     <template #nav-actions>
       <button type="button" class="nav-product-btn" @click="showProductListPanel = true">
@@ -33,10 +37,23 @@
       mode="rd"
       :messages="messages"
       :showWelcome="messages.length === 0"
+      :active-form-card="activeFormCard"
       @suggest="onSuggest"
       @intent-action="onIntentAction"
+      @undo-action="onUndoAction"
       @form-card-click="onFormCardClick"
+      @form-submit="handleConfirmSubmit"
+      @form-cancel="closeActiveForm"
+      @form-field-change="handleInlineFieldChange"
+      @form-ai-validation="handleAiValidation"
+      @form-confirm-submit="handleConfirmSubmit"
+      @form-close="closeActiveForm"
+      @batch-confirm="handleBatchConfirm"
+      @batch-fix="handleBatchFix"
+      @batch-delete="handleBatchDelete"
       @query-result-click="onQueryResultClick"
+      @clarify-submit="onClarifySubmit"
+      @file-ref-click="onFileRefClick"
     />
 
     <ProductListPanel
@@ -50,70 +67,19 @@
     />
 
     <template #right>
-      <OpsRootCausePanel
-        v-if="showRootCausePanel && rootCauseResult"
-        :visible="showRootCausePanel"
-        :result="rootCauseResult"
-        :ontology-chain="rootCauseOntologyChain"
-        v-model:active-rank="activeRootCauseRank"
-        @close="showRootCausePanel = false"
-        @create-work-order="onCreateWorkOrder"
-      />
-      <OpsRiskAuditPanel
-        v-else-if="showRiskAuditPanel && riskAuditResult"
-        :visible="showRiskAuditPanel"
-        :result="riskAuditResult"
-        @close="showRiskAuditPanel = false"
-        @re-audit="onReAudit"
-      />
-      <ConfigTracePanel
-        v-else-if="showConfigTracePanel"
-        :visible="showConfigTracePanel"
-        :trace-id="lastConfigTraceId"
-        :steps="configTraceSteps"
-        :explanation="configExplainText"
-        @close="showConfigTracePanel = false"
-      />
-      <ConfigComparePanel
-        v-else-if="showComparePanel && compareResult"
-        :visible="showComparePanel"
-        :result="compareResult"
-        @close="showComparePanel = false"
-      />
-      <FormPanel
-        v-else-if="activeFormCard"
-        :form-schema="activeFormCard.formSchema"
-        :form-id="activeFormCard.formId"
-        :form-submitted="!!activeFormCard.formSubmitted"
-        :show-compliance="
-          activeFormCard.formCode === 'offering_config' ||
-          !!activeFormCard.issues?.length ||
-          !!activeFormCard.inferredFields?.length
-        "
-        :require-compliance="activeFormCard.formCode === 'offering_config'"
-        :issues="activeFormCard.issues || []"
-        :compliance-pass="!!activeFormCard.compliancePass"
-        :inferred-fields="activeFormCard.inferredFields || []"
-        @field-change="handleProductFieldChange"
-        @confirm-submit="handleConfirmSubmit"
-        @submit="handleConfirmSubmit"
-        @cancel="closeActiveForm"
-      />
+      <SceneSummaryPanel mode="rd" :messages="messages" :product-config="productConfig" />
     </template>
   </AssistantShell>
 </template>
 
 <script setup>
-import { ref, onMounted, provide } from 'vue'
+import { ref, computed, onMounted, provide } from 'vue'
+import { ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import AssistantShell from './AssistantShell.vue'
 import ChatMessageList from './ChatMessageList.vue'
-import FormPanel from './FormPanel.vue'
+import SceneSummaryPanel from './SceneSummaryPanel.vue'
 import ProductListPanel from './ProductListPanel.vue'
-import OpsRootCausePanel from './OpsRootCausePanel.vue'
-import OpsRiskAuditPanel from './OpsRiskAuditPanel.vue'
-import ConfigTracePanel from './ConfigTracePanel.vue'
-import ConfigComparePanel from './ConfigComparePanel.vue'
 import { useChatStream } from '../composables/useChatStream.js'
 import { useProductConfig } from '../composables/useProductConfig.js'
 import { checkCompliance } from '../services/productOntologyApi.js'
@@ -146,7 +112,7 @@ const activeScene = ref(assistantModes.rd.defaultScene)
 const {
   messages,
   streaming,
-  sendMessage,
+  sendAgentMessage,
   loadSessions,
   switchSession,
   newSession,
@@ -164,16 +130,96 @@ const showRootCausePanel = productConfig.showRootCausePanel
 const showRiskAuditPanel = productConfig.showRiskAuditPanel
 const showConfigTracePanel = productConfig.showConfigTracePanel
 const showComparePanel = productConfig.showComparePanel
-const compareResult = productConfig.compareResult
-const lastConfigTraceId = productConfig.lastConfigTraceId
-const configTraceSteps = productConfig.configTraceSteps
-const configExplainText = productConfig.configExplainText
-const rootCauseResult = productConfig.rootCauseResult
-const riskAuditResult = productConfig.riskAuditResult
-const rootCauseOntologyChain = productConfig.rootCauseOntologyChain
 const activeRootCauseRank = productConfig.activeRootCauseRank
 provide('rootCauseActiveRank', activeRootCauseRank)
 const config = assistantModes.rd
+
+/** 手动移除/清除的上下文键（避免自动派生又冒出来） */
+const dismissedContextKeys = ref(new Set())
+
+/** 会话上下文标签（ContextBar）：从最近一条助手消息的翻译层产物派生 */
+const contextItems = computed(() => {
+  const doneMsgs = messages.value.filter(m => m.role === 'assistant' && m.done)
+  const last = doneMsgs[doneMsgs.length - 1]
+  if (!last) return []
+  const items = []
+
+  const plan = last.queryPlan
+  if (plan) {
+    if (Array.isArray(plan.clarify) && plan.clarify.length) {
+      for (const p of plan.clarify) {
+        const key = `clarify:${p}`
+        if (!dismissedContextKeys.value.has(key)) {
+          items.push({ key, label: '待补充', value: paramLabelZh(p), type: 'intent', removable: true })
+        }
+      }
+    }
+    const params = plan.params || {}
+    if (params.offering) {
+      const key = 'entity:offering'
+      if (!dismissedContextKeys.value.has(key)) {
+        items.push({ key, label: '当前分析', value: String(params.offering), type: 'entity', removable: true })
+      }
+    }
+    if (plan.intent && plan.intent !== 'CHAT') {
+      const key = 'intent:plan'
+      if (!dismissedContextKeys.value.has(key)) {
+        items.push({ key, label: '业务意图', value: intentLabelZh(plan.intent), type: 'intent', removable: true })
+      }
+    }
+  }
+  return items
+})
+
+/** 移动端紧凑「会话汇总」状态条：关键计数实时聚合 */
+const summaryStats = computed(() => {
+  const mp = productConfig
+  const products = mp.products?.value || []
+  const batchItems = mp.batchItems?.value || []
+  const passed = batchItems.filter((i) => i.compliancePass || i.status === '通过').length
+  const pending = batchItems.filter((i) => !(i.compliancePass || i.status === '通过')).length
+  return [
+    { label: '草稿', value: `${products.length}` },
+    { label: '通过', value: `${passed}`, tone: 'good' },
+    { label: '待修', value: `${pending}`, tone: pending ? 'warn' : 'neutral' },
+    { label: '文档', value: `${messages.value.filter((m) => m.fileRef).length}` },
+  ]
+})
+
+function paramLabelZh(key) {
+  const map = {
+    offering: '商品/套餐',
+    ruleId: '规则编号',
+    concept: '本体概念',
+    question: '查询内容',
+  }
+  return map[key] || key
+}
+
+function intentLabelZh(intent) {
+  const map = {
+    SPARQL_QUERY: '数据查询',
+    SWRL_INFER: '异动归因',
+    RULE_EXPLAIN: '规则解释',
+    ONTOLOGY_EXPLAIN: '概念解释',
+    product_ops_query: '数据查询',
+    product_ops_reason: '异动归因',
+    product_ops_policy: '风险稽核',
+    product_ops_monitor: '运营监控',
+    product_ops_compare: '对比分析',
+  }
+  return map[intent] || intent
+}
+
+const onRemoveContextItem = (item) => {
+  if (item?.key) {
+    dismissedContextKeys.value = new Set([...dismissedContextKeys.value, item.key])
+  }
+}
+
+const onClearContextItems = () => {
+  dismissedContextKeys.value = new Set(contextItems.value.map(i => i.key))
+}
 
 onMounted(async () => {
   historyLoading.value = true
@@ -234,6 +280,18 @@ async function handleProductFieldChange(fieldCode, value) {
     if (field) field.value = value
   }
   if (activeFormCard.value?.formCode === 'offering_config') {
+    await refreshCompliance()
+  }
+}
+
+/** 内联表单字段变更：同步 productConfig 与当前激活表单 schema 的字段值 */
+const handleInlineFieldChange = (fieldCode, value) => {
+  handleProductFieldChange(fieldCode, value)
+}
+
+/** 内联表单 AI 补全回调：本实现暂仅刷新合规（回显字段已在 schema 更新） */
+const handleAiValidation = async (data) => {
+  if (activeFormCard.value?.formCode === 'offering_config' && data) {
     await refreshCompliance()
   }
 }
@@ -319,6 +377,14 @@ async function handleConfirmSubmit(payload) {
       issues: [],
     },
     nextSteps: ['查看审计追溯', '查一下近30天大学生套餐'],
+    _undoable: resp.actionId
+      ? {
+          actionId: resp.actionId,
+          state: 'executed',
+          label: `入库 · ${draft.offeringName || product.name}`,
+          undoLabel: '撤销入库',
+        }
+      : null,
   })
 }
 
@@ -392,6 +458,16 @@ function tickMessages() {
 function applyPlaybookSideEffects(aiMsg, playbook = {}) {
   if (playbook.nextSteps?.length) {
     aiMsg.nextSteps = playbook.nextSteps
+  }
+  if (playbook._undoable) {
+    aiMsg.undoable = playbook._undoable
+  }
+  if (playbook.batch) {
+    aiMsg.batch = playbook.batch
+    aiMsg.batchItems = (productConfig.batchItems.value || []).slice()
+  }
+  if (playbook.fileRef) {
+    aiMsg.fileRef = playbook.fileRef
   }
   if (playbook.formCard) {
     applyFormCard(playbook.formCard)
@@ -485,14 +561,18 @@ async function loadScenarioPlaybook(text, scenario, attachments = []) {
   }
   if (scenario === 'config-trace') {
     const result = await productConfig.loadConfigTrace()
+    const stepsText = (result.steps || [])
+      .map((s, i) => `${i + 1}. ${s.stepDesc || s.title || s.step || ''}`)
+      .filter(Boolean)
+      .join('\n')
     return {
       thinkingSteps: ['加载配置审计链路 get_trace', '生成业务说明 explain(audience=business)'],
       content:
         result.explanation ||
-        '已打开右侧「配置审计追溯」面板。' +
+        '已生成配置审计追溯说明。' +
+          (stepsText ? `\n\n${stepsText}` : '') +
           (result.traceId ? `\n\ntrace：\`${result.traceId}\`` : ''),
       formCard: null,
-      showConfigTracePanel: true,
     }
   }
   if (scenario === 'compliance') {
@@ -635,6 +715,15 @@ const onSend = async (payload) => {
   }
   inputText.value = ''
 
+  // 长对话引用消解（L0）：无新附件、且为跨轮引用命令时，重设最近批次作用域
+  if (!attachments.length && isReferenceCommand(text)) {
+    const refMsg = findLastRefMsg()
+    if (refMsg) {
+      await handleReferenceContinue(text, refMsg)
+      return
+    }
+  }
+
   const scene = payload?.scene || activeScene.value || config.defaultScene
   const scenario = resolveProductScenario(text || '智读', scene)
   // 有附件时优先走智读·文件配置
@@ -650,7 +739,8 @@ const onSend = async (payload) => {
     )
     return
   }
-  sendMessage({ text, scene, attachments })
+  // 无附件闲聊/查询：走翻译层统一入口（三阶架构：理解→执行→表达）
+  sendAgentMessage({ text })
 }
 
 const onSuggest = (payload) => {
@@ -680,6 +770,12 @@ const onSuggest = (payload) => {
     activeScene.value = 'rd.chat'
     productConfig.createEmptyOfferingCanvas()
   }
+}
+
+/** CLARIFY 澄清补参结构化回传：带 params 重发「继续」 */
+const onClarifySubmit = async ({ params }) => {
+  if (!params || streaming.value) return
+  await sendAgentMessage({ text: '继续', params })
 }
 
 /** 点击场景标签：本地展示欢迎信息（不请求模型） */
@@ -746,6 +842,92 @@ const onFormCardClick = (msg) => {
   if (msg?.formCard) applyFormCard(msg.formCard)
 }
 
+/** 长对话引用消解（L0）：跨轮续接的引用短语（限文件/批次记忆锚） */
+const REFERENCE_RE =
+  /这份|刚才那批|那批|这批|当前批次|上一(份|批)|之前(导入|上传|解析)的|基于这份|继续分析|再分析一遍|重新分析/
+
+/** 判断文本是否像完整方案正文（如演示话术），避免把粘贴正文误判为引用命令 */
+function looksLikePlanContentLocal(text = '') {
+  const t = String(text || '').trim()
+  if (!t) return false
+  const signals = [
+    /月费|资费|定价|固定费/,
+    /\d+\s*元/,
+    /\d+\s*GB|\d+\s*G\b|流量/,
+    /分钟|语音|通话/,
+    /宽带|\d+\s*M(?:bps)?/i,
+    /套餐[A-Za-z0-9甲乙丙丁一二三四五六七八九十]|套餐名称|商品名称|offering/i,
+    /目标客群|客群|渠道|合约|订购|互斥|依赖/,
+  ]
+  const hits = signals.filter((re) => re.test(t)).length
+  if (hits >= 2) return true
+  return t.length >= 80 && hits >= 1
+}
+
+/** 是否为跨轮引用命令（需命中引用短语且非完整方案正文） */
+function isReferenceCommand(text = '') {
+  if (!text) return false
+  if (!REFERENCE_RE.test(text)) return false
+  return !looksLikePlanContentLocal(text)
+}
+
+/** 向上查找最近一条携带 fileRef / batch 的助手消息（对话记忆锚） */
+function findLastRefMsg() {
+  const msgs = messages.value
+  for (let i = msgs.length - 1; i >= 0; i -= 1) {
+    const m = msgs[i]
+    if (m?.role === 'assistant' && (m.fileRef || m.batch)) return m
+  }
+  return null
+}
+
+/** 从 productConfig.batchItems 汇总当前批次快照 */
+function batchSnapshotFromItems() {
+  const items = (productConfig.batchItems.value || []).slice()
+  return {
+    total: items.length,
+    passedCount: items.filter((i) => i.compliancePass || i.status === '通过').length,
+    pendingCount: items.filter((i) => !(i.compliancePass || i.status === '通过')).length,
+    confirmable: items.filter((i) => i.compliancePass || i.status === '通过'),
+  }
+}
+
+/** 跨轮续接：把最近引用文档/批次重新设为当前作用域，可直接延续修正/入库 */
+async function handleReferenceContinue(text = '', refMsg = null) {
+  if (streaming.value) return
+  streaming.value = true
+  try {
+    const name = refMsg?.fileRef?.fileName || (refMsg?.batch ? '当前批次' : '该文档')
+    const summary = batchSnapshotFromItems()
+    const showBatch = refMsg?.batch && summary.total
+    await playProductReply({
+      thinkingSteps: [
+        '检测到跨轮引用（文件/批次记忆锚）',
+        '向上消解最近 fileRef / batch，无需重复上传',
+        showBatch ? '批次仍在会话作用域，可直接延续操作' : '当前无批次草稿，可继续智读导入',
+      ],
+      content:
+        `已消解引用「${name}」，延续上一轮上下文：\n\n` +
+        (summary.total
+          ? `当前批次：通过 ${summary.passedCount} · 待修 ${summary.pendingCount} · 可入库 ${summary.confirmable.length}\n`
+          : '（当前无批次草稿，可继续智读导入文档）\n') +
+        (text.includes('继续') || /继续分析|再次分析|重新分析/.test(text)
+          ? '\n已为您重新载入该批次进行分析，可对下方卡片继续修正 / 合格项入库。'
+          : ''),
+      formCard: null,
+      batch: showBatch ? refMsg.batch : null,
+    }, 'file-parse')
+  } finally {
+    streaming.value = false
+  }
+}
+
+/** 点击「已引用文档」锚：聚焦该文档/批次，给出跨轮续接入口 */
+async function onFileRefClick(msg) {
+  if (!msg) return
+  await handleReferenceContinue('引用聚焦', msg)
+}
+
 const onSwitchSession = async (sid) => {
   closeActiveForm()
   await switchSession(sid)
@@ -770,24 +952,147 @@ const onIntentAction = (event) => {
   }
 }
 
-function onCreateWorkOrder(wo) {
-  const title = wo?.title || '产品优化工单草稿'
-  messages.value = [
-    ...messages.value,
-    {
-      id: genId(),
-      role: 'assistant',
-      type: 'chat',
-      content: `已生成工单草稿：**${title}**\n\n${(wo?.actions || []).map((a) => `- ${a}`).join('\n')}`,
-      done: true,
-      timestamp: Date.now(),
-    },
-  ]
+/** 对话内撤销已执行动作（v3.2 可逆操作）：调用 composable 回退，追加回执并标记已撤销 */
+const onUndoAction = async ({ msg, actionId }) => {
+  if (streaming.value || !actionId) return
+  const result = await productConfig.undoAction(actionId)
+  if (msg?.undoable) {
+    msg.undoable.state = result.success ? 'reverted' : 'failed'
+    if (result.success) msg.undoable.actionId = null
+  }
+  tickMessages()
+  const label = msg?.undoable?.label || (result.success ? '该动作' : result.message)
+  await playProductReply({
+    thinkingSteps: [result.success ? '回退已执行动作，草稿/状态已恢复' : '撤销失败，动作保留'],
+    content: result.success
+      ? `已撤销：**${label}**。相关草稿/状态已回退，可在「已配置商品」中核对。`
+      : `撤销失败：${result.message || '请稍后重试'}。`,
+    formCard: null,
+  })
 }
 
-async function onReAudit(payload) {
-  const playbook = await productConfig.runRiskAuditFlow(payload || {})
-  await playProductReply(playbook)
+/** 同步消息内批次快照：让内联卡片随 productConfig.batchItems 实时刷新 */
+function refreshBatchSnapshot(msg, summary) {
+  if (!msg) return
+  if (summary) msg.batch = summary
+  msg.batchItems = (productConfig.batchItems.value || []).slice()
+  const items = msg.batchItems
+  if (items.length && msg.batch) {
+    msg.batch = {
+      ...msg.batch,
+      total: items.length,
+      passedCount: items.filter((i) => i.compliancePass || i.status === '通过').length,
+      pendingCount: items.filter((i) => !(i.compliancePass || i.status === '通过')).length,
+      confirmableDrafts: items.filter((i) => i.compliancePass || i.status === '通过'),
+    }
+  }
+  tickMessages()
+}
+
+/** 批量配置：确认通过项入库（对话中完成闭环） */
+async function handleBatchConfirm(msg) {
+  if (!msg?.batch || streaming.value) return
+  streaming.value = true
+  try {
+    const playbook = await productConfig.confirmPassedDrafts()
+    refreshBatchSnapshot(msg, playbook.batch)
+    if (playbook.formCard) applyFormCard(playbook.formCard)
+    await playProductReply(playbook, 'confirm-batch')
+  } finally {
+    streaming.value = false
+  }
+}
+
+/** 单条待修项的预设修正：按规则映射到 applyBatchFix 的 fixKey */
+function fixesForItem(item) {
+  const rules = new Set((item.issues || []).map((i) => i.ruleId))
+  const fixes = []
+  if (rules.has('R-C05') || rules.has('R-C07')) {
+    fixes.push('contract12')
+    fixes.push('internal')
+  }
+  if (rules.has('R-C06') && (item.issues || []).some((i) => i.field === 'monthlyFee')) {
+    fixes.push('fee19')
+  }
+  if (rules.has('R-C04')) {
+    fixes.push('dependBb')
+  }
+  return fixes
+}
+
+/** 批量配置：逐条修正待修项（应用预设修正并重跑合规），全部完成后对话回执 */
+async function handleBatchFix(msg) {
+  if (!msg?.batch || streaming.value) return
+  streaming.value = true
+  try {
+    const items = (productConfig.batchItems.value || []).slice()
+    const pending = items.filter((i) => !(i.compliancePass || i.status === '通过'))
+    const fixedLines = []
+    for (const item of pending) {
+      if (!item.productId) continue
+      const product = productConfig.products.value.find((p) => p.id === item.productId)
+      const fixes = fixesForItem(item)
+      let applied = 0
+      for (const key of fixes) {
+        if (product) await productConfig.applyBatchFix(item.productId, key)
+        applied += 1
+        if (productConfig.batchItems.value.find((b) => b.productId === item.productId)?.compliancePass) break
+      }
+      const cur = productConfig.batchItems.value.find((b) => b.productId === item.productId)
+      const ok = cur?.compliancePass || cur?.status === '通过'
+      fixedLines.push(
+        `- **${cur?.draft?.offeringName || item.draft?.offeringName || '未命名'}** → ${ok ? `✅ 已修正，合规通过${applied ? `（套用 ${applied} 项预设修正）` : ''}` : '仍待修正，可在编辑后重跑'}`
+          + (cur?.issues?.length && !ok ? `（剩余：${cur.issues.map((i) => i.ruleId).join('、')}）` : ''),
+      )
+    }
+    refreshBatchSnapshot(msg)
+    const summary = productConfig.batchItems.value
+    const pendingLeft = summary.filter((i) => !(i.compliancePass || i.status === '通过')).length
+    const confirmable = summary.filter((i) => i.compliancePass || i.status === '通过').length
+    await playProductReply({
+      thinkingSteps: [
+        '逐条修正待修项（补协议期/转内部验证/补月费/补依赖宽带）',
+        '逐条重跑合规校验',
+        `修正后：可入库 ${confirmable}，仍待修正 ${pendingLeft}`,
+      ],
+      content:
+        `已完成批量修正：\n${fixedLines.join('\n') || '- 无待修正项'}\n\n` +
+        `当前**可入库 ${confirmable}** 条，仍**待修正 ${pendingLeft}** 条。` +
+        (confirmable ? '\n\n可点击「确认通过项入库」完成备案闭环。' : ''),
+      formCard: null,
+    })
+  } finally {
+    streaming.value = false
+  }
+}
+
+/** 批量配置：删除某条草稿（对话确认） */
+async function handleBatchDelete({ msg, item }) {
+  if (!msg?.batch || !item?.productId || streaming.value) return
+  const target = productConfig.products.value.find((p) => p.id === item.productId)
+  const isFiled = !!target?.draftId || item.status === '已备案'
+  const name = item.draft?.offeringName || item.name || item.offeringName || '该条草稿'
+  const confirmed = await ElMessageBox.confirm(
+    isFiled
+      ? `「${name}」已生成备案草稿（draftId：${target?.draftId || '-'}），删除仅移除本地草稿；如需撤销上架请走「下线/停售」流程。确认删除？`
+      : `确认删除草稿「${name}」？该操作不可恢复。`,
+    '删除草稿',
+    { type: isFiled ? 'warning' : 'info', confirmButtonText: '删除', cancelButtonText: '取消' },
+  ).catch(() => false)
+  if (confirmed !== true) return
+
+  streaming.value = true
+  try {
+    productConfig.deleteProduct(item.productId)
+    refreshBatchSnapshot(msg)
+    await playProductReply({
+      thinkingSteps: ['删除草稿并同步批次清单'],
+      content: `已删除草稿「${name}」` + (isFiled ? '（遗留的备案工单不受影响，可在运营侧跟进）' : '') + '。\n\n当前批次清单已同步更新。',
+      formCard: null,
+    })
+  } finally {
+    streaming.value = false
+  }
 }
 </script>
 

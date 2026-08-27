@@ -20,11 +20,11 @@ spring:
       ddl-auto: update
   ai:
     openai:
-      api-key: sk-xxx
-      base-url: https://your-openai-compatible-host
+      api-key: sk-ddcyjgwywqskqexdhmsbnyjoidmfnjgacvpyecexlysxdogu
+      base-url: https://api.siliconflow.cn/v1
       chat:
         options:
-          model: gpt-4o-mini
+          model: deepseek-ai/DeepSeek-V4-Flash
           temperature: 0.5
 
 prodai:

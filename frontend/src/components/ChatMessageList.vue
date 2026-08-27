@@ -93,11 +93,34 @@
               :severity="msg.evidence.severity"
             />
 
-            <!-- 工具执行结果面板：在正文之后、意图结果之前展示 -->
+            <!-- 工具执行结果面板：时间线渐进（v3.2）——工具执行完成即逐卡渲染，
+                 不等待正文打完；有思考的消息在思考播完后稳定呈现 -->
             <ToolResultPanel
-              v-if="msg.toolResults?.length && isReplySettled(msg)"
+              v-if="msg.toolResults?.length && (msg.done || !isReplyTyping(msg))"
               :results="msg.toolResults"
             />
+
+            <!-- 执行态徽标 + 撤销（可逆操作，v3.2） -->
+            <div
+              v-if="msg.done && isReplySettled(msg) && (msg.undoable || msg.actionState)"
+              class="exec-bar"
+            >
+              <span
+                class="exec-badge"
+                :class="`exec-${execState(msg)}`"
+              >{{ execStateLabel(execState(msg)) }}</span>
+              <button
+                v-if="msg.undoable && msg.undoable.actionId"
+                type="button"
+                class="undo-btn"
+                @click="$emit('undo-action', { msg, actionId: msg.undoable.actionId })"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                </svg>
+                {{ msg.undoable.undoLabel || '撤销' }}
+              </button>
+            </div>
 
             <!-- 意图结果卡紧跟正文，避免「详见下方」与卡片被操作栏隔开 -->
             <IntentPanel
@@ -133,24 +156,55 @@
               </button>
             </div>
 
-            <!-- 表单卡片 -->
-            <div v-if="msg.formCard && isReplySettled(msg)" class="form-card" @click="$emit('form-card-click', msg)">
-              <div class="form-card-header">
-                <div class="form-card-icon">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                  </svg>
-                </div>
-                <div class="form-card-info">
-                  <div class="form-card-name">{{ msg.formCard.formName }}</div>
-                  <div class="form-card-meta">
-                    <span>{{ msg.formCard.fieldCount }} 个字段</span>
-                    <span class="dot">·</span>
-                    <span>{{ formatTime(msg.formCard.createdAt) }}</span>
+            <!-- 表单卡片（可展开为内联编辑器） -->
+            <template v-if="msg.formCard && isReplySettled(msg)">
+              <div v-if="!isActiveForm(msg.formCard)" class="form-card" @click="$emit('form-card-click', msg)">
+                <div class="form-card-header">
+                  <div class="form-card-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                  </div>
+                  <div class="form-card-info">
+                    <div class="form-card-name">{{ msg.formCard.formName }}</div>
+                    <div class="form-card-meta">
+                      <span>{{ msg.formCard.fieldCount }} 个字段</span>
+                      <span class="dot">·</span>
+                      <span>{{ formatTime(msg.formCard.createdAt) }}</span>
+                    </div>
                   </div>
                 </div>
               </div>
+              <InlineFormEditor
+                v-else
+                :card="activeFormCard"
+                @submit="$emit('form-submit', $event)"
+                @cancel="$emit('form-cancel')"
+                @field-change="(e) => $emit('form-field-change', e)"
+                @ai-validation="(e) => $emit('form-ai-validation', e)"
+                @confirm-submit="$emit('form-confirm-submit', $event)"
+                @close="$emit('form-close')"
+              />
+            </template>
+
+            <!-- 智读批次清单（对话内联） -->
+            <BatchInlineCard
+              v-if="msg.batch && isReplySettled(msg)"
+              :batch="msg.batch"
+              :batch-items="msg.batchItems"
+              @confirm="$emit('batch-confirm', msg)"
+              @fix="$emit('batch-fix', msg)"
+              @delete="(it) => $emit('batch-delete', { msg, item: it })"
+            />
+
+            <!-- 长对话：文件/批次引用锚（已引用文档记忆条） -->
+            <div v-if="msg.fileRef && isReplySettled(msg)" class="file-ref-anchor" @click="$emit('file-ref-click', msg)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+              </svg>
+              <span class="fra-name">已引用文档：{{ msg.fileRef.fileName }}</span>
+              <span class="fra-counts">{{ fileRefCounts(msg.fileRef) }}</span>
             </div>
 
             <!-- 查询结果卡片列表 -->
@@ -188,6 +242,34 @@
               >
                 {{ step }}
               </button>
+            </div>
+
+            <!-- 澄清补参：后端判定必填参数缺失时，内联表单让用户补充后结构化回传 -->
+            <div v-if="msg.done && msg.clarify?.length && isReplySettled(msg)" class="clarify-area">
+              <div class="clarify-title">请补充以下信息：</div>
+              <div v-for="(p, pidx) in msg.clarify" :key="p" class="clarify-field">
+                <span class="clarify-label">{{ clarifyParamLabel(p) }}</span>
+                <input
+                  v-model="clarifyDrafts[`${msg.id}:${p}`]"
+                  class="clarify-input"
+                  :placeholder="`请输入${clarifyParamLabel(p)}`"
+                  @keyup.enter="submitClarify(msg)"
+                />
+              </div>
+              <div class="clarify-actions">
+                <button type="button" class="clarify-submit" @click="submitClarify(msg)">继续</button>
+                <button type="button" class="clarify-skip" @click="dismissClarify(msg)">跳过</button>
+              </div>
+            </div>
+
+            <!-- 翻译层异常提示：执行阶段失败时的可见反馈（非空白） -->
+            <div v-if="msg.done && msg.agentError && isReplySettled(msg)" class="agent-error-hint">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="15" y1="9" x2="9" y2="15"/>
+                <line x1="9" y1="9" x2="15" y2="15"/>
+              </svg>
+              <span>{{ msg.agentError }}</span>
             </div>
           </div>
         </template>
@@ -247,14 +329,92 @@ import ThinkingProcessPanel from './ThinkingProcessPanel.vue'
 import MessageCard from './MessageCard.vue'
 import ToolResultPanel from './ToolResultPanel.vue'
 import EvidenceCard from './EvidenceCard.vue'
+import InlineFormEditor from './InlineFormEditor.vue'
+import BatchInlineCard from './BatchInlineCard.vue'
 
 const props = defineProps({
   messages: { type: Array, required: true },
   showWelcome: { type: Boolean, default: false },
-  mode: { type: String, default: 'rd' }
+  mode: { type: String, default: 'rd' },
+  /** 当前激活的内联表单（RD 页面注入，用于在本消息内展开编辑器） */
+  activeFormCard: { type: Object, default: null },
 })
 
-const emit = defineEmits(['form-card-click', 'intent-action', 'regenerate', 'suggest', 'query-result-click'])
+const emit = defineEmits([
+  'form-card-click',
+  'form-submit',
+  'form-field-change',
+  'form-confirm-submit',
+  'form-ai-validation',
+  'form-close',
+  'form-cancel',
+  'batch-confirm',
+  'batch-fix',
+  'batch-delete',
+  'file-ref-click',
+  'intent-action',
+  'undo-action',
+  'regenerate',
+  'suggest',
+  'query-result-click',
+  'clarify-submit',
+])
+
+const isActiveForm = (formCard) => {
+  return !!props.activeFormCard && !!formCard && props.activeFormCard.formId === formCard.formId
+}
+
+/** 引用锚计数摘要（通过/待修/可入库） */
+const fileRefCounts = (fileRef) => {
+  if (!fileRef?.counts) return ''
+  const c = fileRef.counts
+  const parts = []
+  if (c.passed != null) parts.push(`通过 ${c.passed}`)
+  if (c.pending != null) parts.push(`待修 ${c.pending}`)
+  if (c.confirmable != null) parts.push(`可入库 ${c.confirmable}`)
+  return parts.length ? parts.join(' · ') : ''
+}
+
+/** CLARIFY 澄清补参：msg.id -> { [paramKey]: 用户输入 } */
+const clarifyDrafts = reactive({})
+
+/** 参数键 → 业务中文标签 */
+function clarifyParamLabel(key) {
+  const map = {
+    offering: '商品/套餐',
+    ruleId: '规则编号',
+    concept: '本体概念',
+    question: '查询内容',
+  }
+  return map[key] || key
+}
+
+/** 收集非空补参并结构化回传（复用 session history 让 LLM 理解原意图） */
+function submitClarify(msg) {
+  if (!msg?.clarify?.length) return
+  const params = {}
+  for (const key of msg.clarify) {
+    const val = (clarifyDrafts[`${msg.id}:${key}`] || '').trim()
+    if (val) params[key] = val
+  }
+  if (!Object.keys(params).length) {
+    ElMessage.warning('请至少补充一项信息')
+    return
+  }
+  emit('clarify-submit', { msg, params })
+  for (const key of msg.clarify) {
+    delete clarifyDrafts[`${msg.id}:${key}`]
+  }
+}
+
+/** 跳过澄清：按缺省继续（复用追问建议通道） */
+function dismissClarify(msg) {
+  if (!msg?.clarify?.length) return
+  for (const key of msg.clarify) {
+    delete clarifyDrafts[`${msg.id}:${key}`]
+  }
+  emit('suggest', '忽略补充，按缺省继续')
+}
 
 const BOTTOM_THRESHOLD = 140
 
@@ -538,6 +698,23 @@ const copyText = async (text) => {
 
 const handleFeedback = (msg, type) => {
   ElMessage({ message: type === 'like' ? '感谢反馈' : '我们会继续改进', type: 'success', duration: 1500 })
+}
+
+/** 执行态中文标签（v3.2） */
+function execStateLabel(state) {
+  const map = {
+    suggested: '建议',
+    executing: '执行中',
+    executed: '已执行',
+    failed: '失败',
+    reverted: '已撤销',
+  }
+  return map[state] || '已执行'
+}
+
+/** 统一的动作执行态来源：优先消息级 undoable.state，否则 actionState（v3.2） */
+function execState(msg) {
+  return msg?.undoable?.state || msg?.actionState || 'executed'
 }
 
 // 消息数量 / 流式内容 / 思考步骤变化时粘底滚动
@@ -1056,6 +1233,40 @@ defineExpose({ scrollToBottom })
   color: var(--text-secondary);
 }
 
+/* 执行态徽标 + 撤销（可逆操作 v3.2） */
+.exec-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.exec-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+.exec-badge.exec-suggested { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+.exec-badge.exec-executing { background: #fefce8; color: #a16207; border-color: #fde68a; }
+.exec-badge.exec-executed { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
+.exec-badge.exec-failed { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+.exec-badge.exec-reverted { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
+.undo-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #475569;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.undo-btn:hover { background: #f8fafc; border-color: #94a3b8; color: #0f172a; }
+
 /* 表单卡片 */
 .form-card {
   margin-top: 12px;
@@ -1213,6 +1424,145 @@ defineExpose({ scrollToBottom })
 .next-chip:hover {
   background: #dbeafe;
   border-color: #93c5fd;
+}
+
+/* 澄清追问提示（CLARIFY 分支） */
+.clarify-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border: 1px dashed #fcd34d;
+  background: #fffbeb;
+  border-radius: 10px;
+  color: #b45309;
+  font-size: 12px;
+}
+
+/* 澄清补参内联表单 */
+.clarify-area {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.clarify-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #b45309;
+}
+
+.clarify-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.clarify-label {
+  flex-shrink: 0;
+  width: 84px;
+  font-size: 12px;
+  color: #92400e;
+  text-align: right;
+}
+
+.clarify-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.clarify-input:focus {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
+}
+
+.clarify-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.clarify-submit {
+  padding: 7px 18px;
+  border: none;
+  border-radius: 8px;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.clarify-submit:hover {
+  background: #d97706;
+}
+
+.clarify-skip {
+  padding: 7px 14px;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  background: transparent;
+  color: #b45309;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.clarify-skip:hover {
+  background: #fef3c7;
+}
+
+/* 长对话文件引用锚 */
+.file-ref-anchor {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 6px 12px;
+  border: 1px dashed #c7d2fe;
+  background: #eef2ff;
+  color: #4338ca;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+  width: fit-content;
+  transition: all 0.15s;
+}
+.file-ref-anchor:hover {
+  border-color: #6366f1;
+  background: #e0e7ff;
+}
+.fra-name { font-weight: 600; }
+.fra-counts { color: #818cf8; }
+
+/* 翻译层执行异常提示 */
+.agent-error-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  border-radius: 10px;
+  color: #dc2626;
+  font-size: 12px;
 }
 
 /* 深色模式适配 */

@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -30,6 +31,19 @@ public class OntologyExplainTool implements AgentTool {
     @Override
     public String getDescription() {
         return "解释本体（Ontology）中的概念、类、属性及其关系";
+    }
+
+    @Override
+    public List<ToolParam> getParams() {
+        return List.of(
+                ToolParam.builder("concept")
+                        .label("本体概念")
+                        .description("本体概念名")
+                        .required()
+                        .type("string")
+                        .source("question")
+                        .build()
+        );
     }
 
     @Override
