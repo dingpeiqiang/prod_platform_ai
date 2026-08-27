@@ -211,21 +211,33 @@ export function useChatStream() {
 
   /**
    * 翻译层事件分流（真流式：后端边执行边推送，前端按到达顺序渐进渲染）：
-   * thinking（查询计划）→ tool（running/done）→ text* → done（澄清时 clarify）。
+   * thinking（理解中→计划确认→生成中 多阶段）→ tool（running/done）→ text* → done（澄清时 clarify）。
    * tool 事件同时写入 msg.toolResults（ToolResultPanel）与思考时间线（running → done 原地收尾）。
    */
+
+  /** 新阶段事件到达时，把仍在 running 的思考类步骤收尾（保持时间线状态推进） */
+  const settleThinkingSteps = (reasoning) => (reasoning || []).map((s) =>
+    s.type === 'thinking' && s.status === 'running' && !s._waiting
+      ? { ...s, status: 'done', metadata: { ...(s.metadata || {}), phase: 'done' } }
+      : s,
+  )
+
   const applyAgentEvent = async (eventName, data) => {
     if (eventName === 'thinking') {
-      const intentType = data.intent || currentIntent()
+      const current = messages.value.find(m => m.role === 'assistant' && !m.done) || {}
+      const intentType = data.intent || current.intentType || ''
       const steps = data.steps || []
+      const plan = data.queryPlan || current.queryPlan || null
       upsertAssistantMessage({
-        queryPlan: data.queryPlan || null,
+        queryPlan: plan,
         intentType,
+        reasoning: settleThinkingSteps(current.reasoning),
         reasoningStep: {
           type: 'thinking',
-          title: (steps[0] && steps[0].label) || '正在理解您的需求...',
+          title: (steps[0] && steps[0].label) || '正在处理...',
           content: data.intent ? `已确认业务意图：${data.intent}` : undefined,
-          metadata: data.queryPlan || {},
+          status: 'running',
+          metadata: plan || {},
           timestamp: Date.now(),
         },
       })
@@ -248,9 +260,11 @@ export function useChatStream() {
       } else {
         list.push(toolEntry)
       }
-      upsertAssistantMessage({ toolResults: list })
-      // 思考时间线同步推进：工具开始即出现（running），完成原地收尾（done/error + 耗时）
       upsertAssistantMessage({
+        toolResults: list,
+        // 工具开始执行即代表思考/计划阶段完成，收尾仍在 running 的思考步骤
+        reasoning: settleThinkingSteps(current.reasoning),
+        // 思考时间线同步推进：工具开始即出现（running），完成原地收尾（done/error + 耗时）
         reasoningStep: {
           id: `tool_${toolEntry.name}`,
           type: 'tool',
@@ -263,6 +277,7 @@ export function useChatStream() {
         },
       })
     } else if (eventName === 'error') {
+      const current = messages.value.find(m => m.role === 'assistant' && !m.done) || {}
       const errorMsg = data.errorMessage || data.error || '服务异常'
       upsertAssistantMessage({
         agentError: errorMsg,
@@ -270,13 +285,9 @@ export function useChatStream() {
         loading: false,
         content: errorMsg,
         streamText: errorMsg,
+        reasoning: finalizeReasoningList(current.reasoning || []),
       })
     }
-  }
-
-  const currentIntent = () => {
-    const current = messages.value.find(m => m.role === 'assistant' && !m.done)
-    return current?.intentType || ''
   }
 
   // ── 会话管理 ──────────────────────────────────────
