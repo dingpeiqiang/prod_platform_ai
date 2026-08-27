@@ -327,12 +327,15 @@ public class AgentOrchestrator {
         applySuppliedParams(context, params);
         context.addHistoryEntry("user", question);
 
-        QueryPlan plan = understander.understand(question, context);
+        // 阶段事件①：理解中 —— 先于 LLM 理解调用推送，思考时间线即刻起表并读秒
         emitter.emit("thinking", Map.of(
-                "steps", List.of(
-                        Map.of("label", "正在理解您的需求..."),
-                        Map.of("label", "已确认查询计划", "meta", Map.of("intent", plan.getIntent()))
-                ),
+                "steps", List.of(Map.of("label", "正在理解您的需求..."))
+        ));
+
+        QueryPlan plan = understander.understand(question, context);
+        // 阶段事件②：计划确认 —— 携带查询计划视图
+        emitter.emit("thinking", Map.of(
+                "steps", List.of(Map.of("label", "已确认查询计划")),
                 "intent", plan.getIntent(),
                 "queryPlan", buildQueryPlanView(plan)
         ));
@@ -343,6 +346,11 @@ public class AgentOrchestrator {
             context.setLastClarifyParams(plan.getClarify());
             context.setLastTools(plan.getTools());
             context.setLastParams(plan.getParams());
+            // 阶段事件③：生成中 —— 表达层为 LLM 长调用，先推步骤保持反馈
+            emitter.emit("thinking", Map.of(
+                    "steps", List.of(Map.of("label", "正在生成回答...")),
+                    "intent", plan.getIntent()
+            ));
             String clarifyMessage = presenter.present(question, List.of(), context);
             context.addHistoryEntry("assistant", clarifyMessage);
             sessionManager.save(context);
@@ -381,6 +389,11 @@ public class AgentOrchestrator {
             }
         });
 
+        // 阶段事件③：生成中 —— 报告生成为 LLM 长调用，先推"生成回答"步骤保持渐进反馈
+        emitter.emit("thinking", Map.of(
+                "steps", List.of(Map.of("label", "正在生成回答...")),
+                "intent", plan.getIntent()
+        ));
         String report = presenter.present(question, results, context);
         List<String> followUps = presenter.suggestFollowUps(question, results);
         context.addHistoryEntry("assistant", report);
