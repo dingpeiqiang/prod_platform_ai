@@ -166,6 +166,11 @@ public class DefaultUnderstander implements Understander {
     private QueryPlan mapIntentToPlan(String intent, String action, List<String> tools,
                                       Map<String, Object> params, String question) {
         String normalized = IntentRecognitionSupport.normalizeIntentType(intent);
+        // 保留业务意图标签与动作，供上层（ChatStreamController）反向还原 intentData
+        params.put("intent_type", normalized);
+        if (action != null && !action.isBlank()) {
+            params.put("action", action);
+        }
 
         return switch (normalized) {
             case "product_ops_query", "product_ops_monitor", "product_ops_compare" -> new QueryPlan(

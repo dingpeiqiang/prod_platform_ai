@@ -352,6 +352,9 @@ export function useChatStream() {
                 queryPlan: current.queryPlan || data.queryPlan || null,
                 evidence: current.evidence || data.evidence || null,
               })
+            } else if (data.type === 'query_plan') {
+              // 翻译层理解产物：查询计划（中间语言）
+              upsertAssistantMessage({ queryPlan: data.queryPlan || null })
             } else if (data.type === 'intent') {
               applyIntentEvent(data)
             } else if (data.type === 'product_ops_query' || data.type === 'product_ops_policy' || data.type === 'product_ops_reason' || data.type === 'product_ops_compare') {

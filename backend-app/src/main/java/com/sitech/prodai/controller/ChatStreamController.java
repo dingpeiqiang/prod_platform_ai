@@ -11,6 +11,9 @@ import com.sitech.prodai.intent.ThinkingStepBuilder;
 import com.sitech.prodai.service.ChatPersistenceService;
 import com.sitech.prodai.service.IntentPromptManager;
 import com.sitech.prodai.service.LlmService;
+import com.sitech.prodai.service.agent.Understander;
+import com.sitech.prodai.service.agent.model.QueryPlan;
+import com.sitech.prodai.service.agent.model.SessionContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -41,6 +44,7 @@ public class ChatStreamController {
     private final ObjectMapper objectMapper;
     private final IntentPromptManager intentPromptManager;
     private final Optional<ChatPersistenceService> persistenceService;
+    private final Optional<Understander> understander;
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     public ChatStreamController(IntentHandlerRegistry intentRegistry,
@@ -48,13 +52,15 @@ public class ChatStreamController {
                                 ConfigLoader configLoader,
                                 ObjectMapper objectMapper,
                                 IntentPromptManager intentPromptManager,
-                                Optional<ChatPersistenceService> persistenceService) {
+                                Optional<ChatPersistenceService> persistenceService,
+                                Optional<Understander> understander) {
         this.intentRegistry = intentRegistry;
         this.llmService = llmService;
         this.configLoader = configLoader;
         this.objectMapper = objectMapper;
         this.intentPromptManager = intentPromptManager;
         this.persistenceService = persistenceService;
+        this.understander = understander;
     }
 
     @PostMapping(value = "/agent/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -164,40 +170,49 @@ public class ChatStreamController {
                                 1, 1, Map.of("source", intentSource, "intentType", str(byScene.get("intentType")))));
                     }
                 } else {
-                    Map<String, Object> whitelist = IntentRecognitionSupport.tryNarrowWhitelist(lastUserMessage);
-                    if (whitelist != null && !str(whitelist.get("intentType")).isBlank()) {
-                        intentData = whitelist;
-                        intentSource = IntentRecognitionSupport.SOURCE_WHITELIST;
-                        sendEvent(emitter, ThinkingStepBuilder.running(
-                                "intent", "确认业务意图", "已识别为常用业务指令...",
-                                1, 1, Map.of("source", intentSource, "intentType", str(whitelist.get("intentType")))));
-                    } else {
-                        sendEvent(emitter, ThinkingStepBuilder.running(
-                                "intent", "确认业务意图", "正在识别业务意图...",
-                                1, 1, Map.of("promptLength", intentPrompt.length())));
-                        intentResult = completePromptWithHeartbeat(emitter, intentPrompt, intentStart);
-                        streamStats.recordOutputText(intentResult);
-                        intentData = parseIntentResult(intentResult);
+                    // 翻译层理解优先：LLM 完整理解（意图 + 实体抽取 + 查询计划生成）
+                    QueryPlan plan = tryUnderstand(emitter, sessionId, messages, lastUserMessage);
+                    if (plan != null) {
+                        intentResult = plan.getIntent();
+                        intentData = planToIntentData(plan);
                         intentSource = IntentRecognitionSupport.SOURCE_LLM;
+                    } else {
+                        // 旧链路兜底：窄白名单 → LLM 意图补全 → 关键词 → 场景默认
+                        Map<String, Object> whitelist = IntentRecognitionSupport.tryNarrowWhitelist(lastUserMessage);
+                        if (whitelist != null && !str(whitelist.get("intentType")).isBlank()) {
+                            intentData = whitelist;
+                            intentSource = IntentRecognitionSupport.SOURCE_WHITELIST;
+                            sendEvent(emitter, ThinkingStepBuilder.running(
+                                    "intent", "确认业务意图", "已识别为常用业务指令...",
+                                    1, 1, Map.of("source", intentSource, "intentType", str(whitelist.get("intentType")))));
+                        } else {
+                            sendEvent(emitter, ThinkingStepBuilder.running(
+                                    "intent", "确认业务意图", "正在识别业务意图...",
+                                    1, 1, Map.of("promptLength", intentPrompt.length())));
+                            intentResult = completePromptWithHeartbeat(emitter, intentPrompt, intentStart);
+                            streamStats.recordOutputText(intentResult);
+                            intentData = parseIntentResult(intentResult);
+                            intentSource = IntentRecognitionSupport.SOURCE_LLM;
 
-                        String parsedType = IntentRecognitionSupport.normalizeIntentType(
-                                str(intentData.get("intentType"), str(intentData.get("intent_type"))));
-                        if (parsedType.isEmpty()) {
-                            Map<String, Object> fallback = IntentRecognitionSupport.tryKeywordFallback(
-                                    lastUserMessage, scene);
-                            if (fallback != null && !str(fallback.get("intentType")).isBlank()) {
-                                intentData = fallback;
-                                intentSource = IntentRecognitionSupport.SOURCE_FALLBACK;
-                            } else {
-                                String sceneDefault = IntentRecognitionSupport.resolveDefaultIntentByScene(scene);
-                                if (!sceneDefault.isEmpty()) {
-                                    intentData = new LinkedHashMap<>();
-                                    intentData.put("intentType", sceneDefault);
-                                    intentData.put("action", IntentRecognitionSupport.defaultActionForScene(
-                                            scene, sceneDefault));
-                                    intentData.put("confidence", 0.5);
-                                    intentData.put("source", IntentRecognitionSupport.SOURCE_SCENE_DEFAULT);
-                                    intentSource = IntentRecognitionSupport.SOURCE_SCENE_DEFAULT;
+                            String parsedType = IntentRecognitionSupport.normalizeIntentType(
+                                    str(intentData.get("intentType"), str(intentData.get("intent_type"))));
+                            if (parsedType.isEmpty()) {
+                                Map<String, Object> fallback = IntentRecognitionSupport.tryKeywordFallback(
+                                        lastUserMessage, scene);
+                                if (fallback != null && !str(fallback.get("intentType")).isBlank()) {
+                                    intentData = fallback;
+                                    intentSource = IntentRecognitionSupport.SOURCE_FALLBACK;
+                                } else {
+                                    String sceneDefault = IntentRecognitionSupport.resolveDefaultIntentByScene(scene);
+                                    if (!sceneDefault.isEmpty()) {
+                                        intentData = new LinkedHashMap<>();
+                                        intentData.put("intentType", sceneDefault);
+                                        intentData.put("action", IntentRecognitionSupport.defaultActionForScene(
+                                                scene, sceneDefault));
+                                        intentData.put("confidence", 0.5);
+                                        intentData.put("source", IntentRecognitionSupport.SOURCE_SCENE_DEFAULT);
+                                        intentSource = IntentRecognitionSupport.SOURCE_SCENE_DEFAULT;
+                                    }
                                 }
                             }
                         }
@@ -359,6 +374,109 @@ public class ChatStreamController {
         });
 
         return emitter;
+    }
+
+    /**
+     * 翻译层理解优先：调用 Understander 完整理解（意图 + 实体抽取 + 查询计划生成）。
+     * 成功后推送 query_plan 事件；失败/闲聊时返回 null，交由旧链路兜底。
+     */
+    private QueryPlan tryUnderstand(SseEmitter emitter, String sessionId,
+                                    List<Map<String, Object>> messages, String lastUserMessage) {
+        if (understander.isEmpty() || lastUserMessage == null || lastUserMessage.isBlank()) {
+            return null;
+        }
+        try {
+            QueryPlan plan = understander.get().understand(
+                    lastUserMessage, buildSessionContext(sessionId, messages));
+            if (plan == null || "CHAT".equals(plan.getIntent())) {
+                return null;
+            }
+            // 推送查询计划（翻译层"中间语言"），前端 QueryPlanCard 展示
+            if (plan.getTools() != null && !plan.getTools().isEmpty()) {
+                Map<String, Object> qp = new LinkedHashMap<>();
+                qp.put("intent", plan.getIntent());
+                qp.put("tools", plan.getTools());
+                qp.put("params", plan.getParams());
+                Map<String, Object> evt = new LinkedHashMap<>();
+                evt.put("type", "query_plan");
+                evt.put("queryPlan", qp);
+                sendEvent(emitter, evt);
+            }
+            return plan;
+        } catch (Exception e) {
+            log.warn("[chat/agent/stream] 翻译层理解失败，走旧链路: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** 构建多轮会话上下文（最近 10 条 user/assistant 消息，供 Understander 使用） */
+    private SessionContext buildSessionContext(String sessionId, List<Map<String, Object>> messages) {
+        SessionContext ctx = new SessionContext(sessionId);
+        if (messages != null) {
+            int count = 0;
+            for (int i = messages.size() - 1; i >= 0 && count < 10; i--) {
+                Map<String, Object> m = messages.get(i);
+                String role = str(m.get("role"));
+                String content = str(m.get("content"));
+                if (("user".equals(role) || "assistant".equals(role)) && !content.isBlank()) {
+                    ctx.getHistory().add(0, Map.of("role", role, "content", content));
+                    count++;
+                }
+            }
+        }
+        return ctx;
+    }
+
+    /** 查询计划 → 旧链路 intentData（intentType/action/tools/extractedFields） */
+    private Map<String, Object> planToIntentData(QueryPlan plan) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        if (plan == null) return data;
+        Map<String, Object> params = plan.getParams();
+        String intentType = IntentRecognitionSupport.normalizeIntentType(
+                str(params.get("intent_type"), str(params.get("intentType"))));
+        if (intentType.isBlank()) {
+            intentType = deriveBizIntent(plan.getIntent(), plan.getTools());
+        }
+        if (intentType.isEmpty()) return data;
+        data.put("intentType", intentType);
+        String action = str(params.get("action"));
+        if (action.isBlank()) action = deriveBizAction(intentType);
+        if (!action.isBlank()) data.put("action", action);
+        if (plan.getTools() != null && !plan.getTools().isEmpty()) {
+            data.put("tools", plan.getTools());
+        }
+        Map<String, Object> extracted = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : params.entrySet()) {
+            String key = e.getKey();
+            if ("intent_type".equals(key) || "intentType".equals(key)
+                    || "action".equals(key) || e.getValue() == null) {
+                continue;
+            }
+            extracted.put(key, e.getValue());
+        }
+        if (!extracted.isEmpty()) data.put("extractedFields", extracted);
+        return data;
+    }
+
+    /** 由计划的意图类型反推业务意图（兼容关键词兜底路径） */
+    private String deriveBizIntent(String planIntent, List<String> tools) {
+        if (tools == null) tools = List.of();
+        return switch (planIntent == null ? "" : planIntent) {
+            case "SPARQL_QUERY" -> "product_ops_query";
+            case "SWRL_INFER" -> tools.contains("swrl_risk_audit") ? "product_ops_policy" : "product_ops_reason";
+            default -> "";
+        };
+    }
+
+    private String deriveBizAction(String intentType) {
+        return switch (intentType) {
+            case "product_ops_reason" -> "root_cause";
+            case "product_ops_policy" -> "risk_audit";
+            case "product_ops_monitor" -> "ops_monitor";
+            case "product_ops_compare" -> "compare";
+            case "product_ops_query" -> "query";
+            default -> "";
+        };
     }
 
     @SuppressWarnings("unchecked")
