@@ -1,5 +1,13 @@
 <template>
   <div class="chat-input-shell">
+    <!-- 会话上下文标签（多轮对话中的分析对象 / 意图等） -->
+    <ContextBar
+      v-if="contextItems.length"
+      :items="contextItems"
+      :clearable="true"
+      @remove="onRemoveContext"
+      @clear="onClearContext"
+    />
     <div class="chat-input-container">
       <div class="quick-actions-bar">
         <button
@@ -233,13 +241,16 @@ import { ref, nextTick, watch, computed, onMounted, onBeforeUnmount, getCurrentI
 import { useModelsStore } from '@/stores/models.js'
 import { ZHIDU_TEST_PROMPT } from '../data/zhiduTestDoc.js'
 import { uploadConfigFile } from '../services/productOntologyApi.js'
+import ContextBar from './ContextBar.vue'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
   disabled: { type: Boolean, default: false },
   placeholder: { type: String, default: '描述你想做的事...' },
   currentSkill: { type: String, default: '' },
-  assistantMode: { type: String, default: '' }
+  assistantMode: { type: String, default: '' },
+  /** 会话上下文标签：多轮对话中的分析对象 / 业务意图等（展示为 ContextBar） */
+  context: { type: Array, default: () => [] }
 })
 
 const emit = defineEmits([
@@ -253,8 +264,21 @@ const emit = defineEmits([
   'voice-record',
   'remove-skill',
   'skill-select',
-  'open-model-config'
+  'open-model-config',
+  'context-remove',
+  'context-clear'
 ])
+
+/** 上下文标签条目（透传自父组件） */
+const contextItems = computed(() => props.context || [])
+
+const onRemoveContext = (idx) => {
+  emit('context-remove', idx)
+}
+
+const onClearContext = () => {
+  emit('context-clear')
+}
 
 const skillConfig = {
   query: { icon: 'fa-magnifying-glass', label: '智查·历史复用' },

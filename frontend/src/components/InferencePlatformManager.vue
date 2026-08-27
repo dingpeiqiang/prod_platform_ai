@@ -263,13 +263,22 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, ArrowLeft, Search, Connection } from '@element-plus/icons-vue'
 import { useUserStore } from '../stores/user'
-import { saveConfig, getActiveConfig, testConfig } from '../services/inferenceApi.js'
+import { getUserConfigs, saveConfig, testConfig, deleteConfig } from '../services/inferenceApi.js'
 
 const emit = defineEmits(['go-back'])
-const goBack = () => { emit('go-back') }
+const router = useRouter()
+const goBack = () => {
+  if (Object.keys(router.currentRoute.value.query).length || window.history.length > 1) {
+    router.back()
+  } else {
+    router.push('/')
+  }
+  emit('go-back')
+}
 
 const userStore = useUserStore()
 const configs = ref([])
@@ -342,8 +351,10 @@ const getProviderTagType = (provider) => {
 
 const loadConfigs = async () => {
   try {
-    const res = await getActiveConfig(userStore.username)
-    if (res.success && res.config) {
+    const res = await getUserConfigs(userStore.username || 'default')
+    if (res.success && Array.isArray(res.data)) {
+      configs.value = res.data
+    } else if (res.config) {
       configs.value = [res.config]
     }
   } catch (e) {
@@ -459,7 +470,7 @@ const handleSave = async () => {
   saving.value = true
   try {
     const result = await saveConfig({
-      user_identifier: userStore.username,
+      user_identifier: userStore.username || 'default',
       provider: formData.provider,
       model: formData.model,
       api_key: formData.api_key || null,
@@ -477,8 +488,8 @@ const handleSave = async () => {
       isEditing.value = false
       editingConfig.value = null
       await loadConfigs()
-      if (result.data) {
-        selectedConfig.value = result.data
+      if (result.config) {
+        selectedConfig.value = result.config
       }
     } else {
       ElMessage.error(result.message || '保存失败')
@@ -497,6 +508,11 @@ const handleDeleteConfig = async (config) => {
       '确认删除',
       { type: 'warning' }
     )
+    const result = await deleteConfig(config.id)
+    if (result && result.success === false) {
+      ElMessage.error(result.message || '删除失败')
+      return
+    }
     ElMessage.success('删除成功')
     await loadConfigs()
     selectedConfig.value = null

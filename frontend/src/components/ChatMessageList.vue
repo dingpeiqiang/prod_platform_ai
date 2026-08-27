@@ -35,13 +35,14 @@
               <span class="message-time">{{ formatTime(msg.timestamp) }}</span>
             </div>
 
-            <!-- 思考过程（时间线；本体推理为其中一环，含网络图 + 推理预览） -->
+            <!-- 思考过程（时间线；本体推理为其中一环，含网络图 + 推理预览 + 查询计划） -->
             <ThinkingProcessPanel
               v-if="msg.reasoning && msg.reasoning.length"
               :steps="msg.reasoning"
               :show="msg.showReasoning !== false"
               :streaming="msg.loading || !msg.done"
               :localize="localizeStepText"
+              :query-plan="msg.queryPlan"
               @toggle="toggleReasoning(idx)"
               @complete="(payload) => onThinkingComplete(msg, payload)"
             />
@@ -81,6 +82,22 @@
                 </div>
               </div>
             </div>
+
+            <!-- 证据摘要：正文完结后展示（执行层产物的聚合证据） -->
+            <EvidenceCard
+              v-if="hasEvidence(msg) && isReplySettled(msg)"
+              :title="msg.evidence.title"
+              :items="msg.evidence.items"
+              :count="msg.evidence.count"
+              :summary="msg.evidence.summary"
+              :severity="msg.evidence.severity"
+            />
+
+            <!-- 工具执行结果面板：在正文之后、意图结果之前展示 -->
+            <ToolResultPanel
+              v-if="msg.toolResults?.length && isReplySettled(msg)"
+              :results="msg.toolResults"
+            />
 
             <!-- 意图结果卡紧跟正文，避免「详见下方」与卡片被操作栏隔开 -->
             <IntentPanel
@@ -228,6 +245,8 @@ import WelcomeCards from './WelcomeCards.vue'
 import IntentPanel from './intent-panels/IntentPanel.vue'
 import ThinkingProcessPanel from './ThinkingProcessPanel.vue'
 import MessageCard from './MessageCard.vue'
+import ToolResultPanel from './ToolResultPanel.vue'
+import EvidenceCard from './EvidenceCard.vue'
 
 const props = defineProps({
   messages: { type: Array, required: true },
@@ -383,6 +402,14 @@ const formatTime = (timestamp) => {
   if (!timestamp) return ''
   const date = new Date(timestamp)
   return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
+/** 是否携带可展示的证据摘要（执行层产出的聚合证据） */
+const hasEvidence = (msg) => {
+  const ev = msg?.evidence
+  if (!ev) return false
+  if (ev.items && ev.items.length) return true
+  return !!(ev.summary || ev.count != null)
 }
 
 const handleSuggest = (content) => {

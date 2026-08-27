@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <AssistantShell
     mode="rd"
     :streaming="streaming"
@@ -12,6 +12,7 @@
     @switch-session="onSwitchSession"
     @shortcut="onShortcut"
     @quick-action="onQuickAction"
+    @open-model-config="onOpenModelConfig"
   >
     <template #nav-actions>
       <button type="button" class="nav-product-btn" @click="showProductListPanel = true">
@@ -104,6 +105,7 @@
 
 <script setup>
 import { ref, onMounted, provide } from 'vue'
+import { useRouter } from 'vue-router'
 import AssistantShell from './AssistantShell.vue'
 import ChatMessageList from './ChatMessageList.vue'
 import FormPanel from './FormPanel.vue'
@@ -135,6 +137,9 @@ const ZHIDU_GUIDE_RE =
 const inputText = ref('')
 const historyLoading = ref(false)
 const activeFormCard = ref(null)
+
+const router = useRouter()
+const onOpenModelConfig = () => router.push('/model-config')
 /** 侧边快捷场景码，发送时优先使用（如 rd.import） */
 const activeScene = ref(assistantModes.rd.defaultScene)
 

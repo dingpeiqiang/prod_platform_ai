@@ -26,9 +26,24 @@
       <span class="think-count">{{ visibleStepCount }} 步</span>
       <span v-if="ontoCount" class="think-onto-tag">含本体环节 {{ ontoCount }}</span>
       <span v-if="streaming || isCatchingUp" class="think-live">进行中</span>
+      <button
+        v-if="streaming || isCatchingUp"
+        type="button"
+        class="think-skip-btn"
+        @click.stop="emit('skip')"
+        title="跳过思考动画"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="5 4 15 12 5 20 5 4"/>
+          <line x1="19" y1="5" x2="19" y2="19"/>
+        </svg>
+        跳过
+      </button>
     </button>
 
     <div v-show="show !== false" class="think-body">
+      <!-- 查询计划卡片 -->
+      <QueryPlanCard v-if="queryPlan" :plan="queryPlan" />
       <TransitionGroup name="think-step" tag="ol" class="think-timeline">
         <li
           v-for="(step, si) in visibleSteps"
@@ -143,15 +158,17 @@
 <script setup>
 import { computed, reactive, ref, watch, onUnmounted } from 'vue'
 import OntologyReasoningBlock from './OntologyReasoningBlock.vue'
+import QueryPlanCard from './QueryPlanCard.vue'
 
 const props = defineProps({
   steps: { type: Array, default: () => [] },
   show: { type: Boolean, default: true },
   streaming: { type: Boolean, default: false },
   localize: { type: Function, default: (t) => t },
+  queryPlan: { type: Object, default: null },
 })
 
-const emit = defineEmits(['toggle', 'complete'])
+const emit = defineEmits(['toggle', 'complete', 'skip'])
 
 /** 每步「加载中」停留时长 */
 const STEP_RUN_MS = 520

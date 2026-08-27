@@ -12,6 +12,7 @@
     @switch-session="onSwitchSession"
     @shortcut="onShortcut"
     @quick-action="onQuickAction"
+    @open-model-config="onOpenModelConfig"
   >
     <ChatMessageList
       mode="ops"
@@ -65,6 +66,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, provide } from 'vue'
+import { useRouter } from 'vue-router'
 import AssistantShell from './AssistantShell.vue'
 import ChatMessageList from './ChatMessageList.vue'
 import OpsRootCausePanel from './OpsRootCausePanel.vue'
@@ -80,6 +82,9 @@ import { genId } from '../utils/chatUtils.js'
 const inputText = ref('')
 const historyLoading = ref(false)
 const activeScene = ref(assistantModes.ops.defaultScene)
+
+const router = useRouter()
+const onOpenModelConfig = () => router.push('/model-config')
 
 const {
   messages,

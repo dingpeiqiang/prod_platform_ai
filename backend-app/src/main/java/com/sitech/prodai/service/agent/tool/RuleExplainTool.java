@@ -1,0 +1,53 @@
+package com.sitech.prodai.service.agent.tool;
+
+import com.sitech.prodai.service.OpsRulesService;
+import com.sitech.prodai.service.agent.model.ExecutionResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/**
+ * 规则解释工具：解释规则含义。
+ */
+@Component
+public class RuleExplainTool implements AgentTool {
+
+    private static final Logger log = LoggerFactory.getLogger(RuleExplainTool.class);
+
+    private final OpsRulesService opsRulesService;
+
+    public RuleExplainTool(OpsRulesService opsRulesService) {
+        this.opsRulesService = opsRulesService;
+    }
+
+    @Override
+    public String getName() {
+        return "rule_explain";
+    }
+
+    @Override
+    public String getDescription() {
+        return "解释业务规则的含义和用途";
+    }
+
+    @Override
+    public ExecutionResult execute(Map<String, Object> params) {
+        String ruleId = params != null ? String.valueOf(params.getOrDefault("ruleId", "")) : "";
+
+        log.info("[AgentTool] rule_explain 执行: ruleId={}", ruleId);
+
+        try {
+            String label = opsRulesService.formatRuleLabel(ruleId);
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("ruleId", ruleId);
+            data.put("label", label);
+            return ExecutionResult.ok(getName(), data);
+        } catch (Exception e) {
+            log.error("[AgentTool] rule_explain 失败: {}", e.getMessage(), e);
+            return ExecutionResult.fail(getName(), "规则解释失败: " + e.getMessage());
+        }
+    }
+}

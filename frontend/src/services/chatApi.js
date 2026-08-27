@@ -38,6 +38,10 @@ function buildMessageMetadata(msg) {
   if (msg.done !== undefined) metadata.done = msg.done
   if (msg.contentType) metadata.content_type = msg.contentType
 
+  // 翻译层产物：理解层查询计划 + 执行层证据摘要
+  if (msg.queryPlan) metadata.query_plan = JSON.stringify(msg.queryPlan)
+  if (msg.evidence) metadata.evidence_summary = JSON.stringify(msg.evidence)
+
   return Object.keys(metadata).length > 0 ? metadata : null
 }
 
@@ -92,6 +96,21 @@ function restoreMessageMetadata(meta = {}) {
     }
   }
 
+  // 翻译层产物：理解层查询计划 + 执行层证据摘要
+  let queryPlan = null
+  if (meta.query_plan != null) {
+    try {
+      queryPlan = typeof meta.query_plan === 'string' ? JSON.parse(meta.query_plan) : meta.query_plan
+    } catch { queryPlan = meta.query_plan }
+  }
+
+  let evidenceSummary = null
+  if (meta.evidence_summary != null) {
+    try {
+      evidenceSummary = typeof meta.evidence_summary === 'string' ? JSON.parse(meta.evidence_summary) : meta.evidence_summary
+    } catch { evidenceSummary = meta.evidence_summary }
+  }
+
   let extractedFields = meta.extracted_fields
   if (typeof extractedFields === 'string') {
     try { extractedFields = JSON.parse(extractedFields) } catch {}
@@ -116,6 +135,8 @@ function restoreMessageMetadata(meta = {}) {
     formSubmitted: meta.formSubmitted === 'true' || meta.formSubmitted === true,
     formCard,
     stats: intentData?.stats || null,
+    queryPlan,
+    evidence: evidenceSummary,
   }
 }
 

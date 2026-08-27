@@ -76,6 +76,7 @@
             @send="$emit('send', $event)"
             @stop="$emit('stop')"
             @quick-action="$emit('quick-action', $event)"
+            @open-model-config="$emit('open-model-config', $event)"
           />
         </div>
       </main>
@@ -88,7 +89,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import AssistantNavBar from './AssistantNavBar.vue'
 import ChatInput from './ChatInput.vue'
 import { assistantModes } from '../config/assistantModes.js'
@@ -110,6 +111,7 @@ defineEmits([
   'switch-session',
   'shortcut',
   'quick-action',
+  'open-model-config',
 ])
 
 const config = computed(() => assistantModes[props.mode] || assistantModes.rd)

@@ -348,6 +348,9 @@ export function useChatStream() {
                 stats: doneStats,
                 intentData: doneIntentData,
                 contentType: data.contentType || 'chat',
+                // 翻译层产物：理解层查询计划 + 执行层证据摘要
+                queryPlan: current.queryPlan || data.queryPlan || null,
+                evidence: current.evidence || data.evidence || null,
               })
             } else if (data.type === 'intent') {
               applyIntentEvent(data)
@@ -409,6 +412,8 @@ export function useChatStream() {
         content: text,
         streamText: text,
         reasoning: finalizeReasoningList(current.reasoning || []),
+        queryPlan: current.queryPlan || null,
+        evidence: current.evidence || null,
       })
     }
   }
