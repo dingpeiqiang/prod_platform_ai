@@ -470,15 +470,25 @@ function applyRdToolToPanels(msg) {
     const out = tool.output || {}
     const name = tool.name || ''
     if (name === 'rd_config_chat') {
-      applyRdConfigDraft(out.draft || out.config?.draft)
+      attachFormCardToMsg(msg, applyRdConfigDraft(out.draft || out.config?.draft))
     } else if (name === 'rd_compliance') {
-      applyRdCompliance(out.draft || out.config?.draft, out.compliance_pass, out.issues || out.config?.issues)
+      attachFormCardToMsg(msg, applyRdCompliance(out.draft || out.config?.draft, out.compliance_pass, out.issues || out.config?.issues))
     } else if (name === 'rd_file_parse') {
       applyRdFileParse(out.items, out.batch)
     } else if (name === 'rd_scheme_compare') {
       applyRdSchemeCompare(out)
     }
   }
+}
+
+/**
+ * 将表单卡挂载到消息（内联预览渲染前提：msg.formCard）。
+ * 与本地剧本路径 aiMsg.formCard = playbook.formCard 对齐，否则消息流不出现配置预览。
+ */
+function attachFormCardToMsg(msg, formCard) {
+  if (!formCard) return
+  msg.formCard = formCard
+  messages.value = [...messages.value]
 }
 
 /** 从配置草稿构建 product 并激活（对齐 useProductConfig 内部 addProductAndActivate 形状） */
@@ -505,7 +515,7 @@ function buildRdProductFromDraft(draft) {
 }
 
 function applyRdConfigDraft(draft) {
-  if (!draft || typeof draft !== 'object') return
+  if (!draft || typeof draft !== 'object') return null
   const product = buildRdProductFromDraft(draft)
   const existingIdx = productConfig.products.value.findIndex((p) => p.id === product.id)
   if (existingIdx >= 0) {
@@ -517,28 +527,29 @@ function applyRdConfigDraft(draft) {
   productConfig.syncFormFromProduct(product)
   const formCard = productConfig.buildProductFormCard(product)
   applyFormCard(formCard)
+  return formCard
 }
 
 function applyRdCompliance(draft, compliancePass, issues) {
   const resumed = draft && typeof draft === 'object'
-  if (resumed) {
-    const product = buildRdProductFromDraft(draft)
-    product.compliancePass = compliancePass === true
-    product.issues = Array.isArray(issues) ? issues : []
-    product.auditStatus = product.compliancePass ? 'pass' : 'pending'
-    const existingIdx = productConfig.products.value.findIndex((p) => p.ontologyDraft === draft || p.id === product.id)
-    if (existingIdx >= 0) {
-      productConfig.products.value[existingIdx] = product
-    } else {
-      productConfig.products.value.push(product)
-    }
-    productConfig.currentProductId.value = product.id
-    productConfig.syncFormFromProduct(product)
-    const formCard = productConfig.buildProductFormCard(product)
-    formCard.compliancePass = product.compliancePass
-    formCard.issues = product.issues
-    applyFormCard(formCard)
+  if (!resumed) return null
+  const product = buildRdProductFromDraft(draft)
+  product.compliancePass = compliancePass === true
+  product.issues = Array.isArray(issues) ? issues : []
+  product.auditStatus = product.compliancePass ? 'pass' : 'pending'
+  const existingIdx = productConfig.products.value.findIndex((p) => p.ontologyDraft === draft || p.id === product.id)
+  if (existingIdx >= 0) {
+    productConfig.products.value[existingIdx] = product
+  } else {
+    productConfig.products.value.push(product)
   }
+  productConfig.currentProductId.value = product.id
+  productConfig.syncFormFromProduct(product)
+  const formCard = productConfig.buildProductFormCard(product)
+  formCard.compliancePass = product.compliancePass
+  formCard.issues = product.issues
+  applyFormCard(formCard)
+  return formCard
 }
 
 function applyRdFileParse(items, batch) {
