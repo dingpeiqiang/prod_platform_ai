@@ -93,3 +93,4 @@ form.db
 # Docker 后端打包暂存 jar
 docker/dist/*.jar
 
+frontend.zip
