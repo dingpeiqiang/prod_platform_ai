@@ -7,20 +7,16 @@ spring:
   profiles:
     # 上线默认 prod（demo 关闭）；本地演示改 active:dev 或 --spring.profiles.active=dev
     active: prod
-  # Spring AI OpenAI 自动配置要求 api-key 非空（含未使用的 Speech 模型）
-  ai:
-    openai:
-      api-key: ${LLM_API_KEY:sk-ddcyjgwywqskqexdhmsbnyjoidmfnjgacvpyecexlysxdogu}
-      base-url: ${LLM_BASE_URL:https://api.siliconflow.cn/v1}
-      chat:
-        options:
-          model: ${LLM_MODEL:deepseek-ai/DeepSeek-V4-Flash}
-          temperature: 0.5
+  # LLM 调用统一走手动构建（见 LlmService），不走 Spring AI 自动配置，
+  # 因此禁用 OpenAI 自动配置并移除冗余的 spring.ai.openai.* 属性，避免创建未使用的 Bean。
   autoconfigure:
     exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
       - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
-      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
   jackson:
     default-property-inclusion: non_null
     # 保持与 Python to_dict() 一致的 camelCase 输出
@@ -75,16 +71,27 @@ prodai:
   llm:
     enabled: ${LLM_ENABLED:true}
     function-calling-enabled: ${LLM_FC_ENABLED:true}
-    base-url: ${LLM_BASE_URL:https://api.siliconflow.cn/v1}
-    api-key: ${LLM_API_KEY:sk-ddcyjgwywqskqexdhmsbnyjoidmfnjgacvpyecexlysxdogu}
-    model: ${LLM_MODEL:deepseek-ai/DeepSeek-V4-Flash}
-    temperature: ${LLM_TEMPERATURE:0.3}
-    max-tokens: ${LLM_MAX_TOKENS:4096}
-    thinking: ${LLM_THINKING:false}
-    stream-enabled: ${LLM_STREAM_ENABLED:true}
-    is-full-url: ${LLM_IS_FULL_URL:false}
-    auth-type: ${LLM_AUTH_TYPE:bearer}
-    auth-header: ${LLM_AUTH_HEADER:}
+    # 默认生效模型：对应下方 models 中某项的 name，未配置 models 时为空列表
+    default-model: ${LLM_DEFAULT_MODEL:teamshub-qwen3-30b-a3b}
+    # 多模型配置（各自独立连接）。请求未显式指定模型时采用 default-model 指向的一项；
+    # 工作流 LLM 节点 / 前端模型选择可从 GET /api/v1/chat/model/available 获取完整列表。
+    models:
+      - name: deepseek-chat
+        model: ${LLM_MODEL:deepseek-ai/DeepSeek-V4-Flash}
+        base-url: ${LLM_BASE_URL:https://api.siliconflow.cn/v1}
+        api-key: ${LLM_API_KEY:sk-ddcyjgwywqskqexdhmsbnyjoidmfnjgacvpyecexlysxdogu}
+        temperature: ${LLM_TEMPERATURE:0.3}
+        max-tokens: ${LLM_MAX_TOKENS:4096}
+        thinking: ${LLM_THINKING:false}
+        stream-enabled: ${LLM_STREAM_ENABLED:true}
+      - name: teamshub-qwen3-30b-a3b
+        model: qwen3-30b-a3b
+        base-url: https://aicp.teamshub.com/openai/api/v1/openai/v1/chat/completions
+        api-key: cb3a5cb469de1d0820d25a1e6349306dc4482f90
+        temperature: 0.3
+        max-tokens: 4096
+        thinking: false
+        stream-enabled: true
 
 management:
   endpoints:

@@ -11,6 +11,7 @@ public class ExecutionResult {
     private boolean success;
     private String toolName;
     private Map<String, Object> data;
+    private Map<String, Object> params;
     private String errorMessage;
     private long executionTimeMs;
 
@@ -55,6 +56,15 @@ public class ExecutionResult {
 
     public void setData(Map<String, Object> data) {
         this.data = data != null ? new LinkedHashMap<>(data) : new LinkedHashMap<>();
+    }
+
+    /** 该步骤实际解析并透传给工具执行的入参（供流式 tool 事件展示输入）。 */
+    public Map<String, Object> getParams() {
+        return params;
+    }
+
+    public void setParams(Map<String, Object> params) {
+        this.params = params != null ? new LinkedHashMap<>(params) : null;
     }
 
     public String getErrorMessage() {

@@ -31,6 +31,27 @@ public interface AgentTool {
     }
 
     /**
+     * 业务可读工具名（显示标签）。
+     * <p>
+     * 旧工具不实现时默认使用工具内部名 {@link #getName()}。
+     */
+    default String getLabel() {
+        return getName();
+    }
+
+    /**
+     * 输出字段契约（自描述化）：声明工具执行结果 {@code data} 中的关键字段及其语义。
+     * <p>
+     * 编排层据此做通用渲染（摘要 / 结论 / 证据 / 业务实体缓存 / 计数指标），
+     * 替代原先散落在编排层对具体输出键的字符串硬编码。
+     * <p>
+     * 旧工具可不实现，默认返回空列表（编排层回落至旧行为）。
+     */
+    default List<ToolOutputField> getOutputFields() {
+        return Collections.emptyList();
+    }
+
+    /**
      * 执行工具。
      *
      * @param params 工具参数

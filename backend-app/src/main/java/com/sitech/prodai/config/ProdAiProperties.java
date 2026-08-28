@@ -3,6 +3,9 @@ package com.sitech.prodai.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Component
 @ConfigurationProperties(prefix = "prodai")
 public class ProdAiProperties {
@@ -243,28 +246,15 @@ public class ProdAiProperties {
         /** chat 意图是否启用 Function Calling 工具循环。 */
         private boolean functionCallingEnabled = true;
         private String systemPrompt = "You are a helpful assistant.";
-        /** 模型服务地址（OpenAI 兼容），如 https://api.deepseek.com */
-        private String baseUrl = "https://api.openai.com";
-        /** API Key。 */
-        private String apiKey = "sk-placeholder";
-        /** 模型名称。 */
-        private String model = "gpt-4o-mini";
-        /** 采样温度。 */
-        private double temperature = 0.3;
-        /** 普通模型输出 token 预算（max_tokens）。 */
-        private int maxTokens = 4096;
-        /** 推理模型输出 token 预算（max_completion_tokens），为空则回退到 maxTokens。 */
-        private Integer maxCompletionTokens;
-        /** 是否推理模型（如 DeepSeek 深度思考），true 时使用 max_completion_tokens。 */
-        private boolean thinking = false;
-        /** 是否启用流式输出。 */
-        private boolean streamEnabled = true;
-        /** base_url 是否为完整请求地址（含 /chat/completions）。 */
-        private boolean isFullUrl = false;
-        /** 鉴权类型：bearer（Authorization: Bearer）| custom（使用 authHeader 指定的请求头）。 */
-        private String authType = "bearer";
-        /** 自定义鉴权请求头名（auth-type=custom 时生效），如网关要求的 token。 */
-        private String authHeader = "";
+
+        /**
+         * 默认生效模型名，对应 {@link #models} 中某项的 {@code name}。
+         * 请求未显式指定模型时采用该项。未命中时取 {@link #models} 第一条。
+         */
+        private String defaultModel = "";
+
+        /** 多模型配置列表（各自独立连接）。至少配置一项才能正常调用。 */
+        private List<LlmModelConfig> models = new ArrayList<>();
 
         public boolean isEnabled() {
             return enabled;
@@ -290,12 +280,59 @@ public class ProdAiProperties {
             this.systemPrompt = systemPrompt;
         }
 
+        public String getDefaultModel() {
+            return defaultModel;
+        }
+
+        public void setDefaultModel(String defaultModel) {
+            this.defaultModel = defaultModel == null ? "" : defaultModel;
+        }
+
+        public List<LlmModelConfig> getModels() {
+            return models;
+        }
+
+        public void setModels(List<LlmModelConfig> models) {
+            this.models = models == null ? new ArrayList<>() : models;
+        }
+    }
+
+    /**
+     * 单条模型连接配置（各自独立）。与 {@link Llm} 的单组字段语义一致，
+     * 用于 prodai.llm.models 下配置多个模型并各自指定连接参数。
+     */
+    public static class LlmModelConfig {
+        /** 模型别名，供 {@code prodai.llm.default-model} 引用。 */
+        private String name = "";
+        /** 模型服务地址（OpenAI 兼容）。 */
+        private String baseUrl = "";
+        /** API Key。 */
+        private String apiKey = "";
+        /** 模型名称，如 deepseek-chat。 */
+        private String model = "";
+        private double temperature = 0.3;
+        private int maxTokens = 4096;
+        private Integer maxCompletionTokens;
+        private boolean thinking = false;
+        private boolean streamEnabled = true;
+        private boolean isFullUrl = false;
+        private String authType = "bearer";
+        private String authHeader = "";
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name == null ? "" : name;
+        }
+
         public String getBaseUrl() {
             return baseUrl;
         }
 
         public void setBaseUrl(String baseUrl) {
-            this.baseUrl = baseUrl;
+            this.baseUrl = baseUrl == null ? "" : baseUrl;
         }
 
         public String getApiKey() {
@@ -303,7 +340,7 @@ public class ProdAiProperties {
         }
 
         public void setApiKey(String apiKey) {
-            this.apiKey = apiKey;
+            this.apiKey = apiKey == null ? "" : apiKey;
         }
 
         public String getModel() {
@@ -311,7 +348,7 @@ public class ProdAiProperties {
         }
 
         public void setModel(String model) {
-            this.model = model;
+            this.model = model == null ? "" : model;
         }
 
         public double getTemperature() {
@@ -367,7 +404,7 @@ public class ProdAiProperties {
         }
 
         public void setAuthType(String authType) {
-            this.authType = authType;
+            this.authType = authType == null ? "" : authType;
         }
 
         public String getAuthHeader() {
@@ -375,7 +412,7 @@ public class ProdAiProperties {
         }
 
         public void setAuthHeader(String authHeader) {
-            this.authHeader = authHeader;
+            this.authHeader = authHeader == null ? "" : authHeader;
         }
     }
 }

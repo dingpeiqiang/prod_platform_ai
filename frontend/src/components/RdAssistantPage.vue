@@ -67,21 +67,22 @@
     />
 
     <template #right>
-      <SceneSummaryPanel mode="rd" :messages="messages" :product-config="productConfig" />
+      <InsightBoard mode="rd" :messages="messages" :product-config="productConfig" />
     </template>
   </AssistantShell>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, provide } from 'vue'
+import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import AssistantShell from './AssistantShell.vue'
 import ChatMessageList from './ChatMessageList.vue'
-import SceneSummaryPanel from './SceneSummaryPanel.vue'
+import InsightBoard from './InsightBoard.vue'
 import ProductListPanel from './ProductListPanel.vue'
 import { useChatStream } from '../composables/useChatStream.js'
 import { useProductConfig } from '../composables/useProductConfig.js'
+import { registerPostProcessor } from '../composables/useIntentRegistry.js'
 import { checkCompliance } from '../services/productOntologyApi.js'
 import { assistantModes, buildSceneWelcome } from '../config/assistantModes.js'
 import { ZHIDU_TEST_PROMPT } from '../data/zhiduTestDoc.js'
@@ -93,7 +94,6 @@ import {
   createSchedule,
   revealOntologyChain,
   scenarioLabel,
-  startScheduleTicker,
 } from '../utils/thinkingSchedule.js'
 
 /** 智读引导话术：点击后填入可解析演示正文，而非空指令 */
@@ -221,6 +221,14 @@ const onClearContextItems = () => {
   dismissedContextKeys.value = new Set(contextItems.value.map(i => i.key))
 }
 
+const RD_POST_INTENTS = [
+  'RD_CONFIG_CHAT',
+  'RD_FILE_PARSE',
+  'RD_COMPLIANCE',
+  'RD_CONFIG_DISCOVER',
+  'RD_SCHEME_COMPARE',
+]
+
 onMounted(async () => {
   historyLoading.value = true
   try {
@@ -231,6 +239,15 @@ onMounted(async () => {
     }
   } finally {
     historyLoading.value = false
+  }
+  for (const intent of RD_POST_INTENTS) {
+    registerPostProcessor(intent, (msg) => applyRdToolToPanels(msg))
+  }
+})
+
+onUnmounted(() => {
+  for (const intent of RD_POST_INTENTS) {
+    registerPostProcessor(intent, null)
   }
 })
 
@@ -424,6 +441,111 @@ async function onQueryResultClick(item) {
   }
 }
 
+/**
+ * 翻译层 RD 消息完成后，依据工具 output 驱动研发侧边面板（OfferingCanvas / 批次 / 对比等）。
+ * <p>
+ * 后端 RD 工具 output 已随 tool 事件带出完整结构化数据（draft / items / comparisons /
+ * recommended / batch / compliance_pass），此处仅消费已返回的结构，不再重复调用后端。
+ */
+function applyRdToolToPanels(msg) {
+  if (!msg || !Array.isArray(msg.toolResults)) return
+  const done = msg.toolResults.filter((t) => t.status === 'done')
+  for (const tool of done) {
+    const out = tool.output || {}
+    const name = tool.name || ''
+    if (name === 'rd_config_chat') {
+      applyRdConfigDraft(out.draft || out.config?.draft)
+    } else if (name === 'rd_compliance') {
+      applyRdCompliance(out.draft || out.config?.draft, out.compliance_pass, out.issues || out.config?.issues)
+    } else if (name === 'rd_file_parse') {
+      applyRdFileParse(out.items, out.batch)
+    } else if (name === 'rd_scheme_compare') {
+      applyRdSchemeCompare(out)
+    }
+  }
+}
+
+/** 从配置草稿构建 product 并激活（对齐 useProductConfig 内部 addProductAndActivate 形状） */
+function buildRdProductFromDraft(draft) {
+  const d = (draft && typeof draft === 'object') ? draft : {}
+  const name = d.offerName || d.offeringName || '配置方案草稿'
+  const fee = d.fixedFeeAmount ?? d.monthlyFee
+  const existingIdx = productConfig.products.value.findIndex((p) => p.ontologyDraft === d)
+  const id = existingIdx >= 0
+    ? productConfig.products.value[existingIdx].id
+    : (productConfig.currentProduct.value?.ontologyDraft === d ? productConfig.currentProduct.value.id : 'P' + Date.now())
+  return {
+    id,
+    name,
+    desc: `固费${fee ?? '-'} | ${d.bizScenario || ''} | ${d.channelScope || ''}`,
+    status: 'draft',
+    auditStatus: 'pending',
+    compliancePass: false,
+    issues: [],
+    inferredFields: d.inferredFields || [],
+    ontologyDraft: d,
+    data: { ...d },
+  }
+}
+
+function applyRdConfigDraft(draft) {
+  if (!draft || typeof draft !== 'object') return
+  const product = buildRdProductFromDraft(draft)
+  const existingIdx = productConfig.products.value.findIndex((p) => p.id === product.id)
+  if (existingIdx >= 0) {
+    productConfig.products.value[existingIdx] = product
+  } else {
+    productConfig.products.value.push(product)
+  }
+  productConfig.currentProductId.value = product.id
+  productConfig.syncFormFromProduct(product)
+  const formCard = productConfig.buildProductFormCard(product)
+  applyFormCard(formCard)
+}
+
+function applyRdCompliance(draft, compliancePass, issues) {
+  const resumed = draft && typeof draft === 'object'
+  if (resumed) {
+    const product = buildRdProductFromDraft(draft)
+    product.compliancePass = compliancePass === true
+    product.issues = Array.isArray(issues) ? issues : []
+    product.auditStatus = product.compliancePass ? 'pass' : 'pending'
+    const existingIdx = productConfig.products.value.findIndex((p) => p.ontologyDraft === draft || p.id === product.id)
+    if (existingIdx >= 0) {
+      productConfig.products.value[existingIdx] = product
+    } else {
+      productConfig.products.value.push(product)
+    }
+    productConfig.currentProductId.value = product.id
+    productConfig.syncFormFromProduct(product)
+    const formCard = productConfig.buildProductFormCard(product)
+    formCard.compliancePass = product.compliancePass
+    formCard.issues = product.issues
+    applyFormCard(formCard)
+  }
+}
+
+function applyRdFileParse(items, batch) {
+  const list = Array.isArray(items) ? items : (batch?.items || [])
+  if (!list.length) return
+  productConfig.batchItems.value = list.map((i, idx) => ({
+    ...(i && typeof i === 'object' ? i : { name: String(i) }),
+    productId: i?.clientId || i?.id || 'B' + idx,
+    status: i?.status || (i?.compliancePass ? '通过' : '待修'),
+  }))
+  productConfig.showBatchPanel.value = true
+}
+
+function applyRdSchemeCompare(out) {
+  const result = {
+    comparisons: Array.isArray(out.comparisons) ? out.comparisons : (out.config?.comparisons || []),
+    recommended: out.recommended || out.config?.recommended || null,
+    explanation: out.nl_answer || out.summary || out.config?.explanation || '',
+  }
+  productConfig.compareResult.value = result
+  productConfig.showComparePanel.value = true
+}
+
 /** 研发快捷场景 / 文案 → 本体演示剧本 */
 function resolveProductScenario(text, scene = '') {
   const s = String(scene || '')
@@ -545,61 +667,6 @@ async function playProductReply(playbook = {}, scenario = 'chat-generate') {
   })
 }
 
-async function loadScenarioPlaybook(text, scenario, attachments = []) {
-  productConfig.setSessionContext({ sessionId: sessionId.value })
-  if (scenario === 'query') {
-    return productConfig.simulateQuery(text)
-  }
-  if (scenario === 'file-parse') {
-    return productConfig.simulateFileParse(text, attachments)
-  }
-  if (scenario === 'confirm-batch') {
-    return productConfig.confirmPassedDrafts()
-  }
-  if (scenario === 'compare') {
-    return productConfig.runCompareSchemes(text)
-  }
-  if (scenario === 'config-trace') {
-    const result = await productConfig.loadConfigTrace()
-    const stepsText = (result.steps || [])
-      .map((s, i) => `${i + 1}. ${s.stepDesc || s.title || s.step || ''}`)
-      .filter(Boolean)
-      .join('\n')
-    return {
-      thinkingSteps: ['加载配置审计链路 get_trace', '生成业务说明 explain(audience=business)'],
-      content:
-        result.explanation ||
-        '已生成配置审计追溯说明。' +
-          (stepsText ? `\n\n${stepsText}` : '') +
-          (result.traceId ? `\n\ntrace：\`${result.traceId}\`` : ''),
-      formCard: null,
-    }
-  }
-  if (scenario === 'compliance') {
-    return productConfig.runComplianceCheck(text)
-  }
-  if (scenario === 'root-cause') {
-    return productConfig.runRootCauseAnalysis(text)
-  }
-  if (scenario === 'risk-audit') {
-    return productConfig.runRiskAuditFlow()
-  }
-  return productConfig.generateProductFromChat(text)
-}
-
-function toDisplayAttachments(attachments = []) {
-  return (attachments || []).map((a) => ({
-    type: a.type || 'file',
-    name: a.name || '附件',
-    size: a.size,
-    preview: a.preview || null,
-    url: a.url || null,
-    fileId: a.fileId || null,
-    uploadStatus: a.uploadStatus || null,
-    duration: a.duration,
-  }))
-}
-
 /** 将 playbook 步骤对齐到场景模板 id，保证与调度表同一条时间线 */
 function normalizePlaybookSteps(thinkingSteps = [], scenario = 'chat-generate') {
   const schedule = createSchedule(scenario)
@@ -654,57 +721,6 @@ function normalizePlaybookSteps(thinkingSteps = [], scenario = 'chat-generate') 
   })
 }
 
-async function runProductScenario(text, scenario, attachments = []) {
-  streaming.value = true
-  messages.value = [
-    ...messages.value,
-    {
-      id: genId(),
-      role: 'user',
-      type: 'chat',
-      content: text,
-      attachments: toDisplayAttachments(attachments),
-      done: true,
-      timestamp: Date.now(),
-    },
-  ]
-
-  const aiMsg = createStreamingPlaceholder(genId)
-  aiMsg._scenario = scenario
-  // 同一条「思考过程」：意图 + 场景模板调度表挂上，结果原地回填
-  aiMsg.reasoning = createSchedule(scenario)
-  messages.value = [...messages.value, aiMsg]
-  tickMessages()
-
-  const ticker = startScheduleTicker(aiMsg, {
-    onTick: tickMessages,
-    stepDelay: 380,
-  })
-
-  try {
-    const playbook = await loadScenarioPlaybook(text, scenario, attachments)
-    ticker.stop()
-    const normalizedSteps = normalizePlaybookSteps(playbook.thinkingSteps, scenario)
-    await finishProductReply(aiMsg, { ...playbook, thinkingSteps: normalizedSteps })
-  } catch (e) {
-    ticker.stop()
-    console.warn('[RdAssistant] product scenario failed:', e)
-    await finishProductReply(aiMsg, {
-      thinkingSteps: normalizePlaybookSteps(
-        [
-          { id: 'intent', result: scenarioLabel(scenario) },
-          { id: 'ontology', content: '本体配置推理失败', result: e?.message || '请稍后重试' },
-        ],
-        scenario,
-      ),
-      content: `处理失败：${e?.message || '请稍后重试'}`,
-    })
-  } finally {
-    ticker.stop()
-    streaming.value = false
-  }
-}
-
 const onSend = async (payload) => {
   const text = (payload?.text || inputText.value || '').trim()
   const attachments = payload?.attachments || []
@@ -731,16 +747,17 @@ const onSend = async (payload) => {
     attachments.length && (!scenario || scenario === 'chat-generate')
       ? 'file-parse'
       : scenario
-  if (effectiveScenario) {
-    await runProductScenario(
-      text || `导入文档：${attachments[0]?.name || '方案'}`,
-      effectiveScenario,
-      attachments,
-    )
-    return
+  // 统一走翻译层：研发助手所有核心场景均由后端翻译层判定意图并执行对应 RD 工具
+  const params = {}
+  if (effectiveScenario === 'file-parse' && attachments.length) {
+    const uploaded = attachments.find((a) => a.fileId || (a.uploadStatus === 'success' && a.file_id))
+    if (uploaded) params.file_id = uploaded.fileId || uploaded.file_id || ''
   }
-  // 无附件闲聊/查询：走翻译层统一入口（三阶架构：理解→执行→表达）
-  sendAgentMessage({ text })
+  await sendAgentMessage({
+    text: text || `导入文档：${attachments[0]?.name || '方案'}`,
+    scene: 'rd',
+    params,
+  })
 }
 
 const onSuggest = (payload) => {
@@ -775,7 +792,7 @@ const onSuggest = (payload) => {
 /** CLARIFY 澄清补参结构化回传：带 params 重发「继续」 */
 const onClarifySubmit = async ({ params }) => {
   if (!params || streaming.value) return
-  await sendAgentMessage({ text: '继续', params })
+  await sendAgentMessage({ text: '继续', scene: 'rd', params })
 }
 
 /** 点击场景标签：本地展示欢迎信息（不请求模型） */

@@ -26,6 +26,9 @@ public class SessionContext {
     /** 会话级附加元数据（分析对象、对比周期等，前端上下文标签展示） */
     private Map<String, Object> meta;
 
+    /** 当前请求的助手场景（null 或空 = 默认运营场景；"rd" = 产商品研发场景）。驱动理解层分支选择，不落库。 */
+    private String scene;
+
     /** 连续澄清轮次计数 */
     private int clarifyRounds;
 
@@ -155,5 +158,13 @@ public class SessionContext {
 
     public void setLastClarifyParams(List<String> lastClarifyParams) {
         this.lastClarifyParams = lastClarifyParams;
+    }
+
+    public String getScene() {
+        return scene;
+    }
+
+    public void setScene(String scene) {
+        this.scene = scene;
     }
 }

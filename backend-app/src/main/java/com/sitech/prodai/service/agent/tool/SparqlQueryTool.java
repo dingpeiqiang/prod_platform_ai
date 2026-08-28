@@ -34,6 +34,32 @@ public class SparqlQueryTool implements AgentTool {
     }
 
     @Override
+    public String getLabel() {
+        return "数据查询";
+    }
+
+    @Override
+    public List<ToolOutputField> getOutputFields() {
+        return List.of(
+                ToolOutputField.builder("nl_answer", ToolOutputField.Role.SUMMARY)
+                        .label("查询摘要").type("string")
+                        .description("自然语言查询结果摘要").build(),
+                ToolOutputField.builder("entity_ids", ToolOutputField.Role.COUNT)
+                        .label("实体数").type("list")
+                        .description("命中的实体 ID 列表").build(),
+                ToolOutputField.builder("raw_results", ToolOutputField.Role.OTHER)
+                        .label("原始结果").type("list")
+                        .description("RDF 查询原始记录").build(),
+                ToolOutputField.builder("sparql", ToolOutputField.Role.OTHER)
+                        .label("SPARQL").type("string")
+                        .description("生成的 SPARQL 查询语句").build(),
+                ToolOutputField.builder("discovery_method", ToolOutputField.Role.OTHER)
+                        .label("发现方式").type("string")
+                        .description("实体发现方式：llm / keyword_fallback").build()
+        );
+    }
+
+    @Override
     public List<ToolParam> getParams() {
         return List.of(
                 ToolParam.builder("question")

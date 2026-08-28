@@ -48,9 +48,7 @@ public class ChatController {
     public Map<String, Object> completion(@RequestBody ChatCompletionRequest request) {
         log.info("[ChatController] completion called, prompt_length={}, llmEnabled={}",
                 request.getPrompt() != null ? request.getPrompt().length() : 0, properties.getLlm().isEnabled());
-        if (request.getModelConfig() == null || request.getModelConfig().isEmpty()) {
-            request.setModelConfig(activeModel.get());
-        }
+        // 未显式指定模型时，交由 LlmService 按 prodai.llm.default-model 解析默认生效模型
         try {
             return llmService
                     .map(s -> s.complete(request))
@@ -69,9 +67,7 @@ public class ChatController {
     public SseEmitter stream(@RequestBody ChatCompletionRequest request) {
         log.info("[ChatController] stream called, prompt_length={}",
                 request.getPrompt() != null ? request.getPrompt().length() : 0);
-        if (request.getModelConfig() == null || request.getModelConfig().isEmpty()) {
-            request.setModelConfig(activeModel.get());
-        }
+        // 未显式指定模型时，交由 LlmService 按 prodai.llm.default-model 解析默认生效模型
         SseEmitter emitter = new SseEmitter(300_000L);
         Flux<Map<String, Object>> events = llmService
                 .map(s -> s.streamEvents(request))
@@ -144,15 +140,9 @@ public class ChatController {
     /** Available models for workflow LLM nodes / model pickers — from config file. */
     @GetMapping("/model/available")
     public Map<String, Object> availableModels() {
-        ProdAiProperties.Llm llm = properties.getLlm();
-        List<Map<String, Object>> models = new java.util.ArrayList<>();
-        Map<String, Object> row = new LinkedHashMap<>();
-        row.put("id", ModelProvider.CUSTOM.getValue() + "-" + llm.getModel());
-        row.put("provider", ModelProvider.CUSTOM.getValue());
-        row.put("providerName", "当前配置");
-        row.put("name", llm.getModel());
-        row.put("isDefault", true);
-        models.add(row);
+        List<Map<String, Object>> models = llmService
+                .map(LlmService::listAvailableModels)
+                .orElseGet(List::of);
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("success", true);

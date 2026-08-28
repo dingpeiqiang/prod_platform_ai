@@ -35,16 +35,21 @@
               <span class="message-time">{{ formatTime(msg.timestamp) }}</span>
             </div>
 
-            <!-- 思考过程（时间线；本体推理为其中一环，含网络图 + 推理预览 + 查询计划） -->
+            <!-- 思考过程（时间线；本体推理为其中一环，含网络图 + 推理预览） -->
             <ThinkingProcessPanel
               v-if="msg.reasoning && msg.reasoning.length"
               :steps="msg.reasoning"
               :show="msg.showReasoning !== false"
               :streaming="msg.loading || !msg.done"
               :localize="localizeStepText"
-              :query-plan="msg.queryPlan"
               @toggle="toggleReasoning(idx)"
               @complete="(payload) => onThinkingComplete(msg, payload)"
+            />
+
+            <!-- 查询计划（历史会话恢复时亦有值；实时流以后端业务化方案文本承载） -->
+            <QueryPlanCard
+              v-if="msg.queryPlan && isReplySettled(msg)"
+              :plan="msg.queryPlan"
             />
 
             <!-- 正文内容：有思考过程时等思考播完再自上而下打出 -->
@@ -83,21 +88,10 @@
               </div>
             </div>
 
-            <!-- 证据摘要：正文完结后展示（执行层产物的聚合证据） -->
+            <!-- 结论依据（翻译层 done 事件实时下发；历史会话恢复亦有值） -->
             <EvidenceCard
-              v-if="hasEvidence(msg) && isReplySettled(msg)"
-              :title="msg.evidence.title"
-              :items="msg.evidence.items"
-              :count="msg.evidence.count"
-              :summary="msg.evidence.summary"
-              :severity="msg.evidence.severity"
-            />
-
-            <!-- 工具执行结果面板：时间线渐进（v3.2）——工具执行完成即逐卡渲染，
-                 不等待正文打完；有思考的消息在思考播完后稳定呈现 -->
-            <ToolResultPanel
-              v-if="msg.toolResults?.length && (msg.done || !isReplyTyping(msg))"
-              :results="msg.toolResults"
+              v-if="msg.evidence && isReplySettled(msg)"
+              :evidence="msg.evidence"
             />
 
             <!-- 执行态徽标 + 撤销（可逆操作，v3.2） -->
@@ -327,10 +321,10 @@ import WelcomeCards from './WelcomeCards.vue'
 import IntentPanel from './intent-panels/IntentPanel.vue'
 import ThinkingProcessPanel from './ThinkingProcessPanel.vue'
 import MessageCard from './MessageCard.vue'
-import ToolResultPanel from './ToolResultPanel.vue'
-import EvidenceCard from './EvidenceCard.vue'
 import InlineFormEditor from './InlineFormEditor.vue'
 import BatchInlineCard from './BatchInlineCard.vue'
+import QueryPlanCard from './QueryPlanCard.vue'
+import EvidenceCard from './EvidenceCard.vue'
 
 const props = defineProps({
   messages: { type: Array, required: true },
@@ -512,8 +506,10 @@ const typeReply = async (msgId, text, instant) => {
   } else {
     g.shown = ''
   }
-  const chunk = 8
-  const delay = 16
+  // 动态节奏：块大跑得快、块小跑得慢，收尾平滑不突兀
+  const remaining = text.length - start
+  const chunk = remaining > 1200 ? 24 : remaining > 400 ? 12 : 6
+  const delay = remaining > 1200 ? 8 : 16
   for (let i = start; i < text.length; i += chunk) {
     if (replyGate[msgId]?.token !== token) return
     g.shown = text.slice(0, Math.min(i + chunk, text.length))
@@ -562,14 +558,6 @@ const formatTime = (timestamp) => {
   if (!timestamp) return ''
   const date = new Date(timestamp)
   return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-}
-
-/** 是否携带可展示的证据摘要（执行层产出的聚合证据） */
-const hasEvidence = (msg) => {
-  const ev = msg?.evidence
-  if (!ev) return false
-  if (ev.items && ev.items.length) return true
-  return !!(ev.summary || ev.count != null)
 }
 
 const handleSuggest = (content) => {

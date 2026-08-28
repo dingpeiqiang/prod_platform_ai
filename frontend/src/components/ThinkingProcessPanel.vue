@@ -8,11 +8,11 @@
  * - details：可展开的详细信息（SPARQL、LLM 原始返回等）
  */
 <template>
-  <div class="think-panel" :class="{ streaming: streaming || isCatchingUp }">
-    <button type="button" class="think-toggle" @click="$emit('toggle')">
+  <div class="think-panel" :class="{ streaming: streaming || isCatchingUp, collapsed: !expanded }">
+    <button type="button" class="think-toggle" @click="onToggle">
       <svg
         class="toggle-icon"
-        :class="{ expanded: show !== false }"
+        :class="{ expanded: expanded }"
         width="14"
         height="14"
         viewBox="0 0 24 24"
@@ -41,9 +41,7 @@
       </button>
     </button>
 
-    <div v-show="show !== false" class="think-body">
-      <!-- 查询计划卡片 -->
-      <QueryPlanCard v-if="queryPlan" :plan="queryPlan" />
+    <div v-show="expanded" class="think-body">
       <TransitionGroup name="think-step" tag="ol" class="think-timeline">
         <li
           v-for="(step, si) in visibleSteps"
@@ -55,8 +53,13 @@
             pending: isPending(step, si),
             'is-ontology': step.type === 'ontology',
             'step-enter': isRunning(step, si),
+            'segment-start': isSegmentStart(step, si),
           }"
         >
+          <!-- 分组小节标题：多意图时每个子问题前插入醒目标题与分隔 -->
+          <div v-if="isSegmentStart(step, si)" class="segment-header">
+            <span class="segment-badge">{{ step.segment }}</span>
+          </div>
           <div class="rail" aria-hidden="true">
             <span class="rail-dot" />
             <span v-if="si < visibleSteps.length - 1" class="rail-line" />
@@ -68,7 +71,7 @@
                 {{ si + 1 }}/{{ steps.length || visibleSteps.length }}
               </span>
               <span class="type-chip" :class="step.type === 'ontology' ? 'ontology' : step.type === 'tool' ? 'tool' : 'llm'">
-                {{ step.type === 'ontology' ? '知识推理' : step.type === 'tool' ? '工具调用' : '处理步骤' }}
+                {{ step.type === 'ontology' ? '本体推理' : step.type === 'tool' ? '工具调用' : '大模型处理' }}
               </span>
               <span
                 v-if="step.title"
@@ -102,6 +105,60 @@
                 }"
               >
                 {{ displayStepContent(step, si) }}<span v-if="isRunning(step, si)" class="loading-dots" aria-hidden="true">…</span>
+              </div>
+
+              <!-- 步骤的「输入 → 过程 → 输出」链条：纵排更易读 -->
+              <div v-if="isToolIo(step, si)" class="step-io">
+                <div v-if="hasToolInput(step)" class="io-block">
+                  <span class="io-block-label">输入</span>
+                  <div class="io-block-body">
+                    <span v-for="(val, key) in ioInput(step)" :key="key" class="io-item">
+                      <span class="io-key">{{ paramLabel(key) }}</span>
+                      <span class="io-val">{{ paramValue(key, val) }}</span>
+                    </span>
+                  </div>
+                </div>
+
+                <div v-if="hasToolOutput(step)" class="io-block">
+                  <span class="io-block-label">输出</span>
+                  <div class="io-block-body">
+                    <span v-if="ioOutputSummary(step)" class="io-summary">{{ ioOutputSummary(step) }}</span>
+                    <span
+                      v-for="(entry, ki) in ioOutputEntries(step)"
+                      :key="ki"
+                      class="meta-tag"
+                      :class="metaTagClass(entry.key)"
+                    >
+                      {{ entry.label }}: {{ entry.value }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 评估范围：将本次分析的对象/指标/时间等范围参数醒目展示 -->
+              <div v-if="scopeParams(step).length" class="io-block scope-block">
+                <span class="io-block-label scope-label">评估范围</span>
+                <div class="scope-items">
+                  <span v-for="(sp, spi) in scopeParams(step)" :key="sp.key || spi" class="scope-item">
+                    <span class="scope-item-label">{{ sp.label }}</span>
+                    <span class="scope-item-value">{{ sp.value }}</span>
+                  </span>
+                </div>
+              </div>
+
+              <!-- 方案处理流程：本步骤将依次执行的真实动作清单（按工具链粒度） -->
+              <div v-if="workflowSteps(step).length" class="io-block workflow-block">
+                <span class="io-block-label workflow-label">处理流程</span>
+                <ol class="workflow-list">
+                  <li
+                    v-for="(wf, wi) in workflowSteps(step)"
+                    :key="wf.tool || wi"
+                    class="workflow-item"
+                  >
+                    <span class="workflow-index">{{ wf.step || wi + 1 }}</span>
+                    <span class="workflow-desc">{{ wf.label || wf.tool }}</span>
+                  </li>
+                </ol>
               </div>
 
               <!-- 步骤结果：完成后再露出 -->
@@ -158,17 +215,44 @@
 <script setup>
 import { computed, reactive, ref, watch, onUnmounted } from 'vue'
 import OntologyReasoningBlock from './OntologyReasoningBlock.vue'
-import QueryPlanCard from './QueryPlanCard.vue'
+import {
+  toolLabel,
+  paramLabel,
+  paramValue,
+  toolOutputSummary,
+  toolOutputEntries,
+} from '../utils/businessLabels.js'
 
 const props = defineProps({
   steps: { type: Array, default: () => [] },
   show: { type: Boolean, default: true },
   streaming: { type: Boolean, default: false },
   localize: { type: Function, default: (t) => t },
-  queryPlan: { type: Object, default: null },
 })
 
 const emit = defineEmits(['toggle', 'complete', 'skip'])
+
+/**
+ * 面板展开状态：
+ * - 流式播放期间强制展开（用户实时看到思考推进）
+ * - 播放完成后自动折叠为摘要条，点击摘要条可重新展开
+ * - expanded 为组件内唯一事实来源；show prop 仅作初始同步（默认收起），不回写压制点击
+ */
+const expanded = ref(props.show !== false)
+
+/** 点击标题：直接切换内部展开态（组件自身为唯一事实来源），并通知父级同步 showReasoning */
+const onToggle = () => {
+  expanded.value = !expanded.value
+  emit('toggle')
+}
+
+watch(
+  () => props.show,
+  (val, oldVal) => {
+    // 仅在外部显式从「收起态」变为「展开态」时同步（如用户点开其他消息的联动），避免与点击互搏
+    if (val === true && oldVal === false) expanded.value = true
+  },
+)
 
 /** 每步「加载中」停留时长 */
 const STEP_RUN_MS = 520
@@ -288,6 +372,8 @@ const runPlayback = async () => {
     playing.value = false
     displayCount.value = Math.max(displayCount.value, sourceSteps.value.length)
     headPhase.value = 'done'
+    // 播放完成：自动折叠为摘要条，正文成为视觉焦点
+    expanded.value = false
     signalComplete(false)
   }
 }
@@ -313,17 +399,22 @@ watch(
   ([streaming, len]) => {
     if (streaming) {
       completeSent = false
+      expanded.value = true
       startOrContinuePlayback()
       return
     }
     if (!sessionPlayed.value) {
       snapToFull()
+      // 历史消息瞬时全量渲染：默认折叠为摘要条（仅首次，不覆盖用户后续点击）
+      expanded.value = false
       return
     }
     if (displayCount.value < len || headPhase.value === 'running') {
       startOrContinuePlayback()
     } else {
       playing.value = false
+      // 播放完成：自动折叠为摘要条，正文成为视觉焦点
+      expanded.value = false
       signalComplete(false)
     }
   },
@@ -390,6 +481,14 @@ let liveTimer = null
 const stepKey = (step, si) =>
   step.id
   || `${step.type || 'llm'}-${step.title || 'step'}-${si}`
+
+/** 是否处于某分组小节的开头（该步骤带 segment 且与上一步步的 segment 不同，或为首步） */
+const isSegmentStart = (step, si) => {
+  if (!step || !step.segment) return false
+  if (si <= 0) return true
+  const prev = visibleSteps.value[si - 1]
+  return !prev || prev.segment !== step.segment
+}
 
 const isRunning = (step, si) => {
   if (step._playRunning) return true
@@ -477,9 +576,62 @@ const displayStepContent = (step, index) => {
 
 /** 仅完成态展示结果 */
 const showStepResult = (step, si) => {
+  // 工具步骤已用结构化的「输入→输出」区块展示，非 running 且带 io 时不再重复普通结果
+  if (step.type === 'tool' && step.io && !isRunning(step, si)) return false
   if (isRunning(step, si)) return false
   return !!formatStepResult(step)
 }
+
+/* 携带 io 数据的步骤（工具或思考环节）进入完成态时，呈现「输入 → 动作 → 输出」链条 */
+const isToolIo = (step, si) =>
+  step.io
+  && !isRunning(step, si)
+  && step.type !== 'ontology'
+  && step.id !== 'plan'
+
+/** 方案处理流程清单：容忍 string / 对象数组 / null 等形态，统一归一为有序数组 */
+const workflowSteps = (step) => {
+  const raw = step.workflow
+  if (Array.isArray(raw)) return raw
+  if (typeof raw === 'string' && raw.trim()) {
+    return raw.split(/[，,、\n]/).filter(Boolean).map((label, i) => ({ step: i + 1, label }))
+  }
+  return []
+}
+
+/* 本次执行的评估范围参数键（从 plan 步骤的 io.input 中挑出，突出展示） */
+const SCOPE_KEYS = ['offering', 'offeringIds', 'metric', 'time']
+
+/** 提取评估范围参数（对象/范围/指标/时间），供「执行计划生成」步骤醒目展示 */
+const scopeParams = (step) => {
+  const input = step.io?.input
+  if (!input || typeof input !== 'object') return []
+  return SCOPE_KEYS
+    .filter((key) => input[key] != null && String(input[key]) !== '')
+    .map((key) => ({
+      key,
+      label: paramLabel(key),
+      value: paramValue(key, input[key]),
+    }))
+}
+
+const hasToolInput = (step) =>
+  !!step.io?.input
+  && typeof step.io.input === 'object'
+  && Object.keys(step.io.input).length > 0
+
+const ioInput = (step) => step.io?.input || {}
+
+const hasToolOutput = (step) => {
+  const o = step.io?.output
+  if (!o || (typeof o === 'object' && !Object.keys(o).length)) return false
+  if (typeof o === 'string') return o.trim() !== ''
+  return true
+}
+
+const ioOutputSummary = (step) => toolOutputSummary(step.io?.output ? 'tool' : '', step.io?.output)
+
+const ioOutputEntries = (step) => toolOutputEntries('tool', step.io?.output)
 
 /** 格式化步骤结果：支持 string / number / 对象摘要 */
 const formatStepResult = (step) => {
@@ -597,7 +749,7 @@ const metadataEntries = (step) => {
     entries.push({ key: 'evidence', label: '支撑证据', value: meta.evidenceCount + ' 条' })
   }
   if (meta.tool) {
-    entries.push({ key: 'tool', label: '工具', value: String(meta.tool) })
+    entries.push({ key: 'tool', label: '工具', value: toolLabel(meta.tool) })
   }
 
   return entries
@@ -714,6 +866,40 @@ const localizeDetails = (raw) => {
   display: grid;
   grid-template-columns: 16px 1fr;
   gap: 8px;
+}
+
+/* 分组小节：多意图时在每个子问题步骤序列前插入的标题分隔块 */
+.think-step.segment-start {
+  margin-top: 14px;
+  border-top: 1px dashed rgba(120, 140, 255, 0.35);
+  padding-top: 12px;
+}
+
+.think-step.segment-start:first-child {
+  margin-top: 0;
+  border-top: none;
+  padding-top: 0;
+}
+
+.segment-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.segment-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #4c5bff;
+  background: linear-gradient(90deg, rgba(76, 91, 255, 0.12), rgba(76, 91, 255, 0.04));
+  border: 1px solid rgba(76, 91, 255, 0.3);
+  padding: 3px 10px;
+  border-radius: 999px;
+  letter-spacing: 0.4px;
 }
 
 /* TransitionGroup 入场：分步揭示时每步淡入上移 */
@@ -906,6 +1092,163 @@ const localizeDetails = (raw) => {
   color: #334155;
   line-height: 1.5;
   word-break: break-word;
+}
+
+/* 步骤「输入 → 过程 → 输出」链条：纵排更易读 */
+.step-io {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.io-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  min-width: 0;
+}
+
+/* 方案处理流程清单 */
+.workflow-block {
+  gap: 4px;
+}
+
+.workflow-label {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.workflow-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.workflow-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  min-width: 0;
+}
+
+.workflow-index {
+  flex-shrink: 0;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.workflow-desc {
+  color: #334155;
+  word-break: break-word;
+}
+
+/* 评估范围：对象/指标/时间等分析口径醒目卡片 */
+.scope-block {
+  gap: 6px;
+  background: linear-gradient(180deg, #f0f9ff 0%, #ffffff 100%);
+  border-color: #bfdbfe;
+}
+
+.scope-label {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.scope-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  min-width: 0;
+}
+
+.scope-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.scope-item-label {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  color: #2563eb;
+  background: #eff6ff;
+  padding: 0 6px;
+  border-radius: 4px;
+  line-height: 1.6;
+}
+
+.scope-item-value {
+  color: #0f172a;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.io-block-label {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.6;
+  color: #475569;
+  background: #eef2f7;
+  align-self: flex-start;
+  padding: 0 6px;
+  border-radius: 4px;
+}
+
+.io-block-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  color: #334155;
+}
+
+.io-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  min-width: 0;
+}
+
+.io-key {
+  flex-shrink: 0;
+  color: #64748b;
+}
+
+.io-val {
+  color: #0f172a;
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.io-summary {
+  font-size: 12px;
+  color: #0f172a;
+  line-height: 1.5;
 }
 
 .think-step.is-ontology .step-meta {

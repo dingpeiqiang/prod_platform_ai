@@ -11,6 +11,15 @@
 spring:
   profiles:
     active: prod
+  # LLM 调用统一走手动构建（见 LlmService），禁用 OpenAI 自动配置，避免未使用 Bean
+  autoconfigure:
+    exclude:
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiChatAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiEmbeddingAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiImageAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioSpeechAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiAudioTranscriptionAutoConfiguration
+      - org.springframework.ai.model.openai.autoconfigure.OpenAiModerationAutoConfiguration
   datasource:
     url: jdbc:mysql://host.docker.internal:3306/prodplatformai?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: prodplatformai
@@ -18,14 +27,6 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-  ai:
-    openai:
-      api-key: sk-ddcyjgwywqskqexdhmsbnyjoidmfnjgacvpyecexlysxdogu
-      base-url: https://api.siliconflow.cn/v1
-      chat:
-        options:
-          model: deepseek-ai/DeepSeek-V4-Flash
-          temperature: 0.5
 
 prodai:
   ontology:

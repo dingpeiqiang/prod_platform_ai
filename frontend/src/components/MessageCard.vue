@@ -1,11 +1,13 @@
 <template>
   <div class="message-card" :class="{ 'is-streaming': streaming }">
-    <!-- Markdown 渲染内容 -->
-    <div 
-      v-if="renderedHtml" 
-      class="message-card-content markdown-body"
-      v-html="renderedHtml"
-    />
+    <!-- Markdown 渲染内容（流式增量：stable 缓存 + 尾行实时渲染，避免整段重绘闪烁） -->
+    <template v-if="renderedHtml">
+      <div class="message-card-content markdown-body" v-html="renderedHtml" />
+    </template>
+    <template v-else-if="stableHtml || tailHtml">
+      <div class="message-card-content markdown-body" v-html="stableHtml" />
+      <div v-if="tailHtml" class="message-card-content markdown-body stream-tail" v-html="tailHtml" />
+    </template>
     
     <!-- 代码块（从内容中提取） -->
     <div 
@@ -68,12 +70,12 @@
     </div>
 
     <!-- 空内容提示 -->
-    <div v-if="!renderedHtml && !codeBlocks.length && !tables.length && !streaming" class="empty-content">
+    <div v-if="!renderedHtml && !stableHtml && !tailHtml && !codeBlocks.length && !tables.length && !streaming" class="empty-content">
       暂无内容
     </div>
 
     <!-- 流式加载动画 -->
-    <div v-if="streaming && !renderedHtml" class="typing-indicator">
+    <div v-if="streaming && !renderedHtml && !stableHtml && !tailHtml && !codeBlocks.length" class="typing-indicator">
       <span></span><span></span><span></span>
     </div>
   </div>
@@ -92,49 +94,58 @@ const props = defineProps({
 const copiedIdx = ref(-1)
 const expandedCodes = ref({})
 
-// 解析内容：提取代码块和表格
-const parsedContent = computed(() => {
-  const text = props.content || ''
-  const codeBlocks = []
-  const tables = []
-  
-  // 提取代码块
-  const codeRegex = /```(\w+)?\n([\s\S]*?)```/g
-  let match
-  let cleanText = text
-  
-  while ((match = codeRegex.exec(text)) !== null) {
-    const lang = match[1] || 'text'
-    const code = match[2].trim()
-    const lines = code.split('\n').length
-    codeBlocks.push({ lang, code, lines })
-    cleanText = cleanText.replace(match[0], '')
-  }
-  
-  // 提取表格（Markdown 格式）
-  const tableRegex = /(\|.+\|)\n(\|[-| :]+\|)\n((\|.+\|\n?)*)/g
-  while ((match = tableRegex.exec(cleanText)) !== null) {
-    const headerRow = match[1]
-    const bodyRows = match[3].trim().split('\n')
-    
-    const headers = headerRow.split('|').filter(h => h.trim()).map(h => h.trim())
-    const rows = bodyRows.map(row => 
-      row.split('|').filter(c => c.trim()).map(c => c.trim())
-    )
-    
-    if (headers.length > 0 && rows.length > 0) {
-      tables.push({ headers, rows })
-    }
-    cleanText = cleanText.replace(match[0], '')
-  }
-  
-  return { cleanText, codeBlocks, tables }
-})
+/**
+ * 流式渲染游标：内容按前缀增长时，已渲染完成的段落不再重新解析。
+ * - stableText：确定不再变化的尾部（最后一个换行符之前）
+ * - tailText：正在接收的行，随流实时变化
+ */
+const splitCursor = ref({ stable: '', tail: '' })
+let lastContent = ''
 
-const renderedHtml = computed(() => {
-  const text = parsedContent.value.cleanText
-  if (!text.trim()) return ''
-  
+watch(
+  () => props.content,
+  (text) => {
+    const prev = String(lastContent)
+    const next = String(text || '')
+    lastContent = next
+    if (!next.startsWith(prev) || !prev) {
+      // 内容被重置或非前缀增长：全量重算游标
+      const cut = next.lastIndexOf('\n')
+      splitCursor.value = cut >= 0
+        ? { stable: next.slice(0, cut + 1), tail: next.slice(cut + 1) }
+        : { stable: '', tail: next }
+      return
+    }
+    // 前缀增量：仅把新落入 stable 区的行挪过去
+    const prevStable = splitCursor.value.stable
+    if (next.startsWith(prevStable)) {
+      const grown = next.slice(prevStable.length)
+      const cut = grown.lastIndexOf('\n')
+      if (cut >= 0) {
+        splitCursor.value = {
+          stable: prevStable + grown.slice(0, cut + 1),
+          tail: grown.slice(cut + 1),
+        }
+      } else {
+        splitCursor.value = { stable: prevStable, tail: grown }
+      }
+    } else {
+      const cut = next.lastIndexOf('\n')
+      splitCursor.value = cut >= 0
+        ? { stable: next.slice(0, cut + 1), tail: next.slice(cut + 1) }
+        : { stable: '', tail: next }
+    }
+  },
+  { immediate: true },
+)
+
+/** stable 区的 HTML：流式期间缓存，不随尾部 chunk 重算 */
+const stableHtml = computed(() => renderMarkdown(splitCursor.value.stable))
+/** 尾行 HTML：随流更新，代价低 */
+const tailHtml = computed(() => renderMarkdown(splitCursor.value.tail))
+
+function renderMarkdown(text) {
+  if (!text || !text.trim()) return ''
   try {
     if (typeof marked.parse === 'function') {
       let html = marked.parse(text)
@@ -152,6 +163,60 @@ const renderedHtml = computed(() => {
   } catch {
     return text
   }
+}
+
+// 解析内容：提取代码块和表格
+const parsedContent = computed(() => {
+  const text = props.content || ''
+  const codeBlocks = []
+  const tables = []
+
+  // 提取代码块（流式期间允许未闭合围栏，实时渲染代码）
+  const closedCodeRegex = /```(\w+)?\n([\s\S]*?)```/g
+  let match
+  let cleanText = text
+
+  while ((match = closedCodeRegex.exec(text)) !== null) {
+    const lang = match[1] || 'text'
+    const code = match[2].replace(/\n$/, '')
+    const lines = code.split('\n').length
+    codeBlocks.push({ lang, code, lines })
+    cleanText = cleanText.replace(match[0], '')
+  }
+
+  // 未闭合代码块：流式进行中实时展示
+  const openMatch = cleanText.match(/```(\w+)?\n([\s\S]*)$/)
+  if (openMatch) {
+    const lang = openMatch[1] || 'text'
+    const code = openMatch[2]
+    codeBlocks.push({ lang, code, lines: code.split('\n').length, open: true })
+    cleanText = cleanText.replace(openMatch[0], '')
+  }
+
+  // 提取表格（Markdown 格式）
+  const tableRegex = /(\|.+\|)\n(\|[-| :]+\|)\n((\|.+\|\n?)*)/g
+  while ((match = tableRegex.exec(cleanText)) !== null) {
+    const headerRow = match[1]
+    const bodyRows = match[3].trim().split('\n')
+
+    const headers = headerRow.split('|').filter(h => h.trim()).map(h => h.trim())
+    const rows = bodyRows.map(row =>
+      row.split('|').filter(c => c.trim()).map(c => c.trim())
+    )
+
+    if (headers.length > 0 && rows.length > 0) {
+      tables.push({ headers, rows })
+    }
+    cleanText = cleanText.replace(match[0], '')
+  }
+
+  return { cleanText, codeBlocks, tables }
+})
+
+const renderedHtml = computed(() => {
+  const text = parsedContent.value.cleanText
+  if (!text.trim()) return ''
+  return renderMarkdown(text)
 })
 
 const codeBlocks = computed(() => parsedContent.value.codeBlocks)
@@ -447,6 +512,27 @@ const copyTable = async (tbl) => {
   align-items: center;
 }
 
+/* 流式尾行光标：尾行结束后短暂闪烁提示仍在输出 */
+.stream-tail::after {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  margin-left: 2px;
+  vertical-align: -2px;
+  background: #3b82f6;
+  border-radius: 1px;
+  opacity: 0;
+}
+.is-streaming .stream-tail::after {
+  animation: caret-blink 0.9s steps(1) infinite;
+}
+
+@keyframes caret-blink {
+  0%, 60% { opacity: 1; }
+  61%, 100% { opacity: 0; }
+}
+
 .typing-indicator span {
   width: 7px;
   height: 7px;
@@ -469,13 +555,24 @@ const copyTable = async (tbl) => {
     background: #1e293b;
     color: #e2e8f0;
   }
-  
+
   .data-table td {
     color: #cbd5e1;
   }
-  
+
   .table-footer {
     background: #1e293b;
+  }
+
+  .stream-tail::after {
+    background: #60a5fa;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stream-tail::after {
+    animation: none;
+    opacity: 0.6;
   }
 }
 </style>

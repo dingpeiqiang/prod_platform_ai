@@ -6,6 +6,7 @@ import com.sitech.prodai.service.agent.model.ExecStep;
 import com.sitech.prodai.service.agent.model.QueryPlan;
 import com.sitech.prodai.service.agent.model.SessionContext;
 import com.sitech.prodai.service.agent.tool.AgentTool;
+import com.sitech.prodai.service.agent.tool.ToolContractValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -36,9 +37,15 @@ public class DefaultExecutor implements Executor {
 
     public DefaultExecutor(List<AgentTool> tools) {
         this.toolMap = new ConcurrentHashMap<>();
-        for (AgentTool tool : tools) {
-            this.toolMap.put(tool.getName(), tool);
-            log.info("[DefaultExecutor] 注册工具: {} - {}", tool.getName(), tool.getDescription());
+        if (tools != null) {
+            for (AgentTool tool : tools) {
+                this.toolMap.put(tool.getName(), tool);
+                log.info("[DefaultExecutor] 注册工具: {} - {}", tool.getName(), tool.getDescription());
+                var problems = ToolContractValidator.validate(tool);
+                for (String problem : problems) {
+                    log.warn("[DefaultExecutor] 工具自描述契约问题: {}", problem);
+                }
+            }
         }
     }
 
@@ -92,6 +99,7 @@ public class DefaultExecutor implements Executor {
             long toolStart = System.currentTimeMillis();
             try {
                 ExecutionResult result = tool.execute(stepParams);
+                result.setParams(stepParams);
                 result.setExecutionTimeMs(System.currentTimeMillis() - toolStart);
                 results.add(result);
                 stepResults.put(step.getTool(), result);
@@ -99,6 +107,7 @@ public class DefaultExecutor implements Executor {
             } catch (Exception e) {
                 log.error("[DefaultExecutor] 工具执行异常: {}", step.getTool(), e);
                 ExecutionResult fail = ExecutionResult.fail(step.getTool(), "工具执行异常: " + e.getMessage());
+                fail.setParams(stepParams);
                 fail.setExecutionTimeMs(System.currentTimeMillis() - toolStart);
                 results.add(fail);
                 stepResults.put(step.getTool(), fail);

@@ -290,10 +290,11 @@ export async function getSessionStats(sessionId) {
  * 与一次性 /api/v1/agent/chat 共用同一 AgentOrchestrator 编排。
  * 返回 { response, abortCtrl }，abortCtrl 可真正中止请求（fix：旧链路未返回导致 stop 软停止）。
  */
-export async function sendAgentStream(question, { sessionId = '', params = {} } = {}) {
+export async function sendAgentStream(question, { sessionId = '', params = {}, scene = null } = {}) {
   const abortCtrl = new AbortController()
   const body = { question }
   if (sessionId) body.session_id = sessionId
+  if (scene) body.scene = scene
   if (params && typeof params === 'object' && Object.keys(params).length) body.params = params
   const resp = await fetch('/api/v1/agent/chat/stream', {
     method: 'POST',

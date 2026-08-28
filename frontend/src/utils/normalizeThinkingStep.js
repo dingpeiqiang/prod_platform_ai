@@ -97,7 +97,17 @@ export function normalizeThinkingStep(raw = {}) {
   // 后端已给 content 则保留；仅空时回退
   const resolvedContent = content || legacyTpl?.content || title
 
-  return {
+  // 统一 io：既有 step.io，也兼容顶层 input/output 透传（如「明确做法」步骤带 input）
+  const rawIo = raw.io && typeof raw.io === 'object' ? raw.io : {}
+  const hasRawIo = Object.keys(rawIo).length > 0
+  const hasTopIo = raw.input != null || raw.output != null
+  const io = hasRawIo
+    ? rawIo
+    : hasTopIo
+      ? { input: raw.input != null ? raw.input : null, output: raw.output != null ? raw.output : null }
+      : null
+
+    return {
     id: id || undefined,
     type,
     title,
@@ -109,7 +119,10 @@ export function normalizeThinkingStep(raw = {}) {
       phase: isRunning ? (phase === 'waiting_llm' ? 'waiting_llm' : 'running') : 'done',
       scheduleId: id || meta.scheduleId,
     },
+    io,
     details: raw.details || null,
+    workflow: raw.workflow || null,
+    segment: raw.segment || null,
     elapsed: raw.elapsed != null ? raw.elapsed : null,
     ontologyChain: raw.ontologyChain || null,
     ontologyPreview: raw.ontologyPreview || null,

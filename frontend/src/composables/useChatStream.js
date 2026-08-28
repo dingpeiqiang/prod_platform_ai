@@ -6,6 +6,7 @@ import {
   finalizeReasoningList,
   normalizeThinkingStep,
 } from '../utils/normalizeThinkingStep.js'
+import { toolLabel, intentLabel } from '../utils/businessLabels.js'
 import {
   buildRootCauseOntologyChain,
   buildRootCauseOntologyPreview,
@@ -13,6 +14,26 @@ import {
 
 function uid(prefix = 'msg') {
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
+}
+
+/**
+ * rAF 批量刷新器：SSE chunk 到达频率高于渲染帧率时合并为每帧一次更新，
+ * 避免高频 text 事件导致的重复渲染抖动；流结束后冲刷残余缓冲。
+ */
+function createRafFlusher(flush) {
+  let rafId = 0
+  const schedule = () => {
+    if (rafId) return
+    rafId = requestAnimationFrame(() => {
+      rafId = 0
+      flush()
+    })
+  }
+  const cancel = () => {
+    if (rafId) cancelAnimationFrame(rafId)
+    rafId = 0
+  }
+  return { schedule, cancel }
 }
 
 function genSessionId() {
@@ -200,15 +221,6 @@ export function useChatStream() {
 
   // ── 翻译层事件（/api/v1/agent/chat/stream）──────────────────
 
-  /** 工具名 → 业务展示名 */
-  const TOOL_LABELS = {
-    sparql_query: '知识库查询',
-    swrl_root_cause: '归因推理',
-    swrl_risk_audit: '风险稽核',
-    rule_explain: '规则解释',
-    ontology_explain: '本体解释',
-  }
-
   /**
    * 翻译层事件分流（真流式：后端边执行边推送，前端按到达顺序渐进渲染）：
    * thinking（理解中→计划确认→生成中 多阶段）→ tool（running/done）→ text* → done（澄清时 clarify）。
@@ -226,20 +238,33 @@ export function useChatStream() {
     if (eventName === 'thinking') {
       const current = messages.value.find(m => m.role === 'assistant' && !m.done) || {}
       const intentType = data.intent || current.intentType || ''
-      const steps = data.steps || []
-      const plan = data.queryPlan || current.queryPlan || null
+      const step = (data.steps && data.steps[0]) || {}
+      const stepTitle = step.title || step.label || '正在处理...'
+      // 后端已给出业务化内容（理解/方案/汇总），否则按意图补一句
+      const stepContent =
+        step.content
+        || (intentType && intentType !== 'CLARIFY' ? `已确认业务意图：${intentLabel(intentType)}` : undefined)
+      const stepIo = step.io && Object.keys(step.io).length ? step.io : null
+      const stepTopInput = step.input != null ? step.input : null
+      const stepTopOutput = step.output != null ? step.output : null
+      const stepFactoryIo = stepIo || (stepTopInput != null || stepTopOutput != null
+        ? { input: stepTopInput, output: stepTopOutput }
+        : null)
       upsertAssistantMessage({
-        queryPlan: plan,
         intentType,
-        reasoning: settleThinkingSteps(current.reasoning),
-        reasoningStep: {
-          type: 'thinking',
-          title: (steps[0] && steps[0].label) || '正在处理...',
-          content: data.intent ? `已确认业务意图：${data.intent}` : undefined,
-          status: 'running',
-          metadata: plan || {},
-          timestamp: Date.now(),
-        },
+          reasoning: settleThinkingSteps(current.reasoning),
+          reasoningStep: {
+            type: 'thinking',
+            id: step.id || undefined,
+            title: stepTitle,
+            content: stepContent,
+            status: 'running',
+            io: stepFactoryIo,
+            workflow: step.workflow || null,
+            segment: step.segment || null,
+            metadata: {},
+            timestamp: Date.now(),
+          },
       })
     } else if (eventName === 'tool') {
       const current = messages.value.find(m => m.role === 'assistant' && !m.done) || {}
@@ -247,12 +272,14 @@ export function useChatStream() {
       const list = [...(current.toolResults || [])]
       const toolEntry = {
         name: data.name || '',
-        displayName: TOOL_LABELS[data.name] || data.name || '',
+        displayName: toolLabel(data.name) || data.name || '',
         status,
         elapsed: data.durationMs != null ? data.durationMs / 1000 : undefined,
         result: status === 'running' ? null : (data.summary || null),
         error: data.errorMessage || null,
         evidence: data.evidence || null,
+        params: status === 'running' ? null : (data.input || null),
+        output: status === 'running' ? null : (data.output || null),
       }
       const idx = list.findIndex(t => t.name === toolEntry.name)
       if (idx >= 0) {
@@ -273,6 +300,11 @@ export function useChatStream() {
           result: status === 'done' ? (toolEntry.result || '执行完成') : (status === 'error' ? (toolEntry.error || '执行失败') : null),
           status: status === 'running' ? 'running' : 'done',
           elapsed: toolEntry.elapsed,
+          segment: data.segment || null,
+          io: status === 'running' ? null : {
+            input: data.input || null,
+            output: data.output || null,
+          },
           timestamp: Date.now(),
         },
       })
@@ -366,7 +398,7 @@ export function useChatStream() {
    * 事件序列：thinking（查询计划）→ tool（工具卡片）→ text*（正文）→ done（结构化结果）。
    * CLARIFY 澄清分支：done 事件携带 clarify 参数列表，正文为追问文案。
    */
-  const sendAgentMessage = async ({ text, sessionId: explicitSessionId = '', params = {} } = {}) => {
+  const sendAgentMessage = async ({ text, sessionId: explicitSessionId = '', params = {}, scene = null } = {}) => {
     const content = (text || '').trim()
     if (!content || streaming.value) return
     streaming.value = true
@@ -376,10 +408,20 @@ export function useChatStream() {
     pushUserMessage(content)
     let streamText = ''
 
+    /** 正文 rAF 批量刷新：chunk 只累积到 streamText，渲染按帧合并 */
+    const flushText = () => {
+      if (!streamText) return
+      // 流已由 done 事件收尾（done=true）时不再 flush，否则会把全文重复 push 成第二条助手消息
+      const inProgress = messages.value.some(m => m.role === 'assistant' && !m.done)
+      if (!inProgress) return
+      upsertAssistantMessage({ streamText, content: streamText, loading: false })
+    }
+    const textFlusher = createRafFlusher(flushText)
+
     try {
       upsertAssistantMessage({ loading: true, streamText: '' })
 
-      const { response, abortCtrl } = await sendAgentStream(content, { sessionId: sessionId.value, params })
+      const { response, abortCtrl } = await sendAgentStream(content, { sessionId: sessionId.value, params, scene })
       abortRef.value = abortCtrl
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
@@ -408,7 +450,7 @@ export function useChatStream() {
             const data = JSON.parse(dataPayload)
             if (eventName === 'text') {
               streamText += data.chunk || ''
-              upsertAssistantMessage({ streamText, content: streamText, loading: false })
+              textFlusher.schedule()
             } else if (eventName === 'text_done' || eventName === 'done') {
               const current = messages.value.find(m => m.role === 'assistant' && !m.done) || {}
               if (eventName === 'text_done') continue
@@ -432,11 +474,18 @@ export function useChatStream() {
                 suggestedFollowUps: data.suggested_follow_ups || data.suggestedFollowUps || [],
                 reasoning: finalizeReasoningList(current.reasoning || []),
               })
-              // 追问建议映射到 nextSteps 渲染
+              // 追问建议映射到 nextSteps 渲染：直接原地更新已完结消息，
+              // 避免 upsertAssistantMessage 因找不到「未完成」assistant 而 push 出第二条助手消息
               const doneMsg = messages.value.find(m => m.role === 'assistant' && m.done)
               const followUps = data.suggested_follow_ups || []
               if (doneMsg && followUps.length && !doneMsg.nextSteps?.length) {
-                upsertAssistantMessage({ nextSteps: followUps })
+                doneMsg.nextSteps = followUps
+                messages.value = [...messages.value]
+              }
+              // 直播流收尾：触发意图后处理（驱动右侧面板），与历史回放路径一致
+              if (doneMsg && doneIntent) {
+                const post = getPostProcessor(doneIntent)
+                if (post) post(doneMsg, doneMsg)
               }
             } else {
               await applyAgentEvent(eventName, data)
@@ -446,6 +495,8 @@ export function useChatStream() {
           }
         }
       }
+      textFlusher.cancel()
+      flushText()
 
       // 流意外结束但未收到 done：兜底收尾
       const pending = messages.value.find(m => m.role === 'assistant' && !m.done)
@@ -460,6 +511,8 @@ export function useChatStream() {
       }
       await loadSessions()
     } catch (e) {
+      textFlusher.cancel()
+      flushText()
       if (e?.name === 'AbortError') {
         streaming.value = false
         abortRef.value = null

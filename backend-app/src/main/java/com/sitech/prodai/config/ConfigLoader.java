@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 配置加载器 —— 对齐 Python {@code app/core/config_loader.py::ConfigLoader}。
  *
- * <p>从 classpath 加载本体 / 场景 / 提示词 / 应用配置 / 推荐模板，
+ * <p>从 classpath 加载本体 / 场景 / 提示词 / 推荐模板，
  * 对应 Python 从 {@code backend/config/} 目录加载的文件数据源。
  *
  * <p>Python 资源目录 → Java classpath 映射：
@@ -30,7 +30,6 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>backend/config/scenes/scene_mapping.json→ classpath:scenes/scene_mapping.json</li>
  *   <li>backend/config/prompts/*.txt            → classpath:prompts/*.txt</li>
  *   <li>backend/config/prompts/scenes/*.txt     → classpath:prompts/scenes/*.txt</li>
- *   <li>backend/config/app_config.json          → classpath:app_config.json</li>
  *   <li>backend/config/templates/recommendations.json → classpath:templates/recommendations.json</li>
  * </ul>
  */
@@ -50,10 +49,6 @@ public class ConfigLoader {
     private final Map<String, String> prompts = new ConcurrentHashMap<>();
     /** 场景提示词：promptName → 文本 */
     private final Map<String, String> scenePrompts = new ConcurrentHashMap<>();
-    /** 应用配置（app_config.json 全量） */
-    private final Map<String, Object> appConfig = new ConcurrentHashMap<>();
-    /** 系统配置（app_config 中提取的子集） */
-    private final Map<String, Object> systemConfig = new ConcurrentHashMap<>();
     /** 推荐模板：formCode → {fieldCode → [values]} */
     private final Map<String, Map<String, Object>> recommendations = new ConcurrentHashMap<>();
 
@@ -68,7 +63,6 @@ public class ConfigLoader {
 
     /** 全量重新加载（对齐 Python reload_config(None)） */
     public synchronized void reloadAll() {
-        loadAppConfig();
         loadRecommendations();
         loadPrompts();
         loadOntologies();
@@ -78,29 +72,6 @@ public class ConfigLoader {
     }
 
     // ==================== 加载方法 ====================
-
-    private void loadAppConfig() {
-        appConfig.clear();
-        systemConfig.clear();
-        try {
-            Resource resource = resolver.getResource("classpath:app_config.json");
-            if (resource.exists()) {
-                try (InputStream in = resource.getInputStream()) {
-                    Map<String, Object> raw = objectMapper.readValue(in, new TypeReference<>() {
-                    });
-                    appConfig.putAll(raw);
-                    // 提取系统配置子集（对齐 Python _load_app_config）
-                    for (String key : new String[]{"recommendation", "smartRecommend", "sceneRecognition", "fieldExtraction"}) {
-                        if (raw.containsKey(key)) {
-                            systemConfig.put(key, raw.get(key));
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.warn("[ConfigLoader] 加载 app_config.json 失败: {}", e.getMessage());
-        }
-    }
 
     private void loadRecommendations() {
         recommendations.clear();
@@ -202,10 +173,6 @@ public class ConfigLoader {
 
     // ==================== 查询方法（对齐 Python ConfigLoader） ====================
 
-    public Map<String, Object> getAppConfig() {
-        return appConfig;
-    }
-
     public List<Map<String, Object>> getSceneMappings() {
         return scenes;
     }
@@ -275,46 +242,11 @@ public class ConfigLoader {
         return scenePrompts.get(promptName);
     }
 
-    public Map<String, Object> getSystemConfig() {
-        return systemConfig;
-    }
-
-    public Map<String, Object> getRecommendationConfig() {
-        Object rec = systemConfig.get("recommendation");
-        if (rec instanceof Map<?, ?> map) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> cast = (Map<String, Object>) map;
-            return cast;
-        }
-        return Collections.emptyMap();
-    }
-
-    public Map<String, Object> getSceneRecognitionConfig() {
-        Object cfg = systemConfig.get("sceneRecognition");
-        if (cfg instanceof Map<?, ?> map) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> cast = (Map<String, Object>) map;
-            return cast;
-        }
-        return Collections.emptyMap();
-    }
-
-    public Map<String, Object> getFieldExtractionConfig() {
-        Object cfg = systemConfig.get("fieldExtraction");
-        if (cfg instanceof Map<?, ?> map) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> cast = (Map<String, Object>) map;
-            return cast;
-        }
-        return Collections.emptyMap();
-    }
-
     public void reloadConfig(String configType) {
         if (configType == null || "all".equals(configType)) {
             reloadAll();
         } else {
             switch (configType) {
-                case "system_config", "app_config" -> loadAppConfig();
                 case "ontologies" -> loadOntologies();
                 case "recommendations" -> loadRecommendations();
                 case "prompts" -> loadPrompts();
@@ -322,10 +254,5 @@ public class ConfigLoader {
                 default -> log.warn("[ConfigLoader] 未知配置类型: {}", configType);
             }
         }
-    }
-
-    /** 占位：数据库数据源切换（对齐 Python switch_data_source），后续阶段实现 */
-    public String getCurrentDataSourceType() {
-        return "file";
     }
 }

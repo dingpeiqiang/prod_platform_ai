@@ -84,14 +84,14 @@
           </svg>
         </button>
         <span class="mobile-tb-title">{{ config.navTitle }}</span>
-        <button v-if="$slots.right" type="button" class="mobile-tb-btn" @click="rightOpen = true" title="会话汇总">
+        <button v-if="$slots.right" type="button" class="mobile-tb-btn" @click="rightOpen = true" title="实时看板">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 3v18h18"/><polyline points="7 15 11 11 14 14 18 9"/>
           </svg>
         </button>
       </div>
 
-      <!-- 移动端：消息区顶部紧凑「会话汇总」状态条（点击展开右侧抽屉） -->
+      <!-- 移动端：消息区顶部紧凑「实时看板」状态条（点击展开右侧抽屉） -->
       <div v-if="$slots.right && summaryStats.length" class="mobile-summary-bar" @click="rightOpen = true">
         <svg class="msb-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M3 3v18h18"/><polyline points="7 15 11 11 14 14 18 9"/>
@@ -125,11 +125,11 @@
       </div>
     </main>
 
-    <!-- 右侧汇总：桌面常驻 / 平板、手机收为右抽屉 -->
+    <!-- 右侧实时看板：桌面常驻 / 平板、手机收为右抽屉 -->
     <template v-if="$slots.right">
       <aside class="workbench-right" :class="{ 'mobile-drawer': true, open: rightOpen }">
         <div class="right-drawer-head">
-          <span class="side-title">会话汇总</span>
+          <span class="side-title">实时看板</span>
           <button class="side-close-btn" type="button" @click="rightOpen = false" title="关闭">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -158,7 +158,7 @@ const props = defineProps({
   sessionsLoading: { type: Boolean, default: false },
   /** 会话上下文标签（当前分析对象/业务意图），透传给 ChatInput 的 ContextBar */
   context:   { type: Array,   default: () => [] },
-  /** 移动端紧凑「会话汇总」状态条数据：[{ label, value, tone }] */
+  /** 移动端紧凑「实时看板」状态条数据：[{ label, value, tone }] */
   summaryStats: { type: Array, default: () => [] },
 })
 
@@ -239,7 +239,7 @@ onUnmounted(() => {
 .side-close-btn:hover { background: #f1f5f9; color: #0f172a; }
 
 .workbench-right { width: 300px; flex-shrink: 0; height: 100%; overflow: hidden; display: flex; min-height: 0; }
-.workbench-right :deep(.scene-summary-panel) { height: 100%; }
+.workbench-right :deep(.insight-board) { height: 100%; }
 .right-drawer-head { display: none; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #e5e7eb; background: #fff; }
 
 .side-section { display: flex; flex-direction: column; gap: 10px; }
@@ -339,7 +339,7 @@ onUnmounted(() => {
   }
   .workbench-right.mobile-drawer.open { transform: translateX(0); }
   .right-drawer-head { display: flex; }
-  .workbench-right.mobile-drawer :deep(.scene-summary-panel) { border-left: none; }
+  .workbench-right.mobile-drawer :deep(.insight-board) { border-left: none; }
 
   /* 左侧栏 → 全屏抽屉 */
   .workbench-side {

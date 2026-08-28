@@ -1,54 +1,58 @@
 <template>
-  <div class="evidence-card" :class="[`severity-${severity}`]">
-    <div class="ev-header">
+  <div v-if="evidence" class="evidence-card" :class="`sev-${severityClass}`">
+    <div class="ec-header">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-        <polyline points="14 2 14 8 20 8"/>
-        <line x1="16" y1="13" x2="8" y2="13"/>
-        <line x1="16" y1="17" x2="8" y2="17"/>
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+        <polyline points="22 4 12 14.01 9 11.01"/>
       </svg>
-      <span class="ev-title">{{ title || '证据摘要' }}</span>
-      <span v-if="count != null" class="ev-count">{{ count }}</span>
+      <span class="ec-title">{{ title }}</span>
+      <span v-if="count != null" class="ec-count">{{ count }} 项</span>
     </div>
-    <div class="ev-body">
-      <div v-if="items && items.length" class="ev-items">
-        <div v-for="(item, idx) in visibleItems" :key="idx" class="ev-item">
-          <span class="ev-item-label">{{ item.label }}</span>
-          <span class="ev-item-value" :class="{ highlight: item.highlight }">{{ item.value }}</span>
-          <span v-if="item.contribution" class="ev-item-contribution">{{ item.contribution }}</span>
-        </div>
-        <button
-          v-if="items.length > maxItems"
-          type="button"
-          class="ev-toggle"
-          @click="expanded = !expanded"
-        >
-          {{ expanded ? '收起' : `展开全部 ${items.length} 项` }}
-        </button>
+
+    <div class="ec-body">
+      <div v-for="(item, idx) in items" :key="idx" class="ec-item" :class="{ highlight: item.highlight }">
+        <span class="ec-item-label">{{ item.label }}</span>
+        <span class="ec-item-value">{{ item.value }}</span>
+        <span v-if="item.contribution" class="ec-item-contribution">{{ item.contribution }}</span>
       </div>
-      <div v-else-if="summary" class="ev-summary">{{ summary }}</div>
-      <div v-else class="ev-empty">暂无数据</div>
+      <div v-if="!items.length && summary" class="ec-empty">{{ summary }}</div>
+      <div v-else-if="summary" class="ec-summary">{{ summary }}</div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 
 const props = defineProps({
-  title: { type: String, default: '' },
-  summary: { type: String, default: '' },
-  count: { type: [Number, String], default: null },
-  severity: { type: String, default: 'info' },
-  items: { type: Array, default: () => [] },
-  maxItems: { type: Number, default: 5 }
+  evidence: { type: Object, default: null },
 })
 
-const expanded = ref(false)
+const title = computed(() => {
+  const e = props.evidence
+  if (!e) return ''
+  return e.title || '结论依据'
+})
 
-const visibleItems = computed(() => {
-  if (expanded.value || !props.items) return props.items
-  return props.items.slice(0, props.maxItems)
+const count = computed(() => {
+  const e = props.evidence
+  if (!e) return null
+  return e.count != null ? e.count : (Array.isArray(e.items) ? e.items.length : null)
+})
+
+const items = computed(() => {
+  const e = props.evidence
+  if (!e || !Array.isArray(e.items)) return []
+  return e.items
+})
+
+const summary = computed(() => (props.evidence?.summary || '').trim())
+
+const severityClass = computed(() => {
+  const s = props.evidence?.severity
+  if (s === 'high' || s === 'warn' || s === 'error') return 'high'
+  if (s === 'warning') return 'warn'
+  return 'info'
 })
 </script>
 
@@ -57,126 +61,113 @@ const visibleItems = computed(() => {
   margin: 8px 0;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
-  background: #fff;
+  background: #f8fafc;
   overflow: hidden;
 }
 
-.evidence-card.severity-high {
+.evidence-card.sev-high {
   border-color: #fecaca;
-  background: #fef2f2;
+  background: #fefafb;
 }
 
-.evidence-card.severity-warning {
-  border-color: #fed7aa;
-  background: #fff7ed;
-}
-
-.ev-header {
+.ec-header {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 8px 12px;
-  background: #f8fafc;
-  border-bottom: 1px solid #f1f5f9;
+  background: #f1f5f9;
+  border-bottom: 1px solid #e2e8f0;
   color: #475569;
   font-size: 12px;
 }
 
-.evidence-card.severity-high .ev-header {
-  background: #fef2f2;
-  color: #dc2626;
+.sev-high .ec-header {
+  background: #fff1f2;
+  border-bottom-color: #fecaca;
+  color: #be123c;
 }
 
-.evidence-card.severity-warning .ev-header {
-  background: #fff7ed;
-  color: #c2410c;
-}
-
-.ev-title {
+.ec-title {
   font-weight: 600;
   color: #0f172a;
   font-size: 13px;
 }
 
-.ev-count {
+.sev-high .ec-title {
+  color: #9f1239;
+}
+
+.ec-count {
   margin-left: auto;
   font-size: 11px;
   font-weight: 600;
   color: #64748b;
-  background: #f1f5f9;
-  padding: 0 6px;
-  border-radius: 4px;
+  background: #e2e8f0;
+  padding: 1px 8px;
+  border-radius: 999px;
   line-height: 1.6;
 }
 
-.ev-body {
-  padding: 8px 12px 10px;
+.sev-high .ec-count {
+  color: #be123c;
+  background: #ffe4e6;
 }
 
-.ev-items {
+.ec-body {
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.ev-item {
+.ec-item {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 8px;
   font-size: 12px;
-  padding: 4px 0;
-}
-
-.ev-item-label {
-  color: #64748b;
-  min-width: 60px;
-  flex-shrink: 0;
-}
-
-.ev-item-value {
-  color: #0f172a;
-  font-weight: 500;
-  flex: 1;
-}
-
-.ev-item-value.highlight {
-  color: #dc2626;
-  font-weight: 600;
-}
-
-.ev-item-contribution {
-  color: #64748b;
-  font-size: 11px;
-  background: #f1f5f9;
-  padding: 0 6px;
-  border-radius: 4px;
-}
-
-.ev-toggle {
-  display: inline-block;
-  margin-top: 4px;
-  border: none;
-  background: transparent;
-  color: #3b82f6;
-  font-size: 11px;
-  cursor: pointer;
-  padding: 2px 0;
-}
-
-.ev-toggle:hover {
-  text-decoration: underline;
-}
-
-.ev-summary {
-  font-size: 12px;
-  color: #334155;
   line-height: 1.5;
 }
 
-.ev-empty {
-  font-size: 12px;
+.ec-item.highlight {
+  padding: 4px 8px;
+  margin: -2px -8px;
+  background: #fef2f2;
+  border-radius: 6px;
+  color: #b91c1c;
+}
+
+.ec-item-label {
+  color: #64748b;
+  flex-shrink: 0;
+  min-width: 64px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ec-item-value {
+  color: #0f172a;
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.ec-item-contribution {
   color: #94a3b8;
-  text-align: center;
-  padding: 8px 0;
+  font-size: 11px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.ec-summary {
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px dashed #e2e8f0;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.ec-empty {
+  color: #94a3b8;
+  font-size: 12px;
 }
 </style>

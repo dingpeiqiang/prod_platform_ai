@@ -34,6 +34,11 @@ public class OntologyExplainTool implements AgentTool {
     }
 
     @Override
+    public String getLabel() {
+        return "概念解释";
+    }
+
+    @Override
     public List<ToolParam> getParams() {
         return List.of(
                 ToolParam.builder("concept")
@@ -47,13 +52,30 @@ public class OntologyExplainTool implements AgentTool {
     }
 
     @Override
+    public List<ToolOutputField> getOutputFields() {
+        return List.of(
+                ToolOutputField.builder("natural_language", ToolOutputField.Role.SUMMARY)
+                        .label("解释文案").type("string")
+                        .description("本体概念的自然语言解释").build(),
+                ToolOutputField.builder("referenced_rules", ToolOutputField.Role.OTHER)
+                        .label("引用规则").type("list")
+                        .description("解释过程中引用的规则编号").build()
+        );
+    }
+
+    @Override
     public ExecutionResult execute(Map<String, Object> params) {
         String concept = params != null ? String.valueOf(params.getOrDefault("concept", "")) : "";
 
         log.info("[AgentTool] ontology_explain 执行: concept={}", concept);
 
         try {
-            Map<String, Object> result = ontologyService.explain("agent-trace", "business", "agent");
+            // 以 concept 作为评估轨迹标识，对应本次解释的上下文
+            Map<String, Object> result = ontologyService.explain(
+                    concept.isBlank() ? "agent-trace" : concept, "business", "agent");
+            if (result != null && !concept.isBlank()) {
+                result.put("concept", concept);
+            }
             return ExecutionResult.ok(getName(), result);
         } catch (Exception e) {
             log.error("[AgentTool] ontology_explain 失败: {}", e.getMessage(), e);

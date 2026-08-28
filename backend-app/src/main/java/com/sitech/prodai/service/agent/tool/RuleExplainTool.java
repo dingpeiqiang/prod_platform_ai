@@ -35,6 +35,23 @@ public class RuleExplainTool implements AgentTool {
     }
 
     @Override
+    public String getLabel() {
+        return "规则解释";
+    }
+
+    @Override
+    public List<ToolOutputField> getOutputFields() {
+        return List.of(
+                ToolOutputField.builder("ruleId", ToolOutputField.Role.OTHER)
+                        .label("规则编号").type("string")
+                        .description("规则编号，如 R-A01").build(),
+                ToolOutputField.builder("label", ToolOutputField.Role.SUMMARY)
+                        .label("规则说明").type("string")
+                        .description("规则的业务解释文案").build()
+        );
+    }
+
+    @Override
     public List<ToolParam> getParams() {
         return List.of(
                 ToolParam.builder("ruleId")

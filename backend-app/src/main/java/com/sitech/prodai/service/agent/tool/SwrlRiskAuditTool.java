@@ -34,6 +34,38 @@ public class SwrlRiskAuditTool implements AgentTool {
     }
 
     @Override
+    public String getLabel() {
+        return "风险稽核";
+    }
+
+    @Override
+    public List<ToolOutputField> getOutputFields() {
+        return List.of(
+                ToolOutputField.builder("total", ToolOutputField.Role.COUNT)
+                        .label("风险总数").type("number")
+                        .description("命中风险的商品总数").build(),
+                ToolOutputField.builder("scannedCount", ToolOutputField.Role.COUNT)
+                        .label("筛查数").type("number")
+                        .description("本次筛查的商品数").build(),
+                ToolOutputField.builder("highCount", ToolOutputField.Role.COUNT)
+                        .label("高风险").type("number")
+                        .description("高风险商品数").build(),
+                ToolOutputField.builder("mediumCount", ToolOutputField.Role.COUNT)
+                        .label("中风险").type("number")
+                        .description("中风险商品数").build(),
+                ToolOutputField.builder("suggestDelistCount", ToolOutputField.Role.COUNT)
+                        .label("建议下架").type("number")
+                        .description("建议下架的商品数").build(),
+                ToolOutputField.builder("reasonEngine", ToolOutputField.Role.OTHER)
+                        .label("推理引擎").type("string")
+                        .description("使用的推理引擎").build(),
+                ToolOutputField.builder("items", ToolOutputField.Role.ITEMS)
+                        .label("风险商品明细").type("list")
+                        .description("命中风险的商品明细（名称/等级/分数/处置建议）").build()
+        );
+    }
+
+    @Override
     public List<ToolParam> getParams() {
         return List.of(
                 ToolParam.builder("offeringIds")

@@ -6,19 +6,19 @@
         <polyline points="12 6 12 12 16 14"/>
       </svg>
       <span class="qpc-title">查询计划</span>
-      <span class="qpc-intent">{{ intentLabel }}</span>
+      <span class="qpc-intent">{{ intentLabelComputed }}</span>
     </div>
 
     <div class="qpc-body">
       <div class="qpc-row">
         <span class="qpc-label">意图</span>
-        <span class="qpc-value">{{ plan.intent || '—' }}</span>
+        <span class="qpc-value">{{ intentLabelComputed }}</span>
       </div>
 
       <div v-if="toolsDisplay.length" class="qpc-row">
         <span class="qpc-label">工具</span>
         <div class="qpc-tools">
-          <span v-for="tool in toolsDisplay" :key="tool" class="qpc-tool-tag">{{ tool }}</span>
+          <span v-for="tool in toolsDisplay" :key="tool" class="qpc-tool-tag">{{ toolLabel(tool) }}</span>
         </div>
       </div>
 
@@ -36,7 +36,7 @@
           class="qpc-param"
         >
           <span class="qpc-param-key">{{ paramLabel(key) }}</span>
-          <span class="qpc-param-value">{{ formatParam(val) }}</span>
+          <span class="qpc-param-value">{{ formatParam(key, val) }}</span>
         </div>
       </div>
     </div>
@@ -45,28 +45,15 @@
 
 <script setup>
 import { computed } from 'vue'
+import { intentLabel, toolLabel, paramLabel, paramValue } from '../utils/businessLabels.js'
 
 const props = defineProps({
   plan: { type: Object, default: null }
 })
 
-const intentLabel = computed(() => {
+const intentLabelComputed = computed(() => {
   if (!props.plan) return ''
-  const map = {
-    SPARQL_QUERY: '数据查询',
-    SWRL_INFER: '推理分析',
-    RULE_EXPLAIN: '规则解释',
-    ONTOLOGY_EXPLAIN: '概念解释',
-    CLARIFY: '待补充信息',
-    REUSE_EVIDENCE: '证据复用',
-    product_ops_query: '数据查询',
-    product_ops_reason: '异动归因',
-    product_ops_policy: '风险稽核',
-    product_ops_monitor: '运营监控',
-    product_ops_compare: '对比分析',
-    CHAT: '通用对话'
-  }
-  return map[props.plan.intent] || props.plan.intent
+  return intentLabel(props.plan.intent)
 })
 
 const toolsDisplay = computed(() => {
@@ -74,26 +61,8 @@ const toolsDisplay = computed(() => {
   return props.plan.tools
 })
 
-const paramLabel = (key) => {
-  const map = {
-    question: '查询问题',
-    offering: '分析对象',
-    time: '时间范围',
-    rule_set: '规则集',
-    dimension: '分析维度',
-    metric: '指标',
-    maxEntities: '最大实体数',
-    ruleId: '规则编号',
-    concept: '本体概念',
-    offeringIds: '商品范围'
-  }
-  return map[key] || key
-}
-
-const formatParam = (val) => {
-  if (val == null) return '—'
-  if (typeof val === 'object') return JSON.stringify(val)
-  return String(val)
+const formatParam = (key, val) => {
+  return paramValue(key, val)
 }
 </script>
 

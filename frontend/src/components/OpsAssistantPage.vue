@@ -29,7 +29,7 @@
     />
 
     <template #right>
-      <SceneSummaryPanel mode="ops" :messages="messages" :product-config="productConfig" />
+      <InsightBoard mode="ops" :messages="messages" :product-config="productConfig" />
     </template>
   </AssistantShell>
 </template>
@@ -39,7 +39,7 @@ import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
 import { useRouter } from 'vue-router'
 import AssistantShell from './AssistantShell.vue'
 import ChatMessageList from './ChatMessageList.vue'
-import SceneSummaryPanel from './SceneSummaryPanel.vue'
+import InsightBoard from './InsightBoard.vue'
 import { useChatStream } from '../composables/useChatStream.js'
 import { useProductConfig } from '../composables/useProductConfig.js'
 import { registerPostProcessor } from '../composables/useIntentRegistry.js'

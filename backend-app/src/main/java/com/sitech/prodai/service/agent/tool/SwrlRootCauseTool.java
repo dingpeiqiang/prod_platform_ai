@@ -34,6 +34,34 @@ public class SwrlRootCauseTool implements AgentTool {
     }
 
     @Override
+    public String getLabel() {
+        return "异动归因";
+    }
+
+    @Override
+    public List<ToolOutputField> getOutputFields() {
+        return List.of(
+                ToolOutputField.builder("offeringId", ToolOutputField.Role.BUSINESS_ENTITY_ID)
+                        .label("商品编码").type("string")
+                        .description("分析对象商品/套餐编码").build(),
+                ToolOutputField.builder("offeringName", ToolOutputField.Role.BUSINESS_ENTITY_NAME)
+                        .label("商品/套餐").type("string")
+                        .description("分析对象商品/套餐名称").build(),
+                ToolOutputField.builder("paths", ToolOutputField.Role.COUNT)
+                        .outputKey("pathCount")
+                        .label("归因路径数").type("list")
+                        .description("命中的归因路径列表").build(),
+                ToolOutputField.builder("reasonEngine", ToolOutputField.Role.OTHER)
+                        .label("推理引擎").type("string")
+                        .description("使用的推理引擎：openllet-swrl / java-rules").build(),
+                ToolOutputField.builder("message", ToolOutputField.Role.OTHER)
+                        .outputKey("remark")
+                        .label("备注").type("string")
+                        .description("执行备注信息").build()
+        );
+    }
+
+    @Override
     public List<ToolParam> getParams() {
         return List.of(
                 ToolParam.builder("offering")

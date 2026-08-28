@@ -52,6 +52,8 @@ public class AgentController {
         String question = request != null ? String.valueOf(request.getOrDefault("question", "")) : "";
         String sessionId = request != null ? String.valueOf(request.getOrDefault("session_id", "")) : "";
         Map<String, Object> params = extractParams(request);
+        String scene = request != null && request.get("scene") != null
+                ? String.valueOf(request.get("scene")) : null;
 
         if (question == null || question.isBlank() || "null".equals(question)) {
             Map<String, Object> error = new LinkedHashMap<>();
@@ -60,10 +62,10 @@ public class AgentController {
             return error;
         }
 
-        log.info("[AgentController] 收到翻译请求: question={}, sessionId={}", question, sessionId);
+        log.info("[AgentController] 收到翻译请求: question={}, sessionId={}, scene={}", question, sessionId, scene);
 
         // 处理翻译流程
-        Map<String, Object> result = orchestrator.process(question, sessionId, params);
+        Map<String, Object> result = orchestrator.process(question, sessionId, params, scene);
 
         long elapsed = System.currentTimeMillis() - startTime;
         result.put("success", true);
@@ -93,6 +95,8 @@ public class AgentController {
         String question = request != null ? String.valueOf(request.getOrDefault("question", "")) : "";
         String sessionId = request != null ? String.valueOf(request.getOrDefault("session_id", "")) : "";
         Map<String, Object> params = extractParams(request);
+        String scene = request != null && request.get("scene") != null
+                ? String.valueOf(request.get("scene")) : null;
 
         if (question == null || question.isBlank() || "null".equals(question)) {
             try {
@@ -105,11 +109,11 @@ public class AgentController {
             return emitter;
         }
 
-        log.info("[AgentController] 收到流式翻译请求: question={}, sessionId={}", question, sessionId);
+        log.info("[AgentController] 收到流式翻译请求: question={}, sessionId={}, scene={}", question, sessionId, scene);
 
         Executors.newCachedThreadPool().execute(() -> {
             try {
-                orchestrator.processStream(question, sessionId, params, (name, data) -> {
+                orchestrator.processStream(question, sessionId, params, scene, (name, data) -> {
                     try {
                         emitter.send(SseEmitter.event().name(name).data(toJson(data)));
                     } catch (Exception e) {

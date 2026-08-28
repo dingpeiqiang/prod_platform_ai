@@ -287,50 +287,139 @@ public class LlmService {
     private Map<String, Object> getEffectiveConfig(Map<String, Object> modelConfig) {
         Map<String, Object> effective = new LinkedHashMap<>();
 
+        // 请求显式命中了已配置的模型（按 name/model/id）→ 使用该模型的独立连接
+        Map<String, Object> requested = resolveRequestedModel(modelConfig);
+        if (requested != null) {
+            effective.putAll(requested);
+            // 已由 name 解析出真实模型与连接，仅应用 modelConfig 的非 model 覆盖参数，
+            // 避免用配置别名（如 deepseek-reasoner）覆盖真实模型 ID。
+            if (modelConfig != null) {
+                for (Map.Entry<String, Object> e : modelConfig.entrySet()) {
+                    if ("model".equals(e.getKey())) {
+                        continue;
+                    }
+                    effective.put(e.getKey(), e.getValue());
+                }
+            }
+            return effective;
+        }
+
+        // 否则使用 default-model 指向的默认生效模型
+        effective.putAll(resolveDefaultModelConfig());
+
+        // 显式传入的 modelConfig 仍是最高优先级（独立连接场景：模型名 + 完整连接参数）
         if (modelConfig != null) {
             effective.putAll(modelConfig);
         }
 
-        ProdAiProperties.Llm llm = properties.getLlm();
-
-        // 从配置文件填充缺失的连接/模型参数（显式传入的 modelConfig 优先）
-        if (!effective.containsKey("api_key") || effective.get("api_key") == null
-                || String.valueOf(effective.get("api_key")).isBlank()) {
-            effective.put("api_key", llm.getApiKey());
-        }
-        if (!effective.containsKey("base_url") || effective.get("base_url") == null
-                || String.valueOf(effective.get("base_url")).isBlank()) {
-            effective.put("base_url", llm.getBaseUrl());
-        }
-        if (!effective.containsKey("model")) {
-            effective.put("model", llm.getModel());
-        }
-        if (!effective.containsKey("is_full_url")) {
-            effective.put("is_full_url", llm.isFullUrl());
-        }
-        if (!effective.containsKey("temperature")) {
-            effective.put("temperature", llm.getTemperature());
-        }
-        if (!effective.containsKey("max_tokens")) {
-            effective.put("max_tokens", llm.getMaxTokens());
-        }
-        if (!effective.containsKey("max_completion_tokens") && llm.getMaxCompletionTokens() != null) {
-            effective.put("max_completion_tokens", llm.getMaxCompletionTokens());
-        }
-        if (!effective.containsKey("thinking")) {
-            effective.put("thinking", llm.isThinking());
-        }
-        if (!effective.containsKey("stream_enabled")) {
-            effective.put("stream_enabled", llm.isStreamEnabled());
-        }
-        if (!effective.containsKey("auth_type")) {
-            effective.put("auth_type", llm.getAuthType());
-        }
-        if (!effective.containsKey("auth_header")) {
-            effective.put("auth_header", llm.getAuthHeader());
-        }
-
         return effective;
+    }
+
+    /**
+     * 解析请求命中的已配置模型。modelConfig 中携带的 {@code model} / {@code name} /
+     * {@code id} 若匹配 prodai.llm.models 中某项的 name 或 model，则返回该模型的独立连接；
+     * 否则返回 null（表示使用默认生效模型）。
+     */
+    private Map<String, Object> resolveRequestedModel(Map<String, Object> modelConfig) {
+        if (modelConfig == null) {
+            return null;
+        }
+        String ref = null;
+        Object m = modelConfig.get("model");
+        if (m != null && !String.valueOf(m).isBlank()) {
+            ref = String.valueOf(m);
+        }
+        if (ref == null) {
+            Object n = modelConfig.get("name");
+            if (n != null && !String.valueOf(n).isBlank()) {
+                ref = String.valueOf(n);
+            }
+        }
+        if (ref == null) {
+            Object id = modelConfig.get("id");
+            if (id != null && !String.valueOf(id).isBlank()) {
+                ref = String.valueOf(id);
+            }
+        }
+        if (ref == null) {
+            return null;
+        }
+        return resolveModelConfigByName(ref);
+    }
+
+    /** 按 name 或 model 在 prodai.llm.models 中查找并返回该模型的独立连接配置；未命中返回空 Map。 */
+    private Map<String, Object> resolveModelConfigByName(String name) {
+        if (name == null || name.isBlank()) {
+            return new LinkedHashMap<>();
+        }
+        ProdAiProperties.Llm llm = properties.getLlm();
+        if (llm.getModels() == null || llm.getModels().isEmpty()) {
+            return new LinkedHashMap<>();
+        }
+        for (ProdAiProperties.LlmModelConfig c : llm.getModels()) {
+            if (name.equals(c.getName()) || name.equals(c.getModel())) {
+                return toModelConfigMap(c);
+            }
+        }
+        return new LinkedHashMap<>();
+    }
+
+    /** 解析 default-model 指向的默认生效模型配置（未配置多模型时返回空 map）。 */
+    private Map<String, Object> resolveDefaultModelConfig() {
+        ProdAiProperties.Llm llm = properties.getLlm();
+        if (llm.getModels() == null || llm.getModels().isEmpty()) {
+            return new LinkedHashMap<>();
+        }
+        if (StringUtils.hasText(llm.getDefaultModel())) {
+            Map<String, Object> byName = resolveModelConfigByName(llm.getDefaultModel());
+            if (!byName.isEmpty()) {
+                return byName;
+            }
+        }
+        // default-model 未指定或未命中时，取第一条作为默认
+        return toModelConfigMap(llm.getModels().get(0));
+    }
+
+    /** 单条模型配置 → 连接参数字典（与 LlmService 消费的 key 对齐）。 */
+    private Map<String, Object> toModelConfigMap(ProdAiProperties.LlmModelConfig c) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        if (StringUtils.hasText(c.getApiKey())) {
+            m.put("api_key", c.getApiKey());
+        }
+        if (StringUtils.hasText(c.getBaseUrl())) {
+            m.put("base_url", c.getBaseUrl());
+        }
+        m.put("model", c.getModel());
+        m.put("is_full_url", c.isFullUrl());
+        m.put("temperature", c.getTemperature());
+        m.put("max_tokens", c.getMaxTokens());
+        if (c.getMaxCompletionTokens() != null) {
+            m.put("max_completion_tokens", c.getMaxCompletionTokens());
+        }
+        m.put("thinking", c.isThinking());
+        m.put("stream_enabled", c.isStreamEnabled());
+        m.put("auth_type", c.getAuthType());
+        m.put("auth_header", c.getAuthHeader());
+        return m;
+    }
+
+    /** 暴露给控制器等：返回可用的模型列表（含默认标记），供前端模型选择与工作流 LLM 节点使用。 */
+    public List<Map<String, Object>> listAvailableModels() {
+        ProdAiProperties.Llm llm = properties.getLlm();
+        if (llm.getModels() == null || llm.getModels().isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> list = new ArrayList<>();
+        String defaultName = llm.getDefaultModel();
+        for (ProdAiProperties.LlmModelConfig c : llm.getModels()) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", StringUtils.hasText(c.getName()) ? c.getName() : c.getModel());
+            row.put("name", c.getModel());
+            row.put("providerName", StringUtils.hasText(c.getName()) ? c.getName() : c.getModel());
+            row.put("isDefault", StringUtils.hasText(defaultName) && defaultName.equals(c.getName()));
+            list.add(row);
+        }
+        return list;
     }
 
     private OpenAiChatOptions buildOptions(Map<String, Object> modelConfig) {
