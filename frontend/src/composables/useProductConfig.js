@@ -23,6 +23,8 @@ import {
   createWorkOrder,
   evaluateHypothetical,
   getOpsRules,
+  getConfigTrace,
+  explainConfig,
 } from '../services/productOntologyApi.js'
 import {
   buildRootCauseOntologyChain,
@@ -799,6 +801,96 @@ export function useProductConfig() {
     }
   }
 
+  /** 配置审计追溯（对齐方案 get_trace + explain）：拉取链路并生成业务视角说明 */
+  async function openConfigTrace(traceId = null) {
+    const id = traceId || lastConfigTraceId.value
+    if (!id) {
+      return {
+        thinkingSteps: ['未找到当前会话的配置审计 trace'],
+        content:
+          '当前会话还没有可追溯的审计记录。请先完成一次**智查复制**、**智读批量入库**或**提交备案**操作，' +
+          '系统会为每次配置动作生成审计 trace，届时可回溯完整链路。',
+        formCard: null,
+      }
+    }
+    try {
+      const [trace, explain] = await Promise.all([
+        getConfigTrace(id),
+        explainConfig(id, 'business'),
+      ])
+      const steps = Array.isArray(trace?.steps) ? trace.steps : []
+      configTraceSteps.value = steps
+      configExplainText.value = explain?.explanation || ''
+      lastConfigTraceId.value = id
+      showConfigTracePanel.value = true
+
+      if (!steps.length) {
+        return {
+          thinkingSteps: [`get_trace(${id}) 返回空链路`],
+          content: `未找到 trace \`${id}\` 的审计记录（服务重启后内存 trace 会清空）。请重新执行一次配置动作后再查看追溯。`,
+          formCard: null,
+        }
+      }
+
+      const rows = steps
+        .map((s, i) => {
+          const detail = Object.entries(s)
+            .filter(([k]) => !['step', 'timestamp'].includes(k))
+            .map(([k, v]) => `${traceKeyZh(k)}=${formatTraceValue(v)}`)
+            .join(' · ')
+          const ts = s.timestamp ? String(s.timestamp).replace('T', ' ').slice(0, 19) : ''
+          return `| ${i + 1} | \`${s.step || '?'}\` | ${detail || '-'} | ${ts} |`
+        })
+        .join('\n')
+      const audience = explain?.audience === 'technical' ? '技术' : '业务'
+      return {
+        thinkingSteps: [
+          `定位审计 trace \`${id}\``,
+          `get_trace 拉取 ${steps.length} 步审计链路`,
+          'explain 生成业务视角审计说明',
+        ],
+        content:
+          `### 配置审计追溯 \`${id}\`\n\n` +
+          `| # | 步骤 | 关键信息 | 时间 |\n|---|------|---------|------|\n${rows}\n\n` +
+          `**审计说明（${audience}视角）**\n\n${explain?.explanation || '（服务未返回说明）'}`,
+        formCard: null,
+        traceId: id,
+        nextSteps: ['查一下近30天大学生套餐'],
+      }
+    } catch (e) {
+      return {
+        thinkingSteps: [`审计追溯失败：${e.message || e}`],
+        content: `审计追溯加载失败：${e.message || '本体服务不可用'}`,
+        formCard: null,
+      }
+    }
+  }
+
+  function traceKeyZh(key) {
+    const map = {
+      offering_id: '商品',
+      copied_from: '复制自',
+      compliance_pass: '合规',
+      applied_rules: '规则',
+      query: '查询',
+      file_name: '文档',
+      engine: '解析引擎',
+      total: '总数',
+      passed: '通过',
+      uri: '本体URI',
+      message_root_key: '报文根键',
+      step: '步骤',
+      timestamp: '时间',
+    }
+    return map[key] || key
+  }
+
+  function formatTraceValue(v) {
+    if (v === null || v === undefined) return '-'
+    if (Array.isArray(v)) return v.join('、')
+    return String(v)
+  }
+
   function selectProduct(id) {
     const product = products.value.find((p) => p.id === id)
     if (!product) return null
@@ -1055,6 +1147,7 @@ export function useProductConfig() {
     submitCurrentDraft,
     prepareProduct,
     confirmPassedDrafts,
+    openConfigTrace,
     applyRootCauseFromSse,
     applyRiskAuditFromSse,
     applyMonitorFromSse,

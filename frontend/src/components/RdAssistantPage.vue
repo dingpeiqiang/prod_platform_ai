@@ -52,6 +52,7 @@
       @batch-fix="handleBatchFix"
       @batch-delete="handleBatchDelete"
       @query-result-click="onQueryResultClick"
+      @trace-click="onTraceClick"
       @clarify-submit="onClarifySubmit"
       @file-ref-click="onFileRefClick"
     />
@@ -394,6 +395,7 @@ async function handleConfirmSubmit(payload) {
       issues: [],
     },
     nextSteps: ['查看审计追溯', '查一下近30天大学生套餐'],
+    traceId: productConfig.lastConfigTraceId.value,
     _undoable: resp.actionId
       ? {
           actionId: resp.actionId,
@@ -440,6 +442,20 @@ async function onQueryResultClick(item) {
     streaming.value = false
   }
 }
+
+/** 配置审计追溯：get_trace + explain，in-message 回放审计链路 */
+async function handleConfigTrace(traceId = null) {
+  if (streaming.value) return
+  streaming.value = true
+  try {
+    const playbook = await productConfig.openConfigTrace(traceId)
+    await playProductReply(playbook, 'config-trace')
+  } finally {
+    streaming.value = false
+  }
+}
+
+const onTraceClick = ({ traceId } = {}) => handleConfigTrace(traceId || null)
 
 /**
  * 翻译层 RD 消息完成后，依据工具 output 驱动研发侧边面板（OfferingCanvas / 批次 / 对比等）。
@@ -648,6 +664,7 @@ async function finishProductReply(aiMsg, playbook = {}) {
 
   if (playbook.formCard) aiMsg.formCard = playbook.formCard
   if (playbook.queryResults) aiMsg.queryResults = playbook.queryResults
+  if (playbook.traceId) aiMsg.traceId = playbook.traceId
   aiMsg.done = true
   aiMsg.loading = false
   tickMessages()
@@ -747,11 +764,24 @@ const onSend = async (payload) => {
     attachments.length && (!scenario || scenario === 'chat-generate')
       ? 'file-parse'
       : scenario
+  // 配置审计追溯：本地直调 get_trace/explain，无需后端翻译层工具
+  if (!attachments.length && effectiveScenario === 'config-trace') {
+    await handleConfigTrace()
+    return
+  }
   // 统一走翻译层：研发助手所有核心场景均由后端翻译层判定意图并执行对应 RD 工具
   const params = {}
   if (effectiveScenario === 'file-parse' && attachments.length) {
-    const uploaded = attachments.find((a) => a.fileId || (a.uploadStatus === 'success' && a.file_id))
-    if (uploaded) params.file_id = uploaded.fileId || uploaded.file_id || ''
+    const fileIds = attachments
+      .map((a) => a.fileId || a.file_id || '')
+      .filter(Boolean)
+    if (fileIds.length) {
+      // 多文档并行：全部已上传 file_id 一次性交给 rd_file_parse
+      params.file_ids = fileIds.join(',')
+      params.file_id = fileIds[0]
+      const named = attachments.find((a) => a.name || a.file_name)
+      if (named) params.file_name = named.name || named.file_name
+    }
   }
   await sendAgentMessage({
     text: text || `导入文档：${attachments[0]?.name || '方案'}`,
@@ -777,6 +807,11 @@ const onSuggest = (payload) => {
   // 跟进建议 / 推荐话术：预填输入框
   inputText.value = text
   const scenario = resolveProductScenario(text, activeScene.value || config.defaultScene)
+  if (scenario === 'config-trace') {
+    // 审计追溯建议：一键直达追溯回放
+    handleConfigTrace()
+    return
+  }
   if (scenario === 'file-parse') {
     activeScene.value = 'rd.import'
   } else if (scenario === 'query') {

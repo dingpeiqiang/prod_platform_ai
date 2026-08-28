@@ -224,6 +224,20 @@
               </div>
             </div>
 
+            <!-- 配置审计追溯锚（携带 traceId 的消息可一键拉起追溯） -->
+            <div
+              v-if="msg.done && msg.traceId && isReplySettled(msg)"
+              class="trace-anchor"
+              @click="$emit('trace-click', { msg, traceId: msg.traceId })"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 11l3 3L22 4"/>
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+              </svg>
+              <span class="ta-name">查看审计追溯</span>
+              <span class="ta-id">{{ msg.traceId }}</span>
+            </div>
+
             <!-- 下一步体验引导 -->
             <div v-if="msg.done && msg.nextSteps?.length && isReplySettled(msg)" class="next-steps">
               <span class="next-label">下一步可以：</span>
@@ -352,6 +366,7 @@ const emit = defineEmits([
   'suggest',
   'query-result-click',
   'clarify-submit',
+  'trace-click',
 ])
 
 const isActiveForm = (formCard) => {
@@ -1538,6 +1553,29 @@ defineExpose({ scrollToBottom })
 }
 .fra-name { font-weight: 600; }
 .fra-counts { color: #818cf8; }
+
+/* 配置审计追溯锚 */
+.trace-anchor {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 6px 12px;
+  border: 1px dashed #99f6e4;
+  background: #f0fdfa;
+  color: #0f766e;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+  width: fit-content;
+  transition: all 0.15s;
+}
+.trace-anchor:hover {
+  border-color: #14b8a6;
+  background: #ccfbf1;
+}
+.ta-name { font-weight: 600; }
+.ta-id { color: #5eead4; font-family: monospace; }
 
 /* 翻译层执行异常提示 */
 .agent-error-hint {

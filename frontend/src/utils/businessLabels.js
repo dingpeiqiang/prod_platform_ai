@@ -102,10 +102,13 @@ const ACTION_LABELS = {
   online_check: '在架检查',
   ops_monitor: '运营监控',
   compare: '对比分析',
-  // 产商品研发助手动作
+  // 产商品研发助手动作（params.action 实际取值为 generate/parse/compliance/discover）
+  generate: '配置生成',
+  parse: '方案解析',
+  compliance: '合规校验',
+  discover: '配置查询',
   config_chat: '对话配置',
   file_parse: '方案解析',
-  compliance: '合规校验',
   config_discover: '配置查询',
   scheme_compare: '方案对比',
 }
@@ -124,11 +127,13 @@ export function toolLabel(name) {
   return /[\u4e00-\u9fff]/.test(key) ? key : key
 }
 
-/** 意图内部码 → 业务中文；已含中文/无法识别时原样返回 */
+/** 意图内部码 → 业务中文；支持大小写回退（params.intent_type 为小写归一化码），已含中文/无法识别时原样返回 */
 export function intentLabel(intent) {
   if (intent == null || intent === '') return '—'
   const key = String(intent)
   if (INTENT_LABELS[key]) return INTENT_LABELS[key]
+  const upper = key.toUpperCase()
+  if (INTENT_LABELS[upper]) return INTENT_LABELS[upper]
   return /[\u4e00-\u9fff]/.test(key) ? key : key
 }
 

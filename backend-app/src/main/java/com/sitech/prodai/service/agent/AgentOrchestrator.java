@@ -384,8 +384,8 @@ public class AgentOrchestrator {
 
         // 阶段事件①：理解中 —— 先于 LLM 理解调用推送，思考时间线即刻起表并读秒
         emitter.emit("thinking", Map.of(
-                "steps", List.of(thinkingStep("intent", "识别分析需求",
-                        "正在理解您的需求，识别业务意图与筛查目标…",
+                "steps", List.of(thinkingStep("intent", intentStepName(context),
+                        intentStepDesc(context),
                         Map.of("input", Map.of("question", question))))
         ));
 
@@ -403,8 +403,8 @@ public class AgentOrchestrator {
         QueryPlan plan = plans.get(0);
         // 阶段事件①′：理解完成，原地更新 intent 步骤（补输出：已识别业务意图）
         emitter.emit("thinking", Map.of(
-                "steps", List.of(thinkingStep("intent", "识别分析需求",
-                        "正在理解您的需求，识别业务意图与筛查目标…",
+                "steps", List.of(thinkingStep("intent", intentStepName(context),
+                        intentStepDesc(context),
                         Map.of("input", Map.of("question", question),
                                 "output", Map.of("summary", "已识别业务意图：" + actionDisplay(plan))))),
                 "intent", plan.getIntent()
@@ -551,15 +551,15 @@ public class AgentOrchestrator {
 
             // 阶段事件①：该子任务的意图识别（带索引前缀 id，独立成链；首步骤携带 segment 供前端分组）
             emitter.emit("thinking", Map.of(
-                    "steps", List.of(thinkingStep(pre + "intent", "识别分析需求",
-                            "正在理解您的需求，识别业务意图与筛查目标…",
+                    "steps", List.of(thinkingStep(pre + "intent", intentStepName(context),
+                            intentStepDesc(context),
                             Map.of("segment", segment,
                                     "input", Map.of("question", question)))),
                     "intent", plan.getIntent()
             ));
             emitter.emit("thinking", Map.of(
-                    "steps", List.of(thinkingStep(pre + "intent", "识别分析需求",
-                            "正在理解您的需求，识别业务意图与筛查目标…",
+                    "steps", List.of(thinkingStep(pre + "intent", intentStepName(context),
+                            intentStepDesc(context),
                             Map.of("segment", segment,
                                     "input", Map.of("question", question),
                                     "output", Map.of("summary", "已识别业务意图：" + intentLabel)))),
@@ -753,31 +753,48 @@ public class AgentOrchestrator {
         return step;
     }
 
-    /** action 内部码 → 业务展示名。 */
+    /** action 内部码 → 业务展示名（含产商品研发场景动作）。 */
     private static final Map<String, String> ACTION_DISPLAY = Map.of(
             "query", "数据查询",
             "root_cause", "异动归因",
             "risk_audit", "风险稽核",
             "online_check", "在架检查",
             "ops_monitor", "运营监控",
-            "compare", "对比分析"
+            "compare", "对比分析",
+            "generate", "配置生成",
+            "parse", "方案解析",
+            "compliance", "合规校验",
+            "discover", "配置查询"
     );
 
-    /** intent 内部码 → 兜底业务展示名（params 缺 action 时使用）。 */
-    private static final Map<String, String> INTENT_DISPLAY = Map.of(
-            "SPARQL_QUERY", "数据查询",
-            "SWRL_INFER", "推理分析",
-            "product_ops_policy", "风险稽核",
-            "product_ops_reason", "异动归因"
+    /** intent 内部码 → 兜底业务展示名（params 缺 action 时使用，含研发/对话/澄清意图）。 */
+    private static final Map<String, String> INTENT_DISPLAY = Map.ofEntries(
+            Map.entry("SPARQL_QUERY", "数据查询"),
+            Map.entry("SWRL_INFER", "推理分析"),
+            Map.entry("product_ops_policy", "风险稽核"),
+            Map.entry("product_ops_reason", "异动归因"),
+            Map.entry("RD_CONFIG_CHAT", "对话配置"),
+            Map.entry("RD_FILE_PARSE", "方案解析"),
+            Map.entry("RD_COMPLIANCE", "合规校验"),
+            Map.entry("RD_CONFIG_DISCOVER", "配置查询"),
+            Map.entry("RD_SCHEME_COMPARE", "方案对比"),
+            Map.entry("CHAT", "通用对话"),
+            Map.entry("CLARIFY", "待补充信息"),
+            Map.entry("REUSE_EVIDENCE", "证据复用")
     );
 
-    /** 工具内部码 → 处理流程中可读的动作说明（供「制定方案」展示完整处理路径）。 */
+    /** 工具内部码 → 处理流程中可读的动作说明（供「制定方案」展示完整处理路径，含研发工具）。 */
     private static final Map<String, String> TOOL_STEP_DISPLAY = Map.of(
             "sparql_query", "检索经营事实",
             "swrl_root_cause", "执行异动归因推理",
             "swrl_risk_audit", "全量扫描风险并分级",
             "rule_explain", "解释业务规则",
-            "ontology_explain", "解释本体概念"
+            "ontology_explain", "解释本体概念",
+            "rd_config_chat", "对话配置生成",
+            "rd_file_parse", "方案文档解析",
+            "rd_compliance", "合规校验",
+            "rd_config_discover", "历史配置查询",
+            "rd_scheme_compare", "多方案对比"
     );
 
     /**
@@ -874,7 +891,24 @@ public class AgentOrchestrator {
         return value == null ? "" : String.valueOf(value);
     }
 
-    /** 供「识别分析需求」步骤输出展示的业务动作名（如 异动归因 / 风险稽核）。 */
+    /** 是否为产商品研发场景（scene=rd）。 */
+    private static boolean isRdScene(SessionContext context) {
+        return context != null && "rd".equals(context.getScene());
+    }
+
+    /** 意图识别步骤标题：研发场景为「识别配置需求」，运营场景为「识别分析需求」。 */
+    private static String intentStepName(SessionContext context) {
+        return isRdScene(context) ? "识别配置需求" : "识别分析需求";
+    }
+
+    /** 意图识别步骤描述：研发场景围绕配置要素，运营场景围绕筛查目标。 */
+    private static String intentStepDesc(SessionContext context) {
+        return isRdScene(context)
+                ? "正在理解您的需求，识别业务意图与配置要素…"
+                : "正在理解您的需求，识别业务意图与筛查目标…";
+    }
+
+    /** 供意图识别步骤输出展示的业务动作名（如 异动归因 / 风险稽核 / 对话配置）。 */
     private static String actionDisplay(QueryPlan plan) {
         if (plan == null) {
             return "分析";

@@ -17,6 +17,10 @@
         </div>
         <div class="bi-meta">
           <span v-if="feeOf(it) != null">月费{{ feeOf(it) }}</span>
+          <span v-if="confOf(it) != null" class="bi-conf" :class="confTone(confOf(it))">
+            置信度 {{ Math.round(confOf(it) * 100) }}%
+          </span>
+          <span v-if="it.needsConfirm" class="bi-needs">需人工确认</span>
           <span v-if="(issuesOf(it) || []).length" class="bi-rules">
             {{ issuesOf(it).map((i) => i.ruleId || i).join('、') }}
           </span>
@@ -79,6 +83,12 @@ const feeOf = (it) => {
   return f != null && f !== '' ? f : null
 }
 const issuesOf = (it) => (it.issues && it.issues.length ? it.issues : it.ruleIds ? it.ruleIds : null)
+const confOf = (it) => {
+  const raw = it.confidence ?? it.draft?.confidence
+  const c = raw == null ? NaN : Number(raw)
+  return Number.isFinite(c) ? c : null
+}
+const confTone = (c) => (c >= 0.85 ? 'high' : c >= 0.75 ? 'mid' : 'low')
 const itemStatus = (it) => {
   if (isSubmitted(it)) return '已备案'
   return isPass(it) ? '通过' : '待修正'
@@ -141,6 +151,11 @@ function countWhere(list, pred) {
 .bi-status.filed { background: #e2e8f0; color: #475569; }
 .bi-meta { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #64748b; flex-wrap: wrap; }
 .bi-rules { color: #b45309; }
+.bi-conf { font-weight: 600; padding: 0 6px; border-radius: 999px; }
+.bi-conf.high { color: #15803d; background: #dcfce7; }
+.bi-conf.mid { color: #1d4ed8; background: #dbeafe; }
+.bi-conf.low { color: #b91c1c; background: #fee2e2; }
+.bi-needs { color: #b45309; font-weight: 600; }
 .bi-delete {
   position: absolute;
   right: 12px;
