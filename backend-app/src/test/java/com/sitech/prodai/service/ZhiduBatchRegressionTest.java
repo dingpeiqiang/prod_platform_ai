@@ -71,8 +71,12 @@ class ZhiduBatchRegressionTest {
                 new ClasspathOpsProductDataSource(mapper, resourceLoader, properties);
         OpsProductGraphLoader graphLoader =
                 new OpsProductGraphLoader(properties, classpathSource, httpSource);
+        ProductTemplateRegistry templateRegistry = new ProductTemplateRegistry(mapper);
+        templateRegistry.init();
+        ProductExtractionTemplateSupport templateSupport =
+                new ProductExtractionTemplateSupport(templateRegistry);
         OpsExtractionService extractionService =
-                new OpsExtractionService(mapper, properties, opsRules, Optional.empty());
+                new OpsExtractionService(mapper, properties, opsRules, templateSupport, Optional.empty());
         ConfigDocumentParser documentParser = new ConfigDocumentParser();
         ConfigMessageProjector projector = new ConfigMessageProjector(mapper, resourceLoader);
 

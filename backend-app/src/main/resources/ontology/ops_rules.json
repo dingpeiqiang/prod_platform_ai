@@ -254,7 +254,12 @@
       "OF-HF-128": "OF-HF-128"
     },
     "bindTriggers": ["再绑", "再加", "一起上"],
-    "clearBindTriggers": ["不加128", "不加畅享128", "不绑128", "单独上", "取消绑定", "解除互斥"]
+    "clearBindTriggers": ["不加128", "不加畅享128", "不绑128", "单独上", "取消绑定", "解除互斥"],
+    "slotPatterns": {
+      "includeData": [
+        { "pattern": "流量\\s*(\\d+(?:\\.\\d+)?)\\s*[Gg](?![Bb])", "group": 1, "template": "{v}GB", "guard": "流量" }
+      ]
+    }
   },
   "ui": {
     "previewOfferingIds": ["OF-HF-128"],

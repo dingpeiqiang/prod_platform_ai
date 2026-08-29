@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sitech.prodai.config.ProdAiProperties;
 import com.sitech.prodai.service.LlmService;
 import com.sitech.prodai.service.OpsRulesService;
+import com.sitech.prodai.service.ProductExtractionTemplateSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +24,9 @@ import java.util.regex.Pattern;
  * 配置槽位 / 批量文档套餐抽取。
  * 优先 LLM；失败时回退正则切分。不灌入演示样例数据。
  * 商品别名与绑定触发词来自 {@link OpsRulesService}（ops_rules.extraction）。
+ * <p>P2-2 模板化（§11.2）：① 槽位白名单经 {@link ProductExtractionTemplateSupport#extractableSlotKeys()}
+ * 动态化（基础集 ∪ 模板 draft 字段）；② prompt 按品类模板动态拼装扩展字段约束；③
+ * {@code ops_rules.extraction.slotPatterns} 提供内置正则外的可配置补充模式（内置优先，putIfAbsent 不漂移）。
  */
 @Service
 public class OpsExtractionService {
@@ -42,25 +46,21 @@ public class OpsExtractionService {
             Pattern.compile("(?:叫|名称[是为]?)\\s*[「\"]?([^「」\"，。\\s]+)[」\"]?");
     private static final Pattern MONTHS_PATTERN = Pattern.compile("(\\d+)\\s*个?月");
 
-    private static final Set<String> SLOT_KEYS = Set.of(
-            "bizScenario", "targetUser", "offeringType", "monthlyFee", "oneTimeFee",
-            "includeBroadband", "includeData", "includeVoice", "channelScope",
-            "offeringName", "bindExistingMainPkg", "clearBindExisting",
-            "hasContract", "contractMonths", "repeatable", "dependOn", "discountPercent"
-    );
-
     private final ObjectMapper objectMapper;
     private final ProdAiProperties properties;
     private final OpsRulesService opsRules;
     private final Optional<LlmService> llmService;
+    private final ProductExtractionTemplateSupport templateSupport;
 
     public OpsExtractionService(ObjectMapper objectMapper,
                                 ProdAiProperties properties,
                                 OpsRulesService opsRules,
+                                ProductExtractionTemplateSupport templateSupport,
                                 @Autowired(required = false) Optional<LlmService> llmService) {
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.opsRules = opsRules;
+        this.templateSupport = templateSupport;
         this.llmService = llmService == null ? Optional.empty() : llmService;
     }
 
@@ -82,28 +82,16 @@ public class OpsExtractionService {
             return new SlotExtractResult(regexSlots, "regex-fast");
         }
         try {
-            String prompt = """
-                    你是电信产商品配置槽位抽取助手。从用户话术中抽取字段，只输出 JSON 对象，不要 markdown。
-                    可选字段：bizScenario,targetUser,offeringType,monthlyFee,oneTimeFee,includeBroadband,includeData,includeVoice,channelScope,offeringName,bindExistingMainPkg,clearBindExisting,hasContract,contractMonths,repeatable,dependOn,discountPercent
-                    规则：
-                    - 家庭融合/融合套餐 → bizScenario=家庭融合, targetUser=家庭, offeringType=fusion
-                    - 校园/大学生 → bizScenario=校园体验, targetUser=校园
-                    - 5G → bizScenario=5G个人主套餐, targetUser=个人, offeringType=main_pkg
-                    - 明确不加/不绑 128 → clearBindExisting=true, bindExistingMainPkg=""
-                    - 有合约/无合约 → hasContract 为 "1"/"0"
-                    - 未提及的字段不要编造
-                    
-                    用户话术：
-                    %s
-                    """.formatted(text);
+            String prompt = buildSlotPrompt(text);
             String content = llmService.orElseThrow().completePrompt(prompt);
             Map<String, Object> llmSlots = parseJsonObject(content);
             if (llmSlots == null || llmSlots.isEmpty()) {
                 return new SlotExtractResult(regexSlots, "regex-fallback");
             }
             Map<String, Object> merged = new LinkedHashMap<>(regexSlots);
+            Set<String> allowedKeys = templateSupport.extractableSlotKeys();
             for (Map.Entry<String, Object> e : llmSlots.entrySet()) {
-                if (!SLOT_KEYS.contains(e.getKey()) || e.getValue() == null) {
+                if (!allowedKeys.contains(e.getKey()) || e.getValue() == null) {
                     continue;
                 }
                 if (e.getValue() instanceof String s && s.isBlank()) {
@@ -321,7 +309,78 @@ public class OpsExtractionService {
         if (text.contains("内部验证")) {
             slots.put("channelScope", "内部验证");
         }
+        applyConfiguredSlotPatterns(text, slots);
         return slots;
+    }
+
+    /**
+     * P2-2 prompt 动态拼装：固定场景规则（inferFields 依赖的场景槽位语义）+
+     * 品类模板扩展字段约束段（matchCategory 兜底选模板，§9.4）。
+     */
+    private String buildSlotPrompt(String text) {
+        String templateSection = templateSupport.buildPromptSection(templateSupport.matchCategory(text));
+        return """
+                你是电信产商品配置槽位抽取助手。从用户话术中抽取字段，只输出 JSON 对象，不要 markdown。
+                可选字段：%s
+                规则：
+                - 家庭融合/融合套餐 → bizScenario=家庭融合, targetUser=家庭, offeringType=fusion
+                - 校园/大学生 → bizScenario=校园体验, targetUser=校园
+                - 5G → bizScenario=5G个人主套餐, targetUser=个人, offeringType=main_pkg
+                - 明确不加/不绑 128 → clearBindExisting=true, bindExistingMainPkg=""
+                - 有合约/无合约 → hasContract 为 "1"/"0"
+                - 未提及的字段不要编造
+                %s
+                用户话术：
+                %s
+                """.formatted(String.join(",", templateSupport.extractableSlotKeys()), templateSection, text);
+    }
+
+    /**
+     * P2-2 正则通用化：应用 {@code ops_rules.extraction.slotPatterns} 可配置补充模式。
+     * 语义：内置正则优先（已抽取的槽位跳过），配置模式仅补充新变体，保证存量行为零漂移。
+     */
+    private void applyConfiguredSlotPatterns(String text, Map<String, Object> slots) {
+        for (Map.Entry<String, List<Map<String, Object>>> entry : opsRules.extractionSlotPatterns().entrySet()) {
+            String slot = entry.getKey();
+            if (slots.containsKey(slot) || entry.getValue() == null) {
+                continue;
+            }
+            for (Map<String, Object> spec : entry.getValue()) {
+                Object value = matchConfiguredPattern(text, spec);
+                if (value != null) {
+                    slots.put(slot, value);
+                    break;
+                }
+            }
+        }
+    }
+
+    /** 单条配置模式执行：guard 前置检查 + 正则捕获组 + {v} 模板格式化；pattern 非法跳过。 */
+    private Object matchConfiguredPattern(String text, Map<String, Object> spec) {
+        Object guard = spec.get("guard");
+        if (guard != null && !text.contains(String.valueOf(guard))) {
+            return null;
+        }
+        Object patternObj = spec.get("pattern");
+        if (patternObj == null) {
+            return null;
+        }
+        try {
+            Matcher m = Pattern.compile(String.valueOf(patternObj)).matcher(text);
+            if (!m.find()) {
+                return null;
+            }
+            int group = spec.get("group") instanceof Number n ? n.intValue() : 1;
+            String raw = m.groupCount() >= group ? m.group(group) : null;
+            if (raw == null) {
+                return null;
+            }
+            String template = spec.get("template") != null ? String.valueOf(spec.get("template")) : "{v}";
+            return template.replace("{v}", raw);
+        } catch (Exception e) {
+            log.warn("[OpsExtractionService] slotPatterns 配置非法，跳过: {}", e.getMessage());
+            return null;
+        }
     }
 
     private boolean llmExtractEnabled() {

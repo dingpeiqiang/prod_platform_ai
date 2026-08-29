@@ -271,6 +271,32 @@ public class OpsRulesService {
     }
 
     /**
+     * P2-2 正则通用化：{@code extraction.slotPatterns}（slot -> 模式数组），补充内置正则外的可配置抽取。
+     * 每条模式：{@code {pattern, group, template, guard}}——pattern 正则取指定捕获组，
+     * template 用 {@code {v}} 占位格式化，guard 为可选文本前置条件。
+     */
+    public Map<String, List<Map<String, Object>>> extractionSlotPatterns() {
+        Object raw = castMap(load().get("extraction")).get("slotPatterns");
+        if (!(raw instanceof Map<?, ?> map) || map.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, List<Map<String, Object>>> out = new LinkedHashMap<>();
+        map.forEach((slot, specs) -> {
+            if (slot == null || !(specs instanceof List<?> list)) {
+                return;
+            }
+            List<Map<String, Object>> rows = list.stream()
+                    .filter(s -> s instanceof Map<?, ?>)
+                    .map(s -> castMap(s))
+                    .collect(Collectors.toList());
+            if (!rows.isEmpty()) {
+                out.put(str(slot), rows);
+            }
+        });
+        return out;
+    }
+
+    /**
      * 话术命中别名时返回商品 ID；未配置别名则返回空。
      * 按别名 key 长度降序匹配，避免短词误伤。
      */

@@ -82,8 +82,12 @@ class ProductConfigRegressionTest {
                 new ClasspathOpsProductDataSource(mapper, resourceLoader, properties);
         OpsProductGraphLoader graphLoader =
                 new OpsProductGraphLoader(properties, classpathSource, httpSource);
+        ProductTemplateRegistry templateRegistry = new ProductTemplateRegistry(mapper);
+        templateRegistry.init();
+        ProductExtractionTemplateSupport templateSupport =
+                new ProductExtractionTemplateSupport(templateRegistry);
         OpsExtractionService extractionService =
-                new OpsExtractionService(mapper, properties, opsRules, Optional.empty());
+                new OpsExtractionService(mapper, properties, opsRules, templateSupport, Optional.empty());
         ConfigDocumentParser documentParser = new ConfigDocumentParser();
         ConfigMessageProjector projector = new ConfigMessageProjector(mapper, resourceLoader);
         // 单测无 Spring 容器：手动触发 @PostConstruct 装载投影配置（品类默认值/报文映射）

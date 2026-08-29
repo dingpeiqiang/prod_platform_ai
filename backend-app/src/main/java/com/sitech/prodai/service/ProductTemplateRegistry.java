@@ -143,6 +143,11 @@ public class ProductTemplateRegistry {
         return findByCategory(type);
     }
 
+    /** 合并后的全部生效模板（只读快照，供抽取/编译层遍历；P2-2 动态槽位集来源）。 */
+    public List<Map<String, Object>> allResolved() {
+        return List.copyOf(resolvedTemplates.values());
+    }
+
     /** 模板清单（摘要视图）。 */
     public List<Map<String, Object>> list() {
         List<Map<String, Object>> summaries = new ArrayList<>();
