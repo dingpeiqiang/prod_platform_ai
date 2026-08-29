@@ -189,6 +189,7 @@
         ]
       },
       "slot_aliases": ["发布渠道", "销售渠道限制", "渠道"],
+      "mutex_value_groups": [["营业前台"], ["电子渠道", "大掌柜"]],
       "rule_description": "营业前台 与 电子渠道/大掌柜 互斥（互斥校验在提交阶段合规执行，前端不做即时校验）",
       "message_path": "releaseInfo.chnClassLimit"
     },
