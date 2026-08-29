@@ -47,21 +47,25 @@ public class OpsRulesService {
         if (rulesCache != null) {
             return rulesCache;
         }
+        rulesCache = loadPending();
+        return rulesCache;
+    }
+
+    /** 守卫 LOAD（P1-6）：解析最新文件为 pending，不触碰现行缓存；失败保留现行版本。 */
+    public Map<String, Object> loadPending() {
         try {
             Resource resource = resourceLoader.getResource(properties.getOntology().getRulesPath());
             try (InputStream in = resource.getInputStream()) {
-                rulesCache = objectMapper.readValue(in, new TypeReference<>() {});
-                return rulesCache;
+                return objectMapper.readValue(in, new TypeReference<>() {});
             }
         } catch (Exception e) {
             throw new IllegalStateException("Failed to load ontology ops rules: " + e.getMessage(), e);
         }
     }
 
-    /** 热重载（测试 / 运维）；当前进程内覆盖缓存。 */
-    public synchronized Map<String, Object> reload() {
-        rulesCache = null;
-        return load();
+    /** 守卫 COMMIT（P1-6）：全部通过后原子切换缓存。 */
+    public synchronized void swap(Map<String, Object> pending) {
+        this.rulesCache = pending;
     }
 
     public String version() {

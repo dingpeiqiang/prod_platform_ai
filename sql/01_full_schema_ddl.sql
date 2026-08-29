@@ -362,7 +362,8 @@ CREATE TABLE `pd_ai_spans` (
 -- ------------------------------------------------------------
 
 DROP TABLE IF EXISTS `pd_ai_ontology_instance_data`;
-DROP TABLE IF EXISTS `pd_ai_ontology_instance_history`;
+DROP TABLE IF EXISTS `pd_ai_ontology_version_log`;
+DROP TABLE IF EXISTS `pd_ai_ontology_version`;
 DROP TABLE IF EXISTS `pd_ai_ontology_instance`;
 
 CREATE TABLE `pd_ai_ontology_instance` (
@@ -385,14 +386,38 @@ CREATE TABLE `pd_ai_ontology_instance_data` (
         FOREIGN KEY (`ontology_instance_id`) REFERENCES `pd_ai_ontology_instance` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='本体实例字段集合';
 
-CREATE TABLE `pd_ai_ontology_instance_history` (
+-- P1-5 版本库表 A：本体资产版本主表（payload 为回滚唯一事实源）
+CREATE TABLE `pd_ai_ontology_version` (
     `id`                 BIGINT       NOT NULL AUTO_INCREMENT,
-    `instance_id`        BIGINT                DEFAULT NULL,
-    `action`             VARCHAR(255)          DEFAULT NULL,
+    `asset_type`         VARCHAR(32)  NOT NULL COMMENT 'template / message_projection / ops_rules / ttl / abox_snapshot',
+    `asset_code`         VARCHAR(128) NOT NULL COMMENT '资产编码：template_id / 文件名等',
+    `version`            VARCHAR(64)  NOT NULL COMMENT '语义化版本（semver）',
+    `status`             VARCHAR(32)  NOT NULL DEFAULT 'draft' COMMENT 'draft / review / published / deprecated',
+    `author`             VARCHAR(64)           DEFAULT NULL,
+    `summary`            VARCHAR(512)          DEFAULT NULL,
+    `payload`            TEXT                  COMMENT '源码全文（回滚唯一事实源）',
+    `created_at`         DATETIME(6)           DEFAULT NULL,
+    `published_at`       DATETIME(6)           DEFAULT NULL,
+    `deprecated_at`      DATETIME(6)           DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_oav_type_code_version` (`asset_type`, `asset_code`, `version`),
+    KEY `idx_oav_asset` (`asset_type`, `asset_code`),
+    KEY `idx_oav_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='本体资产版本主表';
+
+-- P1-5 版本库表 B：动作日志（由 pd_ai_ontology_instance_history 接线改造）
+CREATE TABLE `pd_ai_ontology_version_log` (
+    `id`                 BIGINT       NOT NULL AUTO_INCREMENT,
+    `version_id`         BIGINT       NOT NULL COMMENT '外键 pd_ai_ontology_version.id',
+    `action`             VARCHAR(32)  NOT NULL COMMENT 'publish / rollback / deprecate / reload / override',
+    `operator`           VARCHAR(64)           DEFAULT NULL,
+    `detail`             TEXT                  COMMENT '动作明细 JSON',
     `created_at`         DATETIME(6)           DEFAULT NULL,
     PRIMARY KEY (`id`),
-    KEY `idx_oih_instance_id` (`instance_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='本体实例操作历史';
+    KEY `idx_ovl_version_id` (`version_id`),
+    KEY `idx_ovl_action` (`action`),
+    KEY `idx_ovl_created` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='本体资产版本动作日志';
 
 -- ------------------------------------------------------------
 -- 8. SWRL / 条件 DSL 规则（遗留营销路径）
@@ -446,14 +471,15 @@ CREATE TABLE `pd_ai_ops_work_orders` (
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ============================================================
--- 表清单（共 20 张）
+-- 表清单（共 22 张）
 -- pd_ai_chat_sessions, pd_ai_chat_messages, pd_ai_chat_message_metadata
 -- pd_ai_mcp_tool_definitions, pd_ai_mcp_call_logs, pd_ai_mcp_tool_stats
 -- pd_ai_llm_user_configs
 -- pd_ai_prompts, pd_ai_prompt_versions, pd_ai_prompt_templates
 -- pd_ai_workflows, pd_ai_workflow_history, pd_ai_workflow_executions
 -- pd_ai_traces, pd_ai_spans
--- pd_ai_ontology_instance, pd_ai_ontology_instance_data, pd_ai_ontology_instance_history
+-- pd_ai_ontology_instance, pd_ai_ontology_instance_data
+-- pd_ai_ontology_version, pd_ai_ontology_version_log
 -- pd_ai_swrl_rules
 -- pd_ai_ops_work_orders
 -- ============================================================

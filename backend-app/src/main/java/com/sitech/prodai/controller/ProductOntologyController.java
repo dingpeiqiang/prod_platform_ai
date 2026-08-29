@@ -8,7 +8,9 @@ import com.sitech.prodai.dto.RiskAuditRequest;
 import com.sitech.prodai.dto.RiskRulesRequest;
 import com.sitech.prodai.dto.RootCauseRequest;
 import com.sitech.prodai.service.OntologyService;
+import com.sitech.prodai.service.ProductConfigRegressionService;
 import com.sitech.prodai.service.ProductOntologyService;
+import com.sitech.prodai.service.ProductTemplateRegistry;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -34,13 +36,19 @@ public class ProductOntologyController {
 
     private final ProductOntologyService productOntologyService;
     private final OntologyService ontologyService;
+    private final ProductTemplateRegistry templateRegistry;
+    private final ProductConfigRegressionService regressionService;
 
     public ProductOntologyController(
             ProductOntologyService productOntologyService,
-            OntologyService ontologyService
+            OntologyService ontologyService,
+            ProductTemplateRegistry templateRegistry,
+            ProductConfigRegressionService regressionService
     ) {
         this.productOntologyService = productOntologyService;
         this.ontologyService = ontologyService;
+        this.templateRegistry = templateRegistry;
+        this.regressionService = regressionService;
     }
 
     private Map<String, Object> ok(Map<String, Object> body) {
@@ -52,18 +60,57 @@ public class ProductOntologyController {
         return productOntologyService.getGraphSummary();
     }
 
+    /** 事务式热重载事实图（P1-6 last-known-good 守卫）：失败保留现行图谱并返回差异报告。 */
     @PostMapping("/graph/reload")
     public Map<String, Object> reloadGraph() {
-        productOntologyService.reloadGraph();
-        return ok(Map.of(
-                "success", true,
-                "message", "graph reloaded"
-        ));
+        return ok(productOntologyService.reloadGraph());
     }
 
     @GetMapping("/meta")
     public Map<String, Object> meta() {
-        return productOntologyService.getOntologyMeta();
+        Map<String, Object> body = new LinkedHashMap<>(productOntologyService.getOntologyMeta());
+        // §9.2 模板清单：productTemplates 数组
+        body.put("productTemplates", templateRegistry.list());
+        return body;
+    }
+
+    /** §9.1 模板渲染 schema 下发：前端 DynamicForm 直接消费。 */
+    @GetMapping("/config/template/{category}")
+    public Map<String, Object> template(@PathVariable("category") String category) {
+        Map<String, Object> schema = templateRegistry.buildFormSchema(category);
+        Map<String, Object> body = new LinkedHashMap<>();
+        if (schema == null) {
+            body.put("success", false);
+            body.put("message", "未识别的产品品类模板: " + category);
+            return ok(body);
+        }
+        templateRegistry.findByCategory(category).ifPresent(template ->
+                body.put("template", Map.of(
+                        "template_id", String.valueOf(template.get("template_id")),
+                        "template_name", String.valueOf(template.get("template_name")),
+                        "version", String.valueOf(template.get("version")),
+                        "status", String.valueOf(template.get("status")),
+                        "category_code", String.valueOf(template.get("category_code")),
+                        "message_root_key", String.valueOf(template.get("message_root_key")))));
+        body.put("success", true);
+        body.put("schema", schema);
+        return ok(body);
+    }
+
+    /** 模板注册中心热重载（增量注册：新增产品只落地模板文件）。 */
+    @PostMapping("/config/template/reload")
+    public Map<String, Object> reloadTemplates() {
+        Map<String, Object> report = templateRegistry.reload();
+        Map<String, Object> body = new LinkedHashMap<>(report);
+        body.put("success", true);
+        body.put("message", "templates reloaded");
+        return ok(body);
+    }
+
+    /** P1-7 验收核对：运行双品类回归用例集（家庭融合/校园/5G/宽带），返回逐条断言报告。 */
+    @GetMapping("/config/regression/run")
+    public Map<String, Object> runRegression() {
+        return ok(regressionService.runAll());
     }
 
     @PostMapping("/config/infer")

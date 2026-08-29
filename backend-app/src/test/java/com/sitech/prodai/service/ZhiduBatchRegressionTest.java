@@ -2,7 +2,9 @@ package com.sitech.prodai.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sitech.prodai.config.ProdAiProperties;
+import com.sitech.prodai.repository.OntologyAssetVersionRepository;
 import com.sitech.prodai.repository.OntologyInstanceRepository;
+import com.sitech.prodai.repository.OntologyVersionLogRepository;
 import com.sitech.prodai.repository.OpsWorkOrderRepository;
 import com.sitech.prodai.service.ops.ClasspathOpsProductDataSource;
 import com.sitech.prodai.service.ops.HttpOpsProductDataSource;
@@ -13,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.io.DefaultResourceLoader;
 
 import java.nio.file.Files;
@@ -20,9 +23,13 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * 智读回归：家庭融合测试稿应映射 3 条草稿（1 通过 / 2 待修正）。
@@ -36,6 +43,10 @@ class ZhiduBatchRegressionTest {
     private OpsWorkOrderRepository workOrderRepository;
     @Mock
     private OntologyInstanceRepository instanceRepository;
+    @Mock
+    private OntologyAssetVersionRepository assetVersionRepository;
+    @Mock
+    private OntologyVersionLogRepository versionLogRepository;
     @Mock
     private Rdf4jOntologyStore rdf4jStore;
     @Mock
@@ -65,6 +76,14 @@ class ZhiduBatchRegressionTest {
         ConfigDocumentParser documentParser = new ConfigDocumentParser();
         ConfigMessageProjector projector = new ConfigMessageProjector(mapper, resourceLoader);
 
+        OntologyVersionService versionService =
+                new OntologyVersionService(assetVersionRepository, versionLogRepository);
+        // P1-7：延迟解析回归运行器（reloadGraph SMOKE 回接），规避构造循环
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ProductConfigRegressionService> regressionProvider =
+                mock(ObjectProvider.class);
+        AtomicReference<ProductConfigRegressionService> lazyRegression = new AtomicReference<>();
+        lenient().when(regressionProvider.getObject()).thenAnswer(inv -> lazyRegression.get());
         service = new ProductOntologyService(
                 mapper,
                 properties,
@@ -77,9 +96,13 @@ class ZhiduBatchRegressionTest {
                 rdf4jStore,
                 workOrderRepository,
                 instanceRepository,
-                projector
+                projector,
+                new LastKnownGoodGuard(versionService),
+                versionService,
+                regressionProvider
         );
         service.init();
+        lazyRegression.set(new ProductConfigRegressionService(mapper, resourceLoader, service, projector));
     }
 
     @Test

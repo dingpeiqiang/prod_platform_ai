@@ -1,6 +1,7 @@
 package com.sitech.prodai.service.agent.tool.rd;
 
 import com.sitech.prodai.service.ProductOntologyService;
+import com.sitech.prodai.service.ProductTemplateRegistry;
 import com.sitech.prodai.service.agent.model.ExecutionResult;
 import com.sitech.prodai.service.agent.tool.AgentTool;
 import com.sitech.prodai.service.agent.tool.ToolOutputField;
@@ -25,9 +26,12 @@ public class RdComplianceTool implements AgentTool {
     private static final Logger log = LoggerFactory.getLogger(RdComplianceTool.class);
 
     private final ProductOntologyService productOntologyService;
+    private final ProductTemplateRegistry templateRegistry;
 
-    public RdComplianceTool(ProductOntologyService productOntologyService) {
+    public RdComplianceTool(ProductOntologyService productOntologyService,
+                            ProductTemplateRegistry templateRegistry) {
         this.productOntologyService = productOntologyService;
+        this.templateRegistry = templateRegistry;
     }
 
     @Override
@@ -63,6 +67,11 @@ public class RdComplianceTool implements AgentTool {
                         .description("对需校验配置的自然语言描述（可选）")
                         .type("string")
                         .source("question")
+                        .build(),
+                ToolParam.builder("product_type")
+                        .label("产品品类")
+                        .description("可选，产品品类码（category_code，如 familyBasePrc）；未提供时由模板 matchers 兜底识别")
+                        .type("string")
                         .build()
         );
     }
@@ -93,18 +102,21 @@ public class RdComplianceTool implements AgentTool {
                 ? (Map<String, Object>) params.get("draft") : null;
         String offeringId = params != null ? String.valueOf(params.getOrDefault("offering_id", "")).trim() : "";
         String text = params != null ? String.valueOf(params.getOrDefault("text", "")) : "";
+        String productType = params != null ? String.valueOf(params.getOrDefault("product_type", "")).trim() : "";
 
         boolean hasDraft = draft != null && !draft.isEmpty();
         boolean hasText = !text.isBlank() && !"null".equalsIgnoreCase(text);
-        log.info("[AgentTool] rd_compliance 执行: hasDraft={}, offeringId={}, hasText={}", hasDraft, offeringId, hasText);
+        log.info("[AgentTool] rd_compliance 执行: hasDraft={}, offeringId={}, hasText={}, productType={}",
+                hasDraft, offeringId, hasText, productType);
         if (!hasDraft && !hasText) {
             return ExecutionResult.fail(getName(), "缺少待校验的配置草稿");
         }
         try {
+            String category = RdProductTypeSupport.resolve(templateRegistry, productType, text);
             Map<String, Object> resp = productOntologyService.checkComplianceSmart(
                     offeringId.isEmpty() ? null : offeringId,
                     hasText ? text : null,
-                    draft);
+                    RdProductTypeSupport.applyToDraft(draft, category));
             return ExecutionResult.ok(getName(), normalize(resp, draft));
         } catch (Exception e) {
             log.error("[AgentTool] rd_compliance 失败: {}", e.getMessage(), e);

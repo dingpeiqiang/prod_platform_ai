@@ -3,15 +3,18 @@ package com.sitech.prodai.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sitech.prodai.config.ProdAiProperties;
+import com.sitech.prodai.domain.entity.OntologyAssetVersion;
 import com.sitech.prodai.domain.entity.OntologyInstance;
 import com.sitech.prodai.domain.entity.OpsWorkOrder;
 import com.sitech.prodai.repository.OntologyInstanceRepository;
 import com.sitech.prodai.repository.OpsWorkOrderRepository;
 import com.sitech.prodai.service.ops.OpsExtractionService;
+import com.sitech.prodai.service.ops.OpsGraphSchemaValidator;
 import com.sitech.prodai.service.ops.OpsProductGraphLoader;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -87,6 +90,10 @@ public class ProductOntologyService {
     private final OpsWorkOrderRepository workOrderRepository;
     private final OntologyInstanceRepository instanceRepository;
     private final ConfigMessageProjector messageProjector;
+    private final LastKnownGoodGuard lastKnownGoodGuard;
+    private final OntologyVersionService versionService;
+    /** 延迟解析回归运行器（P1-7 SMOKE 回接）：规避与 ProductConfigRegressionService 的构造循环依赖。 */
+    private final ObjectProvider<ProductConfigRegressionService> regressionServiceProvider;
 
     private static final String OFFERING_CONFIG_CODE = "offering_config";
     private static final String DRAFT_JSON_KEY = "_draft_json";
@@ -114,7 +121,10 @@ public class ProductOntologyService {
                               Rdf4jOntologyStore rdf4jStore,
                               OpsWorkOrderRepository workOrderRepository,
                               OntologyInstanceRepository instanceRepository,
-                              ConfigMessageProjector messageProjector) {
+                              ConfigMessageProjector messageProjector,
+                              LastKnownGoodGuard lastKnownGoodGuard,
+                              OntologyVersionService versionService,
+                              ObjectProvider<ProductConfigRegressionService> regressionServiceProvider) {
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.opsSwrlReasoner = opsSwrlReasoner;
@@ -127,6 +137,9 @@ public class ProductOntologyService {
         this.workOrderRepository = workOrderRepository;
         this.instanceRepository = instanceRepository;
         this.messageProjector = messageProjector;
+        this.lastKnownGoodGuard = lastKnownGoodGuard;
+        this.versionService = versionService;
+        this.regressionServiceProvider = regressionServiceProvider;
     }
 
     @PostConstruct
@@ -150,10 +163,47 @@ public class ProductOntologyService {
         return properties.getOntology().isDemoEnabled();
     }
 
-    /** 清除事实图缓存，下次请求重新加载（HTTP/文件热更新）。 */
-    public synchronized void reloadGraph() {
-        graphCache = null;
-        loadGraph();
+    /**
+     * 事务式热重载事实图（P1-6 last-known-good 守卫）：
+     * LOAD（解析新源）→ VALIDATE（OpsGraphSchemaValidator）→ SMOKE（P1-7 回归用例集断言）→ COMMIT（原子切换 graphCache）。
+     * 任一步失败保留现行图谱并返回 success:false + 差异报告；成功/失败均登记版本库表 A + 表 B。
+     */
+    public synchronized Map<String, Object> reloadGraph() {
+        String version = "r" + Instant.now().toEpochMilli();
+        LastKnownGoodGuard.GuardRequest request = LastKnownGoodGuard.GuardRequest
+                .builder(OntologyVersionService.TYPE_ABOX_SNAPSHOT, "product_graph",
+                        () -> {
+                            OpsProductGraphLoader.LoadedGraph loaded = graphLoader.load();
+                            Map<String, Object> raw = new LinkedHashMap<>(loaded.graph());
+                            raw.put("shelfOfferings", castListOfMaps(raw.get("shelfOfferings")));
+                            Map<String, Object> pending = new LinkedHashMap<>();
+                            pending.put("graph", raw);
+                            pending.put("sourceId", loaded.sourceId());
+                            return pending;
+                        },
+                        commit -> {
+                            graphCache = castMap(commit.get("graph"));
+                            graphSourceId = String.valueOf(commit.get("sourceId"));
+                        })
+                .validator(pending -> {
+                    OpsGraphSchemaValidator.ValidationResult vr =
+                            OpsGraphSchemaValidator.validateAndNormalize(castMap(pending.get("graph")));
+                    return vr.ok() ? List.of() : vr.errors();
+                })
+                // P1-7 回接：SMOKE 用 pending 图谱跑回归用例集，任一断言失败阻断切换
+                .smoke(pending -> regressionServiceProvider.getObject()
+                        .smokeAgainstGraph(castMap(pending.get("graph"))))
+                .version(version)
+                .summary("事实图热重载（last-known-good 守卫）")
+                .payloadFrom(pending -> {
+                    try {
+                        return objectMapper.writeValueAsString(pending.get("graph"));
+                    } catch (Exception e) {
+                        return null;
+                    }
+                })
+                .build();
+        return lastKnownGoodGuard.execute(request);
     }
 
     @SuppressWarnings("unchecked")
@@ -181,16 +231,40 @@ public class ProductOntologyService {
         return body;
     }
 
-    /** 热重载 ops_rules.json（不落盘改写；覆盖阈值仍保留）。 */
+    /**
+     * 事务式热重载 ops_rules.json（P1-6 守卫；不落盘改写；覆盖阈值仍保留）。
+     * LOAD/VALIDATE 失败保留现行规则集；成功/失败均登记版本库表 A + 表 B。
+     */
     public Map<String, Object> reloadOpsRules() {
-        opsRules.reload();
-        appendRiskRuleAudit("reload_file", Map.of(
-                "rulesPath", properties.getOntology().getRulesPath(),
-                "version", opsRules.version()
-        ));
-        Map<String, Object> body = new LinkedHashMap<>(getOpsRulesCatalog());
-        body.put("success", true);
-        body.put("message", "ops_rules.json reloaded");
+        String version = "r" + Instant.now().toEpochMilli();
+        LastKnownGoodGuard.GuardRequest request = LastKnownGoodGuard.GuardRequest
+                .builder(OntologyVersionService.TYPE_OPS_RULES, "ops_rules",
+                        opsRules::loadPending,
+                        opsRules::swap)
+                .validator(pending -> pending == null || pending.get("version") == null
+                        ? List.of("ops_rules missing required key: version")
+                        : List.of())
+                .version(version)
+                .summary("ops_rules 热重载（last-known-good 守卫）")
+                .payloadFrom(pending -> {
+                    try {
+                        return objectMapper.writeValueAsString(pending);
+                    } catch (Exception e) {
+                        return null;
+                    }
+                })
+                .build();
+        Map<String, Object> report = lastKnownGoodGuard.execute(request);
+        if (Boolean.TRUE.equals(report.get("success"))) {
+            appendRiskRuleAudit("reload_file", Map.of(
+                    "rulesPath", properties.getOntology().getRulesPath(),
+                    "version", opsRules.version()
+            ));
+        }
+        Map<String, Object> body = new LinkedHashMap<>(report);
+        if (Boolean.TRUE.equals(report.get("success"))) {
+            body.putAll(getOpsRulesCatalog());
+        }
         return body;
     }
 
@@ -310,7 +384,16 @@ public class ProductOntologyService {
     }
 
     public Map<String, Object> inferFields(Map<String, Object> slots, Map<String, Object> draft) {
-        Map<String, Object> graph = loadGraph();
+        return inferFields(slots, draft, null);
+    }
+
+    /**
+     * 图谱参数化变体（P1-7 SMOKE 回接）：{@code graphOverride} 非空时用 pending 图谱跑回归断言，
+     * 不触碰现行 graphCache，保证 last-known-good 守卫的事务语义。
+     */
+    public Map<String, Object> inferFields(Map<String, Object> slots, Map<String, Object> draft,
+                                           Map<String, Object> graphOverride) {
+        Map<String, Object> graph = graphOverride != null ? graphOverride : loadGraph();
         Map<String, Object> result = deepCopy(draft == null ? Map.of() : draft);
         Map<String, String> fillSources = new LinkedHashMap<>();
         Set<String> appliedRules = new LinkedHashSet<>();
@@ -543,7 +626,12 @@ public class ProductOntologyService {
     }
 
     public Map<String, Object> checkCompliance(Map<String, Object> draftInput) {
-        Map<String, Object> graph = loadGraph();
+        return checkCompliance(draftInput, null);
+    }
+
+    /** 图谱参数化变体（P1-7 SMOKE 回接）：用 pending 图谱跑合规断言，不触碰现行 graphCache。 */
+    public Map<String, Object> checkCompliance(Map<String, Object> draftInput, Map<String, Object> graphOverride) {
+        Map<String, Object> graph = graphOverride != null ? graphOverride : loadGraph();
         Map<String, Object> draft = messageProjector.applyCategoryDefaults(
                 draftInput == null ? Map.of() : draftInput);
         List<Map<String, Object>> issues = new ArrayList<>();
@@ -1259,8 +1347,16 @@ public class ProductOntologyService {
     public synchronized Map<String, Object> publishConfigDraft(Map<String, Object> draftInput) {
         Map<String, Object> draft = messageProjector.applyCategoryDefaults(
                 draftInput == null ? Map.of() : deepCopy(draftInput));
+        String newId = str(draft.get("offeringId"));
+        if (newId.isBlank()) {
+            newId = "OF-DRAFT-" + Instant.now().toEpochMilli();
+        }
         Map<String, Object> compliance = checkCompliance(draft);
         if (!Boolean.TRUE.equals(compliance.get("compliancePass"))) {
+            // P1-6 持久快照：合规失败行留 review 态供复盘
+            registerDraftVersion(draft, newId, false, Map.of(
+                    "step", "compliance",
+                    "issues", compliance.get("issues") == null ? List.of() : compliance.get("issues")));
             Map<String, Object> fail = new LinkedHashMap<>();
             fail.put("success", false);
             fail.put("message", "合规未通过，拒绝沉淀至本体");
@@ -1271,10 +1367,6 @@ public class ProductOntologyService {
 
         Map<String, Object> graph = loadGraph();
         List<Map<String, Object>> shelf = castListOfMaps(graph.get("shelfOfferings"));
-        String newId = str(draft.get("offeringId"));
-        if (newId.isBlank()) {
-            newId = "OF-DRAFT-" + Instant.now().toEpochMilli();
-        }
         double fee = resolveFixedFee(draft);
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("offeringId", newId);
@@ -1367,6 +1459,11 @@ public class ProductOntologyService {
                 "message_root_key", str(draft.get("messageRootKey")),
                 "timestamp", Instant.now().toString()
         ));
+        // P1-6 持久快照：发布成功登记 published（表 A + 表 B）
+        registerDraftVersion(draft, newId, true, Map.of(
+                "uri", uri,
+                "trace_id", traceId,
+                "message_root_key", str(draft.get("messageRootKey"))));
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("success", true);
@@ -1379,6 +1476,29 @@ public class ProductOntologyService {
         body.put("messagePreview", messagePreview);
         body.put("message", "已沉淀至事实图与配置本体 ConfigScheme，并生成报文投影");
         return body;
+    }
+
+    /** P1-6 持久快照：发布成功登记 published / 合规失败登记 review，均落版本库表 A + 表 B（登记失败不阻断主流程）。 */
+    private void registerDraftVersion(Map<String, Object> draft, String newId, boolean success, Map<String, Object> detail) {
+        try {
+            String payload;
+            try {
+                payload = objectMapper.writeValueAsString(draft);
+            } catch (Exception e) {
+                log.warn("[版本库] 草稿序列化失败，跳过登记: {}", e.getMessage());
+                return;
+            }
+            OntologyAssetVersion row = versionService.register(
+                    OntologyVersionService.TYPE_ABOX_SNAPSHOT, newId,
+                    String.valueOf(firstNonEmpty(draft.get("version"), "V1.0")),
+                    success ? OntologyVersionService.STATUS_PUBLISHED : OntologyVersionService.STATUS_REVIEW,
+                    "config_publish", "知识自迭代配置发布草稿", payload);
+            Map<String, Object> logDetail = new LinkedHashMap<>(detail == null ? Map.of() : detail);
+            logDetail.put("success", success);
+            versionService.log(row.getId(), "publish", "config_publish", logDetail);
+        } catch (Exception e) {
+            log.warn("[版本库] 配置草稿登记失败（不影响发布结果）: {}", e.getMessage());
+        }
     }
 
     public Map<String, Object> getConfigTrace(String traceId) {

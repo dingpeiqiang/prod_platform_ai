@@ -148,11 +148,12 @@ public final class ToolOutputRenderer {
         // 依据工具自描述输出契约，将声明字段的完整取值一并下发（keyed by outputKey），
         // 供前端驱动结构化面板（如研发侧 OfferingCanvas/对比面板/批次清单）。
         // 对既有运营工具为增量数据（额外暴露明细字段），不改变既有 summary/count 语义。
+        // COUNT 字段已在上方按计数投影（如 paths→pathCount=N），此处不覆盖既有键，避免原始列表顶掉计数契约
         for (ToolOutputField field : fields) {
             if (field.getOutputKey() == null) {
                 continue;
             }
-            if (hasValue(data.get(field.getName()))) {
+            if (hasValue(data.get(field.getName())) && !out.containsKey(field.getOutputKey())) {
                 out.put(field.getOutputKey(), data.get(field.getName()));
             }
         }

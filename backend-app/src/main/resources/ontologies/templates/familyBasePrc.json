@@ -1,0 +1,594 @@
+{
+  "template_id": "familyBasePrc",
+  "template_name": "家庭基础套餐",
+  "version": "1.0.0",
+  "extends": "commonBasePrc",
+  "status": "published",
+  "category_code": "familyBasePrc",
+  "message_root_key": "familyBasePrc",
+  "matchers": {
+    "keywords": ["家庭基础套餐", "家庭套餐", "全家福", "F套餐", "家庭融合", "融合套餐", "家庭"],
+    "priority": 20
+  },
+  "sections": [
+    { "code": "familyInfo", "label": "家庭套餐信息", "message_path": "baseInfo" },
+    { "code": "phoneMbrInfo", "label": "手机成员信息", "message_path": "optionalInfo.phoneMbrInfo", "component": true },
+    { "code": "broadBandMbrInfo", "label": "宽带成员信息", "message_path": "optionalInfo.broadBandMbrInfo", "component": true },
+    { "code": "dlowFavFee", "label": "保底优惠", "message_path": "optionalInfo.dlowFavFee", "component": true },
+    { "code": "billGprsCfg", "label": "流量资源配置", "message_path": "optionalInfo.billGprsCfg", "component": true },
+    { "code": "billVoiceCfg", "label": "语音资源配置", "message_path": "optionalInfo.billVoiceCfg", "component": true }
+  ],
+  "fields": [
+    {
+      "field_code": "teamType",
+      "label": "家庭套餐类型",
+      "type": "select",
+      "required": true,
+      "section": "familyInfo",
+      "field_class": "draft",
+      "source": "dict",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "全家福", "value": "1" },
+          { "display": "F套餐", "value": "2" }
+        ]
+      },
+      "slot_aliases": ["套餐类型", "家庭类型", "全家福", "F套餐"],
+      "extract_hint": "用户说全家福/F套餐时映射到 teamType",
+      "message_path": "baseInfo.teamType"
+    },
+    {
+      "field_code": "ifFloorsPrc",
+      "label": "是否有保底",
+      "type": "select",
+      "required": true,
+      "section": "familyInfo",
+      "field_class": "projection",
+      "source": "dict",
+      "default_value": "否",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "是", "value": "1" },
+          { "display": "否", "value": "0" }
+        ]
+      },
+      "slot_aliases": ["保底", "保底消费", "保底优惠"],
+      "message_path": "baseInfo.ifFloorsPrc"
+    },
+    {
+      "field_code": "payFlag",
+      "label": "是否统一付费",
+      "type": "select",
+      "required": true,
+      "section": "familyInfo",
+      "field_class": "projection",
+      "source": "dict",
+      "default_value": "是",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "是", "value": "1" },
+          { "display": "否", "value": "0" }
+        ]
+      },
+      "message_path": "baseInfo.payFlag"
+    },
+    {
+      "field_code": "dateLimit",
+      "label": "有效期限制",
+      "type": "select",
+      "required": false,
+      "section": "familyInfo",
+      "field_class": "projection",
+      "source": "dict",
+      "default_value": "长期有效",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "长期有效", "value": "1" },
+          { "display": "有限期", "value": "2" }
+        ]
+      },
+      "message_path": "baseInfo.dateLimit"
+    },
+    {
+      "field_code": "powerCode",
+      "label": "小区编码",
+      "type": "input",
+      "required": false,
+      "section": "familyInfo",
+      "field_class": "projection",
+      "source": "remote",
+      "extract_hint": "小区/_POWERCODE 弹窗选择，覆盖范围场景",
+      "message_path": "baseInfo.powerCode"
+    },
+    {
+      "field_code": "familyCata",
+      "label": "家庭套餐类别",
+      "type": "select",
+      "required": false,
+      "section": "familyInfo",
+      "field_class": "projection",
+      "source": "dict",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "家庭网", "value": "1" },
+          { "display": "融合套餐", "value": "2" }
+        ]
+      },
+      "message_path": "baseInfo.familyCata"
+    },
+    {
+      "field_code": "roleMax",
+      "label": "成员数上限",
+      "type": "number",
+      "required": true,
+      "section": "familyInfo",
+      "field_class": "draft",
+      "source": "fs",
+      "precision": 1,
+      "rule_description": "整数 1~9；封闭校验 roleMax = phoneMbrMax + kdMbrMax（数值派生归 SHACL/Java）",
+      "message_path": "baseInfo.roleMax"
+    },
+    {
+      "field_code": "roleMin",
+      "label": "成员数下限",
+      "type": "number",
+      "required": true,
+      "section": "familyInfo",
+      "field_class": "draft",
+      "source": "fs",
+      "precision": 1,
+      "rule_description": "整数 1~9",
+      "message_path": "baseInfo.roleMin"
+    },
+    {
+      "field_code": "canAddFamilyPrc",
+      "label": "可加家庭附加包",
+      "type": "select",
+      "required": false,
+      "section": "familyInfo",
+      "field_class": "projection",
+      "source": "dict",
+      "default_value": "是",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "是", "value": "1" },
+          { "display": "否", "value": "0" }
+        ]
+      },
+      "message_path": "baseInfo.canAddFamilyPrc"
+    },
+    {
+      "field_code": "favObject",
+      "label": "优惠对象",
+      "type": "select",
+      "required": false,
+      "section": "acctFav",
+      "field_class": "projection",
+      "source": "dict",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "主卡", "value": "1" },
+          { "display": "成员", "value": "2" },
+          { "display": "全部成员", "value": "3" }
+        ]
+      },
+      "rule_description": "家庭基础套餐 acctFav 特有优惠对象",
+      "message_path": "optionalInfo.acctFav.favObject"
+    },
+    {
+      "field_code": "ifChangeBasePrc",
+      "label": "手机成员可改基础套餐",
+      "type": "select",
+      "required": false,
+      "section": "phoneMbrInfo",
+      "field_class": "projection",
+      "source": "dict",
+      "default_value": "否",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "是", "value": "1" },
+          { "display": "否", "value": "0" }
+        ]
+      },
+      "message_path": "optionalInfo.phoneMbrInfo.ifChangeBasePrc"
+    },
+    {
+      "field_code": "inProdPrcId",
+      "label": "成员可转入资费",
+      "type": "input",
+      "required": false,
+      "section": "phoneMbrInfo",
+      "field_class": "projection",
+      "source": "remote",
+      "message_path": "optionalInfo.phoneMbrInfo.inProdPrcId"
+    },
+    {
+      "field_code": "outProdPrcId",
+      "label": "成员可转出资费",
+      "type": "input",
+      "required": false,
+      "section": "phoneMbrInfo",
+      "field_class": "projection",
+      "source": "remote",
+      "message_path": "optionalInfo.phoneMbrInfo.outProdPrcId"
+    },
+    {
+      "field_code": "phoneMbrMax",
+      "label": "手机成员上限",
+      "type": "number",
+      "required": true,
+      "section": "phoneMbrInfo",
+      "field_class": "draft",
+      "source": "fs",
+      "precision": 1,
+      "slot_aliases": ["手机成员数", "几张卡", "几个手机成员"],
+      "extract_hint": "整数；例如 3 张卡 → phoneMbrMax=3",
+      "message_path": "optionalInfo.phoneMbrInfo.phoneMbrMax"
+    },
+    {
+      "field_code": "phoneMbrMin",
+      "label": "手机成员下限",
+      "type": "number",
+      "required": false,
+      "section": "phoneMbrInfo",
+      "field_class": "draft",
+      "source": "fs",
+      "precision": 1,
+      "message_path": "optionalInfo.phoneMbrInfo.phoneMbrMin"
+    },
+    {
+      "field_code": "freeMbrCnt",
+      "label": "免费成员数",
+      "type": "number",
+      "required": false,
+      "section": "phoneMbrInfo",
+      "field_class": "draft",
+      "source": "fs",
+      "precision": 1,
+      "slot_aliases": ["免费成员", "几张卡免费"],
+      "message_path": "optionalInfo.phoneMbrInfo.freeMbrCnt"
+    },
+    {
+      "field_code": "phoneMbrFee",
+      "label": "手机成员月费（元）",
+      "type": "number",
+      "required": false,
+      "section": "phoneMbrInfo",
+      "field_class": "projection",
+      "source": "fs",
+      "unit": "元",
+      "precision": 2,
+      "decimal_places": 2,
+      "message_path": "optionalInfo.phoneMbrInfo.phoneMbrFee"
+    },
+    {
+      "field_code": "kdMbrMax",
+      "label": "宽带成员上限",
+      "type": "number",
+      "required": true,
+      "section": "broadBandMbrInfo",
+      "field_class": "draft",
+      "source": "fs",
+      "precision": 1,
+      "slot_aliases": ["几条宽带", "宽带路数", "宽带成员数"],
+      "extract_hint": "整数；例如 2 条宽带 → kdMbrMax=2",
+      "message_path": "optionalInfo.broadBandMbrInfo.kdMbrMax"
+    },
+    {
+      "field_code": "kdMbrMin",
+      "label": "宽带成员下限",
+      "type": "number",
+      "required": false,
+      "section": "broadBandMbrInfo",
+      "field_class": "draft",
+      "source": "fs",
+      "precision": 1,
+      "message_path": "optionalInfo.broadBandMbrInfo.kdMbrMin"
+    },
+    {
+      "field_code": "mainKd",
+      "label": "主宽带速率",
+      "type": "select",
+      "required": false,
+      "section": "broadBandMbrInfo",
+      "field_class": "draft",
+      "source": "dict",
+      "slot_aliases": ["宽带速率", "几百兆", "带宽"],
+      "extract_hint": "如 300M/500M/1000M",
+      "message_path": "optionalInfo.broadBandMbrInfo.mainKd"
+    },
+    {
+      "field_code": "tvPrc",
+      "label": "电视资费",
+      "type": "input",
+      "required": false,
+      "section": "broadBandMbrInfo",
+      "field_class": "projection",
+      "source": "remote",
+      "message_path": "optionalInfo.broadBandMbrInfo.tvPrc"
+    },
+    {
+      "field_code": "sencondKdPrc",
+      "label": "第二路宽带资费",
+      "type": "input",
+      "required": false,
+      "section": "broadBandMbrInfo",
+      "field_class": "projection",
+      "source": "remote",
+      "rule_description": "报文规范原名 sencondKdPrc（拼写保持契约不改名）",
+      "message_path": "optionalInfo.broadBandMbrInfo.sencondKdPrc"
+    },
+    {
+      "field_code": "thirdKdPrc",
+      "label": "第三路宽带资费",
+      "type": "input",
+      "required": false,
+      "section": "broadBandMbrInfo",
+      "field_class": "projection",
+      "source": "remote",
+      "message_path": "optionalInfo.broadBandMbrInfo.thirdKdPrc"
+    },
+    {
+      "field_code": "fav1Method",
+      "label": "保底优惠方式",
+      "type": "select",
+      "required": false,
+      "section": "dlowFavFee",
+      "field_class": "projection",
+      "source": "dict",
+      "visible_when": { "ifFloorsPrc": "是" },
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "送费", "value": "1" },
+          { "display": "打折", "value": "2" }
+        ]
+      },
+      "message_path": "optionalInfo.dlowFavFee.fav1Method"
+    },
+    {
+      "field_code": "fav1Fee",
+      "label": "保底优惠金额（元）",
+      "type": "number",
+      "required": false,
+      "section": "dlowFavFee",
+      "field_class": "projection",
+      "source": "fs",
+      "unit": "元",
+      "precision": 2,
+      "decimal_places": 2,
+      "visible_when": { "ifFloorsPrc": "是" },
+      "message_path": "optionalInfo.dlowFavFee.fav1Fee"
+    },
+    {
+      "field_code": "fav1ItemType",
+      "label": "保底优惠项目类型",
+      "type": "select",
+      "required": false,
+      "section": "dlowFavFee",
+      "field_class": "projection",
+      "source": "dict",
+      "visible_when": { "ifFloorsPrc": "是" },
+      "message_path": "optionalInfo.dlowFavFee.fav1ItemType"
+    },
+    {
+      "field_code": "fav1Group",
+      "label": "保底科目组",
+      "type": "select",
+      "required": false,
+      "section": "dlowFavFee",
+      "field_class": "projection",
+      "source": "remote",
+      "visible_when": { "ifFloorsPrc": "是" },
+      "message_path": "optionalInfo.dlowFavFee.fav1Group"
+    },
+    {
+      "field_code": "fav1Validity",
+      "label": "保底有效期类型",
+      "type": "select",
+      "required": false,
+      "section": "dlowFavFee",
+      "field_class": "projection",
+      "source": "dict",
+      "default_value": "长期有效",
+      "visible_when": { "ifFloorsPrc": "是" },
+      "message_path": "optionalInfo.dlowFavFee.fav1Validity"
+    },
+    {
+      "field_code": "fav1ValidityVAlue",
+      "label": "保底有效期值",
+      "type": "input",
+      "required": false,
+      "section": "dlowFavFee",
+      "field_class": "projection",
+      "source": "fs",
+      "visible_when": { "fav1Validity": "有限期" },
+      "message_path": "optionalInfo.dlowFavFee.fav1ValidityVAlue"
+    },
+    {
+      "field_code": "gprsResourceType",
+      "label": "流量资源类型",
+      "type": "select",
+      "required": false,
+      "section": "billGprsCfg",
+      "field_class": "projection",
+      "source": "dict",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "通用流量", "value": "1" },
+          { "display": "定向流量", "value": "2" }
+        ]
+      },
+      "message_path": "optionalInfo.billGprsCfg.resourceType"
+    },
+    {
+      "field_code": "gprsThreshold",
+      "label": "流量额度",
+      "type": "number",
+      "required": false,
+      "section": "billGprsCfg",
+      "field_class": "draft",
+      "source": "fs",
+      "unit": "GB",
+      "slot_aliases": ["多少流量", "包含流量", "几个G"],
+      "extract_hint": "如 10G/500M；映射数值+单位",
+      "message_path": "optionalInfo.billGprsCfg.theshold"
+    },
+    {
+      "field_code": "gprsUnit",
+      "label": "流量单位",
+      "type": "select",
+      "required": false,
+      "section": "billGprsCfg",
+      "field_class": "projection",
+      "source": "dict",
+      "default_value": "GB",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "MB", "value": "1" },
+          { "display": "GB", "value": "2" }
+        ]
+      },
+      "message_path": "optionalInfo.billGprsCfg.unit"
+    },
+    {
+      "field_code": "gprsSid",
+      "label": "流量SID",
+      "type": "input",
+      "required": false,
+      "section": "billGprsCfg",
+      "field_class": "projection",
+      "source": "remote",
+      "message_path": "optionalInfo.billGprsCfg.sid"
+    },
+    {
+      "field_code": "gprsAdjust",
+      "label": "流量计费调整",
+      "type": "select",
+      "required": false,
+      "section": "billGprsCfg",
+      "field_class": "projection",
+      "source": "dict",
+      "message_path": "optionalInfo.billGprsCfg.adjust"
+    },
+    {
+      "field_code": "gprsCarryFlag",
+      "label": "流量是否结转",
+      "type": "select",
+      "required": false,
+      "section": "billGprsCfg",
+      "field_class": "projection",
+      "source": "dict",
+      "default_value": "否",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "是", "value": "1" },
+          { "display": "否", "value": "0" }
+        ]
+      },
+      "message_path": "optionalInfo.billGprsCfg.carryFlag"
+    },
+    {
+      "field_code": "gprsOutChargeMode",
+      "label": "流量套外计费模式",
+      "type": "select",
+      "required": false,
+      "section": "billGprsCfg",
+      "field_class": "projection",
+      "source": "dict",
+      "message_path": "optionalInfo.billGprsCfg.outChargeMode"
+    },
+    {
+      "field_code": "gprsRemindFlag",
+      "label": "流量提醒开关",
+      "type": "select",
+      "required": false,
+      "section": "billGprsCfg",
+      "field_class": "projection",
+      "source": "dict",
+      "default_value": "是",
+      "message_path": "optionalInfo.billGprsCfg.remindFlag"
+    },
+    {
+      "field_code": "voiceResourceType",
+      "label": "语音资源类型",
+      "type": "select",
+      "required": false,
+      "section": "billVoiceCfg",
+      "field_class": "projection",
+      "source": "dict",
+      "message_path": "optionalInfo.billVoiceCfg.resourceType"
+    },
+    {
+      "field_code": "voiceThreshold",
+      "label": "语音时长（分钟）",
+      "type": "number",
+      "required": false,
+      "section": "billVoiceCfg",
+      "field_class": "draft",
+      "source": "fs",
+      "unit": "分钟",
+      "slot_aliases": ["多少分钟", "包含通话", "通话时长"],
+      "message_path": "optionalInfo.billVoiceCfg.theshold"
+    },
+    {
+      "field_code": "voiceAdjust",
+      "label": "语音计费调整",
+      "type": "select",
+      "required": false,
+      "section": "billVoiceCfg",
+      "field_class": "projection",
+      "source": "dict",
+      "message_path": "optionalInfo.billVoiceCfg.adjust"
+    },
+    {
+      "field_code": "voiceOutCharge",
+      "label": "语音套外计费",
+      "type": "input",
+      "required": false,
+      "section": "billVoiceCfg",
+      "field_class": "projection",
+      "source": "fs",
+      "message_path": "optionalInfo.billVoiceCfg.outCharge"
+    },
+    {
+      "field_code": "voiceRemindFlag",
+      "label": "语音提醒开关",
+      "type": "select",
+      "required": false,
+      "section": "billVoiceCfg",
+      "field_class": "projection",
+      "source": "dict",
+      "default_value": "是",
+      "message_path": "optionalInfo.billVoiceCfg.remindFlag"
+    }
+  ],
+  "derive_rules": [
+    { "set_default": { "channelScope": "全渠道" }, "if_missing": true },
+    { "set_default": { "categoryCode": "familyBasePrc" }, "if_missing": true },
+    { "set_default": { "messageRootKey": "familyBasePrc" }, "if_missing": true },
+    { "when": { "ifFloorsPrc": "是" }, "visible": ["fav1Method", "fav1Fee", "fav1ItemType", "fav1Group", "fav1Validity"] },
+    { "when": { "ifFloorsPrc": "否" }, "hidden": ["fav1Method", "fav1Fee", "fav1ItemType", "fav1Group", "fav1Validity", "fav1ValidityVAlue"] },
+    { "when": { "fav1Validity": "长期有效" }, "hidden": ["fav1ValidityVAlue"] },
+    { "derive": { "roleMax": "phoneMbrMax + kdMbrMax" }, "note": "数值派生归 SHACL/Java（不在模板引擎硬解）" }
+  ],
+  "compliance_bindings": {
+    "rule_ids": ["R-C01", "R-C03", "R-C04", "R-C05", "R-C06", "R-C07", "R-C08", "R-C09"]
+  },
+  "message_projection": {
+    "mode": "observe",
+    "root_key": "familyBasePrc",
+    "aligned_with": "ontology/config_message_projection.json#categoryMappings.familyBasePrc"
+  }
+}

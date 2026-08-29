@@ -1,0 +1,116 @@
+{
+  "template_id": "broadBandOptSpeedPrc",
+  "template_name": "宽带加速包",
+  "version": "1.0.0",
+  "extends": "commonBasePrc",
+  "status": "published",
+  "category_code": "broadBandOptSpeedPrc",
+  "message_root_key": "broadBandOptSpeedPrc",
+  "matchers": {
+    "keywords": ["加速包", "提速包", "宽带加速", "提速", "optSpeed"],
+    "priority": 25
+  },
+  "sections": [
+    { "code": "speedInfo", "label": "提速信息", "message_path": "baseInfo" }
+  ],
+  "fields": [
+    {
+      "field_code": "prcEffCycle",
+      "label": "资费有效期类型",
+      "type": "select",
+      "required": true,
+      "section": "speedInfo",
+      "field_class": "projection",
+      "source": "dict",
+      "default_value": "长期有效",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "长期有效", "value": "1" },
+          { "display": "有限期", "value": "2" }
+        ]
+      },
+      "slot_aliases": ["有效期", "生效周期"],
+      "message_path": "baseInfo.prcEffCycle"
+    },
+    {
+      "field_code": "prcEffType",
+      "label": "有效期单位类型",
+      "type": "select",
+      "required": false,
+      "section": "speedInfo",
+      "field_class": "projection",
+      "source": "dict",
+      "visible_when": { "prcEffCycle": "有限期" },
+      "message_path": "baseInfo.prcEffType"
+    },
+    {
+      "field_code": "prcEffNum",
+      "label": "有效期数值",
+      "type": "number",
+      "required": false,
+      "section": "speedInfo",
+      "field_class": "projection",
+      "source": "fs",
+      "precision": 3,
+      "visible_when": { "prcEffCycle": "有限期" },
+      "message_path": "baseInfo.prcEffNum"
+    },
+    {
+      "field_code": "prcEffDate",
+      "label": "有效期截止日期",
+      "type": "date",
+      "required": false,
+      "section": "speedInfo",
+      "field_class": "projection",
+      "source": "fs",
+      "visible_when": { "prcEffCycle": "有限期" },
+      "message_path": "baseInfo.prcEffDate"
+    },
+    {
+      "field_code": "downStreamId",
+      "label": "下行速率",
+      "type": "select",
+      "required": true,
+      "section": "speedInfo",
+      "field_class": "draft",
+      "source": "dict",
+      "slot_aliases": ["提速到多少", "下行", "速率", "带宽"],
+      "extract_hint": "加速包目标速率，如 500M/1000M",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "300M", "value": "3072" },
+          { "display": "500M", "value": "5120" },
+          { "display": "1000M", "value": "10240" }
+        ]
+      },
+      "message_path": "baseInfo.downStreamId"
+    },
+    {
+      "field_code": "upStreamId",
+      "label": "上行速率",
+      "type": "select",
+      "required": false,
+      "section": "speedInfo",
+      "field_class": "projection",
+      "source": "dict",
+      "message_path": "baseInfo.upStreamId"
+    }
+  ],
+  "derive_rules": [
+    { "set_default": { "channelScope": "全渠道" }, "if_missing": true },
+    { "set_default": { "categoryCode": "broadBandOptSpeedPrc" }, "if_missing": true },
+    { "set_default": { "messageRootKey": "broadBandOptSpeedPrc" }, "if_missing": true },
+    { "when": { "prcEffCycle": "长期有效" }, "hidden": ["prcEffType", "prcEffNum", "prcEffDate"] },
+    { "when": { "prcEffCycle": "有限期" }, "visible": ["prcEffType", "prcEffNum", "prcEffDate"] }
+  ],
+  "compliance_bindings": {
+    "rule_ids": ["R-C03", "R-C04", "R-C05", "R-C06", "R-C07", "R-C08", "R-C09"]
+  },
+  "message_projection": {
+    "mode": "observe",
+    "root_key": "broadBandOptSpeedPrc",
+    "aligned_with": "ontology/config_message_projection.json#categoryMappings.broadBandOptSpeedPrc"
+  }
+}

@@ -1,0 +1,120 @@
+{
+  "template_id": "broadBandMainPrc",
+  "template_name": "宽带主资费",
+  "version": "1.0.0",
+  "extends": "commonBasePrc",
+  "status": "published",
+  "category_code": "broadBandMainPrc",
+  "message_root_key": "broadBandMainPrc",
+  "matchers": {
+    "keywords": ["宽带主资费", "宽带套餐", "宽带", "百兆", "千兆", "100M", "200M", "300M", "500M", "1000M", "光纤"],
+    "priority": 10
+  },
+  "sections": [
+    { "code": "wkBillCfg", "label": "话单优惠", "message_path": "optionalInfo.wkBillCfg", "component": true }
+  ],
+  "fields": [
+    {
+      "field_code": "domainName",
+      "label": "域名",
+      "type": "input",
+      "required": false,
+      "section": "baseInfo",
+      "field_class": "projection",
+      "source": "generated",
+      "rule_description": "宽带主资费 baseInfo 特有；一般由系统生成",
+      "message_path": "baseInfo.domainName"
+    },
+    {
+      "field_code": "downStreamId",
+      "label": "下行速率",
+      "type": "select",
+      "required": true,
+      "section": "baseInfo",
+      "field_class": "draft",
+      "source": "dict",
+      "slot_aliases": ["下行", "几兆", "速率", "带宽", "百兆", "千兆"],
+      "extract_hint": "如 100M/300M/500M/1000M",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "100M", "value": "1024" },
+          { "display": "200M", "value": "2048" },
+          { "display": "300M", "value": "3072" },
+          { "display": "500M", "value": "5120" },
+          { "display": "1000M", "value": "10240" }
+        ]
+      },
+      "message_path": "baseInfo.downStreamId"
+    },
+    {
+      "field_code": "upStreamId",
+      "label": "上行速率",
+      "type": "select",
+      "required": false,
+      "section": "baseInfo",
+      "field_class": "projection",
+      "source": "dict",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "30M", "value": "30" },
+          { "display": "50M", "value": "50" },
+          { "display": "100M", "value": "100" }
+        ]
+      },
+      "message_path": "baseInfo.upStreamId"
+    },
+    {
+      "field_code": "ifAddFamily",
+      "label": "是否可加家庭成员",
+      "type": "select",
+      "required": false,
+      "section": "baseInfo",
+      "field_class": "projection",
+      "source": "dict",
+      "default_value": "是",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "是", "value": "1" },
+          { "display": "否", "value": "0" }
+        ]
+      },
+      "message_path": "baseInfo.ifAddFamily"
+    },
+    {
+      "field_code": "wkBillFlag",
+      "label": "话单优惠",
+      "type": "select",
+      "required": false,
+      "section": "wkBillCfg",
+      "field_class": "projection",
+      "source": "dict",
+      "default_value": "是",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "是", "value": "1" },
+          { "display": "否", "value": "0" }
+        ]
+      },
+      "rule_description": "报文规范默认值：是",
+      "message_path": "optionalInfo.wkBillCfg.wkBillFlag"
+    }
+  ],
+  "derive_rules": [
+    { "set_default": { "channelScope": "全渠道" }, "if_missing": true },
+    { "set_default": { "categoryCode": "broadBandMainPrc" }, "if_missing": true },
+    { "set_default": { "messageRootKey": "broadBandMainPrc" }, "if_missing": true },
+    { "set_default": { "downStreamId": "500M" }, "if_missing": true }
+  ],
+  "compliance_bindings": {
+    "rule_ids": ["R-C03", "R-C04", "R-C05", "R-C06", "R-C07", "R-C08", "R-C09"]
+  },
+  "message_projection": {
+    "mode": "observe",
+    "root_key": "broadBandMainPrc",
+    "aligned_with": "ontology/config_message_projection.json#categoryMappings.broadBandMainPrc"
+  }
+}

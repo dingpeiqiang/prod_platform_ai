@@ -1,6 +1,7 @@
 package com.sitech.prodai.service.agent.tool.rd;
 
 import com.sitech.prodai.service.ProductOntologyService;
+import com.sitech.prodai.service.ProductTemplateRegistry;
 import com.sitech.prodai.service.agent.model.ExecutionResult;
 import com.sitech.prodai.service.agent.tool.AgentTool;
 import com.sitech.prodai.service.agent.tool.ToolOutputField;
@@ -17,6 +18,7 @@ import java.util.Map;
  * 产商品研发 - 智聊对话配置工具。
  * <p>
  * 将用户自然语言需求翻译为产商品配置草稿（包装 product-ontology/config/chat 后端能力）。
+ * 支持 §9.4 product_type 入参：显式品类优先，未识别由模板 matchers 兜底。
  */
 @Component
 public class RdConfigChatTool implements AgentTool {
@@ -24,9 +26,12 @@ public class RdConfigChatTool implements AgentTool {
     private static final Logger log = LoggerFactory.getLogger(RdConfigChatTool.class);
 
     private final ProductOntologyService productOntologyService;
+    private final ProductTemplateRegistry templateRegistry;
 
-    public RdConfigChatTool(ProductOntologyService productOntologyService) {
+    public RdConfigChatTool(ProductOntologyService productOntologyService,
+                            ProductTemplateRegistry templateRegistry) {
         this.productOntologyService = productOntologyService;
+        this.templateRegistry = templateRegistry;
     }
 
     @Override
@@ -79,16 +84,19 @@ public class RdConfigChatTool implements AgentTool {
     @Override
     public ExecutionResult execute(Map<String, Object> params) {
         String text = params != null ? String.valueOf(params.getOrDefault("text", "")) : "";
+        String productType = params != null ? String.valueOf(params.getOrDefault("product_type", "")).trim() : "";
         @SuppressWarnings("unchecked")
         Map<String, Object> draft = params != null && params.get("draft") instanceof Map<?, ?>
                 ? (Map<String, Object>) params.get("draft") : null;
 
-        log.info("[AgentTool] rd_config_chat 执行: text={}", text);
+        log.info("[AgentTool] rd_config_chat 执行: text={}, productType={}", text, productType);
         if (text == null || text.isBlank()) {
             return ExecutionResult.fail(getName(), "缺少配置需求描述");
         }
         try {
-            Map<String, Object> resp = productOntologyService.chatConfigure(text, draft);
+            String category = RdProductTypeSupport.resolve(templateRegistry, productType, text);
+            Map<String, Object> resp = productOntologyService.chatConfigure(
+                    text, RdProductTypeSupport.applyToDraft(draft, category));
             return ExecutionResult.ok(getName(), normalize(resp));
         } catch (Exception e) {
             log.error("[AgentTool] rd_config_chat 失败: {}", e.getMessage(), e);

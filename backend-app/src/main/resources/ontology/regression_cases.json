@@ -1,0 +1,324 @@
+{
+  "case_set": "p1_dual_category_regression",
+  "version": "1.0.0",
+  "description": "P1-7 双品类回归基线（§13.4）：每条用例 = {模板版本, 输入 draft, 期望推导字段, 期望 R-C* 命中, 期望报文节点}。覆盖家庭融合（familyBasePrc 主套餐 / familyAddPrc 加装）、宽带主资费（broadBandMainPrc）、校园（personAddPrc 正/负例）、5G（personMainPrc）。作为守卫 SMOKE 断言源与 P2 抽取/推理接管后的前后回归基线。",
+  "cases": [
+    {
+      "case_id": "family_fusion_main_128",
+      "title": "家庭融合主套餐：场景默认(R-C01)+模板补全(R-C02)，合规通过",
+      "category": "familyBasePrc",
+      "template_id": "TPL-FAMILY-BASE-128",
+      "template_version": "1.0.0",
+      "slots": {},
+      "draft": {
+        "offeringName": "全家享融合128",
+        "bizScenario": "家庭融合"
+      },
+      "expected": {
+        "messageRootKey": "familyBasePrc",
+        "derivedFields": {
+          "categoryCode": "familyBasePrc",
+          "messageRootKey": "familyBasePrc",
+          "basedOnTemplate": "TPL-FAMILY-BASE-128",
+          "offeringType": "fusion",
+          "mutexGroup": "MAIN_PKG",
+          "targetUser": "家庭",
+          "productLine": "家庭",
+          "includeVoice": "500分钟",
+          "includeData": "40GB",
+          "includeBroadband": "500M",
+          "fixedFeeAmount": "128",
+          "monthlyFee": "128",
+          "channelScope": "全渠道",
+          "orderEffectMode": "1001",
+          "cancelEffectMode": "1023",
+          "saleEndDate": "20991231",
+          "contractMonths": "36",
+          "contractCancelPrivilege": "18",
+          "minFamilyMembers": "1",
+          "taxSplitFlag": "0",
+          "smsOpTypes": "0",
+          "isMainOffer": "true"
+        },
+        "rules": ["R-C01", "R-C02", "R-C08"],
+        "compliancePass": true,
+        "messageNodes": {
+          "baseInfo.prodPrcName": "全家享融合128",
+          "baseInfo.effRuleId": "1001",
+          "baseInfo.cancelRuleId": "1023",
+          "baseInfo.expRuleId": "1023",
+          "baseInfo.expDate": "20991231",
+          "baseInfo.dateLimit": "36",
+          "baseInfo.powerCode": "18",
+          "baseInfo.roleMin": "1",
+          "releaseInfo.chnClassLimit": "全渠道",
+          "optionalInfo.acctMonth.fixFee": "128",
+          "optionalInfo.acctMonth.isSplitRate": "0",
+          "optionalInfo.prcSmsCfg.opType": "0"
+        },
+        "messageNodePaths": [
+          "optionalInfo.printContent.prcMonthFee",
+          "optionalInfo.printContent.containResource",
+          "optionalInfo.printContent.limitCondition",
+          "optionalInfo.prcSmsCfg.sysNoteNow"
+        ]
+      }
+    },
+    {
+      "case_id": "family_fusion_addon_no_depend",
+      "title": "家庭融合加装包：品类自动切换 familyAddPrc，缺主资费依赖被 R-C04 拦截",
+      "category": "familyAddPrc",
+      "template_id": "TPL-FAMILY-ADD-20",
+      "template_version": "1.0.0",
+      "slots": {},
+      "draft": {
+        "offeringName": "家庭电视权益包",
+        "bizScenario": "家庭融合",
+        "offeringType": "addon"
+      },
+      "expected": {
+        "messageRootKey": "familyAddPrc",
+        "derivedFields": {
+          "categoryCode": "familyAddPrc",
+          "messageRootKey": "familyAddPrc",
+          "basedOnTemplate": "TPL-FAMILY-ADD-20",
+          "offeringType": "addon",
+          "mutexGroup": "ADDON",
+          "targetUser": "家庭",
+          "productLine": "家庭",
+          "fixedFeeAmount": "128",
+          "monthlyFee": "128",
+          "channelScope": "全渠道",
+          "orderEffectMode": "1001",
+          "cancelEffectMode": "1023",
+          "saleEndDate": "20991231",
+          "taxSplitFlag": "0",
+          "smsOpTypes": "0",
+          "isMainOffer": "false"
+        },
+        "rules": ["R-C01", "R-C02", "R-C04"],
+        "compliancePass": false,
+        "messageNodes": {
+          "baseInfo.prodPrcName": "家庭电视权益包",
+          "baseInfo.effRuleId": "1001",
+          "baseInfo.cancelRuleId": "1023",
+          "baseInfo.expDate": "20991231",
+          "optionalInfo.acctMonth.fixFee": "128",
+          "optionalInfo.acctMonth.isSplitRate": "0"
+        },
+        "messageNodePaths": [
+          "optionalInfo.printContent.prcMonthFee",
+          "optionalInfo.prcSmsCfg.sysNoteNow"
+        ]
+      }
+    },
+    {
+      "case_id": "broadband_main_500m",
+      "title": "宽带主资费：品类推导+模板补全带宽/固费，合规通过",
+      "category": "broadBandMainPrc",
+      "template_id": "TPL-BB-MAIN-80",
+      "template_version": "1.0.0",
+      "slots": {},
+      "draft": {
+        "offeringName": "全家宽带500M",
+        "bizScenario": "家庭-宽带主资费"
+      },
+      "expected": {
+        "messageRootKey": "broadBandMainPrc",
+        "derivedFields": {
+          "categoryCode": "broadBandMainPrc",
+          "messageRootKey": "broadBandMainPrc",
+          "basedOnTemplate": "TPL-BB-MAIN-80",
+          "mutexGroup": "MAIN_PKG",
+          "productLine": "宽带",
+          "downstreamBandwidth": "500",
+          "upstreamBandwidth": "100",
+          "fixedFeeAmount": "80",
+          "monthlyFee": "80",
+          "domainName": "cmcc",
+          "channelScope": "全渠道",
+          "orderEffectMode": "1001",
+          "cancelEffectMode": "1023",
+          "saleEndDate": "20991231",
+          "taxSplitFlag": "0",
+          "smsOpTypes": "0",
+          "isMainOffer": "true"
+        },
+        "rules": ["R-C01", "R-C02", "R-C08"],
+        "compliancePass": true,
+        "messageNodes": {
+          "baseInfo.prodPrcName": "全家宽带500M",
+          "baseInfo.domainName": "cmcc",
+          "baseInfo.downStreamId": "500",
+          "baseInfo.upStreamId": "100",
+          "baseInfo.effRuleId": "1001",
+          "baseInfo.cancelRuleId": "1023",
+          "baseInfo.expDate": "20991231",
+          "releaseInfo.chnClassLimit": "全渠道",
+          "optionalInfo.acctMonth.fixFee": "80",
+          "optionalInfo.acctMonth.isSplitRate": "0"
+        },
+        "messageNodePaths": [
+          "optionalInfo.printContent.prcMonthFee",
+          "optionalInfo.prcSmsCfg.sysNoteNow"
+        ]
+      }
+    },
+    {
+      "case_id": "campus_addon_19",
+      "title": "校园附加包（带依赖）：模板补全19元，R-C04 依赖校验通过",
+      "category": "personAddPrc",
+      "template_id": "TPL-PERSON-ADD-19",
+      "template_version": "1.0.0",
+      "slots": {},
+      "draft": {
+        "offeringName": "校园流量加餐包",
+        "bizScenario": "校园-个人附加",
+        "dependOn": "MAIN_PKG"
+      },
+      "expected": {
+        "messageRootKey": "personAddPrc",
+        "derivedFields": {
+          "categoryCode": "personAddPrc",
+          "messageRootKey": "personAddPrc",
+          "basedOnTemplate": "TPL-PERSON-ADD-19",
+          "mutexGroup": "ADDON",
+          "productLine": "个人",
+          "dependOn": "MAIN_PKG",
+          "includeData": "20GB",
+          "fixedFeeAmount": "19",
+          "monthlyFee": "19",
+          "validityCycle": "长期有效",
+          "channelScope": "全渠道",
+          "orderEffectMode": "1001",
+          "cancelEffectMode": "1023",
+          "saleEndDate": "20991231",
+          "taxSplitFlag": "0",
+          "smsOpTypes": "0",
+          "isMainOffer": "false"
+        },
+        "rules": ["R-C01", "R-C02", "R-C08"],
+        "compliancePass": true,
+        "messageNodes": {
+          "baseInfo.prodPrcName": "校园流量加餐包",
+          "baseInfo.effRuleId": "1001",
+          "baseInfo.cancelRuleId": "1023",
+          "baseInfo.expDate": "20991231",
+          "baseInfo.prcEffCycle": "长期有效",
+          "releaseInfo.chnClassLimit": "全渠道",
+          "optionalInfo.acctMonth.fixFee": "19",
+          "optionalInfo.acctMonth.isSplitRate": "0"
+        },
+        "messageNodePaths": [
+          "optionalInfo.printContent.prcMonthFee",
+          "optionalInfo.prcSmsCfg.sysNoteNow"
+        ]
+      }
+    },
+    {
+      "case_id": "campus_trial_zero_fee",
+      "title": "校园体验0元包：非白名单+非内部验证渠道触发 R-C05 高风险拦截",
+      "category": "personAddPrc",
+      "template_id": "TPL-PERSON-ADD-0",
+      "template_version": "1.0.0",
+      "slots": {},
+      "draft": {
+        "offeringName": "校园体验流量包",
+        "bizScenario": "校园体验"
+      },
+      "expected": {
+        "messageRootKey": "personAddPrc",
+        "derivedFields": {
+          "categoryCode": "personAddPrc",
+          "messageRootKey": "personAddPrc",
+          "basedOnTemplate": "TPL-PERSON-ADD-0",
+          "offeringType": "addon",
+          "mutexGroup": "ADDON",
+          "targetUser": "校园",
+          "productLine": "个人",
+          "dependOn": "MAIN_PKG",
+          "includeData": "20GB",
+          "fixedFeeAmount": "0",
+          "monthlyFee": "0",
+          "validityCycle": "长期有效",
+          "channelScope": "全渠道",
+          "orderEffectMode": "1001",
+          "cancelEffectMode": "1023",
+          "saleEndDate": "20991231",
+          "taxSplitFlag": "0",
+          "smsOpTypes": "0",
+          "isMainOffer": "false"
+        },
+        "rules": ["R-C02", "R-C05", "R-C09"],
+        "compliancePass": false,
+        "messageNodes": {
+          "baseInfo.prodPrcName": "校园体验流量包",
+          "baseInfo.effRuleId": "1001",
+          "baseInfo.cancelRuleId": "1023",
+          "baseInfo.expDate": "20991231",
+          "baseInfo.prcEffCycle": "长期有效",
+          "optionalInfo.acctMonth.fixFee": "0",
+          "optionalInfo.acctMonth.isSplitRate": "0"
+        },
+        "messageNodePaths": [
+          "optionalInfo.printContent.prcMonthFee",
+          "optionalInfo.prcSmsCfg.sysNoteNow"
+        ]
+      }
+    },
+    {
+      "case_id": "five_g_main_99",
+      "title": "5G个人主套餐：品类推导+模板补全99元，合规通过",
+      "category": "personMainPrc",
+      "template_id": "TPL-PERSON-MAIN-99",
+      "template_version": "1.0.0",
+      "slots": {},
+      "draft": {
+        "offeringName": "5G畅享套餐",
+        "bizScenario": "5G个人主套餐"
+      },
+      "expected": {
+        "messageRootKey": "personMainPrc",
+        "derivedFields": {
+          "categoryCode": "personMainPrc",
+          "messageRootKey": "personMainPrc",
+          "basedOnTemplate": "TPL-PERSON-MAIN-99",
+          "mutexGroup": "MAIN_PKG",
+          "productLine": "个人",
+          "includeVoice": "500分钟",
+          "includeData": "30GB",
+          "fixedFeeAmount": "99",
+          "monthlyFee": "99",
+          "channelScope": "全渠道",
+          "orderEffectMode": "1001",
+          "cancelEffectMode": "1023",
+          "saleEndDate": "20991231",
+          "chargeMode": "2",
+          "chargeValidityType": "0",
+          "taxSplitFlag": "0",
+          "smsOpTypes": "0",
+          "isMainOffer": "true"
+        },
+        "rules": ["R-C01", "R-C02", "R-C08"],
+        "compliancePass": true,
+        "messageNodes": {
+          "baseInfo.prodPrcName": "5G畅享套餐",
+          "baseInfo.effRuleId": "1001",
+          "baseInfo.cancelRuleId": "1023",
+          "baseInfo.expDate": "20991231",
+          "releaseInfo.chnClassLimit": "全渠道",
+          "optionalInfo.acctMonth.fixFee": "99",
+          "optionalInfo.acctMonth.calcMode": "2",
+          "optionalInfo.acctMonth.isSplitRate": "0",
+          "optionalInfo.acctMonth.fixValidity": "0",
+          "optionalInfo.prcSmsCfg.opType": "0"
+        },
+        "messageNodePaths": [
+          "optionalInfo.printContent.prcMonthFee",
+          "optionalInfo.printContent.containResource",
+          "optionalInfo.prcSmsCfg.sysNoteNow"
+        ]
+      }
+    }
+  ]
+}

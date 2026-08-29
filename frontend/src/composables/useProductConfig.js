@@ -25,12 +25,90 @@ import {
   getOpsRules,
   getConfigTrace,
   explainConfig,
+  getOntologyMeta,
+  fetchTemplateSchema,
 } from '../services/productOntologyApi.js'
 import {
   buildRootCauseOntologyChain,
 } from '../services/productOntologyLocal.js'
 
+// ------------------------------------------------------------------
+// P1-4 模板渲染 schema 缓存（§11.8）：categoryCode -> { template, schema }
+// 按 categoryCode 拉取后端模板驱动表单渲染；接口未就绪/未命中时降级本地 mock schema
+// ------------------------------------------------------------------
+const templateSchemaCache = new Map()
+const templateFetchInflight = new Set()
+
+/** 草稿键 → 模板字段码别名（P1 边界：仅渲染期取值预填，不改报文契约） */
+const DRAFT_TO_TEMPLATE_FIELDS = {
+  offerName: 'prodPrcName',
+  offeringName: 'prodPrcName',
+  monthlyFee: 'prcMonthFee',
+  fixedFeeAmount: 'fixFee',
+  regionScope: 'groupId',
+}
+
+/** 异步拉取单个品类模板 schema 入缓存；失败静默（调用方走 mock 降级） */
+async function ensureTemplateSchema(categoryCode) {
+  if (!categoryCode || templateSchemaCache.has(categoryCode) || templateFetchInflight.has(categoryCode)) {
+    return
+  }
+  templateFetchInflight.add(categoryCode)
+  try {
+    const result = await fetchTemplateSchema(categoryCode)
+    if (result) {
+      templateSchemaCache.set(categoryCode, result)
+    }
+  } finally {
+    templateFetchInflight.delete(categoryCode)
+  }
+}
+
+/** 预取全部品类模板（/meta productTemplates），失败静默 */
+async function prefetchTemplateSchemas() {
+  try {
+    const meta = await getOntologyMeta()
+    const templates = Array.isArray(meta?.productTemplates) ? meta.productTemplates : []
+    await Promise.all(templates.map((t) => ensureTemplateSchema(t?.category_code)))
+  } catch (e) {
+    // 模板接口未就绪：降级本地 mock schema
+  }
+}
+
+/** 用草稿值填充模板 schema：fieldCode 精确匹配 + 别名映射；保留模板默认值与 sections */
+function mergeDraftIntoTemplateSchema(cached, draft) {
+  const fill = draft.fillSources || {}
+  const aliasByTarget = Object.fromEntries(
+    Object.entries(DRAFT_TO_TEMPLATE_FIELDS).map(([k, v]) => [v, k]),
+  )
+  const resolveValue = (fieldCode) => {
+    if (draft[fieldCode] != null && draft[fieldCode] !== '') return draft[fieldCode]
+    const aliasKey = aliasByTarget[fieldCode]
+    if (aliasKey && draft[aliasKey] != null && draft[aliasKey] !== '') return draft[aliasKey]
+    return undefined
+  }
+  return {
+    formName: cached.schema.formName,
+    formCode: 'offering_config',
+    categoryCode: cached.schema.categoryCode,
+    messageRootKey: cached.schema.messageRootKey,
+    templateVersion: cached.schema.templateVersion,
+    sections: cached.schema.sections,
+    deriveRules: cached.schema.deriveRules,
+    fields: (cached.schema.fields || []).map((field) => {
+      const value = resolveValue(field.fieldCode)
+      return {
+        ...field,
+        ...(value !== undefined ? { value } : {}),
+        fillSource: fill[field.fieldCode] || '',
+      }
+    }),
+  }
+}
+
 export function useProductConfig() {
+  // P1-4：预热全部品类模板 schema（fire-and-forget，失败降级 mock）
+  prefetchTemplateSchemas()
   const products = ref([])
   const currentProductId = ref(null)
   const formData = reactive(createEmptyFormData())
@@ -255,9 +333,22 @@ export function useProductConfig() {
 
   function buildProductFormCard(product) {
     const useOntology = !!product.ontologyDraft
-    const schema = useOntology
-      ? createOfferingFormSchema(product.ontologyDraft)
-      : createProductFormSchema(product.data)
+    let schema
+    if (useOntology) {
+      const draft = product.ontologyDraft
+      const category = draft.categoryCode || draft.messageRootKey || ''
+      const cached = category ? templateSchemaCache.get(category) : null
+      if (cached) {
+        // P1-4：按 categoryCode 拉取的后端模板 schema 驱动渲染（§11.8）
+        schema = mergeDraftIntoTemplateSchema(cached, draft)
+      } else {
+        // 未命中：异步预热（下次命中），本次降级本地 mock schema
+        if (category) ensureTemplateSchema(category)
+        schema = createOfferingFormSchema(draft)
+      }
+    } else {
+      schema = createProductFormSchema(product.data)
+    }
     return {
       msgId: genId(),
       formId: product.id,

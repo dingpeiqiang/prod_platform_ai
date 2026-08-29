@@ -1,4 +1,4 @@
-﻿import { get, post, put, del } from './httpClient.js'
+import { get, post, put, del } from './httpClient.js'
 
 const BASE = 'product-ontology'
 
@@ -8,6 +8,25 @@ export async function getOntologyGraph() {
 
 export async function getOntologyMeta() {
   return get(`${BASE}/meta`, { showLoading: false })
+}
+
+/**
+ * P1-4：按品类码拉取模板渲染 schema（§11.8）。
+ * 未识别品类 / 模板接口未就绪时返回 null，由调用方降级本地 mock schema。
+ */
+export async function fetchTemplateSchema(categoryCode) {
+  if (!categoryCode) return null
+  try {
+    const body = await get(`${BASE}/config/template/${encodeURIComponent(categoryCode)}`, {
+      showLoading: false,
+    })
+    if (body && body.success && body.schema) {
+      return { template: body.template || null, schema: body.schema }
+    }
+    return null
+  } catch (e) {
+    return null
+  }
 }
 
 export async function getOpsDashboard() {

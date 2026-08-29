@@ -1,6 +1,7 @@
 package com.sitech.prodai.service.agent.tool.rd;
 
 import com.sitech.prodai.service.ProductOntologyService;
+import com.sitech.prodai.service.ProductTemplateRegistry;
 import com.sitech.prodai.service.agent.model.ExecutionResult;
 import com.sitech.prodai.service.agent.tool.AgentTool;
 import com.sitech.prodai.service.agent.tool.ToolOutputField;
@@ -26,9 +27,12 @@ public class RdFileParseTool implements AgentTool {
     private static final Logger log = LoggerFactory.getLogger(RdFileParseTool.class);
 
     private final ProductOntologyService productOntologyService;
+    private final ProductTemplateRegistry templateRegistry;
 
-    public RdFileParseTool(ProductOntologyService productOntologyService) {
+    public RdFileParseTool(ProductOntologyService productOntologyService,
+                           ProductTemplateRegistry templateRegistry) {
         this.productOntologyService = productOntologyService;
+        this.templateRegistry = templateRegistry;
     }
 
     @Override
@@ -69,6 +73,11 @@ public class RdFileParseTool implements AgentTool {
                         .label("文档名")
                         .description("文档名称（用于展示）")
                         .type("string")
+                        .build(),
+                ToolParam.builder("product_type")
+                        .label("产品品类")
+                        .description("可选，产品品类码（category_code，如 familyBasePrc）；未提供时由模板 matchers 兜底识别")
+                        .type("string")
                         .build()
         );
     }
@@ -93,6 +102,8 @@ public class RdFileParseTool implements AgentTool {
         String fileIds = params != null ? String.valueOf(params.getOrDefault("file_ids", "")).trim() : "";
         String docText = params != null ? String.valueOf(params.getOrDefault("document_text", "")) : "";
         String fileName = params != null ? String.valueOf(params.getOrDefault("file_name", "")).trim() : "";
+        String productType = params != null ? String.valueOf(params.getOrDefault("product_type", "")).trim() : "";
+        String matchHint = RdProductTypeSupport.resolve(templateRegistry, productType, docText);
 
         List<String> ids = new ArrayList<>();
         if (fileIds != null && !fileIds.isEmpty() && !"null".equalsIgnoreCase(fileIds)) {
@@ -120,7 +131,12 @@ public class RdFileParseTool implements AgentTool {
             } else {
                 return ExecutionResult.fail(getName(), "缺少文档（未提供已上传 file_id/file_ids 或文档文本）");
             }
-            return ExecutionResult.ok(getName(), normalize(resp));
+            Map<String, Object> normalized = normalize(resp);
+            // §9.4 product_type 观察：matchers 兜底解析结果随输出返回（批量逐项注入由 P2-2 抽取模板化接管）
+            if (matchHint != null) {
+                normalized.put("product_type", matchHint);
+            }
+            return ExecutionResult.ok(getName(), normalized);
         } catch (Exception e) {
             log.error("[AgentTool] rd_file_parse 失败: {}", e.getMessage(), e);
             return ExecutionResult.fail(getName(), "文档解析失败: " + e.getMessage());

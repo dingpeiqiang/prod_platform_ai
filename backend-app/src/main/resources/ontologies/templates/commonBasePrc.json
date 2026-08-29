@@ -1,0 +1,610 @@
+{
+  "template_id": "commonBasePrc",
+  "template_name": "公共骨架（baseInfo/releaseInfo/optionalInfo/acctMonth/acctFav）",
+  "version": "1.0.0",
+  "extends": null,
+  "status": "published",
+  "category_code": "common",
+  "message_root_key": null,
+  "matchers": {
+    "keywords": [],
+    "priority": 0,
+    "abstract": true
+  },
+  "sections": [
+    { "code": "baseInfo", "label": "基础信息", "message_path": "baseInfo" },
+    { "code": "releaseInfo", "label": "发布信息", "message_path": "releaseInfo" },
+    { "code": "optionalInfo", "label": "可选配置", "message_path": "optionalInfo" },
+    { "code": "acctMonth", "label": "月租计费", "message_path": "optionalInfo.acctMonth" },
+    { "code": "acctFav", "label": "账务优惠", "message_path": "optionalInfo.acctFav" }
+  ],
+  "fields": [
+    {
+      "field_code": "templateId",
+      "label": "需求工单号",
+      "type": "select",
+      "required": true,
+      "section": "baseInfo",
+      "field_class": "draft",
+      "source": "fs",
+      "slot_aliases": ["工单号", "需求工单", "workOrderId", "templateId"],
+      "extract_hint": "需求管理平台工单编号，形如 RQ-xxxx",
+      "message_path": "baseInfo.templateId"
+    },
+    {
+      "field_code": "prodPrcName",
+      "label": "资费名称",
+      "type": "input",
+      "required": true,
+      "section": "baseInfo",
+      "field_class": "draft",
+      "source": "fs",
+      "precision": 60,
+      "slot_aliases": ["资费名称", "套餐名称", "产品名称"],
+      "extract_hint": "名称不超过60字符",
+      "message_path": "baseInfo.prodPrcName"
+    },
+    {
+      "field_code": "effRuleId",
+      "label": "订购生效方式",
+      "type": "select",
+      "required": true,
+      "section": "baseInfo",
+      "field_class": "projection",
+      "source": "dict",
+      "default_value": "立即生效",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "立即生效", "value": "1" },
+          { "display": "预约生效", "value": "2" }
+        ]
+      },
+      "slot_aliases": ["生效方式", "订购生效"],
+      "message_path": "baseInfo.effRuleId"
+    },
+    {
+      "field_code": "cancelRuleId",
+      "label": "退订生效方式",
+      "type": "select",
+      "required": true,
+      "section": "baseInfo",
+      "field_class": "projection",
+      "source": "dict",
+      "default_value": "立即生效",
+      "slot_aliases": ["退订方式", "expRuleId", "取消生效方式"],
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "立即生效", "value": "1" },
+          { "display": "预约生效", "value": "2" }
+        ]
+      },
+      "message_path": "baseInfo.cancelRuleId"
+    },
+    {
+      "field_code": "effDate",
+      "label": "销售开始日期",
+      "type": "date",
+      "required": true,
+      "section": "baseInfo",
+      "field_class": "projection",
+      "source": "generated",
+      "default_value": "当前日期",
+      "extract_hint": "默认当前时间，格式 yyyyMMdd",
+      "message_path": "baseInfo.effDate"
+    },
+    {
+      "field_code": "expDate",
+      "label": "销售终止日期",
+      "type": "date",
+      "required": true,
+      "section": "baseInfo",
+      "field_class": "projection",
+      "source": "generated",
+      "default_value": "20991231",
+      "message_path": "baseInfo.expDate"
+    },
+    {
+      "field_code": "prodId",
+      "label": "产品代码",
+      "type": "input",
+      "required": true,
+      "section": "baseInfo",
+      "field_class": "projection",
+      "source": "hidden",
+      "rule_description": "代码自动生成，不作为抽取目标",
+      "message_path": "baseInfo.prodId"
+    },
+    {
+      "field_code": "prodPrcId",
+      "label": "资费代码",
+      "type": "input",
+      "required": true,
+      "section": "baseInfo",
+      "field_class": "projection",
+      "source": "hidden",
+      "rule_description": "代码自动生成，不作为抽取目标",
+      "message_path": "baseInfo.prodPrcId"
+    },
+    {
+      "field_code": "categoryCode",
+      "label": "品类编码",
+      "type": "input",
+      "required": true,
+      "section": "baseInfo",
+      "field_class": "projection",
+      "source": "hidden",
+      "rule_description": "按模板品类自动携带，不作为抽取目标（derive_rules.set_default 引用点）",
+      "message_path": "baseInfo.categoryCode"
+    },
+    {
+      "field_code": "messageRootKey",
+      "label": "报文根键",
+      "type": "input",
+      "required": true,
+      "section": "baseInfo",
+      "field_class": "projection",
+      "source": "hidden",
+      "rule_description": "报文投影根键，按模板品类自动携带，不作为抽取目标",
+      "message_path": "baseInfo.messageRootKey"
+    },
+    {
+      "field_code": "channelScope",
+      "label": "适用渠道",
+      "type": "input",
+      "required": true,
+      "section": "releaseInfo",
+      "field_class": "projection",
+      "source": "hidden",
+      "default_value": "全渠道",
+      "rule_description": "发布范围系统字段，默认全渠道，不作为抽取目标",
+      "message_path": "releaseInfo.channelScope"
+    },
+    {
+      "field_code": "pricingId",
+      "label": "拆分代码",
+      "type": "input",
+      "required": false,
+      "section": "baseInfo",
+      "field_class": "readonly",
+      "source": "generated",
+      "rule_description": "查询返回字段，仅智查/回显时返回",
+      "message_path": "baseInfo.pricingId"
+    },
+    {
+      "field_code": "chnClassLimit",
+      "label": "发布渠道",
+      "type": "multiselect",
+      "required": true,
+      "section": "releaseInfo",
+      "field_class": "projection",
+      "source": "dict",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "营业前台", "value": "1" },
+          { "display": "电子渠道", "value": "2" },
+          { "display": "大掌柜", "value": "3" }
+        ]
+      },
+      "slot_aliases": ["发布渠道", "销售渠道限制", "渠道"],
+      "rule_description": "营业前台 与 电子渠道/大掌柜 互斥（互斥校验在提交阶段合规执行，前端不做即时校验）",
+      "message_path": "releaseInfo.chnClassLimit"
+    },
+    {
+      "field_code": "groupId",
+      "label": "发布地市",
+      "type": "select",
+      "required": true,
+      "section": "releaseInfo",
+      "field_class": "projection",
+      "source": "dict",
+      "default_value": "全省",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "全省", "value": "ALL" },
+          { "display": "非全省", "value": "PART" }
+        ]
+      },
+      "message_path": "releaseInfo.groupId"
+    },
+    {
+      "field_code": "groupIdMessage",
+      "label": "发布地市明细",
+      "type": "multiselect",
+      "required": true,
+      "section": "releaseInfo",
+      "field_class": "projection",
+      "source": "dict",
+      "enum_config": { "type": "remote", "dict_code": "CITY_LIST" },
+      "rule_description": "22地市多选；groupId=全省 时数量展示为前端增强项",
+      "message_path": "releaseInfo.groupIdMessage"
+    },
+    {
+      "field_code": "prcMonthFee",
+      "label": "月租额（免填单）",
+      "type": "input",
+      "required": false,
+      "section": "optionalInfo",
+      "field_class": "projection",
+      "source": "fs",
+      "message_path": "optionalInfo.printContent.prcMonthFee"
+    },
+    {
+      "field_code": "containResource",
+      "label": "包含资源（免填单）",
+      "type": "input",
+      "required": false,
+      "section": "optionalInfo",
+      "field_class": "projection",
+      "source": "fs",
+      "message_path": "optionalInfo.printContent.containResource"
+    },
+    {
+      "field_code": "chargeStandard",
+      "label": "收费标准（免填单）",
+      "type": "input",
+      "required": false,
+      "section": "optionalInfo",
+      "field_class": "projection",
+      "source": "fs",
+      "message_path": "optionalInfo.printContent.chargeStandard"
+    },
+    {
+      "field_code": "limitCondition",
+      "label": "限制条件（免填单）",
+      "type": "input",
+      "required": false,
+      "section": "optionalInfo",
+      "field_class": "projection",
+      "source": "fs",
+      "message_path": "optionalInfo.printContent.limitCondition"
+    },
+    {
+      "field_code": "otherEquity",
+      "label": "其他权益（免填单）",
+      "type": "input",
+      "required": false,
+      "section": "optionalInfo",
+      "field_class": "projection",
+      "source": "fs",
+      "message_path": "optionalInfo.printContent.otherEquity"
+    },
+    {
+      "field_code": "smsOpType",
+      "label": "短信提醒类型",
+      "type": "multiselect",
+      "required": false,
+      "section": "optionalInfo",
+      "field_class": "projection",
+      "source": "dict",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "订购提醒", "value": "1" },
+          { "display": "退订提醒", "value": "2" },
+          { "display": "月底提醒", "value": "3" }
+        ]
+      },
+      "message_path": "optionalInfo.prcSmsCfg.opType"
+    },
+    {
+      "field_code": "sysNoteNow",
+      "label": "订购短信内容",
+      "type": "input",
+      "required": false,
+      "section": "optionalInfo",
+      "field_class": "projection",
+      "source": "fs",
+      "message_path": "optionalInfo.prcSmsCfg.sysNoteNow"
+    },
+    {
+      "field_code": "sysNoteNext",
+      "label": "次月短信内容",
+      "type": "input",
+      "required": false,
+      "section": "optionalInfo",
+      "field_class": "projection",
+      "source": "fs",
+      "message_path": "optionalInfo.prcSmsCfg.sysNoteNext"
+    },
+    {
+      "field_code": "sysNoteCancle",
+      "label": "退订短信内容",
+      "type": "input",
+      "required": false,
+      "section": "optionalInfo",
+      "field_class": "projection",
+      "source": "fs",
+      "message_path": "optionalInfo.prcSmsCfg.sysNoteCancle"
+    },
+    {
+      "field_code": "sysNoteErke",
+      "label": "二次确认短信",
+      "type": "input",
+      "required": false,
+      "section": "optionalInfo",
+      "field_class": "projection",
+      "source": "fs",
+      "message_path": "optionalInfo.prcSmsCfg.sysNoteErke"
+    },
+    {
+      "field_code": "calcMode",
+      "label": "收费方式",
+      "type": "select",
+      "required": true,
+      "section": "acctMonth",
+      "field_class": "projection",
+      "source": "dict",
+      "default_value": "首月全额收取，次月按月收取",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "首月免费，次月按月收取", "value": "2" },
+          { "display": "首月按天折算，一次性收取，次月按月收取", "value": "a" },
+          { "display": "首月区分上下半月，次月按月收取", "value": "1" },
+          { "display": "首月全额收取，次月按月收取", "value": "R" }
+        ]
+      },
+      "slot_aliases": ["收费方式", "计费模式", "月租收取方式"],
+      "message_path": "optionalInfo.acctMonth.calcMode"
+    },
+    {
+      "field_code": "fixFee",
+      "label": "套餐固定费（元）",
+      "type": "number",
+      "required": true,
+      "section": "acctMonth",
+      "field_class": "projection",
+      "source": "fs",
+      "unit": "元",
+      "precision": 2,
+      "decimal_places": 2,
+      "slot_aliases": ["月费", "固费", "套餐费", "月租"],
+      "extract_hint": "小数最多2位，默认单位元",
+      "rule_description": "提示：小数点后2位，校验最多2位小数",
+      "message_path": "optionalInfo.acctMonth.fixFee"
+    },
+    {
+      "field_code": "acctItem",
+      "label": "会计科目",
+      "type": "select",
+      "required": true,
+      "section": "acctMonth",
+      "field_class": "projection",
+      "source": "remote",
+      "enum_config": { "type": "remote", "dict_code": "ACCT_ITEM" },
+      "extract_hint": "账务科目弹窗选择",
+      "message_path": "optionalInfo.acctMonth.acctItem"
+    },
+    {
+      "field_code": "isSplitRate",
+      "label": "是否拆分",
+      "type": "select",
+      "required": false,
+      "section": "acctMonth",
+      "field_class": "projection",
+      "source": "dict",
+      "default_value": "否",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "是", "value": "1" },
+          { "display": "否", "value": "0" }
+        ]
+      },
+      "message_path": "optionalInfo.acctMonth.isSplitRate"
+    },
+    {
+      "field_code": "splitRate9",
+      "label": "拆分比例（本方）",
+      "type": "number",
+      "required": false,
+      "section": "acctMonth",
+      "field_class": "projection",
+      "source": "fs",
+      "precision": 4,
+      "decimal_places": 4,
+      "visible_when": { "isSplitRate": "是" },
+      "rule_description": "最多4位小数；splitRate6 = 1 - splitRate9（数值派生归 SHACL/Java，不在模板硬解）",
+      "message_path": "optionalInfo.acctMonth.splitRate9"
+    },
+    {
+      "field_code": "splitRate6",
+      "label": "拆分比例（对方）",
+      "type": "number",
+      "required": false,
+      "section": "acctMonth",
+      "field_class": "projection",
+      "source": "generated",
+      "precision": 4,
+      "decimal_places": 4,
+      "visible_when": { "isSplitRate": "是" },
+      "rule_description": "由 splitRate9 派生（数值派生归 SHACL/Java）",
+      "message_path": "optionalInfo.acctMonth.splitRate6"
+    },
+    {
+      "field_code": "fixValidity",
+      "label": "月租有效期类型",
+      "type": "select",
+      "required": true,
+      "section": "acctMonth",
+      "field_class": "projection",
+      "source": "dict",
+      "default_value": "长期有效",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "长期有效", "value": "1" },
+          { "display": "有限期", "value": "2" }
+        ]
+      },
+      "message_path": "optionalInfo.acctMonth.fixValidity"
+    },
+    {
+      "field_code": "fixValidityVAlue",
+      "label": "月租有效期值",
+      "type": "input",
+      "required": false,
+      "section": "acctMonth",
+      "field_class": "projection",
+      "source": "fs",
+      "visible_when": { "fixValidity": "有限期" },
+      "rule_description": "月租有效期非长期时展示；长期有效时自动隐藏",
+      "message_path": "optionalInfo.acctMonth.fixValidityVAlue"
+    },
+    {
+      "field_code": "favCondition",
+      "label": "优惠条件",
+      "type": "select",
+      "required": false,
+      "section": "acctFav",
+      "field_class": "projection",
+      "source": "dict",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "无条件", "value": "1" },
+          { "display": "有条件", "value": "2" }
+        ]
+      },
+      "message_path": "optionalInfo.acctFav.favCondition"
+    },
+    {
+      "field_code": "favItemType",
+      "label": "优惠项目类型",
+      "type": "select",
+      "required": false,
+      "section": "acctFav",
+      "field_class": "projection",
+      "source": "dict",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "指定科目", "value": "1" },
+          { "display": "账本科目", "value": "2" }
+        ]
+      },
+      "message_path": "optionalInfo.acctFav.favItemType"
+    },
+    {
+      "field_code": "favGroup",
+      "label": "科目组",
+      "type": "select",
+      "required": false,
+      "section": "acctFav",
+      "field_class": "projection",
+      "source": "remote",
+      "visible_when": { "favItemType": "指定科目" },
+      "message_path": "optionalInfo.acctFav.favGroup"
+    },
+    {
+      "field_code": "favType",
+      "label": "优惠方式",
+      "type": "select",
+      "required": false,
+      "section": "acctFav",
+      "field_class": "projection",
+      "source": "dict",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "送费", "value": "1" },
+          { "display": "打折", "value": "2" }
+        ]
+      },
+      "slot_aliases": ["优惠类型", "优惠方式"],
+      "message_path": "optionalInfo.acctFav.favType"
+    },
+    {
+      "field_code": "favDiscount",
+      "label": "折扣率",
+      "type": "number",
+      "required": false,
+      "section": "acctFav",
+      "field_class": "projection",
+      "source": "fs",
+      "precision": 2,
+      "decimal_places": 2,
+      "visible_when": { "favType": "打折" },
+      "message_path": "optionalInfo.acctFav.favDiscount"
+    },
+    {
+      "field_code": "favFee",
+      "label": "优惠金额（元）",
+      "type": "number",
+      "required": false,
+      "section": "acctFav",
+      "field_class": "projection",
+      "source": "fs",
+      "unit": "元",
+      "precision": 2,
+      "decimal_places": 2,
+      "visible_when": { "favType": "送费" },
+      "message_path": "optionalInfo.acctFav.favFee"
+    },
+    {
+      "field_code": "favValidity",
+      "label": "优惠有效期类型",
+      "type": "select",
+      "required": false,
+      "section": "acctFav",
+      "field_class": "projection",
+      "source": "dict",
+      "default_value": "长期有效",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          { "display": "长期有效", "value": "1" },
+          { "display": "有限期", "value": "2" }
+        ]
+      },
+      "message_path": "optionalInfo.acctFav.favValidity"
+    },
+    {
+      "field_code": "favValidityVAlue",
+      "label": "优惠有效期值",
+      "type": "input",
+      "required": false,
+      "section": "acctFav",
+      "field_class": "projection",
+      "source": "fs",
+      "visible_when": { "favValidity": "有限期" },
+      "message_path": "optionalInfo.acctFav.favValidityVAlue"
+    },
+    {
+      "field_code": "favDesc",
+      "label": "优惠说明",
+      "type": "input",
+      "required": false,
+      "section": "acctFav",
+      "field_class": "projection",
+      "source": "fs",
+      "message_path": "optionalInfo.acctFav.favDesc"
+    }
+  ],
+  "derive_rules": [
+    { "set_default": { "expDate": "20991231" }, "if_missing": true },
+    { "set_default": { "effRuleId": "立即生效" }, "if_missing": true },
+    { "set_default": { "cancelRuleId": "立即生效" }, "if_missing": true },
+    { "set_default": { "calcMode": "首月全额收取，次月按月收取" }, "if_missing": true },
+    { "set_default": { "fixValidity": "长期有效" }, "if_missing": true },
+    { "when": { "fixValidity": "长期有效" }, "hidden": ["fixValidityVAlue"] },
+    { "when": { "fixValidity": "有限期" }, "visible": ["fixValidityVAlue"] },
+    { "when": { "isSplitRate": "是" }, "visible": ["splitRate9", "splitRate6"] },
+    { "when": { "favItemType": "指定科目" }, "visible": ["favGroup"] },
+    { "when": { "favType": "送费" }, "visible": ["favFee"], "hidden": ["favDiscount"] },
+    { "when": { "favType": "打折" }, "visible": ["favDiscount"], "hidden": ["favFee"] }
+  ],
+  "compliance_bindings": {
+    "rule_ids": ["R-C03", "R-C04", "R-C05", "R-C06", "R-C07", "R-C08", "R-C09"],
+    "note": "R-C01/R-C02 为场景补全类规则由品类模板各自追加；R-D01~D05 为智读批量链路规则，不在单品类裁剪面内"
+  },
+  "message_projection": {
+    "mode": "observe",
+    "aligned_with": "ontology/config_message_projection.json",
+    "note": "P1 阶段仅对齐观察不接管投影（§10.1 报文契约保护）；field.message_path 为投影对齐视图"
+  }
+}
