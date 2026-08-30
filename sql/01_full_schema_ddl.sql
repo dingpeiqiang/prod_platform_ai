@@ -405,19 +405,23 @@ CREATE TABLE `pd_ai_ontology_version` (
     KEY `idx_oav_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='本体资产版本主表';
 
--- P1-5 版本库表 B：动作日志（由 pd_ai_ontology_instance_history 接线改造）
+-- P1-5 版本库表 B：动作日志（由 pd_ai_ontology_instance_history 接线改造；P3-5 ① 泛化审计一张表）
 CREATE TABLE `pd_ai_ontology_version_log` (
     `id`                 BIGINT       NOT NULL AUTO_INCREMENT,
-    `version_id`         BIGINT       NOT NULL COMMENT '外键 pd_ai_ontology_version.id',
-    `action`             VARCHAR(32)  NOT NULL COMMENT 'publish / rollback / deprecate / reload / override',
+    `version_id`         BIGINT                DEFAULT NULL COMMENT '外键 pd_ai_ontology_version.id（非版本键控审计可空）',
+    `domain`             VARCHAR(32)  NOT NULL DEFAULT 'version' COMMENT '审计域：version / risk / config / batch',
+    `trace_id`           VARCHAR(128)          DEFAULT NULL COMMENT 'config 链路 trace_id',
+    `action`             VARCHAR(32)  NOT NULL COMMENT 'publish / rollback / deprecate / reload / override / config_step / batch_audit',
     `operator`           VARCHAR(64)           DEFAULT NULL,
     `detail`             TEXT                  COMMENT '动作明细 JSON',
     `created_at`         DATETIME(6)           DEFAULT NULL,
     PRIMARY KEY (`id`),
     KEY `idx_ovl_version_id` (`version_id`),
+    KEY `idx_ovl_domain` (`domain`),
+    KEY `idx_ovl_trace_id` (`trace_id`),
     KEY `idx_ovl_action` (`action`),
     KEY `idx_ovl_created` (`created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='本体资产版本动作日志';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='本体资产版本动作日志（审计一张表）';
 
 -- ------------------------------------------------------------
 -- 8. SWRL / 条件 DSL 规则（遗留营销路径）

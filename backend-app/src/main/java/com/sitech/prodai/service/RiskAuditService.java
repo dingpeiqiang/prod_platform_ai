@@ -1,5 +1,7 @@
 package com.sitech.prodai.service;
 
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -16,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * 与最近 N 条操作审计链（{@code auditLog}，last-50 重启即失，与 P3-5 审计落盘顺路）。
  * <p>生效规则 = 图默认 ∪ 文件默认 ∪ 运行时覆盖；图默认归属 {@code ProductOntologyService#loadGraph()}
  * （本服务不反向依赖存量服务，图默认由调用方注入），文件默认由 {@link OpsRulesService} 供给。
- * <p>边界：live 管理视图沿用内存链展示；完整表 B 落盘由 P3-5 监控/审计落盘任务收口。
+ * <p>边界：live 管理视图沿用内存链展示；P3-5 ① 起覆盖动作同步落盘表 B risk 域（重启不丢，运营视图可回读）。
  */
 @Service
 public class RiskAuditService {
@@ -27,6 +29,18 @@ public class RiskAuditService {
 
     /** 风险阈值覆盖审计（内存，最近 AUDIT_LIMIT 条）。 */
     private final List<Map<String, Object>> auditLog = new ArrayList<>();
+
+    /** P3-5 ① 版本库表 B 持久化（ObjectProvider 使外部用例可用无参构造，落盘仅在有 Bean 时启用）。 */
+    private final ObjectProvider<OntologyVersionService> versionService;
+
+    public RiskAuditService() {
+        this(null);
+    }
+
+    @Autowired
+    public RiskAuditService(ObjectProvider<OntologyVersionService> versionService) {
+        this.versionService = versionService;
+    }
 
     /**
      * 生效阈值 = 图默认 ∪ 文件默认 ∪ 运行时覆盖（文件优先于图，覆盖最高）。
@@ -67,6 +81,28 @@ public class RiskAuditService {
         auditLog.add(0, row);
         while (auditLog.size() > AUDIT_LIMIT) {
             auditLog.remove(auditLog.size() - 1);
+        }
+        persist(action, detail, effective);
+    }
+
+    /** P3-5 ① 同步落盘表 B risk 域（挂 {overrides}/{effective} 快照便于复盘；表不可用不阻断内存态）。 */
+    private void persist(String action, Map<String, Object> detail, Map<String, Object> effective) {
+        if (versionService == null) {
+            return;
+        }
+        try {
+            OntologyVersionService vs = versionService.getIfAvailable();
+            if (vs == null) {
+                return;
+            }
+            Map<String, Object> detailCopy = detail == null ? new LinkedHashMap<>() : new LinkedHashMap<>(detail);
+            detailCopy.put("overrides", new LinkedHashMap<>(overrides));
+            if (effective != null) {
+                detailCopy.put("effective", new LinkedHashMap<>(effective));
+            }
+            vs.recordLog(OntologyVersionService.DOMAIN_RISK, null, action, detailCopy);
+        } catch (RuntimeException e) {
+            // 版本库表 B 未迁移/不可用：审计落盘失败不阻断覆盖操作（内存链仍兜底）
         }
     }
 

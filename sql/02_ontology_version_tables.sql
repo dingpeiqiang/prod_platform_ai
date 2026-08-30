@@ -28,19 +28,31 @@ CREATE TABLE IF NOT EXISTS `pd_ai_ontology_version` (
     KEY `idx_oav_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='本体资产版本主表';
 
--- 表 B：动作日志
+-- 表 B：动作日志（P3-5 ① 泛化为"审计一张表"：version_id 放宽为空，新增 domain / trace_id）
 CREATE TABLE IF NOT EXISTS `pd_ai_ontology_version_log` (
     `id`                 BIGINT       NOT NULL AUTO_INCREMENT,
-    `version_id`         BIGINT       NOT NULL COMMENT '外键 pd_ai_ontology_version.id',
-    `action`             VARCHAR(32)  NOT NULL COMMENT 'publish / rollback / deprecate / reload / override',
+    `version_id`         BIGINT                DEFAULT NULL COMMENT '外键 pd_ai_ontology_version.id（非版本键控审计可空）',
+    `domain`             VARCHAR(32)  NOT NULL DEFAULT 'version' COMMENT '审计域：version / risk / config / batch',
+    `trace_id`           VARCHAR(128)          DEFAULT NULL COMMENT 'config 链路 trace_id（仅 domain=config 有值）',
+    `action`             VARCHAR(32)  NOT NULL COMMENT 'publish / rollback / deprecate / reload / override / config_step / batch_audit',
     `operator`           VARCHAR(64)           DEFAULT NULL,
     `detail`             TEXT                  COMMENT '动作明细 JSON',
     `created_at`         DATETIME(6)           DEFAULT NULL,
     PRIMARY KEY (`id`),
     KEY `idx_ovl_version_id` (`version_id`),
+    KEY `idx_ovl_domain` (`domain`),
+    KEY `idx_ovl_trace_id` (`trace_id`),
     KEY `idx_ovl_action` (`action`),
     KEY `idx_ovl_created` (`created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='本体资产版本动作日志';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='本体资产版本动作日志（审计一张表）';
+
+-- P3-5 ① 存量升级：已存在该表时补列（ADD COLUMN IF NOT EXISTS + MODIFY 幂等）
+ALTER TABLE `pd_ai_ontology_version_log`
+    ADD COLUMN IF NOT EXISTS `domain`   VARCHAR(32)  NOT NULL DEFAULT 'version' COMMENT '审计域：version / risk / config / batch';
+ALTER TABLE `pd_ai_ontology_version_log`
+    ADD COLUMN IF NOT EXISTS `trace_id` VARCHAR(128) DEFAULT NULL COMMENT 'config 链路 trace_id';
+ALTER TABLE `pd_ai_ontology_version_log`
+    MODIFY COLUMN `version_id` BIGINT DEFAULT NULL COMMENT '外键 pd_ai_ontology_version.id（非版本键控审计可空）';
 
 -- 死代码清理：pd_ai_ontology_instance_history 从无引用，改造退役为表 B（保留历史数据不迁移——原表从未产生数据流）
 DROP TABLE IF EXISTS `pd_ai_ontology_instance_history`;

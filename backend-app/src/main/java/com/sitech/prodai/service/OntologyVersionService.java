@@ -30,11 +30,19 @@ public class OntologyVersionService {
     public static final String TYPE_TTL = "ttl";
     public static final String TYPE_MESSAGE_PROJECTION = "message_projection";
     public static final String TYPE_ABOX_SNAPSHOT = "abox_snapshot";
+    /** P3-4 双世界收敛：AdminController 本体管理资产（offering_config / tariff_filing_publicity 等）。 */
+    public static final String TYPE_ONTOLOGY = "ontology";
 
     public static final String STATUS_DRAFT = "draft";
     public static final String STATUS_REVIEW = "review";
     public static final String STATUS_PUBLISHED = "published";
     public static final String STATUS_DEPRECATED = "deprecated";
+
+    /** P3-5 ① 审计域（表 B domain 列）：version / risk / config / batch */
+    public static final String DOMAIN_VERSION = "version";
+    public static final String DOMAIN_RISK = "risk";
+    public static final String DOMAIN_CONFIG = "config";
+    public static final String DOMAIN_BATCH = "batch";
 
     private final OntologyAssetVersionRepository versionRepository;
     private final OntologyVersionLogRepository logRepository;
@@ -150,6 +158,52 @@ public class OntologyVersionService {
         logRepository.save(row);
     }
 
+    /** P3-5 ① 非版本键控审计落盘（config 链路 / risk 覆盖 / batch 稽核，复用表 B 一表）。 */
+    @Transactional
+    public void recordLog(String domain, String traceId, String action, Map<String, Object> detail) {
+        OntologyVersionLog row = new OntologyVersionLog();
+        row.setDomain(domain == null ? DOMAIN_VERSION : domain);
+        row.setTraceId(traceId);
+        row.setAction(action);
+        row.setDetail(detail == null ? new LinkedHashMap<>() : new LinkedHashMap<>(detail));
+        logRepository.save(row);
+    }
+
+    /** config 域链路明细（按 created_at 升序 = 步骤先后序，回退内存态；返回各步 detail 载荷）。 */
+    public List<Map<String, Object>> configTrace(String traceId) {
+        if (traceId == null || traceId.isBlank()) {
+            return List.of();
+        }
+        return logRepository.findByDomainAndTraceIdOrderByCreatedAtAsc(DOMAIN_CONFIG, traceId)
+                .stream().map(OntologyVersionLog::getDetail)
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    /** risk 域最近 50 条审计（回读表 B 覆盖内存 last-50，保持 {at,action,detail,...} 展示形）。 */
+    public List<Map<String, Object>> riskAuditLogs() {
+        return logRepository.findTop50ByDomainOrderByCreatedAtDesc(DOMAIN_RISK)
+                .stream().map(this::describeRow).collect(java.util.stream.Collectors.toList());
+    }
+
+    /** batch 域最近一次稽核快照（回读表 B detail 载荷，重启不丢）。 */
+    public Optional<Map<String, Object>> latestBatchAudit() {
+        return logRepository.findFirstByDomainOrderByCreatedAtDesc(DOMAIN_BATCH)
+                .map(OntologyVersionLog::getDetail);
+    }
+
+    /** 审计行 → 展示 Map（对外 key 与既有内存视图一致）。 */
+    private Map<String, Object> describeRow(OntologyVersionLog row) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("at", row.getCreatedAt() == null
+                ? ""
+                : row.getCreatedAt().atZone(java.time.ZoneId.systemDefault()).toString());
+        out.put("action", row.getAction());
+        out.put("domain", row.getDomain());
+        out.put("traceId", row.getTraceId());
+        out.put("detail", row.getDetail() == null ? Map.of() : new LinkedHashMap<>(row.getDetail()));
+        return out;
+    }
+
     /** last-known-good：同资产最新 published 行。 */
     public Optional<OntologyAssetVersion> latestPublished(String assetType, String assetCode) {
         return versionRepository.findFirstByAssetTypeAndAssetCodeAndStatusOrderByPublishedAtDesc(
@@ -164,7 +218,22 @@ public class OntologyVersionService {
         return versionRepository.findByAssetTypeAndAssetCodeOrderByCreatedAtDesc(assetType, assetCode);
     }
 
+    /** 按资产类型列出全部版本行（P3-4 双世界收敛：AdminController 本体列表聚合）。 */
+    public List<OntologyAssetVersion> listByType(String assetType) {
+        return versionRepository.findByAssetTypeOrderByCreatedAtDesc(assetType);
+    }
+
     public List<OntologyVersionLog> logsOf(Long versionId) {
         return logRepository.findByVersionIdOrderByCreatedAtDesc(versionId);
+    }
+
+    /** 指定类型最新发布行（跨资产取 published_at 最近者；无返回空）。 */
+    public Optional<OntologyAssetVersion> latestPublishedByType(String assetType) {
+        return versionRepository.findFirstByAssetTypeAndStatusOrderByPublishedAtDesc(assetType, STATUS_PUBLISHED);
+    }
+
+    /** 指定类型已发布行数（跨资产）。 */
+    public long countPublished(String assetType) {
+        return versionRepository.findByAssetTypeAndStatus(assetType, STATUS_PUBLISHED).size();
     }
 }

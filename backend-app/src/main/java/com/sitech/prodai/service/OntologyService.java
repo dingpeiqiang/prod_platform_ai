@@ -26,6 +26,7 @@ public class OntologyService {
     @SuppressWarnings("deprecation")
     private final Optional<SwrlRuleEngine> swrlRuleEngine;
     private final Optional<OpsRulesService> opsRules;
+    private final Optional<OntologyVersionService> versionService;
     private final Map<String, Map<String, Object>> snapshots = new ConcurrentHashMap<>();
     private final Map<String, List<Map<String, Object>>> audits = new ConcurrentHashMap<>();
 
@@ -33,12 +34,14 @@ public class OntologyService {
                            ProdAiProperties properties,
                            @Autowired(required = false) Optional<LlmService> llmService,
                            @Autowired(required = false) @SuppressWarnings("deprecation") Optional<SwrlRuleEngine> swrlRuleEngine,
-                           @Autowired(required = false) Optional<OpsRulesService> opsRules) {
+                           @Autowired(required = false) Optional<OpsRulesService> opsRules,
+                           @Autowired(required = false) Optional<OntologyVersionService> versionService) {
         this.rdf4jStore = rdf4jStore;
         this.properties = properties;
         this.llmService = llmService;
         this.swrlRuleEngine = swrlRuleEngine;
         this.opsRules = opsRules;
+        this.versionService = versionService;
     }
 
     private String baseIri() {
@@ -772,35 +775,143 @@ public class OntologyService {
         return List.of(Map.of("id", "marketing", "name", "营销推荐"), Map.of("id", "billing", "name", "账单退款"));
     }
 
+    /** 种子本体资产（行为兜底）：表 A 无映射时降级返回的默认值，保住前端契约不漂移。 */
+    private static final Map<String, String> SEED_ONTOLOGY_NAMES = Map.of(
+            "offering_config", "产品配置",
+            "tariff_filing_publicity", "资费公示");
+
     public Map<String, Object> listOntologies(String category, Boolean isActive) {
+        Map<String, String> effective = resolveOntologyRegistry();
         List<Map<String, Object>> data = new ArrayList<>();
-        data.add(Map.of("ontologyCode", "offering_config", "ontologyName", "产品配置", "category", "marketing", "isActive", true));
-        data.add(Map.of("ontologyCode", "tariff_filing_publicity", "ontologyName", "资费公示", "category", "billing", "isActive", true));
+        effective.forEach((code, name) -> {
+            Map<String, Object> onto = new LinkedHashMap<>();
+            onto.put("ontologyCode", code);
+            onto.put("ontologyName", name);
+            onto.put("category", code.equals("tariff_filing_publicity") ? "billing" : "marketing");
+            onto.put("isActive", true);
+            data.add(onto);
+        });
         return Map.of("success", true, "data", data);
     }
 
     public Map<String, Object> getOntology(String ontologyCode) {
+        Map<String, String> effective = resolveOntologyRegistry();
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("ontologyCode", ontologyCode);
-        data.put("ontologyName", ontologyCode.equals("offering_config") ? "产品配置" : "资费公示");
+        data.put("ontologyName", effective.getOrDefault(ontologyCode,
+                ontologyCode.equals("offering_config") ? "产品配置" : "资费公示"));
         data.put("entities", List.of());
         return Map.of("success", true, "data", data);
     }
 
     public Map<String, Object> createOntology(Map<String, Object> body, String userId) {
-        return Map.of("success", true, "message", "本体创建成功");
+        Map<String, Object> safe = body == null ? Map.of() : body;
+        String code = String.valueOf(safe.getOrDefault("ontologyCode", safe.getOrDefault("code",
+                "ontology_" + System.currentTimeMillis())));
+        String name = String.valueOf(safe.getOrDefault("ontologyName", code));
+        boolean ok = registerOntologyRow(code, name, userId);
+        return Map.of("success", ok, "message",
+                ok ? "本体已登记 draft 版本（表 A）" : "本体登记失败（版本库不可用）",
+                "ontologyCode", code);
     }
 
     public Map<String, Object> updateOntology(String ontologyCode, Map<String, Object> body, String userId) {
-        return Map.of("success", true, "message", "本体更新成功");
+        Map<String, Object> safe = body == null ? Map.of() : body;
+        String name = String.valueOf(safe.getOrDefault("ontologyName", ontologyCode));
+        boolean ok = registerOntologyRow(ontologyCode, name, userId);
+        return Map.of("success", ok, "message",
+                ok ? "本体已登记新 draft 版本（表 A）" : "本体更新失败（版本库不可用）",
+                "ontologyCode", ontologyCode);
     }
 
     public Map<String, Object> deleteOntology(String ontologyCode) {
-        return Map.of("success", true, "message", "本体删除成功", "backup", Map.of("id", "backup_" + UUID.randomUUID().toString().substring(0, 8)));
+        if (versionService.isEmpty()) {
+            return Map.of("success", true, "message", "版本库未启用，删除不落库（降级空操作）",
+                    "ontologyCode", ontologyCode);
+        }
+        for (com.sitech.prodai.domain.entity.OntologyAssetVersion row :
+                versionService.get().listByType(OntologyVersionService.TYPE_ONTOLOGY)) {
+            if (row.getAssetCode().equals(ontologyCode)) {
+                versionService.get().deprecate(row.getId(), "admin", "ontology.delete");
+            }
+        }
+        return Map.of("success", true, "message", "本体已置 deprecated（表 A）", "ontologyCode", ontologyCode);
     }
 
     public Map<String, Object> toggleActive(String ontologyCode) {
-        return Map.of("success", true, "message", "状态切换成功");
+        if (versionService.isEmpty()) {
+            return Map.of("success", true, "message", "版本库未启用，状态切换不落库（降级空操作）",
+                    "ontologyCode", ontologyCode);
+        }
+        try {
+            for (com.sitech.prodai.domain.entity.OntologyAssetVersion row :
+                    versionService.get().listByType(OntologyVersionService.TYPE_ONTOLOGY)) {
+                if (row.getAssetCode().equals(ontologyCode)) {
+                    boolean isPublished = "published".equals(row.getStatus());
+                    String target = isPublished ? "deprecated" : "published";
+                    versionService.get().transition(row.getId(), row.getStatus(), target,
+                            "admin", "ontology.toggle", Map.of("ontology_code", ontologyCode));
+                }
+            }
+            return Map.of("success", true, "message", "本体状态已切换（表 A）", "ontologyCode", ontologyCode);
+        } catch (Exception e) {
+            return Map.of("success", true, "message", "切换请求已受理（版本库异常，保留现状）",
+                    "ontologyCode", ontologyCode);
+        }
+    }
+
+    /** 解析当前本体资产清单：表 A（asset_type=ontology）聚合；无数据/版本库不可用时降级种子。 */
+    private Map<String, String> resolveOntologyRegistry() {
+        Map<String, String> effective = new LinkedHashMap<>();
+        boolean dbOk = false;
+        if (versionService.isPresent()) {
+            try {
+                for (com.sitech.prodai.domain.entity.OntologyAssetVersion row :
+                        versionService.get().listByType(OntologyVersionService.TYPE_ONTOLOGY)) {
+                    // 仅取 active（published）行，语义对齐前端 isActive=true
+                    if ("published".equals(row.getStatus())) {
+                        effective.put(row.getAssetCode(), row.getSummary() == null
+                                || row.getSummary().isBlank() ? row.getAssetCode() : row.getSummary());
+                        dbOk = true;
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("[OntologyService] 表 A 聚合不可用，降级种子清单: {}", e.getMessage());
+            }
+        }
+        if (!dbOk || effective.isEmpty()) {
+            effective.putAll(SEED_ONTOLOGY_NAMES);
+        }
+        return effective;
+    }
+
+    /** 登记本体资产版本行（create=首版 draft，update=新 draft）。 */
+    private boolean registerOntologyRow(String code, String name, String userId) {
+        if (versionService.isEmpty()) {
+            return false;
+        }
+        try {
+            versionService.get().register(
+                    OntologyVersionService.TYPE_ONTOLOGY,
+                    code,
+                    nextOntologyVersion(code),
+                    OntologyVersionService.STATUS_DRAFT,
+                    userId,
+                    name,
+                    "{}");
+            return true;
+        } catch (Exception e) {
+            log.warn("[OntologyService] 本体登记失败: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /** 简易 semver 递增：同资产现有行数 + 1，如 v1.0.0 / v1.0.1 ... */
+    private String nextOntologyVersion(String code) {
+        List<com.sitech.prodai.domain.entity.OntologyAssetVersion> rows =
+                versionService.map(v -> v.listVersions(OntologyVersionService.TYPE_ONTOLOGY, code))
+                        .orElseGet(List::of);
+        return "1.0." + rows.size();
     }
 
     public Map<String, Object> getFormConstraint(String formCode) {

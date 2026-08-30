@@ -19,5 +19,12 @@ public interface OntologyAssetVersionRepository extends JpaRepository<OntologyAs
     Optional<OntologyAssetVersion> findFirstByAssetTypeAndAssetCodeAndStatusOrderByPublishedAtDesc(
             String assetType, String assetCode, String status);
 
+    List<OntologyAssetVersion> findByAssetTypeOrderByCreatedAtDesc(String assetType);
+
+    Optional<OntologyAssetVersion> findFirstByAssetTypeAndStatusOrderByPublishedAtDesc(
+            String assetType, String status);
+
+    List<OntologyAssetVersion> findByAssetTypeAndStatus(String assetType, String status);
+
     List<OntologyAssetVersion> findByStatus(String status);
 }

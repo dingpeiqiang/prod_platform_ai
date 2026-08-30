@@ -275,7 +275,9 @@ public class ProductOntologyService {
         view.put("riskEffective", riskRules());
         view.put("riskDefaults", opsRules.riskDefaults());
         view.put("riskOverrides", riskAudit.overrides());
-        view.put("riskAuditLog", riskAudit.snapshotAudit());
+        // P3-5 ① 审计链：优先表 B risk 域回读，空则回退内存态
+        List<Map<String, Object>> domainLogs = versionService.riskAuditLogs();
+        view.put("riskAuditLog", domainLogs.isEmpty() ? riskAudit.snapshotAudit() : domainLogs);
         view.put("opsRulesVersion", opsRules.version());
         view.put("rulesPath", properties.getOntology().getRulesPath());
         view.put("swrlEnabled", properties.getOntology().isSwrlEnabled());
@@ -1249,7 +1251,7 @@ public class ProductOntologyService {
     }
 
     public Map<String, Object> getConfigTrace(String traceId) {
-        List<Map<String, Object>> steps = configTraces.getOrDefault(traceId, List.of());
+        List<Map<String, Object>> steps = configSteps(traceId);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("success", !steps.isEmpty());
         body.put("trace_id", traceId);
@@ -1260,8 +1262,17 @@ public class ProductOntologyService {
         return body;
     }
 
+    /** P3-5 ① 审计链来源：优先表 B config 域回读，空则回退内存态（重启后由表 B 复原链路）。 */
+    private List<Map<String, Object>> configSteps(String traceId) {
+        List<Map<String, Object>> fromDb = versionService.configTrace(traceId);
+        if (!fromDb.isEmpty()) {
+            return fromDb;
+        }
+        return configTraces.getOrDefault(traceId, List.of());
+    }
+
     public Map<String, Object> explainConfig(String traceId, String audience) {
-        List<Map<String, Object>> steps = configTraces.getOrDefault(traceId, List.of());
+        List<Map<String, Object>> steps = configSteps(traceId);
         String aud = audience == null || audience.isBlank() ? "business" : audience;
         StringBuilder sb = new StringBuilder();
         if ("business".equalsIgnoreCase(aud)) {
@@ -1911,6 +1922,13 @@ public class ProductOntologyService {
             return;
         }
         configTraces.computeIfAbsent(traceId, k -> new ArrayList<>()).add(new LinkedHashMap<>(step));
+        // P3-5 ① 配置链路落盘表 B（config 域，回读覆盖内存；表不可用不阻断）
+        try {
+            versionService.recordLog(OntologyVersionService.DOMAIN_CONFIG, traceId,
+                    "config_step", step);
+        } catch (RuntimeException e) {
+            log.warn("[审计落盘] config trace {} 落盘失败（不影响链路）: {}", traceId, e.getMessage());
+        }
     }
 
     public Map<String, Object> chatConfigure(String text, Map<String, Object> draft) {
@@ -2358,6 +2376,13 @@ public class ProductOntologyService {
         snapshot.put("ruleVersion", risk.get("ruleVersion"));
         snapshot.put("items", risk.get("items"));
         lastBatchAudit = snapshot;
+        // P3-5 ① 批量稽核快照落盘表 B（batch 域，重启可回读最近一次；items 过大不入 detail）
+        try {
+            Map<String, Object> persisted = new LinkedHashMap<>(lastBatchAuditSummary());
+            versionService.recordLog(OntologyVersionService.DOMAIN_BATCH, null, "batch_audit", persisted);
+        } catch (RuntimeException e) {
+            log.warn("[审计落盘] batch 稽核快照落盘失败（不影响结果）: {}", e.getMessage());
+        }
         log.info("[OpsBatchAudit] trigger={} scanned={} high={} medium={} delist={} {}ms",
                 snapshot.get("trigger"), snapshot.get("scannedCount"), snapshot.get("highCount"),
                 snapshot.get("mediumCount"), snapshot.get("suggestDelistCount"), snapshot.get("elapsedMs"));
@@ -2372,14 +2397,25 @@ public class ProductOntologyService {
     public Map<String, Object> getLastBatchAudit() {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("success", true);
-        if (lastBatchAudit == null || lastBatchAudit.isEmpty()) {
+        // P3-5 ① 优先表 B batch 域回读（重启不丢），空则回退内存态
+        Map<String, Object> dbSnapshot = versionService.latestBatchAudit().orElse(null);
+        boolean available = (dbSnapshot != null && !dbSnapshot.isEmpty())
+                || (lastBatchAudit != null && !lastBatchAudit.isEmpty());
+        if (!available) {
             body.put("available", false);
             body.put("message", "尚无批量稽核记录，可调用 POST /ops/batch-audit 触发");
             body.put("lastBatchAudit", Map.of());
         } else {
             body.put("available", true);
-            body.put("lastBatchAudit", lastBatchAuditSummary());
-            body.put("items", lastBatchAudit.get("items"));
+            if (dbSnapshot != null && !dbSnapshot.isEmpty()) {
+                body.put("lastBatchAudit", dbSnapshot);
+                body.put("source", "table_b");
+                body.put("items", new ArrayList<>());
+            } else {
+                body.put("lastBatchAudit", lastBatchAuditSummary());
+                body.put("source", "memory");
+                body.put("items", lastBatchAudit.get("items"));
+            }
         }
         return withModeMeta(body);
     }
