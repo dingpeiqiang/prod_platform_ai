@@ -47,6 +47,13 @@
           <span class="status-tag" :class="statusMeta(p).auditClass">{{ statusMeta(p).auditText }}</span>
         </div>
         <div class="product-actions">
+          <button type="button" class="action-btn preview" @click.stop="$emit('preview', p.id)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+            预览
+          </button>
           <button type="button" class="action-btn copy" @click.stop="$emit('copy', p.id)">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
@@ -84,7 +91,7 @@ const props = defineProps({
   currentProductId: { type: String, default: null },
 })
 
-const emit = defineEmits(['update:modelValue', 'select', 'copy', 'edit', 'delete'])
+const emit = defineEmits(['update:modelValue', 'select', 'preview', 'copy', 'edit', 'delete'])
 
 const visible = computed({
   get: () => props.modelValue,
@@ -243,6 +250,16 @@ function statusMeta(p) {
   gap: 4px;
   cursor: pointer;
   transition: all 0.2s;
+}
+
+.action-btn.preview {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.action-btn.preview:hover {
+  background: #059669;
+  color: white;
 }
 
 .action-btn.copy {

@@ -331,24 +331,26 @@ export function useProductConfig() {
     auditStatus.value = product?.auditStatus || 'pending'
   }
 
-  function buildProductFormCard(product) {
-    const useOntology = !!product.ontologyDraft
-    let schema
-    if (useOntology) {
+  /** 按 product 草稿构建表单 schema：模板缓存命中 → mergeDraft，未命中降级 mock */
+  function buildProductSchema(product) {
+    if (product?.ontologyDraft) {
       const draft = product.ontologyDraft
       const category = draft.categoryCode || draft.messageRootKey || ''
       const cached = category ? templateSchemaCache.get(category) : null
       if (cached) {
         // P1-4：按 categoryCode 拉取的后端模板 schema 驱动渲染（§11.8）
-        schema = mergeDraftIntoTemplateSchema(cached, draft)
-      } else {
-        // 未命中：异步预热（下次命中），本次降级本地 mock schema
-        if (category) ensureTemplateSchema(category)
-        schema = createOfferingFormSchema(draft)
+        return mergeDraftIntoTemplateSchema(cached, draft)
       }
-    } else {
-      schema = createProductFormSchema(product.data)
+      // 未命中：异步预热（下次命中），本次降级本地 mock schema
+      if (category) ensureTemplateSchema(category)
+      return createOfferingFormSchema(draft)
     }
+    return createProductFormSchema(product.data)
+  }
+
+  function buildProductFormCard(product) {
+    const useOntology = !!product.ontologyDraft
+    const schema = buildProductSchema(product)
     return {
       msgId: genId(),
       formId: product.id,
@@ -990,6 +992,23 @@ export function useProductConfig() {
     return buildProductFormCard(product)
   }
 
+  /** 只读预览：不切换 currentProductId / formData，保持当前编辑态不变 */
+  function previewProduct(id) {
+    const product = products.value.find((p) => p.id === id)
+    if (!product) return null
+    return {
+      id: product.id,
+      name: product.name,
+      desc: product.desc,
+      status: product.status,
+      auditStatus: product.auditStatus,
+      compliancePass: !!product.compliancePass,
+      issues: product.issues || [],
+      schema: buildProductSchema(product),
+      formData: product.ontologyDraft ? { ...product.ontologyDraft } : { ...(product.data || {}) },
+    }
+  }
+
   function copyProduct(id) {
     const product = products.value.find((p) => p.id === id)
     if (!product) return null
@@ -1248,6 +1267,7 @@ export function useProductConfig() {
     submitWorkOrder,
     runHypotheticalAndOrder,
     selectProduct,
+    previewProduct,
     copyProduct,
     deleteProduct,
     saveDraft,

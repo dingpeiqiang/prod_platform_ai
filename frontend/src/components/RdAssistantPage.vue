@@ -62,10 +62,13 @@
       :products="products"
       :current-product-id="currentProductId"
       @select="handleProductSelect"
+      @preview="handleProductPreview"
       @copy="handleProductCopy"
       @edit="handleProductSelect"
       @delete="handleProductDelete"
     />
+
+    <ProductPreviewDrawer v-model="showProductPreview" :product="previewProductData" />
 
     <template #right>
       <InsightBoard mode="rd" :messages="messages" :product-config="productConfig" />
@@ -81,6 +84,7 @@ import AssistantShell from './AssistantShell.vue'
 import ChatMessageList from './ChatMessageList.vue'
 import InsightBoard from './InsightBoard.vue'
 import ProductListPanel from './ProductListPanel.vue'
+import ProductPreviewDrawer from './ProductPreviewDrawer.vue'
 import { useChatStream } from '../composables/useChatStream.js'
 import { useProductConfig } from '../composables/useProductConfig.js'
 import { registerPostProcessor } from '../composables/useIntentRegistry.js'
@@ -104,6 +108,9 @@ const ZHIDU_GUIDE_RE =
 const inputText = ref('')
 const historyLoading = ref(false)
 const activeFormCard = ref(null)
+/** 已配置商品只读预览（不进入编辑态） */
+const showProductPreview = ref(false)
+const previewProductData = ref(null)
 
 const router = useRouter()
 const onOpenModelConfig = () => router.push('/model-config')
@@ -413,6 +420,14 @@ function handleProductSelect(id) {
   showProductListPanel.value = false
 }
 
+/** 只读预览已配置商品：不切换当前编辑态 */
+function handleProductPreview(id) {
+  const preview = productConfig.previewProduct(id)
+  if (!preview) return
+  previewProductData.value = preview
+  showProductPreview.value = true
+}
+
 function handleProductCopy(id) {
   const copied = productConfig.copyProduct(id)
   if (!copied) return
@@ -422,6 +437,10 @@ function handleProductCopy(id) {
 
 function handleProductDelete(id) {
   const formCard = productConfig.deleteProduct(id)
+  if (previewProductData.value?.id === id) {
+    showProductPreview.value = false
+    previewProductData.value = null
+  }
   if (formCard) applyFormCard(formCard)
   else closeActiveForm()
 }
