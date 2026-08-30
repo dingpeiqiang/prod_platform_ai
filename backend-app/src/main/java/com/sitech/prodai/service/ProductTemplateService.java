@@ -21,7 +21,7 @@ import java.util.stream.Collectors;
  * <p>双源约定（§13.3）：模板文件内 {@code status} 仅作注册种子初值，运行时生效状态以表 A 为准；
  * 启动时按表 A 最新 published 行重放运行时覆盖，保证重启后表 A 仍是唯一事实源。
  * <p>publish 流程（P1-6 四步守卫）：LOAD（表 A payload）→ VALIDATE（Registry §4.7 候选校验）
- * → SMOKE（dryrun：P2-2 未完成前降级为仅跑 P1-7 回归用例集）→ COMMIT（Registry 运行时覆盖
+ * → SMOKE（P1-7 回归用例集断言 + P2-6 双引擎 diff 门禁，报告落表 B）→ COMMIT（Registry 运行时覆盖
  * + 表 A published 级联弃用旧版 + 表 B publish 日志）。守卫期间旧基线保持 published（并存窗口）。
  * <p>rollback 流程：取表 A 目标版本 payload → 守卫三步（同上）→ 成功记 rollback 日志。
  */
@@ -34,17 +34,20 @@ public class ProductTemplateService {
     private final LastKnownGoodGuard guard;
     private final ProductTemplateRegistry templateRegistry;
     private final ProductConfigRegressionService regressionService;
+    private final TemplateDiffGateService diffGateService;
     private final ObjectMapper objectMapper;
 
     public ProductTemplateService(OntologyVersionService versionService,
                                   LastKnownGoodGuard guard,
                                   ProductTemplateRegistry templateRegistry,
                                   ProductConfigRegressionService regressionService,
+                                  TemplateDiffGateService diffGateService,
                                   ObjectMapper objectMapper) {
         this.versionService = versionService;
         this.guard = guard;
         this.templateRegistry = templateRegistry;
         this.regressionService = regressionService;
+        this.diffGateService = diffGateService;
         this.objectMapper = objectMapper;
     }
 
@@ -145,7 +148,7 @@ public class ProductTemplateService {
                     }
                     return errors;
                 })
-                .smoke(pending -> regressionService.smokeAgainstGraph(null))
+                .smoke(pending -> smokeWithDiffReport(dryrun))
                 .build();
         Map<String, Object> report = guard.execute(request);
         report.put("templateId", templateId);
@@ -173,7 +176,7 @@ public class ProductTemplateService {
                 .summary("template rollback: " + templateId + " -> " + toVersion)
                 .payload(target.getPayload())
                 .validator(templateRegistry::validateCandidate)
-                .smoke(pending -> regressionService.smokeAgainstGraph(null))
+                .smoke(pending -> smokeWithDiffReport(dryrun))
                 .build();
         Map<String, Object> report = guard.execute(request);
         report.put("templateId", templateId);
@@ -253,11 +256,25 @@ public class ProductTemplateService {
                 "dryrun", dryrun));
     }
 
-    /** dryrun（§13.3）：P2-2 未完成前降级为仅跑回归用例集（SMOKE 步已执行），此处记录报告骨架。 */
+    /**
+     * SMOKE 步（P2-6 回接 §13.4）：P1-7 回归断言 + 双引擎 diff 门禁，
+     * diff 报告随写回 dryrun（COMMIT 时落表 B detail 供评审）。
+     */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> smokeWithDiffReport(Map<String, Object> dryrun) {
+        List<Map<String, Object>> failures = new ArrayList<>(
+                regressionService.smokeAgainstGraph(null));
+        Map<String, Object> diffReport = diffGateService.runAll(null);
+        dryrun.put("diffGate", diffReport);
+        failures.addAll((List<Map<String, Object>>) diffReport.get("failures"));
+        return failures;
+    }
+
+    /** dryrun（§13.3）：P1-7 回归用例集（SMOKE 步执行）+ P2-6 双引擎 diff 门禁报告。 */
     private Map<String, Object> dryrunReport() {
         Map<String, Object> dryrun = new LinkedHashMap<>();
-        dryrun.put("mode", "regression_cases_only");
-        dryrun.put("note", "P2-2 抽取 diff 未接入前，dryrun 降级为 P1-7 回归用例集（SMOKE 步执行）");
+        dryrun.put("mode", "regression_cases + derive_diff_gate");
+        dryrun.put("note", "SMOKE 步执行 P1-7 回归断言与 P2-6 双引擎 diff 门禁，报告随本节点落表 B");
         return dryrun;
     }
 

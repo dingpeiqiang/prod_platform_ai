@@ -107,8 +107,13 @@ class ProductTemplateServiceTest {
         registry.init();
         ProductConfigRegressionService regression = mock(ProductConfigRegressionService.class);
         lenient().when(regression.smokeAgainstGraph(any())).thenReturn(List.of());
+        TemplateDiffGateService diffGate = mock(TemplateDiffGateService.class);
+        Map<String, Object> emptyGate = new LinkedHashMap<>();
+        emptyGate.put("failures", List.of());
+        emptyGate.put("blocking", true);
+        lenient().when(diffGate.runAll(any())).thenReturn(emptyGate);
         templateService = new ProductTemplateService(
-                versionService, new LastKnownGoodGuard(versionService), registry, regression, mapper);
+                versionService, new LastKnownGoodGuard(versionService), registry, regression, diffGate, mapper);
     }
 
     @Test

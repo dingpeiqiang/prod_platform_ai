@@ -12,6 +12,8 @@ import com.sitech.prodai.service.ProductConfigRegressionService;
 import com.sitech.prodai.service.ProductOntologyService;
 import com.sitech.prodai.service.ProductTemplateRegistry;
 import com.sitech.prodai.service.ProductTemplateService;
+import com.sitech.prodai.service.TemplateComplianceService;
+import com.sitech.prodai.service.TemplateDiffGateService;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -40,19 +42,25 @@ public class ProductOntologyController {
     private final ProductTemplateRegistry templateRegistry;
     private final ProductConfigRegressionService regressionService;
     private final ProductTemplateService templateService;
+    private final TemplateDiffGateService diffGateService;
+    private final TemplateComplianceService templateComplianceService;
 
     public ProductOntologyController(
             ProductOntologyService productOntologyService,
             OntologyService ontologyService,
             ProductTemplateRegistry templateRegistry,
             ProductConfigRegressionService regressionService,
-            ProductTemplateService templateService
+            ProductTemplateService templateService,
+            TemplateDiffGateService diffGateService,
+            TemplateComplianceService templateComplianceService
     ) {
         this.productOntologyService = productOntologyService;
         this.ontologyService = ontologyService;
         this.templateRegistry = templateRegistry;
         this.regressionService = regressionService;
         this.templateService = templateService;
+        this.diffGateService = diffGateService;
+        this.templateComplianceService = templateComplianceService;
     }
 
     private Map<String, Object> ok(Map<String, Object> body) {
@@ -167,6 +175,12 @@ public class ProductOntologyController {
         return ok(regressionService.runAll());
     }
 
+    /** P2-6 双引擎 diff 门禁报告（评审入口）：derive_rules 引擎 vs 存量 inferFields 字段级对比。 */
+    @GetMapping("/config/regression/diff")
+    public Map<String, Object> regressionDiff() {
+        return ok(diffGateService.runAll(null));
+    }
+
     @PostMapping("/config/infer")
     public Map<String, Object> infer(@RequestBody(required = false) InferRequest request) {
         InferRequest safe = request == null ? new InferRequest() : request;
@@ -176,8 +190,27 @@ public class ProductOntologyController {
     @PostMapping("/config/compliance")
     public Map<String, Object> compliance(@RequestBody(required = false) ComplianceRequest request) {
         ComplianceRequest safe = request == null ? new ComplianceRequest() : request;
-        return ok(productOntologyService.checkComplianceSmart(
-                safe.getOfferingId(), safe.getText(), safe.getDraft()));
+        // 先做存量 smart 源解析（草稿/在架/LLM 兜底），再套用 P2-4 模板裁剪面与轻量字段约束。
+        // 解析失败（如未提供套餐/草稿）时原样返回存量提示。
+        Map<String, Object> smart = productOntologyService.checkComplianceSmart(
+                safe.getOfferingId(), safe.getText(), safe.getDraft());
+        if (!Boolean.TRUE.equals(smart.get("success"))
+                || !(smart.get("draft") instanceof Map<?, ?> resolvedDraft)) {
+            return ok(smart);
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> draft = (Map<String, Object>) resolvedDraft;
+        Map<String, Object> body = templateComplianceService.checkComplianceByTemplate(draft, null);
+        // 回填 smart 解析元信息（source/sourceLabel/offeringId/offeringName/query/intent）
+        for (String key : List.of("source", "sourceLabel", "offeringId", "offeringName",
+                "query", "intent")) {
+            if (smart.containsKey(key)) {
+                body.put(key, smart.get(key));
+            }
+        }
+        body.put("draft", draft);
+        body.put("success", true);
+        return ok(body);
     }
 
     @PostMapping("/config/chat")

@@ -237,6 +237,11 @@
         "engine": "java",
         "proposalAlias": "R-CONF-001",
         "fields": ["fixedFeeAmount", "monthlyFee", "chargePlan.fixedFeeAmount"]
+      },
+      "R-GATE": {
+        "name": "P2-6 回归门禁（双引擎 diff + 期望报文节点）",
+        "enabled": true,
+        "engine": "java"
       }
     },
     "proposalMapping": {

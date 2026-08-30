@@ -181,6 +181,11 @@ public class ProductConfigRegressionService {
         return result;
     }
 
+    /** 回归用例集只读视图（P2-6 双引擎 diff 门禁复用同一用例源）。 */
+    public List<Map<String, Object>> cases() {
+        return loadCases();
+    }
+
     private List<Map<String, Object>> loadCases() {
         List<Map<String, Object>> cached = caseCache;
         if (cached != null) {
