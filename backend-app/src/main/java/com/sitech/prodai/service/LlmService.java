@@ -8,8 +8,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.MessageType;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.metadata.Usage;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -28,8 +31,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Service
 @ConditionalOnProperty(name = "prodai.llm.enabled", havingValue = "true", matchIfMissing = false)
@@ -50,6 +56,9 @@ public class LlmService {
     /** 第一次重试的基础退避毫秒（按尝试次数线性放大） */
     private static final long TRANSIENT_403_BACKOFF_MS = 500L;
 
+    /** 出站 HTTP 日志序号，用于将请求/响应两条日志配对 */
+    private static final AtomicLong HTTP_SEQ = new AtomicLong();
+
     public LlmService(ProdAiProperties properties,
                       Optional<ModelRouter> modelRouter, Optional<TokenCounter> tokenCounter) {
         this.properties = properties;
@@ -69,28 +78,40 @@ public class LlmService {
         ChatClient client = getChatClient(request.getModelConfig());
         List<Message> messages = toMessages(request);
         OpenAiChatOptions options = buildOptions(request.getModelConfig());
+        String model = options.getModel() == null ? "<unknown>" : options.getModel();
+        int promptChars = countPromptChars(messages);
+        String preview = buildPromptPreview(messages);
 
         // 网关对合法客户端可能偶发返回 403「当前租户已禁止该客户端访问」等瞬时权限错误
         // （同一 URL/Key/模型下时 200 时 403），此处做有限次退避重试，避免整条流直接失败。
         int attempts = TRANSIENT_403_RETRIES + 1;
+        long start = System.currentTimeMillis();
         for (int attempt = 1; attempt <= attempts; attempt++) {
             try {
-                String content = client.prompt()
+                ChatResponse chatResponse = client.prompt()
                         .messages(messages)
                         .options(options)
                         .call()
-                        .content();
+                        .chatResponse();
+                String content = extractContent(chatResponse);
+                log.info("[LlmService] LLM调用完成 model={} elapsed={}ms promptChars={} respChars={} tokens(in/out/total)={} prompt~「{}」",
+                        model, System.currentTimeMillis() - start, promptChars, content.length(),
+                        formatUsage(chatResponse), preview);
                 Map<String, Object> body = new LinkedHashMap<>();
                 body.put("success", true);
-                body.put("content", content == null ? "" : content);
+                body.put("content", content);
                 body.put("runtime", "spring-ai");
                 return body;
             } catch (Exception e) {
+                long elapsed = System.currentTimeMillis() - start;
                 if (isTransientPermissionError(e) && attempt < attempts) {
-                    log.warn("[LlmService] 网关瞬时 403 权限错误，第 {} 次重试: {}", attempt, e.getMessage());
+                    log.warn("[LlmService] LLM调用失败(网关瞬时403，可重试) model={} elapsed={}ms attempt={}/{} error={}",
+                            model, elapsed, attempt, attempts, e.getMessage());
                     sleepQuietly(TRANSIENT_403_BACKOFF_MS * attempt);
                     continue;
                 }
+                log.warn("[LlmService] LLM调用失败 model={} elapsed={}ms attempt={}/{} promptChars={} prompt~「{}」 error={}",
+                        model, elapsed, attempt, attempts, promptChars, preview, e.getMessage());
                 throw e;
             }
         }
@@ -170,21 +191,37 @@ public class LlmService {
         ChatClient client = getChatClient(request.getModelConfig());
         List<Message> messages = toMessages(request);
         OpenAiChatOptions options = buildOptions(request.getModelConfig());
+        String model = options.getModel() == null ? "<unknown>" : options.getModel();
+        log.info("[LlmService] LLM流式调用开始 model={} promptChars={} prompt~「{}」",
+                model, countPromptChars(messages), buildPromptPreview(messages));
 
-        Flux<Map<String, Object>> start = Flux.just(event("text_start", null));
+        long start = System.currentTimeMillis();
+        AtomicInteger chunkCount = new AtomicInteger();
+        AtomicInteger respChars = new AtomicInteger();
+        Flux<Map<String, Object>> startEvent = Flux.just(event("text_start", null));
         Flux<Map<String, Object>> chunks = client.prompt()
                 .messages(messages)
                 .options(options)
                 .stream()
                 .content()
                 .filter(text -> text != null && !text.isEmpty())
-                .map(text -> event("text", text));
+                .doOnNext(text -> {
+                    chunkCount.incrementAndGet();
+                    respChars.addAndGet(text.length());
+                })
+                .map(text -> event("text", text))
+                .doOnComplete(() -> log.info("[LlmService] LLM流式调用完成 model={} elapsed={}ms chunks={} respChars={}",
+                        model, System.currentTimeMillis() - start, chunkCount.get(), respChars.get()))
+                .doOnError(ex -> log.warn("[LlmService] LLM流式调用失败 model={} elapsed={}ms chunks={} respChars={} error={}",
+                        model, System.currentTimeMillis() - start, chunkCount.get(), respChars.get(), ex.getMessage()))
+                .doOnCancel(() -> log.info("[LlmService] LLM流式调用中断(客户端取消) model={} elapsed={}ms respChars={}",
+                        model, System.currentTimeMillis() - start, respChars.get()));
         Flux<Map<String, Object>> end = Flux.just(
                 event("text_end", null),
                 doneEvent()
         );
 
-        return Flux.concat(start, chunks, end)
+        return Flux.concat(startEvent, chunks, end)
                 .onErrorResume(ex -> Flux.just(
                         event("text_start", null),
                         event("text", "LLM 调用失败: " + ex.getMessage()),
@@ -234,15 +271,14 @@ public class LlmService {
                         @Override
                         public ClientHttpResponse intercept(HttpRequest request, byte[] body,
                                                             ClientHttpRequestExecution execution) throws java.io.IOException {
-                            String auth = request.getHeaders().getFirst("Authorization");
-                            String masked = auth == null ? "<none>" : (auth.length() > 12
-                                    ? auth.substring(0, 10) + "..." + auth.substring(auth.length() - 4) : "<hidden>");
-                            String modelTag = extractModel(body);
-                            log.info("[LlmService] 出站LLM请求 url={} auth={} model={} bodyLen={}",
-                                    request.getURI(), masked, modelTag, body == null ? 0 : body.length);
+                            long seq = HTTP_SEQ.incrementAndGet();
+                            boolean hasAuth = request.getHeaders().getFirst("Authorization") != null;
+                            log.info("[LlmService] LLM出站请求 #{} model={} url={} bodyLen={} auth={}",
+                                    seq, extractModel(body), request.getURI(), body == null ? 0 : body.length, hasAuth);
+                            long start = System.currentTimeMillis();
                             ClientHttpResponse resp = execution.execute(request, body);
-                            log.info("[LlmService] 出站LLM响应 status={} url={}",
-                                    resp.getStatusCode(), request.getURI());
+                            log.info("[LlmService] LLM出站响应 #{} status={} elapsed={}ms",
+                                    seq, resp.getStatusCode(), System.currentTimeMillis() - start);
                             return resp;
                         }
                     });
@@ -537,6 +573,49 @@ public class LlmService {
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    /** 提取非流式调用返回文本（空 choices / 空输出时返回空串，便于日志与上层统一处理）。 */
+    private String extractContent(ChatResponse response) {
+        if (response == null || response.getResult() == null || response.getResult().getOutput() == null) {
+            return "";
+        }
+        String text = response.getResult().getOutput().getText();
+        return text == null ? "" : text;
+    }
+
+    /** 格式化 token 用量为 in/out/total；无用量信息时返回 ?/?/?。 */
+    private String formatUsage(ChatResponse response) {
+        if (response == null || response.getMetadata() == null || response.getMetadata().getUsage() == null) {
+            return "?/?/?";
+        }
+        Usage usage = response.getMetadata().getUsage();
+        return Objects.toString(usage.getPromptTokens(), "?") + "/"
+                + Objects.toString(usage.getCompletionTokens(), "?") + "/"
+                + Objects.toString(usage.getTotalTokens(), "?");
+    }
+
+    /** 统计送入模型的 prompt 字符数（含 system 与历史消息）。 */
+    private int countPromptChars(List<Message> messages) {
+        int total = 0;
+        for (Message m : messages) {
+            if (m.getText() != null) {
+                total += m.getText().length();
+            }
+        }
+        return total;
+    }
+
+    /** 提取最后一条 user 消息的单行压缩预览（截断60字符），便于从日志直接看出本次调用在问什么。 */
+    private String buildPromptPreview(List<Message> messages) {
+        String text = "";
+        for (Message m : messages) {
+            if (MessageType.USER == m.getMessageType() && m.getText() != null && !m.getText().isBlank()) {
+                text = m.getText();
+            }
+        }
+        String flat = text.replaceAll("\\s+", " ").trim();
+        return flat.length() > 60 ? flat.substring(0, 60) + "…" : flat;
     }
 
     private String extractModel(byte[] body) {
