@@ -13,7 +13,7 @@ import com.sitech.prodai.service.ProductOntologyService;
 import com.sitech.prodai.service.ProductTemplateRegistry;
 import com.sitech.prodai.service.ProductTemplateService;
 import com.sitech.prodai.service.TemplateComplianceService;
-import com.sitech.prodai.service.TemplateDiffGateService;
+import com.sitech.prodai.service.TemplateDeriveEngine;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -42,8 +42,8 @@ public class ProductOntologyController {
     private final ProductTemplateRegistry templateRegistry;
     private final ProductConfigRegressionService regressionService;
     private final ProductTemplateService templateService;
-    private final TemplateDiffGateService diffGateService;
     private final TemplateComplianceService templateComplianceService;
+    private final TemplateDeriveEngine deriveEngine;
 
     public ProductOntologyController(
             ProductOntologyService productOntologyService,
@@ -51,16 +51,16 @@ public class ProductOntologyController {
             ProductTemplateRegistry templateRegistry,
             ProductConfigRegressionService regressionService,
             ProductTemplateService templateService,
-            TemplateDiffGateService diffGateService,
-            TemplateComplianceService templateComplianceService
+            TemplateComplianceService templateComplianceService,
+            TemplateDeriveEngine deriveEngine
     ) {
         this.productOntologyService = productOntologyService;
         this.ontologyService = ontologyService;
         this.templateRegistry = templateRegistry;
         this.regressionService = regressionService;
         this.templateService = templateService;
-        this.diffGateService = diffGateService;
         this.templateComplianceService = templateComplianceService;
+        this.deriveEngine = deriveEngine;
     }
 
     private Map<String, Object> ok(Map<String, Object> body) {
@@ -175,16 +175,18 @@ public class ProductOntologyController {
         return ok(regressionService.runAll());
     }
 
-    /** P2-6 双引擎 diff 门禁报告（评审入口）：derive_rules 引擎 vs 存量 inferFields 字段级对比。 */
+    /** P2-6 收敛后回归门禁报告（评审入口）；P2-7 后为引擎侧回归断言（含报文节点判据）。 */
     @GetMapping("/config/regression/diff")
     public Map<String, Object> regressionDiff() {
-        return ok(diffGateService.runAll(null));
+        return ok(regressionService.runAll());
     }
 
     @PostMapping("/config/infer")
     public Map<String, Object> infer(@RequestBody(required = false) InferRequest request) {
         InferRequest safe = request == null ? new InferRequest() : request;
-        return ok(productOntologyService.inferFields(safe.getSlots(), safe.getDraft()));
+        // P2-7 主链路：derive_rules 引擎接管推理（Java inferFields 分支已清理）
+        return ok(deriveEngine.derive(safe.getSlots(), safe.getDraft(),
+                productOntologyService.loadGraph()));
     }
 
     @PostMapping("/config/compliance")

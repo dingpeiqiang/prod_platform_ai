@@ -34,20 +34,17 @@ public class ProductTemplateService {
     private final LastKnownGoodGuard guard;
     private final ProductTemplateRegistry templateRegistry;
     private final ProductConfigRegressionService regressionService;
-    private final TemplateDiffGateService diffGateService;
     private final ObjectMapper objectMapper;
 
     public ProductTemplateService(OntologyVersionService versionService,
                                   LastKnownGoodGuard guard,
                                   ProductTemplateRegistry templateRegistry,
                                   ProductConfigRegressionService regressionService,
-                                  TemplateDiffGateService diffGateService,
                                   ObjectMapper objectMapper) {
         this.versionService = versionService;
         this.guard = guard;
         this.templateRegistry = templateRegistry;
         this.regressionService = regressionService;
-        this.diffGateService = diffGateService;
         this.objectMapper = objectMapper;
     }
 
@@ -148,7 +145,7 @@ public class ProductTemplateService {
                     }
                     return errors;
                 })
-                .smoke(pending -> smokeWithDiffReport(dryrun))
+                .smoke(pending -> smoke(dryrun))
                 .build();
         Map<String, Object> report = guard.execute(request);
         report.put("templateId", templateId);
@@ -176,7 +173,7 @@ public class ProductTemplateService {
                 .summary("template rollback: " + templateId + " -> " + toVersion)
                 .payload(target.getPayload())
                 .validator(templateRegistry::validateCandidate)
-                .smoke(pending -> smokeWithDiffReport(dryrun))
+                .smoke(pending -> smoke(dryrun))
                 .build();
         Map<String, Object> report = guard.execute(request);
         report.put("templateId", templateId);
@@ -257,24 +254,22 @@ public class ProductTemplateService {
     }
 
     /**
-     * SMOKE 步（P2-6 回接 §13.4）：P1-7 回归断言 + 双引擎 diff 门禁，
-     * diff 报告随写回 dryrun（COMMIT 时落表 B detail 供评审）。
+     * SMOKE 步（P2-7 回接：P1-7 回归断言，同步将报告落 dryrun 供 COMMIT 时落表 B）。
+     * <p>P2-6 双引擎 diff 门禁已随 Java inferFields 分支清理一并下线（P2-7），
+     * derive_rules 引擎成为唯一推理实现，回归断言即守卫。
      */
-    @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> smokeWithDiffReport(Map<String, Object> dryrun) {
+    private List<Map<String, Object>> smoke(Map<String, Object> dryrun) {
         List<Map<String, Object>> failures = new ArrayList<>(
                 regressionService.smokeAgainstGraph(null));
-        Map<String, Object> diffReport = diffGateService.runAll(null);
-        dryrun.put("diffGate", diffReport);
-        failures.addAll((List<Map<String, Object>>) diffReport.get("failures"));
+        dryrun.put("smoke", true);
         return failures;
     }
 
-    /** dryrun（§13.3）：P1-7 回归用例集（SMOKE 步执行）+ P2-6 双引擎 diff 门禁报告。 */
+    /** dryrun（§13.3）：P1-7 回归用例集（SMOKE 步执行）。 */
     private Map<String, Object> dryrunReport() {
         Map<String, Object> dryrun = new LinkedHashMap<>();
-        dryrun.put("mode", "regression_cases + derive_diff_gate");
-        dryrun.put("note", "SMOKE 步执行 P1-7 回归断言与 P2-6 双引擎 diff 门禁，报告随本节点落表 B");
+        dryrun.put("mode", "regression_cases");
+        dryrun.put("note", "SMOKE 步执行 P1-7 回归断言，报告随本节点落表 B");
         return dryrun;
     }
 

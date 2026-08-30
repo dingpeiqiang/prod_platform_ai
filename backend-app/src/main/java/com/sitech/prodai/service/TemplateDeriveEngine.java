@@ -25,10 +25,9 @@ import java.util.stream.Collectors;
  *   <li>{@code when + visible/hidden}：显隐裁决视图（不改动草稿值，仅输出 body.visibility）；</li>
  *   <li>{@code derive}：数值派生按 §4.5 归 SHACL/Java，引擎不硬解，仅记录跳过。</li>
  * </ul>
- * <p>灰度契约（§12.5 先并存后切换）：引擎输出 body 与存量 inferFields 同构
- * （success/draft/inferredFields/appliedRules/recommendedTemplates/messageRootKey），
- * 差异仅限 body 增量键（visibility/templateRulesApplied）与 draft 增量键（模板 set_default 新增字段），
- * 由 {@link DeriveDiffUtil} 做字段级 diff 评审；diff 通过后 P2-7 删除存量 Java 分支。
+ * <p>单引擎契约（P2-7 已删除存量 Java inferFields 分支）：引擎输出 body 为唯一事实
+ * （success/draft/inferredFields/appliedRules/recommendedTemplates/visibility/
+ * templateRulesApplied/messageRootKey），draft 增量键仅限模板 set_default 新增字段。
  * <p>图谱仍为场景默认值单源（bizScenarios/templates），与 SMOKE 参数化通道一致；
  * R-C01/R-C02 门控、addon 品类推导、模板要素补全语义与存量逐一平移，保证回归基线不漂移。
  */

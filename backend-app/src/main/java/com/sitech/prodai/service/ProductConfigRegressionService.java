@@ -38,17 +38,20 @@ public class ProductConfigRegressionService {
     private final ResourceLoader resourceLoader;
     private final ProductOntologyService productOntologyService;
     private final ConfigMessageProjector messageProjector;
+    private final TemplateDeriveEngine deriveEngine;
 
     private volatile List<Map<String, Object>> caseCache;
 
     public ProductConfigRegressionService(ObjectMapper objectMapper,
                                           ResourceLoader resourceLoader,
                                           ProductOntologyService productOntologyService,
-                                          ConfigMessageProjector messageProjector) {
+                                          ConfigMessageProjector messageProjector,
+                                          TemplateDeriveEngine deriveEngine) {
         this.objectMapper = objectMapper;
         this.resourceLoader = resourceLoader;
         this.productOntologyService = productOntologyService;
         this.messageProjector = messageProjector;
+        this.deriveEngine = deriveEngine;
     }
 
     /** 对现行运行态执行全部回归用例（验收核对入口）。 */
@@ -109,8 +112,9 @@ public class ProductConfigRegressionService {
         Map<String, Object> slots = castMap(c.get("slots"));
         List<Map<String, Object>> assertionFailures = new ArrayList<>();
 
-        // 全链路：推理 → 合规 → 报文投影（P1 边界：存量 Java 逻辑）
-        Map<String, Object> infer = productOntologyService.inferFields(slots, draftInput, graphOverride);
+        // 全链路：推理 → 合规 → 报文投影（P2-7：derive_rules 引擎接管，Java inferFields 分支已清理）
+        Map<String, Object> infer = deriveEngine.derive(slots, draftInput,
+                graphOverride != null ? graphOverride : productOntologyService.loadGraph());
         Map<String, Object> draft = castMap(infer.get("draft"));
         Set<String> inferRules = stringSet(infer.get("appliedRules"));
         Map<String, Object> compliance = productOntologyService.checkCompliance(draft, graphOverride);

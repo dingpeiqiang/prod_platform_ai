@@ -82,6 +82,8 @@ class ZhiduBatchRegressionTest {
 
         OntologyVersionService versionService =
                 new OntologyVersionService(assetVersionRepository, versionLogRepository);
+        TemplateDeriveEngine deriveEngine =
+                new TemplateDeriveEngine(opsRules, templateRegistry, projector, mapper);
         // P1-7：延迟解析回归运行器（reloadGraph SMOKE 回接），规避构造循环
         @SuppressWarnings("unchecked")
         ObjectProvider<ProductConfigRegressionService> regressionProvider =
@@ -103,10 +105,13 @@ class ZhiduBatchRegressionTest {
                 projector,
                 new LastKnownGoodGuard(versionService),
                 versionService,
+                new RiskAuditService(),
+                deriveEngine,
                 regressionProvider
         );
         service.init();
-        lazyRegression.set(new ProductConfigRegressionService(mapper, resourceLoader, service, projector));
+        lazyRegression.set(new ProductConfigRegressionService(
+                mapper, resourceLoader, service, projector, deriveEngine));
     }
 
     @Test

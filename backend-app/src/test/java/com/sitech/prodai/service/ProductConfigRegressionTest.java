@@ -94,6 +94,8 @@ class ProductConfigRegressionTest {
         projector.init();
 
         versionService = new OntologyVersionService(assetVersionRepository, versionLogRepository);
+        TemplateDeriveEngine deriveEngine =
+                new TemplateDeriveEngine(opsRules, templateRegistry, projector, mapper);
         ObjectProvider<ProductConfigRegressionService> regressionProvider =
                 mock(ObjectProvider.class);
         AtomicReference<ProductConfigRegressionService> lazyRegression = new AtomicReference<>();
@@ -113,10 +115,13 @@ class ProductConfigRegressionTest {
                 projector,
                 new LastKnownGoodGuard(versionService),
                 versionService,
+                new RiskAuditService(),
+                deriveEngine,
                 regressionProvider
         );
         service.init();
-        regressionService = new ProductConfigRegressionService(mapper, resourceLoader, service, projector);
+        regressionService = new ProductConfigRegressionService(
+                mapper, resourceLoader, service, projector, deriveEngine);
         lazyRegression.set(regressionService);
     }
 

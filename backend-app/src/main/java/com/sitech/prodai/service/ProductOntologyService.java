@@ -101,10 +101,8 @@ public class ProductOntologyService {
 
     private Map<String, Object> graphCache;
     private String graphSourceId = "empty";
-    private final Map<String, Object> riskRuleOverrides = new ConcurrentHashMap<>();
-    /** 风险阈值覆盖审计（内存，最近 50 条）。 */
-    private final List<Map<String, Object>> riskRuleAuditLog = new ArrayList<>();
-    private static final int RISK_RULE_AUDIT_LIMIT = 50;
+    private final RiskAuditService riskAudit;
+    private final TemplateDeriveEngine deriveEngine;
     /** 配置场景审计链路（内存）；对齐方案 get_trace / explain。 */
     private final Map<String, List<Map<String, Object>>> configTraces = new ConcurrentHashMap<>();
     /** 最近一次批量稽核快照（定时/手动）。 */
@@ -124,6 +122,8 @@ public class ProductOntologyService {
                               ConfigMessageProjector messageProjector,
                               LastKnownGoodGuard lastKnownGoodGuard,
                               OntologyVersionService versionService,
+                              RiskAuditService riskAudit,
+                              TemplateDeriveEngine deriveEngine,
                               ObjectProvider<ProductConfigRegressionService> regressionServiceProvider) {
         this.objectMapper = objectMapper;
         this.properties = properties;
@@ -139,6 +139,8 @@ public class ProductOntologyService {
         this.messageProjector = messageProjector;
         this.lastKnownGoodGuard = lastKnownGoodGuard;
         this.versionService = versionService;
+        this.riskAudit = riskAudit;
+        this.deriveEngine = deriveEngine;
         this.regressionServiceProvider = regressionServiceProvider;
     }
 
@@ -272,29 +274,16 @@ public class ProductOntologyService {
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("riskEffective", riskRules());
         view.put("riskDefaults", opsRules.riskDefaults());
-        view.put("riskOverrides", new LinkedHashMap<>(riskRuleOverrides));
-        view.put("riskAuditLog", snapshotRiskRuleAudit());
+        view.put("riskOverrides", riskAudit.overrides());
+        view.put("riskAuditLog", riskAudit.snapshotAudit());
         view.put("opsRulesVersion", opsRules.version());
         view.put("rulesPath", properties.getOntology().getRulesPath());
         view.put("swrlEnabled", properties.getOntology().isSwrlEnabled());
         return view;
     }
 
-    private synchronized List<Map<String, Object>> snapshotRiskRuleAudit() {
-        return riskRuleAuditLog.stream().map(LinkedHashMap::new).collect(Collectors.toList());
-    }
-
     private synchronized void appendRiskRuleAudit(String action, Map<String, Object> detail) {
-        Map<String, Object> row = new LinkedHashMap<>();
-        row.put("at", Instant.now().toString());
-        row.put("action", action);
-        row.put("detail", detail == null ? Map.of() : new LinkedHashMap<>(detail));
-        row.put("overrides", new LinkedHashMap<>(riskRuleOverrides));
-        row.put("effective", riskRules());
-        riskRuleAuditLog.add(0, row);
-        while (riskRuleAuditLog.size() > RISK_RULE_AUDIT_LIMIT) {
-            riskRuleAuditLog.remove(riskRuleAuditLog.size() - 1);
-        }
+        riskAudit.append(action, detail, riskRules());
     }
 
     public Map<String, Object> getGraphSummary() {
@@ -381,248 +370,6 @@ public class ProductOntologyService {
         body.put("riskRuleDefaults", riskRules());
         body.put("opsRules", getOpsRulesCatalog());
         return withModeMeta(body);
-    }
-
-    public Map<String, Object> inferFields(Map<String, Object> slots, Map<String, Object> draft) {
-        return inferFields(slots, draft, null);
-    }
-
-    /**
-     * 图谱参数化变体（P1-7 SMOKE 回接）：{@code graphOverride} 非空时用 pending 图谱跑回归断言，
-     * 不触碰现行 graphCache，保证 last-known-good 守卫的事务语义。
-     */
-    public Map<String, Object> inferFields(Map<String, Object> slots, Map<String, Object> draft,
-                                           Map<String, Object> graphOverride) {
-        Map<String, Object> graph = graphOverride != null ? graphOverride : loadGraph();
-        Map<String, Object> result = deepCopy(draft == null ? Map.of() : draft);
-        Map<String, String> fillSources = new LinkedHashMap<>();
-        Set<String> appliedRules = new LinkedHashSet<>();
-        Map<String, Object> safeSlots = slots == null ? Map.of() : slots;
-
-        if (truthy(safeSlots.get("clearBindExisting"))) {
-            result.put("bindExistingMainPkg", "");
-            fillSources.put("bindExistingMainPkg", "user_said");
-        }
-
-        for (Map.Entry<String, Object> entry : safeSlots.entrySet()) {
-            String key = entry.getKey();
-            if ("clearBindExisting".equals(key)) {
-                continue;
-            }
-            Object value = entry.getValue();
-            if ("bindExistingMainPkg".equals(key)) {
-                result.put(key, value);
-                if (!empty(value)) {
-                    fillSources.put(key, "user_said");
-                }
-                continue;
-            }
-            if (!empty(value)) {
-                result.put(key, value);
-                fillSources.put(key, "user_said");
-            }
-        }
-
-        String scenario = str(firstNonEmpty(result.get("bizScenario"), safeSlots.get("bizScenario")));
-        Map<String, Object> scenarioCfg = castMap(castMap(graph.get("bizScenarios")).get(scenario));
-        Map<String, Object> defaults = castMap(scenarioCfg.get("defaults"));
-        // 智读批量带 sourceExcerpt：只补结构字段，不灌入模板资费/流量等，避免覆盖文档真实内容
-        boolean fromDocument = !empty(safeSlots.get("sourceExcerpt"));
-        Set<String> structuralKeys = Set.of(
-                "offeringType", "mutexGroup", "targetUser", "productLine",
-                "messageRootKey", "categoryCode", "channelScope");
-
-        if ("家庭融合".equals(scenario) && opsRules.isConfigEnabled("R-C01")) {
-            for (Map.Entry<String, Object> e : defaults.entrySet()) {
-                if (fromDocument && !structuralKeys.contains(e.getKey())) {
-                    continue;
-                }
-                if (empty(result.get(e.getKey()))) {
-                    result.put(e.getKey(), e.getValue());
-                    fillSources.put(e.getKey(), "scenario_default");
-                    appliedRules.add("R-C01");
-                }
-            }
-            if (!fromDocument && empty(result.get("includeBroadband"))) {
-                result.put("includeBroadband",
-                        defaults.getOrDefault("includeBroadband",
-                                opsRules.configDefaultStr("includeBroadband", "500M")));
-                fillSources.put("includeBroadband", "scenario_default");
-                appliedRules.add("R-C01");
-            }
-        }
-
-        boolean isCampus = "校园".equals(str(result.get("targetUser"))) || "校园体验".equals(scenario);
-        String offeringType = str(firstNonEmpty(result.get("offeringType"), safeSlots.get("offeringType")));
-        if (!fromDocument && opsRules.isConfigEnabled("R-C02") && isCampus
-                && empty(result.get("monthlyFee")) && !"addon".equals(offeringType)) {
-            result.put("monthlyFee", defaults.getOrDefault("monthlyFee",
-                    opsRules.configDefaultNum("campusMonthlyFee", 59)));
-            fillSources.put("monthlyFee", "template");
-            appliedRules.add("R-C02");
-            for (Map.Entry<String, Object> e : defaults.entrySet()) {
-                if (!"monthlyFee".equals(e.getKey()) && empty(result.get(e.getKey()))) {
-                    result.put(e.getKey(), e.getValue());
-                    fillSources.put(e.getKey(), "scenario_default");
-                }
-            }
-        } else if (!fromDocument && isCampus && "addon".equals(offeringType)) {
-            for (Map.Entry<String, Object> e : defaults.entrySet()) {
-                if ("monthlyFee".equals(e.getKey()) || "mutexGroup".equals(e.getKey())) {
-                    continue;
-                }
-                if (empty(result.get(e.getKey()))) {
-                    result.put(e.getKey(), e.getValue());
-                    fillSources.put(e.getKey(), "scenario_default");
-                }
-            }
-        }
-
-        // 品类 / messageRootKey 推导（v2.2）——先于模板选择，避免加装包误用主套餐模板/报文
-        if (empty(result.get("messageRootKey")) && !empty(scenarioCfg.get("messageRootKey"))) {
-            result.put("messageRootKey", scenarioCfg.get("messageRootKey"));
-            fillSources.put("messageRootKey", "scenario_default");
-            appliedRules.add("R-C01");
-        }
-        if (empty(result.get("categoryCode")) && !empty(scenarioCfg.get("categoryCode"))) {
-            result.put("categoryCode", scenarioCfg.get("categoryCode"));
-            fillSources.put("categoryCode", "scenario_default");
-        }
-        // 加装/附加：品类走 familyAddPrc，避免家庭融合场景默认顶成 familyBasePrc
-        if ("addon".equals(str(result.get("offeringType")))) {
-            String cat = str(result.get("categoryCode"));
-            String root = str(result.get("messageRootKey"));
-            boolean familyCtx = "家庭融合".equals(scenario)
-                    || "家庭".equals(str(result.get("targetUser")))
-                    || "familyBasePrc".equals(cat)
-                    || "familyBasePrc".equals(root)
-                    || cat.isBlank();
-            if (familyCtx && !"familyAddPrc".equals(cat)) {
-                result.put("messageRootKey", "familyAddPrc");
-                result.put("categoryCode", "familyAddPrc");
-                fillSources.put("messageRootKey", "scenario_default");
-                fillSources.put("categoryCode", "scenario_default");
-            }
-        }
-        // 按品类选择模板：家庭附加 → TPL-FAMILY-ADD-20，勿套用畅享128主套餐模板
-        Object templateId = resolveTemplateId(scenarioCfg, result);
-        if (templateId != null && empty(result.get("basedOnTemplate"))) {
-            result.put("basedOnTemplate", templateId);
-            fillSources.put("basedOnTemplate", "template");
-        }
-        if (empty(result.get("channelScope"))) {
-            result.put("channelScope", opsRules.configDefaultStr("channelScope", "全渠道"));
-            fillSources.put("channelScope", "scenario_default");
-        }
-        boolean addonOffer = "addon".equals(str(result.get("offeringType")))
-                || "familyAddPrc".equals(str(result.get("categoryCode")))
-                || "personAddPrc".equals(str(result.get("categoryCode")));
-        if (addonOffer && (empty(result.get("mutexGroup")) || "MAIN_PKG".equals(str(result.get("mutexGroup"))))) {
-            result.put("mutexGroup", "ADDON");
-            fillSources.put("mutexGroup", "scenario_default");
-        } else if (empty(result.get("mutexGroup"))) {
-            result.put("mutexGroup", defaults.getOrDefault("mutexGroup",
-                    opsRules.configDefaultStr("mutexGroup", "MAIN_PKG")));
-            fillSources.put("mutexGroup", "scenario_default");
-        }
-        // 模板要素补全（智读文档模式仅补 requiredElements，资费/流量以原文为准）
-        Map<String, Object> template = castMap(castMap(graph.get("templates")).get(str(templateId)));
-        if (!template.isEmpty() && opsRules.isConfigEnabled("R-C02")) {
-            List<String> templateKeys = fromDocument
-                    ? List.of("requiredElements")
-                    : List.of("fixedFeeAmount", "monthlyFee", "includeVoice", "includeData",
-                    "includeBroadband", "downstreamBandwidth", "upstreamBandwidth", "requiredElements");
-            for (String key : templateKeys) {
-                if (empty(result.get(key)) && !empty(template.get(key))) {
-                    result.put(key, template.get(key));
-                    fillSources.put(key, "template");
-                    appliedRules.add("R-C02");
-                }
-            }
-            if (empty(result.get("messageRootKey")) && !empty(template.get("messageRootKey"))) {
-                result.put("messageRootKey", template.get("messageRootKey"));
-                fillSources.put("messageRootKey", "template");
-                appliedRules.add("R-C02");
-            }
-        }
-
-        result = messageProjector.applyCategoryDefaults(result);
-        enrichSceneNotices(result, fillSources);
-        // 文档/用户已给月费时，固费与之对齐，避免模板 128 与月费 158 并存
-        if (!empty(result.get("monthlyFee"))) {
-            String feeSrc = fillSources.get("monthlyFee");
-            String fixedSrc = fillSources.get("fixedFeeAmount");
-            boolean feeFromUser = "user_said".equals(feeSrc);
-            boolean fixedFromDefault = fixedSrc == null
-                    || "template".equals(fixedSrc)
-                    || "scenario_default".equals(fixedSrc);
-            if (feeFromUser && (empty(result.get("fixedFeeAmount")) || fixedFromDefault
-                    || !String.valueOf(result.get("fixedFeeAmount")).equals(String.valueOf(result.get("monthlyFee"))))) {
-                result.put("fixedFeeAmount", result.get("monthlyFee"));
-                fillSources.put("fixedFeeAmount", feeSrc != null ? feeSrc : "user_said");
-            }
-        }
-        if (!empty(result.get("fixedFeeAmount")) && empty(result.get("monthlyFee"))) {
-            result.put("monthlyFee", result.get("fixedFeeAmount"));
-        }
-        if (!empty(result.get("monthlyFee")) && empty(result.get("fixedFeeAmount"))) {
-            result.put("fixedFeeAmount", result.get("monthlyFee"));
-        }
-        // 结构化要素块（供投影与展示）
-        if (result.get("chargePlan") == null || castMap(result.get("chargePlan")).isEmpty()) {
-            Map<String, Object> charge = new LinkedHashMap<>();
-            if (!empty(result.get("fixedFeeAmount"))) {
-                charge.put("fixedFeeAmount", result.get("fixedFeeAmount"));
-            }
-            if (!empty(result.get("chargeMode"))) {
-                charge.put("chargeMode", result.get("chargeMode"));
-            }
-            if (!empty(result.get("accountItem"))) {
-                charge.put("accountItem", result.get("accountItem"));
-            }
-            if (!charge.isEmpty()) {
-                result.put("chargePlan", charge);
-            }
-        }
-        if (result.get("releaseScope") == null || castMap(result.get("releaseScope")).isEmpty()) {
-            Map<String, Object> release = new LinkedHashMap<>();
-            if (!empty(result.get("channelScope"))) {
-                release.put("channelScope", result.get("channelScope"));
-            }
-            if (!empty(result.get("regionScope"))) {
-                release.put("regionScope", result.get("regionScope"));
-            }
-            if (!empty(result.get("regionDetail"))) {
-                release.put("regionDetail", result.get("regionDetail"));
-            }
-            if (!release.isEmpty()) {
-                result.put("releaseScope", release);
-            }
-        }
-        result.put("fillSources", fillSources);
-
-        List<Map<String, Object>> inferred = new ArrayList<>();
-        for (Map.Entry<String, String> e : fillSources.entrySet()) {
-            String src = e.getValue();
-            if (!"scenario_default".equals(src) && !"template".equals(src)) {
-                continue;
-            }
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("field", e.getKey());
-            row.put("value", result.get(e.getKey()));
-            row.put("fillSource", src);
-            row.put("rule", "scenario_default".equals(src) ? "R-C01" : ("template".equals(src) ? "R-C02" : null));
-            inferred.add(row);
-        }
-
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("success", true);
-        body.put("draft", result);
-        body.put("inferredFields", inferred);
-        body.put("appliedRules", new ArrayList<>(appliedRules).stream().sorted().collect(Collectors.toList()));
-        body.put("recommendedTemplates", templateId == null ? List.of() : List.of(templateId));
-        body.put("messageRootKey", result.get("messageRootKey"));
-        return body;
     }
 
     public Map<String, Object> checkCompliance(Map<String, Object> draftInput) {
@@ -1241,12 +988,12 @@ public class ProductOntologyService {
         fill.put("copiedFrom", shelf.get("offeringId"));
         draft.put("fillSources", fill);
 
-        // 关联模板
-        Map<String, Object> infer = inferFields(Map.of(
+        // 关联模板（P2-7 主链路切换：derive_rules 引擎接管推理）
+        Map<String, Object> infer = deriveEngine.derive(Map.of(
                 "bizScenario", draft.get("bizScenario"),
                 "targetUser", draft.get("targetUser"),
                 "offeringType", draft.get("offeringType")
-        ), draft);
+        ), draft, loadGraph());
         @SuppressWarnings("unchecked")
         Map<String, Object> inferredDraft = (Map<String, Object>) infer.get("draft");
         if (inferredDraft != null) {
@@ -2169,7 +1916,7 @@ public class ProductOntologyService {
     public Map<String, Object> chatConfigure(String text, Map<String, Object> draft) {
         OpsExtractionService.SlotExtractResult extracted = extractionService.extractSlots(text == null ? "" : text);
         Map<String, Object> slots = extracted.slots();
-        Map<String, Object> infer = inferFields(slots, draft);
+        Map<String, Object> infer = deriveEngine.derive(slots, draft, loadGraph());
         @SuppressWarnings("unchecked")
         Map<String, Object> inferredDraft = (Map<String, Object>) infer.get("draft");
         Map<String, Object> compliance = checkCompliance(inferredDraft);
@@ -2226,7 +1973,7 @@ public class ProductOntologyService {
         for (int idx = 0; idx < pkgs.size(); idx++) {
             Map<String, Object> slots = deepCopy(pkgs.get(idx));
             // 业务场景以文档抽取结果为准，不再默认灌入校园体验
-            Map<String, Object> infer = inferFields(slots, null);
+            Map<String, Object> infer = deriveEngine.derive(slots, null, graph);
             @SuppressWarnings("unchecked")
             Map<String, Object> draft = (Map<String, Object>) infer.get("draft");
             Map<String, Object> compliance = checkCompliance(draft);
@@ -2723,21 +2470,13 @@ public class ProductOntologyService {
     }
 
     public Map<String, Object> updateRiskRules(Map<String, Object> overrides) {
-        Map<String, Object> applied = new LinkedHashMap<>();
-        if (overrides != null) {
-            Set<String> allowed = Set.of(
-                    "zeroSalesShelfDays", "zeroSalesDaysWindow",
-                    "highRiskReviewDays", "lowRevenuePercentile", "ruleVersion"
-            );
-            for (Map.Entry<String, Object> e : overrides.entrySet()) {
-                if (allowed.contains(e.getKey()) && e.getValue() != null) {
-                    riskRuleOverrides.put(e.getKey(), e.getValue());
-                    applied.put(e.getKey(), e.getValue());
-                }
-            }
-            if (!applied.isEmpty()) {
-                appendRiskRuleAudit("update", applied);
-            }
+        Set<String> allowed = Set.of(
+                "zeroSalesShelfDays", "zeroSalesDaysWindow",
+                "highRiskReviewDays", "lowRevenuePercentile", "ruleVersion"
+        );
+        Map<String, Object> applied = riskAudit.apply(overrides, allowed);
+        if (!applied.isEmpty()) {
+            appendRiskRuleAudit("update", applied);
         }
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("success", true);
@@ -2747,8 +2486,7 @@ public class ProductOntologyService {
     }
 
     public Map<String, Object> resetRiskRules() {
-        Map<String, Object> before = new LinkedHashMap<>(riskRuleOverrides);
-        riskRuleOverrides.clear();
+        Map<String, Object> before = riskAudit.clear();
         appendRiskRuleAudit("reset", Map.of("cleared", before));
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("success", true);
@@ -3642,12 +3380,7 @@ public class ProductOntologyService {
     private Map<String, Object> riskRules() {
         Map<String, Object> fromFile = opsRules.riskDefaults();
         Map<String, Object> fromGraph = castMap(loadGraph().get("riskRuleDefaults"));
-        Map<String, Object> base = new LinkedHashMap<>();
-        // 外置 ops_rules 优先，图谱 defaults 作兼容回退
-        base.putAll(fromGraph);
-        base.putAll(fromFile);
-        base.putAll(riskRuleOverrides);
-        return base;
+        return riskAudit.effective(fromGraph, fromFile);
     }
 
 

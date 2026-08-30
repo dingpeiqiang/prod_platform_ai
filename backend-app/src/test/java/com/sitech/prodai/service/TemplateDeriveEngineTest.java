@@ -31,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 
@@ -95,6 +96,7 @@ class TemplateDeriveEngineTest {
 
         OntologyVersionService versionService =
                 new OntologyVersionService(assetVersionRepository, versionLogRepository);
+        engine = new TemplateDeriveEngine(opsRules, templateRegistry, projector, mapper);
         ObjectProvider<ProductConfigRegressionService> regressionProvider =
                 mock(ObjectProvider.class);
         AtomicReference<ProductConfigRegressionService> lazyRegression = new AtomicReference<>();
@@ -114,15 +116,16 @@ class TemplateDeriveEngineTest {
                 projector,
                 new LastKnownGoodGuard(versionService),
                 versionService,
+                new RiskAuditService(),
+                engine,
                 regressionProvider
         );
         service.init();
-        engine = new TemplateDeriveEngine(opsRules, templateRegistry, projector, mapper);
     }
 
     @Test
     @SuppressWarnings("unchecked")
-    void deriveEngineShouldReachParityWithLegacyOnRegressionCaseSet() throws Exception {
+    void deriveEngineShouldMeetRegressionContractOnCaseSet() throws Exception {
         Map<String, Object> caseDoc = mapper.readValue(
                 resourceLoader.getResource(CASES_PATH).getInputStream(),
                 new TypeReference<Map<String, Object>>() { });
@@ -136,22 +139,39 @@ class TemplateDeriveEngineTest {
             Map<String, Object> slots = castMap(c.get("slots"));
             Map<String, Object> draft = castMap(c.get("draft"));
 
-            Map<String, Object> legacyBody = service.inferFields(slots, draft);
             Map<String, Object> engineBody = engine.derive(slots, draft, graph);
-            Map<String, Object> report = DeriveDiffUtil.diff(legacyBody, engineBody);
-
-            if (!Boolean.TRUE.equals(report.get("parityPassed"))) {
-                failures.add(DeriveDiffUtil.summarize(caseId, report) + " detail=" + report);
+            if (!Boolean.TRUE.equals(engineBody.get("success"))) {
+                fail(caseId + " 引擎推导应成功: " + engineBody.get("messageRootKey"));
+            }
+            // 结构契约（P2-7 单一引擎，存量 inferFields 已下线）：输出键完整且类别推导稳定
+            for (String key : List.of("draft", "inferredFields", "appliedRules",
+                    "recommendedTemplates", "visibility", "templateRulesApplied", "messageRootKey")) {
+                if (!engineBody.containsKey(key)) {
+                    failures.add(caseId + " 缺少输出键: " + key);
+                }
+            }
+            Map<String, Object> engineDraft = (Map<String, Object>) engineBody.get("draft");
+            // 引擎不得破坏入参草稿既有值（derive_rules 仅在 if_missing 时补全）
+            for (Map.Entry<String, Object> e : draft.entrySet()) {
+                if (e.getKey().equals("__trace") || e.getKey().equals("__source")) {
+                    continue;
+                }
+                Object inputVal = e.getValue();
+                Object derivedVal = engineDraft.get(e.getKey());
+                if (inputVal != null && derivedVal != null && !inputVal.equals(derivedVal)) {
+                    failures.add(caseId + " 入参值被覆盖: " + e.getKey()
+                            + " in=" + inputVal + " out=" + derivedVal);
+                }
             }
             // 引擎增量必须可追溯：全部来自模板 set_default（fillSource=derive_rule）
-            for (Object item : (List<?>) report.get("engineAdditions")) {
-                Map<String, Object> addition = (Map<String, Object>) item;
-                if (!"derive_rule".equals(addition.get("trace"))) {
-                    failures.add(caseId + " 不可追溯增量: " + addition);
+            for (Object item : (List<?>) engineBody.get("templateRulesApplied")) {
+                String rule = String.valueOf(item);
+                if (rule.startsWith("derive:") && !rule.contains("SKIP")) {
+                    failures.add(caseId + " 存在 deben 解释的 derived 规则（引擎应记录跳过）: " + rule);
                 }
             }
         }
-        assertTrue(failures.isEmpty(), "derive_rules 引擎应与存量推理语义对齐，失败=" + failures);
+        assertTrue(failures.isEmpty(), "derive_rules 引擎应满足回归结构契约，失败=" + failures);
     }
 
     @Test

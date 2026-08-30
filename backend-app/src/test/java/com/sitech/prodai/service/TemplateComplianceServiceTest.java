@@ -65,6 +65,7 @@ class TemplateComplianceServiceTest {
     private ObjectMapper mapper;
     private ResourceLoader resourceLoader;
     private ProductOntologyService service;
+    private TemplateDeriveEngine deriveEngine;
     private TemplateComplianceService complianceService;
 
     @BeforeEach
@@ -96,6 +97,7 @@ class TemplateComplianceServiceTest {
 
         OntologyVersionService versionService =
                 new OntologyVersionService(assetVersionRepository, versionLogRepository);
+        deriveEngine = new TemplateDeriveEngine(opsRules, templateRegistry, projector, mapper);
         ObjectProvider<ProductConfigRegressionService> regressionProvider =
                 mock(ObjectProvider.class);
         AtomicReference<ProductConfigRegressionService> lazyRegression = new AtomicReference<>();
@@ -115,6 +117,8 @@ class TemplateComplianceServiceTest {
                 projector,
                 new LastKnownGoodGuard(versionService),
                 versionService,
+                new RiskAuditService(),
+                deriveEngine,
                 regressionProvider
         );
         service.init();
@@ -133,8 +137,8 @@ class TemplateComplianceServiceTest {
         List<String> failures = new ArrayList<>();
         for (Map<String, Object> c : cases) {
             String caseId = String.valueOf(c.get("case_id"));
-            Map<String, Object> draft = (Map<String, Object>) service.inferFields(
-                    castMap(c.get("slots")), castMap(c.get("draft"))).get("draft");
+            Map<String, Object> draft = (Map<String, Object>) deriveEngine.derive(
+                    castMap(c.get("slots")), castMap(c.get("draft")), service.loadGraph()).get("draft");
 
             Map<String, Object> legacy = service.checkCompliance(draft);
             Map<String, Object> cut = complianceService.checkComplianceByTemplate(draft, null);
