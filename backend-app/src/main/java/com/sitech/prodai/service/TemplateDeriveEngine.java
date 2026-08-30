@@ -349,8 +349,139 @@ public class TemplateDeriveEngine {
     }
 
     // ------------------------------------------------------------------
-    // 存量语义平移（P2-7 删除 Java 分支后由本类独占维护）
+    // P3-6 溯源链回放（PROV-O derivedFrom，"为什么默认500M"类问题）
     // ------------------------------------------------------------------
+
+    /**
+     * 字段默认值溯源链回放：按实际补全生效顺序（高优先层在后）逐层解析 field 的可补给默认，
+     * 返回各层来源 + 生效层 + 引用规则，可回答"为什么该字段是默认值"。
+     * {@code graph} 为现行图谱（bizScenarios/templates），与 derive() 入参一致。
+     */
+    public Map<String, Object> explainFieldDefault(String field, Map<String, Object> graph) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        if (field == null || field.isBlank()) {
+            body.put("field", "");
+            body.put("message", "field 必填");
+            return body;
+        }
+        Map<String, Object> safeGraph = graph == null ? Map.of() : graph;
+        Map<String, Object> scenarioDefaults = flattenScenarioDefaults(safeGraph);
+        List<Map<String, Object>> chain = new ArrayList<>();
+
+        // 层1：用户显式/上游 slot（无 draft 无法判定，仅说明若携带则以用户为准）
+        Map<String, Object> userLayer = new LinkedHashMap<>();
+        userLayer.put("layer", "user_said");
+        userLayer.put("source", "用户/上游槽位显式给定");
+        userLayer.put("rule", null);
+        chain.add(userLayer);
+
+        // 层2：模板要素补全（R-C02，element set 内的字段）
+        Map<String, Object> templateLayer = layerWithValue("template", "R-C02", field,
+                () -> firstElementValue(field, safeGraph));
+        if (!empty(values(templateLayer).get(field))) {
+            chain.add(templateLayer);
+        }
+
+        // 层3：场景默认（R-C01，含 ops_rules configDefault 兜底）
+        Map<String, Object> scenarioLayer = layerWithValue("scenario_default", "R-C01", field,
+                () -> scenarioDefaults.get(field));
+        if (!empty(values(scenarioLayer).get(field))) {
+            chain.add(scenarioLayer);
+        }
+
+        // 层4：ops_rules 配置默认兜底（configDefault），不入 scenario_default 时也回答来源
+        Object opsDefault = opsRules.configDefaults().get(field);
+        if (!empty(opsDefault)) {
+            Map<String, Object> opsLayer = new LinkedHashMap<>();
+            opsLayer.put("layer", "ops_rules_default");
+            opsLayer.put("source", "外置 ops_rules 配置阈值/defaults");
+            opsLayer.put("rule", "R-C01");
+            Map<String, Object> v = new LinkedHashMap<>();
+            v.put(field, opsDefault);
+            opsLayer.put("value", v);
+            chain.add(opsLayer);
+        }
+
+        Object effective = null;
+        String effectiveLayer = null;
+        String effectiveRule = null;
+        // 实际执行补全 = 高优先层在后（user→template→scenario→ops_rules），取最后一个非空层
+        for (Map<String, Object> layer : chain) {
+            Object candidate = values(layer).get(field);
+            if (!empty(candidate)) {
+                effective = candidate;
+                effectiveLayer = (String) layer.get("layer");
+                effectiveRule = (String) layer.get("rule");
+            }
+        }
+        if (effective == null) {
+            effectiveLayer = null;
+            effectiveRule = null;
+        }
+
+        // 移除空值层（保留 user_said 作为语义锚点）
+        chain.removeIf(l -> empty(values(l).get(field)) && !"user_said".equals(l.get("layer")));
+
+        body.put("field", field);
+        body.put("value", effective);
+        body.put("sourceLayer", effectiveLayer);
+        body.put("rule", effectiveRule);
+        body.put("provenance", "derivedFrom <- " + (effectiveLayer == null ? "none" : effectiveLayer));
+        body.put("chain", chain);
+        String wm = effectiveLayer == null
+                ? "未发现任何默认层为该字段补默认（可能由用户/上游给定，或属推理输出）"
+                : "字段默认值由 " + effectiveLayer + " 层补全（规则 " + effectiveRule + "）";
+        body.put("message", wm);
+        return body;
+    }
+
+    /** 汇总所有场景 defaults：同字段取第一个非空（场景无关地回答字段默认来源）。 */
+    private Map<String, Object> flattenScenarioDefaults(Map<String, Object> graph) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        Map<String, Object> biz = castMap(graph.get("bizScenarios"));
+        for (Object sc : biz.values()) {
+            Map<String, Object> defaults = castMap(castMap(sc).get("defaults"));
+            for (Map.Entry<String, Object> e : defaults.entrySet()) {
+                if (empty(out.get(e.getKey())) && !empty(e.getValue())) {
+                    out.put(e.getKey(), e.getValue());
+                }
+            }
+        }
+        return out;
+    }
+
+    /** 模板 element 集首个非空值（familyMain/bb/add 等各品类模板顶层字段）。 */
+    private Object firstElementValue(String field, Map<String, Object> graph) {
+        for (Map<String, Object> t : templateRegistry.allResolved()) {
+            Object v = t.get(field);
+            if (!empty(v)) {
+                return v;
+            }
+        }
+        return null;
+    }
+
+    private Map<String, Object> layerWithValue(String layer, String rule, String field,
+                                               java.util.function.Supplier<Object> supplier) {
+        Map<String, Object> layerBox = new LinkedHashMap<>();
+        Object value;
+        try {
+            value = supplier.get();
+        } catch (Exception e) {
+            value = null;
+        }
+        Map<String, Object> valueBox = new LinkedHashMap<>();
+        valueBox.put(field, value);
+        layerBox.put("layer", layer);
+        layerBox.put("rule", rule);
+        layerBox.put("value", valueBox);
+        return layerBox;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> values(Map<String, Object> layer) {
+        return (Map<String, Object>) layer.getOrDefault("value", Map.of());
+    }
 
     private void mergeSlots(Map<String, Object> safeSlots, Map<String, Object> result,
                             Map<String, String> fillSources) {

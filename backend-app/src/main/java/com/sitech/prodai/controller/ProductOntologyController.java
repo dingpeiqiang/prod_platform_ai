@@ -398,6 +398,12 @@ public class ProductOntologyController {
         return ok(productOntologyService.getConfigTrace(traceId));
     }
 
+    /** P3-6 溯源链回放：回答"字段默认值为什么是 X"（PROV-O derivedFrom）。 */
+    @GetMapping("/config/provenance/{field}")
+    public Map<String, Object> fieldProvenance(@PathVariable("field") String field) {
+        return ok(productOntologyService.explainFieldDefault(field));
+    }
+
     @PostMapping("/config/explain")
     public Map<String, Object> configExplain(@RequestBody(required = false) Map<String, Object> request) {
         Map<String, Object> body = request == null ? Map.of() : request;

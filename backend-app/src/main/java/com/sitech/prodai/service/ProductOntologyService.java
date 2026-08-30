@@ -1264,6 +1264,11 @@ public class ProductOntologyService {
         return body;
     }
 
+    /** P3-6 溯源链回放：字段默认值来源逐层解析（PROV-O derivedFrom，"为什么默认500M"）。 */
+    public Map<String, Object> explainFieldDefault(String field) {
+        return deriveEngine.explainFieldDefault(field, loadGraph());
+    }
+
     /** P3-5 ① 审计链来源：优先表 B config 域回读，空则回退内存态（重启后由表 B 复原链路）。 */
     private List<Map<String, Object>> configSteps(String traceId) {
         List<Map<String, Object>> fromDb = versionService.configTrace(traceId);
