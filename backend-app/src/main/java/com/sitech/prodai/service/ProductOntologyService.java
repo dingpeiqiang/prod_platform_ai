@@ -1179,7 +1179,9 @@ public class ProductOntologyService {
 
         String baseIri = properties.getOntology().normalizedBaseIri() + "config/";
         String uri = baseIri + newId;
-        Map<String, Object> facts = new LinkedHashMap<>();
+        // P3-2 ① ABox 扩列：以完整草稿字段为底（含业务子对象内的标量），再压入规范化运行字段，
+        // 使 SPARQL/SWRL 可对完整字段检索，不再只见约 10 项子集。
+        Map<String, Object> facts = new LinkedHashMap<>(draft);
         facts.put("schemeId", newId);
         facts.put("workOrderId", draft.get("workOrderId"));
         facts.put("status", "已上线");
