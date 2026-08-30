@@ -90,16 +90,7 @@ public class ProductTemplateRegistry {
             errors.add("模板目录扫描失败: " + e.getMessage());
         }
 
-        Map<String, Map<String, Object>> resolved = new LinkedHashMap<>();
-        for (Map.Entry<String, Map<String, Object>> entry : raw.entrySet()) {
-            String templateId = entry.getKey();
-            List<String> templateErrors = validate(templateId, raw);
-            if (!templateErrors.isEmpty()) {
-                templateErrors.forEach(err -> errors.add("[" + templateId + "] " + err));
-                continue;
-            }
-            resolved.put(templateId, mergeExtends(templateId, raw, new LinkedHashSet<>()));
-        }
+        Map<String, Map<String, Object>> resolved = resolveAll(raw, errors);
 
         Map<String, Object> report = new LinkedHashMap<>();
         report.put("totalRaw", raw.size());
@@ -122,6 +113,75 @@ public class ProductTemplateRegistry {
     /** 热重载（增量注册：新增产品只落地模板文件）。 */
     public synchronized Map<String, Object> reload() {
         return load();
+    }
+
+    /**
+     * 运行时模板覆盖（P2-5 状态机 publish COMMIT 步）：候选模板注入后全量校验+合并，
+     * 任一模板失败则保留现行（last-known-good），不触碰运行态。
+     */
+    public synchronized Map<String, Object> applyOverride(Map<String, Object> candidate) {
+        String templateId = str(candidate.get("template_id"));
+        Map<String, Object> report = new LinkedHashMap<>();
+        if (templateId == null || templateId.isBlank()) {
+            report.put("success", false);
+            report.put("errors", List.of("候选模板缺少 template_id"));
+            report.put("keptLastKnownGood", true);
+            return report;
+        }
+        Map<String, Map<String, Object>> raw = new LinkedHashMap<>(rawTemplates);
+        raw.put(templateId, candidate);
+        List<String> errors = new ArrayList<>();
+        Map<String, Map<String, Object>> resolved = resolveAll(raw, errors);
+        if (!errors.isEmpty()) {
+            log.warn("[模板注册] 运行时覆盖被拒（保留现行）: {} - {}", templateId, errors);
+            report.put("success", false);
+            report.put("errors", errors);
+            report.put("keptLastKnownGood", true);
+            return report;
+        }
+        this.rawTemplates = new ConcurrentHashMap<>(raw);
+        this.resolvedTemplates = new ConcurrentHashMap<>(resolved);
+        report.put("success", true);
+        report.put("errors", errors);
+        report.put("keptLastKnownGood", false);
+        report.put("totalRaw", raw.size());
+        report.put("totalResolved", resolved.size());
+        this.lastValidationReport = report;
+        log.info("[模板注册] 运行时覆盖生效: {} (raw={} resolved={})", templateId, raw.size(), resolved.size());
+        return report;
+    }
+
+    /** 候选模板 §4.7 校验（以现行 raw 集为上下文，含 extends 父模板）；返回错误列表（空=通过）。 */
+    public List<String> validateCandidate(Map<String, Object> candidate) {
+        String templateId = str(candidate.get("template_id"));
+        if (templateId == null || templateId.isBlank()) {
+            return List.of("候选模板缺少 template_id");
+        }
+        Map<String, Map<String, Object>> context = new LinkedHashMap<>(rawTemplates);
+        context.put(templateId, candidate);
+        List<String> errors = new ArrayList<>();
+        validate(templateId, context).forEach(err -> errors.add("[" + templateId + "] " + err));
+        try {
+            mergeExtends(templateId, context, new LinkedHashSet<>());
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            errors.add("[" + templateId + "] " + e.getMessage());
+        }
+        return errors;
+    }
+
+    /** 全量校验 + 继承合并（load 与运行时覆盖共用）。 */
+    private Map<String, Map<String, Object>> resolveAll(Map<String, Map<String, Object>> raw, List<String> errors) {
+        Map<String, Map<String, Object>> resolved = new LinkedHashMap<>();
+        for (Map.Entry<String, Map<String, Object>> entry : raw.entrySet()) {
+            String templateId = entry.getKey();
+            List<String> templateErrors = validate(templateId, raw);
+            if (!templateErrors.isEmpty()) {
+                templateErrors.forEach(err -> errors.add("[" + templateId + "] " + err));
+                continue;
+            }
+            resolved.put(templateId, mergeExtends(templateId, raw, new LinkedHashSet<>()));
+        }
+        return resolved;
     }
 
     /** 按品类码取合并后的生效模板。 */

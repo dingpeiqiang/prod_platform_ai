@@ -11,6 +11,7 @@ import com.sitech.prodai.service.OntologyService;
 import com.sitech.prodai.service.ProductConfigRegressionService;
 import com.sitech.prodai.service.ProductOntologyService;
 import com.sitech.prodai.service.ProductTemplateRegistry;
+import com.sitech.prodai.service.ProductTemplateService;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -38,17 +39,20 @@ public class ProductOntologyController {
     private final OntologyService ontologyService;
     private final ProductTemplateRegistry templateRegistry;
     private final ProductConfigRegressionService regressionService;
+    private final ProductTemplateService templateService;
 
     public ProductOntologyController(
             ProductOntologyService productOntologyService,
             OntologyService ontologyService,
             ProductTemplateRegistry templateRegistry,
-            ProductConfigRegressionService regressionService
+            ProductConfigRegressionService regressionService,
+            ProductTemplateService templateService
     ) {
         this.productOntologyService = productOntologyService;
         this.ontologyService = ontologyService;
         this.templateRegistry = templateRegistry;
         this.regressionService = regressionService;
+        this.templateService = templateService;
     }
 
     private Map<String, Object> ok(Map<String, Object> body) {
@@ -105,6 +109,56 @@ public class ProductOntologyController {
         body.put("success", true);
         body.put("message", "templates reloaded");
         return ok(body);
+    }
+
+    // ---------------- 模板生命周期状态机（P2-5，§13.3） ----------------
+
+    /** 编辑新 draft（版本号++）：body 传模板 JSON payload。 */
+    @PostMapping("/config/template/{templateId}/versions")
+    public Map<String, Object> saveTemplateDraft(@PathVariable("templateId") String templateId,
+                                                 @RequestBody Map<String, Object> payload,
+                                                 @RequestParam(value = "author", required = false) String author,
+                                                 @RequestParam(value = "summary", required = false) String summary) {
+        return ok(templateService.saveDraft(templateId, payload, author, summary));
+    }
+
+    /** 版本列表 + 动作日志（表 A/表 B 视图）。 */
+    @GetMapping("/config/template/{templateId}/versions")
+    public Map<String, Object> templateVersions(@PathVariable("templateId") String templateId) {
+        return ok(templateService.versions(templateId));
+    }
+
+    /** draft ──review──► review。 */
+    @PostMapping("/config/template/{templateId}/submit-review")
+    public Map<String, Object> submitTemplateReview(@PathVariable("templateId") String templateId,
+                                                    @RequestParam("version") String version,
+                                                    @RequestParam(value = "operator", required = false) String operator) {
+        return ok(templateService.submitReview(templateId, version, operator));
+    }
+
+    /** review ──publish(dryrun通过)──► published：P1-6 四步守卫，失败保留现行。 */
+    @PostMapping("/config/template/{templateId}/publish")
+    public Map<String, Object> publishTemplate(@PathVariable("templateId") String templateId,
+                                               @RequestParam("version") String version,
+                                               @RequestParam(value = "operator", required = false) String operator) {
+        return ok(templateService.publish(templateId, version, operator));
+    }
+
+    /** rollback：取表 A 目标版本 payload → 守卫三步 → 成功记 rollback 日志。 */
+    @PostMapping("/config/template/{templateId}/rollback")
+    public Map<String, Object> rollbackTemplate(@PathVariable("templateId") String templateId,
+                                                @RequestParam("to") String toVersion,
+                                                @RequestParam(value = "operator", required = false) String operator) {
+        return ok(templateService.rollback(templateId, toVersion, operator));
+    }
+
+    /** published ──deprecate──► deprecated。 */
+    @PostMapping("/config/template/{templateId}/deprecate")
+    public Map<String, Object> deprecateTemplate(@PathVariable("templateId") String templateId,
+                                                 @RequestParam("version") String version,
+                                                 @RequestParam(value = "operator", required = false) String operator,
+                                                 @RequestParam(value = "reason", required = false) String reason) {
+        return ok(templateService.deprecate(templateId, version, operator, reason));
     }
 
     /** P1-7 验收核对：运行双品类回归用例集（家庭融合/校园/5G/宽带），返回逐条断言报告。 */

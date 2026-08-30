@@ -115,6 +115,30 @@ public class OntologyVersionService {
         return saved;
     }
 
+    /**
+     * 通用状态流转（P2-5 底座）：期望状态不符抛错；流转门控由 {@code ProductTemplateService} 状态机收口。
+     */
+    @Transactional
+    public OntologyAssetVersion transition(Long versionId, String expectedStatus, String targetStatus,
+                                           String operator, String action, Map<String, Object> detail) {
+        OntologyAssetVersion row = versionRepository.findById(versionId)
+                .orElseThrow(() -> new IllegalArgumentException("版本行不存在: " + versionId));
+        if (expectedStatus != null && !expectedStatus.equals(row.getStatus())) {
+            throw new IllegalStateException("状态流转被拒: 期望 " + expectedStatus + " 实际 "
+                    + row.getStatus() + "（" + row.getAssetCode() + " v" + row.getVersion() + "）");
+        }
+        row.setStatus(targetStatus);
+        OntologyAssetVersion saved = versionRepository.save(row);
+        Map<String, Object> logDetail = new LinkedHashMap<>();
+        logDetail.put("from", expectedStatus);
+        logDetail.put("to", targetStatus);
+        if (detail != null) {
+            logDetail.putAll(detail);
+        }
+        log(versionId, action, operator, logDetail);
+        return saved;
+    }
+
     /** 动作日志（publish / rollback / deprecate / reload / override）。 */
     @Transactional
     public void log(Long versionId, String action, String operator, Map<String, Object> detail) {
