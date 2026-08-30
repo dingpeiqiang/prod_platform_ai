@@ -121,6 +121,40 @@ public class ProductOntologyController {
 
     // ---------------- 模板生命周期状态机（P2-5，§13.3） ----------------
 
+    /**
+     * P3-1 新建产品类型模板草稿入库。
+     * body：模板 payload（可直接传模板 JSON；亦兼容 {template:{...}, author, summary}）。
+     * 仅允许全新 template_id；生效需 submit-review → publish（研发自助新增类型）。
+     */
+    @PostMapping("/config/template")
+    public Map<String, Object> createTemplate(@RequestBody(required = false) Map<String, Object> request) {
+        Map<String, Object> safe = request == null ? Map.of() : request;
+        Object templateRaw = safe.get("template");
+        Map<String, Object> payload;
+        if (templateRaw instanceof Map<?, ?> m) {
+            payload = new LinkedHashMap<>();
+            m.forEach((k, v) -> payload.put(String.valueOf(k), v));
+        } else {
+            payload = new LinkedHashMap<>(safe);
+            payload.remove("author");
+            payload.remove("summary");
+            payload.remove("operator");
+        }
+        Object authorRaw = safe.get("author") != null ? safe.get("author") : safe.get("operator");
+        String author = authorRaw != null ? String.valueOf(authorRaw) : null;
+        String summary = safe.get("summary") != null ? String.valueOf(safe.get("summary")) : null;
+        return ok(templateService.createTemplate(payload, author, summary));
+    }
+
+    /** P3-1 修订（版本号++）：PUT 别名对齐 §9.3 完整版契约，语义与 saveDraft 收敛。 */
+    @PutMapping("/config/template/{templateId}")
+    public Map<String, Object> updateTemplate(@PathVariable("templateId") String templateId,
+                                              @RequestBody Map<String, Object> payload,
+                                              @RequestParam(value = "author", required = false) String author,
+                                              @RequestParam(value = "summary", required = false) String summary) {
+        return ok(templateService.saveDraft(templateId, payload, author, summary));
+    }
+
     /** 编辑新 draft（版本号++）：body 传模板 JSON payload。 */
     @PostMapping("/config/template/{templateId}/versions")
     public Map<String, Object> saveTemplateDraft(@PathVariable("templateId") String templateId,

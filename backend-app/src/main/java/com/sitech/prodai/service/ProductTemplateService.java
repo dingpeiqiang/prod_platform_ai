@@ -104,6 +104,56 @@ public class ProductTemplateService {
         return body;
     }
 
+    /**
+     * P3-1 新建产品类型模板（草稿入库）：仅当该 template_id 尚无版本行时允许（全新类型注册）。
+     * 先经 Registry §4.7 候选校验（extends 基类 / 必填字段即时反馈），再登记表 A draft 行；
+     * 生效需走 submit-review → publish（COMMIT 时 Registry 运行时覆盖，研发自助新增类型）。
+     */
+    public Map<String, Object> createTemplate(Map<String, Object> payload,
+                                              String author, String summary) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        if (payload == null) {
+            body.put("success", false);
+            body.put("message", "模板 payload 均必填");
+            return body;
+        }
+        String templateId = str0(payload.get("template_id"));
+        if (templateId == null || templateId.isBlank()) {
+            body.put("success", false);
+            body.put("message", "payload 缺少 template_id");
+            return body;
+        }
+        Map<String, Object> strip = new LinkedHashMap<>(payload);
+        strip.remove("version");
+        strip.remove("status");
+        List<String> errors = templateRegistry.validateCandidate(strip);
+        if (!errors.isEmpty()) {
+            body.put("success", false);
+            body.put("message", "模板校验未通过，未入库");
+            body.put("errors", errors);
+            return body;
+        }
+        // 新建语义：已有版本行视为已存在类型，须走修订端点 PUT /config/template/{id}
+        if (!versionService.listVersions(OntologyVersionService.TYPE_TEMPLATE, templateId).isEmpty()) {
+            body.put("success", false);
+            body.put("message", "模板已存在（templateId=" + templateId + "），请走 PUT 修订而非新建");
+            return body;
+        }
+        String firstVersion = firstVersion(payload);
+        Map<String, Object> draftPayload = new LinkedHashMap<>(strip);
+        draftPayload.put("version", firstVersion);
+        OntologyAssetVersion row = versionService.register(OntologyVersionService.TYPE_TEMPLATE, templateId,
+                firstVersion, OntologyVersionService.STATUS_DRAFT, author, summary,
+                toJson(draftPayload));
+        body.put("success", true);
+        body.put("templateId", templateId);
+        body.put("version", firstVersion);
+        body.put("status", OntologyVersionService.STATUS_DRAFT);
+        body.put("versionRowId", row.getId());
+        body.put("message", "新模板 draft 已入库，请 submit-review 进入评审");
+        return body;
+    }
+
     /** draft ──review──► review。 */
     public Map<String, Object> submitReview(String templateId, String version, String operator) {
         OntologyAssetVersion row = requireRow(templateId, version);
@@ -299,6 +349,16 @@ public class ProductTemplateService {
             return builtIn == null || builtIn.isBlank() || "null".equals(builtIn) ? "1.0.0" : builtIn;
         }
         return base + "." + (maxPatch + 1);
+    }
+
+    /** 新建模板首版本：payload 内建 version 优先，缺省 1.0.0。 */
+    private String firstVersion(Map<String, Object> payload) {
+        String builtIn = str0(payload == null ? null : payload.get("version"));
+        return builtIn == null || builtIn.isBlank() ? "1.0.0" : builtIn;
+    }
+
+    private String str0(Object value) {
+        return value == null || "null".equals(String.valueOf(value)) ? null : String.valueOf(value);
     }
 
     private Map<String, Object> parsePayload(OntologyAssetVersion row) {
