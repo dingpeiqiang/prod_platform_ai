@@ -77,7 +77,13 @@ public class RdConfigChatTool implements AgentTool {
                         .label("配置草稿").type("object")
                         .description("本次生成的完整配置草稿").build(),
                 ToolOutputField.builder("config", ToolOutputField.Role.OTHER)
-                        .label("配置内容").type("object").build()
+                        .label("配置内容").type("object").build(),
+                ToolOutputField.builder("workOrder", ToolOutputField.Role.OTHER)
+                        .label("配置工单").type("object")
+                        .description("草稿生成即创建的配置工单（绑定当前会话）").build(),
+                ToolOutputField.builder("workOrderId", ToolOutputField.Role.BUSINESS_ENTITY_ID)
+                        .label("配置工单号").type("string")
+                        .description("本次生成的配置工单号（WO 开头），会话内后续提交/复制/删除凭此定位").build()
         );
     }
 
@@ -85,11 +91,13 @@ public class RdConfigChatTool implements AgentTool {
     public ExecutionResult execute(Map<String, Object> params) {
         String text = params != null ? String.valueOf(params.getOrDefault("text", "")) : "";
         String productType = params != null ? String.valueOf(params.getOrDefault("product_type", "")).trim() : "";
+        String sessionId = params != null ? String.valueOf(params.getOrDefault("session_id", "")).trim() : "";
         @SuppressWarnings("unchecked")
         Map<String, Object> draft = params != null && params.get("draft") instanceof Map<?, ?>
                 ? (Map<String, Object>) params.get("draft") : null;
 
-        log.info("[AgentTool] rd_config_chat 执行: text={}, productType={}", text, productType);
+        log.info("[AgentTool] rd_config_chat 执行: text={}, productType={}, sessionId={}",
+                text, productType, sessionId);
         if (text == null || text.isBlank()) {
             return ExecutionResult.fail(getName(), "缺少配置需求描述");
         }
@@ -97,11 +105,143 @@ public class RdConfigChatTool implements AgentTool {
             String category = RdProductTypeSupport.resolve(templateRegistry, productType, text);
             Map<String, Object> resp = productOntologyService.chatConfigure(
                     text, RdProductTypeSupport.applyToDraft(draft, category));
-            return ExecutionResult.ok(getName(), normalize(resp));
+            ensureDraftName(resp, text);
+            // 补名可能修复 R-C06（资费名称缺失）：对补名后的草稿重跑稽核，刷新结论再开单，
+            // 避免工单展示过期稽核结果、复制后重跑稽核出现结论不一致
+            if (resp.get("draft") instanceof Map<?, ?> rawNamed) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> namedDraft = (Map<String, Object>) rawNamed;
+                Map<String, Object> refreshed = productOntologyService.checkCompliance(namedDraft);
+                resp.put("compliancePass", refreshed.get("compliancePass"));
+                resp.put("issues", refreshed.get("issues"));
+                resp.put("canSubmit", refreshed.get("canSubmit"));
+            }
+            Map<String, Object> out = normalize(resp);
+
+            // 草稿生成即落库 + 即开单：工单 payload 关联 draftId，后续删除/复制仅凭工单号反查草稿
+            if (!sessionId.isBlank()) {
+                persistDraft(out, resp, sessionId);
+                attachDraftWorkOrder(out, resp, sessionId);
+            }
+            return ExecutionResult.ok(getName(), out);
         } catch (Exception e) {
             log.error("[AgentTool] rd_config_chat 失败: {}", e.getMessage(), e);
             return ExecutionResult.fail(getName(), "配置生成失败: " + e.getMessage());
         }
+    }
+
+    /** 草稿落库（pd_ai_ontology_instance）：draftId/clientId 写回 output.draft，供工单卡删除/复制操作使用。 */
+    @SuppressWarnings("unchecked")
+    private void persistDraft(Map<String, Object> out, Map<String, Object> resp, String sessionId) {
+        try {
+            if (!(out.get("draft") instanceof Map<?, ?> rawDraft) || ((Map<?, ?>) rawDraft).isEmpty()) {
+                return;
+            }
+            Map<String, Object> draft = new LinkedHashMap<>((Map<String, Object>) rawDraft);
+            Map<String, Object> saveReq = new LinkedHashMap<>();
+            saveReq.put("draft", draft);
+            saveReq.put("sessionId", sessionId);
+            Map<String, Object> saved = productOntologyService.saveConfigDraft(saveReq);
+            if (Boolean.TRUE.equals(saved.get("success"))) {
+                draft.put("draftId", saved.get("draftId"));
+                draft.put("clientId", saved.get("clientId"));
+                out.put("draft", draft);
+                out.put("draft_id", saved.get("draftId"));
+                out.put("client_id", saved.get("clientId"));
+            }
+        } catch (Exception e) {
+            log.warn("[AgentTool] rd_config_chat 草稿落库失败（不影响配置结果）: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 草稿命名兜底：derive 引擎不产出 offeringName，缺名时按「模板名+资费特征」拼名
+     * （如「家庭基础套餐·158元·500M」），避免后续复制副本退化为「配置草稿(副本)」。
+     */
+    private void ensureDraftName(Map<String, Object> resp, String text) {
+        if (resp == null || !(resp.get("draft") instanceof Map<?, ?> rawDraft)) {
+            return;
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> draft = (Map<String, Object>) rawDraft;
+        String name = str(firstNonEmpty(draft.get("offeringName"), draft.get("offerName")));
+        if (!name.isBlank()) {
+            return;
+        }
+        String templateName = templateRegistry.findByCategory(str(draft.get("categoryCode")))
+                .map(t -> str(t.get("template_name")))
+                .filter(s -> !s.isBlank())
+                .orElse("");
+        if (templateName.isEmpty()) {
+            return;
+        }
+        StringBuilder sb = new StringBuilder(templateName);
+        String fee = str(firstNonEmpty(draft.get("monthlyFee"), draft.get("fixedFeeAmount")));
+        if (!fee.isEmpty() && !"null".equals(fee)) {
+            sb.append('·').append(fee).append("元");
+        }
+        String bandwidth = str(firstNonEmpty(draft.get("bandwidth"), draft.get("speed")));
+        if (!bandwidth.isEmpty() && !"null".equals(bandwidth)) {
+            sb.append('·').append(bandwidth);
+        }
+        String resolvedName = sb.toString();
+        draft.put("offeringName", resolvedName);
+        if (draft.containsKey("offerName")) {
+            draft.put("offerName", resolvedName);
+        }
+        log.info("[AgentTool] rd_config_chat 草稿补名: {} (text={})", resolvedName, text);
+    }
+
+    /** 草稿产出后创建配置工单（source=rd_config_draft）；开单失败不阻断配置结果返回。 */
+    @SuppressWarnings("unchecked")
+    private void attachDraftWorkOrder(Map<String, Object> out, Map<String, Object> resp, String sessionId) {
+        try {
+            Map<String, Object> draft = resp != null && resp.get("draft") instanceof Map<?, ?> d
+                    ? (Map<String, Object>) d : Map.of();
+            String offeringName = str(firstNonEmpty(draft.get("offeringName"), draft.get("offerName")));
+            String monthlyFee = str(firstNonEmpty(draft.get("monthlyFee"), draft.get("fixedFeeAmount")));
+            String scenario = str(firstNonEmpty(draft.get("bizScenario"), draft.get("scenario")));
+
+            Map<String, Object> woReq = new LinkedHashMap<>();
+            woReq.put("offeringId", str(firstNonEmpty(draft.get("offeringId"), draft.get("offerId"))));
+            woReq.put("offeringName", offeringName);
+            woReq.put("source", "rd_config_draft");
+            woReq.put("sessionId", sessionId);
+            // 工单与草稿强关联：删除/复制操作仅凭 work_order_id 反查
+            woReq.put("draftId", str(firstNonEmpty(out.get("draft_id"), draft.get("draftId"), draft.get("draft_id"))));
+            // 稽核结果随单展示：工单卡直接透出草稿合规结论与问题项
+            woReq.put("compliancePass", resp.get("compliancePass"));
+            woReq.put("complianceIssues", resp.get("issues"));
+            woReq.put("title", offeringName.isEmpty() ? "产商品配置工单" : offeringName + "配置工单");
+            woReq.put("summary", "对话配置草稿已生成：月费=" + (monthlyFee.isEmpty() ? "-" : monthlyFee)
+                    + "，场景=" + (scenario.isEmpty() ? "-" : scenario));
+            woReq.put("actions", List.of(
+                    "核对配置草稿字段完整性",
+                    "合规校验后提交资费备案",
+                    "备案通过后发布上架"
+            ));
+            Map<String, Object> woBody = productOntologyService.createWorkOrder(woReq);
+            if (woBody != null && woBody.get("workOrder") instanceof Map<?, ?> wo) {
+                out.put("workOrder", wo);
+                out.put("workOrderId", ((Map<String, Object>) wo).get("workOrderId"));
+            }
+        } catch (Exception e) {
+            log.warn("[AgentTool] rd_config_chat 草稿开单失败（不影响配置结果）: {}", e.getMessage());
+        }
+    }
+
+    /** 取首个非空字符串。 */
+    private Object firstNonEmpty(Object... values) {
+        for (Object v : values) {
+            if (v != null && !String.valueOf(v).isBlank() && !"null".equals(String.valueOf(v))) {
+                return v;
+            }
+        }
+        return "";
+    }
+
+    private String str(Object v) {
+        return v == null ? "" : String.valueOf(v);
     }
 
     /** 将 service 响应规范化为工具 output 契约（抽取摘要 + 保留明细）。 */

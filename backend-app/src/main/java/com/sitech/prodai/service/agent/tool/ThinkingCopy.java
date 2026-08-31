@@ -104,6 +104,11 @@ public final class ThinkingCopy {
                 "对每个候选方案分别做合规检查与收益粗算，给出推荐",
                 "将各方案逐一跑合规检查，并用收益测算表对比收入/成本后择优",
                 Category.REASON));
+        m.put("rd_draft_manage", new ToolCopy(
+                "管理配置草稿",
+                "按您的指令删除/复制/提交配置草稿，工单状态同步流转",
+                "在配置管理后台找到对应工单的草稿，人工执行删除/复制/提交备案操作",
+                Category.GENERATE));
         return m;
     }
 
@@ -128,6 +133,7 @@ public final class ThinkingCopy {
             Map.entry("RD_COMPLIANCE", "合规校验"),
             Map.entry("RD_CONFIG_DISCOVER", "配置查询"),
             Map.entry("RD_SCHEME_COMPARE", "方案对比"),
+            Map.entry("RD_DRAFT_MANAGE", "草稿管理"),
             Map.entry("CHAT", "通用对话"),
             Map.entry("CLARIFY", "待补充信息"),
             Map.entry("REUSE_EVIDENCE", "证据复用")
@@ -142,6 +148,7 @@ public final class ThinkingCopy {
             "RD_COMPLIANCE", "提前发现资费/政策风险，避免提交后被驳回返工",
             "RD_CONFIG_DISCOVER", "先看有没有可复用的历史方案，避免重复建设",
             "RD_SCHEME_COMPARE", "用同一把尺子（合规+收益）衡量每个方案，给出推荐",
+            "RD_DRAFT_MANAGE", "把草稿操作落到工单闭环：删除/复制/提交备案一步到位",
             "CLARIFY", "信息不足时先问清楚，避免答非所问"
     );
 

@@ -34,7 +34,7 @@ public class OntologyInstance {
             joinColumns = @JoinColumn(name = "ontology_instance_id")
     )
     @MapKeyColumn(name = "data_key")
-    @Column(name = "data")
+    @Column(name = "data", columnDefinition = "TEXT")
     private Map<String, String> data = new LinkedHashMap<>();
 
     public Long getId() { return id; }

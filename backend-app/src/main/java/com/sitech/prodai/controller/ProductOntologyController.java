@@ -540,8 +540,11 @@ public class ProductOntologyController {
     }
 
     @GetMapping("/ops/work-orders")
-    public Map<String, Object> listWorkOrders(@RequestParam(value = "status", required = false) String status) {
-        return productOntologyService.listWorkOrders(status);
+    public Map<String, Object> listWorkOrders(
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "session_id", required = false) String sessionId
+    ) {
+        return productOntologyService.listWorkOrders(status, sessionId);
     }
 
     @PostMapping("/ops/work-orders")

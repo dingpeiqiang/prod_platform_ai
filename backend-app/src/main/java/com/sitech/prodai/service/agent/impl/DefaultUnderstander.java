@@ -54,10 +54,13 @@ public class DefaultUnderstander implements Understander {
 
     private final LlmService llmService;
     private final Map<String, AgentTool> toolMap;
+    private final com.sitech.prodai.repository.OpsWorkOrderRepository workOrderRepository;
 
-    public DefaultUnderstander(LlmService llmService, List<AgentTool> tools) {
+    public DefaultUnderstander(LlmService llmService, List<AgentTool> tools,
+                               com.sitech.prodai.repository.OpsWorkOrderRepository workOrderRepository) {
         this.llmService = llmService;
         this.toolMap = new LinkedHashMap<>();
+        this.workOrderRepository = workOrderRepository;
         if (tools != null) {
             for (AgentTool tool : tools) {
                 this.toolMap.put(tool.getName(), tool);
@@ -103,7 +106,16 @@ public class DefaultUnderstander implements Understander {
         for (int attempt = 1; attempt <= MAX_TRANSLATE_ATTEMPTS; attempt++) {
             try {
                 List<Map<String, String>> history = toHistory(context);
-                llmResult = llmService.completeMessages(buildSystemPrompt(rdScene), history, question);
+                String systemPrompt = buildSystemPrompt(rdScene);
+                // rd 场景注入会话工单清单（工单号/名称/状态）：LLM 判断「提交哪些单/是否重复提交」
+                // 不能只凭历史文本（回执文案可能只提到部分单号），以 DB 实时状态为准
+                if (rdScene) {
+                    String woContext = buildWorkOrderContext(context);
+                    if (!woContext.isEmpty()) {
+                        systemPrompt = systemPrompt + "\n【当前会话工单实时状态】\n" + woContext;
+                    }
+                }
+                llmResult = llmService.completeMessages(systemPrompt, history, question);
             } catch (Exception e) {
                 lastError = e;
                 log.warn("[DefaultUnderstander] 大模型调用失败（第 {} 次尝试）: {}", attempt, e.getMessage());
@@ -275,7 +287,8 @@ public class DefaultUnderstander implements Understander {
             "rd_file_parse",
             "rd_compliance",
             "rd_config_discover",
-            "rd_scheme_compare"
+            "rd_scheme_compare",
+            "rd_draft_manage"
     );
 
     /**
@@ -291,6 +304,7 @@ public class DefaultUnderstander implements Understander {
      */
     private List<QueryPlan> parseLlmResults(String llmResult, String question, boolean rdScene, SessionContext context) {
         if (llmResult == null || llmResult.isBlank()) {
+            diagnose("解析失败", "空输出", List.of(), llmResult);
             return null;
         }
 
@@ -298,6 +312,7 @@ public class DefaultUnderstander implements Understander {
         int start = llmResult.indexOf('{');
         int end = llmResult.lastIndexOf('}');
         if (start < 0 || end <= start) {
+            diagnose("解析失败", "输出中无 JSON 结构", List.of(), llmResult);
             return null;
         }
 
@@ -308,6 +323,7 @@ public class DefaultUnderstander implements Understander {
             parsed = mapper.readValue(json, new TypeReference<Map<String, Object>>() {});
         } catch (Exception e) {
             log.warn("[DefaultUnderstander] LLM 输出解析失败: {}", e.getMessage());
+            diagnose("解析失败", "JSON 解析异常: " + e.getMessage(), List.of(), llmResult);
             return null;
         }
 
@@ -349,12 +365,30 @@ public class DefaultUnderstander implements Understander {
 
         // 意图弱化为展示标签：保留 intent_type/action 供编排层还原 intentData 与文案生成
         String normalized = IntentRecognitionSupport.normalizeIntentType(intent);
-        params.put("intent_type", normalized);
+        // rd 场景：LLM 输出的 intent 为自由文本（configure/configuration/product_config…），
+        // 前端按工具名对齐的大写意图码注册后处理器（RD_CONFIG_CHAT 等），
+        // 故以白名单命中的首个工具名确定性推导意图码，保证 done.intent 稳定可消费
+        String intentCode = rdScene ? rdIntentFromTools(sanitized) : normalized;
+        params.put("intent_type", intentCode);
+        // 前端随消息携带的结构化参数（ Orchestrator.applySuppliedParams 已入 resolvedParams ）
+        // 前置合并到 plan.params：LLM 翻译时可能只抽取话术中的名称而丢弃精确 id（draft_id/client_id），
+        // 此处以调用方传入的精确参数为准（仅在 LLM 未输出同名键时合并，不覆盖 LLM 显式结果）
+        if (context != null && context.getResolvedParams() != null) {
+            for (Map.Entry<String, Object> e : context.getResolvedParams().entrySet()) {
+                if (e.getKey() == null || e.getValue() == null) continue;
+                params.putIfAbsent(e.getKey(), e.getValue());
+            }
+        }
+        // rd 场景透传会话 ID：AgentTool 接口无 context 参数，经 plan.params → executor direct 兜底
+        // 透传给工具（如 rd_config_chat 草稿生成即开备案工单需绑定会话）
+        if (rdScene && context != null && context.getSessionId() != null && !context.getSessionId().isBlank()) {
+            params.putIfAbsent("session_id", context.getSessionId());
+        }
         if (action != null && !action.isBlank()) {
             params.put("action", action);
         }
 
-        QueryPlan plan = new QueryPlan(normalized.isEmpty() ? legacy : normalized,
+        QueryPlan plan = new QueryPlan(intentCode.isEmpty() ? legacy : intentCode,
                 new ArrayList<>(sanitized), params, question);
         // LLM 给出 steps（含 inputFrom 跨工具数据流声明）时构建 ExecStep 依赖编排
         if (llmSteps != null && !llmSteps.isEmpty()) {
@@ -639,6 +673,16 @@ public class DefaultUnderstander implements Understander {
         return filtered.isEmpty() ? recommended : filtered;
     }
 
+    /** 研发工具名 → 大写意图码（rd_config_chat → RD_CONFIG_CHAT），与前端词典/后端文案码对齐。 */
+    private String rdIntentFromTools(List<String> sanitizedTools) {
+        for (String tool : sanitizedTools) {
+            if (tool != null && RD_KNOWN_TOOLS.contains(tool)) {
+                return tool.toUpperCase(Locale.ROOT);
+            }
+        }
+        return "";
+    }
+
     /**
      * 通用对话：不调用工具，直接 LLM 回复。
      */
@@ -718,7 +762,7 @@ public class DefaultUnderstander implements Understander {
         sb.append(rdScene
                 ? "你是一个产商品研发智能助手，负责理解用户的需求，并将其翻译为可执行的研发配置计划。\n"
                 : "你是一个产品运营智能助手，负责理解用户的问题，并将其翻译为可执行的查询计划。\n");
-        sb.append("\n请输出 JSON（仅输出 JSON，不要输出其他内容）：\n")
+        sb                .append("\n请输出 JSON（仅输出 JSON，不要输出其他内容）：\n")
                 .append("{\n")
                 .append("  \"intent\": \"业务意图标签（从下方各能力的适用场景归纳，闲聊则为 CHAT）\",\n")
                 .append("  \"action\": \"动作标签\",\n")
@@ -726,10 +770,23 @@ public class DefaultUnderstander implements Understander {
                 .append("  \"params\": {\"question\": \"原始问题\", ...各工具所需参数}\n")
                 .append("}\n\n")
                 .append("如果用户只是打招呼或闲聊，intent 设为 CHAT，tools 设为空列表。\n")
-                .append("如果用户需求存在多种合理解读且无法从上下文确定，")
-                .append("输出 {\"intent\": \"CONFIRM\", \"candidates\": [\"解读1\", \"解读2\"]}")
-                .append("（每条候选为一句可直接执行的完整表述），不要猜测。\n")
-                .append("请从用户问题中抽取参数所需的实体填入 params。\n\n可用能力：\n");
+                .append("请从用户问题中抽取参数所需的实体填入 params。\n\n")
+                .append("【何时需要用户确认（CONFIRM）——由你结合上下文自行判断，宁可多问不可错执行：\n")
+                .append("1) 需求存在多种合理解读且无法从上下文唯一确定；\n")
+                .append("2) 用户指令会修改/删除数据（如删除草稿、提交备案），且目标对象不明确（未指明名称/编号，或上下文中可能命中多个对象）；\n")
+                .append("3) 用户指令中的实体名称模糊或与多个已知对象部分匹配。\n")
+                .append("确认时输出 {\"intent\": \"CONFIRM\", \"candidates\": [\"解读1\", \"解读2\"]}，")
+                .append("每条候选为一句可直接执行的完整表述（包含明确的对象名称/编码），不要猜测。\n")
+                .append("若目标对象唯一明确（如名称精确匹配唯一草稿），无需确认直接执行。\n\n")
+                .append("【工单操作（rd_draft_manage）参数抽取铁律：\n")
+                .append("1) work_order_id 必须来自用户话术或【当前会话工单实时状态】中列出的真实工单号（WO 开头），严禁编造或使用示例号；\n")
+                .append("2) 用户话术未带工单号但上下文（上一轮生成/复制草稿的回执、会话工单清单）存在唯一工单时，沿用该工单号；\n")
+                .append("3) 提交动作批量语义（最高优先级）：用户只说「提交」「提交工单」「批量提交」「全部提交」等未点名具体某一个时，")
+                .append("不要 CONFIRM、不要只挑一单，必须把【当前会话工单实时状态】中全部状态为 open/in_progress（待提交）的工单号")
+                .append("用英文逗号拼接写入 work_order_id（如 \"WO1,WO2\"）一次性批量提交；\n")
+                .append("4) 上下文存在多个工单但用户明确点名其中一个（含名称/编号区分）→ 只取命中的那个工单号，不掺入其他工单；\n")
+                .append("5) 状态为 done（已提交备案）或 cancelled（已取消）的工单严禁纳入 work_order_id；\n")
+                .append("6) 上下文无任何待提交工单且话术无工单号 → 不要调用工具，直接向用户说明需要先提供工单号或先生成配置草稿。\n\n可用能力：\n");
         for (AgentTool tool : toolsOf(rdScene)) {
             sb.append("- ").append(tool.getName())
                     .append("：").append(tool.getDescription());
@@ -797,5 +854,42 @@ public class DefaultUnderstander implements Understander {
             result.add(converted);
         }
         return result;
+    }
+
+    /**
+     * 会话工单实时清单 → 提示词上下文（工单号/名称/状态）。
+     * <p>
+     * LLM 判断「提交哪些单 / 是否重复提交」需要以 DB 实时工单状态为准；
+     * 会话历史只有展示文案（可能不完整或不带单号），故查询层直接注入。
+     * 查询失败不阻断理解（返回空串，退化为仅凭历史文本）。
+     */
+    private String buildWorkOrderContext(SessionContext context) {
+        if (context == null || context.getSessionId() == null || context.getSessionId().isBlank()) {
+            return "";
+        }
+        try {
+            List<com.sitech.prodai.domain.entity.OpsWorkOrder> rows =
+                    workOrderRepository.findTop50BySessionIdOrderByCreatedAtDesc(context.getSessionId());
+            if (rows == null || rows.isEmpty()) {
+                return "";
+            }
+            StringBuilder sb = new StringBuilder();
+            // 状态→动作语义（open=待处理可提交，done=已完成不可重复提交），LLM 不再自行猜测状态含义
+            for (var e : rows) {
+                sb.append("- ").append(e.getWorkOrderId())
+                        .append("｜").append(e.getOfferingName() == null ? "" : e.getOfferingName())
+                        .append("｜状态=").append(e.getStatus())
+                        .append(switch (e.getStatus() == null ? "" : e.getStatus()) {
+                            case "open", "in_progress" -> "（待提交）";
+                            case "done" -> "（已提交备案，勿再提交）";
+                            case "cancelled" -> "（已取消，勿再提交）";
+                            default -> "";
+                        }).append('\n');
+            }
+            return sb.toString();
+        } catch (Exception ex) {
+            log.warn("[DefaultUnderstander] 会话工单上下文查询失败（不影响理解）: {}", ex.getMessage());
+            return "";
+        }
     }
 }

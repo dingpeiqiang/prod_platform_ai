@@ -482,8 +482,11 @@ export function useChatStream() {
                 reasoning: finalizeReasoningList(current.reasoning || []),
               })
               // 追问建议映射到 nextSteps 渲染：直接原地更新已完结消息，
-              // 避免 upsertAssistantMessage 因找不到「未完成」assistant 而 push 出第二条助手消息
-              const doneMsg = messages.value.find(m => m.role === 'assistant' && m.done)
+              // 避免 upsertAssistantMessage 因找不到「未完成」assistant 而 push 出第二条助手消息。
+              // 必须取最后一条助手消息（本轮流式收尾的那条）：会话开头可能有
+              // sceneWelcome 等早已完结的助手消息，find 会错误命中并把意图后处理
+              //（如工单内联挂载）落到首条消息上
+              const doneMsg = [...messages.value].reverse().find(m => m.role === 'assistant' && m.done)
               const followUps = data.suggested_follow_ups || []
               if (doneMsg && followUps.length && !doneMsg.nextSteps?.length) {
                 doneMsg.nextSteps = followUps

@@ -16,5 +16,9 @@ public interface OpsWorkOrderRepository extends JpaRepository<OpsWorkOrder, Long
 
     List<OpsWorkOrder> findTop50ByStatusOrderByCreatedAtDesc(String status);
 
+    List<OpsWorkOrder> findTop50BySessionIdOrderByCreatedAtDesc(String sessionId);
+
+    List<OpsWorkOrder> findTop50BySessionIdAndStatusOrderByCreatedAtDesc(String sessionId, String status);
+
     long countByStatus(String status);
 }

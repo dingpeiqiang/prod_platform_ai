@@ -103,7 +103,7 @@ function restoreMessageMetadata(meta = {}) {
     } catch { queryPlan = meta.query_plan }
   }
 
-  // 澄清参数契约（U1 选择题化）：从 query_plan 中还原 clarify_contracts
+  // 澄清参数契约（U1 选择题化）：从 query_plan / meta 中还原 clarify_contracts
   let clarifyContracts = null
   if (queryPlan?.clarify_contracts != null) {
     clarifyContracts = queryPlan.clarify_contracts
@@ -115,9 +115,53 @@ function restoreMessageMetadata(meta = {}) {
     } catch { clarifyContracts = meta.clarify_contracts }
   }
 
+  // 澄清参数列表（实时 done 事件 data.clarify 的历史快照）：还原为 msg.clarify
+  let clarify = null
+  const rawClarify = meta.clarify ?? queryPlan?.clarify
+  if (rawClarify != null) {
+    try {
+      clarify = typeof rawClarify === 'string' ? JSON.parse(rawClarify) : rawClarify
+    } catch { clarify = rawClarify }
+    if (!Array.isArray(clarify) || !clarify.length) clarify = null
+  }
+
+  // 确认分支候选（实时 done 事件 data.candidates 的历史快照）：还原为 msg.confirm
+  let confirm = null
+  if (meta.candidates != null) {
+    try {
+      const candidates = typeof meta.candidates === 'string' ? JSON.parse(meta.candidates) : meta.candidates
+      if (Array.isArray(candidates) && candidates.length) {
+        confirm = { candidates }
+      }
+    } catch { confirm = null }
+  }
+
   let extractedFields = meta.extracted_fields
   if (typeof extractedFields === 'string') {
     try { extractedFields = JSON.parse(extractedFields) } catch {}
+  }
+
+  // 工具执行卡片快照（后端 persistTurn 落库的 tool_results）：还原为 toolResults 供面板回放
+  let toolResults = null
+  if (meta.tool_results != null) {
+    try {
+      const parsed = typeof meta.tool_results === 'string' ? JSON.parse(meta.tool_results) : meta.tool_results
+      if (Array.isArray(parsed)) {
+        toolResults = parsed.map(t => ({
+          name: t.name || '',
+          displayName: t.title || t.name || '',
+          status: t.status === 'error' ? 'error' : 'done',
+          elapsed: t.elapsedMs != null ? t.elapsedMs / 1000 : undefined,
+          result: t.summary || null,
+          error: t.errorMessage || null,
+          params: t.input || null,
+          output: t.output || null,
+          title: t.title || null,
+          goal: t.goal || null,
+          manualHint: t.manualHint || t.manual_hint || null,
+        }))
+      }
+    } catch { toolResults = null }
   }
 
   const hasError = reasoning.some(r => r.type === 'error')
@@ -141,6 +185,9 @@ function restoreMessageMetadata(meta = {}) {
     stats: intentData?.stats || null,
     queryPlan,
     clarifyContracts,
+    clarify: clarify || [],
+    confirm,
+    toolResults,
   }
 }
 

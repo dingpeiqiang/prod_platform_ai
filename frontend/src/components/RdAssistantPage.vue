@@ -17,21 +17,6 @@
     @context-remove="onRemoveContextItem"
     @context-clear="onClearContextItems"
   >
-    <template #nav-actions>
-      <button type="button" class="nav-product-btn" @click="showProductListPanel = true">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="8" y1="6" x2="21" y2="6"/>
-          <line x1="8" y1="12" x2="21" y2="12"/>
-          <line x1="8" y1="18" x2="21" y2="18"/>
-          <line x1="3" y1="6" x2="3.01" y2="6"/>
-          <line x1="3" y1="12" x2="3.01" y2="12"/>
-          <line x1="3" y1="18" x2="3.01" y2="18"/>
-        </svg>
-        已配置商品
-        <span class="count-badge">{{ products.length }}</span>
-      </button>
-    </template>
-
     <ChatMessageList
       mode="rd"
       :messages="messages"
@@ -54,20 +39,27 @@
       @trace-click="onTraceClick"
       @clarify-submit="onClarifySubmit"
       @file-ref-click="onFileRefClick"
-    />
-
-    <ProductListPanel
-      v-model="showProductListPanel"
-      :products="products"
-      :current-product-id="currentProductId"
-      @select="handleProductSelect"
-      @preview="handleProductPreview"
-      @copy="handleProductCopy"
-      @edit="handleProductSelect"
-      @delete="handleProductDelete"
+      @session-workorder-select="onSessionWorkOrderSelect"
+@workorder-preview="({ wo }) => onWorkOrderPreview(wo)"
+@workorder-edit="({ wo }) => onWorkOrderEdit(wo)"
+@workorder-submit="({ wo }) => onWorkOrderSubmit(wo)"
+@workorder-copy="({ wo }) => onWorkOrderCopy(wo)"
+@workorder-delete="({ wo }) => onWorkOrderDelete(wo)"
     />
 
     <ProductPreviewDrawer v-model="showProductPreview" :product="previewProductData" />
+
+    <!-- 工单草稿编辑抽屉（右侧）：点击工单条目/编辑/复制时打开 -->
+    <WorkOrderDrawer
+      v-model="showWorkOrderDrawer"
+      :card="activeFormCard"
+      @form-submit="handleConfirmSubmit"
+      @form-cancel="closeActiveForm"
+      @form-field-change="handleInlineFieldChange"
+      @form-ai-validation="handleAiValidation"
+      @form-confirm-submit="handleConfirmSubmit"
+      @close="closeWorkOrderDrawer"
+    />
   </AssistantShell>
 </template>
 
@@ -77,12 +69,13 @@ import { ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import AssistantShell from './AssistantShell.vue'
 import ChatMessageList from './ChatMessageList.vue'
-import ProductListPanel from './ProductListPanel.vue'
 import ProductPreviewDrawer from './ProductPreviewDrawer.vue'
+import WorkOrderDrawer from './WorkOrderDrawer.vue'
 import { useChatStream } from '../composables/useChatStream.js'
 import { useProductConfig } from '../composables/useProductConfig.js'
 import { registerPostProcessor } from '../composables/useIntentRegistry.js'
-import { checkCompliance } from '../services/productOntologyApi.js'
+import { checkCompliance, listWorkOrders } from '../services/productOntologyApi.js'
+import { saveMessage as saveChatMessage } from '../services/chatApi.js'
 import { assistantModes, buildSceneWelcome } from '../config/assistantModes.js'
 import { ZHIDU_TEST_PROMPT } from '../data/zhiduTestDoc.js'
 import { genId, sleep, createStreamingPlaceholder } from '../utils/chatUtils.js'
@@ -98,6 +91,8 @@ const activeFormCard = ref(null)
 /** 已配置商品只读预览（不进入编辑态） */
 const showProductPreview = ref(false)
 const previewProductData = ref(null)
+/** 工单草稿编辑抽屉（右侧；复用 activeFormCard 表单卡） */
+const showWorkOrderDrawer = ref(false)
 
 const router = useRouter()
 const onOpenModelConfig = () => router.push('/model-config')
@@ -118,9 +113,7 @@ const {
 
 const productConfig = useProductConfig()
 const products = productConfig.products
-const currentProductId = productConfig.currentProductId
 const currentProduct = productConfig.currentProduct
-const showProductListPanel = productConfig.showProductListPanel
 const showRootCausePanel = productConfig.showRootCausePanel
 const showRiskAuditPanel = productConfig.showRiskAuditPanel
 const showConfigTracePanel = productConfig.showConfigTracePanel
@@ -207,7 +200,120 @@ const RD_POST_INTENTS = [
   'RD_COMPLIANCE',
   'RD_CONFIG_DISCOVER',
   'RD_SCHEME_COMPARE',
+  'RD_DRAFT_MANAGE',
 ]
+
+/** 拉取当前会话的商品配置工单列表（后端按 session_id 过滤），返回 items 数组 */
+async function loadSessionWorkOrders(sid = sessionId.value) {
+  if (!sid) return []
+  try {
+    const resp = await listWorkOrders(null, sid)
+    return resp?.items || resp?.data?.items || []
+  } catch {
+    return []
+  }
+}
+
+/** 把会话工单列表（会话级共享视图）挂到指定助手消息（内联跟随回复展示），并按商品名关联本地草稿 id 供操作使用 */
+async function attachWorkOrdersToMsg(aiMsg, sid = sessionId.value) {
+  if (!aiMsg) return
+  const items = await loadSessionWorkOrders(sid)
+  if (items.length) {
+    // 关联本地草稿（offeringName/标题 → product.name），工单卡操作（预览/编辑/删除）据此定位 product
+    const norm = (s) => String(s || '').trim()
+    const productList = productConfig.products.value || []
+    for (const wo of items) {
+      const matched =
+        productList.find(
+          (p) => norm(p.name) && (norm(p.name) === norm(wo.offeringName) || norm(wo.title || '').startsWith(norm(p.name))),
+        ) ||
+        // 草稿名为默认值（「配置方案草稿/商品配置草稿」）且工单无商品名时，关联唯一/当前草稿
+        productList.find((p) => /^(配置方案草稿|商品配置草稿)$/.test(norm(p.name))) ||
+        productList.find((p) => p.id === productConfig.currentProductId.value)
+      wo.productId = matched?.id || wo.productId || null
+    }
+    aiMsg.workOrders = items
+    messages.value = [...messages.value]
+  }
+}
+/** 工单卡操作：预览草稿（只读抽屉；关联不上本地草稿时给出提示） */
+function onWorkOrderPreview(wo) {
+  if (!wo?.productId) {
+    ElMessageBox.alert('该工单暂无可预览的本地草稿（草稿可能已被删除）', '预览草稿', { type: 'warning' })
+    return
+  }
+  handleProductPreview(wo.productId)
+}
+
+/** 工单卡操作：编辑草稿（激活编辑态并打开右侧抽屉表单） */
+function onWorkOrderEdit(wo) {
+  if (!wo?.productId) {
+    ElMessageBox.alert('该工单暂无可编辑的本地草稿（草稿可能已被删除）', '编辑草稿', { type: 'warning' })
+    return
+  }
+  const formCard = productConfig.selectProduct(wo.productId)
+  if (formCard) applyFormCard(formCard)
+  showWorkOrderDrawer.value = true
+}
+
+/** 工单卡操作：提交备案（发会话消息 → 翻译层 rd_draft_manage submit，合规 → 沉淀 → 备案工单闭环） */
+function onWorkOrderSubmit(wo) {
+  if (!wo || streaming.value) return
+  const woId = wo.workOrderId || wo.id || ''
+  const name = wo.offeringName || wo.title || '该配置草稿'
+  sendAgentMessage({
+    text: `提交工单「${name}」（${woId}）关联的配置草稿，走合规备案闭环`,
+    scene: 'rd',
+    params: { action: 'submit', work_order_id: woId },
+  })
+}
+
+/** 工单卡操作：复制草稿（发会话消息 → 翻译层 rd_draft_manage 执行，全量记录操作） */
+function onWorkOrderCopy(wo) {  if (!wo || streaming.value) return
+  const woId = wo.workOrderId || wo.id || ''
+  const name = wo.offeringName || wo.title || '该配置草稿'
+  // 统一凭工单号定位：草稿在工单 payload 中关联（后端按 work_order_id 反查），不再传 draft_id/client_id
+  sendAgentMessage({
+    text: `复制工单「${name}」（${woId}）对应的配置草稿，生成副本`,
+    scene: 'rd',
+    params: { action: 'copy', work_order_id: woId },
+  })
+}
+/** 工单卡操作：删除（发会话消息 → 翻译层 rd_draft_manage 执行，全量记录操作） */
+async function onWorkOrderDelete(wo) {
+  if (!wo || streaming.value) return
+  const woId = wo.workOrderId || wo.id || ''
+  const name = wo.offeringName || wo.title || '该条草稿'
+  let confirmed = true
+  try {
+    confirmed = await ElMessageBox.confirm(
+      `确认删除工单「${name}」关联的配置草稿？该操作将记录到会话历史。`,
+      '删除草稿',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+    )
+  } catch {
+    confirmed = false
+  }
+  if (confirmed !== 'confirm') return
+  // 统一凭工单号定位：后端按 work_order_id 反查关联草稿并删除，同步取消工单
+  await sendAgentMessage({
+    text: `删除工单「${name}」（${woId}）关联的配置草稿`,
+    scene: 'rd',
+    params: { action: 'delete', work_order_id: woId },
+  })
+}
+
+/** 点击工单卡条目：以商品编码发起智查，续接查看该商品 */
+async function onSessionWorkOrderSelect(wo) {
+  if (!wo?.offeringId || streaming.value) return
+  inputText.value = ''
+  activeScene.value = 'rd.query'
+  await sendAgentMessage({
+    text: `查一下商品 ${wo.offeringId} 的配置与备案状态`,
+    scene: 'rd',
+    params: { offering: wo.offeringId },
+  })
+}
 
 onMounted(async () => {
   historyLoading.value = true
@@ -221,7 +327,11 @@ onMounted(async () => {
     historyLoading.value = false
   }
   for (const intent of RD_POST_INTENTS) {
-    registerPostProcessor(intent, (msg) => applyRdToolToPanels(msg))
+    registerPostProcessor(intent, async (msg) => {
+      applyRdToolToPanels(msg)
+      // 每轮 RD 回复结束后：若本会话已产生商品配置工单，内联挂到该条回复后
+      await attachWorkOrdersToMsg(msg)
+    })
   }
 })
 
@@ -244,6 +354,11 @@ function applyFormCard(formCard) {
 
 function closeActiveForm() {
   activeFormCard.value = null
+}
+
+function closeWorkOrderDrawer() {
+  showWorkOrderDrawer.value = false
+  closeActiveForm()
 }
 
 async function refreshCompliance() {
@@ -339,8 +454,6 @@ async function handleConfirmSubmit(payload) {
     activeFormCard.value.issues = []
   }
 
-  showProductListPanel.value = true
-
   await playProductReply({
     thinkingSteps: [
       '核对 compliancePass=true（R-C08）',
@@ -350,15 +463,13 @@ async function handleConfirmSubmit(payload) {
     content:
       `已完成提交闭环：\n\n` +
       `- 商品编码：\`${offeringId}\`\n` +
-      `- 备案工单：\`${woId}\`\n` +
-      `- 草稿 ID：\`${resp.draftId || product.draftId || '-'}\`\n\n` +
-      '可在「已配置商品」查看；运营侧工单列表可跟进备案进度。\n\n' +
+      `- 备案工单：\`${woId}\`\n\n` +
+      '可在上方「商品配置工单」卡查看与编辑；运营侧工单列表可跟进备案进度。\n\n' +
       '```json\n' +
       JSON.stringify(
         {
           offeringId,
           workOrderId: woId,
-          draftId: resp.draftId,
           offeringName: draft.offeringName,
           monthlyFee: draft.monthlyFee ?? draft.fixedFeeAmount,
           status: 'filing',
@@ -386,35 +497,12 @@ async function handleConfirmSubmit(payload) {
   })
 }
 
-function handleProductSelect(id) {
-  const formCard = productConfig.selectProduct(id)
-  if (formCard) applyFormCard(formCard)
-  showProductListPanel.value = false
-}
-
 /** 只读预览已配置商品：不切换当前编辑态 */
 function handleProductPreview(id) {
   const preview = productConfig.previewProduct(id)
   if (!preview) return
   previewProductData.value = preview
   showProductPreview.value = true
-}
-
-function handleProductCopy(id) {
-  const copied = productConfig.copyProduct(id)
-  if (!copied) return
-  const formCard = productConfig.selectProduct(copied.id)
-  if (formCard) applyFormCard(formCard)
-}
-
-function handleProductDelete(id) {
-  const formCard = productConfig.deleteProduct(id)
-  if (previewProductData.value?.id === id) {
-    showProductPreview.value = false
-    previewProductData.value = null
-  }
-  if (formCard) applyFormCard(formCard)
-  else closeActiveForm()
 }
 
 async function onQueryResultClick(item) {
@@ -462,13 +550,36 @@ function applyRdToolToPanels(msg) {
     const name = tool.name || ''
     if (name === 'rd_config_chat') {
       attachFormCardToMsg(msg, applyRdConfigDraft(out.draft || out.config?.draft))
+      // 新开配置工单同样标记为最近操作对象：下一轮工单卡刷新后该条目高亮
+      const newWo = String(out?.workOrderId || out?.work_order_id || out?.workOrder?.workOrderId || '')
+      if (newWo) msg.lastActedWoId = newWo
     } else if (name === 'rd_compliance') {
       attachFormCardToMsg(msg, applyRdCompliance(out.draft || out.config?.draft, out.compliance_pass, out.issues || out.config?.issues))
     } else if (name === 'rd_file_parse') {
       applyRdFileParse(out.items, out.batch)
     } else if (name === 'rd_scheme_compare') {
       applyRdSchemeCompare(out)
+    } else if (name === 'rd_draft_manage') {
+      applyRdDraftManage(out)
+      // 操作回执高亮：提交/复制/删除命中的工单条目在工单卡上高亮提示（问题3：提交成功无明显提示）
+      const actedWo = String(out?.work_order_id || '')
+      if (actedWo) msg.lastActedWoId = actedWo
     }
+  }
+}
+
+/** 草稿管理（删除/复制）工具回执：同步本地草稿数组（工单卡由 attachWorkOrdersToMsg 统一刷新）。
+ * 多候选/歧义确认由理解层 LLM 判定（CONFIRM 候选卡片 → 用户点选 → 以完整话术重发），此处不硬编码选择逻辑。 */
+function applyRdDraftManage(out) {
+  const action = String(out?.action || '')
+  if (action === 'copy' && out?.draft) {
+    // 后端已落库副本：本地同步建草稿并激活
+    applyRdConfigDraft(out.draft)
+  } else if (action === 'delete' && out?.work_order_id) {
+    // 删除回执按工单号对齐本地草稿（product.workOrderId 在 loadPersistedDrafts 恢复时写入）
+    const woId = String(out.work_order_id)
+    const victim = productConfig.products.value.find((p) => String(p.workOrderId || '') === woId)
+    if (victim) productConfig.deleteProduct(victim.id)
   }
 }
 
@@ -488,9 +599,14 @@ function buildRdProductFromDraft(draft) {
   const name = d.offerName || d.offeringName || '配置方案草稿'
   const fee = d.fixedFeeAmount ?? d.monthlyFee
   const existingIdx = productConfig.products.value.findIndex((p) => p.ontologyDraft === d)
+  // 稳定标识：优先用后端草稿主键（draftId）/ clientId，与 loadPersistedDrafts 生成的
+  // id 对齐（item.clientId || `P${item.draftId}`），避免历史回放时按时间戳新建重复 product
+  const stableId = d.draftId ? `P${d.draftId}` : (d.clientId || d.client_id || '')
   const id = existingIdx >= 0
     ? productConfig.products.value[existingIdx].id
-    : (productConfig.currentProduct.value?.ontologyDraft === d ? productConfig.currentProduct.value.id : 'P' + Date.now())
+    : (productConfig.currentProduct.value?.ontologyDraft === d && productConfig.currentProduct.value.id)
+      || stableId
+      || 'P' + Date.now()
   return {
     id,
     name,
@@ -672,11 +788,42 @@ async function finishProductReply(aiMsg, playbook = {}) {
   applyPlaybookSideEffects(aiMsg, playbook)
 }
 
+/**
+ * 本地剧本路径回复落库（去旧留新：与翻译层路径 persistTurn 对齐）。
+ * <p>
+ * playProductReply 产出的助手消息（含 thinkingSteps / formCard / queryResults）原先只在内存，
+ * 刷新/切换会话后消失，造成「保存或加载不完整」。此处按与 chatApi.buildMessageMetadata
+ * 相同的键约定持久化（reasoning_full / formCard / stream_text），历史回放可完整还原。
+ * 落库失败不影响对话主流程（仅 console.warn）。
+ */
+async function persistProductReply(aiMsg, playbook = {}) {
+  const sid = sessionId.value
+  if (!sid || !aiMsg?.content) return
+  try {
+    await saveChatMessage(sid, {
+      role: 'assistant',
+      content: aiMsg.content,
+      contentType: 'chat',
+      done: true,
+      streamText: aiMsg.content,
+      reasoning: aiMsg.reasoning || [],
+      formCard: playbook.formCard || aiMsg.formCard || undefined,
+      queryPlan: aiMsg.queryPlan || undefined,
+    })
+  } catch (e) {
+    console.warn('[RdAssistantPage] 本地剧本回复落库失败:', e?.message || e)
+  }
+}
+
 async function playProductReply(playbook = {}) {
   const aiMsg = createStreamingPlaceholder(genId)
   messages.value = [...messages.value, aiMsg]
   tickMessages()
   await finishProductReply(aiMsg, playbook)
+  // 回放完成后：本会话有工单产生时，把工单列表内联挂到该条回复后
+  await attachWorkOrdersToMsg(aiMsg)
+  // 剧本回复落库：保证历史会话 = 实际会话快照（刷新/切换后消息不丢失）
+  await persistProductReply(aiMsg, playbook)
 }
 
 const onSend = async (payload) => {
@@ -890,6 +1037,22 @@ async function handleReferenceContinue(text = '', refMsg = null) {
   if (streaming.value) return
   streaming.value = true
   try {
+    // 引用续接的用户消息也进消息流并落库：与翻译层路径 pushUserMessage 对齐，
+    // 否则该轮 user 消息只存在于内存，刷新后上下文断裂（用户话术丢失）
+    if (text && text !== '引用聚焦') {
+      messages.value = [
+        ...messages.value,
+        { id: genId(), role: 'user', type: 'chat', content: text, done: true, timestamp: Date.now() },
+      ]
+      const sid = sessionId.value
+      if (sid) {
+        try {
+          await saveChatMessage(sid, { role: 'user', content: text, contentType: 'text', done: true })
+        } catch (e) {
+          console.warn('[RdAssistantPage] 引用续接用户消息落库失败:', e?.message || e)
+        }
+      }
+    }
     const name = refMsg?.fileRef?.fileName || (refMsg?.batch ? '当前批次' : '该文档')
     const summary = batchSnapshotFromItems()
     const showBatch = refMsg?.batch && summary.total
@@ -1063,11 +1226,11 @@ async function handleBatchFix(msg) {
 async function handleBatchDelete({ msg, item }) {
   if (!msg?.batch || !item?.productId || streaming.value) return
   const target = productConfig.products.value.find((p) => p.id === item.productId)
-  const isFiled = !!target?.draftId || item.status === '已备案'
+  const isFiled = item.status === '已备案' || target?.status === 'submitted'
   const name = item.draft?.offeringName || item.name || item.offeringName || '该条草稿'
   const confirmed = await ElMessageBox.confirm(
     isFiled
-      ? `「${name}」已生成备案草稿（draftId：${target?.draftId || '-'}），删除仅移除本地草稿；如需撤销上架请走「下线/停售」流程。确认删除？`
+      ? `「${name}」已生成备案草稿，删除仅移除本地草稿；如需撤销上架请走「下线/停售」流程。确认删除？`
       : `确认删除草稿「${name}」？该操作不可恢复。`,
     '删除草稿',
     { type: isFiled ? 'warning' : 'info', confirmButtonText: '删除', cancelButtonText: '取消' },
@@ -1088,35 +1251,3 @@ async function handleBatchDelete({ msg, item }) {
   }
 }
 </script>
-
-<style scoped>
-.nav-product-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid #cbd5e1;
-  background: #fff;
-  color: #0f172a;
-  border-radius: 999px;
-  padding: 8px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-}
-.nav-product-btn:hover {
-  border-color: #5eead4;
-  background: #f0fdfa;
-}
-.count-badge {
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: #0f766e;
-  color: #fff;
-  font-size: 11px;
-  line-height: 18px;
-  text-align: center;
-}
-</style>

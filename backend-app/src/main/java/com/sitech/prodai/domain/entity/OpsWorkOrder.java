@@ -33,6 +33,7 @@ import java.util.Map;
 @Table(name = "pd_ai_ops_work_orders", indexes = {
         @Index(name = "idx_owo_offering", columnList = "offering_id"),
         @Index(name = "idx_owo_status", columnList = "status"),
+        @Index(name = "idx_owo_session", columnList = "session_id"),
         @Index(name = "idx_owo_created", columnList = "created_at")
 })
 @EntityListeners(AuditingEntityListener.class)
@@ -66,6 +67,10 @@ public class OpsWorkOrder {
 
     @Column(name = "source", length = 64)
     private String source;
+
+    /** 来源会话 ID：用于研发助手消息窗口按会话聚合展示商品配置工单 */
+    @Column(name = "session_id", length = 64)
+    private String sessionId;
 
     @Column(name = "hypo_mode", length = 32)
     private String hypoMode;

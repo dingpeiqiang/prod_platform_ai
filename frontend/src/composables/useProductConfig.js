@@ -16,7 +16,6 @@ import {
   saveConfigDraft,
   listConfigDrafts,
   getConfigDraft,
-  deleteConfigDraft,
   submitConfigDraft,
   listOpsAlerts,
   listWorkOrders,
@@ -207,7 +206,6 @@ export function useProductConfig() {
     try {
       const resp = await saveConfigDraft({
         draft: product.ontologyDraft || product.data || {},
-        draftId: product.draftId || null,
         clientId: product.id,
         sessionId: sessionId || boundSessionId.value,
         userId: boundUserId.value,
@@ -216,7 +214,6 @@ export function useProductConfig() {
       if (resp?.success === false) {
         throw new Error(resp.message || '保存失败')
       }
-      if (resp?.draftId != null) product.draftId = resp.draftId
       if (resp?.clientId) product.id = product.id || resp.clientId
       product.persisted = true
       return resp
@@ -239,7 +236,6 @@ export function useProductConfig() {
         const draft = full?.draft || item.draft || {}
         const product = {
           id: item.clientId || `P${item.draftId}`,
-          draftId: item.draftId,
           name: item.offeringName || draft.offeringName || '配置草稿',
           desc: `月费${item.monthlyFee || draft.monthlyFee || '-'} | ${item.status || 'draft'}`,
           status: item.status === 'filing' || item.status === 'submitted' ? 'submitted' : 'draft',
@@ -278,7 +274,6 @@ export function useProductConfig() {
     }
     const resp = await submitConfigDraft({
       draft: product.ontologyDraft || product.data || {},
-      draftId: product.draftId || null,
       clientId: product.id,
       sessionId: sessionId || boundSessionId.value,
       userId: boundUserId.value,
@@ -289,7 +284,6 @@ export function useProductConfig() {
     product.status = 'submitted'
     product.auditStatus = 'pass'
     product.compliancePass = true
-    product.draftId = resp.draftId || product.draftId
     product.offeringId = resp.offeringId
     product.workOrderId = resp.workOrder?.workOrderId || resp.workOrder?.work_order_id
     lastConfigTraceId.value = resp.trace_id || lastConfigTraceId.value
@@ -815,7 +809,6 @@ export function useProductConfig() {
       try {
         const resp = await submitConfigDraft({
           draft: p.ontologyDraft || p.data || {},
-          draftId: p.draftId || null,
           clientId: p.id,
           sessionId: boundSessionId.value,
           userId: boundUserId.value,
@@ -827,7 +820,6 @@ export function useProductConfig() {
         const offeringId = resp.offeringId || p.offeringId
         const woId = resp.workOrder?.workOrderId || resp.workOrder?.work_order_id || '-'
         p.status = 'submitted'
-        p.draftId = resp.draftId || p.draftId
         p.offeringId = offeringId
         p.workOrderId = woId
         lastConfigTraceId.value = resp.trace_id || lastConfigTraceId.value
@@ -837,7 +829,7 @@ export function useProductConfig() {
         if (bi >= 0) {
           batchItems.value[bi] = {
             ...batchItems.value[bi],
-            draftId: offeringId,
+            offeringId,
             status: '已备案',
           }
         }
@@ -1025,11 +1017,6 @@ export function useProductConfig() {
 
   function deleteProduct(id, { undoable = true } = {}) {
     const target = products.value.find((p) => p.id === id)
-    if (target?.draftId) {
-      deleteConfigDraft(target.draftId).catch((e) =>
-        console.warn('[useProductConfig] delete draft failed:', e.message || e),
-      )
-    }
     const snapshot = target ? JSON.parse(JSON.stringify(target)) : null
     products.value = products.value.filter((p) => p.id !== id)
     if (undoable && snapshot) {

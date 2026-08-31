@@ -1,4 +1,4 @@
-import { get, post, put, del } from './httpClient.js'
+import { get, post, put } from './httpClient.js'
 
 const BASE = 'product-ontology'
 
@@ -164,7 +164,7 @@ export async function getConfigDraft(draftId) {
   return get(`${BASE}/config/drafts/${encodeURIComponent(draftId)}`, { showLoading: false })
 }
 
-/** 持久化配置草稿 */
+/** 持久化配置草稿（新增/更新：更新走 body.draftId，后端按主键覆盖） */
 export async function saveConfigDraft({
   draft,
   draftId = null,
@@ -179,21 +179,9 @@ export async function saveConfigDraft({
   if (sessionId) body.sessionId = sessionId
   if (userId) body.userId = userId
   if (compliancePass != null) body.compliancePass = compliancePass
-  if (draftId != null) {
-    return put(`${BASE}/config/drafts/${encodeURIComponent(draftId)}`, body, {
-      showLoading: false,
-      loadingText: '保存草稿...',
-    })
-  }
   return post(`${BASE}/config/drafts`, body, {
     showLoading: false,
     loadingText: '保存草稿...',
-  })
-}
-
-export async function deleteConfigDraft(draftId) {
-  return del(`${BASE}/config/drafts/${encodeURIComponent(draftId)}`, {
-    showLoading: false,
   })
 }
 
@@ -307,9 +295,10 @@ export async function listOpsAlerts(offeringId = null) {
   return get(`${BASE}/ops/alerts`, { params, showLoading: false })
 }
 
-export async function listWorkOrders(status = null) {
+export async function listWorkOrders(status = null, sessionId = null) {
   const params = {}
   if (status && status !== 'all') params.status = status
+  if (sessionId) params.session_id = sessionId
   return get(`${BASE}/ops/work-orders`, { params, showLoading: false })
 }
 

@@ -24,6 +24,7 @@ const INTENT_LABELS = {
   RD_COMPLIANCE: '合规校验',
   RD_CONFIG_DISCOVER: '配置查询',
   RD_SCHEME_COMPARE: '方案对比',
+  RD_DRAFT_MANAGE: '草稿管理',
 }
 
 const TOOL_LABELS = {
@@ -38,6 +39,7 @@ const TOOL_LABELS = {
   rd_compliance: '检查配置合规性',
   rd_config_discover: '检索历史配置',
   rd_scheme_compare: '对比候选方案',
+  rd_draft_manage: '管理配置草稿',
 }
 
 const PARAM_LABELS = {

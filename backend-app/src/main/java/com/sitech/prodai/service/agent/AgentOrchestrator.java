@@ -229,6 +229,31 @@ public class AgentOrchestrator {
         if (name != null && !String.valueOf(name).isBlank()) {
             context.cacheEvidence("lastOffering", name);
         }
+        // 工单号随证据缓存：工单卡裸操作（提交/删除/复制无工单号话术）供理解层从上下文补齐，
+        // 避免 LLM 从话术中抽不到工单号时幻觉编造。
+        // 注意：rd_draft_manage 的提交回执缓存的是「刚操作完」的工单号，下一轮参数合并时
+        // 该缓存会被 LLM 显式抽取 / 前端结构化参数覆盖（putIfAbsent 语义），仅在 LLM 未抽取时兜底
+        Object woId = firstNonNull(result.getData().get("work_order_id"), result.getData().get("workOrderId"));
+        if (woId != null && !String.valueOf(woId).isBlank() && !"null".equals(String.valueOf(woId))) {
+            context.resolveParam("work_order_id", String.valueOf(woId));
+            context.cacheEvidence("lastWorkOrderId", String.valueOf(woId));
+        }
+        // 提交成功后不再延续单工单号语义：清掉单号缓存，避免下一轮裸「提交」时
+        // LLM 被残留单号误导而漏掉其他待提交工单（批量语义由提示词 + 会话工单上下文驱动）
+        if (result.getData().get("action") instanceof String act && "submit".equals(act)
+                && Boolean.TRUE.equals(result.getData().get("success"))) {
+            context.getResolvedParams().remove("work_order_id");
+        }
+    }
+
+    /** 取首个非空值（工具输出键兜底）。 */
+    private Object firstNonNull(Object... values) {
+        for (Object v : values) {
+            if (v != null && !String.valueOf(v).isBlank() && !"null".equals(String.valueOf(v))) {
+                return v;
+            }
+        }
+        return null;
     }
 
     /**
@@ -311,8 +336,10 @@ public class AgentOrchestrator {
      * 将一轮对话（用户提问 + 助手回答）持久化到数据库（去旧留新：新链路自带落库）。
      * <p>
      * metadata 键与前端 {@code chatApi.restoreMessageMetadata} 对齐：
-     * intent_type / stream_text / query_plan / content_type / done，
-     * 便于会话历史与会话切换时还原三阶产物。
+     * intent_type / stream_text / query_plan / content_type / done /
+     * reasoning_full（思考时间线）/ tool_results（工具卡片输入输出）/
+     * clarify（澄清参数列表）/ clarify_contracts（澄清契约）/ candidates（确认候选），
+     * 便于会话历史与会话切换时完整还原消息快照（与实时会话一致）。
      */
     private void persistTurn(SessionContext context, String question,
                              String assistantReply, QueryPlan plan,
@@ -341,6 +368,24 @@ public class AgentOrchestrator {
                 meta.put("done", true);
                 if (plan != null) {
                     meta.put("query_plan", toJson(buildQueryPlanView(plan)));
+                    // 思考时间线快照：与实时 reasoning 步骤同构（intent/plan/tool/generate），
+                    // 前端 normalizeReasoningList 直接消费，保证历史回放与实时渲染一致
+                    meta.put("reasoning_full", toJson(buildReasoningSnapshot(context, plan, results, assistantReply)));
+                    // 澄清分支：持久化追问参数列表与契约（实时 done 事件携带，历史回放等量还原）
+                    if (plan.getClarify() != null && !plan.getClarify().isEmpty()) {
+                        meta.put("clarify", toJson(plan.getClarify()));
+                    }
+                    if (plan.getClarifyContracts() != null && !plan.getClarifyContracts().isEmpty()) {
+                        meta.put("clarify_contracts", toJson(plan.getClarifyContracts()));
+                    }
+                    // 确认分支（U2）：持久化歧义候选解读列表（实时 done 事件携带）
+                    if (plan.getCandidates() != null && !plan.getCandidates().isEmpty()) {
+                        meta.put("candidates", toJson(plan.getCandidates()));
+                    }
+                }
+                // 工具执行卡片快照：name/status/summary/input/output，供历史还原 toolResults
+                if (results != null && !results.isEmpty()) {
+                    meta.put("tool_results", toJson(results.stream().map(this::buildToolResultSnapshot).toList()));
                 }
                 svc.saveMessage(sessionId, "assistant", assistantReply, "text", meta);
             }
@@ -349,6 +394,111 @@ public class AgentOrchestrator {
             // 持久化失败不影响对话主流程（仅记录）
             log.warn("[AgentOrchestrator] 会话持久化失败: {}", e.getMessage());
         }
+    }
+
+    /**
+     * 构建本轮思考时间线快照：理解 → 计划 → 工具 → 汇总，与实时 SSE thinking/tool 步骤同构。
+     * <p>
+     * 实时流包含 intent / plan / tool / generate 四类步骤，历史回放须等量还原，
+     * 否则历史会话的思考时间线比实时会话短（快照不完整）。
+     */
+    private List<Map<String, Object>> buildReasoningSnapshot(SessionContext context, QueryPlan plan,
+                                                             List<ExecutionResult> results, String report) {
+        List<Map<String, Object>> steps = new ArrayList<>();
+        if (plan == null) {
+            return steps;
+        }
+        // ① 意图识别
+        Map<String, Object> intentStep = new LinkedHashMap<>();
+        intentStep.put("id", "intent");
+        intentStep.put("type", "thinking");
+        intentStep.put("title", intentStepName(context));
+        intentStep.put("content", intentStepDesc(context));
+        intentStep.put("status", "done");
+        intentStep.put("category", "understand");
+        intentStep.put("goal", "先听懂您要做什么，再决定怎么办");
+        intentStep.put("input", Map.of("question", ""));
+        intentStep.put("output", Map.of("summary", "已明确：本次要执行「" + actionDisplay(plan) + "」"));
+        steps.add(intentStep);
+        // ② 处理方案
+        Map<String, Object> planStep = new LinkedHashMap<>();
+        planStep.put("id", "plan");
+        planStep.put("type", "thinking");
+        planStep.put("title", "定下处理方案");
+        planStep.put("content", buildReadablePlan(plan));
+        planStep.put("status", "done");
+        planStep.put("category", "understand");
+        planStep.put("goal", ThinkingCopy.intentGoal(plan.getIntent()));
+        planStep.put("input", planInputView(plan));
+        planStep.put("workflow", buildWorkflow(plan));
+        planStep.put("output", Map.of("summary", buildReadablePlan(plan)));
+        steps.add(planStep);
+        // ③ 工具步骤：与实时 tool 事件同构（title/goal/manualHint/input/output/elapsed）
+        if (results != null) {
+            for (ExecutionResult result : results) {
+                Map<String, Object> toolEvent = buildToolEvent(result);
+                Map<String, Object> toolStep = new LinkedHashMap<>();
+                toolStep.put("id", "tool_" + result.getToolName());
+                toolStep.put("type", "tool");
+                toolStep.put("title", toolEvent.getOrDefault("title", result.getToolName()));
+                toolStep.put("goal", toolEvent.get("goal"));
+                toolStep.put("manualHint", toolEvent.get("manualHint"));
+                toolStep.put("status", result.isSuccess() ? "done" : "error");
+                toolStep.put("elapsed", result.getExecutionTimeMs() / 1000.0);
+                toolStep.put("result", result.isSuccess()
+                        ? toolEvent.getOrDefault("summary", "执行完成")
+                        : toolEvent.getOrDefault("errorMessage", "执行失败"));
+                Map<String, Object> io = new LinkedHashMap<>();
+                io.put("input", toolEvent.get("input"));
+                io.put("output", toolEvent.get("output"));
+                toolStep.put("io", io);
+                steps.add(toolStep);
+            }
+        }
+        // ④ 汇总步骤：实时流的 generate 步骤（含结论输出），历史回放等量还原
+        Map<String, Object> generateStep = new LinkedHashMap<>();
+        generateStep.put("id", "generate");
+        generateStep.put("type", "thinking");
+        generateStep.put("title", "汇总结果");
+        generateStep.put("content", "正在汇总筛查结论与处置建议…");
+        generateStep.put("status", "done");
+        generateStep.put("goal", "把各环节结果整合成您能直接使用的结论与建议");
+        generateStep.put("input", planInputView(plan));
+        generateStep.put("output", Map.of("summary", report != null && !report.isBlank() ? report : "已完成"));
+        steps.add(generateStep);
+        return steps;
+    }
+
+    /**
+     * 构建单个工具执行结果快照（与前端 tool 事件 toolEntry 字段对齐）。
+     * <p>
+     * 补齐 title/goal/manualHint（与实时 buildToolEvent 同源），保证历史回放的
+     * 工具卡片文案与实时会话一致；前端 restoreMessageMetadata 映射为 toolResults。
+     */
+    private Map<String, Object> buildToolResultSnapshot(ExecutionResult result) {
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("name", result.getToolName());
+        snapshot.put("status", result.isSuccess() ? "done" : "error");
+        snapshot.put("elapsedMs", result.getExecutionTimeMs());
+        // 与实时 tool 事件同源的业务文案（title/goal/manualHint）
+        Map<String, Object> toolEvent = buildToolEvent(result);
+        if (toolEvent.containsKey("title")) {
+            snapshot.put("title", toolEvent.get("title"));
+        }
+        if (toolEvent.containsKey("goal")) {
+            snapshot.put("goal", toolEvent.get("goal"));
+        }
+        if (toolEvent.containsKey("manualHint")) {
+            snapshot.put("manualHint", toolEvent.get("manualHint"));
+        }
+        if (result.isSuccess() && result.getData() != null) {
+            snapshot.put("summary", toolEvent.getOrDefault("summary", ""));
+            snapshot.put("input", toolEvent.getOrDefault("input", Map.of()));
+            snapshot.put("output", toolEvent.getOrDefault("output", Map.of()));
+        } else if (!result.isSuccess()) {
+            snapshot.put("errorMessage", result.getErrorMessage());
+        }
+        return snapshot;
     }
 
     /** 转 JSON 字符串，供 metadata 序列化（失败时退回原值）。 */

@@ -376,11 +376,11 @@ CREATE TABLE `pd_ai_ontology_instance` (
     PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='本体实例主表';
 
--- @ElementCollection Map<String,String> data
+-- @ElementCollection Map<String,String> data（draft_json 序列化草稿可能超 255，用 TEXT）
 CREATE TABLE `pd_ai_ontology_instance_data` (
     `ontology_instance_id` BIGINT       NOT NULL,
     `data_key`             VARCHAR(255) NOT NULL,
-    `data`                 VARCHAR(255)          DEFAULT NULL,
+    `data`                 TEXT                  DEFAULT NULL,
     PRIMARY KEY (`ontology_instance_id`, `data_key`),
     CONSTRAINT `fk_oid_data`
         FOREIGN KEY (`ontology_instance_id`) REFERENCES `pd_ai_ontology_instance` (`id`) ON DELETE CASCADE
@@ -461,6 +461,7 @@ CREATE TABLE `pd_ai_ops_work_orders` (
     `actions`            TEXT                  DEFAULT NULL COMMENT '处置动作 JSON 数组',
     `status`             VARCHAR(32)  NOT NULL DEFAULT 'open',
     `source`             VARCHAR(64)           DEFAULT NULL,
+    `session_id`         VARCHAR(64)           DEFAULT NULL COMMENT '来源会话 ID（研发助手会话内工单聚合）',
     `hypo_mode`          VARCHAR(32)           DEFAULT NULL,
     `payload`            TEXT                  DEFAULT NULL COMMENT '扩展载荷 JSON',
     `created_at`         DATETIME(6)           DEFAULT NULL,
@@ -469,6 +470,7 @@ CREATE TABLE `pd_ai_ops_work_orders` (
     UNIQUE KEY `uk_owo_work_order_id` (`work_order_id`),
     KEY `idx_owo_offering` (`offering_id`),
     KEY `idx_owo_status` (`status`),
+    KEY `idx_owo_session` (`session_id`),
     KEY `idx_owo_created` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='产商品运营处置工单';
 

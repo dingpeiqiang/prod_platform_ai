@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -1321,6 +1322,7 @@ public class ProductOntologyService {
     /**
      * 持久化配置草稿（JPA pd_ai_ontology_instance），绑定 session/user，刷新可恢复。
      */
+    @Transactional
     public Map<String, Object> saveConfigDraft(Map<String, Object> request) {
         Map<String, Object> req = request == null ? Map.of() : request;
         @SuppressWarnings("unchecked")
@@ -1380,6 +1382,7 @@ public class ProductOntologyService {
         return body;
     }
 
+    @Transactional(readOnly = true)
     public Map<String, Object> listConfigDrafts(String sessionId, String userId, String status) {
         List<OntologyInstance> rows;
         if (sessionId != null && !sessionId.isBlank()) {
@@ -1407,6 +1410,7 @@ public class ProductOntologyService {
         return body;
     }
 
+    @Transactional(readOnly = true)
     public Map<String, Object> getConfigDraft(Long draftId) {
         OntologyInstance entity = instanceRepository.findByIdAndOntologyCode(draftId, OFFERING_CONFIG_CODE)
                 .orElse(null);
@@ -1419,6 +1423,7 @@ public class ProductOntologyService {
         return body;
     }
 
+    @Transactional
     public Map<String, Object> deleteConfigDraft(Long draftId) {
         OntologyInstance entity = instanceRepository.findByIdAndOntologyCode(draftId, OFFERING_CONFIG_CODE)
                 .orElse(null);
@@ -1430,8 +1435,10 @@ public class ProductOntologyService {
     }
 
     /**
-     * 智检通过后闭环：合规 → 沉淀本体 → 生成资费备案工单 → 草稿状态 filing。
+     * 智检通过后闭环：合规 → 沉淀本体 → 草稿状态 filing。
+     * （资费备案工单生成逻辑已移除：提交即完成备案登记，不再额外开单）
      */
+    @Transactional
     public Map<String, Object> submitConfigDraft(Map<String, Object> request) {
         Map<String, Object> req = request == null ? Map.of() : request;
         @SuppressWarnings("unchecked")
@@ -1478,28 +1485,8 @@ public class ProductOntologyService {
         }
 
         String offeringId = str(published.get("offeringId"));
-        String offeringName = str(firstNonEmpty(draft.get("offeringName"), draft.get("offerName"), offeringId));
-        Map<String, Object> woReq = new LinkedHashMap<>();
-        woReq.put("offeringId", offeringId);
-        woReq.put("offeringName", offeringName);
-        woReq.put("source", "rd_filing");
-        woReq.put("title", offeringName + "资费备案申请");
-        woReq.put("summary", "研发助手合规通过后自动发起备案：月费="
-                + firstNonEmpty(draft.get("monthlyFee"), draft.get("fixedFeeAmount"), "-")
-                + "，场景=" + firstNonEmpty(draft.get("bizScenario"), "-"));
-        woReq.put("actions", List.of(
-                "提交资费备案申请",
-                "初审复核字段完整性",
-                "通过后更新产商品状态为待上线/在售"
-        ));
-        Map<String, Object> woBody = createWorkOrder(woReq);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> workOrder = woBody.get("workOrder") instanceof Map<?, ?>
-                ? (Map<String, Object>) woBody.get("workOrder")
-                : Map.of();
 
         final Map<String, Object> draftSnapshot = deepCopy(draft);
-        final String workOrderId = str(workOrder.get("workOrderId"));
         if (persistedId != null) {
             instanceRepository.findByIdAndOntologyCode(persistedId, OFFERING_CONFIG_CODE).ifPresent(entity -> {
                 entity.setStatus("filing");
@@ -1509,7 +1496,6 @@ public class ProductOntologyService {
                     entity.getData().forEach(store::put);
                 }
                 store.put("offeringId", offeringId);
-                store.put("workOrderId", workOrderId);
                 store.put("compliancePass", "true");
                 try {
                     store.put(DRAFT_JSON_KEY, objectMapper.writeValueAsString(draftSnapshot));
@@ -1526,17 +1512,15 @@ public class ProductOntologyService {
                 "step", "submit_filing",
                 "offering_id", offeringId,
                 "draft_id", persistedId == null ? "" : String.valueOf(persistedId),
-                "work_order_id", str(workOrder.get("workOrderId")),
                 "publish_trace", str(published.get("trace_id")),
                 "timestamp", Instant.now().toString()
         ));
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("success", true);
-        body.put("message", "已提交：合规通过 → 沉淀本体 → 生成资费备案工单");
+        body.put("message", "已提交：合规通过 → 沉淀本体 → 草稿流转备案");
         body.put("draftId", persistedId);
         body.put("offeringId", offeringId);
-        body.put("workOrder", workOrder);
         body.put("published", published);
         body.put("compliancePass", true);
         body.put("status", "filing");
@@ -2134,6 +2118,7 @@ public class ProductOntologyService {
         Map<String, Object> req = request == null ? Map.of() : request;
         String offeringId = str(req.getOrDefault("offeringId", req.get("offering_id")));
         String source = str(req.getOrDefault("source", "manual"));
+        String sessionId = str(req.getOrDefault("sessionId", req.get("session_id")));
         String title = str(req.get("title"));
         String summary = str(req.getOrDefault("summary", req.getOrDefault("anomalySummary", "")));
         List<Object> actions = castList(req.get("actions")).stream()
@@ -2168,6 +2153,23 @@ public class ProductOntologyService {
         if (req.get("hypoMode") != null) {
             payload.put("hypoMode", req.get("hypoMode"));
         }
+        // 关联配置草稿：工单卡删除/复制操作按工单号反查草稿的唯一凭据
+        String draftIdLink = str(firstNonEmpty(req.get("draftId"), req.get("draft_id")));
+        if (!draftIdLink.isBlank() && !"null".equals(draftIdLink)) {
+            payload.put("draftId", draftIdLink);
+        }
+        // 备案单关联触发提交的配置工单（前端合并展示/高亮来源）
+        String relatedWo = str(firstNonEmpty(req.get("relatedWorkOrderId"), req.get("related_work_order_id")));
+        if (!relatedWo.isBlank() && !"null".equals(relatedWo)) {
+            payload.put("relatedWorkOrderId", relatedWo);
+        }
+        // 稽核结果随单：工单卡直接展示草稿合规结论（issues 为稽核规则问题明细）
+        if (req.get("compliancePass") != null) {
+            payload.put("compliancePass", req.get("compliancePass"));
+        }
+        if (req.get("complianceIssues") != null) {
+            payload.put("complianceIssues", req.get("complianceIssues"));
+        }
 
         OpsWorkOrder entity = new OpsWorkOrder();
         entity.setWorkOrderId(woId);
@@ -2178,6 +2180,7 @@ public class ProductOntologyService {
         entity.setActions(actions);
         entity.setStatus("open");
         entity.setSource(source.isBlank() ? "ops_assistant" : source);
+        entity.setSessionId(sessionId.isBlank() ? null : sessionId);
         entity.setHypoMode(str(req.get("hypoMode")));
         entity.setPayload(payload);
         OpsWorkOrder saved = workOrderRepository.save(entity);
@@ -2211,29 +2214,47 @@ public class ProductOntologyService {
     }
 
     public Map<String, Object> listWorkOrders() {
-        return listWorkOrders(null);
+        return listWorkOrders(null, null);
     }
 
-    public Map<String, Object> listWorkOrders(String status) {
+    public Map<String, Object> listWorkOrders(String status, String sessionId) {
+        String sid = sessionId == null ? "" : sessionId.trim();
+        String st = status == null ? "" : status.trim();
+        boolean byStatus = !st.isBlank() && !"all".equalsIgnoreCase(st);
         List<OpsWorkOrder> rows;
-        if (status != null && !status.isBlank() && !"all".equalsIgnoreCase(status)) {
-            rows = workOrderRepository.findTop50ByStatusOrderByCreatedAtDesc(status.trim().toLowerCase(Locale.ROOT));
+        if (!sid.isBlank() && byStatus) {
+            rows = workOrderRepository.findTop50BySessionIdAndStatusOrderByCreatedAtDesc(
+                    sid, st.toLowerCase(Locale.ROOT));
+        } else if (!sid.isBlank()) {
+            rows = workOrderRepository.findTop50BySessionIdOrderByCreatedAtDesc(sid);
+        } else if (byStatus) {
+            rows = workOrderRepository.findTop50ByStatusOrderByCreatedAtDesc(st.toLowerCase(Locale.ROOT));
         } else {
             rows = workOrderRepository.findTop50ByOrderByCreatedAtDesc();
         }
         List<Map<String, Object>> items = rows.stream().map(this::toWorkOrderMap).collect(Collectors.toList());
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", true);
+        body.put("total", items.size());
+        body.put("statusFilter", byStatus ? st : "all");
+        body.put("sessionId", sid.isBlank() ? null : sid);
+        body.put("items", items);
+        if (!sid.isBlank()) {
+            // 会话维度：当前过滤集合内的状态计数，供消息窗口工单卡直接展示
+            Map<String, Object> counts = new LinkedHashMap<>();
+            counts.put("open", items.stream().filter(i -> "open".equals(i.get("status"))).count());
+            counts.put("in_progress", items.stream().filter(i -> "in_progress".equals(i.get("status"))).count());
+            counts.put("done", items.stream().filter(i -> "done".equals(i.get("status"))).count());
+            counts.put("cancelled", items.stream().filter(i -> "cancelled".equals(i.get("status"))).count());
+            body.put("counts", counts);
+            return withModeMeta(body);
+        }
         Map<String, Object> counts = new LinkedHashMap<>();
         counts.put("open", workOrderRepository.countByStatus("open"));
         counts.put("in_progress", workOrderRepository.countByStatus("in_progress"));
         counts.put("done", workOrderRepository.countByStatus("done"));
         counts.put("cancelled", workOrderRepository.countByStatus("cancelled"));
-
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("success", true);
-        body.put("total", items.size());
-        body.put("statusFilter", status == null || status.isBlank() ? "all" : status);
         body.put("counts", counts);
-        body.put("items", items);
         return withModeMeta(body);
     }
 
@@ -2447,6 +2468,7 @@ public class ProductOntologyService {
         wo.put("actions", e.getActions() == null ? List.of() : e.getActions());
         wo.put("status", e.getStatus());
         wo.put("source", e.getSource());
+        wo.put("sessionId", e.getSessionId());
         wo.put("hypoMode", e.getHypoMode());
         if (e.getPayload() != null) {
             wo.putAll(e.getPayload());

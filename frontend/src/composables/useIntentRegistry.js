@@ -57,10 +57,14 @@ export function getEventPanel(intentType) {
 }
 
 /**
- * 查找意图后处理器
+ * 查找意图后处理器（键大小写不敏感：后端 intent 可能为小写工具名或大写意图码）
  */
 export function getPostProcessor(intentType) {
-  return _postProcessors[intentType] || null
+  if (!intentType) return null
+  const direct = _postProcessors[intentType]
+  if (direct) return direct
+  const upper = String(intentType).toUpperCase()
+  return _postProcessors[upper] || null
 }
 
 export function listEventTypes() {

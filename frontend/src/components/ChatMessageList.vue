@@ -144,8 +144,9 @@
               </button>
             </div>
 
-            <!-- 表单卡片（可展开为内联编辑器） -->
-            <template v-if="msg.formCard && isReplySettled(msg)">
+            <!-- 表单卡片（可展开为内联编辑器）；
+                 当消息同时携带工单列表时，草稿并入工单卡（点击工单条目展开），此处不再独立渲染 -->
+            <template v-if="msg.formCard && isReplySettled(msg) && !msg.workOrders?.length">
               <div v-if="!isActiveForm(msg.formCard)" class="form-card" @click="$emit('form-card-click', msg)">
                 <div class="form-card-header">
                   <div class="form-card-icon">
@@ -231,6 +232,20 @@
               <span class="ta-name">查看审计追溯</span>
               <span class="ta-id">{{ msg.traceId }}</span>
             </div>
+
+            <!-- 会话内商品配置工单列表（内联展示；点击条目/操作在右侧抽屉打开草稿） -->
+            <SessionWorkOrderCard
+              v-if="msg.workOrders?.length && isReplySettled(msg)"
+              :work-orders="msg.workOrders"
+              :form-card="msg.formCard"
+              :highlight-id="msg.workOrders.find((w) => w.workOrderId === msg.lastActedWoId) ? msg.lastActedWoId : ''"
+              @query-offering="(wo) => $emit('session-workorder-select', wo)"
+              @preview-product="(wo) => $emit('workorder-preview', { msg, wo })"
+              @edit-product="(wo) => $emit('workorder-edit', { msg, wo })"
+              @submit-product="(wo) => $emit('workorder-submit', { msg, wo })"
+              @copy-product="(wo) => $emit('workorder-copy', { msg, wo })"
+              @delete-product="(wo) => $emit('workorder-delete', { msg, wo })"
+            />
 
             <!-- 下一步体验引导 -->
             <div v-if="msg.done && msg.nextSteps?.length && isReplySettled(msg)" class="next-steps">
@@ -356,6 +371,7 @@
 import { ref, nextTick, onMounted, onUnmounted, computed, watch, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import WelcomeCards from './WelcomeCards.vue'
+import SessionWorkOrderCard from './SessionWorkOrderCard.vue'
 import IntentPanel from './intent-panels/IntentPanel.vue'
 import ThinkingProcessPanel from './ThinkingProcessPanel.vue'
 import MessageCard from './MessageCard.vue'
@@ -390,6 +406,12 @@ const emit = defineEmits([
   'query-result-click',
   'clarify-submit',
   'trace-click',
+  'session-workorder-select',
+  'workorder-preview',
+  'workorder-edit',
+  'workorder-submit',
+  'workorder-copy',
+  'workorder-delete',
 ])
 
 const isActiveForm = (formCard) => {
