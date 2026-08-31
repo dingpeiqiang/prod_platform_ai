@@ -5,14 +5,17 @@ import com.sitech.prodai.service.agent.Presenter;
 import com.sitech.prodai.service.agent.model.ExecutionResult;
 import com.sitech.prodai.service.agent.model.QueryPlan;
 import com.sitech.prodai.service.agent.model.SessionContext;
+import com.sitech.prodai.service.agent.tool.AgentTool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 默认表达层实现。
@@ -28,18 +31,37 @@ public class DefaultPresenter implements Presenter {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultPresenter.class);
 
-    /** 澄清参数的追问文案模板：参数名 → {业务展示名, 示例} */
-    private static final Map<String, String[]> CLARIFY_LABELS = Map.of(
-            "offering", new String[]{"商品/套餐", "例如：5G套餐、家庭融合畅享128"},
-            "ruleId", new String[]{"规则编号", "例如：R-A01、R-B02"},
-            "concept", new String[]{"本体概念", "例如：商品、渠道、订购"},
-            "question", new String[]{"查询内容", "请描述您想查询的内容"}
+    /** 翻译层可调用的真实工具白名单（与理解层 KNOWN_TOOLS 同源语义：防 LLM 编造能力） */
+    private static final Set<String> KNOWN_TOOLS = Set.of(
+            "sparql_query",
+            "swrl_root_cause",
+            "swrl_risk_audit",
+            "rule_explain",
+            "ontology_explain"
+    );
+
+    /** 产商品研发场景工具白名单（scene=rd 时使用；不影响运营白名单） */
+    private static final Set<String> RD_KNOWN_TOOLS = Set.of(
+            "rd_config_chat",
+            "rd_file_parse",
+            "rd_compliance",
+            "rd_config_discover",
+            "rd_scheme_compare"
     );
 
     private final LlmService llmService;
 
-    public DefaultPresenter(LlmService llmService) {
+    /** 已注册工具索引：工具名 → 工具（跟进话术守门：能力承接关系与场景白名单校验） */
+    private final Map<String, AgentTool> toolMap;
+
+    public DefaultPresenter(LlmService llmService, List<AgentTool> tools) {
         this.llmService = llmService;
+        this.toolMap = new LinkedHashMap<>();
+        if (tools != null) {
+            for (AgentTool tool : tools) {
+                this.toolMap.put(tool.getName(), tool);
+            }
+        }
     }
 
     @Override
@@ -88,6 +110,11 @@ public class DefaultPresenter implements Presenter {
             prompt.append("\n注意：部分工具执行失败，请先基于成功的结果给出部分结论，")
                     .append("再简要说明哪些环节失败、可能原因与建议（不要夸大失败影响）。");
         }
+        // U3 假设透明回显：系统自行推断的取值须在结论中明示，履行回显义务（方案 11.6(c)）
+        String assumptionsPrompt = assumptionsPrompt(context);
+        if (!assumptionsPrompt.isEmpty()) {
+            prompt.append(assumptionsPrompt);
+        }
 
         // 大模型生成最终报告。不可用/返回为空时抛错，不做 fallback 兜底。
         String report = llmService.completePrompt(prompt.toString());
@@ -97,29 +124,74 @@ public class DefaultPresenter implements Presenter {
 
     /**
      * 生成澄清追问文案（CLARIFY 分支，设计文档 3.4 节）。
+     * <p>
+     * 追问文案由 LLM 基于参数契约（业务名 + 说明）生成自然语言（AI 原生：怎么问由 LLM 定）；
+     * LLM 不可用/返回为空时回退一句话模板"请补充：{参数业务名}"（确定性守门）。
      */
     private String buildClarifyMessage(SessionContext context) {
         List<String> clarify = context != null ? context.getLastClarifyParams() : null;
         if (clarify == null || clarify.isEmpty()) {
             return "请问您想分析哪个商品/套餐？例如：5G套餐、家庭融合畅享128";
         }
+        String generated = llmClarifyMessage(clarify);
+        if (generated != null && !generated.isBlank()) {
+            return generated.trim();
+        }
         StringBuilder sb = new StringBuilder("为了继续处理您的请求，请补充以下信息：\n");
         for (String param : clarify) {
-            String[] label = CLARIFY_LABELS.getOrDefault(param, new String[]{param, ""});
-            sb.append("· ").append(label[0]);
-            if (!label[1].isEmpty()) {
-                sb.append("（").append(label[1]).append("）");
-            }
-            sb.append("\n");
+            sb.append("· ").append(businessNameOf(param)).append("\n");
         }
         return sb.toString().trim();
     }
 
+    /**
+     * LLM 生成澄清追问话术：把"缺哪些参数"问得像人话（语言生成为 LLM 本场）。
+     * 参数说明来自澄清参数的业务名映射，LLM 失败时返回 null 由调用方回退模板。
+     */
+    private String llmClarifyMessage(List<String> params) {
+        try {
+            StringBuilder sb = new StringBuilder();
+            sb.append("用户请求缺少必要信息，需要向用户追问补充。缺失的参数：\n");
+            for (String param : params) {
+                sb.append("- ").append(businessNameOf(param)).append("\n");
+            }
+            sb.append("\n请用一句自然、友好的中文向用户追问这些信息，说明为什么需要。")
+                    .append("只输出追问话术本身，不要输出其他内容。");
+            return llmService.completePrompt(sb.toString());
+        } catch (Exception e) {
+            log.warn("[DefaultPresenter] 澄清追问文案 LLM 生成失败，回退模板: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** 参数内部名 → 业务展示名（通用映射：camelCase/下划线拆词，中文业务名场景由 LLM 生成覆盖）。 */
+    private String businessNameOf(String param) {
+        if (param == null || param.isBlank()) {
+            return param;
+        }
+        String[] parts = param.replaceAll("([a-z])([A-Z])", "$1 $2").split("[_\\s]+");
+        return String.join(" ", parts);
+    }
+
+    /**
+     * 跟进话术生成（方案 11.2 触点④：任务链感知的下一步）。
+     * <p>
+     * 优先 LLM 基于"用户问题 + 本轮工具结果 + 工具描述声明的业务承接关系"生成
+     * 业务承接话术（归因→建单、稽核→导出、对比→写回草稿等真实业务衔接，而非通用三句）；
+     * 守门校验话术所指工具在本场景白名单内（合法能力清单由场景已知工具推导，同理解层
+     * sanitizeTools 语义），非法候选剔除；LLM 不可用/合法候选不足时回退
+     * 原工具分支词典（@deprecated 过渡保留）。
+     */
     @Override
-    public List<String> suggestFollowUps(String question, List<ExecutionResult> results) {
+    public List<String> suggestFollowUps(String question, List<ExecutionResult> results, SessionContext context) {
+        List<String> generated = llmFollowUps(question, results, context);
+        if (generated != null && !generated.isEmpty()) {
+            return generated;
+        }
+
         List<String> suggestions = new ArrayList<>();
 
-        // 根据工具执行结果生成追问建议
+        // 回退：按工具结果生成建议（词典分支 @deprecated，随 LLM 化稳定后移除）
         if (results != null) {
             for (ExecutionResult result : results) {
                 if (!result.isSuccess()) {
@@ -154,6 +226,87 @@ public class DefaultPresenter implements Presenter {
         }
 
         return suggestions;
+    }
+
+    /**
+     * LLM 生成任务链感知的跟进话术：基于本轮结果建议"下一个业务动作"。
+     * <p>
+     * prompt 注入本轮工具执行结果与场景内全部能力清单（名称 + 描述 + 声明的入参业务含义，
+     * 即工具自描述的承接关系），要求每条话术指明承接的工具；守门只保留所指工具在场景
+     * 白名单内的候选（防 LLM 编造能力，与理解层白名单语义一致）。
+     * 输出解析为 2~3 条短话术；LLM 失败/全部候选被剔除时返回 null（调用方回退词典）。
+     */
+    private List<String> llmFollowUps(String question, List<ExecutionResult> results, SessionContext context) {
+        if (results == null || results.isEmpty()) {
+            return null;
+        }
+        List<AgentTool> allowedTools = allowedToolsOf(context);
+        if (allowedTools.isEmpty()) {
+            return null;
+        }
+        try {
+            StringBuilder sb = new StringBuilder();
+            sb.append("用户问题：").append(question).append("\n本轮执行结果摘要：\n");
+            for (ExecutionResult r : results) {
+                sb.append("- ").append(r.getToolName()).append("：")
+                        .append(r.isSuccess() ? "成功" : "失败").append('\n');
+            }
+            sb.append("\n系统当前具备的后续业务能力（话术建议必须承接其中之一，不得虚构其他能力）：\n");
+            for (AgentTool tool : allowedTools) {
+                sb.append("- ").append(tool.getName()).append("：").append(tool.getDescription()).append('\n');
+            }
+            sb.append("\n请基于该结果，建议用户接下来最自然的 2~3 个业务动作（如归因后建议建单、")
+                    .append("稽核后建议导出清单、对比后建议采用某方案）。")
+                    .append("每条一句话、面向业务人员、可直接作为消息发送，且须承接上面列出的某项能力。")
+                    .append("\n仅输出 JSON 数组：[{\"text\": \"话术1\", \"tool\": \"承接的工具名\"}, {\"text\": \"话术2\", \"tool\": \"承接的工具名\"}]");
+            String raw = llmService.completePrompt(sb.toString());
+            if (raw == null || raw.isBlank()) {
+                return null;
+            }
+            int start = raw.indexOf('[');
+            int end = raw.lastIndexOf(']');
+            if (start < 0 || end <= start) {
+                return null;
+            }
+            List<Map<String, Object>> list = new com.fasterxml.jackson.databind.ObjectMapper().readValue(
+                    raw.substring(start, end + 1),
+                    new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+            Set<String> allowedNames = new LinkedHashSet<>();
+            for (AgentTool tool : allowedTools) {
+                allowedNames.add(tool.getName());
+            }
+            List<String> out = new ArrayList<>();
+            for (Map<String, Object> item : list) {
+                if (item == null || out.size() >= 3) {
+                    continue;
+                }
+                Object text = item.get("text");
+                Object tool = item.get("tool");
+                // 守门：话术所指工具必须在场景白名单内，非法候选剔除（防幻觉能力混入执行链入口）
+                if (text instanceof String s && !s.isBlank()
+                        && tool instanceof String t && allowedNames.contains(t.trim())) {
+                    out.add(s.trim());
+                }
+            }
+            return out;
+        } catch (Exception e) {
+            log.warn("[DefaultPresenter] 跟进话术 LLM 生成失败，回退词典: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** 场景白名单内的已注册工具（能力清单来源同理解层：rd 场景用研发白名单，否则运营白名单）。 */
+    private List<AgentTool> allowedToolsOf(SessionContext context) {
+        boolean rdScene = context != null && "rd".equals(context.getScene());
+        Set<String> whitelist = rdScene ? RD_KNOWN_TOOLS : KNOWN_TOOLS;
+        List<AgentTool> out = new ArrayList<>();
+        for (String name : whitelist) {
+            AgentTool tool = toolMap.get(name);
+            if (tool != null) {
+                out.add(tool);
+            }
+        }
+        return out;
     }
 
     @SuppressWarnings("unchecked")
@@ -193,6 +346,29 @@ public class DefaultPresenter implements Presenter {
         if (text == null || text.isBlank()) {
             throw new IllegalStateException(message);
         }
+    }
+
+    /**
+     * U3 假设透明回显：会话中存在系统自行推断的取值时，生成 prompt 注入段，
+     * 要求结论正文明示假设（"本次按 [参数=值] 推断执行，如不符请说明"）。
+     */
+    private String assumptionsPrompt(SessionContext context) {
+        List<Map<String, Object>> assumptions = context != null ? context.getAssumptions() : null;
+        if (assumptions == null || assumptions.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n注意：以下取值为系统自行推断（用户未明确指定），请在结论开头用一句话向用户说明这些推断前提，")
+                .append("格式如「本次按 [时间范围=本月] 推断执行，如不符请告诉我」，并列出全部推断项：\n");
+        for (Map<String, Object> a : assumptions) {
+            sb.append("- ").append(a.get("param")).append("=").append(a.get("value"));
+            Object reason = a.get("reason");
+            if (reason != null && !String.valueOf(reason).isBlank()) {
+                sb.append("（").append(reason).append("）");
+            }
+            sb.append('\n');
+        }
+        return sb.toString();
     }
 
     private List<Map<String, String>> toHistory(SessionContext context) {

@@ -1,10 +1,12 @@
 package com.sitech.prodai.service.agent;
 
 import com.sitech.prodai.service.ChatPersistenceService;
+import com.sitech.prodai.service.LlmService;
 import com.sitech.prodai.service.agent.model.ExecutionResult;
 import com.sitech.prodai.service.agent.model.QueryPlan;
 import com.sitech.prodai.service.agent.model.SessionContext;
 import com.sitech.prodai.service.agent.tool.AgentTool;
+import com.sitech.prodai.service.agent.tool.ThinkingCopy;
 import com.sitech.prodai.service.agent.tool.ToolOutputRenderer;
 import com.sitech.prodai.service.agent.tool.ToolParam;
 import org.slf4j.Logger;
@@ -36,6 +38,7 @@ public class AgentOrchestrator {
     private final Presenter presenter;
     private final SessionManager sessionManager;
     private final Optional<ChatPersistenceService> persistenceService;
+    private final Optional<LlmService> llmService;
 
     /** 已注册工具索引：工具名 → 工具（供工具自描述元数据查询） */
     private final Map<String, AgentTool> toolMap;
@@ -45,12 +48,14 @@ public class AgentOrchestrator {
                              Presenter presenter,
                              SessionManager sessionManager,
                              Optional<ChatPersistenceService> persistenceService,
+                             Optional<LlmService> llmService,
                              List<AgentTool> tools) {
         this.understander = understander;
         this.executor = executor;
         this.presenter = presenter;
         this.sessionManager = sessionManager;
         this.persistenceService = persistenceService;
+        this.llmService = llmService;
         this.toolMap = new ConcurrentHashMap<>();
         if (tools != null) {
             for (AgentTool tool : tools) {
@@ -122,13 +127,38 @@ public class AgentOrchestrator {
             clarifyResponse.put("report", clarifyMessage);
             clarifyResponse.put("intent", plan.getIntent());
             clarifyResponse.put("clarify", plan.getClarify());
+            if (plan.getClarifyContracts() != null && !plan.getClarifyContracts().isEmpty()) {
+                clarifyResponse.put("clarify_contracts", plan.getClarifyContracts());
+            }
             clarifyResponse.put("tools", plan.getTools());
             clarifyResponse.put("query_plan", buildQueryPlanView(plan));
-            clarifyResponse.put("evidence", List.of());
             clarifyResponse.put("conclusion", "");
             clarifyResponse.put("suggested_follow_ups", List.of());
             clarifyResponse.put("elapsed_ms", System.currentTimeMillis() - startTime);
             return clarifyResponse;
+        }
+
+        // 确认分支（U2）：需求存在多种解读，暂停等用户在候选卡片中选定
+        if (QueryPlan.INTENT_CONFIRM.equals(plan.getIntent())) {
+            context.setLastIntent(plan.getIntent());
+            context.setLastTools(plan.getTools());
+            context.setLastParams(plan.getParams());
+            String confirmMessage = buildConfirmMessage(plan.getCandidates());
+            context.addHistoryEntry("assistant", confirmMessage);
+            sessionManager.save(context);
+            persistTurn(context, question, confirmMessage, plan, List.of());
+
+            Map<String, Object> confirmResponse = new LinkedHashMap<>();
+            confirmResponse.put("session_id", context.getSessionId());
+            confirmResponse.put("report", confirmMessage);
+            confirmResponse.put("intent", plan.getIntent());
+            confirmResponse.put("candidates", plan.getCandidates());
+            confirmResponse.put("tools", plan.getTools());
+            confirmResponse.put("query_plan", buildQueryPlanView(plan));
+            confirmResponse.put("conclusion", "");
+            confirmResponse.put("suggested_follow_ups", List.of());
+            confirmResponse.put("elapsed_ms", System.currentTimeMillis() - startTime);
+            return confirmResponse;
         }
 
         context.setLastIntent(plan.getIntent());
@@ -150,7 +180,7 @@ public class AgentOrchestrator {
         // Step 4: 表达层 — 工具结果 → 自然语言（部分失败时生成部分结论）
         log.info("[AgentOrchestrator] 表达层处理");
         String report = presenter.present(question, results, context);
-        List<String> followUps = presenter.suggestFollowUps(question, results);
+        List<String> followUps = presenter.suggestFollowUps(question, results, context);
 
         // 保存回答到会话历史
         context.addHistoryEntry("assistant", report);
@@ -169,7 +199,6 @@ public class AgentOrchestrator {
         response.put("intent", plan.getIntent());
         response.put("tools", plan.getTools());
         response.put("query_plan", buildQueryPlanView(plan));
-        response.put("evidence", buildEvidenceSummary(results));
         response.put("conclusion", extractConclusion(results));
         response.put("suggested_follow_ups", followUps);
         response.put("elapsed_ms", elapsed);
@@ -213,39 +242,53 @@ public class AgentOrchestrator {
         if (plan.getClarify() != null && !plan.getClarify().isEmpty()) {
             view.put("clarify", plan.getClarify());
         }
+        if (plan.getClarifyContracts() != null && !plan.getClarifyContracts().isEmpty()) {
+            view.put("clarify_contracts", plan.getClarifyContracts());
+        }
+        if (plan.getCandidates() != null && !plan.getCandidates().isEmpty()) {
+            view.put("candidates", plan.getCandidates());
+        }
         return view;
     }
 
     /**
-     * 构建证据摘要（结构化对象，供前端 EvidenceCard 直接渲染）。
-     * <p>
-     * 结构：{ count, items: [{label, value, contribution}], summary }。
-     * <p>
-     * 依据工具自描述输出契约（SUMMARY 角色字段）通用提取，旧工具回落至 nl_answer/answer。
+     * 确认分支文案（U2）：LLM 生成歧义确认话术，失败时回退固定模板。
      */
-    private Map<String, Object> buildEvidenceSummary(List<ExecutionResult> results) {
-        Map<String, Object> evidence = new LinkedHashMap<>();
-        List<Map<String, Object>> items = new ArrayList<>();
-        List<ExecutionResult> success = results.stream().filter(ExecutionResult::isSuccess).toList();
-
-        for (ExecutionResult r : success) {
-            if (r.getData() == null) {
-                continue;
-            }
-            AgentTool tool = toolMap.get(r.getToolName());
-            List<Map<String, Object>> toolItems = ToolOutputRenderer.evidenceItems(tool, r.getData());
-            items.addAll(toolItems);
+    private String buildConfirmMessage(List<String> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            return "您的需求存在多种理解，请告诉我您想做哪一个。";
         }
+        String generated = llmConfirmMessage(candidates);
+        if (generated != null && !generated.isBlank()) {
+            return generated;
+        }
+        StringBuilder sb = new StringBuilder("您的需求可能有以下几种理解，请确认想执行哪一种：\n");
+        for (int i = 0; i < candidates.size(); i++) {
+            sb.append(i + 1).append(". ").append(candidates.get(i)).append('\n');
+        }
+        return sb.toString().trim();
+    }
 
-        evidence.put("count", items.size());
-        evidence.put("items", items);
-        // 存在高风险条目（highlight）时提升为告警级强调
-        boolean hasHighlight = items.stream()
-                .anyMatch(i -> Boolean.TRUE.equals(i.get("highlight")));
-        evidence.put("severity", hasHighlight ? "high" : "info");
-        evidence.put("summary", items.isEmpty() ? "" : "本次分析依据 " + items.size() + " 项数据得出");
-        evidence.put("title", "结论依据");
-        return evidence;
+    /** LLM 生成歧义确认话术；不可用/失败返回 null（调用方回退模板）。 */
+    private String llmConfirmMessage(List<String> candidates) {
+        try {
+            if (llmService.isEmpty()) {
+                return null;
+            }
+            StringBuilder sb = new StringBuilder();
+            sb.append("用户需求存在多种合理解读，需要向用户确认。候选解读：\n");
+            for (int i = 0; i < candidates.size(); i++) {
+                sb.append(i + 1).append(". ").append(candidates.get(i)).append('\n');
+            }
+            sb.append("\n请用一句自然、友好的中文请用户确认想执行哪一种。只输出确认话术本身，不要输出其他内容。");
+            String generated = llmService.get().completePrompt(sb.toString());
+            if (generated != null && !generated.isBlank()) {
+                return generated.trim();
+            }
+        } catch (Exception e) {
+            log.warn("[AgentOrchestrator] 确认话术 LLM 生成失败，回退模板: {}", e.getMessage());
+        }
+        return null;
     }
 
     /**
@@ -268,7 +311,7 @@ public class AgentOrchestrator {
      * 将一轮对话（用户提问 + 助手回答）持久化到数据库（去旧留新：新链路自带落库）。
      * <p>
      * metadata 键与前端 {@code chatApi.restoreMessageMetadata} 对齐：
-     * intent_type / stream_text / query_plan / evidence_summary / content_type / done，
+     * intent_type / stream_text / query_plan / content_type / done，
      * 便于会话历史与会话切换时还原三阶产物。
      */
     private void persistTurn(SessionContext context, String question,
@@ -298,9 +341,6 @@ public class AgentOrchestrator {
                 meta.put("done", true);
                 if (plan != null) {
                     meta.put("query_plan", toJson(buildQueryPlanView(plan)));
-                }
-                if (results != null && !results.isEmpty()) {
-                    meta.put("evidence_summary", toJson(buildEvidenceSummary(results)));
                 }
                 svc.saveMessage(sessionId, "assistant", assistantReply, "text", meta);
             }
@@ -386,7 +426,8 @@ public class AgentOrchestrator {
         emitter.emit("thinking", Map.of(
                 "steps", List.of(thinkingStep("intent", intentStepName(context),
                         intentStepDesc(context),
-                        Map.of("input", Map.of("question", question))))
+                        Map.of("goal", "先听懂您要做什么，再决定怎么办",
+                                "input", Map.of("question", question))))
         ));
 
         List<QueryPlan> plans = understander.understandAll(question, context);
@@ -401,20 +442,22 @@ public class AgentOrchestrator {
             return;
         }
         QueryPlan plan = plans.get(0);
-        // 阶段事件①′：理解完成，原地更新 intent 步骤（补输出：已识别业务意图）
+        // 阶段事件①′：理解完成，原地更新 intent 步骤（补输出：已明确的业务动作）
         emitter.emit("thinking", Map.of(
                 "steps", List.of(thinkingStep("intent", intentStepName(context),
                         intentStepDesc(context),
-                        Map.of("input", Map.of("question", question),
-                                "output", Map.of("summary", "已识别业务意图：" + actionDisplay(plan))))),
+                        Map.of("goal", "先听懂您要做什么，再决定怎么办",
+                                "input", Map.of("question", question),
+                                "output", Map.of("summary", "已明确：本次要执行「" + actionDisplay(plan) + "」")))),
                 "intent", plan.getIntent()
         ));
         // 阶段事件②：计划确认 —— 将内部「查询计划中间语言」翻译为业务可读的筛查方案
         // （取代原先透传 raw queryPlan 给前端渲染内部码卡片，避免对业务人员造成困惑）
         emitter.emit("thinking", Map.of(
-                "steps", List.of(thinkingStep("plan", "执行方案",
+                "steps", List.of(thinkingStep("plan", "定下处理方案",
                         buildReadablePlan(plan),
-                        Map.of("input", planInputView(plan),
+                        Map.of("goal", ThinkingCopy.intentGoal(plan.getIntent()),
+                                "input", planInputView(plan),
                                 "workflow", buildWorkflow(plan),
                                 "output", Map.of("summary", buildReadablePlan(plan))))),
                 "intent", plan.getIntent()
@@ -430,7 +473,8 @@ public class AgentOrchestrator {
             emitter.emit("thinking", Map.of(
                     "steps", List.of(thinkingStep("generate", "组织追问",
                             "正在生成补充信息的询问…",
-                            Map.of("input", Map.of("question", question)))),
+                            Map.of("goal", "信息不全时先问清楚，避免答非所问",
+                                    "input", Map.of("question", question)))),
                     "intent", plan.getIntent()
             ));
             String clarifyMessage = presenter.present(question, List.of(), context);
@@ -446,12 +490,35 @@ public class AgentOrchestrator {
             sessionManager.save(context);
             persistTurn(context, question, clarifyMessage, plan, List.of());
             emitTextEvents(emitter, clarifyMessage);
+            Map<String, Object> donePayload = new LinkedHashMap<>();
+            donePayload.put("session_id", context.getSessionId());
+            donePayload.put("intent", plan.getIntent());
+            donePayload.put("clarify", plan.getClarify());
+            if (plan.getClarifyContracts() != null && !plan.getClarifyContracts().isEmpty()) {
+                donePayload.put("clarify_contracts", plan.getClarifyContracts());
+            }
+            donePayload.put("conclusion", "");
+            donePayload.put("suggested_follow_ups", List.of());
+            donePayload.put("elapsed_ms", System.currentTimeMillis() - startTime);
+            emitter.emit("done", donePayload);
+            return;
+        }
+
+        // 确认分支（U2）：需求存在多种解读，暂停等用户在候选卡片中选定
+        if (QueryPlan.INTENT_CONFIRM.equals(plan.getIntent())) {
+            context.setLastIntent(plan.getIntent());
+            context.setLastTools(plan.getTools());
+            context.setLastParams(plan.getParams());
+            String confirmMessage = buildConfirmMessage(plan.getCandidates());
+            context.addHistoryEntry("assistant", confirmMessage);
+            sessionManager.save(context);
+            persistTurn(context, question, confirmMessage, plan, List.of());
+            emitTextEvents(emitter, confirmMessage);
             emitter.emit("done", Map.of(
                     "session_id", context.getSessionId(),
                     "intent", plan.getIntent(),
-                    "clarify", plan.getClarify(),
+                    "candidates", plan.getCandidates() != null ? plan.getCandidates() : List.of(),
                     "conclusion", "",
-                    "evidence", List.of(),
                     "suggested_follow_ups", List.of(),
                     "elapsed_ms", System.currentTimeMillis() - startTime
             ));
@@ -483,11 +550,12 @@ public class AgentOrchestrator {
         emitter.emit("thinking", Map.of(
                 "steps", List.of(thinkingStep("generate", "汇总结果",
                         "正在汇总筛查结论与处置建议…",
-                        Map.of("input", planInputView(plan)))),
+                        Map.of("goal", "把各环节结果整合成您能直接使用的结论与建议",
+                                "input", planInputView(plan)))),
                 "intent", plan.getIntent()
         ));
         String report = presenter.present(question, results, context);
-        List<String> followUps = presenter.suggestFollowUps(question, results);
+        List<String> followUps = presenter.suggestFollowUps(question, results, context);
         // 阶段事件③′：报告生成完成，原地更新 generate 步骤（补输出：业务结论）
         String conclusionText = extractConclusion(results);
         emitter.emit("thinking", Map.of(
@@ -506,7 +574,6 @@ public class AgentOrchestrator {
                 "session_id", context.getSessionId(),
                 "intent", plan.getIntent(),
                 "conclusion", extractConclusion(results),
-                "evidence", buildEvidenceSummary(results),
                 "suggested_follow_ups", followUps,
                 "elapsed_ms", System.currentTimeMillis() - startTime
         ));
@@ -554,6 +621,7 @@ public class AgentOrchestrator {
                     "steps", List.of(thinkingStep(pre + "intent", intentStepName(context),
                             intentStepDesc(context),
                             Map.of("segment", segment,
+                                    "goal", "先听懂您要做什么，再决定怎么办",
                                     "input", Map.of("question", question)))),
                     "intent", plan.getIntent()
             ));
@@ -561,15 +629,17 @@ public class AgentOrchestrator {
                     "steps", List.of(thinkingStep(pre + "intent", intentStepName(context),
                             intentStepDesc(context),
                             Map.of("segment", segment,
+                                    "goal", "先听懂您要做什么，再决定怎么办",
                                     "input", Map.of("question", question),
-                                    "output", Map.of("summary", "已识别业务意图：" + intentLabel)))),
+                                    "output", Map.of("summary", "已明确：本次要执行「" + intentLabel + "」")))),
                     "intent", plan.getIntent()
             ));
             // 阶段事件②：该子任务的执行方案
             emitter.emit("thinking", Map.of(
-                    "steps", List.of(thinkingStep(pre + "plan", "执行方案",
+                    "steps", List.of(thinkingStep(pre + "plan", "定下处理方案",
                             buildReadablePlan(plan),
                             Map.of("segment", segment,
+                                    "goal", ThinkingCopy.intentGoal(plan.getIntent()),
                                     "input", planInputView(plan),
                                     "workflow", buildWorkflow(plan),
                                     "output", Map.of("summary", buildReadablePlan(plan))))),
@@ -589,6 +659,7 @@ public class AgentOrchestrator {
                     "steps", List.of(thinkingStep(pre + "generate", "汇总结果",
                             "正在汇总该子任务结论…",
                             Map.of("segment", segment,
+                                    "goal", "把各环节结果整合成您能直接使用的结论与建议",
                                     "input", planInputView(plan)))),
                     "intent", plan.getIntent()
             ));
@@ -604,7 +675,7 @@ public class AgentOrchestrator {
             ));
 
             subReports.add(subReport);
-            allFollowUps.addAll(presenter.suggestFollowUps(question, subResults));
+            allFollowUps.addAll(presenter.suggestFollowUps(question, subResults, context));
         }
 
         // 合并各子答案为最终正文（分别作答）
@@ -618,7 +689,6 @@ public class AgentOrchestrator {
                 "session_id", context.getSessionId(),
                 "intent", firstPlan.getIntent(),
                 "conclusion", extractConclusion(allResults),
-                "evidence", buildEvidenceSummary(allResults),
                 "suggested_follow_ups", allFollowUps,
                 "elapsed_ms", System.currentTimeMillis() - startTime
         ));
@@ -653,8 +723,9 @@ public class AgentOrchestrator {
     /**
      * 工具执行结果 → tool 事件载荷（done/error 终态）。
      * <p>
-     * 携带 input（该步骤实际入参）与 output（结构化业务摘要，供思考过程展示
-     * 「输入 → 动作 → 输出」链条，让业务人员一眼看清该环节做了什么）。
+     * 携带 input（该步骤实际入参，业务键过滤后）与 output（结构化业务摘要），
+     * 并附 title（业务动作名）/ goal（这步为什么存在）/ manualHint（人工替代做法），
+     * 让业务人员一眼看清该环节做了什么、为什么做、人工该怎么做。
      */
     private Map<String, Object> buildToolEvent(ExecutionResult result) {
         Map<String, Object> toolEvent = new LinkedHashMap<>();
@@ -662,6 +733,22 @@ public class AgentOrchestrator {
         toolEvent.put("status", result.isSuccess() ? "done" : "error");
         toolEvent.put("durationMs", result.getExecutionTimeMs());
         toolEvent.put("input", toolInputView(result));
+        ThinkingCopy.ToolCopy copy = ThinkingCopy.toolCopy(result.getToolName());
+        if (copy == null) {
+            // 未登记工具：LLM 按 ToolCopy 四要素同构现场生成一次并进程内缓存
+            // （新工具上线当天即有业务文案，词典登记转为事后润色而非上线前置）
+            copy = generatedCopyCache.computeIfAbsent(result.getToolName(), this::generateToolCopy);
+        }
+        if (copy != null) {
+            toolEvent.put("title", copy.title());
+            toolEvent.put("goal", copy.goal());
+            toolEvent.put("manualHint", copy.manualHint());
+        } else {
+            AgentTool labeledTool = toolMap.get(result.getToolName());
+            if (labeledTool != null && labeledTool.getLabel() != null && !labeledTool.getLabel().isBlank()) {
+                toolEvent.put("title", labeledTool.getLabel());
+            }
+        }
         if (result.isSuccess() && result.getData() != null) {
             AgentTool tool = toolMap.get(result.getToolName());
             toolEvent.put("summary", ToolOutputRenderer.summary(tool, result.getData()));
@@ -672,10 +759,82 @@ public class AgentOrchestrator {
         return toolEvent;
     }
 
+    /** 未登记工具的 LLM 生成文案缓存（key=toolName；null 表示生成失败，回退工具 label）。 */
+    private final Map<String, ThinkingCopy.ToolCopy> generatedCopyCache = new ConcurrentHashMap<>();
+
+    /**
+     * LLM 按 ToolCopy 四要素（title/goal/manualHint/category）同构生成未登记工具的业务文案。
+     * 失败返回 null（computeIfAbsent 不缓存 null → 下次可重试），由调用方回退工具 label。
+     */
+    private ThinkingCopy.ToolCopy generateToolCopy(String toolName) {
+        AgentTool tool = toolMap.get(toolName);
+        if (tool == null) {
+            return null;
+        }
+        try {
+            StringBuilder sb = new StringBuilder();
+            sb.append("请为以下工具生成业务人员可读的说明文案。\n")
+                    .append("工具名：").append(tool.getName()).append("\n")
+                    .append("工具描述：").append(tool.getDescription()).append("\n");
+            List<ToolParam> params = tool.getParams();
+            if (params != null && !params.isEmpty()) {
+                sb.append("入参：");
+                for (ToolParam tp : params) {
+                    sb.append(tp.getName()).append("(").append(tp.getDescription()).append(") ");
+                }
+                sb.append("\n");
+            }
+            sb.append("\n仅输出 JSON：\n")
+                    .append("{\"title\": \"这步干什么（≤12字）\", ")
+                    .append("\"goal\": \"为什么做这步（一句话，业务视角）\", ")
+                    .append("\"manualHint\": \"AI不可用时人工怎么做（一句话，可具体步骤）\", ")
+                    .append("\"category\": \"understand|lookup|verify|reason|generate 之一\"}");
+            String raw = llmService.map(l -> l.completePrompt(sb.toString())).orElse(null);
+            return parseToolCopy(raw);
+        } catch (Exception e) {
+            log.warn("[AgentOrchestrator] 未登记工具文案 LLM 生成失败（{}）: {}", toolName, e.getMessage());
+            return null;
+        }
+    }
+
+    /** 解析 LLM 生成的四要素 JSON；非法输出返回 null。 */
+    private ThinkingCopy.ToolCopy parseToolCopy(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            int start = raw.indexOf('{');
+            int end = raw.lastIndexOf('}');
+            if (start < 0 || end <= start) {
+                return null;
+            }
+            Map<String, Object> m = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readValue(raw.substring(start, end + 1),
+                            new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+            String title = str(m.get("title"));
+            if (title.isBlank()) {
+                return null;
+            }
+            ThinkingCopy.Category category;
+            try {
+                category = ThinkingCopy.Category.valueOf(
+                        String.valueOf(m.getOrDefault("category", "lookup")).toUpperCase());
+            } catch (IllegalArgumentException e) {
+                category = ThinkingCopy.Category.LOOKUP;
+            }
+            return new ThinkingCopy.ToolCopy(title, str(m.get("goal")),
+                    str(m.get("manualHint")).isBlank() ? null : str(m.get("manualHint")), category);
+        } catch (Exception e) {
+            log.warn("[AgentOrchestrator] 工具文案 LLM 输出解析失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
     /**
      * 工具步骤入参视图：仅取工具自描述 {@code getParams()} 声明的"必要入参"，
      * 过滤掉 direct 兜底透传的无关 plan.params 噪声（如 指标/时间/业务意图 等，
-     * 这些对工具执行并无作用），避免同一套参数在思考时间线多处重复。
+     * 这些对工具执行并无作用），并隐藏内部码键（question/text/draft 等业务无需重复阅读的原始值），
+     * 避免同一套参数在思考时间线多处重复、或以技术形态干扰业务阅读。
      */
     private Map<String, Object> toolInputView(ExecutionResult result) {
         Map<String, Object> params = result.getParams();
@@ -693,6 +852,9 @@ public class AgentOrchestrator {
         Map<String, Object> out = new LinkedHashMap<>();
         for (ToolParam tp : declared) {
             if (tp == null || tp.getName() == null) {
+                continue;
+            }
+            if (ThinkingCopy.hideInputKey(tp.getName())) {
                 continue;
             }
             Object value = params.get(tp.getName());
@@ -753,49 +915,18 @@ public class AgentOrchestrator {
         return step;
     }
 
-    /** action 内部码 → 业务展示名（含产商品研发场景动作）。 */
-    private static final Map<String, String> ACTION_DISPLAY = Map.of(
-            "query", "数据查询",
-            "root_cause", "异动归因",
-            "risk_audit", "风险稽核",
-            "online_check", "在架检查",
-            "ops_monitor", "运营监控",
-            "compare", "对比分析",
-            "generate", "配置生成",
-            "parse", "方案解析",
-            "compliance", "合规校验",
-            "discover", "配置查询"
-    );
-
-    /** intent 内部码 → 兜底业务展示名（params 缺 action 时使用，含研发/对话/澄清意图）。 */
-    private static final Map<String, String> INTENT_DISPLAY = Map.ofEntries(
-            Map.entry("SPARQL_QUERY", "数据查询"),
-            Map.entry("SWRL_INFER", "推理分析"),
-            Map.entry("product_ops_policy", "风险稽核"),
-            Map.entry("product_ops_reason", "异动归因"),
-            Map.entry("RD_CONFIG_CHAT", "对话配置"),
-            Map.entry("RD_FILE_PARSE", "方案解析"),
-            Map.entry("RD_COMPLIANCE", "合规校验"),
-            Map.entry("RD_CONFIG_DISCOVER", "配置查询"),
-            Map.entry("RD_SCHEME_COMPARE", "方案对比"),
-            Map.entry("CHAT", "通用对话"),
-            Map.entry("CLARIFY", "待补充信息"),
-            Map.entry("REUSE_EVIDENCE", "证据复用")
-    );
-
-    /** 工具内部码 → 处理流程中可读的动作说明（供「制定方案」展示完整处理路径，含研发工具）。 */
-    private static final Map<String, String> TOOL_STEP_DISPLAY = Map.of(
-            "sparql_query", "检索经营事实",
-            "swrl_root_cause", "执行异动归因推理",
-            "swrl_risk_audit", "全量扫描风险并分级",
-            "rule_explain", "解释业务规则",
-            "ontology_explain", "解释本体概念",
-            "rd_config_chat", "对话配置生成",
-            "rd_file_parse", "方案文档解析",
-            "rd_compliance", "合规校验",
-            "rd_config_discover", "历史配置查询",
-            "rd_scheme_compare", "多方案对比"
-    );
+    /** action / intent 内部码 → 业务展示名（含产商品研发场景动作，词典收敛至 ThinkingCopy）。 */
+    private static String actionDisplay(QueryPlan plan) {
+        if (plan == null) {
+            return "分析";
+        }
+        Map<String, Object> params = plan.getParams() != null ? plan.getParams() : Map.of();
+        String label = ThinkingCopy.actionDisplay(str(params.get("action")));
+        if (label == null || label.isBlank() || label.equals(params.get("action"))) {
+            label = ThinkingCopy.actionDisplay(plan.getIntent());
+        }
+        return (label == null || label.isBlank()) ? "分析" : label;
+    }
 
     /**
      * 将查询计划翻译为业务可读的方案说明，取代透传内部码 queryPlan 给前端渲染卡片。
@@ -805,10 +936,9 @@ public class AgentOrchestrator {
             return "依据您的需求制定分析方案";
         }
         Map<String, Object> params = plan.getParams() != null ? plan.getParams() : Map.of();
-        String action = str(params.get("action"));
-        String actionLabel = ACTION_DISPLAY.getOrDefault(action, action);
-        if (actionLabel == null || actionLabel.isBlank() || actionLabel.equals(action)) {
-            actionLabel = INTENT_DISPLAY.getOrDefault(plan.getIntent(), "分析");
+        String actionLabel = ThinkingCopy.actionDisplay(str(params.get("action")));
+        if (actionLabel == null || actionLabel.isBlank() || actionLabel.equals(params.get("action"))) {
+            actionLabel = ThinkingCopy.actionDisplay(plan.getIntent());
         }
         if (actionLabel == null || actionLabel.isBlank()) {
             actionLabel = "分析";
@@ -881,7 +1011,8 @@ public class AgentOrchestrator {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("step", i + 1);
             item.put("tool", tool);
-            item.put("label", TOOL_STEP_DISPLAY.getOrDefault(tool, tool));
+            ThinkingCopy.ToolCopy copy = ThinkingCopy.toolCopy(tool);
+            item.put("label", copy != null ? copy.title() : tool);
             out.add(item);
         }
         return out;
@@ -908,30 +1039,20 @@ public class AgentOrchestrator {
                 : "正在理解您的需求，识别业务意图与筛查目标…";
     }
 
-    /** 供意图识别步骤输出展示的业务动作名（如 异动归因 / 风险稽核 / 对话配置）。 */
-    private static String actionDisplay(QueryPlan plan) {
-        if (plan == null) {
-            return "分析";
-        }
-        Map<String, Object> params = plan.getParams() != null ? plan.getParams() : Map.of();
-        String action = str(params.get("action"));
-        String label = ACTION_DISPLAY.getOrDefault(action, action);
-        if (label == null || label.isBlank() || label.equals(action)) {
-            label = INTENT_DISPLAY.getOrDefault(plan.getIntent(), "分析");
-        }
-        return (label == null || label.isBlank()) ? "分析" : label;
-    }
-
     /**
-     * 供方案步骤「输入」展示的参数子集：剔除原始问题与内部噪声键，仅保留业务可读的参数。
+     * 供方案步骤「输入」展示的参数子集：剔除原始问题与内部噪声键（intent_type/action/text/draft 等），
+     * 仅保留业务可读的范围参数（对象/指标/时间等）。
      */
     private static Map<String, Object> planInputView(QueryPlan plan) {
         Map<String, Object> params = plan.getParams() != null ? plan.getParams() : Map.of();
         Map<String, Object> out = new LinkedHashMap<>();
         for (Map.Entry<String, Object> e : params.entrySet()) {
             String key = e.getKey();
-            if ("question".equals(key) || key == null || key.isBlank()
+            if (key == null || key.isBlank() || ThinkingCopy.hideInputKey(key)
                     || e.getValue() == null || str(e.getValue()).isBlank()) {
+                continue;
+            }
+            if (e.getValue() instanceof Map || e.getValue() instanceof List) {
                 continue;
             }
             out.put(key, e.getValue());

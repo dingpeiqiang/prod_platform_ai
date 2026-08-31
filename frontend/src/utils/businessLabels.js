@@ -27,37 +27,39 @@ const INTENT_LABELS = {
 }
 
 const TOOL_LABELS = {
-  sparql_query: '数据查询',
-  swrl_root_cause: '异动归因',
-  swrl_risk_audit: '风险稽核',
-  rule_explain: '规则解释',
-  ontology_explain: '概念解释',
+  sparql_query: '查询经营数据',
+  swrl_root_cause: '分析异动原因',
+  swrl_risk_audit: '排查在架风险',
+  rule_explain: '解释业务规则',
+  ontology_explain: '解释业务概念',
   // 产商品研发助手工具
-  rd_config_chat: '对话配置生成',
-  rd_file_parse: '方案文档解析',
-  rd_compliance: '合规校验',
-  rd_config_discover: '历史配置查询',
-  rd_scheme_compare: '多方案对比',
+  rd_config_chat: '生成配置草稿',
+  rd_file_parse: '解析方案文档',
+  rd_compliance: '检查配置合规性',
+  rd_config_discover: '检索历史配置',
+  rd_scheme_compare: '对比候选方案',
 }
 
 const PARAM_LABELS = {
   question: '查询内容',
   offering: '分析对象',
   offeringIds: '商品范围',
+  offering_id: '商品编码',
   time: '时间范围',
   rule_set: '规则集',
   dimension: '分析维度',
   metric: '指标',
   maxEntities: '最多实体数',
   ruleId: '规则编号',
-  concept: '本体概念',
+  concept: '业务概念',
   intent_type: '业务意图',
   action: '执行动作',
+  limit: '返回上限',
   // 产商品研发助手参数
   text: '配置需求',
   draft: '配置草稿',
-  offering_id: '商品编码',
   file_id: '文档标识',
+  file_ids: '文档标识',
   file_name: '文档名称',
   document_text: '文档内容',
   patches: '候选方案',
@@ -66,6 +68,7 @@ const PARAM_LABELS = {
   comparisons: '候选方案',
   recommended: '推荐方案',
   items: '草稿清单',
+  product_type: '产品品类',
 }
 
 /** 参数名 → 业务中文标签 */

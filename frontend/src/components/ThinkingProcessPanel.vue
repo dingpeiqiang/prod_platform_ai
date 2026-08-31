@@ -24,7 +24,7 @@
       </svg>
       <span class="think-title">思考过程</span>
       <span class="think-count">{{ visibleStepCount }} 步</span>
-      <span v-if="ontoCount" class="think-onto-tag">含本体环节 {{ ontoCount }}</span>
+      <span v-if="ontoCount" class="think-onto-tag">含推理分析 {{ ontoCount }} 处</span>
       <span v-if="streaming || isCatchingUp" class="think-live">进行中</span>
       <button
         v-if="streaming || isCatchingUp"
@@ -70,8 +70,8 @@
               <span class="step-progress">
                 {{ si + 1 }}/{{ steps.length || visibleSteps.length }}
               </span>
-              <span class="type-chip" :class="step.type === 'ontology' ? 'ontology' : step.type === 'tool' ? 'tool' : 'llm'">
-                {{ step.type === 'ontology' ? '本体推理' : step.type === 'tool' ? '工具调用' : '大模型处理' }}
+              <span class="type-chip" :class="`cat-${categoryOf(step)}`">
+                {{ categoryLabel(categoryOf(step)) }}
               </span>
               <span
                 v-if="step.title"
@@ -82,6 +82,12 @@
               <span v-if="displayElapsed(step, si) != null" class="step-elapsed">
                 {{ formatElapsed(displayElapsed(step, si)) }}
               </span>
+            </div>
+
+            <!-- 本环节目标：业务人员一眼看懂"为什么做这步" -->
+            <div v-if="step.goal" class="step-goal">
+              <span class="goal-label">目标</span>
+              <span class="goal-text">{{ step.goal }}</span>
             </div>
 
             <!-- 本体环节：动作说明 + 内嵌推理块（结论由 OntologyReasoningBlock 展示） -->
@@ -179,6 +185,32 @@
                 </span>
               </div>
 
+              <!-- 人工怎么做：AI 不可用时按此步骤目标人工完成任务（默认收起） -->
+              <div v-if="step.manualHint && showStepResult(step, si)" class="step-manual-wrap">
+                <button
+                  type="button"
+                  class="step-manual-toggle"
+                  @click.stop="toggleManual(si)"
+                >
+                  <svg
+                    class="manual-arrow"
+                    :class="{ expanded: expandedManual[si] }"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                  人工怎么做
+                </button>
+                <div v-show="expandedManual[si]" class="step-manual-content">
+                  {{ step.manualHint }}
+                </div>
+              </div>
+
               <!-- 可展开的详情 -->
               <div v-if="step.details && showStepResult(step, si)" class="step-details-wrap">
                 <button
@@ -215,6 +247,7 @@
 <script setup>
 import { computed, reactive, ref, watch, onUnmounted } from 'vue'
 import OntologyReasoningBlock from './OntologyReasoningBlock.vue'
+import { resolveCategory, CATEGORY_LABELS } from '../utils/normalizeThinkingStep.js'
 import {
   toolLabel,
   paramLabel,
@@ -531,6 +564,16 @@ onUnmounted(() => {
 const toggleDetails = (idx) => {
   expandedDetails[idx] = !expandedDetails[idx]
 }
+
+/** 「人工怎么做」折叠状态（默认收起，按步骤索引独立展开） */
+const expandedManual = reactive({})
+const toggleManual = (idx) => {
+  expandedManual[idx] = !expandedManual[idx]
+}
+
+/** 步骤业务分类（理解需求/查资料/做校验/分析推理/生成内容） */
+const categoryOf = (step) => resolveCategory(step)
+const categoryLabel = (cat) => CATEGORY_LABELS[cat] || '业务处理'
 
 const isWaitingStep = (step) =>
   step._playRunning
@@ -1012,19 +1055,101 @@ const localizeDetails = (raw) => {
   border-radius: 4px;
 }
 
-.type-chip.llm {
-  background: #f1f5f9;
-  color: #475569;
+/* 业务分类徽标：理解需求/查资料/做校验/分析推理/生成内容 */
+.type-chip.cat-understand {
+  background: #ede9fe;
+  color: #6d28d9;
 }
 
-.type-chip.ontology {
+.type-chip.cat-lookup {
   background: #dbeafe;
   color: #1d4ed8;
 }
 
-.type-chip.tool {
+.type-chip.cat-verify {
   background: #fef3c7;
   color: #b45309;
+}
+
+.type-chip.cat-reason {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.type-chip.cat-generate {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+/* 本环节目标行 */
+.step-goal {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 2px 0 4px;
+}
+
+.goal-label {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.6;
+  color: #4c5bff;
+  background: rgba(76, 91, 255, 0.1);
+  padding: 0 6px;
+  border-radius: 4px;
+}
+
+.goal-text {
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* 人工怎么做：默认收起的可展开小节 */
+.step-manual-wrap {
+  margin-top: 6px;
+}
+
+.step-manual-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.step-manual-toggle:hover {
+  border-color: #86efac;
+  color: #15803d;
+  background: #f0fdf4;
+}
+
+.manual-arrow {
+  transition: transform 0.15s ease;
+}
+
+.manual-arrow.expanded {
+  transform: rotate(90deg);
+}
+
+.step-manual-content {
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: #f0fdf4;
+  border: 1px dashed #bbf7d0;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #166534;
+  word-break: break-word;
 }
 
 .step-elapsed {

@@ -5,56 +5,61 @@
  * 原则：后端已下发 title/content/result 时原样保留，禁止旧空壳模板覆盖。
  */
 
-/** 仅作历史兼容：旧消息无 id/title 时按 step 号回退 */
+/**
+ * 仅作历史兼容：旧消息无 id/title 时按 step 号回退。
+ * @deprecated 批次②清理对象：库内 reasoning_full 无 title 老数据命中量为 0 后删除，禁止新增条目。
+ */
 const LEGACY_STEP_TEMPLATES = {
   1: { id: 'intent', title: '确认业务意图', type: 'llm', content: '确认业务意图' },
   2: { id: 'analyze', title: '业务分析', type: 'llm', content: '执行业务分析' },
   3: { id: 'conclude', title: '整理结论', type: 'llm', content: '汇总结果并生成说明' },
 }
 
-const ID_TITLES = {
-  intent: '确认业务意图',
-  locate: '锁定分析对象',
-  confirm: '异动确认',
-  drill: '多维下钻',
-  reason: '规则推理',
-  conclude: '归因结论',
-  scope: '锁定洞察范围',
-  retrieve: '检索经营事实',
-  aggregate: '聚合经营指标',
-  pull: '拉取告警清单',
-  grade: '告警分级统计',
-  link: '关联处置工单',
-  extract: '抽取方案假设',
-  snapshot: '构建事实快照',
-  evaluate: '合规与收益评估',
-  load: '加载在架清单',
-  match: '匹配风险规则集',
-  scan: '全量扫描打分',
-  facts: '抽取立项要素',
-  policy: '选择策略集',
-  decide: '规则引擎判定',
-  identify: '识别请求',
-  generate: '生成方案',
-  infer: '字段推断',
-  recommend: '历史推荐',
-  assemble: '组装表单',
-  rules: '规则引擎校验',
-  ai: 'AI 辅助校验',
-  reply: '生成回复',
-  tool: '调用工具',
-  skip: '跳过业务执行',
+/**
+ * 步骤 id / 类型 → 业务分类徽标（替代技术徽标「大模型处理/工具调用/本体推理」）。
+ * ontology 步骤映射为「分析推理」，plan/intent 类为「理解需求」，其余 llm 默认「生成内容」。
+ */
+const ID_CATEGORY = {
+  intent: 'understand',
+  plan: 'understand',
+  slots: 'understand',
+  parse: 'understand',
+  identify: 'understand',
+  locate: 'lookup',
+  retrieve: 'lookup',
+  load: 'lookup',
+  match: 'lookup',
+  pull: 'lookup',
+  recommend: 'lookup',
+  rules: 'verify',
+  ai: 'verify',
+  scan: 'verify',
+  evaluate: 'verify',
+  decide: 'verify',
+  reason: 'reason',
+  drill: 'reason',
+  conclude: 'generate',
+  reply: 'generate',
+  generate: 'generate',
 }
 
-function pickResultFromContent(content) {
-  if (!content) return null
-  let m = content.match(/已确认业务意图[：:]\s*(.+)$/)
-  if (m) return m[1].trim()
-  m = content.match(/检索完成[，,].*共找到?\s*(\d+)\s*条/)
-  if (m) return `命中 ${m[1]} 条`
-  m = content.match(/方案对比完成[，,]\s*共\s*(\d+)\s*套/)
-  if (m) return `对比 ${m[1]} 套方案`
-  return null
+export const CATEGORY_LABELS = {
+  understand: '理解需求',
+  lookup: '查资料',
+  verify: '做校验',
+  reason: '分析推理',
+  generate: '生成内容',
+}
+
+/** 步骤业务分类：优先显式 category，其次按 id/type 推断。 */
+export function resolveCategory(step) {
+  if (step?.category && CATEGORY_LABELS[step.category]) return step.category
+  const type = step?.type || ''
+  if (type === 'ontology') return 'reason'
+  if (type === 'tool') return 'lookup'
+  const id = step?.id || ''
+  if (ID_CATEGORY[id]) return ID_CATEGORY[id]
+  return 'generate'
 }
 
 /**
@@ -69,13 +74,10 @@ export function normalizeThinkingStep(raw = {}) {
   const isRunning = phase === 'running' || phase === 'waiting_llm' || raw.status === 'running'
   const legacyTpl = stepNum != null ? LEGACY_STEP_TEMPLATES[stepNum] : null
 
-  const extracted = pickResultFromContent(content)
   const result =
     raw.result != null && raw.result !== ''
       ? raw.result
-      : extracted != null
-        ? extracted
-        : meta.intentLabel || null
+      : meta.intentLabel || null
 
   const id = raw.id || meta.scheduleId || legacyTpl?.id || (stepNum != null ? `step_${stepNum}` : null)
 
@@ -92,7 +94,7 @@ export function normalizeThinkingStep(raw = {}) {
   const hasBackendTitle = !!(raw.title && String(raw.title).trim())
   const title = hasBackendTitle
     ? String(raw.title).trim()
-    : (ID_TITLES[id] || legacyTpl?.title || (type === 'ontology' ? '知识推理' : type === 'tool' ? '工具调用' : '处理步骤'))
+    : (legacyTpl?.title || (type === 'ontology' ? '分析推理' : type === 'tool' ? '业务处理' : '处理步骤'))
 
   // 后端已给 content 则保留；仅空时回退
   const resolvedContent = content || legacyTpl?.content || title
@@ -113,6 +115,9 @@ export function normalizeThinkingStep(raw = {}) {
     title,
     content: resolvedContent,
     result,
+    category: resolveCategory({ id, type, category: raw.category }),
+    goal: raw.goal != null ? String(raw.goal) : null,
+    manualHint: raw.manualHint || raw.manual_hint || null,
     status: isRunning ? 'running' : (raw.status === 'pending' ? 'pending' : 'done'),
     metadata: {
       ...meta,

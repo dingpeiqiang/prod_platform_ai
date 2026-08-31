@@ -262,6 +262,8 @@ export function useChatStream() {
             io: stepFactoryIo,
             workflow: step.workflow || null,
             segment: step.segment || null,
+            goal: step.goal || null,
+            category: step.category || null,
             metadata: {},
             timestamp: Date.now(),
           },
@@ -277,7 +279,6 @@ export function useChatStream() {
         elapsed: data.durationMs != null ? data.durationMs / 1000 : undefined,
         result: status === 'running' ? null : (data.summary || null),
         error: data.errorMessage || null,
-        evidence: data.evidence || null,
         params: status === 'running' ? null : (data.input || null),
         output: status === 'running' ? null : (data.output || null),
       }
@@ -295,8 +296,10 @@ export function useChatStream() {
         reasoningStep: {
           id: `tool_${toolEntry.name}`,
           type: 'tool',
-          title: toolEntry.displayName || toolEntry.name,
-          content: status === 'running' ? '正在调用工具...' : undefined,
+          title: data.title || toolEntry.displayName || toolEntry.name,
+          content: status === 'running' ? '正在处理…' : undefined,
+          goal: data.goal || null,
+          manualHint: data.manualHint || data.manual_hint || null,
           result: status === 'done' ? (toolEntry.result || '执行完成') : (status === 'error' ? (toolEntry.error || '执行失败') : null),
           status: status === 'running' ? 'running' : 'done',
           elapsed: toolEntry.elapsed,
@@ -385,7 +388,6 @@ export function useChatStream() {
         streamText: text,
         reasoning: finalizeReasoningList(current.reasoning || []),
         queryPlan: current.queryPlan || null,
-        evidence: current.evidence || null,
       })
     }
   }
@@ -468,8 +470,13 @@ export function useChatStream() {
                 actionState: current.actionState || data.actionState || defaultActionState(doneIntent) || null,
                 // 澄清分支：待补充参数列表（前端据此展示追问上下文标签）
                 clarify: data.clarify || current.clarify || [],
+                // 澄清参数契约（U1 选择题化）：参数名 → {label, description, options}
+                clarifyContracts: data.clarify_contracts || current.clarifyContracts || null,
+                // 确认分支（U2）：需求歧义候选解读列表（与 CLARIFY 互斥渲染）
+                confirm: Array.isArray(data.candidates) && data.candidates.length
+                  ? { candidates: data.candidates }
+                  : (current.confirm || null),
                 queryPlan: current.queryPlan || null,
-                evidence: current.evidence || data.evidence || null,
                 toolResults: current.toolResults || [],
                 suggestedFollowUps: data.suggested_follow_ups || data.suggestedFollowUps || [],
                 reasoning: finalizeReasoningList(current.reasoning || []),

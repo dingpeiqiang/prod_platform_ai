@@ -17,6 +17,9 @@ public class QueryPlan {
     /** 复用证据：仅对上轮已有证据做再解释/下钻（设计文档 4.4 节） */
     public static final String INTENT_REUSE_EVIDENCE = "REUSE_EVIDENCE";
 
+    /** 需求歧义确认：多种合理解读时暂停等用户选定（方案 11.6(b)，U2） */
+    public static final String INTENT_CONFIRM = "CONFIRM";
+
     /** 用户意图 (SPARQL_QUERY | SWRL_INFER | RULE_EXPLAIN | CLARIFY | ...) */
     private String intent;
 
@@ -28,6 +31,12 @@ public class QueryPlan {
 
     /** 需向用户补充的参数名列表（intent=CLARIFY 时非空） */
     private List<String> clarify;
+
+    /** 缺失参数的展示契约：参数名 → {label, description, options}（CLARIFY 选择题化补参，U1） */
+    private Map<String, Map<String, Object>> clarifyContracts;
+
+    /** 需求解读候选（intent=CONFIRM 时非空，U2） */
+    private List<String> candidates;
 
     /** 有序执行步骤（替代 tools 展开，支撑依赖编排） */
     private List<ExecStep> steps;
@@ -79,6 +88,22 @@ public class QueryPlan {
 
     public void setClarify(List<String> clarify) {
         this.clarify = clarify;
+    }
+
+    public Map<String, Map<String, Object>> getClarifyContracts() {
+        return clarifyContracts;
+    }
+
+    public void setClarifyContracts(Map<String, Map<String, Object>> clarifyContracts) {
+        this.clarifyContracts = clarifyContracts;
+    }
+
+    public List<String> getCandidates() {
+        return candidates;
+    }
+
+    public void setCandidates(List<String> candidates) {
+        this.candidates = candidates;
     }
 
     public List<ExecStep> getSteps() {

@@ -2,6 +2,25 @@ import { marked } from 'marked'
 
 export const genId = () => `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 
+export function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+export function createStreamingPlaceholder(genId) {
+  return {
+    id: genId(),
+    role: 'assistant',
+    content: '',
+    streamText: '',
+    reasoning: [],
+    showReasoning: true,
+    loading: true,
+    done: false,
+    type: 'chat',
+    timestamp: Date.now(),
+  }
+}
+
 export const stepIcon = (type) => {
   const icons = {
     'thinking': '💭',

@@ -6,7 +6,6 @@
     :sessions="sessionList"
     :sessionsLoading="historyLoading"
     :context="contextItems"
-    :summary-stats="summaryStats"
     @send="onSend"
     @stop="stop"
     @new-session="onNewSession"
@@ -27,10 +26,6 @@
       @undo-action="onUndoAction"
       @clarify-submit="onClarifySubmit"
     />
-
-    <template #right>
-      <InsightBoard mode="ops" :messages="messages" :product-config="productConfig" />
-    </template>
   </AssistantShell>
 </template>
 
@@ -39,7 +34,6 @@ import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
 import { useRouter } from 'vue-router'
 import AssistantShell from './AssistantShell.vue'
 import ChatMessageList from './ChatMessageList.vue'
-import InsightBoard from './InsightBoard.vue'
 import { useChatStream } from '../composables/useChatStream.js'
 import { useProductConfig } from '../composables/useProductConfig.js'
 import { registerPostProcessor } from '../composables/useIntentRegistry.js'
@@ -106,23 +100,6 @@ const contextItems = computed(() => {
     }
   }
   return items
-})
-
-/** 移动端紧凑「会话汇总」状态条：关键计数实时聚合 */
-const summaryStats = computed(() => {
-  const mp = productConfig
-  const wo = mp.monitorWorkOrders?.value || []
-  const monitor = mp.monitorResult?.value
-  const risk = mp.riskAuditResult?.value
-  const analysis = messages.value.filter(
-    (m) => m?.role === 'assistant' && (m.intentType === 'product_ops_reason' || m._scenario === 'root-cause'),
-  ).length
-  return [
-    { label: '工单', value: `${wo.length}` },
-    { label: '告警', value: `${monitor?.total ?? 0}`, tone: (monitor?.highPriorityCount || 0) ? 'warn' : 'neutral' },
-    { label: '扫描', value: `${risk?.scannedCount ?? 0}` },
-    { label: '归因', value: `${analysis}` },
-  ]
 })
 
 function paramLabelZh(key) {

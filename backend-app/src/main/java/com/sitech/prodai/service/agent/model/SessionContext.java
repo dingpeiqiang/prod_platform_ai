@@ -13,6 +13,9 @@ public class SessionContext {
     /** 连续澄清上限：超过后降级为按缺省值继续（防死循环，设计文档 4.4 节） */
     private static final int MAX_CLARIFY_ROUNDS = 3;
 
+    /** 连续确认上限：超过后按首选解读继续（U2 防死循环，独立于澄清计数） */
+    private static final int MAX_CONFIRM_ROUNDS = 2;
+
     private String sessionId;
     private List<Map<String, Object>> history;
     private Map<String, Object> cachedEvidence;
@@ -32,8 +35,14 @@ public class SessionContext {
     /** 连续澄清轮次计数 */
     private int clarifyRounds;
 
+    /** 连续确认轮次计数（U2 需求歧义确认，独立于澄清） */
+    private int confirmRounds;
+
     /** 最近一次澄清计划中待补充的参数名列表（供表达层生成追问文案） */
     private List<String> lastClarifyParams;
+
+    /** 系统自行推断的取值记录（U3 假设透明回显）：[{param, value, reason}] */
+    private List<Map<String, Object>> assumptions;
 
     public SessionContext() {
         this.history = new ArrayList<>();
@@ -41,6 +50,7 @@ public class SessionContext {
         this.lastParams = new LinkedHashMap<>();
         this.resolvedParams = new LinkedHashMap<>();
         this.meta = new LinkedHashMap<>();
+        this.assumptions = new ArrayList<>();
     }
 
     public SessionContext(String sessionId) {
@@ -140,6 +150,47 @@ public class SessionContext {
      */
     public boolean exceedClarifyLimit() {
         return clarifyRounds >= MAX_CLARIFY_ROUNDS;
+    }
+
+    /**
+     * 是否已达到确认上限（U2：超过后按首选解读继续，防死循环）。
+     */
+    public boolean exceedConfirmLimit() {
+        return confirmRounds >= MAX_CONFIRM_ROUNDS;
+    }
+
+    public void incrementConfirmRounds() {
+        this.confirmRounds++;
+    }
+
+    public void resetConfirmRounds() {
+        this.confirmRounds = 0;
+    }
+
+    /**
+     * 记录一次系统自行推断的取值（U3 假设透明回显）。
+     *
+     * @param param  参数名
+     * @param value  推断值
+     * @param reason 推断来源（如 "缺省值" / "超澄清上限按缺省继续"）
+     */
+    public void recordAssumption(String param, Object value, String reason) {
+        if (param == null || param.isBlank() || value == null) {
+            return;
+        }
+        Map<String, Object> a = new LinkedHashMap<>();
+        a.put("param", param);
+        a.put("value", value);
+        a.put("reason", reason != null ? reason : "");
+        this.assumptions.add(a);
+    }
+
+    public List<Map<String, Object>> getAssumptions() {
+        return assumptions;
+    }
+
+    public void clearAssumptions() {
+        this.assumptions = new ArrayList<>();
     }
 
     /**

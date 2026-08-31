@@ -49,6 +49,9 @@ public class DefaultUnderstander implements Understander {
     private static final int MAX_TRANSLATE_ATTEMPTS = 3;
     private static final long RETRY_DELAY_MS = 1000L;
 
+    /** 连续确认上限：超过后按首选解读继续（U2 防死循环，复用 CLARIFY 上限语义） */
+    private static final int MAX_CONFIRM_ROUNDS = 2;
+
     private final LlmService llmService;
     private final Map<String, AgentTool> toolMap;
 
@@ -124,7 +127,7 @@ public class DefaultUnderstander implements Understander {
             throw new IllegalStateException("大模型返回为空，无法理解用户需求");
         }
 
-        List<QueryPlan> parsed = parseLlmResults(llmResult, question, rdScene);
+        List<QueryPlan> parsed = parseLlmResults(llmResult, question, rdScene, context);
         if (parsed == null || parsed.isEmpty()) {
             log.error("[DefaultUnderstander] 大模型输出无法解析为查询计划，翻译链终止");
             throw new IllegalStateException("大模型输出无法解析为查询计划，请重试或检查模型配置");
@@ -162,6 +165,7 @@ public class DefaultUnderstander implements Understander {
         }
 
         List<String> missing = new ArrayList<>();
+        Map<String, Map<String, Object>> missingContracts = new LinkedHashMap<>();
         for (String toolName : tools) {
             AgentTool tool = toolMap.get(toolName);
             if (tool == null) {
@@ -183,13 +187,17 @@ public class DefaultUnderstander implements Understander {
                     plan.getParams().put(param.getName(), cached);
                     continue;
                 }
-                // 有缺省值则不阻塞
+                // 有缺省值则不阻塞（U3：缺省回填属系统自行推断，记录假设供表达层回显）
                 if (param.getDefaultValue() != null && !param.getDefaultValue().isBlank()) {
                     plan.getParams().put(param.getName(), param.getDefaultValue());
+                    if (context != null) {
+                        context.recordAssumption(param.getName(), param.getDefaultValue(), "未指定，按缺省值推断");
+                    }
                     continue;
                 }
                 if (!missing.contains(param.getName())) {
                     missing.add(param.getName());
+                    missingContracts.put(param.getName(), paramContract(param));
                 }
             }
         }
@@ -197,14 +205,20 @@ public class DefaultUnderstander implements Understander {
         if (missing.isEmpty()) {
             if (context != null) {
                 context.resetClarifyRounds();
+                // 本轮参数齐备：清空上一轮遗留假设，避免过期假设污染本轮结论
+                context.clearAssumptions();
             }
             return plan;
         }
 
-        // 超过澄清上限：按缺省值继续（缺省缺失时放弃该参数），防死循环
+
+        // 超过澄清上限：按缺省值继续（缺省缺失时放弃该参数），防死循环（U3：明示该假设）
         if (context != null && context.exceedClarifyLimit()) {
             log.info("[DefaultUnderstander] 澄清轮次已达上限，按缺省继续: {}", missing);
             context.resetClarifyRounds();
+            for (String name : missing) {
+                context.recordAssumption(name, "（未提供）", "澄清超限，未按该参数过滤结果");
+            }
             return plan;
         }
         if (context != null) {
@@ -216,10 +230,26 @@ public class DefaultUnderstander implements Understander {
         clarifyPlan.setIntent(QueryPlan.INTENT_CLARIFY);
         clarifyPlan.setTools(List.of());
         clarifyPlan.setClarify(missing);
+        clarifyPlan.setClarifyContracts(missingContracts);
         clarifyPlan.setParams(new LinkedHashMap<>(plan.getParams()));
         clarifyPlan.setUserQuestion(question);
         log.info("[DefaultUnderstander] 必填参数缺失，生成澄清计划: {}", missing);
         return clarifyPlan;
+    }
+
+    /** 缺失参数的展示契约：业务名 / 说明 / 候选选项（供前端渲染选择题补参）。 */
+    private Map<String, Object> paramContract(ToolParam param) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        if (param.getLabel() != null && !param.getLabel().isBlank()) {
+            m.put("label", param.getLabel());
+        }
+        if (param.getDescription() != null && !param.getDescription().isBlank()) {
+            m.put("description", param.getDescription());
+        }
+        if (param.getEnumValues() != null && !param.getEnumValues().isEmpty()) {
+            m.put("options", param.getEnumValues());
+        }
+        return m;
     }
 
     private boolean hasValue(Object value) {
@@ -259,7 +289,7 @@ public class DefaultUnderstander implements Understander {
      *
      * @return 子计划列表；单意图时仅含一个元素；无法解析时返回 null。
      */
-    private List<QueryPlan> parseLlmResults(String llmResult, String question, boolean rdScene) {
+    private List<QueryPlan> parseLlmResults(String llmResult, String question, boolean rdScene, SessionContext context) {
         if (llmResult == null || llmResult.isBlank()) {
             return null;
         }
@@ -288,45 +318,224 @@ public class DefaultUnderstander implements Understander {
         @SuppressWarnings("unchecked")
         Map<String, Object> params = new LinkedHashMap<>((Map<String, Object>) parsed.getOrDefault("params", Map.of()));
         params.putIfAbsent("question", question);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> llmSteps = (List<Map<String, Object>>) parsed.get("steps");
 
-        // 混合意图：intent 含 | 时拆分多意图，逐意图独立映射
-        if (intent.contains("|")) {
-            return parseMultiIntents(intent, action, tools, params, question, rdScene);
+        // 需求歧义（U2）：LLM 判定存在多种合理解读 → 生成确认计划，整轮暂停等用户选定
+        if ("CONFIRM".equalsIgnoreCase(intent.trim())) {
+            return confirmPlan(parsed, question, context);
         }
 
-        // 旧版枚举 → 业务意图（仅运营场景支持；研发场景不识别旧枚举）
+        // 闲聊：无工具即通用对话（intent 仅作展示标签，不再约束枚举）
         String legacy = intent.trim().toUpperCase(Locale.ROOT);
-        if (!rdScene) {
-            if ("RULE_EXPLAIN".equals(legacy)) {
-                return List.of(new QueryPlan("RULE_EXPLAIN", sanitizeTools(tools, List.of("rule_explain")), params, question));
-            } else if ("ONTOLOGY_EXPLAIN".equals(legacy)) {
-                return List.of(new QueryPlan("ONTOLOGY_EXPLAIN", sanitizeTools(tools, List.of("ontology_explain")), params, question));
-            } else if ("CHAT".equals(legacy)) {
-                return List.of(chatPlan(question));
-            }
-            if ("SPARQL_QUERY".equals(legacy)) intent = "product_ops_query";
-            else if ("SWRL_INFER".equals(legacy)) {
-                intent = "product_ops_reason";
-                if (tools.contains("swrl_risk_audit")) intent = "product_ops_policy";
-            }
-        } else if ("CHAT".equals(legacy)) {
+        if ("CHAT".equals(legacy) || tools.isEmpty()) {
             return List.of(chatPlan(question));
         }
 
-        QueryPlan plan = rdScene
-                ? mapRdIntentToPlan(intent, action, tools, params, question)
-                : mapIntentToPlan(intent, action, tools, params, question);
-        if (plan == null) {
-            diagnose(intent, action, tools, llmResult);
-            return null;
+        // 混合意图：intent 含 | 时拆分多意图（解析 LLM 已输出结构，非写死映射）
+        if (intent.contains("|") && llmSteps == null) {
+            return parseMultiIntents(intent, action, tools, params, question, rdScene);
+        }
+
+        // 守门：白名单过滤（未注册工具剔除；全被剔除 → 一次重选机会）
+        List<String> sanitized = sanitizeTools(tools, List.of(), rdScene);
+        if (sanitized.isEmpty()) {
+            sanitized = retryToolSelection(intent, action, tools, params, question, rdScene, llmResult);
+            if (sanitized == null || sanitized.isEmpty()) {
+                diagnose(intent, action, tools, llmResult);
+                return null;
+            }
+        }
+
+        // 意图弱化为展示标签：保留 intent_type/action 供编排层还原 intentData 与文案生成
+        String normalized = IntentRecognitionSupport.normalizeIntentType(intent);
+        params.put("intent_type", normalized);
+        if (action != null && !action.isBlank()) {
+            params.put("action", action);
+        }
+
+        QueryPlan plan = new QueryPlan(normalized.isEmpty() ? legacy : normalized,
+                new ArrayList<>(sanitized), params, question);
+        // LLM 给出 steps（含 inputFrom 跨工具数据流声明）时构建 ExecStep 依赖编排
+        if (llmSteps != null && !llmSteps.isEmpty()) {
+            List<com.sitech.prodai.service.agent.model.ExecStep> execSteps =
+                    buildExecSteps(llmSteps, sanitized);
+            if (execSteps == null) {
+                diagnose(intent, action, tools, llmResult);
+                return null;
+            }
+            plan.setSteps(execSteps);
         }
         return List.of(plan);
     }
 
     /**
-     * 混合意图拆分：将 {@code |} 拼接的 intent / action 一一配对，逐意图映射为子计划。
+     * 一次重选：LLM 引用的工具全不在白名单时，把合法能力清单回传 LLM 重选一次（防幻觉不扩散到执行层）。
+     *
+     * @return 重选后的合法工具列表；仍失败返回 null（由调用方诊断终止）
+     */
+    private List<String> retryToolSelection(String intent, String action, List<String> tools,
+                                            Map<String, Object> params, String question, boolean rdScene,
+                                            String llmResult) {
+        log.warn("[DefaultUnderstander] LLM 引用工具全部未注册 {}，触发一次重选", tools);
+        try {
+            StringBuilder sb = new StringBuilder();
+            sb.append("您上次选择的工具均不存在。请从下列可用能力中重新选择并输出 JSON：\n");
+            for (AgentTool tool : toolsOf(rdScene)) {
+                sb.append("- ").append(tool.getName()).append("：").append(tool.getDescription()).append('\n');
+            }
+            sb.append("\n原始用户问题：").append(question)
+                    .append("\n仅输出 JSON：{\"tools\": [\"工具名\"], \"params\": {...}}");
+            String retry = llmService.completePrompt(sb.toString());
+            if (retry == null || retry.isBlank()) {
+                return null;
+            }
+            int start = retry.indexOf('{');
+            int end = retry.lastIndexOf('}');
+            if (start < 0 || end <= start) {
+                return null;
+            }
+            Map<String, Object> parsed = new ObjectMapper().readValue(
+                    retry.substring(start, end + 1), new TypeReference<Map<String, Object>>() {});
+            @SuppressWarnings("unchecked")
+            List<String> retryTools = (List<String>) parsed.getOrDefault("tools", List.of());
+            @SuppressWarnings("unchecked")
+            Map<String, Object> retryParams = (Map<String, Object>) parsed.get("params");
+            if (retryParams != null) {
+                for (Map.Entry<String, Object> e : retryParams.entrySet()) {
+                    params.putIfAbsent(e.getKey(), e.getValue());
+                }
+            }
+            return sanitizeTools(retryTools, List.of(), rdScene);
+        } catch (Exception e) {
+            log.warn("[DefaultUnderstander] 重选失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * LLM steps 声明 → ExecStep 序列（守门：inputFrom 静态校验 + DAG 无环校验）。
+     *
+     * @param llmSteps LLM 输出的 steps 结构（[{tool, inputFrom: {param: "<上游工具>.<输出键>"}}]）
+     * @param sanitized 白名单过滤后的合法工具（LLM steps 中的非法工具剔除）
+     * @return ExecStep 序列；DAG 有环返回 null（拒绝整个计划）
+     */
+    private List<com.sitech.prodai.service.agent.model.ExecStep> buildExecSteps(
+            List<Map<String, Object>> llmSteps, List<String> sanitized) {
+        Map<String, com.sitech.prodai.service.agent.model.ExecStep> byTool = new LinkedHashMap<>();
+        List<com.sitech.prodai.service.agent.model.ExecStep> out = new ArrayList<>();
+        for (Map<String, Object> raw : llmSteps) {
+            String tool = raw != null ? String.valueOf(raw.get("tool")) : null;
+            if (tool == null || !sanitized.contains(tool) || byTool.containsKey(tool)) {
+                continue;
+            }
+            com.sitech.prodai.service.agent.model.ExecStep step =
+                    new com.sitech.prodai.service.agent.model.ExecStep(tool);
+            Map<String, String> mappings = new LinkedHashMap<>();
+            Object inputFrom = raw.get("inputFrom");
+            if (inputFrom instanceof Map<?, ?> from) {
+                for (Map.Entry<?, ?> e : from.entrySet()) {
+                    String param = String.valueOf(e.getKey());
+                    String source = String.valueOf(e.getValue());
+                    if (!isValidResultRef(source, sanitized)) {
+                        // 守门①：引用键不在上游输出契约中 → 剔除该映射（下游参数走常规 direct 透传）
+                        log.warn("[DefaultUnderstander] inputFrom 引用非法已剔除: {} -> {}", param, source);
+                        continue;
+                    }
+                    mappings.put(param, source);
+                }
+            }
+            step.getParamMappings().putAll(mappings);
+            byTool.put(tool, step);
+            out.add(step);
+        }
+        // 守门②：DAG 无环校验（按 result: 依赖建图，拓扑排序检测环）
+        if (hasDependencyCycle(out)) {
+            log.error("[DefaultUnderstander] steps 依赖存在环，拒绝该计划: {}",
+                    out.stream().map(com.sitech.prodai.service.agent.model.ExecStep::getTool).toList());
+            return null;
+        }
+        // 与 sanitized 中未被 steps 覆盖的工具合并（保持白名单顺序，防遗漏）
+        for (String tool : sanitized) {
+            if (!byTool.containsKey(tool)) {
+                out.add(new com.sitech.prodai.service.agent.model.ExecStep(tool));
+            }
+        }
+        return out;
+    }
+
+    /** 守门①：result:<tool>.<key> 引用合法性静态校验（tool 已声明 + key 在其 getOutputFields 契约内）。 */
+    private boolean isValidResultRef(String source, List<String> sanitized) {
+        if (source == null || !source.startsWith("result:")) {
+            return false;
+        }
+        String body = source.substring("result:".length());
+        int dot = body.indexOf('.');
+        String toolName = dot > 0 ? body.substring(0, dot) : body;
+        String key = dot > 0 ? body.substring(dot + 1) : null;
+        if (!sanitized.contains(toolName) || key == null || key.isBlank()) {
+            return false;
+        }
+        AgentTool tool = toolMap.get(toolName);
+        if (tool == null) {
+            return false;
+        }
+        return tool.getOutputFields().stream().anyMatch(f -> key.equals(f.getName()) || key.equals(f.getOutputKey()));
+    }
+
+    /** 守门②：按 paramMappings 的 result: 依赖建图，检测环（有环即拒绝，防执行期死等）。 */
+    private boolean hasDependencyCycle(List<com.sitech.prodai.service.agent.model.ExecStep> steps) {
+        Map<String, Integer> index = new LinkedHashMap<>();
+        for (int i = 0; i < steps.size(); i++) {
+            index.put(steps.get(i).getTool(), i);
+        }
+        Map<String, List<String>> deps = new LinkedHashMap<>();
+        for (com.sitech.prodai.service.agent.model.ExecStep step : steps) {
+            List<String> d = new ArrayList<>();
+            for (String source : step.getParamMappings().values()) {
+                if (source != null && source.startsWith("result:")) {
+                    String body = source.substring("result:".length());
+                    String toolName = body.contains(".")
+                            ? body.substring(0, body.indexOf('.')) : body;
+                    if (index.containsKey(toolName)) {
+                        d.add(toolName);
+                    }
+                }
+            }
+            deps.put(step.getTool(), d);
+        }
+        Set<String> visited = new java.util.HashSet<>();
+        Set<String> inStack = new java.util.HashSet<>();
+        for (String tool : deps.keySet()) {
+            if (hasCycleDfs(tool, deps, visited, inStack)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hasCycleDfs(String tool, Map<String, List<String>> deps,
+                                Set<String> visited, Set<String> inStack) {
+        if (inStack.contains(tool)) {
+            return true;
+        }
+        if (!visited.add(tool)) {
+            return false;
+        }
+        inStack.add(tool);
+        for (String next : deps.getOrDefault(tool, List.of())) {
+            if (hasCycleDfs(next, deps, visited, inStack)) {
+                return true;
+            }
+        }
+        inStack.remove(tool);
+        return false;
+    }
+
+    /**
+     * 混合意图拆分：将 {@code |} 拼接的 intent / action 一一配对，逐意图构造子计划。
      * <p>
-     * tools / params 为整体共享（各子计划经 sanitizeTools 过滤出各自真实工具），
+     * 映射表已退役：tools 按白名单过滤，各子计划取各自真实工具（整组共享），
      * action 与 intent 位置对齐，缺失时补空串。
      */
     private List<QueryPlan> parseMultiIntents(String intent, String action, List<String> tools,
@@ -337,14 +546,18 @@ public class DefaultUnderstander implements Understander {
         for (int i = 0; i < intents.size(); i++) {
             String subIntent = intents.get(i);
             String subAction = i < actions.size() ? actions.get(i) : "";
-            // 每个子计划独立 params 副本，避免 mapIntentToPlan 向共享 map 写入 intent_type 互相覆盖
+            // 每个子计划独立 params 副本，避免 intent_type / action 写入互相覆盖
             Map<String, Object> subParams = new LinkedHashMap<>(params);
             subParams.put("question", question);
-            QueryPlan plan = rdScene
-                    ? mapRdIntentToPlan(subIntent, subAction, tools, subParams, question)
-                    : mapIntentToPlan(subIntent, subAction, tools, subParams, question);
-            if (plan != null) {
-                plans.add(plan);
+            String normalized = IntentRecognitionSupport.normalizeIntentType(subIntent);
+            subParams.put("intent_type", normalized);
+            if (subAction != null && !subAction.isBlank()) {
+                subParams.put("action", subAction);
+            }
+            List<String> sanitized = sanitizeTools(tools, List.of(), rdScene);
+            if (!sanitized.isEmpty()) {
+                plans.add(new QueryPlan(normalized.isEmpty() ? subIntent.trim() : normalized,
+                        new ArrayList<>(sanitized), subParams, question));
             }
         }
         if (plans.isEmpty()) {
@@ -379,17 +592,18 @@ public class DefaultUnderstander implements Understander {
     }
 
     /**
-     * 将归一化意图映射为查询计划（LLM 结果专用，含工具白名单过滤）。
+     * @deprecated 映射表已退役（AI 原生改造 8.3 第二步）：意图→工具映射由 LLM 基于工具自描述
+     * 直接输出，白名单守门保留。此方法仅为编译期参考保留一个迭代周期，下版本删除。
      */
+    @Deprecated
+    @SuppressWarnings("unused")
     private QueryPlan mapIntentToPlan(String intent, String action, List<String> tools,
                                       Map<String, Object> params, String question) {
         String normalized = IntentRecognitionSupport.normalizeIntentType(intent);
-        // 保留业务意图标签与动作，供上层（AgentOrchestrator）反向还原 intentData
         params.put("intent_type", normalized);
         if (action != null && !action.isBlank()) {
             params.put("action", action);
         }
-
         return switch (normalized) {
             case "product_ops_query", "product_ops_monitor", "product_ops_compare" -> new QueryPlan(
                     "SPARQL_QUERY", sanitizeTools(tools, List.of("sparql_query")), params, question);
@@ -401,33 +615,6 @@ public class DefaultUnderstander implements Understander {
                 }
                 yield new QueryPlan("SPARQL_QUERY", sanitizeTools(tools, List.of("sparql_query")), params, question);
             }
-            default -> null;
-        };
-    }
-
-    /**
-     * 产商品研发场景：将归一化意图映射为查询计划（scene=rd 专用，含研发工具白名单过滤）。
-     * 仅当 scene=rd 时调用，不影响运营路径的 {@link #mapIntentToPlan}。
-     */
-    private QueryPlan mapRdIntentToPlan(String intent, String action, List<String> tools,
-                                        Map<String, Object> params, String question) {
-        String normalized = IntentRecognitionSupport.normalizeIntentType(intent);
-        params.put("intent_type", normalized);
-        if (action != null && !action.isBlank()) {
-            params.put("action", action);
-        }
-
-        return switch (normalized) {
-            case "rd_config_chat" -> new QueryPlan(
-                    "RD_CONFIG_CHAT", sanitizeTools(tools, List.of("rd_config_chat"), true), params, question);
-            case "rd_file_parse" -> new QueryPlan(
-                    "RD_FILE_PARSE", sanitizeTools(tools, List.of("rd_file_parse"), true), params, question);
-            case "rd_compliance" -> new QueryPlan(
-                    "RD_COMPLIANCE", sanitizeTools(tools, List.of("rd_compliance"), true), params, question);
-            case "rd_config_discover" -> new QueryPlan(
-                    "RD_CONFIG_DISCOVER", sanitizeTools(tools, List.of("rd_config_discover"), true), params, question);
-            case "rd_scheme_compare" -> new QueryPlan(
-                    "RD_SCHEME_COMPARE", sanitizeTools(tools, List.of("rd_scheme_compare"), true), params, question);
             default -> null;
         };
     }
@@ -462,6 +649,50 @@ public class DefaultUnderstander implements Understander {
     }
 
     /**
+     * 需求歧义确认计划（U2，方案 11.6(b)）：LLM 判定需求存在多种合理解读时，
+     * 不执行任何工具、整轮暂停，由用户在候选卡片中选定后重发。
+     * <p>
+     * 防死循环：连续 {@value MAX_CONFIRM_ROUNDS} 轮 CONFIRM 未收敛 → 取首个候选解读
+     * 直接执行，并在结论中明示该假设（复用 CLARIFY 上限语义，独立计数）。
+     *
+     * @return CONFIRM 计划；超限退化时返回按首选解读构造的执行计划（附假设标记）
+     */
+    private List<QueryPlan> confirmPlan(Map<String, Object> parsed, String question, SessionContext context) {
+        @SuppressWarnings("unchecked")
+        List<String> candidates = (List<String>) parsed.getOrDefault("candidates", List.of());
+        candidates = candidates == null ? List.of()
+                : candidates.stream().filter(c -> c != null && !c.isBlank()).map(String::trim).toList();
+        if (candidates.isEmpty()) {
+            // 无有效候选 → 退化为通用对话，避免空确认卡片
+            return List.of(chatPlan(question));
+        }
+
+        if (context != null && context.exceedConfirmLimit()) {
+            String chosen = candidates.get(0);
+            log.info("[DefaultUnderstander] 确认轮次已达上限，按首选解读继续: {}", chosen);
+            context.resetConfirmRounds();
+            Map<String, Object> params = new LinkedHashMap<>();
+            params.put("question", chosen);
+            params.put("assumed_interpretation", chosen);
+            QueryPlan plan = new QueryPlan("CHAT", List.of(), params, question);
+            plan.setSteps(null);
+            return List.of(plan);
+        }
+        if (context != null) {
+            context.incrementConfirmRounds();
+        }
+
+        QueryPlan plan = new QueryPlan();
+        plan.setIntent(QueryPlan.INTENT_CONFIRM);
+        plan.setTools(List.of());
+        plan.setParams(new LinkedHashMap<>());
+        plan.setUserQuestion(question);
+        plan.setCandidates(candidates);
+        log.info("[DefaultUnderstander] 需求存在多种解读，生成确认计划: {}", candidates);
+        return List.of(plan);
+    }
+
+    /**
      * 诊断落盘：意图无法映射到执行计划时，把 LLM 原始输出与解析出的 intent/action/tools 追加写入
      * {@code ./logs/understand-diagnosis.log}（相对运行目录，与现有 FILE 日志同目录），
      * 便于定位混合意图/未知意图导致的理解失败。写盘失败不影响主流程（仅记录）。
@@ -483,57 +714,66 @@ public class DefaultUnderstander implements Understander {
     }
 
     private String buildSystemPrompt(boolean rdScene) {
-        return rdScene ? buildRdSystemPrompt() : buildOpsSystemPrompt();
+        StringBuilder sb = new StringBuilder();
+        sb.append(rdScene
+                ? "你是一个产商品研发智能助手，负责理解用户的需求，并将其翻译为可执行的研发配置计划。\n"
+                : "你是一个产品运营智能助手，负责理解用户的问题，并将其翻译为可执行的查询计划。\n");
+        sb.append("\n请输出 JSON（仅输出 JSON，不要输出其他内容）：\n")
+                .append("{\n")
+                .append("  \"intent\": \"业务意图标签（从下方各能力的适用场景归纳，闲聊则为 CHAT）\",\n")
+                .append("  \"action\": \"动作标签\",\n")
+                .append("  \"tools\": [\"工具名列表，按执行顺序排列\"],\n")
+                .append("  \"params\": {\"question\": \"原始问题\", ...各工具所需参数}\n")
+                .append("}\n\n")
+                .append("如果用户只是打招呼或闲聊，intent 设为 CHAT，tools 设为空列表。\n")
+                .append("如果用户需求存在多种合理解读且无法从上下文确定，")
+                .append("输出 {\"intent\": \"CONFIRM\", \"candidates\": [\"解读1\", \"解读2\"]}")
+                .append("（每条候选为一句可直接执行的完整表述），不要猜测。\n")
+                .append("请从用户问题中抽取参数所需的实体填入 params。\n\n可用能力：\n");
+        for (AgentTool tool : toolsOf(rdScene)) {
+            sb.append("- ").append(tool.getName())
+                    .append("：").append(tool.getDescription());
+            List<ToolParam> params = tool.getParams();
+            if (params != null && !params.isEmpty()) {
+                sb.append("（参数：").append(describeParams(params)).append("）");
+            }
+            sb.append('\n');
+        }
+        return sb.toString();
     }
 
-    /** 运营场景：保留原 prompt（scene 非 rd 时行为 100% 不变）。 */
-    private String buildOpsSystemPrompt() {
-        return "你是一个产品运营智能助手，负责理解用户的问题，并将其翻译为可执行的查询计划。\n\n"
-                + "请输出 JSON（仅输出 JSON，不要输出其他内容）：\n"
-                + "{\n"
-                + "  \"intent\": \"product_ops_query | product_ops_reason | product_ops_policy | product_ops_monitor | product_ops_compare | CHAT\",\n"
-                + "  \"action\": \"query | root_cause | risk_audit | online_check | ops_monitor | compare\",\n"
-                + "  \"tools\": [\"工具名列表\"],\n"
-                + "  \"params\": {\"question\": \"原始问题\", \"offering\": \"商品/套餐\", \"metric\": \"指标\", \"time\": \"时间范围\"}\n"
-                + "}\n\n"
-                + "意图与工具对应关系：\n"
-                + "- product_ops_query: 商品数据/销量/指标查询 → tools: [\"sparql_query\"]\n"
-                + "- product_ops_reason: 业务指标异动归因 → tools: [\"sparql_query\", \"swrl_root_cause\"]\n"
-                + "- product_ops_policy: 风险稽核（action=risk_audit 或 online_check）→ tools: [\"swrl_risk_audit\"]\n"
-                + "- product_ops_monitor: 运营监控/告警 → tools: [\"sparql_query\"]\n"
-                + "- product_ops_compare: 方案对比/假设推演 → tools: [\"sparql_query\"]\n\n"
-                + "可用工具：\n"
-                + "- sparql_query: SPARQL 查询 RDF 知识库（查询数据、商品列表、指标）\n"
-                + "- swrl_root_cause: SWRL 归因推理（分析原因、根因定位）\n"
-                + "- swrl_risk_audit: SWRL 风险稽核（风险筛查、合规检查）\n"
-                + "- rule_explain: 业务规则解释\n"
-                + "- ontology_explain: 本体概念解释\n\n"
-                + "如果用户只是打招呼或闲聊，intent 设为 CHAT，tools 设为空列表。请从问题中抽取 offering/metric/time 等实体填入 params。";
+    /** 场景白名单过滤后的可见工具列表（能力市场：LLM 只能看到本场景声明的工具）。 */
+    private List<AgentTool> toolsOf(boolean rdScene) {
+        Set<String> whitelist = rdScene ? RD_KNOWN_TOOLS : KNOWN_TOOLS;
+        List<AgentTool> out = new ArrayList<>();
+        for (String name : whitelist) {
+            AgentTool tool = toolMap.get(name);
+            if (tool != null) {
+                out.add(tool);
+            }
+        }
+        return out;
     }
 
-    /** 产商品研发场景：引导 LLM 输出研发工具意图（scene=rd 专用）。 */
-    private String buildRdSystemPrompt() {
-        return "你是一个产商品研发智能助手，负责理解用户的需求，并将其翻译为可执行的研发配置计划。\n\n"
-                + "请输出 JSON（仅输出 JSON，不要输出其他内容）：\n"
-                + "{\n"
-                + "  \"intent\": \"rd_config_chat | rd_file_parse | rd_compliance | rd_config_discover | rd_scheme_compare | CHAT\",\n"
-                + "  \"action\": \"generate | parse | compliance | discover | compare\",\n"
-                + "  \"tools\": [\"工具名列表\"],\n"
-                + "  \"params\": {\"question\": \"原始问题\", \"text\": \"研发需求描述\", \"draft\": \"已有配置草稿\"}\n"
-                + "}\n\n"
-                + "意图与工具对应关系：\n"
-                + "- rd_config_chat: 对话生成产商品配置草稿 → tools: [\"rd_config_chat\"]\n"
-                + "- rd_file_parse: 解析方案文档/批量映射配置草稿 → tools: [\"rd_file_parse\"]\n"
-                + "- rd_compliance: 对配置草稿做合规校验 → tools: [\"rd_compliance\"]\n"
-                + "- rd_config_discover: 检索历史产商品配置方案 → tools: [\"rd_config_discover\"]\n"
-                + "- rd_scheme_compare: 多候选方案对比（资费/收益）→ tools: [\"rd_scheme_compare\"]\n\n"
-                + "可用工具：\n"
-                + "- rd_config_chat: 对话配置生成（text 为必填）\n"
-                + "- rd_file_parse: 文档解析（file_id 或 document_text）\n"
-                + "- rd_compliance: 合规校验（draft 或 text）\n"
-                + "- rd_config_discover: 历史配置检索（question 为必填）\n"
-                + "- rd_scheme_compare: 多方案对比（text 描述多个资费档位）\n\n"
-                + "如果用户只是打招呼或闲聊，intent 设为 CHAT，tools 设为空列表。请从问题中抽取 text/draft 等填入 params。";
+    /** 参数契约 → prompt 片段：名称(说明[, 必填][, 取值])。 */
+    private String describeParams(List<ToolParam> params) {
+        StringBuilder sb = new StringBuilder();
+        for (ToolParam p : params) {
+            if (sb.length() > 0) {
+                sb.append(", ");
+            }
+            sb.append(p.getName());
+            if (p.getDescription() != null && !p.getDescription().isBlank()) {
+                sb.append("=").append(p.getDescription());
+            }
+            if (p.isRequired()) {
+                sb.append(", 必填");
+            }
+            if (p.getEnumValues() != null && !p.getEnumValues().isEmpty()) {
+                sb.append(", 可选值:").append(p.getEnumValues());
+            }
+        }
+        return sb.toString();
     }
 
     private void sleep(long millis) {

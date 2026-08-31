@@ -38,9 +38,8 @@ function buildMessageMetadata(msg) {
   if (msg.done !== undefined) metadata.done = msg.done
   if (msg.contentType) metadata.content_type = msg.contentType
 
-  // 翻译层产物：理解层查询计划 + 执行层证据摘要
+  // 翻译层产物：理解层查询计划
   if (msg.queryPlan) metadata.query_plan = JSON.stringify(msg.queryPlan)
-  if (msg.evidence) metadata.evidence_summary = JSON.stringify(msg.evidence)
 
   return Object.keys(metadata).length > 0 ? metadata : null
 }
@@ -96,7 +95,7 @@ function restoreMessageMetadata(meta = {}) {
     }
   }
 
-  // 翻译层产物：理解层查询计划 + 执行层证据摘要
+  // 翻译层产物：理解层查询计划
   let queryPlan = null
   if (meta.query_plan != null) {
     try {
@@ -104,11 +103,16 @@ function restoreMessageMetadata(meta = {}) {
     } catch { queryPlan = meta.query_plan }
   }
 
-  let evidenceSummary = null
-  if (meta.evidence_summary != null) {
+  // 澄清参数契约（U1 选择题化）：从 query_plan 中还原 clarify_contracts
+  let clarifyContracts = null
+  if (queryPlan?.clarify_contracts != null) {
+    clarifyContracts = queryPlan.clarify_contracts
+  } else if (meta.clarify_contracts != null) {
     try {
-      evidenceSummary = typeof meta.evidence_summary === 'string' ? JSON.parse(meta.evidence_summary) : meta.evidence_summary
-    } catch { evidenceSummary = meta.evidence_summary }
+      clarifyContracts = typeof meta.clarify_contracts === 'string'
+        ? JSON.parse(meta.clarify_contracts)
+        : meta.clarify_contracts
+    } catch { clarifyContracts = meta.clarify_contracts }
   }
 
   let extractedFields = meta.extracted_fields
@@ -136,7 +140,7 @@ function restoreMessageMetadata(meta = {}) {
     formCard,
     stats: intentData?.stats || null,
     queryPlan,
-    evidence: evidenceSummary,
+    clarifyContracts,
   }
 }
 

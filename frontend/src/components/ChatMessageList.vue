@@ -88,12 +88,6 @@
               </div>
             </div>
 
-            <!-- 结论依据（翻译层 done 事件实时下发；历史会话恢复亦有值） -->
-            <EvidenceCard
-              v-if="msg.evidence && isReplySettled(msg)"
-              :evidence="msg.evidence"
-            />
-
             <!-- 执行态徽标 + 撤销（可逆操作，v3.2） -->
             <div
               v-if="msg.done && isReplySettled(msg) && (msg.undoable || msg.actionState)"
@@ -252,15 +246,45 @@
               </button>
             </div>
 
+            <!-- 需求歧义确认（U2）：候选解读渲染为可点卡片，点击即以该话术重发；与 CLARIFY 互斥渲染 -->
+            <div v-if="msg.done && msg.confirm?.candidates?.length && !msg.clarify?.length && isReplySettled(msg)" class="clarify-area confirm-area">
+              <div class="clarify-title">您的需求可能有以下几种理解，请选择：</div>
+              <div class="confirm-candidates">
+                <button
+                  v-for="(c, cidx) in msg.confirm.candidates"
+                  :key="cidx"
+                  type="button"
+                  class="confirm-candidate"
+                  @click="$emit('suggest', c)"
+                >
+                  {{ c }}
+                </button>
+              </div>
+            </div>
+
             <!-- 澄清补参：后端判定必填参数缺失时，内联表单让用户补充后结构化回传 -->
             <div v-if="msg.done && msg.clarify?.length && isReplySettled(msg)" class="clarify-area">
               <div class="clarify-title">请补充以下信息：</div>
               <div v-for="(p, pidx) in msg.clarify" :key="p" class="clarify-field">
-                <span class="clarify-label">{{ clarifyParamLabel(p) }}</span>
+                <span class="clarify-label">{{ clarifyParamLabel(p, msg) }}</span>
+                <!-- U1 选择题化：契约带 options 时渲染可点 chip，点击即回填 -->
+                <div v-if="clarifyOptions(p, msg).length" class="clarify-chips">
+                  <button
+                    v-for="opt in clarifyOptions(p, msg)"
+                    :key="opt"
+                    type="button"
+                    class="clarify-chip"
+                    :class="{ active: (clarifyDrafts[`${msg.id}:${p}`] || '') === opt }"
+                    @click="selectClarifyOption(msg, p, opt)"
+                  >
+                    {{ opt }}
+                  </button>
+                </div>
                 <input
+                  v-else
                   v-model="clarifyDrafts[`${msg.id}:${p}`]"
                   class="clarify-input"
-                  :placeholder="`请输入${clarifyParamLabel(p)}`"
+                  :placeholder="`请输入${clarifyParamLabel(p, msg)}`"
                   @keyup.enter="submitClarify(msg)"
                 />
               </div>
@@ -338,7 +362,6 @@ import MessageCard from './MessageCard.vue'
 import InlineFormEditor from './InlineFormEditor.vue'
 import BatchInlineCard from './BatchInlineCard.vue'
 import QueryPlanCard from './QueryPlanCard.vue'
-import EvidenceCard from './EvidenceCard.vue'
 
 const props = defineProps({
   messages: { type: Array, required: true },
@@ -387,15 +410,28 @@ const fileRefCounts = (fileRef) => {
 /** CLARIFY 澄清补参：msg.id -> { [paramKey]: 用户输入 } */
 const clarifyDrafts = reactive({})
 
-/** 参数键 → 业务中文标签 */
-function clarifyParamLabel(key) {
+/** 参数键 → 业务中文标签（优先契约 label，回退本地词典） */
+function clarifyParamLabel(key, msg) {
+  const contract = msg?.clarifyContracts?.[key]
+  if (contract?.label) return contract.label
   const map = {
     offering: '商品/套餐',
     ruleId: '规则编号',
-    concept: '本体概念',
+    concept: '业务概念',
     question: '查询内容',
   }
   return map[key] || key
+}
+
+/** 契约候选选项（U1 选择题化）：无契约或无 options 时为空数组（保留文本框） */
+function clarifyOptions(key, msg) {
+  const options = msg?.clarifyContracts?.[key]?.options
+  return Array.isArray(options) ? options : []
+}
+
+/** 点击候选 chip：回填草稿值（再点「继续」结构化回传） */
+function selectClarifyOption(msg, key, opt) {
+  clarifyDrafts[`${msg.id}:${key}`] = opt
 }
 
 /** 收集非空补参并结构化回传（复用 session history 让 LLM 理解原意图） */
@@ -669,6 +705,10 @@ const localizeStepText = (text) => {
     .replace(/（来源\s*llm[^）]*）/gi, '')
     .replace(/（来源\s*[^）]+）/g, '')
     .replace(/置信度/g, '把握度')
+    .replace(/本体/g, '业务知识')
+    .replace(/调用工具/g, '业务处理')
+    .replace(/大模型/g, 'AI')
+    .replace(/SPARQL|SWRL|Prompt|Token|LLM|RDF/gi, '')
     .replace(/includeVoice/g, '语音')
     .replace(/includeData/g, '流量')
     .replace(/includeBroadband/g, '宽带')
@@ -1473,6 +1513,72 @@ defineExpose({ scrollToBottom })
   font-size: 12px;
   color: #92400e;
   text-align: right;
+}
+
+/* U1 选择题化：候选选项 chip */
+.clarify-chips {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.clarify-chip {
+  padding: 6px 14px;
+  border: 1px solid #fcd34d;
+  border-radius: 999px;
+  background: #fff;
+  color: #92400e;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.clarify-chip:hover {
+  border-color: #f59e0b;
+  background: #fef3c7;
+}
+
+.clarify-chip.active {
+  border-color: #f59e0b;
+  background: #f59e0b;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* U2 需求歧义确认：候选解读卡片（复用 clarify-area 边框基调） */
+.confirm-area {
+  border-color: #c7d2fe;
+  background: #eef2ff;
+}
+
+.confirm-area .clarify-title {
+  color: #4338ca;
+}
+
+.confirm-candidates {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.confirm-candidate {
+  padding: 10px 14px;
+  border: 1px solid #c7d2fe;
+  border-radius: 10px;
+  background: #fff;
+  color: #1e293b;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.confirm-candidate:hover {
+  border-color: #6366f1;
+  background: #eef2ff;
+  color: #4338ca;
 }
 
 .clarify-input {

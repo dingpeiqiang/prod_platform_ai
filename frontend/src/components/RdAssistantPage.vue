@@ -6,7 +6,6 @@
     :sessions="sessionList"
     :sessionsLoading="historyLoading"
     :context="contextItems"
-    :summary-stats="summaryStats"
     @send="onSend"
     @stop="stop"
     @new-session="onNewSession"
@@ -69,10 +68,6 @@
     />
 
     <ProductPreviewDrawer v-model="showProductPreview" :product="previewProductData" />
-
-    <template #right>
-      <InsightBoard mode="rd" :messages="messages" :product-config="productConfig" />
-    </template>
   </AssistantShell>
 </template>
 
@@ -82,7 +77,6 @@ import { ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import AssistantShell from './AssistantShell.vue'
 import ChatMessageList from './ChatMessageList.vue'
-import InsightBoard from './InsightBoard.vue'
 import ProductListPanel from './ProductListPanel.vue'
 import ProductPreviewDrawer from './ProductPreviewDrawer.vue'
 import { useChatStream } from '../composables/useChatStream.js'
@@ -91,15 +85,8 @@ import { registerPostProcessor } from '../composables/useIntentRegistry.js'
 import { checkCompliance } from '../services/productOntologyApi.js'
 import { assistantModes, buildSceneWelcome } from '../config/assistantModes.js'
 import { ZHIDU_TEST_PROMPT } from '../data/zhiduTestDoc.js'
-import { genId } from '../utils/chatUtils.js'
-import { createStreamingPlaceholder } from '../utils/simulateReply.js'
-import { sleep } from '../utils/simulateReply.js'
-import {
-  applyScheduleResults,
-  createSchedule,
-  revealOntologyChain,
-  scenarioLabel,
-} from '../utils/thinkingSchedule.js'
+import { genId, sleep, createStreamingPlaceholder } from '../utils/chatUtils.js'
+import { normalizeThinkingStep } from '../utils/normalizeThinkingStep.js'
 
 /** 智读引导话术：点击后填入可解析演示正文，而非空指令 */
 const ZHIDU_GUIDE_RE =
@@ -177,21 +164,6 @@ const contextItems = computed(() => {
     }
   }
   return items
-})
-
-/** 移动端紧凑「会话汇总」状态条：关键计数实时聚合 */
-const summaryStats = computed(() => {
-  const mp = productConfig
-  const products = mp.products?.value || []
-  const batchItems = mp.batchItems?.value || []
-  const passed = batchItems.filter((i) => i.compliancePass || i.status === '通过').length
-  const pending = batchItems.filter((i) => !(i.compliancePass || i.status === '通过')).length
-  return [
-    { label: '草稿', value: `${products.length}` },
-    { label: '通过', value: `${passed}`, tone: 'good' },
-    { label: '待修', value: `${pending}`, tone: pending ? 'warn' : 'neutral' },
-    { label: '文档', value: `${messages.value.filter((m) => m.fileRef).length}` },
-  ]
 })
 
 function paramLabelZh(key) {
@@ -468,7 +440,7 @@ async function handleConfigTrace(traceId = null) {
   streaming.value = true
   try {
     const playbook = await productConfig.openConfigTrace(traceId)
-    await playProductReply(playbook, 'config-trace')
+    await playProductReply(playbook)
   } finally {
     streaming.value = false
   }
@@ -668,17 +640,16 @@ function applyPlaybookSideEffects(aiMsg, playbook = {}) {
   tickMessages()
 }
 
-/** 结果回填到同一条调度时间线，再流式输出正文（不再另起一套「思考过程」） */
+/** 真实结果直接写入思考时间线（不经场景模板调度），再流式输出正文 */
 async function finishProductReply(aiMsg, playbook = {}) {
   const allSteps = playbook.thinkingSteps || []
-  aiMsg.reasoning = applyScheduleResults(aiMsg.reasoning || [], allSteps)
+  if (allSteps.length) {
+    aiMsg.reasoning = allSteps.map((raw) =>
+      typeof raw === 'string' ? normalizeThinkingStep({ content: raw, result: raw }) : normalizeThinkingStep(raw),
+    )
+  }
   aiMsg.showReasoning = true
   tickMessages()
-
-  const onto = (aiMsg.reasoning || []).find((s) => s.type === 'ontology' && s.ontologyChain)
-  if (onto?.id) {
-    await revealOntologyChain(aiMsg, onto.id, { onTick: tickMessages, delay: 90 })
-  }
 
   aiMsg.loading = false
   tickMessages()
@@ -701,71 +672,11 @@ async function finishProductReply(aiMsg, playbook = {}) {
   applyPlaybookSideEffects(aiMsg, playbook)
 }
 
-async function playProductReply(playbook = {}, scenario = 'chat-generate') {
+async function playProductReply(playbook = {}) {
   const aiMsg = createStreamingPlaceholder(genId)
-  aiMsg._scenario = scenario
-  aiMsg.reasoning = createSchedule(scenario)
   messages.value = [...messages.value, aiMsg]
   tickMessages()
-  await sleep(280)
-  await finishProductReply(aiMsg, {
-    ...playbook,
-    thinkingSteps: normalizePlaybookSteps(playbook.thinkingSteps, scenario),
-  })
-}
-
-/** 将 playbook 步骤对齐到场景模板 id，保证与调度表同一条时间线 */
-function normalizePlaybookSteps(thinkingSteps = [], scenario = 'chat-generate') {
-  const schedule = createSchedule(scenario)
-  const raw = (thinkingSteps || []).map((src) => {
-    if (typeof src === 'string') {
-      return { id: null, type: 'llm', content: src, result: src }
-    }
-    return { ...src, id: src.id || null }
-  })
-  const byId = new Map(raw.filter((s) => s.id).map((s) => [s.id, s]))
-  const hasIntent = byId.has('intent')
-  // 与模板等长 → 按下标对齐；短一截 → 视为缺意图步，对齐到 intent 之后
-  const useIndex = !hasIntent && raw.length === schedule.length
-  let bodyCursor = 0
-
-  return schedule.map((tpl, i) => {
-    let src = byId.get(tpl.id) || null
-    if (!src && useIndex) {
-      src = raw[i] || null
-    } else if (!src && tpl.id === 'intent') {
-      src = { result: scenarioLabel(scenario) }
-    } else if (!src && !hasIntent) {
-      src = raw[bodyCursor] || null
-      bodyCursor += 1
-    }
-    if (!src) {
-      return {
-        id: tpl.id,
-        type: tpl.type,
-        title: tpl.title,
-        content: tpl.content,
-        result: tpl.id === 'intent' ? scenarioLabel(scenario) : null,
-      }
-    }
-    return {
-      id: tpl.id,
-      type: src.type || tpl.type,
-      title: src.title || tpl.title,
-      content: src.content || tpl.content,
-      result:
-        src.result !== undefined && src.result !== null
-          ? src.result
-          : tpl.id === 'intent'
-            ? scenarioLabel(scenario)
-            : null,
-      metadata: src.metadata || null,
-      details: src.details || null,
-      elapsed: src.elapsed,
-      ontologyChain: src.ontologyChain || null,
-      ontologyPreview: src.ontologyPreview || null,
-    }
-  })
+  await finishProductReply(aiMsg, playbook)
 }
 
 const onSend = async (payload) => {
@@ -998,7 +909,7 @@ async function handleReferenceContinue(text = '', refMsg = null) {
           : ''),
       formCard: null,
       batch: showBatch ? refMsg.batch : null,
-    }, 'file-parse')
+    })
   } finally {
     streaming.value = false
   }
@@ -1079,7 +990,7 @@ async function handleBatchConfirm(msg) {
     const playbook = await productConfig.confirmPassedDrafts()
     refreshBatchSnapshot(msg, playbook.batch)
     if (playbook.formCard) applyFormCard(playbook.formCard)
-    await playProductReply(playbook, 'confirm-batch')
+    await playProductReply(playbook)
   } finally {
     streaming.value = false
   }
