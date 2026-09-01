@@ -4,7 +4,7 @@
 # ============================================================
 
 # 注意：修改版本号时，请同步更新 docker-manager.ps1 中的配置
-FROM 10.86.12.11:20200/y21127-crmpos/prod-platform-backend-base:2.1
+FROM 10.86.12.11:20200/y21127-crmpos/prod-platform-backend-base:2.2
 
 LABEL maintainer="AI Platform"
 LABEL version="2.0"
