@@ -37,9 +37,6 @@
                 <circle cx="11" cy="11" r="8"/>
                 <line x1="21" y1="21" x2="16.65" y2="16.65"/>
               </svg>
-              <svg v-else-if="card.icon === 'shield'" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-              </svg>
               <svg v-else-if="card.icon === 'chart'" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M3 3v18h18"/>
                 <path d="M18 17V9"/>
@@ -92,8 +89,8 @@ const modeClass = computed(() => (props.mode === 'ops' ? 'mode-ops' : 'mode-rd')
 const rdMeta = {
   eyebrow: 'AI 原生 · 产商品研发',
   title: '产商品研发助手',
-  subtitle: '智聊·对话配置、智读·文件配置、智查·历史复用与智检·合规校验一体完成，让商品上架更快、更准、更合规。',
-  tags: ['智聊·对话配置', '智读·文件配置', '智查·历史复用', '智检·合规校验'],
+  subtitle: '智聊·对话配置、智读·文件配置与智查·历史复用一体完成，让商品上架更快、更准、更合规。',
+  tags: ['智聊·对话配置', '智读·文件配置', '智查·历史复用'],
   footer: '本体负责填字段与拦冲突，大模型负责理解业务表达。',
 }
 
@@ -113,7 +110,6 @@ const cards = computed(() => {
     'rd.chat': 'chat',
     'rd.import': 'file',
     'rd.query': 'search',
-    'rd.compliance': 'shield',
     'rd.compare': 'chart',
     market_insight: 'chart',
     online_check: 'check',
@@ -126,7 +122,6 @@ const cards = computed(() => {
     'rd.chat': { bg: '#eff6ff', color: '#2563eb' },
     'rd.import': { bg: '#ecfdf5', color: '#059669' },
     'rd.query': { bg: '#f0f9ff', color: '#0284c7' },
-    'rd.compliance': { bg: '#fff7ed', color: '#c2410c' },
     'rd.compare': { bg: '#f5f3ff', color: '#6d28d9' },
     market_insight: { bg: '#ecfeff', color: '#0e7490' },
     online_check: { bg: '#fefce8', color: '#a16207' },
@@ -138,7 +133,7 @@ const cards = computed(() => {
   // 欢迎页只展示核心入口卡（对比/规则等仍可从侧边栏进入）
   const welcomeScenes = mode === 'ops'
     ? ['market_insight', 'online_check', 'root_cause', 'risk_audit']
-    : ['rd.chat', 'rd.import', 'rd.query', 'rd.compliance']
+    : ['rd.chat', 'rd.import', 'rd.query']
 
   return shortcuts
     .filter((s) => welcomeScenes.includes(s.scene))

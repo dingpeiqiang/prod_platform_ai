@@ -217,8 +217,8 @@ public class RdConfigChatTool implements AgentTool {
                     + "，场景=" + (scenario.isEmpty() ? "-" : scenario));
             woReq.put("actions", List.of(
                     "核对配置草稿字段完整性",
-                    "合规校验后提交资费备案",
-                    "备案通过后发布上架"
+                    "合规校验后提交",
+                    "提交通过后发布上架"
             ));
             Map<String, Object> woBody = productOntologyService.createWorkOrder(woReq);
             if (woBody != null && woBody.get("workOrder") instanceof Map<?, ?> wo) {

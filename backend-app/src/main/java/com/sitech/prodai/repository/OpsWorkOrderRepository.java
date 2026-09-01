@@ -2,11 +2,13 @@ package com.sitech.prodai.repository;
 
 import com.sitech.prodai.domain.entity.OpsWorkOrder;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 import java.util.List;
 import java.util.Optional;
 
-public interface OpsWorkOrderRepository extends JpaRepository<OpsWorkOrder, Long> {
+public interface OpsWorkOrderRepository
+        extends JpaRepository<OpsWorkOrder, Long>, JpaSpecificationExecutor<OpsWorkOrder> {
 
     Optional<OpsWorkOrder> findByWorkOrderId(String workOrderId);
 

@@ -238,8 +238,8 @@
 
 <script setup>
 import { ref, nextTick, watch, computed, onMounted, onBeforeUnmount, getCurrentInstance, markRaw, toRaw } from 'vue'
+import { ElMessageBox } from 'element-plus'
 import { useModelsStore } from '@/stores/models.js'
-import { ZHIDU_TEST_PROMPT } from '../data/zhiduTestDoc.js'
 import { uploadConfigFile } from '../services/productOntologyApi.js'
 import ContextBar from './ContextBar.vue'
 
@@ -284,7 +284,6 @@ const skillConfig = {
   query: { icon: 'fa-magnifying-glass', label: '智查·历史复用' },
   file: { icon: 'fa-file-import', label: '智读·文件配置' },
   chat: { icon: 'fa-comments', label: '智聊·对话配置' },
-  compliance: { icon: 'fa-shield-halved', label: '智检·合规校验' },
   ops: { icon: 'fa-chart-line', label: '运营助手' }
 }
 
@@ -498,9 +497,8 @@ let audioChunks = []
 
 const allQuickActions = [
   { key: 'chat', label: '智聊·对话配置', content: '给家庭用户做一个融合套餐，月费158，带500M宽带，全渠道销售', color: '#8b5cf6', modes: ['rd'] },
-  { key: 'file', label: '智读·文件配置', content: ZHIDU_TEST_PROMPT, color: '#10b981', modes: ['rd'] },
+  { key: 'file', label: '智读·文件配置', content: '', color: '#10b981', modes: ['rd'] },
   { key: 'query', label: '智查·历史复用', content: '帮我查询近30天大学生套餐配置', color: '#f59e0b', modes: ['rd'] },
-  { key: 'compliance', label: '智检·合规校验', content: '校验校园体验流量包0元是否符合在架规则', color: '#c2410c', modes: ['rd'] },
   { key: 'ops', label: '指标异动根因', content: '分析家庭融合畅享128本月收入下滑原因', color: '#0ea5e9', modes: ['ops'] },
   { key: 'ops', label: '高风险商品稽核', content: '筛查所有在架的0元资费风险商品', color: '#ef4444', modes: ['ops'] },
 ]
@@ -747,12 +745,40 @@ function addFiles(fileList, { emitUpload = true } = {}) {
     }
   })
 
+  // 同名文件再次上传：询问覆盖（移除旧附件，只留本次）还是共存新增（两份都在）
+  const addedNames = files.map((f) => f.name).filter(Boolean)
+  const dupNames = addedNames.filter((n) =>
+    attachments.value.some((a) => a.name === n && !addedNames.includes(a.name)),
+  )
+  if (dupNames.length) {
+    askDuplicatePolicy(dupNames, addedNames)
+  }
+
   if (emitUpload) {
     if (plainFiles.length) emit('file-upload', plainFiles)
     if (images.length) emit('image-upload', images)
   }
   pasteHint.value = ''
   return true
+}
+
+/** 同名文件策略：覆盖 = 移除旧附件只留本次；共存 = 保留两份（后端解析为新草稿，不互相覆盖） */
+function askDuplicatePolicy(dupNames, addedNames) {
+  const label = dupNames.length === 1 ? `「${dupNames[0]}」` : `${dupNames.length} 个同名文件`
+  ElMessageBox.confirm(
+    `${label}已在本次会话上传过。选择「覆盖」将替换旧附件（仅保留本次上传），选择「新增」则两份共存。`,
+    '文件重复上传',
+    { confirmButtonText: '覆盖', cancelButtonText: '新增', distinguishCancelAndClose: false, type: 'question' },
+  ).then(() => {
+    // 覆盖：本次之前上传的同名附件移除（本次条目在列表尾部）
+    const seen = new Set()
+    attachments.value = attachments.value.filter((a) => {
+      if (!addedNames.includes(a.name)) return true
+      if (seen.has(a.name)) return false
+      seen.add(a.name)
+      return true
+    })
+  }).catch(() => { /* 新增：不做处理 */ })
 }
 
 const handlePaste = (e) => {

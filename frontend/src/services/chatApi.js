@@ -41,6 +41,28 @@ function buildMessageMetadata(msg) {
   // 翻译层产物：理解层查询计划
   if (msg.queryPlan) metadata.query_plan = JSON.stringify(msg.queryPlan)
 
+  // 用户附件快照（fileId/名称随消息持久化，回放时气泡可显示附件）
+  if (Array.isArray(msg.attachments) && msg.attachments.length) {
+    metadata.attachments = JSON.stringify(msg.attachments.map((a) => ({
+      id: a.id,
+      type: a.type || 'file',
+      name: a.name,
+      size: a.size ?? null,
+      fileId: a.fileId || a.file_id || null,
+      fileName: a.fileName || a.name,
+    })))
+  }
+
+  // 智读文档记忆锚（fileRef）：跨轮引用与「已引用文档」锚的历史快照
+  if (msg.fileRef) {
+    metadata.file_ref = JSON.stringify({
+      fileName: msg.fileRef.fileName,
+      fileId: msg.fileRef.fileId ?? null,
+      fileIds: msg.fileRef.fileIds || [],
+      counts: msg.fileRef.counts || null,
+    })
+  }
+
   return Object.keys(metadata).length > 0 ? metadata : null
 }
 
@@ -165,6 +187,24 @@ function restoreMessageMetadata(meta = {}) {
   }
 
   const hasError = reasoning.some(r => r.type === 'error')
+
+  // 用户附件快照：还原为 msg.attachments（历史回放气泡显示附件）
+  let attachments = []
+  if (meta.attachments != null) {
+    try {
+      const parsed = typeof meta.attachments === 'string' ? JSON.parse(meta.attachments) : meta.attachments
+      if (Array.isArray(parsed)) attachments = parsed
+    } catch { attachments = [] }
+  }
+
+  // 智读文档记忆锚：还原为 msg.fileRef（历史回放显示「已引用文档」锚，支持跨轮引用）
+  let fileRef = null
+  if (meta.file_ref != null) {
+    try {
+      fileRef = typeof meta.file_ref === 'string' ? JSON.parse(meta.file_ref) : meta.file_ref
+    } catch { fileRef = null }
+  }
+
   return {
     reasoning,
     showReasoning: hasError || reasoning.length > 0,
@@ -188,6 +228,8 @@ function restoreMessageMetadata(meta = {}) {
     clarify: clarify || [],
     confirm,
     toolResults,
+    attachments: attachments.length ? attachments : undefined,
+    fileRef,
   }
 }
 
@@ -299,6 +341,7 @@ export async function loadMessages(sessionId) {
     }).filter(m => {
       const hasText = String(m.content || m.streamText || '').trim().length > 0
       return hasText || !!m.formCard || !!m.intentData || (m.reasoning && m.reasoning.length)
+        || (Array.isArray(m.attachments) && m.attachments.length)
     })
   } catch {
     return []

@@ -363,6 +363,15 @@ public class DefaultUnderstander implements Understander {
             }
         }
 
+        // 兜底仲裁（rd 场景）：检索意图词命中而 LLM 选了草稿生成工具 → 强制改派配置查询。
+        // 提示词已声明「查已有 vs 造新」最高优先级，此处防 LLM 偶发误判（如"找一下…月费39"
+        // 被资费要素拽向 rd_config_chat，导致意外生成草稿并自动开工单）。
+        if (rdScene && sanitized.contains("rd_config_chat")
+                && isDiscoverIntentQuestion(question)) {
+            log.info("[DefaultUnderstander] 兜底改派: 检索意图词命中，rd_config_chat → rd_config_discover, question={}", question);
+            sanitized = List.of("rd_config_discover");
+        }
+
         // 意图弱化为展示标签：保留 intent_type/action 供编排层还原 intentData 与文案生成
         String normalized = IntentRecognitionSupport.normalizeIntentType(intent);
         // rd 场景：LLM 输出的 intent 为自由文本（configure/configuration/product_config…），
@@ -372,17 +381,27 @@ public class DefaultUnderstander implements Understander {
         params.put("intent_type", intentCode);
         // 前端随消息携带的结构化参数（ Orchestrator.applySuppliedParams 已入 resolvedParams ）
         // 前置合并到 plan.params：LLM 翻译时可能只抽取话术中的名称而丢弃精确 id（draft_id/client_id），
-        // 此处以调用方传入的精确参数为准（仅在 LLM 未输出同名键时合并，不覆盖 LLM 显式结果）
+        // 此处以调用方传入的精确参数为准（仅在 LLM 未输出同名键时合并，不覆盖 LLM 显式结果）。
+        // rd_draft_manage 场景额外合并 work_order_id：工单卡按钮操作会把单号经 resolvedParams 传入，
+        // LLM 话术可能只用名称指代（如「修改 XX(副本)」），单号以用户显式操作为准。
+        // 注意：offer 是查询类遗留缓存（上轮智查的商品），操作类意图（RD_DRAFT_MANAGE）下混入会污染
+        // plan.params 与思考面板展示（「分析对象」显示成上轮工单），此处显式剔除。
         if (context != null && context.getResolvedParams() != null) {
+            boolean isDraftManage = sanitized.contains("rd_draft_manage");
             for (Map.Entry<String, Object> e : context.getResolvedParams().entrySet()) {
                 if (e.getKey() == null || e.getValue() == null) continue;
+                if (isDraftManage && "offering".equals(e.getKey())) {
+                    continue;
+                }
                 params.putIfAbsent(e.getKey(), e.getValue());
             }
         }
         // rd 场景透传会话 ID：AgentTool 接口无 context 参数，经 plan.params → executor direct 兜底
-        // 透传给工具（如 rd_config_chat 草稿生成即开备案工单需绑定会话）
+        // 透传给工具（如 rd_config_chat 草稿生成即开备案工单需绑定会话）。
+        // session_id 是系统参数，必须以服务端 SessionContext 为准：LLM 可能幻觉输出同名键
+        // （putIfAbsent 不覆盖会导致工具拿到空/错 sessionId 而跳过开单），故此处强制覆盖。
         if (rdScene && context != null && context.getSessionId() != null && !context.getSessionId().isBlank()) {
-            params.putIfAbsent("session_id", context.getSessionId());
+            params.put("session_id", context.getSessionId());
         }
         if (action != null && !action.isBlank()) {
             params.put("action", action);
@@ -684,6 +703,24 @@ public class DefaultUnderstander implements Understander {
     }
 
     /**
+     * 检索意图判定：话术含明确的「找已有方案」动词，且不含创建意愿动词。
+     * <p>与提示词【查已有 vs 造新分流】A0/A1 同源——检索动词权重高于资费要素。
+     */
+    private boolean isDiscoverIntentQuestion(String question) {
+        if (question == null || question.isBlank()) {
+            return false;
+        }
+        String q = question.trim();
+        boolean hasCreate = List.of("做一个", "新做", "新建", "生成", "创建", "配一个", "上一款", "新出")
+                .stream().anyMatch(q::contains);
+        if (hasCreate) {
+            return false;
+        }
+        return List.of("找一下", "查一下", "查找", "找找", "找下", "查询", "检索", "有没有", "看看")
+                .stream().anyMatch(q::contains);
+    }
+
+    /**
      * 通用对话：不调用工具，直接 LLM 回复。
      */
     private QueryPlan chatPlan(String question) {
@@ -785,8 +822,33 @@ public class DefaultUnderstander implements Understander {
                 .append("不要 CONFIRM、不要只挑一单，必须把【当前会话工单实时状态】中全部状态为 open/in_progress（待提交）的工单号")
                 .append("用英文逗号拼接写入 work_order_id（如 \"WO1,WO2\"）一次性批量提交；\n")
                 .append("4) 上下文存在多个工单但用户明确点名其中一个（含名称/编号区分）→ 只取命中的那个工单号，不掺入其他工单；\n")
-                .append("5) 状态为 done（已提交备案）或 cancelled（已取消）的工单严禁纳入 work_order_id；\n")
-                .append("6) 上下文无任何待提交工单且话术无工单号 → 不要调用工具，直接向用户说明需要先提供工单号或先生成配置草稿。\n\n可用能力：\n");
+                .append("5) 状态为 cancelled（已取消）的工单严禁纳入 submit 的 work_order_id；\n")
+                .append("6) 用户要求修改工单/草稿的字段（如改资费名称、改月费）时：无论工单状态是否 done，一律调用 rd_draft_manage 且 action=update，")
+                .append("携带 work_order_id 和 offering_name（修改后的新名称），严禁翻译成 submit；修改成功后工具会自动重开工单；\n")
+                .append("7) 多轮增量修改（最高优先级）：用户在上一轮修改后追加细化（如只说「改成 198 元」「月费改 59」「名称加上家庭版」）时，")
+                .append("继续调用 rd_draft_manage 且 action=update：work_order_id 沿用会话缓存/上一轮回执的单号，")
+                .append("只携带本轮提到的字段（offering_name 或 monthly_fee），并把原始话术透传到 question 参数兜底；")
+                .append("未提到的字段不要回传旧值，由工具基于草稿现状合并；\n")
+                .append("8) 上下文无任何待提交工单且话术无工单号 → 不要调用工具，直接向用户说明需要先提供工单号或先生成配置草稿。\n\n")
+                .append("【查已有 vs 造新分流（最高优先级，先于下方所有铁律判断）：\n")
+                .append("A0) 用户想查找/查看/对比已存在的配置方案（标志词：找一下、查一下、找找、有没有、检索、看看、")
+                .append("类似的历史方案、现有套餐有哪些），即使话术中带月费、资费、渠道等套餐要素，也属于配置查询：")
+                .append("必须调用 rd_config_discover，严禁调用 rd_config_chat（查询不会生成草稿、不会开工单）；\n")
+                .append("A1) 只有用户明确表达创建意愿（标志词：做一个、新做、新建、生成、创建、配一个、上一款、新出）")
+                .append("且无检索意图词时，才调用 rd_config_chat 生成新配置草稿；\n\n")
+                .append("【新配置需求 vs 工单操作分流（次高优先级）：\n")
+                .append("A) 用户描述一个全新配置需求（典型句式如「给XX用户做一个XX套餐，月费XX，带XX，销售范围XX」「新做/新增/创建一个包含XX的套餐」），")
+                .append("无论当前会话已有多少工单，这都属于生成新配置草稿：必须调用 rd_config_chat，严禁调用 rd_draft_manage，")
+                .append("更严禁臆造 action=create（rd_draft_manage 根本不存在 create 动作）；\n")
+                .append("B) rd_draft_manage 的 action 仅允许 delete / copy / update / submit 四种；只有当用户明确要求删除、复制、修改或提交")
+                .append("【当前会话工单实时状态】里已存在的某个/某些工单时才可调用，且 work_order_id 必须命中真实工单号；\n")
+                .append("B1) 用户话术为「复制工单「XX」（WOxxx）对应的配置草稿，生成副本…」时（工单卡复制按钮发出，")
+                .append("可能附带「并按以下需求调整：XXX」），这是明确的 copy 操作：必须调用 rd_draft_manage 且 action=copy，")
+                .append("携带该 work_order_id；话术中的补充需求（改名/调资费等）透传到 question 参数，供复制后字段修正；\n")
+                .append("C) 用户有明确创建意愿（要求做/生成/新做新套餐）且话术里出现资费、月费、宽带速率、销售渠道等完整套餐要素")
+                .append("而无「修改/提交/删除某工单」的指向词时，才视为新配置需求走 rd_config_chat；")
+                .append("若用户只是想查询/找到已有方案（见 A0），即使带这些要素也必须走 rd_config_discover；\n")
+                .append("D) 上下文已有工单不等于用户要操作工单：判断依据是话术语义（是否点名工单/是否带操作动词），而不是工单数量。\n\n可用能力：\n");
         for (AgentTool tool : toolsOf(rdScene)) {
             sb.append("- ").append(tool.getName())
                     .append("：").append(tool.getDescription());
@@ -881,7 +943,7 @@ public class DefaultUnderstander implements Understander {
                         .append("｜状态=").append(e.getStatus())
                         .append(switch (e.getStatus() == null ? "" : e.getStatus()) {
                             case "open", "in_progress" -> "（待提交）";
-                            case "done" -> "（已提交备案，勿再提交）";
+                            case "done" -> "（已提交）";
                             case "cancelled" -> "（已取消，勿再提交）";
                             default -> "";
                         }).append('\n');

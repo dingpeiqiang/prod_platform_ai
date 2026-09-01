@@ -38,7 +38,6 @@
       @query-result-click="onQueryResultClick"
       @trace-click="onTraceClick"
       @clarify-submit="onClarifySubmit"
-      @file-ref-click="onFileRefClick"
       @session-workorder-select="onSessionWorkOrderSelect"
 @workorder-preview="({ wo }) => onWorkOrderPreview(wo)"
 @workorder-edit="({ wo }) => onWorkOrderEdit(wo)"
@@ -74,16 +73,12 @@ import WorkOrderDrawer from './WorkOrderDrawer.vue'
 import { useChatStream } from '../composables/useChatStream.js'
 import { useProductConfig } from '../composables/useProductConfig.js'
 import { registerPostProcessor } from '../composables/useIntentRegistry.js'
-import { checkCompliance, listWorkOrders } from '../services/productOntologyApi.js'
+import { checkCompliance, copyAsDraft, listWorkOrders } from '../services/productOntologyApi.js'
 import { saveMessage as saveChatMessage } from '../services/chatApi.js'
 import { assistantModes, buildSceneWelcome } from '../config/assistantModes.js'
-import { ZHIDU_TEST_PROMPT } from '../data/zhiduTestDoc.js'
 import { genId, sleep, createStreamingPlaceholder } from '../utils/chatUtils.js'
 import { normalizeThinkingStep } from '../utils/normalizeThinkingStep.js'
-
-/** 智读引导话术：点击后填入可解析演示正文，而非空指令 */
-const ZHIDU_GUIDE_RE =
-  /粘贴方案文档后说|请按文档内容生成配置草稿|上传家庭融合方案|按文档映射为配置草稿|演示：导入家庭融合方案/
+import { draftToFormData } from '../data/productMockData.js'
 
 const inputText = ref('')
 const historyLoading = ref(false)
@@ -204,11 +199,13 @@ const RD_POST_INTENTS = [
 ]
 
 /** 拉取当前会话的商品配置工单列表（后端按 session_id 过滤），返回 items 数组 */
-async function loadSessionWorkOrders(sid = sessionId.value) {
+async function loadSessionWorkOrders(sid = sessionId.value, opts = {}) {
   if (!sid) return []
   try {
-    const resp = await listWorkOrders(null, sid)
-    return resp?.items || resp?.data?.items || []
+    const resp = await listWorkOrders({ sessionId: sid, ...opts })
+    const list = resp?.items || resp?.data?.items || []
+    // 双重保险：只保留属于当前会话的工单，防止后端未过滤/参数退化时全局数据冒充会话数据
+    return list.filter((wo) => !wo?.sessionId || wo.sessionId === sid)
   } catch {
     return []
   }
@@ -219,17 +216,27 @@ async function attachWorkOrdersToMsg(aiMsg, sid = sessionId.value) {
   if (!aiMsg) return
   const items = await loadSessionWorkOrders(sid)
   if (items.length) {
-    // 关联本地草稿（offeringName/标题 → product.name），工单卡操作（预览/编辑/删除）据此定位 product
+    // 关联本地草稿：优先按工单 payload.draftId（`P${draftId}` 稳定约定）/ productId 对齐，
+    // 名称匹配兜底（历史工单无 draftId 时）；工单卡操作（预览/编辑/删除）据此定位 product
     const norm = (s) => String(s || '').trim()
     const productList = productConfig.products.value || []
     for (const wo of items) {
-      const matched =
-        productList.find(
-          (p) => norm(p.name) && (norm(p.name) === norm(wo.offeringName) || norm(wo.title || '').startsWith(norm(p.name))),
-        ) ||
-        // 草稿名为默认值（「配置方案草稿/商品配置草稿」）且工单无商品名时，关联唯一/当前草稿
-        productList.find((p) => /^(配置方案草稿|商品配置草稿)$/.test(norm(p.name))) ||
-        productList.find((p) => p.id === productConfig.currentProductId.value)
+      const draftId = wo.draftId ?? wo.draft_id
+      let matched = draftId
+        ? productList.find((p) => p.id === `P${draftId}` || String(p.draftId || '') === String(draftId))
+        : null
+      if (!matched && wo.productId) {
+        matched = productList.find((p) => p.id === wo.productId)
+      }
+      if (!matched) {
+        matched =
+          productList.find(
+            (p) => norm(p.name) && (norm(p.name) === norm(wo.offeringName) || norm(wo.title || '').startsWith(norm(p.name))),
+          ) ||
+          // 草稿名为默认值（「配置方案草稿/商品配置草稿」）且工单无商品名时，关联唯一/当前草稿
+          productList.find((p) => /^(配置方案草稿|商品配置草稿)$/.test(norm(p.name))) ||
+          productList.find((p) => p.id === productConfig.currentProductId.value)
+      }
       wo.productId = matched?.id || wo.productId || null
     }
     aiMsg.workOrders = items
@@ -268,15 +275,34 @@ function onWorkOrderSubmit(wo) {
   })
 }
 
-/** 工单卡操作：复制草稿（发会话消息 → 翻译层 rd_draft_manage 执行，全量记录操作） */
-function onWorkOrderCopy(wo) {  if (!wo || streaming.value) return
+/** 工单卡操作：复制草稿（弹补充需求输入 → 确认后发会话消息 → 翻译层 rd_draft_manage 执行，全量记录操作） */
+async function onWorkOrderCopy(wo) {
+  if (!wo || streaming.value) return
   const woId = wo.workOrderId || wo.id || ''
   const name = wo.offeringName || wo.title || '该配置草稿'
-  // 统一凭工单号定位：草稿在工单 payload 中关联（后端按 work_order_id 反查），不再传 draft_id/client_id
+  let prompt = null
+  try {
+    const res = await ElMessageBox.prompt(
+      `正在复制工单「${name}」（${woId}）。请补充新方案的差异化需求（如改名、调资费、换客群等），可留空表示原样复制。`,
+      '复制配置 · 补充需求',
+      {
+        type: 'info',
+        confirmButtonText: '发送复制消息',
+        cancelButtonText: '取消',
+        inputPlaceholder: '例：改名为校园青春版，月费 29 元，面向大学生',
+      },
+    )
+    prompt = String(res?.value || '').trim()
+  } catch {
+    return
+  }
+  // 统一凭工单号定位：草稿在工单 payload 中关联（后端按 work_order_id 反查），不再传 draft_id/client_id；
+  // 补充需求并入话术，由翻译层在复制后按 prompt 修正字段
+  const requirement = prompt ? `，并按以下需求调整：${prompt}` : ''
   sendAgentMessage({
-    text: `复制工单「${name}」（${woId}）对应的配置草稿，生成副本`,
+    text: `复制工单「${name}」（${woId}）对应的配置草稿，生成副本${requirement}`,
     scene: 'rd',
-    params: { action: 'copy', work_order_id: woId },
+    params: { action: 'copy', work_order_id: woId, question: `复制「${name}」${prompt ? `；补充需求：${prompt}` : ''}` },
   })
 }
 /** 工单卡操作：删除（发会话消息 → 翻译层 rd_draft_manage 执行，全量记录操作） */
@@ -505,19 +531,73 @@ function handleProductPreview(id) {
   showProductPreview.value = true
 }
 
+/** 智查结果卡片操作：复制配置（弹补充需求输入 → 直调 copy-as-draft API 按需求修正副本字段 + 后端复制即开单，消息流挂工单卡）。
+ * 不走翻译层——「复制」语义无对应 AgentTool，LLM 会误派 rd_compliance 报「缺少待校验的配置草稿」。 */
 async function onQueryResultClick(item) {
   if (!item || streaming.value) return
-  streaming.value = true
+  const offeringId = item.offeringId || item.code || item.id
+  if (!offeringId) {
+    ElMessageBox.alert('该结果缺少商品编码，无法复制', '复制配置', { type: 'warning' })
+    return
+  }
+  const name = item.name || offeringId
+  let requirement = null
   try {
-    // 本体智查结果：走 copy-as-draft + 合规；本地 mock 带 data 时同样优先后端
-    const playbook = await productConfig.prepareProduct(item)
-    if (playbook?.formCard) {
-      applyFormCard(playbook.formCard)
+    const res = await ElMessageBox.prompt(
+      `正在复制「${name}」（${offeringId}）为新配置草稿。请补充新方案的差异化需求（如改名、调资费、换客群等），可留空表示原样复制。`,
+      '复制配置 · 补充需求',
+      {
+        type: 'info',
+        confirmButtonText: '复制',
+        cancelButtonText: '取消',
+        inputPlaceholder: '例：改名为校园青春版，月费 29 元，面向大学生',
+      },
+    )
+    requirement = String(res?.value || '').trim() || null
+  } catch {
+    return
+  }
+  streaming.value = true
+  const aiMsg = {
+    id: 'R' + Date.now(),
+    role: 'assistant',
+    content: '',
+    thinkingSteps: [],
+    done: true,
+    toolResults: [],
+    timestamp: Date.now(),
+  }
+  try {
+    aiMsg.thinkingSteps = [
+      `选中智查结果「${name}」`,
+      ...(requirement ? [`按补充需求调整：${requirement}`] : []),
+      'copy_as_draft 深拷贝生成草稿',
+      'evaluate_policy 执行 R-C* 合规校验',
+      '复制即开单：创建配置工单',
+    ]
+    messages.value = [...messages.value]
+    const result = await copyAsDraft(offeringId, item.name || null, sessionId.value, requirement)
+    if (result?.success === false) {
+      throw new Error(result.message || '复制失败')
     }
-    if (playbook) {
-      await playProductReply(playbook)
+    // 本地同步草稿（工单卡操作按钮依赖 productId 关联）
+    syncProductFromDraft(result.draft || {})
+    const passLabel = result.compliancePass ? '✅ 合规通过' : '⚠️ 存在待处理项'
+    const appliedNote = result.applied_requirements
+      ? `已按补充需求调整：${Object.keys(result.applied_requirements).join('、')}。`
+      : ''
+    aiMsg.content =
+      `已将「${result.source_offering_name || offeringId}」复制为新草稿「${result.draft?.offeringName || ''}」。${appliedNote}${passLabel}。`
+    // 展示「商品配置工单」卡片（与对话配置一致），而非表单卡
+    await attachWorkOrdersToMsg(aiMsg)
+    if (!aiMsg.workOrders?.length) {
+      // 开单失败时兜底：至少保留复制回执文本
+      aiMsg.content += '\n\n（工单创建失败，可稍后在工单列表重试）'
     }
+  } catch (e) {
+    aiMsg.content = `复制配置失败：${e.message || '本体服务不可用'}。请确认商品编码有效。`
   } finally {
+    messages.value = [...messages.value, aiMsg]
     streaming.value = false
   }
 }
@@ -556,9 +636,58 @@ function applyRdToolToPanels(msg) {
     } else if (name === 'rd_compliance') {
       attachFormCardToMsg(msg, applyRdCompliance(out.draft || out.config?.draft, out.compliance_pass, out.issues || out.config?.issues))
     } else if (name === 'rd_file_parse') {
-      applyRdFileParse(out.items, out.batch)
+      const woCount = applyRdFileParse(out.items, out.batch, out)
+      if (woCount) {
+        msg.fileParseWorkOrderCount = woCount
+      }
+      // 文档记忆锚：文件名/IDs 从本轮用户消息附件还原（后端 tool input 视图隐藏 file_ids），
+      // 供跨轮引用（「继续修正这份方案」）与「已引用文档」锚展示
+      const snapshot = batchSnapshotFromItems()
+      const upAttachments = findLastUserAttachments(msg)
+      const fileIds = (upAttachments || []).map((a) => a.fileId).filter(Boolean)
+      if (fileIds.length || upAttachments.length) {
+        msg.fileRef = {
+          fileName: upAttachments[0]?.name || upAttachments[0]?.fileName || fileIds[0] || '方案文档',
+          fileId: fileIds[0] || null,
+          fileIds,
+          counts: {
+            passed: snapshot.passedCount,
+            pending: snapshot.pendingCount,
+            confirmable: snapshot.confirmable.length,
+          },
+        }
+      }
     } else if (name === 'rd_scheme_compare') {
       applyRdSchemeCompare(out)
+    } else if (name === 'rd_config_discover') {
+      // 智查结果 → 商品列表卡片（ChatMessageList msg.queryResults 槽位）：
+      // 条目点击/复制按钮 → query-result-click → prepareProduct（copy-as-draft + 合规）
+      const items = Array.isArray(out.items) ? out.items : []
+      if (items.length) {
+        msg.queryResults = items
+          .map((it) => {
+            const id = it.offering_id || it.offeringId || it.id || it.code
+            const name2 = it.offering_name || it.offeringName || it.name
+            if (!id && !name2) return null
+            const fee = it.monthly_fee ?? it.monthlyFee
+            const state = it.state || ''
+            const category = it.category_name || it.categoryName || ''
+            const parts = [
+              fee != null ? `月费 ${fee} 元` : null,
+              category,
+              state,
+            ].filter(Boolean)
+            return {
+              id: id || name2,
+              code: id || '',
+              name: name2 || id,
+              desc: parts.join(' · '),
+              offeringId: id,
+            }
+          })
+          .filter(Boolean)
+        messages.value = [...messages.value]
+      }
     } else if (name === 'rd_draft_manage') {
       applyRdDraftManage(out)
       // 操作回执高亮：提交/复制/删除命中的工单条目在工单卡上高亮提示（问题3：提交成功无明显提示）
@@ -573,14 +702,28 @@ function applyRdToolToPanels(msg) {
 function applyRdDraftManage(out) {
   const action = String(out?.action || '')
   if (action === 'copy' && out?.draft) {
-    // 后端已落库副本：本地同步建草稿并激活
-    applyRdConfigDraft(out.draft)
+    // 后端已落库副本：本地同步草稿数组即可。工单卡展示由 attachWorkOrdersToMsg 统一刷新
+    // （副本已开工单），不激活表单卡——复制回执应呈「商品配置工单」卡片而非表单预览。
+    syncProductFromDraft(out.draft)
   } else if (action === 'delete' && out?.work_order_id) {
     // 删除回执按工单号对齐本地草稿（product.workOrderId 在 loadPersistedDrafts 恢复时写入）
     const woId = String(out.work_order_id)
     const victim = productConfig.products.value.find((p) => String(p.workOrderId || '') === woId)
     if (victim) productConfig.deleteProduct(victim.id)
   }
+}
+
+/** 静默同步草稿到本地 product 数组（不激活、不弹表单卡、不改变当前选中项）。 */
+function syncProductFromDraft(draft) {
+  if (!draft || typeof draft !== 'object') return null
+  const product = buildRdProductFromDraft(draft)
+  const existingIdx = productConfig.products.value.findIndex((p) => p.id === product.id)
+  if (existingIdx >= 0) {
+    productConfig.products.value[existingIdx] = product
+  } else {
+    productConfig.products.value.push(product)
+  }
+  return product
 }
 
 /**
@@ -659,15 +802,83 @@ function applyRdCompliance(draft, compliancePass, issues) {
   return formCard
 }
 
-function applyRdFileParse(items, batch) {
+function applyRdFileParse(items, batch, out = {}) {
   const list = Array.isArray(items) ? items : (batch?.items || [])
   if (!list.length) return
-  productConfig.batchItems.value = list.map((i, idx) => ({
-    ...(i && typeof i === 'object' ? i : { name: String(i) }),
-    productId: i?.clientId || i?.id || 'B' + idx,
-    status: i?.status || (i?.compliancePass ? '通过' : '待修'),
-  }))
+  // 批次条目建为本地 product：工单卡 hasActions 依赖 productId/formCard，
+  // 智读此前只建 batchItems 不建 product，导致工单卡不渲染操作按钮（预览/编辑/提交/复制/删除）
+  const woList = Array.isArray(out.workOrders) ? out.workOrders : []
+  const newProducts = []
+  const batchRows = list.map((i, idx) => {
+    const src = i && typeof i === 'object' ? i : { name: String(i) }
+    const draft = src.draft && typeof src.draft === 'object' ? src.draft : {}
+    const stableId = src.draftId
+      ? `P${src.draftId}`
+      : (src.clientId || src.client_id || draft.clientId || 'B' + idx)
+    return {
+      ...src,
+      draftId: src.draftId ?? src.draft_id,
+      clientId: src.clientId ?? src.client_id,
+      productId: stableId,
+      status: src.status || (src.compliancePass ? '通过' : '待修'),
+      _draft: draft,
+    }
+  })
+  for (const item of batchRows) {
+    const draft = item._draft
+    if (!draft || !Object.keys(draft).length) continue
+    const product = {
+      id: item.productId,
+      name: draft.offerName || draft.offeringName || `配置草稿${item.index || ''}`,
+      desc: `月费${draft.monthlyFee ?? draft.fixedFeeAmount ?? '-'} | ${item.status || 'draft'}`,
+      status: 'draft',
+      auditStatus: item.compliancePass ? 'pass' : 'pending',
+      compliancePass: !!item.compliancePass,
+      issues: Array.isArray(item.issues) ? item.issues : [],
+      inferredFields: item.inferredFields || [],
+      ontologyDraft: draft,
+      data: draftToFormData(draft),
+      draftId: item.draftId,
+      offeringId: draft.offeringId || draft.offerId || '',
+      workOrderId: item.workOrderId || '',
+      persisted: !!(item.draftId || item.clientId),
+    }
+    const existingIdx = productConfig.products.value.findIndex((p) => p.id === product.id)
+    if (existingIdx >= 0) {
+      productConfig.products.value[existingIdx] = {
+        ...productConfig.products.value[existingIdx],
+        ...product,
+      }
+    } else {
+      productConfig.products.value.push(product)
+      newProducts.push(product)
+    }
+  }
+  if (newProducts.length) {
+    // 激活首条新草稿（与智聊 applyRdConfigDraft 行为对齐），供编辑/提交直接定位
+    productConfig.currentProductId.value = newProducts[0].id
+    productConfig.syncFormFromProduct(newProducts[0])
+  }
+  productConfig.batchItems.value = batchRows.map(({ _draft, ...rest }) => rest)
+  // 解析即开单（方案A）：后端已为每条草稿（含合规未通过）落库并创建配置工单（source=rd_file_parse），
+  // 此处把 draftId/workOrderId 回填到本地草稿数组与批次条目，工单卡操作（预览/编辑/提交）凭其定位
+  const woByItem = new Map()
+  for (const item of batchRows) {
+    if (item.workOrderId) woByItem.set(item.productId, item.workOrderId)
+  }
+  for (const item of productConfig.batchItems.value) {
+    if (!item.workOrderId && woByItem.has(item.productId)) {
+      item.workOrderId = woByItem.get(item.productId)
+    }
+    const product = productConfig.products.value.find((p) => p.id === item.productId)
+    if (product) {
+      if (item.workOrderId) product.workOrderId = item.workOrderId
+      if (item.draftId) product.draftId = item.draftId
+      if (item.draftId || item.clientId) product.persisted = true
+    }
+  }
   productConfig.showBatchPanel.value = true
+  return woList.length
 }
 
 function applyRdSchemeCompare(out) {
@@ -680,7 +891,7 @@ function applyRdSchemeCompare(out) {
   productConfig.showComparePanel.value = true
 }
 
-/** 研发快捷场景 / 文案 → 本体演示剧本 */
+/** 研发快捷场景 / 文案 → 本体场景路由 */
 function resolveProductScenario(text, scene = '') {
   const s = String(scene || '')
   if (
@@ -696,9 +907,6 @@ function resolveProductScenario(text, scene = '') {
   }
   if (s === 'rd.compare') {
     return 'compare'
-  }
-  if (s === 'rd.compliance' || s === 'offering_config_compliance') {
-    return productConfig.detectScenario(text) || 'compliance'
   }
   // 智查快捷场景：优先按文案识别，避免示例「查一下…」落到对话配置
   if (s === 'market_insight' || s === 'rd.query') {
@@ -875,6 +1083,16 @@ const onSend = async (payload) => {
     text: text || `导入文档：${attachments[0]?.name || '方案'}`,
     scene: 'rd',
     params,
+    // 附件元数据随用户消息展示（气泡附件 + 落库），跨轮引用锚可消解
+    attachments: attachments.map((a) => ({
+      id: a.id,
+      type: a.type || 'file',
+      name: a.name,
+      size: a.size,
+      fileId: a.fileId || a.file_id || null,
+      fileName: a.fileName || a.name,
+      uploadStatus: a.uploadStatus,
+    })),
   })
 }
 
@@ -887,11 +1105,6 @@ const onSuggest = (payload) => {
   }
   let text = typeof payload === 'string' ? payload : payload.text
   if (!text) return
-  // 智读引导芯片：预填可解析的演示方案，避免用户发送空指令后被当成「已上传文档」
-  if (ZHIDU_GUIDE_RE.test(text)) {
-    text = ZHIDU_TEST_PROMPT
-    activeScene.value = 'rd.import'
-  }
   // 跟进建议 / 推荐话术：预填输入框
   inputText.value = text
   const scenario = resolveProductScenario(text, activeScene.value || config.defaultScene)
@@ -904,8 +1117,6 @@ const onSuggest = (payload) => {
     activeScene.value = 'rd.import'
   } else if (scenario === 'query') {
     activeScene.value = 'rd.query'
-  } else if (scenario === 'compliance') {
-    activeScene.value = 'rd.compliance'
   } else if (scenario === 'chat-generate') {
     activeScene.value = 'rd.chat'
     productConfig.createEmptyOfferingCanvas()
@@ -966,7 +1177,6 @@ const onQuickAction = (action) => {
     chat: 'rd.chat',
     file: 'rd.import',
     query: 'rd.query',
-    compliance: 'rd.compliance',
   }
   const scene = sceneMap[action.key] || action.scene || activeScene.value
   const matched = config.sceneShortcuts.find((s) => s.scene === scene || s.label === action.label)
@@ -986,7 +1196,7 @@ const onFormCardClick = (msg) => {
 const REFERENCE_RE =
   /这份|刚才那批|那批|这批|当前批次|上一(份|批)|之前(导入|上传|解析)的|基于这份|继续分析|再分析一遍|重新分析/
 
-/** 判断文本是否像完整方案正文（如演示话术），避免把粘贴正文误判为引用命令 */
+/** 判断文本是否像完整方案正文（如粘贴的套餐文档），避免把粘贴正文误判为引用命令 */
 function looksLikePlanContentLocal(text = '') {
   const t = String(text || '').trim()
   if (!t) return false
@@ -1019,6 +1229,19 @@ function findLastRefMsg() {
     if (m?.role === 'assistant' && (m.fileRef || m.batch)) return m
   }
   return null
+}
+
+/** 向上查找指定助手消息之前最近一条带附件的用户消息（fileRef 还原文件名/IDs 用） */
+function findLastUserAttachments(beforeMsg = null) {
+  const msgs = messages.value
+  const stopIdx = beforeMsg ? msgs.findIndex((m) => m.id === beforeMsg.id) : msgs.length
+  for (let i = (stopIdx >= 0 ? stopIdx : msgs.length) - 1; i >= 0; i -= 1) {
+    const m = msgs[i]
+    if (m?.role === 'user' && Array.isArray(m.attachments) && m.attachments.length) {
+      return m.attachments
+    }
+  }
+  return []
 }
 
 /** 从 productConfig.batchItems 汇总当前批次快照 */
@@ -1076,12 +1299,6 @@ async function handleReferenceContinue(text = '', refMsg = null) {
   } finally {
     streaming.value = false
   }
-}
-
-/** 点击「已引用文档」锚：聚焦该文档/批次，给出跨轮续接入口 */
-async function onFileRefClick(msg) {
-  if (!msg) return
-  await handleReferenceContinue('引用聚焦', msg)
 }
 
 const onSwitchSession = async (sid) => {

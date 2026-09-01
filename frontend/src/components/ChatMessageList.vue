@@ -187,13 +187,13 @@
               @delete="(it) => $emit('batch-delete', { msg, item: it })"
             />
 
-            <!-- 长对话：文件/批次引用锚（已引用文档记忆条） -->
-            <div v-if="msg.fileRef && isReplySettled(msg)" class="file-ref-anchor" @click="$emit('file-ref-click', msg)">
+            <!-- 长对话：文件/批次引用锚（已引用文档记忆条，仅展示不响应点击；跨轮引用直接发话术即可） -->
+            <div v-if="msg.fileRef && isReplySettled(msg)" class="file-ref-anchor">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
               </svg>
               <span class="fra-name">已引用文档：{{ msg.fileRef.fileName }}</span>
-              <span class="fra-counts">{{ fileRefCounts(msg.fileRef) }}</span>
+              <span v-if="fileRefCounts(msg.fileRef)" class="fra-counts">{{ fileRefCounts(msg.fileRef) }}</span>
             </div>
 
             <!-- 查询结果卡片列表 -->
@@ -327,10 +327,10 @@
             <div class="message-bubble user-bubble">
               <div v-if="msg.content" class="message-text">{{ msg.content }}</div>
               
-              <!-- 用户附件 -->
+              <!-- 用户附件（fileId 存在时可下载原件） -->
               <div v-if="msg.attachments?.length" class="user-attachments">
-                <div 
-                  v-for="(attachment, aidx) in msg.attachments" 
+                <div
+                  v-for="(attachment, aidx) in msg.attachments"
                   :key="aidx"
                   class="user-attachment-item"
                 >
@@ -341,11 +341,25 @@
                     </svg>
                     <span>{{ attachment.duration || '00:00' }}</span>
                   </div>
-                  <div v-else class="file-preview">
+                  <div v-else class="file-preview" :class="{ 'has-download': attachment.fileId }">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
                     </svg>
                     <span>{{ attachment.name }}</span>
+                    <button
+                      v-if="attachment.fileId"
+                      type="button"
+                      class="ua-download"
+                      title="下载原文件"
+                      @click.stop="downloadAttachment(attachment)"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                      </svg>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -398,7 +412,6 @@ const emit = defineEmits([
   'batch-confirm',
   'batch-fix',
   'batch-delete',
-  'file-ref-click',
   'intent-action',
   'undo-action',
   'regenerate',
@@ -427,6 +440,20 @@ const fileRefCounts = (fileRef) => {
   if (c.pending != null) parts.push(`待修 ${c.pending}`)
   if (c.confirmable != null) parts.push(`可入库 ${c.confirmable}`)
   return parts.length ? parts.join(' · ') : ''
+}
+
+/** 附件下载：走智读暂存端点按 fileId 取原件（带原文件名落盘） */
+function downloadAttachment(attachment) {
+  const fileId = attachment?.fileId
+  if (!fileId) return
+  const name = attachment?.fileName || attachment?.name || fileId
+  const url = `/api/v1/product-ontology/config/files/${encodeURIComponent(fileId)}?fileName=${encodeURIComponent(name)}`
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
 }
 
 /** CLARIFY 澄清补参：msg.id -> { [paramKey]: 用户输入 } */
@@ -1254,6 +1281,30 @@ defineExpose({ scrollToBottom })
   gap: 6px;
 }
 
+/* 用户附件下载：默认隐藏，悬停附件条时浮现纯图标 */
+.ua-download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.ua-download:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+.user-attachment-item:hover .ua-download {
+  opacity: 0.75;
+}
+.ua-download:hover {
+  opacity: 1 !important;
+}
+
 .user-attachment-item img {
   max-width: 180px;
   max-height: 120px;
@@ -1659,7 +1710,7 @@ defineExpose({ scrollToBottom })
   background: #fef3c7;
 }
 
-/* 长对话文件引用锚 */
+/* 长对话文件引用锚（仅展示：不可点击、无 hover 反馈） */
 .file-ref-anchor {
   display: inline-flex;
   align-items: center;
@@ -1671,13 +1722,7 @@ defineExpose({ scrollToBottom })
   color: #4338ca;
   border-radius: 999px;
   font-size: 12px;
-  cursor: pointer;
   width: fit-content;
-  transition: all 0.15s;
-}
-.file-ref-anchor:hover {
-  border-color: #6366f1;
-  background: #e0e7ff;
 }
 .fra-name { font-weight: 600; }
 .fra-counts { color: #818cf8; }

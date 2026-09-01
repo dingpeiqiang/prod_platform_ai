@@ -19,6 +19,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * 配置槽位 / 批量文档套餐抽取。
@@ -67,6 +68,68 @@ public class OpsExtractionService {
     public record SlotExtractResult(Map<String, Object> slots, String engine) {}
 
     public record PackageExtractResult(List<Map<String, Object>> packages, String engine) {}
+
+    /**
+     * 工单/草稿修改意图抽取（模板驱动，P2-2 同构）：三步链路——
+     * ① 品类识别：草稿已有 categoryCode 直接用（工单上下文最准）；无则按话术 matchers 识别；
+     * ② 模板定位：按品类取激活模板的 draft 字段（field_code/label/别名/枚举值域）作为抽取白名单；
+     * ③ LLM 约束抽取：只允许输出模板字段 ∪ 基础槽位，未提及不编造。
+     * LLM 不可用/失败时返回空 Map（调用方走「未识别到修改字段」回执，不做正则兜底猜测）。
+     *
+     * @param text         用户修改话术（如「把资费名称改成家庭基础套餐198元」「月费改99」）
+     * @param draft        当前草稿（提供 categoryCode/messageRootKey 上下文）
+     * @param currentDraft 当前草稿关键字段值（供 LLM 对比判断「改了什么」，仅注入 prompt）
+     * @return 抽取到的字段→新值（如 {offeringName: 家庭基础套餐198元, monthlyFee: 198}）；无法识别返回空
+     */
+    public Map<String, Object> extractUpdateIntent(String text, Map<String, Object> draft, Map<String, Object> currentDraft) {
+        if (text == null || text.isBlank()) {
+            return Map.of();
+        }
+        String category = draft != null ? str(firstNonNull(draft.get("categoryCode"), draft.get("messageRootKey"))) : "";
+        if (category == null || category.isBlank()) {
+            category = templateSupport.matchCategory(text);
+        }
+        Set<String> allowedKeys = templateSupport.extractableSlotKeys();
+        String templateSection = templateSupport.buildPromptSection(category);
+        String currentSection = currentDraft == null || currentDraft.isEmpty() ? ""
+                : "当前草稿字段值（用于对比理解用户要改什么，勿原样输出）：\n" + currentDraft.entrySet().stream()
+                .limit(30)
+                .map(e -> "- " + e.getKey() + "=" + e.getValue())
+                .collect(Collectors.joining("\n")) + "\n";
+        if (!llmExtractEnabled()) {
+            return Map.of();
+        }
+        try {
+            String prompt = """
+                    你是电信产商品配置工单修改意图识别助手。从用户话术中抽取要修改的字段和新值，只输出 JSON 对象（字段=新值），不要 markdown。
+                    可选字段（只能输出这些 field_code）：%s
+                    %s%s规则：
+                    - 只抽取话术中明确要修改的字段；未提及的字段不要编造
+                    - 名称类变更输出完整新名称（如「资费名称改成家庭基础套餐198元」→ offeringName=家庭基础套餐198元）
+                    - 金额类变更输出纯数字（如「月费改99」→ monthlyFee=99；名称里含「198元」视为月费联动 → monthlyFee=198）
+                    - 枚举字段取值必须用模板列出的 display 值
+                    %s
+                    用户话术：
+                    %s
+                    """.formatted(String.join(",", allowedKeys), templateSection, currentSection, text);
+            String content = llmService.orElseThrow().completePrompt(prompt);
+            Map<String, Object> intent = parseJsonObject(content);
+            if (intent == null) {
+                return Map.of();
+            }
+            Map<String, Object> filtered = new LinkedHashMap<>();
+            for (Map.Entry<String, Object> e : intent.entrySet()) {
+                if (allowedKeys.contains(e.getKey()) && e.getValue() != null
+                        && !(e.getValue() instanceof String s && s.isBlank())) {
+                    filtered.put(e.getKey(), e.getValue());
+                }
+            }
+            return filtered;
+        } catch (Exception e) {
+            log.warn("[OpsExtractionService] 修改意图 LLM 抽取失败: {}", e.getMessage());
+            return Map.of();
+        }
+    }
 
     public SlotExtractResult extractSlots(String text) {
         Map<String, Object> regexSlots = parseSlotsByRegex(text);
@@ -457,5 +520,18 @@ public class OpsExtractionService {
             }
         }
         return false;
+    }
+
+    private static Object firstNonNull(Object... values) {
+        for (Object v : values) {
+            if (v != null) {
+                return v;
+            }
+        }
+        return null;
+    }
+
+    private static String str(Object value) {
+        return value == null ? "" : String.valueOf(value);
     }
 }

@@ -133,8 +133,8 @@ public class Rdf4jOntologyStore implements OntologyStore {
             return allInstances();
         }
         if (repository == null) {
-            log.warn("[Rdf4jOntologyStore] Repository 未就绪，回退全量实例");
-            return allInstances();
+            log.warn("[Rdf4jOntologyStore] Repository 未就绪，返回空结果（调用方自行回退）");
+            return new ArrayList<>();
         }
         try (RepositoryConnection conn = repository.getConnection()) {
             TupleQuery tq = conn.prepareTupleQuery(QueryLanguage.SPARQL, query);
@@ -165,8 +165,10 @@ public class Rdf4jOntologyStore implements OntologyStore {
                 return rows;
             }
         } catch (Exception e) {
-            log.warn("[Rdf4jOntologyStore] SPARQL 执行失败，回退全量实例: {}", e.getMessage());
-            return allInstances();
+            // 异常时返回空列表而非全量实例：掩盖零命中会让上层（如 discoverConfigs）
+            // 误判 SPARQL 命中，跳过词典回退并输出无序脏数据
+            log.warn("[Rdf4jOntologyStore] SPARQL 执行失败，返回空结果: {}", e.getMessage());
+            return new ArrayList<>();
         }
     }
 

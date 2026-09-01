@@ -244,6 +244,15 @@ public class AgentOrchestrator {
                 && Boolean.TRUE.equals(result.getData().get("success"))) {
             context.getResolvedParams().remove("work_order_id");
         }
+        // 修改成功后缓存最新资费名称：多轮增量修改（如下一轮「月费改成 59」）时
+        // LLM/工具沿用最新名称，避免用旧值覆盖
+        if (result.getData().get("action") instanceof String act2 && "update".equals(act2)
+                && Boolean.TRUE.equals(result.getData().get("success"))
+                && result.getData().get("changed_fields") instanceof Map<?, ?> cf
+                && cf.get("offeringName") != null && !String.valueOf(cf.get("offeringName")).isBlank()) {
+            context.resolveParam("offering_name", String.valueOf(cf.get("offeringName")));
+            context.cacheEvidence("lastOfferingName", String.valueOf(cf.get("offeringName")));
+        }
     }
 
     /** 取首个非空值（工具输出键兜底）。 */

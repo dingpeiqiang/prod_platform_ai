@@ -78,6 +78,11 @@ public class RdFileParseTool implements AgentTool {
                         .label("产品品类")
                         .description("可选，产品品类码（category_code，如 familyBasePrc）；未提供时由模板 matchers 兜底识别")
                         .type("string")
+                        .build(),
+                ToolParam.builder("session_id")
+                        .label("会话标识")
+                        .description("当前会话 ID（批量落库草稿与创建配置工单时绑定会话）")
+                        .type("string")
                         .build()
         );
     }
@@ -92,7 +97,12 @@ public class RdFileParseTool implements AgentTool {
                         .label("配置草稿").type("list")
                         .description("解析出的配置草稿清单").build(),
                 ToolOutputField.builder("batch", ToolOutputField.Role.OTHER)
-                        .label("批次").type("object").build()
+                        .label("批次").type("object").build(),
+                ToolOutputField.builder("workOrders", ToolOutputField.Role.OTHER)
+                        .label("配置工单").type("list")
+                        .description("解析即创建的配置工单清单（每条草稿一单，合规未通过单据带待修正标记，绑定当前会话）").build(),
+                ToolOutputField.builder("workOrderCount", ToolOutputField.Role.OTHER)
+                        .label("工单数量").type("number").build()
         );
     }
 
@@ -103,6 +113,7 @@ public class RdFileParseTool implements AgentTool {
         String docText = params != null ? String.valueOf(params.getOrDefault("document_text", "")) : "";
         String fileName = params != null ? String.valueOf(params.getOrDefault("file_name", "")).trim() : "";
         String productType = params != null ? String.valueOf(params.getOrDefault("product_type", "")).trim() : "";
+        String sessionId = params != null ? String.valueOf(params.getOrDefault("session_id", "")).trim() : "";
         String matchHint = RdProductTypeSupport.resolve(templateRegistry, productType, docText);
 
         List<String> ids = new ArrayList<>();
@@ -118,7 +129,7 @@ public class RdFileParseTool implements AgentTool {
             ids.add(0, fileId);
         }
 
-        log.info("[AgentTool] rd_file_parse 执行: fileIds={}, hasDocText={}", ids, !docText.isBlank());
+        log.info("[AgentTool] rd_file_parse 执行: fileIds={}, hasDocText={}, sessionId={}", ids, !docText.isBlank(), sessionId);
 
         try {
             Map<String, Object> resp;
@@ -135,6 +146,10 @@ public class RdFileParseTool implements AgentTool {
             // §9.4 product_type 观察：matchers 兜底解析结果随输出返回（批量逐项注入由 P2-2 抽取模板化接管）
             if (matchHint != null) {
                 normalized.put("product_type", matchHint);
+            }
+            // 解析即开单：合规通过的草稿逐条落库并创建配置工单（source=rd_file_parse，绑定当前会话）
+            if (!sessionId.isBlank()) {
+                attachBatchWorkOrders(normalized, sessionId);
             }
             return ExecutionResult.ok(getName(), normalized);
         } catch (Exception e) {
@@ -232,5 +247,177 @@ public class RdFileParseTool implements AgentTool {
         if (items instanceof List<?>) out.put("items", items);
         out.put("batch", resp.get("batch") != null ? resp.get("batch") : resp);
         return out;
+    }
+
+    /**
+     * 批量落库 + 即开单：解析出的全部草稿逐条 saveConfigDraft + createWorkOrder（source=rd_file_parse）。
+     * 合规通过草稿开「待处理」单；合规未通过（待修正）草稿同样开单，稽核结论与问题规则随单展示，
+     * 便于业务人员在工单卡中直接看到未通过原因并修正后重跑合规。
+     * 工单 payload 关联 draftId（与 rd_config_chat 同构，后续提交/复制/删除凭工单号反查草稿）。
+     * 单条失败不阻断其余开单，汇总结果写入 output（workOrders/workOrderCount/workOrderFailures）。
+     */
+    @SuppressWarnings("unchecked")
+    private void attachBatchWorkOrders(Map<String, Object> out, String sessionId) {
+        if (!(out.get("items") instanceof List<?> rawItems) || rawItems.isEmpty()) {
+            return;
+        }
+        List<Map<String, Object>> workOrders = new ArrayList<>();
+        List<String> failures = new ArrayList<>();
+        int idx = 0;
+        for (Object o : rawItems) {
+            idx++;
+            if (!(o instanceof Map<?, ?> rawItem)) {
+                continue;
+            }
+            Map<String, Object> item = (Map<String, Object>) rawItem;
+            if (!(item.get("draft") instanceof Map<?, ?> rawDraft) || ((Map<?, ?>) rawDraft).isEmpty()) {
+                continue;
+            }
+            boolean pass = Boolean.TRUE.equals(item.get("compliancePass"));
+            try {
+                Map<String, Object> draft = new LinkedHashMap<>((Map<String, Object>) rawDraft);
+                Map<String, Object> saveReq = new LinkedHashMap<>();
+                saveReq.put("draft", draft);
+                saveReq.put("sessionId", sessionId);
+                saveReq.put("compliancePass", pass);
+                Map<String, Object> saved = productOntologyService.saveConfigDraft(saveReq);
+                if (!Boolean.TRUE.equals(saved.get("success"))) {
+                    failures.add("#" + idx + ": " + saved.getOrDefault("message", "草稿落库失败"));
+                    continue;
+                }
+                String draftId = String.valueOf(saved.get("draftId"));
+
+                Map<String, Object> wo = createItemWorkOrder(item, draft, draftId, sessionId);
+                if (wo != null) {
+                    workOrders.add(wo);
+                    // 草稿落库标识随 item 回传：前端批次卡/草稿表单可凭 draftId 关联工单
+                    item.put("draftId", saved.get("draftId"));
+                    item.put("clientId", saved.get("clientId"));
+                    item.put("workOrderId", wo.get("workOrderId"));
+                } else {
+                    failures.add("#" + idx + ": 工单创建失败");
+                }
+            } catch (Exception e) {
+                log.warn("[AgentTool] rd_file_parse #{} 落库/开单失败（不阻断其余条目）: {}", idx, e.getMessage());
+                failures.add("#" + idx + ": " + e.getMessage());
+            }
+        }
+
+        out.put("workOrders", workOrders);
+        out.put("workOrderCount", workOrders.size());
+        if (!failures.isEmpty()) {
+            out.put("workOrderFailures", failures);
+        }
+        // 摘要追加开单结果：用户在消息流直接看到「解析 N 条 → 开 M 单」
+        Object summaryObj = out.get("nl_answer");
+        String summary = summaryObj != null ? String.valueOf(summaryObj) : "";
+        String woSummary = "已批量创建 " + workOrders.size() + " 个配置工单";
+        if (!failures.isEmpty()) {
+            woSummary += "（失败 " + failures.size() + " 条）";
+        }
+        out.put("nl_answer", summary.isBlank() ? woSummary : summary + "；" + woSummary);
+    }
+
+    /**
+     * 单条草稿开配置工单：payload 关联 draftId + 稽核结论随单展示。
+     * 合规未通过的待修正草稿：标题带「待修正」标记，摘要给出问题规则与修正指引，动作改为修正闭环。
+     */
+    private Map<String, Object> createItemWorkOrder(Map<String, Object> item, Map<String, Object> draft,
+                                                    String draftId, String sessionId) {
+        boolean pass = Boolean.TRUE.equals(item.get("compliancePass"));
+        String offeringName = str(firstNonEmpty(draft.get("offeringName"), draft.get("offerName")));
+        String offeringId = str(firstNonEmpty(draft.get("offeringId"), draft.get("offerId")));
+        String monthlyFee = str(firstNonEmpty(draft.get("monthlyFee"), draft.get("fixedFeeAmount")));
+        String scenario = str(firstNonEmpty(draft.get("bizScenario"), draft.get("scenario")));
+        String excerpt = str(item.get("sourceExcerpt"));
+
+        Map<String, Object> woReq = new LinkedHashMap<>();
+        woReq.put("offeringId", offeringId);
+        woReq.put("offeringName", offeringName);
+        woReq.put("source", "rd_file_parse");
+        woReq.put("sessionId", sessionId);
+        woReq.put("draftId", draftId);
+        woReq.put("compliancePass", pass);
+        woReq.put("complianceIssues", item.get("issues"));
+        woReq.put("title", offeringName.isEmpty()
+                ? (pass ? "文档解析配置工单" : "文档解析待修正工单")
+                : offeringName + (pass ? "配置工单" : "配置工单（待修正）"));
+        woReq.put("summary", buildWorkOrderSummary(item, pass, monthlyFee, scenario, excerpt));
+        woReq.put("actions", pass
+                ? List.of(
+                        "核对配置草稿字段完整性",
+                        "合规校验后提交",
+                        "提交通过后发布上架")
+                : List.of(
+                        "按稽核问题修正草稿字段",
+                        "修正后重跑合规校验",
+                        "合规通过后提交入库"));
+        try {
+            Map<String, Object> woBody = productOntologyService.createWorkOrder(woReq);
+            return woBody != null && woBody.get("workOrder") instanceof Map<?, ?> wo
+                    ? (Map<String, Object>) wo : null;
+        } catch (Exception e) {
+            log.warn("[AgentTool] rd_file_parse 开单失败（draftId={}）: {}", draftId, e.getMessage());
+            return null;
+        }
+    }
+
+    /** 工单摘要：合规通过列要素；未通过列问题规则并附修正指引。 */
+    private String buildWorkOrderSummary(Map<String, Object> item, boolean pass,
+                                         String monthlyFee, String scenario, String excerpt) {
+        StringBuilder sb = new StringBuilder();
+        if (pass) {
+            sb.append("文档解析草稿已生成：");
+        } else {
+            sb.append("文档解析草稿待修正（合规未通过）：");
+        }
+        sb.append("月费=").append(monthlyFee.isEmpty() ? "-" : monthlyFee)
+                .append("，场景=").append(scenario.isEmpty() ? "-" : scenario);
+        if (excerpt != null && !excerpt.isBlank()) {
+            sb.append("，原文摘录=").append(truncate(excerpt, 60));
+        }
+        if (!pass) {
+            List<String> ruleIds = new ArrayList<>();
+            if (item.get("issues") instanceof List<?> issues) {
+                for (Object o : issues) {
+                    if (o instanceof Map<?, ?> issue) {
+                        String ruleId = str(firstNonEmpty(issue.get("ruleId"), issue.get("ruleCode")));
+                        if (!ruleId.isEmpty() && !ruleIds.contains(ruleId)) {
+                            ruleIds.add(ruleId);
+                        }
+                    } else if (o != null) {
+                        String ruleId = str(o);
+                        if (!ruleId.isEmpty() && !ruleIds.contains(ruleId)) {
+                            ruleIds.add(ruleId);
+                        }
+                    }
+                }
+            }
+            if (!ruleIds.isEmpty()) {
+                sb.append("，问题规则=").append(String.join("、", ruleIds));
+            }
+            sb.append("，请修正后重跑合规");
+        }
+        return sb.toString();
+    }
+
+    /** 截断超长文本（原文摘录随单摘要展示，避免工单 summary 过长）。 */
+    private String truncate(String text, int max) {
+        String t = text == null ? "" : text.replaceAll("\\s+", " ").trim();
+        return t.length() <= max ? t : t.substring(0, max) + "…";
+    }
+
+    /** 取首个非空字符串。 */
+    private Object firstNonEmpty(Object... values) {
+        for (Object v : values) {
+            if (v != null && !String.valueOf(v).isBlank() && !"null".equals(String.valueOf(v))) {
+                return v;
+            }
+        }
+        return "";
+    }
+
+    private String str(Object v) {
+        return v == null ? "" : String.valueOf(v);
     }
 }

@@ -91,7 +91,7 @@ public final class ThinkingCopy {
                 Category.GENERATE));
         m.put("rd_compliance", new ToolCopy(
                 "检查配置合规性",
-                "用资费与政策规则检查草稿，避免带病提交后被备案驳回",
+                "用资费与政策规则检查草稿，避免带病提交后被驳回",
                 "在配置后台的「合规校验」页对该草稿重跑规则检查，或对照《合规规则集》人工核对",
                 Category.VERIFY));
         m.put("rd_config_discover", new ToolCopy(
@@ -106,8 +106,8 @@ public final class ThinkingCopy {
                 Category.REASON));
         m.put("rd_draft_manage", new ToolCopy(
                 "管理配置草稿",
-                "按您的指令删除/复制/提交配置草稿，工单状态同步流转",
-                "在配置管理后台找到对应工单的草稿，人工执行删除/复制/提交备案操作",
+                "按您的指令修改/删除/复制/提交配置草稿，工单状态同步流转",
+                "在配置管理后台找到对应工单的草稿，人工执行修改/删除/复制/提交操作",
                 Category.GENERATE));
         return m;
     }
@@ -148,7 +148,7 @@ public final class ThinkingCopy {
             "RD_COMPLIANCE", "提前发现资费/政策风险，避免提交后被驳回返工",
             "RD_CONFIG_DISCOVER", "先看有没有可复用的历史方案，避免重复建设",
             "RD_SCHEME_COMPARE", "用同一把尺子（合规+收益）衡量每个方案，给出推荐",
-            "RD_DRAFT_MANAGE", "把草稿操作落到工单闭环：删除/复制/提交备案一步到位",
+            "RD_DRAFT_MANAGE", "把草稿操作落到工单闭环：修改/删除/复制/提交一步到位",
             "CLARIFY", "信息不足时先问清楚，避免答非所问"
     );
 

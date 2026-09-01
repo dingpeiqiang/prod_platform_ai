@@ -283,14 +283,18 @@ public class ProductOntologyController {
         return ok(productOntologyService.discoverConfigs(q, limit));
     }
 
-    /** 一键复制为配置草稿并合规校验 */
+    /** 一键复制为配置草稿并合规校验（带 session_id 时复制即开配置工单；带 requirement 时按补充需求修正副本字段） */
     @PostMapping("/config/copy-as-draft")
     public Map<String, Object> copyAsDraft(@RequestBody(required = false) Map<String, Object> request) {
         Map<String, Object> body = request == null ? Map.of() : request;
         String offeringId = body.get("offering_id") != null ? String.valueOf(body.get("offering_id"))
                 : body.get("offeringId") != null ? String.valueOf(body.get("offeringId")) : null;
         String text = body.get("text") != null ? String.valueOf(body.get("text")) : null;
-        return ok(productOntologyService.copyAsDraft(offeringId, text));
+        String sessionId = body.get("session_id") != null ? String.valueOf(body.get("session_id"))
+                : body.get("sessionId") != null ? String.valueOf(body.get("sessionId")) : null;
+        String requirement = body.get("requirement") != null ? String.valueOf(body.get("requirement"))
+                : body.get("question") != null ? String.valueOf(body.get("question")) : null;
+        return ok(productOntologyService.copyAsDraft(offeringId, text, sessionId, requirement));
     }
 
     /** 智读：选择文件后立即上传，返回 file_id 供发送时映射 */
@@ -309,6 +313,35 @@ public class ProductOntologyController {
         org.slf4j.LoggerFactory.getLogger(ProductOntologyController.class)
                 .info("[智读上传] 成功 fileId={}, fileName={}", stored.get("fileId"), stored.get("fileName"));
         return ok(stored);
+    }
+
+    /** 智读：按 file_id 下载原文件（消息附件可下载；fileName 支持原文件名回显/落盘） */
+    @GetMapping("/config/files/{fileId}")
+    public org.springframework.http.ResponseEntity<org.springframework.core.io.Resource> downloadConfigFile(
+            @PathVariable String fileId,
+            @org.springframework.web.bind.annotation.RequestParam(value = "fileName", required = false) String fileName) {
+        var storage = productOntologyService.documentStorage();
+        java.nio.file.Path path = storage.resolve(fileId);
+        String downloadName = (fileName == null || fileName.isBlank())
+                ? path.getFileName().toString()
+                : fileName;
+        String encoded = java.net.URLEncoder.encode(downloadName, java.nio.charset.StandardCharsets.UTF_8)
+                .replace("+", "%20");
+        org.springframework.core.io.Resource resource =
+                new org.springframework.core.io.FileSystemResource(path);
+        String mime = "application/octet-stream";
+        try {
+            String probed = java.nio.file.Files.probeContentType(path);
+            if (probed != null && !probed.isBlank()) {
+                mime = probed;
+            }
+        } catch (java.io.IOException ignored) {
+        }
+        return org.springframework.http.ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, mime)
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename*=UTF-8''" + encoded)
+                .body(resource);
     }
 
     /** 智读：按已上传 file_id 解析并批量映射（发送消息时调用） */
@@ -542,9 +575,12 @@ public class ProductOntologyController {
     @GetMapping("/ops/work-orders")
     public Map<String, Object> listWorkOrders(
             @RequestParam(value = "status", required = false) String status,
-            @RequestParam(value = "session_id", required = false) String sessionId
+            @RequestParam(value = "session_id", required = false) String sessionId,
+            @RequestParam(value = "page", required = false) Integer page,
+            @RequestParam(value = "size", required = false) Integer size,
+            @RequestParam(value = "q", required = false) String q
     ) {
-        return productOntologyService.listWorkOrders(status, sessionId);
+        return productOntologyService.listWorkOrders(status, sessionId, page, size, q);
     }
 
     @PostMapping("/ops/work-orders")

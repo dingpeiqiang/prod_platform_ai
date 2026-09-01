@@ -59,11 +59,13 @@ export async function discoverConfigs(q = '', limit = 20) {
   )
 }
 
-/** 一键复制为草稿并合规校验 */
-export async function copyAsDraft(offeringId, text = null) {
+/** 一键复制为草稿并合规校验（带 sessionId 时复制即开配置工单；requirement 为复制弹窗补充需求，后端按需求修正副本字段） */
+export async function copyAsDraft(offeringId, text = null, sessionId = null, requirement = null) {
+  const body = { offering_id: offeringId, offeringId, text, session_id: sessionId }
+  if (requirement) body.requirement = requirement
   return post(
     `${BASE}/config/copy-as-draft`,
-    { offering_id: offeringId, offeringId, text },
+    body,
     { showLoading: false, loadingText: '复制配置草稿...' },
   )
 }
@@ -295,10 +297,13 @@ export async function listOpsAlerts(offeringId = null) {
   return get(`${BASE}/ops/alerts`, { params, showLoading: false })
 }
 
-export async function listWorkOrders(status = null, sessionId = null) {
+export async function listWorkOrders({ status = null, sessionId = null, page = null, size = null, q = null } = {}) {
   const params = {}
   if (status && status !== 'all') params.status = status
   if (sessionId) params.session_id = sessionId
+  if (page) params.page = page
+  if (size) params.size = size
+  if (q) params.q = q
   return get(`${BASE}/ops/work-orders`, { params, showLoading: false })
 }
 

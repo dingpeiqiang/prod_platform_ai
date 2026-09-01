@@ -400,14 +400,24 @@ export function useChatStream() {
    * 事件序列：thinking（查询计划）→ tool（工具卡片）→ text*（正文）→ done（结构化结果）。
    * CLARIFY 澄清分支：done 事件携带 clarify 参数列表，正文为追问文案。
    */
-  const sendAgentMessage = async ({ text, sessionId: explicitSessionId = '', params = {}, scene = null } = {}) => {
+  const sendAgentMessage = async ({ text, sessionId: explicitSessionId = '', params = {}, scene = null, attachments = [] } = {}) => {
     const content = (text || '').trim()
     if (!content || streaming.value) return
     streaming.value = true
     if (!sessionId.value) {
       sessionId.value = explicitSessionId || genSessionId()
     }
-    pushUserMessage(content)
+    // 附件随用户消息展示：只保留可序列化元数据（本地 file 对象不进消息流/落库）
+    const metaAttachments = (attachments || []).map((a) => ({
+      id: a.id,
+      type: a.type || 'file',
+      name: a.name,
+      size: a.size,
+      fileId: a.fileId || a.file_id || null,
+      fileName: a.fileName || a.name,
+      uploadStatus: a.uploadStatus || 'success',
+    }))
+    pushUserMessage(content, metaAttachments.length ? { attachments: metaAttachments } : {})
     let streamText = ''
 
     /** 正文 rAF 批量刷新：chunk 只累积到 streamText，渲染按帧合并 */

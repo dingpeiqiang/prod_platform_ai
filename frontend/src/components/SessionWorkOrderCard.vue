@@ -6,47 +6,91 @@
         <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
       </svg>
       <span class="swo-title">商品配置工单</span>
-      <span class="swo-count">{{ workOrders.length }}</span>
+      <span class="swo-count">{{ filtered.length }}</span>
+      <button
+        v-if="workOrders.length > COLLAPSE_THRESHOLD"
+        type="button"
+        class="swo-collapse"
+        @click="collapsed = !collapsed"
+      >
+        {{ collapsed ? `展开全部（${filtered.length}）` : '收起' }}
+      </button>
     </header>
 
-    <ul class="swo-list">
-      <li
-        v-for="wo in workOrders"
-        :key="wo.workOrderId || wo.id"
-        class="swo-item"
-        :class="{ clickable: !!formCard, highlight: wo.workOrderId && wo.workOrderId === highlightId }"
-        @click="formCard && $emit('edit-product', wo)"
-        title="点击查看/编辑草稿"
-      >
-        <div class="swo-row">
-          <span class="swo-name">{{ wo.title || wo.offeringName || '商品配置工单' }}</span>
-          <span class="swo-status" :class="`st-${wo.status || 'open'}`">{{ statusText(wo.status) }}</span>
+    <template v-if="!collapsed">
+      <!-- 筛选/搜索工具条：大批量（数百条）时按状态过滤 + 关键词定位 -->
+      <div v-if="workOrders.length > COLLAPSE_THRESHOLD" class="swo-toolbar">
+        <div class="swo-tabs">
+          <button
+            v-for="tab in STATUS_TABS"
+            :key="tab.key"
+            type="button"
+            class="swo-tab"
+            :class="{ active: filterStatus === tab.key }"
+            @click="filterStatus = tab.key"
+          >
+            {{ tab.label }}
+            <span v-if="tab.key !== 'all'" class="swo-tab-count">{{ statusCount(tab.key) }}</span>
+          </button>
         </div>
-        <div class="swo-meta">
-          <span v-if="wo.workOrderId" class="swo-wo">{{ wo.workOrderId }}</span>
-          <span v-if="wo.offeringId" class="swo-wo">{{ wo.offeringId }}</span>
-          <span v-if="formatTime(wo.createdAt)" class="swo-time">{{ formatTime(wo.createdAt) }}</span>
-        </div>
-        <!-- 稽核结果：草稿合规结论 + 问题规则明细 -->
-        <div v-if="auditInfo(wo)" class="swo-audit" :class="auditInfo(wo).pass ? 'audit-pass' : 'audit-fail'">
-          <span class="swo-audit-badge">{{ auditInfo(wo).pass ? '稽核通过' : '稽核未通过' }}</span>
-          <span v-for="issue in auditInfo(wo).issues" :key="issue.key" class="swo-audit-issue"
-                :title="issue.desc">{{ issue.key }}</span>
-        </div>
-        <!-- 工单操作：已完成/已取消工单不可再提交或删除（防重复提交），仅保留预览/编辑/复制 -->
-        <div v-if="hasActions(wo)" class="swo-actions" @click.stop>
-          <button type="button" class="swo-act" @click="$emit('preview-product', wo)">预览</button>
-          <button type="button" class="swo-act" @click="$emit('edit-product', wo)">编辑</button>
-          <button v-if="!isClosed(wo)" type="button" class="swo-act submit" @click="$emit('submit-product', wo)">提交</button>
-          <button type="button" class="swo-act" @click="$emit('copy-product', wo)">复制</button>
-          <button v-if="!isClosed(wo)" type="button" class="swo-act danger" @click="$emit('delete-product', wo)">删除</button>
-        </div>
-      </li>
-    </ul>
+        <input
+          v-model="keyword"
+          type="text"
+          class="swo-search"
+          placeholder="搜工单号/名称/商品编码"
+        >
+      </div>
+
+      <ul class="swo-list">
+        <li
+          v-for="wo in pagedItems"
+          :key="wo.workOrderId || wo.id"
+          class="swo-item"
+          :class="{ clickable: !!formCard, highlight: wo.workOrderId && wo.workOrderId === highlightId }"
+          @click="formCard && $emit('edit-product', wo)"
+          title="点击查看/编辑草稿"
+        >
+          <div class="swo-row">
+            <span class="swo-name">{{ wo.title || wo.offeringName || '商品配置工单' }}</span>
+            <span class="swo-status" :class="`st-${wo.status || 'open'}`">{{ statusText(wo.status) }}</span>
+          </div>
+          <div class="swo-meta">
+            <span v-if="sourceLabel(wo)" class="swo-source" :title="`来源：${sourceLabel(wo)}`">{{ sourceLabel(wo) }}</span>
+            <span v-if="wo.workOrderId" class="swo-wo">{{ wo.workOrderId }}</span>
+            <span v-if="wo.offeringId" class="swo-wo">{{ wo.offeringId }}</span>
+            <span v-if="formatTime(wo.createdAt)" class="swo-time">{{ formatTime(wo.createdAt) }}</span>
+          </div>
+          <!-- 稽核结果：草稿合规结论 + 问题规则明细 -->
+          <div v-if="auditInfo(wo)" class="swo-audit" :class="auditInfo(wo).pass ? 'audit-pass' : 'audit-fail'">
+            <span class="swo-audit-badge">{{ auditInfo(wo).pass ? '稽核通过' : '稽核未通过' }}</span>
+            <span v-for="issue in auditInfo(wo).issues" :key="issue.key" class="swo-audit-issue"
+                  :title="issue.desc">{{ issue.key }}</span>
+          </div>
+          <!-- 工单操作：已完成/已取消工单不可再提交或删除（防重复提交），仅保留预览/编辑/复制 -->
+          <div v-if="hasActions(wo)" class="swo-actions" @click.stop>
+            <button type="button" class="swo-act" @click="$emit('preview-product', wo)">预览</button>
+            <button type="button" class="swo-act" @click="$emit('edit-product', wo)">编辑</button>
+            <button v-if="!isClosed(wo)" type="button" class="swo-act submit" @click="$emit('submit-product', wo)">提交</button>
+            <button type="button" class="swo-act" @click="$emit('copy-product', wo)">复制</button>
+            <button v-if="!isClosed(wo)" type="button" class="swo-act danger" @click="$emit('delete-product', wo)">删除</button>
+          </div>
+        </li>
+      </ul>
+      <div v-if="!filtered.length" class="swo-empty">无匹配工单</div>
+
+      <!-- 分页控件：仅条目数超过单页容量时出现 -->
+      <div v-if="filtered.length > pageSize" class="swo-pager">
+        <button type="button" class="pg-btn" :disabled="page <= 1" @click="page--">上一页</button>
+        <span class="pg-info">第 {{ page }} / {{ totalPages }} 页 · 共 {{ filtered.length }} 条</span>
+        <button type="button" class="pg-btn" :disabled="page >= totalPages" @click="page++">下一页</button>
+      </div>
+    </template>
   </section>
 </template>
 
 <script setup>
+import { ref, computed, watch } from 'vue'
+
 const props = defineProps({
   workOrders: { type: Array, default: () => [] },
   /** 关联的配置方案草稿表单卡（点击工单条目 → 右侧抽屉编辑） */
@@ -64,6 +108,61 @@ defineEmits([
   'submit-product',
 ])
 
+/** 折叠/工具条阈值：低于该数量保持原有平铺展示 */
+const COLLAPSE_THRESHOLD = 20
+/** 单页容量：数百条工单时分页渲染，避免一次挂载全部 DOM */
+const pageSize = 20
+
+const STATUS_TABS = [
+  { key: 'all', label: '全部' },
+  { key: 'open', label: '待处理' },
+  { key: 'in_progress', label: '进行中' },
+  { key: 'done', label: '已完成' },
+  { key: 'cancelled', label: '已取消' },
+]
+
+const collapsed = ref(false)
+const filterStatus = ref('all')
+const keyword = ref('')
+const page = ref(1)
+
+const norm = (s) => String(s || '').trim().toLowerCase()
+
+const filtered = computed(() => {
+  let list = props.workOrders || []
+  if (filterStatus.value !== 'all') {
+    list = list.filter((wo) => String(wo.status || 'open') === filterStatus.value)
+  }
+  const kw = norm(keyword.value)
+  if (kw) {
+    list = list.filter((wo) =>
+      norm(wo.workOrderId).includes(kw) ||
+      norm(wo.title).includes(kw) ||
+      norm(wo.offeringName).includes(kw) ||
+      norm(wo.offeringId).includes(kw))
+  }
+  return list
+})
+
+const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / pageSize)))
+
+const pagedItems = computed(() => {
+  if (filtered.value.length <= pageSize) return filtered.value
+  const start = (page.value - 1) * pageSize
+  return filtered.value.slice(start, start + pageSize)
+})
+
+// 数据刷新（新工单到达）或过滤条件变化时回到第一页，避免停在越界/空页
+watch(filtered, () => {
+  if (page.value > totalPages.value) page.value = 1
+})
+watch([filterStatus, keyword], () => {
+  page.value = 1
+})
+
+const statusCount = (key) =>
+  (props.workOrders || []).filter((wo) => String(wo.status || 'open') === key).length
+
 const STATUS_MAP = {
   open: '待处理',
   in_progress: '进行中',
@@ -72,6 +171,21 @@ const STATUS_MAP = {
 }
 
 const statusText = (status) => STATUS_MAP[status] || status || '-'
+
+/** 工单来源 → 业务标签（source 为空/未知时返回空串不展示） */
+const SOURCE_MAP = {
+  rd_file_parse: '智读·文件配置',
+  rd_config_draft: '智聊·对话配置',
+  root_cause: '根因处置',
+  risk_audit: '风险稽核',
+  risk_delist: '风险下架',
+  risk_price: '风险调价',
+  ontology_rules: '规则引擎',
+  ops_assistant: '运营助手',
+  manual: '手动创建',
+}
+
+const sourceLabel = (wo) => SOURCE_MAP[String(wo?.source || '').trim()] || ''
 
 /** 稽核结果视图模型：compliancePass + 问题规则列表（R-C03/R-C06 等）；无稽核数据时返回 null 不展示 */
 const auditInfo = (wo) => {
@@ -134,6 +248,78 @@ const formatTime = (t) => {
   border-radius: 8px;
 }
 
+.swo-collapse {
+  margin-left: auto;
+  padding: 1px 8px;
+  font-size: 11px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.swo-collapse:hover {
+  border-color: #3b82f6;
+  color: #3b82f6;
+}
+
+.swo-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.swo-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.swo-tab {
+  padding: 2px 8px;
+  font-size: 11px;
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.swo-tab.active {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.08);
+  color: #1d4ed8;
+  font-weight: 500;
+}
+
+.swo-tab-count {
+  margin-left: 2px;
+  font-size: 10px;
+  opacity: 0.75;
+}
+
+.swo-search {
+  flex: 1;
+  min-width: 120px;
+  max-width: 200px;
+  margin-left: auto;
+  padding: 3px 8px;
+  font-size: 11px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.swo-search:focus {
+  border-color: #3b82f6;
+}
+
 .swo-list {
   display: flex;
   flex-direction: column;
@@ -160,19 +346,20 @@ const formatTime = (t) => {
   background: rgba(59, 130, 246, 0.04);
 }
 
-.swo-item.expanded {
-  border-color: #3b82f6;
-  background: rgba(59, 130, 246, 0.03);
+.swo-item.highlight {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.06);
+  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.35);
+  animation: swo-flash 1.2s ease-out 1;
 }
 
-.swo-expand-hint {
-  font-size: 10px;
-  color: #3b82f6;
-  cursor: pointer;
-}
-
-.swo-draft-editor {
-  margin-top: 8px;
+@keyframes swo-flash {
+  0% {
+    background: rgba(34, 197, 94, 0.18);
+  }
+  100% {
+    background: rgba(34, 197, 94, 0.06);
+  }
 }
 
 .swo-row {
@@ -272,6 +459,14 @@ const formatTime = (t) => {
   font-family: ui-monospace, monospace;
 }
 
+.swo-source {
+  font-size: 10px;
+  padding: 1px 6px;
+  background: #eef2ff;
+  color: #4f46e5;
+  border-radius: 3px;
+}
+
 .swo-time {
   font-size: 10px;
   color: var(--text-tertiary);
@@ -312,19 +507,46 @@ const formatTime = (t) => {
   cursor: default;
 }
 
-.swo-item.highlight {
-  border-color: #22c55e;
-  background: rgba(34, 197, 94, 0.06);
-  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.35);
-  animation: swo-flash 1.2s ease-out 1;
+.swo-empty {
+  padding: 10px 0;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-tertiary);
 }
 
-@keyframes swo-flash {
-  0% {
-    background: rgba(34, 197, 94, 0.18);
-  }
-  100% {
-    background: rgba(34, 197, 94, 0.06);
-  }
+.swo-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-light);
+}
+
+.pg-btn {
+  padding: 2px 10px;
+  font-size: 11px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.pg-btn:hover:not(:disabled) {
+  border-color: #3b82f6;
+  color: #3b82f6;
+}
+
+.pg-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pg-info {
+  font-size: 11px;
+  color: var(--text-tertiary);
 }
 </style>

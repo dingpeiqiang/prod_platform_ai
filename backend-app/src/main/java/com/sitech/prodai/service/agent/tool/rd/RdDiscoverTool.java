@@ -38,7 +38,9 @@ public class RdDiscoverTool implements AgentTool {
 
     @Override
     public String getDescription() {
-        return "检索历史产商品配置方案（按语义/关键词），返回匹配的配置清单";
+        return "检索历史产商品配置方案（按语义/关键词），返回匹配的配置清单。"
+                + "适用于用户想查找/查看已有方案（如「找一下月费39左右的校园套餐」「查一下有没有家庭融合套餐」），"
+                + "即使话术中带月费等套餐要素也用本工具；用户明确要求新建/生成配置时不要使用本工具";
     }
 
     @Override

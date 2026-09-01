@@ -104,6 +104,9 @@ public class ProductOntologyService {
     private String graphSourceId = "empty";
     private final RiskAuditService riskAudit;
     private final TemplateDeriveEngine deriveEngine;
+    private final FactGraphSyncService factGraphSync;
+    private final LlmIntentExtractor intentExtractor;
+    private final SparqlConfigDiscoverer sparqlDiscoverer;
     /** 配置场景审计链路（内存）；对齐方案 get_trace / explain。 */
     private final Map<String, List<Map<String, Object>>> configTraces = new ConcurrentHashMap<>();
     /** 最近一次批量稽核快照（定时/手动）。 */
@@ -125,6 +128,9 @@ public class ProductOntologyService {
                               OntologyVersionService versionService,
                               RiskAuditService riskAudit,
                               TemplateDeriveEngine deriveEngine,
+                              FactGraphSyncService factGraphSync,
+                              LlmIntentExtractor intentExtractor,
+                              SparqlConfigDiscoverer sparqlDiscoverer,
                               ObjectProvider<ProductConfigRegressionService> regressionServiceProvider) {
         this.objectMapper = objectMapper;
         this.properties = properties;
@@ -142,6 +148,9 @@ public class ProductOntologyService {
         this.versionService = versionService;
         this.riskAudit = riskAudit;
         this.deriveEngine = deriveEngine;
+        this.factGraphSync = factGraphSync;
+        this.intentExtractor = intentExtractor;
+        this.sparqlDiscoverer = sparqlDiscoverer;
         this.regressionServiceProvider = regressionServiceProvider;
     }
 
@@ -149,6 +158,16 @@ public class ProductOntologyService {
     public void init() {
         loadGraph();
         opsRules.load();
+        syncFactGraphToRdf();
+    }
+
+    /** 事实图 → 本体图同步：使 SPARQL 可对在架商品做语义检索（灌图失败不阻断启动）。 */
+    private void syncFactGraphToRdf() {
+        try {
+            factGraphSync.syncShelfOfferings(loadGraph());
+        } catch (Exception e) {
+            log.warn("[ProductOntologyService] 事实图灌本体图失败（SPARQL 检索将走回退）: {}", e.getMessage());
+        }
     }
 
     /** 在响应中标注是否演示模式及数据来源，便于前后端识别假数据边界。 */
@@ -187,6 +206,7 @@ public class ProductOntologyService {
                         commit -> {
                             graphCache = castMap(commit.get("graph"));
                             graphSourceId = String.valueOf(commit.get("sourceId"));
+                            syncFactGraphToRdf();
                         })
                 .validator(pending -> {
                     OpsGraphSchemaValidator.ValidationResult vr =
@@ -683,7 +703,9 @@ public class ProductOntologyService {
     }
 
     /**
-     * 智查：按关键词检索在架商品与配置模板（对齐 nl_discover_and_retrieve 配置侧）。
+     * 智查：LLM 意图结构化 + 本体 SPARQL 语义检索优先，词典打分（matchScore）回退。
+     * <p>三层链路：LlmIntentExtractor（NL→结构化意图）→ FactGraphSyncService（事实图→Offering 实例）
+     * → SparqlConfigDiscoverer（参数化 SPARQL）。SPARQL 无命中或异常时回退 matchScore，保证可用性。
      */
     public Map<String, Object> discoverConfigs(String query, int limit) {
         String q = query == null ? "" : query.trim();
@@ -693,19 +715,34 @@ public class ProductOntologyService {
         Map<String, Object> templates = castMap(graph.get("templates"));
         List<Map<String, Object>> schemes = castListOfMaps(graph.get("configSchemes"));
 
+        LlmIntentExtractor.DiscoverIntent intent = intentExtractor.extract(q);
         List<Map<String, Object>> items = new ArrayList<>();
-        for (Map<String, Object> o : offerings) {
-            int score = matchScore(q, o);
-            if (score <= 0 && !q.isBlank()) {
-                continue;
+        String retrieveEngine = "dict-score";
+        if (!q.isBlank()) {
+            try {
+                List<Map<String, Object>> sparqlHits = sparqlDiscoverer.discover(intent);
+                if (!sparqlHits.isEmpty()) {
+                    items.addAll(sparqlHits);
+                    retrieveEngine = intent.engine() + "+sparql";
+                }
+            } catch (Exception e) {
+                log.warn("[ProductOntologyService] SPARQL 语义检索失败，回退词典打分: {}", e.getMessage());
             }
-            if (q.isBlank()) {
-                score = 1;
-            }
-            Map<String, Object> row = toQueryCard(o, score);
-            items.add(row);
         }
-        items.sort((a, b) -> Integer.compare((int) num(b.get("score"), 0), (int) num(a.get("score"), 0)));
+        if (items.isEmpty()) {
+            for (Map<String, Object> o : offerings) {
+                int score = matchScore(q, o);
+                if (score <= 0 && !q.isBlank()) {
+                    continue;
+                }
+                if (q.isBlank()) {
+                    score = 1;
+                }
+                Map<String, Object> row = toQueryCard(o, score);
+                items.add(row);
+            }
+            items.sort((a, b) -> Integer.compare((int) num(b.get("score"), 0), (int) num(a.get("score"), 0)));
+        }
         if (items.size() > lim) {
             items = new ArrayList<>(items.subList(0, lim));
         }
@@ -747,6 +784,15 @@ public class ProductOntologyService {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("success", true);
         body.put("query", q);
+        body.put("retrieve_engine", retrieveEngine);
+        // 无匹配时如实返回：LLM 表达层会向用户说明"未找到"，不硬凑低分项
+        body.put("no_match", q != null && !q.isBlank() && items.isEmpty());
+        body.put("intent", Map.of(
+                "query_type", intent.queryType(),
+                "keywords", intent.keywords(),
+                "monthly_fee", intent.monthlyFee() == null ? "null" : intent.monthlyFee(),
+                "fee_tolerance", intent.feeTolerance() == null ? "null" : intent.feeTolerance()
+        ));
         body.put("total", items.size());
         body.put("items", items);
         body.put("templates", tplHits.stream().limit(10).collect(Collectors.toList()));
@@ -756,6 +802,7 @@ public class ProductOntologyService {
         appendConfigAudit(traceId, Map.of(
                 "step", "nl_discover_and_retrieve",
                 "query", q,
+                "engine", retrieveEngine,
                 "hit_count", items.size(),
                 "timestamp", Instant.now().toString()
         ));
@@ -808,7 +855,7 @@ public class ProductOntologyService {
             rows.add(toMarketInsightRow(o, opsGraph.get(id), score, bucket));
         }
 
-        // 货架无 5G 实体时，用模板补一条可演示的增长样本
+        // 货架无 5G 实体时，用模板补一条增长样本
         if (qLower.contains("5g") && rows.stream().noneMatch(r -> str(r.get("name")).toLowerCase(Locale.ROOT).contains("5g"))) {
             for (Object raw : templates.values()) {
                 Map<String, Object> t = castMap(raw);
@@ -964,8 +1011,23 @@ public class ProductOntologyService {
 
     /**
      * 一键复制为新配置草稿 + 合规校验（对齐 retrieve_facts → copy → evaluate_policy）。
+     * <p>sessionId 非空时复制即开配置工单（对齐 rd_draft_manage doCopy 的「复制即开单」闭环），
+     * 开单失败不影响复制结果。
      */
     public Map<String, Object> copyAsDraft(String offeringId, String text) {
+        return copyAsDraft(offeringId, text, null, null);
+    }
+
+    public Map<String, Object> copyAsDraft(String offeringId, String text, String sessionId) {
+        return copyAsDraft(offeringId, text, sessionId, null);
+    }
+
+    /**
+     * 带补充需求的复制：requirement 非空时（如「改名为校园青春版，月费 29 元」），
+     * 复制后经 {@link OpsExtractionService#extractUpdateIntent} 按需求修正副本字段，
+     * 与工单卡复制弹窗（rd_draft_manage doCopy）同构。
+     */
+    public Map<String, Object> copyAsDraft(String offeringId, String text, String sessionId, String requirement) {
         String oid = resolveOfferingId(offeringId, text);
         Map<String, Object> shelf = findShelfOffering(oid);
         if (shelf == null) {
@@ -1008,6 +1070,17 @@ public class ProductOntologyService {
             }
         }
 
+        // 复制弹窗补充需求：LLM 约束抽取（模板字段白名单，未提及不编造），与 doCopy 同构
+        Map<String, Object> appliedRequirements = new LinkedHashMap<>();
+        String req = requirement == null ? "" : requirement.trim();
+        if (!req.isBlank() && !"null".equalsIgnoreCase(req)) {
+            Map<String, Object> intent = extractionService.extractUpdateIntent(
+                    req, draft, draftValueSnapshot(draft));
+            for (Map.Entry<String, Object> e : intent.entrySet()) {
+                applyCopyDraftChange(draft, appliedRequirements, e.getKey(), e.getValue());
+            }
+        }
+
         Map<String, Object> compliance = checkCompliance(draft);
         List<Map<String, Object>> diffs = compareDraftFields(sourceDraft, draft);
 
@@ -1043,7 +1116,94 @@ public class ProductOntologyService {
         body.put("messageRootKey", draft.get("messageRootKey"));
         body.put("messagePreview", messageProjector.toMessage(draft));
         body.put("trace_id", traceId);
+        if (!appliedRequirements.isEmpty()) {
+            body.put("applied_requirements", appliedRequirements);
+        }
+        attachCopyWorkOrder(body, draft, sessionId);
         return body;
+    }
+
+    /**
+     * 复制补充需求的单字段落草稿：值有效且与现值不同才写入。
+     * monthlyFee 变更联动固费/chargePlan；offeringName 变更同步 offerName（与 doCopy.applyDraftChange 同构）。
+     */
+    private void applyCopyDraftChange(Map<String, Object> draft, Map<String, Object> changes, String field, Object value) {
+        if (field == null || value == null) {
+            return;
+        }
+        String val = String.valueOf(value).trim();
+        if (val.isBlank() || "null".equalsIgnoreCase(val)) {
+            return;
+        }
+        String current = str(firstNonEmpty(draft.get(field), ""));
+        if (val.equals(current)) {
+            return;
+        }
+        draft.put(field, val);
+        changes.put(field, val);
+        if ("monthlyFee".equals(field)) {
+            draft.put("fixedFeeAmount", val);
+            if (draft.get("chargePlan") instanceof Map<?, ?> cp) {
+                Map<String, Object> charge = new LinkedHashMap<>();
+                for (Map.Entry<?, ?> e : cp.entrySet()) {
+                    charge.put(String.valueOf(e.getKey()), e.getValue());
+                }
+                if (charge.containsKey("fixedFeeAmount")) {
+                    charge.put("fixedFeeAmount", val);
+                }
+                draft.put("chargePlan", charge);
+            }
+        } else if ("offeringName".equals(field) && draft.containsKey("offerName")) {
+            draft.put("offerName", val);
+        }
+    }
+
+    /** 注入修改意图抽取 prompt 的当前草稿值快照（与 RdDraftManageTool.draftValueSnapshot 同构）。 */
+    private Map<String, Object> draftValueSnapshot(Map<String, Object> draft) {
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        for (String key : List.of("offeringName", "monthlyFee", "fixedFeeAmount", "bizScenario",
+                "targetUser", "includeBroadband", "includeData", "includeVoice", "channelScope")) {
+            if (draft.get(key) != null) {
+                snapshot.put(key, draft.get(key));
+            }
+        }
+        return snapshot;
+    }
+
+    /**
+     * 复制成功后同步创建配置工单（payload 关联草稿字段，绑定 sessionId）。
+     * 前端工单卡（attachWorkOrdersToMsg → SessionWorkOrderCard）据此展示「复制即开单」闭环。
+     */
+    @SuppressWarnings("unchecked")
+    private void attachCopyWorkOrder(Map<String, Object> body, Map<String, Object> draft, String sessionId) {
+        try {
+            String copyName = str(firstNonEmpty(draft.get("offeringName"), "配置草稿副本"));
+            String monthlyFee = String.valueOf(firstNonEmpty(draft.get("monthlyFee"), draft.get("fixedFeeAmount"), ""));
+            String scenario = String.valueOf(firstNonEmpty(draft.get("bizScenario"), draft.get("scenario"), ""));
+            Map<String, Object> woReq = new LinkedHashMap<>();
+            woReq.put("offeringName", copyName);
+            woReq.put("source", "rd_config_draft");
+            if (sessionId != null && !sessionId.isBlank()) {
+                woReq.put("sessionId", sessionId);
+            }
+            woReq.put("title", copyName + "配置工单");
+            woReq.put("summary", "智查结果复制为新草稿：月费=" + (monthlyFee.isBlank() ? "-" : monthlyFee)
+                    + "，场景=" + (scenario.isBlank() ? "-" : scenario));
+            woReq.put("actions", List.of(
+                    "核对配置草稿字段完整性",
+                    "合规校验后提交",
+                    "提交通过后发布上架"
+            ));
+            woReq.put("compliancePass", body.get("compliancePass"));
+            woReq.put("complianceIssues", body.get("issues"));
+            Map<String, Object> woBody = createWorkOrder(woReq);
+            if (woBody != null && woBody.get("workOrder") instanceof Map<?, ?> wo) {
+                body.put("workOrder", wo);
+                body.put("work_order_id", ((Map<String, Object>) wo).get("workOrderId"));
+            }
+        } catch (Exception e) {
+            log.warn("[ProductOntologyService] 智查复制开单失败（不影响复制结果）: {}", e.getMessage());
+        }
     }
 
     /** 智读：先解析文档再批量映射。 */
@@ -1080,6 +1240,11 @@ public class ProductOntologyService {
     /** 智读：选择文件后预上传，发送时按 fileId 解析映射（不再二次传原文）。 */
     public Map<String, Object> uploadConfigDocument(org.springframework.web.multipart.MultipartFile file) {
         return documentStorage.store(file);
+    }
+
+    /** 智读：文档暂存访问器（下载端点按 fileId 取原文件）。 */
+    public ConfigDocumentStorage documentStorage() {
+        return documentStorage;
     }
 
     public Map<String, Object> batchFromUploadedFile(String fileId, String fileName) {
@@ -1175,6 +1340,7 @@ public class ProductOntologyService {
         schemes.add(0, schemeRow);
         graph.put("configSchemes", schemes);
         graphCache = graph;
+        syncFactGraphToRdf();
 
         Map<String, Object> messagePreview = messageProjector.toMessage(draft);
 
@@ -1352,7 +1518,7 @@ public class ProductOntologyService {
         if (!sessionId.isBlank()) {
             entity.setSessionId(sessionId);
         }
-        if (!"submitted".equals(entity.getStatus()) && !"filing".equals(entity.getStatus())) {
+        if (!"submitted".equals(entity.getStatus())) {
             entity.setStatus("draft");
         }
 
@@ -1435,8 +1601,8 @@ public class ProductOntologyService {
     }
 
     /**
-     * 智检通过后闭环：合规 → 沉淀本体 → 草稿状态 filing。
-     * （资费备案工单生成逻辑已移除：提交即完成备案登记，不再额外开单）
+     * 智检通过后闭环：合规 → 沉淀本体。
+     * （备案登记环节已移除：提交仅完成合规校验与本体沉淀，草稿不再流转 filing）
      */
     @Transactional
     public Map<String, Object> submitConfigDraft(Map<String, Object> request) {
@@ -1467,7 +1633,7 @@ public class ProductOntologyService {
         if (!Boolean.TRUE.equals(compliance.get("compliancePass"))) {
             Map<String, Object> fail = new LinkedHashMap<>();
             fail.put("success", false);
-            fail.put("message", "合规未通过，拒绝提交备案");
+            fail.put("message", "合规未通过，拒绝提交");
             fail.put("issues", compliance.get("issues"));
             fail.put("compliancePass", false);
             fail.put("draftId", persistedId);
@@ -1489,7 +1655,7 @@ public class ProductOntologyService {
         final Map<String, Object> draftSnapshot = deepCopy(draft);
         if (persistedId != null) {
             instanceRepository.findByIdAndOntologyCode(persistedId, OFFERING_CONFIG_CODE).ifPresent(entity -> {
-                entity.setStatus("filing");
+                entity.setStatus("submitted");
                 entity.setSubmittedAt(LocalDateTime.now());
                 Map<String, Object> store = new LinkedHashMap<>();
                 if (entity.getData() != null) {
@@ -1509,7 +1675,7 @@ public class ProductOntologyService {
 
         String traceId = "cfg-submit-" + Instant.now().toEpochMilli();
         appendConfigAudit(traceId, Map.of(
-                "step", "submit_filing",
+                "step", "submit",
                 "offering_id", offeringId,
                 "draft_id", persistedId == null ? "" : String.valueOf(persistedId),
                 "publish_trace", str(published.get("trace_id")),
@@ -1518,12 +1684,12 @@ public class ProductOntologyService {
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("success", true);
-        body.put("message", "已提交：合规通过 → 沉淀本体 → 草稿流转备案");
+        body.put("message", "已提交：合规通过 → 沉淀本体");
         body.put("draftId", persistedId);
         body.put("offeringId", offeringId);
         body.put("published", published);
         body.put("compliancePass", true);
-        body.put("status", "filing");
+        body.put("status", "submitted");
         body.put("trace_id", traceId);
         return body;
     }
@@ -1787,6 +1953,61 @@ public class ProductOntologyService {
         return Math.round(Math.min(0.99, score) * 100.0) / 100.0;
     }
 
+    /**
+     * 中文整句分词局限修复：从查询中提取候选关键词。
+     * <p>中文无分隔符时按空白分词会得到整句，导致"39"等数字 token 无法被拆出、费用匹配失效。
+     * 这里补充两类提取策略：
+     * 1. 独立数字串（含"月费/元"上下文），用于资费匹配；
+     * 2. 业务关键词词典命中（校园/家庭/宽带/5G 等），中文无分词器时保证 token 粒度。
+     */
+    private List<String> extractQueryTokens(String q) {
+        Set<String> tokens = new LinkedHashSet<>();
+        for (String token : q.split("[\\s,，、。?？!！]+")) {
+            if (token.length() >= 2) {
+                tokens.add(token);
+            }
+        }
+        Matcher num = Pattern.compile("\\d+").matcher(q);
+        while (num.find()) {
+            tokens.add(num.group());
+        }
+        String[] dict = {"校园", "学生", "大学", "青春", "风险", "零资费", "低效", "5g", "套餐",
+                "家庭", "融合", "宽带", "提速", "在售", "在架", "上线", "模板", "资费", "方案", "配置"};
+        for (String word : dict) {
+            if (q.contains(word)) {
+                tokens.add(word);
+            }
+        }
+        return new ArrayList<>(tokens);
+    }
+
+    /**
+     * 月费容差匹配："39左右/上下/附近"等语义提取目标资费，与商品月费比较。
+     * <p>返回值：-1 表示查询无费用意图；否则返回月费差值（绝对值），用于按接近度排序与阈值过滤。
+     */
+    private double feeIntentDiff(String q, Map<String, Object> offering) {
+        Matcher num = Pattern.compile("(?:月费|月租|资费)?(\\d{1,4})\\s*(?:元)?(?:左右|上下|附近|上下浮动|之间)?").matcher(q);
+        double target = -1;
+        while (num.find()) {
+            String g = num.group(1);
+            if (!g.isBlank()) {
+                int v = Integer.parseInt(g);
+                if (v >= 5 && v <= 999) {
+                    target = v;
+                    break;
+                }
+            }
+        }
+        if (target < 0) {
+            return -1;
+        }
+        double fee = num(offering.get("monthlyFee"), num(offering.get("fixedFeeAmount"), -1));
+        if (fee < 0) {
+            return -1;
+        }
+        return Math.abs(fee - target);
+    }
+
     private int matchScore(String query, Map<String, Object> offering) {
         if (query == null || query.isBlank()) {
             return 1;
@@ -1816,7 +2037,8 @@ public class ProductOntologyService {
         if (!catName.isBlank() && (q.contains(catName) || catName.contains(q))) {
             score += 30;
         }
-        for (String token : q.split("[\\s,，、]+")) {
+        double feeDiff = feeIntentDiff(q, offering);
+        for (String token : extractQueryTokens(q)) {
             if (token.length() < 2) {
                 continue;
             }
@@ -1848,6 +2070,19 @@ public class ProductOntologyService {
             if (token.matches("\\d+") && (str(offering.get("monthlyFee")).contains(token)
                     || str(offering.get("fixedFeeAmount")).contains(token))) {
                 score += 30;
+            }
+        }
+        if (feeDiff >= 0) {
+            if (feeDiff <= 5) {
+                score += 45;
+            } else if (feeDiff <= 10) {
+                score += 25;
+            } else if (feeDiff <= 20) {
+                score += 10;
+            } else {
+                // 费用意图与商品资费严重偏离（>20 元）：强过滤。
+                // 此前仅 -15，语义加分（如校园词+25）可抵消，导致"月费39"查出 0 元/19 元商品硬凑结果
+                return -1;
             }
         }
         if (q.contains("在售") || q.contains("在架") || q.contains("上线")) {
@@ -2187,7 +2422,7 @@ public class ProductOntologyService {
 
         Map<String, Object> wo = toWorkOrderMap(saved);
 
-        // 回写内存图（演示闭环可见）
+        // 回写内存图（工单闭环可见）
         synchronized (this) {
             Map<String, Object> graph = loadGraph();
             List<Map<String, Object>> shelf = castListOfMaps(graph.get("shelfOfferings"));
@@ -2218,10 +2453,76 @@ public class ProductOntologyService {
     }
 
     public Map<String, Object> listWorkOrders(String status, String sessionId) {
+        return listWorkOrders(status, sessionId, null, null, null);
+    }
+
+    /**
+     * 工单列表查询（会话维度 / 全局）：支持状态过滤 + 关键词匹配（工单号/标题/商品名/商品编码）+ 分页。
+     * <p>
+     * 大批量文件解析一次可开数百单，前端消息窗工单卡按页拉取，避免一次渲染全部条目。
+     * page 从 1 开始；size 缺省 20；q 为空时不过滤关键词；无分页参数时保持旧行为（Top50 全量）。
+     */
+    public Map<String, Object> listWorkOrders(String status, String sessionId, Integer page, Integer size, String q) {
         String sid = sessionId == null ? "" : sessionId.trim();
         String st = status == null ? "" : status.trim();
+        String kw = q == null ? "" : q.trim();
         boolean byStatus = !st.isBlank() && !"all".equalsIgnoreCase(st);
+
         List<OpsWorkOrder> rows;
+        // 无分页参数 → 旧行为（Top50，保持历史调用兼容）
+        boolean paged = page != null || size != null;
+        if (paged) {
+            int pageNum = page == null || page < 1 ? 1 : page;
+            int pageSize = size == null || size < 1 ? 20 : Math.min(size, 200);
+            org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(
+                    pageNum - 1, pageSize, org.springframework.data.domain.Sort.by(
+                            org.springframework.data.domain.Sort.Direction.DESC, "createdAt"));
+
+            boolean hasKw = !kw.isBlank();
+            org.springframework.data.jpa.domain.Specification<OpsWorkOrder> spec = (root, query, cb) -> {
+                List<jakarta.persistence.criteria.Predicate> preds = new ArrayList<>();
+                if (!sid.isBlank()) {
+                    preds.add(cb.equal(root.get("sessionId"), sid));
+                }
+                if (byStatus) {
+                    preds.add(cb.equal(root.get("status"), st.toLowerCase(Locale.ROOT)));
+                }
+                if (hasKw) {
+                    String like = "%" + kw.toLowerCase(Locale.ROOT) + "%";
+                    jakarta.persistence.criteria.Expression<String> woExpr =
+                            cb.lower(cb.coalesce(root.get("workOrderId"), ""));
+                    jakarta.persistence.criteria.Expression<String> titleExpr =
+                            cb.lower(cb.coalesce(root.get("title"), ""));
+                    jakarta.persistence.criteria.Expression<String> nameExpr =
+                            cb.lower(cb.coalesce(root.get("offeringName"), ""));
+                    jakarta.persistence.criteria.Expression<String> oidExpr =
+                            cb.lower(cb.coalesce(root.get("offeringId"), ""));
+                    preds.add(cb.or(
+                            cb.like(woExpr, like),
+                            cb.like(titleExpr, like),
+                            cb.like(nameExpr, like),
+                            cb.like(oidExpr, like)
+                    ));
+                }
+                return cb.and(preds.toArray(new jakarta.persistence.criteria.Predicate[0]));
+            };
+            org.springframework.data.domain.Page<OpsWorkOrder> result = workOrderRepository.findAll(spec, pageable);
+            List<Map<String, Object>> items = result.getContent().stream()
+                    .map(this::toWorkOrderMap).collect(Collectors.toList());
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("success", true);
+            body.put("total", result.getTotalElements());
+            body.put("page", pageNum);
+            body.put("size", pageSize);
+            body.put("pages", result.getTotalPages());
+            body.put("statusFilter", byStatus ? st : "all");
+            body.put("sessionId", sid.isBlank() ? null : sid);
+            body.put("q", kw.isBlank() ? null : kw);
+            body.put("items", items);
+            body.put("counts", workOrderCounts(sid));
+            return withModeMeta(body);
+        }
+
         if (!sid.isBlank() && byStatus) {
             rows = workOrderRepository.findTop50BySessionIdAndStatusOrderByCreatedAtDesc(
                     sid, st.toLowerCase(Locale.ROOT));
@@ -2239,23 +2540,26 @@ public class ProductOntologyService {
         body.put("statusFilter", byStatus ? st : "all");
         body.put("sessionId", sid.isBlank() ? null : sid);
         body.put("items", items);
-        if (!sid.isBlank()) {
-            // 会话维度：当前过滤集合内的状态计数，供消息窗口工单卡直接展示
-            Map<String, Object> counts = new LinkedHashMap<>();
-            counts.put("open", items.stream().filter(i -> "open".equals(i.get("status"))).count());
-            counts.put("in_progress", items.stream().filter(i -> "in_progress".equals(i.get("status"))).count());
-            counts.put("done", items.stream().filter(i -> "done".equals(i.get("status"))).count());
-            counts.put("cancelled", items.stream().filter(i -> "cancelled".equals(i.get("status"))).count());
-            body.put("counts", counts);
-            return withModeMeta(body);
-        }
-        Map<String, Object> counts = new LinkedHashMap<>();
-        counts.put("open", workOrderRepository.countByStatus("open"));
-        counts.put("in_progress", workOrderRepository.countByStatus("in_progress"));
-        counts.put("done", workOrderRepository.countByStatus("done"));
-        counts.put("cancelled", workOrderRepository.countByStatus("cancelled"));
-        body.put("counts", counts);
+        body.put("counts", workOrderCounts(sid));
         return withModeMeta(body);
+    }
+
+    /** 会话/全局工单状态计数（会话维度按 sessionId 过滤，全局按状态列统计）。 */
+    private Map<String, Object> workOrderCounts(String sid) {
+        Map<String, Object> counts = new LinkedHashMap<>();
+        if (sid != null && !sid.isBlank()) {
+            List<OpsWorkOrder> all = workOrderRepository.findTop50BySessionIdOrderByCreatedAtDesc(sid);
+            counts.put("open", all.stream().filter(i -> "open".equals(i.getStatus())).count());
+            counts.put("in_progress", all.stream().filter(i -> "in_progress".equals(i.getStatus())).count());
+            counts.put("done", all.stream().filter(i -> "done".equals(i.getStatus())).count());
+            counts.put("cancelled", all.stream().filter(i -> "cancelled".equals(i.getStatus())).count());
+        } else {
+            counts.put("open", workOrderRepository.countByStatus("open"));
+            counts.put("in_progress", workOrderRepository.countByStatus("in_progress"));
+            counts.put("done", workOrderRepository.countByStatus("done"));
+            counts.put("cancelled", workOrderRepository.countByStatus("cancelled"));
+        }
+        return counts;
     }
 
     /**
@@ -2318,6 +2622,38 @@ public class ProductOntologyService {
         body.put("workOrder", toWorkOrderMap(saved));
         body.put("previousStatus", prev);
         return withModeMeta(body);
+    }
+
+    /**
+     * 草稿改名后同步更新工单的资费名称与标题（卡片展示列），并同步图谱。
+     * 摘要中内嵌的旧月费金额同步替换（月费联动时传入 newFee）。
+     * 名称未变化或工单不存在时静默返回（success=false 不阻断修改主流程）。
+     */
+    public Map<String, Object> renameWorkOrder(String workOrderId, String offeringName, String newFee) {
+        String wid = workOrderId == null ? "" : workOrderId.trim();
+        String name = offeringName == null ? "" : offeringName.trim();
+        if (wid.isBlank() || name.isBlank()) {
+            return withModeMeta(Map.of("success", false, "message", "workOrderId / offeringName 不能为空"));
+        }
+        Optional<OpsWorkOrder> found = workOrderRepository.findByWorkOrderId(wid);
+        if (found.isEmpty()) {
+            return withModeMeta(Map.of("success", false, "message", "工单不存在: " + wid));
+        }
+        OpsWorkOrder entity = found.get();
+        if (name.equals(entity.getOfferingName())) {
+            return withModeMeta(Map.of("success", true, "message", "名称未变化", "workOrder", toWorkOrderMap(entity)));
+        }
+        entity.setOfferingName(name);
+        // 标题与开单规则保持一致：名称 + "配置工单"
+        entity.setTitle(name + "配置工单");
+        // 摘要随月费联动刷新（开单时固化的「月费=158.0，场景=…」文案），fee 为空则原样保留
+        String fee = newFee == null ? "" : newFee.trim();
+        if (!fee.isBlank() && entity.getSummary() != null) {
+            entity.setSummary(entity.getSummary().replaceAll("月费=[\\d.]+", "月费=" + fee));
+        }
+        OpsWorkOrder saved = workOrderRepository.save(entity);
+        syncWorkOrderToGraph(saved);
+        return withModeMeta(Map.of("success", true, "message", "工单名称已同步更新", "workOrder", toWorkOrderMap(saved)));
     }
 
     private boolean isValidTransition(String from, String to) {

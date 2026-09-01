@@ -117,6 +117,9 @@ class ProductConfigRegressionTest {
                 versionService,
                 new RiskAuditService(),
                 deriveEngine,
+                new FactGraphSyncService(rdf4jStore),
+                new LlmIntentExtractor(Optional.empty(), mapper),
+                new SparqlConfigDiscoverer(rdf4jStore),
                 regressionProvider
         );
         service.init();

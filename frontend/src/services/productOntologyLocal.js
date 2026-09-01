@@ -1,11 +1,11 @@
-﻿/**
+/**
  * 产商品本体前端展示辅助（推理链 / 预览文案）
  * 仅做结果可视化，不做业务推理兜底；推理请走 productOntologyApi。
  */
 
 import { classCn, formatWeight, formatPathStep } from '../utils/ontologyLabels.js'
 
-/** 字段中文名（演示展示用） */
+/** 字段中文名（前端展示用） */
 const FIELD_CN = {
   offeringName: '商品名称',
   offeringType: '商品类型',
