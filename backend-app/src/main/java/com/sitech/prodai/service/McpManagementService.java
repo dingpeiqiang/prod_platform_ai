@@ -1,5 +1,6 @@
 package com.sitech.prodai.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sitech.prodai.config.ProdAiProperties;
@@ -7,8 +8,8 @@ import com.sitech.prodai.domain.entity.McpCallLog;
 import com.sitech.prodai.domain.entity.McpToolDefinition;
 import com.sitech.prodai.intent.tools.ToolDefinition;
 import com.sitech.prodai.intent.tools.ToolRegistry;
-import com.sitech.prodai.repository.McpCallLogRepository;
-import com.sitech.prodai.repository.McpToolDefinitionRepository;
+import com.sitech.prodai.mapper.McpCallLogMapper;
+import com.sitech.prodai.mapper.McpToolDefinitionMapper;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,8 +32,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * MCP 工具管理：内存 {@link ToolRegistry} + DB 外部工具定义。
- * 演示种子由 {@code prodai.mcp.seed-path} 写入 DB（已存在则跳过）。
+ * MCP 宸ュ叿绠＄悊锛氬唴瀛?{@link ToolRegistry} + DB 澶栭儴宸ュ叿瀹氫箟銆?
+ * 婕旂ず绉嶅瓙鐢?{@code prodai.mcp.seed-path} 鍐欏叆 DB锛堝凡瀛樺湪鍒欒烦杩囷級銆?
  */
 @Service
 public class McpManagementService implements ApplicationRunner {
@@ -40,21 +41,21 @@ public class McpManagementService implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(McpManagementService.class);
 
     private final ToolRegistry toolRegistry;
-    private final McpToolDefinitionRepository toolRepo;
-    private final McpCallLogRepository callLogRepo;
+    private final McpToolDefinitionMapper toolMapper;
+    private final McpCallLogMapper callLogMapper;
     private final ProdAiProperties properties;
     private final ResourceLoader resourceLoader;
     private final ObjectMapper objectMapper;
 
     public McpManagementService(ToolRegistry toolRegistry,
-                                McpToolDefinitionRepository toolRepo,
-                                McpCallLogRepository callLogRepo,
+                                McpToolDefinitionMapper toolMapper,
+                                McpCallLogMapper callLogMapper,
                                 ProdAiProperties properties,
                                 ResourceLoader resourceLoader,
                                 ObjectMapper objectMapper) {
         this.toolRegistry = toolRegistry;
-        this.toolRepo = toolRepo;
-        this.callLogRepo = callLogRepo;
+        this.toolMapper = toolMapper;
+        this.callLogMapper = callLogMapper;
         this.properties = properties;
         this.resourceLoader = resourceLoader;
         this.objectMapper = objectMapper;
@@ -69,7 +70,7 @@ public class McpManagementService implements ApplicationRunner {
     private void loadSeed() {
         String path = properties.getMcp().getSeedPath();
         if (path == null || path.isBlank()) {
-            log.info("[McpManagementService] mcp.seed-path 未配置，仅使用 ToolRegistry");
+            log.info("[McpManagementService] mcp.seed-path 鏈厤缃紝浠呬娇鐢?ToolRegistry");
             return;
         }
         try {
@@ -91,7 +92,7 @@ public class McpManagementService implements ApplicationRunner {
                     Map<String, Object> row = new LinkedHashMap<>();
                     m.forEach((k, v) -> row.put(String.valueOf(k), v));
                     String name = str(row.get("tool_name"));
-                    if (name.isBlank() || toolRepo.findByToolName(name).isPresent()) {
+                    if (name.isBlank() || findByToolName(name).isPresent()) {
                         continue;
                     }
                     McpToolDefinition def = new McpToolDefinition();
@@ -115,7 +116,7 @@ public class McpManagementService implements ApplicationRunner {
                         os.forEach((k, v) -> schema.put(String.valueOf(k), v));
                         def.setOutputSchema(schema);
                     }
-                    toolRepo.save(def);
+                    saveTool(def);
                     created++;
                 }
                 log.info("[McpManagementService] seeded {} external tools from {}", created, path);
@@ -136,7 +137,7 @@ public class McpManagementService implements ApplicationRunner {
                 }
             });
         }
-        for (McpToolDefinition def : toolRepo.findByIsEnabledTrue()) {
+        for (McpToolDefinition def : toolMapper.selectList(new LambdaQueryWrapper<McpToolDefinition>().eq(McpToolDefinition::getIsEnabled, true))) {
             Map<String, Object> row = toDbToolView(def);
             if (category == null || category.isBlank()
                     || category.equals(def.getCategory())) {
@@ -151,17 +152,17 @@ public class McpManagementService implements ApplicationRunner {
     }
 
     public Map<String, Object> stats() {
-        List<McpCallLog> all = callLogRepo.findAll();
+        List<McpCallLog> all = callLogMapper.selectList(null);
         long success = all.stream().filter(l -> Boolean.TRUE.equals(l.getSuccess())).count();
         Set<String> cats = new LinkedHashSet<>();
         toolRegistry.getAllToolNames().forEach(n -> cats.add(inferCategory(n)));
-        toolRepo.findAll().forEach(t -> {
+        toolMapper.selectList(null).forEach(t -> {
             if (t.getCategory() != null) {
                 cats.add(t.getCategory());
             }
         });
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("total_tools", toolRegistry.getToolCount() + toolRepo.count());
+        data.put("total_tools", toolRegistry.getToolCount() + toolMapper.selectCount(null));
         data.put("categories", new ArrayList<>(cats));
         data.put("total_calls", all.size());
         data.put("success_calls", success);
@@ -177,7 +178,7 @@ public class McpManagementService implements ApplicationRunner {
             String cat = inferCategory(name);
             counts.merge(cat, 1, Integer::sum);
         }
-        for (McpToolDefinition def : toolRepo.findAll()) {
+        for (McpToolDefinition def : toolMapper.selectList(null)) {
             String cat = def.getCategory() == null || def.getCategory().isBlank() ? "external" : def.getCategory();
             counts.merge(cat, 1, Integer::sum);
         }
@@ -194,9 +195,9 @@ public class McpManagementService implements ApplicationRunner {
         int lim = Math.max(1, Math.min(limit, 500));
         List<McpCallLog> rows;
         if (toolName != null && !toolName.isBlank()) {
-            rows = callLogRepo.findByToolNameOrderByTimestampDesc(toolName);
+            rows = callLogMapper.selectList(new LambdaQueryWrapper<McpCallLog>().eq(McpCallLog::getToolName, toolName).orderByDesc(McpCallLog::getTimestamp));
         } else {
-            rows = callLogRepo.findAll();
+            rows = callLogMapper.selectList(null);
             rows.sort((a, b) -> {
                 LocalDateTime ta = a.getTimestamp();
                 LocalDateTime tb = b.getTimestamp();
@@ -245,7 +246,7 @@ public class McpManagementService implements ApplicationRunner {
             ok = true;
             resultPayload = registryResult.get();
         } else {
-            Optional<McpToolDefinition> dbTool = toolRepo.findByToolName(toolName);
+            Optional<McpToolDefinition> dbTool = findByToolName(toolName);
             if (dbTool.isPresent()) {
                 McpToolDefinition def = dbTool.get();
                 category = def.getCategory();
@@ -283,12 +284,12 @@ public class McpManagementService implements ApplicationRunner {
             callLog.setRequestArgs(String.valueOf(safeArgs));
             callLog.setResponseData(String.valueOf(resultPayload));
         }
-        callLogRepo.save(callLog);
+        callLogMapper.insert(callLog);
 
-        toolRepo.findByToolName(toolName).ifPresent(def -> {
+        findByToolName(toolName).ifPresent(def -> {
             def.setTotalCalls((def.getTotalCalls() == null ? 0 : def.getTotalCalls()) + 1);
             def.setLastCalledAt(LocalDateTime.now());
-            toolRepo.save(def);
+            saveTool(def);
         });
 
         Map<String, Object> data = new LinkedHashMap<>();
@@ -302,14 +303,14 @@ public class McpManagementService implements ApplicationRunner {
 
     public Map<String, Object> externalTools() {
         List<Map<String, Object>> tools = new ArrayList<>();
-        for (McpToolDefinition def : toolRepo.findAll()) {
+        for (McpToolDefinition def : toolMapper.selectList(null)) {
             tools.add(toExternalToolDto(def));
         }
         return Map.of("success", true, "data", tools, "tools", tools, "total", tools.size());
     }
 
     public Map<String, Object> getExternalTool(String toolName) {
-        return toolRepo.findByToolName(toolName)
+        return findByToolName(toolName)
                 .<Map<String, Object>>map(def -> Map.of("success", true, "data", toExternalToolDto(def)))
                 .orElse(Map.of("success", false, "message", "not found"));
     }
@@ -320,45 +321,45 @@ public class McpManagementService implements ApplicationRunner {
         if (name.isBlank()) {
             return Map.of("success", false, "message", "tool_name required");
         }
-        if (toolRepo.findByToolName(name).isPresent()) {
+        if (findByToolName(name).isPresent()) {
             return Map.of("success", false, "message", "tool already exists");
         }
         McpToolDefinition def = fromBody(new McpToolDefinition(), body);
         def.setToolName(name);
-        toolRepo.save(def);
+        saveTool(def);
         return Map.of("success", true, "data", toExternalToolDto(def));
     }
 
     @Transactional
     public Map<String, Object> updateExternalTool(String toolName, Map<String, Object> body) {
-        Optional<McpToolDefinition> opt = toolRepo.findByToolName(toolName);
+        Optional<McpToolDefinition> opt = findByToolName(toolName);
         if (opt.isEmpty()) {
             return Map.of("success", false, "message", "not found");
         }
         McpToolDefinition def = fromBody(opt.get(), body);
-        toolRepo.save(def);
+        saveTool(def);
         return Map.of("success", true, "data", toExternalToolDto(def));
     }
 
     @Transactional
     public Map<String, Object> deleteExternalTool(String toolName) {
-        Optional<McpToolDefinition> opt = toolRepo.findByToolName(toolName);
+        Optional<McpToolDefinition> opt = findByToolName(toolName);
         if (opt.isEmpty()) {
             return Map.of("success", false, "message", "not found");
         }
-        toolRepo.delete(opt.get());
+        toolMapper.deleteById(opt.get().getId());
         return Map.of("success", true, "message", "deleted");
     }
 
     @Transactional
     public Map<String, Object> toggleExternalTool(String toolName, boolean enabled) {
-        Optional<McpToolDefinition> opt = toolRepo.findByToolName(toolName);
+        Optional<McpToolDefinition> opt = findByToolName(toolName);
         if (opt.isEmpty()) {
             return Map.of("success", false, "message", "not found");
         }
         McpToolDefinition def = opt.get();
         def.setIsEnabled(enabled);
-        toolRepo.save(def);
+        saveTool(def);
         return Map.of("success", true, "data", toExternalToolDto(def));
     }
 
@@ -408,8 +409,8 @@ public class McpManagementService implements ApplicationRunner {
 
     private Map<String, Object> toRegistryToolView(ToolDefinition def) {
         String category = inferCategory(def.name());
-        long total = callLogRepo.countByToolName(def.name());
-        long success = callLogRepo.countByToolNameAndSuccess(def.name(), true);
+        long total = countToolCalls(def.name(), null);
+        long success = countToolCalls(def.name(), true);
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("total_calls", total);
         stats.put("success_calls", success);
@@ -429,8 +430,8 @@ public class McpManagementService implements ApplicationRunner {
     }
 
     private Map<String, Object> toDbToolView(McpToolDefinition def) {
-        long total = callLogRepo.countByToolName(def.getToolName());
-        long success = callLogRepo.countByToolNameAndSuccess(def.getToolName(), true);
+        long total = countToolCalls(def.getToolName(), null);
+        long success = countToolCalls(def.getToolName(), true);
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("total_calls", Math.max(total, def.getTotalCalls() == null ? 0 : def.getTotalCalls()));
         stats.put("success_calls", success);
@@ -472,8 +473,34 @@ public class McpManagementService implements ApplicationRunner {
         return m;
     }
 
+    private Optional<McpToolDefinition> findByToolName(String toolName) {
+        if (toolName == null || toolName.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(toolMapper.selectOne(new LambdaQueryWrapper<McpToolDefinition>()
+                .eq(McpToolDefinition::getToolName, toolName)
+                .last("LIMIT 1")));
+    }
+
+    private void saveTool(McpToolDefinition def) {
+        if (def.getId() == null) {
+            toolMapper.insert(def);
+        } else {
+            toolMapper.updateById(def);
+        }
+    }
+
+    private long countToolCalls(String toolName, Boolean success) {
+        LambdaQueryWrapper<McpCallLog> wrapper = new LambdaQueryWrapper<McpCallLog>()
+                .eq(McpCallLog::getToolName, toolName);
+        if (success != null) {
+            wrapper.eq(McpCallLog::getSuccess, success);
+        }
+        return callLogMapper.selectCount(wrapper);
+    }
+
     private double avgExecMs(String toolName) {
-        List<McpCallLog> logs = callLogRepo.findByToolNameOrderByTimestampDesc(toolName);
+        List<McpCallLog> logs = callLogMapper.selectList(new LambdaQueryWrapper<McpCallLog>().eq(McpCallLog::getToolName, toolName).orderByDesc(McpCallLog::getTimestamp));
         if (logs.isEmpty()) {
             return 0;
         }
@@ -506,10 +533,10 @@ public class McpManagementService implements ApplicationRunner {
 
     private static String categoryLabel(String code) {
         return switch (code) {
-            case "ontology" -> "本体";
-            case "compliance" -> "合规";
-            case "form" -> "表单";
-            case "external" -> "外部";
+            case "ontology" -> "鏈綋";
+            case "compliance" -> "鍚堣";
+            case "form" -> "琛ㄥ崟";
+            case "external" -> "澶栭儴";
             default -> code;
         };
     }

@@ -4,8 +4,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sitech.prodai.domain.entity.OntologyAssetVersion;
 import com.sitech.prodai.domain.entity.OntologyVersionLog;
-import com.sitech.prodai.repository.OntologyAssetVersionRepository;
-import com.sitech.prodai.repository.OntologyVersionLogRepository;
+import com.sitech.prodai.mapper.OntologyAssetVersionMapper;
+import com.sitech.prodai.mapper.OntologyVersionLogMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,20 +14,19 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.DefaultResourceLoader;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -47,62 +46,71 @@ class ProductTemplateServiceTest {
     private static final String FAMILY_TEMPLATE = "classpath:ontologies/templates/familyBasePrc.json";
 
     @Mock
-    private OntologyAssetVersionRepository versionRepository;
+    private OntologyAssetVersionMapper versionMapper;
     @Mock
-    private OntologyVersionLogRepository logRepository;
+    private OntologyVersionLogMapper logMapper;
 
-    private ObjectMapper mapper;
-    private ProductTemplateRegistry registry;
-    private ProductTemplateService templateService;
     private final AtomicLong rowSeq = new AtomicLong();
     private final AtomicLong logSeq = new AtomicLong();
     private final Map<Long, OntologyAssetVersion> rowStore = new LinkedHashMap<>();
     private final Map<Long, List<OntologyVersionLog>> logStore = new LinkedHashMap<>();
 
+    private ObjectMapper mapper;
+    private ProductTemplateRegistry registry;
+    private ProductTemplateService templateService;
+
     @BeforeEach
+    @SuppressWarnings("unchecked")
     void setUp() {
         mapper = new ObjectMapper();
-        // 表 A 内存仓储：save 分配 id，findBy* 按存储过滤
+        // 无 Spring 容器：手动初始化 MyBatis Plus 实体元数据缓存（LambdaQueryWrapper 列解析依赖）
+        initTableInfoIfAbsent(OntologyAssetVersion.class);
+        initTableInfoIfAbsent(OntologyVersionLog.class);
+        // 表 A 内存行为：insert 分配 id；selectById/selectOne/selectList 按存储 + Wrapper 条件过滤
         lenient().doAnswer(inv -> {
             OntologyAssetVersion row = inv.getArgument(0);
             if (row.getId() == null) {
                 row.setId(rowSeq.incrementAndGet());
             }
-            rowStore.put(row.getId(), row);
-            return row;
-        }).when(versionRepository).save(any());
-        lenient().when(versionRepository.findById(anyLong()))
-                .thenAnswer(inv -> Optional.ofNullable(rowStore.get(inv.getArgument(0, Long.class))));
-        lenient().when(versionRepository.findByAssetTypeAndAssetCodeAndVersion(anyString(), anyString(), anyString()))
-                .thenAnswer(inv -> rowStore.values().stream()
-                        .filter(r -> r.getAssetType().equals(inv.getArgument(0))
-                                && r.getAssetCode().equals(inv.getArgument(1))
-                                && r.getVersion().equals(inv.getArgument(2)))
-                        .findFirst());
-        lenient().when(versionRepository.findByAssetTypeAndAssetCodeOrderByCreatedAtDesc(anyString(), anyString()))
-                .thenAnswer(inv -> rowStore.values().stream()
-                        .filter(r -> r.getAssetType().equals(inv.getArgument(0))
-                                && r.getAssetCode().equals(inv.getArgument(1)))
-                        .collect(Collectors.toList()));
-        lenient().when(versionRepository.findFirstByAssetTypeAndAssetCodeAndStatusOrderByPublishedAtDesc(
-                        anyString(), anyString(), anyString()))
-                .thenAnswer(inv -> rowStore.values().stream()
-                        .filter(r -> r.getAssetType().equals(inv.getArgument(0))
-                                && r.getAssetCode().equals(inv.getArgument(1))
-                                && r.getStatus().equals(inv.getArgument(2)))
-                        .findFirst());
-        lenient().doAnswer(inv -> {
-            OntologyVersionLog row = inv.getArgument(0);
-            if (row.getId() == null) {
-                row.setId(logSeq.incrementAndGet());
+            if (row.getCreatedAt() == null) {
+                row.setCreatedAt(java.time.LocalDateTime.now());
             }
-            logStore.computeIfAbsent(row.getVersionId(), k -> new ArrayList<>()).add(row);
-            return row;
-        }).when(logRepository).save(any());
-        lenient().when(logRepository.findByVersionIdOrderByCreatedAtDesc(anyLong()))
-                .thenAnswer(inv -> List.copyOf(logStore.getOrDefault(inv.getArgument(0, Long.class), List.of())));
+            rowStore.put(row.getId(), row);
+            return 1;
+        }).when(versionMapper).insert(any(OntologyAssetVersion.class));
+        lenient().when(versionMapper.updateById(any(OntologyAssetVersion.class))).thenReturn(1);
+        lenient().when(versionMapper.selectById(any()))
+                .thenAnswer(inv -> rowStore.get(inv.getArgument(0, Long.class)));
+        lenient().when(versionMapper.selectOne(any()))
+                .thenAnswer(inv -> {
+                    com.baomidou.mybatisplus.core.conditions.AbstractWrapper<OntologyAssetVersion, ?, ?> wrapper =
+                            inv.getArgument(0);
+                    List<OntologyAssetVersion> rows = filterByWrapper(rowStore.values(), wrapper);
+                    // 对齐 SQL 语义：orderByDesc(published_at/created_at) + LIMIT 1 → 取首行
+                    return rows.isEmpty() ? null : rows.get(0);
+                });
+        // 内存翻译 Wrapper：eq 条件按 paramNameValuePairs 值过滤，orderByDesc 排序，last("LIMIT n") 截断
+        lenient().when(versionMapper.selectList(any()))
+                .thenAnswer(inv -> filterByWrapper(rowStore.values(), inv.getArgument(0)));
+        // 表 B 内存行为
+        lenient().when(logMapper.insert(any(com.sitech.prodai.domain.entity.OntologyVersionLog.class)))
+                .thenAnswer(inv -> {
+                    OntologyVersionLog row = inv.getArgument(0);
+                    if (row.getId() == null) {
+                        row.setId(logSeq.incrementAndGet());
+                    }
+                    if (row.getCreatedAt() == null) {
+                        row.setCreatedAt(java.time.LocalDateTime.now());
+                    }
+                    logStore.computeIfAbsent(row.getVersionId(), k -> new ArrayList<>()).add(row);
+                    return 1;
+                });
+        lenient().when(logMapper.selectList(any()))
+                .thenAnswer(inv -> filterLogsByWrapper(logStore.values().stream()
+                        .flatMap(List::stream)
+                        .collect(java.util.stream.Collectors.toList()), inv.getArgument(0)));
 
-        OntologyVersionService versionService = new OntologyVersionService(versionRepository, logRepository);
+        OntologyVersionService versionService = new OntologyVersionService(versionMapper, logMapper);
         registry = new ProductTemplateRegistry(mapper);
         registry.init();
         ProductConfigRegressionService regression = mock(ProductConfigRegressionService.class);
@@ -201,10 +209,135 @@ class ProductTemplateServiceTest {
     }
 
     private String rowStatus(String version) {
-        return rowStore.values().stream()
+        return versionMapper.selectList(null).stream()
                 .filter(r -> "familyBasePrc".equals(r.getAssetCode()) && version.equals(r.getVersion()))
                 .findFirst()
                 .orElseThrow()
                 .getStatus();
+    }
+
+    /**
+     * 内存翻译 LambdaQueryWrapper：eq 条件按 paramNameValuePairs 过滤，
+     * orderByDesc(PublishedAt/CreatedAt) 排序，last("LIMIT n") 截断。
+     * 仅覆盖 {@code OntologyVersionService} 实际使用的 Wrapper 子集。
+     */
+    @SuppressWarnings("unchecked")
+    private static List<OntologyAssetVersion> filterByWrapper(Collection<OntologyAssetVersion> rows,
+            com.baomidou.mybatisplus.core.conditions.AbstractWrapper<OntologyAssetVersion, ?, ?> wrapper) {
+        if (wrapper == null) {
+            return rows.stream().collect(java.util.stream.Collectors.toList());
+        }
+        String segment = wrapper.getSqlSegment();
+        Map<String, Object> params = wrapper.getParamNameValuePairs();
+        List<OntologyAssetVersion> out = rows.stream()
+                .filter(r -> matchesAll(r, segment, params))
+                .collect(java.util.stream.Collectors.toList());
+        if (segment != null) {
+            if (segment.contains("PUBLISHED_AT") || segment.contains("published_at")) {
+                out.sort(Comparator.comparing(OntologyAssetVersion::getPublishedAt,
+                        Comparator.nullsLast(Comparator.reverseOrder())));
+            } else {
+                out.sort(Comparator.comparing(OntologyAssetVersion::getCreatedAt,
+                        Comparator.nullsLast(Comparator.reverseOrder())));
+            }
+        }
+        if (segment != null && segment.toUpperCase().contains("LIMIT")) {
+            int limit = Integer.parseInt(segment.replaceAll("(?i).*LIMIT\\s+(\\d+).*", "$1"));
+            if (out.size() > limit) {
+                out = new ArrayList<>(out.subList(0, limit));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * 行与 Wrapper eq 条件按 SQL 段中的列名对位匹配（MPGENVAL 占位符 ↔ paramNameValuePairs）。
+     * 仅覆盖 {@code OntologyVersionService} 实际使用的列：asset_type/asset_code/version/status。
+     */
+    private static boolean matchesAll(OntologyAssetVersion row, String segment,
+            Map<String, Object> params) {
+        if (segment == null || params.isEmpty()) {
+            return true;
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("(\\w+) = #\\{ew\\.paramNameValuePairs\\.(MPGENVAL\\d+)}").matcher(segment);
+        while (m.find()) {
+            String column = m.group(1);
+            String paramKey = m.group(2);
+            Object value = params.get(paramKey);
+            if (!matchesColumn(row, column, value)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** 列名 → 实体取值 eq 匹配（仅 OntologyVersionService 用到的列）。 */
+    private static boolean matchesColumn(OntologyAssetVersion row, String column, Object value) {
+        return switch (column) {
+            case "asset_type" -> Objects.equals(row.getAssetType(), value);
+            case "asset_code" -> Objects.equals(row.getAssetCode(), value);
+            case "version" -> Objects.equals(row.getVersion(), value);
+            case "status" -> Objects.equals(row.getStatus(), value);
+            default -> true;
+        };
+    }
+
+    /** 表 B 日志内存翻译：version_id/domain/trace_id eq 过滤 + created_at 排序。 */
+    @SuppressWarnings("unchecked")
+    private static List<OntologyVersionLog> filterLogsByWrapper(List<OntologyVersionLog> rows,
+            com.baomidou.mybatisplus.core.conditions.AbstractWrapper<OntologyVersionLog, ?, ?> wrapper) {
+        if (wrapper == null) {
+            return rows;
+        }
+        String segment = wrapper.getSqlSegment();
+        Map<String, Object> params = wrapper.getParamNameValuePairs();
+        List<OntologyVersionLog> out = rows.stream()
+                .filter(r -> matchesLogColumns(r, segment, params))
+                .collect(java.util.stream.Collectors.toList());
+        if (segment != null) {
+            if (segment.contains("ASC")) {
+                out.sort(Comparator.comparing(OntologyVersionLog::getCreatedAt,
+                        Comparator.nullsLast(Comparator.naturalOrder())));
+            } else {
+                out.sort(Comparator.comparing(OntologyVersionLog::getCreatedAt,
+                        Comparator.nullsLast(Comparator.reverseOrder())));
+            }
+        }
+        return out;
+    }
+
+    /** 日志行与 Wrapper eq 条件按列名对位匹配（仅 OntologyVersionService 用到的列）。 */
+    private static boolean matchesLogColumns(OntologyVersionLog row, String segment,
+            Map<String, Object> params) {
+        if (segment == null || params.isEmpty()) {
+            return true;
+        }
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("(\\w+) = #\\{ew\\.paramNameValuePairs\\.(MPGENVAL\\d+)}").matcher(segment);
+        while (m.find()) {
+            String column = m.group(1);
+            Object value = params.get(m.group(2));
+            boolean hit = switch (column) {
+                case "version_id" -> Objects.equals(row.getVersionId(), value);
+                case "domain" -> Objects.equals(row.getDomain(), value);
+                case "trace_id" -> Objects.equals(row.getTraceId(), value);
+                default -> true;
+            };
+            if (!hit) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** 注册 MyBatis Plus 实体元数据（幂等）：让 LambdaQueryWrapper 可解析 SFunction → 列名。 */
+    private static void initTableInfoIfAbsent(Class<?> entityType) {
+        if (com.baomidou.mybatisplus.core.metadata.TableInfoHelper.getTableInfo(entityType) == null) {
+            com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(
+                    new org.apache.ibatis.builder.MapperBuilderAssistant(
+                            new org.apache.ibatis.session.Configuration(), ""),
+                    entityType);
+        }
     }
 }

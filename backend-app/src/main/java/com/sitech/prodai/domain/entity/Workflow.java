@@ -1,23 +1,14 @@
 package com.sitech.prodai.domain.entity;
 
-import com.sitech.prodai.common.JsonConverters;
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.Table;
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.sitech.prodai.common.JsonTypeHandlers;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -25,80 +16,66 @@ import java.util.Map;
 
 /**
  * 工作流主表 —— 对齐 Python {@code app/models/workflow.py::Workflow}。
+ * 历史与执行记录由 WorkflowHistoryMapper / WorkflowExecutionMapper 显式维护。
  */
 @Getter
 @Setter
 @NoArgsConstructor
-@Entity
-@Table(name = "pd_ai_workflows", indexes = {
-        @Index(name = "idx_wf_code", columnList = "workflow_code", unique = true)
-})
-@EntityListeners(AuditingEntityListener.class)
+@TableName(value = "pd_ai_workflows", autoResultMap = true)
 public class Workflow {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @TableId(type = IdType.AUTO)
     private Integer id;
 
-    @Column(name = "workflow_code", unique = true, nullable = false, length = 100)
+    @TableField("workflow_code")
     private String workflowCode;
 
-    @Column(name = "workflow_name", nullable = false, length = 200)
+    @TableField("workflow_name")
     private String workflowName;
 
-    @Column(name = "description", columnDefinition = "TEXT")
+    @TableField("description")
     private String description;
 
-    @Column(name = "category", length = 50)
+    @TableField("category")
     private String category = "general";
 
-    @Column(name = "tags", nullable = false, columnDefinition = "TEXT")
-    @Convert(converter = JsonConverters.JsonListConverter.class)
+    @TableField(value = "tags", typeHandler = JsonTypeHandlers.JsonListTypeHandler.class)
     private List<Object> tags;
 
-    @Column(name = "priority")
+    @TableField("priority")
     private Integer priority = 10;
 
-    @Column(name = "is_active")
+    @TableField("is_active")
     private Boolean isActive = true;
 
-    @Column(name = "is_in_library")
+    @TableField("is_in_library")
     private Boolean isInLibrary = false;
 
     /** 完整工作流配置（节点、边等） */
-    @Column(name = "workflow_data", nullable = false, columnDefinition = "TEXT")
-    @Convert(converter = JsonConverters.JsonMapConverter.class)
+    @TableField(value = "workflow_data", typeHandler = JsonTypeHandlers.JsonMapTypeHandler.class)
     private Map<String, Object> workflowData;
 
-    @Column(name = "version")
+    @TableField("version")
     private Integer version = 1;
 
-    @Column(name = "execution_count")
+    @TableField("execution_count")
     private Integer executionCount = 0;
 
-    @Column(name = "last_execution_at")
+    @TableField("last_execution_at")
     private LocalDateTime lastExecutionAt;
 
-    @Column(name = "last_execution_status", length = 20)
+    @TableField("last_execution_status")
     private String lastExecutionStatus;
 
-    @Column(name = "created_by", length = 100)
+    @TableField("created_by")
     private String createdBy;
 
-    @Column(name = "updated_by", length = 100)
+    @TableField("updated_by")
     private String updatedBy;
 
-    @CreatedDate
-    @Column(name = "created_at")
+    @TableField(value = "created_at", fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 
-    @LastModifiedDate
-    @Column(name = "updated_at")
+    @TableField(value = "updated_at", fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
-
-    @OneToMany(mappedBy = "workflow", cascade = CascadeType.ALL)
-    private List<WorkflowHistory> history;
-
-    @OneToMany(mappedBy = "workflow", cascade = CascadeType.ALL)
-    private List<WorkflowExecution> executions;
 }

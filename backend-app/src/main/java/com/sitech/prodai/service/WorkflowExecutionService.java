@@ -1,14 +1,15 @@
 package com.sitech.prodai.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.sitech.prodai.common.ApiResponse;
 import com.sitech.prodai.domain.entity.Workflow;
 import com.sitech.prodai.domain.entity.WorkflowExecution;
-import com.sitech.prodai.repository.WorkflowExecutionRepository;
-import com.sitech.prodai.repository.WorkflowRepository;
-import jakarta.transaction.Transactional;
+import com.sitech.prodai.mapper.WorkflowExecutionMapper;
+import com.sitech.prodai.mapper.WorkflowMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -23,19 +24,21 @@ public class WorkflowExecutionService {
 
     private static final Logger logger = LoggerFactory.getLogger(WorkflowExecutionService.class);
 
-    private final WorkflowExecutionRepository executionRepository;
-    private final WorkflowRepository workflowRepository;
+    private final WorkflowExecutionMapper executionMapper;
+    private final WorkflowMapper workflowMapper;
 
-    public WorkflowExecutionService(WorkflowExecutionRepository executionRepository,
-                                    WorkflowRepository workflowRepository) {
-        this.executionRepository = executionRepository;
-        this.workflowRepository = workflowRepository;
+    public WorkflowExecutionService(WorkflowExecutionMapper executionMapper,
+                                    WorkflowMapper workflowMapper) {
+        this.executionMapper = executionMapper;
+        this.workflowMapper = workflowMapper;
     }
 
     @Transactional
     public ApiResponse<Map<String, Object>> createExecution(String workflowCode, Map<String, Object> executionData, String user) {
         try {
-            Optional<Workflow> workflowOpt = workflowRepository.findByWorkflowCode(workflowCode);
+            Optional<Workflow> workflowOpt = workflowMapper.selectList(
+                            new LambdaQueryWrapper<Workflow>().eq(Workflow::getWorkflowCode, workflowCode))
+                    .stream().findFirst();
             if (workflowOpt.isEmpty()) {
                 return ApiResponse.fail("Workflow " + workflowCode + " not found");
             }
@@ -55,10 +58,10 @@ public class WorkflowExecutionService {
             execution.setNotes(String.valueOf(executionData.get("notes")));
             execution.setExecutionLogs(new ArrayList<>());
 
-            execution = executionRepository.save(execution);
+            executionMapper.insert(execution);
 
             workflow.setExecutionCount(workflow.getExecutionCount() + 1);
-            workflowRepository.save(workflow);
+            workflowMapper.updateById(workflow);
 
             logger.info("Created execution for workflow {}: {}", workflowCode, executionId);
             return ApiResponse.ok(toMap(execution));
@@ -71,7 +74,7 @@ public class WorkflowExecutionService {
     @Transactional
     public ApiResponse<Map<String, Object>> updateExecutionStatus(String executionId, Map<String, Object> statusData) {
         try {
-            Optional<WorkflowExecution> executionOpt = executionRepository.findByExecutionId(executionId);
+            Optional<WorkflowExecution> executionOpt = findByExecutionId(executionId);
             if (executionOpt.isEmpty()) {
                 return ApiResponse.fail("Execution " + executionId + " not found");
             }
@@ -100,14 +103,14 @@ public class WorkflowExecutionService {
                 execution.setExecutionLogs((List<Object>) statusData.get("executionLogs"));
             }
 
-            execution = executionRepository.save(execution);
+            executionMapper.updateById(execution);
 
-            Optional<Workflow> workflowOpt = workflowRepository.findById(execution.getWorkflowId());
+            Optional<Workflow> workflowOpt = Optional.ofNullable(workflowMapper.selectById(execution.getWorkflowId()));
             if (workflowOpt.isPresent()) {
                 Workflow workflow = workflowOpt.get();
                 workflow.setLastExecutionAt(LocalDateTime.now());
                 workflow.setLastExecutionStatus(execution.getStatus());
-                workflowRepository.save(workflow);
+                workflowMapper.updateById(workflow);
             }
 
             return ApiResponse.ok(toMap(execution));
@@ -119,7 +122,7 @@ public class WorkflowExecutionService {
 
     public ApiResponse<Map<String, Object>> getExecution(String executionId) {
         try {
-            Optional<WorkflowExecution> executionOpt = executionRepository.findByExecutionId(executionId);
+            Optional<WorkflowExecution> executionOpt = findByExecutionId(executionId);
             if (executionOpt.isEmpty()) {
                 return ApiResponse.fail("Execution " + executionId + " not found");
             }
@@ -133,17 +136,22 @@ public class WorkflowExecutionService {
 
     public ApiResponse<Map<String, Object>> listExecutions(String workflowCode, Integer limit) {
         try {
-            limit = limit != null ? limit : 50;
+            int safeLimit = limit != null ? limit : 50;
             List<WorkflowExecution> executions;
 
             if (workflowCode != null && !workflowCode.isBlank()) {
-                executions = executionRepository.findByWorkflowCodeOrderByCreatedAtDesc(workflowCode);
+                executions = executionMapper.selectList(
+                        new LambdaQueryWrapper<WorkflowExecution>()
+                                .eq(WorkflowExecution::getWorkflowCode, workflowCode)
+                                .orderByDesc(WorkflowExecution::getCreatedAt));
             } else {
-                executions = executionRepository.findAll();
+                executions = executionMapper.selectList(
+                        new LambdaQueryWrapper<WorkflowExecution>()
+                                .orderByDesc(WorkflowExecution::getCreatedAt));
             }
 
-            if (executions.size() > limit) {
-                executions = executions.subList(0, limit);
+            if (executions.size() > safeLimit) {
+                executions = executions.subList(0, safeLimit);
             }
 
             List<Map<String, Object>> data = new ArrayList<>();
@@ -162,7 +170,10 @@ public class WorkflowExecutionService {
 
     public ApiResponse<Map<String, Object>> listExecutionsByStatus(String status) {
         try {
-            List<WorkflowExecution> executions = executionRepository.findByStatusOrderByCreatedAtDesc(status);
+            List<WorkflowExecution> executions = executionMapper.selectList(
+                    new LambdaQueryWrapper<WorkflowExecution>()
+                            .eq(WorkflowExecution::getStatus, status)
+                            .orderByDesc(WorkflowExecution::getCreatedAt));
 
             List<Map<String, Object>> data = new ArrayList<>();
             for (WorkflowExecution execution : executions) {
@@ -181,7 +192,7 @@ public class WorkflowExecutionService {
     @Transactional
     public ApiResponse<Map<String, Object>> resumeExecution(String executionId, String user) {
         try {
-            Optional<WorkflowExecution> executionOpt = executionRepository.findByExecutionId(executionId);
+            Optional<WorkflowExecution> executionOpt = findByExecutionId(executionId);
             if (executionOpt.isEmpty()) {
                 return ApiResponse.fail("Execution " + executionId + " not found");
             }
@@ -196,7 +207,7 @@ public class WorkflowExecutionService {
             execution.setErrorMessage(null);
             execution.setTriggeredBy(user);
 
-            execution = executionRepository.save(execution);
+            executionMapper.updateById(execution);
 
             logger.info("Resumed execution: {}", executionId);
             return ApiResponse.ok(toMap(execution));
@@ -209,7 +220,7 @@ public class WorkflowExecutionService {
     @Transactional
     public ApiResponse<Map<String, Object>> cancelExecution(String executionId) {
         try {
-            Optional<WorkflowExecution> executionOpt = executionRepository.findByExecutionId(executionId);
+            Optional<WorkflowExecution> executionOpt = findByExecutionId(executionId);
             if (executionOpt.isEmpty()) {
                 return ApiResponse.fail("Execution " + executionId + " not found");
             }
@@ -223,7 +234,7 @@ public class WorkflowExecutionService {
             execution.setStatus("cancelled");
             execution.setEndTime(LocalDateTime.now());
 
-            execution = executionRepository.save(execution);
+            executionMapper.updateById(execution);
 
             logger.info("Cancelled execution: {}", executionId);
             return ApiResponse.ok(toMap(execution));
@@ -236,7 +247,9 @@ public class WorkflowExecutionService {
     @Transactional
     public ApiResponse<List<Map<String, Object>>> executeWorkflow(String workflowCode, Map<String, Object> inputData, String user) {
         try {
-            Optional<Workflow> workflowOpt = workflowRepository.findByWorkflowCode(workflowCode);
+            Optional<Workflow> workflowOpt = workflowMapper.selectList(
+                            new LambdaQueryWrapper<Workflow>().eq(Workflow::getWorkflowCode, workflowCode))
+                    .stream().findFirst();
             if (workflowOpt.isEmpty()) {
                 throw new RuntimeException("Workflow " + workflowCode + " not found");
             }
@@ -258,7 +271,7 @@ public class WorkflowExecutionService {
             execution.setTriggerType("manual");
             execution.setExecutionLogs(new ArrayList<>());
 
-            execution = executionRepository.save(execution);
+            executionMapper.insert(execution);
 
             Map<String, Object> executionData = toMap(execution);
             results.add(executionData);
@@ -266,7 +279,7 @@ public class WorkflowExecutionService {
             workflow.setExecutionCount(workflow.getExecutionCount() + 1);
             workflow.setLastExecutionAt(LocalDateTime.now());
             workflow.setLastExecutionStatus("running");
-            workflowRepository.save(workflow);
+            workflowMapper.updateById(workflow);
 
             logger.info("Started execution for workflow {}: {}", workflowCode, executionId);
             return ApiResponse.ok(results);
@@ -276,6 +289,12 @@ public class WorkflowExecutionService {
         }
     }
 
+    private Optional<WorkflowExecution> findByExecutionId(String executionId) {
+        return Optional.ofNullable(executionMapper.selectOne(
+                new LambdaQueryWrapper<WorkflowExecution>().eq(WorkflowExecution::getExecutionId, executionId)));
+    }
+
+    @SuppressWarnings("unchecked")
     private Map<String, Object> toMap(WorkflowExecution execution) {
         Map<String, Object> map = new HashMap<>();
         map.put("id", execution.getId());

@@ -1,92 +1,72 @@
 package com.sitech.prodai.domain.entity;
 
-import com.sitech.prodai.common.JsonConverters;
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.Table;
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.sitech.prodai.common.JsonTypeHandlers;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 /**
  * 提示词主表 —— 对齐 Python {@code app/models/prompt.py::Prompt}。
+ * 版本行由 PromptVersionMapper 显式维护。
  */
 @Getter
 @Setter
 @NoArgsConstructor
-@Entity
-@Table(name = "pd_ai_prompts", indexes = {
-        @Index(name = "idx_prompt_code", columnList = "code", unique = true)
-})
-@EntityListeners(AuditingEntityListener.class)
+@TableName(value = "pd_ai_prompts", autoResultMap = true)
 public class Prompt {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @TableId(type = IdType.AUTO)
     private Integer id;
 
-    @Column(name = "code", unique = true, nullable = false, length = 100)
+    @TableField("code")
     private String code;
 
-    @Column(name = "name", nullable = false, length = 200)
+    @TableField("name")
     private String name;
 
-    @Column(name = "description", columnDefinition = "TEXT")
+    @TableField("description")
     private String description;
 
-    @Column(name = "category", length = 50)
+    @TableField("category")
     private String category = "general";
 
-    @Column(name = "content", nullable = false, columnDefinition = "TEXT")
+    @TableField("content")
     private String content;
 
     /** 模板变量定义：[{"name","description","default"}] */
-    @Column(name = "variables", columnDefinition = "TEXT")
-    @Convert(converter = JsonConverters.JsonListConverter.class)
+    @TableField(value = "variables", typeHandler = JsonTypeHandlers.JsonListTypeHandler.class)
     private List<Object> variables;
 
     /** 可用工具：[{"code","name","description"}] */
-    @Column(name = "tools", columnDefinition = "TEXT")
-    @Convert(converter = JsonConverters.JsonListConverter.class)
+    @TableField(value = "tools", typeHandler = JsonTypeHandlers.JsonListTypeHandler.class)
     private List<Object> tools;
 
-    @Column(name = "is_template")
+    @TableField("is_template")
     private Boolean isTemplate = false;
 
-    @Column(name = "version")
+    @TableField("version")
     private Integer version = 1;
 
-    @Column(name = "is_active")
+    @TableField("is_active")
     private Boolean isActive = true;
 
-    @Column(name = "created_by", length = 100)
+    @TableField("created_by")
     private String createdBy;
 
-    @Column(name = "updated_by", length = 100)
+    @TableField("updated_by")
     private String updatedBy;
 
-    @CreatedDate
-    @Column(name = "created_at")
+    @TableField(value = "created_at", fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 
-    @LastModifiedDate
-    @Column(name = "updated_at")
+    @TableField(value = "updated_at", fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
-
-    @OneToMany(mappedBy = "prompt", cascade = CascadeType.ALL)
-    private List<PromptVersion> versions;
 }

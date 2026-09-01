@@ -1,21 +1,13 @@
 package com.sitech.prodai.domain.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 
@@ -26,34 +18,21 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @NoArgsConstructor
-@Entity
-@Table(name = "pd_ai_chat_message_metadata", indexes = {
-        @Index(name = "idx_cmm_message_id", columnList = "message_id"),
-        @Index(name = "idx_cmm_meta_key", columnList = "meta_key")
-}, uniqueConstraints = {
-        @UniqueConstraint(name = "uq_message_key", columnNames = {"message_id", "meta_key"})
-})
-@EntityListeners(AuditingEntityListener.class)
+@TableName("pd_ai_chat_message_metadata")
 public class ChatMessageMetadata {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @TableId(type = IdType.AUTO)
     private Integer id;
 
-    @Column(name = "message_id", nullable = false, length = 64)
+    @TableField("message_id")
     private String messageId;
 
-    @ManyToOne
-    @JoinColumn(name = "message_id", referencedColumnName = "message_id", insertable = false, updatable = false)
-    private ChatMessage message;
-
-    @Column(name = "meta_key", nullable = false, length = 100)
+    @TableField("meta_key")
     private String metaKey;
 
-    @Column(name = "value", columnDefinition = "TEXT")
+    @TableField("value")
     private String value;
 
-    @CreatedDate
-    @Column(name = "created_at")
+    @TableField(value = "created_at", fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 }

@@ -2,10 +2,10 @@ package com.sitech.prodai.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sitech.prodai.config.ProdAiProperties;
-import com.sitech.prodai.repository.OntologyAssetVersionRepository;
-import com.sitech.prodai.repository.OntologyInstanceRepository;
-import com.sitech.prodai.repository.OntologyVersionLogRepository;
-import com.sitech.prodai.repository.OpsWorkOrderRepository;
+import com.sitech.prodai.mapper.OntologyAssetVersionMapper;
+import com.sitech.prodai.mapper.OntologyInstanceMapper;
+import com.sitech.prodai.mapper.OntologyVersionLogMapper;
+import com.sitech.prodai.mapper.OpsWorkOrderMapper;
 import com.sitech.prodai.service.ops.ClasspathOpsProductDataSource;
 import com.sitech.prodai.service.ops.HttpOpsProductDataSource;
 import com.sitech.prodai.service.ops.OpsExtractionService;
@@ -40,17 +40,17 @@ class ZhiduBatchRegressionTest {
     @Mock
     private OpsSwrlReasoner opsSwrlReasoner;
     @Mock
-    private OpsWorkOrderRepository workOrderRepository;
-    @Mock
-    private OntologyInstanceRepository instanceRepository;
-    @Mock
-    private OntologyAssetVersionRepository assetVersionRepository;
-    @Mock
-    private OntologyVersionLogRepository versionLogRepository;
-    @Mock
     private Rdf4jOntologyStore rdf4jStore;
     @Mock
     private HttpOpsProductDataSource httpSource;
+    @Mock
+    private OpsWorkOrderMapper workOrderMapper;
+    @Mock
+    private OntologyInstanceMapper instanceMapper;
+    @Mock
+    private OntologyAssetVersionMapper assetVersionMapper;
+    @Mock
+    private OntologyVersionLogMapper versionLogMapper;
 
     private ProductOntologyService service;
 
@@ -81,7 +81,7 @@ class ZhiduBatchRegressionTest {
         ConfigMessageProjector projector = new ConfigMessageProjector(mapper, resourceLoader);
 
         OntologyVersionService versionService =
-                new OntologyVersionService(assetVersionRepository, versionLogRepository);
+                new OntologyVersionService(assetVersionMapper, versionLogMapper);
         TemplateDeriveEngine deriveEngine =
                 new TemplateDeriveEngine(opsRules, templateRegistry, projector, mapper);
         // P1-7：延迟解析回归运行器（reloadGraph SMOKE 回接），规避构造循环
@@ -100,8 +100,8 @@ class ZhiduBatchRegressionTest {
                 documentParser,
                 new ConfigDocumentStorage(),
                 rdf4jStore,
-                workOrderRepository,
-                instanceRepository,
+                workOrderMapper,
+                instanceMapper,
                 projector,
                 new LastKnownGoodGuard(versionService),
                 versionService,

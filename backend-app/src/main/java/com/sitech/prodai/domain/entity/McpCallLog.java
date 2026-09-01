@@ -1,18 +1,13 @@
 package com.sitech.prodai.domain.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.Table;
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 
@@ -22,42 +17,33 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @NoArgsConstructor
-@Entity
-@Table(name = "pd_ai_mcp_call_logs", indexes = {
-        @Index(name = "idx_cl_tool_name", columnList = "tool_name"),
-        @Index(name = "idx_cl_tool_category", columnList = "tool_category"),
-        @Index(name = "idx_tool_timestamp", columnList = "tool_name, timestamp"),
-        @Index(name = "idx_timestamp_desc", columnList = "timestamp")
-    })
-@EntityListeners(AuditingEntityListener.class)
+@TableName("pd_ai_mcp_call_logs")
 public class McpCallLog {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @TableId(type = IdType.AUTO)
     private Integer id;
 
-    @Column(name = "tool_name", nullable = false, length = 100)
+    @TableField("tool_name")
     private String toolName;
 
-    @Column(name = "tool_category", length = 50)
+    @TableField("tool_category")
     private String toolCategory;
 
-    @Column(name = "success", nullable = false)
+    @TableField("success")
     private Boolean success = false;
 
-    @Column(name = "execution_time_ms")
+    @TableField("execution_time_ms")
     private Double executionTimeMs;
 
-    @Column(name = "error_message", columnDefinition = "TEXT")
+    @TableField("error_message")
     private String errorMessage;
 
-    @CreatedDate
-    @Column(name = "timestamp")
+    @TableField(value = "timestamp", fill = FieldFill.INSERT)
     private LocalDateTime timestamp;
 
-    @Column(name = "request_args", columnDefinition = "TEXT")
+    @TableField("request_args")
     private String requestArgs;
 
-    @Column(name = "response_data", columnDefinition = "TEXT")
+    @TableField("response_data")
     private String responseData;
 }

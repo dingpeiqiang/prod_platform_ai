@@ -1,14 +1,14 @@
 package com.sitech.prodai.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.sitech.prodai.domain.entity.Prompt;
 import com.sitech.prodai.domain.entity.PromptTemplate;
 import com.sitech.prodai.domain.entity.PromptVersion;
-import com.sitech.prodai.repository.PromptRepository;
-import com.sitech.prodai.repository.PromptTemplateRepository;
-import com.sitech.prodai.repository.PromptVersionRepository;
+import com.sitech.prodai.mapper.PromptMapper;
+import com.sitech.prodai.mapper.PromptTemplateMapper;
+import com.sitech.prodai.mapper.PromptVersionMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,8 +24,6 @@ import java.util.regex.Pattern;
  * 提示词管理服务 —— 对齐 Python {@code app/services/prompt_service.py::PromptService}。
  *
  * <p>提供提示词 CRUD、版本管理、变量替换预览、模板库、AI 生成辅助（mock 实现）。
- * Python 中 LLM 调用部分在 Java 端通过 Spring AI 注入的 {@link LlmService} 实现，
- * 此处保留 mock 行为以便无 LLM 时也可工作。
  */
 @Service
 public class PromptService {
@@ -33,16 +31,16 @@ public class PromptService {
     private static final Logger log = LoggerFactory.getLogger(PromptService.class);
     private static final Pattern VARIABLE_PATTERN = Pattern.compile("\\{\\s*(\\w+)\\s*\\}");
 
-    private final PromptRepository promptRepository;
-    private final PromptVersionRepository versionRepository;
-    private final PromptTemplateRepository templateRepository;
+    private final PromptMapper promptMapper;
+    private final PromptVersionMapper versionMapper;
+    private final PromptTemplateMapper templateMapper;
 
-    public PromptService(PromptRepository promptRepository,
-                         PromptVersionRepository versionRepository,
-                         PromptTemplateRepository templateRepository) {
-        this.promptRepository = promptRepository;
-        this.versionRepository = versionRepository;
-        this.templateRepository = templateRepository;
+    public PromptService(PromptMapper promptMapper,
+                         PromptVersionMapper versionMapper,
+                         PromptTemplateMapper templateMapper) {
+        this.promptMapper = promptMapper;
+        this.versionMapper = versionMapper;
+        this.templateMapper = templateMapper;
     }
 
     // ==================== 提示词 CRUD ====================
@@ -50,17 +48,11 @@ public class PromptService {
     /** 对齐 Python list_prompts */
     public Map<String, Object> listPrompts(String category, Boolean isActive) {
         try {
-            List<Prompt> prompts;
-            Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
-            if (category != null && !category.isEmpty() && isActive != null) {
-                prompts = promptRepository.findByCategoryAndIsActive(category, isActive, sort);
-            } else if (category != null && !category.isEmpty()) {
-                prompts = promptRepository.findByCategory(category, sort);
-            } else if (isActive != null) {
-                prompts = promptRepository.findByIsActive(isActive, sort);
-            } else {
-                prompts = promptRepository.findAll(sort);
-            }
+            LambdaQueryWrapper<Prompt> wrapper = new LambdaQueryWrapper<Prompt>()
+                    .eq(category != null && !category.isEmpty(), Prompt::getCategory, category)
+                    .eq(isActive != null, Prompt::getIsActive, isActive)
+                    .orderByDesc(Prompt::getCreatedAt);
+            List<Prompt> prompts = promptMapper.selectList(wrapper);
             List<Map<String, Object>> data = new ArrayList<>();
             for (Prompt p : prompts) {
                 data.add(promptToDict(p));
@@ -78,7 +70,7 @@ public class PromptService {
     /** 对齐 Python get_prompt */
     public Map<String, Object> getPrompt(String code) {
         try {
-            Optional<Prompt> opt = promptRepository.findByCode(code);
+            Optional<Prompt> opt = findByCode(code);
             if (opt.isEmpty()) {
                 return fail("Prompt " + code + " not found");
             }
@@ -100,7 +92,7 @@ public class PromptService {
             if (code.isEmpty()) {
                 return fail("Prompt code is required");
             }
-            if (promptRepository.existsByCode(code)) {
+            if (existsByCode(code)) {
                 return fail("Prompt " + code + " already exists");
             }
             Prompt prompt = new Prompt();
@@ -115,7 +107,7 @@ public class PromptService {
             prompt.setVersion(1);
             prompt.setIsActive(true);
             prompt.setCreatedBy(user);
-            prompt = promptRepository.save(prompt);
+            promptMapper.insert(prompt);
 
             createVersion(prompt, "Initial version", user);
 
@@ -132,10 +124,9 @@ public class PromptService {
 
     /** 对齐 Python update_prompt */
     @Transactional
-    @SuppressWarnings("unchecked")
     public Map<String, Object> updatePrompt(String code, Map<String, Object> promptData, String user) {
         try {
-            Optional<Prompt> opt = promptRepository.findByCode(code);
+            Optional<Prompt> opt = findByCode(code);
             if (opt.isEmpty()) {
                 return fail("Prompt " + code + " not found");
             }
@@ -172,13 +163,11 @@ public class PromptService {
                 }
             }
             if (promptData.containsKey("variables")) {
-                List<Object> v = toList(promptData.get("variables"));
-                prompt.setVariables(v);
+                prompt.setVariables(toList(promptData.get("variables")));
                 hasChanges = true;
             }
             if (promptData.containsKey("tools")) {
-                List<Object> v = toList(promptData.get("tools"));
-                prompt.setTools(v);
+                prompt.setTools(toList(promptData.get("tools")));
                 hasChanges = true;
             }
             if (promptData.containsKey("is_template")) {
@@ -191,10 +180,10 @@ public class PromptService {
             if (hasChanges) {
                 prompt.setVersion((prompt.getVersion() == null ? 1 : prompt.getVersion()) + 1);
                 prompt.setUpdatedBy(user);
-                prompt = promptRepository.save(prompt);
+                promptMapper.updateById(prompt);
                 createVersion(prompt, changeNote, user);
             } else {
-                prompt = promptRepository.save(prompt);
+                promptMapper.updateById(prompt);
             }
 
             Map<String, Object> body = new LinkedHashMap<>();
@@ -211,11 +200,14 @@ public class PromptService {
     /** 对齐 Python get_versions */
     public Map<String, Object> getVersions(String code) {
         try {
-            Optional<Prompt> opt = promptRepository.findByCode(code);
+            Optional<Prompt> opt = findByCode(code);
             if (opt.isEmpty()) {
                 return fail("Prompt " + code + " not found");
             }
-            List<PromptVersion> versions = versionRepository.findByPromptIdOrderByVersionDesc(opt.get().getId());
+            List<PromptVersion> versions = versionMapper.selectList(
+                    new LambdaQueryWrapper<PromptVersion>()
+                            .eq(PromptVersion::getPromptId, opt.get().getId())
+                            .orderByDesc(PromptVersion::getVersion));
             List<Map<String, Object>> data = new ArrayList<>();
             for (PromptVersion v : versions) {
                 data.add(versionToDict(v));
@@ -234,7 +226,7 @@ public class PromptService {
     @SuppressWarnings("unchecked")
     public Map<String, Object> previewPrompt(String code, Map<String, Object> variables) {
         try {
-            Optional<Prompt> opt = promptRepository.findByCode(code);
+            Optional<Prompt> opt = findByCode(code);
             if (opt.isEmpty()) {
                 return fail("Prompt " + code + " not found");
             }
@@ -274,11 +266,11 @@ public class PromptService {
     @Transactional
     public Map<String, Object> deletePrompt(String code) {
         try {
-            Optional<Prompt> opt = promptRepository.findByCode(code);
+            Optional<Prompt> opt = findByCode(code);
             if (opt.isEmpty()) {
                 return fail("Prompt " + code + " not found");
             }
-            promptRepository.delete(opt.get());
+            promptMapper.deleteById(opt.get().getId());
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("success", true);
             body.put("message", "Prompt deleted successfully");
@@ -294,12 +286,10 @@ public class PromptService {
     /** 对齐 Python list_templates */
     public Map<String, Object> listTemplates(String category) {
         try {
-            List<PromptTemplate> templates;
-            if (category != null && !category.isEmpty()) {
-                templates = templateRepository.findByCategoryAndIsActiveTrue(category);
-            } else {
-                templates = templateRepository.findByIsActiveTrue();
-            }
+            LambdaQueryWrapper<PromptTemplate> wrapper = new LambdaQueryWrapper<PromptTemplate>()
+                    .eq(category != null && !category.isEmpty(), PromptTemplate::getCategory, category)
+                    .eq(PromptTemplate::getIsActive, true);
+            List<PromptTemplate> templates = templateMapper.selectList(wrapper);
             List<Map<String, Object>> data = new ArrayList<>();
             for (PromptTemplate t : templates) {
                 data.add(templateToDict(t));
@@ -374,6 +364,15 @@ public class PromptService {
 
     // ==================== 内部方法 ====================
 
+    private Optional<Prompt> findByCode(String code) {
+        return Optional.ofNullable(promptMapper.selectOne(
+                new LambdaQueryWrapper<Prompt>().eq(Prompt::getCode, code)));
+    }
+
+    private boolean existsByCode(String code) {
+        return promptMapper.selectCount(new LambdaQueryWrapper<Prompt>().eq(Prompt::getCode, code)) > 0;
+    }
+
     private void createVersion(Prompt prompt, String changeNote, String user) {
         PromptVersion v = new PromptVersion();
         v.setPromptId(prompt.getId());
@@ -383,7 +382,7 @@ public class PromptService {
         v.setTools(prompt.getTools());
         v.setChangeNote(changeNote);
         v.setCreatedBy(user);
-        versionRepository.save(v);
+        versionMapper.insert(v);
     }
 
     private String generateMockPrompt(String requirement, String category, List<Object> tools) {
@@ -429,7 +428,6 @@ public class PromptService {
         return variables;
     }
 
-    @SuppressWarnings("unchecked")
     private Map<String, Object> promptToDict(Prompt p) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", p.getId());
@@ -450,7 +448,6 @@ public class PromptService {
         return m;
     }
 
-    @SuppressWarnings("unchecked")
     private Map<String, Object> versionToDict(PromptVersion v) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", v.getId());
@@ -465,7 +462,6 @@ public class PromptService {
         return m;
     }
 
-    @SuppressWarnings("unchecked")
     private Map<String, Object> templateToDict(PromptTemplate t) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", t.getId());
@@ -490,7 +486,6 @@ public class PromptService {
         return m;
     }
 
-    @SuppressWarnings("unchecked")
     private List<Object> toList(Object value) {
         if (value instanceof List<?> list) {
             return new ArrayList<>(list);

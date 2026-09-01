@@ -1,17 +1,18 @@
 package com.sitech.prodai.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sitech.prodai.domain.entity.ChatMessage;
 import com.sitech.prodai.domain.entity.ChatMessageMetadata;
 import com.sitech.prodai.domain.entity.ChatSession;
-import com.sitech.prodai.repository.ChatMessageMetadataRepository;
-import com.sitech.prodai.repository.ChatMessageRepository;
-import com.sitech.prodai.repository.ChatSessionRepository;
+import com.sitech.prodai.mapper.ChatMessageMapper;
+import com.sitech.prodai.mapper.ChatMessageMetadataMapper;
+import com.sitech.prodai.mapper.ChatSessionMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,18 +33,18 @@ public class ChatPersistenceService {
 
     private static final Logger log = LoggerFactory.getLogger(ChatPersistenceService.class);
 
-    private final ChatSessionRepository sessionRepo;
-    private final ChatMessageRepository messageRepo;
-    private final ChatMessageMetadataRepository metadataRepo;
+    private final ChatSessionMapper sessionMapper;
+    private final ChatMessageMapper messageMapper;
+    private final ChatMessageMetadataMapper metadataMapper;
     private final ObjectMapper objectMapper;
 
-    public ChatPersistenceService(ChatSessionRepository sessionRepo,
-                                  ChatMessageRepository messageRepo,
-                                  ChatMessageMetadataRepository metadataRepo,
+    public ChatPersistenceService(ChatSessionMapper sessionMapper,
+                                  ChatMessageMapper messageMapper,
+                                  ChatMessageMetadataMapper metadataMapper,
                                   ObjectMapper objectMapper) {
-        this.sessionRepo = sessionRepo;
-        this.messageRepo = messageRepo;
-        this.metadataRepo = metadataRepo;
+        this.sessionMapper = sessionMapper;
+        this.messageMapper = messageMapper;
+        this.metadataMapper = metadataMapper;
         this.objectMapper = objectMapper;
     }
 
@@ -54,16 +55,17 @@ public class ChatPersistenceService {
      */
     @Transactional
     public ChatSession getOrCreateSession(String sessionId, String userId, String title) {
-        Optional<ChatSession> existing = sessionRepo.findBySessionId(sessionId);
-        if (existing.isPresent()) {
-            return existing.get();
+        ChatSession existing = sessionMapper.selectOne(
+                new LambdaQueryWrapper<ChatSession>().eq(ChatSession::getSessionId, sessionId));
+        if (existing != null) {
+            return existing;
         }
         ChatSession session = new ChatSession();
         session.setSessionId(sessionId);
         session.setUserId(userId);
         session.setTitle(title != null ? title : "新对话");
         session.setStatus("active");
-        sessionRepo.save(session);
+        sessionMapper.insert(session);
         log.info("[ChatPersistence] 创建会话: sessionId={}, userId={}", sessionId, userId);
         return session;
     }
@@ -73,10 +75,12 @@ public class ChatPersistenceService {
      */
     @Transactional
     public void updateSessionTitle(String sessionId, String title) {
-        sessionRepo.findBySessionId(sessionId).ifPresent(s -> {
+        ChatSession s = sessionMapper.selectOne(
+                new LambdaQueryWrapper<ChatSession>().eq(ChatSession::getSessionId, sessionId));
+        if (s != null) {
             s.setTitle(title);
-            sessionRepo.save(s);
-        });
+            sessionMapper.updateById(s);
+        }
     }
 
     /**
@@ -84,10 +88,12 @@ public class ChatPersistenceService {
      */
     @Transactional
     public void archiveSession(String sessionId) {
-        sessionRepo.findBySessionId(sessionId).ifPresent(s -> {
+        ChatSession s = sessionMapper.selectOne(
+                new LambdaQueryWrapper<ChatSession>().eq(ChatSession::getSessionId, sessionId));
+        if (s != null) {
             s.setStatus("archived");
-            sessionRepo.save(s);
-        });
+            sessionMapper.updateById(s);
+        }
     }
 
     /**
@@ -95,15 +101,18 @@ public class ChatPersistenceService {
      */
     public List<ChatSession> getRecentSessions(String userId, int limit) {
         int safeLimit = Math.max(1, Math.min(limit, 200));
-        List<ChatSession> sessions = sessionRepo
-                .findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(0, safeLimit * 3))
-                .getContent();
+        List<ChatSession> sessions = sessionMapper.selectPage(
+                        new Page<>(1, safeLimit * 3L),
+                        new LambdaQueryWrapper<ChatSession>()
+                                .eq(ChatSession::getUserId, userId)
+                                .orderByDesc(ChatSession::getCreatedAt))
+                .getRecords();
         if (sessions.isEmpty()) {
             return List.of();
         }
         List<String> sessionIds = sessions.stream().map(ChatSession::getSessionId).toList();
-        Set<String> nonEmpty = messageRepo.countBySessionIdIn(sessionIds).stream()
-                .map(row -> (String) row[0])
+        Set<String> nonEmpty = messageMapper.countGroupBySessionId(sessionIds).stream()
+                .map(row -> String.valueOf(row.get("sessionId")))
                 .collect(java.util.stream.Collectors.toSet());
         return sessions.stream()
                 .filter(s -> nonEmpty.contains(s.getSessionId()))
@@ -133,7 +142,7 @@ public class ChatPersistenceService {
             return null;
         }
         String messageId = "msg_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-        Integer maxOrder = messageRepo.findMaxSortOrderBySessionId(sessionId);
+        Integer maxOrder = messageMapper.findMaxSortOrderBySessionId(sessionId);
         int sortOrder = (maxOrder == null ? 0 : maxOrder) + 1;
 
         ChatMessage msg = new ChatMessage();
@@ -143,7 +152,7 @@ public class ChatPersistenceService {
         msg.setContent(content);
         msg.setContentType(contentType != null ? contentType : "text");
         msg.setSortOrder(sortOrder);
-        messageRepo.save(msg);
+        messageMapper.insert(msg);
 
         if (metadata != null && !metadata.isEmpty()) {
             List<ChatMessageMetadata> metaList = new ArrayList<>();
@@ -156,7 +165,7 @@ public class ChatPersistenceService {
                 metaList.add(meta);
             }
             if (!metaList.isEmpty()) {
-                metadataRepo.saveAll(metaList);
+                metaList.forEach(metadataMapper::insert);
             }
         }
         return msg;
@@ -188,19 +197,23 @@ public class ChatPersistenceService {
      * 获取会话的所有消息（按排序顺序）。
      */
     public List<ChatMessage> getSessionMessages(String sessionId) {
-        return messageRepo.findBySessionIdOrderBySortOrderAsc(sessionId);
+        return messageMapper.selectList(
+                new LambdaQueryWrapper<ChatMessage>()
+                        .eq(ChatMessage::getSessionId, sessionId)
+                        .orderByAsc(ChatMessage::getSortOrder));
     }
 
     /**
      * 获取会话消息及 metadata（供 API 返回 / 前端历史还原）。
      */
     public List<Map<String, Object>> getSessionMessageMaps(String sessionId) {
-        List<ChatMessage> messages = messageRepo.findBySessionIdOrderBySortOrderAsc(sessionId);
+        List<ChatMessage> messages = getSessionMessages(sessionId);
         if (messages.isEmpty()) {
             return List.of();
         }
         List<String> ids = messages.stream().map(ChatMessage::getMessageId).toList();
-        List<ChatMessageMetadata> metas = metadataRepo.findByMessageIdIn(ids);
+        List<ChatMessageMetadata> metas = metadataMapper.selectList(
+                new LambdaQueryWrapper<ChatMessageMetadata>().in(ChatMessageMetadata::getMessageId, ids));
         Map<String, Map<String, Object>> metaByMsg = new HashMap<>();
         for (ChatMessageMetadata meta : metas) {
             metaByMsg
@@ -229,7 +242,8 @@ public class ChatPersistenceService {
      * 获取单条消息的 metadata。
      */
     public Map<String, Object> getMessageMetadata(String messageId) {
-        List<ChatMessageMetadata> metas = metadataRepo.findByMessageId(messageId);
+        List<ChatMessageMetadata> metas = metadataMapper.selectList(
+                new LambdaQueryWrapper<ChatMessageMetadata>().eq(ChatMessageMetadata::getMessageId, messageId));
         Map<String, Object> out = new LinkedHashMap<>();
         for (ChatMessageMetadata meta : metas) {
             out.put(meta.getMetaKey(), deserializeValue(meta.getValue()));
@@ -241,7 +255,7 @@ public class ChatPersistenceService {
      * 获取会话最近 N 条消息（用于构建 LLM 上下文）。
      */
     public List<Map<String, String>> getRecentMessages(String sessionId, int limit) {
-        List<ChatMessage> all = messageRepo.findBySessionIdOrderBySortOrderAsc(sessionId);
+        List<ChatMessage> all = getSessionMessages(sessionId);
         int start = Math.max(0, all.size() - limit);
         return all.subList(start, all.size()).stream()
                 .map(m -> Map.of("role", m.getRole(), "content", m.getContent() == null ? "" : m.getContent()))
@@ -252,7 +266,8 @@ public class ChatPersistenceService {
      * 获取会话消息数量。
      */
     public long getMessageCount(String sessionId) {
-        return messageRepo.countBySessionId(sessionId);
+        return messageMapper.selectCount(
+                new LambdaQueryWrapper<ChatMessage>().eq(ChatMessage::getSessionId, sessionId));
     }
 
     /**
@@ -260,11 +275,20 @@ public class ChatPersistenceService {
      */
     public List<ChatMessage> searchMessages(String sessionId, String keyword, int limit) {
         if (sessionId != null && !sessionId.isBlank()) {
-            return messageRepo.findBySessionIdAndContentContainingOrderByCreatedAtDesc(
-                    sessionId, keyword, PageRequest.of(0, limit));
+            return messageMapper.selectPage(
+                            new Page<>(1, limit),
+                            new LambdaQueryWrapper<ChatMessage>()
+                                    .eq(ChatMessage::getSessionId, sessionId)
+                                    .like(ChatMessage::getContent, keyword)
+                                    .orderByDesc(ChatMessage::getCreatedAt))
+                    .getRecords();
         }
-        return messageRepo.findByContentContainingOrderByCreatedAtDesc(
-                keyword, PageRequest.of(0, limit));
+        return messageMapper.selectPage(
+                        new Page<>(1, limit),
+                        new LambdaQueryWrapper<ChatMessage>()
+                                .like(ChatMessage::getContent, keyword)
+                                .orderByDesc(ChatMessage::getCreatedAt))
+                .getRecords();
     }
 
     private String serializeValue(Object value) {

@@ -1,7 +1,7 @@
 package com.sitech.prodai.service;
 
 import com.sitech.prodai.domain.entity.OntologyInstance;
-import com.sitech.prodai.repository.OntologyInstanceRepository;
+import com.sitech.prodai.mapper.OntologyInstanceMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -21,13 +21,13 @@ public class FormService {
     private static final Logger log = LoggerFactory.getLogger(FormService.class);
 
     private final OntologyService ontologyService;
-    private final OntologyInstanceRepository instanceRepository;
+    private final OntologyInstanceMapper instanceMapper;
     private final Map<String, Map<String, Object>> formStates = new ConcurrentHashMap<>();
     private final AtomicLong instanceIdSeq = new AtomicLong(1000);
 
-    public FormService(OntologyService ontologyService, OntologyInstanceRepository instanceRepository) {
+    public FormService(OntologyService ontologyService, OntologyInstanceMapper instanceMapper) {
         this.ontologyService = ontologyService;
-        this.instanceRepository = instanceRepository;
+        this.instanceMapper = instanceMapper;
     }
 
     public Map<String, Object> generateForm(String userInput, String formCode, String userId,
@@ -148,7 +148,8 @@ public class FormService {
         instance.setData(dataObj instanceof Map ? castMap(dataObj) : new LinkedHashMap<>());
         instance.setStatus("submitted");
         instance.setSubmittedAt(LocalDateTime.now());
-        OntologyInstance saved = instanceRepository.save(instance);
+        instanceMapper.insert(instance);
+        OntologyInstance saved = instance;
         if (state != null) state.put("version", ((Number) state.getOrDefault("version", 1)).intValue() + 1);
         return Map.of("success", true, "message", "表单提交成功", "formInstanceId", saved.getId());
     }

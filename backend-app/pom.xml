@@ -17,12 +17,13 @@
   <name>prod-platform-ai</name>
   <description>Spring Boot backend skeleton (parallel to Python FastAPI)</description>
 
-  <properties>
-    <java.version>17</java.version>
-    <spring-ai.version>1.0.0</spring-ai.version>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-  </properties>
+    <properties>
+        <java.version>17</java.version>
+        <spring-ai.version>1.0.0</spring-ai.version>
+        <mybatis-plus.version>3.5.9</mybatis-plus.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    </properties>
 
   <repositories>
     <repository>
@@ -139,10 +140,22 @@
         </exclusion>
       </exclusions>
     </dependency>
-    <!-- 数据访问层：JPA + Hibernate（对齐 Python SQLAlchemy） -->
+    <!-- 数据访问层：MyBatis Plus（对齐 Python SQLAlchemy） -->
+    <dependency>
+      <groupId>com.baomidou</groupId>
+      <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+      <version>${mybatis-plus.version}</version>
+    </dependency>
+    <!-- 分页插件依赖（3.5.9 起拆分至 jsqlparser 模块） -->
+    <dependency>
+      <groupId>com.baomidou</groupId>
+      <artifactId>mybatis-plus-jsqlparser</artifactId>
+      <version>${mybatis-plus.version}</version>
+    </dependency>
+    <!-- JDBC 事务管理（@Transactional 依赖） -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-starter-data-jpa</artifactId>
+      <artifactId>spring-boot-starter-jdbc</artifactId>
     </dependency>
     
     <!-- 生产 MySQL 驱动（对齐 Python pymysql） -->

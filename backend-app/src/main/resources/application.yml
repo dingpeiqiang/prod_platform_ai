@@ -33,16 +33,17 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: ${SPRING_DATASOURCE_USERNAME:prodplatformai}
     password: ${SPRING_DATASOURCE_PASSWORD:prodplatformai@134}
-  jpa:
-    hibernate:
-      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:update}
-    show-sql: false
-    open-in-view: false
-    query-lookup-strategy: CREATE
-    properties:
-      hibernate:
-        format_sql: true
-        dialect: org.hibernate.dialect.MySQLDialect
+  # MyBatis Plus：替代原 JPA/Hibernate 配置
+  # 注意：表结构由 sql/ 目录脚本管理（原 JPA ddl-auto 不再生效）
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
 
 prodai:
   ontology:
@@ -110,5 +111,4 @@ logging:
     org.apache.catalina: INFO
     org.apache.coyote: INFO
     org.apache.tomcat: INFO
-    org.hibernate.orm.deprecation: WARN
     org.springframework.context.annotation: WARN

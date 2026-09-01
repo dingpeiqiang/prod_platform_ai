@@ -1,20 +1,14 @@
 package com.sitech.prodai.domain.entity;
 
-import com.sitech.prodai.common.JsonConverters;
-import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.Table;
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.sitech.prodai.common.JsonTypeHandlers;
+import com.sitech.prodai.common.SpanStatusTypeHandler;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -26,54 +20,43 @@ import java.util.Map;
 @Getter
 @Setter
 @NoArgsConstructor
-@Entity
-@Table(name = "pd_ai_spans", indexes = {
-        @Index(name = "idx_span_trace_id", columnList = "trace_id"),
-        @Index(name = "idx_span_parent_id", columnList = "parent_span_id"),
-        @Index(name = "idx_span_component", columnList = "component"),
-        @Index(name = "idx_span_status", columnList = "status")
-})
-@EntityListeners(AuditingEntityListener.class)
+@TableName(value = "pd_ai_spans", autoResultMap = true)
 public class Span {
 
-    @Id
-    @Column(name = "id", length = 36)
+    /** String 主键（UUID），IdType.INPUT 手动赋值 */
+    @TableId(type = com.baomidou.mybatisplus.annotation.IdType.INPUT)
     private String id;
 
-    @Column(name = "trace_id", nullable = false, length = 36)
+    @TableField("trace_id")
     private String traceId;
 
-    @Column(name = "parent_span_id", length = 36)
+    @TableField("parent_span_id")
     private String parentSpanId;
 
-    @Column(name = "name", nullable = false, length = 200)
+    @TableField("name")
     private String name;
 
-    @Column(name = "component", length = 100)
+    @TableField("component")
     private String component = "harness";
 
-    @Column(name = "start_time", nullable = false)
+    @TableField("start_time")
     private LocalDateTime startTime;
 
-    @Column(name = "end_time")
+    @TableField("end_time")
     private LocalDateTime endTime;
 
-    @Column(name = "duration_ms")
+    @TableField("duration_ms")
     private Double durationMs;
 
-    @Convert(converter = SpanStatus.SpanStatusConverter.class)
-    @Column(name = "status", length = 20)
+    @TableField(value = "status", typeHandler = SpanStatusTypeHandler.class)
     private SpanStatus status = SpanStatus.OK;
 
-    @Column(name = "tags", columnDefinition = "TEXT")
-    @Convert(converter = JsonConverters.JsonMapConverter.class)
+    @TableField(value = "tags", typeHandler = JsonTypeHandlers.JsonMapTypeHandler.class)
     private Map<String, Object> tags;
 
-    @Column(name = "logs", columnDefinition = "TEXT")
-    @Convert(converter = JsonConverters.JsonListConverter.class)
+    @TableField(value = "logs", typeHandler = JsonTypeHandlers.JsonListTypeHandler.class)
     private List<Object> logs;
 
-    @CreatedDate
-    @Column(name = "created_at")
+    @TableField(value = "created_at", fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 }

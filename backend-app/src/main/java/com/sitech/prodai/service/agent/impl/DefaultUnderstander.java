@@ -54,13 +54,13 @@ public class DefaultUnderstander implements Understander {
 
     private final LlmService llmService;
     private final Map<String, AgentTool> toolMap;
-    private final com.sitech.prodai.repository.OpsWorkOrderRepository workOrderRepository;
+    private final com.sitech.prodai.mapper.OpsWorkOrderMapper workOrderMapper;
 
     public DefaultUnderstander(LlmService llmService, List<AgentTool> tools,
-                               com.sitech.prodai.repository.OpsWorkOrderRepository workOrderRepository) {
+                               com.sitech.prodai.mapper.OpsWorkOrderMapper workOrderMapper) {
         this.llmService = llmService;
         this.toolMap = new LinkedHashMap<>();
-        this.workOrderRepository = workOrderRepository;
+        this.workOrderMapper = workOrderMapper;
         if (tools != null) {
             for (AgentTool tool : tools) {
                 this.toolMap.put(tool.getName(), tool);
@@ -931,7 +931,10 @@ public class DefaultUnderstander implements Understander {
         }
         try {
             List<com.sitech.prodai.domain.entity.OpsWorkOrder> rows =
-                    workOrderRepository.findTop50BySessionIdOrderByCreatedAtDesc(context.getSessionId());
+                    workOrderMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.sitech.prodai.domain.entity.OpsWorkOrder>()
+                            .eq(com.sitech.prodai.domain.entity.OpsWorkOrder::getSessionId, context.getSessionId())
+                            .orderByDesc(com.sitech.prodai.domain.entity.OpsWorkOrder::getCreatedAt)
+                            .last("LIMIT 50"));
             if (rows == null || rows.isEmpty()) {
                 return "";
             }

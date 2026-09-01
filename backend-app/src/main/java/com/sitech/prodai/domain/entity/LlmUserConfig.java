@@ -1,19 +1,13 @@
 package com.sitech.prodai.domain.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.Table;
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 
@@ -23,73 +17,66 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @NoArgsConstructor
-@Entity
-@Table(name = "pd_ai_llm_user_configs", indexes = {
-        @Index(name = "idx_llm_user_identifier", columnList = "user_identifier")
-})
-@EntityListeners(AuditingEntityListener.class)
+@TableName("pd_ai_llm_user_configs")
 public class LlmUserConfig {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @TableId(type = IdType.AUTO)
     private Integer id;
 
-    @Column(name = "user_identifier", nullable = false, length = 100)
+    @TableField("user_identifier")
     private String userIdentifier;
 
-    @Column(name = "provider", nullable = false, length = 50)
+    @TableField("provider")
     private String provider = ModelProvider.CUSTOM.getValue();
 
-    @Column(name = "model", nullable = false, length = 100)
+    @TableField("model")
     private String model;
 
-    @Column(name = "api_key", columnDefinition = "TEXT")
+    @TableField("api_key")
     private String apiKey;
 
-    @Column(name = "base_url", columnDefinition = "TEXT")
+    @TableField("base_url")
     private String baseUrl;
 
-    @Column(name = "auth_type", nullable = false, length = 20)
+    @TableField("auth_type")
     private String authType = "bearer";
 
-    @Column(name = "auth_header", length = 50)
+    @TableField("auth_header")
     private String authHeader;
 
-    @Column(name = "api_format", nullable = false, length = 50)
+    @TableField("api_format")
     private String apiFormat = "openai";
 
-    @Column(name = "is_full_url", nullable = false)
+    @TableField("is_full_url")
     private Boolean isFullUrl = false;
 
-    @Column(name = "temperature", nullable = false)
+    @TableField("temperature")
     private Double temperature = 0.3;
 
-    @Column(name = "max_tokens", nullable = false)
+    @TableField("max_tokens")
     private Integer maxTokens = 2048;
 
-    @Column(name = "thinking", nullable = false)
+    @TableField("thinking")
     private Boolean thinking = false;
 
-    @Column(name = "stream_enabled", nullable = false)
+    @TableField("stream_enabled")
     private Boolean streamEnabled = true;
 
-    @Column(name = "max_input_tokens")
+    @TableField("max_input_tokens")
     private Integer maxInputTokens = 180000;
 
-    @Column(name = "is_active", nullable = false)
+    @TableField("is_active")
     private Boolean isActive = true;
 
-    @Column(name = "config_name", length = 100)
+    @TableField("config_name")
     private String configName;
 
-    @CreatedDate
-    @Column(name = "created_at")
+    @TableField(value = "created_at", fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 
-    @LastModifiedDate
-    @Column(name = "updated_at")
+    @TableField(value = "updated_at", fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
 
-    @Column(name = "last_used_at")
+    @TableField("last_used_at")
     private LocalDateTime lastUsedAt;
 }

@@ -1,9 +1,10 @@
 package com.sitech.prodai.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.sitech.prodai.domain.entity.OntologyAssetVersion;
 import com.sitech.prodai.domain.entity.OntologyVersionLog;
-import com.sitech.prodai.repository.OntologyAssetVersionRepository;
-import com.sitech.prodai.repository.OntologyVersionLogRepository;
+import com.sitech.prodai.mapper.OntologyAssetVersionMapper;
+import com.sitech.prodai.mapper.OntologyVersionLogMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -44,13 +45,13 @@ public class OntologyVersionService {
     public static final String DOMAIN_CONFIG = "config";
     public static final String DOMAIN_BATCH = "batch";
 
-    private final OntologyAssetVersionRepository versionRepository;
-    private final OntologyVersionLogRepository logRepository;
+    private final OntologyAssetVersionMapper versionMapper;
+    private final OntologyVersionLogMapper logMapper;
 
-    public OntologyVersionService(OntologyAssetVersionRepository versionRepository,
-                                  OntologyVersionLogRepository logRepository) {
-        this.versionRepository = versionRepository;
-        this.logRepository = logRepository;
+    public OntologyVersionService(OntologyAssetVersionMapper versionMapper,
+                                  OntologyVersionLogMapper logMapper) {
+        this.versionMapper = versionMapper;
+        this.logMapper = logMapper;
     }
 
     /**
@@ -61,9 +62,12 @@ public class OntologyVersionService {
     public OntologyAssetVersion register(String assetType, String assetCode, String version,
                                          String status, String author, String summary, String payload) {
         String effectiveStatus = status == null || status.isBlank() ? STATUS_PUBLISHED : status;
-        OntologyAssetVersion row = versionRepository
-                .findByAssetTypeAndAssetCodeAndVersion(assetType, assetCode, version)
-                .orElseGet(OntologyAssetVersion::new);
+        OntologyAssetVersion existing = versionMapper.selectOne(
+                new LambdaQueryWrapper<OntologyAssetVersion>()
+                        .eq(OntologyAssetVersion::getAssetType, assetType)
+                        .eq(OntologyAssetVersion::getAssetCode, assetCode)
+                        .eq(OntologyAssetVersion::getVersion, version));
+        OntologyAssetVersion row = existing != null ? existing : new OntologyAssetVersion();
         boolean newRow = row.getId() == null;
         row.setAssetType(assetType);
         row.setAssetCode(assetCode);
@@ -75,9 +79,13 @@ public class OntologyVersionService {
         if (STATUS_PUBLISHED.equals(effectiveStatus) && row.getPublishedAt() == null) {
             row.setPublishedAt(LocalDateTime.now());
         }
-        OntologyAssetVersion saved = versionRepository.save(row);
         if (newRow) {
-            log(saved.getId(), "publish", author, Map.of(
+            versionMapper.insert(row);
+        } else {
+            versionMapper.updateById(row);
+        }
+        if (newRow) {
+            log(row.getId(), "publish", author, Map.of(
                     "event", "register",
                     "asset_type", assetType,
                     "asset_code", assetCode,
@@ -85,42 +93,49 @@ public class OntologyVersionService {
                     "status", effectiveStatus));
             log.info("[版本库] 登记 {}:{} v{} ({})", assetType, assetCode, version, effectiveStatus);
         }
-        return saved;
+        return row;
     }
 
     /** 发布：目标行置 published，同资产其余 published 行级联 deprecated（单活版本语义）。 */
     @Transactional
     public OntologyAssetVersion publish(Long versionId, String operator, Map<String, Object> detail) {
-        OntologyAssetVersion row = versionRepository.findById(versionId)
-                .orElseThrow(() -> new IllegalArgumentException("版本行不存在: " + versionId));
-        List<OntologyAssetVersion> siblings = versionRepository
-                .findByAssetTypeAndAssetCodeOrderByCreatedAtDesc(row.getAssetType(), row.getAssetCode());
+        OntologyAssetVersion row = versionMapper.selectById(versionId);
+        if (row == null) {
+            throw new IllegalArgumentException("版本行不存在: " + versionId);
+        }
+        List<OntologyAssetVersion> siblings = versionMapper.selectList(
+                new LambdaQueryWrapper<OntologyAssetVersion>()
+                        .eq(OntologyAssetVersion::getAssetType, row.getAssetType())
+                        .eq(OntologyAssetVersion::getAssetCode, row.getAssetCode())
+                        .orderByDesc(OntologyAssetVersion::getCreatedAt));
         for (OntologyAssetVersion sibling : siblings) {
             if (!sibling.getId().equals(versionId) && STATUS_PUBLISHED.equals(sibling.getStatus())) {
                 sibling.setStatus(STATUS_DEPRECATED);
                 sibling.setDeprecatedAt(LocalDateTime.now());
-                versionRepository.save(sibling);
+                versionMapper.updateById(sibling);
                 log(sibling.getId(), "deprecate", operator, Map.of("reason", "superseded_by", "version", row.getVersion()));
             }
         }
         row.setStatus(STATUS_PUBLISHED);
         row.setPublishedAt(LocalDateTime.now());
         row.setDeprecatedAt(null);
-        OntologyAssetVersion saved = versionRepository.save(row);
+        versionMapper.updateById(row);
         log(versionId, "publish", operator, detail == null ? Map.of() : detail);
-        return saved;
+        return row;
     }
 
     /** 弃用。 */
     @Transactional
     public OntologyAssetVersion deprecate(Long versionId, String operator, String reason) {
-        OntologyAssetVersion row = versionRepository.findById(versionId)
-                .orElseThrow(() -> new IllegalArgumentException("版本行不存在: " + versionId));
+        OntologyAssetVersion row = versionMapper.selectById(versionId);
+        if (row == null) {
+            throw new IllegalArgumentException("版本行不存在: " + versionId);
+        }
         row.setStatus(STATUS_DEPRECATED);
         row.setDeprecatedAt(LocalDateTime.now());
-        OntologyAssetVersion saved = versionRepository.save(row);
+        versionMapper.updateById(row);
         log(versionId, "deprecate", operator, reason == null ? Map.of() : Map.of("reason", reason));
-        return saved;
+        return row;
     }
 
     /**
@@ -129,14 +144,16 @@ public class OntologyVersionService {
     @Transactional
     public OntologyAssetVersion transition(Long versionId, String expectedStatus, String targetStatus,
                                            String operator, String action, Map<String, Object> detail) {
-        OntologyAssetVersion row = versionRepository.findById(versionId)
-                .orElseThrow(() -> new IllegalArgumentException("版本行不存在: " + versionId));
+        OntologyAssetVersion row = versionMapper.selectById(versionId);
+        if (row == null) {
+            throw new IllegalArgumentException("版本行不存在: " + versionId);
+        }
         if (expectedStatus != null && !expectedStatus.equals(row.getStatus())) {
             throw new IllegalStateException("状态流转被拒: 期望 " + expectedStatus + " 实际 "
                     + row.getStatus() + "（" + row.getAssetCode() + " v" + row.getVersion() + "）");
         }
         row.setStatus(targetStatus);
-        OntologyAssetVersion saved = versionRepository.save(row);
+        versionMapper.updateById(row);
         Map<String, Object> logDetail = new LinkedHashMap<>();
         logDetail.put("from", expectedStatus);
         logDetail.put("to", targetStatus);
@@ -144,7 +161,7 @@ public class OntologyVersionService {
             logDetail.putAll(detail);
         }
         log(versionId, action, operator, logDetail);
-        return saved;
+        return row;
     }
 
     /** 动作日志（publish / rollback / deprecate / reload / override）。 */
@@ -155,7 +172,7 @@ public class OntologyVersionService {
         row.setAction(action);
         row.setOperator(operator);
         row.setDetail(detail == null ? new LinkedHashMap<>() : new LinkedHashMap<>(detail));
-        logRepository.save(row);
+        logMapper.insert(row);
     }
 
     /** P3-5 ① 非版本键控审计落盘（config 链路 / risk 覆盖 / batch 稽核，复用表 B 一表）。 */
@@ -166,7 +183,7 @@ public class OntologyVersionService {
         row.setTraceId(traceId);
         row.setAction(action);
         row.setDetail(detail == null ? new LinkedHashMap<>() : new LinkedHashMap<>(detail));
-        logRepository.save(row);
+        logMapper.insert(row);
     }
 
     /** config 域链路明细（按 created_at 升序 = 步骤先后序，回退内存态；返回各步 detail 载荷）。 */
@@ -174,21 +191,30 @@ public class OntologyVersionService {
         if (traceId == null || traceId.isBlank()) {
             return List.of();
         }
-        return logRepository.findByDomainAndTraceIdOrderByCreatedAtAsc(DOMAIN_CONFIG, traceId)
+        return logMapper.selectList(new LambdaQueryWrapper<OntologyVersionLog>()
+                        .eq(OntologyVersionLog::getDomain, DOMAIN_CONFIG)
+                        .eq(OntologyVersionLog::getTraceId, traceId)
+                        .orderByAsc(OntologyVersionLog::getCreatedAt))
                 .stream().map(OntologyVersionLog::getDetail)
                 .collect(java.util.stream.Collectors.toList());
     }
 
     /** risk 域最近 50 条审计（回读表 B 覆盖内存 last-50，保持 {at,action,detail,...} 展示形）。 */
     public List<Map<String, Object>> riskAuditLogs() {
-        return logRepository.findTop50ByDomainOrderByCreatedAtDesc(DOMAIN_RISK)
+        return logMapper.selectList(new LambdaQueryWrapper<OntologyVersionLog>()
+                        .eq(OntologyVersionLog::getDomain, DOMAIN_RISK)
+                        .orderByDesc(OntologyVersionLog::getCreatedAt)
+                        .last("LIMIT 50"))
                 .stream().map(this::describeRow).collect(java.util.stream.Collectors.toList());
     }
 
     /** batch 域最近一次稽核快照（回读表 B detail 载荷，重启不丢）。 */
     public Optional<Map<String, Object>> latestBatchAudit() {
-        return logRepository.findFirstByDomainOrderByCreatedAtDesc(DOMAIN_BATCH)
-                .map(OntologyVersionLog::getDetail);
+        OntologyVersionLog row = logMapper.selectOne(new LambdaQueryWrapper<OntologyVersionLog>()
+                .eq(OntologyVersionLog::getDomain, DOMAIN_BATCH)
+                .orderByDesc(OntologyVersionLog::getCreatedAt)
+                .last("LIMIT 1"));
+        return Optional.ofNullable(row).map(OntologyVersionLog::getDetail);
     }
 
     /** 审计行 → 展示 Map（对外 key 与既有内存视图一致）。 */
@@ -206,34 +232,54 @@ public class OntologyVersionService {
 
     /** last-known-good：同资产最新 published 行。 */
     public Optional<OntologyAssetVersion> latestPublished(String assetType, String assetCode) {
-        return versionRepository.findFirstByAssetTypeAndAssetCodeAndStatusOrderByPublishedAtDesc(
-                assetType, assetCode, STATUS_PUBLISHED);
+        return Optional.ofNullable(versionMapper.selectOne(new LambdaQueryWrapper<OntologyAssetVersion>()
+                .eq(OntologyAssetVersion::getAssetType, assetType)
+                .eq(OntologyAssetVersion::getAssetCode, assetCode)
+                .eq(OntologyAssetVersion::getStatus, STATUS_PUBLISHED)
+                .orderByDesc(OntologyAssetVersion::getPublishedAt)
+                .last("LIMIT 1")));
     }
 
     public Optional<OntologyAssetVersion> findVersion(String assetType, String assetCode, String version) {
-        return versionRepository.findByAssetTypeAndAssetCodeAndVersion(assetType, assetCode, version);
+        return Optional.ofNullable(versionMapper.selectOne(new LambdaQueryWrapper<OntologyAssetVersion>()
+                .eq(OntologyAssetVersion::getAssetType, assetType)
+                .eq(OntologyAssetVersion::getAssetCode, assetCode)
+                .eq(OntologyAssetVersion::getVersion, version)));
     }
 
     public List<OntologyAssetVersion> listVersions(String assetType, String assetCode) {
-        return versionRepository.findByAssetTypeAndAssetCodeOrderByCreatedAtDesc(assetType, assetCode);
+        return versionMapper.selectList(new LambdaQueryWrapper<OntologyAssetVersion>()
+                .eq(OntologyAssetVersion::getAssetType, assetType)
+                .eq(OntologyAssetVersion::getAssetCode, assetCode)
+                .orderByDesc(OntologyAssetVersion::getCreatedAt));
     }
 
     /** 按资产类型列出全部版本行（P3-4 双世界收敛：AdminController 本体列表聚合）。 */
     public List<OntologyAssetVersion> listByType(String assetType) {
-        return versionRepository.findByAssetTypeOrderByCreatedAtDesc(assetType);
+        return versionMapper.selectList(new LambdaQueryWrapper<OntologyAssetVersion>()
+                .eq(OntologyAssetVersion::getAssetType, assetType)
+                .orderByDesc(OntologyAssetVersion::getCreatedAt));
     }
 
     public List<OntologyVersionLog> logsOf(Long versionId) {
-        return logRepository.findByVersionIdOrderByCreatedAtDesc(versionId);
+        return logMapper.selectList(new LambdaQueryWrapper<OntologyVersionLog>()
+                .eq(OntologyVersionLog::getVersionId, versionId)
+                .orderByDesc(OntologyVersionLog::getCreatedAt));
     }
 
     /** 指定类型最新发布行（跨资产取 published_at 最近者；无返回空）。 */
     public Optional<OntologyAssetVersion> latestPublishedByType(String assetType) {
-        return versionRepository.findFirstByAssetTypeAndStatusOrderByPublishedAtDesc(assetType, STATUS_PUBLISHED);
+        return Optional.ofNullable(versionMapper.selectOne(new LambdaQueryWrapper<OntologyAssetVersion>()
+                .eq(OntologyAssetVersion::getAssetType, assetType)
+                .eq(OntologyAssetVersion::getStatus, STATUS_PUBLISHED)
+                .orderByDesc(OntologyAssetVersion::getPublishedAt)
+                .last("LIMIT 1")));
     }
 
     /** 指定类型已发布行数（跨资产）。 */
     public long countPublished(String assetType) {
-        return versionRepository.findByAssetTypeAndStatus(assetType, STATUS_PUBLISHED).size();
+        return versionMapper.selectCount(new LambdaQueryWrapper<OntologyAssetVersion>()
+                .eq(OntologyAssetVersion::getAssetType, assetType)
+                .eq(OntologyAssetVersion::getStatus, STATUS_PUBLISHED));
     }
 }

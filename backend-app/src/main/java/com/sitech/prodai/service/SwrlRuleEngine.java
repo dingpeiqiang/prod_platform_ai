@@ -1,7 +1,8 @@
 package com.sitech.prodai.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.sitech.prodai.domain.entity.SwrlRule;
-import com.sitech.prodai.repository.SwrlRuleRepository;
+import com.sitech.prodai.mapper.SwrlRuleMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,7 +11,6 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * 伪条件 DSL 引擎（字符串 AND/比较表达式），<b>不是</b> OWL/SWRL。
@@ -25,10 +25,10 @@ public class SwrlRuleEngine {
 
     private static final Logger log = LoggerFactory.getLogger(SwrlRuleEngine.class);
 
-    private final Optional<SwrlRuleRepository> ruleRepository;
+    private final SwrlRuleMapper ruleMapper;
 
-    public SwrlRuleEngine(@Autowired(required = false) Optional<SwrlRuleRepository> ruleRepository) {
-        this.ruleRepository = ruleRepository;
+    public SwrlRuleEngine(@Autowired(required = false) SwrlRuleMapper ruleMapper) {
+        this.ruleMapper = ruleMapper;
     }
 
     public record SwrlRuleResult(
@@ -65,13 +65,14 @@ public class SwrlRuleEngine {
     private List<SwrlRule> loadRules() {
         List<SwrlRule> rules = new ArrayList<>();
 
-        ruleRepository.ifPresent(repo -> {
+        if (ruleMapper != null) {
             try {
-                rules.addAll(repo.findByEnabledTrue());
+                rules.addAll(ruleMapper.selectList(new LambdaQueryWrapper<SwrlRule>()
+                        .eq(SwrlRule::getEnabled, true)));
             } catch (Exception e) {
                 log.warn("[SwrlRuleEngine] 从数据库加载规则失败: {}", e.getMessage());
             }
-        });
+        }
 
         if (rules.isEmpty()) {
             rules.addAll(builtinRules());

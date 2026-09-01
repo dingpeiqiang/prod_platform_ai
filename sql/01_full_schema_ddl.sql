@@ -366,6 +366,8 @@ DROP TABLE IF EXISTS `pd_ai_ontology_version_log`;
 DROP TABLE IF EXISTS `pd_ai_ontology_version`;
 DROP TABLE IF EXISTS `pd_ai_ontology_instance`;
 
+-- data_json：KV 数据单 JSON TEXT 列存储（对齐 OntologyInstance 实体，
+-- 原 pd_ai_ontology_instance_data 子表已由实体层退役，仅存量环境迁移用）
 CREATE TABLE `pd_ai_ontology_instance` (
     `id`                 BIGINT       NOT NULL AUTO_INCREMENT,
     `ontology_code`      VARCHAR(255)          DEFAULT NULL,
@@ -373,18 +375,17 @@ CREATE TABLE `pd_ai_ontology_instance` (
     `session_id`         VARCHAR(255)          DEFAULT NULL,
     `status`             VARCHAR(255)          DEFAULT NULL,
     `submitted_at`       DATETIME(6)           DEFAULT NULL,
-    PRIMARY KEY (`id`)
+    `data_json`          TEXT                  DEFAULT NULL COMMENT 'KV 数据 JSON 序列化（原 instance_data 子表）',
+    PRIMARY KEY (`id`),
+    KEY `idx_oi_session_id` (`session_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='本体实例主表';
 
--- @ElementCollection Map<String,String> data（draft_json 序列化草稿可能超 255，用 TEXT）
-CREATE TABLE `pd_ai_ontology_instance_data` (
-    `ontology_instance_id` BIGINT       NOT NULL,
-    `data_key`             VARCHAR(255) NOT NULL,
-    `data`                 TEXT                  DEFAULT NULL,
-    PRIMARY KEY (`ontology_instance_id`, `data_key`),
-    CONSTRAINT `fk_oid_data`
-        FOREIGN KEY (`ontology_instance_id`) REFERENCES `pd_ai_ontology_instance` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='本体实例字段集合';
+-- 存量环境迁移参考（实体已改单列 data_json，本表仅保留给旧库数据搬迁）：
+--   ALTER TABLE pd_ai_ontology_instance ADD COLUMN data_json TEXT NULL AFTER submitted_at;
+--   UPDATE pd_ai_ontology_instance i SET i.data_json = (
+--       SELECT JSON_OBJECTAGG(d.data_key, d.data) FROM pd_ai_ontology_instance_data d
+--       WHERE d.ontology_instance_id = i.id)
+--   WHERE EXISTS (SELECT 1 FROM pd_ai_ontology_instance_data d2 WHERE d2.ontology_instance_id = i.id);
 
 -- P1-5 版本库表 A：本体资产版本主表（payload 为回滚唯一事实源）
 CREATE TABLE `pd_ai_ontology_version` (
@@ -484,7 +485,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- pd_ai_prompts, pd_ai_prompt_versions, pd_ai_prompt_templates
 -- pd_ai_workflows, pd_ai_workflow_history, pd_ai_workflow_executions
 -- pd_ai_traces, pd_ai_spans
--- pd_ai_ontology_instance, pd_ai_ontology_instance_data
+-- pd_ai_ontology_instance（含 data_json 单列，原 instance_data 子表已并入）
 -- pd_ai_ontology_version, pd_ai_ontology_version_log
 -- pd_ai_swrl_rules
 -- pd_ai_ops_work_orders

@@ -1,23 +1,14 @@
 package com.sitech.prodai.domain.entity;
 
-import com.sitech.prodai.common.JsonConverters;
-import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.sitech.prodai.common.JsonTypeHandlers;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -29,73 +20,57 @@ import java.util.Map;
 @Getter
 @Setter
 @NoArgsConstructor
-@Entity
-@Table(name = "pd_ai_workflow_executions", indexes = {
-        @Index(name = "idx_we_workflow_id", columnList = "workflow_id"),
-        @Index(name = "idx_we_workflow_code", columnList = "workflow_code"),
-        @Index(name = "idx_we_execution_id", columnList = "execution_id", unique = true)
-})
-@EntityListeners(AuditingEntityListener.class)
+@TableName(value = "pd_ai_workflow_executions", autoResultMap = true)
 public class WorkflowExecution {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @TableId(type = IdType.AUTO)
     private Integer id;
 
-    @Column(name = "workflow_id", nullable = false)
+    @TableField("workflow_id")
     private Integer workflowId;
 
-    @ManyToOne
-    @JoinColumn(name = "workflow_id", referencedColumnName = "id", insertable = false, updatable = false)
-    private Workflow workflow;
-
-    @Column(name = "workflow_code", nullable = false, length = 100)
+    @TableField("workflow_code")
     private String workflowCode;
 
-    @Column(name = "execution_id", unique = true, nullable = false, length = 100)
+    @TableField("execution_id")
     private String executionId;
 
-    @Column(name = "status", nullable = false, length = 20)
+    @TableField("status")
     private String status = "pending";
 
-    @Column(name = "start_time")
+    @TableField("start_time")
     private LocalDateTime startTime;
 
-    @Column(name = "end_time")
+    @TableField("end_time")
     private LocalDateTime endTime;
 
-    @Column(name = "duration_seconds")
+    @TableField("duration_seconds")
     private Integer durationSeconds;
 
-    @Column(name = "input_data", nullable = false, columnDefinition = "TEXT")
-    @Convert(converter = JsonConverters.JsonMapConverter.class)
+    @TableField(value = "input_data", typeHandler = JsonTypeHandlers.JsonMapTypeHandler.class)
     private Map<String, Object> inputData;
 
-    @Column(name = "output_data", columnDefinition = "TEXT")
-    @Convert(converter = JsonConverters.JsonMapConverter.class)
+    @TableField(value = "output_data", typeHandler = JsonTypeHandlers.JsonMapTypeHandler.class)
     private Map<String, Object> outputData;
 
-    @Column(name = "error_message", columnDefinition = "TEXT")
+    @TableField("error_message")
     private String errorMessage;
 
-    @Column(name = "execution_logs", nullable = false, columnDefinition = "TEXT")
-    @Convert(converter = JsonConverters.JsonListConverter.class)
+    @TableField(value = "execution_logs", typeHandler = JsonTypeHandlers.JsonListTypeHandler.class)
     private List<Object> executionLogs;
 
-    @Column(name = "triggered_by", length = 100)
+    @TableField("triggered_by")
     private String triggeredBy;
 
-    @Column(name = "trigger_type", length = 20)
+    @TableField("trigger_type")
     private String triggerType = "manual";
 
-    @Column(name = "notes", columnDefinition = "TEXT")
+    @TableField("notes")
     private String notes;
 
-    @CreatedDate
-    @Column(name = "created_at")
+    @TableField(value = "created_at", fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 
-    @LastModifiedDate
-    @Column(name = "updated_at")
+    @TableField(value = "updated_at", fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
 }

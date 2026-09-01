@@ -1,21 +1,14 @@
 package com.sitech.prodai.domain.entity;
 
-import com.sitech.prodai.common.JsonConverters;
-import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.Table;
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.sitech.prodai.common.JsonTypeHandlers;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -29,61 +22,49 @@ import java.util.Map;
 @Getter
 @Setter
 @NoArgsConstructor
-@Entity
-@Table(name = "pd_ai_ops_work_orders", indexes = {
-        @Index(name = "idx_owo_offering", columnList = "offering_id"),
-        @Index(name = "idx_owo_status", columnList = "status"),
-        @Index(name = "idx_owo_session", columnList = "session_id"),
-        @Index(name = "idx_owo_created", columnList = "created_at")
-})
-@EntityListeners(AuditingEntityListener.class)
+@TableName(value = "pd_ai_ops_work_orders", autoResultMap = true)
 public class OpsWorkOrder {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @TableId(type = IdType.AUTO)
     private Long id;
 
-    @Column(name = "work_order_id", nullable = false, unique = true, length = 64)
+    @TableField("work_order_id")
     private String workOrderId;
 
-    @Column(name = "title", nullable = false, length = 255)
+    @TableField("title")
     private String title;
 
-    @Column(name = "offering_id", length = 64)
+    @TableField("offering_id")
     private String offeringId;
 
-    @Column(name = "offering_name", length = 255)
+    @TableField("offering_name")
     private String offeringName;
 
-    @Column(name = "summary", columnDefinition = "TEXT")
+    @TableField("summary")
     private String summary;
 
-    @Convert(converter = JsonConverters.JsonListConverter.class)
-    @Column(name = "actions", columnDefinition = "TEXT")
+    @TableField(value = "actions", typeHandler = JsonTypeHandlers.JsonListTypeHandler.class)
     private List<Object> actions = new ArrayList<>();
 
-    @Column(name = "status", nullable = false, length = 32)
+    @TableField("status")
     private String status = "open";
 
-    @Column(name = "source", length = 64)
+    @TableField("source")
     private String source;
 
     /** 来源会话 ID：用于研发助手消息窗口按会话聚合展示商品配置工单 */
-    @Column(name = "session_id", length = 64)
+    @TableField("session_id")
     private String sessionId;
 
-    @Column(name = "hypo_mode", length = 32)
+    @TableField("hypo_mode")
     private String hypoMode;
 
-    @Convert(converter = JsonConverters.JsonMapConverter.class)
-    @Column(name = "payload", columnDefinition = "TEXT")
+    @TableField(value = "payload", typeHandler = JsonTypeHandlers.JsonMapTypeHandler.class)
     private Map<String, Object> payload = new LinkedHashMap<>();
 
-    @CreatedDate
-    @Column(name = "created_at")
+    @TableField(value = "created_at", fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 
-    @LastModifiedDate
-    @Column(name = "updated_at")
+    @TableField(value = "updated_at", fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
 }

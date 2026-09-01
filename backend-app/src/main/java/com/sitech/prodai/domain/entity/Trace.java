@@ -1,16 +1,12 @@
 package com.sitech.prodai.domain.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.Table;
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 
@@ -20,34 +16,28 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @NoArgsConstructor
-@Entity
-@Table(name = "pd_ai_traces", indexes = {
-        @Index(name = "idx_trace_service_name", columnList = "service_name"),
-        @Index(name = "idx_trace_created_at", columnList = "created_at")
-})
-@EntityListeners(AuditingEntityListener.class)
+@TableName("pd_ai_traces")
 public class Trace {
 
-    @Id
-    @Column(name = "id", length = 36)
+    /** String 主键（UUID），IdType.INPUT 手动赋值 */
+    @TableId(type = com.baomidou.mybatisplus.annotation.IdType.INPUT)
     private String id;
 
-    @Column(name = "service_name", length = 100)
+    @TableField("service_name")
     private String serviceName = "harness";
 
-    @Column(name = "start_time", nullable = false)
+    @TableField("start_time")
     private LocalDateTime startTime;
 
-    @Column(name = "end_time")
+    @TableField("end_time")
     private LocalDateTime endTime;
 
-    @Column(name = "total_duration_ms")
+    @TableField("total_duration_ms")
     private Double totalDurationMs;
 
-    @Column(name = "span_count")
+    @TableField("span_count")
     private Integer spanCount = 0;
 
-    @CreatedDate
-    @Column(name = "created_at")
+    @TableField(value = "created_at", fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 }

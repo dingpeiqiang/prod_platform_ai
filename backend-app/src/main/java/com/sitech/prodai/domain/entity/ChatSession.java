@@ -1,21 +1,14 @@
 package com.sitech.prodai.domain.entity;
 
-import com.sitech.prodai.common.JsonConverters;
-import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.Table;
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.sitech.prodai.common.JsonTypeHandlers;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -27,44 +20,34 @@ import java.util.Map;
 @Getter
 @Setter
 @NoArgsConstructor
-@Entity
-@Table(name = "pd_ai_chat_sessions", indexes = {
-        @Index(name = "idx_cs_session_id", columnList = "session_id", unique = true),
-        @Index(name = "idx_cs_user_id", columnList = "user_id")
-})
-@EntityListeners(AuditingEntityListener.class)
+@TableName(value = "pd_ai_chat_sessions", autoResultMap = true)
 public class ChatSession {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @TableId(type = IdType.AUTO)
     private Integer id;
 
-    @Column(name = "session_id", unique = true, nullable = false, length = 64)
+    @TableField("session_id")
     private String sessionId;
 
-    @Column(name = "user_id", length = 100)
+    @TableField("user_id")
     private String userId;
 
-    @Column(name = "title", length = 200)
+    @TableField("title")
     private String title;
 
-    @Column(name = "context_tags", columnDefinition = "TEXT")
-    @Convert(converter = JsonConverters.JsonListConverter.class)
+    @TableField(value = "context_tags", typeHandler = JsonTypeHandlers.JsonListTypeHandler.class)
     private List<Object> contextTags;
 
-    @Column(name = "session_metadata", columnDefinition = "TEXT")
-    @Convert(converter = JsonConverters.JsonMapConverter.class)
+    @TableField(value = "session_metadata", typeHandler = JsonTypeHandlers.JsonMapTypeHandler.class)
     private Map<String, Object> sessionMetadata;
 
     /** active / archived */
-    @Column(name = "status", length = 20)
+    @TableField("status")
     private String status = "active";
 
-    @CreatedDate
-    @Column(name = "created_at")
+    @TableField(value = "created_at", fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 
-    @LastModifiedDate
-    @Column(name = "updated_at")
+    @TableField(value = "updated_at", fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
 }

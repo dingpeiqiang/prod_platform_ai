@@ -6,8 +6,8 @@ import com.sitech.prodai.config.ProdAiProperties;
 import com.sitech.prodai.domain.entity.OntologyAssetVersion;
 import com.sitech.prodai.domain.entity.OntologyInstance;
 import com.sitech.prodai.domain.entity.OpsWorkOrder;
-import com.sitech.prodai.repository.OntologyInstanceRepository;
-import com.sitech.prodai.repository.OpsWorkOrderRepository;
+import com.sitech.prodai.mapper.OntologyInstanceMapper;
+import com.sitech.prodai.mapper.OpsWorkOrderMapper;
 import com.sitech.prodai.service.ops.OpsExtractionService;
 import com.sitech.prodai.service.ops.OpsGraphSchemaValidator;
 import com.sitech.prodai.service.ops.OpsProductGraphLoader;
@@ -27,7 +27,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
@@ -88,8 +87,8 @@ public class ProductOntologyService {
     private final ConfigDocumentParser documentParser;
     private final ConfigDocumentStorage documentStorage;
     private final Rdf4jOntologyStore rdf4jStore;
-    private final OpsWorkOrderRepository workOrderRepository;
-    private final OntologyInstanceRepository instanceRepository;
+    private final OpsWorkOrderMapper workOrderMapper;
+    private final OntologyInstanceMapper instanceMapper;
     private final ConfigMessageProjector messageProjector;
     private final LastKnownGoodGuard lastKnownGoodGuard;
     private final OntologyVersionService versionService;
@@ -121,8 +120,8 @@ public class ProductOntologyService {
                               ConfigDocumentParser documentParser,
                               ConfigDocumentStorage documentStorage,
                               Rdf4jOntologyStore rdf4jStore,
-                              OpsWorkOrderRepository workOrderRepository,
-                              OntologyInstanceRepository instanceRepository,
+                              OpsWorkOrderMapper workOrderMapper,
+                              OntologyInstanceMapper instanceMapper,
                               ConfigMessageProjector messageProjector,
                               LastKnownGoodGuard lastKnownGoodGuard,
                               OntologyVersionService versionService,
@@ -141,8 +140,8 @@ public class ProductOntologyService {
         this.documentParser = documentParser;
         this.documentStorage = documentStorage;
         this.rdf4jStore = rdf4jStore;
-        this.workOrderRepository = workOrderRepository;
-        this.instanceRepository = instanceRepository;
+        this.workOrderMapper = workOrderMapper;
+        this.instanceMapper = instanceMapper;
         this.messageProjector = messageProjector;
         this.lastKnownGoodGuard = lastKnownGoodGuard;
         this.versionService = versionService;
@@ -1502,24 +1501,29 @@ public class ProductOntologyService {
         String clientId = str(firstNonEmpty(req.get("clientId"), req.get("client_id"), draft.get("clientId")));
         Long draftId = parseLong(req.get("draftId") != null ? req.get("draftId") : req.get("draft_id"));
 
-        OntologyInstance entity = null;
+        // 语义清晰化：带 draftId 入参 → 按主键更新（查不到即报错，草稿已不存在，不静默换行）；
+        // 未带 draftId → 直接新增。clientId 仅作归属记录，不再用于反查复用。
+        OntologyInstance entity;
         if (draftId != null) {
-            entity = instanceRepository.findByIdAndOntologyCode(draftId, OFFERING_CONFIG_CODE).orElse(null);
-        }
-        if (entity == null && !clientId.isBlank()) {
-            entity = findDraftByClientId(clientId, sessionId, userId);
-        }
-        if (entity == null) {
+            entity = instanceMapper.selectById(draftId);
+            if (entity == null || !OFFERING_CONFIG_CODE.equals(entity.getOntologyCode())) {
+                return Map.of("success", false, "message", "草稿不存在或已删除: " + draftId, "draftId", draftId);
+            }
+            entity.setUserId(userId);
+            if (!sessionId.isBlank()) {
+                entity.setSessionId(sessionId);
+            }
+            if (!"submitted".equals(entity.getStatus())) {
+                entity.setStatus("draft");
+            }
+        } else {
             entity = new OntologyInstance();
             entity.setOntologyCode(OFFERING_CONFIG_CODE);
             entity.setStatus("draft");
-        }
-        entity.setUserId(userId);
-        if (!sessionId.isBlank()) {
-            entity.setSessionId(sessionId);
-        }
-        if (!"submitted".equals(entity.getStatus())) {
-            entity.setStatus("draft");
+            entity.setUserId(userId);
+            if (!sessionId.isBlank()) {
+                entity.setSessionId(sessionId);
+            }
         }
 
         Map<String, Object> store = new LinkedHashMap<>();
@@ -1535,7 +1539,12 @@ public class ProductOntologyService {
             throw new IllegalStateException("serialize draft failed: " + e.getMessage(), e);
         }
         entity.setData(store);
-        OntologyInstance saved = instanceRepository.save(entity);
+        if (entity.getId() == null) {
+            instanceMapper.insert(entity);
+        } else {
+            instanceMapper.updateById(entity);
+        }
+        OntologyInstance saved = entity;
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("success", true);
@@ -1552,16 +1561,13 @@ public class ProductOntologyService {
     public Map<String, Object> listConfigDrafts(String sessionId, String userId, String status) {
         List<OntologyInstance> rows;
         if (sessionId != null && !sessionId.isBlank()) {
-            rows = instanceRepository.findTop50ByOntologyCodeAndSessionIdOrderByIdDesc(
-                    OFFERING_CONFIG_CODE, sessionId.trim());
+            rows = findTop50Instances(OFFERING_CONFIG_CODE, w -> w.eq(OntologyInstance::getSessionId, sessionId.trim()));
         } else if (userId != null && !userId.isBlank()) {
-            rows = instanceRepository.findTop50ByOntologyCodeAndUserIdOrderByIdDesc(
-                    OFFERING_CONFIG_CODE, userId.trim());
+            rows = findTop50Instances(OFFERING_CONFIG_CODE, w -> w.eq(OntologyInstance::getUserId, userId.trim()));
         } else if (status != null && !status.isBlank() && !"all".equalsIgnoreCase(status)) {
-            rows = instanceRepository.findTop50ByOntologyCodeAndStatusOrderByIdDesc(
-                    OFFERING_CONFIG_CODE, status.trim());
+            rows = findTop50Instances(OFFERING_CONFIG_CODE, w -> w.eq(OntologyInstance::getStatus, status.trim()));
         } else {
-            rows = instanceRepository.findTop50ByOntologyCodeOrderByIdDesc(OFFERING_CONFIG_CODE);
+            rows = findTop50Instances(OFFERING_CONFIG_CODE, w -> {});
         }
         if (status != null && !status.isBlank() && !"all".equalsIgnoreCase(status)
                 && (sessionId != null && !sessionId.isBlank() || userId != null && !userId.isBlank())) {
@@ -1578,8 +1584,7 @@ public class ProductOntologyService {
 
     @Transactional(readOnly = true)
     public Map<String, Object> getConfigDraft(Long draftId) {
-        OntologyInstance entity = instanceRepository.findByIdAndOntologyCode(draftId, OFFERING_CONFIG_CODE)
-                .orElse(null);
+        OntologyInstance entity = findInstanceByIdAndOntologyCode(draftId, OFFERING_CONFIG_CODE);
         if (entity == null) {
             return Map.of("success", false, "message", "草稿不存在: " + draftId);
         }
@@ -1591,12 +1596,11 @@ public class ProductOntologyService {
 
     @Transactional
     public Map<String, Object> deleteConfigDraft(Long draftId) {
-        OntologyInstance entity = instanceRepository.findByIdAndOntologyCode(draftId, OFFERING_CONFIG_CODE)
-                .orElse(null);
+        OntologyInstance entity = findInstanceByIdAndOntologyCode(draftId, OFFERING_CONFIG_CODE);
         if (entity == null) {
             return Map.of("success", false, "message", "草稿不存在: " + draftId);
         }
-        instanceRepository.delete(entity);
+        instanceMapper.deleteById(entity.getId());
         return Map.of("success", true, "message", "草稿已删除", "draftId", draftId);
     }
 
@@ -1614,8 +1618,7 @@ public class ProductOntologyService {
         Long draftId = parseLong(req.get("draftId") != null ? req.get("draftId") : req.get("draft_id"));
         Map<String, Object> draft = deepCopy(draftInput);
         if (draft.isEmpty() && draftId != null) {
-            OntologyInstance existing = instanceRepository.findByIdAndOntologyCode(draftId, OFFERING_CONFIG_CODE)
-                    .orElse(null);
+            OntologyInstance existing = findInstanceByIdAndOntologyCode(draftId, OFFERING_CONFIG_CODE);
             if (existing != null) {
                 draft = readDraftJson(existing);
             }
@@ -1654,7 +1657,9 @@ public class ProductOntologyService {
 
         final Map<String, Object> draftSnapshot = deepCopy(draft);
         if (persistedId != null) {
-            instanceRepository.findByIdAndOntologyCode(persistedId, OFFERING_CONFIG_CODE).ifPresent(entity -> {
+            OntologyInstance draftEntity = findInstanceByIdAndOntologyCode(persistedId, OFFERING_CONFIG_CODE);
+            if (draftEntity != null) {
+                OntologyInstance entity = draftEntity;
                 entity.setStatus("submitted");
                 entity.setSubmittedAt(LocalDateTime.now());
                 Map<String, Object> store = new LinkedHashMap<>();
@@ -1669,8 +1674,8 @@ public class ProductOntologyService {
                     // keep previous json
                 }
                 entity.setData(store);
-                instanceRepository.save(entity);
-            });
+                instanceMapper.updateById(entity);
+            }
         }
 
         String traceId = "cfg-submit-" + Instant.now().toEpochMilli();
@@ -1854,23 +1859,26 @@ public class ProductOntologyService {
         return body;
     }
 
-    private OntologyInstance findDraftByClientId(String clientId, String sessionId, String userId) {
-        List<OntologyInstance> candidates;
-        if (sessionId != null && !sessionId.isBlank()) {
-            candidates = instanceRepository.findTop50ByOntologyCodeAndSessionIdOrderByIdDesc(
-                    OFFERING_CONFIG_CODE, sessionId);
-        } else if (userId != null && !userId.isBlank()) {
-            candidates = instanceRepository.findTop50ByOntologyCodeAndUserIdOrderByIdDesc(
-                    OFFERING_CONFIG_CODE, userId);
-        } else {
-            candidates = instanceRepository.findTop50ByOntologyCodeOrderByIdDesc(OFFERING_CONFIG_CODE);
+    private OntologyInstance findInstanceByIdAndOntologyCode(Long id, String ontologyCode) {
+        if (id == null) {
+            return null;
         }
-        for (OntologyInstance row : candidates) {
-            if (clientId.equals(row.getData() == null ? null : row.getData().get(CLIENT_ID_KEY))) {
-                return row;
-            }
+        OntologyInstance entity = instanceMapper.selectById(id);
+        if (entity == null || !ontologyCode.equals(entity.getOntologyCode())) {
+            return null;
         }
-        return null;
+        return entity;
+    }
+
+    private List<OntologyInstance> findTop50Instances(String ontologyCode,
+                                                      java.util.function.Consumer<com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OntologyInstance>> extra) {
+        com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OntologyInstance> wrapper =
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OntologyInstance>()
+                        .eq(OntologyInstance::getOntologyCode, ontologyCode)
+                        .orderByDesc(OntologyInstance::getId)
+                        .last("LIMIT 50");
+        extra.accept(wrapper);
+        return instanceMapper.selectList(wrapper);
     }
 
     private Map<String, Object> toDraftSummary(OntologyInstance entity) {
@@ -2418,7 +2426,8 @@ public class ProductOntologyService {
         entity.setSessionId(sessionId.isBlank() ? null : sessionId);
         entity.setHypoMode(str(req.get("hypoMode")));
         entity.setPayload(payload);
-        OpsWorkOrder saved = workOrderRepository.save(entity);
+        workOrderMapper.insert(entity);
+        OpsWorkOrder saved = entity;
 
         Map<String, Object> wo = toWorkOrderMap(saved);
 
@@ -2474,47 +2483,37 @@ public class ProductOntologyService {
         if (paged) {
             int pageNum = page == null || page < 1 ? 1 : page;
             int pageSize = size == null || size < 1 ? 20 : Math.min(size, 200);
-            org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(
-                    pageNum - 1, pageSize, org.springframework.data.domain.Sort.by(
-                            org.springframework.data.domain.Sort.Direction.DESC, "createdAt"));
 
             boolean hasKw = !kw.isBlank();
-            org.springframework.data.jpa.domain.Specification<OpsWorkOrder> spec = (root, query, cb) -> {
-                List<jakarta.persistence.criteria.Predicate> preds = new ArrayList<>();
-                if (!sid.isBlank()) {
-                    preds.add(cb.equal(root.get("sessionId"), sid));
-                }
-                if (byStatus) {
-                    preds.add(cb.equal(root.get("status"), st.toLowerCase(Locale.ROOT)));
-                }
-                if (hasKw) {
-                    String like = "%" + kw.toLowerCase(Locale.ROOT) + "%";
-                    jakarta.persistence.criteria.Expression<String> woExpr =
-                            cb.lower(cb.coalesce(root.get("workOrderId"), ""));
-                    jakarta.persistence.criteria.Expression<String> titleExpr =
-                            cb.lower(cb.coalesce(root.get("title"), ""));
-                    jakarta.persistence.criteria.Expression<String> nameExpr =
-                            cb.lower(cb.coalesce(root.get("offeringName"), ""));
-                    jakarta.persistence.criteria.Expression<String> oidExpr =
-                            cb.lower(cb.coalesce(root.get("offeringId"), ""));
-                    preds.add(cb.or(
-                            cb.like(woExpr, like),
-                            cb.like(titleExpr, like),
-                            cb.like(nameExpr, like),
-                            cb.like(oidExpr, like)
-                    ));
-                }
-                return cb.and(preds.toArray(new jakarta.persistence.criteria.Predicate[0]));
-            };
-            org.springframework.data.domain.Page<OpsWorkOrder> result = workOrderRepository.findAll(spec, pageable);
-            List<Map<String, Object>> items = result.getContent().stream()
+            com.baomidou.mybatisplus.extension.plugins.pagination.Page<OpsWorkOrder> mpPage =
+                    new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(pageNum, pageSize);
+            com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OpsWorkOrder> wrapper =
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OpsWorkOrder>()
+                            .orderByDesc(OpsWorkOrder::getCreatedAt);
+            if (!sid.isBlank()) {
+                wrapper.eq(OpsWorkOrder::getSessionId, sid);
+            }
+            if (byStatus) {
+                wrapper.eq(OpsWorkOrder::getStatus, st.toLowerCase(Locale.ROOT));
+            }
+            if (hasKw) {
+                String like = "%" + kw.toLowerCase(Locale.ROOT) + "%";
+                wrapper.and(w -> w
+                        .apply("LOWER(COALESCE(work_order_id, '')) LIKE {0}", like)
+                        .or().apply("LOWER(COALESCE(title, '')) LIKE {0}", like)
+                        .or().apply("LOWER(COALESCE(offering_name, '')) LIKE {0}", like)
+                        .or().apply("LOWER(COALESCE(offering_id, '')) LIKE {0}", like));
+            }
+            com.baomidou.mybatisplus.extension.plugins.pagination.Page<OpsWorkOrder> result =
+                    workOrderMapper.selectPage(mpPage, wrapper);
+            List<Map<String, Object>> items = result.getRecords().stream()
                     .map(this::toWorkOrderMap).collect(Collectors.toList());
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("success", true);
-            body.put("total", result.getTotalElements());
+            body.put("total", result.getTotal());
             body.put("page", pageNum);
             body.put("size", pageSize);
-            body.put("pages", result.getTotalPages());
+            body.put("pages", result.getPages());
             body.put("statusFilter", byStatus ? st : "all");
             body.put("sessionId", sid.isBlank() ? null : sid);
             body.put("q", kw.isBlank() ? null : kw);
@@ -2524,14 +2523,14 @@ public class ProductOntologyService {
         }
 
         if (!sid.isBlank() && byStatus) {
-            rows = workOrderRepository.findTop50BySessionIdAndStatusOrderByCreatedAtDesc(
-                    sid, st.toLowerCase(Locale.ROOT));
+            rows = findTop50WorkOrders(w -> w.eq(OpsWorkOrder::getSessionId, sid)
+                    .eq(OpsWorkOrder::getStatus, st.toLowerCase(Locale.ROOT)));
         } else if (!sid.isBlank()) {
-            rows = workOrderRepository.findTop50BySessionIdOrderByCreatedAtDesc(sid);
+            rows = findTop50WorkOrders(w -> w.eq(OpsWorkOrder::getSessionId, sid));
         } else if (byStatus) {
-            rows = workOrderRepository.findTop50ByStatusOrderByCreatedAtDesc(st.toLowerCase(Locale.ROOT));
+            rows = findTop50WorkOrders(w -> w.eq(OpsWorkOrder::getStatus, st.toLowerCase(Locale.ROOT)));
         } else {
-            rows = workOrderRepository.findTop50ByOrderByCreatedAtDesc();
+            rows = findTop50WorkOrders(w -> {});
         }
         List<Map<String, Object>> items = rows.stream().map(this::toWorkOrderMap).collect(Collectors.toList());
         Map<String, Object> body = new LinkedHashMap<>();
@@ -2544,20 +2543,41 @@ public class ProductOntologyService {
         return withModeMeta(body);
     }
 
+    private OpsWorkOrder findWorkOrderByWorkOrderId(String workOrderId) {
+        return workOrderMapper.selectOne(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OpsWorkOrder>()
+                .eq(OpsWorkOrder::getWorkOrderId, workOrderId)
+                .last("LIMIT 1"));
+    }
+
+    private List<OpsWorkOrder> findTop50WorkOrders(
+            java.util.function.Consumer<com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OpsWorkOrder>> extra) {
+        com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OpsWorkOrder> wrapper =
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OpsWorkOrder>()
+                        .orderByDesc(OpsWorkOrder::getCreatedAt)
+                        .last("LIMIT 50");
+        extra.accept(wrapper);
+        return workOrderMapper.selectList(wrapper);
+    }
+
+    private long countWorkOrdersByStatus(String status) {
+        return workOrderMapper.selectCount(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OpsWorkOrder>()
+                .eq(OpsWorkOrder::getStatus, status));
+    }
+
     /** 会话/全局工单状态计数（会话维度按 sessionId 过滤，全局按状态列统计）。 */
     private Map<String, Object> workOrderCounts(String sid) {
         Map<String, Object> counts = new LinkedHashMap<>();
         if (sid != null && !sid.isBlank()) {
-            List<OpsWorkOrder> all = workOrderRepository.findTop50BySessionIdOrderByCreatedAtDesc(sid);
+            List<OpsWorkOrder> all = findTop50WorkOrders(w -> w.eq(OpsWorkOrder::getSessionId, sid));
             counts.put("open", all.stream().filter(i -> "open".equals(i.getStatus())).count());
             counts.put("in_progress", all.stream().filter(i -> "in_progress".equals(i.getStatus())).count());
             counts.put("done", all.stream().filter(i -> "done".equals(i.getStatus())).count());
             counts.put("cancelled", all.stream().filter(i -> "cancelled".equals(i.getStatus())).count());
         } else {
-            counts.put("open", workOrderRepository.countByStatus("open"));
-            counts.put("in_progress", workOrderRepository.countByStatus("in_progress"));
-            counts.put("done", workOrderRepository.countByStatus("done"));
-            counts.put("cancelled", workOrderRepository.countByStatus("cancelled"));
+            counts.put("open", countWorkOrdersByStatus("open"));
+            counts.put("in_progress", countWorkOrdersByStatus("in_progress"));
+            counts.put("done", countWorkOrdersByStatus("done"));
+            counts.put("cancelled", countWorkOrdersByStatus("cancelled"));
         }
         return counts;
     }
@@ -2580,11 +2600,10 @@ public class ProductOntologyService {
             ));
         }
 
-        Optional<OpsWorkOrder> found = workOrderRepository.findByWorkOrderId(wid);
-        if (found.isEmpty()) {
+        OpsWorkOrder entity = findWorkOrderByWorkOrderId(wid);
+        if (entity == null) {
             return withModeMeta(Map.of("success", false, "message", "工单不存在: " + wid));
         }
-        OpsWorkOrder entity = found.get();
         String prev = entity.getStatus();
         if (!isValidTransition(prev, next)) {
             return withModeMeta(Map.of(
@@ -2612,7 +2631,8 @@ public class ProductOntologyService {
             payload.put("lastRemark", remark);
         }
         entity.setPayload(payload);
-        OpsWorkOrder saved = workOrderRepository.save(entity);
+        workOrderMapper.updateById(entity);
+        OpsWorkOrder saved = entity;
 
         syncWorkOrderToGraph(saved);
 
@@ -2635,11 +2655,10 @@ public class ProductOntologyService {
         if (wid.isBlank() || name.isBlank()) {
             return withModeMeta(Map.of("success", false, "message", "workOrderId / offeringName 不能为空"));
         }
-        Optional<OpsWorkOrder> found = workOrderRepository.findByWorkOrderId(wid);
-        if (found.isEmpty()) {
+        OpsWorkOrder entity = findWorkOrderByWorkOrderId(wid);
+        if (entity == null) {
             return withModeMeta(Map.of("success", false, "message", "工单不存在: " + wid));
         }
-        OpsWorkOrder entity = found.get();
         if (name.equals(entity.getOfferingName())) {
             return withModeMeta(Map.of("success", true, "message", "名称未变化", "workOrder", toWorkOrderMap(entity)));
         }
@@ -2651,7 +2670,8 @@ public class ProductOntologyService {
         if (!fee.isBlank() && entity.getSummary() != null) {
             entity.setSummary(entity.getSummary().replaceAll("月费=[\\d.]+", "月费=" + fee));
         }
-        OpsWorkOrder saved = workOrderRepository.save(entity);
+        workOrderMapper.updateById(entity);
+        OpsWorkOrder saved = entity;
         syncWorkOrderToGraph(saved);
         return withModeMeta(Map.of("success", true, "message", "工单名称已同步更新", "workOrder", toWorkOrderMap(saved)));
     }

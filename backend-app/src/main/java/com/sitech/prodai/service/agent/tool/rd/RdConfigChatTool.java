@@ -118,10 +118,16 @@ public class RdConfigChatTool implements AgentTool {
             }
             Map<String, Object> out = normalize(resp);
 
-            // 草稿生成即落库 + 即开单：工单 payload 关联 draftId，后续删除/复制仅凭工单号反查草稿
+            // 草稿生成即落库 + 即开单：工单 payload 关联 draftId，后续删除/复制仅凭工单号反查草稿。
+            // 开单原子性：草稿落库失败时不开单，避免产生 payload.draftId 缺失的孤儿工单
+            // （孤儿工单上的提交/删除/复制操作都会因反查不到草稿而失败）。
             if (!sessionId.isBlank()) {
-                persistDraft(out, resp, sessionId);
-                attachDraftWorkOrder(out, resp, sessionId);
+                boolean persisted = persistDraft(out, resp, sessionId);
+                if (persisted) {
+                    attachDraftWorkOrder(out, resp, sessionId);
+                } else {
+                    log.warn("[AgentTool] rd_config_chat 草稿落库未成功，跳过开单（避免孤儿工单）: sessionId={}", sessionId);
+                }
             }
             return ExecutionResult.ok(getName(), out);
         } catch (Exception e) {
@@ -130,27 +136,35 @@ public class RdConfigChatTool implements AgentTool {
         }
     }
 
-    /** 草稿落库（pd_ai_ontology_instance）：draftId/clientId 写回 output.draft，供工单卡删除/复制操作使用。 */
+    /**
+     * 草稿落库（pd_ai_ontology_instance）：draftId/clientId 写回 output.draft，供工单卡删除/复制操作使用。
+     *
+     * @return 落库是否成功（draftId 已写回）；失败时调用方跳过开单，保证工单与草稿强关联
+     */
     @SuppressWarnings("unchecked")
-    private void persistDraft(Map<String, Object> out, Map<String, Object> resp, String sessionId) {
+    private boolean persistDraft(Map<String, Object> out, Map<String, Object> resp, String sessionId) {
         try {
             if (!(out.get("draft") instanceof Map<?, ?> rawDraft) || ((Map<?, ?>) rawDraft).isEmpty()) {
-                return;
+                return false;
             }
             Map<String, Object> draft = new LinkedHashMap<>((Map<String, Object>) rawDraft);
             Map<String, Object> saveReq = new LinkedHashMap<>();
             saveReq.put("draft", draft);
             saveReq.put("sessionId", sessionId);
             Map<String, Object> saved = productOntologyService.saveConfigDraft(saveReq);
-            if (Boolean.TRUE.equals(saved.get("success"))) {
+            if (Boolean.TRUE.equals(saved.get("success")) && saved.get("draftId") != null) {
                 draft.put("draftId", saved.get("draftId"));
                 draft.put("clientId", saved.get("clientId"));
                 out.put("draft", draft);
                 out.put("draft_id", saved.get("draftId"));
                 out.put("client_id", saved.get("clientId"));
+                return true;
             }
+            log.warn("[AgentTool] rd_config_chat 草稿落库失败: {}", saved.getOrDefault("message", "未知错误"));
+            return false;
         } catch (Exception e) {
             log.warn("[AgentTool] rd_config_chat 草稿落库失败（不影响配置结果）: {}", e.getMessage());
+            return false;
         }
     }
 

@@ -1,9 +1,10 @@
 package com.sitech.prodai.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.sitech.prodai.domain.entity.LlmUserConfig;
 import com.sitech.prodai.domain.entity.ModelProvider;
 import com.sitech.prodai.dto.ChatCompletionRequest;
-import com.sitech.prodai.repository.LlmUserConfigRepository;
+import com.sitech.prodai.mapper.LlmUserConfigMapper;
 import com.sitech.prodai.service.LlmService;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -29,12 +30,26 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/v1/llm-config")
 public class LlmConfigController {
 
-    private final LlmUserConfigRepository repository;
+    private final LlmUserConfigMapper repository;
     private final Optional<LlmService> llmService;
 
-    public LlmConfigController(LlmUserConfigRepository repository, Optional<LlmService> llmService) {
+    public LlmConfigController(LlmUserConfigMapper repository, Optional<LlmService> llmService) {
         this.repository = repository;
         this.llmService = llmService;
+    }
+
+    private List<LlmUserConfig> findByUserIdentifier(String userId) {
+        return repository.selectList(new LambdaQueryWrapper<LlmUserConfig>()
+                .eq(LlmUserConfig::getUserIdentifier, userId));
+    }
+
+    private LlmUserConfig save(LlmUserConfig config) {
+        if (config.getId() == null) {
+            repository.insert(config);
+        } else {
+            repository.updateById(config);
+        }
+        return config;
     }
 
     @PostMapping("/save")
@@ -48,9 +63,9 @@ public class LlmConfigController {
             return fail("model is required");
         }
 
-        repository.findByUserIdentifier(userId).forEach(item -> {
+        findByUserIdentifier(userId).forEach(item -> {
             item.setIsActive(false);
-            repository.save(item);
+            repository.updateById(item);
         });
 
         LlmUserConfig config = new LlmUserConfig();
@@ -68,19 +83,19 @@ public class LlmConfigController {
         config.setIsActive(true);
         config.setLastUsedAt(LocalDateTime.now());
 
-        LlmUserConfig saved = repository.save(config);
+        LlmUserConfig saved = save(config);
         return ok(saved, "配置保存成功");
     }
 
     @GetMapping("/active/{userIdentifier}")
     public Map<String, Object> active(@PathVariable String userIdentifier) {
         // 不按账号过滤：返回全局激活配置
-        return repository.findAll().stream()
+        return repository.selectList(null).stream()
                 .filter(config -> Boolean.TRUE.equals(config.getIsActive()))
                 .findFirst()
                 .map(config -> {
                     config.setLastUsedAt(LocalDateTime.now());
-                    LlmUserConfig saved = repository.save(config);
+                    LlmUserConfig saved = save(config);
                     return ok(saved, "获取成功");
                 })
                 .orElseGet(() -> fail("未找到激活配置"));
@@ -153,7 +168,7 @@ public class LlmConfigController {
     @GetMapping("/list/{userIdentifier}")
     public Map<String, Object> list(@PathVariable String userIdentifier) {
         // 不按账号过滤：返回全部配置
-        List<LlmUserConfig> configs = repository.findAll();
+        List<LlmUserConfig> configs = repository.selectList(null);
         List<Map<String, Object>> configList = configs.stream()
                 .map(this::toPublicMap)
                 .collect(Collectors.toList());
@@ -166,7 +181,7 @@ public class LlmConfigController {
 
     @DeleteMapping("/{configId}")
     public Map<String, Object> delete(@PathVariable Integer configId) {
-        if (repository.existsById(configId)) {
+        if (repository.selectById(configId) != null) {
             repository.deleteById(configId);
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("success", true);
@@ -195,16 +210,16 @@ public class LlmConfigController {
             return body;
         }
 
-        return repository.findById(configId)
+        return Optional.ofNullable(repository.selectById(configId))
                 .map(config -> {
                     // 不按账号过滤：全局置为仅一条激活
-                    repository.findAll().forEach(item -> {
+                    repository.selectList(null).forEach(item -> {
                         item.setIsActive(false);
-                        repository.save(item);
+                        repository.updateById(item);
                     });
                     config.setIsActive(true);
                     config.setLastUsedAt(LocalDateTime.now());
-                    LlmUserConfig saved = repository.save(config);
+                    LlmUserConfig saved = save(config);
                     Map<String, Object> body = new LinkedHashMap<>();
                     body.put("success", true);
                     body.put("message", "激活成功");

@@ -1,20 +1,16 @@
 package com.sitech.prodai.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.sitech.prodai.common.ApiResponse;
 import com.sitech.prodai.domain.entity.Workflow;
 import com.sitech.prodai.domain.entity.WorkflowHistory;
-import com.sitech.prodai.repository.WorkflowHistoryRepository;
-import com.sitech.prodai.repository.WorkflowRepository;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.criteria.CriteriaBuilder;
-import jakarta.persistence.criteria.CriteriaQuery;
-import jakarta.persistence.criteria.Predicate;
-import jakarta.persistence.criteria.Root;
-import jakarta.transaction.Transactional;
+import com.sitech.prodai.mapper.WorkflowHistoryMapper;
+import com.sitech.prodai.mapper.WorkflowMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -27,16 +23,13 @@ public class WorkflowService {
 
     private static final Logger logger = LoggerFactory.getLogger(WorkflowService.class);
 
-    private final WorkflowRepository workflowRepository;
-    private final WorkflowHistoryRepository workflowHistoryRepository;
-    private final EntityManager entityManager;
+    private final WorkflowMapper workflowMapper;
+    private final WorkflowHistoryMapper workflowHistoryMapper;
 
-    public WorkflowService(WorkflowRepository workflowRepository,
-                          WorkflowHistoryRepository workflowHistoryRepository,
-                          EntityManager entityManager) {
-        this.workflowRepository = workflowRepository;
-        this.workflowHistoryRepository = workflowHistoryRepository;
-        this.entityManager = entityManager;
+    public WorkflowService(WorkflowMapper workflowMapper,
+                           WorkflowHistoryMapper workflowHistoryMapper) {
+        this.workflowMapper = workflowMapper;
+        this.workflowHistoryMapper = workflowHistoryMapper;
     }
 
     @Transactional
@@ -47,7 +40,7 @@ public class WorkflowService {
                 return ApiResponse.fail("workflowCode is required");
             }
 
-            if (workflowRepository.existsByWorkflowCode(workflowCode)) {
+            if (existsByWorkflowCode(workflowCode)) {
                 return ApiResponse.fail("Workflow " + workflowCode + " already exists");
             }
 
@@ -65,7 +58,7 @@ public class WorkflowService {
             workflow.setCreatedBy(user);
             workflow.setUpdatedBy(user);
 
-            workflow = workflowRepository.save(workflow);
+            workflowMapper.insert(workflow);
 
             WorkflowHistory history = new WorkflowHistory();
             history.setWorkflowId(workflow.getId());
@@ -80,7 +73,7 @@ public class WorkflowService {
             history.setIsActive(workflow.getIsActive());
             history.setChangeNote("Initial version");
             history.setCreatedBy(user);
-            workflowHistoryRepository.save(history);
+            workflowHistoryMapper.insert(history);
 
             logger.info("Created workflow: {}", workflowCode);
             return ApiResponse.ok(toMap(workflow));
@@ -92,7 +85,7 @@ public class WorkflowService {
 
     public ApiResponse<Map<String, Object>> getWorkflow(String workflowCode) {
         try {
-            Optional<Workflow> workflowOpt = workflowRepository.findByWorkflowCode(workflowCode);
+            Optional<Workflow> workflowOpt = findByWorkflowCode(workflowCode);
             if (workflowOpt.isEmpty()) {
                 return ApiResponse.fail("Workflow " + workflowCode + " not found");
             }
@@ -117,7 +110,7 @@ public class WorkflowService {
     @Transactional
     public ApiResponse<Map<String, Object>> updateWorkflow(String workflowCode, Map<String, Object> workflowData, String user) {
         try {
-            Optional<Workflow> workflowOpt = workflowRepository.findByWorkflowCode(workflowCode);
+            Optional<Workflow> workflowOpt = findByWorkflowCode(workflowCode);
             if (workflowOpt.isEmpty()) {
                 return ApiResponse.fail("Workflow " + workflowCode + " not found");
             }
@@ -137,7 +130,7 @@ public class WorkflowService {
             history.setIsActive(workflow.getIsActive());
             history.setChangeNote(String.valueOf(workflowData.getOrDefault("changeNote", "Updated to version " + (workflow.getVersion() + 1))));
             history.setCreatedBy(user);
-            workflowHistoryRepository.save(history);
+            workflowHistoryMapper.insert(history);
 
             if (workflowData.containsKey("workflowName")) {
                 workflow.setWorkflowName(String.valueOf(workflowData.get("workflowName")));
@@ -167,7 +160,7 @@ public class WorkflowService {
             workflow.setVersion(workflow.getVersion() + 1);
             workflow.setUpdatedBy(user);
 
-            workflow = workflowRepository.save(workflow);
+            workflowMapper.updateById(workflow);
 
             logger.info("Updated workflow: {} to version {}", workflowCode, workflow.getVersion());
             return ApiResponse.ok(toMap(workflow));
@@ -180,12 +173,12 @@ public class WorkflowService {
     @Transactional
     public ApiResponse<Map<String, Object>> deleteWorkflow(String workflowCode) {
         try {
-            Optional<Workflow> workflowOpt = workflowRepository.findByWorkflowCode(workflowCode);
+            Optional<Workflow> workflowOpt = findByWorkflowCode(workflowCode);
             if (workflowOpt.isEmpty()) {
                 return ApiResponse.fail("Workflow " + workflowCode + " not found");
             }
 
-            workflowRepository.delete(workflowOpt.get());
+            workflowMapper.deleteById(workflowOpt.get().getId());
 
             logger.info("Deleted workflow: {}", workflowCode);
             return ApiResponse.ok(null, "Workflow " + workflowCode + " deleted successfully");
@@ -200,97 +193,46 @@ public class WorkflowService {
                                                           Integer minExecutionCount, Integer maxExecutionCount,
                                                           String sortBy, String sortOrder, Integer page, Integer pageSize) {
         try {
-            CriteriaBuilder cb = entityManager.getCriteriaBuilder();
-            CriteriaQuery<Workflow> cq = cb.createQuery(Workflow.class);
-            Root<Workflow> root = cq.from(Workflow.class);
+            LambdaQueryWrapper<Workflow> wrapper = new LambdaQueryWrapper<>();
 
-            List<Predicate> predicates = new ArrayList<>();
+            wrapper.eq(category != null && !category.isBlank(), Workflow::getCategory, category)
+                    .eq(isActive != null, Workflow::getIsActive, isActive)
+                    .eq(workflowCode != null && !workflowCode.isBlank(), Workflow::getWorkflowCode, workflowCode)
+                    .eq(createdBy != null && !createdBy.isBlank(), Workflow::getCreatedBy, createdBy)
+                    .ge(minExecutionCount != null, Workflow::getExecutionCount, minExecutionCount)
+                    .le(maxExecutionCount != null, Workflow::getExecutionCount, maxExecutionCount);
 
-            if (category != null && !category.isBlank()) {
-                predicates.add(cb.equal(root.get("category"), category));
-            }
-            if (isActive != null) {
-                predicates.add(cb.equal(root.get("isActive"), isActive));
-            }
-            if (workflowCode != null && !workflowCode.isBlank()) {
-                predicates.add(cb.equal(root.get("workflowCode"), workflowCode));
-            }
             if (keyword != null && !keyword.isBlank()) {
-                String pattern = "%" + keyword + "%";
-                predicates.add(cb.or(
-                        cb.like(root.get("workflowCode"), pattern),
-                        cb.like(root.get("workflowName"), pattern),
-                        cb.like(root.get("description"), pattern)
-                ));
-            }
-            if (createdBy != null && !createdBy.isBlank()) {
-                predicates.add(cb.equal(root.get("createdBy"), createdBy));
-            }
-            if (minExecutionCount != null) {
-                predicates.add(cb.greaterThanOrEqualTo(root.get("executionCount"), minExecutionCount));
-            }
-            if (maxExecutionCount != null) {
-                predicates.add(cb.lessThanOrEqualTo(root.get("executionCount"), maxExecutionCount));
+                wrapper.and(w -> w.like(Workflow::getWorkflowCode, keyword)
+                        .or().like(Workflow::getWorkflowName, keyword)
+                        .or().like(Workflow::getDescription, keyword));
             }
 
-            cq.where(predicates.toArray(new Predicate[0]));
+            String sortColumn = switch (sortBy == null ? "createdAt" : sortBy) {
+                case "updatedAt" -> "updated_at";
+                case "priority" -> "priority";
+                case "executionCount" -> "execution_count";
+                default -> "created_at";
+            };
+            boolean asc = !"desc".equalsIgnoreCase(sortOrder);
+            wrapper.last("ORDER BY " + sortColumn + (asc ? " ASC" : " DESC"));
 
-            Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
-            if (sortBy != null) {
-                switch (sortBy) {
-                    case "updatedAt":
-                        sort = Sort.by("updatedAt");
-                        break;
-                    case "priority":
-                        sort = Sort.by("priority");
-                        break;
-                    case "executionCount":
-                        sort = Sort.by("executionCount");
-                        break;
-                    default:
-                        sort = Sort.by("createdAt");
-                        break;
-                }
-            }
-            if ("desc".equalsIgnoreCase(sortOrder)) {
-                sort = sort.descending();
-            }
+            int p = page != null ? page : 1;
+            int ps = pageSize != null ? pageSize : 20;
 
-            if (sort.isSorted()) {
-                List<jakarta.persistence.criteria.Order> orders = new ArrayList<>();
-                for (Sort.Order sortOrderItem : sort) {
-                    if (sortOrderItem.isAscending()) {
-                        orders.add(cb.asc(root.get(sortOrderItem.getProperty())));
-                    } else {
-                        orders.add(cb.desc(root.get(sortOrderItem.getProperty())));
-                    }
-                }
-                cq.orderBy(orders);
-            } else {
-                cq.orderBy(cb.desc(root.get("createdAt")));
-            }
-
-            page = page != null ? page : 1;
-            pageSize = pageSize != null ? pageSize : 20;
-
-            List<Workflow> allWorkflows = entityManager.createQuery(cq).getResultList();
-            long total = allWorkflows.size();
-
-            int offset = (page - 1) * pageSize;
-            List<Workflow> pageWorkflows = offset < allWorkflows.size()
-                    ? allWorkflows.subList(offset, Math.min(offset + pageSize, allWorkflows.size()))
-                    : new ArrayList<>();
+            Page<Workflow> result = workflowMapper.selectPage(new Page<>(p, ps), wrapper);
+            long total = result.getTotal();
 
             List<Map<String, Object>> data = new ArrayList<>();
-            for (Workflow workflow : pageWorkflows) {
+            for (Workflow workflow : result.getRecords()) {
                 data.add(toMap(workflow));
             }
 
             Map<String, Object> response = new HashMap<>();
             response.put("total", total);
-            response.put("page", page);
-            response.put("pageSize", pageSize);
-            response.put("totalPages", (int) Math.ceil((double) total / pageSize));
+            response.put("page", p);
+            response.put("pageSize", ps);
+            response.put("totalPages", (int) Math.ceil((double) total / ps));
             response.put("data", data);
 
             logger.info("Loaded {} workflows from database (total: {})", data.size(), total);
@@ -304,7 +246,7 @@ public class WorkflowService {
     @Transactional
     public ApiResponse<Map<String, Object>> publishWorkflow(String workflowCode, String user) {
         try {
-            Optional<Workflow> workflowOpt = workflowRepository.findByWorkflowCode(workflowCode);
+            Optional<Workflow> workflowOpt = findByWorkflowCode(workflowCode);
             if (workflowOpt.isEmpty()) {
                 return ApiResponse.fail("工作流 " + workflowCode + " 不存在");
             }
@@ -324,13 +266,13 @@ public class WorkflowService {
             history.setIsActive(workflow.getIsActive());
             history.setChangeNote("发布前版本 " + workflow.getVersion());
             history.setCreatedBy(user);
-            workflowHistoryRepository.save(history);
+            workflowHistoryMapper.insert(history);
 
             workflow.setIsActive(true);
             workflow.setVersion(workflow.getVersion() + 1);
             workflow.setUpdatedBy(user);
 
-            workflow = workflowRepository.save(workflow);
+            workflowMapper.updateById(workflow);
 
             logger.info("Published workflow: {} (version {})", workflowCode, workflow.getVersion());
             return ApiResponse.ok(toMap(workflow), "工作流 " + workflowCode + " 已成功发布");
@@ -343,7 +285,7 @@ public class WorkflowService {
     @Transactional
     public ApiResponse<Map<String, Object>> unpublishWorkflow(String workflowCode, String user) {
         try {
-            Optional<Workflow> workflowOpt = workflowRepository.findByWorkflowCode(workflowCode);
+            Optional<Workflow> workflowOpt = findByWorkflowCode(workflowCode);
             if (workflowOpt.isEmpty()) {
                 return ApiResponse.fail("工作流 " + workflowCode + " 不存在");
             }
@@ -363,13 +305,13 @@ public class WorkflowService {
             history.setIsActive(workflow.getIsActive());
             history.setChangeNote("下线前版本 " + workflow.getVersion());
             history.setCreatedBy(user);
-            workflowHistoryRepository.save(history);
+            workflowHistoryMapper.insert(history);
 
             workflow.setIsActive(false);
             workflow.setVersion(workflow.getVersion() + 1);
             workflow.setUpdatedBy(user);
 
-            workflow = workflowRepository.save(workflow);
+            workflowMapper.updateById(workflow);
 
             logger.info("Unpublished workflow: {}", workflowCode);
             return ApiResponse.ok(toMap(workflow), "工作流 " + workflowCode + " 已成功下线");
@@ -413,15 +355,18 @@ public class WorkflowService {
     @Transactional
     public ApiResponse<Map<String, Object>> rollbackVersion(String workflowCode, Integer targetVersion, String user) {
         try {
-            Optional<Workflow> workflowOpt = workflowRepository.findByWorkflowCode(workflowCode);
+            Optional<Workflow> workflowOpt = findByWorkflowCode(workflowCode);
             if (workflowOpt.isEmpty()) {
                 return ApiResponse.fail("工作流 " + workflowCode + " 不存在");
             }
 
             Workflow workflow = workflowOpt.get();
 
-            Optional<WorkflowHistory> historyOpt = workflowHistoryRepository.findByWorkflowCodeOrderByVersionDesc(workflowCode)
-                    .stream()
+            List<WorkflowHistory> histories = workflowHistoryMapper.selectList(
+                    new LambdaQueryWrapper<WorkflowHistory>()
+                            .eq(WorkflowHistory::getWorkflowCode, workflowCode)
+                            .orderByDesc(WorkflowHistory::getVersion));
+            Optional<WorkflowHistory> historyOpt = histories.stream()
                     .filter(h -> h.getVersion().equals(targetVersion))
                     .findFirst();
 
@@ -444,7 +389,7 @@ public class WorkflowService {
             currentHistory.setIsActive(workflow.getIsActive());
             currentHistory.setChangeNote("回滚前版本 " + workflow.getVersion());
             currentHistory.setCreatedBy(user);
-            workflowHistoryRepository.save(currentHistory);
+            workflowHistoryMapper.insert(currentHistory);
 
             workflow.setWorkflowName(targetHistory.getWorkflowName());
             workflow.setDescription(targetHistory.getDescription());
@@ -456,7 +401,7 @@ public class WorkflowService {
             workflow.setVersion(workflow.getVersion() + 1);
             workflow.setUpdatedBy(user);
 
-            workflow = workflowRepository.save(workflow);
+            workflowMapper.updateById(workflow);
 
             logger.info("Rolled back workflow {} to version {}", workflowCode, targetVersion);
             return ApiResponse.ok(toMap(workflow), "工作流 " + workflowCode + " 已回滚到版本 " + targetVersion);
@@ -468,7 +413,10 @@ public class WorkflowService {
 
     public ApiResponse<Map<String, Object>> compareVersions(String workflowCode, Integer version1, Integer version2) {
         try {
-            List<WorkflowHistory> histories = workflowHistoryRepository.findByWorkflowCodeOrderByVersionDesc(workflowCode);
+            List<WorkflowHistory> histories = workflowHistoryMapper.selectList(
+                    new LambdaQueryWrapper<WorkflowHistory>()
+                            .eq(WorkflowHistory::getWorkflowCode, workflowCode)
+                            .orderByDesc(WorkflowHistory::getVersion));
 
             Optional<WorkflowHistory> history1Opt = histories.stream()
                     .filter(h -> h.getVersion().equals(version1))
@@ -529,7 +477,7 @@ public class WorkflowService {
     @Transactional
     public ApiResponse<Map<String, Object>> toggleWorkflow(String workflowCode) {
         try {
-            Optional<Workflow> workflowOpt = workflowRepository.findByWorkflowCode(workflowCode);
+            Optional<Workflow> workflowOpt = findByWorkflowCode(workflowCode);
             if (workflowOpt.isEmpty()) {
                 return ApiResponse.fail("Workflow " + workflowCode + " not found");
             }
@@ -537,7 +485,7 @@ public class WorkflowService {
             Workflow workflow = workflowOpt.get();
             workflow.setIsActive(!workflow.getIsActive());
 
-            workflow = workflowRepository.save(workflow);
+            workflowMapper.updateById(workflow);
 
             return ApiResponse.ok(toMap(workflow));
         } catch (Exception e) {
@@ -548,12 +496,15 @@ public class WorkflowService {
 
     public ApiResponse<Map<String, Object>> getWorkflowHistory(String workflowCode) {
         try {
-            Optional<Workflow> workflowOpt = workflowRepository.findByWorkflowCode(workflowCode);
+            Optional<Workflow> workflowOpt = findByWorkflowCode(workflowCode);
             if (workflowOpt.isEmpty()) {
                 return ApiResponse.fail("Workflow " + workflowCode + " not found");
             }
 
-            List<WorkflowHistory> histories = workflowHistoryRepository.findByWorkflowCodeOrderByVersionDesc(workflowCode);
+            List<WorkflowHistory> histories = workflowHistoryMapper.selectList(
+                    new LambdaQueryWrapper<WorkflowHistory>()
+                            .eq(WorkflowHistory::getWorkflowCode, workflowCode)
+                            .orderByDesc(WorkflowHistory::getVersion));
             List<Map<String, Object>> data = new ArrayList<>();
             for (WorkflowHistory history : histories) {
                 data.add(toHistoryMap(history));
@@ -571,12 +522,12 @@ public class WorkflowService {
     @Transactional
     public ApiResponse<Map<String, Object>> copyWorkflow(String sourceWorkflowCode, String newWorkflowCode, String user) {
         try {
-            Optional<Workflow> sourceOpt = workflowRepository.findByWorkflowCode(sourceWorkflowCode);
+            Optional<Workflow> sourceOpt = findByWorkflowCode(sourceWorkflowCode);
             if (sourceOpt.isEmpty()) {
                 return ApiResponse.fail("源工作流 " + sourceWorkflowCode + " 不存在");
             }
 
-            if (workflowRepository.existsByWorkflowCode(newWorkflowCode)) {
+            if (existsByWorkflowCode(newWorkflowCode)) {
                 return ApiResponse.fail("工作流 " + newWorkflowCode + " 已存在");
             }
 
@@ -596,7 +547,7 @@ public class WorkflowService {
             newWorkflow.setCreatedBy(user);
             newWorkflow.setUpdatedBy(user);
 
-            newWorkflow = workflowRepository.save(newWorkflow);
+            workflowMapper.insert(newWorkflow);
 
             WorkflowHistory history = new WorkflowHistory();
             history.setWorkflowId(newWorkflow.getId());
@@ -611,7 +562,7 @@ public class WorkflowService {
             history.setIsActive(newWorkflow.getIsActive());
             history.setChangeNote("从 " + sourceWorkflowCode + " 复制");
             history.setCreatedBy(user);
-            workflowHistoryRepository.save(history);
+            workflowHistoryMapper.insert(history);
 
             logger.info("Copied workflow: {} -> {}", sourceWorkflowCode, newWorkflowCode);
             return ApiResponse.ok(toMap(newWorkflow));
@@ -629,6 +580,16 @@ public class WorkflowService {
         categories.add(createCategory("integration", "系统集成"));
         categories.add(createCategory("automation", "自动化"));
         return ApiResponse.ok(categories);
+    }
+
+    private Optional<Workflow> findByWorkflowCode(String workflowCode) {
+        return Optional.ofNullable(workflowMapper.selectOne(
+                new LambdaQueryWrapper<Workflow>().eq(Workflow::getWorkflowCode, workflowCode)));
+    }
+
+    private boolean existsByWorkflowCode(String workflowCode) {
+        return workflowMapper.selectCount(
+                new LambdaQueryWrapper<Workflow>().eq(Workflow::getWorkflowCode, workflowCode)) > 0;
     }
 
     private Map<String, Object> toMap(Workflow workflow) {

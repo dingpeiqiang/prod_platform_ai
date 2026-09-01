@@ -1,6 +1,9 @@
 package com.sitech.prodai.service.agent.tool.rd;
 
-import com.sitech.prodai.repository.OpsWorkOrderRepository;
+import com.sitech.prodai.domain.entity.OntologyInstance;
+import com.sitech.prodai.domain.entity.OpsWorkOrder;
+import com.sitech.prodai.mapper.OntologyInstanceMapper;
+import com.sitech.prodai.mapper.OpsWorkOrderMapper;
 import com.sitech.prodai.service.ProductOntologyService;
 import com.sitech.prodai.service.ops.OpsExtractionService;
 import com.sitech.prodai.service.agent.model.ExecutionResult;
@@ -33,14 +36,17 @@ public class RdDraftManageTool implements AgentTool {
     private static final Logger log = LoggerFactory.getLogger(RdDraftManageTool.class);
 
     private final ProductOntologyService productOntologyService;
-    private final OpsWorkOrderRepository workOrderRepository;
+    private final OpsWorkOrderMapper workOrderMapper;
+    private final OntologyInstanceMapper instanceMapper;
     private final OpsExtractionService extractionService;
 
     public RdDraftManageTool(ProductOntologyService productOntologyService,
-                             OpsWorkOrderRepository workOrderRepository,
+                             OpsWorkOrderMapper workOrderMapper,
+                             OntologyInstanceMapper instanceMapper,
                              OpsExtractionService extractionService) {
         this.productOntologyService = productOntologyService;
-        this.workOrderRepository = workOrderRepository;
+        this.workOrderMapper = workOrderMapper;
+        this.instanceMapper = instanceMapper;
         this.extractionService = extractionService;
     }
 
@@ -131,10 +137,10 @@ public class RdDraftManageTool implements AgentTool {
         }
         String workOrderId = workOrderIds.get(0);
         try {
-            // 统一凭工单号反查关联草稿（payload.draftId），定位不到时按会话内名称兜底
-            DraftRef ref = locateByWorkOrder(workOrderId);
+            // 统一凭工单号反查关联草稿（payload.draftId）；缺失时仅凭同会话内唯一同名草稿确定性自救（不写库）
+            DraftRef ref = locateByWorkOrder(workOrderId, params);
             if (ref == null) {
-                return ExecutionResult.fail(getName(), "未找到工单 " + workOrderId + " 关联的配置草稿");
+                return ExecutionResult.fail(getName(), workOrderMissingMessage(workOrderId));
             }
             return switch (action) {
                 case "delete" -> doDelete(ref, workOrderId);
@@ -168,31 +174,93 @@ public class RdDraftManageTool implements AgentTool {
         return out;
     }
 
-    /** 工单号 → 关联草稿引用（draftId + 名称 + 状态），来源于工单 payload.draftId。 */
-    private record DraftRef(Long draftId, String clientId, String offeringName, String status) {
+    /** 工单号 → 关联草稿引用（draftId + 名称 + 状态 + 会话），来源于工单 payload.draftId 或自救命中。 */
+    private record DraftRef(Long draftId, String clientId, String offeringName, String status, String sessionId) {
+        DraftRef(Long draftId, String clientId, String offeringName, String status) {
+            this(draftId, clientId, offeringName, status, null);
+        }
     }
 
+    /** 定位失败时的差异化提示：工单不存在 vs 孤儿工单（无关联草稿），给出可操作建议。 */
+    private String workOrderMissingMessage(String workOrderId) {
+        OpsWorkOrder entity = workOrderMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OpsWorkOrder>()
+                        .eq(OpsWorkOrder::getWorkOrderId, workOrderId)
+                        .last("LIMIT 1"));
+        if (entity == null) {
+            return "工单 " + workOrderId + " 不存在，请核对工单号是否正确";
+        }
+        return "工单 " + workOrderId + " 未关联配置草稿（可能生成时草稿落库失败或草稿已被删除）。"
+                + "该工单无法执行本操作，建议删除该工单后重新发起配置生成。";
+    }
+
+    /**
+     * 工单号 → 关联草稿引用（draftId + 名称 + 状态），来源于工单 payload.draftId。
+     * payload.draftId 缺失时（历史孤儿工单/落库异常）：仅当同会话内存在「资费名称精确一致」
+     * 的草稿时才临时借用（确定性匹配，宁缺毋错）；否则返回 null，由调用方明确报错。
+     * 不回填工单 payload —— 关联修复属数据治理操作，猜测性绑定一旦写库会将错误固化。
+     */
     private DraftRef locateByWorkOrder(String workOrderId) {
-        Map<String, Object> wo = workOrderRepository.findByWorkOrderId(workOrderId)
-                .map(e -> {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("draftId", e.getPayload() == null ? null : e.getPayload().get("draftId"));
-                    m.put("offeringName", e.getOfferingName());
-                    m.put("status", e.getStatus());
-                    return m;
-                })
-                .orElse(null);
-        if (wo == null) {
+        return locateByWorkOrder(workOrderId, null);
+    }
+
+    private DraftRef locateByWorkOrder(String workOrderId, Map<String, Object> params) {
+        OpsWorkOrder entity = workOrderMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OpsWorkOrder>()
+                        .eq(OpsWorkOrder::getWorkOrderId, workOrderId)
+                        .last("LIMIT 1"));
+        if (entity == null) {
             return null;
         }
-        Long draftId = parseLong(String.valueOf(wo.get("draftId")));
-        if (draftId == null) {
-            log.warn("[AgentTool] rd_draft_manage 工单 {} 无关联草稿（payload.draftId 缺失）", workOrderId);
+        Long draftId = entity.getPayload() == null ? null : parseLong(String.valueOf(entity.getPayload().get("draftId")));
+        String name = String.valueOf(firstNonEmpty(entity.getOfferingName(), ""));
+        String status = String.valueOf(firstNonEmpty(entity.getStatus(), "open"));
+        if (draftId != null) {
+            return new DraftRef(draftId, "", name, status);
+        }
+        log.warn("[AgentTool] rd_draft_manage 工单 {} 无关联草稿（payload.draftId 缺失）", workOrderId);
+        DraftRef rescued = rescueDraftByName(entity, name, status, params);
+        if (rescued == null) {
             return null;
         }
-        String name = String.valueOf(firstNonEmpty(wo.get("offeringName"), ""));
-        String status = String.valueOf(firstNonEmpty(wo.get("status"), "open"));
-        return new DraftRef(draftId, "", name, status);
+        log.info("[AgentTool] rd_draft_manage 孤儿工单按名称精确自救命中: workOrder={}, draftId={}, sessionId={}",
+                workOrderId, rescued.draftId(), rescued.sessionId());
+        return rescued;
+    }
+
+    /**
+     * 孤儿工单确定性自救：仅凭「同会话 + 资费名称精确一致」定位草稿。
+     * 会话内同名草稿多于一条时视为不确定，拒绝猜测返回 null。
+     * 仅本次操作临时借用，不写回工单 payload，避免猜测性关联固化。
+     */
+    private DraftRef rescueDraftByName(OpsWorkOrder entity, String name, String status, Map<String, Object> params) {
+        if (name.isBlank()) {
+            return null;
+        }
+        String sessionId = entity.getSessionId();
+        if (sessionId == null || sessionId.isBlank()) {
+            sessionId = strParam(params, "session_id", "sessionId");
+        }
+        if (sessionId.isBlank()) {
+            return null;
+        }
+        List<OntologyInstance> rows = instanceMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OntologyInstance>()
+                        .eq(OntologyInstance::getOntologyCode, "offering_config")
+                        .eq(OntologyInstance::getSessionId, sessionId)
+                        .orderByDesc(OntologyInstance::getId)
+                        .last("LIMIT 50"));
+        if (rows == null || rows.isEmpty()) {
+            return null;
+        }
+        List<OntologyInstance> matched = rows.stream()
+                .filter(r -> r.getData() != null && name.equals(r.getData().get("offeringName")))
+                .toList();
+        // 精确名称命中且唯一才可借用；多候选/零命中均不确定，宁报错不错绑
+        if (matched.size() != 1) {
+            return null;
+        }
+        return new DraftRef(matched.get(0).getId(), "", name, status, sessionId);
     }
 
     /**
@@ -474,10 +542,10 @@ public class RdDraftManageTool implements AgentTool {
         for (String woId : workOrderIds) {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("work_order_id", woId);
-            DraftRef ref = locateByWorkOrder(woId);
+            DraftRef ref = locateByWorkOrder(woId, params);
             if (ref == null) {
                 item.put("success", false);
-                item.put("message", "未找到工单关联的配置草稿");
+                item.put("message", workOrderMissingMessage(woId));
                 failNames.add(woId);
                 results.add(item);
                 continue;

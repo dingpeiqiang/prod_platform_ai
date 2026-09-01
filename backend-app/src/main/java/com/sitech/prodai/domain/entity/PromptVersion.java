@@ -1,22 +1,14 @@
 package com.sitech.prodai.domain.entity;
 
-import com.sitech.prodai.common.JsonConverters;
-import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.sitech.prodai.common.JsonTypeHandlers;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -27,45 +19,33 @@ import java.util.List;
 @Getter
 @Setter
 @NoArgsConstructor
-@Entity
-@Table(name = "pd_ai_prompt_versions", indexes = {
-        @Index(name = "idx_pv_prompt_id", columnList = "prompt_id")
-})
-@EntityListeners(AuditingEntityListener.class)
+@TableName(value = "pd_ai_prompt_versions", autoResultMap = true)
 public class PromptVersion {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @TableId(type = IdType.AUTO)
     private Integer id;
 
-    @Column(name = "prompt_id", nullable = false)
+    @TableField("prompt_id")
     private Integer promptId;
 
-    @ManyToOne
-    @JoinColumn(name = "prompt_id", referencedColumnName = "id", insertable = false, updatable = false)
-    private Prompt prompt;
-
-    @Column(name = "version", nullable = false)
+    @TableField("version")
     private Integer version;
 
-    @Column(name = "content", nullable = false, columnDefinition = "TEXT")
+    @TableField("content")
     private String content;
 
-    @Column(name = "variables", columnDefinition = "TEXT")
-    @Convert(converter = JsonConverters.JsonListConverter.class)
+    @TableField(value = "variables", typeHandler = JsonTypeHandlers.JsonListTypeHandler.class)
     private List<Object> variables;
 
-    @Column(name = "tools", columnDefinition = "TEXT")
-    @Convert(converter = JsonConverters.JsonListConverter.class)
+    @TableField(value = "tools", typeHandler = JsonTypeHandlers.JsonListTypeHandler.class)
     private List<Object> tools;
 
-    @Column(name = "change_note", columnDefinition = "TEXT")
+    @TableField("change_note")
     private String changeNote;
 
-    @Column(name = "created_by", length = 100)
+    @TableField("created_by")
     private String createdBy;
 
-    @CreatedDate
-    @Column(name = "created_at")
+    @TableField(value = "created_at", fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 }

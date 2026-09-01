@@ -1,19 +1,13 @@
 package com.sitech.prodai.domain.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.Table;
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 
@@ -23,48 +17,39 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @NoArgsConstructor
-@Entity
-@Table(name = "pd_ai_mcp_tool_stats", indexes = {
-        @Index(name = "idx_tool_date_hour", columnList = "tool_name, stat_date, stat_hour", unique = true),
-        @Index(name = "idx_ts_tool_name", columnList = "tool_name"),
-        @Index(name = "idx_ts_stat_date", columnList = "stat_date")
-})
-@EntityListeners(AuditingEntityListener.class)
+@TableName("pd_ai_mcp_tool_stats")
 public class McpToolStats {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @TableId(type = IdType.AUTO)
     private Integer id;
 
-    @Column(name = "tool_name", nullable = false, length = 100)
+    @TableField("tool_name")
     private String toolName;
 
-    @Column(name = "stat_date", nullable = false, length = 20)
+    @TableField("stat_date")
     private String statDate;
 
-    @Column(name = "stat_hour")
+    @TableField("stat_hour")
     private Integer statHour;
 
-    @Column(name = "total_calls", nullable = false)
+    @TableField("total_calls")
     private Integer totalCalls = 0;
 
-    @Column(name = "success_calls", nullable = false)
+    @TableField("success_calls")
     private Integer successCalls = 0;
 
-    @Column(name = "failed_calls", nullable = false)
+    @TableField("failed_calls")
     private Integer failedCalls = 0;
 
-    @Column(name = "total_response_time_ms", nullable = false)
+    @TableField("total_response_time_ms")
     private Double totalResponseTimeMs = 0.0;
 
-    @Column(name = "avg_response_time_ms", nullable = false)
+    @TableField("avg_response_time_ms")
     private Double avgResponseTimeMs = 0.0;
 
-    @CreatedDate
-    @Column(name = "created_at")
+    @TableField(value = "created_at", fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 
-    @LastModifiedDate
-    @Column(name = "updated_at")
+    @TableField(value = "updated_at", fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
 }

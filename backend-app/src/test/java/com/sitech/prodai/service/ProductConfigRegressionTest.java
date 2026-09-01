@@ -2,10 +2,10 @@ package com.sitech.prodai.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sitech.prodai.config.ProdAiProperties;
-import com.sitech.prodai.repository.OntologyAssetVersionRepository;
-import com.sitech.prodai.repository.OntologyInstanceRepository;
-import com.sitech.prodai.repository.OntologyVersionLogRepository;
-import com.sitech.prodai.repository.OpsWorkOrderRepository;
+import com.sitech.prodai.mapper.OntologyAssetVersionMapper;
+import com.sitech.prodai.mapper.OntologyInstanceMapper;
+import com.sitech.prodai.mapper.OntologyVersionLogMapper;
+import com.sitech.prodai.mapper.OpsWorkOrderMapper;
 import com.sitech.prodai.service.ops.ClasspathOpsProductDataSource;
 import com.sitech.prodai.service.ops.HttpOpsProductDataSource;
 import com.sitech.prodai.service.ops.OpsExtractionService;
@@ -48,17 +48,17 @@ class ProductConfigRegressionTest {
     @Mock
     private OpsSwrlReasoner opsSwrlReasoner;
     @Mock
-    private OpsWorkOrderRepository workOrderRepository;
-    @Mock
-    private OntologyInstanceRepository instanceRepository;
-    @Mock
-    private OntologyAssetVersionRepository assetVersionRepository;
-    @Mock
-    private OntologyVersionLogRepository versionLogRepository;
-    @Mock
     private Rdf4jOntologyStore rdf4jStore;
     @Mock
     private HttpOpsProductDataSource httpSource;
+    @Mock
+    private OpsWorkOrderMapper workOrderMapper;
+    @Mock
+    private OntologyInstanceMapper instanceMapper;
+    @Mock
+    private OntologyAssetVersionMapper assetVersionMapper;
+    @Mock
+    private OntologyVersionLogMapper versionLogMapper;
 
     private ProductOntologyService service;
     private ProductConfigRegressionService regressionService;
@@ -93,7 +93,7 @@ class ProductConfigRegressionTest {
         // 单测无 Spring 容器：手动触发 @PostConstruct 装载投影配置（品类默认值/报文映射）
         projector.init();
 
-        versionService = new OntologyVersionService(assetVersionRepository, versionLogRepository);
+        versionService = new OntologyVersionService(assetVersionMapper, versionLogMapper);
         TemplateDeriveEngine deriveEngine =
                 new TemplateDeriveEngine(opsRules, templateRegistry, projector, mapper);
         ObjectProvider<ProductConfigRegressionService> regressionProvider =
@@ -110,8 +110,8 @@ class ProductConfigRegressionTest {
                 documentParser,
                 new ConfigDocumentStorage(),
                 rdf4jStore,
-                workOrderRepository,
-                instanceRepository,
+                workOrderMapper,
+                instanceMapper,
                 projector,
                 new LastKnownGoodGuard(versionService),
                 versionService,

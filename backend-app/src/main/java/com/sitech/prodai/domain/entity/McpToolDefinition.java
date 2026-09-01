@@ -1,21 +1,14 @@
 package com.sitech.prodai.domain.entity;
 
-import com.sitech.prodai.common.JsonConverters;
-import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.Table;
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.sitech.prodai.common.JsonTypeHandlers;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 import java.util.Map;
@@ -26,95 +19,81 @@ import java.util.Map;
 @Getter
 @Setter
 @NoArgsConstructor
-@Entity
-@Table(name = "pd_ai_mcp_tool_definitions", indexes = {
-        @Index(name = "idx_tool_name", columnList = "tool_name", unique = true),
-        @Index(name = "idx_tool_code", columnList = "tool_code"),
-        @Index(name = "idx_tool_category", columnList = "category"),
-        @Index(name = "idx_tool_enabled", columnList = "is_enabled")
-})
-@EntityListeners(AuditingEntityListener.class)
+@TableName(value = "pd_ai_mcp_tool_definitions", autoResultMap = true)
 public class McpToolDefinition {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @TableId(type = IdType.AUTO)
     private Integer id;
 
-    @Column(name = "tool_name", unique = true, nullable = false, length = 100)
+    @TableField("tool_name")
     private String toolName;
 
-    @Column(name = "tool_code", unique = true, length = 100)
+    @TableField("tool_code")
     private String toolCode;
 
-    @Column(name = "description", columnDefinition = "TEXT")
+    @TableField("description")
     private String description;
 
-    @Column(name = "category", length = 50)
+    @TableField("category")
     private String category;
 
-    @Column(name = "is_enabled", nullable = false)
+    @TableField("is_enabled")
     private Boolean isEnabled = true;
 
-    @Column(name = "is_public", nullable = false)
+    @TableField("is_public")
     private Boolean isPublic = true;
 
-    @Column(name = "input_schema", columnDefinition = "TEXT")
-    @Convert(converter = JsonConverters.JsonMapConverter.class)
+    @TableField(value = "input_schema", typeHandler = JsonTypeHandlers.JsonMapTypeHandler.class)
     private Map<String, Object> inputSchema;
 
-    @Column(name = "output_schema", columnDefinition = "TEXT")
-    @Convert(converter = JsonConverters.JsonMapConverter.class)
+    @TableField(value = "output_schema", typeHandler = JsonTypeHandlers.JsonMapTypeHandler.class)
     private Map<String, Object> outputSchema;
 
-    @Column(name = "tool_type", length = 20)
+    @TableField("tool_type")
     private String toolType = "url";
 
-    @Column(name = "protocol", length = 10)
+    @TableField("protocol")
     private String protocol = "http";
 
-    @Column(name = "request_method", length = 16)
+    @TableField("request_method")
     private String requestMethod = "POST";
 
-    @Column(name = "url", length = 500)
+    @TableField("url")
     private String url;
 
-    @Column(name = "auth_type", length = 20)
+    @TableField("auth_type")
     private String authType = "none";
 
-    @Column(name = "auth_info", columnDefinition = "TEXT")
+    @TableField("auth_info")
     private String authInfo;
 
-    @Column(name = "need_summary", nullable = false)
+    @TableField("need_summary")
     private Boolean needSummary = false;
 
-    @Column(name = "prompt", columnDefinition = "TEXT")
+    @TableField("prompt")
     private String prompt;
 
-    @Column(name = "config", columnDefinition = "TEXT")
-    @Convert(converter = JsonConverters.JsonMapConverter.class)
+    @TableField(value = "config", typeHandler = JsonTypeHandlers.JsonMapTypeHandler.class)
     private Map<String, Object> config;
 
-    @Column(name = "extra_metadata", columnDefinition = "TEXT")
-    @Convert(converter = JsonConverters.JsonMapConverter.class)
+    @TableField(value = "extra_metadata", typeHandler = JsonTypeHandlers.JsonMapTypeHandler.class)
     private Map<String, Object> extraMetadata;
 
-    @Column(name = "total_calls", nullable = false)
+    @TableField("total_calls")
     private Integer totalCalls = 0;
 
-    @Column(name = "last_called_at")
+    @TableField("last_called_at")
     private LocalDateTime lastCalledAt;
 
-    @Column(name = "created_by", length = 100)
+    @TableField("created_by")
     private String createdBy;
 
-    @Column(name = "updated_by", length = 100)
+    @TableField("updated_by")
     private String updatedBy;
 
-    @CreatedDate
-    @Column(name = "created_at")
+    @TableField(value = "created_at", fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 
-    @LastModifiedDate
-    @Column(name = "updated_at")
+    @TableField(value = "updated_at", fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
 }

@@ -1,22 +1,14 @@
 package com.sitech.prodai.domain.entity;
 
-import com.sitech.prodai.common.JsonConverters;
-import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.sitech.prodai.common.JsonTypeHandlers;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -28,61 +20,48 @@ import java.util.Map;
 @Getter
 @Setter
 @NoArgsConstructor
-@Entity
-@Table(name = "pd_ai_workflow_history", indexes = {
-        @Index(name = "idx_wh_workflow_id", columnList = "workflow_id"),
-        @Index(name = "idx_wh_workflow_code", columnList = "workflow_code")
-})
-@EntityListeners(AuditingEntityListener.class)
+@TableName(value = "pd_ai_workflow_history", autoResultMap = true)
 public class WorkflowHistory {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @TableId(type = IdType.AUTO)
     private Integer id;
 
-    @Column(name = "workflow_id", nullable = false)
+    @TableField("workflow_id")
     private Integer workflowId;
 
-    @ManyToOne
-    @JoinColumn(name = "workflow_id", referencedColumnName = "id", insertable = false, updatable = false)
-    private Workflow workflow;
-
-    @Column(name = "workflow_code", nullable = false, length = 100)
+    @TableField("workflow_code")
     private String workflowCode;
 
-    @Column(name = "version", nullable = false)
+    @TableField("version")
     private Integer version;
 
-    @Column(name = "workflow_name", nullable = false, length = 200)
+    @TableField("workflow_name")
     private String workflowName;
 
-    @Column(name = "description", columnDefinition = "TEXT")
+    @TableField("description")
     private String description;
 
-    @Column(name = "workflow_data", nullable = false, columnDefinition = "TEXT")
-    @Convert(converter = JsonConverters.JsonMapConverter.class)
+    @TableField(value = "workflow_data", typeHandler = JsonTypeHandlers.JsonMapTypeHandler.class)
     private Map<String, Object> workflowData;
 
-    @Column(name = "category", length = 50)
+    @TableField("category")
     private String category;
 
-    @Column(name = "tags", nullable = false, columnDefinition = "TEXT")
-    @Convert(converter = JsonConverters.JsonListConverter.class)
+    @TableField(value = "tags", typeHandler = JsonTypeHandlers.JsonListTypeHandler.class)
     private List<Object> tags;
 
-    @Column(name = "priority")
+    @TableField("priority")
     private Integer priority;
 
-    @Column(name = "is_active")
+    @TableField("is_active")
     private Boolean isActive;
 
-    @Column(name = "change_note", columnDefinition = "TEXT")
+    @TableField("change_note")
     private String changeNote;
 
-    @Column(name = "created_by", length = 100)
+    @TableField("created_by")
     private String createdBy;
 
-    @CreatedDate
-    @Column(name = "created_at")
+    @TableField(value = "created_at", fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 }

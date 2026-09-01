@@ -1,17 +1,18 @@
 package com.sitech.prodai.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sitech.prodai.domain.entity.ChatMessage;
 import com.sitech.prodai.domain.entity.ChatMessageMetadata;
 import com.sitech.prodai.domain.entity.ChatSession;
-import com.sitech.prodai.repository.ChatMessageMetadataRepository;
-import com.sitech.prodai.repository.ChatMessageRepository;
-import com.sitech.prodai.repository.ChatSessionRepository;
+import com.sitech.prodai.mapper.ChatMessageMapper;
+import com.sitech.prodai.mapper.ChatMessageMetadataMapper;
+import com.sitech.prodai.mapper.ChatSessionMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,7 +24,6 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -45,18 +45,18 @@ public class ChatServiceV2Jpa {
     private static final Logger log = LoggerFactory.getLogger(ChatServiceV2Jpa.class);
     private static final DateTimeFormatter TITLE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
-    private final ChatSessionRepository sessionRepository;
-    private final ChatMessageRepository messageRepository;
-    private final ChatMessageMetadataRepository metadataRepository;
+    private final ChatSessionMapper sessionMapper;
+    private final ChatMessageMapper messageMapper;
+    private final ChatMessageMetadataMapper metadataMapper;
     private final ObjectMapper objectMapper;
 
-    public ChatServiceV2Jpa(ChatSessionRepository sessionRepository,
-                            ChatMessageRepository messageRepository,
-                            ChatMessageMetadataRepository metadataRepository,
+    public ChatServiceV2Jpa(ChatSessionMapper sessionMapper,
+                            ChatMessageMapper messageMapper,
+                            ChatMessageMetadataMapper metadataMapper,
                             ObjectMapper objectMapper) {
-        this.sessionRepository = sessionRepository;
-        this.messageRepository = messageRepository;
-        this.metadataRepository = metadataRepository;
+        this.sessionMapper = sessionMapper;
+        this.messageMapper = messageMapper;
+        this.metadataMapper = metadataMapper;
         this.objectMapper = objectMapper;
     }
 
@@ -78,7 +78,7 @@ public class ChatServiceV2Jpa {
             session.setContextTags(contextTags == null ? List.of() : new ArrayList<>(contextTags));
             session.setSessionMetadata(metadata == null ? Map.of() : new LinkedHashMap<>(metadata));
             session.setStatus("active");
-            session = sessionRepository.save(session);
+            sessionMapper.insert(session);
             log.info("[ChatServiceV2Jpa] 创建会话 session_id={} user_id={}", sessionId, userId);
             return sessionToDict(session);
         } catch (Exception e) {
@@ -93,19 +93,32 @@ public class ChatServiceV2Jpa {
             int safeLimit = Math.max(1, Math.min(limit, 200));
             List<ChatSession> sessions;
             if (userId != null && !userId.isEmpty() && status != null && !status.isEmpty() && !"all".equalsIgnoreCase(status)) {
-                sessions = sessionRepository
-                        .findByUserIdAndStatusOrderByUpdatedAtDesc(userId, status, PageRequest.of(0, safeLimit))
-                        .getContent();
+                sessions = sessionMapper.selectPage(
+                                new Page<>(1, safeLimit),
+                                new LambdaQueryWrapper<ChatSession>()
+                                        .eq(ChatSession::getUserId, userId)
+                                        .eq(ChatSession::getStatus, status)
+                                        .orderByDesc(ChatSession::getUpdatedAt))
+                        .getRecords();
             } else if (userId != null && !userId.isEmpty()) {
-                sessions = sessionRepository
-                        .findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(0, safeLimit))
-                        .getContent();
+                sessions = sessionMapper.selectPage(
+                                new Page<>(1, safeLimit),
+                                new LambdaQueryWrapper<ChatSession>()
+                                        .eq(ChatSession::getUserId, userId)
+                                        .orderByDesc(ChatSession::getCreatedAt))
+                        .getRecords();
             } else if (status != null && !status.isEmpty() && !"all".equalsIgnoreCase(status)) {
-                sessions = sessionRepository
-                        .findByStatusOrderByUpdatedAtDesc(status, PageRequest.of(0, safeLimit))
-                        .getContent();
+                sessions = sessionMapper.selectPage(
+                                new Page<>(1, safeLimit),
+                                new LambdaQueryWrapper<ChatSession>()
+                                        .eq(ChatSession::getStatus, status)
+                                        .orderByDesc(ChatSession::getUpdatedAt))
+                        .getRecords();
             } else {
-                sessions = sessionRepository.findAll(PageRequest.of(0, safeLimit)).getContent();
+                sessions = sessionMapper.selectPage(
+                                new Page<>(1, safeLimit),
+                                new LambdaQueryWrapper<ChatSession>().orderByDesc(ChatSession::getCreatedAt))
+                        .getRecords();
             }
             List<Map<String, Object>> result = new ArrayList<>();
             for (ChatSession s : sessions) {
@@ -121,8 +134,9 @@ public class ChatServiceV2Jpa {
     /** 对齐 Python get_session */
     public Map<String, Object> getSession(String sessionId) {
         try {
-            Optional<ChatSession> opt = sessionRepository.findBySessionId(sessionId);
-            return opt.map(this::sessionToDict).orElse(null);
+            ChatSession session = sessionMapper.selectOne(
+                    new LambdaQueryWrapper<ChatSession>().eq(ChatSession::getSessionId, sessionId));
+            return session == null ? null : sessionToDict(session);
         } catch (Exception e) {
             log.error("[ChatServiceV2Jpa] 查询会话失败", e);
             return null;
@@ -136,11 +150,11 @@ public class ChatServiceV2Jpa {
                                   Map<String, Object> metadata,
                                   String status) {
         try {
-            Optional<ChatSession> opt = sessionRepository.findBySessionId(sessionId);
-            if (opt.isEmpty()) {
+            ChatSession session = sessionMapper.selectOne(
+                    new LambdaQueryWrapper<ChatSession>().eq(ChatSession::getSessionId, sessionId));
+            if (session == null) {
                 return false;
             }
-            ChatSession session = opt.get();
             if (title != null) {
                 session.setTitle(title);
             }
@@ -153,7 +167,7 @@ public class ChatServiceV2Jpa {
             if (status != null) {
                 session.setStatus(status);
             }
-            sessionRepository.save(session);
+            sessionMapper.updateById(session);
             return true;
         } catch (Exception e) {
             log.error("[ChatServiceV2Jpa] 更新会话失败 session_id={}", sessionId, e);
@@ -165,17 +179,21 @@ public class ChatServiceV2Jpa {
     @Transactional
     public boolean deleteSession(String sessionId) {
         try {
-            Optional<ChatSession> opt = sessionRepository.findBySessionId(sessionId);
-            if (opt.isEmpty()) {
+            ChatSession session = sessionMapper.selectOne(
+                    new LambdaQueryWrapper<ChatSession>().eq(ChatSession::getSessionId, sessionId));
+            if (session == null) {
                 return false;
             }
-            // 先删除消息和 metadata（JPA 不会自动级联到独立的 metadata 表）
-            List<ChatMessage> messages = messageRepository.findBySessionIdOrderBySortOrderAsc(sessionId);
+            // 先删除消息和 metadata（不会自动级联到独立的 metadata 表）
+            List<ChatMessage> messages = messageMapper.selectList(
+                    new LambdaQueryWrapper<ChatMessage>()
+                            .eq(ChatMessage::getSessionId, sessionId)
+                            .orderByAsc(ChatMessage::getSortOrder));
             for (ChatMessage m : messages) {
-                metadataRepository.deleteByMessageId(m.getMessageId());
+                metadataMapper.deleteByMessageId(m.getMessageId());
             }
-            messageRepository.deleteAll(messages);
-            sessionRepository.delete(opt.get());
+            messages.forEach(messageMapper::deleteById);
+            sessionMapper.deleteById(session.getId());
             log.info("[ChatServiceV2Jpa] 删除会话 session_id={}", sessionId);
             return true;
         } catch (Exception e) {
@@ -198,7 +216,8 @@ public class ChatServiceV2Jpa {
             }
 
             // 确保会话存在（不存在则自动创建）
-            ChatSession session = sessionRepository.findBySessionId(sessionId).orElse(null);
+            ChatSession session = sessionMapper.selectOne(
+                    new LambdaQueryWrapper<ChatSession>().eq(ChatSession::getSessionId, sessionId));
             if (session == null) {
                 session = new ChatSession();
                 session.setSessionId(sessionId);
@@ -206,11 +225,11 @@ public class ChatServiceV2Jpa {
                 String title = content.length() > 50 ? content.substring(0, 50) : content;
                 session.setTitle(title.isBlank() ? ("会话 " + LocalDateTime.now().format(TITLE_FMT)) : title);
                 session.setStatus("active");
-                session = sessionRepository.save(session);
+                sessionMapper.insert(session);
                 log.debug("[ChatServiceV2Jpa] 自动创建会话 session_id={}", sessionId);
             }
 
-            Integer maxSort = messageRepository.findMaxSortOrderBySessionId(sessionId);
+            Integer maxSort = messageMapper.findMaxSortOrderBySessionId(sessionId);
             int sortOrder = (maxSort == null ? 0 : maxSort) + 1;
 
             String messageId = UUID.randomUUID().toString();
@@ -222,7 +241,7 @@ public class ChatServiceV2Jpa {
             message.setContentType(contentType == null || contentType.isEmpty() ? "text" : contentType);
             message.setParentId(parentId);
             message.setSortOrder(sortOrder);
-            message = messageRepository.save(message);
+            messageMapper.insert(message);
 
             // 写入 metadata
             if (metadata != null && !metadata.isEmpty()) {
@@ -234,18 +253,18 @@ public class ChatServiceV2Jpa {
                     meta.setValue(serializeValue(e.getValue()));
                     metaList.add(meta);
                 }
-                metadataRepository.saveAll(metaList);
+                metaList.forEach(metadataMapper::insert);
             }
             if (stepType != null && !stepType.isEmpty()) {
                 ChatMessageMetadata stepMeta = new ChatMessageMetadata();
                 stepMeta.setMessageId(messageId);
                 stepMeta.setMetaKey("step_type");
                 stepMeta.setValue(stepType);
-                metadataRepository.save(stepMeta);
+                metadataMapper.insert(stepMeta);
             }
 
             // 更新会话 updated_at
-            sessionRepository.save(session);
+            sessionMapper.updateById(session);
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("message_id", messageId);
@@ -271,18 +290,30 @@ public class ChatServiceV2Jpa {
                                             LocalDateTime beforeTs, LocalDateTime afterTs,
                                             boolean includeMetadata) {
         try {
-            long total = messageRepository.countBySessionId(sessionId);
+            long total = messageMapper.selectCount(
+                    new LambdaQueryWrapper<ChatMessage>().eq(ChatMessage::getSessionId, sessionId));
             int safeLimit = Math.max(1, Math.min(limit, 500));
             List<ChatMessage> messages;
             if (beforeTs != null) {
-                messages = messageRepository.findBySessionIdAndCreatedAtBeforeOrderBySortOrderAsc(
-                        sessionId, beforeTs, PageRequest.of(0, safeLimit + 1));
+                messages = messageMapper.selectList(
+                        new LambdaQueryWrapper<ChatMessage>()
+                                .eq(ChatMessage::getSessionId, sessionId)
+                                .lt(ChatMessage::getCreatedAt, beforeTs)
+                                .orderByAsc(ChatMessage::getSortOrder)
+                                .last("LIMIT " + (safeLimit + 1)));
             } else if (afterTs != null) {
-                messages = messageRepository.findBySessionIdAndCreatedAtAfterOrderBySortOrderAsc(
-                        sessionId, afterTs, PageRequest.of(0, safeLimit + 1));
+                messages = messageMapper.selectList(
+                        new LambdaQueryWrapper<ChatMessage>()
+                                .eq(ChatMessage::getSessionId, sessionId)
+                                .gt(ChatMessage::getCreatedAt, afterTs)
+                                .orderByAsc(ChatMessage::getSortOrder)
+                                .last("LIMIT " + (safeLimit + 1)));
             } else {
-                messages = messageRepository.findBySessionIdOrderBySortOrderAsc(
-                        sessionId, PageRequest.of(0, safeLimit + 1)).getContent();
+                messages = messageMapper.selectList(
+                        new LambdaQueryWrapper<ChatMessage>()
+                                .eq(ChatMessage::getSessionId, sessionId)
+                                .orderByAsc(ChatMessage::getSortOrder)
+                                .last("LIMIT " + (safeLimit + 1)));
             }
 
             boolean hasMore = messages.size() > safeLimit;
@@ -305,7 +336,8 @@ public class ChatServiceV2Jpa {
                 for (ChatMessage m : messages) {
                     msgIds.add(m.getMessageId());
                 }
-                List<ChatMessageMetadata> metas = metadataRepository.findByMessageIdIn(msgIds);
+                List<ChatMessageMetadata> metas = metadataMapper.selectList(
+                        new LambdaQueryWrapper<ChatMessageMetadata>().in(ChatMessageMetadata::getMessageId, msgIds));
                 Map<String, List<ChatMessageMetadata>> metaMap = new HashMap<>();
                 for (ChatMessageMetadata meta : metas) {
                     metaMap.computeIfAbsent(meta.getMessageId(), k -> new ArrayList<>()).add(meta);
@@ -345,12 +377,14 @@ public class ChatServiceV2Jpa {
     /** 对齐 Python get_message */
     public Map<String, Object> getMessage(String messageId) {
         try {
-            Optional<ChatMessage> opt = messageRepository.findByMessageId(messageId);
-            if (opt.isEmpty()) {
+            ChatMessage msg = messageMapper.selectOne(
+                    new LambdaQueryWrapper<ChatMessage>().eq(ChatMessage::getMessageId, messageId));
+            if (msg == null) {
                 return null;
             }
-            Map<String, Object> d = messageToDict(opt.get(), false);
-            List<ChatMessageMetadata> metas = metadataRepository.findByMessageId(messageId);
+            Map<String, Object> d = messageToDict(msg, false);
+            List<ChatMessageMetadata> metas = metadataMapper.selectList(
+                    new LambdaQueryWrapper<ChatMessageMetadata>().eq(ChatMessageMetadata::getMessageId, messageId));
             Map<String, Object> metadataDict = new LinkedHashMap<>();
             for (ChatMessageMetadata meta : metas) {
                 metadataDict.put(meta.getMetaKey(), deserializeValue(meta.getValue()));
@@ -367,12 +401,13 @@ public class ChatServiceV2Jpa {
     @Transactional
     public boolean deleteMessage(String messageId) {
         try {
-            Optional<ChatMessage> opt = messageRepository.findByMessageId(messageId);
-            if (opt.isEmpty()) {
+            ChatMessage msg = messageMapper.selectOne(
+                    new LambdaQueryWrapper<ChatMessage>().eq(ChatMessage::getMessageId, messageId));
+            if (msg == null) {
                 return false;
             }
-            metadataRepository.deleteByMessageId(messageId);
-            messageRepository.delete(opt.get());
+            metadataMapper.deleteByMessageId(messageId);
+            messageMapper.deleteById(msg.getId());
             return true;
         } catch (Exception e) {
             log.error("[ChatServiceV2Jpa] 删除消息失败 msg_id={}", messageId, e);
@@ -384,18 +419,18 @@ public class ChatServiceV2Jpa {
     @Transactional
     public boolean updateMessage(String messageId, String content, Map<String, Object> metadata) {
         try {
-            Optional<ChatMessage> opt = messageRepository.findByMessageId(messageId);
-            if (opt.isEmpty()) {
+            ChatMessage msg = messageMapper.selectOne(
+                    new LambdaQueryWrapper<ChatMessage>().eq(ChatMessage::getMessageId, messageId));
+            if (msg == null) {
                 log.warn("[ChatServiceV2Jpa] 更新消息失败：消息不存在 msg_id={}", messageId);
                 return false;
             }
-            ChatMessage msg = opt.get();
             if (content != null) {
                 msg.setContent(content);
-                messageRepository.save(msg);
+                messageMapper.updateById(msg);
             }
             if (metadata != null) {
-                metadataRepository.deleteByMessageId(messageId);
+                metadataMapper.deleteByMessageId(messageId);
                 List<ChatMessageMetadata> metaList = new ArrayList<>();
                 for (Map.Entry<String, Object> e : metadata.entrySet()) {
                     ChatMessageMetadata meta = new ChatMessageMetadata();
@@ -404,7 +439,7 @@ public class ChatServiceV2Jpa {
                     meta.setValue(serializeValue(e.getValue()));
                     metaList.add(meta);
                 }
-                metadataRepository.saveAll(metaList);
+                metaList.forEach(metadataMapper::insert);
             }
             return true;
         } catch (Exception e) {
@@ -427,26 +462,25 @@ public class ChatServiceV2Jpa {
         }
         try {
             // 确保会话存在
-            ChatSession session = sessionRepository.findBySessionId(sessionId).orElse(null);
+            ChatSession session = sessionMapper.selectOne(
+                    new LambdaQueryWrapper<ChatSession>().eq(ChatSession::getSessionId, sessionId));
             if (session == null) {
                 session = new ChatSession();
                 session.setSessionId(sessionId);
                 session.setUserId(userId);
                 session.setTitle("会话 " + LocalDateTime.now().format(TITLE_FMT));
                 session.setStatus("active");
-                session = sessionRepository.save(session);
+                sessionMapper.insert(session);
             }
 
-            Integer maxSort = messageRepository.findMaxSortOrderBySessionId(sessionId);
+            Integer maxSort = messageMapper.findMaxSortOrderBySessionId(sessionId);
             int currentSort = maxSort == null ? 0 : maxSort;
-            LocalDateTime baseTime = LocalDateTime.now();
 
             List<ChatMessage> messageObjects = new ArrayList<>();
             List<ChatMessageMetadata> metadataObjects = new ArrayList<>();
             List<String> messageIds = new ArrayList<>();
 
-            for (int idx = 0; idx < messages.size(); idx++) {
-                Map<String, Object> msgData = messages.get(idx);
+            for (Map<String, Object> msgData : messages) {
                 String messageId = UUID.randomUUID().toString();
                 messageIds.add(messageId);
                 currentSort++;
@@ -474,11 +508,9 @@ public class ChatServiceV2Jpa {
                 }
             }
 
-            messageRepository.saveAll(messageObjects);
-            if (!metadataObjects.isEmpty()) {
-                metadataRepository.saveAll(metadataObjects);
-            }
-            sessionRepository.save(session);
+            messageObjects.forEach(messageMapper::insert);
+            metadataObjects.forEach(metadataMapper::insert);
+            sessionMapper.updateById(session);
 
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("success", true);
@@ -504,16 +536,25 @@ public class ChatServiceV2Jpa {
             int safeLimit = Math.max(1, Math.min(limit, 100));
             List<ChatMessage> messages;
             if (sessionId != null && !sessionId.isEmpty()) {
-                messages = messageRepository.findBySessionIdAndContentContainingOrderByCreatedAtDesc(
-                        sessionId, queryText, PageRequest.of(0, safeLimit));
+                messages = messageMapper.selectPage(
+                                new Page<>(1, safeLimit),
+                                new LambdaQueryWrapper<ChatMessage>()
+                                        .eq(ChatMessage::getSessionId, sessionId)
+                                        .like(ChatMessage::getContent, queryText)
+                                        .orderByDesc(ChatMessage::getCreatedAt))
+                        .getRecords();
             } else {
-                messages = messageRepository.findByContentContainingOrderByCreatedAtDesc(
-                        queryText, PageRequest.of(0, safeLimit));
+                messages = messageMapper.selectPage(
+                                new Page<>(1, safeLimit),
+                                new LambdaQueryWrapper<ChatMessage>()
+                                        .like(ChatMessage::getContent, queryText)
+                                        .orderByDesc(ChatMessage::getCreatedAt))
+                        .getRecords();
                 // 按 userId 过滤
                 if (userId != null && !userId.isEmpty()) {
                     Set<String> userSessionIds = new HashSet<>();
-                    for (ChatSession s : sessionRepository.findByUserIdOrderByCreatedAtDesc(
-                            userId, PageRequest.of(0, Integer.MAX_VALUE)).getContent()) {
+                    for (ChatSession s : sessionMapper.selectList(
+                            new LambdaQueryWrapper<ChatSession>().eq(ChatSession::getUserId, userId))) {
                         userSessionIds.add(s.getSessionId());
                     }
                     messages = messages.stream()
@@ -526,7 +567,8 @@ public class ChatServiceV2Jpa {
                 msgIds.add(m.getMessageId());
             }
             List<ChatMessageMetadata> metas = msgIds.isEmpty() ? List.of()
-                    : metadataRepository.findByMessageIdIn(msgIds);
+                    : metadataMapper.selectList(
+                            new LambdaQueryWrapper<ChatMessageMetadata>().in(ChatMessageMetadata::getMessageId, msgIds));
             Map<String, List<ChatMessageMetadata>> metaMap = new HashMap<>();
             for (ChatMessageMetadata meta : metas) {
                 metaMap.computeIfAbsent(meta.getMessageId(), k -> new ArrayList<>()).add(meta);
@@ -554,9 +596,16 @@ public class ChatServiceV2Jpa {
     public Map<String, Object> getSessionStats(String sessionId) {
         Map<String, Object> body = new LinkedHashMap<>();
         try {
-            long total = messageRepository.countBySessionId(sessionId);
-            long userMsgs = messageRepository.countBySessionIdAndRole(sessionId, "user");
-            long aiMsgs = messageRepository.countBySessionIdAndRole(sessionId, "assistant");
+            long total = messageMapper.selectCount(
+                    new LambdaQueryWrapper<ChatMessage>().eq(ChatMessage::getSessionId, sessionId));
+            long userMsgs = messageMapper.selectCount(
+                    new LambdaQueryWrapper<ChatMessage>()
+                            .eq(ChatMessage::getSessionId, sessionId)
+                            .eq(ChatMessage::getRole, "user"));
+            long aiMsgs = messageMapper.selectCount(
+                    new LambdaQueryWrapper<ChatMessage>()
+                            .eq(ChatMessage::getSessionId, sessionId)
+                            .eq(ChatMessage::getRole, "assistant"));
             body.put("total", total);
             body.put("user_messages", userMsgs);
             body.put("assistant_messages", aiMsgs);
