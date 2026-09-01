@@ -532,7 +532,9 @@ function handleProductPreview(id) {
 }
 
 /** 智查结果卡片操作：复制配置（弹补充需求输入 → 直调 copy-as-draft API 按需求修正副本字段 + 后端复制即开单，消息流挂工单卡）。
- * 不走翻译层——「复制」语义无对应 AgentTool，LLM 会误派 rd_compliance 报「缺少待校验的配置草稿」。 */
+ * 不走翻译层——「复制」语义无对应 AgentTool，LLM 会误派 rd_compliance 报「缺少待校验的配置草稿」。
+ * 回复统一走 playProductReply（占位气泡 + 流式打字 + 工单卡挂载 + 落库），
+ * 修复原先手工拼 aiMsg 仅内存 push、不发消息也不落库，刷新/切换会话后复制回执消失的问题。 */
 async function onQueryResultClick(item) {
   if (!item || streaming.value) return
   const offeringId = item.offeringId || item.code || item.id
@@ -558,24 +560,29 @@ async function onQueryResultClick(item) {
     return
   }
   streaming.value = true
-  const aiMsg = {
-    id: 'R' + Date.now(),
-    role: 'assistant',
-    content: '',
-    thinkingSteps: [],
-    done: true,
-    toolResults: [],
-    timestamp: Date.now(),
-  }
   try {
-    aiMsg.thinkingSteps = [
+    // 复制动作入会话历史：与工单卡复制路径（pushUserMessage + persistTurn）对齐，
+    // 否则该轮操作只存在于内存，刷新后上下文断裂（不知道草稿从何复制而来）
+    const actionText = `复制配置「${name}」（${offeringId}）为新草稿${requirement ? `；补充需求：${requirement}` : ''}`
+    messages.value = [
+      ...messages.value,
+      { id: genId(), role: 'user', type: 'chat', content: actionText, done: true, timestamp: Date.now() },
+    ]
+    const sid = sessionId.value
+    if (sid) {
+      try {
+        await saveChatMessage(sid, { role: 'user', content: actionText, contentType: 'text', done: true })
+      } catch (e) {
+        console.warn('[RdAssistantPage] 复制配置用户消息落库失败:', e?.message || e)
+      }
+    }
+    const thinkingSteps = [
       `选中智查结果「${name}」`,
       ...(requirement ? [`按补充需求调整：${requirement}`] : []),
       'copy_as_draft 深拷贝生成草稿',
       'evaluate_policy 执行 R-C* 合规校验',
       '复制即开单：创建配置工单',
     ]
-    messages.value = [...messages.value]
     const result = await copyAsDraft(offeringId, item.name || null, sessionId.value, requirement)
     if (result?.success === false) {
       throw new Error(result.message || '复制失败')
@@ -586,18 +593,21 @@ async function onQueryResultClick(item) {
     const appliedNote = result.applied_requirements
       ? `已按补充需求调整：${Object.keys(result.applied_requirements).join('、')}。`
       : ''
-    aiMsg.content =
+    let content =
       `已将「${result.source_offering_name || offeringId}」复制为新草稿「${result.draft?.offeringName || ''}」。${appliedNote}${passLabel}。`
-    // 展示「商品配置工单」卡片（与对话配置一致），而非表单卡
-    await attachWorkOrdersToMsg(aiMsg)
-    if (!aiMsg.workOrders?.length) {
-      // 开单失败时兜底：至少保留复制回执文本
-      aiMsg.content += '\n\n（工单创建失败，可稍后在工单列表重试）'
+    // playProductReply 内部会挂工单卡并落库；先探测开单结果以追加兜底文案
+    const workOrders = await loadSessionWorkOrders(sessionId.value)
+    if (!workOrders.length) {
+      content += '\n\n（工单创建失败，可稍后在工单列表重试）'
     }
+    await playProductReply({ thinkingSteps, content, formCard: null })
   } catch (e) {
-    aiMsg.content = `复制配置失败：${e.message || '本体服务不可用'}。请确认商品编码有效。`
+    await playProductReply({
+      thinkingSteps: [`复制「${name}」失败`],
+      content: `复制配置失败：${e.message || '本体服务不可用'}。请确认商品编码有效。`,
+      formCard: null,
+    })
   } finally {
-    messages.value = [...messages.value, aiMsg]
     streaming.value = false
   }
 }

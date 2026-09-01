@@ -1118,8 +1118,51 @@ public class ProductOntologyService {
         if (!appliedRequirements.isEmpty()) {
             body.put("applied_requirements", appliedRequirements);
         }
+        // 草稿先落库再开单（开单原子性，对齐 RdConfigChatTool.persistDraft）：
+        // 草稿落库失败时不开单，避免产生 payload.draftId 缺失的孤儿工单
+        // （孤儿工单上的复制/删除/提交操作都会因反查不到草稿而失败）。
+        if (sessionId != null && !sessionId.isBlank()) {
+            body.put("sessionId", sessionId);
+            if (!persistCopyDraft(body, draft, compliance)) {
+                log.warn("[ProductOntologyService] 智查复制草稿落库未成功，跳过开单（避免孤儿工单）: sessionId={}", sessionId);
+                return body;
+            }
+        }
         attachCopyWorkOrder(body, draft, sessionId);
         return body;
+    }
+
+    /**
+     * 智查复制草稿落库（pd_ai_ontology_instance）：draftId 写回 body/draft，
+     * 供 attachCopyWorkOrder 关联工单 payload，后续凭工单号反查草稿。
+     *
+     * @return 落库是否成功（draftId 已写回）；失败时调用方跳过开单，保证工单与草稿强关联
+     */
+    @SuppressWarnings("unchecked")
+    private boolean persistCopyDraft(Map<String, Object> body, Map<String, Object> draft, Map<String, Object> compliance) {
+        try {
+            if (draft == null || draft.isEmpty()) {
+                return false;
+            }
+            Map<String, Object> saveReq = new LinkedHashMap<>();
+            saveReq.put("draft", draft);
+            saveReq.put("sessionId", body.get("sessionId"));
+            saveReq.put("compliancePass", compliance.get("compliancePass"));
+            Map<String, Object> saved = saveConfigDraft(saveReq);
+            if (Boolean.TRUE.equals(saved.get("success")) && saved.get("draftId") != null) {
+                draft.put("draftId", saved.get("draftId"));
+                draft.put("clientId", saved.get("clientId"));
+                body.put("draft", draft);
+                body.put("draft_id", saved.get("draftId"));
+                body.put("client_id", saved.get("clientId"));
+                return true;
+            }
+            log.warn("[ProductOntologyService] 智查复制草稿落库失败: {}", saved.getOrDefault("message", "未知错误"));
+            return false;
+        } catch (Exception e) {
+            log.warn("[ProductOntologyService] 智查复制草稿落库失败（不影响复制结果）: {}", e.getMessage());
+            return false;
+        }
     }
 
     /**
@@ -1170,8 +1213,9 @@ public class ProductOntologyService {
     }
 
     /**
-     * 复制成功后同步创建配置工单（payload 关联草稿字段，绑定 sessionId）。
-     * 前端工单卡（attachWorkOrdersToMsg → SessionWorkOrderCard）据此展示「复制即开单」闭环。
+     * 复制成功后同步创建配置工单（payload 关联草稿 draftId，绑定 sessionId）。
+     * 前端工单卡（attachWorkOrdersToMsg → SessionWorkOrderCard）据此展示「复制即开单」闭环，
+     * 后续删除/复制/提交仅凭工单号反查 payload.draftId 定位草稿。
      */
     @SuppressWarnings("unchecked")
     private void attachCopyWorkOrder(Map<String, Object> body, Map<String, Object> draft, String sessionId) {
@@ -1182,6 +1226,8 @@ public class ProductOntologyService {
             Map<String, Object> woReq = new LinkedHashMap<>();
             woReq.put("offeringName", copyName);
             woReq.put("source", "rd_config_draft");
+            // 工单与草稿强关联：删除/复制操作仅凭 work_order_id 反查
+            woReq.put("draftId", str(firstNonEmpty(body.get("draft_id"), draft.get("draftId"), draft.get("draft_id"))));
             if (sessionId != null && !sessionId.isBlank()) {
                 woReq.put("sessionId", sessionId);
             }
