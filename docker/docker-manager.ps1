@@ -7,6 +7,24 @@ Docker Image Management Script for AI Dynamic Form Platform
 #>
 
 # ==============================================
+# Load .env (project root) - registry credentials etc.
+# ==============================================
+$ProjectRoot = (Get-Item $PSScriptRoot).Parent.FullName
+$DotEnvPath = Join-Path $ProjectRoot ".env"
+if (Test-Path $DotEnvPath) {
+    Get-Content $DotEnvPath | ForEach-Object {
+        $line = $_.Trim()
+        if ($line -and -not $line.StartsWith("#") -and $line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$') {
+            $key = $Matches[1]
+            $value = $Matches[2].Trim().Trim('"').Trim("'")
+            if (-not [System.Environment]::GetEnvironmentVariable($key, "Process")) {
+                Set-Item -Path "env:$key" -Value $value
+            }
+        }
+    }
+}
+
+# ==============================================
 # Configuration Section
 # ==============================================
 # WARNING: 修改版本号时，请同步更新对应 Sitech.BJ.Dockerfile.* 中的 FROM
@@ -17,17 +35,17 @@ $Config = @{
         Dockerfile    = "docker/Dockerfile.base.backend"
         Registry      = "10.86.12.11:20200"
         Namespace     = "y21127-crmpos"
-        Username      = "dingpq"
-        Password      = "Docker.2022!"
+        Username      = $env:DOCKER_REGISTRY_USER     # 凭据从环境变量读取，勿硬编码进 Git
+        Password      = $env:DOCKER_REGISTRY_PASSWORD
     }
     FrontendBase = @{
         ImageName     = "prod-platform-frontend-base"
-        ImageTag      = "1.3"  # 手动修改版本号，每次更新基础镜像时递增
+        ImageTag      = "2.0"  # 手动修改版本号，每次更新基础镜像时递增
         Dockerfile    = "docker/Dockerfile.base.frontend"
         Registry      = "10.86.12.11:20200"
         Namespace     = "y21127-crmpos"
-        Username      = "dingpq"
-        Password      = "Docker.2022!"
+        Username      = $env:DOCKER_REGISTRY_USER     # 凭据从环境变量读取，勿硬编码进 Git
+        Password      = $env:DOCKER_REGISTRY_PASSWORD
     }
 }
 
@@ -228,6 +246,13 @@ function Invoke-PushImage {
     
     Write-Host "`nLogging in to $Registry ..." -ForegroundColor Cyan
     Write-Host "Username: $Username" -ForegroundColor Yellow
+    if (-not $Username -or -not $Password) {
+        Write-Host "[FAIL] 仓库凭据未设置" -ForegroundColor Red
+        Write-Host "凭据已从脚本中移除（安全整改），请先在当前会话设置环境变量:" -ForegroundColor Yellow
+        Write-Host '  $env:DOCKER_REGISTRY_USER = "你的用户名"' -ForegroundColor Cyan
+        Write-Host '  $env:DOCKER_REGISTRY_PASSWORD = "你的密码"' -ForegroundColor Cyan
+        return $false
+    }
     $loginOutput = $Password | docker login $Registry --username $Username --password-stdin 2>&1
     $Password = $null
     $loginText = ($loginOutput | Out-String).Trim()

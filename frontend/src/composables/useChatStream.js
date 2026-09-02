@@ -267,6 +267,9 @@ export function useChatStream() {
             workflow: step.workflow || null,
             segment: step.segment || null,
             goal: step.goal || null,
+            manualHint: step.manualHint || step.manual_hint || null,
+            // 推理过程日志（LLM/本体留痕）：与历史回放同构，展开区渲染「日志」行
+            trace: Array.isArray(step.trace) && step.trace.length ? step.trace : null,
             category: step.category || null,
             metadata: {},
             timestamp: Date.now(),

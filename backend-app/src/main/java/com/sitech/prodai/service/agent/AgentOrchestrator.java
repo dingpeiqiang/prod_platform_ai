@@ -470,6 +470,10 @@ public class AgentOrchestrator {
         intentStep.put("goal", "先听懂您要做什么，再决定怎么办");
         intentStep.put("input", Map.of("question", ""));
         intentStep.put("output", intentOutput);
+        List<Map<String, Object>> trace = traceView(plan);
+        if (trace != null) {
+            intentStep.put("trace", trace);
+        }
         steps.add(intentStep);
         // ② 处理方案：输入 = ①的结构化意图（数据流承接）
         Map<String, Object> planStep = new LinkedHashMap<>();
@@ -484,6 +488,9 @@ public class AgentOrchestrator {
         planStep.put("workflow", buildWorkflow(plan));
         planStep.put("output", Map.of("summary", planStepOutput(plan, context),
                 "branch_taken", WorkflowBuilder.branchLabel(WorkflowBuilder.takenBranch(plan))));
+        if (trace != null) {
+            planStep.put("trace", trace);
+        }
         steps.add(planStep);
         // ③ 工具步骤：与实时 tool 事件同构（title/goal/manualHint/input/output/elapsed）
         if (results != null) {
@@ -508,7 +515,7 @@ public class AgentOrchestrator {
             }
         }
         // ④ 汇总步骤：实时流的 generate 步骤（含结论输出），历史回放等量还原
-        // 输入 = ③各工具的实际产出（数据流承接）
+        // 输入 = ③各工具的实际产出（数据流承接）；输出 = 整合性短文案（与实时流同构，不复述完整报告）
         Map<String, Object> generateStep = new LinkedHashMap<>();
         generateStep.put("id", "generate");
         generateStep.put("type", "thinking");
@@ -517,7 +524,9 @@ public class AgentOrchestrator {
         generateStep.put("status", "done");
         generateStep.put("goal", "把各环节结果整合成您能直接使用的结论与建议");
         generateStep.put("input", upstreamResultsInput(results));
-        generateStep.put("output", Map.of("summary", report != null && !report.isBlank() ? report : "已完成"));
+        generateStep.put("output", Map.of(
+                "summary", summarizeOutput(extractConclusion(results), results != null ? results.size() : 0),
+                "branch_taken", WorkflowBuilder.branchLabel(WorkflowBuilder.takenBranch(plan))));
         steps.add(generateStep);
         return steps;
     }
@@ -652,24 +661,28 @@ public class AgentOrchestrator {
         Map<String, Object> intentOutput = new LinkedHashMap<>();
         intentOutput.put("summary", "已明确：本次要执行「" + actionDisplay(plan) + "」");
         intentOutput.put("structured_intent", planIntentView(plan));
+        Map<String, Object> intentExtra = new LinkedHashMap<>();
+        intentExtra.put("goal", "先听懂您要做什么，再决定怎么办");
+        intentExtra.put("input", Map.of("question", question));
+        intentExtra.put("output", intentOutput);
+        intentExtra.put("trace", traceView(plan));
         emitter.emit("thinking", Map.of(
                 "steps", List.of(thinkingStep("intent", intentStepName(context),
-                        intentStepDesc(context),
-                        Map.of("goal", "先听懂您要做什么，再决定怎么办",
-                                "input", Map.of("question", question),
-                                "output", intentOutput))),
+                        intentStepDesc(context), intentExtra)),
                 "intent", plan.getIntent()
         ));
         // 阶段事件②：计划确认 —— 将内部「查询计划中间语言」翻译为业务可读的筛查方案
         // （取代原先透传 raw queryPlan 给前端渲染内部码卡片，避免对业务人员造成困惑）
         // 输入 = ①的结构化意图（承接上游输出，而非复述用户原文）
+        Map<String, Object> planExtra = new LinkedHashMap<>();
+        planExtra.put("goal", planStepGoal(plan, context));
+        planExtra.put("input", upstreamIntentInput(plan, question));
+        planExtra.put("workflow", buildWorkflow(plan));
+        planExtra.put("output", Map.of("summary", planStepOutput(plan, context)));
+        planExtra.put("trace", traceView(plan));
         emitter.emit("thinking", Map.of(
                 "steps", List.of(thinkingStep("plan", "定下处理方案",
-                        buildReadablePlan(plan),
-                        Map.of("goal", planStepGoal(plan, context),
-                                "input", upstreamIntentInput(plan, question),
-                                "workflow", buildWorkflow(plan),
-                                "output", Map.of("summary", planStepOutput(plan, context))))),
+                        buildReadablePlan(plan), planExtra)),
                 "intent", plan.getIntent()
         ));
 
@@ -689,13 +702,16 @@ public class AgentOrchestrator {
                     "intent", plan.getIntent()
             ));
             String clarifyMessage = presenter.present(question, List.of(), context);
-            // 阶段事件③′：追问生成完成，原地更新 generate 步骤（补输出：追问文案）
+            // 阶段事件③′：追问生成完成，原地更新 generate 步骤（补输出：整合性短文案，追问文案由正文承载）
+            List<String> missingParams = plan.getClarify() != null ? plan.getClarify() : List.of();
             emitter.emit("thinking", Map.of(
                     "steps", List.of(thinkingStep("generate", "组织追问",
                             "正在生成补充信息的询问…",
                             Map.of("goal", "信息不全时先问清楚，避免答非所问",
                                     "input", clarifyInputView(plan, question),
-                                    "output", Map.of("summary", clarifyMessage,
+                                    "output", Map.of("summary", missingParams.isEmpty()
+                                            ? "已生成追问，待您补充后继续"
+                                            : "已生成追问，待补充：" + String.join("、", missingParams),
                                             "branch_taken", WorkflowBuilder.branchLabel("CLARIFY"))))),
                     "intent", plan.getIntent()
             ));
@@ -761,23 +777,33 @@ public class AgentOrchestrator {
 
         // 阶段事件③：生成中 —— 报告生成为 LLM 长调用，先推"生成回答"步骤保持渐进反馈
         // 输入 = 执行层各工具的实际产出（承接上游），不再是用户原文复述
+        Map<String, Object> generateExtra = new LinkedHashMap<>();
+        generateExtra.put("goal", "把各环节结果整合成您能直接使用的结论与建议");
+        generateExtra.put("input", upstreamResultsInput(results));
+        generateExtra.put("trace", List.of(Map.of(
+                "stage", "llm",
+                "message", "调用大模型汇总" + results.size() + " 个环节的处理结果，组织成结论与建议")));
         emitter.emit("thinking", Map.of(
                 "steps", List.of(thinkingStep("generate", "汇总结果",
-                        generateStepDesc(context),
-                        Map.of("goal", "把各环节结果整合成您能直接使用的结论与建议",
-                                "input", upstreamResultsInput(results)))),
+                        generateStepDesc(context), generateExtra)),
                 "intent", plan.getIntent()
         ));
         String report = presenter.present(question, results, context);
         List<String> followUps = presenter.suggestFollowUps(question, results, context);
-        // 阶段事件③′：报告生成完成，原地更新 generate 步骤（补输出：业务结论）
+        // 阶段事件③′：报告生成完成，原地更新 generate 步骤（补输出：整合性短文案 + LLM 处理日志）
+        // 输出摘要不再复述完整报告 —— 报告正文随 text 事件紧跟其后打出，复述会让用户读两遍同一结论
         String conclusionText = extractConclusion(results);
+        Map<String, Object> generateDoneExtra = new LinkedHashMap<>();
+        generateDoneExtra.put("input", upstreamResultsInput(results));
+        generateDoneExtra.put("output", Map.of(
+                "summary", summarizeOutput(conclusionText, results.size()),
+                "branch_taken", WorkflowBuilder.branchLabel("EXECUTE")));
+        generateDoneExtra.put("trace", List.of(Map.of(
+                "stage", "llm",
+                "message", "大模型已按「结论先行 + 依据支撑」结构生成回答，依据来自上一步工具的实际产出")));
         emitter.emit("thinking", Map.of(
                 "steps", List.of(thinkingStep("generate", "汇总结果",
-                        generateStepDesc(context),
-                        Map.of("input", upstreamResultsInput(results),
-                                "output", Map.of("summary", conclusionText.isBlank() ? report : conclusionText,
-                                        "branch_taken", WorkflowBuilder.branchLabel("EXECUTE"))))),
+                        generateStepDesc(context), generateDoneExtra)),
                 "intent", plan.getIntent()
         ));
         context.addHistoryEntry("assistant", report);
@@ -834,28 +860,32 @@ public class AgentOrchestrator {
             String segment = "① ② ③ ④ ⑤".split(" ")[i] + " " + intentLabel;
 
             // 阶段事件①：该子任务的意图识别（带索引前缀 id，独立成链；首步骤携带 segment 供前端分组）
-            // 输出 = 该子意图的结构化要素（作为该子链下游节点的输入来源）
+            // 输出 = 该子意图的结构化要素（作为该子链下游节点的输入来源）；trace = 理解层 LLM 处理留痕
             Map<String, Object> subIntentOutput = new LinkedHashMap<>();
             subIntentOutput.put("summary", "已明确：本次要执行「" + intentLabel + "」");
             subIntentOutput.put("structured_intent", planIntentView(plan));
+            Map<String, Object> subIntentExtra = new LinkedHashMap<>();
+            subIntentExtra.put("segment", segment);
+            subIntentExtra.put("goal", "先听懂您要做什么，再决定怎么办");
+            subIntentExtra.put("input", Map.of("question", question));
+            subIntentExtra.put("output", subIntentOutput);
+            subIntentExtra.put("trace", traceView(plan));
             emitter.emit("thinking", Map.of(
                     "steps", List.of(thinkingStep(pre + "intent", intentStepName(context),
-                            intentStepDesc(context),
-                            Map.of("segment", segment,
-                                    "goal", "先听懂您要做什么，再决定怎么办",
-                                    "input", Map.of("question", question),
-                                    "output", subIntentOutput))),
+                            intentStepDesc(context), subIntentExtra)),
                     "intent", plan.getIntent()
             ));
             // 阶段事件②：该子任务的执行方案（输入 = ①子意图的结构化要素）
+            Map<String, Object> subPlanExtra = new LinkedHashMap<>();
+            subPlanExtra.put("segment", segment);
+            subPlanExtra.put("goal", planStepGoal(plan, context));
+            subPlanExtra.put("input", upstreamIntentInput(plan, question));
+            subPlanExtra.put("workflow", buildWorkflow(plan));
+            subPlanExtra.put("output", Map.of("summary", planStepOutput(plan, context)));
+            subPlanExtra.put("trace", traceView(plan));
             emitter.emit("thinking", Map.of(
                     "steps", List.of(thinkingStep(pre + "plan", "定下处理方案",
-                            buildReadablePlan(plan),
-                            Map.of("segment", segment,
-                                    "goal", planStepGoal(plan, context),
-                                    "input", upstreamIntentInput(plan, question),
-                                    "workflow", buildWorkflow(plan),
-                                    "output", Map.of("summary", planStepOutput(plan, context))))),
+                            buildReadablePlan(plan), subPlanExtra)),
                     "intent", plan.getIntent()
             ));
 
@@ -867,7 +897,7 @@ public class AgentOrchestrator {
             List<ExecutionResult> subResults = executeWithEvents(plan, context, emitter, segment);
             allResults.addAll(subResults);
 
-            // 阶段事件③/③′：该子任务汇总（输入 = 该子链各工具的实际产出）
+            // 阶段事件③/③′：该子任务汇总（输入 = 该子链各工具的实际产出；输出 = 整合性短文案，不复述正文）
             emitter.emit("thinking", Map.of(
                     "steps", List.of(thinkingStep(pre + "generate", "汇总结果",
                             generateStepDesc(context),
@@ -883,7 +913,7 @@ public class AgentOrchestrator {
                             generateStepDesc(context),
                             Map.of("segment", segment,
                                     "input", upstreamResultsInput(subResults),
-                                    "output", Map.of("summary", subConclusion.isBlank() ? subReport : subConclusion,
+                                    "output", Map.of("summary", summarizeOutput(subConclusion, subResults.size()),
                                             "branch_taken", WorkflowBuilder.branchLabel("MULTI"))))),
                     "intent", plan.getIntent()
             ));
@@ -970,7 +1000,58 @@ public class AgentOrchestrator {
         } else if (!result.isSuccess()) {
             toolEvent.put("errorMessage", result.getErrorMessage());
         }
+        // 本体/规则推理日志：从工具产出中提取推理引擎、命中规则、归因路径等过程留痕
+        List<Map<String, Object>> toolTrace = ontologyTraceView(result);
+        if (toolTrace != null) {
+            toolEvent.put("trace", toolTrace);
+        }
         return toolEvent;
+    }
+
+    /**
+     * 本体推理步骤日志：从工具执行结果中提取本体处理过程（推理引擎/命中规则/归因路径/证据三元组），
+     * 下发前端供思考时间线展开「本体处理日志」。非推理工具或无过程信息时返回 null。
+     */
+    private static List<Map<String, Object>> ontologyTraceView(ExecutionResult result) {
+        if (result == null || !result.isSuccess() || result.getData() == null) {
+            return null;
+        }
+        Map<String, Object> data = result.getData();
+        List<Map<String, Object>> trace = new ArrayList<>();
+        Object engine = data.get("reasonEngine");
+        Object firedRules = data.get("swrlFiredRules");
+        Object appliedRules = data.get("appliedRules");
+        if (engine != null && !str(engine).isBlank()) {
+            trace.add(Map.of("stage", "ontology",
+                    "message", "本体推理引擎：" + engine));
+        }
+        if (firedRules instanceof List<?> fired && !fired.isEmpty()) {
+            trace.add(Map.of("stage", "ontology",
+                    "message", "SWRL 规则触发：" + String.join("、", fired.stream().map(String::valueOf).toList())));
+        }
+        if (appliedRules instanceof List<?> applied && !applied.isEmpty()) {
+            trace.add(Map.of("stage", "ontology",
+                    "message", "命中业务规则：" + String.join("、", applied.stream().map(String::valueOf).toList())));
+        }
+        if (data.get("paths") instanceof List<?> paths && !paths.isEmpty()) {
+            List<String> pathDesc = new ArrayList<>();
+            for (Object p : paths) {
+                if (p instanceof Map<?, ?> pm && pm.get("name") != null) {
+                    String name = str(pm.get("name"));
+                    Object weight = pm.get("weight");
+                    pathDesc.add(name + (weight != null ? "（权重 " + weight + "）" : ""));
+                }
+            }
+            if (!pathDesc.isEmpty()) {
+                trace.add(Map.of("stage", "ontology",
+                        "message", "归因路径（按权重排序）：" + String.join(" → ", pathDesc)));
+            }
+        }
+        if (data.get("evidenceTriples") instanceof List<?> triples && !triples.isEmpty()) {
+            trace.add(Map.of("stage", "ontology",
+                    "message", "证据三元组落库 " + triples.size() + " 条，支撑结论可回溯"));
+        }
+        return trace.isEmpty() ? null : trace;
     }
 
     /** 未登记工具的 LLM 生成文案缓存（key=toolName；null 表示生成失败，回退工具 label）。 */
@@ -1143,6 +1224,15 @@ public class AgentOrchestrator {
     }
 
     /**
+     * 推理过程日志视图：理解层（LLM）写入 plan.reasoningTrace 的处理留痕，
+     * 下发前端供思考时间线展开「LLM 处理日志」。空列表返回 null（不下发空字段）。
+     */
+    private static List<Map<String, Object>> traceView(QueryPlan plan) {
+        List<Map<String, Object>> trace = plan != null ? plan.getReasoningTrace() : null;
+        return trace != null && !trace.isEmpty() ? trace : null;
+    }
+
+    /**
      * 将查询计划翻译为业务可读的方案说明，取代透传内部码 queryPlan 给前端渲染卡片。
      */
     private static String buildReadablePlan(QueryPlan plan) {
@@ -1262,6 +1352,19 @@ public class AgentOrchestrator {
         return isRdScene(context)
                 ? "正在整合各环节处理结果，生成配置结论与建议…"
                 : "正在汇总筛查结论与处置建议…";
+    }
+
+    /**
+     * 汇总步骤「输出」摘要：优先工具层结论（具体、与正文措辞不同），缺省给整合性短文案。
+     * 不复述完整报告 —— 报告正文紧随其后打出，摘要里再放一遍会让用户读两遍同一结论。
+     */
+    private static String summarizeOutput(String conclusion, int stepCount) {
+        if (conclusion != null && !conclusion.isBlank()) {
+            return conclusion;
+        }
+        return stepCount > 0
+                ? "已整合 " + stepCount + " 个环节的处理结果，生成结论与建议"
+                : "已整合各环节结果，生成结论与建议";
     }
 
     /**

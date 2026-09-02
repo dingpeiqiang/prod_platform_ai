@@ -50,7 +50,7 @@ public final class ToolOutputRenderer {
         return composeFallbackSummary(tool, data);
     }
 
-    /** 提取工具执行结果的最终结论（无可返回 null）。 */
+    /** 提取工具执行结果的最终结论（无可返回 null；结论必须是可读文本，拒绝对象/列表 toString 串）。 */
     public static String conclusion(AgentTool tool, Map<String, Object> data) {
         if (tool == null || data == null) {
             return null;
@@ -59,14 +59,15 @@ public final class ToolOutputRenderer {
         if (fields != null) {
             for (ToolOutputField field : fields) {
                 if (field.getRole() == ToolOutputField.Role.CONCLUSION
-                        && hasValue(data.get(field.getName()))) {
-                    return String.valueOf(data.get(field.getName()));
+                        && data.get(field.getName()) instanceof String s
+                        && hasValue(s)) {
+                    return s;
                 }
             }
         }
         // 旧行为回落：conclusion
         Object legacy = data.get(LEGACY_CONCLUSION_KEY);
-        return hasValue(legacy) ? String.valueOf(legacy) : null;
+        return legacy instanceof String s && hasValue(s) ? s : null;
     }
 
     /** 提取业务实体缓存信息（{id, name}，缺则空 map）。 */

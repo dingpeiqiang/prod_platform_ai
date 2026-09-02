@@ -1,39 +1,49 @@
 # ============================================================
 # AI驱动动态表单 - 前端容器（使用预构建基础镜像）
-# 基础镜像已包含：Nginx + Node.js 20 + npm依赖
+# 基础镜像已包含：Nginx 1.30.4（漏洞修复版）+ Node.js 20 + npm依赖
+# 运行身份：非 root（uid=101 nginx）
 # ============================================================
 
 # 使用自定义基础镜像
 # 注意：修改版本号时，请同步更新 docker-manager.ps1 中的配置
-FROM 10.86.12.11:20200/y21127-crmpos/prod-platform-frontend-base:1.3
+FROM 10.86.12.11:20200/y21127-crmpos/prod-platform-frontend-base:2.0
 
 LABEL maintainer="AI Platform"
-LABEL version="1.0"
+LABEL version="2.0"
 LABEL description="AI Dynamic Form Frontend Production"
 
 WORKDIR /app
 
-# 复制前端源码
-COPY frontend/ ./
-
-# 构建生产版本（node_modules 已在基础镜像中）
-# API 走相对路径，由 Nginx 反代到 backend:6174
+# 构建参数（API 走相对路径，由 Nginx 反代到 backend:6174）
 ARG VITE_API_BASE_URL=
 ARG VITE_APP_TITLE="AI动态表单平台"
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 ENV VITE_APP_TITLE=$VITE_APP_TITLE
 
+# ============================================================
+# 构建阶段：源码 + vite build（node_modules 已预装于基础镜像）
+# ============================================================
+
+COPY frontend/ ./
+
 RUN npm run build
 
-# 将构建产物复制到 nginx 目录，并覆盖主配置（完整 nginx.conf → backend:6174）
-RUN cp -r dist/* /usr/share/nginx/html/ \
-    && cp nginx.conf /etc/nginx/nginx.conf \
-    && rm -f /etc/nginx/http.d/default.conf \
-    && mkdir -p /var/log/nginx \
-    && rm -rf dist 2>/dev/null || true
+# ============================================================
+# 发布阶段：仅保留静态产物 + 配置，清除构建痕迹
+# ============================================================
 
-# 暴露端口
-EXPOSE 80
+RUN cp -r dist/. /usr/share/nginx/html/ \
+    && chown -R nginx:nginx /usr/share/nginx/html \
+    && rm -rf dist node_modules /app/src
 
-# 启动 nginx
+# 覆盖主配置（完整 nginx.conf → upstream backend:6174，listen 6173）
+COPY frontend/nginx.conf /etc/nginx/nginx.conf
+
+RUN chown nginx:nginx /etc/nginx/nginx.conf \
+    && nginx -t
+
+EXPOSE 6173
+
+USER nginx
+
 CMD ["nginx", "-g", "daemon off;"]

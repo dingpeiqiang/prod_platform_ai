@@ -9,6 +9,7 @@ import com.sitech.prodai.service.agent.model.ExecStep;
 import com.sitech.prodai.service.agent.model.QueryPlan;
 import com.sitech.prodai.service.agent.model.SessionContext;
 import com.sitech.prodai.service.agent.tool.AgentTool;
+import com.sitech.prodai.service.agent.tool.ThinkingCopy;
 import com.sitech.prodai.service.agent.tool.ToolParam;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -100,10 +101,18 @@ public class DefaultUnderstander implements Understander {
     private List<QueryPlan> understandPlans(String question, SessionContext context) {
         // 理解层仅依赖大模型：大模型不可用时直接抛错，不做任何关键词/通用对话兜底。
         // DeepSeek 推理模型偶发返回空 choices，此处做有限重试，仍失败则终止翻译链。
+        // 推理留痕：LLM 调用/解析/校验各环节追加到首个计划（多计划共享同一份理解日志）
+        List<QueryPlan> plans = understandPlansInternal(question, context);
+        return plans;
+    }
+
+    private List<QueryPlan> understandPlansInternal(String question, SessionContext context) {
         String llmResult = null;
         Exception lastError = null;
         boolean rdScene = isRdScene(context);
+        int attemptsUsed = 0;
         for (int attempt = 1; attempt <= MAX_TRANSLATE_ATTEMPTS; attempt++) {
+            attemptsUsed = attempt;
             try {
                 List<Map<String, String>> history = toHistory(context);
                 String systemPrompt = buildSystemPrompt(rdScene);
@@ -130,6 +139,20 @@ public class DefaultUnderstander implements Understander {
                 sleep(RETRY_DELAY_MS);
             }
         }
+        final String llmRaw = llmResult;
+        final int llmAttempts = attemptsUsed;
+        java.util.function.BiConsumer<String, String> trace = (stage, message) -> {
+            // 延迟挂载：解析成功前先暂存，解析出计划后统一注入（避免失败重试场景日志丢失）
+            pendingTrace.add(Map.of("stage", stage, "message", message));
+        };
+        if (llmAttempts > 1) {
+            trace.accept("llm", "大模型调用重试 " + llmAttempts + " 次后返回结果");
+        } else {
+            trace.accept("llm", "调用大模型理解需求，返回意图与工具选择");
+        }
+        if (llmRaw != null && !llmRaw.isBlank()) {
+            trace.accept("llm", "大模型原始输出：" + summarizeLlmRaw(llmRaw));
+        }
 
         if (llmResult == null && lastError != null) {
             throw new IllegalStateException("大模型不可用，理解层调用失败: " + lastError.getMessage(), lastError);
@@ -144,6 +167,16 @@ public class DefaultUnderstander implements Understander {
             log.error("[DefaultUnderstander] 大模型输出无法解析为查询计划，翻译链终止");
             throw new IllegalStateException("大模型输出无法解析为查询计划，请重试或检查模型配置");
         }
+
+        // 将本轮理解环节的推理日志挂到各子计划（多计划共享同一份理解日志）
+        for (QueryPlan plan : parsed) {
+            if (plan.getReasoningTrace() == null) {
+                plan.setReasoningTrace(new ArrayList<>(pendingTrace));
+            } else {
+                plan.getReasoningTrace().addAll(pendingTrace);
+            }
+        }
+        pendingTrace.clear();
 
         // 参数完整性校验 — 缺失必填参数时转入澄清分支（而非直接报错）
         List<QueryPlan> validated = new ArrayList<>();
@@ -160,9 +193,20 @@ public class DefaultUnderstander implements Understander {
             }
         }
         if (firstClarify != null) {
+            firstClarify.addTrace("validate", "检测到必填参数缺失，转入澄清流程等待补充");
             return List.of(firstClarify);
         }
         return validated;
+    }
+
+    /** 本轮理解环节暂存的推理日志（解析成功后统一注入计划；失败重试时日志不丢）。 */
+    private final java.util.List<Map<String, Object>> pendingTrace =
+            java.util.Collections.synchronizedList(new ArrayList<>());
+
+    /** LLM 原始输出摘要：截断换行并限长（供推理日志展示，不透传完整 JSON 噪声）。 */
+    private String summarizeLlmRaw(String raw) {
+        String s = raw.replaceAll("\\s+", " ").trim();
+        return s.length() > 120 ? s.substring(0, 120) + "…" : s;
     }
 
     /**
@@ -178,6 +222,8 @@ public class DefaultUnderstander implements Understander {
 
         List<String> missing = new ArrayList<>();
         Map<String, Map<String, Object>> missingContracts = new LinkedHashMap<>();
+        List<String> fromCache = new ArrayList<>();
+        List<String> fromDefault = new ArrayList<>();
         for (String toolName : tools) {
             AgentTool tool = toolMap.get(toolName);
             if (tool == null) {
@@ -197,6 +243,8 @@ public class DefaultUnderstander implements Understander {
                 }
                 if (hasValue(cached)) {
                     plan.getParams().put(param.getName(), cached);
+                    fromCache.add(param.getLabel() != null && !param.getLabel().isBlank()
+                            ? param.getLabel() : param.getName());
                     continue;
                 }
                 // 有缺省值则不阻塞（U3：缺省回填属系统自行推断，记录假设供表达层回显）
@@ -205,6 +253,8 @@ public class DefaultUnderstander implements Understander {
                     if (context != null) {
                         context.recordAssumption(param.getName(), param.getDefaultValue(), "未指定，按缺省值推断");
                     }
+                    fromDefault.add(param.getLabel() != null && !param.getLabel().isBlank()
+                            ? param.getLabel() : param.getName());
                     continue;
                 }
                 if (!missing.contains(param.getName())) {
@@ -212,6 +262,13 @@ public class DefaultUnderstander implements Understander {
                     missingContracts.put(param.getName(), paramContract(param));
                 }
             }
+        }
+        // 推理留痕：参数回填来源（缓存复用 / 缺省推断），让数据流可追溯
+        if (!fromCache.isEmpty()) {
+            plan.addTrace("params", "复用会话中已确认的参数：" + String.join("、", fromCache));
+        }
+        if (!fromDefault.isEmpty()) {
+            plan.addTrace("params", "未指定的参数按缺省值推断：" + String.join("、", fromDefault));
         }
 
         if (missing.isEmpty()) {
@@ -361,6 +418,11 @@ public class DefaultUnderstander implements Understander {
                 diagnose(intent, action, tools, llmResult);
                 return null;
             }
+            pendingTrace.add(Map.of("stage", "llm",
+                    "message", "大模型选中的工具均不在白名单，重新选择后命中：" + String.join("、", sanitized)));
+        } else if (!sanitized.equals(tools)) {
+            pendingTrace.add(Map.of("stage", "llm",
+                    "message", "工具白名单校验：剔除未注册工具，保留 " + String.join("、", sanitized)));
         }
 
         // 兜底仲裁（rd 场景）：检索意图词命中而 LLM 选了草稿生成工具 → 强制改派配置查询。
@@ -369,6 +431,8 @@ public class DefaultUnderstander implements Understander {
         if (rdScene && sanitized.contains("rd_config_chat")
                 && isDiscoverIntentQuestion(question)) {
             log.info("[DefaultUnderstander] 兜底改派: 检索意图词命中，rd_config_chat → rd_config_discover, question={}", question);
+            pendingTrace.add(Map.of("stage", "llm",
+                    "message", "话术命中检索意图，工具由「生成配置草稿」改派为「检索历史配置」"));
             sanitized = List.of("rd_config_discover");
         }
 
@@ -379,6 +443,13 @@ public class DefaultUnderstander implements Understander {
         // 故以白名单命中的首个工具名确定性推导意图码，保证 done.intent 稳定可消费
         String intentCode = rdScene ? rdIntentFromTools(sanitized) : normalized;
         params.put("intent_type", intentCode);
+        pendingTrace.add(Map.of("stage", "llm",
+                "message", "识别业务意图「" + ThinkingCopy.actionDisplay(intentCode) + "」，"
+                        + "安排执行工具：" + String.join("、",
+                                sanitized.stream().map(t -> {
+                                    ThinkingCopy.ToolCopy c = ThinkingCopy.toolCopy(t);
+                                    return c != null ? c.title() : t;
+                                }).toList())));
         // 前端随消息携带的结构化参数（ Orchestrator.applySuppliedParams 已入 resolvedParams ）
         // 前置合并到 plan.params：LLM 翻译时可能只抽取话术中的名称而丢弃精确 id（draft_id/client_id），
         // 此处以调用方传入的精确参数为准（仅在 LLM 未输出同名键时合并，不覆盖 LLM 显式结果）。

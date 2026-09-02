@@ -1,64 +1,76 @@
 # ============================================================
-# AI驱动动态表单 - 前端基础镜像（优化版）
-# 包含 Node.js（用于构建）+ Nginx（用于运行）+ 最小化依赖
+# AI驱动动态表单 - 前端基础镜像
+# 修复 2026-05 批量披露的 Nginx 系列高危漏洞（CVE-2026-42945 等 7 项），
+# nginx 1.30.4 为官方安全公告确认的最终修复版本。
+# 架构：Node 20（离线构建用）+ Nginx 1.30.4（运行用）+ 预装 npm 依赖
+# 用途：公司无外网环境的应用镜像构建底座（Sitech.BJ.Dockerfile.frontend）
 # ============================================================
 
-FROM node:20-alpine
+FROM node:20-alpine AS base
 
 LABEL maintainer="prod-platform"
-LABEL version="1.0"
-LABEL description="AI动态表单前端基础镜像 (Node.js + Nginx)"
+LABEL version="2.0"
+LABEL description="AI动态表单前端基础镜像 (Node.js 20 + Nginx 1.30.4)"
 
 # ============================================================
-# 安装最小化依赖
+# 阶段 1：安装 Nginx 1.30.4（官方 alpine 包，已含全部 CVE 修复）
 # ============================================================
 
-# 安装 nginx 和必要工具
-RUN apk update && apk add --no-cache \
-    nginx \
-    && rm -rf /var/cache/apk/*
+FROM base AS runtime
 
-# 验证 Node.js 和 npm 版本
-RUN node --version && npm --version
+# node:20-alpine 基于 alpine 3.23，其仓库最高只有 nginx 1.28.3（漏洞版本）。
+# 分两段解决：
+#   1) 从 alpine 3.24 仓库安装 nginx 1.30.4-r1（CVE 修复版）
+#   2) 用官方 nginx:1.30.4-alpine 的布局对齐配置
+RUN set -eux; \
+    echo "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/" > /etc/apk/repositories; \
+    apk add --no-cache nginx=1.30.4-r1 pcre2; \
+    rm -rf /var/cache/apk/*
+# 去掉官方包附带的 optional 动态模块（精简体积）
+RUN apk del nginx-module-acme nginx-module-geoip nginx-module-image-filter \
+           nginx-module-njs nginx-module-xslt 2>/dev/null || true
 
 # ============================================================
-# 配置 npm 和安装项目依赖（最小化）
+# 阶段 2：预装项目 npm 依赖（供无外网环境执行 npm run build）
 # ============================================================
 
 WORKDIR /app
 
-# 配置 npm 国内镜像源
+# npm 国内镜像源（基础镜像构建环境有外网；应用镜像构建阶段完全离线）
 RUN npm config set registry https://registry.npmmirror.com
 
-# 复制 package 文件
 COPY frontend/package.json frontend/package-lock.json ./
 
-# 安装完整依赖（包括开发依赖用于构建）
+# --omit=dev 会破坏 vite build（vite/terser 是 devDependencies），必须全量安装
 RUN npm ci --no-audit --no-fund \
-    && npm cache clean --force 2>/dev/null || true \
-    && rm -rf ~/.npm \
-    && rm -rf node_modules/.cache 2>/dev/null || true \
-    && find node_modules -type f -name "*.md" -delete 2>/dev/null || true \
-    && find node_modules -type f -name "*.map" -delete 2>/dev/null || true \
-    && find node_modules -type d -name "test" -exec rm -rf {} + 2>/dev/null || true \
-    && find node_modules -type d -name "__tests__" -exec rm -rf {} + 2>/dev/null || true \
-    && find node_modules -type d -name "examples" -exec rm -rf {} + 2>/dev/null || true \
-    && find node_modules -type d -name "docs" -exec rm -rf {} + 2>/dev/null || true \
-    && find node_modules -type d -name "*.log" -exec rm -rf {} + 2>/dev/null || true
+    && npm cache clean --force \
+    && rm -rf ~/.npm node_modules/.cache \
+    && find node_modules -type f \( -name "*.md" -o -name "*.map" \) -delete
 
 # ============================================================
-# 配置 Nginx（使用官方默认配置）
+# 阶段 3：非 root 运行配置（对齐官方 nginx 镜像布局）
 # ============================================================
 
-# 创建非 root 用户
-RUN addgroup -S nginx-group -g 1001 && \
-    adduser -S nginx-user -u 1001 -G nginx-group
+# 官方 alpine 的 nginx 包内置 uid=100/101 的 nginx 用户及同组，
+# apk add nginx 时自动创建。/var/run 是指向 /run 的符号链接，
+# 日志/缓存/pid 目录须对 nginx 用户可写。
+# 注意：alpine 的 nginx 默认站点在 /etc/nginx/http.d/（非 conf.d/）
+RUN mkdir -p /usr/share/nginx/html /var/log/nginx /var/cache/nginx/client_temp \
+             /var/cache/nginx/proxy_temp /var/cache/nginx/fastcgi_temp \
+             /var/cache/nginx/uwsgi_temp /var/cache/nginx/scgi_temp /run/nginx \
+    && chown -R nginx:nginx /usr/share/nginx/html /var/log/nginx /var/cache/nginx /run/nginx \
+    && chmod 700 /var/cache/nginx/* \
+    && rm -f /etc/nginx/http.d/default.conf
 
-# 创建必要的目录并设置权限
-RUN mkdir -p /usr/share/nginx/html /var/cache/nginx /var/run && \
-    chown -R nginx-user:nginx-group /usr/share/nginx/html /var/cache/nginx /var/run && \
-    sed -i 's/^user root;/user nginx-user;/' /etc/nginx/nginx.conf
+ENV NGINX_USER=nginx
 
-EXPOSE 80
+# 应用镜像会把 frontend/nginx.conf 覆盖为 /etc/nginx/nginx.conf（listen 6173）
+EXPOSE 6173
+
+# 直接以非 root 身份运行 nginx（无需 su-exec；master 即非 root）
+USER nginx
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -qO- http://127.0.0.1:6173/health || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]

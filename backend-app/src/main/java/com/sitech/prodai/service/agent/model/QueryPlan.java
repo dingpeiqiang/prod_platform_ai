@@ -44,6 +44,13 @@ public class QueryPlan {
     /** 原始问题 */
     private String userQuestion;
 
+    /**
+     * 推理过程日志（LLM/本体处理留痕）：条目形如 {stage, message}，
+     * 由理解层在 LLM 调用、意图解析、工具白名单校验、参数回填等环节写入，
+     * 经编排层随 thinking 事件下发，供前端思考时间线展开「LLM 处理日志」。
+     */
+    private List<Map<String, Object>> reasoningTrace;
+
     public QueryPlan() {
         this.params = new LinkedHashMap<>();
     }
@@ -124,6 +131,28 @@ public class QueryPlan {
 
     public void setUserQuestion(String userQuestion) {
         this.userQuestion = userQuestion;
+    }
+
+    public List<Map<String, Object>> getReasoningTrace() {
+        return reasoningTrace;
+    }
+
+    public void setReasoningTrace(List<Map<String, Object>> reasoningTrace) {
+        this.reasoningTrace = reasoningTrace;
+    }
+
+    /** 追加一条推理日志（stage=环节标识，message=业务可读的该环节说明）。 */
+    public void addTrace(String stage, String message) {
+        if (message == null || message.isBlank()) {
+            return;
+        }
+        if (reasoningTrace == null) {
+            reasoningTrace = new ArrayList<>();
+        }
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("stage", stage);
+        entry.put("message", message);
+        reasoningTrace.add(entry);
     }
 
     @Override

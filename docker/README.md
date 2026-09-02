@@ -14,7 +14,10 @@
 | 镜像 | Dockerfile | 版本 | 说明 |
 |------|-----------|------|------|
 | 后端 | [Dockerfile.base.backend](Dockerfile.base.backend) | **2.0** | JDK 17 + **完整 Maven 本地仓库** |
-| 前端 | [Dockerfile.base.frontend](Dockerfile.base.frontend) | 1.2 | Node 20 + Nginx + npm 依赖 |
+| 前端 | [Dockerfile.base.frontend](Dockerfile.base.frontend) | **2.0** | Node 20 + **Nginx 1.30.4（CVE 修复版）** + npm 依赖 |
+
+> 前端基础镜像 2.0：Nginx 升级至官方 1.30.4（修复 CVE-2026-42945 / CVE-2026-9256 等 7 项 2026 年披露漏洞），
+> 非 root（uid=101）运行，监听端口统一为 **6173**。
 
 ### 无外网说明（后端）
 
@@ -52,8 +55,8 @@ docker build -f docker/Sitech.BJ.Dockerfile.backend -t prod-platform-backend:2.0
 
 | 应用 | Dockerfile | 基础镜像 |
 |------|-----------|---------|
-| 后端 | [Sitech.BJ.Dockerfile.backend](Sitech.BJ.Dockerfile.backend) | `prod-platform-backend-base:2.0` |
-| 前端 | [Sitech.BJ.Dockerfile.frontend](Sitech.BJ.Dockerfile.frontend) | `prod-platform-frontend-base:1.2` |
+| 后端 | [Sitech.BJ.Dockerfile.backend](Sitech.BJ.Dockerfile.backend) | `prod-platform-backend-base:2.4` |
+| 前端 | [Sitech.BJ.Dockerfile.frontend](Sitech.BJ.Dockerfile.frontend) | `prod-platform-frontend-base:2.0` |
 
 ```powershell
 # 在项目根目录执行（需先有对应基础镜像）
@@ -102,3 +105,5 @@ docker run -d --name frontend --network prod-ai -p 80:80 prod-platform-frontend:
 
 1. `docker/docker-manager.ps1` 中对应 `ImageTag`
 2. `Sitech.BJ.Dockerfile.backend` / `Sitech.BJ.Dockerfile.frontend` 的 `FROM` 行
+
+> 仓库凭据通过环境变量 `DOCKER_REGISTRY_USER` / `DOCKER_REGISTRY_PASSWORD` 注入，不再写入脚本。

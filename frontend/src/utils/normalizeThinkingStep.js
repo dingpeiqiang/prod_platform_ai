@@ -137,6 +137,8 @@ export function normalizeThinkingStep(raw = {}) {
     workflow: raw.workflow || null,
     segment: raw.segment || null,
     branchTaken,
+    // 推理过程日志（LLM 调用/本体推理留痕）：[{stage, message}]，展开区渲染为「LLM/本体处理日志」
+    trace: Array.isArray(raw.trace) && raw.trace.length ? raw.trace : null,
     elapsed: raw.elapsed != null ? raw.elapsed : null,
     ontologyChain: raw.ontologyChain || null,
     ontologyPreview: raw.ontologyPreview || null,

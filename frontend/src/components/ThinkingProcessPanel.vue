@@ -117,18 +117,23 @@
             <div class="extra-line">
               <span class="extra-key">过程</span>
               <span class="extra-val">
-                <span v-for="(seg, gi) in stepProcessSegments(step)" :key="gi" class="process-seg">{{ seg }}</span>
+                <span
+                  v-for="(seg, gi) in stepProcessSegments(step)"
+                  :key="gi"
+                  class="process-seg"
+                  :class="{ 'process-detail': seg.detail }"
+                >{{ seg.text }}</span>
               </span>
-            </div>
-
-            <div class="extra-line">
-              <span class="extra-key">输出</span>
-              <span class="extra-val">{{ stepOutputText(step, si) }}</span>
             </div>
 
             <div v-if="stepBranchText(step)" class="extra-line">
               <span class="extra-key">分支</span>
               <span class="extra-val branch-val">{{ stepBranchText(step) }}</span>
+            </div>
+
+            <div class="extra-line">
+              <span class="extra-key">输出</span>
+              <span class="extra-val">{{ stepOutputText(step, si) }}</span>
             </div>
 
             <!-- 本体环节推理块（网络图等富内容，附加在过程之下） -->
@@ -475,12 +480,12 @@ const stepRowText = (step, index) => {
   return step.title || displayStepContent(step, index)
 }
 
-/** 步骤是否有可展开的详情（固定三段式：输入/过程/输出，所有完成步骤均可展开） */
+/** 步骤是否有可展开的详情（固定三段式：输入/过程/输出；trace 并入过程行，所有完成步骤均可展开） */
 const stepHasExtra = (step, si) => {
   if (isRunning(step, si)) return false
   if (step.goal || step.content || step.result) return true
   if (step.type === 'ontology' && step.ontologyChain) return true
-  return !!(step.manualHint || step.details || step.io)
+  return !!(step.manualHint || step.details || step.io || step.trace)
 }
 
 const stepStartedAt = (step) => step.waitingStartedAt || step.stepStartedAt || step.timestamp || null
@@ -604,8 +609,28 @@ const stepBranchText = (step) => {
   return String(taken || '').trim()
 }
 
+/** trace 留痕 → 处理细节段：stage → 环节前缀（llm=「LLM」、ontology=「本体」、其余=「校验」）。 */
+const STAGE_PREFIX = { llm: 'LLM', ontology: '本体' }
+
+const traceDetailSegments = (step, exclude) => {
+  const trace = step.trace
+  if (!Array.isArray(trace) || !trace.length) return []
+  const segs = []
+  for (const item of trace) {
+    if (!item || typeof item !== 'object') continue
+    const msg = String(item.message || '').trim()
+    if (!msg || exclude.has(msg)) continue
+    exclude.add(msg)
+    const stage = String(item.stage || '')
+    const prefix = STAGE_PREFIX[stage] || '校验'
+    segs.push({ text: `【${prefix}】${msg}`, detail: true })
+  }
+  return segs
+}
+
 /**
- * 「过程」行文案：组合多段信息——这步做什么（content）、为什么做（goal）、具体怎么做（manualHint）。
+ * 「过程」行文案：组合多段信息——这步做什么（content）、为什么做（goal）、具体怎么做（manualHint），
+ * 以及后端下发的处理细节留痕（trace：LLM 调用/本体推理/校验，带环节前缀附加在末尾）。
  * 去重后按顺序拼接，让业务人员看到比标题更丰满的执行过程。
  * 叙事规则：
  * - 工具步骤的 content 已含动作描述（后端下发 summary 类话术），仅在与标题不同时补充执行说明，避免重复标题
@@ -615,7 +640,7 @@ const stepProcessSegments = (step) => {
   const segs = []
   const push = (t) => {
     const s = String(t || '').trim().replace(/…$/, '')
-    if (s && !segs.includes(s)) segs.push(s)
+    if (s && !segs.some((x) => x.text === s)) segs.push({ text: s })
   }
   if (step.type === 'tool') {
     const label = toolLabel(step.name || step.tool || '')
@@ -630,15 +655,17 @@ const stepProcessSegments = (step) => {
     push(step.goal)
   }
   if (!segs.length) {
-    if (step.type === 'ontology') return ['基于业务知识库做关联推理，把结论串成链路']
-    return ['按既定业务流程处理']
+    if (step.type === 'ontology') push('基于业务知识库做关联推理，把结论串成链路')
+    else push('按既定业务流程处理')
   }
-  return segs
+  // 处理细节（LLM/本体/校验留痕）追加在动作描述之后，体现"怎么处理的"
+  const details = traceDetailSegments(step, new Set(segs.map((x) => x.text)))
+  return [...segs, ...details]
 }
 
 /**
  * 「输出」行文案：io 摘要优先（thinking 步骤后端补齐 output.summary 后同构生效），
- * 其次 result，无则区分「处理中/无产出」。
+ * 其次 result；两者内容相同时只取一路，避免同一句话渲染两遍。
  */
 const stepOutputText = (step, si) => {
   if (isToolIo(step, si)) {
@@ -650,7 +677,7 @@ const stepOutputText = (step, si) => {
     }
   }
   const result = formatStepResult(step)
-  if (result) return result
+  if (result && result !== String(step.io?.output?.summary || '')) return result
   if (isRunning(step, si)) return '处理中…'
   return '—'
 }
@@ -1009,6 +1036,12 @@ const formatStepResult = (step) => {
 
 .process-seg + .process-seg {
   margin-top: 3px;
+}
+
+/* 「过程」行内的处理细节段（LLM/本体/校验留痕）：弱化灰字，与动作描述区分 */
+.process-detail {
+  color: #64748b;
+  font-size: 11px;
 }
 
 .extra-inline {
