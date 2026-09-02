@@ -1,10 +1,24 @@
 import axios from 'axios'
+import { ElMessage } from 'element-plus'
 import { useLoadingStore } from '@/stores/loading.js'
 
 const API_BASE = '/api/v1'
 
 let loadingCount = 0
 let loadingStore = null
+
+// 全局错误去重：同一文案 3 秒内只弹一次，避免并发请求刷屏
+let lastToast = { message: '', at: 0 }
+const TOAST_DEDUPE_MS = 3000
+
+function showGlobalError(message) {
+  const now = Date.now()
+  if (message === lastToast.message && now - lastToast.at < TOAST_DEDUPE_MS) {
+    return
+  }
+  lastToast = { message, at: now }
+  ElMessage.error(message)
+}
 
 function getLoadingStore() {
   if (!loadingStore) {
@@ -85,6 +99,10 @@ apiClient.interceptors.response.use(
     } else if (error.message) {
       errorMessage = error.message
     }
+    // 统一兜底提示：除非请求显式声明 silentError，页面级 catch 不再各自静默
+    if (error.config?.silentError !== true) {
+      showGlobalError(errorMessage)
+    }
     console.error('[httpClient] Request failed:', errorMessage)
     return Promise.reject(new Error(errorMessage))
   }
@@ -98,6 +116,7 @@ export async function request(url, options = {}) {
     params,
     showLoading = true,
     loadingText = '加载中...',
+    silentError = false,
     baseURL = API_BASE
   } = options
 
@@ -116,6 +135,7 @@ export async function request(url, options = {}) {
     params,
     showLoading,
     loadingText,
+    silentError,
     baseURL
   })
 }

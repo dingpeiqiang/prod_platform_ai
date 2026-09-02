@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS `pd_ai_ontology_version` (
     UNIQUE KEY `uk_oav_type_code_version` (`asset_type`, `asset_code`, `version`),
     KEY `idx_oav_asset` (`asset_type`, `asset_code`),
     KEY `idx_oav_status` (`status`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='本体资产版本主表';
+) ENGINE=InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT='本体资产版本主表';
 
 -- 表 B：动作日志（P3-5 ① 泛化为"审计一张表"：version_id 放宽为空，新增 domain / trace_id）
 CREATE TABLE IF NOT EXISTS `pd_ai_ontology_version_log` (
@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS `pd_ai_ontology_version_log` (
     KEY `idx_ovl_trace_id` (`trace_id`),
     KEY `idx_ovl_action` (`action`),
     KEY `idx_ovl_created` (`created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='本体资产版本动作日志（审计一张表）';
+) ENGINE=InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT='本体资产版本动作日志（审计一张表）';
 
 -- P3-5 ① 存量升级：已存在该表时补列（ADD COLUMN IF NOT EXISTS + MODIFY 幂等）
 ALTER TABLE `pd_ai_ontology_version_log`

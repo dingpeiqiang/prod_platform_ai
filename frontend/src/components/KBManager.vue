@@ -215,6 +215,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
+import { ElMessage } from 'element-plus';
 import * as kbApi from '../services/kbApi';
 
 const emit = defineEmits(['go-back']);
@@ -247,6 +248,7 @@ const loadStats = async () => {
     }
   } catch (error) {
     console.error('Failed to load stats:', error);
+    ElMessage.error('知识库统计加载失败：' + (error.message || '请检查后端服务'));
   }
 };
 
@@ -288,6 +290,7 @@ const handleSearch = async () => {
     }
   } catch (error) {
     console.error('Search failed:', error);
+    ElMessage.error('搜索失败：' + (error.message || '请稍后重试'));
   }
 };
 
@@ -297,6 +300,7 @@ const selectDocument = async (doc) => {
     selectedDoc.value = result;
   } catch (error) {
     console.error('Failed to get document:', error);
+    ElMessage.error('文档详情加载失败：' + (error.message || '请稍后重试'));
   }
 };
 
@@ -311,6 +315,7 @@ const handleDelete = async (id) => {
     }
   } catch (error) {
     console.error('Delete failed:', error);
+    ElMessage.error('删除失败：' + (error.message || '请稍后重试'));
   }
 };
 
@@ -336,6 +341,7 @@ const handleAddDocument = async () => {
     }
   } catch (error) {
     console.error('Add document failed:', error);
+    ElMessage.error('文档添加失败：' + (error.message || '请稍后重试'));
   }
 };
 

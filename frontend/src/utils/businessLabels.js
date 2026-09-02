@@ -71,6 +71,7 @@ const PARAM_LABELS = {
   recommended: '推荐方案',
   items: '草稿清单',
   product_type: '产品品类',
+  requirement: '需求',
 }
 
 /** 参数名 → 业务中文标签 */
@@ -208,6 +209,28 @@ export function toolOutputEntries(toolName, output) {
   if (output.draft && typeof output.draft === 'object') {
     const draftName = output.draft.offerName || output.draft.offeringName
     if (draftName) entries.push({ key: 'target', label: '配置草稿', value: String(draftName) })
+  }
+  // ---- 配置草稿要素（rd_config_chat 平铺下发，供「输出」行逐项展示数据流） ----
+  if (output.offeringName != null && output.offeringName !== '') {
+    entries.push({ key: 'target', label: '草稿名称', value: String(output.offeringName) })
+  }
+  if (output.monthlyFee != null && output.monthlyFee !== '') {
+    entries.push({ key: 'result', label: '月费', value: String(output.monthlyFee).replace(/\.0$/, '') + ' 元' })
+  }
+  if (output.includeBroadband != null && output.includeBroadband !== '') {
+    entries.push({ key: 'result', label: '宽带', value: String(output.includeBroadband) })
+  }
+  if (output.targetUser != null && output.targetUser !== '') {
+    entries.push({ key: 'target', label: '目标客群', value: String(output.targetUser) })
+  }
+  if (output.channelScope != null && output.channelScope !== '') {
+    entries.push({ key: 'result', label: '销售渠道', value: String(output.channelScope) })
+  }
+  if (output.bizScenario != null && output.bizScenario !== '') {
+    entries.push({ key: 'result', label: '业务场景', value: String(output.bizScenario) })
+  }
+  if (output.workOrderId != null && output.workOrderId !== '') {
+    entries.push({ key: 'target', label: '配置工单', value: String(output.workOrderId) })
   }
   return entries
 }

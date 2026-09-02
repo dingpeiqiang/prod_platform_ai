@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import { sendAgentStream, loadMessages as apiLoadMessages, getSessions } from '../services/chatApi.js'
 import { getEventHandler, getPostProcessor } from './useIntentRegistry.js'
 import {
@@ -235,7 +236,10 @@ export function useChatStream() {
   )
 
   const applyAgentEvent = async (eventName, data) => {
-    if (eventName === 'thinking') {
+    if (eventName === 'workflow') {
+      // 工作流定义事件：本轮处理流程（节点+分支条件+数据流），挂到消息上供思考面板渲染链路
+      upsertAssistantMessage({ workflowGraph: data || null })
+    } else if (eventName === 'thinking') {
       const current = messages.value.find(m => m.role === 'assistant' && !m.done) || {}
       const intentType = data.intent || current.intentType || ''
       const step = (data.steps && data.steps[0]) || {}
@@ -267,6 +271,7 @@ export function useChatStream() {
             metadata: {},
             timestamp: Date.now(),
           },
+          workflowGraph: current.workflowGraph || null,
       })
     } else if (eventName === 'tool') {
       const current = messages.value.find(m => m.role === 'assistant' && !m.done) || {}
@@ -311,6 +316,11 @@ export function useChatStream() {
           timestamp: Date.now(),
         },
       })
+    } else if (eventName === 'warning') {
+      // 后端降级类异常（如持久化失败）：不打断主流程，但要用户可感知
+      const warnMsg = data.message || data.errorMessage || data.error || '部分处理出现告警'
+      console.warn('[useChatStream] 后端 warning:', warnMsg)
+      ElMessage.warning(warnMsg)
     } else if (eventName === 'error') {
       const current = messages.value.find(m => m.role === 'assistant' && !m.done) || {}
       const errorMsg = data.errorMessage || data.error || '服务异常'
@@ -327,11 +337,14 @@ export function useChatStream() {
 
   // ── 会话管理 ──────────────────────────────────────
 
-  /** 加载会话列表（供侧边栏使用） */
+  /** 加载会话列表（供侧边栏使用）；失败时给出可见提示，不再静默吞掉 */
   const loadSessions = async (userId = '', limit = 50) => {
     try {
       sessionList.value = await getSessions(userId, limit)
-    } catch { /* 静默 */ }
+    } catch (e) {
+      console.warn('[useChatStream] 加载会话列表失败:', e)
+      ElMessage.warning('会话列表加载失败，历史会话可能不可用')
+    }
   }
 
   /** 切换到指定会话：清空当前消息，从后端加载历史，并回放意图后处理 */
@@ -354,7 +367,10 @@ export function useChatStream() {
           }
         }
       }
-    } catch { /* 静默 */ }
+    } catch (e) {
+      console.warn('[useChatStream] 加载历史消息失败:', e)
+      ElMessage.warning('历史消息加载失败，仅展示本次会话内容')
+    }
     return messages.value
   }
 

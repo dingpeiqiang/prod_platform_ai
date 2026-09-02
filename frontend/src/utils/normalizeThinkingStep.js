@@ -108,6 +108,14 @@ export function normalizeThinkingStep(raw = {}) {
     : hasTopIo
       ? { input: raw.input != null ? raw.input : null, output: raw.output != null ? raw.output : null }
       : null
+  // 数据流承接：步骤的 input/output 落在 io 之外时（后端 thinkingStep extra 直接平铺），补进 io 供面板渲染
+  const branchTaken = (raw.output && raw.output.branch_taken)
+    || raw.branch_taken
+    || raw.branchTaken
+    || null
+  if (branchTaken && io && io.output && typeof io.output === 'object' && !io.output.branch_taken) {
+    io.output = { ...io.output, branch_taken: branchTaken }
+  }
 
     return {
     id: id || undefined,
@@ -128,6 +136,7 @@ export function normalizeThinkingStep(raw = {}) {
     details: raw.details || null,
     workflow: raw.workflow || null,
     segment: raw.segment || null,
+    branchTaken,
     elapsed: raw.elapsed != null ? raw.elapsed : null,
     ontologyChain: raw.ontologyChain || null,
     ontologyPreview: raw.ontologyPreview || null,

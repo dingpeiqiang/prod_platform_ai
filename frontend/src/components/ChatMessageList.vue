@@ -46,11 +46,8 @@
               @complete="(payload) => onThinkingComplete(msg, payload)"
             />
 
-            <!-- 查询计划（历史会话恢复时亦有值；实时流以后端业务化方案文本承载） -->
-            <QueryPlanCard
-              v-if="msg.queryPlan && isReplySettled(msg)"
-              :plan="msg.queryPlan"
-            />
+            <!-- 查询计划卡片已移除：方案信息由思考时间线「定下处理方案」步骤业务化承载，
+                 避免历史回放时与思考面板重复展示同一份计划（去旧留新） -->
 
             <!-- 正文内容：有思考过程时等思考播完再自上而下打出 -->
             <div class="message-bubble ai-bubble">
@@ -391,7 +388,6 @@ import ThinkingProcessPanel from './ThinkingProcessPanel.vue'
 import MessageCard from './MessageCard.vue'
 import InlineFormEditor from './InlineFormEditor.vue'
 import BatchInlineCard from './BatchInlineCard.vue'
-import QueryPlanCard from './QueryPlanCard.vue'
 
 const props = defineProps({
   messages: { type: Array, required: true },

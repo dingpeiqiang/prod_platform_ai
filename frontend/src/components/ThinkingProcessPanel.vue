@@ -1,4 +1,4 @@
-/**
+**
  * 思考过程面板：时间线样式；本体推理为其中一环，内嵌网络图 + 推理预览
  *
  * 支持富元数据展示：
@@ -60,182 +60,85 @@
           <div v-if="isSegmentStart(step, si)" class="segment-header">
             <span class="segment-badge">{{ step.segment }}</span>
           </div>
-          <div class="rail" aria-hidden="true">
-            <span class="rail-dot" />
-            <span v-if="si < visibleSteps.length - 1" class="rail-line" />
-          </div>
 
-          <div class="step-main">
-            <div class="step-meta">
-              <span class="step-progress">
-                {{ si + 1 }}/{{ steps.length || visibleSteps.length }}
-              </span>
-              <span class="type-chip" :class="`cat-${categoryOf(step)}`">
-                {{ categoryLabel(categoryOf(step)) }}
-              </span>
-              <span
-                v-if="step.title"
-                class="step-action"
-              >
-                {{ step.title }}
-              </span>
-              <span v-if="displayElapsed(step, si) != null" class="step-elapsed">
-                {{ formatElapsed(displayElapsed(step, si)) }}
+          <!-- 步骤行：左侧固定数字序号 + 标题，右侧完成对号/展开图标；点击整行展开详情 -->
+          <button
+            type="button"
+            class="step-row"
+            :disabled="!stepHasExtra(step, si)"
+            @click="stepHasExtra(step, si) && toggleExtra(si)"
+          >
+            <span class="step-num" aria-hidden="true">{{ si + 1 }}</span>
+            <span class="step-row-text" :class="{ 'is-loading': isRunning(step, si) }">
+              {{ stepRowText(step, si) }}<span v-if="isRunning(step, si)" class="loading-dots" aria-hidden="true">…</span>
+            </span>
+            <!-- 完成后：轻量对号（绿色细线）；可展开时：小箭头 -->
+            <svg
+              v-if="isDone(step, si)"
+              class="row-check"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            <svg
+              v-else-if="stepHasExtra(step, si)"
+              class="row-chevron"
+              :class="{ expanded: expandedExtra[si] }"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+
+          <!-- 展开区：固定「输入 / 过程 / 输出」三行（缺数据段给简洁缺省文案） -->
+          <div v-if="stepHasExtra(step, si) && expandedExtra[si]" class="step-extra-body">
+            <div v-if="fromStepLabel(step)" class="extra-line">
+              <span class="extra-key">承接</span>
+              <span class="extra-val">↳ 承接自「{{ fromStepLabel(step) }}」的上一步输出</span>
+            </div>
+
+            <div class="extra-line">
+              <span class="extra-key">输入</span>
+              <span class="extra-val">{{ stepInputText(step) }}</span>
+            </div>
+
+            <div class="extra-line">
+              <span class="extra-key">过程</span>
+              <span class="extra-val">
+                <span v-for="(seg, gi) in stepProcessSegments(step)" :key="gi" class="process-seg">{{ seg }}</span>
               </span>
             </div>
 
-            <!-- 本环节目标：业务人员一眼看懂"为什么做这步" -->
-            <div v-if="step.goal" class="step-goal">
-              <span class="goal-label">目标</span>
-              <span class="goal-text">{{ step.goal }}</span>
+            <div class="extra-line">
+              <span class="extra-key">输出</span>
+              <span class="extra-val">{{ stepOutputText(step, si) }}</span>
             </div>
 
-            <!-- 本体环节：动作说明 + 内嵌推理块（结论由 OntologyReasoningBlock 展示） -->
+            <div v-if="stepBranchText(step)" class="extra-line">
+              <span class="extra-key">分支</span>
+              <span class="extra-val branch-val">{{ stepBranchText(step) }}</span>
+            </div>
+
+            <!-- 本体环节推理块（网络图等富内容，附加在过程之下） -->
             <template v-if="step.type === 'ontology' && step.ontologyChain">
-              <div v-if="step.content" class="step-text">{{ step.content }}</div>
               <OntologyReasoningBlock
                 :preview="step.ontologyPreview"
                 :chain="step.ontologyChain"
                 :chain-reveal-count="step.chainRevealCount || 0"
                 :streaming="(streaming || isCatchingUp) && isRunning(step, si)"
               />
-            </template>
-            <template v-else>
-              <!-- 主文本：动作说明（无独立 title 时作为标题） -->
-              <div
-                v-if="displayStepContent(step, si)"
-                class="step-text"
-                :class="{
-                  'as-action': !step.title && !formatStepResult(step),
-                  'is-loading': isRunning(step, si),
-                }"
-              >
-                {{ displayStepContent(step, si) }}<span v-if="isRunning(step, si)" class="loading-dots" aria-hidden="true">…</span>
-              </div>
-
-              <!-- 步骤的「输入 → 过程 → 输出」链条：纵排更易读 -->
-              <div v-if="isToolIo(step, si)" class="step-io">
-                <div v-if="hasToolInput(step)" class="io-block">
-                  <span class="io-block-label">输入</span>
-                  <div class="io-block-body">
-                    <span v-for="(val, key) in ioInput(step)" :key="key" class="io-item">
-                      <span class="io-key">{{ paramLabel(key) }}</span>
-                      <span class="io-val">{{ paramValue(key, val) }}</span>
-                    </span>
-                  </div>
-                </div>
-
-                <div v-if="hasToolOutput(step)" class="io-block">
-                  <span class="io-block-label">输出</span>
-                  <div class="io-block-body">
-                    <span v-if="ioOutputSummary(step)" class="io-summary">{{ ioOutputSummary(step) }}</span>
-                    <span
-                      v-for="(entry, ki) in ioOutputEntries(step)"
-                      :key="ki"
-                      class="meta-tag"
-                      :class="metaTagClass(entry.key)"
-                    >
-                      {{ entry.label }}: {{ entry.value }}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 评估范围：将本次分析的对象/指标/时间等范围参数醒目展示 -->
-              <div v-if="scopeParams(step).length" class="io-block scope-block">
-                <span class="io-block-label scope-label">评估范围</span>
-                <div class="scope-items">
-                  <span v-for="(sp, spi) in scopeParams(step)" :key="sp.key || spi" class="scope-item">
-                    <span class="scope-item-label">{{ sp.label }}</span>
-                    <span class="scope-item-value">{{ sp.value }}</span>
-                  </span>
-                </div>
-              </div>
-
-              <!-- 方案处理流程：本步骤将依次执行的真实动作清单（按工具链粒度） -->
-              <div v-if="workflowSteps(step).length" class="io-block workflow-block">
-                <span class="io-block-label workflow-label">处理流程</span>
-                <ol class="workflow-list">
-                  <li
-                    v-for="(wf, wi) in workflowSteps(step)"
-                    :key="wf.tool || wi"
-                    class="workflow-item"
-                  >
-                    <span class="workflow-index">{{ wf.step || wi + 1 }}</span>
-                    <span class="workflow-desc">{{ wf.label || wf.tool }}</span>
-                  </li>
-                </ol>
-              </div>
-
-              <!-- 步骤结果：完成后再露出 -->
-              <div v-if="showStepResult(step, si)" class="step-result">
-                <span class="result-label">结果</span>
-                <span class="result-value">{{ formatStepResult(step) }}</span>
-              </div>
-
-              <!-- 元数据标签 -->
-              <div v-if="hasMetadata(step) && showStepResult(step, si)" class="step-metadata">
-                <span
-                  v-for="(entry, ki) in metadataEntries(step)"
-                  :key="ki"
-                  class="meta-tag"
-                  :class="metaTagClass(entry.key)"
-                >
-                  {{ entry.label }}: {{ entry.value }}
-                </span>
-              </div>
-
-              <!-- 人工怎么做：AI 不可用时按此步骤目标人工完成任务（默认收起） -->
-              <div v-if="step.manualHint && showStepResult(step, si)" class="step-manual-wrap">
-                <button
-                  type="button"
-                  class="step-manual-toggle"
-                  @click.stop="toggleManual(si)"
-                >
-                  <svg
-                    class="manual-arrow"
-                    :class="{ expanded: expandedManual[si] }"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <polyline points="9 18 15 12 9 6" />
-                  </svg>
-                  人工怎么做
-                </button>
-                <div v-show="expandedManual[si]" class="step-manual-content">
-                  {{ step.manualHint }}
-                </div>
-              </div>
-
-              <!-- 可展开的详情 -->
-              <div v-if="step.details && showStepResult(step, si)" class="step-details-wrap">
-                <button
-                  type="button"
-                  class="step-details-toggle"
-                  @click.stop="toggleDetails(si)"
-                >
-                  <svg
-                    class="details-arrow"
-                    :class="{ expanded: expandedDetails[si] }"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <polyline points="9 18 15 12 9 6" />
-                  </svg>
-                  {{ expandedDetails[si] ? '收起详情' : '展开详情' }}
-                </button>
-                <div v-show="expandedDetails[si]" class="step-details-content">
-                  <pre>{{ localizeDetails(step.details) }}</pre>
-                </div>
-              </div>
             </template>
           </div>
         </li>
@@ -247,7 +150,6 @@
 <script setup>
 import { computed, reactive, ref, watch, onUnmounted } from 'vue'
 import OntologyReasoningBlock from './OntologyReasoningBlock.vue'
-import { resolveCategory, CATEGORY_LABELS } from '../utils/normalizeThinkingStep.js'
 import {
   toolLabel,
   paramLabel,
@@ -506,7 +408,7 @@ const visibleStepCount = computed(() => {
   return total
 })
 
-const expandedDetails = reactive({})
+const expandedExtra = reactive({})
 const liveNow = ref(Date.now())
 let liveTimer = null
 
@@ -561,26 +463,25 @@ onUnmounted(() => {
   clearPlayTimer()
 })
 
-const toggleDetails = (idx) => {
-  expandedDetails[idx] = !expandedDetails[idx]
+const toggleExtra = (idx) => {
+  expandedExtra[idx] = !expandedExtra[idx]
 }
 
-/** 「人工怎么做」折叠状态（默认收起，按步骤索引独立展开） */
-const expandedManual = reactive({})
-const toggleManual = (idx) => {
-  expandedManual[idx] = !expandedManual[idx]
+/** 步骤行文案：进行中带动作说明，完成后仅标题 */
+const stepRowText = (step, index) => {
+  if (isRunning(step, index)) {
+    return displayStepContent(step, index)
+  }
+  return step.title || displayStepContent(step, index)
 }
 
-/** 步骤业务分类（理解需求/查资料/做校验/分析推理/生成内容） */
-const categoryOf = (step) => resolveCategory(step)
-const categoryLabel = (cat) => CATEGORY_LABELS[cat] || '业务处理'
-
-const isWaitingStep = (step) =>
-  step._playRunning
-  || step._waiting
-  || step.status === 'running'
-  || step.metadata?.phase === 'waiting_llm'
-  || step.metadata?.phase === 'running'
+/** 步骤是否有可展开的详情（固定三段式：输入/过程/输出，所有完成步骤均可展开） */
+const stepHasExtra = (step, si) => {
+  if (isRunning(step, si)) return false
+  if (step.goal || step.content || step.result) return true
+  if (step.type === 'ontology' && step.ontologyChain) return true
+  return !!(step.manualHint || step.details || step.io)
+}
 
 const stepStartedAt = (step) => step.waitingStartedAt || step.stepStartedAt || step.timestamp || null
 
@@ -588,17 +489,6 @@ const liveElapsedSeconds = (step) => {
   const startedAt = stepStartedAt(step)
   if (!startedAt) return 0
   return Math.max(0, Math.floor((liveNow.value - startedAt) / 1000))
-}
-
-/** 流式进行中步骤：本地 1 秒读秒 */
-const displayElapsed = (step, index) => {
-  if (isDone(step, index) && step.elapsed != null && step.elapsed >= 0) {
-    return step.elapsed
-  }
-  if (isRunning(step, index)) {
-    return liveElapsedSeconds(step)
-  }
-  return step.elapsed != null ? step.elapsed : null
 }
 
 const displayStepContent = (step, index) => {
@@ -617,62 +507,159 @@ const displayStepContent = (step, index) => {
   return text
 }
 
-/** 仅完成态展示结果 */
-const showStepResult = (step, si) => {
-  // 工具步骤已用结构化的「输入→输出」区块展示，非 running 且带 io 时不再重复普通结果
-  if (step.type === 'tool' && step.io && !isRunning(step, si)) return false
-  if (isRunning(step, si)) return false
-  return !!formatStepResult(step)
-}
-
 /* 携带 io 数据的步骤（工具或思考环节）进入完成态时，呈现「输入 → 动作 → 输出」链条 */
 const isToolIo = (step, si) =>
   step.io
   && !isRunning(step, si)
   && step.type !== 'ontology'
-  && step.id !== 'plan'
 
-/** 方案处理流程清单：容忍 string / 对象数组 / null 等形态，统一归一为有序数组 */
-const workflowSteps = (step) => {
-  const raw = step.workflow
-  if (Array.isArray(raw)) return raw
-  if (typeof raw === 'string' && raw.trim()) {
-    return raw.split(/[，,、\n]/).filter(Boolean).map((label, i) => ({ step: i + 1, label }))
-  }
-  return []
-}
+/**
+ * 输入区需要隐藏的内部噪声键（与后端 ThinkingCopy.HIDDEN_INPUT_KEYS 对齐）：
+ * 会话号/原始问题/内部码等对业务无意义，不展示。
+ * 注意：text/draft/product_type 是 rd 工具的实际入参（配置需求/已有草稿/品类），放行展示。
+ */
+const HIDDEN_INPUT_KEYS = new Set([
+  'session_id', 'sessionId', 'session', 'question', 'intent_type', 'intentType',
+  'action', 'documentText',
+  'config', 'maxEntities', 'limit', 'file_id', 'file_ids', 'fileId',
+  'file_name', 'fileName',
+])
 
-/* 本次执行的评估范围参数键（从 plan 步骤的 io.input 中挑出，突出展示） */
-const SCOPE_KEYS = ['offering', 'offeringIds', 'metric', 'time']
-
-/** 提取评估范围参数（对象/范围/指标/时间），供「执行计划生成」步骤醒目展示 */
-const scopeParams = (step) => {
+/** 过滤后的业务可读输入项：跳过隐藏键与空值 */
+const ioInputEntries = (step) => {
   const input = step.io?.input
   if (!input || typeof input !== 'object') return []
-  return SCOPE_KEYS
-    .filter((key) => input[key] != null && String(input[key]) !== '')
-    .map((key) => ({
-      key,
-      label: paramLabel(key),
-      value: paramValue(key, input[key]),
-    }))
+  return Object.entries(input)
+    .filter(([key, val]) => !HIDDEN_INPUT_KEYS.has(String(key)) && val != null && val !== '')
+    .map(([key, val]) => ({ key, val }))
 }
 
-const hasToolInput = (step) =>
-  !!step.io?.input
-  && typeof step.io.input === 'object'
-  && Object.keys(step.io.input).length > 0
-
-const ioInput = (step) => step.io?.input || {}
-
-const hasToolOutput = (step) => {
-  const o = step.io?.output
-  if (!o || (typeof o === 'object' && !Object.keys(o).length)) return false
-  if (typeof o === 'string') return o.trim() !== ''
-  return true
+/** 输入的原始 question（用户话术）——被隐藏键过滤掉，但「输入」行需要它兜底 */
+const rawQuestion = (step) => {
+  const q = step.io?.input?.question || step.io?.input?.text
+  return q != null ? String(q) : ''
 }
 
-const ioOutputSummary = (step) => toolOutputSummary(step.io?.output ? 'tool' : '', step.io?.output)
+/**
+ * 「输入」行文案：业务参数优先；无业务参数时回退用户话术截断；再无则缺省。
+ */
+const stepInputText = (step) => {
+  const input = step.io?.input
+  // 数据流承接型输入（后端 from_step 声明上游节点）：展示上游产出的实质内容
+  if (input && typeof input === 'object' && input.from_step) {
+    const parts = []
+    if (input.structured_intent && typeof input.structured_intent === 'object') {
+      const intentParts = Object.entries(input.structured_intent)
+        .filter(([, v]) => v != null && v !== '')
+        .map(([k, v]) => (k === 'action' ? `动作=${v}` : `${paramLabel(k)}：${paramValue(k, v)}`))
+      if (intentParts.length) parts.push(intentParts.join('；'))
+    }
+    if (Array.isArray(input.upstream_outputs) && input.upstream_outputs.length) {
+      parts.push(input.upstream_outputs
+        .map((u) => u && u.summary ? String(u.summary) : '')
+        .filter(Boolean)
+        .join('；'))
+    }
+    if (input.missing_params) parts.push(`待补充：${input.missing_params}`)
+    if (input.requirement) parts.push(String(input.requirement))
+    if (parts.length) return parts.join('；')
+  }
+  const items = ioInputEntries(step)
+  if (items.length) {
+    return items
+      .map((item) => (item.key === 'requirement' ? item.val : `${paramLabel(item.key)}：${paramValue(item.key, item.val)}`))
+      .join('；')
+  }
+  const q = rawQuestion(step)
+  if (q) return q.length > 40 ? q.slice(0, 40) + '…' : q
+  return '本环节无需额外参数，按方案直接执行'
+}
+
+/** 步骤 id → 工作流节点中文名（承接行展示用） */
+const FROM_STEP_LABELS = {
+  intent: '识别需求',
+  plan: '定下处理方案',
+  execute: '执行处理',
+  summarize: '汇总结果',
+  clarify: '组织追问',
+  confirm: '歧义确认',
+}
+
+/** 「承接」行：该步骤的输入来自哪个上游节点（后端 input.from_step 声明，无则不显示该行） */
+const fromStepLabel = (step) => {
+  const input = step.io?.input
+  const from = input && typeof input === 'object' ? input.from_step : null
+  if (!from) return ''
+  const clean = String(from).replace(/^tool_/, '')
+  if (clean.startsWith('tool')) {
+    return toolLabel(clean) || clean
+  }
+  return FROM_STEP_LABELS[clean] || clean
+}
+
+/** 「分支」行：本轮实际命中的工作流分支（后端 output.branch_taken 下发） */
+const stepBranchText = (step) => {
+  const out = step.io?.output
+  const taken = out && typeof out === 'object' ? (out.branch_taken || '') : ''
+  return String(taken || '').trim()
+}
+
+/**
+ * 「过程」行文案：组合多段信息——这步做什么（content）、为什么做（goal）、具体怎么做（manualHint）。
+ * 去重后按顺序拼接，让业务人员看到比标题更丰满的执行过程。
+ * 叙事规则：
+ * - 工具步骤的 content 已含动作描述（后端下发 summary 类话术），仅在与标题不同时补充执行说明，避免重复标题
+ * - 思考步骤的 goal 讲「为什么」、content 讲「做什么」，两者互补时保留；goal 是 content 的重复时丢弃
+ */
+const stepProcessSegments = (step) => {
+  const segs = []
+  const push = (t) => {
+    const s = String(t || '').trim().replace(/…$/, '')
+    if (s && !segs.includes(s)) segs.push(s)
+  }
+  if (step.type === 'tool') {
+    const label = toolLabel(step.name || step.tool || '')
+    if (label && label !== step.title && !String(step.content || '').includes(label)) {
+      push(`执行「${label}」`)
+    }
+    push(step.content)
+    push(step.manualHint)
+    if (!segs.length) push(step.goal)
+  } else {
+    push(step.content)
+    push(step.goal)
+  }
+  if (!segs.length) {
+    if (step.type === 'ontology') return ['基于业务知识库做关联推理，把结论串成链路']
+    return ['按既定业务流程处理']
+  }
+  return segs
+}
+
+/**
+ * 「输出」行文案：io 摘要优先（thinking 步骤后端补齐 output.summary 后同构生效），
+ * 其次 result，无则区分「处理中/无产出」。
+ */
+const stepOutputText = (step, si) => {
+  if (isToolIo(step, si)) {
+    const summary = ioOutputSummary(step)
+    if (summary) return summary
+    const entries = ioOutputEntries(step)
+    if (entries.length) {
+      return entries.map((e) => `${e.label}: ${e.value}`).join('；')
+    }
+  }
+  const result = formatStepResult(step)
+  if (result) return result
+  if (isRunning(step, si)) return '处理中…'
+  return '—'
+}
+const ioOutputSummary = (step) => {
+  const output = step.io?.output
+  if (!output || typeof output !== 'object') return ''
+  if (output.summary) return String(output.summary)
+  return ''
+}
 
 const ioOutputEntries = (step) => toolOutputEntries('tool', step.io?.output)
 
@@ -699,135 +686,6 @@ const formatStepResult = (step) => {
     return pairs.join('，') + (keys.length > 6 ? '…' : '')
   }
   return String(raw)
-}
-
-/** 格式化耗时显示 */
-const formatElapsed = (seconds) => {
-  if (seconds == null || seconds < 0) return ''
-  if (seconds === 0) return '0s'
-  if (seconds < 0.01) return '<10ms'
-  if (seconds < 1) return Math.round(seconds * 1000) + 'ms'
-  if (seconds < 60) return (Number.isInteger(seconds) ? seconds : seconds.toFixed(1)) + 's'
-  return Math.floor(seconds / 60) + 'm ' + Math.round(seconds % 60) + 's'
-}
-
-/** 检查步骤是否有业务侧可展示的 metadata（隐藏 Token 等技术字段） */
-const hasMetadata = (step) => {
-  if (!step.metadata) return false
-  const meta = step.metadata
-  return meta.intentLabel
-    || meta.confidence != null
-    || meta.resultCount != null
-    || meta.ruleCount != null
-    || meta.evidenceCount != null
-    || meta.verdict
-    || meta.offeringName
-    || meta.offeringId
-    || meta.highPriorityCount != null
-    || meta.alertCount != null
-    || meta.openWorkOrderCount != null
-    || meta.compareCount != null
-    || meta.reasonEngine
-    || meta.tool
-    || meta.scannedCount != null
-    || meta.suggestDelistCount != null
-    || meta.policySetId
-}
-
-/** 提取 metadata 为业务可读标签 */
-const metadataEntries = (step) => {
-  if (!step.metadata) return []
-  const meta = step.metadata
-  const entries = []
-
-  if (meta.intentLabel) {
-    entries.push({ key: 'intent', label: '业务意图', value: meta.intentLabel })
-  }
-  if (meta.confidence != null) {
-    const c = Number(meta.confidence)
-    const pct = c <= 1 ? Math.round(c * 100) : Math.round(c)
-    entries.push({ key: 'confidence', label: '把握度', value: pct + '%' })
-  }
-  if (meta.offeringName || meta.offeringId) {
-    entries.push({
-      key: 'target',
-      label: '分析对象',
-      value: meta.offeringName || meta.offeringId,
-    })
-  }
-  if (meta.resultCount != null) {
-    entries.push({ key: 'result', label: '命中', value: meta.resultCount + ' 条' })
-  }
-  if (meta.compareCount != null) {
-    entries.push({ key: 'result', label: '方案', value: meta.compareCount + ' 套' })
-  }
-  if (meta.alertCount != null) {
-    entries.push({ key: 'result', label: '告警', value: meta.alertCount + ' 条' })
-  }
-  if (meta.highPriorityCount != null) {
-    entries.push({ key: 'verdict', label: '高优', value: meta.highPriorityCount + ' 条' })
-  }
-  if (meta.openWorkOrderCount != null) {
-    entries.push({ key: 'result', label: '工单', value: meta.openWorkOrderCount + ' 张' })
-  }
-  if (meta.scannedCount != null) {
-    entries.push({ key: 'result', label: '扫描', value: meta.scannedCount + ' 条' })
-  }
-  if (meta.suggestDelistCount != null) {
-    entries.push({ key: 'verdict', label: '建议下架', value: String(meta.suggestDelistCount) })
-  }
-  if (meta.verdict) {
-    entries.push({ key: 'verdict', label: '结论', value: meta.verdict })
-  }
-  if (meta.policySetId) {
-    entries.push({ key: 'policy', label: '策略集', value: String(meta.policySetId) })
-  }
-  if (meta.reasonEngine) {
-    entries.push({ key: 'engine', label: '推理引擎', value: String(meta.reasonEngine) })
-  }
-  if (meta.ruleCount != null) {
-    entries.push({ key: 'rule', label: '参考规则', value: meta.ruleCount + ' 条' })
-  }
-  if (meta.evidenceCount != null) {
-    entries.push({ key: 'evidence', label: '支撑证据', value: meta.evidenceCount + ' 条' })
-  }
-  if (meta.tool) {
-    entries.push({ key: 'tool', label: '工具', value: toolLabel(meta.tool) })
-  }
-
-  return entries
-}
-
-/** metadata 标签样式类 */
-const metaTagClass = (key) => {
-  switch (key) {
-    case 'intent': return 'meta-intent'
-    case 'confidence': return 'meta-confidence'
-    case 'policy':
-    case 'verdict': return 'meta-policy'
-    case 'rule':
-    case 'evidence': return 'meta-rule'
-    case 'result':
-    case 'target': return 'meta-result'
-    case 'engine':
-    case 'tool': return 'meta-engine'
-    default: return ''
-  }
-}
-
-/** 详情文案：去掉规则编码等技术后缀，便于业务阅读 */
-const localizeDetails = (raw) => {
-  if (!raw) return ''
-  let text = props.localize(String(raw))
-  text = text
-    .replace(/引用规则\s*[:：]/g, '参考规则：')
-    .replace(/命中规则\s*[:：]/g, '命中规则：')
-    .replace(/（R-[A-Z0-9-]+）/gi, '')
-    .replace(/\bR-[A-Z0-9-]+\b/gi, '')
-    .replace(/SPARQL|Prompt|Token|LLM|ontology/gi, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim()
-  return text
 }
 </script>
 
@@ -894,8 +752,29 @@ const localizeDetails = (raw) => {
   animation: pulse-live 1.2s ease infinite;
 }
 
+.think-skip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.think-skip-btn:hover {
+  border-color: #93c5fd;
+  color: #3b82f6;
+  background: #f0f9ff;
+}
+
 .think-body {
-  padding: 0 12px 12px;
+  padding: 0 14px 12px;
   position: relative;
 }
 
@@ -905,44 +784,33 @@ const localizeDetails = (raw) => {
   padding: 0;
 }
 
+/* ── 步骤行：数字序号 + 标题 + 右侧小展开图标 ─────────────── */
+
 .think-step {
-  display: grid;
-  grid-template-columns: 16px 1fr;
-  gap: 8px;
+  border-bottom: 1px solid #eef2f7;
 }
 
-/* 分组小节：多意图时在每个子问题步骤序列前插入的标题分隔块 */
+.think-step:last-child {
+  border-bottom: none;
+}
+
+/* 分组小节：多意图时在每个子问题步骤序列前插入标题分隔 */
 .think-step.segment-start {
-  margin-top: 14px;
   border-top: 1px dashed rgba(120, 140, 255, 0.35);
-  padding-top: 12px;
 }
 
 .think-step.segment-start:first-child {
-  margin-top: 0;
   border-top: none;
-  padding-top: 0;
 }
 
 .segment-header {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  margin-bottom: 2px;
+  padding: 8px 0 2px;
 }
 
 .segment-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   font-size: 12px;
   font-weight: 600;
   color: #4c5bff;
-  background: linear-gradient(90deg, rgba(76, 91, 255, 0.12), rgba(76, 91, 255, 0.04));
-  border: 1px solid rgba(76, 91, 255, 0.3);
-  padding: 3px 10px;
-  border-radius: 999px;
-  letter-spacing: 0.4px;
 }
 
 /* TransitionGroup 入场：分步揭示时每步淡入上移 */
@@ -971,215 +839,73 @@ const localizeDetails = (raw) => {
   animation: none;
 }
 
-.rail {
-  position: relative;
+.step-row {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  padding-top: 6px;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
 }
 
-.rail-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #fff;
-  border: 2px solid #cbd5e1;
-  box-sizing: border-box;
-  z-index: 1;
+.step-row:disabled {
+  cursor: default;
+}
+
+/* 左侧数字序号：固定数字，朴素圆形底 */
+.step-num {
   flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  background: #eef2f7;
+  box-sizing: border-box;
+  transition: color 0.25s ease;
 }
 
-.rail-line {
-  flex: 1;
-  width: 2px;
-  min-height: 14px;
-  margin-top: 4px;
-  background: #cbd5e1;
-  border-radius: 1px;
+.think-step.done .step-num {
+  color: #94a3b8;
 }
 
-.think-step.done .rail-dot {
-  border-color: #64748b;
-  background: #64748b;
+.think-step.latest .step-num {
+  color: #2563eb;
+  background: #eff6ff;
 }
 
-.think-step.is-ontology.done .rail-dot {
-  border-color: #2563eb;
-  background: #2563eb;
-}
-
-.think-step.latest .rail-dot {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
-}
-
-.think-step.pending {
+.think-step.pending .step-num {
   opacity: 0.45;
 }
 
-.think-step.pending .rail-dot {
-  border-color: #cbd5e1;
-  background: #fff;
-}
-
-.step-main {
+.step-row-text {
+  flex: 0 1 auto;
   min-width: 0;
-  padding: 2px 0 12px;
-}
-
-.step-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
-  flex-wrap: wrap;
-}
-
-.step-progress {
-  font-size: 10px;
-  font-weight: 700;
-  color: #2563eb;
-  background: #eff6ff;
-  padding: 0 6px;
-  border-radius: 4px;
-  line-height: 1.6;
-}
-
-.type-chip {
-  display: inline-block;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1.5;
-  padding: 0 7px;
-  border-radius: 4px;
-}
-
-/* 业务分类徽标：理解需求/查资料/做校验/分析推理/生成内容 */
-.type-chip.cat-understand {
-  background: #ede9fe;
-  color: #6d28d9;
-}
-
-.type-chip.cat-lookup {
-  background: #dbeafe;
-  color: #1d4ed8;
-}
-
-.type-chip.cat-verify {
-  background: #fef3c7;
-  color: #b45309;
-}
-
-.type-chip.cat-reason {
-  background: #e0f2fe;
-  color: #0369a1;
-}
-
-.type-chip.cat-generate {
-  background: #dcfce7;
-  color: #15803d;
-}
-
-/* 本环节目标行 */
-.step-goal {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  margin: 2px 0 4px;
-}
-
-.goal-label {
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1.6;
-  color: #4c5bff;
-  background: rgba(76, 91, 255, 0.1);
-  padding: 0 6px;
-  border-radius: 4px;
-}
-
-.goal-text {
-  font-size: 12px;
-  color: #475569;
-  line-height: 1.5;
-  word-break: break-word;
-}
-
-/* 人工怎么做：默认收起的可展开小节 */
-.step-manual-wrap {
-  margin-top: 6px;
-}
-
-.step-manual-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border: 1px solid #e2e8f0;
-  background: #fff;
-  border-radius: 6px;
-  font-size: 11px;
-  color: #64748b;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.step-manual-toggle:hover {
-  border-color: #86efac;
-  color: #15803d;
-  background: #f0fdf4;
-}
-
-.manual-arrow {
-  transition: transform 0.15s ease;
-}
-
-.manual-arrow.expanded {
-  transform: rotate(90deg);
-}
-
-.step-manual-content {
-  margin-top: 6px;
-  padding: 8px 10px;
-  background: #f0fdf4;
-  border: 1px dashed #bbf7d0;
-  border-radius: 8px;
-  font-size: 12px;
-  line-height: 1.6;
-  color: #166534;
-  word-break: break-word;
-}
-
-.step-elapsed {
-  font-size: 10px;
-  color: #94a3b8;
-  margin-left: auto;
-}
-
-.step-action {
-  font-size: 12px;
-  font-weight: 600;
-  color: #0f172a;
-}
-
-.step-text {
   font-size: 13px;
   color: #334155;
   line-height: 1.5;
+  word-break: break-word;
 }
 
-.step-text.as-action {
-  font-weight: 550;
+.think-step.done .step-row-text {
+  color: #475569;
 }
 
-.think-step.latest .step-text {
+.think-step.latest .step-row-text {
   color: #0f172a;
   font-weight: 550;
 }
 
-.step-text.is-loading {
+.step-row-text.is-loading {
   color: #2563eb;
 }
 
@@ -1189,328 +915,146 @@ const localizeDetails = (raw) => {
   animation: pulse-live 1.2s ease infinite;
 }
 
-.step-result {
+/* 右侧轻量对号：细线绿色，完成即现 */
+.row-check {
+  flex-shrink: 0;
+  color: #22c55e;
+  animation: check-in 0.25s ease;
+}
+
+@keyframes check-in {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 右侧小展开图标：低调灰，hover 时着色（仅未完成步骤显示） */
+.row-chevron {
+  flex-shrink: 0;
+  color: #cbd5e1;
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.step-row:hover .row-chevron {
+  color: #94a3b8;
+}
+
+.row-chevron.expanded {
+  transform: rotate(180deg);
+  color: #94a3b8;
+}
+
+/* ── 展开区：纯文字排版，缩进对齐标题 ─────────────────────── */
+
+.step-extra-body {
+  padding: 0 0 10px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  animation: extra-in 0.2s ease;
+}
+
+@keyframes extra-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.extra-line {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
-  margin-top: 6px;
-  padding: 6px 8px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  animation: result-in 0.32s ease;
-}
-
-.result-label {
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1.6;
-  color: #15803d;
-  background: #dcfce7;
-  padding: 0 6px;
-  border-radius: 4px;
-}
-
-.result-value {
-  font-size: 12px;
-  color: #334155;
-  line-height: 1.5;
-  word-break: break-word;
-}
-
-/* 步骤「输入 → 过程 → 输出」链条：纵排更易读 */
-.step-io {
-  margin-top: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.io-block {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 6px 8px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  min-width: 0;
-}
-
-/* 方案处理流程清单 */
-.workflow-block {
-  gap: 4px;
-}
-
-.workflow-label {
-  background: #eff6ff;
-  color: #1d4ed8;
-}
-
-.workflow-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.workflow-item {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  font-size: 12px;
-  line-height: 1.5;
-  min-width: 0;
-}
-
-.workflow-index {
-  flex-shrink: 0;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 4px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 700;
-  color: #1d4ed8;
-  background: #dbeafe;
-}
-
-.workflow-desc {
-  color: #334155;
-  word-break: break-word;
-}
-
-/* 评估范围：对象/指标/时间等分析口径醒目卡片 */
-.scope-block {
-  gap: 6px;
-  background: linear-gradient(180deg, #f0f9ff 0%, #ffffff 100%);
-  border-color: #bfdbfe;
-}
-
-.scope-label {
-  background: #dbeafe;
-  color: #1d4ed8;
-}
-
-.scope-items {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 18px;
-  min-width: 0;
-}
-
-.scope-item {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
+  gap: 8px;
   font-size: 12px;
   line-height: 1.5;
 }
 
-.scope-item-label {
+.extra-key {
   flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 700;
-  color: #2563eb;
-  background: #eff6ff;
-  padding: 0 6px;
-  border-radius: 4px;
-  line-height: 1.6;
+  width: 30px;
+  color: #94a3b8;
 }
 
-.scope-item-value {
-  color: #0f172a;
-  font-weight: 600;
-  word-break: break-word;
-}
-
-.io-block-label {
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1.6;
+.extra-val {
+  flex: 1;
+  min-width: 0;
   color: #475569;
-  background: #eef2f7;
-  align-self: flex-start;
-  padding: 0 6px;
-  border-radius: 4px;
-}
-
-.io-block-body {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  color: #334155;
-}
-
-.io-item {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  font-size: 12px;
-  line-height: 1.5;
-  min-width: 0;
-}
-
-.io-key {
-  flex-shrink: 0;
-  color: #64748b;
-}
-
-.io-val {
-  color: #0f172a;
-  font-weight: 500;
   word-break: break-word;
 }
 
-.io-summary {
-  font-size: 12px;
-  color: #0f172a;
-  line-height: 1.5;
+/* 「分支」行：条件分支命中标注 */
+.branch-val {
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 4px;
+  padding: 0 6px;
+  display: inline-block;
+  font-size: 11px;
 }
 
-.think-step.is-ontology .step-meta {
-  margin-bottom: 0;
+/* 「过程」行分段：每段独立成行，段间留小间距，视觉上更像分步说明 */
+.process-seg {
+  display: block;
 }
 
-.think-step.is-ontology .step-text {
-  margin-bottom: 6px;
+.process-seg + .process-seg {
+  margin-top: 3px;
 }
 
-/* 元数据标签 */
-.step-metadata {
+.extra-inline {
+  margin-right: 10px;
+}
+
+.extra-inline:last-child {
+  margin-right: 0;
+}
+
+.extra-sub {
+  color: #94a3b8;
+  margin-right: 4px;
+}
+
+.extra-tags {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin-top: 4px;
 }
 
-.meta-tag {
-  font-size: 10px;
-  line-height: 1.5;
+.extra-tag {
+  font-size: 11px;
+  color: #64748b;
+  background: #eef2f7;
   padding: 1px 7px;
   border-radius: 4px;
   white-space: nowrap;
 }
 
-.meta-intent {
-  background: #ede9fe;
-  color: #6d28d9;
+.extra-details {
+  margin: 0;
 }
 
-.meta-confidence {
-  background: #dcfce7;
-  color: #16a34a;
-}
-
-.meta-tokens {
-  background: #fef3c7;
-  color: #b45309;
-}
-
-.meta-policy {
-  background: #fce7f3;
-  color: #be185d;
-}
-
-.meta-rule {
-  background: #ffedd5;
-  color: #c2410c;
-}
-
-.meta-result {
-  background: #dbeafe;
-  color: #1d4ed8;
-}
-
-.meta-engine {
-  background: #e0e7ff;
-  color: #4338ca;
-}
-
-.meta-ontology {
-  background: #e0f2fe;
-  color: #0369a1;
-}
-
-/* 详情展开 */
-.step-details-wrap {
-  margin-top: 6px;
-}
-
-.step-details-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border: 1px solid #e2e8f0;
-  background: #fff;
-  border-radius: 6px;
-  font-size: 11px;
-  color: #64748b;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.step-details-toggle:hover {
-  border-color: #93c5fd;
-  color: #3b82f6;
-  background: #f0f9ff;
-}
-
-.details-arrow {
-  transition: transform 0.15s ease;
-}
-
-.details-arrow.expanded {
-  transform: rotate(90deg);
-}
-
-.step-details-content {
-  margin-top: 6px;
-  padding: 8px 10px;
-  background: #f1f5f9;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-}
-
-.step-details-content pre {
+.extra-details pre {
   margin: 0;
   font-size: 11px;
   line-height: 1.5;
-  color: #475569;
+  color: #64748b;
   white-space: pre-wrap;
   word-break: break-all;
   font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
 }
 
-@keyframes step-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes result-in {
-  from {
-    opacity: 0;
-    transform: translateY(3px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
+.think-step.pending {
+  opacity: 0.45;
 }
 
 @keyframes pulse-live {
@@ -1521,12 +1065,15 @@ const localizeDetails = (raw) => {
 @media (prefers-reduced-motion: reduce) {
   .think-step.step-enter,
   .think-live,
-  .step-result {
+  .row-check,
+  .step-extra-body {
     animation: none;
   }
   .think-step-enter-active,
   .think-step-leave-active,
-  .think-step-move {
+  .think-step-move,
+  .step-num,
+  .row-chevron {
     transition: none;
   }
 }

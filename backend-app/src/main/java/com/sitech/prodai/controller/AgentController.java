@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sitech.prodai.service.agent.AgentOrchestrator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -91,6 +92,9 @@ public class AgentController {
         SseEmitter emitter = new SseEmitter(300_000L);
         emitter.onTimeout(emitter::complete);
         emitter.onError(e -> emitter.completeWithError(e));
+        // emitter 状态守卫：complete/completeWithError 后再 send 会抛
+        // "ResponseBodyEmitter has already completed"，导致 error 事件发不出去、前端无感知
+        final java.util.concurrent.atomic.AtomicBoolean closed = new java.util.concurrent.atomic.AtomicBoolean(false);
 
         String question = request != null ? String.valueOf(request.getOrDefault("question", "")) : "";
         String sessionId = request != null ? String.valueOf(request.getOrDefault("session_id", "")) : "";
@@ -117,24 +121,39 @@ public class AgentController {
                     try {
                         emitter.send(SseEmitter.event().name(name).data(toJson(data)));
                     } catch (Exception e) {
-                        // 客户端断开等发送失败 → 中止流水线，触发外层收尾
+                        // 客户端断开等发送失败 → 置关闭标记并中止流水线，触发外层收尾
+                        closed.set(true);
                         throw new IllegalStateException("SSE 发送失败: " + e.getMessage(), e);
                     }
                 });
-                emitter.complete();
+                if (closed.compareAndSet(false, true)) {
+                    emitter.complete();
+                }
             } catch (Exception e) {
                 log.error("[AgentController] 流式翻译失败", e);
-                try {
-                    emitter.send(SseEmitter.event().name("error")
-                            .data(toJson(Map.of("error", e.getMessage() == null ? "服务异常" : e.getMessage()))));
-                } catch (Exception ignored) {
-                    // 连接已断开
+                if (!closed.get()) {
+                    try {
+                        emitter.send(SseEmitter.event().name("error")
+                                .data(toJson(Map.of(
+                                        "error", e.getMessage() == null ? "服务异常" : e.getMessage(),
+                                        "request_id", currentRequestId()))));
+                    } catch (Exception ignored) {
+                        // 连接已断开
+                    }
                 }
-                emitter.complete();
+                if (closed.compareAndSet(false, true)) {
+                    emitter.complete();
+                }
             }
         });
 
         return emitter;
+    }
+
+    /** 关联 RequestLoggingFilter 写入 MDC 的 requestId，便于前端报错时与后端日志对账 */
+    private String currentRequestId() {
+        String id = MDC.get("requestId");
+        return id != null ? id : "";
     }
 
     /**

@@ -172,24 +172,35 @@ public final class ThinkingCopy {
         return toolName != null ? TOOL_COPY.get(toolName) : null;
     }
 
-    /** 步骤输入区需要隐藏的内部噪声键（对业务无意义，不展示）。 */
+    /** 步骤输入区需要隐藏的内部噪声键（对业务无意义，不展示）。
+     * <p>
+     * 注意：text/draft/product_type 不在隐藏列表 —— 它们是 rd 工具的实际入参
+     * （配置需求原文/已有草稿/产品品类），透传后「输入」行才有具体数据流；
+     * 真正无业务意义的键（会话号/内部码/分页参数）才隐藏。 */
     public static final List<String> HIDDEN_INPUT_KEYS = List.of(
-            "question", "intent_type", "action", "text", "document_text",
-            "draft", "patches", "config", "maxEntities", "limit",
-            "file_id", "file_ids", "product_type"
+            "question", "intent_type", "action",
+            "config", "maxEntities", "limit",
+            "file_id", "file_ids",
+            // 系统内部键：会话号对业务阅读无意义（rd 场景经 plan.params 透传给工具）
+            "session_id"
     );
 
     /** 输入参数键 → 业务展示名（仅少量键需要；工具 label 优先）。 */
-    private static final Map<String, String> INPUT_KEY_LABELS = Map.of(
-            "offering", "分析对象",
-            "offeringIds", "商品范围",
-            "offering_id", "商品编码",
-            "file_name", "文档名称",
-            "metric", "指标",
-            "time", "时间范围",
-            "ruleId", "规则编号",
-            "concept", "概念",
-            "dimension", "分析维度"
+    private static final Map<String, String> INPUT_KEY_LABELS = Map.ofEntries(
+            Map.entry("offering", "分析对象"),
+            Map.entry("offeringIds", "商品范围"),
+            Map.entry("offering_id", "商品编码"),
+            Map.entry("file_name", "文档名称"),
+            Map.entry("text", "配置需求"),
+            Map.entry("draft", "已有草稿"),
+            Map.entry("product_type", "产品品类"),
+            Map.entry("patches", "候选方案"),
+            Map.entry("document_text", "文档内容"),
+            Map.entry("metric", "指标"),
+            Map.entry("time", "时间范围"),
+            Map.entry("ruleId", "规则编号"),
+            Map.entry("concept", "概念"),
+            Map.entry("dimension", "分析维度")
     );
 
     /** 输入参数键 → 业务展示名。 */

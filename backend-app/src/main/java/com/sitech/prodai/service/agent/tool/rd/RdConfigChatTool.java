@@ -73,6 +73,27 @@ public class RdConfigChatTool implements AgentTool {
                 ToolOutputField.builder("nl_answer", ToolOutputField.Role.SUMMARY)
                         .label("配置结果摘要").type("string")
                         .description("本次生成的配置结果摘要").build(),
+                ToolOutputField.builder("draftOfferingName", ToolOutputField.Role.OTHER)
+                        .label("草稿名称").outputKey("offeringName").type("string")
+                        .description("生成的配置草稿名称").build(),
+                ToolOutputField.builder("draftMonthlyFee", ToolOutputField.Role.OTHER)
+                        .label("月费").outputKey("monthlyFee").type("string")
+                        .description("草稿月费金额（元）").build(),
+                ToolOutputField.builder("draftIncludeBroadband", ToolOutputField.Role.OTHER)
+                        .label("宽带").outputKey("includeBroadband").type("string")
+                        .description("草稿包含的宽带速率").build(),
+                ToolOutputField.builder("draftTargetUser", ToolOutputField.Role.OTHER)
+                        .label("目标客群").outputKey("targetUser").type("string")
+                        .description("草稿面向的目标客群").build(),
+                ToolOutputField.builder("draftChannelScope", ToolOutputField.Role.OTHER)
+                        .label("销售渠道").outputKey("channelScope").type("string")
+                        .description("草稿配置的销售渠道范围").build(),
+                ToolOutputField.builder("draftBizScenario", ToolOutputField.Role.OTHER)
+                        .label("业务场景").outputKey("bizScenario").type("string")
+                        .description("草稿归属的业务场景").build(),
+                ToolOutputField.builder("draftWorkOrderId", ToolOutputField.Role.OTHER)
+                        .label("配置工单号").outputKey("workOrderId").type("string")
+                        .description("草稿生成即创建的配置工单号").build(),
                 ToolOutputField.builder("draft", ToolOutputField.Role.OTHER)
                         .label("配置草稿").type("object")
                         .description("本次生成的完整配置草稿").build(),
@@ -258,7 +279,7 @@ public class RdConfigChatTool implements AgentTool {
         return v == null ? "" : String.valueOf(v);
     }
 
-    /** 将 service 响应规范化为工具 output 契约（抽取摘要 + 保留明细）。 */
+    /** 将 service 响应规范化为工具 output 契约（抽取摘要 + 草稿要素 + 保留明细）。 */
     @SuppressWarnings("unchecked")
     private Map<String, Object> normalize(Map<String, Object> resp) {
         Map<String, Object> out = new LinkedHashMap<>();
@@ -267,17 +288,58 @@ public class RdConfigChatTool implements AgentTool {
             return out;
         }
         Object draft = resp.get("draft");
-        Object summary = resp.get("summary");
-        if (summary == null) summary = resp.get("message");
-        if (summary == null && draft instanceof Map<?, ?> d) {
-            Object name = d.get("offeringName");
-            if (name == null) name = d.get("name");
-            summary = name != null ? "已生成配置草稿：" + name : "已生成配置草稿";
+        Map<String, Object> d = draft instanceof Map<?, ?> dm ? (Map<String, Object>) dm : Map.of();
+        String name = str(firstNonEmpty(d.get("offeringName"), d.get("offerName")));
+        String fee = str(firstNonEmpty(d.get("monthlyFee"), d.get("fixedFeeAmount")));
+        String broadband = str(firstNonEmpty(d.get("includeBroadband"), d.get("downstreamBandwidth")));
+        String targetUser = str(d.get("targetUser"));
+        String channel = str(firstNonEmpty(d.get("channelScope"),
+                ((Map<String, Object>) (d.get("releaseScope") instanceof Map<?, ?> rs ? rs : Map.of()))
+                        .get("channelScope")));
+        String scenario = str(firstNonEmpty(d.get("bizScenario"), d.get("scenario")));
+
+        // 输出摘要 = 草稿要素明细（名称/月费/宽带/客群/渠道），业务人员据此核对数据流
+        StringBuilder summary = new StringBuilder();
+        if (!name.isBlank()) {
+            summary.append("已生成配置草稿「").append(name).append("」");
+        } else {
+            summary.append("已生成配置草稿");
         }
-        if (summary == null) summary = resp.get("nl_answer");
-        out.put("nl_answer", summary != null ? String.valueOf(summary) : "已生成配置草稿");
+        List<String> elements = new java.util.ArrayList<>();
+        if (!fee.isBlank() && !"null".equals(fee)) {
+            elements.add("月费 " + fee.replaceAll("\\.0$", "") + " 元");
+        }
+        if (!broadband.isBlank() && !"null".equals(broadband)) {
+            elements.add("含 " + broadband + " 宽带");
+        }
+        if (!targetUser.isBlank() && !"null".equals(targetUser)) {
+            elements.add("面向" + targetUser + "客户");
+        }
+        if (!channel.isBlank() && !"null".equals(channel)) {
+            elements.add(channel + "销售");
+        }
+        if (!elements.isEmpty()) {
+            summary.append("：").append(String.join("，", elements));
+        }
+        out.put("nl_answer", summary.toString());
+
+        // 草稿要素平铺下发：前端思考时间线「输出」行逐项展示（数据流具体化）
+        putIfPresent(out, "draftOfferingName", name);
+        putIfPresent(out, "draftMonthlyFee", fee);
+        putIfPresent(out, "draftIncludeBroadband", broadband);
+        putIfPresent(out, "draftTargetUser", targetUser);
+        putIfPresent(out, "draftChannelScope", channel);
+        putIfPresent(out, "draftBizScenario", scenario);
+
         if (draft != null) out.put("draft", draft);
         out.put("config", resp);
         return out;
+    }
+
+    /** 值非空且非 "null" 时放入 out（key 固定为草稿要素契约键）。 */
+    private void putIfPresent(Map<String, Object> out, String key, String value) {
+        if (value != null && !value.isBlank() && !"null".equals(value)) {
+            out.put(key, value);
+        }
     }
 }

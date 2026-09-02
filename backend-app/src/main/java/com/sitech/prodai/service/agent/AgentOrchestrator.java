@@ -9,6 +9,8 @@ import com.sitech.prodai.service.agent.tool.AgentTool;
 import com.sitech.prodai.service.agent.tool.ThinkingCopy;
 import com.sitech.prodai.service.agent.tool.ToolOutputRenderer;
 import com.sitech.prodai.service.agent.tool.ToolParam;
+import com.sitech.prodai.service.agent.workflow.WorkflowBuilder;
+import com.sitech.prodai.service.agent.workflow.WorkflowGraph;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -185,9 +187,10 @@ public class AgentOrchestrator {
         // 保存回答到会话历史
         context.addHistoryEntry("assistant", report);
 
-        // 保存会话
+        // 保存会话（持久化失败时记录 warnings，随响应透传给前端）
         sessionManager.save(context);
-        persistTurn(context, question, report, plan, results);
+        List<String> warnings = new ArrayList<>();
+        persistTurn(context, question, report, plan, results, null, warnings);
 
         long elapsed = System.currentTimeMillis() - startTime;
         log.info("[AgentOrchestrator] 处理完成: sessionId={}, elapsed={}ms", context.getSessionId(), elapsed);
@@ -202,6 +205,9 @@ public class AgentOrchestrator {
         response.put("conclusion", extractConclusion(results));
         response.put("suggested_follow_ups", followUps);
         response.put("elapsed_ms", elapsed);
+        if (!warnings.isEmpty()) {
+            response.put("warnings", warnings);
+        }
 
         return response;
     }
@@ -353,6 +359,27 @@ public class AgentOrchestrator {
     private void persistTurn(SessionContext context, String question,
                              String assistantReply, QueryPlan plan,
                              List<ExecutionResult> results) {
+        persistTurn(context, question, assistantReply, plan, results, null, null);
+    }
+
+    /** 流式便捷重载：持久化失败时通过 emitter 推送 warning 事件 */
+    private void persistTurn(SessionContext context, String question,
+                             String assistantReply, QueryPlan plan,
+                             List<ExecutionResult> results, StreamEmitter emitter) {
+        persistTurn(context, question, assistantReply, plan, results, emitter, null);
+    }
+
+    private static final String PERSIST_WARNING_MESSAGE =
+            "本轮对话未能保存到历史记录（存储异常），请检查数据服务";
+
+    /**
+     * @param emitter  流式入口传 emitter，持久化失败时同步推送 warning 事件（前端可见）
+     * @param warnings 非流式入口传收集器，失败时追加（调用方随响应体透传）；可传 null
+     */
+    private void persistTurn(SessionContext context, String question,
+                             String assistantReply, QueryPlan plan,
+                             List<ExecutionResult> results, StreamEmitter emitter,
+                             List<String> warnings) {
         if (persistenceService.isEmpty()) {
             return;
         }
@@ -379,7 +406,7 @@ public class AgentOrchestrator {
                     meta.put("query_plan", toJson(buildQueryPlanView(plan)));
                     // 思考时间线快照：与实时 reasoning 步骤同构（intent/plan/tool/generate），
                     // 前端 normalizeReasoningList 直接消费，保证历史回放与实时渲染一致
-                    meta.put("reasoning_full", toJson(buildReasoningSnapshot(context, plan, results, assistantReply)));
+                    meta.put("reasoning_full", toJson(buildReasoningSnapshot(context, plan, results, assistantReply, question)));
                     // 澄清分支：持久化追问参数列表与契约（实时 done 事件携带，历史回放等量还原）
                     if (plan.getClarify() != null && !plan.getClarify().isEmpty()) {
                         meta.put("clarify", toJson(plan.getClarify()));
@@ -400,8 +427,20 @@ public class AgentOrchestrator {
             }
             log.info("[AgentOrchestrator] 会话已持久化: sessionId={}", sessionId);
         } catch (Exception e) {
-            // 持久化失败不影响对话主流程（仅记录）
+            // 持久化失败不影响对话主流程，但必须让用户可感知（会话不会进历史）
             log.warn("[AgentOrchestrator] 会话持久化失败: {}", e.getMessage());
+            if (warnings != null) {
+                warnings.add(PERSIST_WARNING_MESSAGE + ": " + e.getMessage());
+            }
+            if (emitter != null) {
+                try {
+                    emitter.emit("warning", Map.of(
+                            "message", PERSIST_WARNING_MESSAGE,
+                            "error", String.valueOf(e.getMessage())));
+                } catch (Exception ignored) {
+                    // 连接已断开，无需再通知
+                }
+            }
         }
     }
 
@@ -412,12 +451,15 @@ public class AgentOrchestrator {
      * 否则历史会话的思考时间线比实时会话短（快照不完整）。
      */
     private List<Map<String, Object>> buildReasoningSnapshot(SessionContext context, QueryPlan plan,
-                                                             List<ExecutionResult> results, String report) {
+                                                             List<ExecutionResult> results, String report, String question) {
         List<Map<String, Object>> steps = new ArrayList<>();
         if (plan == null) {
             return steps;
         }
-        // ① 意图识别
+        // ① 意图识别：输出 = 结构化意图（下游各节点的输入来源）
+        Map<String, Object> intentOutput = new LinkedHashMap<>();
+        intentOutput.put("summary", "已明确：本次要执行「" + actionDisplay(plan) + "」");
+        intentOutput.put("structured_intent", planIntentView(plan));
         Map<String, Object> intentStep = new LinkedHashMap<>();
         intentStep.put("id", "intent");
         intentStep.put("type", "thinking");
@@ -427,9 +469,9 @@ public class AgentOrchestrator {
         intentStep.put("category", "understand");
         intentStep.put("goal", "先听懂您要做什么，再决定怎么办");
         intentStep.put("input", Map.of("question", ""));
-        intentStep.put("output", Map.of("summary", "已明确：本次要执行「" + actionDisplay(plan) + "」"));
+        intentStep.put("output", intentOutput);
         steps.add(intentStep);
-        // ② 处理方案
+        // ② 处理方案：输入 = ①的结构化意图（数据流承接）
         Map<String, Object> planStep = new LinkedHashMap<>();
         planStep.put("id", "plan");
         planStep.put("type", "thinking");
@@ -437,10 +479,11 @@ public class AgentOrchestrator {
         planStep.put("content", buildReadablePlan(plan));
         planStep.put("status", "done");
         planStep.put("category", "understand");
-        planStep.put("goal", ThinkingCopy.intentGoal(plan.getIntent()));
-        planStep.put("input", planInputView(plan));
+        planStep.put("goal", planStepGoal(plan, context));
+        planStep.put("input", upstreamIntentInput(plan, question));
         planStep.put("workflow", buildWorkflow(plan));
-        planStep.put("output", Map.of("summary", buildReadablePlan(plan)));
+        planStep.put("output", Map.of("summary", planStepOutput(plan, context),
+                "branch_taken", WorkflowBuilder.branchLabel(WorkflowBuilder.takenBranch(plan))));
         steps.add(planStep);
         // ③ 工具步骤：与实时 tool 事件同构（title/goal/manualHint/input/output/elapsed）
         if (results != null) {
@@ -465,14 +508,15 @@ public class AgentOrchestrator {
             }
         }
         // ④ 汇总步骤：实时流的 generate 步骤（含结论输出），历史回放等量还原
+        // 输入 = ③各工具的实际产出（数据流承接）
         Map<String, Object> generateStep = new LinkedHashMap<>();
         generateStep.put("id", "generate");
         generateStep.put("type", "thinking");
         generateStep.put("title", "汇总结果");
-        generateStep.put("content", "正在汇总筛查结论与处置建议…");
+        generateStep.put("content", generateStepDesc(context));
         generateStep.put("status", "done");
         generateStep.put("goal", "把各环节结果整合成您能直接使用的结论与建议");
-        generateStep.put("input", planInputView(plan));
+        generateStep.put("input", upstreamResultsInput(results));
         generateStep.put("output", Map.of("summary", report != null && !report.isBlank() ? report : "已完成"));
         steps.add(generateStep);
         return steps;
@@ -601,24 +645,31 @@ public class AgentOrchestrator {
             return;
         }
         QueryPlan plan = plans.get(0);
+        // 工作流定义：本轮真实业务流程（节点+分支条件+数据流），随首个 thinking 事件一次性下发
+        emitter.emit("workflow", WorkflowBuilder.build(plan, WorkflowBuilder.takenBranch(plan)).toView());
         // 阶段事件①′：理解完成，原地更新 intent 步骤（补输出：已明确的业务动作）
+        // 输出 = 结构化意图（动作 + 业务要素），作为下游 plan/execute/summarize 的唯一输入来源
+        Map<String, Object> intentOutput = new LinkedHashMap<>();
+        intentOutput.put("summary", "已明确：本次要执行「" + actionDisplay(plan) + "」");
+        intentOutput.put("structured_intent", planIntentView(plan));
         emitter.emit("thinking", Map.of(
                 "steps", List.of(thinkingStep("intent", intentStepName(context),
                         intentStepDesc(context),
                         Map.of("goal", "先听懂您要做什么，再决定怎么办",
                                 "input", Map.of("question", question),
-                                "output", Map.of("summary", "已明确：本次要执行「" + actionDisplay(plan) + "」")))),
+                                "output", intentOutput))),
                 "intent", plan.getIntent()
         ));
         // 阶段事件②：计划确认 —— 将内部「查询计划中间语言」翻译为业务可读的筛查方案
         // （取代原先透传 raw queryPlan 给前端渲染内部码卡片，避免对业务人员造成困惑）
+        // 输入 = ①的结构化意图（承接上游输出，而非复述用户原文）
         emitter.emit("thinking", Map.of(
                 "steps", List.of(thinkingStep("plan", "定下处理方案",
                         buildReadablePlan(plan),
-                        Map.of("goal", ThinkingCopy.intentGoal(plan.getIntent()),
-                                "input", planInputView(plan),
+                        Map.of("goal", planStepGoal(plan, context),
+                                "input", upstreamIntentInput(plan, question),
                                 "workflow", buildWorkflow(plan),
-                                "output", Map.of("summary", buildReadablePlan(plan))))),
+                                "output", Map.of("summary", planStepOutput(plan, context))))),
                 "intent", plan.getIntent()
         ));
 
@@ -629,11 +680,12 @@ public class AgentOrchestrator {
             context.setLastTools(plan.getTools());
             context.setLastParams(plan.getParams());
             // 阶段事件③：生成中 —— 表达层为 LLM 长调用，先推步骤保持反馈
+            // 输入 = ①意图输出中的要素缺口（missing），而非用户原文复述
             emitter.emit("thinking", Map.of(
                     "steps", List.of(thinkingStep("generate", "组织追问",
                             "正在生成补充信息的询问…",
                             Map.of("goal", "信息不全时先问清楚，避免答非所问",
-                                    "input", Map.of("question", question)))),
+                                    "input", clarifyInputView(plan, question)))),
                     "intent", plan.getIntent()
             ));
             String clarifyMessage = presenter.present(question, List.of(), context);
@@ -641,13 +693,15 @@ public class AgentOrchestrator {
             emitter.emit("thinking", Map.of(
                     "steps", List.of(thinkingStep("generate", "组织追问",
                             "正在生成补充信息的询问…",
-                            Map.of("input", Map.of("question", question),
-                                    "output", Map.of("summary", clarifyMessage)))),
+                            Map.of("goal", "信息不全时先问清楚，避免答非所问",
+                                    "input", clarifyInputView(plan, question),
+                                    "output", Map.of("summary", clarifyMessage,
+                                            "branch_taken", WorkflowBuilder.branchLabel("CLARIFY"))))),
                     "intent", plan.getIntent()
             ));
             context.addHistoryEntry("assistant", clarifyMessage);
             sessionManager.save(context);
-            persistTurn(context, question, clarifyMessage, plan, List.of());
+            persistTurn(context, question, clarifyMessage, plan, List.of(), emitter);
             emitTextEvents(emitter, clarifyMessage);
             Map<String, Object> donePayload = new LinkedHashMap<>();
             donePayload.put("session_id", context.getSessionId());
@@ -671,7 +725,7 @@ public class AgentOrchestrator {
             String confirmMessage = buildConfirmMessage(plan.getCandidates());
             context.addHistoryEntry("assistant", confirmMessage);
             sessionManager.save(context);
-            persistTurn(context, question, confirmMessage, plan, List.of());
+            persistTurn(context, question, confirmMessage, plan, List.of(), emitter);
             emitTextEvents(emitter, confirmMessage);
             emitter.emit("done", Map.of(
                     "session_id", context.getSessionId(),
@@ -706,11 +760,12 @@ public class AgentOrchestrator {
         });
 
         // 阶段事件③：生成中 —— 报告生成为 LLM 长调用，先推"生成回答"步骤保持渐进反馈
+        // 输入 = 执行层各工具的实际产出（承接上游），不再是用户原文复述
         emitter.emit("thinking", Map.of(
                 "steps", List.of(thinkingStep("generate", "汇总结果",
-                        "正在汇总筛查结论与处置建议…",
+                        generateStepDesc(context),
                         Map.of("goal", "把各环节结果整合成您能直接使用的结论与建议",
-                                "input", planInputView(plan)))),
+                                "input", upstreamResultsInput(results)))),
                 "intent", plan.getIntent()
         ));
         String report = presenter.present(question, results, context);
@@ -719,14 +774,15 @@ public class AgentOrchestrator {
         String conclusionText = extractConclusion(results);
         emitter.emit("thinking", Map.of(
                 "steps", List.of(thinkingStep("generate", "汇总结果",
-                        "正在汇总筛查结论与处置建议…",
-                        Map.of("input", planInputView(plan),
-                                "output", Map.of("summary", conclusionText.isBlank() ? report : conclusionText)))),
+                        generateStepDesc(context),
+                        Map.of("input", upstreamResultsInput(results),
+                                "output", Map.of("summary", conclusionText.isBlank() ? report : conclusionText,
+                                        "branch_taken", WorkflowBuilder.branchLabel("EXECUTE"))))),
                 "intent", plan.getIntent()
         ));
         context.addHistoryEntry("assistant", report);
         sessionManager.save(context);
-        persistTurn(context, question, report, plan, results);
+        persistTurn(context, question, report, plan, results, emitter);
 
         emitTextEvents(emitter, report);
         emitter.emit("done", Map.of(
@@ -767,6 +823,8 @@ public class AgentOrchestrator {
         List<String> subReports = new ArrayList<>();
         List<String> allFollowUps = new ArrayList<>();
         QueryPlan firstPlan = plans.get(0);
+        // 工作流定义：多意图分支（每个子计划独立走 理解→方案→执行→汇总 链路）
+        emitter.emit("workflow", WorkflowBuilder.build(firstPlan, "MULTI").toView());
 
         for (int i = 0; i < plans.size(); i++) {
             QueryPlan plan = plans.get(i);
@@ -776,32 +834,28 @@ public class AgentOrchestrator {
             String segment = "① ② ③ ④ ⑤".split(" ")[i] + " " + intentLabel;
 
             // 阶段事件①：该子任务的意图识别（带索引前缀 id，独立成链；首步骤携带 segment 供前端分组）
-            emitter.emit("thinking", Map.of(
-                    "steps", List.of(thinkingStep(pre + "intent", intentStepName(context),
-                            intentStepDesc(context),
-                            Map.of("segment", segment,
-                                    "goal", "先听懂您要做什么，再决定怎么办",
-                                    "input", Map.of("question", question)))),
-                    "intent", plan.getIntent()
-            ));
+            // 输出 = 该子意图的结构化要素（作为该子链下游节点的输入来源）
+            Map<String, Object> subIntentOutput = new LinkedHashMap<>();
+            subIntentOutput.put("summary", "已明确：本次要执行「" + intentLabel + "」");
+            subIntentOutput.put("structured_intent", planIntentView(plan));
             emitter.emit("thinking", Map.of(
                     "steps", List.of(thinkingStep(pre + "intent", intentStepName(context),
                             intentStepDesc(context),
                             Map.of("segment", segment,
                                     "goal", "先听懂您要做什么，再决定怎么办",
                                     "input", Map.of("question", question),
-                                    "output", Map.of("summary", "已明确：本次要执行「" + intentLabel + "」")))),
+                                    "output", subIntentOutput))),
                     "intent", plan.getIntent()
             ));
-            // 阶段事件②：该子任务的执行方案
+            // 阶段事件②：该子任务的执行方案（输入 = ①子意图的结构化要素）
             emitter.emit("thinking", Map.of(
                     "steps", List.of(thinkingStep(pre + "plan", "定下处理方案",
                             buildReadablePlan(plan),
                             Map.of("segment", segment,
-                                    "goal", ThinkingCopy.intentGoal(plan.getIntent()),
-                                    "input", planInputView(plan),
+                                    "goal", planStepGoal(plan, context),
+                                    "input", upstreamIntentInput(plan, question),
                                     "workflow", buildWorkflow(plan),
-                                    "output", Map.of("summary", buildReadablePlan(plan))))),
+                                    "output", Map.of("summary", planStepOutput(plan, context))))),
                     "intent", plan.getIntent()
             ));
 
@@ -813,23 +867,24 @@ public class AgentOrchestrator {
             List<ExecutionResult> subResults = executeWithEvents(plan, context, emitter, segment);
             allResults.addAll(subResults);
 
-            // 阶段事件③/③′：该子任务汇总
+            // 阶段事件③/③′：该子任务汇总（输入 = 该子链各工具的实际产出）
             emitter.emit("thinking", Map.of(
                     "steps", List.of(thinkingStep(pre + "generate", "汇总结果",
-                            "正在汇总该子任务结论…",
+                            generateStepDesc(context),
                             Map.of("segment", segment,
                                     "goal", "把各环节结果整合成您能直接使用的结论与建议",
-                                    "input", planInputView(plan)))),
+                                    "input", upstreamResultsInput(subResults)))),
                     "intent", plan.getIntent()
             ));
             String subReport = presenter.present(question, subResults, context);
             String subConclusion = extractConclusion(subResults);
             emitter.emit("thinking", Map.of(
                     "steps", List.of(thinkingStep(pre + "generate", "汇总结果",
-                            "正在汇总该子任务结论…",
+                            generateStepDesc(context),
                             Map.of("segment", segment,
-                                    "input", planInputView(plan),
-                                    "output", Map.of("summary", subConclusion.isBlank() ? subReport : subConclusion)))),
+                                    "input", upstreamResultsInput(subResults),
+                                    "output", Map.of("summary", subConclusion.isBlank() ? subReport : subConclusion,
+                                            "branch_taken", WorkflowBuilder.branchLabel("MULTI"))))),
                     "intent", plan.getIntent()
             ));
 
@@ -841,7 +896,7 @@ public class AgentOrchestrator {
         String report = String.join("\n\n", subReports);
         context.addHistoryEntry("assistant", report);
         sessionManager.save(context);
-        persistTurn(context, question, report, firstPlan, allResults);
+        persistTurn(context, question, report, firstPlan, allResults, emitter);
 
         emitTextEvents(emitter, report);
         emitter.emit("done", Map.of(
@@ -1119,11 +1174,15 @@ public class AgentOrchestrator {
         if (time != null && !str(time).isBlank()) {
             sb.append("，时间范围：").append(time);
         }
-        sb.append("。方案共 ").append(planStepCount(plan)).append(" 步：");
+        sb.append("。");
         List<Map<String, Object>> workflow = buildWorkflow(plan);
         if (workflow.isEmpty()) {
             sb.append("直接生成结论");
         } else {
+            // 多环节方案才展开执行链；单环节时「方案」与后续工具步骤标题天然重复，仅讲本次动作
+            if (workflow.size() > 1) {
+                sb.append("方案共 ").append(workflow.size()).append(" 步：");
+            }
             for (int i = 0; i < workflow.size(); i++) {
                 Map<String, Object> item = workflow.get(i);
                 if (i > 0) {
@@ -1135,7 +1194,7 @@ public class AgentOrchestrator {
         return sb.toString();
     }
 
-    /** 方案包含的可执行步骤数（无执行步骤也算 1 步用于文案通顺）。 */
+    /** 方案包含的可执行环节数（无执行步骤算 1 步，供输出文案区分单/多环节）。 */
     private static int planStepCount(QueryPlan plan) {
         List<Map<String, Object>> workflow = buildWorkflow(plan);
         return Math.max(workflow.size(), 1);
@@ -1198,11 +1257,47 @@ public class AgentOrchestrator {
                 : "正在理解您的需求，识别业务意图与筛查目标…";
     }
 
+    /** 汇总步骤描述：研发场景讲配置结论，运营场景讲筛查结论（避免研发用户读到「筛查」话术）。 */
+    private static String generateStepDesc(SessionContext context) {
+        return isRdScene(context)
+                ? "正在整合各环节处理结果，生成配置结论与建议…"
+                : "正在汇总筛查结论与处置建议…";
+    }
+
+    /**
+     * 「定下处理方案」步骤的目标文案：讲"怎么安排"而非"干什么"，
+     * 与后续工具步骤的 goal（讲"为什么做这一步"）区分，避免业务人员读到重复话术。
+     * 研发场景固定话术（配置类诉求一致）；运营场景按意图给目标。
+     */
+    private static String planStepGoal(QueryPlan plan, SessionContext context) {
+        if (isRdScene(context)) {
+            return "安排好先做什么、后做什么，让配置一次到位";
+        }
+        return ThinkingCopy.intentGoal(plan.getIntent());
+    }
+
+    /**
+     * 「定下处理方案」步骤的输出文案：讲"定了什么"，即最终交付物/执行安排，
+     * 与过程描述（怎么执行）区分，避免同一句话在「过程」「输出」两行重复出现。
+     */
+    private static String planStepOutput(QueryPlan plan, SessionContext context) {
+        if (isRdScene(context)) {
+            int n = planStepCount(plan);
+            return n > 1
+                    ? "方案已定：共 " + n + " 个环节，依次执行后交付配置结果"
+                    : "方案已定，即将开始生成配置草稿";
+        }
+        return "分析路径已确定，即将开始执行";
+    }
+
     /**
      * 供方案步骤「输入」展示的参数子集：剔除原始问题与内部噪声键（intent_type/action/text/draft 等），
      * 仅保留业务可读的范围参数（对象/指标/时间等）。
+     * <p>
+     * rd 场景的配置类诉求（如「月费158带500M宽带」）参数多为 text 话术整体，无结构化范围键，
+     * 此时「输入」行会空缺显得敷衍 —— 故补一条「需求」= 用户话术摘要，保证每步输入可读。
      */
-    private static Map<String, Object> planInputView(QueryPlan plan) {
+    private static Map<String, Object> planInputView(QueryPlan plan, String question) {
         Map<String, Object> params = plan.getParams() != null ? plan.getParams() : Map.of();
         Map<String, Object> out = new LinkedHashMap<>();
         for (Map.Entry<String, Object> e : params.entrySet()) {
@@ -1215,6 +1310,96 @@ public class AgentOrchestrator {
                 continue;
             }
             out.put(key, e.getValue());
+        }
+        if (out.isEmpty() && question != null && !question.isBlank()) {
+            out.put("requirement", requirementSummary(question));
+        }
+        return out;
+    }
+
+    /** 用户需求摘要：截断至 40 字供「输入」行展示。 */
+    private static String requirementSummary(String question) {
+        String q = question.trim();
+        return q.length() > 40 ? q.substring(0, 40) + "…" : q;
+    }
+
+    // ── 工作流数据流视图：每步「输入」= 上游节点「输出」的引用，形成可审计的传递链路 ──
+
+    /**
+     * 理解节点的结构化意图输出：动作 + 业务要素（plan.params 中的业务可读键）。
+     * 这是下游 plan/execute/summarize 节点的唯一输入事实来源。
+     */
+    private static Map<String, Object> planIntentView(QueryPlan plan) {
+        Map<String, Object> intent = new LinkedHashMap<>();
+        intent.put("action", actionDisplay(plan));
+        Map<String, Object> params = plan.getParams() != null ? plan.getParams() : Map.of();
+        for (Map.Entry<String, Object> e : params.entrySet()) {
+            String key = e.getKey();
+            if (key == null || key.isBlank() || ThinkingCopy.hideInputKey(key)
+                    || e.getValue() == null || str(e.getValue()).isBlank()
+                    || e.getValue() instanceof Map || e.getValue() instanceof List) {
+                continue;
+            }
+            intent.put(key, e.getValue());
+        }
+        return intent;
+    }
+
+    /**
+     * 方案/执行节点的「输入」视图：承接上游理解节点的结构化意图输出
+     * （{action: ..., 客群: ..., 月费: ...}），而非复述用户原文。
+     * 仅当结构化意图为空时才回退用户话术摘要。
+     */
+    private static Map<String, Object> upstreamIntentInput(QueryPlan plan, String question) {
+        Map<String, Object> intent = planIntentView(plan);
+        if (intent.size() > 1) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("from_step", "intent");
+            out.put("structured_intent", intent);
+            return out;
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("from_step", "intent");
+        out.put("requirement", requirementSummary(question));
+        return out;
+    }
+
+    /**
+     * 汇总节点的「输入」视图：承接执行层各工具的实际产出摘要（from_step=tool_*）。
+     */
+    private Map<String, Object> upstreamResultsInput(List<ExecutionResult> results) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("from_step", "execute");
+        List<Map<String, Object>> upstream = new ArrayList<>();
+        if (results != null) {
+            for (ExecutionResult result : results) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("from_step", "tool_" + result.getToolName());
+                if (result.isSuccess() && result.getData() != null) {
+                    item.put("summary", ToolOutputRenderer.summary(toolMap.get(result.getToolName()), result.getData()));
+                } else {
+                    item.put("summary", "执行失败：" + str(result.getErrorMessage()));
+                }
+                upstream.add(item);
+            }
+        }
+        out.put("upstream_outputs", upstream);
+        return out;
+    }
+
+    /**
+     * 澄清节点的「输入」视图：承接理解节点输出的要素缺口（missing 参数契约）。
+     */
+    private static Map<String, Object> clarifyInputView(QueryPlan plan, String question) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("from_step", "intent");
+        List<String> missing = plan.getClarify() != null ? plan.getClarify() : List.of();
+        out.put("missing_params", String.join("、", missing));
+        Map<String, Object> known = planIntentView(plan);
+        if (known.size() > 1) {
+            out.put("structured_intent", known);
+        } else {
+            out.put("requirement", requirementSummary(question));
         }
         return out;
     }
