@@ -13,7 +13,7 @@ Docker Image Management Script for AI Dynamic Form Platform
 $Config = @{
     BackendBase = @{
         ImageName     = "prod-platform-backend-base"
-        ImageTag      = "2.3"  # 手动修改版本号，每次更新基础镜像时递增
+        ImageTag      = "2.4"  # 手动修改版本号，每次更新基础镜像时递增
         Dockerfile    = "docker/Dockerfile.base.backend"
         Registry      = "10.86.12.11:20200"
         Namespace     = "y21127-crmpos"
@@ -124,7 +124,8 @@ function Invoke-BuildImage {
     param(
         [string]$ImageName,
         [string]$ImageTag,
-        [string]$DockerfilePath
+        [string]$DockerfilePath,
+        [switch]$NoCache
     )
     
     $ProjectRoot = (Get-Item $PSScriptRoot).Parent.FullName
@@ -133,26 +134,25 @@ function Invoke-BuildImage {
     $FullTag = "$ImageName`:$ImageTag"
     
     Write-Host "`n" -ForegroundColor Red
-    Write-Host "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" -ForegroundColor Red
-    Write-Host "!!!                         WARNING                                  !!!" -ForegroundColor Red
-    Write-Host "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" -ForegroundColor Red
-    Write-Host "!!!  Current version: $FullTag" -ForegroundColor Yellow
-    Write-Host "!!!" -ForegroundColor Red
-    Write-Host "!!!  Update ImageTag in docker-manager.ps1 before building!          !!!" -ForegroundColor Red
-    Write-Host "!!!  e.g. Change 1.2 to 1.3 for a new version.                      !!!" -ForegroundColor Red
-    Write-Host "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" -ForegroundColor Red
-    Write-Host "`n" -ForegroundColor Red
     
     Write-Host "==============================================" -ForegroundColor Cyan
     Write-Host "Building image: $FullTag" -ForegroundColor Yellow
     Write-Host "==============================================" -ForegroundColor Cyan
+    if ($NoCache) {
+        Write-Host "模式: --no-cache（全量重建，仅在依赖/基础环境升级时使用）" -ForegroundColor Yellow
+    } else {
+        Write-Host "模式: 使用构建缓存（Dockerfile/依赖未变时秒级完成）" -ForegroundColor Yellow
+    }
     Write-Host ""
-    Write-Host "提示: 构建日志会实时输出；后端基础镜像需拉取基础层并执行 mvn package，" -ForegroundColor Yellow
-    Write-Host "      首次或 --no-cache 时可能需要 10~30+ 分钟，请耐心等待，不要关闭窗口。" -ForegroundColor Yellow
+    Write-Host "提示: 构建日志会实时输出；首次或 --no-cache 时可能需要 10~30+ 分钟，请耐心等待。" -ForegroundColor Yellow
     Write-Host ""
 
-    # 直接流式输出到控制台（勿整体捕获，否则长时间无日志像“卡住”）
-    docker buildx build -f $DockerfilePath -t $FullTag --no-cache --pull --provenance=false --sbom=false --output type=image,name=$FullTag,oci-mediatypes=false .
+    $buildArgs = @()
+    if ($NoCache) { $buildArgs += "--no-cache" }
+
+    # 默认启用构建缓存：COPY 层内容未变时直接复用，避免每次全量下载依赖；
+    # pom/package.json 变化会自动使 COPY 层缓存失效，无需手动 --no-cache
+    docker buildx build -f $DockerfilePath -t $FullTag @buildArgs --provenance=false --sbom=false --output type=image,name=$FullTag,oci-mediatypes=false .
     $buildExitCode = $LASTEXITCODE
     
     if ($buildExitCode -eq 0) {
@@ -273,7 +273,8 @@ function Invoke-PushImage {
 function Invoke-BuildAndPush {
     param(
         [hashtable]$Config,
-        [string]$ImageType
+        [string]$ImageType,
+        [switch]$NoCache
     )
     
     Write-Host "`n========================================" -ForegroundColor Cyan
@@ -284,7 +285,7 @@ function Invoke-BuildAndPush {
         return
     }
     
-    $buildSuccess = Invoke-BuildImage -ImageName $Config.ImageName -ImageTag $Config.ImageTag -DockerfilePath $Config.Dockerfile
+    $buildSuccess = Invoke-BuildImage -ImageName $Config.ImageName -ImageTag $Config.ImageTag -DockerfilePath $Config.Dockerfile -NoCache:$NoCache
     if ($buildSuccess) {
         Invoke-PushImage -ImageName $Config.ImageName -ImageTag $Config.ImageTag -Registry $Config.Registry -Namespace $Config.Namespace -Username $Config.Username -Password $Config.Password
     }
@@ -313,6 +314,8 @@ function Show-Menu {
     Write-Host "    7. Show Configurations"
     Write-Host "    0. Exit"
     Write-Host ""
+    $noCacheHint = if ($env:DOCKER_BUILD_NOCACHE -eq "1") { "enabled (full rebuild)" } else { "disabled (default cache)" }
+    Write-Host "  --no-cache: $noCacheHint  (set env DOCKER_BUILD_NOCACHE=1 to enable)" -ForegroundColor DarkGray
     Write-Host "========================================" -ForegroundColor Cyan
 }
 
@@ -330,7 +333,7 @@ do {
             Write-Host "========================================" -ForegroundColor Cyan
             
             if (Test-DockerAvailability) {
-                Invoke-BuildImage -ImageName $Config.BackendBase.ImageName -ImageTag $Config.BackendBase.ImageTag -DockerfilePath $Config.BackendBase.Dockerfile
+                Invoke-BuildImage -ImageName $Config.BackendBase.ImageName -ImageTag $Config.BackendBase.ImageTag -DockerfilePath $Config.BackendBase.Dockerfile -NoCache:($env:DOCKER_BUILD_NOCACHE -eq "1")
             }
         }
         
@@ -345,7 +348,7 @@ do {
         }
         
         "3" {
-            Invoke-BuildAndPush -Config $Config.BackendBase -ImageType "Backend Base Image"
+            Invoke-BuildAndPush -Config $Config.BackendBase -ImageType "Backend Base Image" -NoCache:($env:DOCKER_BUILD_NOCACHE -eq "1")
         }
         
         "4" {
@@ -354,7 +357,7 @@ do {
             Write-Host "========================================" -ForegroundColor Cyan
             
             if (Test-DockerAvailability) {
-                Invoke-BuildImage -ImageName $Config.FrontendBase.ImageName -ImageTag $Config.FrontendBase.ImageTag -DockerfilePath $Config.FrontendBase.Dockerfile
+                Invoke-BuildImage -ImageName $Config.FrontendBase.ImageName -ImageTag $Config.FrontendBase.ImageTag -DockerfilePath $Config.FrontendBase.Dockerfile -NoCache:($env:DOCKER_BUILD_NOCACHE -eq "1")
             }
         }
         
@@ -369,7 +372,7 @@ do {
         }
         
         "6" {
-            Invoke-BuildAndPush -Config $Config.FrontendBase -ImageType "Frontend Base Image"
+            Invoke-BuildAndPush -Config $Config.FrontendBase -ImageType "Frontend Base Image" -NoCache:($env:DOCKER_BUILD_NOCACHE -eq "1")
         }
         
         "7" {
