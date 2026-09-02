@@ -12,6 +12,10 @@ LABEL maintainer="AI Platform"
 LABEL version="2.0"
 LABEL description="AI Dynamic Form Frontend Production"
 
+# 基础镜像默认以 nginx 用户运行；构建阶段需临时切回 root
+# （vite 会在 /app 写 .mjs 临时文件，nginx 用户对 root 属主的 /app 无写权限）
+USER root
+
 WORKDIR /app
 
 # 构建参数（API 走相对路径，由 Nginx 反代到 backend:6174）
@@ -34,13 +38,15 @@ RUN npm run build
 
 RUN cp -r dist/. /usr/share/nginx/html/ \
     && chown -R nginx:nginx /usr/share/nginx/html \
-    && rm -rf dist node_modules /app/src
+    && rm -rf dist node_modules /app/src /app/scripts /app/public /app/index.html \
+              /app/vite.config.js /app/nginx.conf /app/package.json /app/package-lock.json
 
 # 覆盖主配置（完整 nginx.conf → upstream backend:6174，listen 6173）
 COPY frontend/nginx.conf /etc/nginx/nginx.conf
 
-RUN chown nginx:nginx /etc/nginx/nginx.conf \
-    && nginx -t
+RUN chown nginx:nginx /etc/nginx/nginx.conf
+# 注意：不在构建期跑 nginx -t —— upstream "backend" 是 Docker 网络内域名，
+# 构建环境 DNS 无法解析会导致误报；运行期容器接入网络后 nginx 启动时自检
 
 EXPOSE 6173
 
