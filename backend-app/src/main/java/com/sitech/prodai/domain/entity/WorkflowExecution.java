@@ -59,6 +59,26 @@ public class WorkflowExecution {
     @TableField(value = "execution_logs", typeHandler = JsonTypeHandlers.JsonListTypeHandler.class)
     private List<Object> executionLogs;
 
+    /** 运行上下文（各节点输出合并，恢复执行的数据源）——流程引擎（P2）新增。 */
+    @TableField(value = "context_data", typeHandler = JsonTypeHandlers.JsonMapTypeHandler.class)
+    private Map<String, Object> contextData;
+
+    /** 当前推进到的节点——流程引擎（P2）新增。 */
+    @TableField("current_node_id")
+    private String currentNodeId;
+
+    /** 人工节点恢复令牌（一次有效）——流程引擎（P2）新增。 */
+    @TableField("resume_token")
+    private String resumeToken;
+
+    /** 乐观锁版本——流程引擎（P2）新增。 */
+    @TableField("status_version")
+    private Integer statusVersion = 0;
+
+    /** 执行时锁定的流程定义版本（回滚安全）——流程引擎（P2）新增。 */
+    @TableField("workflow_version")
+    private Integer workflowVersion;
+
     @TableField("triggered_by")
     private String triggeredBy;
 

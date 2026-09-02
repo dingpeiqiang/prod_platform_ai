@@ -7,6 +7,7 @@ import com.sitech.prodai.service.agent.model.QueryPlan;
 import com.sitech.prodai.service.agent.model.SessionContext;
 import com.sitech.prodai.service.agent.tool.AgentTool;
 import com.sitech.prodai.service.agent.tool.ToolContractValidator;
+import com.sitech.prodai.service.common.DependencyFailedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -163,51 +164,17 @@ public class DefaultExecutor implements Executor {
     }
 
     private Object resolveSource(String source,
-                                 Map<String, Object> planParams,
-                                 Map<String, ExecutionResult> stepResults,
-                                 SessionContext context) {
-        if (source == null || source.isBlank()) {
-            return null;
+                                  Map<String, Object> planParams,
+                                  Map<String, ExecutionResult> stepResults,
+                                  SessionContext context) {
+        // P3-2 抽公共：四来源解析统一收口至 ParamResolver（原私有实现已删除）
+        Object value = com.sitech.prodai.service.common.ParamResolver.resolve(source, planParams, stepResults, context);
+        if (value == null && source != null && !source.isBlank()
+                && !source.startsWith("direct:") && !source.startsWith("result:")
+                && !source.startsWith("evidence:") && !source.startsWith("default:")) {
+            log.warn("[DefaultExecutor] 未知参数来源格式: {}", source);
         }
-        if (source.startsWith("direct:")) {
-            String name = source.substring("direct:".length());
-            return planParams != null ? planParams.get(name) : null;
-        }
-        if (source.startsWith("result:")) {
-            // result:<tool>.<key>
-            String body = source.substring("result:".length());
-            int dot = body.indexOf('.');
-            String toolName = dot > 0 ? body.substring(0, dot) : body;
-            String key = dot > 0 ? body.substring(dot + 1) : null;
-            ExecutionResult prior = stepResults.get(toolName);
-            if (prior == null) {
-                throw new DependencyFailedException("前序工具 " + toolName + " 尚未执行");
-            }
-            if (!prior.isSuccess()) {
-                throw new DependencyFailedException("前序工具 " + toolName + " 执行失败");
-            }
-            if (key == null || key.isBlank()) {
-                return prior.getData();
-            }
-            return prior.getData() != null ? prior.getData().get(key) : null;
-        }
-        if (source.startsWith("evidence:")) {
-            String key = source.substring("evidence:".length());
-            return context != null && context.getCachedEvidence() != null
-                    ? context.getCachedEvidence().get(key) : null;
-        }
-        if (source.startsWith("default:")) {
-            return source.substring("default:".length());
-        }
-        log.warn("[DefaultExecutor] 未知参数来源格式: {}", source);
-        return null;
-    }
-
-    /** 上游依赖失败导致的步骤中止（内部控制流信号） */
-    private static class DependencyFailedException extends RuntimeException {
-        DependencyFailedException(String message) {
-            super(message);
-        }
+        return value;
     }
 
     /**

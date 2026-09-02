@@ -161,5 +161,54 @@ export const workflowApi = {
 
   getAllWorkflows() {
     return get('/api/workflows', { baseURL: '' })
+  },
+
+  // ── 固定流程引擎（P3-1b：编辑器执行入口切换后端引擎，见 FlowEngineController）──
+
+  startEngineExecution(workflowCode, inputData, options = {}) {
+    return post('/api/v1/flow-engine/executions', {
+      workflow_code: workflowCode,
+      input_data: inputData || {}
+    }, { baseURL: '', loadingText: '流程执行中...', ...options })
+  },
+
+  getEngineExecution(executionId) {
+    return get(`/api/v1/flow-engine/executions/${executionId}`, { baseURL: '', showLoading: false })
+  },
+
+  getEngineNodeLogs(executionId) {
+    return get(`/api/v1/flow-engine/executions/${executionId}/node-logs`, { baseURL: '', showLoading: false })
+  },
+
+  resumeEngineExecution(executionId, user = null) {
+    return post(`/api/v1/flow-engine/executions/${executionId}/resume`, user ? { triggered_by: user } : {}, { baseURL: '' })
+  },
+
+  humanResumeEngine(executionId, resumeToken, formData, user = null) {
+    return post(`/api/v1/flow-engine/executions/${executionId}/human-resume`, {
+      resume_token: resumeToken,
+      form_data: formData || {},
+      ...(user ? { triggered_by: user } : {})
+    }, { baseURL: '', loadingText: '提交确认中...' })
+  },
+
+  // ── 固定流程引擎运维闭环（P4，见 FlowEngineController）──
+
+  listEngineExecutions(workflowCode = null, page = 1, pageSize = 20) {
+    return get('/api/v1/flow-engine/executions', {
+      baseURL: '',
+      params: {
+        ...(workflowCode ? { workflow_code: workflowCode } : {}),
+        page,
+        page_size: pageSize
+      }
+    })
+  },
+
+  cancelEngineExecution(executionId, reason = null, user = null) {
+    return post(`/api/v1/flow-engine/executions/${executionId}/cancel`, {
+      ...(reason ? { reason } : {}),
+      ...(user ? { triggered_by: user } : {})
+    }, { baseURL: '', loadingText: '取消执行中...' })
   }
 }

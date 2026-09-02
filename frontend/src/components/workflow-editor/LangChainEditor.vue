@@ -593,11 +593,17 @@
             验证
             <span v-if="validationResults.errors.length > 0" class="error-count">{{ validationResults.errors.length }}</span>
           </button>
-          <button 
-            @click="switchPanel('execution')" 
+          <button
+            @click="switchPanel('execution')"
             :class="['panel-tab', { active: activePanel === 'execution' }]"
           >
             执行日志
+          </button>
+          <button
+            @click="switchExecutionHistoryPanel"
+            :class="['panel-tab', { active: activePanel === 'history' }]"
+          >
+            执行历史
           </button>
           </div>
         
@@ -655,12 +661,114 @@
               :is-paused="isPaused"
               :pending-input="pendingInput"
               :waiting-form="pendingForm"
-              :workflow-id="executionEngine.getWorkflowId()"
+              :workflow-id="engineExecutionId || executionEngine.getWorkflowId()"
               :last-result="lastExecutionResult"
               :node-execution-data="nodeExecutionData"
               @clear="clearExecutionLogs"
               @resume="handleResume"
+              @cancel="handleEngineCancel"
             />
+          </div>
+
+          <!-- P4：执行历史面板（引擎执行实例列表 + 详情 + 取消） -->
+          <div v-show="activePanel === 'history'" class="panel-content-wrapper history-panel">
+            <div class="history-toolbar">
+              <input
+                v-model="historyWorkflowFilter"
+                type="text"
+                class="history-filter-input"
+                placeholder="按工作流代码过滤（留空查全部）"
+              />
+              <button @click="refreshExecutionHistory" class="history-refresh-btn" title="刷新">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="23 4 23 10 17 10"/>
+                  <polyline points="1 20 1 14 7 14"/>
+                </svg>
+              </button>
+            </div>
+
+            <div v-if="historyLoading" class="history-loading">加载中...</div>
+            <div v-else-if="executionHistory.length === 0" class="history-empty">暂无执行记录</div>
+
+            <div v-else class="history-list">
+              <div
+                v-for="exec in executionHistory"
+                :key="exec.execution_id"
+                class="history-item"
+                :class="exec.status"
+                @click="showExecutionDetail(exec)"
+              >
+                <div class="history-item-main">
+                  <span class="history-status-dot" :class="exec.status"></span>
+                  <span class="history-code">{{ exec.workflow_code }}</span>
+                  <span class="history-exec-id" :title="exec.execution_id">{{ exec.execution_id }}</span>
+                </div>
+                <div class="history-item-meta">
+                  <span class="history-status-text">{{ historyStatusText(exec.status) }}</span>
+                  <span v-if="exec.start_time" class="history-time">{{ formatHistoryTime(exec.start_time) }}</span>
+                  <button
+                    v-if="['running', 'waiting_human', 'pending'].includes(exec.status)"
+                    @click.stop="cancelHistoryExecution(exec)"
+                    class="history-cancel-btn"
+                  >取消</button>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="historyTotal > historyPageSize" class="history-pagination">
+              <button :disabled="historyPage <= 1" @click="loadHistoryPage(historyPage - 1)" class="history-page-btn">上一页</button>
+              <span class="history-page-info">{{ historyPage }} / {{ Math.ceil(historyTotal / historyPageSize) }}</span>
+              <button :disabled="historyPage >= Math.ceil(historyTotal / historyPageSize)" @click="loadHistoryPage(historyPage + 1)" class="history-page-btn">下一页</button>
+            </div>
+
+            <!-- 执行详情弹窗 -->
+            <div v-if="historyDetail" class="history-detail-overlay" @click.self="historyDetail = null">
+              <div class="history-detail-modal">
+                <div class="history-detail-header">
+                  <h4>执行详情 · {{ historyDetail.execution_id }}</h4>
+                  <button @click="historyDetail = null" class="history-close-btn">✕</button>
+                </div>
+                <div class="history-detail-body">
+                  <div class="history-detail-row">
+                    <span class="detail-label">状态</span>
+                    <span :class="['history-status-dot', historyDetail.status]"></span>
+                    {{ historyStatusText(historyDetail.status) }}
+                  </div>
+                  <div class="history-detail-row">
+                    <span class="detail-label">工作流</span>
+                    {{ historyDetail.workflow_code }} (v{{ historyDetail.workflow_version }})
+                  </div>
+                  <div class="history-detail-row" v-if="historyDetail.error_message">
+                    <span class="detail-label">错误</span>
+                    <span class="detail-error">{{ historyDetail.error_message }}</span>
+                  </div>
+                  <div class="history-detail-section">
+                    <span class="detail-label">输入</span>
+                    <pre class="detail-json">{{ formatHistoryJson(historyDetail.input_data) }}</pre>
+                  </div>
+                  <div class="history-detail-section" v-if="historyDetail.output_data">
+                    <span class="detail-label">输出</span>
+                    <pre class="detail-json">{{ formatHistoryJson(historyDetail.output_data) }}</pre>
+                  </div>
+                  <div class="history-detail-section" v-if="historyDetail.context_data">
+                    <span class="detail-label">上下文</span>
+                    <pre class="detail-json">{{ formatHistoryJson(historyDetail.context_data) }}</pre>
+                  </div>
+                </div>
+                <div class="history-detail-footer">
+                  <button
+                    v-if="historyDetail.status === 'failed'"
+                    @click="resumeHistoryExecution(historyDetail)"
+                    class="history-resume-btn"
+                  >失败重试（续跑）</button>
+                  <button
+                    v-if="['running', 'waiting_human', 'pending'].includes(historyDetail.status)"
+                    @click="cancelHistoryExecution(historyDetail)"
+                    class="history-cancel-btn"
+                  >取消执行</button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -807,6 +915,10 @@ const nodeExecutionData = ref([]);  // 结构化的节点执行数据
 const showParameterPanel = ref(false);
 const executionParameters = ref([]);
 
+// P3-1b：后端引擎执行状态（execution_id + resume_token 一次有效）
+const engineExecutionId = ref(null);
+const engineResumeToken = ref(null);
+
 const executionEngine = new ExecutionEngine();
 
 const AUTO_SAVE_INTERVAL = 10000;
@@ -821,6 +933,15 @@ const checkPauseStatus = () => {
 };
 
 const handleResume = (userInputValue) => {
+  // P3-1b 分流：后端引擎挂起 → human-resume 端点；前端单节点模拟挂起 → 旧引擎回调
+  if (engineExecutionId.value && engineResumeToken.value) {
+    // 简单输入（pendingInput 面板）提交的是字符串值；表单提交的是对象
+    const formData = typeof userInputValue === 'object' && userInputValue !== null
+      ? (userInputValue.formData || userInputValue)
+      : { value: userInputValue };
+    handleEngineHumanResume(formData);
+    return;
+  }
   executionEngine.resume(userInputValue);
 };
 const keyboardShortcuts = new KeyboardShortcuts();
@@ -2796,45 +2917,51 @@ const runWorkflowWithPanel = () => {
 
 const runWorkflow = async (inputParams = {}) => {
   if (!isValid.value || isRunning.value) return;
-  
+
   isRunning.value = true;
   executionLogs.value = [];
   lastExecutionResult.value = null;
   nodeExecutionData.value = [];
-  
-  const onStatusChange = (status) => {
-    nodeExecutionStatus.value = status;
-  };
-  
-  const onLog = (log) => {
-    if (log.type === 'clear') {
-      executionLogs.value = [];
-    } else {
-      executionLogs.value.push(log);
-    }
-    checkPauseStatus();
-  };
-  
-  const onNodeDataChange = (data) => {
-    nodeExecutionData.value = [...data];
-  };
-  
-  executionEngine.setCallbacks(onStatusChange, onLog, onNodeDataChange);
-  
+
   try {
-    const result = await executionEngine.execute(elements.value, inputParams, currentWorkflowId.value);
-    lastExecutionResult.value = result;
-    // 获取结构化的节点执行数据
-    nodeExecutionData.value = executionEngine.getNodeExecutionData();
-    
-    // 检查是否有节点执行失败
-    const hasNodeError = nodeExecutionData.value.some(node => node.status === 'error');
-    
-    if (hasNodeError || result.status === 'error') {
-      lastExecutionResult.value = { ...result, status: 'error' };
-      ElMessage.error('工作流执行失败，请查看错误详情');
+    // P3-1b：全流程执行切换后端固定流程引擎（去前端模拟）
+    // 引擎归一化编辑器形态并守门，节点留痕落库，前端轮询逐节点点亮
+    const startResp = await workflowApi.workflowApi.startEngineExecution(
+      currentWorkflowId.value, inputParams, { showLoading: false });
+
+    if (!startResp.success) {
+      throw new Error(startResp.message || '流程启动失败');
+    }
+    const executionId = startResp.data?.execution_id;
+    if (!executionId) {
+      throw new Error('引擎未返回 execution_id');
+    }
+
+    engineExecutionId.value = executionId;
+    engineResumeToken.value = startResp.data?.resume_token || null;
+
+    // 已同步走完的（无 human 挂起）直接拉取节点日志；挂起的展示输入面板等人工提交
+    if (startResp.data?.status === 'waiting_human') {
+      isPaused.value = true;
+      pendingInput.value = buildEnginePendingInput(startResp.data?.current_node_id);
+      await refreshEngineNodeLogs(executionId);
+      ElMessage.info('流程在人工节点暂停，请在下方填写并提交');
     } else {
-      ElMessage.success('工作流执行成功');
+      await refreshEngineNodeLogs(executionId);
+    }
+
+    const finalStatus = startResp.data?.status;
+    lastExecutionResult.value = {
+      status: finalStatus === 'completed' ? 'success' : (finalStatus === 'waiting_human' ? 'paused' : 'error'),
+      error: startResp.data?.error_message,
+      context: startResp.data?.context_data,
+      timestamp: new Date().toISOString()
+    };
+
+    if (finalStatus === 'completed') {
+      ElMessage.success('流程执行成功');
+    } else if (finalStatus === 'failed') {
+      ElMessage.error('流程执行失败，请查看错误详情');
     }
   } catch (error) {
     lastExecutionResult.value = {
@@ -2842,8 +2969,97 @@ const runWorkflow = async (inputParams = {}) => {
       error: error.message,
       timestamp: new Date().toISOString()
     };
-    ElMessage.error(`工作流执行异常: ${error.message}`);
+    ElMessage.error(`流程执行异常: ${error.message}`);
     console.error('Workflow execution error:', error);
+  } finally {
+    isRunning.value = false;
+  }
+};
+
+/** 拉取引擎节点日志并映射为执行面板形态（node_id/node_type/status/error_message → nodeId/nodeType/status/error）。 */
+const refreshEngineNodeLogs = async (executionId) => {
+  const logsResp = await workflowApi.workflowApi.getEngineNodeLogs(executionId);
+  if (!logsResp.success) {
+    throw new Error(logsResp.message || '获取节点日志失败');
+  }
+  const nodeLogs = logsResp.data?.node_logs || [];
+  nodeExecutionData.value = nodeLogs.map(log => {
+    const nodeLabel = elements.value.find(el => el.id === log.node_id)?.data?.label;
+    return {
+      nodeId: log.node_id,
+      nodeType: mapEngineNodeType(log.node_type),
+      nodeLabel: nodeLabel || log.node_id,
+      status: log.status === 'completed' ? 'completed'
+        : (log.status === 'failed' || log.status === 'cancelled' ? 'error' : 'running'),
+      startTime: log.started_at,
+      endTime: log.ended_at,
+      duration: log.duration_ms,
+      input: log.input_data,
+      output: log.output_data,
+      branchTaken: log.branch_taken,
+      error: log.error_message
+    };
+  });
+};
+
+/** 引擎节点类型 → 执行面板 icon 映射键（nodeIconMap 用编辑器 type 键）。 */
+const mapEngineNodeType = (engineType) => {
+  const mapping = {
+    'flow.start': 'start', 'flow.end': 'end', 'flow.tool': 'tool',
+    'flow.llm': 'llm', 'flow.condition': 'condition',
+    'flow.human': 'userInput', 'flow.http': 'http'
+  };
+  return mapping[engineType] || engineType;
+};
+
+/** 引擎人工挂起 → 构造执行面板 pendingInput（驱动输入面板渲染与 prompt 展示）。 */
+const buildEnginePendingInput = (nodeId) => {
+  const nodeData = elements.value.find(el => el.id === nodeId)?.data || {};
+  return {
+    nodeId,
+    prompt: nodeData.prompt || nodeData.message || nodeData.label || '请输入确认内容：',
+    inputType: nodeData.inputType || 'text',
+    options: typeof nodeData.options === 'string'
+      ? nodeData.options.split('\n').filter(opt => opt.trim())
+      : (Array.isArray(nodeData.options) ? nodeData.options : []),
+    required: false
+  };
+};
+
+/** 人工节点恢复：提交表单数据至引擎 human-resume 端点（令牌一次有效），继续轮询至终态。 */
+const handleEngineHumanResume = async (formData) => {
+  if (!engineExecutionId.value || !engineResumeToken.value) return;
+  isRunning.value = true;
+  try {
+    const resp = await workflowApi.workflowApi.humanResumeEngine(
+      engineExecutionId.value, engineResumeToken.value, formData);
+    if (!resp.success) {
+      throw new Error(resp.message || '人工确认提交失败');
+    }
+    // 令牌一次有效：用后即清
+    engineResumeToken.value = resp.data?.resume_token || null;
+    isPaused.value = resp.data?.status === 'waiting_human';
+    // 下一个人工节点 → 重建输入面板；其余终态 → 清空
+    pendingInput.value = resp.data?.status === 'waiting_human'
+      ? buildEnginePendingInput(resp.data?.current_node_id) : null;
+    await refreshEngineNodeLogs(engineExecutionId.value);
+
+    lastExecutionResult.value = {
+      status: resp.data?.status === 'completed' ? 'success' : (resp.data?.status === 'waiting_human' ? 'paused' : 'error'),
+      error: resp.data?.error_message,
+      context: resp.data?.context_data,
+      timestamp: new Date().toISOString()
+    };
+    if (resp.data?.status === 'completed') {
+      ElMessage.success('流程执行成功');
+    } else if (resp.data?.status === 'waiting_human') {
+      ElMessage.info('流程到达下一个人工节点');
+    } else if (resp.data?.status === 'failed') {
+      ElMessage.error('流程执行失败，请查看错误详情');
+    }
+  } catch (error) {
+    ElMessage.error(`人工确认提交异常: ${error.message}`);
+    console.error('Human resume error:', error);
   } finally {
     isRunning.value = false;
   }
@@ -2854,6 +3070,125 @@ const handleParameterExecute = (params) => {
   showParameterPanel.value = false;
   // 执行工作流并传入参数
   runWorkflow(params);
+};
+
+/** P4：取消后端引擎执行（仅引擎执行挂起/运行中时有效），终态拒绝由后端兜底。 */
+const handleEngineCancel = async () => {
+  if (!engineExecutionId.value) {
+    // 前端单节点模拟执行无引擎实例，仅重置本地状态
+    isRunning.value = false;
+    isPaused.value = false;
+    pendingInput.value = null;
+    return;
+  }
+  try {
+    const resp = await workflowApi.workflowApi.cancelEngineExecution(
+      engineExecutionId.value, '编辑器内人工取消');
+    if (!resp.success) {
+      throw new Error(resp.message || '取消执行失败');
+    }
+    isPaused.value = false;
+    pendingInput.value = null;
+    engineResumeToken.value = null;
+    await refreshEngineNodeLogs(engineExecutionId.value);
+    lastExecutionResult.value = {
+      status: 'error',
+      error: '执行已取消',
+      timestamp: new Date().toISOString()
+    };
+    ElMessage.info('执行已取消');
+  } catch (error) {
+    ElMessage.error(`取消执行异常: ${error.message}`);
+    console.error('Cancel execution error:', error);
+  }
+};
+
+// ── P4：执行历史面板（引擎执行实例列表 + 详情 + 取消/重试） ──
+const executionHistory = ref([]);
+const historyLoading = ref(false);
+const historyWorkflowFilter = ref('');
+const historyPage = ref(1);
+const historyPageSize = 20;
+const historyTotal = ref(0);
+const historyDetail = ref(null);
+
+const historyStatusText = (status) => ({
+  running: '运行中', waiting_human: '等待人工', pending: '待执行',
+  completed: '已完成', failed: '已失败', cancelled: '已取消'
+}[status] || status);
+
+const formatHistoryTime = (ts) => {
+  if (!ts) return '';
+  return String(ts).replace('T', ' ').substring(0, 19);
+};
+
+const formatHistoryJson = (data) => {
+  if (!data) return '';
+  try { return JSON.stringify(data, null, 2); } catch { return String(data); }
+};
+
+const refreshExecutionHistory = async () => {
+  historyPage.value = 1;
+  await loadHistoryPage(1);
+};
+
+const loadHistoryPage = async (page) => {
+  historyLoading.value = true;
+  try {
+    const resp = await workflowApi.workflowApi.listEngineExecutions(
+      historyWorkflowFilter.value.trim() || null, page, historyPageSize);
+    if (!resp.success) {
+      throw new Error(resp.message || '加载执行历史失败');
+    }
+    executionHistory.value = resp.data?.data || [];
+    historyTotal.value = resp.data?.total || 0;
+    historyPage.value = resp.data?.page || page;
+  } catch (error) {
+    ElMessage.error(`加载执行历史失败: ${error.message}`);
+    console.error('Load execution history error:', error);
+  } finally {
+    historyLoading.value = false;
+  }
+};
+
+const showExecutionDetail = async (exec) => {
+  try {
+    const resp = await workflowApi.workflowApi.getEngineExecution(exec.execution_id);
+    if (!resp.success) {
+      throw new Error(resp.message || '加载执行详情失败');
+    }
+    historyDetail.value = resp.data;
+  } catch (error) {
+    ElMessage.error(`加载执行详情失败: ${error.message}`);
+  }
+};
+
+const cancelHistoryExecution = async (exec) => {
+  try {
+    const resp = await workflowApi.workflowApi.cancelEngineExecution(exec.execution_id, '历史面板人工取消');
+    if (!resp.success) {
+      throw new Error(resp.message || '取消执行失败');
+    }
+    ElMessage.info(`执行 ${exec.execution_id} 已取消`);
+    historyDetail.value = null;
+    await loadHistoryPage(historyPage.value);
+  } catch (error) {
+    ElMessage.error(`取消执行失败: ${error.message}`);
+  }
+};
+
+const resumeHistoryExecution = async (exec) => {
+  try {
+    const resp = await workflowApi.workflowApi.resumeEngineExecution(exec.execution_id);
+    if (!resp.success) {
+      throw new Error(resp.message || '重试失败');
+    }
+    ElMessage.success(`执行 ${exec.execution_id} 已重新启动`);
+    historyDetail.value = resp.data;
+    await loadHistoryPage(historyPage.value);
+  } catch (error) {
+    ElMessage.error(`重试失败: ${error.message}`);
+  }
 };
 
 const closeParameterPanel = () => {
@@ -3117,6 +3452,17 @@ const switchPanel = (panelName) => {
   if (panelName === 'execution') {
     closeNodeConfigPanel();
   }
+};
+
+/** P4：切换到执行历史面板时刷新列表。 */
+const switchExecutionHistoryPanel = () => {
+  if (activePanel.value === 'history') {
+    showRightPanel.value = !showRightPanel.value;
+  } else {
+    activePanel.value = 'history';
+    showRightPanel.value = true;
+  }
+  refreshExecutionHistory();
 };
 
 const selectAllNodes = () => {
@@ -4470,6 +4816,278 @@ onUnmounted(() => {
   height: 100%;
   overflow-y: auto;
   padding: 12px;
+}
+
+/* ── P4：执行历史面板 ── */
+.history-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.history-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.history-filter-input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.history-filter-input:focus {
+  outline: none;
+  border-color: #1890ff;
+}
+
+.history-refresh-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+  color: #595959;
+}
+
+.history-refresh-btn:hover {
+  border-color: #1890ff;
+  color: #1890ff;
+}
+
+.history-loading,
+.history-empty {
+  text-align: center;
+  color: #8c8c8c;
+  padding: 24px 0;
+  font-size: 13px;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history-item {
+  padding: 8px 10px;
+  border: 1px solid #e6e6e6;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.history-item:hover {
+  border-color: #91d5ff;
+}
+
+.history-item-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.history-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.history-status-dot.running { background: #1890ff; }
+.history-status-dot.waiting_human { background: #fa8c16; }
+.history-status-dot.pending { background: #bfbfbf; }
+.history-status-dot.completed { background: #52c41a; }
+.history-status-dot.failed { background: #ff4d4f; }
+.history-status-dot.cancelled { background: #8c8c8c; }
+
+.history-code {
+  font-size: 13px;
+  font-weight: 500;
+  color: #262626;
+}
+
+.history-exec-id {
+  font-size: 11px;
+  color: #8c8c8c;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: #595959;
+}
+
+.history-status-text {
+  font-size: 12px;
+}
+
+.history-time {
+  color: #8c8c8c;
+  font-size: 11px;
+}
+
+.history-cancel-btn {
+  margin-left: auto;
+  padding: 2px 10px;
+  border: 1px solid #ffccc7;
+  border-radius: 4px;
+  background: white;
+  color: #ff4d4f;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.history-cancel-btn:hover {
+  background: #fff2f0;
+}
+
+.history-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.history-page-btn {
+  padding: 4px 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  background: white;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.history-page-btn:disabled {
+  color: #bfbfbf;
+  cursor: not-allowed;
+}
+
+.history-page-info {
+  font-size: 12px;
+  color: #595959;
+}
+
+.history-detail-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.history-detail-modal {
+  width: 560px;
+  max-width: 90vw;
+  max-height: 80vh;
+  background: white;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.history-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.history-detail-header h4 {
+  margin: 0;
+  font-size: 14px;
+  color: #262626;
+}
+
+.history-close-btn {
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  cursor: pointer;
+  color: #8c8c8c;
+}
+
+.history-detail-body {
+  padding: 12px 16px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.history-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 13px;
+  color: #262626;
+}
+
+.detail-label {
+  min-width: 48px;
+  color: #8c8c8c;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.detail-error {
+  color: #ff4d4f;
+  word-break: break-all;
+}
+
+.history-detail-section {
+  margin-top: 10px;
+}
+
+.detail-json {
+  margin: 6px 0 0;
+  padding: 10px;
+  background: #fafafa;
+  border-radius: 4px;
+  font-size: 12px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.history-detail-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.history-resume-btn {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 4px;
+  background: #1890ff;
+  color: white;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.history-resume-btn:hover {
+  background: #40a9ff;
 }
 
 .validation-empty {

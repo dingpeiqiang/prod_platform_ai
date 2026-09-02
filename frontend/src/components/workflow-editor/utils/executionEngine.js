@@ -708,14 +708,44 @@ export class ExecutionEngine {
 
         case 'tool': {
           const toolType = node.data.toolType || '未知';
+          const toolName = node.data.toolName || '';
           this.updateNodeData(nodeId, {
             input: context.variables,
-            config: { toolType, toolName: node.data.toolName },
-            output: '模拟工具执行结果'
+            config: { toolType, toolName }
           });
-          context.variables['toolResult'] = '模拟工具执行结果';
-          this.addNodeLog(nodeId, { type: 'info', message: `工具类型: ${toolType}` });
-          this.addLog('info', '工具调用', `工具类型: ${toolType}`, null);
+          this.addNodeLog(nodeId, { type: 'info', message: `工具类型: ${toolType}, 工具: ${toolName || '未配置'}` });
+          this.addLog('info', '工具调用', `工具类型: ${toolType}, 工具: ${toolName || '未配置'}`, null);
+
+          if (!toolName) {
+            this.addNodeLog(nodeId, { type: 'error', message: '工具节点未配置工具名，跳过执行' });
+            context.variables['toolResult'] = null;
+            break;
+          }
+
+          // 真实执行：调用后端工具执行端点（AgentTool 注册表），不再模拟
+          try {
+            const response = await fetch(`/api/v1/agent-tools/${encodeURIComponent(toolName)}/execute`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ...context.variables })
+            });
+            const data = await response.json();
+            if (!response.ok || data.success === false) {
+              const errorMessage = (data && (data.message || data.error_message)) || `工具 ${toolName} 执行失败`;
+              throw new Error(errorMessage);
+            }
+            const resultData = (data.data && typeof data.data === 'object') ? data.data : {};
+            this.updateNodeData(nodeId, { output: resultData });
+            context.variables['toolResult'] = resultData;
+            context.variables[`${nodeId}.output`] = resultData;
+            this.addNodeLog(nodeId, { type: 'info', message: `工具执行成功（${data.data?.execution_time_ms ?? 0}ms）` });
+            this.addLog('info', '工具执行成功', `工具: ${toolName}`, resultData);
+          } catch (err) {
+            this.addNodeLog(nodeId, { type: 'error', message: err.message });
+            this.addLog('error', '工具执行失败', err.message, { toolName });
+            context.variables['toolResult'] = null;
+            context.variables[`${nodeId}.output`] = null;
+          }
           break;
         }
 

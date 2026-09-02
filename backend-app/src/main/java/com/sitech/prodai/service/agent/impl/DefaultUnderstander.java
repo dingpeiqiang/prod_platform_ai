@@ -628,32 +628,8 @@ public class DefaultUnderstander implements Understander {
             }
             deps.put(step.getTool(), d);
         }
-        Set<String> visited = new java.util.HashSet<>();
-        Set<String> inStack = new java.util.HashSet<>();
-        for (String tool : deps.keySet()) {
-            if (hasCycleDfs(tool, deps, visited, inStack)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean hasCycleDfs(String tool, Map<String, List<String>> deps,
-                                Set<String> visited, Set<String> inStack) {
-        if (inStack.contains(tool)) {
-            return true;
-        }
-        if (!visited.add(tool)) {
-            return false;
-        }
-        inStack.add(tool);
-        for (String next : deps.getOrDefault(tool, List.of())) {
-            if (hasCycleDfs(next, deps, visited, inStack)) {
-                return true;
-            }
-        }
-        inStack.remove(tool);
-        return false;
+        // P3-2 抽公共：DFS 三色环检测统一收口至 DagValidator（原 hasCycleDfs 已删除）
+        return com.sitech.prodai.service.common.DagValidator.hasCycleDfs(deps);
     }
 
     /**

@@ -7,6 +7,8 @@ import com.sitech.prodai.domain.entity.Workflow;
 import com.sitech.prodai.domain.entity.WorkflowHistory;
 import com.sitech.prodai.mapper.WorkflowHistoryMapper;
 import com.sitech.prodai.mapper.WorkflowMapper;
+import com.sitech.prodai.service.flow.EditorDefinitionNormalizer;
+import com.sitech.prodai.service.flow.FlowDefinitionValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -25,11 +27,14 @@ public class WorkflowService {
 
     private final WorkflowMapper workflowMapper;
     private final WorkflowHistoryMapper workflowHistoryMapper;
+    private final FlowDefinitionValidator flowDefinitionValidator;
 
     public WorkflowService(WorkflowMapper workflowMapper,
-                           WorkflowHistoryMapper workflowHistoryMapper) {
+                           WorkflowHistoryMapper workflowHistoryMapper,
+                           FlowDefinitionValidator flowDefinitionValidator) {
         this.workflowMapper = workflowMapper;
         this.workflowHistoryMapper = workflowHistoryMapper;
+        this.flowDefinitionValidator = flowDefinitionValidator;
     }
 
     @Transactional
@@ -252,6 +257,17 @@ public class WorkflowService {
             }
 
             Workflow workflow = workflowOpt.get();
+
+            // 发布即绿灯（改造方案 §12.3 铁律三）：发布前先归一化 + 守门校验，非法定义拒绝发布
+            Map<String, Object> definition = workflow.getWorkflowData();
+            if (EditorDefinitionNormalizer.needsNormalize(definition)) {
+                definition = EditorDefinitionNormalizer.normalize(definition);
+            }
+            FlowDefinitionValidator.ValidationResult check = flowDefinitionValidator.validate(definition);
+            if (!check.valid()) {
+                logger.warn("Publish rejected, invalid definition: {} problems={}", workflowCode, check.problems());
+                return ApiResponse.fail("流程定义校验未通过，拒绝发布", check.problems());
+            }
 
             WorkflowHistory history = new WorkflowHistory();
             history.setWorkflowId(workflow.getId());

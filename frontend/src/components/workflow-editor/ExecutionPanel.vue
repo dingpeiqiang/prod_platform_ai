@@ -24,6 +24,16 @@
         </span>
       </div>
       <div class="header-right">
+        <button
+          v-if="canCancel"
+          @click="$emit('cancel')"
+          class="btn-action btn-cancel"
+          title="取消执行"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="6" y="6" width="12" height="12" rx="1"/>
+          </svg>
+        </button>
         <button v-if="nodeExecutionData.length > 0" @click="toggleAllExpand" class="btn-action" :title="allExpanded ? '收起全部' : '展开全部'">
           <svg v-if="allExpanded" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="18 15 12 9 6 15"/>
@@ -286,7 +296,9 @@ const props = defineProps({
   workflowId: { type: String, default: '' }
 });
 
-const emit = defineEmits(['clear', 'resume', 'form-submit', 'form-cancel']);
+const emit = defineEmits(['clear', 'resume', 'form-submit', 'form-cancel', 'cancel']);
+
+const canCancel = computed(() => props.isRunning || props.isPaused);
 
 const userInputValue = ref('');
 const formData = ref({});
@@ -592,6 +604,15 @@ watch(() => props.logs.length + props.nodeExecutionData.length, async () => {
 .btn-action:hover {
   background: #f0f0f0;
   color: #262626;
+}
+
+.btn-cancel {
+  color: #ff4d4f;
+}
+
+.btn-cancel:hover {
+  background: #fff2f0;
+  color: #cf1322;
 }
 
 .logs-container {
