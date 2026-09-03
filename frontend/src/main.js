@@ -14,6 +14,7 @@ import '@vue-flow/core/dist/theme-default.css'
 // 设计系统 - Design System
 import './styles/variables.css'  // 设计令牌
 import './styles/global.css'     // 全局样式
+import './styles/workbench.css'  // 工作台通用样式（导航图标/还原条等）
 
 import App from './App.vue'
 

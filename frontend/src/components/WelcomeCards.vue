@@ -2,18 +2,36 @@
   <div class="welcome-container" :class="modeClass">
     <div class="welcome-content">
       <header class="brand-section">
-        <p class="brand-eyebrow">{{ meta.eyebrow }}</p>
-        <h1 class="brand-title">{{ meta.title }}</h1>
+        <h1 class="brand-title">{{ greeting }}</h1>
         <p class="brand-subtitle">{{ meta.subtitle }}</p>
-        <ul class="capability-tags" aria-label="核心能力">
+        <ul v-if="meta.tags.length" class="capability-tags" aria-label="核心能力">
           <li v-for="tag in meta.tags" :key="tag">{{ tag }}</li>
         </ul>
       </header>
 
+      <!-- 运营助手：快捷入口（产品运营视图 → 右侧工作台面板） -->
+      <section v-if="mode === 'ops'" class="ops-entry-section" aria-label="产品运营视图入口">
+        <button type="button" class="ops-entry-card" @click="emit('open-ops')">
+          <div class="ops-entry-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 3v18h18"/>
+              <path d="M7 14l4-4 4 2 5-6"/>
+            </svg>
+          </div>
+          <div class="ops-entry-body">
+            <div class="ops-entry-title">产品运营视图</div>
+            <div class="ops-entry-desc">收入总览 · 规模活跃 · 结构占比 · 重点产品</div>
+          </div>
+          <svg class="ops-entry-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </button>
+      </section>
+
       <section class="scenarios-section" aria-labelledby="welcome-scenarios-title">
         <div class="section-head">
           <h2 id="welcome-scenarios-title" class="section-title">从这里开始</h2>
-          <p class="section-hint">点击场景将展示该场景的欢迎说明；也可直接输入业务诉求</p>
+          <p class="section-hint">点击场景将展示该场景的欢迎说明；也可直接输入你的问题</p>
         </div>
         <div class="suggestion-cards">
           <button
@@ -75,36 +93,63 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { assistantModes, buildSceneWelcome } from '../config/assistantModes.js'
+import { useUserStore } from '../stores/user.js'
 
 const props = defineProps({
   mode: { type: String, default: 'rd' },
 })
 
-const emit = defineEmits(['suggest'])
+const emit = defineEmits(['suggest', 'open-ops'])
 
-const modeClass = computed(() => (props.mode === 'ops' ? 'mode-ops' : 'mode-rd'))
+const userStore = useUserStore()
+
+const modeClass = computed(() =>
+  props.mode === 'ops' ? 'mode-ops' : props.mode === 'query' ? 'mode-query' : 'mode-rd',
+)
+
+/** 问候语：按时段 + 展示名，每分钟刷新 */
+function buildGreeting() {
+  const h = new Date().getHours()
+  let period = '你好'
+  if (h < 6) period = '凌晨好'
+  else if (h < 9) period = '早上好'
+  else if (h < 12) period = '上午好'
+  else if (h < 14) period = '中午好'
+  else if (h < 18) period = '下午好'
+  else period = '晚上好'
+  const name = userStore.displayName
+  return name ? `${period}，${name}` : `${period}`
+}
+
+const greeting = ref(buildGreeting())
+let greetingTimer = null
+function refreshGreeting() { greeting.value = buildGreeting() }
+onMounted(() => { greetingTimer = setInterval(refreshGreeting, 60 * 1000) })
+onBeforeUnmount(() => { if (greetingTimer) clearInterval(greetingTimer) })
 
 const rdMeta = {
-  eyebrow: 'AI 原生 · 产商品研发',
-  title: '产商品研发助手',
   subtitle: '智聊·对话配置、智读·文件配置与智查·历史复用一体完成，让商品上架更快、更准、更合规。',
   tags: ['智聊·对话配置', '智读·文件配置', '智查·历史复用'],
   footer: '本体负责填字段与拦冲突，大模型负责理解业务表达。',
 }
 
 const opsMeta = {
-  eyebrow: 'AI 原生 · 产商品运营',
-  title: '产商品运营助手',
   subtitle: '市场洞察、立项研判、异动归因与风险稽核一屏直达，用本体推理定位问题，用规则保障决策合规。',
   tags: ['市场洞察', '立项研判', '异动归因', '风险稽核'],
   footer: '本体负责推理与追溯，规则负责红线判定，大模型负责解释与表达。',
 }
 
+const queryMeta = {
+  subtitle: '智能问答、档案调阅与比对分析一体完成，快速查到商品资料，横向看清差异。',
+  tags: ['智能问答', '档案调阅', '比对分析'],
+  footer: '本体负责检索与比对，大模型负责理解提问与表达结论。',
+}
+
 /** 欢迎页卡片与左侧快捷场景共用配置，保证欢迎信息一致 */
 const cards = computed(() => {
-  const mode = props.mode === 'ops' ? 'ops' : 'rd'
+  const mode = ['rd', 'ops', 'query'].includes(props.mode) ? props.mode : 'rd'
   const shortcuts = assistantModes[mode]?.sceneShortcuts || []
   const iconByScene = {
     'rd.chat': 'chat',
@@ -117,6 +162,9 @@ const cards = computed(() => {
     risk_audit: 'warn',
     ops_monitor: 'chart',
     ops_rules: 'check',
+    'query.ask': 'chat',
+    'query.archive': 'search',
+    'query.compare': 'chart',
   }
   const styleByScene = {
     'rd.chat': { bg: '#eff6ff', color: '#2563eb' },
@@ -129,11 +177,16 @@ const cards = computed(() => {
     risk_audit: { bg: '#fff1f2', color: '#be123c' },
     ops_monitor: { bg: '#eff6ff', color: '#2563eb' },
     ops_rules: { bg: '#f8fafc', color: '#475569' },
+    'query.ask': { bg: '#eff6ff', color: '#2563eb' },
+    'query.archive': { bg: '#f0f9ff', color: '#0284c7' },
+    'query.compare': { bg: '#f5f3ff', color: '#6d28d9' },
   }
   // 欢迎页只展示核心入口卡（对比/规则等仍可从侧边栏进入）
   const welcomeScenes = mode === 'ops'
     ? ['market_insight', 'online_check', 'root_cause', 'risk_audit']
-    : ['rd.chat', 'rd.import', 'rd.query']
+    : mode === 'query'
+      ? ['query.ask', 'query.archive', 'query.compare']
+      : ['rd.chat', 'rd.import', 'rd.query']
 
   return shortcuts
     .filter((s) => welcomeScenes.includes(s.scene))
@@ -152,7 +205,9 @@ const cards = computed(() => {
     })
 })
 
-const meta = computed(() => (props.mode === 'ops' ? opsMeta : rdMeta))
+const meta = computed(() =>
+  props.mode === 'ops' ? opsMeta : props.mode === 'query' ? queryMeta : rdMeta,
+)
 </script>
 
 <style scoped>
@@ -161,7 +216,7 @@ const meta = computed(() => (props.mode === 'ops' ? opsMeta : rdMeta))
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  padding: 12px 24px 28px;
+  padding: 0 24px 28px;
   min-height: 0;
   overflow: visible;
   background:
@@ -174,6 +229,7 @@ const meta = computed(() => (props.mode === 'ops' ? opsMeta : rdMeta))
   --welcome-glow: rgba(37, 99, 235, 0.12);
   --welcome-card-hover: #93c5fd;
   --welcome-shadow: rgba(37, 99, 235, 0.12);
+  --welcome-top-offset: 10vh;
 }
 .mode-ops {
   --welcome-accent: #0f766e;
@@ -181,24 +237,25 @@ const meta = computed(() => (props.mode === 'ops' ? opsMeta : rdMeta))
   --welcome-glow: rgba(15, 118, 110, 0.12);
   --welcome-card-hover: #5eead4;
   --welcome-shadow: rgba(15, 118, 110, 0.12);
+  --welcome-top-offset: 10vh;
+}
+.mode-query {
+  --welcome-accent: #6d28d9;
+  --welcome-accent-soft: #ede9fe;
+  --welcome-glow: rgba(109, 40, 217, 0.12);
+  --welcome-card-hover: #c4b5fd;
+  --welcome-shadow: rgba(109, 40, 217, 0.12);
+  --welcome-top-offset: 10vh;
 }
 
 .welcome-content {
   width: 100%;
   max-width: 880px;
   text-align: center;
-  margin-block: auto;
+  padding-top: var(--welcome-top-offset, 10vh);
 }
 
 .brand-section { margin-bottom: 24px; }
-.brand-eyebrow {
-  margin: 0 0 8px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--welcome-accent);
-}
 .brand-title {
   font-size: 26px;
   font-weight: 700;
@@ -233,6 +290,53 @@ const meta = computed(() => (props.mode === 'ops' ? opsMeta : rdMeta))
 }
 
 .scenarios-section { margin-bottom: 16px; }
+
+/* 运营助手：产品运营视图入口卡 */
+.ops-entry-section { margin-bottom: 16px; }
+.ops-entry-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid #ccfbf1;
+  border-radius: 14px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+}
+.ops-entry-card:hover {
+  border-color: #5eead4;
+  box-shadow: 0 8px 24px rgba(15, 118, 110, 0.12);
+  transform: translateY(-2px);
+}
+.ops-entry-card:focus-visible {
+  outline: 2px solid #0f766e;
+  outline-offset: 2px;
+}
+.ops-entry-icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ccfbf1;
+  color: #0f766e;
+}
+.ops-entry-body { flex: 1; min-width: 0; }
+.ops-entry-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 2px;
+}
+.ops-entry-desc { font-size: 12px; color: #64748b; }
+.ops-entry-arrow { flex-shrink: 0; color: #0f766e; opacity: 0.6; }
 .section-head { margin-bottom: 12px; }
 .section-title {
   margin: 0 0 4px;
@@ -246,6 +350,7 @@ const meta = computed(() => (props.mode === 'ops' ? opsMeta : rdMeta))
   color: #94a3b8;
 }
 
+/* 场景卡片 */
 .suggestion-cards {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -314,7 +419,7 @@ const meta = computed(() => (props.mode === 'ops' ? opsMeta : rdMeta))
 }
 
 @media (max-width: 768px) {
-  .welcome-container { padding: 8px 16px 24px; }
+  .welcome-container { padding: 0 16px 24px; }
   .brand-title { font-size: 22px; }
   .suggestion-cards { grid-template-columns: 1fr; }
   .card-example { white-space: normal; }

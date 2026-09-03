@@ -1,0 +1,411 @@
+/* ops-view 共享样式（迁移自原型 OpsView.vue，由各子组件 scoped 引用） */
+
+.ops-view {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  /* 对标原型：视图随内容自然撑高，纵向滚动由外层滚动容器（.panel-body）负责 */
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+/* ===== 面板：顶部浅蓝渐变到底部全白 ===== */
+.ov-panel {
+  background: linear-gradient(180deg, #e6effb 0%, #f0f9ff 6%, #fafbff 15%, #ffffff 28%);
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  border: 1px solid #eef2f7;
+  overflow: hidden;
+}
+
+.ov-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #334155;
+  margin: 0;
+}
+
+/* ===== 模块一 收入总览 ===== */
+.ov-rev-panel { padding-bottom: 18px; }
+.ov-panel-title-bar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 16px 18px 12px;
+}
+.ov-title-note { font-size: 11px; font-weight: 500; color: #94a3b8; }
+
+.ov-rev-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  padding: 6px 18px 0;
+}
+.ov-rev-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 14px;
+}
+.ov-rev-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.ov-rev-icon {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.ov-icon-blue { background: #e0f2fe; color: #2563eb; }
+.ov-icon-emerald { background: #d1fae5; color: #059669; }
+.ov-icon-amber { background: #fef3c7; color: #d97706; }
+.ov-rev-head-title { font-size: 15px; font-weight: 700; color: #1e293b; }
+
+.ov-rev-body { display: flex; flex-direction: column; gap: 12px; }
+.ov-rev-metric { padding-top: 10px; border-top: 1px dashed #eef2f7; }
+.ov-rev-label { font-size: 11px; color: #94a3b8; margin-bottom: 3px; }
+.ov-rev-value-row { display: flex; align-items: baseline; }
+.ov-rev-now { font-size: 26px; font-weight: 800; color: #0f172a; line-height: 1.1; letter-spacing: -0.02em; }
+.ov-rev-unit { font-size: 12px; font-weight: 600; color: #64748b; margin-left: 3px; }
+.ov-rev-sub { display: flex; align-items: center; justify-content: space-between; margin-top: 5px; gap: 6px; flex-wrap: wrap; }
+.ov-rev-cum { font-size: 11px; color: #94a3b8; }
+.ov-rev-yoy { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; }
+.ov-yoy-tag { color: #94a3b8; }
+.ov-yoy-val { display: inline-flex; align-items: center; gap: 2px; }
+.ov-yoy-arrow { display: inline-block; }
+
+.ov-yoy-up { color: #dc2626; font-weight: 700; }
+.ov-yoy-down { color: #16a34a; font-weight: 700; }
+.ov-yoy-flat { color: #64748b; font-weight: 600; }
+
+/* ===== 模块二 重点产品 ===== */
+.ov-prod-panel { padding-bottom: 8px; }
+.ov-prod-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 16px 18px 12px;
+}
+.ov-prod-search { position: relative; display: inline-flex; align-items: center; }
+.ov-prod-search input {
+  padding: 8px 30px 8px 14px; border: 1px solid #d1d5db; border-radius: 8px;
+  font-size: 13px; color: #374151; width: 200px;
+}
+.ov-prod-search input:focus { outline: none; border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+.ov-prod-search svg { position: absolute; right: 10px; color: #9ca3af; pointer-events: none; }
+.ov-prod-empty { color: #94a3b8; font-size: 13px; padding: 12px 18px; }
+
+/* ===== 异动预警图标 ===== */
+.ov-prod-titlebar-left { display: inline-flex; align-items: center; gap: 10px; }
+.ov-alert-badge {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px;
+  border: 1px solid #fecaca; border-radius: 8px;
+  background: #fef2f2; color: #dc2626;
+  cursor: pointer; padding: 0;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.ov-alert-badge:hover { border-color: #fca5a5; background: #fee2e2; box-shadow: 0 0 0 3px rgba(220,38,38,0.12); }
+.ov-alert-count {
+  position: absolute; top: -7px; right: -7px;
+  min-width: 17px; height: 17px; padding: 0 4px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #dc2626; color: #fff; font-size: 11px; font-weight: 700;
+  border-radius: 999px; border: 2px solid #f8fafc; line-height: 1;
+}
+
+/* ===== 刚上架产品：无运营数据占位 ===== */
+.ov-drill-empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; text-align: center; padding: 34px 20px;
+  border: 1px dashed #dbe4ef; border-radius: 8px; background: #fafcff;
+}
+.ov-empty-icon {
+  width: 56px; height: 56px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: #93c5fd; background: #eef6ff; margin-bottom: 2px;
+}
+.ov-empty-title { font-size: 15px; font-weight: 700; color: #334155; }
+.ov-empty-desc { font-size: 12.5px; line-height: 1.7; color: #64748b; max-width: 560px; }
+.ov-empty-sub { font-size: 11.5px; color: #94a3b8; margin-top: 6px; }
+
+.ov-prod-tabs {
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+  padding: 0 16px;
+}
+.ov-prod-tab {
+  padding: 10px 16px; font-size: 14px; color: #64748b; cursor: pointer;
+  border-bottom: 3px solid transparent; background: none; white-space: nowrap;
+}
+.ov-prod-tab:hover { color: #475569; }
+.ov-prod-tab.active { color: #2563eb; font-weight: 600; border-bottom-color: #2563eb; }
+
+.ov-prod-body { padding: 8px 18px; }
+.ov-prod-block-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin: 10px 0 16px; }
+.ov-prod-block-title { font-size: 17px; font-weight: 700; color: #1e293b; }
+.ov-prod-block-sub { font-size: 11px; font-weight: 500; color: #94a3b8; }
+
+/* ===== 区块 ===== */
+.ov-sec { margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px dashed #e8edf4; }
+.ov-sec-noborder { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.ov-sec-title {
+  font-size: 13px; font-weight: 700; color: #334155;
+  margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+}
+.ov-sec-badge {
+  width: 20px; height: 20px; border-radius: 6px; font-size: 11px;
+  display: inline-flex; align-items: center; justify-content: center; color: #fff; font-weight: 700;
+}
+.ov-sec-ico { display: block; flex-shrink: 0; }
+.ov-badge-blue { background: #2563eb; }
+.ov-badge-amber { background: #f59e0b; }
+.ov-badge-purple { background: #8b5cf6; }
+.ov-badge-orange { background: #f97316; }
+
+.ov-sec-grid { display: grid; gap: 12px; }
+.ov-sec-grid-3 { grid-template-columns: repeat(3, 1fr); }
+.ov-sec-grid-4 { grid-template-columns: repeat(4, 1fr); }
+
+/* ===== KPI 卡 ===== */
+.ov-kpi {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex; align-items: flex-start; gap: 10px;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.ov-kpi:hover { box-shadow: 0 2px 10px rgba(15,23,42,0.06); border-color: #c7d7f5; }
+.ov-kpi-icon {
+  width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.ov-ki-blue { background: #dbeafe; color: #2563eb; }
+.ov-ki-green { background: #d1fae5; color: #059669; }
+.ov-ki-purple { background: #ede9fe; color: #7c3aed; }
+.ov-ki-amber { background: #fef3c7; color: #d97706; }
+.ov-kpi-txt { flex: 1; min-width: 0; }
+.ov-kpi-label { font-size: 11.5px; color: #64748b; }
+.ov-kpi-unit { font-size: 10px; color: #94a3b8; margin-left: 2px; }
+.ov-kpi-value { font-size: 21px; font-weight: 800; color: #0f172a; line-height: 1.2; margin: 2px 0; letter-spacing: -0.01em; }
+.ov-kpi-value-sm { font-size: 16px; }
+.ov-kpi-yoy { font-size: 11px; display: flex; align-items: center; gap: 5px; color: #94a3b8; }
+.ov-kpi-note { font-size: 10.5px; color: #94a3b8; margin-top: 2px; }
+
+/* ===== 结构 ===== */
+.ov-sec-struct { align-items: start; }
+.ov-struct-extra { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 22px; }
+.ov-struct-extra-full { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.ov-struct-group { background: #fff; border: 1px solid #eef2f7; border-radius: 8px; padding: 10px 12px; }
+.ov-struct-group-label { font-size: 11.5px; font-weight: 700; color: #334155; margin-bottom: 8px; }
+.ov-struct-rows { display: flex; flex-direction: column; gap: 6px; }
+.ov-struct-row, .ov-channel-row { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #64748b; }
+.ov-struct-name { width: 78px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-struct-bar { flex: 1; height: 8px; background: #eef2f7; border-radius: 4px; overflow: hidden; }
+.ov-struct-bar-fill {
+  height: 100%; border-radius: 4px;
+  background: linear-gradient(90deg, #2563eb, #0ea5e9);
+}
+.ov-bar-orange { background: linear-gradient(90deg, #f59e0b, #f97316); }
+.ov-struct-row-val { width: 56px; text-align: right; font-weight: 700; color: #0f172a; flex-shrink: 0; }
+
+/* ===== 收入 & 渠道 ===== */
+.ov-sec-income { grid-template-columns: repeat(3, 1fr); }
+.ov-income-block {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 14px;
+}
+.ov-income-cap { font-size: 12px; font-weight: 700; margin-bottom: 8px; }
+.ov-cap-blue { color: #2563eb; }
+.ov-cap-green { color: #059669; }
+.ov-cap-amber { color: #d97706; }
+.ov-cap-orange { color: #ea580c; }
+.ov-income-row { display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; color: #64748b; padding: 4px 0; border-bottom: 1px dashed #f1f5f9; }
+.ov-income-row:last-child { border-bottom: none; }
+.ov-income-row b { color: #0f172a; font-weight: 700; font-size: 12.5px; }
+.ov-income-row b.ov-yoy-up { color: #dc2626; }
+.ov-income-row b.ov-yoy-down { color: #16a34a; }
+.ov-channel-rows { display: flex; flex-direction: column; gap: 8px; }
+
+/* ===== 单产品下钻 ===== */
+.ov-drill-wrap { border: 1px solid #eef2f7; border-radius: 8px; overflow: hidden; margin-top: 16px; }
+.ov-drill-toggle {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: #f8fafc; border: none; cursor: pointer; padding: 12px 14px; text-align: left;
+  transition: background 0.15s ease;
+}
+.ov-drill-toggle:hover { background: #f1f5f9; }
+.ov-drill-toggle-left { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.ov-drill-toggle-icon { color: #2563eb; flex-shrink: 0; }
+.ov-drill-toggle-title { font-size: 13.5px; font-weight: 700; color: #1e293b; }
+.ov-drill-toggle-sub { font-size: 11px; color: #94a3b8; }
+.ov-drill-toggle-arrow { color: #64748b; transition: transform 0.2s ease; flex-shrink: 0; }
+.ov-drill-toggle-arrow.open { transform: rotate(180deg); }
+
+.ov-drill-body { padding: 14px; border-top: 1px dashed #e8edf4; }
+
+.ov-drill-list {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px;
+}
+.ov-drill-fam {
+  text-align: left; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+  padding: 12px 14px; cursor: pointer; transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.ov-drill-fam:hover { box-shadow: 0 3px 12px rgba(15,23,42,0.08); border-color: #c7d7f5; }
+.ov-drill-fam-highlight,
+.ov-drill-fam.ov-drill-fam-highlight {
+  border-color: #f59e0b !important;
+  box-shadow: 0 0 0 3px rgba(245,158,11,0.28), 0 4px 14px rgba(251,191,36,0.25) !important;
+  background: #fffdf5;
+}
+.ov-drill-fam-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ov-drill-fam-name { font-size: 12.5px; font-weight: 700; color: #1e293b; line-height: 1.35; }
+.ov-drill-fam-health {
+  width: 30px; height: 30px; border-radius: 50%; display: inline-flex;
+  align-items: center; justify-content: center; font-weight: 800; font-size: 13px; color: #fff;
+  flex-shrink: 0;
+}
+.ov-drill-fam-meta { display: flex; align-items: center; gap: 8px; margin: 8px 0 6px; }
+.ov-drill-fam-status { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 10px; }
+.ov-drill-fam-count { font-size: 11px; color: #94a3b8; }
+.ov-drill-fam-scale { font-size: 11.5px; color: #64748b; }
+
+.ov-drill-health-ok { background: #10b981; color: #fff; }
+.ov-drill-health-mid { background: #f59e0b; color: #fff; }
+.ov-drill-health-warn { background: #ef4444; color: #fff; }
+.ov-drill-health-ok.ov-drill-fam-status { background: #ecfdf5; color: #059669; }
+.ov-drill-health-mid.ov-drill-fam-status { background: #fef3c7; color: #b45309; }
+.ov-drill-health-warn.ov-drill-fam-status { background: #fee2e2; color: #dc2626; }
+
+/* 刚上架套餐：数据积累中（新）标签 */
+.ov-drill-fam-new { background: #3b82f6; color: #fff; }
+.ov-drill-fam-new-status { background: #eff6ff; color: #2563eb; }
+
+.ov-drill-back {
+  display: inline-flex; align-items: center; gap: 4px;
+  border: 1px solid #d1d5db; background: #fff; color: #475569;
+  border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer;
+  transition: all 0.15s;
+}
+.ov-drill-back:hover { border-color: #93c5fd; color: #2563eb; }
+
+.ov-drill-prodbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px dashed #e8edf4;
+}
+.ov-drill-prod-title { font-size: 15px; font-weight: 700; color: #1e293b; }
+.ov-drill-prod-sub { font-size: 11px; font-weight: 500; color: #94a3b8; }
+
+.ov-drill-health-card {
+  display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px;
+}
+.ov-drill-health-gauge { flex-shrink: 0; }
+.ov-drill-gauge-ring {
+  width: 92px; height: 92px; border-radius: 50%; display: flex;
+  flex-direction: column; align-items: center; justify-content: center; color: #fff;
+}
+.ov-drill-gauge-num { font-size: 30px; font-weight: 800; line-height: 1; }
+.ov-drill-gauge-unit { font-size: 11px; opacity: 0.9; margin-top: 2px; }
+.ov-drill-health-info { flex: 1; min-width: 240px; }
+.ov-drill-health-level {
+  display: inline-flex; align-items: center; width: fit-content;
+  font-size: 13px; font-weight: 800; color: #fff;
+  padding: 4px 12px; border-radius: 6px; margin-bottom: 8px;
+}
+.ov-drill-health-level.ov-drill-health-ok { background: #10b981; }
+.ov-drill-health-level.ov-drill-health-mid { background: #f59e0b; }
+.ov-drill-health-level.ov-drill-health-warn { background: #ef4444; }
+.ov-drill-rootcause {
+  margin-left: auto;
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; font-weight: 600; color: #fff;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border: none; border-radius: 6px; padding: 5px 12px;
+  cursor: pointer; transition: opacity 0.15s, transform 0.15s;
+}
+.ov-drill-rootcause:hover { opacity: 0.9; transform: translateY(-1px); }
+.ov-drill-rootcause:active { transform: translateY(0); }
+.ov-drill-health-note { font-size: 12px; color: #64748b; margin-bottom: 12px; }
+.ov-drill-health-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.ov-kpi-delta { font-size: 10px; font-weight: 700; margin-left: 4px; }
+.ov-kpi-delta.ov-up { color: #dc2626; }
+.ov-kpi-delta.ov-down { color: #16a34a; }
+.ov-kpi-delta.ov-flat { color: #94a3b8; }
+
+/* 健康度总览：四大维度 + 二级指标 */
+.ov-drill-dims {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px;
+}
+.ov-drill-dim {
+  background: #f8fafc; border: 1px solid #eef2f7; border-radius: 8px; padding: 12px 14px;
+}
+.ov-drill-dim-head {
+  display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px;
+}
+.ov-drill-dim-name { font-size: 13px; font-weight: 800; color: #1e293b; }
+.ov-drill-dim-weight { font-size: 10.5px; color: #94a3b8; margin-left: 4px; }
+.ov-drill-dim-score { margin-left: auto; font-size: 15px; font-weight: 800; color: #0f172a; }
+.ov-drill-dim-score i { font-style: normal; font-size: 11px; font-weight: 600; color: #94a3b8; margin-left: 1px; }
+.ov-drill-dim-bar { height: 7px; background: #eef2f7; border-radius: 4px; overflow: hidden; }
+.ov-drill-dim-fill { height: 100%; border-radius: 4px; }
+.ov-dim-eff .ov-drill-dim-fill { background: linear-gradient(90deg, #8b5cf6, #7c3aed); }
+.ov-dim-market .ov-drill-dim-fill { background: linear-gradient(90deg, #3b82f6, #2563eb); }
+.ov-dim-quality .ov-drill-dim-fill { background: linear-gradient(90deg, #f59e0b, #f97316); }
+.ov-dim-life .ov-drill-dim-fill { background: linear-gradient(90deg, #10b981, #059669); }
+.ov-drill-dim-items {
+  display: flex; flex-direction: column; gap: 7px; margin-top: 10px;
+}
+.ov-drill-dim-item {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: #334155;
+}
+.ov-drill-dim-item-name { width: 116px; flex-shrink: 0; }
+.ov-drill-dim-item-value { margin-left: auto; font-size: 12px; font-weight: 700; color: #0f172a; }
+.ov-drill-dim-item b {
+  min-width: 26px; height: 20px; padding: 0 6px; border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11.5px; font-weight: 800; color: #fff;
+}
+.ov-item-ok { background: #10b981; }
+.ov-item-mid { background: #f59e0b; }
+.ov-item-warn { background: #ef4444; }
+
+.ov-drill-alerts { display: flex; flex-direction: column; gap: 8px; }
+.ov-drill-alert {
+  display: flex; align-items: flex-start; gap: 10px;
+  border: 1px solid; border-radius: 8px; padding: 10px 12px; font-size: 12.5px;
+}
+.ov-alert-high { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.ov-alert-mid { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.ov-alert-low { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+.ov-drill-alert-tag {
+  flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; font-weight: 800;
+  display: inline-flex; align-items: center; justify-content: center; color: #fff; background: #9ca3af;
+}
+.ov-alert-high .ov-drill-alert-tag { background: #ef4444; }
+.ov-alert-mid .ov-drill-alert-tag { background: #f59e0b; }
+.ov-alert-low .ov-drill-alert-tag { background: #10b981; }
+.ov-drill-alert-text { line-height: 1.6; }
+
+@media (max-width: 620px) {
+  .ov-drill-dims { grid-template-columns: 1fr; }
+}
+@media (max-width: 860px) {
+  .ov-rev-row { grid-template-columns: 1fr; }
+  .ov-sec-grid-3, .ov-sec-grid-4, .ov-sec-income { grid-template-columns: 1fr 1fr; }
+  .ov-struct-extra-full { grid-template-columns: 1fr 1fr; }
+  .ov-drill-health-metrics { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 480px) {
+  .ov-sec-grid-3, .ov-sec-grid-4, .ov-sec-income { grid-template-columns: 1fr; }
+}

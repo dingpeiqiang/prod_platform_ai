@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { sendAgentStream, loadMessages as apiLoadMessages, getSessions } from '../services/chatApi.js'
+import { sendAgentStream, loadMessages as apiLoadMessages, getSessions, deleteSession as apiDeleteSession } from '../services/chatApi.js'
 import { getEventHandler, getPostProcessor } from './useIntentRegistry.js'
 import {
   attachRootCauseOntology,
@@ -387,6 +387,23 @@ export function useChatStream() {
     messages.value = []
   }
 
+  /** 删除指定会话：调后端删除，成功后刷新列表；删的是当前会话则回到新会话态 */
+  const deleteSession = async (targetSessionId) => {
+    if (!targetSessionId) return
+    try {
+      await apiDeleteSession(targetSessionId)
+      if (targetSessionId === sessionId.value) {
+        sessionId.value = ''
+        messages.value = []
+      }
+      await loadSessions()
+      ElMessage.success('会话已删除')
+    } catch (e) {
+      console.warn('[useChatStream] 删除会话失败:', e)
+      ElMessage.warning('会话删除失败，请稍后重试')
+    }
+  }
+
   /** 获取当前 sessionId（供发送消息时传入后端） */
   const getSessionId = () => sessionId.value
 
@@ -583,6 +600,7 @@ export function useChatStream() {
     loadSessions,
     switchSession,
     newSession,
+    deleteSession,
     getSessionId,
   }
 }

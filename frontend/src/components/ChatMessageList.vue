@@ -5,6 +5,7 @@
       v-if="showWelcome"
       :mode="mode"
       @suggest="handleSuggest"
+      @open-ops="$emit('open-ops')"
     />
 
     <!-- 消息列表 -->
@@ -450,6 +451,7 @@ const emit = defineEmits([
   'workorder-submit',
   'workorder-copy',
   'workorder-delete',
+  'open-ops',
 ])
 
 const isActiveForm = (formCard) => {
@@ -939,7 +941,7 @@ defineExpose({ scrollToBottom })
   flex-direction: column;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px 0 24px;
+  padding: 0 0 24px;
   min-height: 0;
 }
 

@@ -13,6 +13,8 @@ export const useUserStore = defineStore('user', () => {
   // ── 计算属性 ──────────────────────────────────
   const isLoggedIn = computed(() => !!userInfo.value)
   const username = computed(() => userInfo.value?.username || '')
+  // 展示名：优先昵称字段，兜底 username（问候语等场景使用）
+  const displayName = computed(() => userInfo.value?.displayName || userInfo.value?.username || '')
   const avatar = computed(() => userInfo.value?.avatar || generateAvatar(username.value))
   // 取 username 首字符，汉字取拼音首字母（大人は理性）
   const avatarText = computed(() => {
@@ -77,7 +79,7 @@ export const useUserStore = defineStore('user', () => {
   load()
 
   return {
-    userInfo, isLoggedIn, username, avatar, avatarText,
+    userInfo, isLoggedIn, username, displayName, avatar, avatarText,
     login, logout, load
   }
 })

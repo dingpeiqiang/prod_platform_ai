@@ -237,7 +237,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick, watch, computed, onMounted, onBeforeUnmount, getCurrentInstance, markRaw, toRaw } from 'vue'
+import { ref, nextTick, watch, computed, onMounted, onBeforeUnmount, markRaw, toRaw } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { useModelsStore } from '@/stores/models.js'
 import { uploadConfigFile } from '../services/productOntologyApi.js'
@@ -309,20 +309,6 @@ const modelLoadingError = computed(() => !!modelsStore.loadError && modelsStore.
 const showModelMenu = ref(false)
 const modelMenuWrap = ref(null)
 const MODEL_ID_KEY = 'chat_selected_model_id'
-const MODEL_DEBUG_PREFIX = '[ModelDebug][ChatInput]'
-const __instance = getCurrentInstance()
-
-const modelDebug = (step, details = {}) => {
-  console.log(`${MODEL_DEBUG_PREFIX} ${step}`, {
-    timestamp: new Date().toISOString(),
-    showModelMenu: showModelMenu.value,
-    disabled: props.disabled,
-    selectedModelId: selectedModelId.value,
-    availableModelCount: availableModels.value.length,
-    componentConnected: !!modelMenuWrap.value?.isConnected,
-    ...details,
-  })
-}
 
 const currentModelLabel = computed(() => {
   const m = availableModels.value.find(x => x.id === selectedModelId.value)
@@ -348,18 +334,13 @@ const loadAvailableModels = async (force = false) => {
   }
 }
 
-watch(showModelMenu, (visible, previous) => {
-  modelDebug('showModelMenu changed', { previous, visible })
+watch(showModelMenu, (visible) => {
   if (visible) {
     nextTick(() => {
       document.addEventListener('click', handleDocumentClick)
-      modelDebug('document click listener attached', {
-        menuElementExists: !!modelMenuWrap.value?.querySelector('.model-menu'),
-      })
     })
   } else {
     document.removeEventListener('click', handleDocumentClick)
-    modelDebug('document click listener removed')
   }
 })
 
@@ -378,73 +359,32 @@ watch(availableModels, (newModels) => {
   }
 }, { deep: true })
 
-const closeModelMenu = (reason = 'unknown') => {
-  modelDebug('closeModelMenu called', { reason })
+const closeModelMenu = () => {
   showModelMenu.value = false
 }
 
-const toggleModelMenu = (event) => {
-  modelDebug('model selector button clicked', {
-    eventType: event?.type,
-    target: event?.target?.tagName,
-    currentTarget: event?.currentTarget?.tagName,
-  })
-  if (props.disabled) {
-    modelDebug('model selector ignored because input is disabled')
-    return
-  }
+const toggleModelMenu = () => {
+  if (props.disabled) return
   showModelMenu.value = !showModelMenu.value
-  nextTick(() => {
-    modelDebug('model menu DOM checked after toggle', {
-      menuElementExists: !!modelMenuWrap.value?.querySelector('.model-menu'),
-      menuRect: modelMenuWrap.value?.querySelector('.model-menu')?.getBoundingClientRect?.().toJSON?.(),
-    })
-  })
 }
 
 const selectModel = (id) => {
-  modelDebug('model item selected', { id })
   selectedModelId.value = id
-  closeModelMenu('model-selected')
+  closeModelMenu()
 }
 
-const openModelManager = (event) => {
-  modelDebug('manage model button handler entered', {
-    eventType: event?.type,
-    eventPhase: event?.eventPhase,
-    defaultPrevented: event?.defaultPrevented,
-    targetText: event?.currentTarget?.innerText,
-  })
-  // 关键修复：先 emit 再关闭菜单。
-  // 之前先 closeModelMenu 把 showModelMenu 置 false，会触发 v-if 的 DOM 卸载调度，
-  // 在某些 Vue 调度时序下会干扰同步 emit 对父组件 handler 的查找。
-  const vnodeProps = __instance?.vnode?.props || {}
-  const hasListener = !!vnodeProps.onOpenModelConfig
-  // 用纯字符串打印，避免 Chrome 控制台对象折叠导致看不到值
-  console.log(
-    `${MODEL_DEBUG_PREFIX} >>> hasListener=${hasListener} propKeys=${JSON.stringify(Object.keys(vnodeProps))} emitKeys=${JSON.stringify(Object.keys(__instance?.vnode?.props || {}).filter(k => k.startsWith('on')))}`
-  )
-  modelDebug('emitting open-model-config to App', {
-    hasListener,
-    propKeys: Object.keys(vnodeProps),
-  })
+const openModelManager = () => {
   emit('open-model-config', {
     source: 'ChatInput',
     timestamp: Date.now(),
   })
-  modelDebug('open-model-config emit completed')
-  closeModelMenu('open-model-manager')
+  closeModelMenu()
 }
 
 const handleDocumentClick = (event) => {
   if (!showModelMenu.value) return
   const wrap = modelMenuWrap.value
   const inside = !!wrap?.contains(event.target)
-  modelDebug('document click observed while menu open', {
-    insideModelMenu: inside,
-    target: event.target?.tagName,
-    targetClass: event.target?.className,
-  })
   if (wrap && !inside) {
     closeModelMenu('outside-document-click')
   }
@@ -501,6 +441,9 @@ const allQuickActions = [
   { key: 'query', label: '智查·历史复用', content: '帮我查询近30天大学生套餐配置', color: '#f59e0b', modes: ['rd'] },
   { key: 'ops', label: '指标异动根因', content: '分析在售主力套餐本月收入下滑原因', color: '#0ea5e9', modes: ['ops'] },
   { key: 'ops', label: '高风险商品稽核', content: '筛查所有在架的0元资费风险商品', color: '#ef4444', modes: ['ops'] },
+  { key: 'query', label: '智能问答', content: '智享99元5G套餐包含多少流量？', color: '#2563eb', modes: ['query'], scene: 'query.ask' },
+  { key: 'query', label: '档案调阅', content: '查一下近30天大学生套餐配置', color: '#0284c7', modes: ['query'], scene: 'query.archive' },
+  { key: 'query', label: '比对分析', content: '对比畅享59元套餐和智享99元5G套餐', color: '#6d28d9', modes: ['query'], scene: 'query.compare' },
 ]
 
 const quickActions = computed(() => {

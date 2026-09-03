@@ -10,42 +10,43 @@
  * 来自 prodai-cfg-demo 整合
  * ══════════════════════════════════════════════════════════════ */
 :root {
-  /* Chat 主题色 */
+  /* Chat 主题色（Chat 专用，区别于 variables.css 的 --color-primary-* 主色阶） */
   --primary-color: #25b2fe;
   --primary-dark: #1e8fd6;
   --primary-light: #e6f4ff;
   --ai-bg: #e6f4ff;
-  
-  /* Chat 通用变量别名 */
+
+  /* Chat 通用变量别名：统一引用 variables.css 设计令牌，避免双 token 定义冲突。
+     主题色/气泡/渐变等 Chat 专属变量保留本地定义。 */
   --primary: var(--primary-color);
   --primary-hover: var(--primary-dark);
   --primary-muted: var(--primary-light);
   --primary-glow: rgba(37, 178, 254, 0.2);
-  --surface: #ffffff;
-  --surface-elevated: #fafafa;
-  --surface-muted: #f5f7fa;
-  --border: #e5e5e5;
-  --border-color: #e5e5e5;
-  --text: #333333;
-  --text-primary: #333333;
-  --text-secondary: #666666;
-  --text-muted: #999999;
+  --surface: var(--bg-primary, #ffffff);
+  --surface-elevated: var(--bg-elevated, #fafafa);
+  --surface-muted: var(--bg-tertiary, #f5f7fa);
+  --border: var(--border-light, #e5e5e5);
+  --border-color: var(--border-light, #e5e5e5);
+  --text: var(--text-primary, #111827);
+  --text-primary: var(--text-primary, #111827);
+  --text-secondary: var(--text-secondary, #6b7280);
+  --text-muted: var(--text-tertiary, #9ca3af);
   --success: #52c41a;
   --warning: #faad14;
   --error: #ff4d4f;
   --success-bg: #f6ffed;
   --warning-bg: #fffbe6;
   --error-bg: #fff1f0;
-  --ai-bubble: var(--ai-bg);
+  --ai-bubble: var(--bg-ai-bubble, var(--ai-bg));
   --header-gradient: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
-  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.1);
-  --shadow-lg: -4px 0 20px rgba(0, 0, 0, 0.1);
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 8px;
+  --shadow-sm: var(--shadow-sm, 0 1px 4px rgba(0, 0, 0, 0.05));
+  --shadow-md: var(--shadow-md, 0 2px 8px rgba(0, 0, 0, 0.1));
+  --shadow-lg: var(--shadow-lg, -4px 0 20px rgba(0, 0, 0, 0.1));
+  --radius-sm: var(--radius-sm, 6px);
+  --radius-md: var(--radius-md, 8px);
+  --radius-lg: var(--radius-lg, 12px);
   --transition: all 0.2s;
-  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font: var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
 }
 
 /* ══════════════════════════════════════════════════════════════

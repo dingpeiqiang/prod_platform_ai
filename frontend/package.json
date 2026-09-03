@@ -23,6 +23,7 @@
     "ace-builds": "^1.44.0",
     "axios": "^1.6.0",
     "codemirror": "^6.65.7",
+    "echarts": "^6.1.0",
     "element-plus": "^2.5.0",
     "form-create-designer": "^3.3.0-oem",
     "jsoneditor": "^10.4.3",

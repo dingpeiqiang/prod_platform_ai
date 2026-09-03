@@ -292,12 +292,8 @@ import ModelChatTester from './ModelChatTester.vue'
 const emit = defineEmits(['go-back'])
 const router = useRouter()
 const goBack = () => {
-  if (Object.keys(router.currentRoute.value.query).length || window.history.length > 1) {
-    router.back()
-  } else {
-    router.push('/')
-  }
   emit('go-back')
+  router.push('/admin')
 }
 
 const userStore = useUserStore()

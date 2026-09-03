@@ -6,17 +6,40 @@
     :sessions="sessionList"
     :sessionsLoading="historyLoading"
     :context="contextItems"
+    :panelOpen="panelSync.panelOpen.value"
+    :panelWidth="panelWidth"
+    @update:panelWidth="panelWidth = $event"
     @send="onSend"
     @stop="stop"
     @new-session="onNewSession"
     @refresh-sessions="loadSessions"
     @switch-session="onSwitchSession"
+    @delete-session="onDeleteSession"
     @shortcut="onShortcut"
     @quick-action="onQuickAction"
     @open-model-config="onOpenModelConfig"
     @context-remove="onRemoveContextItem"
     @context-clear="onClearContextItems"
   >
+    <template #nav-actions>
+      <button class="nav-icon-btn" title="我的草稿" @click="showMyDrafts = true">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        <span v-if="draftCount > 0" class="nav-icon-badge">{{ draftCount }}</span>
+      </button>
+      <button class="nav-icon-btn" title="工单中心" @click="showWorkOrderCenter = true">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="7" width="20" height="14" rx="2"/>
+          <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+        </svg>
+      </button>
+      <NotificationCenter @item-open="onNotificationOpen" />
+    </template>
+    <!-- 删除会话透传（侧边栏 hover 删除按钮） -->
+
+    <WorkflowStepper v-if="workflowStore.active" />
     <ChatMessageList
       mode="rd"
       :messages="messages"
@@ -59,6 +82,57 @@
       @form-confirm-submit="handleConfirmSubmit"
       @close="closeWorkOrderDrawer"
     />
+
+    <!-- 右侧工作台面板（对话驱动开合） -->
+    <template #panel>
+      <ProductConfigWorkbench
+        v-if="panelSync.panelType.value === 'config' && wbProduct"
+        :key="panelSync.panelKey.value"
+        ref="wbPanelRef"
+        :product="wbProduct"
+        :formSchema="wbFormSchema"
+        :extras="workflowStore.extras"
+        :busy="panelSync.submitting.value || panelSync.auditing.value"
+        @field-change="onWbFieldChange"
+        @rename="onWbRename"
+        @audit="onWbAudit"
+        @submit="onWbSubmit"
+        @close="panelSync.closePanel()"
+      />
+      <ComparePanel
+        v-else-if="panelSync.panelType.value === 'compare'"
+        :compareResult="productConfig.compareResult.value"
+      />
+    </template>
+
+    <!-- 还原条：面板关闭后一键恢复 -->
+    <template #restore-bar>
+      <Transition name="restore-slide">
+        <div v-if="panelSync.restoreBar.visible" class="restore-bar">
+          <span class="restore-badge">{{ panelSync.restoreBar.label }}</span>
+          <span class="restore-name">{{ panelSync.restoreBar.productName }}</span>
+          <button class="restore-btn" @click="panelSync.restorePanel()">恢复工作台</button>
+          <button class="restore-close" @click="panelSync.hideRestoreBar()">✕</button>
+        </div>
+      </Transition>
+    </template>
+
+    <!-- 审批进度抽屉 -->
+    <ApprovalDrawer v-model="showApprovalDrawer" :approval="approvalData" />
+
+    <!-- 我的草稿抽屉 -->
+    <MyDrafts
+      v-model="showMyDrafts"
+      @open-draft="onOpenDraft"
+      @delete-draft="onDeleteDraft"
+    />
+
+    <!-- 工单中心 -->
+    <WorkOrderCenter
+      v-model="showWorkOrderCenter"
+      @view-archive="onViewArchive"
+      @open-metrics="onOpenMetrics"
+    />
   </AssistantShell>
 </template>
 
@@ -70,9 +144,19 @@ import AssistantShell from './AssistantShell.vue'
 import ChatMessageList from './ChatMessageList.vue'
 import ProductPreviewDrawer from './ProductPreviewDrawer.vue'
 import WorkOrderDrawer from './WorkOrderDrawer.vue'
+import WorkflowStepper from './workbench/WorkflowStepper.vue'
+import ProductConfigWorkbench from './workbench/ProductConfigWorkbench.vue'
+import ApprovalDrawer from './workbench/ApprovalDrawer.vue'
+import NotificationCenter from './workbench/NotificationCenter.vue'
+import MyDrafts from './workbench/MyDrafts.vue'
+import WorkOrderCenter from './workbench/WorkOrderCenter.vue'
+import ComparePanel from './workbench/ComparePanel.vue'
 import { useChatStream } from '../composables/useChatStream.js'
 import { useProductConfig } from '../composables/useProductConfig.js'
+import { usePanelSync } from '../composables/usePanelSync.js'
 import { registerPostProcessor } from '../composables/useIntentRegistry.js'
+import { useProductWorkflowStore } from '../stores/productWorkflow.js'
+import { useNotificationStore } from '../stores/notification.js'
 import { checkCompliance, copyAsDraft, listWorkOrders } from '../services/productOntologyApi.js'
 import { saveMessage as saveChatMessage } from '../services/chatApi.js'
 import { assistantModes, buildSceneWelcome } from '../config/assistantModes.js'
@@ -101,6 +185,7 @@ const {
   loadSessions,
   switchSession,
   newSession,
+  deleteSession,
   sessionList,
   sessionId,
   stop,
@@ -116,6 +201,148 @@ const showComparePanel = productConfig.showComparePanel
 const activeRootCauseRank = productConfig.activeRootCauseRank
 provide('rootCauseActiveRank', activeRootCauseRank)
 const config = assistantModes.rd
+
+/** ── 右侧配置工作台（迁移自 chat-skeleton 原型）── */
+const panelSync = usePanelSync()
+const workflowStore = useProductWorkflowStore()
+const notifStore = useNotificationStore()
+const panelWidth = ref(480)
+const wbPanelRef = ref(null)
+const showApprovalDrawer = ref(false)
+const approvalData = ref(null)
+const showMyDrafts = ref(false)
+const showWorkOrderCenter = ref(false)
+
+/** 草稿数徽标 */
+const draftCount = computed(() =>
+  (productConfig.products.value || []).filter((p) => p.status !== 'submitted').length,
+)
+
+/** 通知中心条目 → 打开审批抽屉 / 注入 AI 待办处理消息 */
+function onNotificationOpen({ type, approval, todo }) {
+  if (type === 'approval') {
+    approvalData.value = approval
+    showApprovalDrawer.value = true
+  } else if (type === 'todo' && todo) {
+    notifStore.trigger({ todoId: todo.id })
+    if (todo.action) {
+      inputText.value = todo.action
+    }
+  }
+}
+
+/** 草稿抽屉：进入工作台 */
+function onOpenDraft(item) {
+  if (!item?.id) return
+  productConfig.selectProduct(item.id)
+  showMyDrafts.value = false
+  panelSync.openConfigPanel()
+}
+
+/** 草稿抽屉：删除 */
+async function onDeleteDraft(item) {
+  if (!item?.id) return
+  const confirmed = await ElMessageBox.confirm(
+    `确认删除草稿「${item.name || '未命名'}」？该操作不可恢复。`,
+    '删除草稿',
+    { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+  ).catch(() => false)
+  if (confirmed !== true) return
+  productConfig.deleteProduct(item.id)
+  if (!(productConfig.products.value || []).length) {
+    panelSync.closePanel()
+  }
+}
+
+/** 工单中心：查看档案（只读预览） */
+function onViewArchive(wo) {
+  showWorkOrderCenter.value = false
+  if (wo?.productId) {
+    handleProductPreview(wo.productId)
+  } else if (wo?.offeringId) {
+    // 无本地草稿时以商品编码发起智查
+    inputText.value = `查一下商品 ${wo.offeringId} 的配置档案`
+  }
+}
+
+/** 工单中心：跳转运营指标（切到运营助手并带查询话术） */
+function onOpenMetrics(wo) {
+  showWorkOrderCenter.value = false
+  const name = wo?.offeringName || wo?.title || ''
+  inputText.value = name ? `分析「${name}」的运营指标` : '打开运营监控看板'
+}
+
+/** 工作台当前产品（面板打开期间锁定当前草稿） */
+const wbProduct = computed(() => productConfig.currentProduct.value)
+const wbFormSchema = computed(() => {
+  const p = productConfig.currentProduct.value
+  if (!p) return { fields: [] }
+  return productConfig.buildProductSchema(p)
+})
+
+/** SSE 配置草稿到达后自动打开工作台 */
+function tryOpenWorkbenchFromDraft(draft) {
+  if (!draft || typeof draft !== 'object') return false
+  panelSync.openConfigPanel()
+  if (!workflowStore.active) {
+    workflowStore.initWorkflow({
+      productName: draft.offerName || draft.offeringName || productConfig.currentProduct.value?.name || '',
+    })
+    workflowStore.advanceTo('config')
+  }
+  return true
+}
+
+/** 工作台字段编辑 → 同步 useProductConfig */
+function onWbFieldChange({ fieldCode, value }) {
+  productConfig.updateFormField(fieldCode, value)
+  if (activeFormCard.value?.formData) activeFormCard.value.formData[fieldCode] = value
+  if (activeFormCard.value?.formSchema?.fields) {
+    const field = activeFormCard.value.formSchema.fields.find((f) => f.fieldCode === fieldCode)
+    if (field) field.value = value
+  }
+}
+
+/** 工作台改名 → 同步全局草稿名 */
+function onWbRename(name) {
+  const p = productConfig.currentProduct.value
+  if (p && name) p.name = name
+}
+
+/** 工作台智能稽核：走 usePanelSync.runSmartAudit（真实后端 checkCompliance） */
+async function onWbAudit() {
+  await panelSync.runSmartAudit()
+}
+
+/** 工作台提交：走真实 submitCurrentDraft + 工作流推进 + 审批抽屉 */
+async function onWbSubmit() {
+  const resp = await panelSync.submitConfig(sessionId.value)
+  if (!resp || resp?.success === false) return
+  const woId = resp?.workOrder?.workOrderId || resp?.workOrder?.work_order_id || workflowStore.workOrderId
+  const product = productConfig.currentProduct.value
+  approvalData.value = {
+    offeringName: product?.ontologyDraft?.offerName || product?.ontologyDraft?.offeringName || product?.name || '',
+    workOrderId: woId,
+    status: 'pending',
+    createdAt: new Date().toLocaleString('zh-CN'),
+    summary: `固费 ${product?.ontologyDraft?.fixedFeeAmount ?? product?.ontologyDraft?.monthlyFee ?? '-'} 元 · ${product?.ontologyDraft?.bizScenario || ''} · ${product?.ontologyDraft?.channelScope || ''}`,
+  }
+  showApprovalDrawer.value = true
+}
+
+/** 审批通过事件（后端事件到达时调用）：推进工作流 → awaiting 测试 */
+function handleApprovalPassed() {
+  panelSync.onApprovalPassed()
+  if (approvalData.value) approvalData.value.status = 'passed'
+}
+
+/** 面板面板 API 绑定 */
+function bindPanelApi() {
+  if (wbPanelRef.value) {
+    panelSync.setPanelApi({ applyFieldUpdate: (k, v, m) => wbPanelRef.value.applyFieldUpdate(k, v, m) })
+  }
+}
+
 
 /** 手动移除/清除的上下文键（避免自动派生又冒出来） */
 const dismissedContextKeys = ref(new Set())
@@ -359,6 +586,7 @@ onMounted(async () => {
       await attachWorkOrdersToMsg(msg)
     })
   }
+  bindPanelApi()
 })
 
 onUnmounted(() => {
@@ -643,6 +871,8 @@ function applyRdToolToPanels(msg) {
       // 新开配置工单同样标记为最近操作对象：下一轮工单卡刷新后该条目高亮
       const newWo = String(out?.workOrderId || out?.work_order_id || out?.workOrder?.workOrderId || '')
       if (newWo) msg.lastActedWoId = newWo
+      // 右侧配置工作台联动：草稿到达 → 自动打开工作台（对话即工作台）
+      tryOpenWorkbenchFromDraft(out.draft || out.config?.draft)
     } else if (name === 'rd_compliance') {
       attachFormCardToMsg(msg, applyRdCompliance(out.draft || out.config?.draft, out.compliance_pass, out.issues || out.config?.issues))
     } else if (name === 'rd_file_parse') {
@@ -899,6 +1129,8 @@ function applyRdSchemeCompare(out) {
   }
   productConfig.compareResult.value = result
   productConfig.showComparePanel.value = true
+  // 右侧比对面板联动：比对数据到达 → 自动打开（对话即工作台）
+  panelSync.openComparePanel()
 }
 
 /** 研发快捷场景 / 文案 → 本体场景路由 */
@@ -1313,6 +1545,7 @@ async function handleReferenceContinue(text = '', refMsg = null) {
 
 const onSwitchSession = async (sid) => {
   closeActiveForm()
+  panelSync.resetPanelState()
   await switchSession(sid)
   productConfig.resetState()
   productConfig.setSessionContext({ sessionId: sid || sessionId.value })
@@ -1324,9 +1557,21 @@ const onNewSession = () => {
   showRootCausePanel.value = false
   showRiskAuditPanel.value = false
   activeScene.value = config.defaultScene
+  panelSync.resetPanelState()
   productConfig.resetState()
   newSession()
   productConfig.setSessionContext({ sessionId: sessionId.value })
+}
+
+/** 删除会话：后端删除 + 本地状态清理 */
+const onDeleteSession = async (sid) => {
+  if (!sid) return
+  if (sid === sessionId.value) {
+    closeActiveForm()
+    panelSync.resetPanelState()
+    productConfig.resetState()
+  }
+  await deleteSession(sid)
 }
 
 const onIntentAction = (event) => {

@@ -115,7 +115,6 @@ export function useProductConfig() {
   const auditStatus = ref('pending')
   const isModified = ref(false)
   const showProductListPanel = ref(false)
-  const showAuditPanel = ref(false)
   const auditResults = ref([])
   const auditPhase = ref('idle')
   const batchItems = ref([])
@@ -496,7 +495,6 @@ export function useProductConfig() {
       const formCard = addProductAndActivate(newProduct)
       formCard.compliancePass = newProduct.compliancePass
       formCard.issues = newProduct.issues
-      showAuditPanel.value = true
       auditResults.value = mapIssuesToAuditResults(result.issues, result.compliancePass)
       auditStatus.value = newProduct.auditStatus
       await persistCurrentDraft(null)
@@ -1171,7 +1169,6 @@ export function useProductConfig() {
     auditResults.value = []
     auditPhase.value = 'idle'
     showProductListPanel.value = false
-    showAuditPanel.value = false
     batchItems.value = []
     showBatchPanel.value = false
     showRootCausePanel.value = false
@@ -1205,7 +1202,6 @@ export function useProductConfig() {
     auditStatus,
     isModified,
     showProductListPanel,
-    showAuditPanel,
     auditResults,
     auditPhase,
     batchItems,

@@ -791,6 +791,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, onUnmounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { VueFlow, useVueFlow } from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
 import { Controls } from '@vue-flow/controls';
@@ -839,6 +840,8 @@ const props = defineProps({
 // Emits
 const emit = defineEmits(['go-back']);
 
+const router = useRouter();
+
 const goBack = () => {
   if (hasChanges.value) {
     if (!confirm('当前工作流有未保存的更改，确定要返回吗？')) {
@@ -846,6 +849,7 @@ const goBack = () => {
     }
   }
   emit('go-back');
+  router.push('/admin');
 };
 
 const { addEdges, removeNodes, removeEdges, project, updateEdge, getEdges, getNodes, fitView } = useVueFlow();
