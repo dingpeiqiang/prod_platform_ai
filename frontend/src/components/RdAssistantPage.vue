@@ -39,7 +39,6 @@
     </template>
     <!-- 删除会话透传（侧边栏 hover 删除按钮） -->
 
-    <WorkflowStepper v-if="workflowStore.active" />
     <ChatMessageList
       mode="rd"
       :messages="messages"
@@ -85,6 +84,10 @@
 
     <!-- 右侧工作台面板（对话驱动开合） -->
     <template #panel>
+      <!-- 工作流步骤条：仅在面板打开且为配置工作台时显示（对齐原型 #right 内置） -->
+      <WorkflowStepper
+        v-if="workflowStore.active && panelSync.panelOpen.value && panelSync.panelType.value === 'config'"
+      />
       <ProductConfigWorkbench
         v-if="panelSync.panelType.value === 'config' && wbProduct"
         :key="panelSync.panelKey.value"
@@ -92,11 +95,18 @@
         :product="wbProduct"
         :formSchema="wbFormSchema"
         :extras="workflowStore.extras"
+        :workflowStage="workflowStore.currentStage?.key || (workflowStore.isTerminal ? 'done' : '')"
         :busy="panelSync.submitting.value || panelSync.auditing.value"
+        :batchMode="wbBatchMode"
+        :batchIndex="wbBatchIndex"
+        :batchTotal="wbBatchTotal"
         @field-change="onWbFieldChange"
         @rename="onWbRename"
         @audit="onWbAudit"
         @submit="onWbSubmit"
+        @save="onWbSave"
+        @copy="onWbCopy"
+        @batch-nav="onWbBatchNav"
         @close="panelSync.closePanel()"
       />
       <ComparePanel
@@ -105,14 +115,26 @@
       />
     </template>
 
-    <!-- 还原条：面板关闭后一键恢复 -->
+    <!-- 还原条：面板关闭后一键恢复（整条可点击，参照原型 config-restore-bar） -->
     <template #restore-bar>
       <Transition name="restore-slide">
-        <div v-if="panelSync.restoreBar.visible" class="restore-bar">
+        <div
+          v-if="panelSync.restoreBar.visible"
+          class="restore-bar"
+          :class="'rb-' + panelSync.restoreBar.status"
+          @click="panelSync.restorePanel()"
+        >
+          <span class="restore-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2"/>
+              <line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+          </span>
+          <span class="restore-label-text">配置工作台已收起</span>
           <span class="restore-badge">{{ panelSync.restoreBar.label }}</span>
           <span class="restore-name">{{ panelSync.restoreBar.productName }}</span>
-          <button class="restore-btn" @click="panelSync.restorePanel()">恢复工作台</button>
-          <button class="restore-close" @click="panelSync.hideRestoreBar()">✕</button>
+          <span class="restore-arrow">›</span>
+          <button class="restore-close" title="不再提示" @click.stop="panelSync.hideRestoreBar()">✕</button>
         </div>
       </Transition>
     </template>
@@ -137,7 +159,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, provide } from 'vue'
 import { ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import AssistantShell from './AssistantShell.vue'
@@ -280,6 +302,26 @@ const wbFormSchema = computed(() => {
   return productConfig.buildProductSchema(p)
 })
 
+/** 批量草稿导航：当前草稿在 batchItems 中的位置（批量导入后可逐个切换提交） */
+const wbBatchTotal = computed(() => (productConfig.batchItems.value || []).length)
+const wbBatchIndex = computed(() => {
+  const pid = productConfig.currentProductId.value
+  const idx = (productConfig.batchItems.value || []).findIndex((b) => b.productId === pid)
+  return idx >= 0 ? idx : 0
+})
+const wbBatchMode = computed(() => wbBatchTotal.value > 1 && wbBatchIndex.value >= 0)
+
+/** 批量导航：切换到上一条/下一条草稿并重建面板 */
+function onWbBatchNav(dir) {
+  const items = productConfig.batchItems.value || []
+  if (!items.length) return
+  const next = Math.min(items.length - 1, Math.max(0, wbBatchIndex.value + dir))
+  const target = items[next]
+  if (!target?.productId || target.productId === productConfig.currentProductId.value) return
+  productConfig.selectProduct(target.productId)
+  panelSync.openConfigPanel()
+}
+
 /** SSE 配置草稿到达后自动打开工作台 */
 function tryOpenWorkbenchFromDraft(draft) {
   if (!draft || typeof draft !== 'object') return false
@@ -314,7 +356,7 @@ async function onWbAudit() {
   await panelSync.runSmartAudit()
 }
 
-/** 工作台提交：走真实 submitCurrentDraft + 工作流推进 + 审批抽屉 */
+/** 工作台提交：走真实 submitCurrentDraft + 工作流推进 + 审批抽屉；批量模式下自动跳下一个未提交草稿 */
 async function onWbSubmit() {
   const resp = await panelSync.submitConfig(sessionId.value)
   if (!resp || resp?.success === false) return
@@ -328,6 +370,35 @@ async function onWbSubmit() {
     summary: `固费 ${product?.ontologyDraft?.fixedFeeAmount ?? product?.ontologyDraft?.monthlyFee ?? '-'} 元 · ${product?.ontologyDraft?.bizScenario || ''} · ${product?.ontologyDraft?.channelScope || ''}`,
   }
   showApprovalDrawer.value = true
+  // 批量模式：提交成功后自动跳到下一个未提交草稿（对齐原型 onBatchSubmitted 联动）
+  if (wbBatchMode.value) {
+    const items = productConfig.batchItems.value || []
+    const submittedIdx = wbBatchIndex.value
+    const next = items.findIndex(
+      (b, i) => i !== submittedIdx && b.productId &&
+        productConfig.products.value.find((p) => p.id === b.productId && p.status !== 'submitted'),
+    )
+    if (next >= 0) {
+      productConfig.selectProduct(items[next].productId)
+      panelSync.openConfigPanel()
+    }
+  }
+}
+
+/** 工作台保存草稿：本地同步 + 异步落库 */
+function onWbSave() {
+  productConfig.saveDraft()
+}
+
+/** 工作台复制草稿：深拷贝为新草稿并激活 */
+function onWbCopy() {
+  const p = productConfig.currentProduct.value
+  if (!p) return
+  const copied = productConfig.copyProduct(p.id)
+  if (copied) {
+    productConfig.selectProduct(copied.id)
+    panelSync.openConfigPanel()
+  }
 }
 
 /** 审批通过事件（后端事件到达时调用）：推进工作流 → awaiting 测试 */
@@ -336,12 +407,17 @@ function handleApprovalPassed() {
   if (approvalData.value) approvalData.value.status = 'passed'
 }
 
-/** 面板面板 API 绑定 */
+/** 面板 API 绑定：面板组件随 panelType/wbProduct 条件挂载，onMounted 时 ref 必为 null，
+ * 必须用 watch 跟随挂载/卸载动态绑定，否则 panelSync.applyFieldUpdate 永远空转 */
 function bindPanelApi() {
-  if (wbPanelRef.value) {
-    panelSync.setPanelApi({ applyFieldUpdate: (k, v, m) => wbPanelRef.value.applyFieldUpdate(k, v, m) })
-  }
+  panelSync.setPanelApi(
+    wbPanelRef.value
+      ? { applyFieldUpdate: (k, v, m) => wbPanelRef.value.applyFieldUpdate(k, v, m) }
+      : null,
+  )
 }
+
+watch(wbPanelRef, bindPanelApi, { immediate: true })
 
 
 /** 手动移除/清除的上下文键（避免自动派生又冒出来） */
@@ -586,7 +662,6 @@ onMounted(async () => {
       await attachWorkOrdersToMsg(msg)
     })
   }
-  bindPanelApi()
 })
 
 onUnmounted(() => {
@@ -1723,3 +1798,74 @@ async function handleBatchDelete({ msg, item }) {
   }
 }
 </script>
+
+<style scoped>
+/* 还原条（参照原型 config-restore-bar）：渐变紫蓝背景 + 状态徽标多色 + 整条可点击 */
+.restore-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  margin-bottom: 10px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #eef2ff, #eff6ff);
+  border: 1px solid #c7d2fe;
+  cursor: pointer;
+  transition: box-shadow 0.18s ease, transform 0.18s ease, border-color 0.18s ease;
+  user-select: none;
+}
+.restore-bar:hover {
+  border-color: #93c5fd;
+  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.18);
+  transform: translateY(-1px);
+}
+.restore-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #6366f1, #3b82f6);
+  color: #fff;
+  flex-shrink: 0;
+}
+.restore-label-text { font-size: 12px; font-weight: 600; color: #475569; flex-shrink: 0; }
+.restore-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: #e0e7ff;
+  color: #4f46e5;
+}
+.restore-bar.rb-draft .restore-badge { background: #f1f5f9; color: #64748b; }
+.restore-bar.rb-passed .restore-badge { background: #ecfdf5; color: #059669; }
+.restore-bar.rb-submitted .restore-badge { background: #eff6ff; color: #2563eb; }
+.restore-bar.rb-test .restore-badge { background: #fef3c7; color: #b45309; }
+.restore-bar.rb-filing .restore-badge { background: #fce7f3; color: #be185d; }
+.restore-bar.rb-channel .restore-badge { background: #f5f3ff; color: #7c3aed; }
+.restore-name {
+  flex: 1;
+  font-size: 12px;
+  color: #334155;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.restore-arrow { font-size: 16px; color: #6366f1; font-weight: 700; flex-shrink: 0; }
+.restore-close {
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px;
+  flex-shrink: 0;
+  border-radius: 6px;
+}
+.restore-close:hover { color: #0f172a; background: rgba(148, 163, 184, 0.15); }
+.restore-slide-enter-active, .restore-slide-leave-active { transition: all 0.24s ease; }
+.restore-slide-enter-from, .restore-slide-leave-to { opacity: 0; transform: translateY(8px); }
+</style>

@@ -372,6 +372,22 @@ export async function getSessions(userId, limit = 50) {
   }
 }
 
+/**
+ * 跨会话按关键词搜索消息内容（GET /api/v1/chat/history/search）。
+ * 返回 [{ messageId, sessionId, role, content, createdAt }]，供历史检索跨内容匹配。
+ */
+export async function searchHistoryMessages(keyword, limit = 20) {
+  if (!keyword || !keyword.trim()) return []
+  try {
+    const resp = await fetch(`/api/v1/chat/history/search?keyword=${encodeURIComponent(keyword.trim())}&limit=${limit}`)
+    if (!resp.ok) return []
+    const result = await resp.json()
+    return result.messages || []
+  } catch {
+    return []
+  }
+}
+
 export async function deleteSession(sessionId) {
   await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
 }

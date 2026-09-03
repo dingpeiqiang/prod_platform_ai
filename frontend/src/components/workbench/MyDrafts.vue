@@ -8,13 +8,22 @@
             <button class="drafts-close" @click="$emit('update:modelValue', false)">✕</button>
           </header>
           <div class="drafts-body">
+            <div v-if="drafts.length" class="drafts-tip">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="16" x2="12" y2="12"/>
+                <line x1="12" y1="8" x2="12.01" y2="8"/>
+              </svg>
+              <span>点击商品可进入对应配置工作台继续完善，提交后自动跳转到下一个草稿。</span>
+            </div>
             <div v-if="!drafts.length" class="drafts-empty">
               暂无未提交的草稿。完成对话配置后，草稿会自动出现在这里。
             </div>
             <div v-for="(item, i) in drafts" :key="item.id" class="draft-card">
               <div class="draft-card-head">
-                <span class="draft-index">{{ i + 1 }}</span>
+                <span class="draft-index">#{{ i + 1 }}</span>
                 <span class="draft-name" :title="item.name">{{ item.name }}</span>
+                <span class="draft-status">草稿</span>
                 <span v-if="item.workOrderId" class="draft-wo">{{ item.workOrderId }}</span>
               </div>
               <div class="draft-desc" :title="item.desc">{{ item.desc || '—' }}</div>
@@ -82,6 +91,15 @@ const drafts = computed(() =>
 .drafts-body { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
 .drafts-empty { font-size: 13px; color: #94a3b8; text-align: center; padding: 48px 0; line-height: 1.8; }
 
+/* 顶部操作提示条（对齐原型 md-tip） */
+.drafts-tip {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 10px 12px; border-radius: 10px;
+  background: #fffbeb; border: 1px solid #fde68a;
+  font-size: 12px; color: #b45309; line-height: 1.6;
+}
+.drafts-tip svg { flex-shrink: 0; margin-top: 1px; }
+
 .draft-card {
   border: 1px solid #e2e8f0;
   border-radius: 12px;
@@ -93,13 +111,16 @@ const drafts = computed(() =>
 .draft-card:hover { border-color: #93c5fd; }
 .draft-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .draft-index {
-  width: 20px; height: 20px; border-radius: 6px;
+  min-width: 24px;
+  padding: 0 4px;
+  height: 20px; border-radius: 6px;
   background: #eff6ff; color: #2563eb;
   font-size: 11px; font-weight: 700;
   display: inline-flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
 .draft-name { font-size: 13px; font-weight: 600; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.draft-status { font-size: 10px; font-weight: 600; color: #64748b; background: #f1f5f9; padding: 2px 7px; border-radius: 999px; flex-shrink: 0; }
 .draft-wo { font-size: 10px; color: #64748b; background: #f1f5f9; padding: 2px 6px; border-radius: 999px; flex-shrink: 0; }
 .draft-desc {
   font-size: 12px; color: #64748b;

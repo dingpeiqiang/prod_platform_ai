@@ -93,7 +93,10 @@
                   @click="closeDrawers(); onPickSession(s)"
                 >
                   <span class="btn-label history-label">{{ s.title || '新对话' }}</span>
-                  <span class="btn-scene">{{ formatSessionTime(s.updated_at) }}</span>
+                  <span class="btn-scene">
+                    <span v-if="s.matchReason" class="match-reason" v-html="s.matchReason"></span>
+                    <template v-else>{{ formatSessionTime(s.updated_at) }}</template>
+                  </span>
                 </button>
                 <button
                   class="history-del-btn"
@@ -218,10 +221,11 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import AssistantNavBar from './AssistantNavBar.vue'
 import ChatInput from './ChatInput.vue'
 import { assistantModes } from '../config/assistantModes.js'
+import { searchHistoryMessages } from '../services/chatApi.js'
 
 const props = defineProps({
   mode:      { type: String, required: true },
@@ -298,9 +302,74 @@ const toggleSearch = () => {
 const displayedSessions = computed(() => {
   const kw = searchKeyword.value.trim().toLowerCase()
   if (searchOpen.value && kw) {
-    return props.sessions.filter((s) => (s.title || '').toLowerCase().includes(kw)).slice(0, 12)
+    // 跨内容检索：标题本地匹配 + 后端消息内容匹配（对齐原型 searchResults：标题/内容/工单号 + 高亮）
+    const titleHits = props.sessions.filter((s) => (s.title || '').toLowerCase().includes(kw))
+    const hitMap = new Map(titleHits.map((s) => [s.session_id, { ...s, matchReason: highlight('标题：' + (s.title || ''), searchKeyword.value.trim()) }]))
+    for (const hit of contentSearchResults.value) {
+      if (!hitMap.has(hit.sessionId)) {
+        hitMap.set(hit.sessionId, {
+          session_id: hit.sessionId,
+          title: hit.sessionTitle || '新对话',
+          updated_at: hit.createdAt,
+          matchReason: highlight(hit.matchedText || (hit.role === 'user' ? '用户：' : '助手：') + snippet(hit.content, kw), searchKeyword.value.trim()),
+        })
+      }
+    }
+    return Array.from(hitMap.values())
+      .sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0))
+      .slice(0, 12)
   }
   return props.sessions.slice(0, 8)
+})
+
+/** HTML 转义 + 关键词 <mark> 高亮（对齐原型 highlight()） */
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]))
+}
+function highlight(text, kw) {
+  if (!text || !kw) return escapeHtml(text)
+  const safe = escapeHtml(text)
+  const kwSafe = escapeHtml(kw)
+  const idx = safe.toLowerCase().indexOf(kwSafe.toLowerCase())
+  if (idx === -1) return safe
+  return safe.slice(0, idx) + '<mark>' + safe.slice(idx, idx + kwSafe.length) + '</mark>' + safe.slice(idx + kwSafe.length)
+}
+/** 关键词上下文片段（前后各 ~16 字符） */
+function snippet(content, kw) {
+  const text = String(content || '')
+  const idx = text.toLowerCase().indexOf(kw)
+  if (idx < 0) return text.slice(0, 32)
+  const start = Math.max(0, idx - 16)
+  const end = Math.min(text.length, idx + kw.length + 20)
+  return (start > 0 ? '…' : '') + text.slice(start, end) + (end < text.length ? '…' : '')
+}
+
+/** 后端跨会话消息搜索（防抖 300ms，标题无命中时兜底展示内容命中） */
+const contentSearchResults = ref([])
+let searchTimer = null
+watch(searchKeyword, (kw) => {
+  clearTimeout(searchTimer)
+  const trimmed = kw.trim()
+  if (!trimmed) {
+    contentSearchResults.value = []
+    return
+  }
+  searchTimer = setTimeout(async () => {
+    try {
+      const msgs = await searchHistoryMessages(trimmed, 20)
+      contentSearchResults.value = msgs.map((m) => ({
+        sessionId: m.sessionId,
+        sessionTitle: m.sessionTitle || '',
+        role: m.role,
+        content: m.content,
+        createdAt: m.createdAt,
+      }))
+    } catch {
+      contentSearchResults.value = []
+    }
+  }, 300)
 })
 
 const onPickSession = (s) => {
@@ -505,6 +574,8 @@ onUnmounted(() => {
 .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .refresh-btn.active { background: #2563eb; color: #fff; }
 .history-empty { font-size: 12px; color: #94a3b8; text-align: center; padding: 8px 0; }
+.match-reason { color: #64748b; }
+.match-reason :deep(mark) { background: #fef08a; color: #854d0e; border-radius: 2px; padding: 0 1px; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .spin { animation: spin 1s linear infinite; }
 
