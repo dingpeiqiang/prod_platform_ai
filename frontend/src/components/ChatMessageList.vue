@@ -216,6 +216,35 @@
               </div>
             </div>
 
+            <!-- S1 对话即编排：固定流程执行明细卡片（FLOW_EXEC 意图） -->
+            <div v-if="msg.flowMatched && msg.flowExecution && isReplySettled(msg)" class="flow-exec-card">
+              <div class="fe-header">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="7" height="7" rx="1"/>
+                  <rect x="14" y="14" width="7" height="7" rx="1"/>
+                  <path d="M10 6.5h6a1.5 1.5 0 0 1 1.5 1.5v6"/>
+                  <path d="M6.5 10v6a1.5 1.5 0 0 0 1.5 1.5h6"/>
+                </svg>
+                <span class="fe-name">固定流程：{{ msg.flowMatched.display_name || msg.flowMatched.workflow_code }}</span>
+                <span class="fe-status" :class="`fe-status--${msg.flowExecution.status || 'unknown'}`">
+                  {{ flowStatusLabel(msg.flowExecution.status) }}
+                </span>
+              </div>
+              <div class="fe-meta">
+                <span v-if="msg.flowExecution.execution_id" class="fe-meta-item">执行 ID：{{ msg.flowExecution.execution_id }}</span>
+                <span v-if="msg.flowExecution.workflow_version" class="fe-meta-item">v{{ msg.flowExecution.workflow_version }}</span>
+                <span v-if="flowDuration(msg.flowExecution)" class="fe-meta-item">耗时 {{ flowDuration(msg.flowExecution) }}</span>
+              </div>
+              <div v-if="flowNodeLogs(msg.flowExecution).length" class="fe-nodes">
+                <div v-for="n in flowNodeLogs(msg.flowExecution)" :key="n.id" class="fe-node">
+                  <span class="fe-node-dot" :class="`fe-node-dot--${n.status}`"></span>
+                  <span class="fe-node-id">{{ n.id }}</span>
+                  <span v-if="n.status" class="fe-node-status">{{ flowStatusLabel(n.status) }}</span>
+                </div>
+              </div>
+              <div v-if="msg.flowExecution.error_message" class="fe-error">{{ msg.flowExecution.error_message }}</div>
+            </div>
+
             <!-- 配置审计追溯锚（携带 traceId 的消息可一键拉起追溯） -->
             <div
               v-if="msg.done && msg.traceId && isReplySettled(msg)"
@@ -563,6 +592,40 @@ const isReplySettled = (msg) => {
   if (!g?.unlocked || g.typing) return false
   if (fullReply(msg) && !g.shown) return false
   return true
+}
+
+/** S1 流程执行卡片：状态中文标签 */
+const flowStatusLabel = (status) => ({
+  completed: '已完成',
+  failed: '失败',
+  cancelled: '已取消',
+  waiting_human: '待人工处理',
+  running: '执行中',
+  unknown: '未知',
+}[status] || status || '未知')
+
+/** S1 流程执行卡片：start/end 时间差 → 可读耗时 */
+const flowDuration = (exec) => {
+  if (!exec?.start_time || !exec?.end_time) return ''
+  const ms = new Date(exec.end_time).getTime() - new Date(exec.start_time).getTime()
+  if (Number.isNaN(ms) || ms < 0) return ''
+  return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`
+}
+
+/**
+ * S1 流程执行卡片：从 output_data/context_data 提取节点留痕
+ * （引擎 output_data 形如 { <nodeId>: { output: {...} } }，start/end 节点留空或透传）
+ */
+const flowNodeLogs = (exec) => {
+  const data = exec?.output_data || exec?.context_data
+  if (!data || typeof data !== 'object') return []
+  return Object.entries(data)
+    .filter(([id, v]) => id && v && typeof v === 'object' && 'output' in v)
+    .map(([id, v]) => ({
+      id,
+      status: v?.output && typeof v.output === 'object' && Object.keys(v.output).length
+        ? 'completed' : 'completed',
+    }))
 }
 
 const shouldShowReplyPlaceholder = (msg) => {
@@ -1506,6 +1569,119 @@ defineExpose({ scrollToBottom })
 .qr-copy-btn:hover {
   background: #3b82f6;
   color: white;
+}
+
+/* S1 对话即编排：固定流程执行明细卡片 */
+.flow-exec-card {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+}
+
+.fe-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+}
+
+.fe-name {
+  font-size: 14px;
+  font-weight: 600;
+  flex: 1;
+}
+
+.fe-status {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.fe-status--completed {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.fe-status--failed,
+.fe-status--cancelled {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.fe-status--waiting_human {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.fe-status--running,
+.fe-status--unknown {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.fe-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.fe-nodes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-default);
+}
+
+.fe-node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.fe-node-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #16a34a;
+  flex-shrink: 0;
+}
+
+.fe-node-dot--failed,
+.fe-node-dot--cancelled {
+  background: #dc2626;
+}
+
+.fe-node-dot--waiting_human {
+  background: #d97706;
+}
+
+.fe-node-id {
+  font-family: ui-monospace, monospace;
+  color: var(--text-primary);
+}
+
+.fe-node-status {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.fe-error {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #dc2626;
+  background: #fee2e2;
+  border-radius: 6px;
+  padding: 6px 10px;
 }
 
 .next-steps {

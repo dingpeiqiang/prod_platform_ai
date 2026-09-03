@@ -11,6 +11,15 @@
       <nav class="links">
         <RouterLink to="/rd" :class="{ active: mode === 'rd' }">研发助手</RouterLink>
         <RouterLink to="/ops" :class="{ active: mode === 'ops' }">运营助手</RouterLink>
+        <RouterLink to="/workflow-editor" class="workflow-link">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7" rx="1"/>
+            <rect x="14" y="14" width="7" height="7" rx="1"/>
+            <path d="M10 6.5h6a1.5 1.5 0 0 1 1.5 1.5v6"/>
+            <path d="M6.5 10v6a1.5 1.5 0 0 0 1.5 1.5h6"/>
+          </svg>
+          工作流管理
+        </RouterLink>
       </nav>
     </div>
   </header>
@@ -74,5 +83,18 @@ defineProps({
   background: #0f766e;
   color: #fff;
   border-color: #0f766e;
+}
+/* S1 工作流管理入口：次级强调（描边风格区别于助手页签） */
+.links a.workflow-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-color: #16a34a;
+  color: #15803d;
+  background: #f0fdf4;
+}
+.links a.workflow-link:hover {
+  background: #dcfce7;
+  border-color: #15803d;
 }
 </style>

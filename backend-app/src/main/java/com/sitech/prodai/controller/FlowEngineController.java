@@ -1,6 +1,8 @@
 package com.sitech.prodai.controller;
 
 import com.sitech.prodai.common.ApiResponse;
+import com.sitech.prodai.service.agent.flow.FlowIntentRouter;
+import com.sitech.prodai.service.agent.flow.FlowRouteRegistrar;
 import com.sitech.prodai.service.flow.FlowEngineService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,9 +24,28 @@ import java.util.Map;
 public class FlowEngineController {
 
     private final FlowEngineService flowEngineService;
+    private final FlowIntentRouter flowIntentRouter;
+    private final FlowRouteRegistrar flowRouteRegistrar;
 
-    public FlowEngineController(FlowEngineService flowEngineService) {
+    public FlowEngineController(FlowEngineService flowEngineService,
+                                FlowIntentRouter flowIntentRouter,
+                                FlowRouteRegistrar flowRouteRegistrar) {
         this.flowEngineService = flowEngineService;
+        this.flowIntentRouter = flowIntentRouter;
+        this.flowRouteRegistrar = flowRouteRegistrar;
+    }
+
+    /** S1 诊断：查看流程意图路由注册表（注册器是否生效、关键词归一化结果）。 */
+    @GetMapping("/router-routes")
+    public Map<String, Object> routerRoutes() {
+        return Map.of("routes", flowIntentRouter.listRoutes());
+    }
+
+    /** S1 诊断：手动触发一次注册器（区分"启动时未执行"与"执行了但配置空"）。 */
+    @PostMapping("/router-routes/reload")
+    public Map<String, Object> reloadRoutes() {
+        flowRouteRegistrar.registerFromConfig();
+        return Map.of("routes", flowIntentRouter.listRoutes());
     }
 
     /** 启动执行：{workflow_code, version?, input_data}；未显式给 version 时锁定已发布最新版。 */

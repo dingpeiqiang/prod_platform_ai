@@ -221,14 +221,27 @@
           </svg>
           <span v-if="executionLogs.length > 0" class="badge">{{ executionLogs.length }}</span>
         </button>
-        <button 
-          @click="showLibraryPanel = !showLibraryPanel" 
+        <button
+          @click="showLibraryPanel = !showLibraryPanel"
           :class="['panel-toggle-btn', { active: showLibraryPanel }]"
-          title="工作流库"
+          title="流程库"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
           </svg>
+        </button>
+        <div class="toolbar-divider"></div>
+        <button
+          @click="publishCurrentWorkflow"
+          :disabled="publishing"
+          class="btn-secondary publish-btn"
+          :title="currentWorkflowId ? '发布流程（发布即注册对话触发词）' : '新流程将自动保存后发布'"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 2L11 13"/>
+            <path d="M22 2l-7 20-4-9-9-4 20-7z"/>
+          </svg>
+          {{ publishing ? '发布中…' : '发布' }}
         </button>
       </div>
     </div>
@@ -783,7 +796,7 @@ import { Background } from '@vue-flow/background';
 import { Controls } from '@vue-flow/controls';
 import { MiniMap } from '@vue-flow/minimap';
 import { v4 as uuidv4 } from 'uuid';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { Undo2, Redo2, Save, Download, Upload, Code } from 'lucide-vue-next';
 import * as workflowApi from '@/services/workflowApi';
 import { useWorkflowDataStore } from '@/stores/workflowData.js';
@@ -918,6 +931,12 @@ const executionParameters = ref([]);
 // P3-1b：后端引擎执行状态（execution_id + resume_token 一次有效）
 const engineExecutionId = ref(null);
 const engineResumeToken = ref(null);
+
+// S1 对话即编排：发布状态
+const publishing = ref(false);
+const publishedVersion = ref(null);
+/** 对话触发词（发布对话框维护；保存时透传到 workflowData.trigger_keywords，发布后端自动注册路由） */
+const triggerKeywords = ref([]);
 
 const executionEngine = new ExecutionEngine();
 
@@ -2155,6 +2174,59 @@ const loadWorkflows = async () => {
   }
 };
 
+/**
+ * S1 对话即编排：发布当前流程（发布即绿灯——先保存，再走后端守门 + 触发词自动注册）。
+ * 触发词在发布对话框中以逗号分隔填写；留空 = 不接管对话（仍可被引擎 API 直调）。
+ */
+const publishCurrentWorkflow = async () => {
+  let input;
+  try {
+    input = await ElMessageBox.prompt(
+      '多个关键词用逗号分隔。用户对话命中任一关键词即执行该流程（未填写则不接管对话）。',
+      '配置对话触发词',
+      {
+        confirmButtonText: '发布',
+        cancelButtonText: '取消',
+        inputValue: (triggerKeywords.value || []).join(', '),
+        inputPlaceholder: '如：跑一下演示流程, 演示流程',
+      },
+    );
+  } catch {
+    return; // 用户取消
+  }
+  triggerKeywords.value = String(input.value || '')
+    .split(/[,，]/)
+    .map(s => s.trim())
+    .filter(Boolean);
+  publishing.value = true;
+  try {
+    // 触发词随本次保存写入定义（trigger_keywords 落到 workflowData 顶层）；新流程保存后才有 workflowCode
+    await saveWorkflow(false);
+    if (!currentWorkflowId.value) {
+      ElMessage.error('流程保存失败，无法发布');
+      return;
+    }
+    const result = await workflowApi.workflowApi.publish(currentWorkflowId.value, null);
+    if (result.success) {
+      publishedVersion.value = result.data?.version || null;
+      const kwHint = triggerKeywords.value.length
+        ? `，触发词已注册：${triggerKeywords.value.join('、')}`
+        : '（未配置触发词，对话不接管）';
+      ElMessage.success(`流程已发布${publishedVersion.value ? `（v${publishedVersion.value}）` : ''}${kwHint}`);
+    } else {
+      // 发布即绿灯：守门拒绝时展示问题明细
+      const problems = Array.isArray(result.errors) && result.errors.length
+        ? `\n${result.errors.join('\n')}`
+        : '';
+      ElMessage.error('发布被拒绝：' + (result.message || '未知错误') + problems);
+    }
+  } catch (e) {
+    ElMessage.error('发布失败：' + (e?.message || e));
+  } finally {
+    publishing.value = false;
+  }
+};
+
 const saveWorkflow = async (isAuto = false) => {
   const workflowData = {
     nodes: elements.value.filter(el => !el.source && !el.target),
@@ -2163,6 +2235,11 @@ const saveWorkflow = async (isAuto = false) => {
     savedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
+
+  // S1 对话即编排：透传触发词（发布对话框维护；空数组时不落字段，避免旧流程定义污染）
+  if (triggerKeywords.value && triggerKeywords.value.length) {
+    workflowData.trigger_keywords = triggerKeywords.value.slice();
+  }
 
   // 清理所有节点的旧 outputs/inputs 字段，统一使用 outputParams/inputParams
   workflowData.nodes.forEach(node => {
@@ -2284,6 +2361,9 @@ const openWorkflow = async (workflow) => {
       
       currentWorkflowId.value = result.data.workflowCode;
       workflowName.value = result.data.workflowName;
+      // S1：读入已配置的对话触发词（供发布对话框预填）
+      triggerKeywords.value = Array.isArray(workflowData.trigger_keywords)
+        ? workflowData.trigger_keywords.slice() : [];
       
       const nodes = (workflowData.nodes || []).map(node => ({
         id: node.id,
@@ -4026,6 +4106,22 @@ onUnmounted(() => {
 
 .btn-secondary:hover {
   background-color: #bdbdbd;
+}
+
+/* S1 对话即编排：发布按钮（醒目主行动色） */
+.publish-btn {
+  background-color: #16a34a;
+  color: white;
+  border: none;
+}
+
+.publish-btn:hover:not(:disabled) {
+  background-color: #15803d;
+}
+
+.publish-btn:disabled {
+  background-color: #a7d7b9;
+  cursor: not-allowed;
 }
 
 .btn-success {

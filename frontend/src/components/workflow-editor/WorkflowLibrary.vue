@@ -58,65 +58,63 @@
           :class="{ 'is-active': workflow.isActive }"
         >
           <div class="card-header">
-            <div class="workflow-icon">🔄</div>
             <div class="workflow-info">
               <div class="workflow-name" :title="workflow.workflowName">{{ workflow.workflowName }}</div>
               <div class="workflow-code" :title="workflow.workflowCode">{{ workflow.workflowCode }}</div>
-              <div class="workflow-meta">
-                <span class="category-tag">{{ getCategoryName(workflow.category) }}</span>
-                <span class="status-badge" :class="workflow.isActive ? 'active' : 'inactive'">
-                  {{ workflow.isActive ? '启用' : '禁用' }}
-                </span>
-              </div>
             </div>
+            <!-- S3-A：发布状态徽标 + 一键发布/下线（发布走守门 + 触发词自动注册，下线自动注销路由） -->
             <div class="workflow-actions">
-              <button 
-                @click="loadWorkflow(workflow)" 
-                class="action-btn load-btn"
-                title="加载到编辑器"
+              <span class="status-badge" :class="workflow.published ? 'published' : 'unpublished'">
+                {{ workflow.published ? '已发布' : '未发布' }}
+              </span>
+              <button
+                v-if="!workflow.published"
+                @click="publishWorkflow(workflow)"
+                :disabled="togglingCode === workflow.workflowCode"
+                class="action-btn publish-btn"
+                title="发布（校验定义并注册触发词）"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="17 8 12 3 7 8"/>
-                  <line x1="12" y1="3" x2="12" y2="15"/>
+                  <path d="M22 2 11 13"/>
+                  <path d="M22 2 15 22l-4-9-9-4z"/>
                 </svg>
               </button>
-              <button 
-                @click="showCopyModal(workflow)" 
-                class="action-btn copy-btn"
-                title="复制工作流"
+              <button
+                v-else
+                @click="unpublishWorkflow(workflow)"
+                :disabled="togglingCode === workflow.workflowCode"
+                class="action-btn unpublish-btn"
+                title="下线（注销触发词路由）"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
                 </svg>
               </button>
             </div>
           </div>
-          
+
           <div class="card-body">
             <p v-if="workflow.description" class="workflow-desc">{{ workflow.description }}</p>
-            <div class="workflow-stats">
-              <span class="stat-item">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
-                  <polyline points="14 2 14 8 20 8"/>
-                  <line x1="16" y1="13" x2="8" y2="13"/>
-                  <line x1="16" y1="17" x2="8" y2="17"/>
-                  <polyline points="10 9 9 9 8 9"/>
-                </svg>
-                v{{ workflow.version }}
-              </span>
-              <span class="stat-item">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M16 11V7a4 4 0 0 0-8 0v4M5 9h14l1 12H4L5 9"/>
-                </svg>
-                {{ workflow.executionCount }}次执行
-              </span>
+            <!-- S3-A 触发词：独占一行全量展示（对话路由入口），最多 8 个 +N -->
+            <div v-if="workflow.trigger_keywords && workflow.trigger_keywords.length" class="workflow-keywords">
+              <span class="kw-label">触发词</span>
+              <span v-for="kw in workflow.trigger_keywords.slice(0, 8)" :key="kw" class="kw-chip" :title="kw">{{ kw }}</span>
+              <span v-if="workflow.trigger_keywords.length > 8" class="kw-chip" :title="workflow.trigger_keywords.slice(8).join('、')">+{{ workflow.trigger_keywords.length - 8 }}</span>
             </div>
             <div v-if="workflow.tags && workflow.tags.length > 0" class="workflow-tags">
-              <span v-for="tag in workflow.tags.slice(0, 3)" :key="tag" class="tag">{{ tag }}</span>
-              <span v-if="workflow.tags.length > 3" class="tag">+{{ workflow.tags.length - 3 }}</span>
+              <span v-for="tag in workflow.tags.filter(t => !String(t).startsWith('kw:')).slice(0, 3)" :key="tag" class="tag">{{ tag }}</span>
+            </div>
+            <div class="workflow-foot">
+              <span class="stat-item">{{ getCategoryName(workflow.category) }}</span>
+              <span class="stat-dot">·</span>
+              <span class="stat-item">v{{ workflow.version }}</span>
+              <span class="stat-dot">·</span>
+              <span class="stat-item">{{ workflow.executionCount }}次执行</span>
+              <span class="foot-actions">
+                <button @click="loadWorkflow(workflow)" class="foot-btn" title="加载到编辑器">编辑</button>
+                <button @click="showCopyModal(workflow)" class="foot-btn" title="复制工作流">复制</button>
+              </span>
             </div>
           </div>
         </div>
@@ -190,13 +188,13 @@ const newWorkflowCode = ref('')
 const newWorkflowName = ref('')
 const copying = ref(false)
 
+// S3-A 一键发布/下线：进行中的 workflowCode（防重复点击）
+const togglingCode = ref('')
+
 const filteredWorkflows = computed(() => {
   return workflows.value.filter(wf => {
-    // 只显示纳入工作流库的工作流
-    if (!wf.isInLibrary) return false
-    
     // 搜索过滤
-    const matchSearch = !searchQuery.value || 
+    const matchSearch = !searchQuery.value ||
       wf.workflowName.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
       wf.workflowCode.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
       (wf.description && wf.description.toLowerCase().includes(searchQuery.value.toLowerCase()))
@@ -255,6 +253,44 @@ const loadWorkflow = async (workflow) => {
   }
 }
 
+// S3-A 一键发布：发布即绿灯（后端守门校验非法定义拒绝发布）+ 触发词自动注册
+const publishWorkflow = async (workflow) => {
+  togglingCode.value = workflow.workflowCode
+  try {
+    const result = await workflowApi.workflowApi.publish(workflow.workflowCode)
+    if (result.success) {
+      ElMessage.success(`已发布: ${workflow.workflowName}（触发词已注册到对话路由）`)
+      refreshWorkflows()
+    } else {
+      ElMessage.error(result.message || '发布失败：定义校验未通过')
+    }
+  } catch (error) {
+    console.error('发布失败:', error)
+    ElMessage.error('发布失败: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    togglingCode.value = ''
+  }
+}
+
+// S3-A 一键下线：注销触发词路由（对话不再命中该流程）
+const unpublishWorkflow = async (workflow) => {
+  togglingCode.value = workflow.workflowCode
+  try {
+    const result = await workflowApi.workflowApi.unpublish(workflow.workflowCode)
+    if (result.success) {
+      ElMessage.success(`已下线: ${workflow.workflowName}（触发词路由已注销）`)
+      refreshWorkflows()
+    } else {
+      ElMessage.error(result.message || '下线失败')
+    }
+  } catch (error) {
+    console.error('下线失败:', error)
+    ElMessage.error('下线失败: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    togglingCode.value = ''
+  }
+}
+
 const showCopyModal = (workflow) => {
   copyingWorkflow.value = workflow
   newWorkflowCode.value = `${workflow.workflowCode}_copy_${Date.now()}`
@@ -304,7 +340,7 @@ onMounted(() => {
 
 <style scoped>
 .workflow-library {
-  width: 280px;
+  width: 320px;
   background-color: #f8fafc;
   border-right: 1px solid #e2e8f0;
   display: flex;
@@ -467,26 +503,15 @@ onMounted(() => {
 .card-header {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 12px 10px;
+  gap: 8px;
+  padding: 10px 12px;
   border-bottom: 1px solid #f1f5f9;
   justify-content: space-between;
-}
-
-.card-header > * {
-  flex-shrink: 0;
-}
-
-.workflow-icon {
-  font-size: 20px;
-  line-height: 1;
-  margin-top: 2px;
 }
 
 .workflow-info {
   flex: 1;
   min-width: 0;
-  flex-shrink: 1;
 }
 
 .workflow-name {
@@ -540,9 +565,22 @@ onMounted(() => {
   color: #dc2626;
 }
 
+/* S3-A 发布状态徽标 */
+.status-badge.published {
+  background-color: #dcfce7;
+  color: #16a34a;
+}
+
+.status-badge.unpublished {
+  background-color: #f1f5f9;
+  color: #94a3b8;
+}
+
 .workflow-actions {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .action-btn {
@@ -561,8 +599,26 @@ onMounted(() => {
   color: #3b82f6;
 }
 
+/* S3-A 发布/下线按钮 */
+.action-btn.publish-btn:hover {
+  background-color: #dcfce7;
+  border-color: #16a34a;
+  color: #16a34a;
+}
+
+.action-btn.unpublish-btn:hover {
+  background-color: #fef2f2;
+  border-color: #dc2626;
+  color: #dc2626;
+}
+
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .card-body {
-  padding: 8px 10px;
+  padding: 10px 12px;
 }
 
 .workflow-desc {
@@ -576,32 +632,67 @@ onMounted(() => {
   overflow: hidden;
 }
 
-.workflow-stats {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 6px;
-}
-
-.stat-item {
+/* S3-A 触发词：独占一行，全量可换行展示，不被压缩隐藏 */
+.workflow-keywords {
   display: flex;
   align-items: center;
-  gap: 3px;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.kw-label {
+  font-size: 10px;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.kw-chip {
+  font-size: 10px;
+  padding: 2px 7px;
+  background-color: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+  border-radius: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.workflow-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 11px;
   color: #94a3b8;
 }
 
-.workflow-tags {
+.stat-dot {
+  color: #cbd5e1;
+}
+
+.foot-actions {
+  margin-left: auto;
   display: flex;
-  flex-wrap: wrap;
   gap: 4px;
 }
 
-.tag {
-  font-size: 10px;
-  padding: 1px 6px;
-  background-color: #f1f5f9;
-  color: #64748b;
+.foot-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  color: #3b82f6;
+  padding: 2px 4px;
   border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.foot-btn:hover {
+  background-color: #eff6ff;
+  color: #2563eb;
 }
 
 /* 复制弹窗 */

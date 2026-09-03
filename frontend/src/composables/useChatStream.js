@@ -505,6 +505,9 @@ export function useChatStream() {
                 confirm: Array.isArray(data.candidates) && data.candidates.length
                   ? { candidates: data.candidates }
                   : (current.confirm || null),
+                // S1 对话即编排：流程执行结果（FLOW_EXEC 意图时渲染执行明细卡片）
+                flowMatched: data.flow_matched || current.flowMatched || null,
+                flowExecution: data.flow_execution || current.flowExecution || null,
                 queryPlan: current.queryPlan || null,
                 toolResults: current.toolResults || [],
                 suggestedFollowUps: data.suggested_follow_ups || data.suggestedFollowUps || [],

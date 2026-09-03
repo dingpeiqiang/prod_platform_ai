@@ -19,6 +19,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * 旧工作流执行服务（模拟执行）——已被固定流程引擎取代。
+ *
+ * @deprecated 请改用 {@code FlowEngineService}（/api/v1/flow-engine/executions，全持久化状态机 +
+ *             真实节点执行 + 节点留痕）。本类仅保留双轨过渡期的旧端点兼容
+ *             （/api/execution/*，ExecutionController），将在后续迭代下线。
+ */
+@Deprecated
 @Service
 public class WorkflowExecutionService {
 

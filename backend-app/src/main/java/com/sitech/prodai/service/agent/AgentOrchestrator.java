@@ -2,6 +2,7 @@ package com.sitech.prodai.service.agent;
 
 import com.sitech.prodai.service.ChatPersistenceService;
 import com.sitech.prodai.service.LlmService;
+import com.sitech.prodai.service.agent.flow.FlowIntentRouter;
 import com.sitech.prodai.service.agent.model.ExecutionResult;
 import com.sitech.prodai.service.agent.model.QueryPlan;
 import com.sitech.prodai.service.agent.model.SessionContext;
@@ -41,6 +42,8 @@ public class AgentOrchestrator {
     private final SessionManager sessionManager;
     private final Optional<ChatPersistenceService> persistenceService;
     private final Optional<LlmService> llmService;
+    /** 流程意图路由器（S1 业务场景接入）：命中已注册流程 → 直接执行固定流程引擎，未命中走原 LLM 链路。 */
+    private final FlowIntentRouter flowIntentRouter;
 
     /** 已注册工具索引：工具名 → 工具（供工具自描述元数据查询） */
     private final Map<String, AgentTool> toolMap;
@@ -51,13 +54,15 @@ public class AgentOrchestrator {
                              SessionManager sessionManager,
                              Optional<ChatPersistenceService> persistenceService,
                              Optional<LlmService> llmService,
-                             List<AgentTool> tools) {
+                             List<AgentTool> tools,
+                             FlowIntentRouter flowIntentRouter) {
         this.understander = understander;
         this.executor = executor;
         this.presenter = presenter;
         this.sessionManager = sessionManager;
         this.persistenceService = persistenceService;
         this.llmService = llmService;
+        this.flowIntentRouter = flowIntentRouter;
         this.toolMap = new ConcurrentHashMap<>();
         if (tools != null) {
             for (AgentTool tool : tools) {
@@ -106,6 +111,20 @@ public class AgentOrchestrator {
         context.setScene(scene);
         applySuppliedParams(context, params);
         context.addHistoryEntry("user", question);
+
+        // S1 业务场景接入：流程意图路由先行——命中已注册固定流程 → 直接引擎执行，未命中走原 LLM 链路
+        java.util.Optional<Map<String, Object>> flowReply =
+                flowIntentRouter.tryRoute(question, params, null);
+        if (flowReply.isPresent()) {
+            Map<String, Object> reply = flowReply.get();
+            reply.putIfAbsent("session_id", context.getSessionId());
+            String report = String.valueOf(reply.getOrDefault("report", ""));
+            context.addHistoryEntry("assistant", report);
+            sessionManager.save(context);
+            persistTurn(context, question, reply, null);
+            reply.put("elapsed_ms", System.currentTimeMillis() - startTime);
+            return reply;
+        }
 
         // Step 2: 理解层 — 自然语言 → 查询计划
         log.info("[AgentOrchestrator] 理解层处理: question={}", question);
@@ -190,7 +209,7 @@ public class AgentOrchestrator {
         // 保存会话（持久化失败时记录 warnings，随响应透传给前端）
         sessionManager.save(context);
         List<String> warnings = new ArrayList<>();
-        persistTurn(context, question, report, plan, results, null, warnings);
+        persistTurn(context, question, report, plan, results, null, warnings, null, null);
 
         long elapsed = System.currentTimeMillis() - startTime;
         log.info("[AgentOrchestrator] 处理完成: sessionId={}, elapsed={}ms", context.getSessionId(), elapsed);
@@ -359,14 +378,27 @@ public class AgentOrchestrator {
     private void persistTurn(SessionContext context, String question,
                              String assistantReply, QueryPlan plan,
                              List<ExecutionResult> results) {
-        persistTurn(context, question, assistantReply, plan, results, null, null);
+        persistTurn(context, question, assistantReply, plan, results, null, null, null, null);
     }
 
     /** 流式便捷重载：持久化失败时通过 emitter 推送 warning 事件 */
     private void persistTurn(SessionContext context, String question,
                              String assistantReply, QueryPlan plan,
                              List<ExecutionResult> results, StreamEmitter emitter) {
-        persistTurn(context, question, assistantReply, plan, results, emitter, null);
+        persistTurn(context, question, assistantReply, plan, results, emitter, null, null, null);
+    }
+
+    /**
+     * FLOW_EXEC 专用重载（S3-E 历史回放）：固定流程回复无 QueryPlan，
+     * 但需将 flow_matched / flow_execution 随 metadata 落库，
+     * 否则刷新/切换会话后执行明细卡片丢失。
+     */
+    private void persistTurn(SessionContext context, String question,
+                             Map<String, Object> flowReply, StreamEmitter emitter) {
+        persistTurn(context, question,
+                String.valueOf(flowReply.getOrDefault("report", "")),
+                null, List.of(), emitter, null,
+                flowReply.get("flow_matched"), flowReply.get("flow_execution"));
     }
 
     private static final String PERSIST_WARNING_MESSAGE =
@@ -375,11 +407,14 @@ public class AgentOrchestrator {
     /**
      * @param emitter  流式入口传 emitter，持久化失败时同步推送 warning 事件（前端可见）
      * @param warnings 非流式入口传收集器，失败时追加（调用方随响应体透传）；可传 null
+     * @param flowMatched    FLOW_EXEC 专用：命中的流程摘要（其余链路传 null）
+     * @param flowExecution  FLOW_EXEC 专用：引擎执行明细快照（其余链路传 null）
      */
     private void persistTurn(SessionContext context, String question,
                              String assistantReply, QueryPlan plan,
                              List<ExecutionResult> results, StreamEmitter emitter,
-                             List<String> warnings) {
+                             List<String> warnings,
+                             Object flowMatched, Object flowExecution) {
         if (persistenceService.isEmpty()) {
             return;
         }
@@ -398,7 +433,8 @@ public class AgentOrchestrator {
             // 助手回复（携带三阶产物 metadata，供历史还原）
             if (assistantReply != null && !assistantReply.isBlank()) {
                 Map<String, Object> meta = new LinkedHashMap<>();
-                meta.put("intent_type", plan != null ? plan.getIntent() : "");
+                meta.put("intent_type", plan != null ? plan.getIntent()
+                        : (flowMatched != null ? "FLOW_EXEC" : ""));
                 meta.put("stream_text", assistantReply);
                 meta.put("content_type", "chat");
                 meta.put("done", true);
@@ -422,6 +458,14 @@ public class AgentOrchestrator {
                 // 工具执行卡片快照：name/status/summary/input/output，供历史还原 toolResults
                 if (results != null && !results.isEmpty()) {
                     meta.put("tool_results", toJson(results.stream().map(this::buildToolResultSnapshot).toList()));
+                }
+                // FLOW_EXEC 执行明细快照（S3-E）：与实时 done 事件的 flow_matched/flow_execution 同源，
+                // 前端 restoreMessageMetadata 据此在历史回放时还原执行明细卡片
+                if (flowMatched != null) {
+                    meta.put("flow_matched", toJson(flowMatched));
+                }
+                if (flowExecution != null) {
+                    meta.put("flow_execution", toJson(flowExecution));
                 }
                 svc.saveMessage(sessionId, "assistant", assistantReply, "text", meta);
             }
@@ -567,7 +611,9 @@ public class AgentOrchestrator {
     private String toJson(Object value) {
         try {
             com.fasterxml.jackson.databind.ObjectMapper mapper =
-                    new com.fasterxml.jackson.databind.ObjectMapper();
+                    new com.fasterxml.jackson.databind.ObjectMapper()
+                            .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule())
+                            .disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
             return mapper.writeValueAsString(value);
         } catch (Exception e) {
             return String.valueOf(value);
@@ -633,6 +679,38 @@ public class AgentOrchestrator {
         context.setScene(scene);
         applySuppliedParams(context, params);
         context.addHistoryEntry("user", question);
+
+        // S1 业务场景接入：流程意图路由先行——命中已注册固定流程 → 直接引擎执行，未命中走原 LLM 链路
+        // 事件契约与常规链路一致：thinking → text* → text_done → done（跳过 understander）
+        java.util.Optional<Map<String, Object>> flowReply =
+                flowIntentRouter.tryRoute(question, params, null);
+        if (flowReply.isPresent()) {
+            Map<String, Object> reply = flowReply.get();
+            reply.putIfAbsent("session_id", context.getSessionId());
+            String report = String.valueOf(reply.getOrDefault("report", ""));
+            emitter.emit("thinking", Map.of(
+                    "steps", List.of(thinkingStep("intent", "识别到固定流程",
+                            "命中已注册流程，直接进入流程引擎执行",
+                            Map.of("goal", "对话即编排：固定流程零 LLM 直达引擎",
+                                    "input", Map.of("question", question),
+                                    "output", Map.of("summary", report))))
+            ));
+            context.addHistoryEntry("assistant", report);
+            sessionManager.save(context);
+            persistTurn(context, question, reply, emitter);
+            emitTextEvents(emitter, report);
+            Map<String, Object> donePayload = new LinkedHashMap<>();
+            donePayload.put("session_id", context.getSessionId());
+            donePayload.put("intent", reply.getOrDefault("intent", "FLOW_EXEC"));
+            donePayload.put("flow_matched", reply.get("flow_matched"));
+            donePayload.put("flow_execution", reply.get("flow_execution"));
+            donePayload.put("conclusion", reply.getOrDefault("conclusion", ""));
+            donePayload.put("suggested_follow_ups",
+                    reply.getOrDefault("suggested_follow_ups", List.of()));
+            donePayload.put("elapsed_ms", System.currentTimeMillis() - startTime);
+            emitter.emit("done", donePayload);
+            return;
+        }
 
         // 阶段事件①：理解中 —— 先于 LLM 理解调用推送，思考时间线即刻起表并读秒
         emitter.emit("thinking", Map.of(

@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Component
 @ConfigurationProperties(prefix = "prodai")
@@ -14,6 +15,7 @@ public class ProdAiProperties {
     private final Llm llm = new Llm();
     private final Kb kb = new Kb();
     private final Mcp mcp = new Mcp();
+    private final FlowRouter flowRouter = new FlowRouter();
 
     public Ontology getOntology() {
         return ontology;
@@ -29,6 +31,34 @@ public class ProdAiProperties {
 
     public Mcp getMcp() {
         return mcp;
+    }
+
+    public FlowRouter getFlowRouter() {
+        return flowRouter;
+    }
+
+    /** 流程意图路由注册表（S1 对话即编排）：启动时把配置的关键词规则注册进 FlowIntentRouter。 */
+    public static class FlowRouter {
+        /** 是否启用流程意图路由（灰度开关，默认关闭零风险）。 */
+        private boolean enabled = false;
+        /** 路由规则：workflowCode → 显示名 + 触发关键词（任一命中即路由）。 */
+        private List<Map<String, Object>> routes = new ArrayList<>();
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public List<Map<String, Object>> getRoutes() {
+            return routes;
+        }
+
+        public void setRoutes(List<Map<String, Object>> routes) {
+            this.routes = routes;
+        }
     }
 
     public static class Ontology {

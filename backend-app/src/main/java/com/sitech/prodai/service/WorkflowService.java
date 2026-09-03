@@ -9,6 +9,7 @@ import com.sitech.prodai.mapper.WorkflowHistoryMapper;
 import com.sitech.prodai.mapper.WorkflowMapper;
 import com.sitech.prodai.service.flow.EditorDefinitionNormalizer;
 import com.sitech.prodai.service.flow.FlowDefinitionValidator;
+import com.sitech.prodai.service.agent.flow.FlowIntentRouter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -16,25 +17,37 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 public class WorkflowService {
 
     private static final Logger logger = LoggerFactory.getLogger(WorkflowService.class);
 
+    /** 触发词标签前缀（tags 中以该前缀的项视为对话触发词，如 "kw:演示流程"）。 */
+    private static final String KEYWORD_TAG_PREFIX = "kw:";
+    /** 定义级触发词键（workflowData 顶层 trigger_keywords，List 或逗号分隔字符串）。 */
+    private static final String TRIGGER_KEYWORDS_KEY = "trigger_keywords";
+
     private final WorkflowMapper workflowMapper;
     private final WorkflowHistoryMapper workflowHistoryMapper;
     private final FlowDefinitionValidator flowDefinitionValidator;
+    /** 流程意图路由器（S1）：发布成功自动注册触发词、下线自动注销；未命中关键词时不注册。 */
+    private final FlowIntentRouter flowIntentRouter;
 
     public WorkflowService(WorkflowMapper workflowMapper,
                            WorkflowHistoryMapper workflowHistoryMapper,
-                           FlowDefinitionValidator flowDefinitionValidator) {
+                           FlowDefinitionValidator flowDefinitionValidator,
+                           FlowIntentRouter flowIntentRouter) {
         this.workflowMapper = workflowMapper;
         this.workflowHistoryMapper = workflowHistoryMapper;
         this.flowDefinitionValidator = flowDefinitionValidator;
+        this.flowIntentRouter = flowIntentRouter;
     }
 
     @Transactional
@@ -290,6 +303,9 @@ public class WorkflowService {
 
             workflowMapper.updateById(workflow);
 
+            // S1 对话即编排：发布成功后自动把触发词注册进流程意图路由器（未配置触发词则不注册）
+            registerTriggerKeywords(workflow);
+
             logger.info("Published workflow: {} (version {})", workflowCode, workflow.getVersion());
             return ApiResponse.ok(toMap(workflow), "工作流 " + workflowCode + " 已成功发布");
         } catch (Exception e) {
@@ -328,6 +344,9 @@ public class WorkflowService {
             workflow.setUpdatedBy(user);
 
             workflowMapper.updateById(workflow);
+
+            // S1：下线即注销路由，避免对话仍触发已下线流程
+            flowIntentRouter.unregister(workflowCode);
 
             logger.info("Unpublished workflow: {}", workflowCode);
             return ApiResponse.ok(toMap(workflow), "工作流 " + workflowCode + " 已成功下线");
@@ -608,6 +627,57 @@ public class WorkflowService {
                 new LambdaQueryWrapper<Workflow>().eq(Workflow::getWorkflowCode, workflowCode)) > 0;
     }
 
+    /**
+     * S1 对话即编排：发布成功后把触发词注册进 FlowIntentRouter。
+     * 触发词来源（合并去重）：① tags 中 {@code kw:} 前缀项；② 定义顶层 {@code trigger_keywords}
+     * （List&lt;String&gt; 或逗号分隔字符串）。两者均无时不注册（灰度接管：不配不接管）。
+     */
+    private void registerTriggerKeywords(Workflow workflow) {
+        Set<String> keywords = extractTriggerKeywords(workflow);
+        if (keywords.isEmpty()) {
+            logger.info("Workflow {} published without trigger keywords, router not registered", workflow.getWorkflowCode());
+            return;
+        }
+        flowIntentRouter.register(workflow.getWorkflowCode(), workflow.getWorkflowName(), new ArrayList<>(keywords));
+        logger.info("Workflow {} registered to flow router, keywords={}", workflow.getWorkflowCode(), keywords);
+    }
+
+    /**
+     * 提取触发词（与注册同源）：tags {@code kw:} 前缀项 + 定义顶层 {@code trigger_keywords}，
+     * 供列表接口透出（S3-A 工作流库展示）。
+     */
+    private Set<String> extractTriggerKeywords(Workflow workflow) {
+        Set<String> keywords = new LinkedHashSet<>();
+        if (workflow.getTags() != null) {
+            for (Object tag : workflow.getTags()) {
+                String s = String.valueOf(tag);
+                if (s.startsWith(KEYWORD_TAG_PREFIX) && s.length() > KEYWORD_TAG_PREFIX.length()) {
+                    keywords.add(s.substring(KEYWORD_TAG_PREFIX.length()));
+                }
+            }
+        }
+        Object defKeywords = workflow.getWorkflowData() != null
+                ? workflow.getWorkflowData().get(TRIGGER_KEYWORDS_KEY) : null;
+        if (defKeywords instanceof List<?> list) {
+            list.forEach(k -> addKeyword(keywords, k));
+        } else if (defKeywords instanceof String s && !s.isBlank()) {
+            for (String k : s.split("[,，]")) {
+                addKeyword(keywords, k);
+            }
+        }
+        return keywords;
+    }
+
+    private static void addKeyword(Set<String> keywords, Object raw) {
+        if (raw == null) {
+            return;
+        }
+        String k = String.valueOf(raw).trim();
+        if (!k.isEmpty()) {
+            keywords.add(k);
+        }
+    }
+
     private Map<String, Object> toMap(Workflow workflow) {
         Map<String, Object> map = new HashMap<>();
         map.put("id", workflow.getId());
@@ -620,6 +690,9 @@ public class WorkflowService {
         map.put("isActive", workflow.getIsActive());
         map.put("isInLibrary", workflow.getIsInLibrary());
         map.put("workflowData", workflow.getWorkflowData());
+        // S3-A 工作流库：发布状态语义字段 + 触发词透出（与注册路由同源提取）
+        map.put("published", Boolean.TRUE.equals(workflow.getIsActive()));
+        map.put("trigger_keywords", new ArrayList<>(extractTriggerKeywords(workflow)));
         map.put("version", workflow.getVersion());
         map.put("executionCount", workflow.getExecutionCount());
         map.put("lastExecutionAt", workflow.getLastExecutionAt());

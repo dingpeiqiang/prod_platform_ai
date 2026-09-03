@@ -69,6 +69,13 @@ prodai:
     seed-path: ${KB_SEED_PATH:}
   mcp:
     seed-path: ${MCP_SEED_PATH:}
+  # 流程意图路由（S1 对话即编排）：命中关键词 → 固定流程引擎直达；未命中走原 LLM 链路
+  flow-router:
+    enabled: true
+    routes:
+      - workflow-code: demo_linear_flow
+        display-name: 演示线性流程
+        keywords: [跑一下演示流程, 演示流程, demo流程]
   llm:
     enabled: ${LLM_ENABLED:true}
     function-calling-enabled: ${LLM_FC_ENABLED:true}

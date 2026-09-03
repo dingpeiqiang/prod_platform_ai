@@ -197,6 +197,17 @@ function restoreMessageMetadata(meta = {}) {
     } catch { attachments = [] }
   }
 
+  // S3-E 固定流程执行明细快照（后端 persistTurn 落库的 flow_matched/flow_execution）：
+  // 历史回放还原为 msg.flowMatched / msg.flowExecution，与实时 done 事件字段同构
+  const parseFlowField = (raw) => {
+    if (raw == null) return null
+    try {
+      return typeof raw === 'string' ? JSON.parse(raw) : raw
+    } catch { return null }
+  }
+  const flowMatched = parseFlowField(meta.flow_matched)
+  const flowExecution = parseFlowField(meta.flow_execution)
+
   // 智读文档记忆锚：还原为 msg.fileRef（历史回放显示「已引用文档」锚，支持跨轮引用）
   let fileRef = null
   if (meta.file_ref != null) {
@@ -228,6 +239,8 @@ function restoreMessageMetadata(meta = {}) {
     clarify: clarify || [],
     confirm,
     toolResults,
+    flowMatched,
+    flowExecution,
     attachments: attachments.length ? attachments : undefined,
     fileRef,
   }
