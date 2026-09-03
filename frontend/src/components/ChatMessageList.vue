@@ -835,7 +835,6 @@ const localizeStepText = (text) => {
     .replace(/BizScenario/g, '业务场景')
     .replace(/MAIN_PKG/g, '主套餐互斥组')
     .replace(/compliancePass/g, '合规通过')
-    .replace(/OF-HF-128/g, '家庭融合畅享128')
 }
 
 const copyText = async (text) => {

@@ -4,6 +4,7 @@ import com.sitech.prodai.service.LlmService;
 import com.sitech.prodai.service.agent.impl.DefaultPresenter;
 import com.sitech.prodai.service.agent.model.ExecutionResult;
 import com.sitech.prodai.service.agent.model.SessionContext;
+import com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry;
 import com.sitech.prodai.service.agent.tool.AgentTool;
 import com.sitech.prodai.service.agent.tool.SparqlQueryTool;
 import com.sitech.prodai.service.agent.tool.SwrlRootCauseTool;
@@ -44,7 +45,11 @@ class FollowUpGateTest {
                 new SparqlQueryTool(null),
                 new SwrlRootCauseTool(null),
                 new SwrlRiskAuditTool(null)
-        ));
+        ), new AgentCapabilityRegistry(List.of(
+                new SparqlQueryTool(null),
+                new SwrlRootCauseTool(null),
+                new SwrlRiskAuditTool(null)
+        )));
     }
 
     private DefaultPresenter rdPresenter() {
@@ -54,7 +59,13 @@ class FollowUpGateTest {
                 new RdComplianceTool(null, null),
                 new RdDiscoverTool(null),
                 new RdSchemeCompareTool(null)
-        ));
+        ), new AgentCapabilityRegistry(List.of(
+                new RdConfigChatTool(null, null),
+                new RdFileParseTool(null, null),
+                new RdComplianceTool(null, null),
+                new RdDiscoverTool(null),
+                new RdSchemeCompareTool(null)
+        )));
     }
 
     private List<ExecutionResult> rootCauseResults() {

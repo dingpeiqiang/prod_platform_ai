@@ -75,7 +75,7 @@ const confirmable = computed(() =>
 )
 
 const isPass = (it) => !!(it.compliancePass || it.status === '通过' || it.status === 'pass')
-const isSubmitted = (it) => !!(it.status === '已备案' || it.status === 'submitted')
+const isSubmitted = (it) => !!(it.status === '已入库' || it.status === 'submitted')
 const itemName = (it) => it.draft?.offeringName || it.name || it.offeringName || '未命名'
 const feeOf = (it) => {
   const d = it.draft || it
@@ -90,7 +90,7 @@ const confOf = (it) => {
 }
 const confTone = (c) => (c >= 0.85 ? 'high' : c >= 0.75 ? 'mid' : 'low')
 const itemStatus = (it) => {
-  if (isSubmitted(it)) return '已备案'
+  if (isSubmitted(it)) return '已入库'
   return isPass(it) ? '通过' : '待修正'
 }
 const statusTone = (it) => {

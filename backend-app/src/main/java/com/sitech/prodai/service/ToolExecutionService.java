@@ -50,6 +50,16 @@ public class ToolExecutionService {
         return ApiResponse.ok(items);
     }
 
+    /** 工具是否已注册（定义期守门：发布流程前校验 tool 节点引用的工具存在）。 */
+    public boolean containsTool(String toolName) {
+        return toolName != null && toolMap.containsKey(toolName);
+    }
+
+    /** 按名取工具（定义期守门：读取工具参数/输出契约做静态校验）；未注册返回 null。 */
+    public AgentTool getTool(String toolName) {
+        return toolName == null ? null : toolMap.get(toolName);
+    }
+
     /** 执行工具；工具不存在返回 null（由控制器转为显式失败）。 */
     public ExecutionResult execute(String toolName, Map<String, Object> params) {
         AgentTool tool = toolMap.get(toolName);

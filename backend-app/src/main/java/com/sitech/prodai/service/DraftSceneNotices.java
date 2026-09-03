@@ -37,7 +37,7 @@ public final class DraftSceneNotices {
         putNoticeIfBlank(draft, fillSources, "successSmsReserved",
                 "您的" + name + "已预约生效，月费" + feeText + "，生效后可享受约定权益。");
         putNoticeIfBlank(draft, fillSources, "cancelSms",
-                "您好，您的" + name + "已退订，如有疑问请致电10086。");
+                "您好，您的" + name + "已退订，如有疑问请咨询客服热线。");
         putNoticeIfBlank(draft, fillSources, "confirmSms",
                 "尊敬的客户，您正在办理" + name + "，月费" + feeText + "，是否确认办理？");
 

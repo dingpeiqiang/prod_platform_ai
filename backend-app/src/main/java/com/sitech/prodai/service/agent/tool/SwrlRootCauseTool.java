@@ -39,6 +39,11 @@ public class SwrlRootCauseTool implements AgentTool {
     }
 
     @Override
+    public java.util.Set<String> getScenes() {
+        return java.util.Set.of("ops");
+    }
+
+    @Override
     public List<ToolOutputField> getOutputFields() {
         return List.of(
                 ToolOutputField.builder("offeringId", ToolOutputField.Role.BUSINESS_ENTITY_ID)

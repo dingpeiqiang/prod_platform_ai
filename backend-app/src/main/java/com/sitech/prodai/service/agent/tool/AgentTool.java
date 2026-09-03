@@ -52,6 +52,22 @@ public interface AgentTool {
     }
 
     /**
+     * 场景可见性自声明（能力注册表单源）：本工具在哪些对话场景（scene）下对 LLM 可见。
+     * <p>
+     * 取值与 {@code SessionContext#getScene()} 对齐：{@code "rd"}（产商品研发）、
+     * {@code "ops"}（运营分析）等；跨场景工具返回多个场景。
+     * <p>
+     * 白名单守门语义（防 LLM 编造能力）不变，仅从四处硬编码 Set 收敛为
+     * 「工具自声明 + {@link AgentCapabilityRegistry} 统一读取」：
+     * 新增工具只需实现本方法，无需再同步修改理解层/表达层白名单。
+     * <p>
+     * 默认空集（选择性可见）：未声明场景的工具不出现在任何场景能力清单中。
+     */
+    default java.util.Set<String> getScenes() {
+        return Collections.emptySet();
+    }
+
+    /**
      * 执行工具。
      *
      * @param params 工具参数

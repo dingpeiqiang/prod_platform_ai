@@ -598,7 +598,6 @@ public class ProductOntologyService {
             fail.put("query", q);
             fail.put("hintExamples", List.of(
                     "校验校园体验流量包0元是否符合在架规则",
-                    "校验家庭融合畅享128是否符合在架规则",
                     "校验当前配置是否符合在架规则"
             ));
             return fail;
@@ -1652,7 +1651,6 @@ public class ProductOntologyService {
 
     /**
      * 智检通过后闭环：合规 → 沉淀本体。
-     * （备案登记环节已移除：提交仅完成合规校验与本体沉淀，草稿不再流转 filing）
      */
     @Transactional
     public Map<String, Object> submitConfigDraft(Map<String, Object> request) {
@@ -2447,7 +2445,7 @@ public class ProductOntologyService {
         if (!draftIdLink.isBlank() && !"null".equals(draftIdLink)) {
             payload.put("draftId", draftIdLink);
         }
-        // 备案单关联触发提交的配置工单（前端合并展示/高亮来源）
+        // 工单关联触发提交的配置工单（前端合并展示/高亮来源）
         String relatedWo = str(firstNonEmpty(req.get("relatedWorkOrderId"), req.get("related_work_order_id")));
         if (!relatedWo.isBlank() && !"null".equals(relatedWo)) {
             payload.put("relatedWorkOrderId", relatedWo);
@@ -3950,7 +3948,7 @@ public class ProductOntologyService {
         putNoticeIfBlank(draft, fillSources, "successSmsReserved",
                 "您的" + name + "已预约生效，月费" + feeText + "，生效后可享受约定权益。");
         putNoticeIfBlank(draft, fillSources, "cancelSms",
-                "您好，您的" + name + "已退订，如有疑问请致电10086。");
+                "您好，您的" + name + "已退订，如有疑问请咨询客服热线。");
         putNoticeIfBlank(draft, fillSources, "confirmSms",
                 "尊敬的客户，您正在办理" + name + "，月费" + feeText + "，是否确认办理？");
 

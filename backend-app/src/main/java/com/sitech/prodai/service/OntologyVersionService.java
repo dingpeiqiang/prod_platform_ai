@@ -31,7 +31,7 @@ public class OntologyVersionService {
     public static final String TYPE_TTL = "ttl";
     public static final String TYPE_MESSAGE_PROJECTION = "message_projection";
     public static final String TYPE_ABOX_SNAPSHOT = "abox_snapshot";
-    /** P3-4 双世界收敛：AdminController 本体管理资产（offering_config / tariff_filing_publicity 等）。 */
+    /** P3-4 双世界收敛：AdminController 本体管理资产（offering_config 等）。 */
     public static final String TYPE_ONTOLOGY = "ontology";
 
     public static final String STATUS_DRAFT = "draft";

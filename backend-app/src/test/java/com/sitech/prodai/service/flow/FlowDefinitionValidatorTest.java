@@ -152,4 +152,45 @@ class FlowDefinitionValidatorTest {
         emptyNodes.put("connections", new ArrayList<>());
         assertFalse(validator.validate(emptyNodes).valid());
     }
+
+    // ── G1：workflow 子流程节点 ──
+
+    @Test
+    void workflowNodeWithoutRefRejected() {
+        Map<String, Object> sub = node("w", "flow.workflow");
+        FlowDefinitionValidator.ValidationResult result = validator.validate(definition(
+                List.of(node("s", "flow.start"), sub, node("e", "flow.end")),
+                List.of(conn("s", "w"), conn("w", "e"))));
+        assertFalse(result.valid());
+        assertTrue(result.problems().stream().anyMatch(p -> p.contains("workflow_ref")),
+                "缺 workflow_ref 应被拒: " + result.problems());
+    }
+
+    @Test
+    void workflowNodeSelfReferenceRejected() {
+        Map<String, Object> sub = node("w", "flow.workflow");
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("workflow_ref", "w");
+        sub.put("action_params", params);
+
+        FlowDefinitionValidator.ValidationResult result = validator.validate(definition(
+                List.of(node("s", "flow.start"), sub, node("e", "flow.end")),
+                List.of(conn("s", "w"), conn("w", "e"))));
+        assertFalse(result.valid());
+        assertTrue(result.problems().stream().anyMatch(p -> p.contains("自引用")),
+                "自引用应被拒: " + result.problems());
+    }
+
+    @Test
+    void workflowNodeWithRefPasses() {
+        Map<String, Object> sub = node("w", "flow.workflow");
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("workflow_ref", "other_flow");
+        sub.put("action_params", params);
+
+        FlowDefinitionValidator.ValidationResult result = validator.validate(definition(
+                List.of(node("s", "flow.start"), sub, node("e", "flow.end")),
+                List.of(conn("s", "w"), conn("w", "e"))));
+        assertTrue(result.valid(), () -> "合法 workflow 节点应通过: " + result.problems());
+    }
 }

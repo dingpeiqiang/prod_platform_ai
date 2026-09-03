@@ -14,7 +14,7 @@ public class ComplianceRequest {
 
     /** 未入库配置草稿字段 */
     private Map<String, Object> draft;
-    /** 已入库套餐编码，如 OF-HF-128 */
+    /** 已入库套餐编码 */
     private String offeringId;
     /** 自然语言，可含套餐名称/编码，或「校验当前配置」 */
     private String text;

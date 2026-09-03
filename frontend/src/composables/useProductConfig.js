@@ -238,7 +238,7 @@ export function useProductConfig() {
           id: item.clientId || `P${item.draftId}`,
           name: item.offeringName || draft.offeringName || '配置草稿',
           desc: `月费${item.monthlyFee || draft.monthlyFee || '-'} | ${item.status || 'draft'}`,
-          status: item.status === 'filing' || item.status === 'submitted' ? 'submitted' : 'draft',
+          status: item.status === 'submitted' ? 'submitted' : 'draft',
           auditStatus: item.compliancePass ? 'pass' : 'pending',
           compliancePass: !!item.compliancePass,
           issues: [],
@@ -287,7 +287,7 @@ export function useProductConfig() {
     product.offeringId = resp.offeringId
     product.workOrderId = resp.workOrder?.workOrderId || resp.workOrder?.work_order_id
     lastConfigTraceId.value = resp.trace_id || lastConfigTraceId.value
-    // 可逆操作：登记「入库/备案」动作，撤销时回退为草稿（仅供对话内本地回退，不破坏在架数据）
+    // 可逆操作：登记「入库」动作，撤销时回退为草稿（仅供对话内本地回退，不破坏在架数据）
     const snapshotId = product.id
     const actionId = trackUndoable({
       kind: 'submit',
@@ -385,7 +385,7 @@ export function useProductConfig() {
         '产商品运营助手已就绪。\n\n' +
         '金句：**本体负责推理，大模型负责表达**。\n\n' +
         '可试：\n' +
-        '- 「分析家庭融合畅享128本月收入下滑原因」\n' +
+        '- 「分析在售主力套餐本月收入下滑原因」\n' +
         '- 「筛查所有在架的0元资费风险商品」\n' +
         '- 或点首页「一键体验」自动演示完整闭环'
       )
@@ -435,7 +435,7 @@ export function useProductConfig() {
     ) {
       return 'compliance'
     }
-    if (/确认.*入库|入库通过|确认通过项|提交备案|发起备案/.test(text)) return 'confirm-batch'
+    if (/确认.*入库|入库通过|确认通过项|提交入库|发起入库/.test(text)) return 'confirm-batch'
     if (/审计追溯|查看审计|查看校验依据|配置追溯|get_trace/.test(text)) return 'config-trace'
     // 「查一下」是首页/智查示例常用说法，需在 chat-generate 之前命中
     if (
@@ -830,7 +830,7 @@ export function useProductConfig() {
           batchItems.value[bi] = {
             ...batchItems.value[bi],
             offeringId,
-            status: '已备案',
+            status: '已入库',
           }
         }
         lines.push(`- ${p.name} → 商品 \`${offeringId}\` · 工单 \`${woId}\``)
@@ -865,12 +865,12 @@ export function useProductConfig() {
     return {
       thinkingSteps: [
         '筛选 compliancePass=true 且未入库草稿',
-        `提交 ${passed.length} 条：合规 → 沉淀本体 → 资费备案工单`,
+        `提交 ${passed.length} 条：合规 → 沉淀本体 → 生成工单`,
         filed.length ? `成功闭环 ${filed.length} 条` : '本批无成功提交',
       ],
       content:
-        `已处理 **${passed.length}** 条通过项（提交/备案闭环）：\n${lines.join('\n')}\n\n` +
-        '待修正项**不会入库**。成功项可被智查复用，并已生成备案工单。' +
+        `已处理 **${passed.length}** 条通过项（提交/入库闭环）：\n${lines.join('\n')}\n\n` +
+        '待修正项**不会入库**。成功项可被智查复用，并已生成工单。' +
         (lastConfigTraceId.value ? `\n\n审计 trace：\`${lastConfigTraceId.value}\`` : ''),
       formCard: null,
       nextSteps: lastConfigTraceId.value ? ['查看审计追溯'] : undefined,
@@ -893,7 +893,7 @@ export function useProductConfig() {
       return {
         thinkingSteps: ['未找到当前会话的配置审计 trace'],
         content:
-          '当前会话还没有可追溯的审计记录。请先完成一次**智查复制**、**智读批量入库**或**提交备案**操作，' +
+          '当前会话还没有可追溯的审计记录。请先完成一次**智查复制**、**智读批量入库**或**提交入库**操作，' +
           '系统会为每次配置动作生成审计 trace，届时可回溯完整链路。',
         formCard: null,
       }

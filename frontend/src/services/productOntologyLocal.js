@@ -47,8 +47,6 @@ const VALUE_CN = {
   scenario_default: '场景缺省',
   template: '模板推荐',
   user_said: '用户表述',
-  OF_HF_128: '家庭融合畅享128',
-  'OF-HF-128': '家庭融合畅享128',
 }
 
 function cnField(code) {

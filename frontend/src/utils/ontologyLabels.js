@@ -109,9 +109,8 @@ const RULE_CN = {
   'R-C09': '固费上下限',
 }
 
-/** 演示样例实体 ID → 中文名 */
+/** 演示样例实体 ID → 中文名（样例数据源 ops_graph_export/mock_graph 中通用样例） */
 const ENTITY_CN = {
-  'OF-HF-128': '家庭融合畅享128',
   'CH-HALL': '营业厅',
   'PR-HF-GIFT': '家庭融合加装礼',
   'CP-F120': '友商融合120',
@@ -218,7 +217,7 @@ export function formatTriple(t) {
 }
 
 /**
- * 解析路径步骤：`OF-HF-128-soldOn->CH-HALL` 或已是人话
+ * 解析路径步骤：`OF-XXX-soldOn->CH-HALL` 或已是人话
  */
 export function formatPathStep(step) {
   if (!step) return ''

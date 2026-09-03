@@ -11,35 +11,56 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 流程定义期守门校验器 —— 固定流程引擎（P2-1）。
+ * 流程定义期守门校验器 —— 固定流程引擎（P2-1，G2/G3 发布期工具守门）。
  * <p>
  * 设计依据：《固定流程引擎设计文档》§3/§8-P2-1、《业务驱动改造方案》§12.3 铁律三
- * （定义期守门前置：发布即绿灯，运行期不再出现"图本身非法"的失败类别）。
+ * （定义期守门前置：发布即绿灯，运行期不再出现"图本身非法"的失败类别）、
+ * 《产商品研发助手改造方案》§3.1（G2 toolName 无守门 / G3 输出契约未校验）。
  * <p>
  * 校验项：
  * <ul>
  *   <li>结构：必填字段、节点 action 已注册、唯一 id</li>
  *   <li>拓扑：存在 start/end、无环（DAG 校验）、不可达节点告警</li>
  *   <li>引用：变量引用的节点存在且在当前路径上游；tool 节点工具名非空</li>
+ *   <li>工具（G2）：tool 节点 toolName 必须已注册（ToolExecutionService 注册表）</li>
+ *   <li>工具（G3）：tool 节点 outputParams.source 首段必须在工具输出契约
+ *       （{@code AgentTool.getOutputFields()}）声明的字段内</li>
  *   <li>条件：condition 节点必须有 default 兜底分支、表达式非空且长度受限</li>
  *   <li>语义：执行语义字段取值合法（timeoutMs/retry/onFailure）</li>
  * </ul>
  * <p>
- * 本类为纯函数式校验（无状态、无外部依赖），供保存/发布时调用；
- * 与 Agent 体系的 DAG 校验同源（拓扑排序实现）。
+ * 结构/拓扑/条件/语义校验为纯函数（无状态）；工具类校验（G2/G3）依赖
+ * {@link com.sitech.prodai.service.ToolExecutionService} 注册表——缺省构造时为 null
+ * 即跳过该类校验，保证既有无参调用方零改动；Spring 装配时注入真实注册表自动生效。
  */
 @Component
 public class FlowDefinitionValidator {
 
-    /** 引擎支持的节点类型（P2 首发集，收敛自编辑器 14 种，见设计文档 §3.1） */
+    /** 引擎支持的节点类型（P2 首发集 + G1 workflow 子流程节点，见设计文档 §3.1） */
     public static final Set<String> SUPPORTED_TYPES = Set.of(
             "flow.start", "flow.end", "flow.tool", "flow.llm",
-            "flow.condition", "flow.human", "flow.http");
+            "flow.condition", "flow.human", "flow.http", "flow.workflow");
+
+    /** workflow 节点嵌套深度上限（G1 防环兜底：DAG 校验只查单图，跨流程环靠深度上限拒绝）。 */
+    public static final int MAX_WORKFLOW_NESTING_DEPTH = 5;
 
     public static final int MAX_EXPRESSION_LENGTH = 500;
     public static final long MAX_TIMEOUT_MS = 300_000L;
     public static final int MAX_RETRY_ATTEMPTS = 5;
     private static final Set<String> FAILURE_MODES = Set.of("fail", "continue");
+
+    /** 工具注册表引用：null 时工具类校验（G2/G3）关闭（兼容既有无参单测）。 */
+    private final com.sitech.prodai.service.ToolExecutionService toolExecutionService;
+
+    /** Spring 装配构造：接入真实工具注册表，G2/G3 校验生效。 */
+    public FlowDefinitionValidator(com.sitech.prodai.service.ToolExecutionService toolExecutionService) {
+        this.toolExecutionService = toolExecutionService;
+    }
+
+    /** 缺省构造：工具类校验关闭（纯结构/拓扑/条件/语义校验），兼容既有无参调用方与单测。 */
+    public FlowDefinitionValidator() {
+        this(null);
+    }
 
     /** 校验结果：valid=false 时 problems 含全部可读问题（发布被拒的依据）。 */
     public record ValidationResult(boolean valid, List<String> problems) {
@@ -147,9 +168,104 @@ public class FlowDefinitionValidator {
         for (Map.Entry<String, Map<String, Object>> entry : nodeById.entrySet()) {
             validateConditionNode(entry.getKey(), entry.getValue(), problems);
             validateVariableReferences(entry.getKey(), entry.getValue(), nodeById.keySet(), problems);
+            validateToolNodeBinding(entry.getKey(), entry.getValue(), problems);
+            validateWorkflowNode(entry.getKey(), entry.getValue(), problems);
+            validateHumanNodeForm(entry.getKey(), entry.getValue(), problems);
         }
 
         return new ValidationResult(problems.isEmpty(), problems);
+    }
+
+    /**
+     * G4 human 节点校验：声明了 form_code 时必须非空字符串（表单存在性由引擎运行期容错——
+     * 未知表单退化为通用人工确认，不在定义期强绑本体库，避免守门依赖本体服务）。
+     */
+    private void validateHumanNodeForm(String nodeId, Map<String, Object> node, List<String> problems) {
+        if (!"flow.human".equals(str(node.get("action")))) {
+            return;
+        }
+        Map<String, Object> params = node.get("action_params") instanceof Map<?, ?> p
+                ? (Map<String, Object>) p : Map.of();
+        Object formCode = params.get("form_code");
+        if (formCode != null && String.valueOf(formCode).isBlank()) {
+            problems.add("human 节点 " + nodeId + " 的 form_code 不能为空字符串");
+        }
+    }
+
+    /**
+     * G1 workflow 节点校验：workflow_ref 必填（子流程编码）、不可自引用（单图级防环；
+     * 跨流程环由引擎运行期嵌套深度上限兜底）。
+     */
+    private void validateWorkflowNode(String nodeId, Map<String, Object> node, List<String> problems) {
+        if (!"flow.workflow".equals(str(node.get("action")))) {
+            return;
+        }
+        Map<String, Object> params = node.get("action_params") instanceof Map<?, ?> p
+                ? (Map<String, Object>) p : Map.of();
+        String ref = str(params.get("workflow_ref"));
+        if (ref == null || ref.isBlank()) {
+            problems.add("workflow 节点 " + nodeId + " 缺少 workflow_ref（子流程编码）");
+            return;
+        }
+        if (ref.equals(nodeId)) {
+            problems.add("workflow 节点 " + nodeId + " 的 workflow_ref 不可自引用");
+        }
+    }
+
+    /**
+     * G2/G3 工具节点绑定校验（注册表未注入时跳过）：
+     * <ul>
+     *   <li>G2：toolName 必须已注册——防配置错误到运行期才暴露（"工具不存在"）</li>
+     *   <li>G3：outputParams[].source 首段必须在工具输出契约内——防节点间
+     *       dataPath 引用错误静默产出 null（对齐 Agent 侧 inputFrom 校验语义）</li>
+     * </ul>
+     */
+    private void validateToolNodeBinding(String nodeId, Map<String, Object> node, List<String> problems) {
+        if (!"flow.tool".equals(str(node.get("action"))) || toolExecutionService == null) {
+            return;
+        }
+        Map<String, Object> params = node.get("action_params") instanceof Map<?, ?> p
+                ? (Map<String, Object>) p : Map.of();
+        String toolName = str(params.get("toolName"));
+        if (toolName == null || toolName.isBlank()) {
+            return; // toolName 缺失由既有结构校验语义覆盖（引擎运行期显式报错），此处不重复报
+        }
+        if (!toolExecutionService.containsTool(toolName)) {
+            problems.add("节点 " + nodeId + " 引用的工具未注册: " + toolName);
+            return;
+        }
+        // G3：输出契约校验（工具未声明输出契约时跳过，兼容旧工具）
+        Set<String> contract = toolOutputFieldNames(toolName);
+        if (contract.isEmpty()) {
+            return;
+        }
+        if (params.get("outputParams") instanceof List<?> outputParams) {
+            for (int i = 0; i < outputParams.size(); i++) {
+                if (!(outputParams.get(i) instanceof Map<?, ?> item)) {
+                    continue;
+                }
+                String source = str(item.get("source"));
+                if (source == null || source.isBlank() || "response".equals(source)) {
+                    continue;
+                }
+                String head = source.contains(".") ? source.substring(0, source.indexOf('.')) : source;
+                if (!contract.contains(head)) {
+                    problems.add("节点 " + nodeId + " 的 outputParams[" + i + "] 引用了工具 "
+                            + toolName + " 输出契约外的字段: " + source);
+                }
+            }
+        }
+    }
+
+    /** 工具输出契约字段名集合（G3）；工具不存在/未声明契约返回空集。 */
+    private Set<String> toolOutputFieldNames(String toolName) {
+        com.sitech.prodai.service.agent.tool.AgentTool tool = toolExecutionService.getTool(toolName);
+        if (tool == null || tool.getOutputFields() == null) {
+            return Set.of();
+        }
+        Set<String> names = new HashSet<>();
+        tool.getOutputFields().forEach(f -> names.add(f.getName()));
+        return names;
     }
 
     /** 执行语义字段取值合法（timeoutMs/retry/onFailure，设计文档 §3.2）。 */

@@ -414,7 +414,7 @@ public class ProductOntologyController {
         return ok(productOntologyService.deleteConfigDraft(draftId));
     }
 
-    /** 智检通过后提交：沉淀本体 + 资费备案工单 */
+    /** 智检通过后提交：沉淀本体 + 生成工单 */
     @PostMapping("/config/submit")
     public Map<String, Object> submitDraft(@RequestBody(required = false) Map<String, Object> request) {
         return ok(productOntologyService.submitConfigDraft(request));

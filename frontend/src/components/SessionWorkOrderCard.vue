@@ -203,7 +203,7 @@ const auditInfo = (wo) => {
 /** 消息关联了本地草稿（formCard/productId）时才提供操作 */
 const hasActions = (wo) => !!(wo.productId || props.formCard)
 
-/** 终态工单（已完成/已取消）：草稿已备案或已删除，不可再提交/删除 */
+/** 终态工单（已完成/已取消）：草稿已入库或已删除，不可再提交/删除 */
 const isClosed = (wo) => ['done', 'cancelled'].includes(String(wo?.status || ''))
 
 const formatTime = (t) => {

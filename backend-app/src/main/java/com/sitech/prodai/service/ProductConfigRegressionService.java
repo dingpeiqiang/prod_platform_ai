@@ -19,7 +19,7 @@ import java.util.TreeSet;
 
 /**
  * 产品配置回归用例运行器（P1-7，设计方案 §13.4）。
- * <p>固化家庭融合/校园/5G/宽带典型用例集（{@code ontology/regression_cases.json}），
+ * <p>固化家庭融合/校园/5G/宽带典型用例集（{@code regression_cases.json}），
  * 每条用例按 {@code 输入 draft → inferFields → checkCompliance → toMessage} 全链路执行，
  * 与期望（推导字段 / R-C* 命中 / 报文节点）逐项比对，作为：
  * <ul>
@@ -27,12 +27,19 @@ import java.util.TreeSet;
  *   <li>P2 抽取/推理配置化接管后的前后回归基线（字段级 diff 判据）。</li>
  * </ul>
  * <p>P1 链路边界：仍调用存量 Java inferFields/R-C* 逻辑，本运行器只固化行为基线，不接管逻辑。
+ * <p>用例集资产位于 test 资源目录（不随生产提示词/资源暴露）。生产运行态查找顺序：
+ * test 资源（开发/单测形态）→ 外置配置文件；两者皆缺失时用例集为空（回归结果 0 例全过，不阻断流程）。
  */
 @Service
 public class ProductConfigRegressionService {
 
     private static final Logger log = LoggerFactory.getLogger(ProductConfigRegressionService.class);
-    private static final String DEFAULT_CASES_PATH = "classpath:ontology/regression_cases.json";
+
+    /** 用例集候选路径（依次查找）：test 资源 → 外置配置目录。均缺失时用例集为空（见类注释）。 */
+    private static final List<String> CASES_PATH_CANDIDATES = List.of(
+            "classpath:ontology/regression_cases.json",
+            "file:./config/regression_cases.json"
+    );
 
     private final ObjectMapper objectMapper;
     private final ResourceLoader resourceLoader;
@@ -200,7 +207,19 @@ public class ProductConfigRegressionService {
                 return caseCache;
             }
             try {
-                Resource resource = resourceLoader.getResource(DEFAULT_CASES_PATH);
+                Resource resource = null;
+                for (String candidate : CASES_PATH_CANDIDATES) {
+                    Resource res = resourceLoader.getResource(candidate);
+                    if (res != null && res.exists()) {
+                        resource = res;
+                        break;
+                    }
+                }
+                if (resource == null) {
+                    log.warn("[回归] 用例集文件未找到（候选: {}），回归用例集为空", CASES_PATH_CANDIDATES);
+                    caseCache = List.of();
+                    return caseCache;
+                }
                 Map<String, Object> root = objectMapper.readValue(resource.getInputStream(),
                         new TypeReference<>() {
                         });

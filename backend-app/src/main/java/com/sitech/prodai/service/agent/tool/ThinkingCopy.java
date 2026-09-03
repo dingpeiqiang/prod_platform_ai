@@ -109,6 +109,12 @@ public final class ThinkingCopy {
                 "按您的指令修改/删除/复制/提交配置草稿，工单状态同步流转",
                 "在配置管理后台找到对应工单的草稿，人工执行修改/删除/复制/提交操作",
                 Category.GENERATE));
+        // ── 流程工具 ──
+        m.put("flow_execute", new ToolCopy(
+                "执行固定流程",
+                "按已发布的标准业务流程（如审批、稽核、流转）一次性跑完全部环节",
+                "在工作流管理界面手动启动该流程，逐节点执行并查看执行明细",
+                Category.GENERATE));
         return m;
     }
 
@@ -134,6 +140,7 @@ public final class ThinkingCopy {
             Map.entry("RD_CONFIG_DISCOVER", "配置查询"),
             Map.entry("RD_SCHEME_COMPARE", "方案对比"),
             Map.entry("RD_DRAFT_MANAGE", "草稿管理"),
+            Map.entry("FLOW_EXEC", "流程执行"),
             Map.entry("CHAT", "通用对话"),
             Map.entry("CLARIFY", "待补充信息"),
             Map.entry("REUSE_EVIDENCE", "证据复用")

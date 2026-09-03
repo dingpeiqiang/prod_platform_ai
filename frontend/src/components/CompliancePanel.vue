@@ -152,7 +152,7 @@ function labelRel(p) {
 function labelVal(v) {
   if (v == null) return '—'
   const map = {
-    MAIN_PKG: '主套餐互斥组', 'OF-HF-128': '家庭融合畅享128', draft: '当前草稿', empty: '空',
+    MAIN_PKG: '主套餐互斥组', draft: '当前草稿', empty: '空',
   }
   return map[String(v)] || String(v)
 }

@@ -20,7 +20,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -56,12 +55,20 @@ public class DefaultUnderstander implements Understander {
     private final LlmService llmService;
     private final Map<String, AgentTool> toolMap;
     private final com.sitech.prodai.mapper.OpsWorkOrderMapper workOrderMapper;
+    /** 流程路由注册表：理解层注入已发布流程清单供 LLM 选择 flow_execute。 */
+    private final com.sitech.prodai.service.agent.flow.FlowIntentRouter flowIntentRouter;
+    /** 能力注册表（单源）：场景 → 可见工具白名单，工具自声明场景后统一读取。 */
+    private final com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry capabilityRegistry;
 
     public DefaultUnderstander(LlmService llmService, List<AgentTool> tools,
-                               com.sitech.prodai.mapper.OpsWorkOrderMapper workOrderMapper) {
+                               com.sitech.prodai.mapper.OpsWorkOrderMapper workOrderMapper,
+                               com.sitech.prodai.service.agent.flow.FlowIntentRouter flowIntentRouter,
+                               com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry capabilityRegistry) {
         this.llmService = llmService;
         this.toolMap = new LinkedHashMap<>();
         this.workOrderMapper = workOrderMapper;
+        this.flowIntentRouter = flowIntentRouter;
+        this.capabilityRegistry = capabilityRegistry;
         if (tools != null) {
             for (AgentTool tool : tools) {
                 this.toolMap.put(tool.getName(), tool);
@@ -329,24 +336,7 @@ public class DefaultUnderstander implements Understander {
         return !s.isBlank() && !"null".equals(s);
     }
 
-    /** 翻译层可调用的真实工具白名单（防 LLM 编造工具名） */
-    private static final Set<String> KNOWN_TOOLS = Set.of(
-            "sparql_query",
-            "swrl_root_cause",
-            "swrl_risk_audit",
-            "rule_explain",
-            "ontology_explain"
-    );
-
-    /** 产商品研发场景工具白名单（scene=rd 时使用；不影响运营白名单） */
-    private static final Set<String> RD_KNOWN_TOOLS = Set.of(
-            "rd_config_chat",
-            "rd_file_parse",
-            "rd_compliance",
-            "rd_config_discover",
-            "rd_scheme_compare",
-            "rd_draft_manage"
-    );
+    /** 翻译层可调用的真实工具白名单（防 LLM 编造工具名）已收敛至 AgentCapabilityRegistry（工具 getScenes() 自声明）。 */
 
     /**
      * 解析 LLM 的意图理解结果：意图归一化 → 查询计划（支持混合意图）。
@@ -436,6 +426,21 @@ public class DefaultUnderstander implements Understander {
             sanitized = List.of("rd_config_discover");
         }
 
+        // flow_execute 守门：LLM 只能从已发布流程注册表（FlowIntentRouter）中选定 workflow_code，
+        // 防幻觉流程编码穿透到执行层（确定性锚点 = workflow_code，方案 §12.2/12.3）。
+        // 注册表中无该流程 → 剔除 flow_execute；剔除后无任何可用工具 → 返回 null 走 chatPlan 统一回复话术。
+        if (sanitized.contains("flow_execute") && !hasRegisteredFlow(params)) {
+            log.warn("[DefaultUnderstander] flow_execute 守门: workflow_code 未在已发布流程注册表中, params={}",
+                    params.get("workflow_code"));
+            pendingTrace.add(Map.of("stage", "llm",
+                    "message", "选定的流程编码不在已发布流程清单中，已拦截（该需求将以统一话术说明无法办理）"));
+            sanitized = sanitized.stream().filter(t -> !"flow_execute".equals(t)).toList();
+            if (sanitized.isEmpty()) {
+                diagnose(intent, action, tools, llmResult);
+                return null;
+            }
+        }
+
         // 意图弱化为展示标签：保留 intent_type/action 供编排层还原 intentData 与文案生成
         String normalized = IntentRecognitionSupport.normalizeIntentType(intent);
         // rd 场景：LLM 输出的 intent 为自由文本（configure/configuration/product_config…），
@@ -468,7 +473,7 @@ public class DefaultUnderstander implements Understander {
             }
         }
         // rd 场景透传会话 ID：AgentTool 接口无 context 参数，经 plan.params → executor direct 兜底
-        // 透传给工具（如 rd_config_chat 草稿生成即开备案工单需绑定会话）。
+        // 透传给工具（如 rd_config_chat 草稿生成即开工单需绑定会话）。
         // session_id 是系统参数，必须以服务端 SessionContext 为准：LLM 可能幻觉输出同名键
         // （putIfAbsent 不覆盖会导致工具拿到空/错 sessionId 而跳过开单），故此处强制覆盖。
         if (rdScene && context != null && context.getSessionId() != null && !context.getSessionId().isBlank()) {
@@ -729,11 +734,11 @@ public class DefaultUnderstander implements Understander {
         return sanitizeTools(tools, recommended, false);
     }
 
-    /** 过滤未知工具（可按场景选用不同白名单：rdScene=true 用研发白名单），缺省时用推荐工具列表。 */
+    /** 过滤未知工具（按场景从能力注册表取白名单），缺省时用推荐工具列表。 */
     private List<String> sanitizeTools(List<String> tools, List<String> recommended, boolean rdScene) {
-        Set<String> whitelist = rdScene ? RD_KNOWN_TOOLS : KNOWN_TOOLS;
+        String scene = rdScene ? "rd" : com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry.DEFAULT_SCENE;
         List<String> filtered = tools.stream()
-                .filter(whitelist::contains)
+                .filter(t -> capabilityRegistry.isVisible(t, scene))
                 .distinct()
                 .toList();
         return filtered.isEmpty() ? recommended : filtered;
@@ -742,7 +747,7 @@ public class DefaultUnderstander implements Understander {
     /** 研发工具名 → 大写意图码（rd_config_chat → RD_CONFIG_CHAT），与前端词典/后端文案码对齐。 */
     private String rdIntentFromTools(List<String> sanitizedTools) {
         for (String tool : sanitizedTools) {
-            if (tool != null && RD_KNOWN_TOOLS.contains(tool)) {
+            if (tool != null && capabilityRegistry.belongsToScene(tool, "rd")) {
                 return tool.toUpperCase(Locale.ROOT);
             }
         }
@@ -857,7 +862,7 @@ public class DefaultUnderstander implements Understander {
                 .append("请从用户问题中抽取参数所需的实体填入 params。\n\n")
                 .append("【何时需要用户确认（CONFIRM）——由你结合上下文自行判断，宁可多问不可错执行：\n")
                 .append("1) 需求存在多种合理解读且无法从上下文唯一确定；\n")
-                .append("2) 用户指令会修改/删除数据（如删除草稿、提交备案），且目标对象不明确（未指明名称/编号，或上下文中可能命中多个对象）；\n")
+                .append("2) 用户指令会修改/删除数据（如删除草稿、提交工单），且目标对象不明确（未指明名称/编号，或上下文中可能命中多个对象）；\n")
                 .append("3) 用户指令中的实体名称模糊或与多个已知对象部分匹配。\n")
                 .append("确认时输出 {\"intent\": \"CONFIRM\", \"candidates\": [\"解读1\", \"解读2\"]}，")
                 .append("每条候选为一句可直接执行的完整表述（包含明确的对象名称/编码），不要猜测。\n")
@@ -905,16 +910,59 @@ public class DefaultUnderstander implements Understander {
             }
             sb.append('\n');
         }
+        String flowList = buildFlowCapabilitySection();
+        if (!flowList.isEmpty()) {
+            sb.append('\n').append(flowList);
+        }
         return sb.toString();
+    }
+
+    /**
+     * 已发布固定流程能力清单（供 LLM 选择 flow_execute 的 workflow_code）。
+     * <p>
+     * 数据源为流程路由注册表（发布工作流时自动注册触发词），只注入名称/编码/触发词，
+     * 参数契约不入 prompt（防膨胀）：LLM 缺参时由 validateParams 的 CLARIFY 机制补齐。
+     * 注册表为空时不注入（用户不可执行任何流程，也不给 LLM 编造空间）。
+     */
+    private String buildFlowCapabilitySection() {
+        Map<String, com.sitech.prodai.service.agent.flow.FlowIntentRouter.FlowRoute> routes =
+                flowIntentRouter == null ? Map.of() : flowIntentRouter.listRoutes();
+        if (routes.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder("【可用固定流程（经 flow_execute 执行，workflow_code 必须取自本清单）】\n");
+        for (com.sitech.prodai.service.agent.flow.FlowIntentRouter.FlowRoute route : routes.values()) {
+            sb.append("- ").append(route.workflowCode())
+                    .append("（").append(route.displayName() == null || route.displayName().isBlank()
+                            ? route.workflowCode() : route.displayName()).append("）")
+                    .append("：适用话术如「").append(String.join("、", route.keywords())).append("」\n");
+        }
+        sb.append("若用户需求命中上述某个流程，调用 flow_execute 并把 workflow_code 设为该流程编码；")
+          .append("需求与所有流程均不匹配时，不要调用 flow_execute，改用其他能力或直接说明无法办理。\n");
+        return sb.toString();
+    }
+
+    /**
+     * flow_execute 守门校验：LLM 选定的 workflow_code 必须命中已发布流程注册表。
+     * workflow_code 缺失（LLM 幻觉/漏填）同样视为不合法，由调用方剔除该工具。
+     */
+    private boolean hasRegisteredFlow(Map<String, Object> params) {
+        Object code = params == null ? null : params.get("workflow_code");
+        if (code == null || String.valueOf(code).isBlank()
+                || "null".equalsIgnoreCase(String.valueOf(code))) {
+            return false;
+        }
+        Map<String, com.sitech.prodai.service.agent.flow.FlowIntentRouter.FlowRoute> routes =
+                flowIntentRouter == null ? Map.of() : flowIntentRouter.listRoutes();
+        return routes.containsKey(String.valueOf(code).trim());
     }
 
     /** 场景白名单过滤后的可见工具列表（能力市场：LLM 只能看到本场景声明的工具）。 */
     private List<AgentTool> toolsOf(boolean rdScene) {
-        Set<String> whitelist = rdScene ? RD_KNOWN_TOOLS : KNOWN_TOOLS;
+        String scene = rdScene ? "rd" : com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry.DEFAULT_SCENE;
         List<AgentTool> out = new ArrayList<>();
-        for (String name : whitelist) {
-            AgentTool tool = toolMap.get(name);
-            if (tool != null) {
+        for (AgentTool tool : capabilityRegistry.toolsOf(scene)) {
+            if (toolMap.containsKey(tool.getName())) {
                 out.add(tool);
             }
         }

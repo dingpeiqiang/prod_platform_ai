@@ -187,7 +187,7 @@ export async function saveConfigDraft({
   })
 }
 
-/** 合规通过后提交：沉淀 + 备案工单 */
+/** 合规通过后提交：沉淀 + 生成工单 */
 export async function submitConfigDraft({
   draft,
   draftId = null,
@@ -202,7 +202,7 @@ export async function submitConfigDraft({
   if (userId) body.userId = userId
   return post(`${BASE}/config/submit`, body, {
     showLoading: false,
-    loadingText: '提交备案中...',
+    loadingText: '提交中...',
   })
 }
 

@@ -79,7 +79,7 @@ export const assistantModes = {
           '**怎么说更准**',
           '1. 尽量带上：面向谁、月费多少、含什么资源、走哪些渠道',
           '2. 可以说「在刚才那份草稿上改成 128，再加 1000 分钟」做增量调整',
-          '3. 草稿满意后，可点推荐话术继续「智检」或提交备案',
+          '3. 草稿满意后，可点推荐话术继续「智检」或提交入库',
           '',
           '**你将得到**',
           '- 内联可编辑的配置表单（含推理补全字段说明）',
@@ -204,7 +204,7 @@ export const assistantModes = {
 
   ops: {
     navTitle: '产商品运营 · 洞察与决策',
-    inputPlaceholder: '描述运营分析需求，例如：分析家庭融合畅享128本月收入下滑原因',
+    inputPlaceholder: '描述运营分析需求，例如：分析在售主力套餐本月收入下滑原因',
     defaultScene: 'ops',
     sceneShortcuts: [
       withWelcome({
@@ -309,8 +309,8 @@ export const assistantModes = {
         label: '异动归因',
         scene: 'root_cause',
         desc: '收入留存根因追溯',
-        text: '分析家庭融合畅享128本月收入下滑原因',
-        placeholder: '例如：分析家庭融合畅享128本月收入下滑原因',
+        text: '分析在售主力套餐本月收入下滑原因',
+        placeholder: '例如：分析在售主力套餐本月收入下滑原因',
         welcome: [
           '### 异动归因',
           '',
@@ -334,8 +334,8 @@ export const assistantModes = {
           '**试试这些话术**',
         ].join('\n'),
         nextSteps: [
-          '分析家庭融合畅享128本月收入下滑原因',
-          '家庭融合畅享128近7天离网升高，帮我归因',
+          '分析在售主力套餐本月收入下滑原因',
+          '某套餐近7天离网升高，帮我归因',
         ],
       }),
       withWelcome({

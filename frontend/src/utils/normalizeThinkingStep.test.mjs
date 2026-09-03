@@ -16,13 +16,13 @@ const rich = normalizeThinkingStep({
   id: 'locate',
   title: '锁定分析对象',
   content: '定位分析对象与指标快照',
-  result: '家庭融合畅享128（OF-HF-128）',
+  result: '样例套餐A（OF-DEMO-001）',
   stepType: 'llm',
   metadata: { step: 2, scheduleId: 'locate', phase: 'done' },
 })
 assert(rich.title === '锁定分析对象', 'backend title must be preserved')
 assert(rich.content === '定位分析对象与指标快照', 'backend content must be preserved')
-assert(rich.result === '家庭融合畅享128（OF-HF-128）', 'backend result must be preserved')
+assert(rich.result === '样例套餐A（OF-DEMO-001）', 'backend result must be preserved')
 assert(rich.id === 'locate', 'id preserved')
 
 const reason = normalizeThinkingStep({

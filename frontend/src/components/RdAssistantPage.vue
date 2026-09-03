@@ -263,13 +263,13 @@ function onWorkOrderEdit(wo) {
   showWorkOrderDrawer.value = true
 }
 
-/** 工单卡操作：提交备案（发会话消息 → 翻译层 rd_draft_manage submit，合规 → 沉淀 → 备案工单闭环） */
+/** 工单卡操作：提交入库（发会话消息 → 翻译层 rd_draft_manage submit，合规 → 沉淀 → 生成工单闭环） */
 function onWorkOrderSubmit(wo) {
   if (!wo || streaming.value) return
   const woId = wo.workOrderId || wo.id || ''
   const name = wo.offeringName || wo.title || '该配置草稿'
   sendAgentMessage({
-    text: `提交工单「${name}」（${woId}）关联的配置草稿，走合规备案闭环`,
+    text: `提交工单「${name}」（${woId}）关联的配置草稿，走合规入库闭环`,
     scene: 'rd',
     params: { action: 'submit', work_order_id: woId },
   })
@@ -335,7 +335,7 @@ async function onSessionWorkOrderSelect(wo) {
   inputText.value = ''
   activeScene.value = 'rd.query'
   await sendAgentMessage({
-    text: `查一下商品 ${wo.offeringId} 的配置与备案状态`,
+    text: `查一下商品 ${wo.offeringId} 的配置与工单状态`,
     scene: 'rd',
     params: { offering: wo.offeringId },
   })
@@ -462,7 +462,7 @@ async function handleConfirmSubmit(payload) {
   const resp = await productConfig.submitCurrentDraft(sessionId.value)
   if (resp?.success === false) {
     await playProductReply({
-      thinkingSteps: ['提交备案被拒'],
+      thinkingSteps: ['提交被拒'],
       content: `提交失败：${resp.message || '合规未通过或服务异常'}`,
       formCard: activeFormCard.value,
     })
@@ -484,13 +484,13 @@ async function handleConfirmSubmit(payload) {
     thinkingSteps: [
       '核对 compliancePass=true（R-C08）',
       '沉淀 ConfigScheme 至事实图/本体',
-      `生成资费备案工单 ${woId}`,
+      `生成配置工单 ${woId}`,
     ],
     content:
       `已完成提交闭环：\n\n` +
       `- 商品编码：\`${offeringId}\`\n` +
-      `- 备案工单：\`${woId}\`\n\n` +
-      '可在上方「商品配置工单」卡查看与编辑；运营侧工单列表可跟进备案进度。\n\n' +
+      `- 配置工单：\`${woId}\`\n\n` +
+      '可在上方「商品配置工单」卡查看与编辑；运营侧工单列表可跟进进度。\n\n' +
       '```json\n' +
       JSON.stringify(
         {
@@ -498,7 +498,7 @@ async function handleConfirmSubmit(payload) {
           workOrderId: woId,
           offeringName: draft.offeringName,
           monthlyFee: draft.monthlyFee ?? draft.fixedFeeAmount,
-          status: 'filing',
+          status: 'submitted',
         },
         null,
         2,
@@ -1441,7 +1441,7 @@ async function handleBatchFix(msg) {
       content:
         `已完成批量修正：\n${fixedLines.join('\n') || '- 无待修正项'}\n\n` +
         `当前**可入库 ${confirmable}** 条，仍**待修正 ${pendingLeft}** 条。` +
-        (confirmable ? '\n\n可点击「确认通过项入库」完成备案闭环。' : ''),
+        (confirmable ? '\n\n可点击「确认通过项入库」完成入库闭环。' : ''),
       formCard: null,
     })
   } finally {
@@ -1453,11 +1453,11 @@ async function handleBatchFix(msg) {
 async function handleBatchDelete({ msg, item }) {
   if (!msg?.batch || !item?.productId || streaming.value) return
   const target = productConfig.products.value.find((p) => p.id === item.productId)
-  const isFiled = item.status === '已备案' || target?.status === 'submitted'
+  const isFiled = item.status === '已入库' || target?.status === 'submitted'
   const name = item.draft?.offeringName || item.name || item.offeringName || '该条草稿'
   const confirmed = await ElMessageBox.confirm(
     isFiled
-      ? `「${name}」已生成备案草稿，删除仅移除本地草稿；如需撤销上架请走「下线/停售」流程。确认删除？`
+      ? `「${name}」已提交入库，删除仅移除本地草稿；如需撤销上架请走「下线/停售」流程。确认删除？`
       : `确认删除草稿「${name}」？该操作不可恢复。`,
     '删除草稿',
     { type: isFiled ? 'warning' : 'info', confirmButtonText: '删除', cancelButtonText: '取消' },
@@ -1470,7 +1470,7 @@ async function handleBatchDelete({ msg, item }) {
     refreshBatchSnapshot(msg)
     await playProductReply({
       thinkingSteps: ['删除草稿并同步批次清单'],
-      content: `已删除草稿「${name}」` + (isFiled ? '（遗留的备案工单不受影响，可在运营侧跟进）' : '') + '。\n\n当前批次清单已同步更新。',
+      content: `已删除草稿「${name}」` + (isFiled ? '（遗留的工单不受影响，可在运营侧跟进）' : '') + '。\n\n当前批次清单已同步更新。',
       formCard: null,
     })
   } finally {

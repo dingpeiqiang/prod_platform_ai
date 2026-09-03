@@ -54,6 +54,7 @@ public class FlowEngineService {
     private final ConditionEvaluator conditionEvaluator;
     private final LlmGateway llmService;
     private final HttpGateway restClient;
+    private final FormSchemaPort formSchemaPort;
 
     public FlowEngineService(WorkflowMapper workflowMapper,
                              WorkflowExecutionMapper executionMapper,
@@ -62,7 +63,8 @@ public class FlowEngineService {
                              FlowDefinitionValidator validator,
                              ConditionEvaluator conditionEvaluator,
                              LlmGateway llmService,
-                             HttpGateway restClient) {
+                             HttpGateway restClient,
+                             FormSchemaPort formSchemaPort) {
         this.workflowMapper = workflowMapper;
         this.executionMapper = executionMapper;
         this.nodeLogMapper = nodeLogMapper;
@@ -71,6 +73,7 @@ public class FlowEngineService {
         this.conditionEvaluator = conditionEvaluator;
         this.llmService = llmService;
         this.restClient = restClient;
+        this.formSchemaPort = formSchemaPort;
     }
 
     /** LLM 网关抽象：隔离 LlmService 具体实现，便于单测替换。 */
@@ -82,6 +85,14 @@ public class FlowEngineService {
     /** HTTP 网关抽象：隔离 RestClient 具体实现，便于单测替换。 */
     public interface HttpGateway {
         org.springframework.http.ResponseEntity<String> execute(String url, String method, Map<String, Object> body);
+    }
+
+    /**
+     * G4 表单规格端口：隔离 FormService/OntologyService，避免引擎直连本体服务。
+     * 端口实现按 formCode 返回字段定义 [{fieldCode, fieldName, required, ...}]；表单不存在返回 null。
+     */
+    public interface FormSchemaPort {
+        java.util.List<Map<String, Object>> fields(String formCode);
     }
 
     /**
@@ -131,7 +142,7 @@ public class FlowEngineService {
         executionMapper.insert(execution);
 
         runStateMachine(execution, definition);
-        return ApiResponse.ok(executionToMap(execution));
+        return ApiResponse.ok(withFormSpec(execution, definition, executionToMap(execution)));
     }
 
     /** 从最近节点续跑（失败恢复 / kill -9 后重启续跑），复用锁定的定义版本。 */
@@ -192,6 +203,14 @@ public class FlowEngineService {
             return ApiResponse.fail("当前节点不是人工节点: " + humanNodeId);
         }
 
+        // G4：人工恢复数据校验——必须覆盖表单全部必填字段（校验失败不消费令牌，可重新提交）
+        Map<String, Object> humanParams = humanNode.get("action_params") instanceof Map<?, ?> p
+                ? (Map<String, Object>) p : Map.of();
+        String formError = validateHumanFormData(humanParams, formData);
+        if (formError != null) {
+            return ApiResponse.fail(formError);
+        }
+
         // 人工节点输出 = 表单数据（按 nodeId.output 命名空间入上下文）
         Map<String, Object> context = execution.getContextData() != null
                 ? execution.getContextData() : new LinkedHashMap<>();
@@ -221,6 +240,27 @@ public class FlowEngineService {
         return ApiResponse.ok(executionToMap(execution));
     }
 
+    /**
+     * G4：挂起响应附带表单规格（仅 waiting_human 且节点配置 form_code 时注入 form_spec 键）。
+     */
+    private Map<String, Object> withFormSpec(WorkflowExecution execution, Map<String, Object> definition,
+                                             Map<String, Object> responseMap) {
+        if (!"waiting_human".equals(execution.getStatus()) || execution.getCurrentNodeId() == null) {
+            return responseMap;
+        }
+        Map<String, Map<String, Object>> nodeById = indexNodes(definition);
+        Map<String, Object> humanNode = nodeById.get(execution.getCurrentNodeId());
+        if (humanNode == null || !"flow.human".equals(str(humanNode.get("action")))) {
+            return responseMap;
+        }
+        Map<String, Object> spec = formSpecOf(humanNode.get("action_params") instanceof Map<?, ?> p
+                ? (Map<String, Object>) p : Map.of());
+        if (spec != null) {
+            responseMap.put("form_spec", spec);
+        }
+        return responseMap;
+    }
+
     /** 将 human 节点最近的 running 日志置为 completed（恢复即闭环）。 */
     private void closeHumanNodeLog(String executionId, String nodeId) {
         WorkflowNodeLog latest = nodeLogMapper.selectList(new LambdaQueryWrapper<WorkflowNodeLog>()
@@ -244,6 +284,10 @@ public class FlowEngineService {
         Map<String, Object> variables = new LinkedHashMap<>(execution.getInputData() != null
                 ? execution.getInputData() : Map.of());
         variables.putAll(context);
+        // G1 防环上下文：以当前流程编码初始化工作流链（workflow 节点递归时链式追加）
+        if (execution.getWorkflowCode() != null && !variables.containsKey(WORKFLOW_CHAIN_KEY)) {
+            variables.put(WORKFLOW_CHAIN_KEY, new ArrayList<>(List.of(execution.getWorkflowCode())));
+        }
 
         Map<String, Map<String, Object>> nodeById = indexNodes(definition);
         String current = execution.getCurrentNodeId() != null ? execution.getCurrentNodeId() : findStartNode(nodeById);
@@ -387,8 +431,74 @@ public class FlowEngineService {
         execution.setContextData(new LinkedHashMap<>(variables));
         execution.setStatusVersion(bumpVersion(execution));
         executionMapper.updateById(execution);
-        log.info("[FlowEngine] 执行挂起于人工节点: {} node={} token={}",
-                execution.getExecutionId(), nodeId, execution.getResumeToken());
+        log.info("[FlowEngine] 执行挂起于人工节点: {} node={} token={} form_code={}",
+                execution.getExecutionId(), nodeId, execution.getResumeToken(),
+                str(params.get("form_code")));
+    }
+
+    /**
+     * G4：human 节点表单规格（挂起响应附带 form_code + fields，供前端渲染表单）。
+     * form_code 未配置或端口未注入时返回 null（节点退化为通用人工确认，兼容旧定义）。
+     */
+    private Map<String, Object> formSpecOf(Map<String, Object> humanNodeParams) {
+        String formCode = str(humanNodeParams.get("form_code"));
+        if (formCode == null || formCode.isBlank() || formSchemaPort == null) {
+            return null;
+        }
+        java.util.List<Map<String, Object>> fields = formSchemaPort.fields(formCode);
+        if (fields == null) {
+            log.warn("[FlowEngine] human 节点 form_code 未找到表单定义: {}", formCode);
+            return null;
+        }
+        Map<String, Object> spec = new LinkedHashMap<>();
+        spec.put("form_code", formCode);
+        spec.put("fields", fields);
+        return spec;
+    }
+
+    /**
+     * G4：人工恢复数据校验——提交数据必须覆盖表单全部必填字段。
+     * form_code 未配置/表单不存在时跳过（与挂起侧同语义，兼容旧定义）。
+     * 字段键兼容两种契约：端口适配器的 snake_case（field_code/field_name）与本体原始 camelCase。
+     */
+    private String validateHumanFormData(Map<String, Object> humanNodeParams, Map<String, Object> formData) {
+        Map<String, Object> spec = formSpecOf(humanNodeParams);
+        if (spec == null || formData == null) {
+            return null;
+        }
+        Object fieldsObj = spec.get("fields");
+        if (!(fieldsObj instanceof java.util.List<?> fields)) {
+            return null;
+        }
+        java.util.List<String> missing = new ArrayList<>();
+        for (Object fieldObj : fields) {
+            if (!(fieldObj instanceof Map<?, ?> field)) {
+                continue;
+            }
+            if (!Boolean.TRUE.equals(field.get("required"))) {
+                continue;
+            }
+            String fieldCode = firstNonBlankStr(field.get("field_code"), field.get("fieldCode"));
+            String fieldName = firstNonBlankStr(field.get("field_name"), field.get("fieldName"));
+            Object value = fieldCode == null ? null : formData.get(fieldCode);
+            boolean empty = value == null
+                    || (value instanceof String s && s.isBlank())
+                    || (value instanceof java.util.List<?> l && l.isEmpty());
+            if (empty) {
+                missing.add(fieldName == null ? String.valueOf(fieldCode) : fieldName);
+            }
+        }
+        return missing.isEmpty() ? null : "表单必填字段未填写: " + String.join("、", missing);
+    }
+
+    /** 取第一个非空字符串（空串视为缺失）。 */
+    private String firstNonBlankStr(Object... candidates) {
+        for (Object c : candidates) {
+            if (c != null && !String.valueOf(c).isBlank()) {
+                return String.valueOf(c);
+            }
+        }
+        return null;
     }
 
     private int bumpVersion(WorkflowExecution execution) {
@@ -472,8 +582,81 @@ public class FlowEngineService {
             case "flow.tool" -> executeToolNode(str(params.get("__nodeId")), params, variables);
             case "flow.llm" -> executeLlmNode(params, variables);
             case "flow.http" -> executeHttpNode(params, variables);
+            case "flow.workflow" -> executeWorkflowNode(params, variables);
             default -> NodeOutcome.fail(action, "fail", "未注册的节点类型: " + action);
         };
+    }
+
+    /** G1 防环上下文键：当前执行栈中已进入的子流程链（variables 内携带，链式透传）。 */
+    private static final String WORKFLOW_CHAIN_KEY = "__workflow_chain";
+    /** 嵌套深度上限（与 FlowDefinitionValidator.MAX_WORKFLOW_NESTING_DEPTH 同源语义）。 */
+    private static final int MAX_WORKFLOW_NESTING_DEPTH = 5;
+
+    /**
+     * G1 workflow 节点：引用已发布子流程并同步执行到底（子流程完整落库，执行 ID 入节点输出）。
+     * <p>
+     * 防环：variables 携带工作流编码链（含当前流程），链上出现重复编码即拒绝（直接自引用）；
+     * 跨流程间接环由深度上限（{@value MAX_WORKFLOW_NESTING_DEPTH}）兜底。
+     * 入参：inputParams 解析后作为子流程 inputData；出参：子流程终态 + 输出数据按子流程命名空间平铺。
+     */
+    private NodeOutcome executeWorkflowNode(Map<String, Object> params, Map<String, Object> variables) {
+        String workflowRef = str(params.get("workflow_ref"));
+        if (workflowRef == null || workflowRef.isBlank()) {
+            return NodeOutcome.fail("flow.workflow", "fail", "workflow 节点未配置 workflow_ref");
+        }
+        List<String> chain = workflowChain(variables);
+        if (chain.contains(workflowRef)) {
+            return NodeOutcome.fail("flow.workflow", "fail",
+                    "检测到子流程环引用: " + String.join(" → ", chain) + " → " + workflowRef);
+        }
+        if (chain.size() >= MAX_WORKFLOW_NESTING_DEPTH) {
+            return NodeOutcome.fail("flow.workflow", "fail",
+                    "子流程嵌套超限 (>" + MAX_WORKFLOW_NESTING_DEPTH + "): " + String.join(" → ", chain));
+        }
+
+        Map<String, Object> inputData = withWorkflowChain(
+                resolveInputParams(params.get("inputParams"), variables), workflowRef);
+        log.info("[FlowEngine] workflow 节点启动子流程: ref={}, depth={}, inputKeys={}",
+                workflowRef, chain.size(), inputData.keySet());
+        ApiResponse<Map<String, Object>> resp = startExecution(workflowRef, null, inputData, null);
+        if (resp == null || !resp.isSuccess() || resp.getData() == null) {
+            String reason = resp == null ? "子流程引擎无响应" : resp.getMessage();
+            return NodeOutcome.fail("flow.workflow", "fail", "子流程 " + workflowRef + " 执行失败: " + reason);
+        }
+        Map<String, Object> data = resp.getData();
+        String status = String.valueOf(data.getOrDefault("status", "unknown"));
+        if (!"completed".equals(status)) {
+            return NodeOutcome.fail("flow.workflow", "fail",
+                    "子流程 " + workflowRef + " 终态非 completed: " + status
+                            + (data.get("error_message") == null ? "" : "，" + data.get("error_message")));
+        }
+        // 输出：子流程执行明细 + 输出数据（context 透传的变量平铺到节点命名空间）
+        Map<String, Object> output = new LinkedHashMap<>();
+        output.put("workflow_code", workflowRef);
+        output.put("execution_id", data.get("execution_id"));
+        output.put("status", status);
+        if (data.get("context_data") instanceof Map<?, ?> ctx) {
+            output.put("output_data", ctx);
+        }
+        return NodeOutcome.success(output);
+    }
+
+    /** 从变量表提取当前工作流编码链（workflow 节点递归时链式透传）。 */
+    private List<String> workflowChain(Map<String, Object> variables) {
+        Object raw = variables.get(WORKFLOW_CHAIN_KEY);
+        if (raw instanceof List<?> list) {
+            return list.stream().map(String::valueOf).toList();
+        }
+        return List.of();
+    }
+
+    /** 工作流编码链入子流程 inputData（G1 防环上下文透传）。 */
+    private Map<String, Object> withWorkflowChain(Map<String, Object> inputData, String childCode) {
+        List<String> chain = new ArrayList<>(workflowChain(inputData));
+        chain.add(childCode);
+        Map<String, Object> out = new LinkedHashMap<>(inputData);
+        out.put(WORKFLOW_CHAIN_KEY, chain);
+        return out;
     }
 
     private NodeOutcome withDuration(NodeOutcome outcome, long durationMs) {

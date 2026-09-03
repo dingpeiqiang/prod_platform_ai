@@ -87,7 +87,7 @@
           <input 
             v-model="formCodeInput" 
             type="text" 
-            placeholder="表单编码 (如: tariff_filing_publicity)"
+            placeholder="表单编码 (如: offering_config)"
           />
           <button @click="extractFieldsHandler" :disabled="isLoading">提取</button>
         </div>
@@ -207,7 +207,7 @@ const identifyFormHandler = async () => {
 
 // 字段提取
 const extractInput = ref('');
-const formCodeInput = ref('tariff_filing_publicity');
+const formCodeInput = ref('offering_config');
 const extractResult = ref(null);
 
 const extractFieldsHandler = async () => {

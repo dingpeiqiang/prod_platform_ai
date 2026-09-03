@@ -1,4 +1,4 @@
-﻿# 快速启动指南
+# 快速启动指南
 
 ## 一键启动（推荐）
 
@@ -78,7 +78,7 @@ $env:LLM_MODEL="..."
 | 智读批量 | POST | `/config/batch` |
 | 智读上传 | POST | `/config/batch-upload` |
 | 草稿列表/保存 | GET/POST | `/config/drafts` |
-| 提交备案闭环 | POST | `/config/submit` |
+| 提交入库闭环 | POST | `/config/submit` |
 | 多方案对比 | POST | `/config/compare` |
 | 运营看板 | GET | `/ops/dashboard` |
 | 根因分析 | POST | `/ops/root-cause` |

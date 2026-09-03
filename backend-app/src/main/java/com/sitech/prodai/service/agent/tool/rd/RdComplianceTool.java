@@ -50,6 +50,11 @@ public class RdComplianceTool implements AgentTool {
     }
 
     @Override
+    public java.util.Set<String> getScenes() {
+        return java.util.Set.of("rd");
+    }
+
+    @Override
     public List<ToolParam> getParams() {
         return List.of(
                 ToolParam.builder("draft")

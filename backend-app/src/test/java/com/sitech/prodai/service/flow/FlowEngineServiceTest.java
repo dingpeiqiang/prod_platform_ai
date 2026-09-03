@@ -63,7 +63,11 @@ class FlowEngineServiceTest {
         llmGateway = params -> "mock-llm-response";
         httpGateway = (url, method, body) -> org.springframework.http.ResponseEntity.ok("{\"result\": \"ok\"}");
         engine = new FlowEngineService(workflowMapper, executionMapper, nodeLogMapper,
-                toolExecutionService, new FlowDefinitionValidator(), conditionEvaluator, llmGateway, httpGateway);
+                toolExecutionService, new FlowDefinitionValidator(), conditionEvaluator, llmGateway, httpGateway,
+                formCode -> formCode.equals("approval_form")
+                        ? List.of(Map.of("field_code", "approved", "field_name", "是否同意", "field_type", "switch", "required", true),
+                                  Map.of("field_code", "comment", "field_name", "审批意见", "field_type", "textarea", "required", false))
+                        : null);
     }
 
     private Workflow publishedWorkflow(Map<String, Object> definition) {
@@ -547,5 +551,173 @@ class FlowEngineServiceTest {
         assertTrue(resp.isSuccess());
         assertEquals(1, resp.getData().get("page"), "page 下限钳位 1");
         assertEquals(100, resp.getData().get("page_size"), "page_size 上限钳位 100");
+    }
+
+    // ── G1：workflow 子流程节点 ──
+
+    @Test
+    void workflowNodeRunsChildWorkflowToCompletion() {
+        // 子流程：start → tool(sparql_query) → end，工具成功返回
+        Map<String, Object> childDef = definition(Map.of("toolName", "sparql_query"));
+        Workflow child = publishedWorkflow(childDef);
+        child.setWorkflowCode("child_flow");
+
+        // 父流程：start → workflow(ref=child_flow) → end
+        Map<String, Object> parentDef = Map.of("nodes", List.of(
+                        node("s", "flow.start", Map.of()),
+                        node("w", "flow.workflow", Map.of("workflow_ref", "child_flow")),
+                        node("e", "flow.end", Map.of())),
+                "connections", List.of(conn("s", "w", null), conn("w", "e", null)));
+
+        // selectList 调用序列：第 1 次（父启动）返回父流程，第 2 次（子递归）返回子流程
+        lenient().when(workflowMapper.selectList(any())).thenReturn(
+                List.of(publishedWorkflow(parentDef)),
+                List.of(child));
+
+        stubExecutionPersistence();
+        when(toolExecutionService.execute(eq("sparql_query"), any()))
+                .thenReturn(ExecutionResult.ok("sparql_query", Map.of("rows", 1)));
+
+        ApiResponse<Map<String, Object>> resp = engine.startExecution("parent_flow", null, Map.of(), "tester");
+
+        assertTrue(resp.isSuccess(), () -> "父流程应执行成功: " + resp.getMessage());
+        assertEquals("completed", resp.getData().get("status"));
+        // 子流程执行痕迹：父 workflow 节点输出含子流程 execution_id
+        Map<String, Object> contextData = (Map<String, Object>) resp.getData().get("context_data");
+        Map<String, Object> wScope = (Map<String, Object>) contextData.get("w");
+        Map<String, Object> wOutput = (Map<String, Object>) wScope.get("output");
+        assertEquals("child_flow", wOutput.get("workflow_code"));
+        assertNotNull(wOutput.get("execution_id"));
+        // 子流程的 tool 真实被调用
+        verify(toolExecutionService).execute(eq("sparql_query"), any());
+    }
+
+    @Test
+    void workflowNodeSelfCycleRejected() {
+        // 父流程引用自身（child_flow 不存在，workflow_ref 指向父流程 code）
+        Map<String, Object> selfRefDef = Map.of("nodes", List.of(
+                        node("s", "flow.start", Map.of()),
+                        node("w", "flow.workflow", Map.of("workflow_ref", "test_flow")),
+                        node("e", "flow.end", Map.of())),
+                "connections", List.of(conn("s", "w", null), conn("w", "e", null)));
+        lenient().when(workflowMapper.selectList(any()))
+                .thenReturn(List.of(publishedWorkflow(selfRefDef)));
+        stubExecutionPersistence();
+
+        ApiResponse<Map<String, Object>> resp = engine.startExecution("test_flow", null, Map.of(), "tester");
+
+        assertTrue(resp.isSuccess(), "启动成功，环拒绝体现在实例状态");
+        assertEquals("failed", resp.getData().get("status"));
+        assertTrue(String.valueOf(resp.getData().get("error_message")).contains("环引用"),
+                () -> "错误应指明环引用: " + resp.getData().get("error_message"));
+        verify(toolExecutionService, never()).execute(any(), any());
+    }
+
+    @Test
+    void workflowNodeWithUnpublishedChildFails() {
+        Map<String, Object> parentDef = Map.of("nodes", List.of(
+                        node("s", "flow.start", Map.of()),
+                        node("w", "flow.workflow", Map.of("workflow_ref", "child_flow")),
+                        node("e", "flow.end", Map.of())),
+                "connections", List.of(conn("s", "w", null), conn("w", "e", null)));
+        Workflow unpublishedChild = publishedWorkflow(definition(Map.of("toolName", "sparql_query")));
+        unpublishedChild.setWorkflowCode("child_flow");
+        unpublishedChild.setIsActive(null); // 未发布
+
+        lenient().when(workflowMapper.selectList(any())).thenReturn(
+                List.of(publishedWorkflow(parentDef)),
+                List.of(unpublishedChild));
+        stubExecutionPersistence();
+
+        ApiResponse<Map<String, Object>> resp = engine.startExecution("parent_flow", null, Map.of(), "tester");
+
+        assertTrue(resp.isSuccess(), "启动成功，失败体现在实例状态");
+        assertEquals("failed", resp.getData().get("status"));
+        assertTrue(String.valueOf(resp.getData().get("error_message")).contains("child_flow"),
+                () -> "错误应指明子流程: " + resp.getData().get("error_message"));
+        verify(toolExecutionService, never()).execute(any(), any());
+    }
+
+    // ── G4：human 节点表单规格 ──
+
+    @Test
+    void humanSuspendReturnsFormSpecAndResumeValidatesRequired() {
+        Map<String, Object> human = node("h1", "flow.human",
+                Map.of("form_code", "approval_form"));
+        Map<String, Object> def = Map.of("nodes", List.of(
+                        node("s", "flow.start", Map.of()), human, node("e", "flow.end", Map.of())),
+                "connections", List.of(conn("s", "h1", null), conn("h1", "e", null)));
+        Workflow wf = publishedWorkflow(def);
+        lenient().when(workflowMapper.selectList(any())).thenReturn(List.of(wf));
+        lenient().when(workflowMapper.selectById(1)).thenReturn(wf);
+        stubExecutionPersistence();
+
+        ApiResponse<Map<String, Object>> startResp = engine.startExecution("test_flow", null, Map.of(), "tester");
+
+        assertEquals("waiting_human", startResp.getData().get("status"));
+        // 挂起响应附带表单规格（G4）
+        Map<String, Object> formSpec = (Map<String, Object>) startResp.getData().get("form_spec");
+        assertNotNull(formSpec, "挂起响应应附带 form_spec");
+        assertEquals("approval_form", formSpec.get("form_code"));
+        assertEquals(2, ((List<?>) formSpec.get("fields")).size());
+
+        String executionId = (String) startResp.getData().get("execution_id");
+        String token = (String) startResp.getData().get("resume_token");
+
+        // 缺必填字段（approved）→ 拒绝恢复
+        ApiResponse<Map<String, Object>> missingResp = engine.resumeFromHuman(
+                executionId, token, Map.of("comment", "好的"), "approver");
+        assertFalse(missingResp.isSuccess(), "缺必填字段应被拒");
+        assertTrue(missingResp.getMessage().contains("是否同意"), () -> "报错应指明字段: " + missingResp.getMessage());
+
+        // 补齐必填字段 → 恢复成功走到 end
+        ApiResponse<Map<String, Object>> okResp = engine.resumeFromHuman(
+                executionId, token, Map.of("approved", true, "comment", "同意"), "approver");
+        assertTrue(okResp.isSuccess(), () -> "补齐必填后应恢复成功: " + okResp.getMessage());
+        assertEquals("completed", okResp.getData().get("status"));
+    }
+
+    @Test
+    void humanWithoutFormCodeSkipsValidation() {
+        // 旧定义：human 节点无 form_code → 退化为通用人工确认，恢复不校验
+        Map<String, Object> human = node("h1", "flow.human", Map.of());
+        Map<String, Object> def = Map.of("nodes", List.of(
+                        node("s", "flow.start", Map.of()), human, node("e", "flow.end", Map.of())),
+                "connections", List.of(conn("s", "h1", null), conn("h1", "e", null)));
+        Workflow wf = publishedWorkflow(def);
+        lenient().when(workflowMapper.selectList(any())).thenReturn(List.of(wf));
+        lenient().when(workflowMapper.selectById(1)).thenReturn(wf);
+        stubExecutionPersistence();
+
+        ApiResponse<Map<String, Object>> startResp = engine.startExecution("test_flow", null, Map.of(), "tester");
+        assertNull(startResp.getData().get("form_spec"), "未配置 form_code 不应下发 form_spec");
+
+        String executionId = (String) startResp.getData().get("execution_id");
+        String token = (String) startResp.getData().get("resume_token");
+        ApiResponse<Map<String, Object>> okResp = engine.resumeFromHuman(
+                executionId, token, Map.of("anything", 1), "approver");
+        assertTrue(okResp.isSuccess(), () -> "无表单定义应跳过校验: " + okResp.getMessage());
+    }
+
+    @Test
+    void humanWithUnknownFormCodeFailsValidationOnResume() {
+        // form_code 指向不存在的表单：挂起可容忍（不阻塞流程），恢复时数据不做必填拦截
+        Map<String, Object> human = node("h1", "flow.human", Map.of("form_code", "ghost_form"));
+        Map<String, Object> def = Map.of("nodes", List.of(
+                        node("s", "flow.start", Map.of()), human, node("e", "flow.end", Map.of())),
+                "connections", List.of(conn("s", "h1", null), conn("h1", "e", null)));
+        Workflow wf = publishedWorkflow(def);
+        lenient().when(workflowMapper.selectList(any())).thenReturn(List.of(wf));
+        lenient().when(workflowMapper.selectById(1)).thenReturn(wf);
+        stubExecutionPersistence();
+
+        ApiResponse<Map<String, Object>> startResp = engine.startExecution("test_flow", null, Map.of(), "tester");
+        assertNull(startResp.getData().get("form_spec"), "未知表单不应下发 form_spec");
+
+        String executionId = (String) startResp.getData().get("execution_id");
+        String token = (String) startResp.getData().get("resume_token");
+        ApiResponse<Map<String, Object>> okResp = engine.resumeFromHuman(
+                executionId, token, Map.of(), "approver");
+        assertTrue(okResp.isSuccess(), () -> "未知表单恢复应放行（兼容）: " + okResp.getMessage());
     }
 }

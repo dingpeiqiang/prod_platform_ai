@@ -18,7 +18,7 @@ if field_code == 'bossid':
 
 # ✅ 正确：由 LLM 根据本体定义推断
 # 1. 在 smart_intent_recognition.txt 中定义推断规则
-# 2. LLM 读取本体定义（ontologies/tariff_filing_publicity.json）
+# 2. LLM 读取本体定义（ontologies/offering_config.json）
 # 3. LLM 根据规则提取字段值
 # 4. 推荐引擎从 extractedFields 获取 LLM 提取的值
 ```
@@ -34,7 +34,7 @@ if field_code == 'bossid':
   - 手机号：11位数字（如 13812345678）
   - 邮箱：标准邮箱格式（如 user@example.com）
 - **示例**：
-  - 用户说"备案套餐P000111" → bossid="P000111"
+  - 用户说"申请套餐P000111" → bossid="P000111"
   - 用户说"订单号是ORD20240001" → order_id="ORD20240001"
 
 #### 2. 枚举/选择类字段（fieldType 为 select/enum/radio）
@@ -42,7 +42,7 @@ if field_code == 'bossid':
 - **根据用户输入的关键词匹配枚举值**
 - 优先使用本体中定义的枚举值（options 列表）
 - **示例**：
-  - 用户说"新增备案" → action_type="新增"
+  - 用户说"新增记录" → action_type="新增"
   - 用户说"修改信息" → action_type="修改"
   - 用户说"删除记录" → action_type="删除"
 
@@ -128,11 +128,11 @@ def recommend(self, user_input, form_code, field_code, context):
 ### 架构优势
 
 ```
-用户输入："资费备案申请 P000111"
+用户输入："产品配置申请 P000111"
     ↓
 LLM 意图识别（基于本体规则）
-    ├─ 识别场景：tariff_filing_apply
-    ├─ 加载本体定义：tariff_filing_publicity.json
+    ├─ 识别场景：offering_config
+    ├─ 加载本体定义：offering_config.json
     ├─ 根据本体规则推断：
     │   ├─ bossid: "P000111"（编码类字段，P+数字格式）
     │   └─ 其他字段：根据上下文推断或留空
@@ -153,7 +153,7 @@ LLM 意图识别（基于本体规则）
 
 | 编码                        | 类型      | 必填字段                 | 可选字段         |
 | ------------------------- | ------- | -------------------- | ------------ |
-| `tariff_filing_publicity` | 资费备案公示  | bossid, tariff_code | （根据Schema定义） |
+| `offering_config`         | 产品配置    | bossid, tariff_code | （根据Schema定义） |
 | `external_api_demo`       | 外部API演示 | -                    | -            |
 | `validation_demo`         | 校验演示    | -                    | -            |
 | `survey`                  | 调查问卷    | (根据问卷定义)             | (根据问卷定义)     |

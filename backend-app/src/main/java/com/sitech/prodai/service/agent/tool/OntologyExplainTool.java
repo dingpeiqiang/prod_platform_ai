@@ -39,6 +39,11 @@ public class OntologyExplainTool implements AgentTool {
     }
 
     @Override
+    public java.util.Set<String> getScenes() {
+        return java.util.Set.of("ops");
+    }
+
+    @Override
     public List<ToolParam> getParams() {
         return List.of(
                 ToolParam.builder("concept")

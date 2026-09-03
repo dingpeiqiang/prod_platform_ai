@@ -40,6 +40,11 @@ public class RuleExplainTool implements AgentTool {
     }
 
     @Override
+    public java.util.Set<String> getScenes() {
+        return java.util.Set.of("ops");
+    }
+
+    @Override
     public List<ToolOutputField> getOutputFields() {
         return List.of(
                 ToolOutputField.builder("ruleId", ToolOutputField.Role.OTHER)

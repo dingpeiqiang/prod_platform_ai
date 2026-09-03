@@ -31,32 +31,21 @@ public class DefaultPresenter implements Presenter {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultPresenter.class);
 
-    /** 翻译层可调用的真实工具白名单（与理解层 KNOWN_TOOLS 同源语义：防 LLM 编造能力） */
-    private static final Set<String> KNOWN_TOOLS = Set.of(
-            "sparql_query",
-            "swrl_root_cause",
-            "swrl_risk_audit",
-            "rule_explain",
-            "ontology_explain"
-    );
-
-    /** 产商品研发场景工具白名单（scene=rd 时使用；不影响运营白名单） */
-    private static final Set<String> RD_KNOWN_TOOLS = Set.of(
-            "rd_config_chat",
-            "rd_file_parse",
-            "rd_compliance",
-            "rd_config_discover",
-            "rd_scheme_compare"
-    );
+    /** 翻译层可调用的真实工具白名单（与理解层同源语义：防 LLM 编造能力）已收敛至 AgentCapabilityRegistry（工具 getScenes() 自声明）。 */
 
     private final LlmService llmService;
 
     /** 已注册工具索引：工具名 → 工具（跟进话术守门：能力承接关系与场景白名单校验） */
     private final Map<String, AgentTool> toolMap;
 
-    public DefaultPresenter(LlmService llmService, List<AgentTool> tools) {
+    /** 能力注册表（单源）：场景 → 可见工具白名单，工具自声明场景后统一读取。 */
+    private final com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry capabilityRegistry;
+
+    public DefaultPresenter(LlmService llmService, List<AgentTool> tools,
+                            com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry capabilityRegistry) {
         this.llmService = llmService;
         this.toolMap = new LinkedHashMap<>();
+        this.capabilityRegistry = capabilityRegistry;
         if (tools != null) {
             for (AgentTool tool : tools) {
                 this.toolMap.put(tool.getName(), tool);
@@ -131,7 +120,7 @@ public class DefaultPresenter implements Presenter {
     private String buildClarifyMessage(SessionContext context) {
         List<String> clarify = context != null ? context.getLastClarifyParams() : null;
         if (clarify == null || clarify.isEmpty()) {
-            return "请问您想分析哪个商品/套餐？例如：5G套餐、家庭融合畅享128";
+            return "请问您想分析哪个商品/套餐？";
         }
         String generated = llmClarifyMessage(clarify);
         if (generated != null && !generated.isBlank()) {
@@ -295,14 +284,13 @@ public class DefaultPresenter implements Presenter {
         }
     }
 
-    /** 场景白名单内的已注册工具（能力清单来源同理解层：rd 场景用研发白名单，否则运营白名单）。 */
+    /** 场景白名单内的已注册工具（能力清单来源同理解层：工具自声明场景 + 注册表统一读取）。 */
     private List<AgentTool> allowedToolsOf(SessionContext context) {
         boolean rdScene = context != null && "rd".equals(context.getScene());
-        Set<String> whitelist = rdScene ? RD_KNOWN_TOOLS : KNOWN_TOOLS;
+        String scene = rdScene ? "rd" : com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry.DEFAULT_SCENE;
         List<AgentTool> out = new ArrayList<>();
-        for (String name : whitelist) {
-            AgentTool tool = toolMap.get(name);
-            if (tool != null) {
+        for (AgentTool tool : capabilityRegistry.toolsOf(scene)) {
+            if (toolMap.containsKey(tool.getName())) {
                 out.add(tool);
             }
         }

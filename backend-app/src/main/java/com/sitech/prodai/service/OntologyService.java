@@ -772,13 +772,12 @@ public class OntologyService {
     }
 
     public List<Map<String, Object>> getCategories() {
-        return List.of(Map.of("id", "marketing", "name", "营销推荐"), Map.of("id", "billing", "name", "账单退款"));
+        return List.of(Map.of("id", "marketing", "name", "营销推荐"));
     }
 
     /** 种子本体资产（行为兜底）：表 A 无映射时降级返回的默认值，保住前端契约不漂移。 */
     private static final Map<String, String> SEED_ONTOLOGY_NAMES = Map.of(
-            "offering_config", "产品配置",
-            "tariff_filing_publicity", "资费公示");
+            "offering_config", "产品配置");
 
     public Map<String, Object> listOntologies(String category, Boolean isActive) {
         Map<String, String> effective = resolveOntologyRegistry();
@@ -787,7 +786,7 @@ public class OntologyService {
             Map<String, Object> onto = new LinkedHashMap<>();
             onto.put("ontologyCode", code);
             onto.put("ontologyName", name);
-            onto.put("category", code.equals("tariff_filing_publicity") ? "billing" : "marketing");
+            onto.put("category", "marketing");
             onto.put("isActive", true);
             data.add(onto);
         });
@@ -798,8 +797,7 @@ public class OntologyService {
         Map<String, String> effective = resolveOntologyRegistry();
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("ontologyCode", ontologyCode);
-        data.put("ontologyName", effective.getOrDefault(ontologyCode,
-                ontologyCode.equals("offering_config") ? "产品配置" : "资费公示"));
+        data.put("ontologyName", effective.getOrDefault(ontologyCode, "产品配置"));
         data.put("entities", List.of());
         return Map.of("success", true, "data", data);
     }

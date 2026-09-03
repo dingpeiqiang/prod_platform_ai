@@ -194,7 +194,7 @@ public class ToolConfig {
                         "properties", Map.of(
                                 "entity_name", Map.of(
                                         "type", "string",
-                                        "description", "要解释的实体名称，如 5G套餐, 家庭融合畅享128"
+                                        "description", "要解释的实体名称，如 5G套餐, 校园体验流量包"
                                 ),
                                 "context", Map.of(
                                         "type", "string",

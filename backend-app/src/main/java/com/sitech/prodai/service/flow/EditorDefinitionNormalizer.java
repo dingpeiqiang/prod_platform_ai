@@ -34,7 +34,7 @@ import java.util.Map;
  */
 public final class EditorDefinitionNormalizer {
 
-    /** 编辑器节点 type → 引擎 action 映射（P3 首发集）。 */
+    /** 编辑器节点 type → 引擎 action 映射（P3 首发集 + G1 子流程节点）。 */
     private static final Map<String, String> TYPE_TO_ACTION = Map.of(
             "start", "flow.start",
             "end", "flow.end",
@@ -43,7 +43,9 @@ public final class EditorDefinitionNormalizer {
             "http", "flow.http",
             "condition", "flow.condition",
             "userInput", "flow.human",
-            "form", "flow.human");
+            "form", "flow.human",
+            "subflow", "flow.workflow",
+            "workflow", "flow.workflow");
 
     private EditorDefinitionNormalizer() {
     }
@@ -158,8 +160,16 @@ public final class EditorDefinitionNormalizer {
                 params.put("inputParams", data.get("inputParams"));
             }
             case "flow.condition" -> params.put("branches", normalizeBranches(data.get("branches")));
+            case "flow.workflow" -> {
+                // 编辑器 data.workflow_ref / workflowRef / workflowCode → 子流程编码
+                params.put("workflow_ref", firstNonBlank(
+                        data.get("workflow_ref"), data.get("workflowRef"), data.get("workflowCode")));
+                params.put("inputParams", normalizeToolInputs(data.get("inputParams")));
+            }
             case "flow.human" -> {
                 params.put("prompt", firstNonBlank(data.get("prompt"), data.get("message")));
+                // G4：编辑器 data.form_code / formCode → 表单编码（引擎挂起下发规格 + 恢复校验必填）
+                params.put("form_code", firstNonBlank(data.get("form_code"), data.get("formCode")));
                 params.put("inputParams", data.get("inputParams"));
             }
             default -> {
