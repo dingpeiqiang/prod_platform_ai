@@ -502,19 +502,19 @@ public class AgentOrchestrator {
         }
         // ① 意图识别：输出 = 结构化意图（下游各节点的输入来源）
         Map<String, Object> intentOutput = new LinkedHashMap<>();
-        intentOutput.put("summary", "已明确：本次要执行「" + actionDisplay(plan) + "」");
-        intentOutput.put("structured_intent", planIntentView(plan));
+        intentOutput.put("summary", "已明确：本次要执行「" + TraceSnapshotBuilder.actionDisplay(plan) + "」");
+        intentOutput.put("structured_intent", TraceSnapshotBuilder.planIntentView(plan));
         Map<String, Object> intentStep = new LinkedHashMap<>();
         intentStep.put("id", "intent");
         intentStep.put("type", "thinking");
-        intentStep.put("title", intentStepName(context));
-        intentStep.put("content", intentStepDesc(context));
+        intentStep.put("title", TraceSnapshotBuilder.intentStepName(context));
+        intentStep.put("content", TraceSnapshotBuilder.intentStepDesc(context));
         intentStep.put("status", "done");
         intentStep.put("category", "understand");
         intentStep.put("goal", "先听懂您要做什么，再决定怎么办");
         intentStep.put("input", Map.of("question", ""));
         intentStep.put("output", intentOutput);
-        List<Map<String, Object>> trace = traceView(plan);
+        List<Map<String, Object>> trace = TraceSnapshotBuilder.traceView(plan);
         if (trace != null) {
             intentStep.put("trace", trace);
         }
@@ -524,13 +524,13 @@ public class AgentOrchestrator {
         planStep.put("id", "plan");
         planStep.put("type", "thinking");
         planStep.put("title", "定下处理方案");
-        planStep.put("content", buildReadablePlan(plan));
+        planStep.put("content", TraceSnapshotBuilder.buildReadablePlan(plan));
         planStep.put("status", "done");
         planStep.put("category", "understand");
-        planStep.put("goal", planStepGoal(plan, context));
-        planStep.put("input", upstreamIntentInput(plan, question));
-        planStep.put("workflow", buildWorkflow(plan));
-        planStep.put("output", Map.of("summary", planStepOutput(plan, context),
+        planStep.put("goal", TraceSnapshotBuilder.planStepGoal(plan, context));
+        planStep.put("input", TraceSnapshotBuilder.upstreamIntentInput(plan, question));
+        planStep.put("workflow", TraceSnapshotBuilder.buildWorkflow(plan));
+        planStep.put("output", Map.of("summary", TraceSnapshotBuilder.planStepOutput(plan, context),
                 "branch_taken", WorkflowBuilder.branchLabel(WorkflowBuilder.takenBranch(plan))));
         if (trace != null) {
             planStep.put("trace", trace);
@@ -564,12 +564,12 @@ public class AgentOrchestrator {
         generateStep.put("id", "generate");
         generateStep.put("type", "thinking");
         generateStep.put("title", "汇总结果");
-        generateStep.put("content", generateStepDesc(context));
+        generateStep.put("content", TraceSnapshotBuilder.generateStepDesc(context));
         generateStep.put("status", "done");
         generateStep.put("goal", "把各环节结果整合成您能直接使用的结论与建议");
         generateStep.put("input", upstreamResultsInput(results));
         generateStep.put("output", Map.of(
-                "summary", summarizeOutput(extractConclusion(results), results != null ? results.size() : 0),
+                "summary", TraceSnapshotBuilder.summarizeOutput(extractConclusion(results), results != null ? results.size() : 0),
                 "branch_taken", WorkflowBuilder.branchLabel(WorkflowBuilder.takenBranch(plan))));
         steps.add(generateStep);
         return steps;
@@ -689,7 +689,7 @@ public class AgentOrchestrator {
             reply.putIfAbsent("session_id", context.getSessionId());
             String report = String.valueOf(reply.getOrDefault("report", ""));
             emitter.emit("thinking", Map.of(
-                    "steps", List.of(thinkingStep("intent", "识别到固定流程",
+                    "steps", List.of(TraceSnapshotBuilder.thinkingStep("intent", "识别到固定流程",
                             "命中已注册流程，直接进入流程引擎执行",
                             Map.of("goal", "对话即编排：固定流程零 LLM 直达引擎",
                                     "input", Map.of("question", question),
@@ -714,8 +714,8 @@ public class AgentOrchestrator {
 
         // 阶段事件①：理解中 —— 先于 LLM 理解调用推送，思考时间线即刻起表并读秒
         emitter.emit("thinking", Map.of(
-                "steps", List.of(thinkingStep("intent", intentStepName(context),
-                        intentStepDesc(context),
+                "steps", List.of(TraceSnapshotBuilder.thinkingStep("intent", TraceSnapshotBuilder.intentStepName(context),
+                        TraceSnapshotBuilder.intentStepDesc(context),
                         Map.of("goal", "先听懂您要做什么，再决定怎么办",
                                 "input", Map.of("question", question))))
         ));
@@ -737,30 +737,30 @@ public class AgentOrchestrator {
         // 阶段事件①′：理解完成，原地更新 intent 步骤（补输出：已明确的业务动作）
         // 输出 = 结构化意图（动作 + 业务要素），作为下游 plan/execute/summarize 的唯一输入来源
         Map<String, Object> intentOutput = new LinkedHashMap<>();
-        intentOutput.put("summary", "已明确：本次要执行「" + actionDisplay(plan) + "」");
-        intentOutput.put("structured_intent", planIntentView(plan));
+        intentOutput.put("summary", "已明确：本次要执行「" + TraceSnapshotBuilder.actionDisplay(plan) + "」");
+        intentOutput.put("structured_intent", TraceSnapshotBuilder.planIntentView(plan));
         Map<String, Object> intentExtra = new LinkedHashMap<>();
         intentExtra.put("goal", "先听懂您要做什么，再决定怎么办");
         intentExtra.put("input", Map.of("question", question));
         intentExtra.put("output", intentOutput);
-        intentExtra.put("trace", traceView(plan));
+        intentExtra.put("trace", TraceSnapshotBuilder.traceView(plan));
         emitter.emit("thinking", Map.of(
-                "steps", List.of(thinkingStep("intent", intentStepName(context),
-                        intentStepDesc(context), intentExtra)),
+                "steps", List.of(TraceSnapshotBuilder.thinkingStep("intent", TraceSnapshotBuilder.intentStepName(context),
+                        TraceSnapshotBuilder.intentStepDesc(context), intentExtra)),
                 "intent", plan.getIntent()
         ));
         // 阶段事件②：计划确认 —— 将内部「查询计划中间语言」翻译为业务可读的筛查方案
         // （取代原先透传 raw queryPlan 给前端渲染内部码卡片，避免对业务人员造成困惑）
         // 输入 = ①的结构化意图（承接上游输出，而非复述用户原文）
         Map<String, Object> planExtra = new LinkedHashMap<>();
-        planExtra.put("goal", planStepGoal(plan, context));
-        planExtra.put("input", upstreamIntentInput(plan, question));
-        planExtra.put("workflow", buildWorkflow(plan));
-        planExtra.put("output", Map.of("summary", planStepOutput(plan, context)));
-        planExtra.put("trace", traceView(plan));
+        planExtra.put("goal", TraceSnapshotBuilder.planStepGoal(plan, context));
+        planExtra.put("input", TraceSnapshotBuilder.upstreamIntentInput(plan, question));
+        planExtra.put("workflow", TraceSnapshotBuilder.buildWorkflow(plan));
+        planExtra.put("output", Map.of("summary", TraceSnapshotBuilder.planStepOutput(plan, context)));
+        planExtra.put("trace", TraceSnapshotBuilder.traceView(plan));
         emitter.emit("thinking", Map.of(
-                "steps", List.of(thinkingStep("plan", "定下处理方案",
-                        buildReadablePlan(plan), planExtra)),
+                "steps", List.of(TraceSnapshotBuilder.thinkingStep("plan", "定下处理方案",
+                        TraceSnapshotBuilder.buildReadablePlan(plan), planExtra)),
                 "intent", plan.getIntent()
         ));
 
@@ -773,20 +773,20 @@ public class AgentOrchestrator {
             // 阶段事件③：生成中 —— 表达层为 LLM 长调用，先推步骤保持反馈
             // 输入 = ①意图输出中的要素缺口（missing），而非用户原文复述
             emitter.emit("thinking", Map.of(
-                    "steps", List.of(thinkingStep("generate", "组织追问",
+                    "steps", List.of(TraceSnapshotBuilder.thinkingStep("generate", "组织追问",
                             "正在生成补充信息的询问…",
                             Map.of("goal", "信息不全时先问清楚，避免答非所问",
-                                    "input", clarifyInputView(plan, question)))),
+                                    "input", TraceSnapshotBuilder.clarifyInputView(plan, question)))),
                     "intent", plan.getIntent()
             ));
             String clarifyMessage = presenter.present(question, List.of(), context);
             // 阶段事件③′：追问生成完成，原地更新 generate 步骤（补输出：整合性短文案，追问文案由正文承载）
             List<String> missingParams = plan.getClarify() != null ? plan.getClarify() : List.of();
             emitter.emit("thinking", Map.of(
-                    "steps", List.of(thinkingStep("generate", "组织追问",
+                    "steps", List.of(TraceSnapshotBuilder.thinkingStep("generate", "组织追问",
                             "正在生成补充信息的询问…",
                             Map.of("goal", "信息不全时先问清楚，避免答非所问",
-                                    "input", clarifyInputView(plan, question),
+                                    "input", TraceSnapshotBuilder.clarifyInputView(plan, question),
                                     "output", Map.of("summary", missingParams.isEmpty()
                                             ? "已生成追问，待您补充后继续"
                                             : "已生成追问，待补充：" + String.join("、", missingParams),
@@ -862,8 +862,8 @@ public class AgentOrchestrator {
                 "stage", "llm",
                 "message", "调用大模型汇总" + results.size() + " 个环节的处理结果，组织成结论与建议")));
         emitter.emit("thinking", Map.of(
-                "steps", List.of(thinkingStep("generate", "汇总结果",
-                        generateStepDesc(context), generateExtra)),
+                "steps", List.of(TraceSnapshotBuilder.thinkingStep("generate", "汇总结果",
+                        TraceSnapshotBuilder.generateStepDesc(context), generateExtra)),
                 "intent", plan.getIntent()
         ));
         String report = presenter.present(question, results, context);
@@ -874,14 +874,14 @@ public class AgentOrchestrator {
         Map<String, Object> generateDoneExtra = new LinkedHashMap<>();
         generateDoneExtra.put("input", upstreamResultsInput(results));
         generateDoneExtra.put("output", Map.of(
-                "summary", summarizeOutput(conclusionText, results.size()),
+                "summary", TraceSnapshotBuilder.summarizeOutput(conclusionText, results.size()),
                 "branch_taken", WorkflowBuilder.branchLabel("EXECUTE")));
         generateDoneExtra.put("trace", List.of(Map.of(
                 "stage", "llm",
                 "message", "大模型已按「结论先行 + 依据支撑」结构生成回答，依据来自上一步工具的实际产出")));
         emitter.emit("thinking", Map.of(
-                "steps", List.of(thinkingStep("generate", "汇总结果",
-                        generateStepDesc(context), generateDoneExtra)),
+                "steps", List.of(TraceSnapshotBuilder.thinkingStep("generate", "汇总结果",
+                        TraceSnapshotBuilder.generateStepDesc(context), generateDoneExtra)),
                 "intent", plan.getIntent()
         ));
         context.addHistoryEntry("assistant", report);
@@ -933,7 +933,7 @@ public class AgentOrchestrator {
         for (int i = 0; i < plans.size(); i++) {
             QueryPlan plan = plans.get(i);
             String pre = i + "_";
-            String intentLabel = actionDisplay(plan);
+            String intentLabel = TraceSnapshotBuilder.actionDisplay(plan);
             // 分组标记：前端据此在每个子任务前插入小节标题与间距，视觉分段
             String segment = "① ② ③ ④ ⑤".split(" ")[i] + " " + intentLabel;
 
@@ -941,29 +941,29 @@ public class AgentOrchestrator {
             // 输出 = 该子意图的结构化要素（作为该子链下游节点的输入来源）；trace = 理解层 LLM 处理留痕
             Map<String, Object> subIntentOutput = new LinkedHashMap<>();
             subIntentOutput.put("summary", "已明确：本次要执行「" + intentLabel + "」");
-            subIntentOutput.put("structured_intent", planIntentView(plan));
+            subIntentOutput.put("structured_intent", TraceSnapshotBuilder.planIntentView(plan));
             Map<String, Object> subIntentExtra = new LinkedHashMap<>();
             subIntentExtra.put("segment", segment);
             subIntentExtra.put("goal", "先听懂您要做什么，再决定怎么办");
             subIntentExtra.put("input", Map.of("question", question));
             subIntentExtra.put("output", subIntentOutput);
-            subIntentExtra.put("trace", traceView(plan));
+            subIntentExtra.put("trace", TraceSnapshotBuilder.traceView(plan));
             emitter.emit("thinking", Map.of(
-                    "steps", List.of(thinkingStep(pre + "intent", intentStepName(context),
-                            intentStepDesc(context), subIntentExtra)),
+                    "steps", List.of(TraceSnapshotBuilder.thinkingStep(pre + "intent", TraceSnapshotBuilder.intentStepName(context),
+                            TraceSnapshotBuilder.intentStepDesc(context), subIntentExtra)),
                     "intent", plan.getIntent()
             ));
             // 阶段事件②：该子任务的执行方案（输入 = ①子意图的结构化要素）
             Map<String, Object> subPlanExtra = new LinkedHashMap<>();
             subPlanExtra.put("segment", segment);
-            subPlanExtra.put("goal", planStepGoal(plan, context));
-            subPlanExtra.put("input", upstreamIntentInput(plan, question));
-            subPlanExtra.put("workflow", buildWorkflow(plan));
-            subPlanExtra.put("output", Map.of("summary", planStepOutput(plan, context)));
-            subPlanExtra.put("trace", traceView(plan));
+            subPlanExtra.put("goal", TraceSnapshotBuilder.planStepGoal(plan, context));
+            subPlanExtra.put("input", TraceSnapshotBuilder.upstreamIntentInput(plan, question));
+            subPlanExtra.put("workflow", TraceSnapshotBuilder.buildWorkflow(plan));
+            subPlanExtra.put("output", Map.of("summary", TraceSnapshotBuilder.planStepOutput(plan, context)));
+            subPlanExtra.put("trace", TraceSnapshotBuilder.traceView(plan));
             emitter.emit("thinking", Map.of(
-                    "steps", List.of(thinkingStep(pre + "plan", "定下处理方案",
-                            buildReadablePlan(plan), subPlanExtra)),
+                    "steps", List.of(TraceSnapshotBuilder.thinkingStep(pre + "plan", "定下处理方案",
+                            TraceSnapshotBuilder.buildReadablePlan(plan), subPlanExtra)),
                     "intent", plan.getIntent()
             ));
 
@@ -977,8 +977,8 @@ public class AgentOrchestrator {
 
             // 阶段事件③/③′：该子任务汇总（输入 = 该子链各工具的实际产出；输出 = 整合性短文案，不复述正文）
             emitter.emit("thinking", Map.of(
-                    "steps", List.of(thinkingStep(pre + "generate", "汇总结果",
-                            generateStepDesc(context),
+                    "steps", List.of(TraceSnapshotBuilder.thinkingStep(pre + "generate", "汇总结果",
+                            TraceSnapshotBuilder.generateStepDesc(context),
                             Map.of("segment", segment,
                                     "goal", "把各环节结果整合成您能直接使用的结论与建议",
                                     "input", upstreamResultsInput(subResults)))),
@@ -987,11 +987,11 @@ public class AgentOrchestrator {
             String subReport = presenter.present(question, subResults, context);
             String subConclusion = extractConclusion(subResults);
             emitter.emit("thinking", Map.of(
-                    "steps", List.of(thinkingStep(pre + "generate", "汇总结果",
-                            generateStepDesc(context),
+                    "steps", List.of(TraceSnapshotBuilder.thinkingStep(pre + "generate", "汇总结果",
+                            TraceSnapshotBuilder.generateStepDesc(context),
                             Map.of("segment", segment,
                                     "input", upstreamResultsInput(subResults),
-                                    "output", Map.of("summary", summarizeOutput(subConclusion, subResults.size()),
+                                    "output", Map.of("summary", TraceSnapshotBuilder.summarizeOutput(subConclusion, subResults.size()),
                                             "branch_taken", WorkflowBuilder.branchLabel("MULTI"))))),
                     "intent", plan.getIntent()
             ));
@@ -1079,57 +1079,11 @@ public class AgentOrchestrator {
             toolEvent.put("errorMessage", result.getErrorMessage());
         }
         // 本体/规则推理日志：从工具产出中提取推理引擎、命中规则、归因路径等过程留痕
-        List<Map<String, Object>> toolTrace = ontologyTraceView(result);
+        List<Map<String, Object>> toolTrace = TraceSnapshotBuilder.ontologyTraceView(result);
         if (toolTrace != null) {
             toolEvent.put("trace", toolTrace);
         }
         return toolEvent;
-    }
-
-    /**
-     * 本体推理步骤日志：从工具执行结果中提取本体处理过程（推理引擎/命中规则/归因路径/证据三元组），
-     * 下发前端供思考时间线展开「本体处理日志」。非推理工具或无过程信息时返回 null。
-     */
-    private static List<Map<String, Object>> ontologyTraceView(ExecutionResult result) {
-        if (result == null || !result.isSuccess() || result.getData() == null) {
-            return null;
-        }
-        Map<String, Object> data = result.getData();
-        List<Map<String, Object>> trace = new ArrayList<>();
-        Object engine = data.get("reasonEngine");
-        Object firedRules = data.get("swrlFiredRules");
-        Object appliedRules = data.get("appliedRules");
-        if (engine != null && !str(engine).isBlank()) {
-            trace.add(Map.of("stage", "ontology",
-                    "message", "本体推理引擎：" + engine));
-        }
-        if (firedRules instanceof List<?> fired && !fired.isEmpty()) {
-            trace.add(Map.of("stage", "ontology",
-                    "message", "SWRL 规则触发：" + String.join("、", fired.stream().map(String::valueOf).toList())));
-        }
-        if (appliedRules instanceof List<?> applied && !applied.isEmpty()) {
-            trace.add(Map.of("stage", "ontology",
-                    "message", "命中业务规则：" + String.join("、", applied.stream().map(String::valueOf).toList())));
-        }
-        if (data.get("paths") instanceof List<?> paths && !paths.isEmpty()) {
-            List<String> pathDesc = new ArrayList<>();
-            for (Object p : paths) {
-                if (p instanceof Map<?, ?> pm && pm.get("name") != null) {
-                    String name = str(pm.get("name"));
-                    Object weight = pm.get("weight");
-                    pathDesc.add(name + (weight != null ? "（权重 " + weight + "）" : ""));
-                }
-            }
-            if (!pathDesc.isEmpty()) {
-                trace.add(Map.of("stage", "ontology",
-                        "message", "归因路径（按权重排序）：" + String.join(" → ", pathDesc)));
-            }
-        }
-        if (data.get("evidenceTriples") instanceof List<?> triples && !triples.isEmpty()) {
-            trace.add(Map.of("stage", "ontology",
-                    "message", "证据三元组落库 " + triples.size() + " 条，支撑结论可回溯"));
-        }
-        return trace.isEmpty() ? null : trace;
     }
 
     /** 未登记工具的 LLM 生成文案缓存（key=toolName；null 表示生成失败，回退工具 label）。 */
@@ -1184,7 +1138,7 @@ public class AgentOrchestrator {
             Map<String, Object> m = new com.fasterxml.jackson.databind.ObjectMapper()
                     .readValue(raw.substring(start, end + 1),
                             new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
-            String title = str(m.get("title"));
+            String title = TraceSnapshotBuilder.str(m.get("title"));
             if (title.isBlank()) {
                 return null;
             }
@@ -1195,8 +1149,8 @@ public class AgentOrchestrator {
             } catch (IllegalArgumentException e) {
                 category = ThinkingCopy.Category.LOOKUP;
             }
-            return new ThinkingCopy.ToolCopy(title, str(m.get("goal")),
-                    str(m.get("manualHint")).isBlank() ? null : str(m.get("manualHint")), category);
+            return new ThinkingCopy.ToolCopy(title, TraceSnapshotBuilder.str(m.get("goal")),
+                    TraceSnapshotBuilder.str(m.get("manualHint")).isBlank() ? null : TraceSnapshotBuilder.str(m.get("manualHint")), category);
         } catch (Exception e) {
             log.warn("[AgentOrchestrator] 工具文案 LLM 输出解析失败: {}", e.getMessage());
             return null;
@@ -1231,7 +1185,7 @@ public class AgentOrchestrator {
                 continue;
             }
             Object value = params.get(tp.getName());
-            if (value == null || str(value).isBlank()) {
+            if (value == null || TraceSnapshotBuilder.str(value).isBlank()) {
                 continue;
             }
             out.put(tp.getName(), value instanceof Object[] a ? java.util.Arrays.asList(a) : value);
@@ -1275,276 +1229,6 @@ public class AgentOrchestrator {
         return ToolOutputRenderer.outputEntries(tool, result.getData());
     }
 
-    /** 构造业务化思考步骤载荷（供前端时间线渲染为「动作说明 + 输入」）。 */
-    private static Map<String, Object> thinkingStep(String id, String title, String content, Map<String, Object> extra) {
-        Map<String, Object> step = new LinkedHashMap<>();
-        step.put("id", id);
-        step.put("type", "thinking");
-        step.put("title", title);
-        step.put("content", content);
-        if (extra != null) {
-            step.putAll(extra);
-        }
-        return step;
-    }
-
-    /** action / intent 内部码 → 业务展示名（含产商品研发场景动作，词典收敛至 ThinkingCopy）。 */
-    private static String actionDisplay(QueryPlan plan) {
-        if (plan == null) {
-            return "分析";
-        }
-        Map<String, Object> params = plan.getParams() != null ? plan.getParams() : Map.of();
-        String label = ThinkingCopy.actionDisplay(str(params.get("action")));
-        if (label == null || label.isBlank() || label.equals(params.get("action"))) {
-            label = ThinkingCopy.actionDisplay(plan.getIntent());
-        }
-        return (label == null || label.isBlank()) ? "分析" : label;
-    }
-
-    /**
-     * 推理过程日志视图：理解层（LLM）写入 plan.reasoningTrace 的处理留痕，
-     * 下发前端供思考时间线展开「LLM 处理日志」。空列表返回 null（不下发空字段）。
-     */
-    private static List<Map<String, Object>> traceView(QueryPlan plan) {
-        List<Map<String, Object>> trace = plan != null ? plan.getReasoningTrace() : null;
-        return trace != null && !trace.isEmpty() ? trace : null;
-    }
-
-    /**
-     * 将查询计划翻译为业务可读的方案说明，取代透传内部码 queryPlan 给前端渲染卡片。
-     */
-    private static String buildReadablePlan(QueryPlan plan) {
-        if (plan == null) {
-            return "依据您的需求制定分析方案";
-        }
-        Map<String, Object> params = plan.getParams() != null ? plan.getParams() : Map.of();
-        String actionLabel = ThinkingCopy.actionDisplay(str(params.get("action")));
-        if (actionLabel == null || actionLabel.isBlank() || actionLabel.equals(params.get("action"))) {
-            actionLabel = ThinkingCopy.actionDisplay(plan.getIntent());
-        }
-        if (actionLabel == null || actionLabel.isBlank()) {
-            actionLabel = "分析";
-        }
-
-        StringBuilder sb = new StringBuilder("本次将执行").append(actionLabel);
-        Object offering = params.get("offering");
-        Object scope = (offering != null && !str(offering).isBlank())
-                ? offering
-                : params.get("offeringIds");
-        if (scope != null && !str(scope).isBlank()) {
-            sb.append("，对象：").append(scope);
-        }
-        Object metric = params.get("metric");
-        if (metric != null && !str(metric).isBlank()) {
-            sb.append("，指标：").append(metric);
-        }
-        Object time = params.get("time");
-        if (time != null && !str(time).isBlank()) {
-            sb.append("，时间范围：").append(time);
-        }
-        sb.append("。");
-        List<Map<String, Object>> workflow = buildWorkflow(plan);
-        if (workflow.isEmpty()) {
-            sb.append("直接生成结论");
-        } else {
-            // 多环节方案才展开执行链；单环节时「方案」与后续工具步骤标题天然重复，仅讲本次动作
-            if (workflow.size() > 1) {
-                sb.append("方案共 ").append(workflow.size()).append(" 步：");
-            }
-            for (int i = 0; i < workflow.size(); i++) {
-                Map<String, Object> item = workflow.get(i);
-                if (i > 0) {
-                    sb.append(" → ");
-                }
-                sb.append(str(item.get("label")));
-            }
-        }
-        return sb.toString();
-    }
-
-    /** 方案包含的可执行环节数（无执行步骤算 1 步，供输出文案区分单/多环节）。 */
-    private static int planStepCount(QueryPlan plan) {
-        List<Map<String, Object>> workflow = buildWorkflow(plan);
-        return Math.max(workflow.size(), 1);
-    }
-
-    /**
-     * 构建可读的处理流程清单（按真实工具链粒度），供「制定方案」步骤展示本方案将依次执行的动作。
-     * <p>
-     * 依据 {@code plan.getSteps()}（ExecStep 序列）生成；无 steps 时回退到 plan.getTools()。
-     *
-     * @return 形如 [{step, tool, label}] 的有序清单；无可执行工具时返回空列表。
-     */
-    private static List<Map<String, Object>> buildWorkflow(QueryPlan plan) {
-        if (plan == null) {
-            return List.of();
-        }
-        List<String> tools = new ArrayList<>();
-        if (plan.getSteps() != null && !plan.getSteps().isEmpty()) {
-            for (com.sitech.prodai.service.agent.model.ExecStep step : plan.getSteps()) {
-                if (step.getTool() != null && !step.getTool().isBlank()) {
-                    tools.add(step.getTool());
-                }
-            }
-        }
-        if (tools.isEmpty() && plan.getTools() != null) {
-            tools.addAll(plan.getTools());
-        }
-
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (int i = 0; i < tools.size(); i++) {
-            String tool = tools.get(i);
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("step", i + 1);
-            item.put("tool", tool);
-            ThinkingCopy.ToolCopy copy = ThinkingCopy.toolCopy(tool);
-            item.put("label", copy != null ? copy.title() : tool);
-            out.add(item);
-        }
-        return out;
-    }
-
-    private static String str(Object value) {
-        return value == null ? "" : String.valueOf(value);
-    }
-
-    /** 是否为产商品研发场景（scene=rd）。 */
-    private static boolean isRdScene(SessionContext context) {
-        return context != null && "rd".equals(context.getScene());
-    }
-
-    /** 意图识别步骤标题：研发场景为「识别配置需求」，运营场景为「识别分析需求」。 */
-    private static String intentStepName(SessionContext context) {
-        return isRdScene(context) ? "识别配置需求" : "识别分析需求";
-    }
-
-    /** 意图识别步骤描述：研发场景围绕配置要素，运营场景围绕筛查目标。 */
-    private static String intentStepDesc(SessionContext context) {
-        return isRdScene(context)
-                ? "正在理解您的需求，识别业务意图与配置要素…"
-                : "正在理解您的需求，识别业务意图与筛查目标…";
-    }
-
-    /** 汇总步骤描述：研发场景讲配置结论，运营场景讲筛查结论（避免研发用户读到「筛查」话术）。 */
-    private static String generateStepDesc(SessionContext context) {
-        return isRdScene(context)
-                ? "正在整合各环节处理结果，生成配置结论与建议…"
-                : "正在汇总筛查结论与处置建议…";
-    }
-
-    /**
-     * 汇总步骤「输出」摘要：优先工具层结论（具体、与正文措辞不同），缺省给整合性短文案。
-     * 不复述完整报告 —— 报告正文紧随其后打出，摘要里再放一遍会让用户读两遍同一结论。
-     */
-    private static String summarizeOutput(String conclusion, int stepCount) {
-        if (conclusion != null && !conclusion.isBlank()) {
-            return conclusion;
-        }
-        return stepCount > 0
-                ? "已整合 " + stepCount + " 个环节的处理结果，生成结论与建议"
-                : "已整合各环节结果，生成结论与建议";
-    }
-
-    /**
-     * 「定下处理方案」步骤的目标文案：讲"怎么安排"而非"干什么"，
-     * 与后续工具步骤的 goal（讲"为什么做这一步"）区分，避免业务人员读到重复话术。
-     * 研发场景固定话术（配置类诉求一致）；运营场景按意图给目标。
-     */
-    private static String planStepGoal(QueryPlan plan, SessionContext context) {
-        if (isRdScene(context)) {
-            return "安排好先做什么、后做什么，让配置一次到位";
-        }
-        return ThinkingCopy.intentGoal(plan.getIntent());
-    }
-
-    /**
-     * 「定下处理方案」步骤的输出文案：讲"定了什么"，即最终交付物/执行安排，
-     * 与过程描述（怎么执行）区分，避免同一句话在「过程」「输出」两行重复出现。
-     */
-    private static String planStepOutput(QueryPlan plan, SessionContext context) {
-        if (isRdScene(context)) {
-            int n = planStepCount(plan);
-            return n > 1
-                    ? "方案已定：共 " + n + " 个环节，依次执行后交付配置结果"
-                    : "方案已定，即将开始生成配置草稿";
-        }
-        return "分析路径已确定，即将开始执行";
-    }
-
-    /**
-     * 供方案步骤「输入」展示的参数子集：剔除原始问题与内部噪声键（intent_type/action/text/draft 等），
-     * 仅保留业务可读的范围参数（对象/指标/时间等）。
-     * <p>
-     * rd 场景的配置类诉求（如「月费158带500M宽带」）参数多为 text 话术整体，无结构化范围键，
-     * 此时「输入」行会空缺显得敷衍 —— 故补一条「需求」= 用户话术摘要，保证每步输入可读。
-     */
-    private static Map<String, Object> planInputView(QueryPlan plan, String question) {
-        Map<String, Object> params = plan.getParams() != null ? plan.getParams() : Map.of();
-        Map<String, Object> out = new LinkedHashMap<>();
-        for (Map.Entry<String, Object> e : params.entrySet()) {
-            String key = e.getKey();
-            if (key == null || key.isBlank() || ThinkingCopy.hideInputKey(key)
-                    || e.getValue() == null || str(e.getValue()).isBlank()) {
-                continue;
-            }
-            if (e.getValue() instanceof Map || e.getValue() instanceof List) {
-                continue;
-            }
-            out.put(key, e.getValue());
-        }
-        if (out.isEmpty() && question != null && !question.isBlank()) {
-            out.put("requirement", requirementSummary(question));
-        }
-        return out;
-    }
-
-    /** 用户需求摘要：截断至 40 字供「输入」行展示。 */
-    private static String requirementSummary(String question) {
-        String q = question.trim();
-        return q.length() > 40 ? q.substring(0, 40) + "…" : q;
-    }
-
-    // ── 工作流数据流视图：每步「输入」= 上游节点「输出」的引用，形成可审计的传递链路 ──
-
-    /**
-     * 理解节点的结构化意图输出：动作 + 业务要素（plan.params 中的业务可读键）。
-     * 这是下游 plan/execute/summarize 节点的唯一输入事实来源。
-     */
-    private static Map<String, Object> planIntentView(QueryPlan plan) {
-        Map<String, Object> intent = new LinkedHashMap<>();
-        intent.put("action", actionDisplay(plan));
-        Map<String, Object> params = plan.getParams() != null ? plan.getParams() : Map.of();
-        for (Map.Entry<String, Object> e : params.entrySet()) {
-            String key = e.getKey();
-            if (key == null || key.isBlank() || ThinkingCopy.hideInputKey(key)
-                    || e.getValue() == null || str(e.getValue()).isBlank()
-                    || e.getValue() instanceof Map || e.getValue() instanceof List) {
-                continue;
-            }
-            intent.put(key, e.getValue());
-        }
-        return intent;
-    }
-
-    /**
-     * 方案/执行节点的「输入」视图：承接上游理解节点的结构化意图输出
-     * （{action: ..., 客群: ..., 月费: ...}），而非复述用户原文。
-     * 仅当结构化意图为空时才回退用户话术摘要。
-     */
-    private static Map<String, Object> upstreamIntentInput(QueryPlan plan, String question) {
-        Map<String, Object> intent = planIntentView(plan);
-        if (intent.size() > 1) {
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("from_step", "intent");
-            out.put("structured_intent", intent);
-            return out;
-        }
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("from_step", "intent");
-        out.put("requirement", requirementSummary(question));
-        return out;
-    }
-
     /**
      * 汇总节点的「输入」视图：承接执行层各工具的实际产出摘要（from_step=tool_*）。
      */
@@ -1559,29 +1243,12 @@ public class AgentOrchestrator {
                 if (result.isSuccess() && result.getData() != null) {
                     item.put("summary", ToolOutputRenderer.summary(toolMap.get(result.getToolName()), result.getData()));
                 } else {
-                    item.put("summary", "执行失败：" + str(result.getErrorMessage()));
+                    item.put("summary", "执行失败：" + TraceSnapshotBuilder.str(result.getErrorMessage()));
                 }
                 upstream.add(item);
             }
         }
         out.put("upstream_outputs", upstream);
-        return out;
-    }
-
-    /**
-     * 澄清节点的「输入」视图：承接理解节点输出的要素缺口（missing 参数契约）。
-     */
-    private static Map<String, Object> clarifyInputView(QueryPlan plan, String question) {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("from_step", "intent");
-        List<String> missing = plan.getClarify() != null ? plan.getClarify() : List.of();
-        out.put("missing_params", String.join("、", missing));
-        Map<String, Object> known = planIntentView(plan);
-        if (known.size() > 1) {
-            out.put("structured_intent", known);
-        } else {
-            out.put("requirement", requirementSummary(question));
-        }
         return out;
     }
 
