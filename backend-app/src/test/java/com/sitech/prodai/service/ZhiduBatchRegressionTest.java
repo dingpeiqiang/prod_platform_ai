@@ -101,7 +101,6 @@ class ZhiduBatchRegressionTest {
                 new ConfigDocumentStorage(),
                 rdf4jStore,
                 workOrderMapper,
-                instanceMapper,
                 projector,
                 new LastKnownGoodGuard(versionService),
                 versionService,
