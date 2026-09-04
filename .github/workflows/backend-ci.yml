@@ -1,0 +1,89 @@
+name: backend-ci
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "backend-app/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "backend-app/**"
+      - ".github/workflows/backend-ci.yml"
+  workflow_dispatch:
+    inputs:
+      eval_live:
+        description: "真实调用 LLM 录制评测响应（需密钥）"
+        type: boolean
+        default: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-test:
+    name: Build & Unit Tests (Java 17)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Build & run all tests
+        working-directory: backend-app
+        run: mvn -B -ntp test
+
+      - name: Upload surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: backend-app/target/surefire-reports/*
+          if-no-files-found: ignore
+          retention-days: 7
+
+  llm-eval:
+    name: LLM Golden Eval (replay gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      # 回放门禁：无录制命中的用例自动 skip，CI 零网络依赖保持绿色；
+      # 录制命中的用例失败即阻塞。
+      - name: Run golden eval in replay mode
+        working-directory: backend-app
+        run: mvn -B -ntp test "-Dtest=LlmEvalRunnerTest"
+
+      # 可选：workflow_dispatch + eval_live=true 时真实调用 LLM 并录制。
+      # 需在仓库 Secrets 配置 LLM 凭据变量（与 application.yml 对齐）。
+      - name: Run golden eval in live mode (record)
+        if: github.event_name == 'workflow_dispatch' && inputs.eval_live
+        working-directory: backend-app
+        env:
+          SPRING_AI_OPENAI_API_KEY: ${{ secrets.LLM_API_KEY }}
+          SPRING_AI_OPENAI_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          SPRING_AI_OPENAI_CHAT_MODEL: ${{ vars.LLM_MODEL }}
+        run: mvn -B -ntp test "-Dtest=LlmEvalRunnerTest" "-Dprodai.eval.live=true"
+
+      - name: Upload eval surefire report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm-eval-report
+          path: backend-app/target/surefire-reports/*LlmEvalRunnerTest*
+          if-no-files-found: ignore
+          retention-days: 14
