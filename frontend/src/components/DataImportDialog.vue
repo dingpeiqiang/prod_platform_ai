@@ -261,7 +261,7 @@
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Check, Close } from '@element-plus/icons-vue'
-import axios from 'axios'
+import { request } from '../services/httpClient.js'
 
 const API_BASE = '/api/v1/config'
 
@@ -307,9 +307,9 @@ const handleClose = () => {
 // 加载可导入表单列表
 const loadForms = async () => {
   try {
-    const res = await axios.get(`${API_BASE}/import/list`)
-    if (res.data.success) {
-      forms.value = res.data.forms
+    const res = await request('/import/list', { baseURL: API_BASE })
+    if (res.success) {
+      forms.value = res.forms
       if (forms.value.length > 0) {
         selectedFormCode.value = forms.value[0].formCode
       }
@@ -351,43 +351,38 @@ const startImport = async () => {
   }
 
   importing.value = true
-  importingText.value = '正在连接服务器...'
-  importProgress.value = 10
+  importingText.value = '正在提交导入请求...'
+  importProgress.value = 30
 
   try {
-    // 模拟进度更新
-    const progressInterval = setInterval(() => {
-      if (importProgress.value < 90) {
-        importProgress.value += Math.random() * 15
-        importingText.value = `正在导入 ${selectedForm.value?.formName} 数据...`
+    const res = await request('/import/execute', {
+      baseURL: API_BASE,
+      method: 'POST',
+      data: {
+        formCode: selectedFormCode.value,
+        limit: importLimit.value || undefined
       }
-    }, 500)
-
-    const res = await axios.post(`${API_BASE}/import/execute`, {
-      formCode: selectedFormCode.value,
-      limit: importLimit.value || undefined
     })
 
-    clearInterval(progressInterval)
     importProgress.value = 100
     importingText.value = '导入完成'
 
     // 调试日志：打印返回数据
     console.log('=== 导入结果 ===' )
-    console.log('完整响应:', res.data)
-    console.log('fieldStats:', res.data.fieldStats)
-    if (res.data.fieldStats && res.data.fieldStats.length > 0) {
-      console.log('第一个字段统计:', res.data.fieldStats[0])
+    console.log('完整响应:', res)
+    console.log('fieldStats:', res.fieldStats)
+    if (res.fieldStats && res.fieldStats.length > 0) {
+      console.log('第一个字段统计:', res.fieldStats[0])
     }
 
-    if (res.data.success) {
-      importResult.value = res.data
+    if (res.success) {
+      importResult.value = res
       setTimeout(() => {
         importing.value = false
         currentStep.value = 2
       }, 500)
     } else {
-      importResult.value = res.data
+      importResult.value = res
       importing.value = false
       currentStep.value = 2
     }

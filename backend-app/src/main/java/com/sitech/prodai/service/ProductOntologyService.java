@@ -95,10 +95,6 @@ public class ProductOntologyService {
     /** 延迟解析回归运行器（P1-7 SMOKE 回接）：规避与 ProductConfigRegressionService 的构造循环依赖。 */
     private final ObjectProvider<ProductConfigRegressionService> regressionServiceProvider;
 
-    private static final String OFFERING_CONFIG_CODE = "offering_config";
-    private static final String DRAFT_JSON_KEY = "_draft_json";
-    private static final String CLIENT_ID_KEY = "client_id";
-
     private Map<String, Object> graphCache;
     private String graphSourceId = "empty";
     private final RiskAuditService riskAudit;
@@ -110,6 +106,10 @@ public class ProductOntologyService {
     private final Map<String, List<Map<String, Object>>> configTraces = new ConcurrentHashMap<>();
     /** 最近一次批量稽核快照（定时/手动）。 */
     private volatile Map<String, Object> lastBatchAudit = new LinkedHashMap<>();
+    /** 工单域服务（R2 Phase1 拆分）：持久化/状态机/查询在本类保留薄委托 Facade。 */
+    private final OpsWorkOrderService opsWorkOrderService;
+    /** 草稿域服务（R2 Phase2 拆分）：CRUD/提交闭环在本类保留薄委托 Facade。 */
+    private final ConfigDraftService configDraftService;
 
     public ProductOntologyService(ObjectMapper objectMapper,
                               ProdAiProperties properties,
@@ -151,6 +151,94 @@ public class ProductOntologyService {
         this.intentExtractor = intentExtractor;
         this.sparqlDiscoverer = sparqlDiscoverer;
         this.regressionServiceProvider = regressionServiceProvider;
+        this.opsWorkOrderService = new OpsWorkOrderService(workOrderMapper, buildWorkOrderGraphCoordinator());
+        this.configDraftService = new ConfigDraftService(
+                objectMapper, instanceMapper, messageProjector,
+                this::checkCompliance, this::publishConfigDraft);
+    }
+
+    /** 工单域 → 事实图回写协调器（保持 graphCache 写入与同步锁在本类内）。 */
+    private WorkOrderGraphCoordinator buildWorkOrderGraphCoordinator() {
+        return new WorkOrderGraphCoordinator() {
+            @Override
+            public void onWorkOrderCreated(String offeringId, String workOrderId, Map<String, Object> workOrder) {
+                synchronized (ProductOntologyService.this) {
+                    Map<String, Object> graph = loadGraph();
+                    List<Map<String, Object>> shelf = castListOfMaps(graph.get("shelfOfferings"));
+                    for (Map<String, Object> o : shelf) {
+                        if (offeringId.equals(str(o.get("offeringId")))) {
+                            o.put("dispositionStatus", "work_order_open");
+                            o.put("lastWorkOrderId", workOrderId);
+                            break;
+                        }
+                    }
+                    graph.put("shelfOfferings", shelf);
+                    List<Map<String, Object>> graphOrders = castListOfMaps(graph.get("workOrders"));
+                    graphOrders.add(0, new LinkedHashMap<>(workOrder));
+                    graph.put("workOrders", graphOrders);
+                    graphCache = graph;
+                }
+            }
+
+            @Override
+            public void syncWorkOrderToGraph(Map<String, Object> saved, String status) {
+                String offeringId = str(saved.get("offeringId"));
+                String woId = str(saved.get("workOrderId"));
+                String disposition = switch (status) {
+                    case "in_progress" -> "work_order_in_progress";
+                    case "done" -> "work_order_done";
+                    case "cancelled" -> "work_order_cancelled";
+                    default -> "work_order_open";
+                };
+                synchronized (ProductOntologyService.this) {
+                    Map<String, Object> graph = loadGraph();
+                    List<Map<String, Object>> shelf = castListOfMaps(graph.get("shelfOfferings"));
+                    for (Map<String, Object> o : shelf) {
+                        if (offeringId.equals(str(o.get("offeringId")))) {
+                            o.put("dispositionStatus", disposition);
+                            o.put("lastWorkOrderId", woId);
+                            o.put("lastWorkOrderStatus", status);
+                            break;
+                        }
+                    }
+                    graph.put("shelfOfferings", shelf);
+                    List<Map<String, Object>> graphOrders = castListOfMaps(graph.get("workOrders"));
+                    boolean updated = false;
+                    for (int i = 0; i < graphOrders.size(); i++) {
+                        if (woId.equals(str(graphOrders.get(i).get("workOrderId")))) {
+                            graphOrders.set(i, new LinkedHashMap<>(saved));
+                            updated = true;
+                            break;
+                        }
+                    }
+                    if (!updated) {
+                        graphOrders.add(0, new LinkedHashMap<>(saved));
+                    }
+                    graph.put("workOrders", graphOrders);
+                    graphCache = graph;
+                }
+            }
+
+            @Override
+            public Map<String, Object> findShelfOffering(String offeringId) {
+                if (empty(offeringId)) {
+                    return null;
+                }
+                return castListOfMaps(loadGraph().get("shelfOfferings")).stream()
+                        .filter(o -> offeringId.equals(str(o.get("offeringId"))))
+                        .findFirst()
+                        .orElse(null);
+            }
+
+            @Override
+            public Map<String, Object> modeMeta() {
+                Map<String, Object> meta = new LinkedHashMap<>();
+                meta.put("demoMode", properties.getOntology().isDemoEnabled());
+                meta.put("dataSource", graphSourceId);
+                meta.put("dataSourceMode", properties.getOntology().getDataSource());
+                return meta;
+            }
+        };
     }
 
     @PostConstruct
@@ -1530,217 +1618,34 @@ public class ProductOntologyService {
     }
 
     /**
-     * 持久化配置草稿（JPA pd_ai_ontology_instance），绑定 session/user，刷新可恢复。
+     * 持久化配置草稿（薄委托 → {@link ConfigDraftService}）。
      */
     @Transactional
     public Map<String, Object> saveConfigDraft(Map<String, Object> request) {
-        Map<String, Object> req = request == null ? Map.of() : request;
-        @SuppressWarnings("unchecked")
-        Map<String, Object> draftInput = req.get("draft") instanceof Map<?, ?>
-                ? (Map<String, Object>) req.get("draft")
-                : (req.containsKey("offeringName") || req.containsKey("offerName") ? req : Map.of());
-        Map<String, Object> draft = messageProjector.applyCategoryDefaults(
-                draftInput == null || draftInput.isEmpty() ? Map.of() : deepCopy(draftInput));
-        String sessionId = str(firstNonEmpty(req.get("sessionId"), req.get("session_id")));
-        String userId = str(firstNonEmpty(req.get("userId"), req.get("user_id"), "anonymous"));
-        String clientId = str(firstNonEmpty(req.get("clientId"), req.get("client_id"), draft.get("clientId")));
-        Long draftId = parseLong(req.get("draftId") != null ? req.get("draftId") : req.get("draft_id"));
-
-        // 语义清晰化：带 draftId 入参 → 按主键更新（查不到即报错，草稿已不存在，不静默换行）；
-        // 未带 draftId → 直接新增。clientId 仅作归属记录，不再用于反查复用。
-        OntologyInstance entity;
-        if (draftId != null) {
-            entity = instanceMapper.selectById(draftId);
-            if (entity == null || !OFFERING_CONFIG_CODE.equals(entity.getOntologyCode())) {
-                return Map.of("success", false, "message", "草稿不存在或已删除: " + draftId, "draftId", draftId);
-            }
-            entity.setUserId(userId);
-            if (!sessionId.isBlank()) {
-                entity.setSessionId(sessionId);
-            }
-            if (!"submitted".equals(entity.getStatus())) {
-                entity.setStatus("draft");
-            }
-        } else {
-            entity = new OntologyInstance();
-            entity.setOntologyCode(OFFERING_CONFIG_CODE);
-            entity.setStatus("draft");
-            entity.setUserId(userId);
-            if (!sessionId.isBlank()) {
-                entity.setSessionId(sessionId);
-            }
-        }
-
-        Map<String, Object> store = new LinkedHashMap<>();
-        store.put(CLIENT_ID_KEY, clientId.isBlank() ? "P" + Instant.now().toEpochMilli() : clientId);
-        store.put("offeringName", firstNonEmpty(draft.get("offeringName"), draft.get("offerName"), ""));
-        store.put("monthlyFee", String.valueOf(firstNonEmpty(draft.get("monthlyFee"), draft.get("fixedFeeAmount"), "")));
-        store.put("bizScenario", str(draft.get("bizScenario")));
-        store.put("channelScope", str(draft.get("channelScope")));
-        store.put("compliancePass", String.valueOf(req.getOrDefault("compliancePass", draft.get("compliancePass"))));
-        try {
-            store.put(DRAFT_JSON_KEY, objectMapper.writeValueAsString(draft));
-        } catch (Exception e) {
-            throw new IllegalStateException("serialize draft failed: " + e.getMessage(), e);
-        }
-        entity.setData(store);
-        if (entity.getId() == null) {
-            instanceMapper.insert(entity);
-        } else {
-            instanceMapper.updateById(entity);
-        }
-        OntologyInstance saved = entity;
-
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("success", true);
-        body.put("draftId", saved.getId());
-        body.put("clientId", store.get(CLIENT_ID_KEY));
-        body.put("status", saved.getStatus());
-        body.put("sessionId", saved.getSessionId());
-        body.put("draft", draft);
-        body.put("message", "配置草稿已持久化");
-        return body;
+        return configDraftService.saveConfigDraft(request);
     }
 
     @Transactional(readOnly = true)
     public Map<String, Object> listConfigDrafts(String sessionId, String userId, String status) {
-        List<OntologyInstance> rows;
-        if (sessionId != null && !sessionId.isBlank()) {
-            rows = findTop50Instances(OFFERING_CONFIG_CODE, w -> w.eq(OntologyInstance::getSessionId, sessionId.trim()));
-        } else if (userId != null && !userId.isBlank()) {
-            rows = findTop50Instances(OFFERING_CONFIG_CODE, w -> w.eq(OntologyInstance::getUserId, userId.trim()));
-        } else if (status != null && !status.isBlank() && !"all".equalsIgnoreCase(status)) {
-            rows = findTop50Instances(OFFERING_CONFIG_CODE, w -> w.eq(OntologyInstance::getStatus, status.trim()));
-        } else {
-            rows = findTop50Instances(OFFERING_CONFIG_CODE, w -> {});
-        }
-        if (status != null && !status.isBlank() && !"all".equalsIgnoreCase(status)
-                && (sessionId != null && !sessionId.isBlank() || userId != null && !userId.isBlank())) {
-            String st = status.trim();
-            rows = rows.stream().filter(r -> st.equalsIgnoreCase(r.getStatus())).collect(Collectors.toList());
-        }
-        List<Map<String, Object>> items = rows.stream().map(this::toDraftSummary).collect(Collectors.toList());
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("success", true);
-        body.put("total", items.size());
-        body.put("items", items);
-        return body;
+        return configDraftService.listConfigDrafts(sessionId, userId, status);
     }
 
     @Transactional(readOnly = true)
     public Map<String, Object> getConfigDraft(Long draftId) {
-        OntologyInstance entity = findInstanceByIdAndOntologyCode(draftId, OFFERING_CONFIG_CODE);
-        if (entity == null) {
-            return Map.of("success", false, "message", "草稿不存在: " + draftId);
-        }
-        Map<String, Object> body = new LinkedHashMap<>(toDraftSummary(entity));
-        body.put("success", true);
-        body.put("draft", readDraftJson(entity));
-        return body;
+        return configDraftService.getConfigDraft(draftId);
     }
 
     @Transactional
     public Map<String, Object> deleteConfigDraft(Long draftId) {
-        OntologyInstance entity = findInstanceByIdAndOntologyCode(draftId, OFFERING_CONFIG_CODE);
-        if (entity == null) {
-            return Map.of("success", false, "message", "草稿不存在: " + draftId);
-        }
-        instanceMapper.deleteById(entity.getId());
-        return Map.of("success", true, "message", "草稿已删除", "draftId", draftId);
+        return configDraftService.deleteConfigDraft(draftId);
     }
 
     /**
-     * 智检通过后闭环：合规 → 沉淀本体。
+     * 智检通过后闭环：合规 → 沉淀本体（薄委托 → {@link ConfigDraftService}）。
      */
     @Transactional
     public Map<String, Object> submitConfigDraft(Map<String, Object> request) {
-        Map<String, Object> req = request == null ? Map.of() : request;
-        @SuppressWarnings("unchecked")
-        Map<String, Object> draftInput = req.get("draft") instanceof Map<?, ?>
-                ? (Map<String, Object>) req.get("draft")
-                : Map.of();
-        Long draftId = parseLong(req.get("draftId") != null ? req.get("draftId") : req.get("draft_id"));
-        Map<String, Object> draft = deepCopy(draftInput);
-        if (draft.isEmpty() && draftId != null) {
-            OntologyInstance existing = findInstanceByIdAndOntologyCode(draftId, OFFERING_CONFIG_CODE);
-            if (existing != null) {
-                draft = readDraftJson(existing);
-            }
-        }
-        if (draft.isEmpty()) {
-            return Map.of("success", false, "message", "缺少可提交的配置草稿");
-        }
-
-        Map<String, Object> persistReq = new LinkedHashMap<>(req);
-        persistReq.put("draft", draft);
-        Map<String, Object> saved = saveConfigDraft(persistReq);
-        Long persistedId = parseLong(saved.get("draftId"));
-
-        Map<String, Object> compliance = checkCompliance(draft);
-        if (!Boolean.TRUE.equals(compliance.get("compliancePass"))) {
-            Map<String, Object> fail = new LinkedHashMap<>();
-            fail.put("success", false);
-            fail.put("message", "合规未通过，拒绝提交");
-            fail.put("issues", compliance.get("issues"));
-            fail.put("compliancePass", false);
-            fail.put("draftId", persistedId);
-            return fail;
-        }
-
-        if (empty(draft.get("offeringId"))) {
-            draft.put("offeringId", "OF-DRAFT-" + Instant.now().toEpochMilli());
-        }
-        Map<String, Object> published = publishConfigDraft(draft);
-        if (!Boolean.TRUE.equals(published.get("success"))) {
-            Map<String, Object> fail = new LinkedHashMap<>(published);
-            fail.put("draftId", persistedId);
-            return fail;
-        }
-
-        String offeringId = str(published.get("offeringId"));
-
-        final Map<String, Object> draftSnapshot = deepCopy(draft);
-        if (persistedId != null) {
-            OntologyInstance draftEntity = findInstanceByIdAndOntologyCode(persistedId, OFFERING_CONFIG_CODE);
-            if (draftEntity != null) {
-                OntologyInstance entity = draftEntity;
-                entity.setStatus("submitted");
-                entity.setSubmittedAt(LocalDateTime.now());
-                Map<String, Object> store = new LinkedHashMap<>();
-                if (entity.getData() != null) {
-                    entity.getData().forEach(store::put);
-                }
-                store.put("offeringId", offeringId);
-                store.put("compliancePass", "true");
-                try {
-                    store.put(DRAFT_JSON_KEY, objectMapper.writeValueAsString(draftSnapshot));
-                } catch (Exception ignored) {
-                    // keep previous json
-                }
-                entity.setData(store);
-                instanceMapper.updateById(entity);
-            }
-        }
-
-        String traceId = "cfg-submit-" + Instant.now().toEpochMilli();
-        appendConfigAudit(traceId, Map.of(
-                "step", "submit",
-                "offering_id", offeringId,
-                "draft_id", persistedId == null ? "" : String.valueOf(persistedId),
-                "publish_trace", str(published.get("trace_id")),
-                "timestamp", Instant.now().toString()
-        ));
-
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("success", true);
-        body.put("message", "已提交：合规通过 → 沉淀本体");
-        body.put("draftId", persistedId);
-        body.put("offeringId", offeringId);
-        body.put("published", published);
-        body.put("compliancePass", true);
-        body.put("status", "submitted");
-        body.put("trace_id", traceId);
-        return body;
+        return configDraftService.submitConfigDraft(request);
     }
 
     /**
@@ -1901,88 +1806,6 @@ public class ProductOntologyService {
         body.put("trace_id", traceId);
         body.put("marketScale", marketScale);
         return body;
-    }
-
-    private OntologyInstance findInstanceByIdAndOntologyCode(Long id, String ontologyCode) {
-        if (id == null) {
-            return null;
-        }
-        OntologyInstance entity = instanceMapper.selectById(id);
-        if (entity == null || !ontologyCode.equals(entity.getOntologyCode())) {
-            return null;
-        }
-        return entity;
-    }
-
-    private List<OntologyInstance> findTop50Instances(String ontologyCode,
-                                                      java.util.function.Consumer<com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OntologyInstance>> extra) {
-        com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OntologyInstance> wrapper =
-                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OntologyInstance>()
-                        .eq(OntologyInstance::getOntologyCode, ontologyCode)
-                        .orderByDesc(OntologyInstance::getId)
-                        .last("LIMIT 50");
-        extra.accept(wrapper);
-        return instanceMapper.selectList(wrapper);
-    }
-
-    private Map<String, Object> toDraftSummary(OntologyInstance entity) {
-        Map<String, Object> row = new LinkedHashMap<>();
-        row.put("draftId", entity.getId());
-        row.put("status", entity.getStatus());
-        row.put("sessionId", entity.getSessionId());
-        row.put("userId", entity.getUserId());
-        row.put("submittedAt", entity.getSubmittedAt() == null ? null : entity.getSubmittedAt().toString());
-        Map<String, String> data = entity.getData() == null ? Map.of() : entity.getData();
-        row.put("clientId", data.get(CLIENT_ID_KEY));
-        row.put("offeringName", data.getOrDefault("offeringName", ""));
-        row.put("monthlyFee", data.getOrDefault("monthlyFee", ""));
-        row.put("bizScenario", data.getOrDefault("bizScenario", ""));
-        row.put("channelScope", data.getOrDefault("channelScope", ""));
-        row.put("compliancePass", "true".equalsIgnoreCase(data.get("compliancePass")));
-        row.put("offeringId", data.get("offeringId"));
-        row.put("workOrderId", data.get("workOrderId"));
-        return row;
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> readDraftJson(OntologyInstance entity) {
-        if (entity.getData() == null) {
-            return new LinkedHashMap<>();
-        }
-        String json = entity.getData().get(DRAFT_JSON_KEY);
-        if (json == null || json.isBlank()) {
-            Map<String, Object> flat = new LinkedHashMap<>();
-            entity.getData().forEach((k, v) -> {
-                if (!DRAFT_JSON_KEY.equals(k) && !CLIENT_ID_KEY.equals(k)) {
-                    flat.put(k, v);
-                }
-            });
-            return flat;
-        }
-        try {
-            return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
-        } catch (Exception e) {
-            log.warn("parse draft json failed id={}: {}", entity.getId(), e.getMessage());
-            return new LinkedHashMap<>();
-        }
-    }
-
-    private Long parseLong(Object value) {
-        if (value == null) {
-            return null;
-        }
-        if (value instanceof Number n) {
-            return n.longValue();
-        }
-        String s = String.valueOf(value).trim();
-        if (s.isEmpty() || "null".equalsIgnoreCase(s)) {
-            return null;
-        }
-        try {
-            return Long.parseLong(s);
-        } catch (NumberFormatException e) {
-            return null;
-        }
     }
 
     /** 智读抽取置信度：关键字段齐全度 + 原文片段 + 合规结果。 */
@@ -2380,6 +2203,71 @@ public class ProductOntologyService {
     }
 
     /**
+     * 运营大屏·收入与规模总览：从事实图 shelfOfferings 聚合 30 天真实指标。
+     * <p>
+     * 返回结构：
+     * <ul>
+     *   <li>totals：revenue30d（元）/ sales30d（单）/ offeringCount / activeOfferingCount</li>
+     *   <li>items[]：每个在架商品的 {offeringId, offeringName, monthlyFee, revenue30d, sales30d, shelfDays, state}</li>
+     *   <li>anomalyAlertCount：异动告警数（供大屏预警角标）</li>
+     * </ul>
+     * 注：同比/累计值需外部数仓口径，本期不返回；前端按"仅展示有值指标"降级。
+     */
+    public Map<String, Object> getOpsRevenueOverview() {
+        Map<String, Object> graph = loadGraph();
+        List<Map<String, Object>> offerings = castListOfMaps(graph.get("shelfOfferings"));
+
+        long revenue30d = 0L;
+        long sales30d = 0L;
+        int activeCount = 0;
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (Map<String, Object> o : offerings) {
+            long rev = toLong(o.get("revenue30d"));
+            long sales = toLong(o.get("salesCnt30d"));
+            revenue30d += rev;
+            sales30d += sales;
+            if (sales > 0) {
+                activeCount++;
+            }
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("offeringId", str(o.get("offeringId")));
+            item.put("offeringName", str(o.get("offeringName")));
+            item.put("state", str(o.get("state")));
+            item.put("monthlyFee", o.get("monthlyFee"));
+            item.put("revenue30d", rev);
+            item.put("sales30d", sales);
+            item.put("shelfDays", toLong(o.get("shelfDays")));
+            items.add(item);
+        }
+        items.sort((a, b) -> Long.compare(toLong(b.get("revenue30d")), toLong(a.get("revenue30d"))));
+
+        Map<String, Object> totals = new LinkedHashMap<>();
+        totals.put("revenue30d", revenue30d);
+        totals.put("sales30d", sales30d);
+        totals.put("offeringCount", items.size());
+        totals.put("activeOfferingCount", activeCount);
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", true);
+        body.put("totals", totals);
+        body.put("items", items);
+        body.put("anomalyAlertCount", buildAnomalyAlerts().size());
+        body.put("generatedAt", Instant.now().toString());
+        return withModeMeta(body);
+    }
+
+    private long toLong(Object value) {
+        if (value instanceof Number n) {
+            return n.longValue();
+        }
+        try {
+            return value == null ? 0L : Long.parseLong(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            return 0L;
+        }
+    }
+
+    /**
      * 运营监控告警列表（异动为主，可按 offeringId 过滤）。
      */
     public Map<String, Object> listOpsAlerts(String offeringId) {
@@ -2399,389 +2287,39 @@ public class ProductOntologyService {
     }
 
     /**
-     * 生成处置工单：持久化到 DB，并回写内存事实图 dispositionStatus。
+     * 生成处置工单（薄委托 → {@link OpsWorkOrderService}）。
      */
     public Map<String, Object> createWorkOrder(Map<String, Object> request) {
-        Map<String, Object> req = request == null ? Map.of() : request;
-        String offeringId = str(req.getOrDefault("offeringId", req.get("offering_id")));
-        String source = str(req.getOrDefault("source", "manual"));
-        String sessionId = str(req.getOrDefault("sessionId", req.get("session_id")));
-        String title = str(req.get("title"));
-        String summary = str(req.getOrDefault("summary", req.getOrDefault("anomalySummary", "")));
-        List<Object> actions = castList(req.get("actions")).stream()
-                .map(this::str)
-                .filter(s -> !s.isBlank())
-                .map(s -> (Object) s)
-                .collect(Collectors.toList());
-        if (actions.isEmpty() && req.get("action") != null) {
-            actions = List.of(str(req.get("action")));
-        }
-
-        Map<String, Object> offering = findShelfOffering(offeringId);
-        String offeringName = (offering == null || offering.isEmpty())
-                ? str(req.getOrDefault("offeringName", offeringId))
-                : str(offering.getOrDefault("offeringName", offeringId));
-        if (title.isBlank()) {
-            title = offeringName + ("risk".equals(source) || source.contains("risk")
-                    ? "风险处置工单" : "产品优化工单");
-        }
-        if (actions.isEmpty()) {
-            actions = List.of("跟进处置", "同步渠道与产品运营复核");
-        }
-
-        String woId = "WO" + Instant.now().toEpochMilli();
-        Map<String, Object> payload = new LinkedHashMap<>();
-        if (req.get("impacts") != null) {
-            payload.put("impacts", req.get("impacts"));
-        }
-        if (req.get("rootCauses") != null) {
-            payload.put("rootCauses", req.get("rootCauses"));
-        }
-        if (req.get("hypoMode") != null) {
-            payload.put("hypoMode", req.get("hypoMode"));
-        }
-        // 关联配置草稿：工单卡删除/复制操作按工单号反查草稿的唯一凭据
-        String draftIdLink = str(firstNonEmpty(req.get("draftId"), req.get("draft_id")));
-        if (!draftIdLink.isBlank() && !"null".equals(draftIdLink)) {
-            payload.put("draftId", draftIdLink);
-        }
-        // 工单关联触发提交的配置工单（前端合并展示/高亮来源）
-        String relatedWo = str(firstNonEmpty(req.get("relatedWorkOrderId"), req.get("related_work_order_id")));
-        if (!relatedWo.isBlank() && !"null".equals(relatedWo)) {
-            payload.put("relatedWorkOrderId", relatedWo);
-        }
-        // 稽核结果随单：工单卡直接展示草稿合规结论（issues 为稽核规则问题明细）
-        if (req.get("compliancePass") != null) {
-            payload.put("compliancePass", req.get("compliancePass"));
-        }
-        if (req.get("complianceIssues") != null) {
-            payload.put("complianceIssues", req.get("complianceIssues"));
-        }
-
-        OpsWorkOrder entity = new OpsWorkOrder();
-        entity.setWorkOrderId(woId);
-        entity.setTitle(title);
-        entity.setOfferingId(offeringId);
-        entity.setOfferingName(offeringName);
-        entity.setSummary(summary.isBlank() ? title : summary);
-        entity.setActions(actions);
-        entity.setStatus("open");
-        entity.setSource(source.isBlank() ? "ops_assistant" : source);
-        entity.setSessionId(sessionId.isBlank() ? null : sessionId);
-        entity.setHypoMode(str(req.get("hypoMode")));
-        entity.setPayload(payload);
-        workOrderMapper.insert(entity);
-        OpsWorkOrder saved = entity;
-
-        Map<String, Object> wo = toWorkOrderMap(saved);
-
-        // 回写内存图（工单闭环可见）
-        synchronized (this) {
-            Map<String, Object> graph = loadGraph();
-            List<Map<String, Object>> shelf = castListOfMaps(graph.get("shelfOfferings"));
-            for (Map<String, Object> o : shelf) {
-                if (offeringId.equals(str(o.get("offeringId")))) {
-                    o.put("dispositionStatus", "work_order_open");
-                    o.put("lastWorkOrderId", woId);
-                    break;
-                }
-            }
-            graph.put("shelfOfferings", shelf);
-            List<Map<String, Object>> graphOrders = castListOfMaps(graph.get("workOrders"));
-            graphOrders.add(0, new LinkedHashMap<>(wo));
-            graph.put("workOrders", graphOrders);
-            graphCache = graph;
-        }
-
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("success", true);
-        body.put("message", "处置工单已持久化并回写本体事实");
-        body.put("workOrder", wo);
-        body.put("persisted", true);
-        return withModeMeta(body);
+        return opsWorkOrderService.createWorkOrder(request);
     }
 
     public Map<String, Object> listWorkOrders() {
-        return listWorkOrders(null, null);
+        return opsWorkOrderService.listWorkOrders();
     }
 
     public Map<String, Object> listWorkOrders(String status, String sessionId) {
-        return listWorkOrders(status, sessionId, null, null, null);
+        return opsWorkOrderService.listWorkOrders(status, sessionId);
     }
 
     /**
-     * 工单列表查询（会话维度 / 全局）：支持状态过滤 + 关键词匹配（工单号/标题/商品名/商品编码）+ 分页。
-     * <p>
-     * 大批量文件解析一次可开数百单，前端消息窗工单卡按页拉取，避免一次渲染全部条目。
-     * page 从 1 开始；size 缺省 20；q 为空时不过滤关键词；无分页参数时保持旧行为（Top50 全量）。
+     * 工单列表查询（薄委托 → {@link OpsWorkOrderService}）。
      */
     public Map<String, Object> listWorkOrders(String status, String sessionId, Integer page, Integer size, String q) {
-        String sid = sessionId == null ? "" : sessionId.trim();
-        String st = status == null ? "" : status.trim();
-        String kw = q == null ? "" : q.trim();
-        boolean byStatus = !st.isBlank() && !"all".equalsIgnoreCase(st);
-
-        List<OpsWorkOrder> rows;
-        // 无分页参数 → 旧行为（Top50，保持历史调用兼容）
-        boolean paged = page != null || size != null;
-        if (paged) {
-            int pageNum = page == null || page < 1 ? 1 : page;
-            int pageSize = size == null || size < 1 ? 20 : Math.min(size, 200);
-
-            boolean hasKw = !kw.isBlank();
-            com.baomidou.mybatisplus.extension.plugins.pagination.Page<OpsWorkOrder> mpPage =
-                    new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(pageNum, pageSize);
-            com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OpsWorkOrder> wrapper =
-                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OpsWorkOrder>()
-                            .orderByDesc(OpsWorkOrder::getCreatedAt);
-            if (!sid.isBlank()) {
-                wrapper.eq(OpsWorkOrder::getSessionId, sid);
-            }
-            if (byStatus) {
-                wrapper.eq(OpsWorkOrder::getStatus, st.toLowerCase(Locale.ROOT));
-            }
-            if (hasKw) {
-                String like = "%" + kw.toLowerCase(Locale.ROOT) + "%";
-                wrapper.and(w -> w
-                        .apply("LOWER(COALESCE(work_order_id, '')) LIKE {0}", like)
-                        .or().apply("LOWER(COALESCE(title, '')) LIKE {0}", like)
-                        .or().apply("LOWER(COALESCE(offering_name, '')) LIKE {0}", like)
-                        .or().apply("LOWER(COALESCE(offering_id, '')) LIKE {0}", like));
-            }
-            com.baomidou.mybatisplus.extension.plugins.pagination.Page<OpsWorkOrder> result =
-                    workOrderMapper.selectPage(mpPage, wrapper);
-            List<Map<String, Object>> items = result.getRecords().stream()
-                    .map(this::toWorkOrderMap).collect(Collectors.toList());
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("success", true);
-            body.put("total", result.getTotal());
-            body.put("page", pageNum);
-            body.put("size", pageSize);
-            body.put("pages", result.getPages());
-            body.put("statusFilter", byStatus ? st : "all");
-            body.put("sessionId", sid.isBlank() ? null : sid);
-            body.put("q", kw.isBlank() ? null : kw);
-            body.put("items", items);
-            body.put("counts", workOrderCounts(sid));
-            return withModeMeta(body);
-        }
-
-        if (!sid.isBlank() && byStatus) {
-            rows = findTop50WorkOrders(w -> w.eq(OpsWorkOrder::getSessionId, sid)
-                    .eq(OpsWorkOrder::getStatus, st.toLowerCase(Locale.ROOT)));
-        } else if (!sid.isBlank()) {
-            rows = findTop50WorkOrders(w -> w.eq(OpsWorkOrder::getSessionId, sid));
-        } else if (byStatus) {
-            rows = findTop50WorkOrders(w -> w.eq(OpsWorkOrder::getStatus, st.toLowerCase(Locale.ROOT)));
-        } else {
-            rows = findTop50WorkOrders(w -> {});
-        }
-        List<Map<String, Object>> items = rows.stream().map(this::toWorkOrderMap).collect(Collectors.toList());
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("success", true);
-        body.put("total", items.size());
-        body.put("statusFilter", byStatus ? st : "all");
-        body.put("sessionId", sid.isBlank() ? null : sid);
-        body.put("items", items);
-        body.put("counts", workOrderCounts(sid));
-        return withModeMeta(body);
-    }
-
-    private OpsWorkOrder findWorkOrderByWorkOrderId(String workOrderId) {
-        return workOrderMapper.selectOne(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OpsWorkOrder>()
-                .eq(OpsWorkOrder::getWorkOrderId, workOrderId)
-                .last("LIMIT 1"));
-    }
-
-    private List<OpsWorkOrder> findTop50WorkOrders(
-            java.util.function.Consumer<com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OpsWorkOrder>> extra) {
-        com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OpsWorkOrder> wrapper =
-                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OpsWorkOrder>()
-                        .orderByDesc(OpsWorkOrder::getCreatedAt)
-                        .last("LIMIT 50");
-        extra.accept(wrapper);
-        return workOrderMapper.selectList(wrapper);
-    }
-
-    private long countWorkOrdersByStatus(String status) {
-        return workOrderMapper.selectCount(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<OpsWorkOrder>()
-                .eq(OpsWorkOrder::getStatus, status));
-    }
-
-    /** 会话/全局工单状态计数（会话维度按 sessionId 过滤，全局按状态列统计）。 */
-    private Map<String, Object> workOrderCounts(String sid) {
-        Map<String, Object> counts = new LinkedHashMap<>();
-        if (sid != null && !sid.isBlank()) {
-            List<OpsWorkOrder> all = findTop50WorkOrders(w -> w.eq(OpsWorkOrder::getSessionId, sid));
-            counts.put("open", all.stream().filter(i -> "open".equals(i.getStatus())).count());
-            counts.put("in_progress", all.stream().filter(i -> "in_progress".equals(i.getStatus())).count());
-            counts.put("done", all.stream().filter(i -> "done".equals(i.getStatus())).count());
-            counts.put("cancelled", all.stream().filter(i -> "cancelled".equals(i.getStatus())).count());
-        } else {
-            counts.put("open", countWorkOrdersByStatus("open"));
-            counts.put("in_progress", countWorkOrdersByStatus("in_progress"));
-            counts.put("done", countWorkOrdersByStatus("done"));
-            counts.put("cancelled", countWorkOrdersByStatus("cancelled"));
-        }
-        return counts;
+        return opsWorkOrderService.listWorkOrders(status, sessionId, page, size, q);
     }
 
     /**
-     * 工单状态流转：open → in_progress → done / cancelled。
-     * 完成后回写货架 dispositionStatus=work_order_done。
+     * 工单状态流转（薄委托 → {@link OpsWorkOrderService}）。
      */
     public Map<String, Object> updateWorkOrderStatus(String workOrderId, String status, String remark) {
-        String wid = workOrderId == null ? "" : workOrderId.trim();
-        String next = status == null ? "" : status.trim().toLowerCase(Locale.ROOT);
-        Set<String> allowed = Set.of("open", "in_progress", "done", "cancelled");
-        if (wid.isBlank()) {
-            return withModeMeta(Map.of("success", false, "message", "workOrderId 不能为空"));
-        }
-        if (!allowed.contains(next)) {
-            return withModeMeta(Map.of(
-                    "success", false,
-                    "message", "非法状态，允许：open / in_progress / done / cancelled"
-            ));
-        }
-
-        OpsWorkOrder entity = findWorkOrderByWorkOrderId(wid);
-        if (entity == null) {
-            return withModeMeta(Map.of("success", false, "message", "工单不存在: " + wid));
-        }
-        String prev = entity.getStatus();
-        if (!isValidTransition(prev, next)) {
-            return withModeMeta(Map.of(
-                    "success", false,
-                    "message", "不允许从 " + prev + " 流转到 " + next,
-                    "workOrder", toWorkOrderMap(entity)
-            ));
-        }
-
-        entity.setStatus(next);
-        Map<String, Object> payload = entity.getPayload() == null
-                ? new LinkedHashMap<>() : new LinkedHashMap<>(entity.getPayload());
-        List<Object> history = castList(payload.get("statusHistory"));
-        Map<String, Object> step = new LinkedHashMap<>();
-        step.put("from", prev);
-        step.put("to", next);
-        step.put("at", Instant.now().toString());
-        if (remark != null && !remark.isBlank()) {
-            step.put("remark", remark);
-        }
-        history = new ArrayList<>(history);
-        history.add(step);
-        payload.put("statusHistory", history);
-        if (remark != null && !remark.isBlank()) {
-            payload.put("lastRemark", remark);
-        }
-        entity.setPayload(payload);
-        workOrderMapper.updateById(entity);
-        OpsWorkOrder saved = entity;
-
-        syncWorkOrderToGraph(saved);
-
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("success", true);
-        body.put("message", statusLabel(next));
-        body.put("workOrder", toWorkOrderMap(saved));
-        body.put("previousStatus", prev);
-        return withModeMeta(body);
+        return opsWorkOrderService.updateWorkOrderStatus(workOrderId, status, remark);
     }
 
     /**
-     * 草稿改名后同步更新工单的资费名称与标题（卡片展示列），并同步图谱。
-     * 摘要中内嵌的旧月费金额同步替换（月费联动时传入 newFee）。
-     * 名称未变化或工单不存在时静默返回（success=false 不阻断修改主流程）。
+     * 草稿改名同步工单（薄委托 → {@link OpsWorkOrderService}）。
      */
     public Map<String, Object> renameWorkOrder(String workOrderId, String offeringName, String newFee) {
-        String wid = workOrderId == null ? "" : workOrderId.trim();
-        String name = offeringName == null ? "" : offeringName.trim();
-        if (wid.isBlank() || name.isBlank()) {
-            return withModeMeta(Map.of("success", false, "message", "workOrderId / offeringName 不能为空"));
-        }
-        OpsWorkOrder entity = findWorkOrderByWorkOrderId(wid);
-        if (entity == null) {
-            return withModeMeta(Map.of("success", false, "message", "工单不存在: " + wid));
-        }
-        if (name.equals(entity.getOfferingName())) {
-            return withModeMeta(Map.of("success", true, "message", "名称未变化", "workOrder", toWorkOrderMap(entity)));
-        }
-        entity.setOfferingName(name);
-        // 标题与开单规则保持一致：名称 + "配置工单"
-        entity.setTitle(name + "配置工单");
-        // 摘要随月费联动刷新（开单时固化的「月费=158.0，场景=…」文案），fee 为空则原样保留
-        String fee = newFee == null ? "" : newFee.trim();
-        if (!fee.isBlank() && entity.getSummary() != null) {
-            entity.setSummary(entity.getSummary().replaceAll("月费=[\\d.]+", "月费=" + fee));
-        }
-        workOrderMapper.updateById(entity);
-        OpsWorkOrder saved = entity;
-        syncWorkOrderToGraph(saved);
-        return withModeMeta(Map.of("success", true, "message", "工单名称已同步更新", "workOrder", toWorkOrderMap(saved)));
-    }
-
-    private boolean isValidTransition(String from, String to) {
-        if (from == null || from.isBlank()) {
-            from = "open";
-        }
-        if (from.equals(to)) {
-            return true;
-        }
-        return switch (from) {
-            case "open" -> Set.of("in_progress", "cancelled", "done").contains(to);
-            case "in_progress" -> Set.of("done", "cancelled", "open").contains(to);
-            case "done", "cancelled" -> Set.of("open", "in_progress").contains(to); // 允许重开
-            default -> true;
-        };
-    }
-
-    private String statusLabel(String status) {
-        return switch (status) {
-            case "open" -> "工单已重开/待处理";
-            case "in_progress" -> "工单已进入处理中";
-            case "done" -> "工单已完成，处置结果已回写本体";
-            case "cancelled" -> "工单已取消";
-            default -> "工单状态已更新";
-        };
-    }
-
-    private void syncWorkOrderToGraph(OpsWorkOrder saved) {
-        String offeringId = str(saved.getOfferingId());
-        String woId = saved.getWorkOrderId();
-        String st = saved.getStatus();
-        String disposition = switch (st) {
-            case "in_progress" -> "work_order_in_progress";
-            case "done" -> "work_order_done";
-            case "cancelled" -> "work_order_cancelled";
-            default -> "work_order_open";
-        };
-        synchronized (this) {
-            Map<String, Object> graph = loadGraph();
-            List<Map<String, Object>> shelf = castListOfMaps(graph.get("shelfOfferings"));
-            for (Map<String, Object> o : shelf) {
-                if (offeringId.equals(str(o.get("offeringId")))) {
-                    o.put("dispositionStatus", disposition);
-                    o.put("lastWorkOrderId", woId);
-                    o.put("lastWorkOrderStatus", st);
-                    break;
-                }
-            }
-            graph.put("shelfOfferings", shelf);
-            List<Map<String, Object>> graphOrders = castListOfMaps(graph.get("workOrders"));
-            boolean updated = false;
-            for (int i = 0; i < graphOrders.size(); i++) {
-                if (woId.equals(str(graphOrders.get(i).get("workOrderId")))) {
-                    graphOrders.set(i, toWorkOrderMap(saved));
-                    updated = true;
-                    break;
-                }
-            }
-            if (!updated) {
-                graphOrders.add(0, toWorkOrderMap(saved));
-            }
-            graph.put("workOrders", graphOrders);
-            graphCache = graph;
-        }
+        return opsWorkOrderService.renameWorkOrder(workOrderId, offeringName, newFee);
     }
 
     /**
@@ -3378,6 +2916,7 @@ public class ProductOntologyService {
         body.put("actionList", actionList);
         body.put("workOrder", workOrder);
         body.put("evidenceTriples", triples);
+        body.put("entityNames", buildEntityNameMap(node, offering));
         body.put("reportEvidence", reportEvidence);
         body.put("market", castMap(node.get("market")));
         body.put("graphScope", Map.of(
@@ -3832,6 +3371,41 @@ public class ProductOntologyService {
         Map<String, Object> out = new LinkedHashMap<>(c);
         out.putIfAbsent("path", List.of(oid + "-influencedBy->" + c.get("id")));
         return out;
+    }
+
+    /**
+     * 归因响应实体 ID → 中文名映射（来源事实图节点，供前端替代静态词典翻译）。
+     */
+    private Map<String, Object> buildEntityNameMap(Map<String, Object> node, Map<String, Object> offering) {
+        Map<String, Object> names = new LinkedHashMap<>();
+        if (offering != null) {
+            names.put(str(offering.get("offeringId")), str(offering.get("offeringName")));
+        }
+        for (Map<String, Object> ch : castListOfMaps(node.get("channels"))) {
+            if (ch.get("channelId") != null && ch.get("name") != null) {
+                names.put(str(ch.get("channelId")), str(ch.get("name")));
+            }
+        }
+        for (Map<String, Object> pr : castListOfMaps(node.get("promotions"))) {
+            if (pr.get("promoId") != null && pr.get("name") != null) {
+                names.put(str(pr.get("promoId")), str(pr.get("name")));
+            }
+        }
+        for (Map<String, Object> cp : castListOfMaps(node.get("competitors"))) {
+            if (cp.get("competitorId") != null && cp.get("name") != null) {
+                names.put(str(cp.get("competitorId")), str(cp.get("name")));
+            }
+        }
+        for (Map<String, Object> ub : castListOfMaps(node.get("behaviors"))) {
+            if (ub.get("behaviorId") != null && ub.get("name") != null) {
+                names.put(str(ub.get("behaviorId")), str(ub.get("name")));
+            }
+        }
+        Map<String, Object> market = castMap(node.get("market"));
+        if (market.get("scopeId") != null && market.get("name") != null) {
+            names.put(str(market.get("scopeId")), str(market.get("name")));
+        }
+        return names;
     }
 
     private Map<String, Object> riskFeature(String ruleId, String feature, String message) {

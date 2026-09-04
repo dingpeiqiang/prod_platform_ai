@@ -451,6 +451,11 @@ public class ProductOntologyController {
         return productOntologyService.getOpsDashboard();
     }
 
+    @GetMapping("/ops/revenue-overview")
+    public Map<String, Object> revenueOverview() {
+        return ok(productOntologyService.getOpsRevenueOverview());
+    }
+
     @PostMapping("/ops/root-cause")
     public Map<String, Object> rootCause(@RequestBody(required = false) RootCauseRequest request) {
         RootCauseRequest safe = request == null ? new RootCauseRequest() : request;

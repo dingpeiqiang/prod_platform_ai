@@ -27,14 +27,28 @@ spring:
     time-zone: GMT+8
     deserialization:
       fail-on-unknown-properties: false
-  # 数据源：与 backend 保持一致，默认连接 MySQL；如需本地开发可通过环境变量切换
+  # 数据源：默认 H2 内嵌库（MySQL 兼容模式，无需外部数据库即可启动）；
+  # 生产/联调接 MySQL 时设置 SPRING_DATASOURCE_URL 指向 jdbc:mysql://... 即可整体切回
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/prodplatformai?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true}
-    driver-class-name: com.mysql.cj.jdbc.Driver
-    username: ${SPRING_DATASOURCE_USERNAME:prodplatformai}
-    password: ${SPRING_DATASOURCE_PASSWORD:prodplatformai@134}
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:file:./data/prodplatformai;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;AUTO_SERVER=TRUE}
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER:org.h2.Driver}
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+  # H2 内嵌库：每次启动以 sql/h2/schema-h2.sql 建表并灌入种子数据（CREATE IF NOT EXISTS 幂等）
+  # 注意：spring.sql.init 是与 datasource 平级的顶级键，不要嵌进 datasource 下
+  sql:
+    init:
+      mode: ${SPRING_SQL_INIT_MODE:embedded}
+      platform: h2
+      schema-locations: classpath:sql/h2/schema-h2.sql
+      data-locations: classpath:sql/h2/data-h2.sql
+      continue-on-error: false
+  h2:
+    console:
+      enabled: ${H2_CONSOLE_ENABLED:true}
+      path: /h2-console
   # MyBatis Plus：替代原 JPA/Hibernate 配置
-  # 注意：表结构由 sql/ 目录脚本管理（原 JPA ddl-auto 不再生效）
+  # 注意：表结构由 sql/（MySQL）与 sql/h2/（H2）脚本管理（原 JPA ddl-auto 不再生效）
 
 mybatis-plus:
   configuration:
@@ -69,6 +83,12 @@ prodai:
     seed-path: ${KB_SEED_PATH:}
   mcp:
     seed-path: ${MCP_SEED_PATH:}
+  auth:
+    # 认证开关（JWT 登录）；本地开发可设 AUTH_ENABLED=false 关闭
+    enabled: ${AUTH_ENABLED:true}
+    # JWT 签名密钥：生产必须通过环境变量 AUTH_JWT_SECRET 注入统一密钥（多实例一致）；
+    # 未配置时使用实例级派生密钥（仅单机可用，且每日轮换会导致重新登录）
+    jwt-secret: ${AUTH_JWT_SECRET:}
   # 流程意图路由（S1 对话即编排）：命中关键词 → 固定流程引擎直达；未命中走原 LLM 链路
   flow-router:
     enabled: true
@@ -79,27 +99,9 @@ prodai:
   llm:
     enabled: ${LLM_ENABLED:true}
     function-calling-enabled: ${LLM_FC_ENABLED:true}
-    # 默认生效模型：对应下方 models 中某项的 name，未配置 models 时为空列表
-    default-model: ${LLM_DEFAULT_MODEL:teamshub-qwen3-30b-a3b}
-    # 多模型配置（各自独立连接）。请求未显式指定模型时采用 default-model 指向的一项；
-    # 工作流 LLM 节点 / 前端模型选择可从 GET /api/v1/chat/model/available 获取完整列表。
-    models:
-      - name: deepseek-chat
-        model: ${LLM_MODEL:deepseek-ai/DeepSeek-V4-Flash}
-        base-url: ${LLM_BASE_URL:https://api.siliconflow.cn/v1}
-        api-key: ${LLM_API_KEY:sk-ddcyjgwywqskqexdhmsbnyjoidmfnjgacvpyecexlysxdogu}
-        temperature: ${LLM_TEMPERATURE:0.3}
-        max-tokens: ${LLM_MAX_TOKENS:4096}
-        thinking: ${LLM_THINKING:false}
-        stream-enabled: ${LLM_STREAM_ENABLED:true}
-      - name: teamshub-qwen3-30b-a3b
-        model: qwen3-30b-a3b
-        base-url: https://aicp.teamshub.com/openai/api/v1/openai/v1/chat/completions
-        api-key: cb3a5cb469de1d0820d25a1e6349306dc4482f90
-        temperature: 0.3
-        max-tokens: 4096
-        thinking: false
-        stream-enabled: true
+    # 模型连接配置统一落库 pd_ai_llm_user_configs（推理平台管理页 /api/v1/llm-config 管理），
+    # 激活项（is_active=true）即默认生效模型，支持运行时切换，无需重启。
+    # 可用模型列表：GET /api/v1/chat/model/available
 
 management:
   endpoints:

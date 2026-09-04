@@ -2,6 +2,7 @@
  * chatApi - 聊天记录持久化 + AI 原生流式意图处理
  */
 
+import { authFetch } from './authFetch.js'
 import { normalizeReasoningList } from '../utils/normalizeThinkingStep.js'
 
 const BASE = '/api/v2/chat'
@@ -247,7 +248,7 @@ function restoreMessageMetadata(meta = {}) {
 }
 
 export async function createSession(userId, title) {
-  const resp = await fetch(`${BASE}/sessions`, {
+  const resp = await authFetch(`${BASE}/sessions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user_id: userId || undefined, title: title || '新对话' }),
@@ -265,7 +266,7 @@ export async function saveMessage(sessionId, msg) {
   }
   try {
     const metadata = buildMessageMetadata(msg)
-    const resp = await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/messages`, {
+    const resp = await authFetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -285,7 +286,7 @@ export async function saveMessage(sessionId, msg) {
 }
 
 export async function updateMessage(sessionId, messageId, { content, metadata }) {
-  const resp = await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(messageId)}`, {
+  const resp = await authFetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(messageId)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content: content || null, metadata: metadata || null }),
@@ -308,7 +309,7 @@ export async function saveMessages(sessionId, messages) {
       parent_id: msg.parentId || null,
       metadata: buildMessageMetadata(msg),
     }))
-    const resp = await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/messages/batch`, {
+    const resp = await authFetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/messages/batch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages: batchData }),
@@ -323,7 +324,7 @@ export async function saveMessages(sessionId, messages) {
 
 export async function loadMessages(sessionId) {
   try {
-    const resp = await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/messages`)
+    const resp = await authFetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/messages`)
     if (!resp.ok) return []
     const result = await resp.json()
     const msgs = result.messages || []
@@ -363,7 +364,7 @@ export async function loadMessages(sessionId) {
 
 export async function getSessions(userId, limit = 50) {
   try {
-    const resp = await fetch(`${BASE}/sessions?user_id=${encodeURIComponent(userId)}&limit=${limit}`)
+    const resp = await authFetch(`${BASE}/sessions?user_id=${encodeURIComponent(userId)}&limit=${limit}`)
     if (!resp.ok) return []
     const result = await resp.json()
     return result.sessions || []
@@ -379,7 +380,7 @@ export async function getSessions(userId, limit = 50) {
 export async function searchHistoryMessages(keyword, limit = 20) {
   if (!keyword || !keyword.trim()) return []
   try {
-    const resp = await fetch(`/api/v1/chat/history/search?keyword=${encodeURIComponent(keyword.trim())}&limit=${limit}`)
+    const resp = await authFetch(`/api/v1/chat/history/search?keyword=${encodeURIComponent(keyword.trim())}&limit=${limit}`)
     if (!resp.ok) return []
     const result = await resp.json()
     return result.messages || []
@@ -389,11 +390,11 @@ export async function searchHistoryMessages(keyword, limit = 20) {
 }
 
 export async function deleteSession(sessionId) {
-  await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
+  await authFetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
 }
 
 export async function updateSessionTitle(sessionId, title) {
-  await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}`, {
+  await authFetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title }),
@@ -401,7 +402,7 @@ export async function updateSessionTitle(sessionId, title) {
 }
 
 export async function getSessionStats(sessionId) {
-  const resp = await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/stats`)
+  const resp = await authFetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/stats`)
   if (!resp.ok) return {}
   return resp.json()
 }
@@ -419,33 +420,34 @@ export async function sendAgentStream(question, { sessionId = '', params = {}, s
   if (sessionId) body.session_id = sessionId
   if (scene) body.scene = scene
   if (params && typeof params === 'object' && Object.keys(params).length) body.params = params
-  const resp = await fetch('/api/v1/agent/chat/stream', {
+  const resp = await authFetch('/api/v1/agent/chat/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
     body: JSON.stringify(body),
     signal: abortCtrl.signal,
   })
-  if (!resp.ok) throw new Error('翻译层请求失败')
+  if (!resp.ok) {
+    // 透传后端 error_code/message（如 llm_config_error 的 api_key 修复指引），而非笼统的请求失败
+    let message = '翻译层请求失败'
+    try {
+      const body = await resp.json()
+      if (body && (body.message || body.error)) message = body.message || body.error
+    } catch { /* 非 JSON 响应体，保留默认文案 */ }
+    throw new Error(message)
+  }
   return { response: resp, abortCtrl }
 }
 
 export async function uploadFile(file) {
   const formData = new FormData()
   formData.append('file', file)
-  const resp = await fetch(`${BASE}/upload`, { method: 'POST', body: formData })
+  const resp = await authFetch(`${BASE}/upload`, { method: 'POST', body: formData })
   return resp.json()
 }
 
-export async function switchModel(modelConfig) {
-  const resp = await fetch('/api/v1/chat/model/switch', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(modelConfig),
-  })
-  return resp.json()
-}
+// 模型切换统一走 /api/v1/llm-config（推理平台管理页落库激活），原 switchModel 已移除
 
 export async function getSupportedProviders() {
-  const resp = await fetch('/api/v1/chat/model/providers')
+  const resp = await authFetch('/api/v1/chat/model/providers')
   return resp.json()
 }

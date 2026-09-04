@@ -5,6 +5,8 @@ import 'element-plus/dist/index.css'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import { router } from './router'
 import { registerEventHandler } from './composables/useIntentRegistry.js'
+import { setTokenProvider, setUnauthorizedHandler } from './services/httpClient.js'
+import { setAuthFetchTokenProvider, setAuthFetchUnauthorizedHandler } from './services/authFetch.js'
 import ProductOpsPanel from './components/intent-panels/ProductOpsPanel.vue'
 
 // Vue Flow 样式
@@ -44,4 +46,20 @@ registerEventHandler('product_ops_reason', (data, msg) => {
 app.use(pinia)
 app.use(router)
 app.use(ElementPlus)
+
+// 认证接入：httpClient/authFetch 请求附带 token；401 时清理本地登录态并刷新到登录页
+import { useUserStore } from './stores/user.js'
+const userStore = useUserStore(pinia)
+const _tokenProvider = () => userStore.getToken()
+const _unauthorizedHandler = () => {
+  userStore.logout()
+  if (router.currentRoute.value?.name !== 'login') {
+    router.push({ name: 'login' }).catch(() => window.location.reload())
+  }
+}
+setTokenProvider(_tokenProvider)
+setUnauthorizedHandler(_unauthorizedHandler)
+setAuthFetchTokenProvider(_tokenProvider)
+setAuthFetchUnauthorizedHandler(_unauthorizedHandler)
+
 app.mount('#app')

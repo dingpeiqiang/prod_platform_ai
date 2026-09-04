@@ -109,13 +109,36 @@ const RULE_CN = {
   'R-C09': '固费上下限',
 }
 
-/** 演示样例实体 ID → 中文名（样例数据源 ops_graph_export/mock_graph 中通用样例） */
+/**
+ * 实体 ID → 中文名。
+ * 优先级：事实图动态注册表（registerEntityNames，由归因接口 entityNames 灌入）> 演示样例静态词典 > 原值。
+ */
 const ENTITY_CN = {
   'CH-HALL': '营业厅',
   'PR-HF-GIFT': '家庭融合加装礼',
   'CP-F120': '友商融合120',
-  'OF-RISK-001': '风险样例商品',
-  'OF-LOW-019': '低销样例商品',
+}
+
+/** 事实图驱动的动态名称注册表（键：offeringId/channelId/promoId/competitorId/behaviorId/scopeId） */
+const dynamicEntityNames = new Map()
+
+/**
+ * 灌入后端归因响应的 entityNames 映射，替代硬编码词典。
+ * @param {Object} names 形如 { 'OF-RISK-001': '校园低消0元', 'CH-HALL': '营业厅' }
+ */
+export function registerEntityNames(names) {
+  if (!names || typeof names !== 'object') return
+  Object.entries(names).forEach(([id, name]) => {
+    if (id && name) dynamicEntityNames.set(String(id), String(name))
+  })
+}
+
+export function entityCn(idOrLabel) {
+  if (idOrLabel == null || idOrLabel === '') return ''
+  const key = String(idOrLabel)
+  if (dynamicEntityNames.has(key)) return dynamicEntityNames.get(key)
+  if (ENTITY_CN[key]) return ENTITY_CN[key]
+  return key
 }
 
 const FIELD_CN = {
@@ -174,13 +197,6 @@ export function formatRule(ruleId) {
   if (!ruleId) return ''
   const cn = ruleCn(ruleId)
   return cn ? `${cn}（${ruleId}）` : String(ruleId)
-}
-
-export function entityCn(idOrLabel) {
-  if (idOrLabel == null || idOrLabel === '') return ''
-  const key = String(idOrLabel)
-  if (ENTITY_CN[key]) return ENTITY_CN[key]
-  return key
 }
 
 export function formatWeight(weight) {

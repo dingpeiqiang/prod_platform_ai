@@ -9,6 +9,7 @@ import com.sitech.prodai.mapper.PromptTemplateMapper;
 import com.sitech.prodai.mapper.PromptVersionMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,7 +24,7 @@ import java.util.regex.Pattern;
 /**
  * 提示词管理服务 —— 对齐 Python {@code app/services/prompt_service.py::PromptService}。
  *
- * <p>提供提示词 CRUD、版本管理、变量替换预览、模板库、AI 生成辅助（mock 实现）。
+ * <p>提供提示词 CRUD、版本管理、变量替换预览、模板库、AI 生成辅助（真实 LLM）。
  */
 @Service
 public class PromptService {
@@ -34,13 +35,16 @@ public class PromptService {
     private final PromptMapper promptMapper;
     private final PromptVersionMapper versionMapper;
     private final PromptTemplateMapper templateMapper;
+    private final Optional<LlmService> llmService;
 
     public PromptService(PromptMapper promptMapper,
                          PromptVersionMapper versionMapper,
-                         PromptTemplateMapper templateMapper) {
+                         PromptTemplateMapper templateMapper,
+                         @Autowired(required = false) LlmService llmService) {
         this.promptMapper = promptMapper;
         this.versionMapper = versionMapper;
         this.templateMapper = templateMapper;
+        this.llmService = Optional.ofNullable(llmService);
     }
 
     // ==================== 提示词 CRUD ====================
@@ -304,15 +308,19 @@ public class PromptService {
         }
     }
 
-    // ==================== AI 辅助（mock 实现） ====================
+    // ==================== AI 辅助（真实 LLM） ====================
 
-    /** 对齐 Python generate_with_ai —— mock 实现，待接入 LlmService */
+    /** 对齐 Python generate_with_ai —— 调用 LLM 根据需求生成提示词 */
     public Map<String, Object> generateWithAi(Map<String, Object> requestData) {
         try {
             String requirement = str(requestData.get("requirement"));
+            if (requirement.isEmpty()) {
+                return fail("需求描述 requirement 不能为空");
+            }
             String category = firstNonBlank(str(requestData.get("category")), "general");
             List<Object> useTools = toList(requestData.get("useTools"));
-            String generatedContent = generateMockPrompt(requirement, category, useTools);
+
+            String generatedContent = generatePromptWithLlm(requirement, category, useTools);
             List<Map<String, Object>> variables = extractVariables(generatedContent);
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("content", generatedContent);
@@ -328,11 +336,14 @@ public class PromptService {
         }
     }
 
-    /** 对齐 Python optimize_prompt —— mock 实现 */
+    /** 对齐 Python optimize_prompt —— 调用 LLM 优化已有提示词 */
     public Map<String, Object> optimizePrompt(Map<String, Object> requestData) {
         try {
             String original = str(requestData.get("content"));
-            String optimized = original.isEmpty() ? original : original + "\n\n---\n> 提示：此版本经过优化，建议先测试效果";
+            if (original.isEmpty()) {
+                return fail("待优化内容 content 不能为空");
+            }
+            String optimized = optimizePromptWithLlm(original);
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("original", original);
             data.put("optimized", optimized);
@@ -385,15 +396,13 @@ public class PromptService {
         versionMapper.insert(v);
     }
 
-    private String generateMockPrompt(String requirement, String category, List<Object> tools) {
+    private String generatePromptWithLlm(String requirement, String category, List<Object> tools) {
         StringBuilder sb = new StringBuilder();
-        sb.append("# 提示词\n\n");
-        sb.append("## Role\n你是一个专业的AI助手，负责处理").append(category).append("相关的任务。\n\n");
-        sb.append("## Task\n").append(requirement).append("\n\n");
-        sb.append("## Format\n请按照以下格式输出结果：\n```json\n{\n  \"result\": \"...\"\n}\n```\n\n");
-        sb.append("## Constraints\n- 确保输出质量\n- 遵循输入要求\n- 高效完成任务\n\n");
+        sb.append("你是一个提示词工程专家。请根据以下需求，编写一个结构化的提示词（Prompt）。\n\n");
+        sb.append("## 需求描述\n").append(requirement).append("\n\n");
+        sb.append("## 提示词类别\n").append(category).append("\n\n");
         if (tools != null && !tools.isEmpty()) {
-            sb.append("## Tools\n你可以使用以下工具：\n");
+            sb.append("## 可用工具\n");
             for (Object tool : tools) {
                 if (tool instanceof Map<?, ?> tm) {
                     String name = firstNonBlank(str(tm.get("name")), str(tm.get("code")), "tool");
@@ -403,8 +412,41 @@ public class PromptService {
                     sb.append("- ").append(tool).append("\n");
                 }
             }
+            sb.append("\n");
         }
-        return sb.toString();
+        sb.append("## 输出要求\n");
+        sb.append("仅输出生成的提示词正文，不要任何解释、前言或代码块标记。\n");
+        sb.append("提示词应包含：角色定义（Role）、任务描述（Task）、输出格式（Format）、约束条件（Constraints）等结构化章节。\n");
+        sb.append("若提示词中需要用户输入，请使用 {{变量名}} 形式声明变量。");
+        return callLlm(sb.toString(), "提示词生成");
+    }
+
+    private String optimizePromptWithLlm(String original) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("你是一个提示词工程专家。请优化以下提示词，使其更清晰、更结构化、更容易让 LLM 理解和执行。\n\n");
+        sb.append("## 原始提示词\n").append(original).append("\n\n");
+        sb.append("## 优化要求\n");
+        sb.append("- 保持原有意图和功能不变\n");
+        sb.append("- 明确任务目标和输出格式\n");
+        sb.append("- 补充必要的约束条件\n");
+        sb.append("- 保留原有的 {{变量名}} 占位符\n\n");
+        sb.append("## 输出要求\n");
+        sb.append("仅输出优化后的提示词正文，不要任何解释、前言或代码块标记。");
+        return callLlm(sb.toString(), "提示词优化");
+    }
+
+    private String callLlm(String prompt, String action) {
+        LlmService service = llmService.orElseThrow(() ->
+                new IllegalStateException("LLM 服务未启用（prodai.llm.enabled=false），无法执行" + action));
+        String content = service.completePrompt(prompt);
+        if (content == null || content.isBlank()) {
+            throw new IllegalStateException(action + "结果为空");
+        }
+        return stripCodeFence(content.trim());
+    }
+
+    private String stripCodeFence(String content) {
+        return content.replaceAll("(?s)^```[a-zA-Z]*\\s*", "").replaceAll("```\\s*$", "").trim();
     }
 
     /** 对齐 Python _extract_variables —— 提取 {{varName}} 格式的变量 */

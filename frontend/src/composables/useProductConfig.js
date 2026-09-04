@@ -9,7 +9,7 @@ import {
   createProductFormSchema,
   createOfferingFormSchema,
   draftToFormData,
-} from '../data/productMockData.js'
+} from '../utils/productFormSchema.js'
 import {
   checkCompliance,
   copyAsDraft,
@@ -27,6 +27,7 @@ import {
   getOntologyMeta,
   fetchTemplateSchema,
 } from '../services/productOntologyApi.js'
+import { registerEntityNames } from '../utils/ontologyLabels.js'
 import {
   buildRootCauseOntologyChain,
 } from '../services/productOntologyLocal.js'
@@ -617,6 +618,7 @@ export function useProductConfig() {
       return false
     }
     rootCauseResult.value = root
+    registerEntityNames(root.entityNames)
     const paths = root.paths || []
     const anomalies = root.anomalies || []
     if (!paths.length && !anomalies.length) {

@@ -53,6 +53,28 @@
           <div class="error-tip" v-if="errorMsg">{{ errorMsg }}</div>
         </div>
 
+        <div class="input-group">
+          <label class="input-label">密码</label>
+          <div class="input-wrapper">
+            <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="11" width="18" height="11" rx="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            <input
+              ref="passwordRef"
+              v-model="inputPassword"
+              type="password"
+              class="login-input"
+              :class="{ error: errorMsg }"
+              placeholder="请输入密码"
+              maxlength="64"
+              @keyup.enter="handleLogin"
+            />
+          </div>
+        </div>
+
+        <div class="error-tip" v-if="errorMsg">{{ errorMsg }}</div>
+
         <button class="login-btn" @click="handleLogin" :disabled="loading">
           <span v-if="!loading">登 录</span>
           <span v-else class="loading-dots">
@@ -65,20 +87,24 @@
         </button>
       </div>
 
-      <p class="login-tip">演示环境：任意用户名可进；也可点「访客一键进入体验」，无需填写</p>
+      <p class="login-tip">首次使用：admin / admin123 登录后请修改密码；访客可一键注册进入</p>
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
 
+const router = useRouter()
 const userStore = useUserStore()
 const inputName = ref('')
+const inputPassword = ref('')
 const errorMsg = ref('')
 const loading = ref(false)
 const inputRef = ref(null)
+const passwordRef = ref(null)
 
 onMounted(() => {
   inputRef.value?.focus()
@@ -92,11 +118,17 @@ const handleLogin = async () => {
     inputRef.value?.focus()
     return
   }
+  if (!inputPassword.value) {
+    errorMsg.value = '请输入密码'
+    passwordRef.value?.focus()
+    return
+  }
   loading.value = true
-  await new Promise(r => setTimeout(r, 400))
+  const result = await userStore.login(name, inputPassword.value)
   loading.value = false
-  const result = userStore.login(name)
-  if (!result.success) {
+  if (result.success) {
+    _navigateAfterAuth()
+  } else {
     errorMsg.value = result.message
   }
 }
@@ -104,9 +136,21 @@ const handleLogin = async () => {
 const handleGuest = async () => {
   errorMsg.value = ''
   loading.value = true
-  await new Promise(r => setTimeout(r, 200))
+  const result = await userStore.guestLogin()
   loading.value = false
-  userStore.login('体验访客')
+  if (result.success) {
+    _navigateAfterAuth()
+  } else {
+    errorMsg.value = result.message
+  }
+}
+
+/** 登录/访客成功后按 ?redirect= 回原页面，缺省回首页 */
+const _navigateAfterAuth = () => {
+  const target = router.currentRoute.value?.query?.redirect
+  router.push(typeof target === 'string' && target.startsWith('/') && !target.startsWith('/login')
+    ? target
+    : { name: 'rd' }).catch(() => {})
 }
 </script>
 

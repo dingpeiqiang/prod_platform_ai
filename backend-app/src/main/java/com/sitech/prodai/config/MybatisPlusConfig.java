@@ -9,6 +9,9 @@ import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import javax.sql.DataSource;
+import java.sql.DatabaseMetaData;
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 
 /**
@@ -23,11 +26,28 @@ import java.time.LocalDateTime;
 @MapperScan("com.sitech.prodai.mapper")
 public class MybatisPlusConfig {
 
+    /**
+     * 分页方言按实际数据源自动选择：
+     * H2（MODE=MySQL）用 H2 方言；其余（MySQL/GoldenDB）用 MYSQL 方言。
+     */
     @Bean
-    public MybatisPlusInterceptor mybatisPlusInterceptor() {
+    public MybatisPlusInterceptor mybatisPlusInterceptor(DataSource dataSource) {
         MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
-        interceptor.addInnerInterceptor(new PaginationInnerInterceptor(DbType.MYSQL));
+        interceptor.addInnerInterceptor(new PaginationInnerInterceptor(resolveDbType(dataSource)));
         return interceptor;
+    }
+
+    private DbType resolveDbType(DataSource dataSource) {
+        try {
+            DatabaseMetaData metaData = dataSource.getConnection().getMetaData();
+            String productName = metaData.getDatabaseProductName().toLowerCase();
+            if (productName.contains("h2")) {
+                return DbType.H2;
+            }
+        } catch (SQLException ignored) {
+            // 探测失败时回退 MySQL 方言（H2 MySQL 模式下 LIMIT 语法一致）
+        }
+        return DbType.MYSQL;
     }
 
     /**

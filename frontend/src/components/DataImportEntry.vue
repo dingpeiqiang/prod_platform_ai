@@ -191,7 +191,7 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Download, UploadFilled, Document } from '@element-plus/icons-vue'
-import axios from 'axios'
+import client from '../services/httpClient.js'
 
 const props = defineProps({
   formCode: {
@@ -223,8 +223,8 @@ const importResult = ref(null)
 const downloadTemplate = async () => {
   downloading.value = true
   try {
-    const response = await axios.get(
-      `/api/v1/config/import/template/${props.formCode}`,
+    const response = await client.get(
+      `/config/import/template/${props.formCode}`,
       { responseType: 'blob' }
     )
     
@@ -269,27 +269,27 @@ const startImport = async () => {
   }
 
   importing.value = true
-  importProgress.value = 10
+  importProgress.value = 0
   importingText.value = '正在上传文件...'
 
   try {
     const formData = new FormData()
     formData.append('file', selectedFile.value)
 
-    // 模拟进度更新
-    const progressInterval = setInterval(() => {
-      if (importProgress.value < 90) {
-        importProgress.value += Math.random() * 15
-        importingText.value = '正在导入数据...'
+    const response = await client.post(
+      `/config/import/upload?formCode=${props.formCode}`,
+      formData,
+      {
+        onUploadProgress: (e) => {
+          if (e.total) {
+            const pct = Math.round((e.loaded / e.total) * 100)
+            importProgress.value = pct
+            importingText.value = pct < 100 ? `正在上传文件 ${pct}%...` : '服务端导入中...'
+          }
+        }
       }
-    }, 500)
-
-    const response = await axios.post(
-      `/api/v1/config/import/upload?formCode=${props.formCode}`,
-      formData
     )
 
-    clearInterval(progressInterval)
     importProgress.value = 100
     importingText.value = '导入完成'
 

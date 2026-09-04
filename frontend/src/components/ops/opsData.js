@@ -3,7 +3,11 @@
  * 数据为演示 mock：收入总览三卡、八大重点业务、5G新通话下钻十套餐、四维评分规则
  */
 
-/** 收入总览（单位：万元，全省 · 2026年7月） */
+/**
+ * 收入总览（单位：万元，全省 · 2026年7月）
+ * @deprecated 运营大屏收入模块已改为后端真实数据（GET /api/v1/product-ontology/ops/revenue-overview），
+ * 本静态数据不再被 OpsRevenueCards.vue 使用，仅作降级参考保留；下个迭代周期删除。
+ */
 export const revenueCards = [
   {
     key: 'cnfamily',

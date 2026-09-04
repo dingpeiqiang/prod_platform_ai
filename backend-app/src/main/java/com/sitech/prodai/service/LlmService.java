@@ -1,7 +1,11 @@
 package com.sitech.prodai.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.sitech.prodai.config.ProdAiProperties;
+import com.sitech.prodai.domain.entity.LlmUserConfig;
 import com.sitech.prodai.dto.ChatCompletionRequest;
+import com.sitech.prodai.exception.LlmConfigException;
+import com.sitech.prodai.mapper.LlmUserConfigMapper;
 import com.sitech.prodai.util.TokenCounter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,6 +50,7 @@ public class LlmService {
     private final ProdAiProperties properties;
     private final Optional<ModelRouter> modelRouter;
     private final Optional<TokenCounter> tokenCounter;
+    private final Optional<LlmUserConfigMapper> userConfigMapper;
     private final ConcurrentHashMap<String, ChatClient> clientCache = new ConcurrentHashMap<>();
 
     /** 未显式配置输出预算时的默认值（DeepSeek 推理模型单次输出缺省会返回空 choices） */
@@ -60,10 +65,12 @@ public class LlmService {
     private static final AtomicLong HTTP_SEQ = new AtomicLong();
 
     public LlmService(ProdAiProperties properties,
-                      Optional<ModelRouter> modelRouter, Optional<TokenCounter> tokenCounter) {
+                      Optional<ModelRouter> modelRouter, Optional<TokenCounter> tokenCounter,
+                      Optional<LlmUserConfigMapper> userConfigMapper) {
         this.properties = properties;
         this.modelRouter = modelRouter;
         this.tokenCounter = tokenCounter;
+        this.userConfigMapper = userConfigMapper;
     }
 
     /**
@@ -93,6 +100,9 @@ public class LlmService {
                         .options(options)
                         .call()
                         .chatResponse();
+                // 先识别网关错误体（401/flag:false/resultCode 等），避免被解析成空 content
+                // 掩盖真实原因，再提取正文（空 choices 场景才走空内容分支）
+                ensureNotGatewayError(chatResponse, model);
                 String content = extractContent(chatResponse);
                 log.info("[LlmService] LLM调用完成 model={} elapsed={}ms promptChars={} respChars={} tokens(in/out/total)={} prompt~「{}」",
                         model, System.currentTimeMillis() - start, promptChars, content.length(),
@@ -109,6 +119,12 @@ public class LlmService {
                             model, elapsed, attempt, attempts, e.getMessage());
                     sleepQuietly(TRANSIENT_403_BACKOFF_MS * attempt);
                     continue;
+                }
+                // 配置类错误（网关 401 / api_key 无效等）重试无意义：翻译为可行动的错误后直接上抛
+                if (isLlmConfigError(e)) {
+                    String friendly = gatewayAuthErrorMessage(model, e);
+                    log.error("[LlmService] LLM配置/认证错误 model={} elapsed={}ms error={}", model, elapsed, e.getMessage());
+                    throw new LlmConfigException(friendly, e);
                 }
                 log.warn("[LlmService] LLM调用失败 model={} elapsed={}ms attempt={}/{} promptChars={} prompt~「{}」 error={}",
                         model, elapsed, attempt, attempts, promptChars, preview, e.getMessage());
@@ -340,7 +356,7 @@ public class LlmService {
             return effective;
         }
 
-        // 否则使用 default-model 指向的默认生效模型
+        // 否则使用配置表中激活的默认生效模型
         effective.putAll(resolveDefaultModelConfig());
 
         // 显式传入的 modelConfig 仍是最高优先级（独立连接场景：模型名 + 完整连接参数）
@@ -353,8 +369,8 @@ public class LlmService {
 
     /**
      * 解析请求命中的已配置模型。modelConfig 中携带的 {@code model} / {@code name} /
-     * {@code id} 若匹配 prodai.llm.models 中某项的 name 或 model，则返回该模型的独立连接；
-     * 否则返回 null（表示使用默认生效模型）。
+     * {@code id} 若匹配配置表中某条激活配置的 model 或 id（db-{id}-{model}），
+     * 则返回该模型的独立连接配置；否则返回 null（表示使用默认生效模型）。
      */
     private Map<String, Object> resolveRequestedModel(Map<String, Object> modelConfig) {
         if (modelConfig == null) {
@@ -380,80 +396,118 @@ public class LlmService {
         if (ref == null) {
             return null;
         }
-        return resolveModelConfigByName(ref);
+        return resolveModelConfigByRef(ref);
     }
 
-    /** 按 name 或 model 在 prodai.llm.models 中查找并返回该模型的独立连接配置；未命中返回空 Map。 */
-    private Map<String, Object> resolveModelConfigByName(String name) {
-        if (name == null || name.isBlank()) {
+    /** 按 model 或 id（db-{id}-{model}）在配置表中查找激活配置；未命中返回空 Map。 */
+    private Map<String, Object> resolveModelConfigByRef(String ref) {
+        if (ref == null || ref.isBlank()) {
             return new LinkedHashMap<>();
         }
-        ProdAiProperties.Llm llm = properties.getLlm();
-        if (llm.getModels() == null || llm.getModels().isEmpty()) {
+        if (userConfigMapper.isEmpty()) {
             return new LinkedHashMap<>();
         }
-        for (ProdAiProperties.LlmModelConfig c : llm.getModels()) {
-            if (name.equals(c.getName()) || name.equals(c.getModel())) {
-                return toModelConfigMap(c);
-            }
+        try {
+            return userConfigMapper.get().selectList(
+                    new LambdaQueryWrapper<LlmUserConfig>().eq(LlmUserConfig::getIsActive, true))
+                    .stream()
+                    .filter(c -> StringUtils.hasText(c.getModel()))
+                    .filter(c -> ref.equals(c.getModel())
+                            || ref.equals("db-" + c.getId() + "-" + c.getModel()))
+                    .findFirst()
+                    .map(this::toDbConfigMap)
+                    .orElseGet(LinkedHashMap::new);
+        } catch (Exception e) {
+            log.warn("[LlmService] 按引用查找落库模型配置失败: {}", e.getMessage());
+            return new LinkedHashMap<>();
         }
-        return new LinkedHashMap<>();
     }
 
-    /** 解析 default-model 指向的默认生效模型配置（未配置多模型时返回空 map）。 */
+    /** 解析默认生效模型配置：读取配置表 is_active=true 的记录（无激活记录返回空 map）。 */
     private Map<String, Object> resolveDefaultModelConfig() {
-        ProdAiProperties.Llm llm = properties.getLlm();
-        if (llm.getModels() == null || llm.getModels().isEmpty()) {
-            return new LinkedHashMap<>();
-        }
-        if (StringUtils.hasText(llm.getDefaultModel())) {
-            Map<String, Object> byName = resolveModelConfigByName(llm.getDefaultModel());
-            if (!byName.isEmpty()) {
-                return byName;
-            }
-        }
-        // default-model 未指定或未命中时，取第一条作为默认
-        return toModelConfigMap(llm.getModels().get(0));
+        return resolveActiveDbConfig();
     }
 
-    /** 单条模型配置 → 连接参数字典（与 LlmService 消费的 key 对齐）。 */
-    private Map<String, Object> toModelConfigMap(ProdAiProperties.LlmModelConfig c) {
+    /**
+     * 读取配置表 pd_ai_llm_user_configs 中 is_active=true 的模型连接配置。
+     * 表未启用 / mapper 缺失 / 无激活记录时返回空 map。
+     */
+    private Map<String, Object> resolveActiveDbConfig() {
+        if (userConfigMapper.isEmpty()) {
+            return new LinkedHashMap<>();
+        }
+        try {
+            LlmUserConfig active = userConfigMapper.get().selectList(
+                    new LambdaQueryWrapper<LlmUserConfig>().eq(LlmUserConfig::getIsActive, true))
+                    .stream()
+                    .findFirst()
+                    .orElse(null);
+            if (active == null || !StringUtils.hasText(active.getModel())) {
+                return new LinkedHashMap<>();
+            }
+            return toDbConfigMap(active);
+        } catch (Exception e) {
+            log.warn("[LlmService] 读取落库模型配置失败: {}", e.getMessage());
+            return new LinkedHashMap<>();
+        }
+    }
+
+    /** 配置表记录 → 连接参数字典（与 LlmService 消费的 key 对齐）。 */
+    private Map<String, Object> toDbConfigMap(LlmUserConfig active) {
         Map<String, Object> m = new LinkedHashMap<>();
-        if (StringUtils.hasText(c.getApiKey())) {
-            m.put("api_key", c.getApiKey());
+        m.put("model", active.getModel());
+        if (StringUtils.hasText(active.getApiKey())) {
+            m.put("api_key", active.getApiKey());
         }
-        if (StringUtils.hasText(c.getBaseUrl())) {
-            m.put("base_url", c.getBaseUrl());
+        if (StringUtils.hasText(active.getBaseUrl())) {
+            m.put("base_url", active.getBaseUrl());
         }
-        m.put("model", c.getModel());
-        m.put("is_full_url", c.isFullUrl());
-        m.put("temperature", c.getTemperature());
-        m.put("max_tokens", c.getMaxTokens());
-        if (c.getMaxCompletionTokens() != null) {
-            m.put("max_completion_tokens", c.getMaxCompletionTokens());
+        m.put("is_full_url", Boolean.TRUE.equals(active.getIsFullUrl()));
+        if (active.getTemperature() != null) {
+            m.put("temperature", active.getTemperature());
         }
-        m.put("thinking", c.isThinking());
-        m.put("stream_enabled", c.isStreamEnabled());
-        m.put("auth_type", c.getAuthType());
-        m.put("auth_header", c.getAuthHeader());
+        if (active.getMaxTokens() != null) {
+            m.put("max_tokens", active.getMaxTokens());
+        }
+        m.put("thinking", Boolean.TRUE.equals(active.getThinking()));
+        m.put("stream_enabled", !Boolean.FALSE.equals(active.getStreamEnabled()));
+        m.put("auth_type", StringUtils.hasText(active.getAuthType()) ? active.getAuthType() : "bearer");
+        if (StringUtils.hasText(active.getAuthHeader())) {
+            m.put("auth_header", active.getAuthHeader());
+        }
+        m.put("source", "db");
         return m;
     }
 
-    /** 暴露给控制器等：返回可用的模型列表（含默认标记），供前端模型选择与工作流 LLM 节点使用。 */
+    /**
+     * 暴露给控制器等：返回可用的模型列表（含默认标记），供前端模型选择与工作流 LLM 节点使用。
+     * 唯一来源：配置表 pd_ai_llm_user_configs 中 is_active=true 的记录（运行时管理，重启不丢失）。
+     */
     public List<Map<String, Object>> listAvailableModels() {
-        ProdAiProperties.Llm llm = properties.getLlm();
-        if (llm.getModels() == null || llm.getModels().isEmpty()) {
-            return List.of();
-        }
         List<Map<String, Object>> list = new ArrayList<>();
-        String defaultName = llm.getDefaultModel();
-        for (ProdAiProperties.LlmModelConfig c : llm.getModels()) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("id", StringUtils.hasText(c.getName()) ? c.getName() : c.getModel());
-            row.put("name", c.getModel());
-            row.put("providerName", StringUtils.hasText(c.getName()) ? c.getName() : c.getModel());
-            row.put("isDefault", StringUtils.hasText(defaultName) && defaultName.equals(c.getName()));
-            list.add(row);
+        if (userConfigMapper.isPresent()) {
+            try {
+                List<LlmUserConfig> dbConfigs = userConfigMapper.get().selectList(
+                        new LambdaQueryWrapper<LlmUserConfig>()
+                                .eq(LlmUserConfig::getIsActive, true)
+                                .orderByDesc(LlmUserConfig::getId));
+                for (int i = 0; i < dbConfigs.size(); i++) {
+                    LlmUserConfig c = dbConfigs.get(i);
+                    if (!StringUtils.hasText(c.getModel())) continue;
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    String id = "db-" + c.getId() + "-" + c.getModel();
+                    row.put("id", id);
+                    row.put("name", c.getModel());
+                    row.put("providerName", StringUtils.hasText(c.getConfigName())
+                            ? c.getConfigName() : c.getModel());
+                    row.put("isDefault", i == dbConfigs.size() - 1);
+                    row.put("active", true);
+                    row.put("source", "db");
+                    list.add(row);
+                }
+            } catch (Exception e) {
+                log.warn("[LlmService] 读取落库模型列表失败: {}", e.getMessage());
+            }
         }
         return list;
     }
@@ -565,6 +619,69 @@ public class LlmService {
     private boolean isTransientPermissionError(Exception e) {
         String msg = e == null ? "" : String.valueOf(e.getMessage());
         return msg.contains("403") && (msg.contains("permission_error") || msg.contains("当前租户已禁止"));
+    }
+
+    /**
+     * 判定是否为 LLM 网关非 OpenAI 格式错误体（如 teamshub 网关缺 api_key 时返回
+     * HTTP 401 + {@code {"flag":false,"resultCode":4011,"message":"授权信息未传入。"}}）。
+     * Spring AI 解析该响应时拿不到 choices → chatResponse 为空，这里从响应中直接识别，
+     * 把"网关拒绝"与"模型真空返回"区分开。
+     */
+    private void ensureNotGatewayError(ChatResponse response, String model) {
+        if (response == null) {
+            throw new LlmConfigException(gatewayAuthErrorMessage(model, null));
+        }
+        String raw = String.valueOf(response);
+        String gatewayMsg = matchGatewayErrorSignature(raw);
+        if (gatewayMsg != null) {
+            throw new LlmConfigException(gatewayAuthErrorMessage(model, null));
+        }
+    }
+
+    /**
+     * 从异常消息中识别网关认证/权限类错误签名（401、resultCode 4011、授权信息未传入等）。
+     */
+    private boolean isLlmConfigError(Exception e) {
+        String msg = e == null ? "" : String.valueOf(e.getMessage());
+        Throwable cause = e == null ? null : e.getCause();
+        String causeMsg = cause == null ? "" : String.valueOf(cause.getMessage());
+        String combined = msg + " || " + causeMsg;
+        return matchGatewayErrorSignature(combined) != null
+                || combined.contains("Unauthorized")
+                || combined.contains("401 Unauthorized");
+    }
+
+    /**
+     * 网关错误体签名匹配：命中返回网关 message（如"授权信息未传入。"），未命中返回 null。
+     * 覆盖 teamshub 网关的 {@code flag:false + resultCode:4011} 非标错误体与标准 401。
+     */
+    private String matchGatewayErrorSignature(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        String t = text.toLowerCase(Locale.ROOT);
+        boolean flagFalse = t.contains("\"flag\":false") || t.contains("\"flag\": false");
+        boolean code4011 = t.contains("4011") && t.contains("resultcode");
+        if (flagFalse && code4011) {
+            return "LLM 网关认证失败（resultCode=4011）";
+        }
+        if (t.contains("授权信息未传入")) {
+            return "LLM 网关认证失败：授权信息未传入";
+        }
+        if (t.contains("401") && (t.contains("unauthorized") || t.contains("非 2xx") || t.contains("non 2xx"))) {
+            return "LLM 网关认证失败（HTTP 401）";
+        }
+        return null;
+    }
+
+    /**
+     * 生成面向用户的可行动错误文案：指明是哪个模型配置的 api_key 问题及修复入口。
+     */
+    private String gatewayAuthErrorMessage(String model, Exception cause) {
+        String detail = cause == null || cause.getMessage() == null ? "" : "（" + cause.getMessage() + "）";
+        return "大模型网关认证失败（模型 " + model + "），api_key 未配置或已失效："
+                + "请在「模型配置」管理页编辑当前生效模型并填入正确的 api_key，或切换到已配置密钥的模型。"
+                + detail;
     }
 
     private void sleepQuietly(long ms) {

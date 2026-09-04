@@ -1,5 +1,6 @@
-import { defineStore } from 'pinia'
+﻿import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { authFetch } from '../services/authFetch.js'
 
 export const useWorkflowDataStore = defineStore('workflowData', () => {
   const ontologies = ref([])
@@ -51,7 +52,7 @@ export const useWorkflowDataStore = defineStore('workflowData', () => {
 
     loadingOntologies.value = true
     try {
-      const response = await fetch('/api/v1/ontologies?isActive=true')
+      const response = await authFetch('/api/v1/ontologies?isActive=true')
       const res = await response.json()
       if (res && res.success) {
         ontologies.value = res.data || res.ontologies || []
@@ -79,7 +80,7 @@ export const useWorkflowDataStore = defineStore('workflowData', () => {
 
     loadingMcpTools.value = true
     try {
-      const response = await fetch('/api/v1/mcp-management/tools')
+      const response = await authFetch('/api/v1/mcp-management/tools')
       const res = await response.json()
       if (res.success) {
         mcpTools.value = res.tools || []

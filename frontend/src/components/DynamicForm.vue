@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="dynamic-form">
     <h3>{{ schema.formName }}</h3>
     <el-form :model="localFormData" label-width="120px" ref="formRef">
@@ -61,7 +61,7 @@
 
 <script setup>
 import { ref, watch, reactive, nextTick, computed } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { authFetch } from '../services/authFetch.js'
 import BaseField from './fields/BaseField.vue'
 import { validateField } from './../utils'
 
@@ -211,7 +211,7 @@ const scrollToFirstError = async () => {
 
 const aiValidate = async () => {
   try {
-    const response = await fetch('/api/v1/validation/llm', {
+    const response = await authFetch('/api/v1/validation/llm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -295,7 +295,7 @@ const doSubmit = async () => {
   submitting.value = true
 
   try {
-    const response = await fetch(url, {
+    const response = await authFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

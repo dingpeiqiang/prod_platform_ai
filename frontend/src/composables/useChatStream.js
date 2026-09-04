@@ -8,6 +8,7 @@ import {
   normalizeThinkingStep,
 } from '../utils/normalizeThinkingStep.js'
 import { toolLabel, intentLabel } from '../utils/businessLabels.js'
+import { registerEntityNames } from '../utils/ontologyLabels.js'
 import {
   buildRootCauseOntologyChain,
   buildRootCauseOntologyPreview,
@@ -185,6 +186,7 @@ export function useChatStream() {
   const enrichReasoningWithRootCause = (reasoning, intentData) => {
     const root = intentData?.rootCause || intentData?.data?.rootCause
     if (!root) return reasoning
+    registerEntityNames(root.entityNames)
     return attachRootCauseOntology(reasoning || [], root, {
       buildChain: buildRootCauseOntologyChain,
       buildPreview: buildRootCauseOntologyPreview,
@@ -578,11 +580,13 @@ export function useChatStream() {
         return
       }
       console.warn('[useChatStream] sendAgentMessage error:', e)
+      // 优先透出后端已业务化的错误文案（如 LLM 网关认证失败的修复指引）
+      const friendly = (e && e.message) || '翻译层处理异常，请稍后重试。'
       upsertAssistantMessage({
         done: true,
         loading: false,
-        content: streamText || '翻译层处理异常，请稍后重试。',
-        streamText: streamText || '翻译层处理异常，请稍后重试。',
+        content: streamText || friendly,
+        streamText: streamText || friendly,
       })
     } finally {
       streaming.value = false

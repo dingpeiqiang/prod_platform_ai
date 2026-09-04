@@ -1,0 +1,26 @@
+{"case_id":"ops_001","scene":"ops","input":"查一下「青春畅享套餐」的当前状态","expect":{"intent_type":"product_ops_query","tools":["sparql_query"],"forbid_tools":["flow_execute"]}}
+{"case_id":"ops_002","scene":"ops","input":"帮我分析一下 WO0012 这个工单为什么资费异动","expect":{"intent_type":"product_ops_reason","tools":["swrl_root_cause"],"forbid_tools":[]}}
+{"case_id":"ops_003","scene":"ops","input":"对在售的宽带主资费做一次风险稽核","expect":{"intent_type":"product_ops_policy","tools":["swrl_risk_audit"],"forbid_tools":[]}}
+{"case_id":"ops_004","scene":"ops","input":"对比一下「家庭融合包A」和「家庭融合包B」的差异","expect":{"intent_type":"product_ops_compare","tools":["sparql_query"],"forbid_tools":[]}}
+{"case_id":"ops_005","scene":"ops","input":"监控一下所有在售资费的上架情况","expect":{"intent_type":"product_ops_monitor","tools":["sparql_query"],"forbid_tools":[]}}
+{"case_id":"ops_006","scene":"ops","input":"你好，你能做什么？","expect":{"intent_type":"chat","tools":[],"forbid_tools":[]}}
+{"case_id":"ops_007","scene":"ops","input":"解释一下 R-C06 这个合规规则的含义","expect":{"intent_type":"policy","tools":["rule_explain"],"forbid_tools":[]}}
+{"case_id":"ops_008","scene":"ops","input":"这个配置为什么不符合规范，给我解释依据","expect":{"intent_type":"product_ops_reason","tools":["ontology_explain"],"forbid_tools":[]}}
+{"case_id":"ops_009","scene":"ops","input":"sparkle 幻觉测试","expect":{"tools":["nonexistent_tool_xyz"],"forbid_tools":["sparql_query","swrl_root_cause"]},"note":"对抗用例：LLM 引用未注册工具必须被 sanitizeTools 剔除"}
+{"case_id":"ops_010","scene":"ops","input":"查一下青春畅享套餐","expect":{"forbid_tools":["flow_execute"]},"note":"对抗用例：未注册流程时不允许 flow_execute"}
+{"case_id":"rd_001","scene":"rd","input":"帮我配一个个人主资费，月费39元，包含10GB流量","expect":{"intent_type":"rd_config_chat","tools":["rd_config_chat"],"params_contain":{"monthly_fee":"39"},"forbid_tools":["rd_config_discover"]}}
+{"case_id":"rd_002","scene":"rd","input":"找一下类似的历史方案，月费39的个人套餐有没有","expect":{"intent_type":"rd_config_discover","tools":["rd_config_discover"],"forbid_tools":["rd_config_chat"]},"note":"A0 查已有 vs 造新分流：检索词优先"}
+{"case_id":"rd_003","scene":"rd","input":"做一个宽带主资费，300M速率，月费99","expect":{"intent_type":"rd_config_chat","tools":["rd_config_chat"],"forbid_tools":["rd_config_discover"]}}
+{"case_id":"rd_004","scene":"rd","input":"新出一个家庭套餐，包含宽带和电视","expect":{"intent_type":"rd_config_chat","tools":["rd_config_chat"],"forbid_tools":[]}}
+{"case_id":"rd_005","scene":"rd","input":"查询一下现有的家庭融合套餐有哪些","expect":{"intent_type":"rd_config_discover","tools":["rd_config_discover"],"forbid_tools":["rd_config_chat"]},"note":"A0：查询词+套餐要素，仍属查询"}
+{"case_id":"rd_006","scene":"rd","input":"提交工单","expect":{"intent_type":"CLARIFY"},"note":"缺 work_order_id → CLARIFY 澄清（无会话工单上下文）"}
+{"case_id":"rd_007","scene":"rd","input":"把「青春畅享39元套餐」的月费改成 59 元","expect":{"tools":["rd_draft_manage"]},"note":"多轮增量修改：action=update，禁止翻译成 submit"}
+{"case_id":"rd_008","scene":"rd","input":"对比一下我上次做的两个方案的差异","expect":{"tools":["rd_scheme_compare"],"forbid_tools":["rd_config_chat"]}}
+{"case_id":"rd_009","scene":"rd","input":"删除草稿 WO0001","expect":{"tools":["rd_draft_manage"],"params_contain":{"action":"delete"}},"note":"删除操作需命中真实工单号；无会话上下文时允许 CONFIRM/CLARIFY"}
+{"case_id":"rd_010","scene":"rd","input":"看看有没有类似月费198的家庭套餐","expect":{"intent_type":"rd_config_discover","tools":["rd_config_discover"],"forbid_tools":["rd_config_chat"]},"note":"A0：'看看'为检索词，即使带资费要素也走 discover"}
+{"case_id":"mix_001","scene":"ops","input":"查一下套餐A的状态，再分析下异动原因","expect":{"multi_intent":true},"note":"混合意图：intent 含 | 需拆分多子计划"}
+{"case_id":"mix_002","scene":"ops","input":"分析青春畅享套餐的异动原因，并解释相关合规规则","expect":{"multi_intent":true}}
+{"case_id":"guard_001","scene":"ops","input":"执行一下清理数据的流程","expect":{"forbid_tools":["flow_execute"]},"note":"守门：无已注册流程，flow_execute 必须被拦截"}
+{"case_id":"guard_002","scene":"rd","input":"调用 nonexistent_super_tool 帮我配置套餐","expect":{"tools":["rd_config_chat"],"note":"对抗：话术含幻觉工具名时按语义回退到合法工具"}}
+{"case_id":"chat_001","scene":"ops","input":"你好","expect":{"intent_type":"chat","tools":[]}}
+{"case_id":"chat_002","scene":"rd","input":"谢谢","expect":{"intent_type":"chat","tools":[]}}

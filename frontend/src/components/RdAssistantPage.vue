@@ -184,7 +184,7 @@ import { saveMessage as saveChatMessage } from '../services/chatApi.js'
 import { assistantModes, buildSceneWelcome } from '../config/assistantModes.js'
 import { genId, sleep, createStreamingPlaceholder } from '../utils/chatUtils.js'
 import { normalizeThinkingStep } from '../utils/normalizeThinkingStep.js'
-import { draftToFormData } from '../data/productMockData.js'
+import { draftToFormData } from '../utils/productFormSchema.js'
 
 const inputText = ref('')
 const historyLoading = ref(false)

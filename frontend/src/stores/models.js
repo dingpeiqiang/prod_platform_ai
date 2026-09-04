@@ -2,6 +2,7 @@
  * models store - Pinia 状态管理
  * 管理可用模型列表，所有组件共享
  */
+import { authFetch } from '../services/authFetch.js'
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
@@ -84,7 +85,7 @@ export const useModelsStore = defineStore('models', () => {
       loadError.value = null
 
       try {
-        const response = await fetch('/api/v1/chat/model/available')
+        const response = await authFetch('/api/v1/chat/model/available')
         const result = await response.json()
 
         if (result.success && result.models) {
@@ -128,33 +129,11 @@ export const useModelsStore = defineStore('models', () => {
     loadError.value = null
   }
 
-  /**
-   * 手动添加模型配置到列表（用于保存配置后立即更新）
-   */
-  const addModelConfig = (config) => {
-    const provider = config.provider || 'custom'
-    const modelId = `${provider}-${config.model}`
-    const existingIndex = models.value.findIndex(m => m.id === modelId)
-    const newModel = {
-      id: modelId,
-      provider,
-      providerName: getProviderLabel(provider),
-      name: config.model,
-      isDefault: true
-    }
-    if (existingIndex >= 0) {
-      models.value[existingIndex] = newModel
-    } else {
-      models.value.unshift(newModel)
-    }
-    lastLoaded.value = Date.now()
-  }
-
   // ── 导出 ──────────────────────────────────
   return {
     models, loading, lastLoaded, loadError,
     modelOptions, hasModels,
-    loadModels, getModelById, clearModels, addModelConfig
+    loadModels, getModelById, clearModels
   }
 })
 

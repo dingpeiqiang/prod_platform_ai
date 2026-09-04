@@ -1,4 +1,6 @@
 // ── 默认模型获取（从后台查询，避免硬编码具体模型名）──────────
+import { authFetch } from '../../../services/authFetch.js';
+
 let _defaultModelCache = null;
 let _defaultModelPromise = null;
 const _DEFAULT_MODEL_TTL = 5 * 60 * 1000;
@@ -15,7 +17,7 @@ async function getDefaultModel() {
   if (_defaultModelPromise) return _defaultModelPromise;
   _defaultModelPromise = (async () => {
     try {
-      const res = await fetch('/api/v1/chat/model/default');
+      const res = await authFetch('/api/v1/chat/model/default');
       const data = await res.json();
       const model = (data && data.success && data.model) ? data.model : '';
       _defaultModelCache = { ts: Date.now(), value: model };
@@ -418,8 +420,6 @@ export class ExecutionEngine {
     });
     this.addNodeLog(nodeId, { type: 'info', message: '节点开始执行' });
 
-    await this.delay(300);
-
     try {
       switch (node.type) {
         case 'start': {
@@ -467,7 +467,7 @@ export class ExecutionEngine {
           this.addLog('info', `调用 LLM 模型`, `模型: ${model}, 温度: ${temperature}`, { input: resolvedPrompt });
 
           try {
-            const response = await fetch('/api/v1/chat/completion', {
+            const response = await authFetch('/api/v1/chat/completion', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -724,7 +724,7 @@ export class ExecutionEngine {
 
           // 真实执行：调用后端工具执行端点（AgentTool 注册表），不再模拟
           try {
-            const response = await fetch(`/api/v1/agent-tools/${encodeURIComponent(toolName)}/execute`, {
+            const response = await authFetch(`/api/v1/agent-tools/${encodeURIComponent(toolName)}/execute`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ ...context.variables })
@@ -1023,7 +1023,7 @@ export class ExecutionEngine {
           this.addLog('info', '表单节点', `本体: ${ontologyCode}, 工具: ${toolName || '未配置'}`, { ontologyCode, toolName, enableValidation, model });
           
           try {
-            const response = await fetch('/api/workflows/execute-form-node', {
+            const response = await authFetch('/api/workflows/execute-form-node', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -1092,7 +1092,7 @@ export class ExecutionEngine {
                   this.addNodeLog(nodeId, { type: 'info', message: '收到用户提交的表单数据，正在处理...' });
                   this.addLog('info', '收到表单提交数据', null, submittedFormData);
                   
-                  const submitResponse = await fetch('/api/workflows/resume', {
+                  const submitResponse = await authFetch('/api/workflows/resume', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1186,31 +1186,92 @@ export class ExecutionEngine {
         }
 
         case 'http': {
-          const url = node.data.url || '未配置';
-          const method = node.data.method || 'GET';
-          
+          const url = node.data.url || '';
+          const method = (node.data.method || 'GET').toUpperCase();
+
           this.updateNodeData(nodeId, {
             input: { url, method, variables: context.variables },
             config: { url, method, headers: node.data.headers },
-            output: { status: 200, data: '模拟响应数据' }
+            output: null
           });
-          context.variables['httpResult'] = { status: 200, data: '模拟响应数据' };
-          this.addNodeLog(nodeId, { type: 'info', message: `HTTP ${method} ${url}` });
-          this.addLog('info', 'HTTP 请求', `URL: ${url}`, null);
+
+          if (!url) {
+            this.addNodeLog(nodeId, { type: 'error', message: 'HTTP 节点未配置 URL，跳过执行' });
+            context.variables['httpResult'] = null;
+            break;
+          }
+
+          try {
+            const response = await authFetch('/api/v1/http-proxy', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                url,
+                method,
+                headers: node.data.headers || {},
+                body: method === 'GET' ? null : (context.variables['llmOutput'] ?? null)
+              })
+            });
+            const data = await response.json();
+            if (!response.ok || data.success === false) {
+              throw new Error(data.message || `HTTP ${method} ${url} 请求失败`);
+            }
+            this.updateNodeData(nodeId, { output: data });
+            context.variables['httpResult'] = data;
+            this.addNodeLog(nodeId, { type: 'info', message: `HTTP ${method} ${url} 完成，状态码: ${data.status}` });
+            this.addLog('info', 'HTTP 请求完成', `URL: ${url}`, { status: data.status });
+          } catch (err) {
+            this.addNodeLog(nodeId, { type: 'error', message: err.message });
+            this.addLog('error', 'HTTP 请求失败', err.message, { url, method });
+            context.variables['httpResult'] = null;
+          }
           break;
         }
 
         case 'code': {
-          const code = node.data.code || '无代码';
-          
+          const code = node.data.code || '';
+          const language = node.data.language || 'javascript';
+
           this.updateNodeData(nodeId, {
             input: { code, variables: context.variables },
-            config: { language: node.data.language || 'javascript' },
-            output: '模拟代码执行结果'
+            config: { language },
+            output: null
           });
-          context.variables['codeResult'] = '模拟代码执行结果';
-          this.addNodeLog(nodeId, { type: 'info', message: `执行代码 (${node.data.language || 'javascript'})` });
-          this.addLog('info', '代码执行', code, null);
+
+          if (language !== 'javascript') {
+            this.addNodeLog(nodeId, { type: 'error', message: `暂不支持的语言: ${language}，仅支持 javascript` });
+            context.variables['codeResult'] = null;
+            break;
+          }
+          if (!code.trim()) {
+            this.addNodeLog(nodeId, { type: 'error', message: '代码节点未配置脚本，跳过执行' });
+            context.variables['codeResult'] = null;
+            break;
+          }
+
+          try {
+            const response = await authFetch('/api/v1/agent-tools/code_execute/execute', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ code, variables: { ...context.variables } })
+            });
+            const data = await response.json();
+            if (!response.ok || data.success === false) {
+              throw new Error((data && data.error_message) || '代码执行失败');
+            }
+            const resultData = (data.data && typeof data.data === 'object') ? data.data : {};
+            this.updateNodeData(nodeId, { output: resultData.result });
+            context.variables['codeResult'] = resultData.result;
+            this.addNodeLog(nodeId, { type: 'info', message: `代码执行完成（${data.data?.execution_time_ms ?? 0}ms）` });
+            if (Array.isArray(resultData.logs) && resultData.logs.length > 0) {
+              this.addNodeLog(nodeId, { type: 'debug', message: resultData.logs.join('\n') });
+            }
+            this.addLog('info', '代码执行完成', null, { result: resultData.result });
+          } catch (err) {
+            this.addNodeLog(nodeId, { type: 'error', message: err.message });
+            this.addLog('error', '代码执行失败', err.message, null);
+            context.variables['codeResult'] = null;
+          }
           break;
         }
 
@@ -1232,35 +1293,84 @@ export class ExecutionEngine {
           const kbId = node.data.knowledgeBase || '';
           const queryMode = node.data.queryMode || 'retrieve';
           const queryText = node.data.queryText || '';
-          
+
           const resolvedQuery = queryText.replace(/\{\{(\w+)\}\}/g, (_, key) => context.variables[key] || '');
-          
+
           this.updateNodeData(nodeId, {
             input: { knowledgeBase: kbId, queryMode, queryText: resolvedQuery },
             config: { knowledgeBase: kbId, queryMode, queryText },
-            output: null  // 待填充
+            output: null
           });
-          this.addNodeLog(nodeId, { type: 'info', message: `查询知识库: ${kbId}, 模式: ${queryMode}` });
+          this.addNodeLog(nodeId, { type: 'info', message: `查询知识库: ${kbId || '默认库'}, 模式: ${queryMode}` });
           this.addNodeLog(nodeId, { type: 'debug', message: `查询内容: ${resolvedQuery}` });
 
-          const mockResults = {
-            documents: [
-              { id: 'doc1', content: '知识库文档内容示例1...', score: 0.95 },
-              { id: 'doc2', content: '知识库文档内容示例2...', score: 0.88 }
-            ],
-            answer: queryMode === 'qa' ? '这是模拟的知识库问答响应。' : null,
-            summary: queryMode === 'summarize' ? '这是模拟的文档摘要。' : null
-          };
+          try {
+            let results = null;
+            if (queryMode === 'qa') {
+              const response = await authFetch('/api/kb/qa', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: resolvedQuery })
+              });
+              const data = await response.json();
+              if (!response.ok || data.success === false) {
+                throw new Error((data && data.message) || '知识库问答失败');
+              }
+              results = { documents: [], answer: data.data?.answer || '', refs: data.data?.refs || [], summary: null };
+            } else if (queryMode === 'summarize') {
+              const searchResponse = await authFetch('/api/kb/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: resolvedQuery })
+              });
+              const searchData = await searchResponse.json();
+              if (!searchResponse.ok || searchData.success === false) {
+                throw new Error((searchData && searchData.message) || '知识库检索失败');
+              }
+              const docs = Array.isArray(searchData.data) ? searchData.data : [];
+              const docText = docs.map(d => `《${d.title}》: ${d.content}`).join('\n').substring(0, 4000);
+              const llmResponse = await authFetch('/api/v1/chat/completion', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  prompt: `请总结以下知识库文档内容，回答问题：${resolvedQuery}\n\n文档内容：\n${docText}`
+                })
+              });
+              const llmData = await llmResponse.json();
+              if (!llmResponse.ok) {
+                throw new Error(llmData.message || '知识库摘要生成失败');
+              }
+              results = { documents: docs, answer: null, summary: llmData.result || llmData.content || '' };
+            } else {
+              const response = await authFetch('/api/kb/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: resolvedQuery })
+              });
+              const data = await response.json();
+              if (!response.ok || data.success === false) {
+                throw new Error((data && data.message) || '知识库检索失败');
+              }
+              results = { documents: Array.isArray(data.data) ? data.data : [], answer: null, summary: null };
+            }
 
-          context.variables['kbResult'] = mockResults;
-          
-          if (node.data.outputVar) {
-            context.variables[node.data.outputVar] = mockResults;
+            context.variables['kbResult'] = results;
+
+            if (node.data.outputVar) {
+              context.variables[node.data.outputVar] = results;
+            }
+
+            this.updateNodeData(nodeId, { output: results });
+            this.addNodeLog(nodeId, { type: 'info', message: `查询完成，返回 ${results.documents?.length || 0} 条结果` });
+            this.addLog('info', '知识库查询完成', null, { result: results });
+          } catch (err) {
+            this.addNodeLog(nodeId, { type: 'error', message: err.message });
+            this.addLog('error', '知识库查询失败', err.message, { kbId, queryMode });
+            context.variables['kbResult'] = null;
+            if (node.data.outputVar) {
+              context.variables[node.data.outputVar] = null;
+            }
           }
-          
-          this.updateNodeData(nodeId, { output: mockResults });
-          this.addNodeLog(nodeId, { type: 'info', message: `查询完成，返回 ${mockResults.documents?.length || 0} 条结果` });
-          this.addLog('info', '知识库查询完成', null, { result: mockResults });
           break;
         }
 
@@ -1372,10 +1482,6 @@ export class ExecutionEngine {
         this.completeNodeExecution(nodeId, 'completed');
       }
     }
-  }
-
-  delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   evaluateExpression(expression, variables) {
@@ -1499,7 +1605,7 @@ export class ExecutionEngine {
 
   async submitFormData(formData) {
     try {
-      const response = await fetch('/api/workflows/execute-form-node', {
+      const response = await authFetch('/api/workflows/execute-form-node', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1597,8 +1703,6 @@ export class ExecutionEngine {
       });
       this.addNodeLog(nodeId, { type: 'info', message: '节点开始执行' });
 
-      await this.delay(300);
-
       let result = null;
 
       switch (node.type) {
@@ -1631,7 +1735,7 @@ export class ExecutionEngine {
           this.addLog('info', `调用 LLM 模型`, `模型: ${model}, 温度: ${temperature}`, { input: resolvedPrompt });
 
           try {
-            const response = await fetch('/api/v1/chat/completion', {
+            const response = await authFetch('/api/v1/chat/completion', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -1686,36 +1790,93 @@ export class ExecutionEngine {
         }
 
         case 'http': {
-          const url = node.data.url || '未配置';
-          const method = node.data.method || 'GET';
-          let requestData = {};
-          
-          if (inputData) {
-            requestData = { ...inputData };
-          }
-          
+          const url = node.data.url || '';
+          const method = (node.data.method || 'GET').toUpperCase();
+          const requestData = inputData ? { ...inputData } : {};
+
           this.updateNodeData(nodeId, {
             input: { url, method, data: requestData },
             config: { url, method, headers: node.data.headers },
-            output: { status: 200, data: '模拟响应数据' }
+            output: null
           });
-          result = { status: 200, data: '模拟响应数据' };
-          this.addNodeLog(nodeId, { type: 'info', message: `HTTP ${method} ${url}` });
-          this.addLog('info', 'HTTP 请求', `URL: ${url}`, null);
+
+          if (!url) {
+            this.addNodeLog(nodeId, { type: 'error', message: 'HTTP 节点未配置 URL，跳过执行' });
+            result = null;
+            break;
+          }
+
+          try {
+            const response = await authFetch('/api/v1/http-proxy', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                url,
+                method,
+                headers: node.data.headers || {},
+                body: method === 'GET' ? null : requestData
+              })
+            });
+            const data = await response.json();
+            if (!response.ok || data.success === false) {
+              throw new Error(data.message || `HTTP ${method} ${url} 请求失败`);
+            }
+            result = data;
+            this.updateNodeData(nodeId, { output: result });
+            this.addNodeLog(nodeId, { type: 'info', message: `HTTP ${method} ${url} 完成，状态码: ${data.status}` });
+            this.addLog('info', 'HTTP 请求完成', `URL: ${url}`, { status: data.status });
+          } catch (err) {
+            this.addNodeLog(nodeId, { type: 'error', message: err.message });
+            this.addLog('error', 'HTTP 请求失败', err.message, { url, method });
+            result = null;
+          }
           break;
         }
 
         case 'code': {
-          const code = node.data.code || '无代码';
-          
+          const code = node.data.code || '';
+          const language = node.data.language || 'javascript';
+
           this.updateNodeData(nodeId, {
             input: { code, variables: inputData },
-            config: { language: node.data.language || 'javascript' },
-            output: '模拟代码执行结果'
+            config: { language },
+            output: null
           });
-          result = '模拟代码执行结果';
-          this.addNodeLog(nodeId, { type: 'info', message: `执行代码 (${node.data.language || 'javascript'})` });
-          this.addLog('info', '代码执行', code, null);
+
+          if (language !== 'javascript') {
+            this.addNodeLog(nodeId, { type: 'error', message: `暂不支持的语言: ${language}，仅支持 javascript` });
+            result = null;
+            break;
+          }
+          if (!code.trim()) {
+            this.addNodeLog(nodeId, { type: 'error', message: '代码节点未配置脚本，跳过执行' });
+            result = null;
+            break;
+          }
+
+          try {
+            const response = await authFetch('/api/v1/agent-tools/code_execute/execute', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ code, variables: inputData || {} })
+            });
+            const data = await response.json();
+            if (!response.ok || data.success === false) {
+              throw new Error((data && data.error_message) || '代码执行失败');
+            }
+            const resultData = (data.data && typeof data.data === 'object') ? data.data : {};
+            result = resultData.result;
+            this.updateNodeData(nodeId, { output: result });
+            this.addNodeLog(nodeId, { type: 'info', message: `代码执行完成（${data.data?.execution_time_ms ?? 0}ms）` });
+            if (Array.isArray(resultData.logs) && resultData.logs.length > 0) {
+              this.addNodeLog(nodeId, { type: 'debug', message: resultData.logs.join('\n') });
+            }
+            this.addLog('info', '代码执行完成', null, { result });
+          } catch (err) {
+            this.addNodeLog(nodeId, { type: 'error', message: err.message });
+            this.addLog('error', '代码执行失败', err.message, null);
+            result = null;
+          }
           break;
         }
 
@@ -1723,33 +1884,79 @@ export class ExecutionEngine {
           const kbId = node.data.knowledgeBase || '';
           const queryMode = node.data.queryMode || 'retrieve';
           const queryText = node.data.queryText || '';
-          
+
           let resolvedQuery = queryText;
           if (inputData) {
             resolvedQuery = queryText.replace(/\{\{(\w+)\}\}/g, (_, key) => inputData[key] || '');
           }
-          
+
           this.updateNodeData(nodeId, {
             input: { knowledgeBase: kbId, queryMode, queryText: resolvedQuery },
             config: { knowledgeBase: kbId, queryMode, queryText },
             output: null
           });
-          this.addNodeLog(nodeId, { type: 'info', message: `查询知识库: ${kbId}, 模式: ${queryMode}` });
+          this.addNodeLog(nodeId, { type: 'info', message: `查询知识库: ${kbId || '默认库'}, 模式: ${queryMode}` });
           this.addNodeLog(nodeId, { type: 'debug', message: `查询内容: ${resolvedQuery}` });
 
-          const mockResults = {
-            documents: [
-              { id: 'doc1', content: '知识库文档内容示例1...', score: 0.95 },
-              { id: 'doc2', content: '知识库文档内容示例2...', score: 0.88 }
-            ],
-            answer: queryMode === 'qa' ? '这是模拟的知识库问答响应。' : null,
-            summary: queryMode === 'summarize' ? '这是模拟的文档摘要。' : null
-          };
-          
-          result = mockResults;
-          this.updateNodeData(nodeId, { output: mockResults });
-          this.addNodeLog(nodeId, { type: 'info', message: `查询完成，返回 ${mockResults.documents?.length || 0} 条结果` });
-          this.addLog('info', '知识库查询完成', null, { result: mockResults });
+          try {
+            let results = null;
+            if (queryMode === 'qa') {
+              const response = await authFetch('/api/kb/qa', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: resolvedQuery })
+              });
+              const data = await response.json();
+              if (!response.ok || data.success === false) {
+                throw new Error((data && data.message) || '知识库问答失败');
+              }
+              results = { documents: [], answer: data.data?.answer || '', refs: data.data?.refs || [], summary: null };
+            } else if (queryMode === 'summarize') {
+              const searchResponse = await authFetch('/api/kb/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: resolvedQuery })
+              });
+              const searchData = await searchResponse.json();
+              if (!searchResponse.ok || searchData.success === false) {
+                throw new Error((searchData && searchData.message) || '知识库检索失败');
+              }
+              const docs = Array.isArray(searchData.data) ? searchData.data : [];
+              const docText = docs.map(d => `《${d.title}》: ${d.content}`).join('\n').substring(0, 4000);
+              const llmResponse = await authFetch('/api/v1/chat/completion', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  prompt: `请总结以下知识库文档内容，回答问题：${resolvedQuery}\n\n文档内容：\n${docText}`
+                })
+              });
+              const llmData = await llmResponse.json();
+              if (!llmResponse.ok) {
+                throw new Error(llmData.message || '知识库摘要生成失败');
+              }
+              results = { documents: docs, answer: null, summary: llmData.result || llmData.content || '' };
+            } else {
+              const response = await authFetch('/api/kb/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: resolvedQuery })
+              });
+              const data = await response.json();
+              if (!response.ok || data.success === false) {
+                throw new Error((data && data.message) || '知识库检索失败');
+              }
+              results = { documents: Array.isArray(data.data) ? data.data : [], answer: null, summary: null };
+            }
+
+            result = results;
+            this.updateNodeData(nodeId, { output: results });
+            this.addNodeLog(nodeId, { type: 'info', message: `查询完成，返回 ${results.documents?.length || 0} 条结果` });
+            this.addLog('info', '知识库查询完成', null, { result: results });
+          } catch (err) {
+            this.addNodeLog(nodeId, { type: 'error', message: err.message });
+            this.addLog('error', '知识库查询失败', err.message, { kbId, queryMode });
+            result = null;
+          }
           break;
         }
 
@@ -1808,7 +2015,7 @@ export class ExecutionEngine {
           
           // 单节点执行时，调用后端 API 执行表单节点
            try {
-             const response = await fetch('/api/workflows/execute-form-node', {
+             const response = await authFetch('/api/workflows/execute-form-node', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({

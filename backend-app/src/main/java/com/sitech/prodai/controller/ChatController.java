@@ -35,7 +35,6 @@ public class ChatController {
     private final ObjectMapper objectMapper;
     private final ProdAiProperties properties;
     private final ExecutorService executor = Executors.newCachedThreadPool();
-    private final AtomicReference<Map<String, Object>> activeModel = new AtomicReference<>(defaultModel());
 
     public ChatController(Optional<LlmService> llmService, ObjectMapper objectMapper, ProdAiProperties properties) {
         this.llmService = llmService;
@@ -48,7 +47,7 @@ public class ChatController {
     public Map<String, Object> completion(@RequestBody ChatCompletionRequest request) {
         log.info("[ChatController] completion called, prompt_length={}, llmEnabled={}",
                 request.getPrompt() != null ? request.getPrompt().length() : 0, properties.getLlm().isEnabled());
-        // 未显式指定模型时，交由 LlmService 按 prodai.llm.default-model 解析默认生效模型
+        // 未显式指定模型时，交由 LlmService 读取配置表激活项作为默认生效模型
         try {
             return llmService
                     .map(s -> s.complete(request))
@@ -67,7 +66,7 @@ public class ChatController {
     public SseEmitter stream(@RequestBody ChatCompletionRequest request) {
         log.info("[ChatController] stream called, prompt_length={}",
                 request.getPrompt() != null ? request.getPrompt().length() : 0);
-        // 未显式指定模型时，交由 LlmService 按 prodai.llm.default-model 解析默认生效模型
+        // 未显式指定模型时，交由 LlmService 读取配置表激活项作为默认生效模型
         SseEmitter emitter = new SseEmitter(300_000L);
         Flux<Map<String, Object>> events = llmService
                 .map(s -> s.streamEvents(request))
@@ -111,7 +110,7 @@ public class ChatController {
         return emitter;
     }
 
-    /** Replaceable mock: lists supported LLM providers for frontend model picker. */
+    /** 模型厂商列表（静态配置，供前端模型选择器渲染）。 */
     @GetMapping("/model/providers")
     public Map<String, Object> providers() {
         Map<String, Object> body = new LinkedHashMap<>();
@@ -122,7 +121,6 @@ public class ChatController {
                 provider(ModelProvider.CUSTOM.getValue(), ModelProvider.CUSTOM.getLabel(), true),
                 provider(ModelProvider.LOCAL.getValue(), ModelProvider.LOCAL.getLabel(), !properties.getLlm().isEnabled())
         ));
-        body.put("active", activeModel.get());
         body.put("llmEnabled", properties.getLlm().isEnabled());
         return body;
     }
@@ -199,29 +197,8 @@ public class ChatController {
         return body;
     }
 
-    /** Replaceable mock: switch active model config (in-memory). */
-    @PostMapping("/model/switch")
-    public Map<String, Object> switchModel(@RequestBody Map<String, Object> modelConfig) {
-        if (modelConfig == null || modelConfig.isEmpty()) {
-            throw new IllegalArgumentException("modelConfig is required");
-        }
-        String provider = String.valueOf(modelConfig.getOrDefault("provider", "openai"));
-        if (!ModelProvider.isValid(provider)) {
-            Map<String, Object> fail = new LinkedHashMap<>();
-            fail.put("success", false);
-            fail.put("message", "unsupported provider: " + provider);
-            return fail;
-        }
-        Map<String, Object> next = new LinkedHashMap<>(modelConfig);
-        next.putIfAbsent("provider", provider);
-        activeModel.set(next);
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("success", true);
-        body.put("message", "model switched");
-        body.put("modelConfig", next);
-        body.put("llmEnabled", properties.getLlm().isEnabled());
-        return body;
-    }
+    // /model/switch 已移除：模型配置切换统一走 /api/v1/llm-config/activate（落库），
+    // LlmService 读取配置表 is_active 项作为默认生效模型，重启不丢失。
 
     private Map<String, Object> buildDefaultConfig() {
         Map<String, Object> m = new LinkedHashMap<>(defaultModel());

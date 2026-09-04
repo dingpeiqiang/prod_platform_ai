@@ -1,6 +1,6 @@
-import axios from 'axios'
+import { request } from './httpClient.js'
 
-const BASE_URL = '/api/v1/mcp-management'
+const BASE = '/mcp-management'
 
 /**
  * 获取 MCP 工具列表
@@ -8,16 +8,14 @@ const BASE_URL = '/api/v1/mcp-management'
  */
 export async function listTools(category = null) {
   const params = category ? { category } : {}
-  const res = await axios.get(`${BASE_URL}/tools`, { params })
-  return res.data
+  return request(`${BASE}/tools`, { params })
 }
 
 /**
  * 获取 MCP 工具整体统计
  */
 export async function getStats() {
-  const res = await axios.get(`${BASE_URL}/stats`)
-  return res.data
+  return request(`${BASE}/stats`)
 }
 
 /**
@@ -26,8 +24,7 @@ export async function getStats() {
  * @param {Object} args - 工具参数
  */
 export async function testTool(toolName, args = {}) {
-  const res = await axios.post(`${BASE_URL}/tools/${toolName}/test`, args)
-  return res.data
+  return request(`${BASE}/tools/${toolName}/test`, { method: 'POST', data: args })
 }
 
 /**
@@ -38,25 +35,21 @@ export async function testTool(toolName, args = {}) {
 export async function getLogs(toolName = null, limit = 100) {
   const params = { limit }
   if (toolName) params.tool_name = toolName
-  
-  const res = await axios.get(`${BASE_URL}/logs`, { params })
-  return res.data
+  return request(`${BASE}/logs`, { params })
 }
 
 /**
  * 获取 MCP 工具分类列表
  */
 export async function getCategories() {
-  const res = await axios.get(`${BASE_URL}/categories`)
-  return res.data
+  return request(`${BASE}/categories`)
 }
 
 /**
  * 获取外部工具列表
  */
 export async function getExternalTools() {
-  const res = await axios.get(`${BASE_URL}/external-tools`)
-  return res.data
+  return request(`${BASE}/external-tools`)
 }
 
 /**
@@ -64,8 +57,7 @@ export async function getExternalTools() {
  * @param {string} toolName - 工具名称
  */
 export async function getExternalTool(toolName) {
-  const res = await axios.get(`${BASE_URL}/external-tools/${toolName}`)
-  return res.data
+  return request(`${BASE}/external-tools/${toolName}`)
 }
 
 /**
@@ -73,8 +65,7 @@ export async function getExternalTool(toolName) {
  * @param {Object} toolData - 工具数据
  */
 export async function createExternalTool(toolData) {
-  const res = await axios.post(`${BASE_URL}/external-tools`, toolData)
-  return res.data
+  return request(`${BASE}/external-tools`, { method: 'POST', data: toolData })
 }
 
 /**
@@ -83,8 +74,7 @@ export async function createExternalTool(toolData) {
  * @param {Object} toolData - 工具数据
  */
 export async function updateExternalTool(toolName, toolData) {
-  const res = await axios.put(`${BASE_URL}/external-tools/${toolName}`, toolData)
-  return res.data
+  return request(`${BASE}/external-tools/${toolName}`, { method: 'PUT', data: toolData })
 }
 
 /**
@@ -92,8 +82,7 @@ export async function updateExternalTool(toolName, toolData) {
  * @param {string} toolName - 工具名称
  */
 export async function deleteExternalTool(toolName) {
-  const res = await axios.delete(`${BASE_URL}/external-tools/${toolName}`)
-  return res.data
+  return request(`${BASE}/external-tools/${toolName}`, { method: 'DELETE' })
 }
 
 /**
@@ -102,8 +91,7 @@ export async function deleteExternalTool(toolName) {
  * @param {boolean} enabled - 是否启用
  */
 export async function toggleExternalTool(toolName, enabled) {
-  const res = await axios.post(`${BASE_URL}/external-tools/${toolName}/toggle`, { enabled })
-  return res.data
+  return request(`${BASE}/external-tools/${toolName}/toggle`, { method: 'POST', data: { enabled } })
 }
 
 /**
@@ -111,8 +99,7 @@ export async function toggleExternalTool(toolName, enabled) {
  * @param {string} specContent - OpenAPI 规范内容
  */
 export async function parseOpenAPISpec(specContent) {
-  const res = await axios.post(`${BASE_URL}/external-tools/parse`, { spec_content: specContent })
-  return res.data
+  return request(`${BASE}/external-tools/parse`, { method: 'POST', data: { spec_content: specContent } })
 }
 
 /**
@@ -121,10 +108,12 @@ export async function parseOpenAPISpec(specContent) {
  * @param {object} options - 导入选项
  */
 export async function importExternalTools(specContent, options = {}) {
-  const res = await axios.post(`${BASE_URL}/external-tools/import`, {
-    spec_content: specContent,
-    category: options.category || 'external',
-    is_enabled: options.isEnabled !== undefined ? options.isEnabled : true
+  return request(`${BASE}/external-tools/import`, {
+    method: 'POST',
+    data: {
+      spec_content: specContent,
+      category: options.category || 'external',
+      is_enabled: options.isEnabled !== undefined ? options.isEnabled : true
+    }
   })
-  return res.data
 }

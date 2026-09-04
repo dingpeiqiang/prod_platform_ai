@@ -1,38 +1,31 @@
-import axios from 'axios';
+import { request } from './httpClient.js';
 
-const BASE_URL = '/api/visualization';
+const BASE = '/visualization';
 
 export const visualizationApi = {
   async getTraces(limit = 20) {
-    const response = await axios.get(`${BASE_URL}/traces`, {
-      params: { limit }
-    });
-    return response.data;
+    return request(`${BASE}/traces`, { params: { limit } });
   },
 
   async getTraceDetail(traceId) {
-    const response = await axios.get(`${BASE_URL}/traces/${traceId}`);
-    return response.data;
+    return request(`${BASE}/traces/${traceId}`);
   },
 
   async getFlowDiagram(traceId) {
-    const response = await axios.get(`${BASE_URL}/traces/${traceId}/flow`);
-    return response.data;
+    return request(`${BASE}/traces/${traceId}/flow`);
   },
 
   async getStats() {
-    const response = await axios.get(`${BASE_URL}/stats`);
-    return response.data;
+    return request(`${BASE}/stats`);
   },
 
   async deleteTrace(traceId) {
-    const response = await axios.delete(`${BASE_URL}/traces/${traceId}`);
-    return response.data;
+    return request(`${BASE}/traces/${traceId}`, { method: 'DELETE' });
   },
 
   createWebSocket(traceId) {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
-    return new WebSocket(`${protocol}//${host}${BASE_URL}/ws/${traceId}`);
+    return new WebSocket(`${protocol}//${host}/api/visualization/ws/${traceId}`);
   }
 };

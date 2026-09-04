@@ -33,12 +33,12 @@ import java.util.UUID;
  * <p>与业务完全解耦：所有业务特定字段（intent_type / form_code / extracted_fields）
  * 均通过 {@link ChatMessageMetadata} KV 扩展表存储，不污染核心消息表结构。
  *
- * <p>此服务与现有内存版 {@link ChatV2Service} 并存：
- * <ul>
- *   <li>本服务面向需要持久化的场景（按 sessionId 跨重启恢复对话）</li>
- *   <li>{@link ChatV2Service} 面向临时会话或测试场景</li>
- * </ul>
+ * <p>此服务与 {@link ChatV2Service} 功能重叠（后者已改为数据库持久化实现），
+ * 当前无任何调用方。
+ *
+ * @deprecated 功能已由 {@link ChatV2Service}（数据库版）统一承接，计划下个迭代周期删除。
  */
+@Deprecated
 @Service
 public class ChatServiceV2Jpa {
 

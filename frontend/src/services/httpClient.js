@@ -7,6 +7,19 @@ const API_BASE = '/api/v1'
 let loadingCount = 0
 let loadingStore = null
 
+// 认证 token 读取器（由 user store 启动时注入，避免 httpClient ↔ user store 循环依赖）
+let tokenProvider = null
+// 401 全局处理器（由 user store 注入：清理本地登录态）
+let unauthorizedHandler = null
+
+export function setTokenProvider(provider) {
+  tokenProvider = provider
+}
+
+export function setUnauthorizedHandler(handler) {
+  unauthorizedHandler = handler
+}
+
 // 全局错误去重：同一文案 3 秒内只弹一次，避免并发请求刷屏
 let lastToast = { message: '', at: 0 }
 const TOAST_DEDUPE_MS = 3000
@@ -57,6 +70,18 @@ const apiClient = axios.create({
 
 apiClient.interceptors.request.use(
   async (config) => {
+    // 附带认证 token（Bearer）
+    if (tokenProvider) {
+      const token = tokenProvider()
+      if (token) {
+        const headers = config.headers
+        if (headers && typeof headers.set === 'function') {
+          headers.set('Authorization', `Bearer ${token}`)
+        } else {
+          config.headers = { ...config.headers, Authorization: `Bearer ${token}` }
+        }
+      }
+    }
     if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
       // axios 默认 Content-Type: application/json 会导致 Spring 拒绝 multipart
       // 必须彻底删除，让运行时自动带 boundary
@@ -93,6 +118,10 @@ apiClient.interceptors.response.use(
   },
   async (error) => {
     await hideLoading()
+    // 401：登录态失效，统一清理本地登录信息并跳转登录页
+    if (error.response?.status === 401 && typeof unauthorizedHandler === 'function') {
+      unauthorizedHandler()
+    }
     let errorMessage = '请求失败'
     if (error.response) {
       errorMessage = error.response.data?.message || error.response.data?.error || `HTTP Error: ${error.response.status}`

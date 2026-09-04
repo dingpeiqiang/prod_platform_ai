@@ -1,10 +1,11 @@
 <template>
   <div class="ov-panel ov-rev-panel">
     <div class="ov-panel-title-bar">
-      <h3 class="ov-title">收入总览</h3>
-      <span class="ov-title-note">单位：万元 ｜ 数据口径：全省 · 2026年7月</span>
+      <h3 class="ov-title">收入与规模总览</h3>
+      <span class="ov-title-note">{{ periodNote }}</span>
     </div>
-    <div class="ov-rev-row">
+    <div v-if="loading" class="ov-rev-loading">加载中...</div>
+    <div v-else class="ov-rev-row">
       <div v-for="card in cards" :key="card.key" class="ov-rev-card">
         <div class="ov-rev-card-head">
           <div class="ov-rev-icon" :class="card.iconCls">
@@ -14,23 +15,22 @@
         </div>
         <div class="ov-rev-body">
           <div class="ov-rev-metric">
-            <div class="ov-rev-label">报表收入</div>
+            <div class="ov-rev-label">30天收入</div>
             <div class="ov-rev-value-row">
-              <span class="ov-rev-now">{{ fmt(card.report.now) }}<span class="ov-rev-unit">万元</span></span>
+              <span class="ov-rev-now">{{ fmt(card.report.now) }}<span class="ov-rev-unit">元</span></span>
             </div>
             <div class="ov-rev-sub">
-              <span class="ov-rev-cum">当年累计 {{ fmt(card.report.cum) }}万</span>
-              <span class="ov-rev-yoy"><span class="ov-yoy-tag">累计同比</span><span :class="deltaCls(card.report.yoy)" class="ov-yoy-val">{{ fmtPct(card.report.yoy) }}<svg class="ov-yoy-arrow" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline v-if="card.report.yoy >= 0" points="18 15 12 9 6 15"/><polyline v-else points="6 9 12 15 18 9"/></svg></span></span>
+              <span class="ov-rev-cum">在架商品 {{ fmt(card.report.offeringCount) }} 个</span>
+              <span class="ov-rev-cum">有销量 {{ fmt(card.report.activeCount) }} 个</span>
             </div>
           </div>
           <div class="ov-rev-metric">
-            <div class="ov-rev-label">出账收入(税后)</div>
+            <div class="ov-rev-label">30天销量</div>
             <div class="ov-rev-value-row">
-              <span class="ov-rev-now">{{ fmt(card.bill.now) }}<span class="ov-rev-unit">万元</span></span>
+              <span class="ov-rev-now">{{ fmt(card.bill.now) }}<span class="ov-rev-unit">单</span></span>
             </div>
             <div class="ov-rev-sub">
-              <span class="ov-rev-cum">当年累计 {{ fmt(card.bill.cum) }}万</span>
-              <span class="ov-rev-yoy"><span class="ov-yoy-tag">累计同比</span><span :class="deltaCls(card.bill.yoy)" class="ov-yoy-val">{{ fmtPct(card.bill.yoy) }}<svg class="ov-yoy-arrow" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline v-if="card.bill.yoy >= 0" points="18 15 12 9 6 15"/><polyline v-else points="6 9 12 15 18 9"/></svg></span></span>
+              <span class="ov-rev-cum">异动告警 {{ fmt(card.bill.alertCount) }} 条</span>
             </div>
           </div>
         </div>
@@ -40,8 +40,48 @@
 </template>
 
 <script setup>
-import { revenueCards as cards } from './opsData.js'
-import { fmt, fmtPct, deltaCls } from './opsFormat.js'
+import { ref, computed, onMounted } from 'vue'
+import { getOpsRevenueOverview } from '../../services/productOntologyApi.js'
+import { fmt } from './opsFormat.js'
+
+const loading = ref(true)
+const overview = ref(null)
+const loadError = ref(false)
+
+const ICONS = ['ov-icon-blue', 'ov-icon-emerald', 'ov-icon-amber']
+
+const periodNote = computed(() => {
+  if (overview.value?.generatedAt) {
+    return `数据口径：事实图 · 30天滚动 · ${String(overview.value.generatedAt).slice(0, 10)}`
+  }
+  return '数据口径：事实图 · 30天滚动'
+})
+
+const cards = computed(() => {
+  if (!overview.value) return []
+  const t = overview.value.totals || {}
+  const rows = [
+    { key: 'revenue', title: '30天收入', report: { now: t.revenue30d || 0, offeringCount: t.offeringCount || 0, activeCount: t.activeOfferingCount || 0 }, bill: { now: overview.value.anomalyAlertCount || 0, alertCount: overview.value.anomalyAlertCount || 0 } },
+    { key: 'sales', title: '30天销量', report: { now: t.sales30d || 0, offeringCount: t.offeringCount || 0, activeCount: t.activeOfferingCount || 0 }, bill: { now: overview.value.anomalyAlertCount || 0, alertCount: overview.value.anomalyAlertCount || 0 } },
+    { key: 'active', title: '在架商品', report: { now: t.offeringCount || 0, offeringCount: t.offeringCount || 0, activeCount: t.activeOfferingCount || 0 }, bill: { now: t.activeOfferingCount || 0, alertCount: overview.value.anomalyAlertCount || 0 } },
+  ]
+  return rows.map((r, i) => ({ ...r, iconCls: ICONS[i % ICONS.length] }))
+})
+
+onMounted(async () => {
+  try {
+    const body = await getOpsRevenueOverview()
+    if (body && body.success) {
+      overview.value = body
+    } else {
+      loadError.value = true
+    }
+  } catch (e) {
+    loadError.value = true
+  } finally {
+    loading.value = false
+  }
+})
 </script>
 
 <style src="./opsView.css" scoped></style>

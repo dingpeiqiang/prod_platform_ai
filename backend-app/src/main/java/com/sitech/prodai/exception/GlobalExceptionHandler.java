@@ -35,6 +35,17 @@ public class GlobalExceptionHandler {
                 .body(error("service_unavailable", ex.getMessage()));
     }
 
+    /**
+     * LLM 配置/认证类错误（api_key 缺失、网关 401 等）：message 已是可行动的修复指引，
+     * 直接透传给前端；区别于 service_unavailable（不可重试，需要用户改配置）。
+     */
+    @ExceptionHandler(LlmConfigException.class)
+    public ResponseEntity<Map<String, Object>> handleLlmConfig(LlmConfigException ex) {
+        log.error("[GlobalExceptionHandler] llm_config_error: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(error("llm_config_error", ex.getMessage()));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {
         String message = ex.getBindingResult().getFieldErrors().stream()

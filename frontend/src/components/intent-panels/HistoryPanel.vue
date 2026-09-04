@@ -1,13 +1,13 @@
 <template>
   <div class="history-mgmt-panel">
-    <!-- 导入入口（config/import 未迁 Java，暂不可用） -->
+    <!-- 导入入口（/api/v1/config/import/* 已迁 Java 后端） -->
     <template v-if="historyData.type === 'import_entry'">
       <div class="history-mgmt-header">
         <span>数据导入</span>
       </div>
       <div class="export-result">
-        <p>当前商用后端尚未迁移配置导入接口（<code>/api/v1/config/import/*</code>）。</p>
-        <p class="export-hint">请使用本体管理或智聊表单完成配置；导入能力将在后续迭代恢复。</p>
+        <p>数据导入入口已恢复，后端接口 <code>/api/v1/config/import/*</code> 已可用。</p>
+        <p class="export-hint">请在数据导入对话框中选择本体表单，上传 JSONL 文件完成导入。</p>
       </div>
     </template>
 

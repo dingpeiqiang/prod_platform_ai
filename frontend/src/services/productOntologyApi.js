@@ -1,4 +1,5 @@
 import { get, post, put } from './httpClient.js'
+import { authFetch } from './authFetch.js'
 
 const BASE = 'product-ontology'
 
@@ -31,6 +32,11 @@ export async function fetchTemplateSchema(categoryCode) {
 
 export async function getOpsDashboard() {
   return get(`${BASE}/ops/dashboard`, { showLoading: false })
+}
+
+/** 运营大屏·收入与规模总览（从事实图 shelfOfferings 聚合 30 天真实指标） */
+export async function getOpsRevenueOverview() {
+  return get(`${BASE}/ops/revenue-overview`, { showLoading: false })
 }
 
 export async function chatConfigure(text, draft = null) {
@@ -94,7 +100,7 @@ export async function uploadConfigFile(file) {
   const nativeFile = await toNativeUploadFile(file)
   const form = new FormData()
   form.append('file', nativeFile, nativeFile.name)
-  const resp = await fetch('/api/v1/product-ontology/config/upload', {
+  const resp = await authFetch('/api/v1/product-ontology/config/upload', {
     method: 'POST',
     body: form,
   })
@@ -128,7 +134,7 @@ export async function batchFromUpload(file) {
   const nativeFile = await toNativeUploadFile(file)
   const form = new FormData()
   form.append('file', nativeFile, nativeFile.name)
-  const resp = await fetch('/api/v1/product-ontology/config/batch-upload', {
+  const resp = await authFetch('/api/v1/product-ontology/config/batch-upload', {
     method: 'POST',
     body: form,
   })

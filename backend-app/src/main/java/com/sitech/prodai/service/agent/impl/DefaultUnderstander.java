@@ -2,6 +2,7 @@ package com.sitech.prodai.service.agent.impl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sitech.prodai.exception.LlmConfigException;
 import com.sitech.prodai.intent.IntentRecognitionSupport;
 import com.sitech.prodai.service.LlmService;
 import com.sitech.prodai.service.agent.Understander;
@@ -59,16 +60,28 @@ public class DefaultUnderstander implements Understander {
     private final com.sitech.prodai.service.agent.flow.FlowIntentRouter flowIntentRouter;
     /** 能力注册表（单源）：场景 → 可见工具白名单，工具自声明场景后统一读取。 */
     private final com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry capabilityRegistry;
+    /** 意图提示词组装器（R3 外置化）：静态提示词从外部/classpath 模板加载。 */
+    private final IntentPromptAssembler promptAssembler;
 
     public DefaultUnderstander(LlmService llmService, List<AgentTool> tools,
                                com.sitech.prodai.mapper.OpsWorkOrderMapper workOrderMapper,
                                com.sitech.prodai.service.agent.flow.FlowIntentRouter flowIntentRouter,
                                com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry capabilityRegistry) {
+        this(llmService, tools, workOrderMapper, flowIntentRouter, capabilityRegistry, null);
+    }
+
+    public DefaultUnderstander(LlmService llmService, List<AgentTool> tools,
+                               com.sitech.prodai.mapper.OpsWorkOrderMapper workOrderMapper,
+                               com.sitech.prodai.service.agent.flow.FlowIntentRouter flowIntentRouter,
+                               com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry capabilityRegistry,
+                               IntentPromptAssembler promptAssembler) {
         this.llmService = llmService;
         this.toolMap = new LinkedHashMap<>();
         this.workOrderMapper = workOrderMapper;
         this.flowIntentRouter = flowIntentRouter;
         this.capabilityRegistry = capabilityRegistry;
+        // 测试/评测装配可不提供组装器：回退到内联最小骨架（与模板缺失兜底一致）
+        this.promptAssembler = promptAssembler != null ? promptAssembler : new IntentPromptAssembler("");
         if (tools != null) {
             for (AgentTool tool : tools) {
                 this.toolMap.put(tool.getName(), tool);
@@ -132,6 +145,10 @@ public class DefaultUnderstander implements Understander {
                     }
                 }
                 llmResult = llmService.completeMessages(systemPrompt, history, question);
+            } catch (LlmConfigException e) {
+                // 配置类错误（api_key 缺失/网关 401 等）：重试无意义，直接透出可行动的修复指引
+                log.error("[DefaultUnderstander] LLM 配置/认证错误，终止理解链: {}", e.getMessage());
+                throw e;
             } catch (Exception e) {
                 lastError = e;
                 log.warn("[DefaultUnderstander] 大模型调用失败（第 {} 次尝试）: {}", attempt, e.getMessage());
@@ -165,8 +182,11 @@ public class DefaultUnderstander implements Understander {
             throw new IllegalStateException("大模型不可用，理解层调用失败: " + lastError.getMessage(), lastError);
         }
         if (llmResult == null || llmResult.isBlank()) {
-            log.error("[DefaultUnderstander] 大模型返回为空，翻译链终止");
-            throw new IllegalStateException("大模型返回为空，无法理解用户需求");
+            // 走到这里说明网关已正常响应（认证通过）但模型连续输出为空——偶发空 choices，
+            // 给出可重试的友好提示，不与配置错误（LlmConfigException）混淆
+            log.error("[DefaultUnderstander] 大模型连续 {} 次返回为空，翻译链终止", MAX_TRANSLATE_ATTEMPTS);
+            throw new IllegalStateException(
+                    "大模型多次调用均未返回内容，请稍后重试；若持续出现，请到「模型配置」管理页检查当前模型是否可用");
         }
 
         List<QueryPlan> parsed = parseLlmResults(llmResult, question, rdScene, context);
@@ -846,61 +866,14 @@ public class DefaultUnderstander implements Understander {
         }
     }
 
+    /**
+     * 系统提示词组装（R3 外置化）：静态部分（角色/JSON 契约/CONFIRM 规则/rd 铁律）
+     * 由 {@link IntentPromptAssembler} 从外部模板加载；动态部分（能力清单/流程清单）
+     * 仍在此处拼装——它们依赖 Spring Bean 运行时状态，不适合静态模板化。
+     */
     private String buildSystemPrompt(boolean rdScene) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(rdScene
-                ? "你是一个产商品研发智能助手，负责理解用户的需求，并将其翻译为可执行的研发配置计划。\n"
-                : "你是一个产品运营智能助手，负责理解用户的问题，并将其翻译为可执行的查询计划。\n");
-        sb                .append("\n请输出 JSON（仅输出 JSON，不要输出其他内容）：\n")
-                .append("{\n")
-                .append("  \"intent\": \"业务意图标签（从下方各能力的适用场景归纳，闲聊则为 CHAT）\",\n")
-                .append("  \"action\": \"动作标签\",\n")
-                .append("  \"tools\": [\"工具名列表，按执行顺序排列\"],\n")
-                .append("  \"params\": {\"question\": \"原始问题\", ...各工具所需参数}\n")
-                .append("}\n\n")
-                .append("如果用户只是打招呼或闲聊，intent 设为 CHAT，tools 设为空列表。\n")
-                .append("请从用户问题中抽取参数所需的实体填入 params。\n\n")
-                .append("【何时需要用户确认（CONFIRM）——由你结合上下文自行判断，宁可多问不可错执行：\n")
-                .append("1) 需求存在多种合理解读且无法从上下文唯一确定；\n")
-                .append("2) 用户指令会修改/删除数据（如删除草稿、提交工单），且目标对象不明确（未指明名称/编号，或上下文中可能命中多个对象）；\n")
-                .append("3) 用户指令中的实体名称模糊或与多个已知对象部分匹配。\n")
-                .append("确认时输出 {\"intent\": \"CONFIRM\", \"candidates\": [\"解读1\", \"解读2\"]}，")
-                .append("每条候选为一句可直接执行的完整表述（包含明确的对象名称/编码），不要猜测。\n")
-                .append("若目标对象唯一明确（如名称精确匹配唯一草稿），无需确认直接执行。\n\n")
-                .append("【工单操作（rd_draft_manage）参数抽取铁律：\n")
-                .append("1) work_order_id 必须来自用户话术或【当前会话工单实时状态】中列出的真实工单号（WO 开头），严禁编造或使用示例号；\n")
-                .append("2) 用户话术未带工单号但上下文（上一轮生成/复制草稿的回执、会话工单清单）存在唯一工单时，沿用该工单号；\n")
-                .append("3) 提交动作批量语义（最高优先级）：用户只说「提交」「提交工单」「批量提交」「全部提交」等未点名具体某一个时，")
-                .append("不要 CONFIRM、不要只挑一单，必须把【当前会话工单实时状态】中全部状态为 open/in_progress（待提交）的工单号")
-                .append("用英文逗号拼接写入 work_order_id（如 \"WO1,WO2\"）一次性批量提交；\n")
-                .append("4) 上下文存在多个工单但用户明确点名其中一个（含名称/编号区分）→ 只取命中的那个工单号，不掺入其他工单；\n")
-                .append("5) 状态为 cancelled（已取消）的工单严禁纳入 submit 的 work_order_id；\n")
-                .append("6) 用户要求修改工单/草稿的字段（如改资费名称、改月费）时：无论工单状态是否 done，一律调用 rd_draft_manage 且 action=update，")
-                .append("携带 work_order_id 和 offering_name（修改后的新名称），严禁翻译成 submit；修改成功后工具会自动重开工单；\n")
-                .append("7) 多轮增量修改（最高优先级）：用户在上一轮修改后追加细化（如只说「改成 198 元」「月费改 59」「名称加上家庭版」）时，")
-                .append("继续调用 rd_draft_manage 且 action=update：work_order_id 沿用会话缓存/上一轮回执的单号，")
-                .append("只携带本轮提到的字段（offering_name 或 monthly_fee），并把原始话术透传到 question 参数兜底；")
-                .append("未提到的字段不要回传旧值，由工具基于草稿现状合并；\n")
-                .append("8) 上下文无任何待提交工单且话术无工单号 → 不要调用工具，直接向用户说明需要先提供工单号或先生成配置草稿。\n\n")
-                .append("【查已有 vs 造新分流（最高优先级，先于下方所有铁律判断）：\n")
-                .append("A0) 用户想查找/查看/对比已存在的配置方案（标志词：找一下、查一下、找找、有没有、检索、看看、")
-                .append("类似的历史方案、现有套餐有哪些），即使话术中带月费、资费、渠道等套餐要素，也属于配置查询：")
-                .append("必须调用 rd_config_discover，严禁调用 rd_config_chat（查询不会生成草稿、不会开工单）；\n")
-                .append("A1) 只有用户明确表达创建意愿（标志词：做一个、新做、新建、生成、创建、配一个、上一款、新出）")
-                .append("且无检索意图词时，才调用 rd_config_chat 生成新配置草稿；\n\n")
-                .append("【新配置需求 vs 工单操作分流（次高优先级）：\n")
-                .append("A) 用户描述一个全新配置需求（典型句式如「给XX用户做一个XX套餐，月费XX，带XX，销售范围XX」「新做/新增/创建一个包含XX的套餐」），")
-                .append("无论当前会话已有多少工单，这都属于生成新配置草稿：必须调用 rd_config_chat，严禁调用 rd_draft_manage，")
-                .append("更严禁臆造 action=create（rd_draft_manage 根本不存在 create 动作）；\n")
-                .append("B) rd_draft_manage 的 action 仅允许 delete / copy / update / submit 四种；只有当用户明确要求删除、复制、修改或提交")
-                .append("【当前会话工单实时状态】里已存在的某个/某些工单时才可调用，且 work_order_id 必须命中真实工单号；\n")
-                .append("B1) 用户话术为「复制工单「XX」（WOxxx）对应的配置草稿，生成副本…」时（工单卡复制按钮发出，")
-                .append("可能附带「并按以下需求调整：XXX」），这是明确的 copy 操作：必须调用 rd_draft_manage 且 action=copy，")
-                .append("携带该 work_order_id；话术中的补充需求（改名/调资费等）透传到 question 参数，供复制后字段修正；\n")
-                .append("C) 用户有明确创建意愿（要求做/生成/新做新套餐）且话术里出现资费、月费、宽带速率、销售渠道等完整套餐要素")
-                .append("而无「修改/提交/删除某工单」的指向词时，才视为新配置需求走 rd_config_chat；")
-                .append("若用户只是想查询/找到已有方案（见 A0），即使带这些要素也必须走 rd_config_discover；\n")
-                .append("D) 上下文已有工单不等于用户要操作工单：判断依据是话术语义（是否点名工单/是否带操作动词），而不是工单数量。\n\n可用能力：\n");
+        StringBuilder sb = new StringBuilder(promptAssembler.assembleSystemPrompt(rdScene));
+        sb.append("\n可用能力：\n");
         for (AgentTool tool : toolsOf(rdScene)) {
             sb.append("- ").append(tool.getName())
                     .append("：").append(tool.getDescription());
