@@ -20,6 +20,8 @@ import java.util.stream.Collectors;
  * <p>职责单一：工单持久化（pd_ai_ops_work_orders）、状态机流转、改名同步、会话/全局列表查询与计数。
  * 图回写通过 {@link WorkOrderGraphCoordinator} 回调宿主，不持有事实图缓存所有权。
  * <p>对外 API 语义与拆分前一致；ProductOntologyService 保留薄委托 Facade。
+ * <p>协调器为宿主方法引用（容器无 bean 定义），经 {@link #setGraphCoordinator} 在宿主装配完成后注入，
+ * 调用点判空兜底，避免构造期环依赖与 NoSuchBeanDefinitionException。
  */
 @Service
 public class OpsWorkOrderService {
@@ -29,10 +31,15 @@ public class OpsWorkOrderService {
     private static final Set<String> ALLOWED_STATUS = Set.of("open", "in_progress", "done", "cancelled");
 
     private final OpsWorkOrderMapper workOrderMapper;
-    private final WorkOrderGraphCoordinator graphCoordinator;
+    /** 宿主回调惰性持有：构造期宿主尚在装配中，须延迟到调用点解析。 */
+    private WorkOrderGraphCoordinator graphCoordinator;
 
-    public OpsWorkOrderService(OpsWorkOrderMapper workOrderMapper, WorkOrderGraphCoordinator graphCoordinator) {
+    public OpsWorkOrderService(OpsWorkOrderMapper workOrderMapper) {
         this.workOrderMapper = workOrderMapper;
+    }
+
+    /** 宿主回调注入点：宿主装配完成后回调此方法，打破构造期环依赖。 */
+    public void setGraphCoordinator(WorkOrderGraphCoordinator graphCoordinator) {
         this.graphCoordinator = graphCoordinator;
     }
 
@@ -40,6 +47,13 @@ public class OpsWorkOrderService {
      * 生成处置工单：持久化到 DB，并经协调器回写内存事实图 dispositionStatus。
      */
     public Map<String, Object> createWorkOrder(Map<String, Object> request) {
+        if (graphCoordinator == null) {
+            log.warn("[OpsWorkOrderService] 协调器未注入（宿主装配中），拒绝开单");
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("success", false);
+            body.put("message", "服务初始化中，请稍后重试");
+            return body;
+        }
         Map<String, Object> req = request == null ? Map.of() : request;
         String offeringId = str(req.getOrDefault("offeringId", req.get("offering_id")));
         String source = str(req.getOrDefault("source", "manual"));
@@ -390,7 +404,9 @@ public class OpsWorkOrderService {
     /** 在响应中标注是否演示模式及数据来源（与宿主 ProductOntologyService 口径一致）。 */
     private Map<String, Object> withModeMeta(Map<String, Object> body) {
         Map<String, Object> result = body == null ? new LinkedHashMap<>() : new LinkedHashMap<>(body);
-        result.putAll(graphCoordinator.modeMeta());
+        if (graphCoordinator != null) {
+            result.putAll(graphCoordinator.modeMeta());
+        }
         return result;
     }
 

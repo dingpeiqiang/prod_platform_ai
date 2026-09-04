@@ -120,7 +120,8 @@ class ProductConfigRegressionTest {
                 new FactGraphSyncService(rdf4jStore),
                 new LlmIntentExtractor(Optional.empty(), mapper),
                 new SparqlConfigDiscoverer(rdf4jStore),
-                regressionProvider
+                regressionProvider,
+                new ConfigDraftService(mapper, instanceMapper, projector)
         );
         service.init();
         regressionService = new ProductConfigRegressionService(

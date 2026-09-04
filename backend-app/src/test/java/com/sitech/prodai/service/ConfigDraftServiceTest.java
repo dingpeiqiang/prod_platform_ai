@@ -45,10 +45,8 @@ class ConfigDraftServiceTest {
         ObjectMapper mapper = new ObjectMapper();
         ConfigMessageProjector projector = new ConfigMessageProjector(mapper, new DefaultResourceLoader());
         projector.init();
-        service = new ConfigDraftService(
-                mapper,
-                instanceMapper,
-                projector,
+        service = new ConfigDraftService(mapper, instanceMapper, projector);
+        service.setCallbacks(
                 draft -> Map.of("compliancePass", compliancePass, "issues", List.of()),
                 draft -> {
                     lastPublished = draft;

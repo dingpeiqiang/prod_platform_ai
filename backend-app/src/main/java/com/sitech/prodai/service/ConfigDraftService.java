@@ -35,8 +35,10 @@ public class ConfigDraftService {
     private final ObjectMapper objectMapper;
     private final OntologyInstanceMapper instanceMapper;
     private final ConfigMessageProjector messageProjector;
-    private final DraftComplianceChecker complianceChecker;
-    private final DraftPublisher draftPublisher;
+    /** 宿主回调惰性持有：构造期宿主尚在装配中，须延迟到调用点解析（见 submitConfigDraft）。 */
+    private DraftComplianceChecker complianceChecker;
+    /** 宿主回调惰性持有：同上。 */
+    private DraftPublisher draftPublisher;
 
     /** 合规校验回调：入参草稿，出参含 compliancePass / issues。 */
     public interface DraftComplianceChecker {
@@ -50,12 +52,14 @@ public class ConfigDraftService {
 
     public ConfigDraftService(ObjectMapper objectMapper,
                               OntologyInstanceMapper instanceMapper,
-                              ConfigMessageProjector messageProjector,
-                              DraftComplianceChecker complianceChecker,
-                              DraftPublisher draftPublisher) {
+                              ConfigMessageProjector messageProjector) {
         this.objectMapper = objectMapper;
         this.instanceMapper = instanceMapper;
         this.messageProjector = messageProjector;
+    }
+
+    /** 宿主回调注入点：宿主装配完成后回调此方法，打破构造期环依赖。 */
+    public void setCallbacks(DraftComplianceChecker complianceChecker, DraftPublisher draftPublisher) {
         this.complianceChecker = complianceChecker;
         this.draftPublisher = draftPublisher;
     }
@@ -207,6 +211,10 @@ public class ConfigDraftService {
         Map<String, Object> saved = saveConfigDraft(persistReq);
         Long persistedId = parseLong(saved.get("draftId"));
 
+        if (complianceChecker == null || draftPublisher == null) {
+            log.warn("[ConfigDraftService] 宿主回调未就绪（装配未完成），拒绝提交");
+            return Map.of("success", false, "message", "服务初始化中，请稍后重试");
+        }
         Map<String, Object> compliance = complianceChecker.checkCompliance(draft);
         if (!Boolean.TRUE.equals(compliance.get("compliancePass"))) {
             Map<String, Object> fail = new LinkedHashMap<>();

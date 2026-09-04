@@ -41,7 +41,8 @@ class OpsWorkOrderServiceTest {
     void setUp() {
         coordinatorCalls = new java.util.ArrayList<>();
         coordinatorRef = graphCoordinator();
-        service = new OpsWorkOrderService(workOrderMapper, coordinatorRef);
+        service = new OpsWorkOrderService(workOrderMapper);
+        service.setGraphCoordinator(coordinatorRef);
     }
 
     private List<String> coordinatorCalls;

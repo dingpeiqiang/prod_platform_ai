@@ -110,6 +110,8 @@ public class ProductOntologyService {
     private final OpsWorkOrderService opsWorkOrderService;
     /** 草稿域服务（R2 Phase2 拆分）：CRUD/提交闭环在本类保留薄委托 Facade。 */
     private final ConfigDraftService configDraftService;
+    /** 文档导入域服务（R2 Phase3 拆分）：智读批量导入在本类保留薄委托 Facade。 */
+    private final ConfigDocImportService configDocImportService;
 
     public ProductOntologyService(ObjectMapper objectMapper,
                               ProdAiProperties properties,
@@ -130,7 +132,8 @@ public class ProductOntologyService {
                               FactGraphSyncService factGraphSync,
                               LlmIntentExtractor intentExtractor,
                               SparqlConfigDiscoverer sparqlDiscoverer,
-                              ObjectProvider<ProductConfigRegressionService> regressionServiceProvider) {
+                              ObjectProvider<ProductConfigRegressionService> regressionServiceProvider,
+                              ConfigDraftService configDraftService) {
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.opsSwrlReasoner = opsSwrlReasoner;
@@ -151,10 +154,11 @@ public class ProductOntologyService {
         this.intentExtractor = intentExtractor;
         this.sparqlDiscoverer = sparqlDiscoverer;
         this.regressionServiceProvider = regressionServiceProvider;
-        this.opsWorkOrderService = new OpsWorkOrderService(workOrderMapper, buildWorkOrderGraphCoordinator());
-        this.configDraftService = new ConfigDraftService(
-                objectMapper, instanceMapper, messageProjector,
-                this::checkCompliance, this::publishConfigDraft);
+        this.configDraftService = configDraftService;
+        this.opsWorkOrderService = new OpsWorkOrderService(workOrderMapper);
+        this.opsWorkOrderService.setGraphCoordinator(buildWorkOrderGraphCoordinator());
+        this.configDocImportService = new ConfigDocImportService(
+                documentParser, documentStorage, objectMapper);
     }
 
     /** 工单域 → 事实图回写协调器（保持 graphCache 写入与同步锁在本类内）。 */
@@ -246,6 +250,7 @@ public class ProductOntologyService {
         loadGraph();
         opsRules.load();
         syncFactGraphToRdf();
+        configDraftService.setCallbacks(this::checkCompliance, this::publishConfigDraft);
     }
 
     /** 事实图 → 本体图同步：使 SPARQL 可对在架商品做语义检索（灌图失败不阻断启动）。 */
@@ -1338,54 +1343,27 @@ public class ProductOntologyService {
         }
     }
 
-    /** 智读：先解析文档再批量映射。 */
+    /** 智读：先解析文档再批量映射（薄委托 → {@link ConfigDocImportService}）。 */
     public Map<String, Object> batchFromDocumentBytes(byte[] bytes, String fileName) {
-        ConfigDocumentParser.ParseResult parsed = documentParser.parse(bytes, fileName);
-        if (!parsed.success()) {
-            Map<String, Object> fail = new LinkedHashMap<>();
-            fail.put("success", false);
-            fail.put("message", parsed.message());
-            fail.put("parseEngine", parsed.engine());
-            return fail;
-        }
-        Map<String, Object> body = batchFromDocument(parsed.text(), null);
-        body.put("parseEngine", parsed.engine());
-        body.put("fileName", fileName);
-        body.put("extractedChars", parsed.text() == null ? 0 : parsed.text().length());
-        String traceId = "cfg-batch-" + Instant.now().toEpochMilli();
-        appendConfigAudit(traceId, Map.of(
-                "step", "document_parse",
-                "file_name", fileName,
-                "engine", parsed.engine(),
-                "timestamp", Instant.now().toString()
-        ));
-        appendConfigAudit(traceId, Map.of(
-                "step", "evaluate_policy_with_facts",
-                "total", body.get("total"),
-                "passed", body.get("passedCount"),
-                "timestamp", Instant.now().toString()
-        ));
-        body.put("trace_id", traceId);
-        return body;
+        return configDocImportService.batchFromDocumentBytes(bytes, fileName,
+                this::loadGraph, extractionService, deriveEngine, this::checkCompliance,
+                messageProjector, opsRules, this::appendConfigAudit);
     }
 
-    /** 智读：选择文件后预上传，发送时按 fileId 解析映射（不再二次传原文）。 */
+    /** 智读：选择文件后预上传（薄委托 → {@link ConfigDocImportService}）。 */
     public Map<String, Object> uploadConfigDocument(org.springframework.web.multipart.MultipartFile file) {
-        return documentStorage.store(file);
+        return configDocImportService.uploadConfigDocument(file);
     }
 
     /** 智读：文档暂存访问器（下载端点按 fileId 取原文件）。 */
     public ConfigDocumentStorage documentStorage() {
-        return documentStorage;
+        return configDocImportService.documentStorage();
     }
 
     public Map<String, Object> batchFromUploadedFile(String fileId, String fileName) {
-        byte[] bytes = documentStorage.readBytes(fileId);
-        String name = (fileName == null || fileName.isBlank()) ? fileId : fileName;
-        Map<String, Object> body = batchFromDocumentBytes(bytes, name);
-        body.put("file_id", fileId);
-        body.put("fileId", fileId);
-        return body;
+        return configDocImportService.batchFromUploadedFile(fileId, fileName,
+                this::loadGraph, extractionService, deriveEngine, this::checkCompliance,
+                messageProjector, opsRules, this::appendConfigAudit);
     }
 
     /**
@@ -1808,26 +1786,6 @@ public class ProductOntologyService {
         return body;
     }
 
-    /** 智读抽取置信度：关键字段齐全度 + 原文片段 + 合规结果。 */
-    private double estimateExtractConfidence(Map<String, Object> slots, Map<String, Object> draft, boolean pass) {
-        double score = 0.35;
-        if (!empty(slots.get("sourceExcerpt")) || !empty(draft.get("sourceExcerpt"))) {
-            score += 0.15;
-        }
-        String[] keys = {"offeringName", "offerName", "monthlyFee", "fixedFeeAmount", "targetUser", "channelScope"};
-        int hit = 0;
-        for (String k : keys) {
-            if (!empty(draft.get(k)) || !empty(slots.get(k))) {
-                hit++;
-            }
-        }
-        score += Math.min(0.35, hit * 0.06);
-        if (pass) {
-            score += 0.15;
-        }
-        return Math.round(Math.min(0.99, score) * 100.0) / 100.0;
-    }
-
     /**
      * 中文整句分词局限修复：从查询中提取候选关键词。
      * <p>中文无分隔符时按空白分词会得到整句，导致"39"等数字 token 无法被拆出、费用匹配失效。
@@ -2077,94 +2035,9 @@ public class ProductOntologyService {
     }
 
     public Map<String, Object> batchFromDocument(String documentText, List<Map<String, Object>> packages) {
-        Map<String, Object> graph = loadGraph();
-        List<Map<String, Object>> pkgs = packages;
-        String extractEngine = "provided";
-        if (pkgs == null || pkgs.isEmpty()) {
-            pkgs = List.of();
-            OpsExtractionService.PackageExtractResult extracted =
-                    extractionService.extractPackages(documentText, List.of());
-            pkgs = extracted.packages();
-            extractEngine = extracted.engine();
-        }
-
-        List<Map<String, Object>> items = new ArrayList<>();
-        for (int idx = 0; idx < pkgs.size(); idx++) {
-            Map<String, Object> slots = deepCopy(pkgs.get(idx));
-            // 业务场景以文档抽取结果为准，不再默认灌入校园体验
-            Map<String, Object> infer = deriveEngine.derive(slots, null, graph);
-            @SuppressWarnings("unchecked")
-            Map<String, Object> draft = (Map<String, Object>) infer.get("draft");
-            Map<String, Object> compliance = checkCompliance(draft);
-
-            Set<String> applied = new LinkedHashSet<>();
-            castList(infer.get("appliedRules")).forEach(r -> applied.add(str(r)));
-            castList(compliance.get("appliedRules")).forEach(r -> applied.add(str(r)));
-            applied.add("R-D01");
-            applied.add("R-D02");
-            applied.add("R-D04");
-
-            boolean pass = Boolean.TRUE.equals(compliance.get("compliancePass"));
-            double confidence = estimateExtractConfidence(slots, draft, pass);
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("index", idx + 1);
-            item.put("sourceExcerpt", slots.getOrDefault("sourceExcerpt", ""));
-            item.put("draft", draft);
-            item.put("inferredFields", infer.get("inferredFields"));
-            item.put("issues", compliance.get("issues"));
-            item.put("compliancePass", pass);
-            item.put("status", pass ? "通过" : "待修正");
-            item.put("confidence", confidence);
-            item.put("needsConfirm", confidence < 0.75 || !pass);
-            item.put("appliedRules", applied.stream().sorted().collect(Collectors.toList()));
-            item.put("messageRootKey", draft == null ? null : draft.get("messageRootKey"));
-            item.put("categoryName", draft == null ? null : draft.get("categoryName"));
-            item.put("messagePreview", draft == null ? Map.of() : messageProjector.toMessage(draft));
-            items.add(item);
-        }
-
-        List<Map<String, Object>> passed = items.stream()
-                .filter(i -> Boolean.TRUE.equals(i.get("compliancePass")))
-                .collect(Collectors.toList());
-        List<Map<String, Object>> confirmable = passed.stream()
-                .filter(i -> !Boolean.TRUE.equals(i.get("needsConfirm")) || num(i.get("confidence"), 0) >= 0.75)
-                .map(i -> {
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    row.put("index", i.get("index"));
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> draft = (Map<String, Object>) i.get("draft");
-                    row.put("offeringName", draft == null ? null : draft.get("offeringName"));
-                    row.put("confidence", i.get("confidence"));
-                    return row;
-                }).collect(Collectors.toList());
-
-        String scenarioId = null;
-        if (!items.isEmpty()) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> firstDraft = (Map<String, Object>) items.get(0).get("draft");
-            String bizScenario = firstDraft == null ? null : str(firstDraft.get("bizScenario"));
-            if (bizScenario != null && !bizScenario.isBlank()) {
-                Map<String, Object> scenarioMeta = castMap(castMap(graph.get("bizScenarios")).get(bizScenario));
-                scenarioId = str(scenarioMeta.get("scenarioId"));
-                if (scenarioId == null || scenarioId.isBlank()) {
-                    scenarioId = bizScenario;
-                }
-            }
-        }
-
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("success", true);
-        body.put("total", items.size());
-        body.put("passedCount", passed.size());
-        body.put("pendingCount", items.size() - passed.size());
-        body.put("items", items);
-        body.put("appliedRules", opsRules.ruleIds("batch").stream()
-                .filter(id -> opsRules.isRuleEnabled(opsRules.batchRule(id)))
-                .toList());
-        body.put("confirmableDrafts", confirmable);
-        body.put("scenario", scenarioId);
-        body.put("extractEngine", extractEngine);
-        return body;
+        return configDocImportService.batchFromDocument(documentText, packages,
+                this::loadGraph, extractionService, deriveEngine, this::checkCompliance,
+                messageProjector, opsRules);
     }
 
     public Map<String, Object> getOpsDashboard() {
