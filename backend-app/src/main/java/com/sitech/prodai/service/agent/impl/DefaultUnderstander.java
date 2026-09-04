@@ -14,6 +14,9 @@ import com.sitech.prodai.service.agent.tool.ThinkingCopy;
 import com.sitech.prodai.service.agent.tool.ToolParam;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -62,7 +65,10 @@ public class DefaultUnderstander implements Understander {
     private final com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry capabilityRegistry;
     /** 意图提示词组装器（R3 外置化）：静态提示词从外部/classpath 模板加载。 */
     private final IntentPromptAssembler promptAssembler;
+    /** 参数补全门（R2 拆分）：必填参数校验 / 缓存与缺省回填 / CLARIFY 澄清计划生成。 */
+    private final ParamCompletionGate paramGate;
 
+    @Autowired(required = false)
     public DefaultUnderstander(LlmService llmService, List<AgentTool> tools,
                                com.sitech.prodai.mapper.OpsWorkOrderMapper workOrderMapper,
                                com.sitech.prodai.service.agent.flow.FlowIntentRouter flowIntentRouter,
@@ -70,11 +76,21 @@ public class DefaultUnderstander implements Understander {
         this(llmService, tools, workOrderMapper, flowIntentRouter, capabilityRegistry, null);
     }
 
+    @Autowired(required = false)
     public DefaultUnderstander(LlmService llmService, List<AgentTool> tools,
                                com.sitech.prodai.mapper.OpsWorkOrderMapper workOrderMapper,
                                com.sitech.prodai.service.agent.flow.FlowIntentRouter flowIntentRouter,
                                com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry capabilityRegistry,
-                               IntentPromptAssembler promptAssembler) {
+                               @Nullable IntentPromptAssembler promptAssembler) {
+        this(llmService, tools, workOrderMapper, flowIntentRouter, capabilityRegistry, promptAssembler, null);
+    }
+
+    public DefaultUnderstander(LlmService llmService, List<AgentTool> tools,
+                               com.sitech.prodai.mapper.OpsWorkOrderMapper workOrderMapper,
+                               com.sitech.prodai.service.agent.flow.FlowIntentRouter flowIntentRouter,
+                               com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry capabilityRegistry,
+                               @Nullable IntentPromptAssembler promptAssembler,
+                               @Nullable ParamCompletionGate paramGate) {
         this.llmService = llmService;
         this.toolMap = new LinkedHashMap<>();
         this.workOrderMapper = workOrderMapper;
@@ -82,6 +98,8 @@ public class DefaultUnderstander implements Understander {
         this.capabilityRegistry = capabilityRegistry;
         // 测试/评测装配可不提供组装器：回退到内联最小骨架（与模板缺失兜底一致）
         this.promptAssembler = promptAssembler != null ? promptAssembler : new IntentPromptAssembler("");
+        // 测试/评测装配可不提供参数门：回退到无参独立实例（行为与 Spring 装配一致）
+        this.paramGate = paramGate != null ? paramGate : new ParamCompletionGate();
         if (tools != null) {
             for (AgentTool tool : tools) {
                 this.toolMap.put(tool.getName(), tool);
@@ -186,7 +204,8 @@ public class DefaultUnderstander implements Understander {
             // 给出可重试的友好提示，不与配置错误（LlmConfigException）混淆
             log.error("[DefaultUnderstander] 大模型连续 {} 次返回为空，翻译链终止", MAX_TRANSLATE_ATTEMPTS);
             throw new IllegalStateException(
-                    "大模型多次调用均未返回内容，请稍后重试；若持续出现，请到「模型配置」管理页检查当前模型是否可用");
+                    "大模型多次调用均未返回有效内容（网关已连通但无输出）：请稍后重试；若持续出现，"
+                            + "请到「模型配置」管理页检查当前模型的 base_url 与模型名称是否匹配（如网关地址与模型 ID 不对应会返回空结果）");
         }
 
         List<QueryPlan> parsed = parseLlmResults(llmResult, question, rdScene, context);
@@ -209,7 +228,7 @@ public class DefaultUnderstander implements Understander {
         List<QueryPlan> validated = new ArrayList<>();
         QueryPlan firstClarify = null;
         for (QueryPlan plan : parsed) {
-            QueryPlan v = validateParams(plan, context, question);
+            QueryPlan v = paramGate.validateParams(toolMap, plan, context, question);
             if (QueryPlan.INTENT_CLARIFY.equals(v.getIntent())) {
                 // 任一子计划需澄清 → 整体转入澄清（等待补参后整轮重来），避免部分执行
                 if (firstClarify == null) {
@@ -234,126 +253,6 @@ public class DefaultUnderstander implements Understander {
     private String summarizeLlmRaw(String raw) {
         String s = raw.replaceAll("\\s+", " ").trim();
         return s.length() > 120 ? s.substring(0, 120) + "…" : s;
-    }
-
-    /**
-     * 参数完整性校验（设计文档 3.4 节）：
-     * 校验优先级：params 已填 → context.cachedEvidence / resolvedParams 缓存 → defaultValue。
-     * 仍缺失的必填参数 → 生成 CLARIFY 意图；超过澄清上限则按缺省值继续（防死循环）。
-     */
-    private QueryPlan validateParams(QueryPlan plan, SessionContext context, String question) {
-        List<String> tools = plan.getTools();
-        if (tools == null || tools.isEmpty()) {
-            return plan;
-        }
-
-        List<String> missing = new ArrayList<>();
-        Map<String, Map<String, Object>> missingContracts = new LinkedHashMap<>();
-        List<String> fromCache = new ArrayList<>();
-        List<String> fromDefault = new ArrayList<>();
-        for (String toolName : tools) {
-            AgentTool tool = toolMap.get(toolName);
-            if (tool == null) {
-                continue;
-            }
-            for (ToolParam param : tool.getParams()) {
-                if (!param.isRequired()) {
-                    continue;
-                }
-                if (hasValue(plan.getParams().get(param.getName()))) {
-                    continue;
-                }
-                // 缓存优先级：resolvedParams（用户已补齐） > cachedEvidence（上轮证据）
-                Object cached = context != null ? context.getResolvedParams().get(param.getName()) : null;
-                if (!hasValue(cached) && context != null) {
-                    cached = context.getCachedEvidence().get(param.getName());
-                }
-                if (hasValue(cached)) {
-                    plan.getParams().put(param.getName(), cached);
-                    fromCache.add(param.getLabel() != null && !param.getLabel().isBlank()
-                            ? param.getLabel() : param.getName());
-                    continue;
-                }
-                // 有缺省值则不阻塞（U3：缺省回填属系统自行推断，记录假设供表达层回显）
-                if (param.getDefaultValue() != null && !param.getDefaultValue().isBlank()) {
-                    plan.getParams().put(param.getName(), param.getDefaultValue());
-                    if (context != null) {
-                        context.recordAssumption(param.getName(), param.getDefaultValue(), "未指定，按缺省值推断");
-                    }
-                    fromDefault.add(param.getLabel() != null && !param.getLabel().isBlank()
-                            ? param.getLabel() : param.getName());
-                    continue;
-                }
-                if (!missing.contains(param.getName())) {
-                    missing.add(param.getName());
-                    missingContracts.put(param.getName(), paramContract(param));
-                }
-            }
-        }
-        // 推理留痕：参数回填来源（缓存复用 / 缺省推断），让数据流可追溯
-        if (!fromCache.isEmpty()) {
-            plan.addTrace("params", "复用会话中已确认的参数：" + String.join("、", fromCache));
-        }
-        if (!fromDefault.isEmpty()) {
-            plan.addTrace("params", "未指定的参数按缺省值推断：" + String.join("、", fromDefault));
-        }
-
-        if (missing.isEmpty()) {
-            if (context != null) {
-                context.resetClarifyRounds();
-                // 本轮参数齐备：清空上一轮遗留假设，避免过期假设污染本轮结论
-                context.clearAssumptions();
-            }
-            return plan;
-        }
-
-
-        // 超过澄清上限：按缺省值继续（缺省缺失时放弃该参数），防死循环（U3：明示该假设）
-        if (context != null && context.exceedClarifyLimit()) {
-            log.info("[DefaultUnderstander] 澄清轮次已达上限，按缺省继续: {}", missing);
-            context.resetClarifyRounds();
-            for (String name : missing) {
-                context.recordAssumption(name, "（未提供）", "澄清超限，未按该参数过滤结果");
-            }
-            return plan;
-        }
-        if (context != null) {
-            context.incrementClarifyRounds();
-        }
-
-        // 生成 CLARIFY 澄清计划
-        QueryPlan clarifyPlan = new QueryPlan();
-        clarifyPlan.setIntent(QueryPlan.INTENT_CLARIFY);
-        clarifyPlan.setTools(List.of());
-        clarifyPlan.setClarify(missing);
-        clarifyPlan.setClarifyContracts(missingContracts);
-        clarifyPlan.setParams(new LinkedHashMap<>(plan.getParams()));
-        clarifyPlan.setUserQuestion(question);
-        log.info("[DefaultUnderstander] 必填参数缺失，生成澄清计划: {}", missing);
-        return clarifyPlan;
-    }
-
-    /** 缺失参数的展示契约：业务名 / 说明 / 候选选项（供前端渲染选择题补参）。 */
-    private Map<String, Object> paramContract(ToolParam param) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        if (param.getLabel() != null && !param.getLabel().isBlank()) {
-            m.put("label", param.getLabel());
-        }
-        if (param.getDescription() != null && !param.getDescription().isBlank()) {
-            m.put("description", param.getDescription());
-        }
-        if (param.getEnumValues() != null && !param.getEnumValues().isEmpty()) {
-            m.put("options", param.getEnumValues());
-        }
-        return m;
-    }
-
-    private boolean hasValue(Object value) {
-        if (value == null) {
-            return false;
-        }
-        String s = String.valueOf(value);
-        return !s.isBlank() && !"null".equals(s);
     }
 
     /** 翻译层可调用的真实工具白名单（防 LLM 编造工具名）已收敛至 AgentCapabilityRegistry（工具 getScenes() 自声明）。 */
@@ -894,7 +793,7 @@ public class DefaultUnderstander implements Understander {
      * 已发布固定流程能力清单（供 LLM 选择 flow_execute 的 workflow_code）。
      * <p>
      * 数据源为流程路由注册表（发布工作流时自动注册触发词），只注入名称/编码/触发词，
-     * 参数契约不入 prompt（防膨胀）：LLM 缺参时由 validateParams 的 CLARIFY 机制补齐。
+     * 参数契约不入 prompt（防膨胀）：LLM 缺参时由 ParamCompletionGate 的 CLARIFY 机制补齐。
      * 注册表为空时不注入（用户不可执行任何流程，也不给 LLM 编造空间）。
      */
     private String buildFlowCapabilitySection() {
