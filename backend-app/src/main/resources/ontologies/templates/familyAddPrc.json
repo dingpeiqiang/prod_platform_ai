@@ -6,15 +6,58 @@
   "status": "published",
   "category_code": "familyAddPrc",
   "message_root_key": "familyAddPrc",
+  "category_meta": {
+    "product_line": "家庭",
+    "is_main_offer": false,
+    "required_elements": [
+      "SalesPolicy",
+      "ReleaseScope",
+      "FamilyOfferPolicy",
+      "OfferCompatibility",
+      "ChargePlan",
+      "AccountPreferential",
+      "DataResource",
+      "VoiceResource",
+      "ValueAddedEquity",
+      "PrintNotice",
+      "SmsNotice"
+    ]
+  },
   "matchers": {
-    "keywords": ["家庭附加", "附加业务", "权益包", "电视权益", "宽带权益", "家庭加装"],
+    "keywords": [
+      "家庭附加",
+      "附加业务",
+      "权益包",
+      "电视权益",
+      "宽带权益",
+      "家庭加装"
+    ],
     "priority": 30
   },
   "sections": [
-    { "code": "addInfo", "label": "附加业务信息", "message_path": "baseInfo" },
-    { "code": "equityContent", "label": "权益内容", "message_path": "optionalInfo.equityContent", "component": true },
-    { "code": "billGprsCfg", "label": "流量资源配置", "message_path": "optionalInfo.billGprsCfg", "component": true },
-    { "code": "billVoiceCfg", "label": "语音资源配置", "message_path": "optionalInfo.billVoiceCfg", "component": true }
+    {
+      "code": "addInfo",
+      "label": "附加业务信息",
+      "message_path": "baseInfo"
+    },
+    {
+      "code": "equityContent",
+      "label": "权益内容",
+      "message_path": "optionalInfo.equityContent",
+      "component": true
+    },
+    {
+      "code": "billGprsCfg",
+      "label": "流量资源配置",
+      "message_path": "optionalInfo.billGprsCfg",
+      "component": true
+    },
+    {
+      "code": "billVoiceCfg",
+      "label": "语音资源配置",
+      "message_path": "optionalInfo.billVoiceCfg",
+      "component": true
+    }
   ],
   "fields": [
     {
@@ -28,13 +71,28 @@
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "电视权益", "value": "1" },
-          { "display": "宽带权益", "value": "2" },
-          { "display": "通话权益", "value": "3" }
+          {
+            "display": "电视权益",
+            "value": "1"
+          },
+          {
+            "display": "宽带权益",
+            "value": "2"
+          },
+          {
+            "display": "通话权益",
+            "value": "3"
+          }
         ]
       },
-      "slot_aliases": ["附加类型", "权益类型", "电视包", "宽带包"],
-      "message_path": "baseInfo.prodType"
+      "slot_aliases": [
+        "附加类型",
+        "权益类型",
+        "电视包",
+        "宽带包"
+      ],
+      "message_path": "baseInfo.prodType",
+      "business_key": "addonProductType"
     },
     {
       "field_code": "prcEffCycle",
@@ -48,11 +106,18 @@
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "长期有效", "value": "1" },
-          { "display": "有限期", "value": "2" }
+          {
+            "display": "长期有效",
+            "value": "1"
+          },
+          {
+            "display": "有限期",
+            "value": "2"
+          }
         ]
       },
-      "message_path": "baseInfo.prcEffCycle"
+      "message_path": "baseInfo.prcEffCycle",
+      "business_key": "validityCycle"
     },
     {
       "field_code": "prcEffType",
@@ -62,8 +127,11 @@
       "section": "addInfo",
       "field_class": "projection",
       "source": "dict",
-      "visible_when": { "prcEffCycle": "有限期" },
-      "message_path": "baseInfo.prcEffType"
+      "visible_when": {
+        "prcEffCycle": "有限期"
+      },
+      "message_path": "baseInfo.prcEffType",
+      "business_key": "validityUnit"
     },
     {
       "field_code": "prcEffNum",
@@ -74,8 +142,11 @@
       "field_class": "projection",
       "source": "fs",
       "precision": 3,
-      "visible_when": { "prcEffCycle": "有限期" },
-      "message_path": "baseInfo.prcEffNum"
+      "visible_when": {
+        "prcEffCycle": "有限期"
+      },
+      "message_path": "baseInfo.prcEffNum",
+      "business_key": "validityValue"
     },
     {
       "field_code": "prcEffDate",
@@ -85,8 +156,11 @@
       "section": "addInfo",
       "field_class": "projection",
       "source": "fs",
-      "visible_when": { "prcEffCycle": "有限期" },
-      "message_path": "baseInfo.prcEffDate"
+      "visible_when": {
+        "prcEffCycle": "有限期"
+      },
+      "message_path": "baseInfo.prcEffDate",
+      "business_key": "absoluteExpireDate"
     },
     {
       "field_code": "effNum",
@@ -97,7 +171,8 @@
       "field_class": "projection",
       "source": "fs",
       "precision": 2,
-      "message_path": "baseInfo.effNum"
+      "message_path": "baseInfo.effNum",
+      "business_key": "maxRepeatOrder"
     },
     {
       "field_code": "reFeeFlag",
@@ -108,7 +183,8 @@
       "field_class": "projection",
       "source": "dict",
       "default_value": "否",
-      "message_path": "baseInfo.reFeeFlag"
+      "message_path": "baseInfo.reFeeFlag",
+      "business_key": "repeatChargeFlag"
     },
     {
       "field_code": "canBaseFamilyPrc",
@@ -119,7 +195,8 @@
       "field_class": "projection",
       "source": "dict",
       "default_value": "是",
-      "message_path": "baseInfo.canBaseFamilyPrc"
+      "message_path": "baseInfo.canBaseFamilyPrc",
+      "business_key": "sourceOfferRef"
     },
     {
       "field_code": "familyUpIfEnd",
@@ -130,7 +207,8 @@
       "field_class": "projection",
       "source": "dict",
       "default_value": "否",
-      "message_path": "baseInfo.familyUpIfEnd"
+      "message_path": "baseInfo.familyUpIfEnd",
+      "business_key": "upgradeEndsAddon"
     },
     {
       "field_code": "chgYueIfCanDown",
@@ -141,7 +219,8 @@
       "field_class": "projection",
       "source": "dict",
       "default_value": "否",
-      "message_path": "baseInfo.chgYueIfCanDown"
+      "message_path": "baseInfo.chgYueIfCanDown",
+      "business_key": "contractAllowDowngrade"
     },
     {
       "field_code": "chgYue",
@@ -154,7 +233,8 @@
       "unit": "元",
       "precision": 2,
       "decimal_places": 2,
-      "message_path": "baseInfo.chgYue"
+      "message_path": "baseInfo.chgYue",
+      "business_key": "addonContractMonths"
     },
     {
       "field_code": "fixCircle",
@@ -165,9 +245,12 @@
       "field_class": "projection",
       "source": "fs",
       "precision": 2,
-      "visible_when": { "calcMode": "多月收取" },
+      "visible_when": {
+        "calcMode": "多月收取"
+      },
       "rule_description": "家庭附加 acctMonth 特有 fixCircle",
-      "message_path": "optionalInfo.acctMonth.fixCircle"
+      "message_path": "optionalInfo.acctMonth.fixCircle",
+      "business_key": "chargeIntervalMonths"
     },
     {
       "field_code": "kdEquity",
@@ -177,8 +260,12 @@
       "section": "equityContent",
       "field_class": "draft",
       "source": "fs",
-      "slot_aliases": ["宽带权益", "宽带加速"],
-      "message_path": "optionalInfo.equityContent.kdEquity"
+      "slot_aliases": [
+        "宽带权益",
+        "宽带加速"
+      ],
+      "message_path": "optionalInfo.equityContent.kdEquity",
+      "business_key": "kdEquity"
     },
     {
       "field_code": "tvEquity",
@@ -188,8 +275,13 @@
       "section": "equityContent",
       "field_class": "draft",
       "source": "fs",
-      "slot_aliases": ["电视权益", "高清电视", "魔百和"],
-      "message_path": "optionalInfo.equityContent.tvEquity"
+      "slot_aliases": [
+        "电视权益",
+        "高清电视",
+        "魔百和"
+      ],
+      "message_path": "optionalInfo.equityContent.tvEquity",
+      "business_key": "tvEquity"
     },
     {
       "field_code": "gprsResourceType",
@@ -210,7 +302,11 @@
       "field_class": "draft",
       "source": "fs",
       "unit": "GB",
-      "slot_aliases": ["多少流量", "包含流量", "几个G"],
+      "slot_aliases": [
+        "多少流量",
+        "包含流量",
+        "几个G"
+      ],
       "message_path": "optionalInfo.billGprsCfg.theshold"
     },
     {
@@ -264,7 +360,11 @@
       "field_class": "draft",
       "source": "fs",
       "unit": "分钟",
-      "slot_aliases": ["多少分钟", "包含通话", "通话时长"],
+      "slot_aliases": [
+        "多少分钟",
+        "包含通话",
+        "通话时长"
+      ],
       "message_path": "optionalInfo.billVoiceCfg.theshold"
     },
     {
@@ -300,19 +400,75 @@
     }
   ],
   "derive_rules": [
-    { "set_default": { "channelScope": "全渠道" }, "if_missing": true },
-    { "set_default": { "categoryCode": "familyAddPrc" }, "if_missing": true },
-    { "set_default": { "messageRootKey": "familyAddPrc" }, "if_missing": true },
-    { "when": { "prcEffCycle": "长期有效" }, "hidden": ["prcEffType", "prcEffNum", "prcEffDate"] },
-    { "when": { "prcEffCycle": "有限期" }, "visible": ["prcEffType", "prcEffNum", "prcEffDate"] },
-    { "when": { "calcMode": "多月收取" }, "visible": ["fixCircle"] }
+    {
+      "set_default": {
+        "channelScope": "全渠道"
+      },
+      "if_missing": true
+    },
+    {
+      "set_default": {
+        "categoryCode": "familyAddPrc"
+      },
+      "if_missing": true
+    },
+    {
+      "set_default": {
+        "messageRootKey": "familyAddPrc"
+      },
+      "if_missing": true
+    },
+    {
+      "when": {
+        "prcEffCycle": "长期有效"
+      },
+      "hidden": [
+        "prcEffType",
+        "prcEffNum",
+        "prcEffDate"
+      ]
+    },
+    {
+      "when": {
+        "prcEffCycle": "有限期"
+      },
+      "visible": [
+        "prcEffType",
+        "prcEffNum",
+        "prcEffDate"
+      ]
+    },
+    {
+      "when": {
+        "calcMode": "多月收取"
+      },
+      "visible": [
+        "fixCircle"
+      ]
+    }
   ],
   "compliance_bindings": {
-    "rule_ids": ["R-C01", "R-C03", "R-C04", "R-C05", "R-C06", "R-C07", "R-C08", "R-C09"]
+    "rule_ids": [
+      "R-C01",
+      "R-C03",
+      "R-C04",
+      "R-C05",
+      "R-C06",
+      "R-C07",
+      "R-C08",
+      "R-C09"
+    ]
   },
   "message_projection": {
     "mode": "observe",
     "root_key": "familyAddPrc",
-    "aligned_with": "ontology/config_message_projection.json#categoryMappings.familyAddPrc"
+    "aligned_with": "ontology/config_message_projection.json#categoryMappings.familyAddPrc",
+    "defaults": {
+      "orderEffectMode": "1001",
+      "cancelEffectMode": "1023",
+      "saleEndDate": "20991231",
+      "taxSplitFlag": "0",
+      "smsOpTypes": "0"
+    }
   }
 }

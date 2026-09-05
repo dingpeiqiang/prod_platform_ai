@@ -6,12 +6,35 @@
   "status": "published",
   "category_code": "broadBandOptSpeedPrc",
   "message_root_key": "broadBandOptSpeedPrc",
+  "category_meta": {
+    "product_line": "宽带",
+    "is_main_offer": false,
+    "required_elements": [
+      "SalesPolicy",
+      "ReleaseScope",
+      "NetworkCapability",
+      "ChargePlan",
+      "AccountPreferential",
+      "PrintNotice",
+      "SmsNotice"
+    ]
+  },
   "matchers": {
-    "keywords": ["加速包", "提速包", "宽带加速", "提速", "optSpeed"],
+    "keywords": [
+      "加速包",
+      "提速包",
+      "宽带加速",
+      "提速",
+      "optSpeed"
+    ],
     "priority": 25
   },
   "sections": [
-    { "code": "speedInfo", "label": "提速信息", "message_path": "baseInfo" }
+    {
+      "code": "speedInfo",
+      "label": "提速信息",
+      "message_path": "baseInfo"
+    }
   ],
   "fields": [
     {
@@ -26,12 +49,22 @@
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "长期有效", "value": "1" },
-          { "display": "有限期", "value": "2" }
+          {
+            "display": "长期有效",
+            "value": "1"
+          },
+          {
+            "display": "有限期",
+            "value": "2"
+          }
         ]
       },
-      "slot_aliases": ["有效期", "生效周期"],
-      "message_path": "baseInfo.prcEffCycle"
+      "slot_aliases": [
+        "有效期",
+        "生效周期"
+      ],
+      "message_path": "baseInfo.prcEffCycle",
+      "business_key": "validityCycle"
     },
     {
       "field_code": "prcEffType",
@@ -41,8 +74,11 @@
       "section": "speedInfo",
       "field_class": "projection",
       "source": "dict",
-      "visible_when": { "prcEffCycle": "有限期" },
-      "message_path": "baseInfo.prcEffType"
+      "visible_when": {
+        "prcEffCycle": "有限期"
+      },
+      "message_path": "baseInfo.prcEffType",
+      "business_key": "validityUnit"
     },
     {
       "field_code": "prcEffNum",
@@ -53,8 +89,11 @@
       "field_class": "projection",
       "source": "fs",
       "precision": 3,
-      "visible_when": { "prcEffCycle": "有限期" },
-      "message_path": "baseInfo.prcEffNum"
+      "visible_when": {
+        "prcEffCycle": "有限期"
+      },
+      "message_path": "baseInfo.prcEffNum",
+      "business_key": "validityValue"
     },
     {
       "field_code": "prcEffDate",
@@ -64,8 +103,11 @@
       "section": "speedInfo",
       "field_class": "projection",
       "source": "fs",
-      "visible_when": { "prcEffCycle": "有限期" },
-      "message_path": "baseInfo.prcEffDate"
+      "visible_when": {
+        "prcEffCycle": "有限期"
+      },
+      "message_path": "baseInfo.prcEffDate",
+      "business_key": "absoluteExpireDate"
     },
     {
       "field_code": "downStreamId",
@@ -75,17 +117,32 @@
       "section": "speedInfo",
       "field_class": "draft",
       "source": "dict",
-      "slot_aliases": ["提速到多少", "下行", "速率", "带宽"],
+      "slot_aliases": [
+        "提速到多少",
+        "下行",
+        "速率",
+        "带宽"
+      ],
       "extract_hint": "加速包目标速率，如 500M/1000M",
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "300M", "value": "3072" },
-          { "display": "500M", "value": "5120" },
-          { "display": "1000M", "value": "10240" }
+          {
+            "display": "300M",
+            "value": "3072"
+          },
+          {
+            "display": "500M",
+            "value": "5120"
+          },
+          {
+            "display": "1000M",
+            "value": "10240"
+          }
         ]
       },
-      "message_path": "baseInfo.downStreamId"
+      "message_path": "baseInfo.downStreamId",
+      "business_key": "downstreamBandwidth"
     },
     {
       "field_code": "upStreamId",
@@ -95,22 +152,81 @@
       "section": "speedInfo",
       "field_class": "projection",
       "source": "dict",
-      "message_path": "baseInfo.upStreamId"
+      "message_path": "baseInfo.upStreamId",
+      "business_key": "upstreamBandwidth"
+    },
+    {
+      "field_code": "expireSms",
+      "label": "到期提醒短信",
+      "type": "input",
+      "required": false,
+      "section": "optionalInfo",
+      "field_class": "projection",
+      "business_key": "expireSms",
+      "message_path": "optionalInfo.prcSmsCfg.sysNoteExpire"
     }
   ],
   "derive_rules": [
-    { "set_default": { "channelScope": "全渠道" }, "if_missing": true },
-    { "set_default": { "categoryCode": "broadBandOptSpeedPrc" }, "if_missing": true },
-    { "set_default": { "messageRootKey": "broadBandOptSpeedPrc" }, "if_missing": true },
-    { "when": { "prcEffCycle": "长期有效" }, "hidden": ["prcEffType", "prcEffNum", "prcEffDate"] },
-    { "when": { "prcEffCycle": "有限期" }, "visible": ["prcEffType", "prcEffNum", "prcEffDate"] }
+    {
+      "set_default": {
+        "channelScope": "全渠道"
+      },
+      "if_missing": true
+    },
+    {
+      "set_default": {
+        "categoryCode": "broadBandOptSpeedPrc"
+      },
+      "if_missing": true
+    },
+    {
+      "set_default": {
+        "messageRootKey": "broadBandOptSpeedPrc"
+      },
+      "if_missing": true
+    },
+    {
+      "when": {
+        "prcEffCycle": "长期有效"
+      },
+      "hidden": [
+        "prcEffType",
+        "prcEffNum",
+        "prcEffDate"
+      ]
+    },
+    {
+      "when": {
+        "prcEffCycle": "有限期"
+      },
+      "visible": [
+        "prcEffType",
+        "prcEffNum",
+        "prcEffDate"
+      ]
+    }
   ],
   "compliance_bindings": {
-    "rule_ids": ["R-C03", "R-C04", "R-C05", "R-C06", "R-C07", "R-C08", "R-C09"]
+    "rule_ids": [
+      "R-C03",
+      "R-C04",
+      "R-C05",
+      "R-C06",
+      "R-C07",
+      "R-C08",
+      "R-C09"
+    ]
   },
   "message_projection": {
     "mode": "observe",
     "root_key": "broadBandOptSpeedPrc",
-    "aligned_with": "ontology/config_message_projection.json#categoryMappings.broadBandOptSpeedPrc"
+    "aligned_with": "ontology/config_message_projection.json#categoryMappings.broadBandOptSpeedPrc",
+    "defaults": {
+      "orderEffectMode": "1001",
+      "cancelEffectMode": "1023",
+      "saleEndDate": "20991231",
+      "taxSplitFlag": "0",
+      "smsOpTypes": "0"
+    }
   }
 }

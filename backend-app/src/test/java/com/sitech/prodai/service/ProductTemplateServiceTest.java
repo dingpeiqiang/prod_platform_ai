@@ -2,6 +2,7 @@ package com.sitech.prodai.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sitech.prodai.service.ontologygen.JsonSchemaLiteValidator;
 import com.sitech.prodai.domain.entity.OntologyAssetVersion;
 import com.sitech.prodai.domain.entity.OntologyVersionLog;
 import com.sitech.prodai.mapper.OntologyAssetVersionMapper;
@@ -111,7 +112,8 @@ class ProductTemplateServiceTest {
                         .collect(java.util.stream.Collectors.toList()), inv.getArgument(0)));
 
         OntologyVersionService versionService = new OntologyVersionService(versionMapper, logMapper);
-        registry = new ProductTemplateRegistry(mapper);
+        registry = new ProductTemplateRegistry(mapper,
+                new JsonSchemaLiteValidator(new ObjectMapper(), new DefaultResourceLoader()));
         registry.init();
         ProductConfigRegressionService regression = mock(ProductConfigRegressionService.class);
         lenient().when(regression.smokeAgainstGraph(any())).thenReturn(List.of());

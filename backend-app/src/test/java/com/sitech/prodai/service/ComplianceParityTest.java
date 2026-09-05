@@ -31,11 +31,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li>shapes 契约断言：compliance-shacl.ttl 可解析、三条试点规则（R-C06/R-C03/R-C05）齐备、
  *       violation.rule 可回读 R-C 编号；</li>
  *   <li>双引擎并跑：同一批典型草稿分别跑 Java 引擎（ComplianceRuleEngine）与 SHACL 委托
- *       （ShaclValidationDelegate），比对 ruleId 命中集合一致率 ≥99%；</li>
+ *       （ShaclValidationDelegate，RDF4J ShaclSail 真引擎 + Lite 兜底），比对 ruleId 命中集合一致率 ≥99%；</li>
  *   <li>比对口径：试点范围内仅比对 R-C06/R-C03/R-C05 命中差集（非试点规则不进入一致率分母）。</li>
  * </ul>
- * 网络受限说明：rdf4j-shacl 构件不可达，SHACL 侧为降级求值（minCount/maxCount），
- * 构件恢复后仅替换 ShaclValidationDelegate.runShacl，本测试无需改动。
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class ComplianceParityTest {
@@ -81,7 +79,10 @@ class ComplianceParityTest {
 
         List<String> ruleIds = new ArrayList<>();
         for (Statement st : shapes) {
-            if (st.getPredicate().stringValue().equals("http://www.w3.org/ns/shacl#name")) {
+            String predicate = st.getPredicate().stringValue();
+            // PropertyShape 用 sh:name；NodeShape 用 rdfs:label（sh:name 域限制，见 ttl 头注解约定）
+            if (predicate.equals("http://www.w3.org/ns/shacl#name")
+                    || predicate.equals("http://www.w3.org/2000/01/rdf-schema#label")) {
                 String v = st.getObject().stringValue();
                 if (v.matches("R-C\\d+") && !ruleIds.contains(v)) {
                     ruleIds.add(v);
@@ -144,9 +145,8 @@ class ComplianceParityTest {
         Set<String> shaclHits = pilotRuleIds(delegate.validate(draft, graph));
 
         assertTrue(javaHits.contains("R-C05"), "Java 引擎应命中 R-C05: " + javaHits);
-        // SHACL 降级求值：R-C05 的 not-嵌套语义由零固费 + 非豁免判定承接
-        assertTrue(shaclHits.contains("R-C05") || shaclHits.isEmpty(),
-                "SHACL 侧 R-C05 需零固费 + 非豁免（构件恢复后由真引擎判定）: " + shaclHits);
+        // 真引擎（ShaclSail）：零固费 + 无合约 + 非豁免 → sh:not+sh:or 豁免出路判定
+        assertTrue(shaclHits.contains("R-C05"), "SHACL 真引擎应命中 R-C05: " + shaclHits);
     }
 
     @Test

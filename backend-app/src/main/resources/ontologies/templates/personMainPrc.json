@@ -6,16 +6,64 @@
   "status": "published",
   "category_code": "personMainPrc",
   "message_root_key": "personMainPrc",
+  "category_meta": {
+    "product_line": "个人",
+    "is_main_offer": true,
+    "required_elements": [
+      "SalesPolicy",
+      "ReleaseScope",
+      "ChargePlan",
+      "AccountPreferential",
+      "FloorGuarantee",
+      "DataResource",
+      "VoiceResource",
+      "SmsResource",
+      "PrintNotice",
+      "SmsNotice"
+    ]
+  },
   "matchers": {
-    "keywords": ["个人主资费", "主套餐", "5G", "5G套餐", "个人套餐", "大众套餐"],
+    "keywords": [
+      "个人主资费",
+      "主套餐",
+      "5G",
+      "5G套餐",
+      "个人套餐",
+      "大众套餐"
+    ],
     "priority": 10
   },
   "sections": [
-    { "code": "dlowFavFee", "label": "保底优惠", "message_path": "optionalInfo.dlowFavFee", "component": true },
-    { "code": "billGprsCfg", "label": "流量资源配置", "message_path": "optionalInfo.billGprsCfg", "component": true },
-    { "code": "billVoiceCfg", "label": "语音资源配置", "message_path": "optionalInfo.billVoiceCfg", "component": true },
-    { "code": "billSmsCfg", "label": "短信资源配置", "message_path": "optionalInfo.billSmsCfg", "component": true },
-    { "code": "SmsInstCfg", "label": "短信提醒配置", "message_path": "optionalInfo.SmsInstCfg", "component": true }
+    {
+      "code": "dlowFavFee",
+      "label": "保底优惠",
+      "message_path": "optionalInfo.dlowFavFee",
+      "component": true
+    },
+    {
+      "code": "billGprsCfg",
+      "label": "流量资源配置",
+      "message_path": "optionalInfo.billGprsCfg",
+      "component": true
+    },
+    {
+      "code": "billVoiceCfg",
+      "label": "语音资源配置",
+      "message_path": "optionalInfo.billVoiceCfg",
+      "component": true
+    },
+    {
+      "code": "billSmsCfg",
+      "label": "短信资源配置",
+      "message_path": "optionalInfo.billSmsCfg",
+      "component": true
+    },
+    {
+      "code": "SmsInstCfg",
+      "label": "短信提醒配置",
+      "message_path": "optionalInfo.SmsInstCfg",
+      "component": true
+    }
   ],
   "fields": [
     {
@@ -29,8 +77,14 @@
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "送费", "value": "1" },
-          { "display": "打折", "value": "2" }
+          {
+            "display": "送费",
+            "value": "1"
+          },
+          {
+            "display": "打折",
+            "value": "2"
+          }
         ]
       },
       "message_path": "optionalInfo.dlowFavFee.fav1Method"
@@ -87,7 +141,9 @@
       "section": "dlowFavFee",
       "field_class": "projection",
       "source": "fs",
-      "visible_when": { "fav1Validity": "有限期" },
+      "visible_when": {
+        "fav1Validity": "有限期"
+      },
       "message_path": "optionalInfo.dlowFavFee.fav1ValidityVAlue"
     },
     {
@@ -101,8 +157,14 @@
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "通用流量", "value": "1" },
-          { "display": "定向流量", "value": "2" }
+          {
+            "display": "通用流量",
+            "value": "1"
+          },
+          {
+            "display": "定向流量",
+            "value": "2"
+          }
         ]
       },
       "message_path": "optionalInfo.billGprsCfg.resourceType"
@@ -116,7 +178,11 @@
       "field_class": "draft",
       "source": "fs",
       "unit": "GB",
-      "slot_aliases": ["多少流量", "包含流量", "几个G"],
+      "slot_aliases": [
+        "多少流量",
+        "包含流量",
+        "几个G"
+      ],
       "message_path": "optionalInfo.billGprsCfg.theshold"
     },
     {
@@ -131,8 +197,14 @@
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "MB", "value": "1" },
-          { "display": "GB", "value": "2" }
+          {
+            "display": "MB",
+            "value": "1"
+          },
+          {
+            "display": "GB",
+            "value": "2"
+          }
         ]
       },
       "message_path": "optionalInfo.billGprsCfg.unit"
@@ -208,7 +280,11 @@
       "field_class": "draft",
       "source": "fs",
       "unit": "分钟",
-      "slot_aliases": ["多少分钟", "包含通话", "通话时长"],
+      "slot_aliases": [
+        "多少分钟",
+        "包含通话",
+        "通话时长"
+      ],
       "message_path": "optionalInfo.billVoiceCfg.theshold"
     },
     {
@@ -261,7 +337,10 @@
       "field_class": "draft",
       "source": "fs",
       "unit": "条",
-      "slot_aliases": ["多少条短信", "包含短信"],
+      "slot_aliases": [
+        "多少条短信",
+        "包含短信"
+      ],
       "message_path": "optionalInfo.billSmsCfg.theshold"
     },
     {
@@ -367,17 +446,57 @@
     }
   ],
   "derive_rules": [
-    { "set_default": { "channelScope": "全渠道" }, "if_missing": true },
-    { "set_default": { "categoryCode": "personMainPrc" }, "if_missing": true },
-    { "set_default": { "messageRootKey": "personMainPrc" }, "if_missing": true },
-    { "when": { "fav1Validity": "长期有效" }, "hidden": ["fav1ValidityVAlue"] }
+    {
+      "set_default": {
+        "channelScope": "全渠道"
+      },
+      "if_missing": true
+    },
+    {
+      "set_default": {
+        "categoryCode": "personMainPrc"
+      },
+      "if_missing": true
+    },
+    {
+      "set_default": {
+        "messageRootKey": "personMainPrc"
+      },
+      "if_missing": true
+    },
+    {
+      "when": {
+        "fav1Validity": "长期有效"
+      },
+      "hidden": [
+        "fav1ValidityVAlue"
+      ]
+    }
   ],
   "compliance_bindings": {
-    "rule_ids": ["R-C02", "R-C03", "R-C04", "R-C05", "R-C06", "R-C07", "R-C08", "R-C09"]
+    "rule_ids": [
+      "R-C02",
+      "R-C03",
+      "R-C04",
+      "R-C05",
+      "R-C06",
+      "R-C07",
+      "R-C08",
+      "R-C09"
+    ]
   },
   "message_projection": {
     "mode": "observe",
     "root_key": "personMainPrc",
-    "aligned_with": "ontology/config_message_projection.json#categoryMappings.personMainPrc"
+    "aligned_with": "ontology/config_message_projection.json#categoryMappings.personMainPrc",
+    "defaults": {
+      "orderEffectMode": "1001",
+      "cancelEffectMode": "1023",
+      "saleEndDate": "20991231",
+      "chargeMode": "2",
+      "taxSplitFlag": "0",
+      "chargeValidityType": "0",
+      "smsOpTypes": "0"
+    }
   }
 }

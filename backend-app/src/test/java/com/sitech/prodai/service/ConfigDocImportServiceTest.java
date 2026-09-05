@@ -1,6 +1,7 @@
 package com.sitech.prodai.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sitech.prodai.service.ontologygen.JsonSchemaLiteValidator;
 import com.sitech.prodai.service.ops.OpsExtractionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,7 +48,8 @@ class ConfigDocImportServiceTest {
         opsRules = new OpsRulesService(mapper, new DefaultResourceLoader(),
                 new com.sitech.prodai.config.ProdAiProperties());
         opsRules.load();
-        ProductTemplateRegistry templateRegistry = new ProductTemplateRegistry(null);
+        ProductTemplateRegistry templateRegistry = new ProductTemplateRegistry(null,
+                new JsonSchemaLiteValidator(new ObjectMapper(), new DefaultResourceLoader()));
         deriveEngine = new TemplateDeriveEngine(opsRules, templateRegistry, projector, mapper);
         service = new ConfigDocImportService(new ConfigDocumentParser(), new ConfigDocumentStorage(), mapper);
     }

@@ -9,9 +9,18 @@ import org.eclipse.rdf4j.model.ValueFactory;
 import org.eclipse.rdf4j.model.impl.LinkedHashModel;
 import org.eclipse.rdf4j.model.util.Values;
 import org.eclipse.rdf4j.model.vocabulary.RDF;
+import org.eclipse.rdf4j.model.vocabulary.RDF4J;
 import org.eclipse.rdf4j.model.vocabulary.XSD;
+import org.eclipse.rdf4j.repository.RepositoryConnection;
+import org.eclipse.rdf4j.repository.RepositoryException;
+import org.eclipse.rdf4j.repository.sail.SailRepository;
 import org.eclipse.rdf4j.rio.RDFFormat;
 import org.eclipse.rdf4j.rio.Rio;
+import org.eclipse.rdf4j.sail.memory.MemoryStore;
+import org.eclipse.rdf4j.sail.shacl.ShaclSail;
+import org.eclipse.rdf4j.sail.shacl.ShaclSailValidationException;
+import org.eclipse.rdf4j.sail.shacl.results.ValidationReport;
+import org.eclipse.rdf4j.sail.shacl.results.ValidationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ResourceLoader;
@@ -24,18 +33,19 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
- * SHACL 校验委托（R7 试点）。
- * <p><b>当前状态（网络受限降级）</b>：rdf4j-shacl 4.3.4 构件在当前环境不可达
- * （公网镜像全阻 + 内网 Nexus 无此构件），委托以「TTL 解析 + SPARQL-less 图校验」模式运行：
+ * SHACL 校验委托（R7 试点，真引擎版）。
+ * <p><b>引擎策略（引擎优先 + Lite 兜底）</b>：rdf4j-shacl 4.3.4 已引入 pom，
+ * {@link #runShacl} 优先走 RDF4J {@link ShaclSail} 事务校验（shapes 经
+ * {@code RDF4J.SHACL_SHAPE_GRAPH} 装载，进程内缓存一个 SailRepository，逐草稿事务校验）；
+ * 引擎异常时降级为「TTL 解析 + 纯 Java 求值」的 {@link #runShaclLite}（sh:minCount/maxCount/not 语义），
+ * 保证合规链路永不因引擎问题中断。
  * <ul>
- *   <li>compliance-shacl.ttl 经 rdf4j-rio-turtle 解析（shapes 契约与引擎无关）；</li>
- *   <li>校验引擎按 shapes 中的 sh:minCount / sh:maxCount / sh:not 语义做纯 Java 求值，
- *       违规输出结构与 RDF4J SHACL 引擎一致（violation.rule → R-C 编号）；</li>
- *   <li>rdf4j-shacl 构件恢复可达后，仅替换 {@link #runShacl} 实现即可切换真引擎，
- *       shapes 文件与 issue 契约零变更。</li>
+ *   <li>违规结果经 violation report 映射回 R-C 编号（sh:sourceShape → shapes 中 sh:name，
+ *       sh:resultMessage 前缀兜底），对外 issue 契约与 Java 引擎同构；</li>
+ *   <li>白名单豁免（R-C05）在投影阶段过滤，保持单点语义。</li>
  * </ul>
- * <p>目标引擎（构件可达后）：RDF4J ShaclSail 事务校验，与 Java 引擎并跑比对
- * 一致率 ≥99% 后作为合规事实源。白名单豁免（R-C05）在投影阶段过滤，保持单点语义。
+ * <p>演进口径：并跑比对（ComplianceParityTest）一致率达标后，试点 3 条规则以 SHACL 为准，
+ * Java 实现标记 {@code @Deprecated}（实施方案 §6.3 第 5 步）。
  */
 @Service
 public class ShaclValidationDelegate {
@@ -51,7 +61,7 @@ public class ShaclValidationDelegate {
     private final ProdAiProperties properties;
     private final ResourceLoader resourceLoader;
 
-    /** shapes 预加载缓存（进程内一次解析，多次校验复用）。 */
+    /** shapes 预加载缓存（进程内一次解析，多次校验复用；数据仓库逐草稿一次性新建，不复用）。 */
     private volatile Model shapesModel;
 
     public ShaclValidationDelegate(ProdAiProperties properties, ResourceLoader resourceLoader) {
@@ -90,10 +100,110 @@ public class ShaclValidationDelegate {
     }
 
     /**
-     * 图校验核心：逐条解析 shapes 中的 PropertyShape/NodeShape 约束并求值。
-     * （rdf4j-shacl 构件可达后替换为 ShaclSail 事务校验，本方法为唯一替换点）
+     * 图校验核心：优先 RDF4J ShaclSail 真引擎（R7-完成），引擎异常降级 Lite 求值。
      */
     List<Map<String, Object>> runShacl(Model data) throws Exception {
+        try {
+            return runShaclSail(data);
+        } catch (Exception e) {
+            log.warn("[ShaclValidationDelegate] ShaclSail 引擎校验失败，降级 Lite 求值: {}", e.getMessage());
+            return runShaclLite(data);
+        }
+    }
+
+    /**
+     * 真引擎路径：shapes 装载缓存复用（{@link #shapesRepository}），数据仓库逐草稿一次性
+     * 新建（用完即 shutDown，数据不落库）——复用同一仓库会累积先前草稿数据，
+     * 导致「先合规后违规」场景漏报（违规数据与存量数据互相干扰），故每次校验独立建仓。
+     * commit 抛出的违规报告经 {@link #violationsToIssues} 映射为 issue 契约行；
+     * 非违规类异常（引擎/环境问题）原样上抛，由 {@link #runShacl} 降级。
+     */
+    private List<Map<String, Object>> runShaclSail(Model data) throws Exception {
+        ShaclSail sail = new ShaclSail(new MemoryStore());
+        sail.setLogValidationPlans(false);
+        sail.setLogValidationViolations(false);
+        SailRepository dataRepo = new SailRepository(sail);
+        dataRepo.init();
+        try (RepositoryConnection conn = dataRepo.getConnection()) {
+            conn.begin(ShaclSail.TransactionSettings.ValidationApproach.Bulk);
+            try {
+                conn.add(loadShapes(), RDF4J.SHACL_SHAPE_GRAPH);
+                conn.add(data);
+                conn.commit();
+            } catch (RepositoryException e) {
+                ShaclSailValidationException validation = findValidationCause(e);
+                if (validation == null) {
+                    throw e;
+                }
+                return violationsToIssues(validation.getValidationReport());
+            }
+        } finally {
+            dataRepo.shutDown();
+        }
+        return List.of();
+    }
+
+    /** 沿 cause 链定位 SHACL 违规异常（违规语义才降级映射，其他异常上抛）。 */
+    private ShaclSailValidationException findValidationCause(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof ShaclSailValidationException validation) {
+                return validation;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * violation report → issue 契约行：sh:sourceShape → shapes 中 sh:name（R-C 编号）+ sh:path（字段）；
+     * NodeShape 结果（如 R-C05）无 path 时按规则族回填默认字段。messageText 携带 shapes 语义文案。
+     */
+    private List<Map<String, Object>> violationsToIssues(ValidationReport report) throws Exception {
+        List<Map<String, Object>> issues = new ArrayList<>();
+        if (report == null || report.conforms()) {
+            return issues;
+        }
+        Model shapes = loadShapes();
+        for (ValidationResult vr : report.getValidationResult()) {
+            Model resultModel = vr.asModel(new LinkedHashModel());
+            Value sourceShape = first(resultModel, (org.eclipse.rdf4j.model.Resource) null, SH_NS + "sourceShape");
+            String ruleId = null;
+            String field = null;
+            String messageText = null;
+            if (sourceShape instanceof org.eclipse.rdf4j.model.Resource shapeRes) {
+                Value name = ruleAnnotation(shapes, shapeRes);
+                if (name != null && RC_ID.matcher(name.stringValue()).matches()) {
+                    ruleId = name.stringValue();
+                }
+                Value path = first(shapes, shapeRes, SH_NS + "path");
+                if (path != null) {
+                    field = localName(path.stringValue());
+                }
+                Value message = first(shapes, shapeRes, SH_NS + "message");
+                if (message != null) {
+                    messageText = message.stringValue();
+                }
+            }
+            if (ruleId == null) {
+                Value resultMessage = first(resultModel,
+                        (org.eclipse.rdf4j.model.Resource) null, SH_NS + "resultMessage");
+                String text = resultMessage == null ? "" : resultMessage.stringValue();
+                var m = RC_ID.matcher(text);
+                ruleId = m.find() ? m.group() : "SHACL";
+            }
+            if (field == null && "R-C05".equals(ruleId)) {
+                field = "fixedFeeAmount";
+            }
+            issues.add(issue(ruleId, field == null ? "offering" : field,
+                    messageText == null ? vr.getSourceConstraintComponent().toString() : messageText));
+        }
+        return issues;
+    }
+
+    /**
+     * Lite 兜底路径：逐条解析 shapes 中的 PropertyShape/NodeShape 约束并求值
+     * （原降级实现，sh:minCount / sh:maxCount / sh:not 语义）。
+     */
+    List<Map<String, Object>> runShaclLite(Model data) throws Exception {
         Model shapes = loadShapes();
         List<Map<String, Object>> issues = new ArrayList<>();
         for (Statement st : shapes.filter(null, RDF.TYPE, Values.iri(SH_NS + "PropertyShape"))) {
@@ -106,11 +216,10 @@ public class ShaclValidationDelegate {
     }
 
     /**
-     * 求值 sh:NodeShape 的 sh:not 嵌套分支（R-C05 零固费语义）。
-     * <p>对齐口径：Java 引擎（ComplianceRuleEngine R-C05）仅在显式声明零固费时触发
-     * （resolveFixedFee 缺省 -1 不等于 0），故字段缺失（无 statement）视为「未声明」，
-     * 与 not 分支不触发同义；仅当数据图中存在显式 fixedFeeAmount/oneTimeFee 值
-     * 且均 ≤0、且无 hasContract=true 时判违规。
+     * 求值 sh:NodeShape（R-C05 零固费语义，与真引擎同构）。
+     * <p>SHACL 违规 = 节点不满足 shape。R-C05 的 shapes 以 sh:or 列「合规出路」
+     * （fee>0 ∨ fee<0 ∨ oneTime>0 ∨ hasContract ∨ fee未声明，见 compliance-shacl.ttl），
+     * 全部出路不满足即违规。求值支持 sh:or / sh:property / sh:not 嵌套。
      */
     private List<Map<String, Object>> evalNodeShape(Model shapes, Model data,
                                                     org.eclipse.rdf4j.model.Resource shape) {
@@ -119,81 +228,95 @@ public class ShaclValidationDelegate {
         if (!isPilotRule(ruleId)) {
             return issues;
         }
-        List<Value> notBranches = new ArrayList<>();
-        for (Statement st : shapes.filter(shape, Values.iri(SH_NS + "not"), null)) {
-            notBranches.add(st.getObject());
-        }
-        if (notBranches.isEmpty()) {
-            return issues;
-        }
-        boolean allUnsatisfied = true;
-        for (Value branch : notBranches) {
-            if (!(branch instanceof org.eclipse.rdf4j.model.Resource branchNode)
-                    || innerConstraintSatisfied(shapes, data, branchNode)) {
-                allUnsatisfied = false;
-                break;
-            }
-        }
-        if (allUnsatisfied && declaredZeroFee(data)) {
-            issues.add(issue(ruleId, "fixedFeeAmount", "not-branches all unsatisfied (zero fee, no contract)"));
+        if (!conformsTo(shapes, data, shape)) {
+            issues.add(issue(ruleId, "fixedFeeAmount", "no conforming escape branch (zero fee, no contract)"));
         }
         return issues;
     }
 
-    /** 数据图是否显式声明零固费与零一次性费（字段缺失视为未声明，与 Java 引擎 resolveFixedFee 缺省 -1 对齐）。 */
-    private boolean declaredZeroFee(Model data) {
-        boolean hasFeeStatement = data.filter(null, Values.iri(baseIri() + "fixedFeeAmount"), null).stream()
-                .anyMatch(s -> isNumeric(s.getObject().stringValue()));
-        boolean hasOneTimeStatement = data.filter(null, Values.iri(baseIri() + "oneTimeFee"), null).stream()
-                .anyMatch(s -> isNumeric(s.getObject().stringValue()));
-        return hasFeeStatement && hasOneTimeStatement;
+    /** 节点是否满足指定 shape：自身带 sh:path 按值约束求值；sh:or 任一成员满足 / sh:not 内层不满足 / 全部 sh:property 满足。 */
+    private boolean conformsTo(Model shapes, Model data, org.eclipse.rdf4j.model.Resource node) {
+        Value path = first(shapes, node, SH_NS + "path");
+        if (path != null) {
+            return propertyShapeConforms(shapes, data, node);
+        }
+        Value orHead = first(shapes, node, SH_NS + "or");
+        if (orHead != null) {
+            return rdfListItems(shapes, orHead).stream()
+                    .filter(org.eclipse.rdf4j.model.Resource.class::isInstance)
+                    .map(org.eclipse.rdf4j.model.Resource.class::cast)
+                    .anyMatch(member -> conformsTo(shapes, data, member));
+        }
+        Value notObj = first(shapes, node, SH_NS + "not");
+        if (notObj != null) {
+            return !(notObj instanceof org.eclipse.rdf4j.model.Resource inner)
+                    || !conformsTo(shapes, data, inner);
+        }
+        boolean hasProperty = false;
+        for (Statement st : shapes.filter(node, Values.iri(SH_NS + "property"), null)) {
+            hasProperty = true;
+            if (st.getObject() instanceof org.eclipse.rdf4j.model.Resource ps
+                    && !propertyShapeConforms(shapes, data, ps)) {
+                return false;
+            }
+        }
+        return hasProperty;
     }
 
-    private boolean isNumeric(String text) {
-        try {
-            Double.parseDouble(text);
+    /** 单条 PropertyShape 是否满足（minCount / hasValue / minExclusive / maxExclusive）。 */
+    private boolean propertyShapeConforms(Model shapes, Model data,
+                                          org.eclipse.rdf4j.model.Resource ps) {
+        Value path = first(shapes, ps, SH_NS + "path");
+        if (path == null) {
             return true;
-        } catch (NumberFormatException e) {
+        }
+        List<Value> values = data.filter(null, Values.iri(baseIri() + localName(path.stringValue())), null)
+                .stream().map(Statement::getObject).toList();
+        Value minCount = first(shapes, ps, SH_NS + "minCount");
+        if (minCount != null && values.size() < Integer.parseInt(minCount.stringValue())) {
             return false;
         }
+        Value hasValue = first(shapes, ps, SH_NS + "hasValue");
+        if (hasValue != null) {
+            return values.stream().anyMatch(v -> v.stringValue().equalsIgnoreCase(hasValue.stringValue()));
+        }
+        Value minExclusive = first(shapes, ps, SH_NS + "minExclusive");
+        if (minExclusive != null) {
+            double bound = Double.parseDouble(minExclusive.stringValue());
+            return values.stream().allMatch(v -> doubleOf(v) > bound);
+        }
+        Value maxExclusive = first(shapes, ps, SH_NS + "maxExclusive");
+        if (maxExclusive != null) {
+            double bound = Double.parseDouble(maxExclusive.stringValue());
+            return values.stream().allMatch(v -> doubleOf(v) < bound);
+        }
+        return true;
     }
 
-    /** 内层约束是否满足（支持 sh:minExclusive / sh:hasValue），满足则对应 sh:not 分支不触发。 */
-    private boolean innerConstraintSatisfied(Model shapes, Model data,
-                                             org.eclipse.rdf4j.model.Resource branch) {
-        for (Statement st : shapes.filter(branch, Values.iri(SH_NS + "property"), null)) {
-            if (!(st.getObject() instanceof org.eclipse.rdf4j.model.Resource ps)) {
-                continue;
-            }
-            Value path = first(shapes, ps, SH_NS + "path");
-            if (path == null) {
-                continue;
-            }
-            Value minExclusive = first(shapes, ps, SH_NS + "minExclusive");
-            if (minExclusive != null) {
-                double bound = Double.parseDouble(minExclusive.stringValue());
-                boolean hasGreater = data.filter(null, Values.iri(baseIri() + localName(path.stringValue())), null)
-                        .stream().anyMatch(s -> {
-                            try {
-                                return Double.parseDouble(s.getObject().stringValue()) > bound;
-                            } catch (NumberFormatException e) {
-                                return false;
-                            }
-                        });
-                if (hasGreater) {
-                    return true;
-                }
-            }
-            Value hasValue = first(shapes, ps, SH_NS + "hasValue");
-            if (hasValue != null) {
-                boolean hasMatching = data.filter(null, Values.iri(baseIri() + localName(path.stringValue())), null)
-                        .stream().anyMatch(s -> s.getObject().stringValue().equalsIgnoreCase(hasValue.stringValue()));
-                if (hasMatching) {
-                    return true;
-                }
-            }
+    private double doubleOf(Value v) {
+        try {
+            return Double.parseDouble(v.stringValue());
+        } catch (NumberFormatException e) {
+            return Double.NaN;
         }
-        return false;
+    }
+
+    /** 展开 RDF List（sh:or / sh:and 成员）。 */
+    private List<Value> rdfListItems(Model shapes, Value head) {
+        List<Value> items = new ArrayList<>();
+        Value current = head;
+        while (current instanceof org.eclipse.rdf4j.model.Resource node) {
+            Value firstItem = first(shapes, node, RDF.FIRST.stringValue());
+            if (firstItem != null) {
+                items.add(firstItem);
+            }
+            Value rest = first(shapes, node, RDF.REST.stringValue());
+            if (rest == null || rest.equals(RDF.NIL)) {
+                break;
+            }
+            current = rest;
+        }
+        return items;
     }
 
     /** 求值单个 sh:PropertyShape（支持 sh:minCount / sh:maxCount / sh:hasValue）。 */
@@ -229,7 +352,7 @@ public class ShaclValidationDelegate {
     }
 
     private String ruleIdOf(Model shapes, org.eclipse.rdf4j.model.Resource shape) {
-        Value name = first(shapes, shape, SH_NS + "name");
+        Value name = ruleAnnotation(shapes, shape);
         if (name != null && RC_ID.matcher(name.stringValue()).matches()) {
             return name.stringValue();
         }
@@ -241,6 +364,18 @@ public class ShaclValidationDelegate {
             }
         }
         return "SHACL";
+    }
+
+    /**
+     * 规则编号注解：优先 sh:name（PropertyShape），回退 rdfs:label（NodeShape 专用，
+     * sh:name 按 shacl.ttl 本体域属 PropertyShape，NodeShape 使用会触发 RDF4J 双类型推断）。
+     */
+    private Value ruleAnnotation(Model shapes, org.eclipse.rdf4j.model.Resource shape) {
+        Value name = first(shapes, shape, SH_NS + "name");
+        if (name != null) {
+            return name;
+        }
+        return first(shapes, shape, "http://www.w3.org/2000/01/rdf-schema#label");
     }
 
     private String pathOf(Model shapes, org.eclipse.rdf4j.model.Resource shape) {

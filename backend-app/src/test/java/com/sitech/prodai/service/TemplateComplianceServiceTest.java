@@ -2,6 +2,7 @@ package com.sitech.prodai.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sitech.prodai.service.ontologygen.JsonSchemaLiteValidator;
 import com.sitech.prodai.config.ProdAiProperties;
 import com.sitech.prodai.mapper.OntologyAssetVersionMapper;
 import com.sitech.prodai.mapper.OntologyInstanceMapper;
@@ -85,7 +86,8 @@ class TemplateComplianceServiceTest {
                 new ClasspathOpsProductDataSource(mapper, resourceLoader, properties);
         OpsProductGraphLoader graphLoader =
                 new OpsProductGraphLoader(properties, classpathSource, httpSource);
-        ProductTemplateRegistry templateRegistry = new ProductTemplateRegistry(mapper);
+        ProductTemplateRegistry templateRegistry = new ProductTemplateRegistry(mapper,
+                new JsonSchemaLiteValidator(new ObjectMapper(), new DefaultResourceLoader()));
         templateRegistry.init();
         ProductExtractionTemplateSupport templateSupport =
                 new ProductExtractionTemplateSupport(templateRegistry);

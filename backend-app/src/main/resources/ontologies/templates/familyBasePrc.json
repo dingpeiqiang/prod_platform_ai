@@ -6,17 +6,71 @@
   "status": "published",
   "category_code": "familyBasePrc",
   "message_root_key": "familyBasePrc",
+  "category_meta": {
+    "product_line": "家庭",
+    "is_main_offer": true,
+    "required_elements": [
+      "SalesPolicy",
+      "ReleaseScope",
+      "FamilyOfferPolicy",
+      "OfferCompatibility",
+      "ChargePlan",
+      "AccountPreferential",
+      "FloorGuarantee",
+      "DataResource",
+      "VoiceResource",
+      "PrintNotice",
+      "SmsNotice"
+    ]
+  },
   "matchers": {
-    "keywords": ["家庭基础套餐", "家庭套餐", "全家福", "F套餐", "家庭融合", "融合套餐", "家庭"],
+    "keywords": [
+      "家庭基础套餐",
+      "家庭套餐",
+      "全家福",
+      "F套餐",
+      "家庭融合",
+      "融合套餐",
+      "家庭"
+    ],
     "priority": 20
   },
   "sections": [
-    { "code": "familyInfo", "label": "家庭套餐信息", "message_path": "baseInfo" },
-    { "code": "phoneMbrInfo", "label": "手机成员信息", "message_path": "optionalInfo.phoneMbrInfo", "component": true },
-    { "code": "broadBandMbrInfo", "label": "宽带成员信息", "message_path": "optionalInfo.broadBandMbrInfo", "component": true },
-    { "code": "dlowFavFee", "label": "保底优惠", "message_path": "optionalInfo.dlowFavFee", "component": true },
-    { "code": "billGprsCfg", "label": "流量资源配置", "message_path": "optionalInfo.billGprsCfg", "component": true },
-    { "code": "billVoiceCfg", "label": "语音资源配置", "message_path": "optionalInfo.billVoiceCfg", "component": true }
+    {
+      "code": "familyInfo",
+      "label": "家庭套餐信息",
+      "message_path": "baseInfo"
+    },
+    {
+      "code": "phoneMbrInfo",
+      "label": "手机成员信息",
+      "message_path": "optionalInfo.phoneMbrInfo",
+      "component": true
+    },
+    {
+      "code": "broadBandMbrInfo",
+      "label": "宽带成员信息",
+      "message_path": "optionalInfo.broadBandMbrInfo",
+      "component": true
+    },
+    {
+      "code": "dlowFavFee",
+      "label": "保底优惠",
+      "message_path": "optionalInfo.dlowFavFee",
+      "component": true
+    },
+    {
+      "code": "billGprsCfg",
+      "label": "流量资源配置",
+      "message_path": "optionalInfo.billGprsCfg",
+      "component": true
+    },
+    {
+      "code": "billVoiceCfg",
+      "label": "语音资源配置",
+      "message_path": "optionalInfo.billVoiceCfg",
+      "component": true
+    }
   ],
   "fields": [
     {
@@ -30,13 +84,25 @@
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "全家福", "value": "1" },
-          { "display": "F套餐", "value": "2" }
+          {
+            "display": "全家福",
+            "value": "1"
+          },
+          {
+            "display": "F套餐",
+            "value": "2"
+          }
         ]
       },
-      "slot_aliases": ["套餐类型", "家庭类型", "全家福", "F套餐"],
+      "slot_aliases": [
+        "套餐类型",
+        "家庭类型",
+        "全家福",
+        "F套餐"
+      ],
       "extract_hint": "用户说全家福/F套餐时映射到 teamType",
-      "message_path": "baseInfo.teamType"
+      "message_path": "baseInfo.teamType",
+      "business_key": "familyPackageType"
     },
     {
       "field_code": "ifFloorsPrc",
@@ -50,12 +116,23 @@
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "是", "value": "1" },
-          { "display": "否", "value": "0" }
+          {
+            "display": "是",
+            "value": "1"
+          },
+          {
+            "display": "否",
+            "value": "0"
+          }
         ]
       },
-      "slot_aliases": ["保底", "保底消费", "保底优惠"],
-      "message_path": "baseInfo.ifFloorsPrc"
+      "slot_aliases": [
+        "保底",
+        "保底消费",
+        "保底优惠"
+      ],
+      "message_path": "baseInfo.ifFloorsPrc",
+      "business_key": "isFloorOffer"
     },
     {
       "field_code": "payFlag",
@@ -69,11 +146,18 @@
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "是", "value": "1" },
-          { "display": "否", "value": "0" }
+          {
+            "display": "是",
+            "value": "1"
+          },
+          {
+            "display": "否",
+            "value": "0"
+          }
         ]
       },
-      "message_path": "baseInfo.payFlag"
+      "message_path": "baseInfo.payFlag",
+      "business_key": "isUnifiedPay"
     },
     {
       "field_code": "dateLimit",
@@ -87,11 +171,18 @@
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "长期有效", "value": "1" },
-          { "display": "有限期", "value": "2" }
+          {
+            "display": "长期有效",
+            "value": "1"
+          },
+          {
+            "display": "有限期",
+            "value": "2"
+          }
         ]
       },
-      "message_path": "baseInfo.dateLimit"
+      "message_path": "baseInfo.dateLimit",
+      "business_key": "contractMonths"
     },
     {
       "field_code": "powerCode",
@@ -102,7 +193,8 @@
       "field_class": "projection",
       "source": "remote",
       "extract_hint": "小区/_POWERCODE 弹窗选择，覆盖范围场景",
-      "message_path": "baseInfo.powerCode"
+      "message_path": "baseInfo.powerCode",
+      "business_key": "contractCancelPrivilege"
     },
     {
       "field_code": "familyCata",
@@ -115,11 +207,18 @@
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "家庭网", "value": "1" },
-          { "display": "融合套餐", "value": "2" }
+          {
+            "display": "家庭网",
+            "value": "1"
+          },
+          {
+            "display": "融合套餐",
+            "value": "2"
+          }
         ]
       },
-      "message_path": "baseInfo.familyCata"
+      "message_path": "baseInfo.familyCata",
+      "business_key": "familyCatalog"
     },
     {
       "field_code": "roleMax",
@@ -131,7 +230,8 @@
       "source": "fs",
       "precision": 1,
       "rule_description": "整数 1~9；封闭校验 roleMax = phoneMbrMax + kdMbrMax（数值派生归 SHACL/Java）",
-      "message_path": "baseInfo.roleMax"
+      "message_path": "baseInfo.roleMax",
+      "business_key": "maxFamilyMembers"
     },
     {
       "field_code": "roleMin",
@@ -143,7 +243,8 @@
       "source": "fs",
       "precision": 1,
       "rule_description": "整数 1~9",
-      "message_path": "baseInfo.roleMin"
+      "message_path": "baseInfo.roleMin",
+      "business_key": "minFamilyMembers"
     },
     {
       "field_code": "canAddFamilyPrc",
@@ -157,11 +258,18 @@
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "是", "value": "1" },
-          { "display": "否", "value": "0" }
+          {
+            "display": "是",
+            "value": "1"
+          },
+          {
+            "display": "否",
+            "value": "0"
+          }
         ]
       },
-      "message_path": "baseInfo.canAddFamilyPrc"
+      "message_path": "baseInfo.canAddFamilyPrc",
+      "business_key": "allowFamilyAddon"
     },
     {
       "field_code": "favObject",
@@ -174,9 +282,18 @@
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "主卡", "value": "1" },
-          { "display": "成员", "value": "2" },
-          { "display": "全部成员", "value": "3" }
+          {
+            "display": "主卡",
+            "value": "1"
+          },
+          {
+            "display": "成员",
+            "value": "2"
+          },
+          {
+            "display": "全部成员",
+            "value": "3"
+          }
         ]
       },
       "rule_description": "家庭基础套餐 acctFav 特有优惠对象",
@@ -194,11 +311,18 @@
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "是", "value": "1" },
-          { "display": "否", "value": "0" }
+          {
+            "display": "是",
+            "value": "1"
+          },
+          {
+            "display": "否",
+            "value": "0"
+          }
         ]
       },
-      "message_path": "optionalInfo.phoneMbrInfo.ifChangeBasePrc"
+      "message_path": "phoneMbrInfo.ifChangeBasePrc",
+      "business_key": "allowChangeMainOffer"
     },
     {
       "field_code": "inProdPrcId",
@@ -208,7 +332,8 @@
       "section": "phoneMbrInfo",
       "field_class": "projection",
       "source": "remote",
-      "message_path": "optionalInfo.phoneMbrInfo.inProdPrcId"
+      "message_path": "phoneMbrInfo.inProdPrcId",
+      "business_key": "targetOfferRef"
     },
     {
       "field_code": "outProdPrcId",
@@ -218,7 +343,8 @@
       "section": "phoneMbrInfo",
       "field_class": "projection",
       "source": "remote",
-      "message_path": "optionalInfo.phoneMbrInfo.outProdPrcId"
+      "message_path": "phoneMbrInfo.outProdPrcId",
+      "business_key": "sourceOfferRef"
     },
     {
       "field_code": "phoneMbrMax",
@@ -229,9 +355,14 @@
       "field_class": "draft",
       "source": "fs",
       "precision": 1,
-      "slot_aliases": ["手机成员数", "几张卡", "几个手机成员"],
+      "slot_aliases": [
+        "手机成员数",
+        "几张卡",
+        "几个手机成员"
+      ],
       "extract_hint": "整数；例如 3 张卡 → phoneMbrMax=3",
-      "message_path": "optionalInfo.phoneMbrInfo.phoneMbrMax"
+      "message_path": "phoneMbrInfo.phoneMbrMax",
+      "business_key": "maxPhoneMembers"
     },
     {
       "field_code": "phoneMbrMin",
@@ -242,7 +373,8 @@
       "field_class": "draft",
       "source": "fs",
       "precision": 1,
-      "message_path": "optionalInfo.phoneMbrInfo.phoneMbrMin"
+      "message_path": "phoneMbrInfo.phoneMbrMin",
+      "business_key": "minPhoneMembers"
     },
     {
       "field_code": "freeMbrCnt",
@@ -253,8 +385,12 @@
       "field_class": "draft",
       "source": "fs",
       "precision": 1,
-      "slot_aliases": ["免费成员", "几张卡免费"],
-      "message_path": "optionalInfo.phoneMbrInfo.freeMbrCnt"
+      "slot_aliases": [
+        "免费成员",
+        "几张卡免费"
+      ],
+      "message_path": "phoneMbrInfo.freeMbrCnt",
+      "business_key": "freePhoneMembers"
     },
     {
       "field_code": "phoneMbrFee",
@@ -267,7 +403,8 @@
       "unit": "元",
       "precision": 2,
       "decimal_places": 2,
-      "message_path": "optionalInfo.phoneMbrInfo.phoneMbrFee"
+      "message_path": "phoneMbrInfo.phoneMbrFee",
+      "business_key": "extraPhoneMemberFee"
     },
     {
       "field_code": "kdMbrMax",
@@ -278,9 +415,14 @@
       "field_class": "draft",
       "source": "fs",
       "precision": 1,
-      "slot_aliases": ["几条宽带", "宽带路数", "宽带成员数"],
+      "slot_aliases": [
+        "几条宽带",
+        "宽带路数",
+        "宽带成员数"
+      ],
       "extract_hint": "整数；例如 2 条宽带 → kdMbrMax=2",
-      "message_path": "optionalInfo.broadBandMbrInfo.kdMbrMax"
+      "message_path": "broadBandMbrInfo.kdMbrMax",
+      "business_key": "maxBroadbandMembers"
     },
     {
       "field_code": "kdMbrMin",
@@ -291,7 +433,8 @@
       "field_class": "draft",
       "source": "fs",
       "precision": 1,
-      "message_path": "optionalInfo.broadBandMbrInfo.kdMbrMin"
+      "message_path": "broadBandMbrInfo.kdMbrMin",
+      "business_key": "minBroadbandMembers"
     },
     {
       "field_code": "mainKd",
@@ -301,9 +444,14 @@
       "section": "broadBandMbrInfo",
       "field_class": "draft",
       "source": "dict",
-      "slot_aliases": ["宽带速率", "几百兆", "带宽"],
+      "slot_aliases": [
+        "宽带速率",
+        "几百兆",
+        "带宽"
+      ],
       "extract_hint": "如 300M/500M/1000M",
-      "message_path": "optionalInfo.broadBandMbrInfo.mainKd"
+      "message_path": "broadBandMbrInfo.mainKd",
+      "business_key": "hasMainBroadband"
     },
     {
       "field_code": "tvPrc",
@@ -313,7 +461,8 @@
       "section": "broadBandMbrInfo",
       "field_class": "projection",
       "source": "remote",
-      "message_path": "optionalInfo.broadBandMbrInfo.tvPrc"
+      "message_path": "broadBandMbrInfo.tvPrc",
+      "business_key": "allowTvOffer"
     },
     {
       "field_code": "sencondKdPrc",
@@ -324,7 +473,8 @@
       "field_class": "projection",
       "source": "remote",
       "rule_description": "报文规范原名 sencondKdPrc（拼写保持契约不改名）",
-      "message_path": "optionalInfo.broadBandMbrInfo.sencondKdPrc"
+      "message_path": "broadBandMbrInfo.sencondKdPrc",
+      "business_key": "secondBroadbandOffer"
     },
     {
       "field_code": "thirdKdPrc",
@@ -334,7 +484,8 @@
       "section": "broadBandMbrInfo",
       "field_class": "projection",
       "source": "remote",
-      "message_path": "optionalInfo.broadBandMbrInfo.thirdKdPrc"
+      "message_path": "broadBandMbrInfo.thirdKdPrc",
+      "business_key": "thirdBroadbandOffer"
     },
     {
       "field_code": "fav1Method",
@@ -344,12 +495,20 @@
       "section": "dlowFavFee",
       "field_class": "projection",
       "source": "dict",
-      "visible_when": { "ifFloorsPrc": "是" },
+      "visible_when": {
+        "ifFloorsPrc": "是"
+      },
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "送费", "value": "1" },
-          { "display": "打折", "value": "2" }
+          {
+            "display": "送费",
+            "value": "1"
+          },
+          {
+            "display": "打折",
+            "value": "2"
+          }
         ]
       },
       "message_path": "optionalInfo.dlowFavFee.fav1Method"
@@ -365,7 +524,9 @@
       "unit": "元",
       "precision": 2,
       "decimal_places": 2,
-      "visible_when": { "ifFloorsPrc": "是" },
+      "visible_when": {
+        "ifFloorsPrc": "是"
+      },
       "message_path": "optionalInfo.dlowFavFee.fav1Fee"
     },
     {
@@ -376,7 +537,9 @@
       "section": "dlowFavFee",
       "field_class": "projection",
       "source": "dict",
-      "visible_when": { "ifFloorsPrc": "是" },
+      "visible_when": {
+        "ifFloorsPrc": "是"
+      },
       "message_path": "optionalInfo.dlowFavFee.fav1ItemType"
     },
     {
@@ -387,7 +550,9 @@
       "section": "dlowFavFee",
       "field_class": "projection",
       "source": "remote",
-      "visible_when": { "ifFloorsPrc": "是" },
+      "visible_when": {
+        "ifFloorsPrc": "是"
+      },
       "message_path": "optionalInfo.dlowFavFee.fav1Group"
     },
     {
@@ -399,7 +564,9 @@
       "field_class": "projection",
       "source": "dict",
       "default_value": "长期有效",
-      "visible_when": { "ifFloorsPrc": "是" },
+      "visible_when": {
+        "ifFloorsPrc": "是"
+      },
       "message_path": "optionalInfo.dlowFavFee.fav1Validity"
     },
     {
@@ -410,7 +577,9 @@
       "section": "dlowFavFee",
       "field_class": "projection",
       "source": "fs",
-      "visible_when": { "fav1Validity": "有限期" },
+      "visible_when": {
+        "fav1Validity": "有限期"
+      },
       "message_path": "optionalInfo.dlowFavFee.fav1ValidityVAlue"
     },
     {
@@ -424,8 +593,14 @@
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "通用流量", "value": "1" },
-          { "display": "定向流量", "value": "2" }
+          {
+            "display": "通用流量",
+            "value": "1"
+          },
+          {
+            "display": "定向流量",
+            "value": "2"
+          }
         ]
       },
       "message_path": "optionalInfo.billGprsCfg.resourceType"
@@ -439,7 +614,11 @@
       "field_class": "draft",
       "source": "fs",
       "unit": "GB",
-      "slot_aliases": ["多少流量", "包含流量", "几个G"],
+      "slot_aliases": [
+        "多少流量",
+        "包含流量",
+        "几个G"
+      ],
       "extract_hint": "如 10G/500M；映射数值+单位",
       "message_path": "optionalInfo.billGprsCfg.theshold"
     },
@@ -455,8 +634,14 @@
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "MB", "value": "1" },
-          { "display": "GB", "value": "2" }
+          {
+            "display": "MB",
+            "value": "1"
+          },
+          {
+            "display": "GB",
+            "value": "2"
+          }
         ]
       },
       "message_path": "optionalInfo.billGprsCfg.unit"
@@ -493,8 +678,14 @@
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "是", "value": "1" },
-          { "display": "否", "value": "0" }
+          {
+            "display": "是",
+            "value": "1"
+          },
+          {
+            "display": "否",
+            "value": "0"
+          }
         ]
       },
       "message_path": "optionalInfo.billGprsCfg.carryFlag"
@@ -539,7 +730,11 @@
       "field_class": "draft",
       "source": "fs",
       "unit": "分钟",
-      "slot_aliases": ["多少分钟", "包含通话", "通话时长"],
+      "slot_aliases": [
+        "多少分钟",
+        "包含通话",
+        "通话时长"
+      ],
       "message_path": "optionalInfo.billVoiceCfg.theshold"
     },
     {
@@ -572,23 +767,126 @@
       "source": "dict",
       "default_value": "是",
       "message_path": "optionalInfo.billVoiceCfg.remindFlag"
+    },
+    {
+      "field_code": "validityCycle",
+      "label": "validityCycle",
+      "type": "input",
+      "required": false,
+      "section": "baseInfo",
+      "field_class": "projection",
+      "business_key": "validityCycle",
+      "message_path": "baseInfo.prcEffCycle"
+    },
+    {
+      "field_code": "validityUnit",
+      "label": "validityUnit",
+      "type": "input",
+      "required": false,
+      "section": "baseInfo",
+      "field_class": "projection",
+      "business_key": "validityUnit",
+      "message_path": "baseInfo.prcEffType"
+    },
+    {
+      "field_code": "validityValue",
+      "label": "validityValue",
+      "type": "input",
+      "required": false,
+      "section": "baseInfo",
+      "field_class": "projection",
+      "business_key": "validityValue",
+      "message_path": "baseInfo.prcEffNum"
+    },
+    {
+      "field_code": "absoluteExpireDate",
+      "label": "absoluteExpireDate",
+      "type": "input",
+      "required": false,
+      "section": "baseInfo",
+      "field_class": "projection",
+      "business_key": "absoluteExpireDate",
+      "message_path": "baseInfo.prcEffDate"
     }
   ],
   "derive_rules": [
-    { "set_default": { "channelScope": "全渠道" }, "if_missing": true },
-    { "set_default": { "categoryCode": "familyBasePrc" }, "if_missing": true },
-    { "set_default": { "messageRootKey": "familyBasePrc" }, "if_missing": true },
-    { "when": { "ifFloorsPrc": "是" }, "visible": ["fav1Method", "fav1Fee", "fav1ItemType", "fav1Group", "fav1Validity"] },
-    { "when": { "ifFloorsPrc": "否" }, "hidden": ["fav1Method", "fav1Fee", "fav1ItemType", "fav1Group", "fav1Validity", "fav1ValidityVAlue"] },
-    { "when": { "fav1Validity": "长期有效" }, "hidden": ["fav1ValidityVAlue"] },
-    { "derive": { "roleMax": "phoneMbrMax + kdMbrMax" }, "note": "数值派生归 SHACL/Java（不在模板引擎硬解）" }
+    {
+      "set_default": {
+        "channelScope": "全渠道"
+      },
+      "if_missing": true
+    },
+    {
+      "set_default": {
+        "categoryCode": "familyBasePrc"
+      },
+      "if_missing": true
+    },
+    {
+      "set_default": {
+        "messageRootKey": "familyBasePrc"
+      },
+      "if_missing": true
+    },
+    {
+      "when": {
+        "ifFloorsPrc": "是"
+      },
+      "visible": [
+        "fav1Method",
+        "fav1Fee",
+        "fav1ItemType",
+        "fav1Group",
+        "fav1Validity"
+      ]
+    },
+    {
+      "when": {
+        "ifFloorsPrc": "否"
+      },
+      "hidden": [
+        "fav1Method",
+        "fav1Fee",
+        "fav1ItemType",
+        "fav1Group",
+        "fav1Validity",
+        "fav1ValidityVAlue"
+      ]
+    },
+    {
+      "when": {
+        "fav1Validity": "长期有效"
+      },
+      "hidden": [
+        "fav1ValidityVAlue"
+      ]
+    }
   ],
   "compliance_bindings": {
-    "rule_ids": ["R-C01", "R-C03", "R-C04", "R-C05", "R-C06", "R-C07", "R-C08", "R-C09"]
+    "rule_ids": [
+      "R-C01",
+      "R-C03",
+      "R-C04",
+      "R-C05",
+      "R-C06",
+      "R-C07",
+      "R-C08",
+      "R-C09"
+    ]
   },
   "message_projection": {
     "mode": "observe",
     "root_key": "familyBasePrc",
-    "aligned_with": "ontology/config_message_projection.json#categoryMappings.familyBasePrc"
+    "aligned_with": "ontology/config_message_projection.json#categoryMappings.familyBasePrc",
+    "defaults": {
+      "orderEffectMode": "1001",
+      "cancelEffectMode": "1023",
+      "saleEndDate": "20991231",
+      "contractMonths": "36",
+      "contractCancelPrivilege": "18",
+      "minFamilyMembers": "1",
+      "taxSplitFlag": "0",
+      "smsOpTypes": "0"
+    }
   }
 }

@@ -6,12 +6,43 @@
   "status": "published",
   "category_code": "broadBandMainPrc",
   "message_root_key": "broadBandMainPrc",
+  "category_meta": {
+    "product_line": "宽带",
+    "is_main_offer": true,
+    "required_elements": [
+      "SalesPolicy",
+      "ReleaseScope",
+      "NetworkCapability",
+      "ChargePlan",
+      "AccountPreferential",
+      "CdrPreferential",
+      "PrintNotice",
+      "SmsNotice"
+    ]
+  },
   "matchers": {
-    "keywords": ["宽带主资费", "宽带套餐", "宽带", "百兆", "千兆", "100M", "200M", "300M", "500M", "1000M", "光纤"],
+    "keywords": [
+      "宽带主资费",
+      "宽带套餐",
+      "宽带",
+      "百兆",
+      "千兆",
+      "100M",
+      "200M",
+      "300M",
+      "500M",
+      "1000M",
+      "光纤"
+    ],
     "priority": 10
   },
   "sections": [
-    { "code": "wkBillCfg", "label": "话单优惠", "message_path": "optionalInfo.wkBillCfg", "component": true }
+    {
+      "code": "wkBillCfg",
+      "label": "话单优惠",
+      "message_path": "optionalInfo.wkBillCfg",
+      "component": true
+    }
   ],
   "fields": [
     {
@@ -23,7 +54,8 @@
       "field_class": "projection",
       "source": "generated",
       "rule_description": "宽带主资费 baseInfo 特有；一般由系统生成",
-      "message_path": "baseInfo.domainName"
+      "message_path": "baseInfo.domainName",
+      "business_key": "domainName"
     },
     {
       "field_code": "downStreamId",
@@ -33,19 +65,42 @@
       "section": "baseInfo",
       "field_class": "draft",
       "source": "dict",
-      "slot_aliases": ["下行", "几兆", "速率", "带宽", "百兆", "千兆"],
+      "slot_aliases": [
+        "下行",
+        "几兆",
+        "速率",
+        "带宽",
+        "百兆",
+        "千兆"
+      ],
       "extract_hint": "如 100M/300M/500M/1000M",
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "100M", "value": "1024" },
-          { "display": "200M", "value": "2048" },
-          { "display": "300M", "value": "3072" },
-          { "display": "500M", "value": "5120" },
-          { "display": "1000M", "value": "10240" }
+          {
+            "display": "100M",
+            "value": "1024"
+          },
+          {
+            "display": "200M",
+            "value": "2048"
+          },
+          {
+            "display": "300M",
+            "value": "3072"
+          },
+          {
+            "display": "500M",
+            "value": "5120"
+          },
+          {
+            "display": "1000M",
+            "value": "10240"
+          }
         ]
       },
-      "message_path": "baseInfo.downStreamId"
+      "message_path": "baseInfo.downStreamId",
+      "business_key": "downstreamBandwidth"
     },
     {
       "field_code": "upStreamId",
@@ -58,12 +113,22 @@
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "30M", "value": "30" },
-          { "display": "50M", "value": "50" },
-          { "display": "100M", "value": "100" }
+          {
+            "display": "30M",
+            "value": "30"
+          },
+          {
+            "display": "50M",
+            "value": "50"
+          },
+          {
+            "display": "100M",
+            "value": "100"
+          }
         ]
       },
-      "message_path": "baseInfo.upStreamId"
+      "message_path": "baseInfo.upStreamId",
+      "business_key": "upstreamBandwidth"
     },
     {
       "field_code": "ifAddFamily",
@@ -77,11 +142,18 @@
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "是", "value": "1" },
-          { "display": "否", "value": "0" }
+          {
+            "display": "是",
+            "value": "1"
+          },
+          {
+            "display": "否",
+            "value": "0"
+          }
         ]
       },
-      "message_path": "baseInfo.ifAddFamily"
+      "message_path": "baseInfo.ifAddFamily",
+      "business_key": "allowJoinFamily"
     },
     {
       "field_code": "wkBillFlag",
@@ -95,8 +167,14 @@
       "enum_config": {
         "type": "static",
         "enum_map": [
-          { "display": "是", "value": "1" },
-          { "display": "否", "value": "0" }
+          {
+            "display": "是",
+            "value": "1"
+          },
+          {
+            "display": "否",
+            "value": "0"
+          }
         ]
       },
       "rule_description": "报文规范默认值：是",
@@ -104,17 +182,53 @@
     }
   ],
   "derive_rules": [
-    { "set_default": { "channelScope": "全渠道" }, "if_missing": true },
-    { "set_default": { "categoryCode": "broadBandMainPrc" }, "if_missing": true },
-    { "set_default": { "messageRootKey": "broadBandMainPrc" }, "if_missing": true },
-    { "set_default": { "downStreamId": "500M" }, "if_missing": true }
+    {
+      "set_default": {
+        "channelScope": "全渠道"
+      },
+      "if_missing": true
+    },
+    {
+      "set_default": {
+        "categoryCode": "broadBandMainPrc"
+      },
+      "if_missing": true
+    },
+    {
+      "set_default": {
+        "messageRootKey": "broadBandMainPrc"
+      },
+      "if_missing": true
+    },
+    {
+      "set_default": {
+        "downStreamId": "500M"
+      },
+      "if_missing": true
+    }
   ],
   "compliance_bindings": {
-    "rule_ids": ["R-C03", "R-C04", "R-C05", "R-C06", "R-C07", "R-C08", "R-C09"]
+    "rule_ids": [
+      "R-C03",
+      "R-C04",
+      "R-C05",
+      "R-C06",
+      "R-C07",
+      "R-C08",
+      "R-C09"
+    ]
   },
   "message_projection": {
     "mode": "observe",
     "root_key": "broadBandMainPrc",
-    "aligned_with": "ontology/config_message_projection.json#categoryMappings.broadBandMainPrc"
+    "aligned_with": "ontology/config_message_projection.json#categoryMappings.broadBandMainPrc",
+    "defaults": {
+      "orderEffectMode": "1001",
+      "cancelEffectMode": "1023",
+      "saleEndDate": "20991231",
+      "domainName": "cmcc",
+      "taxSplitFlag": "0",
+      "smsOpTypes": "0"
+    }
   }
 }

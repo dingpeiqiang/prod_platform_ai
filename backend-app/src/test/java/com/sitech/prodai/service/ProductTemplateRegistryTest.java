@@ -1,7 +1,9 @@
 package com.sitech.prodai.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sitech.prodai.service.ontologygen.JsonSchemaLiteValidator;
 import org.junit.jupiter.api.BeforeAll;
+import org.springframework.core.io.DefaultResourceLoader;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 
@@ -28,7 +30,8 @@ class ProductTemplateRegistryTest {
 
     @BeforeAll
     void setUp() {
-        registry = new ProductTemplateRegistry(new ObjectMapper());
+        registry = new ProductTemplateRegistry(new ObjectMapper(),
+                new JsonSchemaLiteValidator(new ObjectMapper(), new DefaultResourceLoader()));
         registry.init();
     }
 
@@ -112,7 +115,8 @@ class ProductTemplateRegistryTest {
     void validateShouldRejectCycleAndDuplicateFields() throws Exception {
         // 通过反射式构造 raw 集合直接验证校验逻辑：构造环 + 重复 field_code
         ObjectMapper om = new ObjectMapper();
-        ProductTemplateRegistry probe = new ProductTemplateRegistry(om);
+        ProductTemplateRegistry probe = new ProductTemplateRegistry(om,
+                new JsonSchemaLiteValidator(new ObjectMapper(), new DefaultResourceLoader()));
         java.lang.reflect.Method validate = ProductTemplateRegistry.class
                 .getDeclaredMethod("validate", String.class, Map.class);
         validate.setAccessible(true);
@@ -145,7 +149,8 @@ class ProductTemplateRegistryTest {
     @Test
     void mergeExtendsShouldRejectUnknownParentOnResolved() {
         // 模板引用不存在父模板 → load 阶段被过滤，resolved 中不存在
-        ProductTemplateRegistry probe = new ProductTemplateRegistry(new ObjectMapper());
+        ProductTemplateRegistry probe = new ProductTemplateRegistry(new ObjectMapper(),
+                new JsonSchemaLiteValidator(new ObjectMapper(), new DefaultResourceLoader()));
         Map<String, Map<String, Object>> raw = new LinkedHashMap<>();
         Map<String, Object> orphan = new LinkedHashMap<>();
         orphan.put("template_id", "orphan");

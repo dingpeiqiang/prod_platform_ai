@@ -1,6 +1,7 @@
 package com.sitech.prodai.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sitech.prodai.service.ontologygen.JsonSchemaLiteValidator;
 import com.sitech.prodai.config.ProdAiProperties;
 import com.sitech.prodai.service.ops.OpsExtractionService;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,7 +40,8 @@ class OpsExtractionServiceTemplateTest {
 
         opsRules = new OpsRulesService(mapper, resourceLoader, properties);
         opsRules.load();
-        registry = new ProductTemplateRegistry(mapper);
+        registry = new ProductTemplateRegistry(mapper,
+                new JsonSchemaLiteValidator(mapper, resourceLoader));
         registry.init();
         templateSupport = new ProductExtractionTemplateSupport(registry);
         extractionService = new OpsExtractionService(mapper, properties, opsRules, templateSupport, Optional.empty());

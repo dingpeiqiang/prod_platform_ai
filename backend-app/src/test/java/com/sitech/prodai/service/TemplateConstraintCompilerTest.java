@@ -1,7 +1,9 @@
 package com.sitech.prodai.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sitech.prodai.service.ontologygen.JsonSchemaLiteValidator;
 import org.junit.jupiter.api.BeforeEach;
+import org.springframework.core.io.DefaultResourceLoader;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -23,7 +25,8 @@ class TemplateConstraintCompilerTest {
 
     @BeforeEach
     void setUp() {
-        registry = new ProductTemplateRegistry(new ObjectMapper());
+        registry = new ProductTemplateRegistry(new ObjectMapper(),
+                new JsonSchemaLiteValidator(new ObjectMapper(), new DefaultResourceLoader()));
         registry.init();
         compiler = new TemplateConstraintCompiler(registry);
     }
@@ -135,5 +138,75 @@ class TemplateConstraintCompilerTest {
         assertFalse(json.isBlank());
         assertTrue(json.contains("\"enum_values\""));
         assertTrue(json.contains("\"mutex_value_groups\"") || json.contains("mutex_bindings"));
+    }
+
+    // ---------- R7-Step2 SHACL 编译出口 ----------
+
+    @Test
+    void compileShaclShapesShouldEmitParsableTurtleWithRequiredAndEnumShapes() throws Exception {
+        String ttl = compiler.compileShaclShapes("familyBasePrc");
+        assertNotNull(ttl, "familyBasePrc 应可生成 SHACL 片段");
+
+        org.eclipse.rdf4j.model.Model model = org.eclipse.rdf4j.rio.Rio.parse(
+                new java.io.ByteArrayInputStream(ttl.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                "", org.eclipse.rdf4j.rio.RDFFormat.TURTLE);
+
+        // 必填字段 → sh:minCount 1 + R-C06 标注（含父模板合并字段）
+        org.eclipse.rdf4j.model.Value requiredName =
+                org.eclipse.rdf4j.model.util.Values.literal("R-C06");
+        List<org.eclipse.rdf4j.model.Value> pathsOfRequired = model.filter(null,
+                        org.eclipse.rdf4j.model.vocabulary.SHACL.NAME, requiredName).stream()
+                .filter(st -> model.filter(st.getSubject(),
+                                org.eclipse.rdf4j.model.vocabulary.SHACL.MIN_COUNT, null).stream()
+                        .anyMatch(m -> m.getObject() instanceof org.eclipse.rdf4j.model.Literal lit
+                                && lit.intValue() == 1))
+                .map(st -> model.filter(st.getSubject(),
+                        org.eclipse.rdf4j.model.vocabulary.SHACL.PATH, null).stream()
+                        .findFirst().map(org.eclipse.rdf4j.model.Statement::getObject).orElse(null))
+                .toList();
+        List<String> requiredLocalNames = pathsOfRequired.stream()
+                .map(v -> v == null ? "" : String.valueOf(v).replaceAll(".*[#/]", ""))
+                .toList();
+        assertTrue(requiredLocalNames.contains("teamType"), "teamType 必填应编译为 minCount 形状: " + requiredLocalNames);
+        assertTrue(requiredLocalNames.contains("channelScope"), "父模板 channelScope 必填应合并编译: " + requiredLocalNames);
+
+        // 枚举字段 → sh:in display 值域 + R-C05 标注
+        org.eclipse.rdf4j.model.Value enumName = org.eclipse.rdf4j.model.util.Values.literal("R-C05");
+        List<org.eclipse.rdf4j.model.Resource> enumShapes = model.filter(null,
+                        org.eclipse.rdf4j.model.vocabulary.SHACL.NAME, enumName).stream()
+                .filter(st -> model.contains(st.getSubject(),
+                        org.eclipse.rdf4j.model.vocabulary.SHACL.IN, null))
+                .map(org.eclipse.rdf4j.model.Statement::getSubject)
+                .toList();
+        assertFalse(enumShapes.isEmpty(), "枚举字段应编译为 sh:in 值域形状");
+
+        // teamType 枚举应含 display 值「全家福」（sh:in 为 RDF List，需沿 rdf:first/rdf:rest 展开）
+        boolean hasQuanJiaFu = enumShapes.stream()
+                .flatMap(s -> model.filter(s, org.eclipse.rdf4j.model.vocabulary.SHACL.IN, null).stream())
+                .map(org.eclipse.rdf4j.model.Statement::getObject)
+                .filter(o -> o instanceof org.eclipse.rdf4j.model.Resource)
+                .map(o -> listValues(model, (org.eclipse.rdf4j.model.Resource) o))
+                .anyMatch(values -> values.contains("全家福"));
+        assertTrue(hasQuanJiaFu, "teamType 枚举值域应含 display 值 全家福");
+    }
+
+    /** 展开 RDF List 为字符串值清单。 */
+    private List<String> listValues(org.eclipse.rdf4j.model.Model model, org.eclipse.rdf4j.model.Resource head) {
+        List<String> out = new java.util.ArrayList<>();
+        org.eclipse.rdf4j.model.Resource cur = head;
+        while (cur != null && !cur.equals(org.eclipse.rdf4j.model.vocabulary.RDF.NIL)) {
+            model.filter(cur, org.eclipse.rdf4j.model.vocabulary.RDF.FIRST, null).forEach(
+                    st -> out.add(st.getObject().stringValue()));
+            cur = model.filter(cur, org.eclipse.rdf4j.model.vocabulary.RDF.REST, null).stream()
+                    .findFirst()
+                    .map(st -> st.getObject() instanceof org.eclipse.rdf4j.model.Resource r ? r : null)
+                    .orElse(null);
+        }
+        return out;
+    }
+
+    @Test
+    void compileShaclShapesShouldReturnNullForUnknownCategory() {
+        assertNull(compiler.compileShaclShapes("notExistPrc"));
     }
 }

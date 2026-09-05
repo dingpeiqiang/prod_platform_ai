@@ -1024,15 +1024,9 @@
   rdfs:comment "业务枚举字典，统一配置取值口径"@zh ;
   rdfs:label "CodeDictionary"@en , "业务码表"@zh .
 
+# BEGIN GENERATED: category-individuals (FROM templates/*.json DO NOT EDIT)
+# 由 TemplateTtlGenerator 生成；品类元数据单源 = category_meta。
 # Individuals - categories
-:personMainPrc rdf:type owl:NamedIndividual , :ProductCategory ;
-  :categoryCode "personMainPrc" ; :categoryName "个人主资费" ;
-  :productLine "个人" ;
-  :isMainOffer "true"^^xsd:boolean ;
-  :messageRootKey "personMainPrc" ;
-  rdfs:comment "必备要素:SalesPolicy,ReleaseScope,ChargePlan,AccountPreferential,FloorGuarantee,DataResource,VoiceResource,SmsResource,PrintNotice,SmsNotice"@zh ;
-  rdfs:label "个人主资费"@zh .
-
 :broadBandMainPrc rdf:type owl:NamedIndividual , :ProductCategory ;
   :categoryCode "broadBandMainPrc" ; :categoryName "宽带主资费" ;
   :productLine "宽带" ;
@@ -1040,14 +1034,6 @@
   :messageRootKey "broadBandMainPrc" ;
   rdfs:comment "必备要素:SalesPolicy,ReleaseScope,NetworkCapability,ChargePlan,AccountPreferential,CdrPreferential,PrintNotice,SmsNotice"@zh ;
   rdfs:label "宽带主资费"@zh .
-
-:personAddPrc rdf:type owl:NamedIndividual , :ProductCategory ;
-  :categoryCode "personAddPrc" ; :categoryName "个人附加资费" ;
-  :productLine "个人" ;
-  :isMainOffer "false"^^xsd:boolean ;
-  :messageRootKey "personAddPrc" ;
-  rdfs:comment "必备要素:SalesPolicy,ReleaseScope,NetworkCapability,ChargePlan,AccountPreferential,FloorGuarantee,DataResource,VoiceResource,SmsResource,PrintNotice,SmsNotice"@zh ;
-  rdfs:label "个人附加资费"@zh .
 
 :broadBandOptSpeedPrc rdf:type owl:NamedIndividual , :ProductCategory ;
   :categoryCode "broadBandOptSpeedPrc" ; :categoryName "宽带加速包" ;
@@ -1057,6 +1043,14 @@
   rdfs:comment "必备要素:SalesPolicy,ReleaseScope,NetworkCapability,ChargePlan,AccountPreferential,PrintNotice,SmsNotice"@zh ;
   rdfs:label "宽带加速包"@zh .
 
+:familyAddPrc rdf:type owl:NamedIndividual , :ProductCategory ;
+  :categoryCode "familyAddPrc" ; :categoryName "家庭附加业务" ;
+  :productLine "家庭" ;
+  :isMainOffer "false"^^xsd:boolean ;
+  :messageRootKey "familyAddPrc" ;
+  rdfs:comment "必备要素:SalesPolicy,ReleaseScope,FamilyOfferPolicy,OfferCompatibility,ChargePlan,AccountPreferential,DataResource,VoiceResource,ValueAddedEquity,PrintNotice,SmsNotice"@zh ;
+  rdfs:label "家庭附加业务"@zh .
+
 :familyBasePrc rdf:type owl:NamedIndividual , :ProductCategory ;
   :categoryCode "familyBasePrc" ; :categoryName "家庭基础套餐" ;
   :productLine "家庭" ;
@@ -1065,13 +1059,23 @@
   rdfs:comment "必备要素:SalesPolicy,ReleaseScope,FamilyOfferPolicy,OfferCompatibility,ChargePlan,AccountPreferential,FloorGuarantee,DataResource,VoiceResource,PrintNotice,SmsNotice"@zh ;
   rdfs:label "家庭基础套餐"@zh .
 
-:familyAddPrc rdf:type owl:NamedIndividual , :ProductCategory ;
-  :categoryCode "familyAddPrc" ; :categoryName "家庭附加业务" ;
-  :productLine "家庭" ;
+:personAddPrc rdf:type owl:NamedIndividual , :ProductCategory ;
+  :categoryCode "personAddPrc" ; :categoryName "个人附加资费" ;
+  :productLine "个人" ;
   :isMainOffer "false"^^xsd:boolean ;
-  :messageRootKey "familyAddPrc" ;
-  rdfs:comment "必备要素:SalesPolicy,ReleaseScope,FamilyOfferPolicy,OfferCompatibility,ChargePlan,AccountPreferential,DataResource,VoiceResource,ValueAddedEquity,PrintNotice,SmsNotice"@zh ;
-  rdfs:label "家庭附加业务"@zh .
+  :messageRootKey "personAddPrc" ;
+  rdfs:comment "必备要素:SalesPolicy,ReleaseScope,NetworkCapability,ChargePlan,AccountPreferential,FloorGuarantee,DataResource,VoiceResource,SmsResource,PrintNotice,SmsNotice"@zh ;
+  rdfs:label "个人附加资费"@zh .
+
+:personMainPrc rdf:type owl:NamedIndividual , :ProductCategory ;
+  :categoryCode "personMainPrc" ; :categoryName "个人主资费" ;
+  :productLine "个人" ;
+  :isMainOffer "true"^^xsd:boolean ;
+  :messageRootKey "personMainPrc" ;
+  rdfs:comment "必备要素:SalesPolicy,ReleaseScope,ChargePlan,AccountPreferential,FloorGuarantee,DataResource,VoiceResource,SmsResource,PrintNotice,SmsNotice"@zh ;
+  rdfs:label "个人主资费"@zh .
+
+# END GENERATED: category-individuals
 
 :PROD_SCHEME_PMP_001 rdf:type owl:NamedIndividual , :PricingProduct ;
   :offerName "测试资费" ;

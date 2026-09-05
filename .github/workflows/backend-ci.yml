@@ -87,3 +87,21 @@ jobs:
           path: backend-app/target/surefire-reports/*LlmEvalRunnerTest*
           if-no-files-found: ignore
           retention-days: 14
+
+  single-source:
+    name: R4 Single-Source Consistency (template schema)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # R4 单源治理门禁：模板 JSON 必须过 template.schema.json 契约校验，
+      # 手改模板或生成物（config_message_projection.json / product-config.ttl 品类区）
+      # 而未按 SSOT 再生 → TemplateSingleSourceConsistencyTest（build-test job 内）失败。
+      # 此 job 为运行时之外的轻量前置门禁，与 Java 侧校验同约定（JsonSchemaLiteValidator 子集）。
+      - name: Validate template JSON against schema
+        run: python scripts/check_template_schema.py

@@ -2,6 +2,7 @@ package com.sitech.prodai.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sitech.prodai.service.ontologygen.JsonSchemaLiteValidator;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,7 +25,8 @@ import java.util.regex.Pattern;
 
 /**
  * 产品配置模板注册中心（P1-2，独立类，禁止并入 ProductOntologyService）。
- * <p>职责：加载 {@code classpath:ontologies/templates/*.json}；执行 §4.7 校验
+ * <p>职责：加载 {@code classpath:ontologies/templates/*.json}；执行 R4 单源契约校验
+ * （{@code template.schema.json}，JsonSchemaLiteValidator）与 §4.7 校验
  * （template_id 唯一 / field_code 唯一 / derive_rules 引用字段存在 / compliance_bindings.rule_ids 已注册 / extends 无环）；
  * {@code extends} 父模板按 field_code 合并（子覆盖同名项）；版本缓存 + 热重载。
  * <p>enum_map 值域契约（设计方案 §4.4）：抽取与草稿统一存 display 值；
@@ -44,6 +46,7 @@ public class ProductTemplateRegistry {
             "R-CONF-001", "R-CONF-002");
 
     private final ObjectMapper objectMapper;
+    private final JsonSchemaLiteValidator schemaValidator;
 
     /** 原始模板（template_id -> 原始 JSON）。 */
     private volatile Map<String, Map<String, Object>> rawTemplates = new ConcurrentHashMap<>();
@@ -52,8 +55,9 @@ public class ProductTemplateRegistry {
     /** 校验报告（最近一次 load）。 */
     private volatile Map<String, Object> lastValidationReport = new LinkedHashMap<>();
 
-    public ProductTemplateRegistry(ObjectMapper objectMapper) {
+    public ProductTemplateRegistry(ObjectMapper objectMapper, JsonSchemaLiteValidator schemaValidator) {
         this.objectMapper = objectMapper;
+        this.schemaValidator = schemaValidator;
     }
 
     @PostConstruct
@@ -376,6 +380,9 @@ public class ProductTemplateRegistry {
     private List<String> validate(String templateId, Map<String, Map<String, Object>> raw) {
         List<String> errors = new ArrayList<>();
         Map<String, Object> template = raw.get(templateId);
+
+        // R4 单源契约门禁：template.schema.json 结构校验（先于语义校验）
+        errors.addAll(schemaValidator.validateTemplate(template));
 
         // extends 父模板存在 + 无环
         String parent = str(template.get("extends"));

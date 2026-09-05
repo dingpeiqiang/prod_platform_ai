@@ -11,7 +11,8 @@ import java.util.Optional;
 /**
  * 模板约束编译器（P2-1 务实档，§11.4）。
  * <p>职责：将合并继承后的模板编译为<b>轻量 Java 可消费的约束元数据</b>，供 P2-4 合规裁剪与 P2-3 derive_rules 引擎消费。
- * <b>不引入 SHACL 引擎依赖</b>（pom 无 shacl，全库零命中）；SHACL NodeShape 产出留 P3-3 演进档。
+ * R7 起增加 SHACL 编译出口（{@link #compileShaclShapes(String)}）：从同一份编译约束生成 shapes 片段，
+ * 与 compliance-shacl.ttl 同风格；SHACL 校验执行见 {@link ShaclValidationDelegate}。
  * <p>生成规则（§P2-1）：
  * <ul>
  *   <li>{@code required} → 必填约束；</li>
@@ -40,6 +41,99 @@ public class TemplateConstraintCompiler {
     public Map<String, Object> compile(String categoryCode) {
         Optional<Map<String, Object>> found = registry.findByCategory(categoryCode);
         return found.map(this::compileTemplate).orElse(null);
+    }
+
+    /** SHACL 命名空间。 */
+    private static final String SH_NS = "http://www.w3.org/ns/shacl#";
+
+    /**
+     * R7-Step2 SHACL 编译出口：按品类码生成 shapes Turtle 片段。
+     *
+     * @return Turtle 片段；品类未识别返回 null
+     */
+    public String compileShaclShapes(String categoryCode) {
+        Optional<Map<String, Object>> found = registry.findByCategory(categoryCode);
+        return found.map(this::compileShaclShapes).orElse(null);
+    }
+
+    /**
+     * R7-Step2 SHACL 编译出口：从编译约束（required/enum_values）生成 sh:NodeShape/sh:PropertyShape 片段。
+     * <p>设计约束（实施方案 §6.2/§6.3）：
+     * <ul>
+     *   <li>复用 {@link #compileTemplate} 的编译结果——模板为 SSOT，改模板即再生，shapes 与 Java 约束零漂移；</li>
+     *   <li>{@code required=true} → sh:minCount 1（sh:name "R-C06" 必填类）；</li>
+     *   <li>{@code enum_values} → sh:in display 值域（sh:name "R-C05" 值域/枚举类）；</li>
+     *   <li>跨实体/白名单语义（mutex_value_groups、R-C04/C07~C09）不编译，保留 Java 引擎。</li>
+     * </ul>
+     * 片段含自身 @prefix 声明（可独立解析，也可拼接至 compliance-shacl.ttl；Turtle 允许前缀重定义）。
+     *
+     * @param template 合并后的模板 Map
+     * @return Turtle 片段文本
+     */
+    public String compileShaclShapes(Map<String, Object> template) {
+        Map<String, Object> compiled = compileTemplate(template);
+        String templateId = str(compiled.get("template_id"));
+        if (!(compiled.get("constraints") instanceof Map<?, ?> constraints)) {
+            return "";
+        }
+        StringBuilder shapes = new StringBuilder();
+        List<String> nodeRefs = new ArrayList<>();
+        for (Map.Entry<?, ?> entry : constraints.entrySet()) {
+            String code = String.valueOf(entry.getKey());
+            if (!(entry.getValue() instanceof Map<?, ?> c)) {
+                continue;
+            }
+            if (Boolean.TRUE.equals(c.get("required"))) {
+                nodeRefs.add(iri(templateId, code, "RequiredShape"));
+                appendPropertyShape(shapes, templateId, code, "RequiredShape", "R-C06",
+                        "R-C06: " + code + " required (必填缺失)", null);
+            }
+            if (c.get("enum_values") instanceof List<?> values && !values.isEmpty()) {
+                nodeRefs.add(iri(templateId, code, "EnumShape"));
+                appendPropertyShape(shapes, templateId, code, "EnumShape", "R-C05",
+                        "R-C05: " + code + " enum domain (值域约束)", values);
+            }
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("# GENERATED FROM template ").append(templateId)
+                .append(" (R7 compiler exit) DO NOT EDIT\n");
+        sb.append("@prefix sh: <").append(SH_NS).append("> .\n");
+        sb.append("@prefix ex: <http://example.org/> .\n\n");
+        if (!nodeRefs.isEmpty()) {
+            sb.append("ex:").append(templateId).append("Shape a sh:NodeShape ;\n");
+            sb.append("    sh:targetClass ex:Offering ;\n    sh:property ");
+            sb.append(nodeRefs.stream().map(n -> "ex:" + n)
+                    .collect(java.util.stream.Collectors.joining(" ,\n                ")));
+            sb.append(" .\n\n");
+        }
+        sb.append(shapes);
+        return sb.toString();
+    }
+
+    /** 输出单个 sh:PropertyShape；enumValues 非空时生成 sh:in 值域，否则由 minCount 表达必填。 */
+    private void appendPropertyShape(StringBuilder sb, String templateId, String code, String suffix,
+                                     String ruleId, String message, List<?> enumValues) {
+        sb.append("ex:").append(iri(templateId, code, suffix)).append(" a sh:PropertyShape ;\n");
+        sb.append("    sh:path ex:").append(code).append(" ;\n");
+        if (enumValues == null) {
+            sb.append("    sh:minCount 1 ;\n");
+        } else {
+            sb.append("    sh:in ( ").append(enumValues.stream()
+                    .map(v -> "\"" + escape(String.valueOf(v)) + "\"")
+                    .collect(java.util.stream.Collectors.joining(" "))).append(" ) ;\n");
+        }
+        sb.append("    sh:name \"").append(ruleId).append("\" ;\n");
+        sb.append("    sh:message \"").append(escape(message)).append("\" ;\n");
+        sb.append("    sh:severity sh:Violation .\n\n");
+    }
+
+    private String iri(String templateId, String code, String suffix) {
+        return templateId + "__" + code + "_" + suffix;
+    }
+
+    /** Turtle 字面量最小转义（\ 与 "）。 */
+    private String escape(String text) {
+        return text.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     /**

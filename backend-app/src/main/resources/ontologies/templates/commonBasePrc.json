@@ -29,7 +29,8 @@
       "source": "fs",
       "slot_aliases": ["工单号", "需求工单", "workOrderId", "templateId"],
       "extract_hint": "需求管理平台工单编号，形如 RQ-xxxx",
-      "message_path": "baseInfo.templateId"
+      "message_path": "baseInfo.templateId",
+      "business_key": "workOrderId"
     },
     {
       "field_code": "prodPrcName",
@@ -42,7 +43,9 @@
       "precision": 60,
       "slot_aliases": ["资费名称", "套餐名称", "产品名称"],
       "extract_hint": "名称不超过60字符",
-      "message_path": "baseInfo.prodPrcName"
+      "message_path": "baseInfo.prodPrcName",
+      "business_key": "offerName",
+      "draft_aliases": ["offeringName"]
     },
     {
       "field_code": "effRuleId",
@@ -61,7 +64,8 @@
         ]
       },
       "slot_aliases": ["生效方式", "订购生效"],
-      "message_path": "baseInfo.effRuleId"
+      "message_path": "baseInfo.effRuleId",
+      "business_key": "orderEffectMode"
     },
     {
       "field_code": "cancelRuleId",
@@ -80,7 +84,9 @@
           { "display": "预约生效", "value": "2" }
         ]
       },
-      "message_path": "baseInfo.cancelRuleId"
+      "message_path": "baseInfo.cancelRuleId",
+      "business_key": "cancelEffectMode",
+      "draft_aliases": ["expRuleId"]
     },
     {
       "field_code": "effDate",
@@ -92,7 +98,8 @@
       "source": "generated",
       "default_value": "当前日期",
       "extract_hint": "默认当前时间，格式 yyyyMMdd",
-      "message_path": "baseInfo.effDate"
+      "message_path": "baseInfo.effDate",
+      "business_key": "saleStartDate"
     },
     {
       "field_code": "expDate",
@@ -103,7 +110,8 @@
       "field_class": "projection",
       "source": "generated",
       "default_value": "20991231",
-      "message_path": "baseInfo.expDate"
+      "message_path": "baseInfo.expDate",
+      "business_key": "saleEndDate"
     },
     {
       "field_code": "prodId",
@@ -114,7 +122,8 @@
       "field_class": "projection",
       "source": "hidden",
       "rule_description": "代码自动生成，不作为抽取目标",
-      "message_path": "baseInfo.prodId"
+      "message_path": "baseInfo.prodId",
+      "business_key": "productCode"
     },
     {
       "field_code": "prodPrcId",
@@ -125,7 +134,8 @@
       "field_class": "projection",
       "source": "hidden",
       "rule_description": "代码自动生成，不作为抽取目标",
-      "message_path": "baseInfo.prodPrcId"
+      "message_path": "baseInfo.prodPrcId",
+      "business_key": "pricingCode"
     },
     {
       "field_code": "categoryCode",
@@ -170,7 +180,8 @@
       "field_class": "readonly",
       "source": "generated",
       "rule_description": "查询返回字段，仅智查/回显时返回",
-      "message_path": "baseInfo.pricingId"
+      "message_path": "baseInfo.pricingId",
+      "business_key": "splitCode"
     },
     {
       "field_code": "chnClassLimit",
@@ -191,7 +202,8 @@
       "slot_aliases": ["发布渠道", "销售渠道限制", "渠道"],
       "mutex_value_groups": [["营业前台"], ["电子渠道", "大掌柜"]],
       "rule_description": "营业前台 与 电子渠道/大掌柜 互斥（互斥校验在提交阶段合规执行，前端不做即时校验）",
-      "message_path": "releaseInfo.chnClassLimit"
+      "message_path": "releaseInfo.chnClassLimit",
+      "business_key": "channelScope"
     },
     {
       "field_code": "groupId",
@@ -209,7 +221,8 @@
           { "display": "非全省", "value": "PART" }
         ]
       },
-      "message_path": "releaseInfo.groupId"
+      "message_path": "releaseInfo.groupId",
+      "business_key": "regionScope"
     },
     {
       "field_code": "groupIdMessage",
@@ -221,7 +234,8 @@
       "source": "dict",
       "enum_config": { "type": "remote", "dict_code": "CITY_LIST" },
       "rule_description": "22地市多选；groupId=全省 时数量展示为前端增强项",
-      "message_path": "releaseInfo.groupIdMessage"
+      "message_path": "releaseInfo.groupIdMessage",
+      "business_key": "regionDetail"
     },
     {
       "field_code": "prcMonthFee",
@@ -231,7 +245,8 @@
       "section": "optionalInfo",
       "field_class": "projection",
       "source": "fs",
-      "message_path": "optionalInfo.printContent.prcMonthFee"
+      "message_path": "optionalInfo.printContent.prcMonthFee",
+      "business_key": "printMonthlyFeeText"
     },
     {
       "field_code": "containResource",
@@ -241,7 +256,8 @@
       "section": "optionalInfo",
       "field_class": "projection",
       "source": "fs",
-      "message_path": "optionalInfo.printContent.containResource"
+      "message_path": "optionalInfo.printContent.containResource",
+      "business_key": "printResourceText"
     },
     {
       "field_code": "chargeStandard",
@@ -251,7 +267,8 @@
       "section": "optionalInfo",
       "field_class": "projection",
       "source": "fs",
-      "message_path": "optionalInfo.printContent.chargeStandard"
+      "message_path": "optionalInfo.printContent.chargeStandard",
+      "business_key": "printOverageText"
     },
     {
       "field_code": "limitCondition",
@@ -261,7 +278,8 @@
       "section": "optionalInfo",
       "field_class": "projection",
       "source": "fs",
-      "message_path": "optionalInfo.printContent.limitCondition"
+      "message_path": "optionalInfo.printContent.limitCondition",
+      "business_key": "printLimitText"
     },
     {
       "field_code": "otherEquity",
@@ -271,7 +289,8 @@
       "section": "optionalInfo",
       "field_class": "projection",
       "source": "fs",
-      "message_path": "optionalInfo.printContent.otherEquity"
+      "message_path": "optionalInfo.printContent.otherEquity",
+      "business_key": "printEquityText"
     },
     {
       "field_code": "smsOpType",
@@ -289,7 +308,8 @@
           { "display": "月底提醒", "value": "3" }
         ]
       },
-      "message_path": "optionalInfo.prcSmsCfg.opType"
+      "message_path": "optionalInfo.prcSmsCfg.opType",
+      "business_key": "smsOpTypes"
     },
     {
       "field_code": "sysNoteNow",
@@ -299,7 +319,8 @@
       "section": "optionalInfo",
       "field_class": "projection",
       "source": "fs",
-      "message_path": "optionalInfo.prcSmsCfg.sysNoteNow"
+      "message_path": "optionalInfo.prcSmsCfg.sysNoteNow",
+      "business_key": "successSmsImmediate"
     },
     {
       "field_code": "sysNoteNext",
@@ -309,7 +330,8 @@
       "section": "optionalInfo",
       "field_class": "projection",
       "source": "fs",
-      "message_path": "optionalInfo.prcSmsCfg.sysNoteNext"
+      "message_path": "optionalInfo.prcSmsCfg.sysNoteNext",
+      "business_key": "successSmsReserved"
     },
     {
       "field_code": "sysNoteCancle",
@@ -319,7 +341,8 @@
       "section": "optionalInfo",
       "field_class": "projection",
       "source": "fs",
-      "message_path": "optionalInfo.prcSmsCfg.sysNoteCancle"
+      "message_path": "optionalInfo.prcSmsCfg.sysNoteCancle",
+      "business_key": "cancelSms"
     },
     {
       "field_code": "sysNoteErke",
@@ -329,7 +352,8 @@
       "section": "optionalInfo",
       "field_class": "projection",
       "source": "fs",
-      "message_path": "optionalInfo.prcSmsCfg.sysNoteErke"
+      "message_path": "optionalInfo.prcSmsCfg.sysNoteErke",
+      "business_key": "confirmSms"
     },
     {
       "field_code": "calcMode",
@@ -350,7 +374,8 @@
         ]
       },
       "slot_aliases": ["收费方式", "计费模式", "月租收取方式"],
-      "message_path": "optionalInfo.acctMonth.calcMode"
+      "message_path": "optionalInfo.acctMonth.calcMode",
+      "business_key": "chargeMode"
     },
     {
       "field_code": "fixFee",
@@ -366,7 +391,9 @@
       "slot_aliases": ["月费", "固费", "套餐费", "月租"],
       "extract_hint": "小数最多2位，默认单位元",
       "rule_description": "提示：小数点后2位，校验最多2位小数",
-      "message_path": "optionalInfo.acctMonth.fixFee"
+      "message_path": "optionalInfo.acctMonth.fixFee",
+      "business_key": "fixedFeeAmount",
+      "draft_aliases": ["monthlyFee"]
     },
     {
       "field_code": "acctItem",
@@ -378,7 +405,8 @@
       "source": "remote",
       "enum_config": { "type": "remote", "dict_code": "ACCT_ITEM" },
       "extract_hint": "账务科目弹窗选择",
-      "message_path": "optionalInfo.acctMonth.acctItem"
+      "message_path": "optionalInfo.acctMonth.acctItem",
+      "business_key": "accountItem"
     },
     {
       "field_code": "isSplitRate",
@@ -396,7 +424,8 @@
           { "display": "否", "value": "0" }
         ]
       },
-      "message_path": "optionalInfo.acctMonth.isSplitRate"
+      "message_path": "optionalInfo.acctMonth.isSplitRate",
+      "business_key": "taxSplitFlag"
     },
     {
       "field_code": "splitRate9",
@@ -410,7 +439,8 @@
       "decimal_places": 4,
       "visible_when": { "isSplitRate": "是" },
       "rule_description": "最多4位小数；splitRate6 = 1 - splitRate9（数值派生归 SHACL/Java，不在模板硬解）",
-      "message_path": "optionalInfo.acctMonth.splitRate9"
+      "message_path": "optionalInfo.acctMonth.splitRate9",
+      "business_key": "voiceTaxRatio"
     },
     {
       "field_code": "splitRate6",
@@ -424,7 +454,8 @@
       "decimal_places": 4,
       "visible_when": { "isSplitRate": "是" },
       "rule_description": "由 splitRate9 派生（数值派生归 SHACL/Java）",
-      "message_path": "optionalInfo.acctMonth.splitRate6"
+      "message_path": "optionalInfo.acctMonth.splitRate6",
+      "business_key": "dataTaxRatio"
     },
     {
       "field_code": "fixValidity",
@@ -442,7 +473,8 @@
           { "display": "有限期", "value": "2" }
         ]
       },
-      "message_path": "optionalInfo.acctMonth.fixValidity"
+      "message_path": "optionalInfo.acctMonth.fixValidity",
+      "business_key": "chargeValidityType"
     },
     {
       "field_code": "fixValidityVAlue",
@@ -454,7 +486,8 @@
       "source": "fs",
       "visible_when": { "fixValidity": "有限期" },
       "rule_description": "月租有效期非长期时展示；长期有效时自动隐藏",
-      "message_path": "optionalInfo.acctMonth.fixValidityVAlue"
+      "message_path": "optionalInfo.acctMonth.fixValidityVAlue",
+      "business_key": "chargeValidityValue"
     },
     {
       "field_code": "favCondition",
@@ -471,7 +504,8 @@
           { "display": "有条件", "value": "2" }
         ]
       },
-      "message_path": "optionalInfo.acctFav.favCondition"
+      "message_path": "optionalInfo.acctFav.favCondition",
+      "business_key": "prefCondition"
     },
     {
       "field_code": "favItemType",
@@ -488,7 +522,8 @@
           { "display": "账本科目", "value": "2" }
         ]
       },
-      "message_path": "optionalInfo.acctFav.favItemType"
+      "message_path": "optionalInfo.acctFav.favItemType",
+      "business_key": "prefItemType"
     },
     {
       "field_code": "favGroup",
@@ -499,7 +534,8 @@
       "field_class": "projection",
       "source": "remote",
       "visible_when": { "favItemType": "指定科目" },
-      "message_path": "optionalInfo.acctFav.favGroup"
+      "message_path": "optionalInfo.acctFav.favGroup",
+      "business_key": "prefItemGroup"
     },
     {
       "field_code": "favType",
@@ -517,7 +553,8 @@
         ]
       },
       "slot_aliases": ["优惠类型", "优惠方式"],
-      "message_path": "optionalInfo.acctFav.favType"
+      "message_path": "optionalInfo.acctFav.favType",
+      "business_key": "prefType"
     },
     {
       "field_code": "favDiscount",
@@ -530,7 +567,9 @@
       "precision": 2,
       "decimal_places": 2,
       "visible_when": { "favType": "打折" },
-      "message_path": "optionalInfo.acctFav.favDiscount"
+      "message_path": "optionalInfo.acctFav.favDiscount",
+      "business_key": "prefDiscount",
+      "draft_aliases": ["discountPercent"]
     },
     {
       "field_code": "favFee",
@@ -544,7 +583,9 @@
       "precision": 2,
       "decimal_places": 2,
       "visible_when": { "favType": "送费" },
-      "message_path": "optionalInfo.acctFav.favFee"
+      "message_path": "optionalInfo.acctFav.favFee",
+      "business_key": "prefFee",
+      "draft_aliases": ["freeFeeAmount", "giftFee"]
     },
     {
       "field_code": "favValidity",
@@ -562,7 +603,8 @@
           { "display": "有限期", "value": "2" }
         ]
       },
-      "message_path": "optionalInfo.acctFav.favValidity"
+      "message_path": "optionalInfo.acctFav.favValidity",
+      "business_key": "prefValidityType"
     },
     {
       "field_code": "favValidityVAlue",
@@ -573,7 +615,8 @@
       "field_class": "projection",
       "source": "fs",
       "visible_when": { "favValidity": "有限期" },
-      "message_path": "optionalInfo.acctFav.favValidityVAlue"
+      "message_path": "optionalInfo.acctFav.favValidityVAlue",
+      "business_key": "prefValidityValue"
     },
     {
       "field_code": "favDesc",

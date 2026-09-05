@@ -10,15 +10,22 @@
 # ============================================================
 @prefix sh: <http://www.w3.org/ns/shacl#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix ex: <http://example.org/> .
+
+# 注解约定：sh:name 按 shacl.ttl 本体域为 PropertyShape 专属，NodeShape 使用会被
+# RDF4J ShaclSail 推断为双类型（multiple types，见 discussion #4287）。
+# 因此 NodeShape 的 R-C 编号用 rdfs:label 标注，PropertyShape 仍用 sh:name；
+# ShaclValidationDelegate 两处都识别。
 
 ex:OfferingShape a sh:NodeShape ;
     sh:targetClass ex:Offering ;
     sh:property ex:OfferingNameRequiredShape,
                 ex:FixedFeeRequiredShape,
                 ex:ChannelScopeRequiredShape,
-                ex:MutexGroupExclusiveShape,
-                ex:ZeroFeeNoContractShape .
+                ex:MutexGroupExclusiveShape .
+    # ZeroFeeNoContractShape（sh:NodeShape）不进 sh:property（RDF4J 禁止同一 shape 双类型），
+    # 经其自身 sh:targetClass ex:Offering 独立生效。
 
 # ------------------------------------------------------------
 # R-C06 必填缺失：offeringName / fixedFeeAmount / channelScope
@@ -62,33 +69,30 @@ ex:MutexGroupExclusiveShape a sh:PropertyShape ;
 # R-C05 高风险零固费：固费=0 且一次性费=0 且无合约 → 禁止（非白名单）
 # 白名单（equityGiftWhitelist 场景）与「内部验证」渠道在 Java 引擎豁免；
 # SHACL 侧由 draftToStatements 投影时跳过豁免草稿（保持单点语义，见 ShaclValidationDelegate）
+# 语义要点：SHACL 违规 = 节点不满足 shape。故 shape 直接以 sh:or 列「合规出路」：
+#   fee>0 ∨ fee<0 ∨ oneTime>0 ∨ hasContract=true ∨ fee未声明，
+# 任一出路满足即合规；全部出路不成立（= 显式零固费 + 零一次性费 + 无合约）时违规。
+# 与 Java 引擎 resolveFixedFee 缺省 -1 对齐：固费未声明不触发；oneTimeFee 缺省 0 计入。
 # ------------------------------------------------------------
 ex:ZeroFeeNoContractShape a sh:NodeShape ;
     sh:targetClass ex:Offering ;
-    sh:name "R-C05" ;
+    rdfs:label "R-C05" ;
     sh:message "R-C05: zero fee no contract (高风险资费：固费/一次性费均为0且无合约)" ;
     sh:severity sh:Violation ;
-    sh:not [
-        a sh:NodeShape ;
-        sh:property [
-            a sh:PropertyShape ;
-            sh:path ex:fixedFeeAmount ;
-            sh:minExclusive 0 ;
+    sh:or (
+        [ a sh:PropertyShape ; sh:path ex:fixedFeeAmount ; sh:minCount 1 ; sh:minExclusive 0 ]
+        [ a sh:PropertyShape ; sh:path ex:fixedFeeAmount ; sh:minCount 1 ; sh:maxExclusive 0 ]
+        [ a sh:PropertyShape ; sh:path ex:oneTimeFee ; sh:minCount 1 ; sh:minExclusive 0 ]
+        [ a sh:PropertyShape ; sh:path ex:hasContract ; sh:hasValue true ]
+        [
+            a sh:NodeShape ;
+            sh:not [
+                a sh:NodeShape ;
+                sh:property [
+                    a sh:PropertyShape ;
+                    sh:path ex:fixedFeeAmount ;
+                    sh:minCount 1 ;
+                ]
+            ]
         ]
-    ] ;
-    sh:not [
-        a sh:NodeShape ;
-        sh:property [
-            a sh:PropertyShape ;
-            sh:path ex:oneTimeFee ;
-            sh:minExclusive 0 ;
-        ]
-    ] ;
-    sh:not [
-        a sh:NodeShape ;
-        sh:property [
-            a sh:PropertyShape ;
-            sh:path ex:hasContract ;
-            sh:hasValue true ;
-        ]
-    ] .
+    ) .
