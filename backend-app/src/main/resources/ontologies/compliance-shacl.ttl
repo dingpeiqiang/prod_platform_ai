@@ -1,0 +1,94 @@
+# ============================================================
+# compliance-shacl.ttl（R7 SHACL 试点）
+# 目的：把配置合规 R-C06/R-C03/R-C05 三条可声明化规则迁移为 SHACL PropertyShape，
+#       与 Java 规则引擎（ComplianceRuleEngine）并跑比对（ComplianceParityTest），
+#       一致率 ≥99% 后作为合规校验事实源。
+# 命名空间：复用 baseIri（prodai.ontology.base-iri，默认 http://example.org/）。
+# 映射约定：violation.rule → R-C 编号（ShaclValidationDelegate 解析 sh:message 前缀）。
+# 对齐 AGENTS.md JSON 契约：草稿字段 lowerCamelCase，经 draftToStatements 投影为
+#   {baseIri}offering/{offeringId} 主体 + {baseIri}{field} 谓词。
+# ============================================================
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex: <http://example.org/> .
+
+ex:OfferingShape a sh:NodeShape ;
+    sh:targetClass ex:Offering ;
+    sh:property ex:OfferingNameRequiredShape,
+                ex:FixedFeeRequiredShape,
+                ex:ChannelScopeRequiredShape,
+                ex:MutexGroupExclusiveShape,
+                ex:ZeroFeeNoContractShape .
+
+# ------------------------------------------------------------
+# R-C06 必填缺失：offeringName / fixedFeeAmount / channelScope
+# （messageRootKey 由品类模板补全 R-C01/R-C02 前置填充，SHACL 只卡三条硬必填）
+# ------------------------------------------------------------
+ex:OfferingNameRequiredShape a sh:PropertyShape ;
+    sh:path ex:offeringName ;
+    sh:minCount 1 ;
+    sh:name "R-C06" ;
+    sh:message "R-C06: offeringName required (必填缺失：资费名称)" ;
+    sh:severity sh:Violation .
+
+ex:FixedFeeRequiredShape a sh:PropertyShape ;
+    sh:path ex:fixedFeeAmount ;
+    sh:minCount 1 ;
+    sh:datatype xsd:double ;
+    sh:name "R-C06" ;
+    sh:message "R-C06: fixedFeeAmount required (必填缺失：固费金额)" ;
+    sh:severity sh:Violation .
+
+ex:ChannelScopeRequiredShape a sh:PropertyShape ;
+    sh:path ex:channelScope ;
+    sh:minCount 1 ;
+    sh:name "R-C06" ;
+    sh:message "R-C06: channelScope required (必填缺失：销售渠道)" ;
+    sh:severity sh:Violation .
+
+# ------------------------------------------------------------
+# R-C03 互斥冲突：同一 mutexGroup 下已绑定在架主资费时禁止再挂同组互斥关系
+# 表达为：一个 Offering 节点最多声明一个 ex:blocksCombination 对象
+# （Java 引擎语义：bindExistingMainPkg 与在架商品同组互斥 → blocksCombination 边被禁止）
+# ------------------------------------------------------------
+ex:MutexGroupExclusiveShape a sh:PropertyShape ;
+    sh:path ex:blocksCombination ;
+    sh:maxCount 0 ;
+    sh:name "R-C03" ;
+    sh:message "R-C03: mutex conflict (资费/关系冲突：同互斥组不可同时上架)" ;
+    sh:severity sh:Violation .
+
+# ------------------------------------------------------------
+# R-C05 高风险零固费：固费=0 且一次性费=0 且无合约 → 禁止（非白名单）
+# 白名单（equityGiftWhitelist 场景）与「内部验证」渠道在 Java 引擎豁免；
+# SHACL 侧由 draftToStatements 投影时跳过豁免草稿（保持单点语义，见 ShaclValidationDelegate）
+# ------------------------------------------------------------
+ex:ZeroFeeNoContractShape a sh:NodeShape ;
+    sh:targetClass ex:Offering ;
+    sh:name "R-C05" ;
+    sh:message "R-C05: zero fee no contract (高风险资费：固费/一次性费均为0且无合约)" ;
+    sh:severity sh:Violation ;
+    sh:not [
+        a sh:NodeShape ;
+        sh:property [
+            a sh:PropertyShape ;
+            sh:path ex:fixedFeeAmount ;
+            sh:minExclusive 0 ;
+        ]
+    ] ;
+    sh:not [
+        a sh:NodeShape ;
+        sh:property [
+            a sh:PropertyShape ;
+            sh:path ex:oneTimeFee ;
+            sh:minExclusive 0 ;
+        ]
+    ] ;
+    sh:not [
+        a sh:NodeShape ;
+        sh:property [
+            a sh:PropertyShape ;
+            sh:path ex:hasContract ;
+            sh:hasValue true ;
+        ]
+    ] .
