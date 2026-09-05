@@ -4,6 +4,9 @@
 --   1) H2 MODE=MySQL：MERGE INTO ... KEY(...) 替代 MySQL ON DUPLICATE KEY UPDATE
 --   2) NOW(6) → CURRENT_TIMESTAMP（H2 精度默认即可）
 --   3) 幂等：重复执行不产生重复数据
+--   4) LLM 模型配置（pd_ai_llm_user_configs）为「仅首次插入」语义：
+--      已存在的配置重启后不会被种子覆盖（保护用户在管理页保存的
+--      api_key / 激活状态等运行时数据），其余种子表仍为 MERGE 覆盖语义
 -- ============================================================
 
 -- ------------------------------------------------------------
@@ -115,6 +118,8 @@ MERGE INTO pd_ai_prompt_templates (
 
 -- ------------------------------------------------------------
 -- 4. LLM 模型配置种子（唯一配置来源，替代原 yml prodai.llm.models）
+--    仅在配置不存在时插入（INSERT IF ABSENT），避免每次重启
+--    覆盖用户在「模型配置」页保存的 api_key / 激活状态等运行时数据。
 --    生产务必修改 api_key（通过环境变量/密钥管理注入，禁止明文落盘）
 -- ------------------------------------------------------------
 
@@ -124,13 +129,13 @@ MERGE INTO pd_ai_llm_user_configs (
     auth_type, api_format, is_full_url,
     temperature, max_tokens, thinking, stream_enabled, max_input_tokens,
     is_active, config_name, created_at, updated_at
-) KEY (user_identifier, config_name) VALUES (
-    'default',
+) KEY (user_identifier, config_name)
+SELECT 'default',
     'custom',
     'qwen3-30b-a3b',
-    NULL,
-    'https://aicp.teamshub.com/openai/api/v1/openai/v1/chat/completions',
-    'bearer',
+    'cb3a5cb469de1d0820d25a1e6349306dc4482f90',
+    'https://aicp.teamshub.com/openai/api/v1/openai/v1',
+    'custom',
     'openai',
     1,
     0.3,
@@ -142,6 +147,9 @@ MERGE INTO pd_ai_llm_user_configs (
     'teamshub-qwen3-30b-a3b',
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
+WHERE NOT EXISTS (
+    SELECT 1 FROM pd_ai_llm_user_configs
+    WHERE user_identifier = 'default' AND config_name = 'teamshub-qwen3-30b-a3b'
 );
 
 -- 原 yml deepseek-chat（硅基流动，未激活备用）
@@ -150,8 +158,8 @@ MERGE INTO pd_ai_llm_user_configs (
     auth_type, api_format, is_full_url,
     temperature, max_tokens, thinking, stream_enabled, max_input_tokens,
     is_active, config_name, created_at, updated_at
-) KEY (user_identifier, config_name) VALUES (
-    'default',
+) KEY (user_identifier, config_name)
+SELECT 'default',
     'custom',
     'deepseek-ai/DeepSeek-V4-Flash',
     NULL,
@@ -168,6 +176,9 @@ MERGE INTO pd_ai_llm_user_configs (
     'deepseek-chat',
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
+WHERE NOT EXISTS (
+    SELECT 1 FROM pd_ai_llm_user_configs
+    WHERE user_identifier = 'default' AND config_name = 'deepseek-chat'
 );
 
 -- ------------------------------------------------------------

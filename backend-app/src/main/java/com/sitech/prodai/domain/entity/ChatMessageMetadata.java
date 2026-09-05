@@ -30,7 +30,10 @@ public class ChatMessageMetadata {
     @TableField("meta_key")
     private String metaKey;
 
-    @TableField("value")
+    /**
+     * VALUE 是 H2/MySQL 保留字，生成的 INSERT 必须带引号转义，否则报语法错误
+     */
+    @TableField("\"value\"")
     private String value;
 
     @TableField(value = "created_at", fill = FieldFill.INSERT)

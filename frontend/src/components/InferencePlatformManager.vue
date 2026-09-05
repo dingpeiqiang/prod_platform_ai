@@ -160,6 +160,11 @@
             </el-form-item>
             <el-form-item label="Base URL" prop="base_url">
               <el-input v-model="formData.base_url" placeholder="https://api.example.com/v1" />
+              <span class="form-hint">填写到 /v1 为止的标准地址；若填写了含 /chat/completions 的完整地址，请开启下方「完整地址」开关</span>
+            </el-form-item>
+            <el-form-item label="完整地址">
+              <el-switch v-model="formData.is_full_url" active-text="是" inactive-text="否" />
+              <span class="form-hint">Base URL 已是完整端点（含 /chat/completions）时开启，后端不再追加 /v1 前缀</span>
             </el-form-item>
             <el-form-item label="温度">
               <el-slider v-model="formData.temperature" :min="0" :max="2" :step="0.1" show-input />
@@ -340,6 +345,7 @@ const formData = reactive({
   model: '',
   api_key: '',
   base_url: '',
+  is_full_url: false,
   temperature: 0.3,
   max_tokens: 2048,
   max_input_tokens: 180000,
@@ -416,6 +422,7 @@ const handleEditConfig = (config) => {
     model: config.model || '',
     api_key: config.api_key || '',
     base_url: config.base_url || '',
+    is_full_url: !!config.is_full_url,
     temperature: config.temperature || 0.3,
     max_tokens: config.max_tokens || 2048,
     max_input_tokens: config.max_input_tokens || 180000,
@@ -500,11 +507,13 @@ const handleSave = async () => {
   saving.value = true
   try {
     const result = await saveConfig({
+      config_id: editingConfig.value ? editingConfig.value.id : undefined,
       user_identifier: userStore.username || 'default',
       provider: formData.provider,
       model: formData.model,
       api_key: formData.api_key || null,
       base_url: formData.base_url || null,
+      is_full_url: !!formData.is_full_url,
       temperature: Number(formData.temperature) || 0,
       max_tokens: Number(formData.max_tokens) || 0,
       max_input_tokens: Number(formData.max_input_tokens) || 0,

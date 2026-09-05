@@ -198,7 +198,7 @@ public class LlmService {
                     Flux.just(event("text_end", null), doneEvent())
             ).onErrorResume(ex -> Flux.just(
                     event("text_start", null),
-                    event("text", "LLM 调用失败: " + ex.getMessage()),
+                    event("text", userFriendlyLlmError(ex)),
                     event("text_end", null),
                     doneEvent()
             ));
@@ -238,12 +238,77 @@ public class LlmService {
         );
 
         return Flux.concat(startEvent, chunks, end)
-                .onErrorResume(ex -> Flux.just(
-                        event("text_start", null),
-                        event("text", "LLM 调用失败: " + ex.getMessage()),
-                        event("text_end", null),
-                        doneEvent()
-                ));
+                .onErrorResume(ex -> {
+                    // 网关不支持 SSE 时会返回 HTTP 200 + 普通 JSON（如 {"id":...,"choices":[...]}），
+                    // Spring AI 按流式解析该 JSON 必然失败（Failed to json / JsonEOFException）。
+                    // 此场景流式已产出的内容不可信，自动降级为非流式调用重试一次，用户无感修复。
+                    if (isStreamFormatError(ex) && respChars.get() == 0) {
+                        log.warn("[LlmService] 网关不支持流式响应，自动降级为非流式重试 model={} elapsed={}ms error={}",
+                                model, System.currentTimeMillis() - start, ex.getMessage());
+                        return Flux.concat(
+                                Flux.fromIterable(nonStreamText(request)),
+                                Flux.just(event("text_end", null), doneEvent())
+                        ).onErrorResume(fallbackEx -> Flux.just(
+                                event("text", userFriendlyLlmError(fallbackEx)),
+                                event("text_end", null),
+                                doneEvent()
+                        ));
+                    }
+                    return Flux.just(
+                            event("text", userFriendlyLlmError(ex)),
+                            event("text_end", null),
+                            doneEvent()
+                    );
+                });
+    }
+
+    /**
+     * 判定是否为「流式响应格式错误」：网关返回了非 SSE 响应体（普通 JSON / 非法数据），
+     * 导致 Spring AI 流式 JSON 解析失败。特征：Failed to json、JsonEOFException（单字符 "{"）等。
+     */
+    private boolean isStreamFormatError(Throwable ex) {
+        String msg = ex == null ? "" : String.valueOf(ex.getMessage());
+        Throwable cause = ex == null ? null : ex.getCause();
+        String causeMsg = cause == null ? "" : String.valueOf(cause.getMessage());
+        String combined = msg + " || " + causeMsg;
+        String lower = combined.toLowerCase(Locale.ROOT);
+        return lower.contains("failed to json") || lower.contains("json eof")
+                || (lower.contains("unexpected char") && lower.contains("json"));
+    }
+
+    /**
+     * 将底层异常翻译为面向用户的可行动文案，区分三类真实问题：
+     * <ul>
+     *   <li>URL/路由错误（404、Failed to json、IllegalStateException 拼接异常）→ 指向 base_url 配置检查；</li>
+     *   <li>网关不支持流式（JSON 解析失败、非 SSE 响应体）→ 建议关闭 stream_enabled；</li>
+     *   <li>其余 → 保留原始异常信息。</li>
+     * </ul>
+     */
+    private String userFriendlyLlmError(Throwable ex) {
+        String msg = ex == null ? "" : String.valueOf(ex.getMessage());
+        Throwable cause = ex == null ? null : ex.getCause();
+        String causeMsg = cause == null ? "" : String.valueOf(cause.getMessage());
+        String combined = msg + " || " + causeMsg;
+        String lower = combined.toLowerCase(Locale.ROOT);
+
+        // 网关返回了非流式/非 JSON 响应体（如完整 JSON 被按 SSE 逐字符解析）
+        if (lower.contains("failed to json") || lower.contains("json eof")
+                || (lower.contains("unexpected char") && lower.contains("json"))) {
+            return "大模型网关返回了非流式响应（当前网关可能不支持 SSE 流式）："
+                    + "请在「模型配置」管理页关闭当前模型的「流式输出」开关后重试。";
+        }
+        // 请求 URL 路由失败/端点不存在
+        if (lower.contains("404") || lower.contains("not found") || lower.contains("no static resource")) {
+            return "大模型服务端点不存在（HTTP 404）：请求 URL 拼接后无效，"
+                    + "请在「模型配置」管理页检查当前模型 base_url 是否为正确的 OpenAI 兼容地址（形如 https://host/v1）。";
+        }
+        // 连接建立失败
+        if (lower.contains("connection refused") || lower.contains("unknownhost")
+                || lower.contains("connect timed out") || lower.contains("unresolved")) {
+            return "无法连接大模型网关（网络/DNS 异常）：请检查 base_url 域名是否正确、网络是否可达。";
+        }
+        // 认证类错误维持既有文案通道（LlmConfigException 已在上游翻译），这里兜底
+        return "LLM 调用失败: " + msg;
     }
 
     /** 非流式调用：将完整结果拆分为单个 text 事件。 */
@@ -266,16 +331,28 @@ public class LlmService {
                 System.getenv().getOrDefault("LLM_BASE_URL", "https://api.openai.com"));
         String apiKey = getStringFromConfig(effectiveConfig, "api_key", "apiKey",
                 System.getenv().getOrDefault("LLM_API_KEY", "sk-placeholder"));
-        Boolean isFullUrl = effectiveConfig != null && parseBoolean(effectiveConfig.get("is_full_url"));
 
         // 鉴权方式：bearer（默认，Authorization: Bearer）| custom（auth_header 指定请求头，如网关要求的 token）。
         String authType = getStringFromConfig(effectiveConfig, "auth_type", "authType", "bearer");
         String authHeaderName = getStringFromConfig(effectiveConfig, "auth_header", "authHeader", "");
         boolean customAuth = "custom".equalsIgnoreCase(authType);
+        boolean isFullUrl = effectiveConfig != null && parseBoolean(effectiveConfig.get("is_full_url"));
 
-        String normalizedBaseUrl = normalizeBaseUrl(baseUrl, isFullUrl);
+        // base_url 按配置原样使用，不做任何路径改写：
+        // is_full_url=true  → Spring AI 直接在配置地址后追加裸 /chat/completions；
+        // is_full_url=false → Spring AI 按默认规则追加 /v1/chat/completions（配置应形如 https://host/v1）。
+        // 防呆兜底：配置声称非完整地址（is_full_url=false）但 base_url 已以 /v1 结尾时，
+        // 若仍按标准规则追加会形成 /v1/v1/ 重复段（历史数据常见，如企业网关地址 .../openai/api/v1）。
+        // 此时自动按完整地址处理，避免依赖用户手动修正配置开关。
+        String normalizedBaseUrl = ensureTrailingSlash(baseUrl);
+        if (!isFullUrl && normalizedBaseUrl != null
+                && (normalizedBaseUrl.endsWith("/v1/") || normalizedBaseUrl.endsWith("/v1"))) {
+            log.warn("[LlmService] base_url 已含 /v1 结尾但 is_full_url=false，自动按完整地址处理: {}", normalizedBaseUrl);
+            isFullUrl = true;
+        }
+        String completionsPath = isFullUrl ? "/chat/completions" : "/v1/chat/completions";
 
-        String cacheKey = normalizedBaseUrl + "|" + apiKey + "|" + authType + "|" + authHeaderName;
+        String cacheKey = normalizedBaseUrl + "|" + completionsPath + "|" + apiKey + "|" + authType + "|" + authHeaderName;
         return clientCache.computeIfAbsent(cacheKey, key -> {
             SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
             requestFactory.setConnectTimeout(30_000);
@@ -301,6 +378,7 @@ public class LlmService {
 
             OpenAiApi.Builder apiBuilder = OpenAiApi.builder()
                     .baseUrl(normalizedBaseUrl)
+                    .completionsPath(completionsPath)
                     .restClientBuilder(restClientBuilder);
 
             if (customAuth) {
@@ -321,15 +399,11 @@ public class LlmService {
         });
     }
 
-    private String normalizeBaseUrl(String baseUrl, boolean isFullUrl) {
-        baseUrl = baseUrl == null ? "" : baseUrl;
-        baseUrl = baseUrl.replaceAll("/v1/chat/completions$", "");
-        baseUrl = baseUrl.replaceAll("/v1/completions$", "");
-        // Spring AI 的 OpenAI 兼容客户端会在 baseUrl 之后自动拼接 /v1/chat/completions，
-        // 因此这里去掉末尾 /v1，避免生成 …/v1/v1/chat/completions 这类重复路径。
-        if (!isFullUrl) {
-            baseUrl = baseUrl.replaceAll("/v1$", "");
+    private String ensureTrailingSlash(String baseUrl) {
+        if (baseUrl == null || baseUrl.isBlank()) {
+            return baseUrl;
         }
+        baseUrl = baseUrl.strip();
         if (!baseUrl.endsWith("/")) {
             baseUrl = baseUrl + "/";
         }
@@ -665,8 +739,17 @@ public class LlmService {
         if (flagFalse && code4011) {
             return "LLM 网关认证失败（resultCode=4011）";
         }
+        // teamshub 网关把上游认证失败包装为 HTTP 500 + resultCode=5004（aiopenMsg 内含
+        // "401 Unauthorized from POST https://aiproxy..."），同样是配置类错误，需精准识别
+        boolean code5004 = t.contains("5004") && t.contains("resultcode");
+        if (flagFalse && code5004 && (t.contains("401 unauthorized") || t.contains("认证令牌") || t.contains("authentication_error"))) {
+            return "LLM 网关上游认证失败（resultCode=5004，网关转发上游 401）";
+        }
         if (t.contains("授权信息未传入")) {
             return "LLM 网关认证失败：授权信息未传入";
+        }
+        if (t.contains("认证令牌无效") || t.contains("认证令牌已过期")) {
+            return "LLM 网关认证失败：认证令牌无效或已过期";
         }
         if (t.contains("401") && (t.contains("unauthorized") || t.contains("非 2xx") || t.contains("non 2xx"))) {
             return "LLM 网关认证失败（HTTP 401）";

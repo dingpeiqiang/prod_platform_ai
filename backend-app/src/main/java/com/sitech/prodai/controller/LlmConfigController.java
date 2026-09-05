@@ -63,28 +63,71 @@ public class LlmConfigController {
             return fail("model is required");
         }
 
-        findByUserIdentifier(userId).forEach(item -> {
-            item.setIsActive(false);
-            repository.updateById(item);
-        });
+        // 编辑已有配置：优先按 config_id 精确更新；未带 id 时按 (user_identifier, config_name) 匹配，
+        // 避免前端「保存修改」被当作新增而在库里产生重复配置
+        LlmUserConfig config = resolveExistingConfig(request, userId);
+        boolean isUpdate = config != null;
+        if (config == null) {
+            config = new LlmUserConfig();
+            config.setUserIdentifier(userId);
+        }
 
-        LlmUserConfig config = new LlmUserConfig();
-        config.setUserIdentifier(userId);
+        if (!isUpdate || Boolean.TRUE.equals(request.get("is_active"))) {
+            // 仅在新增或显式要求激活时，将其他配置置为非激活
+            final Integer currentId = config.getId();
+            findByUserIdentifier(userId).stream()
+                    .filter(item -> currentId == null || !item.getId().equals(currentId))
+                    .forEach(item -> {
+                        item.setIsActive(false);
+                        repository.updateById(item);
+                    });
+        }
+
         config.setProvider(strOrDefault(request.get("provider"), ModelProvider.CUSTOM.getValue()));
         config.setModel(model);
         config.setApiKey(str(request.get("api_key")));
         config.setBaseUrl(str(request.get("base_url")));
+        // is_full_url：base_url 是否已含 /v1 等完整路径（决定后端追加裸 /chat/completions
+        // 还是标准 /v1/chat/completions）。请求未携带时编辑保留原值，新增默认 false。
+        boolean isFullUrl = request.containsKey("is_full_url")
+                ? boolOrDefault(request.get("is_full_url"), false)
+                : (isUpdate && config.getIsFullUrl() != null && config.getIsFullUrl());
+        config.setIsFullUrl(isFullUrl);
         config.setTemperature(doubleOrDefault(request.get("temperature"), 0.3));
         config.setMaxTokens(intOrDefault(request.get("max_tokens"), 2048));
         config.setThinking(boolOrDefault(request.get("thinking"), false));
         config.setStreamEnabled(boolOrDefault(request.get("stream_enabled"), true));
         config.setMaxInputTokens(intOrDefault(request.get("max_input_tokens"), 180000));
         config.setConfigName(str(request.get("config_name")));
-        config.setIsActive(true);
+        config.setIsActive(request.containsKey("is_active")
+                ? boolOrDefault(request.get("is_active"), true)
+                : true);
         config.setLastUsedAt(LocalDateTime.now());
 
         LlmUserConfig saved = save(config);
-        return ok(saved, "配置保存成功");
+        return ok(saved, isUpdate ? "配置更新成功" : "配置保存成功");
+    }
+
+    /**
+     * 解析待更新的已有配置：请求带 config_id 时按主键查找；否则按
+     * (user_identifier, config_name) 唯一键匹配。未命中返回 null（走新增）。
+     */
+    private LlmUserConfig resolveExistingConfig(Map<String, Object> request, String userId) {
+        Integer configId = intOrDefault(request.get("config_id"), null);
+        if (configId != null) {
+            LlmUserConfig existing = repository.selectById(configId);
+            if (existing != null) {
+                return existing;
+            }
+        }
+        String configName = str(request.get("config_name"));
+        if (configName == null || configName.isBlank()) {
+            return null;
+        }
+        return findByUserIdentifier(userId).stream()
+                .filter(item -> configName.equals(item.getConfigName()))
+                .findFirst()
+                .orElse(null);
     }
 
     @GetMapping("/active/{userIdentifier}")
@@ -257,6 +300,7 @@ public class LlmConfigController {
         map.put("provider", config.getProvider());
         map.put("model", config.getModel());
         map.put("base_url", config.getBaseUrl());
+        map.put("is_full_url", config.getIsFullUrl());
         map.put("temperature", config.getTemperature());
         map.put("max_tokens", config.getMaxTokens());
         map.put("thinking", config.getThinking());

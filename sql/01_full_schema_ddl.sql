@@ -59,7 +59,7 @@ CREATE TABLE `pd_ai_chat_message_metadata` (
                                                `id`                 INT          NOT NULL AUTO_INCREMENT COMMENT '自增主键',
                                                `message_id`         VARCHAR(64)  NOT NULL COMMENT '所属消息ID',
                                                `meta_key`           VARCHAR(100) NOT NULL COMMENT '扩展字段名',
-                                               `value`              TEXT                  DEFAULT NULL COMMENT '扩展字段值',
+                                               `"value"`            TEXT                  DEFAULT NULL COMMENT '扩展字段值（VALUE为保留字，需引号转义）',
                                                `created_at`         DATETIME(6)           DEFAULT NULL COMMENT '创建时间',
                                                PRIMARY KEY (`id`),
                                                UNIQUE KEY `uq_message_key` (`message_id`, `meta_key`),
