@@ -124,6 +124,11 @@ public class ProductOntologyService {
         syncFactGraphToRdf();
     }
 
+    /** R5：注入 ABox 同步状态回调（由 ABoxSyncScheduler 装配后调用；mock 源不注入）。 */
+    public void setAboxSyncStatusSupplier(java.util.function.Supplier<Map<String, Object>> supplier) {
+        graphManager.setAboxSyncStatusSupplier(supplier);
+    }
+
     /** 事实图 → 本体图同步；SPARQL 不可读时仅告警降级。 */
     private void syncFactGraphToRdf() {
         try {

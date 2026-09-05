@@ -64,8 +64,19 @@ prodai:
     # 生产默认关闭演示数据护栏；本地演示见 application-dev.yml / application-demo.yml
     # 演示与生产共用同一套业务代码，仅 graph-path / data-source 不同
     demo-enabled: false
-    # classpath | http | empty
+    # classpath | http | jdbc | empty
     data-source: ${ONTOLOGY_DATA_SOURCE:classpath}
+    # ABox 生产同步源（R5）：mock（默认，走 classpath/http）| jdbc（业务系统只读库直连）
+    abox-source: ${ABOX_SOURCE:mock}
+    # abox-source=jdbc 时生效：首次全量 + 定时刷新（分钟），失败自动回退 last-known-good
+    abox-sync-enabled: ${ABOX_SYNC_ENABLED:true}
+    abox-sync-interval-minutes: ${ABOX_SYNC_INTERVAL_MINUTES:30}
+    abox-jdbc-url: ${ABOX_JDBC_URL:}
+    abox-jdbc-username: ${ABOX_JDBC_USERNAME:}
+    abox-jdbc-password: ${ABOX_JDBC_PASSWORD:}
+    abox-jdbc-driver: ${ABOX_JDBC_DRIVER:com.mysql.cj.jdbc.Driver}
+    # 单次同步最大行数护栏（防全表拖垮内存）
+    abox-max-rows: ${ABOX_MAX_ROWS:10000}
     graph-path: ${ONTOLOGY_GRAPH_PATH:}
     ops-graph-path: ${ONTOLOGY_OPS_GRAPH_PATH:}
     product-center-base-url: ${PRODUCT_CENTER_BASE_URL:}

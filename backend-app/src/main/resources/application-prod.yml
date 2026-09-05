@@ -8,6 +8,15 @@ prodai:
   ontology:
     demo-enabled: false
     data-source: ${ONTOLOGY_DATA_SOURCE:classpath}
+    # R5：生产可切 ABox JDBC 只读同步（默认 mock 保持现状；切 jdbc 需配 ABOX_JDBC_URL）
+    abox-source: ${ABOX_SOURCE:mock}
+    abox-sync-enabled: ${ABOX_SYNC_ENABLED:true}
+    abox-sync-interval-minutes: ${ABOX_SYNC_INTERVAL_MINUTES:30}
+    abox-jdbc-url: ${ABOX_JDBC_URL:}
+    abox-jdbc-username: ${ABOX_JDBC_USERNAME:}
+    abox-jdbc-password: ${ABOX_JDBC_PASSWORD:}
+    abox-jdbc-driver: ${ABOX_JDBC_DRIVER:com.mysql.cj.jdbc.Driver}
+    abox-max-rows: ${ABOX_MAX_ROWS:10000}
     graph-path: ${ONTOLOGY_GRAPH_PATH:classpath:ontology/ops_graph_export.json}
     ops-graph-path: ${ONTOLOGY_OPS_GRAPH_PATH:classpath:ontology/ops_graph_export.json}
     product-center-base-url: ${PRODUCT_CENTER_BASE_URL:}

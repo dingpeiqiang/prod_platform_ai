@@ -3,6 +3,8 @@ prodai:
     # 本地联调：指向演示数据文件（与生产同一套代码，只换配置）
     demo-enabled: true
     data-source: classpath
+    # R5：dev 固定 mock 源（本地联调不直连业务库）
+    abox-source: mock
     graph-path: classpath:ontology/mock_graph.json
     ops-graph-path: classpath:ontology/mock_graph.json
     rdf-seed-path: classpath:ontology/rdf_seed.json

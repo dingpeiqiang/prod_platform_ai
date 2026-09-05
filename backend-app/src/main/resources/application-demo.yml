@@ -4,6 +4,8 @@ prodai:
   ontology:
     demo-enabled: true
     data-source: classpath
+    # R5：demo 固定 mock 源（演示不直连业务库）
+    abox-source: mock
     graph-path: classpath:ontology/mock_graph.json
     ops-graph-path: classpath:ontology/mock_graph.json
     rdf-seed-path: classpath:ontology/rdf_seed.json

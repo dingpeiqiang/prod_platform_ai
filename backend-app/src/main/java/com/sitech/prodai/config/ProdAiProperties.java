@@ -106,6 +106,26 @@ public class ProdAiProperties {
         private boolean batchAuditEnabled = false;
         /** 批量稽核 cron，默认每天 02:00。 */
         private String batchAuditCron = "0 0 2 * * ?";
+        /**
+         * ABox 生产同步源（R5）：mock | jdbc。
+         * mock = 现状 classpath/HTTP 事实图（dev/demo）；jdbc = 业务系统只读库直连，
+         * 由 {@code ABoxSyncScheduler} 首次全量 + 定时刷新，失败自动回退 last-known-good。
+         */
+        private String aboxSource = "mock";
+        /** ABox JDBC 同步开关（@Scheduled 定时刷新；aboxSource=jdbc 时生效）。 */
+        private boolean aboxSyncEnabled = false;
+        /** ABox 定时刷新间隔（分钟），默认 30 分钟。 */
+        private int aboxSyncIntervalMinutes = 30;
+        /** ABox JDBC 连接 URL（只读账号；空则 jdbc 源不可用）。 */
+        private String aboxJdbcUrl = "";
+        /** ABox JDBC 用户名。 */
+        private String aboxJdbcUsername = "";
+        /** ABox JDBC 密码（生产经环境变量/密钥管理注入，禁止明文落盘）。 */
+        private String aboxJdbcPassword = "";
+        /** ABox JDBC 驱动类名，默认 MySQL。 */
+        private String aboxJdbcDriver = "com.mysql.cj.jdbc.Driver";
+        /** 单次同步最大行数护栏（防全表拖垮内存），默认 10000。 */
+        private int aboxMaxRows = 10000;
 
         public boolean isDemoEnabled() {
             return demoEnabled;
@@ -233,6 +253,71 @@ public class ProdAiProperties {
 
         public void setBatchAuditCron(String batchAuditCron) {
             this.batchAuditCron = batchAuditCron == null ? "" : batchAuditCron;
+        }
+
+        public String getAboxSource() {
+            return aboxSource == null || aboxSource.isBlank() ? "mock" : aboxSource.trim().toLowerCase();
+        }
+
+        public void setAboxSource(String aboxSource) {
+            this.aboxSource = aboxSource;
+        }
+
+        public boolean isAboxSyncEnabled() {
+            return aboxSyncEnabled;
+        }
+
+        public void setAboxSyncEnabled(boolean aboxSyncEnabled) {
+            this.aboxSyncEnabled = aboxSyncEnabled;
+        }
+
+        public int getAboxSyncIntervalMinutes() {
+            return Math.max(1, aboxSyncIntervalMinutes);
+        }
+
+        public void setAboxSyncIntervalMinutes(int aboxSyncIntervalMinutes) {
+            this.aboxSyncIntervalMinutes = aboxSyncIntervalMinutes;
+        }
+
+        public String getAboxJdbcUrl() {
+            return aboxJdbcUrl == null ? "" : aboxJdbcUrl.trim();
+        }
+
+        public void setAboxJdbcUrl(String aboxJdbcUrl) {
+            this.aboxJdbcUrl = aboxJdbcUrl;
+        }
+
+        public String getAboxJdbcUsername() {
+            return aboxJdbcUsername == null ? "" : aboxJdbcUsername.trim();
+        }
+
+        public void setAboxJdbcUsername(String aboxJdbcUsername) {
+            this.aboxJdbcUsername = aboxJdbcUsername;
+        }
+
+        public String getAboxJdbcPassword() {
+            return aboxJdbcPassword == null ? "" : aboxJdbcPassword;
+        }
+
+        public void setAboxJdbcPassword(String aboxJdbcPassword) {
+            this.aboxJdbcPassword = aboxJdbcPassword;
+        }
+
+        public String getAboxJdbcDriver() {
+            return aboxJdbcDriver == null || aboxJdbcDriver.isBlank()
+                    ? "com.mysql.cj.jdbc.Driver" : aboxJdbcDriver.trim();
+        }
+
+        public void setAboxJdbcDriver(String aboxJdbcDriver) {
+            this.aboxJdbcDriver = aboxJdbcDriver;
+        }
+
+        public int getAboxMaxRows() {
+            return Math.max(1, aboxMaxRows);
+        }
+
+        public void setAboxMaxRows(int aboxMaxRows) {
+            this.aboxMaxRows = aboxMaxRows;
         }
 
         /** 保证以 / 结尾，便于拼接相对实体路径。 */

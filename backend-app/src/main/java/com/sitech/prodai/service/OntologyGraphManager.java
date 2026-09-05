@@ -74,6 +74,8 @@ public class OntologyGraphManager {
     private RiskRulesSupplier riskRulesSupplier;
     /** 跨域回调：外置规则全集目录视图。 */
     private OpsRulesCatalogSupplier opsRulesCatalogSupplier;
+    /** R5：ABox 同步状态回调（ABoxSyncScheduler.syncStatus()，jdbc 源才注入）。 */
+    private java.util.function.Supplier<Map<String, Object>> aboxSyncStatusSupplier;
 
     private Map<String, Object> graphCache;
     private String graphSourceId = "empty";
@@ -364,7 +366,33 @@ public class OntologyGraphManager {
         ));
         body.put("ruleSets", catalog.getOrDefault("ruleSets", Map.of()));
         body.put("engines", catalog.getOrDefault("engines", Map.of()));
+        // R5 可观测：ABox 同步状态（abox-source=jdbc 时由 ABoxSyncScheduler 提供；mock 源为 null）
+        body.putAll(aboxSyncStatus());
         return withModeMeta(body);
+    }
+
+    /** ABox 同步可观测字段（abox_last_synced_at / abox_row_count / abox_last_sync_ok）。 */
+    private Map<String, Object> aboxSyncStatus() {
+        Map<String, Object> status = new LinkedHashMap<>();
+        if (aboxSyncStatusSupplier != null) {
+            status.putAll(aboxSyncStatusSupplier.get());
+        } else {
+            status.put("abox_last_synced_at", null);
+            status.put("abox_last_sync_ok", null);
+            status.put("abox_row_count", 0);
+        }
+        return status;
+    }
+
+    /** ABox 同步状态回调（宿主注入：ABoxSyncScheduler.syncStatus()；mock 源不注入）。 */
+    public void setAboxSyncStatusSupplier(java.util.function.Supplier<Map<String, Object>> supplier) {
+        this.aboxSyncStatusSupplier = supplier;
+    }
+
+    /** 最近一次成功加载的货架行数（loadGraph 时记录）。 */
+    public long aboxRowCount() {
+        Map<String, Object> graph = graphCache;
+        return graph == null ? 0 : MapOps.castListOfMaps(graph.get("shelfOfferings")).size();
     }
 
     public Map<String, Object> getOntologyMeta() {
