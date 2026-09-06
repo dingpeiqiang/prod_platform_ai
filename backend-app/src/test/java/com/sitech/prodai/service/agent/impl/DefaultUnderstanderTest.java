@@ -341,12 +341,13 @@ class DefaultUnderstanderTest {
 
         assertEquals(2, plans.size(), "混合意图应拆为 2 个子计划");
         assertEquals("product_ops_query", plans.get(0).getIntent());
-        assertEquals("product_ops_compare", plans.get(1).getIntent());
+        // W5 意图收敛：product_ops_compare 归一化为 product_ops_query（action 仍保留原始 compare）
+        assertEquals("product_ops_query", plans.get(1).getIntent());
         assertEquals("compare", plans.get(1).getParams().get("action"),
                 "action 与 intent 位置对齐");
         // 子计划 params 独立副本（intent_type 互不覆盖）
         assertEquals("product_ops_query", plans.get(0).getParams().get("intent_type"));
-        assertEquals("product_ops_compare", plans.get(1).getParams().get("intent_type"));
+        assertEquals("product_ops_query", plans.get(1).getParams().get("intent_type"));
     }
 
     // ── CONFIRM 需求歧义确认 ──

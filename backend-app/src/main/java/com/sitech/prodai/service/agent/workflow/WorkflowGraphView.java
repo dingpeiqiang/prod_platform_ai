@@ -3,32 +3,19 @@ package com.sitech.prodai.service.agent.workflow;
 import com.sitech.prodai.service.agent.model.QueryPlan;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
- * 工作流构建器：把一轮对话的实际处理流程显式建模为「节点 + 分支条件 + 数据流」。
+ * 工作流视图构建器：把一轮对话的实际处理流程建模为「节点 + 分支条件 + 数据流」视图，
+ * 随 SSE workflow 事件一次性下发，供前端思考面板渲染链路。
  * <p>
- * 真实执行流程（与 AgentOrchestrator 的编排一致）：
- * <pre>
- * ① understand（识别需求）
- *     ├─ 分支[意图=CLARIFY] → clarify（组织追问）→ 等用户补参后回到 ①
- *     ├─ 分支[意图=CONFIRM] → confirm（歧义确认）→ 等用户选定后回到 ①
- *     └─ 分支[意图=其他]   → ② plan
- * ② plan（定下处理方案：依据 ① 的结构化意图选择工具链与分支）
- *     ├─ 分支[多意图] → 每个子计划独立走 ③④⑤（segment 分组）
- *     └─ 分支[单意图] → ③ execute
- * ③ execute（逐工具执行：按 plan.steps 声明的依赖编排，上游输出注入下游入参）
- * ④ summarize（汇总结果：输入=③ 全部工具输出）
- * </pre>
- * <p>
- * 设计原则（对应工作流化改造）：
- * - 每个节点的输入来源显式声明为上游节点的输出（input_from），不再是每步重复拼用户原文；
- * - 分支条件显式建模（intent / intent_count / step 失败），前端可渲染「走到哪条分支、为什么」。
+ * 去旧留新（智聊重设计 W3-2）：场景链路已迁至引擎固化工作流（SceneFlowRouter →
+ * FlowEngineService），本类仅保留动态编排侧的「本轮视图」产出与分支文案职责，
+ * 不再承载任何执行语义。
  */
-public final class WorkflowBuilder {
+public final class WorkflowGraphView {
 
-    private WorkflowBuilder() {
+    private WorkflowGraphView() {
     }
 
     /** 节点 id 常量（与 SSE thinking 步骤 id 对齐，前端据此关联）。 */
@@ -40,13 +27,13 @@ public final class WorkflowBuilder {
     public static final String N_CONFIRM = "confirm";
 
     /**
-     * 构建本轮工作流图：依据 QueryPlan 的实际意图，标注本轮真实走过的分支路径（taken 分支）。
+     * 构建本轮工作流视图：依据 QueryPlan 的实际意图，标注本轮真实走过的分支路径（taken 分支）。
      *
-     * @param plan       理解层产出的查询计划（null 时只给理解节点）
+     * @param plan        理解层产出的查询计划（null 时只给理解节点）
      * @param takenBranch 本轮实际命中的分支（CLARIFY / CONFIRM / MULTI / EXECUTE），null 视为未知
-     * @return 工作流图
+     * @return 可序列化视图（id/title/nodes/edges）
      */
-    public static WorkflowGraph build(QueryPlan plan, String takenBranch) {
+    public static Map<String, Object> build(QueryPlan plan, String takenBranch) {
         WorkflowGraph g = new WorkflowGraph("turn", "本轮处理工作流");
         boolean rd = plan != null && String.valueOf(plan.getParams().get("intent_type"))
                 .startsWith("RD_");
@@ -54,7 +41,7 @@ public final class WorkflowBuilder {
 
         // ① 理解节点：输入=用户原文，输出=结构化意图（供下游全部节点承接）
         g.node(N_UNDERSTAND, understandTitle, "intent",
-                        "输入用户原始话术，输出结构化意图（动作/客群/资费/渠道等要素）");
+                "输入用户原始话术，输出结构化意图（动作/客群/资费/渠道等要素）");
         g.edge(N_UNDERSTAND, N_CLARIFY, "意图=CLARIFY：必填要素缺失");
         g.edge(N_UNDERSTAND, N_CONFIRM, "意图=CONFIRM：需求存在多种解读");
         g.edge(N_UNDERSTAND, N_PLAN, "意图明确：可执行");
@@ -81,13 +68,13 @@ public final class WorkflowBuilder {
         g.node(N_SUMMARIZE, "汇总结果", "summarize",
                 "输入=③的全部工具输出，输出=最终结论与建议");
 
-        return g;
+        return g.toView();
     }
 
     /**
      * 判定本轮实际命中的分支（供节点上标注「本轮走到哪条分支、为什么」）。
      *
-     * @return CLARIFY / CONFIRM / MULTI / EXECUTE / null（未知）
+     * @return CLARIFY / CONFIRM / EXECUTE / null（未知）
      */
     public static String takenBranch(QueryPlan plan) {
         if (plan == null) {
@@ -100,21 +87,6 @@ public final class WorkflowBuilder {
             return "CONFIRM";
         }
         return "EXECUTE";
-    }
-
-    /**
-     * 节点输出摘要视图：{summary: String, branch: String(可选)}。
-     * 编排层为各节点回填输出时统一使用，保证前端渲染同构。
-     */
-    public static Map<String, Object> outputSummary(String summary, String branchTaken) {
-        Map<String, Object> out = new LinkedHashMap<>();
-        if (summary != null) {
-            out.put("summary", summary);
-        }
-        if (branchTaken != null && !branchTaken.isBlank()) {
-            out.put("branch_taken", branchTaken);
-        }
-        return out;
     }
 
     /** 分支条件业务文案（edge.when → 人话）。 */

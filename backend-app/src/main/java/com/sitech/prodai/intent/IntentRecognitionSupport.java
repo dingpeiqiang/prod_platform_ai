@@ -23,9 +23,11 @@ public final class IntentRecognitionSupport {
                  "risk_audit", "online_check", "offering_ops_risk_audit" -> "product_ops_policy";
             case "reason", "explain", "product_ops_reason",
                  "root_cause", "offering_ops_root_cause" -> "product_ops_reason";
-            case "monitor", "ops_monitor", "product_ops_monitor" -> "product_ops_monitor";
-            case "compare", "compare_state", "product_ops_compare",
-                 "what_if", "hypothesis" -> "product_ops_compare";
+        case "monitor", "ops_monitor", "product_ops_monitor" -> "product_ops_monitor";
+        // W5 意图收敛（方案 §7.2）：compare 意图并入 query——对比是查询的子形态，
+        // scene='compare' 空白问题随扶正消解（统一走 query 场景的 query_reuse_v2 工作流）
+        case "compare", "compare_state", "product_ops_compare",
+             "what_if", "hypothesis" -> "product_ops_query";
             case "guide" -> "chat";
             default -> normalized;
         };

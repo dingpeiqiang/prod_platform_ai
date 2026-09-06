@@ -47,7 +47,8 @@ public class RdSchemeCompareTool implements AgentTool {
 
     @Override
     public java.util.Set<String> getScenes() {
-        return java.util.Set.of("rd");
+        // W5 query 场景扶正（方案 §7.2）：多方案对比对 query 场景可见
+        return java.util.Set.of("rd", "query");
     }
 
     @Override

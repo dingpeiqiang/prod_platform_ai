@@ -209,6 +209,34 @@ function restoreMessageMetadata(meta = {}) {
   const flowMatched = parseFlowField(meta.flow_matched)
   const flowExecution = parseFlowField(meta.flow_execution)
 
+  // W6-2 流程进度时间线（persistTurn 落库 flow_progress_timeline）：从 node_logs 重建，
+  // 与实时 flow_progress 事件同构；历史回放还原为 tool 型 reasoning 步骤，
+  // 字段映射与 useChatStream.js 实时消费（applyAgentEvent flow_progress 分支）一致
+  let flowProgress = []
+  const rawTimeline = parseFlowField(meta.flow_progress_timeline)
+  if (Array.isArray(rawTimeline)) {
+    flowProgress = rawTimeline.map((n) => {
+      const status = n.status === 'error' ? 'error'
+        : (n.status === 'running' ? 'running' : 'done')
+      const summary = (n.branch ? `命中分支：${n.branch.id}` : null)
+        || (n.error_message ? `节点失败：${n.error_message}` : null)
+        || (status === 'running' ? `等待人工确认` : '节点完成')
+      return {
+        type: 'tool',
+        id: `flow_${n.node_id || n.execution_id}`,
+        title: n.node_name || n.node_id || '流程节点',
+        result: status === 'error' ? (summary || '节点失败') : (status === 'running' ? null : summary),
+        status,
+        attempt: n.attempt || 1,
+        flowSuspended: n.flow_suspended
+          ? { execution_id: n.execution_id, form_spec: n.form_spec || null }
+          : null,
+        segment: n.workflow_code || null,
+        timestamp: n.occurred_at || null,
+      }
+    })
+  }
+
   // 智读文档记忆锚：还原为 msg.fileRef（历史回放显示「已引用文档」锚，支持跨轮引用）
   let fileRef = null
   if (meta.file_ref != null) {
@@ -217,9 +245,14 @@ function restoreMessageMetadata(meta = {}) {
     } catch { fileRef = null }
   }
 
+  // W6-2：流程进度时间线并入思考时间线（与实时 flow_progress 消费路径一致），
+  // 历史回放时节点级执行过程随思考面板同位展示；时间线条目已在后端按 id 升序重建
+  const mergedReasoning = flowProgress.length ? [...reasoning, ...flowProgress] : reasoning
+
   return {
-    reasoning,
-    showReasoning: hasError || reasoning.length > 0,
+    reasoning: mergedReasoning,
+    flowProgress,
+    showReasoning: hasError || mergedReasoning.length > 0,
     done: true,
     intentType: meta.intent_type || intentData?.intentType || '',
     action: meta.action || intentData?.action || '',

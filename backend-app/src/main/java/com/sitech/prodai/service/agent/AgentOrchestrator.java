@@ -1,19 +1,23 @@
 package com.sitech.prodai.service.agent;
 
+import com.sitech.prodai.common.ApiResponse;
 import com.sitech.prodai.service.ChatPersistenceService;
 import com.sitech.prodai.service.LlmService;
+import com.sitech.prodai.service.agent.bridge.ChatHumanBridge;
 import com.sitech.prodai.service.agent.flow.FlowIntentRouter;
+import com.sitech.prodai.service.agent.flow.SceneFlowRouter;
 import com.sitech.prodai.service.agent.model.ExecutionResult;
 import com.sitech.prodai.service.agent.model.QueryPlan;
 import com.sitech.prodai.service.agent.model.SessionContext;
 import com.sitech.prodai.service.agent.tool.AgentTool;
 import com.sitech.prodai.service.agent.tool.ThinkingCopy;
 import com.sitech.prodai.service.agent.tool.ToolOutputRenderer;
+import com.sitech.prodai.service.agent.tool.ToolOutputField;
 import com.sitech.prodai.service.agent.tool.ToolParam;
-import com.sitech.prodai.service.agent.workflow.WorkflowBuilder;
-import com.sitech.prodai.service.agent.workflow.WorkflowGraph;
+import com.sitech.prodai.service.agent.workflow.WorkflowGraphView;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -44,6 +48,14 @@ public class AgentOrchestrator {
     private final Optional<LlmService> llmService;
     /** 流程意图路由器（S1 业务场景接入）：命中已注册流程 → 直接执行固定流程引擎，未命中走原 LLM 链路。 */
     private final FlowIntentRouter flowIntentRouter;
+    /** 对话内 human 挂起桥接器（W2）：挂起态翻译为 clarify_contracts，用户回复走 resume 短路。 */
+    private final ChatHumanBridge chatHumanBridge;
+    /** 场景工作流路由器（W3）：理解层计划确定性映射到场景工作流，未命中走动态编排。 */
+    private final SceneFlowRouter sceneFlowRouter;
+    /** 流程进度桥接器（W4）：引擎节点事件 → SSE flow_progress（可选，null 时静默跳过）。 */
+    private final com.sitech.prodai.service.agent.flow.ChatFlowProgressBridge progressBridge;
+    /** 历史回放重建器（W6-2）：node_logs → flow_progress_timeline 随 metadata 落库（可选，null 时跳过）。 */
+    private final com.sitech.prodai.service.agent.flow.FlowProgressReplayer progressReplayer;
 
     /** 已注册工具索引：工具名 → 工具（供工具自描述元数据查询） */
     private final Map<String, AgentTool> toolMap;
@@ -55,7 +67,41 @@ public class AgentOrchestrator {
                              Optional<ChatPersistenceService> persistenceService,
                              Optional<LlmService> llmService,
                              List<AgentTool> tools,
-                             FlowIntentRouter flowIntentRouter) {
+                             FlowIntentRouter flowIntentRouter,
+                             ChatHumanBridge chatHumanBridge,
+                             SceneFlowRouter sceneFlowRouter) {
+        this(understander, executor, presenter, sessionManager, persistenceService,
+                llmService, tools, flowIntentRouter, chatHumanBridge, sceneFlowRouter, null, null);
+    }
+
+    public AgentOrchestrator(Understander understander,
+                             Executor executor,
+                             Presenter presenter,
+                             SessionManager sessionManager,
+                             Optional<ChatPersistenceService> persistenceService,
+                             Optional<LlmService> llmService,
+                             List<AgentTool> tools,
+                             FlowIntentRouter flowIntentRouter,
+                             ChatHumanBridge chatHumanBridge,
+                             SceneFlowRouter sceneFlowRouter,
+                             com.sitech.prodai.service.agent.flow.ChatFlowProgressBridge progressBridge) {
+        this(understander, executor, presenter, sessionManager, persistenceService,
+                llmService, tools, flowIntentRouter, chatHumanBridge, sceneFlowRouter, progressBridge, null);
+    }
+
+    @Autowired
+    public AgentOrchestrator(Understander understander,
+                             Executor executor,
+                             Presenter presenter,
+                             SessionManager sessionManager,
+                             Optional<ChatPersistenceService> persistenceService,
+                             Optional<LlmService> llmService,
+                             List<AgentTool> tools,
+                             FlowIntentRouter flowIntentRouter,
+                             ChatHumanBridge chatHumanBridge,
+                             SceneFlowRouter sceneFlowRouter,
+                             com.sitech.prodai.service.agent.flow.ChatFlowProgressBridge progressBridge,
+                             com.sitech.prodai.service.agent.flow.FlowProgressReplayer progressReplayer) {
         this.understander = understander;
         this.executor = executor;
         this.presenter = presenter;
@@ -63,6 +109,23 @@ public class AgentOrchestrator {
         this.persistenceService = persistenceService;
         this.llmService = llmService;
         this.flowIntentRouter = flowIntentRouter;
+        this.chatHumanBridge = chatHumanBridge != null ? chatHumanBridge : new ChatHumanBridge(null) {
+            // 兜底空实现：未注入桥接器时挂起恢复恒不可用（零行为变更），
+            // 覆写 resume 恒返 null，规避父类对 null 引擎的空指针
+            @Override
+            public ApiResponse<Map<String, Object>> resume(Map<String, Object> binding, String question,
+                                                           Map<String, Object> formData, String user) {
+                return null;
+            }
+
+            @Override
+            public Map<String, Object> buildBinding(Map<String, Object> executionMap) {
+                return null;
+            }
+        };
+        this.sceneFlowRouter = sceneFlowRouter;
+        this.progressBridge = progressBridge;
+        this.progressReplayer = progressReplayer;
         this.toolMap = new ConcurrentHashMap<>();
         if (tools != null) {
             for (AgentTool tool : tools) {
@@ -112,6 +175,14 @@ public class AgentOrchestrator {
         applySuppliedParams(context, params);
         context.addHistoryEntry("user", question);
 
+        // W2 挂起态短路：会话绑定待恢复工作流 → 直接走 ChatHumanBridge.resume（不过理解层 LLM）
+        if (context.hasPendingExecution()) {
+            Map<String, Object> reply = resumePendingExecution(context, question, params, startTime);
+            if (reply != null) {
+                return reply;
+            }
+        }
+
         // S1 业务场景接入：流程意图路由先行——命中已注册固定流程 → 直接引擎执行，未命中走原 LLM 链路
         java.util.Optional<Map<String, Object>> flowReply =
                 flowIntentRouter.tryRoute(question, params, null);
@@ -131,6 +202,20 @@ public class AgentOrchestrator {
         QueryPlan plan = understander.understand(question, context);
         log.info("[AgentOrchestrator] 查询计划: intent={}, tools={}, clarify={}",
                 plan.getIntent(), plan.getTools(), plan.getClarify());
+
+        // W3 场景工作流路由：场景已配置 → 确定性映射进引擎固化链路；未命中走动态编排
+        java.util.Optional<Map<String, Object>> sceneReply = sceneFlowRouter.tryRoute(plan, context, null);
+        if (sceneReply.isPresent()) {
+            Map<String, Object> reply = sceneReply.get();
+            reply.putIfAbsent("session_id", context.getSessionId());
+            String report = String.valueOf(reply.getOrDefault("report", ""));
+            context.addHistoryEntry("assistant", report);
+            sessionManager.save(context);
+            persistTurn(context, question, reply, null);
+            captureSuspensionBinding(context, reply);
+            reply.put("elapsed_ms", System.currentTimeMillis() - startTime);
+            return reply;
+        }
 
         // 澄清分支：不做工具执行，直接生成追问文案
         if (QueryPlan.INTENT_CLARIFY.equals(plan.getIntent())) {
@@ -404,6 +489,14 @@ public class AgentOrchestrator {
     private static final String PERSIST_WARNING_MESSAGE =
             "本轮对话未能保存到历史记录（存储异常），请检查数据服务";
 
+    /** 从 flow_execution 快照中提取 execution_id（W6-2 时间线重建用；缺失返回 null） */
+    private static String extractExecutionId(Object flowExecution) {
+        if (flowExecution instanceof Map<?, ?> execMap && execMap.get("execution_id") != null) {
+            return String.valueOf(execMap.get("execution_id"));
+        }
+        return null;
+    }
+
     /**
      * @param emitter  流式入口传 emitter，持久化失败时同步推送 warning 事件（前端可见）
      * @param warnings 非流式入口传收集器，失败时追加（调用方随响应体透传）；可传 null
@@ -466,6 +559,23 @@ public class AgentOrchestrator {
                 }
                 if (flowExecution != null) {
                     meta.put("flow_execution", toJson(flowExecution));
+                }
+                // W6-2 历史回放时间线：从 node_logs 重建与实时 flow_progress 同构的时间线，
+                // 随 metadata 落库，前端 restoreMessageMetadata 据此还原节点级执行过程
+                if (progressReplayer != null) {
+                    String executionId = extractExecutionId(flowExecution);
+                    if (executionId != null) {
+                        List<Map<String, Object>> timeline = progressReplayer.rebuild(executionId);
+                        if (!timeline.isEmpty()) {
+                            meta.put(com.sitech.prodai.service.agent.flow.FlowProgressReplayer.TIMELINE_KEY,
+                                    toJson(timeline));
+                        }
+                    }
+                }
+                // W2 挂起绑定持久化：会话当前挂起态（execution_id + resume_token + form_spec），
+                // SessionManager 快照恢复时回读，跨轮/重启不依赖内存 TTL
+                if (context.getExecutionBinding() != null) {
+                    meta.put("execution_binding", toJson(context.getExecutionBinding()));
                 }
                 svc.saveMessage(sessionId, "assistant", assistantReply, "text", meta);
             }
@@ -531,7 +641,7 @@ public class AgentOrchestrator {
         planStep.put("input", TraceSnapshotBuilder.upstreamIntentInput(plan, question));
         planStep.put("workflow", TraceSnapshotBuilder.buildWorkflow(plan));
         planStep.put("output", Map.of("summary", TraceSnapshotBuilder.planStepOutput(plan, context),
-                "branch_taken", WorkflowBuilder.branchLabel(WorkflowBuilder.takenBranch(plan))));
+                "branch_taken", WorkflowGraphView.branchLabel(WorkflowGraphView.takenBranch(plan))));
         if (trace != null) {
             planStep.put("trace", trace);
         }
@@ -570,7 +680,7 @@ public class AgentOrchestrator {
         generateStep.put("input", upstreamResultsInput(results));
         generateStep.put("output", Map.of(
                 "summary", TraceSnapshotBuilder.summarizeOutput(extractConclusion(results), results != null ? results.size() : 0),
-                "branch_taken", WorkflowBuilder.branchLabel(WorkflowBuilder.takenBranch(plan))));
+                "branch_taken", WorkflowGraphView.branchLabel(WorkflowGraphView.takenBranch(plan))));
         steps.add(generateStep);
         return steps;
     }
@@ -643,6 +753,174 @@ public class AgentOrchestrator {
         }
     }
 
+    // ── W2 对话内挂起恢复（ChatHumanBridge 接线） ──
+
+    /**
+     * 挂起态短路恢复（一次性接口）：用户回复文本/表单数据 → ChatHumanBridge.resume → 引擎续推。
+     * binding 为 null（非法态）时返回 null 放行常规链路。
+     */
+    private Map<String, Object> resumePendingExecution(SessionContext context, String question,
+                                                       Map<String, Object> params, long startTime) {
+        Map<String, Object> reply = resumePendingExecution(context, question, params);
+        if (reply == null) {
+            return null;
+        }
+        reply.putIfAbsent("session_id", context.getSessionId());
+        String report = String.valueOf(reply.getOrDefault("report", ""));
+        context.addHistoryEntry("assistant", report);
+        sessionManager.save(context);
+        persistTurn(context, question, reply, null);
+        reply.put("elapsed_ms", System.currentTimeMillis() - startTime);
+        return reply;
+    }
+
+    /**
+     * 挂起态短路恢复（流式接口）：事件契约与 FLOW_EXEC 链路一致（thinking → text* → text_done → done）。
+     * 返回 false 表示 binding 非法（放行常规链路）。
+     */
+    private boolean resumePendingExecution(SessionContext context, String question,
+                                           Map<String, Object> params, StreamEmitter emitter, long startTime) {
+        Map<String, Object> reply = resumePendingExecution(context, question, params);
+        if (reply == null) {
+            return false;
+        }
+        reply.putIfAbsent("session_id", context.getSessionId());
+        String report = String.valueOf(reply.getOrDefault("report", ""));
+        emitter.emit("thinking", Map.of(
+                "steps", List.of(TraceSnapshotBuilder.thinkingStep("intent", "继续未完成的流程",
+                        "会话中有等待您确认的流程节点，直接续推执行",
+                        Map.of("goal", "挂起态回复语义由流程定义，无需重新理解",
+                                "input", Map.of("question", question),
+                                "output", Map.of("summary", report))))
+        ));
+        context.addHistoryEntry("assistant", report);
+        sessionManager.save(context);
+        persistTurn(context, question, reply, emitter);
+        emitTextEvents(emitter, report);
+        Map<String, Object> donePayload = new LinkedHashMap<>();
+        donePayload.put("session_id", context.getSessionId());
+        donePayload.put("intent", reply.getOrDefault("intent", "FLOW_RESUME"));
+        donePayload.put("flow_execution", reply.get("flow_execution"));
+        // 恢复后若再次挂起（下一道阶段门），刷新绑定并随 done 下发新表单
+        captureSuspensionBinding(context, reply);
+        appendBindingToDone(donePayload, context);
+        donePayload.put("conclusion", reply.getOrDefault("conclusion", ""));
+        donePayload.put("suggested_follow_ups", reply.getOrDefault("suggested_follow_ups", List.of()));
+        donePayload.put("elapsed_ms", System.currentTimeMillis() - startTime);
+        emitter.emit("done", donePayload);
+        return true;
+    }
+
+    /**
+     * 挂起恢复共用体：文本+表单数据映射 → resumeFromHuman → 回复组装。
+     * 桥接器缺失 / binding 非法 / 引擎拒绝（令牌失效等）时返回 null 放行常规链路
+     * （拒绝后清空绑定，避免会话卡死在挂起态）。
+     */
+    private Map<String, Object> resumePendingExecution(SessionContext context, String question,
+                                                       Map<String, Object> params) {
+        if (chatHumanBridge == null) {
+            return null;
+        }
+        Map<String, Object> binding = context.getExecutionBinding();
+        ApiResponse<Map<String, Object>> resp = chatHumanBridge.resume(binding, question, params, null);
+        if (resp == null) {
+            return null;
+        }
+        context.setExecutionBinding(null);
+        if (resp.getData() == null) {
+            Map<String, Object> failReply = new LinkedHashMap<>();
+            failReply.put("intent", "FLOW_RESUME");
+            failReply.put("report", "流程恢复失败：" + (resp.getMessage() == null ? "未知原因" : resp.getMessage()));
+            failReply.put("flow_execution", Map.of("status", "failed", "error_message", resp.getMessage()));
+            failReply.put("conclusion", "");
+            failReply.put("suggested_follow_ups", List.of("重新发起该流程"));
+            return failReply;
+        }
+        Map<String, Object> data = resp.getData();
+        String status = String.valueOf(data.getOrDefault("status", "unknown"));
+        Map<String, Object> reply = new LinkedHashMap<>();
+        reply.put("intent", "FLOW_RESUME");
+        reply.put("flow_execution", data);
+        if ("completed".equals(status)) {
+            reply.put("report", "流程已按您的确认继续执行完成。");
+            reply.put("conclusion", "执行完成");
+            reply.put("suggested_follow_ups", List.of("查看执行明细"));
+        } else if ("waiting_human".equals(status)) {
+            reply.put("report", "流程进入下一个确认节点，请查看表单并回复。");
+            reply.put("conclusion", "");
+            reply.put("suggested_follow_ups", List.of());
+        } else {
+            reply.put("report", "流程执行状态：" + status
+                    + (data.get("error_message") == null ? "" : "，错误：" + data.get("error_message")));
+            reply.put("conclusion", "");
+            reply.put("suggested_follow_ups", List.of());
+        }
+        return reply;
+    }
+
+    /**
+     * 挂起绑定捕获：流程回复 status=waiting_human 时，经桥接器把挂起信息写入
+     * SessionContext.executionBinding（非挂起态清空既有绑定）。
+     */
+    private void captureSuspensionBinding(SessionContext context, Map<String, Object> flowReply) {
+        if (chatHumanBridge == null) {
+            return;
+        }
+        Map<String, Object> binding = null;
+        if (flowReply.get("flow_execution") instanceof Map<?, ?> exec) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> execMap = (Map<String, Object>) exec;
+            binding = chatHumanBridge.buildBinding(execMap);
+        }
+        context.setExecutionBinding(binding);
+    }
+
+    /** done 载荷追加挂起信息：execution_binding + clarify_contracts（form_spec 翻译产物）。 */
+    private void appendBindingToDone(Map<String, Object> donePayload, SessionContext context) {
+        Map<String, Object> binding = context.getExecutionBinding();
+        if (binding == null) {
+            return;
+        }
+        donePayload.put("execution_binding", binding);
+        if (chatHumanBridge != null && binding.get("form_spec") instanceof Map<?, ?> spec) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> typedSpec = (Map<String, Object>) spec;
+            Map<String, Map<String, Object>> contracts = chatHumanBridge.toClarifyContracts(typedSpec);
+            if (!contracts.isEmpty()) {
+                donePayload.put("clarify_contracts", contracts);
+            }
+        }
+    }
+
+    // ── W4 流程进度桥接（引擎事件 → SSE flow_progress） ──
+
+    /**
+     * 注册流式请求的进度转发目标（场景链路 tryRoute 之前调用）。
+     * <p>
+     * startExecution 前执行 ID 未知 → 先以会话级临时键注册（保证引擎发布器换装生效），
+     * 返回后如拿到真实 execution_id，由引擎侧事件按 executionId 匹配转发。
+     * 桥接器缺失（单测注入 null）时返回 null，调用方跳过注销。
+     *
+     * @return 注册键（注销时回传），桥接器缺失返回 null
+     */
+    private String registerProgressSink(StreamEmitter emitter) {
+        if (progressBridge == null || emitter == null) {
+            return null;
+        }
+        String key = "sink-" + System.nanoTime();
+        progressBridge.register(key, (eventName, payload) ->
+                emitter.emit(eventName, payload), null);
+        return key;
+    }
+
+    /** 注销进度转发目标（场景链路 finally 调用）；progressExecutionId 为 null 时静默跳过。 */
+    private void unregisterProgressSink(String progressExecutionId) {
+        if (progressBridge == null || progressExecutionId == null) {
+            return;
+        }
+        progressBridge.unregister(progressExecutionId, null);
+    }
+
     /**
      * 流式处理（支持结构化补参）：与一次性接口共用理解/执行编排。
      * <p>
@@ -680,6 +958,11 @@ public class AgentOrchestrator {
         applySuppliedParams(context, params);
         context.addHistoryEntry("user", question);
 
+        // W2 挂起态短路：会话绑定待恢复工作流 → 直接走 ChatHumanBridge.resume（不过理解层 LLM）
+        if (context.hasPendingExecution() && resumePendingExecution(context, question, params, emitter, startTime)) {
+            return;
+        }
+
         // S1 业务场景接入：流程意图路由先行——命中已注册固定流程 → 直接引擎执行，未命中走原 LLM 链路
         // 事件契约与常规链路一致：thinking → text* → text_done → done（跳过 understander）
         java.util.Optional<Map<String, Object>> flowReply =
@@ -704,6 +987,8 @@ public class AgentOrchestrator {
             donePayload.put("intent", reply.getOrDefault("intent", "FLOW_EXEC"));
             donePayload.put("flow_matched", reply.get("flow_matched"));
             donePayload.put("flow_execution", reply.get("flow_execution"));
+            captureSuspensionBinding(context, reply);
+            appendBindingToDone(donePayload, context);
             donePayload.put("conclusion", reply.getOrDefault("conclusion", ""));
             donePayload.put("suggested_follow_ups",
                     reply.getOrDefault("suggested_follow_ups", List.of()));
@@ -732,8 +1017,50 @@ public class AgentOrchestrator {
             return;
         }
         QueryPlan plan = plans.get(0);
+
+        // W3 场景工作流路由：场景已配置 → 确定性映射进引擎固化链路；未命中走动态编排
+        // 事件契约与 FLOW_EXEC 链路一致（thinking → text → text_done → done），理解层已完成的意图步骤随 thinking 下发
+        // W4 透明化：流式链路注册 flow_progress 转发目标，引擎节点事件实时推给前端（执行完注销）
+        String progressExecutionId = registerProgressSink(emitter);
+        try {
+            java.util.Optional<Map<String, Object>> sceneReply = sceneFlowRouter.tryRoute(plan, context, null);
+            if (sceneReply.isPresent()) {
+                Map<String, Object> reply = sceneReply.get();
+                reply.putIfAbsent("session_id", context.getSessionId());
+                String report = String.valueOf(reply.getOrDefault("report", ""));
+                emitter.emit("thinking", Map.of(
+                        "steps", List.of(TraceSnapshotBuilder.thinkingStep("intent",
+                                TraceSnapshotBuilder.intentStepName(context),
+                                TraceSnapshotBuilder.intentStepDesc(context),
+                                Map.of("goal", "已明确：本次要执行「" + TraceSnapshotBuilder.actionDisplay(plan) + "」",
+                                        "input", Map.of("question", question),
+                                        "output", Map.of("summary", "命中场景工作流，进入固化链路执行")))),
+                        "intent", plan.getIntent()
+                ));
+                context.addHistoryEntry("assistant", report);
+                sessionManager.save(context);
+                persistTurn(context, question, reply, emitter);
+                emitTextEvents(emitter, report);
+                Map<String, Object> donePayload = new LinkedHashMap<>();
+                donePayload.put("session_id", context.getSessionId());
+                donePayload.put("intent", reply.getOrDefault("intent", "FLOW_EXEC"));
+                donePayload.put("flow_matched", reply.get("flow_matched"));
+                donePayload.put("flow_execution", reply.get("flow_execution"));
+                captureSuspensionBinding(context, reply);
+                appendBindingToDone(donePayload, context);
+                donePayload.put("conclusion", reply.getOrDefault("conclusion", ""));
+                donePayload.put("suggested_follow_ups",
+                        reply.getOrDefault("suggested_follow_ups", List.of()));
+                donePayload.put("elapsed_ms", System.currentTimeMillis() - startTime);
+                emitter.emit("done", donePayload);
+                return;
+            }
+        } finally {
+            unregisterProgressSink(progressExecutionId);
+        }
+
         // 工作流定义：本轮真实业务流程（节点+分支条件+数据流），随首个 thinking 事件一次性下发
-        emitter.emit("workflow", WorkflowBuilder.build(plan, WorkflowBuilder.takenBranch(plan)).toView());
+        emitter.emit("workflow", WorkflowGraphView.build(plan, WorkflowGraphView.takenBranch(plan)));
         // 阶段事件①′：理解完成，原地更新 intent 步骤（补输出：已明确的业务动作）
         // 输出 = 结构化意图（动作 + 业务要素），作为下游 plan/execute/summarize 的唯一输入来源
         Map<String, Object> intentOutput = new LinkedHashMap<>();
@@ -790,7 +1117,7 @@ public class AgentOrchestrator {
                                     "output", Map.of("summary", missingParams.isEmpty()
                                             ? "已生成追问，待您补充后继续"
                                             : "已生成追问，待补充：" + String.join("、", missingParams),
-                                            "branch_taken", WorkflowBuilder.branchLabel("CLARIFY"))))),
+                                            "branch_taken", WorkflowGraphView.branchLabel("CLARIFY"))))),
                     "intent", plan.getIntent()
             ));
             context.addHistoryEntry("assistant", clarifyMessage);
@@ -875,7 +1202,7 @@ public class AgentOrchestrator {
         generateDoneExtra.put("input", upstreamResultsInput(results));
         generateDoneExtra.put("output", Map.of(
                 "summary", TraceSnapshotBuilder.summarizeOutput(conclusionText, results.size()),
-                "branch_taken", WorkflowBuilder.branchLabel("EXECUTE")));
+                "branch_taken", WorkflowGraphView.branchLabel("EXECUTE")));
         generateDoneExtra.put("trace", List.of(Map.of(
                 "stage", "llm",
                 "message", "大模型已按「结论先行 + 依据支撑」结构生成回答，依据来自上一步工具的实际产出")));
@@ -928,7 +1255,7 @@ public class AgentOrchestrator {
         List<String> allFollowUps = new ArrayList<>();
         QueryPlan firstPlan = plans.get(0);
         // 工作流定义：多意图分支（每个子计划独立走 理解→方案→执行→汇总 链路）
-        emitter.emit("workflow", WorkflowBuilder.build(firstPlan, "MULTI").toView());
+        emitter.emit("workflow", WorkflowGraphView.build(firstPlan, "MULTI"));
 
         for (int i = 0; i < plans.size(); i++) {
             QueryPlan plan = plans.get(i);
@@ -992,7 +1319,7 @@ public class AgentOrchestrator {
                             Map.of("segment", segment,
                                     "input", upstreamResultsInput(subResults),
                                     "output", Map.of("summary", TraceSnapshotBuilder.summarizeOutput(subConclusion, subResults.size()),
-                                            "branch_taken", WorkflowBuilder.branchLabel("MULTI"))))),
+                                            "branch_taken", WorkflowGraphView.branchLabel("MULTI"))))),
                     "intent", plan.getIntent()
             ));
 
@@ -1078,8 +1405,11 @@ public class AgentOrchestrator {
         } else if (!result.isSuccess()) {
             toolEvent.put("errorMessage", result.getErrorMessage());
         }
-        // 本体/规则推理日志：从工具产出中提取推理引擎、命中规则、归因路径等过程留痕
-        List<Map<String, Object>> toolTrace = TraceSnapshotBuilder.ontologyTraceView(result);
+        // 本体/规则推理日志：从工具产出中提取推理引擎、命中规则、归因路径等过程留痕；
+        // 数据查询类工具（NL→SPARQL）下发实体发现/查询执行留痕，体现本体查询逻辑
+        List<Map<String, Object>> toolTrace = "sparql_query".equals(result.getToolName())
+                ? TraceSnapshotBuilder.ontologyQueryTrace(result)
+                : TraceSnapshotBuilder.ontologyTraceView(result);
         if (toolTrace != null) {
             toolEvent.put("trace", toolTrace);
         }

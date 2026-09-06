@@ -10,6 +10,8 @@ import com.sitech.prodai.mapper.WorkflowMapper;
 import com.sitech.prodai.mapper.WorkflowNodeLogMapper;
 import com.sitech.prodai.service.ToolExecutionService;
 import com.sitech.prodai.service.agent.model.ExecutionResult;
+import com.sitech.prodai.service.flow.event.FlowEventPublisher;
+import com.sitech.prodai.service.flow.event.FlowNodeEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -55,6 +57,8 @@ public class FlowEngineService {
     private final LlmGateway llmService;
     private final HttpGateway restClient;
     private final FormSchemaPort formSchemaPort;
+    /** 节点级事件发布器（W1-1）：可选依赖，无监听器时零开销；W4 起支持运行时换装。 */
+    private volatile FlowEventPublisher eventPublisher;
 
     public FlowEngineService(WorkflowMapper workflowMapper,
                              WorkflowExecutionMapper executionMapper,
@@ -65,6 +69,20 @@ public class FlowEngineService {
                              LlmGateway llmService,
                              HttpGateway restClient,
                              FormSchemaPort formSchemaPort) {
+        this(workflowMapper, executionMapper, nodeLogMapper, toolExecutionService, validator,
+                conditionEvaluator, llmService, restClient, formSchemaPort, new FlowEventPublisher(List.of()));
+    }
+
+    public FlowEngineService(WorkflowMapper workflowMapper,
+                             WorkflowExecutionMapper executionMapper,
+                             WorkflowNodeLogMapper nodeLogMapper,
+                             ToolExecutionService toolExecutionService,
+                             FlowDefinitionValidator validator,
+                             ConditionEvaluator conditionEvaluator,
+                             LlmGateway llmService,
+                             HttpGateway restClient,
+                             FormSchemaPort formSchemaPort,
+                             FlowEventPublisher eventPublisher) {
         this.workflowMapper = workflowMapper;
         this.executionMapper = executionMapper;
         this.nodeLogMapper = nodeLogMapper;
@@ -74,6 +92,18 @@ public class FlowEngineService {
         this.llmService = llmService;
         this.restClient = restClient;
         this.formSchemaPort = formSchemaPort;
+        this.eventPublisher = eventPublisher;
+    }
+
+    /**
+     * 运行时替换事件发布器（W4 透明化）：引擎为单例，SSE 请求到达时由对话侧桥接器
+     * 换装「转发当前请求 emitter」的发布器，请求结束后还原为空发布器。
+     * <p>
+     * 并发约定：同一时刻仅一个智聊流式请求持有发布器（后装者覆盖前者），
+     * 覆盖前旧发布器仍在监听列表内的场景由桥接器侧以"仅转发本会话 execution_id"约束隔离。
+     */
+    public void setEventPublisher(FlowEventPublisher publisher) {
+        this.eventPublisher = publisher != null ? publisher : new FlowEventPublisher(List.of());
     }
 
     /** LLM 网关抽象：隔离 LlmService 具体实现，便于单测替换。 */
@@ -288,6 +318,8 @@ public class FlowEngineService {
         if (execution.getWorkflowCode() != null && !variables.containsKey(WORKFLOW_CHAIN_KEY)) {
             variables.put(WORKFLOW_CHAIN_KEY, new ArrayList<>(List.of(execution.getWorkflowCode())));
         }
+        // flow 命名空间：与 ConditionEvaluator 的 ${flow.*} 语义对齐，使节点 {{flow.x}} 引用两处一致
+        variables.put("flow", new LinkedHashMap<>(variables));
 
         Map<String, Map<String, Object>> nodeById = indexNodes(definition);
         String current = execution.getCurrentNodeId() != null ? execution.getCurrentNodeId() : findStartNode(nodeById);
@@ -313,6 +345,7 @@ public class FlowEngineService {
             if ("flow.condition".equals(action)) {
                 String branchId = routeCondition(node, nodeById, definition, execution, variables);
                 persistBranchLog(execution, node, branchId);
+                publishBranchTaken(execution, node, branchId);
                 execution.setCurrentNodeId(nextNodeByHandle(current, branchId, definition));
                 execution.setStatusVersion(bumpVersion(execution));
                 executionMapper.updateById(execution);
@@ -323,17 +356,17 @@ public class FlowEngineService {
             // human 节点：挂起等人工（恢复经 resumeExecution 携带表单数据续推）
             if ("flow.human".equals(action)) {
                 suspendAtHuman(execution, node, variables, definition);
+                publishSuspended(execution, node, definition);
                 return;
             }
 
             NodeOutcome outcome = executeNode(execution, node, variables);
-            persistNodeLog(execution, node, outcome);
+            publishNodeFinished(execution, node, outcome);
 
             if (!outcome.success() && !"continue".equals(outcome.failureMode())) {
                 failExecution(execution, "节点 " + current + " 失败: " + outcome.errorMessage());
                 return;
             }
-
             // 节点输出合并进上下文并落库（全持久化铁律）
             // 变量语义：{{<nodeId>.output.<field>}} —— 输出按 nodeId 命名空间存放
             Map<String, Object> nodeScope = new LinkedHashMap<>();
@@ -506,7 +539,8 @@ public class FlowEngineService {
     }
 
     /** 单节点执行：按类型分派。condition/human 由状态机直接处理；此处覆盖 start/tool/llm/http。
-     *  执行语义（P5）：timeoutMs 超时中断、retry.maxAttempts 失败重试、onFailure=continue 失败跳过下游。 */
+     *  执行语义（P5）：timeoutMs 超时中断、retry.maxAttempts 失败重试、onFailure=continue 失败跳过下游。
+     *  W1-3：每次尝试各写一条 node_log（attempt 递增），输入快照/超时与失败原因落 error_message。 */
     private NodeOutcome executeNode(WorkflowExecution execution, Map<String, Object> node, Map<String, Object> variables) {
         String nodeId = str(node.get("id"));
         String action = str(node.get("action"));
@@ -521,7 +555,9 @@ public class FlowEngineService {
         String failureMode = str(params.getOrDefault("onFailure", "fail"));
 
         long startMs = System.currentTimeMillis();
-        NodeOutcome outcome = runWithTimeoutAndRetry(nodeId, action, params, variables, timeoutMs, maxAttempts);
+        Map<String, Object> inputSnapshot = inputSnapshot(params, variables);
+        NodeOutcome outcome = runWithTimeoutAndRetry(execution, node, inputSnapshot, action, params,
+                variables, timeoutMs, maxAttempts);
         if (!outcome.success()) {
             // onFailure=continue：失败不中止流程（错误信息保留在节点日志中供审计）
             outcome = new NodeOutcome(false, outcome.nodeType(), failureMode, outcome.errorMessage(), outcome.output(), outcome.durationMs());
@@ -532,18 +568,24 @@ public class FlowEngineService {
         return withDuration(outcome, totalMs);
     }
 
-    /** 超时 + 重试包装：单次尝试在独立线程执行（超时 interrupt），失败按 maxAttempts 重试。 */
-    private NodeOutcome runWithTimeoutAndRetry(String nodeId, String action, Map<String, Object> params,
+    /** 超时 + 重试包装：单次尝试在独立线程执行（超时 interrupt），失败按 maxAttempts 重试。
+     *  W1-3：每次尝试（含重试）各写一条 node_log，attempt 递增，失败原因落 error_message。 */
+    private NodeOutcome runWithTimeoutAndRetry(WorkflowExecution execution, Map<String, Object> node,
+                                               Map<String, Object> inputSnapshot, String action,
+                                               Map<String, Object> params,
                                                Map<String, Object> variables, long timeoutMs, int maxAttempts) {
         NodeOutcome outcome = NodeOutcome.fail(action, "fail", "节点未执行");
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            long attemptStart = System.currentTimeMillis();
             outcome = runAttemptOnce(action, params, variables, timeoutMs);
+            long attemptMs = System.currentTimeMillis() - attemptStart;
+            persistAttemptLog(execution, node, outcome, inputSnapshot, attempt, attemptMs);
             if (outcome.success()) {
-                return outcome;
+                return withDuration(outcome, attemptMs);
             }
-            log.warn("[FlowEngine] 节点 {} 第 {}/{} 次尝试失败: {}", nodeId, attempt, maxAttempts, outcome.errorMessage());
+            log.warn("[FlowEngine] 节点 {} 第 {}/{} 次尝试失败: {}", str(node.get("id")), attempt, maxAttempts, outcome.errorMessage());
         }
-        return outcome;
+        return withDuration(outcome, outcome.durationMs());
     }
 
     /** 单次尝试：独立单线程执行（超时 interrupt + shutdownNow，不留泄漏线程）。 */
@@ -664,15 +706,28 @@ public class FlowEngineService {
                 outcome.errorMessage(), outcome.output(), durationMs);
     }
 
-    /** llm 节点：prompt 模板变量注入后调用 LlmService（LLM 只进节点，不进引擎调度——铁律二）。 */
+    /**
+     * llm 节点（W1-2 结构化输出增强）：prompt/system_prompt 模板变量注入后调用 LlmService。
+     * <p>
+     * 增量 action_params（完全向后兼容，缺省行为与旧定义一致）：
+     * <ul>
+     *   <li>{@code system_prompt}：系统提示词，支持 {{ref}} 注入；</li>
+     *   <li>{@code response_format}：text（缺省）/ json；json 时解析 LLM 输出为 Map；</li>
+     *   <li>{@code json_schema}：{required:[...], properties:{...}} 轻量契约校验（必填键 + 类型），失败按 retry 语义重试；</li>
+     *   <li>{@code output_mode}：raw（缺省，输出 {response}）/ flatten（解析后的 JSON 顶层键加 llm_ 前缀平铺）。</li>
+     * </ul>
+     * LLM 只进节点不进引擎（铁律二）。
+     */
     private NodeOutcome executeLlmNode(Map<String, Object> params, Map<String, Object> variables) {
         Object prompt = params.get("prompt");
         if (prompt == null || String.valueOf(prompt).isBlank()) {
             return NodeOutcome.fail("flow.llm", "fail", "llm 节点未配置 prompt");
         }
-        String resolvedPrompt = renderTemplate(String.valueOf(prompt), variables);
         Map<String, Object> llmParams = new LinkedHashMap<>();
-        llmParams.put("prompt", resolvedPrompt);
+        llmParams.put("prompt", renderTemplate(String.valueOf(prompt), variables));
+        if (params.get("system_prompt") != null) {
+            llmParams.put("system_prompt", renderTemplate(String.valueOf(params.get("system_prompt")), variables));
+        }
         if (params.get("model") != null) {
             llmParams.put("model", params.get("model"));
         }
@@ -683,8 +738,85 @@ public class FlowEngineService {
         if (resp == null) {
             return NodeOutcome.fail("flow.llm", "fail", "LLM 调用失败（返回空）");
         }
-        return NodeOutcome.success(Map.of("response", resp));
+        return buildLlmOutcome(params, resp);
     }
+
+    /** llm 输出后处理：json 格式解析 + json_schema 校验 + flatten/raw 输出形态。 */
+    private NodeOutcome buildLlmOutcome(Map<String, Object> params, Object resp) {
+        boolean jsonMode = "json".equalsIgnoreCase(str(params.get("response_format")));
+        if (!jsonMode) {
+            return NodeOutcome.success(Map.of("response", resp));
+        }
+        Object parsed = parseJsonSafely(String.valueOf(resp));
+        if (!(parsed instanceof Map<?, ?> parsedMap)) {
+            return NodeOutcome.fail("flow.llm", "fail",
+                    "LLM 输出不是合法 JSON 对象: " + truncate(String.valueOf(resp)));
+        }
+        Map<String, Object> json = new LinkedHashMap<>((Map<String, Object>) parsedMap);
+        String schemaError = validateJsonSchema(params.get("json_schema"), json);
+        if (schemaError != null) {
+            return NodeOutcome.fail("flow.llm", "fail", "LLM 输出契约校验失败: " + schemaError);
+        }
+        return NodeOutcome.success(buildLlmOutput(params.get("output_mode"), json, resp));
+    }
+
+    /** 输出形态：flatten 时顶层键加 llm_ 前缀平铺（防覆盖既有变量）；raw 缺省仅 {response, response_json}。 */
+    private Map<String, Object> buildLlmOutput(Object outputMode, Map<String, Object> json, Object resp) {
+        Map<String, Object> output = new LinkedHashMap<>();
+        if ("flatten".equalsIgnoreCase(str(outputMode))) {
+            for (Map.Entry<String, Object> entry : json.entrySet()) {
+                output.put("llm_" + entry.getKey(), entry.getValue());
+            }
+            output.put("response_json", json);
+        } else {
+            output.put("response", resp);
+            output.put("response_json", json);
+        }
+        return output;
+    }
+
+    /**
+     * json_schema 轻量契约校验（复用 ToolContractValidator 的必填键 + 类型校验思想）：
+     * schema 为空直接通过；required 键必须存在；properties 声明的类型必须匹配（string/number/boolean/object/array）。
+     */
+    private String validateJsonSchema(Object schema, Map<String, Object> json) {
+        if (!(schema instanceof Map<?, ?> schemaMap)) {
+            return null;
+        }
+        java.util.List<String> problems = new ArrayList<>();
+        if (schemaMap.get("required") instanceof List<?> required) {
+            for (Object key : required) {
+                if (!json.containsKey(String.valueOf(key)) || json.get(String.valueOf(key)) == null) {
+                    problems.add("缺少必填字段: " + key);
+                }
+            }
+        }
+        if (schemaMap.get("properties") instanceof Map<?, ?> properties) {
+            for (Map.Entry<?, ?> entry : properties.entrySet()) {
+                String field = String.valueOf(entry.getKey());
+                String expectedType = entry.getValue() instanceof Map<?, ?> prop
+                        ? str(prop.get("type")) : null;
+                if (expectedType != null && json.containsKey(field) && json.get(field) != null
+                        && !jsonTypeMatches(expectedType, json.get(field))) {
+                    problems.add("字段 " + field + " 类型应为 " + expectedType);
+                }
+            }
+        }
+        return problems.isEmpty() ? null : String.join("; ", problems);
+    }
+
+    /** JSON 类型宽松匹配：number 兼容整型/浮点，其余按 Java 类型直映射。 */
+    private boolean jsonTypeMatches(String expectedType, Object value) {
+        return switch (expectedType) {
+            case "string" -> value instanceof String;
+            case "number" -> value instanceof Number;
+            case "boolean" -> value instanceof Boolean;
+            case "object" -> value instanceof Map;
+            case "array" -> value instanceof List;
+            default -> true;
+        };
+    }
+
 
     /** http 节点：POST/GET 外部系统（超时/重试语义在 P2-5b 的重试包装器中统一处理）。 */
     private NodeOutcome executeHttpNode(Map<String, Object> params, Map<String, Object> variables) {
@@ -799,19 +931,101 @@ public class FlowEngineService {
         return current;
     }
 
-    private void persistNodeLog(WorkflowExecution execution, Map<String, Object> node, NodeOutcome outcome) {
+    // ── W1-3：节点输入快照 + 每次尝试独立留痕 ──
+
+    /**
+     * 输入快照：变量解析后的真实入参（脱敏策略与 toolInputView 一致——白名单思路，
+     * 隐藏 ThinkingCopy.HIDDEN_INPUT_KEYS 声明的内部噪声键与引擎内部键，避免 node_log 膨胀/泄噪）。
+     */
+    private Map<String, Object> inputSnapshot(Map<String, Object> params, Map<String, Object> variables) {
+        Map<String, Object> resolved = resolveInputParams(params.get("inputParams"), variables);
+        if (resolved.isEmpty() && params.containsKey("prompt")) {
+            // llm 节点：入参快照记录渲染后的 prompt（截断防膨胀）
+            resolved.put("prompt", truncate(String.valueOf(renderTemplate(String.valueOf(params.get("prompt")), variables))));
+        }
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : resolved.entrySet()) {
+            if (com.sitech.prodai.service.agent.tool.ThinkingCopy.hideInputKey(e.getKey())
+                    || e.getKey().startsWith("__")) {
+                continue; // 内部键（__workflow_chain 等）不入快照
+            }
+            snapshot.put(e.getKey(), e.getValue());
+        }
+        return snapshot;
+    }
+
+    /** 每次尝试（含重试）各写一条 node_log：attempt 递增，耗时/失败原因独立留痕。 */
+    private void persistAttemptLog(WorkflowExecution execution, Map<String, Object> node, NodeOutcome outcome,
+                                   Map<String, Object> inputSnapshot, int attempt, long attemptMs) {
         WorkflowNodeLog nodeLog = new WorkflowNodeLog();
         nodeLog.setExecutionId(execution.getExecutionId());
         nodeLog.setNodeId(str(node.get("id")));
         nodeLog.setNodeType(str(node.get("action")));
         nodeLog.setStatus(outcome.success() ? "completed" : "failed");
-        nodeLog.setAttempt(1);
-        nodeLog.setOutputData(outcome.output());
+        nodeLog.setAttempt(attempt);
+        nodeLog.setInputData(inputSnapshot.isEmpty() ? null : inputSnapshot);
+        nodeLog.setOutputData(outcome.output() == null || outcome.output().isEmpty() ? null : outcome.output());
         nodeLog.setErrorMessage(outcome.errorMessage());
-        nodeLog.setStartedAt(LocalDateTime.now().minus(Duration.ofMillis(outcome.durationMs())));
+        nodeLog.setStartedAt(LocalDateTime.now().minus(Duration.ofMillis(attemptMs)));
         nodeLog.setEndedAt(LocalDateTime.now());
-        nodeLog.setDurationMs(outcome.durationMs());
+        nodeLog.setDurationMs(attemptMs);
         nodeLogMapper.insert(nodeLog);
+    }
+
+    // ── W1-1：节点级事件发布（事务提交后，异步隔离，失败仅告警） ──
+
+    /** 节点执行终态事件（成功 → node_completed；失败 → node_failed）。 */
+    private void publishNodeFinished(WorkflowExecution execution, Map<String, Object> node, NodeOutcome outcome) {
+        eventPublisher.publish(FlowNodeEvent
+                .of(outcome.success() ? FlowNodeEvent.NODE_COMPLETED : FlowNodeEvent.NODE_FAILED,
+                        execution.getExecutionId(), execution.getWorkflowCode())
+                .nodeId(str(node.get("id")))
+                .nodeType(str(node.get("action")))
+                .nodeName(str(node.get("name")))
+                .status(outcome.success() ? "done" : "error")
+                .errorMessage(outcome.errorMessage())
+                .output(outcome.output())
+                .build());
+    }
+
+    /** condition 分支命中事件（前端时间线显示"走了哪条边、为什么"）。 */
+    private void publishBranchTaken(WorkflowExecution execution, Map<String, Object> node, String branchId) {
+        eventPublisher.publish(FlowNodeEvent
+                .of(FlowNodeEvent.BRANCH_TAKEN, execution.getExecutionId(), execution.getWorkflowCode())
+                .nodeId(str(node.get("id")))
+                .nodeType("flow.condition")
+                .nodeName(str(node.get("name")))
+                .status(branchId != null ? "done" : "error")
+                .branchTaken(branchId)
+                .build());
+    }
+
+    /** human 挂起事件（对话侧翻译为 done(AWAIT_*) 变体 + form_spec 下发）。 */
+    private void publishSuspended(WorkflowExecution execution, Map<String, Object> node,
+                                  Map<String, Object> definition) {
+        Map<String, Map<String, Object>> nodeById = indexNodes(definition);
+        Map<String, Object> humanNode = nodeById.get(execution.getCurrentNodeId());
+        Map<String, Object> spec = humanNode == null ? null
+                : formSpecOf(humanNode.get("action_params") instanceof Map<?, ?> p
+                        ? (Map<String, Object>) p : Map.of());
+        eventPublisher.publish(FlowNodeEvent
+                .of(FlowNodeEvent.SUSPENDED, execution.getExecutionId(), execution.getWorkflowCode())
+                .nodeId(str(node.get("id")))
+                .nodeType("flow.human")
+                .nodeName(str(node.get("name")))
+                .status("suspended")
+                .formSpec(spec)
+                .build());
+    }
+
+    /** 执行实例终态事件（completed/failed 各一）。 */
+    private void publishExecutionFinished(WorkflowExecution execution, boolean success) {
+        eventPublisher.publish(FlowNodeEvent
+                .of(success ? FlowNodeEvent.EXECUTION_COMPLETED : FlowNodeEvent.EXECUTION_FAILED,
+                        execution.getExecutionId(), execution.getWorkflowCode())
+                .status(success ? "completed" : "failed")
+                .errorMessage(execution.getErrorMessage())
+                .build());
     }
 
     private String nextNode(Map<String, Object> node, Map<String, Object> definition) {
@@ -900,6 +1114,7 @@ public class FlowEngineService {
         execution.setOutputData(new LinkedHashMap<>(variables));
         execution.setCurrentNodeId(null);
         executionMapper.updateById(execution);
+        publishExecutionFinished(execution, true);
         log.info("[FlowEngine] 执行完成: {}", execution.getExecutionId());
     }
 
@@ -908,6 +1123,7 @@ public class FlowEngineService {
         execution.setErrorMessage(message);
         execution.setEndTime(LocalDateTime.now());
         executionMapper.updateById(execution);
+        publishExecutionFinished(execution, false);
         log.warn("[FlowEngine] 执行失败: {} - {}", execution.getExecutionId(), message);
     }
 

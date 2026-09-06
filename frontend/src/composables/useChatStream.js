@@ -238,7 +238,36 @@ export function useChatStream() {
   )
 
   const applyAgentEvent = async (eventName, data) => {
-    if (eventName === 'workflow') {
+    if (eventName === 'flow_progress') {
+      // 智聊重设计 W4：引擎节点事件实时进度（flow_progress 事件契约 §5.1）
+      // 与 tool 事件同构：进思考时间线（running → done 原地收尾），分支命中展示「走了哪条边、为什么」
+      const current = messages.value.find(m => m.role === 'assistant' && !m.done) || {}
+      const status = data.status === 'suspended' ? 'done'
+        : (data.status === 'error' ? 'error' : (data.status === 'running' ? 'running' : 'done'))
+      const stepId = `flow_${data.node_id || data.execution_id}`
+      const summary = data.summary
+        || (data.branch ? `命中分支：${data.branch.id}` : null)
+        || (data.error_message ? `节点失败：${data.error_message}` : null)
+        || (status === 'running' ? `正在执行「${data.node_name || data.node_id}」…` : null)
+        || (status === 'done' && data.status === 'suspended' ? '等待人工确认' : null)
+      upsertAssistantMessage({
+        reasoning: settleThinkingSteps(current.reasoning),
+        reasoningStep: {
+          type: 'tool',
+          id: stepId,
+          title: data.node_name || data.node_id || '流程节点',
+          content: status === 'running' ? '正在处理…' : undefined,
+          goal: '固化链路真实节点执行进度（引擎直出，非编排层模拟）',
+          result: status === 'done' ? (summary || '节点完成') : (status === 'error' ? (summary || '节点失败') : null),
+          status: status === 'running' ? 'running' : 'done',
+          attempt: data.attempt || 1,
+          // 挂起节点：附带表单契约供前端渲染确认卡片（与 clarify_contracts 同构消费）
+          flowSuspended: data.status === 'suspended' ? { execution_id: data.execution_id, form_spec: data.form_spec || null } : null,
+          segment: data.workflow_code || null,
+          timestamp: Date.now(),
+        },
+      })
+    } else if (eventName === 'workflow') {
       // 工作流定义事件：本轮处理流程（节点+分支条件+数据流），挂到消息上供思考面板渲染链路
       upsertAssistantMessage({ workflowGraph: data || null })
     } else if (eventName === 'thinking') {

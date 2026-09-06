@@ -145,6 +145,11 @@
                 :streaming="(streaming || isCatchingUp) && isRunning(step, si)"
               />
             </template>
+
+            <!-- 本体工具推理过程块：分阶段展示本体工具的执行逻辑（替代一行式 trace 文本） -->
+            <template v-else-if="isOntologyToolStep(step)">
+              <OntologyToolTraceBlock :step="step" />
+            </template>
           </div>
         </li>
       </TransitionGroup>
@@ -155,6 +160,7 @@
 <script setup>
 import { computed, reactive, ref, watch, onUnmounted } from 'vue'
 import OntologyReasoningBlock from './OntologyReasoningBlock.vue'
+import OntologyToolTraceBlock from './OntologyToolTraceBlock.vue'
 import {
   toolLabel,
   paramLabel,
@@ -517,6 +523,16 @@ const isToolIo = (step, si) =>
   step.io
   && !isRunning(step, si)
   && step.type !== 'ontology'
+
+/** 本体工具步骤：本体工具名单内或携带本体留痕（trace.stage=ontology）的工具步骤，渲染分阶段推理过程 */
+const ONTOLOGY_TOOL_RE = /^(swrl_root_cause|swrl_risk_audit|sparql_query|ontology_explain|rule_explain)$/
+const isOntologyToolStep = (step) => {
+  if (step.type !== 'tool') return false
+  const name = String(step.name || step.tool || '')
+  if (ONTOLOGY_TOOL_RE.test(name)) return true
+  return Array.isArray(step.trace)
+    && step.trace.some((t) => t && typeof t === 'object' && t.stage === 'ontology')
+}
 
 /**
  * 输入区需要隐藏的内部噪声键（与后端 ThinkingCopy.HIDDEN_INPUT_KEYS 对齐）：

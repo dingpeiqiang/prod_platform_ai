@@ -29,6 +29,11 @@ public class FlowEngineGatewayConfig {
         return params -> {
             try {
                 String prompt = String.valueOf(params.get("prompt"));
+                // W1-2：llm 节点声明 system_prompt 时走 completeMessages（结构化输出场景需固定角色约束）
+                Object systemPrompt = params.get("system_prompt");
+                if (systemPrompt != null && !String.valueOf(systemPrompt).isBlank()) {
+                    return llmService.completeMessages(String.valueOf(systemPrompt), List.of(), prompt);
+                }
                 return llmService.completePrompt(prompt);
             } catch (Exception e) {
                 return null;

@@ -49,6 +49,8 @@ class StreamEventProtocolTest {
     private LlmService llmService;
     @Mock
     private FlowIntentRouter flowIntentRouter;
+    @Mock
+    private com.sitech.prodai.service.agent.flow.SceneFlowRouter sceneFlowRouter;
 
     private AgentOrchestrator orchestrator;
 
@@ -68,7 +70,7 @@ class StreamEventProtocolTest {
     void setUp() {
         orchestrator = new AgentOrchestrator(understander, executor, presenter,
                 new SessionManager(Optional.empty()), Optional.empty(), Optional.of(llmService),
-                List.of(stubSparqlTool()), flowIntentRouter);
+                List.of(stubSparqlTool()), flowIntentRouter, null, sceneFlowRouter);
     }
 
     private QueryPlan execPlan(String tool) {
@@ -343,7 +345,8 @@ class StreamEventProtocolTest {
                 .thenThrow(new RuntimeException("DB down"));
         AgentOrchestrator persisting = new AgentOrchestrator(understander, executor, presenter,
                 new SessionManager(Optional.empty()), java.util.Optional.of(persistence),
-                java.util.Optional.empty(), List.of(stubSparqlTool()), flowIntentRouter);
+                java.util.Optional.empty(), List.of(stubSparqlTool()), flowIntentRouter,
+                null, sceneFlowRouter);
 
         QueryPlan plan = execPlan("sparql_query");
         when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(java.util.Optional.empty());

@@ -629,7 +629,8 @@ public class DefaultUnderstander implements Understander {
             params.put("action", action);
         }
         return switch (normalized) {
-            case "product_ops_query", "product_ops_monitor", "product_ops_compare" -> new QueryPlan(
+            // W5 意图收敛：product_ops_compare 已并入 product_ops_query（IntentRecognitionSupport 单源）
+            case "product_ops_query", "product_ops_monitor" -> new QueryPlan(
                     "SPARQL_QUERY", sanitizeTools(tools, List.of("sparql_query")), params, question);
             case "product_ops_reason" -> new QueryPlan(
                     "SWRL_INFER", sanitizeTools(tools, List.of("sparql_query", "swrl_root_cause")), params, question);

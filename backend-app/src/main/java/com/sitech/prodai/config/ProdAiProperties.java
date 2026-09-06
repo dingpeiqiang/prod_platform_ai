@@ -16,6 +16,7 @@ public class ProdAiProperties {
     private final Kb kb = new Kb();
     private final Mcp mcp = new Mcp();
     private final FlowRouter flowRouter = new FlowRouter();
+    private final ChatWorkflow chatWorkflow = new ChatWorkflow();
 
     public Ontology getOntology() {
         return ontology;
@@ -35,6 +36,40 @@ public class ProdAiProperties {
 
     public FlowRouter getFlowRouter() {
         return flowRouter;
+    }
+
+    public ChatWorkflow getChatWorkflow() {
+        return chatWorkflow;
+    }
+
+    /**
+     * 智聊场景工作流配置（智聊重设计 W3，方案 §7.3）：
+     * 理解层产出的 QueryPlan 经 {@code SceneFlowRouter} 确定性映射到场景工作流
+     * （引擎固化链路），未命中场景仍走动态编排（双轨兜底，无数据迁移风险）。
+     * <p>
+     * 去旧留新（W3-2）：原 {@code enabled} Feature Flag 已移除——
+     * 场景工作流路由恒启用，场景未配置（空串/缺失）即为该场景的关闭方式。
+     */
+    public static class ChatWorkflow {
+        /** 场景 → workflow_code 映射；空串/缺失 = 该场景暂不启用，走动态编排。 */
+        private Map<String, String> sceneWorkflows = new java.util.LinkedHashMap<>();
+
+        public Map<String, String> getSceneWorkflows() {
+            return sceneWorkflows;
+        }
+
+        public void setSceneWorkflows(Map<String, String> sceneWorkflows) {
+            this.sceneWorkflows = sceneWorkflows;
+        }
+
+        /** 查询场景映射的 workflow_code；未配置返回 null。 */
+        public String workflowFor(String scene) {
+            if (scene == null || sceneWorkflows == null) {
+                return null;
+            }
+            String code = sceneWorkflows.get(scene);
+            return code == null || code.isBlank() ? null : code.trim();
+        }
     }
 
     /** 流程意图路由注册表（S1 对话即编排）：启动时把配置的关键词规则注册进 FlowIntentRouter。 */

@@ -295,7 +295,7 @@ class TraceSnapshotBuilderTest {
         assertEquals("短需求", TraceSnapshotBuilder.requirementSummary("短需求"));
     }
 
-    // ── ontologyTraceView ──
+    // ── ontologyTraceView（结构化阶段视图）──
 
     @Test
     void ontologyTraceViewNullOrFailedReturnsNull() {
@@ -304,26 +304,87 @@ class TraceSnapshotBuilderTest {
     }
 
     @Test
-    void ontologyTraceViewExtractsEngineRulesAndPaths() {
+    void ontologyTraceViewEmitsStructuredPhases() {
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("reasonEngine", "Jena");
-        data.put("swrlFiredRules", List.of("R-01"));
-        data.put("appliedRules", List.of("R-C06"));
-        data.put("paths", List.of(Map.of("name", "路径A", "weight", 0.8)));
+        data.put("opsRulesVersion", "OpsRules-v1.2");
+        data.put("reasonEngine", "openllet-swrl");
+        data.put("swrlFiredRules", List.of("R-A01"));
+        data.put("appliedRules", List.of("R-A02"));
+        data.put("anomalies", List.of(Map.of("message", "累计收入环比 -18%")));
+        data.put("paths", List.of(Map.of("name", "渠道归因", "weight", 0.8, "ruleId", "R-A02",
+                "evidence", List.of("订购量变化 -25%"), "isPrimary", true, "rank", 1)));
         data.put("evidenceTriples", List.of(Map.of("s", "a", "p", "b", "o", "c")));
         ExecutionResult result = ExecutionResult.ok("swrl_root_cause", data);
         List<Map<String, Object>> trace = TraceSnapshotBuilder.ontologyTraceView(result);
-        assertEquals(5, trace.size());
-        assertTrue(String.valueOf(trace.get(0).get("message")).contains("Jena"));
-        assertTrue(String.valueOf(trace.get(1).get("message")).contains("R-01"));
-        assertTrue(String.valueOf(trace.get(2).get("message")).contains("R-C06"));
-        assertTrue(String.valueOf(trace.get(3).get("message")).contains("路径A"));
-        assertTrue(String.valueOf(trace.get(4).get("message")).contains("1 条"));
+
+        assertEquals(6, trace.size());
+        // 全部条目为 stage=ontology 且携带结构化 phase
+        for (Map<String, Object> item : trace) {
+            assertEquals("ontology", item.get("stage"));
+            assertTrue(item.containsKey("phase"));
+        }
+        assertEquals("加载本体与规则集", trace.get(0).get("phase"));
+        assertTrue(String.valueOf(trace.get(0).get("message")).contains("OpsRules-v1.2"));
+        assertEquals("启动本体推理引擎", trace.get(1).get("phase"));
+        assertTrue(String.valueOf(trace.get(1).get("message")).contains("Openllet SWRL"));
+        assertEquals("规则匹配与触发", trace.get(2).get("phase"));
+        assertTrue(String.valueOf(trace.get(2).get("message")).contains("R-A01"));
+        assertEquals("确认指标异动", trace.get(3).get("phase"));
+        assertTrue(String.valueOf(trace.get(3).get("message")).contains("-18%"));
+        assertEquals("定位主因", trace.get(4).get("phase"));
+        assertTrue(String.valueOf(trace.get(4).get("message")).contains("渠道归因"));
+        assertTrue(String.valueOf(trace.get(4).get("message")).contains("R-A02"));
+        assertEquals("沉淀证据三元组", trace.get(5).get("phase"));
+        assertTrue(String.valueOf(trace.get(5).get("message")).contains("1 条"));
+    }
+
+    @Test
+    void ontologyTraceViewRiskAuditEmitsComparePhase() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("reasonEngine", "java-rules");
+        data.put("scannedCount", 80);
+        data.put("highCount", 3L);
+        data.put("mediumCount", 5L);
+        data.put("suggestDelistCount", 2L);
+        ExecutionResult result = ExecutionResult.ok("swrl_risk_audit", data);
+        List<Map<String, Object>> trace = TraceSnapshotBuilder.ontologyTraceView(result);
+
+        boolean hasCompare = trace.stream()
+                .anyMatch(t -> "规则逐条比对".equals(t.get("phase"))
+                        && String.valueOf(t.get("message")).contains("80"));
+        assertTrue(hasCompare);
     }
 
     @Test
     void ontologyTraceViewPlainResultReturnsNull() {
         ExecutionResult result = ExecutionResult.ok("sparql_query", Map.of("nl_answer", "普通结果"));
         assertNull(TraceSnapshotBuilder.ontologyTraceView(result));
+    }
+
+    // ── ontologyQueryTrace（数据查询过程留痕）──
+
+    @Test
+    void ontologyQueryTraceEmitsDiscoverAndSparqlPhases() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("discovery_method", "llm");
+        data.put("sparql", "SELECT ?p WHERE { ?p a Offering }");
+        data.put("entity_ids", List.of("OF-1", "OF-2"));
+        ExecutionResult result = ExecutionResult.ok("sparql_query", data);
+        List<Map<String, Object>> trace = TraceSnapshotBuilder.ontologyQueryTrace(result);
+
+        assertEquals(3, trace.size());
+        assertEquals("ontology", trace.get(0).get("stage"));
+        assertEquals("实体发现", trace.get(0).get("phase"));
+        assertTrue(String.valueOf(trace.get(0).get("message")).contains("大模型"));
+        assertEquals("生成 SPARQL 查询", trace.get(1).get("phase"));
+        assertEquals("命中本体实体", trace.get(2).get("phase"));
+        assertTrue(String.valueOf(trace.get(2).get("message")).contains("2 个"));
+    }
+
+    @Test
+    void ontologyQueryTracePlainResultReturnsNull() {
+        assertNull(TraceSnapshotBuilder.ontologyQueryTrace(null));
+        assertNull(TraceSnapshotBuilder.ontologyQueryTrace(ExecutionResult.fail("sparql_query", "boom")));
+        assertNull(TraceSnapshotBuilder.ontologyQueryTrace(ExecutionResult.ok("sparql_query", Map.of("nl_answer", "空"))));
     }
 }

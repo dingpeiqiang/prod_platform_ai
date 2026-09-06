@@ -1,8 +1,11 @@
 package com.sitech.prodai.service.agent;
 
+import com.sitech.prodai.common.ApiResponse;
 import com.sitech.prodai.service.ChatPersistenceService;
 import com.sitech.prodai.service.LlmService;
+import com.sitech.prodai.service.agent.bridge.ChatHumanBridge;
 import com.sitech.prodai.service.agent.flow.FlowIntentRouter;
+import com.sitech.prodai.service.agent.flow.SceneFlowRouter;
 import com.sitech.prodai.service.agent.model.ExecutionResult;
 import com.sitech.prodai.service.agent.model.QueryPlan;
 import com.sitech.prodai.service.agent.model.SessionContext;
@@ -21,6 +24,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -59,6 +63,10 @@ class AgentOrchestratorTest {
     private LlmService llmService;
     @Mock
     private FlowIntentRouter flowIntentRouter;
+    @Mock
+    private ChatHumanBridge chatHumanBridge;
+    @Mock
+    private SceneFlowRouter sceneFlowRouter;
 
     private SessionManager sessionManager;
     private AgentOrchestrator orchestrator;
@@ -84,7 +92,8 @@ class AgentOrchestratorTest {
     void setUp() {
         sessionManager = new SessionManager(Optional.empty());
         orchestrator = new AgentOrchestrator(understander, executor, presenter, sessionManager,
-                Optional.empty(), Optional.of(llmService), List.of(stubSparqlTool()), flowIntentRouter);
+                Optional.empty(), Optional.of(llmService), List.of(stubSparqlTool()), flowIntentRouter,
+                chatHumanBridge, sceneFlowRouter);
     }
 
     /**
@@ -127,6 +136,13 @@ class AgentOrchestratorTest {
 
     private QueryPlan execPlan(String tool, Map<String, Object> params) {
         QueryPlan plan = new QueryPlan("SPARQL_QUERY", List.of(tool), params, "问题");
+        plan.setUserQuestion("问题");
+        return plan;
+    }
+
+    /** 指定意图码的计划（W3 场景工作流路由用例：rd 场景意图 = 工具名大写）。 */
+    private QueryPlan execPlan(String tool, String intent) {
+        QueryPlan plan = new QueryPlan(intent, List.of(tool), Map.of("question", "问题"), "问题");
         plan.setUserQuestion("问题");
         return plan;
     }
@@ -253,6 +269,240 @@ class AgentOrchestratorTest {
         assertTrue(report.contains("1."), () -> "模板应编号列出候选: " + report);
     }
 
+    // ── W2：挂起态短路恢复 ──
+
+    /** 会话挂起态绑定（ChatHumanBridge.buildBinding 产物的同构 fixture）。 */
+    private Map<String, Object> suspensionBinding() {
+        Map<String, Object> binding = new LinkedHashMap<>();
+        binding.put("execution_id", "EX-100");
+        binding.put("resume_token", "tok-abc");
+        binding.put("node_id", "h1");
+        binding.put("workflow_code", "chat_configure");
+        return binding;
+    }
+
+    @Test
+    void processSuspensionShortCircuitsToResumeWithoutUnderstand() {
+        SessionContext ctx = sessionManager.getOrCreate("s-r1");
+        ctx.setExecutionBinding(suspensionBinding());
+        when(chatHumanBridge.resume(eq(ctx.getExecutionBinding()), eq("确认"), isNull(), any()))
+                .thenReturn(ApiResponse.ok(Map.of("status", "completed")));
+
+        Map<String, Object> resp = orchestrator.process("确认", "s-r1");
+
+        assertEquals("FLOW_RESUME", resp.get("intent"), "挂起态回复意图应为 FLOW_RESUME");
+        assertEquals("流程已按您的确认继续执行完成。", resp.get("report"));
+        assertEquals("completed", ((Map<?, ?>) resp.get("flow_execution")).get("status"));
+        // 短路：理解层/流程路由均不再触达
+        verify(understander, never()).understand(any(), any());
+        verify(flowIntentRouter, never()).tryRoute(any(), any(), any());
+        // 恢复成功后绑定应被清空（会话退出挂起态）
+        assertNull(sessionManager.getOrCreate("s-r1").getExecutionBinding(), "恢复后绑定应清空");
+    }
+
+    @Test
+    void processEngineRejectionClearsBindingAndReportsFailure() {
+        SessionContext ctx = sessionManager.getOrCreate("s-r2");
+        ctx.setExecutionBinding(suspensionBinding());
+        when(chatHumanBridge.resume(any(), any(), any(), any()))
+                .thenReturn(ApiResponse.fail("恢复令牌无效或已被使用"));
+
+        Map<String, Object> resp = orchestrator.process("确认", "s-r2");
+
+        assertEquals("FLOW_RESUME", resp.get("intent"));
+        String report = String.valueOf(resp.get("report"));
+        assertTrue(report.contains("流程恢复失败"), () -> "引擎拒绝应生成失败话术: " + report);
+        assertNull(sessionManager.getOrCreate("s-r2").getExecutionBinding(),
+                "引擎拒绝后应清空绑定，避免会话卡死挂起态");
+    }
+
+    @Test
+    void processBridgeUnavailableFallsThroughToNormalChain() {
+        AgentOrchestrator legacy = new AgentOrchestrator(understander, executor, presenter, sessionManager,
+                Optional.empty(), Optional.of(llmService), List.of(stubSparqlTool()), flowIntentRouter,
+                null, sceneFlowRouter);
+        SessionContext ctx = sessionManager.getOrCreate("s-r3");
+        ctx.setExecutionBinding(suspensionBinding());
+        QueryPlan plan = execPlan("sparql_query", Map.of("question", "问题"));
+        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
+        when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
+        when(executor.execute(eq(plan), any(SessionContext.class))).thenReturn(List.of());
+        when(presenter.present(any(), anyList(), any(SessionContext.class))).thenReturn("常规回答");
+
+        Map<String, Object> resp = legacy.process("换个说法", "s-r3");
+
+        assertEquals("SPARQL_QUERY", resp.get("intent"), "无桥接器时应放行常规链路（零行为变更兜底）");
+        assertEquals("常规回答", resp.get("report"));
+    }
+
+    @Test
+    void processResumeSuspendedAgainRefreshesBinding() {
+        SessionContext ctx = sessionManager.getOrCreate("s-r4");
+        ctx.setExecutionBinding(suspensionBinding());
+        when(chatHumanBridge.resume(any(), any(), any(), any()))
+                .thenReturn(ApiResponse.ok(Map.of("status", "waiting_human")));
+
+        Map<String, Object> resp = orchestrator.process("确认", "s-r4");
+
+        assertEquals("FLOW_RESUME", resp.get("intent"));
+        assertEquals("waiting_human", ((Map<?, ?>) resp.get("flow_execution")).get("status"));
+    }
+
+    @Test
+    void streamSuspensionShortCircuitsToResumeWithoutUnderstand() {
+        SessionContext ctx = sessionManager.getOrCreate("s-r5");
+        ctx.setExecutionBinding(suspensionBinding());
+        when(chatHumanBridge.resume(any(), any(), any(), any()))
+                .thenReturn(ApiResponse.ok(Map.of("status", "completed")));
+
+        RecordingEmitter emitter = new RecordingEmitter();
+        orchestrator.processStream("确认", "s-r5", null, emitter);
+
+        List<String> names = emitter.eventNames();
+        assertEquals("thinking", names.get(0), "挂起态恢复首个事件仍为 thinking");
+        assertEquals("done", names.get(names.size() - 1), "流以 done 终止");
+        Map<String, Object> done = emitter.events.get(emitter.events.size() - 1).data();
+        assertEquals("FLOW_RESUME", done.get("intent"));
+        assertEquals("completed", ((Map<?, ?>) done.get("flow_execution")).get("status"));
+        // 短路：理解层/流程路由均不再触达
+        verify(understander, never()).understandAll(any(), any());
+        verify(flowIntentRouter, never()).tryRoute(any(), any(), any());
+        assertFalse(sessionManager.getOrCreate("s-r5").hasPendingExecution(),
+                "恢复完成后会话应退出挂起态");
+    }
+
+    @Test
+    void streamSuspensionAgainEmitsBindingAndContractsInDone() {
+        SessionContext ctx = sessionManager.getOrCreate("s-r6");
+        ctx.setExecutionBinding(suspensionBinding());
+        Map<String, Object> formSpec = Map.of("form_code", "approval_form",
+                "fields", List.of(Map.of("field_code", "approved", "field_name", "是否同意", "required", true)));
+        Map<String, Object> nextExecution = new LinkedHashMap<>();
+        nextExecution.put("execution_id", "EX-200");
+        nextExecution.put("resume_token", "tok-next");
+        nextExecution.put("status", "waiting_human");
+        nextExecution.put("current_node_id", "h2");
+        when(chatHumanBridge.resume(any(), any(), any(), any()))
+                .thenReturn(ApiResponse.ok(nextExecution));
+        Map<String, Object> newBinding = new LinkedHashMap<>();
+        newBinding.put("execution_id", "EX-200");
+        newBinding.put("resume_token", "tok-next");
+        newBinding.put("form_spec", formSpec);
+        when(chatHumanBridge.buildBinding(any())).thenReturn(newBinding);
+        when(chatHumanBridge.toClarifyContracts(eq(formSpec)))
+                .thenReturn(Map.of("approved", Map.of("label", "是否同意", "required", true)));
+
+        RecordingEmitter emitter = new RecordingEmitter();
+        orchestrator.processStream("确认", "s-r6", null, emitter);
+
+        Map<String, Object> done = emitter.events.get(emitter.events.size() - 1).data();
+        assertEquals("FLOW_RESUME", done.get("intent"));
+        assertNotNull(done.get("execution_binding"), "再次挂起应随 done 下发新绑定");
+        assertEquals("EX-200", ((Map<?, ?>) done.get("execution_binding")).get("execution_id"));
+        assertNotNull(done.get("clarify_contracts"), "form_spec 翻译产物应随 done 下发");
+        // 绑定已刷新为下一道阶段门
+        assertEquals("EX-200", sessionManager.getOrCreate("s-r6").getExecutionBinding().get("execution_id"));
+    }
+
+    @Test
+    void streamFlowExecutionSuspensionCapturesBindingIntoContext() {
+        Map<String, Object> flowReply = new LinkedHashMap<>();
+        flowReply.put("intent", "FLOW_EXEC");
+        flowReply.put("report", "流程到达确认节点");
+        flowReply.put("flow_matched", Map.of("workflow_code", "chat_configure"));
+        Map<String, Object> execMap = new LinkedHashMap<>();
+        execMap.put("execution_id", "EX-300");
+        execMap.put("resume_token", "tok-300");
+        execMap.put("status", "waiting_human");
+        execMap.put("current_node_id", "h1");
+        flowReply.put("flow_execution", execMap);
+        Map<String, Object> binding = suspensionBinding();
+        binding.put("execution_id", "EX-300");
+        binding.put("resume_token", "tok-300");
+        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.of(flowReply));
+        when(chatHumanBridge.buildBinding(eq(execMap))).thenReturn(binding);
+
+        RecordingEmitter emitter = new RecordingEmitter();
+        orchestrator.processStream("跑一下流程", "s-r7", null, emitter);
+
+        Map<String, Object> done = emitter.events.get(emitter.events.size() - 1).data();
+        assertEquals("FLOW_EXEC", done.get("intent"));
+        assertNotNull(done.get("execution_binding"), "FLOW_EXEC 挂起应随 done 下发绑定");
+        // 挂起绑定写入会话上下文：下一轮回复直接走 resume 短路
+        SessionContext ctx = sessionManager.getOrCreate("s-r7");
+        assertNotNull(ctx.getExecutionBinding(), "挂起后绑定应写入上下文");
+        assertEquals("EX-300", ctx.getExecutionBinding().get("execution_id"));
+        assertTrue(ctx.hasPendingExecution(), "绑定完整时应处于挂起态");
+    }
+
+    // ── W3：场景工作流路由（SceneFlowRouter 接线） ──
+
+    @Test
+    void streamSceneWorkflowRouteShortCircuitsExecutor() {
+        Map<String, Object> sceneReply = new LinkedHashMap<>();
+        sceneReply.put("intent", "FLOW_EXEC");
+        sceneReply.put("report", "场景工作流已执行完成");
+        sceneReply.put("flow_matched", Map.of("workflow_code", "chat_configure_v2"));
+        sceneReply.put("flow_execution", Map.of("status", "completed"));
+        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
+        when(understander.understandAll(any(), any(SessionContext.class)))
+                .thenReturn(List.of(execPlan("rd_config_chat", "RD_CONFIG_CHAT")));
+        when(sceneFlowRouter.tryRoute(any(QueryPlan.class), any(SessionContext.class), any()))
+                .thenReturn(Optional.of(sceneReply));
+
+        RecordingEmitter emitter = new RecordingEmitter();
+        orchestrator.processStream("配一个套餐", "s-w1", null, emitter);
+
+        List<String> names = emitter.eventNames();
+        assertEquals("thinking", names.get(0));
+        assertEquals("done", names.get(names.size() - 1));
+        Map<String, Object> done = emitter.events.get(emitter.events.size() - 1).data();
+        assertEquals("FLOW_EXEC", done.get("intent"));
+        assertEquals("completed", ((Map<?, ?>) done.get("flow_execution")).get("status"));
+        // 短路：执行层/表达层不再触达
+        verify(executor, never()).execute(any(QueryPlan.class), any(SessionContext.class), any());
+        verify(presenter, never()).present(any(), anyList(), any());
+    }
+
+    @Test
+    void processSceneWorkflowRouteShortCircuitsExecutor() {
+        Map<String, Object> sceneReply = new LinkedHashMap<>();
+        sceneReply.put("intent", "FLOW_EXEC");
+        sceneReply.put("report", "场景工作流已执行完成");
+        sceneReply.put("flow_matched", Map.of("workflow_code", "chat_configure_v2"));
+        sceneReply.put("flow_execution", Map.of("status", "completed"));
+        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
+        when(understander.understand(any(), any(SessionContext.class)))
+                .thenReturn(execPlan("rd_config_chat", "RD_CONFIG_CHAT"));
+        when(sceneFlowRouter.tryRoute(any(QueryPlan.class), any(SessionContext.class), any()))
+                .thenReturn(Optional.of(sceneReply));
+
+        Map<String, Object> resp = orchestrator.process("配一个套餐", "s-w2");
+
+        assertEquals("FLOW_EXEC", resp.get("intent"));
+        assertEquals("场景工作流已执行完成", resp.get("report"));
+        verify(executor, never()).execute(any(QueryPlan.class), any(SessionContext.class));
+        verify(presenter, never()).present(any(), anyList(), any());
+    }
+
+    @Test
+    void sceneRouterMissFallsThroughToDynamicOrchestration() {
+        QueryPlan plan = execPlan("sparql_query", Map.of("question", "问题"));
+        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
+        when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
+        when(executor.execute(eq(plan), any(SessionContext.class))).thenReturn(List.of());
+        when(presenter.present(any(), anyList(), any(SessionContext.class))).thenReturn("动态编排结果");
+        when(presenter.suggestFollowUps(any(), anyList(), any(SessionContext.class))).thenReturn(List.of());
+        when(sceneFlowRouter.tryRoute(any(QueryPlan.class), any(SessionContext.class), any()))
+                .thenReturn(Optional.empty());
+
+        Map<String, Object> resp = orchestrator.process("查数据", "s-w3");
+
+        assertEquals("SPARQL_QUERY", resp.get("intent"), "路由未命中应回落动态编排（双轨兜底）");
+        assertEquals("动态编排结果", resp.get("report"));
+        verify(executor).execute(eq(plan), any(SessionContext.class));
+    }
+
     @Test
     void processExecutorFailureStillPresentsPartialReport() {
         QueryPlan plan = execPlan("sparql_query", Map.of());
@@ -275,7 +525,8 @@ class AgentOrchestratorTest {
     @Test
     void processPersistenceFailureAppendsWarningToResponse() {
         AgentOrchestrator persisting = new AgentOrchestrator(understander, executor, presenter,
-                sessionManager, Optional.of(persistenceService), Optional.empty(), List.of(), flowIntentRouter);
+                sessionManager, Optional.of(persistenceService), Optional.empty(), List.of(), flowIntentRouter,
+                null, sceneFlowRouter);
         QueryPlan plan = execPlan("sparql_query", Map.of());
         when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);

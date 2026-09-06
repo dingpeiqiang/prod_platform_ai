@@ -40,7 +40,8 @@ public class SparqlQueryTool implements AgentTool {
 
     @Override
     public java.util.Set<String> getScenes() {
-        return java.util.Set.of("ops");
+        // W5 query 场景扶正（方案 §7.2）：知识库查询对 query 场景可见
+        return java.util.Set.of("ops", "query");
     }
 
     @Override

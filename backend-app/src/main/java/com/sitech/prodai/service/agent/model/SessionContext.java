@@ -44,6 +44,15 @@ public class SessionContext {
     /** 系统自行推断的取值记录（U3 假设透明回显）：[{param, value, reason}] */
     private List<Map<String, Object>> assumptions;
 
+    /**
+     * 工作流挂起绑定（W2 对话桥接）：human 节点挂起时写入，存在即表示会话处于挂起态，
+     * 下一轮用户回复走 ChatHumanBridge.resume 短路（不过理解层 LLM）。
+     * 键：{execution_id, resume_token, node_id, node_name, form_code, form_spec, suspended_at}。
+     * 持久化投影到 chat_message.metadata.execution_binding（SessionManager 恢复时回读），
+     * 跨轮/重启不依赖内存 TTL；恢复成功或取消后置 null。
+     */
+    private Map<String, Object> executionBinding;
+
     public SessionContext() {
         this.history = new ArrayList<>();
         this.cachedEvidence = new LinkedHashMap<>();
@@ -217,5 +226,19 @@ public class SessionContext {
 
     public void setScene(String scene) {
         this.scene = scene;
+    }
+
+    public Map<String, Object> getExecutionBinding() {
+        return executionBinding;
+    }
+
+    public void setExecutionBinding(Map<String, Object> executionBinding) {
+        this.executionBinding = executionBinding;
+    }
+
+    /** 是否处于工作流挂起态（有绑定且令牌未消费）。 */
+    public boolean hasPendingExecution() {
+        return executionBinding != null && executionBinding.get("resume_token") != null
+                && executionBinding.get("execution_id") != null;
     }
 }

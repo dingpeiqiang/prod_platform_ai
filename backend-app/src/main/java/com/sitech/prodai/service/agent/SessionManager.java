@@ -161,6 +161,14 @@ public class SessionManager {
                         }
                     }
                 }
+                // W2 挂起绑定恢复：最近一条助手消息若带 execution_binding（工作流挂起态），
+                // 会话重建后仍可对话内续谈（跨轮/重启不依赖内存 TTL）
+                Object bindingObj = meta.get("execution_binding");
+                if (bindingObj instanceof Map<?, ?> binding) {
+                    Map<String, Object> copied = new java.util.LinkedHashMap<>();
+                    binding.forEach((k, v) -> copied.put(String.valueOf(k), v));
+                    context.setExecutionBinding(copied);
+                }
                 break;
             }
         } catch (Exception e) {

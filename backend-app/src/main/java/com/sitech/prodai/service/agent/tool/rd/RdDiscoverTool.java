@@ -50,7 +50,8 @@ public class RdDiscoverTool implements AgentTool {
 
     @Override
     public java.util.Set<String> getScenes() {
-        return java.util.Set.of("rd");
+        // W5 query 场景扶正（方案 §7.2）：历史配置检索对 query 场景可见
+        return java.util.Set.of("rd", "query");
     }
 
     @Override

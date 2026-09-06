@@ -107,6 +107,13 @@ prodai:
       - workflow-code: demo_linear_flow
         display-name: 演示线性流程
         keywords: [跑一下演示流程, 演示流程, demo流程]
+  # 智聊场景工作流配置（W3）：理解层意图确定性映射到场景工作流（引擎固化链路），
+  # 未命中场景走 LLM 动态编排；场景未配置（空串）= 该场景暂不启用
+  chat-workflow:
+    scene-workflows:
+      rd: chat_configure_v2
+      query: query_reuse_v2
+      ops: ops_analysis_v2
   llm:
     enabled: ${LLM_ENABLED:true}
     function-calling-enabled: ${LLM_FC_ENABLED:true}

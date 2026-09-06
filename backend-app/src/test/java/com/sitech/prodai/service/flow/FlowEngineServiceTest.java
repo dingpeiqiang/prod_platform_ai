@@ -720,4 +720,181 @@ class FlowEngineServiceTest {
                 executionId, token, Map.of(), "approver");
         assertTrue(okResp.isSuccess(), () -> "未知表单恢复应放行（兼容）: " + okResp.getMessage());
     }
+
+    // ── W1-1：节点事件监听 ──
+
+    @Test
+    void eventsPublishedForNodeLifecycleBranchAndSuspension() throws Exception {
+        java.util.concurrent.CopyOnWriteArrayList<com.sitech.prodai.service.flow.event.FlowNodeEvent> events =
+                new java.util.concurrent.CopyOnWriteArrayList<>();
+        com.sitech.prodai.service.flow.event.FlowEventListener listener = events::add;
+        FlowEngineService observed = new FlowEngineService(workflowMapper, executionMapper, nodeLogMapper,
+                toolExecutionService, new FlowDefinitionValidator(), conditionEvaluator, llmGateway, httpGateway,
+                formCode -> null,
+                new com.sitech.prodai.service.flow.event.FlowEventPublisher(List.of(listener)));
+
+        // condition + human 挂起（事件覆盖：node/branch/suspended）
+        Map<String, Object> def = Map.of("nodes", List.of(
+                        node("s", "flow.start", Map.of()),
+                        node("c", "flow.condition", Map.of("branches", List.of(
+                                Map.of("id", "yes", "expression", "${flow.go} == true"),
+                                Map.of("id", "no", "expression", "default")))),
+                        node("h", "flow.human", Map.of()),
+                        node("e", "flow.end", Map.of())),
+                "connections", List.of(conn("s", "c", null), conn("c", "h", "yes"), conn("h", "e", null)));
+        Workflow wf = publishedWorkflow(def);
+        lenient().when(workflowMapper.selectList(any())).thenReturn(List.of(wf));
+        stubExecutionPersistence();
+
+        ApiResponse<Map<String, Object>> resp = observed.startExecution("test_flow", null, Map.of("go", true), "tester");
+        assertEquals("waiting_human", resp.getData().get("status"));
+
+        // 事件异步投递，轮询等待
+        long deadline = System.currentTimeMillis() + 2000;
+        while (events.size() < 4 && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+        List<String> types = events.stream().map(com.sitech.prodai.service.flow.event.FlowNodeEvent::getType).toList();
+        assertTrue(types.contains(com.sitech.prodai.service.flow.event.FlowNodeEvent.NODE_COMPLETED), "应有 node_completed 事件: " + types);
+        assertTrue(types.contains(com.sitech.prodai.service.flow.event.FlowNodeEvent.BRANCH_TAKEN), "应有 branch_taken 事件: " + types);
+        assertTrue(types.contains(com.sitech.prodai.service.flow.event.FlowNodeEvent.SUSPENDED), "应有 suspended 事件: " + types);
+        com.sitech.prodai.service.flow.event.FlowNodeEvent branch = events.stream()
+                .filter(e -> com.sitech.prodai.service.flow.event.FlowNodeEvent.BRANCH_TAKEN.equals(e.getType()))
+                .findFirst().orElseThrow();
+        assertEquals("yes", branch.getBranchTaken(), "分支事件应携带命中分支 id");
+    }
+
+    @Test
+    void executionTerminalEventsPublished() throws Exception {
+        java.util.concurrent.CopyOnWriteArrayList<com.sitech.prodai.service.flow.event.FlowNodeEvent> events =
+                new java.util.concurrent.CopyOnWriteArrayList<>();
+        FlowEngineService observed = new FlowEngineService(workflowMapper, executionMapper, nodeLogMapper,
+                toolExecutionService, new FlowDefinitionValidator(), conditionEvaluator, llmGateway, httpGateway,
+                formCode -> null,
+                new com.sitech.prodai.service.flow.event.FlowEventPublisher(List.of(events::add)));
+        lenient().when(workflowMapper.selectList(any())).thenReturn(List.of(publishedWorkflow(definition(Map.of(
+                "toolName", "sparql_query", "inputParams", List.of())))));
+        stubExecutionPersistence();
+        when(toolExecutionService.execute(eq("sparql_query"), any()))
+                .thenReturn(ExecutionResult.ok("sparql_query", Map.of("rows", 1)));
+
+        observed.startExecution("test_flow", null, Map.of(), "tester");
+
+        long deadline = System.currentTimeMillis() + 2000;
+        while (events.stream().noneMatch(e ->
+                com.sitech.prodai.service.flow.event.FlowNodeEvent.EXECUTION_COMPLETED.equals(e.getType()))
+                && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+        assertTrue(events.stream().anyMatch(e ->
+                        com.sitech.prodai.service.flow.event.FlowNodeEvent.EXECUTION_COMPLETED.equals(e.getType())),
+                "应有 execution_completed 终态事件");
+    }
+
+    // ── W1-2：llm 节点结构化输出 ──
+
+    @Test
+    void llmJsonModeParsesFlattensAndValidatesSchema() {
+        llmGateway = params -> "{\"offering_name\":\"畅越冰激凌\",\"monthly_fee\":49}";
+        FlowEngineService structured = new FlowEngineService(workflowMapper, executionMapper, nodeLogMapper,
+                toolExecutionService, new FlowDefinitionValidator(), conditionEvaluator, llmGateway, httpGateway,
+                formCode -> null);
+        Map<String, Object> llmNode = node("d1", "flow.llm", Map.of(
+                "prompt", "起草",
+                "response_format", "json",
+                "json_schema", Map.of("required", List.of("offering_name", "monthly_fee")),
+                "output_mode", "flatten"));
+        Map<String, Object> def = Map.of("nodes", List.of(
+                        node("s", "flow.start", Map.of()), llmNode, node("e", "flow.end", Map.of())),
+                "connections", List.of(conn("s", "d1", null), conn("d1", "e", null)));
+        lenient().when(workflowMapper.selectList(any())).thenReturn(List.of(publishedWorkflow(def)));
+        stubExecutionPersistence();
+
+        ApiResponse<Map<String, Object>> resp = structured.startExecution("test_flow", null, Map.of(), "tester");
+
+        assertTrue(resp.isSuccess(), () -> "json 模式应成功: " + resp.getMessage());
+        Map<String, Object> context = (Map<String, Object>) resp.getData().get("context_data");
+        Map<String, Object> output = (Map<String, Object>) ((Map<String, Object>) context.get("d1")).get("output");
+        assertEquals("畅越冰激凌", output.get("llm_offering_name"), "flatten 应加 llm_ 前缀平铺");
+        assertEquals(49, ((Number) output.get("llm_monthly_fee")).intValue());
+        assertNotNull(output.get("response_json"), "应保留完整 JSON 原文");
+    }
+
+    @Test
+    void llmJsonSchemaViolationRetriesThenFailsWithErrorMessage() {
+        llmGateway = params -> "{\"offering_name\":\"缺少费用的输出\"}";
+        FlowEngineService structured = new FlowEngineService(workflowMapper, executionMapper, nodeLogMapper,
+                toolExecutionService, new FlowDefinitionValidator(), conditionEvaluator, llmGateway, httpGateway,
+                formCode -> null);
+        Map<String, Object> llmNode = node("d1", "flow.llm", Map.of(
+                "prompt", "起草",
+                "response_format", "json",
+                "json_schema", Map.of("required", List.of("offering_name", "monthly_fee")),
+                "retry", Map.of("maxAttempts", 1)));
+        Map<String, Object> def = Map.of("nodes", List.of(
+                        node("s", "flow.start", Map.of()), llmNode, node("e", "flow.end", Map.of())),
+                "connections", List.of(conn("s", "d1", null), conn("d1", "e", null)));
+        lenient().when(workflowMapper.selectList(any())).thenReturn(List.of(publishedWorkflow(def)));
+        stubExecutionPersistence();
+
+        ApiResponse<Map<String, Object>> resp = structured.startExecution("test_flow", null, Map.of(), "tester");
+
+        assertTrue(resp.isSuccess(), "启动本身成功，失败体现在实例状态");
+        assertEquals("failed", resp.getData().get("status"));
+        String error = String.valueOf(resp.getData().get("error_message"));
+        assertTrue(error.contains("monthly_fee"), () -> "错误信息应指明缺失字段: " + error);
+
+        // 每次尝试独立留痕：attempt 1/2 两条 failed 日志（W1-3）
+        verify(nodeLogMapper, times(2)).insert(org.mockito.ArgumentMatchers.<WorkflowNodeLog>argThat(l ->
+                "d1".equals(l.getNodeId()) && "failed".equals(l.getStatus())));
+    }
+
+    @Test
+    void llmNonJsonResponseFailsValidation() {
+        llmGateway = params -> "这不是 JSON";
+        FlowEngineService structured = new FlowEngineService(workflowMapper, executionMapper, nodeLogMapper,
+                toolExecutionService, new FlowDefinitionValidator(), conditionEvaluator, llmGateway, httpGateway,
+                formCode -> null);
+        Map<String, Object> llmNode = node("d1", "flow.llm", Map.of(
+                "prompt", "起草", "response_format", "json"));
+        Map<String, Object> def = Map.of("nodes", List.of(
+                        node("s", "flow.start", Map.of()), llmNode, node("e", "flow.end", Map.of())),
+                "connections", List.of(conn("s", "d1", null), conn("d1", "e", null)));
+        lenient().when(workflowMapper.selectList(any())).thenReturn(List.of(publishedWorkflow(def)));
+        stubExecutionPersistence();
+
+        ApiResponse<Map<String, Object>> resp = structured.startExecution("test_flow", null, Map.of(), "tester");
+
+        assertTrue(resp.isSuccess(), "启动本身成功，失败体现在实例状态");
+        assertEquals("failed", resp.getData().get("status"));
+        assertTrue(String.valueOf(resp.getData().get("error_message")).contains("JSON"));
+    }
+
+    // ── W1-3：node_log 输入快照 ──
+
+    @Test
+    void nodeLogCarriesResolvedInputSnapshotWithSanitization() {
+        Map<String, Object> toolParams = Map.of(
+                "toolName", "sparql_query",
+                "inputParams", List.of(
+                        Map.of("name", "metric", "value", "{{flow.metric}}"),
+                        Map.of("name", "session_id", "value", "internal-noise")));
+        lenient().when(workflowMapper.selectList(any()))
+                .thenReturn(List.of(publishedWorkflow(definition(toolParams))));
+        stubExecutionPersistence();
+        when(toolExecutionService.execute(eq("sparql_query"), any()))
+                .thenReturn(ExecutionResult.ok("sparql_query", Map.of("rows", 5)));
+
+        ApiResponse<Map<String, Object>> resp = engine.startExecution("test_flow", null, Map.of("metric", "收入"), "tester");
+        assertTrue(resp.isSuccess(), () -> "应执行成功: " + resp.getMessage());
+
+        ArgumentCaptor<WorkflowNodeLog> logCaptor = ArgumentCaptor.forClass(WorkflowNodeLog.class);
+        verify(nodeLogMapper, atLeastOnce()).insert(logCaptor.capture());
+        WorkflowNodeLog toolLog = logCaptor.getAllValues().stream()
+                .filter(l -> "t".equals(l.getNodeId())).findFirst().orElseThrow();
+        assertNotNull(toolLog.getInputData(), "tool 节点应写入输入快照");
+        assertEquals("收入", toolLog.getInputData().get("metric"), "快照应为变量解析后的真实入参");
+        assertFalse(toolLog.getInputData().containsKey("session_id"), "内部噪声键应被脱敏");
+        assertFalse(toolLog.getInputData().containsKey("__workflow_chain"), "引擎内部键不入快照");
+    }
 }

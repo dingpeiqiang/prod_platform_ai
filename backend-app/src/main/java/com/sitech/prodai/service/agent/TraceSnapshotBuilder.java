@@ -313,6 +313,9 @@ public final class TraceSnapshotBuilder {
     /**
      * 本体推理步骤日志：从工具执行结果中提取本体处理过程（推理引擎/命中规则/归因路径/证据三元组），
      * 下发前端供思考时间线展开「本体处理日志」。非推理工具或无过程信息时返回 null。
+     * <p>
+     * 结构化阶段（stage/message/phase/detail）：前端据此渲染「本体推理阶段」时间线，
+     * 而非一行摘要文本，让业务人员看懂本体推理的每一步逻辑。
      */
     public static List<Map<String, Object>> ontologyTraceView(ExecutionResult result) {
         if (result == null || !result.isSuccess() || result.getData() == null) {
@@ -320,18 +323,117 @@ public final class TraceSnapshotBuilder {
         }
         Map<String, Object> data = result.getData();
         List<Map<String, Object>> trace = new ArrayList<>();
-        Object engine = data.get("reasonEngine");
-        Object firedRules = data.get("swrlFiredRules");
-        Object appliedRules = data.get("appliedRules");
-        if (engine != null && !str(engine).isBlank()) {
-            trace.add(Map.of("stage", "ontology",
-                    "message", "本体推理引擎：" + engine));
+
+        // 阶段① 加载本体与规则集
+        Object rulesVersion = data.get("opsRulesVersion");
+        if (rulesVersion != null && !str(rulesVersion).isBlank()) {
+            trace.add(ontologyPhase("加载本体与规则集", "载入业务规则集 " + rulesVersion + "，准备推理"));
         }
+
+        // 阶段② 启动推理引擎（含引擎降级说明）
+        Object engine = data.get("reasonEngine");
+        if (engine != null && !str(engine).isBlank()) {
+            String engineName = str(engine);
+            String engineCn = "openllet-swrl".equals(engineName) ? "Openllet SWRL 推理机"
+                    : engineName.startsWith("openllet-swrl+") ? "Openllet SWRL 推理机（部分回退 Java 规则）"
+                    : "fallback-java".equals(engineName) ? "Java 规则引擎（SWRL 不可用已降级）"
+                    : "Java 规则引擎";
+            trace.add(ontologyPhase("启动本体推理引擎", "使用 " + engineCn + " 在知识图谱上执行规则推理"));
+        }
+
+        // 阶段③ 规则触发（SWRL 触发 + 业务规则命中，逐条列出）
+        List<String> ruleLines = new ArrayList<>();
+        Object firedRules = data.get("swrlFiredRules");
         if (firedRules instanceof List<?> fired && !fired.isEmpty()) {
+            ruleLines.add("SWRL 规则触发：" + String.join("、", fired.stream().map(String::valueOf).toList()));
+        }
+        Object appliedRules = data.get("appliedRules");
+        if (appliedRules instanceof List<?> applied && !applied.isEmpty()) {
+            ruleLines.add("命中业务规则：" + String.join("、", applied.stream().map(String::valueOf).toList()));
+        }
+        if (!ruleLines.isEmpty()) {
+            trace.add(ontologyPhase("规则匹配与触发", String.join("；", ruleLines)));
+        }
+
+        // 阶段④ 指标异动确认（归因场景）
+        if (data.get("anomalies") instanceof List<?> anomalies && !anomalies.isEmpty()) {
+            List<String> anomalyDesc = new ArrayList<>();
+            for (Object a : anomalies) {
+                if (a instanceof Map<?, ?> am && am.get("message") != null) {
+                    anomalyDesc.add(str(am.get("message")));
+                }
+            }
+            if (!anomalyDesc.isEmpty()) {
+                trace.add(ontologyPhase("确认指标异动", String.join("；", anomalyDesc)));
+            }
+        }
+
+        // 阶段⑤ 归因路径推理（按权重排序，逐条带证据）
+        if (data.get("paths") instanceof List<?> paths && !paths.isEmpty()) {
+            for (Object p : paths) {
+                if (!(p instanceof Map<?, ?> pm) || pm.get("name") == null) {
+                    continue;
+                }
+                String name = str(pm.get("name"));
+                Object weight = pm.get("weight");
+                Object ruleId = pm.get("ruleId");
+                StringBuilder detail = new StringBuilder(name)
+                        .append(weight != null ? "（影响权重 " + weight + "）" : "")
+                        .append(ruleId != null && !str(ruleId).isBlank() ? " · 规则 " + ruleId : "");
+                if (pm.get("evidence") instanceof List<?> ev && !ev.isEmpty()) {
+                    detail.append(" · 依据：").append(ev.stream().map(String::valueOf)
+                            .reduce((a, b) -> a + "、" + b).orElse(""));
+                }
+                Object isPrimary = pm.get("isPrimary");
+                trace.add(ontologyPhase(
+                        Boolean.TRUE.equals(isPrimary) || "1".equals(str(pm.get("rank"))) ? "定位主因" : "归因路径 " + str(pm.get("rank")),
+                        detail.toString()));
+            }
+        }
+
+        // 阶段⑥ 风险分层与处置建议（稽核场景）
+        if (data.get("highCount") instanceof Number highN && data.get("scannedCount") instanceof Number scannedN) {
+            StringBuilder sb = new StringBuilder("扫描在架商品 ").append(scannedN).append(" 个");
+            if (data.get("mediumCount") instanceof Number medN) {
+                sb.append("，高风险 ").append(highN).append(" 个、中风险 ").append(medN).append(" 个");
+            }
+            if (data.get("suggestDelistCount") instanceof Number delistN) {
+                sb.append("，建议下架 ").append(delistN).append(" 个");
+            }
+            trace.add(ontologyPhase("规则逐条比对", sb.toString()));
+        }
+
+        // 阶段⑦ 证据三元组落库（结论可回溯）
+        if (data.get("evidenceTriples") instanceof List<?> triples && !triples.isEmpty()) {
+            trace.add(ontologyPhase("沉淀证据三元组",
+                    "落库 " + triples.size() + " 条「主体-关系-客体」事实，结论可逐条回溯"));
+        }
+
+        // 无结构化阶段可用时回退到旧行为（一行摘要），保证兼容
+        return trace.isEmpty() ? legacyOntologyTrace(data) : trace;
+    }
+
+    /** 构造结构化本体推理阶段条目。 */
+    private static Map<String, Object> ontologyPhase(String phase, String message) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("stage", "ontology");
+        item.put("phase", phase);
+        item.put("message", message);
+        return item;
+    }
+
+    /** 旧版一行式本体留痕（结构化阶段不可用时兜底）。 */
+    private static List<Map<String, Object>> legacyOntologyTrace(Map<String, Object> data) {
+        List<Map<String, Object>> trace = new ArrayList<>();
+        Object engine = data.get("reasonEngine");
+        if (engine != null && !str(engine).isBlank()) {
+            trace.add(Map.of("stage", "ontology", "message", "本体推理引擎：" + engine));
+        }
+        if (data.get("swrlFiredRules") instanceof List<?> fired && !fired.isEmpty()) {
             trace.add(Map.of("stage", "ontology",
                     "message", "SWRL 规则触发：" + String.join("、", fired.stream().map(String::valueOf).toList())));
         }
-        if (appliedRules instanceof List<?> applied && !applied.isEmpty()) {
+        if (data.get("appliedRules") instanceof List<?> applied && !applied.isEmpty()) {
             trace.add(Map.of("stage", "ontology",
                     "message", "命中业务规则：" + String.join("、", applied.stream().map(String::valueOf).toList())));
         }
@@ -352,6 +454,33 @@ public final class TraceSnapshotBuilder {
         if (data.get("evidenceTriples") instanceof List<?> triples && !triples.isEmpty()) {
             trace.add(Map.of("stage", "ontology",
                     "message", "证据三元组落库 " + triples.size() + " 条，支撑结论可回溯"));
+        }
+        return trace.isEmpty() ? null : trace;
+    }
+
+    /**
+     * 数据查询（NL→SPARQL）过程留痕：让「查询经营数据」步骤展示本体查询的逻辑过程
+     * （本体加载 → 实体发现方式 → 生成 SPARQL → 命中实体数）。
+     */
+    public static List<Map<String, Object>> ontologyQueryTrace(ExecutionResult result) {
+        if (result == null || !result.isSuccess() || result.getData() == null) {
+            return null;
+        }
+        Map<String, Object> data = result.getData();
+        List<Map<String, Object>> trace = new ArrayList<>();
+        Object method = data.get("discovery_method");
+        if (method != null && !str(method).isBlank()) {
+            trace.add(ontologyPhase("实体发现",
+                    "llm".equals(str(method))
+                            ? "由大模型从问题中提取实体类型与筛选条件"
+                            : "基于关键词匹配定位本体实体"));
+        }
+        Object sparql = data.get("sparql");
+        if (sparql != null && !str(sparql).isBlank()) {
+            trace.add(ontologyPhase("生成 SPARQL 查询", "在本体知识库执行语义查询"));
+        }
+        if (data.get("entity_ids") instanceof List<?> ids && !ids.isEmpty()) {
+            trace.add(ontologyPhase("命中本体实体", "检索到 " + ids.size() + " 个实体及其关联事实"));
         }
         return trace.isEmpty() ? null : trace;
     }

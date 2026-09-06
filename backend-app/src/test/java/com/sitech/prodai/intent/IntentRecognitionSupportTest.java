@@ -15,7 +15,10 @@ class IntentRecognitionSupportTest {
         assertEquals("product_ops_policy", IntentRecognitionSupport.normalizeIntentType("online_check"));
         assertEquals("product_ops_reason", IntentRecognitionSupport.normalizeIntentType("root_cause"));
         assertEquals("product_ops_monitor", IntentRecognitionSupport.normalizeIntentType("ops_monitor"));
-        assertEquals("product_ops_compare", IntentRecognitionSupport.normalizeIntentType("what_if"));
+        // W5 意图收敛：compare 并入 query
+        assertEquals("product_ops_query", IntentRecognitionSupport.normalizeIntentType("what_if"));
+        assertEquals("product_ops_query", IntentRecognitionSupport.normalizeIntentType("compare"));
+        assertEquals("product_ops_query", IntentRecognitionSupport.normalizeIntentType("compare_state"));
         assertEquals("chat", IntentRecognitionSupport.normalizeIntentType("guide"));
     }
 
