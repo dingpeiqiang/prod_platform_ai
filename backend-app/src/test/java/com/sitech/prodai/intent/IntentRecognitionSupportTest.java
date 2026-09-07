@@ -19,7 +19,10 @@ class IntentRecognitionSupportTest {
         assertEquals("product_ops_query", IntentRecognitionSupport.normalizeIntentType("what_if"));
         assertEquals("product_ops_query", IntentRecognitionSupport.normalizeIntentType("compare"));
         assertEquals("product_ops_query", IntentRecognitionSupport.normalizeIntentType("compare_state"));
-        // 理解层 LLM 自由意图：分析类话术（如「查一下…增长趋势」输出 ANALYZE）归入运营查询
+        // 手册 intent_guide 归口声明下的主路径：LLM 照声明输出规范码（任意大小写）→ 幂等归一
+        assertEquals("product_ops_query", IntentRecognitionSupport.normalizeIntentType("PRODUCT_OPS_QUERY"));
+        assertEquals("product_ops_reason", IntentRecognitionSupport.normalizeIntentType("Product_Ops_Reason"));
+        // 兜底：LLM 未照声明输出自由意图（如 ANALYZE）时映射修补
         assertEquals("product_ops_query", IntentRecognitionSupport.normalizeIntentType("ANALYZE"));
         assertEquals("product_ops_query", IntentRecognitionSupport.normalizeIntentType("analysis"));
         assertEquals("chat", IntentRecognitionSupport.normalizeIntentType("guide"));

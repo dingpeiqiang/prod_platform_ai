@@ -262,6 +262,9 @@ public class PlaybookRegistry {
      * 输出形如「【标准作业程序：文档批量导入配置】
      * 第1步 解析文档提取文本——按文件类型选引擎……（工具：rd_file_parse）
      * 护栏：……」——LLM 照此执行，人也能直接读懂。
+     * <p>
+     * 手册声明了 intent_guide（意图归口）时追加「意图归口」段——手册即意图定义源，
+     * LLM 依据话术语义对照归口声明输出 intent（而非自由发挥），路由按声明匹配。
      */
     public String renderSop(String code) {
         Map<String, Object> book = playbooks.get(code);
@@ -269,6 +272,11 @@ public class PlaybookRegistry {
             return null;
         }
         StringBuilder sb = new StringBuilder("【标准作业程序：").append(str(book.get("title"))).append("】\n");
+        if (book.get("applies_to") instanceof Map<?, ?> at
+                && at.get("intent_guide") instanceof Map<?, ?> guide && !guide.isEmpty()) {
+            sb.append("意图归口（选本手册时 intent 必须从下列码中按话术语义选一个）：\n");
+            guide.forEach((k, v) -> sb.append("- ").append(k).append("：").append(v).append('\n'));
+        }
         if (book.get("steps") instanceof List<?> steps) {
             int no = 0;
             for (Object o : steps) {

@@ -223,6 +223,20 @@ class PlaybookRegistryTest {
     }
 
     @Test
+    void renderSopIncludesIntentGuideWhenDeclared() {
+        // 意图归口（手册 = 意图定义源）：随 SOP 下发，LLM 依据归口声明选意图码，
+        // 不再自由发挥（实测曾输出 ANALYZE 自由意图，全靠归一化映射表修补）
+        String sop = registry.renderSop("ops-analysis");
+        assertNotNull(sop);
+        assertTrue(sop.contains("意图归口"), () -> "声明了 intent_guide 应输出归口段: " + sop);
+        assertTrue(sop.contains("PRODUCT_OPS_QUERY："), () -> "归口段应含意图码: " + sop);
+        assertTrue(sop.contains("增长趋势"), () -> "归口段应含话术特征: " + sop);
+        // 未声明 intent_guide 的手册不输出归口段
+        String rdSop = registry.renderSop("doc-batch-import");
+        assertFalse(rdSop.contains("意图归口"), "未声明归口的手册不应输出归口段");
+    }
+
+    @Test
     void renderSopReturnsNullForUnknownCode() {
         assertNull(registry.renderSop("no-such-playbook"));
     }
