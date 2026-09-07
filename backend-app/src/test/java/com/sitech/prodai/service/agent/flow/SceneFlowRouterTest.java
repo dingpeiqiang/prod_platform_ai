@@ -45,7 +45,8 @@ class SceneFlowRouterTest {
         var playbookRegistry = new com.sitech.prodai.service.agent.playbook.PlaybookRegistry();
         playbookRegistry.init();
         router = new SceneFlowRouter(properties, flowEngineService, playbookRegistry);
-        properties.getChatWorkflow().getSceneWorkflows().put("rd", "chat_configure_v2");
+        // rd 场景工作流已删（手册全覆盖架空）；用 query 场景（query_reuse_v2 存量）验证确定性映射
+        properties.getChatWorkflow().getSceneWorkflows().put("query", "query_reuse_v2");
     }
 
     private QueryPlan execPlan(String tool, String intent) {
@@ -56,24 +57,42 @@ class SceneFlowRouterTest {
 
     private SessionContext rdSession() {
         SessionContext ctx = new SessionContext("s1");
+        ctx.setScene("query");
+        return ctx;
+    }
+
+    /** rd 会话：工作流配置已删除，但三本手册仍在 rd 场景声明适用域。 */
+    private SessionContext plainRdSession() {
+        SessionContext ctx = new SessionContext("s-rd");
         ctx.setScene("rd");
         return ctx;
     }
 
     // ── 确定性映射 ──
 
+    /**
+     * 未被手册覆盖的工具/意图（sparql_query/query 场景）：配置了工作流 → 确定性路由。
+     * 注意：rd 场景的 rd_config_chat/RD_CONFIG_CHAT 已命中手册 chat-configure（手册优先），
+     * 且 rd 场景工作流配置已删除——见 intentCoveredByPlaybookFallsThroughToOrchestration。
+     */
+    private QueryPlan unbookedPlan() {
+        QueryPlan plan = new QueryPlan("SPARQL_QUERY", List.of("sparql_query"), Map.of("monthly_fee", 59), "查一下数据");
+        plan.setUserQuestion("查一下数据");
+        return plan;
+    }
+
     @Test
     void routesRdPlanToConfiguredWorkflow() {
-        when(flowEngineService.startExecution(eq("chat_configure_v2"), isNull(), any(), any()))
+        when(flowEngineService.startExecution(eq("query_reuse_v2"), isNull(), any(), any()))
                 .thenReturn(ApiResponse.ok(Map.of("status", "completed", "execution_id", "EX-1")));
 
-        var reply = router.tryRoute(execPlan("rd_config_chat", "RD_CONFIG_CHAT"), rdSession(), "u1");
+        var reply = router.tryRoute(unbookedPlan(), rdSession(), "u1");
 
-        assertTrue(reply.isPresent(), "rd 已配置 → 应命中工作流");
+        assertTrue(reply.isPresent(), "query 已配置 → 应命中工作流");
         assertEquals("FLOW_EXEC", reply.get().get("intent"));
-        assertEquals("chat_configure_v2",
+        assertEquals("query_reuse_v2",
                 ((Map<?, ?>) reply.get().get("flow_matched")).get("workflow_code"));
-        verify(flowEngineService).startExecution(eq("chat_configure_v2"), isNull(), any(), any());
+        verify(flowEngineService).startExecution(eq("query_reuse_v2"), isNull(), any(), any());
     }
 
     @Test
@@ -81,11 +100,11 @@ class SceneFlowRouterTest {
         when(flowEngineService.startExecution(any(), any(), any(), any()))
                 .thenReturn(ApiResponse.ok(Map.of("status", "completed")));
 
-        QueryPlan plan = execPlan("rd_config_chat", "RD_CONFIG_CHAT");
+        QueryPlan plan = unbookedPlan();
         for (int i = 0; i < 3; i++) {
             var reply = router.tryRoute(plan, rdSession(), "u1");
             assertTrue(reply.isPresent());
-            assertEquals("chat_configure_v2",
+            assertEquals("query_reuse_v2",
                     ((Map<?, ?>) reply.get().get("flow_matched")).get("workflow_code"),
                     "同输入=同路径（确定性，无 LLM 参与）");
         }
@@ -106,7 +125,7 @@ class SceneFlowRouterTest {
     void clarifyConfirmAndReuseIntentsNeverRoute() {
         for (String intent : List.of(QueryPlan.INTENT_CLARIFY, QueryPlan.INTENT_CONFIRM,
                 QueryPlan.INTENT_REUSE_EVIDENCE)) {
-            var reply = router.tryRoute(execPlan("rd_config_discover", intent), rdSession(), "u1");
+            var reply = router.tryRoute(execPlan("sparql_query", intent), rdSession(), "u1");
             assertTrue(reply.isEmpty(), () -> intent + " 是对话协议轮，不应进工作流");
         }
         verify(flowEngineService, never()).startExecution(any(), any(), any(), any());
@@ -122,20 +141,34 @@ class SceneFlowRouterTest {
 
     @Test
     void emptySceneWorkflowValueFallsThrough() {
-        properties.getChatWorkflow().getSceneWorkflows().put("rd", "");
+        properties.getChatWorkflow().getSceneWorkflows().put("query", "");
 
-        var reply = router.tryRoute(execPlan("rd_config_chat", "RD_CONFIG_CHAT"), rdSession(), "u1");
+        var reply = router.tryRoute(unbookedPlan(), rdSession(), "u1");
 
         assertTrue(reply.isEmpty(), "空串配置 = 该场景暂不启用");
     }
 
     @Test
-    void intentCoveredByPlaybookFallsThroughToOrchestration() {
-        // 手册 doc-batch-import 声明 applies_to.intents=[RD_FILE_PARSE]（classpath 装载）：
-        // 意图命中手册 → 即使场景配置了工作流也回落动态编排（LLM 照手册执行）
-        var reply = router.tryRoute(execPlan("rd_file_parse", "RD_FILE_PARSE"), rdSession(), "u1");
+    void unconfiguredRdSceneFallsThroughEvenWithPlaybookUnmatchedIntent() {
+        // rd 场景工作流配置已删除（去旧留新：手册全覆盖架空固化工作流）：
+        // rd 下未命中手册的意图 → 直接走动态编排（而非回落某个固化工作流）
+        var reply = router.tryRoute(execPlan("rd_compliance", "RD_COMPLIANCE"), plainRdSession(), "u1");
 
-        assertTrue(reply.isEmpty(), "手册适用域命中 → 不进固化工作流");
+        assertTrue(reply.isEmpty(), "rd 场景未配置工作流 → 走动态编排");
+        verify(flowEngineService, never()).startExecution(any(), any(), any(), any());
+    }
+
+    @Test
+    void intentCoveredByPlaybookFallsThroughToOrchestration() {
+        // 手册声明 applies_to.intents（classpath 装载：doc-batch-import/chat-configure/discover-history）：
+        // 意图命中手册 → 即使场景配置了工作流也回落动态编排（LLM 照手册执行）
+        for (QueryPlan plan : List.of(
+                execPlan("rd_file_parse", "RD_FILE_PARSE"),
+                execPlan("rd_config_chat", "RD_CONFIG_CHAT"),
+                execPlan("rd_config_discover", "RD_CONFIG_DISCOVER"))) {
+            var reply = router.tryRoute(plan, plainRdSession(), "u1");
+            assertTrue(reply.isEmpty(), () -> plan.getIntent() + " 命中手册 → 不进固化工作流");
+        }
         verify(flowEngineService, never()).startExecution(any(), any(), any(), any());
     }
 
@@ -146,13 +179,13 @@ class SceneFlowRouterTest {
         when(flowEngineService.startExecution(any(), any(), any(), any()))
                 .thenReturn(ApiResponse.ok(Map.of("status", "completed")));
 
-        router.tryRoute(execPlan("rd_config_chat", "RD_CONFIG_CHAT"), rdSession(), "u1");
+        router.tryRoute(unbookedPlan(), rdSession(), "u1");
 
         org.mockito.ArgumentCaptor<Map<String, Object>> inputCaptor =
                 org.mockito.ArgumentCaptor.forClass(Map.class);
-        verify(flowEngineService).startExecution(eq("chat_configure_v2"), isNull(), inputCaptor.capture(), any());
+        verify(flowEngineService).startExecution(eq("query_reuse_v2"), isNull(), inputCaptor.capture(), any());
         assertEquals(59, inputCaptor.getValue().get("monthly_fee"), "QueryPlan 参数应透传为流程入参");
-        assertEquals("配一个套餐", inputCaptor.getValue().get("question"), "用户原话应透传");
+        assertEquals("查一下数据", inputCaptor.getValue().get("question"), "用户原话应透传");
     }
 
     @Test
@@ -160,7 +193,7 @@ class SceneFlowRouterTest {
         when(flowEngineService.startExecution(any(), any(), any(), any()))
                 .thenReturn(ApiResponse.ok(Map.of("status", "waiting_human", "execution_id", "EX-9")));
 
-        var reply = router.tryRoute(execPlan("rd_config_chat", "RD_CONFIG_CHAT"), rdSession(), "u1");
+        var reply = router.tryRoute(unbookedPlan(), rdSession(), "u1");
 
         assertTrue(reply.isPresent());
         String report = String.valueOf(reply.get().get("report"));
@@ -173,7 +206,7 @@ class SceneFlowRouterTest {
         when(flowEngineService.startExecution(any(), any(), any(), any()))
                 .thenReturn(ApiResponse.fail("工作流未发布"));
 
-        var reply = router.tryRoute(execPlan("rd_config_chat", "RD_CONFIG_CHAT"), rdSession(), "u1");
+        var reply = router.tryRoute(unbookedPlan(), rdSession(), "u1");
 
         assertTrue(reply.isPresent());
         assertEquals("failed", ((Map<?, ?>) reply.get().get("flow_execution")).get("status"));
@@ -187,7 +220,7 @@ class SceneFlowRouterTest {
         when(flowEngineService.startExecution(any(), any(), any(), any()))
                 .thenReturn(ApiResponse.ok(Map.of("status", "completed", "output_data", outputData)));
 
-        var reply = router.tryRoute(execPlan("rd_config_chat", "RD_CONFIG_CHAT"), rdSession(), "u1");
+        var reply = router.tryRoute(unbookedPlan(), rdSession(), "u1");
 
         assertTrue(reply.isPresent());
         assertEquals("草稿已落库并开单", reply.get().get("conclusion"), "结论应取 end 节点透传的 flow.output");

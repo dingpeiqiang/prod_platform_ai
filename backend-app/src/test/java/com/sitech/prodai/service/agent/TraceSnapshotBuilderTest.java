@@ -554,4 +554,187 @@ class TraceSnapshotBuilderTest {
         assertTrue(TraceSnapshotBuilder.rdFileParsePhaseIo(result, -1).isEmpty());
         assertTrue(TraceSnapshotBuilder.rdFileParsePhaseIo(result, 4).isEmpty());
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void rdFileParsePhaseIoCarriesRealDetails() {
+        Map<String, Object> draft1 = new LinkedHashMap<>();
+        draft1.put("offeringName", "全家享融合套餐");
+        draft1.put("monthlyFee", 129);
+        Map<String, Object> draft2 = new LinkedHashMap<>();
+        draft2.put("offeringName", "畅越冰激凌套餐");
+        draft2.put("monthlyFee", 99);
+        Map<String, Object> item1 = new LinkedHashMap<>();
+        item1.put("index", 1);
+        item1.put("draft", draft1);
+        item1.put("compliancePass", true);
+        item1.put("workOrderId", "WO-001");
+        Map<String, Object> item2 = new LinkedHashMap<>();
+        item2.put("index", 2);
+        item2.put("draft", draft2);
+        item2.put("compliancePass", false);
+        item2.put("issues", List.of(Map.of("ruleId", "R-C03"), "R-C07"));
+        item2.put("workOrderId", "WO-002");
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("extractEngine", "llm");
+        data.put("total", 2);
+        data.put("passedCount", 1);
+        data.put("workOrderCount", 2);
+        data.put("workOrderFailures", List.of("#3: 草稿为空（文档段落未抽到有效配置字段）"));
+        data.put("items", List.of(item1, item2));
+        ExecutionResult result = ExecutionResult.ok("rd_file_parse", data);
+
+        // 环节②：抽取明细逐条带套餐名与月费
+        Map<String, Object> out1 = (Map<String, Object>) TraceSnapshotBuilder.rdFileParsePhaseIo(result, 1).get("output");
+        List<String> draftDetails = (List<String>) out1.get("draft_details");
+        assertEquals(2, draftDetails.size());
+        assertTrue(draftDetails.get(0).contains("全家享融合套餐"));
+        assertTrue(draftDetails.get(0).contains("129"));
+        assertTrue(draftDetails.get(1).contains("畅越冰激凌套餐"));
+
+        // 环节③：合规明细逐条带通过/待修正与规则编号
+        Map<String, Object> out2 = (Map<String, Object>) TraceSnapshotBuilder.rdFileParsePhaseIo(result, 2).get("output");
+        List<String> complianceDetails = (List<String>) out2.get("compliance_details");
+        assertEquals(2, complianceDetails.size());
+        assertTrue(complianceDetails.get(0).contains("通过"));
+        assertTrue(complianceDetails.get(1).contains("待修正"));
+        assertTrue(complianceDetails.get(1).contains("R-C03"));
+        assertTrue(complianceDetails.get(1).contains("R-C07"));
+
+        // 环节④：开单明细逐条带工单号，失败条目原样透出
+        Map<String, Object> out3 = (Map<String, Object>) TraceSnapshotBuilder.rdFileParsePhaseIo(result, 3).get("output");
+        List<String> orderDetails = (List<String>) out3.get("work_order_details");
+        assertEquals(3, orderDetails.size());
+        assertTrue(orderDetails.get(0).contains("全家享融合套餐"));
+        assertTrue(orderDetails.get(0).contains("WO-001"));
+        assertTrue(orderDetails.get(1).contains("WO-002"));
+        assertTrue(orderDetails.get(2).startsWith("失败："));
+
+        // 环节①：无明细键（解析环节本就没有草稿产出）
+        Map<String, Object> out0 = (Map<String, Object>) TraceSnapshotBuilder.rdFileParsePhaseIo(result, 0).get("output");
+        assertFalse(out0.containsKey("draft_details"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void rdFileParsePhaseIoDetailsFallBackToExcerptWhenDraftUnnamed() {
+        Map<String, Object> draft = new LinkedHashMap<>();
+        draft.put("monthlyFee", 59);
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("index", 1);
+        item.put("draft", draft);
+        item.put("compliancePass", true);
+        item.put("sourceExcerpt", "套餐三：月费59元含30GB流量");
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("total", 1);
+        data.put("passedCount", 1);
+        data.put("items", List.of(item));
+        ExecutionResult result = ExecutionResult.ok("rd_file_parse", data);
+
+        // 无套餐名 → 回退原文摘录
+        Map<String, Object> out1 = (Map<String, Object>) TraceSnapshotBuilder.rdFileParsePhaseIo(result, 1).get("output");
+        List<String> draftDetails = (List<String>) out1.get("draft_details");
+        assertEquals(1, draftDetails.size());
+        assertTrue(draftDetails.get(0).contains("套餐三：月费59元含30GB流量"));
+
+        // 开单明细：无 workOrderId 回填 → 仅失败列表为空时不发放键
+        Map<String, Object> out3 = (Map<String, Object>) TraceSnapshotBuilder.rdFileParsePhaseIo(result, 3).get("output");
+        assertFalse(out3.containsKey("work_order_details"));
+    }
+
+    // ── 智聊手册（chat-configure）：rd_config_chat 四环节差异化 IO ──
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void rdConfigChatPhaseIoCarriesDraftAndComplianceDetails() {
+        Map<String, Object> draft = new LinkedHashMap<>();
+        draft.put("offeringName", "家庭基础套餐·158元·500M");
+        draft.put("monthlyFee", 158);
+        draft.put("includeBroadband", "500M");
+        draft.put("targetUser", "家庭");
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("draft", draft);
+        data.put("compliancePass", false);
+        data.put("issues", List.of(Map.of("ruleId", "R-C03")));
+        data.put("workOrderId", "WO-C01");
+        ExecutionResult result = ExecutionResult.ok("rd_config_chat", data);
+
+        // 环节①：品类识别（无 from_step 承接）
+        Map<String, Object> io0 = TraceSnapshotBuilder.rdConfigChatPhaseIo(result, 0);
+        assertFalse(((Map<String, Object>) io0.get("input")).containsKey("from_step"));
+
+        // 环节②：草稿要素明细逐项透出
+        Map<String, Object> out1 = (Map<String, Object>) TraceSnapshotBuilder.rdConfigChatPhaseIo(result, 1).get("output");
+        List<String> draftDetails = (List<String>) out1.get("draft_details");
+        assertTrue(draftDetails.stream().anyMatch(l -> l.contains("offeringName=家庭基础套餐·158元·500M")));
+        assertTrue(draftDetails.stream().anyMatch(l -> l.contains("monthlyFee=158")));
+        assertTrue(String.valueOf(out1.get("summary")).contains("家庭基础套餐"));
+
+        // 环节③：合规未通过 → 问题规则编号透出
+        Map<String, Object> out2 = (Map<String, Object>) TraceSnapshotBuilder.rdConfigChatPhaseIo(result, 2).get("output");
+        assertEquals(false, out2.get("compliancePass"));
+        List<String> complianceDetails = (List<String>) out2.get("compliance_details");
+        assertTrue(complianceDetails.get(0).contains("R-C03"));
+
+        // 环节④：工单号明细
+        Map<String, Object> out3 = (Map<String, Object>) TraceSnapshotBuilder.rdConfigChatPhaseIo(result, 3).get("output");
+        List<String> orderDetails = (List<String>) out3.get("work_order_details");
+        assertTrue(orderDetails.get(0).contains("WO-C01"));
+    }
+
+    @Test
+    void rdConfigChatPhaseIoInvalidInputsReturnEmpty() {
+        ExecutionResult result = ExecutionResult.ok("rd_config_chat", Map.of("draft", Map.of()));
+        assertTrue(TraceSnapshotBuilder.rdConfigChatPhaseIo(null, 0).isEmpty());
+        assertTrue(TraceSnapshotBuilder.rdConfigChatPhaseIo(ExecutionResult.fail("rd_config_chat", "boom"), 0).isEmpty());
+        assertTrue(TraceSnapshotBuilder.rdConfigChatPhaseIo(result, -1).isEmpty());
+        assertTrue(TraceSnapshotBuilder.rdConfigChatPhaseIo(result, 4).isEmpty());
+    }
+
+    // ── 智查手册（discover-history）三环节差异化 IO ──
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void rdDiscoverPhaseIoCarriesHitDetails() {
+        Map<String, Object> item1 = new LinkedHashMap<>();
+        item1.put("name", "校园畅越套餐");
+        item1.put("monthlyFee", 39);
+        Map<String, Object> item2 = new LinkedHashMap<>();
+        item2.put("name", "校园基础套餐");
+        item2.put("fixedFeeAmount", 29);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("items", List.of(item1, item2));
+        data.put("entity_ids", List.of(item1, item2));
+        ExecutionResult result = ExecutionResult.ok("rd_config_discover", data);
+
+        // 环节②：命中数 + 命中明细逐条带名称与月费
+        Map<String, Object> out1 = (Map<String, Object>) TraceSnapshotBuilder.rdDiscoverPhaseIo(result, 1).get("output");
+        assertEquals(2, out1.get("hitCount"));
+        List<String> hitDetails = (List<String>) out1.get("hit_details");
+        assertEquals(2, hitDetails.size());
+        assertTrue(hitDetails.get(0).contains("校园畅越套餐"));
+        assertTrue(hitDetails.get(0).contains("39"));
+        assertTrue(hitDetails.get(1).contains("校园基础套餐"));
+
+        // 环节③：整理结论
+        Map<String, Object> out2 = (Map<String, Object>) TraceSnapshotBuilder.rdDiscoverPhaseIo(result, 2).get("output");
+        assertTrue(String.valueOf(out2.get("summary")).contains("2"));
+
+        // 空命中：环节③ 提示放宽条件
+        Map<String, Object> emptyData = new LinkedHashMap<>();
+        emptyData.put("items", List.of());
+        emptyData.put("entity_ids", List.of());
+        Map<String, Object> emptyOut2 = (Map<String, Object>) TraceSnapshotBuilder
+                .rdDiscoverPhaseIo(ExecutionResult.ok("rd_config_discover", emptyData), 2).get("output");
+        assertTrue(String.valueOf(emptyOut2.get("summary")).contains("放宽"));
+    }
+
+    @Test
+    void rdDiscoverPhaseIoInvalidInputsReturnEmpty() {
+        ExecutionResult result = ExecutionResult.ok("rd_config_discover", Map.of());
+        assertTrue(TraceSnapshotBuilder.rdDiscoverPhaseIo(null, 0).isEmpty());
+        assertTrue(TraceSnapshotBuilder.rdDiscoverPhaseIo(ExecutionResult.fail("rd_config_discover", "boom"), 0).isEmpty());
+        assertTrue(TraceSnapshotBuilder.rdDiscoverPhaseIo(result, -1).isEmpty());
+        assertTrue(TraceSnapshotBuilder.rdDiscoverPhaseIo(result, 3).isEmpty());
+    }
 }

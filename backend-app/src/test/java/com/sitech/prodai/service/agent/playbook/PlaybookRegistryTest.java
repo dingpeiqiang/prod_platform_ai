@@ -36,6 +36,26 @@ class PlaybookRegistryTest {
     }
 
     @Test
+    void loadsChatConfigureAndDiscoverHistoryPlaybooks() {
+        // 三大场景手册齐全：智读（doc-batch-import）/ 智聊（chat-configure）/ 智查（discover-history）
+        assertNotNull(registry.get("chat-configure"), "智聊手册应从 classpath:playbooks 装载");
+        assertNotNull(registry.get("discover-history"), "智查手册应从 classpath:playbooks 装载");
+        assertTrue(registry.problems().isEmpty(), () -> "装载应零问题: " + registry.problems());
+    }
+
+    @Test
+    void chatConfigureAndDiscoverHaveStepsToolsTriggers() {
+        Map<String, Object> chat = registry.get("chat-configure");
+        assertEquals("对话式配置草稿生成", chat.get("title"));
+        assertTrue(chat.get("steps") instanceof List<?> s && s.size() == 4, "智聊手册应 4 步（品类/生成/合规/开单）");
+        assertEquals("rd", ((Map<?, ?>) chat.get("applies_to")).get("scene"), "智聊手册适用 rd 场景");
+
+        Map<String, Object> discover = registry.get("discover-history");
+        assertEquals("历史配置检索复用", discover.get("title"));
+        assertTrue(discover.get("steps") instanceof List<?> s && s.size() == 3, "智查手册应 3 步（需求/检索/整理）");
+    }
+
+    @Test
     void loadedPlaybookHasStepsToolsGuardrails() {
         Map<String, Object> book = registry.get("doc-batch-import");
         assertEquals("文档批量导入配置", book.get("title"));
@@ -46,8 +66,9 @@ class PlaybookRegistryTest {
 
     @Test
     void registersKnownToolsAndResolvesReferences() {
-        // 工具名单注入后重载：rd_file_parse / rd_compliance 已注册 → 引用可解析、零问题
-        registry.registerKnownTools(java.util.Set.of("rd_file_parse", "rd_compliance", "rd_config_chat"));
+        // 工具名单注入后重载：三本手册引用的工具均已注册 → 引用可解析、零问题
+        registry.registerKnownTools(java.util.Set.of(
+                "rd_file_parse", "rd_compliance", "rd_config_chat", "rd_config_discover"));
         registry.reload();
         assertTrue(registry.problems().isEmpty(), () -> "引用的工具均已注册，装载应零问题: " + registry.problems());
     }
@@ -61,6 +82,9 @@ class PlaybookRegistryTest {
         assertNotNull(problems, "引用不存在的工具应被门禁拦截");
         assertTrue(problems.stream().anyMatch(p -> p.contains("引用不可解析")),
                 () -> "应报引用不可解析: " + problems);
+        // 三本手册全部被拦截（引用的工具一个都不可解析）
+        assertNotNull(registry.problems().get("chat-configure"), "智聊手册引用不可解析时也应被拦截");
+        assertNotNull(registry.problems().get("discover-history"), "智查手册引用不可解析时也应被拦截");
     }
 
     // ── 路由消费（双消费①） ──
@@ -69,23 +93,33 @@ class PlaybookRegistryTest {
     void routesByIntentDeclaration() {
         assertEquals("doc-batch-import", registry.route("rd", "RD_FILE_PARSE", List.of()),
                 "意图命中 applies_to.intents → 返回手册 code");
+        assertEquals("chat-configure", registry.route("rd", "RD_CONFIG_CHAT", List.of()),
+                "智聊意图命中 → 返回智聊手册 code");
+        assertEquals("discover-history", registry.route("rd", "RD_CONFIG_DISCOVER", List.of()),
+                "智查意图命中 → 返回智查手册 code");
     }
 
     @Test
     void routesByToolDeclaration() {
         assertEquals("doc-batch-import", registry.route("rd", "SOME_OTHER_INTENT", List.of("rd_file_parse")),
                 "工具命中 applies_to.tools 亦应命中");
+        assertEquals("chat-configure", registry.route("rd", "SOME_OTHER_INTENT", List.of("rd_config_chat")),
+                "rd_config_chat 命中智聊手册");
+        assertEquals("discover-history", registry.route("rd", "SOME_OTHER_INTENT", List.of("rd_config_discover")),
+                "rd_config_discover 命中智查手册");
     }
 
     @Test
     void sceneMismatchDoesNotRoute() {
         assertNull(registry.route("ops", "RD_FILE_PARSE", List.of()),
                 "场景不一致（ops ≠ rd）→ 不路由");
+        assertNull(registry.route("ops", "RD_CONFIG_CHAT", List.of()),
+                "智聊手册对 ops 场景同样不路由");
     }
 
     @Test
     void unrelatedIntentAndToolDoesNotRoute() {
-        assertNull(registry.route("rd", "RD_CONFIG_CHAT", List.of("rd_config_chat")),
+        assertNull(registry.route("rd", "RD_DRAFT_MANAGE", List.of("rd_draft_manage")),
                 "意图与工具均不在适用域 → 不路由");
     }
 
@@ -95,6 +129,10 @@ class PlaybookRegistryTest {
     void triggerHitRoutesDirectly() {
         assertEquals("doc-batch-import", registry.matchTrigger("rd", "帮我导入文档：方案.docx"),
                 "话术含触发词「导入文档」→ 直达手册");
+        assertEquals("chat-configure", registry.matchTrigger("rd", "帮我配置一个月费128的家庭套餐"),
+                "智聊天话术「配置一个」→ 直达智聊手册");
+        assertEquals("discover-history", registry.matchTrigger("rd", "找一下月费39的校园套餐"),
+                "智查话术「找一下」→ 直达智查手册");
     }
 
     @Test
@@ -105,9 +143,16 @@ class PlaybookRegistryTest {
 
     @Test
     void triggerMissAndSceneMissReturnNull() {
-        assertNull(registry.matchTrigger("rd", "配一个39元套餐"), "未含触发词 → 不快筛");
+        assertNull(registry.matchTrigger("rd", "上一轮的套餐叫什么"), "未含触发词 → 不快筛");
         assertNull(registry.matchTrigger("ops", "导入文档"), "场景不符 → 不快筛");
         assertNull(registry.matchTrigger("rd", "  "), "空话术 → 不快筛");
+    }
+
+    @Test
+    void sceneMismatchBlocksTrigger() {
+        // 智查触发词对 query 场景不快筛（手册声明 applies_to.scene=rd，档案调阅页走常规链路）
+        assertNull(registry.matchTrigger("query", "找一下月费39的校园套餐"),
+                "智查手册 scene=rd，query 场景话术不触发");
     }
 
     // ── 编排消费（双消费②） ──
@@ -132,6 +177,8 @@ class PlaybookRegistryTest {
     void codesForSceneFiltersByScene() {
         List<String> rdCodes = registry.codesForScene("rd");
         assertTrue(rdCodes.contains("doc-batch-import"));
+        assertTrue(rdCodes.contains("chat-configure"), "rd 场景应含智聊手册");
+        assertTrue(rdCodes.contains("discover-history"), "rd 场景应含智查手册");
         List<String> opsCodes = registry.codesForScene("ops");
         assertTrue(opsCodes.isEmpty(), () -> "ops 场景无手册: " + opsCodes);
     }

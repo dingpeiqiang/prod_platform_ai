@@ -25,8 +25,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * rd_draft_manage 空变更语义回归：确认值与草稿一致（无字段需修改）应返回成功而非失败
- * （固定流程 chat_configure_v2 confirm 后 persist 引用确认值落草稿，值相同属常态）。
+ * rd_draft_manage 提交参数回归：确认门值与草稿一致；字段缺省不误改；应答成功/失败透传
+ * （语义承接手册 chat-configure 的落库开单环节：凭 work_order_id 反查草稿后更新/提交）。
  */
 @ExtendWith(MockitoExtension.class)
 class RdDraftManageToolTest {

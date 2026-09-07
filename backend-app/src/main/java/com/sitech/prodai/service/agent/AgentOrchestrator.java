@@ -361,6 +361,7 @@ public class AgentOrchestrator {
         }
         Map<String, Object> planParams = params == null ? new LinkedHashMap<>() : new LinkedHashMap<>(params);
         planParams.putIfAbsent("question", question);
+        injectSessionId(planParams, context);
         QueryPlan plan = new QueryPlan(intent, tools, planParams, question);
         plan.setUserQuestion(question);
         context.setLastIntent(intent);
@@ -469,6 +470,7 @@ public class AgentOrchestrator {
         }
         Map<String, Object> planParams = params == null ? new LinkedHashMap<>() : new LinkedHashMap<>(params);
         planParams.putIfAbsent("question", question);
+        injectSessionId(planParams, context);
         QueryPlan plan = new QueryPlan(intent, tools, planParams, question);
         plan.setUserQuestion(question);
         context.setLastIntent(intent);
@@ -607,25 +609,27 @@ public class AgentOrchestrator {
 
     /**
      * 手册步骤 → 该步骤自身环节的留痕切片：一次真实工具执行会收尾多个手册步骤
-     * （如 rd_file_parse 四步），每步只贴自己对应环节的留痕，避免全量重复。
-     * 目前仅智读解析有环节化留痕，其余工具维持全量（其留痕本就单环节）。
+     * （如 rd_file_parse 四步、rd_config_chat 四步、rd_config_discover 三步），
+     * 每步只贴自己对应环节的留痕，避免全量重复。
      */
     private List<Map<String, Object>> stepTraceOf(ExecutionResult result, int stepIdx) {
-        if ("rd_file_parse".equals(result.getToolName())) {
-            return TraceSnapshotBuilder.rdFileParseTracePhase(result, stepIdx);
-        }
-        return toolTraceOf(result);
+        return switch (result.getToolName()) {
+            case "rd_file_parse" -> TraceSnapshotBuilder.rdFileParseTracePhase(result, stepIdx);
+            default -> toolTraceOf(result);
+        };
     }
 
     /**
      * 手册步骤 → 该步骤自身环节的输入/输出视图：输入承接上一环节产出（from_step），
-     * 输出只讲本环节结论。目前仅智读解析四环节差异化，其余工具回退通用摘要。
+     * 输出只讲本环节结论。智读四环节、智聊四环节、智查三环节差异化，其余工具回退通用摘要。
      */
     private Map<String, Object> stepIoOf(ExecutionResult result, int stepIdx) {
-        if ("rd_file_parse".equals(result.getToolName())) {
-            return TraceSnapshotBuilder.rdFileParsePhaseIo(result, stepIdx);
-        }
-        return Map.of();
+        return switch (result.getToolName()) {
+            case "rd_file_parse" -> TraceSnapshotBuilder.rdFileParsePhaseIo(result, stepIdx);
+            case "rd_config_chat" -> TraceSnapshotBuilder.rdConfigChatPhaseIo(result, stepIdx);
+            case "rd_config_discover" -> TraceSnapshotBuilder.rdDiscoverPhaseIo(result, stepIdx);
+            default -> Map.of();
+        };
     }
 
     /** SOP 文本 → 步骤结构列表：[{do, how, tool}]（「第N步 X——Y（工具：t）」行解析）。 */
@@ -664,6 +668,18 @@ public class AgentOrchestrator {
             steps.add(step);
         }
         return steps;
+    }
+
+    /**
+     * rd 场景透传会话 ID：AgentTool 接口无 context 参数，经 plan.params → executor direct 兜底
+     * 透传给工具（如 rd_file_parse 批量开单需绑定会话，否则 attachBatchWorkOrders 短路不开单）。
+     * session_id 是系统参数，必须以服务端 SessionContext 为准：请求参数可能缺省或带错值，
+     * 故此处强制覆盖（与常规链路 DefaultUnderstander 的注入策略一致）。
+     */
+    private void injectSessionId(Map<String, Object> planParams, SessionContext context) {
+        if (context != null && context.getSessionId() != null && !context.getSessionId().isBlank()) {
+            planParams.put("session_id", context.getSessionId());
+        }
     }
 
     /**

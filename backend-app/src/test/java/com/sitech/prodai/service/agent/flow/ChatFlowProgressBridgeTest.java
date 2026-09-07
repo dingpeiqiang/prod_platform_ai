@@ -49,7 +49,7 @@ class ChatFlowProgressBridgeTest {
     }
 
     private FlowNodeEvent event(String type, String executionId) {
-        return FlowNodeEvent.of(type, executionId, "chat_configure_v2")
+        return FlowNodeEvent.of(type, executionId, "query_reuse_v2")
                 .nodeId("compliance")
                 .nodeType("rd_compliance")
                 .nodeName("合规自检")
@@ -67,7 +67,7 @@ class ChatFlowProgressBridgeTest {
         assertEquals(List.of("flow_progress"), sink.names);
         Map<String, Object> payload = sink.payloads.get(0);
         assertEquals("EX-1", payload.get("execution_id"));
-        assertEquals("chat_configure_v2", payload.get("workflow_code"));
+        assertEquals("query_reuse_v2", payload.get("workflow_code"));
         assertEquals("compliance", payload.get("node_id"));
         assertEquals("合规自检", payload.get("node_name"));
         assertEquals("running", payload.get("status"), "node_started 应翻译为 running");
@@ -108,7 +108,7 @@ class ChatFlowProgressBridgeTest {
         RecordingSink sink = new RecordingSink();
         bridge.register("EX-1", sink, null);
 
-        bridge.onEvent(FlowNodeEvent.of(FlowNodeEvent.BRANCH_TAKEN, "EX-1", "chat_configure_v2")
+        bridge.onEvent(FlowNodeEvent.of(FlowNodeEvent.BRANCH_TAKEN, "EX-1", "query_reuse_v2")
                 .nodeId("pass-check").nodeType("flow.condition").nodeName("通过判定")
                 .branchTaken("fix").build());
 
@@ -124,7 +124,7 @@ class ChatFlowProgressBridgeTest {
         Map<String, Object> formSpec = new LinkedHashMap<>();
         formSpec.put("form_code", "offering_config");
 
-        bridge.onEvent(FlowNodeEvent.of(FlowNodeEvent.SUSPENDED, "EX-1", "chat_configure_v2")
+        bridge.onEvent(FlowNodeEvent.of(FlowNodeEvent.SUSPENDED, "EX-1", "query_reuse_v2")
                 .nodeId("confirm-gate").nodeType("flow.human").nodeName("确认落库")
                 .status("suspended").formSpec(formSpec).build());
 
@@ -175,7 +175,7 @@ class ChatFlowProgressBridgeTest {
         RecordingSink sink = new RecordingSink();
         bridge.register("EX-1", sink, null);
 
-        bridge.onEvent(FlowNodeEvent.of(FlowNodeEvent.NODE_FAILED, "EX-1", "chat_configure_v2")
+        bridge.onEvent(FlowNodeEvent.of(FlowNodeEvent.NODE_FAILED, "EX-1", "query_reuse_v2")
                 .nodeId("draft-llm").nodeType("flow.llm").nodeName("起草")
                 .status("error").errorMessage("LLM 网关超时").build());
 

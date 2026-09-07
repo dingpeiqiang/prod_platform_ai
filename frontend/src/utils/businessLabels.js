@@ -72,6 +72,11 @@ const PARAM_LABELS = {
   items: '草稿清单',
   product_type: '产品品类',
   requirement: '需求',
+  draft_details: '草稿明细',
+  compliance_details: '合规明细',
+  work_order_details: '工单明细',
+  workOrderCount: '工单数量',
+  failureCount: '失败条数',
 }
 
 /** 参数名 → 业务中文标签 */

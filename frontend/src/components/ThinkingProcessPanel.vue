@@ -136,6 +136,18 @@
               <span class="extra-val">{{ stepOutputText(step, si) }}</span>
             </div>
 
+            <!-- 输出明细行：后端差异化 output 下发的真实明细（草稿/合规/工单逐条），无则不渲染 -->
+            <div v-if="stepOutputDetailLines(step).length" class="extra-line output-detail-line">
+              <span class="extra-key">{{ outputDetailKeyLabel(step) }}</span>
+              <span class="extra-val">
+                <span
+                  v-for="(line, di) in stepOutputDetailLines(step)"
+                  :key="di"
+                  class="output-detail-item"
+                >{{ line }}</span>
+              </span>
+            </div>
+
             <!-- 本体环节推理块（网络图等富内容，附加在过程之下） -->
             <template v-if="step.type === 'ontology' && step.ontologyChain">
               <OntologyReasoningBlock
@@ -714,6 +726,37 @@ const ioOutputSummary = (step) => {
 
 const ioOutputEntries = (step) => toolOutputEntries('tool', step.io?.output)
 
+/**
+ * 「输出」行下的明细列表（后端差异化 output 下发的 *_details 数组）：
+ * 每条渲染为独立明细行，前缀取 PARAM_LABELS 业务名（草稿明细/合规明细/工单明细）。
+ * 无明细数据时返回空数组（不渲染明细块）。
+ */
+const OUTPUT_DETAIL_KEYS = ['draft_details', 'compliance_details', 'work_order_details']
+
+const stepOutputDetailLines = (step) => {
+  const output = step.io?.output
+  if (!output || typeof output !== 'object') return []
+  for (const key of OUTPUT_DETAIL_KEYS) {
+    const list = output[key]
+    if (Array.isArray(list) && list.length) {
+      return list.map((v) => String(v)).filter(Boolean)
+    }
+  }
+  return []
+}
+
+/** 明细行的标签：按命中的明细键取业务名（草稿明细/合规明细/工单明细） */
+const outputDetailKeyLabel = (step) => {
+  const output = step.io?.output
+  if (!output || typeof output !== 'object') return '明细'
+  for (const key of OUTPUT_DETAIL_KEYS) {
+    if (Array.isArray(output[key]) && output[key].length) {
+      return paramLabel(key)
+    }
+  }
+  return '明细'
+}
+
 /** 格式化步骤结果：支持 string / number / 对象摘要 */
 const formatStepResult = (step) => {
   const raw = step.result
@@ -1066,6 +1109,23 @@ const formatStepResult = (step) => {
 .process-detail {
   color: #64748b;
   font-size: 11px;
+}
+
+/* 「输出」明细行：真实执行产物逐条成行（套餐名/工单号/失败原因），等宽条目更易逐行核对 */
+.output-detail-line .extra-key {
+  width: auto;
+  min-width: 30px;
+}
+
+.output-detail-item {
+  display: block;
+  font-size: 11px;
+  color: #64748b;
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+}
+
+.output-detail-item + .output-detail-item {
+  margin-top: 2px;
 }
 
 .extra-inline {

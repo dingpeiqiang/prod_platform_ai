@@ -38,6 +38,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.mockito.ArgumentCaptor;
 
 /**
  * AgentOrchestrator 编排入口单元测试（R8）：
@@ -443,7 +444,7 @@ class AgentOrchestratorTest {
         Map<String, Object> sceneReply = new LinkedHashMap<>();
         sceneReply.put("intent", "FLOW_EXEC");
         sceneReply.put("report", "场景工作流已执行完成");
-        sceneReply.put("flow_matched", Map.of("workflow_code", "chat_configure_v2"));
+        sceneReply.put("flow_matched", Map.of("workflow_code", "query_reuse_v2"));
         sceneReply.put("flow_execution", Map.of("status", "completed"));
         when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understandAll(any(), any(SessionContext.class)))
@@ -470,7 +471,7 @@ class AgentOrchestratorTest {
         Map<String, Object> sceneReply = new LinkedHashMap<>();
         sceneReply.put("intent", "FLOW_EXEC");
         sceneReply.put("report", "场景工作流已执行完成");
-        sceneReply.put("flow_matched", Map.of("workflow_code", "chat_configure_v2"));
+        sceneReply.put("flow_matched", Map.of("workflow_code", "query_reuse_v2"));
         sceneReply.put("flow_execution", Map.of("status", "completed"));
         when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understand(any(), any(SessionContext.class)))
@@ -721,5 +722,33 @@ class AgentOrchestratorTest {
         long textCount = emitter.events.stream().filter(e -> "text".equals(e.event())).count();
         assertTrue(textCount > 0, "合并正文应随 text 事件下发");
         verify(presenter, times(2)).present(any(), anyList(), any(SessionContext.class));
+    }
+
+    // ── 手册直达链路：session_id 注入契约 ──
+
+    @Test
+    void streamPlaybookPathInjectsSessionIdIntoPlanParams() {
+        when(presenter.present(any(), anyList(), any(SessionContext.class))).thenReturn("手册执行完毕");
+        when(presenter.suggestFollowUps(any(), anyList(), any(SessionContext.class))).thenReturn(List.of());
+        RecordingEmitter emitter = new RecordingEmitter();
+        orchestrator.processStream("导入文档", "s-pb1", null, "rd", emitter);
+
+        // 手册触发词快筛命中 doc-batch-import（零 LLM 成本直达），执行层收到的 plan.params
+        // 必须携带服务端 SessionContext 的 session_id——否则 rd_file_parse 批量开单
+        // 因 sessionId 空白短路，工单不落库，前端工单卡片无从展示
+        ArgumentCaptor<QueryPlan> planCaptor = ArgumentCaptor.forClass(QueryPlan.class);
+        verify(executor).execute(planCaptor.capture(), any(SessionContext.class), any(Executor.StepListener.class));
+        assertEquals("s-pb1", planCaptor.getValue().getParams().get("session_id"),
+                "手册链路 plan.params 应注入服务端 session_id（强制覆盖）");
+    }
+
+    @Test
+    void processPlaybookPathInjectsSessionIdIntoPlanParams() {
+        orchestrator.process("导入文档", "s-pb2", null, "rd");
+
+        ArgumentCaptor<QueryPlan> planCaptor = ArgumentCaptor.forClass(QueryPlan.class);
+        verify(executor).execute(planCaptor.capture(), any(SessionContext.class));
+        assertEquals("s-pb2", planCaptor.getValue().getParams().get("session_id"),
+                "手册同步链路 plan.params 应注入服务端 session_id（强制覆盖）");
     }
 }

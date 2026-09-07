@@ -643,11 +643,12 @@ public final class TraceSnapshotBuilder {
      * 数据流视角（与 ConfigDocImportService 流水线一致）：
      * <ul>
      *   <li>环节① 文档解析：输入=文档标识/名称，输出=解析引擎+抽取字符数+trace_id</li>
-     *   <li>环节② 套餐抽取：输入=解析出的文本，输出=抽取引擎+抽取条数+命中规则</li>
-     *   <li>环节③ 合规校验：输入=全部草稿，输出=通过/待修正条数</li>
-     *   <li>环节④ 批量开单：输入=合规通过草稿，输出=工单数+失败明细</li>
+     *   <li>环节② 套餐抽取：输入=解析出的文本，输出=抽取引擎+抽取条数+逐条草稿明细（draft_details）</li>
+     *   <li>环节③ 合规校验：输入=全部草稿，输出=通过/待修正条数+逐条合规明细（compliance_details）</li>
+     *   <li>环节④ 批量开单：输入=合规通过草稿，输出=工单数+逐条工单明细（work_order_details）+失败明细</li>
      * </ul>
-     * input 带 from_step 供前端渲染「承接」行（上一环节产出）。
+     * input 带 from_step 供前端渲染「承接」行（上一环节产出）；
+     * 明细列表均取自真实执行产物（items[].draft / workOrderId / issues），上限保护防长文档刷屏。
      */
     public static Map<String, Object> rdFileParsePhaseIo(ExecutionResult result, int phaseIdx) {
         if (result == null || !result.isSuccess() || result.getData() == null
@@ -675,6 +676,11 @@ public final class TraceSnapshotBuilder {
                 if (data.get("total") instanceof Number n) {
                     output.put("total", n.intValue());
                 }
+                // 抽取明细：逐条「#序号 套餐名（月费）」，取自真实草稿
+                List<String> draftLines = draftOutlineList(data);
+                if (!draftLines.isEmpty()) {
+                    output.put("draft_details", draftLines);
+                }
                 output.put("summary", phaseSummary(data, "extract"));
             }
             case 2 -> { // 合规校验
@@ -689,6 +695,11 @@ public final class TraceSnapshotBuilder {
                 if (data.get("passedCount") instanceof Number p) {
                     output.put("passedCount", p.intValue());
                 }
+                // 合规明细：逐条「#序号 套餐名：通过/待修正（R-C 编号）」
+                List<String> complianceLines = complianceDetailList(data);
+                if (!complianceLines.isEmpty()) {
+                    output.put("compliance_details", complianceLines);
+                }
                 output.put("summary", phaseSummary(data, "compliance"));
             }
             case 3 -> { // 批量开单
@@ -702,6 +713,11 @@ public final class TraceSnapshotBuilder {
                 }
                 if (data.get("workOrderFailures") instanceof List<?> fails && !fails.isEmpty()) {
                     output.put("failureCount", fails.size());
+                }
+                // 开单明细：逐条「套餐名 → 工单号」，失败条目原样透出
+                List<String> orderLines = workOrderDetailList(data);
+                if (!orderLines.isEmpty()) {
+                    output.put("work_order_details", orderLines);
                 }
                 output.put("summary", phaseSummary(data, "create"));
             }
@@ -763,6 +779,308 @@ public final class TraceSnapshotBuilder {
             }
             default -> "执行完成";
         };
+    }
+
+    /** 上限保护：明细列表最多下发条数（超长文档场景防止展开区被明细淹没）。 */
+    private static final int DETAIL_LIMIT = 8;
+
+    /**
+     * 抽取明细：逐条「#序号 套餐名（月费 XX 元）」，取自 items[].draft 真实草稿字段，
+     * 无草稿名时回退原文摘录前段。空列表返回 empty（调用方不放下发键）。
+     */
+    private static List<String> draftOutlineList(Map<String, Object> data) {
+        List<String> lines = new ArrayList<>();
+        if (!(data.get("items") instanceof List<?> items)) {
+            return lines;
+        }
+        for (Object o : items) {
+            if (lines.size() >= DETAIL_LIMIT) {
+                break;
+            }
+            if (!(o instanceof Map<?, ?> item)) {
+                continue;
+            }
+            int idx = item.get("index") instanceof Number n ? n.intValue() : lines.size() + 1;
+            String name = draftField(item, "offeringName", "offerName");
+            if (name.isBlank()) {
+                name = firstChars(str(item.get("sourceExcerpt")), 18);
+            }
+            if (name.isBlank()) {
+                continue;
+            }
+            String fee = draftField(item, "monthlyFee", "fixedFeeAmount");
+            lines.add("#" + idx + " " + name + (fee.isBlank() ? "" : "（月费 " + fee + " 元）"));
+        }
+        return lines;
+    }
+
+    /**
+     * 合规明细：逐条「#序号 套餐名：通过/待修正（R-C 编号…）」，issues 取规则编号去重。
+     */
+    private static List<String> complianceDetailList(Map<String, Object> data) {
+        List<String> lines = new ArrayList<>();
+        if (!(data.get("items") instanceof List<?> items)) {
+            return lines;
+        }
+        for (Object o : items) {
+            if (lines.size() >= DETAIL_LIMIT) {
+                break;
+            }
+            if (!(o instanceof Map<?, ?> item)) {
+                continue;
+            }
+            int idx = item.get("index") instanceof Number n ? n.intValue() : lines.size() + 1;
+            String name = draftField(item, "offeringName", "offerName");
+            if (name.isBlank()) {
+                name = firstChars(str(item.get("sourceExcerpt")), 18);
+            }
+            boolean pass = Boolean.TRUE.equals(item.get("compliancePass"));
+            StringBuilder sb = new StringBuilder("#").append(idx).append(" ")
+                    .append(name.isBlank() ? "未命名草稿" : name).append("：").append(pass ? "通过" : "待修正");
+            if (!pass) {
+                List<String> ruleIds = issueRuleIds(item.get("issues"));
+                if (!ruleIds.isEmpty()) {
+                    sb.append("（").append(String.join("、", ruleIds)).append("）");
+                }
+            }
+            lines.add(sb.toString());
+        }
+        return lines;
+    }
+
+    /**
+     * 开单明细：优先逐条「套餐名 → 工单号」（items[].workOrderId 已回填），
+     * 失败条目（workOrderFailures）原样透出。两类全空时返回 empty。
+     */
+    private static List<String> workOrderDetailList(Map<String, Object> data) {
+        List<String> lines = new ArrayList<>();
+        if (data.get("items") instanceof List<?> items) {
+            for (Object o : items) {
+                if (lines.size() >= DETAIL_LIMIT) {
+                    break;
+                }
+                if (!(o instanceof Map<?, ?> item) || item.get("workOrderId") == null) {
+                    continue;
+                }
+                String name = draftField(item, "offeringName", "offerName");
+                if (name.isBlank()) {
+                    name = firstChars(str(item.get("sourceExcerpt")), 18);
+                }
+                lines.add((name.isBlank() ? "未命名草稿" : name) + " → 工单 " + item.get("workOrderId"));
+            }
+        }
+        if (data.get("workOrderFailures") instanceof List<?> fails) {
+            for (Object f : fails) {
+                if (lines.size() >= DETAIL_LIMIT + 4) {
+                    break;
+                }
+                if (f != null && !str(f).isBlank()) {
+                    lines.add("失败：" + f);
+                }
+            }
+        }
+        return lines;
+    }
+
+    /** 从 items[].draft 中取首个非空字段。 */
+    private static String draftField(Map<?, ?> item, String... keys) {
+        if (item.get("draft") instanceof Map<?, ?> draft) {
+            for (String k : keys) {
+                String v = str(draft.get(k));
+                if (!v.isBlank() && !"null".equals(v)) {
+                    return v;
+                }
+            }
+        }
+        return "";
+    }
+
+    /** 稽核问题 → 规则编号列表（去重，兼容 {ruleId|ruleCode} 对象与纯字符串两种形态）。 */
+    private static List<String> issueRuleIds(Object issues) {
+        List<String> ruleIds = new ArrayList<>();
+        if (!(issues instanceof List<?> list)) {
+            return ruleIds;
+        }
+        for (Object o : list) {
+            String ruleId = null;
+            if (o instanceof Map<?, ?> issue) {
+                ruleId = firstNonBlank(str(issue.get("ruleId")), str(issue.get("ruleCode")));
+            } else if (o != null) {
+                ruleId = str(o);
+            }
+            if (ruleId != null && !ruleId.isBlank() && !"null".equals(ruleId) && !ruleIds.contains(ruleId)) {
+                ruleIds.add(ruleId);
+            }
+        }
+        return ruleIds;
+    }
+
+    private static String firstNonBlank(String a, String b) {
+        return a != null && !a.isBlank() ? a : b;
+    }
+
+    /**
+     * 手册步骤的差异化「输入/输出」：rd_config_chat 一次执行产出完整结果，但手册四步
+     * 各自对应不同环节——输入/输出必须按环节取自真实数据（与 rdFileParsePhaseIo 同构）。
+     * <p>
+     * 数据流视角（与 RdConfigChatTool.execute 流水线一致）：
+     * <ul>
+     *   <li>环节① 品类识别：输入=话术，输出=识别品类（含兜底说明）</li>
+     *   <li>环节② 草稿生成：输入=品类，输出=草稿要素明细（名称/月费/宽带/客群/渠道）</li>
+     *   <li>环节③ 合规校验：输入=草稿，输出=通过/待修正+问题规则编号</li>
+     *   <li>环节④ 落库开单：输入=草稿，输出=工单号（落库失败不开单）</li>
+     * </ul>
+     */
+    public static Map<String, Object> rdConfigChatPhaseIo(ExecutionResult result, int phaseIdx) {
+        if (result == null || !result.isSuccess() || result.getData() == null
+                || phaseIdx < 0 || phaseIdx > 3) {
+            return Map.of();
+        }
+        Map<String, Object> data = result.getData();
+        Map<String, Object> input = new LinkedHashMap<>();
+        Map<String, Object> output = new LinkedHashMap<>();
+        Map<?, ?> draft = data.get("draft") instanceof Map<?, ?> d ? d : Map.of();
+        String name = firstNonBlank(draftField(Map.of("draft", draft), "offeringName", "offerName"), "");
+        String fee = draftField(Map.of("draft", draft), "monthlyFee", "fixedFeeAmount");
+        switch (phaseIdx) {
+            case 0 -> { // 品类识别
+                output.put("summary", "已识别产品品类（显式品类优先，未提供时由模板 matchers 兜底识别）");
+            }
+            case 1 -> { // 草稿生成
+                input.put("from_step", "sop-step-0");
+                input.put("requirement", "上一步识别的产品品类");
+                // 草稿要素明细：名称/月费/宽带/客群/渠道逐项透出（与 normalize 摘要同源）
+                List<String> draftLines = new ArrayList<>();
+                Map<?, ?> d = draft;
+                for (String key : new String[]{"offeringName", "offerName", "monthlyFee", "fixedFeeAmount",
+                        "includeBroadband", "downstreamBandwidth", "targetUser", "channelScope", "bizScenario"}) {
+                    String v = str(d.get(key));
+                    if (!v.isBlank() && !"null".equals(v) && draftLines.size() < DETAIL_LIMIT) {
+                        draftLines.add(key + "=" + v);
+                    }
+                }
+                if (!draftLines.isEmpty()) {
+                    output.put("draft_details", draftLines);
+                }
+                output.put("summary", name.isBlank()
+                        ? "已生成配置草稿" + (fee.isBlank() ? "" : "（月费 " + fee + " 元）")
+                        : "已生成配置草稿「" + name + "」");
+            }
+            case 2 -> { // 合规校验
+                input.put("from_step", "sop-step-1");
+                input.put("requirement", name.isBlank() ? "上一步生成的配置草稿" : "草稿「" + name + "」");
+                boolean pass = Boolean.TRUE.equals(data.get("compliancePass"));
+                output.put("compliancePass", pass);
+                List<String> ruleIds = issueRuleIds(data.get("issues"));
+                if (!pass && !ruleIds.isEmpty()) {
+                    output.put("compliance_details", List.of("待修正：" + String.join("、", ruleIds)));
+                }
+                output.put("summary", pass ? "合规校验通过" : "合规校验未通过（补名后已重跑刷新结论）");
+            }
+            case 3 -> { // 落库开单
+                input.put("from_step", "sop-step-2");
+                input.put("requirement", name.isBlank() ? "合规结论生效的草稿" : "草稿「" + name + "」");
+                Object woId = data.get("workOrderId");
+                if (woId != null && !str(woId).isBlank()) {
+                    output.put("work_order_details", List.of((name.isBlank() ? "配置草稿" : name) + " → 工单 " + woId));
+                    output.put("workOrderId", str(woId));
+                }
+                output.put("summary", woId == null || str(woId).isBlank()
+                        ? "草稿落库未成功，未开单（避免孤儿工单）"
+                        : "已落库并创建配置工单");
+            }
+            default -> {
+                return Map.of();
+            }
+        }
+        Map<String, Object> io = new LinkedHashMap<>();
+        io.put("input", input);
+        io.put("output", output);
+        return io;
+    }
+
+    /**
+     * 手册步骤的差异化「输入/输出」：rd_config_discover 一次执行产出检索结果，手册三步
+     * 对应 需求解析 → 检索 → 整理 三个环节（只读：无落库无开单环节）。
+     * <ul>
+     *   <li>环节① 需求解析：输入=话术，输出=检索要素说明</li>
+     *   <li>环节② 历史检索：输入=检索要素，输出=命中数+命中明细（名称/月费）</li>
+     *   <li>环节③ 清单整理：输入=命中结果，输出=可复用清单（复制为草稿桥接智聊）</li>
+     * </ul>
+     */
+    public static Map<String, Object> rdDiscoverPhaseIo(ExecutionResult result, int phaseIdx) {
+        if (result == null || !result.isSuccess() || result.getData() == null
+                || phaseIdx < 0 || phaseIdx > 2) {
+            return Map.of();
+        }
+        Map<String, Object> data = result.getData();
+        Map<String, Object> input = new LinkedHashMap<>();
+        Map<String, Object> output = new LinkedHashMap<>();
+        int hit = data.get("entity_ids") instanceof List<?> ids ? ids.size()
+                : (data.get("items") instanceof List<?> items ? items.size() : 0);
+        switch (phaseIdx) {
+            case 0 -> { // 需求解析
+                output.put("summary", "已从话术提取检索要素（品类/月费/客群等），语义检索为主、关键词兜底");
+            }
+            case 1 -> { // 历史检索
+                input.put("from_step", "sop-step-0");
+                input.put("requirement", "上一步解析出的检索要素");
+                output.put("hitCount", hit);
+                // 命中明细：逐条「#序号 方案名（月费）」，取自真实检索结果
+                List<String> hitLines = new ArrayList<>();
+                if (data.get("items") instanceof List<?> items) {
+                    for (int i = 0; i < items.size() && hitLines.size() < DETAIL_LIMIT; i++) {
+                        Object o = items.get(i);
+                        if (!(o instanceof Map<?, ?> item)) {
+                            continue;
+                        }
+                        String itemName = firstNonBlank(
+                                str(firstNonEmpty(item.get("offeringName"), item.get("offerName"), item.get("name"))),
+                                firstChars(str(firstNonEmpty(item.get("summary"), item.get("description"))), 18));
+                        if (itemName.isBlank()) {
+                            continue;
+                        }
+                        String itemFee = str(firstNonEmpty(item.get("monthlyFee"), item.get("fixedFeeAmount")));
+                        hitLines.add("#" + (i + 1) + " " + itemName + (itemFee.isBlank() ? "" : "（月费 " + itemFee + " 元）"));
+                    }
+                }
+                if (!hitLines.isEmpty()) {
+                    output.put("hit_details", hitLines);
+                }
+                output.put("summary", hit > 0 ? "检索到 " + hit + " 条历史配置方案" : "未找到匹配的历史配置");
+            }
+            case 2 -> { // 清单整理
+                input.put("from_step", "sop-step-1");
+                input.put("requirement", hit > 0 ? "上一步检索到的 " + hit + " 条方案" : "上一步的检索结论");
+                output.put("hitCount", hit);
+                output.put("summary", hit > 0
+                        ? hit + " 条命中方案已按相关性整理，可点击条目复制为草稿到智聊继续编辑"
+                        : "无命中，建议放宽品类/月费条件");
+            }
+            default -> {
+                return Map.of();
+            }
+        }
+        Map<String, Object> io = new LinkedHashMap<>();
+        io.put("input", input);
+        io.put("output", output);
+        return io;
+    }
+
+    /** 取首个非空字符串值（跨 Map 取值辅助，兼容单层键）。 */
+    private static Object firstNonEmpty(Object... values) {
+        for (Object v : values) {
+            if (v != null && !str(v).isBlank() && !"null".equals(str(v))) {
+                return v;
+            }
+        }
+        return "";
+    }
+
+    /** 原文摘录兜底展示：压缩空白后截取前 max 字符。 */
+    private static String firstChars(String text, int max) {
+        String t = text == null ? "" : text.replaceAll("\\s+", " ").trim();
+        return t.length() <= max ? t : t.substring(0, max) + "…";
     }
 
     /**

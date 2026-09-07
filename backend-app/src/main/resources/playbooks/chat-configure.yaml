@@ -1,0 +1,60 @@
+# 手册（Playbook）：完成一类事情的标准作业程序
+#
+# 智聊·对话配置的手册化（与 doc-batch-import 同构：一次执行、多环节业务视角切分）：
+#   rd_config_chat 一次执行内部串行完成 品类识别 → 草稿生成 → 合规校验 → 落库开单
+#   （RdConfigChatTool.execute 流水线），本手册四步是对这一次执行四个环节的业务视角切分。
+#
+# 命名规范：文件名 = 手册 code（kebab-case），与 name 字段一致
+
+# ── ① 元数据 ──────────────────────────────────────────
+name: chat-configure
+title: 对话式配置草稿生成
+description: 智聊·对话配置场景——按自然语言需求识别产品品类，生成配置草稿并合规校验，落库即开单
+version: 1
+
+# 适用域：路由器据此判定"本次请求是否适用本手册"（显式声明，替代场景级一刀切）
+applies_to:
+  scene: rd
+  intents: [RD_CONFIG_CHAT]
+  tools: [rd_config_chat]
+  # 触发词快筛：路由器在 LLM 理解前先行匹配，命中直达手册链路（零 LLM 成本、消除误判）
+  # 注意与智查触发词区分（智查话术带「找/查已有」，智聊天话术是「配/生成/新建/做」）
+  triggers: ["配置一个", "配一个", "生成配置", "新建套餐", "生成套餐", "帮我配",
+             "做个", "做一个", "做一套", "来一套", "来一个", "设计一个", "设计一套"]
+
+# ── ② 步骤（操作步骤 + 每步的操作方法和使用的工具）─────
+steps:
+  - id: category
+    do: 识别产品品类
+    how: 显式 product_type 优先；未提供时按模板 matchers 对话术兜底识别（家庭融合/宽带/校园/5G 等品类特征词）
+    tool: rd_config_chat
+
+  - id: generate
+    do: 生成配置草稿（名称/月费/要素/客群/渠道）
+    how: 按品类模板 derive 引擎产出草稿字段；缺名时按「模板名+资费特征」补名（如「家庭基础套餐·158元·500M」），避免副本退化为「配置草稿(副本)」
+    tool: rd_config_chat
+    policy: 草稿字段须可追溯——名称/月费/宽带/客群/渠道逐项来自话术描述或模板补全，不臆造
+
+  - id: compliance
+    do: 合规校验
+    how: 规则引擎 R-C 系列校验（SHACL 可声明化规则优先）；补名可能修复 R-C06（资费名称缺失），补名后须重跑校验刷新结论再开单
+    tool: rd_config_chat
+
+  - id: create
+    do: 落库并创建配置工单
+    how: 草稿落库成功才开单（source=rd_config_draft，绑定当前会话）；落库失败不开单，避免 payload.draftId 缺失的孤儿工单
+    tool: rd_config_chat
+    output: work_order_id
+
+# ── ③ 工具引用（必须是 AgentTool 注册表已存在的能力）────
+tools:
+  - rd_config_chat
+
+# ── ④ 护栏（控制语义：人工门 / 审计 / 兜底）─────────────
+guardrails:
+  human_gate: []          # 草稿生成即开单（待处理工单本身即人工核对入口），无额外确认门
+  audit: 草稿落库标识（draftId）必须随工单 payload 关联；品类识别依据随 tool 事件下发
+  fallback:
+    - 话术缺少可识别配置要素 → 不静默，提示补充月费/客群等关键要素
+    - 品类无法识别 → 明确告知并列出可识别品类，请用户显式指定
+    - 草稿落库失败 → 工单不创建，明确告知用户重试
