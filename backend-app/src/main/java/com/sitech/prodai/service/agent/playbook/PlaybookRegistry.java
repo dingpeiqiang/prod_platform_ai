@@ -225,6 +225,8 @@ public class PlaybookRegistry {
      * 路由判定：给定场景 + 意图（+ 工具名），返回命中的手册 code；未命中 null。
      * <p>
      * 匹配优先级：intent 命中 > tool 命中（同场景内）；场景必须一致（声明了 scene 时）。
+     * 意图匹配忽略大小写——LLM 意图经归一化为小写（product_ops_query），而手册
+     * applies_to.intents 按展示惯例声明为大写（PRODUCT_OPS_QUERY），严格 equals 永不命中。
      * 这是 {@code SceneFlowRouter} 按意图分流的依据——手册显式声明自己适用什么，
      * 路由器不再按场景一刀切。
      */
@@ -239,7 +241,8 @@ public class PlaybookRegistry {
                 continue;
             }
             if (intent != null && at.get("intents") instanceof List<?> intents
-                    && intents.stream().map(this::str).anyMatch(intent::equals)) {
+                    && intents.stream().map(this::str)
+                            .anyMatch(i -> i.equalsIgnoreCase(intent))) {
                 return e.getKey();
             }
             if (toolNames != null && at.get("tools") instanceof List<?> tools) {

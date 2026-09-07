@@ -138,6 +138,18 @@ class PlaybookRegistryTest {
     }
 
     @Test
+    void routeMatchesIntentCaseInsensitively() {
+        // 理解层归一化产物是小写（product_ops_query），手册声明是大写（PRODUCT_OPS_QUERY）——
+        // 严格 equals 永不命中，导致手册意图升级机制失效（实测截图走动态编排的根因）
+        assertEquals("ops-analysis", registry.route("ops", "product_ops_query", List.of()),
+                "小写归一化意图应命中大写声明的手册 intents");
+        assertEquals("ops-analysis", registry.route("ops", "Product_Ops_Reason", List.of()),
+                "混合大小写同样命中（匹配忽略大小写）");
+        assertEquals("doc-batch-import", registry.route("rd", "rd_file_parse", List.of()),
+                "rd 场景小写意图同样命中");
+    }
+
+    @Test
     void sceneMismatchDoesNotRoute() {
         assertNull(registry.route("query", "RD_FILE_PARSE", List.of()),
                 "场景不一致（query ≠ rd）→ 不路由");
