@@ -149,12 +149,31 @@ class PlaybookRegistryTest {
         // ops 四入口手册：ops 意图命中 → 返回手册 code（按入口拆分后各归其位）
         assertEquals("root-cause", registry.route("ops", "PRODUCT_OPS_REASON", List.of()),
                 "归因意图命中异动归因手册");
-        assertEquals("risk-audit", registry.route("ops", "PRODUCT_OPS_POLICY", List.of()),
-                "稽核/研判意图（risk-audit 与 online-check 同码）按注册序先命中风险稽核手册");
         assertEquals("market-insight", registry.route("ops", "PRODUCT_OPS_QUERY", List.of()),
                 "运营查询意图（analyze 归一化产物）命中市场洞察手册");
         assertEquals("market-insight", registry.route("ops", "PRODUCT_OPS_MONITOR", List.of()),
                 "盯盘意图命中市场洞察手册（含风险速览双工具链）");
+    }
+
+    @Test
+    void routeDisambiguatesSameIntentByUtterance() {
+        // 立项/稽核同归 PRODUCT_OPS_POLICY——歧义不在注册序，而在 intent_guide 归口话术：
+        // 携带用户话术后按各手册归口特征词面交集二跳判定（手册即意图定义源的落点），
+        // 无话术（空串）才退化为注册序兜底
+        assertEquals("risk-audit", registry.route("ops", "PRODUCT_OPS_POLICY", List.of(), ""),
+                "无话术 → 注册序兜底（risk-audit 先注册）");
+        assertEquals("risk-audit",
+                registry.route("ops", "PRODUCT_OPS_POLICY", List.of(), "帮我对在架商品做一次风险稽核"),
+                "稽核话术命中 risk-audit 归口特征「风险稽核」");
+        assertEquals("risk-audit",
+                registry.route("ops", "PRODUCT_OPS_POLICY", List.of(), "这些商品有没有下架风险"),
+                "下架话术命中 risk-audit 归口特征「该不该下架/下架」——partial：下架风险特征词计分");
+        assertEquals("online-check",
+                registry.route("ops", "PRODUCT_OPS_POLICY", List.of(), "评估一下这个商品值不值得立项"),
+                "立项话术命中 online-check 归口特征「立项」");
+        assertEquals("online-check",
+                registry.route("ops", "PRODUCT_OPS_POLICY", List.of(), "新品上线前做个准入评估"),
+                "准入话术命中 online-check 归口特征「准入评估」");
     }
 
     @Test

@@ -82,7 +82,8 @@ public class SceneFlowRouter {
         }
         // 手册路由优先（手册层双消费①）：意图/工具命中某本手册 → 该类任务按手册走动态编排
         // （手册显式声明适用域，替代场景级一刀切；智读批量导入即第一本手册 doc-batch-import）
-        String playbookCode = playbookRegistry.route(context.getScene(), intent, plan.getTools());
+        String playbookCode = playbookRegistry.route(context.getScene(), intent, plan.getTools(),
+                plan.getUserQuestion());
         if (playbookCode != null) {
             log.info("[SceneFlowRouter] 意图命中手册 {} → 走动态编排（LLM 照手册执行）", playbookCode);
             return null;

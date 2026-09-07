@@ -25,16 +25,16 @@ version: 1
 applies_to:
   scene: ops
   # ops 场景规范意图码（IntentRecognitionSupport 归一化产物），首项为手册直达链路的计划意图
-  # 与 online-check 同归 PRODUCT_OPS_POLICY：路由先到先得（注册序），risk-audit 先注册——
-  # 一般话术命中本手册；立项门槛话术靠 triggers 专项拦截（"立项研判/上线评估/准入评估"）
+  # 与 online-check 同归 PRODUCT_OPS_POLICY：话术歧义不靠注册序——
+  # route 携带用户话术按 intent_guide 特征词二跳判定（见 PlaybookRegistry.route 话术判别）
   intents: [PRODUCT_OPS_POLICY]
   tools: [sparql_query, swrl_risk_audit, rule_explain]
   # 意图归口（手册 = 意图定义源，LLM 据此选意图码而非自由发挥）：
   #   随 renderSop 注入 system prompt，LLM 依据话术语义匹配归口声明输出 intent——
   #   本手册归口在架风险判定（风险稽核/合规筛查/该不该下架），
-  #   立项门槛研判归 online-check（同码不同手册，靠话术与触发词分流）
+  #   立项门槛研判归 online-check（同码不同手册，route 按归口话术二跳判定）
   intent_guide:
-    PRODUCT_OPS_POLICY: "风险稽核/合规筛查/该不该下架等在架商品风险判定"
+    PRODUCT_OPS_POLICY: "风险稽核/合规筛查/该不该下架/下架等在架商品风险判定"
   # 触发词快筛：路由器在 LLM 理解前先行匹配，命中直达手册链路（零 LLM 成本、消除误判）
   # 触发词只兜高置信度的专有话术（术语级：单独 substring 匹配不偏移）；宽泛话术
   # （如「查一下有没有合规问题」）交给理解层 LLM 识别——LLM 照 intent_guide 归口输出意图码，

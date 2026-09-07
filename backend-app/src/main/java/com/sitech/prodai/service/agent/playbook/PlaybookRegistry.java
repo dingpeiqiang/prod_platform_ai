@@ -231,6 +231,29 @@ public class PlaybookRegistry {
      * 路由器不再按场景一刀切。
      */
     public String route(String scene, String intent, List<String> toolNames) {
+        return route(scene, intent, toolNames, "");
+    }
+
+    /**
+     * 路由判定（含话术判别）：意图命中多本手册时，按各手册 intent_guide 归口话术特征
+     * 与用户话术的匹配度二跳判定——手册即意图定义源（intent_guide 声明"什么话术归本手册"），
+     * 判定依据是声明而非注册序（Map 迭代序脆弱，拆分后同码手册互为镜像）。
+     * <p>
+     * 判定规则（语义匹配，substring 命中计分）：
+     * <ul>
+     *   <li>唯一意图命中 → 直接返回（多数场景无歧义，不加判别成本）</li>
+     *   <li>多本命中 → 逐本对照 intent_guide 话术特征与用户话术求交集，取命中特征最多者；
+     *       全部零命中（话术与归口描述都对不上）→ 注册序首本兜底（退化为旧行为）</li>
+     * </ul>
+     * 话术判别是词面交集而非 LLM 二跳：intent_guide 本身就是 LLM 选码依据，
+     * 已按话术语义归口到意图码；同码歧义是码内子形态，词面判定足够且零额外成本。
+     *
+     * @param question 用户话术（原话），用于同码歧义判定；空则退化为注册序
+     */
+    public String route(String scene, String intent, List<String> toolNames, String question) {
+        String firstHit = null;
+        String bestByUtterance = null;
+        int bestScore = 0;
         for (Map.Entry<String, Map<String, Object>> e : playbooks.entrySet()) {
             Map<String, Object> book = e.getValue();
             if (!(book.get("applies_to") instanceof Map<?, ?> at)) {
@@ -240,20 +263,58 @@ public class PlaybookRegistry {
             if (!bookScene.isBlank() && scene != null && !bookScene.equals(scene)) {
                 continue;
             }
-            if (intent != null && at.get("intents") instanceof List<?> intents
-                    && intents.stream().map(this::str)
-                            .anyMatch(i -> i.equalsIgnoreCase(intent))) {
-                return e.getKey();
-            }
-            if (toolNames != null && at.get("tools") instanceof List<?> tools) {
+            boolean intentHit = intent != null && at.get("intents") instanceof List<?> intents
+                    && intents.stream().map(this::str).anyMatch(i -> i.equalsIgnoreCase(intent));
+            boolean toolHit = false;
+            if (!intentHit && toolNames != null && at.get("tools") instanceof List<?> tools) {
                 for (String t : toolNames) {
                     if (tools.stream().map(this::str).anyMatch(t::equals)) {
-                        return e.getKey();
+                        toolHit = true;
+                        break;
                     }
                 }
             }
+            if (!intentHit && !toolHit) {
+                continue;
+            }
+            if (firstHit == null) {
+                firstHit = e.getKey();
+            }
+            if (intentHit && firstHit != null && question != null && !question.isBlank()
+                    && at.get("intent_guide") instanceof Map<?, ?> guide && !guide.isEmpty()) {
+                int score = guideUtteranceScore(guide, question);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestByUtterance = e.getKey();
+                }
+            }
         }
-        return null;
+        if (bestByUtterance != null) {
+            return bestByUtterance;
+        }
+        return firstHit;
+    }
+
+    /** intent_guide 归口话术特征与用户话术的词面交集数（小写 substring 计分）。 */
+    private int guideUtteranceScore(Map<?, ?> guide, String question) {
+        String lowered = question.toLowerCase();
+        int score = 0;
+        for (Object v : guide.values()) {
+            String desc = str(v).toLowerCase();
+            // 归口描述形如「风险稽核/合规筛查/该不该下架等在架商品风险判定」——按分隔符切特征词，
+            // 末段「等…」为概括性收尾非独立话术特征，不参与计分
+            for (String seg : desc.split("[/、，,；;]")) {
+                String feature = seg.trim();
+                int etcIdx = feature.indexOf("等");
+                if (etcIdx >= 0) {
+                    feature = feature.substring(0, etcIdx);
+                }
+                if (feature.length() >= 2 && lowered.contains(feature)) {
+                    score++;
+                }
+            }
+        }
+        return score;
     }
 
     /**

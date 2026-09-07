@@ -27,18 +27,19 @@ version: 1
 applies_to:
   scene: ops
   # ops 场景规范意图码（IntentRecognitionSupport 归一化产物），首项为手册直达链路的计划意图
-  # 与 risk-audit 同归 PRODUCT_OPS_POLICY（同码不同手册），触发词按话术分流（见下）
+  # 与 risk-audit 同归 PRODUCT_OPS_POLICY（同码不同手册）：话术歧义不靠注册序——
+  # route 携带用户话术按 intent_guide 特征词二跳判定（见 PlaybookRegistry.route 话术判别）
   intents: [PRODUCT_OPS_POLICY]
   tools: [sparql_query, rule_explain, ontology_explain]
   # 意图归口（手册 = 意图定义源，LLM 据此选意图码而非自由发挥）：
   #   随 renderSop 注入 system prompt，LLM 依据话术语义匹配归口声明输出 intent——
   #   本手册归口立项门槛研判（值不值得立项/够不够上线门槛/准入评估），
-  #   在架风险判定归 risk-audit（同码不同手册，靠话术与触发词分流）
+  #   在架风险判定归 risk-audit（同码不同手册，route 按归口话术二跳判定）
   intent_guide:
-    PRODUCT_OPS_POLICY: "立项研判/上线门槛/准入评估等新商品立项规则判定"
+    PRODUCT_OPS_POLICY: "立项/上线门槛/准入评估等新商品立项规则判定"
   # 触发词快筛：路由器在 LLM 理解前先行匹配，命中直达手册链路（零 LLM 成本、消除误判）
-  # 立项话术是高置信度专有话术（"立项研判/上线评估/准入评估"不会出现在稽核/归因/洞察话术中），
-  # 专项拦截直达本手册；一般策略话术（"该不该下架"）先命中 risk-audit（注册序）。
+  # 立项话术是高置信度专有话术（不会出现在稽核/归因/洞察话术中），专项拦截直达本手册；
+  # 未含触发词的立项话术由理解层 LLM 照 intent_guide 归口输出意图码，route 按归口话术二跳判定。
   triggers: ["立项研判", "上线评估", "准入评估", "立项门槛"]
 
 # ── ② 步骤（操作步骤 + 每步的操作方法和使用的工具）─────

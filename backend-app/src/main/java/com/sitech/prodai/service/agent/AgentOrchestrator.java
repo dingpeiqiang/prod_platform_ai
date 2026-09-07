@@ -372,7 +372,8 @@ public class AgentOrchestrator {
                 || QueryPlan.INTENT_REUSE_EVIDENCE.equals(intent)) {
             return null;
         }
-        String playbookCode = playbookRegistry.route(context.getScene(), intent, List.of());
+        String playbookCode = playbookRegistry.route(context.getScene(), intent, List.of(),
+                plan.getUserQuestion());
         if (playbookCode == null) {
             return null;
         }
@@ -454,7 +455,8 @@ public class AgentOrchestrator {
                 || QueryPlan.INTENT_REUSE_EVIDENCE.equals(intent)) {
             return false;
         }
-        String playbookCode = playbookRegistry.route(context.getScene(), intent, List.of());
+        String playbookCode = playbookRegistry.route(context.getScene(), intent, List.of(),
+                plan.getUserQuestion());
         if (playbookCode == null) {
             return false;
         }
