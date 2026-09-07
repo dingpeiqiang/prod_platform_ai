@@ -39,6 +39,10 @@ public class PlaybookRegistry {
     private final Map<String, Map<String, Object>> playbooks = new ConcurrentHashMap<>();
     /** 装载期问题清单（code → 问题），供运维排查与测试断言 */
     private final Map<String, List<String>> loadProblems = new ConcurrentHashMap<>();
+    /** 装载两遍法的第一遍暂存（code → 原始 YAML），reload 结束后清空 */
+    private final Map<String, Map<String, Object>> pendingBooks = new LinkedHashMap<>();
+    /** 步骤片段库约定文件名（下划线前缀 = 非手册，不进注册表） */
+    private static final String FRAGMENT_LIB = "_shared-steps";
 
     /**
      * 已注册 AgentTool 名单（MCP 可解析约束的校验依据）。
@@ -65,9 +69,11 @@ public class PlaybookRegistry {
         playbooks.clear();
         loadProblems.clear();
         Yaml yaml = new Yaml();
+        Map<String, Map<String, Object>> fragments = new LinkedHashMap<>();
         try {
             var resources = new PathMatchingResourcePatternResolver()
                     .getResources("classpath*:playbooks/*.yaml");
+            // 两遍装载：第一遍收集步骤片段库（下划线前缀文件，非手册），第二遍装载手册并展开引用
             for (var resource : resources) {
                 String filename = resource.getFilename();
                 if (filename == null) {
@@ -83,21 +89,80 @@ public class PlaybookRegistry {
                     }
                     @SuppressWarnings("unchecked")
                     Map<String, Object> book = (Map<String, Object>) raw;
-                    List<String> problems = validate(code, book);
-                    if (!problems.isEmpty()) {
-                        problems.forEach(p -> problem(code, p));
+                    if (code.startsWith("_")) {
+                        // 片段库：不进注册表（对路由/触发词/SOP 消费不可见），仅作步骤复用源
+                        fragments.put(code, book);
+                        log.info("[PlaybookRegistry] 步骤片段库已装载: {} ({})", code, book.get("title"));
                         continue;
                     }
-                    playbooks.put(code, book);
-                    log.info("[PlaybookRegistry] 手册已装载: {} ({})", code, book.get("title"));
+                    pendingBooks.put(code, book);
                 } catch (Exception e) {
                     problem(code, "解析失败: " + e.getMessage());
                 }
             }
+            // 第二遍：展开步骤引用后校验、入册
+            pendingBooks.forEach((code, book) -> {
+                List<String> problems = resolveStepRefs(code, book, fragments);
+                problems.addAll(validate(code, book));
+                if (!problems.isEmpty()) {
+                    problems.forEach(p -> problem(code, p));
+                    return;
+                }
+                playbooks.put(code, book);
+                log.info("[PlaybookRegistry] 手册已装载: {} ({})", code, book.get("title"));
+            });
         } catch (Exception e) {
             log.warn("[PlaybookRegistry] 手册目录加载失败: {}", e.getMessage());
+        } finally {
+            pendingBooks.clear();
         }
         log.info("[PlaybookRegistry] 装载完成 playbooks={}, problems={}", playbooks.size(), loadProblems.size());
+    }
+
+    /**
+     * 步骤片段引用展开（装载期一次性替换，运行期视图无感知）：
+     * steps 项形如 {@code use: query-facts}（可选 {@code do/how 覆写}）时，
+     * 从片段库取同名片段展开——覆写字段优先（手册可微调措辞而不复制全量定义）。
+     * 装载期展开使 route/renderSop/runPlaybookPath 等消费方仍读展开后的完整步骤，
+     * 片段机制对双消费 API 完全透明。
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> resolveStepRefs(String code, Map<String, Object> book,
+                                         Map<String, Map<String, Object>> fragments) {
+        List<String> problems = new ArrayList<>();
+        if (!(book.get("steps") instanceof List<?> steps)) {
+            return problems;
+        }
+        List<Object> resolved = new ArrayList<>();
+        for (Object o : steps) {
+            if (o instanceof Map<?, ?> rawStep && rawStep.get("use") instanceof String ref) {
+                String fragment = ref.startsWith("steps.") ? ref.substring("steps.".length()) : ref;
+                Map<String, Object> lib = fragments.get(FRAGMENT_LIB);
+                // 片段库 steps 是「片段名 → 模板」映射（与手册的步骤列表不同构）
+                Object template = lib != null && lib.get("steps") instanceof Map<?, ?> stepsLib
+                        ? stepsLib.get(fragment) : null;
+                if (!(template instanceof Map<?, ?> tpl)) {
+                    problems.add("步骤引用不可解析: " + fragment + "（片段库 " + FRAGMENT_LIB + " 中不存在）");
+                    resolved.add(rawStep);
+                    continue;
+                }
+                Map<String, Object> step = new LinkedHashMap<>();
+                // 片段模板展开后步骤 id 缺省取片段名（手册内步骤 id 保持唯一，validate 门禁复检）
+                tpl.forEach((k, v) -> step.put(String.valueOf(k), v));
+                step.putIfAbsent("id", fragment);
+                // 覆写字段优先于片段模板（手册可微调 do/how 而不复制全量定义）；use 键不进结果
+                for (Map.Entry<?, ?> e : rawStep.entrySet()) {
+                    if (!"use".equals(e.getKey())) {
+                        step.put(String.valueOf(e.getKey()), e.getValue());
+                    }
+                }
+                resolved.add(step);
+            } else {
+                resolved.add(o);
+            }
+        }
+        book.put("steps", resolved);
+        return problems;
     }
 
     /** 装载门禁校验：结构完整性 + 引用可解析。返回问题清单（空 = 通过）。 */

@@ -43,21 +43,20 @@ applies_to:
   triggers: ["立项研判", "上线评估", "准入评估", "立项门槛"]
 
 # ── ② 步骤（操作步骤 + 每步的操作方法和使用的工具）─────
+# 步骤片段复用（use: <片段名>，片段库 _shared-steps.yaml，装载期展开）：
+# 手册只声明「本入口用哪些动作、按什么顺序」，动作定义跨手册收敛——改一处全链生效
 steps:
-  - id: candidates
+  - use: query-facts
     do: 查询拟立项商品本体
     how: 自然语言转 SPARQL 在本体知识库执行语义查询，对齐拟立项商品及其关联概念；实体发现 LLM 优先、关键词兜底
-    tool: sparql_query
 
-  - id: rule-explain
+  - use: rule-explain
     do: 立项门槛规则解释
     how: 对立项门槛规则（PS_PRODUCT_ONLINE_V1 / R-ONLINE 系列）给出规则语义解释，附规则编号与门槛阈值
-    tool: rule_explain
 
-  - id: explain
+  - use: ontology-explain
     do: 本体概念解释收尾
     how: 对研判涉及的本体概念给出自然语言解释，附引用规则编号，让准入结论有据可查
-    tool: ontology_explain
 
 # ── ③ 工具引用（必须是 AgentTool 注册表已存在的能力）────
 tools:

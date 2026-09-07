@@ -42,17 +42,15 @@ applies_to:
   triggers: ["经营分析", "经营数据", "运营数据", "增长趋势", "在售结构"]
 
 # ── ② 步骤（操作步骤 + 每步的操作方法和使用的工具）─────
+# 步骤片段复用（use: <片段名>，片段库 _shared-steps.yaml，装载期展开）：
+# 手册只声明「本入口用哪些动作、按什么顺序」，动作定义跨手册收敛——改一处全链生效
 steps:
-  - id: facts
+  - use: query-facts
     do: 查询市场经营事实
-    how: 自然语言转 SPARQL 在本体知识库执行语义查询；实体发现 LLM 优先、关键词兜底；上限默认 20 个实体
-    tool: sparql_query
 
-  - id: risk-scan
+  - use: risk-audit
     do: 在架商品风险速览
     how: SWRL 风险推理全量筛查（缺省全量）；逐商品输出风险等级/分数，命中项随趋势结论一并透出
-    tool: swrl_risk_audit
-    policy: 只读筛查不改档——速览不落库不下架，风险项仅供人工决策
 
 # ── ③ 工具引用（必须是 AgentTool 注册表已存在的能力）────
 tools:

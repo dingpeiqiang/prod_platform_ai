@@ -41,22 +41,18 @@ applies_to:
   triggers: ["根因分析", "异动分析", "归因分析"]
 
 # ── ② 步骤（操作步骤 + 每步的操作方法和使用的工具）─────
+# 步骤片段复用（use: <片段名>，片段库 _shared-steps.yaml，装载期展开）：
+# 手册只声明「本入口用哪些动作、按什么顺序」，动作定义跨手册收敛——改一处全链生效
 steps:
-  - id: facts
+  - use: query-facts
     do: 查询异动指标事实
     how: 自然语言转 SPARQL 在本体知识库执行语义查询，定位异动商品与关联指标；实体发现 LLM 优先、关键词兜底
-    tool: sparql_query
 
-  - id: root-cause
-    do: 异动根因归因
-    how: SWRL 归因推理（R-A 系列规则）；显式商品优先，缺省从问题语义解析分析对象；归因路径逐条透出
-    tool: swrl_root_cause
-    policy: 归因结论须可追溯——命中的归因规则与推理引擎（openllet-swrl/java-rules）随 tool 事件下发，不臆造原因
+  - use: root-cause
 
-  - id: explain
+  - use: ontology-explain
     do: 本体规则解释收尾
     how: 对归因涉及的本体概念/规则给出自然语言解释，附引用规则编号，让归因结论有据可查
-    tool: ontology_explain
 
 # ── ③ 工具引用（必须是 AgentTool 注册表已存在的能力）────
 tools:

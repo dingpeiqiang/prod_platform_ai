@@ -3,6 +3,11 @@ package com.sitech.prodai.service.agent.playbook;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -114,12 +119,72 @@ class PlaybookRegistryTest {
         assertNotNull(problems, "引用不存在的工具应被门禁拦截");
         assertTrue(problems.stream().anyMatch(p -> p.contains("引用不可解析")),
                 () -> "应报引用不可解析: " + problems);
-        // 四本 rd 手册全部被拦截（引用的工具一个都不可解析）；ops 四本手册同样被拦截
+        // rd 四本手册全部被拦截（引用的工具一个都不可解析）；ops 四本手册同样被拦截
         assertNotNull(registry.problems().get("chat-configure"), "智聊手册引用不可解析时也应被拦截");
         assertNotNull(registry.problems().get("discover-history"), "智查手册引用不可解析时也应被拦截");
         for (String code : List.of("market-insight", "root-cause", "risk-audit", "online-check")) {
             assertNotNull(registry.problems().get(code), code + " 手册引用不可解析时也应被拦截");
         }
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void stepRefExpandsFragmentWithOverrides() {
+        // 步骤片段复用（use: <片段名>）：装载期从 _shared-steps 片段库展开为完整步骤——
+        // 手册只声明「用哪些动作、按什么顺序」，动作定义跨手册收敛（治理手册粒度膨胀）
+        Map<String, Object> rootCause = registry.get("root-cause");
+        List<Map<String, Object>> steps = (List<Map<String, Object>>) rootCause.get("steps");
+        // 归因步骤未覆写：完整继承片段模板（do/how/tool/policy）+ id 缺省取片段名
+        Map<String, Object> cause = steps.get(1);
+        assertEquals("root-cause", cause.get("id"), "未覆写时步骤 id 缺省取片段名");
+        assertEquals("swrl_root_cause", cause.get("tool"), "片段模板的 tool 继承");
+        assertTrue(String.valueOf(cause.get("how")).contains("R-A"), "片段模板的 how 继承: " + cause);
+        // 查询步骤覆写 do/how：覆写字段优先于模板，其余字段（tool）仍继承
+        Map<String, Object> facts = steps.get(0);
+        assertEquals("查询异动指标事实", facts.get("do"), "覆写 do 优先于片段模板");
+        assertEquals("sparql_query", facts.get("tool"), "未覆写字段仍继承片段模板");
+        // 片段库本身不进注册表（对路由/触发词/SOP 消费不可见）
+        assertNull(registry.get("_shared-steps"), "片段库不是手册，不入注册表");
+        assertTrue(registry.problems().isEmpty(), () -> "装载应零问题: " + registry.problems());
+    }
+
+    @Test
+    void unresolvableStepRefIsRejected() {
+        // 步骤引用不可解析（片段库中无同名片段）→ 装载门禁拦截、手册不入册。
+        // reload 只扫 classpath:playbooks/*.yaml 无法直接注入坏引用手册——
+        // 利用 PathMatchingResourcePatternResolver 同时扫 target/classes 的特性：
+        // 向测试 classpath 写入临时坏引用手册 + 最小片段库，reload 后断言门禁拦截，
+        // 断言后立即删除临时文件恢复 classpath 原状（不影响其他用例）。
+        Path target = Paths.get("target", "classes", "playbooks");
+        Path broken = target.resolve("zz-broken-book.yaml");
+        Path lib = target.resolve("zz-broken-lib.yaml");
+        try {
+            Files.createDirectories(target);
+            Files.writeString(broken,
+                    "name: zz-broken-book\n"
+                    + "title: 坏引用手册\n"
+                    + "applies_to:\n  scene: ops\n  intents: [SOME_INTENT]\n"
+                    + "steps:\n  - use: no-such-fragment\n",
+                    StandardCharsets.UTF_8);
+            registry.registerKnownTools(java.util.Set.of("sparql_query"));
+            registry.reload();
+            List<String> problems = registry.problems().get("zz-broken-book");
+            assertNotNull(problems, "坏引用手册应被装载门禁拦截");
+            assertTrue(problems.stream().anyMatch(p -> p.contains("步骤引用不可解析: no-such-fragment")),
+                    () -> "应报步骤引用不可解析: " + problems);
+            assertNull(registry.get("zz-broken-book"), "含不可解析引用的手册不应入册");
+        } catch (IOException e) {
+            throw new IllegalStateException("临时坏引用手册写入失败", e);
+        } finally {
+            try {
+                Files.deleteIfExists(broken);
+                Files.deleteIfExists(lib);
+            } catch (IOException ignored) {
+                // 清理失败不影响断言（文件名 zz- 前缀避让真实手册，残留无路由副作用）
+            }
+        }
+        registry.reload();
+        assertNull(registry.get("zz-broken-book"), "清理后恢复原状，坏手册不再在册");
     }
 
     // ── 路由消费（双消费①） ──

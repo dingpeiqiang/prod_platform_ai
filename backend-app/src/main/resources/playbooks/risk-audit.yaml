@@ -43,22 +43,19 @@ applies_to:
   triggers: ["风险稽核", "下架风险", "合规筛查"]
 
 # ── ② 步骤（操作步骤 + 每步的操作方法和使用的工具）─────
+# 步骤片段复用（use: <片段名>，片段库 _shared-steps.yaml，装载期展开）：
+# 手册只声明「本入口用哪些动作、按什么顺序」，动作定义跨手册收敛——改一处全链生效
 steps:
-  - id: candidates
+  - use: query-facts
     do: 锁定稽核商品范围
     how: 自然语言转 SPARQL 在本体知识库执行语义查询，圈定在架商品清单；显式 offeringIds 优先，缺省全量
-    tool: sparql_query
 
-  - id: risk-audit
-    do: 在架商品风险稽核
+  - use: risk-audit
     how: SWRL 风险推理全量筛查；逐商品输出风险等级/分数/处置建议（R-B 系列规则）
-    tool: swrl_risk_audit
-    policy: 只读筛查不改档——稽核不落库不下架，处置建议仅供人工决策
 
-  - id: rule-explain
+  - use: rule-explain
     do: 命中规则解释收尾
     how: 对稽核命中的风险规则（R-B 系列）给出规则语义解释，附规则编号，让处置建议有据可查
-    tool: rule_explain
 
 # ── ③ 工具引用（必须是 AgentTool 注册表已存在的能力）────
 tools:
