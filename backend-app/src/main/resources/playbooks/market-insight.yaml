@@ -3,6 +3,8 @@
 # 产品运营助手·市场洞察入口的手册化（原单本 ops-analysis 按前端四入口拆分之一）：
 #   市场洞察 = 经营事实查询打底 + 在架商品风险速览（增长趋势与风险商品一屏看清），
 #   本手册只承载确定性链路（查 → 稽），不掺归因问诊（那是 root-cause 手册的事）。
+#   手册是业务流程文档：步骤 = 业务动作（查数据 → 稽风险），tool 是动作的实现调用——
+#   业务人员读 do/how 就能照着办事，工具名只是技术注脚。
 #   ① 路由消费：applies_to.intents 命中 → SceneFlowRouter 回落动态编排，LLM 照手册执行
 #   ② 编排消费：renderSop 注入 system prompt（DefaultUnderstander.playbookSopSection），
 #      intent_guide 随 SOP 下发——LLM 依据手册归口声明选意图码（手册 = 意图定义源）
@@ -22,11 +24,12 @@ description: 产品运营助手·市场洞察——经营事实查询打底（�
 version: 1
 
 # 适用域：路由器据此判定"本次请求是否适用本手册"（显式声明，替代场景级一刀切）
+# 手册 = 业务流程，路由只认业务意图（intent + 归口话术）——工具是步骤实现细节，
+# 不参与业务分流（编排层的工具链从步骤序列自动提取）
 applies_to:
   scene: ops
   # ops 场景规范意图码（IntentRecognitionSupport 归一化产物），首项为手册直达链路的计划意图
   intents: [PRODUCT_OPS_QUERY, PRODUCT_OPS_MONITOR]
-  tools: [sparql_query, swrl_risk_audit]
   # 意图归口（手册 = 意图定义源，LLM 据此选意图码而非自由发挥）：
   #   随 renderSop 注入 system prompt，LLM 依据话术语义匹配归口声明输出 intent——
   #   本手册归口事实查询与持续盯盘（查趋势/查结构/查清单/盯盘速览），
@@ -42,22 +45,21 @@ applies_to:
   triggers: ["经营分析", "经营数据", "运营数据", "增长趋势", "在售结构"]
 
 # ── ② 步骤（操作步骤 + 每步的操作方法和使用的工具）─────
-# 步骤片段复用（use: <片段名>，片段库 _shared-steps.yaml，装载期展开）：
-# 手册只声明「本入口用哪些动作、按什么顺序」，动作定义跨手册收敛——改一处全链生效
+# 手册 = 业务流程（市场洞察怎么干），步骤 tool 是「本流程此动作调用该工具」的调用语句
+# （工具配置独一份在 AgentTool 注册表，手册只调用不定义）；换工具实现改注册表，手册零改动
 steps:
-  - use: query-facts
+  - id: facts
     do: 查询市场经营事实
+    how: 自然语言转 SPARQL 在本体知识库执行语义查询；实体发现 LLM 优先、关键词兜底；上限默认 20 个实体
+    tool: sparql_query
 
-  - use: risk-audit
+  - id: risk-scan
     do: 在架商品风险速览
     how: SWRL 风险推理全量筛查（缺省全量）；逐商品输出风险等级/分数，命中项随趋势结论一并透出
+    tool: swrl_risk_audit
+    policy: 只读筛查不改档——稽核不落库不下架，处置建议仅供人工决策
 
-# ── ③ 工具引用（必须是 AgentTool 注册表已存在的能力）────
-tools:
-  - sparql_query
-  - swrl_risk_audit
-
-# ── ④ 护栏（控制语义：人工门 / 审计 / 兜底）─────────────
+# ── ③ 护栏（控制语义：人工门 / 审计 / 兜底）─────────────
 guardrails:
   human_gate: []          # 纯查询链路（查询/速览均只读），无写操作，无人工门
   audit: 推理引擎标识（reasonEngine）随 tool 事件下发；命中风险商品清单随结论透出

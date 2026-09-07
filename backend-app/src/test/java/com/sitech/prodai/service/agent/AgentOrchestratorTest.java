@@ -837,9 +837,9 @@ class AgentOrchestratorTest {
         assertEquals("market-insight", resp.get("playbook"), "意图命中手册适用域 → 回复带手册标记");
         ArgumentCaptor<QueryPlan> planCaptor = ArgumentCaptor.forClass(QueryPlan.class);
         verify(executor).execute(planCaptor.capture(), any(SessionContext.class));
-        // 执行链是手册声明全部工具（非 LLM 自选子集），意图归位手册首项规范意图
+        // 执行链从手册步骤序列保序去重提取（步骤 tool 是调用语句，非 LLM 自选子集），意图归位手册首项规范意图
         assertEquals(List.of("sparql_query", "swrl_risk_audit"),
-                planCaptor.getValue().getTools(), "升级后应按手册 applies_to.tools 全链执行");
+                planCaptor.getValue().getTools(), "升级后应按手册步骤序列提取的工具链执行");
         assertEquals("PRODUCT_OPS_QUERY", planCaptor.getValue().getIntent(),
                 "意图归位手册 applies_to.intents 首项（直达链路计划意图）");
     }
@@ -866,7 +866,7 @@ class AgentOrchestratorTest {
         ArgumentCaptor<QueryPlan> planCaptor = ArgumentCaptor.forClass(QueryPlan.class);
         verify(executor).execute(planCaptor.capture(), any(SessionContext.class), any(Executor.StepListener.class));
         assertEquals(List.of("sparql_query", "swrl_root_cause", "ontology_explain"),
-                planCaptor.getValue().getTools(), "流式升级后同样按手册全工具链执行");
+                planCaptor.getValue().getTools(), "流式升级后同样按手册步骤序列提取的工具链执行");
         // 时间线呈现 sop-step-N 手册步骤（动态编排是工具名步骤，无 sop-step）
         boolean hasSopStep = emitter.events.stream().filter(e -> "thinking".equals(e.event()))
                 .anyMatch(e -> e.data().get("steps") instanceof List<?> steps && !steps.isEmpty()

@@ -390,10 +390,7 @@ public class AgentOrchestrator {
         if (book == null || !(book.get("applies_to") instanceof Map<?, ?> at)) {
             return null;
         }
-        List<String> tools = new ArrayList<>();
-        if (at.get("tools") instanceof List<?> toolList) {
-            toolList.forEach(t -> tools.add(String.valueOf(t)));
-        }
+        List<String> tools = playbookTools(book);
         String intent = at.get("intents") instanceof List<?> intents && !intents.isEmpty()
                 ? String.valueOf(intents.get(0)) : (tools.isEmpty() ? null : tools.get(0).toUpperCase());
         if (intent == null || tools.isEmpty()) {
@@ -478,10 +475,7 @@ public class AgentOrchestrator {
         if (book == null || !(book.get("applies_to") instanceof Map<?, ?> at)) {
             return false;
         }
-        List<String> tools = new ArrayList<>();
-        if (at.get("tools") instanceof List<?> toolList) {
-            toolList.forEach(t -> tools.add(String.valueOf(t)));
-        }
+        List<String> tools = playbookTools(book);
         String intent = at.get("intents") instanceof List<?> intents && !intents.isEmpty()
                 ? String.valueOf(intents.get(0)) : (tools.isEmpty() ? null : tools.get(0).toUpperCase());
         if (intent == null || tools.isEmpty()) {
@@ -570,7 +564,7 @@ public class AgentOrchestrator {
                     return;
                 }
                 List<Integer> consumed = new ArrayList<>();
-                // 手册路径下 plan 中每个工具只执行一次（applies_to.tools 去重），
+                // 手册路径下 plan 中每个工具只执行一次（步骤序列去重），
                 // 一次真实执行收尾该工具名下全部待落手册步骤（如 rd_file_parse 覆盖 parse/extract/compliance/create 四步）
                 while (!queue.isEmpty()) {
                     consumed.add(queue.poll());
@@ -704,6 +698,26 @@ public class AgentOrchestrator {
                     TraceSnapshotBuilder.opsAnalysisPhaseIo(result, stepIdx);
             default -> Map.of();
         };
+    }
+
+    /**
+     * 手册步骤序列 → 工具链（保序去重）：步骤 tool 是调用语句（配置独一份在 AgentTool 注册表），
+     * 编排层照手册步骤顺序调用工具；多步骤共用同一工具时只执行一次。
+     */
+    private static List<String> playbookTools(Map<String, Object> book) {
+        List<String> tools = new ArrayList<>();
+        if (book.get("steps") instanceof List<?> steps) {
+            for (Object o : steps) {
+                if (o instanceof Map<?, ?> step) {
+                    Object toolVal = step.get("tool");
+                    String tool = toolVal == null ? "" : String.valueOf(toolVal).trim();
+                    if (!tool.isBlank() && !tools.contains(tool)) {
+                        tools.add(tool);
+                    }
+                }
+            }
+        }
+        return tools;
     }
 
     /** SOP 文本 → 步骤结构列表：[{do, how, tool}]（「第N步 X——Y（工具：t）」行解析）。 */

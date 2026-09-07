@@ -3,11 +3,6 @@ package com.sitech.prodai.service.agent.playbook;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -96,7 +91,12 @@ class PlaybookRegistryTest {
         Map<String, Object> book = registry.get("doc-batch-import");
         assertEquals("文档批量导入配置", book.get("title"));
         assertTrue(book.get("steps") instanceof List<?> steps && steps.size() >= 3, "应有完整步骤链");
-        assertTrue(book.get("tools") instanceof List<?> tools && !tools.isEmpty(), "应声明工具引用");
+        // 顶层 tools 已删除（工具配置独一份在 AgentTool 注册表）——工具调用在步骤 tool 字段
+        assertFalse(book.containsKey("tools"), "顶层 tools 声明已退役（步骤 tool 是调用语句）");
+        assertTrue(((List<?>) book.get("steps")).stream()
+                        .allMatch(s -> s instanceof Map<?, ?> m && m.get("tool") != null
+                                && !String.valueOf(m.get("tool")).isBlank()),
+                "每步都应声明工具调用");
         assertTrue(book.get("guardrails") instanceof Map<?, ?>, "应声明护栏");
     }
 
@@ -127,66 +127,6 @@ class PlaybookRegistryTest {
         }
     }
 
-    @Test
-    @SuppressWarnings("unchecked")
-    void stepRefExpandsFragmentWithOverrides() {
-        // 步骤片段复用（use: <片段名>）：装载期从 _shared-steps 片段库展开为完整步骤——
-        // 手册只声明「用哪些动作、按什么顺序」，动作定义跨手册收敛（治理手册粒度膨胀）
-        Map<String, Object> rootCause = registry.get("root-cause");
-        List<Map<String, Object>> steps = (List<Map<String, Object>>) rootCause.get("steps");
-        // 归因步骤未覆写：完整继承片段模板（do/how/tool/policy）+ id 缺省取片段名
-        Map<String, Object> cause = steps.get(1);
-        assertEquals("root-cause", cause.get("id"), "未覆写时步骤 id 缺省取片段名");
-        assertEquals("swrl_root_cause", cause.get("tool"), "片段模板的 tool 继承");
-        assertTrue(String.valueOf(cause.get("how")).contains("R-A"), "片段模板的 how 继承: " + cause);
-        // 查询步骤覆写 do/how：覆写字段优先于模板，其余字段（tool）仍继承
-        Map<String, Object> facts = steps.get(0);
-        assertEquals("查询异动指标事实", facts.get("do"), "覆写 do 优先于片段模板");
-        assertEquals("sparql_query", facts.get("tool"), "未覆写字段仍继承片段模板");
-        // 片段库本身不进注册表（对路由/触发词/SOP 消费不可见）
-        assertNull(registry.get("_shared-steps"), "片段库不是手册，不入注册表");
-        assertTrue(registry.problems().isEmpty(), () -> "装载应零问题: " + registry.problems());
-    }
-
-    @Test
-    void unresolvableStepRefIsRejected() {
-        // 步骤引用不可解析（片段库中无同名片段）→ 装载门禁拦截、手册不入册。
-        // reload 只扫 classpath:playbooks/*.yaml 无法直接注入坏引用手册——
-        // 利用 PathMatchingResourcePatternResolver 同时扫 target/classes 的特性：
-        // 向测试 classpath 写入临时坏引用手册 + 最小片段库，reload 后断言门禁拦截，
-        // 断言后立即删除临时文件恢复 classpath 原状（不影响其他用例）。
-        Path target = Paths.get("target", "classes", "playbooks");
-        Path broken = target.resolve("zz-broken-book.yaml");
-        Path lib = target.resolve("zz-broken-lib.yaml");
-        try {
-            Files.createDirectories(target);
-            Files.writeString(broken,
-                    "name: zz-broken-book\n"
-                    + "title: 坏引用手册\n"
-                    + "applies_to:\n  scene: ops\n  intents: [SOME_INTENT]\n"
-                    + "steps:\n  - use: no-such-fragment\n",
-                    StandardCharsets.UTF_8);
-            registry.registerKnownTools(java.util.Set.of("sparql_query"));
-            registry.reload();
-            List<String> problems = registry.problems().get("zz-broken-book");
-            assertNotNull(problems, "坏引用手册应被装载门禁拦截");
-            assertTrue(problems.stream().anyMatch(p -> p.contains("步骤引用不可解析: no-such-fragment")),
-                    () -> "应报步骤引用不可解析: " + problems);
-            assertNull(registry.get("zz-broken-book"), "含不可解析引用的手册不应入册");
-        } catch (IOException e) {
-            throw new IllegalStateException("临时坏引用手册写入失败", e);
-        } finally {
-            try {
-                Files.deleteIfExists(broken);
-                Files.deleteIfExists(lib);
-            } catch (IOException ignored) {
-                // 清理失败不影响断言（文件名 zz- 前缀避让真实手册，残留无路由副作用）
-            }
-        }
-        registry.reload();
-        assertNull(registry.get("zz-broken-book"), "清理后恢复原状，坏手册不再在册");
-    }
-
     // ── 路由消费（双消费①） ──
 
     @Test
@@ -197,16 +137,6 @@ class PlaybookRegistryTest {
                 "智聊意图命中 → 返回智聊手册 code");
         assertEquals("discover-history", registry.route("rd", "RD_CONFIG_DISCOVER", List.of()),
                 "智查意图命中 → 返回智查手册 code");
-    }
-
-    @Test
-    void routesByToolDeclaration() {
-        assertEquals("doc-batch-import", registry.route("rd", "SOME_OTHER_INTENT", List.of("rd_file_parse")),
-                "工具命中 applies_to.tools 亦应命中");
-        assertEquals("chat-configure", registry.route("rd", "SOME_OTHER_INTENT", List.of("rd_config_chat")),
-                "rd_config_chat 命中智聊手册");
-        assertEquals("discover-history", registry.route("rd", "SOME_OTHER_INTENT", List.of("rd_config_discover")),
-                "rd_config_discover 命中智查手册");
     }
 
     @Test
@@ -242,17 +172,6 @@ class PlaybookRegistryTest {
     }
 
     @Test
-    void routesOpsToolsToOpsEntryPlaybooks() {
-        // ops 工具交集命中：独有工具唯一归位；共享工具（sparql_query 四本手册都引用）
-        // 按注册 Map 迭代序先命中谁——注册序非语义约定，独有工具断言稳定，共享工具不依赖
-        assertEquals("root-cause", registry.route("ops", "SOME_OTHER_INTENT", List.of("swrl_root_cause")),
-                "归因工具独有 → 命中异动归因手册");
-        String shared = registry.route("ops", "SOME_OTHER_INTENT", List.of("sparql_query"));
-        assertTrue(List.of("market-insight", "online-check", "risk-audit", "root-cause").contains(shared),
-                "共享查询工具命中任一 ops 手册（注册序决定，非语义约定）: " + shared);
-    }
-
-    @Test
     void routeMatchesIntentCaseInsensitively() {
         // 理解层归一化产物是小写（product_ops_query），手册声明是大写（PRODUCT_OPS_QUERY）——
         // 严格 equals 永不命中，导致手册意图升级机制失效（实测截图走动态编排的根因）
@@ -274,8 +193,12 @@ class PlaybookRegistryTest {
 
     @Test
     void unrelatedIntentAndToolDoesNotRoute() {
+        // 路由只认业务意图：工具名不再参与匹配（applies_to.tools 与 route toolHit 已退役），
+        // 工具兜底（LLM 自选工具 ≠ 认领整本手册）不升级走手册链路
         assertNull(registry.route("rd", "RD_DRAFT_MANAGE", List.of("rd_draft_manage")),
                 "意图与工具均不在适用域 → 不路由");
+        assertNull(registry.route("rd", "SOME_OTHER_INTENT", List.of("rd_file_parse")),
+                "仅工具命中、意图未命中 → 不路由（工具名不具备业务分流权）");
     }
 
     // ── 触发词快筛（入口三级瀑布第一级） ──

@@ -10,7 +10,6 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -24,7 +23,8 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>双读者：YAML 人可读、LLM 可读（拒绝 BPMN XML 重规范）</li>
  *   <li>双消费：① 路由视图（applies_to 显式适用域 → SceneFlowRouter 按意图分流）
  *              ② 编排视图（渲染 SOP 文本 → 理解层/表达层 prompt 注入，LLM 照手册调工具）</li>
- *   <li>可解析约束：steps[].tool / applies_to.tools 引用必须可解析（MCP 约束，装载门禁校验）</li>
+ *   <li>可解析约束：步骤 tool 调用必须可解析（MCP 约束，装载门禁校验）——工具配置独一份
+ *       在 AgentTool 注册表，手册步骤 tool 是调用语句而非配置声明</li>
  * </ul>
  * <p>
  * 装载：classpath:playbooks/*.yaml，启动时全量加载 + 校验，问题仅告警不阻断启动
@@ -39,10 +39,6 @@ public class PlaybookRegistry {
     private final Map<String, Map<String, Object>> playbooks = new ConcurrentHashMap<>();
     /** 装载期问题清单（code → 问题），供运维排查与测试断言 */
     private final Map<String, List<String>> loadProblems = new ConcurrentHashMap<>();
-    /** 装载两遍法的第一遍暂存（code → 原始 YAML），reload 结束后清空 */
-    private final Map<String, Map<String, Object>> pendingBooks = new LinkedHashMap<>();
-    /** 步骤片段库约定文件名（下划线前缀 = 非手册，不进注册表） */
-    private static final String FRAGMENT_LIB = "_shared-steps";
 
     /**
      * 已注册 AgentTool 名单（MCP 可解析约束的校验依据）。
@@ -69,17 +65,19 @@ public class PlaybookRegistry {
         playbooks.clear();
         loadProblems.clear();
         Yaml yaml = new Yaml();
-        Map<String, Map<String, Object>> fragments = new LinkedHashMap<>();
         try {
             var resources = new PathMatchingResourcePatternResolver()
                     .getResources("classpath*:playbooks/*.yaml");
-            // 两遍装载：第一遍收集步骤片段库（下划线前缀文件，非手册），第二遍装载手册并展开引用
             for (var resource : resources) {
                 String filename = resource.getFilename();
                 if (filename == null) {
                     continue;
                 }
                 String code = filename.substring(0, filename.length() - 5);
+                // 下划线前缀 = 片段库等非手册约定文件，不进注册表
+                if (code.startsWith("_")) {
+                    continue;
+                }
                 try (InputStream in = resource.getInputStream()) {
                     String content = new String(in.readAllBytes(), StandardCharsets.UTF_8);
                     Object root = yaml.load(content);
@@ -89,80 +87,21 @@ public class PlaybookRegistry {
                     }
                     @SuppressWarnings("unchecked")
                     Map<String, Object> book = (Map<String, Object>) raw;
-                    if (code.startsWith("_")) {
-                        // 片段库：不进注册表（对路由/触发词/SOP 消费不可见），仅作步骤复用源
-                        fragments.put(code, book);
-                        log.info("[PlaybookRegistry] 步骤片段库已装载: {} ({})", code, book.get("title"));
+                    List<String> problems = validate(code, book);
+                    if (!problems.isEmpty()) {
+                        problems.forEach(p -> problem(code, p));
                         continue;
                     }
-                    pendingBooks.put(code, book);
+                    playbooks.put(code, book);
+                    log.info("[PlaybookRegistry] 手册已装载: {} ({})", code, book.get("title"));
                 } catch (Exception e) {
                     problem(code, "解析失败: " + e.getMessage());
                 }
             }
-            // 第二遍：展开步骤引用后校验、入册
-            pendingBooks.forEach((code, book) -> {
-                List<String> problems = resolveStepRefs(code, book, fragments);
-                problems.addAll(validate(code, book));
-                if (!problems.isEmpty()) {
-                    problems.forEach(p -> problem(code, p));
-                    return;
-                }
-                playbooks.put(code, book);
-                log.info("[PlaybookRegistry] 手册已装载: {} ({})", code, book.get("title"));
-            });
         } catch (Exception e) {
             log.warn("[PlaybookRegistry] 手册目录加载失败: {}", e.getMessage());
-        } finally {
-            pendingBooks.clear();
         }
         log.info("[PlaybookRegistry] 装载完成 playbooks={}, problems={}", playbooks.size(), loadProblems.size());
-    }
-
-    /**
-     * 步骤片段引用展开（装载期一次性替换，运行期视图无感知）：
-     * steps 项形如 {@code use: query-facts}（可选 {@code do/how 覆写}）时，
-     * 从片段库取同名片段展开——覆写字段优先（手册可微调措辞而不复制全量定义）。
-     * 装载期展开使 route/renderSop/runPlaybookPath 等消费方仍读展开后的完整步骤，
-     * 片段机制对双消费 API 完全透明。
-     */
-    @SuppressWarnings("unchecked")
-    private List<String> resolveStepRefs(String code, Map<String, Object> book,
-                                         Map<String, Map<String, Object>> fragments) {
-        List<String> problems = new ArrayList<>();
-        if (!(book.get("steps") instanceof List<?> steps)) {
-            return problems;
-        }
-        List<Object> resolved = new ArrayList<>();
-        for (Object o : steps) {
-            if (o instanceof Map<?, ?> rawStep && rawStep.get("use") instanceof String ref) {
-                String fragment = ref.startsWith("steps.") ? ref.substring("steps.".length()) : ref;
-                Map<String, Object> lib = fragments.get(FRAGMENT_LIB);
-                // 片段库 steps 是「片段名 → 模板」映射（与手册的步骤列表不同构）
-                Object template = lib != null && lib.get("steps") instanceof Map<?, ?> stepsLib
-                        ? stepsLib.get(fragment) : null;
-                if (!(template instanceof Map<?, ?> tpl)) {
-                    problems.add("步骤引用不可解析: " + fragment + "（片段库 " + FRAGMENT_LIB + " 中不存在）");
-                    resolved.add(rawStep);
-                    continue;
-                }
-                Map<String, Object> step = new LinkedHashMap<>();
-                // 片段模板展开后步骤 id 缺省取片段名（手册内步骤 id 保持唯一，validate 门禁复检）
-                tpl.forEach((k, v) -> step.put(String.valueOf(k), v));
-                step.putIfAbsent("id", fragment);
-                // 覆写字段优先于片段模板（手册可微调 do/how 而不复制全量定义）；use 键不进结果
-                for (Map.Entry<?, ?> e : rawStep.entrySet()) {
-                    if (!"use".equals(e.getKey())) {
-                        step.put(String.valueOf(e.getKey()), e.getValue());
-                    }
-                }
-                resolved.add(step);
-            } else {
-                resolved.add(o);
-            }
-        }
-        book.put("steps", resolved);
-        return problems;
     }
 
     /** 装载门禁校验：结构完整性 + 引用可解析。返回问题清单（空 = 通过）。 */
@@ -174,12 +113,8 @@ public class PlaybookRegistry {
         Object appliesTo = book.get("applies_to");
         if (!(appliesTo instanceof Map<?, ?> at)) {
             problems.add("缺少 applies_to 适用域声明");
-        } else {
-            boolean hasIntent = at.get("intents") instanceof List<?> l && !l.isEmpty();
-            boolean hasTool = at.get("tools") instanceof List<?> l && !l.isEmpty();
-            if (!hasIntent && !hasTool) {
-                problems.add("applies_to.intents / applies_to.tools 至少声明一项");
-            }
+        } else if (!(at.get("intents") instanceof List<?> l) || l.isEmpty()) {
+            problems.add("applies_to.intents 未声明（路由只认业务意图）");
         }
         if (!(book.get("steps") instanceof List<?> steps) || steps.isEmpty()) {
             problems.add("缺少 steps 步骤定义");
@@ -289,11 +224,10 @@ public class PlaybookRegistry {
     /**
      * 路由判定：给定场景 + 意图（+ 工具名），返回命中的手册 code；未命中 null。
      * <p>
-     * 匹配优先级：intent 命中 > tool 命中（同场景内）；场景必须一致（声明了 scene 时）。
+     * 路由只认业务意图——手册显式声明自己适用什么意图，路由器不再按场景一刀切。
      * 意图匹配忽略大小写——LLM 意图经归一化为小写（product_ops_query），而手册
      * applies_to.intents 按展示惯例声明为大写（PRODUCT_OPS_QUERY），严格 equals 永不命中。
-     * 这是 {@code SceneFlowRouter} 按意图分流的依据——手册显式声明自己适用什么，
-     * 路由器不再按场景一刀切。
+     * 这是 {@code SceneFlowRouter} 按意图分流的依据。
      */
     public String route(String scene, String intent, List<String> toolNames) {
         return route(scene, intent, toolNames, "");
@@ -313,6 +247,7 @@ public class PlaybookRegistry {
      * 话术判别是词面交集而非 LLM 二跳：intent_guide 本身就是 LLM 选码依据，
      * 已按话术语义归口到意图码；同码歧义是码内子形态，词面判定足够且零额外成本。
      *
+     * @param toolNames 兼容旧签名保留，不再参与匹配（路由只认业务意图）
      * @param question 用户话术（原话），用于同码歧义判定；空则退化为注册序
      */
     public String route(String scene, String intent, List<String> toolNames, String question) {
@@ -330,16 +265,7 @@ public class PlaybookRegistry {
             }
             boolean intentHit = intent != null && at.get("intents") instanceof List<?> intents
                     && intents.stream().map(this::str).anyMatch(i -> i.equalsIgnoreCase(intent));
-            boolean toolHit = false;
-            if (!intentHit && toolNames != null && at.get("tools") instanceof List<?> tools) {
-                for (String t : toolNames) {
-                    if (tools.stream().map(this::str).anyMatch(t::equals)) {
-                        toolHit = true;
-                        break;
-                    }
-                }
-            }
-            if (!intentHit && !toolHit) {
+            if (!intentHit) {
                 continue;
             }
             if (firstHit == null) {
