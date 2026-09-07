@@ -362,6 +362,7 @@ public class AgentOrchestrator {
         Map<String, Object> planParams = params == null ? new LinkedHashMap<>() : new LinkedHashMap<>(params);
         planParams.putIfAbsent("question", question);
         injectSessionId(planParams, context);
+        fillQuestionSlots(tools, planParams, question);
         QueryPlan plan = new QueryPlan(intent, tools, planParams, question);
         plan.setUserQuestion(question);
         context.setLastIntent(intent);
@@ -471,6 +472,7 @@ public class AgentOrchestrator {
         Map<String, Object> planParams = params == null ? new LinkedHashMap<>() : new LinkedHashMap<>(params);
         planParams.putIfAbsent("question", question);
         injectSessionId(planParams, context);
+        fillQuestionSlots(tools, planParams, question);
         QueryPlan plan = new QueryPlan(intent, tools, planParams, question);
         plan.setUserQuestion(question);
         context.setLastIntent(intent);
@@ -679,6 +681,33 @@ public class AgentOrchestrator {
     private void injectSessionId(Map<String, Object> planParams, SessionContext context) {
         if (context != null && context.getSessionId() != null && !context.getSessionId().isBlank()) {
             planParams.put("session_id", context.getSessionId());
+        }
+    }
+
+    /**
+     * 手册直达链路按工具参数契约自动补槽：手册快筛跳过了理解层 LLM（零 LLM 成本直达），
+     * 没有槽位提取环节，工具声明的 source=question 必填参数（如 rd_config_chat 的 text、
+     * rd_config_discover 的 question）会拿不到值——executor 的 direct 兜底只透传 plan.params
+     * 同名键，而 plan.params 里只有 question，参数名不一致即触发「缺少配置需求描述」类失败。
+     * <p>
+     * 修复策略：遍历手册工具链上每个工具的参数契约，凡 source=question 的参数
+     * （理解层本应从用户原话抽取）直接以用户原话填充；请求 params 已显式携带的键不覆盖。
+     */
+    private void fillQuestionSlots(List<String> tools, Map<String, Object> planParams, String question) {
+        if (question == null || question.isBlank()) {
+            return;
+        }
+        for (String toolName : tools) {
+            AgentTool tool = toolMap.get(toolName);
+            if (tool == null) {
+                continue;
+            }
+            for (ToolParam param : tool.getParams()) {
+                if ("question".equals(param.getSource()) && param.getName() != null
+                        && !planParams.containsKey(param.getName())) {
+                    planParams.put(param.getName(), question);
+                }
+            }
         }
     }
 

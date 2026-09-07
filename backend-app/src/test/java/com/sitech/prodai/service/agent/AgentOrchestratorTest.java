@@ -93,7 +93,7 @@ class AgentOrchestratorTest {
     void setUp() {
         sessionManager = new SessionManager(Optional.empty());
         orchestrator = new AgentOrchestrator(understander, executor, presenter, sessionManager,
-                Optional.empty(), Optional.of(llmService), List.of(stubSparqlTool()), flowIntentRouter,
+                Optional.empty(), Optional.of(llmService), List.of(stubSparqlTool(), stubChatConfigTool()), flowIntentRouter,
                 chatHumanBridge, sceneFlowRouter);
     }
 
@@ -123,6 +123,37 @@ class AgentOrchestratorTest {
                                 com.sitech.prodai.service.agent.tool.ToolOutputField
                                         .builder("conclusion", com.sitech.prodai.service.agent.tool.ToolOutputField.Role.CONCLUSION)
                                         .label("结论").type("string").build());
+                    }
+
+                    @Override
+                    public ExecutionResult execute(Map<String, Object> params) {
+                        return ExecutionResult.ok(getName(), Map.of());
+                    }
+                };
+        return tool;
+    }
+
+    /**
+     * 注册 rd_config_chat 桩：声明与生产工具一致的参数契约
+     * （text 必填、source=question），供手册直达链路 fillQuestionSlots 按契约补槽。
+     */
+    private com.sitech.prodai.service.agent.tool.AgentTool stubChatConfigTool() {
+        com.sitech.prodai.service.agent.tool.AgentTool tool =
+                new com.sitech.prodai.service.agent.tool.AgentTool() {
+                    @Override
+                    public String getName() {
+                        return "rd_config_chat";
+                    }
+
+                    @Override
+                    public String getDescription() {
+                        return "智聊配置草稿生成";
+                    }
+
+                    @Override
+                    public List<com.sitech.prodai.service.agent.tool.ToolParam> getParams() {
+                        return List.of(com.sitech.prodai.service.agent.tool.ToolParam
+                                .builder("text").label("配置需求").required().source("question").build());
                     }
 
                     @Override
@@ -750,5 +781,37 @@ class AgentOrchestratorTest {
         verify(executor).execute(planCaptor.capture(), any(SessionContext.class));
         assertEquals("s-pb2", planCaptor.getValue().getParams().get("session_id"),
                 "手册同步链路 plan.params 应注入服务端 session_id（强制覆盖）");
+    }
+
+    // ── 手册直达链路：source=question 参数按契约补槽 ──
+
+    @Test
+    void streamPlaybookPathFillsQuestionSlotsFromContract() {
+        when(presenter.present(any(), anyList(), any(SessionContext.class))).thenReturn("手册执行完毕");
+        when(presenter.suggestFollowUps(any(), anyList(), any(SessionContext.class))).thenReturn(List.of());
+        RecordingEmitter emitter = new RecordingEmitter();
+        orchestrator.processStream("给家庭用户做一个融合套餐，月费158，带500M宽带", "s-slot1", null, "rd", emitter);
+
+        // 手册快筛跳过理解层 LLM，无槽位提取：工具契约声明 source=question 的参数
+        // （rd_config_chat 的 text）必须以用户原话自动填充——否则工具因参数缺失
+        // 报「缺少配置需求描述」，四步全部执行失败
+        ArgumentCaptor<QueryPlan> planCaptor = ArgumentCaptor.forClass(QueryPlan.class);
+        verify(executor).execute(planCaptor.capture(), any(SessionContext.class), any(Executor.StepListener.class));
+        Map<String, Object> params = planCaptor.getValue().getParams();
+        assertEquals("给家庭用户做一个融合套餐，月费158，带500M宽带", params.get("text"),
+                "手册链路应按契约将 source=question 的 text 参数补为用户原话");
+        assertEquals("给家庭用户做一个融合套餐，月费158，带500M宽带", params.get("question"),
+                "plan.params 原始 question 键保持不变");
+    }
+
+    @Test
+    void processPlaybookPathFillsQuestionSlotsFromContract() {
+        orchestrator.process("给家庭用户做一个融合套餐，月费158，带500M宽带", "s-slot2", null, "rd");
+
+        ArgumentCaptor<QueryPlan> planCaptor = ArgumentCaptor.forClass(QueryPlan.class);
+        verify(executor).execute(planCaptor.capture(), any(SessionContext.class));
+        assertEquals("给家庭用户做一个融合套餐，月费158，带500M宽带",
+                planCaptor.getValue().getParams().get("text"),
+                "手册同步链路同样应按契约补齐 source=question 的工具参数");
     }
 }
