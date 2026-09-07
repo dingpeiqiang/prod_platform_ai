@@ -80,6 +80,7 @@ class ChatConfigureV2DefinitionTest {
         when(toolExecutionService.containsTool("rd_config_discover")).thenReturn(true);
         when(toolExecutionService.containsTool("rd_compliance")).thenReturn(true);
         when(toolExecutionService.containsTool("rd_draft_manage")).thenReturn(true);
+        when(toolExecutionService.containsTool("rd_config_chat")).thenReturn(true);
         // W5 新增流程的工具依赖（query_reuse_v2 / ops_analysis_v2）
         when(toolExecutionService.containsTool("sparql_query")).thenReturn(true);
         when(toolExecutionService.containsTool("rd_scheme_compare")).thenReturn(true);
@@ -94,7 +95,7 @@ class ChatConfigureV2DefinitionTest {
         }
     }
 
-    // ── 2. Seeder：逐个落库 + 幂等跳过 ──
+    // ── 2. Seeder：逐个落库 + 幂等跳过 + 定义演进自动升级 ──
 
     @Test
     void seederCreatesAllDefinitionsOnce() {
@@ -115,6 +116,57 @@ class ChatConfigureV2DefinitionTest {
         List<Object> codes = captor.getAllValues().stream().map(p -> p.get("workflowCode")).toList();
         assertTrue(codes.contains(SceneWorkflowDefinitions.MAIN_CODE), "应落库主流程: " + codes);
         assertTrue(codes.contains(SceneWorkflowDefinitions.DRAFT_CHECK_CODE), "应落库子流程: " + codes);
+    }
+
+    @Test
+    void seederUpgradesOutdatedDefinitionAndSkipsIdenticalOne() {
+        when(toolExecutionService.containsTool(any())).thenReturn(true);
+        when(toolExecutionService.getTool(any())).thenReturn(null);
+        // 已存在（createWorkflow 失败）
+        when(workflowService.createWorkflow(any(), eq("system")))
+                .thenReturn(ApiResponse.fail("Workflow already exists"));
+
+        // 用例 A：库内定义与代码定义一致 → 跳过升级
+        when(workflowService.getWorkflow(SceneWorkflowDefinitions.MAIN_CODE)).thenReturn(ApiResponse.ok(Map.of(
+                "workflowCode", SceneWorkflowDefinitions.MAIN_CODE,
+                "workflowData", SceneWorkflowDefinitions.mainFlow())));
+        SceneWorkflowSeeder seeder = new SceneWorkflowSeeder(workflowService, validator);
+        seeder.seed();
+        verify(workflowService, never()).updateWorkflow(eq(SceneWorkflowDefinitions.MAIN_CODE), any(), any());
+
+        // 用例 B：库内是旧版定义（缺 create-draft 节点）→ 自动升级
+        Map<String, Object> staleDefinition = staleMainFlowWithoutCreateDraft();
+        when(workflowService.getWorkflow(SceneWorkflowDefinitions.MAIN_CODE)).thenReturn(ApiResponse.ok(Map.of(
+                "workflowCode", SceneWorkflowDefinitions.MAIN_CODE,
+                "workflowData", staleDefinition)));
+        when(workflowService.updateWorkflow(eq(SceneWorkflowDefinitions.MAIN_CODE), any(), eq("system")))
+                .thenReturn(ApiResponse.ok(Map.of()));
+        seeder.seed();
+        org.mockito.ArgumentCaptor<Map<String, Object>> upgradeCaptor =
+                org.mockito.ArgumentCaptor.forClass(Map.class);
+        verify(workflowService, org.mockito.Mockito.atLeastOnce())
+                .updateWorkflow(eq(SceneWorkflowDefinitions.MAIN_CODE), upgradeCaptor.capture(), eq("system"));
+        Map<String, Object> upgraded = upgradeCaptor.getValue();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> upgradedDef = (Map<String, Object>) upgraded.get("workflowData");
+        assertNotNull(upgradedDef, "升级 payload 应携带最新 workflowData");
+    }
+
+    /** 构造旧版主流程定义（draft-stage 直连 confirm-gate，无 create-draft 节点）。 */
+    private Map<String, Object> staleMainFlowWithoutCreateDraft() {
+        Map<String, Object> def = SceneWorkflowDefinitions.mainFlow();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> nodes = (List<Map<String, Object>>) def.get("nodes");
+        nodes.removeIf(n -> "create-draft".equals(n.get("id")));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> connections = (List<Map<String, Object>>) def.get("connections");
+        connections.removeIf(c -> "create-draft".equals(c.get("source")));
+        connections.stream()
+                .filter(c -> SceneWorkflowDefinitions.MAIN_CODE.equals(def.get("id")))
+                .filter(c -> "confirm-gate".equals(c.get("target")))
+                .findFirst()
+                .ifPresent(c -> c.put("source", "draft-stage"));
+        return def;
     }
 
     // ── 3. 主流程快乐路径：起草 → 确认门挂起 → 恢复 → 修改 → 提交 → completed ──
@@ -147,11 +199,11 @@ class ChatConfigureV2DefinitionTest {
         assertTrue(resume.isSuccess(), () -> "恢复应成功: " + resume.getMessage());
         assertEquals("completed", resume.getData().get("status"));
 
-        // 工具调用序列：discover → compliance → draft_manage(update) → draft_manage(submit)
-        // persist 与 order 两个节点共用 rd_draft_manage → times(2)
+        // 工具调用序列：discover → compliance → config_chat(落库开单) → draft_manage(update) → draft_manage(submit)
         org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(toolExecutionService);
         inOrder.verify(toolExecutionService).execute(eq("rd_config_discover"), any());
         inOrder.verify(toolExecutionService).execute(eq("rd_compliance"), any());
+        inOrder.verify(toolExecutionService).execute(eq("rd_config_chat"), any());
         inOrder.verify(toolExecutionService, org.mockito.Mockito.times(2)).execute(eq("rd_draft_manage"), any());
     }
 
@@ -185,6 +237,11 @@ class ChatConfigureV2DefinitionTest {
         when(toolExecutionService.execute(eq("rd_compliance"), any()))
                 .thenReturn(ExecutionResult.ok("rd_compliance", Map.of("compliance_pass", false, "issues", List.of("月费超限"))));
         // 整改复稿后 LLM 仍返回同一输出（mock 网关固定）
+        // 子流程 rejected 后主流程继续走 create-draft（落库开单），需打桩
+        when(toolExecutionService.execute(eq("rd_config_chat"), any()))
+                .thenReturn(ExecutionResult.ok("rd_config_chat", Map.of(
+                        "nl_answer", "已生成配置草稿", "success", true,
+                        "workOrderId", "WO20260901002", "draft_id", "D002")));
 
         ApiResponse<Map<String, Object>> start = engine.startExecution(
                 SceneWorkflowDefinitions.MAIN_CODE, null,
@@ -354,6 +411,11 @@ class ChatConfigureV2DefinitionTest {
                 .thenReturn(ExecutionResult.ok("rd_config_discover", Map.of("nl_answer", "命中2条历史", "items", List.of(Map.of("name", "家庭融合158")))));
         lenient().when(toolExecutionService.execute(eq("rd_compliance"), any()))
                 .thenReturn(ExecutionResult.ok("rd_compliance", Map.of("compliance_pass", true, "issues", List.of())));
+        lenient().when(toolExecutionService.execute(eq("rd_config_chat"), any()))
+                .thenReturn(ExecutionResult.ok("rd_config_chat", Map.of(
+                        "nl_answer", "已生成配置草稿", "success", true,
+                        "workOrderId", "WO20260901001", "draft_id", "D001",
+                        "draftOfferingName", "家庭融合畅享158", "draftMonthlyFee", "158")));
         lenient().when(toolExecutionService.execute(eq("rd_draft_manage"), any()))
                 .thenReturn(ExecutionResult.ok("rd_draft_manage", Map.of("nl_answer", "操作成功", "success", true)));
     }
@@ -365,7 +427,9 @@ class ChatConfigureV2DefinitionTest {
         int before = nodeLogCaptureSize();
         engine.startExecution(SceneWorkflowDefinitions.MAIN_CODE, null,
                 Map.of("question", "办一个158的家庭融合套餐"), "tester");
-        verify(nodeLogMapper, org.mockito.Mockito.times(before + 9)).insert(captor.capture());
+        // 主流程一条链：start/discover/reuse-check/draft-stage(子流程节点)/create-draft/confirm-gate(挂起)
+        // + 子流程内 start/draft-llm/compliance/pass-check/end-draft-ok
+        verify(nodeLogMapper, org.mockito.Mockito.times(before + 10)).insert(captor.capture());
         return captor.getAllValues().stream()
                 .skip(before)
                 .map(com.sitech.prodai.domain.entity.WorkflowNodeLog::getNodeId)

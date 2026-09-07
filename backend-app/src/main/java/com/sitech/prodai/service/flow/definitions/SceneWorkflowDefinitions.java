@@ -83,6 +83,21 @@ final class SceneWorkflowDefinitions {
                                 DefinitionTemplates.input("confirmed_params", "{{flow.confirmed_params}}")),
                         "timeoutMs", 120_000L));
 
+        // 草稿落库即开单：rd_config_chat 保存草稿并创建配置工单，产出 work_order_id
+        // （persist/order 凭此定位草稿；不预创建则 confirm 后落库提交必然缺工单号）
+        Map<String, Object> createDraft = DefinitionTemplates.node("create-draft", "flow.tool", "草稿落库开单",
+                new LinkedHashMap<>(Map.of(
+                        "toolName", "rd_config_chat",
+                        "inputParams", DefinitionTemplates.listOf(
+                                DefinitionTemplates.input("text", "{{flow.question}}"),
+                                DefinitionTemplates.input("session_id", "{{flow.session_id}}")),
+                        "timeoutMs", 120_000L,
+                        "outputParams", DefinitionTemplates.listOf(
+                                DefinitionTemplates.output("work_order_id", "workOrderId"),
+                                DefinitionTemplates.output("draft_id", "draft_id"),
+                                DefinitionTemplates.output("offering_name", "draftOfferingName"),
+                                DefinitionTemplates.output("monthly_fee", "draftMonthlyFee")))));
+
         Map<String, Object> confirmGate = DefinitionTemplates.node("confirm-gate", "flow.human", "落库确认",
                 Map.of("form_code", "offering_config",
                         "prompt", "配置草稿已生成，请确认后落库提交（可取消）"));
@@ -97,7 +112,7 @@ final class SceneWorkflowDefinitions {
                         "toolName", "rd_draft_manage",
                         "inputParams", DefinitionTemplates.listOf(
                                 DefinitionTemplates.input("action", "update"),
-                                DefinitionTemplates.input("work_order_id", "{{confirm-gate.output.work_order_id}}"),
+                                DefinitionTemplates.input("work_order_id", "{{create-draft.output.work_order_id}}"),
                                 DefinitionTemplates.input("offering_name", "{{confirm-gate.output.offerName}}"),
                                 DefinitionTemplates.input("monthly_fee", "{{confirm-gate.output.fixedFeeAmount}}"),
                                 DefinitionTemplates.input("question", "{{flow.question}}")),
@@ -112,7 +127,7 @@ final class SceneWorkflowDefinitions {
                         "toolName", "rd_draft_manage",
                         "inputParams", DefinitionTemplates.listOf(
                                 DefinitionTemplates.input("action", "submit"),
-                                DefinitionTemplates.input("work_order_id", "{{confirm-gate.output.work_order_id}}"),
+                                DefinitionTemplates.input("work_order_id", "{{create-draft.output.work_order_id}}"),
                                 DefinitionTemplates.input("session_id", "{{system.execution_id}}")),
                         "onFailure", "continue",
                         "timeoutMs", TOOL_TIMEOUT_MS,
@@ -124,6 +139,7 @@ final class SceneWorkflowDefinitions {
                 discover,
                 reuseCheck,
                 draftStage,
+                createDraft,
                 confirmGate,
                 confirmCheck,
                 persist,
@@ -137,7 +153,8 @@ final class SceneWorkflowDefinitions {
                 DefinitionTemplates.edge("discover", "reuse-check"),
                 DefinitionTemplates.branchEdge("reuse-check", "reuse", "end-reuse"),
                 DefinitionTemplates.branchEdge("reuse-check", "draft", "draft-stage"),
-                DefinitionTemplates.edge("draft-stage", "confirm-gate"),
+                DefinitionTemplates.edge("draft-stage", "create-draft"),
+                DefinitionTemplates.edge("create-draft", "confirm-gate"),
                 DefinitionTemplates.edge("confirm-gate", "confirm-check"),
                 DefinitionTemplates.branchEdge("confirm-check", "cancel", "end-cancelled"),
                 DefinitionTemplates.branchEdge("confirm-check", "proceed", "persist"),

@@ -172,6 +172,11 @@ public class OpsExtractionService {
         }
     }
 
+    /** LLM 单次抽取的文档分片上限（超过则分段抽取后合并） */
+    private static final int LLM_DOC_CHUNK_SIZE = 6000;
+    /** 分段抽取的最大分片数（防超长文档打爆 LLM） */
+    private static final int LLM_DOC_MAX_CHUNKS = 5;
+
     /**
      * @param configFallback 保留兼容；当前不使用样例灌入。
      */
@@ -185,18 +190,22 @@ public class OpsExtractionService {
         }
         if (llmExtractEnabled()) {
             try {
-                String prompt = """
-                        你是电信产商品文档解析助手。从营销/方案文档中抽取套餐列表，只输出 JSON：{"packages":[...]}
-                        每个套餐可用字段：offeringName,monthlyFee,includeData,includeVoice,includeBroadband,targetUser,channelScope,bizScenario,offeringType,hasContract,contractMonths,repeatable,discountPercent,dependOn,sourceExcerpt
-                        要求：sourceExcerpt 摘录原文短句；未写明的字段省略；不要编造。
-                        
-                        文档：
-                        %s
-                        """.formatted(documentText.length() > 6000 ? documentText.substring(0, 6000) : documentText);
-                String content = llmService.orElseThrow().completePrompt(prompt);
-                List<Map<String, Object>> pkgs = parsePackageList(content);
-                if (!pkgs.isEmpty()) {
-                    return new PackageExtractResult(pkgs, "llm");
+                List<Map<String, Object>> merged = new ArrayList<>();
+                List<String> chunks = splitDocChunks(documentText, LLM_DOC_CHUNK_SIZE, LLM_DOC_MAX_CHUNKS);
+                for (String chunk : chunks) {
+                    String prompt = """
+                            你是电信产商品文档解析助手。从营销/方案文档中抽取套餐列表，只输出 JSON：{"packages":[...]}
+                            每个套餐可用字段：offeringName,monthlyFee,includeData,includeVoice,includeBroadband,targetUser,channelScope,bizScenario,offeringType,hasContract,contractMonths,repeatable,discountPercent,dependOn,sourceExcerpt
+                            要求：sourceExcerpt 摘录原文短句；未写明的字段省略；不要编造。
+                            
+                            文档：
+                            %s
+                            """.formatted(chunk);
+                    String content = llmService.orElseThrow().completePrompt(prompt);
+                    merged.addAll(parsePackageList(content));
+                }
+                if (!merged.isEmpty()) {
+                    return new PackageExtractResult(dedupePackages(merged), "llm");
                 }
             } catch (Exception e) {
                 log.warn("[OpsExtractionService] LLM 文档抽取失败: {}", e.getMessage());
@@ -208,6 +217,45 @@ public class OpsExtractionService {
         }
         // 不再灌入校园等演示样例；生产/联调均按文档内容抽取
         return new PackageExtractResult(List.of(), "none");
+    }
+
+    /**
+     * 超长文档分段：优先按空行边界切分（避免截断套餐段落），无空行时硬切。
+     * 超过 maxChunks 时截断尾部（与既有 6000 字上限策略一致，防打爆 LLM）。
+     */
+    private List<String> splitDocChunks(String text, int chunkSize, int maxChunks) {
+        if (text.length() <= chunkSize) {
+            return List.of(text);
+        }
+        List<String> chunks = new ArrayList<>();
+        int start = 0;
+        while (start < text.length() && chunks.size() < maxChunks) {
+            int end = Math.min(start + chunkSize, text.length());
+            if (end < text.length()) {
+                // 向前回退到最近的空行/换行边界，避免段落被拦腰截断
+                int boundary = Math.max(text.lastIndexOf("\n\n", end), text.lastIndexOf("\n", end));
+                if (boundary > start + chunkSize / 2) {
+                    end = boundary + 1;
+                }
+            }
+            chunks.add(text.substring(start, (int) Math.min(end, text.length())).trim());
+            start = end;
+        }
+        return chunks;
+    }
+
+    /** 分段抽取合并去重：按 offeringName+monthlyFee 去重，保留首现（分段边界可能重复抽到同一套餐）。 */
+    private List<Map<String, Object>> dedupePackages(List<Map<String, Object>> pkgs) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        Set<String> seen = new java.util.HashSet<>();
+        for (Map<String, Object> p : pkgs) {
+            String key = str(p.get("offeringName")) + "|" + str(p.get("monthlyFee"));
+            if (!seen.add(key)) {
+                continue;
+            }
+            out.add(p);
+        }
+        return out;
     }
 
     /**
@@ -227,10 +275,8 @@ public class OpsExtractionService {
         }
         List<String> segments = new ArrayList<>();
         if (starts.isEmpty()) {
-            // 单段文档：有月费/套餐关键词时也尝试抽一条
-            if (containsAny(documentText, "月费", "套餐", "元", "GB", "流量")) {
-                segments.add(documentText.trim());
-            }
+            // 单段文档增强：先按空行分组尝试切分（表格/TSV/无前缀文档），每行能独立抽出槽位则按行成段
+            segments.addAll(splitSegmentsWithoutPrefix(documentText));
         } else {
             for (int i = 0; i < starts.size(); i++) {
                 int from = starts.get(i);
@@ -258,6 +304,65 @@ public class OpsExtractionService {
             pkgs.add(slots);
         }
         return pkgs;
+    }
+
+    /**
+     * 无「套餐X：」前缀的单段文档切分：按行（优先空行分组）尝试独立抽取，
+     * 每行/组能抽出槽位即成一段；全部失败时回退整篇一段（保持既有行为零漂移）。
+     */
+    private List<String> splitSegmentsWithoutPrefix(String documentText) {
+        if (!containsAny(documentText, "月费", "套餐", "元", "GB", "流量")) {
+            return List.of();
+        }
+        String[] lines = documentText.split("\\r?\\n");
+        // 先按空行分组（表格类文档通常每套餐一组）
+        List<String> groups = new ArrayList<>();
+        StringBuilder cur = new StringBuilder();
+        for (String line : lines) {
+            if (line.isBlank()) {
+                if (!cur.isEmpty()) {
+                    groups.add(cur.toString().trim());
+                    cur.setLength(0);
+                }
+            } else {
+                if (!cur.isEmpty()) {
+                    cur.append('\n');
+                }
+                cur.append(line.trim());
+            }
+        }
+        if (!cur.isEmpty()) {
+            groups.add(cur.toString().trim());
+        }
+        // 组内能独立抽出槽位则成段
+        List<String> segments = new ArrayList<>();
+        for (String g : groups) {
+            if (g.isBlank()) {
+                continue;
+            }
+            Map<String, Object> slots = parseSlotsByRegex(g);
+            if (!slots.isEmpty()) {
+                segments.add(g);
+            }
+        }
+        if (!segments.isEmpty()) {
+            return segments;
+        }
+        // 空行分组失败（如 TSV 单行表）：逐行尝试
+        for (String line : lines) {
+            String t = line.trim();
+            if (t.isBlank()) {
+                continue;
+            }
+            if (!parseSlotsByRegex(t).isEmpty()) {
+                segments.add(t);
+            }
+        }
+        if (segments.size() > 1) {
+            return segments;
+        }
+        // 全部失败回退整篇一段（既有行为）
+        return List.of(documentText.trim());
     }
 
     public Map<String, Object> parseSlotsByRegex(String text) {

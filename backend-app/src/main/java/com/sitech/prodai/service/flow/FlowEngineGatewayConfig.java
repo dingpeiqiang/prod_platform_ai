@@ -3,6 +3,7 @@ package com.sitech.prodai.service.flow;
 import com.sitech.prodai.domain.entity.WorkflowExecution;
 import com.sitech.prodai.mapper.WorkflowExecutionMapper;
 import com.sitech.prodai.service.LlmService;
+import com.sitech.prodai.service.flow.event.FlowEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -39,6 +40,16 @@ public class FlowEngineGatewayConfig {
                 return null;
             }
         };
+    }
+
+    /**
+     * 引擎事件发布器默认实例（智聊重设计 W1-1）：
+     * 默认无监听器（空发布零开销）；SSE 桥（ChatFlowProgressBridge）在请求期
+     * 通过 {@link FlowEngineService#setEventPublisher} 换入带监听器的 per-request 实例。
+     */
+    @Bean
+    public FlowEventPublisher flowEventPublisher() {
+        return new FlowEventPublisher(List.of());
     }
 
     @Bean

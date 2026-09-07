@@ -75,6 +75,7 @@ CREATE TABLE `pd_ai_workflow_node_logs` (
     `id`            BIGINT       NOT NULL AUTO_INCREMENT,
     `execution_id`  VARCHAR(100) NOT NULL COMMENT '执行实例 ID',
     `node_id`       VARCHAR(64)  NOT NULL COMMENT '节点 ID',
+    `node_name`     VARCHAR(128) NULL COMMENT '节点业务名（定义期 name 标签）',
     `node_type`     VARCHAR(32)  NOT NULL COMMENT '节点类型',
     `status`        VARCHAR(16)  NOT NULL COMMENT 'running/completed/skipped/failed',
     `attempt`       INT          NOT NULL DEFAULT 1 COMMENT '第几次重试',
@@ -91,3 +92,22 @@ CREATE TABLE `pd_ai_workflow_node_logs` (
     KEY `idx_fnl_exec` (`execution_id`),
     KEY `idx_fnl_exec_node` (`execution_id`, `node_id`, `attempt`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='流程节点级执行记录（审计与断点恢复依据）';
+
+-- 2.1 旧库升级：node_logs 表已存在且缺 node_name 列时补齐（幂等，information_schema 判存）
+DROP PROCEDURE IF EXISTS `p_add_node_name_column`;
+DELIMITER $$
+CREATE PROCEDURE `p_add_node_name_column`()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'pd_ai_workflow_node_logs'
+          AND COLUMN_NAME = 'node_name'
+    ) THEN
+        ALTER TABLE `pd_ai_workflow_node_logs`
+            ADD COLUMN `node_name` VARCHAR(128) NULL COMMENT '节点业务名（定义期 name 标签）' AFTER `node_id`;
+    END IF;
+END$$
+DELIMITER ;
+CALL `p_add_node_name_column`();
+DROP PROCEDURE IF EXISTS `p_add_node_name_column`;

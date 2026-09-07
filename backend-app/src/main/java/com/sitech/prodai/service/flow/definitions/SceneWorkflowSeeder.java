@@ -1,5 +1,7 @@
 package com.sitech.prodai.service.flow.definitions;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sitech.prodai.service.WorkflowService;
 import com.sitech.prodai.service.flow.FlowDefinitionValidator;
 import jakarta.annotation.PostConstruct;
@@ -63,16 +65,47 @@ public class SceneWorkflowSeeder {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("workflowCode", code);
         payload.put("workflowName", definition.get("name"));
-        payload.put("description", "智聊场景固定工作流（W3-2 Seeder 播种）");
+        payload.put("description", "智聊场景固定流程定义（W3-2 Seeder 管理）");
         payload.put("category", "rd");
         payload.put("isActive", true);
         payload.put("workflowData", definition);
         var resp = workflowService.createWorkflow(payload, SYSTEM_USER);
         if (resp.isSuccess()) {
-            log.info("[SceneWorkflowSeeder] 场景工作流已落库: {}", code);
+            log.info("[SceneWorkflowSeeder] 场景工作流已播种: {}", code);
+            return;
+        }
+        // 已存在 = 幂等播种；但代码定义演进（如新增节点）时需同步升级到最新定义，
+        // 否则引擎永远执行旧版流程（历史上曾因此导致新节点不生效）。定义一致则跳过。
+        if (definitionEquals(code, definition)) {
+            log.info("[SceneWorkflowSeeder] 场景工作流 {} 已存在（定义一致，跳过）: {}", code, resp.getMessage());
+            return;
+        }
+        var updated = workflowService.updateWorkflow(code, Map.of(
+                "workflowName", definition.get("name"),
+                "workflowData", definition,
+                "changeNote", "Seeder 定义升级（代码演进自动同步）"), SYSTEM_USER);
+        if (updated.isSuccess()) {
+            log.info("[SceneWorkflowSeeder] 场景工作流 {} 定义已升级至最新", code);
         } else {
-            // 已存在 = 幂等跳过（正常重启路径）；其余失败仅告警
-            log.info("[SceneWorkflowSeeder] 场景工作流 {} 跳过落库: {}", code, resp.getMessage());
+            log.warn("[SceneWorkflowSeeder] 场景工作流 {} 定义升级失败: {}", code, updated.getMessage());
+        }
+    }
+
+    /** 判断库内定义与代码定义是否一致（结构语义比较，序列化后对比，忽略键序）。 */
+    private boolean definitionEquals(String code, Map<String, Object> definition) {
+        try {
+            var resp = workflowService.getWorkflow(code);
+            if (!resp.isSuccess() || resp.getData() == null
+                    || !(resp.getData().get("workflowData") instanceof Map<?, ?> stored)) {
+                return false;
+            }
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode storedTree = mapper.readTree(mapper.writeValueAsString(stored));
+            JsonNode codeTree = mapper.readTree(mapper.writeValueAsString(definition));
+            return storedTree.equals(codeTree);
+        } catch (Exception e) {
+            log.warn("[SceneWorkflowSeeder] 定义比对失败（视为不一致并升级）: {}", e.getMessage());
+            return false;
         }
     }
 }

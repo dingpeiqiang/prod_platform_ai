@@ -14,6 +14,7 @@ import com.sitech.prodai.service.flow.event.FlowEventPublisher;
 import com.sitech.prodai.service.flow.event.FlowNodeEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -73,6 +74,7 @@ public class FlowEngineService {
                 conditionEvaluator, llmService, restClient, formSchemaPort, new FlowEventPublisher(List.of()));
     }
 
+    @Autowired
     public FlowEngineService(WorkflowMapper workflowMapper,
                              WorkflowExecutionMapper executionMapper,
                              WorkflowNodeLogMapper nodeLogMapper,
@@ -428,6 +430,7 @@ public class FlowEngineService {
         WorkflowNodeLog nodeLog = new WorkflowNodeLog();
         nodeLog.setExecutionId(execution.getExecutionId());
         nodeLog.setNodeId(str(node.get("id")));
+        nodeLog.setNodeName(str(node.get("name")));
         nodeLog.setNodeType("flow.condition");
         nodeLog.setStatus(branchId != null ? "completed" : "failed");
         nodeLog.setAttempt(1);
@@ -451,6 +454,7 @@ public class FlowEngineService {
         WorkflowNodeLog nodeLog = new WorkflowNodeLog();
         nodeLog.setExecutionId(execution.getExecutionId());
         nodeLog.setNodeId(nodeId);
+        nodeLog.setNodeName(str(node.get("name")));
         nodeLog.setNodeType("flow.human");
         nodeLog.setStatus("running");
         nodeLog.setAttempt(1);
@@ -960,6 +964,7 @@ public class FlowEngineService {
         WorkflowNodeLog nodeLog = new WorkflowNodeLog();
         nodeLog.setExecutionId(execution.getExecutionId());
         nodeLog.setNodeId(str(node.get("id")));
+        nodeLog.setNodeName(str(node.get("name")));
         nodeLog.setNodeType(str(node.get("action")));
         nodeLog.setStatus(outcome.success() ? "completed" : "failed");
         nodeLog.setAttempt(attempt);
@@ -1256,6 +1261,7 @@ public class FlowEngineService {
         map.put("id", nodeLog.getId());
         map.put("execution_id", nodeLog.getExecutionId());
         map.put("node_id", nodeLog.getNodeId());
+        map.put("node_name", nodeLog.getNodeName());
         map.put("node_type", nodeLog.getNodeType());
         map.put("status", nodeLog.getStatus());
         map.put("attempt", nodeLog.getAttempt());

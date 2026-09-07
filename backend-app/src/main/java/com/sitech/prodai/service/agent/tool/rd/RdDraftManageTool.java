@@ -295,8 +295,17 @@ public class RdDraftManageTool implements AgentTool {
                 applyDraftChange(draft, changes, e.getKey(), e.getValue());
             }
         }
+        Map<String, Object> out = new LinkedHashMap<>();
         if (changes.isEmpty()) {
-            return ExecutionResult.fail(getName(), "未识别到需要修改的草稿字段，请明确修改内容（如：把资费名称改成XX、月费改成99）");
+            // 空变更为合法结果：确认值与草稿一致（无字段需修改）时不应报错，
+            // 固定流程 confirm 后 persist 引用确认值落草稿，值相同属常态（返回成功便于链路走通）
+            out.put("action", "update");
+            out.put("success", true);
+            out.put("draft_id", ref.draftId());
+            out.put("work_order_id", workOrderId);
+            out.put("changed_fields", Map.of());
+            out.put("nl_answer", "确认值与草稿当前值一致，无需修改（工单 " + workOrderId + " 草稿保持不变）");
+            return ExecutionResult.ok(getName(), out);
         }
 
         Map<String, Object> saveReq = new LinkedHashMap<>();
@@ -308,7 +317,6 @@ public class RdDraftManageTool implements AgentTool {
         }
         Map<String, Object> saved = productOntologyService.saveConfigDraft(saveReq);
         boolean ok = Boolean.TRUE.equals(saved.get("success"));
-        Map<String, Object> out = new LinkedHashMap<>();
         out.put("action", "update");
         out.put("success", ok);
         out.put("draft_id", ref.draftId());

@@ -298,6 +298,7 @@ CREATE TABLE IF NOT EXISTS pd_ai_workflow_node_logs (
     id                 BIGINT        NOT NULL AUTO_INCREMENT,
     execution_id       VARCHAR(100)  NOT NULL,
     node_id            VARCHAR(64)   NOT NULL,
+    node_name          VARCHAR(128)  DEFAULT NULL,
     node_type          VARCHAR(32)   NOT NULL,
     status             VARCHAR(16)   NOT NULL,
     attempt            INT           NOT NULL DEFAULT 1,
@@ -314,6 +315,9 @@ CREATE TABLE IF NOT EXISTS pd_ai_workflow_node_logs (
 );
 CREATE INDEX IF NOT EXISTS idx_fnl_exec ON pd_ai_workflow_node_logs (execution_id);
 CREATE INDEX IF NOT EXISTS idx_fnl_exec_node ON pd_ai_workflow_node_logs (execution_id, node_id, attempt);
+
+-- 旧库文件升级：node_logs 表已存在时补齐 node_name 列（幂等，H2 2.x 支持 ADD COLUMN IF NOT EXISTS）
+ALTER TABLE pd_ai_workflow_node_logs ADD COLUMN IF NOT EXISTS node_name VARCHAR(128) DEFAULT NULL;
 
 -- ------------------------------------------------------------
 -- 6. 链路追踪

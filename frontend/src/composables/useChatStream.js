@@ -42,6 +42,20 @@ function genSessionId() {
   return `sess_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 10)}`
 }
 
+/** 引擎节点类型 → 思考面板 goal 行（每环节在做什么，用户可读） */
+function nodeTypeHint(nodeType) {
+  const hints = {
+    'flow.tool': '执行业务工具节点',
+    'flow.llm': 'LLM 生成节点',
+    'flow.workflow': '执行子流程',
+    'flow.condition': '条件路由判断',
+    'flow.human': '人工确认节点（等待回复后继续）',
+    'flow.start': '流程启动',
+    'flow.end': '流程结束',
+  }
+  return hints[nodeType] || '固化链路真实节点执行进度（引擎直出，非编排层模拟）'
+}
+
 /** 等待心跳原地刷新；同一步完成时替换进行中条目，避免刷屏 */
 function preserveStepTiming(prev, next) {
   const startedAt = prev?.waitingStartedAt || prev?.stepStartedAt || prev?.timestamp || next.timestamp || Date.now()
@@ -245,19 +259,20 @@ export function useChatStream() {
       const status = data.status === 'suspended' ? 'done'
         : (data.status === 'error' ? 'error' : (data.status === 'running' ? 'running' : 'done'))
       const stepId = `flow_${data.node_id || data.execution_id}`
+      const nodeLabel = data.node_name || data.node_id || '流程节点'
       const summary = data.summary
         || (data.branch ? `命中分支：${data.branch.id}` : null)
         || (data.error_message ? `节点失败：${data.error_message}` : null)
-        || (status === 'running' ? `正在执行「${data.node_name || data.node_id}」…` : null)
+        || (status === 'running' ? `正在执行「${nodeLabel}」…` : null)
         || (status === 'done' && data.status === 'suspended' ? '等待人工确认' : null)
       upsertAssistantMessage({
         reasoning: settleThinkingSteps(current.reasoning),
         reasoningStep: {
           type: 'tool',
           id: stepId,
-          title: data.node_name || data.node_id || '流程节点',
+          title: nodeLabel,
           content: status === 'running' ? '正在处理…' : undefined,
-          goal: '固化链路真实节点执行进度（引擎直出，非编排层模拟）',
+          goal: nodeTypeHint(data.node_type),
           result: status === 'done' ? (summary || '节点完成') : (status === 'error' ? (summary || '节点失败') : null),
           status: status === 'running' ? 'running' : 'done',
           attempt: data.attempt || 1,
@@ -343,6 +358,8 @@ export function useChatStream() {
           status: status === 'running' ? 'running' : 'done',
           elapsed: toolEntry.elapsed,
           segment: data.segment || null,
+          // 工具执行留痕（LLM/本体/解析各环节明细）：与 thinking 步骤同构透传，展开区渲染「处理细节」
+          trace: Array.isArray(data.trace) && data.trace.length ? data.trace : null,
           io: status === 'running' ? null : {
             input: data.input || null,
             output: data.output || null,

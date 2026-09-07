@@ -210,9 +210,11 @@ public class AgentOrchestrator {
             reply.putIfAbsent("session_id", context.getSessionId());
             String report = String.valueOf(reply.getOrDefault("report", ""));
             context.addHistoryEntry("assistant", report);
+            // 挂起绑定捕获必须先于 persistTurn：persistTurn 落库时读取 executionBinding
+            // 写入消息 metadata（SessionManager 快照恢复依赖），顺序颠倒会导致跨轮恢复失效
+            captureSuspensionBinding(context, reply);
             sessionManager.save(context);
             persistTurn(context, question, reply, null);
-            captureSuspensionBinding(context, reply);
             reply.put("elapsed_ms", System.currentTimeMillis() - startTime);
             return reply;
         }
@@ -842,7 +844,8 @@ public class AgentOrchestrator {
         reply.put("intent", "FLOW_RESUME");
         reply.put("flow_execution", data);
         if ("completed".equals(status)) {
-            reply.put("report", "流程已按您的确认继续执行完成。");
+            String outcome = flowOutcomeSummary(data);
+            reply.put("report", "流程已按您的确认执行完成" + (outcome.isEmpty() ? "。" : "：" + outcome));
             reply.put("conclusion", "执行完成");
             reply.put("suggested_follow_ups", List.of("查看执行明细"));
         } else if ("waiting_human".equals(status)) {
@@ -856,6 +859,41 @@ public class AgentOrchestrator {
             reply.put("suggested_follow_ups", List.of());
         }
         return reply;
+    }
+
+    /**
+     * 从执行终态 output_data 提取业务结果摘要（人话化）：
+     * 工单号/商品名来自 create-draft 类工具输出，提交结果来自 order 类节点 answer。
+     * 任何异常降级为空串，不影响恢复主链路。
+     */
+    private String flowOutcomeSummary(Map<String, Object> execData) {
+        try {
+            if (!(execData.get("output_data") instanceof Map<?, ?> out)) {
+                return "";
+            }
+            String workOrderId = strField(out, "work_order_id");
+            String offeringName = strField(out, "offering_name");
+            String orderAnswer = strField(out, "order_answer");
+            StringBuilder sb = new StringBuilder();
+            if (!offeringName.isBlank()) {
+                sb.append("已提交「").append(offeringName).append("」");
+            }
+            if (!workOrderId.isBlank()) {
+                sb.append(sb.length() > 0 ? "，" : "").append("工单 ").append(workOrderId);
+            }
+            if (!orderAnswer.isBlank()) {
+                sb.append(sb.length() > 0 ? "，" : "").append(orderAnswer);
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /** 执行 output_data 顶层字符串字段安全读取（兼容各节点输出透传） */
+    private String strField(Map<?, ?> data, String key) {
+        Object v = data.get(key);
+        return v == null ? "" : String.valueOf(v);
     }
 
     /**
@@ -979,6 +1017,8 @@ public class AgentOrchestrator {
                                     "output", Map.of("summary", report))))
             ));
             context.addHistoryEntry("assistant", report);
+            // 挂起绑定捕获先于 persistTurn（同同步链路，保证 metadata 落库）
+            captureSuspensionBinding(context, reply);
             sessionManager.save(context);
             persistTurn(context, question, reply, emitter);
             emitTextEvents(emitter, report);
@@ -987,7 +1027,6 @@ public class AgentOrchestrator {
             donePayload.put("intent", reply.getOrDefault("intent", "FLOW_EXEC"));
             donePayload.put("flow_matched", reply.get("flow_matched"));
             donePayload.put("flow_execution", reply.get("flow_execution"));
-            captureSuspensionBinding(context, reply);
             appendBindingToDone(donePayload, context);
             donePayload.put("conclusion", reply.getOrDefault("conclusion", ""));
             donePayload.put("suggested_follow_ups",
@@ -1038,6 +1077,8 @@ public class AgentOrchestrator {
                         "intent", plan.getIntent()
                 ));
                 context.addHistoryEntry("assistant", report);
+                // 挂起绑定捕获先于 persistTurn（同同步链路，保证 metadata 落库）
+                captureSuspensionBinding(context, reply);
                 sessionManager.save(context);
                 persistTurn(context, question, reply, emitter);
                 emitTextEvents(emitter, report);
@@ -1046,7 +1087,6 @@ public class AgentOrchestrator {
                 donePayload.put("intent", reply.getOrDefault("intent", "FLOW_EXEC"));
                 donePayload.put("flow_matched", reply.get("flow_matched"));
                 donePayload.put("flow_execution", reply.get("flow_execution"));
-                captureSuspensionBinding(context, reply);
                 appendBindingToDone(donePayload, context);
                 donePayload.put("conclusion", reply.getOrDefault("conclusion", ""));
                 donePayload.put("suggested_follow_ups",
@@ -1406,10 +1446,13 @@ public class AgentOrchestrator {
             toolEvent.put("errorMessage", result.getErrorMessage());
         }
         // 本体/规则推理日志：从工具产出中提取推理引擎、命中规则、归因路径等过程留痕；
-        // 数据查询类工具（NL→SPARQL）下发实体发现/查询执行留痕，体现本体查询逻辑
-        List<Map<String, Object>> toolTrace = "sparql_query".equals(result.getToolName())
-                ? TraceSnapshotBuilder.ontologyQueryTrace(result)
-                : TraceSnapshotBuilder.ontologyTraceView(result);
+        // 数据查询类工具（NL→SPARQL）下发实体发现/查询执行留痕，体现本体查询逻辑；
+        // 智读文件解析工具（rd_file_parse）下发文档解析/抽取/合规/开单各环节留痕，补齐执行链路可见性
+        List<Map<String, Object>> toolTrace = switch (result.getToolName()) {
+            case "sparql_query" -> TraceSnapshotBuilder.ontologyQueryTrace(result);
+            case "rd_file_parse" -> TraceSnapshotBuilder.rdFileParseTrace(result);
+            default -> TraceSnapshotBuilder.ontologyTraceView(result);
+        };
         if (toolTrace != null) {
             toolEvent.put("trace", toolTrace);
         }

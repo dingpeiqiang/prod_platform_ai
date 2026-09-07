@@ -34,6 +34,10 @@ public class WorkflowNodeLog {
     @TableField("node_id")
     private String nodeId;
 
+    /** 节点业务名（定义期 name 标签，前端时间线直接展示，免查定义） */
+    @TableField("node_name")
+    private String nodeName;
+
     @TableField("node_type")
     private String nodeType;
 

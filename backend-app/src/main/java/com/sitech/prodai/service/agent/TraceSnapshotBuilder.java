@@ -459,6 +459,95 @@ public final class TraceSnapshotBuilder {
     }
 
     /**
+     * 智读文件解析（rd_file_parse）过程留痕：文档解析引擎 → 套餐抽取引擎 → 合规校验 → 批量开单，
+     * 让思考时间线展示完整执行链路（前端 STAGE_PREFIX 中非 llm/ontology 阶段统一加「校验」前缀，
+     * 此处 stage 用空串走默认前缀即可，无需改前端）。
+     */
+    public static List<Map<String, Object>> rdFileParseTrace(ExecutionResult result) {
+        if (result == null || !result.isSuccess() || result.getData() == null) {
+            return null;
+        }
+        Map<String, Object> data = result.getData();
+        List<Map<String, Object>> trace = new ArrayList<>();
+
+        // 环节① 文档解析（解析引擎 + trace_id 可回溯）
+        Object parseEngine = data.get("parseEngine");
+        if (parseEngine != null && !str(parseEngine).isBlank()) {
+            String engineDesc = switch (str(parseEngine)) {
+                case "docx" -> "解析 docx（OOXML）文档，抽取段落与表格文本";
+                case "xlsx" -> "解析 xlsx 工作表，按行列抽取单元格";
+                case "pdf" -> "PDFBox 解析 PDF 文档";
+                case "pdfbox" -> "PDFBox 解析 PDF 文档";
+                case "poi" -> "Apache POI 解析 Office 文档";
+                case "tika" -> "Apache Tika 解析文档";
+                case "csv" -> "解析 CSV，自动识别分隔符";
+                case "markdown" -> "按 Markdown 纯文本读取";
+                case "text" -> "按纯文本读取文档内容";
+                default -> "解析引擎 " + parseEngine;
+            };
+            Object chars = data.get("extractedChars");
+            if (chars instanceof Number n && n.longValue() > 0) {
+                engineDesc += "，抽取 " + n + " 字符";
+            }
+            trace.add(parsePhase(engineDesc));
+        }
+        Object traceId = data.get("trace_id");
+        if (traceId != null && !str(traceId).isBlank()) {
+            trace.add(parsePhase("解析留痕已记录（trace_id=" + str(traceId) + "）"));
+        }
+
+        // 环节② 套餐抽取（抽取引擎 + 命中规则）
+        Object extractEngine = data.get("extractEngine");
+        Object itemCount = data.get("total") != null ? data.get("total")
+                : (data.get("items") instanceof List<?> l ? l.size() : null);
+        if (extractEngine != null && !str(extractEngine).isBlank()) {
+            String engineDesc = switch (str(extractEngine)) {
+                case "llm" -> "大模型按槽位约束抽取套餐字段";
+                case "regex" -> "正则规则切分文档并抽取槽位";
+                case "regex-fast" -> "正则快速抽取（关键槽位齐备，跳过 LLM）";
+                case "regex-fallback" -> "大模型抽取失败，回退正则规则";
+                default -> "抽取引擎 " + extractEngine;
+            };
+            if (itemCount instanceof Number n) {
+                engineDesc += "，抽取 " + n + " 条套餐";
+            }
+            trace.add(parsePhase(engineDesc));
+        }
+        if (data.get("appliedRules") instanceof List<?> rules && !rules.isEmpty()) {
+            trace.add(parsePhase("命中规则：" + rules.stream().map(String::valueOf)
+                    .reduce((a, b) -> a + "、" + b).orElse("")));
+        }
+
+        // 环节③ 合规校验
+        Object total = data.get("total");
+        Object passed = data.get("passedCount");
+        if (total instanceof Number t && passed instanceof Number p) {
+            trace.add(parsePhase("合规校验：共 " + t + " 条草稿，通过 " + p + " 条，待修正 " + (t.intValue() - p.intValue()) + " 条"));
+        }
+
+        // 环节④ 批量开单
+        Object woCount = data.get("workOrderCount");
+        if (woCount instanceof Number w && w.intValue() > 0) {
+            StringBuilder sb = new StringBuilder("已按草稿逐条创建配置工单，共 ").append(w).append(" 单");
+            if (data.get("workOrderFailures") instanceof List<?> fails && !fails.isEmpty()) {
+                sb.append("（失败 ").append(fails.size()).append(" 条）");
+            }
+            trace.add(parsePhase(sb.toString()));
+        }
+
+        return trace.isEmpty() ? null : trace;
+    }
+
+    /** 构造智读解析阶段条目（stage 留空，前端走默认「校验」前缀）。 */
+    private static Map<String, Object> parsePhase(String message) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("stage", "parse");
+        item.put("phase", "文档解析");
+        item.put("message", message);
+        return item;
+    }
+
+    /**
      * 数据查询（NL→SPARQL）过程留痕：让「查询经营数据」步骤展示本体查询的逻辑过程
      * （本体加载 → 实体发现方式 → 生成 SPARQL → 命中实体数）。
      */

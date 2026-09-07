@@ -215,6 +215,15 @@ function restoreMessageMetadata(meta = {}) {
   let flowProgress = []
   const rawTimeline = parseFlowField(meta.flow_progress_timeline)
   if (Array.isArray(rawTimeline)) {
+    const typeHints = {
+      'flow.tool': '执行业务工具节点',
+      'flow.llm': 'LLM 生成节点',
+      'flow.workflow': '执行子流程',
+      'flow.condition': '条件路由判断',
+      'flow.human': '人工确认节点（等待回复后继续）',
+      'flow.start': '流程启动',
+      'flow.end': '流程结束',
+    }
     flowProgress = rawTimeline.map((n) => {
       const status = n.status === 'error' ? 'error'
         : (n.status === 'running' ? 'running' : 'done')
@@ -225,9 +234,11 @@ function restoreMessageMetadata(meta = {}) {
         type: 'tool',
         id: `flow_${n.node_id || n.execution_id}`,
         title: n.node_name || n.node_id || '流程节点',
+        goal: typeHints[n.node_type] || '固化链路真实节点执行进度',
         result: status === 'error' ? (summary || '节点失败') : (status === 'running' ? null : summary),
         status,
         attempt: n.attempt || 1,
+        elapsed: n.duration_ms != null ? n.duration_ms / 1000 : undefined,
         flowSuspended: n.flow_suspended
           ? { execution_id: n.execution_id, form_spec: n.form_spec || null }
           : null,

@@ -499,6 +499,9 @@ const RD_POST_INTENTS = [
   'RD_CONFIG_DISCOVER',
   'RD_SCHEME_COMPARE',
   'RD_DRAFT_MANAGE',
+  // 挂起恢复（对话内"确认"续推）：完成后同样需要内联工单卡
+  'FLOW_RESUME',
+  'FLOW_EXEC',
 ]
 
 /** 拉取当前会话的商品配置工单列表（后端按 session_id 过滤），返回 items 数组 */
@@ -1625,6 +1628,16 @@ const onSwitchSession = async (sid) => {
   productConfig.resetState()
   productConfig.setSessionContext({ sessionId: sid || sessionId.value })
   await productConfig.loadPersistedDrafts(sid || sessionId.value)
+  // 历史回放补挂工单：post-processor 只回放最近一条带意图的消息，
+  // 更早的 FLOW_EXEC/RD_CONFIG_CHAT 回复缺工单卡，这里逐条补齐（会话级共享视图）
+  const target = sid || sessionId.value
+  if (target) {
+    for (const m of messages.value) {
+      if (m.role === 'assistant' && m.done && !m.workOrders?.length) {
+        await attachWorkOrdersToMsg(m, target)
+      }
+    }
+  }
 }
 
 const onNewSession = () => {

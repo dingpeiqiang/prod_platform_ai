@@ -252,12 +252,12 @@ class QueryOpsV2DefinitionTest {
         return null;
     }
 
-    /** G2/G3 打桩：W5 相关五工具全部已注册；getTool 返回 null = 跳过 G3 输出契约深度校验。 */
+    /** G2/G3 打桩：W5 相关工具全部已注册；getTool 返回 null = 跳过 G3 输出契约深度校验。 */
     private void stubRegistryWhitelist() {
         lenient().when(toolExecutionService.containsTool(any())).thenReturn(false);
         for (String tool : List.of("rd_config_discover", "rd_scheme_compare", "sparql_query",
                 "swrl_root_cause", "swrl_risk_audit", "ontology_explain",
-                "rd_compliance", "rd_draft_manage")) {
+                "rd_compliance", "rd_draft_manage", "rd_config_chat")) {
             lenient().when(toolExecutionService.containsTool(tool)).thenReturn(true);
         }
         lenient().when(toolExecutionService.getTool(any())).thenReturn(null);

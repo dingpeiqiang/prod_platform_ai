@@ -239,7 +239,8 @@
               <div v-if="flowNodeLogs(msg.flowExecution).length" class="fe-nodes">
                 <div v-for="n in flowNodeLogs(msg.flowExecution)" :key="n.id" class="fe-node">
                   <span class="fe-node-dot" :class="`fe-node-dot--${n.status}`"></span>
-                  <span class="fe-node-id">{{ n.id }}</span>
+                  <span class="fe-node-id">{{ n.name || n.id }}</span>
+                  <span class="fe-node-raw-id" v-if="n.name && n.name !== n.id">{{ n.id }}</span>
                   <span v-if="n.status" class="fe-node-status">{{ flowStatusLabel(n.status) }}</span>
                 </div>
               </div>
@@ -617,6 +618,7 @@ const flowDuration = (exec) => {
 /**
  * S1 流程执行卡片：从 output_data/context_data 提取节点留痕
  * （引擎 output_data 形如 { <nodeId>: { output: {...} } }，start/end 节点留空或透传）
+ * 节点名映射：先用本条消息思考时间线里的引擎业务名（node_name），兜底通用中文标签
  */
 const flowNodeLogs = (exec) => {
   const data = exec?.output_data || exec?.context_data
@@ -625,9 +627,40 @@ const flowNodeLogs = (exec) => {
     .filter(([id, v]) => id && v && typeof v === 'object' && 'output' in v)
     .map(([id, v]) => ({
       id,
+      name: flowNodeName(id),
       status: v?.output && typeof v.output === 'object' && Object.keys(v.output).length
         ? 'completed' : 'completed',
     }))
+}
+
+/** 节点 ID → 业务名：优先取当前消息思考时间线中引擎直出的 node_name，兜底静态映射 */
+const flowNodeName = (nodeId) => {
+  for (const m of props.messages) {
+    for (const step of m.reasoning || []) {
+      if (step?.id === `flow_${nodeId}` && step.title && step.title !== nodeId) return step.title
+    }
+  }
+  return FLOW_NODE_LABELS[nodeId] || nodeId
+}
+
+const FLOW_NODE_LABELS = {
+  start: '开始',
+  discover: '历史配置探查',
+  'reuse-check': '复用判断',
+  'draft-stage': '草稿生成与合规校验',
+  'create-draft': '草稿落库开单',
+  'confirm-gate': '落库确认',
+  'confirm-check': '确认判定',
+  persist: '修改草稿',
+  order: '提交工单',
+  'end-main': '流程完成',
+  'end-reuse': '命中历史复用',
+  'end-cancelled': '用户取消',
+  'draft-llm': 'LLM 起草套餐',
+  compliance: '合规校验',
+  'pass-check': '合规判定',
+  'fix-redraft': '补齐重拟',
+  'compliance-recheck': '合规复核',
 }
 
 const shouldShowReplyPlaceholder = (msg) => {
@@ -1669,6 +1702,12 @@ defineExpose({ scrollToBottom })
 .fe-node-id {
   font-family: ui-monospace, monospace;
   color: var(--text-primary);
+}
+
+.fe-node-raw-id {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--text-tertiary, #999);
 }
 
 .fe-node-status {

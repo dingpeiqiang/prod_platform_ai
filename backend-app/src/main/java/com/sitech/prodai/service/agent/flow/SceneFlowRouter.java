@@ -77,6 +77,11 @@ public class SceneFlowRouter {
         if (plan.getTools() == null || plan.getTools().isEmpty()) {
             return null;
         }
+        // 智读文件解析不进 chat_configure_v2 固化链路：该工作流是「单草稿起草→合规→落库」链路，
+        // 无法承载批量文档解析（每条草稿一单）；RD_FILE_PARSE 走动态编排直达 rd_file_parse 工具
+        if ("RD_FILE_PARSE".equals(intent) || plan.getTools().contains("rd_file_parse")) {
+            return null;
+        }
         return properties.getChatWorkflow().workflowFor(context.getScene());
     }
 

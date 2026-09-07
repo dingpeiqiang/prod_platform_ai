@@ -291,7 +291,8 @@ class AgentOrchestratorTest {
         Map<String, Object> resp = orchestrator.process("确认", "s-r1");
 
         assertEquals("FLOW_RESUME", resp.get("intent"), "挂起态回复意图应为 FLOW_RESUME");
-        assertEquals("流程已按您的确认继续执行完成。", resp.get("report"));
+        // 无 output_data 业务字段时回退为通用完成文案（不拼空摘要）
+        assertEquals("流程已按您的确认执行完成。", resp.get("report"));
         assertEquals("completed", ((Map<?, ?>) resp.get("flow_execution")).get("status"));
         // 短路：理解层/流程路由均不再触达
         verify(understander, never()).understand(any(), any());

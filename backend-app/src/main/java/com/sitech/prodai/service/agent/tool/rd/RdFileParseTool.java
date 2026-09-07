@@ -251,6 +251,13 @@ public class RdFileParseTool implements AgentTool {
         out.put("nl_answer", String.valueOf(summary));
         if (items instanceof List<?>) out.put("items", items);
         out.put("batch", resp.get("batch") != null ? resp.get("batch") : resp);
+        // 透传链路 trace 键：前端过程面板凭此展示解析/抽取引擎与规则明细（缺失时前端自然降级，不生成细节段）
+        for (String key : new String[]{"trace_id", "parseEngine", "extractEngine", "appliedRules",
+                "total", "passedCount", "pendingCount", "failures"}) {
+            if (resp.get(key) != null) {
+                out.put(key, resp.get(key));
+            }
+        }
         return out;
     }
 
@@ -276,6 +283,8 @@ public class RdFileParseTool implements AgentTool {
             }
             Map<String, Object> item = (Map<String, Object>) rawItem;
             if (!(item.get("draft") instanceof Map<?, ?> rawDraft) || ((Map<?, ?>) rawDraft).isEmpty()) {
+                // 静默跳过 → 显式失败：用户能在摘要中看到该条未开单及原因
+                failures.add("#" + idx + ": 草稿为空（文档段落未抽到有效配置字段）");
                 continue;
             }
             boolean pass = Boolean.TRUE.equals(item.get("compliancePass"));

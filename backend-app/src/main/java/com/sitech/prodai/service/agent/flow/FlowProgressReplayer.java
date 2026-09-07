@@ -81,10 +81,15 @@ public class FlowProgressReplayer {
         Map<String, Object> entry = new LinkedHashMap<>();
         entry.put("execution_id", nodeLog.get("execution_id"));
         entry.put("node_id", nodeLog.get("node_id"));
+        entry.put("node_name", nodeLog.get("node_name"));
         entry.put("node_type", nodeLog.get("node_type"));
         entry.put("status", mapStatus(str(nodeLog.get("status"))));
         Object attempt = nodeLog.get("attempt");
         entry.put("attempt", attempt != null ? attempt : 1);
+        Object durationMs = nodeLog.get("duration_ms");
+        if (durationMs != null) {
+            entry.put("duration_ms", durationMs);
+        }
         String branchTaken = str(nodeLog.get("branch_taken"));
         if (!branchTaken.isBlank()) {
             entry.put("branch", Map.of("id", branchTaken));
