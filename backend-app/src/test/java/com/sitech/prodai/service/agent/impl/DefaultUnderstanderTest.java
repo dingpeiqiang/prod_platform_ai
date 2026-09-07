@@ -31,6 +31,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -550,5 +551,51 @@ class DefaultUnderstanderTest {
         assertEquals("查数据", plan.getParams().get("question"), "question 自动回填");
         // 必填参数 city 缺失仍走 CLARIFY
         assertEquals(QueryPlan.INTENT_CLARIFY, plan.getIntent());
+    }
+
+    // ── 手册 SOP 注入（Playbook 双消费②） ──
+
+    @Test
+    void rdScenePromptCarriesPlaybookSop() {
+        // 注册表装载 classpath 手册（doc-batch-import 适用 scene=rd）→ rd 场景 prompt 应含 SOP 段
+        var playbookRegistry = new com.sitech.prodai.service.agent.playbook.PlaybookRegistry();
+        playbookRegistry.init();
+        understander = new DefaultUnderstander(llmService, List.of(
+                tool("rd_file_parse", "rd")), workOrderMapper,
+                flowIntentRouter, new AgentCapabilityRegistry(List.of(tool("rd_file_parse", "rd"))),
+                null, null, playbookRegistry);
+        llmReturns("{\"intent\":\"parse\",\"tools\":[\"rd_file_parse\"],\"params\":{}}");
+
+        understander.understand("导入文档", rdCtx());
+
+        org.mockito.ArgumentCaptor<String> sysCaptor =
+                org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(llmService, atLeastOnce()).completeMessages(sysCaptor.capture(), anyList(), anyString());
+        assertTrue(sysCaptor.getValue().contains("【标准作业程序：文档批量导入配置】"),
+                "rd 场景 system prompt 应含手册 SOP 标题");
+        assertTrue(sysCaptor.getValue().contains("第1步 解析文档提取文本"),
+                "SOP 应含手册步骤");
+        assertTrue(sysCaptor.getValue().contains("适用手册"),
+                "SOP 段应有引导语（严格按手册办事）");
+    }
+
+    @Test
+    void nonRdScenePromptHasNoPlaybookSop() {
+        // ops 场景无适用手册 → prompt 不应出现 SOP 段（零膨胀）
+        var playbookRegistry = new com.sitech.prodai.service.agent.playbook.PlaybookRegistry();
+        playbookRegistry.init();
+        List<AgentTool> tools = List.of(
+                tool("sparql_query", "ops",
+                        ToolParam.builder("city").label("城市").required().build()));
+        understander = new DefaultUnderstander(llmService, tools, workOrderMapper,
+                flowIntentRouter, new AgentCapabilityRegistry(tools), null, null, playbookRegistry);
+        llmReturns("{\"intent\":\"product_ops_query\",\"tools\":[\"sparql_query\"],\"params\":{\"city\":\"北京\"}}");
+
+        understander.understand("查数据", ctx());
+
+        org.mockito.ArgumentCaptor<String> sysCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(llmService, atLeastOnce()).completeMessages(sysCaptor.capture(), anyList(), anyString());
+        assertTrue(!sysCaptor.getValue().contains("标准作业程序"),
+                "无适用手册的场景 prompt 不注入 SOP 段");
     }
 }

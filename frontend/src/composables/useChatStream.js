@@ -347,25 +347,29 @@ export function useChatStream() {
         // 工具开始执行即代表思考/计划阶段完成，收尾仍在 running 的思考步骤
         reasoning: settleThinkingSteps(current.reasoning),
         // 思考时间线同步推进：工具开始即出现（running），完成原地收尾（done/error + 耗时）
-        reasoningStep: {
-          id: `tool_${toolEntry.name}`,
-          type: 'tool',
-          title: data.title || toolEntry.displayName || toolEntry.name,
-          content: status === 'running' ? '正在处理…' : undefined,
-          goal: data.goal || null,
-          manualHint: data.manualHint || data.manual_hint || null,
-          result: status === 'done' ? (toolEntry.result || '执行完成') : (status === 'error' ? (toolEntry.error || '执行失败') : null),
-          status: status === 'running' ? 'running' : 'done',
-          elapsed: toolEntry.elapsed,
-          segment: data.segment || null,
-          // 工具执行留痕（LLM/本体/解析各环节明细）：与 thinking 步骤同构透传，展开区渲染「处理细节」
-          trace: Array.isArray(data.trace) && data.trace.length ? data.trace : null,
-          io: status === 'running' ? null : {
-            input: data.input || null,
-            output: data.output || null,
+        // 手册（playbook）链路例外：真实执行的闭环已由手册步骤条目（sop-step-N，带真实 trace）承载，
+        // 解析只发生一次，这里不再自动生成 tool_<name> 思考条目避免与手册步骤重复
+        ...(data.playbook ? {} : {
+          reasoningStep: {
+            id: `tool_${toolEntry.name}`,
+            type: 'tool',
+            title: data.title || toolEntry.displayName || toolEntry.name,
+            content: status === 'running' ? '正在处理…' : undefined,
+            goal: data.goal || null,
+            manualHint: data.manualHint || data.manual_hint || null,
+            result: status === 'done' ? (toolEntry.result || '执行完成') : (status === 'error' ? (toolEntry.error || '执行失败') : null),
+            status: status === 'running' ? 'running' : 'done',
+            elapsed: toolEntry.elapsed,
+            segment: data.segment || null,
+            // 工具执行留痕（LLM/本体/解析各环节明细）：与 thinking 步骤同构透传，展开区渲染「处理细节」
+            trace: Array.isArray(data.trace) && data.trace.length ? data.trace : null,
+            io: status === 'running' ? null : {
+              input: data.input || null,
+              output: data.output || null,
+            },
+            timestamp: Date.now(),
           },
-          timestamp: Date.now(),
-        },
+        }),
       })
     } else if (eventName === 'warning') {
       // 后端降级类异常（如持久化失败）：不打断主流程，但要用户可感知

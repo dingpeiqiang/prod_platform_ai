@@ -34,10 +34,13 @@ public class SceneFlowRouter {
 
     private final ProdAiProperties properties;
     private final FlowEngineService flowEngineService;
+    private final com.sitech.prodai.service.agent.playbook.PlaybookRegistry playbookRegistry;
 
-    public SceneFlowRouter(ProdAiProperties properties, FlowEngineService flowEngineService) {
+    public SceneFlowRouter(ProdAiProperties properties, FlowEngineService flowEngineService,
+                           com.sitech.prodai.service.agent.playbook.PlaybookRegistry playbookRegistry) {
         this.properties = properties;
         this.flowEngineService = flowEngineService;
+        this.playbookRegistry = playbookRegistry;
     }
 
     /**
@@ -77,9 +80,11 @@ public class SceneFlowRouter {
         if (plan.getTools() == null || plan.getTools().isEmpty()) {
             return null;
         }
-        // 智读文件解析不进 chat_configure_v2 固化链路：该工作流是「单草稿起草→合规→落库」链路，
-        // 无法承载批量文档解析（每条草稿一单）；RD_FILE_PARSE 走动态编排直达 rd_file_parse 工具
-        if ("RD_FILE_PARSE".equals(intent) || plan.getTools().contains("rd_file_parse")) {
+        // 手册路由优先（手册层双消费①）：意图/工具命中某本手册 → 该类任务按手册走动态编排
+        // （手册显式声明适用域，替代场景级一刀切；智读批量导入即第一本手册 doc-batch-import）
+        String playbookCode = playbookRegistry.route(context.getScene(), intent, plan.getTools());
+        if (playbookCode != null) {
+            log.info("[SceneFlowRouter] 意图命中手册 {} → 走动态编排（LLM 照手册执行）", playbookCode);
             return null;
         }
         return properties.getChatWorkflow().workflowFor(context.getScene());

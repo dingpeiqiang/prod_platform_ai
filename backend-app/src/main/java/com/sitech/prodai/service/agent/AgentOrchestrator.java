@@ -56,6 +56,8 @@ public class AgentOrchestrator {
     private final com.sitech.prodai.service.agent.flow.ChatFlowProgressBridge progressBridge;
     /** 历史回放重建器（W6-2）：node_logs → flow_progress_timeline 随 metadata 落库（可选，null 时跳过）。 */
     private final com.sitech.prodai.service.agent.flow.FlowProgressReplayer progressReplayer;
+    /** 手册注册表：工具名单注入（MCP 可解析约束），编排消费方按需渲染 SOP。 */
+    private final com.sitech.prodai.service.agent.playbook.PlaybookRegistry playbookRegistry;
 
     /** 已注册工具索引：工具名 → 工具（供工具自描述元数据查询） */
     private final Map<String, AgentTool> toolMap;
@@ -126,11 +128,15 @@ public class AgentOrchestrator {
         this.sceneFlowRouter = sceneFlowRouter;
         this.progressBridge = progressBridge;
         this.progressReplayer = progressReplayer;
+        this.playbookRegistry = new com.sitech.prodai.service.agent.playbook.PlaybookRegistry();
+        this.playbookRegistry.init();
         this.toolMap = new ConcurrentHashMap<>();
         if (tools != null) {
             for (AgentTool tool : tools) {
                 this.toolMap.put(tool.getName(), tool);
             }
+            // 手册装载门禁（MCP 约束）：工具装配完成后注入名单，手册里的工具引用必须可解析
+            playbookRegistry.registerKnownTools(this.toolMap.keySet());
         }
     }
 
@@ -178,6 +184,18 @@ public class AgentOrchestrator {
         // W2 挂起态短路：会话绑定待恢复工作流 → 直接走 ChatHumanBridge.resume（不过理解层 LLM）
         if (context.hasPendingExecution()) {
             Map<String, Object> reply = resumePendingExecution(context, question, params, startTime);
+            if (reply != null) {
+                return reply;
+            }
+        }
+
+        // 手册触发词快筛（入口三级瀑布第一级，S1 FlowIntentRouter 能力的手册化替代）：
+        // 话术命中手册触发词 → 跳过 LLM 意图理解，直接按手册链路处理（零 LLM 成本、消除误判）；
+        // 未命中回落既有链路（FlowIntentRouter → LLM 理解 → 手册适用域路由）
+        String playbookHit = playbookRegistry.matchTrigger(context.getScene(), question);
+        if (playbookHit != null) {
+            log.info("[AgentOrchestrator] 手册触发词快筛命中: playbook={} question={}", playbookHit, question);
+            Map<String, Object> reply = runPlaybookPath(playbookHit, question, params, context, startTime);
             if (reply != null) {
                 return reply;
             }
@@ -316,6 +334,336 @@ public class AgentOrchestrator {
         }
 
         return response;
+    }
+
+    /**
+     * 手册直达链路（触发词快筛命中后）：跳过 LLM 意图理解，按手册适用域声明的
+     * intent/tools 直接组装计划进执行层——零 LLM 成本（节点内 LLM 除外）、零误判。
+     * <p>
+     * 手册声明缺 intents/tools（理论上装载门禁已拦截）时返回 null，调用方回落常规链路。
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> runPlaybookPath(String playbookCode, String question,
+                                                Map<String, Object> params,
+                                                SessionContext context, long startTime) {
+        Map<String, Object> book = playbookRegistry.get(playbookCode);
+        if (book == null || !(book.get("applies_to") instanceof Map<?, ?> at)) {
+            return null;
+        }
+        List<String> tools = new ArrayList<>();
+        if (at.get("tools") instanceof List<?> toolList) {
+            toolList.forEach(t -> tools.add(String.valueOf(t)));
+        }
+        String intent = at.get("intents") instanceof List<?> intents && !intents.isEmpty()
+                ? String.valueOf(intents.get(0)) : (tools.isEmpty() ? null : tools.get(0).toUpperCase());
+        if (intent == null || tools.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> planParams = params == null ? new LinkedHashMap<>() : new LinkedHashMap<>(params);
+        planParams.putIfAbsent("question", question);
+        QueryPlan plan = new QueryPlan(intent, tools, planParams, question);
+        plan.setUserQuestion(question);
+        context.setLastIntent(intent);
+        context.setLastTools(tools);
+        context.setLastParams(planParams);
+
+        log.info("[AgentOrchestrator] 手册直达执行: playbook={} intent={} tools={}",
+                playbookCode, intent, tools);
+        List<ExecutionResult> results = executor.execute(plan, context);
+        for (ExecutionResult result : results) {
+            if (result.isSuccess() && result.getData() != null) {
+                context.cacheEvidence(result.getToolName(), result.getData());
+                cacheBusinessEntity(context, result);
+            }
+        }
+        String report = presenter.present(question, results, context);
+        List<String> followUps = presenter.suggestFollowUps(question, results, context);
+        context.addHistoryEntry("assistant", report);
+        sessionManager.save(context);
+        persistTurn(context, question, report, plan, results, null, new ArrayList<>(), null, null);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("session_id", context.getSessionId());
+        response.put("report", report);
+        response.put("intent", intent);
+        response.put("tools", tools);
+        response.put("query_plan", buildQueryPlanView(plan));
+        response.put("conclusion", extractConclusion(results));
+        response.put("suggested_follow_ups", followUps);
+        response.put("playbook", playbookCode);
+        response.put("elapsed_ms", System.currentTimeMillis() - startTime);
+        return response;
+    }
+
+    /**
+     * 手册直达流式链路：思考时间线四步与常规链路同构，差异在「依据」——
+     * 意图来自手册适用域（非 LLM 判定），方案步骤的 trace 就是手册 SOP 的操作步骤，
+     * 执行层各工具开始/结束实时下发 tool 事件。手册执行过程对用户完整可见。
+     *
+     * @return true = 已按手册链路处理完毕；false = 手册声明不完整，调用方回落常规链路
+     */
+    private boolean runPlaybookStream(String playbookCode, String question, Map<String, Object> params,
+                                      SessionContext context, StreamEmitter emitter, long startTime) {
+        Map<String, Object> book = playbookRegistry.get(playbookCode);
+        if (book == null || !(book.get("applies_to") instanceof Map<?, ?> at)) {
+            return false;
+        }
+        List<String> tools = new ArrayList<>();
+        if (at.get("tools") instanceof List<?> toolList) {
+            toolList.forEach(t -> tools.add(String.valueOf(t)));
+        }
+        String intent = at.get("intents") instanceof List<?> intents && !intents.isEmpty()
+                ? String.valueOf(intents.get(0)) : (tools.isEmpty() ? null : tools.get(0).toUpperCase());
+        if (intent == null || tools.isEmpty()) {
+            return false;
+        }
+        log.info("[AgentOrchestrator] 流式手册直达: playbook={} intent={} tools={}", playbookCode, intent, tools);
+
+        // ── 阶段① 识别：意图来自手册声明，trace 说明判定依据（触发词命中，非 LLM）──
+        String bookTitle = String.valueOf(book.getOrDefault("title", playbookCode));
+        Map<String, Object> intentExtra = new LinkedHashMap<>();
+        intentExtra.put("goal", "手册快筛：话术命中触发词，零 LLM 成本直达");
+        intentExtra.put("input", Map.of("question", question));
+        intentExtra.put("output", Map.of(
+                "summary", "已明确：本次要执行「" + bookTitle + "」",
+                "structured_intent", Map.of("action", bookTitle, "playbook", playbookCode)));
+        intentExtra.put("trace", List.of(Map.of(
+                "stage", "sop",
+                "message", "话术命中手册「" + bookTitle + "」触发词，按标准作业程序执行（跳过意图识别）")));
+        emitter.emit("thinking", Map.of(
+                "steps", List.of(TraceSnapshotBuilder.thinkingStep("intent", "识别配置需求",
+                        "按「" + bookTitle + "」标准作业程序处理", intentExtra)),
+                "intent", intent
+        ));
+
+        // ── 阶段② 方案：手册总览（1 条）——交代手册与总步数，SOP 明细在总览 trace 内完整可见 ──
+        // 手册步骤不预读成静态思考步骤（空壳假步骤），改为随执行动态落地：
+        // 每个真实 tool 事件在 onStepComplete 中落一条带手册步骤标题的思考步骤（真实耗时 + 真实产出 trace）
+        String sop = playbookRegistry.renderSop(playbookCode);
+        List<Map<String, Object>> sopSteps = parseSopSteps(sop);
+        int sopStepCount = Math.max(sopSteps.size(), 1);
+        Map<String, Object> planExtra = new LinkedHashMap<>();
+        planExtra.put("goal", "照手册办事：" + bookTitle);
+        planExtra.put("input", Map.of("question", question));
+        planExtra.put("output", Map.of("summary", "手册共 " + sopStepCount + " 步，按序执行"));
+        List<Map<String, Object>> planTrace = TraceSnapshotBuilder.sopTraceView(sop);
+        if (planTrace != null) {
+            planExtra.put("trace", planTrace);
+        }
+        emitter.emit("thinking", Map.of(
+                "steps", List.of(TraceSnapshotBuilder.thinkingStep("plan", "定下处理方案",
+                        "按手册「" + bookTitle + "」执行，共 " + sopStepCount + " 步", planExtra)),
+                "intent", intent
+        ));
+
+        // ── 阶段③ 执行：工具开始/结束实时下发 tool 事件；完成时按手册步骤落地真实思考步骤 ──
+        // 手册多步可能共用同一工具（如 parse/extract/create 都是 rd_file_parse 的内部环节），
+        // 每次真实工具完成即按序推进一个手册步骤（消费式推进），最后一次执行收尾全部剩余步骤
+        // 待落步骤队列：工具名 → 该工具尚未落地的手册步骤序号（按序消费）
+        Map<String, java.util.ArrayDeque<Integer>> pendingStepsByTool = new LinkedHashMap<>();
+        for (int i = 0; i < sopSteps.size(); i++) {
+            String tool = String.valueOf(sopSteps.get(i).getOrDefault("tool", ""));
+            if (!tool.isBlank()) {
+                pendingStepsByTool.computeIfAbsent(tool, k -> new java.util.ArrayDeque<>()).add(i);
+            }
+        }
+        Map<String, Object> planParams = params == null ? new LinkedHashMap<>() : new LinkedHashMap<>(params);
+        planParams.putIfAbsent("question", question);
+        QueryPlan plan = new QueryPlan(intent, tools, planParams, question);
+        plan.setUserQuestion(question);
+        context.setLastIntent(intent);
+        context.setLastTools(tools);
+        context.setLastParams(planParams);
+
+        List<ExecutionResult> results = executor.execute(plan, context, new Executor.StepListener() {
+            @Override
+            public void onStepStart(String toolName) {
+                // playbook=true：告知前端本链路 tool 事件只驱动工具卡片，
+                // 不再自动生成 tool_<name> 思考条目（与手册步骤时间线重复，且解析只发生一次）
+                emitter.emit("tool", Map.of("name", toolName, "status", "running", "playbook", playbookCode));
+            }
+
+            @Override
+            public void onStepComplete(ExecutionResult result) {
+                Map<String, Object> toolEvent = buildToolEvent(result);
+                toolEvent.put("playbook", playbookCode);
+                emitter.emit("tool", toolEvent);
+                if (result.isSuccess() && result.getData() != null) {
+                    context.cacheEvidence(result.getToolName(), result.getData());
+                    cacheBusinessEntity(context, result);
+                }
+                // 按序消费该工具的待落手册步骤（一次真实执行收尾全部对应步骤）
+                java.util.ArrayDeque<Integer> queue = pendingStepsByTool.get(result.getToolName());
+                if (queue == null || queue.isEmpty()) {
+                    return;
+                }
+                List<Integer> consumed = new ArrayList<>();
+                // 手册路径下 plan 中每个工具只执行一次（applies_to.tools 去重），
+                // 一次真实执行收尾该工具名下全部待落手册步骤（如 rd_file_parse 覆盖 parse/extract/compliance/create 四步）
+                while (!queue.isEmpty()) {
+                    consumed.add(queue.poll());
+                }
+                for (int stepIdx : consumed) {
+                    Map<String, Object> sopStep = stepIdx < sopSteps.size() ? sopSteps.get(stepIdx) : Map.of();
+                    List<Map<String, Object>> stepTrace = new ArrayList<>();
+                    stepTrace.add(Map.of("stage", "sop", "message", String.valueOf(sopStep.getOrDefault("how", "按手册执行"))));
+                    if (result.isSuccess()) {
+                        List<Map<String, Object>> toolTrace = stepTraceOf(result, stepIdx);
+                        if (toolTrace != null) {
+                            stepTrace.addAll(toolTrace);
+                        }
+                    } else {
+                        stepTrace.add(Map.of("stage", "llm", "message", "执行失败：" + result.getErrorMessage()));
+                    }
+                    // 输入/输出按环节差异化：一次真实执行收尾多个手册步骤时，
+                    // 各步的输入承接上一环节产出，输出只讲自己环节的结论（不重复全量摘要）
+                    Map<String, Object> phaseIo = stepIoOf(result, stepIdx);
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> phaseInput = (Map<String, Object>) phaseIo.getOrDefault("input", Map.of());
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> phaseOutput = (Map<String, Object>) phaseIo.getOrDefault("output", Map.of());
+                    Map<String, Object> stepExtra = new LinkedHashMap<>();
+                    stepExtra.put("goal", String.valueOf(sopStep.getOrDefault("tool", "")));
+                    if (result.isSuccess()) {
+                        if (!phaseInput.isEmpty()) {
+                            stepExtra.put("input", phaseInput);
+                        }
+                        if (!phaseOutput.isEmpty()) {
+                            stepExtra.put("output", phaseOutput);
+                        }
+                    } else {
+                        stepExtra.put("output", Map.of("summary", "执行失败：" + result.getErrorMessage()));
+                    }
+                    if (!stepExtra.containsKey("output")) {
+                        stepExtra.put("output", Map.of("summary", TraceSnapshotBuilder.summarizeOutput(
+                                result.isSuccess() ? extractConclusion(List.of(result)) : "", 1)));
+                    }
+                    stepExtra.put("trace", stepTrace);
+                    emitter.emit("thinking", Map.of(
+                            "steps", List.of(TraceSnapshotBuilder.thinkingStep(
+                                    "sop-step-" + stepIdx,
+                                    "第" + (stepIdx + 1) + "步 " + sopStep.getOrDefault("do", result.getToolName()),
+                                    result.isSuccess() ? "已完成：" + sopStep.getOrDefault("do", result.getToolName())
+                                            : "执行失败：" + sopStep.getOrDefault("do", result.getToolName()),
+                                    stepExtra)),
+                            "intent", intent
+                    ));
+                }
+            }
+        });
+
+        // ── 阶段④ 汇总：与常规链路同构 ──
+        Map<String, Object> generateExtra = new LinkedHashMap<>();
+        generateExtra.put("goal", "把手册各环节结果整合成您能直接使用的结论与建议");
+        generateExtra.put("input", upstreamResultsInput(results));
+        generateExtra.put("trace", List.of(Map.of(
+                "stage", "llm",
+                "message", "调用大模型汇总 " + results.size() + " 个环节的处理结果（各环节产出已随 tool 事件下发）")));
+        emitter.emit("thinking", Map.of(
+                "steps", List.of(TraceSnapshotBuilder.thinkingStep("generate", "汇总结果",
+                        TraceSnapshotBuilder.generateStepDesc(context), generateExtra)),
+                "intent", intent
+        ));
+        String report = presenter.present(question, results, context);
+        List<String> followUps = presenter.suggestFollowUps(question, results, context);
+        String conclusionText = extractConclusion(results);
+        Map<String, Object> generateDoneExtra = new LinkedHashMap<>();
+        generateDoneExtra.put("input", upstreamResultsInput(results));
+        generateDoneExtra.put("output", Map.of(
+                "summary", TraceSnapshotBuilder.summarizeOutput(conclusionText, results.size()),
+                "branch_taken", WorkflowGraphView.branchLabel("EXECUTE")));
+        generateDoneExtra.put("trace", List.of(Map.of(
+                "stage", "llm",
+                "message", "大模型已按「结论先行 + 依据支撑」结构生成回答，依据来自手册各步骤的实际产出")));
+        emitter.emit("thinking", Map.of(
+                "steps", List.of(TraceSnapshotBuilder.thinkingStep("generate", "汇总结果",
+                        TraceSnapshotBuilder.generateStepDesc(context), generateDoneExtra)),
+                "intent", intent
+        ));
+
+        context.addHistoryEntry("assistant", report);
+        sessionManager.save(context);
+        persistTurn(context, question, report, plan, results, emitter);
+        emitTextEvents(emitter, report);
+        emitter.emit("done", Map.of(
+                "session_id", context.getSessionId(),
+                "intent", intent,
+                "playbook", playbookCode,
+                "conclusion", conclusionText,
+                "suggested_follow_ups", presenter.suggestFollowUps(question, results, context),
+                "elapsed_ms", System.currentTimeMillis() - startTime
+        ));
+        return true;
+    }
+
+    /** 工具产出 → 过程留痕（与 buildToolEvent 同源：本体/规则推理、数据查询、智读解析各环节明细）。 */
+    private List<Map<String, Object>> toolTraceOf(ExecutionResult result) {
+        return switch (result.getToolName()) {
+            case "sparql_query" -> TraceSnapshotBuilder.ontologyQueryTrace(result);
+            case "rd_file_parse" -> TraceSnapshotBuilder.rdFileParseTrace(result);
+            default -> TraceSnapshotBuilder.ontologyTraceView(result);
+        };
+    }
+
+    /**
+     * 手册步骤 → 该步骤自身环节的留痕切片：一次真实工具执行会收尾多个手册步骤
+     * （如 rd_file_parse 四步），每步只贴自己对应环节的留痕，避免全量重复。
+     * 目前仅智读解析有环节化留痕，其余工具维持全量（其留痕本就单环节）。
+     */
+    private List<Map<String, Object>> stepTraceOf(ExecutionResult result, int stepIdx) {
+        if ("rd_file_parse".equals(result.getToolName())) {
+            return TraceSnapshotBuilder.rdFileParseTracePhase(result, stepIdx);
+        }
+        return toolTraceOf(result);
+    }
+
+    /**
+     * 手册步骤 → 该步骤自身环节的输入/输出视图：输入承接上一环节产出（from_step），
+     * 输出只讲本环节结论。目前仅智读解析四环节差异化，其余工具回退通用摘要。
+     */
+    private Map<String, Object> stepIoOf(ExecutionResult result, int stepIdx) {
+        if ("rd_file_parse".equals(result.getToolName())) {
+            return TraceSnapshotBuilder.rdFileParsePhaseIo(result, stepIdx);
+        }
+        return Map.of();
+    }
+
+    /** SOP 文本 → 步骤结构列表：[{do, how, tool}]（「第N步 X——Y（工具：t）」行解析）。 */
+    private static List<Map<String, Object>> parseSopSteps(String sop) {
+        List<Map<String, Object>> steps = new ArrayList<>();
+        if (sop == null || sop.isBlank()) {
+            return steps;
+        }
+        for (String line : sop.split("\n")) {
+            String t = line.trim();
+            if (!t.startsWith("第") || !t.contains("步 ")) {
+                continue;
+            }
+            int stepNoEnd = t.indexOf("步 ");
+            String title = t.substring(stepNoEnd + 2).trim();
+            String how = "";
+            String tool = "";
+            // 结构：标题——方法（工具：t）；约束：p
+            int dash = title.indexOf("——");
+            if (dash > 0) {
+                how = title.substring(dash + 2).trim();
+                title = title.substring(0, dash).trim();
+            }
+            int toolStart = how.indexOf("（工具：");
+            if (toolStart >= 0) {
+                int toolEnd = how.indexOf("）", toolStart);
+                if (toolEnd > toolStart) {
+                    tool = how.substring(toolStart + 4, toolEnd).trim();
+                    how = (how.substring(0, toolStart) + how.substring(toolEnd + 1)).trim();
+                }
+            }
+            Map<String, Object> step = new LinkedHashMap<>();
+            step.put("do", title);
+            step.put("how", how);
+            step.put("tool", tool);
+            steps.add(step);
+        }
+        return steps;
     }
 
     /**
@@ -998,6 +1346,13 @@ public class AgentOrchestrator {
 
         // W2 挂起态短路：会话绑定待恢复工作流 → 直接走 ChatHumanBridge.resume（不过理解层 LLM）
         if (context.hasPendingExecution() && resumePendingExecution(context, question, params, emitter, startTime)) {
+            return;
+        }
+
+        // 手册触发词快筛（流式链路，同同步链路第一级）：命中 → 跳过 LLM 意图理解直达手册链路
+        // 思考时间线四步与常规链路同构：识别 → 方案（=手册 SOP，步骤即手册的操作步骤）→ 执行 → 汇总
+        String playbookHit = playbookRegistry.matchTrigger(context.getScene(), question);
+        if (playbookHit != null && runPlaybookStream(playbookHit, question, params, context, emitter, startTime)) {
             return;
         }
 

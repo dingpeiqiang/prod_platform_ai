@@ -1,0 +1,67 @@
+# 手册（Playbook）：完成一类事情的标准作业程序
+#
+# 双消费设计（docs 设计对齐 Anthropic SKILL.md 理念 + BPMN 分支/护栏语义 + MCP 工具引用约束）：
+#   ① 路由消费：SceneFlowRouter 按 applies_to 显式声明分流（根治场景一刀切误路由）
+#   ② 编排消费：DefaultUnderstander/表达层将本手册渲染进 system prompt，LLM 照手册办事
+#
+# 命名规范：文件名 = 手册 code（kebab-case），与 name 字段一致
+# 校验规则（PlaybookRegistry 装载门禁）：
+#   - name 必填且与文件名一致
+#   - applies_to.intents / applies_to.tools 至少声明一项
+#   - steps[].tool 必须是已注册 AgentTool（MCP 约束：引用必须可解析）
+#   - steps[].id 唯一
+#   - guardrails.human_gate 引用的节点 id 必须存在于 steps
+
+# ── ① 元数据 ──────────────────────────────────────────
+name: doc-batch-import
+title: 文档批量导入配置
+description: 智读·文件配置场景——解析营销/方案文档，逐套餐抽取配置要素，生成草稿并批量开单
+version: 1
+
+# 适用域：路由器据此判定"本次请求是否适用本手册"（显式声明，替代场景级一刀切）
+applies_to:
+  scene: rd
+  intents: [RD_FILE_PARSE]
+  tools: [rd_file_parse]
+  # 触发词快筛：路由器在 LLM 理解前先行匹配，命中直达手册链路（零 LLM 成本、消除误判）
+  triggers: ["导入文档", "解析方案", "批量导入", "文档解析"]
+
+# ── ② 步骤（操作步骤 + 每步的操作方法和使用的工具）─────
+steps:
+  - id: parse
+    do: 解析文档提取文本
+    how: 按文件类型选引擎——docx→OOXML解析、pdf→PDFBox、xlsx→按行列抽单元格、csv→自动识别分隔符；解析失败要提示用户换格式，不静默
+    tool: rd_file_parse
+
+  - id: extract
+    do: 逐套餐抽取配置要素（名称/月费/要素/客群/渠道）
+    how: 优先 LLM 槽位抽取；超长文档按空行边界分段（每片≤6000字、≤5片）合并去重；LLM 失败回退正则切分；无「套餐X：」前缀按空行分组逐段尝试
+    tool: rd_file_parse
+    policy: 每条草稿一单——文档里有几个套餐就开几张工单，不折叠为单一草稿
+
+  - id: compliance
+    do: 逐条合规校验
+    how: 规则引擎 R-C 系列（SHACL 可声明化规则优先）；通过的标记通过，未通过的带 R-C 编号问题清单
+    # tool 归属 rd_file_parse：合规校验是 rd_file_parse 解析流水线的内部环节
+    # （ConfigDocImportService 抽取后逐条校验），rd_compliance 是单草稿交互式校验的独立工具，
+    # 批量导入链路从不单独执行它——步骤 tool 必须与真实执行一致，否则该步骤永远等不到执行事件
+    tool: rd_file_parse
+
+  - id: create
+    do: 批量落库开单
+    how: 通过的自动创建配置工单；待修正的同样开单但挂问题标签（稽核未通过）；空草稿（段落未抽到有效字段）写入 failures 显式提示，不静默跳过
+    tool: rd_file_parse
+    output: work_order_id
+
+# ── ③ 工具引用（必须是 AgentTool 注册表已存在的能力）────
+tools:
+  - rd_file_parse
+  - rd_compliance
+
+# ── ④ 护栏（控制语义：人工门 / 审计 / 兜底）─────────────
+guardrails:
+  human_gate: []          # 本手册全自动开单（待修正工单本身即人工处理入口），无额外确认门
+  audit: trace_id 必须落库（cfg-batch-*），解析引擎/抽取引擎/命中规则随 tool 事件下发
+  fallback:
+    - extract 失败 → 不静默，failures 列表透出原因
+    - 文档无可抽取内容 → 明确告知"未识别到套餐要素"，建议检查文档格式

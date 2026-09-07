@@ -59,6 +59,30 @@ public final class TraceSnapshotBuilder {
     }
 
     /**
+     * 手册 SOP → 思考步骤 trace（手册层思考过程呈现的核心）：
+     * 把手册的每个步骤渲染为一条 trace 记录，方案步骤展开后即见手册的
+     * 「操作步骤 + 每步操作方法 + 使用的工具」——LLM 是照此执行的，展示的也是真实依据。
+     *
+     * @param sop renderSop 输出（含「第N步 X——方法（工具：t）」行）
+     * @return 形如 [{stage:"sop", message:"第1步 …"}]；无法解析时 null（前端自然降级）
+     */
+    public static List<Map<String, Object>> sopTraceView(String sop) {
+        if (sop == null || sop.isBlank()) {
+            return null;
+        }
+        List<Map<String, Object>> trace = new ArrayList<>();
+        for (String line : sop.split("\n")) {
+            String t = line.trim();
+            if (t.startsWith("第") && t.contains("步 ")) {
+                trace.add(Map.of("stage", "sop", "message", t));
+            } else if (t.startsWith("护栏：")) {
+                trace.add(Map.of("stage", "sop", "message", t));
+            }
+        }
+        return trace.isEmpty() ? null : trace;
+    }
+
+    /**
      * 将查询计划翻译为业务可读的方案说明，取代透传内部码 queryPlan 给前端渲染卡片。
      */
     public static String buildReadablePlan(QueryPlan plan) {
@@ -538,6 +562,71 @@ public final class TraceSnapshotBuilder {
         return trace.isEmpty() ? null : trace;
     }
 
+    /**
+     * 按环节序号取智读解析留痕切片（手册步骤专用）：rd_file_parse 是一次执行、四环节串行
+     * （① 文档解析 ② 套餐抽取 ③ 合规校验 ④ 批量开单），手册四个步骤各自只贴自己对应
+     * 环节的留痕，避免每一步都重复完整链路。
+     *
+     * @param phaseIdx 环节序号 0..3，越界或链路无该环节产出时返回 null（前端自然降级为仅有 SOP 条目）
+     */
+    public static List<Map<String, Object>> rdFileParseTracePhase(ExecutionResult result, int phaseIdx) {
+        List<Map<String, Object>> full = rdFileParseTrace(result);
+        if (full == null || phaseIdx < 0) {
+            return null;
+        }
+        // 四环节条目固定按序追加：[解析引擎, trace_id?, 抽取引擎, 命中规则?, 合规?, 开单?]，
+        // 其中 trace_id/命中规则/合规/开单均为可选，需先定位各环节起始下标再切片。
+        int extractStart = -1;
+        int complianceIdx = -1;
+        int createIdx = -1;
+        for (int i = 0; i < full.size(); i++) {
+            String message = str(full.get(i).get("message"));
+            if (extractStart < 0 && message.startsWith("抽取引擎") || message.startsWith("大模型按槽位")
+                    || message.startsWith("正则")) {
+                extractStart = i;
+            }
+            if (message.startsWith("合规校验：")) {
+                complianceIdx = i;
+            }
+            if (message.startsWith("已按草稿逐条创建配置工单")) {
+                createIdx = i;
+            }
+        }
+        int start;
+        int end;
+        switch (phaseIdx) {
+            case 0 -> { // 文档解析
+                start = 0;
+                end = extractStart < 0 ? full.size() : extractStart;
+            }
+            case 1 -> { // 套餐抽取
+                if (extractStart < 0) {
+                    return null;
+                }
+                start = extractStart;
+                end = complianceIdx < 0 ? full.size() : complianceIdx;
+            }
+            case 2 -> { // 合规校验
+                if (complianceIdx < 0) {
+                    return null;
+                }
+                start = complianceIdx;
+                end = createIdx < 0 ? full.size() : createIdx;
+            }
+            case 3 -> { // 批量开单
+                if (createIdx < 0) {
+                    return null;
+                }
+                start = createIdx;
+                end = full.size();
+            }
+            default -> {
+                return null;
+            }
+        }
+        return start >= end ? null : new ArrayList<>(full.subList(start, end));
+    }
+
     /** 构造智读解析阶段条目（stage 留空，前端走默认「校验」前缀）。 */
     private static Map<String, Object> parsePhase(String message) {
         Map<String, Object> item = new LinkedHashMap<>();
@@ -545,6 +634,135 @@ public final class TraceSnapshotBuilder {
         item.put("phase", "文档解析");
         item.put("message", message);
         return item;
+    }
+
+    /**
+     * 手册步骤的差异化「输入/输出」：rd_file_parse 一次执行产出完整结果，但手册四步
+     * 各自对应不同环节——输入/输出必须按环节取自真实数据，不能每步都贴同一份全量摘要。
+     * <p>
+     * 数据流视角（与 ConfigDocImportService 流水线一致）：
+     * <ul>
+     *   <li>环节① 文档解析：输入=文档标识/名称，输出=解析引擎+抽取字符数+trace_id</li>
+     *   <li>环节② 套餐抽取：输入=解析出的文本，输出=抽取引擎+抽取条数+命中规则</li>
+     *   <li>环节③ 合规校验：输入=全部草稿，输出=通过/待修正条数</li>
+     *   <li>环节④ 批量开单：输入=合规通过草稿，输出=工单数+失败明细</li>
+     * </ul>
+     * input 带 from_step 供前端渲染「承接」行（上一环节产出）。
+     */
+    public static Map<String, Object> rdFileParsePhaseIo(ExecutionResult result, int phaseIdx) {
+        if (result == null || !result.isSuccess() || result.getData() == null
+                || phaseIdx < 0 || phaseIdx > 3) {
+            return Map.of();
+        }
+        Map<String, Object> data = result.getData();
+        Map<String, Object> input = new LinkedHashMap<>();
+        Map<String, Object> output = new LinkedHashMap<>();
+        switch (phaseIdx) {
+            case 0 -> { // 文档解析
+                Object fileNames = data.get("fileNames");
+                if (fileNames instanceof List<?> l && !l.isEmpty()) {
+                    input.put("file_name", l.stream().map(String::valueOf)
+                            .reduce((a, b) -> a + "、" + b).orElse(""));
+                } else {
+                    input.put("file_name", "上传的方案文档");
+                }
+                output.put("summary", phaseSummary(data, "parse"));
+            }
+            case 1 -> { // 套餐抽取
+                input.put("from_step", "sop-step-0");
+                input.put("requirement", "上一步解析出的文档全文");
+                output.put("extractEngine", data.get("extractEngine"));
+                if (data.get("total") instanceof Number n) {
+                    output.put("total", n.intValue());
+                }
+                output.put("summary", phaseSummary(data, "extract"));
+            }
+            case 2 -> { // 合规校验
+                input.put("from_step", "sop-step-1");
+                Object total = data.get("total");
+                input.put("requirement", total instanceof Number t
+                        ? "上一步抽取的 " + t + " 条套餐草稿"
+                        : "上一步抽取的全部套餐草稿");
+                if (data.get("total") instanceof Number t) {
+                    output.put("total", t.intValue());
+                }
+                if (data.get("passedCount") instanceof Number p) {
+                    output.put("passedCount", p.intValue());
+                }
+                output.put("summary", phaseSummary(data, "compliance"));
+            }
+            case 3 -> { // 批量开单
+                input.put("from_step", "sop-step-2");
+                Object passed = data.get("passedCount");
+                input.put("requirement", passed instanceof Number p && p.intValue() > 0
+                        ? "上一步校验通过的 " + p + " 条草稿（待修正的同样开单，挂问题标签）"
+                        : "上一步校验的全部草稿");
+                if (data.get("workOrderCount") instanceof Number w) {
+                    output.put("workOrderCount", w.intValue());
+                }
+                if (data.get("workOrderFailures") instanceof List<?> fails && !fails.isEmpty()) {
+                    output.put("failureCount", fails.size());
+                }
+                output.put("summary", phaseSummary(data, "create"));
+            }
+            default -> {
+                return Map.of();
+            }
+        }
+        Map<String, Object> io = new LinkedHashMap<>();
+        io.put("input", input);
+        io.put("output", output);
+        return io;
+    }
+
+    /** 手册环节「输出」摘要：各环节讲各自那一句话（与 trace 明细互补，不重复全量 nl_answer）。 */
+    private static String phaseSummary(Map<String, Object> data, String phase) {
+        return switch (phase) {
+            case "parse" -> {
+                Object engine = data.get("parseEngine");
+                Object chars = data.get("extractedChars");
+                StringBuilder sb = new StringBuilder("文档已解析");
+                if (engine != null) {
+                    sb.append("（引擎：").append(engine).append("）");
+                }
+                if (chars instanceof Number n && n.longValue() > 0) {
+                    sb.append("，抽取 ").append(n).append(" 字符");
+                }
+                yield sb.toString();
+            }
+            case "extract" -> {
+                Object engine = data.get("extractEngine");
+                Object total = data.get("total");
+                StringBuilder sb = new StringBuilder("已抽取");
+                if (total instanceof Number n) {
+                    sb.append(" ").append(n).append(" 条套餐草稿");
+                }
+                if (engine != null) {
+                    sb.append("（抽取引擎：").append(engine).append("）");
+                }
+                yield sb.toString();
+            }
+            case "compliance" -> {
+                Object total = data.get("total");
+                Object passed = data.get("passedCount");
+                yield total instanceof Number t && passed instanceof Number p
+                        ? "合规校验完成：通过 " + p + " 条，待修正 " + (t.intValue() - p.intValue()) + " 条"
+                        : "合规校验完成";
+            }
+            case "create" -> {
+                Object woCount = data.get("workOrderCount");
+                Object fails = data.get("workOrderFailures");
+                StringBuilder sb = new StringBuilder("已批量创建配置工单");
+                if (woCount instanceof Number w) {
+                    sb.append(" ").append(w).append(" 单");
+                }
+                if (fails instanceof List<?> l && !l.isEmpty()) {
+                    sb.append("（失败 ").append(l.size()).append(" 条）");
+                }
+                yield sb.toString();
+            }
+            default -> "执行完成";
+        };
     }
 
     /**

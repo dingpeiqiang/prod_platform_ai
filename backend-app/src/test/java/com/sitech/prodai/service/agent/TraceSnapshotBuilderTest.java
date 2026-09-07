@@ -11,6 +11,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -386,5 +387,171 @@ class TraceSnapshotBuilderTest {
         assertNull(TraceSnapshotBuilder.ontologyQueryTrace(null));
         assertNull(TraceSnapshotBuilder.ontologyQueryTrace(ExecutionResult.fail("sparql_query", "boom")));
         assertNull(TraceSnapshotBuilder.ontologyQueryTrace(ExecutionResult.ok("sparql_query", Map.of("nl_answer", "空"))));
+    }
+
+    // ── rdFileParseTrace（智读文件解析四环节留痕，含批量开单环节）──
+
+    @Test
+    void rdFileParseTraceEmitsWorkOrderPhase() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("parseEngine", "docx");
+        data.put("extractEngine", "llm");
+        data.put("total", 3);
+        data.put("passedCount", 2);
+        data.put("workOrderCount", 3);
+        ExecutionResult result = ExecutionResult.ok("rd_file_parse", data);
+        List<Map<String, Object>> trace = TraceSnapshotBuilder.rdFileParseTrace(result);
+
+        // 有解析/抽取/合规/开单留痕，末条为开单结果且含工单数
+        assertEquals("文档解析", trace.get(0).get("phase"));
+        assertTrue(String.valueOf(trace.get(trace.size() - 1).get("message")).contains("3 单"));
+    }
+
+    @Test
+    void rdFileParseTraceIncludesFailureCount() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("workOrderCount", 2);
+        data.put("workOrderFailures", List.of("#1: 草稿为空"));
+        List<Map<String, Object>> trace = TraceSnapshotBuilder.rdFileParseTrace(
+                ExecutionResult.ok("rd_file_parse", data));
+        assertTrue(String.valueOf(trace.get(trace.size() - 1).get("message")).contains("失败 1 条"));
+    }
+
+    @Test
+    void rdFileParseTraceNullOrFailedReturnsNull() {
+        assertNull(TraceSnapshotBuilder.rdFileParseTrace(null));
+        assertNull(TraceSnapshotBuilder.rdFileParseTrace(ExecutionResult.fail("rd_file_parse", "boom")));
+        // 无任何结构化环节键 → 空留痕返回 null（前端自然降级）
+        assertNull(TraceSnapshotBuilder.rdFileParseTrace(
+                ExecutionResult.ok("rd_file_parse", Map.of("nl_answer", "空"))));
+    }
+
+    // ── rdFileParseTracePhase（手册步骤按环节切片，避免四步重复全量留痕）──
+
+    @Test
+    void rdFileParseTracePhaseSlicesFullChain() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("parseEngine", "docx");
+        data.put("extractedChars", 1200);
+        data.put("trace_id", "tr-001");
+        data.put("extractEngine", "llm");
+        data.put("total", 3);
+        data.put("appliedRules", List.of("R1", "R2"));
+        data.put("passedCount", 2);
+        data.put("workOrderCount", 3);
+        ExecutionResult result = ExecutionResult.ok("rd_file_parse", data);
+
+        // 环节①：解析引擎 + trace_id
+        List<Map<String, Object>> p0 = TraceSnapshotBuilder.rdFileParseTracePhase(result, 0);
+        assertEquals(2, p0.size());
+        assertTrue(String.valueOf(p0.get(0).get("message")).contains("docx"));
+        assertTrue(String.valueOf(p0.get(1).get("message")).contains("tr-001"));
+
+        // 环节②：抽取引擎 + 命中规则
+        List<Map<String, Object>> p1 = TraceSnapshotBuilder.rdFileParseTracePhase(result, 1);
+        assertEquals(2, p1.size());
+        assertTrue(String.valueOf(p1.get(0).get("message")).contains("3 条套餐"));
+        assertTrue(String.valueOf(p1.get(1).get("message")).contains("R1"));
+
+        // 环节③：仅合规校验
+        List<Map<String, Object>> p2 = TraceSnapshotBuilder.rdFileParseTracePhase(result, 2);
+        assertEquals(1, p2.size());
+        assertTrue(String.valueOf(p2.get(0).get("message")).contains("通过 2 条"));
+
+        // 环节④：仅开单
+        List<Map<String, Object>> p3 = TraceSnapshotBuilder.rdFileParseTracePhase(result, 3);
+        assertEquals(1, p3.size());
+        assertTrue(String.valueOf(p3.get(0).get("message")).contains("3 单"));
+    }
+
+    @Test
+    void rdFileParseTracePhaseMissingPhaseReturnsNull() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("parseEngine", "docx");
+        ExecutionResult result = ExecutionResult.ok("rd_file_parse", data);
+
+        // 环节①有产出
+        assertNotNull(TraceSnapshotBuilder.rdFileParseTracePhase(result, 0));
+        // 环节②③④无结构化产出 → 各自返回 null（前端该步骤自然降级为仅有 SOP 条目）
+        assertNull(TraceSnapshotBuilder.rdFileParseTracePhase(result, 1));
+        assertNull(TraceSnapshotBuilder.rdFileParseTracePhase(result, 2));
+        assertNull(TraceSnapshotBuilder.rdFileParseTracePhase(result, 3));
+        // 越界与空链路
+        assertNull(TraceSnapshotBuilder.rdFileParseTracePhase(result, 4));
+        assertNull(TraceSnapshotBuilder.rdFileParseTracePhase(result, -1));
+        assertNull(TraceSnapshotBuilder.rdFileParseTracePhase(null, 0));
+    }
+
+    // ── rdFileParsePhaseIo（手册步骤按环节差异化输入/输出，输入承接上一环节产出）──
+
+    @Test
+    void rdFileParsePhaseIoDiffersPerPhase() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("parseEngine", "docx");
+        data.put("extractedChars", 1200);
+        data.put("fileNames", List.of("家庭融合方案.docx"));
+        data.put("extractEngine", "llm");
+        data.put("total", 3);
+        data.put("passedCount", 2);
+        data.put("workOrderCount", 3);
+        data.put("workOrderFailures", List.of("#4: 工单创建失败"));
+        ExecutionResult result = ExecutionResult.ok("rd_file_parse", data);
+
+        // 环节①：输入=文档名（无 from_step，链路起点）；输出=解析摘要
+        Map<String, Object> io0 = TraceSnapshotBuilder.rdFileParsePhaseIo(result, 0);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> in0 = (Map<String, Object>) io0.get("input");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> out0 = (Map<String, Object>) io0.get("output");
+        assertNull(in0.get("from_step"));
+        assertEquals("家庭融合方案.docx", in0.get("file_name"));
+        assertTrue(String.valueOf(out0.get("summary")).contains("docx"));
+        assertTrue(String.valueOf(out0.get("summary")).contains("1200"));
+
+        // 环节②：承接环节①；输出带抽取引擎与条数
+        Map<String, Object> io1 = TraceSnapshotBuilder.rdFileParsePhaseIo(result, 1);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> in1 = (Map<String, Object>) io1.get("input");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> out1 = (Map<String, Object>) io1.get("output");
+        assertEquals("sop-step-0", in1.get("from_step"));
+        assertEquals("llm", out1.get("extractEngine"));
+        assertEquals(3, out1.get("total"));
+        assertTrue(String.valueOf(out1.get("summary")).contains("3 条套餐草稿"));
+
+        // 环节③：承接环节②；输出带合规统计
+        Map<String, Object> io2 = TraceSnapshotBuilder.rdFileParsePhaseIo(result, 2);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> in2 = (Map<String, Object>) io2.get("input");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> out2 = (Map<String, Object>) io2.get("output");
+        assertEquals("sop-step-1", in2.get("from_step"));
+        assertTrue(String.valueOf(in2.get("requirement")).contains("3 条"));
+        assertEquals(2, out2.get("passedCount"));
+        assertTrue(String.valueOf(out2.get("summary")).contains("待修正 1 条"));
+
+        // 环节④：承接环节③；输出带工单数与失败数
+        Map<String, Object> io3 = TraceSnapshotBuilder.rdFileParsePhaseIo(result, 3);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> in3 = (Map<String, Object>) io3.get("input");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> out3 = (Map<String, Object>) io3.get("output");
+        assertEquals("sop-step-2", in3.get("from_step"));
+        assertTrue(String.valueOf(in3.get("requirement")).contains("2 条"));
+        assertEquals(3, out3.get("workOrderCount"));
+        assertEquals(1, out3.get("failureCount"));
+        assertTrue(String.valueOf(out3.get("summary")).contains("3 单"));
+    }
+
+    @Test
+    void rdFileParsePhaseIoInvalidInputsReturnEmpty() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("parseEngine", "docx");
+        ExecutionResult result = ExecutionResult.ok("rd_file_parse", data);
+
+        assertTrue(TraceSnapshotBuilder.rdFileParsePhaseIo(null, 0).isEmpty());
+        assertTrue(TraceSnapshotBuilder.rdFileParsePhaseIo(ExecutionResult.fail("rd_file_parse", "boom"), 0).isEmpty());
+        assertTrue(TraceSnapshotBuilder.rdFileParsePhaseIo(result, -1).isEmpty());
+        assertTrue(TraceSnapshotBuilder.rdFileParsePhaseIo(result, 4).isEmpty());
     }
 }

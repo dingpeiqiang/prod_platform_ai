@@ -611,7 +611,15 @@ const fromStepLabel = (step) => {
   const input = step.io?.input
   const from = input && typeof input === 'object' ? input.from_step : null
   if (!from) return ''
-  const clean = String(from).replace(/^tool_/, '')
+  const fromStr = String(from)
+  // 手册步骤承接链：from_step=sop-step-N → 上一个手册步骤的标题（在当前时间线中反查，真实可读）
+  const sopMatch = fromStr.match(/^sop-step-(\d+)$/)
+  if (sopMatch) {
+    const idx = Number(sopMatch[1])
+    const prev = props.steps?.find((s) => s.id === fromStr)
+    return prev?.title || `第${idx + 1}步`
+  }
+  const clean = fromStr.replace(/^tool_/, '')
   if (clean.startsWith('tool')) {
     return toolLabel(clean) || clean
   }
@@ -625,8 +633,8 @@ const stepBranchText = (step) => {
   return String(taken || '').trim()
 }
 
-/** trace 留痕 → 处理细节段：stage → 环节前缀（llm=「LLM」、ontology=「本体」、其余=「校验」）。 */
-const STAGE_PREFIX = { llm: 'LLM', ontology: '本体' }
+/** trace 留痕 → 处理细节段：stage → 环节前缀（llm=「LLM」、ontology=「本体」、sop=「手册」、parse=「解析」、其余=「校验」）。 */
+const STAGE_PREFIX = { llm: 'LLM', ontology: '本体', sop: '手册', parse: '解析' }
 
 const traceDetailSegments = (step, exclude) => {
   const trace = step.trace

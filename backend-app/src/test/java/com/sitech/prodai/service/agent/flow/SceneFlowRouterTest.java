@@ -42,7 +42,9 @@ class SceneFlowRouterTest {
     @BeforeEach
     void setUp() {
         properties = new ProdAiProperties();
-        router = new SceneFlowRouter(properties, flowEngineService);
+        var playbookRegistry = new com.sitech.prodai.service.agent.playbook.PlaybookRegistry();
+        playbookRegistry.init();
+        router = new SceneFlowRouter(properties, flowEngineService, playbookRegistry);
         properties.getChatWorkflow().getSceneWorkflows().put("rd", "chat_configure_v2");
     }
 
@@ -125,6 +127,16 @@ class SceneFlowRouterTest {
         var reply = router.tryRoute(execPlan("rd_config_chat", "RD_CONFIG_CHAT"), rdSession(), "u1");
 
         assertTrue(reply.isEmpty(), "空串配置 = 该场景暂不启用");
+    }
+
+    @Test
+    void intentCoveredByPlaybookFallsThroughToOrchestration() {
+        // 手册 doc-batch-import 声明 applies_to.intents=[RD_FILE_PARSE]（classpath 装载）：
+        // 意图命中手册 → 即使场景配置了工作流也回落动态编排（LLM 照手册执行）
+        var reply = router.tryRoute(execPlan("rd_file_parse", "RD_FILE_PARSE"), rdSession(), "u1");
+
+        assertTrue(reply.isEmpty(), "手册适用域命中 → 不进固化工作流");
+        verify(flowEngineService, never()).startExecution(any(), any(), any(), any());
     }
 
     // ── 入参透传与回复组装 ──

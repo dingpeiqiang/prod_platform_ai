@@ -324,7 +324,21 @@ public class DefaultPresenter implements Presenter {
             }
         }
 
+        // 批量开单结果（rd_file_parse 解析即开单）：工单数与失败数是用户最关心的落地结果，
+        // 必须进入 prompt 供 LLM 写进报告正文（nl_answer 摘要已含，此处确保数字随结构化指标再次强调）
+        if (data.containsKey("workOrderCount")) {
+            sb.append("批量创建配置工单：").append(data.get("workOrderCount")).append(" 个\n");
+        }
+        if (data.get("workOrderFailures") instanceof List<?> woFails && !workOrderFailsEmpty(woFails)) {
+            sb.append("开单失败：").append(woFails.size()).append(" 条\n");
+        }
+
         return sb.length() > 0 ? sb.toString() : data.toString();
+    }
+
+    /** 工单失败列表非空判定（剔除 null/空串占位项）。 */
+    private boolean workOrderFailsEmpty(List<?> fails) {
+        return fails.stream().allMatch(f -> f == null || String.valueOf(f).isBlank());
     }
 
     /**

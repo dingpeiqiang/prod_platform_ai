@@ -1,0 +1,327 @@
+package com.sitech.prodai.service.agent.playbook;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
+import org.springframework.stereotype.Component;
+import org.yaml.snakeyaml.Yaml;
+
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * 手册（Playbook）注册表：完成一类事情的标准作业程序——步骤 + 每步操作方法 + 使用工具。
+ * <p>
+ * 设计理念对齐 Anthropic SKILL.md（手册作为知识，Agent 照着办事），取舍：
+ * <ul>
+ *   <li>双读者：YAML 人可读、LLM 可读（拒绝 BPMN XML 重规范）</li>
+ *   <li>双消费：① 路由视图（applies_to 显式适用域 → SceneFlowRouter 按意图分流）
+ *              ② 编排视图（渲染 SOP 文本 → 理解层/表达层 prompt 注入，LLM 照手册调工具）</li>
+ *   <li>可解析约束：steps[].tool / applies_to.tools 引用必须可解析（MCP 约束，装载门禁校验）</li>
+ * </ul>
+ * <p>
+ * 装载：classpath:playbooks/*.yaml，启动时全量加载 + 校验，问题仅告警不阻断启动
+ * （手册缺失时各消费方自然降级——路由回落场景配置，编排回落无 SOP 动态模式）。
+ */
+@Component
+public class PlaybookRegistry {
+
+    private static final Logger log = LoggerFactory.getLogger(PlaybookRegistry.class);
+
+    /** 手册 code → 原始 YAML 映射（保持字段原样，消费方按需取） */
+    private final Map<String, Map<String, Object>> playbooks = new ConcurrentHashMap<>();
+    /** 装载期问题清单（code → 问题），供运维排查与测试断言 */
+    private final Map<String, List<String>> loadProblems = new ConcurrentHashMap<>();
+
+    /**
+     * 已注册 AgentTool 名单（MCP 可解析约束的校验依据）。
+     * 引擎装配后经 {@link #registerKnownTools} 注入；装载早于工具装配时校验降级为"跳过工具引用校验"。
+     */
+    private volatile Set<String> knownTools = Set.of();
+
+    /** 注入已注册工具名单（DefaultExecutor 装配完成后调用一次）。 */
+    public void registerKnownTools(Set<String> toolNames) {
+        if (toolNames != null && !toolNames.isEmpty()) {
+            this.knownTools = Set.copyOf(toolNames);
+        }
+    }
+
+    // ==================== 装载 ====================
+
+    @jakarta.annotation.PostConstruct
+    public void init() {
+        reload();
+    }
+
+    /** 全量重载（运维改手册后可经管理端点触发，无需重启）。 */
+    public synchronized void reload() {
+        playbooks.clear();
+        loadProblems.clear();
+        Yaml yaml = new Yaml();
+        try {
+            var resources = new PathMatchingResourcePatternResolver()
+                    .getResources("classpath*:playbooks/*.yaml");
+            for (var resource : resources) {
+                String filename = resource.getFilename();
+                if (filename == null) {
+                    continue;
+                }
+                String code = filename.substring(0, filename.length() - 5);
+                try (InputStream in = resource.getInputStream()) {
+                    String content = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                    Object root = yaml.load(content);
+                    if (!(root instanceof Map<?, ?> raw)) {
+                        problem(code, "顶层必须是 YAML 映射");
+                        continue;
+                    }
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> book = (Map<String, Object>) raw;
+                    List<String> problems = validate(code, book);
+                    if (!problems.isEmpty()) {
+                        problems.forEach(p -> problem(code, p));
+                        continue;
+                    }
+                    playbooks.put(code, book);
+                    log.info("[PlaybookRegistry] 手册已装载: {} ({})", code, book.get("title"));
+                } catch (Exception e) {
+                    problem(code, "解析失败: " + e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[PlaybookRegistry] 手册目录加载失败: {}", e.getMessage());
+        }
+        log.info("[PlaybookRegistry] 装载完成 playbooks={}, problems={}", playbooks.size(), loadProblems.size());
+    }
+
+    /** 装载门禁校验：结构完整性 + 引用可解析。返回问题清单（空 = 通过）。 */
+    private List<String> validate(String code, Map<String, Object> book) {
+        List<String> problems = new ArrayList<>();
+        if (!code.equals(str(book.get("name")))) {
+            problems.add("name 与文件名不一致（name=" + book.get("name") + "）");
+        }
+        Object appliesTo = book.get("applies_to");
+        if (!(appliesTo instanceof Map<?, ?> at)) {
+            problems.add("缺少 applies_to 适用域声明");
+        } else {
+            boolean hasIntent = at.get("intents") instanceof List<?> l && !l.isEmpty();
+            boolean hasTool = at.get("tools") instanceof List<?> l && !l.isEmpty();
+            if (!hasIntent && !hasTool) {
+                problems.add("applies_to.intents / applies_to.tools 至少声明一项");
+            }
+        }
+        if (!(book.get("steps") instanceof List<?> steps) || steps.isEmpty()) {
+            problems.add("缺少 steps 步骤定义");
+            return problems;
+        }
+        Set<String> stepIds = new HashSet<>();
+        Set<String> referencedTools = new HashSet<>();
+        for (Object o : steps) {
+            if (!(o instanceof Map<?, ?> step)) {
+                problems.add("steps 含非映射项");
+                continue;
+            }
+            String id = str(step.get("id"));
+            if (id.isBlank()) {
+                problems.add("步骤缺少 id");
+            } else if (!stepIds.add(id)) {
+                problems.add("步骤 id 重复: " + id);
+            }
+            if (str(step.get("do")).isBlank()) {
+                problems.add("步骤 " + id + " 缺少 do（做什么）");
+            }
+            String tool = str(step.get("tool"));
+            if (tool.isBlank()) {
+                problems.add("步骤 " + id + " 缺少 tool（用什么工具）");
+            } else {
+                referencedTools.add(tool);
+            }
+        }
+        // 工具引用可解析（MCP 约束）；knownTools 未注入时降级跳过
+        if (!knownTools.isEmpty()) {
+            for (String tool : referencedTools) {
+                if (!knownTools.contains(tool)) {
+                    problems.add("工具引用不可解析: " + tool + "（未注册的 AgentTool）");
+                }
+            }
+        }
+        // 人工门引用的步骤必须存在
+        if (book.get("guardrails") instanceof Map<?, ?> guard) {
+            if (guard.get("human_gate") instanceof List<?> gates) {
+                for (Object gate : gates) {
+                    if (gate instanceof String s && !stepIds.contains(s)) {
+                        problems.add("guardrails.human_gate 引用不存在的步骤: " + s);
+                    }
+                }
+            }
+        }
+        return problems;
+    }
+
+    private void problem(String code, String message) {
+        loadProblems.computeIfAbsent(code, k -> new ArrayList<>()).add(message);
+        log.warn("[PlaybookRegistry] 手册 {} 装载问题: {}", code, message);
+    }
+
+    // ==================== 查询（消费方 API） ====================
+
+    /** 全部已装载手册（code → YAML 映射）。 */
+    public Map<String, Map<String, Object>> all() {
+        return Map.copyOf(playbooks);
+    }
+
+    /**
+     * 触发词快筛（入口三级瀑布第一级）：用户话术包含任一手册触发词 → 返回命中的手册 code。
+     * <p>
+     * 路由器在 LLM 理解<b>之前</b>调用本方法——命中即零 LLM 成本直达该手册链路，
+     * 兼具消除 LLM 误判与降低时延两个收益。多个手册同时命中时取触发词最长者
+     * （「批量导入文档」优先于「导入」）；未命中返回 null。
+     */
+    public String matchTrigger(String scene, String question) {
+        if (question == null || question.isBlank() || scene == null || scene.isBlank()) {
+            return null;
+        }
+        String lowered = question.toLowerCase();
+        String bestCode = null;
+        int bestLen = 0;
+        for (Map.Entry<String, Map<String, Object>> e : playbooks.entrySet()) {
+            if (!(e.getValue().get("applies_to") instanceof Map<?, ?> at)) {
+                continue;
+            }
+            String bookScene = str(at.get("scene"));
+            if (!bookScene.isBlank() && !bookScene.equals(scene)) {
+                continue;
+            }
+            if (!(at.get("triggers") instanceof List<?> triggers)) {
+                continue;
+            }
+            for (Object t : triggers) {
+                String trigger = str(t).toLowerCase();
+                if (!trigger.isBlank() && lowered.contains(trigger) && trigger.length() > bestLen) {
+                    bestCode = e.getKey();
+                    bestLen = trigger.length();
+                }
+            }
+        }
+        return bestCode;
+    }
+
+    public Map<String, Object> get(String code) {
+        return playbooks.get(code);
+    }
+
+    /** 装载问题清单（测试断言与运维排查）。 */
+    public Map<String, List<String>> problems() {
+        return Map.copyOf(loadProblems);
+    }
+
+    /**
+     * 路由判定：给定场景 + 意图（+ 工具名），返回命中的手册 code；未命中 null。
+     * <p>
+     * 匹配优先级：intent 命中 > tool 命中（同场景内）；场景必须一致（声明了 scene 时）。
+     * 这是 {@code SceneFlowRouter} 按意图分流的依据——手册显式声明自己适用什么，
+     * 路由器不再按场景一刀切。
+     */
+    public String route(String scene, String intent, List<String> toolNames) {
+        for (Map.Entry<String, Map<String, Object>> e : playbooks.entrySet()) {
+            Map<String, Object> book = e.getValue();
+            if (!(book.get("applies_to") instanceof Map<?, ?> at)) {
+                continue;
+            }
+            String bookScene = str(at.get("scene"));
+            if (!bookScene.isBlank() && scene != null && !bookScene.equals(scene)) {
+                continue;
+            }
+            if (intent != null && at.get("intents") instanceof List<?> intents
+                    && intents.stream().map(this::str).anyMatch(intent::equals)) {
+                return e.getKey();
+            }
+            if (toolNames != null && at.get("tools") instanceof List<?> tools) {
+                for (String t : toolNames) {
+                    if (tools.stream().map(this::str).anyMatch(t::equals)) {
+                        return e.getKey();
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 编排视图：渲染手册为 SOP 文本（system prompt 注入用）。
+     * <p>
+     * 输出形如「【标准作业程序：文档批量导入配置】
+     * 第1步 解析文档提取文本——按文件类型选引擎……（工具：rd_file_parse）
+     * 护栏：……」——LLM 照此执行，人也能直接读懂。
+     */
+    public String renderSop(String code) {
+        Map<String, Object> book = playbooks.get(code);
+        if (book == null) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder("【标准作业程序：").append(str(book.get("title"))).append("】\n");
+        if (book.get("steps") instanceof List<?> steps) {
+            int no = 0;
+            for (Object o : steps) {
+                if (!(o instanceof Map<?, ?> step)) {
+                    continue;
+                }
+                no++;
+                sb.append("第").append(no).append("步 ").append(str(step.get("do")));
+                String how = str(step.get("how"));
+                if (!how.isBlank()) {
+                    sb.append("——").append(how);
+                }
+                String tool = str(step.get("tool"));
+                if (!tool.isBlank()) {
+                    sb.append("（工具：").append(tool).append("）");
+                }
+                String policy = str(step.get("policy"));
+                if (!policy.isBlank()) {
+                    sb.append("；约束：").append(policy);
+                }
+                sb.append('\n');
+            }
+        }
+        if (book.get("guardrails") instanceof Map<?, ?> guard) {
+            List<String> guards = new ArrayList<>();
+            if (guard.get("audit") != null) {
+                guards.add("审计：" + str(guard.get("audit")));
+            }
+            if (guard.get("fallback") instanceof List<?> fallbacks && !fallbacks.isEmpty()) {
+                List<String> items = new ArrayList<>();
+                fallbacks.forEach(f -> items.add(str(f)));
+                guards.add("兜底：" + String.join("；", items));
+            }
+            if (!guards.isEmpty()) {
+                sb.append("护栏：").append(String.join("；", guards)).append('\n');
+            }
+        }
+        return sb.toString().trim();
+    }
+
+    /** 按场景列出可用手册 code（前端/管理端展示）；场景为空时不匹配任何手册（适用域显式声明，无通配）。 */
+    public List<String> codesForScene(String scene) {
+        List<String> out = new ArrayList<>();
+        if (scene == null || scene.isBlank()) {
+            return out;
+        }
+        for (Map.Entry<String, Map<String, Object>> e : playbooks.entrySet()) {
+            if (e.getValue().get("applies_to") instanceof Map<?, ?> at
+                    && (str(at.get("scene")).isBlank() || str(at.get("scene")).equals(scene))) {
+                out.add(e.getKey());
+            }
+        }
+        return out;
+    }
+
+    private String str(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+}

@@ -67,6 +67,9 @@ public class DefaultUnderstander implements Understander {
     private final IntentPromptAssembler promptAssembler;
     /** 参数补全门（R2 拆分）：必填参数校验 / 缓存与缺省回填 / CLARIFY 澄清计划生成。 */
     private final ParamCompletionGate paramGate;
+    /** 手册注册表（可选）：SOP 注入理解层 prompt（双消费②），null 时不注入。 */
+    @Nullable
+    private final com.sitech.prodai.service.agent.playbook.PlaybookRegistry playbookRegistry;
 
     @Autowired(required = false)
     public DefaultUnderstander(LlmService llmService, List<AgentTool> tools,
@@ -82,7 +85,7 @@ public class DefaultUnderstander implements Understander {
                                com.sitech.prodai.service.agent.flow.FlowIntentRouter flowIntentRouter,
                                com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry capabilityRegistry,
                                @Nullable IntentPromptAssembler promptAssembler) {
-        this(llmService, tools, workOrderMapper, flowIntentRouter, capabilityRegistry, promptAssembler, null);
+        this(llmService, tools, workOrderMapper, flowIntentRouter, capabilityRegistry, promptAssembler, null, null);
     }
 
     public DefaultUnderstander(LlmService llmService, List<AgentTool> tools,
@@ -91,6 +94,16 @@ public class DefaultUnderstander implements Understander {
                                com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry capabilityRegistry,
                                @Nullable IntentPromptAssembler promptAssembler,
                                @Nullable ParamCompletionGate paramGate) {
+        this(llmService, tools, workOrderMapper, flowIntentRouter, capabilityRegistry, promptAssembler, paramGate, null);
+    }
+
+    public DefaultUnderstander(LlmService llmService, List<AgentTool> tools,
+                               com.sitech.prodai.mapper.OpsWorkOrderMapper workOrderMapper,
+                               com.sitech.prodai.service.agent.flow.FlowIntentRouter flowIntentRouter,
+                               com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry capabilityRegistry,
+                               @Nullable IntentPromptAssembler promptAssembler,
+                               @Nullable ParamCompletionGate paramGate,
+                               @Nullable com.sitech.prodai.service.agent.playbook.PlaybookRegistry playbookRegistry) {
         this.llmService = llmService;
         this.toolMap = new LinkedHashMap<>();
         this.workOrderMapper = workOrderMapper;
@@ -100,6 +113,8 @@ public class DefaultUnderstander implements Understander {
         this.promptAssembler = promptAssembler != null ? promptAssembler : new IntentPromptAssembler("");
         // 测试/评测装配可不提供参数门：回退到无参独立实例（行为与 Spring 装配一致）
         this.paramGate = paramGate != null ? paramGate : new ParamCompletionGate();
+        // 测试/评测装配可不提供手册注册表：SOP 注入自然降级（prompt 不含手册段）
+        this.playbookRegistry = playbookRegistry;
         if (tools != null) {
             for (AgentTool tool : tools) {
                 this.toolMap.put(tool.getName(), tool);
@@ -153,7 +168,7 @@ public class DefaultUnderstander implements Understander {
             attemptsUsed = attempt;
             try {
                 List<Map<String, String>> history = toHistory(context);
-                String systemPrompt = buildSystemPrompt(rdScene);
+                String systemPrompt = buildSystemPrompt(rdScene, context);
                 // rd 场景注入会话工单清单（工单号/名称/状态）：LLM 判断「提交哪些单/是否重复提交」
                 // 不能只凭历史文本（回执文案可能只提到部分单号），以 DB 实时状态为准
                 if (rdScene) {
@@ -771,7 +786,7 @@ public class DefaultUnderstander implements Understander {
      * 由 {@link IntentPromptAssembler} 从外部模板加载；动态部分（能力清单/流程清单）
      * 仍在此处拼装——它们依赖 Spring Bean 运行时状态，不适合静态模板化。
      */
-    private String buildSystemPrompt(boolean rdScene) {
+    private String buildSystemPrompt(boolean rdScene, SessionContext context) {
         StringBuilder sb = new StringBuilder(promptAssembler.assembleSystemPrompt(rdScene));
         sb.append("\n可用能力：\n");
         for (AgentTool tool : toolsOf(rdScene)) {
@@ -783,9 +798,41 @@ public class DefaultUnderstander implements Understander {
             }
             sb.append('\n');
         }
+        // 手册 SOP 注入（手册层双消费②）：该场景适用手册的标准作业程序随 prompt 下发，
+        // LLM 选择工具与排布步骤时照手册办事（指导手册：操作步骤 + 每步方法 + 使用的工具）
+        // 场景缺失（null/空）时不注入——手册适用域是显式声明，不给"通配"语义
+        String scene = context == null ? "" : context.getScene();
+        String sopSection = scene == null || scene.isBlank() ? "" : playbookSopSection(scene);
+        if (!sopSection.isEmpty()) {
+            sb.append('\n').append(sopSection);
+        }
         String flowList = buildFlowCapabilitySection();
         if (!flowList.isEmpty()) {
             sb.append('\n').append(flowList);
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 场景适用手册的 SOP 清单（PlaybookRegistry 编排消费）。
+     * <p>
+     * 每本手册渲染为「执行此任务时按以下步骤……」段落；注册表为空/未装载时返回空串
+     * （不注入，prompt 零膨胀）。手册即知识：改 YAML 即改 LLM 行为，无需发版。
+     */
+    private String playbookSopSection(String scene) {
+        if (playbookRegistry == null) {
+            return "";
+        }
+        List<String> codes = playbookRegistry.codesForScene(scene);
+        if (codes.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder("【适用手册（执行对应任务时严格按手册步骤与约束办事）】\n");
+        for (String code : codes) {
+            String sop = playbookRegistry.renderSop(code);
+            if (sop != null && !sop.isBlank()) {
+                sb.append(sop).append('\n');
+            }
         }
         return sb.toString();
     }
