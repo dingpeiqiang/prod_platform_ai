@@ -114,11 +114,27 @@ class SceneFlowRouterTest {
 
     @Test
     void unconfiguredSceneFallsThrough() {
-        SessionContext ops = new SessionContext("s2");
-        ops.setScene("ops");
-        var reply = router.tryRoute(execPlan("swrl_root_cause", "SWRL_INFER"), ops, "u1");
+        SessionContext market = new SessionContext("s2");
+        market.setScene("market_insight");
+        var reply = router.tryRoute(execPlan("sparql_query", "SPARQL_QUERY"), market, "u1");
 
-        assertTrue(reply.isEmpty(), "ops 场景未配置工作流 → 走动态编排");
+        assertTrue(reply.isEmpty(), "未配置工作流的场景 → 走动态编排");
+    }
+
+    @Test
+    void opsIntentCoveredByPlaybookFallsThroughToOrchestration() {
+        // ops 场景工作流配置已删除（去旧留新：运营问诊收拢到手册 ops-analysis）：
+        // ops 下主意图命中手册 → 走动态编排（LLM 照手册执行），固化工作流不再路由
+        SessionContext ops = new SessionContext("s-ops");
+        ops.setScene("ops");
+        for (QueryPlan plan : List.of(
+                execPlan("swrl_root_cause", "PRODUCT_OPS_REASON"),
+                execPlan("swrl_risk_audit", "PRODUCT_OPS_POLICY"),
+                execPlan("sparql_query", "PRODUCT_OPS_QUERY"))) {
+            var reply = router.tryRoute(plan, ops, "u1");
+            assertTrue(reply.isEmpty(), () -> plan.getIntent() + " 命中运营问诊手册 → 不进固化工作流");
+        }
+        verify(flowEngineService, never()).startExecution(any(), any(), any(), any());
     }
 
     @Test

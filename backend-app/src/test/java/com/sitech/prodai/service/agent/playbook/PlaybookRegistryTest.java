@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -37,9 +38,21 @@ class PlaybookRegistryTest {
 
     @Test
     void loadsChatConfigureAndDiscoverHistoryPlaybooks() {
-        // 三大场景手册齐全：智读（doc-batch-import）/ 智聊（chat-configure）/ 智查（discover-history）
+        // 场景手册齐全：智读（doc-batch-import）/ 智聊（chat-configure）/ 智查（discover-history）
         assertNotNull(registry.get("chat-configure"), "智聊手册应从 classpath:playbooks 装载");
         assertNotNull(registry.get("discover-history"), "智查手册应从 classpath:playbooks 装载");
+        assertTrue(registry.problems().isEmpty(), () -> "装载应零问题: " + registry.problems());
+    }
+
+    @Test
+    void loadsOpsAnalysisPlaybook() {
+        // 运营问诊手册（ops-analysis）：ops 场景固化工作流退役后由手册接管
+        Map<String, Object> ops = registry.get("ops-analysis");
+        assertNotNull(ops, "运营问诊手册应从 classpath:playbooks 装载");
+        assertEquals("运营问诊分析", ops.get("title"));
+        assertTrue(ops.get("steps") instanceof List<?> s && s.size() == 4,
+                "运营问诊手册应 4 步（事实查询/归因/稽核/解释）");
+        assertEquals("ops", ((Map<?, ?>) ops.get("applies_to")).get("scene"), "运营问诊手册适用 ops 场景");
         assertTrue(registry.problems().isEmpty(), () -> "装载应零问题: " + registry.problems());
     }
 
@@ -66,9 +79,10 @@ class PlaybookRegistryTest {
 
     @Test
     void registersKnownToolsAndResolvesReferences() {
-        // 工具名单注入后重载：三本手册引用的工具均已注册 → 引用可解析、零问题
+        // 工具名单注入后重载：四本手册引用的工具均已注册 → 引用可解析、零问题
         registry.registerKnownTools(java.util.Set.of(
-                "rd_file_parse", "rd_compliance", "rd_config_chat", "rd_config_discover"));
+                "rd_file_parse", "rd_compliance", "rd_config_chat", "rd_config_discover",
+                "sparql_query", "swrl_root_cause", "swrl_risk_audit", "ontology_explain"));
         registry.reload();
         assertTrue(registry.problems().isEmpty(), () -> "引用的工具均已注册，装载应零问题: " + registry.problems());
     }
@@ -82,9 +96,10 @@ class PlaybookRegistryTest {
         assertNotNull(problems, "引用不存在的工具应被门禁拦截");
         assertTrue(problems.stream().anyMatch(p -> p.contains("引用不可解析")),
                 () -> "应报引用不可解析: " + problems);
-        // 三本手册全部被拦截（引用的工具一个都不可解析）
+        // 四本手册全部被拦截（引用的工具一个都不可解析）
         assertNotNull(registry.problems().get("chat-configure"), "智聊手册引用不可解析时也应被拦截");
         assertNotNull(registry.problems().get("discover-history"), "智查手册引用不可解析时也应被拦截");
+        assertNotNull(registry.problems().get("ops-analysis"), "运营问诊手册引用不可解析时也应被拦截");
     }
 
     // ── 路由消费（双消费①） ──
@@ -110,11 +125,22 @@ class PlaybookRegistryTest {
     }
 
     @Test
+    void routesOpsIntentsToOpsAnalysis() {
+        // 运营问诊手册：ops 意图/工具命中 → 返回手册 code（固化工作流退役，路由回落动态编排）
+        assertEquals("ops-analysis", registry.route("ops", "PRODUCT_OPS_REASON", List.of()),
+                "归因意图命中运营问诊手册");
+        assertEquals("ops-analysis", registry.route("ops", "PRODUCT_OPS_POLICY", List.of()),
+                "稽核意图命中运营问诊手册");
+        assertEquals("ops-analysis", registry.route("ops", "SOME_OTHER_INTENT", List.of("swrl_root_cause")),
+                "ops 工具命中运营问诊手册");
+    }
+
+    @Test
     void sceneMismatchDoesNotRoute() {
-        assertNull(registry.route("ops", "RD_FILE_PARSE", List.of()),
-                "场景不一致（ops ≠ rd）→ 不路由");
-        assertNull(registry.route("ops", "RD_CONFIG_CHAT", List.of()),
-                "智聊手册对 ops 场景同样不路由");
+        assertNull(registry.route("query", "RD_FILE_PARSE", List.of()),
+                "场景不一致（query ≠ rd）→ 不路由");
+        assertNull(registry.route("rd", "PRODUCT_OPS_REASON", List.of()),
+                "运营问诊手册对 rd 场景不路由");
     }
 
     @Test
@@ -133,6 +159,8 @@ class PlaybookRegistryTest {
                 "智聊天话术「配置一个」→ 直达智聊手册");
         assertEquals("discover-history", registry.matchTrigger("rd", "找一下月费39的校园套餐"),
                 "智查话术「找一下」→ 直达智查手册");
+        assertEquals("ops-analysis", registry.matchTrigger("ops", "分析一下哪些商品有下架风险"),
+                "运营问诊话术「下架风险」→ 直达运营问诊手册");
     }
 
     @Test
@@ -144,7 +172,7 @@ class PlaybookRegistryTest {
     @Test
     void triggerMissAndSceneMissReturnNull() {
         assertNull(registry.matchTrigger("rd", "上一轮的套餐叫什么"), "未含触发词 → 不快筛");
-        assertNull(registry.matchTrigger("ops", "导入文档"), "场景不符 → 不快筛");
+        assertNull(registry.matchTrigger("ops", "导入文档"), "rd 触发词对 ops 场景不快筛");
         assertNull(registry.matchTrigger("rd", "  "), "空话术 → 不快筛");
     }
 
@@ -180,6 +208,7 @@ class PlaybookRegistryTest {
         assertTrue(rdCodes.contains("chat-configure"), "rd 场景应含智聊手册");
         assertTrue(rdCodes.contains("discover-history"), "rd 场景应含智查手册");
         List<String> opsCodes = registry.codesForScene("ops");
-        assertTrue(opsCodes.isEmpty(), () -> "ops 场景无手册: " + opsCodes);
+        assertTrue(opsCodes.contains("ops-analysis"), () -> "ops 场景应含运营问诊手册: " + opsCodes);
+        assertFalse(opsCodes.contains("chat-configure"), "rd 手册对 ops 场景不可见");
     }
 }

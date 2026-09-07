@@ -1067,6 +1067,93 @@ public final class TraceSnapshotBuilder {
         return io;
     }
 
+    /**
+     * 手册步骤的差异化「输入/输出」：ops-analysis 手册四步各对应一个真实工具执行
+     * （sparql_query → swrl_root_cause → swrl_risk_audit → ontology_explain），
+     * 每步输入承接上一环节产出（from_step），输出只讲本环节结论（与 rdDiscoverPhaseIo 同构）。
+     * <ul>
+     *   <li>环节① 事实查询（sparql_query）：输入=话术，输出=命中实体数+事实摘要</li>
+     *   <li>环节② 根因归因（swrl_root_cause）：输入=分析对象，输出=归因路径数+引擎标识</li>
+     *   <li>环节③ 风险稽核（swrl_risk_audit）：输入=筛查范围，输出=风险等级统计+建议下架数</li>
+     *   <li>环节④ 规则解释（ontology_explain）：输入=问诊结论，输出=解释文案</li>
+     * </ul>
+     */
+    public static Map<String, Object> opsAnalysisPhaseIo(ExecutionResult result, int phaseIdx) {
+        if (result == null || !result.isSuccess() || result.getData() == null
+                || phaseIdx < 0 || phaseIdx > 3) {
+            return Map.of();
+        }
+        Map<String, Object> data = result.getData();
+        Map<String, Object> input = new LinkedHashMap<>();
+        Map<String, Object> output = new LinkedHashMap<>();
+        switch (phaseIdx) {
+            case 0 -> { // 事实查询（sparql_query）
+                int hits = data.get("entity_ids") instanceof List<?> ids ? ids.size() : 0;
+                output.put("hitCount", hits);
+                String answer = str(data.get("nl_answer"));
+                if (!answer.isBlank() && !"null".equals(answer)) {
+                    output.put("summary", firstChars(answer, 60));
+                } else {
+                    output.put("summary", hits > 0
+                            ? "已在知识库命中 " + hits + " 个实体及关联事实"
+                            : "知识库未命中相关实体");
+                }
+            }
+            case 1 -> { // 根因归因（swrl_root_cause）
+                input.put("from_step", "sop-step-0");
+                String entity = firstNonBlank(str(data.get("offeringName")), str(data.get("offeringId")));
+                input.put("requirement", entity.isBlank() ? "上一步查询到的经营事实" : "商品「" + entity + "」的经营事实");
+                Object pathCount = data.get("pathCount") != null ? data.get("pathCount")
+                        : (data.get("paths") instanceof List<?> paths ? paths.size() : null);
+                if (pathCount != null) {
+                    output.put("pathCount", pathCount);
+                }
+                String engine = str(data.get("reasonEngine"));
+                if (!engine.isBlank() && !"null".equals(engine)) {
+                    output.put("reasonEngine", engine);
+                }
+                String remark = str(data.get("remark"));
+                String rootCause = firstNonBlank(remark.isBlank() ? "" : remark, str(data.get("nl_answer")));
+                output.put("summary", pathCount != null && String.valueOf(pathCount).matches("\\d+") && "0".equals(String.valueOf(pathCount))
+                        ? "未命中归因路径，如实告知不臆造原因"
+                        : firstNonBlank(rootCause.isBlank() ? "" : firstChars(rootCause, 40),
+                                "已完成 SWRL 归因推理"));
+            }
+            case 2 -> { // 风险稽核（swrl_risk_audit）
+                input.put("from_step", "sop-step-1");
+                input.put("requirement", "上一步归因后的在架商品范围");
+                for (String key : new String[]{"total", "scannedCount", "highCount", "mediumCount", "suggestDelistCount"}) {
+                    if (data.get(key) instanceof Number n) {
+                        output.put(key, n.intValue());
+                    }
+                }
+                int high = data.get("highCount") instanceof Number h ? h.intValue() : 0;
+                int delist = data.get("suggestDelistCount") instanceof Number d ? d.intValue() : 0;
+                output.put("summary", high > 0 || delist > 0
+                        ? "稽核命中：高风险 " + high + " 个，建议下架 " + delist + " 个（处置建议供人工决策）"
+                        : "全量筛查完成，未发现高风险商品");
+            }
+            case 3 -> { // 规则解释（ontology_explain）
+                input.put("from_step", "sop-step-2");
+                input.put("requirement", "归因与稽核结论中涉及的本体概念/规则");
+                String explanation = firstNonBlank(str(data.get("natural_language")), str(data.get("concept")));
+                output.put("summary", explanation.isBlank() || "null".equals(explanation)
+                        ? "已给出问诊结论涉及的本体规则解释"
+                        : firstChars(explanation, 40));
+                if (data.get("referenced_rules") instanceof List<?> rules && !rules.isEmpty()) {
+                    output.put("referenced_rules", rules.stream().map(String::valueOf).limit(DETAIL_LIMIT).toList());
+                }
+            }
+            default -> {
+                return Map.of();
+            }
+        }
+        Map<String, Object> io = new LinkedHashMap<>();
+        io.put("input", input);
+        io.put("output", output);
+        return io;
+    }
+
     /** 取首个非空字符串值（跨 Map 取值辅助，兼容单层键）。 */
     private static Object firstNonEmpty(Object... values) {
         for (Object v : values) {

@@ -737,4 +737,88 @@ class TraceSnapshotBuilderTest {
         assertTrue(TraceSnapshotBuilder.rdDiscoverPhaseIo(result, -1).isEmpty());
         assertTrue(TraceSnapshotBuilder.rdDiscoverPhaseIo(result, 3).isEmpty());
     }
+
+    // ── 运营问诊手册（ops-analysis）：ops 四环节差异化 IO ──
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void opsAnalysisPhaseIoCarriesFactsRiskAndExplainDetails() {
+        // 环节① 事实查询（sparql_query）
+        Map<String, Object> sparql = new LinkedHashMap<>();
+        sparql.put("entity_ids", List.of("e1", "e2", "e3"));
+        sparql.put("nl_answer", "查到 3 个在架商品及其经营事实");
+        ExecutionResult sparqlResult = ExecutionResult.ok("sparql_query", sparql);
+        Map<String, Object> out0 = (Map<String, Object>) TraceSnapshotBuilder.opsAnalysisPhaseIo(sparqlResult, 0).get("output");
+        assertEquals(3, out0.get("hitCount"));
+        assertTrue(String.valueOf(out0.get("summary")).contains("3 个在架商品"));
+
+        // 环节② 根因归因（swrl_root_cause）
+        Map<String, Object> cause = new LinkedHashMap<>();
+        cause.put("offeringName", "5G新通话");
+        cause.put("pathCount", 2);
+        cause.put("reasonEngine", "openllet-swrl");
+        cause.put("remark", "根因：资费高于同类均值");
+        ExecutionResult causeResult = ExecutionResult.ok("swrl_root_cause", cause);
+        Map<String, Object> io1 = TraceSnapshotBuilder.opsAnalysisPhaseIo(causeResult, 1);
+        assertEquals("sop-step-0", ((Map<String, Object>) io1.get("input")).get("from_step"));
+        assertTrue(String.valueOf(((Map<String, Object>) io1.get("input")).get("requirement")).contains("5G新通话"));
+        Map<String, Object> out1 = (Map<String, Object>) io1.get("output");
+        assertEquals(2, out1.get("pathCount"));
+        assertEquals("openllet-swrl", out1.get("reasonEngine"));
+        assertTrue(String.valueOf(out1.get("summary")).contains("资费高于同类均值"));
+
+        // 环节③ 风险稽核（swrl_risk_audit）
+        Map<String, Object> audit = new LinkedHashMap<>();
+        audit.put("total", 3);
+        audit.put("scannedCount", 20);
+        audit.put("highCount", 2);
+        audit.put("mediumCount", 1);
+        audit.put("suggestDelistCount", 2);
+        ExecutionResult auditResult = ExecutionResult.ok("swrl_risk_audit", audit);
+        Map<String, Object> io2 = TraceSnapshotBuilder.opsAnalysisPhaseIo(auditResult, 2);
+        assertEquals("sop-step-1", ((Map<String, Object>) io2.get("input")).get("from_step"));
+        Map<String, Object> out2 = (Map<String, Object>) io2.get("output");
+        assertEquals(2, out2.get("highCount"));
+        assertEquals(2, out2.get("suggestDelistCount"));
+        assertTrue(String.valueOf(out2.get("summary")).contains("高风险 2 个"));
+
+        // 环节④ 规则解释（ontology_explain）
+        Map<String, Object> explain = new LinkedHashMap<>();
+        explain.put("natural_language", "风险等级依据 R-A03 判定");
+        explain.put("referenced_rules", List.of("R-A03", "R-A04"));
+        ExecutionResult explainResult = ExecutionResult.ok("ontology_explain", explain);
+        Map<String, Object> io3 = TraceSnapshotBuilder.opsAnalysisPhaseIo(explainResult, 3);
+        assertEquals("sop-step-2", ((Map<String, Object>) io3.get("input")).get("from_step"));
+        Map<String, Object> out3 = (Map<String, Object>) io3.get("output");
+        assertTrue(String.valueOf(out3.get("summary")).contains("R-A03"));
+        assertEquals(List.of("R-A03", "R-A04"), out3.get("referenced_rules"));
+    }
+
+    @Test
+    void opsAnalysisPhaseIoInvalidInputsReturnEmpty() {
+        ExecutionResult result = ExecutionResult.ok("sparql_query", Map.of());
+        assertTrue(TraceSnapshotBuilder.opsAnalysisPhaseIo(null, 0).isEmpty());
+        assertTrue(TraceSnapshotBuilder.opsAnalysisPhaseIo(ExecutionResult.fail("sparql_query", "boom"), 0).isEmpty());
+        assertTrue(TraceSnapshotBuilder.opsAnalysisPhaseIo(result, -1).isEmpty());
+        assertTrue(TraceSnapshotBuilder.opsAnalysisPhaseIo(result, 4).isEmpty());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void opsAnalysisPhaseIoZeroPathsAndNoHighRiskHonestSummaries() {
+        // 归因零命中：如实告知不臆造（手册 fallback 约束）
+        Map<String, Object> cause = new LinkedHashMap<>();
+        cause.put("pathCount", 0);
+        Map<String, Object> out1 = (Map<String, Object>) TraceSnapshotBuilder
+                .opsAnalysisPhaseIo(ExecutionResult.ok("swrl_root_cause", cause), 1).get("output");
+        assertTrue(String.valueOf(out1.get("summary")).contains("未命中归因路径"));
+
+        // 稽核零风险：明确「未发现高风险」而非空泛结论
+        Map<String, Object> audit = new LinkedHashMap<>();
+        audit.put("highCount", 0);
+        audit.put("suggestDelistCount", 0);
+        Map<String, Object> out2 = (Map<String, Object>) TraceSnapshotBuilder
+                .opsAnalysisPhaseIo(ExecutionResult.ok("swrl_risk_audit", audit), 2).get("output");
+        assertTrue(String.valueOf(out2.get("summary")).contains("未发现高风险"));
+    }
 }

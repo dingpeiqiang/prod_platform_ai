@@ -613,6 +613,7 @@ public class AgentOrchestrator {
      * 手册步骤 → 该步骤自身环节的留痕切片：一次真实工具执行会收尾多个手册步骤
      * （如 rd_file_parse 四步、rd_config_chat 四步、rd_config_discover 三步），
      * 每步只贴自己对应环节的留痕，避免全量重复。
+     * ops-analysis 手册四步各对应一个独立工具执行，环节留痕走通用工具留痕。
      */
     private List<Map<String, Object>> stepTraceOf(ExecutionResult result, int stepIdx) {
         return switch (result.getToolName()) {
@@ -623,13 +624,16 @@ public class AgentOrchestrator {
 
     /**
      * 手册步骤 → 该步骤自身环节的输入/输出视图：输入承接上一环节产出（from_step），
-     * 输出只讲本环节结论。智读四环节、智聊四环节、智查三环节差异化，其余工具回退通用摘要。
+     * 输出只讲本环节结论。智读四环节、智聊四环节、智查三环节、运营问诊四环节差异化，
+     * 其余工具回退通用摘要。
      */
     private Map<String, Object> stepIoOf(ExecutionResult result, int stepIdx) {
         return switch (result.getToolName()) {
             case "rd_file_parse" -> TraceSnapshotBuilder.rdFileParsePhaseIo(result, stepIdx);
             case "rd_config_chat" -> TraceSnapshotBuilder.rdConfigChatPhaseIo(result, stepIdx);
             case "rd_config_discover" -> TraceSnapshotBuilder.rdDiscoverPhaseIo(result, stepIdx);
+            case "sparql_query", "swrl_root_cause", "swrl_risk_audit", "ontology_explain" ->
+                    TraceSnapshotBuilder.opsAnalysisPhaseIo(result, stepIdx);
             default -> Map.of();
         };
     }

@@ -32,10 +32,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * W5 场景工作流定义测试：query_reuse_v2（查询复用）+ ops_analysis_v2（运营问诊）。
+ * W5 场景工作流定义测试：query_reuse_v2（查询复用）。
  * <p>
- * 覆盖：定义期守门（G2/G3 工具契约）、Seeder 幂等落库、快乐路径（工具调用顺序）、
- * 全 fail-fast 语义（任一工具失败 → 整单 failed）。
+ * 去旧留新（运营问诊手册化）：ops_analysis_v2 已退役（主链路收拢到手册 ops-analysis），
+ * 相关用例随之删除。覆盖：定义期守门（G2/G3 工具契约）、Seeder 幂等落库、
+ * 快乐路径（工具调用顺序）、全 fail-fast 语义（任一工具失败 → 整单 failed）。
  * <p>
  * 断言约定（与 ChatConfigureV2DefinitionTest 一致）：引擎 startExecution 总是
  * ApiResponse.ok（启动成功），失败体现在 data.status="failed" + data.error_message。
@@ -81,7 +82,7 @@ class QueryOpsV2DefinitionTest {
         }
     }
 
-    // ── 2. Seeder：逐个落库（allCodes 含四个编码） ──
+    // ── 2. Seeder：逐个落库（allCodes 含 query_reuse_v2） ──
 
     @Test
     void seederCoversAllFourDefinitions() {
@@ -96,7 +97,7 @@ class QueryOpsV2DefinitionTest {
                 .createWorkflow(captor.capture(), eq("system"));
         List<Object> codes = captor.getAllValues().stream().map(p -> p.get("workflowCode")).toList();
         assertTrue(codes.contains(SceneWorkflowDefinitions.QUERY_REUSE_CODE), "应落库查询复用流程: " + codes);
-        assertTrue(codes.contains(SceneWorkflowDefinitions.OPS_ANALYSIS_CODE), "应落库运营问诊流程: " + codes);
+        assertTrue(!codes.contains("ops_analysis_v2"), "运营问诊已手册化，不应再播种固化工作流: " + codes);
     }
 
     // ── 3. query_reuse_v2 快乐路径：discover → sparql → compare 线性执行 ──
@@ -148,58 +149,6 @@ class QueryOpsV2DefinitionTest {
         assertTrue(error.contains("sparql") || error.contains("失败"),
                 () -> "错误信息应指明失败节点: " + error);
         verify(toolExecutionService, org.mockito.Mockito.never()).execute(eq("rd_scheme_compare"), any());
-    }
-
-    // ── 5. ops_analysis_v2 快乐路径：sparql → root-cause → risk-audit → explain 线性执行 ──
-
-    @Test
-    void opsAnalysisHappyPathExecutesToolsInOrder() {
-        stubWorkflow(SceneWorkflowDefinitions.OPS_ANALYSIS_CODE, SceneWorkflowDefinitions.opsAnalysis());
-        stubExecutionPersistence();
-        stubRegistryWhitelist();
-        when(toolExecutionService.execute(eq("sparql_query"), any()))
-                .thenReturn(ExecutionResult.ok("sparql_query", Map.of("nl_answer", "查到5个商品", "raw_results", List.of())));
-        when(toolExecutionService.execute(eq("swrl_root_cause"), any()))
-                .thenReturn(ExecutionResult.ok("swrl_root_cause", Map.of("nl_answer", "根因：资费超同类均值")));
-        when(toolExecutionService.execute(eq("swrl_risk_audit"), any()))
-                .thenReturn(ExecutionResult.ok("swrl_risk_audit", Map.of("nl_answer", "2个商品命中风险", "items", List.of())));
-        when(toolExecutionService.execute(eq("ontology_explain"), any()))
-                .thenReturn(ExecutionResult.ok("ontology_explain", Map.of("natural_language", "风险等级依据本体规则解释")));
-
-        ApiResponse<Map<String, Object>> start = engine.startExecution(
-                SceneWorkflowDefinitions.OPS_ANALYSIS_CODE, null,
-                Map.of("question", "分析一下哪些商品有下架风险"), "tester");
-
-        assertTrue(start.isSuccess(), () -> "启动应成功: " + start.getMessage());
-        assertEquals("completed", start.getData().get("status"), "问诊链路无人工节点，应一次跑完");
-
-        org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(toolExecutionService);
-        inOrder.verify(toolExecutionService).execute(eq("sparql_query"), any());
-        inOrder.verify(toolExecutionService).execute(eq("swrl_root_cause"), any());
-        inOrder.verify(toolExecutionService).execute(eq("swrl_risk_audit"), any());
-        inOrder.verify(toolExecutionService).execute(eq("ontology_explain"), any());
-    }
-
-    // ── 6. ops_analysis_v2 fail-fast：root-cause 失败 → 整单 failed，后续不执行 ──
-
-    @Test
-    void opsAnalysisToolFailureFailsWholeExecution() {
-        stubWorkflow(SceneWorkflowDefinitions.OPS_ANALYSIS_CODE, SceneWorkflowDefinitions.opsAnalysis());
-        stubExecutionPersistence();
-        stubRegistryWhitelist();
-        when(toolExecutionService.execute(eq("sparql_query"), any()))
-                .thenReturn(ExecutionResult.ok("sparql_query", Map.of("nl_answer", "查到5个商品", "raw_results", List.of())));
-        when(toolExecutionService.execute(eq("swrl_root_cause"), any()))
-                .thenReturn(ExecutionResult.fail("swrl_root_cause", "推理引擎超时"));
-
-        ApiResponse<Map<String, Object>> start = engine.startExecution(
-                SceneWorkflowDefinitions.OPS_ANALYSIS_CODE, null,
-                Map.of("question", "分析商品风险"), "tester");
-
-        assertTrue(start.isSuccess(), "启动本身成功，失败体现在实例状态");
-        assertEquals("failed", start.getData().get("status"), "fail-fast：任一工具失败整单失败");
-        verify(toolExecutionService, org.mockito.Mockito.never()).execute(eq("swrl_risk_audit"), any());
-        verify(toolExecutionService, org.mockito.Mockito.never()).execute(eq("ontology_explain"), any());
     }
 
     // ── 测试脚手架（与 ChatConfigureV2DefinitionTest 同构） ──
@@ -256,7 +205,6 @@ class QueryOpsV2DefinitionTest {
     private void stubRegistryWhitelist() {
         lenient().when(toolExecutionService.containsTool(any())).thenReturn(false);
         for (String tool : List.of("rd_config_discover", "rd_scheme_compare", "sparql_query",
-                "swrl_root_cause", "swrl_risk_audit", "ontology_explain",
                 "rd_compliance", "rd_draft_manage", "rd_config_chat")) {
             lenient().when(toolExecutionService.containsTool(tool)).thenReturn(true);
         }
