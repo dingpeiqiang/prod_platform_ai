@@ -34,7 +34,7 @@ import static org.mockito.Mockito.when;
 /**
  * W5 场景工作流定义测试：query_reuse_v2（查询复用）。
  * <p>
- * 去旧留新（运营问诊手册化）：ops_analysis_v2 已退役（主链路收拢到手册 ops-analysis），
+ * 去旧留新（运营问诊手册化）：ops_analysis_v2 已退役（主链路收拢到四本 ops 入口手册），
  * 相关用例随之删除。覆盖：定义期守门（G2/G3 工具契约）、Seeder 幂等落库、
  * 快乐路径（工具调用顺序）、全 fail-fast 语义（任一工具失败 → 整单 failed）。
  * <p>

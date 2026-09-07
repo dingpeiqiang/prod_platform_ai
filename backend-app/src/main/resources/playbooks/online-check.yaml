@@ -1,0 +1,77 @@
+# 手册（Playbook）：完成一类事情的标准作业程序
+#
+# 产品运营助手·立项研判入口的手册化（原单本 ops-analysis 按前端四入口拆分之一）：
+#   立项研判 = 商品本体查询对齐 + 立项门槛规则解释（语义对齐 PS_PRODUCT_ONLINE_V1 策略集），
+#   本手册只承载立项门槛研判链路，不掺在架风险稽核（那是 risk-audit 手册的事）。
+#   ① 路由消费：applies_to.intents 命中 → SceneFlowRouter 回落动态编排，LLM 照手册执行
+#   ② 编排消费：renderSop 注入 system prompt（DefaultUnderstander.playbookSopSection），
+#      intent_guide 随 SOP 下发——LLM 依据手册归口声明选意图码（手册 = 意图定义源）
+#   两条入口通向同一条手册直达链路（sop-step-N 时间线 + 环节 IO 差异化）：
+#     - 触发词快筛（LLM 理解前）：高置信度专有话术直接命中，零 LLM 成本
+#     - 意图升级（LLM 理解后）：LLM 照 intent_guide 归口输出意图码命中 applies_to.intents →
+#       AgentOrchestrator 升级 runPlaybookPath/runPlaybookStream（归一化映射仅兜底自由意图）
+#
+# 命名规范：文件名 = 手册 code（kebab-case），与 name 字段一致
+# 注意：多工具手册——步骤 tool 必须与真实执行一致，否则该步骤永远等不到执行事件；
+#   本手册三步各对应一个真实工具执行（非单工具内部环节切分），依次各执行一次。
+# 注意：与 risk-audit 同归 PRODUCT_OPS_POLICY——两本手册按注册序路由（risk-audit 先注册），
+#   一般策略话术先命中 risk-audit；本手册靠高置信度立项话术触发词专项拦截直达。
+
+# ── ① 元数据 ──────────────────────────────────────────
+name: online-check
+title: 立项研判
+description: 产品运营助手·立项研判——商品本体对齐查询，立项门槛规则解释收尾给准入依据（对齐 PS_PRODUCT_ONLINE_V1）
+version: 1
+
+# 适用域：路由器据此判定"本次请求是否适用本手册"（显式声明，替代场景级一刀切）
+applies_to:
+  scene: ops
+  # ops 场景规范意图码（IntentRecognitionSupport 归一化产物），首项为手册直达链路的计划意图
+  # 与 risk-audit 同归 PRODUCT_OPS_POLICY（同码不同手册），触发词按话术分流（见下）
+  intents: [PRODUCT_OPS_POLICY]
+  tools: [sparql_query, rule_explain, ontology_explain]
+  # 意图归口（手册 = 意图定义源，LLM 据此选意图码而非自由发挥）：
+  #   随 renderSop 注入 system prompt，LLM 依据话术语义匹配归口声明输出 intent——
+  #   本手册归口立项门槛研判（值不值得立项/够不够上线门槛/准入评估），
+  #   在架风险判定归 risk-audit（同码不同手册，靠话术与触发词分流）
+  intent_guide:
+    PRODUCT_OPS_POLICY: "立项研判/上线门槛/准入评估等新商品立项规则判定"
+  # 触发词快筛：路由器在 LLM 理解前先行匹配，命中直达手册链路（零 LLM 成本、消除误判）
+  # 立项话术是高置信度专有话术（"立项研判/上线评估/准入评估"不会出现在稽核/归因/洞察话术中），
+  # 专项拦截直达本手册；一般策略话术（"该不该下架"）先命中 risk-audit（注册序）。
+  triggers: ["立项研判", "上线评估", "准入评估", "立项门槛"]
+
+# ── ② 步骤（操作步骤 + 每步的操作方法和使用的工具）─────
+steps:
+  - id: candidates
+    do: 查询拟立项商品本体
+    how: 自然语言转 SPARQL 在本体知识库执行语义查询，对齐拟立项商品及其关联概念；实体发现 LLM 优先、关键词兜底
+    tool: sparql_query
+
+  - id: rule-explain
+    do: 立项门槛规则解释
+    how: 对立项门槛规则（PS_PRODUCT_ONLINE_V1 / R-ONLINE 系列）给出规则语义解释，附规则编号与门槛阈值
+    tool: rule_explain
+
+  - id: explain
+    do: 本体概念解释收尾
+    how: 对研判涉及的本体概念给出自然语言解释，附引用规则编号，让准入结论有据可查
+    tool: ontology_explain
+
+# ── ③ 工具引用（必须是 AgentTool 注册表已存在的能力）────
+tools:
+  - sparql_query
+  - rule_explain
+  - ontology_explain
+
+# ── ④ 护栏（控制语义：人工门 / 审计 / 兜底）─────────────
+guardrails:
+  # 立项决策语义上是人工门（手册只给规则依据，立项与否由人工拍板）——但 human_gate
+  # 语法约束为「引用步骤 id」（门挂在步骤完成处），本手册三步均为只读解释步骤，
+  # 无可挂载的写操作步骤；立项决策门以 audit 约束表达（结论不代做决策），不挂空门。
+  human_gate: []
+  audit: 命中立项门槛规则编号与阈值随 tool 事件下发；研判结论仅陈述规则依据，不代做立项决策
+  fallback:
+    - 商品查询未命中 → 规则解释照常执行（规则库独立于商品数据），汇总时明确说明商品未对齐
+    - 规则编号解析失败 → 如实告知无法定位规则，不编造规则语义
+    - 解释引擎异常 → 明确报错原因，不返回空结论冒充研判完成

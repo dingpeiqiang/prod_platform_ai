@@ -738,21 +738,23 @@ class TraceSnapshotBuilderTest {
         assertTrue(TraceSnapshotBuilder.rdDiscoverPhaseIo(result, 3).isEmpty());
     }
 
-    // ── 运营问诊手册（ops-analysis）：ops 四环节差异化 IO ──
+    // ── 运营手册（ops 四入口手册）：ops 工具差异化 IO（按工具名分发） ──
 
     @Test
     @SuppressWarnings("unchecked")
     void opsAnalysisPhaseIoCarriesFactsRiskAndExplainDetails() {
-        // 环节① 事实查询（sparql_query）
+        // 环节① 事实查询（sparql_query，首步无 from_step）
         Map<String, Object> sparql = new LinkedHashMap<>();
         sparql.put("entity_ids", List.of("e1", "e2", "e3"));
         sparql.put("nl_answer", "查到 3 个在架商品及其经营事实");
         ExecutionResult sparqlResult = ExecutionResult.ok("sparql_query", sparql);
-        Map<String, Object> out0 = (Map<String, Object>) TraceSnapshotBuilder.opsAnalysisPhaseIo(sparqlResult, 0).get("output");
+        Map<String, Object> io0 = TraceSnapshotBuilder.opsAnalysisPhaseIo(sparqlResult, 0);
+        assertFalse(io0.get("input").toString().contains("from_step"), "首步不应有 from_step");
+        Map<String, Object> out0 = (Map<String, Object>) io0.get("output");
         assertEquals(3, out0.get("hitCount"));
         assertTrue(String.valueOf(out0.get("summary")).contains("3 个在架商品"));
 
-        // 环节② 根因归因（swrl_root_cause）
+        // 环节② 根因归因（swrl_root_cause，承接查询 sop-step-0）
         Map<String, Object> cause = new LinkedHashMap<>();
         cause.put("offeringName", "5G新通话");
         cause.put("pathCount", 2);
@@ -767,7 +769,7 @@ class TraceSnapshotBuilderTest {
         assertEquals("openllet-swrl", out1.get("reasonEngine"));
         assertTrue(String.valueOf(out1.get("summary")).contains("资费高于同类均值"));
 
-        // 环节③ 风险稽核（swrl_risk_audit）
+        // 环节③ 风险稽核（swrl_risk_audit，承接查询 sop-step-0——root-cause 手册拆分后稽核不再必然接归因）
         Map<String, Object> audit = new LinkedHashMap<>();
         audit.put("total", 3);
         audit.put("scannedCount", 20);
@@ -775,20 +777,31 @@ class TraceSnapshotBuilderTest {
         audit.put("mediumCount", 1);
         audit.put("suggestDelistCount", 2);
         ExecutionResult auditResult = ExecutionResult.ok("swrl_risk_audit", audit);
-        Map<String, Object> io2 = TraceSnapshotBuilder.opsAnalysisPhaseIo(auditResult, 2);
-        assertEquals("sop-step-1", ((Map<String, Object>) io2.get("input")).get("from_step"));
+        Map<String, Object> io2 = TraceSnapshotBuilder.opsAnalysisPhaseIo(auditResult, 1);
+        assertEquals("sop-step-0", ((Map<String, Object>) io2.get("input")).get("from_step"));
         Map<String, Object> out2 = (Map<String, Object>) io2.get("output");
         assertEquals(2, out2.get("highCount"));
         assertEquals(2, out2.get("suggestDelistCount"));
         assertTrue(String.valueOf(out2.get("summary")).contains("高风险 2 个"));
 
-        // 环节④ 规则解释（ontology_explain）
+        // 环节④ 规则解释（rule_explain，risk-audit/online-check 手册引入）
+        Map<String, Object> rule = new LinkedHashMap<>();
+        rule.put("ruleId", "R-B01");
+        rule.put("label", "高风险商品：综合风险分≥80 建议下架");
+        ExecutionResult ruleResult = ExecutionResult.ok("rule_explain", rule);
+        Map<String, Object> ioR = TraceSnapshotBuilder.opsAnalysisPhaseIo(ruleResult, 2);
+        assertEquals("sop-step-1", ((Map<String, Object>) ioR.get("input")).get("from_step"));
+        Map<String, Object> outR = (Map<String, Object>) ioR.get("output");
+        assertEquals("R-B01", outR.get("ruleId"));
+        assertTrue(String.valueOf(outR.get("summary")).contains("高风险商品"));
+
+        // 环节⑤ 本体解释（ontology_explain，承接前序各步）
         Map<String, Object> explain = new LinkedHashMap<>();
         explain.put("natural_language", "风险等级依据 R-A03 判定");
         explain.put("referenced_rules", List.of("R-A03", "R-A04"));
         ExecutionResult explainResult = ExecutionResult.ok("ontology_explain", explain);
-        Map<String, Object> io3 = TraceSnapshotBuilder.opsAnalysisPhaseIo(explainResult, 3);
-        assertEquals("sop-step-2", ((Map<String, Object>) io3.get("input")).get("from_step"));
+        Map<String, Object> io3 = TraceSnapshotBuilder.opsAnalysisPhaseIo(explainResult, 2);
+        assertEquals("sop-step-1", ((Map<String, Object>) io3.get("input")).get("from_step"));
         Map<String, Object> out3 = (Map<String, Object>) io3.get("output");
         assertTrue(String.valueOf(out3.get("summary")).contains("R-A03"));
         assertEquals(List.of("R-A03", "R-A04"), out3.get("referenced_rules"));
@@ -800,7 +813,8 @@ class TraceSnapshotBuilderTest {
         assertTrue(TraceSnapshotBuilder.opsAnalysisPhaseIo(null, 0).isEmpty());
         assertTrue(TraceSnapshotBuilder.opsAnalysisPhaseIo(ExecutionResult.fail("sparql_query", "boom"), 0).isEmpty());
         assertTrue(TraceSnapshotBuilder.opsAnalysisPhaseIo(result, -1).isEmpty());
-        assertTrue(TraceSnapshotBuilder.opsAnalysisPhaseIo(result, 4).isEmpty());
+        assertTrue(TraceSnapshotBuilder.opsAnalysisPhaseIo(ExecutionResult.ok("no_such_tool", Map.of()), 0).isEmpty(),
+                "未注册分发口径的工具返回空 IO");
     }
 
     @Test

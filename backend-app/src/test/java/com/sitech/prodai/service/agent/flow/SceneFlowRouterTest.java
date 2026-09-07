@@ -123,7 +123,7 @@ class SceneFlowRouterTest {
 
     @Test
     void opsIntentCoveredByPlaybookFallsThroughToOrchestration() {
-        // ops 场景工作流配置已删除（去旧留新：运营问诊收拢到手册 ops-analysis）：
+        // ops 场景工作流配置已删除（去旧留新：运营问诊收拢到四本入口手册）：
         // ops 下主意图命中手册 → 走动态编排（LLM 照手册执行），固化工作流不再路由
         SessionContext ops = new SessionContext("s-ops");
         ops.setScene("ops");
@@ -132,7 +132,7 @@ class SceneFlowRouterTest {
                 execPlan("swrl_risk_audit", "PRODUCT_OPS_POLICY"),
                 execPlan("sparql_query", "PRODUCT_OPS_QUERY"))) {
             var reply = router.tryRoute(plan, ops, "u1");
-            assertTrue(reply.isEmpty(), () -> plan.getIntent() + " 命中运营问诊手册 → 不进固化工作流");
+            assertTrue(reply.isEmpty(), () -> plan.getIntent() + " 命中 ops 入口手册 → 不进固化工作流");
         }
         verify(flowEngineService, never()).startExecution(any(), any(), any(), any());
     }

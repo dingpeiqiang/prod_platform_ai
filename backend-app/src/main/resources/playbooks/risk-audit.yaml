@@ -1,0 +1,76 @@
+# 手册（Playbook）：完成一类事情的标准作业程序
+#
+# 产品运营助手·风险稽核入口的手册化（原单本 ops-analysis 按前端四入口拆分之一）：
+#   风险稽核 = 在架商品 SWRL 全量筛查 + 命中商品规则解释（谁有风险、依据哪条规则、建议怎么处置），
+#   本手册只承载稽核链路，不掺立项门槛研判（那是 online-check 手册的事）。
+#   ① 路由消费：applies_to.intents 命中 → SceneFlowRouter 回落动态编排，LLM 照手册执行
+#   ② 编排消费：renderSop 注入 system prompt（DefaultUnderstander.playbookSopSection），
+#      intent_guide 随 SOP 下发——LLM 依据手册归口声明选意图码（手册 = 意图定义源）
+#   两条入口通向同一条手册直达链路（sop-step-N 时间线 + 环节 IO 差异化）：
+#     - 触发词快筛（LLM 理解前）：高置信度专有话术直接命中，零 LLM 成本
+#     - 意图升级（LLM 理解后）：LLM 照 intent_guide 归口输出意图码命中 applies_to.intents →
+#       AgentOrchestrator 升级 runPlaybookPath/runPlaybookStream（归一化映射仅兜底自由意图）
+#
+# 命名规范：文件名 = 手册 code（kebab-case），与 name 字段一致
+# 注意：多工具手册——步骤 tool 必须与真实执行一致，否则该步骤永远等不到执行事件；
+#   本手册三步各对应一个真实工具执行（非单工具内部环节切分），依次各执行一次。
+
+# ── ① 元数据 ──────────────────────────────────────────
+name: risk-audit
+title: 风险稽核
+description: 产品运营助手·风险稽核——SWRL 风险推理全量筛查在架商品，命中项规则解释收尾给处置依据
+version: 1
+
+# 适用域：路由器据此判定"本次请求是否适用本手册"（显式声明，替代场景级一刀切）
+applies_to:
+  scene: ops
+  # ops 场景规范意图码（IntentRecognitionSupport 归一化产物），首项为手册直达链路的计划意图
+  # 与 online-check 同归 PRODUCT_OPS_POLICY：路由先到先得（注册序），risk-audit 先注册——
+  # 一般话术命中本手册；立项门槛话术靠 triggers 专项拦截（"立项研判/上线评估/准入评估"）
+  intents: [PRODUCT_OPS_POLICY]
+  tools: [sparql_query, swrl_risk_audit, rule_explain]
+  # 意图归口（手册 = 意图定义源，LLM 据此选意图码而非自由发挥）：
+  #   随 renderSop 注入 system prompt，LLM 依据话术语义匹配归口声明输出 intent——
+  #   本手册归口在架风险判定（风险稽核/合规筛查/该不该下架），
+  #   立项门槛研判归 online-check（同码不同手册，靠话术与触发词分流）
+  intent_guide:
+    PRODUCT_OPS_POLICY: "风险稽核/合规筛查/该不该下架等在架商品风险判定"
+  # 触发词快筛：路由器在 LLM 理解前先行匹配，命中直达手册链路（零 LLM 成本、消除误判）
+  # 触发词只兜高置信度的专有话术（术语级：单独 substring 匹配不偏移）；宽泛话术
+  # （如「查一下有没有合规问题」）交给理解层 LLM 识别——LLM 照 intent_guide 归口输出意图码，
+  # 编排层升级走手册直达链路（AgentOrchestrator.runPlaybookPath/runPlaybookStream），
+  # 与触发词快筛殊途同归，避免宽泛触发词在通用话术上误触发。
+  triggers: ["风险稽核", "下架风险", "合规筛查"]
+
+# ── ② 步骤（操作步骤 + 每步的操作方法和使用的工具）─────
+steps:
+  - id: candidates
+    do: 锁定稽核商品范围
+    how: 自然语言转 SPARQL 在本体知识库执行语义查询，圈定在架商品清单；显式 offeringIds 优先，缺省全量
+    tool: sparql_query
+
+  - id: risk-audit
+    do: 在架商品风险稽核
+    how: SWRL 风险推理全量筛查；逐商品输出风险等级/分数/处置建议（R-B 系列规则）
+    tool: swrl_risk_audit
+    policy: 只读筛查不改档——稽核不落库不下架，处置建议仅供人工决策
+
+  - id: rule-explain
+    do: 命中规则解释收尾
+    how: 对稽核命中的风险规则（R-B 系列）给出规则语义解释，附规则编号，让处置建议有据可查
+    tool: rule_explain
+
+# ── ③ 工具引用（必须是 AgentTool 注册表已存在的能力）────
+tools:
+  - sparql_query
+  - swrl_risk_audit
+  - rule_explain
+
+# ── ④ 护栏（控制语义：人工门 / 审计 / 兜底）─────────────
+guardrails:
+  human_gate: []          # 纯稽核链路（查询/稽核/解释均只读），无写操作，无人工门
+  audit: 推理引擎标识（reasonEngine）与命中风险规则编号随 tool 事件下发；稽核不落库不下架（只读审计）
+  fallback:
+    - 商品范围查询为空 → 稽核退化为全量筛查（swrl_risk_audit 缺省全量），汇总时明确说明
+    - 稽核无命中风险 → 如实告知全量筛查完成，不夸大风险
+    - 推理引擎异常 → 明确报错原因，不返回空结论冒充无风险

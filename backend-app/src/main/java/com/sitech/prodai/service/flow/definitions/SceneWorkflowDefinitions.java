@@ -14,7 +14,7 @@ import java.util.Map;
  * （FlowEngineService/ChatHumanBridge），供手册未来挂载与用户自建流程使用。
  * <p>
  * 去旧留新（运营问诊手册化）：ops_analysis_v2 已删除——ops 场景主链路收拢到
- * 手册层 ops-analysis（playbooks/ops-analysis.yaml），固化工作流被架空。
+ * 手册层四本入口手册（playbooks/market-insight|root-cause|risk-audit|online-check.yaml）。
  * <p>
  * W5（query 存量）：纯查询分析链路，无人工节点；按用户决策采用
  * <b>全部 fail-fast</b>（任一工具失败即整单失败，不做 onFailure=continue 容错），

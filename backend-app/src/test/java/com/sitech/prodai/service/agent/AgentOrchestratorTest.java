@@ -820,8 +820,8 @@ class AgentOrchestratorTest {
     @Test
     void processUpgradesToPlaybookWhenIntentHitsAppliesToIntents() {
         // 理解层 LLM 输出 ops 规范意图（如 analyze→PRODUCT_OPS_QUERY 归一化产物）：
-        // 触发词快筛未命中（宽泛话术），但意图命中 ops-analysis.applies_to.intents →
-        // 升级走手册直达链路（runPlaybookPath），执行的是手册四工具链而非 LLM 自选链
+        // 触发词快筛未命中（宽泛话术），但意图命中 market-insight.applies_to.intents →
+        // 升级走手册直达链路（runPlaybookPath），执行的是手册双工具链而非 LLM 自选链
         QueryPlan plan = new QueryPlan("PRODUCT_OPS_QUERY", List.of("sparql_query", "swrl_risk_audit"),
                 Map.of("question", "问题"), "查一下在售5G套餐的增长趋势和风险商品");
         plan.setUserQuestion("查一下在售5G套餐的增长趋势和风险商品");
@@ -834,13 +834,13 @@ class AgentOrchestratorTest {
 
         Map<String, Object> resp = orchestrator.process("查一下在售5G套餐的增长趋势和风险商品", "s-up1", null, "ops");
 
-        assertEquals("ops-analysis", resp.get("playbook"), "意图命中手册适用域 → 回复带手册标记");
+        assertEquals("market-insight", resp.get("playbook"), "意图命中手册适用域 → 回复带手册标记");
         ArgumentCaptor<QueryPlan> planCaptor = ArgumentCaptor.forClass(QueryPlan.class);
         verify(executor).execute(planCaptor.capture(), any(SessionContext.class));
         // 执行链是手册声明全部工具（非 LLM 自选子集），意图归位手册首项规范意图
-        assertEquals(List.of("sparql_query", "swrl_root_cause", "swrl_risk_audit", "ontology_explain"),
+        assertEquals(List.of("sparql_query", "swrl_risk_audit"),
                 planCaptor.getValue().getTools(), "升级后应按手册 applies_to.tools 全链执行");
-        assertEquals("PRODUCT_OPS_REASON", planCaptor.getValue().getIntent(),
+        assertEquals("PRODUCT_OPS_QUERY", planCaptor.getValue().getIntent(),
                 "意图归位手册 applies_to.intents 首项（直达链路计划意图）");
     }
 
@@ -865,7 +865,7 @@ class AgentOrchestratorTest {
 
         ArgumentCaptor<QueryPlan> planCaptor = ArgumentCaptor.forClass(QueryPlan.class);
         verify(executor).execute(planCaptor.capture(), any(SessionContext.class), any(Executor.StepListener.class));
-        assertEquals(List.of("sparql_query", "swrl_root_cause", "swrl_risk_audit", "ontology_explain"),
+        assertEquals(List.of("sparql_query", "swrl_root_cause", "ontology_explain"),
                 planCaptor.getValue().getTools(), "流式升级后同样按手册全工具链执行");
         // 时间线呈现 sop-step-N 手册步骤（动态编排是工具名步骤，无 sop-step）
         boolean hasSopStep = emitter.events.stream().filter(e -> "thinking".equals(e.event()))

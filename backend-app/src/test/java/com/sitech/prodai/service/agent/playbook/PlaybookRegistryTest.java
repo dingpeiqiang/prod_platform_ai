@@ -35,7 +35,6 @@ class PlaybookRegistryTest {
         assertNotNull(registry.get("doc-batch-import"), "第一本手册应从 classpath:playbooks 装载");
         assertTrue(registry.problems().isEmpty(), () -> "装载应零问题: " + registry.problems());
     }
-
     @Test
     void loadsChatConfigureAndDiscoverHistoryPlaybooks() {
         // 场景手册齐全：智读（doc-batch-import）/ 智聊（chat-configure）/ 智查（discover-history）
@@ -45,14 +44,33 @@ class PlaybookRegistryTest {
     }
 
     @Test
-    void loadsOpsAnalysisPlaybook() {
-        // 运营问诊手册（ops-analysis）：ops 场景固化工作流退役后由手册接管
-        Map<String, Object> ops = registry.get("ops-analysis");
-        assertNotNull(ops, "运营问诊手册应从 classpath:playbooks 装载");
-        assertEquals("运营问诊分析", ops.get("title"));
-        assertTrue(ops.get("steps") instanceof List<?> s && s.size() == 4,
-                "运营问诊手册应 4 步（事实查询/归因/稽核/解释）");
-        assertEquals("ops", ((Map<?, ?>) ops.get("applies_to")).get("scene"), "运营问诊手册适用 ops 场景");
+    void loadsOpsEntryPlaybooks() {
+        // ops 四入口手册（market-insight/root-cause/risk-audit/online-check）：
+        // 原单本 ops-analysis 按前端四场景入口拆分——每个入口各自的工具链收拢到各自手册
+        Map<String, Object> market = registry.get("market-insight");
+        assertNotNull(market, "市场洞察手册应从 classpath:playbooks 装载");
+        assertEquals("市场洞察", market.get("title"));
+        assertTrue(market.get("steps") instanceof List<?> ms && ms.size() == 2,
+                "市场洞察手册应 2 步（事实查询/风险速览）");
+
+        Map<String, Object> rootCause = registry.get("root-cause");
+        assertNotNull(rootCause, "异动归因手册应装载");
+        assertTrue(rootCause.get("steps") instanceof List<?> rs && rs.size() == 3,
+                "异动归因手册应 3 步（查询/归因/解释）");
+
+        Map<String, Object> riskAudit = registry.get("risk-audit");
+        assertNotNull(riskAudit, "风险稽核手册应装载");
+        assertTrue(riskAudit.get("steps") instanceof List<?> ks && ks.size() == 3,
+                "风险稽核手册应 3 步（圈定/稽核/规则解释）");
+
+        Map<String, Object> onlineCheck = registry.get("online-check");
+        assertNotNull(onlineCheck, "立项研判手册应装载");
+        assertTrue(onlineCheck.get("steps") instanceof List<?> os && os.size() == 3,
+                "立项研判手册应 3 步（查询/门槛规则解释/概念解释）");
+        for (String code : List.of("market-insight", "root-cause", "risk-audit", "online-check")) {
+            assertEquals("ops", ((Map<?, ?>) registry.get(code).get("applies_to")).get("scene"),
+                    code + " 应适用 ops 场景");
+        }
         assertTrue(registry.problems().isEmpty(), () -> "装载应零问题: " + registry.problems());
     }
 
@@ -79,10 +97,10 @@ class PlaybookRegistryTest {
 
     @Test
     void registersKnownToolsAndResolvesReferences() {
-        // 工具名单注入后重载：四本手册引用的工具均已注册 → 引用可解析、零问题
+        // 工具名单注入后重载：七本手册引用的工具均已注册 → 引用可解析、零问题
         registry.registerKnownTools(java.util.Set.of(
                 "rd_file_parse", "rd_compliance", "rd_config_chat", "rd_config_discover",
-                "sparql_query", "swrl_root_cause", "swrl_risk_audit", "ontology_explain"));
+                "sparql_query", "swrl_root_cause", "swrl_risk_audit", "ontology_explain", "rule_explain"));
         registry.reload();
         assertTrue(registry.problems().isEmpty(), () -> "引用的工具均已注册，装载应零问题: " + registry.problems());
     }
@@ -96,10 +114,12 @@ class PlaybookRegistryTest {
         assertNotNull(problems, "引用不存在的工具应被门禁拦截");
         assertTrue(problems.stream().anyMatch(p -> p.contains("引用不可解析")),
                 () -> "应报引用不可解析: " + problems);
-        // 四本手册全部被拦截（引用的工具一个都不可解析）
+        // 四本 rd 手册全部被拦截（引用的工具一个都不可解析）；ops 四本手册同样被拦截
         assertNotNull(registry.problems().get("chat-configure"), "智聊手册引用不可解析时也应被拦截");
         assertNotNull(registry.problems().get("discover-history"), "智查手册引用不可解析时也应被拦截");
-        assertNotNull(registry.problems().get("ops-analysis"), "运营问诊手册引用不可解析时也应被拦截");
+        for (String code : List.of("market-insight", "root-cause", "risk-audit", "online-check")) {
+            assertNotNull(registry.problems().get(code), code + " 手册引用不可解析时也应被拦截");
+        }
     }
 
     // ── 路由消费（双消费①） ──
@@ -125,25 +145,36 @@ class PlaybookRegistryTest {
     }
 
     @Test
-    void routesOpsIntentsToOpsAnalysis() {
-        // 运营问诊手册：ops 意图/工具命中 → 返回手册 code（固化工作流退役，路由回落动态编排）
-        assertEquals("ops-analysis", registry.route("ops", "PRODUCT_OPS_REASON", List.of()),
-                "归因意图命中运营问诊手册");
-        assertEquals("ops-analysis", registry.route("ops", "PRODUCT_OPS_POLICY", List.of()),
-                "稽核意图命中运营问诊手册");
-        assertEquals("ops-analysis", registry.route("ops", "SOME_OTHER_INTENT", List.of("swrl_root_cause")),
-                "ops 工具命中运营问诊手册");
-        assertEquals("ops-analysis", registry.route("ops", "PRODUCT_OPS_QUERY", List.of()),
-                "运营查询意图（analyze 归一化产物）命中运营问诊手册");
+    void routesOpsIntentsToOpsEntryPlaybooks() {
+        // ops 四入口手册：ops 意图命中 → 返回手册 code（按入口拆分后各归其位）
+        assertEquals("root-cause", registry.route("ops", "PRODUCT_OPS_REASON", List.of()),
+                "归因意图命中异动归因手册");
+        assertEquals("risk-audit", registry.route("ops", "PRODUCT_OPS_POLICY", List.of()),
+                "稽核/研判意图（risk-audit 与 online-check 同码）按注册序先命中风险稽核手册");
+        assertEquals("market-insight", registry.route("ops", "PRODUCT_OPS_QUERY", List.of()),
+                "运营查询意图（analyze 归一化产物）命中市场洞察手册");
+        assertEquals("market-insight", registry.route("ops", "PRODUCT_OPS_MONITOR", List.of()),
+                "盯盘意图命中市场洞察手册（含风险速览双工具链）");
+    }
+
+    @Test
+    void routesOpsToolsToOpsEntryPlaybooks() {
+        // ops 工具交集命中：独有工具唯一归位；共享工具（sparql_query 四本手册都引用）
+        // 按注册 Map 迭代序先命中谁——注册序非语义约定，独有工具断言稳定，共享工具不依赖
+        assertEquals("root-cause", registry.route("ops", "SOME_OTHER_INTENT", List.of("swrl_root_cause")),
+                "归因工具独有 → 命中异动归因手册");
+        String shared = registry.route("ops", "SOME_OTHER_INTENT", List.of("sparql_query"));
+        assertTrue(List.of("market-insight", "online-check", "risk-audit", "root-cause").contains(shared),
+                "共享查询工具命中任一 ops 手册（注册序决定，非语义约定）: " + shared);
     }
 
     @Test
     void routeMatchesIntentCaseInsensitively() {
         // 理解层归一化产物是小写（product_ops_query），手册声明是大写（PRODUCT_OPS_QUERY）——
         // 严格 equals 永不命中，导致手册意图升级机制失效（实测截图走动态编排的根因）
-        assertEquals("ops-analysis", registry.route("ops", "product_ops_query", List.of()),
+        assertEquals("market-insight", registry.route("ops", "product_ops_query", List.of()),
                 "小写归一化意图应命中大写声明的手册 intents");
-        assertEquals("ops-analysis", registry.route("ops", "Product_Ops_Reason", List.of()),
+        assertEquals("root-cause", registry.route("ops", "Product_Ops_Reason", List.of()),
                 "混合大小写同样命中（匹配忽略大小写）");
         assertEquals("doc-batch-import", registry.route("rd", "rd_file_parse", List.of()),
                 "rd 场景小写意图同样命中");
@@ -154,7 +185,7 @@ class PlaybookRegistryTest {
         assertNull(registry.route("query", "RD_FILE_PARSE", List.of()),
                 "场景不一致（query ≠ rd）→ 不路由");
         assertNull(registry.route("rd", "PRODUCT_OPS_REASON", List.of()),
-                "运营问诊手册对 rd 场景不路由");
+                "ops 手册对 rd 场景不路由");
     }
 
     @Test
@@ -173,17 +204,21 @@ class PlaybookRegistryTest {
                 "智聊天话术「配置一个」→ 直达智聊手册");
         assertEquals("discover-history", registry.matchTrigger("rd", "找一下月费39的校园套餐"),
                 "智查话术「找一下」→ 直达智查手册");
-        assertEquals("ops-analysis", registry.matchTrigger("ops", "分析一下哪些商品有下架风险"),
-                "运营问诊话术「下架风险」→ 直达运营问诊手册");
-        assertEquals("ops-analysis", registry.matchTrigger("ops", "查一下上月经营数据"),
-                "运营问诊话术「经营数据」→ 直达运营问诊手册");
+        assertEquals("risk-audit", registry.matchTrigger("ops", "分析一下哪些商品有下架风险"),
+                "稽核话术「下架风险」→ 直达风险稽核手册");
+        assertEquals("market-insight", registry.matchTrigger("ops", "查一下上月经营数据"),
+                "洞察话术「经营数据」→ 直达市场洞察手册");
+        assertEquals("root-cause", registry.matchTrigger("ops", "做一次根因分析"),
+                "归因话术「根因分析」→ 直达异动归因手册");
+        assertEquals("online-check", registry.matchTrigger("ops", "评估一下这个商品的立项研判"),
+                "立项话术「立项研判」→ 直达立项研判手册");
     }
 
     @Test
     void broadUtterancesMissTriggerByDesign() {
         // 宽泛话术不做触发词快筛（substring 误触发风险）——交给理解层 LLM 识别，
         // 意图归一化命中 applies_to.intents 后由编排层升级走手册直达链路
-        assertNull(registry.matchTrigger("ops", "查一下在售5G套餐的增长趋势和风险商品"),
+        assertNull(registry.matchTrigger("ops", "查一下上月哪些数据涨了"),
                 "宽泛综合话术不快筛，留给 LLM 识别（意图升级路由）");
         assertNull(registry.matchTrigger("ops", "风险商品有哪些"), "宽泛词「风险商品」已从触发词移除");
         assertNull(registry.matchTrigger("ops", "帮我分析一下"), "宽泛词「分析一下」已从触发词移除");
@@ -226,7 +261,7 @@ class PlaybookRegistryTest {
     void renderSopIncludesIntentGuideWhenDeclared() {
         // 意图归口（手册 = 意图定义源）：随 SOP 下发，LLM 依据归口声明选意图码，
         // 不再自由发挥（实测曾输出 ANALYZE 自由意图，全靠归一化映射表修补）
-        String sop = registry.renderSop("ops-analysis");
+        String sop = registry.renderSop("market-insight");
         assertNotNull(sop);
         assertTrue(sop.contains("意图归口"), () -> "声明了 intent_guide 应输出归口段: " + sop);
         assertTrue(sop.contains("PRODUCT_OPS_QUERY："), () -> "归口段应含意图码: " + sop);
@@ -248,7 +283,10 @@ class PlaybookRegistryTest {
         assertTrue(rdCodes.contains("chat-configure"), "rd 场景应含智聊手册");
         assertTrue(rdCodes.contains("discover-history"), "rd 场景应含智查手册");
         List<String> opsCodes = registry.codesForScene("ops");
-        assertTrue(opsCodes.contains("ops-analysis"), () -> "ops 场景应含运营问诊手册: " + opsCodes);
+        assertTrue(opsCodes.contains("market-insight"), () -> "ops 场景应含市场洞察手册: " + opsCodes);
+        assertTrue(opsCodes.contains("root-cause"), () -> "ops 场景应含异动归因手册: " + opsCodes);
+        assertTrue(opsCodes.contains("risk-audit"), () -> "ops 场景应含风险稽核手册: " + opsCodes);
+        assertTrue(opsCodes.contains("online-check"), () -> "ops 场景应含立项研判手册: " + opsCodes);
         assertFalse(opsCodes.contains("chat-configure"), "rd 手册对 ops 场景不可见");
     }
 }

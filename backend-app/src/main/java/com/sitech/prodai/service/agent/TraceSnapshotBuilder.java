@@ -1068,26 +1068,34 @@ public final class TraceSnapshotBuilder {
     }
 
     /**
-     * 手册步骤的差异化「输入/输出」：ops-analysis 手册四步各对应一个真实工具执行
-     * （sparql_query → swrl_root_cause → swrl_risk_audit → ontology_explain），
-     * 每步输入承接上一环节产出（from_step），输出只讲本环节结论（与 rdDiscoverPhaseIo 同构）。
+     * 手册步骤的差异化「输入/输出」：ops 四本入口手册（market-insight/root-cause/
+     * risk-audit/online-check）步骤各对应一个真实工具执行，每步输入承接上一环节产出
+     * （from_step = sop-step-(N-1)），输出只讲本环节结论（与 rdDiscoverPhaseIo 同构）。
+     * <p>
+     * 按工具名分发（非按手册分发）：同一工具在不同手册中语义一致（查询=事实查询、
+     * 稽核=风险筛查），工具输出契约不变，环节 IO 只需认工具与步骤序号——
+     * 手册拆分/新增不再要求本方法同步改分支。
      * <ul>
-     *   <li>环节① 事实查询（sparql_query）：输入=话术，输出=命中实体数+事实摘要</li>
-     *   <li>环节② 根因归因（swrl_root_cause）：输入=分析对象，输出=归因路径数+引擎标识</li>
-     *   <li>环节③ 风险稽核（swrl_risk_audit）：输入=筛查范围，输出=风险等级统计+建议下架数</li>
-     *   <li>环节④ 规则解释（ontology_explain）：输入=问诊结论，输出=解释文案</li>
+     *   <li>sparql_query：输入=话术，输出=命中实体数+事实摘要（step0 为链路首步，无 from_step）</li>
+     *   <li>swrl_root_cause：输入=分析对象（承接查询），输出=归因路径数+引擎标识</li>
+     *   <li>swrl_risk_audit：输入=筛查范围（承接查询），输出=风险等级统计+建议下架数</li>
+     *   <li>rule_explain：输入=命中规则（承接稽核/研判），输出=规则语义+编号</li>
+     *   <li>ontology_explain：输入=问诊结论（承接前序各步），输出=解释文案+引用规则</li>
      * </ul>
      */
     public static Map<String, Object> opsAnalysisPhaseIo(ExecutionResult result, int phaseIdx) {
-        if (result == null || !result.isSuccess() || result.getData() == null
-                || phaseIdx < 0 || phaseIdx > 3) {
+        if (result == null || !result.isSuccess() || result.getData() == null || phaseIdx < 0) {
             return Map.of();
         }
         Map<String, Object> data = result.getData();
         Map<String, Object> input = new LinkedHashMap<>();
         Map<String, Object> output = new LinkedHashMap<>();
-        switch (phaseIdx) {
-            case 0 -> { // 事实查询（sparql_query）
+        String tool = result.getToolName();
+        if (phaseIdx > 0) {
+            input.put("from_step", "sop-step-" + (phaseIdx - 1));
+        }
+        switch (tool == null ? "" : tool) {
+            case "sparql_query" -> { // 事实查询（market-insight/root-cause/risk-audit/online-check 首步）
                 int hits = data.get("entity_ids") instanceof List<?> ids ? ids.size() : 0;
                 output.put("hitCount", hits);
                 String answer = str(data.get("nl_answer"));
@@ -1099,8 +1107,7 @@ public final class TraceSnapshotBuilder {
                             : "知识库未命中相关实体");
                 }
             }
-            case 1 -> { // 根因归因（swrl_root_cause）
-                input.put("from_step", "sop-step-0");
+            case "swrl_root_cause" -> { // 根因归因（root-cause 第2步）
                 String entity = firstNonBlank(str(data.get("offeringName")), str(data.get("offeringId")));
                 input.put("requirement", entity.isBlank() ? "上一步查询到的经营事实" : "商品「" + entity + "」的经营事实");
                 Object pathCount = data.get("pathCount") != null ? data.get("pathCount")
@@ -1119,9 +1126,8 @@ public final class TraceSnapshotBuilder {
                         : firstNonBlank(rootCause.isBlank() ? "" : firstChars(rootCause, 40),
                                 "已完成 SWRL 归因推理"));
             }
-            case 2 -> { // 风险稽核（swrl_risk_audit）
-                input.put("from_step", "sop-step-1");
-                input.put("requirement", "上一步归因后的在架商品范围");
+            case "swrl_risk_audit" -> { // 风险稽核（market-insight 第2步 / risk-audit 第3步）
+                input.put("requirement", "上一步查询圈定的在架商品范围");
                 for (String key : new String[]{"total", "scannedCount", "highCount", "mediumCount", "suggestDelistCount"}) {
                     if (data.get(key) instanceof Number n) {
                         output.put(key, n.intValue());
@@ -1133,9 +1139,23 @@ public final class TraceSnapshotBuilder {
                         ? "稽核命中：高风险 " + high + " 个，建议下架 " + delist + " 个（处置建议供人工决策）"
                         : "全量筛查完成，未发现高风险商品");
             }
-            case 3 -> { // 规则解释（ontology_explain）
-                input.put("from_step", "sop-step-2");
-                input.put("requirement", "归因与稽核结论中涉及的本体概念/规则");
+            case "rule_explain" -> { // 规则解释（risk-audit 第3步 / online-check 第2步）
+                input.put("requirement", "稽核/研判命中的风险或门槛规则编号");
+                String ruleId = str(data.get("ruleId"));
+                String label = str(data.get("label"));
+                if (!ruleId.isBlank() && !"null".equals(ruleId)) {
+                    output.put("ruleId", ruleId);
+                }
+                String ruleSummary = firstNonBlank(
+                        label.isBlank() ? "" : firstChars(label, 40),
+                        ruleId.isBlank() || "null".equals(ruleId) ? "" : "已解释规则 " + ruleId);
+                output.put("summary", ruleSummary.isBlank() ? "已给出规则语义解释" : ruleSummary);
+                if (data.get("referenced_rules") instanceof List<?> rules && !rules.isEmpty()) {
+                    output.put("referenced_rules", rules.stream().map(String::valueOf).limit(DETAIL_LIMIT).toList());
+                }
+            }
+            case "ontology_explain" -> { // 本体概念解释（root-cause 第3步 / online-check 第3步）
+                input.put("requirement", "前序结论中涉及的本体概念/规则");
                 String explanation = firstNonBlank(str(data.get("natural_language")), str(data.get("concept")));
                 output.put("summary", explanation.isBlank() || "null".equals(explanation)
                         ? "已给出问诊结论涉及的本体规则解释"
