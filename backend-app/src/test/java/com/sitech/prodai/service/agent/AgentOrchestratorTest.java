@@ -814,4 +814,93 @@ class AgentOrchestratorTest {
                 planCaptor.getValue().getParams().get("text"),
                 "手册同步链路同样应按契约补齐 source=question 的工具参数");
     }
+
+    // ── 手册意图升级：LLM 识别的意图命中手册 applies_to.intents → 直达链路 ──
+
+    @Test
+    void processUpgradesToPlaybookWhenIntentHitsAppliesToIntents() {
+        // 理解层 LLM 输出 ops 规范意图（如 analyze→PRODUCT_OPS_QUERY 归一化产物）：
+        // 触发词快筛未命中（宽泛话术），但意图命中 ops-analysis.applies_to.intents →
+        // 升级走手册直达链路（runPlaybookPath），执行的是手册四工具链而非 LLM 自选链
+        QueryPlan plan = new QueryPlan("PRODUCT_OPS_QUERY", List.of("sparql_query", "swrl_risk_audit"),
+                Map.of("question", "问题"), "查一下在售5G套餐的增长趋势和风险商品");
+        plan.setUserQuestion("查一下在售5G套餐的增长趋势和风险商品");
+        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
+        when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
+        when(executor.execute(any(QueryPlan.class), any(SessionContext.class)))
+                .thenReturn(List.of(ExecutionResult.ok("sparql_query", Map.of("rows", 3))));
+        when(presenter.present(any(), anyList(), any(SessionContext.class))).thenReturn("手册执行完毕");
+        when(presenter.suggestFollowUps(any(), anyList(), any(SessionContext.class))).thenReturn(List.of());
+
+        Map<String, Object> resp = orchestrator.process("查一下在售5G套餐的增长趋势和风险商品", "s-up1", null, "ops");
+
+        assertEquals("ops-analysis", resp.get("playbook"), "意图命中手册适用域 → 回复带手册标记");
+        ArgumentCaptor<QueryPlan> planCaptor = ArgumentCaptor.forClass(QueryPlan.class);
+        verify(executor).execute(planCaptor.capture(), any(SessionContext.class));
+        // 执行链是手册声明全部工具（非 LLM 自选子集），意图归位手册首项规范意图
+        assertEquals(List.of("sparql_query", "swrl_root_cause", "swrl_risk_audit", "ontology_explain"),
+                planCaptor.getValue().getTools(), "升级后应按手册 applies_to.tools 全链执行");
+        assertEquals("PRODUCT_OPS_REASON", planCaptor.getValue().getIntent(),
+                "意图归位手册 applies_to.intents 首项（直达链路计划意图）");
+    }
+
+    @Test
+    void streamUpgradesToPlaybookWhenIntentHitsAppliesToIntents() {
+        QueryPlan plan = new QueryPlan("PRODUCT_OPS_REASON", List.of("swrl_root_cause"),
+                Map.of("question", "问题"), "为什么上月收入下滑");
+        plan.setUserQuestion("为什么上月收入下滑");
+        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
+        when(understander.understandAll(any(), any(SessionContext.class))).thenReturn(List.of(plan));
+        when(executor.execute(any(QueryPlan.class), any(SessionContext.class), any(Executor.StepListener.class)))
+                .thenAnswer(inv -> {
+                    Executor.StepListener listener = inv.getArgument(2);
+                    listener.onStepComplete(ExecutionResult.ok("swrl_root_cause", Map.of("pathCount", 2)));
+                    return List.of(ExecutionResult.ok("swrl_root_cause", Map.of("pathCount", 2)));
+                });
+        when(presenter.present(any(), anyList(), any(SessionContext.class))).thenReturn("手册执行完毕");
+        when(presenter.suggestFollowUps(any(), anyList(), any(SessionContext.class))).thenReturn(List.of());
+
+        RecordingEmitter emitter = new RecordingEmitter();
+        orchestrator.processStream("为什么上月收入下滑", "s-up2", null, "ops", emitter);
+
+        ArgumentCaptor<QueryPlan> planCaptor = ArgumentCaptor.forClass(QueryPlan.class);
+        verify(executor).execute(planCaptor.capture(), any(SessionContext.class), any(Executor.StepListener.class));
+        assertEquals(List.of("sparql_query", "swrl_root_cause", "swrl_risk_audit", "ontology_explain"),
+                planCaptor.getValue().getTools(), "流式升级后同样按手册全工具链执行");
+        // 时间线呈现 sop-step-N 手册步骤（动态编排是工具名步骤，无 sop-step）
+        boolean hasSopStep = emitter.events.stream().filter(e -> "thinking".equals(e.event()))
+                .anyMatch(e -> e.data().get("steps") instanceof List<?> steps && !steps.isEmpty()
+                        && String.valueOf(((Map<?, ?>) steps.get(0)).get("id")).startsWith("sop-step-"));
+        assertTrue(hasSopStep, "升级链路时间线应落地 sop-step-N 手册步骤");
+    }
+
+    @Test
+    void processDoesNotUpgradeWhenIntentMissesAllPlaybooks() {
+        // rd 场景未注册进手册意图的意图（如 RD_DRAFT_MANAGE）→ 不升级，回落常规动态编排
+        QueryPlan plan = execPlan("rd_draft_manage", "RD_DRAFT_MANAGE");
+        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
+        when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
+        when(executor.execute(eq(plan), any(SessionContext.class)))
+                .thenReturn(List.of(ExecutionResult.ok("rd_draft_manage", Map.of())));
+        when(presenter.present(any(), anyList(), any(SessionContext.class))).thenReturn("常规链路回复");
+
+        Map<String, Object> resp = orchestrator.process("改一下草稿", "s-up3", null, "rd");
+
+        assertEquals("常规链路回复", resp.get("report"));
+        assertNull(resp.get("playbook"), "未命中手册意图不应有手册标记");
+        verify(executor).execute(eq(plan), any(SessionContext.class));
+    }
+
+    @Test
+    void processDoesNotUpgradeClarifyOrConfirmIntents() {
+        QueryPlan plan = clarifyPlan(List.of("offerName"), Map.of());
+        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
+        when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
+        when(presenter.present(any(), anyList(), any(SessionContext.class))).thenReturn("请补充套餐名称");
+
+        Map<String, Object> resp = orchestrator.process("查套餐", "s-up4", null, "ops");
+
+        assertEquals(QueryPlan.INTENT_CLARIFY, resp.get("intent"), "会话协作意图不参与手册升级");
+        verify(executor, never()).execute(any(QueryPlan.class), any(SessionContext.class));
+    }
 }

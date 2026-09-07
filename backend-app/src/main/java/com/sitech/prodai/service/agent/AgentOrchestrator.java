@@ -221,7 +221,8 @@ public class AgentOrchestrator {
         log.info("[AgentOrchestrator] 查询计划: intent={}, tools={}, clarify={}",
                 plan.getIntent(), plan.getTools(), plan.getClarify());
 
-        // W3 场景工作流路由：场景已配置 → 确定性映射进引擎固化链路；未命中走动态编排
+        // W3 场景工作流路由先于手册升级：场景工作流（用户自建/存量）优先级更高，
+        // 命中即短路；未命中再判手册意图升级（sop-step-N 时间线），最后回落动态编排
         java.util.Optional<Map<String, Object>> sceneReply = sceneFlowRouter.tryRoute(plan, context, null);
         if (sceneReply.isPresent()) {
             Map<String, Object> reply = sceneReply.get();
@@ -235,6 +236,14 @@ public class AgentOrchestrator {
             persistTurn(context, question, reply, null);
             reply.put("elapsed_ms", System.currentTimeMillis() - startTime);
             return reply;
+        }
+
+        // 手册意图升级：LLM 识别的意图（经归一化）命中手册 applies_to.intents →
+        // 升级走手册直达链路（sop-step-N 时间线 + 环节 IO），与触发词快筛殊途同归；
+        // 未命中回落常规动态编排（SOP 已由理解层注入 prompt，LLM 照手册自由编排）
+        Map<String, Object> upgradeReply = playbookUpgradePath(plan, context, params, startTime);
+        if (upgradeReply != null) {
+            return upgradeReply;
         }
 
         // 澄清分支：不做工具执行，直接生成追问文案
@@ -342,6 +351,36 @@ public class AgentOrchestrator {
      * <p>
      * 手册声明缺 intents/tools（理论上装载门禁已拦截）时返回 null，调用方回落常规链路。
      */
+    /**
+     * 手册意图升级：理解层 LLM 识别的意图（经 IntentRecognitionSupport 归一化）命中
+     * 手册 applies_to.intents → 升级走手册直达链路，与触发词快筛殊途同归。
+     * <p>
+     * 触发词只兜高置信度专有话术；宽泛话术靠 LLM 识别（理解成本已付，不浪费）——
+     * 命中后照直达链路执行（sop-step-N 时间线 + 环节 IO 差异化），不落回动态编排的常规视图。
+     * 工具兜底不升级（LLM 自选工具 ≠ 认领整本手册，宁走动态编排不冒进步骤视图）。
+     *
+     * @return 手册直达链路回复；未命中手册意图返回 null（调用方回落常规链路）
+     */
+    private Map<String, Object> playbookUpgradePath(QueryPlan plan, SessionContext context,
+                                                    Map<String, Object> params, long startTime) {
+        if (plan == null || context == null || plan.getTools() == null || plan.getTools().isEmpty()) {
+            return null;
+        }
+        String intent = plan.getIntent();
+        // 澄清/确认/证据复用是会话协作意图，不参与手册路由
+        if (QueryPlan.INTENT_CLARIFY.equals(intent) || QueryPlan.INTENT_CONFIRM.equals(intent)
+                || QueryPlan.INTENT_REUSE_EVIDENCE.equals(intent)) {
+            return null;
+        }
+        String playbookCode = playbookRegistry.route(context.getScene(), intent, List.of());
+        if (playbookCode == null) {
+            return null;
+        }
+        log.info("[AgentOrchestrator] 手册意图升级: playbook={} intent={} question={}",
+                playbookCode, intent, plan.getUserQuestion());
+        return runPlaybookPath(playbookCode, plan.getUserQuestion(), params, context, startTime);
+    }
+
     @SuppressWarnings("unchecked")
     private Map<String, Object> runPlaybookPath(String playbookCode, String question,
                                                 Map<String, Object> params,
@@ -395,6 +434,33 @@ public class AgentOrchestrator {
         response.put("playbook", playbookCode);
         response.put("elapsed_ms", System.currentTimeMillis() - startTime);
         return response;
+    }
+
+    /**
+     * 手册意图升级（流式）：理解层 LLM 识别的意图命中手册 applies_to.intents →
+     * 升级走流式手册直达链路（sop-step-N 时间线 + 环节 IO），与触发词快筛殊途同归。
+     * <p>
+     * 与 {@link #playbookUpgradePath} 同判据；工具兜底不升级（LLM 自选工具 ≠ 认领整本手册）。
+     *
+     * @return true = 已按手册链路流式处理完毕；false = 未命中手册意图，调用方回落常规链路
+     */
+    private boolean playbookUpgradeStream(QueryPlan plan, SessionContext context, Map<String, Object> params,
+                                          StreamEmitter emitter, long startTime) {
+        if (plan == null || context == null || plan.getTools() == null || plan.getTools().isEmpty()) {
+            return false;
+        }
+        String intent = plan.getIntent();
+        if (QueryPlan.INTENT_CLARIFY.equals(intent) || QueryPlan.INTENT_CONFIRM.equals(intent)
+                || QueryPlan.INTENT_REUSE_EVIDENCE.equals(intent)) {
+            return false;
+        }
+        String playbookCode = playbookRegistry.route(context.getScene(), intent, List.of());
+        if (playbookCode == null) {
+            return false;
+        }
+        log.info("[AgentOrchestrator] 手册意图升级(流式): playbook={} intent={} question={}",
+                playbookCode, intent, plan.getUserQuestion());
+        return runPlaybookStream(playbookCode, plan.getUserQuestion(), params, context, emitter, startTime);
     }
 
     /**
@@ -1461,9 +1527,7 @@ public class AgentOrchestrator {
         }
         QueryPlan plan = plans.get(0);
 
-        // W3 场景工作流路由：场景已配置 → 确定性映射进引擎固化链路；未命中走动态编排
-        // 事件契约与 FLOW_EXEC 链路一致（thinking → text → text_done → done），理解层已完成的意图步骤随 thinking 下发
-        // W4 透明化：流式链路注册 flow_progress 转发目标，引擎节点事件实时推给前端（执行完注销）
+        // W3 场景工作流路由先于手册升级：场景工作流（用户自建/存量）优先级更高，命中即短路
         String progressExecutionId = registerProgressSink(emitter);
         try {
             java.util.Optional<Map<String, Object>> sceneReply = sceneFlowRouter.tryRoute(plan, context, null);
@@ -1501,6 +1565,13 @@ public class AgentOrchestrator {
             }
         } finally {
             unregisterProgressSink(progressExecutionId);
+        }
+
+        // 手册意图升级：LLM 识别的意图（经归一化）命中手册 applies_to.intents →
+        // 升级流式手册直达链路（sop-step-N 时间线 + 环节 IO），与触发词快筛殊途同归；
+        // 未命中回落常规动态编排（SOP 已由理解层注入 prompt，LLM 照手册自由编排）
+        if (playbookUpgradeStream(plan, context, params, emitter, startTime)) {
+            return;
         }
 
         // 工作流定义：本轮真实业务流程（节点+分支条件+数据流），随首个 thinking 事件一次性下发

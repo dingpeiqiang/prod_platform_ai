@@ -133,6 +133,8 @@ class PlaybookRegistryTest {
                 "稽核意图命中运营问诊手册");
         assertEquals("ops-analysis", registry.route("ops", "SOME_OTHER_INTENT", List.of("swrl_root_cause")),
                 "ops 工具命中运营问诊手册");
+        assertEquals("ops-analysis", registry.route("ops", "PRODUCT_OPS_QUERY", List.of()),
+                "运营查询意图（analyze 归一化产物）命中运营问诊手册");
     }
 
     @Test
@@ -161,12 +163,18 @@ class PlaybookRegistryTest {
                 "智查话术「找一下」→ 直达智查手册");
         assertEquals("ops-analysis", registry.matchTrigger("ops", "分析一下哪些商品有下架风险"),
                 "运营问诊话术「下架风险」→ 直达运营问诊手册");
-        assertEquals("ops-analysis", registry.matchTrigger("ops", "查一下在售5G套餐的增长趋势和风险商品"),
-                "运营问诊话术「增长趋势」（综合分析类话术，实测走动态编排）→ 直达运营问诊手册");
-        assertEquals("ops-analysis", registry.matchTrigger("ops", "风险商品有哪些"),
-                "运营问诊话术「风险商品」→ 直达运营问诊手册");
         assertEquals("ops-analysis", registry.matchTrigger("ops", "查一下上月经营数据"),
-                "运营问诊话术「查一下」→ 直达运营问诊手册（scene 隔离，与智查「找一下」不冲突）");
+                "运营问诊话术「经营数据」→ 直达运营问诊手册");
+    }
+
+    @Test
+    void broadUtterancesMissTriggerByDesign() {
+        // 宽泛话术不做触发词快筛（substring 误触发风险）——交给理解层 LLM 识别，
+        // 意图归一化命中 applies_to.intents 后由编排层升级走手册直达链路
+        assertNull(registry.matchTrigger("ops", "查一下在售5G套餐的增长趋势和风险商品"),
+                "宽泛综合话术不快筛，留给 LLM 识别（意图升级路由）");
+        assertNull(registry.matchTrigger("ops", "风险商品有哪些"), "宽泛词「风险商品」已从触发词移除");
+        assertNull(registry.matchTrigger("ops", "帮我分析一下"), "宽泛词「分析一下」已从触发词移除");
     }
 
     @Test

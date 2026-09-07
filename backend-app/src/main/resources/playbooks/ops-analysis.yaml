@@ -5,7 +5,10 @@
 #   原 ops_analysis_v2 固化工作流（flow.tool 线性四节点）整体退役，由本手册接管：
 #     ① 路由消费：applies_to.intents 命中 → SceneFlowRouter 回落动态编排，LLM 照手册执行
 #     ② 编排消费：renderSop 注入 system prompt（DefaultUnderstander.playbookSopSection）
-#   触发词命中时走手册直达链路（runPlaybookPath/runPlaybookStream），零 LLM 理解成本。
+#   两条入口通向同一条手册直达链路（sop-step-N 时间线 + 环节 IO 差异化）：
+#     - 触发词快筛（LLM 理解前）：高置信度专有话术直接命中，零 LLM 成本
+#     - 意图升级（LLM 理解后）：理解层意图归一化命中 applies_to.intents →
+#       AgentOrchestrator 升级 runPlaybookPath/runPlaybookStream
 #
 # 命名规范：文件名 = 手册 code（kebab-case），与 name 字段一致
 # 注意：多工具手册——步骤 tool 必须与真实执行一致，否则该步骤永远等不到执行事件；
@@ -24,12 +27,12 @@ applies_to:
   intents: [PRODUCT_OPS_REASON, PRODUCT_OPS_POLICY, PRODUCT_OPS_QUERY, PRODUCT_OPS_MONITOR]
   tools: [sparql_query, swrl_root_cause, swrl_risk_audit, ontology_explain]
   # 触发词快筛：路由器在 LLM 理解前先行匹配，命中直达手册链路（零 LLM 成本、消除误判）
-  # 覆盖问诊三类典型话术：异动归因（根因/为什么下滑）、风险稽核（风险/下架）、运营查询（经营数据），
-  #   以及综合分析类话术（增长趋势/查一下…风险商品）——理解层对此类话术常输出自由意图（如 ANALYZE），
-  #   触发词命中可绕过理解层直达手册 SOP（scene 隔离，与 rd 智查的「查一下」互不冲突）
-  triggers: ["根因分析", "异动分析", "归因分析", "分析一下", "经营分析",
-             "风险稽核", "稽核", "下架风险", "经营数据", "运营数据", "哪些商品",
-             "增长趋势", "下滑趋势", "趋势分析", "商品分析", "风险商品", "查一下", "分析"]
+  # 触发词只兜高置信度的专有话术（术语级：单独 substring 匹配不偏移）；宽泛话术
+  # （如「查一下…增长趋势」）交给理解层 LLM 识别——意图归一化命中 applies_to.intents
+  # 后由编排层升级走手册直达链路（AgentOrchestrator.runPlaybookPath/runPlaybookStream），
+  # 与触发词快筛殊途同归，避免宽泛触发词在通用话术上误触发。
+  triggers: ["根因分析", "异动分析", "归因分析", "经营分析",
+             "风险稽核", "下架风险", "经营数据", "运营数据", "哪些商品"]
 
 # ── ② 步骤（操作步骤 + 每步的操作方法和使用的工具）─────
 steps:
