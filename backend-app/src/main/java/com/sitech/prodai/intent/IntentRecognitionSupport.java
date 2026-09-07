@@ -18,7 +18,7 @@ public final class IntentRecognitionSupport {
         String normalized = intentType.trim().toLowerCase(Locale.ROOT);
         return switch (normalized) {
             case "query", "nl_query", "product_ops_query",
-                 "market_insight" -> "product_ops_query";
+                 "market_insight", "analyze", "analysis" -> "product_ops_query";
             case "policy", "evaluate", "product_ops_policy",
                  "risk_audit", "online_check", "offering_ops_risk_audit" -> "product_ops_policy";
             case "reason", "explain", "product_ops_reason",

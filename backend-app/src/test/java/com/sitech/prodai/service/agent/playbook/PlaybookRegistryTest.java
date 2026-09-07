@@ -161,6 +161,12 @@ class PlaybookRegistryTest {
                 "智查话术「找一下」→ 直达智查手册");
         assertEquals("ops-analysis", registry.matchTrigger("ops", "分析一下哪些商品有下架风险"),
                 "运营问诊话术「下架风险」→ 直达运营问诊手册");
+        assertEquals("ops-analysis", registry.matchTrigger("ops", "查一下在售5G套餐的增长趋势和风险商品"),
+                "运营问诊话术「增长趋势」（综合分析类话术，实测走动态编排）→ 直达运营问诊手册");
+        assertEquals("ops-analysis", registry.matchTrigger("ops", "风险商品有哪些"),
+                "运营问诊话术「风险商品」→ 直达运营问诊手册");
+        assertEquals("ops-analysis", registry.matchTrigger("ops", "查一下上月经营数据"),
+                "运营问诊话术「查一下」→ 直达运营问诊手册（scene 隔离，与智查「找一下」不冲突）");
     }
 
     @Test

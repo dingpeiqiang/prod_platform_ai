@@ -19,6 +19,9 @@ class IntentRecognitionSupportTest {
         assertEquals("product_ops_query", IntentRecognitionSupport.normalizeIntentType("what_if"));
         assertEquals("product_ops_query", IntentRecognitionSupport.normalizeIntentType("compare"));
         assertEquals("product_ops_query", IntentRecognitionSupport.normalizeIntentType("compare_state"));
+        // 理解层 LLM 自由意图：分析类话术（如「查一下…增长趋势」输出 ANALYZE）归入运营查询
+        assertEquals("product_ops_query", IntentRecognitionSupport.normalizeIntentType("ANALYZE"));
+        assertEquals("product_ops_query", IntentRecognitionSupport.normalizeIntentType("analysis"));
         assertEquals("chat", IntentRecognitionSupport.normalizeIntentType("guide"));
     }
 
