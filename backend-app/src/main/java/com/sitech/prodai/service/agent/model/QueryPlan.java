@@ -51,6 +51,12 @@ public class QueryPlan {
      */
     private List<Map<String, Object>> reasoningTrace;
 
+    /**
+     * 手册直达链路的 SOP 步骤结构（parseSopSteps 产出：[{do, how, tool}]）；
+     * 非手册链路为 null。persistTurn 据此把 sop-step-N 思考步骤写入 reasoning_full（回放同构）。
+     */
+    private List<Map<String, Object>> sopSteps;
+
     public QueryPlan() {
         this.params = new LinkedHashMap<>();
     }
@@ -139,6 +145,14 @@ public class QueryPlan {
 
     public void setReasoningTrace(List<Map<String, Object>> reasoningTrace) {
         this.reasoningTrace = reasoningTrace;
+    }
+
+    public List<Map<String, Object>> getSopSteps() {
+        return sopSteps;
+    }
+
+    public void setSopSteps(List<Map<String, Object>> sopSteps) {
+        this.sopSteps = sopSteps;
     }
 
     /** 追加一条推理日志（stage=环节标识，message=业务可读的该环节说明）。 */

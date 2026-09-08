@@ -209,13 +209,16 @@ public final class ThinkingCopy {
      * <p>
      * 注意：text/draft/product_type 不在隐藏列表 —— 它们是 rd 工具的实际入参
      * （配置需求原文/已有草稿/产品品类），透传后「输入」行才有具体数据流；
-     * 真正无业务意义的键（会话号/内部码/分页参数）才隐藏。 */
+     * 真正无业务意义的键（会话号/内部码/分页参数/大文本透传）才隐藏。
+     * 本清单是前后端隐藏键的唯一事实源（前端 ThinkingProcessPanel 同源对齐）。 */
     public static final List<String> HIDDEN_INPUT_KEYS = List.of(
             "question", "intent_type", "action",
             "config", "maxEntities", "limit",
             "file_id", "file_ids",
             // 系统内部键：会话号对业务阅读无意义（rd 场景经 plan.params 透传给工具）
-            "session_id"
+            "session_id",
+            // 大文本透传键：文档原文/文件名已在输出区以摘要与明细呈现，输入区重复无业务价值
+            "document_text", "file_name"
     );
 
     /** 输入参数键 → 业务展示名（仅少量键需要；工具 label 优先）。 */
@@ -223,13 +226,11 @@ public final class ThinkingCopy {
             Map.entry("offering", "分析对象"),
             Map.entry("offeringIds", "商品范围"),
             Map.entry("offering_id", "商品编码"),
-            Map.entry("file_name", "文档名称"),
             Map.entry("text", "配置需求"),
             Map.entry("draft", "已有草稿"),
             Map.entry("product_type", "产品品类"),
             Map.entry("category_code", "品类编码"),
             Map.entry("patches", "候选方案"),
-            Map.entry("document_text", "文档内容"),
             Map.entry("metric", "指标"),
             Map.entry("time", "时间范围"),
             Map.entry("ruleId", "规则编号"),

@@ -28,6 +28,7 @@ applies_to:
 
 # ── ② 步骤（操作步骤 + 每步的操作方法和使用的工具）─────
 # 工具已原子化：一个工具一个环节，步骤与工具 1:1（文档解析→套餐抽取→合规校验→落库开单）
+# input_from 声明跨工具数据流（参数名 → "上游工具.输出键"），执行层经 result: 来源解析承接
 steps:
   - id: parse
     do: 解析文档提取文本
@@ -36,19 +37,26 @@ steps:
 
   - id: extract
     do: 逐套餐抽取配置要素（名称/月费/要素/客群/渠道）
-    how: 优先 LLM 槽位抽取；超长文档按空行边界分段（每片≤6000字、≤5片）合并去重；LLM 失败回退正则切分；无「套餐X：」前缀按空行分组逐段尝试
+    how: 结构化文档 IR（document）优先——表格块表头映射直通（零 LLM 成本），段落块 LLM 分片抽取（每片≤6000字、≤5片）合并去重；LLM 失败回退正则切分；无 IR 时按 document_text 纯文本链路（LLM 优先、正则兜底、无「套餐X：」前缀按空行分组）
     tool: rd_draft_extract
+    input_from:
+      document_text: rd_doc_parse.document_text
+      document: rd_doc_parse.document
     policy: 每条草稿一单——文档里有几个套餐就开几张工单，不折叠为单一草稿
 
   - id: compliance
     do: 逐条合规校验
-    how: 规则引擎 R-C 系列（SHACL 可声明化规则优先）；通过的标记通过，未通过的带 R-C 编号问题清单
+    how: 规则引擎 R-C 系列（SHACL 可声明化规则优先）；items 清单形态逐条校验并回填结论；通过的标记通过，未通过的带 R-C 编号问题清单
     tool: rd_compliance
+    input_from:
+      draft: rd_draft_extract.items
 
   - id: create
     do: 批量落库开单
     how: 通过的自动创建配置工单；待修正的同样开单但挂问题标签（稽核未通过）；空草稿（段落未抽到有效字段）写入 failures 显式提示，不静默跳过
     tool: rd_workorder_create
+    input_from:
+      items: rd_compliance.items
     output: work_order_id
 
 # ── ③ 护栏（控制语义：人工门 / 审计 / 兜底）─────────────

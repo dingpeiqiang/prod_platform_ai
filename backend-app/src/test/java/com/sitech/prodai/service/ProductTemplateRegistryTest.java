@@ -94,6 +94,25 @@ class ProductTemplateRegistryTest {
     }
 
     @Test
+    void shouldReadRequiredSlotsFromExtractionDeclaration() {
+        // 模板顶层 extraction.required_slots 声明（缺要素判定口径随模板 JSON 声明，零代码）
+        Optional<Map<String, Object>> family = registry.findByCategory("familyBasePrc");
+        assertTrue(family.isPresent());
+        assertTrue(family.get().get("extraction") instanceof Map<?, ?> extraction,
+                "模板应含 extraction 声明块");
+        assertEquals(List.of("monthlyFee", "targetUser", "includeBroadband"),
+                extractionOf(family.get()).get("required_slots"));
+        // 未声明 extraction 的模板返回空集（调用方回落缺省口径）
+        Optional<Map<String, Object>> broadband = registry.findByCategory("broadBandMainPrc");
+        assertTrue(broadband.isPresent());
+        assertFalse(broadband.get().containsKey("extraction"), "未声明模板不应有 extraction 键");
+    }
+
+    private Map<?, ?> extractionOf(Map<String, Object> template) {
+        return (Map<?, ?>) template.get("extraction");
+    }
+
+    @Test
     void listShouldReturnPublishedSummaries() {
         List<Map<String, Object>> summaries = registry.list();
         assertEquals(7, summaries.size());

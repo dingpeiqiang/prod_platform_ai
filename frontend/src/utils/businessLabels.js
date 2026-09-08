@@ -66,6 +66,7 @@ const PARAM_LABELS = {
   document_text: '文档内容',
   patches: '候选方案',
   compliance_pass: '是否通过',
+  compliancePass: '是否通过',
   issues: '风险明细',
   comparisons: '候选方案',
   recommended: '推荐方案',
@@ -73,6 +74,7 @@ const PARAM_LABELS = {
   product_type: '产品品类',
   requirement: '需求',
   draft_details: '草稿明细',
+  parse_details: '解析明细',
   compliance_details: '合规明细',
   work_order_details: '工单明细',
   workOrderCount: '工单数量',
@@ -167,7 +169,7 @@ export function toolOutputEntries(toolName, output) {
   if (!output || typeof output !== 'object') return []
   const entries = []
   if (output.total != null) {
-    entries.push({ key: 'result', label: '风险命中', value: output.total + ' 条' })
+    entries.push({ key: 'result', label: '处理条数', value: output.total + ' 条' })
   }
   if (output.scannedCount != null) {
     entries.push({ key: 'result', label: '扫描', value: output.scannedCount + ' 条' })
@@ -191,11 +193,12 @@ export function toolOutputEntries(toolName, output) {
     entries.push({ key: 'verdict', label: '说明', value: String(output.remark) })
   }
   // ---- 产商品研发助手工具输出 ----
-  if (toolName === 'rd_compliance' && output.compliance_pass != null) {
+  if (toolName === 'rd_compliance' && (output.compliance_pass != null || output.compliancePass != null)) {
+    const pass = output.compliance_pass != null ? output.compliance_pass : output.compliancePass
     entries.push({
       key: 'verdict',
       label: '合规判定',
-      value: output.compliance_pass === true ? '通过' : '未通过',
+      value: pass === true ? '通过' : '未通过',
     })
   }
   if (Array.isArray(output.issues) && (toolName === 'rd_compliance')) {
@@ -216,9 +219,7 @@ export function toolOutputEntries(toolName, output) {
     if (draftName) entries.push({ key: 'target', label: '配置草稿', value: String(draftName) })
   }
   // ---- 配置草稿要素（rd_config_chat 平铺下发，供「输出」行逐项展示数据流） ----
-  if (output.offeringName != null && output.offeringName !== '') {
-    entries.push({ key: 'target', label: '草稿名称', value: String(output.offeringName) })
-  }
+  // offeringName 徽标只出「分析对象」一处（上方 185 行），此处不再重复出「草稿名称」
   if (output.monthlyFee != null && output.monthlyFee !== '') {
     entries.push({ key: 'result', label: '月费', value: String(output.monthlyFee).replace(/\.0$/, '') + ' 元' })
   }

@@ -320,16 +320,19 @@ const fieldSections = computed(() => {
   const fields = formFields.value
   if (!fields.length) return []
   // 模板 schema 自带 sections（分组结构）→ 直接使用
+  // 模板 sections 键契约：{code, label}（后端 ProductTemplateRegistry.buildFormSchema 原样透传），
+  // 兼容历史 {sectionKey, sectionName, fieldCodes} 命名；字段归组优先按字段 sectionKey 码匹配
   const sections = props.formSchema?.sections
   if (Array.isArray(sections) && sections.length) {
     return sections.map((sec, i) => {
+      const secKey = sec.sectionKey || sec.code || sec.key || `sec-${i}`
       const keys = new Set(sec.fieldCodes || sec.fields || [])
-      const secFields = fields.filter((f) => keys.has(f.fieldCode) || (sec.sectionKey && f.sectionKey === sec.sectionKey))
+      const secFields = fields.filter((f) => keys.has(f.fieldCode) || f.sectionKey === (sec.sectionKey || sec.code) || f.section === (sec.sectionKey || sec.code))
       return {
-        key: sec.sectionKey || sec.key || `sec-${i}`,
+        key: secKey,
         label: sec.sectionName || sec.label || `分组${i + 1}`,
         fields: secFields,
-        twoCol: sec.twoCol || (sec.sectionKey || sec.key) === 'base',
+        twoCol: sec.twoCol || secKey === 'baseInfo' || secKey === 'base',
       }
     }).filter((s) => s.fields.length)
   }

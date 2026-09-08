@@ -111,7 +111,8 @@ class ConfigDocImportServiceTest {
 
     @Test
     void batchFromDocumentBytesShouldAppendAuditStepsOnSuccess() {
-        when(extractionService.extractPackages(anyString(), anyList()))
+        // .txt 解析也产出 IR（纯文本段落块），七参 batchFromDocument 走 IR 抽取路径
+        when(extractionService.extractPackagesFromDocument(anyString(), any(), anyList()))
                 .thenReturn(new OpsExtractionService.PackageExtractResult(List.of(
                         Map.of("offeringName", "审计套餐")
                 ), "mock"));

@@ -101,6 +101,19 @@
         }
       }
     },
+    "extraction": {
+      "type": "object",
+      "description": "抽取策略声明（模板驱动，P2-2 扩展）：required_slots 为该品类最小可用要素（field_code 数组），智聊参数抽取环节缺要素判定（missing_slots）依据；未声明回落调用方缺省口径。",
+      "additionalProperties": false,
+      "properties": {
+        "required_slots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "sections": {
       "type": "array",
       "items": {

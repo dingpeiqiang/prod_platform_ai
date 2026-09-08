@@ -72,32 +72,16 @@ public class DefaultUnderstander implements Understander {
     @Nullable
     private final com.sitech.prodai.service.agent.playbook.PlaybookRegistry playbookRegistry;
 
-    @Autowired(required = false)
+    /** 测试/评测便捷入口：最小依赖装配（prompt 内联骨架 + 无参数门 + 无 SOP 注入）。 */
     public DefaultUnderstander(LlmService llmService, List<AgentTool> tools,
                                com.sitech.prodai.mapper.OpsWorkOrderMapper workOrderMapper,
                                com.sitech.prodai.service.agent.flow.FlowIntentRouter flowIntentRouter,
                                com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry capabilityRegistry) {
-        this(llmService, tools, workOrderMapper, flowIntentRouter, capabilityRegistry, null);
+        this(llmService, tools, workOrderMapper, flowIntentRouter, capabilityRegistry, null, null, null);
     }
 
-    @Autowired(required = false)
-    public DefaultUnderstander(LlmService llmService, List<AgentTool> tools,
-                               com.sitech.prodai.mapper.OpsWorkOrderMapper workOrderMapper,
-                               com.sitech.prodai.service.agent.flow.FlowIntentRouter flowIntentRouter,
-                               com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry capabilityRegistry,
-                               @Nullable IntentPromptAssembler promptAssembler) {
-        this(llmService, tools, workOrderMapper, flowIntentRouter, capabilityRegistry, promptAssembler, null, null);
-    }
-
-    public DefaultUnderstander(LlmService llmService, List<AgentTool> tools,
-                               com.sitech.prodai.mapper.OpsWorkOrderMapper workOrderMapper,
-                               com.sitech.prodai.service.agent.flow.FlowIntentRouter flowIntentRouter,
-                               com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry capabilityRegistry,
-                               @Nullable IntentPromptAssembler promptAssembler,
-                               @Nullable ParamCompletionGate paramGate) {
-        this(llmService, tools, workOrderMapper, flowIntentRouter, capabilityRegistry, promptAssembler, paramGate, null);
-    }
-
+    /** Spring 主装配：全参注入（prompt 组装器/参数门/SOP 手册注册表均可空降级）。 */
+    @Autowired
     public DefaultUnderstander(LlmService llmService, List<AgentTool> tools,
                                com.sitech.prodai.mapper.OpsWorkOrderMapper workOrderMapper,
                                com.sitech.prodai.service.agent.flow.FlowIntentRouter flowIntentRouter,

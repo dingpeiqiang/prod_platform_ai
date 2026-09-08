@@ -345,6 +345,9 @@ public class ProductTemplateRegistry {
             out.put("ruleDescription", field.get("rule_description"));
         }
         out.put("section", field.get("section"));
+        // sectionKey：前端工作台分节渲染匹配键（ProductConfigWorkbench.fieldSections 以
+        // f.sectionKey === sec.sectionKey 归组；sections 仅声明 code，此处按 section 码对齐下发）
+        out.put("sectionKey", field.get("section"));
         out.put("fieldClass", field.get("field_class"));
         // enum_map：草稿值域取 display（契约：无 enum_map 视为 display=value 透传）
         Map<String, Object> enumConfig = castMap(field.get("enum_config"));

@@ -84,6 +84,11 @@ public class RdDraftExtractTool implements AgentTool {
                         .type("string")
                         .source("question")
                         .build(),
+                ToolParam.builder("document")
+                        .label("结构化文档")
+                        .description("上一步文档解析产出的结构化文档 IR（blocks：heading/paragraph/table）；有值时表格块表头映射直通、段落块 LLM 抽取")
+                        .type("object")
+                        .build(),
                 ToolParam.builder("product_type")
                         .label("产品品类")
                         .description("可选，产品品类码（category_code，如 familyBasePrc）；未提供时由模板 matchers 兜底识别")
@@ -115,14 +120,18 @@ public class RdDraftExtractTool implements AgentTool {
     @Override
     public ExecutionResult execute(Map<String, Object> params) {
         String docText = params != null ? String.valueOf(params.getOrDefault("document_text", "")) : "";
-        log.info("[AgentTool] rd_draft_extract 执行: hasDocText={}, docLen={}", !docText.isBlank(), docText.length());
-        if (docText == null || docText.isBlank() || "null".equals(docText)) {
+        Object document = params != null ? params.get("document") : null;
+        boolean hasDocument = document instanceof Map<?, ?> doc && !((Map<?, ?>) doc).isEmpty();
+        log.info("[AgentTool] rd_draft_extract 执行: hasDocText={}, docLen={}, hasDocumentIR={}",
+                !docText.isBlank(), docText.length(), hasDocument);
+        if ((docText == null || docText.isBlank() || "null".equals(docText)) && !hasDocument) {
             return ExecutionResult.fail(getName(), "缺少文档文本（需上一步文档解析产出）");
         }
         try {
-            // 抽取：LLM 优先（分段抽取合并去重），正则兜底
-            OpsExtractionService.PackageExtractResult extracted =
-                    extractionService.extractPackages(docText, List.of());
+            // 抽取：结构化文档 IR 优先（表格直通 + 段落链路）；无 IR 走纯文本链路（LLM 优先分段，正则兜底）
+            OpsExtractionService.PackageExtractResult extracted = hasDocument
+                    ? extractionService.extractPackagesFromDocument(docText, (Map<String, Object>) document, List.of())
+                    : extractionService.extractPackages(docText, List.of());
             List<Map<String, Object>> pkgs = extracted.packages();
             String extractEngine = extracted.engine();
 

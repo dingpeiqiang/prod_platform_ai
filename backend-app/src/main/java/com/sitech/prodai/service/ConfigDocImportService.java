@@ -81,9 +81,18 @@ public class ConfigDocImportService {
             return fail;
         }
         Map<String, Object> body = batchFromDocument(parsed.text(), null,
-                graphSupplier, extractionService, deriveEngine, complianceChecker, messageProjector, opsRules);
+                graphSupplier, extractionService, deriveEngine, complianceChecker, messageProjector, opsRules,
+                parsed.document() == null ? null : parsed.document().toMap());
         body.put("parseEngine", parsed.engine());
         body.put("fileName", fileName);
+        // 解析全文随批次响应透出：编排层手册链路（rd_doc_parse → rd_draft_extract）
+        // 依赖该键做跨工具数据流承接（input_from: rd_doc_parse.document_text）
+        body.put("document_text", parsed.text());
+        // 结构化文档 IR 同步透出：下游（表格直通抽取/分片/前端概要）按需消费 document 键，
+        // document_text 保留为 IR 的纯文本投影（双轨渐进迁移，承接链不断）
+        if (parsed.document() != null) {
+            body.put("document", parsed.document().toMap());
+        }
         body.put("extractedChars", parsed.text() == null ? 0 : parsed.text().length());
         String traceId = "cfg-batch-" + Instant.now().toEpochMilli();
         auditAppender.accept(traceId, Map.of(
@@ -131,6 +140,8 @@ public class ConfigDocImportService {
 
     /**
      * 智读主链路：文档文本（或外部已抽取包）→ 派生 → 合规 → 置信度排序。
+     * <p>六参重载为既有入口（无 IR，抽取走纯文本链路）；七参重载透传结构化文档 IR，
+     * 抽取走表格直通 + 段落链路（Document IR 路径）。
      */
     public Map<String, Object> batchFromDocument(String documentText, List<Map<String, Object>> packages,
                                                  GraphSupplier graphSupplier,
@@ -139,13 +150,26 @@ public class ConfigDocImportService {
                                                  ComplianceChecker complianceChecker,
                                                  ConfigMessageProjector messageProjector,
                                                  OpsRulesService opsRules) {
+        return batchFromDocument(documentText, packages, graphSupplier, extractionService, deriveEngine,
+                complianceChecker, messageProjector, opsRules, null);
+    }
+
+    public Map<String, Object> batchFromDocument(String documentText, List<Map<String, Object>> packages,
+                                                 GraphSupplier graphSupplier,
+                                                 OpsExtractionService extractionService,
+                                                 TemplateDeriveEngine deriveEngine,
+                                                 ComplianceChecker complianceChecker,
+                                                 ConfigMessageProjector messageProjector,
+                                                 OpsRulesService opsRules,
+                                                 Map<String, Object> document) {
         Map<String, Object> graph = graphSupplier.loadGraph();
         List<Map<String, Object>> pkgs = packages;
         String extractEngine = "provided";
         if (pkgs == null || pkgs.isEmpty()) {
             pkgs = List.of();
-            OpsExtractionService.PackageExtractResult extracted =
-                    extractionService.extractPackages(documentText, List.of());
+            OpsExtractionService.PackageExtractResult extracted = document != null
+                    ? extractionService.extractPackagesFromDocument(documentText, document, List.of())
+                    : extractionService.extractPackages(documentText, List.of());
             pkgs = extracted.packages();
             extractEngine = extracted.engine();
         }

@@ -78,12 +78,46 @@ class PlaybookRegistryTest {
     void chatConfigureAndDiscoverHaveStepsToolsTriggers() {
         Map<String, Object> chat = registry.get("chat-configure");
         assertEquals("对话式配置草稿生成", chat.get("title"));
-        assertTrue(chat.get("steps") instanceof List<?> s && s.size() == 4, "智聊手册应 4 步（品类/生成/合规/开单）");
+        assertTrue(chat.get("steps") instanceof List<?> s && s.size() == 5,
+                "智聊手册应 5 步（品类/抽取/生成/合规/开单）");
+        // 品类先行：品类决定抽取模板与 required_slots 缺要素口径（品类→抽取→生成→合规→开单）
+        if (chat.get("steps") instanceof List<?> steps) {
+            assertEquals("rd_category_resolve", ((Map<?, ?>) steps.get(0)).get("tool"),
+                    "第 1 步应为品类识别（品类决定抽取模板）");
+            assertEquals("rd_slot_extract", ((Map<?, ?>) steps.get(1)).get("tool"),
+                    "第 2 步应为参数抽取（承接品类码按模板判缺要素）");
+        }
         assertEquals("rd", ((Map<?, ?>) chat.get("applies_to")).get("scene"), "智聊手册适用 rd 场景");
 
         Map<String, Object> discover = registry.get("discover-history");
         assertEquals("历史配置检索复用", discover.get("title"));
         assertTrue(discover.get("steps") instanceof List<?> s && s.size() == 2, "智查手册应 2 步（检索/整理，需求解析内联检索）");
+    }
+
+    @Test
+    void chatConfigureNarrowsTriggersToHighConfidenceTerms() {
+        // 触发词收窄（去误判）：泛用短语（做个/做一个/来一个/来一套）从触发词移除，
+        // 语义判定交给理解层 LLM 按 intent_guide + examples 样例识别
+        assertNull(registry.matchTrigger("rd", "上次配的那个套餐做一个对比"),
+                "泛用短语「做一个」已收窄，对比话术不误直达智聊");
+        assertNull(registry.matchTrigger("rd", "为什么做一个套餐要填这么多要素"),
+                "咨询话术不因「做一个」误直达智聊");
+        // 高置信术语级触发词保留
+        assertEquals("chat-configure", registry.matchTrigger("rd", "帮我配置一个月费128的家庭套餐"),
+                "高置信词「配置一个」仍快筛直达");
+        assertEquals("chat-configure", registry.matchTrigger("rd", "生成配置草稿"),
+                "高置信词「生成配置」仍快筛直达");
+    }
+
+    @Test
+    void chatConfigureDeclaresExamplesAndIntentGuide() {
+        // examples 正反样例（few-shot）随 SOP 注入理解层：LLM 语义识别替代触发词判别
+        String sop = registry.renderSop("chat-configure");
+        assertNotNull(sop);
+        assertTrue(sop.contains("判定样例"), () -> "声明了 examples 应输出样例段: " + sop);
+        assertTrue(sop.contains("不应选本手册"), () -> "应含反例段: " + sop);
+        assertTrue(sop.contains("查一下有没有类似的校园套餐"), () -> "反例应含智查易混淆话术: " + sop);
+        assertTrue(sop.contains("意图归口"), () -> "声明了 intent_guide 应输出归口段: " + sop);
     }
 
     @Test
@@ -105,7 +139,7 @@ class PlaybookRegistryTest {
         // 工具名单注入后重载：七本手册引用的工具均已注册 → 引用可解析、零问题
         registry.registerKnownTools(java.util.Set.of(
                 "rd_doc_parse", "rd_draft_extract", "rd_compliance", "rd_workorder_create",
-                "rd_category_resolve", "rd_draft_generate", "rd_config_search",
+                "rd_category_resolve", "rd_draft_generate", "rd_config_search", "rd_slot_extract",
                 "sparql_query", "swrl_root_cause", "swrl_risk_audit", "ontology_explain", "rule_explain"));
         registry.reload();
         assertTrue(registry.problems().isEmpty(), () -> "引用的工具均已注册，装载应零问题: " + registry.problems());
@@ -193,12 +227,25 @@ class PlaybookRegistryTest {
 
     @Test
     void unrelatedIntentAndToolDoesNotRoute() {
-        // 路由只认业务意图：工具名不再参与匹配（applies_to.tools 与 route toolHit 已退役），
-        // 工具兜底（LLM 自选工具 ≠ 认领整本手册）不升级走手册链路
-        assertNull(registry.route("rd", "RD_DRAFT_MANAGE", List.of("rd_draft_manage")),
-                "意图与工具均不在适用域 → 不路由");
+        // 路由只认业务意图：非工具名推导的任意意图码 + 工具不在手册链 → 不路由
         assertNull(registry.route("rd", "SOME_OTHER_INTENT", List.of("rd_doc_parse")),
                 "仅工具命中、意图未命中 → 不路由（工具名不具备业务分流权）");
+    }
+
+    @Test
+    void toolDerivedIntentCodesRouteByPlanToolChainIntersection() {
+        // rd 场景意图码是工具名推导（RD_<TOOL>，非手册 intents 业务码）：LLM 照注入的 SOP
+        // 办事但只自选了手册工具链上的部分工具（如智聊 5 步只选了品类/抽取/生成三环），
+        // 意图升级判定借工具链认领——计划工具与手册步骤工具交集命中即升级（原 RD_CONFIG_CHAT
+        // 永不相等导致 rd 场景升级通道结构性失效，实测截图只走动态编排三工具的根因）
+        assertEquals("chat-configure",
+                registry.route("rd", "RD_CATEGORY_RESOLVE", List.of("rd_category_resolve", "rd_slot_extract", "rd_draft_generate")),
+                "工具推导意图 + 计划工具命中智聊手册工具链 → 升级智聊（补齐合规/开单环节）");
+        assertEquals("doc-batch-import",
+                registry.route("rd", "RD_DOC_PARSE", List.of("rd_doc_parse")),
+                "工具推导意图 + 计划工具命中智读手册工具链 → 升级智读");
+        assertNull(registry.route("rd", "RD_DRAFT_MANAGE", List.of("rd_draft_manage")),
+                "rd_draft_manage 不在任何手册工具链 → 不路由（工具兜底不升级语义保留）");
     }
 
     // ── 触发词快筛（入口三级瀑布第一级） ──

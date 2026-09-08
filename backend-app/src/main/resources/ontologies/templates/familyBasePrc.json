@@ -35,6 +35,9 @@
     ],
     "priority": 20
   },
+  "extraction": {
+    "required_slots": ["monthlyFee", "targetUser", "includeBroadband"]
+  },
   "sections": [
     {
       "code": "familyInfo",

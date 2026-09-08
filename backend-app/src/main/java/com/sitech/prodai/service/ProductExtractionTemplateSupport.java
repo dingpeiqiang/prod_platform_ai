@@ -43,6 +43,26 @@ public class ProductExtractionTemplateSupport {
         return registry.matchCategory(text);
     }
 
+    /**
+     * 品类必抽要素声明（P2-2 配置化扩展）：读激活模板顶层 {@code extraction.required_slots}
+     * （field_code 数组；模板 extends 合并后按顶层键浅覆盖，子模板声明即生效）。
+     * 未声明/品类无效返回空集（调用方回落缺省口径，如对话配置的「月费+客群」）。
+     * <p>用途：智聊参数抽取环节的缺要素判定（missing_slots），替代提示词人肉枚举——
+     * 新品类的最小可用要素随模板 JSON 声明，零代码。
+     */
+    public Set<String> requiredSlots(String categoryCode) {
+        if (categoryCode == null || categoryCode.isBlank()) {
+            return Set.of();
+        }
+        return registry.findByCategory(categoryCode)
+                .map(t -> t.get("extraction") instanceof Map<?, ?> extraction
+                        && extraction.get("required_slots") instanceof List<?> list
+                        ? list.stream().map(this::str).filter(s -> !s.isBlank())
+                                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new))
+                        : java.util.Set.<String>of())
+                .orElse(java.util.Set.of());
+    }
+
     /** 动态可抽取槽位键：基础集 ∪ 模板 draft 字段 field_code 并集（品类无关，白名单安全）。 */
     public Set<String> extractableSlotKeys() {
         Set<String> keys = new LinkedHashSet<>(BASE_SLOT_KEYS);

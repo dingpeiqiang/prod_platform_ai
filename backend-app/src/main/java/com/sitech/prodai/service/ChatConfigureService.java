@@ -958,7 +958,20 @@ public class ChatConfigureService {
     }
 
     public Map<String, Object> chatConfigure(String text, Map<String, Object> draft) {
-        OpsExtractionService.SlotExtractResult extracted = extractionService.extractSlots(text == null ? "" : text);
+        return chatConfigure(text, draft, null);
+    }
+
+    /**
+     * 聊天配置（支持上游槽位透传）：{@code preSlots} 非空时跳过内部抽取
+     * （智聊手册化后 rd_slot_extract 环节已抽，省一次 LLM 调用），否则内部兜底抽取
+     * （动态编排入口不受影响）。合并策略：preSlots 为基准，内部仍以原话补抽缺失键
+     * （上游仅透传已确认槽位，未携带键不视为「话术未提及」）。
+     */
+    public Map<String, Object> chatConfigure(String text, Map<String, Object> draft, Map<String, Object> preSlots) {
+        boolean hasPreSlots = preSlots != null && !preSlots.isEmpty();
+        OpsExtractionService.SlotExtractResult extracted = hasPreSlots
+                ? new OpsExtractionService.SlotExtractResult(new LinkedHashMap<>(preSlots), "upstream")
+                : extractionService.extractSlots(text == null ? "" : text);
         Map<String, Object> slots = extracted.slots();
         Map<String, Object> infer = deriveEngine.derive(slots, draft, loadGraph());
         @SuppressWarnings("unchecked")

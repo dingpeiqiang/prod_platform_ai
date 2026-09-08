@@ -324,7 +324,7 @@ public final class TraceSnapshotBuilder {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("from_step", "intent");
         List<String> missing = plan.getClarify() != null ? plan.getClarify() : List.of();
-        out.put("missing_params", String.join("、", missing));
+        out.put("missing_params", missing);
         Map<String, Object> known = planIntentView(plan);
         if (known.size() > 1) {
             out.put("structured_intent", known);
@@ -514,7 +514,7 @@ public final class TraceSnapshotBuilder {
         switch (tool == null ? "" : tool) {
             case "sparql_query" -> { // 事实查询（market-insight/root-cause/risk-audit/online-check 首步）
                 int hits = data.get("entity_ids") instanceof List<?> ids ? ids.size() : 0;
-                output.put("hitCount", hits);
+                output.put("total", hits);
                 String answer = str(data.get("nl_answer"));
                 if (!answer.isBlank() && !"null".equals(answer)) {
                     output.put("summary", firstChars(answer, 60));
@@ -584,7 +584,7 @@ public final class TraceSnapshotBuilder {
             case "rd_config_search" -> { // 历史配置检索（discover-history 链路）
                 int hits = data.get("items") instanceof List<?> l ? l.size()
                         : data.get("entity_ids") instanceof List<?> ids ? ids.size() : 0;
-                output.put("hitCount", hits);
+                output.put("total", hits);
                 // 命中明细随步骤输出透出（名称/月费/状态/品类要素），供前端渲染可点击的配置卡片
                 if (data.get("items") instanceof List<?> list && !list.isEmpty()) {
                     output.put("items", list.stream().limit(DETAIL_LIMIT).toList());
@@ -594,17 +594,253 @@ public final class TraceSnapshotBuilder {
                         ? firstChars(answer, 60)
                         : hits > 0 ? "检索到 " + hits + " 条配置方案" : "未找到匹配的历史配置");
             }
-            default -> {
-                // rd 原子工具等未登记分支：全量摘要（summary 取 nl_answer 首段），输入承接上一步
-                String answer = str(data.get("nl_answer"));
-                if (!answer.isBlank() && !"null".equals(answer)) {
-                    output.put("summary", firstChars(answer, 60));
-                    return io(input, output);
+            case "rd_doc_parse" -> { // 文档解析（智读链路环节①）
+                String parseEngine = str(data.get("parseEngine"));
+                Object chars = data.get("extractedChars");
+                if (!parseEngine.isBlank() && !"null".equals(parseEngine)) {
+                    output.put("parseEngine", parseEngine);
                 }
-                return Map.of();
+                if (chars instanceof Number n) {
+                    output.put("extractedChars", n.intValue());
+                }
+                // 结构化文档 IR 概要（表格块/sheet 名）：随解析明细透出，供用户确认解析结构完整性
+                DocumentIrSummary ir = documentIrSummary(data.get("document"));
+                if (ir != null) {
+                    output.put("document", data.get("document"));
+                }
+                // 解析明细（结构化行：文件名 + 引擎 + 字符数），前端按统一 schema 渲染
+                List<Map<String, Object>> parseRows = new ArrayList<>();
+                if (data.get("fileDetails") instanceof List<?> details && !details.isEmpty()) {
+                    int seq = 0;
+                    for (Object d : details.stream().limit(DETAIL_LIMIT).toList()) {
+                        if (d instanceof Map<?, ?> fd) {
+                            String engine = str(fd.get("parse_engine"));
+                            Object c = fd.get("extracted_chars");
+                            parseRows.add(detailRow(++seq, str(fd.get("file_name")), null,
+                                    "引擎 " + (engine.isBlank() ? parseEngine : engine)
+                                            + (c instanceof Number cn ? "，抽取 " + cn.intValue() + " 字" : "")));
+                        }
+                    }
+                } else if (!str(data.get("fileName")).isBlank() && !"null".equals(str(data.get("fileName")))) {
+                    parseRows.add(detailRow(1, str(data.get("fileName")), null,
+                            "引擎 " + parseEngine + (chars instanceof Number n ? "，抽取 " + n.intValue() + " 字" : "")));
+                } else if (ir != null) {
+                    parseRows.add(detailRow(1, "文档解析", null, "引擎 " + parseEngine
+                            + (chars instanceof Number n ? "，抽取 " + n.intValue() + " 字" : "")));
+                }
+                // 无 fileDetails/fileName 的纯文本/IR 链路：按 IR 块结构逐表给明细（多 sheet 不再合并成一行长文本）
+                if (parseRows.isEmpty() && ir != null) {
+                    int seq = 0;
+                    for (String tableTitle : ir.tableTitles) {
+                        parseRows.add(detailRow(++seq, tableTitle, null,
+                                "表格 " + ir.tableColCounts.get(seq - 1) + " 列"));
+                    }
+                }
+                if (!parseRows.isEmpty()) {
+                    output.put("parse_details", parseRows);
+                }
+                String fileName = str(data.get("fileName"));
+                StringBuilder summary = new StringBuilder();
+                if (!fileName.isBlank() && !"null".equals(fileName)) {
+                    summary.append(fileName).append("：");
+                }
+                summary.append("已解析文档");
+                if (!parseEngine.isBlank() && !"null".equals(parseEngine)) {
+                    summary.append("（引擎 ").append(parseEngine);
+                    if (chars instanceof Number n) {
+                        summary.append("，抽取 ").append(n.intValue()).append(" 字");
+                    }
+                    summary.append("）");
+                }
+                if (ir != null) {
+                    summary.append(ir.structureLabel);
+                }
+                output.put("summary", summary.toString());
+            }
+            case "rd_draft_extract" -> { // 套餐抽取（智读链路环节②）
+                output.put("extractEngine", str(data.get("extractEngine")));
+                int total = data.get("total") instanceof Number n ? n.intValue()
+                        : data.get("items") instanceof List<?> l ? l.size() : 0;
+                int passed = data.get("passedCount") instanceof Number n ? n.intValue() : 0;
+                output.put("total", total);
+                output.put("passedCount", passed);
+                output.put("pendingCount", data.get("pendingCount") instanceof Number n ? n.intValue() : total - passed);
+                // 逐条套餐要素明细（结构化行：名称/月费/合规预判/原文摘录），前端按统一 schema 渲染
+                if (data.get("items") instanceof List<?> list && !list.isEmpty()) {
+                    List<Map<String, Object>> detailRows = new ArrayList<>();
+                    int seq = 0;
+                    for (Object o : list.stream().limit(DETAIL_LIMIT).toList()) {
+                        if (!(o instanceof Map<?, ?> item)) {
+                            continue;
+                        }
+                        String name = "";
+                        Object fee = null;
+                        if (item.get("draft") instanceof Map<?, ?> draft) {
+                            name = firstNonBlank(str(draft.get("offeringName")), str(draft.get("offerName")));
+                            fee = draft.get("monthlyFee") != null ? draft.get("monthlyFee") : draft.get("fixedFeeAmount");
+                        }
+                        String excerpt = str(item.get("sourceExcerpt"));
+                        String extra = fee != null ? "月费 " + fee + " 元" : "";
+                        if (!excerpt.isBlank()) {
+                            extra = extra.isBlank() ? firstChars(excerpt, 40) : extra + "｜原文：" + firstChars(excerpt, 40);
+                        }
+                        detailRows.add(detailRow(++seq, name.isBlank() ? "草稿" : name,
+                                Boolean.TRUE.equals(item.get("compliancePass")) ? "预判通过" : "待修正", extra));
+                    }
+                    output.put("draft_details", detailRows);
+                }
+                String answer = str(data.get("nl_answer"));
+                output.put("summary", !answer.isBlank() && !"null".equals(answer)
+                        ? firstChars(answer, 60) : "已抽取 " + total + " 条套餐草稿");
+            }
+            case "rd_compliance" -> { // 合规校验（智读批量 / 智聊单草稿）
+                if (data.get("items") instanceof List<?> list && !list.isEmpty()) {
+                    // 批量形态：计数 + 逐条结论明细（结构化行：名称/结论/问题规则编号）
+                    output.put("total", data.get("total"));
+                    output.put("passedCount", data.get("passedCount"));
+                    output.put("pendingCount", data.get("pendingCount"));
+                    List<Map<String, Object>> detailRows = new ArrayList<>();
+                    int seq = 0;
+                    for (Object o : list.stream().limit(DETAIL_LIMIT).toList()) {
+                        if (!(o instanceof Map<?, ?> item)) {
+                            continue;
+                        }
+                        String name = "";
+                        if (item.get("draft") instanceof Map<?, ?> draft) {
+                            name = firstNonBlank(str(draft.get("offeringName")), str(draft.get("offerName")));
+                        }
+                        String issuePart = "";
+                        if (item.get("issues") instanceof List<?> issues && !issues.isEmpty()) {
+                            issuePart = issues.stream()
+                                    .map(i -> i instanceof Map<?, ?> im ? str(im.get("ruleId")) : str(i))
+                                    .filter(s -> !s.isBlank() && !"null".equals(s))
+                                    .limit(DETAIL_LIMIT)
+                                    .reduce((a, b) -> a + "、" + b)
+                                    .map(ids -> "问题规则 " + ids)
+                                    .orElse("");
+                        }
+                        detailRows.add(detailRow(++seq, name.isBlank() ? "草稿" : name,
+                                Boolean.TRUE.equals(item.get("compliancePass")) ? "通过" : "未通过", issuePart));
+                    }
+                    output.put("compliance_details", detailRows);
+                } else if (data.get("config") instanceof Map<?, ?> config) {
+                    // 单草稿形态：校验结论 + 问题规则编号
+                    output.put("compliancePass", data.get("compliance_pass"));
+                    if (config.get("issues") instanceof List<?> issues) {
+                        List<String> ruleIds = issues.stream()
+                                .map(i -> i instanceof Map<?, ?> im ? str(im.get("ruleId")) : str(i))
+                                .filter(s -> !s.isBlank() && !"null".equals(s))
+                                .limit(DETAIL_LIMIT)
+                                .toList();
+                        if (!ruleIds.isEmpty()) {
+                            output.put("issueRules", ruleIds);
+                        }
+                    }
+                }
+                String answer = str(data.get("nl_answer"));
+                output.put("summary", !answer.isBlank() && !"null".equals(answer)
+                        ? firstChars(answer, 60) : "已完成合规校验");
+            }
+            case "rd_workorder_create" -> { // 批量落库开单（智读/智聊链路终点）
+                output.put("workOrderCount", data.get("workOrderCount") instanceof Number n ? n.intValue()
+                        : data.get("workOrders") instanceof List<?> l ? l.size() : 0);
+                // 逐单明细（结构化行：工单号/标题/合规标签），前端按统一 schema 渲染
+                if (data.get("workOrders") instanceof List<?> list && !list.isEmpty()) {
+                    List<Map<String, Object>> detailRows = new ArrayList<>();
+                    int seq = 0;
+                    for (Object o : list.stream().limit(DETAIL_LIMIT).toList()) {
+                        if (!(o instanceof Map<?, ?> wo)) {
+                            continue;
+                        }
+                        String woId = firstNonBlank(str(wo.get("workOrderId")), str(wo.get("id")));
+                        String title = str(wo.get("title"));
+                        detailRows.add(detailRow(++seq, title.isBlank() ? "配置工单" : title,
+                                Boolean.TRUE.equals(wo.get("compliancePass")) ? "已创建" : "稽核未通过",
+                                woId.isBlank() ? "" : "工单号 " + woId));
+                    }
+                    output.put("work_order_details", detailRows);
+                }
+                if (data.get("workOrderFailures") instanceof List<?> failures && !failures.isEmpty()) {
+                    output.put("workOrderFailures", failures.stream().limit(DETAIL_LIMIT).toList());
+                }
+                String answer = str(data.get("nl_answer"));
+                output.put("summary", !answer.isBlank() && !"null".equals(answer)
+                        ? firstChars(answer, 60) : "开单环节完成");
+            }
+            default -> {
+                // rd 原子工具等未登记分支：全量摘要（summary 取 nl_answer 首段）；
+                // 无摘要也保留 from_step 承接链（避免步骤间承接行断裂），输出给缺省文案
+                String answer = str(data.get("nl_answer"));
+                output.put("summary", answer.isBlank() || "null".equals(answer)
+                        ? "已按手册完成本环节处理" : firstChars(answer, 60));
             }
         }
+        // 手册步骤统一携带分支标签（与 plan/generate 步骤结构对齐，规范 §3.1）
+        output.putIfAbsent("branch_taken", "按手册执行");
         return io(input, output);
+    }
+
+    /** 统一明细行 schema（规范 §3.3）：{seq, title, state?, extra?}。 */
+    private static Map<String, Object> detailRow(int seq, String title, String state, String extra) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("seq", seq);
+        row.put("title", title);
+        if (state != null && !state.isBlank()) {
+            row.put("state", state);
+        }
+        if (extra != null && !extra.isBlank()) {
+            row.put("extra", extra);
+        }
+        return row;
+    }
+
+    /**
+     * 手册步骤（sop-step-N）思考快照（规范 §5.3 回放同构）：
+     * 与实时 onStepComplete 落地的思考步骤同构（id/title/content/goal/input/output/trace），
+     * 供 persistTurn 把手册链路的 sop 步骤写入 reasoning_full —— 历史回放不再缺失手册环节。
+     *
+     * @param stepIdx 手册步骤序号（0 起）
+     * @param sopStep 手册步骤结构 {do, how, tool}（parseSopSteps 产出）
+     * @param result  该步骤对应的真实工具执行结果
+     * @param trace   该步骤的留痕（toolTraceOf 产出）
+     * @param io      该步骤的输入/输出视图（stepIoOf 产出）
+     */
+    public static Map<String, Object> sopStepThinking(int stepIdx, Map<String, Object> sopStep,
+                                                      ExecutionResult result,
+                                                      List<Map<String, Object>> trace,
+                                                      Map<String, Object> io) {
+        boolean success = result.isSuccess();
+        String doText = str(sopStep.getOrDefault("do", result.getToolName()));
+        Map<String, Object> step = new LinkedHashMap<>();
+        step.put("id", "sop-step-" + stepIdx);
+        step.put("type", "thinking");
+        step.put("title", "第" + (stepIdx + 1) + "步 " + doText);
+        step.put("content", success ? "已完成：" + doText : "执行失败：" + doText);
+        step.put("status", success ? "done" : "error");
+        step.put("goal", str(sopStep.getOrDefault("tool", "")));
+        if (io != null) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> phaseInput = (Map<String, Object>) io.get("input");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> phaseOutput = (Map<String, Object>) io.get("output");
+            if (success) {
+                if (phaseInput != null && !phaseInput.isEmpty()) {
+                    step.put("input", phaseInput);
+                }
+                if (phaseOutput != null && !phaseOutput.isEmpty()) {
+                    step.put("output", phaseOutput);
+                }
+            } else {
+                step.put("output", Map.of("summary", "执行失败：" + str(result.getErrorMessage())));
+            }
+        }
+        if (!step.containsKey("output")) {
+            step.put("output", Map.of("summary", "已按手册完成本环节处理"));
+        }
+        if (trace != null && !trace.isEmpty()) {
+            step.put("trace", trace);
+        }
+        return step;
     }
 
     private static Map<String, Object> io(Map<String, Object> input, Map<String, Object> output) {
@@ -627,6 +863,70 @@ public final class TraceSnapshotBuilder {
 
     /** 明细列表上限（展示保护，防长列表刷屏）。 */
     private static final int DETAIL_LIMIT = 8;
+
+    /** Document IR 概要（结构化文档解析产物）：块计数 + 表格标题/列数快照。 */
+    private record DocumentIrSummary(int tableCount, int paragraphCount, int headingCount,
+                                     List<String> tableTitles, List<Integer> tableColCounts,
+                                     String structureLabel) {
+    }
+
+    /**
+     * 从工具输出的 document 键（DocumentIR.toMap 形态）提取解析结构概要：
+     * 「N 个工作表/表格 · M 段落 · K 字」式结构标签 + 表格标题明细来源。
+     */
+    private static DocumentIrSummary documentIrSummary(Object documentObj) {
+        if (!(documentObj instanceof Map<?, ?> doc)) {
+            return null;
+        }
+        if (!(doc.get("blocks") instanceof List<?> blocks) || blocks.isEmpty()) {
+            return null;
+        }
+        int tables = 0;
+        int paragraphs = 0;
+        int headings = 0;
+        List<String> tableTitles = new ArrayList<>();
+        List<Integer> tableCols = new ArrayList<>();
+        for (Object o : blocks) {
+            if (!(o instanceof Map<?, ?> b)) {
+                continue;
+            }
+            String type = str(b.get("type"));
+            switch (type) {
+                case "table" -> {
+                    tables++;
+                    String sheet = str(b.get("sheet_name"));
+                    String title = str(b.get("title"));
+                    tableTitles.add(firstNonBlank(sheet.isBlank() ? "" : "工作表：" + sheet,
+                            title.isBlank() ? "" : title)
+                            .isBlank() ? "表格 " + tables : firstNonBlank(
+                            sheet.isBlank() ? "" : "工作表：" + sheet, title));
+                    int cols = b.get("headers") instanceof List<?> h ? h.size()
+                            : b.get("rows") instanceof List<?> r && !r.isEmpty() && r.get(0) instanceof List<?> row
+                            ? row.size() : 0;
+                    tableCols.add(cols);
+                }
+                case "heading" -> headings++;
+                case "paragraph" -> paragraphs++;
+                default -> {
+                }
+            }
+        }
+        if (tables == 0 && paragraphs == 0 && headings == 0) {
+            return null;
+        }
+        List<String> parts = new ArrayList<>();
+        if (tables > 0) {
+            parts.add(tables + " 个表格");
+        }
+        if (headings > 0) {
+            parts.add(headings + " 个标题");
+        }
+        if (paragraphs > 0) {
+            parts.add(paragraphs + " 段落");
+        }
+        return new DocumentIrSummary(tables, paragraphs, headings, tableTitles, tableCols,
+                parts.isEmpty() ? "" : "，结构化 " + String.join(" · ", parts));
+    }
 
     /**
      * 数据查询（NL→SPARQL）过程留痕：让「查询经营数据」步骤展示本体查询的逻辑过程

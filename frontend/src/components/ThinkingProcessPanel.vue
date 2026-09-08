@@ -547,13 +547,14 @@ const isOntologyToolStep = (step) => {
 }
 
 /**
- * 输入区需要隐藏的内部噪声键（与后端 ThinkingCopy.HIDDEN_INPUT_KEYS 对齐）：
- * 会话号/原始问题/内部码等对业务无意义，不展示。
+ * 输入区需要隐藏的内部噪声键（与后端 ThinkingCopy.HIDDEN_INPUT_KEYS 对齐，后端为唯一事实源）：
+ * 会话号/原始问题/内部码/大文本透传等对业务无意义，不展示。
  * 注意：text/draft/product_type 是 rd 工具的实际入参（配置需求/已有草稿/品类），放行展示。
+ * 防御别名（camelCase 变体/session 简写）保留，防止历史快照中的旧键漏网。
  */
 const HIDDEN_INPUT_KEYS = new Set([
   'session_id', 'sessionId', 'session', 'question', 'intent_type', 'intentType',
-  'action', 'documentText',
+  'action', 'document_text', 'documentText',
   'config', 'maxEntities', 'limit', 'file_id', 'file_ids', 'fileId',
   'file_name', 'fileName',
 ])
@@ -593,7 +594,9 @@ const stepInputText = (step) => {
         .filter(Boolean)
         .join('；'))
     }
-    if (input.missing_params) parts.push(`待补充：${input.missing_params}`)
+    if (input.missing_params != null && input.missing_params !== '') {
+      parts.push(`待补充：${Array.isArray(input.missing_params) ? input.missing_params.join('、') : input.missing_params}`)
+    }
     if (input.requirement) parts.push(String(input.requirement))
     if (parts.length) return parts.join('；')
   }
@@ -727,11 +730,12 @@ const ioOutputSummary = (step) => {
 const ioOutputEntries = (step) => toolOutputEntries('tool', step.io?.output)
 
 /**
- * 「输出」行下的明细列表（后端差异化 output 下发的 *_details 数组）：
- * 每条渲染为独立明细行，前缀取 PARAM_LABELS 业务名（草稿明细/合规明细/工单明细）。
+ * 「输出」行下的明细列表（后端差异化 output 下发的 *_details 结构化数组，规范 §3.3）：
+ * 每条为 {seq, title, state?, extra?}，渲染为「seq. title（extra）[state]」明细行。
+ * 兼容历史快照中的字符串行形态（旧数据直接透传展示）。
  * 无明细数据时返回空数组（不渲染明细块）。
  */
-const OUTPUT_DETAIL_KEYS = ['draft_details', 'compliance_details', 'work_order_details']
+const OUTPUT_DETAIL_KEYS = ['parse_details', 'draft_details', 'compliance_details', 'work_order_details']
 
 const stepOutputDetailLines = (step) => {
   const output = step.io?.output
@@ -739,7 +743,17 @@ const stepOutputDetailLines = (step) => {
   for (const key of OUTPUT_DETAIL_KEYS) {
     const list = output[key]
     if (Array.isArray(list) && list.length) {
-      return list.map((v) => String(v)).filter(Boolean)
+      return list.map((row) => {
+        if (typeof row === 'string') return row
+        if (row && typeof row === 'object') {
+          const seq = row.seq != null ? `${row.seq}. ` : ''
+          const title = row.title != null ? String(row.title) : ''
+          const extra = row.extra ? `（${row.extra}）` : ''
+          const state = row.state ? `【${row.state}】` : ''
+          return `${seq}${title}${extra}${state}`.trim()
+        }
+        return ''
+      }).filter(Boolean)
     }
   }
   return []

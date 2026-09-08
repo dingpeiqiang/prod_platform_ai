@@ -263,6 +263,23 @@
     "slotPatterns": {
       "includeData": [
         { "pattern": "流量\\s*(\\d+(?:\\.\\d+)?)\\s*[Gg](?![Bb])", "group": 1, "template": "{v}GB", "guard": "流量" }
+      ],
+      "monthlyFee": [
+        { "pattern": "月费\\s*(\\d+(?:\\.\\d+)?)", "group": 1 },
+        { "pattern": "(\\d+(?:\\.\\d+)?)\\s*元", "group": 1 }
+      ],
+      "includeBroadband": [
+        { "pattern": "(\\d+)\\s*[Mm](?:宽带)?", "group": 1, "template": "{v}M", "guard": "宽带" },
+        { "pattern": "(\\d+)\\s*[Mm](?:宽带)?", "group": 1, "template": "{v}M", "guard": "家庭" }
+      ],
+      "includeVoice": [
+        { "pattern": "(\\d+)\\s*分钟", "group": 1, "template": "{v}分钟" }
+      ],
+      "discountPercent": [
+        { "pattern": "折扣\\s*(\\d+(?:\\.\\d+)?)\\s*%", "group": 1 }
+      ],
+      "contractMonths": [
+        { "pattern": "(\\d+)\\s*个?月", "group": 1, "guard": "合约" }
       ]
     }
   },

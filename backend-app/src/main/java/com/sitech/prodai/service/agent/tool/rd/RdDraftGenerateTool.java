@@ -80,6 +80,11 @@ public class RdDraftGenerateTool implements AgentTool {
                         .label("已有草稿")
                         .description("待补充/润色的已有配置草稿（可为空）")
                         .type("object")
+                        .build(),
+                ToolParam.builder("slots")
+                        .label("已抽业务参数")
+                        .description("上游 rd_slot_extract 已抽取的结构化槽位（可选；提供时跳过内部二次抽取）")
+                        .type("object")
                         .build()
         );
     }
@@ -128,13 +133,18 @@ public class RdDraftGenerateTool implements AgentTool {
         @SuppressWarnings("unchecked")
         Map<String, Object> draft = params != null && params.get("draft") instanceof Map<?, ?>
                 ? (Map<String, Object>) params.get("draft") : null;
+        @SuppressWarnings("unchecked")
+        Map<String, Object> preSlots = params != null && params.get("slots") instanceof Map<?, ?>
+                ? (Map<String, Object>) params.get("slots") : null;
 
-        log.info("[AgentTool] rd_draft_generate 执行: text={}, categoryCode={}", text, categoryCode);
+        log.info("[AgentTool] rd_draft_generate 执行: text={}, categoryCode={}, hasPreSlots={}",
+                text, categoryCode, preSlots != null && !preSlots.isEmpty());
         if (text == null || text.isBlank() || "null".equals(text)) {
             return ExecutionResult.fail(getName(), "缺少配置需求描述");
         }
         try {
-            Map<String, Object> resp = productOntologyService.chatConfigure(text, draft);
+            Map<String, Object> resp = productOntologyService.chatConfigure(text, draft,
+                    preSlots != null && !preSlots.isEmpty() ? preSlots : null);
             ensureDraftName(resp, text);
             // 补名可能修复 R-C06（资费名称缺失）：对补名后的草稿重跑稽核，刷新结论
             // （落库开单环节在 rd_workorder_create，工单将展示刷新后的稽核结果）

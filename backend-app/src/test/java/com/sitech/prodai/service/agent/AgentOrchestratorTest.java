@@ -790,27 +790,28 @@ class AgentOrchestratorTest {
         when(presenter.present(any(), anyList(), any(SessionContext.class))).thenReturn("手册执行完毕");
         when(presenter.suggestFollowUps(any(), anyList(), any(SessionContext.class))).thenReturn(List.of());
         RecordingEmitter emitter = new RecordingEmitter();
-        orchestrator.processStream("给家庭用户做一个融合套餐，月费158，带500M宽带", "s-slot1", null, "rd", emitter);
+        orchestrator.processStream("配置一个家庭融合套餐，月费158，带500M宽带", "s-slot1", null, "rd", emitter);
 
         // 手册快筛跳过理解层 LLM，无槽位提取：工具契约声明 source=question 的参数
         // （rd_draft_generate 的 text）必须以用户原话自动填充——否则工具因参数缺失
-        // 报「缺少配置需求描述」，四步全部执行失败
+        // 报「缺少配置需求描述」，四步全部执行失败。
+        // 话术用高置信触发词「配置一个」直达（泛用短语「做一个」已按防误判收窄出触发词）
         ArgumentCaptor<QueryPlan> planCaptor = ArgumentCaptor.forClass(QueryPlan.class);
         verify(executor).execute(planCaptor.capture(), any(SessionContext.class), any(Executor.StepListener.class));
         Map<String, Object> params = planCaptor.getValue().getParams();
-        assertEquals("给家庭用户做一个融合套餐，月费158，带500M宽带", params.get("text"),
+        assertEquals("配置一个家庭融合套餐，月费158，带500M宽带", params.get("text"),
                 "手册链路应按契约将 source=question 的 text 参数补为用户原话");
-        assertEquals("给家庭用户做一个融合套餐，月费158，带500M宽带", params.get("question"),
+        assertEquals("配置一个家庭融合套餐，月费158，带500M宽带", params.get("question"),
                 "plan.params 原始 question 键保持不变");
     }
 
     @Test
     void processPlaybookPathFillsQuestionSlotsFromContract() {
-        orchestrator.process("给家庭用户做一个融合套餐，月费158，带500M宽带", "s-slot2", null, "rd");
+        orchestrator.process("配置一个家庭融合套餐，月费158，带500M宽带", "s-slot2", null, "rd");
 
         ArgumentCaptor<QueryPlan> planCaptor = ArgumentCaptor.forClass(QueryPlan.class);
         verify(executor).execute(planCaptor.capture(), any(SessionContext.class));
-        assertEquals("给家庭用户做一个融合套餐，月费158，带500M宽带",
+        assertEquals("配置一个家庭融合套餐，月费158，带500M宽带",
                 planCaptor.getValue().getParams().get("text"),
                 "手册同步链路同样应按契约补齐 source=question 的工具参数");
     }

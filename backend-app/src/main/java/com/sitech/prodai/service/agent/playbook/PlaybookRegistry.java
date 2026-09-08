@@ -260,6 +260,11 @@ public class PlaybookRegistry {
         String firstHit = null;
         String bestByUtterance = null;
         int bestScore = 0;
+        String toolHit = null;
+        // rd 场景意图码为工具名推导（RD_<TOOL> 大写），非手册 intents 业务码：
+        // LLM 照注入的 SOP 办事但自选了手册工具链上的工具（如只选品类/抽取/生成三环），
+        // 编排层升级判定需借工具链认领——计划工具与手册步骤工具求交集即可归属（意图码不可靠）
+        boolean intentIsToolCode = intent != null && intent.toUpperCase().matches("RD_[A-Z_]+");
         for (Map.Entry<String, Map<String, Object>> e : playbooks.entrySet()) {
             Map<String, Object> book = e.getValue();
             if (!(book.get("applies_to") instanceof Map<?, ?> at)) {
@@ -271,6 +276,16 @@ public class PlaybookRegistry {
             }
             boolean intentHit = intent != null && at.get("intents") instanceof List<?> intents
                     && intents.stream().map(this::str).anyMatch(i -> i.equalsIgnoreCase(intent));
+            if (!intentHit && intentIsToolCode) {
+                // 意图码是工具名推导码：按计划工具与手册步骤工具链交集判定
+                List<String> chain = stepTools(book);
+                if (!chain.isEmpty() && toolNames != null && toolNames.stream().anyMatch(chain::contains)) {
+                    intentHit = true;
+                    if (toolHit == null) {
+                        toolHit = e.getKey();
+                    }
+                }
+            }
             if (!intentHit) {
                 continue;
             }
@@ -290,6 +305,22 @@ public class PlaybookRegistry {
             return bestByUtterance;
         }
         return firstHit;
+    }
+
+    /** 手册步骤序列 → 步骤工具名清单（保序，tool 字段即调用语句）。 */
+    private List<String> stepTools(Map<String, Object> book) {
+        List<String> tools = new ArrayList<>();
+        if (book.get("steps") instanceof List<?> steps) {
+            for (Object o : steps) {
+                if (o instanceof Map<?, ?> step) {
+                    String tool = str(step.get("tool")).trim();
+                    if (!tool.isBlank() && !tools.contains(tool)) {
+                        tools.add(tool);
+                    }
+                }
+            }
+        }
+        return tools;
     }
 
     /** intent_guide 归口话术特征与用户话术的词面交集数（小写 substring 计分）。 */
@@ -334,6 +365,16 @@ public class PlaybookRegistry {
                 && at.get("intent_guide") instanceof Map<?, ?> guide && !guide.isEmpty()) {
             sb.append("意图归口（选本手册时 intent 必须从下列码中按话术语义选一个）：\n");
             guide.forEach((k, v) -> sb.append("- ").append(k).append("：").append(v).append('\n'));
+        }
+        if (book.get("applies_to") instanceof Map<?, ?> at
+                && at.get("examples") instanceof Map<?, ?> examples && !examples.isEmpty()) {
+            sb.append("判定样例（按话术语义对照，宁缺毋滥）：\n");
+            if (examples.get("hit") instanceof List<?> hits && !hits.isEmpty()) {
+                sb.append("- 应选本手册：").append(String.join("；", hits.stream().map(this::str).toList())).append('\n');
+            }
+            if (examples.get("negative") instanceof List<?> negatives && !negatives.isEmpty()) {
+                sb.append("- 不应选本手册（易混淆话术归属）：").append(String.join("；", negatives.stream().map(this::str).toList())).append('\n');
+            }
         }
         if (book.get("steps") instanceof List<?> steps) {
             int no = 0;

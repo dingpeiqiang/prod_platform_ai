@@ -94,6 +94,9 @@ public class RdDocParseTool implements AgentTool {
                 ToolOutputField.builder("document_text", ToolOutputField.Role.OTHER)
                         .label("文档文本").type("string")
                         .description("解析出的文档全文（供下一步套餐抽取）").build(),
+                ToolOutputField.builder("document", ToolOutputField.Role.OTHER)
+                        .label("结构化文档").type("object")
+                        .description("解析产出的结构化文档 IR（blocks：heading/paragraph/table，含表格表头与行、sheet 名）").build(),
                 ToolOutputField.builder("items", ToolOutputField.Role.ITEMS)
                         .label("解析明细").type("list")
                         .description("逐文件解析明细（含各文件解析出的草稿原文）").build(),
@@ -243,7 +246,7 @@ public class RdDocParseTool implements AgentTool {
         if (resp.get("items") instanceof List<?> items) {
             out.put("items", items);
         }
-        for (String key : new String[]{"trace_id", "parseEngine", "extractedChars", "fileName"}) {
+        for (String key : new String[]{"trace_id", "parseEngine", "extractedChars", "fileName", "document_text", "document"}) {
             if (resp.get(key) != null) {
                 out.put(key, resp.get(key));
             }

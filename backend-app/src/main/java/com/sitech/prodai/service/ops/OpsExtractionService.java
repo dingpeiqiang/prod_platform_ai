@@ -197,7 +197,7 @@ public class OpsExtractionService {
                             你是电信产商品文档解析助手。从营销/方案文档中抽取套餐列表，只输出 JSON：{"packages":[...]}
                             每个套餐可用字段：offeringName,monthlyFee,includeData,includeVoice,includeBroadband,targetUser,channelScope,bizScenario,offeringType,hasContract,contractMonths,repeatable,discountPercent,dependOn,sourceExcerpt
                             要求：sourceExcerpt 摘录原文短句；未写明的字段省略；不要编造。
-                            
+
                             文档：
                             %s
                             """.formatted(chunk);
@@ -217,6 +217,263 @@ public class OpsExtractionService {
         }
         // 不再灌入校园等演示样例；生产/联调均按文档内容抽取
         return new PackageExtractResult(List.of(), "none");
+    }
+
+    /**
+     * 文档结构化抽取（Document IR 路径）：表格块表头→槽位映射直通（零 LLM 成本、字段不串行），
+     * 段落/标题块走既有 LLM 分片 + 正则兜底链路。
+     *
+     * @param documentText   文档纯文本投影（IR 缺失时的兜底输入）
+     * @param document       结构化文档 IR（{@code ConfigDocumentParser.ParseResult.document().toMap()}），
+     *                       可为 null（旧链路/纯文本输入时走 {@link #extractPackages} 同构逻辑）
+     * @param configFallback 保留兼容；当前不使用样例灌入。
+     */
+    public PackageExtractResult extractPackagesFromDocument(String documentText, Map<String, Object> document,
+                                                            List<Map<String, Object>> configFallback) {
+        List<Map<String, Object>> blocks = document == null ? List.of()
+                : document.get("blocks") instanceof List<?> list ? castListOfMaps(list) : List.of();
+        if (blocks.isEmpty()) {
+            // IR 缺失/空：退回纯文本链路（行为同旧）
+            return extractPackages(documentText, configFallback);
+        }
+        // ① 表格块直通：表头命中槽位词的表格逐行 map（多个 sheet/多表各自独立，不互相污染）
+        List<Map<String, Object>> merged = new ArrayList<>();
+        boolean tableDirect = false;
+        for (Map<String, Object> block : blocks) {
+            if (!"table".equals(str(block.get("type")))) {
+                continue;
+            }
+            List<Map<String, Object>> rows = tableRowsToPackages(block);
+            if (!rows.isEmpty()) {
+                tableDirect = true;
+                merged.addAll(rows);
+            }
+        }
+        // ② 段落块（含无表头的文本）：拼段走既有 LLM 分片 + 正则兜底
+        StringBuilder narrative = new StringBuilder();
+        for (Map<String, Object> block : blocks) {
+            String type = str(block.get("type"));
+            if ("paragraph".equals(type) || "heading".equals(type)) {
+                String text = str(block.get("text"));
+                if (!text.isBlank()) {
+                    if (narrative.length() > 0) {
+                        narrative.append("\n\n");
+                    }
+                    narrative.append(text);
+                }
+            }
+        }
+        String narrativeText = narrative.toString().trim();
+        if (!narrativeText.isBlank() && llmExtractEnabled()) {
+            try {
+                List<String> chunks = splitDocChunks(narrativeText, LLM_DOC_CHUNK_SIZE, LLM_DOC_MAX_CHUNKS);
+                for (String chunk : chunks) {
+                    String prompt = """
+                            你是电信产商品文档解析助手。从营销/方案文档中抽取套餐列表，只输出 JSON：{"packages":[...]}
+                            每个套餐可用字段：offeringName,monthlyFee,includeData,includeVoice,includeBroadband,targetUser,channelScope,bizScenario,offeringType,hasContract,contractMonths,repeatable,discountPercent,dependOn,sourceExcerpt
+                            要求：sourceExcerpt 摘录原文短句；未写明的字段省略；不要编造。
+
+                            文档：
+                            %s
+                            """.formatted(chunk);
+                    String content = llmService.orElseThrow().completePrompt(prompt);
+                    merged.addAll(parsePackageList(content));
+                }
+            } catch (Exception e) {
+                log.warn("[OpsExtractionService] LLM 文档段落抽取失败: {}", e.getMessage());
+            }
+        }
+        if (narrativeText.isBlank() && !tableDirect) {
+            return new PackageExtractResult(List.of(), "empty");
+        }
+        if (merged.isEmpty()) {
+            // 表格未命中槽位词、段落未抽出：正则兜底整段
+            String fallbackText = !narrativeText.isBlank() ? narrativeText
+                    : (documentText == null || documentText.isBlank() ? plainTextOf(blocks) : documentText);
+            List<Map<String, Object>> regexPkgs = parsePackagesByRegex(fallbackText);
+            if (!regexPkgs.isEmpty()) {
+                return new PackageExtractResult(regexPkgs, "regex");
+            }
+            return new PackageExtractResult(List.of(), "none");
+        }
+        String engine = tableDirect && !llmExtractEnabled() ? "table-direct" : "document";
+        return new PackageExtractResult(dedupePackages(merged), engine);
+    }
+
+    /** IR blocks 纯文本兜底投影（表格→TSV 行，段落原样），仅正则兜底时使用。 */
+    private String plainTextOf(List<Map<String, Object>> blocks) {
+        StringBuilder sb = new StringBuilder();
+        for (Map<String, Object> block : blocks) {
+            if ("table".equals(str(block.get("type")))) {
+                List<Map<String, Object>> headers = castListOfMaps(
+                        block.get("headers") instanceof List<?> h ? h : List.of());
+                // headers/rows 为原始值列表（非 map），直接 join
+                if (!headers.isEmpty()) {
+                    sb.append(tsvJoin(headers.stream().map(m -> str(m.get("value"))).toList())).append('\n');
+                }
+                if (block.get("rows") instanceof List<?> rows) {
+                    for (Object row : rows) {
+                        if (row instanceof List<?> cells) {
+                            sb.append(tsvJoin(cellsAsStrings(row))).append('\n');
+                        }
+                    }
+                }
+            } else {
+                String text = str(block.get("text"));
+                if (!text.isBlank()) {
+                    sb.append(text).append("\n\n");
+                }
+            }
+        }
+        return sb.toString().trim();
+    }
+
+    private String tsvJoin(List<String> cells) {
+        return String.join("\t", cells);
+    }
+
+    private List<String> cellsAsStrings(Object row) {
+        List<String> out = new ArrayList<>();
+        if (row instanceof List<?> cells) {
+            for (Object cell : cells) {
+                out.add(str(cell));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * 表格块 → 套餐行：表头列名命中槽位词映射（月费→monthlyFee 等），逐行组装；
+     * 表头未命中任何槽位词（非套餐表）返回空列表（该表交由段落链路兜底，不硬猜）。
+     */
+    private List<Map<String, Object>> tableRowsToPackages(Map<String, Object> block) {
+        Object headersObj = block.get("headers");
+        Object rowsObj = block.get("rows");
+        if (!(headersObj instanceof List<?> headerList) || headerList.isEmpty()
+                || !(rowsObj instanceof List<?> rowList) || rowList.isEmpty()) {
+            return List.of();
+        }
+        List<String> headers = headerList.stream().map(h -> str(h)).toList();
+        // 表头 → 槽位键映射（列名含关键词即命中；同槽位多列时取首个）
+        Map<Integer, String> colSlot = new LinkedHashMap<>();
+        int hits = 0;
+        for (int c = 0; c < headers.size(); c++) {
+            String slot = headerSlotOf(headers.get(c));
+            if (slot != null && colSlot.values().stream().noneMatch(s -> s.equals(slot))) {
+                colSlot.put(c, slot);
+                hits++;
+            }
+        }
+        if (hits < 2) {
+            // 少于 2 列命中视为非套餐表（如纯说明表），不硬猜
+            return List.of();
+        }
+        String sheetName = str(block.get("sheet_name"));
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Object rowObj : rowList) {
+            if (!(rowObj instanceof List<?> rawRow)) {
+                continue;
+            }
+            List<String> row = rawRow.stream().map(v -> str(v)).toList();
+            Map<String, Object> pkg = new LinkedHashMap<>();
+            colSlot.forEach((col, slot) -> {
+                if (col < row.size()) {
+                    Object value = slotValueOf(slot, row.get(col));
+                    if (value != null) {
+                        pkg.put(slot, value);
+                    }
+                }
+            });
+            if (pkg.isEmpty() || !pkg.containsKey("offeringName") && !pkg.containsKey("monthlyFee")) {
+                continue;
+            }
+            // 场景语义按行内容兜底识别（表格行信息少，正则场景词可命中）
+            Map<String, Object> inferred = parseSlotsByRegex(String.join(" ", row));
+            inferred.forEach(pkg::putIfAbsent);
+            pkg.putIfAbsent("sourceExcerpt", tableExcerpt(block, row));
+            out.add(pkg);
+        }
+        return out;
+    }
+
+    /** 列名 → 槽位键（关键词包含式匹配）。 */
+    private String headerSlotOf(String header) {
+        if (header == null || header.isBlank()) {
+            return null;
+        }
+        String h = header.trim();
+        if (containsAny(h, "套餐名", "名称", "资费名")) {
+            return "offeringName";
+        }
+        if (h.contains("月费") || (h.contains("费") && h.contains("元"))) {
+            return "monthlyFee";
+        }
+        if (h.contains("流量") || h.contains("GB") || h.contains("gb")) {
+            return "includeData";
+        }
+        if (h.contains("语音") || h.contains("分钟")) {
+            return "includeVoice";
+        }
+        if (h.contains("宽带")) {
+            return "includeBroadband";
+        }
+        if (h.contains("客群") || h.contains("目标用户") || h.contains("目标客户")) {
+            return "targetUser";
+        }
+        if (h.contains("渠道")) {
+            return "channelScope";
+        }
+        if (h.contains("折扣")) {
+            return "discountPercent";
+        }
+        if (h.contains("合约")) {
+            return "hasContract";
+        }
+        return null;
+    }
+
+    /** 单元格值 → 槽位值（金额转数字、流量/宽带补单位、布尔语义）。 */
+    private Object slotValueOf(String slot, String raw) {
+        String value = raw == null ? "" : raw.trim();
+        if (value.isBlank()) {
+            return null;
+        }
+        switch (slot) {
+            case "monthlyFee", "discountPercent" -> {
+                String digits = value.replaceAll("[^0-9.]", "");
+                if (digits.isBlank()) {
+                    return null;
+                }
+                try {
+                    return Double.parseDouble(digits);
+                } catch (NumberFormatException e) {
+                    return null;
+                }
+            }
+            case "includeData" -> {
+                return value.matches(".*\\d.*") ? value.replace(" ", "")
+                        : value.matches("\\d+") ? value + "GB" : value;
+            }
+            case "includeBroadband" -> {
+                return value.matches("\\d+") ? value + "M" : value.replace(" ", "");
+            }
+            case "includeVoice" -> {
+                return value.matches("\\d+") ? value + "分钟" : value.replace(" ", "");
+            }
+            default -> {
+                return value;
+            }
+        }
+    }
+
+    /** 表格行原文摘录：sheet 名 + 首列值 + 行内容（≤120 字）。 */
+    private String tableExcerpt(Map<String, Object> block, List<String> row) {
+        String sheet = str(block.get("sheet_name"));
+        String title = str(block.get("title"));
+        String scope = !sheet.isBlank() ? "工作表：" + sheet : (!title.isBlank() ? title : "");
+        String line = String.join("｜", row.stream().filter(v -> !v.isBlank()).toList());
+        String text = (scope.isBlank() ? "" : scope + "｜") + line;
+        return text.length() > 120 ? text.substring(0, 120) + "…" : text;
     }
 
     /**
@@ -309,6 +566,8 @@ public class OpsExtractionService {
     /**
      * 无「套餐X：」前缀的单段文档切分：按行（优先空行分组）尝试独立抽取，
      * 每行/组能抽出槽位即成一段；全部失败时回退整篇一段（保持既有行为零漂移）。
+     * <p>TSV 表格直通已退役（去旧留新）：CSV/XLSX 产物现走 Document IR 表格直通
+     * （{@link #extractPackagesFromDocument}），此处仅剩纯文本无前缀段落兜底。
      */
     private List<String> splitSegmentsWithoutPrefix(String documentText) {
         if (!containsAny(documentText, "月费", "套餐", "元", "GB", "流量")) {
@@ -400,6 +659,10 @@ public class OpsExtractionService {
             }
         }
 
+        // 配置模式先行：ops_rules.extraction.slotPatterns 声明的模式优先于内置正则
+        // （配置可覆盖内置行为——「去旧留新」：内置正则降级为出厂缺省，运维改 JSON 即改行为）
+        applyConfiguredSlotPatterns(text, slots);
+
         Matcher dataM = DATA_PATTERN.matcher(text);
         if (dataM.find()) {
             String gb = dataM.group(1) != null ? dataM.group(1) : dataM.group(2);
@@ -477,6 +740,7 @@ public class OpsExtractionService {
         if (text.contains("内部验证")) {
             slots.put("channelScope", "内部验证");
         }
+        // 尾部补漏：内置正则执行后配置模式再次补漏（首部已命中的槽位此轮自然跳过）
         applyConfiguredSlotPatterns(text, slots);
         return slots;
     }
@@ -504,8 +768,9 @@ public class OpsExtractionService {
     }
 
     /**
-     * P2-2 正则通用化：应用 {@code ops_rules.extraction.slotPatterns} 可配置补充模式。
-     * 语义：内置正则优先（已抽取的槽位跳过），配置模式仅补充新变体，保证存量行为零漂移。
+     * P2-2 正则通用化：应用 {@code ops_rules.extraction.slotPatterns} 可配置模式。
+     * 语义（升级）：配置模式在最早期执行——命中即写入槽位，内置正则对已写槽位让位
+     * （putIfAbsent 语义）；这使配置可覆盖内置行为（出厂缺省在代码，调整在 JSON）。
      */
     private void applyConfiguredSlotPatterns(String text, Map<String, Object> slots) {
         for (Map.Entry<String, List<Map<String, Object>>> entry : opsRules.extractionSlotPatterns().entrySet()) {

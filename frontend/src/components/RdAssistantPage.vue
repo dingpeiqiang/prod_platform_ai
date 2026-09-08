@@ -944,13 +944,18 @@ function applyRdToolToPanels(msg) {
   for (const tool of done) {
     const out = tool.output || {}
     const name = tool.name || ''
-    if (name === 'rd_config_chat') {
+    if (name === 'rd_draft_generate' || name === 'rd_config_chat') {
+      // rd_draft_generate 为智聊草稿产出工具（原子化后真名）；rd_config_chat 为旧复合工具名，兼容一个版本
       attachFormCardToMsg(msg, applyRdConfigDraft(out.draft || out.config?.draft))
       // 新开配置工单同样标记为最近操作对象：下一轮工单卡刷新后该条目高亮
       const newWo = String(out?.workOrderId || out?.work_order_id || out?.workOrder?.workOrderId || '')
       if (newWo) msg.lastActedWoId = newWo
       // 右侧配置工作台联动：草稿到达 → 自动打开工作台（对话即工作台）
       tryOpenWorkbenchFromDraft(out.draft || out.config?.draft)
+    } else if (name === 'rd_slot_extract') {
+      // 业务参数抽取环节：缺要素明示（missing_slots 非空时在消息上挂提示，随工单卡/表单卡呈现）
+      const missing = Array.isArray(out.missing_slots) ? out.missing_slots : []
+      if (missing.length && !msg.rdMissingSlots) msg.rdMissingSlots = missing
     } else if (name === 'rd_compliance') {
       attachFormCardToMsg(msg, applyRdCompliance(out.draft || out.config?.draft, out.compliance_pass, out.issues || out.config?.issues))
     } else if (name === 'rd_file_parse') {

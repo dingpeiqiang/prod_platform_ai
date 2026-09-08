@@ -68,7 +68,7 @@ class DefaultUnderstanderTest {
                 ToolParam.builder("keyword").label("检索关键词").required().build());
         List<AgentTool> tools = List.of(sparql, rdDraft, rdDiscover);
         understander = new DefaultUnderstander(llmService, tools, workOrderMapper,
-                flowIntentRouter, new AgentCapabilityRegistry(tools), null, null);
+                flowIntentRouter, new AgentCapabilityRegistry(tools), null, null, null);
     }
 
     // ── fixture 工厂 ──
@@ -505,7 +505,7 @@ class DefaultUnderstanderTest {
                 tool("rd_draft_generate", "ops",
                         ToolParam.builder("requirement").label("需求描述").required().build()));
         understander = new DefaultUnderstander(llmService, tools, workOrderMapper,
-                flowIntentRouter, new AgentCapabilityRegistry(tools), null, null);
+                flowIntentRouter, new AgentCapabilityRegistry(tools), null, null, null);
         llmReturns("{\"intent\":\"product_ops_query | product_ops_reason\","
                 + "\"tools\":[\"sparql_query\",\"rd_draft_generate\"],\"params\":{\"city\":\"北京\"}}");
 
@@ -612,7 +612,7 @@ class DefaultUnderstanderTest {
                 tool("rd_config_search", "query",
                         ToolParam.builder("keyword").label("检索关键词").required().build()));
         understander = new DefaultUnderstander(llmService, tools, workOrderMapper,
-                flowIntentRouter, new AgentCapabilityRegistry(tools), null, null);
+                flowIntentRouter, new AgentCapabilityRegistry(tools), null, null, null);
         llmReturns("{\"intent\":\"product_ops_query\",\"tools\":[\"sparql_query\"],\"params\":{\"city\":\"北京\"}}");
         when(llmService.completePrompt(anyString()))
                 .thenReturn("{\"tools\":[\"rd_config_search\"],\"params\":{\"keyword\":\"套餐\"}}");
@@ -631,7 +631,7 @@ class DefaultUnderstanderTest {
                 tool("rd_config_search", "query",
                         ToolParam.builder("keyword").label("检索关键词").required().build()));
         understander = new DefaultUnderstander(llmService, tools, workOrderMapper,
-                flowIntentRouter, new AgentCapabilityRegistry(tools), null, null);
+                flowIntentRouter, new AgentCapabilityRegistry(tools), null, null, null);
         llmReturns("{\"intent\":\"RD_CONFIG_DISCOVER\",\"tools\":[\"rd_config_search\"],\"params\":{\"keyword\":\"套餐\"}}");
 
         understander.understand("查一下", queryCtx());
@@ -651,7 +651,7 @@ class DefaultUnderstanderTest {
                 tool("rd_config_search", "query",
                         ToolParam.builder("keyword").label("检索关键词").required().build()));
         understander = new DefaultUnderstander(llmService, tools, workOrderMapper,
-                flowIntentRouter, new AgentCapabilityRegistry(tools), null, null);
+                flowIntentRouter, new AgentCapabilityRegistry(tools), null, null, null);
         llmReturns("{\"intent\":\"discover\",\"tools\":[\"rd_config_search\"],\"params\":{\"keyword\":\"39\"}}");
 
         QueryPlan plan = understander.understand("找一下月费39的配置", queryCtx());

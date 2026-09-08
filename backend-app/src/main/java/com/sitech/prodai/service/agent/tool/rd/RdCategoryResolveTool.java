@@ -50,10 +50,10 @@ public class RdCategoryResolveTool implements AgentTool {
         return java.util.Set.of("rd");
     }
 
-    /** 品类识别后的典型业务链：按品类生成草稿（智聊链路下一环节）。 */
+    /** 品类识别后的典型业务链：参数抽取（按本品类模板 required_slots 判定缺要素）→ 草稿生成。 */
     @Override
     public List<String> getHandoffs() {
-        return List.of("rd_draft_generate");
+        return List.of("rd_slot_extract", "rd_draft_generate");
     }
 
     @Override

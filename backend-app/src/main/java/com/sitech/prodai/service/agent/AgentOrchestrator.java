@@ -91,7 +91,6 @@ public class AgentOrchestrator {
                 llmService, tools, flowIntentRouter, chatHumanBridge, sceneFlowRouter, progressBridge, null);
     }
 
-    @Autowired
     public AgentOrchestrator(Understander understander,
                              Executor executor,
                              Presenter presenter,
@@ -104,6 +103,26 @@ public class AgentOrchestrator {
                              SceneFlowRouter sceneFlowRouter,
                              com.sitech.prodai.service.agent.flow.ChatFlowProgressBridge progressBridge,
                              com.sitech.prodai.service.agent.flow.FlowProgressReplayer progressReplayer) {
+        this(understander, executor, presenter, sessionManager, persistenceService,
+                llmService, tools, flowIntentRouter, chatHumanBridge, sceneFlowRouter,
+                progressBridge, progressReplayer, null);
+    }
+
+    @Autowired
+    public AgentOrchestrator(Understander understander,
+                             Executor executor,
+                             Presenter presenter,
+                             SessionManager sessionManager,
+                             Optional<ChatPersistenceService> persistenceService,
+                             Optional<LlmService> llmService,
+                             List<AgentTool> tools,
+                             FlowIntentRouter flowIntentRouter,
+                             ChatHumanBridge chatHumanBridge,
+                             SceneFlowRouter sceneFlowRouter,
+                             com.sitech.prodai.service.agent.flow.ChatFlowProgressBridge progressBridge,
+                             com.sitech.prodai.service.agent.flow.FlowProgressReplayer progressReplayer,
+                             @org.springframework.lang.Nullable
+                             com.sitech.prodai.service.agent.playbook.PlaybookRegistry playbookRegistry) {
         this.understander = understander;
         this.executor = executor;
         this.presenter = presenter;
@@ -128,15 +147,21 @@ public class AgentOrchestrator {
         this.sceneFlowRouter = sceneFlowRouter;
         this.progressBridge = progressBridge;
         this.progressReplayer = progressReplayer;
-        this.playbookRegistry = new com.sitech.prodai.service.agent.playbook.PlaybookRegistry();
-        this.playbookRegistry.init();
+        // PlaybookRegistry 装配收敛（去旧留新）：复用 Spring 单例 Bean（与 SceneFlowRouter/
+        // DefaultUnderstander 同一实例）；未注入时兜底自建（旧构造器链路的测试兼容路径）
+        if (playbookRegistry != null) {
+            this.playbookRegistry = playbookRegistry;
+        } else {
+            this.playbookRegistry = new com.sitech.prodai.service.agent.playbook.PlaybookRegistry();
+            this.playbookRegistry.init();
+        }
         this.toolMap = new ConcurrentHashMap<>();
         if (tools != null) {
             for (AgentTool tool : tools) {
                 this.toolMap.put(tool.getName(), tool);
             }
             // 手册装载门禁（MCP 约束）：工具装配完成后注入名单，手册里的工具引用必须可解析
-            playbookRegistry.registerKnownTools(this.toolMap.keySet());
+            this.playbookRegistry.registerKnownTools(this.toolMap.keySet());
         }
     }
 
@@ -372,7 +397,7 @@ public class AgentOrchestrator {
                 || QueryPlan.INTENT_REUSE_EVIDENCE.equals(intent)) {
             return null;
         }
-        String playbookCode = playbookRegistry.route(context.getScene(), intent, List.of(),
+        String playbookCode = playbookRegistry.route(context.getScene(), intent, plan.getTools(),
                 plan.getUserQuestion());
         if (playbookCode == null) {
             return null;
@@ -402,6 +427,8 @@ public class AgentOrchestrator {
         fillQuestionSlots(tools, planParams, question);
         QueryPlan plan = new QueryPlan(intent, tools, planParams, question);
         plan.setUserQuestion(question);
+        // 手册步骤结构随 plan 下传：persistTurn 据此把 sop-step-N 写入 reasoning_full（回放同构）
+        plan.setSopSteps(parseSopSteps(playbookRegistry.renderSop(playbookCode)));
         // 手册步骤声明 input_from 时构建依赖编排（跨工具数据流：result: 来源解析，
         // 如智聊链路开单承接草稿生成/合规校验产出）；未声明时保持 direct 全参透传
         List<com.sitech.prodai.service.agent.model.ExecStep> execSteps = playbookExecSteps(book, tools);
@@ -458,7 +485,7 @@ public class AgentOrchestrator {
                 || QueryPlan.INTENT_REUSE_EVIDENCE.equals(intent)) {
             return false;
         }
-        String playbookCode = playbookRegistry.route(context.getScene(), intent, List.of(),
+        String playbookCode = playbookRegistry.route(context.getScene(), intent, plan.getTools(),
                 plan.getUserQuestion());
         if (playbookCode == null) {
             return false;
@@ -496,7 +523,8 @@ public class AgentOrchestrator {
         intentExtra.put("input", Map.of("question", question));
         intentExtra.put("output", Map.of(
                 "summary", "已明确：本次要执行「" + bookTitle + "」",
-                "structured_intent", Map.of("action", bookTitle, "playbook", playbookCode)));
+                "structured_intent", Map.of("action", bookTitle),
+                "playbook", playbookCode));
         intentExtra.put("trace", List.of(Map.of(
                 "stage", "sop",
                 "message", "话术命中手册「" + bookTitle + "」触发词，按标准作业程序执行（跳过意图识别）")));
@@ -514,7 +542,7 @@ public class AgentOrchestrator {
         int sopStepCount = Math.max(sopSteps.size(), 1);
         Map<String, Object> planExtra = new LinkedHashMap<>();
         planExtra.put("goal", "照手册办事：" + bookTitle);
-        planExtra.put("input", Map.of("question", question));
+        planExtra.put("input", Map.of("from_step", "intent", "structured_intent", Map.of("action", bookTitle)));
         planExtra.put("output", Map.of("summary", "手册共 " + sopStepCount + " 步，按序执行"));
         List<Map<String, Object>> planTrace = TraceSnapshotBuilder.sopTraceView(sop);
         if (planTrace != null) {
@@ -543,6 +571,8 @@ public class AgentOrchestrator {
         fillQuestionSlots(tools, planParams, question);
         QueryPlan plan = new QueryPlan(intent, tools, planParams, question);
         plan.setUserQuestion(question);
+        // 手册步骤结构随 plan 下传：persistTurn 据此把 sop-step-N 写入 reasoning_full（回放同构）
+        plan.setSopSteps(sopSteps);
         // 手册步骤声明 input_from 时构建依赖编排（跨工具数据流：result: 来源解析，
         // 如智聊链路开单承接草稿生成/合规校验产出）；未声明时保持 direct 全参透传
         List<com.sitech.prodai.service.agent.model.ExecStep> execSteps = playbookExecSteps(book, tools);
@@ -701,6 +731,19 @@ public class AgentOrchestrator {
                     TraceSnapshotBuilder.opsAnalysisPhaseIo(result, stepIdx);
             default -> Map.of();
         };
+    }
+
+    /**
+     * 工具名 → 手册步骤序号（首个绑定该工具的步骤）：回放快照按工具结果重建手册步骤时定位序号。
+     * 步骤与工具 1:1（工具原子化），多步骤共用同一工具时取首步（与执行层只执行一次一致）。
+     */
+    private static Integer sopStepIndexOf(List<Map<String, Object>> sopSteps, String toolName) {
+        for (int i = 0; i < sopSteps.size(); i++) {
+            if (toolName != null && toolName.equals(String.valueOf(sopSteps.get(i).getOrDefault("tool", "")).trim())) {
+                return i;
+            }
+        }
+        return null;
     }
 
     /**
@@ -1168,7 +1211,7 @@ public class AgentOrchestrator {
         intentStep.put("status", "done");
         intentStep.put("category", "understand");
         intentStep.put("goal", "先听懂您要做什么，再决定怎么办");
-        intentStep.put("input", Map.of("question", ""));
+        intentStep.put("input", Map.of("question", TraceSnapshotBuilder.requirementSummary(question)));
         intentStep.put("output", intentOutput);
         List<Map<String, Object>> trace = TraceSnapshotBuilder.traceView(plan);
         if (trace != null) {
@@ -1212,6 +1255,32 @@ public class AgentOrchestrator {
                 io.put("output", toolEvent.get("output"));
                 toolStep.put("io", io);
                 steps.add(toolStep);
+            }
+        }
+        // ③′ 手册步骤（sop-step-N）：手册链路（plan.sopSteps 非空）回放等量还原 ——
+        // 实时流在 onStepComplete 逐条落地手册步骤思考条目，快照缺失会导致历史回放时间线比实时短。
+        // 步骤与工具 1:1（工具原子化）：每条手册步骤贴对应工具的真实留痕与环节 IO
+        List<Map<String, Object>> sopSteps = plan.getSopSteps();
+        if (sopSteps != null && !sopSteps.isEmpty() && results != null) {
+            for (ExecutionResult result : results) {
+                Integer stepIdx = sopStepIndexOf(sopSteps, result.getToolName());
+                if (stepIdx == null) {
+                    continue;
+                }
+                Map<String, Object> sopStep = sopSteps.get(stepIdx);
+                List<Map<String, Object>> stepTrace = new ArrayList<>();
+                stepTrace.add(Map.of("stage", "sop", "message",
+                        String.valueOf(sopStep.getOrDefault("how", "按手册执行"))));
+                if (result.isSuccess()) {
+                    List<Map<String, Object>> toolTrace = toolTraceOf(result);
+                    if (toolTrace != null) {
+                        stepTrace.addAll(toolTrace);
+                    }
+                } else {
+                    stepTrace.add(Map.of("stage", "llm", "message", "执行失败：" + result.getErrorMessage()));
+                }
+                steps.add(TraceSnapshotBuilder.sopStepThinking(stepIdx, sopStep, result,
+                        stepTrace, stepIoOf(result, stepIdx)));
             }
         }
         // ④ 汇总步骤：实时流的 generate 步骤（含结论输出），历史回放等量还原
@@ -1679,7 +1748,9 @@ public class AgentOrchestrator {
         planExtra.put("goal", TraceSnapshotBuilder.planStepGoal(plan, context));
         planExtra.put("input", TraceSnapshotBuilder.upstreamIntentInput(plan, question));
         planExtra.put("workflow", TraceSnapshotBuilder.buildWorkflow(plan));
-        planExtra.put("output", Map.of("summary", TraceSnapshotBuilder.planStepOutput(plan, context)));
+        planExtra.put("output", Map.of(
+                "summary", TraceSnapshotBuilder.planStepOutput(plan, context),
+                "branch_taken", WorkflowGraphView.branchLabel(WorkflowGraphView.takenBranch(plan))));
         planExtra.put("trace", TraceSnapshotBuilder.traceView(plan));
         emitter.emit("thinking", Map.of(
                 "steps", List.of(TraceSnapshotBuilder.thinkingStep("plan", "定下处理方案",

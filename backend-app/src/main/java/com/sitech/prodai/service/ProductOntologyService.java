@@ -296,6 +296,11 @@ public class ProductOntologyService {
         return chatConfigureService.chatConfigure(text, draft);
     }
 
+    /** 聊天配置（上游槽位透传版）：preSlots 非空跳过内部抽取（智聊手册 rd_slot_extract 环节已抽）。 */
+    public Map<String, Object> chatConfigure(String text, Map<String, Object> draft, Map<String, Object> preSlots) {
+        return chatConfigureService.chatConfigure(text, draft, preSlots);
+    }
+
     public Map<String, Object> getConfigTrace(String traceId) {
         return chatConfigureService.getConfigTrace(traceId);
     }

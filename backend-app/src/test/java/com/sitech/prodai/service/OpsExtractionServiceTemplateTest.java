@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.DefaultResourceLoader;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -118,5 +119,55 @@ class OpsExtractionServiceTemplateTest {
         assertTrue(keys.contains("teamType"));
         assertFalse(keys.contains("__attacker__"));
         assertFalse(keys.contains("systemPrompt"));
+    }
+
+    @Test
+    void extractPackagesFromDocumentShouldDirectMapTableBlocks() {
+        // Document IR 表格直通：表头命中槽位词 ≥2 列 → 逐行 map（零 LLM），engine=table-direct
+        Map<String, Object> tableBlock = Map.of(
+                "type", "table",
+                "sheet_name", "资费清单",
+                "headers", List.of("套餐名称", "月费", "包含流量", "目标客群"),
+                "rows", List.of(
+                        List.of("家庭融合畅享158", "158", "40GB", "家庭"),
+                        List.of("校园体验19元", "19", "5GB", "校园")));
+        Map<String, Object> document = Map.of("engine", "xlsx", "blocks", List.of(tableBlock));
+
+        OpsExtractionService.PackageExtractResult extracted =
+                extractionService.extractPackagesFromDocument("", document, List.of());
+        assertEquals("table-direct", extracted.engine());
+        assertEquals(2, extracted.packages().size());
+
+        Map<String, Object> pkgA = extracted.packages().get(0);
+        assertEquals("家庭融合畅享158", pkgA.get("offeringName"));
+        assertEquals(158.0, ((Number) pkgA.get("monthlyFee")).doubleValue(), 0.01);
+        assertEquals("40GB", pkgA.get("includeData"));
+        assertEquals("家庭", pkgA.get("targetUser"));
+        assertTrue(String.valueOf(pkgA.get("sourceExcerpt")).contains("资费清单"), "摘录应含 sheet 业务名");
+    }
+
+    @Test
+    void extractPackagesFromDocumentShouldFallbackRegexWhenTableNotPackage() {
+        // 非套餐表（表头未命中槽位词）+ 无段落 → 不硬猜，空结果如实返回
+        Map<String, Object> noteBlock = Map.of(
+                "type", "table",
+                "headers", List.of("说明项", "内容"),
+                "rows", List.of(List.of("生效时间", "2026-09-01")));
+        Map<String, Object> document = Map.of("engine", "xlsx", "blocks", List.of(noteBlock));
+
+        OpsExtractionService.PackageExtractResult extracted =
+                extractionService.extractPackagesFromDocument("", document, List.of());
+        assertEquals("empty", extracted.engine());
+        assertTrue(extracted.packages().isEmpty());
+    }
+
+    @Test
+    void extractPackagesFromDocumentShouldFallbackToTextPathWhenIrMissing() {
+        // IR 缺失（null document）→ 纯文本链路（正则兜底，行为同旧）
+        OpsExtractionService.PackageExtractResult extracted =
+                extractionService.extractPackagesFromDocument(
+                        "套餐A：家庭融合畅享158；月费158元；目标家庭", null, List.of());
+        assertEquals("regex", extracted.engine());
+        assertFalse(extracted.packages().isEmpty());
     }
 }

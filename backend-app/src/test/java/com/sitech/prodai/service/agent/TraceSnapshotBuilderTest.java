@@ -268,7 +268,8 @@ class TraceSnapshotBuilderTest {
         plan.setClarify(List.of("offering", "time"));
         Map<String, Object> input = TraceSnapshotBuilder.clarifyInputView(plan, "q");
         assertEquals("intent", input.get("from_step"));
-        assertEquals("offering、time", input.get("missing_params"));
+        // missing_params 为结构化数组（规范 §3.1），前端拼接展示
+        assertEquals(List.of("offering", "time"), input.get("missing_params"));
         assertTrue(input.containsKey("structured_intent"));
     }
 
@@ -277,7 +278,7 @@ class TraceSnapshotBuilderTest {
         QueryPlan plan = new QueryPlan("CLARIFY", List.of(), Map.of(), "用户问题原文");
         plan.setClarify(List.of("offering"));
         Map<String, Object> input = TraceSnapshotBuilder.clarifyInputView(plan, "用户问题原文");
-        assertEquals("offering", input.get("missing_params"));
+        assertEquals(List.of("offering"), input.get("missing_params"));
         assertEquals("用户问题原文", input.get("requirement"));
     }
 
@@ -403,7 +404,7 @@ class TraceSnapshotBuilderTest {
         Map<String, Object> io0 = TraceSnapshotBuilder.opsAnalysisPhaseIo(sparqlResult, 0);
         assertFalse(io0.get("input").toString().contains("from_step"), "首步不应有 from_step");
         Map<String, Object> out0 = (Map<String, Object>) io0.get("output");
-        assertEquals(3, out0.get("hitCount"));
+        assertEquals(3, out0.get("total"));
         assertTrue(String.valueOf(out0.get("summary")).contains("3 个在架商品"));
 
         // 环节② 根因归因（swrl_root_cause，承接查询 sop-step-0）
@@ -460,13 +461,167 @@ class TraceSnapshotBuilderTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void opsAnalysisPhaseIoRdDocParseCarriesParseDetails() {
+        // 单文件：引擎 + 字符数 + 文档名摘要
+        Map<String, Object> parse = new LinkedHashMap<>();
+        parse.put("parseEngine", "csv");
+        parse.put("extractedChars", 1024);
+        parse.put("fileName", "智慧社区融合方案.csv");
+        parse.put("document_text", "一、融合套餐概述……");
+        Map<String, Object> out = (Map<String, Object>) TraceSnapshotBuilder
+                .opsAnalysisPhaseIo(ExecutionResult.ok("rd_doc_parse", parse), 0).get("output");
+        assertEquals("csv", out.get("parseEngine"));
+        assertEquals(1024, out.get("extractedChars"));
+        assertTrue(String.valueOf(out.get("summary")).contains("智慧社区融合方案.csv"));
+        assertTrue(String.valueOf(out.get("summary")).contains("1024 字"));
+
+        // 多文件：parse_details 逐份明细行（结构化 schema {seq,title,state?,extra?}，前端「解析明细」渲染契约）
+        Map<String, Object> multi = new LinkedHashMap<>();
+        multi.put("parseEngine", "docx");
+        multi.put("fileNames", List.of("a.docx", "b.docx"));
+        multi.put("fileDetails", List.of(
+                Map.of("file_name", "a.docx", "parse_engine", "docx", "extracted_chars", 500),
+                Map.of("file_name", "b.docx", "parse_engine", "docx", "extracted_chars", 300)));
+        Map<String, Object> outMulti = (Map<String, Object>) TraceSnapshotBuilder
+                .opsAnalysisPhaseIo(ExecutionResult.ok("rd_doc_parse", multi), 0).get("output");
+        List<Map<String, Object>> parseRows = (List<Map<String, Object>>) outMulti.get("parse_details");
+        assertEquals(2, parseRows.size());
+        assertEquals("a.docx", parseRows.get(0).get("title"));
+        assertEquals(1, parseRows.get(0).get("seq"));
+        assertEquals("引擎 docx，抽取 500 字", parseRows.get(0).get("extra"));
+        assertEquals(2, parseRows.get(1).get("seq"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void opsAnalysisPhaseIoRdDraftExtractCarriesItemDetails() {
+        Map<String, Object> draft = new LinkedHashMap<>();
+        draft.put("offeringName", "智慧社区融合套餐");
+        draft.put("monthlyFee", 198);
+        draft.put("categoryName", "融合套餐");
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("index", 0);
+        item.put("draft", draft);
+        item.put("compliancePass", true);
+        item.put("status", "PENDING_CONFIRM");
+        item.put("sourceExcerpt", "198元/月，含40GB流量与500M宽带");
+        Map<String, Object> extract = new LinkedHashMap<>();
+        extract.put("extractEngine", "llm");
+        extract.put("items", List.of(item));
+        Map<String, Object> io = TraceSnapshotBuilder.opsAnalysisPhaseIo(ExecutionResult.ok("rd_draft_extract", extract), 1);
+        assertEquals("sop-step-0", ((Map<String, Object>) io.get("input")).get("from_step"));
+        Map<String, Object> out = (Map<String, Object>) io.get("output");
+        assertEquals("llm", out.get("extractEngine"));
+        assertEquals(1, out.get("total"));
+        assertTrue(String.valueOf(out.get("summary")).contains("1 条套餐草稿"));
+        // draft_details 明细行（结构化 schema {seq,title,state?,extra?}，前端「草稿明细」渲染契约）
+        List<Map<String, Object>> draftRows = (List<Map<String, Object>>) out.get("draft_details");
+        assertEquals(1, draftRows.size());
+        assertEquals(1, draftRows.get(0).get("seq"));
+        assertEquals("智慧社区融合套餐", draftRows.get(0).get("title"));
+        assertEquals("预判通过", draftRows.get(0).get("state"));
+        assertEquals("月费 198 元｜原文：198元/月，含40GB流量与500M宽带", draftRows.get(0).get("extra"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void opsAnalysisPhaseIoRdComplianceCarriesBatchAndSingleDetails() {
+        // 批量形态：逐条结论 + 问题规则编号
+        Map<String, Object> draft = new LinkedHashMap<>();
+        draft.put("offeringName", "智慧社区融合套餐");
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("draft", draft);
+        item.put("compliancePass", false);
+        item.put("status", "FAILED");
+        item.put("issues", List.of(Map.of("ruleId", "R-B01"), Map.of("ruleId", "R-B02")));
+        Map<String, Object> batch = new LinkedHashMap<>();
+        batch.put("items", List.of(item));
+        batch.put("total", 1);
+        batch.put("passedCount", 0);
+        batch.put("pendingCount", 1);
+        Map<String, Object> outBatch = (Map<String, Object>) TraceSnapshotBuilder
+                .opsAnalysisPhaseIo(ExecutionResult.ok("rd_compliance", batch), 2).get("output");
+        assertEquals(1, outBatch.get("total"));
+        // compliance_details 明细行（结构化 schema {seq,title,state?,extra?}，前端「合规明细」渲染契约）
+        List<Map<String, Object>> complianceRows = (List<Map<String, Object>>) outBatch.get("compliance_details");
+        assertEquals(1, complianceRows.size());
+        assertEquals(1, complianceRows.get(0).get("seq"));
+        assertEquals("智慧社区融合套餐", complianceRows.get(0).get("title"));
+        assertEquals("未通过", complianceRows.get(0).get("state"));
+        assertEquals("问题规则 R-B01、R-B02", complianceRows.get(0).get("extra"));
+
+        // 单草稿形态：config 内 issues 提取
+        Map<String, Object> config = new LinkedHashMap<>();
+        config.put("issues", List.of(Map.of("ruleId", "R-A01")));
+        Map<String, Object> single = new LinkedHashMap<>();
+        single.put("compliance_pass", true);
+        single.put("config", config);
+        Map<String, Object> outSingle = (Map<String, Object>) TraceSnapshotBuilder
+                .opsAnalysisPhaseIo(ExecutionResult.ok("rd_compliance", single), 1).get("output");
+        assertEquals(Boolean.TRUE, outSingle.get("compliancePass"));
+        assertEquals(List.of("R-A01"), outSingle.get("issueRules"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void opsAnalysisPhaseIoRdWorkorderCreateCarriesOrderDetails() {
+        Map<String, Object> wo = new LinkedHashMap<>();
+        wo.put("workOrderId", "WO-20260908-001");
+        wo.put("title", "智慧社区融合套餐配置");
+        wo.put("offeringName", "智慧社区融合套餐");
+        wo.put("status", "CREATED");
+        wo.put("compliancePass", true);
+        Map<String, Object> create = new LinkedHashMap<>();
+        create.put("workOrders", List.of(wo));
+        create.put("workOrderCount", 1);
+        create.put("workOrderFailures", List.of(Map.of("index", 1, "reason", "合规校验未通过")));
+        Map<String, Object> io = TraceSnapshotBuilder.opsAnalysisPhaseIo(ExecutionResult.ok("rd_workorder_create", create), 3);
+        assertEquals("sop-step-2", ((Map<String, Object>) io.get("input")).get("from_step"));
+        Map<String, Object> out = (Map<String, Object>) io.get("output");
+        assertEquals(1, out.get("workOrderCount"));
+        assertEquals(1, ((List<Object>) out.get("workOrderFailures")).size());
+        // work_order_details 明细行（结构化 schema {seq,title,state?,extra?}，前端「工单明细」渲染契约）
+        List<Map<String, Object>> orderRows = (List<Map<String, Object>>) out.get("work_order_details");
+        assertEquals(1, orderRows.size());
+        assertEquals(1, orderRows.get(0).get("seq"));
+        assertEquals("智慧社区融合套餐配置", orderRows.get(0).get("title"));
+        assertEquals("已创建", orderRows.get(0).get("state"));
+        assertEquals("工单号 WO-20260908-001", orderRows.get(0).get("extra"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
     void opsAnalysisPhaseIoInvalidInputsReturnEmpty() {
         ExecutionResult result = ExecutionResult.ok("sparql_query", Map.of());
         assertTrue(TraceSnapshotBuilder.opsAnalysisPhaseIo(null, 0).isEmpty());
         assertTrue(TraceSnapshotBuilder.opsAnalysisPhaseIo(ExecutionResult.fail("sparql_query", "boom"), 0).isEmpty());
         assertTrue(TraceSnapshotBuilder.opsAnalysisPhaseIo(result, -1).isEmpty());
-        assertTrue(TraceSnapshotBuilder.opsAnalysisPhaseIo(ExecutionResult.ok("no_such_tool", Map.of()), 0).isEmpty(),
-                "未注册分发口径的工具返回空 IO");
+        // 未登记专属分支的工具走 default：非空但只给缺省承接（不再返回空 Map 断裂承接链，规范 §3.4）
+        Map<String, Object> io = TraceSnapshotBuilder.opsAnalysisPhaseIo(
+                ExecutionResult.ok("no_such_tool", Map.of()), 1);
+        assertEquals("sop-step-0", ((Map<String, Object>) io.get("input")).get("from_step"));
+        assertEquals("已按手册完成本环节处理",
+                ((Map<String, Object>) io.get("output")).get("summary"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void opsAnalysisPhaseIoDefaultBranchKeepsCarryChainAndBranchLabel() {
+        // default 分支（未登记专属分支的 rd 原子工具）：无 nl_answer 也不断裂承接链、给缺省文案（规范 §3.4）
+        Map<String, Object> io = TraceSnapshotBuilder.opsAnalysisPhaseIo(
+                ExecutionResult.ok("rd_category_resolve", Map.of()), 2);
+        assertEquals("sop-step-1", ((Map<String, Object>) io.get("input")).get("from_step"));
+        Map<String, Object> out = (Map<String, Object>) io.get("output");
+        assertEquals("已按手册完成本环节处理", out.get("summary"));
+        assertEquals("按手册执行", out.get("branch_taken"));
+
+        // 专属分支统一携带分支标签（与 plan/generate 步骤结构对齐）
+        Map<String, Object> sparql = new LinkedHashMap<>();
+        sparql.put("entity_ids", List.of("e1"));
+        Map<String, Object> outSparql = (Map<String, Object>) TraceSnapshotBuilder
+                .opsAnalysisPhaseIo(ExecutionResult.ok("sparql_query", sparql), 0).get("output");
+        assertEquals("按手册执行", outSparql.get("branch_taken"));
     }
 
     @Test
