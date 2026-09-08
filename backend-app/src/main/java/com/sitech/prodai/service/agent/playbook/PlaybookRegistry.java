@@ -225,6 +225,7 @@ public class PlaybookRegistry {
      * 路由判定：给定场景 + 意图（+ 工具名），返回命中的手册 code；未命中 null。
      * <p>
      * 路由只认业务意图——手册显式声明自己适用什么意图，路由器不再按场景一刀切。
+     * 场景缺失（null/blank）不匹配任何手册（适用域显式声明，无通配语义）。
      * 意图匹配忽略大小写——LLM 意图经归一化为小写（product_ops_query），而手册
      * applies_to.intents 按展示惯例声明为大写（PRODUCT_OPS_QUERY），严格 equals 永不命中。
      * 这是 {@code SceneFlowRouter} 按意图分流的依据。
@@ -251,6 +252,11 @@ public class PlaybookRegistry {
      * @param question 用户话术（原话），用于同码歧义判定；空则退化为注册序
      */
     public String route(String scene, String intent, List<String> toolNames, String question) {
+        // 场景缺失不路由（适用域显式声明，无通配语义，与 codesForScene 口径一致）：
+        // scene null/blank 时调用方场景未知（如单测默认编排链路），放行会误劫持非手册链路
+        if (scene == null || scene.isBlank()) {
+            return null;
+        }
         String firstHit = null;
         String bestByUtterance = null;
         int bestScore = 0;
@@ -260,7 +266,7 @@ public class PlaybookRegistry {
                 continue;
             }
             String bookScene = str(at.get("scene"));
-            if (!bookScene.isBlank() && scene != null && !bookScene.equals(scene)) {
+            if (!bookScene.isBlank() && !bookScene.equals(scene)) {
                 continue;
             }
             boolean intentHit = intent != null && at.get("intents") instanceof List<?> intents

@@ -2,7 +2,7 @@ package com.sitech.prodai.service.agent.tool;
 
 import com.sitech.prodai.service.agent.model.ExecutionResult;
 import com.sitech.prodai.service.agent.tool.flow.FlowExecuteTool;
-import com.sitech.prodai.service.agent.tool.rd.RdConfigChatTool;
+import com.sitech.prodai.service.agent.tool.rd.RdDraftGenerateTool;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -25,7 +25,7 @@ class AgentCapabilityRegistryTest {
     private AgentCapabilityRegistry registry() {
         return new AgentCapabilityRegistry(List.of(
                 new SparqlQueryTool(null),
-                new RdConfigChatTool(null, null),
+                new RdDraftGenerateTool(null, null),
                 new FlowExecuteTool(null)
         ));
     }
@@ -36,7 +36,7 @@ class AgentCapabilityRegistryTest {
 
         assertEquals(List.of("sparql_query", "flow_execute"),
                 r.toolsOf("ops").stream().map(AgentTool::getName).toList());
-        assertEquals(List.of("rd_config_chat", "flow_execute"),
+        assertEquals(List.of("rd_draft_generate", "flow_execute"),
                 r.toolsOf("rd").stream().map(AgentTool::getName).toList());
         assertEquals(Set.of("ops", "rd"), r.scenesOf("flow_execute"));
     }
@@ -47,8 +47,8 @@ class AgentCapabilityRegistryTest {
 
         assertTrue(r.isVisible("sparql_query", "ops"));
         assertTrue(r.isVisible("flow_execute", "ops"));
-        assertFalse(r.isVisible("rd_config_chat", "ops"), "rd 工具不应对 ops 场景可见");
-        assertTrue(r.isVisible("rd_config_chat", "rd"));
+        assertFalse(r.isVisible("rd_draft_generate", "ops"), "rd 工具不应对 ops 场景可见");
+        assertTrue(r.isVisible("rd_draft_generate", "rd"));
         assertFalse(r.isVisible("sparql_query", "rd"), "ops 工具不应对 rd 场景可见");
         assertFalse(r.isVisible("fabricated_tool", "rd"), "编造工具名不可见");
         assertFalse(r.isVisible(null, "rd"));
@@ -63,7 +63,7 @@ class AgentCapabilityRegistryTest {
         assertEquals(r.toolsOf("ops"), r.toolsOf(null));
         assertEquals(r.toolsOf("ops"), r.toolsOf(""));
         assertTrue(r.isVisible("sparql_query", null));
-        assertFalse(r.isVisible("rd_config_chat", null));
+        assertFalse(r.isVisible("rd_draft_generate", null));
 
         // 未知场景严格守门：返回空清单（防 ops 工具泄漏给未声明的任意场景）
         assertEquals(List.of(), r.toolsOf("unknown_scene"));
@@ -100,8 +100,8 @@ class AgentCapabilityRegistryTest {
     void belongsToSceneMatchesVisibility() {
         AgentCapabilityRegistry r = registry();
 
-        assertTrue(r.belongsToScene("rd_config_chat", "rd"));
-        assertFalse(r.belongsToScene("rd_config_chat", "ops"));
+        assertTrue(r.belongsToScene("rd_draft_generate", "rd"));
+        assertFalse(r.belongsToScene("rd_draft_generate", "ops"));
         assertTrue(r.belongsToScene("flow_execute", "rd"));
         assertTrue(r.belongsToScene("flow_execute", "ops"));
     }

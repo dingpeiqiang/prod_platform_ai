@@ -83,7 +83,7 @@ class PlaybookRegistryTest {
 
         Map<String, Object> discover = registry.get("discover-history");
         assertEquals("历史配置检索复用", discover.get("title"));
-        assertTrue(discover.get("steps") instanceof List<?> s && s.size() == 3, "智查手册应 3 步（需求/检索/整理）");
+        assertTrue(discover.get("steps") instanceof List<?> s && s.size() == 2, "智查手册应 2 步（检索/整理，需求解析内联检索）");
     }
 
     @Test
@@ -104,7 +104,8 @@ class PlaybookRegistryTest {
     void registersKnownToolsAndResolvesReferences() {
         // 工具名单注入后重载：七本手册引用的工具均已注册 → 引用可解析、零问题
         registry.registerKnownTools(java.util.Set.of(
-                "rd_file_parse", "rd_compliance", "rd_config_chat", "rd_config_discover",
+                "rd_doc_parse", "rd_draft_extract", "rd_compliance", "rd_workorder_create",
+                "rd_category_resolve", "rd_draft_generate", "rd_config_search",
                 "sparql_query", "swrl_root_cause", "swrl_risk_audit", "ontology_explain", "rule_explain"));
         registry.reload();
         assertTrue(registry.problems().isEmpty(), () -> "引用的工具均已注册，装载应零问题: " + registry.problems());
@@ -180,8 +181,7 @@ class PlaybookRegistryTest {
         assertEquals("root-cause", registry.route("ops", "Product_Ops_Reason", List.of()),
                 "混合大小写同样命中（匹配忽略大小写）");
         assertEquals("doc-batch-import", registry.route("rd", "rd_file_parse", List.of()),
-                "rd 场景小写意图同样命中");
-    }
+                "rd 场景小写意图同样命中（手册级意图码匹配忽略大小写）");    }
 
     @Test
     void sceneMismatchDoesNotRoute() {
@@ -197,7 +197,7 @@ class PlaybookRegistryTest {
         // 工具兜底（LLM 自选工具 ≠ 认领整本手册）不升级走手册链路
         assertNull(registry.route("rd", "RD_DRAFT_MANAGE", List.of("rd_draft_manage")),
                 "意图与工具均不在适用域 → 不路由");
-        assertNull(registry.route("rd", "SOME_OTHER_INTENT", List.of("rd_file_parse")),
+        assertNull(registry.route("rd", "SOME_OTHER_INTENT", List.of("rd_doc_parse")),
                 "仅工具命中、意图未命中 → 不路由（工具名不具备业务分流权）");
     }
 
@@ -260,7 +260,7 @@ class PlaybookRegistryTest {
         assertTrue(sop.contains("【标准作业程序：文档批量导入配置】"));
         assertTrue(sop.contains("第1步 解析文档提取文本"), () -> "应含步骤: " + sop);
         assertTrue(sop.contains("每条草稿一单"), () -> "应含操作方法/约束: " + sop);
-        assertTrue(sop.contains("（工具：rd_file_parse）"), () -> "应含工具标注: " + sop);
+        assertTrue(sop.contains("（工具：rd_doc_parse）"), () -> "应含工具标注: " + sop);
         assertTrue(sop.contains("护栏："), () -> "应含护栏段: " + sop);
     }
 

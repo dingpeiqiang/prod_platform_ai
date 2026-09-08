@@ -51,6 +51,12 @@ public class RdSchemeCompareTool implements AgentTool {
         return java.util.Set.of("rd", "query");
     }
 
+    /** 方案对比后的典型业务链：采用推荐方案生成草稿 → 合规校验。 */
+    @Override
+    public List<String> getHandoffs() {
+        return List.of("rd_draft_generate", "rd_compliance");
+    }
+
     @Override
     public List<ToolParam> getParams() {
         return List.of(

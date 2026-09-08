@@ -52,11 +52,12 @@ public class SparqlConfigDiscoverer {
 
     private String buildSparql(LlmIntentExtractor.DiscoverIntent intent) {
         StringBuilder sb = new StringBuilder();
-        sb.append("SELECT ?offering ?offeringName ?monthlyFee ?state ?categoryName ")
+        sb.append("SELECT ?offering ?offeringName ?monthlyFee ?state ?categoryName ?shelfDays ")
                 .append("WHERE { ?offering a :Offering ; :offeringName ?offeringName . ")
                 .append("OPTIONAL { ?offering :monthlyFee ?monthlyFee } ")
                 .append("OPTIONAL { ?offering :state ?state } ")
-                .append("OPTIONAL { ?offering :categoryName ?categoryName } ");
+                .append("OPTIONAL { ?offering :categoryName ?categoryName } ")
+                .append("OPTIONAL { ?offering :shelfDays ?shelfDays } ");
         List<String> filters = new ArrayList<>();
         if (intent.state() != null && !"null".equalsIgnoreCase(intent.state())) {
             filters.add("STR(?state) = " + quote(intent.state()));
@@ -74,6 +75,9 @@ public class SparqlConfigDiscoverer {
             double lo = Math.max(0, intent.monthlyFee() - tol);
             double hi = intent.monthlyFee() + tol;
             filters.add("(BOUND(?monthlyFee) && ?monthlyFee >= " + trim(lo) + " && ?monthlyFee <= " + trim(hi) + ")");
+        }
+        if (intent.timeWindowDays() != null) {
+            filters.add("(BOUND(?shelfDays) && ?shelfDays <= " + trim(intent.timeWindowDays()) + ")");
         }
         for (String kw : intent.keywords()) {
             if (TYPE_LABELS.values().stream().anyMatch(labels::contains)) {
@@ -108,6 +112,8 @@ public class SparqlConfigDiscoverer {
         card.put("monthly_fee", fee == null ? null : num(fee));
         card.put("state", str(row.get("state")));
         card.put("category_name", str(row.get("categoryName")));
+        Object shelfDays = row.get("shelfDays");
+        card.put("shelf_days", shelfDays == null ? null : (int) num(shelfDays));
         int score = 60;
         if (intent.monthlyFee() != null && fee != null) {
             double diff = Math.abs(num(fee) - intent.monthlyFee());

@@ -134,7 +134,7 @@ class AgentOrchestratorTest {
     }
 
     /**
-     * 注册 rd_config_chat 桩：声明与生产工具一致的参数契约
+     * 注册 rd_draft_generate 桩：声明与生产工具一致的参数契约
      * （text 必填、source=question），供手册直达链路 fillQuestionSlots 按契约补槽。
      */
     private com.sitech.prodai.service.agent.tool.AgentTool stubChatConfigTool() {
@@ -142,7 +142,7 @@ class AgentOrchestratorTest {
                 new com.sitech.prodai.service.agent.tool.AgentTool() {
                     @Override
                     public String getName() {
-                        return "rd_config_chat";
+                        return "rd_draft_generate";
                     }
 
                     @Override
@@ -479,7 +479,7 @@ class AgentOrchestratorTest {
         sceneReply.put("flow_execution", Map.of("status", "completed"));
         when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understandAll(any(), any(SessionContext.class)))
-                .thenReturn(List.of(execPlan("rd_config_chat", "RD_CONFIG_CHAT")));
+                .thenReturn(List.of(execPlan("rd_draft_generate", "RD_DRAFT_GENERATE")));
         when(sceneFlowRouter.tryRoute(any(QueryPlan.class), any(SessionContext.class), any()))
                 .thenReturn(Optional.of(sceneReply));
 
@@ -506,7 +506,7 @@ class AgentOrchestratorTest {
         sceneReply.put("flow_execution", Map.of("status", "completed"));
         when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understand(any(), any(SessionContext.class)))
-                .thenReturn(execPlan("rd_config_chat", "RD_CONFIG_CHAT"));
+                .thenReturn(execPlan("rd_draft_generate", "RD_DRAFT_GENERATE"));
         when(sceneFlowRouter.tryRoute(any(QueryPlan.class), any(SessionContext.class), any()))
                 .thenReturn(Optional.of(sceneReply));
 
@@ -765,7 +765,7 @@ class AgentOrchestratorTest {
         orchestrator.processStream("导入文档", "s-pb1", null, "rd", emitter);
 
         // 手册触发词快筛命中 doc-batch-import（零 LLM 成本直达），执行层收到的 plan.params
-        // 必须携带服务端 SessionContext 的 session_id——否则 rd_file_parse 批量开单
+        // 必须携带服务端 SessionContext 的 session_id——否则 rd_workorder_create 批量开单
         // 因 sessionId 空白短路，工单不落库，前端工单卡片无从展示
         ArgumentCaptor<QueryPlan> planCaptor = ArgumentCaptor.forClass(QueryPlan.class);
         verify(executor).execute(planCaptor.capture(), any(SessionContext.class), any(Executor.StepListener.class));
@@ -793,7 +793,7 @@ class AgentOrchestratorTest {
         orchestrator.processStream("给家庭用户做一个融合套餐，月费158，带500M宽带", "s-slot1", null, "rd", emitter);
 
         // 手册快筛跳过理解层 LLM，无槽位提取：工具契约声明 source=question 的参数
-        // （rd_config_chat 的 text）必须以用户原话自动填充——否则工具因参数缺失
+        // （rd_draft_generate 的 text）必须以用户原话自动填充——否则工具因参数缺失
         // 报「缺少配置需求描述」，四步全部执行失败
         ArgumentCaptor<QueryPlan> planCaptor = ArgumentCaptor.forClass(QueryPlan.class);
         verify(executor).execute(planCaptor.capture(), any(SessionContext.class), any(Executor.StepListener.class));

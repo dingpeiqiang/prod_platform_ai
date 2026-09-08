@@ -62,11 +62,11 @@ class DefaultUnderstanderTest {
     void setUp() {
         AgentTool sparql = tool("sparql_query", "ops",
                 ToolParam.builder("city").label("城市").required().build());
-        AgentTool rdConfig = tool("rd_config_chat", "rd",
+        AgentTool rdDraft = tool("rd_draft_generate", "rd",
                 ToolParam.builder("requirement").label("需求描述").required().build());
-        AgentTool rdDiscover = tool("rd_config_discover", "rd",
+        AgentTool rdDiscover = tool("rd_config_search", "rd",
                 ToolParam.builder("keyword").label("检索关键词").required().build());
-        List<AgentTool> tools = List.of(sparql, rdConfig, rdDiscover);
+        List<AgentTool> tools = List.of(sparql, rdDraft, rdDiscover);
         understander = new DefaultUnderstander(llmService, tools, workOrderMapper,
                 flowIntentRouter, new AgentCapabilityRegistry(tools), null, null);
     }
@@ -245,7 +245,7 @@ class DefaultUnderstanderTest {
 
     @Test
     void rdToolNotVisibleInOpsScene() {
-        llmReturns("{\"intent\":\"RD_CONFIG_CHAT\",\"tools\":[\"rd_config_chat\"],\"params\":{}}");
+        llmReturns("{\"intent\":\"RD_DRAFT_GENERATE\",\"tools\":[\"rd_draft_generate\"],\"params\":{}}");
         when(llmService.completePrompt(anyString()))
                 .thenReturn("{\"tools\":[\"sparql_query\"],\"params\":{\"city\":\"北京\"}}");
 
@@ -447,12 +447,12 @@ class DefaultUnderstanderTest {
 
     @Test
     void rdSceneDerivesIntentCodeFromToolName() {
-        llmReturns("{\"intent\":\"configure\",\"tools\":[\"rd_config_chat\"],"
+        llmReturns("{\"intent\":\"configure\",\"tools\":[\"rd_draft_generate\"],"
                 + "\"params\":{\"requirement\":\"39元套餐\"}}");
 
         QueryPlan plan = understander.understand("配一个套餐", rdCtx());
 
-        assertEquals("RD_CONFIG_CHAT", plan.getIntent(),
+        assertEquals("RD_DRAFT_GENERATE", plan.getIntent(),
                 "rd 场景意图码由首个 rd 工具名推导（前端对齐）");
         assertEquals("ut-rd", plan.getParams().get("session_id"),
                 "rd 场景透传会话 ID");
@@ -460,26 +460,26 @@ class DefaultUnderstanderTest {
 
     @Test
     void rdSceneDiscoverIntentQuestionReassignsDraftTool() {
-        // 话术命中检索词（找一下）且无创建动词 → rd_config_chat 改派 rd_config_discover
-        // params 预置 keyword（改派后参数门按 rd_config_discover 契约校验必填参数）
-        llmReturns("{\"intent\":\"configure\",\"tools\":[\"rd_config_chat\"],"
+        // 话术命中检索词（找一下）且无创建动词 → rd_draft_generate 改派 rd_config_search
+        // params 预置 keyword（改派后参数门按 rd_config_search 契约校验必填参数）
+        llmReturns("{\"intent\":\"configure\",\"tools\":[\"rd_draft_generate\"],"
                 + "\"params\":{\"requirement\":\"月费39\",\"keyword\":\"月费39\"}}");
 
         QueryPlan plan = understander.understand("找一下月费39的配置", rdCtx());
 
-        assertEquals(List.of("rd_config_discover"), plan.getTools(), "检索意图应改派检索工具");
-        assertEquals("RD_CONFIG_DISCOVER", plan.getIntent(),
-                "rd 场景意图码由首个 rd 工具名推导（改派后取 rd_config_discover）");
+        assertEquals(List.of("rd_config_search"), plan.getTools(), "检索意图应改派检索工具");
+        assertEquals("RD_CONFIG_SEARCH", plan.getIntent(),
+                "rd 场景意图码由首个 rd 工具名推导（改派后取 rd_config_search）");
     }
 
     @Test
     void rdSceneCreateIntentQuestionKeepsDraftTool() {
-        llmReturns("{\"intent\":\"configure\",\"tools\":[\"rd_config_chat\"],"
+        llmReturns("{\"intent\":\"configure\",\"tools\":[\"rd_draft_generate\"],"
                 + "\"params\":{\"requirement\":\"做一个39的套餐\"}}");
 
         QueryPlan plan = understander.understand("做一个39的套餐", rdCtx());
 
-        assertEquals(List.of("rd_config_chat"), plan.getTools(), "创建意图不改派");
+        assertEquals(List.of("rd_draft_generate"), plan.getTools(), "创建意图不改派");
     }
 
     // ── 意图归一化 ──
@@ -502,12 +502,12 @@ class DefaultUnderstanderTest {
         List<AgentTool> tools = List.of(
                 tool("sparql_query", "ops",
                         ToolParam.builder("city").label("城市").required().build()),
-                tool("rd_config_chat", "ops",
+                tool("rd_draft_generate", "ops",
                         ToolParam.builder("requirement").label("需求描述").required().build()));
         understander = new DefaultUnderstander(llmService, tools, workOrderMapper,
                 flowIntentRouter, new AgentCapabilityRegistry(tools), null, null);
         llmReturns("{\"intent\":\"product_ops_query | product_ops_reason\","
-                + "\"tools\":[\"sparql_query\",\"rd_config_chat\"],\"params\":{\"city\":\"北京\"}}");
+                + "\"tools\":[\"sparql_query\",\"rd_draft_generate\"],\"params\":{\"city\":\"北京\"}}");
 
         List<QueryPlan> plans = understander.understandAll("查数据并生成配置", ctx());
 
@@ -561,10 +561,10 @@ class DefaultUnderstanderTest {
         var playbookRegistry = new com.sitech.prodai.service.agent.playbook.PlaybookRegistry();
         playbookRegistry.init();
         understander = new DefaultUnderstander(llmService, List.of(
-                tool("rd_file_parse", "rd")), workOrderMapper,
-                flowIntentRouter, new AgentCapabilityRegistry(List.of(tool("rd_file_parse", "rd"))),
+                tool("rd_doc_parse", "rd")), workOrderMapper,
+                flowIntentRouter, new AgentCapabilityRegistry(List.of(tool("rd_doc_parse", "rd"))),
                 null, null, playbookRegistry);
-        llmReturns("{\"intent\":\"parse\",\"tools\":[\"rd_file_parse\"],\"params\":{}}");
+        llmReturns("{\"intent\":\"parse\",\"tools\":[\"rd_doc_parse\"],\"params\":{}}");
 
         understander.understand("导入文档", rdCtx());
 
@@ -580,8 +580,8 @@ class DefaultUnderstanderTest {
     }
 
     @Test
-    void nonRdScenePromptHasNoPlaybookSop() {
-        // ops 场景无适用手册 → prompt 不应出现 SOP 段（零膨胀）
+    void nonRdScenePromptCarriesOpsPlaybookSop() {
+        // ops 场景适用手册（market-insight 等 scene=ops）→ prompt 应含 SOP 段（与 rd 场景同语义）
         var playbookRegistry = new com.sitech.prodai.service.agent.playbook.PlaybookRegistry();
         playbookRegistry.init();
         List<AgentTool> tools = List.of(
@@ -595,7 +595,74 @@ class DefaultUnderstanderTest {
 
         org.mockito.ArgumentCaptor<String> sysCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(llmService, atLeastOnce()).completeMessages(sysCaptor.capture(), anyList(), anyString());
-        assertTrue(!sysCaptor.getValue().contains("标准作业程序"),
-                "无适用手册的场景 prompt 不注入 SOP 段");
+        assertTrue(sysCaptor.getValue().contains("【标准作业程序：市场洞察】"),
+                "ops 场景 system prompt 应含 ops 手册 SOP 标题");
+        assertTrue(sysCaptor.getValue().contains("适用手册"),
+                "SOP 段应有引导语（严格按手册办事）");
+    }
+
+    // ── query 场景（三态：rd / ops / query） ──
+
+    @Test
+    void queryScenePromptUsesQueryRoleAndWhitelist() {
+        // query 场景：ops 工具不可见 → 白名单剔除后重选回落 query 白名单（rd_config_search 可见）
+        List<AgentTool> tools = List.of(
+                tool("sparql_query", "ops",
+                        ToolParam.builder("city").label("城市").required().build()),
+                tool("rd_config_search", "query",
+                        ToolParam.builder("keyword").label("检索关键词").required().build()));
+        understander = new DefaultUnderstander(llmService, tools, workOrderMapper,
+                flowIntentRouter, new AgentCapabilityRegistry(tools), null, null);
+        llmReturns("{\"intent\":\"product_ops_query\",\"tools\":[\"sparql_query\"],\"params\":{\"city\":\"北京\"}}");
+        when(llmService.completePrompt(anyString()))
+                .thenReturn("{\"tools\":[\"rd_config_search\"],\"params\":{\"keyword\":\"套餐\"}}");
+
+        QueryPlan plan = understander.understand("查一下历史配置", queryCtx());
+
+        assertNotNull(plan);
+        assertEquals("rd_config_search", plan.getTools().get(0),
+                "query 场景应回落 query 白名单工具");
+    }
+
+    @Test
+    void queryScenePromptCarriesQueryRole() {
+        // query 场景 system prompt 应含 query 角色定义（role_query.txt）
+        List<AgentTool> tools = List.of(
+                tool("rd_config_search", "query",
+                        ToolParam.builder("keyword").label("检索关键词").required().build()));
+        understander = new DefaultUnderstander(llmService, tools, workOrderMapper,
+                flowIntentRouter, new AgentCapabilityRegistry(tools), null, null);
+        llmReturns("{\"intent\":\"RD_CONFIG_DISCOVER\",\"tools\":[\"rd_config_search\"],\"params\":{\"keyword\":\"套餐\"}}");
+
+        understander.understand("查一下", queryCtx());
+
+        org.mockito.ArgumentCaptor<String> sysCaptor =
+                org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(llmService, atLeastOnce()).completeMessages(sysCaptor.capture(), anyList(), anyString());
+        assertTrue(sysCaptor.getValue().contains("产商品查询智能助手"),
+                "query 场景 system prompt 应使用 role_query.txt 角色定义");
+    }
+
+    @Test
+    void querySceneDiscoverReusesRdArbitration() {
+        // query 场景沿用 rd 兜底仲裁语义（isRdScene(scene) 判定不命中 → 不改派，
+        // 但 query 白名单可见 rd_config_search，检索意图正常透传）
+        List<AgentTool> tools = List.of(
+                tool("rd_config_search", "query",
+                        ToolParam.builder("keyword").label("检索关键词").required().build()));
+        understander = new DefaultUnderstander(llmService, tools, workOrderMapper,
+                flowIntentRouter, new AgentCapabilityRegistry(tools), null, null);
+        llmReturns("{\"intent\":\"discover\",\"tools\":[\"rd_config_search\"],\"params\":{\"keyword\":\"39\"}}");
+
+        QueryPlan plan = understander.understand("找一下月费39的配置", queryCtx());
+
+        assertNotNull(plan);
+        assertEquals("rd_config_search", plan.getTools().get(0), "query 场景检索工具正常透传");
+    }
+
+    private SessionContext queryCtx() {
+        SessionContext c = new SessionContext("ut-query");
+        c.setScene("query");
+        return c;
     }
 }

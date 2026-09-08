@@ -41,7 +41,14 @@ public class RuleExplainTool implements AgentTool {
 
     @Override
     public java.util.Set<String> getScenes() {
-        return java.util.Set.of("ops");
+        // query 场景（产商品查询助手）：规则语义解释（上下线流程、R 系列规则依据查询）
+        return java.util.Set.of("ops", "query");
+    }
+
+    /** 规则解读后的典型业务链：按规则查数据/查概念定义。 */
+    @Override
+    public List<String> getHandoffs() {
+        return List.of("sparql_query", "ontology_explain");
     }
 
     @Override

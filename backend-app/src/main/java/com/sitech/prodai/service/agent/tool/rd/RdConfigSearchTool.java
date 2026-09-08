@@ -14,26 +14,27 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 产商品研发 - 智查历史配置工具。
+ * 产商品研发 - 历史配置检索原子工具（智查链路）。
  * <p>
  * 语义/关键词检索历史产商品配置方案（包装 product-ontology/config/discover 后端能力）。
+ * 检索需求解析内联在本工具参数预处理（question 即检索词），不设独立解析环节。
  */
 @Component
-public class RdDiscoverTool implements AgentTool {
+public class RdConfigSearchTool implements AgentTool {
 
-    private static final Logger log = LoggerFactory.getLogger(RdDiscoverTool.class);
+    private static final Logger log = LoggerFactory.getLogger(RdConfigSearchTool.class);
 
     private static final int DEFAULT_LIMIT = 20;
 
     private final ProductOntologyService productOntologyService;
 
-    public RdDiscoverTool(ProductOntologyService productOntologyService) {
+    public RdConfigSearchTool(ProductOntologyService productOntologyService) {
         this.productOntologyService = productOntologyService;
     }
 
     @Override
     public String getName() {
-        return "rd_config_discover";
+        return "rd_config_search";
     }
 
     @Override
@@ -52,6 +53,12 @@ public class RdDiscoverTool implements AgentTool {
     public java.util.Set<String> getScenes() {
         // W5 query 场景扶正（方案 §7.2）：历史配置检索对 query 场景可见
         return java.util.Set.of("rd", "query");
+    }
+
+    /** 历史方案检索后的典型业务链：候选方案对比 → 按选定方案生成草稿。 */
+    @Override
+    public List<String> getHandoffs() {
+        return List.of("rd_scheme_compare", "rd_draft_generate");
     }
 
     @Override
@@ -94,15 +101,15 @@ public class RdDiscoverTool implements AgentTool {
         if (params != null && params.get("limit") instanceof Number n) {
             limit = n.intValue();
         }
-        log.info("[AgentTool] rd_config_discover 执行: q={}, limit={}", q, limit);
-        if (q == null || q.isBlank()) {
+        log.info("[AgentTool] rd_config_search 执行: q={}, limit={}", q, limit);
+        if (q == null || q.isBlank() || "null".equals(q)) {
             return ExecutionResult.fail(getName(), "缺少检索内容");
         }
         try {
             Map<String, Object> resp = productOntologyService.discoverConfigs(q, limit);
             return ExecutionResult.ok(getName(), normalize(resp));
         } catch (Exception e) {
-            log.error("[AgentTool] rd_config_discover 失败: {}", e.getMessage(), e);
+            log.error("[AgentTool] rd_config_search 失败: {}", e.getMessage(), e);
             return ExecutionResult.fail(getName(), "配置检索失败: " + e.getMessage());
         }
     }

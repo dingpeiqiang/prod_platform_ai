@@ -43,6 +43,12 @@ public class SwrlRootCauseTool implements AgentTool {
         return java.util.Set.of("ops");
     }
 
+    /** 归因后的典型业务链：渠道定位 → 风险稽核（深挖），不原地重复归因。 */
+    @Override
+    public List<String> getHandoffs() {
+        return List.of("sparql_query", "swrl_risk_audit");
+    }
+
     @Override
     public List<ToolOutputField> getOutputFields() {
         return List.of(

@@ -68,6 +68,19 @@ public interface AgentTool {
     }
 
     /**
+     * 典型业务承接链自声明（表达层跟进话术任务链感知）：本工具执行成功后，业务上
+     * 最自然的后续承接工具（如归因→稽核→建单、文档解析→套餐抽取→开单）。
+     * <p>
+     * 仅作为表达层 LLM 生成「下一步建议」的承接提示与守门加权依据（所指工具在
+     * handoffs 内的候选优先保留），不参与理解层/执行层编排。
+     * <p>
+     * 工具可不实现，默认空列表（无固定承接，LLM 自由按描述推荐）。
+     */
+    default List<String> getHandoffs() {
+        return Collections.emptyList();
+    }
+
+    /**
      * 执行工具。
      *
      * @param params 工具参数

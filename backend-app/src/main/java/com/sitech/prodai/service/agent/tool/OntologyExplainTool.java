@@ -40,7 +40,14 @@ public class OntologyExplainTool implements AgentTool {
 
     @Override
     public java.util.Set<String> getScenes() {
-        return java.util.Set.of("ops");
+        // query 场景（产商品查询助手）：制度/概念问询（备案规范、命名编码规则等本体知识）
+        return java.util.Set.of("ops", "query");
+    }
+
+    /** 概念解读后的典型业务链：基于概念查数据/解释规则。 */
+    @Override
+    public List<String> getHandoffs() {
+        return List.of("sparql_query", "rule_explain");
     }
 
     @Override

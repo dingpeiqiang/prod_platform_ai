@@ -167,6 +167,8 @@ const QUERY_POST_INTENTS = [
   'RD_SCHEME_COMPARE',
   'product_ops_query',
   'product_ops_compare',
+  // 固定流程（query_reuse_v2）执行完成后：从执行明细提取比对结果驱动右侧面板
+  'FLOW_EXEC',
 ]
 
 /** 意图后处理：智查/比对结果驱动消息槽位与右侧面板 */
@@ -176,8 +178,9 @@ function applyQueryToolToMsg(msg) {
   for (const tool of done) {
     const out = tool.output || {}
     const name = tool.name || ''
-    if (name === 'rd_config_discover') {
+    if (name === 'rd_config_discover' || name === 'rd_config_search') {
       // 档案调阅结果 → 商品列表卡片（条目点击 → query-result-click → 复制为草稿）
+      // rd_config_search 为后端原子工具现名，与旧名 rd_config_discover 兼容
       const items = Array.isArray(out.items) ? out.items : []
       if (items.length) {
         msg.queryResults = items
@@ -201,6 +204,23 @@ function applyQueryToolToMsg(msg) {
         messages.value = [...messages.value]
       }
     } else if (name === 'rd_scheme_compare') {
+      applyQueryCompare(out)
+    }
+  }
+  // 固定流程（query_reuse_v2：discover → sparql → compare）执行完成：
+  // 执行明细卡片只渲染节点留痕，比对结果需从 output_data 提取驱动右侧 ComparePanel
+  if (msg.flowExecution?.output_data || msg.flowExecution?.context_data) {
+    applyQueryFlowResults(msg.flowExecution.output_data || msg.flowExecution.context_data)
+  }
+}
+
+/** 固定流程执行结果 → 各节点 output 逐个分发给工具级处理（比对结果进右侧面板） */
+function applyQueryFlowResults(outputData) {
+  if (!outputData || typeof outputData !== 'object') return
+  for (const nodeOutput of Object.values(outputData)) {
+    const out = nodeOutput?.output
+    if (!out || typeof out !== 'object') continue
+    if (Array.isArray(out.comparisons) && out.comparisons.length) {
       applyQueryCompare(out)
     }
   }

@@ -31,7 +31,8 @@ public class FactGraphSyncService {
             Map.entry("messageRootKey", "messageRootKey"),
             Map.entry("state", "state"),
             Map.entry("monthlyFee", "monthlyFee"),
-            Map.entry("fixedFeeAmount", "fixedFeeAmount")
+            Map.entry("fixedFeeAmount", "fixedFeeAmount"),
+            Map.entry("shelfDays", "shelfDays")
     );
 
     private final Rdf4jOntologyStore rdf4jStore;

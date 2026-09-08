@@ -107,14 +107,15 @@ prodai:
       - workflow-code: demo_linear_flow
         display-name: 演示线性流程
         keywords: [跑一下演示流程, 演示流程, demo流程]
-  # 场景工作流配置（W3 遗产，逐步被手册层取代）：理解层意图确定性映射到场景工作流，
-  # 未命中场景走 LLM 动态编排；场景未配置（空串）= 该场景暂不启用。
+  # 场景工作流配置（W3 遗产，已被手册层全面取代）：理解层意图确定性映射到场景工作流，
+  # 未命中场景走 LLM 动态编排；场景未配置（空串/缺失）= 该场景暂不启用。
   # rd 已移除：三大主意图（RD_CONFIG_CHAT/RD_FILE_PARSE/RD_CONFIG_DISCOVER）现全部
   # 命中手册（chat-configure/doc-batch-import/discover-history），固化工作流被架空（去旧留新）。
   # ops 已移除：运营问诊主链路收拢到手册 ops-analysis，固化工作流 ops_analysis_v2 退役。
+  # query 已移除：查询复用链路收拢到手册 query-ask（智能问答），固化工作流 query_reuse_v2 退役
+  # （纯问询一步 sparql 即可作答，固化三节点 discover→sparql→compare 是杀鸡用牛刀且不产答案话术）。
   chat-workflow:
-    scene-workflows:
-      query: query_reuse_v2
+    scene-workflows: {}
   llm:
     enabled: ${LLM_ENABLED:true}
     function-calling-enabled: ${LLM_FC_ENABLED:true}

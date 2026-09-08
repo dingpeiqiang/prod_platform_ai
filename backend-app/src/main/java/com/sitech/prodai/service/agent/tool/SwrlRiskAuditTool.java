@@ -43,6 +43,12 @@ public class SwrlRiskAuditTool implements AgentTool {
         return java.util.Set.of("ops");
     }
 
+    /** 稽核后的典型业务链：对高风险对象深挖归因 / 本体解读，不原地重复稽核。 */
+    @Override
+    public List<String> getHandoffs() {
+        return List.of("swrl_root_cause", "sparql_query", "ontology_explain");
+    }
+
     @Override
     public List<ToolOutputField> getOutputFields() {
         return List.of(

@@ -31,7 +31,7 @@ class IntentPromptAssemblerTest {
         assertTrue(prompt.contains("intent"), "缺少输出 JSON 契约");
         assertTrue(prompt.contains("CONFIRM"), "缺少 CONFIRM 判定规则");
         assertTrue(prompt.contains("rd_draft_manage"), "缺少 rd 铁律块（工单操作）");
-        assertTrue(prompt.contains("rd_config_discover"), "缺少查已有 vs 造新分流");
+        assertTrue(prompt.contains("rd_config_search"), "缺少查已有 vs 造新分流");
         assertFalse(prompt.contains("{rd_rules_block}"), "占位符未被替换");
     }
 

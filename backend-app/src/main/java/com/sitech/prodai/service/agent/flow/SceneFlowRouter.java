@@ -122,8 +122,9 @@ public class SceneFlowRouter {
         out.put("flow_execution", data);
         out.put("session_id", data.get("execution_id"));
         if ("completed".equals(status)) {
-            out.put("report", "场景工作流已执行完成，耗时详情见执行明细。");
-            out.put("conclusion", buildConclusion(data));
+            // 报告/结论统一组装（FlowReplyBuilder）：结论取节点自然语言产出（如 sparql_answer），
+            // 报告附节点概要——不再只说"耗时详情见执行明细"
+            out.putAll(FlowReplyBuilder.completedReply(workflowCode, data, null));
         } else if ("waiting_human".equals(status)) {
             out.put("report", "流程在人工节点暂停，请在对话中回复确认（执行 ID：" + data.get("execution_id") + "）。");
             out.put("conclusion", "");
@@ -134,22 +135,5 @@ public class SceneFlowRouter {
         }
         out.put("suggested_follow_ups", java.util.List.of("查看执行明细"));
         return out;
-    }
-
-    /** 结论摘要：flow.output（end 节点透传）→ output_data → 各节点输出概要。 */
-    private String buildConclusion(Map<String, Object> data) {
-        Object output = data.get("output_data");
-        if (output instanceof Map<?, ?> m && !m.isEmpty()) {
-            Object flowScope = m.get("flow");
-            if (flowScope instanceof Map<?, ?> fs && fs.get("output") != null) {
-                return String.valueOf(fs.get("output"));
-            }
-            return String.valueOf(m);
-        }
-        Object context = data.get("context_data");
-        if (context instanceof Map<?, ?> cm && !cm.isEmpty()) {
-            return "各节点输出：" + cm;
-        }
-        return "";
     }
 }

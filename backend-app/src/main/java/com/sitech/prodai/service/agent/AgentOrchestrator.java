@@ -402,6 +402,12 @@ public class AgentOrchestrator {
         fillQuestionSlots(tools, planParams, question);
         QueryPlan plan = new QueryPlan(intent, tools, planParams, question);
         plan.setUserQuestion(question);
+        // 手册步骤声明 input_from 时构建依赖编排（跨工具数据流：result: 来源解析，
+        // 如智聊链路开单承接草稿生成/合规校验产出）；未声明时保持 direct 全参透传
+        List<com.sitech.prodai.service.agent.model.ExecStep> execSteps = playbookExecSteps(book, tools);
+        if (!execSteps.isEmpty()) {
+            plan.setSteps(execSteps);
+        }
         context.setLastIntent(intent);
         context.setLastTools(tools);
         context.setLastParams(planParams);
@@ -521,8 +527,8 @@ public class AgentOrchestrator {
         ));
 
         // ── 阶段③ 执行：工具开始/结束实时下发 tool 事件；完成时按手册步骤落地真实思考步骤 ──
-        // 手册多步可能共用同一工具（如 parse/extract/create 都是 rd_file_parse 的内部环节），
-        // 每次真实工具完成即按序推进一个手册步骤（消费式推进），最后一次执行收尾全部剩余步骤
+        // 工具已原子化（一个工具一个环节，步骤与工具 1:1），
+        // 每次真实工具完成即落地对应的手册步骤（按序推进）
         // 待落步骤队列：工具名 → 该工具尚未落地的手册步骤序号（按序消费）
         Map<String, java.util.ArrayDeque<Integer>> pendingStepsByTool = new LinkedHashMap<>();
         for (int i = 0; i < sopSteps.size(); i++) {
@@ -537,6 +543,12 @@ public class AgentOrchestrator {
         fillQuestionSlots(tools, planParams, question);
         QueryPlan plan = new QueryPlan(intent, tools, planParams, question);
         plan.setUserQuestion(question);
+        // 手册步骤声明 input_from 时构建依赖编排（跨工具数据流：result: 来源解析，
+        // 如智聊链路开单承接草稿生成/合规校验产出）；未声明时保持 direct 全参透传
+        List<com.sitech.prodai.service.agent.model.ExecStep> execSteps = playbookExecSteps(book, tools);
+        if (!execSteps.isEmpty()) {
+            plan.setSteps(execSteps);
+        }
         context.setLastIntent(intent);
         context.setLastTools(tools);
         context.setLastParams(planParams);
@@ -564,8 +576,7 @@ public class AgentOrchestrator {
                     return;
                 }
                 List<Integer> consumed = new ArrayList<>();
-                // 手册路径下 plan 中每个工具只执行一次（步骤序列去重），
-                // 一次真实执行收尾该工具名下全部待落手册步骤（如 rd_file_parse 覆盖 parse/extract/compliance/create 四步）
+                // 手册路径下步骤与工具 1:1（工具原子化）：一次真实执行收尾该工具名下全部待落手册步骤
                 while (!queue.isEmpty()) {
                     consumed.add(queue.poll());
                 }
@@ -581,8 +592,7 @@ public class AgentOrchestrator {
                     } else {
                         stepTrace.add(Map.of("stage", "llm", "message", "执行失败：" + result.getErrorMessage()));
                     }
-                    // 输入/输出按环节差异化：一次真实执行收尾多个手册步骤时，
-                    // 各步的输入承接上一环节产出，输出只讲自己环节的结论（不重复全量摘要）
+                    // 输入/输出按环节差异化：原子工具链下每步输入承接上一环节产出，输出只讲自己环节的结论
                     Map<String, Object> phaseIo = stepIoOf(result, stepIdx);
                     @SuppressWarnings("unchecked")
                     Map<String, Object> phaseInput = (Map<String, Object>) phaseIo.getOrDefault("input", Map.of());
@@ -662,39 +672,32 @@ public class AgentOrchestrator {
         return true;
     }
 
-    /** 工具产出 → 过程留痕（与 buildToolEvent 同源：本体/规则推理、数据查询、智读解析各环节明细）。 */
+    /** 工具产出 → 过程留痕（与 buildToolEvent 同源：本体/规则推理、数据查询等环节明细）。 */
     private List<Map<String, Object>> toolTraceOf(ExecutionResult result) {
         return switch (result.getToolName()) {
             case "sparql_query" -> TraceSnapshotBuilder.ontologyQueryTrace(result);
-            case "rd_file_parse" -> TraceSnapshotBuilder.rdFileParseTrace(result);
             default -> TraceSnapshotBuilder.ontologyTraceView(result);
         };
     }
 
     /**
-     * 手册步骤 → 该步骤自身环节的留痕切片：一次真实工具执行会收尾多个手册步骤
-     * （如 rd_file_parse 四步、rd_config_chat 四步、rd_config_discover 三步），
-     * 每步只贴自己对应环节的留痕，避免全量重复。
-     * ops 四本入口手册步骤各对应一个独立工具执行，环节留痕走通用工具留痕。
+     * 手册步骤 → 该步骤的留痕：工具已原子化（一个工具一个环节，步骤与工具 1:1），
+     * 每步贴该工具真实执行的全量留痕，无环节切片。
      */
     private List<Map<String, Object>> stepTraceOf(ExecutionResult result, int stepIdx) {
-        return switch (result.getToolName()) {
-            case "rd_file_parse" -> TraceSnapshotBuilder.rdFileParseTracePhase(result, stepIdx);
-            default -> toolTraceOf(result);
-        };
+        return toolTraceOf(result);
     }
 
     /**
-     * 手册步骤 → 该步骤自身环节的输入/输出视图：输入承接上一环节产出（from_step），
-     * 输出只讲本环节结论。智读四环节、智聊四环节、智查三环节、运营问诊四环节差异化，
-     * 其余工具回退通用摘要。
+     * 手册步骤 → 该步骤的输入/输出视图：工具已原子化（步骤与工具 1:1），
+     * 环节切片退化为全量——ops 与 rd 原子工具统一走 opsAnalysisPhaseIo
+     * （按工具名分发，输入承接上一环节产出、输出讲本环节结论），其余回退空。
      */
     private Map<String, Object> stepIoOf(ExecutionResult result, int stepIdx) {
         return switch (result.getToolName()) {
-            case "rd_file_parse" -> TraceSnapshotBuilder.rdFileParsePhaseIo(result, stepIdx);
-            case "rd_config_chat" -> TraceSnapshotBuilder.rdConfigChatPhaseIo(result, stepIdx);
-            case "rd_config_discover" -> TraceSnapshotBuilder.rdDiscoverPhaseIo(result, stepIdx);
-            case "sparql_query", "swrl_root_cause", "swrl_risk_audit", "ontology_explain", "rule_explain" ->
+            case "sparql_query", "swrl_root_cause", "swrl_risk_audit", "ontology_explain", "rule_explain",
+                 "rd_doc_parse", "rd_draft_extract", "rd_compliance", "rd_workorder_create",
+                 "rd_category_resolve", "rd_draft_generate", "rd_config_search" ->
                     TraceSnapshotBuilder.opsAnalysisPhaseIo(result, stepIdx);
             default -> Map.of();
         };
@@ -718,6 +721,68 @@ public class AgentOrchestrator {
             }
         }
         return tools;
+    }
+
+    /**
+     * 手册步骤序列 → ExecStep 依赖编排：步骤声明 input_from（参数名 → "上游工具.输出键"）
+     * 时生成 result:<上游工具>.<输出键> 来源映射（执行层经 ParamResolver 解析前序步骤产出），
+     * 解决 direct 全参透传无法表达跨工具数据流的问题（如智聊链路开单承接草稿生成产出）。
+     * <p>
+     * 校验口径与理解层 buildExecSteps 一致：上游工具必须在手册工具链内、
+     * 引用键必须在工具输出契约中（非法映射剔除，回落 direct 透传）。
+     */
+    private com.sitech.prodai.service.agent.model.ExecStep playbookExecStep(
+            Map<?, ?> step, List<String> tools) {
+        Object toolVal = step.get("tool");
+        String tool = toolVal == null ? "" : String.valueOf(toolVal).trim();
+        com.sitech.prodai.service.agent.model.ExecStep execStep =
+                new com.sitech.prodai.service.agent.model.ExecStep(tool);
+        if (!(step.get("input_from") instanceof Map<?, ?> from)) {
+            return execStep;
+        }
+        for (Map.Entry<?, ?> e : from.entrySet()) {
+            String param = String.valueOf(e.getKey());
+            String ref = String.valueOf(e.getValue()).trim();
+            int dot = ref.indexOf('.');
+            String upstreamTool = dot > 0 ? ref.substring(0, dot) : ref;
+            String key = dot > 0 ? ref.substring(dot + 1) : "";
+            if (!tools.contains(upstreamTool) || key.isBlank()) {
+                log.warn("[AgentOrchestrator] 手册步骤 input_from 引用非法，剔除: {} -> {}", param, ref);
+                continue;
+            }
+            AgentTool upstream = toolMap.get(upstreamTool);
+            if (upstream == null || upstream.getOutputFields().stream()
+                    .noneMatch(f -> key.equals(f.getName()) || key.equals(f.getOutputKey()))) {
+                log.warn("[AgentOrchestrator] 手册步骤 input_from 引用键不在上游输出契约，剔除: {} -> {}", param, ref);
+                continue;
+            }
+            execStep.getParamMappings().put(param, "result:" + upstreamTool + "." + key);
+        }
+        return execStep;
+    }
+
+    /**
+     * 手册步骤序列 → ExecStep 序列（保序去重，与 playbookTools 口径一致）：
+     * 步骤声明 input_from 时生成 result: 来源映射，跨工具数据流走执行层依赖解析。
+     */
+    private List<com.sitech.prodai.service.agent.model.ExecStep> playbookExecSteps(
+            Map<String, Object> book, List<String> tools) {
+        List<com.sitech.prodai.service.agent.model.ExecStep> out = new ArrayList<>();
+        if (book.get("steps") instanceof List<?> steps) {
+            for (Object o : steps) {
+                if (!(o instanceof Map<?, ?> step)) {
+                    continue;
+                }
+                Object toolVal = step.get("tool");
+                String tool = toolVal == null ? "" : String.valueOf(toolVal).trim();
+                if (tool.isBlank() || !tools.contains(tool)
+                        || out.stream().anyMatch(s -> tool.equals(s.getTool()))) {
+                    continue; // 多步骤共用同一工具时只执行一次
+                }
+                out.add(playbookExecStep(step, tools));
+            }
+        }
+        return out;
     }
 
     /** SOP 文本 → 步骤结构列表：[{do, how, tool}]（「第N步 X——Y（工具：t）」行解析）。 */
@@ -760,7 +825,7 @@ public class AgentOrchestrator {
 
     /**
      * rd 场景透传会话 ID：AgentTool 接口无 context 参数，经 plan.params → executor direct 兜底
-     * 透传给工具（如 rd_file_parse 批量开单需绑定会话，否则 attachBatchWorkOrders 短路不开单）。
+     * 透传给工具（如 rd_workorder_create 开单需绑定会话，否则不开单）。
      * session_id 是系统参数，必须以服务端 SessionContext 为准：请求参数可能缺省或带错值，
      * 故此处强制覆盖（与常规链路 DefaultUnderstander 的注入策略一致）。
      */
@@ -772,8 +837,8 @@ public class AgentOrchestrator {
 
     /**
      * 手册直达链路按工具参数契约自动补槽：手册快筛跳过了理解层 LLM（零 LLM 成本直达），
-     * 没有槽位提取环节，工具声明的 source=question 必填参数（如 rd_config_chat 的 text、
-     * rd_config_discover 的 question）会拿不到值——executor 的 direct 兜底只透传 plan.params
+     * 没有槽位提取环节，工具声明的 source=question 必填参数（如 rd_draft_generate 的 text、
+     * rd_config_search 的 question）会拿不到值——executor 的 direct 兜底只透传 plan.params
      * 同名键，而 plan.params 里只有 question，参数名不一致即触发「缺少配置需求描述」类失败。
      * <p>
      * 修复策略：遍历手册工具链上每个工具的参数契约，凡 source=question 的参数
@@ -1937,11 +2002,9 @@ public class AgentOrchestrator {
             toolEvent.put("errorMessage", result.getErrorMessage());
         }
         // 本体/规则推理日志：从工具产出中提取推理引擎、命中规则、归因路径等过程留痕；
-        // 数据查询类工具（NL→SPARQL）下发实体发现/查询执行留痕，体现本体查询逻辑；
-        // 智读文件解析工具（rd_file_parse）下发文档解析/抽取/合规/开单各环节留痕，补齐执行链路可见性
+        // 数据查询类工具（NL→SPARQL）下发实体发现/查询执行留痕，体现本体查询逻辑
         List<Map<String, Object>> toolTrace = switch (result.getToolName()) {
             case "sparql_query" -> TraceSnapshotBuilder.ontologyQueryTrace(result);
-            case "rd_file_parse" -> TraceSnapshotBuilder.rdFileParseTrace(result);
             default -> TraceSnapshotBuilder.ontologyTraceView(result);
         };
         if (toolTrace != null) {

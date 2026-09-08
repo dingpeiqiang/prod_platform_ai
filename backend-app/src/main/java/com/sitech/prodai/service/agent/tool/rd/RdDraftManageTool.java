@@ -27,7 +27,7 @@ import java.util.Map;
  * 全量记录用户操作到会话历史。
  * <p>
  * 定位契约：草稿是工单的关联状态，统一以 work_order_id 定位——
- * 工单 payload.draftId 在开单时写入（rd_config_chat 生成即开单 / rd_draft_manage 复制即开单）。
+ * 工单 payload.draftId 在开单时写入（rd_draft_generate 生成即开单 / rd_draft_manage 复制即开单）。
  * 不再接受 draft_id/client_id 入参，避免 LLM 把工单号误填进 draft_id。
  */
 @Component
@@ -68,6 +68,12 @@ public class RdDraftManageTool implements AgentTool {
     @Override
     public java.util.Set<String> getScenes() {
         return java.util.Set.of("rd");
+    }
+
+    /** 草稿修改后的典型业务链：重跑合规校验确认 → 开单。 */
+    @Override
+    public List<String> getHandoffs() {
+        return List.of("rd_compliance", "rd_workorder_create");
     }
 
     @Override

@@ -977,9 +977,10 @@ function applyRdToolToPanels(msg) {
       }
     } else if (name === 'rd_scheme_compare') {
       applyRdSchemeCompare(out)
-    } else if (name === 'rd_config_discover') {
+    } else if (name === 'rd_config_discover' || name === 'rd_config_search') {
       // 智查结果 → 商品列表卡片（ChatMessageList msg.queryResults 槽位）：
       // 条目点击/复制按钮 → query-result-click → prepareProduct（copy-as-draft + 合规）
+      // rd_config_search 为后端原子工具现名（discover-history 手册两步均用它），与旧名 rd_config_discover 兼容
       const items = Array.isArray(out.items) ? out.items : []
       if (items.length) {
         msg.queryResults = items

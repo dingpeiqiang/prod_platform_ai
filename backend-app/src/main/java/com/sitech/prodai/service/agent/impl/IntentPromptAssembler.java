@@ -34,6 +34,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <ul>
  *   <li>{@code role_rd.txt}：rd 场景角色定义（占位符 {@code {role}}）</li>
  *   <li>{@code role_ops.txt}：ops 场景角色定义</li>
+ *   <li>{@code role_query.txt}：query 场景角色定义（产商品查询助手）</li>
  *   <li>{@code base_prompt.txt}：公共骨架（输出 JSON 契约 + CONFIRM 判定规则，占位符
  *       {@code {rd_rules_block}}）</li>
  *   <li>{@code rd_rules_block.txt}：rd 场景专属铁律（工单操作 / 查已有 vs 造新分流）</li>
@@ -67,13 +68,34 @@ public class IntentPromptAssembler {
      * @return 组装后的系统提示词（不含动态能力清单——那部分由调用方追加）
      */
     public String assembleSystemPrompt(boolean rdScene) {
-        String roleFile = rdScene ? "role_rd.txt" : "role_ops.txt";
+        return assembleSystemPrompt(rdScene ? "rd" : "ops");
+    }
+
+    /**
+     * 组装意图识别系统提示词（场景键三态：rd / ops / query）。
+     * <p>
+     * query 场景（产商品查询助手）使用独立角色定义 {@code role_query.txt}；
+     * 未知场景回落 ops 角色（与 {@code AgentCapabilityRegistry.DEFAULT_SCENE} 语义一致）。
+     *
+     * @param scene 场景键（rd / ops / query；null/空 = ops）
+     * @return 组装后的系统提示词（不含动态能力清单——那部分由调用方追加）
+     */
+    public String assembleSystemPrompt(String scene) {
+        String normalized = scene == null || scene.isBlank()
+                ? "ops" : scene.trim().toLowerCase(java.util.Locale.ROOT);
+        String roleFile = switch (normalized) {
+            case "rd" -> "role_rd.txt";
+            case "query" -> "role_query.txt";
+            default -> "role_ops.txt";
+        };
         String role = loadTemplate(roleFile);
         if (role == null || role.isBlank()) {
             // 模板缺失兜底：内联最小角色定义（不阻断理解链路）
-            role = rdScene
-                    ? "你是一个产商品研发智能助手，负责理解用户的需求，并将其翻译为可执行的研发配置计划。\n"
-                    : "你是一个产品运营智能助手，负责理解用户的问题，并将其翻译为可执行的查询计划。\n";
+            role = switch (normalized) {
+                case "rd" -> "你是一个产商品研发智能助手，负责理解用户的需求，并将其翻译为可执行的研发配置计划。\n";
+                case "query" -> "你是一个产商品查询智能助手，负责理解用户的查询诉求，并将其翻译为可执行的查询计划。\n";
+                default -> "你是一个产品运营智能助手，负责理解用户的问题，并将其翻译为可执行的查询计划。\n";
+            };
         }
         String base = loadTemplate("base_prompt.txt");
         if (base == null || base.isBlank()) {
@@ -81,7 +103,7 @@ public class IntentPromptAssembler {
             base = "";
         }
         String rdRules = "";
-        if (rdScene) {
+        if ("rd".equals(normalized)) {
             String block = loadTemplate("rd_rules_block.txt");
             rdRules = block == null ? "" : block;
         }

@@ -79,22 +79,37 @@ public final class ThinkingCopy {
                 "查阅业务知识库/概念词条说明",
                 Category.LOOKUP));
         // ── 研发工具 ──
-        m.put("rd_config_chat", new ToolCopy(
+        m.put("rd_category_resolve", new ToolCopy(
+                "识别产品品类",
+                "先弄清需求属于哪类产品（家庭融合/校园/5G 等），后续配置才能套对模板",
+                "在配置管理后台按场景特征（客群/资费形态）人工判定品类后选择对应配置模板",
+                Category.LOOKUP));
+        m.put("rd_draft_generate", new ToolCopy(
                 "生成配置草稿",
                 "把您的需求描述转化为一份可编辑的产商品配置草稿（名称、资费、客群、渠道等）",
                 "在配置管理后台新建商品，按需求逐项填写套餐名称、月费、目标客群、销售渠道等字段",
                 Category.GENERATE));
-        m.put("rd_file_parse", new ToolCopy(
+        m.put("rd_doc_parse", new ToolCopy(
                 "解析方案文档",
-                "读取上传的方案文档，把里面的套餐信息整理成一条条配置草稿",
-                "人工通读方案文档，将其中每个套餐的名称/月费/要素/客群/渠道抄录到配置后台",
+                "读取上传的方案文档，把里面的文字内容完整提取出来",
+                "人工打开方案文档，确认文件可读并通读其中内容",
+                Category.LOOKUP));
+        m.put("rd_draft_extract", new ToolCopy(
+                "抽取配置要素",
+                "从文档文本里逐个套餐整理出配置要素（名称/月费/客群/渠道），形成一条条草稿",
+                "人工通读方案文档，将其中每个套餐的名称/月费/要素/客群/渠道抄录成清单",
                 Category.GENERATE));
         m.put("rd_compliance", new ToolCopy(
                 "检查配置合规性",
                 "用资费与政策规则检查草稿，避免带病提交后被驳回",
                 "在配置后台的「合规校验」页对该草稿重跑规则检查，或对照《合规规则集》人工核对",
                 Category.VERIFY));
-        m.put("rd_config_discover", new ToolCopy(
+        m.put("rd_workorder_create", new ToolCopy(
+                "批量落库开单",
+                "把草稿逐条保存入库并创建配置工单，让每条配置进入流转处理",
+                "在配置管理后台逐条保存草稿，并为每条草稿创建对应的配置工单",
+                Category.GENERATE));
+        m.put("rd_config_search", new ToolCopy(
                 "检索历史配置",
                 "查找是否已有类似的历史方案可以直接复用，少走弯路",
                 "在配置管理后台按关键词/品类搜索历史商品方案",
@@ -136,8 +151,13 @@ public final class ThinkingCopy {
             Map.entry("product_ops_reason", "异动归因"),
             Map.entry("RD_CONFIG_CHAT", "对话配置"),
             Map.entry("RD_FILE_PARSE", "方案解析"),
-            Map.entry("RD_COMPLIANCE", "合规校验"),
             Map.entry("RD_CONFIG_DISCOVER", "配置查询"),
+            Map.entry("RD_DOC_PARSE", "文档解析"),
+            Map.entry("RD_DRAFT_EXTRACT", "要素抽取"),
+            Map.entry("RD_DRAFT_GENERATE", "草稿生成"),
+            Map.entry("RD_CATEGORY_RESOLVE", "品类识别"),
+            Map.entry("RD_WORKORDER_CREATE", "落库开单"),
+            Map.entry("RD_CONFIG_SEARCH", "配置查询"),
             Map.entry("RD_SCHEME_COMPARE", "方案对比"),
             Map.entry("RD_DRAFT_MANAGE", "草稿管理"),
             Map.entry("FLOW_EXEC", "流程执行"),
@@ -147,16 +167,22 @@ public final class ThinkingCopy {
     );
 
     /** 业务意图 → 该意图下「为什么做」的一句话目标 */
-    private static final Map<String, String> INTENT_GOAL = Map.of(
-            "SPARQL_QUERY", "先拿到准确的数据，再基于数据回答您的问题",
-            "SWRL_INFER", "用归因规则找出指标变化的主因，而不是只给数字",
-            "RD_CONFIG_CHAT", "把您的想法落成一份可直接编辑的配置草稿",
-            "RD_FILE_PARSE", "把文档里的方案批量转成配置草稿，省去手工录入",
-            "RD_COMPLIANCE", "提前发现资费/政策风险，避免提交后被驳回返工",
-            "RD_CONFIG_DISCOVER", "先看有没有可复用的历史方案，避免重复建设",
-            "RD_SCHEME_COMPARE", "用同一把尺子（合规+收益）衡量每个方案，给出推荐",
-            "RD_DRAFT_MANAGE", "把草稿操作落到工单闭环：修改/删除/复制/提交一步到位",
-            "CLARIFY", "信息不足时先问清楚，避免答非所问"
+    private static final Map<String, String> INTENT_GOAL = Map.ofEntries(
+            Map.entry("SPARQL_QUERY", "先拿到准确的数据，再基于数据回答您的问题"),
+            Map.entry("SWRL_INFER", "用归因规则找出指标变化的主因，而不是只给数字"),
+            Map.entry("RD_CONFIG_CHAT", "把您的想法落成一份可直接编辑的配置草稿"),
+            Map.entry("RD_FILE_PARSE", "把文档里的方案批量转成配置草稿，省去手工录入"),
+            Map.entry("RD_COMPLIANCE", "提前发现资费/政策风险，避免提交后被驳回返工"),
+            Map.entry("RD_CONFIG_DISCOVER", "先看有没有可复用的历史方案，避免重复建设"),
+            Map.entry("RD_DOC_PARSE", "先把文档内容完整读出来，后续环节才有准确原料"),
+            Map.entry("RD_DRAFT_EXTRACT", "从文档里逐套餐整理配置要素，形成可编辑的草稿清单"),
+            Map.entry("RD_DRAFT_GENERATE", "按品类模板把需求落成草稿字段，逐项可追溯"),
+            Map.entry("RD_CATEGORY_RESOLVE", "先定品类，后续配置才能套对模板"),
+            Map.entry("RD_WORKORDER_CREATE", "草稿入库并开出工单，配置进入正式流转"),
+            Map.entry("RD_CONFIG_SEARCH", "先看有没有可复用的历史方案，避免重复建设"),
+            Map.entry("RD_SCHEME_COMPARE", "用同一把尺子（合规+收益）衡量每个方案，给出推荐"),
+            Map.entry("RD_DRAFT_MANAGE", "把草稿操作落到工单闭环：修改/删除/复制/提交一步到位"),
+            Map.entry("CLARIFY", "信息不足时先问清楚，避免答非所问")
     );
 
     /** 意图内部码 → 业务动作名（用于步骤文案）。 */
@@ -201,6 +227,7 @@ public final class ThinkingCopy {
             Map.entry("text", "配置需求"),
             Map.entry("draft", "已有草稿"),
             Map.entry("product_type", "产品品类"),
+            Map.entry("category_code", "品类编码"),
             Map.entry("patches", "候选方案"),
             Map.entry("document_text", "文档内容"),
             Map.entry("metric", "指标"),

@@ -165,11 +165,11 @@ public class DefaultPresenter implements Presenter {
     /**
      * 跟进话术生成（方案 11.2 触点④：任务链感知的下一步）。
      * <p>
-     * 优先 LLM 基于"用户问题 + 本轮工具结果 + 工具描述声明的业务承接关系"生成
-     * 业务承接话术（归因→建单、稽核→导出、对比→写回草稿等真实业务衔接，而非通用三句）；
-     * 守门校验话术所指工具在本场景白名单内（合法能力清单由场景已知工具推导，同理解层
-     * sanitizeTools 语义），非法候选剔除；LLM 不可用/合法候选不足时回退
-     * 原工具分支词典（@deprecated 过渡保留）。
+     * LLM 基于「用户问题 + 本轮工具结果关键内容 + 工具自声明的业务承接链（handoffs）+
+     * 会话近期动作」生成业务承接话术（归因→建单、稽核→导出、对比→采用方案等真实业务衔接）；
+     * 守门校验话术所指工具在本场景白名单内（防 LLM 编造能力，同理解层 sanitizeTools 语义），
+     * 并排除与近期已执行动作重复的建议（防原地打转）；LLM 不可用/合法候选不足时
+     * 回退承接链推导的最小建议集（确定性兜底，不再使用 @deprecated 固定词典）。
      */
     @Override
     public List<String> suggestFollowUps(String question, List<ExecutionResult> results, SessionContext context) {
@@ -178,52 +178,54 @@ public class DefaultPresenter implements Presenter {
             return generated;
         }
 
-        List<String> suggestions = new ArrayList<>();
+        // 确定性兜底：由本轮工具的 handoffs（业务承接链自声明）推导承接动作，
+        // 无声明时按成败给通用指引（失败→修复重试，成功→继续探索）
+        return fallbackFollowUps(results, context);
+    }
 
-        // 回退：按工具结果生成建议（词典分支 @deprecated，随 LLM 化稳定后移除）
-        if (results != null) {
-            for (ExecutionResult result : results) {
-                if (!result.isSuccess()) {
-                    suggestions.add("重试刚才的查询");
-                    continue;
-                }
-                if ("swrl_root_cause".equals(result.getToolName())) {
-                    suggestions.add("具体哪个渠道影响最大？");
-                    suggestions.add("和上月对比呢？");
-                    suggestions.add("生成产品优化工单");
-                    break;
-                }
-                if ("swrl_risk_audit".equals(result.getToolName())) {
-                    suggestions.add("查看高风险商品详情");
-                    suggestions.add("导出风险报告");
-                    suggestions.add("发起批量下架流程");
-                    break;
-                }
-                if ("sparql_query".equals(result.getToolName())) {
-                    suggestions.add("查看详细数据");
-                    suggestions.add("分析变化趋势");
-                    suggestions.add("导出数据报表");
-                    break;
+    /**
+     * 确定性兜底建议：本轮工具声明了 handoffs 时给承接话术（用工具业务标签组织），
+     * 失败结果给修复性指引；无任何依据时给探索性通用建议。仍排除与上轮重复的建议。
+     */
+    private List<String> fallbackFollowUps(List<ExecutionResult> results, SessionContext context) {
+        List<String> out = new ArrayList<>();
+        if (results == null || results.isEmpty()) {
+            return List.of("查看其他相关数据", "切换分析视角");
+        }
+        for (ExecutionResult result : results) {
+            if (!result.isSuccess()) {
+                out.add("换一种说法重试刚才的操作");
+                continue;
+            }
+            AgentTool tool = toolMap.get(result.getToolName());
+            if (tool == null) {
+                continue;
+            }
+            for (String next : tool.getHandoffs()) {
+                AgentTool nextTool = toolMap.get(next);
+                if (nextTool != null) {
+                    out.add("接下来" + nextTool.getLabel() + "试试");
                 }
             }
         }
-
-        // 兜底建议
-        if (suggestions.isEmpty()) {
-            suggestions.add("查看其他相关数据");
-            suggestions.add("切换分析视角");
+        out.removeIf(s -> s.isBlank() || recentHistoryTexts(context).contains(s));
+        if (out.isEmpty()) {
+            out.add("查看其他相关数据");
         }
-
-        return suggestions;
+        return out.stream().distinct().limit(3).toList();
     }
 
     /**
      * LLM 生成任务链感知的跟进话术：基于本轮结果建议"下一个业务动作"。
      * <p>
-     * prompt 注入本轮工具执行结果与场景内全部能力清单（名称 + 描述 + 声明的入参业务含义，
-     * 即工具自描述的承接关系），要求每条话术指明承接的工具；守门只保留所指工具在场景
-     * 白名单内的候选（防 LLM 编造能力，与理解层白名单语义一致）。
-     * 输出解析为 2~3 条短话术；LLM 失败/全部候选被剔除时返回 null（调用方回退词典）。
+     * prompt 注入：
+     * <ul>
+     *   <li>本轮工具执行结果（含关键输出内容摘要，建议可引用具体数字/对象，与数据强相关）</li>
+     *   <li>场景内全部能力清单（名称 + 描述 + 自声明承接链 handoffs，即任务链方向）</li>
+     *   <li>会话近期用户已问/系统已建议的内容（明确禁止重复，防原地打转）</li>
+     * </ul>
+     * 守门：话术所指工具须在场景白名单内（防幻觉）；与近期动作重复的候选剔除。
+     * 剔除后不足 2 条时回喂剔除原因补位重生成一次，仍不足返回已有候选（空则 null）。
      */
     private List<String> llmFollowUps(String question, List<ExecutionResult> results, SessionContext context) {
         if (results == null || results.isEmpty()) {
@@ -234,54 +236,187 @@ public class DefaultPresenter implements Presenter {
             return null;
         }
         try {
-            StringBuilder sb = new StringBuilder();
-            sb.append("用户问题：").append(question).append("\n本轮执行结果摘要：\n");
-            for (ExecutionResult r : results) {
-                sb.append("- ").append(r.getToolName()).append("：")
-                        .append(r.isSuccess() ? "成功" : "失败").append('\n');
-            }
-            sb.append("\n系统当前具备的后续业务能力（话术建议必须承接其中之一，不得虚构其他能力）：\n");
-            for (AgentTool tool : allowedTools) {
-                sb.append("- ").append(tool.getName()).append("：").append(tool.getDescription()).append('\n');
-            }
-            sb.append("\n请基于该结果，建议用户接下来最自然的 2~3 个业务动作（如归因后建议建单、")
-                    .append("稽核后建议导出清单、对比后建议采用某方案）。")
-                    .append("每条一句话、面向业务人员、可直接作为消息发送，且须承接上面列出的某项能力。")
-                    .append("\n仅输出 JSON 数组：[{\"text\": \"话术1\", \"tool\": \"承接的工具名\"}, {\"text\": \"话术2\", \"tool\": \"承接的工具名\"}]");
-            String raw = llmService.completePrompt(sb.toString());
-            if (raw == null || raw.isBlank()) {
+            List<String> recent = recentHistoryTexts(context);
+            List<String> first = generateFollowUpsOnce(question, results, allowedTools, recent, null);
+            if (first == null) {
                 return null;
             }
-            int start = raw.indexOf('[');
-            int end = raw.lastIndexOf(']');
-            if (start < 0 || end <= start) {
-                return null;
-            }
-            List<Map<String, Object>> list = new com.fasterxml.jackson.databind.ObjectMapper().readValue(
-                    raw.substring(start, end + 1),
-                    new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
-            Set<String> allowedNames = new LinkedHashSet<>();
-            for (AgentTool tool : allowedTools) {
-                allowedNames.add(tool.getName());
-            }
-            List<String> out = new ArrayList<>();
-            for (Map<String, Object> item : list) {
-                if (item == null || out.size() >= 3) {
-                    continue;
-                }
-                Object text = item.get("text");
-                Object tool = item.get("tool");
-                // 守门：话术所指工具必须在场景白名单内，非法候选剔除（防幻觉能力混入执行链入口）
-                if (text instanceof String s && !s.isBlank()
-                        && tool instanceof String t && allowedNames.contains(t.trim())) {
-                    out.add(s.trim());
+            // 补位重试：守门剔除导致候选不足时，把剔除原因回喂 LLM 再生成一次
+            if (first.size() < 2 && !first.isEmpty()) {
+                List<String> retry = generateFollowUpsOnce(question, results, allowedTools, recent,
+                        "上一轮仅产出 " + first.size() + " 条有效建议（其余因引用了清单外能力或与近期动作重复被剔除），"
+                                + "请补足到 2~3 条且避免同类问题，可基于本轮结果深挖新角度。");
+                if (retry != null) {
+                    List<String> merged = new ArrayList<>(first);
+                    for (String s : retry) {
+                        if (!merged.contains(s)) {
+                            merged.add(s);
+                        }
+                        if (merged.size() >= 3) {
+                            break;
+                        }
+                    }
+                    return merged;
                 }
             }
-            return out;
+            return first;
         } catch (Exception e) {
-            log.warn("[DefaultPresenter] 跟进话术 LLM 生成失败，回退词典: {}", e.getMessage());
+            log.warn("[DefaultPresenter] 跟进话术 LLM 生成失败，回退确定性兜底: {}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * 单次 LLM 跟进话术生成与守门。retryHint 非空时为补位重试（注入剔除原因）。
+     * 返回守门后的候选（可能为空列表）；LLM 调用/解析失败返回 null。
+     */
+    private List<String> generateFollowUpsOnce(String question, List<ExecutionResult> results,
+                                               List<AgentTool> allowedTools,
+                                               List<String> recent, String retryHint) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("用户问题：").append(question).append("\n本轮执行结果（关键内容）：\n");
+        for (ExecutionResult r : results) {
+            if (r.isSuccess()) {
+                sb.append("- ").append(r.getToolName()).append("：成功，")
+                        .append(summarizeForFollowUp(r)).append('\n');
+            } else {
+                sb.append("- ").append(r.getToolName()).append("：失败（")
+                        .append(r.getErrorMessage() == null ? "原因未知" : r.getErrorMessage()).append("）\n");
+            }
+        }
+        sb.append("\n系统当前具备的后续业务能力（话术建议必须承接其中之一，不得虚构其他能力）：\n");
+        for (AgentTool tool : allowedTools) {
+            sb.append("- ").append(tool.getName()).append("：").append(tool.getDescription());
+            List<String> handoffs = tool.getHandoffs();
+            if (!handoffs.isEmpty()) {
+                sb.append("（典型后续动作：").append(String.join(" → ", handoffs)).append("）");
+            }
+            sb.append('\n');
+        }
+        if (!recent.isEmpty()) {
+            sb.append("\n本会话近期用户已问过/系统已建议过的内容（禁止重复推荐这些动作或其同义改写）：\n");
+            for (String s : recent) {
+                sb.append("- ").append(s).append('\n');
+            }
+        }
+        boolean hasFailure = results.stream().anyMatch(r -> !r.isSuccess());
+        if (hasFailure) {
+            sb.append("\n注意：本轮有环节执行失败，至少一条建议应针对失败给出修复路径（换说法重试/补充缺失信息/缩小范围），")
+                    .append("而不是继续推进后续业务动作。");
+        }
+        if (retryHint != null) {
+            sb.append('\n').append(retryHint).append('\n');
+        }
+        sb.append("\n请基于该结果，建议用户接下来最自然的 2~3 个业务动作（如归因后建议对影响最大的对象建单、")
+                .append("稽核后建议导出清单、对比后建议采用推荐方案；话术应结合上面给出的结果关键内容，")
+                .append("能引用具体对象/数字则引用）。")
+                .append("每条一句话、面向业务人员、可直接作为消息发送，且须承接上面列出的某项能力。")
+                .append("\n仅输出 JSON 数组：[{\"text\": \"话术1\", \"tool\": \"承接的工具名\"}, {\"text\": \"话术2\", \"tool\": \"承接的工具名\"}]");
+        String raw = llmService.completePrompt(sb.toString());
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        int start = raw.indexOf('[');
+        int end = raw.lastIndexOf(']');
+        if (start < 0 || end <= start) {
+            return null;
+        }
+        List<Map<String, Object>> list;
+        try {
+            list = new com.fasterxml.jackson.databind.ObjectMapper().readValue(
+                    raw.substring(start, end + 1),
+                    new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            log.warn("[DefaultPresenter] 跟进话术 JSON 解析失败: {}", e.getMessage());
+            return null;
+        }
+        Set<String> allowedNames = new LinkedHashSet<>();
+        for (AgentTool tool : allowedTools) {
+            allowedNames.add(tool.getName());
+        }
+        List<String> out = new ArrayList<>();
+        for (Map<String, Object> item : list) {
+            if (item == null || out.size() >= 3) {
+                continue;
+            }
+            Object text = item.get("text");
+            Object tool = item.get("tool");
+            // 守门：话术所指工具必须在场景白名单内，非法候选剔除（防幻觉能力混入执行链入口）
+            if (!(text instanceof String s) || s.isBlank()
+                    || !(tool instanceof String t) || !allowedNames.contains(t.trim())) {
+                continue;
+            }
+            String candidate = s.trim();
+            // 守门：与近期会话动作重复的候选剔除（防原地打转）
+            if (isDuplicateOfRecent(candidate, recent)) {
+                continue;
+            }
+            out.add(candidate);
+        }
+        return out;
+    }
+
+    /**
+     * 会话近期动作文本（用户提问 + 助手结论尾部截断），供 LLM 去重参照与守门比对。
+     * 只取最近 6 条、每条截断 80 字，控制 prompt 体量。
+     */
+    private List<String> recentHistoryTexts(SessionContext context) {
+        List<Map<String, Object>> history = context != null ? context.getHistory() : null;
+        if (history == null || history.isEmpty()) {
+            return List.of();
+        }
+        int from = Math.max(0, history.size() - 6);
+        List<String> out = new ArrayList<>();
+        for (Map<String, Object> entry : history.subList(from, history.size())) {
+            Object content = entry == null ? null : entry.get("content");
+            if (content == null) {
+                continue;
+            }
+            String s = String.valueOf(content).replaceAll("\\s+", " ").trim();
+            if (s.length() > 80) {
+                s = s.substring(0, 80);
+            }
+            if (!s.isBlank()) {
+                out.add(s);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * 候选是否与近期会话动作重复：话术与任一近期文本包含关系命中即视为重复
+     * （长度均≥6 时做包含判定，避免短词误杀）。
+     */
+    private boolean isDuplicateOfRecent(String candidate, List<String> recent) {
+        if (candidate.length() < 6) {
+            return false;
+        }
+        for (String s : recent) {
+            if (s.length() >= 6 && (candidate.contains(s) || s.contains(candidate))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 工具结果 → 跟进建议用的关键内容摘要（一行）：优先工具自描述契约的
+     * 摘要/结论/计数（ToolOutputRenderer），回落 formatData 通用关键字段提取。
+     */
+    private String summarizeForFollowUp(ExecutionResult result) {
+        AgentTool tool = toolMap.get(result.getToolName());
+        if (tool != null && result.getData() != null) {
+            String summary = com.sitech.prodai.service.agent.tool.ToolOutputRenderer.summary(tool, result.getData());
+            if (summary != null && !summary.isBlank() && !"执行完成".equals(summary)) {
+                String conclusion = com.sitech.prodai.service.agent.tool.ToolOutputRenderer.conclusion(tool, result.getData());
+                return conclusion != null && !conclusion.isBlank() && !conclusion.equals(summary)
+                        ? summary + "；" + conclusion
+                        : summary;
+            }
+        }
+        String formatted = formatData(result.getData());
+        String oneLine = formatted.replaceAll("\\s+", " ").trim();
+        return oneLine.length() > 120 ? oneLine.substring(0, 120) : oneLine;
     }
 
     /** 场景白名单内的已注册工具（能力清单来源同理解层：工具自声明场景 + 注册表统一读取）。 */

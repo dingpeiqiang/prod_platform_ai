@@ -222,6 +222,7 @@ class LlmEvalRunnerTest {
     /** 已注册工具名单（对抗用例判定幻觉名的依据，与能力注册表对齐）。 */
     private static final List<String> KNOWN_TOOLS = List.of(
             "sparql_query", "swrl_root_cause", "swrl_risk_audit", "rule_explain", "ontology_explain",
-            "rd_config_chat", "rd_config_discover", "rd_draft_manage", "rd_compliance",
-            "rd_file_parse", "rd_scheme_compare", "flow_execute");
+            "rd_draft_generate", "rd_config_search", "rd_draft_manage", "rd_compliance",
+            "rd_doc_parse", "rd_draft_extract", "rd_workorder_create", "rd_category_resolve",
+            "rd_scheme_compare", "flow_execute");
 }

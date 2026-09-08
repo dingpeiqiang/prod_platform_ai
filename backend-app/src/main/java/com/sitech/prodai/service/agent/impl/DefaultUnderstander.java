@@ -9,6 +9,7 @@ import com.sitech.prodai.service.agent.Understander;
 import com.sitech.prodai.service.agent.model.ExecStep;
 import com.sitech.prodai.service.agent.model.QueryPlan;
 import com.sitech.prodai.service.agent.model.SessionContext;
+import com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry;
 import com.sitech.prodai.service.agent.tool.AgentTool;
 import com.sitech.prodai.service.agent.tool.ThinkingCopy;
 import com.sitech.prodai.service.agent.tool.ToolParam;
@@ -162,16 +163,16 @@ public class DefaultUnderstander implements Understander {
     private List<QueryPlan> understandPlansInternal(String question, SessionContext context) {
         String llmResult = null;
         Exception lastError = null;
-        boolean rdScene = isRdScene(context);
+        String scene = sceneOf(context);
         int attemptsUsed = 0;
         for (int attempt = 1; attempt <= MAX_TRANSLATE_ATTEMPTS; attempt++) {
             attemptsUsed = attempt;
             try {
                 List<Map<String, String>> history = toHistory(context);
-                String systemPrompt = buildSystemPrompt(rdScene, context);
+                String systemPrompt = buildSystemPrompt(scene, context);
                 // rd 场景注入会话工单清单（工单号/名称/状态）：LLM 判断「提交哪些单/是否重复提交」
                 // 不能只凭历史文本（回执文案可能只提到部分单号），以 DB 实时状态为准
-                if (rdScene) {
+                if (isRdScene(scene)) {
                     String woContext = buildWorkOrderContext(context);
                     if (!woContext.isEmpty()) {
                         systemPrompt = systemPrompt + "\n【当前会话工单实时状态】\n" + woContext;
@@ -223,7 +224,7 @@ public class DefaultUnderstander implements Understander {
                             + "请到「模型配置」管理页检查当前模型的 base_url 与模型名称是否匹配（如网关地址与模型 ID 不对应会返回空结果）");
         }
 
-        List<QueryPlan> parsed = parseLlmResults(llmResult, question, rdScene, context);
+        List<QueryPlan> parsed = parseLlmResults(llmResult, question, scene, context);
         if (parsed == null || parsed.isEmpty()) {
             log.error("[DefaultUnderstander] 大模型输出无法解析为查询计划，翻译链终止");
             throw new IllegalStateException("大模型输出无法解析为查询计划，请重试或检查模型配置");
@@ -283,7 +284,7 @@ public class DefaultUnderstander implements Understander {
      *
      * @return 子计划列表；单意图时仅含一个元素；无法解析时返回 null。
      */
-    private List<QueryPlan> parseLlmResults(String llmResult, String question, boolean rdScene, SessionContext context) {
+    private List<QueryPlan> parseLlmResults(String llmResult, String question, String scene, SessionContext context) {
         if (llmResult == null || llmResult.isBlank()) {
             diagnose("解析失败", "空输出", List.of(), llmResult);
             return null;
@@ -331,13 +332,13 @@ public class DefaultUnderstander implements Understander {
 
         // 混合意图：intent 含 | 时拆分多意图（解析 LLM 已输出结构，非写死映射）
         if (intent.contains("|") && llmSteps == null) {
-            return parseMultiIntents(intent, action, tools, params, question, rdScene);
+            return parseMultiIntents(intent, action, tools, params, question, scene);
         }
 
         // 守门：白名单过滤（未注册工具剔除；全被剔除 → 一次重选机会）
-        List<String> sanitized = sanitizeTools(tools, List.of(), rdScene);
+        List<String> sanitized = sanitizeTools(tools, List.of(), scene);
         if (sanitized.isEmpty()) {
-            sanitized = retryToolSelection(intent, action, tools, params, question, rdScene, llmResult);
+            sanitized = retryToolSelection(intent, action, tools, params, question, scene, llmResult);
             if (sanitized == null || sanitized.isEmpty()) {
                 diagnose(intent, action, tools, llmResult);
                 return null;
@@ -351,13 +352,13 @@ public class DefaultUnderstander implements Understander {
 
         // 兜底仲裁（rd 场景）：检索意图词命中而 LLM 选了草稿生成工具 → 强制改派配置查询。
         // 提示词已声明「查已有 vs 造新」最高优先级，此处防 LLM 偶发误判（如"找一下…月费39"
-        // 被资费要素拽向 rd_config_chat，导致意外生成草稿并自动开工单）。
-        if (rdScene && sanitized.contains("rd_config_chat")
+        // 被资费要素拽向 rd_draft_generate，导致意外生成草稿）。
+        if (isRdScene(scene) && sanitized.contains("rd_draft_generate")
                 && isDiscoverIntentQuestion(question)) {
-            log.info("[DefaultUnderstander] 兜底改派: 检索意图词命中，rd_config_chat → rd_config_discover, question={}", question);
+            log.info("[DefaultUnderstander] 兜底改派: 检索意图词命中，rd_draft_generate → rd_config_search, question={}", question);
             pendingTrace.add(Map.of("stage", "llm",
                     "message", "话术命中检索意图，工具由「生成配置草稿」改派为「检索历史配置」"));
-            sanitized = List.of("rd_config_discover");
+            sanitized = List.of("rd_config_search");
         }
 
         // flow_execute 守门：LLM 只能从已发布流程注册表（FlowIntentRouter）中选定 workflow_code，
@@ -378,9 +379,9 @@ public class DefaultUnderstander implements Understander {
         // 意图弱化为展示标签：保留 intent_type/action 供编排层还原 intentData 与文案生成
         String normalized = IntentRecognitionSupport.normalizeIntentType(intent);
         // rd 场景：LLM 输出的 intent 为自由文本（configure/configuration/product_config…），
-        // 前端按工具名对齐的大写意图码注册后处理器（RD_CONFIG_CHAT 等），
+        // 前端按工具名对齐的大写意图码注册后处理器（RD_DRAFT_GENERATE 等），
         // 故以白名单命中的首个工具名确定性推导意图码，保证 done.intent 稳定可消费
-        String intentCode = rdScene ? rdIntentFromTools(sanitized) : normalized;
+        String intentCode = isRdScene(scene) ? rdIntentFromTools(sanitized) : normalized;
         params.put("intent_type", intentCode);
         pendingTrace.add(Map.of("stage", "llm",
                 "message", "识别业务意图「" + ThinkingCopy.actionDisplay(intentCode) + "」，"
@@ -407,10 +408,10 @@ public class DefaultUnderstander implements Understander {
             }
         }
         // rd 场景透传会话 ID：AgentTool 接口无 context 参数，经 plan.params → executor direct 兜底
-        // 透传给工具（如 rd_config_chat 草稿生成即开工单需绑定会话）。
+        // 透传给工具（如 rd_workorder_create 开单需绑定会话）。
         // session_id 是系统参数，必须以服务端 SessionContext 为准：LLM 可能幻觉输出同名键
         // （putIfAbsent 不覆盖会导致工具拿到空/错 sessionId 而跳过开单），故此处强制覆盖。
-        if (rdScene && context != null && context.getSessionId() != null && !context.getSessionId().isBlank()) {
+        if (isRdScene(scene) && context != null && context.getSessionId() != null && !context.getSessionId().isBlank()) {
             params.put("session_id", context.getSessionId());
         }
         if (action != null && !action.isBlank()) {
@@ -438,13 +439,13 @@ public class DefaultUnderstander implements Understander {
      * @return 重选后的合法工具列表；仍失败返回 null（由调用方诊断终止）
      */
     private List<String> retryToolSelection(String intent, String action, List<String> tools,
-                                            Map<String, Object> params, String question, boolean rdScene,
+                                            Map<String, Object> params, String question, String scene,
                                             String llmResult) {
         log.warn("[DefaultUnderstander] LLM 引用工具全部未注册 {}，触发一次重选", tools);
         try {
             StringBuilder sb = new StringBuilder();
             sb.append("您上次选择的工具均不存在。请从下列可用能力中重新选择并输出 JSON：\n");
-            for (AgentTool tool : toolsOf(rdScene)) {
+            for (AgentTool tool : toolsOf(scene)) {
                 sb.append("- ").append(tool.getName()).append("：").append(tool.getDescription()).append('\n');
             }
             sb.append("\n原始用户问题：").append(question)
@@ -469,7 +470,7 @@ public class DefaultUnderstander implements Understander {
                     params.putIfAbsent(e.getKey(), e.getValue());
                 }
             }
-            return sanitizeTools(retryTools, List.of(), rdScene);
+            return sanitizeTools(retryTools, List.of(), scene);
         } catch (Exception e) {
             log.warn("[DefaultUnderstander] 重选失败: {}", e.getMessage());
             return null;
@@ -578,7 +579,7 @@ public class DefaultUnderstander implements Understander {
      * action 与 intent 位置对齐，缺失时补空串。
      */
     private List<QueryPlan> parseMultiIntents(String intent, String action, List<String> tools,
-                                              Map<String, Object> params, String question, boolean rdScene) {
+                                              Map<String, Object> params, String question, String scene) {
         List<String> intents = splitBar(intent);
         List<String> actions = splitBar(action);
         List<QueryPlan> plans = new ArrayList<>();
@@ -593,7 +594,7 @@ public class DefaultUnderstander implements Understander {
             if (subAction != null && !subAction.isBlank()) {
                 subParams.put("action", subAction);
             }
-            List<String> sanitized = sanitizeTools(tools, List.of(), rdScene);
+            List<String> sanitized = sanitizeTools(tools, List.of(), scene);
             if (!sanitized.isEmpty()) {
                 plans.add(new QueryPlan(normalized.isEmpty() ? subIntent.trim() : normalized,
                         new ArrayList<>(sanitized), subParams, question));
@@ -659,27 +660,41 @@ public class DefaultUnderstander implements Understander {
         };
     }
 
-    /** 是否为产商品研发场景（scene=rd）。 */
-    private boolean isRdScene(SessionContext context) {
-        return context != null && "rd".equals(context.getScene());
+    /** 是否为产商品研发场景（scene 字符串判定）。 */
+    private boolean isRdScene(String scene) {
+        return "rd".equals(scene);
     }
 
-    /** 过滤未知工具，缺省时用推荐工具列表。 */
+    /**
+     * 场景提取（三态）：rd / ops / query；空白或 null 回落默认场景（ops）。
+     * <p>
+     * query 场景（产商品查询助手）与 ops 共用通用理解骨架，差异仅在
+     * 角色提示词（role_query.txt）与能力白名单（工具 getScenes() 自声明 query）。
+     */
+    private String sceneOf(SessionContext context) {
+        String scene = context == null ? null : context.getScene();
+        return scene == null || scene.isBlank()
+                ? AgentCapabilityRegistry.DEFAULT_SCENE
+                : scene.trim();
+    }
+
+    /** 过滤未知工具，缺省时用推荐工具列表（按默认场景白名单）。 */
     private List<String> sanitizeTools(List<String> tools, List<String> recommended) {
-        return sanitizeTools(tools, recommended, false);
+        return sanitizeTools(tools, recommended, AgentCapabilityRegistry.DEFAULT_SCENE);
     }
 
     /** 过滤未知工具（按场景从能力注册表取白名单），缺省时用推荐工具列表。 */
-    private List<String> sanitizeTools(List<String> tools, List<String> recommended, boolean rdScene) {
-        String scene = rdScene ? "rd" : com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry.DEFAULT_SCENE;
+    private List<String> sanitizeTools(List<String> tools, List<String> recommended, String scene) {
+        String s = scene == null || scene.isBlank()
+                ? AgentCapabilityRegistry.DEFAULT_SCENE : scene;
         List<String> filtered = tools.stream()
-                .filter(t -> capabilityRegistry.isVisible(t, scene))
+                .filter(t -> capabilityRegistry.isVisible(t, s))
                 .distinct()
                 .toList();
         return filtered.isEmpty() ? recommended : filtered;
     }
 
-    /** 研发工具名 → 大写意图码（rd_config_chat → RD_CONFIG_CHAT），与前端词典/后端文案码对齐。 */
+    /** 研发工具名 → 大写意图码（rd_draft_generate → RD_DRAFT_GENERATE），与前端词典/后端文案码对齐。 */
     private String rdIntentFromTools(List<String> sanitizedTools) {
         for (String tool : sanitizedTools) {
             if (tool != null && capabilityRegistry.belongsToScene(tool, "rd")) {
@@ -786,10 +801,10 @@ public class DefaultUnderstander implements Understander {
      * 由 {@link IntentPromptAssembler} 从外部模板加载；动态部分（能力清单/流程清单）
      * 仍在此处拼装——它们依赖 Spring Bean 运行时状态，不适合静态模板化。
      */
-    private String buildSystemPrompt(boolean rdScene, SessionContext context) {
-        StringBuilder sb = new StringBuilder(promptAssembler.assembleSystemPrompt(rdScene));
+    private String buildSystemPrompt(String scene, SessionContext context) {
+        StringBuilder sb = new StringBuilder(promptAssembler.assembleSystemPrompt(scene));
         sb.append("\n可用能力：\n");
-        for (AgentTool tool : toolsOf(rdScene)) {
+        for (AgentTool tool : toolsOf(scene)) {
             sb.append("- ").append(tool.getName())
                     .append("：").append(tool.getDescription());
             List<ToolParam> params = tool.getParams();
@@ -801,8 +816,8 @@ public class DefaultUnderstander implements Understander {
         // 手册 SOP 注入（手册层双消费②）：该场景适用手册的标准作业程序随 prompt 下发，
         // LLM 选择工具与排布步骤时照手册办事（指导手册：操作步骤 + 每步方法 + 使用的工具）
         // 场景缺失（null/空）时不注入——手册适用域是显式声明，不给"通配"语义
-        String scene = context == null ? "" : context.getScene();
-        String sopSection = scene == null || scene.isBlank() ? "" : playbookSopSection(scene);
+        String sopScene = scene == null || scene.isBlank() ? "" : scene;
+        String sopSection = sopScene.isEmpty() ? "" : playbookSopSection(sopScene);
         if (!sopSection.isEmpty()) {
             sb.append('\n').append(sopSection);
         }
@@ -878,10 +893,11 @@ public class DefaultUnderstander implements Understander {
     }
 
     /** 场景白名单过滤后的可见工具列表（能力市场：LLM 只能看到本场景声明的工具）。 */
-    private List<AgentTool> toolsOf(boolean rdScene) {
-        String scene = rdScene ? "rd" : com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry.DEFAULT_SCENE;
+    private List<AgentTool> toolsOf(String scene) {
+        String s = scene == null || scene.isBlank()
+                ? AgentCapabilityRegistry.DEFAULT_SCENE : scene;
         List<AgentTool> out = new ArrayList<>();
-        for (AgentTool tool : capabilityRegistry.toolsOf(scene)) {
+        for (AgentTool tool : capabilityRegistry.toolsOf(s)) {
             if (toolMap.containsKey(tool.getName())) {
                 out.add(tool);
             }

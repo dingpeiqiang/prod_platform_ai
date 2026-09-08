@@ -27,30 +27,28 @@ applies_to:
   triggers: ["导入文档", "解析方案", "批量导入", "文档解析"]
 
 # ── ② 步骤（操作步骤 + 每步的操作方法和使用的工具）─────
+# 工具已原子化：一个工具一个环节，步骤与工具 1:1（文档解析→套餐抽取→合规校验→落库开单）
 steps:
   - id: parse
     do: 解析文档提取文本
     how: 按文件类型选引擎——docx→OOXML解析、pdf→PDFBox、xlsx→按行列抽单元格、csv→自动识别分隔符；解析失败要提示用户换格式，不静默
-    tool: rd_file_parse
+    tool: rd_doc_parse
 
   - id: extract
     do: 逐套餐抽取配置要素（名称/月费/要素/客群/渠道）
     how: 优先 LLM 槽位抽取；超长文档按空行边界分段（每片≤6000字、≤5片）合并去重；LLM 失败回退正则切分；无「套餐X：」前缀按空行分组逐段尝试
-    tool: rd_file_parse
+    tool: rd_draft_extract
     policy: 每条草稿一单——文档里有几个套餐就开几张工单，不折叠为单一草稿
 
   - id: compliance
     do: 逐条合规校验
     how: 规则引擎 R-C 系列（SHACL 可声明化规则优先）；通过的标记通过，未通过的带 R-C 编号问题清单
-    # tool 归属 rd_file_parse：合规校验是 rd_file_parse 解析流水线的内部环节
-    # （ConfigDocImportService 抽取后逐条校验），rd_compliance 是单草稿交互式校验的独立工具，
-    # 批量导入链路从不单独执行它——步骤 tool 必须与真实执行一致，否则该步骤永远等不到执行事件
-    tool: rd_file_parse
+    tool: rd_compliance
 
   - id: create
     do: 批量落库开单
     how: 通过的自动创建配置工单；待修正的同样开单但挂问题标签（稽核未通过）；空草稿（段落未抽到有效字段）写入 failures 显式提示，不静默跳过
-    tool: rd_file_parse
+    tool: rd_workorder_create
     output: work_order_id
 
 # ── ③ 护栏（控制语义：人工门 / 审计 / 兜底）─────────────

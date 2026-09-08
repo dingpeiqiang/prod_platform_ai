@@ -156,6 +156,7 @@ public class ChatConfigureService {
             }
         }
         if (items.isEmpty()) {
+            Integer timeWindowDays = intent.timeWindowDays();
             for (Map<String, Object> o : offerings) {
                 int score = matchScore(q, o);
                 if (score <= 0 && !q.isBlank()) {
@@ -163,6 +164,9 @@ public class ChatConfigureService {
                 }
                 if (q.isBlank()) {
                     score = 1;
+                }
+                if (timeWindowDays != null && MapOps.num(o.get("shelfDays"), -1) > timeWindowDays) {
+                    continue;
                 }
                 Map<String, Object> row = toQueryCard(o, score);
                 items.add(row);

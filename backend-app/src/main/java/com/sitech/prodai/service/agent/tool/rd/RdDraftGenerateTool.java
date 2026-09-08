@@ -10,48 +10,55 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * 产商品研发 - 智聊对话配置工具。
+ * 产商品研发 - 草稿生成原子工具（智聊链路环节②）。
  * <p>
- * 将用户自然语言需求翻译为产商品配置草稿（包装 product-ontology/config/chat 后端能力）。
- * 支持 §9.4 product_type 入参：显式品类优先，未识别由模板 matchers 兜底。
+ * 将用户自然语言需求翻译为产商品配置草稿（chatConfigure：槽位抽取→模板 derive→报文投影），
+ * 补名兜底 + 合规结论刷新。只做草稿生成环节，不做落库开单（职责拆分：一个工具一个环节）。
  */
 @Component
-public class RdConfigChatTool implements AgentTool {
+public class RdDraftGenerateTool implements AgentTool {
 
-    private static final Logger log = LoggerFactory.getLogger(RdConfigChatTool.class);
+    private static final Logger log = LoggerFactory.getLogger(RdDraftGenerateTool.class);
 
     private final ProductOntologyService productOntologyService;
     private final ProductTemplateRegistry templateRegistry;
 
-    public RdConfigChatTool(ProductOntologyService productOntologyService,
-                            ProductTemplateRegistry templateRegistry) {
+    public RdDraftGenerateTool(ProductOntologyService productOntologyService,
+                               ProductTemplateRegistry templateRegistry) {
         this.productOntologyService = productOntologyService;
         this.templateRegistry = templateRegistry;
     }
 
     @Override
     public String getName() {
-        return "rd_config_chat";
+        return "rd_draft_generate";
     }
 
     @Override
     public String getDescription() {
-        return "根据用户自然语言，生成产商品对话配置草稿（业务场景、套餐、资费等字段）";
+        return "根据用户自然语言，生成产商品对话配置草稿（业务场景、套餐、资费等字段），不做落库开单";
     }
 
     @Override
     public String getLabel() {
-        return "对话配置生成";
+        return "草稿生成";
     }
 
     @Override
     public java.util.Set<String> getScenes() {
         return java.util.Set.of("rd");
+    }
+
+    /** 草稿生成后的典型业务链：合规校验 → 开单（智聊链路下游环节）。 */
+    @Override
+    public List<String> getHandoffs() {
+        return List.of("rd_compliance", "rd_workorder_create");
     }
 
     @Override
@@ -63,6 +70,11 @@ public class RdConfigChatTool implements AgentTool {
                         .required()
                         .type("string")
                         .source("question")
+                        .build(),
+                ToolParam.builder("category_code")
+                        .label("品类编码")
+                        .description("上一步品类识别的产出（可选，草稿生成内部同样会兜底识别）")
+                        .type("string")
                         .build(),
                 ToolParam.builder("draft")
                         .label("已有草稿")
@@ -96,44 +108,36 @@ public class RdConfigChatTool implements AgentTool {
                 ToolOutputField.builder("draftBizScenario", ToolOutputField.Role.OTHER)
                         .label("业务场景").outputKey("bizScenario").type("string")
                         .description("草稿归属的业务场景").build(),
-                ToolOutputField.builder("draftWorkOrderId", ToolOutputField.Role.OTHER)
-                        .label("配置工单号").outputKey("workOrderId").type("string")
-                        .description("草稿生成即创建的配置工单号").build(),
                 ToolOutputField.builder("draft", ToolOutputField.Role.OTHER)
                         .label("配置草稿").type("object")
                         .description("本次生成的完整配置草稿").build(),
+                ToolOutputField.builder("compliancePass", ToolOutputField.Role.OTHER)
+                        .label("合规结论").type("boolean")
+                        .description("生成后合规校验结论（补名后重跑刷新）").build(),
+                ToolOutputField.builder("issues", ToolOutputField.Role.ITEMS)
+                        .label("风险明细").type("list").build(),
                 ToolOutputField.builder("config", ToolOutputField.Role.OTHER)
-                        .label("配置内容").type("object").build(),
-                ToolOutputField.builder("workOrder", ToolOutputField.Role.OTHER)
-                        .label("配置工单").type("object")
-                        .description("草稿生成即创建的配置工单（绑定当前会话）").build(),
-                ToolOutputField.builder("workOrderId", ToolOutputField.Role.BUSINESS_ENTITY_ID)
-                        .label("配置工单号").type("string")
-                        .description("本次生成的配置工单号（WO 开头），会话内后续提交/复制/删除凭此定位").build()
+                        .label("配置内容").type("object").build()
         );
     }
 
     @Override
     public ExecutionResult execute(Map<String, Object> params) {
         String text = params != null ? String.valueOf(params.getOrDefault("text", "")) : "";
-        String productType = params != null ? String.valueOf(params.getOrDefault("product_type", "")).trim() : "";
-        String sessionId = params != null ? String.valueOf(params.getOrDefault("session_id", "")).trim() : "";
+        String categoryCode = params != null ? String.valueOf(params.getOrDefault("category_code", "")).trim() : "";
         @SuppressWarnings("unchecked")
         Map<String, Object> draft = params != null && params.get("draft") instanceof Map<?, ?>
                 ? (Map<String, Object>) params.get("draft") : null;
 
-        log.info("[AgentTool] rd_config_chat 执行: text={}, productType={}, sessionId={}",
-                text, productType, sessionId);
-        if (text == null || text.isBlank()) {
+        log.info("[AgentTool] rd_draft_generate 执行: text={}, categoryCode={}", text, categoryCode);
+        if (text == null || text.isBlank() || "null".equals(text)) {
             return ExecutionResult.fail(getName(), "缺少配置需求描述");
         }
         try {
-            String category = RdProductTypeSupport.resolve(templateRegistry, productType, text);
-            Map<String, Object> resp = productOntologyService.chatConfigure(
-                    text, RdProductTypeSupport.applyToDraft(draft, category));
+            Map<String, Object> resp = productOntologyService.chatConfigure(text, draft);
             ensureDraftName(resp, text);
-            // 补名可能修复 R-C06（资费名称缺失）：对补名后的草稿重跑稽核，刷新结论再开单，
-            // 避免工单展示过期稽核结果、复制后重跑稽核出现结论不一致
+            // 补名可能修复 R-C06（资费名称缺失）：对补名后的草稿重跑稽核，刷新结论
+            // （落库开单环节在 rd_workorder_create，工单将展示刷新后的稽核结果）
             if (resp.get("draft") instanceof Map<?, ?> rawNamed) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> namedDraft = (Map<String, Object>) rawNamed;
@@ -143,54 +147,13 @@ public class RdConfigChatTool implements AgentTool {
                 resp.put("canSubmit", refreshed.get("canSubmit"));
             }
             Map<String, Object> out = normalize(resp);
-
-            // 草稿生成即落库 + 即开单：工单 payload 关联 draftId，后续删除/复制仅凭工单号反查草稿。
-            // 开单原子性：草稿落库失败时不开单，避免产生 payload.draftId 缺失的孤儿工单
-            // （孤儿工单上的提交/删除/复制操作都会因反查不到草稿而失败）。
-            if (!sessionId.isBlank()) {
-                boolean persisted = persistDraft(out, resp, sessionId);
-                if (persisted) {
-                    attachDraftWorkOrder(out, resp, sessionId);
-                } else {
-                    log.warn("[AgentTool] rd_config_chat 草稿落库未成功，跳过开单（避免孤儿工单）: sessionId={}", sessionId);
-                }
+            if (!categoryCode.isBlank() && !"null".equals(categoryCode)) {
+                out.put("category_code", categoryCode);
             }
             return ExecutionResult.ok(getName(), out);
         } catch (Exception e) {
-            log.error("[AgentTool] rd_config_chat 失败: {}", e.getMessage(), e);
+            log.error("[AgentTool] rd_draft_generate 失败: {}", e.getMessage(), e);
             return ExecutionResult.fail(getName(), "配置生成失败: " + e.getMessage());
-        }
-    }
-
-    /**
-     * 草稿落库（pd_ai_ontology_instance）：draftId/clientId 写回 output.draft，供工单卡删除/复制操作使用。
-     *
-     * @return 落库是否成功（draftId 已写回）；失败时调用方跳过开单，保证工单与草稿强关联
-     */
-    @SuppressWarnings("unchecked")
-    private boolean persistDraft(Map<String, Object> out, Map<String, Object> resp, String sessionId) {
-        try {
-            if (!(out.get("draft") instanceof Map<?, ?> rawDraft) || ((Map<?, ?>) rawDraft).isEmpty()) {
-                return false;
-            }
-            Map<String, Object> draft = new LinkedHashMap<>((Map<String, Object>) rawDraft);
-            Map<String, Object> saveReq = new LinkedHashMap<>();
-            saveReq.put("draft", draft);
-            saveReq.put("sessionId", sessionId);
-            Map<String, Object> saved = productOntologyService.saveConfigDraft(saveReq);
-            if (Boolean.TRUE.equals(saved.get("success")) && saved.get("draftId") != null) {
-                draft.put("draftId", saved.get("draftId"));
-                draft.put("clientId", saved.get("clientId"));
-                out.put("draft", draft);
-                out.put("draft_id", saved.get("draftId"));
-                out.put("client_id", saved.get("clientId"));
-                return true;
-            }
-            log.warn("[AgentTool] rd_config_chat 草稿落库失败: {}", saved.getOrDefault("message", "未知错误"));
-            return false;
-        } catch (Exception e) {
-            log.warn("[AgentTool] rd_config_chat 草稿落库失败（不影响配置结果）: {}", e.getMessage());
-            return false;
         }
     }
 
@@ -229,45 +192,7 @@ public class RdConfigChatTool implements AgentTool {
         if (draft.containsKey("offerName")) {
             draft.put("offerName", resolvedName);
         }
-        log.info("[AgentTool] rd_config_chat 草稿补名: {} (text={})", resolvedName, text);
-    }
-
-    /** 草稿产出后创建配置工单（source=rd_config_draft）；开单失败不阻断配置结果返回。 */
-    @SuppressWarnings("unchecked")
-    private void attachDraftWorkOrder(Map<String, Object> out, Map<String, Object> resp, String sessionId) {
-        try {
-            Map<String, Object> draft = resp != null && resp.get("draft") instanceof Map<?, ?> d
-                    ? (Map<String, Object>) d : Map.of();
-            String offeringName = str(firstNonEmpty(draft.get("offeringName"), draft.get("offerName")));
-            String monthlyFee = str(firstNonEmpty(draft.get("monthlyFee"), draft.get("fixedFeeAmount")));
-            String scenario = str(firstNonEmpty(draft.get("bizScenario"), draft.get("scenario")));
-
-            Map<String, Object> woReq = new LinkedHashMap<>();
-            woReq.put("offeringId", str(firstNonEmpty(draft.get("offeringId"), draft.get("offerId"))));
-            woReq.put("offeringName", offeringName);
-            woReq.put("source", "rd_config_draft");
-            woReq.put("sessionId", sessionId);
-            // 工单与草稿强关联：删除/复制操作仅凭 work_order_id 反查
-            woReq.put("draftId", str(firstNonEmpty(out.get("draft_id"), draft.get("draftId"), draft.get("draft_id"))));
-            // 稽核结果随单展示：工单卡直接透出草稿合规结论与问题项
-            woReq.put("compliancePass", resp.get("compliancePass"));
-            woReq.put("complianceIssues", resp.get("issues"));
-            woReq.put("title", offeringName.isEmpty() ? "产商品配置工单" : offeringName + "配置工单");
-            woReq.put("summary", "对话配置草稿已生成：月费=" + (monthlyFee.isEmpty() ? "-" : monthlyFee)
-                    + "，场景=" + (scenario.isEmpty() ? "-" : scenario));
-            woReq.put("actions", List.of(
-                    "核对配置草稿字段完整性",
-                    "合规校验后提交",
-                    "提交通过后发布上架"
-            ));
-            Map<String, Object> woBody = productOntologyService.createWorkOrder(woReq);
-            if (woBody != null && woBody.get("workOrder") instanceof Map<?, ?> wo) {
-                out.put("workOrder", wo);
-                out.put("workOrderId", ((Map<String, Object>) wo).get("workOrderId"));
-            }
-        } catch (Exception e) {
-            log.warn("[AgentTool] rd_config_chat 草稿开单失败（不影响配置结果）: {}", e.getMessage());
-        }
+        log.info("[AgentTool] rd_draft_generate 草稿补名: {} (text={})", resolvedName, text);
     }
 
     /** 取首个非空字符串。 */
@@ -310,7 +235,7 @@ public class RdConfigChatTool implements AgentTool {
         } else {
             summary.append("已生成配置草稿");
         }
-        List<String> elements = new java.util.ArrayList<>();
+        List<String> elements = new ArrayList<>();
         if (!fee.isBlank() && !"null".equals(fee)) {
             elements.add("月费 " + fee.replaceAll("\\.0$", "") + " 元");
         }
@@ -337,6 +262,13 @@ public class RdConfigChatTool implements AgentTool {
         putIfPresent(out, "draftBizScenario", scenario);
 
         if (draft != null) out.put("draft", draft);
+        // 合规结论平铺下发：下游开单环节（rd_workorder_create）经 result: 引用承接挂单展示
+        if (resp.get("compliancePass") != null) {
+            out.put("compliancePass", resp.get("compliancePass"));
+        }
+        if (resp.get("issues") instanceof List<?> issueList && !issueList.isEmpty()) {
+            out.put("issues", issueList);
+        }
         out.put("config", resp);
         return out;
     }

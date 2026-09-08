@@ -123,8 +123,8 @@ public class FlowIntentRouter {
         out.put("flow_execution", data);
         out.put("session_id", data.get("execution_id"));
         if ("completed".equals(status)) {
-            out.put("report", "流程「" + displayName(route) + "」已执行完成，耗时详情见执行明细。");
-            out.put("conclusion", buildConclusion(data));
+            // 报告/结论统一组装（FlowReplyBuilder）：结论取节点自然语言产出，报告附节点概要
+            out.putAll(FlowReplyBuilder.completedReply(displayName(route), data, null));
         } else if ("waiting_human".equals(status)) {
             out.put("report", "流程「" + displayName(route) + "」在人工节点暂停，请到工作流编辑器中继续处理（执行 ID："
                     + data.get("execution_id") + "）。");
@@ -136,23 +136,6 @@ public class FlowIntentRouter {
         }
         out.put("suggested_follow_ups", List.of("查看执行明细", "重新执行该流程"));
         return out;
-    }
-
-    /** 结论摘要：flow.output（end 节点透传）+ 各节点输出概要。 */
-    private String buildConclusion(Map<String, Object> data) {
-        Object output = data.get("output_data");
-        if (output instanceof Map<?, ?> m && !m.isEmpty()) {
-            Object flowScope = m.get("flow");
-            if (flowScope instanceof Map<?, ?> fs && fs.get("output") != null) {
-                return String.valueOf(fs.get("output"));
-            }
-            return String.valueOf(m);
-        }
-        Object context = data.get("context_data");
-        if (context instanceof Map<?, ?> cm && !cm.isEmpty()) {
-            return "各节点输出：" + cm;
-        }
-        return "";
     }
 
     private String displayName(FlowRoute route) {

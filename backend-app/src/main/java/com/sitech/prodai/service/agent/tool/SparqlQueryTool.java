@@ -44,6 +44,12 @@ public class SparqlQueryTool implements AgentTool {
         return java.util.Set.of("ops", "query");
     }
 
+    /** 查询后的典型业务链：基于查询结果做归因/稽核/概念解读，不原地重复同维度查询。 */
+    @Override
+    public List<String> getHandoffs() {
+        return List.of("swrl_root_cause", "swrl_risk_audit", "ontology_explain");
+    }
+
     @Override
     public List<ToolOutputField> getOutputFields() {
         return List.of(

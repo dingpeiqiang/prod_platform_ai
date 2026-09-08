@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
  * <p>输出 schema（snake_case）：
  * <pre>{ "query_type": "campus|family|broadband|5g|risk|all",
  *       "keywords": ["校园"], "monthly_fee": 39, "fee_tolerance": 10,
- *       "state": "上架", "limit": 20 }</pre>
+ *       "state": "上架", "time_window_days": 30, "limit": 20 }</pre>
  * <p>LLM 不可用或解析失败时回退 {@link #fallbackExtract}（正则+词典），保证检索链路永远可用。
  */
 @Service
@@ -38,10 +38,14 @@ public class LlmIntentExtractor {
             - fee_tolerance（数字）：月费可接受的浮动范围，"左右/上下/大约"→10，"以内/以下"→用户值本身，
               无修饰词→5；未提及月费→null
             - state（枚举）：上架（默认，问题含"在售/在架/上线"时也是上架）、下架、null
+            - time_window_days（数字或 null）：上架时间窗（天）。"近30天/最近30天/这30天/30天内"→30；
+              "近一周/最近一周"→7；"近三个月"→90；"本月"→当月已过天数；"今年"→365；未提及→null
             - limit（数字）：期望返回条数，默认20
             示例：
             问题"找一下月费39左右的校园套餐" →
-            {"query_type":"campus","keywords":["校园","套餐"],"monthly_fee":39,"fee_tolerance":10,"state":"上架","limit":20}
+            {"query_type":"campus","keywords":["校园","套餐"],"monthly_fee":39,"fee_tolerance":10,"state":"上架","time_window_days":null,"limit":20}
+            问题"查一下近30天上架的大学生套餐" →
+            {"query_type":"campus","keywords":["大学生","套餐"],"monthly_fee":null,"fee_tolerance":null,"state":"上架","time_window_days":30,"limit":20}
             """;
 
     private final Optional<LlmService> llmService;
@@ -55,12 +59,13 @@ public class LlmIntentExtractor {
     /** 意图结构：LLM 解析结果或回退结果，供 SparqlConfigDiscoverer 消费。 */
     public record DiscoverIntent(String queryType, List<String> keywords,
                                  Double monthlyFee, Double feeTolerance,
-                                 String state, int limit, String engine) {
+                                 String state, Integer timeWindowDays,
+                                 int limit, String engine) {
     }
 
     public DiscoverIntent extract(String question) {
         if (question == null || question.isBlank()) {
-            return new DiscoverIntent("all", List.of(), null, null, null, 20, "empty");
+            return new DiscoverIntent("all", List.of(), null, null, null, null, 20, "empty");
         }
         if (llmService.isPresent()) {
             try {
@@ -85,6 +90,7 @@ public class LlmIntentExtractor {
                 castDouble(json.get("monthly_fee")),
                 castDouble(json.get("fee_tolerance")),
                 str(json.get("state"), null),
+                castIntOrNull(json.get("time_window_days")),
                 castInt(json.get("limit"), 20),
                 "llm");
     }
@@ -92,10 +98,16 @@ public class LlmIntentExtractor {
     /** LLM 不可用时的回退：数字提取 + 业务词典，与旧 matchScore 同思路但输出结构化意图。 */
     public DiscoverIntent fallbackExtract(String question) {
         String q = question.toLowerCase();
+        Integer timeWindow = extractTimeWindow(q);
         Double fee = null;
         Matcher m = Pattern.compile("(?:月费|月租|资费)?(\\d{1,4})\\s*(?:元)?").matcher(q);
         while (m.find()) {
+            int start = m.start();
             int v = Integer.parseInt(m.group(1));
+            // 时间窗数字不是月费：「近30天」的 30 隶属时间窗语义，剔除后防止误挂月费过滤
+            if (timeWindow != null && timeWindow == v && isTimeWindowContext(q, start, m.group())) {
+                continue;
+            }
             if (v >= 0 && v <= 999) {
                 fee = (double) v;
                 break;
@@ -122,7 +134,50 @@ public class LlmIntentExtractor {
             }
         }
         return new DiscoverIntent(queryType, keywords, fee, tolerance,
-                "上架", 20, "fallback-dict");
+                "上架", timeWindow, 20, "fallback-dict");
+    }
+
+    /** 数字前后文是否为时间窗表述（近/最近前缀 + 天/周/月等单位后缀），用于剔除时间窗数字的月费误判。 */
+    private boolean isTimeWindowContext(String q, int numStart, String matched) {
+        String prefix = q.substring(Math.max(0, numStart - 3), numStart);
+        if (prefix.contains("近") || prefix.contains("最近")) {
+            return true;
+        }
+        return matched.matches("\\d+\\s*天");
+    }
+
+    /**
+     * 时间窗解析（回退链路）：正则识别「近N天/最近N天/N天内/近一周/近一月/近三月/本月/今年」。
+     * LLM 链路由提示词解析 time_window_days，本方法仅服务词典回退。
+     */
+    private Integer extractTimeWindow(String q) {
+        Matcher day = Pattern.compile("(?:近|最近)(\\d{1,3})\\s*天").matcher(q);
+        if (day.find()) {
+            return Integer.parseInt(day.group(1));
+        }
+        if (q.contains("一周") || q.contains("一星期") || q.contains("7天")) {
+            return 7;
+        }
+        if (q.contains("半月") || q.contains("半个月") || q.contains("15天")) {
+            return 15;
+        }
+        if (q.contains("一月") || q.contains("一个月") || q.contains("30天")) {
+            return 30;
+        }
+        if (q.contains("三月") || q.contains("三个月") || q.contains("一季度") || q.contains("90天")) {
+            return 90;
+        }
+        if (q.contains("半年") || q.contains("6个月") || q.contains("180天")) {
+            return 180;
+        }
+        if (q.contains("今年") || q.contains("一年") || q.contains("365天")) {
+            return 365;
+        }
+        if (q.contains("本月") || q.contains("这个月")) {
+            int dayOfMonth = java.time.LocalDate.now().getDayOfMonth();
+            return dayOfMonth;
+        }
+        return null;
     }
 
     private Map<String, Object> parseJson(String content) {
@@ -166,6 +221,11 @@ public class LlmIntentExtractor {
     private int castInt(Object v, int def) {
         Double d = castDouble(v);
         return d == null ? def : d.intValue();
+    }
+
+    private Integer castIntOrNull(Object v) {
+        Double d = castDouble(v);
+        return d == null ? null : d.intValue();
     }
 
     private List<String> castStringList(Object v) {

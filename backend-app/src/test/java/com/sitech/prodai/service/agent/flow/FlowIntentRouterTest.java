@@ -109,6 +109,26 @@ class FlowIntentRouterTest {
     }
 
     @Test
+    void completedWithoutFlowOutputUsesNodeAnswersAsConclusion() {
+        // end 节点未透传 flow.output → 结论回落各节点 nl_answer 产出（非 Map toString）
+        java.util.Map<String, Object> outputData = new java.util.LinkedHashMap<>();
+        outputData.put("step1", Map.of("output", Map.of("nl_answer", "检索到 3 条记录")));
+        outputData.put("step2", Map.of("output", Map.of("answer", "推荐方案B")));
+        when(flowEngineService.startExecution(eq("demo_linear_flow"), isNull(),
+                anyMap(), isNull())).thenReturn(ApiResponse.ok(Map.of(
+                "status", "completed", "output_data", outputData)));
+        FlowIntentRouter router = newRouter();
+
+        var reply = router.tryRoute("跑一下演示流程", null, null);
+
+        assertTrue(reply.isPresent());
+        String conclusion = String.valueOf(reply.get().get("conclusion"));
+        assertTrue(conclusion.contains("检索到 3 条记录"), () -> "结论应含节点产出: " + conclusion);
+        assertTrue(conclusion.contains("推荐方案B"), () -> "结论应含末节点产出: " + conclusion);
+        assertFalse(conclusion.contains("{"), () -> "结论不应是 Map toString 串: " + conclusion);
+    }
+
+    @Test
     void registerManagesRoutes() {
         FlowIntentRouter router = new FlowIntentRouter(flowEngineService);
         assertTrue(router.tryRoute("演示流程", null, null).isEmpty(), "空注册表不路由");

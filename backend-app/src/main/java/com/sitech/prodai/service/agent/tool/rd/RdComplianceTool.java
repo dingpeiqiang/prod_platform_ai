@@ -54,6 +54,12 @@ public class RdComplianceTool implements AgentTool {
         return java.util.Set.of("rd");
     }
 
+    /** 合规校验后的典型业务链：通过→开单 / 未通过→修改草稿（智聊链路下游环节）。 */
+    @Override
+    public List<String> getHandoffs() {
+        return List.of("rd_workorder_create", "rd_draft_manage");
+    }
+
     @Override
     public List<ToolParam> getParams() {
         return List.of(
