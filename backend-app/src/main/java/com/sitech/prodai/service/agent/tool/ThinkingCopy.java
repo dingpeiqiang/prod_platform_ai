@@ -118,6 +118,11 @@ public final class ThinkingCopy {
                 "为指定商品登记变更提醒（月费调整/上下架时产生），或查看已收到的变更提醒",
                 "在商品管理后台对目标商品点「关注变更」，变更后到提醒中心查看资费/状态调整记录",
                 Category.LOOKUP));
+        m.put("query_heat", new ToolCopy(
+                "分析查询热度",
+                "从历史会话聚合高频查询问题与关键词，让用户在查什么成为选品与营销的参考信号",
+                "导出会话记录，人工统计高频问题与关键词，整理成关注点清单供选品参考",
+                Category.REASON));
         // ── 研发工具 ──
         m.put("rd_category_resolve", new ToolCopy(
                 "识别产品品类",
@@ -206,6 +211,7 @@ public final class ThinkingCopy {
             Map.entry("CITY_POLICY_QUERY", "地市政策查询"),
             Map.entry("GOV_ENTERPRISE_DIRECTORY", "政企目录查询"),
             Map.entry("PRODUCT_CHANGE_ALERT", "变更订阅提醒"),
+            Map.entry("QUERY_HEAT", "查询热度分析"),
             Map.entry("ATTRIBUTION_QUERY", "评估流水查询"),
             Map.entry("FLOW_EXEC", "流程执行"),
             Map.entry("CHAT", "通用对话"),
@@ -234,6 +240,7 @@ public final class ThinkingCopy {
             Map.entry("CITY_POLICY_QUERY", "先核对地市本地政策口径，避免跨市执行错配"),
             Map.entry("GOV_ENTERPRISE_DIRECTORY", "先按行业与规模筛出适配的 B2B 商品，再核对归属客户范围"),
             Map.entry("PRODUCT_CHANGE_ALERT", "把关注商品登记成订阅，资费或状态一变就收到提醒"),
+            Map.entry("QUERY_HEAT", "先看清用户在集中查什么商品，让查询行为反哺选品与营销"),
             Map.entry("ATTRIBUTION_QUERY", "调出评估步骤与命中规则，让归因结论有据可查"),
             Map.entry("RD_DRAFT_MANAGE", "把草稿操作落到工单闭环：修改/删除/复制/提交一步到位"),
             Map.entry("CLARIFY", "信息不足时先问清楚，避免答非所问")

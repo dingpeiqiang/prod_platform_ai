@@ -14,6 +14,7 @@ import com.sitech.prodai.service.ProductTemplateRegistry;
 import com.sitech.prodai.service.ProductTemplateService;
 import com.sitech.prodai.service.TemplateComplianceService;
 import com.sitech.prodai.service.TemplateDeriveEngine;
+import com.sitech.prodai.service.queryheat.QueryHeatService;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -44,6 +45,7 @@ public class ProductOntologyController {
     private final ProductTemplateService templateService;
     private final TemplateComplianceService templateComplianceService;
     private final TemplateDeriveEngine deriveEngine;
+    private final QueryHeatService queryHeatService;
 
     public ProductOntologyController(
             ProductOntologyService productOntologyService,
@@ -52,7 +54,8 @@ public class ProductOntologyController {
             ProductConfigRegressionService regressionService,
             ProductTemplateService templateService,
             TemplateComplianceService templateComplianceService,
-            TemplateDeriveEngine deriveEngine
+            TemplateDeriveEngine deriveEngine,
+            QueryHeatService queryHeatService
     ) {
         this.productOntologyService = productOntologyService;
         this.ontologyService = ontologyService;
@@ -61,6 +64,7 @@ public class ProductOntologyController {
         this.templateService = templateService;
         this.templateComplianceService = templateComplianceService;
         this.deriveEngine = deriveEngine;
+        this.queryHeatService = queryHeatService;
     }
 
     private Map<String, Object> ok(Map<String, Object> body) {
@@ -616,6 +620,15 @@ public class ProductOntologyController {
     @GetMapping("/ops/batch-audit")
     public Map<String, Object> lastBatchAudit() {
         return productOntologyService.getLastBatchAudit();
+    }
+
+    /** 查询热度分析（C4）：会话审计数据聚合高频查询词 → 商品运营洞察（只聚合不落明细）。 */
+    @GetMapping("/ops/query-heat")
+    public Map<String, Object> queryHeat(
+            @RequestParam(value = "limit", required = false) Integer limit,
+            @RequestParam(value = "days", required = false) Integer days
+    ) {
+        return ok(queryHeatService.queryHeat(limit, days));
     }
 
     private Map<String, Object> castMap(Object value) {
