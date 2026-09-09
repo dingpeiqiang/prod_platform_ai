@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
 /**
  * LLM 结构化意图提取器：将自然语言检索问题翻译为本体查询意图（JSON）。
  * <p>输出 schema（snake_case）：
- * <pre>{ "query_type": "campus|family|broadband|5g|risk|all",
+ * <pre>{ "query_type": "campus|family|broadband|5g|device|sim_card|risk|all",
  *       "keywords": ["校园"], "monthly_fee": 39, "fee_tolerance": 10,
  *       "state": "上架", "time_window_days": 30, "limit": 20 }</pre>
  * <p>LLM 不可用或解析失败时回退 {@link #fallbackExtract}（正则+词典），保证检索链路永远可用。
@@ -32,7 +32,8 @@ public class LlmIntentExtractor {
             你是产商品配置检索助手的意图解析器。把用户的检索问题解析为 JSON（仅输出 JSON，不要输出任何其他文字）。
             可用本体概念：
             - query_type（枚举）：campus(校园/学生/大学/青春), family(家庭/融合), broadband(宽带/提速),
-              5g(5G/畅享), risk(风险/零资费/低效), all(其他或未提及)
+              5g(5G/畅享), device(终端/手机/宽带电视/IPTV/智能硬件), sim_card(号卡/副卡/ SIM/物联卡/流量卡),
+              risk(风险/零资费/低效), all(其他或未提及)
             - keywords（字符串数组）：从问题中提取的业务关键词，如 ["校园","流量"]
             - monthly_fee（数字或 null）：问题中期望的月费金额，如"月费39左右"→39；"0元"→0
             - fee_tolerance（数字）：月费可接受的浮动范围，"左右/上下/大约"→10，"以内/以下"→用户值本身，
@@ -123,11 +124,18 @@ public class LlmIntentExtractor {
             queryType = "broadband";
         } else if (q.contains("5g") || q.contains("畅享")) {
             queryType = "5g";
+        } else if (q.contains("终端") || q.contains("手机") || q.contains("宽带电视") || q.contains("iptv")
+                || q.contains("智能硬件") || q.contains("机顶盒")) {
+            queryType = "device";
+        } else if (q.contains("号卡") || q.contains("副卡") || q.contains("物联卡") || q.contains("流量卡")
+                || q.contains(" sim") || q.contains("sim卡")) {
+            queryType = "sim_card";
         } else if (q.contains("风险") || q.contains("零资费") || q.contains("低效")) {
             queryType = "risk";
         }
         List<String> keywords = new ArrayList<>();
         for (String w : List.of("校园", "学生", "大学", "青春", "家庭", "融合", "宽带", "提速", "5g", "畅享",
+                "终端", "手机", "宽带电视", "iptv", "机顶盒", "号卡", "副卡", "物联卡", "流量卡",
                 "风险", "零资费", "低效", "套餐", "模板", "资费", "方案", "配置", "在售", "在架", "上线")) {
             if (q.contains(w)) {
                 keywords.add(w);

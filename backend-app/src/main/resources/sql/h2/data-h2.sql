@@ -200,7 +200,7 @@ MERGE INTO pd_ai_users (
 
 -- ------------------------------------------------------------
 -- 7. ABox 在架商品种子（pd_ops_shelf_offerings，§24）
---     92 行对齐 classpath:ontology/mock_graph.json shelfOfferings；
+--     100 行对齐 classpath:ontology/mock_graph.json shelfOfferings；
 --     abox-source=jdbc 时 ABoxSyncScheduler 从本表同步进事实图，
 --     与 mock 源（直接读 mock_graph.json）数据一致，联调可平滑切换。
 --     幂等：MERGE INTO ... KEY(offering_id)
@@ -302,4 +302,12 @@ MERGE INTO pd_ops_shelf_offerings (
     ('OF-CAMPUS-STU-59', '校园青春大学生59', 'personMainPrc', '个人主资费', '个人', 'main_pkg', 'on_shelf', 59, 59, 520, 30680, 30, 'personMainPrc', 'normal'),
     ('OF-CAMPUS-STU-0', '大学生体验套餐0元', 'personAddPrc', '个人附加资费', '个人', 'addon', 'on_shelf', 0, 0, 880, 0, 7, 'personAddPrc', 'zero_fee'),
     ('OF-CAMPUS-STU-19', '大学生流量加餐包19', 'personAddPrc', '个人附加资费', '个人', 'addon', 'on_shelf', 19, 19, 640, 12160, 18, 'personAddPrc', 'normal'),
-    ('OF-CAMPUS-STU-OLD-49', '大学生经典套餐49', 'personMainPrc', '个人主资费', '个人', 'main_pkg', 'on_shelf', 49, 49, 300, 14700, 95, 'personMainPrc', 'normal');
+    ('OF-CAMPUS-STU-OLD-49', '大学生经典套餐49', 'personMainPrc', '个人主资费', '个人', 'main_pkg', 'on_shelf', 49, 49, 300, 14700, 95, 'personMainPrc', 'normal'),
+    ('OF-DEVICE-PHONE-01', '智能手机终端A1', 'deviceMainPrc', '终端销售', '终端', 'terminal', 'on_shelf', 0, 1999, 260, 519740, 120, 'deviceMainPrc', 'normal'),
+    ('OF-DEVICE-IPTV-02', '宽带电视IPTV机顶盒', 'deviceMainPrc', '终端销售', '终端', 'terminal', 'on_shelf', 10, 0, 260, 54000, 210, 'deviceMainPrc', 'normal'),
+    ('OF-DEVICE-BOX-03', '智能硬件机顶盒 Pro', 'deviceMainPrc', '终端销售', '终端', 'terminal', 'on_shelf', 0, 399, 90, 35910, 60, 'deviceMainPrc', 'normal'),
+    ('OF-DEVICE-PHONE-04', '智能手机终端B2合约机', 'deviceMainPrc', '终端销售', '终端', 'terminal', 'on_shelf', 0, 2999, 40, 119960, 45, 'deviceMainPrc', 'normal'),
+    ('OF-SIM-MAIN-01', '号卡主卡申办', 'simCardMainPrc', '号卡资费', '号卡', 'main_pkg', 'on_shelf', 29, 29, 420, 12180, 180, 'simCardMainPrc', 'normal'),
+    ('OF-SIM-CHILD-02', '副卡办理', 'simCardMainPrc', '号卡资费', '号卡', 'sub_pkg', 'on_shelf', 10, 10, 350, 3500, 240, 'simCardMainPrc', 'normal'),
+    ('OF-SIM-IOT-03', '物联卡流量卡', 'simCardMainPrc', '号卡资费', '号卡', 'main_pkg', 'on_shelf', 19, 19, 500, 9500, 150, 'simCardMainPrc', 'normal'),
+    ('OF-SIM-FLOW-04', '大流量卡月享包', 'simCardMainPrc', '号卡资费', '号卡', 'main_pkg', 'on_shelf', 39, 39, 310, 12090, 90, 'simCardMainPrc', 'normal');

@@ -9,6 +9,7 @@ import com.sitech.prodai.service.agent.flow.SceneFlowRouter;
 import com.sitech.prodai.service.agent.model.ExecutionResult;
 import com.sitech.prodai.service.agent.model.QueryPlan;
 import com.sitech.prodai.service.agent.model.SessionContext;
+import com.sitech.prodai.service.agent.route.SuperAssistantRouter;
 import com.sitech.prodai.service.agent.tool.AgentTool;
 import com.sitech.prodai.service.agent.tool.ThinkingCopy;
 import com.sitech.prodai.service.agent.tool.ToolOutputRenderer;
@@ -60,6 +61,8 @@ public class AgentOrchestrator {
     private final com.sitech.prodai.service.agent.playbook.PlaybookRegistry playbookRegistry;
     /** 查询审计记录器（方案 §6-A3）：userScope 摘要 + 工具链 + 命中条数，落日志/透出响应。 */
     private final com.sitech.prodai.service.agent.model.QueryAuditRecorder queryAuditRecorder;
+    /** 超级助手路由器（统一入口 + 自主路由）：scene=auto 时判定本轮 effectiveScene（L0 记忆/L1 词表）。 */
+    private final SuperAssistantRouter superAssistantRouter;
 
     /** 已注册工具索引：工具名 → 工具（供工具自描述元数据查询） */
     private final Map<String, AgentTool> toolMap;
@@ -127,7 +130,7 @@ public class AgentOrchestrator {
                              com.sitech.prodai.service.agent.playbook.PlaybookRegistry playbookRegistry) {
         this(understander, executor, presenter, sessionManager, persistenceService,
                 llmService, tools, flowIntentRouter, chatHumanBridge, sceneFlowRouter,
-                progressBridge, progressReplayer, playbookRegistry, null);
+                progressBridge, progressReplayer, playbookRegistry, null, null);
     }
 
     /** 全参构造（审计记录器可选，null 时兜底自建，测试兼容路径零改动）。 */
@@ -143,10 +146,12 @@ public class AgentOrchestrator {
                              SceneFlowRouter sceneFlowRouter,
                              com.sitech.prodai.service.agent.flow.ChatFlowProgressBridge progressBridge,
                              com.sitech.prodai.service.agent.flow.FlowProgressReplayer progressReplayer,
-                             @org.springframework.lang.Nullable
-                             com.sitech.prodai.service.agent.playbook.PlaybookRegistry playbookRegistry,
-                             @org.springframework.lang.Nullable
-                             com.sitech.prodai.service.agent.model.QueryAuditRecorder queryAuditRecorder) {
+                              @org.springframework.lang.Nullable
+                              com.sitech.prodai.service.agent.playbook.PlaybookRegistry playbookRegistry,
+                              @org.springframework.lang.Nullable
+                              com.sitech.prodai.service.agent.model.QueryAuditRecorder queryAuditRecorder,
+                              @org.springframework.lang.Nullable
+                              SuperAssistantRouter superAssistantRouter) {
         this.understander = understander;
         this.executor = executor;
         this.presenter = presenter;
@@ -182,6 +187,9 @@ public class AgentOrchestrator {
         // 查询审计记录器（A3）：null 时兜底自建（审计为无状态纯组件，自建零风险）
         this.queryAuditRecorder = queryAuditRecorder != null
                 ? queryAuditRecorder : new com.sitech.prodai.service.agent.model.QueryAuditRecorder();
+        // 超级助手路由器：null 时兜底自建（无状态纯组件，词表从 classpath 加载，自建零风险）
+        this.superAssistantRouter = superAssistantRouter != null
+                ? superAssistantRouter : new SuperAssistantRouter("prompts/intent");
         this.toolMap = new ConcurrentHashMap<>();
         if (tools != null) {
             for (AgentTool tool : tools) {
@@ -230,6 +238,7 @@ public class AgentOrchestrator {
         // Step 1: 获取会话上下文
         SessionContext context = sessionManager.getOrCreate(sessionId);
         context.setScene(scene);
+        applySuperAssistantRoute(question, context, scene);
         applySuppliedParams(context, params);
         context.addHistoryEntry("user", question);
 
@@ -242,6 +251,91 @@ public class AgentOrchestrator {
         } finally {
             com.sitech.prodai.service.agent.model.UserScopeContext.clear();
         }
+    }
+
+    /**
+     * 超级助手自主路由（方案 §3）：仅当请求 scene=auto 时生效。
+     * <p>
+     * 预判定（L0 记忆延续 + L1 词表快筛）决定本轮 effectiveScene 并回写 context.scene
+     * （理解层/执行层/表达层按该域组装提示词与守门）；未定域时标记 needLlmScene，
+     * 理解层按 super 全域角色提示（要求 LLM 输出 scene 字段），理解完成后
+     * {@link #mergeLlmSceneAfterUnderstand} 做 L2 互校合并。
+     * 判定结果写入 routeState，persistTurn 随 query_plan.route 落库（多轮路由记忆）。
+     * <p>
+     * 显式 scene（rd/ops/query）不进本路由器，行为与既有链路完全一致（双轨并行）。
+     */
+    private void applySuperAssistantRoute(String question, SessionContext context, String scene) {
+        if (scene == null || !SuperAssistantRouter.SCENE_AUTO.equals(scene.trim().toLowerCase(java.util.Locale.ROOT))) {
+            return;
+        }
+        String prevScene = context.lastRoutedScene();
+        SuperAssistantRouter.PreDecision pre =
+                superAssistantRouter.preDecide(question, superContextView(context));
+        context.setScene(pre.candidateScene());
+        context.getMeta().put("need_llm_scene", pre.needLlm());
+        context.setRouteState(routeStateView(pre, prevScene));
+        log.info("[AgentOrchestrator] 超级助手预路由: prev={} -> {} (source={} needLlm={})",
+                prevScene, pre.candidateScene(), pre.source(), pre.needLlm());
+    }
+
+    /** 预判定 → routeState 视图（键 last_scene 与 SessionContext.lastRoutedScene 对齐；L2 合并后覆写为最终判定）。 */
+    private Map<String, Object> routeStateView(SuperAssistantRouter.PreDecision pre, String prevScene) {
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("last_scene", pre.candidateScene());
+        view.put("last_source", pre.source());
+        if (pre.keyword() != null) {
+            view.put("last_keyword", pre.keyword());
+        }
+        view.put("switched", prevScene != null && !prevScene.equals(pre.candidateScene()));
+        view.put("prev_scene", prevScene);
+        return view;
+    }
+
+    /** 应用路由决策：effectiveScene 回写 scene + routeState 更新（审计视图随 query_plan.route 落库）。 */
+    private void applyRouteDecision(SessionContext context, SuperAssistantRouter.RouteDecision decision,
+                                    String prevScene) {
+        context.setScene(decision.effectiveScene());
+        boolean switched = prevScene != null && !prevScene.equals(decision.effectiveScene());
+        Map<String, Object> routeView = decision.toView(switched);
+        routeView.put("prev_scene", prevScene);
+        context.setRouteState(routeView);
+        log.info("[AgentOrchestrator] 超级助手路由: prev={} -> {} (source={} switched={})",
+                prevScene, decision.effectiveScene(), decision.source(), switched);
+    }
+
+    /**
+     * 理解完成后的 L2 合并（仅 scene=auto 生效）：读取理解层暂存的 llm_scene（meta 通道），
+     * 与 L0/L1 判定互校合并——LLM 判定可用时采信 LLM（冲突留痕）；清理本轮路由标记防跨轮污染。
+     */
+    private void mergeLlmSceneAfterUnderstand(SessionContext context) {
+        if (context == null || context.getMeta() == null) {
+            return;
+        }
+        Object llmSceneObj = context.getMeta().remove("llm_scene");
+        context.getMeta().remove("need_llm_scene");
+        if (llmSceneObj == null) {
+            return;
+        }
+        String llmScene = String.valueOf(llmSceneObj);
+        String prevScene = context.lastRoutedScene();
+        SuperAssistantRouter.RouteDecision decision = superAssistantRouter.decide(
+                null, superContextView(context), llmScene, "大模型场景判定");
+        applyRouteDecision(context, decision, prevScene);
+    }
+
+    /** SessionContext → 路由器只读视图适配（挂起态/未终结工单 = L0 延续依据）。 */
+    private SuperAssistantRouter.SessionContextView superContextView(SessionContext context) {
+        return new SuperAssistantRouter.SessionContextView() {
+            @Override
+            public String lastScene() {
+                return context.lastRoutedScene();
+            }
+
+            @Override
+            public boolean hasPendingBusiness() {
+                return context.hasPendingExecution();
+            }
+        };
     }
 
     /** process 的权限绑定后主链路（拆出仅为 try-finally 收口清晰）。 */
@@ -285,6 +379,9 @@ public class AgentOrchestrator {
         // Step 2: 理解层 — 自然语言 → 查询计划
         log.info("[AgentOrchestrator] 理解层处理: question={}", question);
         QueryPlan plan = understander.understand(question, context);
+        // 超级助手 L2 合并（scene=auto）：理解层 LLM 输出的 scene 字段与 L0/L1 判定互校，
+        // 冲突时采信 LLM 并回写 effectiveScene + routeState（判定后路由稳定，后续分支全按新域走）
+        mergeLlmSceneAfterUnderstand(context);
         log.info("[AgentOrchestrator] 查询计划: intent={}, tools={}, clarify={}",
                 plan.getIntent(), plan.getTools(), plan.getClarify());
 
@@ -333,7 +430,10 @@ public class AgentOrchestrator {
                 clarifyResponse.put("clarify_contracts", plan.getClarifyContracts());
             }
             clarifyResponse.put("tools", plan.getTools());
-            clarifyResponse.put("query_plan", buildQueryPlanView(plan));
+            clarifyResponse.put("query_plan", buildQueryPlanView(plan, context));
+            if (context.getRouteState() != null && !context.getRouteState().isEmpty()) {
+                clarifyResponse.put("route", context.getRouteState());
+            }
             clarifyResponse.put("conclusion", "");
             clarifyResponse.put("suggested_follow_ups", List.of());
             clarifyResponse.put("elapsed_ms", System.currentTimeMillis() - startTime);
@@ -356,7 +456,10 @@ public class AgentOrchestrator {
             confirmResponse.put("intent", plan.getIntent());
             confirmResponse.put("candidates", plan.getCandidates());
             confirmResponse.put("tools", plan.getTools());
-            confirmResponse.put("query_plan", buildQueryPlanView(plan));
+            confirmResponse.put("query_plan", buildQueryPlanView(plan, context));
+            if (context.getRouteState() != null && !context.getRouteState().isEmpty()) {
+                confirmResponse.put("route", context.getRouteState());
+            }
             confirmResponse.put("conclusion", "");
             confirmResponse.put("suggested_follow_ups", List.of());
             confirmResponse.put("elapsed_ms", System.currentTimeMillis() - startTime);
@@ -401,7 +504,7 @@ public class AgentOrchestrator {
         response.put("report", report);
         response.put("intent", plan.getIntent());
         response.put("tools", plan.getTools());
-        response.put("query_plan", buildQueryPlanView(plan));
+        response.put("query_plan", buildQueryPlanView(plan, context));
         response.put("conclusion", extractConclusion(results));
         response.put("suggested_follow_ups", followUps);
         response.put("elapsed_ms", elapsed);
@@ -511,7 +614,7 @@ public class AgentOrchestrator {
         response.put("report", report);
         response.put("intent", intent);
         response.put("tools", tools);
-        response.put("query_plan", buildQueryPlanView(plan));
+        response.put("query_plan", buildQueryPlanView(plan, context));
         response.put("conclusion", extractConclusion(results));
         response.put("suggested_follow_ups", followUps);
         response.put("playbook", playbookCode);
@@ -638,7 +741,7 @@ public class AgentOrchestrator {
         response.put("report", report);
         response.put("intent", plan.getIntent());
         response.put("tools", plan.getTools());
-        response.put("query_plan", buildQueryPlanView(plan));
+        response.put("query_plan", buildQueryPlanView(plan, context));
         response.put("conclusion", extractConclusion(coarseResults));
         response.put("suggested_follow_ups", List.of());
         response.put("playbook", playbookCode);
@@ -1233,12 +1336,16 @@ public class AgentOrchestrator {
 
     /**
      * 构建查询计划视图（含 steps / clarify 契约字段，向前兼容）。
+     * 超级助手路由判定（route）随 plan 落库/透出（SessionManager 恢复 + 前端路由标签）。
      */
-    private Map<String, Object> buildQueryPlanView(QueryPlan plan) {
+    private Map<String, Object> buildQueryPlanView(QueryPlan plan, SessionContext context) {
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("intent", plan.getIntent());
         view.put("tools", plan.getTools());
         view.put("params", plan.getParams());
+        if (context != null && context.getRouteState() != null && !context.getRouteState().isEmpty()) {
+            view.put("route", context.getRouteState());
+        }
         if (plan.getClarify() != null && !plan.getClarify().isEmpty()) {
             view.put("clarify", plan.getClarify());
         }
@@ -1249,6 +1356,11 @@ public class AgentOrchestrator {
             view.put("candidates", plan.getCandidates());
         }
         return view;
+    }
+
+    /** 单参兼容重载（route 仅在会话上下文可用时附带）。 */
+    private Map<String, Object> buildQueryPlanView(QueryPlan plan) {
+        return buildQueryPlanView(plan, null);
     }
 
     /**
@@ -1388,7 +1500,7 @@ public class AgentOrchestrator {
                 meta.put("content_type", "chat");
                 meta.put("done", true);
                 if (plan != null) {
-                    meta.put("query_plan", toJson(buildQueryPlanView(plan)));
+                    meta.put("query_plan", toJson(buildQueryPlanView(plan, context)));
                     // 思考时间线快照：与实时 reasoning 步骤同构（intent/plan/tool/generate），
                     // 前端 normalizeReasoningList 直接消费，保证历史回放与实时渲染一致
                     meta.put("reasoning_full", toJson(buildReasoningSnapshot(context, plan, results, assistantReply, question)));
@@ -1891,6 +2003,7 @@ public class AgentOrchestrator {
 
         SessionContext context = sessionManager.getOrCreate(sessionId);
         context.setScene(scene);
+        applySuperAssistantRoute(question, context, scene);
         applySuppliedParams(context, params);
         context.addHistoryEntry("user", question);
 
@@ -1964,6 +2077,8 @@ public class AgentOrchestrator {
         ));
 
         List<QueryPlan> plans = understander.understandAll(question, context);
+        // 超级助手 L2 合并（scene=auto）：同同步链路（多子计划共享同一份 LLM 场景判定）
+        mergeLlmSceneAfterUnderstand(context);
         if (plans == null || plans.isEmpty()) {
             emitter.emit("error", Map.of("errorMessage",
                     "无法理解您的需求，请换个说法重试。", "error", "无法理解"));
@@ -2094,6 +2209,10 @@ public class AgentOrchestrator {
             donePayload.put("session_id", context.getSessionId());
             donePayload.put("intent", plan.getIntent());
             donePayload.put("clarify", plan.getClarify());
+            // 超级助手路由视图（scene=auto 时非空）：澄清轮同样透出，前端标签一致
+            if (context.getRouteState() != null && !context.getRouteState().isEmpty()) {
+                donePayload.put("route", context.getRouteState());
+            }
             if (plan.getClarifyContracts() != null && !plan.getClarifyContracts().isEmpty()) {
                 donePayload.put("clarify_contracts", plan.getClarifyContracts());
             }
@@ -2185,6 +2304,10 @@ public class AgentOrchestrator {
         Map<String, Object> donePayload = new LinkedHashMap<>();
         donePayload.put("session_id", context.getSessionId());
         donePayload.put("intent", plan.getIntent());
+        // 超级助手路由视图（scene=auto 时非空）：前端据此渲染路由标签/切换轻提示
+        if (context.getRouteState() != null && !context.getRouteState().isEmpty()) {
+            donePayload.put("route", context.getRouteState());
+        }
         donePayload.put("conclusion", extractConclusion(results));
         donePayload.put("suggested_follow_ups", followUps);
         donePayload.put("elapsed_ms", System.currentTimeMillis() - startTime);

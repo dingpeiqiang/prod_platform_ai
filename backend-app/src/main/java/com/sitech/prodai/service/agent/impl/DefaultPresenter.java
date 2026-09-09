@@ -419,10 +419,15 @@ public class DefaultPresenter implements Presenter {
         return oneLine.length() > 120 ? oneLine.substring(0, 120) : oneLine;
     }
 
-    /** 场景白名单内的已注册工具（能力清单来源同理解层：工具自声明场景 + 注册表统一读取）。 */
+    /**
+     * 场景白名单内的已注册工具（能力清单来源同理解层：工具自声明场景 + 注册表统一读取）。
+     * <p>
+     * 修复（超级助手 P0）：原实现对非 rd 场景一律回落运营白名单（二值兜底），
+     * 导致 query 场景在表达层丢失自有工具（如产品档案/比对）；现按会话场景透传，
+     * 空白场景由 {@code AgentCapabilityRegistry#toolsOf} 归一化回落默认场景，语义不变。
+     */
     private List<AgentTool> allowedToolsOf(SessionContext context) {
-        boolean rdScene = context != null && "rd".equals(context.getScene());
-        String scene = rdScene ? "rd" : com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry.DEFAULT_SCENE;
+        String scene = context == null ? null : context.getScene();
         List<AgentTool> out = new ArrayList<>();
         for (AgentTool tool : capabilityRegistry.toolsOf(scene)) {
             if (toolMap.containsKey(tool.getName())) {

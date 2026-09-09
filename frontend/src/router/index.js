@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import SuperAssistantPage from '../components/SuperAssistantPage.vue'
 import RdAssistantPage from '../components/RdAssistantPage.vue'
 import OpsAssistantPage from '../components/OpsAssistantPage.vue'
 import QueryAssistantPage from '../components/QueryAssistantPage.vue'
@@ -9,8 +10,9 @@ import LoginScreen from '../components/LoginScreen.vue'
 import { useUserStore } from '../stores/user.js'
 
 const routes = [
-  { path: '/', redirect: '/rd' },
+  { path: '/', redirect: '/assistant' },
   { path: '/login', name: 'login', component: LoginScreen },
+  { path: '/assistant', name: 'assistant', component: SuperAssistantPage },
   { path: '/rd', name: 'rd', component: RdAssistantPage },
   { path: '/ops', name: 'ops', component: OpsAssistantPage },
   { path: '/query', name: 'query', component: QueryAssistantPage },
@@ -28,7 +30,7 @@ export const router = createRouter({
 router.beforeEach((to) => {
   const userStore = useUserStore()
   if (to.name === 'login') {
-    return userStore.isLoggedIn ? { name: 'rd' } : true
+    return userStore.isLoggedIn ? { name: 'assistant' } : true
   }
   return userStore.isLoggedIn ? true : { name: 'login', query: { redirect: to.fullPath } }
 })

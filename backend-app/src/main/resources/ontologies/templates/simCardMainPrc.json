@@ -1,0 +1,135 @@
+{
+  "template_id": "simCardMainPrc",
+  "template_name": "号卡资费",
+  "version": "1.0.0",
+  "extends": "commonBasePrc",
+  "status": "published",
+  "category_code": "simCardMainPrc",
+  "message_root_key": "simCardMainPrc",
+  "category_meta": {
+    "product_line": "号卡",
+    "is_main_offer": true,
+    "required_elements": [
+      "SalesPolicy",
+      "ReleaseScope",
+      "ChargePlan",
+      "AccountPreferential",
+      "DataResource",
+      "PrintNotice",
+      "SmsNotice"
+    ]
+  },
+  "matchers": {
+    "keywords": [
+      "号卡资费",
+      "号卡",
+      "副卡",
+      "物联卡",
+      "流量卡",
+      "SIM卡",
+      "主卡"
+    ],
+    "priority": 10
+  },
+  "sections": [
+    {
+      "code": "simInfo",
+      "label": "号卡信息",
+      "message_path": "baseInfo"
+    }
+  ],
+  "fields": [
+    {
+      "field_code": "simCardType",
+      "label": "号卡类型",
+      "type": "select",
+      "required": true,
+      "section": "simInfo",
+      "field_class": "draft",
+      "source": "dict",
+      "default_value": "主卡",
+      "enum_config": {
+        "type": "static",
+        "enum_map": [
+          {
+            "display": "主卡",
+            "value": "1"
+          },
+          {
+            "display": "副卡",
+            "value": "2"
+          },
+          {
+            "display": "物联卡",
+            "value": "3"
+          }
+        ]
+      },
+      "slot_aliases": [
+        "号卡类型",
+        "主卡还是副卡"
+      ],
+      "message_path": "baseInfo.simCardType",
+      "business_key": "simCardType"
+    },
+    {
+      "field_code": "includeData",
+      "label": "包含流量",
+      "type": "input",
+      "required": false,
+      "section": "simInfo",
+      "field_class": "projection",
+      "source": "fs",
+      "slot_aliases": [
+        "多少流量",
+        "包含流量"
+      ],
+      "extract_hint": "如 5GB/20GB/共享主卡",
+      "message_path": "baseInfo.includeData",
+      "business_key": "includeData"
+    }
+  ],
+  "derive_rules": [
+    {
+      "set_default": {
+        "channelScope": "全渠道"
+      },
+      "if_missing": true
+    },
+    {
+      "set_default": {
+        "categoryCode": "simCardMainPrc"
+      },
+      "if_missing": true
+    },
+    {
+      "set_default": {
+        "messageRootKey": "simCardMainPrc"
+      },
+      "if_missing": true
+    }
+  ],
+  "compliance_bindings": {
+    "rule_ids": [
+      "R-C03",
+      "R-C04",
+      "R-C05",
+      "R-C06",
+      "R-C07",
+      "R-C08",
+      "R-C09"
+    ]
+  },
+  "message_projection": {
+    "mode": "observe",
+    "root_key": "simCardMainPrc",
+    "aligned_with": "ontology/config_message_projection.json#categoryMappings.simCardMainPrc",
+    "defaults": {
+      "orderEffectMode": "1001",
+      "cancelEffectMode": "1023",
+      "saleEndDate": "20991231",
+      "taxSplitFlag": "0",
+      "smsOpTypes": "0"
+    }
+  }
+}

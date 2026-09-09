@@ -229,6 +229,16 @@ public class ConfigMessageProjector {
                 || str(draft.get("downstreamBandwidth")).length() > 0) {
             return "addon".equals(offeringType) ? "broadBandOptSpeedPrc" : "broadBandMainPrc";
         }
+        // C1 多域扩展：终端/号卡域 messageRootKey 推导（模板显式声明优先，scenario/productLine 兜底）
+        String scenarioLc = scenario.toLowerCase(Locale.ROOT);
+        if (scenario.contains("终端") || "终端".equals(productLine) || scenario.contains("手机")
+                || scenario.contains("宽带电视") || scenarioLc.contains("iptv") || scenario.contains("机顶盒")) {
+            return "deviceMainPrc";
+        }
+        if (scenario.contains("号卡") || "号卡".equals(productLine) || scenario.contains("副卡")
+                || scenario.contains("物联卡") || scenario.contains("流量卡")) {
+            return "simCardMainPrc";
+        }
         if ("addon".equals(offeringType) || scenario.contains("附加")) {
             return "personAddPrc";
         }

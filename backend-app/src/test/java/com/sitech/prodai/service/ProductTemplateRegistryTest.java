@@ -37,8 +37,8 @@ class ProductTemplateRegistryTest {
 
     @Test
     void shouldLoadAllTemplatesFromClasspath() {
-        // commonBasePrc + 六类产品 = 7
-        assertEquals(7, registry.count());
+        // commonBasePrc + 六类产品 + 终端/号卡（C1 多域）= 9
+        assertEquals(9, registry.count());
         Map<String, Object> report = registry.lastValidationReport();
         assertEquals(List.of(), report.get("errors"), "模板校验应无错误: " + report);
     }
@@ -115,14 +115,14 @@ class ProductTemplateRegistryTest {
     @Test
     void listShouldReturnPublishedSummaries() {
         List<Map<String, Object>> summaries = registry.list();
-        assertEquals(7, summaries.size());
+        assertEquals(9, summaries.size());
         assertTrue(summaries.stream().allMatch(s -> "published".equals(s.get("status"))));
         assertTrue(summaries.stream().anyMatch(s -> "common".equals(s.get("category_code"))));
     }
 
     @Test
     void hotReloadShouldKeepLastKnownGoodOnTotalFailure() {
-        // count>0 时 reload（classpath 模板正常）→ 仍为 7；last-known-good 逻辑由 load 内部保证
+        // count>0 时 reload（classpath 模板正常）→ 仍为 9；last-known-good 逻辑由 load 内部保证
         int before = registry.count();
         registry.reload();
         assertEquals(before, registry.count());

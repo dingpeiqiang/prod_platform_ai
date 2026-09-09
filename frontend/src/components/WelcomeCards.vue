@@ -106,7 +106,7 @@ const emit = defineEmits(['suggest', 'open-ops'])
 const userStore = useUserStore()
 
 const modeClass = computed(() =>
-  props.mode === 'ops' ? 'mode-ops' : props.mode === 'query' ? 'mode-query' : 'mode-rd',
+  props.mode === 'super' ? 'mode-super' : props.mode === 'ops' ? 'mode-ops' : props.mode === 'query' ? 'mode-query' : 'mode-rd',
 )
 
 /** 问候语：按时段 + 展示名，每分钟刷新 */
@@ -147,11 +147,20 @@ const queryMeta = {
   footer: '本体负责检索与比对，大模型负责理解提问与表达结论。',
 }
 
+const superMeta = {
+  subtitle: '统一入口、自主路由：研发配置、运营分析与信息查询一句话直达，多轮对话自动延续或切换能力域。',
+  tags: ['自动路由', '研发配置', '运营分析', '信息查询'],
+  footer: '路由判定决定用哪个能力域理解你，业务结论仍由各域工具与规则产出。',
+}
+
 /** 欢迎页卡片与左侧快捷场景共用配置，保证欢迎信息一致 */
 const cards = computed(() => {
-  const mode = ['rd', 'ops', 'query'].includes(props.mode) ? props.mode : 'rd'
+  const mode = ['super', 'rd', 'ops', 'query'].includes(props.mode) ? props.mode : 'rd'
   const shortcuts = assistantModes[mode]?.sceneShortcuts || []
   const iconByScene = {
+    'auto.rd': 'flask',
+    'auto.ops': 'chart',
+    'auto.query': 'search',
     'rd.chat': 'chat',
     'rd.import': 'file',
     'rd.query': 'search',
@@ -167,6 +176,9 @@ const cards = computed(() => {
     'query.compare': 'chart',
   }
   const styleByScene = {
+    'auto.rd': { bg: '#fffbeb', color: '#b45309' },
+    'auto.ops': { bg: '#fefce8', color: '#a16207' },
+    'auto.query': { bg: '#fff7ed', color: '#c2410c' },
     'rd.chat': { bg: '#eff6ff', color: '#2563eb' },
     'rd.import': { bg: '#ecfdf5', color: '#059669' },
     'rd.query': { bg: '#f0f9ff', color: '#0284c7' },
@@ -182,7 +194,9 @@ const cards = computed(() => {
     'query.compare': { bg: '#f5f3ff', color: '#6d28d9' },
   }
   // 欢迎页只展示核心入口卡（对比/规则等仍可从侧边栏进入）
-  const welcomeScenes = mode === 'ops'
+  const welcomeScenes = mode === 'super'
+    ? ['auto.rd', 'auto.ops', 'auto.query']
+    : mode === 'ops'
     ? ['market_insight', 'online_check', 'root_cause', 'risk_audit']
     : mode === 'query'
       ? ['query.ask', 'query.archive', 'query.compare']
@@ -206,7 +220,7 @@ const cards = computed(() => {
 })
 
 const meta = computed(() =>
-  props.mode === 'ops' ? opsMeta : props.mode === 'query' ? queryMeta : rdMeta,
+  props.mode === 'super' ? superMeta : props.mode === 'ops' ? opsMeta : props.mode === 'query' ? queryMeta : rdMeta,
 )
 </script>
 
@@ -245,6 +259,14 @@ const meta = computed(() =>
   --welcome-glow: rgba(109, 40, 217, 0.12);
   --welcome-card-hover: #c4b5fd;
   --welcome-shadow: rgba(109, 40, 217, 0.12);
+  --welcome-top-offset: 10vh;
+}
+.mode-super {
+  --welcome-accent: #b45309;
+  --welcome-accent-soft: #fef3c7;
+  --welcome-glow: rgba(180, 83, 9, 0.12);
+  --welcome-card-hover: #fcd34d;
+  --welcome-shadow: rgba(180, 83, 9, 0.12);
   --welcome-top-offset: 10vh;
 }
 

@@ -1082,7 +1082,8 @@ public class ChatConfigureService {
             tokens.add(num.group());
         }
         String[] dict = {"校园", "学生", "大学", "青春", "风险", "零资费", "低效", "5g", "套餐",
-                "家庭", "融合", "宽带", "提速", "在售", "在架", "上线", "模板", "资费", "方案", "配置"};
+                "家庭", "融合", "宽带", "提速", "终端", "手机", "宽带电视", "iptv", "机顶盒",
+                "号卡", "副卡", "物联卡", "流量卡", "在售", "在架", "上线", "模板", "资费", "方案", "配置"};
         for (String word : dict) {
             if (q.contains(word)) {
                 tokens.add(word);
@@ -1175,6 +1176,17 @@ public class ChatConfigureService {
             }
             if (("宽带".equals(token) || "提速".equals(token)) && (name.contains("宽带") || name.contains("提速")
                     || rootKey.contains("broadband"))) {
+                score += 20;
+            }
+            if (("终端".equals(token) || "手机".equals(token) || "宽带电视".equals(token) || "iptv".equals(token)
+                    || "机顶盒".equals(token)) && (name.contains("终端") || name.contains("手机")
+                    || name.contains("宽带电视") || name.toLowerCase(Locale.ROOT).contains("iptv")
+                    || name.contains("机顶盒") || rootKey.startsWith("device"))) {
+                score += 20;
+            }
+            if (("号卡".equals(token) || "副卡".equals(token) || "物联卡".equals(token) || "流量卡".equals(token))
+                    && (name.contains("号卡") || name.contains("副卡") || name.contains("物联卡")
+                    || name.contains("流量卡") || rootKey.startsWith("simCard"))) {
                 score += 20;
             }
             if (token.matches("\\d+") && (MapOps.str(offering.get("monthlyFee")).contains(token)

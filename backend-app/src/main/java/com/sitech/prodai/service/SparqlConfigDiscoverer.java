@@ -27,7 +27,9 @@ public class SparqlConfigDiscoverer {
             "campus", List.of("校园", "学生", "青春", "大学"),
             "family", List.of("家庭", "融合"),
             "broadband", List.of("宽带", "提速"),
-            "5g", List.of("5G", "畅享")
+            "5g", List.of("5G", "畅享"),
+            "device", List.of("终端", "手机", "宽带电视", "IPTV", "机顶盒"),
+            "sim_card", List.of("号卡", "副卡", "物联卡", "流量卡")
     );
 
     /** 通用话术词：无过滤价值，不叠加为关键词 FILTER。 */

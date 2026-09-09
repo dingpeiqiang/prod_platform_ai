@@ -1043,6 +1043,14 @@
   rdfs:comment "必备要素:SalesPolicy,ReleaseScope,NetworkCapability,ChargePlan,AccountPreferential,PrintNotice,SmsNotice"@zh ;
   rdfs:label "宽带加速包"@zh .
 
+:deviceMainPrc rdf:type owl:NamedIndividual , :ProductCategory ;
+  :categoryCode "deviceMainPrc" ; :categoryName "终端销售" ;
+  :productLine "终端" ;
+  :isMainOffer "true"^^xsd:boolean ;
+  :messageRootKey "deviceMainPrc" ;
+  rdfs:comment "必备要素:SalesPolicy,ReleaseScope,ChargePlan,AccountPreferential,PrintNotice,SmsNotice"@zh ;
+  rdfs:label "终端销售"@zh .
+
 :familyAddPrc rdf:type owl:NamedIndividual , :ProductCategory ;
   :categoryCode "familyAddPrc" ; :categoryName "家庭附加业务" ;
   :productLine "家庭" ;
@@ -1074,6 +1082,14 @@
   :messageRootKey "personMainPrc" ;
   rdfs:comment "必备要素:SalesPolicy,ReleaseScope,ChargePlan,AccountPreferential,FloorGuarantee,DataResource,VoiceResource,SmsResource,PrintNotice,SmsNotice"@zh ;
   rdfs:label "个人主资费"@zh .
+
+:simCardMainPrc rdf:type owl:NamedIndividual , :ProductCategory ;
+  :categoryCode "simCardMainPrc" ; :categoryName "号卡资费" ;
+  :productLine "号卡" ;
+  :isMainOffer "true"^^xsd:boolean ;
+  :messageRootKey "simCardMainPrc" ;
+  rdfs:comment "必备要素:SalesPolicy,ReleaseScope,ChargePlan,AccountPreferential,DataResource,PrintNotice,SmsNotice"@zh ;
+  rdfs:label "号卡资费"@zh .
 
 # END GENERATED: category-individuals
 

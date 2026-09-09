@@ -577,6 +577,8 @@ export function useChatStream() {
                 // S1 对话即编排：流程执行结果（FLOW_EXEC 意图时渲染执行明细卡片）
                 flowMatched: data.flow_matched || current.flowMatched || null,
                 flowExecution: data.flow_execution || current.flowExecution || null,
+                // 超级助手自主路由：本轮判定域与来源（query_plan.route，scene=auto 时后端返回）
+                route: data.route || current.route || null,
                 queryPlan: current.queryPlan || null,
                 toolResults: current.toolResults || [],
                 suggestedFollowUps: data.suggested_follow_ups || data.suggestedFollowUps || [],

@@ -169,6 +169,13 @@ public class SessionManager {
                     binding.forEach((k, v) -> copied.put(String.valueOf(k), v));
                     context.setExecutionBinding(copied);
                 }
+                // 超级助手路由记忆恢复（多轮连续路由）：routeState 随 query_plan.route 落库，
+                // 历史会话续接时延续上一能力域，避免路由退化为每轮重判
+                if (planObj instanceof Map<?, ?> plan2 && plan2.get("route") instanceof Map<?, ?> route) {
+                    Map<String, Object> copied = new java.util.LinkedHashMap<>();
+                    route.forEach((k, v) -> copied.put(String.valueOf(k), v));
+                    context.setRouteState(copied);
+                }
                 break;
             }
         } catch (Exception e) {

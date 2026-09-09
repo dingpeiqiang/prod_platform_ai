@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * A1 复用项目库联调验收：H2 直连 pd_ops_shelf_offerings（sql/04_abox_shelf_view.sql 同构 DDL），
  * 验证「真实建表脚本 → JdbcOpsProductDataSource.DEFAULT_SQL 只读同步 → schema 契约校验」全链路。
  * <p>覆盖 A1 验收清单中的「字段映射核对」项：DEFAULT_SQL 的 14 列在本表 DDL 全部存在，
- * snake_case→camelCase 映射后货架行字段与 mock_graph.json 同构（92 行种子同源）。
+ * snake_case→camelCase 映射后货架行字段与 mock_graph.json 同构（100 行种子同源）。
  */
 class ABoxProjectDbIntegrationTest {
 
@@ -120,7 +120,7 @@ class ABoxProjectDbIntegrationTest {
     }
 
     @Test
-    void h2SchemaSeedShouldLoadNinetyTwoOfferings() throws Exception {
+    void h2SchemaSeedShouldLoadOneHundredOfferings() throws Exception {
         // 验证 schema-h2.sql §24 + data-h2.sql §7 种子可被 Spring sql.init 全量执行（启动即建表灌数）
         String url = "jdbc:h2:mem:abox_seed_" + System.nanoTime() + ";MODE=MySQL;DB_CLOSE_DELAY=-1";
         try (Connection conn = DriverManager.getConnection(url, "sa", "");
@@ -142,13 +142,13 @@ class ABoxProjectDbIntegrationTest {
 
             var rs = st.executeQuery("SELECT COUNT(*) FROM pd_ops_shelf_offerings");
             assertTrue(rs.next());
-            assertEquals(92, rs.getInt(1), "种子应灌入 92 行（对齐 mock_graph shelfOfferings）");
+            assertEquals(100, rs.getInt(1), "种子应灌入 100 行（对齐 mock_graph shelfOfferings）");
 
             // DEFAULT_SQL 语义核对：state 英文枚举全命中
             var onShelf = st.executeQuery(
                     "SELECT COUNT(*) FROM pd_ops_shelf_offerings WHERE state IN ('on_shelf', 'on_sale')");
             assertTrue(onShelf.next());
-            assertEquals(92, onShelf.getInt(1), "全部种子行应为 on_shelf/on_sale 状态（DEFAULT_SQL 可全量命中）");
+            assertEquals(100, onShelf.getInt(1), "全部种子行应为 on_shelf/on_sale 状态（DEFAULT_SQL 可全量命中）");
         }
     }
 
