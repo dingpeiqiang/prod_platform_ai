@@ -18,9 +18,14 @@ public class ProdAiProperties {
     private final FlowRouter flowRouter = new FlowRouter();
     private final ChatWorkflow chatWorkflow = new ChatWorkflow();
     private final Metric metric = new Metric();
+    private final ChangeSub changeSub = new ChangeSub();
 
     public Metric getMetric() {
         return metric;
+    }
+
+    public ChangeSub getChangeSub() {
+        return changeSub;
     }
 
     /**
@@ -577,6 +582,35 @@ public class ProdAiProperties {
 
         public void setSystemPrompt(String systemPrompt) {
             this.systemPrompt = systemPrompt;
+        }
+    }
+
+    /**
+     * 商品变更订阅提醒配置（方案 §6-C3，对应缺口 C5）：
+     * 图谱重载后新旧货架快照对比 → 命中订阅商品 → 落提醒行（观察者模式）。
+     * <p>检测开关默认关（dev/demo 的 mock 源恒定无真实变更，开了只会产生重复噪声）；
+     * 生产接 JDBC 实源后开启，检测随 ABoxSyncScheduler 同步节奏自动运行。
+     */
+    public static class ChangeSub {
+        /** 变更检测开关（默认关零风险；检测失败不影响图谱重载主流程）。 */
+        private boolean detectEnabled = false;
+        /** 单次检测最大提醒产出数护栏（防大面积资费调整刷屏）。 */
+        private int maxAlertsPerDetect = 200;
+
+        public boolean isDetectEnabled() {
+            return detectEnabled;
+        }
+
+        public void setDetectEnabled(boolean detectEnabled) {
+            this.detectEnabled = detectEnabled;
+        }
+
+        public int getMaxAlertsPerDetect() {
+            return Math.max(1, maxAlertsPerDetect);
+        }
+
+        public void setMaxAlertsPerDetect(int maxAlertsPerDetect) {
+            this.maxAlertsPerDetect = maxAlertsPerDetect;
         }
     }
 }

@@ -93,6 +93,12 @@ prodai:
     rdf-seed-path: ${ONTOLOGY_RDF_SEED_PATH:}
     ttl-path: ${ONTOLOGY_TTL_PATH:}
     config-ttl-path: ${ONTOLOGY_CONFIG_TTL_PATH:}
+  change-sub:
+    # 商品变更订阅提醒（C3）：图谱重载后新旧快照 diff，命中订阅商品落提醒行。
+    # 默认关——dev/demo 的 mock 源恒定无真实变更；生产接 jdbc 实源后置 true
+    detect-enabled: ${CHANGE_SUB_DETECT_ENABLED:false}
+    # 单次检测最大提醒产出数护栏（防大面积资费调整刷屏）
+    max-alerts-per-detect: ${CHANGE_SUB_MAX_ALERTS:200}
   kb:
     seed-path: ${KB_SEED_PATH:}
   mcp:

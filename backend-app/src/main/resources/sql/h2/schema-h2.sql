@@ -531,3 +531,37 @@ CREATE INDEX IF NOT EXISTS idx_osf_state ON pd_ops_shelf_offerings (state);
 CREATE INDEX IF NOT EXISTS idx_osf_category_code ON pd_ops_shelf_offerings (category_code);
 CREATE INDEX IF NOT EXISTS idx_osf_category ON pd_ops_shelf_offerings (category);
 
+-- ------------------------------------------------------------
+-- 25. 商品变更订阅与提醒（方案 §6-C3，对应缺口 C5）
+--     订阅登记入口：product_change_alert 工具 subscribe 动作（订阅人取服务端登录态）；
+--     提醒产生：ChangeDetectService 图谱重载后新旧快照 diff，命中订阅商品落提醒行；
+--     出口 v1 = 本表（工具 list_alerts 查询透出），生产可加站内信/短信监听者扩展。
+--     同构 MySQL DDL 见 sql/05_change_subscription_tables.sql
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pd_ai_product_subscriptions (
+    id             BIGINT        AUTO_INCREMENT PRIMARY KEY,
+    subscriber     VARCHAR(64)   NOT NULL,
+    offering_id    VARCHAR(64)   NOT NULL,
+    offering_name  VARCHAR(255)  DEFAULT NULL,
+    status         VARCHAR(16)   NOT NULL DEFAULT 'active',
+    created_at     TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uk_psub UNIQUE (subscriber, offering_id)
+);
+CREATE INDEX IF NOT EXISTS idx_psub_offering ON pd_ai_product_subscriptions (offering_id, status);
+
+CREATE TABLE IF NOT EXISTS pd_ai_change_alerts (
+    id               BIGINT        AUTO_INCREMENT PRIMARY KEY,
+    offering_id      VARCHAR(64)   NOT NULL,
+    offering_name    VARCHAR(255)  DEFAULT NULL,
+    change_type      VARCHAR(32)   NOT NULL,
+    old_value        VARCHAR(255)  DEFAULT NULL,
+    new_value        VARCHAR(255)  DEFAULT NULL,
+    detected_version VARCHAR(64)   DEFAULT NULL,
+    subscriber       VARCHAR(64)   DEFAULT NULL,
+    read_flag        BOOLEAN       NOT NULL DEFAULT FALSE,
+    created_at       TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_alert_sub ON pd_ai_change_alerts (subscriber, read_flag, created_at);
+CREATE INDEX IF NOT EXISTS idx_alert_offering ON pd_ai_change_alerts (offering_id, created_at);
+
+

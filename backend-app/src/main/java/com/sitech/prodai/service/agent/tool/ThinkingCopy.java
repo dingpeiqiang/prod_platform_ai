@@ -113,6 +113,11 @@ public final class ThinkingCopy {
                 "检索政企在架商品目录（集团套餐/专线/物联卡/云和DICT），按行业与规模筛出适配 B2B 商品",
                 "在政企商品目录台账中按行业/客户规模翻查在架 B2B 商品与资费档位",
                 Category.LOOKUP));
+        m.put("product_change_alert", new ToolCopy(
+                "订阅变更提醒",
+                "为指定商品登记变更提醒（月费调整/上下架时产生），或查看已收到的变更提醒",
+                "在商品管理后台对目标商品点「关注变更」，变更后到提醒中心查看资费/状态调整记录",
+                Category.LOOKUP));
         // ── 研发工具 ──
         m.put("rd_category_resolve", new ToolCopy(
                 "识别产品品类",
@@ -200,6 +205,7 @@ public final class ThinkingCopy {
             Map.entry("MARKET_BENCHMARK", "异网资费对比"),
             Map.entry("CITY_POLICY_QUERY", "地市政策查询"),
             Map.entry("GOV_ENTERPRISE_DIRECTORY", "政企目录查询"),
+            Map.entry("PRODUCT_CHANGE_ALERT", "变更订阅提醒"),
             Map.entry("ATTRIBUTION_QUERY", "评估流水查询"),
             Map.entry("FLOW_EXEC", "流程执行"),
             Map.entry("CHAT", "通用对话"),
@@ -227,6 +233,7 @@ public final class ThinkingCopy {
             Map.entry("MARKET_BENCHMARK", "先摸清竞对同类资费，再定本网定价与竞争策略"),
             Map.entry("CITY_POLICY_QUERY", "先核对地市本地政策口径，避免跨市执行错配"),
             Map.entry("GOV_ENTERPRISE_DIRECTORY", "先按行业与规模筛出适配的 B2B 商品，再核对归属客户范围"),
+            Map.entry("PRODUCT_CHANGE_ALERT", "把关注商品登记成订阅，资费或状态一变就收到提醒"),
             Map.entry("ATTRIBUTION_QUERY", "调出评估步骤与命中规则，让归因结论有据可查"),
             Map.entry("RD_DRAFT_MANAGE", "把草稿操作落到工单闭环：修改/删除/复制/提交一步到位"),
             Map.entry("CLARIFY", "信息不足时先问清楚，避免答非所问")

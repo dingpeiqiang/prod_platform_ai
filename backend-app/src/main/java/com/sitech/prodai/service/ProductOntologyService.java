@@ -55,6 +55,9 @@ public class ProductOntologyService {
     private final ConfigDocImportService configDocImportService;
     private final com.sitech.prodai.service.metric.MetricService metricService;
 
+    /** C3 变更检测（可选旁路，setter 注入避免构造环；由 ChangeSubConfig 装配）。 */
+    private volatile com.sitech.prodai.service.changesub.ProductChangePublisher changePublisher;
+
     public ProductOntologyService(com.fasterxml.jackson.databind.ObjectMapper objectMapper,
                               ProdAiProperties properties,
                               OpsSwrlReasoner opsSwrlReasoner,
@@ -148,6 +151,11 @@ public class ProductOntologyService {
         graphManager.setAboxSyncStatusSupplier(supplier);
     }
 
+    /** C3：注入变更事件发布器（由 ChangeSubConfig 装配后调用；未注入=变更检测关闭）。 */
+    public void setChangePublisher(com.sitech.prodai.service.changesub.ProductChangePublisher publisher) {
+        this.changePublisher = publisher;
+    }
+
     /** 事实图 → 本体图同步；SPARQL 不可读时仅告警降级。 */
     private void syncFactGraphToRdf() {
         try {
@@ -168,7 +176,50 @@ public class ProductOntologyService {
     }
 
     public synchronized Map<String, Object> reloadGraph() {
-        return graphManager.reloadGraph();
+        Map<String, Object> before = graphManager.loadGraph();
+        List<Map<String, Object>> beforeShelf = com.sitech.prodai.service.common.MapOps
+                .castListOfMaps(before.get("shelfOfferings"));
+        Map<String, Object> report = graphManager.reloadGraph();
+        // C3 变更检测（旁路）：重载成功后对比新旧货架快照，命中变更异步发布（开关默认关）
+        detectAndPublishChanges(report, beforeShelf);
+        return report;
+    }
+
+    /** C3 变更检测旁路：开关关/未装配/重载失败/无变更均静默跳过，绝不影响重载结果。 */
+    private void detectAndPublishChanges(Map<String, Object> reloadReport,
+                                         List<Map<String, Object>> beforeShelf) {
+        try {
+            if (changePublisher == null || !Boolean.TRUE.equals(reloadReport.get("success"))) {
+                return;
+            }
+            String version = strOf(reloadReport.get("asset"));
+            int at = version.lastIndexOf('@');
+            if (at >= 0) {
+                version = version.substring(at + 1);
+            }
+            List<Map<String, Object>> afterShelf = com.sitech.prodai.service.common.MapOps
+                    .castListOfMaps(graphManager.loadGraph().get("shelfOfferings"));
+            List<Map<String, Object>> changes = changeDetectProvider == null
+                    ? List.of()
+                    : changeDetectProvider.getObject().detect(version, beforeShelf, afterShelf);
+            if (!changes.isEmpty()) {
+                changePublisher.publish(new com.sitech.prodai.service.changesub.ProductChangeEvent(version, changes));
+            }
+        } catch (Exception e) {
+            log.warn("[ProductOntologyService] 变更检测旁路异常（不影响重载结果）: {}", e.getMessage());
+        }
+    }
+
+    /** C3：ChangeDetectService 延迟引用（构造环规避：由 ChangeSubConfig setter 装配）。 */
+    private volatile org.springframework.beans.factory.ObjectProvider<com.sitech.prodai.service.changesub.ChangeDetectService> changeDetectProvider;
+
+    public void setChangeDetectProvider(
+            org.springframework.beans.factory.ObjectProvider<com.sitech.prodai.service.changesub.ChangeDetectService> provider) {
+        this.changeDetectProvider = provider;
+    }
+
+    private String strOf(Object v) {
+        return v == null ? "" : String.valueOf(v);
     }
 
     public synchronized Map<String, Object> loadGraph() {
