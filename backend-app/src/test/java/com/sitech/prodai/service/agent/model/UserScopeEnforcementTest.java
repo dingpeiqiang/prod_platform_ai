@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -126,5 +127,13 @@ class UserScopeEnforcementTest {
         // 未登录（鉴权关闭）→ unrestricted，行为零漂移
         UserScope anonymous = resolver.resolve(null, null);
         assertTrue(anonymous.isAllChannels());
+
+        // 客户经理：客户归属维度受限（名下客户），渠道/敏感度沿用政企条线口径
+        UserScope am = resolver.resolve("am01", "account_manager");
+        assertFalse(am.isAllChannels(), "客户经理渠道受限");
+        assertTrue(am.canSeeCustomer("GE-CUST-001"), "名下客户可见");
+        assertFalse(am.isAllCustomers(), "客户经理非全量客户归属");
+        assertFalse(resolver.resolve("am99", "account_manager").canSeeCustomer("GE-CUST-001"),
+                "字典外客户经理无名下客户（仍受限，不冒充全量）");
     }
 }
