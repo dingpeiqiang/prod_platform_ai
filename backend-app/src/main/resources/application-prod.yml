@@ -28,6 +28,16 @@ prodai:
     ttl-path: ${ONTOLOGY_TTL_PATH:}
   kb:
     seed-path: ${KB_SEED_PATH:}
+  metric:
+    # 指标域 P0：生产切 jdbc 直连指标宽表 dwd_prod_metric_daily（T+1 ETL，只读账号）
+    registry-path: ${METRIC_REGISTRY_PATH:classpath:ontology/metrics_registry.json}
+    source: ${METRIC_SOURCE:mock}
+    jdbc-url: ${METRIC_JDBC_URL:}
+    jdbc-username: ${METRIC_JDBC_USERNAME:}
+    jdbc-password: ${METRIC_JDBC_PASSWORD:}
+    jdbc-driver: ${METRIC_JDBC_DRIVER:com.mysql.cj.jdbc.Driver}
+    wide-table: ${METRIC_WIDE_TABLE:dwd_prod_metric_daily}
+    max-rows: ${METRIC_MAX_ROWS:50000}
   mcp:
     seed-path: ${MCP_SEED_PATH:}
   llm:

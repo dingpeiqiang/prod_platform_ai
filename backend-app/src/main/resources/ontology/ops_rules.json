@@ -1,5 +1,5 @@
 {
-  "version": "OpsRules-v1.2",
+  "version": "OpsRules-v1.3",
   "description": "产商品运营规则单源。正式 OWL SWRL 仅 Openllet（OpsSwrlReasoner）；策略集阈值见 policy；旧 SwrlRuleEngine 为伪条件 DSL。",
   "engines": {
     "openllet-swrl": {
@@ -11,7 +11,7 @@
     "java-rules": {
       "primary": false,
       "impl": "ProductOntologyService",
-      "covers": ["R-A01", "R-A02", "R-A03", "R-A04", "R-A05", "R-B01", "R-B02", "R-B03", "R-B04", "R-B05", "R-C01", "R-C02", "R-C03", "R-C04", "R-C05", "R-C06", "R-C07", "R-C08", "R-C09", "R-D01", "R-D05"],
+      "covers": ["R-A01", "R-A02", "R-A03", "R-A04", "R-A05", "R-A06", "R-B01", "R-B02", "R-B03", "R-B04", "R-B05", "R-C01", "R-C02", "R-C03", "R-C04", "R-C05", "R-C06", "R-C07", "R-C08", "R-C09", "R-D01", "R-D05"],
       "note": "SWRL 回退 + 配置侧 R-C*（仍 Java）；阈值全部外置；非 Drools"
     },
     "policy-java": {
@@ -110,6 +110,13 @@
         "engine": "swrl",
         "minWeightHint": 0.08,
         "includeWhenRanked": true
+      },
+      "R-A06": {
+        "name": "持续下滑",
+        "enabled": true,
+        "engine": "java-rules",
+        "declineDaysGte": 3,
+        "note": "指标仓连续下滑检测（MetricService.detectAnomaly 引擎计算，非 SWRL）"
       }
     }
   },

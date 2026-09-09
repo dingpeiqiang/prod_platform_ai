@@ -474,3 +474,60 @@ CREATE TABLE IF NOT EXISTS pd_ai_users (
     PRIMARY KEY (id),
     CONSTRAINT uk_users_username UNIQUE (username)
 );
+
+-- ------------------------------------------------------------
+-- 23. 运营指标宽表（指标域 P0：dwd_prod_metric_daily）
+--     商品×地区×渠道×客群 日粒度指标事实；本地 H2 由 mock 源灌演示数据，
+--     生产由 T+1 ETL 从业务系统写入（同构 MySQL DDL 见 sql/02_metric_schema.sql）
+--     order_cnt_addon/order_cnt_main 供派生指标 attach_rate 使用，缺省可空
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS dwd_prod_metric_daily (
+    id                 BIGINT        NOT NULL AUTO_INCREMENT,
+    stat_date          DATE          NOT NULL,
+    offering_id        VARCHAR(64)   NOT NULL,
+    region_id          VARCHAR(32)   NOT NULL DEFAULT 'ALL',
+    channel_id         VARCHAR(32)   NOT NULL DEFAULT 'ALL',
+    customer_segment   VARCHAR(32)   NOT NULL DEFAULT 'ALL',
+    revenue            DECIMAL(18,2) NOT NULL DEFAULT 0,
+    order_cnt          INT           NOT NULL DEFAULT 0,
+    order_cnt_addon    INT           DEFAULT NULL,
+    order_cnt_main     INT           DEFAULT NULL,
+    new_users          INT           NOT NULL DEFAULT 0,
+    churn_users        INT           NOT NULL DEFAULT 0,
+    active_users       INT           NOT NULL DEFAULT 0,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_pmd_natural UNIQUE (stat_date, offering_id, region_id, channel_id, customer_segment)
+);
+CREATE INDEX IF NOT EXISTS idx_pmd_offering_date ON dwd_prod_metric_daily (offering_id, stat_date);
+CREATE INDEX IF NOT EXISTS idx_pmd_date ON dwd_prod_metric_daily (stat_date);
+CREATE INDEX IF NOT EXISTS idx_pmd_region ON dwd_prod_metric_daily (region_id, stat_date);
+CREATE INDEX IF NOT EXISTS idx_pmd_channel ON dwd_prod_metric_daily (channel_id, stat_date);
+
+-- ------------------------------------------------------------
+-- 24. ABox 在架商品事实表（ABoxSyncScheduler 同步源：pd_ops_shelf_offerings）
+--     abox-source=jdbc 时 JdbcOpsProductDataSource.DEFAULT_SQL 只读查询本表，
+--     snake_case 列名自动转 lowerCamelCase 映射货架行字段；
+--     同构 MySQL DDL 见 sql/04_abox_shelf_view.sql（含 ETL 约定与演示种子）
+--     state 取值英文枚举：on_shelf/on_sale（DEFAULT_SQL 仅取这两种）
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pd_ops_shelf_offerings (
+    offering_id      VARCHAR(64)   NOT NULL,
+    offering_name    VARCHAR(255)  NOT NULL,
+    category_code    VARCHAR(64)   DEFAULT NULL,
+    category_name    VARCHAR(128)  DEFAULT NULL,
+    product_line     VARCHAR(64)   DEFAULT NULL,
+    offering_type    VARCHAR(32)   NOT NULL DEFAULT 'addon',
+    state            VARCHAR(32)   NOT NULL,
+    monthly_fee      DECIMAL(18,2) NOT NULL DEFAULT 0,
+    fixed_fee_amount DECIMAL(18,2) DEFAULT NULL,
+    sales_cnt_30d    INT           NOT NULL DEFAULT 0,
+    revenue_30d      DECIMAL(18,2) NOT NULL DEFAULT 0,
+    shelf_days       INT           NOT NULL DEFAULT 0,
+    message_root_key VARCHAR(64)   DEFAULT NULL,
+    category         VARCHAR(32)   NOT NULL DEFAULT 'normal',
+    PRIMARY KEY (offering_id)
+);
+CREATE INDEX IF NOT EXISTS idx_osf_state ON pd_ops_shelf_offerings (state);
+CREATE INDEX IF NOT EXISTS idx_osf_category_code ON pd_ops_shelf_offerings (category_code);
+CREATE INDEX IF NOT EXISTS idx_osf_category ON pd_ops_shelf_offerings (category);
+

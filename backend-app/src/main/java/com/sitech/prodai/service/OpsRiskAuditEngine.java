@@ -64,6 +64,9 @@ public class OpsRiskAuditEngine {
     private final WorkOrderCounter workOrderCounter;
     private final ModeMetaApplier modeMetaApplier;
 
+    /** 指标服务（指标域 P2 可选依赖：异动归因回注引擎计算的指标事实；setter 注入避免构造环）。 */
+    private volatile com.sitech.prodai.service.metric.MetricService metricService;
+
     /** 最近一次批量稽核快照（内存态；表 B 落盘后重启可回读）。 */
     private final AtomicReference<Map<String, Object>> lastBatchAudit = new AtomicReference<>(new LinkedHashMap<>());
 
@@ -89,6 +92,11 @@ public class OpsRiskAuditEngine {
 
     private Map<String, Object> loadGraph() {
         return graphSupplier.loadGraph();
+    }
+
+    /** 由宿主回注指标服务（ObjectProvider 可选；注入失败时归因仅用图谱事实降级）。 */
+    public void setMetricService(com.sitech.prodai.service.metric.MetricService metricService) {
+        this.metricService = metricService;
     }
 
     private Map<String, Object> riskRules() {
@@ -509,6 +517,14 @@ public class OpsRiskAuditEngine {
             }
         }
 
+        // 指标域 P2：指标仓引擎计算的事实（LLM 不算数）——异动检测 + 贡献度分解；
+        // 指标不可用时降级为图谱事实归因，不阻断主链路。
+        Map<String, Object> metricFacts = buildMetricFacts(oid);
+        if (!MapOps.empty(metricFacts)) {
+            // R-A06 持续下滑：decline_days 达阈值时新增归因候选（输入全部来自 MetricService 计算）
+            appendSustainedDeclineCandidate(oid, offering, metricFacts, candidates, triples);
+        }
+
         if (anomalies.isEmpty()) {
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("success", true);
@@ -709,6 +725,9 @@ public class OpsRiskAuditEngine {
         body.put("reasonEngine", reasonEngine);
         body.put("swrlFiredRules", swrlFired);
         body.put("swrlMessage", swrl.message());
+        if (!MapOps.empty(metricFacts)) {
+            body.put("metricFacts", metricFacts);
+        }
         body.put("snapshotAt", snapshotAt);
         if (paths.isEmpty()) {
             body.put("message", "已确认异动，但未命中渠道/促销/竞品等归因规则");
@@ -718,6 +737,96 @@ public class OpsRiskAuditEngine {
 
     public Map<String, Object> auditRisks(List<String> offeringIds) {
         return auditRisksOn(loadGraph(), offeringIds);
+    }
+
+    // ===== 指标域 P2：指标仓事实注入（异动归因升级）=====
+
+    /**
+     * 指标仓引擎计算事实：revenue 异动检测 + region 贡献度分解。
+     * <pre>
+     * { available, source, anomaly: {anomaly, delta_pct, decline_days, threshold_ref, ...},
+     *   contributions: [{key, value, ratio}] }
+     * </pre>
+     * 指标服务未装配或查询失败时返回空 Map（归因降级为图谱事实，不阻断）。
+     */
+    private Map<String, Object> buildMetricFacts(String offeringId) {
+        com.sitech.prodai.service.metric.MetricService metrics = this.metricService;
+        if (metrics == null) {
+            return Map.of();
+        }
+        try {
+            Map<String, Object> anomalyRes = metrics.detectAnomaly("revenue", offeringId);
+            if (!Boolean.TRUE.equals(anomalyRes.get("success"))) {
+                return Map.of();
+            }
+            Map<String, Object> facts = new LinkedHashMap<>();
+            facts.put("available", true);
+            facts.put("source", anomalyRes.get("source"));
+            Map<String, Object> anomaly = new LinkedHashMap<>();
+            for (String key : List.of("anomaly", "delta_pct", "decline_days",
+                    "current_total", "previous_total", "threshold_ref")) {
+                if (anomalyRes.containsKey(key)) {
+                    anomaly.put(key, anomalyRes.get(key));
+                }
+            }
+            anomaly.put("evidence", anomalyRes.get("evidence"));
+            facts.put("anomaly", anomaly);
+
+            Map<String, Object> breakdownRes = metrics.breakdown("revenue", offeringId, null, "region");
+            if (Boolean.TRUE.equals(breakdownRes.get("success"))) {
+                facts.put("contributions", breakdownRes.get("items"));
+            }
+            return facts;
+        } catch (Exception e) {
+            log.warn("[OpsRiskAuditEngine] 指标仓事实获取失败（归因降级为图谱事实）: {}", e.getMessage());
+            return Map.of();
+        }
+    }
+
+    /**
+     * R-A06 持续下滑：指标仓 decline_days ≥ 阈值时新增归因候选。
+     * 权重 = min(0.5, decline_days × 0.08)（引擎计算的连降天数线性映射，封顶 0.5 与 R-A02 同量级）。
+     */
+    private void appendSustainedDeclineCandidate(String oid, Map<String, Object> offering,
+                                                 Map<String, Object> metricFacts,
+                                                 List<Map<String, Object>> candidates,
+                                                 List<Map<String, Object>> triples) {
+        Map<String, Object> a06 = opsRules.rootCauseRule("R-A06");
+        if (!opsRules.isRuleEnabled(a06)) {
+            return;
+        }
+        Map<String, Object> anomaly = MapOps.castMap(metricFacts.get("anomaly"));
+        long declineDays = (long) MapOps.num(anomaly.get("decline_days"), 0);
+        int daysGte = (int) opsRules.ruleNum(a06, "declineDaysGte", 3);
+        if (declineDays < daysGte) {
+            return;
+        }
+        double weight = Math.min(0.5, declineDays * 0.08);
+        Map<String, Object> c = new LinkedHashMap<>();
+        c.put("type", "MetricTrend");
+        c.put("id", oid + "#revenue_trend");
+        c.put("name", "收入持续下滑");
+        c.put("score", weight);
+        c.put("weight", weight);
+        c.put("ruleId", "R-A06");
+        c.put("engine", "java-rules");
+        c.put("declineDays", declineDays);
+        c.put("deltaPct", anomaly.get("delta_pct"));
+        c.put("evidence", List.of(
+                "连续下降 " + declineDays + " 天（阈值 ≥" + daysGte + "）",
+                "近窗环比 " + Math.round(MapOps.num(anomaly.get("delta_pct"), 0) * 100) + "%"
+        ));
+        c.put("path", List.of(
+                oid + "-hasMetric->revenue",
+                "revenue-trendDeclining->" + declineDays + "d"
+        ));
+        Map<String, Object> drill = new LinkedHashMap<>();
+        drill.put("declineDays", declineDays);
+        drill.put("contributions", metricFacts.get("contributions"));
+        c.put("drill", drill);
+        candidates.add(c);
+        triples.add(MapOps.triple(oid, "hasMetric", "revenue"));
+        triples.add(MapOps.triple("revenue", "declineDays", declineDays));
     }
 
     /**

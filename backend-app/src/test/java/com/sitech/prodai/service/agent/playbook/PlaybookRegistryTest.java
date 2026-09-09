@@ -50,8 +50,8 @@ class PlaybookRegistryTest {
         Map<String, Object> market = registry.get("market-insight");
         assertNotNull(market, "市场洞察手册应从 classpath:playbooks 装载");
         assertEquals("市场洞察", market.get("title"));
-        assertTrue(market.get("steps") instanceof List<?> ms && ms.size() == 2,
-                "市场洞察手册应 2 步（事实查询/风险速览）");
+        assertTrue(market.get("steps") instanceof List<?> ms && ms.size() == 3,
+                "市场洞察手册应 3 步（指标趋势/事实查询/风险速览）");
 
         Map<String, Object> rootCause = registry.get("root-cause");
         assertNotNull(rootCause, "异动归因手册应装载");
@@ -140,7 +140,8 @@ class PlaybookRegistryTest {
         registry.registerKnownTools(java.util.Set.of(
                 "rd_doc_parse", "rd_draft_extract", "rd_compliance", "rd_workorder_create",
                 "rd_category_resolve", "rd_draft_generate", "rd_config_search", "rd_slot_extract",
-                "sparql_query", "swrl_root_cause", "swrl_risk_audit", "ontology_explain", "rule_explain"));
+                "sparql_query", "swrl_root_cause", "swrl_risk_audit", "ontology_explain", "rule_explain",
+                "metric_query"));
         registry.reload();
         assertTrue(registry.problems().isEmpty(), () -> "引用的工具均已注册，装载应零问题: " + registry.problems());
     }

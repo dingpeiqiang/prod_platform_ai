@@ -21,6 +21,9 @@
     @context-remove="onRemoveContextItem"
     @context-clear="onClearContextItems"
   >
+    <template #nav-actions>
+      <DataFreshnessBadge :status="aboxStatus" />
+    </template>
     <ChatMessageList
       mode="query"
       :messages="messages"
@@ -30,7 +33,38 @@
       @undo-action="onUndoAction"
       @clarify-submit="onClarifySubmit"
       @query-result-click="onQueryResultClick"
+      @compare-tray-add="onCompareTrayAdd"
     />
+
+    <!-- 对比清单托底栏 + 还原条：同层互斥呈现（§6-B4 查询→行动中间态） -->
+    <template #restore-bar>
+      <Transition name="restore-slide">
+        <div v-if="compareTray.items.value.length" class="tray-bar">
+          <span class="tray-badge">对比清单</span>
+          <span class="tray-names">
+            <span v-for="it in compareTray.items.value" :key="it.offeringId" class="tray-chip" :title="it.offeringName">
+              {{ it.offeringName }}
+              <button type="button" class="tray-chip-remove" @click="onCompareTrayRemove(it.offeringId)">✕</button>
+            </span>
+          </span>
+          <button
+            class="tray-btn"
+            :disabled="compareTray.items.value.length < 2"
+            :title="compareTray.items.value.length < 2 ? '至少加入 2 个商品再比对' : '打开比对面板'"
+            @click="onOpenCompareFromTray"
+          >
+            去比对（{{ compareTray.items.value.length }}）
+          </button>
+          <button class="tray-clear" title="清空对比清单" @click="onCompareTrayClear">清空</button>
+        </div>
+        <div v-else-if="panelSync.restoreBar.visible" class="restore-bar">
+          <span class="restore-badge">比对分析</span>
+          <span class="restore-name">{{ panelSync.restoreBar.productName || '多商品横向比对' }}</span>
+          <button class="restore-btn" @click="panelSync.restorePanel()">恢复面板</button>
+          <button class="restore-close" @click="panelSync.hideRestoreBar()">✕</button>
+        </div>
+      </Transition>
+    </template>
 
     <!-- 右侧面板：比对分析结果 -->
     <template #panel>
@@ -39,24 +73,12 @@
         :compareResult="productConfig.compareResult.value"
       />
     </template>
-
-    <!-- 还原条：面板关闭后一键恢复 -->
-    <template #restore-bar>
-      <Transition name="restore-slide">
-        <div v-if="panelSync.restoreBar.visible" class="restore-bar">
-          <span class="restore-badge">比对分析</span>
-          <span class="restore-name">{{ panelSync.restoreBar.productName || '多商品横向比对' }}</span>
-          <button class="restore-btn" @click="panelSync.restorePanel()">恢复面板</button>
-          <button class="restore-close" @click="panelSync.hideRestoreBar()">✕</button>
-        </div>
-      </Transition>
-    </template>
   </AssistantShell>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { ElMessageBox } from 'element-plus'
+import { ElMessageBox, ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import AssistantShell from './AssistantShell.vue'
 import ChatMessageList from './ChatMessageList.vue'
@@ -65,15 +87,20 @@ import { useChatStream } from '../composables/useChatStream.js'
 import { useProductConfig } from '../composables/useProductConfig.js'
 import { usePanelSync } from '../composables/usePanelSync.js'
 import { registerPostProcessor } from '../composables/useIntentRegistry.js'
+import { useCompareTray } from '../composables/useCompareTray.js'
 import { assistantModes, buildSceneWelcome } from '../config/assistantModes.js'
-import { copyAsDraft } from '../services/productOntologyApi.js'
+import { copyAsDraft, getAboxSyncStatus } from '../services/productOntologyApi.js'
 import { saveMessage as saveChatMessage } from '../services/chatApi.js'
 import { genId } from '../utils/chatUtils.js'
+import DataFreshnessBadge from './DataFreshnessBadge.vue'
 
 const inputText = ref('')
 const historyLoading = ref(false)
 const activeScene = ref(assistantModes.query.defaultScene)
 const panelWidth = ref(480)
+
+/** 数据截至时间戳（A1 预做项）：abox_last_synced_at 透出；mock 源/接口异常时为 null 不呈现 */
+const aboxStatus = ref(null)
 
 const router = useRouter()
 const onOpenModelConfig = () => router.push('/model-config')
@@ -93,6 +120,8 @@ const {
 
 const productConfig = useProductConfig()
 const panelSync = usePanelSync()
+/** 对比清单（§6-B4 查询→行动中间态）：模块级共享，跨轮次查询结果暂存 */
+const compareTray = useCompareTray()
 const config = assistantModes.query
 
 /** 手动移除/清除的上下文键（避免自动派生又冒出来） */
@@ -161,14 +190,13 @@ const onClearContextItems = () => {
   dismissedContextKeys.value = new Set(contextItems.value.map(i => i.key))
 }
 
-/** 意图后处理器注册键：覆盖 query 助手三类场景触达的后端意图/工具 */
+/** 意图后处理器注册键：覆盖 query 助手触达的后端意图/工具（固化工作流已退役，
+ *  query 链路由手册 query-ask 与动态编排承担，不再消费 FLOW_EXEC） */
 const QUERY_POST_INTENTS = [
   'RD_CONFIG_DISCOVER',
   'RD_SCHEME_COMPARE',
   'product_ops_query',
   'product_ops_compare',
-  // 固定流程（query_reuse_v2）执行完成后：从执行明细提取比对结果驱动右侧面板
-  'FLOW_EXEC',
 ]
 
 /** 意图后处理：智查/比对结果驱动消息槽位与右侧面板 */
@@ -207,23 +235,6 @@ function applyQueryToolToMsg(msg) {
       applyQueryCompare(out)
     }
   }
-  // 固定流程（query_reuse_v2：discover → sparql → compare）执行完成：
-  // 执行明细卡片只渲染节点留痕，比对结果需从 output_data 提取驱动右侧 ComparePanel
-  if (msg.flowExecution?.output_data || msg.flowExecution?.context_data) {
-    applyQueryFlowResults(msg.flowExecution.output_data || msg.flowExecution.context_data)
-  }
-}
-
-/** 固定流程执行结果 → 各节点 output 逐个分发给工具级处理（比对结果进右侧面板） */
-function applyQueryFlowResults(outputData) {
-  if (!outputData || typeof outputData !== 'object') return
-  for (const nodeOutput of Object.values(outputData)) {
-    const out = nodeOutput?.output
-    if (!out || typeof out !== 'object') continue
-    if (Array.isArray(out.comparisons) && out.comparisons.length) {
-      applyQueryCompare(out)
-    }
-  }
 }
 
 /** 比对工具 output → compareResult + 打开右侧比对面板 */
@@ -248,6 +259,12 @@ onMounted(async () => {
   } finally {
     historyLoading.value = false
   }
+  // 数据新鲜度非阻断加载（失败静默，badge 不呈现）
+  try {
+    aboxStatus.value = await getAboxSyncStatus()
+  } catch (e) {
+    console.warn('[QueryAssistantPage] 数据新鲜度获取失败:', e?.message || e)
+  }
 })
 
 onUnmounted(() => {
@@ -256,12 +273,13 @@ onUnmounted(() => {
   }
 })
 
-/** scene 码 → 后端 ChatStream scene（query 三场景均由后端理解层自行判定，仅传软提示） */
+/** scene 码 → 后端 ChatStream scene（方案 §5.1/§5.3 纠偏：三子场景统一归口 query，
+ *  档案调阅/比对诉求由后端意图归一化路由至 rd_config_search / rd_scheme_compare） */
 function sceneToBackendScene(scene) {
   const map = {
     'query.ask': 'query',
-    'query.archive': 'rd',
-    'query.compare': 'compare',
+    'query.archive': 'query',
+    'query.compare': 'query',
   }
   return map[scene] || null
 }
@@ -491,6 +509,29 @@ const onIntentAction = (event) => {
   }
 }
 
+// ── 对比清单（§6-B4 查询→行动中间态） ──
+
+/** 加入对比清单：成功轻提示，失败（重复/超限/缺编码）提示原因 */
+function onCompareTrayAdd(item) {
+  const res = compareTray.add(item)
+  if (res.ok) {
+    ElMessage.success(`已加入对比清单（${compareTray.items.value.length} 个）`)
+  } else {
+    ElMessage.warning(res.reason || '无法加入对比清单')
+  }
+}
+
+const onCompareTrayRemove = (offeringId) => compareTray.remove(offeringId)
+
+const onCompareTrayClear = () => compareTray.clear()
+
+/** 清单凑齐 ≥2 个 → 一键灌入 ComparePanel 并打开右侧面板 */
+function onOpenCompareFromTray() {
+  if (compareTray.items.value.length < 2) return
+  productConfig.compareResult.value = compareTray.toCompareResult()
+  panelSync.openComparePanel()
+}
+
 /** 对话内撤销（v3.2 可逆操作）：查询助手暂无写操作，占位提示 */
 const onUndoAction = async () => {
   ElMessageBox.alert('查询助手为只读助手，暂无可撤销的操作。', '撤销', { type: 'info' })
@@ -498,6 +539,81 @@ const onUndoAction = async () => {
 </script>
 
 <style scoped>
+/* 对比清单托底栏（§6-B4）：与还原条同层轻量呈现 */
+.tray-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 12px;
+}
+.tray-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #059669;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tray-names {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+.tray-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid #a7f3d0;
+  border-radius: 999px;
+  color: #065f46;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tray-chip-remove {
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0;
+}
+.tray-chip-remove:hover { color: #ef4444; }
+.tray-btn {
+  margin-left: auto;
+  border: 1px solid #059669;
+  background: #059669;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+}
+.tray-btn:hover { opacity: 0.85; }
+.tray-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.tray-clear {
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px;
+  white-space: nowrap;
+}
+.tray-clear:hover { color: #475569; }
 .restore-bar {
   display: flex;
   align-items: center;

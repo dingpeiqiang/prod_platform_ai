@@ -58,6 +58,8 @@ public class AgentOrchestrator {
     private final com.sitech.prodai.service.agent.flow.FlowProgressReplayer progressReplayer;
     /** 手册注册表：工具名单注入（MCP 可解析约束），编排消费方按需渲染 SOP。 */
     private final com.sitech.prodai.service.agent.playbook.PlaybookRegistry playbookRegistry;
+    /** 查询审计记录器（方案 §6-A3）：userScope 摘要 + 工具链 + 命中条数，落日志/透出响应。 */
+    private final com.sitech.prodai.service.agent.model.QueryAuditRecorder queryAuditRecorder;
 
     /** 已注册工具索引：工具名 → 工具（供工具自描述元数据查询） */
     private final Map<String, AgentTool> toolMap;
@@ -123,6 +125,28 @@ public class AgentOrchestrator {
                              com.sitech.prodai.service.agent.flow.FlowProgressReplayer progressReplayer,
                              @org.springframework.lang.Nullable
                              com.sitech.prodai.service.agent.playbook.PlaybookRegistry playbookRegistry) {
+        this(understander, executor, presenter, sessionManager, persistenceService,
+                llmService, tools, flowIntentRouter, chatHumanBridge, sceneFlowRouter,
+                progressBridge, progressReplayer, playbookRegistry, null);
+    }
+
+    /** 全参构造（审计记录器可选，null 时兜底自建，测试兼容路径零改动）。 */
+    public AgentOrchestrator(Understander understander,
+                             Executor executor,
+                             Presenter presenter,
+                             SessionManager sessionManager,
+                             Optional<ChatPersistenceService> persistenceService,
+                             Optional<LlmService> llmService,
+                             List<AgentTool> tools,
+                             FlowIntentRouter flowIntentRouter,
+                             ChatHumanBridge chatHumanBridge,
+                             SceneFlowRouter sceneFlowRouter,
+                             com.sitech.prodai.service.agent.flow.ChatFlowProgressBridge progressBridge,
+                             com.sitech.prodai.service.agent.flow.FlowProgressReplayer progressReplayer,
+                             @org.springframework.lang.Nullable
+                             com.sitech.prodai.service.agent.playbook.PlaybookRegistry playbookRegistry,
+                             @org.springframework.lang.Nullable
+                             com.sitech.prodai.service.agent.model.QueryAuditRecorder queryAuditRecorder) {
         this.understander = understander;
         this.executor = executor;
         this.presenter = presenter;
@@ -155,6 +179,9 @@ public class AgentOrchestrator {
             this.playbookRegistry = new com.sitech.prodai.service.agent.playbook.PlaybookRegistry();
             this.playbookRegistry.init();
         }
+        // 查询审计记录器（A3）：null 时兜底自建（审计为无状态纯组件，自建零风险）
+        this.queryAuditRecorder = queryAuditRecorder != null
+                ? queryAuditRecorder : new com.sitech.prodai.service.agent.model.QueryAuditRecorder();
         this.toolMap = new ConcurrentHashMap<>();
         if (tools != null) {
             for (AgentTool tool : tools) {
@@ -205,6 +232,21 @@ public class AgentOrchestrator {
         context.setScene(scene);
         applySuppliedParams(context, params);
         context.addHistoryEntry("user", question);
+
+        // 行权限（方案 §4.4）：绑定请求级权限上下文（服务端解析产物，SessionContext 持有），
+        // finally 清理防线程池复用串号；数据访问出口（SPARQL/指标）经 UserScopeContext 读取
+        extractUserScope(context, params);
+        com.sitech.prodai.service.agent.model.UserScopeContext.bind(context.getUserScope());
+        try {
+            return doProcess(question, context, params, scene, startTime);
+        } finally {
+            com.sitech.prodai.service.agent.model.UserScopeContext.clear();
+        }
+    }
+
+    /** process 的权限绑定后主链路（拆出仅为 try-finally 收口清晰）。 */
+    private Map<String, Object> doProcess(String question, SessionContext context,
+                                          Map<String, Object> params, String scene, long startTime) {
 
         // W2 挂起态短路：会话绑定待恢复工作流 → 直接走 ChatHumanBridge.resume（不过理解层 LLM）
         if (context.hasPendingExecution()) {
@@ -363,6 +405,10 @@ public class AgentOrchestrator {
         response.put("conclusion", extractConclusion(results));
         response.put("suggested_follow_ups", followUps);
         response.put("elapsed_ms", elapsed);
+        // 查询审计（方案 §6-A3）：userScope 摘要 + 工具链 + 命中条数随响应透出（前端/落库对账）
+        response.put(com.sitech.prodai.service.agent.model.QueryAuditRecorder.AUDIT_KEY,
+                queryAuditRecorder.record(queryAuditRecorder.build(
+                        context.getUserScope(), scene, plan, results, null)));
         if (!warnings.isEmpty()) {
             response.put("warnings", warnings);
         }
@@ -448,6 +494,12 @@ public class AgentOrchestrator {
                 cacheBusinessEntity(context, result);
             }
         }
+        // 查询收敛 SOP（方案 §4.5，阶段 B1）：粗查命中规模超阈值 → 澄清收敛或降维呈现，
+        // 判定口径收拢 QueryRefinePolicy（手册链路与动态编排共用的确定性实现）
+        Map<String, Object> refineReply = refinePolicyBranch(playbookCode, plan, question, results, context, startTime);
+        if (refineReply != null) {
+            return refineReply;
+        }
         String report = presenter.present(question, results, context);
         List<String> followUps = presenter.suggestFollowUps(question, results, context);
         context.addHistoryEntry("assistant", report);
@@ -464,7 +516,186 @@ public class AgentOrchestrator {
         response.put("suggested_follow_ups", followUps);
         response.put("playbook", playbookCode);
         response.put("elapsed_ms", System.currentTimeMillis() - startTime);
+        // 查询审计（方案 §6-A3）：手册直达链路同样落审计（playbook 标记来源）
+        response.put(com.sitech.prodai.service.agent.model.QueryAuditRecorder.AUDIT_KEY,
+                queryAuditRecorder.record(queryAuditRecorder.build(
+                        context.getUserScope(), context.getScene(), plan, results, playbookCode)));
         return response;
+    }
+
+    /**
+     * 查询收敛 SOP 分支（方案 §4.5，阶段 B1）：手册链路粗查结果落袋后的确定性规模判定。
+     * <p>
+     * 仅对手册工具链含 sparql_query 的查询类手册生效（其余手册零感知）：
+     * <ul>
+     *   <li>OK（≤5 条，或已达收敛轮次上限）：返回 null，走原手册呈现；</li>
+     *   <li>REFINE（5~20 条）：呈现粗查结果，随响应带收敛追问建议（clarify 维度提示，
+     *       不阻断——用户可继续追问也可就此打住）；</li>
+     *   <li>FORCE_SUMMARY（>20 条）：转 CLARIFY 计划生成收敛追问（地市 > 资费档位优先，
+     *       至多 {@link QueryRefinePolicy#MAX_REFINE_ROUNDS} 轮，超限由 judge 回落 OK 降维呈现），
+     *       复用既有澄清分支响应契约（clarify / clarify_contracts / query_plan），前端零改动。</li>
+     * </ul>
+     *
+     * @return 非 null = 已按收敛分支处理完毕（调用方直接返回）；null = 规模舒适，继续原链路
+     */
+    private Map<String, Object> refinePolicyBranch(String playbookCode, QueryPlan plan, String question,
+                                                   List<ExecutionResult> results, SessionContext context,
+                                                   long startTime) {
+        if (results == null || results.isEmpty() || context == null) {
+            return null;
+        }
+        // 手册工具链不含 sparql_query（非查询类手册）或粗查失败 → 不做收敛判定
+        if (plan.getTools() == null || !plan.getTools().contains("sparql_query")) {
+            return null;
+        }
+        ExecutionResult coarse = results.stream()
+                .filter(r -> "sparql_query".equals(r.getToolName())).findFirst().orElse(null);
+        if (coarse == null || !coarse.isSuccess()) {
+            return null;
+        }
+        int hits = extractEntityHits(coarse);
+        int rounds = refineRoundsOf(context);
+        com.sitech.prodai.service.agent.model.QueryRefinePolicy.Verdict verdict =
+                com.sitech.prodai.service.agent.model.QueryRefinePolicy.judge(hits, rounds);
+        log.info("[AgentOrchestrator] 查询收敛判定: playbook={} hits={} rounds={} verdict={}",
+                playbookCode, hits, rounds, verdict);
+        return switch (verdict) {
+            case OK -> null;
+            case FORCE_SUMMARY -> buildRefineClarifyResponse(playbookCode, plan, question, hits, rounds,
+                    context, startTime);
+            case REFINE -> buildRefineHintResponse(playbookCode, plan, question, hits, context, startTime);
+        };
+    }
+
+    /**
+     * FORCE_SUMMARY 分支：命中过多 → 生成收敛追问响应（CLARIFY 计划形态）。
+     * 追问维度由 {@link QueryRefinePolicy#nextDimensions} 按优先级与已答维度推导；
+     * 收敛轮次超限时 judge 已回落 OK，不会走到这里。
+     */
+    private Map<String, Object> buildRefineClarifyResponse(String playbookCode, QueryPlan plan, String question,
+                                                           int hits, int rounds, SessionContext context,
+                                                           long startTime) {
+        List<String> dims = com.sitech.prodai.service.agent.model.QueryRefinePolicy.nextDimensions(
+                refineAnsweredOf(context));
+        if (dims.isEmpty()) {
+            return null; // 无可追问维度 → 回落原链路（LLM 表达层自然摘要呈现）
+        }
+        context.incrementRefineRounds();
+        QueryPlan refinePlan = new QueryPlan();
+        refinePlan.setIntent(QueryPlan.INTENT_CLARIFY);
+        refinePlan.setTools(plan.getTools());
+        refinePlan.setClarify(dims);
+        refinePlan.setClarifyContracts(
+                com.sitech.prodai.service.agent.model.QueryRefinePolicy.clarifyContracts(dims));
+        refinePlan.setParams(new LinkedHashMap<>(plan.getParams()));
+        refinePlan.setUserQuestion(question);
+        refinePlan.addTrace("refine", "粗查命中 " + hits + " 条（超过 "
+                + com.sitech.prodai.service.agent.model.QueryRefinePolicy.REFINE_THRESHOLD
+                + "），先澄清收敛再精查（第 " + (rounds + 1) + "/"
+                + com.sitech.prodai.service.agent.model.QueryRefinePolicy.MAX_REFINE_ROUNDS + " 轮）");
+        context.setLastIntent(QueryPlan.INTENT_CLARIFY);
+        context.setLastClarifyParams(dims);
+        context.setLastTools(plan.getTools());
+        context.setLastParams(refinePlan.getParams());
+        String clarifyMessage = presenter.present(question, List.of(), context);
+        context.addHistoryEntry("assistant", clarifyMessage);
+        sessionManager.save(context);
+        persistTurn(context, question, clarifyMessage, refinePlan, List.of());
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("session_id", context.getSessionId());
+        response.put("report", clarifyMessage);
+        response.put("intent", QueryPlan.INTENT_CLARIFY);
+        response.put("clarify", dims);
+        response.put("clarify_contracts", refinePlan.getClarifyContracts());
+        response.put("tools", plan.getTools());
+        response.put("query_plan", buildQueryPlanView(refinePlan));
+        response.put("conclusion", "");
+        response.put("suggested_follow_ups", List.of());
+        response.put("playbook", playbookCode);
+        response.put("refine_hits", hits);
+        response.put("elapsed_ms", System.currentTimeMillis() - startTime);
+        return response;
+    }
+
+    /**
+     * REFINE 分支：命中偏多 → 照常呈现粗查结果（降维口径：TOP N + 总量声明），
+     * 随响应透出收敛提示（suggest 维度 + 命中数），用户可选择性追问；不阻断、不二次查询。
+     */
+    private Map<String, Object> buildRefineHintResponse(String playbookCode, QueryPlan plan, String question,
+                                                        int hits, SessionContext context, long startTime) {
+        // 表达层降维口径：从证据缓存取粗查结果，注入 TOP N 提示（LLM 据此收敛输出）
+        List<ExecutionResult> coarseResults = refineCoarseResults(context);
+        context.cacheEvidence("refine_summary_hint",
+                com.sitech.prodai.service.agent.model.QueryRefinePolicy.summaryPrompt(hits));
+        String report = presenter.present(question, coarseResults, context);
+        context.addHistoryEntry("assistant", report);
+        sessionManager.save(context);
+        persistTurn(context, question, report, plan, coarseResults);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("session_id", context.getSessionId());
+        response.put("report", report);
+        response.put("intent", plan.getIntent());
+        response.put("tools", plan.getTools());
+        response.put("query_plan", buildQueryPlanView(plan));
+        response.put("conclusion", extractConclusion(coarseResults));
+        response.put("suggested_follow_ups", List.of());
+        response.put("playbook", playbookCode);
+        response.put("refine_hits", hits);
+        response.put("refine_suggest",
+                com.sitech.prodai.service.agent.model.QueryRefinePolicy.clarifyContracts(
+                        com.sitech.prodai.service.agent.model.QueryRefinePolicy.nextDimensions(
+                                refineAnsweredOf(context))));
+        response.put("elapsed_ms", System.currentTimeMillis() - startTime);
+        return response;
+    }
+
+    /** 手册链路粗查结果重取（收敛分支复用：证据缓存 → 单元素结果列表）。 */
+    @SuppressWarnings("unchecked")
+    private List<ExecutionResult> refineCoarseResults(SessionContext context) {
+        Object cached = context.getCachedEvidence() != null
+                ? context.getCachedEvidence().get("sparql_query") : null;
+        return cached instanceof Map<?, ?> m
+                ? List.of(ExecutionResult.ok("sparql_query", new LinkedHashMap<>((Map<String, Object>) m)))
+                : List.of();
+    }
+
+    /**
+     * 从 sparql_query 结果提取命中条数：entity_ids / raw_results 契约键优先，
+     * 回落 entity_count/total 数值键（与 QueryAuditRecorder.extractHitCount 同口径）。
+     */
+    private static int extractEntityHits(ExecutionResult coarse) {
+        if (coarse.getData() == null) {
+            return -1;
+        }
+        for (String key : List.of("entity_ids", "raw_results")) {
+            if (coarse.getData().get(key) instanceof List<?> list) {
+                return list.size();
+            }
+        }
+        if (coarse.getData().get("entity_count") instanceof Number n) {
+            return n.intValue();
+        }
+        return -1;
+    }
+
+    /** 本轮已进行的收敛澄清轮数（与参数补全门的 clarifyRounds 独立计数）。 */
+    private static int refineRoundsOf(SessionContext context) {
+        Object rounds = context.getMeta().get("refine_rounds");
+        return rounds instanceof Number n ? n.intValue() : 0;
+    }
+
+    /** 已回答的收敛维度（用户澄清回传写入 resolvedParams 的收敛键）。 */
+    private static Map<String, Object> refineAnsweredOf(SessionContext context) {
+        Map<String, Object> answered = new LinkedHashMap<>();
+        for (String dim : com.sitech.prodai.service.agent.model.QueryRefinePolicy.REFINE_DIMENSIONS) {
+            Object val = context.getResolvedParams().get(dim);
+            if (val != null) {
+                answered.put(dim, val);
+            }
+        }
+        return answered;
     }
 
     /**
@@ -658,6 +889,38 @@ public class AgentOrchestrator {
             }
         });
 
+        // 查询收敛 SOP（方案 §4.5，阶段 B1）：流式手册链路与同步链路同判定。
+        // FORCE_SUMMARY → 发 thinking（收敛追问说明）+ text（追问文案）+ done（clarify 契约）后返回；
+        // REFINE → 注入降维呈现提示后继续原链路（不中断流）
+        Map<String, Object> streamRefineReply = refinePolicyBranch(playbookCode, plan, question, results, context, startTime);
+        if (streamRefineReply != null) {
+            emitter.emit("thinking", Map.of(
+                    "steps", List.of(TraceSnapshotBuilder.thinkingStep("generate", "收敛查询范围",
+                            "命中结果较多，先确认筛选条件再精查",
+                            Map.of("goal", "多轮收敛查询：先澄清后精查，避免一次性倾倒大量条目",
+                                    "input", Map.of("question", question, "refine_hits", streamRefineReply.get("refine_hits")),
+                                    "output", Map.of("summary", "已生成收敛追问，待补充后继续")))),
+                    "intent", intent
+            ));
+            String refineMsg = String.valueOf(streamRefineReply.get("report"));
+            context.addHistoryEntry("assistant", refineMsg);
+            sessionManager.save(context);
+            persistTurn(context, question, refineMsg, plan, List.of(), emitter);
+            emitTextEvents(emitter, refineMsg);
+            Map<String, Object> refineDone = new LinkedHashMap<>();
+            refineDone.put("session_id", context.getSessionId());
+            refineDone.put("intent", QueryPlan.INTENT_CLARIFY);
+            refineDone.put("playbook", playbookCode);
+            refineDone.put("clarify", streamRefineReply.get("clarify"));
+            refineDone.put("clarify_contracts", streamRefineReply.get("clarify_contracts"));
+            refineDone.put("refine_hits", streamRefineReply.get("refine_hits"));
+            refineDone.put("conclusion", "");
+            refineDone.put("suggested_follow_ups", List.of());
+            refineDone.put("elapsed_ms", System.currentTimeMillis() - startTime);
+            emitter.emit("done", refineDone);
+            return true;
+        }
+
         // ── 阶段④ 汇总：与常规链路同构 ──
         Map<String, Object> generateExtra = new LinkedHashMap<>();
         generateExtra.put("goal", "把手册各环节结果整合成您能直接使用的结论与建议");
@@ -691,14 +954,18 @@ public class AgentOrchestrator {
         sessionManager.save(context);
         persistTurn(context, question, report, plan, results, emitter);
         emitTextEvents(emitter, report);
-        emitter.emit("done", Map.of(
-                "session_id", context.getSessionId(),
-                "intent", intent,
-                "playbook", playbookCode,
-                "conclusion", conclusionText,
-                "suggested_follow_ups", presenter.suggestFollowUps(question, results, context),
-                "elapsed_ms", System.currentTimeMillis() - startTime
-        ));
+        Map<String, Object> donePayload = new LinkedHashMap<>();
+        donePayload.put("session_id", context.getSessionId());
+        donePayload.put("intent", intent);
+        donePayload.put("playbook", playbookCode);
+        donePayload.put("conclusion", conclusionText);
+        donePayload.put("suggested_follow_ups", presenter.suggestFollowUps(question, results, context));
+        donePayload.put("elapsed_ms", System.currentTimeMillis() - startTime);
+        // 查询审计（方案 §6-A3）：手册直达链路同样随 done 事件透出
+        donePayload.put(com.sitech.prodai.service.agent.model.QueryAuditRecorder.AUDIT_KEY,
+                queryAuditRecorder.record(queryAuditRecorder.build(
+                        context.getUserScope(), context.getScene(), plan, results, playbookCode)));
+        emitter.emit("done", donePayload);
         return true;
     }
 
@@ -1166,6 +1433,10 @@ public class AgentOrchestrator {
                 if (context.getExecutionBinding() != null) {
                     meta.put("execution_binding", toJson(context.getExecutionBinding()));
                 }
+                // 查询审计（方案 §6-A3）：随消息 metadata 落库（历史回放可对账，审计视图不含敏感明细）
+                meta.put(com.sitech.prodai.service.agent.model.QueryAuditRecorder.AUDIT_KEY,
+                        toJson(queryAuditRecorder.build(
+                                context.getUserScope(), context.getScene(), plan, results, null)));
                 svc.saveMessage(sessionId, "assistant", assistantReply, "text", meta);
             }
             log.info("[AgentOrchestrator] 会话已持久化: sessionId={}", sessionId);
@@ -1368,6 +1639,20 @@ public class AgentOrchestrator {
         }
     }
 
+    /**
+     * 行权限（方案 §4.4）：从请求参数中提取 Controller 注入的 UserScope（服务端唯一生产入口），
+     * 写入 SessionContext（随会话刷新，权限变更即时生效），并从 params 移除——
+     * 防止作为普通参数透传给工具入参/LLM 规划（权限不进业务参数面）。
+     */
+    private void extractUserScope(SessionContext context, Map<String, Object> params) {
+        if (params == null) {
+            return;
+        }
+        Object raw = params.remove("__user_scope__");
+        if (raw instanceof com.sitech.prodai.service.agent.model.UserScope scope) {
+            context.setUserScope(scope);
+        }
+    }
     // ── W2 对话内挂起恢复（ChatHumanBridge 接线） ──
 
     /**
@@ -1608,6 +1893,20 @@ public class AgentOrchestrator {
         context.setScene(scene);
         applySuppliedParams(context, params);
         context.addHistoryEntry("user", question);
+
+        // 行权限（方案 §4.4）：与同步链路同构绑定 + finally 清理
+        extractUserScope(context, params);
+        com.sitech.prodai.service.agent.model.UserScopeContext.bind(context.getUserScope());
+        try {
+            doProcessStream(question, context, params, scene, emitter, startTime);
+        } finally {
+            com.sitech.prodai.service.agent.model.UserScopeContext.clear();
+        }
+    }
+
+    /** processStream 的权限绑定后主链路（拆出仅为 try-finally 收口清晰）。 */
+    private void doProcessStream(String question, SessionContext context, Map<String, Object> params,
+                                 String scene, StreamEmitter emitter, long startTime) {
 
         // W2 挂起态短路：会话绑定待恢复工作流 → 直接走 ChatHumanBridge.resume（不过理解层 LLM）
         if (context.hasPendingExecution() && resumePendingExecution(context, question, params, emitter, startTime)) {
@@ -1883,13 +2182,17 @@ public class AgentOrchestrator {
         persistTurn(context, question, report, plan, results, emitter);
 
         emitTextEvents(emitter, report);
-        emitter.emit("done", Map.of(
-                "session_id", context.getSessionId(),
-                "intent", plan.getIntent(),
-                "conclusion", extractConclusion(results),
-                "suggested_follow_ups", followUps,
-                "elapsed_ms", System.currentTimeMillis() - startTime
-        ));
+        Map<String, Object> donePayload = new LinkedHashMap<>();
+        donePayload.put("session_id", context.getSessionId());
+        donePayload.put("intent", plan.getIntent());
+        donePayload.put("conclusion", extractConclusion(results));
+        donePayload.put("suggested_follow_ups", followUps);
+        donePayload.put("elapsed_ms", System.currentTimeMillis() - startTime);
+        // 查询审计（方案 §6-A3）：随 done 事件透出（前端 metadata 管道已具备）
+        donePayload.put(com.sitech.prodai.service.agent.model.QueryAuditRecorder.AUDIT_KEY,
+                queryAuditRecorder.record(queryAuditRecorder.build(
+                        context.getUserScope(), context.getScene(), plan, results, null)));
+        emitter.emit("done", donePayload);
     }
 
     /**
@@ -2001,13 +2304,17 @@ public class AgentOrchestrator {
         persistTurn(context, question, report, firstPlan, allResults, emitter);
 
         emitTextEvents(emitter, report);
-        emitter.emit("done", Map.of(
-                "session_id", context.getSessionId(),
-                "intent", firstPlan.getIntent(),
-                "conclusion", extractConclusion(allResults),
-                "suggested_follow_ups", allFollowUps,
-                "elapsed_ms", System.currentTimeMillis() - startTime
-        ));
+        Map<String, Object> multiDonePayload = new LinkedHashMap<>();
+        multiDonePayload.put("session_id", context.getSessionId());
+        multiDonePayload.put("intent", firstPlan.getIntent());
+        multiDonePayload.put("conclusion", extractConclusion(allResults));
+        multiDonePayload.put("suggested_follow_ups", allFollowUps);
+        multiDonePayload.put("elapsed_ms", System.currentTimeMillis() - startTime);
+        // 查询审计（方案 §6-A3）：混合意图按子计划合并一次落审计
+        multiDonePayload.put(com.sitech.prodai.service.agent.model.QueryAuditRecorder.AUDIT_KEY,
+                queryAuditRecorder.record(queryAuditRecorder.build(
+                        context.getUserScope(), context.getScene(), firstPlan, allResults, null)));
+        emitter.emit("done", multiDonePayload);
     }
 
     /**

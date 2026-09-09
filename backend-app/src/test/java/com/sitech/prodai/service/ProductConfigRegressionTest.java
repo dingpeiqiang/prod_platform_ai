@@ -28,6 +28,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
@@ -120,9 +121,10 @@ class ProductConfigRegressionTest {
                 deriveEngine,
                 new FactGraphSyncService(rdf4jStore),
                 new LlmIntentExtractor(Optional.empty(), mapper),
-                new SparqlConfigDiscoverer(rdf4jStore),
+                new SparqlConfigDiscoverer(rdf4jStore, properties),
                 regressionProvider,
-                new ConfigDraftService(mapper, instanceMapper, projector)
+                new ConfigDraftService(mapper, instanceMapper, projector),
+                null
         );
         service.init();
         regressionService = new ProductConfigRegressionService(
@@ -221,6 +223,31 @@ class ProductConfigRegressionTest {
                 "正常图谱热重载（含 SMOKE）应提交，报告=" + report);
         assertEquals("COMMIT", report.get("step"));
         assertFalse(service.getGraphSummary().isEmpty(), "COMMIT 后 graphCache 应已切换");
+    }
+
+    @Test
+    void graphSummaryShouldExposeAboxSyncFieldsForFrontend() {
+        // A1 预做项契约：getGraphSummary 恒含 abox_* 字段（mock 源无 supplier → null 缺省值，前端据此隐藏时间戳）
+        Map<String, Object> summary = service.getGraphSummary();
+
+        assertTrue(summary.containsKey("abox_last_synced_at"), "摘要应含 abox_last_synced_at 字段");
+        assertTrue(summary.containsKey("abox_last_sync_ok"), "摘要应含 abox_last_sync_ok 字段");
+        assertTrue(summary.containsKey("abox_row_count"), "摘要应含 abox_row_count 字段");
+        assertNull(summary.get("abox_last_synced_at"), "未装配同步调度器（mock 源）时同步时间应为 null");
+        assertEquals(0, ((Number) summary.get("abox_row_count")).intValue());
+
+        // 装配 supplier（模拟 ABoxSyncScheduler 注入）后应透出真实状态
+        service.setAboxSyncStatusSupplier(() -> {
+            Map<String, Object> status = new LinkedHashMap<>();
+            status.put("abox_last_synced_at", "2026-09-09T08:00:00Z");
+            status.put("abox_last_sync_ok", true);
+            status.put("abox_last_sync_message", "ok");
+            return status;
+        });
+        Map<String, Object> withSupplier = service.getGraphSummary();
+        assertEquals("2026-09-09T08:00:00Z", withSupplier.get("abox_last_synced_at"),
+                "装配 supplier 后应透出同步时间（数据截至前端呈现数据源）");
+        assertEquals(Boolean.TRUE, withSupplier.get("abox_last_sync_ok"));
     }
 
     private Map<String, Object> byCaseId(List<Map<String, Object>> cases, String caseId) {

@@ -839,7 +839,8 @@ class AgentOrchestratorTest {
         ArgumentCaptor<QueryPlan> planCaptor = ArgumentCaptor.forClass(QueryPlan.class);
         verify(executor).execute(planCaptor.capture(), any(SessionContext.class));
         // 执行链从手册步骤序列保序去重提取（步骤 tool 是调用语句，非 LLM 自选子集），意图归位手册首项规范意图
-        assertEquals(List.of("sparql_query", "swrl_risk_audit"),
+        // market-insight v2 已前置 metric_query 指标仓步骤（趋势/环比打底），故工具链为三步
+        assertEquals(List.of("metric_query", "sparql_query", "swrl_risk_audit"),
                 planCaptor.getValue().getTools(), "升级后应按手册步骤序列提取的工具链执行");
         assertEquals("PRODUCT_OPS_QUERY", planCaptor.getValue().getIntent(),
                 "意图归位手册 applies_to.intents 首项（直达链路计划意图）");
@@ -903,5 +904,117 @@ class AgentOrchestratorTest {
 
         assertEquals(QueryPlan.INTENT_CLARIFY, resp.get("intent"), "会话协作意图不参与手册升级");
         verify(executor, never()).execute(any(QueryPlan.class), any(SessionContext.class));
+    }
+
+    // ── 查询收敛 SOP（方案 §4.5，阶段 B1）：手册链路粗查规模判定分支 ──
+
+    /** 构造手册直达命中：理解层计划意图命中 query-ask.applies_to.intents（SPARQL_QUERY）+ sparql_query 工具。 */
+    private QueryPlan queryAskPlan() {
+        QueryPlan plan = new QueryPlan("SPARQL_QUERY", List.of("sparql_query"),
+                Map.of("question", "问题"), "查一下有哪些在售套餐");
+        plan.setUserQuestion("查一下有哪些在售套餐");
+        return plan;
+    }
+
+    /** sparql_query 结果桩：entity_ids 携带 hits 个命中（收敛判定输入）。 */
+    private List<ExecutionResult> sparqlHits(int hits) {
+        List<String> ids = new ArrayList<>();
+        for (int i = 0; i < hits; i++) {
+            ids.add("OFF-" + i);
+        }
+        return List.of(ExecutionResult.ok("sparql_query", Map.of("entity_ids", ids, "raw_results", List.of())));
+    }
+
+    @Test
+    void playbookCoarseHitsWithinThresholdPresentsDirectly() {
+        // 命中 ≤5（舒适阈值）：走原手册呈现，响应无收敛字段
+        QueryPlan plan = queryAskPlan();
+        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
+        when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
+        when(executor.execute(any(QueryPlan.class), any(SessionContext.class)))
+                .thenReturn(sparqlHits(5));
+        when(presenter.present(any(), anyList(), any(SessionContext.class))).thenReturn("命中 5 条，直接呈现");
+
+        Map<String, Object> resp = orchestrator.process("查一下有哪些在售套餐", "s-refine1", null, "query");
+
+        assertEquals("query-ask", resp.get("playbook"));
+        assertEquals("命中 5 条，直接呈现", resp.get("report"));
+        assertNull(resp.get("refine_hits"), "规模舒适不应触发收敛分支");
+    }
+
+    @Test
+    void playbookCoarseHitsBeyondThresholdAsksRefineClarify() {
+        // 命中 >20：转收敛追问（CLARIFY 契约形态），复用既有澄清响应契约
+        QueryPlan plan = queryAskPlan();
+        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
+        when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
+        when(executor.execute(any(QueryPlan.class), any(SessionContext.class)))
+                .thenReturn(sparqlHits(30));
+        when(presenter.present(any(), anyList(), any(SessionContext.class))).thenReturn("命中较多，请补充筛选条件");
+
+        Map<String, Object> resp = orchestrator.process("查一下有哪些在售套餐", "s-refine2", null, "query");
+
+        assertEquals(QueryPlan.INTENT_CLARIFY, resp.get("intent"), "超阈值 → 收敛追问");
+        assertEquals("query-ask", resp.get("playbook"), "收敛追问带手册来源标记");
+        assertEquals(30, resp.get("refine_hits"), "命中数随响应透出（审计口径）");
+        assertEquals(List.of("city", "monthly_fee"), resp.get("clarify"), "首轮追问地市 + 资费档位");
+        assertNotNull(resp.get("clarify_contracts"), "追问契约随响应下发（前端渲染选择题）");
+    }
+
+    @Test
+    void playbookRefineRoundsCapForcesDirectPresent() {
+        // 已达收敛上限（meta.refine_rounds=2）：judge 回落 OK，直接呈现不再追问
+        QueryPlan plan = queryAskPlan();
+        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
+        when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
+        when(executor.execute(any(QueryPlan.class), any(SessionContext.class)))
+                .thenReturn(sparqlHits(30));
+        when(presenter.present(any(), anyList(), any(SessionContext.class))).thenReturn("共 30 条，已按相关度排序呈现前 10 条");
+
+        SessionContext ctx = sessionManager.getOrCreate("s-refine3");
+        ctx.incrementRefineRounds();
+        ctx.incrementRefineRounds();
+
+        Map<String, Object> resp = orchestrator.process("查一下有哪些在售套餐", "s-refine3", null, "query");
+
+        assertEquals("query-ask", resp.get("playbook"));
+        assertEquals("共 30 条，已按相关度排序呈现前 10 条", resp.get("report"));
+        assertNull(resp.get("clarify"), "收敛轮次达上限 → 强制降维呈现，不再追问");
+    }
+
+    @Test
+    void playbookModerateHitsPresentsWithRefineSuggestion() {
+        // 命中 6~20（REFINE）：照常呈现 + 收敛建议（refine_suggest），不阻断
+        QueryPlan plan = queryAskPlan();
+        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
+        when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
+        when(executor.execute(any(QueryPlan.class), any(SessionContext.class)))
+                .thenReturn(sparqlHits(10));
+        when(presenter.present(any(), anyList(), any(SessionContext.class))).thenReturn("命中 10 条");
+
+        Map<String, Object> resp = orchestrator.process("查一下有哪些在售套餐", "s-refine4", null, "query");
+
+        assertEquals("命中 10 条", resp.get("report"), "REFINE 档不阻断，照常呈现");
+        assertEquals(10, resp.get("refine_hits"));
+        assertNotNull(resp.get("refine_suggest"), "收敛建议随响应透出（可选择性追问）");
+        assertNull(resp.get("clarify"), "REFINE 档不生成强制追问");
+    }
+
+    @Test
+    void playbookRefineNotAppliedToNonQueryPlaybooks() {
+        // 非查询类手册（工具链不含 sparql_query）不做收敛判定——零感知
+        QueryPlan plan = new QueryPlan("RD_DRAFT_MANAGE", List.of("rd_draft_manage"),
+                Map.of("question", "问题"), "配置一个家庭融合套餐");
+        plan.setUserQuestion("配置一个家庭融合套餐");
+        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
+        when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
+        when(executor.execute(any(QueryPlan.class), any(SessionContext.class)))
+                .thenReturn(List.of(ExecutionResult.ok("rd_draft_manage", Map.of())));
+        when(presenter.present(any(), anyList(), any(SessionContext.class))).thenReturn("草稿已生成");
+
+        Map<String, Object> resp = orchestrator.process("配置一个家庭融合套餐", "s-refine5", null, "rd");
+
+        assertNull(resp.get("refine_hits"), "非查询手册不触发收敛判定");
+        assertNull(resp.get("clarify"));
     }
 }

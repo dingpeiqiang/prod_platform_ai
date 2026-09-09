@@ -32,7 +32,9 @@ public class FactGraphSyncService {
             Map.entry("state", "state"),
             Map.entry("monthlyFee", "monthlyFee"),
             Map.entry("fixedFeeAmount", "fixedFeeAmount"),
-            Map.entry("shelfDays", "shelfDays")
+            Map.entry("shelfDays", "shelfDays"),
+            // 行权限过滤维度（方案 §4.4）：销售渠道范围，SparqlConfigDiscoverer 权限子句依赖
+            Map.entry("channelScope", "channelScope")
     );
 
     private final Rdf4jOntologyStore rdf4jStore;

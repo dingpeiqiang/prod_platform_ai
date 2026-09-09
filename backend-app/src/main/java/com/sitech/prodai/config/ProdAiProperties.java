@@ -17,6 +17,151 @@ public class ProdAiProperties {
     private final Mcp mcp = new Mcp();
     private final FlowRouter flowRouter = new FlowRouter();
     private final ChatWorkflow chatWorkflow = new ChatWorkflow();
+    private final Metric metric = new Metric();
+
+    public Metric getMetric() {
+        return metric;
+    }
+
+    /**
+     * 指标体系配置（指标域 P0）：字典单源 + 指标宽表数据源。
+     * <p>
+     * registry-path 指向指标字典（metrics_registry.json，单源）；
+     * source = mock | jdbc——mock 从 opsGraph 时序种子生成演示数据（dev/demo），
+     * jdbc 直连指标宽表 dwd_prod_metric_daily（T+1 增量，生产）。
+     */
+    public static class Metric {
+        /** 指标字典路径（单源定义）。 */
+        private String registryPath = "classpath:ontology/metrics_registry.json";
+        /** 指标数据源：mock | jdbc。 */
+        private String source = "mock";
+        /** 指标宽表 JDBC URL（source=jdbc 时必填；只读账号）。 */
+        private String jdbcUrl = "";
+        private String jdbcUsername = "";
+        private String jdbcPassword = "";
+        private String jdbcDriver = "com.mysql.cj.jdbc.Driver";
+        /** 指标宽表名（生产可指向数仓同构视图）。 */
+        private String wideTable = "dwd_prod_metric_daily";
+        /** 单次查询最大行数护栏（防全表扫描式下钻）。 */
+        private int maxRows = 50000;
+        /** mock 时序生成天数（demo 数据窗口，默认 120 天）。 */
+        private int mockDays = 120;
+        /** T+1 ETL 灌数窗口天数（本地替身 ETL 每次覆盖写入的天数，默认 120 天）。 */
+        private int etlDays = 120;
+        /** 定时 ETL 开关（生产由真实数仓 ETL 替代，默认关；联调用手动端点触发）。 */
+        private boolean etlEnabled = false;
+        /** 定时 ETL cron（T+1 凌晨低峰）。 */
+        private String etlCron = "0 30 2 * * ?";
+        /** 阈值分位数校准：环比样本回看天数（默认 60 天）。 */
+        private int calibrationDays = 60;
+
+        public int getEtlDays() {
+            return Math.max(7, etlDays);
+        }
+
+        public void setEtlDays(int etlDays) {
+            this.etlDays = etlDays;
+        }
+
+        public boolean isEtlEnabled() {
+            return etlEnabled;
+        }
+
+        public void setEtlEnabled(boolean etlEnabled) {
+            this.etlEnabled = etlEnabled;
+        }
+
+        public String getEtlCron() {
+            return etlCron == null || etlCron.isBlank() ? "0 30 2 * * ?" : etlCron.trim();
+        }
+
+        public void setEtlCron(String etlCron) {
+            this.etlCron = etlCron;
+        }
+
+        public int getCalibrationDays() {
+            return Math.max(14, calibrationDays);
+        }
+
+        public void setCalibrationDays(int calibrationDays) {
+            this.calibrationDays = calibrationDays;
+        }
+
+        public String getRegistryPath() {
+            return registryPath == null || registryPath.isBlank()
+                    ? "classpath:ontology/metrics_registry.json" : registryPath.trim();
+        }
+
+        public void setRegistryPath(String registryPath) {
+            this.registryPath = registryPath;
+        }
+
+        public String getSource() {
+            return source == null || source.isBlank() ? "mock" : source.trim().toLowerCase();
+        }
+
+        public void setSource(String source) {
+            this.source = source;
+        }
+
+        public String getJdbcUrl() {
+            return jdbcUrl == null ? "" : jdbcUrl.trim();
+        }
+
+        public void setJdbcUrl(String jdbcUrl) {
+            this.jdbcUrl = jdbcUrl;
+        }
+
+        public String getJdbcUsername() {
+            return jdbcUsername == null ? "" : jdbcUsername.trim();
+        }
+
+        public void setJdbcUsername(String jdbcUsername) {
+            this.jdbcUsername = jdbcUsername;
+        }
+
+        public String getJdbcPassword() {
+            return jdbcPassword == null ? "" : jdbcPassword;
+        }
+
+        public void setJdbcPassword(String jdbcPassword) {
+            this.jdbcPassword = jdbcPassword;
+        }
+
+        public String getJdbcDriver() {
+            return jdbcDriver == null || jdbcDriver.isBlank()
+                    ? "com.mysql.cj.jdbc.Driver" : jdbcDriver.trim();
+        }
+
+        public void setJdbcDriver(String jdbcDriver) {
+            this.jdbcDriver = jdbcDriver;
+        }
+
+        public String getWideTable() {
+            return wideTable == null || wideTable.isBlank()
+                    ? "dwd_prod_metric_daily" : wideTable.trim();
+        }
+
+        public void setWideTable(String wideTable) {
+            this.wideTable = wideTable;
+        }
+
+        public int getMaxRows() {
+            return Math.max(1, maxRows);
+        }
+
+        public void setMaxRows(int maxRows) {
+            this.maxRows = maxRows;
+        }
+
+        public int getMockDays() {
+            return Math.max(30, mockDays);
+        }
+
+        public void setMockDays(int mockDays) {
+            this.mockDays = mockDays;
+        }
+    }
 
     public Ontology getOntology() {
         return ontology;
@@ -161,6 +306,19 @@ public class ProdAiProperties {
         private String aboxJdbcDriver = "com.mysql.cj.jdbc.Driver";
         /** 单次同步最大行数护栏（防全表拖垮内存），默认 10000。 */
         private int aboxMaxRows = 10000;
+        /**
+         * 智查检索词典兜底开关：SPARQL 本体检索 0 命中/异常时是否回退词典打分。
+         * 默认 false——检索统一走本体知识库，0 命中如实返回（护栏话术），不冒充无命中。
+         */
+        private boolean discoverDictFallback = false;
+
+        public boolean isDiscoverDictFallback() {
+            return discoverDictFallback;
+        }
+
+        public void setDiscoverDictFallback(boolean discoverDictFallback) {
+            this.discoverDictFallback = discoverDictFallback;
+        }
 
         public boolean isDemoEnabled() {
             return demoEnabled;

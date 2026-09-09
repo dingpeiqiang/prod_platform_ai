@@ -79,12 +79,24 @@ public class ChatConfigureService {
         com.fasterxml.jackson.databind.ObjectMapper get();
     }
 
+    /** 词典兜底开关回调（读 prodai.ontology.discover-dict-fallback，默认关闭）。 */
+    @FunctionalInterface
+    public interface DictFallbackEnabledSupplier {
+        boolean get();
+    }
+
     private final GraphSupplier graphSupplier;
     private final ComplianceChecker complianceChecker;
     private final OfferingIdResolver offeringIdResolver;
     private final ShelfOfferingFinder shelfOfferingFinder;
     private final WorkOrderCreator workOrderCreator;
     private final ComplianceRuleEngine complianceRuleEngine;
+    private final DictFallbackEnabledSupplier dictFallbackEnabledSupplier;
+
+    /** 词典兜底开关（构造未注入时默认关闭：检索统一走本体知识库）。 */
+    private boolean dictFallbackEnabled() {
+        return dictFallbackEnabledSupplier != null && dictFallbackEnabledSupplier.get();
+    }
 
     public ChatConfigureService(ObjectMapperHolder objectMapperHolder,
                                 OpsExtractionService extractionService,
@@ -102,6 +114,29 @@ public class ChatConfigureService {
                                 ShelfOfferingFinder shelfOfferingFinder,
                                 WorkOrderCreator workOrderCreator,
                                 ComplianceRuleEngine complianceRuleEngine) {
+        this(objectMapperHolder, extractionService, deriveEngine, intentExtractor, sparqlDiscoverer,
+                messageProjector, configDraftService, configDocImportService, opsWorkOrderService, versionService,
+                graphSupplier, complianceChecker, offeringIdResolver, shelfOfferingFinder, workOrderCreator,
+                complianceRuleEngine, null);
+    }
+
+    public ChatConfigureService(ObjectMapperHolder objectMapperHolder,
+                                OpsExtractionService extractionService,
+                                TemplateDeriveEngine deriveEngine,
+                                LlmIntentExtractor intentExtractor,
+                                SparqlConfigDiscoverer sparqlDiscoverer,
+                                ConfigMessageProjector messageProjector,
+                                ConfigDraftService configDraftService,
+                                ConfigDocImportService configDocImportService,
+                                OpsWorkOrderService opsWorkOrderService,
+                                OntologyVersionService versionService,
+                                GraphSupplier graphSupplier,
+                                ComplianceChecker complianceChecker,
+                                OfferingIdResolver offeringIdResolver,
+                                ShelfOfferingFinder shelfOfferingFinder,
+                                WorkOrderCreator workOrderCreator,
+                                ComplianceRuleEngine complianceRuleEngine,
+                                DictFallbackEnabledSupplier dictFallbackEnabledSupplier) {
         this.objectMapperHolder = objectMapperHolder;
         this.extractionService = extractionService;
         this.deriveEngine = deriveEngine;
@@ -118,6 +153,7 @@ public class ChatConfigureService {
         this.shelfOfferingFinder = shelfOfferingFinder;
         this.workOrderCreator = workOrderCreator;
         this.complianceRuleEngine = complianceRuleEngine;
+        this.dictFallbackEnabledSupplier = dictFallbackEnabledSupplier;
     }
 
     private Map<String, Object> loadGraph() {
@@ -129,34 +165,36 @@ public class ChatConfigureService {
     }
 
     /**
-     * 智查：LLM 意图结构化 + 本体 SPARQL 语义检索优先，词典打分（matchScore）回退。
+     * 智查：LLM 意图结构化 + 本体 SPARQL 语义检索（统一本体知识库通道）。
      * <p>三层链路：LlmIntentExtractor（NL→结构化意图）→ FactGraphSyncService（事实图→Offering 实例）
-     * → SparqlConfigDiscoverer（参数化 SPARQL）。SPARQL 无命中或异常时回退 matchScore，保证可用性。
+     * → SparqlConfigDiscoverer（参数化 SPARQL）。词典打分回退仅作应急通道，
+     * 由 {@code prodai.ontology.discover-dict-fallback} 显式开启（默认关闭）；
+     * SPARQL 0 命中时如实返回（no_match=true，护栏话术），不冒充无命中。
      */
     public Map<String, Object> discoverConfigs(String query, int limit) {
         String q = query == null ? "" : query.trim();
         int lim = limit <= 0 ? 20 : Math.min(limit, 50);
         Map<String, Object> graph = loadGraph();
-        List<Map<String, Object>> offerings = MapOps.castListOfMaps(graph.get("shelfOfferings"));
-        Map<String, Object> templates = MapOps.castMap(graph.get("templates"));
-        List<Map<String, Object>> schemes = MapOps.castListOfMaps(graph.get("configSchemes"));
 
         LlmIntentExtractor.DiscoverIntent intent = intentExtractor.extract(q);
         List<Map<String, Object>> items = new ArrayList<>();
-        String retrieveEngine = "dict-score";
+        String retrieveEngine = "sparql";
+        String sparqlError = null;
         if (!q.isBlank()) {
             try {
-                List<Map<String, Object>> sparqlHits = sparqlDiscoverer.discover(intent);
-                if (!sparqlHits.isEmpty()) {
-                    items.addAll(sparqlHits);
-                    retrieveEngine = intent.engine() + "+sparql";
-                }
+                // 行权限（方案 §4.4）：从请求级 UserScopeContext 取当前用户权限，discoverer 强制注入过滤
+                items.addAll(sparqlDiscoverer.discover(intent,
+                        com.sitech.prodai.service.agent.model.UserScopeContext.current()));
             } catch (Exception e) {
-                log.warn("[ChatConfigureService] SPARQL 语义检索失败，回退词典打分: {}", e.getMessage());
+                sparqlError = e.getMessage();
+                log.warn("[ChatConfigureService] SPARQL 语义检索失败: {}", sparqlError);
             }
         }
-        if (items.isEmpty()) {
+        // 词典兜底仅应急：开关显式开启才走（默认统一本体知识库，0 命中如实透出）
+        if (items.isEmpty() && dictFallbackEnabled()) {
+            retrieveEngine = "dict-score";
             Integer timeWindowDays = intent.timeWindowDays();
+            List<Map<String, Object>> offerings = MapOps.castListOfMaps(graph.get("shelfOfferings"));
             for (Map<String, Object> o : offerings) {
                 int score = matchScore(q, o);
                 if (score <= 0 && !q.isBlank()) {
@@ -178,6 +216,7 @@ public class ChatConfigureService {
         }
 
         List<Map<String, Object>> tplHits = new ArrayList<>();
+        Map<String, Object> templates = MapOps.castMap(graph.get("templates"));
         for (Map.Entry<String, Object> e : templates.entrySet()) {
             Map<String, Object> t = MapOps.castMap(e.getValue());
             String blob = (MapOps.str(t.get("templateId")) + " " + MapOps.str(t.get("name"))
@@ -196,6 +235,7 @@ public class ChatConfigureService {
         }
 
         List<Map<String, Object>> schemeHits = new ArrayList<>();
+        List<Map<String, Object>> schemes = MapOps.castListOfMaps(graph.get("configSchemes"));
         for (Map<String, Object> s : schemes) {
             String blob = (MapOps.str(s.get("schemeId")) + " " + MapOps.str(s.get("schemeName"))
                     + " " + MapOps.str(s.get("messageRootKey")) + " " + MapOps.str(s.get("categoryName"))
@@ -215,8 +255,12 @@ public class ChatConfigureService {
         body.put("success", true);
         body.put("query", q);
         body.put("retrieve_engine", retrieveEngine);
-        // 无匹配时如实返回：LLM 表达层会向用户说明"未找到"，不硬凑低分项
+        // 无匹配时如实返回：LLM 表达层会向用户说明"未找到"，不硬凑低分项；
+        // 检索服务异常时带出原因（护栏：不返回空结果冒充无命中）
         body.put("no_match", q != null && !q.isBlank() && items.isEmpty());
+        if (sparqlError != null && items.isEmpty()) {
+            body.put("retrieve_error", sparqlError);
+        }
         body.put("intent", Map.of(
                 "query_type", intent.queryType(),
                 "keywords", intent.keywords(),

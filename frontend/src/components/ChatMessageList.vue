@@ -200,6 +200,7 @@
                 v-for="p in msg.queryResults"
                 :key="p.id"
                 class="query-result-item"
+                :class="{ 'qr-in-tray': compareTrayHas(p) }"
                 @click="$emit('query-result-click', p)"
               >
                 <div class="qr-header">
@@ -207,13 +208,28 @@
                   <span v-if="p.code" class="qr-code">{{ p.code }}</span>
                 </div>
                 <p v-if="p.desc" class="qr-desc">{{ p.desc }}</p>
-                <button type="button" class="qr-copy-btn" @click.stop="$emit('query-result-click', p)">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                  </svg>
-                  复制配置
-                </button>
+                <div class="qr-actions">
+                  <button type="button" class="qr-copy-btn" @click.stop="$emit('query-result-click', p)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                    </svg>
+                    复制配置
+                  </button>
+                  <!-- 查询→行动中间态（§6-B4）：加入对比清单，多商品凑齐后一键进比对面板 -->
+                  <button
+                    type="button"
+                    class="qr-tray-btn"
+                    :class="{ 'qr-tray-btn--added': compareTrayHas(p) }"
+                    @click.stop="$emit('compare-tray-add', p)"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="12" y1="5" x2="12" y2="19"/>
+                      <line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                    {{ compareTrayHas(p) ? '已加入' : '加入对比' }}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -419,6 +435,7 @@ import ThinkingProcessPanel from './ThinkingProcessPanel.vue'
 import MessageCard from './MessageCard.vue'
 import InlineFormEditor from './InlineFormEditor.vue'
 import BatchInlineCard from './BatchInlineCard.vue'
+import { useCompareTray } from '../composables/useCompareTray.js'
 
 const props = defineProps({
   messages: { type: Array, required: true },
@@ -444,6 +461,7 @@ const emit = defineEmits([
   'regenerate',
   'suggest',
   'query-result-click',
+  'compare-tray-add',
   'clarify-submit',
   'trace-click',
   'session-workorder-select',
@@ -458,6 +476,9 @@ const emit = defineEmits([
 const isActiveForm = (formCard) => {
   return !!props.activeFormCard && !!formCard && props.activeFormCard.formId === formCard.formId
 }
+
+/** 查询→行动中间态（§6-B4）：结果卡片是否已在对比清单（模块级共享清单） */
+const { has: compareTrayHas } = useCompareTray()
 
 /** 引用锚计数摘要（通过/待修/可入库） */
 const fileRefCounts = (fileRef) => {
@@ -1603,6 +1624,43 @@ defineExpose({ scrollToBottom })
 .qr-copy-btn:hover {
   background: #3b82f6;
   color: white;
+}
+
+/* 查询→行动中间态（§6-B4）：卡片动作区与「加入对比」按钮 */
+.qr-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.qr-tray-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: #d1fae5;
+  color: #059669;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.qr-tray-btn:hover {
+  background: #059669;
+  color: white;
+}
+
+.qr-tray-btn--added {
+  background: transparent;
+  color: #94a3b8;
+  cursor: default;
+}
+
+.query-result-item.qr-in-tray {
+  border-color: #a7f3d0;
 }
 
 /* S1 对话即编排：固定流程执行明细卡片 */

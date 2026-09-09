@@ -53,6 +53,7 @@ public class ProductOntologyService {
     private final OpsRiskAuditEngine riskAuditEngine;
     private final OpsWorkOrderService opsWorkOrderService;
     private final ConfigDocImportService configDocImportService;
+    private final com.sitech.prodai.service.metric.MetricService metricService;
 
     public ProductOntologyService(com.fasterxml.jackson.databind.ObjectMapper objectMapper,
                               ProdAiProperties properties,
@@ -73,7 +74,8 @@ public class ProductOntologyService {
                               LlmIntentExtractor intentExtractor,
                               SparqlConfigDiscoverer sparqlDiscoverer,
                               ObjectProvider<ProductConfigRegressionService> regressionServiceProvider,
-                              ConfigDraftService configDraftService) {
+                              ConfigDraftService configDraftService,
+                              org.springframework.beans.factory.ObjectProvider<com.sitech.prodai.service.metric.MetricService> metricServiceProvider) {
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.opsRules = opsRules;
@@ -86,6 +88,9 @@ public class ProductOntologyService {
         this.sparqlDiscoverer = sparqlDiscoverer;
         this.regressionServiceProvider = regressionServiceProvider;
         this.configDraftService = configDraftService;
+        // 指标域 P0：ObjectProvider 注入避免与 MetricService 构造环（指标服务可选依赖）
+        this.metricService = metricServiceProvider != null
+                ? metricServiceProvider.getIfAvailable() : null;
 
         this.graphManager = new OntologyGraphManager(objectMapper, properties, graphLoader,
                 lastKnownGoodGuard, factGraphSync, messageProjector, regressionServiceProvider);
@@ -102,7 +107,8 @@ public class ProductOntologyService {
                 this::toObjectMapper, extractionService, deriveEngine, intentExtractor, sparqlDiscoverer,
                 messageProjector, configDraftService, configDocImportService, opsWorkOrderService, versionService,
                 this::loadGraph, this::checkCompliance, this::resolveOfferingId,
-                this::findShelfOffering, this::createWorkOrder, complianceEngine);
+                this::findShelfOffering, this::createWorkOrder, complianceEngine,
+                () -> properties.getOntology().isDiscoverDictFallback());
         this.riskAuditEngine = new OpsRiskAuditEngine(objectMapper, opsSwrlReasoner, opsRules,
                 riskAudit, versionService, this::loadGraph, this::riskRules,
                 () -> workOrderCount(opsWorkOrderService), this::withModeMeta);
@@ -121,6 +127,19 @@ public class ProductOntologyService {
         configDraftService.setCallbacks(this::checkCompliance, this::publishConfigDraft);
         loadGraph();
         opsRules.load();
+        // 指标域 P0：事实图快照回注指标服务（mock 时序生成基准）；注入失败不阻断主链路
+        if (metricService != null) {
+            try {
+                metricService.setGraphSnapshotSupplier(this::loadGraph);
+                // 指标域 P3：ETL 直接持有 mockDataSource（绕过 MetricService 每次取数的快照刷新），
+                // 此处显式灌一次快照，否则 ETL 上下文中 shelf 为空
+                metricService.refreshMockSnapshot();
+                // 指标域 P2：指标服务回注归因引擎（R-A06 持续下滑 + metricFacts 事实注入）
+                riskAuditEngine.setMetricService(metricService);
+            } catch (Exception e) {
+                log.warn("[ProductOntologyService] 指标服务快照回注失败（指标查询降级）: {}", e.getMessage());
+            }
+        }
         syncFactGraphToRdf();
     }
 

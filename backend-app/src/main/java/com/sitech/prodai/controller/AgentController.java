@@ -2,6 +2,9 @@ package com.sitech.prodai.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sitech.prodai.service.agent.AgentOrchestrator;
+import com.sitech.prodai.service.agent.model.UserScope;
+import com.sitech.prodai.service.agent.model.UserScopeResolver;
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -31,10 +34,13 @@ public class AgentController {
 
     private final AgentOrchestrator orchestrator;
     private final ObjectMapper objectMapper;
+    private final UserScopeResolver userScopeResolver;
 
-    public AgentController(AgentOrchestrator orchestrator, ObjectMapper objectMapper) {
+    public AgentController(AgentOrchestrator orchestrator, ObjectMapper objectMapper,
+                           UserScopeResolver userScopeResolver) {
         this.orchestrator = orchestrator;
         this.objectMapper = objectMapper;
+        this.userScopeResolver = userScopeResolver;
     }
 
     /**
@@ -46,7 +52,7 @@ public class AgentController {
      * @return 翻译结果：{ session_id, report, evidence, conclusion, suggested_follow_ups, ... }
      */
     @PostMapping("/chat")
-    public Map<String, Object> chat(@RequestBody Map<String, Object> request) {
+    public Map<String, Object> chat(@RequestBody Map<String, Object> request, HttpServletRequest httpRequest) {
         long startTime = System.currentTimeMillis();
 
         // 参数校验
@@ -62,6 +68,11 @@ public class AgentController {
             error.put("error", "question is required");
             return error;
         }
+
+        // 行权限（方案 §4.4）：UserScope 唯一生产入口——从登录态（JWT 解析结果）构造，
+        // 请求体中的 scope/user/channel 字段一律忽略（不可由客户端指定权限）
+        UserScope userScope = resolveUserScope(httpRequest, request);
+        params.put("__user_scope__", userScope);
 
         log.info("[AgentController] 收到翻译请求: question={}, sessionId={}, scene={}", question, sessionId, scene);
 
@@ -88,7 +99,7 @@ public class AgentController {
      * @return SSE 事件流（Accept: text/event-stream）
      */
     @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter chatStream(@RequestBody Map<String, Object> request) {
+    public SseEmitter chatStream(@RequestBody Map<String, Object> request, HttpServletRequest httpRequest) {
         SseEmitter emitter = new SseEmitter(300_000L);
         emitter.onTimeout(emitter::complete);
         emitter.onError(e -> emitter.completeWithError(e));
@@ -112,6 +123,10 @@ public class AgentController {
             emitter.complete();
             return emitter;
         }
+
+        // 行权限（方案 §4.4）：与同步链路同构——登录态解析，请求体 scope 字段一律忽略
+        UserScope userScope = resolveUserScope(httpRequest, request);
+        params.put("__user_scope__", userScope);
 
         log.info("[AgentController] 收到流式翻译请求: question={}, sessionId={}, scene={}", question, sessionId, scene);
 
@@ -154,6 +169,19 @@ public class AgentController {
     private String currentRequestId() {
         String id = MDC.get("requestId");
         return id != null ? id : "";
+    }
+
+    /**
+     * 行权限解析（方案 §4.4）：登录态 → UserScope 的唯一入口。
+     * <p>
+     * 用户名/角色取自 JwtAuthFilter 写入的请求属性（JWT 解析产物），
+     * 鉴权关闭（auth.enabled=false）时属性为空 → unrestricted（本地形态行为不变）。
+     * 请求体中的 scope/user/channel 等字段不参与解析（防客户端伪造权限）。
+     */
+    private UserScope resolveUserScope(HttpServletRequest httpRequest, Map<String, Object> request) {
+        String username = httpRequest != null ? com.sitech.prodai.config.JwtAuthFilter.currentUsername(httpRequest) : null;
+        String role = httpRequest != null ? com.sitech.prodai.config.JwtAuthFilter.currentRole(httpRequest) : null;
+        return userScopeResolver.resolve(username, role);
     }
 
     /**

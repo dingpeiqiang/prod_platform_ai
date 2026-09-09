@@ -7,6 +7,22 @@ export async function getOntologyGraph() {
   return get(`${BASE}/graph`, { showLoading: false })
 }
 
+/** ABox 数据新鲜度（A1 预做项：数据截至时间戳透出）。取不到时返回 null，由调用方决定是否展示。 */
+export async function getAboxSyncStatus() {
+  const body = await get(`${BASE}/graph`, { showLoading: false, silentError: true })
+  if (!body || body.success === false) return null
+  const raw = body.abox_last_synced_at
+  if (!raw) return null
+  const ts = new Date(raw)
+  if (Number.isNaN(ts.getTime())) return null
+  return {
+    syncedAt: ts,
+    ok: body.abox_last_sync_ok === true,
+    message: body.abox_last_sync_message || '',
+    rowCount: body.abox_row_count ?? null,
+  }
+}
+
 export async function getOntologyMeta() {
   return get(`${BASE}/meta`, { showLoading: false })
 }

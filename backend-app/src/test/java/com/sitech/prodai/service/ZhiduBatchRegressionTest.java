@@ -110,9 +110,10 @@ class ZhiduBatchRegressionTest {
                 deriveEngine,
                 new FactGraphSyncService(rdf4jStore),
                 new LlmIntentExtractor(Optional.empty(), mapper),
-                new SparqlConfigDiscoverer(rdf4jStore),
+                new SparqlConfigDiscoverer(rdf4jStore, properties),
                 regressionProvider,
-                new ConfigDraftService(mapper, instanceMapper, projector)
+                new ConfigDraftService(mapper, instanceMapper, projector),
+                null
         );
         service.init();
         lazyRegression.set(new ProductConfigRegressionService(

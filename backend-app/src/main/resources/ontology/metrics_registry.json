@@ -1,0 +1,107 @@
+{
+  "version": "MetricsRegistry-v1",
+  "description": "产商品运营指标字典单源。原子指标 source 指向指标宽表 dwd_prod_metric_daily；派生指标 formula 由 MetricService 计算；thresholdRef 与 ops_rules.json 规则阈值联动。LLM 不算数：全部聚合/派生由引擎计算，LLM 只做口语→指标/维度/窗口翻译。",
+  "defaults": {
+    "grain": "day",
+    "window": "recent_30d",
+    "maxSeriesPoints": 90,
+    "maxBreakdownGroups": 20
+  },
+  "dimensions": {
+    "product": { "levels": ["product_line", "category", "offering"], "column": "offering_id", "label": "商品" },
+    "region": { "levels": ["region"], "column": "region_id", "label": "地区" },
+    "channel": { "levels": ["channel"], "column": "channel_id", "label": "渠道" },
+    "customer": { "levels": ["segment"], "column": "customer_segment", "label": "客群" },
+    "time": { "grains": ["day", "week", "month"], "label": "时间" }
+  },
+  "timeWindows": {
+    "recent_7d":  { "days": 7,   "label": "近7天" },
+    "recent_30d": { "days": 30,  "label": "近30天" },
+    "recent_90d": { "days": 90,  "label": "近90天" },
+    "mtd":        { "kind": "month_to_date", "label": "本月至今" },
+    "wow":        { "kind": "compare", "base": "recent_7d", "target": "prev_7d", "label": "周环比" },
+    "mom":        { "kind": "compare", "base": "recent_30d", "target": "prev_30d", "label": "月环比" },
+    "yoy":        { "kind": "compare", "base": "recent_30d", "target": "prev_year_30d", "label": "同比" }
+  },
+  "metrics": {
+    "revenue": {
+      "name": "收入",
+      "kind": "atomic",
+      "grain": "sum",
+      "unit": "元",
+      "column": "revenue",
+      "timeWindows": ["recent_7d", "recent_30d", "recent_90d", "mtd", "wow", "mom", "yoy"],
+      "anomaly": { "method": "delta_pct", "thresholdRef": "R-A01" },
+      "drill": ["region", "channel", "customer"],
+      "aliases": ["营收", "进账", "收入", "收费"]
+    },
+    "order_cnt": {
+      "name": "订购量",
+      "kind": "atomic",
+      "grain": "sum",
+      "unit": "笔",
+      "column": "order_cnt",
+      "timeWindows": ["recent_7d", "recent_30d", "recent_90d", "mtd", "wow", "mom"],
+      "anomaly": { "method": "delta_pct", "thresholdRef": "R-A02" },
+      "drill": ["region", "channel", "customer"],
+      "aliases": ["订购", "订单量", "销量", "办理量"]
+    },
+    "new_users": {
+      "name": "新增用户",
+      "kind": "atomic",
+      "grain": "sum",
+      "unit": "户",
+      "column": "new_users",
+      "timeWindows": ["recent_7d", "recent_30d", "recent_90d", "mtd", "mom"],
+      "drill": ["region", "channel"],
+      "aliases": ["新增", "新入网", "新用户"]
+    },
+    "churn_users": {
+      "name": "流失用户",
+      "kind": "atomic",
+      "grain": "sum",
+      "unit": "户",
+      "column": "churn_users",
+      "timeWindows": ["recent_7d", "recent_30d", "recent_90d", "mtd", "mom"],
+      "drill": ["region", "customer"],
+      "aliases": ["流失", "离网", "退订用户"]
+    },
+    "active_users": {
+      "name": "活跃用户",
+      "kind": "atomic",
+      "grain": "avg_last",
+      "unit": "户",
+      "column": "active_users",
+      "timeWindows": ["recent_7d", "recent_30d", "recent_90d", "mtd", "mom"],
+      "drill": ["region", "customer"],
+      "aliases": ["在网用户", "活户"]
+    },
+    "arpu": {
+      "name": "ARPU",
+      "kind": "derived",
+      "formula": "revenue / active_users",
+      "unit": "元/户",
+      "timeWindows": ["recent_30d", "mom"],
+      "drill": ["region", "customer"],
+      "aliases": ["户均收入", "每用户收入"]
+    },
+    "attach_rate": {
+      "name": "附加率",
+      "kind": "derived",
+      "formula": "order_cnt_addon / order_cnt_main",
+      "unit": "%",
+      "timeWindows": ["recent_30d", "mom"],
+      "drill": ["region", "channel"],
+      "aliases": ["加装率", "叠加率"]
+    },
+    "net_growth": {
+      "name": "净增用户",
+      "kind": "derived",
+      "formula": "new_users - churn_users",
+      "unit": "户",
+      "timeWindows": ["recent_7d", "recent_30d", "recent_90d", "mtd", "mom"],
+      "drill": ["region"],
+      "aliases": ["净增", "净增户"]
+    }
+  }
+}

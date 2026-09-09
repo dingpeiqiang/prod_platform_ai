@@ -53,6 +53,13 @@ public class SessionContext {
      */
     private Map<String, Object> executionBinding;
 
+    /**
+     * 用户数据行权限上下文（方案 §4.4，阶段 A2）：由 Controller 从登录态解析后注入，
+     * 随每次请求刷新（权限变更即时生效）；数据访问出口强制读取，LLM/工具入参不可触达。
+     * 默认 unrestricted（未启用行权限的部署形态行为不变）。
+     */
+    private UserScope userScope = UserScope.unrestricted();
+
     public SessionContext() {
         this.history = new ArrayList<>();
         this.cachedEvidence = new LinkedHashMap<>();
@@ -162,6 +169,16 @@ public class SessionContext {
     }
 
     /**
+     * 查询收敛轮次（方案 §4.5，阶段 B1）：手册链路粗查命中过多时的收敛澄清计数，
+     * 独立于参数补全门的 clarifyRounds（两者语义不同源：参数缺口 vs 规模收敛）。
+     * 存 meta（随快照持久化，跨轮恢复），超上限由 QueryRefinePolicy.judge 回落降维呈现。
+     */
+    public void incrementRefineRounds() {
+        Object cur = meta.get("refine_rounds");
+        meta.put("refine_rounds", (cur instanceof Number n ? n.intValue() : 0) + 1);
+    }
+
+    /**
      * 是否已达到确认上限（U2：超过后按首选解读继续，防死循环）。
      */
     public boolean exceedConfirmLimit() {
@@ -234,6 +251,14 @@ public class SessionContext {
 
     public void setExecutionBinding(Map<String, Object> executionBinding) {
         this.executionBinding = executionBinding;
+    }
+
+    public UserScope getUserScope() {
+        return userScope != null ? userScope : UserScope.unrestricted();
+    }
+
+    public void setUserScope(UserScope userScope) {
+        this.userScope = userScope != null ? userScope : UserScope.unrestricted();
     }
 
     /** 是否处于工作流挂起态（有绑定且令牌未消费）。 */

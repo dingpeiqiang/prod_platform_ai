@@ -196,7 +196,7 @@ class DocBatchImportPlaybookChainTest {
 
     @Test
     void playbookChainWiresDocumentTextIntoExtractAndItemsIntoCreate() {
-        orchestrator.processStream("导入文档：智慧社区融合方案.csv", "s-chain1", Map.of("file_id", "f-1"), "rd",
+        orchestrator.processStream("导入文档：智慧社区融合方案.csv", "s-chain1", new java.util.HashMap<>(Map.of("file_id", "f-1")), "rd",
                 (event, data) -> { });
 
         // ① parse → extract：document_text 承接解析产出，而非用户原话（根因回归点）
@@ -227,7 +227,7 @@ class DocBatchImportPlaybookChainTest {
 
     @Test
     void playbookPlanCarriesInputFromMappings() {
-        orchestrator.process("导入文档：智慧社区融合方案.csv", "s-chain2", Map.of("file_id", "f-2"), "rd");
+        orchestrator.process("导入文档：智慧社区融合方案.csv", "s-chain2", new java.util.HashMap<>(Map.of("file_id", "f-2")), "rd");
 
         // 计划层契约：手册步骤的 input_from 已转为 ExecStep.paramMappings（result: 来源）
         // 这里借执行层收到的参数间接断言（真实 executor 非桩，无法 captor 计划），

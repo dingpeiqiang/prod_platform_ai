@@ -75,8 +75,38 @@ public final class ThinkingCopy {
                 Category.LOOKUP));
         m.put("ontology_explain", new ToolCopy(
                 "解释业务概念",
-                "用业务语言说明概念的含义与关联规则",
+                "用业务语言说明本体概念的定义、层级与关联属性（建模口径）",
                 "查阅业务知识库/概念词条说明",
+                Category.LOOKUP));
+        m.put("attribution_query", new ToolCopy(
+                "查询评估流水",
+                "按评估轨迹调出归因评估的步骤与命中规则，让结论可追溯",
+                "在评估审计台账中按轨迹编号查对应评估记录",
+                Category.LOOKUP));
+        m.put("metric_query", new ToolCopy(
+                "查询经营指标",
+                "从经营日宽表中取出指定商品/维度的指标数据（订购量、收入等）",
+                "在经营分析报表中按商品与时间范围查询对应日指标",
+                Category.LOOKUP));
+        m.put("product_360", new ToolCopy(
+                "查看商品全景",
+                "把单个商品的档案、订购趋势与风险信号聚合到一屏，代替多处翻查",
+                "在商品管理后台打开该商品详情页，核对档案/订购/合约信息",
+                Category.LOOKUP));
+        m.put("user_plan_query", new ToolCopy(
+                "查询用户套包",
+                "按用户标识查询其在订主套包/可选包/增值包、合约期与变更记录（脱敏口径）",
+                "在 CRM 客户视图中输入用户标识，查看其当前订购套餐与合约信息",
+                Category.LOOKUP));
+        m.put("market_benchmark", new ToolCopy(
+                "对比异网资费",
+                "检索竞对同类套餐资费与本网并列对比，为定价与竞争策略提供参考（附数据截止时间）",
+                "查阅竞对资费情报台账/官网资费页，抄录同类套餐月费与权益后人工对比",
+                Category.LOOKUP));
+        m.put("city_policy_query", new ToolCopy(
+                "查询地市政策",
+                "按地市检索本地差异化政策（补贴/佣金/促销窗口/准入要求），避免跨市执行口径错配",
+                "查阅地市政策发文/渠道政策台账，核对政策类型、适用商品与有效期",
                 Category.LOOKUP));
         // ── 研发工具 ──
         m.put("rd_category_resolve", new ToolCopy(
@@ -160,6 +190,11 @@ public final class ThinkingCopy {
             Map.entry("RD_CONFIG_SEARCH", "配置查询"),
             Map.entry("RD_SCHEME_COMPARE", "方案对比"),
             Map.entry("RD_DRAFT_MANAGE", "草稿管理"),
+            Map.entry("PRODUCT_360", "商品全景"),
+            Map.entry("USER_PLAN_QUERY", "用户套包查询"),
+            Map.entry("MARKET_BENCHMARK", "异网资费对比"),
+            Map.entry("CITY_POLICY_QUERY", "地市政策查询"),
+            Map.entry("ATTRIBUTION_QUERY", "评估流水查询"),
             Map.entry("FLOW_EXEC", "流程执行"),
             Map.entry("CHAT", "通用对话"),
             Map.entry("CLARIFY", "待补充信息"),
@@ -181,6 +216,11 @@ public final class ThinkingCopy {
             Map.entry("RD_WORKORDER_CREATE", "草稿入库并开出工单，配置进入正式流转"),
             Map.entry("RD_CONFIG_SEARCH", "先看有没有可复用的历史方案，避免重复建设"),
             Map.entry("RD_SCHEME_COMPARE", "用同一把尺子（合规+收益）衡量每个方案，给出推荐"),
+            Map.entry("PRODUCT_360", "把一个商品的档案、趋势与风险一次看全，不漏关键信息"),
+            Map.entry("USER_PLAN_QUERY", "先确认用户在订什么套餐和合约期，再回答办理/变更类问题"),
+            Map.entry("MARKET_BENCHMARK", "先摸清竞对同类资费，再定本网定价与竞争策略"),
+            Map.entry("CITY_POLICY_QUERY", "先核对地市本地政策口径，避免跨市执行错配"),
+            Map.entry("ATTRIBUTION_QUERY", "调出评估步骤与命中规则，让归因结论有据可查"),
             Map.entry("RD_DRAFT_MANAGE", "把草稿操作落到工单闭环：修改/删除/复制/提交一步到位"),
             Map.entry("CLARIFY", "信息不足时先问清楚，避免答非所问")
     );

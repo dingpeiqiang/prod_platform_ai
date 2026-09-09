@@ -11,11 +11,18 @@ prodai:
     ttl-path: classpath:ontology/sample-ontology.ttl
     config-ttl-path: classpath:ontology/product-config.ttl
     llm-extract-enabled: true
+    # dev 演示环境保留词典兜底应急通道（生产默认关闭，统一本体知识库）
+    discover-dict-fallback: true
     base-iri: http://example.org/
     batch-audit-enabled: true
     batch-audit-cron: "0 0 * * * ?"
   kb:
     seed-path: classpath:ontology/kb_seed.json
+  metric:
+    # 指标域 P0：dev 用 mock 时序（opsGraph 事实快照确定性生成，不依赖 DB）
+    registry-path: classpath:ontology/metrics_registry.json
+    source: mock
+    mock-days: 120
   mcp:
     seed-path: classpath:ontology/mcp_tools_seed.json
   llm:
