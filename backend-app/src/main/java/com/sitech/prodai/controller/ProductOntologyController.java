@@ -8,6 +8,7 @@ import com.sitech.prodai.dto.RiskAuditRequest;
 import com.sitech.prodai.dto.RiskRulesRequest;
 import com.sitech.prodai.dto.RootCauseRequest;
 import com.sitech.prodai.service.OntologyService;
+import com.sitech.prodai.service.OntologyStore;
 import com.sitech.prodai.service.ProductConfigRegressionService;
 import com.sitech.prodai.service.ProductOntologyService;
 import com.sitech.prodai.service.ProductTemplateRegistry;
@@ -40,6 +41,7 @@ public class ProductOntologyController {
 
     private final ProductOntologyService productOntologyService;
     private final OntologyService ontologyService;
+    private final OntologyStore ontologyStore;
     private final ProductTemplateRegistry templateRegistry;
     private final ProductConfigRegressionService regressionService;
     private final ProductTemplateService templateService;
@@ -50,6 +52,7 @@ public class ProductOntologyController {
     public ProductOntologyController(
             ProductOntologyService productOntologyService,
             OntologyService ontologyService,
+            OntologyStore ontologyStore,
             ProductTemplateRegistry templateRegistry,
             ProductConfigRegressionService regressionService,
             ProductTemplateService templateService,
@@ -59,6 +62,7 @@ public class ProductOntologyController {
     ) {
         this.productOntologyService = productOntologyService;
         this.ontologyService = ontologyService;
+        this.ontologyStore = ontologyStore;
         this.templateRegistry = templateRegistry;
         this.regressionService = regressionService;
         this.templateService = templateService;
@@ -68,7 +72,7 @@ public class ProductOntologyController {
     }
 
     private Map<String, Object> ok(Map<String, Object> body) {
-        return productOntologyService.withModeMeta(body);
+        return productOntologyService == null ? body : productOntologyService.withModeMeta(body);
     }
 
     @GetMapping("/graph")
@@ -174,6 +178,14 @@ public class ProductOntologyController {
         return ok(templateService.versions(templateId));
     }
 
+    /** P3-1a 版本对比：from/to 两版本 payload 字段级 diff（added/removed/changed）。 */
+    @GetMapping("/config/template/{templateId}/diff")
+    public Map<String, Object> diffTemplateVersions(@PathVariable("templateId") String templateId,
+                                                    @RequestParam("from") String fromVersion,
+                                                    @RequestParam("to") String toVersion) {
+        return ok(templateService.diffVersions(templateId, fromVersion, toVersion));
+    }
+
     /** draft ──review──► review。 */
     @PostMapping("/config/template/{templateId}/submit-review")
     public Map<String, Object> submitTemplateReview(@PathVariable("templateId") String templateId,
@@ -205,6 +217,117 @@ public class ProductOntologyController {
                                                  @RequestParam(value = "operator", required = false) String operator,
                                                  @RequestParam(value = "reason", required = false) String reason) {
         return ok(templateService.deprecate(templateId, version, operator, reason));
+    }
+
+    // ---------------- 实例 CRUD + SPARQL（P3-1a，§10 P3） ----------------
+
+    /** 实例列表：type 可选过滤（如 ConfigScheme / ShelfOffering）。 */
+    @GetMapping("/instances")
+    public Map<String, Object> listInstances(@RequestParam(value = "type", required = false) String type) {
+        List<Map<String, Object>> rows = type == null || type.isBlank()
+                ? ontologyStore.allInstances()
+                : ontologyStore.samplesFor(type);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", true);
+        body.put("total", rows.size());
+        body.put("type", type);
+        body.put("instances", rows);
+        return ok(body);
+    }
+
+    /** 实例详情：按完整 URI 查询单个实例。 */
+    @GetMapping("/instances/{uri}")
+    public Map<String, Object> getInstance(@PathVariable("uri") String uri) {
+        Map<String, Object> entity = ontologyStore.getEntity(uri);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", !entity.isEmpty());
+        body.put("uri", uri);
+        body.put("instance", entity);
+        if (entity.isEmpty()) {
+            body.put("message", "实例不存在: " + uri);
+        }
+        return ok(body);
+    }
+
+    /** 新建实例：body = { uri, type, facts }；URI 已存在时返回失败（幂等创建）。 */
+    @PostMapping("/instances")
+    public Map<String, Object> createInstance(@RequestBody(required = false) Map<String, Object> request) {
+        Map<String, Object> safe = request == null ? Map.of() : request;
+        String uri = strOrNull(safe.get("uri"), safe.get("instance_uri"));
+        String type = strOrNull(safe.get("type"), safe.get("instance_type"));
+        if (uri == null || type == null) {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("success", false);
+            body.put("message", "uri 与 type 必填");
+            return ok(body);
+        }
+        if (!ontologyStore.getEntity(uri).isEmpty()) {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("success", false);
+            body.put("message", "实例已存在: " + uri);
+            body.put("uri", uri);
+            return ok(body);
+        }
+        Map<String, Object> facts = castMap(safe.get("facts"));
+        ontologyStore.addInstance(uri, type, facts);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", true);
+        body.put("message", "实例已创建");
+        body.put("uri", uri);
+        body.put("type", type);
+        body.put("instance", ontologyStore.getEntity(uri));
+        return ok(body);
+    }
+
+    /** 更新实例：body = { facts }（部分更新，merge 语义）。 */
+    @PutMapping("/instances/{uri}")
+    public Map<String, Object> updateInstance(@PathVariable("uri") String uri,
+                                              @RequestBody(required = false) Map<String, Object> request) {
+        Map<String, Object> safe = request == null ? Map.of() : request;
+        Map<String, Object> existing = ontologyStore.getEntity(uri);
+        if (existing.isEmpty()) {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("success", false);
+            body.put("message", "实例不存在: " + uri);
+            return ok(body);
+        }
+        Map<String, Object> facts = castMap(safe.get("facts"));
+        ontologyStore.updateInstance(uri, facts);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", true);
+        body.put("message", "实例已更新");
+        body.put("uri", uri);
+        body.put("instance", ontologyStore.getEntity(uri));
+        return ok(body);
+    }
+
+    /** 删除实例：按完整 URI 删除（幂等，不存在也返回成功）。 */
+    @DeleteMapping("/instances/{uri}")
+    public Map<String, Object> deleteInstance(@PathVariable("uri") String uri) {
+        Map<String, Object> existing = ontologyStore.getEntity(uri);
+        ontologyStore.deleteInstance(uri);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", true);
+        body.put("message", existing.isEmpty() ? "实例不存在（幂等删除）" : "实例已删除");
+        body.put("uri", uri);
+        return ok(body);
+    }
+
+    /**
+     * 裸 SPARQL 查询（P3-1a「SPARQL 可回答为什么」）：body = { query }。
+     * 只读 SELECT/ASK；空 query 返回全量实例列表（对齐 store.sparqlSelect 语义）。
+     */
+    @PostMapping("/sparql")
+    public Map<String, Object> sparql(@RequestBody(required = false) Map<String, Object> request) {
+        Map<String, Object> safe = request == null ? Map.of() : request;
+        String query = strOrNull(safe.get("query"), safe.get("sparql"));
+        List<Map<String, Object>> rows = ontologyStore.sparqlSelect(query == null ? "" : query);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", true);
+        body.put("query", query);
+        body.put("total", rows.size());
+        body.put("results", rows);
+        return ok(body);
     }
 
     /** P1-7 验收核对：运行双品类回归用例集（家庭融合/校园/5G/宽带），返回逐条断言报告。 */

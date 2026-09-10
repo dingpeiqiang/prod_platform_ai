@@ -51,6 +51,9 @@ public class ComplianceRuleEngine {
     private final GraphSupplier graphSupplier;
     private final AuditAppender auditAppender;
 
+    /** SHACL 校验委托（R7 转正，可选依赖；setter 注入避免破坏既有装配）。 */
+    private volatile ShaclValidationDelegate shaclDelegate;
+
     public ComplianceRuleEngine(ObjectMapper objectMapper,
                                 ProdAiProperties properties,
                                 OpsRulesService opsRules,
@@ -79,6 +82,11 @@ public class ComplianceRuleEngine {
 
     private void appendConfigAudit(String traceId, Map<String, Object> step) {
         auditAppender.append(traceId, step);
+    }
+
+    /** 宿主注入 SHACL 委托（R7 转正；为 null 时合规链路退回纯 Java，行为不变）。 */
+    public void setShaclDelegate(ShaclValidationDelegate shaclDelegate) {
+        this.shaclDelegate = shaclDelegate;
     }
 
     public Map<String, Object> checkCompliance(Map<String, Object> draftInput) {
@@ -211,6 +219,8 @@ public class ComplianceRuleEngine {
                     List.of("prefDiscount=" + discount, "prefFee=" + freeFee), null));
         }
 
+        issues = applyShaclAuthoritative(draft, graph, issues);
+
         boolean hasHigh = issues.stream().anyMatch(i -> "HIGH".equals(i.get("issueLevel")));
         boolean requiredOk = issues.stream().noneMatch(i -> "R-C06".equals(i.get("ruleId")));
         boolean compliancePass = !hasHigh && requiredOk;
@@ -227,6 +237,67 @@ public class ComplianceRuleEngine {
         body.put("canSubmit", compliancePass);
         body.put("messageRootKey", draft.get("messageRootKey"));
         return body;
+    }
+
+    /**
+     * SHACL 转正覆盖（R7 §6.3 第 5 步）：试点规则（R-C06/R-C03/R-C05）命中以 SHACL 引擎为准，
+     * Java 同规则结果被替换；SHACL 关闭/缺失/失败时原样返回 Java 结果（永不中断合规链路）。
+     * <p>issue 结构对齐：SHACL issue 补 proposalAlias（与 Java issue() 契约同构），
+     * R-C06 保持 MEDIUM 级语义（SHACL 引擎侧 HIGH 仅作内部信号，对外级别以存量契约为准）。
+     */
+    private List<Map<String, Object>> applyShaclAuthoritative(Map<String, Object> draft,
+                                                              Map<String, Object> graph,
+                                                              List<Map<String, Object>> javaIssues) {
+        ShaclValidationDelegate delegate = this.shaclDelegate;
+        if (delegate == null || !properties.getOntology().isShaclAuthoritative()) {
+            return javaIssues;
+        }
+        Map<String, Object> shaclBody;
+        try {
+            shaclBody = delegate.validate(draft, graph);
+        } catch (Exception e) {
+            log.warn("[合规] SHACL 转正校验异常，回退 Java 结果: {}", e.getMessage());
+            return javaIssues;
+        }
+        if (!Boolean.TRUE.equals(shaclBody.get("success"))) {
+            // 引擎异常（Lite 兜底也失败）：回退 Java，保证合规链路不中断
+            return javaIssues;
+        }
+        if (Boolean.TRUE.equals(shaclBody.get("exempt"))) {
+            // 白名单豁免：剔除试点规则全部 Java 命中（豁免语义单点在 SHACL 投影层）
+            return javaIssues.stream()
+                    .filter(i -> !ShaclValidationDelegate.isPilotRuleId(MapOps.str(i.get("ruleId"))))
+                    .collect(Collectors.toList());
+        }
+        Set<String> shaclHits = MapOps.castListOfMaps(shaclBody.get("issues")).stream()
+                .map(i -> MapOps.str(i.get("ruleId")))
+                .filter(ShaclValidationDelegate::isPilotRuleId)
+                .collect(Collectors.toSet());
+        // 试点规则以 SHACL 为准：Java 同规则命中被剔除，SHACL 命中（含否决/报出）全量替换；
+        // 非试点规则保持 Java 结果。SHACL 未报即规则未命中——语义单源化到 shapes。
+        List<Map<String, Object>> merged = javaIssues.stream()
+                .filter(i -> !ShaclValidationDelegate.isPilotRuleId(MapOps.str(i.get("ruleId"))))
+                .collect(Collectors.toCollection(ArrayList::new));
+        for (Map<String, Object> row : MapOps.castListOfMaps(shaclBody.get("issues"))) {
+            merged.add(alignShaclIssue(row));
+        }
+        log.debug("[合规] SHACL 转正生效: shaclHits={}, javaIssueCount={}, mergedCount={}",
+                shaclHits, javaIssues.size(), merged.size());
+        return merged;
+    }
+
+    /** SHACL issue 行对齐 Java 契约：补 proposalAlias，R-C06 级别降为 MEDIUM（存量语义）。 */
+    private Map<String, Object> alignShaclIssue(Map<String, Object> row) {
+        Map<String, Object> aligned = new LinkedHashMap<>(row);
+        String ruleId = MapOps.str(row.get("ruleId"));
+        String alias = opsRules.configProposalAlias(ruleId);
+        if (!alias.isBlank() && !aligned.containsKey("proposalAlias")) {
+            aligned.put("proposalAlias", alias);
+        }
+        if ("R-C06".equals(ruleId)) {
+            aligned.put("issueLevel", "MEDIUM");
+        }
+        return aligned;
     }
 
     /**

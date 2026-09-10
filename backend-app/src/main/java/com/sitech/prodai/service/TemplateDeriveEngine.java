@@ -74,80 +74,13 @@ public class TemplateDeriveEngine {
                 "offeringType", "mutexGroup", "targetUser", "productLine",
                 "messageRootKey", "categoryCode", "channelScope");
 
-        if ("家庭融合".equals(scenario) && opsRules.isConfigEnabled("R-C01")) {
-            for (Map.Entry<String, Object> e : defaults.entrySet()) {
-                if (fromDocument && !structuralKeys.contains(e.getKey())) {
-                    continue;
-                }
-                if (empty(result.get(e.getKey()))) {
-                    result.put(e.getKey(), e.getValue());
-                    fillSources.put(e.getKey(), "scenario_default");
-                    appliedRules.add("R-C01");
-                }
-            }
-            if (!fromDocument && empty(result.get("includeBroadband"))) {
-                result.put("includeBroadband",
-                        defaults.getOrDefault("includeBroadband",
-                                opsRules.configDefaultStr("includeBroadband", "500M")));
-                fillSources.put("includeBroadband", "scenario_default");
-                appliedRules.add("R-C01");
-            }
-        }
+        // 场景 derive_rules 执行（终态：场景知识全量数据化，Java 仅剩通用执行器）
+        ScenarioContext ctx = new ScenarioContext(result, defaults, fillSources, appliedRules,
+                fromDocument, structuralKeys,
+                str(firstNonEmpty(result.get("offeringType"), safeSlots.get("offeringType"))));
+        applyScenarioRules(scenarioCfg, ctx);
 
-        boolean isCampus = "校园".equals(str(result.get("targetUser"))) || "校园体验".equals(scenario);
-        String offeringType = str(firstNonEmpty(result.get("offeringType"), safeSlots.get("offeringType")));
-        if (!fromDocument && opsRules.isConfigEnabled("R-C02") && isCampus
-                && empty(result.get("monthlyFee")) && !"addon".equals(offeringType)) {
-            result.put("monthlyFee", defaults.getOrDefault("monthlyFee",
-                    opsRules.configDefaultNum("campusMonthlyFee", 59)));
-            fillSources.put("monthlyFee", "template");
-            appliedRules.add("R-C02");
-            for (Map.Entry<String, Object> e : defaults.entrySet()) {
-                if (!"monthlyFee".equals(e.getKey()) && empty(result.get(e.getKey()))) {
-                    result.put(e.getKey(), e.getValue());
-                    fillSources.put(e.getKey(), "scenario_default");
-                }
-            }
-        } else if (!fromDocument && isCampus && "addon".equals(offeringType)) {
-            for (Map.Entry<String, Object> e : defaults.entrySet()) {
-                if ("monthlyFee".equals(e.getKey()) || "mutexGroup".equals(e.getKey())) {
-                    continue;
-                }
-                if (empty(result.get(e.getKey()))) {
-                    result.put(e.getKey(), e.getValue());
-                    fillSources.put(e.getKey(), "scenario_default");
-                }
-            }
-        }
-
-        // 品类 / messageRootKey 推导（v2.2）——先于模板选择，避免加装包误用主套餐模板/报文
-        if (empty(result.get("messageRootKey")) && !empty(scenarioCfg.get("messageRootKey"))) {
-            result.put("messageRootKey", scenarioCfg.get("messageRootKey"));
-            fillSources.put("messageRootKey", "scenario_default");
-            appliedRules.add("R-C01");
-        }
-        if (empty(result.get("categoryCode")) && !empty(scenarioCfg.get("categoryCode"))) {
-            result.put("categoryCode", scenarioCfg.get("categoryCode"));
-            fillSources.put("categoryCode", "scenario_default");
-        }
-        // 加装/附加：品类走 familyAddPrc，避免家庭融合场景默认顶成 familyBasePrc
-        if ("addon".equals(str(result.get("offeringType")))) {
-            String cat = str(result.get("categoryCode"));
-            String root = str(result.get("messageRootKey"));
-            boolean familyCtx = "家庭融合".equals(scenario)
-                    || "家庭".equals(str(result.get("targetUser")))
-                    || "familyBasePrc".equals(cat)
-                    || "familyBasePrc".equals(root)
-                    || cat.isBlank();
-            if (familyCtx && !"familyAddPrc".equals(cat)) {
-                result.put("messageRootKey", "familyAddPrc");
-                result.put("categoryCode", "familyAddPrc");
-                fillSources.put("messageRootKey", "scenario_default");
-                fillSources.put("categoryCode", "scenario_default");
-            }
-        }
-        // 按品类选择模板：家庭附加 → TPL-FAMILY-ADD-20，勿套用畅享128主套餐模板
-        Object templateId = resolveTemplateId(scenarioCfg, result);
+        Object templateId = resolveTemplateId(scenarioCfg, ctx);
         if (templateId != null && empty(result.get("basedOnTemplate"))) {
             result.put("basedOnTemplate", templateId);
             fillSources.put("basedOnTemplate", "template");
@@ -509,19 +442,235 @@ public class TemplateDeriveEngine {
         }
     }
 
-    /** 按品类选择配置模板：家庭附加用 TPL-FAMILY-ADD-20，避免套用家庭基础 128 主套餐模板。 */
-    private Object resolveTemplateId(Map<String, Object> scenarioCfg, Map<String, Object> draft) {
-        String root = str(firstNonEmpty(draft.get("messageRootKey"), draft.get("categoryCode")));
-        if ("familyAddPrc".equals(root) || ("addon".equals(str(draft.get("offeringType")))
-                && ("家庭融合".equals(str(draft.get("bizScenario")))
-                || "家庭".equals(str(draft.get("targetUser")))))) {
-            return "TPL-FAMILY-ADD-20";
+    /** 按品类选择配置模板：select_template 命中优先，否则回退场景 templateId（品类语义不再硬编码）。 */
+    private Object resolveTemplateId(Map<String, Object> scenarioCfg, ScenarioContext ctx) {
+        if (!ctx.selectedTemplateId.isEmpty()) {
+            return ctx.selectedTemplateId;
         }
+        Object tpl = scenarioCfg.get("templateId");
+        if (!empty(tpl)) {
+            return tpl;
+        }
+        // 数据缺省兜底：旧版图谱未配 templateId 时按品类根键回退（保持历史行为）
+        String root = str(firstNonEmpty(ctx.draft.get("messageRootKey"), ctx.draft.get("categoryCode")));
         if ("familyBasePrc".equals(root)) {
-            Object tpl = scenarioCfg.get("templateId");
-            return empty(tpl) ? "TPL-FAMILY-BASE-128" : tpl;
+            return "TPL-FAMILY-BASE-128";
         }
-        return scenarioCfg.get("templateId");
+        return null;
+    }
+
+    // ------------------------------------------------------------------
+    // 场景 derive_rules 执行器（终态：场景知识全量数据化，Java 仅剩通用解释器）
+    // 动作语义：fill_defaults / set_if_missing / derive_category / skip_fields /
+    //          select_template；条件谓词：when（全等）/ when_any（任一命中）/
+    //          skip_when（命中则跳过 fill_defaults 个别字段）
+    // ------------------------------------------------------------------
+
+    /** 场景规则执行上下文（单次 derive 的可变状态盒）。 */
+    private static final class ScenarioContext {
+        final Map<String, Object> draft;
+        final Map<String, Object> defaults;
+        final Map<String, String> fillSources;
+        final Set<String> appliedRules;
+        final boolean fromDocument;
+        final Set<String> structuralKeys;
+        final Set<String> skipFields = new LinkedHashSet<>();
+        String selectedTemplateId = "";
+        String offeringType;
+
+        ScenarioContext(Map<String, Object> draft, Map<String, Object> defaults,
+                        Map<String, String> fillSources, Set<String> appliedRules,
+                        boolean fromDocument, Set<String> structuralKeys, String offeringType) {
+            this.draft = draft;
+            this.defaults = defaults;
+            this.fillSources = fillSources;
+            this.appliedRules = appliedRules;
+            this.fromDocument = fromDocument;
+            this.structuralKeys = structuralKeys;
+            this.offeringType = offeringType;
+        }
+    }
+
+    /** 遍历场景 derive_rules 逐条解释执行；无规则时回退结构化补默认（messageRootKey/categoryCode）。 */
+    private void applyScenarioRules(Map<String, Object> scenarioCfg, ScenarioContext ctx) {
+        List<?> rules = scenarioCfg.get("derive_rules") instanceof List<?> list ? list : List.of();
+        if (rules.isEmpty()) {
+            applyStructuralFallback(scenarioCfg, ctx);
+            return;
+        }
+        for (Object r : rules) {
+            if (!(r instanceof Map<?, ?> rule)) {
+                continue;
+            }
+            if (conditionMet(rule.get("when"), ctx.draft, false)
+                    && conditionMet(rule.get("when_any"), ctx.draft, true)) {
+                executeScenarioAction(rule, ctx);
+            }
+        }
+    }
+
+    /** 旧版图谱（无 derive_rules）结构化补默认：messageRootKey/categoryCode。 */
+    private void applyStructuralFallback(Map<String, Object> scenarioCfg, ScenarioContext ctx) {
+        if (empty(ctx.draft.get("messageRootKey")) && !empty(scenarioCfg.get("messageRootKey"))) {
+            ctx.draft.put("messageRootKey", scenarioCfg.get("messageRootKey"));
+            ctx.fillSources.put("messageRootKey", "scenario_default");
+            ctx.appliedRules.add("R-C01");
+        }
+        if (empty(ctx.draft.get("categoryCode")) && !empty(scenarioCfg.get("categoryCode"))) {
+            ctx.draft.put("categoryCode", scenarioCfg.get("categoryCode"));
+            ctx.fillSources.put("categoryCode", "scenario_default");
+        }
+    }
+
+    /** 单条场景动作分发：按动作键路由到对应解释器。 */
+    private void executeScenarioAction(Map<?, ?> rule, ScenarioContext ctx) {
+        if (rule.get("fill_defaults") instanceof Map<?, ?>) {
+            fillDefaults(rule, ctx);
+        } else if (rule.get("set_if_missing") instanceof Map<?, ?> sets) {
+            setIfMissing(rule, sets, ctx);
+        } else if (rule.get("derive_category") instanceof Map<?, ?> cat) {
+            deriveCategory(rule, cat, ctx);
+        } else if (rule.containsKey("skip_fields")) {
+            skipFields(rule, ctx);
+        } else if (rule.get("select_template") instanceof Map<?, ?> sel) {
+            selectTemplate(rule, sel, ctx);
+        }
+    }
+
+    /**
+     * fill_defaults：遍历场景 defaults 补缺；fromDocument 仅补结构字段（防灌入覆盖文档原文）。
+     * rule=none 时不记账（如校园体验：旧代码 defaults 遍历不产生 R-C01 记账）。
+     */
+    private void fillDefaults(Map<?, ?> rule, ScenarioContext ctx) {
+        Set<String> skip = rule.get("skip") instanceof List<?> list
+                ? list.stream().map(String::valueOf).collect(Collectors.toCollection(LinkedHashSet::new))
+                : Set.of();
+        boolean silent = "none".equals(str(rule.get("rule")));
+        for (Map.Entry<String, Object> e : ctx.defaults.entrySet()) {
+            if (ctx.fromDocument && !ctx.structuralKeys.contains(e.getKey())) {
+                continue;
+            }
+            if (skip.contains(e.getKey()) || ctx.skipFields.contains(e.getKey())) {
+                continue;
+            }
+            if (empty(ctx.draft.get(e.getKey()))) {
+                ctx.draft.put(e.getKey(), e.getValue());
+                ctx.fillSources.put(e.getKey(), "scenario_default");
+                if (!silent) {
+                    ctx.appliedRules.add("R-C01");
+                }
+            }
+        }
+    }
+
+    /**
+     * set_if_missing：单字段兜底；值支持 {@code ${configDefault:key=fallback}} 引用 ops_rules 配置默认。
+     * fill_source 声明记账来源（template→R-C02，默认 scenario_default→R-C01），与存量记账契约对齐。
+     */
+    private void setIfMissing(Map<?, ?> rule, Map<?, ?> sets, ScenarioContext ctx) {
+        String fillSource = rule.get("fill_source") == null
+                ? "scenario_default" : str(rule.get("fill_source"));
+        String defaultRuleId = "template".equals(fillSource) ? "R-C02" : "R-C01";
+        String ruleId = rule.get("rule") == null ? defaultRuleId : str(rule.get("rule"));
+        boolean silent = "none".equals(ruleId);
+        for (Map.Entry<?, ?> e : sets.entrySet()) {
+            String key = String.valueOf(e.getKey());
+            if (!empty(ctx.draft.get(key))) {
+                continue;
+            }
+            ctx.draft.put(key, resolveConfigRef(e.getValue()));
+            ctx.fillSources.put(key, fillSource);
+            if (!silent) {
+                ctx.appliedRules.add(ruleId);
+            }
+        }
+    }
+
+    /** derive_category：addon 品类切换（避免加装包误用主套餐模板/报文）。 */
+    private void deriveCategory(Map<?, ?> rule, Map<?, ?> cat, ScenarioContext ctx) {
+        if (!"addon".equals(str(ctx.draft.get("offeringType")))) {
+            return;
+        }
+        String target = str(cat.get("categoryCode"));
+        String currentCat = str(ctx.draft.get("categoryCode"));
+        String root = str(ctx.draft.get("messageRootKey"));
+        // familyCtx 判定（与存量语义逐一平移）：场景即家庭域，或当前品类/根键落在家庭基础
+        boolean familyCtx = ctx.defaults.containsKey("includeBroadband")
+                || "familyBasePrc".equals(currentCat) || "familyBasePrc".equals(root)
+                || currentCat.isBlank();
+        if (familyCtx && !target.equals(currentCat)) {
+            ctx.draft.put("messageRootKey", cat.get("messageRootKey"));
+            ctx.draft.put("categoryCode", target);
+            ctx.fillSources.put("messageRootKey", "scenario_default");
+            ctx.fillSources.put("categoryCode", "scenario_default");
+        }
+    }
+
+    /** skip_fields：差异化排除字段（如校园 addon 不吃 monthlyFee/mutexGroup 场景默认）。 */
+    private void skipFields(Map<?, ?> rule, ScenarioContext ctx) {
+        if (rule.get("fields") instanceof List<?> fields) {
+            for (Object f : fields) {
+                ctx.skipFields.add(String.valueOf(f));
+            }
+        }
+    }
+
+    /** select_template：条件化模板选择（替代 resolveTemplateId 硬编码 TPL-FAMILY-ADD-20）。 */
+    private void selectTemplate(Map<?, ?> rule, Map<?, ?> sel, ScenarioContext ctx) {
+        if (conditionMet(sel.get("when"), ctx.draft, false) && !empty(sel.get("templateId"))) {
+            ctx.selectedTemplateId = str(sel.get("templateId"));
+        }
+    }
+
+    /**
+     * 条件谓词求值：when（全部键值相等）/ when_any（任一键值相等）。
+     * 值支持 {@code !addon} 取反语义（字段值不等或为空即命中）；when 缺省/空时恒真。
+     */
+    private boolean conditionMet(Object whenObj, Map<String, Object> draft, boolean anyMatch) {
+        if (!(whenObj instanceof Map<?, ?> when) || when.isEmpty()) {
+            return true;
+        }
+        int hits = 0;
+        for (Map.Entry<?, ?> e : when.entrySet()) {
+            String key = String.valueOf(e.getKey());
+            String expected = String.valueOf(e.getValue());
+            String actual = str(firstNonEmpty(draft.get(key), "")).trim();
+            boolean match = expected.startsWith("!")
+                    ? !expected.substring(1).equals(actual)
+                    : expected.equals(actual);
+            if (match) {
+                hits++;
+                if (anyMatch) {
+                    return true;
+                }
+            } else if (!anyMatch) {
+                return false;
+            }
+        }
+        return hits > 0;
+    }
+
+    /** ${configDefault:key=fallback} 引用解析：命中 ops_rules 配置默认，否则用内联兜底值。 */
+    private Object resolveConfigRef(Object value) {
+        String text = str(value);
+        if (text.startsWith("${configDefault:") && text.endsWith("}")) {
+            String body = text.substring("${configDefault:".length(), text.length() - 1);
+            int eq = body.indexOf('=');
+            if (eq > 0) {
+                String key = body.substring(0, eq);
+                String fallback = body.substring(eq + 1);
+                Object configured = opsRules.configDefaults().get(key);
+                if (!empty(configured)) {
+                    return configured;
+                }
+                try {
+                    return Double.parseDouble(fallback);
+                } catch (NumberFormatException nfe) {
+                    return fallback;
+                }
+            }
+        }
+        return value;
     }
 
     private Map<String, Object> deepCopy(Map<String, Object> source) {

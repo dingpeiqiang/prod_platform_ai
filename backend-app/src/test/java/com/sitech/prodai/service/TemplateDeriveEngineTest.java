@@ -124,6 +124,7 @@ class TemplateDeriveEngineTest {
                 new SparqlConfigDiscoverer(rdf4jStore, properties),
                 regressionProvider,
                 new ConfigDraftService(mapper, instanceMapper, projector),
+                null,
                 null
         );
         service.init();

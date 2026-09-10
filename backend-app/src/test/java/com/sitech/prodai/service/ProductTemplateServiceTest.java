@@ -210,6 +210,40 @@ class ProductTemplateServiceTest {
         assertTrue(registry.validateCandidate(basePayload).isEmpty(), "合法候选应通过 §4.7 校验");
     }
 
+    /** P3-1a 版本对比：added/removed/changed 字段级 diff + 不存在版本报错。 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void diffVersionsShouldReportAddedRemovedChanged() throws Exception {
+        Map<String, Object> basePayload = mapper.readValue(
+                new DefaultResourceLoader().getResource(FAMILY_TEMPLATE).getInputStream(),
+                new TypeReference<Map<String, Object>>() { });
+
+        templateService.saveDraft("familyBasePrc", basePayload, "tester", "基线");
+        Map<String, Object> next = new LinkedHashMap<>(basePayload);
+        next.put("description", "新增描述字段");                          // added
+        Map<String, Object> categoryMeta = new LinkedHashMap<>(
+                (Map<String, Object>) next.getOrDefault("category_meta", Map.of()));
+        categoryMeta.put("product_line", "家庭V2");                      // changed（嵌套路径）
+        next.put("category_meta", categoryMeta);
+        templateService.saveDraft("familyBasePrc", next, "tester", "修订");
+
+        Map<String, Object> diff = templateService.diffVersions("familyBasePrc", "1.0.0", "1.0.1");
+        assertTrue(Boolean.TRUE.equals(diff.get("success")), "diff 应成功: " + diff);
+        Map<String, Object> added = (Map<String, Object>) diff.get("added");
+        Map<String, Object> changed = (Map<String, Object>) diff.get("changed");
+        assertTrue(added.containsKey("description"), "description 应记为 added");
+        assertEquals("新增描述字段", String.valueOf(added.get("description")));
+        assertTrue(changed.containsKey("category_meta.product_line"),
+                "嵌套字段应展开为点路径 changed: " + changed.keySet());
+        assertEquals("家庭V2", String.valueOf(((Map<String, Object>) changed
+                .get("category_meta.product_line")).get("to")));
+
+        // 不存在版本应失败并给出提示
+        Map<String, Object> missing = templateService.diffVersions("familyBasePrc", "1.0.0", "9.9.9");
+        assertFalse(Boolean.TRUE.equals(missing.get("success")), "不存在版本应失败");
+        assertTrue(String.valueOf(missing.get("message")).contains("9.9.9"), "提示应含缺失版本号");
+    }
+
     private String rowStatus(String version) {
         return versionMapper.selectList(null).stream()
                 .filter(r -> "familyBasePrc".equals(r.getAssetCode()) && version.equals(r.getVersion()))
