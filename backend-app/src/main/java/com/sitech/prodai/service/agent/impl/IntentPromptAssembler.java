@@ -72,14 +72,12 @@ public class IntentPromptAssembler {
     }
 
     /**
-     * 组装意图识别系统提示词（场景键四态：rd / ops / query / super）。
+     * 组装意图识别系统提示词（场景键：rd / ops / query）。
      * <p>
      * query 场景（产商品查询助手）使用独立角色定义 {@code role_query.txt}；
-     * super 场景（超级助手统一入口）使用全域角色定义 {@code role_super.txt}——
-     * LLM 在同一次调用中额外输出 scene 字段（L2 自主路由判定，方案 §3.1）；
      * 未知场景回落 ops 角色（与 {@code AgentCapabilityRegistry.DEFAULT_SCENE} 语义一致）。
      *
-     * @param scene 场景键（rd / ops / query / super；null/空 = ops）
+     * @param scene 场景键（rd / ops / query；null/空 = ops）
      * @return 组装后的系统提示词（不含动态能力清单——那部分由调用方追加）
      */
     public String assembleSystemPrompt(String scene) {
@@ -88,7 +86,6 @@ public class IntentPromptAssembler {
         String roleFile = switch (normalized) {
             case "rd" -> "role_rd.txt";
             case "query" -> "role_query.txt";
-            case "super" -> "role_super.txt";
             default -> "role_ops.txt";
         };
         String role = loadTemplate(roleFile);
@@ -97,7 +94,6 @@ public class IntentPromptAssembler {
             role = switch (normalized) {
                 case "rd" -> "你是一个产商品研发智能助手，负责理解用户的需求，并将其翻译为可执行的研发配置计划。\n";
                 case "query" -> "你是一个产商品查询智能助手，负责理解用户的查询诉求，并将其翻译为可执行的查询计划。\n";
-                case "super" -> "你是一个产商品超级助手，统一承接研发、运营、查询三类工作，负责理解用户的诉求，并将其翻译为可执行的计划。\n";
                 default -> "你是一个产品运营智能助手，负责理解用户的问题，并将其翻译为可执行的查询计划。\n";
             };
         }
@@ -107,9 +103,7 @@ public class IntentPromptAssembler {
             base = "";
         }
         String rdRules = "";
-        if ("rd".equals(normalized) || "super".equals(normalized)) {
-            // rd / super：工单操作与查已有 vs 造新铁律必须注入（super 场景下 rd 工具对 LLM 可见，
-            // 缺规则块会导致 LLM 编造工单号或误判造新/查已有）
+        if ("rd".equals(normalized)) {
             String block = loadTemplate("rd_rules_block.txt");
             rdRules = block == null ? "" : block;
         }

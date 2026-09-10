@@ -303,14 +303,6 @@ public class DefaultUnderstander implements Understander {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> llmSteps = (List<Map<String, Object>>) parsed.get("steps");
 
-        // 超级助手 L2 场景判定（方案 §3.1）：scene=auto 时 LLM 输出的 scene 字段暂存到会话 meta，
-        // 由编排器在理解完成后与 L0/L1 判定互校合并（mergeLlmSceneRoute）——
-        // 理解层不依赖编排器（避免循环依赖），meta 是两者约定的中间传递通道。
-        Object llmScene = parsed.get("scene");
-        if (context != null && llmScene != null && !String.valueOf(llmScene).isBlank()) {
-            context.getMeta().put("llm_scene", String.valueOf(llmScene).trim());
-        }
-
         // 需求歧义（U2）：LLM 判定存在多种合理解读 → 生成确认计划，整轮暂停等用户选定
         if ("CONFIRM".equalsIgnoreCase(intent.trim())) {
             return confirmPlan(parsed, question, context);
@@ -794,12 +786,7 @@ public class DefaultUnderstander implements Understander {
      * 仍在此处拼装——它们依赖 Spring Bean 运行时状态，不适合静态模板化。
      */
     private String buildSystemPrompt(String scene, SessionContext context) {
-        // 超级助手（auto 未定域）：角色提示用 super 全域定义（要求 LLM 输出 scene 字段做 L2 判定），
-        // 能力清单仍按候选域组装（守门不放松——LLM 越界选工具由白名单过滤兜底）
-        boolean needLlmScene = context != null
-                && Boolean.TRUE.equals(context.getMeta().get("need_llm_scene"));
-        String roleScene = needLlmScene ? "super" : scene;
-        StringBuilder sb = new StringBuilder(promptAssembler.assembleSystemPrompt(roleScene));
+        StringBuilder sb = new StringBuilder(promptAssembler.assembleSystemPrompt(scene));
         sb.append("\n可用能力：\n");
         for (AgentTool tool : toolsOf(scene)) {
             sb.append("- ").append(tool.getName())

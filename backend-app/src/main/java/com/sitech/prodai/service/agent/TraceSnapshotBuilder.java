@@ -180,7 +180,7 @@ public final class TraceSnapshotBuilder {
         return value == null ? "" : String.valueOf(value);
     }
 
-    /** 是否为产商品研发场景（scene=rd；超级助手 auto 路由后 scene 已回写为 effectiveScene，判定同构）。 */
+    /** 是否为产商品研发场景（scene=rd）。 */
     public static boolean isRdScene(SessionContext context) {
         return context != null && "rd".equals(context.getScene());
     }

@@ -436,14 +436,14 @@ let mediaRecorder = null
 let audioChunks = []
 
 const allQuickActions = [
-  { key: 'chat', label: '智聊·对话配置', content: '给家庭用户做一个融合套餐，月费158，带500M宽带，全渠道销售', color: '#8b5cf6', modes: ['rd', 'super'] },
-  { key: 'file', label: '智读·文件配置', content: '', color: '#10b981', modes: ['rd', 'super'] },
-  { key: 'query', label: '智查·历史复用', content: '帮我查询近30天大学生套餐配置', color: '#f59e0b', modes: ['rd', 'super'] },
-  { key: 'ops', label: '指标异动根因', content: '分析在售主力套餐本月收入下滑原因', color: '#0ea5e9', modes: ['ops', 'super'] },
-  { key: 'ops', label: '高风险商品稽核', content: '筛查所有在架的0元资费风险商品', color: '#ef4444', modes: ['ops', 'super'] },
-  { key: 'query', label: '智能问答', content: '智享99元5G套餐包含多少流量？', color: '#2563eb', modes: ['query', 'super'], scene: 'query.ask' },
-  { key: 'query', label: '档案调阅', content: '查一下近30天大学生套餐配置', color: '#0284c7', modes: ['query', 'super'], scene: 'query.archive' },
-  { key: 'query', label: '比对分析', content: '对比畅享59元套餐和智享99元5G套餐', color: '#6d28d9', modes: ['query', 'super'], scene: 'query.compare' },
+  { key: 'chat', label: '智聊·对话配置', content: '给家庭用户做一个融合套餐，月费158，带500M宽带，全渠道销售', color: '#8b5cf6', modes: ['rd'] },
+  { key: 'file', label: '智读·文件配置', content: '', color: '#10b981', modes: ['rd'] },
+  { key: 'query', label: '智查·历史复用', content: '帮我查询近30天大学生套餐配置', color: '#f59e0b', modes: ['rd'] },
+  { key: 'ops', label: '指标异动根因', content: '分析在售主力套餐本月收入下滑原因', color: '#0ea5e9', modes: ['rd'] },
+  { key: 'ops', label: '高风险商品稽核', content: '筛查所有在架的0元资费风险商品', color: '#ef4444', modes: ['rd'] },
+  { key: 'query', label: '智能问答', content: '智享99元5G套餐包含多少流量？', color: '#2563eb', modes: ['rd'], scene: 'query.ask' },
+  { key: 'query', label: '档案调阅', content: '查一下近30天大学生套餐配置', color: '#0284c7', modes: ['rd'], scene: 'query.archive' },
+  { key: 'query', label: '比对分析', content: '对比畅享59元套餐和智享99元5G套餐', color: '#6d28d9', modes: ['rd'], scene: 'query.compare' },
 ]
 
 const quickActions = computed(() => {
