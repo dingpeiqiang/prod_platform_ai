@@ -8,7 +8,6 @@ prodai:
     graph-path: classpath:ontology/mock_graph.json
     ops-graph-path: classpath:ontology/mock_graph.json
     rdf-seed-path: classpath:ontology/rdf_seed.json
-    ttl-path: classpath:ontology/sample-ontology.ttl
     config-ttl-path: classpath:ontology/product-config.ttl
     llm-extract-enabled: true
     # dev 演示环境保留词典兜底应急通道（生产默认关闭，统一本体知识库）

@@ -61,7 +61,7 @@ mybatis-plus:
 
 prodai:
   ontology:
-    # 生产默认关闭演示数据护栏；本地演示见 application-dev.yml / application-demo.yml
+    # 生产默认关闭演示数据护栏；本地演示见 application-dev.yml
     # 演示与生产共用同一套业务代码，仅 graph-path / data-source 不同
     demo-enabled: false
     # classpath | http | jdbc | empty
@@ -85,6 +85,9 @@ prodai:
     # 智查检索词典兜底开关：默认 false——检索统一走本体知识库（SPARQL），
     # 0 命中如实返回；应急回退词典打分时才显式置 true
     discover-dict-fallback: ${ONTOLOGY_DISCOVER_DICT_FALLBACK:false}
+    # SHACL 转正开关（R7）：试点规则（R-C06/R-C03/R-C05）命中以 SHACL 引擎为准，
+    # 引擎失败自动回退 Java；应急回退纯 Java 引擎时置 false
+    shacl-authoritative: ${ONTOLOGY_SHACL_AUTHORITATIVE:true}
     rules-path: classpath:ontology/ops_rules.json
     product-ops-owl-path: classpath:ontology/product-ops.ttl
     swrl-enabled: true

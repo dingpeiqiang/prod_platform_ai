@@ -32,7 +32,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       violation.rule 可回读 R-C 编号；</li>
  *   <li>双引擎并跑：同一批典型草稿分别跑 Java 引擎（ComplianceRuleEngine）与 SHACL 委托
  *       （ShaclValidationDelegate，RDF4J ShaclSail 真引擎 + Lite 兜底），比对 ruleId 命中集合一致率 ≥99%；</li>
- *   <li>比对口径：试点范围内仅比对 R-C06/R-C03/R-C05 命中差集（非试点规则不进入一致率分母）。</li>
+ *   <li>比对口径：试点范围内仅比对 R-C06/R-C03/R-C05 命中差集（非试点规则不进入一致率分母）；</li>
+ *   <li>SHACL 转正后（§6.3 第 5 步）：引擎装配委托，试点规则命中以 SHACL 为准——
+ *       引擎出口与 SHACL 委托出口应完全一致（无豁免偏差时），一致率断言即转正守卫。</li>
  * </ul>
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -66,6 +68,8 @@ class ComplianceParityTest {
         javaEngine = new ComplianceRuleEngine(mapper, props, opsRules,
                 new RiskAuditService(), null, projector, null, null,
                 () -> graph, (traceId, step) -> { });
+        // R7 SHACL 转正：引擎装配委托后试点规则以 SHACL 为准，并跑比对即「引擎出口 = SHACL 出口」
+        javaEngine.setShaclDelegate(delegate);
 
         graph = parityGraph();
     }

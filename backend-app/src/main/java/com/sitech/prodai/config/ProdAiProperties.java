@@ -246,7 +246,7 @@ public class ProdAiProperties {
          */
         private String rdfSeedPath = "";
         /**
-         * Turtle 本体/实例文件。为空则不导入；演示可指向 sample-ontology.ttl。
+         * Turtle 本体/实例文件。为空则不导入。
          */
         private String ttlPath = "";
         /**
@@ -285,6 +285,12 @@ public class ProdAiProperties {
          * 默认 false——检索统一走本体知识库，0 命中如实返回（护栏话术），不冒充无命中。
          */
         private boolean discoverDictFallback = false;
+        /**
+         * SHACL 转正开关（R7 §6.3 第 5 步）：试点 3 条规则（R-C06/R-C03/R-C05）命中以
+         * SHACL 引擎（{@code ShaclValidationDelegate}）为准，Java 同规则结果被替换。
+         * SHACL 失败/引擎缺失自动回退 Java，永不中断合规链路。
+         */
+        private boolean shaclAuthoritative = true;
 
         public boolean isDiscoverDictFallback() {
             return discoverDictFallback;
@@ -292,6 +298,14 @@ public class ProdAiProperties {
 
         public void setDiscoverDictFallback(boolean discoverDictFallback) {
             this.discoverDictFallback = discoverDictFallback;
+        }
+
+        public boolean isShaclAuthoritative() {
+            return shaclAuthoritative;
+        }
+
+        public void setShaclAuthoritative(boolean shaclAuthoritative) {
+            this.shaclAuthoritative = shaclAuthoritative;
         }
 
         public boolean isDemoEnabled() {

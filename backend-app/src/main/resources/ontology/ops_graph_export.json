@@ -2,6 +2,8 @@
   "bizScenarios": {
     "家庭融合": {
       "scenarioId": "SCN-HF",
+      "messageRootKey": "familyBasePrc",
+      "categoryCode": "familyBasePrc",
       "defaults": {
         "includeVoice": "500分钟",
         "includeData": "40GB",
@@ -14,6 +16,8 @@
     },
     "校园体验": {
       "scenarioId": "SCN-CAMPUS",
+      "messageRootKey": "personAddPrc",
+      "categoryCode": "personAddPrc",
       "defaults": {
         "includeVoice": "200分钟",
         "includeData": "20GB",
@@ -26,6 +30,8 @@
     },
     "5G个人主套餐": {
       "scenarioId": "SCN-5G",
+      "messageRootKey": "personMainPrc",
+      "categoryCode": "personMainPrc",
       "defaults": {
         "includeVoice": "500分钟",
         "includeData": "30GB",
@@ -40,6 +46,9 @@
     "TPL-HF-128": {
       "templateId": "TPL-HF-128",
       "name": "家庭融合畅享128",
+      "messageRootKey": "familyBasePrc",
+      "categoryCode": "familyBasePrc",
+      "fixedFeeAmount": 128,
       "monthlyFee": 128,
       "includeVoice": "500分钟",
       "includeData": "30GB",
@@ -50,6 +59,9 @@
     "TPL-CAMPUS-59": {
       "templateId": "TPL-CAMPUS-59",
       "name": "校园青春59",
+      "messageRootKey": "personMainPrc",
+      "categoryCode": "personMainPrc",
+      "fixedFeeAmount": 59,
       "monthlyFee": 59,
       "includeVoice": "200分钟",
       "includeData": "20GB",
@@ -59,6 +71,9 @@
     "TPL-5G-99": {
       "templateId": "TPL-5G-99",
       "name": "5G畅享99",
+      "messageRootKey": "personMainPrc",
+      "categoryCode": "personMainPrc",
+      "fixedFeeAmount": 99,
       "monthlyFee": 99,
       "includeVoice": "500分钟",
       "includeData": "30GB",

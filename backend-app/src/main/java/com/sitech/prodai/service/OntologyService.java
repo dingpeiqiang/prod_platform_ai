@@ -23,8 +23,6 @@ public class OntologyService {
     private final Rdf4jOntologyStore rdf4jStore;
     private final ProdAiProperties properties;
     private final Optional<LlmService> llmService;
-    @SuppressWarnings("deprecation")
-    private final Optional<SwrlRuleEngine> swrlRuleEngine;
     private final Optional<OpsRulesService> opsRules;
     private final Optional<OntologyVersionService> versionService;
     private final Map<String, Map<String, Object>> snapshots = new ConcurrentHashMap<>();
@@ -33,13 +31,11 @@ public class OntologyService {
     public OntologyService(Rdf4jOntologyStore rdf4jStore,
                            ProdAiProperties properties,
                            @Autowired(required = false) Optional<LlmService> llmService,
-                           @Autowired(required = false) @SuppressWarnings("deprecation") Optional<SwrlRuleEngine> swrlRuleEngine,
                            @Autowired(required = false) Optional<OpsRulesService> opsRules,
                            @Autowired(required = false) Optional<OntologyVersionService> versionService) {
         this.rdf4jStore = rdf4jStore;
         this.properties = properties;
         this.llmService = llmService;
-        this.swrlRuleEngine = swrlRuleEngine;
         this.opsRules = opsRules;
         this.versionService = versionService;
     }
@@ -87,19 +83,6 @@ public class OntologyService {
         return Map.of("success", true, "message", "评估完成", "decision", Map.of("verdict", verdict, "confidence", 1.0, "triggered_rules", rules, "reason", reasoning(policySetId, facts, expectationType)));
     }
 
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> evaluateWithFacts(List<Map<String, Object>> entitiesReq, String policySetId, String traceId, String tenantId) {
-        if (entitiesReq == null || entitiesReq.isEmpty()) return Map.of("success", false, "message", "entities is required");
-        Map<String, Object> first = entitiesReq.get(0);
-        String entityId = String.valueOf(first.get("id"));
-        String type = String.valueOf(first.getOrDefault("type", "Entity"));
-        Map<String, Object> retrieved = retrieve(entityId, type, String.valueOf(first.getOrDefault("source", "ontology")), tenantId, traceId);
-        Map<String, Object> factsMap = (Map<String, Object>) retrieved.get("facts_map");
-        Map<String, Object> facts = (Map<String, Object>) factsMap.values().stream().findFirst().orElse(Map.of());
-        String expectationType = String.valueOf(first.getOrDefault("expectation_type", "validation"));
-        return evaluate(facts, policySetId, expectationType, traceId, tenantId);
-    }
-
     public Map<String, Object> explain(String traceId, String audience, String tenantId) {
         List<Map<String, Object>> steps = audits.getOrDefault(traceId, List.of());
         List<String> rules = new ArrayList<>();
@@ -133,37 +116,12 @@ public class OntologyService {
         return ruleId;
     }
 
-    public Map<String, Object> getSwrlRules() {
-        // 遗留条件 DSL，非 Openllet OWL SWRL；产商品运营规则见 /api/v1/product-ontology/ops/rules
-        return Map.of(
-                "success", true,
-                "engine_type", "condition_dsl",
-                "deprecated", true,
-                "message", "非 OWL SWRL；正式引擎为 OpsSwrlReasoner（openllet-swrl），规则目录见 ops_rules.json",
-                "rules", List.of(
-                        Map.of("rule_id", "COND_001", "label", "高消费推导升级资格", "module", "marketing_rules"),
-                        Map.of("rule_id", "COND_002", "label", "信用分推导额度调整", "module", "marketing_rules")
-                )
-        );
-    }
-
-    public Map<String, Object> schema() {
-        return Map.of("classes", rdf4jStore.getClasses(), "properties", rdf4jStore.getProperties());
-    }
-
-    public Map<String, Object> schemaCatalog() {
-        return schema();
-    }
-
-    public Map<String, Object> schemaDetail(String className) {
-        return Map.of("class_name", className, "samples", rdf4jStore.getInstances(className));
-    }
-
     public Map<String, Object> sparqlQuery(String query) {
         return Map.of("results", rdf4jStore.sparqlQuery(query));
     }
 
-    public Map<String, Object> nlQuery(String question) {
+    /** 关键词匹配 SPARQL 兜底（nlDiscoverAndRetrieve 的 LLM 失败回退路径）。 */
+    private Map<String, Object> nlQuery(String question) {
         String normalized = question == null ? "" : question.toLowerCase();
         boolean wantProduct = normalized.contains("5g") || normalized.contains("套餐") || normalized.contains("product")
                 || normalized.contains("在售") || normalized.contains("商品");
@@ -447,66 +405,8 @@ public class OntologyService {
         return null;
     }
 
-    public Map<String, Object> quickEvaluate(String entityId, String type, String policySetId, String tenantId) {
-        String uri = entityUri(entityId);
-        Map<String, Object> fact = rdf4jStore.getEntity(uri);
-        if (fact.isEmpty()) fact = defaultFact(uri, type, "ontology");
-        String verdict = decide(policySetId, fact, "validation");
-        List<String> rules = triggeredRules(policySetId, fact, "validation");
-        return Map.of("success", true, "verdict", verdict, "triggered_rules", rules, "reason", reasoning(policySetId, fact, "validation"));
-    }
-
-    public Map<String, Object> getPolicySets() {
-        if (opsRules.isPresent()) {
-            return Map.of("success", true, "policy_sets", opsRules.get().listPolicySets());
-        }
-        return Map.of("success", true, "policy_sets", List.of());
-    }
-
-    public Map<String, Object> getOntologyStats() {
-        List<String> classes = rdf4jStore.getClasses();
-        List<String> properties = rdf4jStore.getProperties();
-        long instanceCount = 0;
-        for (String className : classes) instanceCount += rdf4jStore.getInstances(className).size();
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("classCount", classes.size());
-        body.put("propertyCount", properties.size());
-        body.put("instanceCount", instanceCount);
-        body.put("classes", classes);
-        body.put("properties", properties);
-        return body;
-    }
-
-    public Map<String, Object> getOntologyInstances() {
-        List<Map<String, Object>> allInstances = new ArrayList<>();
-        for (String className : rdf4jStore.getClasses()) allInstances.addAll(rdf4jStore.getInstances(className));
-        return Map.of("success", true, "data", allInstances);
-    }
-
-    public Map<String, Object> createOntologyInstance(String uri, String type, Map<String, Object> facts) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("success", true);
-        body.put("message", "实例创建成功");
-        body.put("uri", uri);
-        body.put("type", type);
-        body.put("facts", facts);
-        return body;
-    }
-
-    public Map<String, Object> updateOntologyInstance(String uri, Map<String, Object> facts) {
-        return Map.of("success", true, "message", "实例更新成功", "uri", uri, "facts", facts);
-    }
-
-    public Map<String, Object> deleteOntologyInstance(String uri) {
-        return Map.of("success", true, "message", "实例删除成功", "uri", uri);
-    }
-
     public Map<String, Object> importTtl(String ttlContent, boolean replace) {
         return rdf4jStore.importTtl(ttlContent, replace);
-    }
-
-    public Map<String, Object> getOntologyGraph() {
-        return rdf4jStore.getGraphData();
     }
 
     /**
@@ -633,10 +533,6 @@ public class OntologyService {
             }
         }
         return new LinkedHashMap<>(facts.values().iterator().next());
-    }
-
-    public Map<String, Object> getTrace(String traceId) {
-        return Map.of("trace_id", traceId, "steps", audits.getOrDefault(traceId, List.of()), "total_steps", audits.getOrDefault(traceId, List.of()).size());
     }
 
     private Map<String, Object> defaultFact(String entityId, String type, String source) {
@@ -1034,39 +930,5 @@ public class OntologyService {
             return base + "；裁决：" + verdict;
         }
         return policySetId + " 评估完成 → " + verdict;
-    }
-
-    /**
-     * 执行条件 DSL 规则（非 OWL SWRL；遗留营销路径）。
-     */
-    public Map<String, Object> executeSwrlRules(Map<String, Object> facts) {
-        if (swrlRuleEngine.isEmpty()) {
-            return Map.of("success", false, "message", "条件 DSL 引擎未启用（非 Openllet SWRL）");
-        }
-
-        try {
-            @SuppressWarnings("deprecation")
-            List<SwrlRuleEngine.SwrlRuleResult> results = swrlRuleEngine.get().executeAll(new LinkedHashMap<>(facts));
-
-            long triggeredCount = results.stream().filter(SwrlRuleEngine.SwrlRuleResult::triggered).count();
-
-            return Map.of(
-                    "success", true,
-                    "engine_type", "condition_dsl",
-                    "deprecated", true,
-                    "totalRules", results.size(),
-                    "triggeredRules", triggeredCount,
-                    "results", results.stream().map(r -> Map.of(
-                            "ruleId", r.ruleId(),
-                            "ruleName", r.ruleName(),
-                            "triggered", r.triggered(),
-                            "reason", r.reason(),
-                            "elapsedMs", r.elapsedMs()
-                    )).toList()
-            );
-        } catch (Exception e) {
-            log.warn("[OntologyService] 条件 DSL 规则执行失败: {}", e.getMessage());
-            return Map.of("success", false, "message", e.getMessage());
-        }
     }
 }

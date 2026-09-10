@@ -66,9 +66,13 @@ public final class OpsGraphSchemaValidator {
         }
         if (!(out.get("bizScenarios") instanceof Map<?, ?>)) {
             errors.add("bizScenarios must be an object");
+        } else {
+            validateBizScenarios((Map<?, ?>) out.get("bizScenarios"), warnings, errors);
         }
         if (!(out.get("templates") instanceof Map<?, ?>)) {
             errors.add("templates must be an object");
+        } else {
+            validateTemplates((Map<?, ?>) out.get("templates"), warnings, errors);
         }
         if (!(out.get("equityGiftWhitelist") instanceof List<?>)) {
             errors.add("equityGiftWhitelist must be an array");
@@ -113,6 +117,9 @@ public final class OpsGraphSchemaValidator {
         out.put("endpoint", "/api/v1/product-center/ops-graph");
         out.put("consumer", "HttpOpsProductDataSource (prodai.ontology.data-source=http)");
         out.put("shelfOfferingRequiredFields", List.of("offeringId|id", "offeringName|name"));
+        out.put("bizScenarioRequiredFields", List.of("scenarioId", "messageRootKey", "categoryCode", "defaults"));
+        out.put("deriveRuleActions", SCENARIO_ACTIONS);
+        out.put("templateRequiredFields", List.of("templateId", "categoryCode", "messageRootKey"));
         return out;
     }
 
@@ -158,6 +165,125 @@ public final class OpsGraphSchemaValidator {
         if (!hasStructure && !offeringKeyed) {
             warnings.add("opsGraph has no offerings/nodes/entities/metrics/products key");
         }
+    }
+
+    /** 场景条目允许的动作键（derive_rules DSL 契约，与 TemplateDeriveEngine 解释器对齐）。 */
+    private static final List<String> SCENARIO_ACTIONS = List.of(
+            "fill_defaults", "set_if_missing", "derive_category", "skip_fields", "select_template");
+
+    /**
+     * bizScenarios 契约加严（P3 结构校验）：每场景必须声明主键三元组
+     * （scenarioId/messageRootKey/categoryCode），defaults 必须为对象，
+     * templateId 指向的模板存在性由调用方跨块校验（此处仅查缺失）。
+     * derive_rules 为可选 DSL 块，逐条校验动作键合法性。
+     */
+    private static void validateBizScenarios(Map<?, ?> scenarios, List<String> warnings, List<String> errors) {
+        if (scenarios.isEmpty()) {
+            warnings.add("bizScenarios is empty");
+            return;
+        }
+        int idx = 0;
+        for (Map.Entry<?, ?> e : scenarios.entrySet()) {
+            String name = String.valueOf(e.getKey());
+            if (!(e.getValue() instanceof Map<?, ?> sc)) {
+                errors.add("bizScenarios[" + name + "] must be an object");
+                idx++;
+                continue;
+            }
+            if (blank(sc.get("scenarioId"))) {
+                errors.add("bizScenarios[" + name + "] missing scenarioId");
+            }
+            if (blank(sc.get("messageRootKey"))) {
+                errors.add("bizScenarios[" + name + "] missing messageRootKey");
+            }
+            if (blank(sc.get("categoryCode"))) {
+                errors.add("bizScenarios[" + name + "] missing categoryCode");
+            }
+            if (!(sc.get("defaults") instanceof Map<?, ?>)) {
+                errors.add("bizScenarios[" + name + "] defaults must be an object");
+            }
+            validateDeriveRules(name, sc.get("derive_rules"), errors);
+            idx++;
+        }
+    }
+
+    /** derive_rules 逐条校验：必须为数组、条目为对象、含合法动作键、条件/动作子结构类型正确。 */
+    private static void validateDeriveRules(String scenarioName, Object rulesObj, List<String> errors) {
+        if (rulesObj == null) {
+            return;
+        }
+        if (!(rulesObj instanceof List<?> rules)) {
+            errors.add("bizScenarios[" + scenarioName + "] derive_rules must be an array");
+            return;
+        }
+        int idx = 0;
+        for (Object r : rules) {
+            if (!(r instanceof Map<?, ?> rule)) {
+                errors.add("bizScenarios[" + scenarioName + "].derive_rules[" + idx + "] must be an object");
+                idx++;
+                continue;
+            }
+            boolean hasAction = SCENARIO_ACTIONS.stream().anyMatch(rule::containsKey);
+            if (!hasAction) {
+                errors.add("bizScenarios[" + scenarioName + "].derive_rules[" + idx
+                        + "] missing action key (fill_defaults/set_if_missing/derive_category/"
+                        + "skip_fields/select_template)");
+            }
+            for (String key : List.of("when", "when_any")) {
+                if (rule.get(key) != null && !(rule.get(key) instanceof Map<?, ?>)) {
+                    errors.add("bizScenarios[" + scenarioName + "].derive_rules[" + idx + "]." + key
+                            + " must be an object");
+                }
+            }
+            if (rule.get("fill_defaults") != null && !(rule.get("fill_defaults") instanceof Map<?, ?>)) {
+                errors.add("bizScenarios[" + scenarioName + "].derive_rules[" + idx
+                        + "].fill_defaults must be an object");
+            }
+            if (rule.get("set_if_missing") != null && !(rule.get("set_if_missing") instanceof Map<?, ?>)) {
+                errors.add("bizScenarios[" + scenarioName + "].derive_rules[" + idx
+                        + "].set_if_missing must be an object");
+            }
+            if (rule.get("derive_category") != null && !(rule.get("derive_category") instanceof Map<?, ?>)) {
+                errors.add("bizScenarios[" + scenarioName + "].derive_rules[" + idx
+                        + "].derive_category must be an object");
+            }
+            if (rule.get("select_template") != null && !(rule.get("select_template") instanceof Map<?, ?>)) {
+                errors.add("bizScenarios[" + scenarioName + "].derive_rules[" + idx
+                        + "].select_template must be an object");
+            }
+            idx++;
+        }
+    }
+
+    /** templates 契约加严：主键三元组（templateId/name/messageRootKey/categoryCode）。 */
+    private static void validateTemplates(Map<?, ?> templates, List<String> warnings, List<String> errors) {
+        if (templates.isEmpty()) {
+            warnings.add("templates is empty");
+            return;
+        }
+        int idx = 0;
+        for (Map.Entry<?, ?> e : templates.entrySet()) {
+            String name = String.valueOf(e.getKey());
+            if (!(e.getValue() instanceof Map<?, ?> tpl)) {
+                errors.add("templates[" + name + "] must be an object");
+                idx++;
+                continue;
+            }
+            if (blank(tpl.get("templateId"))) {
+                errors.add("templates[" + name + "] missing templateId");
+            }
+            if (blank(tpl.get("categoryCode"))) {
+                errors.add("templates[" + name + "] missing categoryCode");
+            }
+            if (blank(tpl.get("messageRootKey"))) {
+                errors.add("templates[" + name + "] missing messageRootKey");
+            }
+            idx++;
+        }
+    }
+
+    private static boolean blank(Object value) {
+        return value == null || String.valueOf(value).trim().isEmpty();
     }
 
     private static Object firstNonBlank(Object... values) {

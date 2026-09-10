@@ -271,6 +271,75 @@ public class ProductTemplateService {
         return body;
     }
 
+    /**
+     * P3-1a 版本对比：取表 A 两个版本的 payload 做字段级 diff。
+     * <p>added=from 缺失 to 新增；removed=from 有 to 缺失；changed=两侧均有且值不等。
+     * 嵌套 Map/List 递归展开为点路径（如 configDefaults.monthlyFee）。
+     */
+    public Map<String, Object> diffVersions(String templateId, String fromVersion, String toVersion) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        OntologyAssetVersion fromRow = versionService.findVersion(
+                OntologyVersionService.TYPE_TEMPLATE, templateId, fromVersion).orElse(null);
+        OntologyAssetVersion toRow = versionService.findVersion(
+                OntologyVersionService.TYPE_TEMPLATE, templateId, toVersion).orElse(null);
+        if (fromRow == null || toRow == null) {
+            body.put("success", false);
+            body.put("message", fromRow == null
+                    ? "版本不存在: " + templateId + " v" + fromVersion
+                    : "版本不存在: " + templateId + " v" + toVersion);
+            return body;
+        }
+        Map<String, Object> from = parsePayload(fromRow);
+        Map<String, Object> to = parsePayload(toRow);
+        Map<String, Object> added = new LinkedHashMap<>();
+        Map<String, Object> removed = new LinkedHashMap<>();
+        Map<String, Object> changed = new LinkedHashMap<>();
+        Map<String, Object> flatFrom = new LinkedHashMap<>();
+        Map<String, Object> flatTo = new LinkedHashMap<>();
+        flatten(from, "", flatFrom);
+        flatten(to, "", flatTo);
+        for (Map.Entry<String, Object> e : flatFrom.entrySet()) {
+            if (!flatTo.containsKey(e.getKey())) {
+                removed.put(e.getKey(), e.getValue());
+            } else if (!java.util.Objects.equals(e.getValue(), flatTo.get(e.getKey()))) {
+                Map<String, Object> delta = new LinkedHashMap<>();
+                delta.put("from", e.getValue());
+                delta.put("to", flatTo.get(e.getKey()));
+                changed.put(e.getKey(), delta);
+            }
+        }
+        for (Map.Entry<String, Object> e : flatTo.entrySet()) {
+            if (!flatFrom.containsKey(e.getKey())) {
+                added.put(e.getKey(), e.getValue());
+            }
+        }
+        body.put("success", true);
+        body.put("templateId", templateId);
+        body.put("from", Map.of("version", fromVersion, "status", fromRow.getStatus()));
+        body.put("to", Map.of("version", toVersion, "status", toRow.getStatus()));
+        body.put("added", added);
+        body.put("removed", removed);
+        body.put("changed", changed);
+        return body;
+    }
+
+    /** 嵌套结构递归展开为点路径平铺（叶子值集合，供 diff 比对）。 */
+    private void flatten(Map<String, Object> source, String prefix, Map<String, Object> target) {
+        if (target == null) {
+            return;
+        }
+        for (Map.Entry<String, Object> e : source.entrySet()) {
+            String path = prefix.isEmpty() ? e.getKey() : prefix + "." + e.getKey();
+            if (e.getValue() instanceof Map<?, ?> nested) {
+                Map<String, Object> casted = new LinkedHashMap<>();
+                nested.forEach((k, v) -> casted.put(String.valueOf(k), v));
+                flatten(casted, path, target);
+            } else {
+                target.put(path, e.getValue());
+            }
+        }
+    }
+
     // ------------------------------------------------------------------
     // COMMIT 步（守卫 SMOKE 通过后执行；旧基线在此前保持 published）
     // ------------------------------------------------------------------

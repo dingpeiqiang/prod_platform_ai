@@ -78,7 +78,8 @@ public class ProductOntologyService {
                               SparqlConfigDiscoverer sparqlDiscoverer,
                               ObjectProvider<ProductConfigRegressionService> regressionServiceProvider,
                               ConfigDraftService configDraftService,
-                              org.springframework.beans.factory.ObjectProvider<com.sitech.prodai.service.metric.MetricService> metricServiceProvider) {
+                              org.springframework.beans.factory.ObjectProvider<com.sitech.prodai.service.metric.MetricService> metricServiceProvider,
+                              org.springframework.beans.factory.ObjectProvider<ShaclValidationDelegate> shaclDelegateProvider) {
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.opsRules = opsRules;
@@ -106,6 +107,12 @@ public class ProductOntologyService {
         this.complianceEngine = new ComplianceRuleEngine(objectMapper, properties, opsRules,
                 riskAudit, versionService, messageProjector, rdf4jStore, deriveEngine,
                 this::loadGraph, this::appendConfigAudit);
+        // R7 SHACL 转正：ObjectProvider 可选注入（测试装配缺省时合规链路退回纯 Java）
+        ShaclValidationDelegate shaclDelegate = shaclDelegateProvider != null
+                ? shaclDelegateProvider.getIfAvailable() : null;
+        if (shaclDelegate != null) {
+            this.complianceEngine.setShaclDelegate(shaclDelegate);
+        }
         this.chatConfigureService = new ChatConfigureService(
                 this::toObjectMapper, extractionService, deriveEngine, intentExtractor, sparqlDiscoverer,
                 messageProjector, configDraftService, configDocImportService, opsWorkOrderService, versionService,
@@ -169,10 +176,6 @@ public class ProductOntologyService {
 
     public Map<String, Object> withModeMeta(Map<String, Object> body) {
         return graphManager.withModeMeta(body);
-    }
-
-    public boolean isDemoEnabled() {
-        return properties.getOntology().isDemoEnabled();
     }
 
     public synchronized Map<String, Object> reloadGraph() {

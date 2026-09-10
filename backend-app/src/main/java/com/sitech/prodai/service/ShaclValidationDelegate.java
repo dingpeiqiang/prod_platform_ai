@@ -344,6 +344,11 @@ public class ShaclValidationDelegate {
     }
 
     private boolean isPilotRule(String ruleId) {
+        return isPilotRuleId(ruleId);
+    }
+
+    /** 试点规则判定（R-C06/R-C03/R-C05）；SHACL 转正覆盖与并跑比对共用单点口径。 */
+    static boolean isPilotRuleId(String ruleId) {
         return "R-C06".equals(ruleId) || "R-C03".equals(ruleId) || "R-C05".equals(ruleId);
     }
 

@@ -74,7 +74,27 @@
         "monthlyFee": 0,
         "dependOn": "MAIN_PKG"
       },
-      "templateId": "TPL-PERSON-ADD-0"
+      "templateId": "TPL-PERSON-ADD-0",
+      "derive_rules": [
+        {
+          "fill_defaults": {
+            "skip": [
+              "monthlyFee"
+            ]
+          },
+          "rule": "none"
+        },
+        {
+          "set_if_missing": {
+            "monthlyFee": "${configDefault:campusMonthlyFee=0}"
+          },
+          "when": {
+            "offeringType": "!addon"
+          },
+          "fill_source": "template",
+          "rule": "R-C02"
+        }
+      ]
     },
     "家庭-基础套餐": {
       "scenarioId": "SCENE_003",
@@ -114,7 +134,43 @@
         "fixedFeeAmount": 128,
         "monthlyFee": 128
       },
-      "templateId": "TPL-FAMILY-BASE-128"
+      "templateId": "TPL-FAMILY-BASE-128",
+      "derive_rules": [
+        {
+          "fill_defaults": {}
+        },
+        {
+          "set_if_missing": {
+            "includeBroadband": "${configDefault:includeBroadband=500M}"
+          },
+          "when": {
+            "offeringType": "!addon"
+          },
+          "fill_source": "scenario_default",
+          "rule": "R-C01"
+        },
+        {
+          "derive_category": {
+            "categoryCode": "familyAddPrc",
+            "messageRootKey": "familyAddPrc"
+          },
+          "when_any": {
+            "bizScenario": "家庭融合",
+            "targetUser": "家庭",
+            "categoryCode": "familyBasePrc",
+            "messageRootKey": "familyBasePrc"
+          }
+        },
+        {
+          "select_template": {
+            "when": {
+              "categoryCode": "familyAddPrc"
+            },
+            "templateId": "TPL-FAMILY-ADD-20"
+          },
+          "fill_source": "template"
+        }
+      ]
     },
     "家庭-宽带主资费": {
       "scenarioId": "SCENE_004",
