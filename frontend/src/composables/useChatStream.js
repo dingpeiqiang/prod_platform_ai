@@ -490,8 +490,12 @@ export function useChatStream() {
    */
   const sendAgentMessage = async ({ text, sessionId: explicitSessionId = '', params = {}, scene = null, attachments = [] } = {}) => {
     const content = (text || '').trim()
-    if (!content || streaming.value) return
+    // 附件-only（有附件无文本）放行：后端按附件场景先解析再追问（不补占位话术）
+    if ((!content && !attachments.length) || streaming.value) return
     streaming.value = true
+    // 用户消息气泡文本：无文本时用附件名占位展示（仅前端展示语义，不影响后端判定）
+    const displayText = content
+      || (attachments.length ? `已上传文件：${attachments.map((a) => a.name).filter(Boolean).join('、')}` : '')
     if (!sessionId.value) {
       sessionId.value = explicitSessionId || genSessionId()
     }
@@ -505,7 +509,7 @@ export function useChatStream() {
       fileName: a.fileName || a.name,
       uploadStatus: a.uploadStatus || 'success',
     }))
-    pushUserMessage(content, metaAttachments.length ? { attachments: metaAttachments } : {})
+    pushUserMessage(displayText, metaAttachments.length ? { attachments: metaAttachments } : {})
     let streamText = ''
 
     /** 正文 rAF 批量刷新：chunk 只累积到 streamText，渲染按帧合并 */

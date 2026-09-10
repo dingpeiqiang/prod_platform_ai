@@ -1,0 +1,28 @@
+
+            return switch (action) {
+                case "delete" -> doDelete(ref, workOrderId);
+                case "copy" -> doCopy(ref, workOrderId, params);
+                case "update" -> doUpdate(ref, workOrderId, params);
+                case "submit" -> doSubmit(ref, workOrderId, params);
+                default -> ExecutionResult.fail(getName(), "不支持的操作类型: " + action);
+            };
+        } catch (Exception e) {
+            log.error("[AgentTool] rd_draft_manage 失败: {}", e.getMessage(), e);
+            return ExecutionResult.fail(getName(), "草稿管理失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 工单号参数解析：work_order_id / workOrderId / wo_id，
+     * 逗号/分号/顿号分隔的多值拆分为列表（批量提交场景），单值返回单元素列表。
+     */
+    private List<String> workOrderIds(Map<String, Object> params) {
+        String raw = strParam(params, "work_order_id", "workOrderId", "wo_id");
+        List<String> out = new ArrayList<>();
+        if (raw.isBlank()) {
+            return out;
+        }
+        for (String part : raw.split("[,，;；、\\s]+")) {
+            String id = part.trim();
+            if (!id.isEmpty() && !"null".equalsIgnoreCase(id) && !out.contains(id)) {
+                

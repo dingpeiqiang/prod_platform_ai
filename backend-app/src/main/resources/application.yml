@@ -109,13 +109,6 @@ prodai:
     # JWT 签名密钥：生产必须通过环境变量 AUTH_JWT_SECRET 注入统一密钥（多实例一致）；
     # 未配置时使用实例级派生密钥（仅单机可用，且每日轮换会导致重新登录）
     jwt-secret: ${AUTH_JWT_SECRET:}
-  # 流程意图路由（S1 对话即编排）：命中关键词 → 固定流程引擎直达；未命中走原 LLM 链路
-  flow-router:
-    enabled: true
-    routes:
-      - workflow-code: demo_linear_flow
-        display-name: 演示线性流程
-        keywords: [跑一下演示流程, 演示流程, demo流程]
   # 场景工作流配置（W3 遗产，已被手册层全面取代）：理解层意图确定性映射到场景工作流，
   # 未命中场景走 LLM 动态编排；场景未配置（空串/缺失）= 该场景暂不启用。
   # rd 已移除：三大主意图（RD_CONFIG_CHAT/RD_FILE_PARSE/RD_CONFIG_DISCOVER）现全部

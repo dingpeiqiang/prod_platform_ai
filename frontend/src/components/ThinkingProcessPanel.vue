@@ -1,4 +1,4 @@
-**
+﻿**
  * 思考过程面板：时间线样式；本体推理为其中一环，内嵌网络图 + 推理预览
  *
  * 支持富元数据展示：
@@ -614,9 +614,9 @@ const stepInputText = (step) => {
 /** 步骤 id → 工作流节点中文名（承接行展示用） */
 const FROM_STEP_LABELS = {
   intent: '识别需求',
-  plan: '定下处理方案',
+  plan: '方案规划',
   execute: '执行处理',
-  summarize: '汇总结果',
+  summarize: '结果汇总',
   clarify: '组织追问',
   confirm: '歧义确认',
 }

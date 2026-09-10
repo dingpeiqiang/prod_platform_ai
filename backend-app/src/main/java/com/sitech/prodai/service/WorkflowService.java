@@ -9,7 +9,6 @@ import com.sitech.prodai.mapper.WorkflowHistoryMapper;
 import com.sitech.prodai.mapper.WorkflowMapper;
 import com.sitech.prodai.service.flow.EditorDefinitionNormalizer;
 import com.sitech.prodai.service.flow.FlowDefinitionValidator;
-import com.sitech.prodai.service.agent.flow.FlowIntentRouter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -37,17 +36,13 @@ public class WorkflowService {
     private final WorkflowMapper workflowMapper;
     private final WorkflowHistoryMapper workflowHistoryMapper;
     private final FlowDefinitionValidator flowDefinitionValidator;
-    /** 流程意图路由器（S1）：发布成功自动注册触发词、下线自动注销；未命中关键词时不注册。 */
-    private final FlowIntentRouter flowIntentRouter;
 
     public WorkflowService(WorkflowMapper workflowMapper,
                            WorkflowHistoryMapper workflowHistoryMapper,
-                           FlowDefinitionValidator flowDefinitionValidator,
-                           FlowIntentRouter flowIntentRouter) {
+                           FlowDefinitionValidator flowDefinitionValidator) {
         this.workflowMapper = workflowMapper;
         this.workflowHistoryMapper = workflowHistoryMapper;
         this.flowDefinitionValidator = flowDefinitionValidator;
-        this.flowIntentRouter = flowIntentRouter;
     }
 
     @Transactional
@@ -303,9 +298,6 @@ public class WorkflowService {
 
             workflowMapper.updateById(workflow);
 
-            // S1 对话即编排：发布成功后自动把触发词注册进流程意图路由器（未配置触发词则不注册）
-            registerTriggerKeywords(workflow);
-
             logger.info("Published workflow: {} (version {})", workflowCode, workflow.getVersion());
             return ApiResponse.ok(toMap(workflow), "工作流 " + workflowCode + " 已成功发布");
         } catch (Exception e) {
@@ -344,9 +336,6 @@ public class WorkflowService {
             workflow.setUpdatedBy(user);
 
             workflowMapper.updateById(workflow);
-
-            // S1：下线即注销路由，避免对话仍触发已下线流程
-            flowIntentRouter.unregister(workflowCode);
 
             logger.info("Unpublished workflow: {}", workflowCode);
             return ApiResponse.ok(toMap(workflow), "工作流 " + workflowCode + " 已成功下线");
@@ -628,22 +617,7 @@ public class WorkflowService {
     }
 
     /**
-     * S1 对话即编排：发布成功后把触发词注册进 FlowIntentRouter。
-     * 触发词来源（合并去重）：① tags 中 {@code kw:} 前缀项；② 定义顶层 {@code trigger_keywords}
-     * （List&lt;String&gt; 或逗号分隔字符串）。两者均无时不注册（灰度接管：不配不接管）。
-     */
-    private void registerTriggerKeywords(Workflow workflow) {
-        Set<String> keywords = extractTriggerKeywords(workflow);
-        if (keywords.isEmpty()) {
-            logger.info("Workflow {} published without trigger keywords, router not registered", workflow.getWorkflowCode());
-            return;
-        }
-        flowIntentRouter.register(workflow.getWorkflowCode(), workflow.getWorkflowName(), new ArrayList<>(keywords));
-        logger.info("Workflow {} registered to flow router, keywords={}", workflow.getWorkflowCode(), keywords);
-    }
-
-    /**
-     * 提取触发词（与注册同源）：tags {@code kw:} 前缀项 + 定义顶层 {@code trigger_keywords}，
+     * 提取触发词（展示用）：tags {@code kw:} 前缀项 + 定义顶层 {@code trigger_keywords}，
      * 供列表接口透出（S3-A 工作流库展示）。
      */
     private Set<String> extractTriggerKeywords(Workflow workflow) {

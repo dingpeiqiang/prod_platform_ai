@@ -185,9 +185,9 @@ public final class TraceSnapshotBuilder {
         return context != null && "rd".equals(context.getScene());
     }
 
-    /** 意图识别步骤标题：研发场景为「识别配置需求」，运营场景为「识别分析需求」。 */
+    /** 意图识别步骤标题：研发场景为「需求识别」，运营场景为「识别分析需求」。 */
     public static String intentStepName(SessionContext context) {
-        return isRdScene(context) ? "识别配置需求" : "识别分析需求";
+        return isRdScene(context) ? "需求识别" : "识别分析需求";
     }
 
     /** 意图识别步骤描述：研发场景围绕配置要素，运营场景围绕筛查目标。 */
@@ -218,7 +218,7 @@ public final class TraceSnapshotBuilder {
     }
 
     /**
-     * 「定下处理方案」步骤的目标文案：讲"怎么安排"而非"干什么"，
+     * 「方案规划」步骤的目标文案：讲"怎么安排"而非"干什么"，
      * 与后续工具步骤的 goal（讲"为什么做这一步"）区分，避免业务人员读到重复话术。
      * 研发场景固定话术（配置类诉求一致）；运营场景按意图给目标。
      */
@@ -230,7 +230,7 @@ public final class TraceSnapshotBuilder {
     }
 
     /**
-     * 「定下处理方案」步骤的输出文案：讲"定了什么"，即最终交付物/执行安排，
+     * 「方案规划」步骤的输出文案：讲"定了什么"，即最终交付物/执行安排，
      * 与过程描述（怎么执行）区分，避免同一句话在「过程」「输出」两行重复出现。
      */
     public static String planStepOutput(QueryPlan plan, SessionContext context) {

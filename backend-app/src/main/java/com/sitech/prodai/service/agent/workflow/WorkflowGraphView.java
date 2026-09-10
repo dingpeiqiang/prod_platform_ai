@@ -37,7 +37,7 @@ public final class WorkflowGraphView {
         WorkflowGraph g = new WorkflowGraph("turn", "本轮处理工作流");
         boolean rd = plan != null && String.valueOf(plan.getParams().get("intent_type"))
                 .startsWith("RD_");
-        String understandTitle = rd ? "识别配置需求" : "识别分析需求";
+        String understandTitle = rd ? "需求识别" : "识别分析需求";
 
         // ① 理解节点：输入=用户原文，输出=结构化意图（供下游全部节点承接）
         g.node(N_UNDERSTAND, understandTitle, "intent",
@@ -53,7 +53,7 @@ public final class WorkflowGraphView {
                 "输入=①的多解读候选，输出=候选确认卡片；用户选定后回到①");
 
         // ② 方案节点：输入=①的结构化意图
-        g.node(N_PLAN, "定下处理方案", "plan",
+        g.node(N_PLAN, "方案规划", "plan",
                 "输入=①的结构化意图，输出=工具执行链与分支安排");
         g.edge(N_PLAN, N_EXECUTE, "单意图：直接执行");
         g.edge(N_PLAN, N_EXECUTE, "多意图：逐子计划独立执行");
@@ -65,7 +65,7 @@ public final class WorkflowGraphView {
         g.edge(N_EXECUTE, N_SUMMARIZE, "全部工具完成（某工具失败则中止其依赖链，其余照常）");
 
         // ④ 汇总节点：输入=③的全部工具输出
-        g.node(N_SUMMARIZE, "汇总结果", "summarize",
+        g.node(N_SUMMARIZE, "结果汇总", "summarize",
                 "输入=③的全部工具输出，输出=最终结论与建议");
 
         return g.toView();
@@ -106,10 +106,10 @@ public final class WorkflowGraphView {
     /** 工作流节点标题（rd 场景差异文案收敛在此）。 */
     public static String nodeTitle(String nodeId, boolean rdScene) {
         return switch (nodeId) {
-            case N_UNDERSTAND -> rdScene ? "识别配置需求" : "识别分析需求";
-            case N_PLAN -> "定下处理方案";
+            case N_UNDERSTAND -> rdScene ? "需求识别" : "识别分析需求";
+            case N_PLAN -> "方案规划";
             case N_EXECUTE -> "执行处理";
-            case N_SUMMARIZE -> "汇总结果";
+            case N_SUMMARIZE -> "结果汇总";
             case N_CLARIFY -> "组织追问";
             case N_CONFIRM -> "歧义确认";
             default -> nodeId;

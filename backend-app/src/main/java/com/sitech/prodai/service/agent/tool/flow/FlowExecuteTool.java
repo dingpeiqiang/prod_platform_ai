@@ -19,8 +19,7 @@ import java.util.Map;
  * 执行已发布的固定业务流程（工作流引擎对话侧工具）。
  * <p>
  * 让 LLM 在理解层从「已发布工作流清单」中选定 workflow_code 后经本工具进入
- * FlowEngineService——与关键词路由（FlowIntentRouter）双轨互补：
- * 关键词直达为快路径，本工具为语义兜底慢路径（长尾自然语言）。
+ * FlowEngineService——工作流与普通工具同权，唯一对话入口即本工具（无关键词旁路）。
  * <p>
  * 确定性锚点：workflow_code + 引擎版本锁定（startExecution 保证同版本同路径），
  * 不违反「路由层确定性」铁律——LLM 只做能力选择，不做流程内判定。

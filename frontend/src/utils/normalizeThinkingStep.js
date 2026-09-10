@@ -12,7 +12,7 @@
 const LEGACY_STEP_TEMPLATES = {
   1: { id: 'intent', title: '确认业务意图', type: 'llm', content: '确认业务意图' },
   2: { id: 'analyze', title: '业务分析', type: 'llm', content: '执行业务分析' },
-  3: { id: 'conclude', title: '整理结论', type: 'llm', content: '汇总结果并生成说明' },
+  3: { id: 'conclude', title: '整理结论', type: 'llm', content: '结果汇总并生成说明' },
 }
 
 /**

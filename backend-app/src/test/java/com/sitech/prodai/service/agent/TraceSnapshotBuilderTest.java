@@ -159,7 +159,7 @@ class TraceSnapshotBuilderTest {
         SessionContext rd = new SessionContext("s1");
         rd.setScene("rd");
         SessionContext ops = new SessionContext("s2");
-        assertEquals("识别配置需求", TraceSnapshotBuilder.intentStepName(rd));
+        assertEquals("需求识别", TraceSnapshotBuilder.intentStepName(rd));
         assertEquals("识别分析需求", TraceSnapshotBuilder.intentStepName(ops));
     }
 

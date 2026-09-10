@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="messages-container" ref="messagesEl" @scroll.passive="onScroll">
     <!-- 欢迎状态 -->
     <WelcomeCards 
@@ -47,7 +47,7 @@
               @complete="(payload) => onThinkingComplete(msg, payload)"
             />
 
-            <!-- 查询计划卡片已移除：方案信息由思考时间线「定下处理方案」步骤业务化承载，
+            <!-- 查询计划卡片已移除：方案信息由思考时间线「方案规划」步骤业务化承载，
                  避免历史回放时与思考面板重复展示同一份计划（去旧留新） -->
 
             <!-- 正文内容：有思考过程时等思考播完再自上而下打出 -->

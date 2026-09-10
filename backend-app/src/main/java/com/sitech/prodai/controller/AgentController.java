@@ -78,7 +78,6 @@ public class AgentController {
 
         // 处理翻译流程
         Map<String, Object> result = orchestrator.process(question, sessionId, params, scene);
-
         long elapsed = System.currentTimeMillis() - startTime;
         result.put("success", true);
         result.put("elapsed_ms", elapsed);
@@ -113,7 +112,9 @@ public class AgentController {
         String scene = request != null && request.get("scene") != null
                 ? String.valueOf(request.get("scene")) : null;
 
-        if (question == null || question.isBlank() || "null".equals(question)) {
+        // 附件-only 放行：携带已上传文件但未输入文本 → 编排层按附件场景处理（先解析再追问）
+        boolean attachmentOnly = hasAttachmentParam(params);
+        if (!attachmentOnly && (question == null || question.isBlank() || "null".equals(question))) {
             try {
                 emitter.send(SseEmitter.event().name("error")
                         .data(toJson(Map.of("error", "question is required"))));
@@ -163,6 +164,22 @@ public class AgentController {
         });
 
         return emitter;
+    }
+
+    /** 附件-only 判定：请求参数携带已上传文件（file_id/file_ids 非空）。 */
+    private boolean hasAttachmentParam(Map<String, Object> params) {
+        if (params == null) {
+            return false;
+        }
+        return hasText(params.get("file_id")) || hasText(params.get("file_ids"));
+    }
+
+    private boolean hasText(Object value) {
+        if (value == null) {
+            return false;
+        }
+        String s = String.valueOf(value).trim();
+        return !s.isEmpty() && !"null".equalsIgnoreCase(s);
     }
 
     /** 关联 RequestLoggingFilter 写入 MDC 的 requestId，便于前端报错时与后端日志对账 */

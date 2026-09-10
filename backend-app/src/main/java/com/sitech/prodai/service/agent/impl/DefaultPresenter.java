@@ -122,9 +122,15 @@ public class DefaultPresenter implements Presenter {
         if (clarify == null || clarify.isEmpty()) {
             return "请问您想分析哪个商品/套餐？";
         }
-        String generated = llmClarifyMessage(clarify);
+        String generated = llmClarifyMessage(clarify, context);
         if (generated != null && !generated.isBlank()) {
             return generated.trim();
+        }
+        // 回退模板：会话已解析文档时追问结合文件展开（与 LLM 路径语义一致）
+        String attachmentContext = attachmentContextOf(context);
+        if (!attachmentContext.isEmpty()) {
+            return "您上传的文件已解析完毕。请结合文件内容告诉我接下来想做什么"
+                    + "（如目标客群、资费要求或其他要求），我好继续处理。";
         }
         StringBuilder sb = new StringBuilder("为了继续处理您的请求，请补充以下信息：\n");
         for (String param : clarify) {
@@ -136,21 +142,56 @@ public class DefaultPresenter implements Presenter {
     /**
      * LLM 生成澄清追问话术：把"缺哪些参数"问得像人话（语言生成为 LLM 本场）。
      * 参数说明来自澄清参数的业务名映射，LLM 失败时返回 null 由调用方回退模板。
+     * <p>
+     * 会话上下文注入（附件续轮场景）：会话已解析文档（document_text）时追问必须
+     * 结合文件内容展开（豆包式），不能脱离上下文问「请提供 text」这类与文件无关的问题。
      */
-    private String llmClarifyMessage(List<String> params) {
+    private String llmClarifyMessage(List<String> params, SessionContext context) {
         try {
             StringBuilder sb = new StringBuilder();
             sb.append("用户请求缺少必要信息，需要向用户追问补充。缺失的参数：\n");
             for (String param : params) {
                 sb.append("- ").append(businessNameOf(param)).append("\n");
             }
-            sb.append("\n请用一句自然、友好的中文向用户追问这些信息，说明为什么需要。")
-                    .append("只输出追问话术本身，不要输出其他内容。");
+            String attachmentContext = attachmentContextOf(context);
+            if (!attachmentContext.isEmpty()) {
+                sb.append("\n【会话上下文】\n").append(attachmentContext);
+            }
+            sb.append("\n请用一句自然、友好的中文向用户追问这些信息，说明为什么需要。");
+            if (!attachmentContext.isEmpty()) {
+                sb.append("注意：用户刚上传的文件已解析完毕，追问要结合该文件的内容与业务展开（如确认目标客群、资费要求、后续动作等），")
+                        .append("不要让用户重复提供文件里已有的信息。");
+            }
+            sb.append("只输出追问话术本身，不要输出其他内容。");
             return llmService.completePrompt(sb.toString());
         } catch (Exception e) {
             log.warn("[DefaultPresenter] 澄清追问文案 LLM 生成失败，回退模板: {}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * 会话附件上下文片段：已解析文档（document_text 存在）时返回文件名 + 内容开头摘录，
+     * 供澄清追问 prompt 引用；无上下文返回空串（零膨胀）。
+     */
+    private String attachmentContextOf(SessionContext context) {
+        if (context == null) {
+            return "";
+        }
+        Object docText = context.getResolvedParams().get("document_text");
+        if (!(docText instanceof String s) || s.isBlank()) {
+            return "";
+        }
+        Object fileName = context.getMeta().get("last_document_text");
+        StringBuilder sb = new StringBuilder("用户刚上传的文件已解析完毕");
+        if (fileName != null && !String.valueOf(fileName).isBlank()
+                && String.valueOf(fileName).length() <= 200) {
+            sb.append("：").append(fileName);
+        }
+        sb.append("。文件开头内容：\n");
+        String excerpt = s.length() > 500 ? s.substring(0, 500) + "…" : s;
+        sb.append(excerpt);
+        return sb.toString();
     }
 
     /** 参数内部名 → 业务展示名（通用映射：camelCase/下划线拆词，中文业务名场景由 LLM 生成覆盖）。 */

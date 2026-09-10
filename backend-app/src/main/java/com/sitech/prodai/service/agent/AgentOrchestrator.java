@@ -4,7 +4,6 @@ import com.sitech.prodai.common.ApiResponse;
 import com.sitech.prodai.service.ChatPersistenceService;
 import com.sitech.prodai.service.LlmService;
 import com.sitech.prodai.service.agent.bridge.ChatHumanBridge;
-import com.sitech.prodai.service.agent.flow.FlowIntentRouter;
 import com.sitech.prodai.service.agent.flow.SceneFlowRouter;
 import com.sitech.prodai.service.agent.model.ExecutionResult;
 import com.sitech.prodai.service.agent.model.QueryPlan;
@@ -46,8 +45,6 @@ public class AgentOrchestrator {
     private final SessionManager sessionManager;
     private final Optional<ChatPersistenceService> persistenceService;
     private final Optional<LlmService> llmService;
-    /** 流程意图路由器（S1 业务场景接入）：命中已注册流程 → 直接执行固定流程引擎，未命中走原 LLM 链路。 */
-    private final FlowIntentRouter flowIntentRouter;
     /** 对话内 human 挂起桥接器（W2）：挂起态翻译为 clarify_contracts，用户回复走 resume 短路。 */
     private final ChatHumanBridge chatHumanBridge;
     /** 场景工作流路由器（W3）：理解层计划确定性映射到场景工作流，未命中走动态编排。 */
@@ -64,6 +61,9 @@ public class AgentOrchestrator {
     /** 已注册工具索引：工具名 → 工具（供工具自描述元数据查询） */
     private final Map<String, AgentTool> toolMap;
 
+    /** 附件-only 摘要追问生成器（豆包式：解析后 LLM 总结 + 开放追问），可选注入。 */
+    private final com.sitech.prodai.service.agent.impl.DocSummaryFollowupGenerator docSummaryFollowupGenerator;
+
     public AgentOrchestrator(Understander understander,
                              Executor executor,
                              Presenter presenter,
@@ -71,11 +71,10 @@ public class AgentOrchestrator {
                              Optional<ChatPersistenceService> persistenceService,
                              Optional<LlmService> llmService,
                              List<AgentTool> tools,
-                             FlowIntentRouter flowIntentRouter,
                              ChatHumanBridge chatHumanBridge,
                              SceneFlowRouter sceneFlowRouter) {
         this(understander, executor, presenter, sessionManager, persistenceService,
-                llmService, tools, flowIntentRouter, chatHumanBridge, sceneFlowRouter, null, null);
+                llmService, tools, chatHumanBridge, sceneFlowRouter, null, null);
     }
 
     public AgentOrchestrator(Understander understander,
@@ -85,12 +84,11 @@ public class AgentOrchestrator {
                              Optional<ChatPersistenceService> persistenceService,
                              Optional<LlmService> llmService,
                              List<AgentTool> tools,
-                             FlowIntentRouter flowIntentRouter,
                              ChatHumanBridge chatHumanBridge,
                              SceneFlowRouter sceneFlowRouter,
                              com.sitech.prodai.service.agent.flow.ChatFlowProgressBridge progressBridge) {
         this(understander, executor, presenter, sessionManager, persistenceService,
-                llmService, tools, flowIntentRouter, chatHumanBridge, sceneFlowRouter, progressBridge, null);
+                llmService, tools, chatHumanBridge, sceneFlowRouter, progressBridge, null);
     }
 
     public AgentOrchestrator(Understander understander,
@@ -100,13 +98,12 @@ public class AgentOrchestrator {
                              Optional<ChatPersistenceService> persistenceService,
                              Optional<LlmService> llmService,
                              List<AgentTool> tools,
-                             FlowIntentRouter flowIntentRouter,
                              ChatHumanBridge chatHumanBridge,
                              SceneFlowRouter sceneFlowRouter,
                              com.sitech.prodai.service.agent.flow.ChatFlowProgressBridge progressBridge,
                              com.sitech.prodai.service.agent.flow.FlowProgressReplayer progressReplayer) {
         this(understander, executor, presenter, sessionManager, persistenceService,
-                llmService, tools, flowIntentRouter, chatHumanBridge, sceneFlowRouter,
+                llmService, tools, chatHumanBridge, sceneFlowRouter,
                 progressBridge, progressReplayer, null);
     }
 
@@ -118,7 +115,6 @@ public class AgentOrchestrator {
                              Optional<ChatPersistenceService> persistenceService,
                              Optional<LlmService> llmService,
                              List<AgentTool> tools,
-                             FlowIntentRouter flowIntentRouter,
                              ChatHumanBridge chatHumanBridge,
                              SceneFlowRouter sceneFlowRouter,
                              com.sitech.prodai.service.agent.flow.ChatFlowProgressBridge progressBridge,
@@ -126,7 +122,7 @@ public class AgentOrchestrator {
                              @org.springframework.lang.Nullable
                              com.sitech.prodai.service.agent.playbook.PlaybookRegistry playbookRegistry) {
         this(understander, executor, presenter, sessionManager, persistenceService,
-                llmService, tools, flowIntentRouter, chatHumanBridge, sceneFlowRouter,
+                llmService, tools, chatHumanBridge, sceneFlowRouter,
                 progressBridge, progressReplayer, playbookRegistry, null);
     }
 
@@ -138,7 +134,6 @@ public class AgentOrchestrator {
                              Optional<ChatPersistenceService> persistenceService,
                              Optional<LlmService> llmService,
                              List<AgentTool> tools,
-                             FlowIntentRouter flowIntentRouter,
                              ChatHumanBridge chatHumanBridge,
                              SceneFlowRouter sceneFlowRouter,
                              com.sitech.prodai.service.agent.flow.ChatFlowProgressBridge progressBridge,
@@ -153,7 +148,6 @@ public class AgentOrchestrator {
         this.sessionManager = sessionManager;
         this.persistenceService = persistenceService;
         this.llmService = llmService;
-        this.flowIntentRouter = flowIntentRouter;
         this.chatHumanBridge = chatHumanBridge != null ? chatHumanBridge : new ChatHumanBridge(null) {
             // 兜底空实现：未注入桥接器时挂起恢复恒不可用（零行为变更），
             // 覆写 resume 恒返 null，规避父类对 null 引擎的空指针
@@ -182,6 +176,10 @@ public class AgentOrchestrator {
         // 查询审计记录器（A3）：null 时兜底自建（审计为无状态纯组件，自建零风险）
         this.queryAuditRecorder = queryAuditRecorder != null
                 ? queryAuditRecorder : new com.sitech.prodai.service.agent.model.QueryAuditRecorder();
+        // 附件-only 摘要追问生成器：LLM 可用时走自然语言总结+追问，不可用时生成器内部回退模板
+        this.docSummaryFollowupGenerator = llmService.isPresent()
+                ? new com.sitech.prodai.service.agent.impl.DocSummaryFollowupGenerator(llmService.get())
+                : null;
         this.toolMap = new ConcurrentHashMap<>();
         if (tools != null) {
             for (AgentTool tool : tools) {
@@ -246,7 +244,7 @@ public class AgentOrchestrator {
 
     /** process 的权限绑定后主链路（拆出仅为 try-finally 收口清晰）。 */
     private Map<String, Object> doProcess(String question, SessionContext context,
-                                          Map<String, Object> params, String scene, long startTime) {
+                                           Map<String, Object> params, String scene, long startTime) {
 
         // W2 挂起态短路：会话绑定待恢复工作流 → 直接走 ChatHumanBridge.resume（不过理解层 LLM）
         if (context.hasPendingExecution()) {
@@ -256,9 +254,14 @@ public class AgentOrchestrator {
             }
         }
 
-        // 手册触发词快筛（入口三级瀑布第一级，S1 FlowIntentRouter 能力的手册化替代）：
-        // 话术命中手册触发词 → 跳过 LLM 意图理解，直接按手册链路处理（零 LLM 成本、消除误判）；
-        // 未命中回落既有链路（FlowIntentRouter → LLM 理解 → 手册适用域路由）
+        // 附件-only 分支（豆包式文件处理）：用户只上传附件未输入文本 → 先解析文件，
+        // 再由 LLM 生成「内容总结 + 开放式追问」，不抢跑手册触发词/意图识别（问题见触发词快筛）
+        if (isAttachmentOnly(question, params)) {
+            return attachmentOnlyPath(question, params, context, startTime);
+        }
+
+        // 手册触发词快筛（入口三级瀑布第一级）：话术命中手册触发词 → 跳过 LLM 意图理解，
+        // 直接按手册链路处理（零 LLM 成本、消除误判）；未命中回落 LLM 理解 → 手册适用域路由
         String playbookHit = playbookRegistry.matchTrigger(context.getScene(), question);
         if (playbookHit != null) {
             log.info("[AgentOrchestrator] 手册触发词快筛命中: playbook={} question={}", playbookHit, question);
@@ -266,20 +269,6 @@ public class AgentOrchestrator {
             if (reply != null) {
                 return reply;
             }
-        }
-
-        // S1 业务场景接入：流程意图路由先行——命中已注册固定流程 → 直接引擎执行，未命中走原 LLM 链路
-        java.util.Optional<Map<String, Object>> flowReply =
-                flowIntentRouter.tryRoute(question, params, null);
-        if (flowReply.isPresent()) {
-            Map<String, Object> reply = flowReply.get();
-            reply.putIfAbsent("session_id", context.getSessionId());
-            String report = String.valueOf(reply.getOrDefault("report", ""));
-            context.addHistoryEntry("assistant", report);
-            sessionManager.save(context);
-            persistTurn(context, question, reply, null);
-            reply.put("elapsed_ms", System.currentTimeMillis() - startTime);
-            return reply;
         }
 
         // Step 2: 理解层 — 自然语言 → 查询计划
@@ -760,7 +749,7 @@ public class AgentOrchestrator {
                 "stage", "sop",
                 "message", "话术命中手册「" + bookTitle + "」触发词，按标准作业程序执行（跳过意图识别）")));
         emitter.emit("thinking", Map.of(
-                "steps", List.of(TraceSnapshotBuilder.thinkingStep("intent", "识别配置需求",
+                "steps", List.of(TraceSnapshotBuilder.thinkingStep("intent", "需求识别",
                         "按「" + bookTitle + "」标准作业程序处理", intentExtra)),
                 "intent", intent
         ));
@@ -780,7 +769,7 @@ public class AgentOrchestrator {
             planExtra.put("trace", planTrace);
         }
         emitter.emit("thinking", Map.of(
-                "steps", List.of(TraceSnapshotBuilder.thinkingStep("plan", "定下处理方案",
+                "steps", List.of(TraceSnapshotBuilder.thinkingStep("plan", "方案规划",
                         "按手册「" + bookTitle + "」执行，共 " + sopStepCount + " 步", planExtra)),
                 "intent", intent
         ));
@@ -929,7 +918,7 @@ public class AgentOrchestrator {
                 "stage", "llm",
                 "message", "调用大模型汇总 " + results.size() + " 个环节的处理结果（各环节产出已随 tool 事件下发）")));
         emitter.emit("thinking", Map.of(
-                "steps", List.of(TraceSnapshotBuilder.thinkingStep("generate", "汇总结果",
+                "steps", List.of(TraceSnapshotBuilder.thinkingStep("generate", "结果汇总",
                         TraceSnapshotBuilder.generateStepDesc(context), generateExtra)),
                 "intent", intent
         ));
@@ -945,7 +934,7 @@ public class AgentOrchestrator {
                 "stage", "llm",
                 "message", "大模型已按「结论先行 + 依据支撑」结构生成回答，依据来自手册各步骤的实际产出")));
         emitter.emit("thinking", Map.of(
-                "steps", List.of(TraceSnapshotBuilder.thinkingStep("generate", "汇总结果",
+                "steps", List.of(TraceSnapshotBuilder.thinkingStep("generate", "结果汇总",
                         TraceSnapshotBuilder.generateStepDesc(context), generateDoneExtra)),
                 "intent", intent
         ));
@@ -1493,7 +1482,7 @@ public class AgentOrchestrator {
         Map<String, Object> planStep = new LinkedHashMap<>();
         planStep.put("id", "plan");
         planStep.put("type", "thinking");
-        planStep.put("title", "定下处理方案");
+        planStep.put("title", "方案规划");
         planStep.put("content", TraceSnapshotBuilder.buildReadablePlan(plan));
         planStep.put("status", "done");
         planStep.put("category", "understand");
@@ -1559,7 +1548,7 @@ public class AgentOrchestrator {
         Map<String, Object> generateStep = new LinkedHashMap<>();
         generateStep.put("id", "generate");
         generateStep.put("type", "thinking");
-        generateStep.put("title", "汇总结果");
+        generateStep.put("title", "结果汇总");
         generateStep.put("content", TraceSnapshotBuilder.generateStepDesc(context));
         generateStep.put("status", "done");
         generateStep.put("goal", "把各环节结果整合成您能直接使用的结论与建议");
@@ -1637,6 +1626,11 @@ public class AgentOrchestrator {
             }
             context.resolveParam(key, value);
         }
+        // 权限上下文不进业务参数面：applySuppliedParams 先于 extractUserScope 执行，
+        // __user_scope__ 若经 resolveParam 混入 resolvedParams 会随 plan.params 透传给
+        // 工具入参/LLM 规划（时间线可见"输入里只有 __user_scope__"即此泄漏佐证），此处清理
+        context.getResolvedParams().remove("__user_scope__");
+        context.getMeta().remove("last___user_scope__");
     }
 
     /**
@@ -1913,45 +1907,16 @@ public class AgentOrchestrator {
             return;
         }
 
+        // 附件-only 分支（流式，先于触发词快筛）：只上传附件未输入文本 → 解析 + 总结 + 开放追问
+        if (isAttachmentOnly(question, params)) {
+            attachmentOnlyStream(question, params, context, emitter, startTime);
+            return;
+        }
+
         // 手册触发词快筛（流式链路，同同步链路第一级）：命中 → 跳过 LLM 意图理解直达手册链路
         // 思考时间线四步与常规链路同构：识别 → 方案（=手册 SOP，步骤即手册的操作步骤）→ 执行 → 汇总
         String playbookHit = playbookRegistry.matchTrigger(context.getScene(), question);
         if (playbookHit != null && runPlaybookStream(playbookHit, question, params, context, emitter, startTime)) {
-            return;
-        }
-
-        // S1 业务场景接入：流程意图路由先行——命中已注册固定流程 → 直接引擎执行，未命中走原 LLM 链路
-        // 事件契约与常规链路一致：thinking → text* → text_done → done（跳过 understander）
-        java.util.Optional<Map<String, Object>> flowReply =
-                flowIntentRouter.tryRoute(question, params, null);
-        if (flowReply.isPresent()) {
-            Map<String, Object> reply = flowReply.get();
-            reply.putIfAbsent("session_id", context.getSessionId());
-            String report = String.valueOf(reply.getOrDefault("report", ""));
-            emitter.emit("thinking", Map.of(
-                    "steps", List.of(TraceSnapshotBuilder.thinkingStep("intent", "识别到固定流程",
-                            "命中已注册流程，直接进入流程引擎执行",
-                            Map.of("goal", "对话即编排：固定流程零 LLM 直达引擎",
-                                    "input", Map.of("question", question),
-                                    "output", Map.of("summary", report))))
-            ));
-            context.addHistoryEntry("assistant", report);
-            // 挂起绑定捕获先于 persistTurn（同同步链路，保证 metadata 落库）
-            captureSuspensionBinding(context, reply);
-            sessionManager.save(context);
-            persistTurn(context, question, reply, emitter);
-            emitTextEvents(emitter, report);
-            Map<String, Object> donePayload = new LinkedHashMap<>();
-            donePayload.put("session_id", context.getSessionId());
-            donePayload.put("intent", reply.getOrDefault("intent", "FLOW_EXEC"));
-            donePayload.put("flow_matched", reply.get("flow_matched"));
-            donePayload.put("flow_execution", reply.get("flow_execution"));
-            appendBindingToDone(donePayload, context);
-            donePayload.put("conclusion", reply.getOrDefault("conclusion", ""));
-            donePayload.put("suggested_follow_ups",
-                    reply.getOrDefault("suggested_follow_ups", List.of()));
-            donePayload.put("elapsed_ms", System.currentTimeMillis() - startTime);
-            emitter.emit("done", donePayload);
             return;
         }
 
@@ -2052,7 +2017,7 @@ public class AgentOrchestrator {
                 "branch_taken", WorkflowGraphView.branchLabel(WorkflowGraphView.takenBranch(plan))));
         planExtra.put("trace", TraceSnapshotBuilder.traceView(plan));
         emitter.emit("thinking", Map.of(
-                "steps", List.of(TraceSnapshotBuilder.thinkingStep("plan", "定下处理方案",
+                "steps", List.of(TraceSnapshotBuilder.thinkingStep("plan", "方案规划",
                         TraceSnapshotBuilder.buildReadablePlan(plan), planExtra)),
                 "intent", plan.getIntent()
         ));
@@ -2155,7 +2120,7 @@ public class AgentOrchestrator {
                 "stage", "llm",
                 "message", "调用大模型汇总" + results.size() + " 个环节的处理结果，组织成结论与建议")));
         emitter.emit("thinking", Map.of(
-                "steps", List.of(TraceSnapshotBuilder.thinkingStep("generate", "汇总结果",
+                "steps", List.of(TraceSnapshotBuilder.thinkingStep("generate", "结果汇总",
                         TraceSnapshotBuilder.generateStepDesc(context), generateExtra)),
                 "intent", plan.getIntent()
         ));
@@ -2173,7 +2138,7 @@ public class AgentOrchestrator {
                 "stage", "llm",
                 "message", "大模型已按「结论先行 + 依据支撑」结构生成回答，依据来自上一步工具的实际产出")));
         emitter.emit("thinking", Map.of(
-                "steps", List.of(TraceSnapshotBuilder.thinkingStep("generate", "汇总结果",
+                "steps", List.of(TraceSnapshotBuilder.thinkingStep("generate", "结果汇总",
                         TraceSnapshotBuilder.generateStepDesc(context), generateDoneExtra)),
                 "intent", plan.getIntent()
         ));
@@ -2259,7 +2224,7 @@ public class AgentOrchestrator {
             subPlanExtra.put("output", Map.of("summary", TraceSnapshotBuilder.planStepOutput(plan, context)));
             subPlanExtra.put("trace", TraceSnapshotBuilder.traceView(plan));
             emitter.emit("thinking", Map.of(
-                    "steps", List.of(TraceSnapshotBuilder.thinkingStep(pre + "plan", "定下处理方案",
+                    "steps", List.of(TraceSnapshotBuilder.thinkingStep(pre + "plan", "方案规划",
                             TraceSnapshotBuilder.buildReadablePlan(plan), subPlanExtra)),
                     "intent", plan.getIntent()
             ));
@@ -2274,7 +2239,7 @@ public class AgentOrchestrator {
 
             // 阶段事件③/③′：该子任务汇总（输入 = 该子链各工具的实际产出；输出 = 整合性短文案，不复述正文）
             emitter.emit("thinking", Map.of(
-                    "steps", List.of(TraceSnapshotBuilder.thinkingStep(pre + "generate", "汇总结果",
+                    "steps", List.of(TraceSnapshotBuilder.thinkingStep(pre + "generate", "结果汇总",
                             TraceSnapshotBuilder.generateStepDesc(context),
                             Map.of("segment", segment,
                                     "goal", "把各环节结果整合成您能直接使用的结论与建议",
@@ -2284,7 +2249,7 @@ public class AgentOrchestrator {
             String subReport = presenter.present(question, subResults, context);
             String subConclusion = extractConclusion(subResults);
             emitter.emit("thinking", Map.of(
-                    "steps", List.of(TraceSnapshotBuilder.thinkingStep(pre + "generate", "汇总结果",
+                    "steps", List.of(TraceSnapshotBuilder.thinkingStep(pre + "generate", "结果汇总",
                             TraceSnapshotBuilder.generateStepDesc(context),
                             Map.of("segment", segment,
                                     "input", upstreamResultsInput(subResults),
@@ -2555,6 +2520,228 @@ public class AgentOrchestrator {
         }
         out.put("upstream_outputs", upstream);
         return out;
+    }
+
+    // ── 附件-only 分支（豆包式文件处理：先解析 → 总结 → 开放式追问） ──
+
+    /** 前端占位话术识别：仅上传附件时前端可能补「导入文档：xxx」，视为空文本。 */
+    private static final java.util.regex.Pattern PLACEHOLDER_ATTACHMENT_PREFIX =
+            java.util.regex.Pattern.compile("^导入文档[:：]\\s*[^，。；]{1,120}$");
+
+    /**
+     * 判定"附件-only"：请求携带已上传文件（file_id/file_ids）且用户未输入实质文本。
+     * 前端自动补的「导入文档：<文件名>」占位话术也按空文本处理（否则会抢跑手册触发词快筛）。
+     */
+    private boolean isAttachmentOnly(String question, Map<String, Object> params) {
+        if (params == null) {
+            return false;
+        }
+        boolean hasFile = hasFileParam(params.get("file_id")) || hasFileParam(params.get("file_ids"));
+        if (!hasFile) {
+            return false;
+        }
+        String q = question == null ? "" : question.trim();
+        return q.isEmpty() || PLACEHOLDER_ATTACHMENT_PREFIX.matcher(q).matches();
+    }
+
+    private boolean hasFileParam(Object value) {
+        if (value == null) {
+            return false;
+        }
+        String s = String.valueOf(value).trim();
+        return !s.isEmpty() && !"null".equalsIgnoreCase(s);
+    }
+
+    /**
+     * 附件-only 同步链路：仅执行 rd_doc_parse（解析环节，不做抽取/合规/开单），
+     * 解析产物由 LLM 生成「总结 + 开放式追问」。回复后用户下一轮自由回答时，
+     * 解析全文已在 cachedEvidence/resolvedParams 中，手册链路可无缝承接。
+     */
+    private Map<String, Object> attachmentOnlyPath(String question, Map<String, Object> params,
+                                                   SessionContext context, long startTime) {
+        List<String> fileNames = fileNamesOf(params);
+        log.info("[AgentOrchestrator] 附件-only: fileIds={} files={}",
+                params.get("file_ids"), fileNames);
+
+        List<ExecutionResult> results = executeDocParse(question, params, context);
+        ExecutionResult parseResult = results.isEmpty() ? null : results.get(0);
+        if (parseResult == null || !parseResult.isSuccess()) {
+            String error = parseResult != null && parseResult.getErrorMessage() != null
+                    ? parseResult.getErrorMessage() : "文档解析失败";
+            Map<String, Object> reply = new LinkedHashMap<>();
+            reply.put("session_id", context.getSessionId());
+            reply.put("report", "文件解析失败：" + error);
+            reply.put("intent", "RD_FILE_PARSE");
+            reply.put("conclusion", "");
+            reply.put("suggested_follow_ups", List.of("请重新上传文件或换一份文件试试"));
+            reply.put("elapsed_ms", System.currentTimeMillis() - startTime);
+            return reply;
+        }
+
+        // 跨轮续接：解析全文写入 resolvedParams（随 query_plan.params 落库，重启/过期后仍可恢复）
+        rememberDocumentText(context, parseResult.getData());
+        String report = docSummaryFollowupGenerator.generate(parseResult.getData(), fileNames);
+        context.addHistoryEntry("assistant", report);
+        sessionManager.save(context);
+        persistTurn(context, question, report, planOf(parseResult, question, params, context), results, null, new ArrayList<>(), null, null);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("session_id", context.getSessionId());
+        response.put("report", report);
+        response.put("intent", "RD_FILE_PARSE");
+        response.put("tools", List.of("rd_doc_parse"));
+        response.put("conclusion", extractConclusion(results));
+        response.put("suggested_follow_ups", List.of());
+        response.put("attachment_only", true);
+        response.put("elapsed_ms", System.currentTimeMillis() - startTime);
+        return response;
+    }
+
+    /**
+     * 附件-only 流式链路：thinking（识别/解析）→ tool（rd_doc_parse）→ text（总结+追问）→ done。
+     * 事件契约与常规链路一致，前端零改动渲染。
+     */
+    private void attachmentOnlyStream(String question, Map<String, Object> params,
+                                      SessionContext context, StreamEmitter emitter, long startTime) {
+        List<String> fileNames = fileNamesOf(params);
+        log.info("[AgentOrchestrator] 附件-only(流式): fileIds={} files={}",
+                params.get("file_ids"), fileNames);
+
+        // 阶段① 识别：不做话术判定，如实告知判定依据（附件 + 无文本）
+        Map<String, Object> intentExtra = new LinkedHashMap<>();
+        intentExtra.put("goal", "检测到您上传了文件，先看看里面有什么");
+        intentExtra.put("input", Map.of("files", String.join("、", fileNames)));
+        intentExtra.put("output", Map.of("summary", "上传了文件但未说明用途，先解析内容再与您确认下一步"));
+        intentExtra.put("trace", List.of(Map.of(
+                "stage", "sop",
+                "message", "检测到附件「" + String.join("、", fileNames) + "」，未附带指令，先解析文件内容")));
+        emitter.emit("thinking", Map.of(
+                "steps", List.of(TraceSnapshotBuilder.thinkingStep("intent", "需求识别",
+                        "解析上传的文件内容，再确认您想做什么", intentExtra)),
+                "intent", "RD_FILE_PARSE"
+        ));
+
+        // 阶段② 执行：仅解析环节（tool 事件复用通用渲染，前端展示解析卡片）
+        emitter.emit("tool", Map.of("name", "rd_doc_parse", "status", "running"));
+        List<ExecutionResult> results = executeDocParse(question, params, context);
+        ExecutionResult parseResult = results.isEmpty() ? null : results.get(0);
+        emitter.emit("tool", buildToolEvent(parseResult != null ? parseResult
+                : ExecutionResult.fail("rd_doc_parse", "文档解析失败")));
+        if (parseResult == null || !parseResult.isSuccess()) {
+            String error = parseResult != null && parseResult.getErrorMessage() != null
+                    ? parseResult.getErrorMessage() : "文档解析失败";
+            emitter.emit("error", Map.of("errorMessage", "文件解析失败：" + error, "error", error));
+            return;
+        }
+
+        // 跨轮续接：解析全文写入 resolvedParams（同同步链路）
+        rememberDocumentText(context, parseResult.getData());
+
+        // 阶段③ 生成：LLM 总结 + 开放式追问（打字机输出）
+        String report = docSummaryFollowupGenerator.generate(parseResult.getData(), fileNames);
+        Map<String, Object> generateExtra = new LinkedHashMap<>();
+        generateExtra.put("goal", "总结文件内容，与您确认下一步");
+        generateExtra.put("input", Map.of("from_step", "tool_rd_doc_parse"));
+        generateExtra.put("trace", List.of(Map.of(
+                "stage", "llm",
+                "message", "大模型基于解析内容生成摘要，并询问您接下来想做什么")));
+        emitter.emit("thinking", Map.of(
+                "steps", List.of(TraceSnapshotBuilder.thinkingStep("generate", "内容摘要",
+                        "基于解析结果总结文件内容", generateExtra)),
+                "intent", "RD_FILE_PARSE"
+        ));
+        context.addHistoryEntry("assistant", report);
+        sessionManager.save(context);
+        persistTurn(context, question, report, planOf(parseResult, question, params, context), results, emitter);
+
+        emitTextEvents(emitter, report);
+        Map<String, Object> donePayload = new LinkedHashMap<>();
+        donePayload.put("session_id", context.getSessionId());
+        donePayload.put("intent", "RD_FILE_PARSE");
+        donePayload.put("conclusion", extractConclusion(results));
+        donePayload.put("suggested_follow_ups", List.of());
+        donePayload.put("attachment_only", true);
+        donePayload.put("elapsed_ms", System.currentTimeMillis() - startTime);
+        emitter.emit("done", donePayload);
+    }
+
+    /** 构造仅含 rd_doc_parse 的单工具计划并执行（复用依赖编排与证据缓存惯例）。 */
+    private List<ExecutionResult> executeDocParse(String question, Map<String, Object> params,
+                                                  SessionContext context) {
+        Map<String, Object> planParams = params == null ? new LinkedHashMap<>() : new LinkedHashMap<>(params);
+        if (question != null && !question.isBlank()) {
+            planParams.putIfAbsent("question", question);
+        }
+        injectSessionId(planParams, context);
+        QueryPlan plan = new QueryPlan("RD_FILE_PARSE", List.of("rd_doc_parse"), planParams, question);
+        plan.setUserQuestion(question);
+        context.setLastIntent(plan.getIntent());
+        context.setLastTools(plan.getTools());
+        context.setLastParams(planParams);
+        List<ExecutionResult> results = executor.execute(plan, context);
+        for (ExecutionResult result : results) {
+            if (result.isSuccess() && result.getData() != null) {
+                context.cacheEvidence(result.getToolName(), result.getData());
+                cacheBusinessEntity(context, result);
+            }
+        }
+        return results;
+    }
+
+    /** 解析全文写入 resolvedParams + cachedEvidence 顶层：下一轮理解层/参数补全门可直接命中。 */
+    private void rememberDocumentText(SessionContext context, Map<String, Object> parseData) {
+        if (context == null || parseData == null) {
+            return;
+        }
+        Object text = parseData.get("document_text");
+        if (text instanceof String s && !s.isBlank()) {
+            context.resolveParam("document_text", s);
+            // 平铺到证据缓存顶层：ParamCompletionGate 按顶层参数名查 cachedEvidence（非工具名复合键），
+            // 不平铺则下一轮必填参数校验查不到解析全文，误转澄清（上下文断链）
+            context.cacheEvidence("document_text", s);
+        } else {
+            log.warn("[AgentOrchestrator] 附件-only 解析产物缺少 document_text，跨轮上下文可能断链: keys={}",
+                    parseData.keySet());
+        }
+    }
+
+    /** 附件-only 场景的最小查询计划视图（供 persistTurn 落库与前端展示）。 */
+    private QueryPlan planOf(ExecutionResult parseResult, String question, Map<String, Object> params,
+                             SessionContext context) {
+        Map<String, Object> planParams = params == null ? new LinkedHashMap<>() : new LinkedHashMap<>(params);
+        if (question != null && !question.isBlank()) {
+            planParams.putIfAbsent("question", question);
+        }
+        // 落库投影必须含 document_text：SessionManager 恢复时从 query_plan.params 回放 resolvedParams，
+        // 缺失则重启/TTL 过期后下一轮拿不到解析全文（上下文断链根因）
+        if (context != null && planParams.get("document_text") == null) {
+            Object remembered = context.getResolvedParams().get("document_text");
+            if (remembered != null) {
+                planParams.put("document_text", remembered);
+            }
+        }
+        QueryPlan plan = new QueryPlan("RD_FILE_PARSE", List.of("rd_doc_parse"), planParams, question);
+        plan.setUserQuestion(question);
+        return plan;
+    }
+
+    /** 从请求参数提取文件名列表（file_name 优先，缺省用「文档」称呼）。 */
+    private List<String> fileNamesOf(Map<String, Object> params) {
+        List<String> names = new ArrayList<>();
+        if (params != null) {
+            Object fileName = params.get("file_name");
+            if (hasFileParam(fileName)) {
+                for (String raw : String.valueOf(fileName).split("[,，;；]")) {
+                    if (!raw.isBlank()) {
+                        names.add(raw.trim());
+                    }
+                }
+            }
+        }
+        if (names.isEmpty()) {
+            names.add("文档");
+        }
+        return names;
     }
 
     /**
