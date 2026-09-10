@@ -29,17 +29,9 @@ public class SessionContext {
     /** 会话级附加元数据（分析对象、对比周期等，前端上下文标签展示） */
     private Map<String, Object> meta;
 
-    /** 当前请求的助手场景（null 或空 = 默认运营场景；"rd" = 产商品研发场景；"auto" = 超级助手自主路由）。
-     * 驱动理解层分支选择。auto 路由判定后由路由器把 effectiveScene 回写本字段。 */
+    /** 当前请求的助手场景（null 或空 = 默认运营场景；"rd" = 产商品研发场景）。
+     * 驱动理解层分支选择。 */
     private String scene;
-
-    /**
-     * 超级助手路由状态（多轮连续路由记忆，方案 §3.2）：
-     * { last_scene, since_turn, last_source, last_reason }。
-     * 仅 scene=auto 时由 SuperAssistantRouter 维护；持久化投影到
-     * chat_message.metadata.query_plan.route（SessionManager 恢复时回读），跨轮/重启不依赖内存。
-     */
-    private Map<String, Object> routeState;
 
     /** 连续澄清轮次计数 */
     private int clarifyRounds;
@@ -252,19 +244,6 @@ public class SessionContext {
 
     public void setScene(String scene) {
         this.scene = scene;
-    }
-
-    public Map<String, Object> getRouteState() {
-        return routeState;
-    }
-
-    public void setRouteState(Map<String, Object> routeState) {
-        this.routeState = routeState;
-    }
-
-    /** 路由记忆中的上一能力域（无记忆返回 null）。 */
-    public String lastRoutedScene() {
-        return routeState == null ? null : (String) routeState.get("last_scene");
     }
 
     public Map<String, Object> getExecutionBinding() {

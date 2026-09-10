@@ -5,7 +5,7 @@
       <div class="title">{{ title }}</div>
     </div>
 
-    <!-- 助手切换器：RouterLink 驱动（rd/ops 双助手路由架构） -->
+    <!-- 统一入口：研发/运营/查询合并为单助手（assistants 仅剩 rd 一项，切换器仅保留入口与后台管理） -->
     <div class="assistant-switcher">
       <RouterLink
         v-for="a in assistants"

@@ -9,8 +9,8 @@
         </ul>
       </header>
 
-      <!-- 运营助手：快捷入口（产品运营视图 → 右侧工作台面板） -->
-      <section v-if="mode === 'ops'" class="ops-entry-section" aria-label="产品运营视图入口">
+      <!-- 统一入口：产品运营视图快捷入口（原 ops 欢迎页，并入 rd 欢迎页） -->
+      <section class="ops-entry-section" aria-label="产品运营视图入口">
         <button type="button" class="ops-entry-card" @click="emit('open-ops')">
           <div class="ops-entry-icon">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -105,9 +105,7 @@ const emit = defineEmits(['suggest', 'open-ops'])
 
 const userStore = useUserStore()
 
-const modeClass = computed(() =>
-  props.mode === 'super' ? 'mode-super' : props.mode === 'ops' ? 'mode-ops' : props.mode === 'query' ? 'mode-query' : 'mode-rd',
-)
+const modeClass = computed(() => 'mode-rd')
 
 /** 问候语：按时段 + 展示名，每分钟刷新 */
 function buildGreeting() {
@@ -130,37 +128,15 @@ onMounted(() => { greetingTimer = setInterval(refreshGreeting, 60 * 1000) })
 onBeforeUnmount(() => { if (greetingTimer) clearInterval(greetingTimer) })
 
 const rdMeta = {
-  subtitle: '智聊·对话配置、智读·文件配置与智查·历史复用一体完成，让商品上架更快、更准、更合规。',
-  tags: ['智聊·对话配置', '智读·文件配置', '智查·历史复用'],
-  footer: '本体负责填字段与拦冲突，大模型负责理解业务表达。',
+  subtitle: '智聊对话配置、智读文件配置、智查历史复用、运营洞察与产品查询一体完成，让商品全生命周期更快、更准、更合规。',
+  tags: ['智聊·对话配置', '智读·文件配置', '智查·历史复用', '运营洞察', '产品查询'],
+  footer: '本体负责填字段、拦冲突、推理与追溯，大模型负责理解业务表达。',
 }
 
-const opsMeta = {
-  subtitle: '市场洞察、立项研判、异动归因与风险稽核一屏直达，用本体推理定位问题，用规则保障决策合规。',
-  tags: ['市场洞察', '立项研判', '异动归因', '风险稽核'],
-  footer: '本体负责推理与追溯，规则负责红线判定，大模型负责解释与表达。',
-}
-
-const queryMeta = {
-  subtitle: '智能问答、档案调阅与比对分析一体完成，快速查到商品资料，横向看清差异。',
-  tags: ['智能问答', '档案调阅', '比对分析'],
-  footer: '本体负责检索与比对，大模型负责理解提问与表达结论。',
-}
-
-const superMeta = {
-  subtitle: '统一入口、自主路由：研发配置、运营分析与信息查询一句话直达，多轮对话自动延续或切换能力域。',
-  tags: ['自动路由', '研发配置', '运营分析', '信息查询'],
-  footer: '路由判定决定用哪个能力域理解你，业务结论仍由各域工具与规则产出。',
-}
-
-/** 欢迎页卡片与左侧快捷场景共用配置，保证欢迎信息一致 */
+/** 欢迎页卡片与左侧快捷场景共用配置，保证欢迎信息一致（统一入口：rd/ops/query 场景并入） */
 const cards = computed(() => {
-  const mode = ['super', 'rd', 'ops', 'query'].includes(props.mode) ? props.mode : 'rd'
-  const shortcuts = assistantModes[mode]?.sceneShortcuts || []
+  const shortcuts = assistantModes.rd?.sceneShortcuts || []
   const iconByScene = {
-    'auto.rd': 'flask',
-    'auto.ops': 'chart',
-    'auto.query': 'search',
     'rd.chat': 'chat',
     'rd.import': 'file',
     'rd.query': 'search',
@@ -176,9 +152,6 @@ const cards = computed(() => {
     'query.compare': 'chart',
   }
   const styleByScene = {
-    'auto.rd': { bg: '#fffbeb', color: '#b45309' },
-    'auto.ops': { bg: '#fefce8', color: '#a16207' },
-    'auto.query': { bg: '#fff7ed', color: '#c2410c' },
     'rd.chat': { bg: '#eff6ff', color: '#2563eb' },
     'rd.import': { bg: '#ecfdf5', color: '#059669' },
     'rd.query': { bg: '#f0f9ff', color: '#0284c7' },
@@ -193,14 +166,8 @@ const cards = computed(() => {
     'query.archive': { bg: '#f0f9ff', color: '#0284c7' },
     'query.compare': { bg: '#f5f3ff', color: '#6d28d9' },
   }
-  // 欢迎页只展示核心入口卡（对比/规则等仍可从侧边栏进入）
-  const welcomeScenes = mode === 'super'
-    ? ['auto.rd', 'auto.ops', 'auto.query']
-    : mode === 'ops'
-    ? ['market_insight', 'online_check', 'root_cause', 'risk_audit']
-    : mode === 'query'
-      ? ['query.ask', 'query.archive', 'query.compare']
-      : ['rd.chat', 'rd.import', 'rd.query']
+  // 欢迎页核心入口卡：研发三场景 + 运营核心 + 查询三场景（对比/规则等仍可从侧边栏进入）
+  const welcomeScenes = ['rd.chat', 'rd.import', 'rd.query', 'root_cause', 'risk_audit', 'query.ask', 'query.archive', 'query.compare']
 
   return shortcuts
     .filter((s) => welcomeScenes.includes(s.scene))
@@ -219,9 +186,7 @@ const cards = computed(() => {
     })
 })
 
-const meta = computed(() =>
-  props.mode === 'super' ? superMeta : props.mode === 'ops' ? opsMeta : props.mode === 'query' ? queryMeta : rdMeta,
-)
+const meta = computed(() => rdMeta)
 </script>
 
 <style scoped>
@@ -243,30 +208,6 @@ const meta = computed(() =>
   --welcome-glow: rgba(37, 99, 235, 0.12);
   --welcome-card-hover: #93c5fd;
   --welcome-shadow: rgba(37, 99, 235, 0.12);
-  --welcome-top-offset: 10vh;
-}
-.mode-ops {
-  --welcome-accent: #0f766e;
-  --welcome-accent-soft: #ccfbf1;
-  --welcome-glow: rgba(15, 118, 110, 0.12);
-  --welcome-card-hover: #5eead4;
-  --welcome-shadow: rgba(15, 118, 110, 0.12);
-  --welcome-top-offset: 10vh;
-}
-.mode-query {
-  --welcome-accent: #6d28d9;
-  --welcome-accent-soft: #ede9fe;
-  --welcome-glow: rgba(109, 40, 217, 0.12);
-  --welcome-card-hover: #c4b5fd;
-  --welcome-shadow: rgba(109, 40, 217, 0.12);
-  --welcome-top-offset: 10vh;
-}
-.mode-super {
-  --welcome-accent: #b45309;
-  --welcome-accent-soft: #fef3c7;
-  --welcome-glow: rgba(180, 83, 9, 0.12);
-  --welcome-card-hover: #fcd34d;
-  --welcome-shadow: rgba(180, 83, 9, 0.12);
   --welcome-top-offset: 10vh;
 }
 

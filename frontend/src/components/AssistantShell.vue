@@ -115,15 +115,32 @@
 
         <div class="side-section">
           <div class="side-title">快捷场景</div>
-          <button
-            v-for="item in config.sceneShortcuts"
-            :key="item.label"
-            class="side-btn"
-            @click="closeDrawers(); $emit('shortcut', item)"
-          >
-            <span class="btn-label">{{ item.label }}</span>
-            <span class="btn-scene">{{ item.desc || item.scene }}</span>
-          </button>
+          <!-- 场景分组（研发/运营/查询并入统一入口）：有 sceneGroups 时按组渲染 -->
+          <template v-if="sceneGroups.length">
+            <div v-for="g in sceneGroups" :key="g.group" class="scene-group">
+              <div class="scene-group-title">{{ g.group }}</div>
+              <button
+                v-for="item in groupScenes(g)"
+                :key="g.group + '-' + item.scene"
+                class="side-btn"
+                @click="closeDrawers(); $emit('shortcut', item)"
+              >
+                <span class="btn-label">{{ item.label }}</span>
+                <span class="btn-scene">{{ item.desc || item.scene }}</span>
+              </button>
+            </div>
+          </template>
+          <template v-else>
+            <button
+              v-for="item in config.sceneShortcuts"
+              :key="item.label"
+              class="side-btn"
+              @click="closeDrawers(); $emit('shortcut', item)"
+            >
+              <span class="btn-label">{{ item.label }}</span>
+              <span class="btn-scene">{{ item.desc || item.scene }}</span>
+            </button>
+          </template>
         </div>
 
         <div class="side-section side-tips">
@@ -278,6 +295,13 @@ function startPanelResize(e) {
 }
 
 const config = computed(() => assistantModes[props.mode] || assistantModes.rd)
+
+/** 场景分组（统一入口：研发/运营/查询三组）；无分组配置时回退平铺 */
+const sceneGroups = computed(() => config.value.sceneGroups || [])
+const groupScenes = (g) =>
+  (g.scenes || [])
+    .map((scene) => (config.value.sceneShortcuts || []).find((s) => s.scene === scene))
+    .filter(Boolean)
 
 /** 抽屉开关（仅移动端/平板生效，桌面由 CSS 直接常驻展示） */
 const sideOpen = ref(false)
@@ -466,6 +490,15 @@ onUnmounted(() => {
 .side-collapse-btn svg { transition: transform 0.24s ease; }
 
 .side-section { display: flex; flex-direction: column; gap: 10px; }
+.scene-group { display: flex; flex-direction: column; gap: 8px; }
+.scene-group-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding-left: 2px;
+}
 .side-session { flex-shrink: 0; }
 .side-history { flex: 1; min-height: 0; }
 .side-title { font-weight: 700; color: #334155; font-size: 13px; }

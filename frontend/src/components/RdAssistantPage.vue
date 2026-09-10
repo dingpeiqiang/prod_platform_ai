@@ -22,6 +22,7 @@
     @context-clear="onClearContextItems"
   >
     <template #nav-actions>
+      <DataFreshnessBadge :status="aboxStatus" />
       <button class="nav-icon-btn" title="我的草稿" @click="showMyDrafts = true">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -58,6 +59,7 @@
       @batch-fix="handleBatchFix"
       @batch-delete="handleBatchDelete"
       @query-result-click="onQueryResultClick"
+      @compare-tray-add="onCompareTrayAdd"
       @trace-click="onTraceClick"
       @clarify-submit="onClarifySubmit"
       @session-workorder-select="onSessionWorkOrderSelect"
@@ -66,6 +68,7 @@
 @workorder-submit="({ wo }) => onWorkOrderSubmit(wo)"
 @workorder-copy="({ wo }) => onWorkOrderCopy(wo)"
 @workorder-delete="({ wo }) => onWorkOrderDelete(wo)"
+      @open-ops="onOpenOps"
     />
 
     <ProductPreviewDrawer v-model="showProductPreview" :product="previewProductData" />
@@ -113,13 +116,118 @@
         v-else-if="panelSync.panelType.value === 'compare'"
         :compareResult="productConfig.compareResult.value"
       />
+      <template v-else-if="panelSync.panelType.value === 'ops-view'">
+        <OpsView
+          :key="panelSync.panelKey.value"
+          @open-rootcause="onOpenRootCause"
+        />
+      </template>
+      <div v-else-if="isOpsResultPanel" class="ops-result-panel">
+        <div class="ops-result-head">
+          <span class="ops-result-title">{{ opsResultPanelTitle }}</span>
+          <button type="button" class="ops-result-close" @click="panelSync.closePanel()" title="关闭面板">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="ops-result-body">
+          <template v-if="panelSync.panelType.value === 'monitor'">
+            <div v-if="monitorLoading" class="ops-result-empty">加载中...</div>
+            <template v-else>
+              <div class="ops-kpi-row">
+                <div class="ops-kpi">
+                  <span class="ops-kpi-label">告警总数</span>
+                  <span class="ops-kpi-value">{{ monitorResult?.total ?? monitorAlerts.length }}</span>
+                </div>
+                <div class="ops-kpi">
+                  <span class="ops-kpi-label">高优先级</span>
+                  <span class="ops-kpi-value warn">{{ monitorResult?.highPriorityCount ?? monitorAlerts.filter((a) => a.severity === 'HIGH').length }}</span>
+                </div>
+                <div class="ops-kpi">
+                  <span class="ops-kpi-label">在办工单</span>
+                  <span class="ops-kpi-value">{{ monitorResult?.openWorkOrderCount ?? monitorWorkOrders.length }}</span>
+                </div>
+              </div>
+              <div class="ops-table">
+                <div class="ops-table-head">
+                  <span>等级</span><span>商品</span><span>告警内容</span>
+                </div>
+                <div v-for="(a, i) in monitorAlerts" :key="i" class="ops-table-row">
+                  <span class="ops-sev" :class="a.severity === 'HIGH' ? 'high' : 'mid'">{{ a.severity === 'HIGH' ? '高' : '中' }}</span>
+                  <span class="ops-cell-name">{{ a.offeringName || a.id || '—' }}</span>
+                  <span class="ops-cell-text">{{ a.text }}</span>
+                </div>
+                <div v-if="!monitorAlerts.length" class="ops-table-empty">暂无告警</div>
+              </div>
+              <div v-if="monitorWorkOrders.length" class="ops-wo-section">
+                <div class="ops-section-title">处置工单</div>
+                <div v-for="(w, i) in monitorWorkOrders" :key="i" class="ops-wo-item">
+                  <span class="ops-wo-id">{{ w.workOrderId || w.work_order_id || '—' }}</span>
+                  <span class="ops-wo-title">{{ w.title || '—' }}</span>
+                </div>
+              </div>
+            </template>
+          </template>
+
+          <template v-else-if="panelSync.panelType.value === 'root-cause'">
+            <div v-if="!rootCauseResult" class="ops-result-empty">暂无根因分析结果</div>
+            <template v-else>
+              <div class="ops-section-title">异动结论</div>
+              <p class="ops-para">{{ rootCauseResult.message || rootCauseResult.explanation || '—' }}</p>
+              <div class="ops-section-title">根因路径</div>
+              <div v-for="(p, i) in rootCausePaths" :key="i" class="ops-cause-item">
+                <span class="ops-cause-rank">#{{ p.rank || i + 1 }}</span>
+                <span class="ops-cause-name">{{ p.name }}</span>
+                <span v-if="p.weight != null" class="ops-cause-weight">权重 {{ (p.weight * 100).toFixed(0) }}%</span>
+              </div>
+              <div v-if="rootCauseAnomalies.length" class="ops-section-title">异动明细</div>
+              <div v-for="(a, i) in rootCauseAnomalies" :key="'a' + i" class="ops-alert-line">{{ a.message || a.text }}</div>
+            </template>
+          </template>
+
+          <template v-else-if="panelSync.panelType.value === 'risk-audit'">
+            <div v-if="!riskAuditResult" class="ops-result-empty">暂无稽核结果</div>
+            <template v-else>
+              <div v-for="(it, i) in riskAuditItems" :key="i" class="ops-risk-item">
+                <div class="ops-wo-title">{{ it.offeringName || it.offeringId || '—' }}</div>
+                <div v-if="it.riskLevel" class="ops-sev" :class="it.riskLevel === 'HIGH' ? 'high' : 'mid'">{{ it.riskLevel === 'HIGH' ? '高风险' : it.riskLevel }}</div>
+                <div class="ops-para">{{ it.summary || (it.actions || []).join('；') }}</div>
+              </div>
+              <div v-if="!riskAuditItems.length" class="ops-table-empty">未发现高风险商品</div>
+            </template>
+          </template>
+        </div>
+      </div>
     </template>
 
-    <!-- 还原条：面板关闭后一键恢复（整条可点击，参照原型 config-restore-bar） -->
+    <!-- 还原条：面板关闭后一键恢复（整条可点击，参照原型 config-restore-bar）；
+         对比清单托底栏（查询→行动中间态）与运营视图还原条同层互斥呈现 -->
     <template #restore-bar>
       <Transition name="restore-slide">
         <div
-          v-if="panelSync.restoreBar.visible"
+          v-if="compareTray.items.value.length"
+          class="tray-bar"
+        >
+          <span class="tray-badge">对比清单</span>
+          <span class="tray-names">
+            <span v-for="it in compareTray.items.value" :key="it.offeringId" class="tray-chip" :title="it.offeringName">
+              {{ it.offeringName }}
+              <button type="button" class="tray-chip-remove" @click="compareTray.remove(it.offeringId)">✕</button>
+            </span>
+          </span>
+          <button
+            class="tray-btn"
+            :disabled="compareTray.items.value.length < 2"
+            :title="compareTray.items.value.length < 2 ? '至少加入 2 个商品再比对' : '打开比对面板'"
+            @click="onOpenCompareFromTray"
+          >
+            去比对（{{ compareTray.items.value.length }}）
+          </button>
+          <button class="tray-clear" title="清空对比清单" @click="compareTray.clear()">清空</button>
+        </div>
+        <div
+          v-else-if="panelSync.restoreBar.visible"
           class="restore-bar"
           :class="'rb-' + panelSync.restoreBar.status"
           @click="panelSync.restorePanel()"
@@ -130,7 +238,7 @@
               <line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
             </svg>
           </span>
-          <span class="restore-label-text">配置工作台已收起</span>
+          <span class="restore-label-text">{{ panelSync.restoreBar.status === 'ops-view' ? '运营视图已收起' : '配置工作台已收起' }}</span>
           <span class="restore-badge">{{ panelSync.restoreBar.label }}</span>
           <span class="restore-name">{{ panelSync.restoreBar.productName }}</span>
           <span class="restore-arrow">›</span>
@@ -160,7 +268,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, provide } from 'vue'
-import { ElMessageBox } from 'element-plus'
+import { ElMessageBox, ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import AssistantShell from './AssistantShell.vue'
 import ChatMessageList from './ChatMessageList.vue'
@@ -173,13 +281,16 @@ import NotificationCenter from './workbench/NotificationCenter.vue'
 import MyDrafts from './workbench/MyDrafts.vue'
 import WorkOrderCenter from './workbench/WorkOrderCenter.vue'
 import ComparePanel from './workbench/ComparePanel.vue'
+import OpsView from './ops/OpsView.vue'
+import DataFreshnessBadge from './DataFreshnessBadge.vue'
 import { useChatStream } from '../composables/useChatStream.js'
 import { useProductConfig } from '../composables/useProductConfig.js'
 import { usePanelSync } from '../composables/usePanelSync.js'
 import { registerPostProcessor } from '../composables/useIntentRegistry.js'
+import { useCompareTray } from '../composables/useCompareTray.js'
 import { useProductWorkflowStore } from '../stores/productWorkflow.js'
 import { useNotificationStore } from '../stores/notification.js'
-import { checkCompliance, copyAsDraft, listWorkOrders } from '../services/productOntologyApi.js'
+import { checkCompliance, copyAsDraft, listWorkOrders, getAboxSyncStatus } from '../services/productOntologyApi.js'
 import { saveMessage as saveChatMessage } from '../services/chatApi.js'
 import { assistantModes, buildSceneWelcome } from '../config/assistantModes.js'
 import { genId, sleep, createStreamingPlaceholder } from '../utils/chatUtils.js'
@@ -189,6 +300,8 @@ import { draftToFormData } from '../utils/productFormSchema.js'
 const inputText = ref('')
 const historyLoading = ref(false)
 const activeFormCard = ref(null)
+/** 数据截至时间戳（原查询助手 A1 预做项）：abox_last_synced_at 透出；异常时为 null 不呈现 */
+const aboxStatus = ref(null)
 /** 已配置商品只读预览（不进入编辑态） */
 const showProductPreview = ref(false)
 const previewProductData = ref(null)
@@ -223,6 +336,8 @@ const showComparePanel = productConfig.showComparePanel
 const activeRootCauseRank = productConfig.activeRootCauseRank
 provide('rootCauseActiveRank', activeRootCauseRank)
 const config = assistantModes.rd
+/** 对比清单（查询→行动中间态）：模块级共享，跨轮次查询结果暂存 */
+const compareTray = useCompareTray()
 
 /** ── 右侧配置工作台（迁移自 chat-skeleton 原型）── */
 const panelSync = usePanelSync()
@@ -234,6 +349,145 @@ const showApprovalDrawer = ref(false)
 const approvalData = ref(null)
 const showMyDrafts = ref(false)
 const showWorkOrderCenter = ref(false)
+
+/** ── 运营洞察（原运营助手能力并入）── */
+const monitorResult = productConfig.monitorResult
+const monitorWorkOrders = productConfig.monitorWorkOrders
+const monitorLoading = productConfig.monitorLoading
+const rootCauseResult = productConfig.rootCauseResult
+const riskAuditResult = productConfig.riskAuditResult
+
+const monitorAlerts = computed(() => {
+  const items = monitorResult.value?.items || []
+  return Array.isArray(items) ? items : []
+})
+const rootCausePaths = computed(() => {
+  const r = rootCauseResult.value || {}
+  const paths = r.paths || []
+  return Array.isArray(paths) ? paths : []
+})
+const rootCauseAnomalies = computed(() => {
+  const r = rootCauseResult.value || {}
+  const items = r.anomalies || []
+  return Array.isArray(items) ? items : []
+})
+const riskAuditItems = computed(() => {
+  const r = riskAuditResult.value || {}
+  const items = r.items || []
+  return Array.isArray(items) ? items : []
+})
+
+const isOpsResultPanel = computed(() =>
+  ['monitor', 'root-cause', 'risk-audit'].includes(panelSync.panelType.value),
+)
+const opsResultPanelTitle = computed(() => {
+  const map = {
+    monitor: '运营监控看板',
+    'root-cause': '异动归因 · 根因分析',
+    'risk-audit': '风险稽核结果',
+  }
+  return map[panelSync.panelType.value] || '分析面板'
+})
+
+/** 欢迎页/消息流打开产品运营视图入口 */
+const onOpenOps = () => {
+  panelSync.openOpsViewPanel()
+}
+
+/** 下钻「根因分析」：折叠运营视图 + 自动发起根因分析对话 */
+const onOpenRootCause = (drillKey) => {
+  const name = drillKey || '目标套餐'
+  panelSync.closePanel()
+  const text = `对 5G新通话 下的「${name}」套餐做异动根因分析`
+  if (!streaming.value) {
+    sendAgentMessage({ text })
+  } else {
+    inputText.value = text
+  }
+}
+
+/** ── 对比清单托底栏（原查询助手 §6-B4 查询→行动中间态）── */
+
+/** 加入对比清单：成功轻提示，失败（重复/超限/缺编码）提示原因 */
+function onCompareTrayAdd(item) {
+  const res = compareTray.add(item)
+  if (res.ok) {
+    ElMessage.success(`已加入对比清单（${compareTray.items.value.length} 个）`)
+  } else {
+    ElMessage.warning(res.reason || '无法加入对比清单')
+  }
+}
+
+/** 清单凑齐 ≥2 个 → 一键灌入 ComparePanel 并打开右侧面板 */
+function onOpenCompareFromTray() {
+  if (compareTray.items.value.length < 2) return
+  productConfig.compareResult.value = compareTray.toCompareResult()
+  panelSync.openComparePanel()
+}
+
+/** 运营/查询意图后处理：驱动运营结果面板与查询结果卡（参照原 ops openPanelsFromSseMessage / query applyQueryToolToMsg） */
+function applyMergedToolToPanels(msg) {
+  if (!msg) return
+
+  // 1) 运营意图：intentData → 结果面板（monitor / root-cause / risk-audit）
+  const intent = msg.intentType || ''
+  const data = msg.intentData || {}
+  if (intent === 'product_ops_monitor') {
+    if (productConfig.applyMonitorFromSse(data)) {
+      panelSync.openOpsResultPanel('monitor')
+    }
+    return
+  }
+  if (intent === 'product_ops_reason' && data.rootCause) {
+    if (productConfig.applyRootCauseFromSse(data.rootCause)) {
+      panelSync.openOpsResultPanel('root-cause')
+    }
+    return
+  }
+  if (intent === 'product_ops_policy') {
+    const expectation = data.expectationType || msg.action || ''
+    if (expectation === 'risk_audit' || data.riskAudit || Array.isArray(data.items)) {
+      if (productConfig.applyRiskAuditFromSse(data.riskAudit || data)) {
+        panelSync.openOpsResultPanel('risk-audit')
+      }
+    }
+    return
+  }
+
+  // 2) 查询意图：工具 output → 商品列表卡 / 比对面板
+  if (!Array.isArray(msg.toolResults)) return
+  const done = msg.toolResults.filter((t) => t.status === 'done')
+  for (const tool of done) {
+    const out = tool.output || {}
+    const name = tool.name || ''
+    if (name === 'rd_config_discover' || name === 'rd_config_search') {
+      const items = Array.isArray(out.items) ? out.items : []
+      if (items.length) {
+        msg.queryResults = items
+          .map((it) => {
+            const id = it.offering_id || it.offeringId || it.id || it.code
+            const name2 = it.offering_name || it.offeringName || it.name
+            if (!id && !name2) return null
+            const fee = it.monthly_fee ?? it.monthlyFee
+            const state = it.state || ''
+            const category = it.category_name || it.categoryName || ''
+            const parts = [fee != null ? `月费 ${fee} 元` : null, category, state].filter(Boolean)
+            return {
+              id: id || name2,
+              code: id || '',
+              name: name2 || id,
+              desc: parts.join(' · '),
+              offeringId: id,
+            }
+          })
+          .filter(Boolean)
+        messages.value = [...messages.value]
+      }
+    } else if (name === 'rd_scheme_compare') {
+      applyRdSchemeCompare(out)
+    }
+  }
+}
 
 /** 草稿数徽标 */
 const draftCount = computed(() =>
@@ -504,6 +758,15 @@ const RD_POST_INTENTS = [
   'FLOW_EXEC',
 ]
 
+/** 运营/查询意图后处理注册键：统一入口后由本页面一并承接 */
+const MERGED_POST_INTENTS = [
+  'product_ops_reason',
+  'product_ops_policy',
+  'product_ops_monitor',
+  'product_ops_query',
+  'product_ops_compare',
+]
+
 /** 拉取当前会话的商品配置工单列表（后端按 session_id 过滤），返回 items 数组 */
 async function loadSessionWorkOrders(sid = sessionId.value, opts = {}) {
   if (!sid) return []
@@ -665,10 +928,20 @@ onMounted(async () => {
       await attachWorkOrdersToMsg(msg)
     })
   }
+  // 运营/查询意图后处理（统一入口承接）：驱动运营结果面板与查询结果卡
+  for (const intent of MERGED_POST_INTENTS) {
+    registerPostProcessor(intent, (msg) => applyMergedToolToPanels(msg))
+  }
+  // 数据新鲜度非阻断加载（原查询助手 A1 预做项；失败静默）
+  try {
+    aboxStatus.value = await getAboxSyncStatus()
+  } catch (e) {
+    console.warn('[RdAssistantPage] 数据新鲜度获取失败:', e?.message || e)
+  }
 })
 
 onUnmounted(() => {
-  for (const intent of RD_POST_INTENTS) {
+  for (const intent of [...RD_POST_INTENTS, ...MERGED_POST_INTENTS]) {
     registerPostProcessor(intent, null)
   }
 })
@@ -1360,6 +1633,26 @@ async function playProductReply(playbook = {}) {
   await persistProductReply(aiMsg, playbook)
 }
 
+/** 规则目录 → 对话内可读摘要（ops-rules 场景：目录以对话方式展示） */
+function buildRulesDialogueText(catalog = {}) {
+  const groups = catalog?.rules || catalog?.ruleGroups || catalog?.groups || []
+  if (Array.isArray(groups) && groups.length) {
+    return groups
+      .map((g) => {
+        const name = g.groupName || g.name || g.code || '规则组'
+        const entries = Array.isArray(g.rules) ? g.rules : []
+        return `- **${name}**：${entries.length ? entries.map((r) => r.code || r.ruleId || r.name || r).join('、') : '—'}`
+      })
+      .join('\n')
+  }
+  if (catalog?.ruleList) {
+    return catalog.ruleList
+      .map((r) => `- ${r.code || r.ruleId || r.name}：${r.desc || r.description || ''}`)
+      .join('\n')
+  }
+  return '当前无规则目录数据，可在对话中直接说明要查看或调整的规则。'
+}
+
 const onSend = async (payload) => {
   const text = (payload?.text || inputText.value || '').trim()
   const attachments = payload?.attachments || []
@@ -1380,6 +1673,44 @@ const onSend = async (payload) => {
   }
 
   const scene = payload?.scene || activeScene.value || config.defaultScene
+
+  // ── ops-rules 场景特判（原运营助手）：规则目录以对话方式展示，不走模型 ──
+  if (scene === 'ops_rules' || scene === 'ops-rules') {
+    activeScene.value = 'ops_rules'
+    const catalog = await productConfig.openRulesPanel()
+    const rulesText = buildRulesDialogueText(catalog || productConfig.opsRulesCatalog.value)
+    messages.value = [
+      ...messages.value,
+      {
+        id: genId(),
+        role: 'user',
+        type: 'chat',
+        content: text,
+        done: true,
+        timestamp: Date.now(),
+      },
+      {
+        id: genId(),
+        role: 'assistant',
+        type: 'chat',
+        content:
+          '已加载**规则运营**目录：\n\n' +
+          rulesText +
+          '\n\n需要调整风险阈值、查看变更审计或热重载 `ops_rules.json`，可直接用对话说明。',
+        done: true,
+        timestamp: Date.now(),
+      },
+    ]
+    return
+  }
+
+  // ── query 子场景：归口 query，由后端意图归一化路由至 rd_config_search / rd_scheme_compare ──
+  const querySceneMap = {
+    'query.ask': 'query',
+    'query.archive': 'query',
+    'query.compare': 'query',
+  }
+
   const scenario = resolveProductScenario(text || '智读', scene)
   // 有附件时优先走智读·文件配置
   const effectiveScenario =
@@ -1391,7 +1722,8 @@ const onSend = async (payload) => {
     await handleConfigTrace()
     return
   }
-  // 统一走翻译层：研发助手所有核心场景均由后端翻译层判定意图并执行对应 RD 工具
+  // 统一走翻译层：研发助手所有核心场景均由后端翻译层判定意图并执行对应 RD 工具；
+  // 运营/查询诉求由后端理解层按意图自动路由（不强制 scene）
   const params = {}
   if (effectiveScenario === 'file-parse' && attachments.length) {
     const fileIds = attachments
@@ -1407,7 +1739,7 @@ const onSend = async (payload) => {
   }
   await sendAgentMessage({
     text: text || `导入文档：${attachments[0]?.name || '方案'}`,
-    scene: 'rd',
+    scene: querySceneMap[scene] || 'rd',
     params,
     // 附件元数据随用户消息展示（气泡附件 + 落库），跨轮引用锚可消解
     attachments: attachments.map((a) => ({
@@ -1429,10 +1761,20 @@ const onSuggest = (payload) => {
     showSceneWelcome(payload)
     return
   }
+  // 运营视图入口卡（原 ops 页 open-ops-view 语义）
+  if (typeof payload === 'object' && (payload.openOpsView || payload.key === 'open-ops-view')) {
+    onOpenOps()
+    return
+  }
   let text = typeof payload === 'string' ? payload : payload.text
   if (!text) return
   // 跟进建议 / 推荐话术：预填输入框
   inputText.value = text
+  // nextSteps 快捷芯片：打开运营视图（原 ops 页 open-ops-view 语义）
+  if (/打开运营视图|打开产品运营视图|产品运营视图/.test(String(text)) && String(text).length <= 12) {
+    onOpenOps()
+    return
+  }
   const scenario = resolveProductScenario(text, activeScene.value || config.defaultScene)
   if (scenario === 'config-trace') {
     // 审计追溯建议：一键直达追溯回放
@@ -1463,6 +1805,10 @@ function showSceneWelcome(item) {
   }
   if (item.scene === 'rd.chat' || item.label === '智聊·对话配置') {
     productConfig.createEmptyOfferingCanvas()
+  }
+  // 规则运营场景：预拉规则目录（发送时对话式呈现）
+  if (item.scene === 'ops_rules') {
+    productConfig.openRulesPanel()
   }
 
   const welcome = buildSceneWelcome(item)
@@ -1496,15 +1842,23 @@ const onShortcut = (item) => {
   showSceneWelcome(item)
 }
 
-/** 输入区快捷芯片 → 同场景欢迎信息 */
+/** 输入区快捷芯片 → 同场景欢迎信息（合并入口：识别 rd / ops / query 三组场景码） */
 const onQuickAction = (action) => {
   if (!action || streaming.value) return
-  const sceneMap = {
-    chat: 'rd.chat',
-    file: 'rd.import',
-    query: 'rd.query',
+  let scene = action.scene
+  if (/市场洞察|在售|增长/.test(action.label || action.content || '')) scene = 'market_insight'
+  else if (/立项|上线/.test(action.label || action.content || '')) scene = 'online_check'
+  else if (/监控|告警/.test(action.label || action.content || '')) scene = 'ops_monitor'
+  else if (/稽核|风险|零元/.test(action.label || action.content || '')) scene = 'risk_audit'
+  else if (/归因|根因|异动/.test(action.label || action.content || '')) scene = 'root_cause'
+  else if (/规则/.test(action.label || action.content || '')) scene = 'ops_rules'
+  else if (/问答|多少|资费|限制|规范|时限/.test(action.label || action.content || '')) scene = 'query.ask'
+  else if (/档案|调阅|检索/.test(action.label || action.content || '')) scene = 'query.archive'
+  else if (/比对|对比/.test(action.label || action.content || '')) scene = 'query.compare'
+  else {
+    const rdSceneMap = { chat: 'rd.chat', file: 'rd.import', query: 'rd.query' }
+    if (rdSceneMap[action.key]) scene = rdSceneMap[action.key]
   }
-  const scene = sceneMap[action.key] || action.scene || activeScene.value
   const matched = config.sceneShortcuts.find((s) => s.scene === scene || s.label === action.label)
   showSceneWelcome(matched || {
     label: action.label,
@@ -1668,10 +2022,147 @@ const onDeleteSession = async (sid) => {
   await deleteSession(sid)
 }
 
+/** 意图面板动作：研发 follow_up + 运营工单/稽核/导出动作（合并自原 ops 页 onIntentAction） */
 const onIntentAction = (event) => {
   if (event.action === 'follow_up' && event.payload?.text) {
     onSuggest(event.payload.text)
+    return
   }
+  if (event.action === 'create_work_order' && event.payload) {
+    onCreateWorkOrder(event.payload)
+    return
+  }
+  if (event.action === 'create_risk_work_order' && event.payload) {
+    onCreateRiskWorkOrder({ item: event.payload, ...event.payload })
+    return
+  }
+  if (event.action === 're_audit' && event.payload?.text) {
+    onReAudit(event.payload)
+    return
+  }
+  if (event.action === 'undo' && event.payload?.actionId) {
+    onUndoAction({ actionId: event.payload.actionId })
+    return
+  }
+  if (event.action === 'export' && event.payload) {
+    const name = `ops-${event.payload.intentType || 'export'}-${Date.now()}.json`
+    downloadJson(name, event.payload)
+  }
+}
+
+function downloadJson(filename, payload) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+/** 运营动作：根因/异动处置工单生成（原 ops 页 onCreateWorkOrder） */
+async function onCreateWorkOrder(wo) {
+  try {
+    const saved = await productConfig.submitWorkOrder({
+      offeringId: wo?.offeringId,
+      offeringName: wo?.offeringName,
+      title: wo?.title,
+      summary: wo?.anomalySummary || wo?.summary,
+      actions: wo?.actions,
+      rootCauses: wo?.rootCauses,
+      source: 'root_cause',
+    })
+    const title = saved?.title || wo?.title || '产品优化工单'
+    const id = saved?.workOrderId || ''
+    messages.value = [
+      ...messages.value,
+      {
+        id: genId(),
+        role: 'assistant',
+        type: 'chat',
+        content:
+          `已生成处置工单${id ? ` **${id}**` : ''}：**${title}**\n\n` +
+          `${(saved?.actions || wo?.actions || []).map((a) => `- ${a}`).join('\n')}\n\n` +
+          '工单状态已回写本体（dispositionStatus=work_order_open）。',
+        done: true,
+        timestamp: Date.now(),
+        undoable: { state: 'executed', label: `生成工单 · ${title}`, actionId: null },
+      },
+    ]
+  } catch (e) {
+    messages.value = [
+      ...messages.value,
+      {
+        id: genId(),
+        role: 'assistant',
+        type: 'chat',
+        content: `工单生成失败：${e?.message || '请稍后重试'}`,
+        done: true,
+        timestamp: Date.now(),
+      },
+    ]
+  }
+}
+
+/** 运营动作：风险稽核处置工单生成（原 ops 页 onCreateRiskWorkOrder） */
+async function onCreateRiskWorkOrder(payload) {
+  const item = payload?.item || {}
+  const hypo = payload?.hypo || null
+  try {
+    const saved = await productConfig.submitWorkOrder({
+      offeringId: item.offeringId,
+      offeringName: item.offeringName,
+      title: `${item.offeringName || item.offeringId}风险处置工单`,
+      summary: hypo?.summary || (item.actions || []).join('；'),
+      actions: item.actions?.length
+        ? item.actions
+        : [item.disposition?.defaultAction || '启动风险处置'],
+      source: 'risk_audit',
+      hypoMode: payload?.mode,
+      impacts: hypo?.impacts,
+    })
+    messages.value = [
+      ...messages.value,
+      {
+        id: genId(),
+        role: 'assistant',
+        type: 'chat',
+        content:
+          `已生成风险处置工单 **${saved?.workOrderId || ''}**：${saved?.title || ''}\n\n` +
+          `${(saved?.actions || []).map((a) => `- ${a}`).join('\n')}`,
+        done: true,
+        timestamp: Date.now(),
+        undoable: {
+          state: 'executed',
+          label: `生成工单 · ${saved?.title || item.offeringName || ''}`,
+          actionId: null,
+        },
+      },
+    ]
+  } catch (e) {
+    messages.value = [
+      ...messages.value,
+      {
+        id: genId(),
+        role: 'assistant',
+        type: 'chat',
+        content: `风险工单生成失败：${e?.message || '请稍后重试'}`,
+        done: true,
+        timestamp: Date.now(),
+      },
+    ]
+  }
+}
+
+/** 运营动作：按最新阈值重新稽核（原 ops 页 onReAudit） */
+async function onReAudit(payload) {
+  const text = payload?.text || payload?.question || '按最新阈值重新稽核在架风险商品'
+  if (/监控|告警/.test(text)) {
+    activeScene.value = 'ops_monitor'
+  } else {
+    activeScene.value = 'risk_audit'
+  }
+  await sendAgentMessage({ text })
 }
 
 /** 对话内撤销已执行动作（v3.2 可逆操作）：调用 composable 回退，追加回执并标记已撤销 */
@@ -1865,6 +2356,7 @@ async function handleBatchDelete({ msg, item }) {
 .restore-bar.rb-test .restore-badge { background: #fef3c7; color: #b45309; }
 .restore-bar.rb-filing .restore-badge { background: #fce7f3; color: #be185d; }
 .restore-bar.rb-channel .restore-badge { background: #f5f3ff; color: #7c3aed; }
+.restore-bar.rb-ops-view .restore-badge { background: #dbeafe; color: #2563eb; }
 .restore-name {
   flex: 1;
   font-size: 12px;
@@ -1887,4 +2379,218 @@ async function handleBatchDelete({ msg, item }) {
 .restore-close:hover { color: #0f172a; background: rgba(148, 163, 184, 0.15); }
 .restore-slide-enter-active, .restore-slide-leave-active { transition: all 0.24s ease; }
 .restore-slide-enter-from, .restore-slide-leave-to { opacity: 0; transform: translateY(8px); }
+
+/* 对比清单托底栏（合并自原查询助手 §6-B4）：与还原条同层轻量呈现 */
+.tray-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 12px;
+}
+.tray-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #059669;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tray-names {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+.tray-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid #a7f3d0;
+  border-radius: 999px;
+  color: #065f46;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tray-chip-remove {
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0;
+}
+.tray-chip-remove:hover { color: #ef4444; }
+.tray-btn {
+  margin-left: auto;
+  border: 1px solid #059669;
+  background: #059669;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+}
+.tray-btn:hover { opacity: 0.85; }
+.tray-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.tray-clear {
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px;
+  white-space: nowrap;
+}
+.tray-clear:hover { color: #475569; }
+
+/* 运营类结果面板（monitor / root-cause / risk-audit，合并自原运营助手） */
+.ops-result-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.ops-result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+.ops-result-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+}
+.ops-result-close {
+  border: none;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+}
+.ops-result-close:hover { background: #f1f5f9; color: #0f172a; }
+.ops-result-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ops-result-empty {
+  color: #94a3b8;
+  font-size: 13px;
+  text-align: center;
+  padding: 40px 0;
+}
+.ops-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.ops-kpi {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ops-kpi-label { font-size: 11px; color: #64748b; }
+.ops-kpi-value { font-size: 20px; font-weight: 800; color: #0f172a; }
+.ops-kpi-value.warn { color: #dc2626; }
+.ops-table { border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; }
+.ops-table-head,
+.ops-table-row {
+  display: grid;
+  grid-template-columns: 52px 1.1fr 2fr;
+  gap: 8px;
+  padding: 8px 12px;
+  align-items: center;
+}
+.ops-table-head { background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 12px; font-weight: 600; color: #64748b; }
+.ops-table-row { border-bottom: 1px solid #f1f5f9; font-size: 12.5px; }
+.ops-table-row:last-child { border-bottom: none; }
+.ops-table-empty { text-align: center; color: #94a3b8; font-size: 12.5px; padding: 16px; }
+.ops-sev {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 2px 8px;
+  width: fit-content;
+}
+.ops-sev.high { background: #fee2e2; color: #dc2626; }
+.ops-sev.mid { background: #fef3c7; color: #b45309; }
+.ops-cell-name {
+  font-weight: 600;
+  color: #334155;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ops-cell-text { color: #64748b; line-height: 1.5; }
+.ops-wo-section { display: flex; flex-direction: column; gap: 8px; }
+.ops-section-title { font-size: 13px; font-weight: 700; color: #334155; margin-top: 4px; }
+.ops-wo-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+}
+.ops-wo-id { font-family: Consolas, monospace; color: #2563eb; font-weight: 600; flex-shrink: 0; }
+.ops-wo-title { color: #334155; font-weight: 600; }
+.ops-para { font-size: 12.5px; color: #475569; line-height: 1.7; margin: 0; }
+.ops-cause-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+}
+.ops-cause-rank { color: #7c3aed; font-weight: 800; flex-shrink: 0; }
+.ops-cause-name { flex: 1; color: #1e293b; font-weight: 600; }
+.ops-cause-weight { color: #64748b; font-size: 11.5px; flex-shrink: 0; }
+.ops-alert-line {
+  border-left: 3px solid #f59e0b;
+  background: #fffbeb;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  color: #92400e;
+  border-radius: 0 8px 8px 0;
+  line-height: 1.6;
+}
+.ops-risk-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 </style>
