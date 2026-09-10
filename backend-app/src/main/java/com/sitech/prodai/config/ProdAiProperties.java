@@ -3,8 +3,6 @@ package com.sitech.prodai.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 
 @Component
@@ -15,7 +13,6 @@ public class ProdAiProperties {
     private final Llm llm = new Llm();
     private final Kb kb = new Kb();
     private final Mcp mcp = new Mcp();
-    private final FlowRouter flowRouter = new FlowRouter();
     private final ChatWorkflow chatWorkflow = new ChatWorkflow();
     private final Metric metric = new Metric();
     private final ChangeSub changeSub = new ChangeSub();
@@ -184,10 +181,6 @@ public class ProdAiProperties {
         return mcp;
     }
 
-    public FlowRouter getFlowRouter() {
-        return flowRouter;
-    }
-
     public ChatWorkflow getChatWorkflow() {
         return chatWorkflow;
     }
@@ -219,30 +212,6 @@ public class ProdAiProperties {
             }
             String code = sceneWorkflows.get(scene);
             return code == null || code.isBlank() ? null : code.trim();
-        }
-    }
-
-    /** 流程意图路由注册表（S1 对话即编排）：启动时把配置的关键词规则注册进 FlowIntentRouter。 */
-    public static class FlowRouter {
-        /** 是否启用流程意图路由（灰度开关，默认关闭零风险）。 */
-        private boolean enabled = false;
-        /** 路由规则：workflowCode → 显示名 + 触发关键词（任一命中即路由）。 */
-        private List<Map<String, Object>> routes = new ArrayList<>();
-
-        public boolean isEnabled() {
-            return enabled;
-        }
-
-        public void setEnabled(boolean enabled) {
-            this.enabled = enabled;
-        }
-
-        public List<Map<String, Object>> getRoutes() {
-            return routes;
-        }
-
-        public void setRoutes(List<Map<String, Object>> routes) {
-            this.routes = routes;
         }
     }
 

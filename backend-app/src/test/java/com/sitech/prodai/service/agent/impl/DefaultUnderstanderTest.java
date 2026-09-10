@@ -3,7 +3,7 @@ package com.sitech.prodai.service.agent.impl;
 import com.sitech.prodai.exception.LlmConfigException;
 import com.sitech.prodai.mapper.OpsWorkOrderMapper;
 import com.sitech.prodai.service.LlmService;
-import com.sitech.prodai.service.agent.flow.FlowIntentRouter;
+import com.sitech.prodai.service.agent.flow.PublishedFlowRegistry;
 import com.sitech.prodai.service.agent.model.ExecutionResult;
 import com.sitech.prodai.service.agent.model.QueryPlan;
 import com.sitech.prodai.service.agent.model.SessionContext;
@@ -42,8 +42,8 @@ import static org.mockito.Mockito.when;
  * CONFIRM 确认与超限退化、ParamCompletionGate 集成澄清、rd 场景兜底改派。
  * <p>
  * LLM 以 Mockito 桩按场景返回 JSON 输出；工具以 AgentTool 匿名桩自声明场景
- * （AgentCapabilityRegistry 单源白名单）；FlowIntentRouter 用 Mockito 桩提供
- * listRoutes 注册表（flow_execute 守门依据）。
+ * （AgentCapabilityRegistry 单源白名单）；PublishedFlowRegistry 用 Mockito 桩提供
+ * 已发布流程注册表（flow_execute 守门依据）。
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -54,7 +54,7 @@ class DefaultUnderstanderTest {
     @Mock
     private OpsWorkOrderMapper workOrderMapper;
     @Mock
-    private FlowIntentRouter flowIntentRouter;
+    private PublishedFlowRegistry publishedFlowRegistry;
 
     private DefaultUnderstander understander;
 
@@ -68,7 +68,7 @@ class DefaultUnderstanderTest {
                 ToolParam.builder("keyword").label("检索关键词").required().build());
         List<AgentTool> tools = List.of(sparql, rdDraft, rdDiscover);
         understander = new DefaultUnderstander(llmService, tools, workOrderMapper,
-                flowIntentRouter, new AgentCapabilityRegistry(tools), null, null, null);
+                publishedFlowRegistry, new AgentCapabilityRegistry(tools), null, null, null);
     }
 
     // ── fixture 工厂 ──
@@ -259,7 +259,7 @@ class DefaultUnderstanderTest {
 
     @Test
     void flowExecuteWithUnregisteredWorkflowCodeIsStripped() {
-        when(flowIntentRouter.listRoutes()).thenReturn(Map.of());
+        when(publishedFlowRegistry.contains("not_registered")).thenReturn(false);
         llmReturns("{\"intent\":\"FLOW_EXEC\",\"tools\":[\"flow_execute\"],"
                 + "\"params\":{\"workflow_code\":\"not_registered\"}}");
 
@@ -272,8 +272,7 @@ class DefaultUnderstanderTest {
 
     @Test
     void flowExecuteWithMissingWorkflowCodeIsStripped() {
-        when(flowIntentRouter.listRoutes()).thenReturn(Map.of(
-                "wf_a", new FlowIntentRouter.FlowRoute("wf_a", "流程A", List.of("流程a"))));
+        when(publishedFlowRegistry.contains(any())).thenReturn(false);
         llmReturns("{\"intent\":\"FLOW_EXEC\",\"tools\":[\"flow_execute\"],\"params\":{}}");
 
         IllegalStateException ex = assertThrows(IllegalStateException.class,
@@ -505,7 +504,7 @@ class DefaultUnderstanderTest {
                 tool("rd_draft_generate", "ops",
                         ToolParam.builder("requirement").label("需求描述").required().build()));
         understander = new DefaultUnderstander(llmService, tools, workOrderMapper,
-                flowIntentRouter, new AgentCapabilityRegistry(tools), null, null, null);
+                publishedFlowRegistry, new AgentCapabilityRegistry(tools), null, null, null);
         llmReturns("{\"intent\":\"product_ops_query | product_ops_reason\","
                 + "\"tools\":[\"sparql_query\",\"rd_draft_generate\"],\"params\":{\"city\":\"北京\"}}");
 
@@ -562,7 +561,7 @@ class DefaultUnderstanderTest {
         playbookRegistry.init();
         understander = new DefaultUnderstander(llmService, List.of(
                 tool("rd_doc_parse", "rd")), workOrderMapper,
-                flowIntentRouter, new AgentCapabilityRegistry(List.of(tool("rd_doc_parse", "rd"))),
+                publishedFlowRegistry, new AgentCapabilityRegistry(List.of(tool("rd_doc_parse", "rd"))),
                 null, null, playbookRegistry);
         llmReturns("{\"intent\":\"parse\",\"tools\":[\"rd_doc_parse\"],\"params\":{}}");
 
@@ -588,7 +587,7 @@ class DefaultUnderstanderTest {
                 tool("sparql_query", "ops",
                         ToolParam.builder("city").label("城市").required().build()));
         understander = new DefaultUnderstander(llmService, tools, workOrderMapper,
-                flowIntentRouter, new AgentCapabilityRegistry(tools), null, null, playbookRegistry);
+                publishedFlowRegistry, new AgentCapabilityRegistry(tools), null, null, playbookRegistry);
         llmReturns("{\"intent\":\"product_ops_query\",\"tools\":[\"sparql_query\"],\"params\":{\"city\":\"北京\"}}");
 
         understander.understand("查数据", ctx());
@@ -612,7 +611,7 @@ class DefaultUnderstanderTest {
                 tool("rd_config_search", "query",
                         ToolParam.builder("keyword").label("检索关键词").required().build()));
         understander = new DefaultUnderstander(llmService, tools, workOrderMapper,
-                flowIntentRouter, new AgentCapabilityRegistry(tools), null, null, null);
+                publishedFlowRegistry, new AgentCapabilityRegistry(tools), null, null, null);
         llmReturns("{\"intent\":\"product_ops_query\",\"tools\":[\"sparql_query\"],\"params\":{\"city\":\"北京\"}}");
         when(llmService.completePrompt(anyString()))
                 .thenReturn("{\"tools\":[\"rd_config_search\"],\"params\":{\"keyword\":\"套餐\"}}");
@@ -631,7 +630,7 @@ class DefaultUnderstanderTest {
                 tool("rd_config_search", "query",
                         ToolParam.builder("keyword").label("检索关键词").required().build()));
         understander = new DefaultUnderstander(llmService, tools, workOrderMapper,
-                flowIntentRouter, new AgentCapabilityRegistry(tools), null, null, null);
+                publishedFlowRegistry, new AgentCapabilityRegistry(tools), null, null, null);
         llmReturns("{\"intent\":\"RD_CONFIG_DISCOVER\",\"tools\":[\"rd_config_search\"],\"params\":{\"keyword\":\"套餐\"}}");
 
         understander.understand("查一下", queryCtx());
@@ -651,7 +650,7 @@ class DefaultUnderstanderTest {
                 tool("rd_config_search", "query",
                         ToolParam.builder("keyword").label("检索关键词").required().build()));
         understander = new DefaultUnderstander(llmService, tools, workOrderMapper,
-                flowIntentRouter, new AgentCapabilityRegistry(tools), null, null, null);
+                publishedFlowRegistry, new AgentCapabilityRegistry(tools), null, null, null);
         llmReturns("{\"intent\":\"discover\",\"tools\":[\"rd_config_search\"],\"params\":{\"keyword\":\"39\"}}");
 
         QueryPlan plan = understander.understand("找一下月费39的配置", queryCtx());

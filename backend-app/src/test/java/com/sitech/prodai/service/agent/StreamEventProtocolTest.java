@@ -1,7 +1,6 @@
 package com.sitech.prodai.service.agent;
 
 import com.sitech.prodai.service.LlmService;
-import com.sitech.prodai.service.agent.flow.FlowIntentRouter;
 import com.sitech.prodai.service.agent.model.ExecutionResult;
 import com.sitech.prodai.service.agent.model.QueryPlan;
 import com.sitech.prodai.service.agent.model.SessionContext;
@@ -24,7 +23,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 
 /**
@@ -48,8 +46,6 @@ class StreamEventProtocolTest {
     @Mock
     private LlmService llmService;
     @Mock
-    private FlowIntentRouter flowIntentRouter;
-    @Mock
     private com.sitech.prodai.service.agent.flow.SceneFlowRouter sceneFlowRouter;
 
     private AgentOrchestrator orchestrator;
@@ -70,7 +66,7 @@ class StreamEventProtocolTest {
     void setUp() {
         orchestrator = new AgentOrchestrator(understander, executor, presenter,
                 new SessionManager(Optional.empty()), Optional.empty(), Optional.of(llmService),
-                List.of(stubSparqlTool()), flowIntentRouter, null, sceneFlowRouter);
+                List.of(stubSparqlTool()), null, sceneFlowRouter);
     }
 
     private QueryPlan execPlan(String tool) {
@@ -114,7 +110,6 @@ class StreamEventProtocolTest {
 
     private RecordingEmitter runNormalStream() {
         QueryPlan plan = execPlan("sparql_query");
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(java.util.Optional.empty());
         when(understander.understandAll(any(), any(SessionContext.class))).thenReturn(List.of(plan));
         ExecutionResult result = ExecutionResult.ok("sparql_query",
                 Map.of("rows", 2, "conclusion", "查询完成"));
@@ -241,7 +236,6 @@ class StreamEventProtocolTest {
     @Test
     void toolEventErrorCarriesErrorMessage() {
         QueryPlan plan = execPlan("sparql_query");
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(java.util.Optional.empty());
         when(understander.understandAll(any(), any(SessionContext.class))).thenReturn(List.of(plan));
         when(executor.execute(any(QueryPlan.class), any(SessionContext.class), any(Executor.StepListener.class)))
                 .thenAnswer(inv -> {
@@ -267,7 +261,6 @@ class StreamEventProtocolTest {
     void textEventsChunkAt48CharsAndTerminateWithTextDone() {
         String longReport = "长".repeat(120);
         QueryPlan plan = execPlan("sparql_query");
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(java.util.Optional.empty());
         when(understander.understandAll(any(), any(SessionContext.class))).thenReturn(List.of(plan));
         when(executor.execute(any(QueryPlan.class), any(SessionContext.class), any(Executor.StepListener.class)))
                 .thenReturn(List.of(ExecutionResult.ok("sparql_query", Map.of())));
@@ -323,7 +316,6 @@ class StreamEventProtocolTest {
 
     @Test
     void errorEventCarriesMessageFields() {
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(java.util.Optional.empty());
         when(understander.understandAll(any(), any(SessionContext.class))).thenReturn(List.of());
 
         RecordingEmitter emitter = new RecordingEmitter();
@@ -345,11 +337,10 @@ class StreamEventProtocolTest {
                 .thenThrow(new RuntimeException("DB down"));
         AgentOrchestrator persisting = new AgentOrchestrator(understander, executor, presenter,
                 new SessionManager(Optional.empty()), java.util.Optional.of(persistence),
-                java.util.Optional.empty(), List.of(stubSparqlTool()), flowIntentRouter,
+                java.util.Optional.empty(), List.of(stubSparqlTool()),
                 null, sceneFlowRouter);
 
         QueryPlan plan = execPlan("sparql_query");
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(java.util.Optional.empty());
         when(understander.understandAll(any(), any(SessionContext.class))).thenReturn(List.of(plan));
         when(executor.execute(any(QueryPlan.class), any(SessionContext.class), any(Executor.StepListener.class)))
                 .thenReturn(List.of(ExecutionResult.ok("sparql_query", Map.of())));

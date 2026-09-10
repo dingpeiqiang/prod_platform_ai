@@ -1711,7 +1711,8 @@ const onSend = async (payload) => {
     'query.compare': 'query',
   }
 
-  const scenario = resolveProductScenario(text || '智读', scene)
+  // 附件-only（无文本）时不再注入占位语，scenario 由附件存在性直接判为 file-parse
+  const scenario = resolveProductScenario(text, scene)
   // 有附件时优先走智读·文件配置
   const effectiveScenario =
     attachments.length && (!scenario || scenario === 'chat-generate')
@@ -1738,7 +1739,9 @@ const onSend = async (payload) => {
     }
   }
   await sendAgentMessage({
-    text: text || `导入文档：${attachments[0]?.name || '方案'}`,
+    // 附件-only 时不补占位话术（如「导入文档：xxx」）：由后端识别附件-only 场景，
+    // 先解析文件再以自然语言总结+追问下一步，避免占位话术抢跑手册触发词快筛
+    text,
     scene: querySceneMap[scene] || 'rd',
     params,
     // 附件元数据随用户消息展示（气泡附件 + 落库），跨轮引用锚可消解

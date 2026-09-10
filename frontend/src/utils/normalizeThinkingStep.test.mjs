@@ -38,7 +38,7 @@ assert(reason.type === 'ontology', 'reason step is ontology')
 // 汇总步骤：后端顶层 output（summary + branch_taken）平铺进 io，trace 透传
 const generate = normalizeThinkingStep({
   id: 'generate',
-  title: '汇总结果',
+  title: '结果汇总',
   content: '正在整合各环节处理结果，生成配置结论与建议…',
   status: 'running',
   output: { summary: '已整合 1 个环节的处理结果，生成结论与建议', branch_taken: '意图明确 → 直接执行' },

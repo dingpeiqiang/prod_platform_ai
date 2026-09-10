@@ -1,6 +1,6 @@
 package com.sitech.prodai.eval;
 
-import com.sitech.prodai.service.agent.flow.FlowIntentRouter;
+import com.sitech.prodai.service.agent.flow.PublishedFlowRegistry;
 import com.sitech.prodai.service.agent.impl.DefaultUnderstander;
 import com.sitech.prodai.service.agent.model.QueryPlan;
 import com.sitech.prodai.service.agent.model.SessionContext;
@@ -93,7 +93,7 @@ class LlmEvalRunnerTest {
                 ReplayableLlm.create(store, live, evalCase.getCaseId()),
                 EvalToolStubs.all(),
                 null,
-                new FlowIntentRouter(null),
+                null,
                 new AgentCapabilityRegistry(EvalToolStubs.all()));
         SessionContext context = new SessionContext("eval-" + evalCase.getCaseId());
         context.setScene(evalCase.getScene());

@@ -19,7 +19,7 @@ import java.util.Map;
  * <ol>
  *   <li>plan.intent=CLARIFY/CONFIRM/REUSE_EVIDENCE → 不路由（对话编排既有协议轮）</li>
  *   <li>场景未配置工作流（{@code prodai.chat-workflow.scene-workflows}）→ 不路由</li>
- *   <li>命中 → 引擎 startExecution（版本锁定），组装与 FlowIntentRouter 同构的回复</li>
+ *   <li>命中 → 引擎 startExecution（版本锁定），组装统一契约的回复（FlowReplyBuilder）</li>
  * </ol>
  * 挂起态短路（判定 0：executionBinding 存在 → resume）由编排器在进入理解层之前完成，
  * 本类职责收敛为「QueryPlan → workflow_code」映射，保持确定性、可审计（LLM 只在节点内）。
@@ -49,7 +49,7 @@ public class SceneFlowRouter {
      * @param plan    理解层 QueryPlan（意图码 = rd 工具名大写 / ops 意图标签）
      * @param context 会话上下文（取 scene 场景键）
      * @param user    触发人
-     * @return 命中并执行 → 与 FlowIntentRouter 回复同构的 Map（intent=FLOW_EXEC）；
+     * @return 命中并执行 → 统一契约的 Map（intent=FLOW_EXEC）；
      *         未命中 → Optional.empty()（调用方走动态编排）
      */
     public java.util.Optional<Map<String, Object>> tryRoute(QueryPlan plan, SessionContext context, String user) {
@@ -101,7 +101,7 @@ public class SceneFlowRouter {
         return inputData;
     }
 
-    /** 引擎结果 → 对话回复（与 FlowIntentRouter.buildReply 同构，前端零新增分支）。 */
+    /** 引擎结果 → 对话回复（FlowReplyBuilder 统一契约，前端零新增分支）。 */
     private Map<String, Object> buildReply(String workflowCode, QueryPlan plan,
                                            ApiResponse<Map<String, Object>> resp) {
         Map<String, Object> out = new LinkedHashMap<>();

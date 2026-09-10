@@ -6,7 +6,6 @@ import com.sitech.prodai.domain.entity.Workflow;
 import com.sitech.prodai.domain.entity.WorkflowHistory;
 import com.sitech.prodai.mapper.WorkflowHistoryMapper;
 import com.sitech.prodai.mapper.WorkflowMapper;
-import com.sitech.prodai.service.agent.flow.FlowIntentRouter;
 import com.sitech.prodai.service.flow.EditorDefinitionNormalizer;
 import com.sitech.prodai.service.flow.FlowDefinitionValidator;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,7 +24,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -41,15 +39,13 @@ class WorkflowServiceTest {
     private WorkflowMapper workflowMapper;
     @Mock
     private WorkflowHistoryMapper workflowHistoryMapper;
-    @Mock
-    private FlowIntentRouter flowIntentRouter;
 
     private WorkflowService service;
 
     @BeforeEach
     void setUp() {
         service = new WorkflowService(workflowMapper, workflowHistoryMapper,
-                new FlowDefinitionValidator(), flowIntentRouter);
+                new FlowDefinitionValidator());
     }
 
     @Test
@@ -142,40 +138,14 @@ class WorkflowServiceTest {
     }
 
     @Test
-    void publishRegistersTriggerKeywordsToRouter() {
-        // S1：tags 里 kw: 前缀 + 定义 trigger_keywords 双来源合并注册
-        Workflow wf = workflow("wf_6", Map.of(
-                "trigger_keywords", List.of("跑一下演示流程", "demo流程"),
-                "nodes", engineDefinition().get("nodes"),
-                "connections", engineDefinition().get("connections")));
-        wf.setTags(List.of("kw:演示流程", "普通标签"));
-        when(workflowMapper.selectOne(any())).thenReturn(wf);
-
-        service.publishWorkflow("wf_6", "alice");
-
-        verify(flowIntentRouter).register(eq("wf_6"), eq("wf_6"),
-                eq(List.of("演示流程", "跑一下演示流程", "demo流程")));
-    }
-
-    @Test
-    void publishWithoutKeywordsSkipsRouterRegistration() {
-        // 未配置任何触发词 → 不注册（灰度接管：不配不接管）
-        Workflow wf = workflow("wf_7", engineDefinition());
-        when(workflowMapper.selectOne(any())).thenReturn(wf);
-
-        service.publishWorkflow("wf_7", "alice");
-
-        verify(flowIntentRouter, never()).register(any(), any(), any());
-    }
-
-    @Test
-    void unpublishUnregistersRouter() {
+    void unpublishDeactivatesWorkflow() {
         Workflow wf = workflow("wf_8", engineDefinition());
         when(workflowMapper.selectOne(any())).thenReturn(wf);
 
         service.unpublishWorkflow("wf_8", "alice");
 
-        verify(flowIntentRouter).unregister("wf_8");
+        assertFalse(Boolean.TRUE.equals(wf.getIsActive()), "下线后工作流应为未激活状态");
+        verify(workflowMapper).updateById(wf);
     }
 
     /** 打桩 selectPage：返回单页单条（page 参数与 service 内部构造无关，直接回放记录） */

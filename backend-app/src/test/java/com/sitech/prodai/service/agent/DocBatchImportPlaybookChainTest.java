@@ -133,7 +133,6 @@ class DocBatchImportPlaybookChainTest {
         orchestrator = new AgentOrchestrator(new DefaultUnderstander(null, null, null, null, null,
                         null, null, null), executor, presenter, sessionManager,
                 Optional.empty(), Optional.of(llmService), List.of(parseTool, extractTool, complianceTool, createTool),
-                new com.sitech.prodai.service.agent.flow.FlowIntentRouter(null),
                 null,
                 new com.sitech.prodai.service.agent.flow.SceneFlowRouter(
                         new com.sitech.prodai.config.ProdAiProperties(), null,
@@ -196,7 +195,9 @@ class DocBatchImportPlaybookChainTest {
 
     @Test
     void playbookChainWiresDocumentTextIntoExtractAndItemsIntoCreate() {
-        orchestrator.processStream("导入文档：智慧社区融合方案.csv", "s-chain1", new java.util.HashMap<>(Map.of("file_id", "f-1")), "rd",
+        // 附件-only 交互变更（豆包式）：「导入文档：xxx」+ file_id 属于附件-only 场景，
+        // 编排层先解析再追问，不再直达手册全链；显式指令话术仍走触发词快筛直达手册链路
+        orchestrator.processStream("导入文档并批量配置：智慧社区融合方案.csv", "s-chain1", new java.util.HashMap<>(Map.of("file_id", "f-1")), "rd",
                 (event, data) -> { });
 
         // ① parse → extract：document_text 承接解析产出，而非用户原话（根因回归点）

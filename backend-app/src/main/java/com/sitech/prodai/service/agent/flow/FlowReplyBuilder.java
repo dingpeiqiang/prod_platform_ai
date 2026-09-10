@@ -7,9 +7,9 @@ import java.util.Map;
 /**
  * 流程引擎结果 → 对话回复的统一组装器。
  * <p>
- * SceneFlowRouter（场景工作流）与 FlowIntentRouter（固定流程）的回复契约同构
+ * SceneFlowRouter（场景工作流）等路由消费方的回复契约同构
  * （intent=FLOW_EXEC + report/conclusion/flow_execution/session_id/suggested_follow_ups），
- * 组装逻辑此前在两个路由器内各持一份且结论生成退化（无 flow.output 时整 Map toString）。
+ * 组装逻辑此前在各路由器内各持一份且结论生成退化（无 flow.output 时整 Map toString）。
  * 依据 DRY 原则收敛到本类，并修复结论语义：
  * <ul>
  *   <li>结论 = flow.output（end 节点透传）→ 各节点自然语言输出（nl_answer/answer 等）

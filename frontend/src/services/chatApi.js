@@ -461,6 +461,7 @@ export async function getSessionStats(sessionId) {
 export async function sendAgentStream(question, { sessionId = '', params = {}, scene = null } = {}) {
   const abortCtrl = new AbortController()
   const body = { question }
+  // 附件-only（question 为空但携带 file_id）时后端按附件场景处理，question 置空串保持 JSON 完整
   if (sessionId) body.session_id = sessionId
   if (scene) body.scene = scene
   if (params && typeof params === 'object' && Object.keys(params).length) body.params = params

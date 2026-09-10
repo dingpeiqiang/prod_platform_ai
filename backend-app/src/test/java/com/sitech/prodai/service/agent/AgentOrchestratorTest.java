@@ -4,7 +4,6 @@ import com.sitech.prodai.common.ApiResponse;
 import com.sitech.prodai.service.ChatPersistenceService;
 import com.sitech.prodai.service.LlmService;
 import com.sitech.prodai.service.agent.bridge.ChatHumanBridge;
-import com.sitech.prodai.service.agent.flow.FlowIntentRouter;
 import com.sitech.prodai.service.agent.flow.SceneFlowRouter;
 import com.sitech.prodai.service.agent.model.ExecutionResult;
 import com.sitech.prodai.service.agent.model.QueryPlan;
@@ -63,8 +62,6 @@ class AgentOrchestratorTest {
     @Mock
     private LlmService llmService;
     @Mock
-    private FlowIntentRouter flowIntentRouter;
-    @Mock
     private ChatHumanBridge chatHumanBridge;
     @Mock
     private SceneFlowRouter sceneFlowRouter;
@@ -93,7 +90,7 @@ class AgentOrchestratorTest {
     void setUp() {
         sessionManager = new SessionManager(Optional.empty());
         orchestrator = new AgentOrchestrator(understander, executor, presenter, sessionManager,
-                Optional.empty(), Optional.of(llmService), List.of(stubSparqlTool(), stubChatConfigTool()), flowIntentRouter,
+                Optional.empty(), Optional.of(llmService), List.of(stubSparqlTool(), stubChatConfigTool()),
                 chatHumanBridge, sceneFlowRouter);
     }
 
@@ -205,7 +202,6 @@ class AgentOrchestratorTest {
     @Test
     void processExecutesUnderstandExecutePresentChain() {
         QueryPlan plan = execPlan("sparql_query", Map.of("question", "问题"));
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understand(eq("查数据"), any(SessionContext.class))).thenReturn(plan);
         ExecutionResult result = ExecutionResult.ok("sparql_query",
                 Map.of("rows", 5, "conclusion", "共 5 条记录"));
@@ -232,30 +228,9 @@ class AgentOrchestratorTest {
     }
 
     @Test
-    void processFlowRouteShortCircuitsBeforeUnderstand() {
-        Map<String, Object> flowReply = new LinkedHashMap<>();
-        flowReply.put("intent", "FLOW_EXEC");
-        flowReply.put("report", "流程已执行完成");
-        flowReply.put("flow_matched", Map.of("workflow_code", "f1"));
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.of(flowReply));
-
-        Map<String, Object> resp = orchestrator.process("跑一下流程", "s1");
-
-        assertEquals("FLOW_EXEC", resp.get("intent"));
-        assertEquals("流程已执行完成", resp.get("report"));
-        assertNotNull(resp.get("flow_matched"));
-        assertNotNull(resp.get("elapsed_ms"));
-        // 快捷路由：理解/执行/表达层均不再触达
-        verify(understander, never()).understand(any(), any());
-        verify(executor, never()).execute(any(QueryPlan.class));
-        verify(presenter, never()).present(any(), anyList(), any());
-    }
-
-    @Test
     void processClarifyBranchReturnsClarifyPayloadWithoutExecution() {
         QueryPlan plan = clarifyPlan(List.of("offerName"),
                 Map.of("offerName", Map.of("label", "套餐名称")));
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
         when(presenter.present(any(), anyList(), any(SessionContext.class))).thenReturn("请补充套餐名称");
 
@@ -275,7 +250,6 @@ class AgentOrchestratorTest {
     @Test
     void processConfirmBranchReturnsCandidates() {
         QueryPlan plan = confirmPlan(List.of("解读A", "解读B"));
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
         when(llmService.completePrompt(any())).thenReturn("请确认您想做哪一种");
 
@@ -290,7 +264,6 @@ class AgentOrchestratorTest {
     @Test
     void processConfirmBranchFallsBackToTemplateWhenLlmUnavailable() {
         QueryPlan plan = confirmPlan(List.of("解读A"));
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
         when(llmService.completePrompt(any())).thenThrow(new RuntimeException("网关超时"));
 
@@ -328,7 +301,6 @@ class AgentOrchestratorTest {
         assertEquals("completed", ((Map<?, ?>) resp.get("flow_execution")).get("status"));
         // 短路：理解层/流程路由均不再触达
         verify(understander, never()).understand(any(), any());
-        verify(flowIntentRouter, never()).tryRoute(any(), any(), any());
         // 恢复成功后绑定应被清空（会话退出挂起态）
         assertNull(sessionManager.getOrCreate("s-r1").getExecutionBinding(), "恢复后绑定应清空");
     }
@@ -352,12 +324,11 @@ class AgentOrchestratorTest {
     @Test
     void processBridgeUnavailableFallsThroughToNormalChain() {
         AgentOrchestrator legacy = new AgentOrchestrator(understander, executor, presenter, sessionManager,
-                Optional.empty(), Optional.of(llmService), List.of(stubSparqlTool()), flowIntentRouter,
+                Optional.empty(), Optional.of(llmService), List.of(stubSparqlTool()),
                 null, sceneFlowRouter);
         SessionContext ctx = sessionManager.getOrCreate("s-r3");
         ctx.setExecutionBinding(suspensionBinding());
         QueryPlan plan = execPlan("sparql_query", Map.of("question", "问题"));
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
         when(executor.execute(eq(plan), any(SessionContext.class))).thenReturn(List.of());
         when(presenter.present(any(), anyList(), any(SessionContext.class))).thenReturn("常规回答");
@@ -397,9 +368,8 @@ class AgentOrchestratorTest {
         Map<String, Object> done = emitter.events.get(emitter.events.size() - 1).data();
         assertEquals("FLOW_RESUME", done.get("intent"));
         assertEquals("completed", ((Map<?, ?>) done.get("flow_execution")).get("status"));
-        // 短路：理解层/流程路由均不再触达
+        // 短路：理解层不再触达
         verify(understander, never()).understandAll(any(), any());
-        verify(flowIntentRouter, never()).tryRoute(any(), any(), any());
         assertFalse(sessionManager.getOrCreate("s-r5").hasPendingExecution(),
                 "恢复完成后会话应退出挂起态");
     }
@@ -452,7 +422,10 @@ class AgentOrchestratorTest {
         Map<String, Object> binding = suspensionBinding();
         binding.put("execution_id", "EX-300");
         binding.put("resume_token", "tok-300");
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.of(flowReply));
+        when(understander.understandAll(any(), any(SessionContext.class)))
+                .thenReturn(List.of(execPlan("rd_draft_generate", "RD_DRAFT_GENERATE")));
+        when(sceneFlowRouter.tryRoute(any(QueryPlan.class), any(SessionContext.class), any()))
+                .thenReturn(Optional.of(flowReply));
         when(chatHumanBridge.buildBinding(eq(execMap))).thenReturn(binding);
 
         RecordingEmitter emitter = new RecordingEmitter();
@@ -477,7 +450,6 @@ class AgentOrchestratorTest {
         sceneReply.put("report", "场景工作流已执行完成");
         sceneReply.put("flow_matched", Map.of("workflow_code", "query_reuse_v2"));
         sceneReply.put("flow_execution", Map.of("status", "completed"));
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understandAll(any(), any(SessionContext.class)))
                 .thenReturn(List.of(execPlan("rd_draft_generate", "RD_DRAFT_GENERATE")));
         when(sceneFlowRouter.tryRoute(any(QueryPlan.class), any(SessionContext.class), any()))
@@ -504,7 +476,6 @@ class AgentOrchestratorTest {
         sceneReply.put("report", "场景工作流已执行完成");
         sceneReply.put("flow_matched", Map.of("workflow_code", "query_reuse_v2"));
         sceneReply.put("flow_execution", Map.of("status", "completed"));
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understand(any(), any(SessionContext.class)))
                 .thenReturn(execPlan("rd_draft_generate", "RD_DRAFT_GENERATE"));
         when(sceneFlowRouter.tryRoute(any(QueryPlan.class), any(SessionContext.class), any()))
@@ -521,7 +492,6 @@ class AgentOrchestratorTest {
     @Test
     void sceneRouterMissFallsThroughToDynamicOrchestration() {
         QueryPlan plan = execPlan("sparql_query", Map.of("question", "问题"));
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
         when(executor.execute(eq(plan), any(SessionContext.class))).thenReturn(List.of());
         when(presenter.present(any(), anyList(), any(SessionContext.class))).thenReturn("动态编排结果");
@@ -539,7 +509,6 @@ class AgentOrchestratorTest {
     @Test
     void processExecutorFailureStillPresentsPartialReport() {
         QueryPlan plan = execPlan("sparql_query", Map.of());
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
         when(executor.execute(eq(plan), any(SessionContext.class)))
                 .thenReturn(List.of(ExecutionResult.fail("sparql_query", "本体库不可用")));
@@ -558,10 +527,9 @@ class AgentOrchestratorTest {
     @Test
     void processPersistenceFailureAppendsWarningToResponse() {
         AgentOrchestrator persisting = new AgentOrchestrator(understander, executor, presenter,
-                sessionManager, Optional.of(persistenceService), Optional.empty(), List.of(), flowIntentRouter,
+                sessionManager, Optional.of(persistenceService), Optional.empty(), List.of(),
                 null, sceneFlowRouter);
         QueryPlan plan = execPlan("sparql_query", Map.of());
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
         when(executor.execute(eq(plan), any(SessionContext.class))).thenReturn(List.of());
         when(presenter.present(any(), anyList(), any(SessionContext.class))).thenReturn("结果");
@@ -582,7 +550,6 @@ class AgentOrchestratorTest {
     @Test
     void streamNormalPathEmitsThinkingWorkflowToolTextDone() {
         QueryPlan plan = execPlan("sparql_query", Map.of("question", "问题"));
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understandAll(any(), any(SessionContext.class))).thenReturn(List.of(plan));
         ExecutionResult result = ExecutionResult.ok("sparql_query", Map.of("rows", 3));
         when(executor.execute(eq(plan), any(SessionContext.class), any(Executor.StepListener.class)))
@@ -631,32 +598,7 @@ class AgentOrchestratorTest {
     }
 
     @Test
-    void streamFlowRouteSkipsUnderstanderAndEmitsFlowDone() {
-        Map<String, Object> flowReply = new LinkedHashMap<>();
-        flowReply.put("intent", "FLOW_EXEC");
-        flowReply.put("report", "流程执行完毕");
-        flowReply.put("flow_matched", Map.of("workflow_code", "f1"));
-        flowReply.put("flow_execution", Map.of("status", "completed"));
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.of(flowReply));
-
-        RecordingEmitter emitter = new RecordingEmitter();
-        orchestrator.processStream("跑流程", "s7", null, emitter);
-
-        List<String> names = emitter.eventNames();
-        assertEquals("thinking", names.get(0), "Flow 快捷路径首个事件仍为 thinking");
-        assertTrue(names.get(names.size() - 1).equals("done"));
-        Map<String, Object> done = emitter.events.get(emitter.events.size() - 1).data();
-        assertEquals("FLOW_EXEC", done.get("intent"));
-        assertNotNull(done.get("flow_matched"));
-        assertNotNull(done.get("flow_execution"));
-        // 不经过 LLM 三层
-        verify(understander, never()).understandAll(any(), any());
-        verify(executor, never()).execute(any(QueryPlan.class), any(SessionContext.class), any());
-    }
-
-    @Test
     void streamEmptyPlansEmitsErrorEvent() {
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understandAll(any(), any(SessionContext.class))).thenReturn(List.of());
 
         RecordingEmitter emitter = new RecordingEmitter();
@@ -671,7 +613,6 @@ class AgentOrchestratorTest {
     @Test
     void streamClarifyBranchEmitsThinkingTextDoneWithClarify() {
         QueryPlan plan = clarifyPlan(List.of("offerName"), Map.of());
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understandAll(any(), any(SessionContext.class))).thenReturn(List.of(plan));
         when(presenter.present(any(), anyList(), any(SessionContext.class))).thenReturn("请补充套餐名称");
 
@@ -690,7 +631,6 @@ class AgentOrchestratorTest {
     @Test
     void streamConfirmBranchEmitsDoneWithCandidates() {
         QueryPlan plan = confirmPlan(List.of("甲", "乙"));
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understandAll(any(), any(SessionContext.class))).thenReturn(List.of(plan));
         when(llmService.completePrompt(any())).thenThrow(new RuntimeException("no llm"));
 
@@ -707,7 +647,6 @@ class AgentOrchestratorTest {
     void streamMultiIntentSplitsPlansWithIndexedStepIdsAndSegment() {
         QueryPlan p1 = execPlan("sparql_query", Map.of("question", "问题"));
         QueryPlan p2 = execPlan("swrl_root_cause", Map.of("question", "问题"));
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understandAll(any(), any(SessionContext.class))).thenReturn(List.of(p1, p2));
         when(executor.execute(any(QueryPlan.class), any(SessionContext.class), any(Executor.StepListener.class)))
                 .thenAnswer(inv -> {
@@ -826,7 +765,6 @@ class AgentOrchestratorTest {
         QueryPlan plan = new QueryPlan("PRODUCT_OPS_QUERY", List.of("sparql_query", "swrl_risk_audit"),
                 Map.of("question", "问题"), "查一下在售5G套餐的增长趋势和风险商品");
         plan.setUserQuestion("查一下在售5G套餐的增长趋势和风险商品");
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
         when(executor.execute(any(QueryPlan.class), any(SessionContext.class)))
                 .thenReturn(List.of(ExecutionResult.ok("sparql_query", Map.of("rows", 3))));
@@ -851,7 +789,6 @@ class AgentOrchestratorTest {
         QueryPlan plan = new QueryPlan("PRODUCT_OPS_REASON", List.of("swrl_root_cause"),
                 Map.of("question", "问题"), "为什么上月收入下滑");
         plan.setUserQuestion("为什么上月收入下滑");
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understandAll(any(), any(SessionContext.class))).thenReturn(List.of(plan));
         when(executor.execute(any(QueryPlan.class), any(SessionContext.class), any(Executor.StepListener.class)))
                 .thenAnswer(inv -> {
@@ -880,7 +817,6 @@ class AgentOrchestratorTest {
     void processDoesNotUpgradeWhenIntentMissesAllPlaybooks() {
         // rd 场景未注册进手册意图的意图（如 RD_DRAFT_MANAGE）→ 不升级，回落常规动态编排
         QueryPlan plan = execPlan("rd_draft_manage", "RD_DRAFT_MANAGE");
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
         when(executor.execute(eq(plan), any(SessionContext.class)))
                 .thenReturn(List.of(ExecutionResult.ok("rd_draft_manage", Map.of())));
@@ -896,7 +832,6 @@ class AgentOrchestratorTest {
     @Test
     void processDoesNotUpgradeClarifyOrConfirmIntents() {
         QueryPlan plan = clarifyPlan(List.of("offerName"), Map.of());
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
         when(presenter.present(any(), anyList(), any(SessionContext.class))).thenReturn("请补充套餐名称");
 
@@ -929,7 +864,6 @@ class AgentOrchestratorTest {
     void playbookCoarseHitsWithinThresholdPresentsDirectly() {
         // 命中 ≤5（舒适阈值）：走原手册呈现，响应无收敛字段
         QueryPlan plan = queryAskPlan();
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
         when(executor.execute(any(QueryPlan.class), any(SessionContext.class)))
                 .thenReturn(sparqlHits(5));
@@ -946,7 +880,6 @@ class AgentOrchestratorTest {
     void playbookCoarseHitsBeyondThresholdAsksRefineClarify() {
         // 命中 >20：转收敛追问（CLARIFY 契约形态），复用既有澄清响应契约
         QueryPlan plan = queryAskPlan();
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
         when(executor.execute(any(QueryPlan.class), any(SessionContext.class)))
                 .thenReturn(sparqlHits(30));
@@ -965,7 +898,6 @@ class AgentOrchestratorTest {
     void playbookRefineRoundsCapForcesDirectPresent() {
         // 已达收敛上限（meta.refine_rounds=2）：judge 回落 OK，直接呈现不再追问
         QueryPlan plan = queryAskPlan();
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
         when(executor.execute(any(QueryPlan.class), any(SessionContext.class)))
                 .thenReturn(sparqlHits(30));
@@ -986,7 +918,6 @@ class AgentOrchestratorTest {
     void playbookModerateHitsPresentsWithRefineSuggestion() {
         // 命中 6~20（REFINE）：照常呈现 + 收敛建议（refine_suggest），不阻断
         QueryPlan plan = queryAskPlan();
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
         when(executor.execute(any(QueryPlan.class), any(SessionContext.class)))
                 .thenReturn(sparqlHits(10));
@@ -1006,7 +937,6 @@ class AgentOrchestratorTest {
         QueryPlan plan = new QueryPlan("RD_DRAFT_MANAGE", List.of("rd_draft_manage"),
                 Map.of("question", "问题"), "配置一个家庭融合套餐");
         plan.setUserQuestion("配置一个家庭融合套餐");
-        when(flowIntentRouter.tryRoute(any(), any(), isNull())).thenReturn(Optional.empty());
         when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
         when(executor.execute(any(QueryPlan.class), any(SessionContext.class)))
                 .thenReturn(List.of(ExecutionResult.ok("rd_draft_manage", Map.of())));

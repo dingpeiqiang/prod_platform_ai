@@ -60,8 +60,8 @@ public class DefaultUnderstander implements Understander {
     private final LlmService llmService;
     private final Map<String, AgentTool> toolMap;
     private final com.sitech.prodai.mapper.OpsWorkOrderMapper workOrderMapper;
-    /** 流程路由注册表：理解层注入已发布流程清单供 LLM 选择 flow_execute。 */
-    private final com.sitech.prodai.service.agent.flow.FlowIntentRouter flowIntentRouter;
+    /** 已发布流程注册表（单源）：理解层注入已发布流程清单供 LLM 选择 flow_execute。 */
+    private final com.sitech.prodai.service.agent.flow.PublishedFlowRegistry publishedFlowRegistry;
     /** 能力注册表（单源）：场景 → 可见工具白名单，工具自声明场景后统一读取。 */
     private final com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry capabilityRegistry;
     /** 意图提示词组装器（R3 外置化）：静态提示词从外部/classpath 模板加载。 */
@@ -75,16 +75,16 @@ public class DefaultUnderstander implements Understander {
     /** 测试/评测便捷入口：最小依赖装配（prompt 内联骨架 + 无参数门 + 无 SOP 注入）。 */
     public DefaultUnderstander(LlmService llmService, List<AgentTool> tools,
                                com.sitech.prodai.mapper.OpsWorkOrderMapper workOrderMapper,
-                               com.sitech.prodai.service.agent.flow.FlowIntentRouter flowIntentRouter,
+                               com.sitech.prodai.service.agent.flow.PublishedFlowRegistry publishedFlowRegistry,
                                com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry capabilityRegistry) {
-        this(llmService, tools, workOrderMapper, flowIntentRouter, capabilityRegistry, null, null, null);
+        this(llmService, tools, workOrderMapper, publishedFlowRegistry, capabilityRegistry, null, null, null);
     }
 
     /** Spring 主装配：全参注入（prompt 组装器/参数门/SOP 手册注册表均可空降级）。 */
     @Autowired
     public DefaultUnderstander(LlmService llmService, List<AgentTool> tools,
                                com.sitech.prodai.mapper.OpsWorkOrderMapper workOrderMapper,
-                               com.sitech.prodai.service.agent.flow.FlowIntentRouter flowIntentRouter,
+                               com.sitech.prodai.service.agent.flow.PublishedFlowRegistry publishedFlowRegistry,
                                com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry capabilityRegistry,
                                @Nullable IntentPromptAssembler promptAssembler,
                                @Nullable ParamCompletionGate paramGate,
@@ -92,7 +92,7 @@ public class DefaultUnderstander implements Understander {
         this.llmService = llmService;
         this.toolMap = new LinkedHashMap<>();
         this.workOrderMapper = workOrderMapper;
-        this.flowIntentRouter = flowIntentRouter;
+        this.publishedFlowRegistry = publishedFlowRegistry;
         this.capabilityRegistry = capabilityRegistry;
         // 测试/评测装配可不提供组装器：回退到内联最小骨架（与模板缺失兜底一致）
         this.promptAssembler = promptAssembler != null ? promptAssembler : new IntentPromptAssembler("");
@@ -228,6 +228,7 @@ public class DefaultUnderstander implements Understander {
         List<QueryPlan> validated = new ArrayList<>();
         QueryPlan firstClarify = null;
         for (QueryPlan plan : parsed) {
+            fillQuestionSlotsWithContext(plan, context, question);
             QueryPlan v = paramGate.validateParams(toolMap, plan, context, question);
             if (QueryPlan.INTENT_CLARIFY.equals(v.getIntent())) {
                 // 任一子计划需澄清 → 整体转入澄清（等待补参后整轮重来），避免部分执行
@@ -243,6 +244,74 @@ public class DefaultUnderstander implements Understander {
             return List.of(firstClarify);
         }
         return validated;
+    }
+
+    /**
+     * 常规链路的 source=question 参数补槽（附件续轮场景，豆包式文件处理闭环）。
+     * <p>
+     * 背景：附件-only 轮已把解析全文写入 resolvedParams（document_text）；下一轮用户
+     * 简短话术（如「开始配置」）经 LLM 选中 rd_draft_generate 等工具后，其 source=question
+     * 必填参数（text=配置需求描述）因用户原话过短抽取不出值，参数补全门误转 CLARIFY，
+     * 追问与已解析文件完全脱节。手册直达链路已有同构 fillQuestionSlots（用用户原话补槽），
+     * 常规理解层链路此前缺失该环节。
+     * <p>
+     * 补槽值优先级：会话已解析文档内容（document_text 摘要 + 用户话术） > 用户原话。
+     * 仅补 plan.params 缺失的键，LLM 显式输出/请求显式参数不覆盖。
+     */
+    private void fillQuestionSlotsWithContext(QueryPlan plan, SessionContext context, String question) {
+        if (plan == null || plan.getTools() == null || plan.getTools().isEmpty()) {
+            return;
+        }
+        String docContext = docContextOf(context);
+        for (String toolName : plan.getTools()) {
+            AgentTool tool = toolMap.get(toolName);
+            if (tool == null) {
+                continue;
+            }
+            for (ToolParam param : tool.getParams()) {
+                if (!"question".equals(param.getSource()) || param.getName() == null
+                        || plan.getParams().containsKey(param.getName())
+                        || hasCachedValue(context, param.getName())) {
+                    continue;
+                }
+                // text 类"需求描述"参数：用户话术极短且会话已有解析文档时，以文档内容为主体补槽
+                String value = "text".equals(param.getName()) && !docContext.isEmpty()
+                        ? docContext + "\n【用户本轮指令】" + (question == null || question.isBlank() ? "（未输入）" : question.trim())
+                        : question;
+                if (value == null || value.isBlank()) {
+                    continue;
+                }
+                plan.getParams().put(param.getName(), value);
+                plan.addTrace("params", "参数「" + (param.getLabel() != null && !param.getLabel().isBlank()
+                        ? param.getLabel() : param.getName()) + "」结合会话上下文补齐");
+            }
+        }
+    }
+
+    /** 会话解析文档上下文：resolvedParams 的 document_text 截断摘要（无则空串）。 */
+    private String docContextOf(SessionContext context) {
+        if (context == null) {
+            return "";
+        }
+        Object text = context.getResolvedParams().get("document_text");
+        if (!(text instanceof String s) || s.isBlank()) {
+            return "";
+        }
+        // 送入工具的 text 会再经 LLM 抽取/生成，摘要上限与理解层注入策略对齐（防 prompt 膨胀）
+        return s.length() > 2000 ? s.substring(0, 2000) + "…（已截断）" : s;
+    }
+
+    /** 参数是否已有跨轮缓存值（resolvedParams / cachedEvidence 顶层键），有则不补槽（缓存优先）。 */
+    private boolean hasCachedValue(SessionContext context, String paramName) {
+        if (context == null || paramName == null) {
+            return false;
+        }
+        Object cached = context.getResolvedParams().get(paramName);
+        if (cached == null) {
+            cached = context.getCachedEvidence().get(paramName);
+        }
+        return cached != null && !String.valueOf(cached).isBlank()
+                && !"null".equals(String.valueOf(cached));
     }
 
     /** 本轮理解环节暂存的推理日志（解析成功后统一注入计划；失败重试时日志不丢）。 */
@@ -345,7 +414,7 @@ public class DefaultUnderstander implements Understander {
             sanitized = List.of("rd_config_search");
         }
 
-        // flow_execute 守门：LLM 只能从已发布流程注册表（FlowIntentRouter）中选定 workflow_code，
+        // flow_execute 守门：LLM 只能从已发布流程注册表（PublishedFlowRegistry）中选定 workflow_code，
         // 防幻觉流程编码穿透到执行层（确定性锚点 = workflow_code，方案 §12.2/12.3）。
         // 注册表中无该流程 → 剔除 flow_execute；剔除后无任何可用工具 → 返回 null 走 chatPlan 统一回复话术。
         if (sanitized.contains("flow_execute") && !hasRegisteredFlow(params)) {
@@ -839,22 +908,21 @@ public class DefaultUnderstander implements Understander {
     /**
      * 已发布固定流程能力清单（供 LLM 选择 flow_execute 的 workflow_code）。
      * <p>
-     * 数据源为流程路由注册表（发布工作流时自动注册触发词），只注入名称/编码/触发词，
+     * 数据源为已发布流程注册表（DB is_active=true，发布/下线即时生效），只注入名称/编码，
      * 参数契约不入 prompt（防膨胀）：LLM 缺参时由 ParamCompletionGate 的 CLARIFY 机制补齐。
      * 注册表为空时不注入（用户不可执行任何流程，也不给 LLM 编造空间）。
      */
     private String buildFlowCapabilitySection() {
-        Map<String, com.sitech.prodai.service.agent.flow.FlowIntentRouter.FlowRoute> routes =
-                flowIntentRouter == null ? Map.of() : flowIntentRouter.listRoutes();
-        if (routes.isEmpty()) {
+        Map<String, com.sitech.prodai.service.agent.flow.PublishedFlowRegistry.PublishedFlow> flows =
+                publishedFlowRegistry == null ? Map.of() : publishedFlowRegistry.listPublished();
+        if (flows.isEmpty()) {
             return "";
         }
         StringBuilder sb = new StringBuilder("【可用固定流程（经 flow_execute 执行，workflow_code 必须取自本清单）】\n");
-        for (com.sitech.prodai.service.agent.flow.FlowIntentRouter.FlowRoute route : routes.values()) {
-            sb.append("- ").append(route.workflowCode())
-                    .append("（").append(route.displayName() == null || route.displayName().isBlank()
-                            ? route.workflowCode() : route.displayName()).append("）")
-                    .append("：适用话术如「").append(String.join("、", route.keywords())).append("」\n");
+        for (com.sitech.prodai.service.agent.flow.PublishedFlowRegistry.PublishedFlow flow : flows.values()) {
+            sb.append("- ").append(flow.workflowCode())
+                    .append("（").append(flow.displayName() == null || flow.displayName().isBlank()
+                            ? flow.workflowCode() : flow.displayName()).append("）\n");
         }
         sb.append("若用户需求命中上述某个流程，调用 flow_execute 并把 workflow_code 设为该流程编码；")
           .append("需求与所有流程均不匹配时，不要调用 flow_execute，改用其他能力或直接说明无法办理。\n");
@@ -871,9 +939,8 @@ public class DefaultUnderstander implements Understander {
                 || "null".equalsIgnoreCase(String.valueOf(code))) {
             return false;
         }
-        Map<String, com.sitech.prodai.service.agent.flow.FlowIntentRouter.FlowRoute> routes =
-                flowIntentRouter == null ? Map.of() : flowIntentRouter.listRoutes();
-        return routes.containsKey(String.valueOf(code).trim());
+        return publishedFlowRegistry != null
+                && publishedFlowRegistry.contains(String.valueOf(code).trim());
     }
 
     /** 场景白名单过滤后的可见工具列表（能力市场：LLM 只能看到本场景声明的工具）。 */
