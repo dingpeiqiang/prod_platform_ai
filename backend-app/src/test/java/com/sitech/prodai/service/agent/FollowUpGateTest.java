@@ -228,7 +228,7 @@ class FollowUpGateTest {
 
     @Test
     void failureFallbackGivesRetryAdvice() {
-        // LLM 失败 + 结果失败 → 确定性兜底给修复性指引
+        // LLM 失败 + 结果失败 → 确定性兜底给修复性指令
         when(llmService.completePrompt(contains("swrl_root_cause"))).thenThrow(new IllegalStateException("llm down"));
         DefaultPresenter presenter = opsPresenter();
 
@@ -237,12 +237,12 @@ class FollowUpGateTest {
                 List.of(ExecutionResult.fail("swrl_root_cause", "推理引擎超时")),
                 new SessionContext());
 
-        assertEquals(List.of("换一种说法重试刚才的操作"), followUps);
+        assertEquals(List.of("换一种说法重新发起刚才的查询"), followUps);
     }
 
     @Test
     void handoffFallbackUsesToolLabels() {
-        // LLM 不可用 → handoffs 兜底话术由承接工具的业务标签组成
+        // LLM 不可用 → handoffs 兜底话术由承接工具的业务标签组成（指令式：动作开头）
         when(llmService.completePrompt(contains("rd_workorder_create"))).thenThrow(new IllegalStateException("llm down"));
         DefaultPresenter presenter = rdPresenter();
 
@@ -254,6 +254,22 @@ class FollowUpGateTest {
         // rd_doc_parse 声明承接 rd_draft_extract（标签：套餐抽取）与 rd_workorder_create（标签：批量落库开单）
         assertEquals(2, followUps.size());
         assertTrue(followUps.get(0).contains("套餐抽取") || followUps.get(0).contains("批量落库开单"));
+    }
+
+    @Test
+    void openEndedSuggestionsAreDroppedByGate() {
+        // 守门剔除开放式追问/方向性暗示：这些话术系统无法直接处理，不是明确指令
+        when(llmService.completePrompt(contains("swrl_root_cause"))).thenReturn(
+                "[{\"text\":\"您想继续做什么呢？\",\"tool\":\"swrl_root_cause\"},"
+                        + "{\"text\":\"可以看看别的数据\",\"tool\":\"sparql_query\"},"
+                        + "{\"text\":\"对畅享128发起风险稽核\",\"tool\":\"swrl_risk_audit\"}]");
+        DefaultPresenter presenter = opsPresenter();
+
+        List<String> followUps = presenter.suggestFollowUps(
+                "畅享128为什么下滑", rootCauseResults(), new SessionContext());
+
+        // 仅明确指令（动词+对象）保留，开放式问题与暗示剔除
+        assertEquals(List.of("对畅享128发起风险稽核"), followUps);
     }
 
     private SessionContext rdContext() {
