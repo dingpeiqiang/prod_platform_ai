@@ -1771,8 +1771,6 @@ const onSuggest = (payload) => {
   }
   let text = typeof payload === 'string' ? payload : payload.text
   if (!text) return
-  // 跟进建议 / 推荐话术：预填输入框
-  inputText.value = text
   // nextSteps 快捷芯片：打开运营视图（原 ops 页 open-ops-view 语义）
   if (/打开运营视图|打开产品运营视图|产品运营视图/.test(String(text)) && String(text).length <= 12) {
     onOpenOps()
@@ -1784,6 +1782,8 @@ const onSuggest = (payload) => {
     handleConfigTrace()
     return
   }
+  // 跟进建议即明确指令：点击直接发送（预填输入框易被误认为「无反应」）
+  const scene = scenario === 'query' ? 'query' : 'rd'
   if (scenario === 'file-parse') {
     activeScene.value = 'rd.import'
   } else if (scenario === 'query') {
@@ -1792,6 +1792,7 @@ const onSuggest = (payload) => {
     activeScene.value = 'rd.chat'
     productConfig.createEmptyOfferingCanvas()
   }
+  sendAgentMessage({ text, scene })
 }
 
 /** CLARIFY 澄清补参结构化回传：带 params 重发「继续」 */

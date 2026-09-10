@@ -225,17 +225,17 @@ public class DefaultPresenter implements Presenter {
     }
 
     /**
-     * 确定性兜底建议：本轮工具声明了 handoffs 时给承接话术（用工具业务标签组织），
-     * 失败结果给修复性指引；无任何依据时给探索性通用建议。仍排除与上轮重复的建议。
+     * 确定性兜底建议：本轮工具声明了 handoffs 时给承接话术（指令式：动作动词 + 承接工具业务名），
+     * 失败结果给修复性指令；无任何依据时给可执行的探索性指令。仍排除与上轮重复的建议。
      */
     private List<String> fallbackFollowUps(List<ExecutionResult> results, SessionContext context) {
         List<String> out = new ArrayList<>();
         if (results == null || results.isEmpty()) {
-            return List.of("查看其他相关数据", "切换分析视角");
+            return List.of("查询其他相关数据", "切换分析视角重新查询");
         }
         for (ExecutionResult result : results) {
             if (!result.isSuccess()) {
-                out.add("换一种说法重试刚才的操作");
+                out.add("换一种说法重新发起刚才的查询");
                 continue;
             }
             AgentTool tool = toolMap.get(result.getToolName());
@@ -245,15 +245,47 @@ public class DefaultPresenter implements Presenter {
             for (String next : tool.getHandoffs()) {
                 AgentTool nextTool = toolMap.get(next);
                 if (nextTool != null) {
-                    out.add("接下来" + nextTool.getLabel() + "试试");
+                    String label = nextTool.getLabel();
+                    String verb = verbForTool(next);
+                    // 标签已含动词语义（如「套餐抽取」「合规校验」）时直接用标签，避免「抽取套餐抽取」叠词
+                    if (label.startsWith(verb) || label.startsWith(verb.substring(0, 1))) {
+                        out.add(label);
+                    } else {
+                        out.add(verb + label);
+                    }
                 }
             }
         }
         out.removeIf(s -> s.isBlank() || recentHistoryTexts(context).contains(s));
         if (out.isEmpty()) {
-            out.add("查看其他相关数据");
+            out.add("查询其他相关数据");
         }
         return out.stream().distinct().limit(3).toList();
+    }
+
+    /**
+     * 承接工具 → 指令动词（动作开头，保证兜底话术同样是系统可直接处理的明确指令）。
+     */
+    private String verbForTool(String toolName) {
+        return switch (toolName) {
+            case "swrl_root_cause", "attribution_query" -> "对目标对象发起";
+            case "swrl_risk_audit" -> "对目标商品发起";
+            case "sparql_query", "metric_query", "user_plan_query", "query_heat" -> "查询";
+            case "product_360", "gov_enterprise_directory" -> "查看";
+            case "city_policy_query", "rule_explain", "ontology_explain" -> "解读";
+            case "market_benchmark" -> "对比";
+            case "product_change_alert" -> "订阅";
+            case "rd_doc_parse" -> "解析";
+            case "rd_draft_extract", "rd_slot_extract", "rd_category_resolve" -> "抽取";
+            case "rd_draft_generate" -> "生成";
+            case "rd_compliance" -> "对草稿执行";
+            case "rd_workorder_create" -> "提交";
+            case "rd_draft_manage" -> "管理";
+            case "rd_config_search" -> "检索";
+            case "rd_scheme_compare" -> "对比";
+            case "flow_execute" -> "执行";
+            default -> "执行";
+        };
     }
 
     /**
@@ -351,6 +383,11 @@ public class DefaultPresenter implements Presenter {
         sb.append("\n请基于该结果，建议用户接下来最自然的 2~3 个业务动作（如归因后建议对影响最大的对象建单、")
                 .append("稽核后建议导出清单、对比后建议采用推荐方案；话术应结合上面给出的结果关键内容，")
                 .append("能引用具体对象/数字则引用）。")
+                .append("每条必须是【明确指令】，点击即可直接执行：")
+                .append("以动词开头（如查询/对比/生成/提交/导出/对XX发起稽核），带上具体对象与本轮结果中的关键参数")
+                .append("（商品名、工单号、指标名、时间范围等），系统无需再向用户追问任何信息即可处理。")
+                .append("严禁输出开放式问题（如「您想继续做什么？」）、方向性暗示（如「可以看看XX」「试试XX」）")
+                .append("或缺少对象的模糊建议；宁少勿滥，给不出明确指令时宁可不给。")
                 .append("每条一句话、面向业务人员、可直接作为消息发送，且须承接上面列出的某项能力。")
                 .append("\n仅输出 JSON 数组：[{\"text\": \"话术1\", \"tool\": \"承接的工具名\"}, {\"text\": \"话术2\", \"tool\": \"承接的工具名\"}]");
         String raw = llmService.completePrompt(sb.toString());
@@ -392,9 +429,51 @@ public class DefaultPresenter implements Presenter {
             if (isDuplicateOfRecent(candidate, recent)) {
                 continue;
             }
+            // 守门：非明确指令的候选剔除（开放式问题/方向性暗示无法被系统直接处理）
+            if (!isActionableInstruction(candidate)) {
+                continue;
+            }
             out.add(candidate);
         }
         return out;
+    }
+
+    /**
+     * 候选话术是否为「明确指令」：系统可直接处理（点击即执行，无需再追问）。
+     * <p>
+     * 判定口径（确定性守门，与 prompt 约束同源）：
+     * <ul>
+     *   <li>以动作动词开头或包含动作动词（查询/对比/生成/提交/导出/解析/检索/发起/创建/修改/删除/复制/查看等）；</li>
+     *   <li>不是开放式追问（以？/?/吗/呢 结尾，或以 您想/要不要/是否/需要我 等征询词开头）；</li>
+     *   <li>不是纯方向性暗示（「可以看看/不妨/或许可以/试试」等引导语但无动作宾语的短句）。</li>
+     * </ul>
+     */
+    private boolean isActionableInstruction(String candidate) {
+        if (candidate == null || candidate.isBlank()) {
+            return false;
+        }
+        String s = candidate.trim();
+        // 开放式追问：征询语气无法作为指令执行
+        if (s.endsWith("？") || s.endsWith("?") || s.endsWith("吗") || s.endsWith("呢")) {
+            return false;
+        }
+        String[] probePrefixes = {"您想", "你想", "要不要", "是否需要", "需要我", "要不要我", "是否要", "也许", "或许"};
+        for (String p : probePrefixes) {
+            if (s.startsWith(p)) {
+                return false;
+            }
+        }
+        // 必须含动作动词（含承接业务动作的常见表述），否则视为方向性暗示
+        String[] actionVerbs = {"查询", "查一下", "检索", "搜索", "对比", "比较", "生成", "创建", "新建", "新做",
+                "提交", "导出", "下载", "解析", "抽取", "发起", "执行", "修改", "更新", "删除", "复制", "查看",
+                "分析", "归因", "稽核", "开单", "校验", "重跑", "订阅", "解释", "说明", "排查", "处理", "采纳", "采用",
+                "重试", "换一种说法", "换个说法", "重新发起"};
+        for (String v : actionVerbs) {
+            if (s.contains(v)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
