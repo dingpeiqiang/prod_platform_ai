@@ -244,7 +244,7 @@ class AppStoreApiTest {
         private final AppStoreController controller;
 
         AppStoreFacade(AppMockStore store, BillingRuleCheckService b, SpecAuditService s, TestCaseService t) {
-            this.controller = new AppStoreController(store, b, s, t);
+            this.controller = new AppStoreController(store, b, s, t, new NodeResultService());
         }
 
         Map<String, Object> genCrm(Map<String, Object> req) {
