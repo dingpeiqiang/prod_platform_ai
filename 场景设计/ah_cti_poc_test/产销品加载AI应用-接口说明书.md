@@ -1,0 +1,439 @@
+# 产销品加载 AI 应用 · 接口说明书（插件对接规范）
+
+> 版本：v1.0
+> 更新日期：2026-09-10
+> 适用范围：平台插件录入（工具类型 url）联调对接，与《产销品加载AI应用-开发工作清单.md》11 接口一一对应。
+> 实现位置：`backend-app/src/main/java/com/sitech/prodai/controller/AppStoreController.java`（Spring Boot，端口 6174）
+
+---
+
+## 1. 全局约定
+
+### 1.1 基础信息
+
+| 项 | 值 |
+| --- | --- |
+| Base URL（本地） | `http://localhost:6174/api/v1/appstore` |
+| 协议 | HTTP/HTTPS |
+| 报文格式 | `application/json; charset=UTF-8` |
+| 认证 | 网关统一 JWT（现工程 `JwtAuthFilter` 自动拦截 `/api/**`，登录 `/api/v1/auth/login` 获取 Token 后以 `Authorization: Bearer <token>` 携带）；上生产后切换为网关 Token/AppKey |
+| 环境隔离 | sit / uat / pre 三套独立部署；写入类接口按环境隔离，生产禁止直连 |
+
+### 1.2 统一响应结构
+
+所有接口出参含统一状态字段，业务字段命名与插件出参定义一致（snake_case）：
+
+```json
+// 成功
+{ "code": 0, "msg": "success", ...业务字段 }
+
+// 业务失败（HTTP 200）
+{ "code": <非0错误码>, "msg": "<失败原因>" }
+```
+
+框架级异常（参数缺失/系统错误）由全局异常处理器兜底，返回 HTTP 4xx/5xx：
+
+```json
+{ "success": false, "error_code": "bad_request", "message": "...", "request_id": "..." }
+```
+
+插件侧判定规则：优先看 `code == 0`；HTTP 非 200 或缺 `code` 字段按系统异常重试。
+
+### 1.3 幂等约定
+
+写入类接口（接口2/3/9）支持幂等：请求体携带 `idempotency_key`（string，选填，建议 UUID）。
+- 首次请求正常执行并缓存响应快照；
+- 相同 key 重复请求直接回放首次响应，不重复生成数据。
+
+### 1.4 通用错误码
+
+| code | 含义 | 处理建议 |
+| --- | --- | --- |
+| 0 | 成功 | — |
+| 1xxx/2xxx/... | 业务错误（各接口定义见下） | 按 `msg` 提示或由大模型归纳 |
+| 4002/9003 等 | 枚举参数非法 | 修正入参 |
+| HTTP 400 | 参数校验失败（bad_request/validation_error） | 检查必填字段 |
+| HTTP 401 | 未认证 | 重新获取 Token |
+| HTTP 500 | 系统异常（internal_error/db_error） | 携带 request_id 排障 |
+
+---
+
+## 2. 接口明细
+
+### 接口1：产销品配置查询 `query_product_config`
+
+- **地址**：`GET {base}/products/config/query`
+- **用途**：按名称/编码模糊查询产销品配置（含规格与资费快照），供比对与复用。
+- **入参**（Query String）：
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| keyword | string | 否 | 名称/编码/规格模糊匹配 |
+| product_id | string | 否 | 精确/包含匹配产品编码 |
+| status | string | 否 | 枚举 `online`/`offline`/`all`，默认 `all` |
+
+- **出参**：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| code | int | 0 成功 |
+| msg | string | success |
+| total | int | 命中条数 |
+| list | array | 产品列表 |
+| list[].product_id | string | 产品编码，如 `P20260001` |
+| list[].product_name | string | 产品名称 |
+| list[].spec_json | string | 结构化规格快照（JSON 字符串） |
+| list[].fee_json | string | 结构化资费快照（JSON 字符串） |
+| list[].sale_scope | string | 销售范围，如 `anhui-all` |
+| list[].status | string | `online`/`offline`/`draft` |
+| list[].created_at | string | 创建时间 ISO-8601 |
+
+- **示例**：
+
+```json
+// GET /api/v1/appstore/products/config/query?keyword=流量&status=online
+{ "code": 0, "msg": "success", "total": 1,
+  "list": [ { "product_id": "P20260001", "product_name": "畅享流量包",
+              "spec_json": "{\"spec_desc\":\"10GB国内流量/月，超出5元/GB\"}",
+              "fee_json": "{\"fee_desc\":\"monthly_fee:29元\"}",
+              "sale_scope": "anhui-all", "status": "online",
+              "created_at": "2026-09-10T18:30:00" } ] }
+```
+
+---
+
+### 接口2：CRM 配置数据生成 `gen_crm_config`
+
+- **地址**：`POST {base}/crm/config/generate`
+- **用途**：按 CRM 导入格式生成配置数据（产品目录、属性、资费绑定、销售范围），生成前做重复性校验；成功后同步登记产销品档案（接口1 可查，状态 `draft`）。
+- **幂等**：支持 `idempotency_key`。
+- **入参**（JSON Body）：
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| product_name | string | 是 | 产品名称 |
+| fee_json | string/object | 是 | 资费定义（JSON 字符串或对象） |
+| sale_scope | string | 是 | 销售范围，如 `anhui-all` |
+| product_id | string | 否 | 产品编码；不传自动生成 |
+| product_desc | string | 否 | 产品描述，默认取产品名称 |
+| spec_json | string | 否 | 规格快照 |
+| effect_date | string | 否 | 生效日期 `yyyy-MM-dd` |
+| expire_date | string | 否 | 失效日期 |
+| attrs | array | 否 | 产品属性列表 |
+| idempotency_key | string | 否 | 幂等键 |
+
+- **出参**：`crm_config_id`、`crm_config_json`（完整配置 JSON 字符串）、`status`（恒为 `generated`）。
+- **错误码**：
+
+| code | 含义 |
+| --- | --- |
+| 1001 | product_name/fee_json/sale_scope 必填 |
+| 1002 | 同名产品已存在 CRM 配置（重复性校验拒绝） |
+
+- **示例**：
+
+```json
+// POST /api/v1/appstore/crm/config/generate
+// 请求
+{ "product_name": "畅享流量包Pro", "fee_json": "{\"monthly_fee\":39}",
+  "sale_scope": "anhui-all", "effect_date": "2026-10-01", "idempotency_key": "uuid-001" }
+// 响应
+{ "code": 0, "msg": "success", "crm_config_id": "CRM1001",
+  "crm_config_json": "{\"crm_config_id\":\"CRM1001\",\"product_name\":\"畅享流量包Pro\",\"catalog\":\"产品目录/增值业务/畅享流量包Pro\",...}",
+  "status": "generated" }
+```
+
+---
+
+### 接口3：计费配置数据生成 `gen_billing_config`
+
+- **地址**：`POST {base}/billing/config/generate`
+- **用途**：生成计费事件、账期等配置；与 CRM 侧 `product_id` 关联。
+- **幂等**：支持 `idempotency_key`。
+- **入参**（JSON Body）：
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| product_id | string | 是 | 产品编码（与 CRM 侧一致） |
+| fee_json | string/object | 是 | 资费定义 |
+| discount_rules | array | 否 | 优惠叠加规则列表，元素含 `discount_type` 等 |
+| effect_date | string | 否 | 生效日期 |
+| idempotency_key | string | 否 | 幂等键 |
+
+- **出参**：`billing_config_id`、`billing_config_json`（含 `billing_events` 计费事件/`account_period` 账期）、`status`。
+- **错误码**：
+
+| code | 含义 |
+| --- | --- |
+| 2001 | product_id/fee_json 必填 |
+
+- **示例**：
+
+```json
+// 响应
+{ "code": 0, "msg": "success", "billing_config_id": "BILL2001",
+  "billing_config_json": "{\"billing_config_id\":\"BILL2001\",\"product_id\":\"P20260001\",\"billing_events\":[{\"event\":\"order\",...},{\"event\":\"monthly_bill\",...},{\"event\":\"cancel\",...}],\"account_period\":\"自然月\",...}",
+  "status": "generated" }
+```
+
+---
+
+### 接口4：计费规则校验 `check_billing_rule`
+
+- **地址**：`POST {base}/rules/verify`
+- **用途**：内置规则引擎校验计费配置（资费互斥、叠加上限、负资费、边界价差、自定义规则）。
+- **入参**（JSON Body）：
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| billing_config_json | string | 是 | 计费配置 JSON 字符串（也接受对象，字段名 `billing_config`） |
+| check_scene | string | 否 | 枚举 `fee`/`overlay`/`superposition`/`all`，默认 `all` |
+
+- **出参**：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| code / msg | — | 统一状态 |
+| pass | int | 0=通过，1=存在风险 |
+| risk_list | array | 风险清单 |
+| risk_list[].risk_type | string | `overlap_conflict`（互斥）/`negative_fee`（负资费）/`boundary_price_gap`（价差）/`overlay_limit_exceeded`（叠加上限）/`custom_rule`（自定义） |
+| risk_list[].risk_desc | string | 风险描述 |
+| risk_list[].suggest | string | 处置建议 |
+
+- **规则可配置化**：`POST {base}/rules/config`（附加接口，非插件工具）支持更新 `overlay_limit`（叠加上限）、`boundary_price_ratio`（边界价差比例）、`mutex_pairs`（互斥对），与知识库规则同步。
+- **示例**：
+
+```json
+// 请求
+{ "billing_config_json": "{\"discount_rules\":[{\"discount_type\":\"limited_time\"},{\"discount_type\":\"long_term\"}]}", "check_scene": "all" }
+// 响应
+{ "code": 0, "msg": "success", "pass": 1,
+  "risk_list": [ { "risk_type": "overlap_conflict", "risk_desc": "互斥优惠同时存在: 限时优惠与长期优惠互斥", "suggest": "移除其中一方叠加规则" } ] }
+```
+
+---
+
+### 接口5：配置规格稽核 `check_product_spec`
+
+- **地址**：`POST {base}/spec/audit`
+- **用途**：按业务规范做完整性/合规性校验（必填属性、命名规则、生效期逻辑、销售范围合法性、跨系统一致性）；模板可配置。
+- **入参**（JSON Body）：
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| crm_config_json | string | 是 | CRM 配置 JSON 字符串（或对象 `crm_config`） |
+| billing_config_json | string | 是 | 计费配置 JSON 字符串（或对象 `billing_config`） |
+| audit_template | string/object | 否 | 自定义模板，支持 `name_pattern`（命名正则）、`required_attrs`（追加必填项）；缺省用默认规范模板 |
+
+- **默认校验项**：
+  - 必填属性：`product_name`、`product_desc`、`fee_json`、`sale_scope`、`effect_date`
+  - 命名规则：2-20 位中英文/数字
+  - 生效期：effect_date ≤ expire_date；CRM 与计费侧生效日期一致
+  - 销售范围：`anhui-all`/`anhui-hefei`/`anhui-wuhu`/`anhui-bengbu`/`nationwide`
+  - 跨系统：CRM 与计费侧 `product_id` 一致
+
+- **出参**：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| pass | int | 0=通过，1=存在错误 |
+| error_list | array | 错误清单 |
+| error_list[].item | string | 出错字段 |
+| error_list[].level | string | `high`/`middle`/`low` |
+| error_list[].desc | string | 错误描述 |
+| error_list[].suggest | string | 修正建议 |
+
+- **错误码**：`5001` crm_config_json/billing_config_json 必填且须为合法 JSON。
+
+---
+
+### 接口6：测试用例生成 `gen_test_cases`
+
+- **地址**：`POST {base}/cases/generate`
+- **用途**：规则驱动生成四类场景用例（受理/变更/退订/计费）+ 资费边界用例（月末生效日、叠加达上限），用例为结构化步骤，与执行引擎对齐。
+- **入参**（JSON Body）：
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| crm_config_json | string | 是 | CRM 配置（或对象 `crm_config`） |
+| billing_config_json | string | 是 | 计费配置（或对象 `billing_config`） |
+| case_type | string | 否 | 枚举 `acceptance`/`change`/`cancel`/`billing`/`all`，默认 `all` |
+
+- **出参**：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| case_count | int | 生成用例数 |
+| case_ids | array[string] | 用例 ID 列表（`TC9001` 格式） |
+| case_list_json | string | 用例列表 JSON 字符串，元素含 `case_id`/`case_type`/`case_name`/`steps[{action,expect,actual}]` |
+
+- **错误码**：`6001` crm_config_json/billing_config_json 必填且须为合法 JSON。
+- **说明**：`case_type=all` 时生成 4 类场景 + 2 条边界用例（共 6 条）；指定单类时 1 条场景 + 2 条边界（共 3 条）。
+
+---
+
+### 接口7：测试用例执行 `run_test_cases`
+
+- **地址**：`POST {base}/cases/execute`
+- **用途**：按环境执行用例，支持同步/异步两种模式；环境隔离，`prod` 直接拒绝。
+- **入参**（JSON Body）：
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| case_ids | array[string] | 是 | 用例 ID 列表（接口6 产物） |
+| env | string | 否 | 枚举 `sit`/`uat`/`pre`，默认 `sit`；`prod` 非法 |
+| execute_mode | string | 否 | 枚举 `sync`/`async`，默认 `sync` |
+
+- **出参（sync）**：`task_id`、`total`、`passed`、`failed`、`fail_detail[{case_id, step, expect, actual, reason}]`
+- **出参（async）**：`task_id`、`status`（`running`），需通过任务回查接口获取结果。
+- **任务回查（可选开发项）**：`GET {base}/tasks/{task_id}`
+  - 出参：`task_id`、`env`、`status`（`running`/`finished`）、`total`、`passed`、`failed`、`fail_detail`
+  - 错误码：`4004` 任务不存在
+- **错误码**：
+
+| code | 含义 |
+| --- | --- |
+| 4001 | 用例不存在 |
+| 4002 | 非法环境（生产环境禁止执行） |
+| 7001 | case_ids 必填 |
+
+- **Mock 行为**：每条用例约 10% 概率失败（联调演示用），失败明细定位到步骤并给出原因。
+
+---
+
+### 接口8：受理验证 `verify_acceptance`
+
+- **地址**：`POST {base}/order/verify`
+- **用途**：在验证环境自动发起模拟受理/变更/退订订单并回读结果。
+- **入参**（JSON Body）：
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| product_id | string | 是 | 产品编码 |
+| verify_type | string | 否 | 枚举 `new`/`change`/`cancel`，默认 `new` |
+
+- **出参**：`pass`（0=通过）、`order_id`（`ORD5001` 格式）。
+- **错误码**：
+
+| code | 含义 |
+| --- | --- |
+| 8001 | product_id 必填 |
+| 8002 | verify_type 非法 |
+| 8003 | 产销品不存在 |
+
+---
+
+### 接口9：上线审批推送 `submit_release_approval`
+
+- **地址**：`POST {base}/approval/submit`
+- **用途**：对接 OA/审批系统，附测试与稽核报告附件，发起上线审批。
+- **幂等**：支持 `idempotency_key`。
+- **入参**（JSON Body）：
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| product_id | string | 是 | 产品编码 |
+| report | string | 二选一 | 报告内容文本 |
+| report_url | string | 二选一 | 报告文件 URL |
+| approval_flow | string | 否 | 枚举 `standard`/`urgent`，默认 `standard` |
+| idempotency_key | string | 否 | 幂等键 |
+
+- **出参**：`approval_id`（`AP7001` 格式）、`status`（`submitted`）。
+- **错误码**：
+
+| code | 含义 |
+| --- | --- |
+| 9001 | product_id 与 report/report_url 必填 |
+| 9002 | 产销品不存在 |
+| 9003 | approval_flow 非法 |
+
+---
+
+### 接口10：产销品监控查询 `query_product_monitor`
+
+- **地址**：`GET {base}/product/monitor`
+- **用途**：聚合订单量、计费差错率、告警关联等指标，支持时间范围。
+- **入参**（Query String）：
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| product_id | string | 是 | 产品编码 |
+| date_range | string | 否 | 时间范围，如 `2026-09-01~2026-09-10` |
+| metric | string | 否 | 枚举 `order`/`error`/`fee`/`all`，默认 `all`（当前实现恒全量返回，metric 仅作过滤提示） |
+
+- **出参**：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| order_count | int | 订单量（按 productId 确定性 Mock，100~999） |
+| error_count | int | 差错单数（0~7） |
+| fee_error_rate | double | 计费差错率（0~0.004） |
+| alarm_list | array | 关联告警（接口11 推送的告警回显：`alarm_id`/`alarm_level`/`content`/`created_at`） |
+| metric / date_range | — | 入参回显 |
+
+- **错误码**：
+
+| code | 含义 |
+| --- | --- |
+| 10001 | product_id 必填 |
+| 10002 | 产销品不存在 |
+
+---
+
+### 接口11：异常告警推送 `send_alert`
+
+- **地址**：`POST {base}/alert/send`
+- **用途**：对接运维群机器人/工单系统推送告警；推送后可在接口10 的 `alarm_list` 回查。
+- **入参**（JSON Body）：
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| product_id | string | 是 | 产品编码 |
+| alarm_level | string | 否 | 枚举 `high`/`middle`/`low`，默认 `low` |
+| content | string | 是 | 告警内容 |
+
+- **出参**：`alert_id`（`AL3001` 格式）、`status`（`sent`）。
+- **错误码**：
+
+| code | 含义 |
+| --- | --- |
+| 11001 | product_id/content 必填 |
+| 11002 | alarm_level 非法 |
+
+---
+
+## 3. 错误码总表
+
+| code | 接口 | 含义 |
+| --- | --- | --- |
+| 1001 | 2 | 必填项缺失（product_name/fee_json/sale_scope） |
+| 1002 | 2 | 同名产品 CRM 配置已存在 |
+| 2001 | 3 | 必填项缺失（product_id/fee_json） |
+| 3001 | 4 | billing_config_json 缺失或非法 JSON |
+| 4001 | 7 | 用例不存在 |
+| 4002 | 7 | 非法执行环境（禁止打生产） |
+| 4004 | 7b | 任务不存在 |
+| 5001 | 5 | crm/billing 配置缺失或非法 JSON |
+| 6001 | 6 | crm/billing 配置缺失或非法 JSON |
+| 7001 | 7 | case_ids 必填 |
+| 8001 | 8 | product_id 必填 |
+| 8002 | 8 | verify_type 非法 |
+| 8003 | 8 | 产销品不存在 |
+| 9001 | 9 | product_id 与报告附件必填 |
+| 9002 | 9 | 产销品不存在 |
+| 9003 | 9 | approval_flow 非法 |
+| 10001 | 10 | product_id 必填 |
+| 10002 | 10 | 产销品不存在 |
+| 11001 | 11 | product_id/content 必填 |
+| 11002 | 11 | alarm_level 非法 |
+
+---
+
+## 4. 联调说明（平台侧插件录入）
+
+1. **连通性**：先以接口1（GET）验证网关与鉴权打通，再逐个录入写入类工具。
+2. **入参提取**：大模型节点从对话上下文提取入参；`crm_config_json`/`billing_config_json` 在工作流中由接口2/3 出参直接传递（字符串透传即可）。
+3. **出参归纳**：接口4/5 的 `risk_list`/`error_list` 结构固定，可模板化渲染；接口7 异步模式需插件轮询 `GET /tasks/{task_id}`（建议 2s 间隔，上限 30 次）。
+4. **Postman/Swagger**：本地启动后可访问 `http://localhost:6174/v3/api-docs`（若开启）或按本说明书照表录入；每个接口的字段名与本文档严格一致。
+5. **数据重置**：Mock 数据为内存态，服务重启即恢复种子数据（4 条产销品）；联调写脏数据无需清理。
+6. **后续演进**：内存 Mock 替换为 MyBatis-Plus 持久化时，接口契约（路径/入参/出参）保持不变，插件无需改动。
