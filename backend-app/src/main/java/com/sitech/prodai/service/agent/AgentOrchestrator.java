@@ -64,6 +64,9 @@ public class AgentOrchestrator {
     /** 附件-only 摘要追问生成器（豆包式：解析后 LLM 总结 + 开放追问），可选注入。 */
     private final com.sitech.prodai.service.agent.impl.DocSummaryFollowupGenerator docSummaryFollowupGenerator;
 
+    /** 手册意图升级的来源计划（请求级暂存）：手册直达阶段①呈现理解层 LLM 识别过程用。 */
+    private QueryPlan upgradedPlan;
+
     public AgentOrchestrator(Understander understander,
                              Executor executor,
                              Presenter presenter,
@@ -255,23 +258,14 @@ public class AgentOrchestrator {
         }
 
         // 附件-only 分支（豆包式文件处理）：用户只上传附件未输入文本 → 先解析文件，
-        // 再由 LLM 生成「内容总结 + 开放式追问」，不抢跑手册触发词/意图识别（问题见触发词快筛）
+        // 再由 LLM 生成「内容总结 + 开放式追问」，不抢跑手册意图识别
         if (isAttachmentOnly(question, params)) {
             return attachmentOnlyPath(question, params, context, startTime);
         }
 
-        // 手册触发词快筛（入口三级瀑布第一级）：话术命中手册触发词 → 跳过 LLM 意图理解，
-        // 直接按手册链路处理（零 LLM 成本、消除误判）；未命中回落 LLM 理解 → 手册适用域路由
-        String playbookHit = playbookRegistry.matchTrigger(context.getScene(), question);
-        if (playbookHit != null) {
-            log.info("[AgentOrchestrator] 手册触发词快筛命中: playbook={} question={}", playbookHit, question);
-            Map<String, Object> reply = runPlaybookPath(playbookHit, question, params, context, startTime);
-            if (reply != null) {
-                return reply;
-            }
-        }
-
         // Step 2: 理解层 — 自然语言 → 查询计划
+        // 语义判定统一收口理解层 LLM（intent_guide 归口 + examples 正反样例），
+        // 命中 applies_to.intents 经手册意图升级直达链路
         log.info("[AgentOrchestrator] 理解层处理: question={}", question);
         QueryPlan plan = understander.understand(question, context);
         log.info("[AgentOrchestrator] 查询计划: intent={}, tools={}, clarify={}",
@@ -295,7 +289,7 @@ public class AgentOrchestrator {
         }
 
         // 手册意图升级：LLM 识别的意图（经归一化）命中手册 applies_to.intents →
-        // 升级走手册直达链路（sop-step-N 时间线 + 环节 IO），与触发词快筛殊途同归；
+        // 升级走手册直达链路（sop-step-N 时间线 + 环节 IO）；
         // 未命中回落常规动态编排（SOP 已由理解层注入 prompt，LLM 照手册自由编排）
         Map<String, Object> upgradeReply = playbookUpgradePath(plan, context, params, startTime);
         if (upgradeReply != null) {
@@ -406,17 +400,11 @@ public class AgentOrchestrator {
     }
 
     /**
-     * 手册直达链路（触发词快筛命中后）：跳过 LLM 意图理解，按手册适用域声明的
-     * intent/tools 直接组装计划进执行层——零 LLM 成本（节点内 LLM 除外）、零误判。
-     * <p>
-     * 手册声明缺 intents/tools（理论上装载门禁已拦截）时返回 null，调用方回落常规链路。
-     */
-    /**
      * 手册意图升级：理解层 LLM 识别的意图（经 IntentRecognitionSupport 归一化）命中
-     * 手册 applies_to.intents → 升级走手册直达链路，与触发词快筛殊途同归。
+     * 手册 applies_to.intents → 升级走手册直达链路。
      * <p>
-     * 触发词只兜高置信度专有话术；宽泛话术靠 LLM 识别（理解成本已付，不浪费）——
-     * 命中后照直达链路执行（sop-step-N 时间线 + 环节 IO 差异化），不落回动态编排的常规视图。
+     * 命中后照直达链路执行（sop-step-N 时间线 + 环节 IO 差异化），
+     * 不落回动态编排的常规视图。
      * 工具兜底不升级（LLM 自选工具 ≠ 认领整本手册，宁走动态编排不冒进步骤视图）。
      *
      * @return 手册直达链路回复；未命中手册意图返回 null（调用方回落常规链路）
@@ -439,7 +427,13 @@ public class AgentOrchestrator {
         }
         log.info("[AgentOrchestrator] 手册意图升级: playbook={} intent={} question={}",
                 playbookCode, intent, plan.getUserQuestion());
-        return runPlaybookPath(playbookCode, plan.getUserQuestion(), params, context, startTime);
+        // 升级来源计划暂存：手册直达链路呈现理解层 LLM 识别过程（reasoningTrace）用
+        this.upgradedPlan = plan;
+        try {
+            return runPlaybookPath(playbookCode, plan.getUserQuestion(), params, context, startTime);
+        } finally {
+            this.upgradedPlan = null;
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -462,6 +456,11 @@ public class AgentOrchestrator {
         fillQuestionSlots(tools, planParams, question);
         QueryPlan plan = new QueryPlan(intent, tools, planParams, question);
         plan.setUserQuestion(question);
+        // 思考时间线 trace 透传理解层 reasoningTrace（与流式 runPlaybookStream 阶段①同语义）：
+        // 持久化快照 buildReasoningSnapshot 经 traceView(plan) 读取，历史回放呈现完整判定链
+        if (upgradedPlan != null && upgradedPlan.getReasoningTrace() != null) {
+            plan.setReasoningTrace(new ArrayList<>(upgradedPlan.getReasoningTrace()));
+        }
         // 手册步骤结构随 plan 下传：persistTurn 据此把 sop-step-N 写入 reasoning_full（回放同构）
         plan.setSopSteps(parseSopSteps(playbookRegistry.renderSop(playbookCode)));
         // 手册步骤声明 input_from 时构建依赖编排（跨工具数据流：result: 来源解析，
@@ -689,7 +688,7 @@ public class AgentOrchestrator {
 
     /**
      * 手册意图升级（流式）：理解层 LLM 识别的意图命中手册 applies_to.intents →
-     * 升级走流式手册直达链路（sop-step-N 时间线 + 环节 IO），与触发词快筛殊途同归。
+     * 升级走流式手册直达链路（sop-step-N 时间线 + 环节 IO）。
      * <p>
      * 与 {@link #playbookUpgradePath} 同判据；工具兜底不升级（LLM 自选工具 ≠ 认领整本手册）。
      *
@@ -712,12 +711,19 @@ public class AgentOrchestrator {
         }
         log.info("[AgentOrchestrator] 手册意图升级(流式): playbook={} intent={} question={}",
                 playbookCode, intent, plan.getUserQuestion());
-        return runPlaybookStream(playbookCode, plan.getUserQuestion(), params, context, emitter, startTime);
+        // 升级来源计划暂存：手册直达阶段①呈现理解层 LLM 识别过程（reasoningTrace）用
+        this.upgradedPlan = plan;
+        try {
+            return runPlaybookStream(playbookCode, plan.getUserQuestion(), params, context, emitter, startTime);
+        } finally {
+            this.upgradedPlan = null;
+        }
     }
 
     /**
      * 手册直达流式链路：思考时间线四步与常规链路同构，差异在「依据」——
-     * 意图来自手册适用域（非 LLM 判定），方案步骤的 trace 就是手册 SOP 的操作步骤，
+     * 阶段①呈现完整识别链（理解层 LLM 处理日志 + 路由归口判定），
+     * 方案步骤的 trace 就是手册 SOP 的操作步骤，
      * 执行层各工具开始/结束实时下发 tool 事件。手册执行过程对用户完整可见。
      *
      * @return true = 已按手册链路处理完毕；false = 手册声明不完整，调用方回落常规链路
@@ -736,18 +742,22 @@ public class AgentOrchestrator {
         }
         log.info("[AgentOrchestrator] 流式手册直达: playbook={} intent={} tools={}", playbookCode, intent, tools);
 
-        // ── 阶段① 识别：意图来自手册声明，trace 说明判定依据（触发词命中，非 LLM）──
+        // ── 阶段① 识别：呈现「话术为何归入本手册」的判定链 ——
+        // trace 直接透传理解层 reasoningTrace（两阶段：阶段A LLM 判意图 + 命中手册归口说明），
+        // 编排层不重复叙述判定（理解层已含命中说明，再补一条属同义反复）
         String bookTitle = String.valueOf(book.getOrDefault("title", playbookCode));
+        List<Object> intentTrace = new ArrayList<>();
+        if (upgradedPlan != null && upgradedPlan.getReasoningTrace() != null) {
+            intentTrace.addAll(upgradedPlan.getReasoningTrace());
+        }
         Map<String, Object> intentExtra = new LinkedHashMap<>();
-        intentExtra.put("goal", "手册快筛：话术命中触发词，零 LLM 成本直达");
+        intentExtra.put("goal", "先听懂您要做什么，再决定怎么办");
         intentExtra.put("input", Map.of("question", question));
         intentExtra.put("output", Map.of(
                 "summary", "已明确：本次要执行「" + bookTitle + "」",
                 "structured_intent", Map.of("action", bookTitle),
                 "playbook", playbookCode));
-        intentExtra.put("trace", List.of(Map.of(
-                "stage", "sop",
-                "message", "话术命中手册「" + bookTitle + "」触发词，按标准作业程序执行（跳过意图识别）")));
+        intentExtra.put("trace", intentTrace);
         emitter.emit("thinking", Map.of(
                 "steps", List.of(TraceSnapshotBuilder.thinkingStep("intent", "需求识别",
                         "按「" + bookTitle + "」标准作业程序处理", intentExtra)),
@@ -1135,9 +1145,9 @@ public class AgentOrchestrator {
     }
 
     /**
-     * 手册直达链路按工具参数契约自动补槽：手册快筛跳过了理解层 LLM（零 LLM 成本直达），
-     * 没有槽位提取环节，工具声明的 source=question 必填参数（如 rd_draft_generate 的 text、
-     * rd_config_search 的 question）会拿不到值——executor 的 direct 兜底只透传 plan.params
+     * 手册直达链路按工具参数契约自动补槽：理解层 LLM 未必为手册链路抽取槽位，
+     * 工具声明的 source=question 必填参数（如 rd_draft_generate 的 text、
+     * rd_config_search 的 question）可能拿不到值——executor 的 direct 兜底只透传 plan.params
      * 同名键，而 plan.params 里只有 question，参数名不一致即触发「缺少配置需求描述」类失败。
      * <p>
      * 修复策略：遍历手册工具链上每个工具的参数契约，凡 source=question 的参数
@@ -1907,16 +1917,9 @@ public class AgentOrchestrator {
             return;
         }
 
-        // 附件-only 分支（流式，先于触发词快筛）：只上传附件未输入文本 → 解析 + 总结 + 开放追问
+        // 附件-only 分支（流式）：只上传附件未输入文本 → 解析 + 总结 + 开放追问
         if (isAttachmentOnly(question, params)) {
             attachmentOnlyStream(question, params, context, emitter, startTime);
-            return;
-        }
-
-        // 手册触发词快筛（流式链路，同同步链路第一级）：命中 → 跳过 LLM 意图理解直达手册链路
-        // 思考时间线四步与常规链路同构：识别 → 方案（=手册 SOP，步骤即手册的操作步骤）→ 执行 → 汇总
-        String playbookHit = playbookRegistry.matchTrigger(context.getScene(), question);
-        if (playbookHit != null && runPlaybookStream(playbookHit, question, params, context, emitter, startTime)) {
             return;
         }
 
@@ -1982,7 +1985,7 @@ public class AgentOrchestrator {
         }
 
         // 手册意图升级：LLM 识别的意图（经归一化）命中手册 applies_to.intents →
-        // 升级流式手册直达链路（sop-step-N 时间线 + 环节 IO），与触发词快筛殊途同归；
+        // 升级流式手册直达链路（sop-step-N 时间线 + 环节 IO）；
         // 未命中回落常规动态编排（SOP 已由理解层注入 prompt，LLM 照手册自由编排）
         if (playbookUpgradeStream(plan, context, params, emitter, startTime)) {
             return;
@@ -2530,7 +2533,7 @@ public class AgentOrchestrator {
 
     /**
      * 判定"附件-only"：请求携带已上传文件（file_id/file_ids）且用户未输入实质文本。
-     * 前端自动补的「导入文档：<文件名>」占位话术也按空文本处理（否则会抢跑手册触发词快筛）。
+     * 前端自动补的「导入文档：<文件名>」占位话术也按空文本处理（不作为业务话术参与意图识别）。
      */
     private boolean isAttachmentOnly(String question, Map<String, Object> params) {
         if (params == null) {

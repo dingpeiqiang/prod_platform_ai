@@ -35,7 +35,7 @@ import static org.mockito.Mockito.when;
  * rd_draft_extract 的 document_text 拿到的是用户原话（fillQuestionSlots 补槽）而非
  * rd_doc_parse 解析产出，真实文档导入实测报「未从文档识别到套餐要素（抽取引擎 none）」。
  * <p>
- * 验证口径：真实 DefaultExecutor + 桩工具（记录每次收到的入参），触发词快筛直达手册链路后——
+ * 验证口径：真实 DefaultExecutor + 桩工具（记录每次收到的入参），LLM 意图升级直达手册链路后——
  * ① parse → extract：document_text 承接解析产出（非用户原话）；
  * ② extract → compliance：draft 参数承接草稿条目清单（List 形态触发批量校验分支）；
  * ③ compliance → create：items 承接校验清单（每条自带合规结论）。
@@ -130,9 +130,17 @@ class DocBatchImportPlaybookChainTest {
                 });
 
         DefaultExecutor executor = new DefaultExecutor(List.of(parseTool, extractTool, complianceTool, createTool));
-        orchestrator = new AgentOrchestrator(new DefaultUnderstander(null, null, null, null, null,
-                        null, null, null), executor, presenter, sessionManager,
-                Optional.empty(), Optional.of(llmService), List.of(parseTool, extractTool, complianceTool, createTool),
+        // LLM 理解层每次都会执行——LlmService（Mock 桩返回工具链计划）与
+        // 能力注册表（场景 → 工具白名单）均必填
+        List<AgentTool> allTools = List.of(parseTool, extractTool, complianceTool, createTool);
+        when(llmService.completeMessages(any(), anyList(), any()))
+                .thenReturn("{\"intent\":\"RD_FILE_PARSE\",\"action\":\"文档批量导入配置\","
+                        + "\"tools\":[\"rd_doc_parse\",\"rd_draft_extract\",\"rd_compliance\",\"rd_workorder_create\"],"
+                        + "\"clarify\":null}");
+        orchestrator = new AgentOrchestrator(new DefaultUnderstander(llmService, allTools, null, null,
+                        new com.sitech.prodai.service.agent.tool.AgentCapabilityRegistry(allTools), null, null, null),
+                executor, presenter, sessionManager,
+                Optional.empty(), Optional.of(llmService), allTools,
                 null,
                 new com.sitech.prodai.service.agent.flow.SceneFlowRouter(
                         new com.sitech.prodai.config.ProdAiProperties(), null,
@@ -196,7 +204,7 @@ class DocBatchImportPlaybookChainTest {
     @Test
     void playbookChainWiresDocumentTextIntoExtractAndItemsIntoCreate() {
         // 附件-only 交互变更（豆包式）：「导入文档：xxx」+ file_id 属于附件-only 场景，
-        // 编排层先解析再追问，不再直达手册全链；显式指令话术仍走触发词快筛直达手册链路
+        // 编排层先解析再追问，不再直达手册全链；带实质文本的指令话术经意图升级直达手册链路
         orchestrator.processStream("导入文档并批量配置：智慧社区融合方案.csv", "s-chain1", new java.util.HashMap<>(Map.of("file_id", "f-1")), "rd",
                 (event, data) -> { });
 

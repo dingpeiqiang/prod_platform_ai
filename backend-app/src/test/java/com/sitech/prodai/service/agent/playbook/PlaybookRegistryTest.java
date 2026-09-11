@@ -75,7 +75,7 @@ class PlaybookRegistryTest {
     }
 
     @Test
-    void chatConfigureAndDiscoverHaveStepsToolsTriggers() {
+    void chatConfigureAndDiscoverHaveStepsTools() {
         Map<String, Object> chat = registry.get("chat-configure");
         assertEquals("对话式配置草稿生成", chat.get("title"));
         assertTrue(chat.get("steps") instanceof List<?> s && s.size() == 5,
@@ -95,23 +95,8 @@ class PlaybookRegistryTest {
     }
 
     @Test
-    void chatConfigureNarrowsTriggersToHighConfidenceTerms() {
-        // 触发词收窄（去误判）：泛用短语（做个/做一个/来一个/来一套）从触发词移除，
-        // 语义判定交给理解层 LLM 按 intent_guide + examples 样例识别
-        assertNull(registry.matchTrigger("rd", "上次配的那个套餐做一个对比"),
-                "泛用短语「做一个」已收窄，对比话术不误直达智聊");
-        assertNull(registry.matchTrigger("rd", "为什么做一个套餐要填这么多要素"),
-                "咨询话术不因「做一个」误直达智聊");
-        // 高置信术语级触发词保留
-        assertEquals("chat-configure", registry.matchTrigger("rd", "帮我配置一个月费128的家庭套餐"),
-                "高置信词「配置一个」仍快筛直达");
-        assertEquals("chat-configure", registry.matchTrigger("rd", "生成配置草稿"),
-                "高置信词「生成配置」仍快筛直达");
-    }
-
-    @Test
     void chatConfigureDeclaresExamplesAndIntentGuide() {
-        // examples 正反样例（few-shot）随 SOP 注入理解层：LLM 语义识别替代触发词判别
+        // examples 正反样例（few-shot）随 SOP 注入理解层：LLM 语义识别的判定素材
         String sop = registry.renderSop("chat-configure");
         assertNotNull(sop);
         assertTrue(sop.contains("判定样例"), () -> "声明了 examples 应输出样例段: " + sop);
@@ -249,57 +234,9 @@ class PlaybookRegistryTest {
                 "rd_draft_manage 不在任何手册工具链 → 不路由（工具兜底不升级语义保留）");
     }
 
-    // ── 触发词快筛（入口三级瀑布第一级） ──
-
-    @Test
-    void triggerHitRoutesDirectly() {
-        assertEquals("doc-batch-import", registry.matchTrigger("rd", "帮我导入文档：方案.docx"),
-                "话术含触发词「导入文档」→ 直达手册");
-        assertEquals("chat-configure", registry.matchTrigger("rd", "帮我配置一个月费128的家庭套餐"),
-                "智聊天话术「配置一个」→ 直达智聊手册");
-        assertEquals("discover-history", registry.matchTrigger("rd", "找一下月费39的校园套餐"),
-                "智查话术「找一下」→ 直达智查手册");
-        assertEquals("risk-audit", registry.matchTrigger("ops", "分析一下哪些商品有下架风险"),
-                "稽核话术「下架风险」→ 直达风险稽核手册");
-        assertEquals("market-insight", registry.matchTrigger("ops", "查一下上月经营数据"),
-                "洞察话术「经营数据」→ 直达市场洞察手册");
-        assertEquals("root-cause", registry.matchTrigger("ops", "做一次根因分析"),
-                "归因话术「根因分析」→ 直达异动归因手册");
-        assertEquals("online-check", registry.matchTrigger("ops", "评估一下这个商品的立项研判"),
-                "立项话术「立项研判」→ 直达立项研判手册");
-    }
-
-    @Test
-    void broadUtterancesMissTriggerByDesign() {
-        // 宽泛话术不做触发词快筛（substring 误触发风险）——交给理解层 LLM 识别，
-        // 意图归一化命中 applies_to.intents 后由编排层升级走手册直达链路
-        assertNull(registry.matchTrigger("ops", "查一下上月哪些数据涨了"),
-                "宽泛综合话术不快筛，留给 LLM 识别（意图升级路由）");
-        assertNull(registry.matchTrigger("ops", "风险商品有哪些"), "宽泛词「风险商品」已从触发词移除");
-        assertNull(registry.matchTrigger("ops", "帮我分析一下"), "宽泛词「分析一下」已从触发词移除");
-    }
-
-    @Test
-    void longestTriggerWinsWhenMultipleMatch() {
-        // doc-batch-import 的触发词里「批量导入」比「导入」长 → 命中后者
-        assertEquals("doc-batch-import", registry.matchTrigger("rd", "批量导入这批文档"));
-    }
-
-    @Test
-    void triggerMissAndSceneMissReturnNull() {
-        assertNull(registry.matchTrigger("rd", "上一轮的套餐叫什么"), "未含触发词 → 不快筛");
-        assertNull(registry.matchTrigger("ops", "导入文档"), "rd 触发词对 ops 场景不快筛");
-        assertNull(registry.matchTrigger("rd", "  "), "空话术 → 不快筛");
-    }
-
-    @Test
-    void sceneMismatchBlocksTrigger() {
-        // 智查触发词对 query 场景不快筛（手册声明 applies_to.scene=rd，档案调阅页走常规链路）
-        assertNull(registry.matchTrigger("query", "找一下月费39的校园套餐"),
-                "智查手册 scene=rd，query 场景话术不触发");
-    }
-
     // ── 编排消费（双消费②） ──
+    // 语义判定统一收口理解层 LLM 意图识别，命中 applies_to.intents
+    // 经上方 route 意图升级直达手册链路（入口两级瀑布：意图升级 → 动态编排）
 
     @Test
     void renderSopContainsStepsHowAndTools() {
@@ -321,8 +258,8 @@ class PlaybookRegistryTest {
         assertTrue(sop.contains("意图归口"), () -> "声明了 intent_guide 应输出归口段: " + sop);
         assertTrue(sop.contains("PRODUCT_OPS_QUERY："), () -> "归口段应含意图码: " + sop);
         assertTrue(sop.contains("增长趋势"), () -> "归口段应含话术特征: " + sop);
-        // 未声明 intent_guide 的手册不输出归口段
-        String rdSop = registry.renderSop("doc-batch-import");
+        // 未声明 intent_guide 的手册不输出归口段（discover-history 无 intent_guide 声明）
+        String rdSop = registry.renderSop("discover-history");
         assertFalse(rdSop.contains("意图归口"), "未声明归口的手册不应输出归口段");
     }
 
