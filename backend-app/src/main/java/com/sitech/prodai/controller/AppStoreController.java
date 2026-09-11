@@ -2,6 +2,7 @@ package com.sitech.prodai.controller;
 
 import com.sitech.prodai.service.appstore.AppMockStore;
 import com.sitech.prodai.service.appstore.BillingRuleCheckService;
+import com.sitech.prodai.service.appstore.NodeResultService;
 import com.sitech.prodai.service.appstore.SpecAuditService;
 import com.sitech.prodai.service.appstore.TestCaseService;
 import com.sitech.prodai.service.common.MapOps;
@@ -35,15 +36,18 @@ public class AppStoreController {
     private final BillingRuleCheckService billingRuleCheck;
     private final SpecAuditService specAudit;
     private final TestCaseService testCaseService;
+    private final NodeResultService nodeResultService;
 
     public AppStoreController(AppMockStore store,
                               BillingRuleCheckService billingRuleCheck,
                               SpecAuditService specAudit,
-                              TestCaseService testCaseService) {
+                              TestCaseService testCaseService,
+                              NodeResultService nodeResultService) {
         this.store = store;
         this.billingRuleCheck = billingRuleCheck;
         this.specAudit = specAudit;
         this.testCaseService = testCaseService;
+        this.nodeResultService = nodeResultService;
     }
 
     /* ================= 接口1：产销品配置查询 ================= */
@@ -381,6 +385,28 @@ public class AppStoreController {
         Map<String, Object> body = store.ok("alert_id", alertId);
         body.put("status", "sent");
         return body;
+    }
+
+    /* ================= 接口12：节点结果存储（save_node_result） ================= */
+
+    @Operation(summary = "节点结果存储", description = "各子工作流把环节结果 JSON 按需求单号存入（同键覆盖，支持重跑）")
+    @PostMapping("/result/save")
+    public Map<String, Object> saveNodeResult(@RequestBody Map<String, Object> req) {
+        return nodeResultService.save(
+                MapOps.str(req.get("req_id")),
+                MapOps.str(req.get("node_name")),
+                MapOps.str(req.get("result_json")),
+                MapOps.str(req.get("status")));
+    }
+
+    /* ================= 接口13：节点结果查询（query_node_result） ================= */
+
+    @Operation(summary = "节点结果查询", description = "后续环节按需求单号查询上游环节结果 JSON")
+    @GetMapping("/result/query")
+    public Map<String, Object> queryNodeResult(@RequestParam("req_id") String reqId,
+                                               @RequestParam(required = false) String node_name,
+                                               @RequestParam(required = false, defaultValue = "1") String latest_only) {
+        return nodeResultService.query(reqId, node_name, latest_only);
     }
 
     /* ---------------- 工具 ---------------- */
