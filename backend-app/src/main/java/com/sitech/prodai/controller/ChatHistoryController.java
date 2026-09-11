@@ -3,6 +3,8 @@ package com.sitech.prodai.controller;
 import com.sitech.prodai.domain.entity.ChatMessage;
 import com.sitech.prodai.domain.entity.ChatSession;
 import com.sitech.prodai.service.ChatPersistenceService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -21,6 +23,7 @@ import java.util.Optional;
 /**
  * 会话历史 API —— 前端 Sidebar 加载/管理对话历史。
  */
+@Tag(name = "会话历史", description = "会话与消息记录查询：会话列表、消息明细、会话检索")
 @RestController
 @RequestMapping("/api/v1/chat/history")
 public class ChatHistoryController {
@@ -34,7 +37,8 @@ public class ChatHistoryController {
     /**
      * 获取用户最近的会话列表。
      */
-    @GetMapping("/sessions")
+    @Operation(summary = "会话列表", description = "按用户分页返回会话（标题/时间/标签）")
+@GetMapping("/sessions")
     public Map<String, Object> listSessions(
             @RequestParam(defaultValue = "default") String userId,
             @RequestParam(defaultValue = "20") int limit) {
@@ -62,7 +66,8 @@ public class ChatHistoryController {
     /**
      * 获取会话的所有消息。
      */
-    @GetMapping("/sessions/{sessionId}/messages")
+    @Operation(summary = "会话消息", description = "返回指定会话的全部消息（按 sort_order 排序）")
+@GetMapping("/sessions/{sessionId}/messages")
     public Map<String, Object> getSessionMessages(@PathVariable String sessionId) {
         Map<String, Object> body = new LinkedHashMap<>();
         if (persistenceService.isEmpty()) {
@@ -99,7 +104,8 @@ public class ChatHistoryController {
     /**
      * 删除会话（归档）。
      */
-    @DeleteMapping("/sessions/{sessionId}")
+    @Operation(summary = "删除会话", description = "级联删除会话及其消息与元数据")
+@DeleteMapping("/sessions/{sessionId}")
     public Map<String, Object> deleteSession(@PathVariable String sessionId) {
         persistenceService.ifPresent(svc -> svc.archiveSession(sessionId));
         return Map.of("success", true, "message", "会话已删除");
@@ -108,7 +114,8 @@ public class ChatHistoryController {
     /**
      * 搜索消息。
      */
-    @GetMapping("/search")
+    @Operation(summary = "历史检索", description = "跨会话全文检索历史消息")
+@GetMapping("/search")
     public Map<String, Object> searchMessages(
             @RequestParam(required = false) String sessionId,
             @RequestParam String keyword,

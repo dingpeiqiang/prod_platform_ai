@@ -6,6 +6,8 @@ import com.sitech.prodai.service.FormService;
 import com.sitech.prodai.service.OntologyService;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,6 +27,7 @@ import java.util.Map;
  *
  * <p>端点：本体列表 / 应用配置 / 数据源信息 / 表单历史数据导入导出
  */
+@Tag(name = "系统配置", description = "运行时配置：本体清单、应用信息、数据源状态、导入导出")
 @RestController
 @RequestMapping("/api/v1/config")
 public class ConfigController {
@@ -45,13 +48,15 @@ public class ConfigController {
     }
 
     /** 列出所有本体 —— 对齐 GET /api/v1/config/ontologies */
-    @GetMapping("/ontologies")
+    @Operation(summary = "本体配置清单", description = "返回可用本体资产配置")
+@GetMapping("/ontologies")
     public Map<String, Object> listOntologies() {
         return formService.listOntologies();
     }
 
     /** 应用配置 —— 对齐 GET /api/v1/config/app */
-    @GetMapping("/app")
+    @Operation(summary = "应用信息", description = "返回应用名/版本/构建信息")
+@GetMapping("/app")
     public Map<String, Object> appConfig() {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("success", true);
@@ -64,7 +69,8 @@ public class ConfigController {
     }
 
     /** 数据源信息 —— 对齐 GET /api/v1/config/datasource */
-    @GetMapping("/datasource")
+    @Operation(summary = "数据源状态", description = "返回本体/指标库等数据源连接状态")
+@GetMapping("/datasource")
     public Map<String, Object> datasource() {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("success", true);
@@ -76,7 +82,8 @@ public class ConfigController {
     }
 
     /** 重新加载配置 —— 对齐 POST /api/v1/config/reload */
-    @PostMapping("/reload")
+    @Operation(summary = "重载配置", description = "重载运行时配置与图谱资源")
+@PostMapping("/reload")
     public Map<String, Object> reload() {
         configLoader.reloadConfig("all");
         Map<String, Object> body = new LinkedHashMap<>();
@@ -86,13 +93,15 @@ public class ConfigController {
     }
 
     /** 导入列表 —— 对齐 GET /api/v1/config/import/list */
-    @GetMapping("/import/list")
+    @Operation(summary = "导入清单", description = "返回可导入的表单配置清单")
+@GetMapping("/import/list")
     public Map<String, Object> importList(@RequestParam(required = false) String formCode) {
         return formDataImportService.listImportableForms();
     }
 
     /** 导入模板下载 —— 对齐 GET /api/v1/config/import/template/{formCode} */
-    @GetMapping("/import/template/{formCode}")
+    @Operation(summary = "导入模板下载", description = "按 formCode 返回 Excel 导入模板")
+@GetMapping("/import/template/{formCode}")
     public ResponseEntity<byte[]> importTemplate(@PathVariable String formCode) {
         Map<String, Object> template = formDataImportService.buildTemplate(formCode);
         if (!Boolean.TRUE.equals(template.get("success"))) {
@@ -109,6 +118,7 @@ public class ConfigController {
     }
 
     /** JSONL 文件上传导入 —— 对齐 POST /api/v1/config/import/upload */
+    @Operation(summary = "上传导入文件", description = "multipart 上传 JSONL 导入文件并预校验")
     @PostMapping(value = "/import/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Map<String, Object> importUpload(@RequestParam("file") MultipartFile file,
                                             @RequestParam(required = false) String formCode,
@@ -130,7 +140,8 @@ public class ConfigController {
     }
 
     /** 表单历史数据导入执行 —— 对齐 POST /api/v1/config/import/execute */
-    @PostMapping("/import/execute")
+    @Operation(summary = "执行导入", description = "执行已上传文件的导入（返回成功/失败明细）")
+@PostMapping("/import/execute")
     public Map<String, Object> importExecute(@RequestBody(required = false) Map<String, Object> request) {
         Map<String, Object> req = request == null ? Map.of() : request;
         String formCode = String.valueOf(req.getOrDefault("formCode", req.getOrDefault("form_code", "")));
@@ -146,7 +157,8 @@ public class ConfigController {
     }
 
     /** 导出数据 —— 对齐 GET /api/v1/config/export/{formCode}，JSONL 格式与导入对齐可直接回导 */
-    @GetMapping("/export/{formCode}")
+    @Operation(summary = "数据导出", description = "按 formCode 导出数据为 Excel")
+@GetMapping("/export/{formCode}")
     public ResponseEntity<byte[]> exportData(@PathVariable String formCode,
                                              @RequestParam(required = false) Integer limit) {
         Map<String, Object> result = formDataImportService.exportJsonl(formCode, limit);

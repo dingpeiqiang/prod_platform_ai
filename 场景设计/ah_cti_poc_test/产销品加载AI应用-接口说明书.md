@@ -68,25 +68,25 @@
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| keyword | string | 否 | 名称/编码/规格模糊匹配 |
-| product_id | string | 否 | 精确/包含匹配产品编码 |
-| status | string | 否 | 枚举 `online`/`offline`/`all`，默认 `all` |
+| keyword | string | 否 | 名称/编码/规格模糊匹配；匹配范围为 `product_name`、`product_id`、`spec_json`（包含匹配） |
+| product_id | string | 否 | 产品编码包含匹配（`contains`，非全等），如传 `P2026` 可命中 `P20260001` |
+| status | string | 否 | 枚举 `online`/`offline`/`all`，默认 `all`；按产品状态精确过滤（忽略大小写），不校验非法值 |
 
 - **出参**：
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| code | int | 0 成功 |
-| msg | string | success |
-| total | int | 命中条数 |
-| list | array | 产品列表 |
-| list[].product_id | string | 产品编码，如 `P20260001` |
-| list[].product_name | string | 产品名称 |
-| list[].spec_json | string | 结构化规格快照（JSON 字符串） |
-| list[].fee_json | string | 结构化资费快照（JSON 字符串） |
-| list[].sale_scope | string | 销售范围，如 `anhui-all` |
-| list[].status | string | `online`/`offline`/`draft` |
-| list[].created_at | string | 创建时间 ISO-8601 |
+| code | int | 统一状态码，0 成功，非0 业务失败 |
+| msg | string | 状态描述，成功为 `success`，失败为失败原因 |
+| total | int | 命中条数，即 list 数组长度 |
+| list | array | 产品列表，按匹配度排序 |
+| list[].product_id | string | 产品编码，全局唯一，如 `P20260001`；作为后续各接口的关联主键 |
+| list[].product_name | string | 产品名称，如 `畅享流量包` |
+| list[].spec_json | string | 结构化规格快照（JSON 字符串），含 `spec_desc` 规格/流量/速率等描述 |
+| list[].fee_json | string | 结构化资费快照（JSON 字符串），含 `fee_desc` 资费/计费周期等描述 |
+| list[].sale_scope | string | 销售范围，如 `anhui-all`（安徽全省）/`anhui-hefei`（地市）/`nationwide`（全国） |
+| list[].status | string | 产品状态：`online` 在架 / `offline` 下架 / `draft` 草稿（CRM 配置生成后初始态） |
+| list[].created_at | string | 创建时间，ISO-8601 格式，如 `2026-09-10T18:30:00` |
 
 - **示例**：
 
@@ -111,18 +111,27 @@
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| product_name | string | 是 | 产品名称 |
-| fee_json | string/object | 是 | 资费定义（JSON 字符串或对象） |
-| sale_scope | string | 是 | 销售范围，如 `anhui-all` |
-| product_id | string | 否 | 产品编码；不传自动生成 |
-| product_desc | string | 否 | 产品描述，默认取产品名称 |
-| spec_json | string | 否 | 规格快照 |
-| effect_date | string | 否 | 生效日期 `yyyy-MM-dd` |
-| expire_date | string | 否 | 失效日期 |
-| attrs | array | 否 | 产品属性列表 |
-| idempotency_key | string | 否 | 幂等键 |
+| product_name | string | 是 | 产品名称，2-20 位中英文/数字（接口5 命名稽核规则）；同名产品若已存在 CRM 配置则返回 1002 |
+| fee_json | string/object | 是 | 资费定义（JSON 字符串或对象），如 `{"monthly_fee":39}`；原样写入 CRM 配置，与计费侧共用 |
+| sale_scope | string | 是 | 销售范围，枚举 `anhui-all`（安徽全省）/`anhui-hefei`/`anhui-wuhu`/`anhui-bengbu`（地市）/`nationwide`（全国）；接口5 校验合法性 |
+| product_id | string | 否 | 产品编码，全局唯一；不传自动生成（`P+8位流水` 格式）。传入后 CRM 配置与产销品档案共用该编码，跨系统稽核以此为对齐依据 |
+| product_desc | string | 否 | 产品描述，用于稽核必填校验与审批展示，缺省取产品名称 |
+| spec_json | string | 否 | 规格快照（JSON 字符串或对象），含规格/流量/速率描述；仅写入产销品档案供接口1 回查，不参与 CRM 配置校验 |
+| effect_date | string | 否 | 生效日期 `yyyy-MM-dd`；写入 CRM 配置，接口5 稽核时校验 ≤ expire_date 且与计费侧一致 |
+| expire_date | string | 否 | 失效日期 `yyyy-MM-dd`，须晚于生效日期，否则接口5 稽核报错 |
+| attrs | array | 否 | 产品属性列表，元素为属性名/值对象，原样写入 CRM 配置 `attrs` 字段，随 `crm_config_json` 透传 |
+| idempotency_key | string | 否 | 幂等键，建议 UUID；相同 key 重复请求回放首次响应 |
 
-- **出参**：`crm_config_id`、`crm_config_json`（完整配置 JSON 字符串）、`status`（恒为 `generated`）。
+- **出参**：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| code | int | 统一状态码，0 成功 |
+| msg | string | 状态描述 |
+| crm_config_id | string | CRM 配置 ID，如 `CRM1001`；后续接口引用 |
+| crm_config_json | string | 完整 CRM 配置 JSON 字符串（含目录、属性、资费绑定、销售范围），接口5/6 直接透传 |
+| status | string | 恒为 `generated`，表示配置已生成 |
+
 - **错误码**：
 
 | code | 含义 |
@@ -154,13 +163,22 @@
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| product_id | string | 是 | 产品编码（与 CRM 侧一致） |
-| fee_json | string/object | 是 | 资费定义 |
-| discount_rules | array | 否 | 优惠叠加规则列表，元素含 `discount_type` 等 |
-| effect_date | string | 否 | 生效日期 |
-| idempotency_key | string | 否 | 幂等键 |
+| product_id | string | 是 | 产品编码（与 CRM 侧一致），接口5 稽核时校验两侧一致，不一致报 `product_id` high 错误 |
+| fee_json | string/object | 是 | 资费定义（JSON 字符串或对象），与接口2 入参一致；原样写入计费配置 `fee_json` 字段 |
+| discount_rules | array | 否 | 优惠叠加规则列表，元素含 `discount_type`（如 `limited_time` 限时/`long_term` 长期，两者互斥）等字段；接口4 按此校验互斥与叠加上限（默认上限 3 条） |
+| effect_date | string | 否 | 生效日期 `yyyy-MM-dd`；接口5 稽核时校验与 CRM 侧生效日期一致 |
+| idempotency_key | string | 否 | 幂等键，建议 UUID；相同 key 重复请求回放首次响应 |
 
-- **出参**：`billing_config_id`、`billing_config_json`（含 `billing_events` 计费事件/`account_period` 账期）、`status`。
+- **出参**：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| code | int | 统一状态码，0 成功 |
+| msg | string | 状态描述 |
+| billing_config_id | string | 计费配置 ID，如 `BILL2001` |
+| billing_config_json | string | 完整计费配置 JSON 字符串，含 `billing_events` 计费事件（受理/出账/退订）/`account_period` 账期，接口4/5/6 直接透传 |
+| status | string | 恒为 `generated`，表示配置已生成 |
+
 - **错误码**：
 
 | code | 含义 |
@@ -186,19 +204,19 @@
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| billing_config_json | string | 是 | 计费配置 JSON 字符串（也接受对象，字段名 `billing_config`） |
-| check_scene | string | 否 | 枚举 `fee`/`overlay`/`superposition`/`all`，默认 `all` |
+| billing_config_json | string | 是 | 计费配置 JSON 字符串（也接受对象，字段名 `billing_config`），一般为接口3 出参透传；缺失或非法 JSON 返回 3001。校验读取 `fee_items`（含 `fee_name`/`amount`/`base_amount`）与 `discount_rules` 字段 |
+| check_scene | string | 否 | 校验场景，枚举 `fee`（负资费+边界价差）/`overlay` 或 `superposition`（叠加上限+互斥）/`all`（全部+自定义规则），默认 `all`；自定义规则任意场景均校验 |
 
 - **出参**：
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| code / msg | — | 统一状态 |
+| code / msg | — | 统一状态，code 0 成功 |
 | pass | int | 0=通过，1=存在风险 |
-| risk_list | array | 风险清单 |
+| risk_list | array | 风险清单，pass=1 时非空 |
 | risk_list[].risk_type | string | `overlap_conflict`（互斥）/`negative_fee`（负资费）/`boundary_price_gap`（价差）/`overlay_limit_exceeded`（叠加上限）/`custom_rule`（自定义） |
-| risk_list[].risk_desc | string | 风险描述 |
-| risk_list[].suggest | string | 处置建议 |
+| risk_list[].risk_desc | string | 风险描述，含冲突/异常明细 |
+| risk_list[].suggest | string | 处置建议，供大模型归纳或直接提示用户 |
 
 - **规则可配置化**：`POST {base}/rules/config`（附加接口，非插件工具）支持更新 `overlay_limit`（叠加上限）、`boundary_price_ratio`（边界价差比例）、`mutex_pairs`（互斥对），与知识库规则同步。
 - **示例**：
@@ -221,9 +239,9 @@
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| crm_config_json | string | 是 | CRM 配置 JSON 字符串（或对象 `crm_config`） |
-| billing_config_json | string | 是 | 计费配置 JSON 字符串（或对象 `billing_config`） |
-| audit_template | string/object | 否 | 自定义模板，支持 `name_pattern`（命名正则）、`required_attrs`（追加必填项）；缺省用默认规范模板 |
+| crm_config_json | string | 是 | CRM 配置 JSON 字符串（或对象 `crm_config`），一般为接口2 出参透传；缺失或非法 JSON 返回 5001 |
+| billing_config_json | string | 是 | 计费配置 JSON 字符串（或对象 `billing_config`），一般为接口3 出参透传；缺失或非法 JSON 返回 5001 |
+| audit_template | string/object | 否 | 自定义稽核模板，支持 `name_pattern`（命名正则，非法正则回退默认规则）、`required_attrs`（追加必填项，与默认项合并去重）；缺省用默认规范模板 |
 
 - **默认校验项**：
   - 必填属性：`product_name`、`product_desc`、`fee_json`、`sale_scope`、`effect_date`
@@ -236,12 +254,13 @@
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
+| code / msg | — | 统一状态，code 0 成功 |
 | pass | int | 0=通过，1=存在错误 |
-| error_list | array | 错误清单 |
-| error_list[].item | string | 出错字段 |
-| error_list[].level | string | `high`/`middle`/`low` |
-| error_list[].desc | string | 错误描述 |
-| error_list[].suggest | string | 修正建议 |
+| error_list | array | 错误清单，pass=1 时非空 |
+| error_list[].item | string | 出错字段名，如 `product_name`/`effect_date` |
+| error_list[].level | string | 错误级别：`high` 阻断 / `middle` 建议修正 / `low` 提示 |
+| error_list[].desc | string | 错误描述，含实际值与期望规则 |
+| error_list[].suggest | string | 修正建议，供大模型归纳或直接提示用户 |
 
 - **错误码**：`5001` crm_config_json/billing_config_json 必填且须为合法 JSON。
 
@@ -255,17 +274,18 @@
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| crm_config_json | string | 是 | CRM 配置（或对象 `crm_config`） |
-| billing_config_json | string | 是 | 计费配置（或对象 `billing_config`） |
-| case_type | string | 否 | 枚举 `acceptance`/`change`/`cancel`/`billing`/`all`，默认 `all` |
+| crm_config_json | string | 是 | CRM 配置（或对象 `crm_config`），一般为接口2 出参透传；缺失或非法 JSON 返回 6001 |
+| billing_config_json | string | 是 | 计费配置（或对象 `billing_config`），一般为接口3 出参透传；用例内容（产品编码/名称、计费场景）取自此配置 |
+| case_type | string | 否 | 用例类型，枚举 `acceptance`（受理）/`change`（变更）/`cancel`（退订）/`billing`（计费）/`all`，默认 `all`；忽略大小写，非法值按 `all` 处理 |
 
 - **出参**：
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| case_count | int | 生成用例数 |
-| case_ids | array[string] | 用例 ID 列表（`TC9001` 格式） |
-| case_list_json | string | 用例列表 JSON 字符串，元素含 `case_id`/`case_type`/`case_name`/`steps[{action,expect,actual}]` |
+| code / msg | — | 统一状态，code 0 成功 |
+| case_count | int | 生成用例数，与 case_ids 长度一致 |
+| case_ids | array[string] | 用例 ID 列表（`TC9001` 格式），接口7 执行入参 |
+| case_list_json | string | 用例列表 JSON 字符串，元素含 `case_id`/`case_type`/`case_name`/`steps`（结构化步骤，`action` 操作/`expect` 预期/`actual` 实际，执行前 actual 为空） |
 
 - **错误码**：`6001` crm_config_json/billing_config_json 必填且须为合法 JSON。
 - **说明**：`case_type=all` 时生成 4 类场景 + 2 条边界用例（共 6 条）；指定单类时 1 条场景 + 2 条边界（共 3 条）。
@@ -280,14 +300,23 @@
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| case_ids | array[string] | 是 | 用例 ID 列表（接口6 产物） |
-| env | string | 否 | 枚举 `sit`/`uat`/`pre`，默认 `sit`；`prod` 非法 |
-| execute_mode | string | 否 | 枚举 `sync`/`async`，默认 `sync` |
+| case_ids | array[string] | 是 | 用例 ID 列表（接口6 产物，`TC9001` 格式），任一 ID 不存在返回 4001；为空返回 7001 |
+| env | string | 否 | 执行环境，枚举 `sit`/`uat`/`pre`，默认 `sit`（忽略大小写）；`prod` 非法（返回 4002，生产禁止执行） |
+| execute_mode | string | 否 | 执行模式，枚举 `sync`（同步返回结果，默认）/`async`（立即返回 task_id + status=running，需轮询回查） |
 
-- **出参（sync）**：`task_id`、`total`、`passed`、`failed`、`fail_detail[{case_id, step, expect, actual, reason}]`
+- **出参（sync）**：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| task_id | string | 执行任务 ID（`T+时间戳+流水` 格式），可用于任务回查 |
+| total | int | 用例总数 |
+| passed | int | 通过条数 |
+| failed | int | 失败条数，passed + failed = total |
+| fail_detail | array | 失败明细：`case_id` 用例/`step` 失败步骤（首个 step 的 action）/`expect` 预期/`actual` 实际/`reason` 失败原因 |
+
 - **出参（async）**：`task_id`、`status`（`running`），需通过任务回查接口获取结果。
 - **任务回查（可选开发项）**：`GET {base}/tasks/{task_id}`
-  - 出参：`task_id`、`env`、`status`（`running`/`finished`）、`total`、`passed`、`failed`、`fail_detail`
+  - 出参：`task_id`（任务 ID）、`env`（执行环境）、`status`（`running` 执行中/`finished` 已完成）、`total`（用例总数）、`passed`（通过数）、`failed`（失败数）、`fail_detail`（失败明细，结构同同步模式）
   - 错误码：`4004` 任务不存在
 - **错误码**：
 
@@ -309,10 +338,17 @@
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| product_id | string | 是 | 产品编码 |
-| verify_type | string | 否 | 枚举 `new`/`change`/`cancel`，默认 `new` |
+| product_id | string | 是 | 产品编码，须为产销品档案中已存在的产品（精确匹配），否则返回 8003 |
+| verify_type | string | 否 | 验证类型，枚举 `new`（新受理）/`change`（变更）/`cancel`（退订），默认 `new`（忽略大小写）；非法值返回 8002 |
 
-- **出参**：`pass`（0=通过）、`order_id`（`ORD5001` 格式）。
+- **出参**：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| code / msg | — | 统一状态，code 0 成功 |
+| pass | int | 0=受理验证通过，1=失败 |
+| order_id | string | 模拟订单号（`ORD5001` 格式），可用于排障追溯 |
+
 - **错误码**：
 
 | code | 含义 |
@@ -332,13 +368,20 @@
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| product_id | string | 是 | 产品编码 |
-| report | string | 二选一 | 报告内容文本 |
-| report_url | string | 二选一 | 报告文件 URL |
-| approval_flow | string | 否 | 枚举 `standard`/`urgent`，默认 `standard` |
-| idempotency_key | string | 否 | 幂等键 |
+| product_id | string | 是 | 产品编码，须为产销品档案中已存在的产品（精确匹配），否则返回 9002 |
+| report | string | 二选一 | 报告内容文本（测试/稽核结论），与 report_url 至少传一项，否则返回 9001；两者都传时优先取 report |
+| report_url | string | 二选一 | 报告文件 URL（可下载地址），与 report 至少传一项 |
+| approval_flow | string | 否 | 审批流程类型，枚举 `standard`（标准流程）/`urgent`（加急流程），默认 `standard`（忽略大小写）；非法值返回 9003 |
+| idempotency_key | string | 否 | 幂等键，建议 UUID；相同 key 重复请求回放首次响应，避免重复发起审批 |
 
-- **出参**：`approval_id`（`AP7001` 格式）、`status`（`submitted`）。
+- **出参**：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| code / msg | — | 统一状态，code 0 成功 |
+| approval_id | string | 审批单号（`AP7001` 格式），可用于 OA 侧跟踪 |
+| status | string | 恒为 `submitted`，表示审批已发起 |
+
 - **错误码**：
 
 | code | 含义 |
@@ -357,19 +400,20 @@
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| product_id | string | 是 | 产品编码 |
-| date_range | string | 否 | 时间范围，如 `2026-09-01~2026-09-10` |
-| metric | string | 否 | 枚举 `order`/`error`/`fee`/`all`，默认 `all`（当前实现恒全量返回，metric 仅作过滤提示） |
+| product_id | string | 是 | 产品编码，须为产销品档案中已存在的产品（精确匹配），否则返回 10002 |
+| date_range | string | 否 | 统计时间范围，格式 `yyyy-MM-dd~yyyy-MM-dd`，如 `2026-09-01~2026-09-10`；当前 Mock 不校验格式，仅作查询条件回显 |
+| metric | string | 否 | 指标过滤，枚举 `order`（订单量）/`error`（差错）/`fee`（计费）/`all`，默认 `all`（当前实现恒全量返回，指定单值时仅在出参回显 metric 作过滤提示） |
 
 - **出参**：
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
+| code / msg | — | 统一状态，code 0 成功 |
 | order_count | int | 订单量（按 productId 确定性 Mock，100~999） |
-| error_count | int | 差错单数（0~7） |
-| fee_error_rate | double | 计费差错率（0~0.004） |
-| alarm_list | array | 关联告警（接口11 推送的告警回显：`alarm_id`/`alarm_level`/`content`/`created_at`） |
-| metric / date_range | — | 入参回显 |
+| error_count | int | 差错单数（0~7），反映计费/受理异常单量 |
+| fee_error_rate | double | 计费差错率（0~0.004），占比≤0.4% 视为正常 |
+| alarm_list | array | 关联告警（接口11 推送的告警回显：`alarm_id` 告警 ID/`alarm_level` 级别/`content` 内容/`created_at` 时间） |
+| metric / date_range | — | 入参回显，便于核对查询条件 |
 
 - **错误码**：
 
@@ -388,11 +432,18 @@
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| product_id | string | 是 | 产品编码 |
-| alarm_level | string | 否 | 枚举 `high`/`middle`/`low`，默认 `low` |
-| content | string | 是 | 告警内容 |
+| product_id | string | 是 | 产品编码（如 `P20260001`），与接口10 监控查询一致；推送后按此编码在接口10 `alarm_list` 回查 |
+| alarm_level | string | 否 | 告警级别，枚举 `high`（高）/`middle`（中）/`low`（低），默认 `low`（忽略大小写）；非法值返回 11002，高级别建议联动工单系统优先处理 |
+| content | string | 是 | 告警内容文本，建议包含异常现象、影响范围与发生时间；推送至运维群机器人/工单系统，原样推送至接口10 告警回查 |
 
-- **出参**：`alert_id`（`AL3001` 格式）、`status`（`sent`）。
+- **出参**：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| code / msg | — | 统一状态，code 0 成功 |
+| alert_id | string | 告警 ID（`AL3001` 格式），可在接口10 `alarm_list` 中回查 |
+| status | string | 恒为 `sent`，表示已推送 |
+
 - **错误码**：
 
 | code | 含义 |

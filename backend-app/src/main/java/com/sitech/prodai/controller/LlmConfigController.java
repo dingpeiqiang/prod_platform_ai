@@ -6,6 +6,8 @@ import com.sitech.prodai.domain.entity.ModelProvider;
 import com.sitech.prodai.dto.ChatCompletionRequest;
 import com.sitech.prodai.mapper.LlmUserConfigMapper;
 import com.sitech.prodai.service.LlmService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,6 +28,7 @@ import java.util.stream.Collectors;
 /**
  * LLM 用户配置接口，持久化到数据库。
  */
+@Tag(name = "模型管理", description = "推理平台模型配置管理：新增/编辑/删除配置、连通性测试、切换当前生效模型")
 @RestController
 @RequestMapping("/api/v1/llm-config")
 public class LlmConfigController {
@@ -52,6 +55,7 @@ public class LlmConfigController {
         return config;
     }
 
+    @Operation(summary = "保存模型配置", description = "新增或更新模型配置：带 config_id 按 id 更新；否则按 (user_identifier, config_name) 匹配避免重复；is_active=true 时自动取消其他配置的激活态")
     @PostMapping("/save")
     public Map<String, Object> save(@RequestBody Map<String, Object> request) {
         String userId = str(request.get("user_identifier"));
@@ -130,6 +134,7 @@ public class LlmConfigController {
                 .orElse(null);
     }
 
+    @Operation(summary = "获取激活配置", description = "返回当前全局激活（is_active=true）的模型配置")
     @GetMapping("/active/{userIdentifier}")
     public Map<String, Object> active(@PathVariable String userIdentifier) {
         // 不按账号过滤：返回全局激活配置
@@ -144,6 +149,7 @@ public class LlmConfigController {
                 .orElseGet(() -> fail("未找到激活配置"));
     }
 
+    @Operation(summary = "连通性测试", description = "用请求体中的 provider/model/api_key/base_url 真实调用一次补全接口，返回成功/失败与耗时")
     @PostMapping("/test")
     public Map<String, Object> test(@RequestBody Map<String, Object> request) {
         String model = str(request.get("model"));
@@ -208,6 +214,7 @@ public class LlmConfigController {
         }
     }
 
+    @Operation(summary = "配置列表", description = "返回全部模型配置（api_key 不脱敏，仅管理端使用）")
     @GetMapping("/list/{userIdentifier}")
     public Map<String, Object> list(@PathVariable String userIdentifier) {
         // 不按账号过滤：返回全部配置
@@ -222,6 +229,7 @@ public class LlmConfigController {
         return body;
     }
 
+    @Operation(summary = "删除配置", description = "按 config_id 删除模型配置")
     @DeleteMapping("/{configId}")
     public Map<String, Object> delete(@PathVariable Integer configId) {
         if (repository.selectById(configId) != null) {
@@ -238,6 +246,7 @@ public class LlmConfigController {
         }
     }
 
+    @Operation(summary = "激活配置", description = "将指定配置置为全局唯一激活项（其余自动取消激活），运行时生效无需重启")
     @PostMapping("/activate")
     public Map<String, Object> activate(@RequestBody Map<String, Object> request) {
         String userId = str(request.get("user_identifier"));
