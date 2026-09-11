@@ -1,4 +1,4 @@
-# 产销品加载 AI 应用 · 接口说明书（插件对接规范）
+﻿# 产销品加载 AI 应用 · 接口说明书（插件对接规范）
 
 > 版本：v1.0
 > 更新日期：2026-09-10
@@ -18,6 +18,12 @@
 | 报文格式 | `application/json; charset=UTF-8` |
 | 认证 | 免登录：`/api/v1/appstore/**` 已加入 JWT 白名单，插件直连无需携带 Token；生产环境建议切换为网关 Token/AppKey 鉴权 |
 | 环境隔离 | sit / uat / pre 三套独立部署；写入类接口按环境隔离，生产禁止直连 |
+
+> **URL 约定**：`{base}` 统一指 `http://localhost:6174/api/v1/appstore`。与《开发工作清单》中各系统独立网关地址
+> （`{cpcp-gateway}`/`{billing-check}`/`{test-platform}`/`{crm-gateway}`/`{oa-gateway}`/`{monitor}`）不同，
+> 当前 POC 实现将 11 个接口集中挂在同一前缀 `/api/v1/appstore` 下（本服务单体内），路径尾段与清单一致；
+> 后续拆分独立网关时仅需替换 `{base}`，路径不变。**请勿使用清单中的原始网关地址直连本服务**（如
+> `/api/v1/products/config/query` 未挂载本服务，会被 JWT 拦截返回 401）。
 
 ### 1.2 统一响应结构
 
@@ -62,7 +68,7 @@
 
 ### 接口1：产销品配置查询 `query_product_config`
 
-- **地址**：`GET {base}/products/config/query`
+- **地址**：`GET http://localhost:6174/api/v1/appstore/products/config/query`
 - **用途**：按名称/编码模糊查询产销品配置（含规格与资费快照），供比对与复用。
 - **入参**（Query String）：
 
@@ -104,7 +110,7 @@
 
 ### 接口2：CRM 配置数据生成 `gen_crm_config`
 
-- **地址**：`POST {base}/crm/config/generate`
+- **地址**：`POST http://localhost:6174/api/v1/appstore/crm/config/generate`
 - **用途**：按 CRM 导入格式生成配置数据（产品目录、属性、资费绑定、销售范围），生成前做重复性校验；成功后同步登记产销品档案（接口1 可查，状态 `draft`）。
 - **幂等**：支持 `idempotency_key`。
 - **入参**（JSON Body）：
@@ -156,7 +162,7 @@
 
 ### 接口3：计费配置数据生成 `gen_billing_config`
 
-- **地址**：`POST {base}/billing/config/generate`
+- **地址**：`POST http://localhost:6174/api/v1/appstore/billing/config/generate`
 - **用途**：生成计费事件、账期等配置；与 CRM 侧 `product_id` 关联。
 - **幂等**：支持 `idempotency_key`。
 - **入参**（JSON Body）：
@@ -198,7 +204,7 @@
 
 ### 接口4：计费规则校验 `check_billing_rule`
 
-- **地址**：`POST {base}/rules/verify`
+- **地址**：`POST http://localhost:6174/api/v1/appstore/rules/verify`
 - **用途**：内置规则引擎校验计费配置（资费互斥、叠加上限、负资费、边界价差、自定义规则）。
 - **入参**（JSON Body）：
 
@@ -218,7 +224,7 @@
 | risk_list[].risk_desc | string | 风险描述，含冲突/异常明细 |
 | risk_list[].suggest | string | 处置建议，供大模型归纳或直接提示用户 |
 
-- **规则可配置化**：`POST {base}/rules/config`（附加接口，非插件工具）支持更新 `overlay_limit`（叠加上限）、`boundary_price_ratio`（边界价差比例）、`mutex_pairs`（互斥对），与知识库规则同步。
+- **规则可配置化**：`POST http://localhost:6174/api/v1/appstore/rules/config`（附加接口，非插件工具）支持更新 `overlay_limit`（叠加上限）、`boundary_price_ratio`（边界价差比例）、`mutex_pairs`（互斥对），与知识库规则同步。
 - **示例**：
 
 ```json
@@ -233,7 +239,7 @@
 
 ### 接口5：配置规格稽核 `check_product_spec`
 
-- **地址**：`POST {base}/spec/audit`
+- **地址**：`POST http://localhost:6174/api/v1/appstore/spec/audit`
 - **用途**：按业务规范做完整性/合规性校验（必填属性、命名规则、生效期逻辑、销售范围合法性、跨系统一致性）；模板可配置。
 - **入参**（JSON Body）：
 
@@ -268,7 +274,7 @@
 
 ### 接口6：测试用例生成 `gen_test_cases`
 
-- **地址**：`POST {base}/cases/generate`
+- **地址**：`POST http://localhost:6174/api/v1/appstore/cases/generate`
 - **用途**：规则驱动生成四类场景用例（受理/变更/退订/计费）+ 资费边界用例（月末生效日、叠加达上限），用例为结构化步骤，与执行引擎对齐。
 - **入参**（JSON Body）：
 
@@ -294,7 +300,7 @@
 
 ### 接口7：测试用例执行 `run_test_cases`
 
-- **地址**：`POST {base}/cases/execute`
+- **地址**：`POST http://localhost:6174/api/v1/appstore/cases/execute`
 - **用途**：按环境执行用例，支持同步/异步两种模式；环境隔离，`prod` 直接拒绝。
 - **入参**（JSON Body）：
 
@@ -315,7 +321,7 @@
 | fail_detail | array | 失败明细：`case_id` 用例/`step` 失败步骤（首个 step 的 action）/`expect` 预期/`actual` 实际/`reason` 失败原因 |
 
 - **出参（async）**：`task_id`、`status`（`running`），需通过任务回查接口获取结果。
-- **任务回查（可选开发项）**：`GET {base}/tasks/{task_id}`
+- **任务回查（可选开发项）**：`GET http://localhost:6174/api/v1/appstore/tasks/{task_id}`
   - 出参：`task_id`（任务 ID）、`env`（执行环境）、`status`（`running` 执行中/`finished` 已完成）、`total`（用例总数）、`passed`（通过数）、`failed`（失败数）、`fail_detail`（失败明细，结构同同步模式）
   - 错误码：`4004` 任务不存在
 - **错误码**：
@@ -332,7 +338,7 @@
 
 ### 接口8：受理验证 `verify_acceptance`
 
-- **地址**：`POST {base}/order/verify`
+- **地址**：`POST http://localhost:6174/api/v1/appstore/order/verify`
 - **用途**：在验证环境自动发起模拟受理/变更/退订订单并回读结果。
 - **入参**（JSON Body）：
 
@@ -361,7 +367,7 @@
 
 ### 接口9：上线审批推送 `submit_release_approval`
 
-- **地址**：`POST {base}/approval/submit`
+- **地址**：`POST http://localhost:6174/api/v1/appstore/approval/submit`
 - **用途**：对接 OA/审批系统，附测试与稽核报告附件，发起上线审批。
 - **幂等**：支持 `idempotency_key`。
 - **入参**（JSON Body）：
@@ -394,7 +400,7 @@
 
 ### 接口10：产销品监控查询 `query_product_monitor`
 
-- **地址**：`GET {base}/product/monitor`
+- **地址**：`GET http://localhost:6174/api/v1/appstore/product/monitor`
 - **用途**：聚合订单量、计费差错率、告警关联等指标，支持时间范围。
 - **入参**（Query String）：
 
@@ -426,7 +432,7 @@
 
 ### 接口11：异常告警推送 `send_alert`
 
-- **地址**：`POST {base}/alert/send`
+- **地址**：`POST http://localhost:6174/api/v1/appstore/alert/send`
 - **用途**：对接运维群机器人/工单系统推送告警；推送后可在接口10 的 `alarm_list` 回查。
 - **入参**（JSON Body）：
 
@@ -488,3 +494,86 @@
 4. **Postman/Swagger**：本地启动后可访问 `http://localhost:6174/v3/api-docs`（若开启）或按本说明书照表录入；每个接口的字段名与本文档严格一致。
 5. **数据重置**：Mock 数据为内存态，服务重启即恢复种子数据（4 条产销品）；联调写脏数据无需清理。
 6. **后续演进**：内存 Mock 替换为 MyBatis-Plus 持久化时，接口契约（路径/入参/出参）保持不变，插件无需改动。
+
+---
+
+## 5. 接口测试方法
+
+### 5.1 一键自动化测试（推荐）
+
+工程内置联调冒烟脚本，覆盖全部 11 个接口的正向/反向/幂等/异步场景，共 35 项断言：
+
+```powershell
+# 默认 BaseUrl（本地 6174），服务需已启动
+.\scripts\test-appstore-api.ps1
+
+# 指定其他环境（sit/uat/pre）
+.\scripts\test-appstore-api.ps1 -BaseUrl "http://<sit-host>:6174/api/v1/appstore"
+```
+
+退出码：`0` 全部通过；`1` 存在失败（可直接挂 CI）。
+注意：脚本为 UTF-8 BOM 编码（含中文），勿用无 BOM 编码器覆盖保存，否则 Windows PowerShell 5.1 解析中文会报语法错误。
+
+**脚本执行的测试场景矩阵**（`scripts/test-appstore-api.ps1`）：
+
+| 接口 | 正向用例 | 反向/异常用例 | 特殊场景 |
+| --- | --- | --- | --- |
+| 1 配置查询 | keyword+status 组合查询，断言 total/list | — | — |
+| 2 CRM 配置生成 | 正常生成，断言 crm_config_id | 缺参 → code=1001 | 幂等：同 `idempotency_key` 两次请求返回同 ID |
+| 3 计费配置生成 | 含 discount_rules 生成 | 缺 fee_json → code=2001 | 出参透传给接口4 做链路测试 |
+| 4 计费规则校验 | 互斥优惠规则检出 overlap_conflict | 非法 JSON → code=3001 | — |
+| 5 规格稽核 | 合规配置 pass=0 | 违规配置（非法名称/日期倒挂/mars 范围）pass=1 且 errors≥3 | — |
+| 6 用例生成 | case_type=all 生成 6 条 | — | 断言 case_count 与 case_ids 一致 |
+| 7 用例执行 | sync 模式执行 3 条，断言 total/passed/failed | env=prod → code=4002；任务不存在 → code=4004 | async 提交后 500ms 轮询 `GET /tasks/{task_id}` 至 finished |
+| 8 受理验证 | new 受理，断言 order_id | 产品不存在 → 8003；非法 verify_type → 8002 | — |
+| 9 审批推送 | 提交审批，断言 status=submitted | 缺报告 → code=9001 | 幂等键 |
+| 11 告警推送 | 推送 high 告警，记录 alert_id | 非法 alarm_level → code=11002 | alert_id 供接口10 闭环校验 |
+| 10 监控查询 | 指标查询，断言 order_count>0 | 产品不存在 → code=10002 | 断言 alarm_list 回显接口11 刚推送的 alert_id（11→10 闭环） |
+
+### 5.2 手动测试（curl / Postman）
+
+任选接口按第 2 章示例报文调用。免 Token 直连示例：
+
+```bash
+# 接口1：查询（URL 编码的 keyword=流量）
+curl "http://localhost:6174/api/v1/appstore/products/config/query?keyword=%E6%B5%81%E9%87%8F&status=online"
+
+# 接口2：CRM 配置生成
+curl -X POST "http://localhost:6174/api/v1/appstore/crm/config/generate" \
+  -H "Content-Type: application/json; charset=utf-8" \
+  -d '{"product_name":"畅享流量包Pro","fee_json":"{\"monthly_fee\":39}","sale_scope":"anhui-all","idempotency_key":"uuid-001"}'
+
+# 接口4：计费规则校验
+curl -X POST "http://localhost:6174/api/v1/appstore/rules/verify" \
+  -H "Content-Type: application/json; charset=utf-8" \
+  -d '{"billing_config_json":"{\"discount_rules\":[{\"discount_type\":\"limited_time\"},{\"discount_type\":\"long_term\"}]}","check_scene":"all"}'
+
+# 接口7：异步执行 + 回查
+curl -X POST "http://localhost:6174/api/v1/appstore/cases/execute" \
+  -H "Content-Type: application/json; charset=utf-8" \
+  -d '{"case_ids":["TC9001","TC9002"],"env":"sit","execute_mode":"async"}'
+curl "http://localhost:6174/api/v1/appstore/tasks/{task_id}"
+```
+
+Postman 导入：按第 2 章逐接口建 Request；断言脚本可用 `pm.expect(json.code).to.eql(0)`。
+
+### 5.3 单元/契约测试（JUnit）
+
+代码级契约测试（绕过 HTTP，直接调 Controller），随 `mvn test` 回归：
+
+```bash
+cd backend-app
+mvn test -Dtest=AppStoreApiTest        # 15 个用例，覆盖 11 接口契约
+mvn test                               # 全量回归（含既有 74 个测试类）
+```
+
+### 5.4 测试判定规则
+
+| 层级 | 判定 |
+| --- | --- |
+| HTTP 状态 | 业务响应恒为 200（含业务失败）；4xx/5xx 为框架级异常 |
+| 业务成功 | `code == 0` |
+| 业务失败 | `code != 0`，按第 3 章错误码总表定位 |
+| 幂等验证 | 同 `idempotency_key` 重复请求，响应与首次完全一致（同 ID） |
+| 异步验证 | async 返回 `running` → 轮询 `GET /tasks/{task_id}` → 最终 `finished` 且 total 一致 |
+| 链路验证 | 接口2 出参 → 接口3 入参；接口11 alert_id → 接口10 alarm_list 回显 |

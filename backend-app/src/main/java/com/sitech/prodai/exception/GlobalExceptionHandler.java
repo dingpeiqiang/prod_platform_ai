@@ -117,6 +117,17 @@ public class GlobalExceptionHandler {
                 .body(error("io_error", msg));
     }
 
+    /**
+     * 静态资源/未匹配路由 404：正常业务场景（路径打错、favicon 探测），
+     * 返回 404 + 简洁 message，不打 ERROR 堆栈污染日志。
+     */
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNoResourceFound(org.springframework.web.servlet.resource.NoResourceFoundException ex) {
+        log.warn("[GlobalExceptionHandler] not_found: {}", ex.getResourcePath());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(error("not_found", "接口不存在: " + ex.getResourcePath() + "，请核对接口说明书 URL"));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGeneric(Exception ex) {
         // 数据层异常（表不存在/SQL 语法错等）在到达此处前多已被 DataAccessException 分支捕获，
