@@ -25,6 +25,10 @@ backend-app/uploads
 backend-app/.idea
 **/*.iml
 
+# 后端运行时数据（本机运行时会被进程锁定，导致 build context 传输失败）
+backend-app/data
+backend-app/logs
+
 # 测试与本地脚本噪音
 **/__pycache__
 **/*.pyc
