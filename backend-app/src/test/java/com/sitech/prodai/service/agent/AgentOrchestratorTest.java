@@ -698,12 +698,17 @@ class AgentOrchestratorTest {
 
     @Test
     void streamPlaybookPathInjectsSessionIdIntoPlanParams() {
+        // 理解层 LLM 识别意图命中手册适用域 → 升级流式直达链路
+        QueryPlan plan = new QueryPlan("RD_FILE_PARSE", List.of("rd_doc_parse"),
+                Map.of("question", "导入文档"), "导入文档");
+        plan.setUserQuestion("导入文档");
+        when(understander.understandAll(any(), any(SessionContext.class))).thenReturn(List.of(plan));
         when(presenter.present(any(), anyList(), any(SessionContext.class))).thenReturn("手册执行完毕");
         when(presenter.suggestFollowUps(any(), anyList(), any(SessionContext.class))).thenReturn(List.of());
         RecordingEmitter emitter = new RecordingEmitter();
         orchestrator.processStream("导入文档", "s-pb1", null, "rd", emitter);
 
-        // 手册触发词快筛命中 doc-batch-import（零 LLM 成本直达），执行层收到的 plan.params
+        // 手册意图升级直达 doc-batch-import，执行层收到的 plan.params
         // 必须携带服务端 SessionContext 的 session_id——否则 rd_workorder_create 批量开单
         // 因 sessionId 空白短路，工单不落库，前端工单卡片无从展示
         ArgumentCaptor<QueryPlan> planCaptor = ArgumentCaptor.forClass(QueryPlan.class);
@@ -714,6 +719,10 @@ class AgentOrchestratorTest {
 
     @Test
     void processPlaybookPathInjectsSessionIdIntoPlanParams() {
+        QueryPlan plan = new QueryPlan("RD_FILE_PARSE", List.of("rd_doc_parse"),
+                Map.of("question", "导入文档"), "导入文档");
+        plan.setUserQuestion("导入文档");
+        when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
         orchestrator.process("导入文档", "s-pb2", null, "rd");
 
         ArgumentCaptor<QueryPlan> planCaptor = ArgumentCaptor.forClass(QueryPlan.class);
@@ -726,31 +735,40 @@ class AgentOrchestratorTest {
 
     @Test
     void streamPlaybookPathFillsQuestionSlotsFromContract() {
+        // 手册链路工具契约声明 source=question 的参数（rd_draft_generate 的 text）
+        // 必须以用户原话自动填充——否则工具因参数缺失报「缺少配置需求描述」，四步全部执行失败。
+        // 理解层 LLM 识别配置意图命中智聊手册适用域 → 升级直达链路
+        String utterance = "配置一个家庭融合套餐，月费158，带500M宽带";
+        QueryPlan plan = new QueryPlan("RD_CONFIG_CHAT", List.of("rd_category_resolve", "rd_slot_extract", "rd_draft_generate"),
+                Map.of("question", utterance), utterance);
+        plan.setUserQuestion(utterance);
+        when(understander.understandAll(any(), any(SessionContext.class))).thenReturn(List.of(plan));
         when(presenter.present(any(), anyList(), any(SessionContext.class))).thenReturn("手册执行完毕");
         when(presenter.suggestFollowUps(any(), anyList(), any(SessionContext.class))).thenReturn(List.of());
         RecordingEmitter emitter = new RecordingEmitter();
-        orchestrator.processStream("配置一个家庭融合套餐，月费158，带500M宽带", "s-slot1", null, "rd", emitter);
+        orchestrator.processStream(utterance, "s-slot1", null, "rd", emitter);
 
-        // 手册快筛跳过理解层 LLM，无槽位提取：工具契约声明 source=question 的参数
-        // （rd_draft_generate 的 text）必须以用户原话自动填充——否则工具因参数缺失
-        // 报「缺少配置需求描述」，四步全部执行失败。
-        // 话术用高置信触发词「配置一个」直达（泛用短语「做一个」已按防误判收窄出触发词）
         ArgumentCaptor<QueryPlan> planCaptor = ArgumentCaptor.forClass(QueryPlan.class);
         verify(executor).execute(planCaptor.capture(), any(SessionContext.class), any(Executor.StepListener.class));
         Map<String, Object> params = planCaptor.getValue().getParams();
-        assertEquals("配置一个家庭融合套餐，月费158，带500M宽带", params.get("text"),
+        assertEquals(utterance, params.get("text"),
                 "手册链路应按契约将 source=question 的 text 参数补为用户原话");
-        assertEquals("配置一个家庭融合套餐，月费158，带500M宽带", params.get("question"),
+        assertEquals(utterance, params.get("question"),
                 "plan.params 原始 question 键保持不变");
     }
 
     @Test
     void processPlaybookPathFillsQuestionSlotsFromContract() {
-        orchestrator.process("配置一个家庭融合套餐，月费158，带500M宽带", "s-slot2", null, "rd");
+        String utterance = "配置一个家庭融合套餐，月费158，带500M宽带";
+        QueryPlan plan = new QueryPlan("RD_CONFIG_CHAT", List.of("rd_category_resolve", "rd_slot_extract", "rd_draft_generate"),
+                Map.of("question", utterance), utterance);
+        plan.setUserQuestion(utterance);
+        when(understander.understand(any(), any(SessionContext.class))).thenReturn(plan);
+        orchestrator.process(utterance, "s-slot2", null, "rd");
 
         ArgumentCaptor<QueryPlan> planCaptor = ArgumentCaptor.forClass(QueryPlan.class);
         verify(executor).execute(planCaptor.capture(), any(SessionContext.class));
-        assertEquals("配置一个家庭融合套餐，月费158，带500M宽带",
+        assertEquals(utterance,
                 planCaptor.getValue().getParams().get("text"),
                 "手册同步链路同样应按契约补齐 source=question 的工具参数");
     }
@@ -760,8 +778,8 @@ class AgentOrchestratorTest {
     @Test
     void processUpgradesToPlaybookWhenIntentHitsAppliesToIntents() {
         // 理解层 LLM 输出 ops 规范意图（如 analyze→PRODUCT_OPS_QUERY 归一化产物）：
-        // 触发词快筛未命中（宽泛话术），但意图命中 market-insight.applies_to.intents →
-        // 升级走手册直达链路（runPlaybookPath），执行的是手册双工具链而非 LLM 自选链
+        // 意图命中 market-insight.applies_to.intents → 升级走手册直达链路（runPlaybookPath），
+        // 执行的是手册双工具链而非 LLM 自选链
         QueryPlan plan = new QueryPlan("PRODUCT_OPS_QUERY", List.of("sparql_query", "swrl_risk_audit"),
                 Map.of("question", "问题"), "查一下在售5G套餐的增长趋势和风险商品");
         plan.setUserQuestion("查一下在售5G套餐的增长趋势和风险商品");

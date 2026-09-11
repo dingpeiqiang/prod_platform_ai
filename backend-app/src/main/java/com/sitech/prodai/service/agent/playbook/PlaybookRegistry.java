@@ -176,42 +176,6 @@ public class PlaybookRegistry {
         return Map.copyOf(playbooks);
     }
 
-    /**
-     * 触发词快筛（入口三级瀑布第一级）：用户话术包含任一手册触发词 → 返回命中的手册 code。
-     * <p>
-     * 路由器在 LLM 理解<b>之前</b>调用本方法——命中即零 LLM 成本直达该手册链路，
-     * 兼具消除 LLM 误判与降低时延两个收益。多个手册同时命中时取触发词最长者
-     * （「批量导入文档」优先于「导入」）；未命中返回 null。
-     */
-    public String matchTrigger(String scene, String question) {
-        if (question == null || question.isBlank() || scene == null || scene.isBlank()) {
-            return null;
-        }
-        String lowered = question.toLowerCase();
-        String bestCode = null;
-        int bestLen = 0;
-        for (Map.Entry<String, Map<String, Object>> e : playbooks.entrySet()) {
-            if (!(e.getValue().get("applies_to") instanceof Map<?, ?> at)) {
-                continue;
-            }
-            String bookScene = str(at.get("scene"));
-            if (!bookScene.isBlank() && !bookScene.equals(scene)) {
-                continue;
-            }
-            if (!(at.get("triggers") instanceof List<?> triggers)) {
-                continue;
-            }
-            for (Object t : triggers) {
-                String trigger = str(t).toLowerCase();
-                if (!trigger.isBlank() && lowered.contains(trigger) && trigger.length() > bestLen) {
-                    bestCode = e.getKey();
-                    bestLen = trigger.length();
-                }
-            }
-        }
-        return bestCode;
-    }
-
     public Map<String, Object> get(String code) {
         return playbooks.get(code);
     }
@@ -260,7 +224,10 @@ public class PlaybookRegistry {
         String firstHit = null;
         String bestByUtterance = null;
         int bestScore = 0;
-        String toolHit = null;
+        // 工具链交集命中（意图码为工具推导码时的归属判定）：记录各手册交集规模，
+        // 多本命中时按"计划工具 ∩ 手册步骤工具"更长者决胜——交集规模即需求覆盖度
+        String bestByToolChain = null;
+        int bestChainOverlap = 0;
         // rd 场景意图码为工具名推导（RD_<TOOL> 大写），非手册 intents 业务码：
         // LLM 照注入的 SOP 办事但自选了手册工具链上的工具（如只选品类/抽取/生成三环），
         // 编排层升级判定需借工具链认领——计划工具与手册步骤工具求交集即可归属（意图码不可靠）
@@ -279,10 +246,15 @@ public class PlaybookRegistry {
             if (!intentHit && intentIsToolCode) {
                 // 意图码是工具名推导码：按计划工具与手册步骤工具链交集判定
                 List<String> chain = stepTools(book);
-                if (!chain.isEmpty() && toolNames != null && toolNames.stream().anyMatch(chain::contains)) {
-                    intentHit = true;
-                    if (toolHit == null) {
-                        toolHit = e.getKey();
+                if (!chain.isEmpty() && toolNames != null) {
+                    long overlap = toolNames.stream().filter(chain::contains).count();
+                    if (overlap > 0) {
+                        intentHit = true;
+                        // 交集更长 = 计划更贴合该手册工具链，压过注册序靠前的浅交集命中
+                        if (overlap > bestChainOverlap) {
+                            bestChainOverlap = (int) overlap;
+                            bestByToolChain = e.getKey();
+                        }
                     }
                 }
             }
@@ -303,6 +275,9 @@ public class PlaybookRegistry {
         }
         if (bestByUtterance != null) {
             return bestByUtterance;
+        }
+        if (bestByToolChain != null) {
+            return bestByToolChain;
         }
         return firstHit;
     }

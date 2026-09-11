@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -556,31 +557,97 @@ class DefaultUnderstanderTest {
 
     @Test
     void rdScenePromptCarriesPlaybookSop() {
-        // 注册表装载 classpath 手册（doc-batch-import 适用 scene=rd）→ rd 场景 prompt 应含 SOP 段
+        // 两阶段理解·阶段A：rd 场景有手册时，prompt 含手册 SOP（无工具清单），LLM 仅输出意图码；
+        // 命中手册后计划工具 = 手册步骤工具链（阶段B 工具选择不发生）
         var playbookRegistry = new com.sitech.prodai.service.agent.playbook.PlaybookRegistry();
         playbookRegistry.init();
-        understander = new DefaultUnderstander(llmService, List.of(
-                tool("rd_doc_parse", "rd")), workOrderMapper,
-                publishedFlowRegistry, new AgentCapabilityRegistry(List.of(tool("rd_doc_parse", "rd"))),
+        List<AgentTool> tools = List.of(tool("rd_doc_parse", "rd"));
+        understander = new DefaultUnderstander(llmService, tools, workOrderMapper,
+                publishedFlowRegistry, new AgentCapabilityRegistry(tools),
                 null, null, playbookRegistry);
-        llmReturns("{\"intent\":\"parse\",\"tools\":[\"rd_doc_parse\"],\"params\":{}}");
+        // 阶段A返回意图码（命中 doc-batch-import 的 RD_FILE_PARSE）；阶段B不应被调用
+        llmReturns("{\"intent\":\"RD_FILE_PARSE\",\"params\":{}}");
 
-        understander.understand("导入文档", rdCtx());
+        QueryPlan plan = understander.understand("导入文档", rdCtx());
 
         org.mockito.ArgumentCaptor<String> sysCaptor =
                 org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(llmService, atLeastOnce()).completeMessages(sysCaptor.capture(), anyList(), anyString());
+        verify(llmService, times(1)).completeMessages(sysCaptor.capture(), anyList(), anyString());
         assertTrue(sysCaptor.getValue().contains("【标准作业程序：文档批量导入配置】"),
-                "rd 场景 system prompt 应含手册 SOP 标题");
+                "阶段A system prompt 应含手册 SOP 标题");
         assertTrue(sysCaptor.getValue().contains("第1步 解析文档提取文本"),
                 "SOP 应含手册步骤");
         assertTrue(sysCaptor.getValue().contains("适用手册"),
-                "SOP 段应有引导语（严格按手册办事）");
+                "SOP 段应有引导语（先判定归哪本手册）");
+        assertTrue(!sysCaptor.getValue().contains("可用能力"),
+                "阶段A prompt 不应暴露工具清单（工具链由手册决定）");
+        // 手册直达计划：意图码 = 手册声明码，工具 = 手册步骤工具
+        assertEquals("RD_FILE_PARSE", plan.getIntent());
+        assertEquals(List.of("rd_doc_parse"), plan.getTools());
+    }
+
+    @Test
+    void phaseATraceStripsLlmHallucinatedTools() {
+        // 阶段A输出仅消费 intent（tools 字段不进计划）；受 base_prompt JSON 契约惯性影响
+        // 模型可能附带 tools 输出——思考时间线摘要必须剥离，避免用户误读为「理解层还在选工具」
+        var playbookRegistry = new com.sitech.prodai.service.agent.playbook.PlaybookRegistry();
+        playbookRegistry.init();
+        List<AgentTool> tools = List.of(tool("rd_doc_parse", "rd"));
+        understander = new DefaultUnderstander(llmService, tools, workOrderMapper,
+                publishedFlowRegistry, new AgentCapabilityRegistry(tools),
+                null, null, playbookRegistry);
+        llmReturns("{\"intent\":\"RD_FILE_PARSE\",\"action\":\"parse\","
+                + "\"tools\":[\"rd_doc_parse\"],\"params\":{}}");
+
+        QueryPlan plan = understander.understand("导入文档", rdCtx());
+
+        assertEquals(List.of("rd_doc_parse"), plan.getTools(),
+                "工具链仍由手册步骤决定，与 LLM 附带的 tools 无关");
+        org.mockito.ArgumentCaptor<String> sysCaptor =
+                org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(llmService, times(1)).completeMessages(sysCaptor.capture(), anyList(), anyString());
+        String rawLine = plan.getReasoningTrace().stream()
+                .map(t -> String.valueOf(t.get("message")))
+                .filter(m -> m.contains("大模型原始输出"))
+                .findFirst().orElse("");
+        assertTrue(rawLine.contains("工具选择不在本环节"),
+                "阶段A 原始输出条目应声明工具选择不在本环节: " + rawLine);
+        assertFalse(rawLine.contains("rd_doc_parse"),
+                "阶段A 原始输出摘要应剥离 tools 字段（意图以外的 LLM 输出不进时间线）: " + rawLine);
+        assertTrue(rawLine.contains("RD_FILE_PARSE"),
+                "意图码应保留（阶段A 判定依据如实呈现）: " + rawLine);
     }
 
     @Test
     void nonRdScenePromptCarriesOpsPlaybookSop() {
-        // ops 场景适用手册（market-insight 等 scene=ops）→ prompt 应含 SOP 段（与 rd 场景同语义）
+        // 两阶段理解·阶段A（ops 场景同语义）：ops 场景适用手册（market-insight 等）→
+        // prompt 含 SOP 段（无工具清单）；LLM 输出意图码命中手册后工具 = 手册步骤工具
+        var playbookRegistry = new com.sitech.prodai.service.agent.playbook.PlaybookRegistry();
+        playbookRegistry.init();
+        List<AgentTool> tools = List.of(
+                tool("sparql_query", "ops",
+                        ToolParam.builder("city").label("城市").required().build()),
+                tool("swrl_risk_audit", "ops",
+                        ToolParam.builder("keyword").label("检索关键词").build()));
+        understander = new DefaultUnderstander(llmService, tools, workOrderMapper,
+                publishedFlowRegistry, new AgentCapabilityRegistry(tools), null, null, playbookRegistry);
+        llmReturns("{\"intent\":\"PRODUCT_OPS_QUERY\",\"params\":{\"city\":\"北京\"}}");
+
+        QueryPlan plan = understander.understand("查数据", ctx());
+
+        org.mockito.ArgumentCaptor<String> sysCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(llmService, times(1)).completeMessages(sysCaptor.capture(), anyList(), anyString());
+        assertTrue(sysCaptor.getValue().contains("【标准作业程序：市场洞察】"),
+                "ops 场景阶段A prompt 应含 ops 手册 SOP 标题");
+        assertTrue(sysCaptor.getValue().contains("适用手册"),
+                "SOP 段应有引导语（先判定归哪本手册）");
+        // 工具链由手册步骤决定（market-insight 三步 = 2×sparql_query + swrl_risk_audit）
+        assertEquals(List.of("sparql_query", "swrl_risk_audit"), plan.getTools());
+    }
+
+    @Test
+    void phaseBEngagedWhenIntentMissesAllPlaybooks() {
+        // 阶段A未命中手册 → 阶段B注入工具清单让 LLM 选工具（两次 LLM 调用）
         var playbookRegistry = new com.sitech.prodai.service.agent.playbook.PlaybookRegistry();
         playbookRegistry.init();
         List<AgentTool> tools = List.of(
@@ -588,16 +655,15 @@ class DefaultUnderstanderTest {
                         ToolParam.builder("city").label("城市").required().build()));
         understander = new DefaultUnderstander(llmService, tools, workOrderMapper,
                 publishedFlowRegistry, new AgentCapabilityRegistry(tools), null, null, playbookRegistry);
-        llmReturns("{\"intent\":\"product_ops_query\",\"tools\":[\"sparql_query\"],\"params\":{\"city\":\"北京\"}}");
+        org.mockito.Mockito.reset(llmService);
+        when(llmService.completeMessages(anyString(), anyList(), anyString()))
+                .thenReturn("{\"intent\":\"CHAT\",\"params\":{}}",                 // 阶段A：未命中
+                        "{\"intent\":\"product_ops_query\",\"tools\":[\"sparql_query\"],\"params\":{\"city\":\"北京\"}}"); // 阶段B
 
-        understander.understand("查数据", ctx());
+        QueryPlan plan = understander.understand("随便聊聊数据", ctx());
 
-        org.mockito.ArgumentCaptor<String> sysCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(llmService, atLeastOnce()).completeMessages(sysCaptor.capture(), anyList(), anyString());
-        assertTrue(sysCaptor.getValue().contains("【标准作业程序：市场洞察】"),
-                "ops 场景 system prompt 应含 ops 手册 SOP 标题");
-        assertTrue(sysCaptor.getValue().contains("适用手册"),
-                "SOP 段应有引导语（严格按手册办事）");
+        verify(llmService, times(2)).completeMessages(anyString(), anyList(), anyString());
+        assertEquals(List.of("sparql_query"), plan.getTools(), "阶段B LLM 自选工具");
     }
 
     // ── query 场景（三态：rd / ops / query） ──

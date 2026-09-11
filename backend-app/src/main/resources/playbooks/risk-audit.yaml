@@ -8,10 +8,8 @@
 #   ① 路由消费：applies_to.intents 命中 → SceneFlowRouter 回落动态编排，LLM 照手册执行
 #   ② 编排消费：renderSop 注入 system prompt（DefaultUnderstander.playbookSopSection），
 #      intent_guide 随 SOP 下发——LLM 依据手册归口声明选意图码（手册 = 意图定义源）
-#   两条入口通向同一条手册直达链路（sop-step-N 时间线 + 环节 IO 差异化）：
-#     - 触发词快筛（LLM 理解前）：高置信度专有话术直接命中，零 LLM 成本
-#     - 意图升级（LLM 理解后）：LLM 照 intent_guide 归口输出意图码命中 applies_to.intents →
-#       AgentOrchestrator 升级 runPlaybookPath/runPlaybookStream（归一化映射仅兜底自由意图）
+#   手册直达链路（sop-step-N 时间线 + 环节 IO 差异化）：理解层 LLM 照 intent_guide 归口输出意图码命中 applies_to.intents →
+#   AgentOrchestrator 升级 runPlaybookPath/runPlaybookStream（归一化映射仅兜底自由意图）
 #
 # 命名规范：文件名 = 手册 code（kebab-case），与 name 字段一致
 # 注意：多工具手册——步骤 tool 必须与真实执行一致，否则该步骤永远等不到执行事件；
@@ -38,12 +36,6 @@ applies_to:
   #   立项门槛研判归 online-check（同码不同手册，route 按归口话术二跳判定）
   intent_guide:
     PRODUCT_OPS_POLICY: "风险稽核/合规筛查/该不该下架/下架等在架商品风险判定"
-  # 触发词快筛：路由器在 LLM 理解前先行匹配，命中直达手册链路（零 LLM 成本、消除误判）
-  # 触发词只兜高置信度的专有话术（术语级：单独 substring 匹配不偏移）；宽泛话术
-  # （如「查一下有没有合规问题」）交给理解层 LLM 识别——LLM 照 intent_guide 归口输出意图码，
-  # 编排层升级走手册直达链路（AgentOrchestrator.runPlaybookPath/runPlaybookStream），
-  # 与触发词快筛殊途同归，避免宽泛触发词在通用话术上误触发。
-  triggers: ["风险稽核", "下架风险", "合规筛查"]
 
 # ── ② 步骤（操作步骤 + 每步的操作方法和使用的工具）─────
 # 手册 = 业务流程（风险稽核怎么干），步骤 tool 是「本流程此动作调用该工具」的调用语句

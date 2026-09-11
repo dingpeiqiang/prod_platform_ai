@@ -148,6 +148,16 @@ public class DefaultUnderstander implements Understander {
         String llmResult = null;
         Exception lastError = null;
         String scene = sceneOf(context);
+
+        // ── 阶段A（手册优先）：先选手册/意图，不暴露工具清单 ──
+        // 场景有手册覆盖时，LLM 仅依据手册 SOP（含 intent_guide 归口 + 正反样例）判定意图——
+        // 工具清单不进 prompt：工具链由命中的手册步骤决定，而非 LLM 自由选配
+        QueryPlan playbookPlan = understandPlaybookFirst(question, scene, context);
+        if (playbookPlan != null) {
+            return List.of(playbookPlan);
+        }
+
+        // ── 阶段B（工具编排）：无手册命中 → 注入工具清单让 LLM 选工具 ──
         int attemptsUsed = 0;
         for (int attempt = 1; attempt <= MAX_TRANSLATE_ATTEMPTS; attempt++) {
             attemptsUsed = attempt;
@@ -322,6 +332,258 @@ public class DefaultUnderstander implements Understander {
     private String summarizeLlmRaw(String raw) {
         String s = raw.replaceAll("\\s+", " ").trim();
         return s.length() > 120 ? s.substring(0, 120) + "…" : s;
+    }
+
+    /**
+     * 阶段A LLM 原始输出摘要：剥离 tools 字段后限长。
+     * <p>
+     * 阶段A输出仅消费 intent（tools 即使出现也不进入计划——工具链由手册步骤决定），
+     * 且 base_prompt 的 JSON 契约惯性会让模型偶发附带 tools 输出；原样透传到思考
+     * 时间线会让用户误以为「理解层仍在选工具」。剥离后时间线如实呈现判定链：
+     * 只有意图与参数，工具链出现在后续手册步骤条目中。
+     */
+    private String summarizePlaybookRaw(String raw) {
+        String s = raw == null ? "" : raw.replaceAll("\\s+", " ").trim();
+        int toolsIdx = s.indexOf("\"tools\"");
+        if (toolsIdx >= 0) {
+            int objStart = s.lastIndexOf('{', toolsIdx);
+            int arrStart = s.indexOf('[', toolsIdx);
+            if (arrStart >= 0) {
+                int arrEnd = s.indexOf(']', arrStart);
+                if (arrEnd > arrStart) {
+                    // 保留 tools 前的 JSON 前缀 + 数组后的剩余字段（去除字段间多余逗号）
+                    String head = s.substring(objStart >= 0 ? objStart : 0, toolsIdx).trim();
+                    String tail = s.substring(arrEnd + 1).trim();
+                    if (tail.startsWith(",")) {
+                        tail = tail.substring(1).trim();
+                    }
+                    if (head.endsWith(",")) {
+                        head = head.substring(0, head.length() - 1).trim();
+                    }
+                    s = head + (tail.startsWith("}") ? "" : ", ") + tail;
+                }
+            }
+        }
+        return s.length() > 120 ? s.substring(0, 120) + "…" : s;
+    }
+
+    // ==================== 阶段A：手册优先的两阶段理解 ====================
+
+    /**
+     * 阶段A（手册优先）：场景有手册覆盖时，先让 LLM 仅依据手册归口声明（intent_guide +
+     * 正反样例）判定意图，不暴露工具清单——工具链由命中的手册步骤决定，而非 LLM 自由选配。
+     * <p>
+     * 判定链：LLM 输出意图 → {@link #matchPlaybook} 确定性匹配手册适用域 → 命中则
+     * 直接组装手册计划（工具 = 手册步骤工具链）；未命中返回 null 走阶段B（工具编排）。
+     * <p>
+     * 无手册场景（注册表未注入/场景无手册）直接返回 null，零额外 LLM 成本。
+     *
+     * @return 手册直达计划；未命中手册返回 null（调用方进入阶段B）
+     */
+    private QueryPlan understandPlaybookFirst(String question, String scene, SessionContext context) {
+        if (playbookRegistry == null) {
+            return null;
+        }
+        List<String> codes = playbookRegistry.codesForScene(scene);
+        if (codes.isEmpty()) {
+            return null;
+        }
+        // 阶段A prompt：角色/契约/铁律照旧，能力清单换成手册归口声明（无工具名/无参数契约）
+        String systemPrompt = buildPlaybookSelectionPrompt(scene, context);
+        String llmResult = null;
+        Exception lastError = null;
+        int attemptsUsed = 0;
+        for (int attempt = 1; attempt <= MAX_TRANSLATE_ATTEMPTS; attempt++) {
+            attemptsUsed = attempt;
+            try {
+                llmResult = llmService.completeMessages(systemPrompt, toHistory(context), question);
+            } catch (LlmConfigException e) {
+                // 配置类错误与阶段B同语义：不重试直接上抛（修复指引可行动）
+                log.error("[DefaultUnderstander] 阶段A LLM 配置/认证错误，终止理解链: {}", e.getMessage());
+                throw e;
+            } catch (Exception e) {
+                lastError = e;
+                log.warn("[DefaultUnderstander] 阶段A 大模型调用失败（第 {} 次尝试）: {}", attempt, e.getMessage());
+            }
+            if (llmResult != null && !llmResult.isBlank()) {
+                log.info("[DefaultUnderstander] 阶段A 大模型原始输出（第 {} 次尝试）: {}", attempt, llmResult);
+                break;
+            }
+            llmResult = null;
+            if (attempt < MAX_TRANSLATE_ATTEMPTS) {
+                sleep(RETRY_DELAY_MS);
+            }
+        }
+        if (llmResult == null && lastError != null) {
+            throw new IllegalStateException("大模型不可用，理解层调用失败: " + lastError.getMessage(), lastError);
+        }
+        if (llmResult == null || llmResult.isBlank()) {
+            log.error("[DefaultUnderstander] 阶段A 大模型连续 {} 次返回为空，进入阶段B重试", attemptsUsed);
+            return null;
+        }
+        pendingTrace.add(Map.of("stage", "llm", "message",
+                attemptsUsed > 1 ? "大模型调用重试 " + attemptsUsed + " 次后返回结果"
+                        : "调用大模型判定业务意图（对照手册归口声明，本环节不涉及工具选择）"));
+        pendingTrace.add(Map.of("stage", "llm", "message",
+                "大模型原始输出（工具选择不在本环节）：" + summarizePlaybookRaw(llmResult)));
+
+        // 解析阶段A输出：只取 intent（tools 忽略——手册命中前不信任 LLM 选配的工具）
+        String intent = parsePlaybookIntent(llmResult);
+        if (intent == null || intent.isBlank() || "CHAT".equalsIgnoreCase(intent.trim())) {
+            pendingTrace.add(Map.of("stage", "route",
+                    "message", "未命中任何手册归口，进入工具编排（LLM 按能力清单选工具）"));
+            return null;
+        }
+        String playbookCode = matchPlaybook(scene, intent);
+        if (playbookCode == null) {
+            pendingTrace.add(Map.of("stage", "route",
+                    "message", "识别业务意图「" + intent + "」未命中任何手册适用域，进入工具编排"));
+            return null;
+        }
+        pendingTrace.add(Map.of("stage", "route",
+                "message", "识别业务意图「" + intent + "」命中手册「"
+                        + playbookRegistry.get(playbookCode).get("title") + "」适用域声明，"
+                        + "工具链按手册步骤执行"));
+        QueryPlan plan = buildPlaybookPlan(playbookCode, intent, question, context);
+        // 阶段A推理日志挂到计划（与阶段B parseLlmResults 挂载语义一致）：
+        // 编排层手册直达阶段①经 plan.reasoningTrace 下发，前端思考时间线可见完整判定链
+        plan.setReasoningTrace(new ArrayList<>(pendingTrace));
+        pendingTrace.clear();
+        return plan;
+    }
+
+    /**
+     * 阶段A系统提示词：与阶段B共用角色/JSON 契约/铁律模板，差异仅两处——
+     * ① 能力清单段替换为手册归口声明（意图码 + 话术特征 + 正反样例，无工具名）；
+     * ② 输出契约只要求 intent/action/params（无 tools 字段——工具链由手册决定）。
+     * rd 场景的会话工单实时状态照常注入（工单操作铁律依赖）。
+     */
+    private String buildPlaybookSelectionPrompt(String scene, SessionContext context) {
+        StringBuilder sb = new StringBuilder(promptAssembler.assembleSystemPrompt(scene));
+        // 会话工单上下文先于手册段（工单操作铁律与归口判定都可能依赖）
+        if (isRdScene(scene)) {
+            String woContext = buildWorkOrderContext(context);
+            if (!woContext.isEmpty()) {
+                sb.append("\n【当前会话工单实时状态】\n").append(woContext).append('\n');
+            }
+        }
+        sb.append("\n【适用手册（先判定用户需求归哪本手册，输出其意图码）】\n");
+        for (String code : playbookRegistry.codesForScene(scene)) {
+            String sop = playbookRegistry.renderSop(code);
+            if (sop != null && !sop.isBlank()) {
+                sb.append(sop).append('\n');
+            }
+        }
+        sb.append("""
+
+                【本环节只做手册归口判定】不选工具——工具链由命中的手册步骤决定，即使上文要求输出 tools 也忽略。
+                输出 JSON（仅输出 JSON，不含 tools 字段）：
+                {"intent": "命中的手册意图码；没有手册能承接则为 CHAT",
+                 "params": {"question": "原始问题", ...手册首步所需参数}}""");
+        return sb.toString();
+    }
+
+    /** 阶段A输出解析：提取 intent 字段（tools 字段即使出现也不消费）。 */
+    private String parsePlaybookIntent(String llmResult) {
+        int start = llmResult.indexOf('{');
+        int end = llmResult.lastIndexOf('}');
+        if (start < 0 || end <= start) {
+            return null;
+        }
+        try {
+            Map<String, Object> parsed = new ObjectMapper().readValue(
+                    llmResult.substring(start, end + 1), new TypeReference<Map<String, Object>>() {});
+            return String.valueOf(parsed.getOrDefault("intent", "")).trim();
+        } catch (Exception e) {
+            log.warn("[DefaultUnderstander] 阶段A 输出解析失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** 手册适用域确定性匹配：意图码 equalsIgnoreCase 命中即返回手册 code（同 route 主判据）。 */
+    private String matchPlaybook(String scene, String intent) {
+        if (scene == null || scene.isBlank() || intent == null || intent.isBlank()) {
+            return null;
+        }
+        for (Map.Entry<String, Map<String, Object>> e : playbookRegistry.all().entrySet()) {
+            if (e.getValue().get("applies_to") instanceof Map<?, ?> at) {
+                String bookScene = String.valueOf(at.get("scene"));
+                boolean sceneOk = bookScene.isBlank() || bookScene.equals(scene);
+                boolean intentHit = at.get("intents") instanceof List<?> intents
+                        && intents.stream().map(String::valueOf)
+                        .anyMatch(i -> i.equalsIgnoreCase(intent.trim()));
+                if (sceneOk && intentHit) {
+                    return e.getKey();
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 手册命中 → 组装直达计划：工具链 = 手册步骤工具（LLM 未参与选配），
+     * 意图码 = 手册声明首码，params 以 LLM 输出 + 用户原话兜底。
+     * steps 结构（input_from 跨工具数据流）与编排层手册直达链路同源。
+     */
+    private QueryPlan buildPlaybookPlan(String playbookCode, String intent,
+                                        String question, SessionContext context) {
+        Map<String, Object> book = playbookRegistry.get(playbookCode);
+        List<String> tools = new ArrayList<>();
+        if (book.get("steps") instanceof List<?> steps) {
+            for (Object o : steps) {
+                if (o instanceof Map<?, ?> step) {
+                    String tool = String.valueOf(step.get("tool")).trim();
+                    if (!tool.isBlank() && !tools.contains(tool) && toolMap.containsKey(tool)) {
+                        tools.add(tool);
+                    }
+                }
+            }
+        }
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("question", question);
+        params.put("intent_type", intent);
+        if (context != null && context.getSessionId() != null && !context.getSessionId().isBlank()) {
+            params.put("session_id", context.getSessionId());
+        }
+        QueryPlan plan = new QueryPlan(intent, tools, params, question);
+        // 手册步骤结构随计划下传（回放/时间线与编排层直达链路同构）
+        String sop = playbookRegistry.renderSop(playbookCode);
+        List<com.sitech.prodai.service.agent.model.ExecStep> execSteps =
+                playbookExecSteps(book, tools);
+        if (!execSteps.isEmpty()) {
+            plan.setSteps(execSteps);
+        }
+        return plan;
+    }
+
+    /** 手册步骤 → ExecStep 序列（input_from 声明的跨工具数据流，来源引用静态校验）。 */
+    private List<com.sitech.prodai.service.agent.model.ExecStep> playbookExecSteps(
+            Map<String, Object> book, List<String> tools) {
+        List<com.sitech.prodai.service.agent.model.ExecStep> out = new ArrayList<>();
+        if (book.get("steps") instanceof List<?> steps) {
+            for (Object o : steps) {
+                if (!(o instanceof Map<?, ?> step)) {
+                    continue;
+                }
+                String tool = String.valueOf(step.get("tool")).trim();
+                if (tool.isBlank() || !tools.contains(tool)) {
+                    continue;
+                }
+                com.sitech.prodai.service.agent.model.ExecStep es =
+                        new com.sitech.prodai.service.agent.model.ExecStep(tool);
+                if (step.get("input_from") instanceof Map<?, ?> from) {
+                    for (Map.Entry<?, ?> e : from.entrySet()) {
+                        String param = String.valueOf(e.getKey());
+                        String source = String.valueOf(e.getValue());
+                        if (isValidResultRef(source, tools)) {
+                            es.getParamMappings().put(param, source);
+                        }
+                    }
+                }
+                out.add(es);
+            }
+        }
+        return out;
     }
 
     /** 翻译层可调用的真实工具白名单（防 LLM 编造工具名）已收敛至 AgentCapabilityRegistry（工具 getScenes() 自声明）。 */
@@ -850,9 +1112,12 @@ public class DefaultUnderstander implements Understander {
     }
 
     /**
-     * 系统提示词组装（R3 外置化）：静态部分（角色/JSON 契约/CONFIRM 规则/rd 铁律）
+     * 阶段B系统提示词组装（R3 外置化）：静态部分（角色/JSON 契约/CONFIRM 规则/rd 铁律）
      * 由 {@link IntentPromptAssembler} 从外部模板加载；动态部分（能力清单/流程清单）
      * 仍在此处拼装——它们依赖 Spring Bean 运行时状态，不适合静态模板化。
+     * <p>
+     * 手册 SOP 不在此注入：两阶段理解下手册归口判定收口阶段A
+     * （understandPlaybookFirst），走到阶段B即意味着无手册命中，只需选工具。
      */
     private String buildSystemPrompt(String scene, SessionContext context) {
         StringBuilder sb = new StringBuilder(promptAssembler.assembleSystemPrompt(scene));
@@ -866,41 +1131,9 @@ public class DefaultUnderstander implements Understander {
             }
             sb.append('\n');
         }
-        // 手册 SOP 注入（手册层双消费②）：该场景适用手册的标准作业程序随 prompt 下发，
-        // LLM 选择工具与排布步骤时照手册办事（指导手册：操作步骤 + 每步方法 + 使用的工具）
-        // 场景缺失（null/空）时不注入——手册适用域是显式声明，不给"通配"语义
-        String sopScene = scene == null || scene.isBlank() ? "" : scene;
-        String sopSection = sopScene.isEmpty() ? "" : playbookSopSection(sopScene);
-        if (!sopSection.isEmpty()) {
-            sb.append('\n').append(sopSection);
-        }
         String flowList = buildFlowCapabilitySection();
         if (!flowList.isEmpty()) {
             sb.append('\n').append(flowList);
-        }
-        return sb.toString();
-    }
-
-    /**
-     * 场景适用手册的 SOP 清单（PlaybookRegistry 编排消费）。
-     * <p>
-     * 每本手册渲染为「执行此任务时按以下步骤……」段落；注册表为空/未装载时返回空串
-     * （不注入，prompt 零膨胀）。手册即知识：改 YAML 即改 LLM 行为，无需发版。
-     */
-    private String playbookSopSection(String scene) {
-        if (playbookRegistry == null) {
-            return "";
-        }
-        List<String> codes = playbookRegistry.codesForScene(scene);
-        if (codes.isEmpty()) {
-            return "";
-        }
-        StringBuilder sb = new StringBuilder("【适用手册（执行对应任务时严格按手册步骤与约束办事）】\n");
-        for (String code : codes) {
-            String sop = playbookRegistry.renderSop(code);
-            if (sop != null && !sop.isBlank()) {
-                sb.append(sop).append('\n');
-            }
         }
         return sb.toString();
     }

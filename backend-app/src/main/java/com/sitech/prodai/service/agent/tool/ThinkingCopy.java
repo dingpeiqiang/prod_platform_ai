@@ -129,6 +129,11 @@ public final class ThinkingCopy {
                 "先弄清需求属于哪类产品（家庭融合/校园/5G 等），后续配置才能套对模板",
                 "在配置管理后台按场景特征（客群/资费形态）人工判定品类后选择对应配置模板",
                 Category.LOOKUP));
+        m.put("rd_slot_extract", new ToolCopy(
+                "抽取业务参数",
+                "从您的需求描述中提取结构化配置要素（月费/客群/宽带/渠道等），标明缺失项",
+                "对照配置模板逐项确认套餐要素：月费、目标客群、宽带速率、销售渠道等，缺项先向用户确认",
+                Category.LOOKUP));
         m.put("rd_draft_generate", new ToolCopy(
                 "生成配置草稿",
                 "把您的需求描述转化为一份可编辑的产商品配置草稿（名称、资费、客群、渠道等）",
