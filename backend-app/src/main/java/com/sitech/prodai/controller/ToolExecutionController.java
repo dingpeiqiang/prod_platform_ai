@@ -3,6 +3,8 @@ package com.sitech.prodai.controller;
 import com.sitech.prodai.common.ApiResponse;
 import com.sitech.prodai.service.agent.model.ExecutionResult;
 import com.sitech.prodai.service.ToolExecutionService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,6 +23,7 @@ import java.util.Map;
  * - 入参为结构化 Map，不接收自由文本（自由文本属于 Agent 对话入口，方案 §12.2 边界红线）；
  * - MCP 外部工具当前后端无真实连通，返回明确失败而非模拟成功。
  */
+@Tag(name = "工具执行", description = "工作流编辑器与流程引擎直接执行注册的 AgentTool（结构化入参，非自由文本）")
 @RestController
 @RequestMapping("/api/v1/agent-tools")
 public class ToolExecutionController {
@@ -32,13 +35,15 @@ public class ToolExecutionController {
     }
 
     /** 已注册工具清单（名称/描述/参数契约/输出契约），供编辑器工具节点选择与参数表单渲染。 */
-    @GetMapping
+    @Operation(summary = "工具注册清单", description = "返回工具名称/中文描述/参数契约/输出契约，供工具节点选择与参数表单渲染")
+@GetMapping
     public ApiResponse<List<Map<String, Object>>> list() {
         return toolExecutionService.listTools();
     }
 
     /** 执行单个工具：params 为结构化入参，返回 ExecutionResult 同构 JSON。 */
-    @PostMapping("/{toolName}/execute")
+    @Operation(summary = "执行单个工具", description = "params 为结构化入参 JSON，返回 ExecutionResult 同构结果")
+@PostMapping("/{toolName}/execute")
     public ApiResponse<Map<String, Object>> execute(@PathVariable String toolName,
                                                     @RequestBody(required = false) Map<String, Object> params) {
         ExecutionResult result = toolExecutionService.execute(toolName, params == null ? Map.of() : params);

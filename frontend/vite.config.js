@@ -45,6 +45,15 @@ export default defineConfig(({ mode }) => {
           target: wsTarget,
           ws: true,
           changeOrigin: true
+        },
+        // Swagger UI / OpenAPI JSON（后台管理中心「接口管理」）
+        '/swagger-ui': {
+          target: apiTarget,
+          changeOrigin: true
+        },
+        '/v3/api-docs': {
+          target: apiTarget,
+          changeOrigin: true
         }
       },
       hmr: {

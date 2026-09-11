@@ -968,10 +968,11 @@ public class AgentOrchestrator {
         return true;
     }
 
-    /** 工具产出 → 过程留痕（与 buildToolEvent 同源：本体/规则推理、数据查询等环节明细）。 */
+    /** 工具产出 → 过程留痕（与 buildToolEvent 同源：本体/规则推理、数据查询、槽位抽取等环节明细）。 */
     private List<Map<String, Object>> toolTraceOf(ExecutionResult result) {
         return switch (result.getToolName()) {
             case "sparql_query" -> TraceSnapshotBuilder.ontologyQueryTrace(result);
+            case "rd_slot_extract" -> TraceSnapshotBuilder.slotExtractTrace(result);
             default -> TraceSnapshotBuilder.ontologyTraceView(result);
         };
     }
@@ -993,7 +994,7 @@ public class AgentOrchestrator {
         return switch (result.getToolName()) {
             case "sparql_query", "swrl_root_cause", "swrl_risk_audit", "ontology_explain", "rule_explain",
                  "rd_doc_parse", "rd_draft_extract", "rd_compliance", "rd_workorder_create",
-                 "rd_category_resolve", "rd_draft_generate", "rd_config_search" ->
+                 "rd_category_resolve", "rd_slot_extract", "rd_draft_generate", "rd_config_search" ->
                     TraceSnapshotBuilder.opsAnalysisPhaseIo(result, stepIdx);
             default -> Map.of();
         };
@@ -2351,6 +2352,7 @@ public class AgentOrchestrator {
         // 数据查询类工具（NL→SPARQL）下发实体发现/查询执行留痕，体现本体查询逻辑
         List<Map<String, Object>> toolTrace = switch (result.getToolName()) {
             case "sparql_query" -> TraceSnapshotBuilder.ontologyQueryTrace(result);
+            case "rd_slot_extract" -> TraceSnapshotBuilder.slotExtractTrace(result);
             default -> TraceSnapshotBuilder.ontologyTraceView(result);
         };
         if (toolTrace != null) {

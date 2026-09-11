@@ -446,6 +446,107 @@ public final class TraceSnapshotBuilder {
         return item;
     }
 
+    /** 槽位抽取引擎 → 业务可读名称（rd_slot_extract 过程留痕用）。 */
+    private static String slotEngineName(String engine) {
+        return switch (engine == null ? "" : engine) {
+            case "regex-fast" -> "配置正则快抽（命中关键槽位，跳过 LLM）";
+            case "llm" -> "正则快抽 + LLM 补抽";
+            case "regex-fallback" -> "正则抽取（LLM 补抽失败，回退正则结果）";
+            case "regex" -> "配置正则抽取（LLM 补抽未启用）";
+            default -> engine;
+        };
+    }
+
+    /** 槽位键 → 业务展示名（rd_slot_extract 过程留痕用，与 LLM 抽取白名单同源）。 */
+    private static final Map<String, String> SLOT_LABELS = Map.ofEntries(
+            Map.entry("offeringName", "商品名称"),
+            Map.entry("monthlyFee", "月费"),
+            Map.entry("targetUser", "目标客群"),
+            Map.entry("includeBroadband", "宽带"),
+            Map.entry("channelScope", "渠道"),
+            Map.entry("bizScenario", "业务场景"),
+            Map.entry("includeData", "流量"),
+            Map.entry("includeVoice", "语音"),
+            Map.entry("offeringType", "商品类型"),
+            Map.entry("hasContract", "合约"),
+            Map.entry("contractMonths", "合约期"),
+            Map.entry("repeatable", "可重复订购"),
+            Map.entry("discountPercent", "折扣"),
+            Map.entry("dependOn", "依赖项"),
+            Map.entry("bindExistingMainPkg", "绑定主套餐"),
+            Map.entry("clearBindExisting", "解除绑定"));
+
+    /** 槽位键 → 业务展示名。 */
+    public static String slotLabel(String key) {
+        String label = key != null ? SLOT_LABELS.get(key) : null;
+        return label != null ? label : key;
+    }
+
+    /**
+     * 业务参数抽取（rd_slot_extract）过程留痕：把「正则快抽 → LLM 补抽 → 白名单过滤 →
+     * 缺要素判定」四阶段按实际引擎逐阶段展开，让业务人员看懂抽取逻辑而非一行文案。
+     * 阶段逐条判定（非一刀切），仅呈现实际发生的处理路径。
+     */
+    public static List<Map<String, Object>> slotExtractTrace(ExecutionResult result) {
+        if (result == null || !result.isSuccess() || result.getData() == null) {
+            return null;
+        }
+        Map<String, Object> data = result.getData();
+        List<Map<String, Object>> trace = new ArrayList<>();
+        String engine = str(data.get("slot_engine"));
+        List<String> missing = data.get("missing_slots") instanceof List<?> m
+                ? m.stream().map(String::valueOf).toList() : List.of();
+
+        // 阶段① 正则快抽（regex/regex-fast/regex-fallback/llm 均先执行配置正则）
+        if ("regex".equals(engine)) {
+            trace.add(slotPhase("正则配置快抽",
+                    "按配置正则模式抽取槽位（LLM 补抽未启用），仅能识别话术中的显式要素"));
+        } else {
+            trace.add(slotPhase("正则配置快抽",
+                    "按配置正则模式（ops_rules.slotPatterns + 内置正则）先抽取显式要素"));
+        }
+
+        // 阶段② LLM 补抽（regex-fast 短路 / regex 禁用时不发生；regex-fallback 表示尝试过但失败）
+        switch (engine == null ? "" : engine) {
+            case "regex-fast" ->
+                    trace.add(slotPhase("快抽短路判定",
+                            "关键槽位（场景/月费/客群/宽带）已齐备，跳过 LLM 补抽，缩短首包时间"));
+            case "regex-fallback" ->
+                    trace.add(slotPhase("LLM 补抽失败",
+                            "大模型补抽未返回有效槽位，回退采用正则结果，不影响已抽要素"));
+            case "llm" -> {
+                trace.add(slotPhase("LLM 补抽",
+                        "正则未抽齐关键槽位，调用大模型按槽位白名单补抽（未提及字段不编造）"));
+                trace.add(slotPhase("白名单过滤",
+                        "LLM 返回字段经模板槽位白名单过滤，仅保留合法槽位并合并"));
+            }
+            default -> {
+                // 无引擎标识：不渲染后续阶段，仅保留正则阶段说明
+            }
+        }
+
+        // 阶段③ 缺要素判定（模板 required_slots 口径，missing_slots 明示不静默）
+        if (missing.isEmpty()) {
+            trace.add(slotPhase("缺要素判定",
+                    "话术要素满足模板 required_slots 要求，进入下一环节草稿生成"));
+        } else {
+            trace.add(slotPhase("缺要素判定",
+                    "按模板 required_slots 判定话术未提及：" + missing.stream()
+                            .map(TraceSnapshotBuilder::slotLabel).reduce((a, b) -> a + "、" + b).orElse("")
+                            + "（缺省补全，可补充说明）"));
+        }
+        return trace;
+    }
+
+    /** 构造结构化槽位抽取阶段条目（stage=parse，前端「解析」前缀渲染）。 */
+    private static Map<String, Object> slotPhase(String phase, String message) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("stage", "parse");
+        item.put("phase", phase);
+        item.put("message", message);
+        return item;
+    }
+
     /** 旧版一行式本体留痕（结构化阶段不可用时兜底）。 */
     private static List<Map<String, Object>> legacyOntologyTrace(Map<String, Object> data) {
         List<Map<String, Object>> trace = new ArrayList<>();
@@ -496,6 +597,7 @@ public final class TraceSnapshotBuilder {
      *   <li>swrl_risk_audit：输入=筛查范围（承接查询），输出=风险等级统计+建议下架数</li>
      *   <li>rule_explain：输入=命中规则（承接稽核/研判），输出=规则语义+编号</li>
      *   <li>ontology_explain：输入=问诊结论（承接前序各步），输出=解释文案+引用规则</li>
+     *   <li>rd_slot_extract：输入=承接品类码+配置需求话术，输出=引擎+槽位明细（含缺失要素标注）</li>
      *   <li>rd_config_search：输出=命中数+命中明细（名称/月费/状态/品类，供前端渲染配置卡片）</li>
      *   <li>其余 rd 原子工具：无专属分支，走 default 全量摘要（summary 取 nl_answer）</li>
      * </ul>
@@ -580,6 +682,43 @@ public final class TraceSnapshotBuilder {
                 if (data.get("referenced_rules") instanceof List<?> rules && !rules.isEmpty()) {
                     output.put("referenced_rules", rules.stream().map(String::valueOf).limit(DETAIL_LIMIT).toList());
                 }
+            }
+            case "rd_slot_extract" -> { // 业务参数抽取（智聊链路，承接品类识别）
+                // 输入：承接上游品类码 + 配置需求话术（前端「输入」行不再显示"无需额外参数"）
+                if (!str(data.get("category_code")).isBlank() && !"null".equals(str(data.get("category_code")))) {
+                    input.put("category_code", str(data.get("category_code")));
+                }
+                input.put("requirement", "用户配置需求话术（按模板 required_slots 判定缺要素）");
+                // 输出：引擎 + 抽取计数 + 逐槽位明细行（结构化 schema {seq,title,state?,extra?}）
+                String engine = str(data.get("slot_engine"));
+                if (!engine.isBlank() && !"null".equals(engine)) {
+                    output.put("slotEngine", engine);
+                }
+                if (data.get("slot_count") instanceof Number n) {
+                    output.put("slotCount", n.intValue());
+                }
+                List<String> missingSlots = data.get("missing_slots") instanceof List<?> m
+                        ? m.stream().map(String::valueOf).toList() : List.of();
+                if (!missingSlots.isEmpty()) {
+                    output.put("missingSlots", missingSlots.stream().limit(DETAIL_LIMIT).toList());
+                }
+                if (data.get("slots") instanceof Map<?, ?> slots && !slots.isEmpty()) {
+                    List<Map<String, Object>> slotRows = new ArrayList<>();
+                    int seq = 0;
+                    for (Map.Entry<?, ?> e : slots.entrySet()) {
+                        if (seq >= DETAIL_LIMIT) {
+                            break;
+                        }
+                        String key = str(e.getKey());
+                        String value = str(e.getValue());
+                        slotRows.add(detailRow(++seq, slotLabel(key), missingSlots.contains(key) ? "未提及" : null,
+                                value.isBlank() ? "" : "值=" + value));
+                    }
+                    output.put("slot_details", slotRows);
+                }
+                String answer = str(data.get("nl_answer"));
+                output.put("summary", !answer.isBlank() && !"null".equals(answer)
+                        ? firstChars(answer, 60) : "已抽取业务参数");
             }
             case "rd_config_search" -> { // 历史配置检索（discover-history 链路）
                 int hits = data.get("items") instanceof List<?> l ? l.size()

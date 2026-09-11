@@ -5,6 +5,8 @@ import com.sitech.prodai.config.ProdAiProperties;
 import com.sitech.prodai.domain.entity.ModelProvider;
 import com.sitech.prodai.dto.ChatCompletionRequest;
 import com.sitech.prodai.service.LlmService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -25,6 +27,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.Optional;
 
+@Tag(name = "模型对话", description = "LLM 对话补全（同步/流式 SSE）与模型元信息查询")
 @RestController
 @RequestMapping("/api/v1/chat")
 public class ChatController {
@@ -43,6 +46,7 @@ public class ChatController {
         log.info("[ChatController] initialized, llmEnabled={}", properties.getLlm().isEnabled());
     }
 
+    @Operation(summary = "对话补全（同步）", description = "非流式对话：prompt 优先，messages 存在时走多轮对话；未指定 modelConfig 时使用后台「模型管理」激活配置")
     @PostMapping("/completion")
     public Map<String, Object> completion(@RequestBody ChatCompletionRequest request) {
         log.info("[ChatController] completion called, prompt_length={}, llmEnabled={}",
@@ -62,6 +66,7 @@ public class ChatController {
         }
     }
 
+    @Operation(summary = "对话补全（流式 SSE）", description = "SSE 流式对话，事件序列 text_start → text* → text_end → done；前端通过 EventSource/fetch stream 消费")
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream(@RequestBody ChatCompletionRequest request) {
         log.info("[ChatController] stream called, prompt_length={}",
@@ -111,6 +116,7 @@ public class ChatController {
     }
 
     /** 模型厂商列表（静态配置，供前端模型选择器渲染）。 */
+    @Operation(summary = "模型厂商列表", description = "返回支持的模型提供方（OpenAI/Azure/Custom/Local）及当前 LLM 服务开关状态")
     @GetMapping("/model/providers")
     public Map<String, Object> providers() {
         Map<String, Object> body = new LinkedHashMap<>();
@@ -126,6 +132,7 @@ public class ChatController {
     }
 
     /** System default model — flat fields + nested config for frontend compatibility. */
+    @Operation(summary = "默认模型配置", description = "返回系统默认模型配置（平铺字段 + config 嵌套双格式，兼容前端两种消费方式）")
     @GetMapping("/model/default")
     public Map<String, Object> defaultModelConfig() {
         Map<String, Object> config = buildDefaultConfig();
@@ -136,6 +143,7 @@ public class ChatController {
     }
 
     /** Available models for workflow LLM nodes / model pickers — from config file. */
+    @Operation(summary = "可用模型列表", description = "工作流 LLM 节点与模型选择器可用的模型清单（来自配置文件）")
     @GetMapping("/model/available")
     public Map<String, Object> availableModels() {
         List<Map<String, Object>> models = llmService
@@ -149,6 +157,7 @@ public class ChatController {
     }
 
     /** Connectivity test — real ping when LLM enabled, otherwise field-level mock. */
+    @Operation(summary = "模型连通性测试", description = "LLM 开启时真实 ping 一次补全请求；未开启时做字段级校验模拟。body 为模型配置对象（provider/model/api_key/base_url 等）")
     @PostMapping("/model/test")
     public Map<String, Object> testModel(@RequestBody Map<String, Object> modelConfig) {
         if (modelConfig == null || modelConfig.isEmpty()) {

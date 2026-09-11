@@ -59,6 +59,20 @@ mybatis-plus:
     db-config:
       id-type: auto
 
+# SpringDoc OpenAPI 接口文档（后台管理中心「接口管理」模块）
+# Swagger UI: /swagger-ui.html ；OpenAPI JSON: /v3/api-docs
+# API_GATEWAY_URL 形如 http://localhost:6174 ，用于 UI 展示 Try-it-out 的服务器地址
+springdoc:
+  api-docs:
+    enabled: ${API_DOCS_ENABLED:true}
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: ${SWAGGER_UI_ENABLED:true}
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  show-actuator: false
+
 prodai:
   ontology:
     # 生产默认关闭演示数据护栏；本地演示见 application-dev.yml

@@ -1,4 +1,4 @@
-﻿**
+**
  * 思考过程面板：时间线样式；本体推理为其中一环，内嵌网络图 + 推理预览
  *
  * 支持富元数据展示：
@@ -735,7 +735,7 @@ const ioOutputEntries = (step) => toolOutputEntries('tool', step.io?.output)
  * 兼容历史快照中的字符串行形态（旧数据直接透传展示）。
  * 无明细数据时返回空数组（不渲染明细块）。
  */
-const OUTPUT_DETAIL_KEYS = ['parse_details', 'draft_details', 'compliance_details', 'work_order_details']
+const OUTPUT_DETAIL_KEYS = ['parse_details', 'draft_details', 'compliance_details', 'work_order_details', 'slot_details']
 
 const stepOutputDetailLines = (step) => {
   const output = step.io?.output

@@ -642,4 +642,107 @@ class TraceSnapshotBuilderTest {
                 .opsAnalysisPhaseIo(ExecutionResult.ok("swrl_risk_audit", audit), 2).get("output");
         assertTrue(String.valueOf(out2.get("summary")).contains("未发现高风险"));
     }
+
+    // ── rd_slot_extract（智聊链路业务参数抽取）：IO + 过程留痕 ──
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void opsAnalysisPhaseIoRdSlotExtractCarriesInputAndSlotDetails() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("category_code", "familyBasePrc");
+        data.put("slot_engine", "llm");
+        data.put("slot_count", 3);
+        Map<String, Object> slots = new LinkedHashMap<>();
+        slots.put("monthlyFee", 59);
+        slots.put("bizScenario", "校园体验");
+        slots.put("targetUser", "");
+        data.put("slots", slots);
+        data.put("missing_slots", List.of("targetUser"));
+        data.put("nl_answer", "已抽取业务参数（引擎 llm）：monthlyFee=59.0，bizScenario=校园体验；话术未提及：targetUser");
+        ExecutionResult result = ExecutionResult.ok("rd_slot_extract", data);
+
+        // 输入：承接品类码 + 需求话术（不再显示"无需额外参数"）
+        Map<String, Object> io = TraceSnapshotBuilder.opsAnalysisPhaseIo(result, 1);
+        assertEquals("sop-step-0", ((Map<String, Object>) io.get("input")).get("from_step"));
+        assertEquals("familyBasePrc", ((Map<String, Object>) io.get("input")).get("category_code"));
+        assertTrue(String.valueOf(((Map<String, Object>) io.get("input")).get("requirement")).contains("配置需求"));
+
+        // 输出：引擎 + 计数 + 缺失要素 + 逐槽位明细行（{seq,title,state?,extra?} 契约）
+        Map<String, Object> out = (Map<String, Object>) io.get("output");
+        assertEquals("llm", out.get("slotEngine"));
+        assertEquals(3, out.get("slotCount"));
+        assertEquals(List.of("targetUser"), out.get("missingSlots"));
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("slot_details");
+        assertEquals(3, rows.size());
+        assertEquals("月费", rows.get(0).get("title"));
+        assertEquals("值=59", rows.get(0).get("extra"));
+        assertEquals("业务场景", rows.get(1).get("title"));
+        assertEquals("目标客群", rows.get(2).get("title"));
+        assertEquals("未提及", rows.get(2).get("state"));
+        // nl_answer 65 字截断到 60：断言截断不异常即可（含省略号），且兜底 summary 不为空
+        assertTrue(String.valueOf(out.get("summary")).length() <= 61);
+        assertFalse(String.valueOf(out.get("summary")).isBlank());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void opsAnalysisPhaseIoRdSlotExtractEmptySlotsFallsBack() {
+        // 无 slots/missing_slots：仅给 summary 兜底，不给明细（不渲染空明细块）
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("slot_engine", "regex");
+        data.put("slot_count", 0);
+        data.put("slots", Map.of());
+        data.put("nl_answer", "未从话术中抽取到配置要素，请补充月费/客群等关键信息");
+        Map<String, Object> out = (Map<String, Object>) TraceSnapshotBuilder
+                .opsAnalysisPhaseIo(ExecutionResult.ok("rd_slot_extract", data), 0).get("output");
+        assertTrue(String.valueOf(out.get("summary")).contains("请补充"));
+        assertFalse(out.containsKey("slot_details"));
+        assertFalse(out.containsKey("missingSlots"));
+    }
+
+    @Test
+    void slotExtractTraceEmitsPhasesByEngine() {
+        // llm 引擎：正则快抽 → LLM 补抽 → 白名单过滤 → 缺要素判定（4 阶段，stage=parse）
+        Map<String, Object> llmData = new LinkedHashMap<>();
+        llmData.put("slot_engine", "llm");
+        llmData.put("missing_slots", List.of("targetUser"));
+        List<Map<String, Object>> llmTrace = TraceSnapshotBuilder
+                .slotExtractTrace(ExecutionResult.ok("rd_slot_extract", llmData));
+        assertEquals(4, llmTrace.size());
+        for (Map<String, Object> item : llmTrace) {
+            assertEquals("parse", item.get("stage"));
+            assertTrue(item.containsKey("phase"));
+        }
+        assertEquals("正则配置快抽", llmTrace.get(0).get("phase"));
+        assertEquals("LLM 补抽", llmTrace.get(1).get("phase"));
+        assertEquals("白名单过滤", llmTrace.get(2).get("phase"));
+        assertEquals("缺要素判定", llmTrace.get(3).get("phase"));
+        assertTrue(String.valueOf(llmTrace.get(3).get("message")).contains("目标客群"),
+                "缺要素应转业务名展示");
+
+        // regex-fast 短路：正则快抽 → 快抽短路判定 → 缺要素判定（3 阶段，无 LLM 阶段）
+        Map<String, Object> fastData = new LinkedHashMap<>();
+        fastData.put("slot_engine", "regex-fast");
+        fastData.put("missing_slots", List.of());
+        List<Map<String, Object>> fastTrace = TraceSnapshotBuilder
+                .slotExtractTrace(ExecutionResult.ok("rd_slot_extract", fastData));
+        assertEquals(3, fastTrace.size());
+        assertEquals("快抽短路判定", fastTrace.get(1).get("phase"));
+        assertTrue(String.valueOf(fastTrace.get(2).get("message")).contains("满足"));
+
+        // regex-fallback：含 LLM 补抽失败说明
+        Map<String, Object> fbData = new LinkedHashMap<>();
+        fbData.put("slot_engine", "regex-fallback");
+        fbData.put("missing_slots", List.of("monthlyFee"));
+        List<Map<String, Object>> fbTrace = TraceSnapshotBuilder
+                .slotExtractTrace(ExecutionResult.ok("rd_slot_extract", fbData));
+        assertEquals(3, fbTrace.size());
+        assertEquals("LLM 补抽失败", fbTrace.get(1).get("phase"));
+    }
+
+    @Test
+    void slotExtractTraceNullOrFailedReturnsTraceWithRegexOnly() {
+        // 失败结果：不渲染过程留痕（与本体留痕口径一致）
+        assertNull(TraceSnapshotBuilder.slotExtractTrace(ExecutionResult.fail("rd_slot_extract", "boom")));
+    }
 }

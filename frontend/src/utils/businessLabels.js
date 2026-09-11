@@ -77,6 +77,11 @@ const PARAM_LABELS = {
   parse_details: '解析明细',
   compliance_details: '合规明细',
   work_order_details: '工单明细',
+  slot_details: '槽位明细',
+  category_code: '品类编码',
+  slotEngine: '抽取引擎',
+  slotCount: '抽取数量',
+  missingSlots: '缺失要素',
   workOrderCount: '工单数量',
   failureCount: '失败条数',
 }
