@@ -1,5 +1,7 @@
 package com.sitech.prodai.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -24,6 +26,7 @@ import java.util.Set;
  * - 支持 GET/POST/PUT/DELETE，响应体以字符串返回，状态码原样透传；
  * - SSRF 防护：仅允许 http/https 协议，拒绝回环/内网网段目标。
  */
+@Tag(name = "HTTP 代理", description = "通用 HTTP 转发代理（MCP 外部工具调试等场景）")
 @RestController
 @RequestMapping("/api/v1/http-proxy")
 public class HttpProxyController {
@@ -39,6 +42,7 @@ public class HttpProxyController {
         this.restTemplate = new RestTemplate(factory);
     }
 
+    @Operation(summary = "代理请求", description = "按 body 中 url/method/headers 转发 HTTP 请求")
     @PostMapping
     public ResponseEntity<Map<String, Object>> proxy(@RequestBody(required = false) Map<String, Object> body) {
         String url = body == null ? null : String.valueOf(body.getOrDefault("url", ""));

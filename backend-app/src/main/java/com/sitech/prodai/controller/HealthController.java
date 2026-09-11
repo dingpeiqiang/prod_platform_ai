@@ -5,6 +5,8 @@ import com.sitech.prodai.domain.entity.OntologyAssetVersion;
 import com.sitech.prodai.service.OntologyVersionService;
 import com.sitech.prodai.service.ProductTemplateRegistry;
 import com.sitech.prodai.service.ops.HttpOpsProductDataSource;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.core.env.Environment;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+@Tag(name = "健康检查", description = "服务健康探针与根路径信息")
 @RestController
 public class HealthController {
 
@@ -40,7 +43,8 @@ public class HealthController {
         this.templateRegistry = Optional.ofNullable(templateProvider.getIfAvailable());
     }
 
-    @RequestMapping(value = {"/health", "/api/v1/health"}, method = {RequestMethod.GET, RequestMethod.HEAD})
+    @Operation(summary = "健康检查", description = "返回服务健康状态与应用信息")
+@RequestMapping(value = {"/health", "/api/v1/health"}, method = {RequestMethod.GET, RequestMethod.HEAD})
     public Map<String, Object> health() {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("status", "ok");
@@ -100,6 +104,7 @@ public class HealthController {
         return metrics;
     }
 
+    @Operation(summary = "根路径", description = "返回服务欢迎信息")
     @GetMapping("/")
     public Map<String, Object> root() {
         Map<String, Object> body = new LinkedHashMap<>();

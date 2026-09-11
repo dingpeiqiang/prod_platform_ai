@@ -32,12 +32,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(JwtAuthFilter.class);
 
-    /** 免鉴权前缀（健康检查、登录注册、H2 控制台、非 API 静态资源） */
+    /** 免鉴权前缀（健康检查、登录注册、H2 控制台、非 API 静态资源、产销品加载 AI 应用插件对接接口） */
     private static final List<String> WHITELIST_PREFIXES = List.of(
             "/health",
             "/api/v1/health",
             "/api/v1/auth/login",
             "/api/v1/auth/register",
+            "/api/v1/appstore",
             "/h2-console",
             "/v3/api-docs",
             "/swagger-ui",

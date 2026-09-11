@@ -5,6 +5,8 @@ import com.sitech.prodai.service.appstore.BillingRuleCheckService;
 import com.sitech.prodai.service.appstore.SpecAuditService;
 import com.sitech.prodai.service.appstore.TestCaseService;
 import com.sitech.prodai.service.common.MapOps;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,6 +26,7 @@ import java.util.Map;
  * 统一约定：HTTP/HTTPS + JSON（snake_case 出参）；出参含统一状态字段 {@code code}/{@code msg}；
  * 写入类接口支持 {@code idempotency_key} 幂等头/字段；长任务（用例执行）走 {@code task_id} 异步模式。
  */
+@Tag(name = "应用商店", description = "应用商店智能配置：商品配置查询、CRM/计费配置生成、规则校验、测试用例、验收与告警")
 @RestController
 @RequestMapping("/api/v1/appstore")
 public class AppStoreController {
@@ -45,6 +48,7 @@ public class AppStoreController {
 
     /* ================= 接口1：产销品配置查询 ================= */
 
+    @Operation(summary = "商品配置查询", description = "按关键字查询商品配置")
     @GetMapping("/products/config/query")
     public Map<String, Object> queryProductConfig(@RequestParam(required = false) String keyword,
                                                   @RequestParam(required = false) String product_id,
@@ -57,6 +61,7 @@ public class AppStoreController {
 
     /* ================= 接口2：CRM 配置数据生成 ================= */
 
+    @Operation(summary = "CRM 配置生成", description = "AI 生成 CRM 配置")
     @PostMapping("/crm/config/generate")
     public Map<String, Object> genCrmConfig(@RequestBody Map<String, Object> req) {
         Map<String, Object> replay = store.idempotentReplay(MapOps.str(req.get("idempotency_key")));
@@ -111,6 +116,7 @@ public class AppStoreController {
 
     /* ================= 接口3：计费配置数据生成 ================= */
 
+    @Operation(summary = "计费配置生成", description = "AI 生成计费配置")
     @PostMapping("/billing/config/generate")
     public Map<String, Object> genBillingConfig(@RequestBody Map<String, Object> req) {
         Map<String, Object> replay = store.idempotentReplay(MapOps.str(req.get("idempotency_key")));
@@ -144,6 +150,7 @@ public class AppStoreController {
 
     /* ================= 接口4：计费规则校验 ================= */
 
+    @Operation(summary = "计费规则校验", description = "校验计费规则合法性")
     @PostMapping("/rules/verify")
     public Map<String, Object> checkBillingRule(@RequestBody Map<String, Object> req) {
         Map<String, Object> billingConfig = store.parseJson(MapOps.str(req.get("billing_config_json")));
@@ -157,6 +164,7 @@ public class AppStoreController {
     }
 
     /** 规则配置（与知识库规则同步；可配置化支撑） */
+    @Operation(summary = "计费规则配置", description = "配置计费规则")
     @PostMapping("/rules/config")
     public Map<String, Object> configBillingRules(@RequestBody Map<String, Object> req) {
         return billingRuleCheck.updateRules(
@@ -167,6 +175,7 @@ public class AppStoreController {
 
     /* ================= 接口5：配置规格稽核 ================= */
 
+    @Operation(summary = "商品规格审计", description = "审计商品规格")
     @PostMapping("/spec/audit")
     public Map<String, Object> checkProductSpec(@RequestBody Map<String, Object> req) {
         Map<String, Object> crmConfig = store.parseJson(MapOps.str(req.get("crm_config_json")));
@@ -189,6 +198,7 @@ public class AppStoreController {
 
     /* ================= 接口6：测试用例生成 ================= */
 
+    @Operation(summary = "测试用例生成", description = "AI 生成测试用例")
     @PostMapping("/cases/generate")
     public Map<String, Object> genTestCases(@RequestBody Map<String, Object> req) {
         Map<String, Object> crmConfig = store.parseJson(MapOps.str(req.get("crm_config_json")));
@@ -207,6 +217,7 @@ public class AppStoreController {
 
     /* ================= 接口7：测试用例执行 ================= */
 
+    @Operation(summary = "测试用例执行", description = "执行已生成的测试用例")
     @PostMapping("/cases/execute")
     public Map<String, Object> runTestCases(@RequestBody Map<String, Object> req) {
         List<String> caseIds = new ArrayList<>();
@@ -221,6 +232,7 @@ public class AppStoreController {
     }
 
     /** 执行结果回查（可选开发项：异步任务状态查询） */
+    @Operation(summary = "任务查询", description = "按任务 ID 查询异步任务结果")
     @GetMapping("/tasks/{task_id}")
     public Map<String, Object> queryTask(@PathVariable("task_id") String taskId) {
         return testCaseService.queryTask(taskId);
@@ -228,6 +240,7 @@ public class AppStoreController {
 
     /* ================= 接口8：受理验证 ================= */
 
+    @Operation(summary = "订单验收核验", description = "订单验收核验")
     @PostMapping("/order/verify")
     public Map<String, Object> verifyAcceptance(@RequestBody Map<String, Object> req) {
         String productId = MapOps.str(req.get("product_id"));
@@ -259,6 +272,7 @@ public class AppStoreController {
 
     /* ================= 接口9：上线审批推送 ================= */
 
+    @Operation(summary = "发布审批提交", description = "提交发布审批")
     @PostMapping("/approval/submit")
     public Map<String, Object> submitReleaseApproval(@RequestBody Map<String, Object> req) {
         Map<String, Object> replay = store.idempotentReplay(MapOps.str(req.get("idempotency_key")));
@@ -298,6 +312,7 @@ public class AppStoreController {
 
     /* ================= 接口10：产销品监控查询 ================= */
 
+    @Operation(summary = "商品监控", description = "按商品 ID 查询监控数据")
     @GetMapping("/product/monitor")
     public Map<String, Object> queryProductMonitor(@RequestParam("product_id") String productId,
                                                    @RequestParam(required = false) String date_range,
@@ -339,6 +354,7 @@ public class AppStoreController {
 
     /* ================= 接口11：异常告警推送 ================= */
 
+    @Operation(summary = "告警发送", description = "发送告警通知")
     @PostMapping("/alert/send")
     public Map<String, Object> sendAlert(@RequestBody Map<String, Object> req) {
         String productId = MapOps.str(req.get("product_id"));

@@ -3,6 +3,8 @@ package com.sitech.prodai.controller;
 import com.sitech.prodai.service.FormService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -12,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
+@Tag(name = "表单服务", description = "动态表单：Schema 获取、AI 生成与提交")
 @RestController
 @RequestMapping("/api/v1")
 public class FormController {
@@ -25,6 +28,7 @@ public class FormController {
         log.info("[FormController] initialized");
     }
 
+    @Operation(summary = "表单 Schema", description = "按表单编码获取动态表单 Schema")
     @GetMapping("/form/schema/{formCode}")
     public Map<String, Object> getFormSchema(@PathVariable String formCode) {
         log.info("[FormController] getFormSchema called, formCode={}", formCode);
@@ -36,6 +40,7 @@ public class FormController {
         }
     }
 
+    @Operation(summary = "AI 生成表单", description = "由 LLM 依据描述生成表单")
     @PostMapping("/form/generate")
     public Map<String, Object> generateForm(@RequestBody(required = false) Map<String, Object> request) {
         log.info("[FormController] generateForm called, request_size={}",
@@ -48,6 +53,7 @@ public class FormController {
         }
     }
 
+    @Operation(summary = "表单提交", description = "提交表单数据并校验")
     @PostMapping("/form/submit")
     public Map<String, Object> submitForm(@RequestBody Map<String, Object> request) {
         log.info("[FormController] submitForm called, formId={}, formCode={}",

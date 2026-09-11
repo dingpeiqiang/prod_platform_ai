@@ -2,6 +2,8 @@ package com.sitech.prodai.controller;
 
 import com.sitech.prodai.service.FormService;
 import com.sitech.prodai.service.ValidationService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -21,6 +23,7 @@ import java.util.Map;
  *   <li>POST /api/v1/validation/llm — LLM 智能校验（基于本体规则）</li>
  * </ul>
  */
+@Tag(name = "校验服务", description = "表单校验：字段级、表单级与 LLM 智能校验")
 @RestController
 @RequestMapping("/api/v1/validation")
 public class ValidationController {
@@ -34,6 +37,7 @@ public class ValidationController {
     }
 
     /** 单字段校验 —— 对齐 Python POST /validation/field */
+    @Operation(summary = "字段校验", description = "单字段规则校验")
     @PostMapping("/field")
     public Map<String, Object> validateField(@RequestBody Map<String, Object> request) {
         Object fieldValue = request.get("fieldValue");
@@ -50,6 +54,7 @@ public class ValidationController {
     }
 
     /** 整表单校验 —— 对齐 Python POST /validation/form */
+    @Operation(summary = "表单校验", description = "整表单规则校验")
     @PostMapping("/form")
     public Map<String, Object> validateForm(@RequestBody Map<String, Object> request) {
         @SuppressWarnings("unchecked")
@@ -68,6 +73,7 @@ public class ValidationController {
     }
 
     /** LLM 智能校验 —— 对齐 Python POST /validation/llm（委托给 FormService 保持契约一致） */
+    @Operation(summary = "LLM 校验", description = "LLM 智能语义校验")
     @PostMapping("/llm")
     public Map<String, Object> validateWithLlm(@RequestBody Map<String, Object> request) {
         return formService.validateWithLlm(request);

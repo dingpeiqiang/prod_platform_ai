@@ -16,6 +16,8 @@ import com.sitech.prodai.service.ProductTemplateService;
 import com.sitech.prodai.service.TemplateComplianceService;
 import com.sitech.prodai.service.TemplateDeriveEngine;
 import com.sitech.prodai.service.queryheat.QueryHeatService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,6 +37,7 @@ import java.util.Map;
 /**
  * 产商品本体 API（配置+运营）。响应带 {@code demoMode}/{@code dataSource}（标识当前数据配置，非另一套逻辑）。
  */
+@Tag(name = "产商品本体", description = "产商品本体 API（配置+运营）：图谱、模板配置、实例管理、草稿发布、运营分析与工单")
 @RestController
 @RequestMapping("/api/v1/product-ontology")
 public class ProductOntologyController {
@@ -75,17 +78,20 @@ public class ProductOntologyController {
         return productOntologyService == null ? body : productOntologyService.withModeMeta(body);
     }
 
+    @Operation(summary = "图谱概览", description = "返回事实图谱摘要（节点/边统计与样例）")
     @GetMapping("/graph")
     public Map<String, Object> graph() {
         return productOntologyService.getGraphSummary();
     }
 
     /** 事务式热重载事实图（P1-6 last-known-good 守卫）：失败保留现行图谱并返回差异报告。 */
+    @Operation(summary = "热重载图谱", description = "事务式热重载事实图：失败保留现行图谱并返回差异报告")
     @PostMapping("/graph/reload")
     public Map<String, Object> reloadGraph() {
         return ok(productOntologyService.reloadGraph());
     }
 
+    @Operation(summary = "本体元数据", description = "返回本体元信息与产品模板清单（productTemplates）")
     @GetMapping("/meta")
     public Map<String, Object> meta() {
         Map<String, Object> body = new LinkedHashMap<>(productOntologyService.getOntologyMeta());
@@ -95,6 +101,7 @@ public class ProductOntologyController {
     }
 
     /** §9.1 模板渲染 schema 下发：前端 DynamicForm 直接消费。 */
+    @Operation(summary = "模板表单 Schema", description = "按品类下发模板渲染 schema，前端 DynamicForm 直接消费")
     @GetMapping("/config/template/{category}")
     public Map<String, Object> template(@PathVariable("category") String category) {
         Map<String, Object> schema = templateRegistry.buildFormSchema(category);
@@ -118,6 +125,7 @@ public class ProductOntologyController {
     }
 
     /** 模板注册中心热重载（增量注册：新增产品只落地模板文件）。 */
+    @Operation(summary = "重载模板注册中心", description = "热重载模板注册中心（增量注册：新增产品只落地模板文件）")
     @PostMapping("/config/template/reload")
     public Map<String, Object> reloadTemplates() {
         Map<String, Object> report = templateRegistry.reload();
@@ -134,6 +142,7 @@ public class ProductOntologyController {
      * body：模板 payload（可直接传模板 JSON；亦兼容 {template:{...}, author, summary}）。
      * 仅允许全新 template_id；生效需 submit-review → publish（研发自助新增类型）。
      */
+    @Operation(summary = "新建模板草稿", description = "新建产品类型模板草稿入库，仅允许全新 template_id；生效需 submit-review → publish")
     @PostMapping("/config/template")
     public Map<String, Object> createTemplate(@RequestBody(required = false) Map<String, Object> request) {
         Map<String, Object> safe = request == null ? Map.of() : request;
@@ -155,6 +164,7 @@ public class ProductOntologyController {
     }
 
     /** P3-1 修订（版本号++）：PUT 别名对齐 §9.3 完整版契约，语义与 saveDraft 收敛。 */
+    @Operation(summary = "修订模板", description = "修订模板（版本号++），语义与保存草稿一致")
     @PutMapping("/config/template/{templateId}")
     public Map<String, Object> updateTemplate(@PathVariable("templateId") String templateId,
                                               @RequestBody Map<String, Object> payload,
@@ -164,6 +174,7 @@ public class ProductOntologyController {
     }
 
     /** 编辑新 draft（版本号++）：body 传模板 JSON payload。 */
+    @Operation(summary = "保存模板新版本草稿", description = "编辑新 draft（版本号++），body 传模板 JSON payload")
     @PostMapping("/config/template/{templateId}/versions")
     public Map<String, Object> saveTemplateDraft(@PathVariable("templateId") String templateId,
                                                  @RequestBody Map<String, Object> payload,
@@ -173,12 +184,14 @@ public class ProductOntologyController {
     }
 
     /** 版本列表 + 动作日志（表 A/表 B 视图）。 */
+    @Operation(summary = "模板版本列表", description = "返回版本列表与动作日志（表 A/表 B 视图）")
     @GetMapping("/config/template/{templateId}/versions")
     public Map<String, Object> templateVersions(@PathVariable("templateId") String templateId) {
         return ok(templateService.versions(templateId));
     }
 
     /** P3-1a 版本对比：from/to 两版本 payload 字段级 diff（added/removed/changed）。 */
+    @Operation(summary = "模板版本对比", description = "from/to 两版本 payload 字段级 diff（added/removed/changed）")
     @GetMapping("/config/template/{templateId}/diff")
     public Map<String, Object> diffTemplateVersions(@PathVariable("templateId") String templateId,
                                                     @RequestParam("from") String fromVersion,
@@ -187,6 +200,7 @@ public class ProductOntologyController {
     }
 
     /** draft ──review──► review。 */
+    @Operation(summary = "提交评审", description = "draft ──review──► review 状态流转")
     @PostMapping("/config/template/{templateId}/submit-review")
     public Map<String, Object> submitTemplateReview(@PathVariable("templateId") String templateId,
                                                     @RequestParam("version") String version,
@@ -195,6 +209,7 @@ public class ProductOntologyController {
     }
 
     /** review ──publish(dryrun通过)──► published：P1-6 四步守卫，失败保留现行。 */
+    @Operation(summary = "发布模板", description = "review ──publish(dryrun通过)──► published，四步守卫失败保留现行")
     @PostMapping("/config/template/{templateId}/publish")
     public Map<String, Object> publishTemplate(@PathVariable("templateId") String templateId,
                                                @RequestParam("version") String version,
@@ -203,6 +218,7 @@ public class ProductOntologyController {
     }
 
     /** rollback：取表 A 目标版本 payload → 守卫三步 → 成功记 rollback 日志。 */
+    @Operation(summary = "回滚模板", description = "取目标版本 payload → 守卫三步 → 成功记 rollback 日志")
     @PostMapping("/config/template/{templateId}/rollback")
     public Map<String, Object> rollbackTemplate(@PathVariable("templateId") String templateId,
                                                 @RequestParam("to") String toVersion,
@@ -211,6 +227,7 @@ public class ProductOntologyController {
     }
 
     /** published ──deprecate──► deprecated。 */
+    @Operation(summary = "废弃模板", description = "published ──deprecate──► deprecated 状态流转")
     @PostMapping("/config/template/{templateId}/deprecate")
     public Map<String, Object> deprecateTemplate(@PathVariable("templateId") String templateId,
                                                  @RequestParam("version") String version,
@@ -222,6 +239,7 @@ public class ProductOntologyController {
     // ---------------- 实例 CRUD + SPARQL（P3-1a，§10 P3） ----------------
 
     /** 实例列表：type 可选过滤（如 ConfigScheme / ShelfOffering）。 */
+    @Operation(summary = "实例列表", description = "本体实例列表，type 可选过滤（如 ConfigScheme / ShelfOffering）")
     @GetMapping("/instances")
     public Map<String, Object> listInstances(@RequestParam(value = "type", required = false) String type) {
         List<Map<String, Object>> rows = type == null || type.isBlank()
@@ -236,6 +254,7 @@ public class ProductOntologyController {
     }
 
     /** 实例详情：按完整 URI 查询单个实例。 */
+    @Operation(summary = "实例详情", description = "按完整 URI 查询单个实例")
     @GetMapping("/instances/{uri}")
     public Map<String, Object> getInstance(@PathVariable("uri") String uri) {
         Map<String, Object> entity = ontologyStore.getEntity(uri);
@@ -250,6 +269,7 @@ public class ProductOntologyController {
     }
 
     /** 新建实例：body = { uri, type, facts }；URI 已存在时返回失败（幂等创建）。 */
+    @Operation(summary = "新建实例", description = "body = { uri, type, facts }；URI 已存在时返回失败（幂等创建）")
     @PostMapping("/instances")
     public Map<String, Object> createInstance(@RequestBody(required = false) Map<String, Object> request) {
         Map<String, Object> safe = request == null ? Map.of() : request;
@@ -280,6 +300,7 @@ public class ProductOntologyController {
     }
 
     /** 更新实例：body = { facts }（部分更新，merge 语义）。 */
+    @Operation(summary = "更新实例", description = "body = { facts }（部分更新，merge 语义）")
     @PutMapping("/instances/{uri}")
     public Map<String, Object> updateInstance(@PathVariable("uri") String uri,
                                               @RequestBody(required = false) Map<String, Object> request) {
@@ -302,6 +323,7 @@ public class ProductOntologyController {
     }
 
     /** 删除实例：按完整 URI 删除（幂等，不存在也返回成功）。 */
+    @Operation(summary = "删除实例", description = "按完整 URI 删除（幂等，不存在也返回成功）")
     @DeleteMapping("/instances/{uri}")
     public Map<String, Object> deleteInstance(@PathVariable("uri") String uri) {
         Map<String, Object> existing = ontologyStore.getEntity(uri);
@@ -317,6 +339,7 @@ public class ProductOntologyController {
      * 裸 SPARQL 查询（P3-1a「SPARQL 可回答为什么」）：body = { query }。
      * 只读 SELECT/ASK；空 query 返回全量实例列表（对齐 store.sparqlSelect 语义）。
      */
+    @Operation(summary = "SPARQL 查询", description = "只读 SELECT/ASK 查询；空 query 返回全量实例列表")
     @PostMapping("/sparql")
     public Map<String, Object> sparql(@RequestBody(required = false) Map<String, Object> request) {
         Map<String, Object> safe = request == null ? Map.of() : request;
@@ -331,17 +354,20 @@ public class ProductOntologyController {
     }
 
     /** P1-7 验收核对：运行双品类回归用例集（家庭融合/校园/5G/宽带），返回逐条断言报告。 */
+    @Operation(summary = "运行回归用例", description = "运行双品类回归用例集（家庭融合/校园/5G/宽带），返回逐条断言报告")
     @GetMapping("/config/regression/run")
     public Map<String, Object> runRegression() {
         return ok(regressionService.runAll());
     }
 
     /** P2-6 收敛后回归门禁报告（评审入口）；P2-7 后为引擎侧回归断言（含报文节点判据）。 */
+    @Operation(summary = "回归门禁报告", description = "收敛后回归门禁报告（评审入口），含报文节点判据")
     @GetMapping("/config/regression/diff")
     public Map<String, Object> regressionDiff() {
         return ok(regressionService.runAll());
     }
 
+    @Operation(summary = "字段推理", description = "derive_rules 引擎按 slots/draft 推理缺失字段")
     @PostMapping("/config/infer")
     public Map<String, Object> infer(@RequestBody(required = false) InferRequest request) {
         InferRequest safe = request == null ? new InferRequest() : request;
@@ -350,6 +376,7 @@ public class ProductOntologyController {
                 productOntologyService.loadGraph()));
     }
 
+    @Operation(summary = "合规智检", description = "存量 smart 源解析（草稿/在架/LLM 兜底）+ 模板裁剪面与轻量字段约束校验")
     @PostMapping("/config/compliance")
     public Map<String, Object> compliance(@RequestBody(required = false) ComplianceRequest request) {
         ComplianceRequest safe = request == null ? new ComplianceRequest() : request;
@@ -376,6 +403,7 @@ public class ProductOntologyController {
         return ok(body);
     }
 
+    @Operation(summary = "对话式配置", description = "自然语言对话生成/修订配置草稿（text 必填）")
     @PostMapping("/config/chat")
     public Map<String, Object> chatConfigure(@RequestBody ChatConfigureRequest request) {
         if (request == null || request.getText() == null || request.getText().isBlank()) {
@@ -384,6 +412,7 @@ public class ProductOntologyController {
         return ok(productOntologyService.chatConfigure(request.getText(), request.getDraft()));
     }
 
+    @Operation(summary = "批量映射文档", description = "从文档文本批量映射生成配置")
     @PostMapping("/config/batch")
     public Map<String, Object> batch(@RequestBody(required = false) BatchDocumentRequest request) {
         BatchDocumentRequest safe = request == null ? new BatchDocumentRequest() : request;
@@ -391,6 +420,7 @@ public class ProductOntologyController {
     }
 
     /** 智查：语义/关键词发现历史配置方案 */
+    @Operation(summary = "智查发现", description = "语义/关键词发现历史配置方案")
     @PostMapping("/config/discover")
     public Map<String, Object> discover(@RequestBody(required = false) Map<String, Object> request) {
         Map<String, Object> body = request == null ? Map.of() : request;
@@ -411,6 +441,7 @@ public class ProductOntologyController {
     }
 
     /** 一键复制为配置草稿并合规校验（带 session_id 时复制即开配置工单；带 requirement 时按补充需求修正副本字段） */
+    @Operation(summary = "复制为草稿", description = "一键复制为配置草稿并合规校验（可携带 session_id/requirement）")
     @PostMapping("/config/copy-as-draft")
     public Map<String, Object> copyAsDraft(@RequestBody(required = false) Map<String, Object> request) {
         Map<String, Object> body = request == null ? Map.of() : request;
@@ -425,6 +456,7 @@ public class ProductOntologyController {
     }
 
     /** 智读：选择文件后立即上传，返回 file_id 供发送时映射 */
+    @Operation(summary = "上传配置文件", description = "智读：选择文件后立即上传，返回 file_id 供发送时映射")
     @PostMapping(value = "/config/upload", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
     public Map<String, Object> uploadConfigFile(@RequestParam("file") MultipartFile file) {
         if (file == null || file.isEmpty()) {
@@ -443,6 +475,7 @@ public class ProductOntologyController {
     }
 
     /** 智读：按 file_id 下载原文件（消息附件可下载；fileName 支持原文件名回显/落盘） */
+    @Operation(summary = "下载配置文件", description = "智读：按 file_id 下载原文件（消息附件可下载）")
     @GetMapping("/config/files/{fileId}")
     public org.springframework.http.ResponseEntity<org.springframework.core.io.Resource> downloadConfigFile(
             @PathVariable String fileId,
@@ -472,6 +505,7 @@ public class ProductOntologyController {
     }
 
     /** 智读：按已上传 file_id 解析并批量映射（发送消息时调用） */
+    @Operation(summary = "按文件批量映射", description = "智读：按已上传 file_id 解析并批量映射（发送消息时调用）")
     @PostMapping("/config/batch-by-file")
     public Map<String, Object> batchByFile(@RequestBody(required = false) Map<String, Object> request) {
         Map<String, Object> body = request == null ? Map.of() : request;
@@ -487,6 +521,7 @@ public class ProductOntologyController {
     }
 
     /** 智读：上传 Word/PDF/Excel 等文件后批量映射（兼容旧入口：上传+映射一步完成） */
+    @Operation(summary = "上传并批量映射", description = "智读：上传 Word/PDF/Excel 等文件后批量映射（兼容旧入口）")
     @PostMapping("/config/batch-upload")
     public Map<String, Object> batchUpload(@RequestParam("file") MultipartFile file) throws Exception {
         if (file == null || file.isEmpty()) {
@@ -496,6 +531,7 @@ public class ProductOntologyController {
     }
 
     /** 知识自迭代：合规草稿沉淀至本体/事实图 */
+    @Operation(summary = "沉淀配置草稿", description = "知识自迭代：合规草稿沉淀至本体/事实图")
     @PostMapping("/config/publish")
     public Map<String, Object> publish(@RequestBody(required = false) Map<String, Object> request) {
         Map<String, Object> body = request == null ? Map.of() : request;
@@ -507,6 +543,7 @@ public class ProductOntologyController {
     }
 
     /** 配置草稿持久化（刷新可恢复） */
+    @Operation(summary = "草稿列表", description = "配置草稿持久化列表（刷新可恢复），可按会话/用户/状态过滤")
     @GetMapping("/config/drafts")
     public Map<String, Object> listDrafts(
             @RequestParam(value = "session_id", required = false) String sessionId,
@@ -516,16 +553,19 @@ public class ProductOntologyController {
         return ok(productOntologyService.listConfigDrafts(sessionId, userId, status));
     }
 
+    @Operation(summary = "草稿详情", description = "按 ID 查询配置草稿")
     @GetMapping("/config/drafts/{draftId}")
     public Map<String, Object> getDraft(@PathVariable("draftId") Long draftId) {
         return ok(productOntologyService.getConfigDraft(draftId));
     }
 
+    @Operation(summary = "保存草稿", description = "新建配置草稿")
     @PostMapping("/config/drafts")
     public Map<String, Object> saveDraft(@RequestBody(required = false) Map<String, Object> request) {
         return ok(productOntologyService.saveConfigDraft(request));
     }
 
+    @Operation(summary = "更新草稿", description = "更新指定 ID 的配置草稿")
     @PutMapping("/config/drafts/{draftId}")
     public Map<String, Object> updateDraft(
             @PathVariable("draftId") Long draftId,
@@ -536,34 +576,40 @@ public class ProductOntologyController {
         return ok(productOntologyService.saveConfigDraft(body));
     }
 
+    @Operation(summary = "删除草稿", description = "删除指定 ID 的配置草稿")
     @DeleteMapping("/config/drafts/{draftId}")
     public Map<String, Object> deleteDraft(@PathVariable("draftId") Long draftId) {
         return ok(productOntologyService.deleteConfigDraft(draftId));
     }
 
     /** 智检通过后提交：沉淀本体 + 生成工单 */
+    @Operation(summary = "提交草稿", description = "智检通过后提交：沉淀本体 + 生成工单")
     @PostMapping("/config/submit")
     public Map<String, Object> submitDraft(@RequestBody(required = false) Map<String, Object> request) {
         return ok(productOntologyService.submitConfigDraft(request));
     }
 
     /** 多方案对比（合规 + 收益估算 + 推荐说明） */
+    @Operation(summary = "多方案对比", description = "配置多方案对比（合规 + 收益估算 + 推荐说明）")
     @PostMapping("/config/compare")
     public Map<String, Object> compareSchemes(@RequestBody(required = false) Map<String, Object> request) {
         return ok(productOntologyService.compareConfigSchemes(request));
     }
 
+    @Operation(summary = "配置追溯", description = "按 trace_id 查询配置全链路追溯")
     @GetMapping("/config/trace")
     public Map<String, Object> configTrace(@RequestParam("trace_id") String traceId) {
         return ok(productOntologyService.getConfigTrace(traceId));
     }
 
     /** P3-6 溯源链回放：回答"字段默认值为什么是 X"（PROV-O derivedFrom）。 */
+    @Operation(summary = "字段溯源", description = "P3-6 溯源链回放：回答「字段默认值为什么是 X」（PROV-O derivedFrom）")
     @GetMapping("/config/provenance/{field}")
     public Map<String, Object> fieldProvenance(@PathVariable("field") String field) {
         return ok(productOntologyService.explainFieldDefault(field));
     }
 
+    @Operation(summary = "配置解释", description = "按 trace_id 生成业务/技术视角的配置解释")
     @PostMapping("/config/explain")
     public Map<String, Object> configExplain(@RequestBody(required = false) Map<String, Object> request) {
         Map<String, Object> body = request == null ? Map.of() : request;
@@ -573,44 +619,52 @@ public class ProductOntologyController {
         return ok(productOntologyService.explainConfig(traceId, audience));
     }
 
+    @Operation(summary = "运营看板", description = "返回运营总览看板数据")
     @GetMapping("/ops/dashboard")
     public Map<String, Object> dashboard() {
         return productOntologyService.getOpsDashboard();
     }
 
+    @Operation(summary = "收入总览", description = "返回运营收入总览数据")
     @GetMapping("/ops/revenue-overview")
     public Map<String, Object> revenueOverview() {
         return ok(productOntologyService.getOpsRevenueOverview());
     }
 
+    @Operation(summary = "根因分析", description = "对指定商品或文本进行运营根因分析")
     @PostMapping("/ops/root-cause")
     public Map<String, Object> rootCause(@RequestBody(required = false) RootCauseRequest request) {
         RootCauseRequest safe = request == null ? new RootCauseRequest() : request;
         return ok(productOntologyService.analyzeRootCause(safe.getOfferingId(), safe.getText()));
     }
 
+    @Operation(summary = "风险稽核", description = "对商品清单批量执行风险稽核")
     @PostMapping("/ops/risk-audit")
     public Map<String, Object> riskAudit(@RequestBody(required = false) RiskAuditRequest request) {
         RiskAuditRequest safe = request == null ? new RiskAuditRequest() : request;
         return productOntologyService.auditRisks(safe.getOfferingIds());
     }
 
+    @Operation(summary = "查询风险规则", description = "返回当前风险规则阈值配置")
     @GetMapping("/ops/risk-rules")
     public Map<String, Object> getRiskRules() {
         return ok(productOntologyService.updateRiskRules(null));
     }
 
+    @Operation(summary = "运营规则清单", description = "返回运营规则目录")
     @GetMapping("/ops/rules")
     public Map<String, Object> getOpsRules() {
         return ok(productOntologyService.getOpsRulesCatalog());
     }
 
     /** 热重载 classpath/文件侧 ops_rules.json（内存覆盖阈值保留）。 */
+    @Operation(summary = "重载运营规则", description = "热重载 classpath/文件侧 ops_rules.json（内存覆盖阈值保留）")
     @PostMapping("/ops/rules/reload")
     public Map<String, Object> reloadOpsRules() {
         return ok(productOntologyService.reloadOpsRules());
     }
 
+    @Operation(summary = "更新风险规则", description = "更新风险规则阈值（部分字段可选）")
     @PostMapping("/ops/risk-rules")
     public Map<String, Object> updateRiskRules(@RequestBody(required = false) RiskRulesRequest request) {
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -634,6 +688,7 @@ public class ProductOntologyController {
         return ok(productOntologyService.updateRiskRules(payload));
     }
 
+    @Operation(summary = "重置风险规则", description = "恢复风险规则默认阈值")
     @PostMapping("/ops/risk-rules/reset")
     public Map<String, Object> resetRiskRules() {
         return ok(productOntologyService.resetRiskRules());
@@ -643,6 +698,7 @@ public class ProductOntologyController {
      * 立项/策略多方案对比（原 {@code /api/v1/product-ops/compare}）。
      * body: { snapshot_id?, patches, policy_set_id?, current_facts?, trace_id?, tenant_id? }
      */
+    @Operation(summary = "策略状态对比", description = "立项/策略多方案对比（快照 + patches 推演）")
     @PostMapping("/ops/compare")
     public Map<String, Object> comparePolicyState(@RequestBody(required = false) Map<String, Object> request) {
         Map<String, Object> body = request == null ? Map.of() : request;
@@ -669,6 +725,7 @@ public class ProductOntologyController {
      * 假设推演：退市 / 改价后重跑风险稽核（不写回事实图）。
      * body: { mode: "delist"|"price"|"risk", patches: [{offeringId, changes, description?}] }
      */
+    @Operation(summary = "假设推演", description = "退市/改价后重跑风险稽核（不写回事实图）")
     @PostMapping("/ops/hypothetical")
     public Map<String, Object> hypothetical(@RequestBody(required = false) Map<String, Object> body) {
         Map<String, Object> safe = body == null ? Map.of() : body;
@@ -699,11 +756,13 @@ public class ProductOntologyController {
         return ok(productOntologyService.evaluateHypothetical(patches, mode));
     }
 
+    @Operation(summary = "运营告警列表", description = "返回运营告警，可按商品过滤")
     @GetMapping("/ops/alerts")
     public Map<String, Object> listAlerts(@RequestParam(value = "offering_id", required = false) String offeringId) {
         return productOntologyService.listOpsAlerts(offeringId);
     }
 
+    @Operation(summary = "工单列表", description = "分页查询配置工单，支持状态/会话/关键字过滤")
     @GetMapping("/ops/work-orders")
     public Map<String, Object> listWorkOrders(
             @RequestParam(value = "status", required = false) String status,
@@ -715,12 +774,14 @@ public class ProductOntologyController {
         return productOntologyService.listWorkOrders(status, sessionId, page, size, q);
     }
 
+    @Operation(summary = "创建工单", description = "创建配置工单")
     @PostMapping("/ops/work-orders")
     public Map<String, Object> createWorkOrder(@RequestBody(required = false) Map<String, Object> body) {
         return ok(productOntologyService.createWorkOrder(body));
     }
 
     /** 工单状态流转：open → in_progress → done / cancelled */
+    @Operation(summary = "工单状态流转", description = "open → in_progress → done / cancelled")
     @PutMapping("/ops/work-orders/{workOrderId}")
     public Map<String, Object> updateWorkOrder(
             @PathVariable("workOrderId") String workOrderId,
@@ -733,6 +794,7 @@ public class ProductOntologyController {
     }
 
     /** 手动触发全量风险批量稽核（对齐方案每日定时筛查）。 */
+    @Operation(summary = "触发批量稽核", description = "手动触发全量风险批量稽核（对齐每日定时筛查）")
     @PostMapping("/ops/batch-audit")
     public Map<String, Object> batchAudit(@RequestBody(required = false) Map<String, Object> body) {
         String trigger = body != null && body.get("trigger") != null
@@ -740,12 +802,14 @@ public class ProductOntologyController {
         return productOntologyService.runBatchRiskAudit(trigger);
     }
 
+    @Operation(summary = "最近批量稽核结果", description = "返回最近一次批量稽核报告")
     @GetMapping("/ops/batch-audit")
     public Map<String, Object> lastBatchAudit() {
         return productOntologyService.getLastBatchAudit();
     }
 
     /** 查询热度分析（C4）：会话审计数据聚合高频查询词 → 商品运营洞察（只聚合不落明细）。 */
+    @Operation(summary = "查询热度分析", description = "会话审计数据聚合高频查询词 → 商品运营洞察（只聚合不落明细）")
     @GetMapping("/ops/query-heat")
     public Map<String, Object> queryHeat(
             @RequestParam(value = "limit", required = false) Integer limit,

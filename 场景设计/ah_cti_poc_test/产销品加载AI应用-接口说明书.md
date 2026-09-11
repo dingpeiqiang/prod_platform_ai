@@ -16,7 +16,7 @@
 | Base URL（本地） | `http://localhost:6174/api/v1/appstore` |
 | 协议 | HTTP/HTTPS |
 | 报文格式 | `application/json; charset=UTF-8` |
-| 认证 | 网关统一 JWT（现工程 `JwtAuthFilter` 自动拦截 `/api/**`，登录 `/api/v1/auth/login` 获取 Token 后以 `Authorization: Bearer <token>` 携带）；上生产后切换为网关 Token/AppKey |
+| 认证 | 免登录：`/api/v1/appstore/**` 已加入 JWT 白名单，插件直连无需携带 Token；生产环境建议切换为网关 Token/AppKey 鉴权 |
 | 环境隔离 | sit / uat / pre 三套独立部署；写入类接口按环境隔离，生产禁止直连 |
 
 ### 1.2 统一响应结构

@@ -38,7 +38,7 @@ public class ChatHistoryController {
      * 获取用户最近的会话列表。
      */
     @Operation(summary = "会话列表", description = "按用户分页返回会话（标题/时间/标签）")
-@GetMapping("/sessions")
+    @GetMapping("/sessions")
     public Map<String, Object> listSessions(
             @RequestParam(defaultValue = "default") String userId,
             @RequestParam(defaultValue = "20") int limit) {
@@ -67,7 +67,7 @@ public class ChatHistoryController {
      * 获取会话的所有消息。
      */
     @Operation(summary = "会话消息", description = "返回指定会话的全部消息（按 sort_order 排序）")
-@GetMapping("/sessions/{sessionId}/messages")
+    @GetMapping("/sessions/{sessionId}/messages")
     public Map<String, Object> getSessionMessages(@PathVariable String sessionId) {
         Map<String, Object> body = new LinkedHashMap<>();
         if (persistenceService.isEmpty()) {
@@ -105,7 +105,7 @@ public class ChatHistoryController {
      * 删除会话（归档）。
      */
     @Operation(summary = "删除会话", description = "级联删除会话及其消息与元数据")
-@DeleteMapping("/sessions/{sessionId}")
+    @DeleteMapping("/sessions/{sessionId}")
     public Map<String, Object> deleteSession(@PathVariable String sessionId) {
         persistenceService.ifPresent(svc -> svc.archiveSession(sessionId));
         return Map.of("success", true, "message", "会话已删除");
@@ -115,7 +115,7 @@ public class ChatHistoryController {
      * 搜索消息。
      */
     @Operation(summary = "历史检索", description = "跨会话全文检索历史消息")
-@GetMapping("/search")
+    @GetMapping("/search")
     public Map<String, Object> searchMessages(
             @RequestParam(required = false) String sessionId,
             @RequestParam String keyword,

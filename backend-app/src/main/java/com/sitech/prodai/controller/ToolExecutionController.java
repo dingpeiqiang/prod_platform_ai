@@ -36,14 +36,14 @@ public class ToolExecutionController {
 
     /** 已注册工具清单（名称/描述/参数契约/输出契约），供编辑器工具节点选择与参数表单渲染。 */
     @Operation(summary = "工具注册清单", description = "返回工具名称/中文描述/参数契约/输出契约，供工具节点选择与参数表单渲染")
-@GetMapping
+    @GetMapping
     public ApiResponse<List<Map<String, Object>>> list() {
         return toolExecutionService.listTools();
     }
 
     /** 执行单个工具：params 为结构化入参，返回 ExecutionResult 同构 JSON。 */
     @Operation(summary = "执行单个工具", description = "params 为结构化入参 JSON，返回 ExecutionResult 同构结果")
-@PostMapping("/{toolName}/execute")
+    @PostMapping("/{toolName}/execute")
     public ApiResponse<Map<String, Object>> execute(@PathVariable String toolName,
                                                     @RequestBody(required = false) Map<String, Object> params) {
         ExecutionResult result = toolExecutionService.execute(toolName, params == null ? Map.of() : params);

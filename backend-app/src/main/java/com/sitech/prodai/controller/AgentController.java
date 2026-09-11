@@ -8,6 +8,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -26,6 +28,7 @@ import java.util.concurrent.Executors;
  * 流式入口：POST /api/v1/agent/chat/stream（SSE）
  * 所有自然语言查询通过翻译层处理。
  */
+@Tag(name = "Agent 对话", description = "Agent 对话补全（同步/流式 SSE）")
 @RestController
 @RequestMapping("/api/v1/agent")
 public class AgentController {
@@ -51,6 +54,7 @@ public class AgentController {
      * @param request 请求体：{ "question": "...", "session_id": "..." }
      * @return 翻译结果：{ session_id, report, evidence, conclusion, suggested_follow_ups, ... }
      */
+    @Operation(summary = "Agent 对话", description = "同步执行 Agent 对话补全")
     @PostMapping("/chat")
     public Map<String, Object> chat(@RequestBody Map<String, Object> request, HttpServletRequest httpRequest) {
         long startTime = System.currentTimeMillis();
@@ -97,6 +101,7 @@ public class AgentController {
      * @param request 请求体：{ "question": "...", "session_id": "..." }
      * @return SSE 事件流（Accept: text/event-stream）
      */
+    @Operation(summary = "Agent 流式对话", description = "SSE 流式执行 Agent 对话补全")
     @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chatStream(@RequestBody Map<String, Object> request, HttpServletRequest httpRequest) {
         SseEmitter emitter = new SseEmitter(300_000L);

@@ -4,6 +4,8 @@ import com.sitech.prodai.service.metric.MetricEtlService;
 import com.sitech.prodai.service.metric.MetricThresholdCalibrator;
 import com.sitech.prodai.service.ops.OpsGraphPublishService;
 import com.sitech.prodai.service.ops.OpsGraphSchemaValidator;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -18,6 +20,7 @@ import java.util.Map;
  * 推荐 {@code PRODUCT_CENTER_BASE_URL=http://host:port/api/v1/product-center}。
  * 契约版本见 {@link OpsGraphSchemaValidator#CONTRACT_VERSION}。
  */
+@Tag(name = "产商品中心", description = "产商品运营图谱与指标：运营图查询、契约指标、ETL 与阈值校准")
 @RestController
 public class ProductCenterController {
 
@@ -34,12 +37,14 @@ public class ProductCenterController {
     }
 
     /** 与 HttpOpsProductDataSource 约定：{baseUrl}/ops-graph */
+    @Operation(summary = "运营图谱", description = "返回产商品运营图谱")
     @GetMapping({"/ops-graph", "/api/v1/product-center/ops-graph"})
     public Map<String, Object> opsGraph() {
         return publishService.loadPublishedGraph();
     }
 
     /** 契约说明：字段与版本，供主数据对接方联调。 */
+    @Operation(summary = "运营图谱契约", description = "返回运营图谱数据契约")
     @GetMapping({"/api/v1/product-center/ops-graph/contract", "/ops-graph/contract"})
     public Map<String, Object> opsGraphContract() {
         Map<String, Object> body = new LinkedHashMap<>(OpsGraphSchemaValidator.contractDescriptor());
@@ -48,6 +53,7 @@ public class ProductCenterController {
     }
 
     /** 指标宽表契约说明（MetricsContract-v1）：列清单 / 粒度 / ETL 约定，供 T+1 ETL 对接方联调。 */
+    @Operation(summary = "指标契约", description = "返回指标契约定义")
     @GetMapping("/api/v1/product-center/metrics/contract")
     public Map<String, Object> metricsContract() {
         return com.sitech.prodai.service.metric.MetricsContractValidator.contractDescriptor();
@@ -57,12 +63,14 @@ public class ProductCenterController {
      * 手动触发 T+1 ETL 灌数（本地替身）：宽表无数据或需刷新时调用；
      * 生产环境由真实数仓 ETL 替代，本端点仅联调/演示用。
      */
+    @Operation(summary = "指标 ETL 执行", description = "触发指标 ETL 加工")
     @PostMapping("/api/v1/product-center/metrics/etl")
     public Map<String, Object> runMetricEtl() {
         return metricEtlService.run("manual");
     }
 
     /** 最近一次 ETL 执行摘要（可观测）。 */
+    @Operation(summary = "最近 ETL 结果", description = "返回最近一次指标 ETL 运行结果")
     @GetMapping("/api/v1/product-center/metrics/etl/last-run")
     public Map<String, Object> metricEtlLastRun() {
         return metricEtlService.lastRun();
@@ -72,12 +80,14 @@ public class ProductCenterController {
      * 触发阈值分位数校准：基于宽表真实环比分布计算 P5/P10，
      * 与 R-A01 当前阈值对照输出建议（应用建议需人工确认后改单源）。
      */
+    @Operation(summary = "阈值校准", description = "触发指标阈值校准")
     @PostMapping("/api/v1/product-center/metrics/threshold-calibration")
     public Map<String, Object> calibrateThresholds() {
         return thresholdCalibrator.calibrate();
     }
 
     /** 最近一次阈值校准报告（可观测）。 */
+    @Operation(summary = "最近校准结果", description = "返回最近一次阈值校准结果")
     @GetMapping("/api/v1/product-center/metrics/threshold-calibration/last")
     public Map<String, Object> lastCalibration() {
         return thresholdCalibrator.lastCalibration();
