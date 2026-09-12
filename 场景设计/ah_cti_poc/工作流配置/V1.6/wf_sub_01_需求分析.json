@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-需求分析",
-  "flowRemark": "子工作流1：需求分析（执行方案生成）。需求理解→相似产品查询（自研模拟，18销售品种子）→字段映射与AI补全（价格/资源待补充，其余AI补全）→待补充项判断（无待补充→保存执行方案→确认结束；有待补充→仅提示补充、不保存执行方案、plan_id 不产出，无法进入智能配置）。",
+  "flowRemark": "子工作流1：需求分析（执行方案生成）。需求理解→相似产品查询（自研模拟，18销售品种子）→字段映射与AI补全（价格/资源待补充，其余AI补全）→待补充项判断（无待补充→保存执行方案→确认结束；有待补充→补充提示结束）。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -254,7 +254,7 @@
         "inputs": {
           "condition": [
             {
-              "sourcePort": 0,
+              "sourcePort": -1,
               "itemflag": true,
               "logic": 1,
               "conditions": [
@@ -280,7 +280,7 @@
                     "name": "",
                     "description": "",
                     "type": "string",
-                    "content": "0"
+                    "content": ""
                   },
                   "conditions": [
                     {
@@ -328,7 +328,7 @@
                       "label": "长度等于"
                     }
                   ],
-                  "operator": 15
+                  "operator": 10
                 }
               ]
             }
@@ -463,7 +463,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "《产销品加载执行方案》已生成，但存在待补充字段，暂未保存、暂不能执行：\n\n{plan_md}\n\n【待补充字段】{pending_fields}\n以上价格、资源类字段需由您补充后才能执行（未补充前智能配置环节不会启动）：\n- 请直接补充字段值，将更新执行方案并再次确认；\n- 如需调整其他字段：请直接说明修改意见（其余字段已按相似产品补全）。"
+          "content": "《产销品加载执行方案》已生成（plan_id：{plan_id}）\n\n{plan_md}\n\n【待补充字段】{pending_fields}\n以上价格、资源类字段需由您补充后才能执行：\n- 请直接补充字段值，将更新执行方案并再次确认；\n- 如需调整其他字段：请直接说明修改意见（其余字段已按相似产品补全）。"
         },
         "settings": {
           "stream": false,

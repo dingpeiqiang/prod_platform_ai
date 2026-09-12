@@ -78,6 +78,13 @@
             "required": false
           },
           {
+            "name": "submit_time",
+            "cname": "提交时间",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
             "name": "update_time",
             "cname": "更新时间",
             "sechema": [],

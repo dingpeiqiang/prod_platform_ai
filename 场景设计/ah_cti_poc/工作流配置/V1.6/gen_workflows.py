@@ -77,7 +77,7 @@ def cond_ref(block_seq, rel, block_title):
     }
 
 def cond_str(value):
-    """条件右值：字符串常量"""
+    """条件右值：字符串常量（对齐样例：currValue 固定 ","，常量放 content）"""
     return {"blockID": "", "relName": "", "nameValue": "", "currValue": ",",
             "name": "", "description": "", "type": "string", "content": value}
 
@@ -97,8 +97,10 @@ def dep_node(block_seq, block_title, rel_names):
     }
 
 def selector_node2(seq, title, deps, branches, pos=(530, 135)):
-    """条件分支节点（平台可识别格式）
-    branches: [(sourcePort, [cond_item, ...]), ...]  按端口顺序排列
+    """条件分支节点（对齐平台真实导出样例格式，可正常导入编辑）
+    branches: [(sourcePort, [cond_item, ...]), ...] 按端口顺序排列
+    平台约定（样例 wf_sub_01）：条件定义在 port=-1（否则分支），
+    port=0 出边由平台自动路由为"如果分支"（无条件定义时兜底）。
     """
     conds = []
     for port, items in branches:
@@ -277,9 +279,10 @@ s1.append(llm_node(4, "字段映射与补全",
      out("pending_fields", "待补充字段清单逗号分隔"), out("plan_id", "执行方案存储key")]))
 s1.append(selector_node2(5, "待补充项判断",
     [dep_node(4, "字段映射与补全", ["pending_fields"])],
-    # port=0 条件分支：pending_fields 为空（长度等于0）→ 保存执行方案 → 确认结束；
-    # 否则分支(-1)：有待补充项 → 直接结束提示补充，不保存执行方案（禁止进入智能配置）
-    [(0, [cond_item(cond_ref(4, "pending_fields", "字段映射与补全"), 15, cond_str("0"))])]))
+    # 平台样例约定：条件定义在 port=-1（否则分支）；port=0 由平台自动路由
+    # 语义：pending_fields 不为空（长度大于0）→ 有待补充项 → 保存执行方案 → 确认结束；
+    #       port=0 兜底分支（pending_fields 为空）→ 直接结束提示，不保存（禁止进入智能配置）
+    [(-1, [cond_item(cond_ref(4, "pending_fields", "字段映射与补全"), 10, cond_str(""))])]))
 s1.append(plugin_node(6, "保存执行方案", "save_node_result",
     "节点结果存储（复用）：req_id=plan_id，node_name=requirement（执行方案环节），result_json=plan_json；同键覆盖",
     BASE_URL + "/api/v1/appstore/result/save",
@@ -291,7 +294,7 @@ s1.append(plugin_node(6, "保存执行方案", "save_node_result",
 s1.append(end_node(7, "结束(有待补充项)",
     [inp("plan_md", "执行方案表格", ref_block=nid(4), ref_rel="plan_md"),
      inp("pending_fields", "待补充字段", ref_block=nid(4), ref_rel="pending_fields")],
-    "《产销品加载执行方案》已生成，但存在待补充字段，暂未保存、暂不能执行：\n\n{plan_md}\n\n【待补充字段】{pending_fields}\n以上价格、资源类字段需由您补充后才能执行（未补充前智能配置环节不会启动）：\n- 请直接补充字段值，将更新执行方案并再次确认；\n- 如需调整其他字段：请直接说明修改意见（其余字段已按相似产品补全）。"))
+    "《产销品加载执行方案》已生成（plan_id：{plan_id}）\n\n{plan_md}\n\n【待补充字段】{pending_fields}\n以上价格、资源类字段需由您补充后才能执行：\n- 请直接补充字段值，将更新执行方案并再次确认；\n- 如需调整其他字段：请直接说明修改意见（其余字段已按相似产品补全）。"))
 s1.append(end_node(8, "结束(无待补充项)",
     [inp("plan_id", "执行方案存储key", ref_block=nid(4), ref_rel="plan_id"),
      inp("plan_md", "执行方案表格", ref_block=nid(4), ref_rel="plan_md")],
@@ -299,7 +302,7 @@ s1.append(end_node(8, "结束(无待补充项)",
 e1 = [edge(1,2), edge(2,3), edge(3,4), edge(4,5),
       edge(5,6,0), edge(5,7,-1), edge(6,8)]
 files["wf_sub_01_需求分析.json"] = workflow(
-    "产销品-需求分析", "子工作流1：需求分析（执行方案生成）。需求理解→相似产品查询（自研模拟，18销售品种子）→字段映射与AI补全（价格/资源待补充，其余AI补全）→待补充项判断（无待补充→保存执行方案→确认结束；有待补充→仅提示补充、不保存执行方案、plan_id 不产出，无法进入智能配置）。", "wf_sub_01", s1, e1)
+    "产销品-需求分析", "子工作流1：需求分析（执行方案生成）。需求理解→相似产品查询（自研模拟，18销售品种子）→字段映射与AI补全（价格/资源待补充，其余AI补全）→待补充项判断（无待补充→保存执行方案→确认结束；有待补充→补充提示结束）。", "wf_sub_01", s1, e1)
 
 # ============================================================
 # wf_sub_02 智能配置（配置落地）
@@ -320,7 +323,8 @@ s2.append(plugin_node(103, "配置落地", "save_product_config",
     BASE_URL + "/api/v1/appstore/product/config/save",
     [inp("plan_id", "执行方案key", ref_block=nid(101), ref_rel="plan_id"),
      inp("plan_json", "执行方案JSON原文（节点2查询出参list[0].result_json原样透传）", ref_block=nid(102), ref_rel="list"),
-     inp("confirmed", "用户确认标志true（主流程确认门禁已保证）", content="true")],
+     inp("confirmed", "用户确认标志true（主流程确认门禁已保证）", content="true"),
+     inp("operator", "操作人（默认system）", content="system")],
     [("product_id", "CRM产品ID", "string"), ("offer_id", "销售品ID", "string"),
      ("save_result", "四类字段写入结果", "string"), ("status", "SUCCESS/PARTIAL/FAIL/NOT_CONFIRMED", "string")]))
 s2.append(end_node(104, "结束(配置落地完成)",
@@ -388,8 +392,10 @@ s4.append(plugin_node(305, "查询测试结果", "get_test_result",
     "工具6：done=true后调用一次；presetValue取自《产品信息.txt》该销售品规则值；返回受理凭证orderId/offerInstId",
     BASE_URL + "/api/v1/appstore/test/offer/result",
     [inp("globalId", "测试流水号", ref_block=nid(302), ref_rel="globalId")],
-    [("testScenes", "逐场景结果含测点明细", "string"), ("orderId", "受理订单号", "string"),
-     ("offerInstId", "销售品实例ID", "string"), ("offerName", "被测销售品名称", "string")]))
+    [("resultCode", "0成功/1失败", "string"), ("resultMsg", "处理结果描述", "string"),
+     ("testRequestId", "测试请求ID", "string"), ("testRequestName", "测试请求名称", "string"),
+     ("offerName", "被测销售品名称", "string"), ("orderId", "受理订单号", "string"),
+     ("offerInstId", "销售品实例ID", "string"), ("testScenes", "逐场景结果含测点明细", "string")]))
 s4.append(llm_node(306, "测试报告生成",
     "你是产销品自动测试报告生成助手。基于逐场景测试结果（testScenes={testScenes}）生成《销售品自动测试报告》，必须包含：1.测试概要（offerName/globalId/场景与测点统计）；2.受理验证结论（强制章节：orderId={orderId}、offerInstId={offerInstId}，为空则写明\"未获取到受理凭证，需人工核实\"；逐受理场景 S_O_TC/S_ADD_CARD/S_U_TC 给出通过/失败结论）；3.逐场景明细（仅展开resultCode=1不一致测点）；4.AI总结与建议（引用objTestSceneRel）；5.总体结论。\n"
     "输出要求（两个出参逐一约定）：\n"
@@ -477,9 +483,10 @@ s7.append(plugin_node(602, "监控查询", "query_product_monitor",
     method="get"))
 s7.append(selector_node2(603, "异常判定",
     [dep_node(602, "监控查询", ["error_count", "fee_error_rate"])],
-    # 两个端口：port=0 异常（error_count>0 即长度大于"0"），port=-1 正常（error_count 等于 0）
-    # 平台语义：如果分支(sourcePort=0)命中条件走异常告警；否则分支(-1)走正常结束
-    [(-1, [cond_item(cond_ref(602, "error_count", "监控查询"), 1, cond_str("0"))])]))
+    # 平台样例约定：条件定义在 port=-1（否则分支）；port=0 由平台自动路由
+    # 语义：error_count 不等于"0"（即存在异常）→ 走异常告警（port=-1 命中条件）；
+    #       port=0 兜底分支（error_count 等于"0"即正常）→ 走正常结束
+    [(-1, [cond_item(cond_ref(602, "error_count", "监控查询"), 2, cond_str("0"))])]))
 s7.append(llm_node(604, "告警文案生成",
     "基于监控异常数据生成告警文案（含产品、异常摘要、建议）。输入：product_id={product_id}，order_count={order_count}，error_count={error_count}，fee_error_rate={fee_error_rate}，alarm_list={alarm_list}\n"
     "输出要求：仅输出告警文案内容（对应出参 alert_content，需包含产品名称、异常摘要、处置建议三部分），不输出其他多余文字。",
@@ -506,7 +513,7 @@ s7.append(end_node(607, "结束(正常)",
     "监控正常：订单量={order_count}，异常量={error_count}，无需告警。"))
 files["wf_sub_07_监控运维.json"] = workflow(
     "产销品-监控运维", "子工作流7：监控运维。query_product_monitor（自研模拟）→异常判定（error_count>0或fee_error_rate>0.1）→send_alert告警/正常摘要。支持每日定时与对话触发。", "wf_sub_07", s7,
-    [edge(601,602), edge(602,603), edge(603,604,0), edge(604,605), edge(605,606), edge(603,607,-1)])
+    [edge(601,602), edge(602,603), edge(603,607,0), edge(603,604,-1), edge(604,605), edge(605,606)])
 
 # ============================================================
 # wf_sub_08 审批进度查询
@@ -523,7 +530,8 @@ s8.append(plugin_node(702, "审批状态查询", "query_approval_status",
      inp("product_id", "产品ID", ref_block=nid(701), ref_rel="product_id")],
     [("approval_id", "审批单号", "string"), ("status", "审批中/通过/驳回", "string"),
      ("current_node", "当前审批环节", "string"), ("approver", "当前审批人", "string"),
-     ("opinion", "审批意见", "string"), ("update_time", "更新时间", "string")],
+     ("opinion", "审批意见", "string"), ("submit_time", "提交时间", "string"),
+     ("update_time", "更新时间", "string")],
     method="get"))
 s8.append(llm_node(703, "状态摘要归纳",
     "按'审批单号 {approval_id}｜状态：{status}｜当前环节：{current_node}（审批人 {approver}）｜最近意见：{opinion}｜更新时间：{update_time}'格式输出；status=驳回 时附驳回原因并提示可修改执行方案后重新发起。查无审批单时输出\"未找到该销售品的审批单，请确认是否已发起审批\"。\n"
@@ -558,10 +566,12 @@ m.append(start_node(1, [
 ], pos=(15, 400)))
 m.append(selector_node2(2, "入口判定",
     [dep_node(1, "开始节点", ["confirmed", "plan_id"])],
-    # port=0 通过分支：confirmed==true 且 plan_id 不为空 → 续跑判定；
-    # plan_id 非空=执行方案已保存（无待补充项才会保存），从源头拦截未保存方案进入智能配置；否则走需求分析
-    [(0, [cond_item(cond_ref(1, "confirmed", "开始节点"), 1, cond_str("true")),
-          cond_item(cond_ref(1, "plan_id", "开始节点"), 10, cond_str(""))])],
+    # 平台样例约定：条件定义在 port=-1（否则分支）；port=0 由平台自动路由
+    # 语义（port=-1 命中）：confirmed==true 且 plan_id 不为空 → 续跑判定；
+    # plan_id 非空=执行方案已保存（无待补充项才会保存），从源头拦截未保存方案进入智能配置；
+    # port=0 兜底分支：未确认 → 需求分析
+    [(-1, [cond_item(cond_ref(1, "confirmed", "开始节点"), 1, cond_str("true")),
+           cond_item(cond_ref(1, "plan_id", "开始节点"), 10, cond_str(""))])],
     pos=(200, 400)))
 m.append(subflow_node(3, "需求分析", "调用wf_sub_01：需求理解→相似产品→字段映射与AI补全→待补充判断（无待补充才保存执行方案并产出plan_id）",
     "REPLACE_WITH_SUB01_FLOWID",
@@ -574,13 +584,22 @@ m.append(end_node(31, "结束节点A(执行方案确认)",
      inp("plan_md", "执行方案表格", ref_block=nid(3), ref_rel="plan_md"),
      inp("pending_fields", "待补充字段", ref_block=nid(3), ref_rel="pending_fields")],
     "{plan_md}\n\n【待补充字段】{pending_fields}\n\n【若以上存在待补充字段】执行方案暂未保存、暂不能执行（回复【确认执行】无效）：\n- 请直接补充价格/资源类字段值，将更新执行方案并再次确认；\n【若待补充字段为空（plan_id 已生成）】请核对以上执行方案：\n- 回复【确认执行】：将自动串行执行 智能配置→稽核→资费校准→自动测试 四个环节（每环节执行后打印结果，仅异常时中断）；\n- 如需调整：请直接说明修改意见。", pos=(600, 560)))
-m.append(selector_node2(4, "续跑判定",
-    [dep_node(1, "开始节点", ["resume_action", "fail_node", "approve_confirmed"])],
-    # 三个端口：0=默认/续跑重试 → 环节1；1=审批确认(approve_confirmed=true) → 报告汇总；2=修改执行方案(resume_action=revise_plan) → 需求分析
-    [(0, [cond_item(cond_ref(1, "resume_action", "开始节点"), 2, cond_str("revise_plan")),
-          cond_item(cond_ref(1, "approve_confirmed", "开始节点"), 2, cond_str("true"))]),
-     (1, [cond_item(cond_ref(1, "approve_confirmed", "开始节点"), 1, cond_str("true"))]),
-     (2, [cond_item(cond_ref(1, "resume_action", "开始节点"), 1, cond_str("revise_plan"))])],
+m.append(selector_node2(4, "续跑判定①审批确认",
+    [dep_node(1, "开始节点", ["approve_confirmed"])],
+    # 平台样例约定：条件定义在 port=-1；port=0 兜底
+    # 语义（port=-1 命中）：approve_confirmed==true → 报告汇总（中断②续办）；port=0 兜底 → 续跑判定②
+    [(-1, [cond_item(cond_ref(1, "approve_confirmed", "开始节点"), 1, cond_str("true"))])],
+    pos=(390, 200)))
+m.append(selector_node2(41, "续跑判定②修改方案",
+    [dep_node(1, "开始节点", ["resume_action"])],
+    # 语义（port=-1 命中）：resume_action==revise_plan → 需求分析（修改执行方案）；port=0 兜底 → 续跑判定③
+    [(-1, [cond_item(cond_ref(1, "resume_action", "开始节点"), 1, cond_str("revise_plan"))])],
+    pos=(390, 200)))
+m.append(selector_node2(42, "续跑判定③失败续跑",
+    [dep_node(1, "开始节点", ["resume_action", "fail_node"])],
+    # 语义（port=-1 命中）：resume_action==retry_from_fail → 按 fail_node 跳失败环节（默认环节1重跑，中间环节复用已落地结果）；
+    # port=0 兜底（首次执行/无续跑参数）→ 环节1
+    [(-1, [cond_item(cond_ref(1, "resume_action", "开始节点"), 1, cond_str("retry_from_fail"))])],
     pos=(390, 200)))
 # ---- 环节1 智能配置 ----
 m.append(subflow_node(5, "环节1-智能配置", "调用wf_sub_02：节点结果查询读取执行方案JSON→save_product_config原样透传落地",
@@ -595,11 +614,11 @@ m.append(plugin_node(51, "环节1结果存储", "save_node_result",
      inp("node_name", "环节名=config（智能配置）", content="config"),
      inp("result_json", "环节1结果JSON", ref_block=nid(5), ref_rel="save_result"),
      inp("status", "本环节状态=ok", content="ok")],
-    [("code", "0成功", "string")], pos=(760, 200)))
+    [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")], pos=(760, 200)))
 m.append(selector_node2(6, "环节1判定与打印",
     [dep_node(5, "环节1-智能配置", ["status"])],
-    # port=0：status==SUCCESS → 成功打印；否则 → 异常A
-    [(0, [cond_item(cond_ref(5, "status", "环节1-智能配置"), 1, cond_str("SUCCESS"))])],
+    # 语义（port=-1 命中）：status != SUCCESS → 异常A；port=0 兜底 → 成功打印
+    [(-1, [cond_item(cond_ref(5, "status", "环节1-智能配置"), 2, cond_str("SUCCESS"))])],
     pos=(900, 200)))
 m.append(end_node(61, "环节1成功打印",
     [inp("product_id", "产品ID", ref_block=nid(5), ref_rel="product_id"),
@@ -620,11 +639,11 @@ m.append(plugin_node(71, "环节2结果存储", "save_node_result",
      inp("node_name", "环节名=spec", content="spec"),
      inp("result_json", "环节2结果JSON", ref_block=nid(7), ref_rel="audit_summary"),
      inp("status", "本环节状态=ok", content="ok")],
-    [("code", "0成功", "string")], pos=(1350, 200)))
+    [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")], pos=(1350, 200)))
 m.append(selector_node2(8, "环节2判定与打印",
     [dep_node(7, "环节2-实时稽核", ["pass"])],
-    # port=0：pass==1 → 成功打印；否则 → 异常A
-    [(0, [cond_item(cond_ref(7, "pass", "环节2-实时稽核"), 1, cond_str("1"))])],
+    # 语义（port=-1 命中）：pass != 1 → 异常A；port=0 兜底 → 成功打印
+    [(-1, [cond_item(cond_ref(7, "pass", "环节2-实时稽核"), 2, cond_str("1"))])],
     pos=(1500, 200)))
 m.append(end_node(81, "环节2成功打印",
     [inp("audit_summary", "稽核总结", ref_block=nid(7), ref_rel="audit_summary")],
@@ -642,11 +661,11 @@ m.append(plugin_node(91, "环节3结果存储", "save_node_result",
      inp("node_name", "环节名=fee", content="fee"),
      inp("result_json", "环节3结果JSON", ref_block=nid(9), ref_rel="risk_summary"),
      inp("status", "本环节状态=ok", content="ok")],
-    [("code", "0成功", "string")], pos=(1950, 200)))
+    [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")], pos=(1950, 200)))
 m.append(selector_node2(10, "环节3判定与打印",
     [dep_node(9, "环节3-资费校准", ["pass"])],
-    # port=0：pass==1 → 成功打印；否则 → 异常A
-    [(0, [cond_item(cond_ref(9, "pass", "环节3-资费校准"), 1, cond_str("1"))])],
+    # 语义（port=-1 命中）：pass != 1 → 异常A；port=0 兜底 → 成功打印
+    [(-1, [cond_item(cond_ref(9, "pass", "环节3-资费校准"), 2, cond_str("1"))])],
     pos=(2100, 200)))
 m.append(end_node(101, "环节3成功打印",
     [inp("risk_summary", "风险解读", ref_block=nid(9), ref_rel="risk_summary")],
@@ -664,11 +683,11 @@ m.append(plugin_node(111, "环节4结果存储", "save_node_result",
      inp("node_name", "环节名=test", content="test"),
      inp("result_json", "环节4结果JSON", ref_block=nid(11), ref_rel="test_report"),
      inp("status", "本环节状态=ok", content="ok")],
-    [("code", "0成功", "string")], pos=(2550, 200)))
+    [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")], pos=(2550, 200)))
 m.append(selector_node2(12, "环节4判定与打印",
     [dep_node(11, "环节4-自动测试", ["test_passed"])],
-    # port=0：test_passed==通过 → 成功打印；否则 → 异常A
-    [(0, [cond_item(cond_ref(11, "test_passed", "环节4-自动测试"), 1, cond_str("通过"))])],
+    # 语义（port=-1 命中）：test_passed != 通过 → 异常A；port=0 兜底 → 成功打印
+    [(-1, [cond_item(cond_ref(11, "test_passed", "环节4-自动测试"), 2, cond_str("通过"))])],
     pos=(2700, 200)))
 m.append(end_node(121, "环节4成功打印",
     [inp("test_report", "测试报告", ref_block=nid(11), ref_rel="test_report")],
@@ -679,11 +698,11 @@ m.append(selector_node2(13, "主干完成判定",
      dep_node(7, "环节2", ["pass"]),
      dep_node(9, "环节3", ["pass"]),
      dep_node(11, "环节4", ["test_passed"])],
-    # port=0：四环节全部成功（各条件且 logic=1）→ 成功汇总；否则 → 异常A
-    [(0, [cond_item(cond_ref(5, "status", "环节1"), 1, cond_str("SUCCESS")),
-          cond_item(cond_ref(7, "pass", "环节2"), 1, cond_str("1")),
-          cond_item(cond_ref(9, "pass", "环节3"), 1, cond_str("1")),
-          cond_item(cond_ref(11, "test_passed", "环节4"), 1, cond_str("通过"))])],
+    # 语义（port=-1 命中任一不满足）：任一环节未成功（各条件且 logic=1）→ 异常A；port=0 兜底 → 成功汇总
+    [(-1, [cond_item(cond_ref(5, "status", "环节1"), 2, cond_str("SUCCESS")),
+           cond_item(cond_ref(7, "pass", "环节2"), 2, cond_str("1")),
+           cond_item(cond_ref(9, "pass", "环节3"), 2, cond_str("1")),
+           cond_item(cond_ref(11, "test_passed", "环节4"), 2, cond_str("通过"))])],
     pos=(3000, 200)))
 m.append(llm_node(14, "成功结果详情汇总",
     "执行主干四个环节全部成功，请基于以下输入按模板输出（逐字引用输入数据，不新增结论）：\n【环节1落地结果】save_result={save_result}\n【稽核总结】audit_summary={audit_summary}\n【测试明细】test_report={test_report}\n\n输出模板：\n【执行主干全部完成】✅ 共4个环节执行成功：\n1. 智能配置：product_id={product_id}，offer_id={offer_id}，四类字段全部写入成功；\n2. 配置规格稽核：通过，{audit_summary}；\n3. 资费校准：通过，未发现叠加/互斥冲突；\n4. 自动测试（含受理验证）：场景 N 个、测点 M 个全部一致；\n   受理验证：orderId={orderId}，offerInstId={offerInstId}，各受理场景均通过。\n\n是否发起上线审批？回复【发起审批】将汇总以上结果提交审批流；回复【暂不】可稍后发送\"发起审批\"继续。\n\n输出要求：仅输出按上述模板渲染的汇总内容（对应出参 stage_summary），不输出其他多余文字。",
@@ -729,12 +748,15 @@ m.append(end_node(22, "结束(异常中断)",
 
 me = [
     edge(1,2),
-    edge(2,4,0),      # 确认且plan_id非空 → 续跑判定
+    edge(2,4,0),      # 确认且plan_id非空 → 续跑判定①审批确认
     edge(2,3,-1),     # 未确认 → 需求分析
     edge(3,31),       # 需求分析 → 结束节点A（中断①）
-    edge(4,5,0),      # 续跑判定：默认/首次 → 环节1
-    edge(4,16,1),     # 续跑判定：approve_confirmed → 报告汇总
-    edge(4,3,2),      # 续跑判定：revise_plan → 需求分析（修改执行方案）
+    edge(4,16,0),     # 续跑判定①：approve_confirmed=true → 报告汇总（审批确认续办）
+    edge(4,41,-1),    # 续跑判定①：否则 → 判定②修改方案
+    edge(41,3,0),     # 续跑判定②：revise_plan → 需求分析（修改执行方案）
+    edge(41,42,-1),   # 续跑判定②：否则 → 判定③失败续跑
+    edge(42,5,0),     # 续跑判定③：retry_from_fail → 按 fail_node 续跑（先重入环节1判定，已成功环节由存储回放）
+    edge(42,5,-1),    # 续跑判定③：否则（首次执行）→ 环节1
     edge(5,51), edge(51,6),
     edge(6,61,0), edge(6,21,-1),   # 环节1成功打印 / 失败→异常A
     edge(61,7),
@@ -748,7 +770,7 @@ me = [
     edge(12,121,0), edge(12,21,-1),
     edge(121,13),
     edge(13,14,0), edge(13,21,-1), # 全部成功→成功汇总 / 否则→异常A
-    edge(14,16),      # 中断②后 approve_confirmed=true 续入报告汇总
+    edge(14,16),      # 中断②后 approve_confirmed=true 续入报告汇总（对应续跑判定①）
     edge(16,17), edge(17,18),
     edge(21,22),
 ]
@@ -762,3 +784,4 @@ for fn, data in files.items():
     print("written:", fn)
 
 print("total:", len(files))
+

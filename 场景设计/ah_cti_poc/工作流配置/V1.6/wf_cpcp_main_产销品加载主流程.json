@@ -99,7 +99,7 @@
         "inputs": {
           "condition": [
             {
-              "sourcePort": 0,
+              "sourcePort": -1,
               "itemflag": true,
               "logic": 1,
               "conditions": [
@@ -344,7 +344,7 @@
           "version": "1.0"
         },
         "position": {
-          "x": 1095,
+          "x": 1455,
           "y": 170
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000003",
@@ -418,7 +418,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 1455,
+          "x": 1815,
           "y": 170
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000031",
@@ -429,158 +429,7 @@
         "inputs": {
           "condition": [
             {
-              "sourcePort": 0,
-              "itemflag": true,
-              "logic": 1,
-              "conditions": [
-                {
-                  "left": {
-                    "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
-                    "relName": "resume_action",
-                    "nameValue": [
-                      "a1b2c3d4-0000-4000-8000-000000000001",
-                      "a1b2c3d4-0000-4000-8000-000000000001,resume_action"
-                    ],
-                    "currValue": "a1b2c3d4-0000-4000-8000-000000000001,resume_action",
-                    "name": "",
-                    "description": "",
-                    "type": "ref",
-                    "content": ""
-                  },
-                  "right": {
-                    "blockID": "",
-                    "relName": "",
-                    "nameValue": "",
-                    "currValue": ",",
-                    "name": "",
-                    "description": "",
-                    "type": "string",
-                    "content": "revise_plan"
-                  },
-                  "conditions": [
-                    {
-                      "value": 1,
-                      "label": "等于"
-                    },
-                    {
-                      "value": 2,
-                      "label": "不等于"
-                    },
-                    {
-                      "value": 3,
-                      "label": "长度大于"
-                    },
-                    {
-                      "value": 4,
-                      "label": "长度大于等于"
-                    },
-                    {
-                      "value": 5,
-                      "label": "长度小于"
-                    },
-                    {
-                      "value": 6,
-                      "label": "长度小于等于"
-                    },
-                    {
-                      "value": 7,
-                      "label": "包含"
-                    },
-                    {
-                      "value": 8,
-                      "label": "不包含"
-                    },
-                    {
-                      "value": 9,
-                      "label": "为空"
-                    },
-                    {
-                      "value": 10,
-                      "label": "不为空"
-                    },
-                    {
-                      "value": 15,
-                      "label": "长度等于"
-                    }
-                  ],
-                  "operator": 2
-                },
-                {
-                  "left": {
-                    "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
-                    "relName": "approve_confirmed",
-                    "nameValue": [
-                      "a1b2c3d4-0000-4000-8000-000000000001",
-                      "a1b2c3d4-0000-4000-8000-000000000001,approve_confirmed"
-                    ],
-                    "currValue": "a1b2c3d4-0000-4000-8000-000000000001,approve_confirmed",
-                    "name": "",
-                    "description": "",
-                    "type": "ref",
-                    "content": ""
-                  },
-                  "right": {
-                    "blockID": "",
-                    "relName": "",
-                    "nameValue": "",
-                    "currValue": ",",
-                    "name": "",
-                    "description": "",
-                    "type": "string",
-                    "content": "true"
-                  },
-                  "conditions": [
-                    {
-                      "value": 1,
-                      "label": "等于"
-                    },
-                    {
-                      "value": 2,
-                      "label": "不等于"
-                    },
-                    {
-                      "value": 3,
-                      "label": "长度大于"
-                    },
-                    {
-                      "value": 4,
-                      "label": "长度大于等于"
-                    },
-                    {
-                      "value": 5,
-                      "label": "长度小于"
-                    },
-                    {
-                      "value": 6,
-                      "label": "长度小于等于"
-                    },
-                    {
-                      "value": 7,
-                      "label": "包含"
-                    },
-                    {
-                      "value": 8,
-                      "label": "不包含"
-                    },
-                    {
-                      "value": 9,
-                      "label": "为空"
-                    },
-                    {
-                      "value": 10,
-                      "label": "不为空"
-                    },
-                    {
-                      "value": 15,
-                      "label": "长度等于"
-                    }
-                  ],
-                  "operator": 2
-                }
-              ]
-            },
-            {
-              "sourcePort": 1,
+              "sourcePort": -1,
               "itemflag": true,
               "logic": 1,
               "conditions": [
@@ -657,9 +506,41 @@
                   "operator": 1
                 }
               ]
-            },
+            }
+          ]
+        },
+        "nodeMeta": {
+          "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+          "title": "续跑判定①审批确认"
+        },
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000004",
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000001",
+            "name": "开始节点",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000001,approve_confirmed",
+                "name": "approve_confirmed",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          }
+        ],
+        "type": 2
+      },
+      {
+        "flowJson": null,
+        "inputs": {
+          "condition": [
             {
-              "sourcePort": 2,
+              "sourcePort": -1,
               "itemflag": true,
               "logic": 1,
               "conditions": [
@@ -741,13 +622,124 @@
         },
         "nodeMeta": {
           "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
-          "title": "续跑判定"
+          "title": "续跑判定②修改方案"
         },
         "position": {
-          "x": 735,
+          "x": 1095,
           "y": 300
         },
-        "id": "a1b2c3d4-0000-4000-8000-000000000004",
+        "id": "a1b2c3d4-0000-4000-8000-000000000041",
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000001",
+            "name": "开始节点",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000001,resume_action",
+                "name": "resume_action",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          }
+        ],
+        "type": 2
+      },
+      {
+        "flowJson": null,
+        "inputs": {
+          "condition": [
+            {
+              "sourcePort": -1,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+                    "relName": "resume_action",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000001",
+                      "a1b2c3d4-0000-4000-8000-000000000001,resume_action"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000001,resume_action",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "retry_from_fail"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 1
+                }
+              ]
+            }
+          ]
+        },
+        "nodeMeta": {
+          "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+          "title": "续跑判定③失败续跑"
+        },
+        "position": {
+          "x": 1455,
+          "y": 430
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000042",
         "dependencyData": [
           {
             "relName": "a1b2c3d4-0000-4000-8000-000000000001",
@@ -763,12 +755,6 @@
               {
                 "relName": "a1b2c3d4-0000-4000-8000-000000000001,fail_node",
                 "name": "fail_node",
-                "type": "string",
-                "content": ""
-              },
-              {
-                "relName": "a1b2c3d4-0000-4000-8000-000000000001,approve_confirmed",
-                "name": "approve_confirmed",
                 "type": "string",
                 "content": ""
               }
@@ -830,7 +816,7 @@
           "version": "1.0"
         },
         "position": {
-          "x": 1095,
+          "x": 1815,
           "y": 430
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000005",
@@ -842,6 +828,20 @@
           {
             "name": "code",
             "cname": "0成功",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "msg",
+            "cname": "状态描述",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "record_id",
+            "cname": "存储记录ID",
             "sechema": [],
             "type": "string",
             "required": false
@@ -915,8 +915,8 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000051",
         "position": {
-          "x": 1455,
-          "y": 430
+          "x": 2175,
+          "y": 300
         },
         "dependencyData": [],
         "type": 3,
@@ -927,7 +927,7 @@
         "inputs": {
           "condition": [
             {
-              "sourcePort": 0,
+              "sourcePort": -1,
               "itemflag": true,
               "logic": 1,
               "conditions": [
@@ -1001,7 +1001,7 @@
                       "label": "长度等于"
                     }
                   ],
-                  "operator": 1
+                  "operator": 2
                 }
               ]
             }
@@ -1012,7 +1012,7 @@
           "title": "环节1判定与打印"
         },
         "position": {
-          "x": 1815,
+          "x": 2535,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000006",
@@ -1100,7 +1100,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 2175,
+          "x": 2895,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000061",
@@ -1167,7 +1167,7 @@
           "version": "1.0"
         },
         "position": {
-          "x": 2535,
+          "x": 3255,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000007",
@@ -1179,6 +1179,20 @@
           {
             "name": "code",
             "cname": "0成功",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "msg",
+            "cname": "状态描述",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "record_id",
+            "cname": "存储记录ID",
             "sechema": [],
             "type": "string",
             "required": false
@@ -1252,7 +1266,7 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000071",
         "position": {
-          "x": 2895,
+          "x": 3615,
           "y": 300
         },
         "dependencyData": [],
@@ -1264,7 +1278,7 @@
         "inputs": {
           "condition": [
             {
-              "sourcePort": 0,
+              "sourcePort": -1,
               "itemflag": true,
               "logic": 1,
               "conditions": [
@@ -1338,7 +1352,7 @@
                       "label": "长度等于"
                     }
                   ],
-                  "operator": 1
+                  "operator": 2
                 }
               ]
             }
@@ -1349,7 +1363,7 @@
           "title": "环节2判定与打印"
         },
         "position": {
-          "x": 3255,
+          "x": 3975,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000008",
@@ -1409,7 +1423,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 3615,
+          "x": 4335,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000081",
@@ -1462,7 +1476,7 @@
           "version": "1.0"
         },
         "position": {
-          "x": 3975,
+          "x": 4695,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000009",
@@ -1474,6 +1488,20 @@
           {
             "name": "code",
             "cname": "0成功",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "msg",
+            "cname": "状态描述",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "record_id",
+            "cname": "存储记录ID",
             "sechema": [],
             "type": "string",
             "required": false
@@ -1547,7 +1575,7 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000091",
         "position": {
-          "x": 4335,
+          "x": 5055,
           "y": 300
         },
         "dependencyData": [],
@@ -1559,7 +1587,7 @@
         "inputs": {
           "condition": [
             {
-              "sourcePort": 0,
+              "sourcePort": -1,
               "itemflag": true,
               "logic": 1,
               "conditions": [
@@ -1633,7 +1661,7 @@
                       "label": "长度等于"
                     }
                   ],
-                  "operator": 1
+                  "operator": 2
                 }
               ]
             }
@@ -1644,7 +1672,7 @@
           "title": "环节3判定与打印"
         },
         "position": {
-          "x": 4695,
+          "x": 5415,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000010",
@@ -1704,7 +1732,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 5055,
+          "x": 5775,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000101",
@@ -1769,7 +1797,7 @@
           "version": "1.0"
         },
         "position": {
-          "x": 5415,
+          "x": 6135,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000011",
@@ -1781,6 +1809,20 @@
           {
             "name": "code",
             "cname": "0成功",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "msg",
+            "cname": "状态描述",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "record_id",
+            "cname": "存储记录ID",
             "sechema": [],
             "type": "string",
             "required": false
@@ -1854,7 +1896,7 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000111",
         "position": {
-          "x": 5775,
+          "x": 6495,
           "y": 300
         },
         "dependencyData": [],
@@ -1866,7 +1908,7 @@
         "inputs": {
           "condition": [
             {
-              "sourcePort": 0,
+              "sourcePort": -1,
               "itemflag": true,
               "logic": 1,
               "conditions": [
@@ -1940,7 +1982,7 @@
                       "label": "长度等于"
                     }
                   ],
-                  "operator": 1
+                  "operator": 2
                 }
               ]
             }
@@ -1951,7 +1993,7 @@
           "title": "环节4判定与打印"
         },
         "position": {
-          "x": 6135,
+          "x": 6855,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000012",
@@ -2011,7 +2053,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 6495,
+          "x": 7215,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000121",
@@ -2022,7 +2064,7 @@
         "inputs": {
           "condition": [
             {
-              "sourcePort": 0,
+              "sourcePort": -1,
               "itemflag": true,
               "logic": 1,
               "conditions": [
@@ -2096,7 +2138,7 @@
                       "label": "长度等于"
                     }
                   ],
-                  "operator": 1
+                  "operator": 2
                 },
                 {
                   "left": {
@@ -2168,7 +2210,7 @@
                       "label": "长度等于"
                     }
                   ],
-                  "operator": 1
+                  "operator": 2
                 },
                 {
                   "left": {
@@ -2240,7 +2282,7 @@
                       "label": "长度等于"
                     }
                   ],
-                  "operator": 1
+                  "operator": 2
                 },
                 {
                   "left": {
@@ -2312,7 +2354,7 @@
                       "label": "长度等于"
                     }
                   ],
-                  "operator": 1
+                  "operator": 2
                 }
               ]
             }
@@ -2323,7 +2365,7 @@
           "title": "主干完成判定"
         },
         "position": {
-          "x": 6855,
+          "x": 7575,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000013",
@@ -2512,7 +2554,7 @@
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {
-          "x": 7215,
+          "x": 7935,
           "y": 430
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000014",
@@ -2634,7 +2676,7 @@
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {
-          "x": 7575,
+          "x": 8295,
           "y": 430
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000016",
@@ -2696,7 +2738,7 @@
           "version": "1.0"
         },
         "position": {
-          "x": 7935,
+          "x": 8655,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000017",
@@ -2784,7 +2826,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 8295,
+          "x": 9015,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000018",
@@ -2844,7 +2886,7 @@
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {
-          "x": 7215,
+          "x": 7935,
           "y": 170
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000021",
@@ -2890,7 +2932,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 7575,
+          "x": 8295,
           "y": 170
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000022",
@@ -2920,18 +2962,33 @@
       },
       {
         "sourcePort": 0,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000005",
-        "startId": "a1b2c3d4-0000-4000-8000-000000000004"
-      },
-      {
-        "sourcePort": 1,
         "endId": "a1b2c3d4-0000-4000-8000-000000000016",
         "startId": "a1b2c3d4-0000-4000-8000-000000000004"
       },
       {
-        "sourcePort": 2,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000003",
+        "sourcePort": -1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000041",
         "startId": "a1b2c3d4-0000-4000-8000-000000000004"
+      },
+      {
+        "sourcePort": 0,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000003",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000041"
+      },
+      {
+        "sourcePort": -1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000042",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000041"
+      },
+      {
+        "sourcePort": 0,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000005",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000042"
+      },
+      {
+        "sourcePort": -1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000005",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000042"
       },
       {
         "sourcePort": null,

@@ -529,7 +529,7 @@
 | 3 | 需求分析 | [子流] | requirement_text, requirement_file | plan_id, plan_md, pending_fields | 调用 wf_sub_01；结束节点A 输出执行方案表格，**主流程在此中断** |
 | 3A | 结束节点A | [结束] | plan_md, plan_id, pending_fields | 对话输出 | 输出模板见 3.1.1；等待用户回复"确认执行"后携带 plan_id+confirmed=true 重入 |
 | 4 | 续跑判定 | [选择] | resume_action, fail_node, approve_confirmed | branch | ①`approve_confirmed==true` → 节点16（审批确认后续办）；②`resume_action==revise_plan` → 节点3（修改执行方案）；③`resume_action==retry_from_fail` → 按 fail_node 跳转（映射见 3.4.3）；④无 → 节点5（首次执行） |
-| 5 | 【环节1】智能配置 | [子流] | plan_id, execution_id | product_id, offer_id, save_result, status | 调用 wf_sub_02（直读 JSON 落地）；结果按 key=`EXEC{execution_id}_STAGE1` 写入节点结果存储 |
+| 5 | 【环节1】智能配置 | [子流] | plan_id, execution_id | product_id, offer_id, save_result, status | 调用 wf_sub_02（直读 JSON 落地）；前置由节点2 入口判定保证 plan_id 非空（=执行方案已保存，有待补充项的方案不产出 plan_id 无法进入）；结果按 key=`EXEC{execution_id}_STAGE1` 写入节点结果存储 |
 | 6 | 环节1判定与打印 | [选择]+输出 | status | — | `SUCCESS/PARTIAL` → 按 3.1.2 模板打印环节1成功结果 → 节点7；`FAIL` → 节点21（异常A，fail_node=STAGE1_CONFIG） |
 | 7 | 【环节2】实时规格稽核 | [子流] | offer_id, config_json, execution_id | pass, error_list, audit_summary | 调用 wf_sub_03（实时接口，同步返回）；结果按 key=`EXEC{execution_id}_STAGE2` 写入 |
 | 8 | 环节2判定与打印 | [选择]+输出 | pass | — | `pass==1` → 打印环节2成功结果 → 节点9；`pass==0` 或接口异常 → 节点21（fail_node=STAGE2_AUDIT） |
@@ -549,12 +549,13 @@
 
 #### 3.1.1 结束节点A 输出模板
 ```
-《产销品加载执行方案》已生成（plan_id：{{plan_id}}）
-
 {{plan_md（Markdown 表格，固定4列：字段分类/字段名称/字段值/来源）}}
 
 【待补充字段】{{pending_fields | 为空时显示"无，所有字段均已明确"}}
-请核对以上执行方案：
+
+【若存在待补充字段】执行方案暂未保存、暂不能执行（回复【确认执行】无效）：
+- 请直接补充价格/资源类字段值，将更新执行方案并再次确认；
+【若待补充字段为空（plan_id 已生成）】《产销品加载执行方案》已生成并保存（plan_id：{{plan_id}}），请核对：
 - 回复【确认执行】：将自动串行执行 智能配置→稽核→资费校准→自动测试 四个环节
   （每环节执行后向您打印结果，仅异常时中断）；
 - 如需调整：请直接说明修改意见（仅价格、资源类字段须由您补充，其余字段已按相似产品补全）。
@@ -650,10 +651,11 @@
 | 1 | 开始 | [开始] | requirement_text(string,必填)　requirement_file(string,选填) | — | 文件地址由平台文件上传组件生成 |
 | 2 | 需求理解与要素拆解 | [LLM] | requirement_text（+文件解析文本） | 要素拆解中间结果 | 温度 0.2；提示词=主方案 6.4 第 1~3 步（理解需求→提取拆解业务要素→识别完整性）；输出结构化要素 JSON（临时变量，不落存储） |
 | 3 | 相似产品查询 | [插件] | businessDesc=requirement_text（>5000字符时引用节点2输出的需求摘要） | similarOfferList | 工具1 `query_similar_offer` |
-| 4 | 字段映射与补全 | [LLM] | 要素拆解结果 + similarOfferList + 知识库检索（存量销售品资料库） | plan_json, plan_md, pending_fields | 温度 0.2；提示词=主方案 6.4 全文（含 V1.4 补全规则）；输出执行方案 JSON + Markdown 表格 |
-| 5 | 待补充项提示 | [选择] | pending_fields | branch | 非空 → 输出附加"待补充字段"提示；空 → 直接进入节点6 |
-| 6 | 保存执行方案 | [存储] | key=plan_id　value=plan_json | plan_id | 调用节点结果存储查询插件·结果存储；**修改场景覆盖写同 key** |
-| 7 | 结束 | [结束] | plan_id, plan_md, pending_fields | — | 返回主工作流节点3 |
+| 4 | 字段映射与补全 | [LLM] | 要素拆解结果 + similarOfferList + 知识库检索（存量销售品资料库） | plan_json, plan_md, pending_fields, plan_id | 温度 0.2；提示词=主方案 6.4 全文（含 V1.4 补全规则）；输出执行方案 JSON + Markdown 表格 |
+| 5 | 待补充项判断 | [选择] | pending_fields | branch | `pending_fields` 为空（长度=0）→ 节点6 保存后进入确认；**非空 → 直接进入节点7（有待补充项结束），不保存执行方案、不产出 plan_id** |
+| 6 | 保存执行方案 | [存储] | req_id=plan_id　node_name=requirement　result_json=plan_json | plan_id | 调用节点结果存储查询插件·结果存储；**仅无待补充项时执行**；修改场景覆盖写同 key |
+| 7 | 结束(有待补充项) | [结束] | plan_md, pending_fields | — | 输出待补充提示，**不保存执行方案**；plan_id 为空导致主流程入口判定（confirmed==true 且 plan_id 非空）不通过，**从源头禁止进入智能配置**；用户补充后重新走需求分析 |
+| 8 | 结束(无待补充项) | [结束] | plan_id, plan_md | — | 返回主工作流结束节点A（执行方案确认中断点） |
 
 > 提示词全文以主方案 6.4 节为准（源自《需求分析工作流可参考提示词.txt》），此处不重复。节点 4 的知识库检索参数见 4.3 节（K4 检索 top_k=3、score 阈值 0.75）。
 

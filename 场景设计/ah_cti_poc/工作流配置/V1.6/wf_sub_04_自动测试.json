@@ -219,8 +219,36 @@
       {
         "outputs": [
           {
-            "name": "testScenes",
-            "cname": "逐场景结果含测点明细",
+            "name": "resultCode",
+            "cname": "0成功/1失败",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "resultMsg",
+            "cname": "处理结果描述",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "testRequestId",
+            "cname": "测试请求ID",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "testRequestName",
+            "cname": "测试请求名称",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "offerName",
+            "cname": "被测销售品名称",
             "sechema": [],
             "type": "string",
             "required": false
@@ -240,8 +268,8 @@
             "required": false
           },
           {
-            "name": "offerName",
-            "cname": "被测销售品名称",
+            "name": "testScenes",
+            "cname": "逐场景结果含测点明细",
             "sechema": [],
             "type": "string",
             "required": false

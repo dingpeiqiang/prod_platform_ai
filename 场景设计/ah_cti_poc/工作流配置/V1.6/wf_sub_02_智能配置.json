@@ -194,6 +194,15 @@
             "type": "string",
             "required": true,
             "content": "true"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "operator",
+            "description": "操作人（默认system）",
+            "type": "string",
+            "required": true,
+            "content": "system"
           }
         ],
         "checkErr": false,
