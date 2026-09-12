@@ -3,8 +3,8 @@
   "interfaceAddress": "http://10.86.13.201:31281/api/v1/appstore/test/offer/scenes",
   "releaseTime": null,
   "sequ": 0,
-  "flowJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": {\"outparams\": [], \"inparams\": [], \"params\": []}}, \"id\": \"test-scenes-0001\", \"inputs\": [{\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"globalId\", \"description\": \"测试流水号（offer_test 出参）；缺失或查无返回 4002\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}], \"nodeMeta\": {\"code\": \"get_test_scenes\", \"description\": \"自研模拟实现（V1.6）：按 globalId 返回该销售品在《产品信息.txt》规则推导的模拟测试场景集合（即受理验证覆盖范围：套餐新装 S_O_TC/副卡加装 S_ADD_CARD/套餐退订 S_U_TC）\", \"title\": \"查询测试场景\", \"version\": \"1\"}, \"ontology\": \"\", \"ontologyValidation\": 0, \"outputs\": [{\"name\": \"resultCode\", \"cname\": \"0 成功 / 1 失败\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"testScenes\", \"cname\": \"测试场景列表\", \"sechema\": [], \"type\": \"array\", \"required\": false}], \"parameters\": [{\"description\": \"测试流水号（offer_test 出参）；缺失或查无返回 4002\", \"name\": \"globalId\", \"sechema\": [], \"type\": \"string\", \"required\": true}]}",
-  "userScope": 4,
+  "flowJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": \"null\"}, \"id\": \"test-scenes-0001\", \"inputs\": [{\"blockID\": \"\", \"filedType\": \"object\", \"relName\": \"\", \"UpNodeName\": \"\", \"name\": \"ROOT\", \"description\": \"根节点\", \"sechema\": [{\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"UpNodeName\": \"ROOT\", \"name\": \"globalId\", \"description\": \"测试流水号（offer_test 出参）；缺失或查无返回 4002\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}], \"type\": \"object\", \"required\": false, \"content\": \"\"}], \"nodeMeta\": {\"code\": \"get_test_scenes\", \"description\": \"自研模拟实现（V1.6）：按 globalId 返回该销售品在《产品信息.txt》规则推导的模拟测试场景集合（即受理验证覆盖范围：套餐新装 S_O_TC/副卡加装 S_ADD_CARD/套餐退订 S_U_TC）\", \"title\": \"查询测试场景\", \"version\": \"1\"}, \"ontologyValidation\": 0, \"outputs\": [{\"name\": \"ROOT\", \"cname\": \"根节点\", \"sechema\": [{\"name\": \"resultCode\", \"cname\": \"0 成功 / 1 失败\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"testScenes\", \"cname\": \"测试场景列表\", \"sechema\": [{\"name\": \"item\", \"cname\": \"测试场景列表\", \"sechema\": [{\"name\": \"testSceneId\", \"cname\": \"场景ID\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"testSceneName\", \"cname\": \"场景名称（套餐新装/副卡加装/套餐退订）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"testSceneNbr\", \"cname\": \"场景编码：S_O_TC/S_ADD_CARD/S_U_TC\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"testSceneDesc\", \"cname\": \"场景描述\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"sort\", \"cname\": \"排序\", \"sechema\": [], \"type\": \"string\", \"required\": false}], \"type\": \"object\", \"required\": false}], \"type\": \"array\", \"required\": false}], \"type\": \"object\", \"required\": false}], \"position\": {\"x\": 0, \"y\": 0}, \"submit_way\": \"post\", \"type\": 3, \"url\": \"http://10.86.13.201:31281/api/v1/appstore/test/offer/scenes\"}",
+  "userScope": 2,
   "createUserName": "丁培强",
   "releaseUser": null,
   "toolAuthenticType": "1",
@@ -36,6 +36,10 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "default": "",
+                  "description": "根节点",
+                  "type": "object",
+                  "enum": "",
                   "properties": {
                     "globalId": {
                       "default": "",
@@ -45,9 +49,7 @@
                       "required": true
                     }
                   },
-                  "required": [
-                    "globalId"
-                  ]
+                  "required": []
                 }
               }
             }
@@ -57,6 +59,8 @@
               "content": {
                 "application/json": {
                   "schema": {
+                    "description": "根节点",
+                    "type": "object",
                     "properties": {
                       "resultCode": {
                         "description": "0 成功 / 1 失败",
@@ -65,29 +69,33 @@
                       "testScenes": {
                         "description": "测试场景列表",
                         "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "testSceneId": {
-                              "description": "场景ID",
-                              "type": "string"
+                        "properties": {
+                          "item": {
+                            "description": "明细项",
+                            "type": "object",
+                            "properties": {
+                              "testSceneId": {
+                                "description": "场景ID",
+                                "type": "string"
+                              },
+                              "testSceneName": {
+                                "description": "场景名称（套餐新装/副卡加装/套餐退订）",
+                                "type": "string"
+                              },
+                              "testSceneNbr": {
+                                "description": "场景编码：S_O_TC/S_ADD_CARD/S_U_TC",
+                                "type": "string"
+                              },
+                              "testSceneDesc": {
+                                "description": "场景描述",
+                                "type": "string"
+                              },
+                              "sort": {
+                                "description": "排序",
+                                "type": "string"
+                              }
                             },
-                            "testSceneName": {
-                              "description": "场景名称（套餐新装/副卡加装/套餐退订）",
-                              "type": "string"
-                            },
-                            "testSceneNbr": {
-                              "description": "场景编码：S_O_TC/S_ADD_CARD/S_U_TC",
-                              "type": "string"
-                            },
-                            "testSceneDesc": {
-                              "description": "场景描述",
-                              "type": "string"
-                            },
-                            "sort": {
-                              "description": "排序",
-                              "type": "string"
-                            }
+                            "required": []
                           }
                         }
                       }
@@ -102,13 +110,27 @@
       }
     }
   },
-  "toolName": "查询测试场景",
-  "toolType": 1,
-  "version": 1,
-  "status": 0,
+  "knowledgeCategory": null,
   "id": "test-scenes-0001",
+  "toolAuthenticInfo": "null",
+  "ontology": null,
+  "toolName": "查询测试场景",
+  "usedBySceneNum": null,
+  "updateTime": null,
+  "versionInfo": null,
+  "toolType": 1,
+  "version": "1",
+  "isDefault": 1,
   "toolCode": "get_test_scenes",
-  "pluginName": "产销品加载插件集",
+  "observationField": "",
+  "submit_way": "post",
+  "createTime": null,
+  "knowledgeCategoryName": null,
+  "pluginName": null,
+  "toolJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": \"null\"}, \"candidate\": 1, \"description_for_model\": \"自研模拟实现（V1.6）：按 globalId 返回该销售品在《产品信息.txt》规则推导的模拟测试场景集合（即受理验证覆盖范围：套餐新装 S_O_TC/副卡加装 S_ADD_CARD/套餐退订 S_U_TC）\", \"flow_is_placeholder\": false, \"input_parameters\": {\"ROOT\": \"\", \"ROOT-globalId\": \"\"}, \"is_llm\": \"N\", \"llm_type\": 1, \"name_for_human\": \"查询测试场景\", \"name_for_model\": \"get_test_scenes\", \"observationField\": \"\", \"outparameters\": [{\"name\": \"ROOT\", \"cname\": \"根节点\", \"type\": \"object\", \"required\": false, \"sechema\": [{\"name\": \"resultCode\", \"cname\": \"0 成功 / 1 失败\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"testScenes\", \"cname\": \"测试场景列表\", \"sechema\": [{\"name\": \"item\", \"cname\": \"测试场景列表\", \"sechema\": [{\"name\": \"testSceneId\", \"cname\": \"场景ID\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"testSceneName\", \"cname\": \"场景名称（套餐新装/副卡加装/套餐退订）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"testSceneNbr\", \"cname\": \"场景编码：S_O_TC/S_ADD_CARD/S_U_TC\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"testSceneDesc\", \"cname\": \"场景描述\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"sort\", \"cname\": \"排序\", \"sechema\": [], \"type\": \"string\", \"required\": false}], \"type\": \"object\", \"required\": false}], \"type\": \"array\", \"required\": false}]}], \"parameters\": [{\"description\": \"根节点\", \"dict_list\": \"\", \"id\": \"1dc0e9ddbfff881a9e689e1c27a975e5\", \"isParameter\": 0, \"name\": \"ROOT\", \"required\": false, \"schema\": {\"type\": \"object\"}, \"upId\": \"\", \"upNodeName\": \"\"}, {\"description\": \"测试流水号（offer_test 出参）；缺失或查无返回 4002\", \"dict_list\": \"\", \"id\": \"00a699397c3050099853fb96f7e8f3bc\", \"isParameter\": 1, \"name\": \"globalId\", \"required\": true, \"schema\": {\"type\": \"string\"}, \"upId\": \"1dc0e9ddbfff881a9e689e1c27a975e5\", \"upNodeName\": \"ROOT\"}], \"prompt_template\": \"\", \"submit_way\": \"post\", \"type_for_tool\": \"url\", \"type_for_url\": \"http\", \"url_for_model\": \"http://10.86.13.201:31281/api/v1/appstore/test/offer/scenes\"}",
+  "pluginsId": null,
+  "prompt": "",
   "remarks": "V1.6 自研模拟实现；模拟数据兼容《产品信息.txt》全部18个销售品",
-  "submit_way": "post"
+  "status": 0,
+  "wsHeads": ""
 }

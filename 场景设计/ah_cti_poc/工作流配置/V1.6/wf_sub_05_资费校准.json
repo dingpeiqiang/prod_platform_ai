@@ -43,8 +43,38 @@
           {
             "name": "risk_list",
             "cname": "风险清单",
-            "sechema": [],
-            "type": "string",
+            "sechema": [
+              {
+                "name": "item",
+                "cname": "风险清单",
+                "sechema": [
+                  {
+                    "name": "risk_type",
+                    "cname": "风险类型：overlap_conflict/negative_fee/boundary_price_gap/overlay_limit_exceeded/custom_rule",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "risk_desc",
+                    "cname": "风险描述，含冲突/异常明细",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "suggest",
+                    "cname": "处置建议",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  }
+                ],
+                "type": "object",
+                "required": false
+              }
+            ],
+            "type": "array",
             "required": false
           }
         ],

@@ -66,8 +66,45 @@
           {
             "name": "alarm_list",
             "cname": "告警列表",
-            "sechema": [],
-            "type": "string",
+            "sechema": [
+              {
+                "name": "item",
+                "cname": "告警列表",
+                "sechema": [
+                  {
+                    "name": "alarm_id",
+                    "cname": "告警单号",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "alarm_level",
+                    "cname": "告警级别：high/middle/low",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "content",
+                    "cname": "告警内容",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "alarm_time",
+                    "cname": "告警时间",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  }
+                ],
+                "type": "object",
+                "required": false
+              }
+            ],
+            "type": "array",
             "required": false
           }
         ],

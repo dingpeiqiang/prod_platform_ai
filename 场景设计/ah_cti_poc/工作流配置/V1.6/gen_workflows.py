@@ -25,6 +25,92 @@ def inp(name, desc, ptype="string", required=True, content="", ref_block="", ref
 def out(name, desc, ptype="string"):
     return {"name": name, "description": desc, "type": ptype, "content": ""}
 
+
+# 各工具 array 出参的 item 叶子字段（与自研插件集V1.6 gen_plugins.py 定义严格同步）
+ARRAY_ITEM_FIELDS = {
+    "query_similar_offer|similarOfferList": [
+        ("similarOfferId", "相似销售品ID（如 900102308）"),
+        ("similarOfferName", "相似销售品名称"),
+        ("similarityScore", "相似度评分（0~1）"),
+        ("similarityDesc", "相似原因描述（命中字段/资费结构说明）"),
+    ],
+    "realtime_spec_audit|error_list": [
+        ("item", "问题项（对应配置字段/规则）"),
+        ("level", "严重级别：error 阻断 / warning 提示"),
+        ("desc", "问题描述，含实际值与期望规则"),
+        ("suggest", "整改建议"),
+    ],
+    "get_test_scenes|testScenes": [
+        ("testSceneId", "场景ID"),
+        ("testSceneName", "场景名称（套餐新装/副卡加装/套餐退订）"),
+        ("testSceneNbr", "场景编码：S_O_TC/S_ADD_CARD/S_U_TC"),
+        ("testSceneDesc", "场景描述"),
+        ("sort", "排序"),
+    ],
+    "get_test_result|testScenes": [
+        ("testSceneNbr", "场景编码：S_O_TC/S_ADD_CARD/S_U_TC"),
+        ("testSceneName", "场景名称"),
+        ("testSceneDesc", "场景描述"),
+        ("testCaseCount", "测点总数"),
+        ("successTestCaseCount", "成功数"),
+        ("failTestCaseCount", "失败数"),
+        ("testCasePointResults", "测点明细"),
+        ("objTestSceneRel", "AI场景总结：resultMsg 场景测试总结/summaryDesc 汇总描述/suggestion 优化建议"),
+    ],
+    "check_billing_rule|risk_list": [
+        ("risk_type", "风险类型：overlap_conflict/negative_fee/boundary_price_gap/overlay_limit_exceeded/custom_rule"),
+        ("risk_desc", "风险描述，含冲突/异常明细"),
+        ("suggest", "处置建议"),
+    ],
+    "query_product_monitor|alarm_list": [
+        ("alarm_id", "告警单号"),
+        ("alarm_level", "告警级别：high/middle/low"),
+        ("content", "告警内容"),
+        ("alarm_time", "告警时间"),
+    ],
+}
+
+# 工具6 testScenes.item 内嵌套二层 array：测点明细
+TEST_POINT_FIELDS = [
+    ("testPointNbr", "测点编码：P_EFF_DATE/P_EXP_DATE/P_STATUS/P_MAIN_PROD/P_RELY_REL/P_MUTEX_REL/P_ORD_CNT/P_OFFER_NAME/P_OFFER_TYPE/P_PAY_MODE"),
+    ("presetValue", "规格规定值（预期值，取自《产品信息.txt》该销售品规则值）"),
+    ("testValue", "实测值（模拟CRM实际生成结果）"),
+    ("resultCode", "0 一致 / 1 不一致"),
+    ("resultMsg", "比对结论"),
+]
+
+
+def arr_item_node(cname, fields):
+    return {"name": "item", "cname": cname, "sechema": [], "type": "object", "required": False} if False else {
+        "name": "item", "cname": cname,
+        "sechema": [{"name": n, "cname": d, "sechema": [], "type": "string", "required": False}
+                    for (n, d) in fields],
+        "type": "object", "required": False
+    }
+
+
+def plugin_out(name, desc, ptype="string", code=None):
+    """插件节点出参声明：array 出参填充完整 item 树（对齐插件定义），其余 sechema 为空"""
+    if ptype != "array":
+        return {"name": name, "cname": desc, "sechema": [], "type": ptype, "required": False}
+    key = code + "|" + name if code else None
+    if key == "get_test_result|testScenes":
+        # 二层嵌套：testScenes.item 中 testCasePointResults 为内层 array
+        item_leaves = []
+        for (n, d) in ARRAY_ITEM_FIELDS[key]:
+            if n == "testCasePointResults":
+                item_leaves.append({"name": n, "cname": d, "sechema": [
+                    arr_item_node("测点明细", TEST_POINT_FIELDS)], "type": "array", "required": False})
+            else:
+                item_leaves.append({"name": n, "cname": d, "sechema": [], "type": "string", "required": False})
+        item = {"name": "item", "cname": desc.split("，")[0] if desc else name,
+                "sechema": item_leaves, "type": "object", "required": False}
+        return {"name": name, "cname": desc, "sechema": [item], "type": "array", "required": False}
+    if key and key in ARRAY_ITEM_FIELDS:
+        return {"name": name, "cname": desc, "sechema": [arr_item_node(desc, ARRAY_ITEM_FIELDS[key])],
+                "type": "array", "required": False}
+    return {"name": name, "cname": desc, "sechema": [], "type": ptype, "required": False}
+
 def start_node(seq, inputs, pos=(15, 135)):
     return {
         "flowJson": None, "inputs": inputs, "checkErr": False,
@@ -117,8 +203,7 @@ def selector_node2(seq, title, deps, branches, pos=(530, 135)):
 
 def plugin_node(seq, title, code, desc, url, inputs, outputs, pos=(650, 135), method="post"):
     return {
-        "outputs": [{"name": n, "cname": d, "sechema": [], "type": t, "required": False}
-                    for (n, d, t) in outputs],
+        "outputs": [plugin_out(n, d, t, code=code) for (n, d, t) in outputs],
         "submit_way": method, "flowJson": None, "authentic_info": "",
         "inputs": inputs, "checkErr": False,
         "nodeMeta": {"title": title, "code": code, "description": desc, "version": "1"},
@@ -251,11 +336,11 @@ s1.append(start_node(1, [
 ]))
 s1.append(llm_node(2, "需求理解与要素拆解",
     "你是产销品加载需求分析助手。按6步分析：理解需求→提取并拆解业务要素（基础信息/资源配置/营销资源/销售规则四类）→识别信息完整性（字段三态：原始需求/AI补全/待补充）。需求原文：{requirement_text}\n"
-    "补充规则（V1.4）：仅价格、资源两类字段未提供时填\"待补充\"（禁止推理，禁止从相似产品照搬）；其余缺失字段待相似产品返回后推理补全，来源标记\"AI补全\"；来源只允许\"原始需求\"或\"AI补全\"两种。\n"
-    "输出要求（两个出参逐一约定）：\n"
-    "1. elements_json：输出结构化要素JSON（临时变量，不落存储），包含 fields 数组与 pending_fields 数组；\n"
-    "2. need_summary：输出需求摘要（≤5000字符，供相似度分析调用使用）；\n"
-    "3. 除上述两个出参内容外不输出任何多余文字。",
+    "补充规则（V1.6）：pending_fields默认为空——仅当费用（价格）或资源（流量/语音/短信）未提取到时，才将该字段填\"待补充\"并计入pending_fields（禁止推理，禁止从相似产品照搬）；其余缺失字段待相似产品返回后按最高相似度产品补全，来源标记\"AI补全\"；来源只允许\"原始需求\"或\"AI补全\"两种。\n"
+    "输出要求（两个出参逐一约定，每个出参只输出自己的内容，严禁把其他出参内容并入）：\n"
+    "1. elements_json：仅输出结构化要素JSON对象本身（以{开头、}结尾），包含 fields 数组与 pending_fields 数组，不得附带键名前缀或说明；\n"
+    "2. need_summary：仅输出需求摘要文本本身（≤5000字符，供相似度分析调用使用）；\n"
+    "3. 严格禁止输出形如\"elements_json: {...} need_summary: ...\"的拼接包；除上述两个出参各自内容外不输出任何多余文字。",
     [inp("requirement_text", "引用开始节点 requirement_text", ref_block=nid(1), ref_rel="requirement_text")],
     [out("elements_json", "业务要素结构化JSON"), out("need_summary", "需求摘要（>5000字符时供相似度分析用）")]))
 s1.append(plugin_node(3, "相似产品查询", "query_similar_offer",
@@ -263,16 +348,17 @@ s1.append(plugin_node(3, "相似产品查询", "query_similar_offer",
     BASE_URL + "/api/v1/appstore/similar/offer/query",
     [inp("businessDesc", "业务需求描述（引用节点2需求摘要，≤5000字符）", ref_block=nid(2), ref_rel="need_summary")],
     [("resultCode", "0成功/1失败", "string"), ("resultMsg", "处理结果描述", "string"),
-     ("similarOfferList", "相似产品列表", "string")]))
+     ("similarOfferList", "相似产品列表", "array")]))
 s1.append(llm_node(4, "字段映射与补全",
     "基于节点2要素JSON（elements_json={elements_json}）+ 节点3相似产品列表（similarOfferList={similarOfferList}，含《产品信息.txt》18个销售品规则）+ 知识库存量销售品资料，生成《产销品加载执行方案》。\n"
-    "补全规则：价格、资源类字段未提供→\"待补充\"列入pending_fields；其余缺失字段取最高相似度产品对应值，来源\"AI补全\"。\n"
-    "输出要求（四个出参逐一约定）：\n"
-    "1. plan_json：执行方案JSON，含 plan_id/fields/similar_offers/pending_fields；\n"
-    "2. plan_md：执行方案Markdown表格，固定4列：字段分类/字段名称/字段值/来源；\n"
-    "3. pending_fields：待补充字段清单，逗号分隔；\n"
-    "4. plan_id：执行方案存储key，格式 PLAN+yyyyMMdd+3位序号，修改场景沿用原值覆盖写；\n"
-    "5. 除上述四个出参内容外不输出任何多余文字。",
+    "补全规则（V1.6）：pending_fields默认为空——只要需求中提取到费用（价格）与资源（流量/语音/短信）信息，即视为可生成执行方案，禁止将其他缺失字段列入pending_fields（其余缺失字段全部取最高相似度产品对应值AI补全，来源\"AI补全\"）；仅当费用或资源未提取到时，才将该字段值填\"待补充\"并列入pending_fields（禁止推理，禁止从相似产品照搬）。\n"
+    "输出要求（四个出参逐一约定，每个出参只输出自己的内容，严禁把其他出参内容并入）：\n"
+    "1. plan_json：仅输出执行方案JSON对象本身（以{开头、}结尾），含 plan_id/fields/similar_offers/pending_fields 四个键，fields内每项含 field/value/source；\n"
+    "2. plan_md：仅输出Markdown表格本身（以|字段分类|开头），固定4列：字段分类/字段名称/字段值/来源，同分类连续行按规范合并单元格（首行填分类，后续行留空），不得在表格前后附加任何文字、代码块或键名；\n"
+    "3. pending_fields：仅输出待补充字段名称清单，逗号分隔，无待补充时输出空字符串，不得附带任何前缀或说明；\n"
+    "4. plan_id：仅输出存储key本身（格式 PLAN+yyyyMMdd+3位序号，如PLAN20231001001），修改场景沿用原值覆盖写，不得附带键名或说明；\n"
+    "5. 严格禁止输出形如\"plan_json: {...} plan_md: ... pending_fields: ... plan_id: ...\"的拼接包：每个出参内容只归属其对应出参，平台按出参分别捕获；\n"
+    "6. 除上述四个出参各自内容外不输出任何多余文字。",
     [inp("elements_json", "引用节点2要素JSON", ref_block=nid(2), ref_rel="elements_json"),
      inp("similarOfferList", "引用节点3相似产品列表", ref_block=nid(3), ref_rel="similarOfferList")],
     [out("plan_json", "执行方案JSON"), out("plan_md", "执行方案Markdown表格"),
@@ -294,7 +380,7 @@ s1.append(plugin_node(6, "保存执行方案", "save_node_result",
 s1.append(end_node(7, "结束(有待补充项)",
     [inp("plan_md", "执行方案表格", ref_block=nid(4), ref_rel="plan_md"),
      inp("pending_fields", "待补充字段", ref_block=nid(4), ref_rel="pending_fields")],
-    "《产销品加载执行方案》已生成（plan_id：{plan_id}）\n\n{plan_md}\n\n【待补充字段】{pending_fields}\n以上价格、资源类字段需由您补充后才能执行：\n- 请直接补充字段值，将更新执行方案并再次确认；\n- 如需调整其他字段：请直接说明修改意见（其余字段已按相似产品补全）。"))
+    "《产销品加载执行方案》已生成（plan_id：{plan_id}）\n\n{plan_md}\n\n【待补充字段】{pending_fields}\n以上费用、资源类字段需求中未提取到，需由您补充后才能执行：\n- 请直接补充字段值，将更新执行方案并再次确认；\n- 如需调整其他字段：请直接说明修改意见（其余字段已按相似产品补全）。"))
 s1.append(end_node(8, "结束(无待补充项)",
     [inp("plan_id", "执行方案存储key", ref_block=nid(4), ref_rel="plan_id"),
      inp("plan_md", "执行方案表格", ref_block=nid(4), ref_rel="plan_md")],
@@ -302,7 +388,7 @@ s1.append(end_node(8, "结束(无待补充项)",
 e1 = [edge(1,2), edge(2,3), edge(3,4), edge(4,5),
       edge(5,6,0), edge(5,7,-1), edge(6,8)]
 files["wf_sub_01_需求分析.json"] = workflow(
-    "产销品-需求分析", "子工作流1：需求分析（执行方案生成）。需求理解→相似产品查询（自研模拟，18销售品种子）→字段映射与AI补全（价格/资源待补充，其余AI补全）→待补充项判断（无待补充→保存执行方案→确认结束；有待补充→补充提示结束）。", "wf_sub_01", s1, e1)
+    "产销品-需求分析", "子工作流1：需求分析（执行方案生成）。需求理解→相似产品查询（自研模拟，18销售品种子）→字段映射与AI补全（pending_fields默认为空，仅费用/资源未提取到时待补充，其余AI补全）→待补充项判断（无待补充→保存执行方案→确认结束；有待补充→补充提示结束）。", "wf_sub_01", s1, e1)
 
 # ============================================================
 # wf_sub_02 智能配置（配置落地）
@@ -351,7 +437,7 @@ s3.append(plugin_node(202, "实时稽核", "realtime_spec_audit",
     [inp("offer_id", "销售品ID", ref_block=nid(201), ref_rel="offer_id"),
      inp("config_json", "落地配置JSON", ref_block=nid(201), ref_rel="config_json"),
      inp("audit_scene", "稽核场景默认all", content="all")],
-    [("pass", "1通过/0不通过", "string"), ("error_list", "问题明细", "string"),
+    [("pass", "1通过/0不通过", "string"), ("error_list", "问题明细", "array"),
      ("audit_summary", "稽核总结", "string"), ("resultCode", "0成功/NET_ERROR/TIMEOUT", "string")]))
 s3.append(llm_node(203, "整改建议生成",
     "将稽核问题明细整理为可执行的整改建议清单（error_list={error_list}，audit_summary={audit_summary}），按严重级别排序；pass=1 时输出\"稽核通过\"。不新增稽核结论。\n"
@@ -383,7 +469,7 @@ s4.append(plugin_node(303, "查询测试场景", "get_test_scenes",
     "工具4：查询受理验证覆盖范围（套餐新装/副卡加装/套餐退订）",
     BASE_URL + "/api/v1/appstore/test/offer/scenes",
     [inp("globalId", "测试流水号（节点2出参）", ref_block=nid(302), ref_rel="globalId")],
-    [("resultCode", "0成功/1失败", "string"), ("testScenes", "场景列表", "string")]))
+    [("resultCode", "0成功/1失败", "string"), ("testScenes", "场景列表", "array")]))
 s4.append(loop_node(304, "轮询测试进度",
     "工具5循环轮询：间隔5s，超时30分钟（360次），连续5次查询失败终止转人工",
     [inp("globalId", "测试流水号", ref_block=nid(302), ref_rel="globalId")],
@@ -395,7 +481,7 @@ s4.append(plugin_node(305, "查询测试结果", "get_test_result",
     [("resultCode", "0成功/1失败", "string"), ("resultMsg", "处理结果描述", "string"),
      ("testRequestId", "测试请求ID", "string"), ("testRequestName", "测试请求名称", "string"),
      ("offerName", "被测销售品名称", "string"), ("orderId", "受理订单号", "string"),
-     ("offerInstId", "销售品实例ID", "string"), ("testScenes", "逐场景结果含测点明细", "string")]))
+     ("offerInstId", "销售品实例ID", "string"), ("testScenes", "逐场景结果含测点明细", "array")]))
 s4.append(llm_node(306, "测试报告生成",
     "你是产销品自动测试报告生成助手。基于逐场景测试结果（testScenes={testScenes}）生成《销售品自动测试报告》，必须包含：1.测试概要（offerName/globalId/场景与测点统计）；2.受理验证结论（强制章节：orderId={orderId}、offerInstId={offerInstId}，为空则写明\"未获取到受理凭证，需人工核实\"；逐受理场景 S_O_TC/S_ADD_CARD/S_U_TC 给出通过/失败结论）；3.逐场景明细（仅展开resultCode=1不一致测点）；4.AI总结与建议（引用objTestSceneRel）；5.总体结论。\n"
     "输出要求（两个出参逐一约定）：\n"
@@ -425,7 +511,7 @@ s5.append(plugin_node(402, "计费校验", "check_billing_rule",
     BASE_URL + "/api/v1/appstore/billing/rules/verify",
     [inp("config_json", "落地配置JSON", ref_block=nid(401), ref_rel="config_json"),
      inp("check_scene", "校验场景默认all", content="all")],
-    [("pass", "1通过/0不通过", "string"), ("risk_list", "风险清单", "string")]))
+    [("pass", "1通过/0不通过", "string"), ("risk_list", "风险清单", "array")]))
 s5.append(llm_node(403, "风险解读",
     "将资费风险清单（risk_list={risk_list}）翻译为业务语言，说明每条风险的影响与建议；risk_list 为空时输出\"资费校准通过，未发现叠加/互斥冲突\"。可引用资费规则库知识作为解释依据，但不得新增风险结论。\n"
     "输出要求：仅输出风险解读内容（对应出参 risk_summary），不输出其他多余文字。",
@@ -479,7 +565,7 @@ s7.append(plugin_node(602, "监控查询", "query_product_monitor",
      inp("date_range", "日期范围", ref_block=nid(601), ref_rel="date_range"),
      inp("metric", "指标默认all", content="all")],
     [("order_count", "订单量", "string"), ("error_count", "异常量", "string"),
-     ("fee_error_rate", "计费差错率", "string"), ("alarm_list", "告警列表", "string")],
+     ("fee_error_rate", "计费差错率", "string"), ("alarm_list", "告警列表", "array")],
     method="get"))
 s7.append(selector_node2(603, "异常判定",
     [dep_node(602, "监控查询", ["error_count", "fee_error_rate"])],

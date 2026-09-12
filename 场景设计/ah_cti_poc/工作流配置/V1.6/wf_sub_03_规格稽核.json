@@ -52,8 +52,45 @@
           {
             "name": "error_list",
             "cname": "问题明细",
-            "sechema": [],
-            "type": "string",
+            "sechema": [
+              {
+                "name": "item",
+                "cname": "问题明细",
+                "sechema": [
+                  {
+                    "name": "item",
+                    "cname": "问题项（对应配置字段/规则）",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "level",
+                    "cname": "严重级别：error 阻断 / warning 提示",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "desc",
+                    "cname": "问题描述，含实际值与期望规则",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "suggest",
+                    "cname": "整改建议",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  }
+                ],
+                "type": "object",
+                "required": false
+              }
+            ],
+            "type": "array",
             "required": false
           },
           {

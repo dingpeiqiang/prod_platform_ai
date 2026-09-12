@@ -3,8 +3,8 @@
   "interfaceAddress": "http://10.86.13.201:31281/api/v1/appstore/test/offer/progress",
   "releaseTime": null,
   "sequ": 0,
-  "flowJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": {\"outparams\": [], \"inparams\": [], \"params\": []}}, \"id\": \"test-progress-0001\", \"inputs\": [{\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"globalId\", \"description\": \"测试流水号（offer_test 出参）；缺失或查无返回 4002\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}], \"nodeMeta\": {\"code\": \"get_test_progress\", \"description\": \"自研模拟实现（V1.6）：按 globalId 推进模拟测试进度状态机（总步骤=场景数+2，前2步固定为智能匹配测试场景&用例、智能匹配测试资源），支持工作流循环节点轮询（间隔5s，超时30分钟）\", \"title\": \"查询测试进度\", \"version\": \"1\"}, \"ontology\": \"\", \"ontologyValidation\": 0, \"outputs\": [{\"name\": \"totalSteps\", \"cname\": \"总步骤数=场景数+2\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"activeIndex\", \"cname\": \"当前步骤下标（从0计）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"done\", \"cname\": \"测试是否全部完成\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"failed\", \"cname\": \"是否存在失败/中止（RESULT_CODE=1/2）场景\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"failIndex\", \"cname\": \"第一个失败场景步骤下标，无失败为-1\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"totalSceneCount\", \"cname\": \"场景总数\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"finishedSceneCount\", \"cname\": \"已完成场景数\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"failedSceneCount\", \"cname\": \"失败（含中止）场景数\", \"sechema\": [], \"type\": \"string\", \"required\": false}], \"parameters\": [{\"description\": \"测试流水号（offer_test 出参）；缺失或查无返回 4002\", \"name\": \"globalId\", \"sechema\": [], \"type\": \"string\", \"required\": true}]}",
-  "userScope": 4,
+  "flowJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": \"null\"}, \"id\": \"test-progress-0001\", \"inputs\": [{\"blockID\": \"\", \"filedType\": \"object\", \"relName\": \"\", \"UpNodeName\": \"\", \"name\": \"ROOT\", \"description\": \"根节点\", \"sechema\": [{\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"UpNodeName\": \"ROOT\", \"name\": \"globalId\", \"description\": \"测试流水号（offer_test 出参）；缺失或查无返回 4002\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}], \"type\": \"object\", \"required\": false, \"content\": \"\"}], \"nodeMeta\": {\"code\": \"get_test_progress\", \"description\": \"自研模拟实现（V1.6）：按 globalId 推进模拟测试进度状态机（总步骤=场景数+2，前2步固定为智能匹配测试场景&用例、智能匹配测试资源），支持工作流循环节点轮询（间隔5s，超时30分钟）\", \"title\": \"查询测试进度\", \"version\": \"1\"}, \"ontologyValidation\": 0, \"outputs\": [{\"name\": \"ROOT\", \"cname\": \"根节点\", \"sechema\": [{\"name\": \"totalSteps\", \"cname\": \"总步骤数=场景数+2\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"activeIndex\", \"cname\": \"当前步骤下标（从0计）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"done\", \"cname\": \"测试是否全部完成\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"failed\", \"cname\": \"是否存在失败/中止（RESULT_CODE=1/2）场景\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"failIndex\", \"cname\": \"第一个失败场景步骤下标，无失败为-1\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"totalSceneCount\", \"cname\": \"场景总数\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"finishedSceneCount\", \"cname\": \"已完成场景数\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"failedSceneCount\", \"cname\": \"失败（含中止）场景数\", \"sechema\": [], \"type\": \"string\", \"required\": false}], \"type\": \"object\", \"required\": false}], \"position\": {\"x\": 0, \"y\": 0}, \"submit_way\": \"post\", \"type\": 3, \"url\": \"http://10.86.13.201:31281/api/v1/appstore/test/offer/progress\"}",
+  "userScope": 2,
   "createUserName": "丁培强",
   "releaseUser": null,
   "toolAuthenticType": "1",
@@ -36,6 +36,10 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "default": "",
+                  "description": "根节点",
+                  "type": "object",
+                  "enum": "",
                   "properties": {
                     "globalId": {
                       "default": "",
@@ -45,9 +49,7 @@
                       "required": true
                     }
                   },
-                  "required": [
-                    "globalId"
-                  ]
+                  "required": []
                 }
               }
             }
@@ -57,6 +59,8 @@
               "content": {
                 "application/json": {
                   "schema": {
+                    "description": "根节点",
+                    "type": "object",
                     "properties": {
                       "totalSteps": {
                         "description": "总步骤数=场景数+2",
@@ -101,13 +105,27 @@
       }
     }
   },
-  "toolName": "查询测试进度",
-  "toolType": 1,
-  "version": 1,
-  "status": 0,
+  "knowledgeCategory": null,
   "id": "test-progress-0001",
+  "toolAuthenticInfo": "null",
+  "ontology": null,
+  "toolName": "查询测试进度",
+  "usedBySceneNum": null,
+  "updateTime": null,
+  "versionInfo": null,
+  "toolType": 1,
+  "version": "1",
+  "isDefault": 1,
   "toolCode": "get_test_progress",
-  "pluginName": "产销品加载插件集",
+  "observationField": "",
+  "submit_way": "post",
+  "createTime": null,
+  "knowledgeCategoryName": null,
+  "pluginName": null,
+  "toolJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": \"null\"}, \"candidate\": 1, \"description_for_model\": \"自研模拟实现（V1.6）：按 globalId 推进模拟测试进度状态机（总步骤=场景数+2，前2步固定为智能匹配测试场景&用例、智能匹配测试资源），支持工作流循环节点轮询（间隔5s，超时30分钟）\", \"flow_is_placeholder\": false, \"input_parameters\": {\"ROOT\": \"\", \"ROOT-globalId\": \"\"}, \"is_llm\": \"N\", \"llm_type\": 1, \"name_for_human\": \"查询测试进度\", \"name_for_model\": \"get_test_progress\", \"observationField\": \"\", \"outparameters\": [{\"name\": \"ROOT\", \"cname\": \"根节点\", \"type\": \"object\", \"required\": false, \"sechema\": [{\"name\": \"totalSteps\", \"cname\": \"总步骤数=场景数+2\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"activeIndex\", \"cname\": \"当前步骤下标（从0计）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"done\", \"cname\": \"测试是否全部完成\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"failed\", \"cname\": \"是否存在失败/中止（RESULT_CODE=1/2）场景\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"failIndex\", \"cname\": \"第一个失败场景步骤下标，无失败为-1\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"totalSceneCount\", \"cname\": \"场景总数\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"finishedSceneCount\", \"cname\": \"已完成场景数\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"failedSceneCount\", \"cname\": \"失败（含中止）场景数\", \"sechema\": [], \"type\": \"string\", \"required\": false}]}], \"parameters\": [{\"description\": \"根节点\", \"dict_list\": \"\", \"id\": \"075c548779475a236458732867184f60\", \"isParameter\": 0, \"name\": \"ROOT\", \"required\": false, \"schema\": {\"type\": \"object\"}, \"upId\": \"\", \"upNodeName\": \"\"}, {\"description\": \"测试流水号（offer_test 出参）；缺失或查无返回 4002\", \"dict_list\": \"\", \"id\": \"e7d127ffd6b8c22c9a675d5121ca71d1\", \"isParameter\": 1, \"name\": \"globalId\", \"required\": true, \"schema\": {\"type\": \"string\"}, \"upId\": \"075c548779475a236458732867184f60\", \"upNodeName\": \"ROOT\"}], \"prompt_template\": \"\", \"submit_way\": \"post\", \"type_for_tool\": \"url\", \"type_for_url\": \"http\", \"url_for_model\": \"http://10.86.13.201:31281/api/v1/appstore/test/offer/progress\"}",
+  "pluginsId": null,
+  "prompt": "",
   "remarks": "V1.6 自研模拟实现；模拟数据兼容《产品信息.txt》全部18个销售品",
-  "submit_way": "post"
+  "status": 0,
+  "wsHeads": ""
 }

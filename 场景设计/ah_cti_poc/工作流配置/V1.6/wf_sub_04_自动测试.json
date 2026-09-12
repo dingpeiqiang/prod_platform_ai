@@ -110,8 +110,52 @@
           {
             "name": "testScenes",
             "cname": "场景列表",
-            "sechema": [],
-            "type": "string",
+            "sechema": [
+              {
+                "name": "item",
+                "cname": "场景列表",
+                "sechema": [
+                  {
+                    "name": "testSceneId",
+                    "cname": "场景ID",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "testSceneName",
+                    "cname": "场景名称（套餐新装/副卡加装/套餐退订）",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "testSceneNbr",
+                    "cname": "场景编码：S_O_TC/S_ADD_CARD/S_U_TC",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "testSceneDesc",
+                    "cname": "场景描述",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "sort",
+                    "cname": "排序",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  }
+                ],
+                "type": "object",
+                "required": false
+              }
+            ],
+            "type": "array",
             "required": false
           }
         ],
@@ -270,8 +314,117 @@
           {
             "name": "testScenes",
             "cname": "逐场景结果含测点明细",
-            "sechema": [],
-            "type": "string",
+            "sechema": [
+              {
+                "name": "item",
+                "cname": "逐场景结果含测点明细",
+                "sechema": [
+                  {
+                    "name": "testSceneNbr",
+                    "cname": "场景编码：S_O_TC/S_ADD_CARD/S_U_TC",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "testSceneName",
+                    "cname": "场景名称",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "testSceneDesc",
+                    "cname": "场景描述",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "testCaseCount",
+                    "cname": "测点总数",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "successTestCaseCount",
+                    "cname": "成功数",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "failTestCaseCount",
+                    "cname": "失败数",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  },
+                  {
+                    "name": "testCasePointResults",
+                    "cname": "测点明细",
+                    "sechema": [
+                      {
+                        "name": "item",
+                        "cname": "测点明细",
+                        "sechema": [
+                          {
+                            "name": "testPointNbr",
+                            "cname": "测点编码：P_EFF_DATE/P_EXP_DATE/P_STATUS/P_MAIN_PROD/P_RELY_REL/P_MUTEX_REL/P_ORD_CNT/P_OFFER_NAME/P_OFFER_TYPE/P_PAY_MODE",
+                            "sechema": [],
+                            "type": "string",
+                            "required": false
+                          },
+                          {
+                            "name": "presetValue",
+                            "cname": "规格规定值（预期值，取自《产品信息.txt》该销售品规则值）",
+                            "sechema": [],
+                            "type": "string",
+                            "required": false
+                          },
+                          {
+                            "name": "testValue",
+                            "cname": "实测值（模拟CRM实际生成结果）",
+                            "sechema": [],
+                            "type": "string",
+                            "required": false
+                          },
+                          {
+                            "name": "resultCode",
+                            "cname": "0 一致 / 1 不一致",
+                            "sechema": [],
+                            "type": "string",
+                            "required": false
+                          },
+                          {
+                            "name": "resultMsg",
+                            "cname": "比对结论",
+                            "sechema": [],
+                            "type": "string",
+                            "required": false
+                          }
+                        ],
+                        "type": "object",
+                        "required": false
+                      }
+                    ],
+                    "type": "array",
+                    "required": false
+                  },
+                  {
+                    "name": "objTestSceneRel",
+                    "cname": "AI场景总结：resultMsg 场景测试总结/summaryDesc 汇总描述/suggestion 优化建议",
+                    "sechema": [],
+                    "type": "string",
+                    "required": false
+                  }
+                ],
+                "type": "object",
+                "required": false
+              }
+            ],
+            "type": "array",
             "required": false
           }
         ],

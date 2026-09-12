@@ -54,7 +54,12 @@
         <appender-ref ref="FILE"/>
     </logger>
 
-    <logger name="com.sitech.prodai.RequestLoggingFilter" level="INFO" additivity="false">
+    <logger name="com.sitech.prodai.filter.RequestLoggingFilter" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="REQUEST"/>
+    </logger>
+
+    <logger name="com.sitech.prodai.filter" level="INFO" additivity="false">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="REQUEST"/>
     </logger>

@@ -24,42 +24,79 @@ def schema_obj_props(props, required=None):
 
 def build_plugin(tool_id, tool_name, tool_code, desc, path, method, req_props, req_required,
                  resp_props, induction, llm_type=1):
-    """构建与平台导出格式一致的插件JSON"""
-    flow_inputs = []
-    for name, p in req_props.items():
-        flow_inputs.append({
-            "blockID": "", "filedType": p.get("type", "string"), "relName": "",
-            "name": name, "description": p["description"],
-            "sechema": [], "type": p.get("type", "string"),
-            "required": name in req_required, "content": ""
-        })
+    """构建与平台导出格式一致的插件JSON。
+    对齐平台真实样例《产品相似度匹配》核心契约：
+      1. flowJson.inputs = 单一 ROOT 节点（type=object），参数树挂在 sechema 嵌套链（每层含 UpNodeName，叶子 string 带 content）
+      2. flowJson.outputs = 单一 ROOT 节点，输出结构全在 sechema 树（BODY→OUT_DATA→业务节点，array 节点 sechema 内为 item object）
+      3. toolJson.input_parameters 键为全路径 'ROOT-BODY-BUSI_INFO-PROD_INFO-XXX'
+      4. toolJson.parameters 平铺全部节点（容器 isParameter=0，叶子=1），带 id/upId/upNodeName
+      5. schemaJson 请求/响应均从 ROOT(object) 展开 properties
+    业务参数统一挂载在固定容器 ROOT→BODY→BUSI_INFO→PROD_INFO 下；输出容器为 ROOT→BODY→OUT_DATA 下。"""
+    url = BASE_URL + path
+    leaves_in = [schema_param(n, p.get("type", "string"), p["description"], n in req_required,
+                              p.get("default", ""), p.get("enum", "")) for n, p in req_props.items()]
+    # ---------- flowJson.inputs：ROOT→业务叶子（无BODY/BUSI_INFO/PROD_INFO容器） ----------
+    def in_node(name, desc, uptype, children, ptype="object", required=False):
+        return {
+            "blockID": "", "filedType": ptype, "relName": "",
+            "UpNodeName": uptype, "name": name, "description": desc,
+            "sechema": children, "type": ptype, "required": required, "content": ""
+        }
+    in_leaves = [
+        {"blockID": "", "filedType": p.get("type", "string"), "relName": "",
+         "UpNodeName": "ROOT", "name": n, "description": p["description"],
+         "sechema": [], "type": p.get("type", "string"),
+         "required": n in req_required, "content": ""}
+        for n, p in req_props.items()
+    ]
+    root_in = in_node("ROOT", "根节点", "", in_leaves)
+    flow_inputs = [root_in]
 
-    flow_outputs = []
-    for name, o in resp_props.items():
-        flow_outputs.append({
-            "name": name, "cname": o["description"],
-            "sechema": o.get("sechema", []), "type": o.get("type", "string"),
-            "required": False
-        })
+    # ---------- flowJson.outputs：ROOT→业务叶子（无BODY/OUT_DATA容器） ----------
+    def out_node(name, cname, children, ptype="object"):
+        return {"name": name, "cname": cname, "sechema": children,
+                "type": ptype, "required": False}
+    out_children = [out_node(n, o["description"], build_out_sechema(o), o.get("type", "string"))
+                    for n, o in resp_props.items()]
+    root_out = out_node("ROOT", "根节点", out_children)
+    flow_outputs = [root_out]
 
     flow_json = {
         "authentic_info": "",
-        "authentic_info_new": {
-            "auth_type": "1",
-            "auth_info": {"outparams": [], "inparams": [], "params": []}
-        },
+        "authentic_info_new": {"auth_type": "1", "auth_info": "null"},
         "id": tool_id,
         "inputs": flow_inputs,
         "nodeMeta": {"code": tool_code, "description": desc, "title": tool_name, "version": "1"},
-        "ontology": "",
         "ontologyValidation": 0,
         "outputs": flow_outputs,
-        "parameters": [
-            {"description": p["description"], "name": n, "sechema": [],
-             "type": p.get("type", "string"), "required": n in req_required}
-            for n, p in req_props.items()
-        ]
+        "position": {"x": 0, "y": 0},
+        "submit_way": method.lower(),
+        "type": 3,
+        "url": url
     }
+
+    # ---------- schemaJson：请求/响应从 ROOT(object) 展开 ----------
+    def schema_tree(props):
+        root = {"default": "", "description": "根节点", "type": "object", "enum": "",
+                "properties": props, "required": []}
+        return root
+
+    req_schema = schema_tree({n: schema_param(n, p.get("type", "string"), p["description"],
+                                              n in req_required, p.get("default", ""), p.get("enum", ""))
+                              for n, p in req_props.items()})
+
+    def schema_resp_tree(children):
+        def node(o):
+            d = {"description": o["description"], "type": o.get("type", "string")}
+            if o.get("type") == "array" and o.get("items"):
+                item_props = o["items"].get("properties") or {}
+                d["properties"] = {"item": {"description": "明细项", "type": "object",
+                                            "properties": {n: node(p) for n, p in item_props.items()},
+                                            "required": []}}
+            return d
+        return {"description": "根节点", "type": "object", "properties": {
+            n: node(o) for n, o in resp_props.items()
+        }, "required": []}
 
     schema_json = {
         "openapi": "3.1.0",
@@ -70,11 +107,11 @@ def build_plugin(tool_id, tool_name, tool_code, desc, path, method, req_props, r
                 method.lower(): {
                     "requestBody": {
                         "required": True,
-                        "content": {"application/json": {"schema": schema_obj_props(req_props, req_required)}}
+                        "content": {"application/json": {"schema": req_schema}}
                     },
                     "responses": {
                         "200": {
-                            "content": {"application/json": {"schema": schema_obj_props(resp_props)}}
+                            "content": {"application/json": {"schema": schema_resp_tree(resp_props)}}
                         }
                     }
                 }
@@ -82,13 +119,58 @@ def build_plugin(tool_id, tool_name, tool_code, desc, path, method, req_props, r
         }
     }
 
+    # ---------- toolJson：input_parameters 用全路径键；parameters 平铺含容器节点 ----------
+    input_parameters = {"ROOT": ""}
+    for n in req_props:
+        input_parameters["ROOT-" + n] = ""
+
+    def pseudo_id(prefix, name):
+        import hashlib
+        return hashlib.md5((prefix + name).encode("utf-8")).hexdigest()[:32]
+
+    outparameters = [{
+        "name": "ROOT", "cname": "根节点", "type": "object", "required": False,
+        "sechema": [out_node(n, o["description"], build_out_sechema(o), o.get("type", "string"))
+                    for n, o in resp_props.items()]
+    }]
+    tool_json = {
+        "authentic_info": "",
+        "authentic_info_new": {"auth_type": "1", "auth_info": "null"},
+        "candidate": 1,
+        "description_for_model": desc,
+        "flow_is_placeholder": False,
+        "input_parameters": input_parameters,
+        "is_llm": "N",
+        "llm_type": llm_type,
+        "name_for_human": tool_name,
+        "name_for_model": tool_code,
+        "observationField": "",
+        "outparameters": outparameters,
+        "parameters": [
+            {"description": "根节点", "dict_list": "", "id": pseudo_id(tool_id, "ROOT"),
+             "isParameter": 0, "name": "ROOT", "required": False,
+             "schema": {"type": "object"}, "upId": "", "upNodeName": ""},
+        ] + [
+            {"description": p["description"], "dict_list": "", "id": pseudo_id(tool_id, n),
+             "isParameter": 1, "name": n, "required": n in req_required,
+             "schema": {"type": p.get("type", "string")}, "upId": pseudo_id(tool_id, "ROOT"),
+             "upNodeName": "ROOT"}
+            for n, p in req_props.items()
+        ],
+        "prompt_template": "",
+        "submit_way": method.lower(),
+        "type_for_tool": "url",
+        "type_for_url": "http",
+        "url_for_model": url
+    }
+
     export = {
         "createUserId": CREATE_USER,
-        "interfaceAddress": BASE_URL + path,
+        "interfaceAddress": url,
         "releaseTime": None,
         "sequ": 0,
         "flowJson": json.dumps(flow_json, ensure_ascii=False),
-        "userScope": 4,
+        "userScope": 2,
         "createUserName": CREATE_USER_NAME,
         "releaseUser": None,
         "toolAuthenticType": "1",
@@ -100,15 +182,29 @@ def build_plugin(tool_id, tool_name, tool_code, desc, path, method, req_props, r
         "llmType": llm_type,
         "toolIco": None,
         "schemaJson": schema_json,
-        "toolName": tool_name,
-        "toolType": 1,
-        "version": 1,
-        "status": 0,
+        "knowledgeCategory": None,
         "id": tool_id,
+        "toolAuthenticInfo": "null",
+        "ontology": None,
+        "toolName": tool_name,
+        "usedBySceneNum": None,
+        "updateTime": None,
+        "versionInfo": None,
+        "toolType": 1,
+        "version": "1",
+        "isDefault": 1,
         "toolCode": tool_code,
-        "pluginName": "产销品加载插件集",
+        "observationField": "",
+        "submit_way": method.lower(),
+        "createTime": None,
+        "knowledgeCategoryName": None,
+        "pluginName": None,
+        "toolJson": json.dumps(tool_json, ensure_ascii=False),
+        "pluginsId": None,
+        "prompt": "",
         "remarks": "V1.6 自研模拟实现；模拟数据兼容《产品信息.txt》全部18个销售品",
-        "submit_way": method.lower()
+        "status": 0,
+        "wsHeads": ""
     }
     return export
 
@@ -117,6 +213,27 @@ def arr(name, desc, item_props=None):
     if item_props:
         d["items"] = {"type": "object", "properties": item_props}
     return d
+
+
+def build_out_sechema(o):
+    """由 openapi 出参定义生成 flowJson.outputs[].sechema：
+    array → sechema=[{name:item, cname:描述, sechema:[叶子字段], type:object, required:False}]（对齐平台样例 SIMILAR_PRODS 写法）；
+    叶子字段若仍为 array（嵌套数组，如工具6 testScenes→testCasePointResults），递归生成内层 item 节点；
+    其余类型 → sechema=[]"""
+    if o.get("type") != "array":
+        return []
+    item_props = (o.get("items") or {}).get("properties") or {}
+    leaves = [{"name": n, "cname": p.get("description", n),
+               "sechema": build_out_sechema(p),
+               "type": p.get("type", "string"), "required": False}
+              for n, p in item_props.items()]
+    return [{"name": "item", "cname": o.get("description", "明细项").split("，")[0],
+             "sechema": leaves, "type": "object", "required": False}]
+
+
+# ---------------- 出参结构辅助 ----------------
+# 出参按接口实际类型如实声明（string/array/object），不包装ROOT树形；
+# array 出参的 sechema 内放单个 item object 节点（对齐平台样例 SIMILAR_PRODS 写法）
 
 plugins = []
 
