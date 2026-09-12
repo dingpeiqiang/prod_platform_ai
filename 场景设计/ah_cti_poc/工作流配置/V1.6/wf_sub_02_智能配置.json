@@ -1,0 +1,333 @@
+{
+  "flowName": "产销品-智能配置",
+  "flowRemark": "子工作流2：智能配置（配置落地）。节点结果查询读取执行方案JSON→save_product_config原样透传落地，中间无大模型节点；内部二次校验confirmed。",
+  "flowIco": "workflowIcon",
+  "workFlowSchema": null,
+  "workFlowSchemaJSON": {
+    "nodes": [
+      {
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "plan_id",
+            "description": "已确认的执行方案存储key",
+            "type": "string",
+            "required": true,
+            "content": ""
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "工作流的起始节点，用于设定启动工作流需要的信息",
+          "title": "开始节点"
+        },
+        "position": {
+          "x": 15,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000101",
+        "dependencyData": [],
+        "type": 0
+      },
+      {
+        "outputs": [
+          {
+            "name": "code",
+            "cname": "0成功",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "msg",
+            "cname": "状态描述",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "total",
+            "cname": "命中记录数",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "list",
+            "cname": "记录数组JSON（取[0].result_json为执行方案原文）",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "get",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
+            "relName": "plan_id",
+            "name": "req_id",
+            "description": "需求唯一标识=plan_id",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000101",
+              "a1b2c3d4-0000-4000-8000-000000000101,plan_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000101,plan_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=requirement",
+            "type": "string",
+            "required": true,
+            "content": "requirement"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "latest_only",
+            "description": "1=只返回最新一条（默认）",
+            "type": "string",
+            "required": true,
+            "content": "1"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "读取执行方案",
+          "code": "query_node_result",
+          "description": "节点结果查询（复用）：req_id=plan_id，node_name=requirement 取回执行方案JSON原文（list[0].result_json）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000102",
+        "position": {
+          "x": 375,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/result/query"
+      },
+      {
+        "outputs": [
+          {
+            "name": "product_id",
+            "cname": "CRM产品ID",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "offer_id",
+            "cname": "销售品ID",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "save_result",
+            "cname": "四类字段写入结果",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "status",
+            "cname": "SUCCESS/PARTIAL/FAIL/NOT_CONFIRMED",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
+            "relName": "plan_id",
+            "name": "plan_id",
+            "description": "执行方案key",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000101",
+              "a1b2c3d4-0000-4000-8000-000000000101,plan_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000101,plan_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000102",
+            "relName": "list",
+            "name": "plan_json",
+            "description": "执行方案JSON原文（节点2查询出参list[0].result_json原样透传）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000102",
+              "a1b2c3d4-0000-4000-8000-000000000102,list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000102,list"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "confirmed",
+            "description": "用户确认标志true（主流程确认门禁已保证）",
+            "type": "string",
+            "required": true,
+            "content": "true"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "配置落地",
+          "code": "save_product_config",
+          "description": "工具7：直读执行方案JSON原样透传落地（节点2→节点3之间禁止插入大模型/改写节点）；内部二次校验confirmed",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000103",
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/product/config/save"
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "智能配置完成：product_id={product_id}，offer_id={offer_id}\n四类字段写入结果：{save_result}\n状态：{status}"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+            "relName": "product_id",
+            "name": "product_id",
+            "description": "CRM产品ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000103",
+              "a1b2c3d4-0000-4000-8000-000000000103,product_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,product_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000103",
+              "a1b2c3d4-0000-4000-8000-000000000103,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+            "relName": "save_result",
+            "name": "save_result",
+            "description": "四类字段写入结果",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000103",
+              "a1b2c3d4-0000-4000-8000-000000000103,save_result"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,save_result"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+            "relName": "status",
+            "name": "status",
+            "description": "落地状态",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000103",
+              "a1b2c3d4-0000-4000-8000-000000000103,status"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,status"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(配置落地完成)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 1095,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000104",
+        "dependencyData": []
+      }
+    ],
+    "edges": [
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000102",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000101"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000103",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000102"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000104",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000103"
+      }
+    ],
+    "flowId": "wf_sub_02",
+    "version": "1.6"
+  },
+  "userScope": 4,
+  "projectId": ""
+}

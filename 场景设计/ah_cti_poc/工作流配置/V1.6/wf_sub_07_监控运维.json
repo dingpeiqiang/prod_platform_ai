@@ -1,0 +1,604 @@
+{
+  "flowName": "产销品-监控运维",
+  "flowRemark": "子工作流7：监控运维。query_product_monitor（自研模拟）→异常判定（error_count>0或fee_error_rate>0.1）→send_alert告警/正常摘要。支持每日定时与对话触发。",
+  "flowIco": "workflowIcon",
+  "workFlowSchema": null,
+  "workFlowSchemaJSON": {
+    "nodes": [
+      {
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "product_id",
+            "description": "销售品ID",
+            "type": "string",
+            "required": true,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "date_range",
+            "description": "日期范围，默认最近1天",
+            "type": "string",
+            "required": false,
+            "content": ""
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "工作流的起始节点，用于设定启动工作流需要的信息",
+          "title": "开始节点"
+        },
+        "position": {
+          "x": 15,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000601",
+        "dependencyData": [],
+        "type": 0
+      },
+      {
+        "outputs": [
+          {
+            "name": "order_count",
+            "cname": "订单量",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "error_count",
+            "cname": "异常量",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "fee_error_rate",
+            "cname": "计费差错率",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "alarm_list",
+            "cname": "告警列表",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "get",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000601",
+            "relName": "product_id",
+            "name": "product_id",
+            "description": "销售品ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000601",
+              "a1b2c3d4-0000-4000-8000-000000000601,product_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000601,product_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000601",
+            "relName": "date_range",
+            "name": "date_range",
+            "description": "日期范围",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000601",
+              "a1b2c3d4-0000-4000-8000-000000000601,date_range"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000601,date_range"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "metric",
+            "description": "指标默认all",
+            "type": "string",
+            "required": true,
+            "content": "all"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "监控查询",
+          "code": "query_product_monitor",
+          "description": "工具10：自研模拟监控查询（订单量/异常量/计费差错率/告警列表）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000602",
+        "position": {
+          "x": 375,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/product/monitor"
+      },
+      {
+        "flowJson": null,
+        "inputs": {
+          "condition": [
+            {
+              "sourcePort": -1,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000602",
+                    "relName": "error_count",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000602",
+                      "a1b2c3d4-0000-4000-8000-000000000602,error_count"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000602,error_count",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "0"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 1
+                }
+              ]
+            }
+          ]
+        },
+        "nodeMeta": {
+          "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+          "title": "异常判定"
+        },
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000603",
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000602",
+            "name": "监控查询",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000602,error_count",
+                "name": "error_count",
+                "type": "string",
+                "content": ""
+              },
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000602,fee_error_rate",
+                "name": "fee_error_rate",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          }
+        ],
+        "type": 2
+      },
+      {
+        "outputs": [
+          {
+            "name": "alert_content",
+            "description": "告警文案",
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "max_tokens": 2048,
+        "flowJson": null,
+        "inputs": {
+          "llmParam": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "content": "基于监控异常数据生成告警文案（含产品、异常摘要、建议）。输入：product_id={product_id}，order_count={order_count}，error_count={error_count}，fee_error_rate={fee_error_rate}，alarm_list={alarm_list}\n输出要求：仅输出告警文案内容（对应出参 alert_content，需包含产品名称、异常摘要、处置建议三部分），不输出其他多余文字。"
+            }
+          ],
+          "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000601",
+              "relName": "product_id",
+              "name": "product_id",
+              "description": "销售品ID",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000601",
+                "a1b2c3d4-0000-4000-8000-000000000601,product_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000601,product_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000602",
+              "relName": "order_count",
+              "name": "order_count",
+              "description": "订单量",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000602",
+                "a1b2c3d4-0000-4000-8000-000000000602,order_count"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000602,order_count"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000602",
+              "relName": "error_count",
+              "name": "error_count",
+              "description": "异常量",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000602",
+                "a1b2c3d4-0000-4000-8000-000000000602,error_count"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000602,error_count"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000602",
+              "relName": "fee_error_rate",
+              "name": "fee_error_rate",
+              "description": "计费差错率",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000602",
+                "a1b2c3d4-0000-4000-8000-000000000602,fee_error_rate"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000602,fee_error_rate"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000602",
+              "relName": "alarm_list",
+              "name": "alarm_list",
+              "description": "告警列表",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000602",
+                "a1b2c3d4-0000-4000-8000-000000000602,alarm_list"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000602,alarm_list"
+            }
+          ]
+        },
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "告警文案生成",
+          "title": "告警文案生成"
+        },
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "position": {
+          "x": 1095,
+          "y": 430
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000604",
+        "dependencyData": [],
+        "type": 1
+      },
+      {
+        "outputs": [
+          {
+            "name": "alert_id",
+            "cname": "告警单号",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "status",
+            "cname": "推送状态",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000601",
+            "relName": "product_id",
+            "name": "product_id",
+            "description": "销售品ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000601",
+              "a1b2c3d4-0000-4000-8000-000000000601,product_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000601,product_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "alarm_level",
+            "description": "告警级别",
+            "type": "string",
+            "required": true,
+            "content": "high"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000604",
+            "relName": "alert_content",
+            "name": "content",
+            "description": "告警文案（节点4输出）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000604",
+              "a1b2c3d4-0000-4000-8000-000000000604,alert_content"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000604,alert_content"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "异常告警",
+          "code": "send_alert",
+          "description": "工具11：自研模拟告警推送（生成alert_id，记录写入模拟库供监控回显）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000605",
+        "position": {
+          "x": 1455,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/alert/send"
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "监控发现异常，已推送告警：alert_id={alert_id}\n{alert_content}"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000605",
+            "relName": "alert_id",
+            "name": "alert_id",
+            "description": "告警单号",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000605",
+              "a1b2c3d4-0000-4000-8000-000000000605,alert_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000605,alert_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000604",
+            "relName": "alert_content",
+            "name": "alert_content",
+            "description": "告警文案",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000604",
+              "a1b2c3d4-0000-4000-8000-000000000604,alert_content"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000604,alert_content"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(异常-已告警)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 1815,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000606",
+        "dependencyData": []
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "监控正常：订单量={order_count}，异常量={error_count}，无需告警。"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000602",
+            "relName": "order_count",
+            "name": "order_count",
+            "description": "订单量",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000602",
+              "a1b2c3d4-0000-4000-8000-000000000602,order_count"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000602,order_count"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000602",
+            "relName": "error_count",
+            "name": "error_count",
+            "description": "异常量",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000602",
+              "a1b2c3d4-0000-4000-8000-000000000602,error_count"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000602,error_count"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(正常)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 1095,
+          "y": 170
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000607",
+        "dependencyData": []
+      }
+    ],
+    "edges": [
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000602",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000601"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000603",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000602"
+      },
+      {
+        "sourcePort": 0,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000604",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000603"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000605",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000604"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000606",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000605"
+      },
+      {
+        "sourcePort": -1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000607",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000603"
+      }
+    ],
+    "flowId": "wf_sub_07",
+    "version": "1.6"
+  },
+  "userScope": 4,
+  "projectId": ""
+}

@@ -1,0 +1,119 @@
+{
+  "createUserId": "oncon100000000556_10000",
+  "interfaceAddress": "http://10.86.13.201:31281/api/v1/appstore/product/config/save",
+  "releaseTime": null,
+  "sequ": 0,
+  "flowJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": {\"outparams\": [], \"inparams\": [], \"params\": []}}, \"id\": \"save-config-0001\", \"inputs\": [{\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"plan_id\", \"description\": \"执行方案存储key（如 PLAN20260912001）；缺失返回 PARAM_MISSING\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"plan_json\", \"description\": \"执行方案JSON原文，必须为节点结果存储查询插件取回的JSON原文，原样透传（工作流变量引用，不提参）；禁止二次生成\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"confirmed\", \"description\": \"用户确认标志 true/false，由工作流从会话上下文传入；非 true 返回 NOT_CONFIRMED\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"operator\", \"description\": \"操作人（从会话上下文取），可空\", \"sechema\": [], \"type\": \"string\", \"required\": false, \"content\": \"\"}], \"nodeMeta\": {\"code\": \"save_product_config\", \"description\": \"自研模拟实现（V1.6）：读取执行方案JSON，将基础信息/资源配置/营销资源/销售规则四类字段写入模拟CRM销售品配置库（内存产品档案，种子数据含《产品信息.txt》18个销售品），生成 product_id/offer_id；内部二次校验 confirmed==true，未确认返回 NOT_CONFIRMED 防止绕过确认门禁；写操作不自动重试\", \"title\": \"配置落地\", \"version\": \"1\"}, \"ontology\": \"\", \"ontologyValidation\": 0, \"outputs\": [{\"name\": \"product_id\", \"cname\": \"CRM 产品ID\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"offer_id\", \"cname\": \"销售品ID（后续稽核/测试入参）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"save_result\", \"cname\": \"各字段分类写入结果：基础信息/资源配置/营销资源/销售规则 各自 success/fail 及原因\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"status\", \"cname\": \"SUCCESS / PARTIAL / FAIL / NOT_CONFIRMED\", \"sechema\": [], \"type\": \"string\", \"required\": false}], \"parameters\": [{\"description\": \"执行方案存储key（如 PLAN20260912001）；缺失返回 PARAM_MISSING\", \"name\": \"plan_id\", \"sechema\": [], \"type\": \"string\", \"required\": true}, {\"description\": \"执行方案JSON原文，必须为节点结果存储查询插件取回的JSON原文，原样透传（工作流变量引用，不提参）；禁止二次生成\", \"name\": \"plan_json\", \"sechema\": [], \"type\": \"string\", \"required\": true}, {\"description\": \"用户确认标志 true/false，由工作流从会话上下文传入；非 true 返回 NOT_CONFIRMED\", \"name\": \"confirmed\", \"sechema\": [], \"type\": \"string\", \"required\": true}, {\"description\": \"操作人（从会话上下文取），可空\", \"name\": \"operator\", \"sechema\": [], \"type\": \"string\", \"required\": false}]}",
+  "userScope": 4,
+  "createUserName": "丁培强",
+  "releaseUser": null,
+  "toolAuthenticType": "1",
+  "ontologyValidation": 0,
+  "orgId": "10000",
+  "toolProto": 1,
+  "toolDesc": "自研模拟实现（V1.6）：读取执行方案JSON，将基础信息/资源配置/营销资源/销售规则四类字段写入模拟CRM销售品配置库（内存产品档案，种子数据含《产品信息.txt》18个销售品），生成 product_id/offer_id；内部二次校验 confirmed==true，未确认返回 NOT_CONFIRMED 防止绕过确认门禁；写操作不自动重试",
+  "induction": "N",
+  "llmType": 1,
+  "toolIco": null,
+  "schemaJson": {
+    "openapi": "3.1.0",
+    "info": {
+      "observationField": "",
+      "description": "自研模拟实现（V1.6）：读取执行方案JSON，将基础信息/资源配置/营销资源/销售规则四类字段写入模拟CRM销售品配置库（内存产品档案，种子数据含《产品信息.txt》18个销售品），生成 product_id/offer_id；内部二次校验 confirmed==true，未确认返回 NOT_CONFIRMED 防止绕过确认门禁；写操作不自动重试",
+      "title": "配置落地",
+      "version": "v1.6.0"
+    },
+    "servers": [
+      {
+        "url": "http://10.86.13.201:31281"
+      }
+    ],
+    "paths": {
+      "/api/v1/appstore/product/config/save": {
+        "post": {
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "plan_id": {
+                      "default": "",
+                      "description": "执行方案存储key（如 PLAN20260912001）；缺失返回 PARAM_MISSING",
+                      "type": "string",
+                      "enum": "",
+                      "required": true
+                    },
+                    "plan_json": {
+                      "default": "",
+                      "description": "执行方案JSON原文，必须为节点结果存储查询插件取回的JSON原文，原样透传（工作流变量引用，不提参）；禁止二次生成",
+                      "type": "string",
+                      "enum": "",
+                      "required": true
+                    },
+                    "confirmed": {
+                      "default": "true",
+                      "description": "用户确认标志 true/false，由工作流从会话上下文传入；非 true 返回 NOT_CONFIRMED",
+                      "type": "string",
+                      "enum": "",
+                      "required": true
+                    },
+                    "operator": {
+                      "default": "",
+                      "description": "操作人（从会话上下文取），可空",
+                      "type": "string",
+                      "enum": ""
+                    }
+                  },
+                  "required": [
+                    "plan_id",
+                    "plan_json",
+                    "confirmed"
+                  ]
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "properties": {
+                      "product_id": {
+                        "description": "CRM 产品ID",
+                        "type": "string"
+                      },
+                      "offer_id": {
+                        "description": "销售品ID（后续稽核/测试入参）",
+                        "type": "string"
+                      },
+                      "save_result": {
+                        "description": "各字段分类写入结果：基础信息/资源配置/营销资源/销售规则 各自 success/fail 及原因",
+                        "type": "string"
+                      },
+                      "status": {
+                        "description": "SUCCESS / PARTIAL / FAIL / NOT_CONFIRMED",
+                        "type": "string"
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "toolName": "配置落地",
+  "toolType": 1,
+  "version": 1,
+  "status": 0,
+  "id": "save-config-0001",
+  "toolCode": "save_product_config",
+  "pluginName": "产销品加载插件集",
+  "remarks": "V1.6 自研模拟实现；模拟数据兼容《产品信息.txt》全部18个销售品",
+  "submit_way": "post"
+}

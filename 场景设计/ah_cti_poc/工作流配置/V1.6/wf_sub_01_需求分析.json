@@ -1,0 +1,623 @@
+{
+  "flowName": "产销品-需求分析",
+  "flowRemark": "子工作流1：需求分析（执行方案生成）。需求理解→相似产品查询（自研模拟，18销售品种子）→字段映射与AI补全（价格/资源待补充，其余AI补全）→待补充项判断（无待补充→保存执行方案→确认结束；有待补充→仅提示补充、不保存执行方案、plan_id 不产出，无法进入智能配置）。",
+  "flowIco": "workflowIcon",
+  "workFlowSchema": null,
+  "workFlowSchemaJSON": {
+    "nodes": [
+      {
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "requirement_text",
+            "description": "销售品需求描述文本或文档内容摘要",
+            "type": "string",
+            "required": true,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "requirement_file",
+            "description": "需求文档地址（可选）",
+            "type": "string",
+            "required": false,
+            "content": ""
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "工作流的起始节点，用于设定启动工作流需要的信息",
+          "title": "开始节点"
+        },
+        "position": {
+          "x": 15,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000001",
+        "dependencyData": [],
+        "type": 0
+      },
+      {
+        "outputs": [
+          {
+            "name": "elements_json",
+            "description": "业务要素结构化JSON",
+            "type": "string",
+            "content": ""
+          },
+          {
+            "name": "need_summary",
+            "description": "需求摘要（>5000字符时供相似度分析用）",
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "max_tokens": 2048,
+        "flowJson": null,
+        "inputs": {
+          "llmParam": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "content": "你是产销品加载需求分析助手。按6步分析：理解需求→提取并拆解业务要素（基础信息/资源配置/营销资源/销售规则四类）→识别信息完整性（字段三态：原始需求/AI补全/待补充）。需求原文：{requirement_text}\n补充规则（V1.4）：仅价格、资源两类字段未提供时填\"待补充\"（禁止推理，禁止从相似产品照搬）；其余缺失字段待相似产品返回后推理补全，来源标记\"AI补全\"；来源只允许\"原始需求\"或\"AI补全\"两种。\n输出要求（两个出参逐一约定）：\n1. elements_json：输出结构化要素JSON（临时变量，不落存储），包含 fields 数组与 pending_fields 数组；\n2. need_summary：输出需求摘要（≤5000字符，供相似度分析调用使用）；\n3. 除上述两个出参内容外不输出任何多余文字。"
+            }
+          ],
+          "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+              "relName": "requirement_text",
+              "name": "requirement_text",
+              "description": "引用开始节点 requirement_text",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000001",
+                "a1b2c3d4-0000-4000-8000-000000000001,requirement_text"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000001,requirement_text"
+            }
+          ]
+        },
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "需求理解与要素拆解",
+          "title": "需求理解与要素拆解"
+        },
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "position": {
+          "x": 375,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000002",
+        "dependencyData": [],
+        "type": 1
+      },
+      {
+        "outputs": [
+          {
+            "name": "resultCode",
+            "cname": "0成功/1失败",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "resultMsg",
+            "cname": "处理结果描述",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "similarOfferList",
+            "cname": "相似产品列表",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000002",
+            "relName": "need_summary",
+            "name": "businessDesc",
+            "description": "业务需求描述（引用节点2需求摘要，≤5000字符）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000002",
+              "a1b2c3d4-0000-4000-8000-000000000002,need_summary"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000002,need_summary"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "相似产品查询",
+          "code": "query_similar_offer",
+          "description": "工具1：以《产品信息.txt》全部18个销售品为相似产品库查询相似销售品",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000003",
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/similar/offer/query"
+      },
+      {
+        "outputs": [
+          {
+            "name": "plan_json",
+            "description": "执行方案JSON",
+            "type": "string",
+            "content": ""
+          },
+          {
+            "name": "plan_md",
+            "description": "执行方案Markdown表格",
+            "type": "string",
+            "content": ""
+          },
+          {
+            "name": "pending_fields",
+            "description": "待补充字段清单逗号分隔",
+            "type": "string",
+            "content": ""
+          },
+          {
+            "name": "plan_id",
+            "description": "执行方案存储key",
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "max_tokens": 2048,
+        "flowJson": null,
+        "inputs": {
+          "llmParam": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "content": "基于节点2要素JSON（elements_json={elements_json}）+ 节点3相似产品列表（similarOfferList={similarOfferList}，含《产品信息.txt》18个销售品规则）+ 知识库存量销售品资料，生成《产销品加载执行方案》。\n补全规则：价格、资源类字段未提供→\"待补充\"列入pending_fields；其余缺失字段取最高相似度产品对应值，来源\"AI补全\"。\n输出要求（四个出参逐一约定）：\n1. plan_json：执行方案JSON，含 plan_id/fields/similar_offers/pending_fields；\n2. plan_md：执行方案Markdown表格，固定4列：字段分类/字段名称/字段值/来源；\n3. pending_fields：待补充字段清单，逗号分隔；\n4. plan_id：执行方案存储key，格式 PLAN+yyyyMMdd+3位序号，修改场景沿用原值覆盖写；\n5. 除上述四个出参内容外不输出任何多余文字。"
+            }
+          ],
+          "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000002",
+              "relName": "elements_json",
+              "name": "elements_json",
+              "description": "引用节点2要素JSON",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000002",
+                "a1b2c3d4-0000-4000-8000-000000000002,elements_json"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000002,elements_json"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
+              "relName": "similarOfferList",
+              "name": "similarOfferList",
+              "description": "引用节点3相似产品列表",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000003",
+                "a1b2c3d4-0000-4000-8000-000000000003,similarOfferList"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000003,similarOfferList"
+            }
+          ]
+        },
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "字段映射与补全",
+          "title": "字段映射与补全"
+        },
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "position": {
+          "x": 1095,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000004",
+        "dependencyData": [],
+        "type": 1
+      },
+      {
+        "flowJson": null,
+        "inputs": {
+          "condition": [
+            {
+              "sourcePort": 0,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000004",
+                    "relName": "pending_fields",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000004",
+                      "a1b2c3d4-0000-4000-8000-000000000004,pending_fields"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000004,pending_fields",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "0"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 15
+                }
+              ]
+            }
+          ]
+        },
+        "nodeMeta": {
+          "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+          "title": "待补充项判断"
+        },
+        "position": {
+          "x": 1455,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000005",
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000004",
+            "name": "字段映射与补全",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000004,pending_fields",
+                "name": "pending_fields",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          }
+        ],
+        "type": 2
+      },
+      {
+        "outputs": [
+          {
+            "name": "code",
+            "cname": "0成功",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "msg",
+            "cname": "状态描述",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "record_id",
+            "cname": "存储记录ID",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000004",
+            "relName": "plan_id",
+            "name": "req_id",
+            "description": "需求唯一标识=plan_id（PLAN+yyyyMMdd+3位序号）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000004",
+              "a1b2c3d4-0000-4000-8000-000000000004,plan_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000004,plan_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=requirement（执行方案）",
+            "type": "string",
+            "required": true,
+            "content": "requirement"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000004",
+            "relName": "plan_json",
+            "name": "result_json",
+            "description": "本环节结果JSON=plan_json",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000004",
+              "a1b2c3d4-0000-4000-8000-000000000004,plan_json"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000004,plan_json"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "status",
+            "description": "本环节状态=ok",
+            "type": "string",
+            "required": true,
+            "content": "ok"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "保存执行方案",
+          "code": "save_node_result",
+          "description": "节点结果存储（复用）：req_id=plan_id，node_name=requirement（执行方案环节），result_json=plan_json；同键覆盖",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000006",
+        "position": {
+          "x": 1815,
+          "y": 430
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/result/save"
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "《产销品加载执行方案》已生成，但存在待补充字段，暂未保存、暂不能执行：\n\n{plan_md}\n\n【待补充字段】{pending_fields}\n以上价格、资源类字段需由您补充后才能执行（未补充前智能配置环节不会启动）：\n- 请直接补充字段值，将更新执行方案并再次确认；\n- 如需调整其他字段：请直接说明修改意见（其余字段已按相似产品补全）。"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000004",
+            "relName": "plan_md",
+            "name": "plan_md",
+            "description": "执行方案表格",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000004",
+              "a1b2c3d4-0000-4000-8000-000000000004,plan_md"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000004,plan_md"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000004",
+            "relName": "pending_fields",
+            "name": "pending_fields",
+            "description": "待补充字段",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000004",
+              "a1b2c3d4-0000-4000-8000-000000000004,pending_fields"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000004,pending_fields"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(有待补充项)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 1815,
+          "y": 170
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000007",
+        "dependencyData": []
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "《产销品加载执行方案》已生成并保存（plan_id：{plan_id}）\n\n{plan_md}\n\n【无待补充字段】全部字段已按相似产品补全，无需人工补充。\n请核对以上执行方案：\n- 回复【确认执行】：将自动串行执行 智能配置→稽核→资费校准→自动测试 四个环节（每环节执行后打印结果，仅异常时中断）；\n- 如需调整：请直接说明修改意见。"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000004",
+            "relName": "plan_id",
+            "name": "plan_id",
+            "description": "执行方案存储key",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000004",
+              "a1b2c3d4-0000-4000-8000-000000000004,plan_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000004,plan_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000004",
+            "relName": "plan_md",
+            "name": "plan_md",
+            "description": "执行方案表格",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000004",
+              "a1b2c3d4-0000-4000-8000-000000000004,plan_md"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000004,plan_md"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(无待补充项)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 2175,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000008",
+        "dependencyData": []
+      }
+    ],
+    "edges": [
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000002",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000001"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000003",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000002"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000004",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000003"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000005",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000004"
+      },
+      {
+        "sourcePort": 0,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000006",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000005"
+      },
+      {
+        "sourcePort": -1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000007",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000005"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000008",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000006"
+      }
+    ],
+    "flowId": "wf_sub_01",
+    "version": "1.6"
+  },
+  "userScope": 4,
+  "projectId": ""
+}

@@ -1,0 +1,93 @@
+{
+  "createUserId": "oncon100000000556_10000",
+  "interfaceAddress": "http://10.86.13.201:31281/api/v1/appstore/test/offer/start",
+  "releaseTime": null,
+  "sequ": 0,
+  "flowJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": {\"outparams\": [], \"inparams\": [], \"params\": []}}, \"id\": \"offer-test-0001\", \"inputs\": [{\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"offerId\", \"description\": \"被测销售品ID（offer表主键，如 900102308）；须为《产品信息.txt》18个销售品之一，未收录返回 4001\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}], \"nodeMeta\": {\"code\": \"offer_test\", \"description\": \"自研模拟实现（V1.6）：按销售品ID匹配《产品信息.txt》种子数据异步模拟测试执行（自动覆盖受理类场景：套餐新装/副卡加装/套餐退订），返回模拟测试流水 globalId（50+yyyyMMddHHmmss+10位随机数）\", \"title\": \"销售品测试发起\", \"version\": \"1\"}, \"ontology\": \"\", \"ontologyValidation\": 0, \"outputs\": [{\"name\": \"resultCode\", \"cname\": \"0 处理成功 / 1 处理失败\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"resultMsg\", \"cname\": \"处理结果描述\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"globalId\", \"cname\": \"测试流水号，格式 50+yyyyMMddHHmmss+10位随机数，后续三个查询接口必传\", \"sechema\": [], \"type\": \"string\", \"required\": false}], \"parameters\": [{\"description\": \"被测销售品ID（offer表主键，如 900102308）；须为《产品信息.txt》18个销售品之一，未收录返回 4001\", \"name\": \"offerId\", \"sechema\": [], \"type\": \"string\", \"required\": true}]}",
+  "userScope": 4,
+  "createUserName": "丁培强",
+  "releaseUser": null,
+  "toolAuthenticType": "1",
+  "ontologyValidation": 0,
+  "orgId": "10000",
+  "toolProto": 1,
+  "toolDesc": "自研模拟实现（V1.6）：按销售品ID匹配《产品信息.txt》种子数据异步模拟测试执行（自动覆盖受理类场景：套餐新装/副卡加装/套餐退订），返回模拟测试流水 globalId（50+yyyyMMddHHmmss+10位随机数）",
+  "induction": "N",
+  "llmType": 1,
+  "toolIco": null,
+  "schemaJson": {
+    "openapi": "3.1.0",
+    "info": {
+      "observationField": "",
+      "description": "自研模拟实现（V1.6）：按销售品ID匹配《产品信息.txt》种子数据异步模拟测试执行（自动覆盖受理类场景：套餐新装/副卡加装/套餐退订），返回模拟测试流水 globalId（50+yyyyMMddHHmmss+10位随机数）",
+      "title": "销售品测试发起",
+      "version": "v1.6.0"
+    },
+    "servers": [
+      {
+        "url": "http://10.86.13.201:31281"
+      }
+    ],
+    "paths": {
+      "/api/v1/appstore/test/offer/start": {
+        "post": {
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "offerId": {
+                      "default": "",
+                      "description": "被测销售品ID（offer表主键，如 900102308）；须为《产品信息.txt》18个销售品之一，未收录返回 4001",
+                      "type": "string",
+                      "enum": "",
+                      "required": true
+                    }
+                  },
+                  "required": [
+                    "offerId"
+                  ]
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "properties": {
+                      "resultCode": {
+                        "description": "0 处理成功 / 1 处理失败",
+                        "type": "string"
+                      },
+                      "resultMsg": {
+                        "description": "处理结果描述",
+                        "type": "string"
+                      },
+                      "globalId": {
+                        "description": "测试流水号，格式 50+yyyyMMddHHmmss+10位随机数，后续三个查询接口必传",
+                        "type": "string"
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "toolName": "销售品测试发起",
+  "toolType": 1,
+  "version": 1,
+  "status": 0,
+  "id": "offer-test-0001",
+  "toolCode": "offer_test",
+  "pluginName": "产销品加载插件集",
+  "remarks": "V1.6 自研模拟实现；模拟数据兼容《产品信息.txt》全部18个销售品",
+  "submit_way": "post"
+}

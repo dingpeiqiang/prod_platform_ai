@@ -1,0 +1,130 @@
+{
+  "createUserId": "oncon100000000556_10000",
+  "interfaceAddress": "http://10.86.13.201:31281/api/v1/appstore/product/monitor",
+  "releaseTime": null,
+  "sequ": 0,
+  "flowJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": {\"outparams\": [], \"inparams\": [], \"params\": []}}, \"id\": \"monitor-query-0001\", \"inputs\": [{\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"product_id\", \"description\": \"要查询的销售品ID；缺失返回 PARAM_MISSING\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"date_range\", \"description\": \"日期范围，如 2026-09-11~2026-09-12，默认最近1天\", \"sechema\": [], \"type\": \"string\", \"required\": false, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"metric\", \"description\": \"指标枚举：order/error/fee/all，默认 all\", \"sechema\": [], \"type\": \"string\", \"required\": false, \"content\": \"\"}], \"nodeMeta\": {\"code\": \"query_product_monitor\", \"description\": \"自研模拟实现（V1.6）：按销售品返回模拟运行指标（订单量/异常量/计费差错率/告警列表），可构造 error_count>0 演示告警分支；模拟数据兼容18个销售品\", \"title\": \"监控查询\", \"version\": \"1\"}, \"ontology\": \"\", \"ontologyValidation\": 0, \"outputs\": [{\"name\": \"order_count\", \"cname\": \"订单量\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"error_count\", \"cname\": \"异常量\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"fee_error_rate\", \"cname\": \"计费差错率\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"alarm_list\", \"cname\": \"已产生告警列表\", \"sechema\": [], \"type\": \"array\", \"required\": false}], \"parameters\": [{\"description\": \"要查询的销售品ID；缺失返回 PARAM_MISSING\", \"name\": \"product_id\", \"sechema\": [], \"type\": \"string\", \"required\": true}, {\"description\": \"日期范围，如 2026-09-11~2026-09-12，默认最近1天\", \"name\": \"date_range\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"description\": \"指标枚举：order/error/fee/all，默认 all\", \"name\": \"metric\", \"sechema\": [], \"type\": \"string\", \"required\": false}]}",
+  "userScope": 4,
+  "createUserName": "丁培强",
+  "releaseUser": null,
+  "toolAuthenticType": "1",
+  "ontologyValidation": 0,
+  "orgId": "10000",
+  "toolProto": 1,
+  "toolDesc": "自研模拟实现（V1.6）：按销售品返回模拟运行指标（订单量/异常量/计费差错率/告警列表），可构造 error_count>0 演示告警分支；模拟数据兼容18个销售品",
+  "induction": "Y",
+  "llmType": 1,
+  "toolIco": null,
+  "schemaJson": {
+    "openapi": "3.1.0",
+    "info": {
+      "observationField": "",
+      "description": "自研模拟实现（V1.6）：按销售品返回模拟运行指标（订单量/异常量/计费差错率/告警列表），可构造 error_count>0 演示告警分支；模拟数据兼容18个销售品",
+      "title": "监控查询",
+      "version": "v1.6.0"
+    },
+    "servers": [
+      {
+        "url": "http://10.86.13.201:31281"
+      }
+    ],
+    "paths": {
+      "/api/v1/appstore/product/monitor": {
+        "get": {
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "product_id": {
+                      "default": "",
+                      "description": "要查询的销售品ID；缺失返回 PARAM_MISSING",
+                      "type": "string",
+                      "enum": "",
+                      "required": true
+                    },
+                    "date_range": {
+                      "default": "",
+                      "description": "日期范围，如 2026-09-11~2026-09-12，默认最近1天",
+                      "type": "string",
+                      "enum": ""
+                    },
+                    "metric": {
+                      "default": "all",
+                      "description": "指标枚举：order/error/fee/all，默认 all",
+                      "type": "string",
+                      "enum": "order,error,fee,all"
+                    }
+                  },
+                  "required": [
+                    "product_id"
+                  ]
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "properties": {
+                      "order_count": {
+                        "description": "订单量",
+                        "type": "string"
+                      },
+                      "error_count": {
+                        "description": "异常量",
+                        "type": "string"
+                      },
+                      "fee_error_rate": {
+                        "description": "计费差错率",
+                        "type": "string"
+                      },
+                      "alarm_list": {
+                        "description": "已产生告警列表",
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "alarm_id": {
+                              "description": "告警单号",
+                              "type": "string"
+                            },
+                            "alarm_level": {
+                              "description": "告警级别：high/middle/low",
+                              "type": "string"
+                            },
+                            "content": {
+                              "description": "告警内容",
+                              "type": "string"
+                            },
+                            "alarm_time": {
+                              "description": "告警时间",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "toolName": "监控查询",
+  "toolType": 1,
+  "version": 1,
+  "status": 0,
+  "id": "monitor-query-0001",
+  "toolCode": "query_product_monitor",
+  "pluginName": "产销品加载插件集",
+  "remarks": "V1.6 自研模拟实现；模拟数据兼容《产品信息.txt》全部18个销售品",
+  "submit_way": "get"
+}

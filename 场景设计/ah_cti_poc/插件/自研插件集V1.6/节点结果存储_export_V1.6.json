@@ -1,0 +1,115 @@
+{
+  "createUserId": "oncon100000000556_10000",
+  "interfaceAddress": "http://10.86.13.201:31281/api/v1/appstore/result/save",
+  "releaseTime": null,
+  "sequ": 0,
+  "flowJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": {\"outparams\": [], \"inparams\": [], \"params\": []}}, \"id\": \"node-result-save-0001\", \"inputs\": [{\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"req_id\", \"description\": \"需求唯一标识；执行方案环节=plan_id，执行主干环节=execution_id；非法格式返回 5002\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"node_name\", \"description\": \"环节名：requirement/config/spec/fee/test；为空返回 5003\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"result_json\", \"description\": \"本环节结果JSON字符串，最大64KB，超限返回 5004\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"status\", \"description\": \"本环节状态，默认 ok\", \"sechema\": [], \"type\": \"string\", \"required\": false, \"content\": \"\"}], \"nodeMeta\": {\"code\": \"save_node_result\", \"description\": \"平台复用插件：按需求单号+环节名存储工作流节点结果JSON（同键覆盖，支持重跑环节）。执行方案环节：req_id=plan_id（PLAN+yyyyMMdd+3位序号）、node_name=requirement；执行主干各环节：req_id=execution_id（EXE+yyyyMMddHHmmss+2位序号）、node_name=config/spec/fee/test\", \"title\": \"节点结果存储\", \"version\": \"1\"}, \"ontology\": \"\", \"ontologyValidation\": 0, \"outputs\": [{\"name\": \"code\", \"cname\": \"统一状态码，0 成功\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"msg\", \"cname\": \"状态描述\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"record_id\", \"cname\": \"存储记录ID\", \"sechema\": [], \"type\": \"string\", \"required\": false}], \"parameters\": [{\"description\": \"需求唯一标识；执行方案环节=plan_id，执行主干环节=execution_id；非法格式返回 5002\", \"name\": \"req_id\", \"sechema\": [], \"type\": \"string\", \"required\": true}, {\"description\": \"环节名：requirement/config/spec/fee/test；为空返回 5003\", \"name\": \"node_name\", \"sechema\": [], \"type\": \"string\", \"required\": true}, {\"description\": \"本环节结果JSON字符串，最大64KB，超限返回 5004\", \"name\": \"result_json\", \"sechema\": [], \"type\": \"string\", \"required\": true}, {\"description\": \"本环节状态，默认 ok\", \"name\": \"status\", \"sechema\": [], \"type\": \"string\", \"required\": false}]}",
+  "userScope": 4,
+  "createUserName": "丁培强",
+  "releaseUser": null,
+  "toolAuthenticType": "1",
+  "ontologyValidation": 0,
+  "orgId": "10000",
+  "toolProto": 1,
+  "toolDesc": "平台复用插件：按需求单号+环节名存储工作流节点结果JSON（同键覆盖，支持重跑环节）。执行方案环节：req_id=plan_id（PLAN+yyyyMMdd+3位序号）、node_name=requirement；执行主干各环节：req_id=execution_id（EXE+yyyyMMddHHmmss+2位序号）、node_name=config/spec/fee/test",
+  "induction": "N",
+  "llmType": 1,
+  "toolIco": null,
+  "schemaJson": {
+    "openapi": "3.1.0",
+    "info": {
+      "observationField": "",
+      "description": "平台复用插件：按需求单号+环节名存储工作流节点结果JSON（同键覆盖，支持重跑环节）。执行方案环节：req_id=plan_id（PLAN+yyyyMMdd+3位序号）、node_name=requirement；执行主干各环节：req_id=execution_id（EXE+yyyyMMddHHmmss+2位序号）、node_name=config/spec/fee/test",
+      "title": "节点结果存储",
+      "version": "v1.6.0"
+    },
+    "servers": [
+      {
+        "url": "http://10.86.13.201:31281"
+      }
+    ],
+    "paths": {
+      "/api/v1/appstore/result/save": {
+        "post": {
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "req_id": {
+                      "default": "",
+                      "description": "需求唯一标识；执行方案环节=plan_id，执行主干环节=execution_id；非法格式返回 5002",
+                      "type": "string",
+                      "enum": "",
+                      "required": true
+                    },
+                    "node_name": {
+                      "default": "",
+                      "description": "环节名：requirement/config/spec/fee/test；为空返回 5003",
+                      "type": "string",
+                      "enum": "",
+                      "required": true
+                    },
+                    "result_json": {
+                      "default": "",
+                      "description": "本环节结果JSON字符串，最大64KB，超限返回 5004",
+                      "type": "string",
+                      "enum": "",
+                      "required": true
+                    },
+                    "status": {
+                      "default": "ok",
+                      "description": "本环节状态，默认 ok",
+                      "type": "string",
+                      "enum": ""
+                    }
+                  },
+                  "required": [
+                    "req_id",
+                    "node_name",
+                    "result_json"
+                  ]
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "properties": {
+                      "code": {
+                        "description": "统一状态码，0 成功",
+                        "type": "string"
+                      },
+                      "msg": {
+                        "description": "状态描述",
+                        "type": "string"
+                      },
+                      "record_id": {
+                        "description": "存储记录ID",
+                        "type": "string"
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "toolName": "节点结果存储",
+  "toolType": 1,
+  "version": 1,
+  "status": 0,
+  "id": "node-result-save-0001",
+  "toolCode": "save_node_result",
+  "pluginName": "节点结果存储查询插件",
+  "remarks": "平台已有通用插件，直接挂载，不自研；本导出对齐 req_id+node_name 存取契约",
+  "submit_way": "post"
+}

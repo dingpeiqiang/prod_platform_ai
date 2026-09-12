@@ -1,0 +1,302 @@
+{
+  "flowName": "产销品-规格稽核",
+  "flowRemark": "子工作流3：规格稽核（实时）。realtime_spec_audit同步返回→整改建议生成（温度0.2）。",
+  "flowIco": "workflowIcon",
+  "workFlowSchema": null,
+  "workFlowSchemaJSON": {
+    "nodes": [
+      {
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "offer_id",
+            "description": "配置落地返回的销售品ID",
+            "type": "string",
+            "required": true,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "config_json",
+            "description": "落地配置JSON原文",
+            "type": "string",
+            "required": true,
+            "content": ""
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "工作流的起始节点，用于设定启动工作流需要的信息",
+          "title": "开始节点"
+        },
+        "position": {
+          "x": 15,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000201",
+        "dependencyData": [],
+        "type": 0
+      },
+      {
+        "outputs": [
+          {
+            "name": "pass",
+            "cname": "1通过/0不通过",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "error_list",
+            "cname": "问题明细",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "audit_summary",
+            "cname": "稽核总结",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "resultCode",
+            "cname": "0成功/NET_ERROR/TIMEOUT",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000201",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000201",
+              "a1b2c3d4-0000-4000-8000-000000000201,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000201,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000201",
+            "relName": "config_json",
+            "name": "config_json",
+            "description": "落地配置JSON",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000201",
+              "a1b2c3d4-0000-4000-8000-000000000201,config_json"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000201,config_json"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "audit_scene",
+            "description": "稽核场景默认all",
+            "type": "string",
+            "required": true,
+            "content": "all"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "实时稽核",
+          "code": "realtime_spec_audit",
+          "description": "工具2：自研模拟实时稽核，同步返回（无文件上传/无轮询）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000202",
+        "position": {
+          "x": 375,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/audit/realtime"
+      },
+      {
+        "outputs": [
+          {
+            "name": "audit_suggest",
+            "description": "整改建议清单",
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "max_tokens": 2048,
+        "flowJson": null,
+        "inputs": {
+          "llmParam": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "content": "将稽核问题明细整理为可执行的整改建议清单（error_list={error_list}，audit_summary={audit_summary}），按严重级别排序；pass=1 时输出\"稽核通过\"。不新增稽核结论。\n输出要求：仅输出整改建议清单内容（对应出参 audit_suggest），不输出其他多余文字。"
+            }
+          ],
+          "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
+              "relName": "error_list",
+              "name": "error_list",
+              "description": "引用节点2问题明细",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000202",
+                "a1b2c3d4-0000-4000-8000-000000000202,error_list"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000202,error_list"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
+              "relName": "audit_summary",
+              "name": "audit_summary",
+              "description": "引用节点2稽核总结",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000202",
+                "a1b2c3d4-0000-4000-8000-000000000202,audit_summary"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000202,audit_summary"
+            }
+          ]
+        },
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "整改建议生成",
+          "title": "整改建议生成"
+        },
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000203",
+        "dependencyData": [],
+        "type": 1
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "配置规格稽核完成：pass={pass}\n{audit_suggest}"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
+            "relName": "pass",
+            "name": "pass",
+            "description": "稽核结论",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000202",
+              "a1b2c3d4-0000-4000-8000-000000000202,pass"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000202,pass"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000202",
+            "relName": "error_list",
+            "name": "error_list",
+            "description": "问题明细",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000202",
+              "a1b2c3d4-0000-4000-8000-000000000202,error_list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000202,error_list"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000203",
+            "relName": "audit_suggest",
+            "name": "audit_suggest",
+            "description": "整改建议",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000203",
+              "a1b2c3d4-0000-4000-8000-000000000203,audit_suggest"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000203,audit_suggest"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(稽核完成)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 1095,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000204",
+        "dependencyData": []
+      }
+    ],
+    "edges": [
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000202",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000201"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000203",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000202"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000204",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000203"
+      }
+    ],
+    "flowId": "wf_sub_03",
+    "version": "1.6"
+  },
+  "userScope": 4,
+  "projectId": ""
+}

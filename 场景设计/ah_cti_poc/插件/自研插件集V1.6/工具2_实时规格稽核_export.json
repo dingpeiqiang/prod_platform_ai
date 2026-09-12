@@ -1,0 +1,132 @@
+{
+  "createUserId": "oncon100000000556_10000",
+  "interfaceAddress": "http://10.86.13.201:31281/api/v1/appstore/audit/realtime",
+  "releaseTime": null,
+  "sequ": 0,
+  "flowJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": {\"outparams\": [], \"inparams\": [], \"params\": []}}, \"id\": \"realtime-audit-0001\", \"inputs\": [{\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"offer_id\", \"description\": \"配置落地返回的销售品ID（save_product_config 出参 offer_id）；缺失返回 PARAM_MISSING\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"config_json\", \"description\": \"落地配置JSON原文（来自执行方案JSON落地后的配置快照），工作流变量引用不提参；缺失或非法JSON返回 5001\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"audit_scene\", \"description\": \"稽核场景枚举：spec（规格）/fee（资费）/all（全量），默认 all\", \"sechema\": [], \"type\": \"string\", \"required\": false, \"content\": \"\"}], \"nodeMeta\": {\"code\": \"realtime_spec_audit\", \"description\": \"自研模拟实现（V1.6）：按销售品ID与配置JSON对照《产品信息.txt》规则库实时稽核，同步返回稽核结果（通过/驳回+问题明细+整改建议）；无文件上传、无异步轮询；svcCode=5012010056/appKey=eOrder1/dstSysId=OrderCenter\", \"title\": \"实时规格稽核\", \"version\": \"1\"}, \"ontology\": \"\", \"ontologyValidation\": 0, \"outputs\": [{\"name\": \"pass\", \"cname\": \"1 通过 / 0 不通过\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"error_list\", \"cname\": \"问题明细，pass=0 时非空\", \"sechema\": [], \"type\": \"array\", \"required\": false}, {\"name\": \"audit_summary\", \"cname\": \"稽核总结（一句话）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"resultCode\", \"cname\": \"0 成功 / 1 失败 / NET_ERROR / TIMEOUT / PARAM_MISSING\", \"sechema\": [], \"type\": \"string\", \"required\": false}], \"parameters\": [{\"description\": \"配置落地返回的销售品ID（save_product_config 出参 offer_id）；缺失返回 PARAM_MISSING\", \"name\": \"offer_id\", \"sechema\": [], \"type\": \"string\", \"required\": true}, {\"description\": \"落地配置JSON原文（来自执行方案JSON落地后的配置快照），工作流变量引用不提参；缺失或非法JSON返回 5001\", \"name\": \"config_json\", \"sechema\": [], \"type\": \"string\", \"required\": true}, {\"description\": \"稽核场景枚举：spec（规格）/fee（资费）/all（全量），默认 all\", \"name\": \"audit_scene\", \"sechema\": [], \"type\": \"string\", \"required\": false}]}",
+  "userScope": 4,
+  "createUserName": "丁培强",
+  "releaseUser": null,
+  "toolAuthenticType": "1",
+  "ontologyValidation": 0,
+  "orgId": "10000",
+  "toolProto": 1,
+  "toolDesc": "自研模拟实现（V1.6）：按销售品ID与配置JSON对照《产品信息.txt》规则库实时稽核，同步返回稽核结果（通过/驳回+问题明细+整改建议）；无文件上传、无异步轮询；svcCode=5012010056/appKey=eOrder1/dstSysId=OrderCenter",
+  "induction": "Y",
+  "llmType": 1,
+  "toolIco": null,
+  "schemaJson": {
+    "openapi": "3.1.0",
+    "info": {
+      "observationField": "",
+      "description": "自研模拟实现（V1.6）：按销售品ID与配置JSON对照《产品信息.txt》规则库实时稽核，同步返回稽核结果（通过/驳回+问题明细+整改建议）；无文件上传、无异步轮询；svcCode=5012010056/appKey=eOrder1/dstSysId=OrderCenter",
+      "title": "实时规格稽核",
+      "version": "v1.6.0"
+    },
+    "servers": [
+      {
+        "url": "http://10.86.13.201:31281"
+      }
+    ],
+    "paths": {
+      "/api/v1/appstore/audit/realtime": {
+        "post": {
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "offer_id": {
+                      "default": "",
+                      "description": "配置落地返回的销售品ID（save_product_config 出参 offer_id）；缺失返回 PARAM_MISSING",
+                      "type": "string",
+                      "enum": "",
+                      "required": true
+                    },
+                    "config_json": {
+                      "default": "",
+                      "description": "落地配置JSON原文（来自执行方案JSON落地后的配置快照），工作流变量引用不提参；缺失或非法JSON返回 5001",
+                      "type": "string",
+                      "enum": "",
+                      "required": true
+                    },
+                    "audit_scene": {
+                      "default": "all",
+                      "description": "稽核场景枚举：spec（规格）/fee（资费）/all（全量），默认 all",
+                      "type": "string",
+                      "enum": "spec,fee,all"
+                    }
+                  },
+                  "required": [
+                    "offer_id",
+                    "config_json"
+                  ]
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "properties": {
+                      "pass": {
+                        "description": "1 通过 / 0 不通过",
+                        "type": "string"
+                      },
+                      "error_list": {
+                        "description": "问题明细，pass=0 时非空",
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "item": {
+                              "description": "问题项（对应配置字段/规则）",
+                              "type": "string"
+                            },
+                            "level": {
+                              "description": "严重级别：error 阻断 / warning 提示",
+                              "type": "string"
+                            },
+                            "desc": {
+                              "description": "问题描述，含实际值与期望规则",
+                              "type": "string"
+                            },
+                            "suggest": {
+                              "description": "整改建议",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      },
+                      "audit_summary": {
+                        "description": "稽核总结（一句话）",
+                        "type": "string"
+                      },
+                      "resultCode": {
+                        "description": "0 成功 / 1 失败 / NET_ERROR / TIMEOUT / PARAM_MISSING",
+                        "type": "string"
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "toolName": "实时规格稽核",
+  "toolType": 1,
+  "version": 1,
+  "status": 0,
+  "id": "realtime-audit-0001",
+  "toolCode": "realtime_spec_audit",
+  "pluginName": "产销品加载插件集",
+  "remarks": "V1.6 自研模拟实现；模拟数据兼容《产品信息.txt》全部18个销售品",
+  "submit_way": "post"
+}

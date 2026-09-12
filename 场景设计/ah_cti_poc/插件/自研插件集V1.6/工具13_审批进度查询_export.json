@@ -1,0 +1,112 @@
+{
+  "createUserId": "oncon100000000556_10000",
+  "interfaceAddress": "http://10.86.13.201:31281/api/v1/appstore/approval/status",
+  "releaseTime": null,
+  "sequ": 0,
+  "flowJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": {\"outparams\": [], \"inparams\": [], \"params\": []}}, \"id\": \"approval-status-0001\", \"inputs\": [{\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"approval_id\", \"description\": \"审批单号（submit_release_approval 出参），优先使用；与 product_id 至少一个非空，均为空返回 PARAM_MISSING\", \"sechema\": [], \"type\": \"string\", \"required\": false, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"product_id\", \"description\": \"产品ID，缺失 approval_id 时按其查最新审批单；与 approval_id 至少一个非空\", \"sechema\": [], \"type\": \"string\", \"required\": false, \"content\": \"\"}], \"nodeMeta\": {\"code\": \"query_approval_status\", \"description\": \"自研模拟实现（V1.6）：从模拟审批状态库（工具9 写入）按 approval_id 或 product_id 查询审批单当前状态（审批中/通过/驳回）、当前审批环节与意见，支撑用户消息查询审批进度\", \"title\": \"审批进度查询\", \"version\": \"1\"}, \"ontology\": \"\", \"ontologyValidation\": 0, \"outputs\": [{\"name\": \"approval_id\", \"cname\": \"审批单号\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"status\", \"cname\": \"审批状态：审批中 / 通过 / 驳回\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"current_node\", \"cname\": \"当前审批环节（如：产品经理审核/部门主管审批）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"approver\", \"cname\": \"当前审批人\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"opinion\", \"cname\": \"审批意见（最近一条）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"submit_time\", \"cname\": \"提交时间\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"update_time\", \"cname\": \"最近更新时间\", \"sechema\": [], \"type\": \"string\", \"required\": false}], \"parameters\": [{\"description\": \"审批单号（submit_release_approval 出参），优先使用；与 product_id 至少一个非空，均为空返回 PARAM_MISSING\", \"name\": \"approval_id\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"description\": \"产品ID，缺失 approval_id 时按其查最新审批单；与 approval_id 至少一个非空\", \"name\": \"product_id\", \"sechema\": [], \"type\": \"string\", \"required\": false}]}",
+  "userScope": 4,
+  "createUserName": "丁培强",
+  "releaseUser": null,
+  "toolAuthenticType": "1",
+  "ontologyValidation": 0,
+  "orgId": "10000",
+  "toolProto": 1,
+  "toolDesc": "自研模拟实现（V1.6）：从模拟审批状态库（工具9 写入）按 approval_id 或 product_id 查询审批单当前状态（审批中/通过/驳回）、当前审批环节与意见，支撑用户消息查询审批进度",
+  "induction": "Y",
+  "llmType": 1,
+  "toolIco": null,
+  "schemaJson": {
+    "openapi": "3.1.0",
+    "info": {
+      "observationField": "",
+      "description": "自研模拟实现（V1.6）：从模拟审批状态库（工具9 写入）按 approval_id 或 product_id 查询审批单当前状态（审批中/通过/驳回）、当前审批环节与意见，支撑用户消息查询审批进度",
+      "title": "审批进度查询",
+      "version": "v1.6.0"
+    },
+    "servers": [
+      {
+        "url": "http://10.86.13.201:31281"
+      }
+    ],
+    "paths": {
+      "/api/v1/appstore/approval/status": {
+        "get": {
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "approval_id": {
+                      "default": "",
+                      "description": "审批单号（submit_release_approval 出参），优先使用；与 product_id 至少一个非空，均为空返回 PARAM_MISSING",
+                      "type": "string",
+                      "enum": ""
+                    },
+                    "product_id": {
+                      "default": "",
+                      "description": "产品ID，缺失 approval_id 时按其查最新审批单；与 approval_id 至少一个非空",
+                      "type": "string",
+                      "enum": ""
+                    }
+                  },
+                  "required": []
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "properties": {
+                      "approval_id": {
+                        "description": "审批单号",
+                        "type": "string"
+                      },
+                      "status": {
+                        "description": "审批状态：审批中 / 通过 / 驳回",
+                        "type": "string"
+                      },
+                      "current_node": {
+                        "description": "当前审批环节（如：产品经理审核/部门主管审批）",
+                        "type": "string"
+                      },
+                      "approver": {
+                        "description": "当前审批人",
+                        "type": "string"
+                      },
+                      "opinion": {
+                        "description": "审批意见（最近一条）",
+                        "type": "string"
+                      },
+                      "submit_time": {
+                        "description": "提交时间",
+                        "type": "string"
+                      },
+                      "update_time": {
+                        "description": "最近更新时间",
+                        "type": "string"
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "toolName": "审批进度查询",
+  "toolType": 1,
+  "version": 1,
+  "status": 0,
+  "id": "approval-status-0001",
+  "toolCode": "query_approval_status",
+  "pluginName": "产销品加载插件集",
+  "remarks": "V1.6 自研模拟实现；模拟数据兼容《产品信息.txt》全部18个销售品",
+  "submit_way": "get"
+}

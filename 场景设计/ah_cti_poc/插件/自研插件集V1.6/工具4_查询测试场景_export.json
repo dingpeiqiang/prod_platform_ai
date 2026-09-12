@@ -1,0 +1,114 @@
+{
+  "createUserId": "oncon100000000556_10000",
+  "interfaceAddress": "http://10.86.13.201:31281/api/v1/appstore/test/offer/scenes",
+  "releaseTime": null,
+  "sequ": 0,
+  "flowJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": {\"outparams\": [], \"inparams\": [], \"params\": []}}, \"id\": \"test-scenes-0001\", \"inputs\": [{\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"globalId\", \"description\": \"测试流水号（offer_test 出参）；缺失或查无返回 4002\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}], \"nodeMeta\": {\"code\": \"get_test_scenes\", \"description\": \"自研模拟实现（V1.6）：按 globalId 返回该销售品在《产品信息.txt》规则推导的模拟测试场景集合（即受理验证覆盖范围：套餐新装 S_O_TC/副卡加装 S_ADD_CARD/套餐退订 S_U_TC）\", \"title\": \"查询测试场景\", \"version\": \"1\"}, \"ontology\": \"\", \"ontologyValidation\": 0, \"outputs\": [{\"name\": \"resultCode\", \"cname\": \"0 成功 / 1 失败\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"testScenes\", \"cname\": \"测试场景列表\", \"sechema\": [], \"type\": \"array\", \"required\": false}], \"parameters\": [{\"description\": \"测试流水号（offer_test 出参）；缺失或查无返回 4002\", \"name\": \"globalId\", \"sechema\": [], \"type\": \"string\", \"required\": true}]}",
+  "userScope": 4,
+  "createUserName": "丁培强",
+  "releaseUser": null,
+  "toolAuthenticType": "1",
+  "ontologyValidation": 0,
+  "orgId": "10000",
+  "toolProto": 1,
+  "toolDesc": "自研模拟实现（V1.6）：按 globalId 返回该销售品在《产品信息.txt》规则推导的模拟测试场景集合（即受理验证覆盖范围：套餐新装 S_O_TC/副卡加装 S_ADD_CARD/套餐退订 S_U_TC）",
+  "induction": "Y",
+  "llmType": 1,
+  "toolIco": null,
+  "schemaJson": {
+    "openapi": "3.1.0",
+    "info": {
+      "observationField": "",
+      "description": "自研模拟实现（V1.6）：按 globalId 返回该销售品在《产品信息.txt》规则推导的模拟测试场景集合（即受理验证覆盖范围：套餐新装 S_O_TC/副卡加装 S_ADD_CARD/套餐退订 S_U_TC）",
+      "title": "查询测试场景",
+      "version": "v1.6.0"
+    },
+    "servers": [
+      {
+        "url": "http://10.86.13.201:31281"
+      }
+    ],
+    "paths": {
+      "/api/v1/appstore/test/offer/scenes": {
+        "post": {
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "globalId": {
+                      "default": "",
+                      "description": "测试流水号（offer_test 出参）；缺失或查无返回 4002",
+                      "type": "string",
+                      "enum": "",
+                      "required": true
+                    }
+                  },
+                  "required": [
+                    "globalId"
+                  ]
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "properties": {
+                      "resultCode": {
+                        "description": "0 成功 / 1 失败",
+                        "type": "string"
+                      },
+                      "testScenes": {
+                        "description": "测试场景列表",
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "testSceneId": {
+                              "description": "场景ID",
+                              "type": "string"
+                            },
+                            "testSceneName": {
+                              "description": "场景名称（套餐新装/副卡加装/套餐退订）",
+                              "type": "string"
+                            },
+                            "testSceneNbr": {
+                              "description": "场景编码：S_O_TC/S_ADD_CARD/S_U_TC",
+                              "type": "string"
+                            },
+                            "testSceneDesc": {
+                              "description": "场景描述",
+                              "type": "string"
+                            },
+                            "sort": {
+                              "description": "排序",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "toolName": "查询测试场景",
+  "toolType": 1,
+  "version": 1,
+  "status": 0,
+  "id": "test-scenes-0001",
+  "toolCode": "get_test_scenes",
+  "pluginName": "产销品加载插件集",
+  "remarks": "V1.6 自研模拟实现；模拟数据兼容《产品信息.txt》全部18个销售品",
+  "submit_way": "post"
+}

@@ -1,0 +1,109 @@
+{
+  "createUserId": "oncon100000000556_10000",
+  "interfaceAddress": "http://10.86.13.201:31281/api/v1/appstore/result/query",
+  "releaseTime": null,
+  "sequ": 0,
+  "flowJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": {\"outparams\": [], \"inparams\": [], \"params\": []}}, \"id\": \"node-result-query-0001\", \"inputs\": [{\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"req_id\", \"description\": \"需求唯一标识；执行方案环节=plan_id，执行主干环节=execution_id；非法格式返回 5002\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"node_name\", \"description\": \"环节名（可选）：requirement/config/spec/fee/test；为空返回该需求单号下全部环节最新记录\", \"sechema\": [], \"type\": \"string\", \"required\": false, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"latest_only\", \"description\": \"1=只返回每个环节最新一条（默认）；0=返回历史全部版本\", \"sechema\": [], \"type\": \"string\", \"required\": false, \"content\": \"\"}], \"nodeMeta\": {\"code\": \"query_node_result\", \"description\": \"平台复用插件：按需求单号（+环节名可选）查询工作流节点结果JSON原文。智能配置环节按 req_id=plan_id、node_name=requirement 取回执行方案JSON（list[0].result_json）后原样透传 save_product_config（中间禁止大模型二次加工）；续跑时按 req_id=execution_id 回放已成功环节结果\", \"title\": \"节点结果查询\", \"version\": \"1\"}, \"ontology\": \"\", \"ontologyValidation\": 0, \"outputs\": [{\"name\": \"code\", \"cname\": \"统一状态码，0 成功\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"msg\", \"cname\": \"状态描述\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"total\", \"cname\": \"命中记录数\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"list\", \"cname\": \"记录数组JSON（每条含 record_id/req_id/node_name/result_json/status/create_time/update_time；执行方案取 list[0].result_json）\", \"sechema\": [], \"type\": \"string\", \"required\": false}], \"parameters\": [{\"description\": \"需求唯一标识；执行方案环节=plan_id，执行主干环节=execution_id；非法格式返回 5002\", \"name\": \"req_id\", \"sechema\": [], \"type\": \"string\", \"required\": true}, {\"description\": \"环节名（可选）：requirement/config/spec/fee/test；为空返回该需求单号下全部环节最新记录\", \"name\": \"node_name\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"description\": \"1=只返回每个环节最新一条（默认）；0=返回历史全部版本\", \"name\": \"latest_only\", \"sechema\": [], \"type\": \"string\", \"required\": false}]}",
+  "userScope": 4,
+  "createUserName": "丁培强",
+  "releaseUser": null,
+  "toolAuthenticType": "1",
+  "ontologyValidation": 0,
+  "orgId": "10000",
+  "toolProto": 1,
+  "toolDesc": "平台复用插件：按需求单号（+环节名可选）查询工作流节点结果JSON原文。智能配置环节按 req_id=plan_id、node_name=requirement 取回执行方案JSON（list[0].result_json）后原样透传 save_product_config（中间禁止大模型二次加工）；续跑时按 req_id=execution_id 回放已成功环节结果",
+  "induction": "Y",
+  "llmType": 1,
+  "toolIco": null,
+  "schemaJson": {
+    "openapi": "3.1.0",
+    "info": {
+      "observationField": "",
+      "description": "平台复用插件：按需求单号（+环节名可选）查询工作流节点结果JSON原文。智能配置环节按 req_id=plan_id、node_name=requirement 取回执行方案JSON（list[0].result_json）后原样透传 save_product_config（中间禁止大模型二次加工）；续跑时按 req_id=execution_id 回放已成功环节结果",
+      "title": "节点结果查询",
+      "version": "v1.6.0"
+    },
+    "servers": [
+      {
+        "url": "http://10.86.13.201:31281"
+      }
+    ],
+    "paths": {
+      "/api/v1/appstore/result/query": {
+        "get": {
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "req_id": {
+                      "default": "",
+                      "description": "需求唯一标识；执行方案环节=plan_id，执行主干环节=execution_id；非法格式返回 5002",
+                      "type": "string",
+                      "enum": "",
+                      "required": true
+                    },
+                    "node_name": {
+                      "default": "",
+                      "description": "环节名（可选）：requirement/config/spec/fee/test；为空返回该需求单号下全部环节最新记录",
+                      "type": "string",
+                      "enum": ""
+                    },
+                    "latest_only": {
+                      "default": "1",
+                      "description": "1=只返回每个环节最新一条（默认）；0=返回历史全部版本",
+                      "type": "string",
+                      "enum": "0,1"
+                    }
+                  },
+                  "required": [
+                    "req_id"
+                  ]
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "properties": {
+                      "code": {
+                        "description": "统一状态码，0 成功",
+                        "type": "string"
+                      },
+                      "msg": {
+                        "description": "状态描述",
+                        "type": "string"
+                      },
+                      "total": {
+                        "description": "命中记录数",
+                        "type": "string"
+                      },
+                      "list": {
+                        "description": "记录数组JSON（每条含 record_id/req_id/node_name/result_json/status/create_time/update_time；执行方案取 list[0].result_json）",
+                        "type": "string"
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "toolName": "节点结果查询",
+  "toolType": 1,
+  "version": 1,
+  "status": 0,
+  "id": "node-result-query-0001",
+  "toolCode": "query_node_result",
+  "pluginName": "节点结果存储查询插件",
+  "remarks": "平台已有通用插件，直接挂载，不自研；本导出对齐 req_id+node_name 存取契约",
+  "submit_way": "get"
+}

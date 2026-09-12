@@ -1,0 +1,212 @@
+{
+  "flowName": "产销品-上线审批",
+  "flowRemark": "子工作流6：上线审批。进入前主流程已校验approve_confirmed=true；submit_release_approval（自研模拟，插件层二次校验+幂等）。",
+  "flowIco": "workflowIcon",
+  "workFlowSchema": null,
+  "workFlowSchemaJSON": {
+    "nodes": [
+      {
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "product_id",
+            "description": "CRM产品ID",
+            "type": "string",
+            "required": true,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "report",
+            "description": "上线报告（主流程节点16输出）",
+            "type": "string",
+            "required": true,
+            "content": ""
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "工作流的起始节点，用于设定启动工作流需要的信息",
+          "title": "开始节点"
+        },
+        "position": {
+          "x": 15,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000501",
+        "dependencyData": [],
+        "type": 0
+      },
+      {
+        "outputs": [
+          {
+            "name": "approval_id",
+            "cname": "审批单号",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "status",
+            "cname": "提交状态",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000501",
+            "relName": "product_id",
+            "name": "product_id",
+            "description": "CRM产品ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000501",
+              "a1b2c3d4-0000-4000-8000-000000000501,product_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000501,product_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000501",
+            "relName": "report",
+            "name": "report_url",
+            "description": "上线报告",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000501",
+              "a1b2c3d4-0000-4000-8000-000000000501,report"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000501,report"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "approve_confirmed",
+            "description": "审批发起确认标志true",
+            "type": "string",
+            "required": true,
+            "content": "true"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "approval_flow",
+            "description": "审批流默认standard",
+            "type": "string",
+            "required": true,
+            "content": "standard"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "审批推送",
+          "code": "submit_release_approval",
+          "description": "工具9：自研模拟审批推送；插件层校验approve_confirmed==true（未经确认返回NOT_CONFIRMED）；幂等：同product_id返回原approval_id",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000502",
+        "position": {
+          "x": 375,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/approval/submit"
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "上线审批已推送：approval_id={approval_id}，status={status}\n可随时发送\"查询审批进度\"消息查询审批状态。"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000502",
+            "relName": "approval_id",
+            "name": "approval_id",
+            "description": "审批单号",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000502",
+              "a1b2c3d4-0000-4000-8000-000000000502,approval_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000502,approval_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000502",
+            "relName": "status",
+            "name": "status",
+            "description": "提交状态",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000502",
+              "a1b2c3d4-0000-4000-8000-000000000502,status"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000502,status"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(审批已推送)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000503",
+        "dependencyData": []
+      }
+    ],
+    "edges": [
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000502",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000501"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000503",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000502"
+      }
+    ],
+    "flowId": "wf_sub_06",
+    "version": "1.6"
+  },
+  "userScope": 4,
+  "projectId": ""
+}

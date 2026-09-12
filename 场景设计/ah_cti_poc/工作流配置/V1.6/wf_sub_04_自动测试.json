@@ -1,0 +1,490 @@
+{
+  "flowName": "产销品-自动测试",
+  "flowRemark": "子工作流4：自动测试（含受理验证）。offer_test发起→get_test_scenes→循环get_test_progress（5s/30min）→get_test_result→测试报告生成（强制含受理验证结论orderId/offerInstId）。",
+  "flowIco": "workflowIcon",
+  "workFlowSchema": null,
+  "workFlowSchemaJSON": {
+    "nodes": [
+      {
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "offer_id",
+            "description": "被测销售品ID",
+            "type": "string",
+            "required": true,
+            "content": ""
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "工作流的起始节点，用于设定启动工作流需要的信息",
+          "title": "开始节点"
+        },
+        "position": {
+          "x": 15,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000301",
+        "dependencyData": [],
+        "type": 0
+      },
+      {
+        "outputs": [
+          {
+            "name": "resultCode",
+            "cname": "0成功/1失败",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "resultMsg",
+            "cname": "处理结果描述",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "globalId",
+            "cname": "测试流水号",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000301",
+            "relName": "offer_id",
+            "name": "offerId",
+            "description": "销售品ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000301",
+              "a1b2c3d4-0000-4000-8000-000000000301,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000301,offer_id"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "发起测试",
+          "code": "offer_test",
+          "description": "工具3：自研模拟测试发起，返回模拟测试流水globalId",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000302",
+        "position": {
+          "x": 375,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/test/offer/start"
+      },
+      {
+        "outputs": [
+          {
+            "name": "resultCode",
+            "cname": "0成功/1失败",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "testScenes",
+            "cname": "场景列表",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000302",
+            "relName": "globalId",
+            "name": "globalId",
+            "description": "测试流水号（节点2出参）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000302",
+              "a1b2c3d4-0000-4000-8000-000000000302,globalId"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000302,globalId"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "查询测试场景",
+          "code": "get_test_scenes",
+          "description": "工具4：查询受理验证覆盖范围（套餐新装/副卡加装/套餐退订）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000303",
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/test/offer/scenes"
+      },
+      {
+        "outputs": [
+          {
+            "name": "done",
+            "description": "是否全部完成",
+            "type": "string",
+            "content": ""
+          },
+          {
+            "name": "failed",
+            "description": "是否失败",
+            "type": "string",
+            "content": ""
+          },
+          {
+            "name": "failIndex",
+            "description": "失败场景下标",
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "flowJson": null,
+        "inputs": {
+          "loopParam": {
+            "loopType": "while",
+            "maxLoopCount": 360,
+            "breakCondition": "done == true || failed == true || timeout"
+          },
+          "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000302",
+              "relName": "globalId",
+              "name": "globalId",
+              "description": "测试流水号",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000302",
+                "a1b2c3d4-0000-4000-8000-000000000302,globalId"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000302,globalId"
+            }
+          ]
+        },
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "工具5循环轮询：间隔5s，超时30分钟（360次），连续5次查询失败终止转人工",
+          "title": "轮询测试进度"
+        },
+        "position": {
+          "x": 1095,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000304",
+        "dependencyData": [],
+        "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "name": "testScenes",
+            "cname": "逐场景结果含测点明细",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "orderId",
+            "cname": "受理订单号",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "offerInstId",
+            "cname": "销售品实例ID",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "offerName",
+            "cname": "被测销售品名称",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000302",
+            "relName": "globalId",
+            "name": "globalId",
+            "description": "测试流水号",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000302",
+              "a1b2c3d4-0000-4000-8000-000000000302,globalId"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000302,globalId"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "查询测试结果",
+          "code": "get_test_result",
+          "description": "工具6：done=true后调用一次；presetValue取自《产品信息.txt》该销售品规则值；返回受理凭证orderId/offerInstId",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000305",
+        "position": {
+          "x": 1455,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/test/offer/result"
+      },
+      {
+        "outputs": [
+          {
+            "name": "test_report",
+            "description": "测试报告（含受理验证结论）",
+            "type": "string",
+            "content": ""
+          },
+          {
+            "name": "test_passed",
+            "description": "通过/失败",
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "max_tokens": 2048,
+        "flowJson": null,
+        "inputs": {
+          "llmParam": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "content": "你是产销品自动测试报告生成助手。基于逐场景测试结果（testScenes={testScenes}）生成《销售品自动测试报告》，必须包含：1.测试概要（offerName/globalId/场景与测点统计）；2.受理验证结论（强制章节：orderId={orderId}、offerInstId={offerInstId}，为空则写明\"未获取到受理凭证，需人工核实\"；逐受理场景 S_O_TC/S_ADD_CARD/S_U_TC 给出通过/失败结论）；3.逐场景明细（仅展开resultCode=1不一致测点）；4.AI总结与建议（引用objTestSceneRel）；5.总体结论。\n输出要求（两个出参逐一约定）：\n1. test_report：完整测试报告文本（含上述5个章节，受理验证结论为强制章节）；\n2. test_passed：总体结论，取值\"通过\"或\"失败\"（仅输出这两个词之一）；\n3. 只基于输入数据生成，不得虚构测点或结论。"
+            }
+          ],
+          "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000305",
+              "relName": "testScenes",
+              "name": "testScenes",
+              "description": "引用节点5逐场景结果",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000305",
+                "a1b2c3d4-0000-4000-8000-000000000305,testScenes"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000305,testScenes"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000305",
+              "relName": "orderId",
+              "name": "orderId",
+              "description": "受理订单号",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000305",
+                "a1b2c3d4-0000-4000-8000-000000000305,orderId"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000305,orderId"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000305",
+              "relName": "offerInstId",
+              "name": "offerInstId",
+              "description": "销售品实例ID",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000305",
+                "a1b2c3d4-0000-4000-8000-000000000305,offerInstId"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000305,offerInstId"
+            }
+          ]
+        },
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "测试报告生成",
+          "title": "测试报告生成"
+        },
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "position": {
+          "x": 1815,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000306",
+        "dependencyData": [],
+        "type": 1
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "销售品自动测试完成（含受理验证）：\n{test_report}"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000306",
+            "relName": "test_report",
+            "name": "test_report",
+            "description": "测试报告",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000306",
+              "a1b2c3d4-0000-4000-8000-000000000306,test_report"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000306,test_report"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000306",
+            "relName": "test_passed",
+            "name": "test_passed",
+            "description": "总体结论",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000306",
+              "a1b2c3d4-0000-4000-8000-000000000306,test_passed"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000306,test_passed"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000302",
+            "relName": "globalId",
+            "name": "globalId",
+            "description": "测试流水号",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000302",
+              "a1b2c3d4-0000-4000-8000-000000000302,globalId"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000302,globalId"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(测试完成)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 2175,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000307",
+        "dependencyData": []
+      }
+    ],
+    "edges": [
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000302",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000301"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000303",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000302"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000304",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000303"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000305",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000304"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000306",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000305"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000307",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000306"
+      }
+    ],
+    "flowId": "wf_sub_04",
+    "version": "1.6"
+  },
+  "userScope": 4,
+  "projectId": ""
+}

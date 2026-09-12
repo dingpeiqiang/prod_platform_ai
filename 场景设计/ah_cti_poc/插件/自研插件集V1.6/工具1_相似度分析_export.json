@@ -1,0 +1,114 @@
+{
+  "createUserId": "oncon100000000556_10000",
+  "interfaceAddress": "http://10.86.13.201:31281/api/v1/appstore/similar/offer/query",
+  "releaseTime": null,
+  "sequ": 0,
+  "flowJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": {\"outparams\": [], \"inparams\": [], \"params\": []}}, \"id\": \"similar-offer-0001\", \"inputs\": [{\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"businessDesc\", \"description\": \"业务需求描述文本，≤5000字符，超出由工作流节点先做摘要压缩；空返回 PARAM_MISSING\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}], \"nodeMeta\": {\"code\": \"query_similar_offer\", \"description\": \"自研模拟实现（V1.6）：以《产品信息.txt》全部18个销售品（5G-A系列10个+权益随心选系列8个）为相似产品库，按业务需求描述返回相似销售品列表及相似度评分，支撑需求分析环节匹配历史产品与AI补全\", \"title\": \"相似度分析\", \"version\": \"1\"}, \"ontology\": \"\", \"ontologyValidation\": 0, \"outputs\": [{\"name\": \"resultCode\", \"cname\": \"0 成功 / 1 失败 / PARAM_MISSING / PARSE_ERROR\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"resultMsg\", \"cname\": \"处理结果描述\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"similarOfferList\", \"cname\": \"相似产品列表，按相似度降序，取自《产品信息.txt》18个销售品\", \"sechema\": [], \"type\": \"array\", \"required\": false}], \"parameters\": [{\"description\": \"业务需求描述文本，≤5000字符，超出由工作流节点先做摘要压缩；空返回 PARAM_MISSING\", \"name\": \"businessDesc\", \"sechema\": [], \"type\": \"string\", \"required\": true}]}",
+  "userScope": 4,
+  "createUserName": "丁培强",
+  "releaseUser": null,
+  "toolAuthenticType": "1",
+  "ontologyValidation": 0,
+  "orgId": "10000",
+  "toolProto": 1,
+  "toolDesc": "自研模拟实现（V1.6）：以《产品信息.txt》全部18个销售品（5G-A系列10个+权益随心选系列8个）为相似产品库，按业务需求描述返回相似销售品列表及相似度评分，支撑需求分析环节匹配历史产品与AI补全",
+  "induction": "N",
+  "llmType": 1,
+  "toolIco": null,
+  "schemaJson": {
+    "openapi": "3.1.0",
+    "info": {
+      "observationField": "",
+      "description": "自研模拟实现（V1.6）：以《产品信息.txt》全部18个销售品（5G-A系列10个+权益随心选系列8个）为相似产品库，按业务需求描述返回相似销售品列表及相似度评分，支撑需求分析环节匹配历史产品与AI补全",
+      "title": "相似度分析",
+      "version": "v1.6.0"
+    },
+    "servers": [
+      {
+        "url": "http://10.86.13.201:31281"
+      }
+    ],
+    "paths": {
+      "/api/v1/appstore/similar/offer/query": {
+        "post": {
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "businessDesc": {
+                      "default": "",
+                      "description": "业务需求描述文本，≤5000字符，超出由工作流节点先做摘要压缩；空返回 PARAM_MISSING",
+                      "type": "string",
+                      "enum": "",
+                      "required": true
+                    }
+                  },
+                  "required": [
+                    "businessDesc"
+                  ]
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "properties": {
+                      "resultCode": {
+                        "description": "0 成功 / 1 失败 / PARAM_MISSING / PARSE_ERROR",
+                        "type": "string"
+                      },
+                      "resultMsg": {
+                        "description": "处理结果描述",
+                        "type": "string"
+                      },
+                      "similarOfferList": {
+                        "description": "相似产品列表，按相似度降序，取自《产品信息.txt》18个销售品",
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "similarOfferId": {
+                              "description": "相似销售品ID（如 900102308）",
+                              "type": "string"
+                            },
+                            "similarOfferName": {
+                              "description": "相似销售品名称",
+                              "type": "string"
+                            },
+                            "similarityScore": {
+                              "description": "相似度评分（0~1）",
+                              "type": "string"
+                            },
+                            "similarityDesc": {
+                              "description": "相似原因描述（命中字段/资费结构说明）",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "toolName": "相似度分析",
+  "toolType": 1,
+  "version": 1,
+  "status": 0,
+  "id": "similar-offer-0001",
+  "toolCode": "query_similar_offer",
+  "pluginName": "产销品加载插件集",
+  "remarks": "V1.6 自研模拟实现；模拟数据兼容《产品信息.txt》全部18个销售品",
+  "submit_way": "post"
+}

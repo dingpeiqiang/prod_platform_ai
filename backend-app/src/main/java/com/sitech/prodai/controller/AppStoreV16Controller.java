@@ -23,7 +23,7 @@ import java.util.Map;
  */
 @Tag(name = "产销品加载V1.6", description = "自研模拟插件集：相似度分析、实时稽核、配置落地、测试发起/场景/进度/结果、计费校验、审批推送/查询、监控、告警、节点结果存取")
 @RestController
-@RequestMapping("/api/v1")
+@RequestMapping("/api/v1/appstore")
 public class AppStoreV16Controller {
 
     private final OfferSimV16Service sim;
@@ -135,19 +135,35 @@ public class AppStoreV16Controller {
         return sim.sendAlert(req);
     }
 
-    /* ================= 接口13：节点结果存储 save_node_result（V1.6 key 规范） ================= */
+    /* ================= 接口12：节点结果存储（save_node_result） ================= */
 
-    @Operation(summary = "节点结果存储V1.6", description = "按 key（plan_id 或 EXEC{execution_id}_STAGE{n}）存储环节结果 JSON；同键覆盖；非法 key 返回 5002")
-    @PostMapping("/node/result/save")
-    public Map<String, Object> saveNodeResultV16(@RequestBody Map<String, Object> req) {
-        return sim.saveNodeResult(req);
+    @Operation(summary = "节点结果存储", description = "各子工作流把环节结果 JSON 按需求单号存入（同键覆盖，支持重跑）")
+    @PostMapping("/result/save")
+    public Map<String, Object> saveNodeResult(@RequestBody Map<String, Object> req) {
+        return nodeResultService.save(
+                MapOps.str(req.get("req_id")),
+                MapOps.str(req.get("node_name")),
+                MapOps.str(req.get("result_json")),
+                MapOps.str(req.get("status")));
     }
 
-    /* ================= 接口14：节点结果查询 query_node_result（V1.6 key 规范） ================= */
+    /* ================= 接口13：节点结果查询（query_node_result） ================= */
 
-    @Operation(summary = "节点结果查询V1.6", description = "按 key 查询环节结果 JSON；查无返回 5005")
-    @GetMapping("/node/result/query")
-    public Map<String, Object> queryNodeResultV16(@RequestParam("key") String key) {
-        return sim.queryNodeResult(Map.of("key", MapOps.str(key)));
+    @Operation(summary = "节点结果查询", description = "后续环节按需求单号查询上游环节结果 JSON")
+    @GetMapping("/result/query")
+    public Map<String, Object> queryNodeResult(@RequestParam("req_id") String reqId,
+                                               @RequestParam(required = false) String node_name,
+                                               @RequestParam(required = false, defaultValue = "1") String latest_only) {
+        return nodeResultService.query(reqId, node_name, latest_only);
+    }
+
+    /* ---------------- 工具 ---------------- */
+
+    private String toJson(Object value) {
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(value);
+        } catch (Exception ex) {
+            return "{}";
+        }
     }
 }

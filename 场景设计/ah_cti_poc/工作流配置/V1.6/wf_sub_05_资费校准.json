@@ -1,0 +1,251 @@
+{
+  "flowName": "产销品-资费校准",
+  "flowRemark": "子工作流5：资费校准。check_billing_rule（自研模拟，check_scene=all）→风险解读（温度0.2，引用资费规则库知识）。",
+  "flowIco": "workflowIcon",
+  "workFlowSchema": null,
+  "workFlowSchemaJSON": {
+    "nodes": [
+      {
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "config_json",
+            "description": "落地配置JSON原文",
+            "type": "string",
+            "required": true,
+            "content": ""
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "工作流的起始节点，用于设定启动工作流需要的信息",
+          "title": "开始节点"
+        },
+        "position": {
+          "x": 15,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000401",
+        "dependencyData": [],
+        "type": 0
+      },
+      {
+        "outputs": [
+          {
+            "name": "pass",
+            "cname": "1通过/0不通过",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "risk_list",
+            "cname": "风险清单",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000401",
+            "relName": "config_json",
+            "name": "config_json",
+            "description": "落地配置JSON",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000401",
+              "a1b2c3d4-0000-4000-8000-000000000401,config_json"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000401,config_json"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "check_scene",
+            "description": "校验场景默认all",
+            "type": "string",
+            "required": true,
+            "content": "all"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "计费校验",
+          "code": "check_billing_rule",
+          "description": "工具8：自研模拟计费规则校验（内置叠加/互斥/负资费规则，适配18销售品资费结构）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000402",
+        "position": {
+          "x": 375,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/billing/rules/verify"
+      },
+      {
+        "outputs": [
+          {
+            "name": "risk_summary",
+            "description": "风险解读",
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "max_tokens": 2048,
+        "flowJson": null,
+        "inputs": {
+          "llmParam": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "content": "将资费风险清单（risk_list={risk_list}）翻译为业务语言，说明每条风险的影响与建议；risk_list 为空时输出\"资费校准通过，未发现叠加/互斥冲突\"。可引用资费规则库知识作为解释依据，但不得新增风险结论。\n输出要求：仅输出风险解读内容（对应出参 risk_summary），不输出其他多余文字。"
+            }
+          ],
+          "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+              "relName": "risk_list",
+              "name": "risk_list",
+              "description": "引用节点2风险清单",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000402",
+                "a1b2c3d4-0000-4000-8000-000000000402,risk_list"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000402,risk_list"
+            }
+          ]
+        },
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "风险解读",
+          "title": "风险解读"
+        },
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000403",
+        "dependencyData": [],
+        "type": 1
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "资费校准完成：pass={pass}\n{risk_summary}"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+            "relName": "pass",
+            "name": "pass",
+            "description": "校验结论",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000402",
+              "a1b2c3d4-0000-4000-8000-000000000402,pass"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000402,pass"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000402",
+            "relName": "risk_list",
+            "name": "risk_list",
+            "description": "风险清单",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000402",
+              "a1b2c3d4-0000-4000-8000-000000000402,risk_list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000402,risk_list"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000403",
+            "relName": "risk_summary",
+            "name": "risk_summary",
+            "description": "风险解读",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000403",
+              "a1b2c3d4-0000-4000-8000-000000000403,risk_summary"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000403,risk_summary"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(资费校准完成)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 1095,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000404",
+        "dependencyData": []
+      }
+    ],
+    "edges": [
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000402",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000401"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000403",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000402"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000404",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000403"
+      }
+    ],
+    "flowId": "wf_sub_05",
+    "version": "1.6"
+  },
+  "userScope": 4,
+  "projectId": ""
+}

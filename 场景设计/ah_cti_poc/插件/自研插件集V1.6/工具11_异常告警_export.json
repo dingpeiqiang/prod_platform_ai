@@ -1,0 +1,105 @@
+{
+  "createUserId": "oncon100000000556_10000",
+  "interfaceAddress": "http://10.86.13.201:31281/api/v1/appstore/alert/send",
+  "releaseTime": null,
+  "sequ": 0,
+  "flowJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": {\"outparams\": [], \"inparams\": [], \"params\": []}}, \"id\": \"alert-send-0001\", \"inputs\": [{\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"product_id\", \"description\": \"告警关联销售品ID；缺失返回 PARAM_MISSING\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"alarm_level\", \"description\": \"告警级别枚举：high/middle/low；缺失返回 PARAM_MISSING\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"content\", \"description\": \"告警正文（含环节、问题描述、建议），由大模型节点生成，工作流变量引用\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}], \"nodeMeta\": {\"code\": \"send_alert\", \"description\": \"自研模拟实现（V1.6）：生成模拟告警单号 alert_id 并返回推送成功状态；告警记录写入模拟库供监控查询回显闭环\", \"title\": \"异常告警\", \"version\": \"1\"}, \"ontology\": \"\", \"ontologyValidation\": 0, \"outputs\": [{\"name\": \"alert_id\", \"cname\": \"告警单号\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"status\", \"cname\": \"推送状态\", \"sechema\": [], \"type\": \"string\", \"required\": false}], \"parameters\": [{\"description\": \"告警关联销售品ID；缺失返回 PARAM_MISSING\", \"name\": \"product_id\", \"sechema\": [], \"type\": \"string\", \"required\": true}, {\"description\": \"告警级别枚举：high/middle/low；缺失返回 PARAM_MISSING\", \"name\": \"alarm_level\", \"sechema\": [], \"type\": \"string\", \"required\": true}, {\"description\": \"告警正文（含环节、问题描述、建议），由大模型节点生成，工作流变量引用\", \"name\": \"content\", \"sechema\": [], \"type\": \"string\", \"required\": true}]}",
+  "userScope": 4,
+  "createUserName": "丁培强",
+  "releaseUser": null,
+  "toolAuthenticType": "1",
+  "ontologyValidation": 0,
+  "orgId": "10000",
+  "toolProto": 1,
+  "toolDesc": "自研模拟实现（V1.6）：生成模拟告警单号 alert_id 并返回推送成功状态；告警记录写入模拟库供监控查询回显闭环",
+  "induction": "N",
+  "llmType": 1,
+  "toolIco": null,
+  "schemaJson": {
+    "openapi": "3.1.0",
+    "info": {
+      "observationField": "",
+      "description": "自研模拟实现（V1.6）：生成模拟告警单号 alert_id 并返回推送成功状态；告警记录写入模拟库供监控查询回显闭环",
+      "title": "异常告警",
+      "version": "v1.6.0"
+    },
+    "servers": [
+      {
+        "url": "http://10.86.13.201:31281"
+      }
+    ],
+    "paths": {
+      "/api/v1/appstore/alert/send": {
+        "post": {
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "product_id": {
+                      "default": "",
+                      "description": "告警关联销售品ID；缺失返回 PARAM_MISSING",
+                      "type": "string",
+                      "enum": "",
+                      "required": true
+                    },
+                    "alarm_level": {
+                      "default": "",
+                      "description": "告警级别枚举：high/middle/low；缺失返回 PARAM_MISSING",
+                      "type": "string",
+                      "enum": "high,middle,low",
+                      "required": true
+                    },
+                    "content": {
+                      "default": "",
+                      "description": "告警正文（含环节、问题描述、建议），由大模型节点生成，工作流变量引用",
+                      "type": "string",
+                      "enum": "",
+                      "required": true
+                    }
+                  },
+                  "required": [
+                    "product_id",
+                    "alarm_level",
+                    "content"
+                  ]
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "properties": {
+                      "alert_id": {
+                        "description": "告警单号",
+                        "type": "string"
+                      },
+                      "status": {
+                        "description": "推送状态",
+                        "type": "string"
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "toolName": "异常告警",
+  "toolType": 1,
+  "version": 1,
+  "status": 0,
+  "id": "alert-send-0001",
+  "toolCode": "send_alert",
+  "pluginName": "产销品加载插件集",
+  "remarks": "V1.6 自研模拟实现；模拟数据兼容《产品信息.txt》全部18个销售品",
+  "submit_way": "post"
+}

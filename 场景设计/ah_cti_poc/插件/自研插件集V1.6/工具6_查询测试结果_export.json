@@ -1,0 +1,175 @@
+{
+  "createUserId": "oncon100000000556_10000",
+  "interfaceAddress": "http://10.86.13.201:31281/api/v1/appstore/test/offer/result",
+  "releaseTime": null,
+  "sequ": 0,
+  "flowJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": {\"outparams\": [], \"inparams\": [], \"params\": []}}, \"id\": \"test-result-0001\", \"inputs\": [{\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"globalId\", \"description\": \"测试流水号；须在测试进度全部完成后查询（done=true），否则返回 4003\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}], \"nodeMeta\": {\"code\": \"get_test_result\", \"description\": \"自研模拟实现（V1.6）：按 globalId 生成逐场景测点比对明细，预期值 presetValue 取自该销售品在《产品信息.txt》中的规则值，testValue 模拟生成（默认与预期一致，可构造不一致用例）；受理凭证 orderId/offerInstId 模拟生成，作为受理验证结论依据\", \"title\": \"查询测试结果\", \"version\": \"1\"}, \"ontology\": \"\", \"ontologyValidation\": 0, \"outputs\": [{\"name\": \"resultCode\", \"cname\": \"0 成功 / 1 失败\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"resultMsg\", \"cname\": \"处理结果描述\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"testRequestId\", \"cname\": \"测试请求ID（auto_test_request 表主键）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"testRequestName\", \"cname\": \"测试名称（销售品系统名+_测试验证）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"offerName\", \"cname\": \"被测销售品名称\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"orderId\", \"cname\": \"实际受理生成的订单号（受理验证依据）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"offerInstId\", \"cname\": \"实际受理生成的销售品实例ID（受理验证依据）\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"testScenes\", \"cname\": \"逐场景结果\", \"sechema\": [], \"type\": \"array\", \"required\": false}], \"parameters\": [{\"description\": \"测试流水号；须在测试进度全部完成后查询（done=true），否则返回 4003\", \"name\": \"globalId\", \"sechema\": [], \"type\": \"string\", \"required\": true}]}",
+  "userScope": 4,
+  "createUserName": "丁培强",
+  "releaseUser": null,
+  "toolAuthenticType": "1",
+  "ontologyValidation": 0,
+  "orgId": "10000",
+  "toolProto": 1,
+  "toolDesc": "自研模拟实现（V1.6）：按 globalId 生成逐场景测点比对明细，预期值 presetValue 取自该销售品在《产品信息.txt》中的规则值，testValue 模拟生成（默认与预期一致，可构造不一致用例）；受理凭证 orderId/offerInstId 模拟生成，作为受理验证结论依据",
+  "induction": "Y",
+  "llmType": 1,
+  "toolIco": null,
+  "schemaJson": {
+    "openapi": "3.1.0",
+    "info": {
+      "observationField": "",
+      "description": "自研模拟实现（V1.6）：按 globalId 生成逐场景测点比对明细，预期值 presetValue 取自该销售品在《产品信息.txt》中的规则值，testValue 模拟生成（默认与预期一致，可构造不一致用例）；受理凭证 orderId/offerInstId 模拟生成，作为受理验证结论依据",
+      "title": "查询测试结果",
+      "version": "v1.6.0"
+    },
+    "servers": [
+      {
+        "url": "http://10.86.13.201:31281"
+      }
+    ],
+    "paths": {
+      "/api/v1/appstore/test/offer/result": {
+        "post": {
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "globalId": {
+                      "default": "",
+                      "description": "测试流水号；须在测试进度全部完成后查询（done=true），否则返回 4003",
+                      "type": "string",
+                      "enum": "",
+                      "required": true
+                    }
+                  },
+                  "required": [
+                    "globalId"
+                  ]
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "properties": {
+                      "resultCode": {
+                        "description": "0 成功 / 1 失败",
+                        "type": "string"
+                      },
+                      "resultMsg": {
+                        "description": "处理结果描述",
+                        "type": "string"
+                      },
+                      "testRequestId": {
+                        "description": "测试请求ID（auto_test_request 表主键）",
+                        "type": "string"
+                      },
+                      "testRequestName": {
+                        "description": "测试名称（销售品系统名+_测试验证）",
+                        "type": "string"
+                      },
+                      "offerName": {
+                        "description": "被测销售品名称",
+                        "type": "string"
+                      },
+                      "orderId": {
+                        "description": "实际受理生成的订单号（受理验证依据）",
+                        "type": "string"
+                      },
+                      "offerInstId": {
+                        "description": "实际受理生成的销售品实例ID（受理验证依据）",
+                        "type": "string"
+                      },
+                      "testScenes": {
+                        "description": "逐场景结果",
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "testSceneNbr": {
+                              "description": "场景编码：S_O_TC/S_ADD_CARD/S_U_TC",
+                              "type": "string"
+                            },
+                            "testSceneName": {
+                              "description": "场景名称",
+                              "type": "string"
+                            },
+                            "testSceneDesc": {
+                              "description": "场景描述",
+                              "type": "string"
+                            },
+                            "testCaseCount": {
+                              "description": "测点总数",
+                              "type": "string"
+                            },
+                            "successTestCaseCount": {
+                              "description": "成功数",
+                              "type": "string"
+                            },
+                            "failTestCaseCount": {
+                              "description": "失败数",
+                              "type": "string"
+                            },
+                            "testCasePointResults": {
+                              "description": "测点明细",
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "testPointNbr": {
+                                    "description": "测点编码：P_EFF_DATE/P_EXP_DATE/P_STATUS/P_MAIN_PROD/P_RELY_REL/P_MUTEX_REL/P_ORD_CNT/P_OFFER_NAME/P_OFFER_TYPE/P_PAY_MODE",
+                                    "type": "string"
+                                  },
+                                  "presetValue": {
+                                    "description": "规格规定值（预期值，取自《产品信息.txt》该销售品规则值）",
+                                    "type": "string"
+                                  },
+                                  "testValue": {
+                                    "description": "实测值（模拟CRM实际生成结果）",
+                                    "type": "string"
+                                  },
+                                  "resultCode": {
+                                    "description": "0 一致 / 1 不一致",
+                                    "type": "string"
+                                  },
+                                  "resultMsg": {
+                                    "description": "比对结论",
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            },
+                            "objTestSceneRel": {
+                              "description": "AI场景总结：resultMsg 场景测试总结/summaryDesc 汇总描述/suggestion 优化建议",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "toolName": "查询测试结果",
+  "toolType": 1,
+  "version": 1,
+  "status": 0,
+  "id": "test-result-0001",
+  "toolCode": "get_test_result",
+  "pluginName": "产销品加载插件集",
+  "remarks": "V1.6 自研模拟实现；模拟数据兼容《产品信息.txt》全部18个销售品",
+  "submit_way": "post"
+}

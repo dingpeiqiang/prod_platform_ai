@@ -1,0 +1,112 @@
+{
+  "createUserId": "oncon100000000556_10000",
+  "interfaceAddress": "http://10.86.13.201:31281/api/v1/appstore/billing/rules/verify",
+  "releaseTime": null,
+  "sequ": 0,
+  "flowJson": "{\"authentic_info\": \"\", \"authentic_info_new\": {\"auth_type\": \"1\", \"auth_info\": {\"outparams\": [], \"inparams\": [], \"params\": []}}, \"id\": \"billing-verify-0001\", \"inputs\": [{\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"config_json\", \"description\": \"落地配置JSON，工作流变量引用不提参；缺失或非法JSON返回 3001\", \"sechema\": [], \"type\": \"string\", \"required\": true, \"content\": \"\"}, {\"blockID\": \"\", \"filedType\": \"string\", \"relName\": \"\", \"name\": \"check_scene\", \"description\": \"校验场景枚举：fee（计费）/overlay（叠加）/superposition（互斥叠加）/all（全量），默认 all\", \"sechema\": [], \"type\": \"string\", \"required\": false, \"content\": \"\"}], \"nodeMeta\": {\"code\": \"check_billing_rule\", \"description\": \"自研模拟实现（V1.6）：内置规则引擎按该销售品《产品信息.txt》资费/叠加/互斥规则校验配置JSON，输出模拟风险清单（默认通过，支持构造冲突用例验证驳回分支）\", \"title\": \"计费规则校验\", \"version\": \"1\"}, \"ontology\": \"\", \"ontologyValidation\": 0, \"outputs\": [{\"name\": \"pass\", \"cname\": \"1 通过 / 0 不通过\", \"sechema\": [], \"type\": \"string\", \"required\": false}, {\"name\": \"risk_list\", \"cname\": \"风险清单，pass=0 时非空\", \"sechema\": [], \"type\": \"array\", \"required\": false}], \"parameters\": [{\"description\": \"落地配置JSON，工作流变量引用不提参；缺失或非法JSON返回 3001\", \"name\": \"config_json\", \"sechema\": [], \"type\": \"string\", \"required\": true}, {\"description\": \"校验场景枚举：fee（计费）/overlay（叠加）/superposition（互斥叠加）/all（全量），默认 all\", \"name\": \"check_scene\", \"sechema\": [], \"type\": \"string\", \"required\": false}]}",
+  "userScope": 4,
+  "createUserName": "丁培强",
+  "releaseUser": null,
+  "toolAuthenticType": "1",
+  "ontologyValidation": 0,
+  "orgId": "10000",
+  "toolProto": 1,
+  "toolDesc": "自研模拟实现（V1.6）：内置规则引擎按该销售品《产品信息.txt》资费/叠加/互斥规则校验配置JSON，输出模拟风险清单（默认通过，支持构造冲突用例验证驳回分支）",
+  "induction": "Y",
+  "llmType": 1,
+  "toolIco": null,
+  "schemaJson": {
+    "openapi": "3.1.0",
+    "info": {
+      "observationField": "",
+      "description": "自研模拟实现（V1.6）：内置规则引擎按该销售品《产品信息.txt》资费/叠加/互斥规则校验配置JSON，输出模拟风险清单（默认通过，支持构造冲突用例验证驳回分支）",
+      "title": "计费规则校验",
+      "version": "v1.6.0"
+    },
+    "servers": [
+      {
+        "url": "http://10.86.13.201:31281"
+      }
+    ],
+    "paths": {
+      "/api/v1/appstore/billing/rules/verify": {
+        "post": {
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "config_json": {
+                      "default": "",
+                      "description": "落地配置JSON，工作流变量引用不提参；缺失或非法JSON返回 3001",
+                      "type": "string",
+                      "enum": "",
+                      "required": true
+                    },
+                    "check_scene": {
+                      "default": "all",
+                      "description": "校验场景枚举：fee（计费）/overlay（叠加）/superposition（互斥叠加）/all（全量），默认 all",
+                      "type": "string",
+                      "enum": "fee,overlay,superposition,all"
+                    }
+                  },
+                  "required": [
+                    "config_json"
+                  ]
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "properties": {
+                      "pass": {
+                        "description": "1 通过 / 0 不通过",
+                        "type": "string"
+                      },
+                      "risk_list": {
+                        "description": "风险清单，pass=0 时非空",
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "risk_type": {
+                              "description": "风险类型：overlap_conflict/negative_fee/boundary_price_gap/overlay_limit_exceeded/custom_rule",
+                              "type": "string"
+                            },
+                            "risk_desc": {
+                              "description": "风险描述，含冲突/异常明细",
+                              "type": "string"
+                            },
+                            "suggest": {
+                              "description": "处置建议",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "toolName": "计费规则校验",
+  "toolType": 1,
+  "version": 1,
+  "status": 0,
+  "id": "billing-verify-0001",
+  "toolCode": "check_billing_rule",
+  "pluginName": "产销品加载插件集",
+  "remarks": "V1.6 自研模拟实现；模拟数据兼容《产品信息.txt》全部18个销售品",
+  "submit_way": "post"
+}

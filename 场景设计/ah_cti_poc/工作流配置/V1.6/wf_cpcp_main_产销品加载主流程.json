@@ -1,0 +1,3072 @@
+{
+  "flowName": "产销品加载主流程",
+  "flowRemark": "主工作流V1.6：两次中断（结束节点A执行方案确认/节点14审批发起确认）；执行主干四环节（智能配置→实时稽核→资费校准→自动测试）自动串行、每环节打印结果并存EXEC{execution_id}_STAGE{n}；异常统一走异常A节点（引导重新执行/修改执行方案，续跑回放已成功环节不重复调用写接口）。",
+  "flowIco": "workflowIcon",
+  "workFlowSchema": null,
+  "workFlowSchemaJSON": {
+    "nodes": [
+      {
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "requirement_text",
+            "description": "销售品需求描述/文档摘要（首次执行必填）",
+            "type": "string",
+            "required": false,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "requirement_file",
+            "description": "需求文档地址（选填）",
+            "type": "string",
+            "required": false,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "plan_id",
+            "description": "已确认的执行方案存储key（确认后续跑必填）",
+            "type": "string",
+            "required": false,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "confirmed",
+            "description": "用户是否已确认执行方案，默认false",
+            "type": "string",
+            "required": false,
+            "content": "false"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "resume_action",
+            "description": "续跑指令：retry_from_fail/revise_plan",
+            "type": "string",
+            "required": false,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "fail_node",
+            "description": "上次失败环节编码：STAGE1_CONFIG/STAGE2_AUDIT/STAGE3_FEE/STAGE4_TEST",
+            "type": "string",
+            "required": false,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "execution_id",
+            "description": "执行主干批次号 EXE+yyyyMMddHHmmss+2位序号，重新执行沿用原值",
+            "type": "string",
+            "required": false,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "approve_confirmed",
+            "description": "审批发起确认标志，默认false",
+            "type": "string",
+            "required": false,
+            "content": "false"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "工作流的起始节点，用于设定启动工作流需要的信息",
+          "title": "开始节点"
+        },
+        "position": {
+          "x": 15,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000001",
+        "dependencyData": [],
+        "type": 0
+      },
+      {
+        "flowJson": null,
+        "inputs": {
+          "condition": [
+            {
+              "sourcePort": 0,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+                    "relName": "confirmed",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000001",
+                      "a1b2c3d4-0000-4000-8000-000000000001,confirmed"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000001,confirmed",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "true"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 1
+                },
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+                    "relName": "plan_id",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000001",
+                      "a1b2c3d4-0000-4000-8000-000000000001,plan_id"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000001,plan_id",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": ""
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 10
+                }
+              ]
+            }
+          ]
+        },
+        "nodeMeta": {
+          "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+          "title": "入口判定"
+        },
+        "position": {
+          "x": 375,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000002",
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000001",
+            "name": "开始节点",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000001,confirmed",
+                "name": "confirmed",
+                "type": "string",
+                "content": ""
+              },
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000001,plan_id",
+                "name": "plan_id",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          }
+        ],
+        "type": 2
+      },
+      {
+        "outputs": [
+          {
+            "name": "plan_id",
+            "type": "string",
+            "content": "",
+            "description": "执行方案存储key（有待补充项时为空）"
+          },
+          {
+            "name": "plan_md",
+            "type": "string",
+            "content": "",
+            "description": "执行方案表格"
+          },
+          {
+            "name": "pending_fields",
+            "type": "string",
+            "content": "",
+            "description": "待补充字段"
+          }
+        ],
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+            "relName": "requirement_text",
+            "name": "requirement_text",
+            "description": "需求描述",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000001",
+              "a1b2c3d4-0000-4000-8000-000000000001,requirement_text"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000001,requirement_text"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+            "relName": "requirement_file",
+            "name": "requirement_file",
+            "description": "需求文档地址",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000001",
+              "a1b2c3d4-0000-4000-8000-000000000001,requirement_file"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000001,requirement_file"
+          }
+        ],
+        "checkErr": false,
+        "history": false,
+        "nodeMeta": {
+          "workFlowId": "REPLACE_WITH_SUB01_FLOWID",
+          "description": "调用wf_sub_01：需求理解→相似产品→字段映射与AI补全→待补充判断（无待补充才保存执行方案并产出plan_id）",
+          "title": "需求分析",
+          "version": "1.0"
+        },
+        "position": {
+          "x": 1095,
+          "y": 170
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000003",
+        "dependencyData": [],
+        "type": 13
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "{plan_md}\n\n【待补充字段】{pending_fields}\n\n【若以上存在待补充字段】执行方案暂未保存、暂不能执行（回复【确认执行】无效）：\n- 请直接补充价格/资源类字段值，将更新执行方案并再次确认；\n【若待补充字段为空（plan_id 已生成）】请核对以上执行方案：\n- 回复【确认执行】：将自动串行执行 智能配置→稽核→资费校准→自动测试 四个环节（每环节执行后打印结果，仅异常时中断）；\n- 如需调整：请直接说明修改意见。"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
+            "relName": "plan_id",
+            "name": "plan_id",
+            "description": "执行方案key（有待补充项时为空）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000003",
+              "a1b2c3d4-0000-4000-8000-000000000003,plan_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000003,plan_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
+            "relName": "plan_md",
+            "name": "plan_md",
+            "description": "执行方案表格",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000003",
+              "a1b2c3d4-0000-4000-8000-000000000003,plan_md"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000003,plan_md"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000003",
+            "relName": "pending_fields",
+            "name": "pending_fields",
+            "description": "待补充字段",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000003",
+              "a1b2c3d4-0000-4000-8000-000000000003,pending_fields"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000003,pending_fields"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束节点A(执行方案确认)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 1455,
+          "y": 170
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000031",
+        "dependencyData": []
+      },
+      {
+        "flowJson": null,
+        "inputs": {
+          "condition": [
+            {
+              "sourcePort": 0,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+                    "relName": "resume_action",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000001",
+                      "a1b2c3d4-0000-4000-8000-000000000001,resume_action"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000001,resume_action",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "revise_plan"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 2
+                },
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+                    "relName": "approve_confirmed",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000001",
+                      "a1b2c3d4-0000-4000-8000-000000000001,approve_confirmed"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000001,approve_confirmed",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "true"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 2
+                }
+              ]
+            },
+            {
+              "sourcePort": 1,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+                    "relName": "approve_confirmed",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000001",
+                      "a1b2c3d4-0000-4000-8000-000000000001,approve_confirmed"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000001,approve_confirmed",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "true"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 1
+                }
+              ]
+            },
+            {
+              "sourcePort": 2,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+                    "relName": "resume_action",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000001",
+                      "a1b2c3d4-0000-4000-8000-000000000001,resume_action"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000001,resume_action",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "revise_plan"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 1
+                }
+              ]
+            }
+          ]
+        },
+        "nodeMeta": {
+          "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+          "title": "续跑判定"
+        },
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000004",
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000001",
+            "name": "开始节点",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000001,resume_action",
+                "name": "resume_action",
+                "type": "string",
+                "content": ""
+              },
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000001,fail_node",
+                "name": "fail_node",
+                "type": "string",
+                "content": ""
+              },
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000001,approve_confirmed",
+                "name": "approve_confirmed",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          }
+        ],
+        "type": 2
+      },
+      {
+        "outputs": [
+          {
+            "name": "product_id",
+            "type": "string",
+            "content": "",
+            "description": "CRM产品ID"
+          },
+          {
+            "name": "offer_id",
+            "type": "string",
+            "content": "",
+            "description": "销售品ID"
+          },
+          {
+            "name": "save_result",
+            "type": "string",
+            "content": "",
+            "description": "四类字段写入结果"
+          },
+          {
+            "name": "status",
+            "type": "string",
+            "content": "",
+            "description": "SUCCESS/PARTIAL/FAIL"
+          }
+        ],
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+            "relName": "plan_id",
+            "name": "plan_id",
+            "description": "执行方案key",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000001",
+              "a1b2c3d4-0000-4000-8000-000000000001,plan_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000001,plan_id"
+          }
+        ],
+        "checkErr": false,
+        "history": false,
+        "nodeMeta": {
+          "workFlowId": "REPLACE_WITH_SUB02_FLOWID",
+          "description": "调用wf_sub_02：节点结果查询读取执行方案JSON→save_product_config原样透传落地",
+          "title": "环节1-智能配置",
+          "version": "1.0"
+        },
+        "position": {
+          "x": 1095,
+          "y": 430
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000005",
+        "dependencyData": [],
+        "type": 13
+      },
+      {
+        "outputs": [
+          {
+            "name": "code",
+            "cname": "0成功",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+            "relName": "execution_id",
+            "name": "req_id",
+            "description": "需求唯一标识=execution_id（EXE+yyyyMMddHHmmss+2位序号）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000001",
+              "a1b2c3d4-0000-4000-8000-000000000001,execution_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000001,execution_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=config（智能配置）",
+            "type": "string",
+            "required": true,
+            "content": "config"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000005",
+            "relName": "save_result",
+            "name": "result_json",
+            "description": "环节1结果JSON",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000005",
+              "a1b2c3d4-0000-4000-8000-000000000005,save_result"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000005,save_result"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "status",
+            "description": "本环节状态=ok",
+            "type": "string",
+            "required": true,
+            "content": "ok"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "环节1结果存储",
+          "code": "save_node_result",
+          "description": "环节结果存储（复用）：req_id=execution_id，node_name=config（智能配置），result_json=环节1结果",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000051",
+        "position": {
+          "x": 1455,
+          "y": 430
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/result/save"
+      },
+      {
+        "flowJson": null,
+        "inputs": {
+          "condition": [
+            {
+              "sourcePort": 0,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000005",
+                    "relName": "status",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000005",
+                      "a1b2c3d4-0000-4000-8000-000000000005,status"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000005,status",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "SUCCESS"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 1
+                }
+              ]
+            }
+          ]
+        },
+        "nodeMeta": {
+          "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+          "title": "环节1判定与打印"
+        },
+        "position": {
+          "x": 1815,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000006",
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000005",
+            "name": "环节1-智能配置",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000005,status",
+                "name": "status",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          }
+        ],
+        "type": 2
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "【环节1/智能配置】✅ 执行成功\n- 关键数据：product_id={product_id}，offer_id={offer_id}，四类字段写入结果：{save_result}\n- 已自动进入下一环节……"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000005",
+            "relName": "product_id",
+            "name": "product_id",
+            "description": "产品ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000005",
+              "a1b2c3d4-0000-4000-8000-000000000005,product_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000005,product_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000005",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000005",
+              "a1b2c3d4-0000-4000-8000-000000000005,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000005,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000005",
+            "relName": "save_result",
+            "name": "save_result",
+            "description": "写入结果",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000005",
+              "a1b2c3d4-0000-4000-8000-000000000005,save_result"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000005,save_result"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "环节1成功打印"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 2175,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000061",
+        "dependencyData": []
+      },
+      {
+        "outputs": [
+          {
+            "name": "pass",
+            "type": "string",
+            "content": "",
+            "description": "1通过/0不通过"
+          },
+          {
+            "name": "error_list",
+            "type": "string",
+            "content": "",
+            "description": "问题明细"
+          },
+          {
+            "name": "audit_summary",
+            "type": "string",
+            "content": "",
+            "description": "稽核总结"
+          }
+        ],
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000005",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000005",
+              "a1b2c3d4-0000-4000-8000-000000000005,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000005,offer_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000005",
+            "relName": "save_result",
+            "name": "config_json",
+            "description": "落地配置JSON（环节1存储回放或直接引用）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000005",
+              "a1b2c3d4-0000-4000-8000-000000000005,save_result"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000005,save_result"
+          }
+        ],
+        "checkErr": false,
+        "history": false,
+        "nodeMeta": {
+          "workFlowId": "REPLACE_WITH_SUB03_FLOWID",
+          "description": "调用wf_sub_03：realtime_spec_audit同步稽核",
+          "title": "环节2-实时稽核",
+          "version": "1.0"
+        },
+        "position": {
+          "x": 2535,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000007",
+        "dependencyData": [],
+        "type": 13
+      },
+      {
+        "outputs": [
+          {
+            "name": "code",
+            "cname": "0成功",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+            "relName": "execution_id",
+            "name": "req_id",
+            "description": "需求唯一标识=execution_id",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000001",
+              "a1b2c3d4-0000-4000-8000-000000000001,execution_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000001,execution_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=spec",
+            "type": "string",
+            "required": true,
+            "content": "spec"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000007",
+            "relName": "audit_summary",
+            "name": "result_json",
+            "description": "环节2结果JSON",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000007",
+              "a1b2c3d4-0000-4000-8000-000000000007,audit_summary"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000007,audit_summary"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "status",
+            "description": "本环节状态=ok",
+            "type": "string",
+            "required": true,
+            "content": "ok"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "环节2结果存储",
+          "code": "save_node_result",
+          "description": "环节结果存储（复用）：req_id=execution_id，node_name=spec（规格稽核）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000071",
+        "position": {
+          "x": 2895,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/result/save"
+      },
+      {
+        "flowJson": null,
+        "inputs": {
+          "condition": [
+            {
+              "sourcePort": 0,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000007",
+                    "relName": "pass",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000007",
+                      "a1b2c3d4-0000-4000-8000-000000000007,pass"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000007,pass",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "1"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 1
+                }
+              ]
+            }
+          ]
+        },
+        "nodeMeta": {
+          "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+          "title": "环节2判定与打印"
+        },
+        "position": {
+          "x": 3255,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000008",
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000007",
+            "name": "环节2-实时稽核",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000007,pass",
+                "name": "pass",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          }
+        ],
+        "type": 2
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "【环节2/配置规格稽核】✅ 执行成功\n- 关键数据：稽核通过 + {audit_summary}\n- 已自动进入下一环节……"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000007",
+            "relName": "audit_summary",
+            "name": "audit_summary",
+            "description": "稽核总结",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000007",
+              "a1b2c3d4-0000-4000-8000-000000000007,audit_summary"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000007,audit_summary"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "环节2成功打印"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 3615,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000081",
+        "dependencyData": []
+      },
+      {
+        "outputs": [
+          {
+            "name": "pass",
+            "type": "string",
+            "content": "",
+            "description": "1通过/0不通过"
+          },
+          {
+            "name": "risk_list",
+            "type": "string",
+            "content": "",
+            "description": "风险清单"
+          },
+          {
+            "name": "risk_summary",
+            "type": "string",
+            "content": "",
+            "description": "风险解读"
+          }
+        ],
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000005",
+            "relName": "save_result",
+            "name": "config_json",
+            "description": "落地配置JSON",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000005",
+              "a1b2c3d4-0000-4000-8000-000000000005,save_result"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000005,save_result"
+          }
+        ],
+        "checkErr": false,
+        "history": false,
+        "nodeMeta": {
+          "workFlowId": "REPLACE_WITH_SUB05_FLOWID",
+          "description": "调用wf_sub_05：check_billing_rule校验",
+          "title": "环节3-资费校准",
+          "version": "1.0"
+        },
+        "position": {
+          "x": 3975,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000009",
+        "dependencyData": [],
+        "type": 13
+      },
+      {
+        "outputs": [
+          {
+            "name": "code",
+            "cname": "0成功",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+            "relName": "execution_id",
+            "name": "req_id",
+            "description": "需求唯一标识=execution_id",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000001",
+              "a1b2c3d4-0000-4000-8000-000000000001,execution_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000001,execution_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=fee",
+            "type": "string",
+            "required": true,
+            "content": "fee"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000009",
+            "relName": "risk_summary",
+            "name": "result_json",
+            "description": "环节3结果JSON",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000009",
+              "a1b2c3d4-0000-4000-8000-000000000009,risk_summary"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000009,risk_summary"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "status",
+            "description": "本环节状态=ok",
+            "type": "string",
+            "required": true,
+            "content": "ok"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "环节3结果存储",
+          "code": "save_node_result",
+          "description": "环节结果存储（复用）：req_id=execution_id，node_name=fee（资费校准）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000091",
+        "position": {
+          "x": 4335,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/result/save"
+      },
+      {
+        "flowJson": null,
+        "inputs": {
+          "condition": [
+            {
+              "sourcePort": 0,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000009",
+                    "relName": "pass",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000009",
+                      "a1b2c3d4-0000-4000-8000-000000000009,pass"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000009,pass",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "1"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 1
+                }
+              ]
+            }
+          ]
+        },
+        "nodeMeta": {
+          "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+          "title": "环节3判定与打印"
+        },
+        "position": {
+          "x": 4695,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000010",
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000009",
+            "name": "环节3-资费校准",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000009,pass",
+                "name": "pass",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          }
+        ],
+        "type": 2
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "【环节3/资费校准】✅ 执行成功\n- 关键数据：资费校准通过 + {risk_summary}\n- 已自动进入下一环节……"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000009",
+            "relName": "risk_summary",
+            "name": "risk_summary",
+            "description": "风险解读",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000009",
+              "a1b2c3d4-0000-4000-8000-000000000009,risk_summary"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000009,risk_summary"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "环节3成功打印"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 5055,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000101",
+        "dependencyData": []
+      },
+      {
+        "outputs": [
+          {
+            "name": "test_report",
+            "type": "string",
+            "content": "",
+            "description": "测试报告含受理验证结论"
+          },
+          {
+            "name": "test_passed",
+            "type": "string",
+            "content": "",
+            "description": "通过/失败"
+          },
+          {
+            "name": "globalId",
+            "type": "string",
+            "content": "",
+            "description": "测试流水号"
+          },
+          {
+            "name": "orderId",
+            "type": "string",
+            "content": "",
+            "description": "受理订单号"
+          },
+          {
+            "name": "offerInstId",
+            "type": "string",
+            "content": "",
+            "description": "销售品实例ID"
+          }
+        ],
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000005",
+            "relName": "offer_id",
+            "name": "offer_id",
+            "description": "销售品ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000005",
+              "a1b2c3d4-0000-4000-8000-000000000005,offer_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000005,offer_id"
+          }
+        ],
+        "checkErr": false,
+        "history": false,
+        "nodeMeta": {
+          "workFlowId": "REPLACE_WITH_SUB04_FLOWID",
+          "description": "调用wf_sub_04：发起→场景→轮询→结果→报告（含受理验证结论）",
+          "title": "环节4-自动测试",
+          "version": "1.0"
+        },
+        "position": {
+          "x": 5415,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000011",
+        "dependencyData": [],
+        "type": 13
+      },
+      {
+        "outputs": [
+          {
+            "name": "code",
+            "cname": "0成功",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+            "relName": "execution_id",
+            "name": "req_id",
+            "description": "需求唯一标识=execution_id",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000001",
+              "a1b2c3d4-0000-4000-8000-000000000001,execution_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000001,execution_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=test",
+            "type": "string",
+            "required": true,
+            "content": "test"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000011",
+            "relName": "test_report",
+            "name": "result_json",
+            "description": "环节4结果JSON",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000011",
+              "a1b2c3d4-0000-4000-8000-000000000011,test_report"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000011,test_report"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "status",
+            "description": "本环节状态=ok",
+            "type": "string",
+            "required": true,
+            "content": "ok"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "环节4结果存储",
+          "code": "save_node_result",
+          "description": "环节结果存储（复用）：req_id=execution_id，node_name=test（自动测试）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000111",
+        "position": {
+          "x": 5775,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/result/save"
+      },
+      {
+        "flowJson": null,
+        "inputs": {
+          "condition": [
+            {
+              "sourcePort": 0,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000011",
+                    "relName": "test_passed",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000011",
+                      "a1b2c3d4-0000-4000-8000-000000000011,test_passed"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000011,test_passed",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "通过"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 1
+                }
+              ]
+            }
+          ]
+        },
+        "nodeMeta": {
+          "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+          "title": "环节4判定与打印"
+        },
+        "position": {
+          "x": 6135,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000012",
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000011",
+            "name": "环节4-自动测试",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000011,test_passed",
+                "name": "test_passed",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          }
+        ],
+        "type": 2
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "【环节4/销售品自动测试（含受理验证）】✅ 执行成功\n- 关键数据：场景数/测点数统计 + 受理验证结论（orderId/offerInstId + 逐受理场景结论）\n{test_report}\n- 执行主干全部完成"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000011",
+            "relName": "test_report",
+            "name": "test_report",
+            "description": "测试报告",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000011",
+              "a1b2c3d4-0000-4000-8000-000000000011,test_report"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000011,test_report"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "环节4成功打印"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 6495,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000121",
+        "dependencyData": []
+      },
+      {
+        "flowJson": null,
+        "inputs": {
+          "condition": [
+            {
+              "sourcePort": 0,
+              "itemflag": true,
+              "logic": 1,
+              "conditions": [
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000005",
+                    "relName": "status",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000005",
+                      "a1b2c3d4-0000-4000-8000-000000000005,status"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000005,status",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "SUCCESS"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 1
+                },
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000007",
+                    "relName": "pass",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000007",
+                      "a1b2c3d4-0000-4000-8000-000000000007,pass"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000007,pass",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "1"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 1
+                },
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000009",
+                    "relName": "pass",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000009",
+                      "a1b2c3d4-0000-4000-8000-000000000009,pass"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000009,pass",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "1"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 1
+                },
+                {
+                  "left": {
+                    "blockID": "a1b2c3d4-0000-4000-8000-000000000011",
+                    "relName": "test_passed",
+                    "nameValue": [
+                      "a1b2c3d4-0000-4000-8000-000000000011",
+                      "a1b2c3d4-0000-4000-8000-000000000011,test_passed"
+                    ],
+                    "currValue": "a1b2c3d4-0000-4000-8000-000000000011,test_passed",
+                    "name": "",
+                    "description": "",
+                    "type": "ref",
+                    "content": ""
+                  },
+                  "right": {
+                    "blockID": "",
+                    "relName": "",
+                    "nameValue": "",
+                    "currValue": ",",
+                    "name": "",
+                    "description": "",
+                    "type": "string",
+                    "content": "通过"
+                  },
+                  "conditions": [
+                    {
+                      "value": 1,
+                      "label": "等于"
+                    },
+                    {
+                      "value": 2,
+                      "label": "不等于"
+                    },
+                    {
+                      "value": 3,
+                      "label": "长度大于"
+                    },
+                    {
+                      "value": 4,
+                      "label": "长度大于等于"
+                    },
+                    {
+                      "value": 5,
+                      "label": "长度小于"
+                    },
+                    {
+                      "value": 6,
+                      "label": "长度小于等于"
+                    },
+                    {
+                      "value": 7,
+                      "label": "包含"
+                    },
+                    {
+                      "value": 8,
+                      "label": "不包含"
+                    },
+                    {
+                      "value": 9,
+                      "label": "为空"
+                    },
+                    {
+                      "value": 10,
+                      "label": "不为空"
+                    },
+                    {
+                      "value": 15,
+                      "label": "长度等于"
+                    }
+                  ],
+                  "operator": 1
+                }
+              ]
+            }
+          ]
+        },
+        "nodeMeta": {
+          "description": "if-else分支判断，符合条件走如果分支，否则走否则分支",
+          "title": "主干完成判定"
+        },
+        "position": {
+          "x": 6855,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000013",
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000005",
+            "name": "环节1",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000005,status",
+                "name": "status",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000007",
+            "name": "环节2",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000007,pass",
+                "name": "pass",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000009",
+            "name": "环节3",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000009,pass",
+                "name": "pass",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000011",
+            "name": "环节4",
+            "disabled": true,
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000011,test_passed",
+                "name": "test_passed",
+                "type": "string",
+                "content": ""
+              }
+            ]
+          }
+        ],
+        "type": 2
+      },
+      {
+        "outputs": [
+          {
+            "name": "stage_summary",
+            "description": "成功结果详情汇总",
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "max_tokens": 2048,
+        "flowJson": null,
+        "inputs": {
+          "llmParam": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "content": "执行主干四个环节全部成功，请基于以下输入按模板输出（逐字引用输入数据，不新增结论）：\n【环节1落地结果】save_result={save_result}\n【稽核总结】audit_summary={audit_summary}\n【测试明细】test_report={test_report}\n\n输出模板：\n【执行主干全部完成】✅ 共4个环节执行成功：\n1. 智能配置：product_id={product_id}，offer_id={offer_id}，四类字段全部写入成功；\n2. 配置规格稽核：通过，{audit_summary}；\n3. 资费校准：通过，未发现叠加/互斥冲突；\n4. 自动测试（含受理验证）：场景 N 个、测点 M 个全部一致；\n   受理验证：orderId={orderId}，offerInstId={offerInstId}，各受理场景均通过。\n\n是否发起上线审批？回复【发起审批】将汇总以上结果提交审批流；回复【暂不】可稍后发送\"发起审批\"继续。\n\n输出要求：仅输出按上述模板渲染的汇总内容（对应出参 stage_summary），不输出其他多余文字。"
+            }
+          ],
+          "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000005",
+              "relName": "product_id",
+              "name": "product_id",
+              "description": "产品ID",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000005",
+                "a1b2c3d4-0000-4000-8000-000000000005,product_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000005,product_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000005",
+              "relName": "offer_id",
+              "name": "offer_id",
+              "description": "销售品ID",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000005",
+                "a1b2c3d4-0000-4000-8000-000000000005,offer_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000005,offer_id"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000007",
+              "relName": "audit_summary",
+              "name": "audit_summary",
+              "description": "稽核总结",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000007",
+                "a1b2c3d4-0000-4000-8000-000000000007,audit_summary"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000007,audit_summary"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000005",
+              "relName": "save_result",
+              "name": "save_result",
+              "description": "落地结果",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000005",
+                "a1b2c3d4-0000-4000-8000-000000000005,save_result"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000005,save_result"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000011",
+              "relName": "test_report",
+              "name": "test_report",
+              "description": "测试报告",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000011",
+                "a1b2c3d4-0000-4000-8000-000000000011,test_report"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000011,test_report"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000011",
+              "relName": "orderId",
+              "name": "orderId",
+              "description": "受理订单号（环节4测试结果出参）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000011",
+                "a1b2c3d4-0000-4000-8000-000000000011,orderId"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000011,orderId"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000011",
+              "relName": "offerInstId",
+              "name": "offerInstId",
+              "description": "销售品实例ID（环节4测试结果出参）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000011",
+                "a1b2c3d4-0000-4000-8000-000000000011,offerInstId"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000011,offerInstId"
+            }
+          ]
+        },
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "成功结果详情汇总",
+          "title": "成功结果详情汇总"
+        },
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "position": {
+          "x": 7215,
+          "y": 430
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000014",
+        "dependencyData": [],
+        "type": 1
+      },
+      {
+        "outputs": [
+          {
+            "name": "report",
+            "description": "上线报告",
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "max_tokens": 2048,
+        "flowJson": null,
+        "inputs": {
+          "llmParam": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "content": "请基于以下输入数据，按标准模板汇总生成《销售品上线测试与稽核报告》：\n【配置落地结果】save_result={save_result}\n【稽核结论】audit_summary={audit_summary}\n【资费结论】risk_summary={risk_summary}\n【测试明细】test_report={test_report}\n报告必须包含以下章节：1.需求摘要与执行方案要点；2.配置落地结果；3.稽核结论；4.资费结论；5.测试统计与失败明细；6.受理验证结论（强制章节，引用orderId={orderId}、offerInstId={offerInstId}，逐受理场景给出通过/失败结论）；7.上线建议。只基于输入数据生成，不得新增结论。"
+            }
+          ],
+          "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000005",
+              "relName": "save_result",
+              "name": "save_result",
+              "description": "落地结果",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000005",
+                "a1b2c3d4-0000-4000-8000-000000000005,save_result"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000005,save_result"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000007",
+              "relName": "audit_summary",
+              "name": "audit_summary",
+              "description": "稽核总结",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000007",
+                "a1b2c3d4-0000-4000-8000-000000000007,audit_summary"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000007,audit_summary"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000009",
+              "relName": "risk_summary",
+              "name": "risk_summary",
+              "description": "风险解读",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000009",
+                "a1b2c3d4-0000-4000-8000-000000000009,risk_summary"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000009,risk_summary"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000011",
+              "relName": "test_report",
+              "name": "test_report",
+              "description": "测试报告",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000011",
+                "a1b2c3d4-0000-4000-8000-000000000011,test_report"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000011,test_report"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000011",
+              "relName": "orderId",
+              "name": "orderId",
+              "description": "受理订单号（环节4测试结果出参）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000011",
+                "a1b2c3d4-0000-4000-8000-000000000011,orderId"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000011,orderId"
+            },
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000011",
+              "relName": "offerInstId",
+              "name": "offerInstId",
+              "description": "销售品实例ID（环节4测试结果出参）",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000011",
+                "a1b2c3d4-0000-4000-8000-000000000011,offerInstId"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000011,offerInstId"
+            }
+          ]
+        },
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "报告汇总",
+          "title": "报告汇总"
+        },
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "position": {
+          "x": 7575,
+          "y": 430
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000016",
+        "dependencyData": [],
+        "type": 1
+      },
+      {
+        "outputs": [
+          {
+            "name": "approval_id",
+            "type": "string",
+            "content": "",
+            "description": "审批单号"
+          },
+          {
+            "name": "status",
+            "type": "string",
+            "content": "",
+            "description": "提交状态"
+          }
+        ],
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000005",
+            "relName": "product_id",
+            "name": "product_id",
+            "description": "产品ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000005",
+              "a1b2c3d4-0000-4000-8000-000000000005,product_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000005,product_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000016",
+            "relName": "report",
+            "name": "report",
+            "description": "上线报告",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000016",
+              "a1b2c3d4-0000-4000-8000-000000000016,report"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000016,report"
+          }
+        ],
+        "checkErr": false,
+        "history": false,
+        "nodeMeta": {
+          "workFlowId": "REPLACE_WITH_SUB06_FLOWID",
+          "description": "调用wf_sub_06：审批推送（插件层校验approve_confirmed）",
+          "title": "上线审批",
+          "version": "1.0"
+        },
+        "position": {
+          "x": 7935,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000017",
+        "dependencyData": [],
+        "type": 13
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "上线审批已发起：approval_id={approval_id}\nproduct_id={product_id}｜plan_id={plan_id}\n{stage_summary}\n\n下一步：可发送消息\"查询审批进度\"或\"查询销售品监控结果\"。"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000005",
+            "relName": "product_id",
+            "name": "product_id",
+            "description": "产品ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000005",
+              "a1b2c3d4-0000-4000-8000-000000000005,product_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000005,product_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+            "relName": "plan_id",
+            "name": "plan_id",
+            "description": "执行方案key",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000001",
+              "a1b2c3d4-0000-4000-8000-000000000001,plan_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000001,plan_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000017",
+            "relName": "approval_id",
+            "name": "approval_id",
+            "description": "审批单号",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000017",
+              "a1b2c3d4-0000-4000-8000-000000000017,approval_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000017,approval_id"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000014",
+            "relName": "stage_summary",
+            "name": "stage_summary",
+            "description": "各环节结果摘要",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000014",
+              "a1b2c3d4-0000-4000-8000-000000000014,stage_summary"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000014,stage_summary"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束节点B(审批已发起)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 8295,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000018",
+        "dependencyData": []
+      },
+      {
+        "outputs": [
+          {
+            "name": "exception_summary",
+            "description": "异常处置说明",
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "max_tokens": 2048,
+        "flowJson": null,
+        "inputs": {
+          "llmParam": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "content": "执行主干在某一环节异常中断，请生成异常处置说明：\n1.异常环节名称（按 fail_node 映射：STAGE1_CONFIG 智能配置 / STAGE2_AUDIT 配置规格稽核 / STAGE3_FEE 资费校准 / STAGE4_TEST 销售品自动测试）；\n2.异常原因（引用接口返回原文 resultCode/resultMsg，不得臆测）；\n3.关键明细（稽核问题清单/资费风险清单/测试失败测点/超时信息，按实际输入展开）；\n4.整改建议；\n5.结尾固定引导：\n请选择下一步：\n① 回复【重新执行】：将自动从失败环节继续（已成功环节不重复执行）\n ② 回复【修改执行方案】：请说明修改意见，将重新生成执行方案并再次确认\n不得自行发起重试，不得跳过失败环节。\nfail_node={fail_node}，异常环节出参={exception_output}\n\n输出要求：仅输出按上述5点生成的异常处置说明（对应出参 exception_summary），不输出其他多余文字。"
+            }
+          ],
+          "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000001",
+              "relName": "fail_node",
+              "name": "fail_node",
+              "description": "失败环节编码",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000001",
+                "a1b2c3d4-0000-4000-8000-000000000001,fail_node"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000001,fail_node"
+            },
+            {
+              "blockID": "",
+              "relName": "",
+              "name": "exception_output",
+              "description": "失败环节返回出参原文（异常判定节点引用）",
+              "type": "string",
+              "required": false,
+              "content": ""
+            }
+          ]
+        },
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "异常处置-异常A",
+          "title": "异常处置-异常A"
+        },
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "position": {
+          "x": 7215,
+          "y": 170
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000021",
+        "dependencyData": [],
+        "type": 1
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "{exception_summary}"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000021",
+            "relName": "exception_summary",
+            "name": "exception_summary",
+            "description": "异常处置说明",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000021",
+              "a1b2c3d4-0000-4000-8000-000000000021,exception_summary"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000021,exception_summary"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(异常中断)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 7575,
+          "y": 170
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000022",
+        "dependencyData": []
+      }
+    ],
+    "edges": [
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000002",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000001"
+      },
+      {
+        "sourcePort": 0,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000004",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000002"
+      },
+      {
+        "sourcePort": -1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000003",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000002"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000031",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000003"
+      },
+      {
+        "sourcePort": 0,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000005",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000004"
+      },
+      {
+        "sourcePort": 1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000016",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000004"
+      },
+      {
+        "sourcePort": 2,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000003",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000004"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000051",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000005"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000006",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000051"
+      },
+      {
+        "sourcePort": 0,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000061",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000006"
+      },
+      {
+        "sourcePort": -1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000021",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000006"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000007",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000061"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000071",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000007"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000008",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000071"
+      },
+      {
+        "sourcePort": 0,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000081",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000008"
+      },
+      {
+        "sourcePort": -1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000021",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000008"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000009",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000081"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000091",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000009"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000010",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000091"
+      },
+      {
+        "sourcePort": 0,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000101",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000010"
+      },
+      {
+        "sourcePort": -1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000021",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000010"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000011",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000101"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000111",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000011"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000012",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000111"
+      },
+      {
+        "sourcePort": 0,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000121",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000012"
+      },
+      {
+        "sourcePort": -1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000021",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000012"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000013",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000121"
+      },
+      {
+        "sourcePort": 0,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000014",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000013"
+      },
+      {
+        "sourcePort": -1,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000021",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000013"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000016",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000014"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000017",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000016"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000018",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000017"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000022",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000021"
+      }
+    ],
+    "flowId": "wf_cpcp_main",
+    "version": "1.6"
+  },
+  "userScope": 4,
+  "projectId": ""
+}
