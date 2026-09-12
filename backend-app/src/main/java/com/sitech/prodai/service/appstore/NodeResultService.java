@@ -15,7 +15,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.regex.Pattern;
 
 /**
  * 产销品加载 AI 应用 · 节点结果存储/查询服务（save_node_result / query_node_result 插件后端）。
@@ -33,11 +32,7 @@ public class NodeResultService {
 
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
-    private static final Pattern REQ_ID_PATTERN = Pattern.compile("^REQ-\\d{8}-\\d{3}$");
     private static final int MAX_RESULT_JSON_BYTES = 64 * 1024;
-    private static final List<String> NODE_NAMES = List.of(
-            "requirement", "config", "spec", "fee", "test", "acceptance", "approval", "monitor");
-    private static final List<String> STATUS_VALUES = List.of("ok", "failed", "rejected");
 
     /** 节点结果记录：record_id -> 记录 */
     private final Map<String, Map<String, Object>> results = new ConcurrentHashMap<>();
@@ -51,11 +46,11 @@ public class NodeResultService {
      */
     public synchronized Map<String, Object> save(String reqId, String nodeName, String resultJson, String status) {
         String req = reqId == null ? "" : reqId.trim();
-        if (!REQ_ID_PATTERN.matcher(req).matches()) {
+        if (req.isEmpty()) {
             return fail(5002, "invalid req_id format");
         }
         String node = nodeName == null ? "" : nodeName.trim();
-        if (!NODE_NAMES.contains(node)) {
+        if (node.isEmpty()) {
             return fail(5003, "invalid node_name");
         }
         String result = resultJson == null ? "" : resultJson;
@@ -63,9 +58,6 @@ public class NodeResultService {
             return fail(5004, "result_json too large");
         }
         String status0 = status == null || status.isBlank() ? "ok" : status.trim().toLowerCase();
-        if (!STATUS_VALUES.contains(status0)) {
-            return fail(5005, "invalid status");
-        }
 
         // 同键覆盖：req_id + node_name 唯一确定一条记录（支持重跑环节）
         Map<String, Object> existed = findLatest(req, node);
@@ -101,13 +93,10 @@ public class NodeResultService {
      */
     public Map<String, Object> query(String reqId, String nodeName, String latestOnly) {
         String req = reqId == null ? "" : reqId.trim();
-        if (!REQ_ID_PATTERN.matcher(req).matches()) {
+        if (req.isEmpty()) {
             return fail(5002, "invalid req_id format");
         }
         String node = nodeName == null ? "" : nodeName.trim();
-        if (!node.isEmpty() && !NODE_NAMES.contains(node)) {
-            return fail(5003, "invalid node_name");
-        }
 
         List<Map<String, Object>> hit = new ArrayList<>();
         for (Map<String, Object> r : results.values()) {
@@ -140,6 +129,80 @@ public class NodeResultService {
         Map<String, Object> body = ok("total", list.size());
         body.put("list", list);
         return body;
+    }
+
+    /* ---------------- V1.6 key 规范（plan_id / EXEC{execution_id}_STAGE{n}） ---------------- */
+
+    /**
+     * V1.6 接口13：节点结果存储 save_node_result —— key 唯一确定记录（同键覆盖）。
+     * key 格式校验由调用方（OfferSimV16Service）完成；非法 key 返回 5002。
+     */
+    public synchronized Map<String, Object> saveV16(String key, String resultJson, String status) {
+        String result = resultJson == null ? "" : resultJson;
+        if (result.getBytes(StandardCharsets.UTF_8).length > MAX_RESULT_JSON_BYTES) {
+            return fail(5004, "result_json too large");
+        }
+        String status0 = status == null || status.isBlank() ? "ok" : status.trim().toLowerCase();
+
+        Map<String, Object> existed = findLatestV16(key);
+        String ts = LocalDateTime.now().format(TS);
+        String createTime = existed == null ? ts : MapOps.str(existed.get("create_time"));
+        if (existed != null) {
+            results.remove(MapOps.str(existed.get("record_id")));
+            log.info("[NodeResultService] V1.6 覆盖旧记录 key={}", key);
+        }
+
+        String recordId = nextRecordId();
+        Map<String, Object> record = new LinkedHashMap<>();
+        record.put("record_id", recordId);
+        record.put("key", key);
+        record.put("result_json", result);
+        record.put("status", status0);
+        record.put("create_time", createTime);
+        record.put("update_time", ts);
+        results.put(recordId, record);
+        log.info("[NodeResultService] V1.6 保存节点结果 record_id={} key={} status={}", recordId, key, status0);
+
+        Map<String, Object> body = ok("record_id", recordId);
+        body.put("key", key);
+        body.put("saved_at", ts);
+        return body;
+    }
+
+    /**
+     * V1.6 接口14：节点结果查询 query_node_result —— 按 key 查询；查无返回 5005。
+     */
+    public Map<String, Object> queryV16(String key) {
+        Map<String, Object> latest = findLatestV16(key);
+        if (latest == null) {
+            return fail(5005, "record not found for key: " + key);
+        }
+        Map<String, Object> body = ok("record", snapshotV16(latest));
+        return body;
+    }
+
+    private Map<String, Object> findLatestV16(String key) {
+        Map<String, Object> latest = null;
+        for (Map<String, Object> r : results.values()) {
+            if (!key.equals(MapOps.str(r.get("key")))) {
+                continue;
+            }
+            if (latest == null || MapOps.str(r.get("update_time"))
+                    .compareTo(MapOps.str(latest.get("update_time"))) > 0) {
+                latest = r;
+            }
+        }
+        return latest;
+    }
+
+    private Map<String, Object> snapshotV16(Map<String, Object> record) {
+        Map<String, Object> copy = new LinkedHashMap<>();
+        copy.put("key", record.get("key"));
+        copy.put("result_json", record.get("result_json"));
+        copy.put("status", record.get("status"));
+        copy.put("create_time", record.get("create_time"));
+        copy.put("update_time", record.get("update_time"));
+        return copy;
     }
 
     /* ---------------- 工具 ---------------- */
