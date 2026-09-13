@@ -1,0 +1,296 @@
+{
+  "flowName": "产销品-上线审批技能",
+  "flowRemark": "Skill-4（主动）：上线审批发起。执行主干全部成功且用户确认后触发：报告汇总（强制含受理验证结论）→submit_release_approval推送（插件层二次校验approve_confirmed+幂等）。",
+  "flowIco": "workflowIcon",
+  "workFlowSchema": null,
+  "workFlowSchemaJSON": {
+    "nodes": [
+      {
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "product_id",
+            "description": "CRM产品ID（必填）",
+            "type": "string",
+            "required": true,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "execution_id",
+            "description": "执行主干批次号（回放各阶段结果用，选填）",
+            "type": "string",
+            "required": false,
+            "content": ""
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "工作流的起始节点，用于设定启动工作流需要的信息",
+          "title": "开始节点"
+        },
+        "position": {
+          "x": 15,
+          "y": 300
+        },
+        "id": "b2c3d4e5-0000-4000-8000-000000000301",
+        "dependencyData": [],
+        "type": 0
+      },
+      {
+        "outputs": [
+          {
+            "name": "report",
+            "description": "上线报告",
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "max_tokens": 2048,
+        "flowJson": null,
+        "inputs": {
+          "llmParam": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "content": "请基于以下输入数据，按标准模板汇总生成《销售品上线测试与稽核报告》：\n【配置落地结果】product_id={product_id}\n【各阶段结果】execution_id={execution_id}（节点结果存储 req_id=execution_id 回放 config/spec/fee/test 四条记录）\n报告必须包含以下章节：1.需求摘要与执行方案要点；2.配置落地结果；3.稽核结论；4.资费结论；5.测试统计与失败明细；6.受理验证结论（强制章节，逐受理场景给出通过/失败结论）；7.上线建议。只基于输入数据生成，不得新增结论。\n输出要求：仅输出报告内容（对应出参 report），不输出其他多余文字。"
+            }
+          ],
+          "inputParameters": [
+            {
+              "blockID": "b2c3d4e5-0000-4000-8000-000000000301",
+              "relName": "product_id",
+              "name": "product_id",
+              "description": "产品ID",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "b2c3d4e5-0000-4000-8000-000000000301",
+                "b2c3d4e5-0000-4000-8000-000000000301,product_id"
+              ],
+              "currValue": "b2c3d4e5-0000-4000-8000-000000000301,product_id"
+            },
+            {
+              "blockID": "b2c3d4e5-0000-4000-8000-000000000301",
+              "relName": "execution_id",
+              "name": "execution_id",
+              "description": "执行批次号",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "b2c3d4e5-0000-4000-8000-000000000301",
+                "b2c3d4e5-0000-4000-8000-000000000301,execution_id"
+              ],
+              "currValue": "b2c3d4e5-0000-4000-8000-000000000301,execution_id"
+            }
+          ]
+        },
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "报告汇总",
+          "title": "报告汇总"
+        },
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "position": {
+          "x": 280,
+          "y": 300
+        },
+        "id": "b2c3d4e5-0000-4000-8000-000000000302",
+        "dependencyData": [],
+        "type": 1
+      },
+      {
+        "outputs": [
+          {
+            "name": "approval_id",
+            "cname": "审批单号",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "status",
+            "cname": "提交状态",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "b2c3d4e5-0000-4000-8000-000000000301",
+            "relName": "product_id",
+            "name": "product_id",
+            "description": "CRM产品ID",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "b2c3d4e5-0000-4000-8000-000000000301",
+              "b2c3d4e5-0000-4000-8000-000000000301,product_id"
+            ],
+            "currValue": "b2c3d4e5-0000-4000-8000-000000000301,product_id"
+          },
+          {
+            "blockID": "b2c3d4e5-0000-4000-8000-000000000302",
+            "relName": "report",
+            "name": "report_url",
+            "description": "上线报告",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "b2c3d4e5-0000-4000-8000-000000000302",
+              "b2c3d4e5-0000-4000-8000-000000000302,report"
+            ],
+            "currValue": "b2c3d4e5-0000-4000-8000-000000000302,report"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "approve_confirmed",
+            "description": "审批发起确认标志true（智能体确认门禁保证）",
+            "type": "string",
+            "required": true,
+            "content": "true"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "approval_flow",
+            "description": "审批流默认standard",
+            "type": "string",
+            "required": true,
+            "content": "standard"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "审批推送",
+          "code": "submit_release_approval",
+          "description": "工具9：自研模拟审批推送；插件层校验approve_confirmed==true（未经确认返回NOT_CONFIRMED）；幂等：同product_id返回原approval_id",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "b2c3d4e5-0000-4000-8000-000000000303",
+        "position": {
+          "x": 545,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/approval/submit"
+      },
+      {
+        "outputs": {
+          "name": "",
+          "type": "string",
+          "content": "上线审批已推送：approval_id={approval_id}，status={status}\n可随时发送\"查询审批进度\"消息查询审批状态。"
+        },
+        "settings": {
+          "stream": false,
+          "output_mode": "text"
+        },
+        "terminatePlan": "useAnswerContent",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "b2c3d4e5-0000-4000-8000-000000000303",
+            "relName": "approval_id",
+            "name": "approval_id",
+            "description": "审批单号",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "b2c3d4e5-0000-4000-8000-000000000303",
+              "b2c3d4e5-0000-4000-8000-000000000303,approval_id"
+            ],
+            "currValue": "b2c3d4e5-0000-4000-8000-000000000303,approval_id"
+          },
+          {
+            "blockID": "b2c3d4e5-0000-4000-8000-000000000303",
+            "relName": "status",
+            "name": "status",
+            "description": "提交状态",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "b2c3d4e5-0000-4000-8000-000000000303",
+              "b2c3d4e5-0000-4000-8000-000000000303,status"
+            ],
+            "currValue": "b2c3d4e5-0000-4000-8000-000000000303,status"
+          }
+        ],
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
+          "title": "结束(审批已推送)"
+        },
+        "type": 9,
+        "top_p": 1,
+        "top_k": 0.1,
+        "temperature": 0.1,
+        "position": {
+          "x": 810,
+          "y": 300
+        },
+        "id": "b2c3d4e5-0000-4000-8000-000000000304",
+        "dependencyData": []
+      }
+    ],
+    "edges": [
+      {
+        "sourcePort": null,
+        "endId": "b2c3d4e5-0000-4000-8000-000000000302",
+        "startId": "b2c3d4e5-0000-4000-8000-000000000301"
+      },
+      {
+        "sourcePort": null,
+        "endId": "b2c3d4e5-0000-4000-8000-000000000303",
+        "startId": "b2c3d4e5-0000-4000-8000-000000000302"
+      },
+      {
+        "sourcePort": null,
+        "endId": "b2c3d4e5-0000-4000-8000-000000000304",
+        "startId": "b2c3d4e5-0000-4000-8000-000000000303"
+      }
+    ],
+    "flowId": "skill_04",
+    "version": "1.6"
+  },
+  "userScope": 4,
+  "projectId": "",
+  "skillMeta": {
+    "skillId": "skill_04",
+    "skillName": "产销品-上线审批技能",
+    "triggerType": {
+      "passive": false,
+      "active": true,
+      "triggers": [
+        "发起审批",
+        "确认上线"
+      ]
+    },
+    "description": "执行主干全部成功且用户明确确认后，汇总报告（含受理验证结论）并推送审批流，输出审批单号。不得自动发起。"
+  }
+}

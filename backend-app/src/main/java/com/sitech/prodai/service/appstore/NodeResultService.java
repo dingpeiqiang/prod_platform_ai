@@ -1,6 +1,8 @@
 package com.sitech.prodai.service.appstore;
 
-import com.sitech.prodai.service.common.MapOps;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.sitech.prodai.domain.entity.NodeResultRecord;
+import com.sitech.prodai.mapper.NodeResultMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -13,7 +15,6 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -23,7 +24,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * key 设计 = req_id + node_name；同键覆盖（支持重跑环节）；result_json 透传存储不做格式校验解析；
  * code=0 成功，非 0 业务失败（与现有 11 个插件一致）。
  * <p>
- * 线程安全：ConcurrentHashMap + 方法级同步写入。
+ * 持久化：MyBatis-Plus 落库 pd_ai_node_results（H2/MySQL 同构 DDL，见 sql/ 脚本），
+ * 重启不丢失；同键覆盖采用「查最新→删除旧记录→插入新记录」语义，与原内存版一致。
  */
 @Service
 public class NodeResultService {
@@ -34,10 +36,27 @@ public class NodeResultService {
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final int MAX_RESULT_JSON_BYTES = 64 * 1024;
 
-    /** 节点结果记录：record_id -> 记录 */
-    private final Map<String, Map<String, Object>> results = new ConcurrentHashMap<>();
-    /** 记录 ID 序号 */
+    private final NodeResultMapper mapper;
+    /** 记录 ID 序号（重启后基于当日已有记录数续排，防重复） */
     private final AtomicLong seqRecord = new AtomicLong(0L);
+
+    public NodeResultService(NodeResultMapper mapper) {
+        this.mapper = mapper;
+        // 启动时把自增序号拨到当前最大值之后，保证 record_id 全局唯一
+        String today = DATE.format(LocalDateTime.now());
+        NodeResultRecord latest = mapper.selectOne(new LambdaQueryWrapper<NodeResultRecord>()
+                .likeRight(NodeResultRecord::getRecordId, "REC" + today)
+                .orderByDesc(NodeResultRecord::getId)
+                .last("LIMIT 1"));
+        if (latest != null) {
+            String rid = latest.getRecordId();
+            try {
+                seqRecord.set(Long.parseLong(rid.substring(("REC" + today).length())));
+            } catch (NumberFormatException ignore) {
+                // 历史记录 ID 格式异常时从 0 起排，record_id 冲突概率极低（含秒级日期+6位序号）
+            }
+        }
+    }
 
     /**
      * 接口一：节点结果存储 save_node_result。
@@ -53,37 +72,7 @@ public class NodeResultService {
         if (node.isEmpty()) {
             return fail(5003, "invalid node_name");
         }
-        String result = resultJson == null ? "" : resultJson;
-        if (result.getBytes(StandardCharsets.UTF_8).length > MAX_RESULT_JSON_BYTES) {
-            return fail(5004, "result_json too large");
-        }
-        String status0 = status == null || status.isBlank() ? "ok" : status.trim().toLowerCase();
-
-        // 同键覆盖：req_id + node_name 唯一确定一条记录（支持重跑环节）
-        Map<String, Object> existed = findLatest(req, node);
-        String ts = LocalDateTime.now().format(TS);
-        String createTime = existed == null ? ts : MapOps.str(existed.get("create_time"));
-        if (existed != null) {
-            results.remove(MapOps.str(existed.get("record_id")));
-            log.info("[NodeResultService] 覆盖旧记录 req_id={} node_name={}", req, node);
-        }
-
-        String recordId = nextRecordId();
-        Map<String, Object> record = new LinkedHashMap<>();
-        record.put("record_id", recordId);
-        record.put("req_id", req);
-        record.put("node_name", node);
-        record.put("result_json", result);
-        record.put("status", status0);
-        record.put("create_time", createTime);
-        record.put("update_time", ts);
-        results.put(recordId, record);
-        log.info("[NodeResultService] 保存节点结果 record_id={} req_id={} node_name={} status={}",
-                recordId, req, node, status0);
-
-        Map<String, Object> body = ok("record_id", recordId);
-        body.put("saved_at", ts);
-        return body;
+        return doSave(req, node, null, resultJson, status);
     }
 
     /**
@@ -98,32 +87,28 @@ public class NodeResultService {
         }
         String node = nodeName == null ? "" : nodeName.trim();
 
-        List<Map<String, Object>> hit = new ArrayList<>();
-        for (Map<String, Object> r : results.values()) {
-            if (!MapOps.str(r.get("req_id")).equals(req)) {
-                continue;
-            }
-            if (!node.isEmpty() && !MapOps.str(r.get("node_name")).equals(node)) {
-                continue;
-            }
-            hit.add(snapshot(r));
-        }
-        hit.sort(Comparator.comparing((Map<String, Object> r) -> MapOps.str(r.get("update_time"))).reversed());
+        List<NodeResultRecord> hit = mapper.selectList(new LambdaQueryWrapper<NodeResultRecord>()
+                .eq(NodeResultRecord::getReqId, req)
+                .eq(!node.isEmpty(), NodeResultRecord::getNodeName, node));
 
         List<Map<String, Object>> list;
         // latest_only 默认 "1"：只返回每个环节最新一条；"0" 返回历史全部版本
         if (!"0".equals(latestOnly)) {
-            Map<String, String> picked = new LinkedHashMap<>();
+            Map<String, NodeResultRecord> picked = new LinkedHashMap<>();
+            hit.sort(Comparator.comparing((NodeResultRecord r) -> tsOf(r)).reversed());
+            for (NodeResultRecord r : hit) {
+                picked.putIfAbsent(r.getNodeName() == null ? "" : r.getNodeName(), r);
+            }
             list = new ArrayList<>();
-            for (Map<String, Object> r : hit) {
-                String n = MapOps.str(r.get("node_name"));
-                if (picked.put(n, MapOps.str(r.get("record_id"))) != null) {
-                    continue;
-                }
-                list.add(r);
+            for (NodeResultRecord r : picked.values()) {
+                list.add(snapshot(r));
             }
         } else {
-            list = hit;
+            hit.sort(Comparator.comparing((NodeResultRecord r) -> tsOf(r)).reversed());
+            list = new ArrayList<>();
+            for (NodeResultRecord r : hit) {
+                list.add(snapshot(r));
+            }
         }
 
         Map<String, Object> body = ok("total", list.size());
@@ -138,42 +123,14 @@ public class NodeResultService {
      * key 格式校验由调用方（OfferSimV16Service）完成；非法 key 返回 5002。
      */
     public synchronized Map<String, Object> saveV16(String key, String resultJson, String status) {
-        String result = resultJson == null ? "" : resultJson;
-        if (result.getBytes(StandardCharsets.UTF_8).length > MAX_RESULT_JSON_BYTES) {
-            return fail(5004, "result_json too large");
-        }
-        String status0 = status == null || status.isBlank() ? "ok" : status.trim().toLowerCase();
-
-        Map<String, Object> existed = findLatestV16(key);
-        String ts = LocalDateTime.now().format(TS);
-        String createTime = existed == null ? ts : MapOps.str(existed.get("create_time"));
-        if (existed != null) {
-            results.remove(MapOps.str(existed.get("record_id")));
-            log.info("[NodeResultService] V1.6 覆盖旧记录 key={}", key);
-        }
-
-        String recordId = nextRecordId();
-        Map<String, Object> record = new LinkedHashMap<>();
-        record.put("record_id", recordId);
-        record.put("key", key);
-        record.put("result_json", result);
-        record.put("status", status0);
-        record.put("create_time", createTime);
-        record.put("update_time", ts);
-        results.put(recordId, record);
-        log.info("[NodeResultService] V1.6 保存节点结果 record_id={} key={} status={}", recordId, key, status0);
-
-        Map<String, Object> body = ok("record_id", recordId);
-        body.put("key", key);
-        body.put("saved_at", ts);
-        return body;
+        return doSave(null, null, key, resultJson, status);
     }
 
     /**
      * V1.6 接口14：节点结果查询 query_node_result —— 按 key 查询；查无返回 5005。
      */
     public Map<String, Object> queryV16(String key) {
-        Map<String, Object> latest = findLatestV16(key);
+        NodeResultRecord latest = findLatestByKey(key);
         if (latest == null) {
             return fail(5005, "record not found for key: " + key);
         }
@@ -181,55 +138,95 @@ public class NodeResultService {
         return body;
     }
 
-    private Map<String, Object> findLatestV16(String key) {
-        Map<String, Object> latest = null;
-        for (Map<String, Object> r : results.values()) {
-            if (!key.equals(MapOps.str(r.get("key")))) {
-                continue;
-            }
-            if (latest == null || MapOps.str(r.get("update_time"))
-                    .compareTo(MapOps.str(latest.get("update_time"))) > 0) {
+    /* ---------------- 共用写入/查询 ---------------- */
+
+    private synchronized Map<String, Object> doSave(String reqId, String nodeName, String key,
+                                                    String resultJson, String status) {
+        String result = resultJson == null ? "" : resultJson;
+        if (result.getBytes(StandardCharsets.UTF_8).length > MAX_RESULT_JSON_BYTES) {
+            return fail(5004, "result_json too large");
+        }
+        String status0 = status == null || status.isBlank() ? "ok" : status.trim().toLowerCase();
+
+        // 同键覆盖：删除旧记录（保留 create_time 语义）
+        NodeResultRecord existed = key != null ? findLatestByKey(key) : findLatestByReqNode(reqId, nodeName);
+        String ts = LocalDateTime.now().format(TS);
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime createTimeLdt = existed == null || existed.getCreatedAt() == null
+                ? now : existed.getCreatedAt();
+        String createTime = createTimeLdt.format(TS);
+        if (existed != null) {
+            mapper.deleteById(existed.getId());
+            log.info("[NodeResultService] 覆盖旧记录 key={} req_id={} node_name={}", key, reqId, nodeName);
+        }
+
+        NodeResultRecord record = new NodeResultRecord();
+        record.setRecordId(nextRecordId());
+        record.setReqId(reqId);
+        record.setNodeName(nodeName);
+        record.setResultKey(key);
+        record.setResultJson(result);
+        record.setStatus(status0);
+        record.setCreatedAt(createTimeLdt);
+        record.setUpdatedAt(now);
+        mapper.insert(record);
+        log.info("[NodeResultService] 保存节点结果 record_id={} key={} req_id={} node_name={} status={}",
+                record.getRecordId(), key, reqId, nodeName, status0);
+
+        Map<String, Object> body = ok("record_id", record.getRecordId());
+        if (key != null) {
+            body.put("key", key);
+        }
+        body.put("saved_at", ts);
+        return body;
+    }
+
+    private NodeResultRecord findLatestByKey(String key) {
+        List<NodeResultRecord> hit = mapper.selectList(new LambdaQueryWrapper<NodeResultRecord>()
+                .eq(NodeResultRecord::getResultKey, key));
+        return latestOf(hit);
+    }
+
+    private NodeResultRecord findLatestByReqNode(String reqId, String nodeName) {
+        List<NodeResultRecord> hit = mapper.selectList(new LambdaQueryWrapper<NodeResultRecord>()
+                .eq(NodeResultRecord::getReqId, reqId)
+                .eq(nodeName != null && !nodeName.isEmpty(), NodeResultRecord::getNodeName, nodeName));
+        return latestOf(hit);
+    }
+
+    private NodeResultRecord latestOf(List<NodeResultRecord> hit) {
+        NodeResultRecord latest = null;
+        for (NodeResultRecord r : hit) {
+            if (latest == null || tsOf(r).compareTo(tsOf(latest)) > 0) {
                 latest = r;
             }
         }
         return latest;
     }
 
-    private Map<String, Object> snapshotV16(Map<String, Object> record) {
+    private String tsOf(NodeResultRecord r) {
+        LocalDateTime t = r.getUpdatedAt() != null ? r.getUpdatedAt() : r.getCreatedAt();
+        return t == null ? "" : t.format(TS);
+    }
+
+    private Map<String, Object> snapshotV16(NodeResultRecord r) {
         Map<String, Object> copy = new LinkedHashMap<>();
-        copy.put("key", record.get("key"));
-        copy.put("result_json", record.get("result_json"));
-        copy.put("status", record.get("status"));
-        copy.put("create_time", record.get("create_time"));
-        copy.put("update_time", record.get("update_time"));
+        copy.put("key", r.getResultKey());
+        copy.put("result_json", r.getResultJson());
+        copy.put("status", r.getStatus());
+        copy.put("create_time", r.getCreatedAt() == null ? "" : r.getCreatedAt().format(TS));
+        copy.put("update_time", tsOf(r));
         return copy;
     }
 
-    /* ---------------- 工具 ---------------- */
-
-    private Map<String, Object> findLatest(String reqId, String nodeName) {
-        Map<String, Object> latest = null;
-        for (Map<String, Object> r : results.values()) {
-            if (!MapOps.str(r.get("req_id")).equals(reqId)
-                    || !MapOps.str(r.get("node_name")).equals(nodeName)) {
-                continue;
-            }
-            if (latest == null || MapOps.str(r.get("update_time"))
-                    .compareTo(MapOps.str(latest.get("update_time"))) > 0) {
-                latest = r;
-            }
-        }
-        return latest;
-    }
-
-    private Map<String, Object> snapshot(Map<String, Object> record) {
+    private Map<String, Object> snapshot(NodeResultRecord r) {
         Map<String, Object> copy = new LinkedHashMap<>();
-        copy.put("req_id", record.get("req_id"));
-        copy.put("node_name", record.get("node_name"));
-        copy.put("result_json", record.get("result_json"));
-        copy.put("status", record.get("status"));
-        copy.put("create_time", record.get("create_time"));
-        copy.put("update_time", record.get("update_time"));
+        copy.put("req_id", r.getReqId());
+        copy.put("node_name", r.getNodeName());
+        copy.put("result_json", r.getResultJson());
+        copy.put("status", r.getStatus());
+        copy.put("create_time", r.getCreatedAt() == null ? "" : r.getCreatedAt().format(TS));
+        copy.put("update_time", tsOf(r));
         return copy;
     }
 

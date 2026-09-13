@@ -495,10 +495,34 @@ CREATE TABLE `pd_ai_ops_work_orders` (
 )
     ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='产商品运营处置工单' DISTRIBUTED BY DUPLICATE(g1,g2);
 
+
+-- ------------------------------------------------------------
+-- 26. 节点结果存储（产销品加载 V1.6 · save_node_result / query_node_result）
+--     双键形态：legacy(req_id+node_name) / V1.6(result_key=plan_id 或 EXEC{execution_id}_STAGE{n})
+--     同键覆盖：重跑环节仅保留最新一条；result_json 透传存储（≤64KB）
+-- ------------------------------------------------------------
+CREATE TABLE `pd_ai_node_results` (
+                                         `id`                 BIGINT       NOT NULL AUTO_INCREMENT,
+                                         `record_id`          VARCHAR(64)  NOT NULL,
+                                         `req_id`             VARCHAR(128)          DEFAULT NULL,
+                                         `node_name`          VARCHAR(64)           DEFAULT NULL,
+                                         `result_key`         VARCHAR(191)          DEFAULT NULL,
+                                         `result_json`        TEXT                  DEFAULT NULL,
+                                         `status`             VARCHAR(32)  NOT NULL DEFAULT 'ok',
+                                         `created_at`         TIMESTAMP(6)          DEFAULT NULL,
+                                         `updated_at`         TIMESTAMP(6)          DEFAULT NULL,
+                                         PRIMARY KEY (`id`),
+                                         CONSTRAINT `uk_nr_record_id` UNIQUE (`record_id`)
+)
+    ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='节点结果存储（V1.6 子工作流环节结果）' DISTRIBUTED BY DUPLICATE(g1,g2);
+
+CREATE INDEX `idx_nr_req_node` ON `pd_ai_node_results` (`req_id`, `node_name`, `updated_at`);
+CREATE INDEX `idx_nr_key` ON `pd_ai_node_results` (`result_key`, `updated_at`);
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ============================================================
--- 表清单（共 22 张）
+-- 表清单（共 23 张）
 -- pd_ai_chat_sessions, pd_ai_chat_messages, pd_ai_chat_message_metadata
 -- pd_ai_mcp_tool_definitions, pd_ai_mcp_call_logs, pd_ai_mcp_tool_stats
 -- pd_ai_llm_user_configs
@@ -509,4 +533,5 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- pd_ai_ontology_version, pd_ai_ontology_version_log
 -- pd_ai_swrl_rules
 -- pd_ai_ops_work_orders
+-- pd_ai_node_results（V1.6 节点结果存储）
 -- ============================================================

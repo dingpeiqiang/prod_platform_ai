@@ -429,6 +429,28 @@ CREATE TABLE IF NOT EXISTS pd_ai_swrl_rules (
 CREATE INDEX IF NOT EXISTS idx_sr_module ON pd_ai_swrl_rules (module);
 
 -- ------------------------------------------------------------
+-- 8a. 节点结果存储（产销品加载 V1.6 · save_node_result / query_node_result）
+--     双键形态：legacy(req_id+node_name) / V1.6(result_key)
+--     同键覆盖：重跑环节仅保留最新一条
+--     同构 MySQL DDL 见 sql/01_full_schema_ddl.sql
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pd_ai_node_results (
+    id                 BIGINT        NOT NULL AUTO_INCREMENT,
+    record_id          VARCHAR(64)   NOT NULL,
+    req_id             VARCHAR(128)  DEFAULT NULL,
+    node_name          VARCHAR(64)   DEFAULT NULL,
+    result_key         VARCHAR(191)  DEFAULT NULL,
+    result_json        TEXT          DEFAULT NULL,
+    status             VARCHAR(32)   NOT NULL DEFAULT 'ok',
+    created_at         TIMESTAMP(6)  DEFAULT NULL,
+    updated_at         TIMESTAMP(6)  DEFAULT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_nr_record_id UNIQUE (record_id)
+);
+CREATE INDEX IF NOT EXISTS idx_nr_req_node ON pd_ai_node_results (req_id, node_name, updated_at);
+CREATE INDEX IF NOT EXISTS idx_nr_key ON pd_ai_node_results (result_key, updated_at);
+
+-- ------------------------------------------------------------
 -- 9. 产商品运营工单
 -- ------------------------------------------------------------
 
