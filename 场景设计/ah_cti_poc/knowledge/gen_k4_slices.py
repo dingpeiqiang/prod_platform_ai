@@ -96,7 +96,7 @@ def write_offer(offer_id, name, slices):
     lines.append("# 销售品资料：{}（{}）".format(name, offer_id))
     lines.append("")
     lines.append("> 来源：《产品信息.txt》 | 分类：K4 存量销售品资料库 | 版本：V1.0")
-    lines.append("> 用途边界：仅用于 AI 补全字段参照、需求样例改写测试、测试预期值（presetValue）人工核对基准；不得作为新需求字段来源覆盖用户原始需求。")
+    lines.append("> 用途边界：仅用于 AI推理字段参照、需求样例改写测试、测试预期值（presetValue）人工核对基准；不得作为新需求字段来源覆盖用户原始需求。")
     lines.append("")
     for slice_name, text in slices:
         text = text.strip()

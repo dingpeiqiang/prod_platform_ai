@@ -240,7 +240,7 @@ plugins = []
 # ---------------- 工具1 相似度分析 ----------------
 plugins.append(build_plugin(
     "similar-offer-0001", "相似度分析", "query_similar_offer",
-    "自研模拟实现（V1.6）：以《产品信息.txt》全部18个销售品（5G-A系列10个+权益随心选系列8个）为相似产品库，按业务需求描述返回相似销售品列表及相似度评分，支撑需求分析环节匹配历史产品与AI补全",
+    "自研模拟实现（V1.6）：以《产品信息.txt》全部18个销售品（5G-A系列10个+权益随心选系列8个）为相似产品库，按业务需求描述返回相似销售品列表及相似度评分，支撑需求分析环节匹配历史产品与AI推理",
     "/api/v1/appstore/similar/offer/query", "POST",
     {
         "businessDesc": schema_param("businessDesc", "string",
@@ -587,7 +587,7 @@ plugins.append(build_plugin(
         "action": schema_param("action", "string",
             "推理动作枚举：reason（一体推理：校验+修正+补全，工作流主用）/validate（仅校验）/complete（仅默认值补全）/ontology（本体定义查询）；非法返回 5101", True, "", "reason,validate,complete,ontology"),
         "fields_json": schema_param("fields_json", "string",
-            "字段数组JSON字符串：[{\"field\":\"字段名称\",\"value\":\"字段值\",\"source\":\"原始需求或AI补全\"}]；action=ontology 时可空", False),
+            "字段数组JSON字符串：[{\"field\":\"字段名称\",\"value\":\"字段值\",\"source\":\"原始需求或AI推理\"}]；action=ontology 时可空", False),
     },
     ["action"],
     {
