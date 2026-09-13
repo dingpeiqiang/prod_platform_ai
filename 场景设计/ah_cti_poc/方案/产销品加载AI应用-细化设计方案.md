@@ -13,7 +13,7 @@
 | V1.3 | 2026-09-13 | 对齐主方案 V1.7（LLM 智能调度模式）：① 智能体装配改为**仅挂载 `wf_sub_01~08` 八个子工作流**，主流程 `wf_cpcp_main` 弃用归档（1.2/3.0/第 5 章同步）；② 3.3 时序说明重写为"LLM 智能调度三段式时序"（确认标记→串行直调→审批引导），新增【意图→子工作流智能调度映射表】替代旧【意图→主工作流入参注入映射表】；③ 3.4.3 门禁条件改写为工具层硬校验（CONFIRMED 标记/四环节结果）+ LLM 串行纪律；④ wf_sub_02/wf_sub_06 相关节点说明同步（CONFIRMED 门禁、四环节校验）；⑤ 异常矩阵 E3/E4/E15 触发点更新；⑥ 附录 B/C 核对清单同步 |
 | V1.4 | 2026-09-13 | 对齐主方案 V2.0（**本体+相似产品组合补全**）：① 知识分类 5→6（新增 **K6 字段本体库**，四类18字段类型/枚举/格式/默认规则/兜底口径）；② K6 挂载 wf_sub_01 节点2/节点4（4.1/4.2.1/4.3 同步）；③ 3.4.2 重写为"组合补全策略 + 字段形态校验 + 待补充判定"；④ 6.3 枚举值约定新增 K6 本体口径 |
 | V1.5 | 2026-09-13 | 对齐主方案 V2.1（**字段补全改为本体推理引擎实现**）：① 删除 K6 字段本体库，知识分类 6→5（恢复 K1~K5）；② 3.4.2 组合补全策略改写为「取值链 + 后端字段本体推理引擎（工具14 field_ontology_reason，**action=reason 一体推理**：校验+修正回写+默认值补全）」；③ wf_sub_01 新增「字段本体推理」节点（节点4 后**串行闭环**，方案输出拆分以推理后 fields_json 为准）；④ 4.1/4.2/4.3/6.3 同步（K6 行删除、知识库挂载恢复 K1~K5） |
-| V1.6 | 2026-09-13 | 对齐主方案 V2.2（**确认门禁移除 + 子工作流取值断链修复**）：① 工具7 `save_product_config` **移除确认门禁**——删除 confirmed==true 校验与存储 CONFIRMED 标记校验（NodeResultService.existingNodes 一并删除），NOT_CONFIRMED 状态不再出现；确认与否由智能体 LLM 语义识别保证；② wf_sub_02 新增「提取执行方案原文」代码节点（query_node_result 出参 list 记录数组 → 提取 list[0].result_json 原文再传 save_product_config）；③ wf_sub_03/04/05 取值断链修复：新增 query_node_result 自查（req_id+node_name=config）+ 提取原文代码节点，offer_id/config_json 改从 config 环节结果取值；④ 3.2/3.3/3.4.3/7.2/附录 C 同步（CONFIRMED 相关表述更新为 V2.2 口径）；⑤ **待补充项判定收归引擎单一事实源**：wf_sub_01 方案输出拆分节点 004a 的 pending_fields 改为从本体推理引擎返回的推理后字段数组反查（value=待补充），不再采信节点4 LLM 自判的 pending_fields；节点4 提示词同步——pending_fields 固定输出空数组，待补充判定职责移交引擎；⑥ 字段本体推理引擎修正增强：渠道类型多选归一补同义词映射表（营业厅/门店/实体→实体渠道，APP/网厅/线上/电子→电子渠道，直销/客户经理/政企→直销渠道）；reason 修正项补 defaulted=0 统一 fixed 明细动作结构；⑦ **待补充项全部可推理 + 值不符合规则自动修正**：本体注册表补齐 18 字段默认值（生效日期→立即生效、三类资源→无、适用地区→全国、计费周期→自然月、生效日期/资源单位格式修正等），推理引擎对 value=待补充 字段一律按默认值推理补全（仅套餐固定费价格维持待补充）；correctValue 新增产品名称 K1 模板归一（"5G-A 套餐"→"5G-A单品套餐待定档位元"）、生效日期 yyyyMMdd 归一、资源类缺单位补全（60G→60GB）；工具14 导出契约描述同步 V2.2 口径；⑧ **来源标注新增"本体推理"**：引擎补全/修正后的字段 source 由"AI补全"改标"本体推理"，来源三态扩展为四种（原始需求/AI补全=LLM 节点4 标注，本体推理=引擎自动标注）；节点4 提示词与结束节点文案同步 |
+| V1.6 | 2026-09-13 | 对齐主方案 V2.2（**确认门禁移除 + 子工作流取值断链修复**）：① 工具7 `save_product_config` **移除确认门禁**——删除 confirmed==true 校验与存储 CONFIRMED 标记校验（NodeResultService.existingNodes 一并删除），NOT_CONFIRMED 状态不再出现；确认与否由智能体 LLM 语义识别保证；② wf_sub_02 新增「提取执行方案原文」代码节点（query_node_result 出参 list 记录数组 → 提取 list[0].result_json 原文再传 save_product_config）；③ wf_sub_03/04/05 取值断链修复：新增 query_node_result 自查（req_id+node_name=config）+ 提取原文代码节点，offer_id/config_json 改从 config 环节结果取值；④ 3.2/3.3/3.4.3/7.2/附录 C 同步（CONFIRMED 相关表述更新为 V2.2 口径）；⑤ **待补充项判定收归引擎单一事实源**：wf_sub_01 方案输出拆分节点 004a 的 pending_fields 改为从本体推理引擎返回的推理后字段数组反查（value=待补充），不再采信节点4 LLM 自判的 pending_fields；节点4 提示词同步——pending_fields 固定输出空数组，待补充判定职责移交引擎；⑥ 字段本体推理引擎修正增强：渠道类型多选归一补同义词映射表（营业厅/门店/实体→实体渠道，APP/网厅/线上/电子→电子渠道，直销/客户经理/政企→直销渠道）；reason 修正项补 defaulted=0 统一 fixed 明细动作结构；⑦ **待补充项全部可推理 + 值不符合规则自动修正**：本体注册表补齐 18 字段默认值（生效日期→立即生效、三类资源→无、适用地区→全国、计费周期→自然月、生效日期/资源单位格式修正等），推理引擎对 value=待补充 字段一律按默认值推理补全（仅套餐固定费价格维持待补充）；correctValue 新增产品名称 K1 模板归一（"5G-A 套餐"→"5G-A单品套餐待定档位元"）、生效日期 yyyyMMdd 归一、资源类缺单位补全（60G→60GB）；工具14 导出契约描述同步 V2.2 口径；⑧ **来源标注新增"本体推理"**：引擎补全/修正后的字段 source 由"AI补全"改标"本体推理"，来源三态扩展为四种（原始需求/AI补全=LLM 节点4 标注，本体推理=引擎自动标注）；节点4 提示词与结束节点文案同步；⑨ **方案输出拆分重构为推理后单入参**：004a 删除 plan_output 入参（LLM 输出非最新值，保留会造成表格/方案与引擎结果偏差）——唯一数据源=节点31推理后 fields_json，plan_json 改由代码直接组装（req_id/fields/pending_fields 三键），plan_md 由代码基于推理后数组重新生成四列表格（字段分类合并单元格），节点4 出参精简为 fields_output（仅 fields 键），LLM 不再生成 plan_json/plan_md/pending_fields |
 
 ## 文档定位与阅读指引
 | 章节 | 内容 | 面向读者 |
@@ -661,8 +661,8 @@
 | 1 | 开始 | [开始] | requirement_text(string,必填)　requirement_file(string,选填) | — | 文件地址由平台文件上传组件生成 |
 | 2 | 需求理解与要素拆解 | [LLM] | requirement_text（+文件解析文本） | 要素拆解中间结果 | 温度 0.2；提示词=主方案 6.4 第 1~3 步（理解需求→提取拆解业务要素→识别完整性）；输出结构化要素 JSON（临时变量，不落存储） |
 | 3 | 相似产品查询 | [插件] | businessDesc=requirement_text（>5000字符时引用节点2输出的需求摘要） | similarOfferList | 工具1 `query_similar_offer` |
-| 4 | 字段映射与补全 | [LLM] | 要素拆解结果 + similarOfferList + 知识库检索（存量销售品资料库） | **plan_output（单出参）** | 温度 0.2；提示词=主方案 6.4 全文（含 V1.4 补全规则）；**LLM 节点仅输出 plan_output 一个出参**（内含完整 JSON 文本） |
-| 004a | 拆分方案字段 | [代码] | plan_output + 节点31推理后 fields_json | plan_json, plan_md, pending_fields, req_id | 代码节点拆分 4 个出参：**fields 与 pending_fields 均以节点31推理后结果为准**（fields 覆盖 plan_json；pending_fields 从推理后字段数组反查 value=待补充 生成，不采信 LLM 自判，V2.2 单一事实源）；req_id 系统生成（PLAN+时间戳+随机数） |
+| 4 | 字段映射与补全 | [LLM] | 要素拆解结果 + similarOfferList + 知识库检索（存量销售品资料库） | **fields_output（单出参）** | 温度 0.2；提示词=主方案 6.4 全文；**LLM 节点仅输出 fields_output 一个出参**（仅含 fields 键的字段数组，V2.2：plan_output/plan_md/pending_fields 出参已废弃——plan_md 由下游代码节点基于推理后数组重新生成） |
+| 004a | 拆分方案字段 | [代码] | 节点31推理后 fields_json（**单入参，唯一数据源**） | plan_json, plan_md, pending_fields, req_id | V2.2 重构：plan_output 入参已删除（LLM 输出非最新值），全部以推理后字段数组为准——fields 直接组装 plan_json（req_id/fields/pending_fields 三键）、pending_fields 反查 value=待补充、**plan_md 由代码重新生成四列表格（与 fields_json 严格一致）**；req_id 系统生成（PLAN+时间戳+随机数） |
 | 5 | 待补充项判断 | [选择] | pending_fields | branch | `pending_fields` 为空（长度=0）→ 节点6 保存后进入确认；**非空 → 直接进入节点7（有待补充项结束），不保存执行方案、不产出 req_id**；判定数据源已收归引擎（V2.2），LLM 双重判定歧义已消除 |
 | 6 | 保存执行方案 | [存储] | req_id=节点004a出参 req_id　node_name=requirement　result_json=plan_json | req_id | 调用节点结果存储查询插件·结果存储；**仅无待补充项时执行**；修改场景覆盖写同 key |
 | 7 | 结束(有待补充项) | [结束] | plan_md, pending_fields | — | 输出待补充提示，**不保存执行方案、不产出 req_id**，**从源头禁止进入智能配置**（无执行方案记录可落地）；用户补充后重新走需求分析 |
@@ -762,8 +762,9 @@
 第一轮：
 用户输入需求 → 智能体按意图映射表命中【首次提报需求】
 → LLM 直调 wf_sub_01 需求分析（requirement_text=用户需求）
-→ 子流内部：LLM 节点4 单出参 plan_output → 字段本体推理（工具14 reason）→ 代码节点 004a 拆分
-  （fields/pending_fields 以推理后结果为准，V2.2 单一事实源）→ 存储(key=req_id 统一键, node_name=requirement)
+→ 子流内部：LLM 节点4 单出参 fields_output（仅字段数组）→ 字段本体推理（工具14 reason）
+  → 代码节点 004a 单入参拆分（fields/pending_fields/plan_md 全部以推理后数组为准，
+  plan_md 代码重新生成，V2.2 单一事实源）→ 存储(key=req_id 统一键, node_name=requirement)
 → LLM 向用户输出执行方案表格 + 确认提示 → 【中断：等待执行方案确认】
 
 用户侧：核对表格 → 回复"确认执行"（智能体提示词【技能2】识别确认意图）
