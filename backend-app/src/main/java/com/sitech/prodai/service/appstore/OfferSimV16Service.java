@@ -418,18 +418,13 @@ public class OfferSimV16Service {
     /* ================= 接口10：审批进度查询 query_approval_status ================= */
 
     public Map<String, Object> approvalStatus(Map<String, Object> params) {
-        String approvalId = MapOps.str(params.get("approval_id")).trim();
         String productId = MapOps.str(params.get("product_id")).trim();
-        if (approvalId.isEmpty() && productId.isEmpty()) {
-            return camelFail("PARAM_MISSING", "approval_id 与 product_id 至少一个非空");
+        if (productId.isEmpty()) {
+            return camelFail("PARAM_MISSING", "product_id 必填");
         }
         Map<String, Object> approval;
-        if (!approvalId.isEmpty()) {
-            approval = approvals.get(approvalId);
-        } else {
-            String aid = approvalByProduct.get(productId);
-            approval = aid == null ? null : approvals.get(aid);
-        }
+        String aid = approvalByProduct.get(productId);
+        approval = aid == null ? null : approvals.get(aid);
         if (approval == null) {
             return camelFail("40404", "审批单不存在");
         }

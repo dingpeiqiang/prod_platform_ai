@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-审批进度查询",
-  "flowRemark": "子工作流8：审批进度查询（V1.5新增）。query_approval_status（自研模拟）→状态摘要归纳（温度0.2）。轻量查询子工作流，智能体可直调工具13替代。",
+  "flowRemark": "子工作流8：审批进度查询（V2.4 调整：仅按产品查询）。按 product_id 查最新审批单：query_approval_status（自研模拟）→状态摘要归纳（温度0.2）。轻量查询子工作流，智能体可直调工具13替代。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -11,19 +11,10 @@
           {
             "blockID": "",
             "relName": "",
-            "name": "approval_id",
-            "description": "审批单号（与product_id至少一个非空）",
-            "type": "string",
-            "required": false,
-            "content": ""
-          },
-          {
-            "blockID": "",
-            "relName": "",
             "name": "product_id",
-            "description": "产品ID（与approval_id至少一个非空）",
+            "description": "产品ID",
             "type": "string",
-            "required": false,
+            "required": true,
             "content": ""
           }
         ],
@@ -98,20 +89,6 @@
         "inputs": [
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
-            "relName": "approval_id",
-            "name": "approval_id",
-            "description": "审批单号",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000701",
-              "a1b2c3d4-0000-4000-8000-000000000701,approval_id"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000701,approval_id"
-          },
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
             "relName": "product_id",
             "name": "product_id",
             "description": "产品ID",
@@ -129,7 +106,7 @@
         "nodeMeta": {
           "title": "审批状态查询",
           "code": "query_approval_status",
-          "description": "工具13：自研模拟审批进度查询（从模拟审批状态库查询）",
+          "description": "工具13：自研模拟审批进度查询（从模拟审批状态库按产品查询最新审批单）",
           "version": "1"
         },
         "authentic_info_new": {
@@ -165,10 +142,24 @@
             {
               "name": "prompt",
               "type": "string",
-              "content": "按'审批单号 {approval_id}｜状态：{status}｜当前环节：{current_node}（审批人 {approver}）｜最近意见：{opinion}｜更新时间：{update_time}'格式输出；status=驳回 时附驳回原因并提示可修改执行方案后重新发起。查无审批单时输出\"未找到该销售品的审批单，请确认是否已发起审批\"。\n输出要求：仅输出审批状态摘要内容（对应出参 approval_summary），不输出其他多余文字。"
+              "content": "按'产品ID：{product_id}｜审批单号：{approval_id}｜状态：{status}｜当前环节：{current_node}（审批人 {approver}）｜最近意见：{opinion}｜更新时间：{update_time}'格式输出；status=驳回 时附驳回原因并提示可修改执行方案后重新发起。查无审批单时输出\"未找到该销售品的审批单，请确认是否已发起审批\"。\n输出要求：仅输出审批状态摘要内容（对应出参 approval_summary），不输出其他多余文字。"
             }
           ],
           "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000701",
+              "relName": "product_id",
+              "name": "product_id",
+              "description": "产品ID",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000701",
+                "a1b2c3d4-0000-4000-8000-000000000701,product_id"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000701,product_id"
+            },
             {
               "blockID": "a1b2c3d4-0000-4000-8000-000000000702",
               "relName": "approval_id",

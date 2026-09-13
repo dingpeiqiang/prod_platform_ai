@@ -1206,23 +1206,22 @@ files["wf_sub_07_监控运维.json"] = workflow(
 # ============================================================
 s8 = []
 s8.append(start_node(701, [
-    inp("approval_id", "审批单号（与product_id至少一个非空）", required=False),
-    inp("product_id", "产品ID（与approval_id至少一个非空）", required=False),
+    inp("product_id", "产品ID", required=True),
 ]))
 s8.append(plugin_node(702, "审批状态查询", "query_approval_status",
-    "工具13：自研模拟审批进度查询（从模拟审批状态库查询）",
+    "工具13：自研模拟审批进度查询（从模拟审批状态库按产品查询最新审批单）",
     BASE_URL + "/api/v1/appstore/approval/status",
-    [inp("approval_id", "审批单号", ref_block=nid(701), ref_rel="approval_id"),
-     inp("product_id", "产品ID", ref_block=nid(701), ref_rel="product_id")],
+    [inp("product_id", "产品ID", ref_block=nid(701), ref_rel="product_id")],
     [("approval_id", "审批单号", "string"), ("status", "审批中/通过/驳回", "string"),
      ("current_node", "当前审批环节", "string"), ("approver", "当前审批人", "string"),
      ("opinion", "审批意见", "string"), ("submit_time", "提交时间", "string"),
      ("update_time", "更新时间", "string")],
     method="get"))
 s8.append(llm_node(703, "状态摘要归纳",
-    "按'审批单号 {approval_id}｜状态：{status}｜当前环节：{current_node}（审批人 {approver}）｜最近意见：{opinion}｜更新时间：{update_time}'格式输出；status=驳回 时附驳回原因并提示可修改执行方案后重新发起。查无审批单时输出\"未找到该销售品的审批单，请确认是否已发起审批\"。\n"
+    "按'产品ID：{product_id}｜审批单号：{approval_id}｜状态：{status}｜当前环节：{current_node}（审批人 {approver}）｜最近意见：{opinion}｜更新时间：{update_time}'格式输出；status=驳回 时附驳回原因并提示可修改执行方案后重新发起。查无审批单时输出\"未找到该销售品的审批单，请确认是否已发起审批\"。\n"
     "输出要求：仅输出审批状态摘要内容（对应出参 approval_summary），不输出其他多余文字。",
-    [inp("approval_id", "审批单号", ref_block=nid(702), ref_rel="approval_id"),
+    [inp("product_id", "产品ID", ref_block=nid(701), ref_rel="product_id"),
+     inp("approval_id", "审批单号", ref_block=nid(702), ref_rel="approval_id"),
      inp("status", "审批状态", ref_block=nid(702), ref_rel="status"),
      inp("current_node", "当前环节", ref_block=nid(702), ref_rel="current_node"),
      inp("approver", "审批人", ref_block=nid(702), ref_rel="approver"),
@@ -1233,7 +1232,7 @@ s8.append(end_node(704, "结束(查询完成)",
     [inp("approval_summary", "审批状态摘要", ref_block=nid(703), ref_rel="approval_summary")],
     "{approval_summary}"))
 files["wf_sub_08_审批进度查询.json"] = workflow(
-    "产销品-审批进度查询", "子工作流8：审批进度查询（V1.5新增）。query_approval_status（自研模拟）→状态摘要归纳（温度0.2）。轻量查询子工作流，智能体可直调工具13替代。", "wf_sub_08", s8,
+    "产销品-审批进度查询", "子工作流8：审批进度查询（V2.4 调整：仅按产品查询）。按 product_id 查最新审批单：query_approval_status（自研模拟）→状态摘要归纳（温度0.2）。轻量查询子工作流，智能体可直调工具13替代。", "wf_sub_08", s8,
     [edge(701,702), edge(702,703), edge(703,704)])
 
 

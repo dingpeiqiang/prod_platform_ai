@@ -529,15 +529,13 @@ plugins.append(build_plugin(
 # ---------------- 工具13 审批进度查询 ----------------
 plugins.append(build_plugin(
     "approval-status-0001", "审批进度查询", "query_approval_status",
-    "自研模拟实现（V1.6）：从模拟审批状态库（工具9 写入）按 approval_id 或 product_id 查询审批单当前状态（审批中/通过/驳回）、当前审批环节与意见，支撑用户消息查询审批进度",
+    "自研模拟实现（V1.6）：从模拟审批状态库（工具9 写入）按 product_id 查询该产品最新审批单当前状态（审批中/通过/驳回）、当前审批环节与意见，支撑用户消息查询审批进度",
     "/api/v1/appstore/approval/status", "GET",
     {
-        "approval_id": schema_param("approval_id", "string",
-            "审批单号（submit_release_approval 出参），优先使用；与 product_id 至少一个非空，均为空返回 PARAM_MISSING", False),
         "product_id": schema_param("product_id", "string",
-            "产品ID，缺失 approval_id 时按其查最新审批单；与 approval_id 至少一个非空", False),
+            "产品ID，按其查最新审批单；为空返回 PARAM_MISSING", True),
     },
-    [],
+    ["product_id"],
     {
         "approval_id": {"description": "审批单号", "type": "string"},
         "status": {"description": "审批状态：审批中 / 通过 / 驳回", "type": "string"},
