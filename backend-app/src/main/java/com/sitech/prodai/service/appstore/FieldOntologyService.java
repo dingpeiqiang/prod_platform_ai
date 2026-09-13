@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
  * 以代码常量建模为字段本体注册表，推理按「枚举校验→格式校验→默认值推理→兜底口径」逐字段执行：
  * <ol>
  *   <li>validate：LLM 补全结果逐字段做本体合法性推理，非法值返回 reason（期望规则）供 LLM 重填；</li>
- *   <li>complete：缺失字段按本体默认值推理补全（default_value 非空的字段），兜底口径字段（套餐固定费/三类资源）不补全返回待补充。</li>
+ *   <li>complete：缺失/待补充字段按本体默认值推理补全（V2.2：待补充项全部可推理，仅套餐固定费价格维持待补充）。</li>
  * </ol>
  * 本体定义内聚于本服务（单一事实源），知识侧不再维护 K6 文档（V2.1 整体替换为推理引擎方案）。
  */
@@ -46,27 +46,27 @@ public class FieldOntologyService {
         // A. 基础信息
         spec("产品名称", "A.基础信息", null, Pattern.compile("^5G-A(融合|单品)套餐\\d+元$|^\\d+元权益随心选\\S+版$"),
                 "须符合 K1 命名模板：5G-A+[融合/单品]套餐+[档位]元 或 [档位]元权益随心选[版本]版",
-                null, false);
+                "5G-A单品套餐待定档位元", false);
         spec("产品属性", "A.基础信息", Arrays.asList("基础", "可选", "增值"), null,
                 "枚举：基础/可选/增值", "基础", false);
         spec("产品编码", "A.基础信息", null, Pattern.compile("^\\d{9}$|^由智能配置生成$"),
                 "9位数字或\"由智能配置生成\"（不做AI补全，由智能配置环节落地后生成）",
                 "由智能配置生成", false);
         spec("生效日期", "A.基础信息", null, Pattern.compile("^\\d{4}-\\d{2}-\\d{2}$|^立即生效$|^次月1日$"),
-                "yyyy-MM-dd 或 立即生效/次月1日", null, false);
+                "yyyy-MM-dd 或 立即生效/次月1日", "立即生效", false);
         spec("退订规则", "A.基础信息", null, null,
                 "文本；默认口径：允许退订，次月生效，当月费用不退还",
                 "允许退订，次月生效，当月费用不退还", false);
-        // B. 资源配置（兜底口径：三类资源全部未提取到时待补充，不默认补全）
+        // B. 资源配置（V2.2：待补充项可推理——按无资源口径补全为"无"）
         spec("流量资源", "B.资源配置", null, Pattern.compile("^\\d+(\\.\\d+)?GB$|^无$|^待补充$"),
-                "数值+单位（GB），如 120GB", null, true);
+                "数值+单位（GB），如 120GB", "无", false);
         spec("语音资源", "B.资源配置", null, Pattern.compile("^\\d+分钟$|^无$|^待补充$"),
-                "数值+单位（分钟），如 1000分钟", null, true);
+                "数值+单位（分钟），如 1000分钟", "无", false);
         spec("短信资源", "B.资源配置", null, Pattern.compile("^\\d+条$|^无$|^待补充$"),
-                "数值+单位（条），如 10条；无短信填\"无\"", null, true);
-        // C. 营销资源（套餐固定费为兜底口径）
+                "数值+单位（条），如 10条；无短信填\"无\"", "无", false);
+        // C. 营销资源
         spec("套餐固定费", "C.营销资源", null, Pattern.compile("^\\d+(\\.\\d+)?元/月$|^待补充$"),
-                "数值+单位（元/月），如 199元/月", null, true);
+                "数值+单位（元/月），如 199元/月", "待补充", false);
         spec("收费方式", "C.营销资源", Arrays.asList("按月", "按量", "一次性"), null,
                 "枚举：按月/按量/一次性（月付/包月归一为按月）", "按月", false);
         spec("优惠条件", "C.营销资源", null, null,
@@ -151,7 +151,7 @@ public class FieldOntologyService {
     /**
      * 接口二：字段本体推理 complete——缺失字段按本体默认值推理补全。
      * 入参 fields_json 同上；对 value 为空且 default_value 非空的字段补默认值（source=AI补全）；
-     * 兜底口径字段（fallback=true）不补全、标记 fallback=true 交上游判待补充。
+     * V2.2：待补充项（value=待补充）同样按默认值推理补全，仅套餐固定费维持"待补充"。
      * 出参 completed 数组（field/value/defaulted/reason），fields_json 为补全后的完整数组。
      */
     public Map<String, Object> complete(String fieldsJson) {
@@ -162,19 +162,19 @@ public class FieldOntologyService {
             String field = str(f.get("field"));
             String value = str(f.get("value"));
             FieldSpec spec = SPECS.get(field);
-            if (spec != null && value.isEmpty()) {
+            if (spec != null && (value.isEmpty() || "待补充".equals(value))) {
                 Map<String, Object> c = new LinkedHashMap<>();
                 c.put("field", field);
-                if (spec.defaultValue != null && !spec.fallback) {
+                if (spec.defaultValue != null && !"待补充".equals(spec.defaultValue)) {
                     value = spec.defaultValue;
                     c.put("value", value);
                     c.put("defaulted", "1");
                     c.put("reason", spec.rule);
                     completed.add(c);
-                } else if (spec.fallback) {
+                } else if ("待补充".equals(spec.defaultValue)) {
                     c.put("value", "待补充");
                     c.put("defaulted", "0");
-                    c.put("reason", "兜底口径字段，不默认补全，待上游判待补充：" + spec.rule);
+                    c.put("reason", "价格类字段不可推理，维持待补充：" + spec.rule);
                     completed.add(c);
                 } else {
                     c.put("value", "");
@@ -199,8 +199,10 @@ public class FieldOntologyService {
      * 接口四（V2.1 一体推理）：reason = validate + 修正 + complete，闭环动作。
      * 逐字段执行：
      * <ol>
-     *   <li>value 为空 → 默认值推理补全（default_value 非空且非兜底），兜底口径字段置"待补充"；</li>
-     *   <li>value 非空 → 本体校验；非法值直接按本体规则**修正回写**（枚举归一：月付/包月→按月等；
+     *   <li>value 为空或"待补充" → 默认值推理补全（V2.2：待补充项全部可推理，仅套餐固定费例外——
+     *       价格必须由用户确认，维持"待补充"交待补充流程）；</li>
+     *   <li>value 非空 → 本体校验；非法值直接按本体规则**修正回写**（枚举归一：月付/包月→按月、
+     *       渠道类型同义词映射、套餐固定费单位补全、产品名称模板修正等；
      *       无法修正的保留原值并记入 violations）；</li>
      *   <li>修正回写后 source 统一标"AI补全"（原值非"原始需求"时）。</li>
      * </ol>
@@ -225,28 +227,31 @@ public class FieldOntologyService {
                 out.add(item); // 未注册字段透传
                 continue;
             }
-            // ① 缺失 → 默认值推理补全 / 兜底置待补充
-            if (value.isEmpty()) {
+            // ① 缺失/待补充 → 默认值推理补全（V2.2：待补充项全部可推理，套餐固定费除外——价格必须由用户确认）
+            if (value.isEmpty() || "待补充".equals(value)) {
                 Map<String, Object> c = new LinkedHashMap<>();
                 c.put("field", field);
-                if (spec.defaultValue != null && !spec.fallback) {
+                if (spec.defaultValue != null) {
+                    boolean fromPending = "待补充".equals(value);
                     value = spec.defaultValue;
                     source = "AI补全";
                     c.put("value", value);
+                    c.put("defaulted", "1");
                     c.put("action", "defaulted");
-                    c.put("reason", spec.rule);
-                } else if (spec.fallback) {
-                    value = "待补充";
-                    c.put("value", value);
-                    c.put("action", "fallback");
-                    c.put("reason", "兜底口径字段，不默认补全：" + spec.rule);
+                    c.put("reason", (fromPending ? "待补充项按本体默认值推理补全：" : "缺失字段按本体默认值推理补全：") + spec.rule);
+                    // 套餐固定费（价格）无法推理：保持"待补充"，交待补充流程提示用户补充
+                    if ("待补充".equals(value)) {
+                        c.put("action", "fallback");
+                        c.put("defaulted", "0");
+                    }
                 } else {
                     c.put("value", "");
+                    c.put("defaulted", "0");
                     c.put("action", "none");
                     c.put("reason", "本体无默认值，维持留空");
                 }
                 fixed.add(c);
-            } else if (!"待补充".equals(value) && !"由智能配置生成".equals(value)) {
+            } else if (!"由智能配置生成".equals(value)) {
                 // ② 非空 → 本体校验 + 修正回写
                 String err = checkValue(spec, value);
                 if (err != null) {
@@ -294,6 +299,60 @@ public class FieldOntologyService {
             java.util.regex.Matcher m = Pattern.compile("^(\\d+(\\.\\d+)?)元?$").matcher(v);
             if (m.matches()) {
                 return m.group(1) + "元/月";
+            }
+            return null;
+        }
+        // 产品名称模板修正（V2.2：值不符合 K1 命名模板时自动归一，档位未知以"待定档位"占位交确认环节补充）
+        if ("产品名称".equals(spec.field)) {
+            String n = v.replace(" ", "").replace("　", "");
+            // 已含"套餐+档位元"但缺 5G-A 前缀/融合单品：补全为 5G-A 单品套餐
+            java.util.regex.Matcher m1 = Pattern.compile("^(?:5G-?A)?(?:融合|单品)?套餐(\\d+)元$").matcher(n);
+            if (m1.matches()) {
+                return "5G-A单品套餐" + m1.group(1) + "元";
+            }
+            // "5G-A 套餐"无档位 / "5G-A融合套餐"无档位 → 档位占位
+            if (n.matches("^5G-?A(融合|单品)?套餐$") || n.matches("^5G-?A$")) {
+                return "5G-A单品套餐待定档位元";
+            }
+            // 权益随心选缺"版"后缀
+            java.util.regex.Matcher m2 = Pattern.compile("^(\\d+)元权益随心选(\\S+?)(?:版)?$").matcher(n);
+            if (m2.matches()) {
+                return m2.group(1) + "元权益随心选" + m2.group(2) + "版";
+            }
+            return null;
+        }
+        // 生效日期归一：纯数字 8 位（yyyyMMdd）→ yyyy-MM-dd
+        if ("生效日期".equals(spec.field)) {
+            if (v.matches("^\\d{8}$")) {
+                return v.substring(0, 4) + "-" + v.substring(4, 6) + "-" + v.substring(6, 8);
+            }
+            if (v.contains("次日") || v.contains("明天")) {
+                return "立即生效";
+            }
+            return null;
+        }
+        // 资源类归一：缺单位补单位（"60G"→"60GB"、"1000分钟"缺"分钟"等）
+        if ("流量资源".equals(spec.field)) {
+            java.util.regex.Matcher m = Pattern.compile("^(\\d+(\\.\\d+)?)[GgＧ][BbＢ]?$").matcher(v);
+            if (m.matches()) {
+                return m.group(1) + "GB";
+            }
+            if (v.matches("^无|待补充$")) {
+                return v;
+            }
+            return null;
+        }
+        if ("语音资源".equals(spec.field)) {
+            java.util.regex.Matcher m = Pattern.compile("^(\\d+)分?钟?$").matcher(v);
+            if (m.matches()) {
+                return m.group(1) + "分钟";
+            }
+            return null;
+        }
+        if ("短信资源".equals(spec.field)) {
+            java.util.regex.Matcher m = Pattern.compile("^(\\d+)条?$").matcher(v);
+            if (m.matches()) {
+                return m.group(1) + "条";
             }
             return null;
         }
