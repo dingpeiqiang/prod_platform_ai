@@ -50,7 +50,7 @@ public class FieldOntologyService {
         spec("产品属性", "A.基础信息", Arrays.asList("基础", "可选", "增值"), null,
                 "枚举：基础/可选/增值", "基础", false);
         spec("产品编码", "A.基础信息", null, Pattern.compile("^\\d{9}$|^由智能配置生成$"),
-                "9位数字或\"由智能配置生成\"（不做AI补全，由智能配置环节落地后生成）",
+                "9位数字或\"由智能配置生成\"（引擎不做补全，由智能配置环节落地后生成）",
                 "由智能配置生成", false);
         spec("生效日期", "A.基础信息", null, Pattern.compile("^\\d{4}-\\d{2}-\\d{2}$|^立即生效$|^次月1日$"),
                 "yyyy-MM-dd 或 立即生效/次月1日", "立即生效", false);
@@ -150,7 +150,7 @@ public class FieldOntologyService {
 
     /**
      * 接口二：字段本体推理 complete——缺失字段按本体默认值推理补全。
-     * 入参 fields_json 同上；对 value 为空且 default_value 非空的字段补默认值（source=AI补全）；
+     * 入参 fields_json 同上；对 value 为空且 default_value 非空的字段补默认值（source=本体推理）；
      * V2.2：待补充项（value=待补充）同样按默认值推理补全，仅套餐固定费维持"待补充"。
      * 出参 completed 数组（field/value/defaulted/reason），fields_json 为补全后的完整数组。
      */
@@ -204,7 +204,7 @@ public class FieldOntologyService {
      *   <li>value 非空 → 本体校验；非法值直接按本体规则**修正回写**（枚举归一：月付/包月→按月、
      *       渠道类型同义词映射、套餐固定费单位补全、产品名称模板修正等；
      *       无法修正的保留原值并记入 violations）；</li>
-     *   <li>修正回写后 source 统一标"AI补全"（原值非"原始需求"时）。</li>
+     *   <li>修正回写后 source 统一标"本体推理"（原值非"原始需求"时）。</li>
      * </ol>
      * 出参：fixed（修正/补全明细）、violations（无法修正项）、fields_json（推理后的完整字段数组）。
      * 工作流 004a 代码节点从 fields_json 取推理后结果组装 plan_json，实现引擎兜底闭环。
@@ -234,7 +234,7 @@ public class FieldOntologyService {
                 if (spec.defaultValue != null) {
                     boolean fromPending = "待补充".equals(value);
                     value = spec.defaultValue;
-                    source = "AI补全";
+                    source = "本体推理";
                     c.put("value", value);
                     c.put("defaulted", "1");
                     c.put("action", "defaulted");
@@ -262,7 +262,7 @@ public class FieldOntologyService {
                     if (corrected != null) {
                         value = corrected;
                         if (!"原始需求".equals(source)) {
-                            source = "AI补全";
+                            source = "本体推理";
                         }
                         c.put("defaulted", "0");
                         c.put("corrected", corrected);
