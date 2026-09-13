@@ -329,6 +329,36 @@ CODE_004A = (
     "    return ret"
 )
 
+# CODE_EXTRACT_RECORD：从 query_node_result 出参 list（记录数组JSON）提取 list[0].result_json 原文。
+# V2.2 新增：wf_sub_02/03/04/05 自查链路共用——query_node_result 返回的是记录数组
+# （[{req_id,node_name,result_json,status,...}]），下游工具需要的执行方案/环节结果原文
+# 存在于 list[0].result_json 字段内，须提取后再透传（禁止把数组整体传给落地/稽核等工具）。
+CODE_EXTRACT_RECORD = (
+    "import json\n"
+    "from typing import Any, Dict\n"
+    "async def main(args):\n"
+    "    raw = args.params['query_list']\n"
+    "    if not isinstance(raw, str):\n"
+    "        raw = json.dumps(raw, ensure_ascii=False)\n"
+    "    record_json = ''\n"
+    "    try:\n"
+    "        arr = json.loads(raw)\n"
+    "        if isinstance(arr, list) and arr:\n"
+    "            first = arr[0]\n"
+    "            if isinstance(first, dict):\n"
+    "                record_json = str(first.get('result_json') or '')\n"
+    "        elif isinstance(arr, dict):\n"
+    "            record_json = str(arr.get('result_json') or '')\n"
+    "    except Exception:\n"
+    "        record_json = ''\n"
+    "    if not record_json:\n"
+    "        record_json = raw\n"
+    "    ret: Output = {\n"
+    "        \"record_json\": record_json\n"
+    "    }\n"
+    "    return ret"
+)
+
 
 def code_node(seq, title, code, in_refs, outputs, pos=(650, 300)):
     """type=6 代码节点（对齐平台真实导出：inputs 平铺 list、language=1）"""
@@ -558,7 +588,7 @@ s2 = []
 s2.append(start_node(101, [
     inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）", required=True)]))
 s2.append(plugin_node(102, "读取执行方案", "query_node_result",
-    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=requirement 取回执行方案JSON原文（list[0].result_json，内含 req_id/fields/...）",
+    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=requirement 取回执行方案记录数组（list[0].result_json 为执行方案原文，内含 req_id/fields/...）",
     BASE_URL + "/api/v1/appstore/result/query",
     [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(101), ref_rel="req_id"),
      inp("node_name", "环节名=requirement", content="requirement"),
@@ -566,15 +596,21 @@ s2.append(plugin_node(102, "读取执行方案", "query_node_result",
     [("code", "0成功", "string"), ("msg", "状态描述", "string"),
      ("total", "命中记录数", "string"), ("list", "记录数组JSON（取[0].result_json为执行方案原文）", "string")],
     method="get"))
+# 106 提取执行方案原文（V2.2 新增代码节点）：query_node_result 出参 list 是记录数组，
+# save_product_config 需要的是 list[0].result_json（执行方案对象原文）——代码节点提取，杜绝数组整体透传
+s2.append(code_node(106, "提取执行方案原文", CODE_EXTRACT_RECORD,
+    [inp("query_list", "引用节点2查询出参 list（记录数组JSON）", ref_block=nid(102), ref_rel="list")],
+    [code_out("record_json", 106)],
+    pos=(530, 300)))
 s2.append(plugin_node(103, "配置落地", "save_product_config",
-    "工具7：直读执行方案JSON原样透传落地（节点2→节点3之间禁止插入大模型/改写节点）；req_id 与 plan_json 均引用自查结果，方案key由后端从 plan_json 的 req_id 键提取；内部二次校验confirmed",
+    "工具7：执行方案JSON原文透传落地（节点106已从查询记录中提取 result_json 原文）；req_id 与 plan_json 均引用自查链路结果，方案key由后端从 plan_json 的 req_id 键提取；确认与否由外层智能体识别判断（V2.2 门禁移除），本环节不再校验 confirmed 标记",
     BASE_URL + "/api/v1/appstore/product/config/save",
-    [inp("req_id", "执行批次号（=开始节点 req_id，同时为确认标记/执行方案存储键）", ref_block=nid(101), ref_rel="req_id"),
-     inp("plan_json", "执行方案JSON原文（节点2查询出参list[0].result_json原样透传）", ref_block=nid(102), ref_rel="list"),
-     inp("confirmed", "用户确认标志true（确认门禁已保证）", content="true"),
+    [inp("req_id", "执行批次号（=开始节点 req_id，与执行方案存储键同一）", ref_block=nid(101), ref_rel="req_id"),
+     inp("plan_json", "执行方案JSON原文（节点106提取的 result_json）", ref_block=nid(106), ref_rel="record_json"),
+     inp("confirmed", "用户确认标志true（V2.2起后端不校验，仅记录）", content="true"),
      inp("operator", "操作人（默认system）", content="system")],
     [("product_id", "CRM产品ID", "string"), ("offer_id", "销售品ID", "string"),
-     ("save_result", "四类字段写入结果", "string"), ("status", "SUCCESS/PARTIAL/FAIL/NOT_CONFIRMED", "string")]))
+     ("save_result", "四类字段写入结果", "string"), ("status", "SUCCESS/PARTIAL/FAIL", "string")]))
 s2.append(plugin_node(105, "环节结果存储", "save_node_result",
     "环节结果存储（复用）：req_id=入参 req_id，node_name=config（智能配置），result_json=环节落地结果；主流程删除后存储下沉子工作流，供 wf_sub_06 审批门禁四环节自查",
     BASE_URL + "/api/v1/appstore/result/save",
@@ -590,8 +626,8 @@ s2.append(end_node(104, "结束(配置落地完成)",
      inp("status", "落地状态", ref_block=nid(103), ref_rel="status")],
     "智能配置完成：product_id={product_id}，offer_id={offer_id}\n四类字段写入结果：{save_result}\n状态：{status}"))
 files["wf_sub_02_智能配置.json"] = workflow(
-    "产销品-智能配置", "子工作流2：智能配置（配置落地）。单入参 req_id 自查链路：节点结果查询按 req_id+requirement 读取执行方案JSON→save_product_config 原样透传落地（req_id 与存储键同一，方案key由后端从 plan_json 提取），中间无大模型节点；内部二次校验confirmed；结束前存储 node_name=config（req_id 同入参，主流程删除后环节存储下沉子工作流）。", "wf_sub_02", s2,
-    [edge(101,102), edge(102,103), edge(103,105), edge(105,104)])
+    "产销品-智能配置", "子工作流2：智能配置（配置落地）。单入参 req_id 自查链路：节点结果查询按 req_id+requirement 读取执行方案记录→代码节点提取 list[0].result_json 原文（V2.2）→save_product_config 透传落地（req_id 与存储键同一，方案key由后端从 plan_json 提取）；确认与否由外层智能体识别判断（V2.2 门禁移除）；结束前存储 node_name=config（req_id 同入参，主流程删除后环节存储下沉子工作流）。", "wf_sub_02", s2,
+    [edge(101,102), edge(102,106), edge(106,103), edge(103,105), edge(105,104)])
 
 # ============================================================
 # wf_sub_03 规格稽核（实时）
@@ -600,11 +636,27 @@ s3 = []
 s3.append(start_node(201, [
     inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）", required=True),
 ]))
+# 206/207 自查链路（V2.2 修复断链）：上游 offer_id/config_json 不再从开始节点入参引用
+# （wf_sub_03 单入参 req_id），改为按 req_id+node_name=config 查询 config 环节结果，
+# 代码节点提取 result_json 原文（落地配置JSON，内含 offer_id）供稽核使用
+s3.append(plugin_node(206, "读取配置环节结果", "query_node_result",
+    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果记录数组（list[0].result_json 为落地结果原文，内含 product_id/offer_id/...）",
+    BASE_URL + "/api/v1/appstore/result/query",
+    [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(201), ref_rel="req_id"),
+     inp("node_name", "环节名=config", content="config"),
+     inp("latest_only", "1=只返回最新一条（默认）", content="1")],
+    [("code", "0成功", "string"), ("msg", "状态描述", "string"),
+     ("total", "命中记录数", "string"), ("list", "记录数组JSON（取[0].result_json为环节结果原文）", "string")],
+    method="get", pos=(240, 135)))
+s3.append(code_node(207, "提取配置结果原文", CODE_EXTRACT_RECORD,
+    [inp("query_list", "引用节点206查询出参 list（记录数组JSON）", ref_block=nid(206), ref_rel="list")],
+    [code_out("record_json", 207)],
+    pos=(390, 135)))
 s3.append(plugin_node(202, "实时稽核", "realtime_spec_audit",
-    "工具2：自研模拟实时稽核，同步返回（无文件上传/无轮询）",
+    "工具2：自研模拟实时稽核，同步返回（无文件上传/无轮询）；offer_id/config_json 取自 config 环节结果（节点207提取原文）",
     BASE_URL + "/api/v1/appstore/audit/realtime",
-    [inp("offer_id", "销售品ID", ref_block=nid(201), ref_rel="offer_id"),
-     inp("config_json", "落地配置JSON", ref_block=nid(201), ref_rel="config_json"),
+    [inp("offer_id", "销售品ID（落地结果offer_id，智能体调度时若上一步已返回可直接传入）", ref_block=nid(201), ref_rel="offer_id"),
+     inp("config_json", "落地配置JSON（节点207提取的环节结果原文）", ref_block=nid(207), ref_rel="record_json"),
      inp("audit_scene", "稽核场景默认all", content="all")],
     [("pass", "1通过/0不通过", "string"), ("error_list", "问题明细", "array"),
      ("audit_summary", "稽核总结", "string"), ("resultCode", "0成功/NET_ERROR/TIMEOUT", "string")]))
@@ -628,8 +680,8 @@ s3.append(end_node(204, "结束(稽核完成)",
      inp("audit_suggest", "整改建议", ref_block=nid(203), ref_rel="audit_suggest")],
     "配置规格稽核完成：pass={pass}\n{audit_suggest}"))
 files["wf_sub_03_规格稽核.json"] = workflow(
-    "产销品-规格稽核", "子工作流3：规格稽核（实时）。单入参 req_id 自查链路：realtime_spec_audit同步返回→整改建议生成（温度0.2）；结束前存储 node_name=spec（req_id=入参，主流程删除后环节存储下沉子工作流）。", "wf_sub_03", s3,
-    [edge(201,202), edge(202,203), edge(203,205), edge(205,204)])
+    "产销品-规格稽核", "子工作流3：规格稽核（实时）。单入参 req_id 自查链路：query_node_result 按req_id+config读取智能配置环节结果→代码节点提取 result_json 原文（V2.2 修复断链）→realtime_spec_audit同步返回→整改建议生成（温度0.2）；结束前存储 node_name=spec（req_id=入参，主流程删除后环节存储下沉子工作流）。", "wf_sub_03", s3,
+    [edge(201,206), edge(206,207), edge(207,202), edge(202,203), edge(203,205), edge(205,204)])
 
 # ============================================================
 # wf_sub_04 自动测试（含受理验证）
@@ -638,10 +690,26 @@ s4 = []
 s4.append(start_node(301, [
     inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）", required=True),
 ]))
+# 309/310 自查链路（V2.2 修复断链）：上游 offerId 不再从开始节点入参引用
+# （wf_sub_04 单入参 req_id），改为按 req_id+node_name=config 查询 config 环节结果，
+# 代码节点提取 result_json 原文供发起测试取 offerId
+s4.append(plugin_node(309, "读取配置环节结果", "query_node_result",
+    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果记录数组（list[0].result_json 为落地结果原文，内含 offer_id）",
+    BASE_URL + "/api/v1/appstore/result/query",
+    [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(301), ref_rel="req_id"),
+     inp("node_name", "环节名=config", content="config"),
+     inp("latest_only", "1=只返回最新一条（默认）", content="1")],
+    [("code", "0成功", "string"), ("msg", "状态描述", "string"),
+     ("total", "命中记录数", "string"), ("list", "记录数组JSON（取[0].result_json为环节结果原文）", "string")],
+    method="get"))
+s4.append(code_node(310, "提取配置结果原文", CODE_EXTRACT_RECORD,
+    [inp("query_list", "引用节点309查询出参 list（记录数组JSON）", ref_block=nid(309), ref_rel="list")],
+    [code_out("record_json", 310)],
+    pos=(240, 135)))
 s4.append(plugin_node(302, "发起测试", "offer_test",
-    "工具3：自研模拟测试发起，返回模拟测试流水globalId",
+    "工具3：自研模拟测试发起，返回模拟测试流水globalId；offerId 取自 config 环节结果（智能体调度时若上一步已返回可直接传入，引用开始节点 offer_id 兜底）",
     BASE_URL + "/api/v1/appstore/test/offer/start",
-    [inp("offerId", "销售品ID", ref_block=nid(301), ref_rel="offer_id")],
+    [inp("offerId", "销售品ID（引用开始节点 offer_id，智能体从上一步落地结果透传）", ref_block=nid(301), ref_rel="offer_id")],
     [("resultCode", "0成功/1失败", "string"), ("resultMsg", "处理结果描述", "string"),
      ("globalId", "测试流水号", "string")]))
 s4.append(plugin_node(303, "查询测试场景", "get_test_scenes",
@@ -685,8 +753,8 @@ s4.append(end_node(307, "结束(测试完成)",
      inp("globalId", "测试流水号", ref_block=nid(302), ref_rel="globalId")],
     "销售品自动测试完成（含受理验证）：\n{test_report}"))
 files["wf_sub_04_自动测试.json"] = workflow(
-    "产销品-自动测试", "子工作流4：自动测试（含受理验证）。单入参 req_id 自查链路：offer_test发起→get_test_scenes→循环get_test_progress（5s/30min）→get_test_result→测试报告生成（强制含受理验证结论orderId/offerInstId）；结束前存储 node_name=test（req_id=入参，主流程删除后环节存储下沉子工作流）。", "wf_sub_04", s4,
-    [edge(301,302), edge(302,303), edge(303,304), edge(304,305), edge(305,306), edge(306,308), edge(308,307)])
+    "产销品-自动测试", "子工作流4：自动测试（含受理验证）。单入参 req_id 自查链路：query_node_result 按req_id+config读取环节结果→代码节点提取原文（V2.2 修复断链）→offer_test发起→get_test_scenes→循环get_test_progress（5s/30min）→get_test_result→测试报告生成（强制含受理验证结论orderId/offerInstId）；结束前存储 node_name=test（req_id=入参，主流程删除后环节存储下沉子工作流）。", "wf_sub_04", s4,
+    [edge(301,309), edge(309,310), edge(310,302), edge(302,303), edge(303,304), edge(304,305), edge(305,306), edge(306,308), edge(308,307)])
 
 # ============================================================
 # wf_sub_05 资费校准
@@ -695,10 +763,26 @@ s5 = []
 s5.append(start_node(401, [
     inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）", required=True),
 ]))
+# 406/407 自查链路（V2.2 修复断链）：上游 config_json 不再从开始节点入参引用
+# （wf_sub_05 单入参 req_id），改为按 req_id+node_name=config 查询 config 环节结果，
+# 代码节点提取 result_json 原文（落地配置JSON）供计费校验使用
+s5.append(plugin_node(406, "读取配置环节结果", "query_node_result",
+    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果记录数组（list[0].result_json 为落地结果原文）",
+    BASE_URL + "/api/v1/appstore/result/query",
+    [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(401), ref_rel="req_id"),
+     inp("node_name", "环节名=config", content="config"),
+     inp("latest_only", "1=只返回最新一条（默认）", content="1")],
+    [("code", "0成功", "string"), ("msg", "状态描述", "string"),
+     ("total", "命中记录数", "string"), ("list", "记录数组JSON（取[0].result_json为环节结果原文）", "string")],
+    method="get"))
+s5.append(code_node(407, "提取配置结果原文", CODE_EXTRACT_RECORD,
+    [inp("query_list", "引用节点406查询出参 list（记录数组JSON）", ref_block=nid(406), ref_rel="list")],
+    [code_out("record_json", 407)],
+    pos=(240, 135)))
 s5.append(plugin_node(402, "计费校验", "check_billing_rule",
-    "工具8：自研模拟计费规则校验（内置叠加/互斥/负资费规则，适配18销售品资费结构）",
+    "工具8：自研模拟计费规则校验（内置叠加/互斥/负资费规则，适配18销售品资费结构）；config_json 取自 config 环节结果（节点407提取原文）",
     BASE_URL + "/api/v1/appstore/billing/rules/verify",
-    [inp("config_json", "落地配置JSON", ref_block=nid(401), ref_rel="config_json"),
+    [inp("config_json", "落地配置JSON（节点407提取的环节结果原文）", ref_block=nid(407), ref_rel="record_json"),
      inp("check_scene", "校验场景默认all", content="all")],
     [("pass", "1通过/0不通过", "string"), ("risk_list", "风险清单", "array")]))
 s5.append(llm_node(403, "风险解读",
@@ -720,8 +804,8 @@ s5.append(end_node(404, "结束(资费校准完成)",
      inp("risk_summary", "风险解读", ref_block=nid(403), ref_rel="risk_summary")],
     "资费校准完成：pass={pass}\n{risk_summary}"))
 files["wf_sub_05_资费校准.json"] = workflow(
-    "产销品-资费校准", "子工作流5：资费校准。单入参 req_id 自查链路：check_billing_rule（自研模拟，check_scene=all）→风险解读（温度0.2，引用资费规则库知识）；结束前存储 node_name=fee（req_id=入参，主流程删除后环节存储下沉子工作流）。", "wf_sub_05", s5,
-    [edge(401,402), edge(402,403), edge(403,405), edge(405,404)])
+    "产销品-资费校准", "子工作流5：资费校准。单入参 req_id 自查链路：query_node_result 按req_id+config读取环节结果→代码节点提取原文（V2.2 修复断链）→check_billing_rule（自研模拟，check_scene=all）→风险解读（温度0.2，引用资费规则库知识）；结束前存储 node_name=fee（req_id=入参，主流程删除后环节存储下沉子工作流）。", "wf_sub_05", s5,
+    [edge(401,406), edge(406,407), edge(407,402), edge(402,403), edge(403,405), edge(405,404)])
 
 # ============================================================
 # wf_sub_06 上线审批

@@ -139,31 +139,10 @@ public class OfferSimV16Service {
         if (MapOps.empty(req.get("plan_json"))) {
             return paramMissing("plan_json 必填");
         }
-        if (!MapOps.truthy(req.get("confirmed"))) {
-            Map<String, Object> body = ok();
-            body.put("status", "NOT_CONFIRMED");
-            body.put("save_result", Map.of("reason", "confirmed 非 true，拒绝写入"));
-            return body;
-        }
-        // LLM智能调度硬门禁①：confirmed=true 还须存储中存在该 req_id 的确认标记（CONFIRMED），
-        // 防止智能体跳过"用户确认→写确认标记"步骤直接调落地（不信任 LLM 传参）。
-        // V1.7 统一键：plan_id/execution_id 双键合并为 req_id 单键，执行方案/确认标记/环节结果同键覆盖
+        // V2.2 门禁移除：确认与否由外层智能体 LLM 识别判断（"确认执行"意图识别后才会调度本子工作流），
+        // 后端不再校验 confirmed 入参与存储 CONFIRMED 标记（原 NOT_CONFIRMED 门禁删除，防 LLM 跳步
+        // 的硬门禁职责移交智能体提示词约定）。
         String reqIdForGate = MapOps.str(req.get("req_id")).trim();
-        Map<String, Object> confirmRec = nodeResult.latestRecord(reqIdForGate, "CONFIRMED");
-        if (confirmRec == null) {
-            // 诊断：列出该 req_id 已有的环节记录，区分"未写确认标记"与"req_id 不一致"
-            List<String> existingNodes = nodeResult.existingNodes(reqIdForGate);
-            String diagnose = existingNodes.isEmpty()
-                    ? "该 req_id 下无任何环节记录——req_id 可能传错（如 LLM 重新生成而非沿用执行方案存储键）"
-                    : "该 req_id 已有环节: " + String.join("/", existingNodes)
-                    + "——执行方案存在但确认标记缺失，LLM 未按技能2先写 node_name=CONFIRMED";
-            Map<String, Object> body = ok();
-            body.put("status", "NOT_CONFIRMED");
-            body.put("save_result", Map.of("reason",
-                    "存储中无 req_id=" + reqIdForGate + " 的确认标记（node_name=CONFIRMED），请先回复【确认执行】",
-                    "diagnose", diagnose));
-            return body;
-        }
         String planJson = MapOps.str(req.get("plan_json"));
         Map<String, Object> replay = planIdempotency.get(planJson);
         if (replay != null) {

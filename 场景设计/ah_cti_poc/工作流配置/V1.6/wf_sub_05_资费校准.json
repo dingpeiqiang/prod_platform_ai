@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-资费校准",
-  "flowRemark": "子工作流5：资费校准。单入参 req_id 自查链路：check_billing_rule（自研模拟，check_scene=all）→风险解读（温度0.2，引用资费规则库知识）；结束前存储 node_name=fee（req_id=入参，主流程删除后环节存储下沉子工作流）。",
+  "flowRemark": "子工作流5：资费校准。单入参 req_id 自查链路：query_node_result 按req_id+config读取环节结果→代码节点提取原文（V2.2 修复断链）→check_billing_rule（自研模拟，check_scene=all）→风险解读（温度0.2，引用资费规则库知识）；结束前存储 node_name=fee（req_id=入参，主流程删除后环节存储下沉子工作流）。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -30,6 +30,138 @@
         "id": "a1b2c3d4-0000-4000-8000-000000000401",
         "dependencyData": [],
         "type": 0
+      },
+      {
+        "outputs": [
+          {
+            "name": "code",
+            "cname": "0成功",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "msg",
+            "cname": "状态描述",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "total",
+            "cname": "命中记录数",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "list",
+            "cname": "记录数组JSON（取[0].result_json为环节结果原文）",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "get",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000401",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "存储键（=开始节点 req_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000401",
+              "a1b2c3d4-0000-4000-8000-000000000401,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000401,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=config",
+            "type": "string",
+            "required": true,
+            "content": "config"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "latest_only",
+            "description": "1=只返回最新一条（默认）",
+            "type": "string",
+            "required": true,
+            "content": "1"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "读取配置环节结果",
+          "code": "query_node_result",
+          "description": "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果记录数组（list[0].result_json 为落地结果原文）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000406",
+        "position": {
+          "x": 375,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/result/query"
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000407,record_json",
+            "name": "record_json",
+            "type": "string"
+          }
+        ],
+        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    ret: Output = {\n        \"record_json\": record_json\n    }\n    return ret",
+        "flowJson": null,
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000406",
+            "relName": "list",
+            "name": "query_list",
+            "description": "引用节点406查询出参 list（记录数组JSON）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000406",
+              "a1b2c3d4-0000-4000-8000-000000000406,list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000406,list"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "description": "编写代码，处理输入变量来生成返回值",
+          "title": "提取配置结果原文"
+        },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000407",
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 6
       },
       {
         "outputs": [
@@ -83,18 +215,18 @@
         "authentic_info": "",
         "inputs": [
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000401",
-            "relName": "config_json",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000407",
+            "relName": "record_json",
             "name": "config_json",
-            "description": "落地配置JSON",
+            "description": "落地配置JSON（节点407提取的环节结果原文）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000401",
-              "a1b2c3d4-0000-4000-8000-000000000401,config_json"
+              "a1b2c3d4-0000-4000-8000-000000000407",
+              "a1b2c3d4-0000-4000-8000-000000000407,record_json"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000401,config_json"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000407,record_json"
           },
           {
             "blockID": "",
@@ -110,7 +242,7 @@
         "nodeMeta": {
           "title": "计费校验",
           "code": "check_billing_rule",
-          "description": "工具8：自研模拟计费规则校验（内置叠加/互斥/负资费规则，适配18销售品资费结构）",
+          "description": "工具8：自研模拟计费规则校验（内置叠加/互斥/负资费规则，适配18销售品资费结构）；config_json 取自 config 环节结果（节点407提取原文）",
           "version": "1"
         },
         "authentic_info_new": {
@@ -123,7 +255,7 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000402",
         "position": {
-          "x": 375,
+          "x": 1095,
           "y": 300
         },
         "dependencyData": [],
@@ -175,7 +307,7 @@
         "temperature": 0.2,
         "top_p": 0.5,
         "position": {
-          "x": 735,
+          "x": 1455,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000403",
@@ -274,7 +406,7 @@
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000405",
         "position": {
-          "x": 1095,
+          "x": 1815,
           "y": 300
         },
         "dependencyData": [],
@@ -348,7 +480,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 1455,
+          "x": 2175,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000404",
@@ -358,8 +490,18 @@
     "edges": [
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000402",
+        "endId": "a1b2c3d4-0000-4000-8000-000000000406",
         "startId": "a1b2c3d4-0000-4000-8000-000000000401"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000407",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000406"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000402",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000407"
       },
       {
         "sourcePort": null,

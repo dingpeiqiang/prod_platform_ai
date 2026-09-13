@@ -179,31 +179,6 @@ public class NodeResultService {
         return rec;
     }
 
-    /**
-     * 门禁诊断：列出该 req_id 下已存储的全部 node_name（供 NOT_CONFIRMED 拒绝时定位
-     * 是"未写确认标记"还是"req_id 不一致"——若 requirement/config 等环节存在而
-     * CONFIRMED 缺失，说明 LLM 跳步；若全部为空，说明 req_id 传错或方案未保存）。
-     *
-     * @return node_name 列表（去重，按时间倒序）；无记录返回空列表
-     */
-    public List<String> existingNodes(String reqId) {
-        String req = reqId == null ? "" : reqId.trim();
-        List<String> nodes = new ArrayList<>();
-        if (req.isEmpty()) {
-            return nodes;
-        }
-        List<NodeResultRecord> hit = mapper.selectList(new LambdaQueryWrapper<NodeResultRecord>()
-                .eq(NodeResultRecord::getReqId, req));
-        hit.sort(Comparator.comparing((NodeResultRecord r) -> tsOf(r)).reversed());
-        for (NodeResultRecord r : hit) {
-            String node = r.getNodeName() == null ? "" : r.getNodeName();
-            if (!node.isEmpty() && !nodes.contains(node)) {
-                nodes.add(node);
-            }
-        }
-        return nodes;
-    }
-
     /* ---------------- 共用写入/查询 ---------------- */
 
     private synchronized Map<String, Object> doSave(String reqId, String nodeName, String key,

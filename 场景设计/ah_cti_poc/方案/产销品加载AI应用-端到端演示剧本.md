@@ -45,53 +45,40 @@
 
 ---
 
-## 幕2 用户确认门禁（先反向，后正向，V1.7 LLM 智能调度）
+## 幕2 用户确认门禁（先反向，后正向，V1.7 LLM 智能调度；V2.2 门禁移除）
 
 **幕2.1 反向演示（未确认不配置）：**
 ```
 输入：帮我直接配置落地
 预期：智能体拒绝——"请先确认执行方案后再触发智能配置"；CRM 无写入记录（save_product_config 未被调用）。
+说明（V2.2）：确认与否由智能体 LLM 语义识别保证（后端已移除 CONFIRMED 门禁），
+未识别到确认类回复时 LLM 按提示词约定不调度智能配置子工作流。
 ```
 
-**幕2.2 正向演示（V1.7）：**
+**幕2.2 正向演示（V1.7，V2.2 简化）：**
 ```
 输入：确认执行
 预期：智能体 LLM 执行确认流程——
   ① 取上下文中执行方案存储键 req_id（沿用原值，不新生成——req_id 由 wf_sub_01 代码节点生成，LLM 任何环节均不生成 req_id）；
-  ② 写确认标记（save_node_result：req_id=执行方案存储键、node_name=CONFIRMED）；
-  ③ 立即串行直调 wf_sub_02→wf_sub_03→wf_sub_05→wf_sub_04（进入幕3，不等用户再发消息）。
+  ② 立即串行直调 wf_sub_02→wf_sub_03→wf_sub_05→wf_sub_04（进入幕3，不等用户再发消息）。
+  说明（V2.2）：无需再写 node_name=CONFIRMED 确认标记——后端 save_product_config
+  已移除该门禁，确认语义由智能体识别保证，流程少一次工具调用、更快。
 ```
 
 **⚠️ 幕2.3 故障排查（联调常见问题）：若输入"确认执行"后系统再次输出执行方案表格（重复需求分析）**
 ```
-现象：智能体识别到确认意图，但未执行"写确认标记+串行直调子流"流程，
+现象：智能体识别到确认意图，但未执行"串行直调子流"流程，
       仅原样重发需求文本重复调用需求分析。
 排查：1) 检查智能体提示词是否包含主方案 3.2【意图→子工作流智能调度映射表】
-         及【技能2】确认标记写入约定；
-      2) 确认"确认执行"触发时 LLM 先调 save_node_result（req_id=执行方案存储键、
-         node_name=CONFIRMED），再按映射表串行直调子工作流；
-      3) 新会话无 req_id 时，LLM 应先调 query_node_result 检索最近执行方案；
-       4) 硬校验兜底：即使 LLM 跳步直调 wf_sub_02，后端 save_product_config
-          因存储中无 CONFIRMED 标记返回 NOT_CONFIRMED，不会误写入 CRM。
-
-  V2.1 诊断增强：NOT_CONFIRMED 返回体 save_result.diagnose 字段会列出该 req_id
-  已有的环节记录，直接区分两类根因：
-  - diagnose="该 req_id 下无任何环节记录……" → req_id 传错（LLM 重新生成而非沿用
-    执行方案存储键），需检查 req_id 是否沿用；
-  - diagnose="该 req_id 已有环节: requirement/config……确认标记缺失" → LLM 跳步，
-    未按【技能2】先写 node_name=CONFIRMED。
-
-  手动兜底修复（验证门禁放行，PowerShell 示例，端口默认 6174）：
-    # 1. 手动写确认标记（req_id 换成实际执行方案存储键）
-    curl.exe -X POST http://localhost:6174/api/v1/appstore/result/save `
-      -H "Content-Type: application/json" `
-      -d '{\"req_id\":\"PLAN20260913182110931\",\"node_name\":\"CONFIRMED\",\"result_json\":\"{\\\"confirmed\\\":true,\\\"req_id\\\":\\\"PLAN20260913182110931\\\"}\",\"status\":\"ok\"}'
-    # 2. 重新调 save_product_config（同报文）应返回 SUCCESS
-    #    注意：plan_json 应传执行方案对象本身（wf_sub_01 的 result_json 原文），
-    #    而非 query_node_result 的 list 出参数组。
+         及【技能2】确认触发约定（V2.2：识别确认语义后直接串行直调，无需写标记）；
+      2) 新会话无 req_id 时，LLM 应先调 query_node_result 检索最近执行方案；
+      3) V2.2 门禁已移除：save_product_config 不再校验 confirmed/CONFIRMED 标记，
+         NOT_CONFIRMED 状态不再出现；若落地仍失败，检查 plan_json 是否为执行方案
+         对象原文（wf_sub_02 已内置提取代码节点，手动调用时须传 result_json 原文
+         而非 query_node_result 的 list 出参数组）。
 ```
 
-**验收映射：** 确认门禁有效性（工具层硬校验）——未确认时配置落地触发率 = 0%。
+**验收映射：** 确认门禁有效性（智能体确认语义识别，V2.2）——未确认时配置落地触发率 = 0%。
 
 ---
 
