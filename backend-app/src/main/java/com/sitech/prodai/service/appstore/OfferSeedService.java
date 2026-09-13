@@ -111,7 +111,7 @@ public class OfferSeedService {
      * 相似度匹配：关键词命中（名称/系列/权益类型/资费档位）加权 + 资费结构相似度，返回按 score 降序列表。
      *
      * @param businessDesc 业务需求描述（非空，由控制器校验）
-     * @return 相似销售品列表，元素含 similarOfferId/similarOfferName/similarityScore/similarityDesc
+     * @return 相似销售品列表（按相似度降序），元素含 similarOfferId/similarOfferName/similarityScore/similarityDesc/offerInfo（完整产品配置信息）
      */
     public List<Map<String, Object>> matchSimilar(String businessDesc) {
         String text = businessDesc == null ? "" : businessDesc;
@@ -127,12 +127,19 @@ public class OfferSeedService {
             item.put("similarOfferName", MapOps.str(offer.get("offer_name")));
             item.put("similarityScore", String.format(Locale.ROOT, "%.2f", score));
             item.put("similarityDesc", descOf(offer));
+            item.put("offerInfo", new LinkedHashMap<>(offer));
             result.add(item);
         }
         result.sort((a, b) -> Double.compare(
                 Double.parseDouble(String.valueOf(b.get("similarityScore"))),
                 Double.parseDouble(String.valueOf(a.get("similarityScore")))));
         return result;
+    }
+
+    /** 相似度最高（第 1 名）的相似销售品，附完整产品配置信息 offerInfo；无命中返回 null */
+    public Map<String, Object> matchBestSimilar(String businessDesc) {
+        List<Map<String, Object>> list = matchSimilar(businessDesc);
+        return list.isEmpty() ? null : list.get(0);
     }
 
     private double scoreOffer(String lower, Map<String, Object> offer) {

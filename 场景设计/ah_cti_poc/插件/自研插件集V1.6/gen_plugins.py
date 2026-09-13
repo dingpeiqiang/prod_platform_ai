@@ -240,7 +240,7 @@ plugins = []
 # ---------------- 工具1 相似度分析 ----------------
 plugins.append(build_plugin(
     "similar-offer-0001", "相似度分析", "query_similar_offer",
-    "自研模拟实现（V1.6）：以《产品信息.txt》全部18个销售品（5G-A系列10个+权益随心选系列8个）为相似产品库，按业务需求描述返回相似销售品列表及相似度评分，支撑需求分析环节匹配历史产品与AI推理",
+    "自研模拟实现（V1.6）：以《产品信息.txt》全部18个销售品（5G-A系列10个+权益随心选系列8个）为相似产品库，按业务需求描述返回相似度最高的产品（仅1个，含相似度评分与完整产品配置信息 offerInfo），支撑需求分析环节匹配历史产品与AI推理",
     "/api/v1/appstore/similar/offer/query", "POST",
     {
         "businessDesc": schema_param("businessDesc", "string",
@@ -250,12 +250,17 @@ plugins.append(build_plugin(
     {
         "resultCode": {"description": "0 成功 / 1 失败 / PARAM_MISSING / PARSE_ERROR", "type": "string"},
         "resultMsg": {"description": "处理结果描述", "type": "string"},
-        "similarOfferList": arr("similarOfferList", "相似产品列表，按相似度降序，取自《产品信息.txt》18个销售品", {
-            "similarOfferId": {"description": "相似销售品ID（如 900102308）", "type": "string"},
-            "similarOfferName": {"description": "相似销售品名称", "type": "string"},
-            "similarityScore": {"description": "相似度评分（0~1）", "type": "string"},
-            "similarityDesc": {"description": "相似原因描述（命中字段/资费结构说明）", "type": "string"},
-        }),
+        "similarOffer": {
+            "description": "相似度最高的产品（仅返回1个），含相似度评分与完整产品配置信息；未命中时为空对象",
+            "type": "object",
+            "properties": {
+                "similarOfferId": {"description": "相似销售品ID（如 900102308）", "type": "string"},
+                "similarOfferName": {"description": "相似销售品名称", "type": "string"},
+                "similarityScore": {"description": "相似度评分（0~1）", "type": "string"},
+                "similarityDesc": {"description": "相似原因描述（命中字段/资费结构说明）", "type": "string"},
+                "offerInfo": {"description": "完整产品配置信息（销售品全量规则：资费/资源/副卡/渠道/订购/退订等，取自《产品信息.txt》种子）", "type": "object"},
+            },
+        },
     },
     "N"))
 

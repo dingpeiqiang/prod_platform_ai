@@ -57,11 +57,12 @@ ARRAY_ITEM_FIELDS = {
         ("default_value", "本体默认值"),
         ("fallback", "1=价格类不可推理字段 / 0=普通字段"),
     ],
-    "query_similar_offer|similarOfferList": [
+    "query_similar_offer|similarOffer": [
         ("similarOfferId", "相似销售品ID（如 900102308）"),
         ("similarOfferName", "相似销售品名称"),
         ("similarityScore", "相似度评分（0~1）"),
         ("similarityDesc", "相似原因描述（命中字段/资费结构说明）"),
+        ("offerInfo", "完整产品配置信息（销售品全量规则：资费/资源/副卡/渠道/订购/退订等）"),
     ],
     "realtime_spec_audit|error_list": [
         ("item", "问题项（对应配置字段/规则）"),
@@ -491,18 +492,18 @@ s1.append(llm_node(2, "需求理解与要素拆解",
     [inp("requirement_text", "引用开始节点 requirement_text", ref_block=nid(1), ref_rel="requirement_text")],
     [out("elements_json", "业务要素结构化JSON（18字段，未提及项value为空）"), out("need_summary", "需求要素摘要（供相似产品匹配）")]))
 s1.append(plugin_node(3, "相似产品查询", "query_similar_offer",
-    "工具1：以《产品信息.txt》全部18个销售品为相似产品库查询相似销售品",
+    "工具1：以《产品信息.txt》全部18个销售品为相似产品库，返回相似度最高的产品（仅1个，含相似度评分与完整产品配置信息 offerInfo）",
     BASE_URL + "/api/v1/appstore/similar/offer/query",
-    [inp("businessDesc", "业务需求描述（引用节点2需求摘要，≤5000字符）", ref_block=nid(2), ref_rel="need_summary")],
+    [inp("businessDesc", "业务需求描述（引用节点2需求要素摘要，≤5000字符）", ref_block=nid(2), ref_rel="need_summary")],
     [("resultCode", "0成功/1失败", "string"), ("resultMsg", "处理结果描述", "string"),
-     ("similarOfferList", "相似产品列表", "array")]))
+     ("similarOffer", "相似度最高的产品（含相似度评分与完整产品配置信息 offerInfo，未命中时为空对象）", "object")]))
 s1.append(llm_node(4, "产品信息整合",
-    "你是产销品加载执行方案生成助手（环节3：产品信息整合）。任务：将节点3匹配到的最高相似度产品的全量配置信息，与节点2要素信息中需求已提供的部分信息整合，输出最终产品信息（即18字段完整取值）。\n"
-    "输入：节点2要素JSON（elements_json={elements_json}）+ 节点3相似产品列表（similarOfferList={similarOfferList}，取相似度最高的第1个产品作为基准）。\n"
+    "你是产销品加载执行方案生成助手（环节3：产品信息整合）。任务：以节点3返回的相似产品完整产品配置信息（similarOffer.offerInfo）为基准，整合节点2要素信息中需求已提取的配置信息，输出最终产品信息（即18字段完整取值）。\n"
+    "输入：节点2要素JSON（elements_json={elements_json}）+ 节点3相似产品（similarOffer={similarOffer}，含 offerInfo 完整产品配置信息：资费/资源/副卡/渠道/订购/退订等全量规则）。\n"
     "\n"
     "【整合规则（严格执行）】\n"
     "1. 需求要素有值（value非空且非\"待补充\"）→ 优先采用需求要素值（source标\"原始需求\"）；\n"
-    "2. 需求要素无值 → 取最高相似度产品对应字段值（source标\"AI推理\"）；\n"
+    "2. 需求要素无值 → 从 offerInfo 完整产品配置信息中取对应字段值（source标\"AI推理\"）；\n"
     "3. 两者皆缺失 → value填空字符串\"\"（由下游字段本体推理引擎按默认值补全，source标\"AI推理\"）。\n"
     "\n"
     "【特殊字段口径（V2.2）】\n"
@@ -527,14 +528,14 @@ s1.append(llm_node(4, "产品信息整合",
     "该JSON对象固定包含以下1个键：\n"
     "1. fields：字段数组（18项），每项形如{\"field\":\"字段名称\",\"value\":\"字段值\",\"source\":\"原始需求或AI推理\"}；待补充字段value填\"待补充\"；执行方案Markdown表格（plan_md）与待补充判定（pending_fields）均由下游代码节点基于引擎推理后字段数组自动生成，本节点不再输出 plan_output/plan_md/pending_fields；",
     [inp("elements_json", "引用节点2要素JSON", ref_block=nid(2), ref_rel="elements_json"),
-     inp("similarOfferList", "引用节点3相似产品列表", ref_block=nid(3), ref_rel="similarOfferList")],
+     inp("similarOffer", "引用节点3相似产品（含offerInfo完整产品配置信息）", ref_block=nid(3), ref_rel="similarOffer")],
     [out("fields_output", "整合后字段数组JSON字符串（仅含 fields 键，18项字段）")]))
-# 31 字段本体推理（V2.2 闭环，工具14 action=reason 一体推理）：LLM节点4补全结果 →
-# 逐字段执行 本体校验+非法值修正回写（枚举归一/同义词映射/格式修正，产品名称模板归一等）+
+# 31 字段本体推理（V2.2 闭环，工具14 action=reason 一体推理）：LLM节点4整合结果 →
+# 逐字段执行 本体校验+稽核产品配置参数+问题自动修正回写（枚举归一/同义词映射/格式修正，产品名称模板归一等）+
 # 缺失与待补充字段默认值推理补全（V2.2：待补充项全部可推理，仅套餐固定费价格维持待补充），
 # 返回推理后 fields_json——004a 从该结果闭环取值组装 plan_json，引擎兜底真正生效（替代 V2.0 LLM 提示词自觉遵守）
 s1.append(plugin_node(31, "字段本体推理", "field_ontology_reason",
-    "工具14：字段本体推理引擎（闭环）——对节点4补全结果一体推理：枚举/格式校验+非法值修正回写+缺失与待补充字段按本体默认值推理补全（价格类维持待补充），返回推理后fields_json供下游组装方案",
+    "工具14：字段本体推理引擎（闭环）——对节点4整合结果稽核产品配置参数：枚举/格式校验，存在问题自动修正回写（枚举归一/同义词映射/格式修正），缺失与待补充字段按本体默认值推理补全（价格类维持待补充），返回推理后fields_json供下游组装方案",
     BASE_URL + "/api/v1/appstore/ontology/fields",
     [inp("action", "推理动作=reason（一体推理：校验+修正+补全）", content="reason"),
      inp("fields_json", "字段数组JSON（引用节点4字段数组输出，后端从中解析fields数组）", ref_block=nid(4), ref_rel="fields_output")],
@@ -580,7 +581,7 @@ s1.append(end_node(8, "结束(无待补充项)",
 e1 = [edge(1,2), edge(2,3), edge(3,4), edge(4,31), edge(31,41), edge(41,5),
       edge(5,6,0), edge(5,7,-1), edge(6,8)]
 files["wf_sub_01_需求分析.json"] = workflow(
-    "产销品-需求分析", "子工作流1：需求分析（执行方案生成，7环节新链路）。环节1需求理解与要素拆解（LLM仅提取要素信息，18字段未提及项value为空）→环节2相似产品查询（自研模拟，18销售品种子，入参=要素摘要）→环节3产品信息整合（LLM将匹配产品全量配置与要素部分信息整合，输出18字段最终产品信息，source仅原始需求/AI推理）→环节4字段本体推理（V2.2工具14 action=reason 一体推理：校验+非法值修正回写（枚举归一/同义词映射/格式修正）+缺失与待补充字段默认值推理补全（仅套餐固定费价格维持待补充），来源补全/修正改标\"本体推理\"）→方案输出拆分（单入参=推理后字段数组：fields直接组装、pending_fields反查value=待补充、plan_md代码重新生成四列表格）→待补充项判断（无待补充→保存执行方案→确认结束；有待补充→补充提示结束）。", "wf_sub_01", s1, e1)
+    "产销品-需求分析", "子工作流1：需求分析（执行方案生成，7环节新链路）。环节1需求理解与要素拆解（LLM仅提取要素信息，18字段未提及项value为空）→环节2相似产品查询（自研模拟，18销售品种子，入参=要素摘要，返回相似度最高的1个产品并附完整产品配置信息 offerInfo）→环节3产品信息整合（LLM以相似产品完整产品配置信息为基准整合需求已提取的配置信息，输出18字段最终产品信息，source仅原始需求/AI推理）→环节4字段本体推理（V2.2工具14 action=reason 一体推理：稽核产品配置参数，存在问题自动修正回写（枚举归一/同义词映射/格式修正）+缺失与待补充字段默认值推理补全（仅套餐固定费价格维持待补充），来源补全/修正改标\"本体推理\"）→方案输出拆分（单入参=推理后字段数组：fields直接组装、pending_fields反查value=待补充、plan_md代码重新生成四列表格）→待补充项判断（无待补充→保存执行方案→确认结束；有待补充→补充提示结束）。", "wf_sub_01", s1, e1)
 
 # ============================================================
 # wf_sub_02 智能配置（配置落地）

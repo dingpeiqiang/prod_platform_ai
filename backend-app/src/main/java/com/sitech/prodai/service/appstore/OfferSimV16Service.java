@@ -75,16 +75,16 @@ public class OfferSimV16Service {
         if (MapOps.empty(req.get("businessDesc"))) {
             return paramMissing("businessDesc 必填");
         }
-        List<Map<String, Object>> list = seed.matchSimilar(MapOps.str(req.get("businessDesc")));
-        if (list.isEmpty()) {
-            Map<String, Object> body = ok();
+        Map<String, Object> best = seed.matchBestSimilar(MapOps.str(req.get("businessDesc")));
+        Map<String, Object> body = ok();
+        if (best == null) {
             body.put("resultMsg", "未命中相似销售品");
-            body.put("similarOfferList", List.of());
+            body.put("similarOffer", Map.of());
             return body;
         }
-        Map<String, Object> body = ok();
-        body.put("resultMsg", "命中 " + list.size() + " 个相似销售品");
-        body.put("similarOfferList", list);
+        body.put("resultMsg", "命中相似销售品：" + MapOps.str(best.get("similarOfferName"))
+                + "（相似度 " + MapOps.str(best.get("similarityScore")) + "）");
+        body.put("similarOffer", best);
         return body;
     }
 
