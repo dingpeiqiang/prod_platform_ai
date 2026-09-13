@@ -183,9 +183,7 @@ CODE_004A = (
     "    plan_json = obj.get('plan_json')\n"
     "    if not isinstance(plan_json, str):\n"
     "        plan_json = json.dumps(plan_json if plan_json is not None else obj, ensure_ascii=False)\n"
-    "    req_id = str(args.params.get('prev_req_id') or '').strip()\n"
-    "    if not req_id:\n"
-    "        req_id = 'PLAN' + datetime.now().strftime('%Y%m%d%H%M%S') + '%03d' % random.randint(0, 999)\n"
+    "    req_id = 'PLAN' + datetime.now().strftime('%Y%m%d%H%M%S') + '%03d' % random.randint(0, 999)\n"
     "    try:\n"
     "        pj = json.loads(plan_json)\n"
     "        if isinstance(pj, dict):\n"
@@ -272,7 +270,6 @@ s1.append(start_node(1, [
     inp("requirement_text", "销售品需求描述文本或文档内容摘要（必填）", required=True),
     inp("requirement_file", "需求文档地址（选填）", required=False),
     inp("revise_opinion", "修改意见（修改执行方案续跑时传入，选填）", required=False),
-    inp("prev_req_id", "原执行方案存储key（修改执行方案场景传入，沿用原值覆盖写；首跑留空，req_id 由代码节点生成）", required=False),
 ]))
 s1.append(llm_node(2, "需求理解与要素拆解",
     "你是产销品加载需求分析助手。按6步分析：理解需求→提取并拆解业务要素（基础信息/资源配置/营销资源/销售规则四类）→识别信息完整性（字段三态：原始需求/AI补全/待补充）。需求原文：{requirement_text}\n修改意见（如有则覆盖分析）：{revise_opinion}\n补充规则（V1.6）：pending_fields默认为空——仅当费用（价格）或资源（流量/语音/短信）未提取到时，才将该字段填\"待补充\"并计入pending_fields（禁止推理，禁止从相似产品照搬）；其余缺失字段待相似产品返回后按最高相似度产品补全，来源标记\"AI补全\"；来源只允许\"原始需求\"或\"AI补全\"两种。\n输出要求（两个出参逐一约定，每个出参只输出自己的内容，严禁把其他出参内容并入）：\n1. elements_json：仅输出结构化要素JSON对象本身（以{开头、}结尾），包含 fields 数组与 pending_fields 数组，不得附带键名前缀或说明；\n2. need_summary：仅输出需求摘要文本本身（≤5000字符，供相似度分析调用使用）；\n3. 严格禁止输出形如\"elements_json: {...} need_summary: ...\"的拼接包；除上述两个出参各自内容外不输出任何多余文字。",
@@ -290,10 +287,9 @@ s1.append(llm_node(4, "字段映射与补全",
     [inp("elements_json", "引用节点2要素JSON", ref_block=nid(2), ref_rel="elements_json"),
      inp("similarOfferList", "引用节点3相似产品列表", ref_block=nid(3), ref_rel="similarOfferList")],
     [out("plan_output", "执行方案总输出JSON字符串，含 plan_json/plan_md/pending_fields 三个键")], pos=(905, 300)))
-# 004a 方案输出拆分：LLM节点4单出参 plan_output → 代码节点拆分为 plan_json/plan_md/pending_fields；req_id 由代码节点系统生成（PLAN+当前时刻+3位随机数，保证唯一），修改场景经 prev_req_id 沿用原值
+# 004a 方案输出拆分：LLM节点4单出参 plan_output → 代码节点拆分为 plan_json/plan_md/pending_fields；req_id 由代码节点系统生成（PLAN+当前时刻+3位随机数，每次分析重新生成，保证唯一）
 s1.append(code_node(41, "方案输出拆分", CODE_004A,
-    [inp("plan_output", "引用节点4总输出", ref_block=nid(4), ref_rel="plan_output"),
-     inp("prev_req_id", "引用开始节点 prev_req_id（修改执行方案场景沿用原存储键，首跑为空）", ref_block=nid(1), ref_rel="prev_req_id")],
+    [inp("plan_output", "引用节点4总输出", ref_block=nid(4), ref_rel="plan_output")],
     [code_out("plan_json", 41), code_out("plan_md", 41),
      code_out("pending_fields", 41), code_out("req_id", 41)],
     pos=(1170, 300)))

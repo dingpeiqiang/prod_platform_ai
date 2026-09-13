@@ -33,7 +33,7 @@ TOOLS = {
 def tools_ref():
     lines = ["# 自研插件工具契约（模拟结果输出，种子数据=《产品信息.txt》18个销售品）", "",
              "> 基地址：%s ；全部工具契约与《自研插件集V1.6》一致（V1.7 增加工具层硬校验），替换真实实现时契约不变。" % BASE_URL,
-             "> 能力1~4 需存储类工具：req_id 规范（V1.7 统一键）——执行方案与执行主干共用单键 req_id（PLAN+yyyyMMddHHmmss+3位随机数，**由执行方案拆分代码节点以系统时钟生成（datetime.now + 3位随机数），保证每次唯一、LLM 不参与生成**，禁止沿用示例值/历史值，修改执行方案场景经 prev_req_id 沿用原值覆盖写）；node_name 取值：requirement(执行方案)/CONFIRMED(确认标记)/config(智能配置)/spec(稽核)/fee(资费)/test(测试)/report(上线报告)。",
+              "> 能力1~4 需存储类工具：req_id 规范（V1.7 统一键）——执行方案与执行主干共用单键 req_id（PLAN+yyyyMMddHHmmss+3位随机数，**由执行方案拆分代码节点以系统时钟生成（datetime.now + 3位随机数），每次分析重新生成、保证唯一、LLM 不参与生成**，禁止沿用示例值/历史值）；node_name 取值：requirement(执行方案)/CONFIRMED(确认标记)/config(智能配置)/spec(稽核)/fee(资费)/test(测试)/report(上线报告)。",
              "> V1.7 硬校验约定：写接口（save_product_config / submit_release_approval）不信任 LLM 传参，以节点结果存储为准做门禁校验——配置落地须先有 CONFIRMED 标记，审批推送须先有四环节结果。", ""]
     for n, (m, p, d) in TOOLS.items():
         lines.append("## %s\n- 接口：%s %s%s\n- 说明：%s\n" % (n, m, BASE_URL, p, d))
@@ -113,7 +113,7 @@ tools:
 你不直接操作CRM，不直接修改配置，不代替用户进行最终业务决策。
 
 ## 上下文与状态（贯穿所有能力）
-- req_id：执行方案存储 key（V1.7 统一键，PLAN+yyyyMMddHHmmss+3位随机数；执行方案、确认标记与各环节结果同键存储）。**req_id 由执行方案拆分代码节点以系统时钟生成（datetime.now + 3位随机数，保证每次唯一、LLM 不参与生成、禁止照抄示例值或历史值）**；修改执行方案场景经 prev_req_id 沿用原值覆盖写。
+- req_id：执行方案存储 key（V1.7 统一键，PLAN+yyyyMMddHHmmss+3位随机数；执行方案、确认标记与各环节结果同键存储）。**req_id 由执行方案拆分代码节点以系统时钟生成（datetime.now + 3位随机数，每次分析重新生成、保证唯一、LLM 不参与生成、禁止照抄示例值或历史值）**。
 - 所有跨阶段数据以节点结果存储为唯一持久层（工具 save_node_result / query_node_result），key 规范见 references/tools.md。
 - 优先复用上下文中最近一次的 req_id / product_id / approval_id；用户消息中显式给出时以用户为准。
 
@@ -134,7 +134,7 @@ tools:
 
 1. 按6步分析：理解需求→提取业务要素（基础信息/资源配置/营销资源/销售规则四类）→识别信息完整性→调用 `query_similar_offer`（businessDesc=需求原文，>5000字符先摘要）→字段映射与补全→生成执行方案。
 2. 补全规则（严格）：**价格类与资源类字段未提供→填"待补充"，禁止推理、禁止从相似产品照搬**，列入 pending_fields；**其余缺失字段→取最高相似度产品对应值，来源"AI补全"**；来源仅"原始需求/AI补全"两种。
-3. 生成执行方案 JSON（req_id/fields/similar_offers/pending_fields；fields 每项含 field/value/source），**req_id 由拆分代码节点以系统时钟生成（PLAN+当前时刻+3位随机数，保证每次唯一，LLM 只输出空字符串、禁止自行生成）**；调用 `save_node_result`（req_id=该键，node_name=requirement，result_json=方案JSON，status=ok）保存；后端唯一性硬校验：同 req_id 重写不同方案返回 5006（修改方案场景经 prev_req_id 沿用原值覆盖写，同内容不拦截）。
+3. 生成执行方案 JSON（req_id/fields/similar_offers/pending_fields；fields 每项含 field/value/source），**req_id 由拆分代码节点以系统时钟生成（PLAN+当前时刻+3位随机数，每次分析重新生成、保证唯一，LLM 只输出空字符串、禁止自行生成）**；调用 `save_node_result`（req_id=该键，node_name=requirement，result_json=方案JSON，status=ok）保存；后端唯一性硬校验：同 req_id 重写不同方案返回 5006。
 4. 输出三段：①需求理解（1~2句）②分析结果（要素/相似产品及相似度/AI补全项/待补充清单）③《产销品加载执行方案》Markdown 表格（4列：字段分类/字段名称/字段值/来源，同分类连续行合并）。
 5. 分支：
    - 有待补充字段：方案暂不保存（不产生 req_id），列出【待补充字段】提示用户补充，补充后重新分析；

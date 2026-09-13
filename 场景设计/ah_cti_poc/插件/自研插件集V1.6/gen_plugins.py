@@ -533,7 +533,7 @@ def build_storage_plugin(tool_id, tool_name, tool_code, desc, path, method, req_
 
 plugins.append(build_storage_plugin(
     "node-result-save-0001", "节点结果存储", "save_node_result",
-    "平台复用插件：按需求单号+环节名存储工作流节点结果JSON（同键覆盖，支持重跑环节）。V1.8 统一键：全链路唯一批次标识 req_id（PLAN+yyyyMMddHHmmss+3位随机数，原 plan_id/execution_id 双键合并，由 wf_sub_01 拆分代码节点以系统时钟生成，LLM 不参与生成；修改场景经 prev_req_id 沿用原值），执行方案环节 node_name=requirement；执行主干各环节 node_name=config/spec/fee/test；后端硬校验 req_id 格式（非法返回 5002）与 requirement 环节同键不同内容冲突（返回 5006）",
+    "平台复用插件：按需求单号+环节名存储工作流节点结果JSON（同键覆盖，支持重跑环节）。V1.8 统一键：全链路唯一批次标识 req_id（PLAN+yyyyMMddHHmmss+3位随机数，原 plan_id/execution_id 双键合并，由 wf_sub_01 拆分代码节点以系统时钟生成，每次分析重新生成，LLM 不参与生成），执行方案环节 node_name=requirement；执行主干各环节 node_name=config/spec/fee/test；后端硬校验 req_id 格式（非法返回 5002）与 requirement 环节同键不同内容冲突（返回 5006）",
     "/api/v1/appstore/result/save", "POST",
     {
         "req_id": schema_param("req_id", "string",

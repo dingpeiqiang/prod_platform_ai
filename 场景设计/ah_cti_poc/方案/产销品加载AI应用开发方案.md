@@ -312,7 +312,7 @@
 | --- | --- |
 | 保存（save_node_result） | POST `/api/v1/appstore/result/save`（入参 req_id/node_name/result_json/status）；wf_sub_01 写执行方案（req_id=入参、node_name=requirement）；wf_sub_02~05 子流内部环节结果存储节点写本环节结果（req_id=入参，node_name=config/spec/fee/test）；wf_sub_06 写上线报告（node_name=report） |
 | 查询（query_node_result） | **GET** `/api/v1/appstore/result/query`（入参 req_id/node_name/latest_only，出参 total/list）；各子工作流开始后按 req_id 自查上游结果 |
-| key（req_id）规范 | V1.7 统一键：执行方案与执行主干共用单键 `PLAN` + yyyyMMddHHmmss + 3位随机数；**由 wf_sub_01 拆分代码节点以系统时钟生成（datetime.now + 3位随机数，保证每次唯一、LLM 不参与生成）**，修改执行方案场景经 prev_req_id 沿用原值；后端唯一性硬校验：PLAN 格式校验（非法返回 5002）+ 同 req_id 重写不同执行方案拒绝（返回 5006）；同键覆盖写 |
+| key（req_id）规范 | V1.7 统一键：执行方案与执行主干共用单键 `PLAN` + yyyyMMddHHmmss + 3位随机数；**由 wf_sub_01 拆分代码节点以系统时钟生成（datetime.now + 3位随机数，每次分析重新生成、保证唯一、LLM 不参与生成）**；后端唯一性硬校验：PLAN 格式校验（非法返回 5002）+ 同 req_id 重写不同执行方案拒绝（返回 5006）；同键覆盖写 |
 | 说明 | 平台已有通用插件，直接挂载使用，**不再自研** save_plan_json/get_plan_json；后端已落库持久化（pd_ai_node_results 表，H2/MySQL 双 DDL），服务重启不丢失 |
 
 ### 4.4 自研能力接口工具定义（6 个）
@@ -480,7 +480,7 @@
 
 | 子工作流 | 编码 | 节点数/边数 | 输入 | 输出 | 关键节点 |
 | --- | --- | --- | --- | --- | --- |
-| 需求分析（执行方案生成） | `wf_sub_01` | 9/8 | requirement_text, requirement_file, prev_req_id（选填：修改场景沿用原 req_id 覆盖写） | req_id(存储key) / plan_md（执行方案表格）/ plan_json | 开始 → 大模型(需求理解与要素拆解) → query_similar_offer(相似产品) → 大模型(LLM节点4单出参 plan_output，3 键不含 req_id) → 代码节点004a(系统时钟生成 req_id 并注入 plan_json，拆分 plan_json/plan_md/pending_fields/req_id) → 选择器(待补充项提示) → 节点结果存储·结果存储(保存JSON) → 结束 |
+| 需求分析（执行方案生成） | `wf_sub_01` | 9/8 | requirement_text, requirement_file | req_id(存储key) / plan_md（执行方案表格）/ plan_json | 开始 → 大模型(需求理解与要素拆解) → query_similar_offer(相似产品) → 大模型(LLM节点4单出参 plan_output，3 键不含 req_id) → 代码节点004a(系统时钟生成 req_id（每次分析重新生成）并注入 plan_json，拆分 plan_json/plan_md/pending_fields/req_id) → 选择器(待补充项提示) → 节点结果存储·结果存储(保存JSON) → 结束 |
 | 智能配置（配置落地） | `wf_sub_02` | 5/4 | req_id（必填） | product_id / offer_id / save_result | 开始(req_id) → query_node_result(按 req_id 自查执行方案, node_name=requirement) → save_product_config(req_id/plan_json/confirmed 三入参，req_id 引用开始节点、plan_json 原样透传，中间无大模型节点) → **save_node_result(环节结果存储, req_id=入参, node_name=config)** → 结束 |
 | 规格稽核（实时） | `wf_sub_03` | 5/4 | req_id（必填） | pass / error_list / audit_summary | 开始(req_id) → 自查 config（取 offer_id/config_json）→ realtime_spec_audit(实时稽核,同步返回) → 大模型(整改建议生成) → **save_node_result(环节结果存储, req_id=入参, node_name=spec)** → 结束 |
 | 资费校准 | `wf_sub_05` | 5/4 | req_id（必填） | pass / risk_list | 开始(req_id) → 自查 config（取 config_json）→ check_billing_rule → 大模型(风险解读) → **save_node_result(环节结果存储, req_id=入参, node_name=fee)** → 结束 |
