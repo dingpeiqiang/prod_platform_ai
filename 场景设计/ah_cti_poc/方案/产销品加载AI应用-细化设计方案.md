@@ -109,7 +109,7 @@
 | 项 | 同步类工具 | 异步轮询类工具 |
 | --- | --- | --- |
 | 单次请求超时 | 60s（`realtime_spec_audit` 建议 60s，超时重试 1 次） | 30s |
-| 重试 | 网络类错误重试 1 次 | 由工作流循环节点控制（见 3.4.4） |
+| 重试 | 网络类错误重试 1 次 | 由工作流代码节点轮询控制（见 3.4.4） |
 | 超时后行为 | 返回 `resultCode=TIMEOUT`，工作流转人工提示并保留请求报文供人工重放 | 工作流按超时上限（30 分钟）终止轮询 |
 
 #### 2.0.4 通用错误处理
@@ -247,7 +247,7 @@
 | 实现方式 | **自研模拟实现（V1.6）**：按 globalId 推进模拟测试进度状态机（场景数+2 步骤模型），支持轮询返回 done/failed；契约仍参考接口清单行9 |
 | 接口 | POST（requestObject 报文） |
 | 工具描述 | 轮询测试任务当前步骤、是否完成、是否失败 |
-| 调用方 | `wf_sub_04` 循环节点（间隔 5s，超时 30 分钟） |
+| 调用方 | `wf_sub_04` 代码节点0304 轮询调用（间隔 5s，超时 30 分钟） |
 
 | 入参 | 类型 | 必填 | 是否提参 | 为空提示 | 说明 |
 | --- | --- | --- | --- | --- | --- |
@@ -266,7 +266,7 @@
 
 | 归纳 | 否 |
 | --- | --- |
-| 超时/重试 | 30s / 不重试（由循环节点控制） |
+| 超时/重试 | 30s / 不重试（由代码节点0304 轮询控制） |
 | 错误处理 | 单次查询失败不终止，下一轮重查；连续 5 次失败终止循环转人工 |
 
 #### 工具6：查询测试结果 `get_test_result`
@@ -310,16 +310,17 @@
 
 ---
 
-### 2.2 平台复用插件（不自研）：节点结果存储查询插件
+### 2.2 平台复用插件（不自研）：节点结果存储查询插件（V1.6 更新）
 
 | 项 | 配置 |
 | --- | --- |
-| 来源 | 平台已有通用插件，直接挂载，**不自研**（V1.3 起替代原自研 save_plan_json/get_plan_json） |
-| 保存（结果存储） | 需求分析子工作流 `wf_sub_01` 产出执行方案 JSON 后调用"结果存储"能力写入：key=`plan_id`，value=执行方案 JSON 字符串 |
-| 查询（结果查询） | 用户确认后，智能配置子工作流 `wf_sub_02` 按 key 查询取回 JSON 原文，直接透传 `save_product_config` |
-| key 规范 | `PLAN` + yyyyMMdd + 3位序号（如 `PLAN20260912001`）；执行方案修改时**覆盖写同 key** |
-| value 大小 | 执行方案 JSON 一般 <20KB，符合节点结果存储限制；超限时压缩仅保留 fields/similar_offers/pending_fields 三段 |
-| 读写一致性自测 | 保存后立即按 key 查询，比对 value 一致（列入附录实施清单） |
+| 来源 | 平台已有通用插件，直接挂载，**不自研**（V1.3 起替代原自研 save_plan_json/get_plan_json）；V1.6 起后端由 `NodeResultService`（MyBatis-Plus）落库 `pd_ai_node_results` 表持久化（H2/MySQL 双 DDL），服务重启结果不丢失 |
+| 保存（save_node_result） | POST `/api/v1/appstore/result/save`，入参 req_id/node_name/result_json/status（默认 ok）；**V1.6 各子工作流结束前均调用**：wf_sub_01(req_id=plan_id, node_name=requirement)、wf_sub_02~05(req_id=execution_id, node_name=config/spec/fee/test)、wf_sub_06 报告存储(node_name=report) |
+| 查询（query_node_result） | **GET** `/api/v1/appstore/result/query`，入参 req_id（必填）/node_name（可选）/latest_only（默认1）；出参 code/msg/total/list（取 list[0].result_json 为结果原文）；**V1.6 各子工作流开始后自查上游环节结果（submit_way=get）** |
+| key（req_id）规范 | 执行方案环节：`PLAN` + yyyyMMdd + 3位序号（如 `PLAN20260912001`）；执行主干各环节：`EXE` + yyyyMMddHHmmss + 2位序号（execution_id）；同键**覆盖写** |
+| node_name 枚举 | requirement / config / spec / fee / test / **report**（V1.6 新增 report） |
+| value 大小 | result_json ≤64KB（超限返回 5004）；执行方案 JSON 一般 <20KB，超限时压缩仅保留 fields/similar_offers/pending_fields 三段 |
+| 读写一致性自测 | 保存后立即按 req_id+node_name 查询，比对 result_json 一致；服务重启后可查询（持久化验证） |
 
 ---
 
@@ -483,7 +484,7 @@
 | 6 | 工具7 二次校验 | confirmed!=true 时返回 NOT_CONFIRMED，CRM 无写入 |
 | 7 | 工具7 幂等 | 同 plan_json 重复提交不产生重复销售品（或返回已存在 offer_id） |
 | 8 | tcpCont 拼装 | 抓包验证 transactionId/reqTime/globalId/version/sign/svcCode/appKey/dstSysId 符合 2.0.2 |
-| 9 | 节点结果存储读写一致 | 保存→查询 value 逐字节一致；覆盖写后查询为新值 |
+| 9 | 节点结果存储读写一致 | 保存→按 req_id+node_name 查询 result_json 逐字节一致；覆盖写后查询为新值；服务重启后可查询（H2/MySQL 持久化） |
 | 10 | 每个必填入参"为空提示" | 在预览与调试中置空必填参数，提示文案正确弹出 |
 | 11 | 模拟数据 18 套餐覆盖（V1.6） | 依次以 18 个销售品 ID 作为输入调用工具1/2/3/6/8/10 | 每个销售品均返回结构化模拟结果，资费规则值与《产品信息.txt》该销售品记录一致；无"写死单一套餐"回退 |
 | 12 | 测试预期值口径（V1.6） | 抽取 900102308、900117022 两类套餐对比工具6 presetValue | presetValue 与《产品信息.txt》对应销售品规则值逐项一致 |
@@ -499,18 +500,20 @@
 
 ## 3. 工作流细化设计
 
-### 3.0 工作流清单与节点图例
-| 编码 | 名称 | 类型 | 节点数（约） |
+### 3.0 工作流清单与节点图例（V1.6 实现口径：节点数与平台导出 JSON 一致）
+| 编码 | 名称 | 类型 | 节点数/边数 |
 | --- | --- | --- | --- |
-| `wf_cpcp_main` | 产销品加载主流程 | 主工作流 | 21 |
-| `wf_sub_01` | 需求分析（执行方案生成） | 子工作流 | 7 |
-| `wf_sub_02` | 智能配置（配置落地） | 子工作流 | 4 |
-| `wf_sub_03` | 规格稽核（实时） | 子工作流 | 4 |
-| `wf_sub_04` | 自动测试（含受理验证） | 子工作流 | 7 |
-| `wf_sub_05` | 资费校准 | 子工作流 | 4 |
-| `wf_sub_06` | 上线审批 | 子工作流 | 3 |
+| `wf_cpcp_main` | 产销品加载主流程（仅调度与判定，无存储节点） | 主工作流 | 25/31 |
+| `wf_sub_01` | 需求分析（执行方案生成） | 子工作流 | 9/8 |
+| `wf_sub_02` | 智能配置（配置落地，req_id 单入参自查） | 子工作流 | 7/6 |
+| `wf_sub_03` | 规格稽核（实时，req_id 单入参自查） | 子工作流 | 8/7 |
+| `wf_sub_04` | 自动测试（含受理验证，req_id 单入参自查） | 子工作流 | 11/10 |
+| `wf_sub_05` | 资费校准（req_id 单入参自查） | 子工作流 | 8/7 |
+| `wf_sub_06` | 上线审批（req_id 单入参，串行自查 5 类结果→7 章节报告→报告存储→审批推送） | 子工作流 | 11/10 |
 | `wf_sub_07` | 监控运维 | 子工作流 | 5 |
 | `wf_sub_08` | 审批进度查询（V1.1 新增） | 子工作流 | 3 |
+
+> V1.6 统一模式：wf_sub_01~06 开始节点统一为 **req_id 单入参**（描述"主流程执行批次号 execution_id（EXE+yyyyMMddHHmmss+2位序号）"），子流程内部以 query_node_result（GET，req_id=execution_id、node_name=环节名、latest_only=1、submit_way=get）自查所需上游结果；结束节点前由代码节点合成 result_json 并 save_node_result 落库（node_name 枚举：requirement/config/spec/fee/test/report）。主流程删除全部存储节点（含旧 0016/0016b），报告生成（LLM）也移入 wf_sub_06 内部（节点 501g）。
 
 节点类型图例：`[开始/结束]` 流程起止　`[LLM]` 大模型节点　`[插件]` 插件工具节点　`[存储]` 节点结果存储查询插件　`[代码]` 代码节点　`[循环]` 循环节点　`[选择]` 选择器节点　`[子流]` 子工作流调用节点
 
@@ -529,23 +532,22 @@
 | 3 | 需求分析 | [子流] | requirement_text, requirement_file | plan_id, plan_md, pending_fields | 调用 wf_sub_01；结束节点A 输出执行方案表格，**主流程在此中断** |
 | 3A | 结束节点A | [结束] | plan_md, plan_id, pending_fields | 对话输出 | 输出模板见 3.1.1；等待用户回复"确认执行"后携带 plan_id+confirmed=true 重入 |
 | 4 | 续跑判定 | [选择] | resume_action, fail_node, approve_confirmed | branch | ①`approve_confirmed==true` → 节点16（审批确认后续办）；②`resume_action==revise_plan` → 节点3（修改执行方案）；③`resume_action==retry_from_fail` → 按 fail_node 跳转（映射见 3.4.3）；④无 → 节点5（首次执行） |
-| 5 | 【环节1】智能配置 | [子流] | plan_id, execution_id | product_id, offer_id, save_result, status | 调用 wf_sub_02（直读 JSON 落地）；前置由节点2 入口判定保证 plan_id 非空（=执行方案已保存，有待补充项的方案不产出 plan_id 无法进入）；结果按 key=`EXEC{execution_id}_STAGE1` 写入节点结果存储 |
+| 5 | 【环节1】智能配置 | [子流] | execution_id | product_id, offer_id, save_result, status | 调用 wf_sub_02（req_id 单入参，内部自查执行方案 JSON 后落地）；前置由节点2 入口判定保证 plan_id 非空（=执行方案已保存，有待补充项的方案不产出 plan_id 无法进入）；子流程内部存储 node_name=config |
 | 6 | 环节1判定与打印 | [选择]+输出 | status | — | `SUCCESS/PARTIAL` → 按 3.1.2 模板打印环节1成功结果 → 节点7；`FAIL` → 节点21（异常A，fail_node=STAGE1_CONFIG） |
-| 7 | 【环节2】实时规格稽核 | [子流] | offer_id, config_json, execution_id | pass, error_list, audit_summary | 调用 wf_sub_03（实时接口，同步返回）；结果按 key=`EXEC{execution_id}_STAGE2` 写入 |
+| 7 | 【环节2】实时规格稽核 | [子流] | execution_id | pass, error_list, audit_summary | 调用 wf_sub_03（req_id 单入参，自查 config 取 offer_id/config_json；实时接口同步返回）；子流程内部存储 node_name=spec |
 | 8 | 环节2判定与打印 | [选择]+输出 | pass | — | `pass==1` → 打印环节2成功结果 → 节点9；`pass==0` 或接口异常 → 节点21（fail_node=STAGE2_AUDIT） |
-| 9 | 【环节3】资费校准 | [子流] | config_json, execution_id | pass, risk_list, risk_summary | 调用 wf_sub_05；结果按 key=`EXEC{execution_id}_STAGE3` 写入 |
+| 9 | 【环节3】资费校准 | [子流] | execution_id | pass, risk_list, risk_summary | 调用 wf_sub_05（req_id 单入参，自查 config 取 config_json）；子流程内部存储 node_name=fee |
 | 10 | 环节3判定与打印 | [选择]+输出 | pass | — | `pass==1` → 打印环节3成功结果 → 节点11；`pass==0` 或接口异常 → 节点21（fail_node=STAGE3_FEE） |
-| 11 | 【环节4】自动测试 | [子流] | offer_id, execution_id | test_report, test_passed, globalId | 调用 wf_sub_04（发起→轮询→结果→报告，报告含受理验证结论）；结果按 key=`EXEC{execution_id}_STAGE4` 写入 |
+| 11 | 【环节4】自动测试 | [子流] | execution_id | test_report, test_passed, globalId | 调用 wf_sub_04（req_id 单入参，自查 config 取 offer_id；发起→代码节点0304轮询→结果→报告，报告含受理验证结论）；子流程内部存储 node_name=test |
 | 12 | 环节4判定与打印 | [选择]+输出 | test_passed | — | 通过 → 打印环节4成功结果（含受理验证结论）→ 节点13；失败/超时 → 节点21（fail_node=STAGE4_TEST） |
 | 13 | 主干完成判定 | [选择] | 各环节结果 | branch | 四环节全部成功（all_passed）→ 节点14；否则 → 节点21 |
-| 14 | 成功结果详情汇总 | [LLM] | 四环节存储结果（EXEC{execution_id}_STAGE1~4） | stage_summary | 温度 0.2；按 3.1.3 模板打印各环节成功结果详情，并提示"是否发起上线审批"；**主流程第二次中断**，等待用户回复"发起审批"（approve_confirmed=true）或"暂不" |
-| 15 | 审批发起判定 | [选择] | approve_confirmed | branch | `true` → 节点16；`false` → 结束（提示"已为您保留执行结果，回复【发起审批】可随时继续"） |
-| 16 | 报告汇总 | [LLM] | 各环节输出变量（提示词见 3.1.4） | report | 温度 0.2；生成《销售品上线测试与稽核报告》 |
-| 17 | 上线审批 | [子流] | product_id, report | approval_id, status | 调用 wf_sub_06（推送审批，工具层校验 approve_confirmed） |
+| 14 | 成功结果详情汇总 | [LLM] | 四环节存储结果（按 req_id=execution_id 自查 config/spec/fee/test） | stage_summary | 温度 0.2；按 3.1.3 模板打印各环节成功结果详情，并提示"是否发起上线审批"；**主流程第二次中断**，等待用户回复"发起审批"（approve_confirmed=true）或"暂不" |
+| 15 | 审批发起判定 | [选择] | approve_confirmed | branch | `true` → 节点17；`false` → 结束（提示"已为您保留执行结果，回复【发起审批】可随时继续"） |
+| 17 | 上线审批 | [子流] | execution_id | approval_id, status, report | 调用 wf_sub_06（req_id 单入参：内部串行自查 5 类环节结果 → LLM 节点 501g 生成 7 章节报告 → 报告存储 node_name=report → 审批推送，工具层校验 approve_confirmed）；**主流程无报告汇总节点（旧 0016/0016b 已删除）** |
 | 18 | 结束节点B | [结束] | — | — | 输出：product_id / plan_id / approval_id / 各环节结果摘要 / 下一步指引（"可发送消息查询审批进度或监控运维结果"） |
 | 21 | 异常处置（异常A） | [LLM]（+可选[插件] send_alert） | fail_node, 失败环节出参 | exception_summary | 统一异常出口；提示词见 3.1.5；输出异常节点+原因+明细+建议，并引导用户：①【重新执行】→ 注入 resume_action=retry_from_fail+fail_node 重入；②【修改执行方案】→ 注入 resume_action=revise_plan 重入；严重异常（稽核驳回等）可联动 send_alert(high) |
 
-> 主流程"两次中断"说明：① 结束节点A（执行方案确认）；② 节点14（审批发起确认）。执行主干（节点5~12）内部**无任何人工等待点**。续跑时节点4 按 resume_action/fail_node 跳转；已成功环节结果从节点结果存储回放（key=EXEC{execution_id}_STAGE{n}），**写接口不重复调用**。
+> 主流程"两次中断"说明：① 结束节点A（执行方案确认）；② 节点14（审批发起确认）。执行主干（节点5~12）内部**无任何人工等待点**。续跑时节点4 按 resume_action/fail_node 跳转；已成功环节结果由各子工作流按 req_id=execution_id、node_name=config/spec/fee/test 自查回放，**写接口不重复调用**。主流程**无存储节点**（25 节点/31 边）。
 
 #### 3.1.1 结束节点A 输出模板
 ```
@@ -577,7 +579,7 @@
 | 项 | 配置 |
 | --- | --- |
 | 模型参数 | 温度 0.2 |
-| 输入引用 | `EXEC{execution_id}_STAGE1~4` 存储结果（或直接引用节点5/7/9/11 输出） |
+| 输入引用 | 各子工作流存储结果（req_id=execution_id、node_name=config/spec/fee/test，由 query_node_result 自查取回）或直接引用节点5/7/9/11 输出 |
 | 提示词 | 见下 |
 | 输出 | `stage_summary`(string)；主流程中断等待审批确认 |
 
@@ -595,29 +597,29 @@
 是否发起上线审批？回复【发起审批】将汇总以上结果提交审批流；回复【暂不】可稍后发送"发起审批"继续。
 ```
 
-#### 3.1.4 节点16 报告汇总大模型节点
+#### 3.1.4 报告生成大模型节点（V1.6 调整：位于 wf_sub_06 内部，节点 501g；主流程原节点16 已删除）
 | 项 | 配置 |
 | --- | --- |
 | 模型参数 | 温度 0.2 |
-| 输入引用 | `wf_sub_01.plan_md`（执行方案摘要）、`wf_sub_02.save_result`、`wf_sub_03.audit_summary`、`wf_sub_05.risk_list`、`wf_sub_04.test_report` |
+| 输入引用 | wf_sub_06 内部串行自查合成的结构化汇总（代码节点 501s：config/spec/fee/test 四类环节结果 + 需求摘要） |
 | 提示词 | 见下 |
-| 输出 | `report`(string) |
+| 输出 | `report`(string)；先 save_node_result 落库（node_name=report），再传给 submit_release_approval |
 
-提示词：
+提示词（强制 7 章节）：
 ```
-请按标准模板汇总生成《销售品上线测试与稽核报告》，包含：
-1. 需求摘要与执行方案要点（引用 plan_md，仅列关键字段）；
-2. 配置落地结果（save_result 各分类写入情况）；
-3. 稽核结论（audit_summary，通过/驳回）；
-4. 资费结论（risk_list 是否为空）；
-5. 测试统计与失败明细（场景数/测点数/成功/失败统计，失败测点逐条列出）；
-6. 受理验证结论（强制章节，不得省略）：引用测试报告中的 orderId、offerInstId，
+请按标准模板汇总生成《销售品上线测试与稽核报告》，强制包含 7 章节：
+1. 需求摘要（引用 requirement 存储结果，仅列关键字段）；
+2. 配置落地结果（config：save_result 各分类写入情况、product_id/offer_id）；
+3. 稽核结论（spec：audit_summary，通过/驳回）；
+4. 资费结论（fee：risk_list 是否为空）；
+5. 测试统计（test：场景数/测点数/成功/失败统计，失败测点逐条列出）；
+6. 受理验证结论（强制章节，不得省略）：引用测试结果中的 orderId、offerInstId，
    并逐受理场景（套餐新装/副卡加装/套餐退订）给出通过/失败结论；
-7. 上线建议。
+7. 上线建议：全部通过 → "建议上线"；任一环节未通过 → "暂缓上线"。
 只基于输入数据生成，不得新增结论。
 ```
 
-#### 3.1.5 节点21 异常处置节点（异常A）
+#### 3.1.5 节点21 异常处置节点（异常A；主流程当前为 25 节点/31 边，异常处置为统一出口）
 | 项 | 配置 |
 | --- | --- |
 | 模型参数 | 温度 0.2 |
@@ -645,13 +647,14 @@
 
 ### 3.2 子工作流逐节点配置
 
-#### 3.2.1 `wf_sub_01` 需求分析（执行方案生成）
+#### 3.2.1 `wf_sub_01` 需求分析（执行方案生成，V1.6：9 节点/8 边）
 | # | 节点 | 类型 | 入参/引用 | 输出变量 | 配置要点 |
 | --- | --- | --- | --- | --- | --- |
 | 1 | 开始 | [开始] | requirement_text(string,必填)　requirement_file(string,选填) | — | 文件地址由平台文件上传组件生成 |
 | 2 | 需求理解与要素拆解 | [LLM] | requirement_text（+文件解析文本） | 要素拆解中间结果 | 温度 0.2；提示词=主方案 6.4 第 1~3 步（理解需求→提取拆解业务要素→识别完整性）；输出结构化要素 JSON（临时变量，不落存储） |
 | 3 | 相似产品查询 | [插件] | businessDesc=requirement_text（>5000字符时引用节点2输出的需求摘要） | similarOfferList | 工具1 `query_similar_offer` |
-| 4 | 字段映射与补全 | [LLM] | 要素拆解结果 + similarOfferList + 知识库检索（存量销售品资料库） | plan_json, plan_md, pending_fields, plan_id | 温度 0.2；提示词=主方案 6.4 全文（含 V1.4 补全规则）；输出执行方案 JSON + Markdown 表格 |
+| 4 | 字段映射与补全 | [LLM] | 要素拆解结果 + similarOfferList + 知识库检索（存量销售品资料库） | **plan_output（单出参）** | 温度 0.2；提示词=主方案 6.4 全文（含 V1.4 补全规则）；**LLM 节点仅输出 plan_output 一个出参**（内含完整 JSON 文本） |
+| 004a | 拆分方案字段 | [代码] | plan_output | plan_json, plan_md, pending_fields, plan_id | 代码节点将 LLM 单出参拆分为 4 个出参（供后续节点引用） |
 | 5 | 待补充项判断 | [选择] | pending_fields | branch | `pending_fields` 为空（长度=0）→ 节点6 保存后进入确认；**非空 → 直接进入节点7（有待补充项结束），不保存执行方案、不产出 plan_id** |
 | 6 | 保存执行方案 | [存储] | req_id=plan_id　node_name=requirement　result_json=plan_json | plan_id | 调用节点结果存储查询插件·结果存储；**仅无待补充项时执行**；修改场景覆盖写同 key |
 | 7 | 结束(有待补充项) | [结束] | plan_md, pending_fields | — | 输出待补充提示，**不保存执行方案**；plan_id 为空导致主流程入口判定（confirmed==true 且 plan_id 非空）不通过，**从源头禁止进入智能配置**；用户补充后重新走需求分析 |
@@ -659,47 +662,72 @@
 
 > 提示词全文以主方案 6.4 节为准（源自《需求分析工作流可参考提示词.txt》），此处不重复。节点 4 的知识库检索参数见 4.3 节（K4 检索 top_k=3、score 阈值 0.75）。
 
-#### 3.2.2 `wf_sub_02` 智能配置（配置落地）
+#### 3.2.2 `wf_sub_02` 智能配置（配置落地，V1.6：req_id 单入参自查，7 节点/6 边）
 | # | 节点 | 类型 | 入参/引用 | 输出变量 | 配置要点 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | 开始 | [开始] | plan_id(string,必填) | — | 由主流程确认门禁保证 confirmed=true |
-| 2 | 读取执行方案 | [存储] | key=plan_id | plan_json | 节点结果存储查询插件·结果查询 |
-| 3 | 配置落地 | [插件] | plan_id, plan_json=节点2输出（原样透传） | product_id, offer_id, save_result, status | 工具7 `save_product_config`；**节点2→节点3 之间禁止插入任何大模型节点/改写节点** |
-| 4 | 结束 | [结束] | product_id, offer_id, save_result, status | — | 返回主工作流节点5 |
+| 1 | 开始 | [开始] | req_id(string,必填，主流程执行批次号 execution_id) | — | 由主流程确认门禁保证 confirmed=true |
+| 2 | 自查执行方案 | [存储] | req_id=req_id　node_name=requirement　latest_only=1　submit_way=get | 查询结果 | query_node_result（**GET**）；取 list[0].result_json 为执行方案 JSON |
+| 3 | 提取方案字段 | [代码] | 自查结果 | plan_id, plan_json | 代码节点从 result_json 提取 plan_id 与 JSON 原文 |
+| 4 | 配置落地 | [插件] | **plan_id 独立传**、plan_json=节点3输出（原样透传）、confirmed=true | product_id, offer_id, save_result, status | 工具7 `save_product_config`；**三入参 plan_id/plan_json/confirmed；后端强校验 plan_id 必填（不读 plan_json 内部）；节点3→节点4 之间禁止插入任何大模型节点/改写节点** |
+| 5 | 合成结果 | [代码] | 节点4出参 | result_json | 代码节点合成环节结果 JSON |
+| 6 | 存储环节结果 | [存储] | req_id=req_id　node_name=config　result_json=节点5输出 | — | save_node_result；主流程续跑回放依据 |
+| 7 | 结束 | [结束] | product_id, offer_id, save_result, status | — | 返回主工作流节点5 |
 
-#### 3.2.3 `wf_sub_03` 规格稽核（实时）
+#### 3.2.3 `wf_sub_03` 规格稽核（实时，V1.6：req_id 单入参自查，8 节点/7 边）
 | # | 节点 | 类型 | 入参/引用 | 输出变量 | 配置要点 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | 开始 | [开始] | offer_id(string,必填)　config_json(string,必填) | — | — |
-| 2 | 实时稽核 | [插件] | offer_id, config_json, audit_scene=all | pass, error_list, audit_summary | 工具2 `realtime_spec_audit`；同步返回，无文件上传/无轮询 |
-| 3 | 整改建议生成 | [LLM] | error_list, audit_summary | audit_suggest | 温度 0.2；提示词："将稽核问题明细整理为可执行的整改建议清单，按严重级别排序；pass=1 时输出'稽核通过'。不新增稽核结论。" |
-| 4 | 结束 | [结束] | pass, error_list, audit_suggest | — | 返回主工作流节点7 |
+| 1 | 开始 | [开始] | req_id(string,必填) | — | — |
+| 2 | 自查配置结果 | [存储] | req_id=req_id　node_name=config　latest_only=1 | 查询结果 | query_node_result（GET） |
+| 3 | 提取配置字段 | [代码] | 自查结果 | offer_id, config_json | 代码节点从 config 环节结果提取 |
+| 4 | 实时稽核 | [插件] | offer_id, config_json, audit_scene=all | pass, error_list, audit_summary | 工具2 `realtime_spec_audit`；同步返回，无文件上传/无轮询 |
+| 5 | 整改建议生成 | [LLM] | error_list, audit_summary | audit_suggest | 温度 0.2；提示词："将稽核问题明细整理为可执行的整改建议清单，按严重级别排序；pass=1 时输出'稽核通过'。不新增稽核结论。" |
+| 6 | 合成结果 | [代码] | 节点4/5出参 | result_json | 代码节点合成环节结果 JSON |
+| 7 | 存储环节结果 | [存储] | req_id=req_id　node_name=spec　result_json | — | save_node_result |
+| 8 | 结束 | [结束] | pass, error_list, audit_suggest | — | 返回主工作流节点7 |
 
-#### 3.2.4 `wf_sub_04` 自动测试（含受理验证）
+#### 3.2.4 `wf_sub_04` 自动测试（含受理验证，V1.6：req_id 单入参自查，11 节点/10 边）
 | # | 节点 | 类型 | 入参/引用 | 输出变量 | 配置要点 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | 开始 | [开始] | offer_id(string,必填) | — | — |
-| 2 | 发起测试 | [插件] | offerId=offer_id | globalId | 工具3 `offer_test`；resultCode=1 时直接终止 |
-| 3 | 查询测试场景 | [插件] | globalId | testScenes | 工具4 `get_test_scenes`；记录受理验证覆盖范围 |
-| 4 | 轮询测试进度 | [循环] | globalId | done, failed, failIndex | 循环体=工具5 `get_test_progress`；伪代码见 3.4.4 |
-| 5 | 查询测试结果 | [插件] | globalId | 测试结果（含 orderId, offerInstId, offerName） | 工具6 `get_test_result`；仅 done=true 后调用 |
-| 6 | 测试报告生成 | [LLM] | 测试结果 + testScenes（节点3 场景清单） | test_report, test_passed | 温度 0.2；提示词见 3.4.5；**报告必须含受理验证结论** |
-| 7 | 结束 | [结束] | test_report, test_passed, globalId | — | 返回主工作流节点11 |
+| 1 | 开始 | [开始] | req_id(string,必填) | — | — |
+| 2 | 自查配置结果 | [存储] | req_id=req_id　node_name=config | 查询结果 | query_node_result（GET） |
+| 3 | 提取 offer_id | [代码] | 自查结果 | offer_id | 代码节点提取 |
+| 4 | 发起测试 | [插件] | offerId=offer_id（**camelCase 特例保持**，与后端工具3 参数名一致） | globalId | 工具3 `offer_test`；resultCode=1 时直接终止 |
+| 5 | 查询测试场景 | [插件] | globalId | testScenes | 工具4 `get_test_scenes`；记录受理验证覆盖范围 |
+| 0304 | 轮询测试进度 | [代码]（type=6） | globalId（**inputs 必须为平铺 list，非 {loopParam, inputParameters} 嵌套**） | done, failed, failIndex, fail_reason | 节点内代码：asyncio.sleep(5) 间隔轮询工具5 `get_test_progress`，最多 360 次（30 分钟），连续 5 次失败终止转人工；伪代码见 3.4.4 |
+| 6 | 查询测试结果 | [插件] | globalId | 测试结果（含 orderId, offerInstId, offerName） | 工具6 `get_test_result`；仅 done=true 后调用 |
+| 7 | 测试报告生成 | [LLM] | 测试结果 + testScenes（节点5 场景清单） | test_report, test_passed | 温度 0.2；提示词见 3.4.5；**报告必须含受理验证结论** |
+| 8 | 合成结果 | [代码] | 节点7出参 | result_json | 代码节点合成环节结果 JSON（含 test_passed/fail_reason） |
+| 9 | 存储环节结果 | [存储] | req_id=req_id　node_name=test　result_json | — | save_node_result |
+| 10 | 结束 | [结束] | test_report, test_passed, globalId | — | 返回主工作流节点11 |
 
-#### 3.2.5 `wf_sub_05` 资费校准
+#### 3.2.5 `wf_sub_05` 资费校准（V1.6：req_id 单入参自查，8 节点/7 边）
 | # | 节点 | 类型 | 入参/引用 | 输出变量 | 配置要点 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | 开始 | [开始] | config_json(string,必填) | — | — |
-| 2 | 计费校验 | [插件] | config_json, check_scene=all | pass, risk_list | 工具8 `check_billing_rule`；all=全量校验（计费/叠加/互斥） |
-| 3 | 风险解读 | [LLM] | risk_list + 知识库检索（资费规则库） | risk_summary | 温度 0.2；提示词："将资费风险清单翻译为业务语言，说明每条风险的影响与建议；risk_list 为空时输出'资费校验通过，未发现叠加/互斥冲突'。可引用资费规则库知识作为解释依据，但不得新增风险结论。" |
-| 4 | 结束 | [结束] | pass, risk_list, risk_summary | — | 返回主工作流节点9 |
+| 1 | 开始 | [开始] | req_id(string,必填) | — | — |
+| 2 | 自查配置结果 | [存储] | req_id=req_id　node_name=config | 查询结果 | query_node_result（GET） |
+| 3 | 提取配置字段 | [代码] | 自查结果 | config_json | 代码节点提取 |
+| 4 | 计费校验 | [插件] | config_json, check_scene=all | pass, risk_list | 工具8 `check_billing_rule`；all=全量校验（计费/叠加/互斥） |
+| 5 | 风险解读 | [LLM] | risk_list + 知识库检索（资费规则库） | risk_summary | 温度 0.2；提示词："将资费风险清单翻译为业务语言，说明每条风险的影响与建议；risk_list 为空时输出'资费校验通过，未发现叠加/互斥冲突'。可引用资费规则库知识作为解释依据，但不得新增风险结论。" |
+| 6 | 合成结果 | [代码] | 节点4/5出参 | result_json | 代码节点合成环节结果 JSON |
+| 7 | 存储环节结果 | [存储] | req_id=req_id　node_name=fee　result_json | — | save_node_result |
+| 8 | 结束 | [结束] | pass, risk_list, risk_summary | — | 返回主工作流节点9 |
 
-#### 3.2.6 `wf_sub_06` 上线审批
+#### 3.2.6 `wf_sub_06` 上线审批（V1.6 重设计：req_id 单入参串行自查，11 节点/10 边）
 | # | 节点 | 类型 | 入参/引用 | 输出变量 | 配置要点 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | 开始 | [开始] | product_id(string,必填)　report(string,必填) | — | report 为主工作流节点16 输出；进入本子工作流前主流程已校验 approve_confirmed=true |
-| 2 | 审批推送 | [插件] | product_id, report_url=report, approval_flow=standard | approval_id, status | 工具9 `submit_release_approval`；工具层校验 approve_confirmed=true（未经确认调用返回 NOT_CONFIRMED） |
-| 3 | 结束 | [结束] | approval_id, status | — | 返回主工作流节点17 |
+| 1 | 开始 | [开始] | req_id(string,必填，主流程执行批次号 execution_id) | — | 进入本子工作流前主流程已校验 approve_confirmed=true |
+| 2 | 自查配置结果 501q1 | [存储] | req_id=req_id　node_name=config | config 结果 | query_node_result（GET） |
+| 3 | 自查稽核结果 501q2 | [存储] | req_id=req_id　node_name=spec | spec 结果 | 与 q1 **串行**（q1→q2→q3→q4→q5 链式连接，非星型并行） |
+| 4 | 自查资费结果 501q3 | [存储] | req_id=req_id　node_name=fee | fee 结果 | 串行 |
+| 5 | 自查测试结果 501q4 | [存储] | req_id=req_id　node_name=test | test 结果 | 串行 |
+| 6 | 自查执行方案 501q5 | [存储] | req_id=**plan_id**　node_name=requirement | 需求摘要 | 串行；用于报告"需求摘要"章节（req_id 此处为 plan_id，方案批次号） |
+| 7 | 合成汇总 501s | [代码] | 5 类自查结果 | 结构化汇总（含 product_id/orderId/offerInstId 等） | 提取各环节关键字段合成 LLM 输入 |
+| 8 | 报告生成 501g | [LLM] | 结构化汇总 | report | 温度 0.2；提示词见 3.1.4；**强制 7 章节：需求摘要/配置落地/稽核结论/资费结论/测试统计/受理验证（orderId/offerInstId）/上线建议；全通过→"建议上线"，任一未通过→"暂缓上线"** |
+| 9 | 报告存储 501r | [存储] | req_id=req_id　node_name=report　result_json=report | — | save_node_result |
+| 10 | 审批推送 0502 | [插件] | product_id, report_url=report, approval_flow=standard | approval_id, status | 工具9 `submit_release_approval`；工具层校验 approve_confirmed=true（未经确认调用返回 NOT_CONFIRMED） |
+| 11 | 结束 | [结束] | approval_id, status, report | — | 返回主工作流节点17 |
+
+> V1.6 重设计说明：旧版 wf_sub_06 仅 3 节点（入参 product_id+report，报告由主流程 016 LLM 生成后传入）。新版改为**子工作流自治**——req_id 单入参进入，串行自查 5 类环节结果，内部 LLM 生成报告并落库（node_name=report），再推送审批；主流程相应删除节点16（报告汇总 LLM）与 0016b（报告存储）。
 
 #### 3.2.7 `wf_sub_07` 监控运维
 | # | 节点 | 类型 | 入参/引用 | 输出变量 | 配置要点 |
@@ -735,18 +763,21 @@
 第二轮：
 智能体注入 plan_id + confirmed=true + execution_id(新生成) → 入口判定→分支①
 → 执行主干自动串行（中途不停顿）：
-  环节1 智能配置（打印结果）→ 环节2 实时稽核（打印结果）
-  → 环节3 资费校准（打印结果）→ 环节4 自动测试（打印结果）
+  环节1 智能配置（子流 req_id 自查+存储 config，打印结果）
+  → 环节2 实时稽核（自查 config，存储 spec，打印结果）
+  → 环节3 资费校准（自查 config，存储 fee，打印结果）
+  → 环节4 自动测试（自查 config，代码节点轮询，存储 test，打印结果）
 → 全部成功 → 成功结果详情汇总 + 提示"是否发起上线审批" → 【中断②：等待审批发起确认】
 （任一环节异常 → 异常处置节点：打印异常节点+原因+建议，引导重新执行/修改执行方案 → 流程结束待用户指令）
 
 第三轮（用户回复"发起审批"）：
 智能体注入 approve_confirmed=true → 续跑判定→审批分支
-→ 报告汇总 → 上线审批推送 → 结束节点B（提示可消息查询审批进度）
+→ wf_sub_06（req_id 单入参：串行自查 5 类结果 → 内部生成 7 章节报告并存储 node_name=report → 审批推送）
+→ 结束节点B（提示可消息查询审批进度）
 
 异常处置后的续跑（可选）：
 用户回复【重新执行】→ 注入 resume_action=retry_from_fail + fail_node + 原execution_id
-→ 从失败环节续跑（已成功环节结果从节点结果存储回放，不重复调用写接口）
+→ 从失败环节续跑（各子工作流按 req_id 自查回放已成功环节，不重复调用写接口）
 用户回复【修改执行方案】+ 修改意见 → 注入 resume_action=revise_plan → 回到需求分析
 ```
 
@@ -773,56 +804,62 @@ plan_id = "PLAN" + yyyyMMdd + 3位当日递增序号
 来源枚举校验：仅允许 {原始需求, AI补全}，出现其他值 → 校验失败重新生成
 ```
 
-#### 3.4.3 门禁与续跑条件（主工作流节点2/节点4 选择器，V1.1 更新）
+#### 3.4.3 门禁与续跑条件（主工作流节点2/节点4 选择器，V1.6 更新）
 ```
-节点2 确认门禁：
-分支①（进入执行主干）：confirmed == true && plan_id != ""
+节点2 确认门禁（选择器操作符：value:1 等于 / 9 为空 / 10 不为空）：
+分支①（进入执行主干）：confirmed == true && plan_id 不为空
 分支②（进入需求分析）：其余情况
 兜底：confirmed==true 但 plan_id 为空 → 按分支②处理并提示"未找到执行方案，请先完成需求分析"
 
-节点4 续跑判定（优先级从高到低）：
-① approve_confirmed == true → 跳转审批分支（节点16 报告汇总）
+节点4 续跑判定（优先级从高到低，三个选择器串行判定）：
+① approve_confirmed == true → 跳转审批分支（wf_sub_06，req_id 单入参）
 ② resume_action == "revise_plan" → 回到需求分析（节点3）
 ③ resume_action == "retry_from_fail" && fail_node 非空 → 跳转失败环节：
    fail_node 映射表：
-     STAGE1_CONFIG → 节点5（智能配置，须重新落地）
-     STAGE2_AUDIT  → 节点7（实时稽核，复用已落地 product_id/config_json）
-     STAGE3_FEE    → 节点9（资费校准，复用 config_json）
-     STAGE4_TEST   → 节点11（自动测试，复用 offer_id）
-   续跑前置：按 EXEC{execution_id}_STAGE{n} 回放已成功环节结果（不重复调用写接口）
-④ 其余（首次执行）→ 节点5（智能配置）
+     STAGE1_CONFIG → 节点5（wf_sub_02 智能配置，须重新落地）
+     STAGE2_AUDIT  → 节点7（wf_sub_03 实时稽核，自查 config 复用 product_id/config_json）
+     STAGE3_FEE    → 节点9（wf_sub_05 资费校准，自查 config 复用 config_json）
+     STAGE4_TEST   → 节点11（wf_sub_04 自动测试，自查 config 复用 offer_id）
+   续跑前置：各子工作流按 req_id=execution_id、node_name=config/spec/fee/test 自查回放
+   已成功环节结果（不重复调用写接口）
+④ 其余（首次执行）→ 节点5（wf_sub_02 智能配置）
 
 节点15 审批发起门禁：
-approve_confirmed == true → 进入报告汇总与审批推送
+approve_confirmed == true → 进入 wf_sub_06（报告生成+审批推送）
 approve_confirmed == false → 结束并提示"回复【发起审批】可随时继续"
 
 兜底：resume_action==retry_from_fail 但 fail_node 非法/execution_id 查无记录
 → 按首次执行处理并提示"未找到可续跑的执行记录，已从头开始执行主干"
 ```
 
-#### 3.4.4 测试轮询循环节点伪代码（wf_sub_04 节点4）
+#### 3.4.4 测试轮询代码节点（wf_sub_04 节点0304，type=6 代码节点，V1.6 更新）
+> 实现方式变更：不再使用循环节点，改为 **type=6 代码节点**内嵌轮询代码。平台约束：`code` 字段必填；`inputs` 必须为**平铺 list**（非 {loopParam, inputParameters} 嵌套，否则入参无法注入）。
 ```
-interval = 5s          # 轮询间隔
-timeout  = 30min       # 超时上限
-consecutive_fail = 0   # 连续查询失败计数
-start_time = now()
+# 平台代码节点（type=6）伪代码（args.params 取入参，ret: Output 返回）
+interval = 5            # 轮询间隔（秒），用 asyncio.sleep(5)
+max_retry = 360         # 最多 360 次（30 分钟超时）
+consecutive_fail = 0    # 连续查询失败计数
 
-loop:
-    resp = get_test_progress(globalId)
+for i in range(max_retry):
+    resp = get_test_progress(globalId)      # 平台工具调用
     if resp 查询失败:
         consecutive_fail += 1
-        if consecutive_fail >= 5: exit → 转人工（保留 globalId）
-        sleep(interval); continue
+        if consecutive_fail >= 5:
+            ret = {"done": False, "failed": True, "fail_reason": "连续查询失败，转人工（保留 globalId）"}
+            return
+        await asyncio.sleep(interval); continue
     consecutive_fail = 0
 
     if resp.done == true:
-        exit → 进入节点5（查询测试结果）
+        ret = {"done": True, "failed": False}
+        return
     if resp.failed == true:
-        记录 failIndex 对应失败场景
-        exit → 仍进入节点5（取完整结果供报告定位失败原因）
-    if now() - start_time > timeout:
-        exit → 转人工（提示"测试超时，请凭流水号 {globalId} 人工续查"）
-    sleep(interval)
+        ret = {"done": False, "failed": True, "failIndex": resp.failIndex,
+               "fail_reason": "测试失败/中止，仍取完整结果供报告定位失败原因"}
+        return
+    await asyncio.sleep(interval)
+
+ret = {"done": False, "failed": True, "fail_reason": "测试超时（30 分钟），请凭 globalId 人工续查"}
 ```
 
 #### 3.4.5 测试报告生成提示词（wf_sub_04 节点6）
@@ -846,12 +883,12 @@ loop:
 | 节点 | 温度 | 理由 |
 | --- | --- | --- |
 | wf_sub_01 节点2/节点4（需求解析、字段映射补全） | 0.2 | 结构化输出，抑制幻觉 |
-| wf_sub_03 节点3（整改建议） | 0.2 | 忠实于稽核结果 |
-| wf_sub_04 节点6（测试报告） | 0.2 | 数据引用型生成 |
-| wf_sub_05 节点3（风险解读） | 0.2 | 忠实于校验结果 |
+| wf_sub_03 节点5（整改建议） | 0.2 | 忠实于稽核结果 |
+| wf_sub_04 节点7（测试报告） | 0.2 | 数据引用型生成 |
+| wf_sub_05 节点5（风险解读） | 0.2 | 忠实于校验结果 |
+| wf_sub_06 节点8 501g（7 章节上线报告） | 0.2 | 汇总引用型，报告结构强制 |
 | 主流程节点6/8/10/12（环节结果打印，若用 LLM 格式化） | 0.2 | 逐字引用插件出参，不加工 |
 | 主流程节点14（成功结果详情汇总+审批引导） | 0.2 | 汇总引用型 |
-| 主流程节点16（报告汇总） | 0.2 | 汇总引用型 |
 | 主流程节点21（异常处置说明） | 0.2 | 忠实于异常出参，不臆测 |
 | wf_sub_07 告警文案 | 0.2 | — |
 | wf_sub_08 节点3（审批状态摘要） | 0.2 | 结构化摘要 |
@@ -971,18 +1008,20 @@ loop:
 ### 6.1 工作流变量
 | 风格 | 适用 | 示例 |
 | --- | --- | --- |
-| 小写下划线 | 工作流输入/输出变量 | `requirement_text`、`plan_id`、`test_report`、`pending_fields`、`resume_action`、`fail_node`、`approve_confirmed` |
-| 驼峰 | 接口原始出参字段（与接口清单保持一致，不做改名） | `globalId`、`offerId`、`testScenes`、`orderId`、`offerInstId`、`presetValue`、`testValue` |
+| 小写下划线 | 工作流输入/输出变量 | `requirement_text`、`plan_id`、`test_report`、`pending_fields`、`resume_action`、`fail_node`、`approve_confirmed`、`req_id`（子工作流单入参）、`result_json`（子流程自查/存储载荷） |
+| 驼峰 | 接口原始出参字段（与接口清单保持一致，不做改名；特例：`offerId` 为后端工具3 参数名，保持 camelCase） | `globalId`、`offerId`、`testScenes`、`orderId`、`offerInstId`、`presetValue`、`testValue` |
 | `wf_sub_XX.` 前缀 | 子工作流输出在主流程中的引用 | `wf_sub_02.save_result` |
-| `EXEC{execution_id}_STAGE{n}` | 执行主干各环节结果存储 key（V1.1 新增） | `EXEC20260912001_STAGE2` |
+| req_id + node_name | 节点结果存储寻址（V1.6 统一模式：req_id=execution_id 或 plan_id；node_name=requirement/config/spec/fee/test/report） | req_id=`EXE2026091210245001`、node_name=`spec` |
 
 ### 6.2 存储与流水
 | 变量 | 规则 | 示例 |
 | --- | --- | --- |
 | `plan_id` | `PLAN` + yyyyMMdd + 3位序号 | `PLAN20260912001` |
-| `execution_id` | `EXE` + yyyyMMddHHmmss + 2位序号（V1.1 新增，执行主干批次号；重新执行沿用原值） | `EXE2026091210245001` |
+| `execution_id` | `EXE` + yyyyMMddHHmmss + 2位序号（执行主干批次号，也是子工作流 req_id 单入参值；重新执行沿用原值） | `EXE2026091210245001` |
 | `globalId`（测试流水） | 接口返回原值，不得重生成 | `50202608252017364447983718` |
 | `transactionId` | yyyyMMddHHmmssSSS + 4~6位随机数 | `20260912102450123456` |
+| node_name 枚举 | requirement / config / spec / fee / test / report（V1.6 新增 report） | `report` |
+| 存储介质 | 后端 `pd_ai_node_results` 表持久化（NodeResultService 落库；H2/MySQL 双 DDL），同键覆盖 | — |
 
 ### 6.3 枚举值约定（提示词/选择器统一使用）
 | 枚举 | 取值 |
@@ -1010,25 +1049,25 @@ loop:
 | E2 | LLM 输出来源枚举违规 | wf_sub_01 节点4 | 程序化校验失败 → 重新生成（最多2次） | 无感知或"解析重试中" | 2次失败后转人工 |
 | E3 | 未确认即触发配置 | 主流程节点2 | 拒绝进入执行主干 | "请先确认执行方案后再触发智能配置" | 用户回复确认后重入 |
 | E4 | 绕过工作流直调 save_product_config | 插件内部校验 | 返回 NOT_CONFIRMED，CRM 无写入 | 调用方收到拒绝码 | 走正常确认流程 |
-| E5 | 节点结果存储 key 不存在 | wf_sub_02 节点2 | 终止并返回提示 | "未找到执行方案，请先完成需求分析" | 重新走需求分析 |
-| E6 | 配置落地 FAIL | wf_sub_02 节点3 → 主流程节点6 | **主干中断** → 异常A 节点 | 打印"异常环节：智能配置"+失败分类明细+建议，引导重新执行/修改执行方案 | 用户二选一后重入 |
-| E7 | 实时稽核超时 | wf_sub_03 节点2 | 重试1次后仍超时 → **主干中断** → 异常A | "异常环节：配置规格稽核（超时）"，保留请求报文 | 回复【重新执行】续跑稽核环节 |
+| E5 | 自查无执行方案（req_id/node_name 查无记录或 total=0） | wf_sub_02 自查节点2 | 终止并返回提示 | "未找到执行方案，请先完成需求分析" | 重新走需求分析 |
+| E6 | 配置落地 FAIL | wf_sub_02 落地节点4 → 主流程节点6 | **主干中断** → 异常A 节点 | 打印"异常环节：智能配置"+失败分类明细+建议，引导重新执行/修改执行方案 | 用户二选一后重入 |
+| E7 | 实时稽核超时 | wf_sub_03 稽核节点4 | 重试1次后仍超时 → **主干中断** → 异常A | "异常环节：配置规格稽核（超时）"，保留请求报文 | 回复【重新执行】续跑稽核环节 |
 | E8 | 稽核 pass=0 | 主流程节点8 | **主干中断** → 异常A（可联动 send_alert(high)） | 打印异常环节+error_list 明细+整改建议+引导 | 重新执行（不推荐）或修改执行方案 |
 | E9 | 资费校验 pass=0 | 主流程节点10 | **主干中断** → 异常A | 打印异常环节+资费风险清单+引导 | 修改执行方案（修正资费） |
-| E10 | 测试发起失败 resultCode=1 | wf_sub_04 节点2 → 主流程节点12 | **主干中断** → 异常A | 打印"异常环节：销售品自动测试"+resultMsg+引导 | 排查销售品状态后重新执行 |
-| E11 | 测试场景为空 | wf_sub_04 节点3 | **主干中断** → 异常A | "该销售品未匹配到测试场景，请检查配置"+引导 | 修改执行方案后重测 |
-| E12 | 进度查询连续5次失败 | wf_sub_04 节点4 | **主干中断** → 异常A | 提示凭 globalId 人工续查+引导 | 人工查询后决定重新执行 |
-| E13 | 测试超时（30分钟） | wf_sub_04 节点4 | **主干中断** → 异常A | 提示超时 + globalId + 引导 | 人工续查或重新执行 |
-| E14 | orderId/offerInstId 为空 | wf_sub_04 节点6 | 报告正常生成（不算异常，不中断） | 受理验证结论标注"未获取到受理凭证，需人工核实" | 人工核实受理结果 |
-| E15 | 未经确认发起审批 | 主流程节点15 / wf_sub_06 节点2 | 拒绝推送，返回 NOT_CONFIRMED | "执行结果已保留，回复【发起审批】后才能提交审批流" | 用户确认后重入审批分支 |
-| E16 | 审批推送失败 | wf_sub_06 节点2 | 重试1次后终止 | 返回失败原因 | 修复后重新推送（幂等） |
+| E10 | 测试发起失败 resultCode=1 | wf_sub_04 发起节点4 → 主流程节点12 | **主干中断** → 异常A | 打印"异常环节：销售品自动测试"+resultMsg+引导 | 排查销售品状态后重新执行 |
+| E11 | 测试场景为空 | wf_sub_04 场景节点5 | **主干中断** → 异常A | "该销售品未匹配到测试场景，请检查配置"+引导 | 修改执行方案后重测 |
+| E12 | 进度查询连续5次失败 | wf_sub_04 节点0304 | **主干中断** → 异常A | 提示凭 globalId 人工续查+引导 | 人工查询后决定重新执行 |
+| E13 | 测试超时（30分钟） | wf_sub_04 节点0304 | **主干中断** → 异常A | 提示超时 + globalId + 引导 | 人工续查或重新执行 |
+| E14 | orderId/offerInstId 为空 | wf_sub_04 节点7 | 报告正常生成（不算异常，不中断） | 受理验证结论标注"未获取到受理凭证，需人工核实" | 人工核实受理结果 |
+| E15 | 未经确认发起审批 | 主流程节点15 / wf_sub_06 节点10 | 拒绝推送，返回 NOT_CONFIRMED | "执行结果已保留，回复【发起审批】后才能提交审批流" | 用户确认后重入审批分支 |
+| E16 | 审批推送失败 | wf_sub_06 节点10 | 重试1次后终止 | 返回失败原因 | 修复后重新推送（幂等） |
 | E17 | 监控接口失败 | wf_sub_07 节点2 | 终止本轮 | "监控查询失败" | 下一周期自动重试 |
 | E18 | 续跑参数非法 | 主流程节点4 | fail_node 非法或 execution_id 查无记录 → 按首次执行处理 | "未找到可续跑的执行记录，已从头执行主干" | 无需干预 |
-| E19 | 重新执行时写接口重复调用防护 | 主流程节点5 前置校验 | 查 EXEC{execution_id}_STAGE1 已存在成功记录 → 跳过落地直接回放 | "环节1已成功，直接从失败环节继续" | 无需干预 |
+| E19 | 重新执行时写接口重复调用防护 | 各子工作流自查前置校验 | 查 req_id=execution_id + node_name=本环节名 已存在成功记录 → 跳过写接口直接回放 | "环节已成功，直接从失败环节继续" | 无需干预 |
 | E20 | 主干中段接口异常（稽核/资费/测试接口网络错误） | 节点7/9/11 | **主干中断** → 异常A（打印 resultCode=NET_ERROR/TIMEOUT） | 打印异常环节+网络异常说明+引导 | 稍后回复【重新执行】续跑 |
 | E21 | 审批进度查询无审批单 | wf_sub_08 节点2 | 返回查无记录 | "未找到该销售品的审批单，请确认是否已发起审批" | 先发起审批后再查询 |
 | E22 | 监控/审批查询缺少必填参数 | 智能体消息查询入口 | 不发起调用，先追问用户 | "请提供销售品ID（或审批单号）" | 用户补齐参数后重查 |
-| E23 | 环节结果存储写入失败 | 节点5/7/9/11 后置存储 | 打印结果不受影响；记录存储失败日志 | 无感知（仅影响续跑回放） | 续跑退化为全量重跑，提示用户 |
+| E23 | 环节结果存储写入失败 | 各子工作流结束前存储节点 | 打印结果不受影响；记录存储失败日志 | 无感知（仅影响续跑回放） | 续跑退化为全量重跑，提示用户 |
 
 ---
 
@@ -1044,11 +1083,16 @@ loop:
 - [ ] 每个必填入参"为空提示"验证（#10）
 
 ### B. 工作流阶段（对应主方案阶段4）
+- [ ] wf_sub_01~06 导入后核对学生节点数/边数（3.0 表）：sub_01=9/8、sub_02=7/6、sub_03=8/7、sub_04=11/10、sub_05=8/7、sub_06=11/10
+- [ ] 各子工作流 req_id 单入参自查链路验证：开始(req_id) → query_node_result(GET，submit_way=get) → 代码节点提取 → 工具节点；结束前"代码节点合成 result_json + save_node_result"链路逐条验证
+- [ ] wf_sub_02 落地节点三入参验证：plan_id 独立传、plan_json 原样透传、confirmed=true；后端 PARAM_MISSING 不再出现
+- [ ] wf_sub_04 节点0304 验证：type=6 代码节点、inputs 平铺 list、asyncio.sleep(5) 轮询正常、fail_reason 出参非空
+- [ ] wf_sub_06 串行自查验证：501q1→q2→q3→q4→q5→501s 链式连接；报告 7 章节完整；node_name=report 落库
 - [ ] 8 个子工作流单独调试通过（含 wf_sub_08 审批进度查询）
-- [ ] 主工作流串联调试通过（两个中断点：执行方案确认 + 审批发起确认；执行主干串行无人工等待）
+- [ ] 主工作流（25 节点/31 边）串联调试通过：两个中断点（执行方案确认 + 审批发起确认）；执行主干串行无人工等待；**主流程无存储节点**
 - [ ] 环节结果打印节点（6/8/10/12）输出格式符合 3.1.2 模板
 - [ ] 异常处置节点（21）输出符合 3.1.5 模板（异常环节+原因+明细+建议+引导）
-- [ ] 续跑机制验证：EXEC{execution_id}_STAGE{n} 回放正确，写接口不重复调用
+- [ ] 续跑机制验证：各子工作流按 req_id=execution_id + node_name 自查回放正确，写接口不重复调用
 - [ ] 3.5 节工作流级用例 #1~#19 全部通过
 
 ### C. 知识库阶段（对应主方案阶段3）

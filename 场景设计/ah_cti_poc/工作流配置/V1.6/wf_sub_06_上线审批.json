@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-上线审批",
-  "flowRemark": "子工作流6：上线审批。双入参req_id+report（report由主流程报告汇总节点产出，无法从存储回放）；进入前主流程已校验approve_confirmed=true；query_node_result查config环节结果→代码节点提取product_id→submit_release_approval（自研模拟，插件层二次校验+幂等）。",
+  "flowRemark": "子工作流6：上线审批（重新设计·统一存储自查模式）。req_id单入参自查全部5类环节结果（requirement/config/spec/fee/test）→代码节点结构化汇总→LLM按7章节模板生成《销售品上线测试与稽核报告》→报告存储（node_name=report）→审批推送（product_id/report均出自自查链路）。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -12,16 +12,7 @@
             "blockID": "",
             "relName": "",
             "name": "req_id",
-            "description": "主流程执行批次号execution_id（EXE+yyyyMMddHHmmss+2位序号），product_id凭此自查",
-            "type": "string",
-            "required": true,
-            "content": ""
-          },
-          {
-            "blockID": "",
-            "relName": "",
-            "name": "report",
-            "description": "上线报告（主流程报告汇总节点输出，无法从存储回放）",
+            "description": "主流程执行批次号execution_id（EXE+yyyyMMddHHmmss+2位序号），全部环节结果凭此自查",
             "type": "string",
             "required": true,
             "content": ""
@@ -65,7 +56,7 @@
           },
           {
             "name": "list",
-            "cname": "记录数组JSON（list[0].result_json=环节1智能配置落地结果）",
+            "cname": "记录数组JSON（list[0].result_json=requirement环节存储结果原文）",
             "sechema": [],
             "type": "string",
             "required": false
@@ -79,7 +70,7 @@
             "blockID": "a1b2c3d4-0000-4000-8000-000000000501",
             "relName": "req_id",
             "name": "req_id",
-            "description": "需求唯一标识=execution_id",
+            "description": "需求唯一标识=execution_id（上游环节存储时req_id=execution_id）",
             "type": "ref",
             "required": true,
             "content": "",
@@ -93,10 +84,10 @@
             "blockID": "",
             "relName": "",
             "name": "node_name",
-            "description": "环节名=config（智能配置）",
+            "description": "环节名=requirement",
             "type": "string",
             "required": true,
-            "content": "config"
+            "content": "requirement"
           },
           {
             "blockID": "",
@@ -110,9 +101,9 @@
         ],
         "checkErr": false,
         "nodeMeta": {
-          "title": "读取智能配置结果",
+          "title": "读取需求分析结果",
           "code": "query_node_result",
-          "description": "节点结果查询（复用）：req_id=execution_id，node_name=config 取回环节1智能配置落地结果（list[0].result_json，含product_id）",
+          "description": "节点结果查询（复用）：req_id=execution_id，node_name=requirement，取回该环节存储结果（list[0].result_json）",
           "version": "1"
         },
         "authentic_info_new": {
@@ -123,7 +114,7 @@
             "outparams": []
           }
         },
-        "id": "a1b2c3d4-0000-4000-8000-000000000501a",
+        "id": "a1b2c3d4-0000-4000-8000-000000000501q1",
         "position": {
           "x": 375,
           "y": 300
@@ -149,24 +140,523 @@
       {
         "outputs": [
           {
-            "relName": "a1b2c3d4-0000-4000-8000-000000000501b,product_id",
+            "name": "code",
+            "cname": "0成功",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "msg",
+            "cname": "状态描述",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "total",
+            "cname": "命中记录数",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "list",
+            "cname": "记录数组JSON（list[0].result_json=config环节存储结果原文）",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "get",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000501",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求唯一标识=execution_id（上游环节存储时req_id=execution_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000501",
+              "a1b2c3d4-0000-4000-8000-000000000501,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000501,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=config",
+            "type": "string",
+            "required": true,
+            "content": "config"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "latest_only",
+            "description": "1=只返回最新一条（默认）",
+            "type": "string",
+            "required": true,
+            "content": "1"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "读取智能配置结果",
+          "code": "query_node_result",
+          "description": "节点结果查询（复用）：req_id=execution_id，node_name=config，取回该环节存储结果（list[0].result_json）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000501q2",
+        "position": {
+          "x": 735,
+          "y": 300
+        },
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000501",
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000501,req_id",
+                "name": "req_id",
+                "type": "string",
+                "content": ""
+              }
+            ],
+            "name": "开始节点",
+            "disabled": true
+          }
+        ],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/result/query"
+      },
+      {
+        "outputs": [
+          {
+            "name": "code",
+            "cname": "0成功",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "msg",
+            "cname": "状态描述",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "total",
+            "cname": "命中记录数",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "list",
+            "cname": "记录数组JSON（list[0].result_json=spec环节存储结果原文）",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "get",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000501",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求唯一标识=execution_id（上游环节存储时req_id=execution_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000501",
+              "a1b2c3d4-0000-4000-8000-000000000501,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000501,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=spec",
+            "type": "string",
+            "required": true,
+            "content": "spec"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "latest_only",
+            "description": "1=只返回最新一条（默认）",
+            "type": "string",
+            "required": true,
+            "content": "1"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "读取规格稽核结果",
+          "code": "query_node_result",
+          "description": "节点结果查询（复用）：req_id=execution_id，node_name=spec，取回该环节存储结果（list[0].result_json）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000501q3",
+        "position": {
+          "x": 1095,
+          "y": 300
+        },
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000501",
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000501,req_id",
+                "name": "req_id",
+                "type": "string",
+                "content": ""
+              }
+            ],
+            "name": "开始节点",
+            "disabled": true
+          }
+        ],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/result/query"
+      },
+      {
+        "outputs": [
+          {
+            "name": "code",
+            "cname": "0成功",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "msg",
+            "cname": "状态描述",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "total",
+            "cname": "命中记录数",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "list",
+            "cname": "记录数组JSON（list[0].result_json=fee环节存储结果原文）",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "get",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000501",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求唯一标识=execution_id（上游环节存储时req_id=execution_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000501",
+              "a1b2c3d4-0000-4000-8000-000000000501,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000501,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=fee",
+            "type": "string",
+            "required": true,
+            "content": "fee"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "latest_only",
+            "description": "1=只返回最新一条（默认）",
+            "type": "string",
+            "required": true,
+            "content": "1"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "读取资费校准结果",
+          "code": "query_node_result",
+          "description": "节点结果查询（复用）：req_id=execution_id，node_name=fee，取回该环节存储结果（list[0].result_json）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000501q4",
+        "position": {
+          "x": 1455,
+          "y": 300
+        },
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000501",
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000501,req_id",
+                "name": "req_id",
+                "type": "string",
+                "content": ""
+              }
+            ],
+            "name": "开始节点",
+            "disabled": true
+          }
+        ],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/result/query"
+      },
+      {
+        "outputs": [
+          {
+            "name": "code",
+            "cname": "0成功",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "msg",
+            "cname": "状态描述",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "total",
+            "cname": "命中记录数",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "list",
+            "cname": "记录数组JSON（list[0].result_json=test环节存储结果原文）",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "get",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000501",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求唯一标识=execution_id（上游环节存储时req_id=execution_id）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000501",
+              "a1b2c3d4-0000-4000-8000-000000000501,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000501,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=test",
+            "type": "string",
+            "required": true,
+            "content": "test"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "latest_only",
+            "description": "1=只返回最新一条（默认）",
+            "type": "string",
+            "required": true,
+            "content": "1"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "读取自动测试结果",
+          "code": "query_node_result",
+          "description": "节点结果查询（复用）：req_id=execution_id，node_name=test，取回该环节存储结果（list[0].result_json）",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000501q5",
+        "position": {
+          "x": 1815,
+          "y": 300
+        },
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000501",
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000501,req_id",
+                "name": "req_id",
+                "type": "string",
+                "content": ""
+              }
+            ],
+            "name": "开始节点",
+            "disabled": true
+          }
+        ],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/result/query"
+      },
+      {
+        "outputs": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000501s,summary_json",
+            "name": "summary_json",
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000501s,product_id",
             "name": "product_id",
             "type": "string"
           }
         ],
-        "code": "import json, re\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    s = raw.strip()\n    try:\n        data = json.loads(s)\n    except Exception:\n        m = re.search(r'\\[[\\s\\S]*\\]', s)\n        data = None\n        if m:\n            try:\n                data = json.loads(m.group(0))\n            except Exception:\n                data = None\n    recs = []\n    if isinstance(data, dict):\n        recs = [data]\n    elif isinstance(data, list):\n        recs = data\n    result_json = ''\n    for rec in recs:\n        if isinstance(rec, dict) and isinstance(rec.get('result_json'), str):\n            result_json = rec['result_json']\n            break\n    cfg = None\n    if result_json:\n        try:\n            cfg = json.loads(result_json)\n        except Exception:\n            m2 = re.search(r'\\{[\\s\\S]*\\}', result_json)\n            if m2:\n                try:\n                    cfg = json.loads(m2.group(0))\n                except Exception:\n                    cfg = None\n    product_id = ''\n    if isinstance(cfg, dict):\n        product_id = str(cfg.get('product_id') or '')\n    ret: Output = {\n        \"product_id\": product_id\n    }\n    return ret",
+        "code": "import json, re\nfrom typing import Any, Dict\n\ndef pick_list(raw):\n    if isinstance(raw, str):\n        s = raw.strip()\n    else:\n        s = json.dumps(raw, ensure_ascii=False)\n    try:\n        data = json.loads(s)\n    except Exception:\n        m = re.search(r'\\[[\\s\\S]*\\]', s)\n        data = None\n        if m:\n            try:\n                data = json.loads(m.group(0))\n            except Exception:\n                data = None\n    if isinstance(data, dict):\n        return [data]\n    if isinstance(data, list):\n        return data\n    return []\n\ndef first_result_json(raw):\n    for rec in pick_list(raw):\n        if isinstance(rec, dict) and isinstance(rec.get('result_json'), str):\n            return rec['result_json']\n    return ''\n\ndef to_dict(text):\n    if not text:\n        return {}\n    try:\n        obj = json.loads(text)\n        return obj if isinstance(obj, dict) else {}\n    except Exception:\n        m = re.search(r'\\{[\\s\\S]*\\}', text)\n        if m:\n            try:\n                obj = json.loads(m.group(0))\n                return obj if isinstance(obj, dict) else {}\n            except Exception:\n                return {}\n    return {}\n\ndef to_str(v):\n    if v is None:\n        return ''\n    if isinstance(v, str):\n        return v\n    return json.dumps(v, ensure_ascii=False)\n\nasync def main(args):\n    p = args.params\n    plan = to_dict(first_result_json(p.get('list_req')))\n    cfg = to_dict(first_result_json(p.get('list_cfg')))\n    spec = to_dict(first_result_json(p.get('list_spec')))\n    fee = to_dict(first_result_json(p.get('list_fee')))\n    test = to_dict(first_result_json(p.get('list_test')))\n    fields = plan.get('fields')\n    if not isinstance(fields, list):\n        fields = []\n    similar = plan.get('similar_offers')\n    if not isinstance(similar, list):\n        similar = []\n    top = similar[0] if similar else {}\n    summary = {\n        \"execution_id\": to_str(p.get('req_id')),\n        \"requirement\": {\n            \"plan_id\": to_str(plan.get('plan_id')),\n            \"fields\": [{\"field\": str(f.get('field') if isinstance(f, dict) else f),\n                        \"value\": str(f.get('value') if isinstance(f, dict) else ''),\n                        \"source\": str(f.get('source') if isinstance(f, dict) else '')} for f in fields],\n            \"similar_offer_count\": len(similar),\n            \"top_similar_offer\": {k: str(v) for k, v in top.items()} if isinstance(top, dict) else {}\n        },\n        \"config\": {\n            \"product_id\": to_str(cfg.get('product_id')),\n            \"offer_id\": to_str(cfg.get('offer_id')),\n            \"save_result\": cfg.get('save_result'),\n            \"status\": to_str(cfg.get('status'))\n        },\n        \"spec_audit\": {\n            \"pass\": to_str(spec.get('pass')),\n            \"error_list\": spec.get('error_list'),\n            \"audit_summary\": to_str(spec.get('audit_summary')),\n            \"audit_suggest\": to_str(spec.get('audit_suggest'))\n        },\n        \"fee_check\": {\n            \"pass\": to_str(fee.get('pass')),\n            \"risk_list\": fee.get('risk_list'),\n            \"risk_summary\": to_str(fee.get('risk_summary'))\n        },\n        \"auto_test\": {\n            \"globalId\": to_str(test.get('globalId')),\n            \"orderId\": to_str(test.get('orderId')),\n            \"offerInstId\": to_str(test.get('offerInstId')),\n            \"test_passed\": to_str(test.get('test_passed')),\n            \"test_report\": to_str(test.get('test_report'))\n        }\n    }\n    ret: Output = {\n        \"summary_json\": json.dumps(summary, ensure_ascii=False),\n        \"product_id\": summary[\"config\"][\"product_id\"]\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000501a",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000501q1",
             "relName": "list",
+            "name": "list_req",
+            "description": "节点501q1查询结果（requirement环节存储）",
+            "type": "ref",
+            "required": true,
+            "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000501a",
-              "a1b2c3d4-0000-4000-8000-000000000501a,list"
+              "a1b2c3d4-0000-4000-8000-000000000501q1",
+              "a1b2c3d4-0000-4000-8000-000000000501q1,list"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000501a,list",
-            "name": "list",
-            "description": "节点2查询结果记录数组，list[0].result_json为环节1智能配置落地结果",
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000501q1,list"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000501q2",
+            "relName": "list",
+            "name": "list_cfg",
+            "description": "节点501q2查询结果（config环节存储）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000501q2",
+              "a1b2c3d4-0000-4000-8000-000000000501q2,list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000501q2,list"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000501q3",
+            "relName": "list",
+            "name": "list_spec",
+            "description": "节点501q3查询结果（spec环节存储）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000501q3",
+              "a1b2c3d4-0000-4000-8000-000000000501q3,list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000501q3,list"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000501q4",
+            "relName": "list",
+            "name": "list_fee",
+            "description": "节点501q4查询结果（fee环节存储）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000501q4",
+              "a1b2c3d4-0000-4000-8000-000000000501q4,list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000501q4,list"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000501q5",
+            "relName": "list",
+            "name": "list_test",
+            "description": "节点501q5查询结果（test环节存储）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000501q5",
+              "a1b2c3d4-0000-4000-8000-000000000501q5,list"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000501q5,list"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000501",
+            "relName": "req_id",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000501",
+              "a1b2c3d4-0000-4000-8000-000000000501,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000501,req_id",
+            "name": "req_id",
+            "description": "执行批次号（写入汇总首字段）",
             "type": "ref",
             "content": ""
           }
@@ -174,29 +664,265 @@
         "checkErr": false,
         "nodeMeta": {
           "description": "编写代码，处理输入变量来生成返回值",
-          "title": "配置结果提取"
+          "title": "环节结果结构化汇总"
         },
         "language": 1,
-        "id": "a1b2c3d4-0000-4000-8000-000000000501b",
+        "id": "a1b2c3d4-0000-4000-8000-000000000501s",
         "position": {
-          "x": 735,
+          "x": 2175,
           "y": 300
         },
         "dependencyData": [
           {
-            "relName": "a1b2c3d4-0000-4000-8000-000000000501a",
+            "relName": "a1b2c3d4-0000-4000-8000-000000000501q1",
             "children": [
               {
-                "relName": "a1b2c3d4-0000-4000-8000-000000000501a,list",
+                "relName": "a1b2c3d4-0000-4000-8000-000000000501q1,list",
+                "name": "list",
+                "type": "string"
+              }
+            ],
+            "name": "读取需求分析结果",
+            "disabled": true
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000501q2",
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000501q2,list",
                 "name": "list",
                 "type": "string"
               }
             ],
             "name": "读取智能配置结果",
             "disabled": true
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000501q3",
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000501q3,list",
+                "name": "list",
+                "type": "string"
+              }
+            ],
+            "name": "读取规格稽核结果",
+            "disabled": true
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000501q4",
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000501q4,list",
+                "name": "list",
+                "type": "string"
+              }
+            ],
+            "name": "读取资费校准结果",
+            "disabled": true
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000501q5",
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000501q5,list",
+                "name": "list",
+                "type": "string"
+              }
+            ],
+            "name": "读取自动测试结果",
+            "disabled": true
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000501",
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000501,req_id",
+                "name": "req_id",
+                "type": "string"
+              }
+            ],
+            "name": "开始节点",
+            "disabled": true
           }
         ],
         "type": 6
+      },
+      {
+        "outputs": [
+          {
+            "name": "report",
+            "description": "《销售品上线测试与稽核报告》正文（Markdown，7章节）",
+            "type": "string",
+            "content": ""
+          }
+        ],
+        "max_tokens": 4096,
+        "flowJson": null,
+        "inputs": {
+          "llmParam": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "content": "请基于以下各环节执行结果汇总JSON，生成《销售品上线测试与稽核报告》：\n【汇总JSON】{summary_json}\n报告必须包含以下7个章节，逐章基于汇总JSON对应字段撰写，不得新增结论：\n1. 需求摘要与执行方案要点：引用 requirement.fields 全部字段（字段名=值，注明来源），及 plan_id、最相似在架销售品（top_similar_offer）；\n2. 配置落地结果：product_id、offer_id、save_result 四类字段逐项写入结论、status；\n3. 配置规格稽核结论：pass、audit_summary，若 pass!=1 须列出 error_list 全部问题与 audit_suggest 整改建议；\n4. 资费校准结论：pass、risk_summary，若 pass!=1 须列出 risk_list 全部风险；\n5. 自动测试统计与失败明细：test_report 全文引用（含场景数/测点数/一致性结论）；\n6. 受理验证结论（强制章节）：引用 orderId、offerInstId，逐受理场景给出通过/失败结论；\n7. 上线建议：综合 2~6 全部通过则给出\"建议上线\"，任一环节未通过则给出\"暂缓上线\"并说明阻断项。\n输出要求：仅输出报告正文（Markdown），对应出参 report，不输出其他多余文字。"
+            }
+          ],
+          "inputParameters": [
+            {
+              "blockID": "a1b2c3d4-0000-4000-8000-000000000501s",
+              "relName": "summary_json",
+              "name": "summary_json",
+              "description": "引用节点501s结构化汇总JSON",
+              "type": "ref",
+              "required": true,
+              "content": "",
+              "nameValue": [
+                "a1b2c3d4-0000-4000-8000-000000000501s",
+                "a1b2c3d4-0000-4000-8000-000000000501s,summary_json"
+              ],
+              "currValue": "a1b2c3d4-0000-4000-8000-000000000501s,summary_json"
+            }
+          ]
+        },
+        "checkErr": false,
+        "prompt_system": "",
+        "nodeMeta": {
+          "description": "结构化汇总转《销售品上线测试与稽核报告》",
+          "title": "上线报告生成"
+        },
+        "temperature": 0.2,
+        "top_p": 0.5,
+        "position": {
+          "x": 2535,
+          "y": 300
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000501g",
+        "dependencyData": [],
+        "type": 1
+      },
+      {
+        "outputs": [
+          {
+            "name": "code",
+            "cname": "0成功",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "msg",
+            "cname": "状态描述",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "record_id",
+            "cname": "存储记录ID",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000501",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "需求唯一标识=execution_id",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000501",
+              "a1b2c3d4-0000-4000-8000-000000000501,req_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000501,req_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=report（上线报告）",
+            "type": "string",
+            "required": true,
+            "content": "report"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000501g",
+            "relName": "report",
+            "name": "result_json",
+            "description": "本环节结果JSON=节点501g生成的上线报告原文",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000501g",
+              "a1b2c3d4-0000-4000-8000-000000000501g,report"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000501g,report"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "status",
+            "description": "本环节状态=ok",
+            "type": "string",
+            "required": true,
+            "content": "ok"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "报告结果存储",
+          "code": "save_node_result",
+          "description": "节点结果存储（复用）：req_id=execution_id，node_name=report（上线报告），result_json=节点501g报告原文",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000501r",
+        "position": {
+          "x": 2895,
+          "y": 300
+        },
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000501",
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000501,req_id",
+                "name": "req_id",
+                "type": "string"
+              }
+            ],
+            "name": "开始节点",
+            "disabled": true
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000501g",
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000501g,report",
+                "name": "report",
+                "type": "string"
+              }
+            ],
+            "name": "上线报告生成",
+            "disabled": true
+          }
+        ],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/result/save"
       },
       {
         "outputs": [
@@ -213,6 +939,20 @@
             "sechema": [],
             "type": "string",
             "required": false
+          },
+          {
+            "name": "idempotent",
+            "cname": "是否幂等命中",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "resultMsg",
+            "cname": "处理结果描述",
+            "sechema": [],
+            "type": "string",
+            "required": false
           }
         ],
         "submit_way": "post",
@@ -220,38 +960,38 @@
         "authentic_info": "",
         "inputs": [
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000501b",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000501s",
             "relName": "product_id",
             "name": "product_id",
-            "description": "CRM产品ID（节点501b从config记录提取）",
+            "description": "CRM产品ID（节点501s从config环节结果提取）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000501b",
-              "a1b2c3d4-0000-4000-8000-000000000501b,product_id"
+              "a1b2c3d4-0000-4000-8000-000000000501s",
+              "a1b2c3d4-0000-4000-8000-000000000501s,product_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000501b,product_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000501s,product_id"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000501",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000501g",
             "relName": "report",
             "name": "report_url",
-            "description": "上线报告（开始节点入参，主流程报告汇总节点产出）",
+            "description": "上线报告（节点501g生成，作为审批附件URL/原文）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000501",
-              "a1b2c3d4-0000-4000-8000-000000000501,report"
+              "a1b2c3d4-0000-4000-8000-000000000501g",
+              "a1b2c3d4-0000-4000-8000-000000000501g,report"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000501,report"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000501g,report"
           },
           {
             "blockID": "",
             "relName": "",
             "name": "approve_confirmed",
-            "description": "审批发起确认标志true",
+            "description": "审批确认标志true（主流程确认门禁已保证）",
             "type": "string",
             "required": true,
             "content": "true"
@@ -260,7 +1000,7 @@
             "blockID": "",
             "relName": "",
             "name": "approval_flow",
-            "description": "审批流默认standard",
+            "description": "审批流=standard",
             "type": "string",
             "required": true,
             "content": "standard"
@@ -270,7 +1010,7 @@
         "nodeMeta": {
           "title": "审批推送",
           "code": "submit_release_approval",
-          "description": "工具9：自研模拟审批推送；插件层校验approve_confirmed==true（未经确认返回NOT_CONFIRMED）；幂等：同product_id返回原approval_id",
+          "description": "工具9：上线审批推送（插件层校验approve_confirmed；同product_id幂等）",
           "version": "1"
         },
         "authentic_info_new": {
@@ -281,34 +1021,34 @@
             "outparams": []
           }
         },
-        "id": "a1b2c3d4-0000-4000-8000-000000000502",
+        "id": "a1b2c3d4-0000-4000-8000-0000000000502",
         "position": {
-          "x": 1095,
+          "x": 3255,
           "y": 300
         },
         "dependencyData": [
           {
-            "relName": "a1b2c3d4-0000-4000-8000-000000000501b",
+            "relName": "a1b2c3d4-0000-4000-8000-000000000501s",
             "children": [
               {
-                "relName": "a1b2c3d4-0000-4000-8000-000000000501b,product_id",
+                "relName": "a1b2c3d4-0000-4000-8000-000000000501s,product_id",
                 "name": "product_id",
                 "type": "string"
               }
             ],
-            "name": "配置结果提取",
+            "name": "环节结果结构化汇总",
             "disabled": true
           },
           {
-            "relName": "a1b2c3d4-0000-4000-8000-000000000501",
+            "relName": "a1b2c3d4-0000-4000-8000-000000000501g",
             "children": [
               {
-                "relName": "a1b2c3d4-0000-4000-8000-000000000501,report",
+                "relName": "a1b2c3d4-0000-4000-8000-000000000501g,report",
                 "name": "report",
                 "type": "string"
               }
             ],
-            "name": "开始节点",
+            "name": "上线报告生成",
             "disabled": true
           }
         ],
@@ -319,7 +1059,7 @@
         "outputs": {
           "name": "",
           "type": "string",
-          "content": "上线审批已推送：approval_id={approval_id}，status={status}\n可随时发送\"查询审批进度\"消息查询审批状态。"
+          "content": "上线报告已生成并随审批推送：approval_id={approval_id}，status={status}\n报告章节：需求摘要/配置落地/规格稽核/资费校准/自动测试/受理验证/上线建议\n可随时发送\"查询审批进度\"消息查询审批状态。"
         },
         "settings": {
           "stream": false,
@@ -329,7 +1069,7 @@
         "flowJson": null,
         "inputs": [
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000502",
+            "blockID": "a1b2c3d4-0000-4000-8000-0000000000502",
             "relName": "approval_id",
             "name": "approval_id",
             "description": "审批单号",
@@ -337,13 +1077,13 @@
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000502",
-              "a1b2c3d4-0000-4000-8000-000000000502,approval_id"
+              "a1b2c3d4-0000-4000-8000-0000000000502",
+              "a1b2c3d4-0000-4000-8000-0000000000502,approval_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000502,approval_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-0000000000502,approval_id"
           },
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000502",
+            "blockID": "a1b2c3d4-0000-4000-8000-0000000000502",
             "relName": "status",
             "name": "status",
             "description": "提交状态",
@@ -351,50 +1091,80 @@
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000502",
-              "a1b2c3d4-0000-4000-8000-000000000502,status"
+              "a1b2c3d4-0000-4000-8000-0000000000502",
+              "a1b2c3d4-0000-4000-8000-0000000000502,status"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000502,status"
+            "currValue": "a1b2c3d4-0000-4000-8000-0000000000502,status"
           }
         ],
         "checkErr": false,
         "prompt_system": "",
         "nodeMeta": {
           "description": "工作流的最终节点，用于返回工作流运行后的结果信息",
-          "title": "结束(审批已推送)"
+          "title": "结束(报告生成并推送审批)"
         },
         "type": 9,
         "top_p": 1,
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 1455,
+          "x": 3615,
           "y": 300
         },
-        "id": "a1b2c3d4-0000-4000-8000-000000000503",
+        "id": "a1b2c3d4-0000-4000-8000-0000000000503",
         "dependencyData": []
       }
     ],
     "edges": [
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000501a",
+        "endId": "a1b2c3d4-0000-4000-8000-000000000501q1",
         "startId": "a1b2c3d4-0000-4000-8000-000000000501"
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000501b",
-        "startId": "a1b2c3d4-0000-4000-8000-000000000501a"
+        "endId": "a1b2c3d4-0000-4000-8000-000000000501q2",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000501q1"
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000502",
-        "startId": "a1b2c3d4-0000-4000-8000-000000000501b"
+        "endId": "a1b2c3d4-0000-4000-8000-000000000501q3",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000501q2"
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000503",
-        "startId": "a1b2c3d4-0000-4000-8000-000000000502"
+        "endId": "a1b2c3d4-0000-4000-8000-000000000501q4",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000501q3"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000501q5",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000501q4"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000501s",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000501q5"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000501g",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000501s"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000501r",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000501g"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-0000000000502",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000501r"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-0000000000503",
+        "startId": "a1b2c3d4-0000-4000-8000-0000000000502"
       }
     ],
     "flowId": "wf_sub_06",

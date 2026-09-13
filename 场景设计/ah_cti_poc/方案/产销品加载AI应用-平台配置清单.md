@@ -44,13 +44,13 @@
 
 | 工作流 | flowId | 导入文件 | 发布前操作 |
 | --- | --- | --- | --- |
-| 主工作流 | `wf_cpcp_main` | wf_cpcp_main_产销品加载主流程.json | 将 6 个子流节点的 `workFlowId`（REPLACE_WITH_SUB01/02/03/04/05/06_FLOWID）替换为各子工作流实际发布 ID |
-| 需求分析 | `wf_sub_01` | wf_sub_01_需求分析.json | 检查 LLM 节点提示词与知识库检索挂载（K1+K4，top_k=3） |
-| 智能配置 | `wf_sub_02` | wf_sub_02_智能配置.json | 确认"读取执行方案→配置落地"之间无大模型节点 |
-| 规格稽核 | `wf_sub_03` | wf_sub_03_规格稽核.json | 确认 realtime_spec_audit 为同步插件节点 |
-| 自动测试 | `wf_sub_04` | wf_sub_04_自动测试.json | 配置循环节点：间隔 5s、超时 30 分钟、连续 5 次查询失败终止 |
-| 资费校准 | `wf_sub_05` | wf_sub_05_资费校准.json | 挂载 K2 资费规则库 |
-| 上线审批 | `wf_sub_06` | wf_sub_06_上线审批.json | 确认 approve_confirmed 插件层校验 |
+| 主工作流 | `wf_cpcp_main` | wf_cpcp_main_产销品加载主流程.json（25节点/31边） | 将 6 个子流节点的 `workFlowId`（REPLACE_WITH_SUB01/02/03/04/05/06_FLOWID）替换为各子工作流实际发布 ID；主流程**无存储节点**（全部存储已下沉至各子工作流内部），仅做调度与判定 |
+| 需求分析 | `wf_sub_01` | wf_sub_01_需求分析.json（9节点/8边） | 检查 LLM 节点提示词与知识库检索挂载（K1+K4，top_k=3）；结束前存储 node_name=requirement |
+| 智能配置 | `wf_sub_02` | wf_sub_02_智能配置.json（7节点/6边） | req_id 单入参自查执行方案（query_node_result，submit_way=get）；确认"读取执行方案→配置落地"之间无大模型节点；**103 落地节点三入参 plan_id/plan_json/confirmed，plan_id 独立传（后端强校验）**；结束前存储 node_name=config |
+| 规格稽核 | `wf_sub_03` | wf_sub_03_规格稽核.json（8节点/7边） | req_id 单入参自查 offer_id/config_json；确认 realtime_spec_audit 为同步插件节点；结束前存储 node_name=spec |
+| 自动测试 | `wf_sub_04` | wf_sub_04_自动测试.json（11节点/10边） | req_id 单入参自查 offer_id；**0304 轮询为 type=6 代码节点（非循环节点）：inputs 平铺 list、asyncio.sleep(5)×360 次**；结束前存储 node_name=test |
+| 资费校准 | `wf_sub_05` | wf_sub_05_资费校准.json（8节点/7边） | req_id 单入参自查 config_json；挂载 K2 资费规则库；结束前存储 node_name=fee |
+| 上线审批 | `wf_sub_06` | wf_sub_06_上线审批.json（11节点/10边） | **req_id 单入参；串行自查 5 类环节结果（config/spec/fee/test/需求摘要）→ LLM 生成 7 章节报告 → 存储 node_name=report → 审批推送**；确认 approve_confirmed 插件层校验 |
 | 监控运维 | `wf_sub_07` | wf_sub_07_监控运维.json | 配置定时触发（每日，平台定时任务）；异常判定阈值 error_count>0 或 fee_error_rate>0.1 |
 | 审批进度查询 | `wf_sub_08` | wf_sub_08_审批进度查询.json | 轻量子工作流；若智能体直调工具13 可省略挂载 |
 
@@ -58,9 +58,9 @@
 - [ ] 开始节点 8 个入参：requirement_text / requirement_file / plan_id / confirmed / resume_action / fail_node / execution_id / approve_confirmed
 - [ ] **两次中断**：① 结束节点A（执行方案确认，输出方案表格+plan_id 后中断）；② 节点14 成功结果详情汇总（提示"是否发起上线审批"后中断）
 - [ ] 执行主干串行段（环节1 智能配置→环节2 实时稽核→环节3 资费校准→环节4 自动测试）中途无人工等待点；每环节后接"判定与打印"节点（模板见细化设计 3.1.2）
-- [ ] 环节结果存储：各环节后置 `save_node_result` 节点，key=`EXEC{execution_id}_STAGE{n}`（n=1~4）
+- [ ] **无存储节点**：主流程已删除全部 save_node_result 节点（含旧 0016/0016b），环节结果存储由各子工作流在结束前自行完成（node_name=config/spec/fee/test/report，req_id=execution_id）
 - [ ] 异常处置节点（异常A）：统一异常出口，按 fail_node（STAGE1_CONFIG/STAGE2_AUDIT/STAGE3_FEE/STAGE4_TEST）打印异常环节+原因+明细+建议，并引导【重新执行】/【修改执行方案】
-- [ ] 续跑判定选择器优先级：approve_confirmed==true → 审批分支；revise_plan → 需求分析；retry_from_fail+fail_node → 对应环节（回放已成功环节，不重复调用写接口）
+- [ ] 续跑判定选择器优先级：approve_confirmed==true → 审批分支；revise_plan → 需求分析；retry_from_fail+fail_node → 对应环节（各子工作流按 req_id 自查回放已成功环节，不重复调用写接口）
 - [ ] 各子工作流单独调试通过后，再串联主工作流调试
 
 ---

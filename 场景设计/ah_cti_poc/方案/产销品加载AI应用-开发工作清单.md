@@ -48,12 +48,12 @@
 
 ### 1.4 平台复用插件对齐（改动量小）
 
-> 说明：节点结果存储/查询为平台已有通用插件（不自研），后端契约以 `/api/v1/appstore/result/save`（POST，入参 req_id/node_name/result_json/status）与 `/api/v1/appstore/result/query`（GET，入参 req_id/node_name/latest_only，出参 total/list）为准，契约基线见 `插件\自研插件集V1.6\节点结果*_export_V1.6.json`。存储寻址口径：执行方案环节 req_id=plan_id（PLAN+yyyyMMdd+3位序号）、node_name=requirement；执行主干各环节 req_id=execution_id（EXE+yyyyMMddHHmmss+2位序号）、node_name=config/spec/fee/test。
+> 说明：节点结果存储/查询为平台已有通用插件（不自研），后端契约以 `/api/v1/appstore/result/save`（POST，入参 req_id/node_name/result_json/status）与 `/api/v1/appstore/result/query`（**GET**，入参 req_id/node_name/latest_only，出参 total/list）为准，契约基线见 `插件\自研插件集V1.6\节点结果*_export_V1.6.json`。**存储已落库持久化**：后端由 `NodeResultService`（MyBatis-Plus）写入 `pd_ai_node_results` 表（H2 DDL：`backend-app/src/main/resources/sql/h2/schema-h2.sql`；MySQL DDL：`sql/01_full_schema_ddl.sql` L504 起），服务重启后结果不丢失。存储寻址口径：执行方案环节 req_id=plan_id（PLAN+yyyyMMdd+3位序号）、node_name=requirement；执行主干各环节 req_id=execution_id（EXE+yyyyMMddHHmmss+2位序号）、node_name=config/spec/fee/test/**report**（上线报告，wf_sub_06 存储）。
 
 | # | 接口 | 方法/路径 | 开发内容 | 验收要点 | 工期 |
 | --- | --- | --- | --- | --- | --- |
-| 13 | 节点结果存储 `save_node_result` | POST /api/v1/appstore/result/save | 平台已有插件直接挂载；入参 req_id/node_name/result_json（status 默认 ok）；同键（req_id+node_name）覆盖；非法 req_id 返回 5002、node_name 为空返回 5003、result_json 超 64KB 返回 5004 | 工作流入参与导出 JSON 逐项一致（wf_sub_01 保存执行方案、主流程环节1~4 结果存储）；保存→按 req_id+node_name 查询 result_json 逐字节一致 | 0.25d |
-| 14 | 节点结果查询 `query_node_result` | GET /api/v1/appstore/result/query | 平台已有插件直接挂载；入参 req_id（必填）/node_name（可选）/latest_only（默认1）；出参 code/msg/total/list（取 list[0].result_json 为结果原文） | wf_sub_02 读取执行方案：req_id=plan_id、node_name=requirement；非法 req_id 返回 5002；total=0 时按 E5 处理（"未找到执行方案"） | 0.25d |
+| 13 | 节点结果存储 `save_node_result` | POST /api/v1/appstore/result/save | 平台已有插件直接挂载；入参 req_id/node_name/result_json（status 默认 ok）；同键（req_id+node_name）覆盖；非法 req_id 返回 5002、node_name 为空返回 5003、result_json 超 64KB 返回 5004 | 工作流入参与导出 JSON 逐项一致（各子工作流结束前保存本环节结果：wf_sub_01 保存执行方案、wf_sub_02~05 保存 config/spec/fee/test、wf_sub_06 保存 report）；保存→按 req_id+node_name 查询 result_json 逐字节一致；服务重启后可查询（持久化） | 0.25d |
+| 14 | 节点结果查询 `query_node_result` | GET /api/v1/appstore/result/query | 平台已有插件直接挂载；入参 req_id（必填）/node_name（可选）/latest_only（默认1）；出参 code/msg/total/list（取 list[0].result_json 为结果原文） | 各子工作流 req_id 自查：req_id=execution_id、node_name=本环节名；非法 req_id 返回 5002；total=0 时按 E5 处理（"未找到执行方案"） | 0.25d |
 
 ---
 
@@ -72,8 +72,8 @@
 
 | # | 工作项 | 说明 | 工期 |
 | --- | --- | --- | --- |
-| 1 | 测试轮询循环逻辑（wf_sub_04 节点4） | 循环节点调用接口6：间隔 5s、超时 30 分钟（360 次）、连续 5 次查询失败终止转人工（保留 globalId）；退出条件 done==true 或 failed==true | 0.5d |
-| 2 | execution_id 生成与回放逻辑（主流程节点4/5） | EXE+yyyyMMddHHmmss+2位序号；续跑时按 req_id=execution_id 查询节点结果存储回放已成功环节（node_name=config/spec/fee/test），写接口不重复调用 | 0.5d |
+| 1 | 测试轮询代码节点（wf_sub_04 节点0304，type=6 代码节点） | 代码节点（非循环节点）：asyncio.sleep(5) 间隔轮询、最多 360 次（超时 30 分钟）、连续 5 次查询失败终止转人工（保留 globalId）；退出条件 done==true 或 failed==true；**注意：type=6 代码节点 inputs 必须为平铺 list 结构（非 {loopParam, inputParameters} 嵌套）** | 0.5d |
+| 2 | execution_id 生成与回放逻辑（主流程节点4/5） | EXE+yyyyMMddHHmmss+2位序号；续跑时各子工作流按 req_id=execution_id + node_name 自查节点结果存储回放已成功环节（node_name=config/spec/fee/test），写接口不重复调用 | 0.5d |
 | 3 | 环节结果打印节点拼装（主流程节点6/8/10/12） | 直接引用插件出参按 3.1.2 模板拼装；若平台不支持纯文本拼装，用温度 0.2 小 LLM 仅做格式化（提示词注明"逐字引用，不新增内容"） | 0.5d |
 
 ---

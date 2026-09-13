@@ -1,7 +1,7 @@
 # 自研插件工具契约（模拟结果输出，种子数据=《产品信息.txt》18个销售品）
 
 > 基地址：http://10.86.13.201:31281 ；全部工具契约与《自研插件集V1.6》一致，替换真实实现时契约不变。
-> 能力1~3 需存储类工具：req_id 规范——执行方案=plan_id（PLAN+yyyyMMdd+3位序号）；执行主干=execution_id（EXE+yyyyMMddHHmmss+2位序号）；node_name 取值：requirement(执行方案)/CONFIRMED(确认标记)/config(智能配置)/spec(稽核)/fee(资费)/test(测试)。
+> 能力1~3 需存储类工具：req_id 规范——执行方案=plan_id（PLAN+yyyyMMdd+3位序号）；执行主干=execution_id（EXE+yyyyMMddHHmmss+2位序号）；node_name 取值：requirement(执行方案)/CONFIRMED(确认标记)/config(智能配置)/spec(稽核)/fee(资费)/test(测试)/report(上线报告)。
 
 ## query_similar_offer
 - 接口：POST http://10.86.13.201:31281/api/v1/appstore/similar/offer/query
@@ -53,8 +53,8 @@
 
 ## save_node_result
 - 接口：POST http://10.86.13.201:31281/api/v1/appstore/result/save
-- 说明：节点结果存储：req_id(必填,plan_id或execution_id)/node_name(必填)/result_json(必填)/status → code/msg/record_id；同键覆盖
+- 说明：节点结果存储：req_id(必填,plan_id或execution_id)/node_name(必填,含report)/result_json(必填,≤64KB)/status → code/msg/record_id；同键覆盖，持久化存储（重启不丢）
 
 ## query_node_result
-- 接口：POST http://10.86.13.201:31281/api/v1/appstore/result/query
-- 说明：节点结果查询：req_id(必填),node_name(选填),latest_only(选填) → code/msg/total/list[list[i].result_json]
+- 接口：GET http://10.86.13.201:31281/api/v1/appstore/result/query
+- 说明：节点结果查询：req_id(必填),node_name(选填),latest_only(选填,默认1) → code/msg/total/list[list[i].result_json]

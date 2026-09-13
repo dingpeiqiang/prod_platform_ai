@@ -155,15 +155,19 @@ confirm 流程：
 
 ---
 
-## 能力4：上线审批发起
+## 能力4：上线审批发起（子工作流 wf_sub_06 实现，统一存储自查模式）
 ### 门禁（双重，硬性）
 1. `query_node_result`（req_id=execution_id）回放 config/spec/fee/test 四条记录核验四阶段全部成功；缺任一条或存在失败 → 提示"执行主干未全部完成，不能发起审批"并终止；
 2. 用户须明确回复"发起审批/确认上线"；未确认 → "已为您保留执行结果，回复【发起审批】可随时继续"。
 
-### 执行
-1. 报告汇总《销售品上线测试与稽核报告》，强制章节：1.需求摘要与执行方案要点；2.配置落地结果；3.稽核结论；4.资费结论；5.测试统计与失败明细；6.**受理验证结论**（orderId/offerInstId+逐受理场景结论）；7.上线建议。只基于输入数据生成，不得新增结论；
-2. `submit_release_approval`（product_id，report_url=报告全文，approve_confirmed=true，approval_flow=standard）；返回 NOT_CONFIRMED → 提示"审批发起未获确认，请回复【发起审批】后再试"并终止；
-3. 输出："上线审批已推送：approval_id={...}，status={...}。可随时发送'查询审批进度'消息查询审批状态。"（同 product_id 重复推送返回原 approval_id 属幂等正常，如实输出）
+### 子流程内部流程（req_id 单入参，报告凭存储自查，全部串行读取）
+1. 串行自查 5 类环节结果（query_node_result，req_id=execution_id，latest_only=1）：
+   requirement → config → spec → fee → test，逐个读取不并行；
+2. 代码节点结构化汇总为统一 schema（execution_id/requirement/config/spec_audit/fee_check/auto_test 六段）；
+3. 报告生成《销售品上线测试与稽核报告》，强制章节：1.需求摘要与执行方案要点（fields 全部字段+来源+最相似在架销售品）；2.配置落地结果（product_id/offer_id/save_result/status）；3.稽核结论（pass/audit_summary/error_list/audit_suggest）；4.资费结论（pass/risk_summary/risk_list）；5.测试统计与失败明细（test_report 全文）；6.**受理验证结论**（orderId/offerInstId+逐受理场景结论）；7.上线建议（全通过→"建议上线"，任一未通过→"暂缓上线"+阻断项）。只基于汇总数据生成，不得新增结论；
+4. `save_node_result`（req_id=execution_id，node_name=**report**，result_json=报告全文，status=ok）存储报告；
+5. `submit_release_approval`（product_id=汇总提取，report_url=报告全文，approve_confirmed=true，approval_flow=standard）；返回 NOT_CONFIRMED → 提示"审批发起未获确认，请回复【发起审批】后再试"并终止；
+6. 输出："上线审批已推送：approval_id={...}，status={...}。可随时发送'查询审批进度'消息查询审批状态。"（同 product_id 重复推送返回原 approval_id 属幂等正常，如实输出）
 
 ---
 

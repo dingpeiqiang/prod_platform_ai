@@ -2154,128 +2154,6 @@
       {
         "outputs": [
           {
-            "name": "report",
-            "description": "上线报告",
-            "type": "string",
-            "content": ""
-          }
-        ],
-        "max_tokens": 2048,
-        "flowJson": null,
-        "inputs": {
-          "llmParam": [
-            {
-              "name": "prompt",
-              "type": "string",
-              "content": "请基于以下输入数据，按标准模板汇总生成《销售品上线测试与稽核报告》：\n【配置落地结果】save_result={save_result}\n【稽核结论】audit_summary={audit_summary}\n【资费结论】risk_summary={risk_summary}\n【测试明细】test_report={test_report}\n报告必须包含以下章节：1.需求摘要与执行方案要点；2.配置落地结果；3.稽核结论；4.资费结论；5.测试统计与失败明细；6.受理验证结论（强制章节，引用orderId={orderId}、offerInstId={offerInstId}，逐受理场景给出通过/失败结论）；7.上线建议。只基于输入数据生成，不得新增结论。"
-            }
-          ],
-          "inputParameters": [
-            {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000005",
-              "relName": "save_result",
-              "name": "save_result",
-              "description": "落地结果",
-              "type": "ref",
-              "required": true,
-              "content": "",
-              "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000005",
-                "a1b2c3d4-0000-4000-8000-000000000005,save_result"
-              ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000005,save_result"
-            },
-            {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000007",
-              "relName": "audit_summary",
-              "name": "audit_summary",
-              "description": "稽核总结",
-              "type": "ref",
-              "required": true,
-              "content": "",
-              "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000007",
-                "a1b2c3d4-0000-4000-8000-000000000007,audit_summary"
-              ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000007,audit_summary"
-            },
-            {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000009",
-              "relName": "risk_summary",
-              "name": "risk_summary",
-              "description": "风险解读",
-              "type": "ref",
-              "required": true,
-              "content": "",
-              "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000009",
-                "a1b2c3d4-0000-4000-8000-000000000009,risk_summary"
-              ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000009,risk_summary"
-            },
-            {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000011",
-              "relName": "test_report",
-              "name": "test_report",
-              "description": "测试报告",
-              "type": "ref",
-              "required": true,
-              "content": "",
-              "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000011",
-                "a1b2c3d4-0000-4000-8000-000000000011,test_report"
-              ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000011,test_report"
-            },
-            {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000011",
-              "relName": "orderId",
-              "name": "orderId",
-              "description": "受理订单号（环节4测试结果出参）",
-              "type": "ref",
-              "required": true,
-              "content": "",
-              "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000011",
-                "a1b2c3d4-0000-4000-8000-000000000011,orderId"
-              ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000011,orderId"
-            },
-            {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000011",
-              "relName": "offerInstId",
-              "name": "offerInstId",
-              "description": "销售品实例ID（环节4测试结果出参）",
-              "type": "ref",
-              "required": true,
-              "content": "",
-              "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000011",
-                "a1b2c3d4-0000-4000-8000-000000000011,offerInstId"
-              ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000011,offerInstId"
-            }
-          ]
-        },
-        "checkErr": false,
-        "prompt_system": "",
-        "nodeMeta": {
-          "description": "报告汇总",
-          "title": "报告汇总"
-        },
-        "temperature": 0.2,
-        "top_p": 0.5,
-        "position": {
-          "x": 8295,
-          "y": 430
-        },
-        "id": "a1b2c3d4-0000-4000-8000-000000000016",
-        "dependencyData": [],
-        "type": 1
-      },
-      {
-        "outputs": [
-          {
             "name": "approval_id",
             "type": "string",
             "content": "",
@@ -2303,27 +2181,13 @@
               "a1b2c3d4-0000-4000-8000-000000000001,execution_id"
             ],
             "currValue": "a1b2c3d4-0000-4000-8000-000000000001,execution_id"
-          },
-          {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000016",
-            "relName": "report",
-            "name": "report",
-            "description": "上线报告（节点16报告汇总出参）",
-            "type": "ref",
-            "required": true,
-            "content": "",
-            "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000016",
-              "a1b2c3d4-0000-4000-8000-000000000016,report"
-            ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000016,report"
           }
         ],
         "checkErr": false,
         "history": false,
         "nodeMeta": {
           "workFlowId": "REPLACE_WITH_SUB06_FLOWID",
-          "description": "调用wf_sub_06（req_id+report双入参）：子流程内部自查product_id，审批推送（插件层校验approve_confirmed）",
+          "description": "调用wf_sub_06（req_id单入参）：子流程串行自查requirement/config/spec/fee/test五类环节结果→结构化汇总→生成《销售品上线测试与稽核报告》→存储（node_name=report）→审批推送（插件层校验approve_confirmed）",
           "title": "上线审批",
           "version": "1.0"
         },
@@ -2551,11 +2415,6 @@
         "startId": "a1b2c3d4-0000-4000-8000-000000000003"
       },
       {
-        "sourcePort": 0,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000016",
-        "startId": "a1b2c3d4-0000-4000-8000-000000000004"
-      },
-      {
         "sourcePort": -1,
         "endId": "a1b2c3d4-0000-4000-8000-000000000041",
         "startId": "a1b2c3d4-0000-4000-8000-000000000004"
@@ -2672,16 +2531,6 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000016",
-        "startId": "a1b2c3d4-0000-4000-8000-000000000014"
-      },
-      {
-        "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000017",
-        "startId": "a1b2c3d4-0000-4000-8000-000000000016"
-      },
-      {
-        "sourcePort": null,
         "endId": "a1b2c3d4-0000-4000-8000-000000000018",
         "startId": "a1b2c3d4-0000-4000-8000-000000000017"
       },
@@ -2689,6 +2538,16 @@
         "sourcePort": null,
         "endId": "a1b2c3d4-0000-4000-8000-000000000022",
         "startId": "a1b2c3d4-0000-4000-8000-000000000021"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000017",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000014"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000017",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000004"
       }
     ],
     "flowId": "wf_cpcp_main",

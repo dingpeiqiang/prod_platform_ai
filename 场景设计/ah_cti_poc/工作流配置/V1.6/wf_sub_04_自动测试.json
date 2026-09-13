@@ -392,32 +392,31 @@
             "description": "失败场景下标",
             "type": "string",
             "content": ""
+          },
+          {
+            "name": "fail_reason",
+            "description": "失败原因（超时/连续查询失败/globalId空）",
+            "type": "string",
+            "content": ""
           }
         ],
         "flowJson": null,
-        "inputs": {
-          "loopParam": {
-            "loopType": "while",
-            "maxLoopCount": 360,
-            "breakCondition": "done == true || failed == true || timeout"
-          },
-          "inputParameters": [
-            {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000302",
-              "relName": "globalId",
-              "name": "globalId",
-              "description": "测试流水号",
-              "type": "ref",
-              "required": true,
-              "content": "",
-              "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000302",
-                "a1b2c3d4-0000-4000-8000-000000000302,globalId"
-              ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000302,globalId"
-            }
-          ]
-        },
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000302",
+            "relName": "globalId",
+            "name": "globalId",
+            "description": "测试流水号",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000302",
+              "a1b2c3d4-0000-4000-8000-000000000302,globalId"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000302,globalId"
+          }
+        ],
         "checkErr": false,
         "nodeMeta": {
           "description": "工具5循环轮询：间隔5s，超时30分钟（360次），连续5次查询失败终止转人工",
@@ -428,8 +427,22 @@
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000304",
-        "dependencyData": [],
-        "type": 6
+        "dependencyData": [
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000302",
+            "children": [
+              {
+                "relName": "a1b2c3d4-0000-4000-8000-000000000302,globalId",
+                "name": "globalId",
+                "type": "string"
+              }
+            ],
+            "name": "发起测试",
+            "disabled": true
+          }
+        ],
+        "type": 6,
+        "code": "import asyncio\nimport json\nfrom typing import Any, Dict\n\nQUERY_URL = 'http://10.86.13.201:31281/api/v1/appstore/test/offer/progress'\nINTERVAL_SECONDS = 5\nMAX_TRIES = 360\nMAX_CONSECUTIVE_ERRORS = 5\n\nasync def main(args):\n    global_id = str(args.params.get('globalId') or '').strip()\n    if not global_id:\n        ret: Output = {\n            \"done\": \"false\",\n            \"failed\": \"true\",\n            \"failIndex\": \"-1\",\n            \"fail_reason\": \"globalId is empty\"\n        }\n        return ret\n    consecutive_errors = 0\n    for _ in range(MAX_TRIES):\n        try:\n            resp = await do_query(global_id)\n            body = json.loads(resp) if isinstance(resp, str) else resp\n            if isinstance(body, dict) and str(body.get('resultCode')) == '0':\n                consecutive_errors = 0\n                done = str(body.get('done', 'false')).lower() == 'true'\n                failed = str(body.get('failed', 'false')).lower() == 'true'\n                if done or failed:\n                    ret: Output = {\n                        \"done\": str(body.get('done', 'false')),\n                        \"failed\": str(body.get('failed', 'false')),\n                        \"failIndex\": str(body.get('failIndex', '-1')),\n                        \"fail_reason\": ''\n                    }\n                    return ret\n            else:\n                consecutive_errors += 1\n                if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:\n                    ret: Output = {\n                        \"done\": \"false\",\n                        \"failed\": \"true\",\n                        \"failIndex\": \"-1\",\n                        \"fail_reason\": \"query failed %d times\" % consecutive_errors\n                    }\n                    return ret\n        except Exception:\n            consecutive_errors += 1\n            if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:\n                ret: Output = {\n                    \"done\": \"false\",\n                    \"failed\": \"true\",\n                    \"failIndex\": \"-1\",\n                    \"fail_reason\": \"query exception %d times\" % consecutive_errors\n                }\n                return ret\n        await asyncio.sleep(INTERVAL_SECONDS)\n    ret: Output = {\n        \"done\": \"false\",\n        \"failed\": \"true\",\n        \"failIndex\": \"-1\",\n        \"fail_reason\": \"timeout after %d tries\" % MAX_TRIES\n    }\n    return ret\n\nasync def do_query(global_id):\n    import urllib.request\n    payload = json.dumps({\"globalId\": global_id}).encode('utf-8')\n    req = urllib.request.Request(QUERY_URL, data=payload,\n                                 headers={'Content-Type': 'application/json'}, method='POST')\n    loop = asyncio.get_event_loop()\n    def _fetch():\n        with urllib.request.urlopen(req, timeout=10) as r:\n            return r.read().decode('utf-8')\n    return await loop.run_in_executor(None, _fetch)"
       },
       {
         "outputs": [
