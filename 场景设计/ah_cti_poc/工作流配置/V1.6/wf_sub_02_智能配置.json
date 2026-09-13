@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-智能配置",
-  "flowRemark": "子工作流2：智能配置（配置落地）。节点结果查询读取执行方案JSON→save_product_config原样透传落地，中间无大模型节点；内部二次校验confirmed。",
+  "flowRemark": "子工作流2：智能配置（配置落地）。节点结果查询读取执行方案JSON→save_product_config原样透传落地，中间无大模型节点；内部二次校验confirmed；结束前存储 node_name=config（req_id=execution_id，主流程删除后环节存储下沉子工作流）。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -13,6 +13,15 @@
             "relName": "",
             "name": "plan_id",
             "description": "已确认的执行方案存储key",
+            "type": "string",
+            "required": true,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "execution_id",
+            "description": "执行主干批次号（EXE+yyyyMMddHHmmss+3位随机数，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史 execution_id）",
             "type": "string",
             "required": true,
             "content": ""
@@ -230,6 +239,105 @@
         "url": "http://10.86.13.201:31281/api/v1/appstore/product/config/save"
       },
       {
+        "outputs": [
+          {
+            "name": "code",
+            "cname": "0成功",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "msg",
+            "cname": "状态描述",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "record_id",
+            "cname": "存储记录ID",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
+            "relName": "execution_id",
+            "name": "req_id",
+            "description": "执行批次标识=execution_id（EXE+yyyyMMddHHmmss+3位随机数）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000101",
+              "a1b2c3d4-0000-4000-8000-000000000101,execution_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000101,execution_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=config（智能配置）",
+            "type": "string",
+            "required": true,
+            "content": "config"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
+            "relName": "save_result",
+            "name": "result_json",
+            "description": "环节结果JSON",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000103",
+              "a1b2c3d4-0000-4000-8000-000000000103,save_result"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,save_result"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "status",
+            "description": "本环节状态=ok",
+            "type": "string",
+            "required": true,
+            "content": "ok"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "环节结果存储",
+          "code": "save_node_result",
+          "description": "环节结果存储（复用）：req_id=execution_id，node_name=config（智能配置），result_json=环节落地结果；主流程删除后存储下沉子工作流，供 wf_sub_06 审批门禁四环节自查",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000105",
+        "position": {
+          "x": 1095,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/result/save"
+      },
+      {
         "outputs": {
           "name": "",
           "type": "string",
@@ -310,7 +418,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 1095,
+          "x": 1455,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000104",
@@ -330,8 +438,13 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000104",
+        "endId": "a1b2c3d4-0000-4000-8000-000000000105",
         "startId": "a1b2c3d4-0000-4000-8000-000000000103"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000104",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000105"
       }
     ],
     "flowId": "wf_sub_02",

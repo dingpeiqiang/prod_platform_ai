@@ -199,8 +199,26 @@
       {
         "outputs": [
           {
-            "name": "plan_output",
-            "description": "执行方案总输出JSON字符串，含 plan_json/plan_md/pending_fields/plan_id 四个键",
+            "name": "plan_json",
+            "description": "执行方案JSON",
+            "type": "string",
+            "content": ""
+          },
+          {
+            "name": "plan_md",
+            "description": "执行方案Markdown表格",
+            "type": "string",
+            "content": ""
+          },
+          {
+            "name": "pending_fields",
+            "description": "待补充字段清单逗号分隔",
+            "type": "string",
+            "content": ""
+          },
+          {
+            "name": "plan_id",
+            "description": "执行方案存储key",
             "type": "string",
             "content": ""
           }
@@ -212,7 +230,7 @@
             {
               "name": "prompt",
               "type": "string",
-              "content": "基于业务要素与相似产品列表，映射为实际配置字段并补全：\n要素：{elements_json}\n相似产品：{similarOfferList}\n规则：价格、资源类未提供填\"待补充\"（禁止推理）；其余缺失字段取最高相似度产品对应值，来源\"AI补全\"；来源只允许\"原始需求\"/\"AI补全\"两种。\n输出要求（单一出参 plan_output）：按以下格式输出，第一行原样输出标签 plan_output:，随后紧跟一个JSON对象（以{开头、}结尾），除该标签行外不得输出任何其他文字、代码块或说明：\nplan_output: {\"plan_json\":..., \"plan_md\":..., \"pending_fields\":..., \"plan_id\":...}\n该JSON对象固定包含以下4个键：\n1. plan_json：执行方案JSON对象，含 plan_id/fields/similar_offers/pending_fields 四个键，fields内每项含 field/value/source；\n2. plan_md：执行方案Markdown表格字符串，以|字段分类|开头，固定4列：字段分类/字段名称/字段值/来源；\n3. pending_fields：待补充字段名称数组（如[\"流量资源\",\"套餐固定费\"]），无待补充时为空数组[]；\n4. plan_id：存储key字符串（格式 PLAN+yyyyMMdd+3位序号，如PLAN20231001001），修改场景沿用原值覆盖写。\n注意：Markdown表格内的换行使用\\n转义，确保整个输出是合法JSON。"
+              "content": "基于业务要素与相似产品列表，映射为实际配置字段并补全：\n要素：{elements_json}\n相似产品：{similarOfferList}\n规则：价格、资源类未提供填\"待补充\"（禁止推理）；其余缺失字段取最高相似度产品对应值，来源\"AI补全\"；来源只允许\"原始需求\"/\"AI补全\"两种。\n输出要求（四个出参逐一约定，每个出参只输出自己的内容，严禁把其他出参内容并入）：\n1. plan_json：仅输出执行方案JSON对象本身（以{开头、}结尾），含 plan_id/fields/similar_offers/pending_fields 四个键，fields内每项含 field/value/source；\n2. plan_md：仅输出Markdown表格本身（以|字段分类|开头），固定4列：字段分类/字段名称/字段值/来源；\n3. pending_fields：仅输出待补充字段名称清单，逗号分隔，无待补充时输出空字符串；\n4. plan_id：仅输出存储key本身（格式 PLAN+yyyyMMddHHmmss+3位随机数，如 PLAN20260913143025087，**必须取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史 plan_id**；仅修改执行方案场景沿用原值覆盖写）；\n5. 除上述四个出参各自内容外不输出任何多余文字。"
             }
           ],
           "inputParameters": [
@@ -263,73 +281,6 @@
         "type": 1
       },
       {
-        "outputs": [
-          {
-            "relName": "b2c3d4e5-0000-4000-8000-000000000004a,plan_json",
-            "name": "plan_json",
-            "type": "string"
-          },
-          {
-            "relName": "b2c3d4e5-0000-4000-8000-000000000004a,plan_md",
-            "name": "plan_md",
-            "type": "string"
-          },
-          {
-            "relName": "b2c3d4e5-0000-4000-8000-000000000004a,pending_fields",
-            "name": "pending_fields",
-            "type": "string"
-          },
-          {
-            "relName": "b2c3d4e5-0000-4000-8000-000000000004a,plan_id",
-            "name": "plan_id",
-            "type": "string"
-          }
-        ],
-        "code": "import json, re\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['plan_output']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    m = re.search(r'\\{[\\s\\S]*\\}', raw)\n    if not m:\n        obj = {}\n    else:\n        try:\n            obj = json.loads(m.group(0))\n        except Exception:\n            obj = {}\n    pf = obj.get('pending_fields') or ''\n    if isinstance(pf, list):\n        pf = ','.join([str(x) for x in pf])\n    plan_json = obj.get('plan_json')\n    if not isinstance(plan_json, str):\n        plan_json = json.dumps(plan_json if plan_json is not None else obj, ensure_ascii=False)\n    ret: Output = {\n        \"plan_json\": plan_json,\n        \"plan_md\": str(obj.get('plan_md') or ''),\n        \"pending_fields\": str(pf),\n        \"plan_id\": str(obj.get('plan_id') or '')\n    }\n    return ret",
-        "flowJson": null,
-        "inputs": [
-          {
-            "blockID": "b2c3d4e5-0000-4000-8000-000000000004",
-            "relName": "plan_output",
-            "nameValue": [
-              "b2c3d4e5-0000-4000-8000-000000000004",
-              "b2c3d4e5-0000-4000-8000-000000000004,plan_output"
-            ],
-            "currValue": "b2c3d4e5-0000-4000-8000-000000000004,plan_output",
-            "name": "plan_output",
-            "description": "",
-            "type": "ref",
-            "content": ""
-          }
-        ],
-        "checkErr": false,
-        "nodeMeta": {
-          "description": "编写代码，处理输入变量来生成返回值",
-          "title": "方案输出拆分"
-        },
-        "language": 1,
-        "id": "b2c3d4e5-0000-4000-8000-000000000004a",
-        "position": {
-          "x": 1075,
-          "y": 300
-        },
-        "dependencyData": [
-          {
-            "relName": "b2c3d4e5-0000-4000-8000-000000000004",
-            "children": [
-              {
-                "relName": "b2c3d4e5-0000-4000-8000-000000000004,plan_output",
-                "name": "plan_output",
-                "type": "string"
-              }
-            ],
-            "name": "字段映射与补全",
-            "disabled": true
-          }
-        ],
-        "type": 6
-      },
-      {
         "flowJson": null,
         "inputs": {
           "condition": [
@@ -340,13 +291,13 @@
               "conditions": [
                 {
                   "left": {
-                    "blockID": "b2c3d4e5-0000-4000-8000-000000000004a",
+                    "blockID": "b2c3d4e5-0000-4000-8000-000000000004",
                     "relName": "pending_fields",
                     "nameValue": [
-                      "b2c3d4e5-0000-4000-8000-000000000004a",
-                      "b2c3d4e5-0000-4000-8000-000000000004a,pending_fields"
+                      "b2c3d4e5-0000-4000-8000-000000000004",
+                      "b2c3d4e5-0000-4000-8000-000000000004,pending_fields"
                     ],
-                    "currValue": "b2c3d4e5-0000-4000-8000-000000000004a,pending_fields",
+                    "currValue": "b2c3d4e5-0000-4000-8000-000000000004,pending_fields",
                     "name": "",
                     "description": "",
                     "type": "ref",
@@ -419,18 +370,18 @@
           "title": "待补充项判断"
         },
         "position": {
-          "x": 1435,
+          "x": 1075,
           "y": 300
         },
         "id": "b2c3d4e5-0000-4000-8000-000000000005",
         "dependencyData": [
           {
-            "relName": "b2c3d4e5-0000-4000-8000-000000000004a",
-            "name": "方案输出拆分",
+            "relName": "b2c3d4e5-0000-4000-8000-000000000004",
+            "name": "字段映射与补全",
             "disabled": true,
             "children": [
               {
-                "relName": "b2c3d4e5-0000-4000-8000-000000000004a,pending_fields",
+                "relName": "b2c3d4e5-0000-4000-8000-000000000004,pending_fields",
                 "name": "pending_fields",
                 "type": "string",
                 "content": ""
@@ -469,18 +420,18 @@
         "authentic_info": "",
         "inputs": [
           {
-            "blockID": "b2c3d4e5-0000-4000-8000-000000000004a",
+            "blockID": "b2c3d4e5-0000-4000-8000-000000000004",
             "relName": "plan_id",
             "name": "req_id",
-            "description": "需求唯一标识=plan_id（PLAN+yyyyMMdd+3位序号）",
+            "description": "需求唯一标识=plan_id（PLAN+yyyyMMddHHmmss+3位随机数）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "b2c3d4e5-0000-4000-8000-000000000004a",
-              "b2c3d4e5-0000-4000-8000-000000000004a,plan_id"
+              "b2c3d4e5-0000-4000-8000-000000000004",
+              "b2c3d4e5-0000-4000-8000-000000000004,plan_id"
             ],
-            "currValue": "b2c3d4e5-0000-4000-8000-000000000004a,plan_id"
+            "currValue": "b2c3d4e5-0000-4000-8000-000000000004,plan_id"
           },
           {
             "blockID": "",
@@ -492,7 +443,7 @@
             "content": "requirement"
           },
           {
-            "blockID": "b2c3d4e5-0000-4000-8000-000000000004a",
+            "blockID": "b2c3d4e5-0000-4000-8000-000000000004",
             "relName": "plan_json",
             "name": "result_json",
             "description": "本环节结果JSON=plan_json",
@@ -500,10 +451,10 @@
             "required": true,
             "content": "",
             "nameValue": [
-              "b2c3d4e5-0000-4000-8000-000000000004a",
-              "b2c3d4e5-0000-4000-8000-000000000004a,plan_json"
+              "b2c3d4e5-0000-4000-8000-000000000004",
+              "b2c3d4e5-0000-4000-8000-000000000004,plan_json"
             ],
-            "currValue": "b2c3d4e5-0000-4000-8000-000000000004a,plan_json"
+            "currValue": "b2c3d4e5-0000-4000-8000-000000000004,plan_json"
           },
           {
             "blockID": "",
@@ -532,28 +483,10 @@
         },
         "id": "b2c3d4e5-0000-4000-8000-000000000006",
         "position": {
-          "x": 1700,
+          "x": 1340,
           "y": 410
         },
-        "dependencyData": [
-          {
-            "relName": "b2c3d4e5-0000-4000-8000-000000000004a",
-            "children": [
-              {
-                "relName": "b2c3d4e5-0000-4000-8000-000000000004a,plan_id",
-                "name": "plan_id",
-                "type": "string"
-              },
-              {
-                "relName": "b2c3d4e5-0000-4000-8000-000000000004a,plan_json",
-                "name": "plan_json",
-                "type": "string"
-              }
-            ],
-            "name": "方案输出拆分",
-            "disabled": true
-          }
-        ],
+        "dependencyData": [],
         "type": 3,
         "url": "http://10.86.13.201:31281/api/v1/appstore/result/save"
       },
@@ -571,7 +504,7 @@
         "flowJson": null,
         "inputs": [
           {
-            "blockID": "b2c3d4e5-0000-4000-8000-000000000004a",
+            "blockID": "b2c3d4e5-0000-4000-8000-000000000004",
             "relName": "plan_md",
             "name": "plan_md",
             "description": "执行方案表格",
@@ -579,13 +512,13 @@
             "required": true,
             "content": "",
             "nameValue": [
-              "b2c3d4e5-0000-4000-8000-000000000004a",
-              "b2c3d4e5-0000-4000-8000-000000000004a,plan_md"
+              "b2c3d4e5-0000-4000-8000-000000000004",
+              "b2c3d4e5-0000-4000-8000-000000000004,plan_md"
             ],
-            "currValue": "b2c3d4e5-0000-4000-8000-000000000004a,plan_md"
+            "currValue": "b2c3d4e5-0000-4000-8000-000000000004,plan_md"
           },
           {
-            "blockID": "b2c3d4e5-0000-4000-8000-000000000004a",
+            "blockID": "b2c3d4e5-0000-4000-8000-000000000004",
             "relName": "pending_fields",
             "name": "pending_fields",
             "description": "待补充字段",
@@ -593,10 +526,10 @@
             "required": true,
             "content": "",
             "nameValue": [
-              "b2c3d4e5-0000-4000-8000-000000000004a",
-              "b2c3d4e5-0000-4000-8000-000000000004a,pending_fields"
+              "b2c3d4e5-0000-4000-8000-000000000004",
+              "b2c3d4e5-0000-4000-8000-000000000004,pending_fields"
             ],
-            "currValue": "b2c3d4e5-0000-4000-8000-000000000004a,pending_fields"
+            "currValue": "b2c3d4e5-0000-4000-8000-000000000004,pending_fields"
           }
         ],
         "checkErr": false,
@@ -610,29 +543,11 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 1700,
+          "x": 1340,
           "y": 190
         },
         "id": "b2c3d4e5-0000-4000-8000-000000000007",
-        "dependencyData": [
-          {
-            "relName": "b2c3d4e5-0000-4000-8000-000000000004a",
-            "children": [
-              {
-                "relName": "b2c3d4e5-0000-4000-8000-000000000004a,plan_md",
-                "name": "plan_md",
-                "type": "string"
-              },
-              {
-                "relName": "b2c3d4e5-0000-4000-8000-000000000004a,pending_fields",
-                "name": "pending_fields",
-                "type": "string"
-              }
-            ],
-            "name": "方案输出拆分",
-            "disabled": true
-          }
-        ]
+        "dependencyData": []
       },
       {
         "outputs": {
@@ -648,7 +563,7 @@
         "flowJson": null,
         "inputs": [
           {
-            "blockID": "b2c3d4e5-0000-4000-8000-000000000004a",
+            "blockID": "b2c3d4e5-0000-4000-8000-000000000004",
             "relName": "plan_id",
             "name": "plan_id",
             "description": "执行方案存储key",
@@ -656,13 +571,13 @@
             "required": true,
             "content": "",
             "nameValue": [
-              "b2c3d4e5-0000-4000-8000-000000000004a",
-              "b2c3d4e5-0000-4000-8000-000000000004a,plan_id"
+              "b2c3d4e5-0000-4000-8000-000000000004",
+              "b2c3d4e5-0000-4000-8000-000000000004,plan_id"
             ],
-            "currValue": "b2c3d4e5-0000-4000-8000-000000000004a,plan_id"
+            "currValue": "b2c3d4e5-0000-4000-8000-000000000004,plan_id"
           },
           {
-            "blockID": "b2c3d4e5-0000-4000-8000-000000000004a",
+            "blockID": "b2c3d4e5-0000-4000-8000-000000000004",
             "relName": "plan_md",
             "name": "plan_md",
             "description": "执行方案表格",
@@ -670,10 +585,10 @@
             "required": true,
             "content": "",
             "nameValue": [
-              "b2c3d4e5-0000-4000-8000-000000000004a",
-              "b2c3d4e5-0000-4000-8000-000000000004a,plan_md"
+              "b2c3d4e5-0000-4000-8000-000000000004",
+              "b2c3d4e5-0000-4000-8000-000000000004,plan_md"
             ],
-            "currValue": "b2c3d4e5-0000-4000-8000-000000000004a,plan_md"
+            "currValue": "b2c3d4e5-0000-4000-8000-000000000004,plan_md"
           }
         ],
         "checkErr": false,
@@ -687,29 +602,11 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 1965,
+          "x": 1605,
           "y": 300
         },
         "id": "b2c3d4e5-0000-4000-8000-000000000008",
-        "dependencyData": [
-          {
-            "relName": "b2c3d4e5-0000-4000-8000-000000000004a",
-            "children": [
-              {
-                "relName": "b2c3d4e5-0000-4000-8000-000000000004a,plan_id",
-                "name": "plan_id",
-                "type": "string"
-              },
-              {
-                "relName": "b2c3d4e5-0000-4000-8000-000000000004a,plan_md",
-                "name": "plan_md",
-                "type": "string"
-              }
-            ],
-            "name": "方案输出拆分",
-            "disabled": true
-          }
-        ]
+        "dependencyData": []
       }
     ],
     "edges": [
@@ -730,13 +627,8 @@
       },
       {
         "sourcePort": null,
-        "endId": "b2c3d4e5-0000-4000-8000-000000000004a",
-        "startId": "b2c3d4e5-0000-4000-8000-000000000004"
-      },
-      {
-        "sourcePort": null,
         "endId": "b2c3d4e5-0000-4000-8000-000000000005",
-        "startId": "b2c3d4e5-0000-4000-8000-000000000004a"
+        "startId": "b2c3d4e5-0000-4000-8000-000000000004"
       },
       {
         "sourcePort": -1,

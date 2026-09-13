@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-上线审批",
-  "flowRemark": "子工作流6：上线审批。进入前主流程已校验approve_confirmed=true；submit_release_approval（自研模拟，插件层二次校验+幂等）。",
+  "flowRemark": "子工作流6：上线审批。submit_release_approval（自研模拟，插件层硬门禁：approve_confirmed=true+execution_id四环节结果config/spec/fee/test齐全，缺失返回NOT_CONFIRMED；幂等）。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -21,7 +21,16 @@
             "blockID": "",
             "relName": "",
             "name": "report",
-            "description": "上线报告（主流程节点16输出）",
+            "description": "上线报告（执行主干四环节完成后汇总生成）",
+            "type": "string",
+            "required": true,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "execution_id",
+            "description": "执行主干批次号（EXE+yyyyMMddHHmmss+3位随机数，四环节结果门禁校验依据）",
             "type": "string",
             "required": true,
             "content": ""
@@ -90,6 +99,20 @@
             "currValue": "a1b2c3d4-0000-4000-8000-000000000501,report"
           },
           {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000501",
+            "relName": "execution_id",
+            "name": "execution_id",
+            "description": "执行主干批次号（四环节结果门禁校验依据）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000501",
+              "a1b2c3d4-0000-4000-8000-000000000501,execution_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000501,execution_id"
+          },
+          {
             "blockID": "",
             "relName": "",
             "name": "approve_confirmed",
@@ -112,7 +135,7 @@
         "nodeMeta": {
           "title": "审批推送",
           "code": "submit_release_approval",
-          "description": "工具9：自研模拟审批推送；插件层校验approve_confirmed==true（未经确认返回NOT_CONFIRMED）；幂等：同product_id返回原approval_id",
+          "description": "工具9：自研模拟审批推送；插件层硬门禁：approve_confirmed==true 且存储中存在该 execution_id 的四环节结果（config/spec/fee/test）；幂等：同product_id返回原approval_id",
           "version": "1"
         },
         "authentic_info_new": {

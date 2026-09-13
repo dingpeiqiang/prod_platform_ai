@@ -241,7 +241,7 @@
             "blockID": "b2c3d4e5-0000-4000-8000-000000000101",
             "relName": "plan_id",
             "name": "req_id",
-            "description": "执行批次标识=execution_id（EXE+yyyyMMddHHmmss+2位序号，与plan_id同轮生成）",
+            "description": "执行批次标识=execution_id（EXE+yyyyMMddHHmmss+3位随机数，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史 execution_id）",
             "type": "ref",
             "required": true,
             "content": "",

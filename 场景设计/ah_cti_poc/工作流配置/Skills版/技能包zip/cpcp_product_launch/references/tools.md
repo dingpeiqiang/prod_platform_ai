@@ -1,7 +1,7 @@
 # 自研插件工具契约（模拟结果输出，种子数据=《产品信息.txt》18个销售品）
 
 > 基地址：http://10.86.13.201:31281 ；全部工具契约与《自研插件集V1.6》一致（V1.7 增加工具层硬校验），替换真实实现时契约不变。
-> 能力1~4 需存储类工具：req_id 规范——执行方案=plan_id（PLAN+yyyyMMdd+3位序号）；执行主干=execution_id（EXE+yyyyMMddHHmmss+2位序号）；node_name 取值：requirement(执行方案)/CONFIRMED(确认标记)/config(智能配置)/spec(稽核)/fee(资费)/test(测试)/report(上线报告)。
+> 能力1~4 需存储类工具：req_id 规范——执行方案=plan_id（PLAN+yyyyMMddHHmmss+3位随机数，每次生成取当前真实时刻，禁止沿用示例值/历史值）；执行主干=execution_id（EXE+yyyyMMddHHmmss+3位随机数）；node_name 取值：requirement(执行方案)/CONFIRMED(确认标记)/config(智能配置)/spec(稽核)/fee(资费)/test(测试)/report(上线报告)。
 > V1.7 硬校验约定：写接口（save_product_config / submit_release_approval）不信任 LLM 传参，以节点结果存储为准做门禁校验——配置落地须先有 CONFIRMED 标记，审批推送须先有四环节结果。
 
 ## query_similar_offer

@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-资费校准",
-  "flowRemark": "子工作流5：资费校准。check_billing_rule（自研模拟，check_scene=all）→风险解读（温度0.2，引用资费规则库知识）。",
+  "flowRemark": "子工作流5：资费校准。check_billing_rule（自研模拟，check_scene=all）→风险解读（温度0.2，引用资费规则库知识）；结束前存储 node_name=fee（req_id=execution_id，主流程删除后环节存储下沉子工作流）。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -13,6 +13,15 @@
             "relName": "",
             "name": "config_json",
             "description": "落地配置JSON原文",
+            "type": "string",
+            "required": true,
+            "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "execution_id",
+            "description": "执行主干批次号（EXE+yyyyMMddHHmmss+3位随机数）",
             "type": "string",
             "required": true,
             "content": ""
@@ -183,6 +192,105 @@
         "type": 1
       },
       {
+        "outputs": [
+          {
+            "name": "code",
+            "cname": "0成功",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "msg",
+            "cname": "状态描述",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "record_id",
+            "cname": "存储记录ID",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          }
+        ],
+        "submit_way": "post",
+        "flowJson": null,
+        "authentic_info": "",
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000401",
+            "relName": "execution_id",
+            "name": "req_id",
+            "description": "执行批次标识=execution_id（EXE+yyyyMMddHHmmss+3位随机数）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000401",
+              "a1b2c3d4-0000-4000-8000-000000000401,execution_id"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000401,execution_id"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "node_name",
+            "description": "环节名=fee（资费校准）",
+            "type": "string",
+            "required": true,
+            "content": "fee"
+          },
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000403",
+            "relName": "risk_summary",
+            "name": "result_json",
+            "description": "环节结果JSON=风险解读",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000403",
+              "a1b2c3d4-0000-4000-8000-000000000403,risk_summary"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000403,risk_summary"
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "status",
+            "description": "本环节状态=ok",
+            "type": "string",
+            "required": true,
+            "content": "ok"
+          }
+        ],
+        "checkErr": false,
+        "nodeMeta": {
+          "title": "环节结果存储",
+          "code": "save_node_result",
+          "description": "环节结果存储（复用）：req_id=execution_id，node_name=fee（资费校准），result_json=风险解读；主流程删除后存储下沉子工作流，供 wf_sub_06 审批门禁四环节自查",
+          "version": "1"
+        },
+        "authentic_info_new": {
+          "auth_type": "1",
+          "auth_info": {
+            "inparams": [],
+            "params": [],
+            "outparams": []
+          }
+        },
+        "id": "a1b2c3d4-0000-4000-8000-000000000405",
+        "position": {
+          "x": 1095,
+          "y": 300
+        },
+        "dependencyData": [],
+        "type": 3,
+        "url": "http://10.86.13.201:31281/api/v1/appstore/result/save"
+      },
+      {
         "outputs": {
           "name": "",
           "type": "string",
@@ -249,7 +357,7 @@
         "top_k": 0.1,
         "temperature": 0.1,
         "position": {
-          "x": 1095,
+          "x": 1455,
           "y": 300
         },
         "id": "a1b2c3d4-0000-4000-8000-000000000404",
@@ -269,8 +377,13 @@
       },
       {
         "sourcePort": null,
-        "endId": "a1b2c3d4-0000-4000-8000-000000000404",
+        "endId": "a1b2c3d4-0000-4000-8000-000000000405",
         "startId": "a1b2c3d4-0000-4000-8000-000000000403"
+      },
+      {
+        "sourcePort": null,
+        "endId": "a1b2c3d4-0000-4000-8000-000000000404",
+        "startId": "a1b2c3d4-0000-4000-8000-000000000405"
       }
     ],
     "flowId": "wf_sub_05",

@@ -21,7 +21,7 @@
             "blockID": "",
             "relName": "",
             "name": "execution_id",
-            "description": "执行主干批次号 EXE+yyyyMMddHHmmss+2位序号（续跑时传入，首跑自动生成）",
+            "description": "执行主干批次号 EXE+yyyyMMddHHmmss+3位随机数（取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史 execution_id；续跑时传入，首跑自动生成）",
             "type": "string",
             "required": false,
             "content": ""
