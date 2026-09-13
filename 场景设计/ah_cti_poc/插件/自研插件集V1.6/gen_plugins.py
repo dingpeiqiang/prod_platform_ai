@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-# 生成产销品加载AI应用 V1.6 自研插件集导出JSON（13个工具）
-# 依据：《产销品加载AI应用开发方案.md》V1.6、《产销品加载AI应用-细化设计方案.md》V1.2
-# 口径：工具1~6、7~11、13 全部自研实现+模拟结果输出；模拟数据兼容《产品信息.txt》18个销售品
+# 生成产销品加载AI应用 V1.6 自研插件集导出JSON（14个工具：13个自研+复用2个中存储查询）
+# 依据：《产销品加载AI应用开发方案.md》V2.1、《产销品加载AI应用-细化设计方案.md》
+# 口径：工具1~6、7~11、13 全部自研实现+模拟结果输出；工具14 字段本体推理（V2.1 本体推理引擎）；模拟数据兼容《产品信息.txt》18个销售品
 import json, os, io
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -574,6 +574,48 @@ plugins.append(build_storage_plugin(
     },
     "Y"))
 
+# ---------------- 工具14 字段本体推理（V2.1 本体推理引擎） ----------------
+plugins.append(build_plugin(
+    "field-ontology-0001", "字段本体推理", "field_ontology_reason",
+    "自研实现（V2.1）：字段本体推理引擎后端。四类18字段本体注册表（枚举/格式/默认值/兜底口径）内聚于后端 FieldOntologyService，"
+    "action=validate 对 LLM 补全结果逐字段做本体合法性推理（枚举校验/格式校验，非法返回 violations 供 LLM 重填）；"
+    "action=complete 对缺失字段按本体默认值推理补全（兜底口径字段：套餐固定费/流量/语音/短信不默认补全，交上游判待补充）；"
+    "action=ontology 查询字段本体定义。替代 V2.0 K6 知识库文档方案，字段口径由代码单一事实源保证",
+    "/api/v1/appstore/ontology/fields", "POST",
+    {
+        "action": schema_param("action", "string",
+            "推理动作枚举：validate（字段合法性校验）/complete（默认值推理补全）/ontology（本体定义查询）；非法返回 5101", True, "", "validate,complete,ontology"),
+        "fields_json": schema_param("fields_json", "string",
+            "字段数组JSON字符串：[{\"field\":\"字段名称\",\"value\":\"字段值\",\"source\":\"原始需求或AI补全\"}]；action=ontology 时可空", False),
+    },
+    ["action"],
+    {
+        "code": {"description": "统一状态码，0 成功 / 5101 非法action", "type": "string"},
+        "msg": {"description": "状态描述", "type": "string"},
+        "pass": {"description": "validate 出参：1 全部合法 / 0 存在违规", "type": "string"},
+        "violations": arr("violations", "validate 出参：违规明细，pass=0 时非空", {
+            "field": {"description": "违规字段名", "type": "string"},
+            "value": {"description": "违规值", "type": "string"},
+            "reason": {"description": "期望规则（本体定义）", "type": "string"},
+        }),
+        "completed": arr("completed", "complete 出参：逐字段补全/兜底标记", {
+            "field": {"description": "字段名", "type": "string"},
+            "value": {"description": "补全值（兜底口径字段为\"待补充\"）", "type": "string"},
+            "defaulted": {"description": "1=本体默认值补全 / 0=未补全", "type": "string"},
+            "reason": {"description": "补全依据（本体规则）", "type": "string"},
+        }),
+        "fields_json": {"description": "complete 出参：补全后的完整字段数组JSON", "type": "string"},
+        "fields": arr("fields", "ontology 出参：字段本体定义清单", {
+            "field": {"description": "字段名", "type": "string"},
+            "category": {"description": "字段分类（A基础信息/B资源配置/C营销资源/D销售规则）", "type": "string"},
+            "enums": {"description": "枚举值（顿号分隔，无枚举为空）", "type": "string"},
+            "rule": {"description": "格式/口径规则", "type": "string"},
+            "default_value": {"description": "本体默认值", "type": "string"},
+            "fallback": {"description": "1=兜底口径字段（不默认补全）/ 0=普通字段", "type": "string"},
+        }),
+    },
+    "N"))
+
 filenames = {
     "query_similar_offer": "工具1_相似度分析_export.json",
     "realtime_spec_audit": "工具2_实时规格稽核_export.json",
@@ -589,6 +631,7 @@ filenames = {
     "query_approval_status": "工具13_审批进度查询_export.json",
     "save_node_result": "节点结果存储_export_V1.6.json",
     "query_node_result": "节点结果查询_export_V1.6.json",
+    "field_ontology_reason": "工具14_字段本体推理_export.json",
 }
 
 for p in plugins:

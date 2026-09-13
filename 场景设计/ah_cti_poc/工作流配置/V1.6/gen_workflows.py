@@ -31,6 +31,25 @@ def out(name, desc, ptype="string"):
 
 # 各工具 array 出参的 item 叶子字段（与自研插件集V1.6 gen_plugins.py 定义严格同步）
 ARRAY_ITEM_FIELDS = {
+    "field_ontology_reason|violations": [
+        ("field", "违规字段名"),
+        ("value", "违规值"),
+        ("reason", "期望规则（本体定义）"),
+    ],
+    "field_ontology_reason|completed": [
+        ("field", "字段名"),
+        ("value", "补全值（兜底口径字段为\"待补充\"）"),
+        ("defaulted", "1=本体默认值补全 / 0=未补全"),
+        ("reason", "补全依据（本体规则）"),
+    ],
+    "field_ontology_reason|fields": [
+        ("field", "字段名"),
+        ("category", "字段分类（A基础信息/B资源配置/C营销资源/D销售规则）"),
+        ("enums", "枚举值（顿号分隔，无枚举为空）"),
+        ("rule", "格式/口径规则"),
+        ("default_value", "本体默认值"),
+        ("fallback", "1=兜底口径字段（不默认补全）/ 0=普通字段"),
+    ],
     "query_similar_offer|similarOfferList": [
         ("similarOfferId", "相似销售品ID（如 900102308）"),
         ("similarOfferName", "相似销售品名称"),
@@ -419,9 +438,9 @@ s1.append(llm_node(4, "字段映射与补全",
     "【第一步：确定补全规则（V1.6）】\n"
     "pending_fields默认为空——仅当套餐固定费（月租费）未提取到，或流量/语音/短信三类资源一个都未提取到时，才将缺失字段值填\"待补充\"并列入pending_fields（禁止推理，禁止从相似产品照搬）；三类资源只要提取到任意一类即视为资源信息齐备，未提取到的其余资源类字段可由相似产品补全；费用与资源齐备时其余缺失字段按下述组合补全策略生成。\n"
     "\n"
-    "【第二步：组合补全策略（本体+相似产品，V2.0 稳定性锚点）】\n"
-    "补全值必须先满足 K6《产销品字段本体》的字段形态约束，再从相似产品取值，逐级降级：原始需求 → 相似产品（最高相似度） → 本体默认值 → 待补充，禁止跳级虚构。\n"
-    "字段本体约束（必须逐字段核对，违反即重填）：\n"
+    "【第二步：取值链（V2.1 本体推理引擎架构）】\n"
+    "字段形态与默认值口径由后端字段本体推理引擎（工具14 field_ontology_reason，FieldOntologyService）统一保证，本节点只负责取值，逐级降级：原始需求 → 相似产品（最高相似度） → 待补充，禁止虚构。\n"
+    "取值口径（与后端本体注册表一致，违反将被校验节点驳回重填）：\n"
     "- 产品属性：枚举 基础/可选/增值（套餐类默认基础，权益包默认增值）；\n"
     "- 收费方式：枚举 按月/按量/一次性（月付/包月一律归一为按月）；\n"
     "- 渠道类型：枚举 实体渠道/电子渠道/直销渠道（可多选，无参照默认三者全选）；\n"
@@ -432,14 +451,14 @@ s1.append(llm_node(4, "字段映射与补全",
     "- 退订规则默认口径：允许退订，次月生效，当月费用不退还（相似产品同值优先）；\n"
     "- 产品名称必须符合 K1 命名模板（5G-A+[融合/单品]套餐+[档位]元 或 [档位]元权益随心选[版本]版）；\n"
     "- 数值类字段必须带单位（GB/分钟/条/元）。\n"
-    "取值顺序：①需求原文有值→直接采用；②需求无值→取最高相似度产品对应字段值（须符合上述枚举/格式）；③相似产品亦缺失→按本体默认值；④仅套餐固定费与三类资源按第一步判待补充。每级降级来源统一标\"AI补全\"。\n"
+    "取值顺序：①需求原文有值→直接采用；②需求无值→取最高相似度产品对应字段值；③相似产品亦缺失且非兜底口径→留空（由后端本体推理引擎按默认值补全）；④仅套餐固定费与三类资源按第一步判待补充。每级降级来源统一标\"AI补全\"。\n"
     "\n"
     "【第三步：逐字段生成，必须覆盖以下四类全部字段（共18个，一个都不能少）】\n"
     "A.基础信息：1.产品名称 2.产品属性（基础/可选/增值） 3.产品编码 4.生效日期 5.退订规则\n"
     "B.资源配置：6.流量资源 7.语音资源 8.短信资源\n"
     "C.营销资源：9.套餐固定费 10.收费方式（按月/按量/一次性） 11.优惠条件 12.优惠期\n"
     "D.销售规则：13.渠道类型 14.适用地区 15.订购限制 16.副卡规则 17.计费周期 18.销售品状态\n"
-    "其中：9.套餐固定费 为关键必填字段——需求未提取到时值填\"待补充\"并计入pending_fields；6.流量资源/7.语音资源/8.短信资源 为关键必填字段——三类资源全部未提取到时，未提取到的资源字段值填\"待补充\"并计入pending_fields（任一类已提取到则其余资源字段按相似产品补全）；3.产品编码 禁止AI补全——统一由智能配置环节落地后生成，需求未提供时值填\"由智能配置生成\"、来源标\"AI补全\"（不计入pending_fields）；其余字段按第二步组合补全策略取值。\n"
+    "其中：9.套餐固定费 为关键必填字段——需求未提取到时值填\"待补充\"并计入pending_fields；6.流量资源/7.语音资源/8.短信资源 为关键必填字段——三类资源全部未提取到时，未提取到的资源字段值填\"待补充\"并计入pending_fields（任一类已提取到则其余资源字段按相似产品补全）；3.产品编码 禁止AI补全——统一由智能配置环节落地后生成，需求未提供时值填\"由智能配置生成\"、来源标\"AI补全\"（不计入pending_fields）；其余字段按第二步取值链取值，相似产品亦缺失时留空字符串（后端本体推理引擎将按默认值补全）。\n"
     "\n"
     "【第四步：逐字段标注来源（强制，仅两种取值）】\n"
     "fields内每项的source字段按以下判定表逐项判断，禁止偷懒全部标\"原始需求\"：\n"
@@ -458,6 +477,17 @@ s1.append(llm_node(4, "字段映射与补全",
     [inp("elements_json", "引用节点2要素JSON", ref_block=nid(2), ref_rel="elements_json"),
      inp("similarOfferList", "引用节点3相似产品列表", ref_block=nid(3), ref_rel="similarOfferList")],
     [out("plan_output", "执行方案总输出JSON字符串，含 plan_json/plan_md/pending_fields 三个键")]))
+# 31 字段本体推理（V2.1 本体推理引擎，工具14）：LLM节点4补全结果 → 本体合法性校验（validate）
+# 枚举/格式非法值返回 violations（期望规则），violations 非空时由结束节点提示重填；
+# 缺失字段默认值补全在 complete 侧由后端存储前推理（本节点只做校验关卡，保证方案展示与存储口径一致）
+s1.append(plugin_node(31, "字段本体校验", "field_ontology_reason",
+    "工具14：字段本体推理引擎——对节点4补全结果逐字段做本体合法性校验（枚举/格式），非法值返回violations及期望规则",
+    BASE_URL + "/api/v1/appstore/ontology/fields",
+    [inp("action", "推理动作=validate（字段合法性校验）", content="validate"),
+     inp("fields_json", "字段数组JSON（引用节点4总输出，后端从中解析fields数组）", ref_block=nid(4), ref_rel="plan_output")],
+    [("code", "0成功/5101非法action", "string"), ("msg", "状态描述", "string"),
+     ("pass", "1全部合法/0存在违规", "string"),
+     ("violations", "违规明细（field/value/reason期望规则）", "array")]))
 # 004a 方案输出拆分：LLM节点4单出参 plan_output → 拆分为 plan_json/plan_md/pending_fields；req_id 由代码节点系统生成（PLAN+当前时刻+3位随机数，每次分析重新生成，保证唯一）
 s1.append(code_node(41, "方案输出拆分", CODE_004A,
     [inp("plan_output", "引用节点4总输出", ref_block=nid(4), ref_rel="plan_output")],
@@ -465,10 +495,11 @@ s1.append(code_node(41, "方案输出拆分", CODE_004A,
      code_out("pending_fields", 41), code_out("req_id", 41)],
     pos=(1455, 300)))
 s1.append(selector_node2(5, "待补充项判断",
-    [dep_node(41, "方案输出拆分", ["pending_fields"])],
+    [dep_node(41, "方案输出拆分", ["pending_fields"]), dep_node(31, "字段本体校验", ["pass", "violations"])],
     # 平台样例约定：条件定义在 port=-1（否则分支）；port=0 由平台自动路由
     # 语义：pending_fields 不为空（长度大于0）→ 有待补充项 → 保存执行方案 → 确认结束；
     #       port=0 兜底分支（pending_fields 为空）→ 直接结束提示，不保存（禁止进入智能配置）
+    # 本体校验 violations 输出至结束节点提示（质量关卡旁路展示，不阻断主流程）
     [(-1, [cond_item(cond_ref(41, "pending_fields", "方案输出拆分"), 10, cond_str(""))])]))
 s1.append(plugin_node(6, "保存执行方案", "save_node_result",
     "节点结果存储（复用）：req_id=代码节点生成的方案批次号 req_id（取节点41拆分出参，系统时钟生成），node_name=requirement（执行方案环节），result_json=plan_json；同键覆盖",
@@ -481,16 +512,18 @@ s1.append(plugin_node(6, "保存执行方案", "save_node_result",
 s1.append(end_node(7, "结束(有待补充项)",
     [inp("req_id", "执行方案存储key", ref_block=nid(41), ref_rel="req_id"),
      inp("plan_md", "执行方案表格", ref_block=nid(41), ref_rel="plan_md"),
-     inp("pending_fields", "待补充字段", ref_block=nid(41), ref_rel="pending_fields")],
-    "《产销品加载执行方案》已生成（req_id：{req_id}）\n\n{plan_md}\n\n【待补充字段】{pending_fields}\n以上字段为套餐固定费（月租费）或全部资源信息（流量/语音/短信均未提供）需求中未提取到，需由您补充后才能执行：\n- 请直接补充字段值，将更新执行方案并再次确认；\n- 如需调整其他字段：请直接说明修改意见（其余字段已按相似产品补全）。"))
+     inp("pending_fields", "待补充字段", ref_block=nid(41), ref_rel="pending_fields"),
+     inp("violations", "本体校验违规明细", ref_block=nid(31), ref_rel="violations")],
+    "《产销品加载执行方案》已生成（req_id：{req_id}）\n\n{plan_md}\n\n【待补充字段】{pending_fields}\n以上字段为套餐固定费（月租费）或全部资源信息（流量/语音/短信均未提供）需求中未提取到，需由您补充后才能执行：\n- 请直接补充字段值，将更新执行方案并再次确认；\n- 如需调整其他字段：请直接说明修改意见（其余字段已按相似产品补全）。\n【本体校验】{violations}"))
 s1.append(end_node(8, "结束(无待补充项)",
     [inp("req_id", "执行方案存储key", ref_block=nid(41), ref_rel="req_id"),
-     inp("plan_md", "执行方案表格", ref_block=nid(41), ref_rel="plan_md")],
-    "《产销品加载执行方案》已生成并保存（req_id：{req_id}）\n\n{plan_md}\n\n【无待补充字段】全部缺失字段已按最高相似度产品 AI 补全，来源已逐字段标注。\n请核对以上执行方案：\n- 回复【确认执行】：将自动串行执行 智能配置→稽核→资费校准→自动测试 四个环节（每环节执行后打印结果，仅异常时中断）；\n- 如需调整：请直接说明修改意见。"))
-e1 = [edge(1,2), edge(2,3), edge(3,4), edge(4,41), edge(41,5),
+     inp("plan_md", "执行方案表格", ref_block=nid(41), ref_rel="plan_md"),
+     inp("violations", "本体校验违规明细", ref_block=nid(31), ref_rel="violations")],
+    "《产销品加载执行方案》已生成并保存（req_id：{req_id}）\n\n{plan_md}\n\n【无待补充字段】缺失字段已按相似产品与字段本体推理引擎 AI 补全，来源已逐字段标注。\n【本体校验】{violations}\n请核对以上执行方案：\n- 回复【确认执行】：将自动串行执行 智能配置→稽核→资费校准→自动测试 四个环节（每环节执行后打印结果，仅异常时中断）；\n- 如需调整：请直接说明修改意见。"))
+e1 = [edge(1,2), edge(2,3), edge(3,4), edge(4,31), edge(4,41), edge(41,5),
       edge(5,6,0), edge(5,7,-1), edge(6,8)]
 files["wf_sub_01_需求分析.json"] = workflow(
-    "产销品-需求分析", "子工作流1：需求分析（执行方案生成）。需求理解→相似产品查询（自研模拟，18销售品种子）→字段映射与AI补全（pending_fields默认为空，仅套餐固定费未提取到或三类资源全部未提取到时待补充；产品编码不补全由智能配置生成；其余AI补全）→待补充项判断（无待补充→保存执行方案→确认结束；有待补充→补充提示结束）。", "wf_sub_01", s1, e1)
+    "产销品-需求分析", "子工作流1：需求分析（执行方案生成）。需求理解→相似产品查询（自研模拟，18销售品种子）→字段映射与AI补全（pending_fields默认为空，仅套餐固定费未提取到或三类资源全部未提取到时待补充；产品编码不补全由智能配置生成；相似产品亦缺失时留空由本体推理引擎按默认值补全）→字段本体校验（V2.1工具14，枚举/格式合法性推理，violations提示重填）→待补充项判断（无待补充→保存执行方案→确认结束；有待补充→补充提示结束）。", "wf_sub_01", s1, e1)
 
 # ============================================================
 # wf_sub_02 智能配置（配置落地）

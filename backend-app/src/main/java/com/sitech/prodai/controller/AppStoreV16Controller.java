@@ -1,5 +1,6 @@
 package com.sitech.prodai.controller;
 
+import com.sitech.prodai.service.appstore.FieldOntologyService;
 import com.sitech.prodai.service.appstore.NodeResultService;
 import com.sitech.prodai.service.appstore.OfferSimV16Service;
 import com.sitech.prodai.service.common.MapOps;
@@ -28,10 +29,13 @@ public class AppStoreV16Controller {
 
     private final OfferSimV16Service sim;
     private final NodeResultService nodeResultService;
+    private final FieldOntologyService fieldOntologyService;
 
-    public AppStoreV16Controller(OfferSimV16Service sim, NodeResultService nodeResultService) {
+    public AppStoreV16Controller(OfferSimV16Service sim, NodeResultService nodeResultService,
+                                 FieldOntologyService fieldOntologyService) {
         this.sim = sim;
         this.nodeResultService = nodeResultService;
+        this.fieldOntologyService = fieldOntologyService;
     }
 
     /* ================= 接口1：相似度分析 query_similar_offer ================= */
@@ -155,6 +159,31 @@ public class AppStoreV16Controller {
                                                @RequestParam(required = false) String node_name,
                                                @RequestParam(required = false, defaultValue = "1") String latest_only) {
         return nodeResultService.query(reqId, node_name, latest_only);
+    }
+
+    /* ================= 接口14：字段本体推理（field_ontology_reason） ================= */
+
+    @Operation(summary = "字段本体推理", description = "V2.1 本体推理引擎：四类18字段本体注册表（枚举/格式/默认值/兜底口径）——"
+            + "action=validate 逐字段校验LLM补全合法性（非法返回violations供重填）；"
+            + "action=complete 缺失字段按本体默认值推理补全（兜底口径字段不补全交上游判待补充）；"
+            + "action=ontology 查询字段本体定义")
+    @PostMapping("/ontology/fields")
+    public Map<String, Object> ontologyFields(@RequestBody Map<String, Object> req) {
+        String action = MapOps.str(req.get("action"));
+        String fieldsJson = MapOps.str(req.get("fields_json"));
+        if ("validate".equals(action)) {
+            return fieldOntologyService.validate(fieldsJson);
+        }
+        if ("complete".equals(action)) {
+            return fieldOntologyService.complete(fieldsJson);
+        }
+        if ("ontology".equals(action)) {
+            return fieldOntologyService.ontology();
+        }
+        Map<String, Object> fail = new java.util.LinkedHashMap<>();
+        fail.put("code", 5101);
+        fail.put("msg", "invalid action（须为 validate/complete/ontology）");
+        return fail;
     }
 
     /* ---------------- 工具 ---------------- */
