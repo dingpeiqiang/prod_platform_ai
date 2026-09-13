@@ -34,6 +34,14 @@ public class FieldOntologyService {
     /** 字段本体定义：枚举/格式/默认值/兜底口径（与《产销品加载AI应用开发方案》四类18字段一一对应） */
     private static final Map<String, FieldSpec> SPECS = new LinkedHashMap<>();
 
+    /** 渠道类型同义词映射表：[变体关键词, 本体枚举值]，供多选归一先行命中 */
+    private static final String[][] CHANNEL_SYNONYMS = {
+            {"营业厅", "实体渠道"}, {"门店", "实体渠道"}, {"实体", "实体渠道"},
+            {"APP", "电子渠道"}, {"app", "电子渠道"}, {"网厅", "电子渠道"},
+            {"线上", "电子渠道"}, {"电子", "电子渠道"},
+            {"直销", "直销渠道"}, {"客户经理", "直销渠道"}, {"政企", "直销渠道"},
+    };
+
     static {
         // A. 基础信息
         spec("产品名称", "A.基础信息", null, Pattern.compile("^5G-A(融合|单品)套餐\\d+元$|^\\d+元权益随心选\\S+版$"),
@@ -251,9 +259,11 @@ public class FieldOntologyService {
                         if (!"原始需求".equals(source)) {
                             source = "AI补全";
                         }
+                        c.put("defaulted", "0");
                         c.put("corrected", corrected);
                         c.put("reason", err + "；已按本体规则修正");
                     } else {
+                        c.put("defaulted", "0");
                         c.put("corrected", "");
                         c.put("reason", err + "；无法自动修正，保留原值待人工处理");
                         Map<String, Object> v = new LinkedHashMap<>();
@@ -312,18 +322,35 @@ public class FieldOntologyService {
             }
             return null;
         }
-        // 多选字段（渠道类型）：逐项归一
+        // 多选字段（渠道类型）：逐项归一（先查同义词映射表，再枚举包含匹配）
         StringBuilder sb = new StringBuilder();
         for (String part : v.split("[、,，]")) {
             String p = part.trim();
-            for (String e : spec.enums) {
-                if (p.contains(e)) {
-                    if (sb.length() > 0) {
-                        sb.append("、");
-                    }
-                    sb.append(e);
+            if (p.isEmpty()) {
+                continue;
+            }
+            String hit = null;
+            // ① 同义词映射：营业厅/门店→实体渠道，APP/网厅/线上/电子→电子渠道，直销/客户经理/政企→直销渠道
+            for (String[] kv : CHANNEL_SYNONYMS) {
+                if (p.contains(kv[0])) {
+                    hit = kv[1];
                     break;
                 }
+            }
+            // ② 枚举包含匹配（同义词表未命中时）
+            if (hit == null) {
+                for (String e : spec.enums) {
+                    if (p.contains(e)) {
+                        hit = e;
+                        break;
+                    }
+                }
+            }
+            if (hit != null && !sb.toString().contains(hit)) {
+                if (sb.length() > 0) {
+                    sb.append("、");
+                }
+                sb.append(hit);
             }
         }
         return sb.length() > 0 ? sb.toString() : null;
