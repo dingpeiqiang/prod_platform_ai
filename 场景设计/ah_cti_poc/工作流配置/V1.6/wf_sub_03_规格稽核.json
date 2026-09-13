@@ -129,9 +129,14 @@
             "relName": "a1b2c3d4-0000-4000-8000-000000000207,record_json",
             "name": "record_json",
             "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000207,offer_id",
+            "name": "offer_id",
+            "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    ret: Output = {\n        \"record_json\": record_json\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -236,18 +241,18 @@
         "authentic_info": "",
         "inputs": [
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000201",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000207",
             "relName": "offer_id",
             "name": "offer_id",
-            "description": "销售品ID（落地结果offer_id，智能体调度时若上一步已返回可直接传入）",
+            "description": "销售品ID（节点207从落地结果解析的offer_id）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000201",
-              "a1b2c3d4-0000-4000-8000-000000000201,offer_id"
+              "a1b2c3d4-0000-4000-8000-000000000207",
+              "a1b2c3d4-0000-4000-8000-000000000207,offer_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000201,offer_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000207,offer_id"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000207",
@@ -277,7 +282,7 @@
         "nodeMeta": {
           "title": "实时稽核",
           "code": "realtime_spec_audit",
-          "description": "工具2：自研模拟实时稽核，同步返回（无文件上传/无轮询）；offer_id/config_json 取自 config 环节结果（节点207提取原文）",
+          "description": "工具2：自研模拟实时稽核，同步返回（无文件上传/无轮询）；offer_id/config_json 取自 config 环节结果（节点207提取原文与解析的offer_id）",
           "version": "1"
         },
         "authentic_info_new": {

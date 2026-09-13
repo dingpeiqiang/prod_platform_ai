@@ -174,6 +174,9 @@ public class OfferSimV16Service {
         body.put("save_result", saveResult);
         body.put("status", failCount == 0 ? "SUCCESS" : (failCount < saveResult.size() ? "PARTIAL" : "FAIL"));
         body.put("saved_at", LocalDateTime.now().format(TS));
+        // V2.4：回传完整落地配置JSON（含 offer_id 编码与 plan_json 原文），供子工作流
+        // 节点结果存储（node_name=config）整体落库，下游稽核/测试/审批门禁自查直接取用
+        body.put("product_config", config);
 
         savedConfigs.put(offerId, config);
         planIdempotency.put(planJson, body);

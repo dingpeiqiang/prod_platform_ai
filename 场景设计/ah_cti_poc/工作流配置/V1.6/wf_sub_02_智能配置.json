@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-智能配置",
-  "flowRemark": "子工作流2：智能配置（配置落地）。单入参 req_id 自查链路：节点结果查询按 req_id+requirement 读取执行方案记录→代码节点提取 list[0].result_json 原文（V2.2）→save_product_config 透传落地（req_id 与存储键同一，方案key由后端从 plan_json 提取）；确认与否由外层智能体识别判断（V2.2 门禁移除）；结束前存储 node_name=config（req_id 同入参，主流程删除后环节存储下沉子工作流）。",
+  "flowRemark": "子工作流2：智能配置（配置落地）。单入参 req_id 自查链路：节点结果查询按 req_id+requirement 读取执行方案记录→代码节点提取 list[0].result_json 原文（V2.2）→save_product_config 透传落地（req_id 与存储键同一，方案key由后端从 plan_json 提取）；确认与否由外层智能体识别判断（V2.2 门禁移除）；结束前存储 node_name=config，result_json=完整落地配置JSON（V2.4：含 offer_id 编码，供下游稽核/测试/门禁自查）。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -131,7 +131,7 @@
             "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    ret: Output = {\n        \"record_json\": record_json\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -189,6 +189,13 @@
           {
             "name": "status",
             "cname": "SUCCESS/PARTIAL/FAIL",
+            "sechema": [],
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "product_config",
+            "cname": "完整落地配置JSON（含product_id/offer_id/offer_name等与plan_json原文）",
             "sechema": [],
             "type": "string",
             "required": false
@@ -322,17 +329,17 @@
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000103",
-            "relName": "save_result",
+            "relName": "product_config",
             "name": "result_json",
-            "description": "环节结果JSON",
+            "description": "环节结果JSON=完整落地配置JSON（含offer_id编码）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000103",
-              "a1b2c3d4-0000-4000-8000-000000000103,save_result"
+              "a1b2c3d4-0000-4000-8000-000000000103,product_config"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,save_result"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000103,product_config"
           },
           {
             "blockID": "",
@@ -348,7 +355,7 @@
         "nodeMeta": {
           "title": "环节结果存储",
           "code": "save_node_result",
-          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=config（智能配置），result_json=环节落地结果；主流程删除后存储下沉子工作流，供 wf_sub_06 审批门禁四环节自查",
+          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=config（智能配置），result_json=完整落地配置JSON（内含 product_id/offer_id/offer_name/... 与 plan_json 原文，供 wf_sub_03 稽核、wf_sub_04 测试、wf_sub_06 门禁按 req_id+config 自查提取 offer_id）；主流程删除后存储下沉子工作流",
           "version": "1"
         },
         "authentic_info_new": {

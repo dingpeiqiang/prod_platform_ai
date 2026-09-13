@@ -129,9 +129,14 @@
             "relName": "a1b2c3d4-0000-4000-8000-000000000310,record_json",
             "name": "record_json",
             "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000310,offer_id",
+            "name": "offer_id",
+            "type": "string"
           }
         ],
-        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    ret: Output = {\n        \"record_json\": record_json\n    }\n    return ret",
+        "code": "import json\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['query_list']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    record_json = ''\n    offer_id = ''\n    try:\n        arr = json.loads(raw)\n        if isinstance(arr, list) and arr:\n            first = arr[0]\n            if isinstance(first, dict):\n                record_json = str(first.get('result_json') or '')\n        elif isinstance(arr, dict):\n            record_json = str(arr.get('result_json') or '')\n    except Exception:\n        record_json = ''\n    if not record_json:\n        record_json = raw\n    try:\n        inner = json.loads(record_json)\n        if isinstance(inner, dict):\n            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n    except Exception:\n        offer_id = ''\n    ret: Output = {\n        \"record_json\": record_json,\n        \"offer_id\": offer_id\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -192,25 +197,25 @@
         "authentic_info": "",
         "inputs": [
           {
-            "blockID": "a1b2c3d4-0000-4000-8000-000000000301",
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000310",
             "relName": "offer_id",
             "name": "offerId",
-            "description": "销售品ID（引用开始节点 offer_id，智能体从上一步落地结果透传）",
+            "description": "销售品ID（节点310从落地结果解析的offer_id）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
-              "a1b2c3d4-0000-4000-8000-000000000301",
-              "a1b2c3d4-0000-4000-8000-000000000301,offer_id"
+              "a1b2c3d4-0000-4000-8000-000000000310",
+              "a1b2c3d4-0000-4000-8000-000000000310,offer_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000301,offer_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000310,offer_id"
           }
         ],
         "checkErr": false,
         "nodeMeta": {
           "title": "发起测试",
           "code": "offer_test",
-          "description": "工具3：自研模拟测试发起，返回模拟测试流水globalId；offerId 取自 config 环节结果（智能体调度时若上一步已返回可直接传入，引用开始节点 offer_id 兜底）",
+          "description": "工具3：自研模拟测试发起，返回模拟测试流水globalId；offerId 取自 config 环节结果（节点310解析的offer_id）",
           "version": "1"
         },
         "authentic_info_new": {

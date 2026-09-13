@@ -427,6 +427,7 @@ plugins.append(build_plugin(
         "offer_id": {"description": "销售品ID（后续稽核/测试入参）", "type": "string"},
         "save_result": {"description": "各字段分类写入结果：基础信息/资源配置/营销资源/销售规则 各自 success/fail 及原因", "type": "string"},
         "status": {"description": "SUCCESS / PARTIAL / FAIL / NOT_CONFIRMED", "type": "string"},
+        "product_config": {"description": "完整落地配置JSON（V2.4：含 product_id/offer_id编码/offer_name/资费与销售规则及 plan_json 原文，供环节结果存储整体落库）", "type": "string"},
     },
     "N"))
 

@@ -268,16 +268,24 @@ CODE_004A = (
     "from datetime import datetime\n"
     "from typing import Any, Dict\n"
     "async def main(args):\n"
-    "    # V2.2：单一入参=字段本体推理引擎（节点31）输出的推理后字段数组——fields/pending_fields/plan_md 全部以该结果为准（plan_output 已废弃，不再入参）\n"
-    "    reasoned = args.params.get('reasoned_fields') or ''\n"
-    "    if not isinstance(reasoned, str):\n"
-    "        reasoned = json.dumps(reasoned, ensure_ascii=False)\n"
+    "    # V2.3：单一入参=节点4整合结果 fields_output——兼容 offerInfo 完整结构（含 similarOfferId/similarOfferName/series/sub_type + fields）与纯 fields 数组\n"
+    "    raw = args.params.get('fields_output') or ''\n"
+    "    if not isinstance(raw, str):\n"
+    "        raw = json.dumps(raw, ensure_ascii=False)\n"
+    "    # 剥离形如 \"fields_output: {...}\" 的标签行前缀\n"
+    "    if ':' in raw and not raw.lstrip().startswith('{') and not raw.lstrip().startswith('['):\n"
+    "        raw = raw.split(':', 1)[1].strip()\n"
     "    rf = None\n"
-    "    if reasoned:\n"
+    "    offer_meta = {}\n"
+    "    if raw:\n"
     "        try:\n"
-    "            robj = json.loads(reasoned) if isinstance(reasoned, str) else reasoned\n"
+    "            robj = json.loads(raw) if isinstance(raw, str) else raw\n"
     "            if isinstance(robj, dict):\n"
-    "                rf = robj.get('fields_json')\n"
+    "                # offerInfo 同构完整结构：先取溯源键，再取 fields\n"
+    "                for k in ('similarOfferId', 'similarOfferName', 'series', 'sub_type'):\n"
+    "                    if robj.get(k) is not None:\n"
+    "                        offer_meta[k] = robj.get(k)\n"
+    "                rf = robj.get('fields')\n"
     "                if isinstance(rf, str):\n"
     "                    rf = json.loads(rf)\n"
     "            elif isinstance(robj, list):\n"
@@ -286,10 +294,10 @@ CODE_004A = (
     "            rf = None\n"
     "    if not rf:\n"
     "        rf = []\n"
-    "    # pending_fields：从推理后字段数组反查 value=待补充 的字段（价格类不可推理项）\n"
+    "    # pending_fields：反查 value=待补充 的字段（需求与相似产品均未提供的项）\n"
     "    miss = [str(f.get('field')) for f in rf if str(f.get('value')) == '待补充']\n"
     "    pf = ','.join(miss)\n"
-    "    # plan_md：由推理后字段数组重新生成四列表格（字段分类/字段名称/字段值/来源），与 fields_json 严格一致（不再使用 LLM 自生成表格）\n"
+    "    # plan_md：由整合后字段数组重新生成四列表格（字段分类/字段名称/字段值/来源），与 fields 严格一致\n"
     "    cats = {'A': '基础信息', 'B': '资源配置', 'C': '营销资源', 'D': '销售规则'}\n"
     "    lines = ['| 字段分类 | 字段名称 | 字段值 | 来源 |', '| --- | --- | --- | --- |']\n"
     "    last_cat = ''\n"
@@ -305,9 +313,12 @@ CODE_004A = (
     "                break\n"
     "        lines.append('| ' + cat + ' | ' + field + ' | ' + value.replace('|', '\\\\|') + ' | ' + source + ' |')\n"
     "    plan_md = '\\n'.join(lines)\n"
-    "    # plan_json：推理后字段数组组装（similar_offers 由下游智能配置环节自查获得，方案载体仅 req_id/fields/pending_fields）\n"
+    "    # plan_json：整合结果组装（保留 offerInfo 溯源键；方案载体 req_id/fields/pending_fields/similar_offer）\n"
     "    req_id = 'PLAN' + datetime.now().strftime('%Y%m%d%H%M%S') + '%03d' % random.randint(0, 999)\n"
-    "    plan_json = json.dumps({'req_id': req_id, 'fields': rf, 'pending_fields': miss}, ensure_ascii=False)\n"
+    "    plan = {'req_id': req_id, 'fields': rf, 'pending_fields': miss}\n"
+    "    if offer_meta:\n"
+    "        plan['similar_offer'] = offer_meta\n"
+    "    plan_json = json.dumps(plan, ensure_ascii=False)\n"
     "    ret: Output = {\n"
     "        \"plan_json\": plan_json,\n"
     "        \"plan_md\": plan_md,\n"
@@ -317,7 +328,7 @@ CODE_004A = (
     "    return ret"
 )
 
-# CODE_004A 依赖的分类映射（四类18字段，与本体注册表一致），注入代码字符串
+# CODE_004A 依赖的分类映射（四类18字段），注入代码字符串
 CODE_004A_CATS = (
     "CATEGORIES = {\n"
     "    'A': ['产品名称', '产品属性', '产品编码', '生效日期', '退订规则'],\n"
@@ -332,6 +343,8 @@ CODE_004A = CODE_004A_CATS + CODE_004A
 # V2.2 新增：wf_sub_02/03/04/05 自查链路共用——query_node_result 返回的是记录数组
 # （[{req_id,node_name,result_json,status,...}]），下游工具需要的执行方案/环节结果原文
 # 存在于 list[0].result_json 字段内，须提取后再透传（禁止把数组整体传给落地/稽核等工具）。
+# V2.4 新增：追加 offer_id 出参——从 result_json 原文解析内层 JSON 后取 offer_id，
+# 供 wf_sub_03 稽核（节点202）/wf_sub_04 发起测试（节点302）引用，修复开始节点无 offer_id 出参导致的断链。
 CODE_EXTRACT_RECORD = (
     "import json\n"
     "from typing import Any, Dict\n"
@@ -340,6 +353,7 @@ CODE_EXTRACT_RECORD = (
     "    if not isinstance(raw, str):\n"
     "        raw = json.dumps(raw, ensure_ascii=False)\n"
     "    record_json = ''\n"
+    "    offer_id = ''\n"
     "    try:\n"
     "        arr = json.loads(raw)\n"
     "        if isinstance(arr, list) and arr:\n"
@@ -352,8 +366,15 @@ CODE_EXTRACT_RECORD = (
     "        record_json = ''\n"
     "    if not record_json:\n"
     "        record_json = raw\n"
+    "    try:\n"
+    "        inner = json.loads(record_json)\n"
+    "        if isinstance(inner, dict):\n"
+    "            offer_id = str(inner.get('offer_id') or inner.get('offerId') or '')\n"
+    "    except Exception:\n"
+    "        offer_id = ''\n"
     "    ret: Output = {\n"
-    "        \"record_json\": record_json\n"
+    "        \"record_json\": record_json,\n"
+    "        \"offer_id\": offer_id\n"
     "    }\n"
     "    return ret"
 )
@@ -484,10 +505,20 @@ s1.append(llm_node(2, "需求理解与要素拆解",
     "B.资源配置：流量资源/语音资源/短信资源\n"
     "C.营销资源：套餐固定费/收费方式（按月/按量/一次性）/优惠条件/优惠期\n"
     "D.销售规则：渠道类型/适用地区/订购限制/副卡规则/计费周期/销售品状态\n"
-    "提取规则：仅当需求原文中可找到（含同义改写如\"每月30G\"→流量资源）的字段才填值，source标\"原始需求\"；需求原文未提及的字段value一律填空字符串\"\"，source也填\"原始需求\"（后续环节负责补全）；禁止臆造字段值。\n"
+    "提取规则：仅当需求原文中可找到（含同义改写）的字段才填值，source标\"原始需求\"；需求原文未提及的字段value一律填空字符串\"\"，source也填\"原始需求\"（后续环节负责补全）；禁止臆造字段值。\n"
+    "强制同义映射（提取前逐条比对，禁止漏提取）：\n"
+    "- 月费/月租/月租费/套餐费/固定费/资费档位 + 金额（如\"月费199元\"\"199元/月\"）→ 套餐固定费（金额原样填入，如\"199元\"）；\n"
+    "- 每月30G/月享XX G/含XX流量/XX G国内流量 → 流量资源；\n"
+    "- XX分钟通话/语音/国内通话 → 语音资源；\n"
+    "- XX条短信 → 短信资源；\n"
+    "- 支持副卡/可办副卡 → 副卡规则=支持；\n"
+    "- 营业厅/门店 → 渠道类型含\"营业厅\"；APP/网厅/线上 → 渠道类型含\"APP\"；\n"
+    "- X月X日/X日起生效 → 生效日期；\n"
+    "- 按月/按月付费/月付 → 收费方式=按月。\n"
+    "自检：需求原文中出现\"月费/月租/套餐费+金额\"表述而套餐固定费为空，视为提取失败，必须回填。\n"
     "输出要求（两个出参逐一约定，每个出参只输出自己的内容，严禁把其他出参内容并入）：\n"
-    "1. elements_json：仅输出结构化要素JSON对象本身（以{开头、}结尾），包含 fields 数组（18项，每项含 field/category/value/source，category取A基础信息/B资源配置/C营销资源/D销售规则），不得附带键名前缀或说明，不输出 pending_fields；\n"
-    "2. need_summary：仅输出需求要素摘要文本本身（≤5000字符，整合四类要素的关键信息，供相似产品匹配调用使用）；\n"
+    "1. elements_json：仅输出结构化要素JSON对象本身（以{开头、}结尾），包含 fields 数组（18项，每项含 field/category/value/source，category取A基础信息/B资源配置/C营销资源/D销售规则），不得附带键名前缀或说明，不输出 pending_fields；elements_json 输出以}结尾即终止，严禁在其后追加任何需求原文、摘要或其他文字；\n"
+    "2. need_summary：仅输出一段纯文本需求摘要（自然语言，整合产品名称/资费/资源/渠道/生效日期等关键要素，≤5000字符）；need_summary 禁止输出 JSON、禁止复制 elements_json 内容、禁止输出 fields 数组，只能是一段连续的中文摘要文本；\n"
     "3. 严格禁止输出形如\"elements_json: {...} need_summary: ...\"的拼接包；除上述两个出参各自内容外不输出任何多余文字。",
     [inp("requirement_text", "引用开始节点 requirement_text", ref_block=nid(1), ref_rel="requirement_text")],
     [out("elements_json", "业务要素结构化JSON（18字段，未提及项value为空）"), out("need_summary", "需求要素摘要（供相似产品匹配）")]))
@@ -498,20 +529,20 @@ s1.append(plugin_node(3, "相似产品查询", "query_similar_offer",
     [("resultCode", "0成功/1失败", "string"), ("resultMsg", "处理结果描述", "string"),
      ("similarOffer", "相似度最高的产品（含相似度评分与完整产品配置信息 offerInfo，未命中时为空对象）", "object")]))
 s1.append(llm_node(4, "产品信息整合",
-    "你是产销品加载执行方案生成助手（环节3：产品信息整合）。任务：节点3返回的相似产品完整产品配置信息（similarOffer.offerInfo.fields）与节点2要素信息（elements_json.fields）为**同一套配置结构模板规范**（同为四类18字段数组，field 名一致），逐字段执行同构键值合并，输出最终产品信息（18字段完整取值）。\n"
-    "输入：节点2要素JSON（elements_json={elements_json}）+ 节点3相似产品（similarOffer={similarOffer}，offerInfo.fields 为18字段同构数组）。\n"
+    "你是产销品加载执行方案生成助手（环节3：产品信息整合）。任务：节点3返回的相似产品完整产品配置信息（similarOffer.offerInfo）与节点2要素信息（elements_json.fields）为**同一套配置结构模板规范**（同为四类18字段数组，field 名一致），逐字段执行同构键值合并，输出最终产品信息——输出结构必须与匹配成功产品的 offerInfo JSON结构完全一致且完整（含全部溯源键+fields四类18字段数组，一个键都不能少）。\n"
+    "输入：节点2要素JSON（elements_json={elements_json}）+ 节点3相似产品（similarOffer={similarOffer}，offerInfo 为完整产品配置信息：similarOfferId/similarOfferName/series/sub_type + fields 18字段同构数组）。\n"
     "\n"
     "【同构合并规则（按 field 名逐字段对齐，严格执行）】\n"
     "1. 需求要素字段有值（value非空且非\"待补充\"）→ 采用需求要素值（source标\"原始需求\"）；\n"
     "2. 需求要素字段无值 → 采用 offerInfo.fields 中同名字段值（source标\"AI推理\"）；\n"
-    "3. 两侧皆缺失 → value填空字符串\"\"（由下游字段本体推理引擎按默认值补全，source标\"AI推理\"）。\n"
+    "3. 两侧皆缺失 → value填空字符串\"\"（source标\"AI推理\"）。\n"
     "\n"
     "【特殊字段口径（V2.2）】\n"
-    "- 9.套餐固定费：需求未提取到时值填\"待补充\"（价格不可推理，禁止从相似产品照搬，引擎维持待补充交用户补充）；\n"
-    "- 6.流量资源/7.语音资源/8.短信资源：三类资源全部未提取到时，未提取到的字段值填\"待补充\"（引擎将按\"无\"推理补全；任一类已提取到则其余资源字段按相似产品补全）；\n"
+    "- 9.套餐固定费：需求未提取到时按同构合并规则取 offerInfo 同名字段值（source标\"AI推理\"），offerInfo 亦无时值填\"待补充\"；\n"
+    "- 6.流量资源/7.语音资源/8.短信资源：三类资源全部未提取到时，未提取到的字段值填\"待补充\"（按\"无\"处理口径交下游执行；任一类已提取到则其余资源字段按相似产品补全）；\n"
     "- 3.产品编码：禁止AI推理——由智能配置环节落地后生成，需求未提供时值填\"由智能配置生成\"、source标\"AI推理\"；\n"
     "- 销售品状态：新需求一律填\"待上线\"（禁止取相似产品的\"在售\"）。\n"
-    "- 待补充项判定（pending_fields）由下游本体推理引擎统一执行，本节点不再自行输出 pending_fields，只需把待补充字段value填\"待补充\"。\n"
+    "- 待补充项判定（pending_fields）由下游代码节点统一执行，本节点不再自行输出 pending_fields，只需把待补充字段value填\"待补充\"。\n"
     "\n"
     "【逐字段整合，必须覆盖四类全部字段（共18个，一个都不能少）】\n"
     "A.基础信息：1.产品名称 2.产品属性（基础/可选/增值） 3.产品编码 4.生效日期 5.退订规则\n"
@@ -519,45 +550,35 @@ s1.append(llm_node(4, "产品信息整合",
     "C.营销资源：9.套餐固定费 10.收费方式（按月/按量/一次性） 11.优惠条件 12.优惠期\n"
     "D.销售规则：13.渠道类型 14.适用地区 15.订购限制 16.副卡规则 17.计费周期 18.销售品状态\n"
     "\n"
-    "【来源标注（仅两种取值）】\n"
-    "source只允许\"原始需求\"或\"AI推理\"：需求原文可逐字找到（含同义改写）标\"原始需求\"，其余（含相似产品取值、产品编码特殊值、两者皆缺失留空）标\"AI推理\"；禁止\"待补充\"作为来源（待补充只出现在value中）；\"本体推理\"来源由下游字段本体推理引擎自动标注，本节点禁止自行标注。\n"
+    "【来源标注（仅两种取值，输出前逐字段重算，禁止沿用输入source）】\n"
+    "source只允许\"原始需求\"或\"AI推理\"：value非空且取自需求要素（需求原文可逐字找到，含同义改写）→标\"原始需求\"；value取自offerInfo同名字段、产品编码特殊值\"由智能配置生成\"、销售品状态\"待上线\"、空字符串\"\"、\"待补充\"→一律标\"AI推理\"；禁止\"待补充\"作为来源（待补充只出现在value中）。自检：source为\"原始需求\"时value必须非空且非\"待补充\"。\n"
     "\n"
-    "【输出要求（单一出参 fields_output，仅输出字段数组）】\n"
+    "【输出要求（单一出参 fields_output，输出与 offerInfo 完全一致且完整的JSON结构）】\n"
     "按以下格式输出，第一行原样输出标签 fields_output:，随后紧跟一个JSON对象（以{开头、}结尾），除该标签行外不得输出任何其他文字、代码块或说明：\n"
-    "fields_output: {\"fields\":...}\n"
-    "该JSON对象固定包含以下1个键：\n"
-    "1. fields：字段数组（18项），每项形如{\"field\":\"字段名称\",\"value\":\"字段值\",\"source\":\"原始需求或AI推理\"}；待补充字段value填\"待补充\"；执行方案Markdown表格（plan_md）与待补充判定（pending_fields）均由下游代码节点基于引擎推理后字段数组自动生成，本节点不再输出 plan_output/plan_md/pending_fields；",
+    "fields_output: 后紧跟一个完整JSON对象，该JSON对象结构必须与输入 similarOffer.offerInfo 完全一致，固定包含以下5个键（一个都不能少）：\n"
+    "1. similarOfferId：字符串，直接取 offerInfo.similarOfferId 原值；\n"
+    "2. similarOfferName：字符串，直接取 offerInfo.similarOfferName 原值；\n"
+    "3. series：字符串，直接取 offerInfo.series 原值；\n"
+    "4. sub_type：字符串，直接取 offerInfo.sub_type 原值；\n"
+    "5. fields：字段数组（18项），每项为JSON对象，固定包含4个键：field（字符串=字段名称）、category（字符串=字段分类，保留与 elements_json/offerInfo 一致的分类前缀格式）、value（字符串=字段值）、source（字符串=原始需求或AI推理）；待补充字段value填\"待补充\"；执行方案Markdown表格（plan_md）与待补充判定（pending_fields）均由下游代码节点基于整合后字段数组自动生成，本节点不再输出 plan_output/plan_md/pending_fields。",
     [inp("elements_json", "引用节点2要素JSON", ref_block=nid(2), ref_rel="elements_json"),
      inp("similarOffer", "引用节点3相似产品（含offerInfo完整产品配置信息）", ref_block=nid(3), ref_rel="similarOffer")],
-    [out("fields_output", "整合后字段数组JSON字符串（仅含 fields 键，18项字段）")]))
-# 31 字段本体推理（V2.2 闭环，工具14 action=reason 一体推理）：LLM节点4整合结果 →
-# 逐字段执行 本体校验+稽核产品配置参数+问题自动修正回写（枚举归一/同义词映射/格式修正，产品名称模板归一等）+
-# 缺失与待补充字段默认值推理补全（V2.2：待补充项全部可推理，仅套餐固定费价格维持待补充），
-# 返回推理后 fields_json——004a 从该结果闭环取值组装 plan_json，引擎兜底真正生效（替代 V2.0 LLM 提示词自觉遵守）
-s1.append(plugin_node(31, "字段本体推理", "field_ontology_reason",
-    "工具14：字段本体推理引擎（闭环）——对节点4整合结果稽核产品配置参数：枚举/格式校验，存在问题自动修正回写（枚举归一/同义词映射/格式修正），缺失与待补充字段按本体默认值推理补全（价格类维持待补充），返回推理后fields_json供下游组装方案",
-    BASE_URL + "/api/v1/appstore/ontology/fields",
-    [inp("action", "推理动作=reason（一体推理：校验+修正+补全）", content="reason"),
-     inp("fields_json", "字段数组JSON（引用节点4字段数组输出，后端从中解析fields数组）", ref_block=nid(4), ref_rel="fields_output")],
-    [("code", "0成功/5101非法action", "string"), ("msg", "状态描述", "string"),
-     ("fixed", "修正/补全明细（field/value/action/reason）", "array"),
-     ("violations", "无法自动修正的违规明细（field/value/reason期望规则）", "array"),
-     ("fields_json", "推理后的完整字段数组JSON（004a从该结果取值）", "string")]))
+    [out("fields_output", "整合后完整产品信息JSON字符串（结构与 offerInfo 完全一致：similarOfferId/similarOfferName/series/sub_type + fields 18项字段）")]))
+# 31 字段本体推理节点已移除（V2.3 简化）：fields_output 由节点41 直接解析拆分
 
-# 004a 方案输出拆分（V2.2 重构：单入参 reasoned_fields=节点31推理后字段数组，plan_output 已废弃）：
-# fields/pending_fields/plan_md/plan_json 全部以推理后结果为准——fields 直接组装、pending_fields 反查
-# value=待补充、plan_md 由代码重新生成四列表格（与 fields_json 严格一致）；req_id 系统生成
+# 004a 方案输出拆分（V2.3 重构：节点31 字段本体推理已移除，单入参 fields_output=节点4整合结果）：
+# 兼容 offerInfo 完整结构（similarOfferId/similarOfferName/series/sub_type + fields）与纯 fields 数组两种形态；
+# pending_fields 反查 value=待补充、plan_md 由代码重新生成四列表格；req_id 系统生成
 s1.append(code_node(41, "方案输出拆分", CODE_004A,
-    [inp("reasoned_fields", "引用节点31推理后字段数组（fields_json出参，唯一数据源）", ref_block=nid(31), ref_rel="fields_json")],
+    [inp("fields_output", "引用节点4整合结果（完整产品信息JSON，唯一数据源）", ref_block=nid(4), ref_rel="fields_output")],
     [code_out("plan_json", 41), code_out("plan_md", 41),
      code_out("pending_fields", 41), code_out("req_id", 41)],
     pos=(1455, 300)))
 s1.append(selector_node2(5, "待补充项判断",
-    [dep_node(41, "方案输出拆分", ["pending_fields"]), dep_node(31, "字段本体推理", ["violations", "fields_json"])],
+    [dep_node(41, "方案输出拆分", ["pending_fields"])],
     # 平台样例约定：条件定义在 port=-1（否则分支）；port=0 由平台自动路由
     # 语义：pending_fields 不为空（长度大于0）→ 有待补充项 → 保存执行方案 → 确认结束；
     #       port=0 兜底分支（pending_fields 为空）→ 直接结束提示，不保存（禁止进入智能配置）
-    # 本体推理 violations 输出至结束节点提示（无法自动修正项交用户判断）
     [(-1, [cond_item(cond_ref(41, "pending_fields", "方案输出拆分"), 10, cond_str(""))])]))
 s1.append(plugin_node(6, "保存执行方案", "save_node_result",
     "节点结果存储（复用）：req_id=代码节点生成的方案批次号 req_id（取节点41拆分出参，系统时钟生成），node_name=requirement（执行方案环节），result_json=plan_json；同键覆盖",
@@ -570,18 +591,16 @@ s1.append(plugin_node(6, "保存执行方案", "save_node_result",
 s1.append(end_node(7, "结束(有待补充项)",
     [inp("req_id", "执行方案存储key", ref_block=nid(41), ref_rel="req_id"),
      inp("plan_md", "执行方案表格", ref_block=nid(41), ref_rel="plan_md"),
-     inp("pending_fields", "待补充字段", ref_block=nid(41), ref_rel="pending_fields"),
-     inp("violations", "本体推理无法修正项", ref_block=nid(31), ref_rel="violations")],
-    "《产销品加载执行方案》已生成（req_id：{req_id}）\n\n{plan_md}\n\n【待补充字段】{pending_fields}\n以上字段为套餐固定费（月租费，价格不可推理），需由您补充后才能执行：\n- 请直接补充字段值，将更新执行方案并再次确认；\n- 如需调整其他字段：请直接说明修改意见（其余字段已按相似产品与本体推理引擎补全，待补充的资源/文本类字段已按\"无\"及默认口径推理补全，如与预期不符可一并说明）。\n【本体校验待处理】{violations}"))
+     inp("pending_fields", "待补充字段", ref_block=nid(41), ref_rel="pending_fields")],
+    "《产销品加载执行方案》已生成（req_id：{req_id}）\n\n{plan_md}\n\n【待补充字段】{pending_fields}\n以上字段需求未提供且相似产品中无对应配置，需由您补充后才能执行：\n- 请直接补充字段值，将更新执行方案并再次确认；\n- 如需调整其他字段：请直接说明修改意见（其余字段已按相似产品补全，如与预期不符可一并说明）。"))
 s1.append(end_node(8, "结束(无待补充项)",
     [inp("req_id", "执行方案存储key", ref_block=nid(41), ref_rel="req_id"),
-     inp("plan_md", "执行方案表格", ref_block=nid(41), ref_rel="plan_md"),
-     inp("violations", "本体推理无法修正项", ref_block=nid(31), ref_rel="violations")],
-    "《产销品加载执行方案》已生成并保存（req_id：{req_id}）\n\n{plan_md}\n\n【无待补充字段】缺失字段已按相似产品与字段本体推理引擎补全（非法值已按本体规则修正），来源已逐字段标注：原始需求=需求原文提取，AI推理=相似产品取值，本体推理=引擎按本体默认值/规则补全修正。\n【本体校验待处理】{violations}\n请核对以上执行方案：\n- 回复【确认执行】：将自动串行执行 智能配置→稽核→资费校准→自动测试 四个环节（每环节执行后打印结果，仅异常时中断）；\n- 如需调整：请直接说明修改意见。"))
-e1 = [edge(1,2), edge(2,3), edge(3,4), edge(4,31), edge(31,41), edge(41,5),
+     inp("plan_md", "执行方案表格", ref_block=nid(41), ref_rel="plan_md")],
+    "《产销品加载执行方案》已生成并保存（req_id：{req_id}）\n\n{plan_md}\n\n【无待补充字段】缺失字段已按相似产品补全，来源已逐字段标注：原始需求=需求原文提取，AI推理=相似产品取值。\n请核对以上执行方案：\n- 回复【确认执行】：将自动串行执行 智能配置→稽核→资费校准→自动测试 四个环节（每环节执行后打印结果，仅异常时中断）；\n- 如需调整：请直接说明修改意见。"))
+e1 = [edge(1,2), edge(2,3), edge(3,4), edge(4,41), edge(41,5),
       edge(5,6,0), edge(5,7,-1), edge(6,8)]
 files["wf_sub_01_需求分析.json"] = workflow(
-    "产销品-需求分析", "子工作流1：需求分析（执行方案生成，7环节新链路）。环节1需求理解与要素拆解（LLM仅提取要素信息，18字段未提及项value为空）→环节2相似产品查询（自研模拟，18销售品种子，入参=要素摘要，返回相似度最高的1个产品并附完整产品配置信息 offerInfo——与需求要素同构的 fields 四类18字段数组）→环节3产品信息整合（同一套配置结构模板规范，按field名逐字段同构键值合并：需求有值→原始需求，无值→offerInfo同名字段值标AI推理，皆缺失→留空由引擎补全）→环节4字段本体推理（V2.2工具14 action=reason 一体推理：稽核产品配置参数，存在问题自动修正回写（枚举归一/同义词映射/格式修正）+缺失与待补充字段默认值推理补全（仅套餐固定费价格维持待补充），来源补全/修正改标\"本体推理\"）→方案输出拆分（单入参=推理后字段数组：fields直接组装、pending_fields反查value=待补充、plan_md代码重新生成四列表格）→待补充项判断（无待补充→保存执行方案→确认结束；有待补充→补充提示结束）。", "wf_sub_01", s1, e1)
+    "产销品-需求分析", "子工作流1：需求分析（执行方案生成，6环节新链路）。环节1需求理解与要素拆解（LLM仅提取要素信息，18字段未提及项value为空）→环节2相似产品查询（自研模拟，18销售品种子，入参=要素摘要，返回相似度最高的1个产品并附完整产品配置信息 offerInfo——与需求要素同构的 fields 四类18字段数组）→环节3产品信息整合（同一套配置结构模板规范，按field名逐字段同构键值合并：需求有值→原始需求，无值→offerInfo同名字段值标AI推理，皆缺失→留空；输出结构与offerInfo完全一致且完整）→方案输出拆分（单入参=整合结果：fields直接组装、pending_fields反查value=待补充、plan_md代码重新生成四列表格）→待补充项判断（无待补充→保存执行方案→确认结束；有待补充→补充提示结束）。", "wf_sub_01", s1, e1)
 
 # ============================================================
 # wf_sub_02 智能配置（配置落地）
@@ -611,14 +630,15 @@ s2.append(plugin_node(103, "配置落地", "save_product_config",
      inp("plan_json", "执行方案JSON原文（节点106提取的 result_json）", ref_block=nid(106), ref_rel="record_json"),
      inp("confirmed", "用户确认标志true（V2.2起后端不校验，仅记录）", content="true"),
      inp("operator", "操作人（默认system）", content="system")],
-    [("product_id", "CRM产品ID", "string"), ("offer_id", "销售品ID", "string"),
-     ("save_result", "四类字段写入结果", "string"), ("status", "SUCCESS/PARTIAL/FAIL", "string")]))
+     [("product_id", "CRM产品ID", "string"), ("offer_id", "销售品ID", "string"),
+      ("save_result", "四类字段写入结果", "string"), ("status", "SUCCESS/PARTIAL/FAIL", "string"),
+      ("product_config", "完整落地配置JSON（含product_id/offer_id/offer_name等与plan_json原文）", "string")]))
 s2.append(plugin_node(105, "环节结果存储", "save_node_result",
-    "环节结果存储（复用）：req_id=入参 req_id，node_name=config（智能配置），result_json=环节落地结果；主流程删除后存储下沉子工作流，供 wf_sub_06 审批门禁四环节自查",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=config（智能配置），result_json=完整落地配置JSON（内含 product_id/offer_id/offer_name/... 与 plan_json 原文，供 wf_sub_03 稽核、wf_sub_04 测试、wf_sub_06 门禁按 req_id+config 自查提取 offer_id）；主流程删除后存储下沉子工作流",
     BASE_URL + "/api/v1/appstore/result/save",
     [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(101), ref_rel="req_id"),
      inp("node_name", "环节名=config（智能配置）", content="config"),
-     inp("result_json", "环节结果JSON", ref_block=nid(103), ref_rel="save_result"),
+     inp("result_json", "环节结果JSON=完整落地配置JSON（含offer_id编码）", ref_block=nid(103), ref_rel="product_config"),
      inp("status", "本环节状态=ok", content="ok")],
     [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")], pos=(900, 135)))
 s2.append(end_node(104, "结束(配置落地完成)",
@@ -628,7 +648,7 @@ s2.append(end_node(104, "结束(配置落地完成)",
      inp("status", "落地状态", ref_block=nid(103), ref_rel="status")],
     "智能配置完成：product_id={product_id}，offer_id={offer_id}\n四类字段写入结果：{save_result}\n状态：{status}"))
 files["wf_sub_02_智能配置.json"] = workflow(
-    "产销品-智能配置", "子工作流2：智能配置（配置落地）。单入参 req_id 自查链路：节点结果查询按 req_id+requirement 读取执行方案记录→代码节点提取 list[0].result_json 原文（V2.2）→save_product_config 透传落地（req_id 与存储键同一，方案key由后端从 plan_json 提取）；确认与否由外层智能体识别判断（V2.2 门禁移除）；结束前存储 node_name=config（req_id 同入参，主流程删除后环节存储下沉子工作流）。", "wf_sub_02", s2,
+    "产销品-智能配置", "子工作流2：智能配置（配置落地）。单入参 req_id 自查链路：节点结果查询按 req_id+requirement 读取执行方案记录→代码节点提取 list[0].result_json 原文（V2.2）→save_product_config 透传落地（req_id 与存储键同一，方案key由后端从 plan_json 提取）；确认与否由外层智能体识别判断（V2.2 门禁移除）；结束前存储 node_name=config，result_json=完整落地配置JSON（V2.4：含 offer_id 编码，供下游稽核/测试/门禁自查）。", "wf_sub_02", s2,
     [edge(101,102), edge(102,106), edge(106,103), edge(103,105), edge(105,104)])
 
 # ============================================================
@@ -652,12 +672,12 @@ s3.append(plugin_node(206, "读取配置环节结果", "query_node_result",
     method="get", pos=(240, 135)))
 s3.append(code_node(207, "提取配置结果原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点206查询出参 list（记录数组JSON）", ref_block=nid(206), ref_rel="list")],
-    [code_out("record_json", 207)],
+    [code_out("record_json", 207), code_out("offer_id", 207)],
     pos=(390, 135)))
 s3.append(plugin_node(202, "实时稽核", "realtime_spec_audit",
-    "工具2：自研模拟实时稽核，同步返回（无文件上传/无轮询）；offer_id/config_json 取自 config 环节结果（节点207提取原文）",
+    "工具2：自研模拟实时稽核，同步返回（无文件上传/无轮询）；offer_id/config_json 取自 config 环节结果（节点207提取原文与解析的offer_id）",
     BASE_URL + "/api/v1/appstore/audit/realtime",
-    [inp("offer_id", "销售品ID（落地结果offer_id，智能体调度时若上一步已返回可直接传入）", ref_block=nid(201), ref_rel="offer_id"),
+    [inp("offer_id", "销售品ID（节点207从落地结果解析的offer_id）", ref_block=nid(207), ref_rel="offer_id"),
      inp("config_json", "落地配置JSON（节点207提取的环节结果原文）", ref_block=nid(207), ref_rel="record_json"),
      inp("audit_scene", "稽核场景默认all", content="all")],
     [("pass", "1通过/0不通过", "string"), ("error_list", "问题明细", "array"),
@@ -706,12 +726,12 @@ s4.append(plugin_node(309, "读取配置环节结果", "query_node_result",
     method="get"))
 s4.append(code_node(310, "提取配置结果原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点309查询出参 list（记录数组JSON）", ref_block=nid(309), ref_rel="list")],
-    [code_out("record_json", 310)],
+    [code_out("record_json", 310), code_out("offer_id", 310)],
     pos=(240, 135)))
 s4.append(plugin_node(302, "发起测试", "offer_test",
-    "工具3：自研模拟测试发起，返回模拟测试流水globalId；offerId 取自 config 环节结果（智能体调度时若上一步已返回可直接传入，引用开始节点 offer_id 兜底）",
+    "工具3：自研模拟测试发起，返回模拟测试流水globalId；offerId 取自 config 环节结果（节点310解析的offer_id）",
     BASE_URL + "/api/v1/appstore/test/offer/start",
-    [inp("offerId", "销售品ID（引用开始节点 offer_id，智能体从上一步落地结果透传）", ref_block=nid(301), ref_rel="offer_id")],
+    [inp("offerId", "销售品ID（节点310从落地结果解析的offer_id）", ref_block=nid(310), ref_rel="offer_id")],
     [("resultCode", "0成功/1失败", "string"), ("resultMsg", "处理结果描述", "string"),
      ("globalId", "测试流水号", "string")]))
 s4.append(plugin_node(303, "查询测试场景", "get_test_scenes",
