@@ -71,8 +71,24 @@
       2) 确认"确认执行"触发时 LLM 先调 save_node_result（req_id=执行方案存储键、
          node_name=CONFIRMED），再按映射表串行直调子工作流；
       3) 新会话无 req_id 时，LLM 应先调 query_node_result 检索最近执行方案；
-      4) 硬校验兜底：即使 LLM 跳步直调 wf_sub_02，后端 save_product_config
-         因存储中无 CONFIRMED 标记返回 NOT_CONFIRMED，不会误写入 CRM。
+       4) 硬校验兜底：即使 LLM 跳步直调 wf_sub_02，后端 save_product_config
+          因存储中无 CONFIRMED 标记返回 NOT_CONFIRMED，不会误写入 CRM。
+
+  V2.1 诊断增强：NOT_CONFIRMED 返回体 save_result.diagnose 字段会列出该 req_id
+  已有的环节记录，直接区分两类根因：
+  - diagnose="该 req_id 下无任何环节记录……" → req_id 传错（LLM 重新生成而非沿用
+    执行方案存储键），需检查 req_id 是否沿用；
+  - diagnose="该 req_id 已有环节: requirement/config……确认标记缺失" → LLM 跳步，
+    未按【技能2】先写 node_name=CONFIRMED。
+
+  手动兜底修复（验证门禁放行，PowerShell 示例，端口默认 6174）：
+    # 1. 手动写确认标记（req_id 换成实际执行方案存储键）
+    curl.exe -X POST http://localhost:6174/api/v1/appstore/result/save `
+      -H "Content-Type: application/json" `
+      -d '{\"req_id\":\"PLAN20260913182110931\",\"node_name\":\"CONFIRMED\",\"result_json\":\"{\\\"confirmed\\\":true,\\\"req_id\\\":\\\"PLAN20260913182110931\\\"}\",\"status\":\"ok\"}'
+    # 2. 重新调 save_product_config（同报文）应返回 SUCCESS
+    #    注意：plan_json 应传执行方案对象本身（wf_sub_01 的 result_json 原文），
+    #    而非 query_node_result 的 list 出参数组。
 ```
 
 **验收映射：** 确认门禁有效性（工具层硬校验）——未确认时配置落地触发率 = 0%。

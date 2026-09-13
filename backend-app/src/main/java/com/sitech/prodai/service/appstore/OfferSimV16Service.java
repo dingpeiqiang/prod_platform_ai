@@ -151,10 +151,17 @@ public class OfferSimV16Service {
         String reqIdForGate = MapOps.str(req.get("req_id")).trim();
         Map<String, Object> confirmRec = nodeResult.latestRecord(reqIdForGate, "CONFIRMED");
         if (confirmRec == null) {
+            // 诊断：列出该 req_id 已有的环节记录，区分"未写确认标记"与"req_id 不一致"
+            List<String> existingNodes = nodeResult.existingNodes(reqIdForGate);
+            String diagnose = existingNodes.isEmpty()
+                    ? "该 req_id 下无任何环节记录——req_id 可能传错（如 LLM 重新生成而非沿用执行方案存储键）"
+                    : "该 req_id 已有环节: " + String.join("/", existingNodes)
+                    + "——执行方案存在但确认标记缺失，LLM 未按技能2先写 node_name=CONFIRMED";
             Map<String, Object> body = ok();
             body.put("status", "NOT_CONFIRMED");
             body.put("save_result", Map.of("reason",
-                    "存储中无 req_id=" + reqIdForGate + " 的确认标记（node_name=CONFIRMED），请先回复【确认执行】"));
+                    "存储中无 req_id=" + reqIdForGate + " 的确认标记（node_name=CONFIRMED），请先回复【确认执行】",
+                    "diagnose", diagnose));
             return body;
         }
         String planJson = MapOps.str(req.get("plan_json"));
