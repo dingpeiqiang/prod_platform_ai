@@ -342,58 +342,55 @@
       {
         "outputs": [
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000304,done",
             "name": "done",
-            "description": "是否全部完成",
-            "type": "string",
-            "content": ""
+            "type": "string"
           },
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000304,failed",
             "name": "failed",
-            "description": "是否失败",
-            "type": "string",
-            "content": ""
+            "type": "string"
           },
           {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000304,failIndex",
             "name": "failIndex",
-            "description": "失败场景下标",
-            "type": "string",
-            "content": ""
+            "type": "string"
+          },
+          {
+            "relName": "a1b2c3d4-0000-4000-8000-000000000304,fail_reason",
+            "name": "fail_reason",
+            "type": "string"
           }
         ],
+        "code": "import json\nimport asyncio\nimport urllib.request\nfrom typing import Any, Dict\n\nPROGRESS_URL = 'http://10.86.13.201:31281/api/v1/appstore/test/offer/progress'\nINTERVAL = 5\nMAX_RETRY = 360\nMAX_CONSECUTIVE_FAIL = 5\n\nasync def main(args):\n    global_id = str(args.params.get('globalId') or '')\n    if not global_id:\n        ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n                       'fail_reason': '缺少测试流水号 globalId，请先发起测试'}\n        return ret\n    consecutive_fail = 0\n    for i in range(MAX_RETRY):\n        resp = {}\n        ok = False\n        try:\n            body = json.dumps({'globalId': global_id}).encode('utf-8')\n            req = urllib.request.Request(PROGRESS_URL, data=body,\n                                         headers={'Content-Type': 'application/json'})\n            with urllib.request.urlopen(req, timeout=30) as http_resp:\n                resp = json.loads(http_resp.read().decode('utf-8'))\n            ok = isinstance(resp, dict)\n        except Exception:\n            ok = False\n        if not ok:\n            consecutive_fail += 1\n            if consecutive_fail >= MAX_CONSECUTIVE_FAIL:\n                ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n                               'fail_reason': '连续查询失败5次，转人工（globalId=' + global_id + '）'}\n                return ret\n            await asyncio.sleep(INTERVAL)\n            continue\n        consecutive_fail = 0\n        if str(resp.get('done', '')).lower() == 'true':\n            ret: Output = {'done': 'true', 'failed': 'false', 'failIndex': '-1', 'fail_reason': ''}\n            return ret\n        if str(resp.get('failed', '')).lower() == 'true':\n            ret: Output = {'done': 'false', 'failed': 'true',\n                           'failIndex': str(resp.get('failIndex', '-1')),\n                           'fail_reason': '测试失败/中止，仍取完整结果供报告定位失败原因'}\n            return ret\n        await asyncio.sleep(INTERVAL)\n    ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n                   'fail_reason': '测试超时（30分钟），请凭 globalId 人工续查（globalId=' + global_id + '）'}\n    return ret",
         "flowJson": null,
-        "inputs": {
-          "loopParam": {
-            "loopType": "while",
-            "maxLoopCount": 360,
-            "breakCondition": "done == true || failed == true || timeout"
-          },
-          "inputParameters": [
-            {
-              "blockID": "a1b2c3d4-0000-4000-8000-000000000302",
-              "relName": "globalId",
-              "name": "globalId",
-              "description": "测试流水号",
-              "type": "ref",
-              "required": true,
-              "content": "",
-              "nameValue": [
-                "a1b2c3d4-0000-4000-8000-000000000302",
-                "a1b2c3d4-0000-4000-8000-000000000302,globalId"
-              ],
-              "currValue": "a1b2c3d4-0000-4000-8000-000000000302,globalId"
-            }
-          ]
-        },
+        "inputs": [
+          {
+            "blockID": "a1b2c3d4-0000-4000-8000-000000000302",
+            "relName": "globalId",
+            "name": "globalId",
+            "description": "测试流水号（节点302出参）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "a1b2c3d4-0000-4000-8000-000000000302",
+              "a1b2c3d4-0000-4000-8000-000000000302,globalId"
+            ],
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000302,globalId"
+          }
+        ],
         "checkErr": false,
         "nodeMeta": {
-          "description": "工具5循环轮询：间隔5s，超时30分钟（360次），连续5次查询失败终止转人工",
+          "description": "编写代码，处理输入变量来生成返回值",
           "title": "轮询测试进度"
         },
+        "language": 1,
+        "id": "a1b2c3d4-0000-4000-8000-000000000304",
         "position": {
           "x": 1815,
           "y": 300
         },
-        "id": "a1b2c3d4-0000-4000-8000-000000000304",
         "dependencyData": [],
         "type": 6
       },

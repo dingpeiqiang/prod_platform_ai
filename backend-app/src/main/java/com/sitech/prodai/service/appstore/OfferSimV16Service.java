@@ -466,9 +466,16 @@ public class OfferSimV16Service {
         }
 
         Map<String, Object> body = camelOk();
+        // V2.4：补充产品名称与趋势字段，供 wf_sub_07 运营报告 LLM 节点按固定模板输出
+        Map<String, Object> offer = seed.findOffer(productId);
+        String offerName = offer == null ? "" : MapOps.str(offer.get("offer_name"));
+        body.put("offer_name", offerName);
         body.put("order_count", String.valueOf(orderCount));
+        body.put("order_trend", errorCount > 0 ? "下降" : ((seedNum % 3 == 0) ? "持平" : "上升"));
         body.put("error_count", String.valueOf(errorCount));
+        body.put("error_trend", errorCount > 0 ? "上升" : "持平");
         body.put("fee_error_rate", String.format(java.util.Locale.ROOT, "%.4f", feeErrorRate));
+        body.put("fee_trend", feeErrorRate > 0.01 ? "上升" : "持平");
         body.put("date_range", MapOps.str(params.get("date_range")));
         body.put("metric", MapOps.firstNonEmpty(params.get("metric"), "all"));
         body.put("alarm_list", alarmList);

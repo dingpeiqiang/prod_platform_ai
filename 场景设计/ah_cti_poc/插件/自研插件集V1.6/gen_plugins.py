@@ -492,9 +492,13 @@ plugins.append(build_plugin(
     },
     ["product_id"],
     {
+        "offer_name": {"description": "产品名称（按product_id回读种子库）", "type": "string"},
         "order_count": {"description": "订单量", "type": "string"},
+        "order_trend": {"description": "订单量趋势：上升/下降/持平", "type": "string"},
         "error_count": {"description": "异常量", "type": "string"},
+        "error_trend": {"description": "异常量趋势：上升/下降/持平", "type": "string"},
         "fee_error_rate": {"description": "计费差错率", "type": "string"},
+        "fee_trend": {"description": "计费差错率趋势：上升/下降/持平", "type": "string"},
         "alarm_list": arr("alarm_list", "已产生告警列表", {
             "alarm_id": {"description": "告警单号", "type": "string"},
             "alarm_level": {"description": "告警级别：high/middle/low", "type": "string"},

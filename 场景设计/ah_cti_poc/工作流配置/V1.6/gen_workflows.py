@@ -251,17 +251,6 @@ def subflow_node(seq, title, desc, work_flow_id, inputs, outputs, pos=(390, 135)
         "id": nid(seq), "dependencyData": [], "type": 13
     }
 
-def loop_node(seq, title, desc, in_refs, outputs, pos=(650, 300)):
-    return {
-        "outputs": outputs, "flowJson": None,
-        "inputs": {"loopParam": {"loopType": "while", "maxLoopCount": 360, "breakCondition": "done == true || failed == true || timeout"},
-                   "inputParameters": in_refs},
-        "checkErr": False,
-        "nodeMeta": {"description": desc, "title": title},
-        "position": {"x": pos[0], "y": pos[1]},
-        "id": nid(seq), "dependencyData": [], "type": 6
-    }
-
 
 CODE_004A = (
     "import json, random\n"
@@ -374,6 +363,135 @@ CODE_EXTRACT_RECORD = (
     "        offer_id = ''\n"
     "    ret: Output = {\n"
     "        \"record_json\": record_json,\n"
+    "        \"offer_id\": offer_id\n"
+    "    }\n"
+    "    return ret"
+)
+
+# CODE_POLL_PROGRESS：wf_sub_04 节点304 轮询测试进度（V2.4 重写）。
+# 设计方案 3.4.4 约束：不用循环节点（平台 loop/循环 不支持），改为 type=6 代码节点
+# 内嵌轮询逻辑：asyncio.sleep(5) 间隔，最多 360 次（30 分钟超时）；
+# 连续 5 次查询失败终止转人工（fail_reason 出参非空标识异常退出）。
+# 轮询方式：HTTP 直连后端工具5接口（代码节点无平台工具调用能力）。
+CODE_POLL_PROGRESS = (
+    "import json\n"
+    "import asyncio\n"
+    "import urllib.request\n"
+    "from typing import Any, Dict\n"
+    "\n"
+    "PROGRESS_URL = 'BASE_URL/api/v1/appstore/test/offer/progress'\n"
+    "INTERVAL = 5\n"
+    "MAX_RETRY = 360\n"
+    "MAX_CONSECUTIVE_FAIL = 5\n"
+    "\n"
+    "async def main(args):\n"
+    "    global_id = str(args.params.get('globalId') or '')\n"
+    "    if not global_id:\n"
+    "        ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n"
+    "                       'fail_reason': '缺少测试流水号 globalId，请先发起测试'}\n"
+    "        return ret\n"
+    "    consecutive_fail = 0\n"
+    "    for i in range(MAX_RETRY):\n"
+    "        resp = {}\n"
+    "        ok = False\n"
+    "        try:\n"
+    "            body = json.dumps({'globalId': global_id}).encode('utf-8')\n"
+    "            req = urllib.request.Request(PROGRESS_URL, data=body,\n"
+    "                                         headers={'Content-Type': 'application/json'})\n"
+    "            with urllib.request.urlopen(req, timeout=30) as http_resp:\n"
+    "                resp = json.loads(http_resp.read().decode('utf-8'))\n"
+    "            ok = isinstance(resp, dict)\n"
+    "        except Exception:\n"
+    "            ok = False\n"
+    "        if not ok:\n"
+    "            consecutive_fail += 1\n"
+    "            if consecutive_fail >= MAX_CONSECUTIVE_FAIL:\n"
+    "                ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n"
+    "                               'fail_reason': '连续查询失败5次，转人工（globalId=' + global_id + '）'}\n"
+    "                return ret\n"
+    "            await asyncio.sleep(INTERVAL)\n"
+    "            continue\n"
+    "        consecutive_fail = 0\n"
+    "        if str(resp.get('done', '')).lower() == 'true':\n"
+    "            ret: Output = {'done': 'true', 'failed': 'false', 'failIndex': '-1', 'fail_reason': ''}\n"
+    "            return ret\n"
+    "        if str(resp.get('failed', '')).lower() == 'true':\n"
+    "            ret: Output = {'done': 'false', 'failed': 'true',\n"
+    "                           'failIndex': str(resp.get('failIndex', '-1')),\n"
+    "                           'fail_reason': '测试失败/中止，仍取完整结果供报告定位失败原因'}\n"
+    "            return ret\n"
+    "        await asyncio.sleep(INTERVAL)\n"
+    "    ret: Output = {'done': 'false', 'failed': 'true', 'failIndex': '-1',\n"
+    "                   'fail_reason': '测试超时（30分钟），请凭 globalId 人工续查（globalId=' + global_id + '）'}\n"
+    "    return ret"
+)
+CODE_POLL_PROGRESS = CODE_POLL_PROGRESS.replace("BASE_URL", BASE_URL)
+
+# CODE_SUMMARY_APPROVAL：wf_sub_06 节点501s 合成结构化汇总（V2.4 新增，设计方案3.2.6 节点7）。
+# 输入=5类自查节点提取的环节结果原文（config/spec/fee/test + requirement），
+# 解析各环节 JSON 提取关键字段（product_id/offer_id/pass/audit_summary/pass/risk_list/
+# orderId/offerInstId/测试统计），合成一份 JSON 字符串供节点501g 报告生成与节点502 审批推送使用。
+CODE_SUMMARY_APPROVAL = (
+    "import json\n"
+    "from typing import Any, Dict\n"
+    "\n"
+    "def _parse(text):\n"
+    "    if not isinstance(text, str) or not text.strip():\n"
+    "        return {}\n"
+    "    t = text.strip()\n"
+    "    if ':' in t and not t.startswith('{') and not t.startswith('['):\n"
+    "        t = t.split(':', 1)[1].strip()\n"
+    "    try:\n"
+    "        v = json.loads(t)\n"
+    "        return v if isinstance(v, dict) else {'raw': t}\n"
+    "    except Exception:\n"
+    "        return {'raw': t}\n"
+    "\n"
+    "async def main(args):\n"
+    "    p = args.params\n"
+    "    cfg = _parse(p.get('config_result') or '')\n"
+    "    spec = _parse(p.get('spec_result') or '')\n"
+    "    fee = _parse(p.get('fee_result') or '')\n"
+    "    test = _parse(p.get('test_result') or '')\n"
+    "    req = _parse(p.get('requirement_result') or '')\n"
+    "    # config 环节：完整落地配置JSON（内含 product_id/offer_id 与 plan_json）\n"
+    "    product_id = str(cfg.get('product_id') or '')\n"
+    "    offer_id = str(cfg.get('offer_id') or '')\n"
+    "    offer_name = str(cfg.get('offer_name') or '')\n"
+    "    # spec 环节：存储的是稽核总结文本\n"
+    "    audit_summary = str(spec.get('raw') or spec.get('audit_summary') or '')\n"
+    "    spec_pass = '1' if ('通过' in audit_summary and '驳回' not in audit_summary) else '0'\n"
+    "    # fee 环节：存储的是风险解读文本\n"
+    "    risk_summary = str(fee.get('raw') or fee.get('risk_summary') or '')\n"
+    "    fee_pass = '0' if ('未通过' in risk_summary or '风险' in risk_summary.replace('未发现', '')) else '1'\n"
+    "    # test 环节：存储的是测试报告文本，受理凭证按标记提取\n"
+    "    test_report = str(test.get('raw') or test.get('test_report') or '')\n"
+    "    order_id = ''\n"
+    "    offer_inst_id = ''\n"
+    "    import re\n"
+    "    m = re.search(r'order[Ii]d[=：:]*\\s*([A-Za-z0-9\\-]+)', test_report)\n"
+    "    if m:\n"
+    "        order_id = m.group(1)\n"
+    "    m = re.search(r'offerInst[Ii]d[=：:]*\\s*([A-Za-z0-9\\-]+)', test_report)\n"
+    "    if m:\n"
+    "        offer_inst_id = m.group(1)\n"
+    "    test_passed = '1' if ('通过' in test_report and '失败' not in test_report.split('总体结论')[-1]) else '0'\n"
+    "    summary = {\n"
+    "        'product_id': product_id,\n"
+    "        'offer_id': offer_id,\n"
+    "        'offer_name': offer_name,\n"
+    "        'requirement_summary': str(req.get('raw') or '')[:500],\n"
+    "        'config': {'product_id': product_id, 'offer_id': offer_id,\n"
+    "                   'plan_json': cfg.get('plan_json')},\n"
+    "        'spec': {'pass': spec_pass, 'audit_summary': audit_summary},\n"
+    "        'fee': {'pass': fee_pass, 'risk_summary': risk_summary},\n"
+    "        'test': {'passed': test_passed, 'order_id': order_id,\n"
+    "                 'offer_inst_id': offer_inst_id, 'test_report': test_report},\n"
+    "        'all_pass': spec_pass == '1' and fee_pass == '1' and test_passed == '1',\n"
+    "    }\n"
+    "    ret: Output = {\n"
+    "        \"summary_json\": json.dumps(summary, ensure_ascii=False),\n"
+    "        \"product_id\": product_id,\n"
     "        \"offer_id\": offer_id\n"
     "    }\n"
     "    return ret"
@@ -739,10 +857,14 @@ s4.append(plugin_node(303, "查询测试场景", "get_test_scenes",
     BASE_URL + "/api/v1/appstore/test/offer/scenes",
     [inp("globalId", "测试流水号（节点2出参）", ref_block=nid(302), ref_rel="globalId")],
     [("resultCode", "0成功/1失败", "string"), ("testScenes", "场景列表", "array")]))
-s4.append(loop_node(304, "轮询测试进度",
-    "工具5循环轮询：间隔5s，超时30分钟（360次），连续5次查询失败终止转人工",
-    [inp("globalId", "测试流水号", ref_block=nid(302), ref_rel="globalId")],
-    [out("done", "是否全部完成"), out("failed", "是否失败"), out("failIndex", "失败场景下标")]))
+# 304 轮询测试进度（V2.4 重写）：平台不做循环节点（设计方案3.4.4），改为 type=6 代码节点
+# 内嵌 asyncio.sleep(5) 轮询工具5逻辑——360次/30分钟超时，连续5次查询失败终止转人工；
+# 出参 fail_reason 非空标识异常退出（查询失败/超时/测试失败），供报告节点区分
+s4.append(code_node(304, "轮询测试进度", CODE_POLL_PROGRESS,
+    [inp("globalId", "测试流水号（节点302出参）", ref_block=nid(302), ref_rel="globalId")],
+    [code_out("done", 304), code_out("failed", 304), code_out("failIndex", 304),
+     code_out("fail_reason", 304)],
+    pos=(1815, 300)))
 s4.append(plugin_node(305, "查询测试结果", "get_test_result",
     "工具6：done=true后调用一次；presetValue取自《产品信息.txt》该销售品规则值；返回受理凭证orderId/offerInstId",
     BASE_URL + "/api/v1/appstore/test/offer/result",
@@ -799,7 +921,7 @@ s5.append(plugin_node(406, "读取配置环节结果", "query_node_result",
     method="get"))
 s5.append(code_node(407, "提取配置结果原文", CODE_EXTRACT_RECORD,
     [inp("query_list", "引用节点406查询出参 list（记录数组JSON）", ref_block=nid(406), ref_rel="list")],
-    [code_out("record_json", 407)],
+    [code_out("record_json", 407), code_out("offer_id", 407)],
     pos=(240, 135)))
 s5.append(plugin_node(402, "计费校验", "check_billing_rule",
     "工具8：自研模拟计费规则校验（内置叠加/互斥/负资费规则，适配18销售品资费结构）；config_json 取自 config 环节结果（节点407提取原文）",
@@ -830,56 +952,210 @@ files["wf_sub_05_资费校准.json"] = workflow(
     [edge(401,406), edge(406,407), edge(407,402), edge(402,403), edge(403,405), edge(405,404)])
 
 # ============================================================
-# wf_sub_06 上线审批
+# wf_sub_06 上线审批（V2.4 按设计方案3.2.6 重构：11节点/10边）
+#   串行自查5类环节结果（config/spec/fee/test/requirement）→ 代码节点501s
+#   合成结构化汇总（含 product_id/orderId/offerInstId）→ LLM 501g 生成7章节报告
+#   → 报告存储501r（node_name=report）→ 审批推送502（report_url=报告）→ 结束
 # ============================================================
 s6 = []
 s6.append(start_node(501, [
     inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，四环节结果门禁校验依据，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）", required=True),
 ]))
+s6.append(plugin_node(5011, "自查配置结果", "query_node_result",
+    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=config 取回智能配置环节结果（list[0].result_json=完整落地配置JSON，内含 product_id/offer_id）",
+    BASE_URL + "/api/v1/appstore/result/query",
+    [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(501), ref_rel="req_id"),
+     inp("node_name", "环节名=config", content="config"),
+     inp("latest_only", "1=只返回最新一条（默认）", content="1")],
+    [("code", "0成功", "string"), ("msg", "状态描述", "string"),
+     ("total", "命中记录数", "string"), ("list", "记录数组JSON（取[0].result_json为环节结果原文）", "string")],
+    method="get", pos=(240, 135)))
+s6.append(code_node(5012, "提取配置环节原文", CODE_EXTRACT_RECORD,
+    [inp("query_list", "引用节点5011查询出参 list（记录数组JSON）", ref_block=nid(5011), ref_rel="list")],
+    [code_out("record_json", 5012), code_out("offer_id", 5012)],
+    pos=(390, 135)))
+s6.append(plugin_node(5013, "自查稽核结果", "query_node_result",
+    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=spec 取回规格稽核环节结果（list[0].result_json=稽核总结文本）",
+    BASE_URL + "/api/v1/appstore/result/query",
+    [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(501), ref_rel="req_id"),
+     inp("node_name", "环节名=spec", content="spec"),
+     inp("latest_only", "1=只返回最新一条（默认）", content="1")],
+    [("code", "0成功", "string"), ("msg", "状态描述", "string"),
+     ("total", "命中记录数", "string"), ("list", "记录数组JSON（取[0].result_json为环节结果原文）", "string")],
+    method="get", pos=(240, 260)))
+s6.append(code_node(5014, "提取稽核环节原文", CODE_EXTRACT_RECORD,
+    [inp("query_list", "引用节点5013查询出参 list（记录数组JSON）", ref_block=nid(5013), ref_rel="list")],
+    [code_out("record_json", 5014)],
+    pos=(390, 260)))
+s6.append(plugin_node(5015, "自查资费结果", "query_node_result",
+    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=fee 取回资费校准环节结果（list[0].result_json=风险解读文本）",
+    BASE_URL + "/api/v1/appstore/result/query",
+    [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(501), ref_rel="req_id"),
+     inp("node_name", "环节名=fee", content="fee"),
+     inp("latest_only", "1=只返回最新一条（默认）", content="1")],
+    [("code", "0成功", "string"), ("msg", "状态描述", "string"),
+     ("total", "命中记录数", "string"), ("list", "记录数组JSON（取[0].result_json为环节结果原文）", "string")],
+    method="get", pos=(240, 385)))
+s6.append(code_node(5016, "提取资费环节原文", CODE_EXTRACT_RECORD,
+    [inp("query_list", "引用节点5015查询出参 list（记录数组JSON）", ref_block=nid(5015), ref_rel="list")],
+    [code_out("record_json", 5016)],
+    pos=(390, 385)))
+s6.append(plugin_node(5017, "自查测试结果", "query_node_result",
+    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=test 取回自动测试环节结果（list[0].result_json=测试报告文本，内含受理凭证 orderId/offerInstId）",
+    BASE_URL + "/api/v1/appstore/result/query",
+    [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(501), ref_rel="req_id"),
+     inp("node_name", "环节名=test", content="test"),
+     inp("latest_only", "1=只返回最新一条（默认）", content="1")],
+    [("code", "0成功", "string"), ("msg", "状态描述", "string"),
+     ("total", "命中记录数", "string"), ("list", "记录数组JSON（取[0].result_json为环节结果原文）", "string")],
+    method="get", pos=(240, 510)))
+s6.append(code_node(5018, "提取测试环节原文", CODE_EXTRACT_RECORD,
+    [inp("query_list", "引用节点5017查询出参 list（记录数组JSON）", ref_block=nid(5017), ref_rel="list")],
+    [code_out("record_json", 5018)],
+    pos=(390, 510)))
+s6.append(plugin_node(5019, "自查执行方案", "query_node_result",
+    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=requirement 取回执行方案（list[0].result_json=执行方案原文，用于报告需求摘要章节）",
+    BASE_URL + "/api/v1/appstore/result/query",
+    [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(501), ref_rel="req_id"),
+     inp("node_name", "环节名=requirement", content="requirement"),
+     inp("latest_only", "1=只返回最新一条（默认）", content="1")],
+    [("code", "0成功", "string"), ("msg", "状态描述", "string"),
+     ("total", "命中记录数", "string"), ("list", "记录数组JSON（取[0].result_json为环节结果原文）", "string")],
+    method="get", pos=(240, 635)))
+s6.append(code_node(5020, "提取执行方案原文", CODE_EXTRACT_RECORD,
+    [inp("query_list", "引用节点5019查询出参 list（记录数组JSON）", ref_block=nid(5019), ref_rel="list")],
+    [code_out("record_json", 5020)],
+    pos=(390, 635)))
+# 501s 合成结构化汇总：解析5类环节原文，提取关键字段（product_id/orderId/offerInstId/各环节结论）合成 JSON
+s6.append(code_node(5021, "合成结构化汇总", CODE_SUMMARY_APPROVAL,
+    [inp("config_result", "配置环节原文（节点5012提取）", ref_block=nid(5012), ref_rel="record_json"),
+     inp("spec_result", "稽核环节原文（节点5014提取）", ref_block=nid(5014), ref_rel="record_json"),
+     inp("fee_result", "资费环节原文（节点5016提取）", ref_block=nid(5016), ref_rel="record_json"),
+     inp("test_result", "测试环节原文（节点5018提取）", ref_block=nid(5018), ref_rel="record_json"),
+     inp("requirement_result", "执行方案原文（节点5020提取）", ref_block=nid(5020), ref_rel="record_json")],
+    [code_out("summary_json", 5021), code_out("product_id", 5021), code_out("offer_id", 5021)],
+    pos=(540, 385)))
+# 501g 报告生成：强制7章节（设计方案3.1.4），温度0.2
+s6.append(llm_node(5022, "上线报告生成",
+    "请按标准模板汇总生成《销售品上线测试与稽核报告》，输入为结构化汇总（summary_json={summary_json}），强制包含 7 章节：\n"
+    "1. 需求摘要（引用 requirement_summary，仅列关键字段）；\n"
+    "2. 配置落地结果（config：product_id/offer_id/offer_name 及写入情况）；\n"
+    "3. 稽核结论（spec：audit_summary，通过/驳回）；\n"
+    "4. 资费结论（fee：risk_summary，是否存在风险）；\n"
+    "5. 测试统计（test：场景数/测点数/成功/失败统计，失败测点逐条列出）；\n"
+    "6. 受理验证结论（强制章节，不得省略）：引用 orderId={order_id}、offerInstId={offer_inst_id}，为空则写明\"未获取到受理凭证，需人工核实\"，并逐受理场景给出通过/失败结论；\n"
+    "7. 上线建议：全部通过 → \"建议上线\"；任一环节未通过 → \"暂缓上线\"。\n"
+    "只基于输入数据生成，不得新增结论。\n"
+    "输出要求：仅输出报告正文（对应出参 report），不输出其他多余文字。",
+    [inp("summary_json", "引用节点501s结构化汇总", ref_block=nid(5021), ref_rel="summary_json"),
+     inp("order_id", "受理订单号（501s从测试报告提取）", ref_block=nid(5021), ref_rel="summary_json"),
+     inp("offer_inst_id", "销售品实例ID（501s从测试报告提取）", ref_block=nid(5021), ref_rel="summary_json")],
+    [out("report", "上线报告（含7章节）")], pos=(690, 385)))
+# 501r 报告存储：node_name=report
+s6.append(plugin_node(5023, "报告存储", "save_node_result",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=report（上线报告），result_json=报告正文；落库后传审批推送",
+    BASE_URL + "/api/v1/appstore/result/save",
+    [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(501), ref_rel="req_id"),
+     inp("node_name", "环节名=report（上线报告）", content="report"),
+     inp("result_json", "环节结果JSON=上线报告", ref_block=nid(5022), ref_rel="report"),
+     inp("status", "本环节状态=ok", content="ok")],
+    [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")], pos=(840, 385)))
+# 502 审批推送：product_id/report_url 均引用结构化结果（V2.4：不再传空由后端回读）
 s6.append(plugin_node(502, "审批推送", "submit_release_approval",
-    "工具9：自研模拟审批推送；插件层硬门禁：approve_confirmed==true 且存储中存在该 req_id 的四环节结果（config/spec/fee/test）；幂等：同product_id返回原approval_id",
+    "工具9：自研模拟审批推送；插件层硬门禁：approve_confirmed==true 且存储中存在该 req_id 的四环节结果（config/spec/fee/test）；幂等：同product_id返回原approval_id；product_id=501s从config环节结果提取，report_url=501g生成的上线报告",
     BASE_URL + "/api/v1/appstore/approval/submit",
-    [inp("product_id", "CRM产品ID（后端从config环节结果回读）", content=""),
-     inp("report_url", "上线报告（LLM生成后传入，或空由后端从report环节结果回读）", content=""),
+    [inp("product_id", "CRM产品ID（节点5021从config环节结果提取）", ref_block=nid(5021), ref_rel="product_id"),
+     inp("report_url", "上线报告（节点5022生成的报告正文）", ref_block=nid(5022), ref_rel="report"),
      inp("req_id", "执行批次号（四环节结果门禁校验依据，=开始节点 req_id）", ref_block=nid(501), ref_rel="req_id"),
      inp("approve_confirmed", "审批发起确认标志true", content="true"),
      inp("approval_flow", "审批流默认standard", content="standard")],
-    [("approval_id", "审批单号", "string"), ("status", "提交状态", "string")]))
+    [("approval_id", "审批单号", "string"), ("status", "提交状态", "string")], pos=(990, 385)))
 s6.append(end_node(503, "结束(审批已推送)",
     [inp("approval_id", "审批单号", ref_block=nid(502), ref_rel="approval_id"),
-     inp("status", "提交状态", ref_block=nid(502), ref_rel="status")],
-    "上线审批已推送：approval_id={approval_id}，status={status}\n可随时发送\"查询审批进度\"消息查询审批状态。"))
+     inp("status", "提交状态", ref_block=nid(502), ref_rel="status"),
+     inp("report", "上线报告", ref_block=nid(5022), ref_rel="report")],
+    "上线审批已推送：approval_id={approval_id}，status={status}\n{report}\n可随时发送\"查询审批进度\"消息查询审批状态。"))
 files["wf_sub_06_上线审批.json"] = workflow(
-    "产销品-上线审批", "子工作流6：上线审批。单入参 req_id：submit_release_approval（自研模拟，插件层硬门禁：approve_confirmed=true+req_id四环节结果config/spec/fee/test齐全，缺失返回NOT_CONFIRMED；幂等）。", "wf_sub_06", s6,
-    [edge(501,502), edge(502,503)])
+    "产销品-上线审批", "子工作流6：上线审批（V2.4 按设计方案3.2.6 重构，13节点/12边）。单入参 req_id：串行自查5类环节结果（config/spec/fee/test/requirement，各配提取代码节点）→代码节点5021合成结构化汇总（含product_id/offer_id/orderId/offerInstId与各环节结论）→LLM生成7章节上线报告→报告落库（node_name=report）→submit_release_approval推送（product_id=结构化汇总提取，report_url=报告正文；后端硬门禁：approve_confirmed=true+req_id四环节结果齐全，幂等）。", "wf_sub_06", s6,
+    [edge(501,5011), edge(5011,5012), edge(5012,5013), edge(5013,5014), edge(5014,5015),
+     edge(5015,5016), edge(5016,5017), edge(5017,5018), edge(5018,5019), edge(5019,5020),
+     edge(5020,5021), edge(5021,5022), edge(5022,5023), edge(5023,502), edge(502,503)])
 
 # ============================================================
-# wf_sub_07 监控运维
+# wf_sub_07 监控运维（V2.4 优化：输出单产品运营情况报告）
+#   query_product_monitor（含 offer_name/趋势字段）→ 异常判定 →
+#   异常分支：告警文案→send_alert→报告生成；正常分支：直接报告生成 →
+#   两个分支汇聚到 LLM 运营报告节点（按固定模板输出）→ 结束输出报告
 # ============================================================
+OPS_REPORT_PROMPT_HEAD = (
+    "# 角色\n"
+    "\n"
+    "你是产销品监控运维智能体。根据系统提供的运营数据，输出单产品运营情况报告。\n"
+    "\n"
+    "# 运营数据\n"
+    "{ops_text}\n"
+    "\n"
+    "# 处理要求\n"
+    "1. 从效益、市场、质量三个维度展示运营指标(数据以系统提供的为准，不得凭空创造不存在的数据)。\n"
+    "2. 综合判断产品运行状态：🟢运行良好 / 🟡重点关注 / 🔴存在异常。综合当前值、趋势、多指标是否同时异常判断，不要仅凭单一指标机械判断。\n"
+    "3. 输出简洁AI运营分析：整体判断、效益表现、市场表现、质量表现、重点关注。只在发现明显异常或风险时给出建议，整体正常时不要强行生成建议。\n"
+    "\n"
+    "# 固定输出格式\n"
+    "# 【产品名称】｜运营情况\n"
+    "\n"
+    "**当前状态：🟢/🟡/🔴**\n"
+    "**数据周期：XXX**\n"
+    "**更新时间：XXX**\n"
+    "\n"
+    "## 核心运营指标\n"
+    "\n"
+    "| 维度 | 指标 | 当前值 | 趋势 | 状态 |\n"
+    "|---|---:|---:|---|---|\n"
+    "\n"
+    "## AI运营分析\n"
+    "\n"
+    "> 整体判断：\n"
+    "> XXX\n"
+    "\n"
+    "> 效益表现：\n"
+    "> XXX\n"
+    "\n"
+    "> 市场表现：\n"
+    "> XXX\n"
+    "\n"
+    "> 质量表现：\n"
+    "> XXX\n"
+    "\n"
+    "> 重点关注：\n"
+    "> XXX"
+)
 s7 = []
 s7.append(start_node(601, [
     inp("product_id", "销售品ID", required=True),
     inp("date_range", "日期范围，默认最近1天", required=False),
 ]))
 s7.append(plugin_node(602, "监控查询", "query_product_monitor",
-    "工具10：自研模拟监控查询（订单量/异常量/计费差错率/告警列表）",
+    "工具10：自研模拟监控查询（产品名称/订单量及趋势/异常量及趋势/计费差错率及趋势/告警列表），供运营报告生成",
     BASE_URL + "/api/v1/appstore/product/monitor",
     [inp("product_id", "销售品ID", ref_block=nid(601), ref_rel="product_id"),
      inp("date_range", "日期范围", ref_block=nid(601), ref_rel="date_range"),
      inp("metric", "指标默认all", content="all")],
-    [("order_count", "订单量", "string"), ("error_count", "异常量", "string"),
-     ("fee_error_rate", "计费差错率", "string"), ("alarm_list", "告警列表", "array")],
+    [("offer_name", "产品名称", "string"),
+     ("order_count", "订单量", "string"), ("order_trend", "订单量趋势", "string"),
+     ("error_count", "异常量", "string"), ("error_trend", "异常量趋势", "string"),
+     ("fee_error_rate", "计费差错率", "string"), ("fee_trend", "计费差错率趋势", "string"),
+     ("date_range", "数据周期", "string"), ("alarm_list", "告警列表", "array")],
     method="get"))
 s7.append(selector_node2(603, "异常判定",
     [dep_node(602, "监控查询", ["error_count", "fee_error_rate"])],
     # 平台样例约定：条件定义在 port=-1（否则分支）；port=0 由平台自动路由
     # 语义：error_count 不等于"0"（即存在异常）→ 走异常告警（port=-1 命中条件）；
-    #       port=0 兜底分支（error_count 等于"0"即正常）→ 走正常结束
+    #       port=0 兜底分支（error_count 等于"0"即正常）→ 走正常报告生成
     [(-1, [cond_item(cond_ref(602, "error_count", "监控查询"), 2, cond_str("0"))])]))
 s7.append(llm_node(604, "告警文案生成",
-    "基于监控异常数据生成告警文案（含产品、异常摘要、建议）。输入：product_id={product_id}，order_count={order_count}，error_count={error_count}，fee_error_rate={fee_error_rate}，alarm_list={alarm_list}\n"
+    "基于监控异常数据生成告警文案（含产品、异常摘要、建议）。输入：offer_name={offer_name}，order_count={order_count}，error_count={error_count}，fee_error_rate={fee_error_rate}，alarm_list={alarm_list}\n"
     "输出要求：仅输出告警文案内容（对应出参 alert_content，需包含产品名称、异常摘要、处置建议三部分），不输出其他多余文字。",
-    [inp("product_id", "销售品ID", ref_block=nid(601), ref_rel="product_id"),
+    [inp("offer_name", "产品名称", ref_block=nid(602), ref_rel="offer_name"),
      inp("order_count", "订单量", ref_block=nid(602), ref_rel="order_count"),
      inp("error_count", "异常量", ref_block=nid(602), ref_rel="error_count"),
      inp("fee_error_rate", "计费差错率", ref_block=nid(602), ref_rel="fee_error_rate"),
@@ -890,19 +1166,44 @@ s7.append(plugin_node(605, "异常告警", "send_alert",
     BASE_URL + "/api/v1/appstore/alert/send",
     [inp("product_id", "销售品ID", ref_block=nid(601), ref_rel="product_id"),
      inp("alarm_level", "告警级别", content="high"),
-     inp("content", "告警文案（节点4输出）", ref_block=nid(604), ref_rel="alert_content")],
+     inp("content", "告警文案（节点604输出）", ref_block=nid(604), ref_rel="alert_content")],
     [("alert_id", "告警单号", "string"), ("status", "推送状态", "string")]))
+# 608/609 运营报告生成：异常分支（告警后）与正常分支均汇聚到此 LLM 节点，按固定模板输出单产品运营情况报告
+s7.append(llm_node(608, "运营报告生成(异常分支)",
+    OPS_REPORT_PROMPT_HEAD + "\n\n补充说明：本产品存在异常（error_count={error_count}，fee_error_rate={fee_error_rate}，告警列表={alarm_list}），已触发告警推送；报告状态判定应不低于🟡，异常指标须在\"重点关注\"中逐条说明。",
+    [inp("ops_text", "运营数据JSON（监控查询出参汇总）", ref_block=nid(602), ref_rel="offer_name"),
+     inp("offer_name", "产品名称", ref_block=nid(602), ref_rel="offer_name"),
+     inp("date_range", "数据周期", ref_block=nid(602), ref_rel="date_range"),
+     inp("order_count", "订单量", ref_block=nid(602), ref_rel="order_count"),
+     inp("order_trend", "订单量趋势", ref_block=nid(602), ref_rel="order_trend"),
+     inp("error_count", "异常量", ref_block=nid(602), ref_rel="error_count"),
+     inp("error_trend", "异常量趋势", ref_block=nid(602), ref_rel="error_trend"),
+     inp("fee_error_rate", "计费差错率", ref_block=nid(602), ref_rel="fee_error_rate"),
+     inp("fee_trend", "计费差错率趋势", ref_block=nid(602), ref_rel="fee_trend"),
+     inp("alarm_list", "告警列表", ref_block=nid(602), ref_rel="alarm_list")],
+    [out("ops_report", "单产品运营情况报告")], pos=(1815, 460)))
+s7.append(llm_node(609, "运营报告生成(正常分支)",
+    OPS_REPORT_PROMPT_HEAD + "\n\n补充说明：本产品各指标正常（error_count=0，计费差错率低于阈值，无新增告警），报告状态判定为🟢；整体正常时不要强行生成建议。",
+    [inp("offer_name", "产品名称", ref_block=nid(602), ref_rel="offer_name"),
+     inp("date_range", "数据周期", ref_block=nid(602), ref_rel="date_range"),
+     inp("order_count", "订单量", ref_block=nid(602), ref_rel="order_count"),
+     inp("order_trend", "订单量趋势", ref_block=nid(602), ref_rel="order_trend"),
+     inp("error_count", "异常量", ref_block=nid(602), ref_rel="error_count"),
+     inp("error_trend", "异常量趋势", ref_block=nid(602), ref_rel="error_trend"),
+     inp("fee_error_rate", "计费差错率", ref_block=nid(602), ref_rel="fee_error_rate"),
+     inp("fee_trend", "计费差错率趋势", ref_block=nid(602), ref_rel="fee_trend"),
+     inp("alarm_list", "告警列表", ref_block=nid(602), ref_rel="alarm_list")],
+    [out("ops_report", "单产品运营情况报告")], pos=(1815, 135)))
 s7.append(end_node(606, "结束(异常-已告警)",
     [inp("alert_id", "告警单号", ref_block=nid(605), ref_rel="alert_id"),
-     inp("alert_content", "告警文案", ref_block=nid(604), ref_rel="alert_content")],
-    "监控发现异常，已推送告警：alert_id={alert_id}\n{alert_content}"),)
-s7.append(end_node(607, "结束(正常)",
-    [inp("order_count", "订单量", ref_block=nid(602), ref_rel="order_count"),
-     inp("error_count", "异常量", ref_block=nid(602), ref_rel="error_count")],
-    "监控正常：订单量={order_count}，异常量={error_count}，无需告警。"))
+     inp("ops_report", "运营情况报告", ref_block=nid(608), ref_rel="ops_report")],
+    "监控发现异常，已推送告警（alert_id={alert_id}）。单产品运营情况报告如下：\n\n{ops_report}"),)
+s7.append(end_node(607, "结束(正常-运营报告)",
+    [inp("ops_report", "运营情况报告", ref_block=nid(609), ref_rel="ops_report")],
+    "{ops_report}"))
 files["wf_sub_07_监控运维.json"] = workflow(
-    "产销品-监控运维", "子工作流7：监控运维。query_product_monitor（自研模拟）→异常判定（error_count>0或fee_error_rate>0.1）→send_alert告警/正常摘要。支持每日定时与对话触发。", "wf_sub_07", s7,
-    [edge(601,602), edge(602,603), edge(603,607,0), edge(603,604,-1), edge(604,605), edge(605,606)])
+    "产销品-监控运维", "子工作流7：监控运维（V2.4 优化：输出单产品运营情况报告）。query_product_monitor（自研模拟，含产品名称与指标趋势）→异常判定（error_count≠0走异常分支）→异常分支：告警文案→send_alert→运营报告生成；正常分支：直接运营报告生成——两分支各自 LLM 节点按固定模板（状态🟢/🟡/🔴+核心运营指标表+AI运营分析五要素）输出报告，结束节点输出报告全文。支持每日定时与对话触发。", "wf_sub_07", s7,
+    [edge(601,602), edge(602,603), edge(603,609,0), edge(603,604,-1), edge(604,605), edge(605,608), edge(608,606), edge(609,607)])
 
 # ============================================================
 # wf_sub_08 审批进度查询
