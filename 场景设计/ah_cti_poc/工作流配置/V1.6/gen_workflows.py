@@ -232,6 +232,54 @@ def loop_node(seq, title, desc, in_refs, outputs, pos=(650, 300)):
         "id": nid(seq), "dependencyData": [], "type": 6
     }
 
+
+CODE_004A = (
+    "import json, re\n"
+    "from typing import Any, Dict\n"
+    "async def main(args):\n"
+    "    raw = args.params['plan_output']\n"
+    "    if not isinstance(raw, str):\n"
+    "        raw = json.dumps(raw, ensure_ascii=False)\n"
+    "    m = re.search(r'\\{[\\s\\S]*\\}', raw)\n"
+    "    if not m:\n"
+    "        obj = {}\n"
+    "    else:\n"
+    "        try:\n"
+    "            obj = json.loads(m.group(0))\n"
+    "        except Exception:\n"
+    "            obj = {}\n"
+    "    pf = obj.get('pending_fields') or ''\n"
+    "    if isinstance(pf, list):\n"
+    "        pf = ','.join([str(x) for x in pf])\n"
+    "    plan_json = obj.get('plan_json')\n"
+    "    if not isinstance(plan_json, str):\n"
+    "        plan_json = json.dumps(plan_json if plan_json is not None else obj, ensure_ascii=False)\n"
+    "    ret: Output = {\n"
+    "        \"plan_json\": plan_json,\n"
+    "        \"plan_md\": str(obj.get('plan_md') or ''),\n"
+    "        \"pending_fields\": str(pf),\n"
+    "        \"plan_id\": str(obj.get('plan_id') or '')\n"
+    "    }\n"
+    "    return ret"
+)
+
+
+def code_node(seq, title, code, in_refs, outputs, pos=(650, 300)):
+    """type=6 代码节点（对齐平台真实导出：inputs 平铺 list、language=1）"""
+    return {
+        "outputs": outputs, "code": code, "flowJson": None,
+        "inputs": in_refs, "checkErr": False,
+        "nodeMeta": {"description": "编写代码，处理输入变量来生成返回值", "title": title},
+        "language": 1,
+        "id": nid(seq), "position": {"x": pos[0], "y": pos[1]},
+        "dependencyData": [], "type": 6
+    }
+
+
+def code_out(name, block_seq, ptype="string"):
+    b = nid(block_seq)
+    return {"relName": b + "," + name, "name": name, "type": ptype}
+
 def edge(s, e, port=None):
     d = {"sourcePort": port, "endId": nid(e), "startId": nid(s)}
     return d
@@ -336,9 +384,14 @@ s1.append(start_node(1, [
 ]))
 s1.append(llm_node(2, "需求理解与要素拆解",
     "你是产销品加载需求分析助手。按6步分析：理解需求→提取并拆解业务要素（基础信息/资源配置/营销资源/销售规则四类）→识别信息完整性（字段三态：原始需求/AI补全/待补充）。需求原文：{requirement_text}\n"
+    "要素拆解字段口径（四类18字段，与执行方案生成保持一致）：\n"
+    "A.基础信息：产品名称/产品属性（基础/可选/增值）/产品编码/生效日期/退订规则\n"
+    "B.资源配置：流量资源/语音资源/短信资源\n"
+    "C.营销资源：套餐固定费/收费方式（按月/按量/一次性）/优惠条件/优惠期\n"
+    "D.销售规则：渠道类型/适用地区/订购限制/副卡规则/计费周期/销售品状态\n"
     "补充规则（V1.6）：pending_fields默认为空——仅当费用（价格）或资源（流量/语音/短信）未提取到时，才将该字段填\"待补充\"并计入pending_fields（禁止推理，禁止从相似产品照搬）；其余缺失字段待相似产品返回后按最高相似度产品补全，来源标记\"AI补全\"；来源只允许\"原始需求\"或\"AI补全\"两种。\n"
     "输出要求（两个出参逐一约定，每个出参只输出自己的内容，严禁把其他出参内容并入）：\n"
-    "1. elements_json：仅输出结构化要素JSON对象本身（以{开头、}结尾），包含 fields 数组与 pending_fields 数组，不得附带键名前缀或说明；\n"
+    "1. elements_json：仅输出结构化要素JSON对象本身（以{开头、}结尾），包含 fields 数组（每项含 field/category/value/source，category取A基础信息/B资源配置/C营销资源/D销售规则）与 pending_fields 数组，不得附带键名前缀或说明；\n"
     "2. need_summary：仅输出需求摘要文本本身（≤5000字符，供相似度分析调用使用）；\n"
     "3. 严格禁止输出形如\"elements_json: {...} need_summary: ...\"的拼接包；除上述两个出参各自内容外不输出任何多余文字。",
     [inp("requirement_text", "引用开始节点 requirement_text", ref_block=nid(1), ref_rel="requirement_text")],
@@ -350,42 +403,66 @@ s1.append(plugin_node(3, "相似产品查询", "query_similar_offer",
     [("resultCode", "0成功/1失败", "string"), ("resultMsg", "处理结果描述", "string"),
      ("similarOfferList", "相似产品列表", "array")]))
 s1.append(llm_node(4, "字段映射与补全",
-    "基于节点2要素JSON（elements_json={elements_json}）+ 节点3相似产品列表（similarOfferList={similarOfferList}，含《产品信息.txt》18个销售品规则）+ 知识库存量销售品资料，生成《产销品加载执行方案》。\n"
-    "补全规则（V1.6）：pending_fields默认为空——只要需求中提取到费用（价格）与资源（流量/语音/短信）信息，即视为可生成执行方案，禁止将其他缺失字段列入pending_fields（其余缺失字段全部取最高相似度产品对应值AI补全，来源\"AI补全\"）；仅当费用或资源未提取到时，才将该字段值填\"待补充\"并列入pending_fields（禁止推理，禁止从相似产品照搬）。\n"
-    "输出要求（四个出参逐一约定，每个出参只输出自己的内容，严禁把其他出参内容并入）：\n"
-    "1. plan_json：仅输出执行方案JSON对象本身（以{开头、}结尾），含 plan_id/fields/similar_offers/pending_fields 四个键，fields内每项含 field/value/source；\n"
-    "2. plan_md：仅输出Markdown表格本身（以|字段分类|开头），固定4列：字段分类/字段名称/字段值/来源，同分类连续行按规范合并单元格（首行填分类，后续行留空），不得在表格前后附加任何文字、代码块或键名；\n"
-    "3. pending_fields：仅输出待补充字段名称清单，逗号分隔，无待补充时输出空字符串，不得附带任何前缀或说明；\n"
-    "4. plan_id：仅输出存储key本身（格式 PLAN+yyyyMMdd+3位序号，如PLAN20231001001），修改场景沿用原值覆盖写，不得附带键名或说明；\n"
-    "5. 严格禁止输出形如\"plan_json: {...} plan_md: ... pending_fields: ... plan_id: ...\"的拼接包：每个出参内容只归属其对应出参，平台按出参分别捕获；\n"
-    "6. 除上述四个出参各自内容外不输出任何多余文字。",
+    "你是产销品加载执行方案生成助手。基于节点2要素JSON（elements_json={elements_json}）+ 节点3相似产品列表（similarOfferList={similarOfferList}，含《产品信息.txt》18个销售品规则）+ 知识库存量销售品资料，生成《产销品加载执行方案》。\n"
+    "\n"
+    "【第一步：确定补全规则（V1.6）】\n"
+    "pending_fields默认为空——只要需求中提取到费用（价格）与资源（流量/语音/短信）信息，即视为可生成执行方案；仅当费用或资源未提取到时，才将该字段值填\"待补充\"并列入pending_fields（禁止推理，禁止从相似产品照搬）；其余缺失字段全部取相似度评分最高的产品对应值补全。\n"
+    "\n"
+    "【第二步：逐字段生成，必须覆盖以下四类全部字段（共18个，一个都不能少）】\n"
+    "A.基础信息：1.产品名称 2.产品属性（基础/可选/增值） 3.产品编码 4.生效日期 5.退订规则\n"
+    "B.资源配置：6.流量资源 7.语音资源 8.短信资源\n"
+    "C.营销资源：9.套餐固定费 10.收费方式（按月/按量/一次性） 11.优惠条件 12.优惠期\n"
+    "D.销售规则：13.渠道类型 14.适用地区 15.订购限制 16.副卡规则 17.计费周期 18.销售品状态\n"
+    "其中：6.流量资源/7.语音资源/8.短信资源/9.套餐固定费 为关键必填字段——需求未提取到时值填\"待补充\"并计入pending_fields；其余字段需求未提取到时一律取最高相似度产品对应值。\n"
+    "\n"
+    "【第三步：逐字段标注来源（强制，仅两种取值）】\n"
+    "fields内每项的source字段按以下判定表逐项判断，禁止偷懒全部标\"原始需求\"：\n"
+    "- 判定为\"原始需求\"：该字段值可直接从用户需求原文中逐字找到（含同义改写，如\"每月30G\"→流量资源）；\n"
+    "- 判定为\"AI补全\"：需求原文未提供该字段值，由你基于最高相似度产品或知识库推理得出；\n"
+    "- 自检：fields数组中凡需求原文没有明确提到的字段，source必须为\"AI补全\"；仅当需求原文明确提及时才可为\"原始需求\"。来源取值只允许\"原始需求\"或\"AI补全\"两种，禁止出现\"待补充\"作为来源（待补充只出现在value中）。\n"
+    "\n"
+    "【输出要求（单一出参 plan_output）】\n"
+    "按以下格式输出，第一行原样输出标签 plan_output:，随后紧跟一个JSON对象（以{开头、}结尾），除该标签行外不得输出任何其他文字、代码块或说明：\n"
+    "plan_output: {\"plan_json\":..., \"plan_md\":..., \"pending_fields\":..., \"plan_id\":...}\n"
+    "该JSON对象固定包含以下4个键：\n"
+    "1. plan_json：执行方案JSON对象，含 plan_id/fields/similar_offers/pending_fields 四个键；fields数组必须包含上述18个字段，每项形如{\"field\":\"字段名称\",\"value\":\"字段值\",\"source\":\"原始需求或AI补全\"}，待补充字段value填\"待补充\"；\n"
+    "2. plan_md：执行方案Markdown表格字符串，以|字段分类|开头，固定4列：字段分类/字段名称/字段值/来源，共18行数据行（与fields一一对应），同分类连续行按规范合并单元格（首行填分类，后续行留空）；\n"
+    "3. pending_fields：待补充字段名称数组（如[\"流量资源\",\"套餐固定费\"]），无待补充时为空数组[]；\n"
+    "4. plan_id：存储key字符串（格式 PLAN+yyyyMMdd+3位序号，如PLAN20231001001），修改场景沿用原值覆盖写。\n"
+    "注意：Markdown表格内的换行使用\\n转义，确保整个输出是合法JSON。",
     [inp("elements_json", "引用节点2要素JSON", ref_block=nid(2), ref_rel="elements_json"),
      inp("similarOfferList", "引用节点3相似产品列表", ref_block=nid(3), ref_rel="similarOfferList")],
-    [out("plan_json", "执行方案JSON"), out("plan_md", "执行方案Markdown表格"),
-     out("pending_fields", "待补充字段清单逗号分隔"), out("plan_id", "执行方案存储key")]))
+    [out("plan_output", "执行方案总输出JSON字符串，含 plan_json/plan_md/pending_fields/plan_id 四个键")]))
+# 004a 方案输出拆分：LLM节点4单出参 plan_output → 拆分为 plan_json/plan_md/pending_fields/plan_id 四出参
+s1.append(code_node(41, "方案输出拆分", CODE_004A,
+    [inp("plan_output", "引用节点4总输出", ref_block=nid(4), ref_rel="plan_output")],
+    [code_out("plan_json", 41), code_out("plan_md", 41),
+     code_out("pending_fields", 41), code_out("plan_id", 41)],
+    pos=(1455, 300)))
 s1.append(selector_node2(5, "待补充项判断",
-    [dep_node(4, "字段映射与补全", ["pending_fields"])],
+    [dep_node(41, "方案输出拆分", ["pending_fields"])],
     # 平台样例约定：条件定义在 port=-1（否则分支）；port=0 由平台自动路由
     # 语义：pending_fields 不为空（长度大于0）→ 有待补充项 → 保存执行方案 → 确认结束；
     #       port=0 兜底分支（pending_fields 为空）→ 直接结束提示，不保存（禁止进入智能配置）
-    [(-1, [cond_item(cond_ref(4, "pending_fields", "字段映射与补全"), 10, cond_str(""))])]))
+    [(-1, [cond_item(cond_ref(41, "pending_fields", "方案输出拆分"), 10, cond_str(""))])]))
 s1.append(plugin_node(6, "保存执行方案", "save_node_result",
     "节点结果存储（复用）：req_id=plan_id，node_name=requirement（执行方案环节），result_json=plan_json；同键覆盖",
     BASE_URL + "/api/v1/appstore/result/save",
-    [inp("req_id", "需求唯一标识=plan_id（PLAN+yyyyMMdd+3位序号）", ref_block=nid(4), ref_rel="plan_id"),
+    [inp("req_id", "需求唯一标识=plan_id（PLAN+yyyyMMdd+3位序号）", ref_block=nid(41), ref_rel="plan_id"),
      inp("node_name", "环节名=requirement（执行方案）", content="requirement"),
-     inp("result_json", "本环节结果JSON=plan_json", ref_block=nid(4), ref_rel="plan_json"),
+     inp("result_json", "本环节结果JSON=plan_json", ref_block=nid(41), ref_rel="plan_json"),
      inp("status", "本环节状态=ok", content="ok")],
     [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")]))
 s1.append(end_node(7, "结束(有待补充项)",
-    [inp("plan_md", "执行方案表格", ref_block=nid(4), ref_rel="plan_md"),
-     inp("pending_fields", "待补充字段", ref_block=nid(4), ref_rel="pending_fields")],
+    [inp("plan_id", "执行方案存储key", ref_block=nid(41), ref_rel="plan_id"),
+     inp("plan_md", "执行方案表格", ref_block=nid(41), ref_rel="plan_md"),
+     inp("pending_fields", "待补充字段", ref_block=nid(41), ref_rel="pending_fields")],
     "《产销品加载执行方案》已生成（plan_id：{plan_id}）\n\n{plan_md}\n\n【待补充字段】{pending_fields}\n以上费用、资源类字段需求中未提取到，需由您补充后才能执行：\n- 请直接补充字段值，将更新执行方案并再次确认；\n- 如需调整其他字段：请直接说明修改意见（其余字段已按相似产品补全）。"))
 s1.append(end_node(8, "结束(无待补充项)",
-    [inp("plan_id", "执行方案存储key", ref_block=nid(4), ref_rel="plan_id"),
-     inp("plan_md", "执行方案表格", ref_block=nid(4), ref_rel="plan_md")],
-    "《产销品加载执行方案》已生成并保存（plan_id：{plan_id}）\n\n{plan_md}\n\n【无待补充字段】全部字段已按相似产品补全，无需人工补充。\n请核对以上执行方案：\n- 回复【确认执行】：将自动串行执行 智能配置→稽核→资费校准→自动测试 四个环节（每环节执行后打印结果，仅异常时中断）；\n- 如需调整：请直接说明修改意见。"))
-e1 = [edge(1,2), edge(2,3), edge(3,4), edge(4,5),
+    [inp("plan_id", "执行方案存储key", ref_block=nid(41), ref_rel="plan_id"),
+     inp("plan_md", "执行方案表格", ref_block=nid(41), ref_rel="plan_md")],
+    "《产销品加载执行方案》已生成并保存（plan_id：{plan_id}）\n\n{plan_md}\n\n【无待补充字段】全部缺失字段已按最高相似度产品 AI 补全，来源已逐字段标注。\n请核对以上执行方案：\n- 回复【确认执行】：将自动串行执行 智能配置→稽核→资费校准→自动测试 四个环节（每环节执行后打印结果，仅异常时中断）；\n- 如需调整：请直接说明修改意见。"))
+e1 = [edge(1,2), edge(2,3), edge(3,4), edge(4,41), edge(41,5),
       edge(5,6,0), edge(5,7,-1), edge(6,8)]
 files["wf_sub_01_需求分析.json"] = workflow(
     "产销品-需求分析", "子工作流1：需求分析（执行方案生成）。需求理解→相似产品查询（自研模拟，18销售品种子）→字段映射与AI补全（pending_fields默认为空，仅费用/资源未提取到时待补充，其余AI补全）→待补充项判断（无待补充→保存执行方案→确认结束；有待补充→补充提示结束）。", "wf_sub_01", s1, e1)
@@ -637,7 +714,11 @@ files["wf_sub_08_审批进度查询.json"] = workflow(
     [edge(701,702), edge(702,703), edge(703,704)])
 
 # ============================================================
-# wf_cpcp_main 主工作流（V1.6：两次中断+串行+异常A+续跑）
+# wf_cpcp_main 主工作流【V1.7 已弃用·仅归档】
+# 说明：V1.7 起采用 LLM 智能调度模式（智能体按意图映射表直调 wf_sub_01~08
+# 八个子工作流），主流程固定编排不再挂载。本段生成逻辑保留，仅用于输出
+# 归档版 JSON（wf_cpcp_main_产销品加载主流程.json），供 V1.6 固定编排
+# 模式参考/回退使用；如需启用需按主方案 3.3 配置项重新挂载。
 # ============================================================
 m = []
 m.append(start_node(1, [
@@ -861,7 +942,7 @@ me = [
     edge(21,22),
 ]
 files["wf_cpcp_main_产销品加载主流程.json"] = workflow(
-    "产销品加载主流程", "主工作流V1.6：两次中断（结束节点A执行方案确认/节点14审批发起确认）；执行主干四环节（智能配置→实时稽核→资费校准→自动测试）自动串行、每环节打印结果并存EXEC{execution_id}_STAGE{n}；异常统一走异常A节点（引导重新执行/修改执行方案，续跑回放已成功环节不重复调用写接口）。", "wf_cpcp_main", m, me)
+    "产销品加载主流程", "【V1.7 已弃用·仅归档】主工作流V1.6：两次中断（结束节点A执行方案确认/节点14审批发起确认）；执行主干四环节（智能配置→实时稽核→资费校准→自动测试）自动串行、每环节打印结果并存EXEC{execution_id}_STAGE{n}；异常统一走异常A节点（引导重新执行/修改执行方案，续跑回放已成功环节不重复调用写接口）。V1.7 起 LLM 智能调度模式替代本流程（智能体直调子工作流），本 JSON 保留归档。", "wf_cpcp_main", m, me)
 
 for fn, data in files.items():
     data = apply_layout(data)

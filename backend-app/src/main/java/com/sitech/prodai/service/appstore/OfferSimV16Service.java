@@ -145,6 +145,17 @@ public class OfferSimV16Service {
             body.put("save_result", Map.of("reason", "confirmed 非 true，拒绝写入"));
             return body;
         }
+        // LLM智能调度硬门禁①：confirmed=true 还须存储中存在该 plan_id 的确认标记（CONFIRMED），
+        // 防止智能体跳过"用户确认→写确认标记"步骤直接调落地（不信任 LLM 传参）
+        String planIdForGate = MapOps.str(req.get("plan_id")).trim();
+        Map<String, Object> confirmRec = nodeResult.latestRecord(planIdForGate, "CONFIRMED");
+        if (confirmRec == null) {
+            Map<String, Object> body = ok();
+            body.put("status", "NOT_CONFIRMED");
+            body.put("save_result", Map.of("reason",
+                    "存储中无 plan_id=" + planIdForGate + " 的确认标记（node_name=CONFIRMED），请先回复【确认执行】"));
+            return body;
+        }
         String planJson = MapOps.str(req.get("plan_json"));
         Map<String, Object> replay = planIdempotency.get(planJson);
         if (replay != null) {
@@ -361,6 +372,21 @@ public class OfferSimV16Service {
             Map<String, Object> body = camelOk();
             body.put("status", "NOT_CONFIRMED");
             return body;
+        }
+        // LLM智能调度硬门禁②：approve_confirmed=true 还须存储中存在该 execution_id 的
+        // 四环节结果（config/spec/fee/test）且全部 status=ok，防止未走完执行主干直接发起审批
+        String executionId = MapOps.str(req.get("execution_id")).trim();
+        if (executionId.isEmpty()) {
+            return camelFail("PARAM_MISSING", "execution_id 必填（四环节结果门禁校验依据）");
+        }
+        for (String stage : List.of("config", "spec", "fee", "test")) {
+            Map<String, Object> rec = nodeResult.latestRecord(executionId, stage);
+            if (rec == null) {
+                Map<String, Object> body = camelOk();
+                body.put("status", "NOT_CONFIRMED");
+                body.put("reason", "执行主干未全部完成：缺少 " + stage + " 环节结果（req_id=" + executionId + "）");
+                return body;
+            }
         }
         String productId = MapOps.str(req.get("product_id")).trim();
         String existed = approvalByProduct.get(productId);

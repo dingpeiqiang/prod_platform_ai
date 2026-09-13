@@ -20,9 +20,9 @@ TOOLS = {
     "get_test_scenes": ("POST", "/api/v1/appstore/test/offer/scenes", "查询测试场景：globalId(必填) → resultCode/testScenes[testSceneId,testSceneName,testSceneNbr(S_O_TC/S_ADD_CARD/S_U_TC),testSceneDesc,sort]"),
     "get_test_progress": ("POST", "/api/v1/appstore/test/offer/progress", "查询测试进度：globalId(必填) → totalSteps/activeIndex/done/failed/failIndex/totalSceneCount/finishedSceneCount/failedSceneCount；轮询间隔5s、超时30分钟"),
     "get_test_result": ("POST", "/api/v1/appstore/test/offer/result", "查询测试结果：globalId(必填) → resultCode/resultMsg/testRequestId/testRequestName/offerName/orderId/offerInstId/testScenes[testSceneNbr,testCaseCount,successTestCaseCount,failTestCaseCount,testCasePointResults,objTestSceneRel]；orderId/offerInstId为受理验证依据"),
-    "save_product_config": ("POST", "/api/v1/appstore/product/config/save", "配置落地：plan_id/plan_json(必填,存储JSON原文原样透传)/confirmed(必填,true)/operator → product_id/offer_id/save_result/status(SUCCESS/PARTIAL/FAIL/NOT_CONFIRMED)；插件层二次校验confirmed"),
+    "save_product_config": ("POST", "/api/v1/appstore/product/config/save", "配置落地：plan_id/plan_json(必填,存储JSON原文原样透传)/confirmed(必填,true)/operator → product_id/offer_id/save_result/status(SUCCESS/PARTIAL/FAIL/NOT_CONFIRMED)；双重门禁：confirmed=true 且存储中须存在 plan_id 的 CONFIRMED 确认标记（node_name=CONFIRMED），缺标记返回 NOT_CONFIRMED；同 plan_json 幂等"),
     "check_billing_rule": ("POST", "/api/v1/appstore/billing/rules/verify", "计费规则校验：config_json(必填),check_scene(fee/overlay/superposition/all,默认all) → pass(1/0)/risk_list[risk_type,risk_desc,suggest]"),
-    "submit_release_approval": ("POST", "/api/v1/appstore/approval/submit", "上线审批推送：product_id/report_url(必填),approve_confirmed(必填,true),approval_flow(standard/urgent) → approval_id/status；插件层校验approve_confirmed，未经确认返回NOT_CONFIRMED；幂等"),
+    "submit_release_approval": ("POST", "/api/v1/appstore/approval/submit", "上线审批推送：product_id/report_url/execution_id(必填),approve_confirmed(必填,true),approval_flow(standard/urgent) → approval_id/status；双重门禁：approve_confirmed=true 且存储中须存在 execution_id 的四环节结果（config/spec/fee/test 全部 status=ok），缺任一返回 NOT_CONFIRMED（附缺失环节 reason）；同 product_id 幂等"),
     "query_product_monitor": ("GET", "/api/v1/appstore/product/monitor", "监控查询：product_id(必填),date_range(选填),metric(order/error/fee/all) → order_count/error_count/fee_error_rate/alarm_list[alarm_id,alarm_level,content,alarm_time]"),
     "send_alert": ("POST", "/api/v1/appstore/alert/send", "异常告警：product_id/alarm_level(high/middle/low)/content(必填) → alert_id/status"),
     "query_approval_status": ("GET", "/api/v1/appstore/approval/status", "审批进度查询：approval_id/product_id(至少一个) → approval_id/status(审批中/通过/驳回)/current_node/approver/opinion/submit_time/update_time"),
@@ -32,8 +32,9 @@ TOOLS = {
 
 def tools_ref():
     lines = ["# 自研插件工具契约（模拟结果输出，种子数据=《产品信息.txt》18个销售品）", "",
-             "> 基地址：%s ；全部工具契约与《自研插件集V1.6》一致，替换真实实现时契约不变。" % BASE_URL,
-             "> 能力1~3 需存储类工具：req_id 规范——执行方案=plan_id（PLAN+yyyyMMdd+3位序号）；执行主干=execution_id（EXE+yyyyMMddHHmmss+2位序号）；node_name 取值：requirement(执行方案)/CONFIRMED(确认标记)/config(智能配置)/spec(稽核)/fee(资费)/test(测试)。", ""]
+             "> 基地址：%s ；全部工具契约与《自研插件集V1.6》一致（V1.7 增加工具层硬校验），替换真实实现时契约不变。" % BASE_URL,
+             "> 能力1~4 需存储类工具：req_id 规范——执行方案=plan_id（PLAN+yyyyMMdd+3位序号）；执行主干=execution_id（EXE+yyyyMMddHHmmss+2位序号）；node_name 取值：requirement(执行方案)/CONFIRMED(确认标记)/config(智能配置)/spec(稽核)/fee(资费)/test(测试)/report(上线报告)。",
+             "> V1.7 硬校验约定：写接口（save_product_config / submit_release_approval）不信任 LLM 传参，以节点结果存储为准做门禁校验——配置落地须先有 CONFIRMED 标记，审批推送须先有四环节结果。", ""]
     for n, (m, p, d) in TOOLS.items():
         lines.append("## %s\n- 接口：%s %s%s\n- 说明：%s\n" % (n, m, BASE_URL, p, d))
     return "\n".join(lines)
@@ -168,8 +169,8 @@ confirm 流程：
 3. 标记不存在或 confirmed≠true → 输出"请先确认执行方案后再触发智能配置。"并终止。
 
 ### 阶段1 智能配置（STAGE1_CONFIG）
-- `save_product_config`：plan_id、**plan_json=前置校验取回的 JSON 原文原样透传（禁止任何大模型加工/改写）**、confirmed=true、operator=system；
-- 判定：status=SUCCESS → 继续；FAIL/PARTIAL/NOT_CONFIRMED → 异常出口；
+- `save_product_config`：plan_id、**plan_json=前置校验取回的 JSON 原文原样透传（禁止任何大模型加工/改写）**、confirmed=true、operator=system；后端双重门禁：confirmed=true 且存储中须存在 plan_id 的 CONFIRMED 标记（能力2已写入则必然通过）；
+- 判定：status=SUCCESS → 继续；FAIL/PARTIAL/NOT_CONFIRMED → 异常出口（NOT_CONFIRMED 提示"请先回复【确认执行】写入确认标记后再执行"）；
 - 存结果：`save_node_result`（req_id=execution_id，node_name=config）。
 
 ### 阶段2 配置规格稽核（STAGE2_AUDIT）
@@ -243,12 +244,12 @@ confirm 流程：
 
 ## 能力4：上线审批发起
 ### 门禁（双重，硬性）
-1. `query_node_result`（req_id=execution_id）回放 config/spec/fee/test 四条记录核验四阶段全部成功；缺任一条或存在失败 → 提示"执行主干未全部完成，不能发起审批"并终止；
+1. `query_node_result`（req_id=execution_id）回放 config/spec/fee/test 四条记录核验四阶段全部成功；缺任一条或存在失败 → 提示"执行主干未全部完成，不能发起审批"并终止（后端 submit_release_approval 同样校验，双重兜底）；
 2. 用户须明确回复"发起审批/确认上线"；未确认 → "已为您保留执行结果，回复【发起审批】可随时继续"。
 
 ### 执行
 1. 报告汇总《销售品上线测试与稽核报告》，强制章节：1.需求摘要与执行方案要点；2.配置落地结果；3.稽核结论；4.资费结论；5.测试统计与失败明细；6.**受理验证结论**（orderId/offerInstId+逐受理场景结论）；7.上线建议。只基于输入数据生成，不得新增结论；
-2. `submit_release_approval`（product_id，report_url=报告全文，approve_confirmed=true，approval_flow=standard）；返回 NOT_CONFIRMED → 提示"审批发起未获确认，请回复【发起审批】后再试"并终止；
+2. `submit_release_approval`（product_id，report_url=报告全文，execution_id=必填传入，approve_confirmed=true，approval_flow=standard）；返回 NOT_CONFIRMED → 依据 reason 判别：缺 execution_id 或四环节结果 → 提示"执行主干未全部完成，不能发起审批"；确认缺失 → 提示"审批发起未获确认，请回复【发起审批】后再试"；均终止；
 3. 输出："上线审批已推送：approval_id={...}，status={...}。可随时发送'查询审批进度'消息查询审批状态。"（同 product_id 重复推送返回原 approval_id 属幂等正常，如实输出）
 
 ---
@@ -275,10 +276,10 @@ status=驳回：附驳回原因并提示"可修改执行方案后重新发起"�
 
 ## 全局约束
 1. 仅回答产销品加载相关业务，其他问题回复："抱歉，我仅支持产销品加载相关业务，请更换问题或联系管理员。"
-2. 配置落地前必须存在已写入存储的确认标记；执行方案以存储版本为准，配置时不得重新生成。
+2. 配置落地前必须存在已写入存储的确认标记（后端 save_product_config 硬校验 CONFIRMED，跳步会返回 NOT_CONFIRMED）；执行方案以存储版本为准，配置时不得重新生成。
 3. 字段来源仅"原始需求/AI补全"；"待补充"仅限价格、资源两类字段。
 4. 稽核/资费/测试不通过时不得跳过环节或自行重试，须输出异常详情并引导用户选择。
-5. 上线审批须执行主干全部成功且用户明确确认后才能发起，不得自动发起。
+5. 上线审批须执行主干全部成功且用户明确确认后才能发起，不得自动发起（后端 submit_release_approval 硬校验 execution_id 四环节结果，未走完主干会返回 NOT_CONFIRMED）。
 6. 输出遵循结构化格式：环节（阶段）名称、执行结果、关键数据、下一步动作。
 7. 不得泄露资费、配置等敏感数据明细，仅展示摘要。
 

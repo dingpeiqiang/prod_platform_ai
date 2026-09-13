@@ -1,13 +1,14 @@
 # 产销品加载 AI 应用开发方案（Skills 封装版）
 > 平台：AI应用开发（九思大模型 · 低代码智能体平台）
 > 场景：安徽电信 CPCP 产销品域 · 数字员工（必选场景）
-> 版本：S1.0　日期：2026-09-12
+> 版本：S1.1　日期：2026-09-13
 > 方案定位：本方案是《产销品加载AI应用开发方案.md》（工作流编排版，下称"主方案"）的**替代实现路线**。业务目标、环节划分、插件清单、知识库、验收标准与主方案完全一致，差异仅在于**实现载体：以 Skills（技能包）封装替代工作流编排**。
 
 ## 版本记录
 | 版本 | 日期 | 变更说明 |
 | --- | --- | --- |
 | S1.0 | 2026-09-12 | 基于 V1.6 主方案产出 Skills 封装版：8 个业务环节封装为 6 个技能（4 个主动技能 + 2 个被动技能），执行主干四环节封装为单技能内部脚本，取消主/子工作流编排 |
+| S1.1 | 2026-09-13 | 对齐主方案 V1.7「LLM 智能调度 + 工具层硬校验」：save_product_config 增加存储 CONFIRMED 标记硬校验、submit_release_approval 增加 execution_id 四环节结果硬校验（必填入参），技能门禁表述由"脚本校验+插件层校验"统一为"技能自查 + 后端工具层硬校验"双重兜底 |
 
 ---
 
@@ -46,7 +47,7 @@
 1. **技能高内聚**：一个技能 = 一个业务能力域，技能内自带提示词、工具清单、脚本逻辑、知识库引用；技能间只通过**结构化产物（plan_id / execution_id / product_id / approval_id）** 传递，低耦合。
 2. **产物即状态**：所有跨技能传递的数据（执行方案 JSON、各环节结果）以「节点结果存储查询插件」为唯一持久层，key 规范与主方案一致（`PLAN*` / `EXEC{id}_STAGE{n}`），**技能无状态、产物有状态**，天然支持续跑与审计。
 3. **主干单技能化**：执行主干四环节不拆四个技能，而是封装为**一个技能内的四阶段串行脚本**——技能内代码保证"串行、不停顿、异常即停、逐环节打印"，避免智能体多轮路由带来的不确定性。这是本方案与主方案最大的结构差异。
-4. **门禁下沉到技能**：确认门禁（confirmed）、审批门禁（approve_confirmed）不再依赖画布选择器，而是**在技能脚本入口硬校验**（从存储读取确认标记），双重保险（脚本校验 + 插件层校验）。
+4. **门禁下沉到技能 + 工具层硬校验兜底**：确认门禁（confirmed）、审批门禁（approve_confirmed）不依赖画布选择器，而是在技能脚本入口自查存储（从存储读取确认标记）；同时后端写接口**不信任 LLM 传参**做硬校验（save_product_config 校验存储 CONFIRMED 标记、submit_release_approval 校验 execution_id 四环节结果），与主方案 V1.7 完全一致。
 5. **被动技能承接消息查询**：审批进度、监控结果查询用 trigger 触发的被动技能实现，用户"发送消息即查"，无需显式指令。
 6. **插件先行，自研模拟**：与主方案 V1.6 完全一致——13 个插件工具全部自研模拟，种子数据适配《产品信息.txt》18 个销售品；技能只是插件的"组织者"，不改变插件契约。
 
@@ -86,7 +87,7 @@
 | 触发方式 | ① Skill-2 确认后自动触发；② 用户"重新执行"消息触发（携带 resume_action） |
 | 封装内容 | 四阶段串行脚本（技能内代码/函数节点）+ 工具组 `save_product_config` / `realtime_spec_audit` / `check_billing_rule` / `offer_test` / `get_test_scenes` / `get_test_progress` / `get_test_result` + 节点结果存储查询插件 + 测试报告生成提示词 |
 | 输入 | plan_id（必填）/ execution_id（选填，续跑时传入）/ resume_action（选填：retry_from_fail / 默认首跑）/ fail_node（选填） |
-| 内部四阶段（串行、异常即停） | **阶段1 智能配置**：按 plan_id 读取执行 JSON 原文 → 前置校验 CONFIRMED 标记（未确认直接拒绝执行）→ `save_product_config` 原样透传落地 → 打印阶段结果；**阶段2 实时稽核**：`realtime_spec_audit`（offer_id + config_json）同步返回 → 打印结果；**阶段3 资费校准**：`check_billing_rule` → 打印结果；**阶段4 自动测试**：`offer_test` 发起 → `get_test_scenes` → 循环 `get_test_progress`（间隔 5s、超时 30 分钟）→ `get_test_result` → 测试报告生成（**必须含受理验证结论 orderId/offerInstId**）→ 打印结果 |
+| 内部四阶段（串行、异常即停） | **阶段1 智能配置**：按 plan_id 读取执行 JSON 原文 → 前置校验 CONFIRMED 标记（未确认直接拒绝执行）→ `save_product_config` 原样透传落地（**后端硬校验 CONFIRMED 标记，缺标记返回 NOT_CONFIRMED**）→ 打印阶段结果；**阶段2 实时稽核**：`realtime_spec_audit`（offer_id + config_json）同步返回 → 打印结果；**阶段3 资费校准**：`check_billing_rule` → 打印结果；**阶段4 自动测试**：`offer_test` 发起 → `get_test_scenes` → 循环 `get_test_progress`（间隔 5s、超时 30 分钟）→ `get_test_result` → 测试报告生成（**必须含受理验证结论 orderId/offerInstId**）→ 打印结果 |
 | 异常处置 | 任一阶段失败/超时 → 立即中断，输出统一异常模板（异常阶段名 + 原因 + 明细 error_list/risk_list/失败测点 + 整改建议 + 【重新执行】/【修改执行方案】引导）；各阶段结果按 `EXEC{execution_id}_STAGE{1..4}` 写入存储 |
 | 续跑逻辑 | `retry_from_fail` 时先读存储回放已成功阶段（不重复调用写接口），从 fail_node 对应阶段继续；`revise_plan` 时交回 Skill-1 |
 | 输出产物 | product_id / offer_id / 稽核结论 / 资费结论 / 测试报告 / all_passed 标记 / execution_id |
@@ -100,7 +101,7 @@
 | 触发方式 | 主动触发：执行主干全部成功后智能体提示"是否发起上线审批"，用户回复"发起审批/确认上线"触发 |
 | 封装内容 | 报告汇总提示词 + 工具 `submit_release_approval` + 节点结果存储查询插件 |
 | 输入 | execution_id / product_id（必填其一） |
-| 执行逻辑 | ① 从存储回放四阶段结果 → ② 大模型按标准模板汇总《销售品上线测试与稽核报告》（含需求摘要/配置落地/稽核结论/资费结论/测试统计/受理验证结论/上线建议）→ ③ 校验 all_passed==true 且用户已明确确认（approve_confirmed 门禁，`submit_release_approval` 插件层二次校验）→ ④ 推送审批流，输出审批单号 |
+| 执行逻辑 | ① 从存储回放四阶段结果（config/spec/fee/test）→ ② 大模型按标准模板汇总《销售品上线测试与稽核报告》（含需求摘要/配置落地/稽核结论/资费结论/测试统计/受理验证结论/上线建议）→ ③ 校验四环节全部成功且用户已明确确认（approve_confirmed 门禁，`submit_release_approval` 须携带 execution_id，**后端硬校验存储中该 execution_id 的 config/spec/fee/test 四条记录，缺任一返回 NOT_CONFIRMED**）→ ④ 推送审批流，输出审批单号 |
 | 输出产物 | approval_id / status / report |
 | 与主方案差异 | 原"成功结果详情汇总大模型节点 + 审批发起判定选择器 + `wf_sub_06`" → 单技能；"成功详情打印"由 Skill-3 完成后输出，本技能只管审批 |
 
@@ -165,11 +166,12 @@
 
 【限制】
 1. 仅回答产销品加载相关业务，其他问题按答案为空提示回复。
-2. 配置落地前必须存在已写入存储的确认标记；执行方案以存储版本为准，配置时
-   不得重新生成。
+2. 配置落地前必须存在已写入存储的确认标记（后端 save_product_config 硬校验 CONFIRMED，
+   跳步会返回 NOT_CONFIRMED）；执行方案以存储版本为准，配置时不得重新生成。
 3. 字段来源仅"原始需求/AI补全"；"待补充"仅限价格、资源两类字段。
 4. 稽核/资费/测试不通过时不得跳过环节或自行重试，须输出异常详情并引导用户选择。
-5. 上线审批须执行主干全部成功且用户明确确认后才能发起。
+5. 上线审批须执行主干全部成功且用户明确确认后才能发起，不得自动发起（后端
+   submit_release_approval 硬校验 execution_id 四环节结果）。
 6. 输出遵循结构化格式：环节（阶段）名称、执行结果、关键数据、下一步动作。
 7. 不得泄露资费、配置等敏感数据明细，仅展示摘要。
 ```
@@ -192,10 +194,12 @@
 | key | 内容 | 写入方 | 读取方 |
 | --- | --- | --- | --- |
 | `PLAN{yyyyMMdd}{序号}` | 执行方案 JSON（覆盖写） | Skill-1 | Skill-2 / Skill-3 |
-| `EXEC{id}_CONFIRMED` | 确认标记（true） | Skill-2 | Skill-3（门禁校验）/ save_product_config 插件（二次校验） |
-| `EXEC{id}_STAGE1..4` | 各阶段执行结果 | Skill-3 | Skill-3（续跑回放）/ Skill-4（报告汇总） |
+| `EXEC{id}_CONFIRMED` | 确认标记（true） | Skill-2 | Skill-3（门禁自查）/ save_product_config 后端硬校验 |
+| `EXEC{id}_STAGE1..4` | 各阶段执行结果 | Skill-3 | Skill-3（续跑回放）/ Skill-4（报告汇总）/ submit_release_approval 后端硬校验 |
 | `EXEC{id}_ALLPASSED` | 主干完成标记 | Skill-3 | Skill-4（审批门禁校验） |
 | `APPROVAL{id}` | 审批单状态 | submit_release_approval 插件 | Skill-5 |
+
+> V1.7 对齐说明：后端硬校验实际按 `req_id + node_name`（req_id=execution_id，node_name=config/spec/fee/test/CONFIRMED）查询 `NodeResultService.latestRecord`，与工作流版存储枚举一致；`EXEC{id}_STAGE{n}` 为 Skills 版自有 key 规范（两条路线并存）。
 
 ---
 

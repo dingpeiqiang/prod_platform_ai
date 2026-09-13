@@ -138,6 +138,24 @@ public class NodeResultService {
         return body;
     }
 
+    /**
+     * V1.6 LLM智能调度模式门禁：按 req_id + node_name 取最新一条记录（供写接口硬校验）。
+     * 智能体直调子工作流时，确认标记/环节结果以存储为准，工具层不信任 LLM 传参。
+     *
+     * @return 命中返回 {result_json, status}；未命中返回 null
+     */
+    public Map<String, Object> latestRecord(String reqId, String nodeName) {
+        NodeResultRecord latest = findLatestByReqNode(reqId == null ? "" : reqId.trim(),
+                nodeName == null ? "" : nodeName.trim());
+        if (latest == null) {
+            return null;
+        }
+        Map<String, Object> rec = new LinkedHashMap<>();
+        rec.put("result_json", latest.getResultJson());
+        rec.put("status", latest.getStatus());
+        return rec;
+    }
+
     /* ---------------- 共用写入/查询 ---------------- */
 
     private synchronized Map<String, Object> doSave(String reqId, String nodeName, String key,

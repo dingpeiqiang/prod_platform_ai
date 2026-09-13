@@ -52,7 +52,7 @@ public class AppStoreV16Controller {
 
     /* ================= 接口3：配置落地 save_product_config ================= */
 
-    @Operation(summary = "配置落地", description = "解析执行方案JSON四类字段写入模拟CRM配置库；内部二次校验 confirmed==true；同 plan_json 幂等")
+    @Operation(summary = "配置落地", description = "解析执行方案JSON四类字段写入模拟CRM配置库；内部二次校验 confirmed==true 与存储 CONFIRMED 标记门禁；同 plan_json 幂等")
     @PostMapping("/product/config/save")
     public Map<String, Object> saveProductConfig(@RequestBody Map<String, Object> req) {
         return sim.saveProductConfig(req);
@@ -100,7 +100,7 @@ public class AppStoreV16Controller {
 
     /* ================= 接口9：上线审批推送 submit_release_approval ================= */
 
-    @Operation(summary = "上线审批推送", description = "生成模拟审批单号并写入审批状态库；校验 approve_confirmed==true；同 product_id 幂等")
+    @Operation(summary = "上线审批推送", description = "生成模拟审批单号并写入审批状态库；校验 approve_confirmed==true 与 execution_id 四环节结果门禁；同 product_id 幂等")
     @PostMapping("/approval/submit")
     public Map<String, Object> approvalSubmit(@RequestBody Map<String, Object> req) {
         return sim.approvalSubmit(req);
