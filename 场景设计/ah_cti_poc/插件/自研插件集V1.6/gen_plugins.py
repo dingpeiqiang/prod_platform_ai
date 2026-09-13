@@ -578,13 +578,14 @@ plugins.append(build_storage_plugin(
 plugins.append(build_plugin(
     "field-ontology-0001", "字段本体推理", "field_ontology_reason",
     "自研实现（V2.1）：字段本体推理引擎后端。四类18字段本体注册表（枚举/格式/默认值/兜底口径）内聚于后端 FieldOntologyService，"
-    "action=validate 对 LLM 补全结果逐字段做本体合法性推理（枚举校验/格式校验，非法返回 violations 供 LLM 重填）；"
-    "action=complete 对缺失字段按本体默认值推理补全（兜底口径字段：套餐固定费/流量/语音/短信不默认补全，交上游判待补充）；"
+    "action=reason 一体推理（校验+修正回写+默认值补全，返回推理后 fields_json 供工作流闭环取值——工作流主用动作）；"
+    "action=validate 仅校验（非法返回 violations 供重填）；"
+    "action=complete 仅默认值补全（兜底口径字段：套餐固定费/流量/语音/短信不默认补全，交上游判待补充）；"
     "action=ontology 查询字段本体定义。替代 V2.0 K6 知识库文档方案，字段口径由代码单一事实源保证",
     "/api/v1/appstore/ontology/fields", "POST",
     {
         "action": schema_param("action", "string",
-            "推理动作枚举：validate（字段合法性校验）/complete（默认值推理补全）/ontology（本体定义查询）；非法返回 5101", True, "", "validate,complete,ontology"),
+            "推理动作枚举：reason（一体推理：校验+修正+补全，工作流主用）/validate（仅校验）/complete（仅默认值补全）/ontology（本体定义查询）；非法返回 5101", True, "", "reason,validate,complete,ontology"),
         "fields_json": schema_param("fields_json", "string",
             "字段数组JSON字符串：[{\"field\":\"字段名称\",\"value\":\"字段值\",\"source\":\"原始需求或AI补全\"}]；action=ontology 时可空", False),
     },
@@ -593,10 +594,17 @@ plugins.append(build_plugin(
         "code": {"description": "统一状态码，0 成功 / 5101 非法action", "type": "string"},
         "msg": {"description": "状态描述", "type": "string"},
         "pass": {"description": "validate 出参：1 全部合法 / 0 存在违规", "type": "string"},
-        "violations": arr("violations", "validate 出参：违规明细，pass=0 时非空", {
+        "violations": arr("violations", "validate/reason 出参：无法自动修正的违规明细，pass=0 时非空", {
             "field": {"description": "违规字段名", "type": "string"},
             "value": {"description": "违规值", "type": "string"},
             "reason": {"description": "期望规则（本体定义）", "type": "string"},
+        }),
+        "fixed": arr("fixed", "reason 出参：修正/补全明细", {
+            "field": {"description": "字段名", "type": "string"},
+            "value": {"description": "原值（补全/修正前）", "type": "string"},
+            "action": {"description": "defaulted=默认值补全 / fallback=兜底待补充 / corrected=修正回写 / none=维持", "type": "string"},
+            "corrected": {"description": "修正后值（corrected 动作时非空）", "type": "string"},
+            "reason": {"description": "处理依据（本体规则）", "type": "string"},
         }),
         "completed": arr("completed", "complete 出参：逐字段补全/兜底标记", {
             "field": {"description": "字段名", "type": "string"},
@@ -604,7 +612,7 @@ plugins.append(build_plugin(
             "defaulted": {"description": "1=本体默认值补全 / 0=未补全", "type": "string"},
             "reason": {"description": "补全依据（本体规则）", "type": "string"},
         }),
-        "fields_json": {"description": "complete 出参：补全后的完整字段数组JSON", "type": "string"},
+        "fields_json": {"description": "reason/complete 出参：推理后的完整字段数组JSON（工作流从该结果闭环取值组装方案）", "type": "string"},
         "fields": arr("fields", "ontology 出参：字段本体定义清单", {
             "field": {"description": "字段名", "type": "string"},
             "category": {"description": "字段分类（A基础信息/B资源配置/C营销资源/D销售规则）", "type": "string"},

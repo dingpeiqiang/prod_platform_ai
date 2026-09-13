@@ -164,6 +164,7 @@ public class AppStoreV16Controller {
     /* ================= 接口14：字段本体推理（field_ontology_reason） ================= */
 
     @Operation(summary = "字段本体推理", description = "V2.1 本体推理引擎：四类18字段本体注册表（枚举/格式/默认值/兜底口径）——"
+            + "action=reason 一体推理（校验+修正回写+默认值补全，返回推理后fields_json供工作流闭环取值）；"
             + "action=validate 逐字段校验LLM补全合法性（非法返回violations供重填）；"
             + "action=complete 缺失字段按本体默认值推理补全（兜底口径字段不补全交上游判待补充）；"
             + "action=ontology 查询字段本体定义")
@@ -171,6 +172,9 @@ public class AppStoreV16Controller {
     public Map<String, Object> ontologyFields(@RequestBody Map<String, Object> req) {
         String action = MapOps.str(req.get("action"));
         String fieldsJson = MapOps.str(req.get("fields_json"));
+        if ("reason".equals(action)) {
+            return fieldOntologyService.reason(fieldsJson);
+        }
         if ("validate".equals(action)) {
             return fieldOntologyService.validate(fieldsJson);
         }
@@ -182,7 +186,7 @@ public class AppStoreV16Controller {
         }
         Map<String, Object> fail = new java.util.LinkedHashMap<>();
         fail.put("code", 5101);
-        fail.put("msg", "invalid action（须为 validate/complete/ontology）");
+        fail.put("msg", "invalid action（须为 reason/validate/complete/ontology）");
         return fail;
     }
 

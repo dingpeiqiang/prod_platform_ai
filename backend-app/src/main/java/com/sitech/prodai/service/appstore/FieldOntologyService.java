@@ -188,6 +188,140 @@ public class FieldOntologyService {
     }
 
     /**
+     * 接口四（V2.1 一体推理）：reason = validate + 修正 + complete，闭环动作。
+     * 逐字段执行：
+     * <ol>
+     *   <li>value 为空 → 默认值推理补全（default_value 非空且非兜底），兜底口径字段置"待补充"；</li>
+     *   <li>value 非空 → 本体校验；非法值直接按本体规则**修正回写**（枚举归一：月付/包月→按月等；
+     *       无法修正的保留原值并记入 violations）；</li>
+     *   <li>修正回写后 source 统一标"AI补全"（原值非"原始需求"时）。</li>
+     * </ol>
+     * 出参：fixed（修正/补全明细）、violations（无法修正项）、fields_json（推理后的完整字段数组）。
+     * 工作流 004a 代码节点从 fields_json 取推理后结果组装 plan_json，实现引擎兜底闭环。
+     */
+    public Map<String, Object> reason(String fieldsJson) {
+        List<Map<String, Object>> fields = parseFields(fieldsJson);
+        List<Map<String, Object>> fixed = new ArrayList<>();
+        List<Map<String, Object>> violations = new ArrayList<>();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> f : fields) {
+            String field = str(f.get("field"));
+            String value = str(f.get("value"));
+            String source = str(f.get("source"));
+            FieldSpec spec = SPECS.get(field);
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("field", field);
+            item.put("value", value);
+            item.put("source", source);
+            if (spec == null) {
+                out.add(item); // 未注册字段透传
+                continue;
+            }
+            // ① 缺失 → 默认值推理补全 / 兜底置待补充
+            if (value.isEmpty()) {
+                Map<String, Object> c = new LinkedHashMap<>();
+                c.put("field", field);
+                if (spec.defaultValue != null && !spec.fallback) {
+                    value = spec.defaultValue;
+                    source = "AI补全";
+                    c.put("value", value);
+                    c.put("action", "defaulted");
+                    c.put("reason", spec.rule);
+                } else if (spec.fallback) {
+                    value = "待补充";
+                    c.put("value", value);
+                    c.put("action", "fallback");
+                    c.put("reason", "兜底口径字段，不默认补全：" + spec.rule);
+                } else {
+                    c.put("value", "");
+                    c.put("action", "none");
+                    c.put("reason", "本体无默认值，维持留空");
+                }
+                fixed.add(c);
+            } else if (!"待补充".equals(value) && !"由智能配置生成".equals(value)) {
+                // ② 非空 → 本体校验 + 修正回写
+                String err = checkValue(spec, value);
+                if (err != null) {
+                    String corrected = correctValue(spec, value);
+                    Map<String, Object> c = new LinkedHashMap<>();
+                    c.put("field", field);
+                    c.put("value", value);
+                    if (corrected != null) {
+                        value = corrected;
+                        if (!"原始需求".equals(source)) {
+                            source = "AI补全";
+                        }
+                        c.put("corrected", corrected);
+                        c.put("reason", err + "；已按本体规则修正");
+                    } else {
+                        c.put("corrected", "");
+                        c.put("reason", err + "；无法自动修正，保留原值待人工处理");
+                        Map<String, Object> v = new LinkedHashMap<>();
+                        v.put("field", field);
+                        v.put("value", value);
+                        v.put("reason", err);
+                        violations.add(v);
+                    }
+                    fixed.add(c);
+                }
+            }
+            item.put("value", value);
+            item.put("source", source);
+            out.add(item);
+        }
+        Map<String, Object> body = ok();
+        body.put("fixed", fixed);
+        body.put("violations", violations);
+        body.put("fields_json", toJson(out));
+        return body;
+    }
+
+    /** 枚举归一修正：把 LLM 的变体表述映射为本体枚举合法值；无法修正返回 null */
+    private String correctValue(FieldSpec spec, String value) {
+        if (spec.enums == null) {
+            return null;
+        }
+        String v = value.trim();
+        // 收费方式归一：月付/包月→按月；按次→一次性
+        if ("收费方式".equals(spec.field)) {
+            if (v.contains("月付") || v.contains("包月") || v.contains("按月")) {
+                return "按月";
+            }
+            if (v.contains("一次性") || v.contains("按次")) {
+                return "一次性";
+            }
+            if (v.contains("按量")) {
+                return "按量";
+            }
+            return null;
+        }
+        // 单枚举字段：包含匹配
+        if (!spec.multi) {
+            for (String e : spec.enums) {
+                if (v.contains(e)) {
+                    return e;
+                }
+            }
+            return null;
+        }
+        // 多选字段（渠道类型）：逐项归一
+        StringBuilder sb = new StringBuilder();
+        for (String part : v.split("[、,，]")) {
+            String p = part.trim();
+            for (String e : spec.enums) {
+                if (p.contains(e)) {
+                    if (sb.length() > 0) {
+                        sb.append("、");
+                    }
+                    sb.append(e);
+                    break;
+                }
+            }
+        }
+        return sb.length() > 0 ? sb.toString() : null;
+    }
+
+    /**
      * 接口三：本体定义查询 ontology（供调试/演示查看注册的字段本体规格）。
      */
     public Map<String, Object> ontology() {
