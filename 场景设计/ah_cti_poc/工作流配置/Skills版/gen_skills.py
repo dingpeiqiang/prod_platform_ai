@@ -272,7 +272,7 @@ s1.append(start_node(1, [
     inp("revise_opinion", "修改意见（修改执行方案续跑时传入，选填）", required=False),
 ]))
 s1.append(llm_node(2, "需求理解与要素拆解",
-    "你是产销品加载需求分析助手。按6步分析：理解需求→提取并拆解业务要素（基础信息/资源配置/营销资源/销售规则四类）→识别信息完整性（字段三态：原始需求/AI补全/待补充）。需求原文：{requirement_text}\n修改意见（如有则覆盖分析）：{revise_opinion}\n补充规则（V1.6）：pending_fields默认为空——仅当费用（价格）或资源（流量/语音/短信）未提取到时，才将该字段填\"待补充\"并计入pending_fields（禁止推理，禁止从相似产品照搬）；其余缺失字段待相似产品返回后按最高相似度产品补全，来源标记\"AI补全\"；来源只允许\"原始需求\"或\"AI补全\"两种。\n输出要求（两个出参逐一约定，每个出参只输出自己的内容，严禁把其他出参内容并入）：\n1. elements_json：仅输出结构化要素JSON对象本身（以{开头、}结尾），包含 fields 数组与 pending_fields 数组，不得附带键名前缀或说明；\n2. need_summary：仅输出需求摘要文本本身（≤5000字符，供相似度分析调用使用）；\n3. 严格禁止输出形如\"elements_json: {...} need_summary: ...\"的拼接包；除上述两个出参各自内容外不输出任何多余文字。",
+    "你是产销品加载需求分析助手。按6步分析：理解需求→提取并拆解业务要素（基础信息/资源配置/营销资源/销售规则四类）→识别信息完整性（字段三态：原始需求/AI补全/待补充）。需求原文：{requirement_text}\n修改意见（如有则覆盖分析）：{revise_opinion}\n补充规则（V1.6）：pending_fields默认为空——仅当套餐固定费（月租费）未提取到，或流量/语音/短信三类资源一个都未提取到时，才将缺失字段填\"待补充\"并计入pending_fields（禁止推理，禁止从相似产品照搬；任一类资源已提取到则其余资源字段不算缺失）；产品编码不做补全（由智能配置环节落地后生成）；其余缺失字段待相似产品返回后按最高相似度产品补全，来源标记\"AI补全\"；来源只允许\"原始需求\"或\"AI补全\"两种。\n输出要求（两个出参逐一约定，每个出参只输出自己的内容，严禁把其他出参内容并入）：\n1. elements_json：仅输出结构化要素JSON对象本身（以{开头、}结尾），包含 fields 数组与 pending_fields 数组，不得附带键名前缀或说明；\n2. need_summary：仅输出需求摘要文本本身（≤5000字符，供相似度分析调用使用）；\n3. 严格禁止输出形如\"elements_json: {...} need_summary: ...\"的拼接包；除上述两个出参各自内容外不输出任何多余文字。",
     [inp("requirement_text", "引用开始节点 requirement_text", ref_block=nid(1), ref_rel="requirement_text"),
      inp("revise_opinion", "引用开始节点 revise_opinion", ref_block=nid(1), ref_rel="revise_opinion")],
     [out("elements_json", "业务要素结构化JSON"), out("need_summary", "需求摘要")], pos=(375, 300)))
@@ -283,7 +283,7 @@ s1.append(plugin_node(3, "相似产品查询", "query_similar_offer",
     [("resultCode", "0成功/1失败", "string"), ("resultMsg", "处理结果描述", "string"),
      ("similarOfferList", "相似产品列表（similarOfferId/similarOfferName/similarityScore/similarityDesc）", "array", None)], pos=(640, 300)))
 s1.append(llm_node(4, "字段映射与补全",
-    "基于业务要素与相似产品列表，映射为实际配置字段并补全：\n要素：{elements_json}\n相似产品：{similarOfferList}\n规则：价格、资源类未提供填\"待补充\"（禁止推理）；其余缺失字段取最高相似度产品对应值，来源\"AI补全\"；来源只允许\"原始需求\"/\"AI补全\"两种。\n输出要求（单一出参 plan_output）：\n按以下格式输出，第一行原样输出标签 plan_output:，随后紧跟一个JSON对象（以{开头、}结尾），除该标签行外不得输出任何其他文字、代码块或说明：\nplan_output: {\"plan_json\":..., \"plan_md\":..., \"pending_fields\":...}\n该JSON对象固定包含以下3个键：\n1. plan_json：执行方案JSON对象，含 req_id/fields/similar_offers/pending_fields 四个键，fields内每项含 field/value/source；req_id 键留空字符串（由后续代码节点统一生成，禁止自行生成）；\n2. plan_md：执行方案Markdown表格字符串（以|字段分类|开头，固定4列：字段分类/字段名称/字段值/来源），表格内换行使用\\n转义，确保整个输出是合法JSON；\n3. pending_fields：待补充字段名称数组，无待补充时为空数组[]。",
+    "基于业务要素与相似产品列表，映射为实际配置字段并补全：\n要素：{elements_json}\n相似产品：{similarOfferList}\n规则：仅当套餐固定费（月租费）未提取到，或流量/语音/短信三类资源一个都未提取到时，才将缺失字段填\"待补充\"（禁止推理，禁止从相似产品照搬；任一类资源已提取到则其余资源字段不算缺失）；产品编码禁止补全（由智能配置环节落地后生成，未提取到时value填\"由智能配置生成\"）；其余缺失字段取最高相似度产品对应值，来源\"AI补全\"；来源只允许\"原始需求\"/\"AI补全\"两种。\n输出要求（单一出参 plan_output）：\n按以下格式输出，第一行原样输出标签 plan_output:，随后紧跟一个JSON对象（以{开头、}结尾），除该标签行外不得输出任何其他文字、代码块或说明：\nplan_output: {\"plan_json\":..., \"plan_md\":..., \"pending_fields\":...}\n该JSON对象固定包含以下3个键：\n1. plan_json：执行方案JSON对象，含 req_id/fields/similar_offers/pending_fields 四个键，fields内每项含 field/value/source；req_id 键留空字符串（由后续代码节点统一生成，禁止自行生成）；\n2. plan_md：执行方案Markdown表格字符串（以|字段分类|开头，固定4列：字段分类/字段名称/字段值/来源），表格内换行使用\\n转义，确保整个输出是合法JSON；\n3. pending_fields：待补充字段名称数组，无待补充时为空数组[]。",
     [inp("elements_json", "引用节点2要素JSON", ref_block=nid(2), ref_rel="elements_json"),
      inp("similarOfferList", "引用节点3相似产品列表", ref_block=nid(3), ref_rel="similarOfferList")],
     [out("plan_output", "执行方案总输出JSON字符串，含 plan_json/plan_md/pending_fields 三个键")], pos=(905, 300)))
@@ -309,7 +309,7 @@ s1.append(plugin_node(6, "保存执行方案", "save_node_result",
 s1.append(end_node(7, "结束(有待补充项)",
     [inp("plan_md", "执行方案表格", ref_block=nid(41), ref_rel="plan_md"),
      inp("pending_fields", "待补充字段", ref_block=nid(41), ref_rel="pending_fields")],
-    "《产销品加载执行方案》已生成（暂未保存）\n\n{plan_md}\n\n【待补充字段】{pending_fields}\n以上价格、资源类字段需求中未提取到，需由您补充后才能执行：\n- 请直接补充字段值，将更新执行方案并再次确认；\n- 如需调整其他字段：请直接说明修改意见（其余字段已按相似产品补全）。", pos=(1985, 120)))
+    "《产销品加载执行方案》已生成（暂未保存）\n\n{plan_md}\n\n【待补充字段】{pending_fields}\n以上字段为套餐固定费（月租费）或全部资源信息（流量/语音/短信均未提供）需求中未提取到，需由您补充后才能执行：\n- 请直接补充字段值，将更新执行方案并再次确认；\n- 如需调整其他字段：请直接说明修改意见（其余字段已按相似产品补全）。", pos=(1985, 120)))
 s1.append(end_node(8, "结束(无待补充项)",
     [inp("req_id", "执行方案存储key", ref_block=nid(41), ref_rel="req_id"),
      inp("plan_md", "执行方案表格", ref_block=nid(41), ref_rel="plan_md")],
@@ -320,7 +320,7 @@ files["skill_01_需求分析与执行方案.json"] = skill(
     "产销品-需求分析技能", "Skill-1（主动）：需求分析与执行方案生成。需求理解→相似产品查询（自研模拟，18销售品种子）→字段映射与AI补全（LLM单出参plan_output，代码节点004a拆分）→待补充判断（无待补充→保存执行方案产出req_id；有待补充→补充提示结束）。",
     "skill_01", s1, e1,
     {"passive": False, "active": True, "triggers": ["上传需求文档", "口述需求", "生成执行方案", "修改执行方案"]},
-    "接收需求文档或口述需求，生成《产销品加载执行方案》并存储（req_id）。补全规则：仅价格、资源类字段未提供填\"待补充\"（禁止推理），其余基于相似产品AI补全。")
+    "接收需求文档或口述需求，生成《产销品加载执行方案》并存储（req_id）。补全规则：仅当套餐固定费（月租费）未提取到或三类资源全部未提取到时填\"待补充\"（禁止推理）；产品编码不补全（由智能配置生成）；其余基于相似产品AI补全。")
 
 # ============================================================
 # skill_02 确认解析与门禁（被动）
