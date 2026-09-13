@@ -1104,7 +1104,7 @@ OPS_REPORT_PROMPT_HEAD = (
     "# 【产品名称】｜运营情况\n"
     "\n"
     "**当前状态：🟢/🟡/🔴**\n"
-    "**数据周期：XXX**\n"
+    "**数据周期：最近1天（以系统返回的最新数据为准）**\n"
     "**更新时间：XXX**\n"
     "\n"
     "## 核心运营指标\n"
@@ -1132,19 +1132,17 @@ OPS_REPORT_PROMPT_HEAD = (
 s7 = []
 s7.append(start_node(601, [
     inp("product_id", "销售品ID", required=True),
-    inp("date_range", "日期范围，默认最近1天", required=False),
 ]))
 s7.append(plugin_node(602, "监控查询", "query_product_monitor",
     "工具10：自研模拟监控查询（产品名称/订单量及趋势/异常量及趋势/计费差错率及趋势/告警列表），供运营报告生成",
     BASE_URL + "/api/v1/appstore/product/monitor",
     [inp("product_id", "销售品ID", ref_block=nid(601), ref_rel="product_id"),
-     inp("date_range", "日期范围", ref_block=nid(601), ref_rel="date_range"),
      inp("metric", "指标默认all", content="all")],
     [("offer_name", "产品名称", "string"),
      ("order_count", "订单量", "string"), ("order_trend", "订单量趋势", "string"),
      ("error_count", "异常量", "string"), ("error_trend", "异常量趋势", "string"),
      ("fee_error_rate", "计费差错率", "string"), ("fee_trend", "计费差错率趋势", "string"),
-     ("date_range", "数据周期", "string"), ("alarm_list", "告警列表", "array")],
+     ("alarm_list", "告警列表", "array")],
     method="get"))
 s7.append(selector_node2(603, "异常判定",
     [dep_node(602, "监控查询", ["error_count", "fee_error_rate"])],
@@ -1173,7 +1171,6 @@ s7.append(llm_node(608, "运营报告生成(异常分支)",
     OPS_REPORT_PROMPT_HEAD + "\n\n补充说明：本产品存在异常（error_count={error_count}，fee_error_rate={fee_error_rate}，告警列表={alarm_list}），已触发告警推送；报告状态判定应不低于🟡，异常指标须在\"重点关注\"中逐条说明。",
     [inp("ops_text", "运营数据JSON（监控查询出参汇总）", ref_block=nid(602), ref_rel="offer_name"),
      inp("offer_name", "产品名称", ref_block=nid(602), ref_rel="offer_name"),
-     inp("date_range", "数据周期", ref_block=nid(602), ref_rel="date_range"),
      inp("order_count", "订单量", ref_block=nid(602), ref_rel="order_count"),
      inp("order_trend", "订单量趋势", ref_block=nid(602), ref_rel="order_trend"),
      inp("error_count", "异常量", ref_block=nid(602), ref_rel="error_count"),
@@ -1185,7 +1182,6 @@ s7.append(llm_node(608, "运营报告生成(异常分支)",
 s7.append(llm_node(609, "运营报告生成(正常分支)",
     OPS_REPORT_PROMPT_HEAD + "\n\n补充说明：本产品各指标正常（error_count=0，计费差错率低于阈值，无新增告警），报告状态判定为🟢；整体正常时不要强行生成建议。",
     [inp("offer_name", "产品名称", ref_block=nid(602), ref_rel="offer_name"),
-     inp("date_range", "数据周期", ref_block=nid(602), ref_rel="date_range"),
      inp("order_count", "订单量", ref_block=nid(602), ref_rel="order_count"),
      inp("order_trend", "订单量趋势", ref_block=nid(602), ref_rel="order_trend"),
      inp("error_count", "异常量", ref_block=nid(602), ref_rel="error_count"),

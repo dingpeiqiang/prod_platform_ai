@@ -476,7 +476,6 @@ public class OfferSimV16Service {
         body.put("error_trend", errorCount > 0 ? "上升" : "持平");
         body.put("fee_error_rate", String.format(java.util.Locale.ROOT, "%.4f", feeErrorRate));
         body.put("fee_trend", feeErrorRate > 0.01 ? "上升" : "持平");
-        body.put("date_range", MapOps.str(params.get("date_range")));
         body.put("metric", MapOps.firstNonEmpty(params.get("metric"), "all"));
         body.put("alarm_list", alarmList);
         return body;

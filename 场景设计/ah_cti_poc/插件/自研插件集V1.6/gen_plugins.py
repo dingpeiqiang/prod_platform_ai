@@ -485,8 +485,6 @@ plugins.append(build_plugin(
     {
         "product_id": schema_param("product_id", "string",
             "要查询的销售品ID；缺失返回 PARAM_MISSING", True),
-        "date_range": schema_param("date_range", "string",
-            "日期范围，如 2026-09-11~2026-09-12，默认最近1天", False),
         "metric": schema_param("metric", "string",
             "指标枚举：order/error/fee/all，默认 all", False, "all", "order,error,fee,all"),
     },
