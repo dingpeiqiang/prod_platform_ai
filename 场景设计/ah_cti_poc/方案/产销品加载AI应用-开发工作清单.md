@@ -25,7 +25,7 @@
 | --- | --- | --- | --- | --- | --- |
 | 1 | 相似度分析 `query_similar_offer` | POST /api/v1/appstore/similar/offer/query | 以 18 销售品构建相似度匹配模拟服务（关键词+资费结构加权打分），返回 similarOfferList | 任一 18 销售品相关需求均可命中对应销售品（score 降序）；businessDesc>5000 字符由上游摘要，接口只校验非空 | 0.5d |
 | 2 | 实时规格稽核 `realtime_spec_audit` | POST /api/v1/appstore/audit/realtime | 规则引擎：按配置规范校验必填属性/命名/生效期/销售范围，对照《产品信息.txt》该销售品规则；**同步返回** | pass/error_list/audit_summary 结构完整；支持构造缺陷用例（互斥叠加）返回 pass=0；60s 超时返回 TIMEOUT | 1d |
-| 3 | 配置落地 `save_product_config` | POST /api/v1/appstore/product/config/save | 模拟 CRM 写入：内存产品档案（种子 18 销售品）；解析 plan_json 四类字段；**V1.7 后端硬校验：`NodeResultService.latestRecord(plan_id,"CONFIRMED")` 非空才放行**；幂等（同 plan_json 返回已存在 offer_id） | 无 CONFIRMED 标记返回 NOT_CONFIRMED 且无写入（LLM 跳步也写不进去）；save_result 四类分类明细；product_id/offer_id 生成规则稳定 | 1d |
+| 3 | 配置落地 `save_product_config` | POST /api/v1/appstore/product/config/save | 模拟 CRM 写入：内存产品档案（种子 18 销售品）；解析 plan_json 四类字段；**V1.7 后端硬校验：`NodeResultService.latestRecord(req_id,"CONFIRMED")` 非空才放行，方案key由后端从 plan_json 的 req_id 键提取**；幂等（同 plan_json 返回已存在 offer_id） | 无 CONFIRMED 标记返回 NOT_CONFIRMED 且无写入（LLM 跳步也写不进去）；save_result 四类分类明细；product_id/offer_id 生成规则稳定 | 1d |
 
 ### 1.2 自动测试类（含受理验证）
 
@@ -41,19 +41,19 @@
 | # | 接口 | 方法/路径 | 开发内容 | 验收要点 | 工期 |
 | --- | --- | --- | --- | --- | --- |
 | 8 | 计费规则校验 `check_billing_rule` | POST /api/v1/appstore/billing/rules/verify | 内置规则引擎（负资费/边界价差/叠加上限/互斥/自定义规则），对照 18 销售品资费结构 | check_scene 四种枚举生效；构造冲突用例 pass=0 且 risk_list 完整 | 1d |
-| 9 | 审批推送 `submit_release_approval` | POST /api/v1/appstore/approval/submit | 写入模拟审批状态库（状态机：审批中→产品经理审核→部门主管审批→通过/驳回）；**V1.7 后端硬校验：execution_id 入参必填 + 遍历查询 `NodeResultService.latestRecord(execution_id,"config"/"spec"/"fee"/"test")` 四条记录全部非空**；幂等（同 product_id 返回原 approval_id） | 四环节结果缺失时拒绝推送（LLM 跳步发起也被拦截）；状态可被接口13 查询 | 0.5d |
+| 9 | 审批推送 `submit_release_approval` | POST /api/v1/appstore/approval/submit | 写入模拟审批状态库（状态机：审批中→产品经理审核→部门主管审批→通过/驳回）；**V1.7 后端硬校验：req_id 入参必填 + 遍历查询 `NodeResultService.latestRecord(req_id,"config"/"spec"/"fee"/"test")` 四条记录全部非空（V1.7 统一键，原 execution_id 参数合并为 req_id）**；幂等（同 product_id 返回原 approval_id） | 四环节结果缺失时拒绝推送（LLM 跳步发起也被拦截）；状态可被接口13 查询 | 0.5d |
 | 10 | 审批进度 `query_approval_status` | GET /api/v1/appstore/approval/status | 从模拟审批状态库按 approval_id（优先）/product_id 查询最新审批单 | 返回 status/current_node/approver/opinion/update_time；查无单返回明确提示 | 0.5d |
 | 11 | 监控查询 `query_product_monitor` | GET /api/v1/appstore/product/monitor | 按 product_id+日期确定性生成指标（订单量/异常量/差错率/告警列表）；支持 error_count>0 预置演示 | date_range/metric 参数生效；告警列表与接口12 写入记录回显一致 | 0.5d |
 | 12 | 异常告警 `send_alert` | POST /api/v1/appstore/alert/send | 生成 alert_id 写入模拟告警库（供监控查询回显闭环） | alarm_level 三级枚举；content 落库 | 0.25d |
 
 ### 1.4 平台复用插件对齐（改动量小）
 
-> 说明：节点结果存储/查询为平台已有通用插件（不自研），后端契约以 `/api/v1/appstore/result/save`（POST，入参 req_id/node_name/result_json/status）与 `/api/v1/appstore/result/query`（**GET**，入参 req_id/node_name/latest_only，出参 total/list）为准，契约基线见 `插件\自研插件集V1.6\节点结果*_export_V1.6.json`。**存储已落库持久化**：后端由 `NodeResultService`（MyBatis-Plus）写入 `pd_ai_node_results` 表（H2 DDL：`backend-app/src/main/resources/sql/h2/schema-h2.sql`；MySQL DDL：`sql/01_full_schema_ddl.sql` L504 起），服务重启后结果不丢失。存储寻址口径：执行方案环节 req_id=plan_id（PLAN+yyyyMMdd+3位序号）、node_name=requirement；执行主干各环节 req_id=execution_id（EXE+yyyyMMddHHmmss+2位序号）、node_name=config/spec/fee/test/**report**（上线报告，wf_sub_06 存储）。
+> 说明：节点结果存储/查询为平台已有通用插件（不自研），后端契约以 `/api/v1/appstore/result/save`（POST，入参 req_id/node_name/result_json/status）与 `/api/v1/appstore/result/query`（**GET**，入参 req_id/node_name/latest_only，出参 total/list）为准，契约基线见 `插件\自研插件集V1.6\节点结果*_export_V1.6.json`。**存储已落库持久化**：后端由 `NodeResultService`（MyBatis-Plus）写入 `pd_ai_node_results` 表（H2 DDL：`backend-app/src/main/resources/sql/h2/schema-h2.sql`；MySQL DDL：`sql/01_full_schema_ddl.sql` L504 起），服务重启后结果不丢失。存储寻址口径（V1.7 统一键）：全链路唯一批次标识 = req_id（PLAN+yyyyMMddHHmmss+3位随机数，原 plan_id/execution_id 双键合并）；执行方案环节 node_name=requirement，执行主干各环节 node_name=config/spec/fee/test/**report**（上线报告，wf_sub_06 存储），同键覆盖写。
 
 | # | 接口 | 方法/路径 | 开发内容 | 验收要点 | 工期 |
 | --- | --- | --- | --- | --- | --- |
 | 13 | 节点结果存储 `save_node_result` | POST /api/v1/appstore/result/save | 平台已有插件直接挂载；入参 req_id/node_name/result_json（status 默认 ok）；同键（req_id+node_name）覆盖；非法 req_id 返回 5002、node_name 为空返回 5003、result_json 超 64KB 返回 5004 | 工作流入参与导出 JSON 逐项一致（各子工作流结束前保存本环节结果：wf_sub_01 保存执行方案、wf_sub_02~05 保存 config/spec/fee/test、wf_sub_06 保存 report）；保存→按 req_id+node_name 查询 result_json 逐字节一致；服务重启后可查询（持久化） | 0.25d |
-| 14 | 节点结果查询 `query_node_result` | GET /api/v1/appstore/result/query | 平台已有插件直接挂载；入参 req_id（必填）/node_name（可选）/latest_only（默认1）；出参 code/msg/total/list（取 list[0].result_json 为结果原文） | 各子工作流 req_id 自查：req_id=execution_id、node_name=本环节名；非法 req_id 返回 5002；total=0 时按 E5 处理（"未找到执行方案"） | 0.25d |
+| 14 | 节点结果查询 `query_node_result` | GET /api/v1/appstore/result/query | 平台已有插件直接挂载；入参 req_id（必填）/node_name（可选）/latest_only（默认1）；出参 code/msg/total/list（取 list[0].result_json 为结果原文） | 各子工作流 req_id 自查（V1.7 统一键）：req_id=开始节点入参、node_name=本环节名；非法 req_id 返回 5002；total=0 时按 E5 处理（"未找到执行方案"） | 0.25d |
 
 ---
 
@@ -74,7 +74,7 @@
 | --- | --- | --- | --- |
 | 1 | 测试轮询代码节点（wf_sub_04 节点0304，type=6 代码节点） | 代码节点（非循环节点）：asyncio.sleep(5) 间隔轮询、最多 360 次（超时 30 分钟）、连续 5 次查询失败终止转人工（保留 globalId）；退出条件 done==true 或 failed==true；**注意：type=6 代码节点 inputs 必须为平铺 list 结构（非 {loopParam, inputParameters} 嵌套）** | 0.5d |
 | 2 | NodeResultService 新增 `latestRecord(reqId, nodeName)` 公开方法（V1.7 已完成） | 按 req_id+node_name 取最新记录（返回 {result_json,status} 或 null），供 save_product_config / submit_release_approval 后端硬校验使用；后端编译验证通过（mvn compile） | 已完成 |
-| 3 | LLM 调度层配套（V1.7，提示词约定，无独立代码） | 确认标记写入（save_node_result：req_id=plan_id、node_name=CONFIRMED）、串行直调子工作流入参注入、每环节结果打印与 save_node_result 存储、fail_node 续跑映射；全部由主方案 3.2 提示词固化 | 已完成（文档） |
+| 3 | LLM 调度层配套（V1.7，提示词约定，无独立代码） | 确认标记写入（save_node_result：req_id=执行方案存储键、node_name=CONFIRMED）、串行直调子工作流入参注入、每环节结果打印、fail_node 续跑映射；全部由主方案 3.2 提示词固化（V1.7 环节结果存储已下沉到子工作流内部） | 已完成（文档） |
 
 ---
 

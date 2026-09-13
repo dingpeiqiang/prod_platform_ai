@@ -161,6 +161,54 @@ def loop_node(seq, title, desc, in_refs, outputs, pos=(650, 300)):
     }
 
 
+CODE_004A = (
+    "import json, re\n"
+    "from typing import Any, Dict\n"
+    "async def main(args):\n"
+    "    raw = args.params['plan_output']\n"
+    "    if not isinstance(raw, str):\n"
+    "        raw = json.dumps(raw, ensure_ascii=False)\n"
+    "    m = re.search(r'\\{[\\s\\S]*\\}', raw)\n"
+    "    if not m:\n"
+    "        obj = {}\n"
+    "    else:\n"
+    "        try:\n"
+    "            obj = json.loads(m.group(0))\n"
+    "        except Exception:\n"
+    "            obj = {}\n"
+    "    pf = obj.get('pending_fields') or ''\n"
+    "    if isinstance(pf, list):\n"
+    "        pf = ','.join([str(x) for x in pf])\n"
+    "    plan_json = obj.get('plan_json')\n"
+    "    if not isinstance(plan_json, str):\n"
+    "        plan_json = json.dumps(plan_json if plan_json is not None else obj, ensure_ascii=False)\n"
+    "    ret: Output = {\n"
+    "        \"plan_json\": plan_json,\n"
+    "        \"plan_md\": str(obj.get('plan_md') or ''),\n"
+    "        \"pending_fields\": str(pf),\n"
+    "        \"req_id\": str(obj.get('req_id') or '')\n"
+    "    }\n"
+    "    return ret"
+)
+
+
+def code_node(seq, title, code, in_refs, outputs, pos=(650, 300)):
+    """代码节点（对齐 gen_workflows.py / 平台真实导出：inputs 平铺 list、language=1、type=6）"""
+    return {
+        "outputs": outputs, "code": code, "flowJson": None,
+        "inputs": in_refs, "checkErr": False,
+        "nodeMeta": {"description": "编写代码，处理输入变量来生成返回值", "title": title},
+        "language": 1,
+        "id": nid(seq), "position": {"x": pos[0], "y": pos[1]},
+        "dependencyData": [], "type": 6
+    }
+
+
+def code_out(name, block_seq, ptype="string"):
+    b = nid(block_seq)
+    return {"relName": b + "," + name, "name": name, "type": ptype}
+
+
 def end_node(seq, title, inputs, out_content, pos=(1030, 300)):
     return {
         "outputs": {"name": "", "type": "string", "content": out_content},
@@ -226,46 +274,51 @@ s1.append(plugin_node(3, "相似产品查询", "query_similar_offer",
     [("resultCode", "0成功/1失败", "string"), ("resultMsg", "处理结果描述", "string"),
      ("similarOfferList", "相似产品列表（similarOfferId/similarOfferName/similarityScore/similarityDesc）", "array", None)], pos=(640, 300)))
 s1.append(llm_node(4, "字段映射与补全",
-    "基于业务要素与相似产品列表，映射为实际配置字段并补全：\n要素：{elements_json}\n相似产品：{similarOfferList}\n规则：价格、资源类未提供填\"待补充\"（禁止推理）；其余缺失字段取最高相似度产品对应值，来源\"AI补全\"；来源只允许\"原始需求\"/\"AI补全\"两种。\n输出要求（四个出参逐一约定，每个出参只输出自己的内容，严禁把其他出参内容并入）：\n1. plan_json：仅输出执行方案JSON对象本身（以{开头、}结尾），含 plan_id/fields/similar_offers/pending_fields 四个键，fields内每项含 field/value/source；\n2. plan_md：仅输出Markdown表格本身（以|字段分类|开头），固定4列：字段分类/字段名称/字段值/来源；\n3. pending_fields：仅输出待补充字段名称清单，逗号分隔，无待补充时输出空字符串；\n4. plan_id：仅输出存储key本身（格式 PLAN+yyyyMMddHHmmss+3位随机数，如 PLAN20260913143025087，**必须取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史 plan_id**；仅修改执行方案场景沿用原值覆盖写）；\n5. 除上述四个出参各自内容外不输出任何多余文字。",
+    "基于业务要素与相似产品列表，映射为实际配置字段并补全：\n要素：{elements_json}\n相似产品：{similarOfferList}\n规则：价格、资源类未提供填\"待补充\"（禁止推理）；其余缺失字段取最高相似度产品对应值，来源\"AI补全\"；来源只允许\"原始需求\"/\"AI补全\"两种。\n输出要求（单一出参 plan_output）：\n按以下格式输出，第一行原样输出标签 plan_output:，随后紧跟一个JSON对象（以{开头、}结尾），除该标签行外不得输出任何其他文字、代码块或说明：\nplan_output: {\"plan_json\":..., \"plan_md\":..., \"pending_fields\":..., \"req_id\":...}\n该JSON对象固定包含以下4个键：\n1. plan_json：执行方案JSON对象，含 req_id/fields/similar_offers/pending_fields 四个键，fields内每项含 field/value/source；\n2. plan_md：执行方案Markdown表格字符串（以|字段分类|开头，固定4列：字段分类/字段名称/字段值/来源），表格内换行使用\\n转义，确保整个输出是合法JSON；\n3. pending_fields：待补充字段名称数组，无待补充时为空数组[]；\n4. req_id：存储key字符串（格式 PLAN+yyyyMMddHHmmss+3位随机数，如 PLAN20260913143025087，**必须取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史 req_id**；仅修改执行方案场景沿用原值覆盖写）。",
     [inp("elements_json", "引用节点2要素JSON", ref_block=nid(2), ref_rel="elements_json"),
      inp("similarOfferList", "引用节点3相似产品列表", ref_block=nid(3), ref_rel="similarOfferList")],
-    [out("plan_json", "执行方案JSON"), out("plan_md", "执行方案Markdown表格"),
-     out("pending_fields", "待补充字段清单逗号分隔"), out("plan_id", "执行方案存储key")], pos=(905, 300)))
-s1.append(selector_node2(5, "待补充项判断",
-    [dep_node(4, "字段映射与补全", ["pending_fields"])],
-    # 语义（port=-1 命中）：pending_fields 不为空（长度大于0）→ 有待补充项 → 补充提示结束；port=0 兜底（为空）→ 保存执行方案
-    [(-1, [cond_item(cond_ref(4, "pending_fields", "字段映射与补全"), 3, cond_str("0"))])],
+    [out("plan_output", "执行方案总输出JSON字符串，含 plan_json/plan_md/pending_fields/req_id 四个键")], pos=(905, 300)))
+# 004a 方案输出拆分：LLM节点4单出参 plan_output → 代码节点拆分为 plan_json/plan_md/pending_fields/req_id 四出参
+s1.append(code_node(41, "方案输出拆分", CODE_004A,
+    [inp("plan_output", "引用节点4总输出", ref_block=nid(4), ref_rel="plan_output")],
+    [code_out("plan_json", 41), code_out("plan_md", 41),
+     code_out("pending_fields", 41), code_out("req_id", 41)],
     pos=(1170, 300)))
+s1.append(selector_node2(5, "待补充项判断",
+    [dep_node(41, "方案输出拆分", ["pending_fields"])],
+    # 语义（port=-1 命中）：pending_fields 不为空（长度大于0）→ 有待补充项 → 补充提示结束；port=0 兜底（为空）→ 保存执行方案
+    [(-1, [cond_item(cond_ref(41, "pending_fields", "方案输出拆分"), 3, cond_str("0"))])],
+    pos=(1435, 300)))
 s1.append(plugin_node(6, "保存执行方案", "save_node_result",
-    "节点结果存储（复用）：req_id=plan_id，node_name=requirement（执行方案环节），result_json=plan_json；同键覆盖",
+    "节点结果存储（复用）：req_id=入参 req_id（V1.7 统一键），node_name=requirement（执行方案环节），result_json=plan_json；同键覆盖",
     "save_node_result",
-    [inp("req_id", "需求唯一标识=plan_id（PLAN+yyyyMMddHHmmss+3位随机数）", ref_block=nid(4), ref_rel="plan_id"),
+    [inp("req_id", "需求唯一标识=执行方案存储key（PLAN+yyyyMMddHHmmss+3位随机数）", ref_block=nid(41), ref_rel="req_id"),
      inp("node_name", "环节名=requirement（执行方案）", content="requirement"),
-     inp("result_json", "本环节结果JSON=plan_json", ref_block=nid(4), ref_rel="plan_json"),
+     inp("result_json", "本环节结果JSON=plan_json", ref_block=nid(41), ref_rel="plan_json"),
      inp("status", "本环节状态=ok", content="ok")],
-    [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")], pos=(1440, 300)))
+    [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")], pos=(1705, 300)))
 s1.append(end_node(7, "结束(有待补充项)",
-    [inp("plan_md", "执行方案表格", ref_block=nid(4), ref_rel="plan_md"),
-     inp("pending_fields", "待补充字段", ref_block=nid(4), ref_rel="pending_fields")],
-    "《产销品加载执行方案》已生成（暂未保存）\n\n{plan_md}\n\n【待补充字段】{pending_fields}\n以上价格、资源类字段需求中未提取到，需由您补充后才能执行：\n- 请直接补充字段值，将更新执行方案并再次确认；\n- 如需调整其他字段：请直接说明修改意见（其余字段已按相似产品补全）。", pos=(1710, 120)))
+    [inp("plan_md", "执行方案表格", ref_block=nid(41), ref_rel="plan_md"),
+     inp("pending_fields", "待补充字段", ref_block=nid(41), ref_rel="pending_fields")],
+    "《产销品加载执行方案》已生成（暂未保存）\n\n{plan_md}\n\n【待补充字段】{pending_fields}\n以上价格、资源类字段需求中未提取到，需由您补充后才能执行：\n- 请直接补充字段值，将更新执行方案并再次确认；\n- 如需调整其他字段：请直接说明修改意见（其余字段已按相似产品补全）。", pos=(1985, 120)))
 s1.append(end_node(8, "结束(无待补充项)",
-    [inp("plan_id", "执行方案存储key", ref_block=nid(4), ref_rel="plan_id"),
-     inp("plan_md", "执行方案表格", ref_block=nid(4), ref_rel="plan_md")],
-    "《产销品加载执行方案》已生成并保存（plan_id：{plan_id}）\n\n{plan_md}\n\n【无待补充字段】全部字段已按相似产品补全，无需人工补充。\n请核对以上执行方案：\n- 回复【确认执行】：将自动串行执行 智能配置→稽核→资费校准→自动测试 四个环节（每环节执行后打印结果，仅异常时中断）；\n- 如需调整：请直接说明修改意见。", pos=(1710, 480)))
-e1 = [edge(1, 2), edge(2, 3), edge(3, 4), edge(4, 5),
+    [inp("req_id", "执行方案存储key", ref_block=nid(41), ref_rel="req_id"),
+     inp("plan_md", "执行方案表格", ref_block=nid(41), ref_rel="plan_md")],
+    "《产销品加载执行方案》已生成并保存（req_id：{req_id}）\n\n{plan_md}\n\n【无待补充字段】全部字段已按相似产品补全，无需人工补充。\n请核对以上执行方案：\n- 回复【确认执行】：将自动串行执行 智能配置→稽核→资费校准→自动测试 四个环节（每环节执行后打印结果，仅异常时中断）；\n- 如需调整：请直接说明修改意见。", pos=(1985, 480)))
+e1 = [edge(1, 2), edge(2, 3), edge(3, 4), edge(4, 41), edge(41, 5),
       edge(5, 7, -1), edge(5, 6, 0), edge(6, 8)]
 files["skill_01_需求分析与执行方案.json"] = skill(
-    "产销品-需求分析技能", "Skill-1（主动）：需求分析与执行方案生成。需求理解→相似产品查询（自研模拟，18销售品种子）→字段映射与AI补全（仅价格/资源待补充，其余AI补全）→待补充判断（无待补充→保存执行方案产出plan_id；有待补充→补充提示结束）。",
+    "产销品-需求分析技能", "Skill-1（主动）：需求分析与执行方案生成。需求理解→相似产品查询（自研模拟，18销售品种子）→字段映射与AI补全（LLM单出参plan_output，代码节点004a拆分）→待补充判断（无待补充→保存执行方案产出req_id；有待补充→补充提示结束）。",
     "skill_01", s1, e1,
     {"passive": False, "active": True, "triggers": ["上传需求文档", "口述需求", "生成执行方案", "修改执行方案"]},
-    "接收需求文档或口述需求，生成《产销品加载执行方案》并存储（plan_id）。补全规则：仅价格、资源类字段未提供填\"待补充\"（禁止推理），其余基于相似产品AI补全。")
+    "接收需求文档或口述需求，生成《产销品加载执行方案》并存储（req_id）。补全规则：仅价格、资源类字段未提供填\"待补充\"（禁止推理），其余基于相似产品AI补全。")
 
 # ============================================================
 # skill_02 确认解析与门禁（被动）
 # ============================================================
 s2 = []
 s2.append(start_node(101, [
-    inp("plan_id", "上下文中的执行方案存储key（必填）", required=True),
+    inp("req_id", "上下文中的执行方案存储key（必填，V1.7 统一键）", required=True),
     inp("user_reply", "用户回复文本（必填）", required=True),
 ]))
 s2.append(llm_node(102, "确认意图解析",
@@ -278,23 +331,23 @@ s2.append(selector_node2(103, "意图分支",
     [(-1, [cond_item(cond_ref(102, "intent", "确认意图解析"), 1, cond_str("confirm"))])],
     pos=(640, 300)))
 s2.append(plugin_node(104, "写入确认标记", "save_node_result",
-    "确认标记写入（复用节点结果存储）：req_id=EXEC{execution_id}，node_name=CONFIRMED，result_json={\"confirmed\":true,\"plan_id\":...}；Skill-3 执行前硬校验此标记",
+    "确认标记写入（复用节点结果存储）：req_id=开始节点入参 req_id（V1.7 统一键，与执行方案存储同键），node_name=CONFIRMED，result_json={\"confirmed\":true,\"req_id\":...}；后端 save_product_config 硬校验此标记",
     "save_node_result",
-    [inp("req_id", "执行批次标识=execution_id（EXE+yyyyMMddHHmmss+3位随机数，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史 execution_id）", ref_block=nid(101), ref_rel="plan_id"),
+    [inp("req_id", "执行方案存储key（与执行方案存储同键，V1.7 统一键）", ref_block=nid(101), ref_rel="req_id"),
      inp("node_name", "标记名=CONFIRMED", content="CONFIRMED"),
      inp("result_json", "确认标记JSON", content='{"confirmed":true}'),
      inp("status", "本环节状态=ok", content="ok")],
     [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")], pos=(905, 120)))
 s2.append(end_node(105, "结束(已确认)",
-    [inp("plan_id", "执行方案key", ref_block=nid(101), ref_rel="plan_id")],
-    "✅ 已确认执行方案（plan_id：{plan_id}），确认标记已写入存储。\n即将自动启动执行主干：智能配置→实时稽核→资费校准→自动测试（四环节串行、每环节打印结果、异常即停）。", pos=(1170, 120)))
+    [inp("req_id", "执行方案存储key", ref_block=nid(101), ref_rel="req_id")],
+    "✅ 已确认执行方案（req_id：{req_id}），确认标记已写入存储。\n即将自动启动执行主干：智能配置→实时稽核→资费校准→自动测试（四环节串行、每环节打印结果、异常即停）。", pos=(1170, 120)))
 s2.append(end_node(106, "结束(非确认)",
     [inp("intent", "解析意图", ref_block=nid(102), ref_rel="intent"),
      inp("revise_opinion", "修改意见", ref_block=nid(102), ref_rel="revise_opinion")],
     "意图：{intent}\n- revise：请核对修改意见「{revise_opinion}」，将重新生成执行方案并再次确认；\n- reject：已取消本次执行，方案已保留，可随时回复【确认执行】继续。", pos=(1170, 480)))
 e2 = [edge(101, 102), edge(102, 103), edge(103, 104, -1), edge(104, 105), edge(103, 106, 0)]
 files["skill_02_确认解析与门禁.json"] = skill(
-    "产销品-方案确认技能", "Skill-2（被动）：确认解析与门禁。解析用户确认/修改/拒绝意图；确认→写EXEC确认标记（Skill-3硬校验）并触发执行主干；修改→带修改意见回到Skill-1；拒绝→结束。",
+    "产销品-方案确认技能", "Skill-2（被动）：确认解析与门禁。解析用户确认/修改/拒绝意图；确认→写CONFIRMED确认标记（与执行方案同键 req_id，后端硬校验）并触发执行主干；修改→带修改意见回到Skill-1；拒绝→结束。",
     "skill_02", s2, e2,
     {"passive": True, "active": False, "triggers": ["确认执行", "同意", "修改意见", "取消"]},
     "用户对执行方案回复确认/修改/拒绝时触发：确认→写入确认标记并启动执行主干；修改→重新分析；拒绝→结束。未确认绝不触发配置落地。")
@@ -304,24 +357,23 @@ files["skill_02_确认解析与门禁.json"] = skill(
 # ============================================================
 s3 = []
 s3.append(start_node(201, [
-    inp("plan_id", "已确认的执行方案存储key（必填）", required=True),
-    inp("execution_id", "执行主干批次号 EXE+yyyyMMddHHmmss+3位随机数（取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史 execution_id；续跑时传入，首跑自动生成）", required=False),
+    inp("req_id", "执行方案存储key（必填，V1.7 统一键：PLAN+yyyyMMddHHmmss+3位随机数，与执行方案/确认标记存储同键）", required=True),
     inp("resume_action", "续跑指令：retry_from_fail/空=首跑", required=False),
     inp("fail_node", "上次失败阶段编码：STAGE1_CONFIG/STAGE2_AUDIT/STAGE3_FEE/STAGE4_TEST", required=False),
 ]))
 # 阶段1 智能配置
 s3.append(plugin_node(202, "读取执行方案", "query_node_result",
-    "节点结果查询（复用）：req_id=plan_id，node_name=requirement 取回执行方案JSON原文",
+    "节点结果查询（复用）：req_id=开始节点入参 req_id（V1.7 统一键），node_name=requirement 取回执行方案JSON原文",
     "query_node_result",
-    [inp("req_id", "需求唯一标识=plan_id", ref_block=nid(201), ref_rel="plan_id"),
+    [inp("req_id", "需求唯一标识=开始节点入参 req_id", ref_block=nid(201), ref_rel="req_id"),
      inp("node_name", "环节名=requirement", content="requirement"),
      inp("latest_only", "仅取最新一条=true", content="true")],
     [("code", "0成功", "string"), ("msg", "状态描述", "string"),
      ("total", "记录数", "string"), ("list", "结果列表（list[0].result_json=执行方案JSON原文）", "array", None)], pos=(375, 300)))
 s3.append(plugin_node(203, "阶段1-智能配置", "save_product_config",
-    "工具7：直读执行方案JSON原样透传落地（节点202→203之间禁止插入大模型/改写节点）；插件内部二次校验confirmed",
+    "工具7：直读执行方案JSON原样透传落地（节点202→203之间禁止插入大模型/改写节点）；后端硬校验 req_id 的 CONFIRMED 标记，req_id 由后端从 plan_json 的 req_id 键提取",
     "save_product_config",
-    [inp("plan_id", "执行方案key", ref_block=nid(201), ref_rel="plan_id"),
+    [inp("req_id", "执行方案存储key（V1.7 统一键）", ref_block=nid(201), ref_rel="req_id"),
      inp("plan_json", "执行方案JSON原文（节点202查询出参list[0].result_json原样透传）", ref_block=nid(202), ref_rel="list"),
      inp("confirmed", "用户确认标志true（Skill-2确认门禁已写入存储）", content="true"),
      inp("operator", "操作人（默认system）", content="system")],
@@ -464,18 +516,18 @@ files["skill_03_执行主干流水线.json"] = skill(
 # ============================================================
 s4 = []
 s4.append(start_node(301, [
-    inp("product_id", "CRM产品ID（必填）", required=True),
-    inp("execution_id", "执行主干批次号（回放各阶段结果用，选填）", required=False),
+    inp("req_id", "执行方案存储key（必填，V1.7 统一键，回放各阶段结果用）", required=True),
 ]))
 s4.append(llm_node(302, "报告汇总",
-    "请基于以下输入数据，按标准模板汇总生成《销售品上线测试与稽核报告》：\n【配置落地结果】product_id={product_id}\n【各阶段结果】execution_id={execution_id}（节点结果存储 req_id=execution_id 回放 config/spec/fee/test 四条记录）\n报告必须包含以下章节：1.需求摘要与执行方案要点；2.配置落地结果；3.稽核结论；4.资费结论；5.测试统计与失败明细；6.受理验证结论（强制章节，逐受理场景给出通过/失败结论）；7.上线建议。只基于输入数据生成，不得新增结论。\n输出要求：仅输出报告内容（对应出参 report），不输出其他多余文字。",
+    "请基于以下输入数据，按标准模板汇总生成《销售品上线测试与稽核报告》：\n【配置落地结果】product_id={product_id}\n【各阶段结果】req_id={req_id}（节点结果存储 req_id=入参 req_id 回放 config/spec/fee/test 四条记录）\n报告必须包含以下章节：1.需求摘要与执行方案要点；2.配置落地结果；3.稽核结论；4.资费结论；5.测试统计与失败明细；6.受理验证结论（强制章节，逐受理场景给出通过/失败结论）；7.上线建议。只基于输入数据生成，不得新增结论。\n输出要求：仅输出报告内容（对应出参 report），不输出其他多余文字。",
     [inp("product_id", "产品ID", ref_block=nid(301), ref_rel="product_id"),
-     inp("execution_id", "执行批次号", ref_block=nid(301), ref_rel="execution_id")],
+     inp("req_id", "执行方案存储key", ref_block=nid(301), ref_rel="req_id")],
     [out("report", "上线报告")], pos=(375, 300)))
 s4.append(plugin_node(303, "审批推送", "submit_release_approval",
-    "工具9：自研模拟审批推送；插件层校验approve_confirmed==true（未经确认返回NOT_CONFIRMED）；幂等：同product_id返回原approval_id",
+    "工具9：自研模拟审批推送；后端硬校验 req_id 四环节（config/spec/fee/test）结果齐全（未走完执行主干返回NOT_CONFIRMED）+approve_confirmed==true；幂等：同product_id返回原approval_id",
     "submit_release_approval",
-    [inp("product_id", "CRM产品ID", ref_block=nid(301), ref_rel="product_id"),
+    [inp("req_id", "执行方案存储key（V1.7 统一键，四环节门禁校验依据）", ref_block=nid(301), ref_rel="req_id"),
+     inp("product_id", "CRM产品ID", ref_block=nid(301), ref_rel="product_id"),
      inp("report_url", "上线报告", ref_block=nid(302), ref_rel="report"),
      inp("approve_confirmed", "审批发起确认标志true（智能体确认门禁保证）", content="true"),
      inp("approval_flow", "审批流默认standard", content="standard")],
@@ -623,7 +675,7 @@ agent = {
         "重新执行失败的环节",
     ],
     "emptyAnswerTip": "抱歉，我仅支持产销品加载相关业务，请更换问题或联系管理员。",
-    "systemPrompt": "【角色】\n你是安徽电信产销品域的数字员工，精通 CPCP 产销品管理、CRM 配置、计费规则、\n订单受理与测试验证。你通过 6 个技能完成销售品从需求到上线的端到端自动化加载。\n你不直接操作CRM，不直接修改配置，不代替用户进行最终业务决策。\n\n【技能】\n1. 需求分析（skill_01）：接收需求文档或口述需求，生成《产销品加载执行方案》。\n   补全规则：仅价格、资源类字段未提供填\"待补充\"（禁止推理）；其余缺失字段基于\n   相似产品推理补全，标记\"AI补全\"。输出表格 + plan_id。\n2. 方案确认（skill_02）：用户对执行方案回复确认/修改/拒绝时，解析意图：\n   确认→写入确认标记并自动启动执行主干；修改→带修改意见重新分析；拒绝→结束。\n   未确认绝不触发配置落地。\n3. 执行主干（skill_03）：确认后自动串行执行 智能配置→实时稽核→资费校准→自动测试\n   四阶段，中途不停顿，每阶段打印结果；任一阶段异常即中断，打印异常阶段+原因+\n   明细+建议，引导【重新执行】（从失败阶段续跑）或【修改执行方案】（回到需求分析）。\n4. 审批发起（skill_04）：四阶段全部成功后提示\"是否发起上线审批\"，用户确认后汇总\n   报告（含受理验证结论）并推送审批，输出审批单号。不得自动发起。\n5. 审批进度查询（skill_05）：用户发送\"查询审批进度\"等消息即查，返回审批单状态、\n   当前环节与意见。\n6. 监控运维（skill_06）：用户发送\"查询监控结果\"即查订单量/异常量/计费差错率/告警；\n   异常时自动 send_alert 告警。\n\n【限制】\n1. 仅回答产销品加载相关业务，其他问题按答案为空提示回复。\n2. 配置落地前必须存在已写入存储的确认标记；执行方案以存储版本为准，配置时\n   不得重新生成。\n3. 字段来源仅\"原始需求/AI补全\"；\"待补充\"仅限价格、资源两类字段。\n4. 稽核/资费/测试不通过时不得跳过环节或自行重试，须输出异常详情并引导用户选择。\n5. 上线审批须执行主干全部成功且用户明确确认后才能发起。\n6. 输出遵循结构化格式：环节（阶段）名称、执行结果、关键数据、下一步动作。\n7. 不得泄露资费、配置等敏感数据明细，仅展示摘要。"
+    "systemPrompt": "【角色】\n你是安徽电信产销品域的数字员工，精通 CPCP 产销品管理、CRM 配置、计费规则、\n订单受理与测试验证。你通过 6 个技能完成销售品从需求到上线的端到端自动化加载。\n你不直接操作CRM，不直接修改配置，不代替用户进行最终业务决策。\n\n【技能】\n1. 需求分析（skill_01）：接收需求文档或口述需求，生成《产销品加载执行方案》。\n   补全规则：仅价格、资源类字段未提供填\"待补充\"（禁止推理）；其余缺失字段基于\n   相似产品推理补全，标记\"AI补全\"。输出表格 + req_id（存储key）。\n2. 方案确认（skill_02）：用户对执行方案回复确认/修改/拒绝时，解析意图：\n   确认→写入确认标记并自动启动执行主干；修改→带修改意见重新分析；拒绝→结束。\n   未确认绝不触发配置落地。\n3. 执行主干（skill_03）：确认后自动串行执行 智能配置→实时稽核→资费校准→自动测试\n   四阶段，中途不停顿，每阶段打印结果；任一阶段异常即中断，打印异常阶段+原因+\n   明细+建议，引导【重新执行】（从失败阶段续跑）或【修改执行方案】（回到需求分析）。\n4. 审批发起（skill_04）：四阶段全部成功后提示\"是否发起上线审批\"，用户确认后汇总\n   报告（含受理验证结论）并推送审批，输出审批单号。不得自动发起。\n5. 审批进度查询（skill_05）：用户发送\"查询审批进度\"等消息即查，返回审批单状态、\n   当前环节与意见。\n6. 监控运维（skill_06）：用户发送\"查询监控结果\"即查订单量/异常量/计费差错率/告警；\n   异常时自动 send_alert 告警。\n\n【限制】\n1. 仅回答产销品加载相关业务，其他问题按答案为空提示回复。\n2. 配置落地前必须存在已写入存储的确认标记；执行方案以存储版本为准，配置时\n   不得重新生成。\n3. 字段来源仅\"原始需求/AI补全\"；\"待补充\"仅限价格、资源两类字段。\n4. 稽核/资费/测试不通过时不得跳过环节或自行重试，须输出异常详情并引导用户选择。\n5. 上线审批须执行主干全部成功且用户明确确认后才能发起。\n6. 输出遵循结构化格式：环节（阶段）名称、执行结果、关键数据、下一步动作。\n7. 不得泄露资费、配置等敏感数据明细，仅展示摘要。"
 }
 files["agent_cpcp_product_worker_skills.json"] = agent
 

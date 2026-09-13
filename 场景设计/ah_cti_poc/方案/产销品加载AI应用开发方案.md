@@ -12,7 +12,7 @@
 | V1.4 | 2026-09-12 | 明确待补充规则：仅**价格、资源**两类字段未提供时填"待补充"（禁止推理，由用户在确认环节补充）；**其余缺失字段一律由 LLM 基于相似产品（query_similar_offer 结果 + 存量销售品资料）推理补全**，来源标记"AI补全" |
 | V1.5 | 2026-09-12 | ① **执行主干自动化串行**：用户确认后，智能配置→实时稽核→资费校准→自动测试四环节自动串行执行，中途不中断，仅环节异常时中断；② 每环节执行后打印处理结果，异常时打印异常节点与异常原因，并引导用户选择"重新执行"或"修改执行方案"；③ 全部成功后打印各环节成功结果详情，并提示"是否发起上线审批"，用户确认后才发起；④ 新增**消息查询**能力：发送消息可查询审批进度（query_approval_status）、查询监控运维结果（query_product_monitor） |
 | V1.6 | 2026-09-12 | ① **插件全部自研+模拟结果输出**：工具1~6 不再对接外部 ApiID，改为自研实现并采用模拟结果输出，模拟数据须兼容适配《产品信息.txt》全部 18 个销售品套餐（测试预期值取自套餐规则值），新增"模拟结果兼容性要求"；② 《产销品场景部分能力接口清单.xlsx》降级为接口契约参考；③ 实时稽核明确为普通接口（无 ApiID） |
-| V1.7 | 2026-09-13 | ① **LLM 智能调度模式**：删除主流程 `wf_cpcp_main`（JSON 已删除，不再归档），智能体按【意图→子工作流智能调度映射表】**直调 `wf_sub_01`~`wf_sub_08` 八个子工作流**；确认执行→写确认标记（node_name=CONFIRMED）→串行直调 wf_sub_02→03→05→04；② **门禁由工具层硬校验保障**：后端 `save_product_config` 校验存储中 plan_id 的 CONFIRMED 标记（无标记返回 NOT_CONFIRMED）、`submit_release_approval` 校验 execution_id 四环节（config/spec/fee/test）结果齐全，`NodeResultService` 新增 `latestRecord(reqId,nodeName)` 公开方法支撑校验；③ wf_sub_01 需求分析 LLM 节点重写：单出参 `plan_output` + 代码节点 004a 拆分，输出 18 字段完整结构化方案，来源仅"原始需求/AI补全"两种；④ **环节结果存储下沉到子工作流内部**：wf_sub_02~05 各内置 save_node_result 节点（req_id=execution_id，node_name=config/spec/fee/test），wf_sub_06 开始节点与审批推送节点新增 execution_id 入参，wf_sub_02~06 开始节点 execution_id 为必填 |
+| V1.7 | 2026-09-13 | ① **LLM 智能调度模式**：删除主流程 `wf_cpcp_main`（JSON 已删除，不再归档），智能体按【意图→子工作流智能调度映射表】**直调 `wf_sub_01`~`wf_sub_08` 八个子工作流**；确认执行→写确认标记（node_name=CONFIRMED）→串行直调 wf_sub_02→03→05→04；② **门禁由工具层硬校验保障**：后端 `save_product_config` 校验存储中 req_id 的 CONFIRMED 标记（无标记返回 NOT_CONFIRMED）、`submit_release_approval` 校验 req_id 四环节（config/spec/fee/test）结果齐全，`NodeResultService` 新增 `latestRecord(reqId,nodeName)` 公开方法支撑校验；③ wf_sub_01 需求分析 LLM 节点重写：单出参 `plan_output` + 代码节点 004a 拆分，输出 18 字段完整结构化方案，来源仅"原始需求/AI补全"两种；④ **环节结果存储下沉到子工作流内部**：wf_sub_02~05 各内置 save_node_result 节点（req_id=入参，node_name=config/spec/fee/test）；⑤ **统一存储键（本版定稿）**：原 plan_id/execution_id 双键合并为 **req_id 单键**（PLAN+yyyyMMddHHmmss+3位随机数，方案批次与执行主干共用，同键覆盖），wf_sub_01~06 全部单 req_id 入参，wf_sub_02 按 req_id+requirement 自查执行方案，方案key由后端从 plan_json 的 req_id 键提取 |
 
 ## 配套文档索引
 | 文档 | 用途 |
@@ -46,7 +46,7 @@
 | 平台能力 | 在本场景中的角色 |
 | --- | --- |
 | 智能体（助手） | 产销品数字员工统一入口（对话式 + 流程式调度中枢）；V1.7 起承担**执行主干 LLM 智能调度**（按意图映射表直调子工作流、串行控制、结果打印、异常中断引导）；流程结束后承接**消息查询**（审批进度/监控结果）与**异常处置引导**（重新执行/修改执行方案） |
-| 工作流 | 承载 8 个业务环节的子工作流（execution_id 必填单入参自查链路，wf_sub_01 除外）；V1.7 起由智能体 LLM 按意图映射表**直调子工作流**（主流程已删除）；wf_sub_02~05 内置环节结果存储节点 |
+| 工作流 | 承载 8 个业务环节的子工作流（req_id 单必填入参自查链路；wf_sub_01 除外）；V1.7 起由智能体 LLM 按意图映射表**直调子工作流**（主流程已删除）；wf_sub_02~05 内置环节结果存储节点 |
 | 插件/工具 | 封装 HTTP API 能力接口（相似度分析/智能稽核/智能测试等 9 个）、平台「节点结果存储查询插件」及 CRM、计费、订单等系统原子能力 |
 | 知识库 | 存储业务规范、资费规则、测试规范、存量产品资料（含《产品信息.txt》5G-A 系列销售品语料） |
 | **本体库（TTL）** | 产销品域结构化知识：类/属性/关系建模，支撑需求校验、关系推理、配置生成约束、术语对齐（V1.1 新增） |
@@ -54,7 +54,7 @@
 | 选择器节点 | 稽核通过/驳回、资费通过/驳回、测试通过/失败等分支控制（子工作流内部）；V1.7 起确认门禁改由后端工具层硬校验（CONFIRMED 标记/四环节结果） |
 
 ### 1.3 设计原则
-1. **子工作流化 + LLM 智能调度（V1.7）**：每个环节封装为子工作流（execution_id 必填单入参，wf_sub_01 除外），便于独立调试与复用；V1.7 起环节顺序与入参注入由智能体 LLM 按【意图→子工作流智能调度映射表】控制，主流程固定编排弃用（`wf_cpcp_main` JSON 已删除）。
+1. **子工作流化 + LLM 智能调度（V1.7）**：每个环节封装为子工作流（req_id 单必填入参；wf_sub_01 除外），便于独立调试与复用；V1.7 起环节顺序与入参注入由智能体 LLM 按【意图→子工作流智能调度映射表】控制，主流程固定编排弃用（`wf_cpcp_main` JSON 已删除）。
 2. **插件先行，自研模拟**：所有系统交互必须封装为插件工具（HTTP 接口），大模型只做"理解与生成"，不直接触碰生产系统。V1.6 起 13 个插件工具**全部自研实现并采用模拟结果输出**（不再对接外部 ApiID），模拟数据须兼容适配《产品信息.txt》全部 18 个销售品套餐；执行方案存储等通用能力优先复用平台已有插件（如「节点结果存储查询插件」），不自研重复能力。
 3. **需求分析结构化优先**：需求分析环节遵循《需求分析工作流可参考提示词.txt》方法论——业务要素→配置字段映射、字段来源仅"原始需求/AI补全"两种。**补全策略：仅价格、资源两类字段未提供时填"待补充"（禁止推理，由用户在确认环节补充）；其余缺失字段由大模型基于相似产品（query_similar_offer 结果 + 知识库存量销售品资料）推理补全，标记"AI补全"**，产出可执行的《产销品加载执行方案》。
 4. **确认后再执行**：智能配置属于生产写入类操作，必须等用户对执行方案回复确认后才触发；配置数据直接取自执行方案 JSON，大模型不做二次加工，避免语义漂移。
@@ -75,7 +75,7 @@
 | 需求分析 | 业务要素→配置字段映射，生成《产销品加载执行方案》并存储执行 JSON | 子工作流 `wf_sub_01`：需求分析助手大模型节点（提示词见 6.4）+ 相似度分析插件 `query_similar_offer` + **节点结果存储查询插件（保存执行 JSON）** |
 | **用户确认** | 人工确认执行方案，确认后才进入配置落地 | 智能体对话交互层：展示执行方案表格，等待用户回复"确认执行"（未确认不触发智能配置） |
 | **执行主干自动化串行**（V1.5，V1.7 LLM 调度） | 智能配置→稽核→资费→测试自动串行，环节异常才中断；每环节打印结果，异常打印节点与原因并引导重新执行/修改执行方案 | 智能体 LLM 串行直调：`wf_sub_02`→`wf_sub_03`→`wf_sub_05`→`wf_sub_04` + LLM 结果打印 + 异常处置引导（门禁由后端工具层硬校验） |
-| 销售品智能配置 | 按 req_id 自查存储的执行方案 JSON，调用配置落地接口完成 CRM 配置 | 子工作流 `wf_sub_02`（req_id 单入参）：**节点结果存储查询插件（GET 自查，node_name=requirement）** + 配置落地插件 `save_product_config`（plan_id 独立传） |
+| 销售品智能配置 | 按 req_id 自查存储的执行方案 JSON，调用配置落地接口完成 CRM 配置 | 子工作流 `wf_sub_02`（req_id 单入参）：**节点结果存储查询插件（GET 自查，node_name=requirement）** + 配置落地插件 `save_product_config`（req_id 传参，方案key由后端从 plan_json 提取） |
 | 配置规格稽核 | 配置落地后**实时调用稽核接口**，同步取回稽核结果 | 子工作流 `wf_sub_03`：实时稽核插件 `realtime_spec_audit`（不经过文件上传） |
 | 资费校准 | 校验计费逻辑、优惠叠加冲突 | 子工作流：计费规则校验插件 + 知识库 |
 | 销售品自动测试（含受理验证） | **发起**销售品自动化测试（发起动作）→轮询进度→取结果；测试平台自动执行受理类场景即完成受理验证 | 子工作流 `wf_sub_04`：智能测试插件组 `offer_test` / `get_test_scenes` / `get_test_progress` / `get_test_result`；测试报告包含受理验证结论 |
@@ -101,7 +101,7 @@
 
 | # | 插件工具名 | 说明 |
 | --- | --- | --- |
-| 7 | `节点结果存储查询插件` | 平台通用能力：**执行方案 JSON 与各环节结果的保存与查询**（V1.6 后端已落库持久化，pd_ai_node_results 表）。需求分析产出的执行方案 JSON 以「节点结果」形式写入（req_id=plan_id、node_name=requirement），执行主干各子工作流以 req_id=execution_id、node_name=config/spec/fee/test/report 存取本环节结果。V1.3 起替代原自研 save_plan_json/get_plan_json |
+| 7 | `节点结果存储查询插件` | 平台通用能力：**执行方案 JSON 与各环节结果的保存与查询**（V1.6 后端已落库持久化，pd_ai_node_results 表）。需求分析产出的执行方案 JSON 以「节点结果」形式写入（req_id=方案批次号、node_name=requirement），执行主干各子工作流以同键 req_id、node_name=config/spec/fee/test/report 存取本环节结果（V1.7 统一键：原 plan_id/execution_id 双键合并为 req_id 单键）。V1.3 起替代原自研 save_plan_json/get_plan_json |
 
 #### C. 需补充开发的能力接口（自研，模拟结果输出）
 
@@ -151,17 +151,18 @@
    识别信息完整性（原始需求/AI补全/待补充）、匹配历史相似产品
    （调用相似度分析工具 query_similar_offer）、基于历史产品补全字段、
    生成《产销品加载执行方案》（Markdown 表格 + 执行方案 JSON，经
-   节点结果存储查询插件保存，返回存储 key/plan_id）。
+   节点结果存储查询插件保存，返回存储 key/req_id）。
    需求原文是最高优先级，不得虚构。补全规则：
    仅"价格、资源"两类字段未提供时填"待补充"（禁止推理）；
    其他缺失字段一律基于相似产品推理补全，来源标记"AI补全"。
    存在待补充字段时，在分析结果中明确列出并提示用户补充。
-2. 执行方案确认与门禁标记写入（最关键技能）：向用户展示执行方案表格，等待用户
-   确认。识别到用户确认类回复（"确认执行/同意/可以/没问题/执行吧"等）时：
-   ① 生成 execution_id（EXE+yyyyMMddHHmmss+3位随机数，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史 execution_id）；
-   ② 调用节点结果存储插件 save_node_result 写确认标记：
-      req_id=plan_id、node_name=CONFIRMED、
-      result_json={"confirmed":true,"plan_id":"<plan_id>","execution_id":"<execution_id>"}、
+ 2. 执行方案确认与门禁标记写入（最关键技能）：向用户展示执行方案表格，等待用户
+    确认。识别到用户确认类回复（"确认执行/同意/可以/没问题/执行吧"等）时：
+    ① 取执行方案存储键 req_id（PLAN+yyyyMMddHHmmss+3位随机数，多轮上下文沿用原值，
+      与执行方案存储同键，V1.7 统一键：原 plan_id/execution_id 双键合并为 req_id 单键）；
+    ② 调用节点结果存储插件 save_node_result 写确认标记：
+      req_id=<执行方案存储键 req_id>、node_name=CONFIRMED、
+      result_json={"confirmed":true,"req_id":"<req_id>"}、
       status=ok；
    ③ 输出确认提示并**立即按【意图→子工作流智能调度映射表】启动执行主干**
      （不等用户再发消息）。
@@ -170,10 +171,12 @@
    按修改意见调用 wf_sub_01 重新分析并更新执行方案（覆盖保存），再次等待确认。
 3. 执行主干智能调度（V1.7 LLM 调度模式）：确认标记写入成功后，按映射表**串行直调
    四个子工作流**，中途不停顿：
-   ① wf_sub_02 智能配置（入参 plan_id）→ ② wf_sub_03 规格稽核（入参 offer_id+config_json，
-   取自环节1出参）→ ③ wf_sub_05 资费校准（入参 config_json）→ ④ wf_sub_04 自动测试
-   （入参 offer_id）。每个子流返回后立即向用户打印该环节处理结果（引用出参原文），
-   并调用 save_node_result 存储（req_id=execution_id，node_name=config/spec/fee/test）；
+   ① wf_sub_02 智能配置（入参 req_id，子流自查 requirement 取执行方案）→
+   ② wf_sub_03 规格稽核（入参 req_id，子流自查 config 取 offer_id/config_json）→
+   ③ wf_sub_05 资费校准（入参 req_id，子流自查 config）→
+   ④ wf_sub_04 自动测试（入参 req_id，子流自查 config 取 offer_id）。
+   每个子流返回后立即向用户打印该环节处理结果（引用出参原文）；
+   环节结果由子流内部存储节点落库（req_id=入参，node_name=config/spec/fee/test）；
    任一环节异常（status≠SUCCESS / pass≠1 / test_passed≠通过）时立即中断：
    打印异常环节名称、异常原因、关键明细（error_list/risk_list/失败测点），
    并引导用户选择：【重新执行】（从失败环节续跑）或【修改执行方案】（回到需求分析）。
@@ -182,7 +185,7 @@
    结果详情（配置落地 product_id/offer_id、稽核结论、资费结论、测试统计与
    受理验证结论 orderId/offerInstId），并提示"是否发起上线审批"；
    用户回复"发起审批"后调用 wf_sub_06 上线审批子工作流
-   （入参 execution_id，子流内部自查四环节结果生成报告并推送审批），
+   （入参 req_id，子流自查四环节结果生成报告并推送审批），
    输出审批单号。
 5. 消息查询（V1.5）：用户发送消息即查——
    "查询审批进度/审批状态"：调用 query_approval_status（按 approval_id 或
@@ -196,25 +199,25 @@
 | 用户意图 | 调度动作（串行） | 入参来源 |
 | --- | --- | --- |
 | 首次提报需求/修改需求重新分析 | 调用 wf_sub_01 需求分析 | requirement_text=用户需求（含修改意见） |
- | 确认执行（确认执行/同意/可以/没问题/执行吧） | ①写确认标记（node_name=CONFIRMED，req_id=plan_id）→ ②串行调 wf_sub_02→wf_sub_03→wf_sub_05→wf_sub_04 | plan_id=<上一次plan_id>；execution_id=EXE+yyyyMMddHHmmss+3位随机数（每次新生成）；后续环节入参取上一环节出参 |
+ | 确认执行（确认执行/同意/可以/没问题/执行吧） | ①写确认标记（node_name=CONFIRMED，req_id=<执行方案存储键>）→ ②串行调 wf_sub_02→wf_sub_03→wf_sub_05→wf_sub_04 | req_id=<上一次 req_id>（执行方案存储键，沿用原值）；后续环节入参取上一环节出参 |
 | 修改执行方案（含修改意见） | 调用 wf_sub_01（覆盖保存） | requirement_text=<原需求+修改意见> |
-| 重新执行失败环节 | 按 fail_node 从对应环节续调（STAGE1_CONFIG→wf_sub_02、STAGE2_AUDIT→wf_sub_03、STAGE3_FEE→wf_sub_05、STAGE4_TEST→wf_sub_04）；已成功环节不重复调用 | execution_id=<原值>；入参按 req_id 自查存储回放 |
-| 发起审批（发起审批/确认上线） | 调用 wf_sub_06 上线审批 | execution_id=<原值>（子流自查四环节结果） |
+| 重新执行失败环节 | 按 fail_node 从对应环节续调（STAGE1_CONFIG→wf_sub_02、STAGE2_AUDIT→wf_sub_03、STAGE3_FEE→wf_sub_05、STAGE4_TEST→wf_sub_04）；已成功环节不重复调用 | req_id=<原值>；入参按 req_id 自查存储回放 |
+| 发起审批（发起审批/确认上线） | 调用 wf_sub_06 上线审批 | req_id=<原值>（子流自查四环节结果） |
 | 查询审批进度 | 直接调用工具13 query_approval_status（approval_id 或 product_id） | 不调子工作流 |
 | 查询监控运维结果 | 直接调用工具10 query_product_monitor（product_id）；异常时调工具11 send_alert | 不调子工作流 |
-注意：plan_id/execution_id 以多轮对话内最近一次值为准（上下文记忆）；
-若用户确认时 plan_id 未知（如新会话），先调用节点结果存储查询插件按用户
-描述检索最近执行方案，取回 plan_id 后再执行确认流程，检索不到则提示用户
+注意：req_id 以多轮对话内最近一次值为准（上下文记忆）；
+若用户确认时 req_id 未知（如新会话），先调用节点结果存储查询插件按用户
+描述检索最近执行方案，取回 req_id 后再执行确认流程，检索不到则提示用户
 重新提报需求。每个环节调用后必须依据出参字段判定成败，失败即中断引导。
 
 【限制】
 1. 仅回答产销品加载相关业务，其他问题按答案为空提示回复。
 2. 智能配置（配置落地）必须由用户确认执行方案后触发；执行方案 JSON 以
    节点结果存储查询插件中保存的版本为准，不得在配置时重新生成。
-   识别"确认执行"类回复时必须先写确认标记（node_name=CONFIRMED，req_id=plan_id），
+   识别"确认执行"类回复时必须先写确认标记（node_name=CONFIRMED，req_id=<执行方案存储键>），
    再按【意图→子工作流智能调度映射表】串行直调子工作流；门禁由**工具层硬校验**保障
-   （save_product_config 后端校验存储中该 plan_id 的 CONFIRMED 标记，无标记返回
-   NOT_CONFIRMED；submit_release_approval 后端校验 execution_id 四环节结果），
+   （save_product_config 后端校验存储中该 req_id 的 CONFIRMED 标记，无标记返回
+   NOT_CONFIRMED；submit_release_approval 后端校验 req_id 四环节结果），
    LLM 跳步也无法写入（禁止不带参数重复调用需求分析冒充执行）。
 3. 字段来源只允许"原始需求"或"AI补全"两种，禁止出现"系统默认/推测/猜测"；
    AI补全不得标记为原始需求。"待补充"仅限价格、资源两类字段。
@@ -307,9 +310,9 @@
 **节点结果存储查询插件：执行方案与各环节结果保存/查询**（V1.3 引入，V1.6 更新）
 | 项 | 内容 |
 | --- | --- |
-| 保存（save_node_result） | POST `/api/v1/appstore/result/save`（入参 req_id/node_name/result_json/status）；wf_sub_01 写执行方案（req_id=plan_id、node_name=requirement）；wf_sub_02~05 子流内部环节结果存储节点写本环节结果（req_id=execution_id、node_name=config/spec/fee/test）；wf_sub_06 写上线报告（node_name=report） |
+| 保存（save_node_result） | POST `/api/v1/appstore/result/save`（入参 req_id/node_name/result_json/status）；wf_sub_01 写执行方案（req_id=入参、node_name=requirement）；wf_sub_02~05 子流内部环节结果存储节点写本环节结果（req_id=入参，node_name=config/spec/fee/test）；wf_sub_06 写上线报告（node_name=report） |
 | 查询（query_node_result） | **GET** `/api/v1/appstore/result/query`（入参 req_id/node_name/latest_only，出参 total/list）；各子工作流开始后按 req_id 自查上游结果 |
-| key（req_id）规范 | 执行方案：`PLAN` + yyyyMMddHHmmss + 3位随机数；执行主干：`EXE` + yyyyMMddHHmmss + 3位随机数；取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值；同键覆盖写 |
+| key（req_id）规范 | V1.7 统一键：执行方案与执行主干共用单键 `PLAN` + yyyyMMddHHmmss + 3位随机数；取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值；同键覆盖写 |
 | 说明 | 平台已有通用插件，直接挂载使用，**不再自研** save_plan_json/get_plan_json；后端已落库持久化（pd_ai_node_results 表，H2/MySQL 双 DDL），服务重启不丢失 |
 
 ### 4.4 自研能力接口工具定义（6 个）
@@ -319,7 +322,7 @@
 | --- | --- |
 | 接口 | POST `https://{cpcp-gateway}/api/v1/appstore/product/config/save` |
 | 描述 | 读取执行方案 JSON，将基础信息/资源配置/营销资源/销售规则四类字段写入 CRM 销售品配置 |
-| 入参 | `plan_id`(string,必填,执行方案存储key) `plan_json`(string,必填,节点结果存储查询插件取回的执行方案JSON，原样透传) `operator`(string,选填) |
+| 入参 | `req_id`(string,必填,执行方案存储key，V1.7 统一键) `plan_json`(string,必填,节点结果存储查询插件取回的执行方案JSON，原样透传) `operator`(string,选填) |
 | 出参 | `product_id`(string) `offer_id`(string) `save_result`(object: 各字段分类写入结果) `status`(string) |
 | 是否提参 | 是（plan_json 必填且须为存储 JSON 原文） |
 
@@ -334,7 +337,7 @@
 | 项 | 内容 |
 | --- | --- |
 | 接口 | POST `https://{oa-gateway}/api/v1/appstore/approval/submit` |
-| 入参 | `product_id`(string,必填) `report_url`(string,必填) `approval_flow`(string,枚举: standard/urgent) |
+| 入参 | `req_id`(string,必填,V1.7 统一键,后端硬校验四环节结果) `report_url`(string,必填) `approval_flow`(string,枚举: standard/urgent) |
 | 出参 | `approval_id`(string) `status`(string) |
 
 **工具10：监控查询 `query_product_monitor`**
@@ -390,51 +393,52 @@
 
 > **V1.7 核心调整**：不再使用主工作流 `wf_cpcp_main` 做固定编排，该主流程 JSON **已删除**（不再归档保留）。智能体（LLM）按 3.2 节【意图→子工作流智能调度映射表】**直接调用 `wf_sub_01`~`wf_sub_08` 八个子工作流**，由 LLM 承担"环节顺序控制、入参注入、结果打印、异常中断引导"的调度职责；原主流程承担的**环节结果存储职责已下沉到 wf_sub_02~05 子工作流内部**（各内置 save_node_result 节点）。
 >
-> 选择该模式的理由：① 平台主流程对子工作流入参注入能力受限（曾导致"确认执行"后未携带 confirmed/plan_id 而重复需求分析）；② LLM 直调子流可按多轮上下文灵活传参（plan_id/execution_id/offer_id 等均可由 LLM 从上下文取值注入）；③ 编排逻辑由提示词映射表固化，行为可审计。
+> 选择该模式的理由：① 平台主流程对子工作流入参注入能力受限（曾导致"确认执行"后未携带 confirmed/req_id 而重复需求分析）；② LLM 直调子流可按多轮上下文灵活传参（req_id/offer_id 等均可由 LLM 从上下文取值注入）；③ 编排逻辑由提示词映射表固化，行为可审计。
 
 **执行主干 LLM 调度时序（确认执行后串行直调，不等用户再发消息）：**
 
 ```
-用户回复"确认执行"（携带上轮 plan_id）
+用户回复"确认执行"（携带上轮 req_id）
   ▼
-① LLM 生成 execution_id（EXE+yyyyMMddHHmmss+3位随机数，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史 execution_id）
+① LLM 取执行方案存储键 req_id（PLAN+yyyyMMddHHmmss+3位随机数，上下文沿用原值；
+    V1.7 统一键：原 plan_id/execution_id 双键合并为 req_id 单键）
 ② LLM 调用 save_node_result 写确认标记：
-    req_id=plan_id、node_name=CONFIRMED、
-    result_json={"confirmed":true,"plan_id":"…","execution_id":"…"}
+    req_id=<执行方案存储键>、node_name=CONFIRMED、
+    result_json={"confirmed":true,"req_id":"…"}
     （后端 save_product_config 将校验此标记，无标记返回 NOT_CONFIRMED）
   ▼
-③ 【环节1】调用 wf_sub_02 智能配置（入参 execution_id）
+③ 【环节1】调用 wf_sub_02 智能配置（入参 req_id）
     出参 status/product_id/offer_id/save_result
     ├─ status==SUCCESS → 打印【环节1结果】→ 子流内部环节结果存储已写入
-    │   （wf_sub_02 内置 save_node_result 节点，node_name=config，req_id=execution_id）
+    │   （wf_sub_02 内置 save_node_result 节点，node_name=config，req_id=入参）
     └─ 异常 → 打印异常节点+原因 → 引导【重新执行】/【修改执行方案】（中断）
   ▼
-④ 【环节2】调用 wf_sub_03 规格稽核（入参 execution_id，子流自查 config 取 offer_id/config_json）
+④ 【环节2】调用 wf_sub_03 规格稽核（入参 req_id，子流自查 config 取 offer_id/config_json）
     出参 pass/error_list/audit_summary
     ├─ pass==1 → 打印【环节2结果】→ 子流内部已存 node_name=spec
     └─ pass==0/接口异常 → 中断引导（同上）
   ▼
-⑤ 【环节3】调用 wf_sub_05 资费校准（入参 execution_id，子流自查 config 取 config_json）
+⑤ 【环节3】调用 wf_sub_05 资费校准（入参 req_id，子流自查 config 取 config_json）
     出参 pass/risk_list
     ├─ pass==1 → 打印【环节3结果】→ 子流内部已存 node_name=fee
     └─ 不通过 → 中断引导（同上）
   ▼
-⑥ 【环节4】调用 wf_sub_04 自动测试（入参 execution_id，子流自查 config 取 offer_id）
+⑥ 【环节4】调用 wf_sub_04 自动测试（入参 req_id，子流自查 config 取 offer_id）
     出参 globalId/测试报告（含受理验证结论 orderId/offerInstId）
     ├─ test_passed==通过 → 打印【环节4结果】→ 子流内部已存 node_name=test
     └─ 失败/超时 → 中断引导（同上）
   ▼
 ⑦ 四环节全部成功 → LLM 打印各环节成功结果详情 + 提示"是否发起上线审批"
-    ………… 用户回复"发起审批" → ⑧ 调用 wf_sub_06（入参 execution_id：
+    ………… 用户回复"发起审批" → ⑧ 调用 wf_sub_06（入参 req_id：
     子流串行自查 5 类环节结果 → LLM 生成 7 章节报告 → 报告存储(node_name=report)
     → submit_release_approval 推送审批）→ 输出审批单号
 ```
 
 **V1.7 调度要点（与 3.2 提示词一一对应）：**
-1. **门禁下沉工具层**：主流程选择器门禁（confirmed/plan_id 判定）取消，改由后端硬校验——`save_product_config` 校验存储中该 plan_id 的 CONFIRMED 标记；`submit_release_approval` 校验 execution_id 四环节结果齐全。LLM 跳步也无法写入。
+1. **门禁下沉工具层**：主流程选择器门禁（confirmed/req_id 判定）取消，改由后端硬校验——`save_product_config` 校验存储中该 req_id 的 CONFIRMED 标记；`submit_release_approval` 校验 req_id 四环节结果齐全。LLM 跳步也无法写入。
 2. **串行纪律**：严禁并行调用、严禁跳过环节、严禁凭语义推断环节成败（仅依据工具出参字段 status/pass/test_passed 判定）。
-3. **结果存储**：环节结果存储已下沉到子工作流内部——wf_sub_02~05 各内置 save_node_result 节点（req_id=入参 execution_id，node_name=config/spec/fee/test），子流执行成功即自动落库，LLM 无需再调用存储工具；wf_sub_06 内部自查依赖此数据，存储缺失将导致审批校验失败（fail-safe）。
-4. **续跑**：`重新执行` 时 LLM 按 fail_node 映射从失败环节续调（STAGE1_CONFIG→wf_sub_02、STAGE2_AUDIT→wf_sub_03、STAGE3_FEE→wf_sub_05、STAGE4_TEST→wf_sub_04），已成功环节不重复调用；入参按 execution_id 自查存储回放。
+3. **结果存储**：环节结果存储已下沉到子工作流内部——wf_sub_02~05 各内置 save_node_result 节点（req_id=入参 req_id，node_name=config/spec/fee/test），子流执行成功即自动落库，LLM 无需再调用存储工具；wf_sub_06 内部自查依赖此数据，存储缺失将导致审批校验失败（fail-safe）。
+4. **续跑**：`重新执行` 时 LLM 按 fail_node 映射从失败环节续调（STAGE1_CONFIG→wf_sub_02、STAGE2_AUDIT→wf_sub_03、STAGE3_FEE→wf_sub_05、STAGE4_TEST→wf_sub_04），已成功环节不重复调用；入参按 req_id 自查存储回放。
 5. **消息查询不走子流**：审批进度/监控结果由 LLM 直接调用工具13 `query_approval_status`、工具10 `query_product_monitor`（wf_sub_07/wf_sub_08 仅作平台不支持直调工具时的兜底）。
 
 **每环节结果打印格式（LLM 输出统一模板）：**
@@ -472,20 +476,20 @@
 
 ### 6.2 子工作流拆分（每个环节一个子工作流）
 
-> V1.7 实现口径（与平台导出 JSON 一致）：**主流程 `wf_cpcp_main` 已删除**，8 个子工作流由智能体 LLM 按意图映射表直调。执行主干子工作流统一为 **execution_id 必填单入参**（除 wf_sub_01 用 plan_id、wf_sub_07/wf_sub_08 业务入参外），子流程内部通过 query_node_result 自查所需上游结果，并在结束前通过**内置环节结果存储节点**（save_node_result，req_id=execution_id，node_name=本环节名）落库，不再依赖 LLM 调度层补存。
+> V1.7 实现口径（与平台导出 JSON 一致）：**主流程 `wf_cpcp_main` 已删除**，8 个子工作流由智能体 LLM 按意图映射表直调。执行主干子工作流（wf_sub_02~06）统一 **req_id 单必填入参**（V1.7 统一键：原 plan_id/execution_id 双键合并为 req_id 单键，方案批次与执行主干共用），子流程内部通过 query_node_result 自查所需上游结果，并在结束前通过**内置环节结果存储节点**（save_node_result，req_id=入参，node_name=本环节名）落库，不再依赖 LLM 调度层补存。
 
 | 子工作流 | 编码 | 节点数/边数 | 输入 | 输出 | 关键节点 |
 | --- | --- | --- | --- | --- | --- |
-| 需求分析（执行方案生成） | `wf_sub_01` | 9/8 | requirement_text, requirement_file | plan_id(存储key) / plan_md（执行方案表格）/ plan_json | 开始 → 大模型(需求理解与要素拆解) → query_similar_offer(相似产品) → 大模型(LLM节点4单出参 plan_output) → 代码节点004a(拆分 plan_json/plan_md/pending_fields/plan_id) → 选择器(待补充项提示) → 节点结果存储·结果存储(保存JSON) → 结束 |
-| 智能配置（配置落地） | `wf_sub_02` | 5/4 | execution_id（必填） | product_id / offer_id / save_result | 开始(execution_id) → query_node_result(自查执行方案, node_name=requirement) → save_product_config(plan_id/plan_json/confirmed 三入参，plan_id 独立传、plan_json 原样透传，中间无大模型节点) → **save_node_result(环节结果存储, node_name=config)** → 结束 |
-| 规格稽核（实时） | `wf_sub_03` | 5/4 | execution_id（必填） | pass / error_list / audit_summary | 开始(execution_id) → 自查 config（取 offer_id/config_json）→ realtime_spec_audit(实时稽核,同步返回) → 大模型(整改建议生成) → **save_node_result(环节结果存储, node_name=spec)** → 结束 |
-| 资费校准 | `wf_sub_05` | 5/4 | execution_id（必填） | pass / risk_list | 开始(execution_id) → 自查 config（取 config_json）→ check_billing_rule → 大模型(风险解读) → **save_node_result(环节结果存储, node_name=fee)** → 结束 |
-| 自动测试（含受理验证） | `wf_sub_04` | 8/7 | execution_id（必填） | globalId / 测试报告(含受理验证结论) | 开始(execution_id) → 自查 config（取 offer_id）→ offer_test(发起动作) → get_test_scenes → **代码节点0304(type=6，inputs 平铺 list，asyncio.sleep(5)×360 次轮询)** → get_test_result → 大模型(报告生成，含受理验证结论) → **save_node_result(环节结果存储, node_name=test)** → 结束 |
-| 上线审批 | `wf_sub_06` | 3/2 | execution_id（必填） | approval_id / status / report | 开始(execution_id) → submit_release_approval(推送审批，**入参含 execution_id**，后端硬校验四环节 config/spec/fee/test 结果齐全) → 结束（注：报告生成/报告存储由智能体 LLM 调度层完成，详见 3.2 节技能 4） |
+| 需求分析（执行方案生成） | `wf_sub_01` | 9/8 | requirement_text, requirement_file | req_id(存储key) / plan_md（执行方案表格）/ plan_json | 开始 → 大模型(需求理解与要素拆解) → query_similar_offer(相似产品) → 大模型(LLM节点4单出参 plan_output) → 代码节点004a(拆分 plan_json/plan_md/pending_fields/req_id) → 选择器(待补充项提示) → 节点结果存储·结果存储(保存JSON) → 结束 |
+| 智能配置（配置落地） | `wf_sub_02` | 5/4 | req_id（必填） | product_id / offer_id / save_result | 开始(req_id) → query_node_result(按 req_id 自查执行方案, node_name=requirement) → save_product_config(req_id/plan_json/confirmed 三入参，req_id 引用开始节点、plan_json 原样透传，中间无大模型节点) → **save_node_result(环节结果存储, req_id=入参, node_name=config)** → 结束 |
+| 规格稽核（实时） | `wf_sub_03` | 5/4 | req_id（必填） | pass / error_list / audit_summary | 开始(req_id) → 自查 config（取 offer_id/config_json）→ realtime_spec_audit(实时稽核,同步返回) → 大模型(整改建议生成) → **save_node_result(环节结果存储, req_id=入参, node_name=spec)** → 结束 |
+| 资费校准 | `wf_sub_05` | 5/4 | req_id（必填） | pass / risk_list | 开始(req_id) → 自查 config（取 config_json）→ check_billing_rule → 大模型(风险解读) → **save_node_result(环节结果存储, req_id=入参, node_name=fee)** → 结束 |
+| 自动测试（含受理验证） | `wf_sub_04` | 8/7 | req_id（必填） | globalId / 测试报告(含受理验证结论) | 开始(req_id) → 自查 config（取 offer_id）→ offer_test(发起动作) → get_test_scenes → **代码节点0304(type=6，inputs 平铺 list，asyncio.sleep(5)×360 次轮询)** → get_test_result → 大模型(报告生成，含受理验证结论) → **save_node_result(环节结果存储, req_id=入参, node_name=test)** → 结束 |
+| 上线审批 | `wf_sub_06` | 3/2 | req_id（必填） | approval_id / status | 开始(req_id) → submit_release_approval(推送审批，**req_id 引用开始节点**，后端硬校验四环节 config/spec/fee/test 结果齐全) → 结束（注：报告生成/报告存储由智能体 LLM 调度层完成，详见 3.2 节技能 4） |
 | 监控运维 | `wf_sub_07` | 5/4 | product_id / date_range | 指标与告警 | 开始 → query_product_monitor → 选择器(异常?) → send_alert → 结束 |
 | 审批进度查询（V1.5） | `wf_sub_08` | 3/2 | approval_id / product_id | 审批状态摘要 | 开始 → query_approval_status → 大模型(状态摘要归纳) → 结束（智能体消息查询触发，也可由智能体直接调工具13） |
 
-> 说明：① V1.7 起 8 个子工作流由智能体 LLM 按意图映射表**直调**（主流程已删除；若需回退 V1.6 主流程编排模式，可依据 git 历史恢复 `wf_cpcp_main` JSON 或参考 `V1.6\gen_workflows.py` 历史版本）。② 测试轮询采用 **type=6 代码节点**实现（asyncio.sleep 间隔 5s、超时 30 分钟；注意平台代码节点 inputs 须为平铺 list 结构）；稽核为实时接口无需轮询。③ `wf_sub_08` 为轻量查询子工作流（V1.5 新增）：V1.7 默认由智能体提示词【技能5】直接调用工具13/工具11 完成消息查询，子流兜底。④ 节点结果存储后端已落库持久化（pd_ai_node_results 表，H2/MySQL 双 DDL），服务重启不丢失。⑤ wf_sub_02~05 的环节结果存储节点 req_id 均引用开始节点 execution_id，node_name 与 6.1 节调度时序一致（config/spec/fee/test）；wf_sub_06 审批推送节点已传 execution_id，配合后端 `submit_release_approval` 硬校验。
+> 说明：① V1.7 起 8 个子工作流由智能体 LLM 按意图映射表**直调**（主流程已删除；若需回退 V1.6 主流程编排模式，可依据 git 历史恢复 `wf_cpcp_main` JSON 或参考 `V1.6\gen_workflows.py` 历史版本）。② 测试轮询采用 **type=6 代码节点**实现（asyncio.sleep 间隔 5s、超时 30 分钟；注意平台代码节点 inputs 须为平铺 list 结构）；稽核为实时接口无需轮询。③ `wf_sub_08` 为轻量查询子工作流（V1.5 新增）：V1.7 默认由智能体提示词【技能5】直接调用工具13/工具11 完成消息查询，子流兜底。④ 节点结果存储后端已落库持久化（pd_ai_node_results 表，H2/MySQL 双 DDL），服务重启不丢失。⑤ wf_sub_02~05 的环节结果存储节点 req_id 均引用开始节点 req_id，node_name 与 6.1 节调度时序一致（config/spec/fee/test）；wf_sub_06 审批推送节点 req_id 引用开始节点，配合后端 `submit_release_approval` 硬校验。
 
 ### 6.3 关键节点配置要点
 
@@ -493,12 +497,12 @@
 - 温度值：0.2
 - 输入：`requirement_text`（+ `query_similar_offer` 返回的相似产品列表）
 - 提示词：完整采用《需求分析工作流可参考提示词.txt》（全文见 6.4 节），核心约束：字段来源仅"原始需求/AI补全"；**价格、资源类未提供填"待补充"，其余缺失字段基于相似产品推理补全**；不虚构业务规则；输出《产销品加载执行方案》
-- 输出：`plan_json`(string，执行方案 JSON，经**节点结果存储查询插件·结果存储**保存，key=plan_id) + `plan_md`(string，Markdown 表格，固定 4 列：字段分类/字段名称/字段值/来源)
+- 输出：`plan_json`(string，执行方案 JSON，经**节点结果存储查询插件·结果存储**保存，key=req_id) + `plan_md`(string，Markdown 表格，固定 4 列：字段分类/字段名称/字段值/来源)
 - 补全规则（V1.4 明确）：**价格、资源两类字段未提供 → "待补充"（禁止推理）**；其余缺失字段 → 基于相似产品推理补全，来源"AI补全"
 - 执行方案 JSON 结构（建议）：
 ```json
 {
-  "plan_id": "PLAN20260912001",
+  "req_id": "PLAN20260912001",
   "product_name": "5G-A套餐199元",
   "fields": [
     {"分类": "基础信息", "字段": "产品属性", "值": "个人主资费", "来源": "原始需求"},
@@ -519,9 +523,9 @@
 - 用户确认语义识别：由智能体提示词控制（确认/修改/拒绝三类意图）；确认类回复按 3.2 节【技能2】写 CONFIRMED 确认标记后串行直调执行主干子流（V1.7 LLM 智能调度，不再经主工作流注入 confirmed 参数）。
 
 **③ 智能配置节点（V1.2 重构：直读 JSON，不重新生成；V1.6 调整为子工作流 req_id 自查）**
-- 节点链：开始节点(req_id) → **query_node_result（GET，req_id=execution_id，node_name=requirement）** → 代码节点提取 plan_id/plan_json → `save_product_config`
-- 配置项：按 req_id 自查从节点结果存储取回执行方案 JSON；`save_product_config` 的入参 `plan_json` 直接引用自查结果，**中间不得插入任何大模型节点/改写节点**，保证分析结果与落地配置一致；`plan_id` 须独立传参（后端强校验）。
-- 安全兜底（V1.7）：`save_product_config` **后端硬校验**存储中该 plan_id 的 CONFIRMED 确认标记（`NodeResultService.latestRecord(plan_id,"CONFIRMED")` 非空才放行，否则返回 NOT_CONFIRMED），LLM 跳步也无法写入。
+- 节点链：开始节点(req_id) → **query_node_result（GET，req_id=开始节点入参，node_name=requirement）** → 代码节点提取 req_id/plan_json → `save_product_config`
+- 配置项：按 req_id 自查从节点结果存储取回执行方案 JSON；`save_product_config` 的入参 `plan_json` 直接引用自查结果，**中间不得插入任何大模型节点/改写节点**，保证分析结果与落地配置一致；方案 key 由后端从 plan_json 的 `req_id` 键提取。
+- 安全兜底（V1.7）：`save_product_config` **后端硬校验**存储中该 req_id 的 CONFIRMED 确认标记（`NodeResultService.latestRecord(req_id,"CONFIRMED")` 非空才放行，否则返回 NOT_CONFIRMED），LLM 跳步也无法写入。
 
 **④ 实时稽核节点（V1.3 重构：实时接口，无文件上传/无轮询；V1.6 调整为子工作流 req_id 自查）**
 - `wf_sub_03` 子工作流：开始节点(req_id) → query_node_result 自查 config（取 offer_id/config_json）→ 单插件节点 `realtime_spec_audit`（入参 `offer_id + config_json`，**同步返回**稽核结果）→ 大模型整改建议 → save_node_result(node_name=spec)。
@@ -535,25 +539,25 @@
 
 **⑥ 选择器节点（通用）**
 - 条件模板：`{环节结果字段} 等于 通过值` → 走"通过"分支；否则走"驳回"分支。
-- 支持且/或多条件（如 confirmed==true 且 plan_id 非空；pass==1 且 failed==0；approve_confirmed==true）。
+- 支持且/或多条件（如 confirmed==true 且 req_id 非空；pass==1 且 failed==0；approve_confirmed==true）。
 
 **⑦ 报告生成节点（V1.6 调整：移入 wf_sub_06 子工作流内部）**
 - 位置：`wf_sub_06` 上线审批子工作流内（LLM 节点 501g），主流程不再单独设置报告汇总节点。
 - 前置：子工作流以 req_id 单入参进入，**串行自查 5 类环节结果**（node_name=config/spec/fee/test + 需求摘要 requirement），代码节点合成结构化汇总后交给 LLM。
 - 提示词要点：`请按标准模板汇总生成《销售品上线测试与稽核报告》，强制包含 7 章节：1.需求摘要 2.配置落地结果 3.稽核结论 4.资费结论 5.测试统计 6.受理验证结论（引用 orderId/offerInstId 与逐受理场景比对结果）7.上线建议。全通过→"建议上线"，任一环节未通过→"暂缓上线"。只基于输入数据生成，不得新增结论。`
-- 输出：`report`(string) → 先 save_node_result 落库（node_name=report，req_id=execution_id）→ 再传给 `submit_release_approval` 的 `report_url/report` 字段。
+- 输出：`report`(string) → 先 save_node_result 落库（node_name=report，req_id=入参 req_id）→ 再传给 `submit_release_approval` 的 `report_url/report` 字段。
 
 **⑧ 串行结果打印与异常处置节点（V1.5 新增，V1.7 调整为 LLM 调度层职责）**
 - **环节结果打印**（V1.7）：每个环节子流返回后，由智能体 LLM 按 6.1 节"每环节结果打印格式"模板向用户输出该环节执行结果（引用出参原文，不凭语义推断成败）。
 - **异常处置**（V1.7）：环节异常时 LLM 立即中断调度，按"异常处置输出格式"模板输出异常环节名称、异常原因（引用接口返回原文，不臆测）、关键明细与整改建议，并引导【重新执行】/【修改执行方案】，不得自行重试。
 - **续跑映射**（V1.7，LLM 执行）：`重新执行` → 按 fail_node 续调（`STAGE1_CONFIG`→wf_sub_02、`STAGE2_AUDIT`→wf_sub_03、`STAGE3_FEE`→wf_sub_05、`STAGE4_TEST`→wf_sub_04）；已成功环节不重复调用。
-- **环节结果存储（V1.7，下沉到子工作流）**：wf_sub_02~05 各内置 save_node_result 环节结果存储节点（req_id=入参 execution_id，node_name=config/spec/fee/test），子流执行成功即自动落库（后端 pd_ai_node_results 表持久化），LLM 调度层无需补存；wf_sub_06 审批自查依赖此数据，`submit_release_approval` 后端硬校验四环节（config/spec/fee/test）结果齐全。
+- **环节结果存储（V1.7，下沉到子工作流）**：wf_sub_02~05 各内置 save_node_result 环节结果存储节点（req_id=入参 req_id，node_name=config/spec/fee/test），子流执行成功即自动落库（后端 pd_ai_node_results 表持久化），LLM 调度层无需补存；wf_sub_06 审批自查依赖此数据，`submit_release_approval` 后端硬校验四环节（config/spec/fee/test）结果齐全。
 
 **⑨ 审批发起确认节点（V1.5 新增，V1.7 调整为 LLM 调度层）**
 - 四环节全部成功后，LLM 输出"成功结果详情 + 是否发起上线审批"提示，等待用户回复。
-- 用户回复"发起审批/确认上线" → LLM 调用 `wf_sub_06`（入参 execution_id：子流串行自查 5 类环节结果 → LLM 生成 7 章节报告 → 报告存储 → 审批推送，**审批推送节点传 execution_id**）→ 输出审批单号。
-- 用户回复"暂不" → LLM 提示可稍后发送"发起审批"继续（plan_id/execution_id 已存储，随时可续）。
-- 兜底（V1.7）：`submit_release_approval` **后端硬校验** execution_id 入参 + 四环节（config/spec/fee/test）结果齐全，LLM 跳过执行主干直接发起审批将被拒绝。
+- 用户回复"发起审批/确认上线" → LLM 调用 `wf_sub_06`（入参 req_id=上下文沿用原值：子流串行自查 5 类环节结果 → LLM 生成 7 章节报告 → 报告存储 → 审批推送，**审批推送节点 req_id 引用开始节点**）→ 输出审批单号。
+- 用户回复"暂不" → LLM 提示可稍后发送"发起审批"继续（执行方案与各环节结果均以 req_id 同键存储，随时可续）。
+- 兜底（V1.7）：`submit_release_approval` **后端硬校验** req_id 入参 + 四环节（config/spec/fee/test）结果齐全，LLM 跳过执行主干直接发起审批将被拒绝。
 
 **⑩ 消息查询实现（V1.5 新增）**
 - **审批进度查询**：用户发送含"审批进度/审批状态"语义的消息 → 智能体提示词【技能5】命中 → 调用工具13 `query_approval_status`（approval_id 优先，缺失时按 product_id 查最新审批单）→ 大模型归纳输出"审批单号+状态+当前环节+审批意见"。
@@ -608,7 +612,7 @@
    待补充信息——仅价格/资源类，提示用户在确认时补充）
 3. 《产销品加载执行方案》Markdown 表格（固定4列：字段分类/字段名称/字段值/
    来源；同分类连续行合并显示）
-同时生成执行方案 JSON 并调用节点结果存储查询插件（结果存储）保存，返回 plan_id。
+同时生成执行方案 JSON 并调用节点结果存储查询插件（结果存储）保存，返回 req_id。
 
 # 重要约束
 需求原文最高优先级；不得虚构用户未提供的业务规则；历史产品只作参考不能覆盖
@@ -671,7 +675,7 @@
 - 剧本与验收的映射关系：
 | 剧本环节 | 对应验收内容 | 演示方式 |
 | --- | --- | --- |
-| 幕1 需求提报/分析 | 需求要素映射准确率 + 执行方案生成 | 输入需求（可参考 5G-A 套餐 199 元资料改写）→ 输出执行方案表格 + plan_id（节点结果存储保存） |
+| 幕1 需求提报/分析 | 需求要素映射准确率 + 执行方案生成 | 输入需求（可参考 5G-A 套餐 199 元资料改写）→ 输出执行方案表格 + req_id（节点结果存储保存） |
 | 幕2 用户确认 | 确认门禁有效性 | 先演示"未确认要求配置→拒绝"，再回复"确认执行"→ 触发执行主干自动串行 |
 | 幕3 执行主干串行（V1.5） | 串行连续性 + 每环节结果打印 | 一次运行连打四环节结果（智能配置→稽核→资费→测试），中途不停顿 |
 | 幕3A 异常中断与引导（V1.5） | 异常处置完整性 + 续跑正确性 | 注入稽核缺陷 → 中断并打印异常节点/原因/建议 → 演示【重新执行】续跑 |
@@ -702,9 +706,9 @@
 | 自动测试长时间未完成 | 轮询代码节点设超时上限（30 分钟），超时转人工提示并保留 globalId 供人工续查 |
 | 大模型解析幻觉 | 知识库增强 + 温度调低 + 结构化 JSON 输出 + 字段来源标记（原始需求/AI补全）+ 实时稽核兜底 |
 | 配置落地与执行方案不一致 | 智能配置禁止大模型二次加工，直读节点结果存储 JSON 原样透传给 save_product_config；落地后可按 plan_json 人工抽查比对 |
-| 用户未确认即触发生产写入 | V1.7 工具层硬校验：后端 save_product_config 校验存储中 plan_id 的 CONFIRMED 确认标记（无标记返回 NOT_CONFIRMED）+ 智能体提示词【技能2】确认流程约束 |
-| 执行主干串行中断后重复执行已完成写操作 | 各子工作流以 req_id=execution_id、node_name=config/spec/fee/test/report 落库节点结果存储（后端持久化）；续跑时子工作流自查回放已成功环节，写接口不重复调用 |
-| 未经确认发起审批 | V1.7 工具层硬校验：后端 submit_release_approval 校验 execution_id 四环节（config/spec/fee/test）结果齐全 + 智能体提示词【技能4】审批引导约束 |
+| 用户未确认即触发生产写入 | V1.7 工具层硬校验：后端 save_product_config 校验存储中 req_id 的 CONFIRMED 确认标记（无标记返回 NOT_CONFIRMED）+ 智能体提示词【技能2】确认流程约束 |
+| 执行主干串行中断后重复执行已完成写操作 | 各子工作流以 req_id（统一键）、node_name=config/spec/fee/test/report 落库节点结果存储（后端持久化）；续跑时子工作流自查回放已成功环节，写接口不重复调用 |
+| 未经确认发起审批 | V1.7 工具层硬校验：后端 submit_release_approval 校验 req_id 四环节（config/spec/fee/test）结果齐全 + 智能体提示词【技能4】审批引导约束 |
 | 消息查询意图未命中 | 智能体提示词【技能5】明确"审批进度/审批状态/监控/运行监控"触发词；查询工具入参缺失时提示用户补齐 product_id/approval_id |
 | 测试报告缺受理验证结论 | 大模型报告节点提示词强制要求包含 orderId/offerInstId 与逐受理场景结论；验收按 8.2 指标核验 |
 | 生产误操作 | 写入类插件前置用户确认；测试仅对接测试环境 |

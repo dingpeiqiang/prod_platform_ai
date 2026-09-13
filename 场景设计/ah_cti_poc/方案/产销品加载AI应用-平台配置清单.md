@@ -32,7 +32,7 @@
 **录入核对要点：**
 - [ ] 每个必填入参"为空提示"已填写（格式：`缺少{参数中文名}，请{获取方式}`）
 - [ ] "是否提参"：上下文提取类选"是"；`config_json`/`plan_json`/`report_url` 等大报文选"否"（工作流变量引用）
-- [ ] 工具2/7/9 关键校验点（V1.7 后端硬校验）：工具2 同步返回无文件上传；工具7 校验存储中 plan_id 的 **CONFIRMED 确认标记**（无标记返回 NOT_CONFIRMED）；工具9 校验 **execution_id 四环节（config/spec/fee/test）结果齐全**（缺失即拒绝推送）
+- [ ] 工具2/7/9 关键校验点（V1.7 后端硬校验）：工具2 同步返回无文件上传；工具7 校验存储中 req_id 的 **CONFIRMED 确认标记**（无标记返回 NOT_CONFIRMED）；工具9 校验 **req_id 四环节（config/spec/fee/test）结果齐全**（缺失即拒绝推送）
 - [ ] V1.6 口径：13 个工具全部为**自研模拟实现**（无外部 ApiID），模拟数据兼容《产品信息.txt》18 个销售品；《产销品场景部分能力接口清单.xlsx》仅作契约参考
 - [ ] 每个工具在"预览与调试"中自测通过（对应细化设计 2.4 节自测项 #1~#12）
 
@@ -46,11 +46,11 @@
 | 工作流 | flowId | 导入文件 | 发布前操作 |
 | --- | --- | --- | --- |
 | 需求分析 | `wf_sub_01` | wf_sub_01_需求分析.json（9节点/8边） | 检查 LLM 节点提示词（V1.7 18字段+来源判定版）与知识库检索挂载（K1+K4，top_k=3）；LLM 节点4 单出参 plan_output + 代码节点 004a 拆分；结束前存储 node_name=requirement |
-| 智能配置 | `wf_sub_02` | wf_sub_02_智能配置.json（7节点/6边） | req_id 单入参自查执行方案（query_node_result，submit_way=get）；确认"读取执行方案→配置落地"之间无大模型节点；**103 落地节点三入参 plan_id/plan_json/confirmed，plan_id 独立传（后端强校验）**；结束前存储 node_name=config |
+| 智能配置 | `wf_sub_02` | wf_sub_02_智能配置.json（7节点/6边） | req_id 单入参自查执行方案（query_node_result，submit_way=get）；确认"读取执行方案→配置落地"之间无大模型节点；**103 落地节点入参 req_id/plan_json/confirmed（V1.7 统一键，方案key由后端从 plan_json 的 req_id 键提取）**；结束前存储 node_name=config |
 | 规格稽核 | `wf_sub_03` | wf_sub_03_规格稽核.json（8节点/7边） | req_id 单入参自查 offer_id/config_json；确认 realtime_spec_audit 为同步插件节点；结束前存储 node_name=spec |
 | 自动测试 | `wf_sub_04` | wf_sub_04_自动测试.json（11节点/10边） | req_id 单入参自查 offer_id；**0304 轮询为 type=6 代码节点（非循环节点）：inputs 平铺 list、asyncio.sleep(5)×360 次**；结束前存储 node_name=test |
 | 资费校准 | `wf_sub_05` | wf_sub_05_资费校准.json（8节点/7边） | req_id 单入参自查 config_json；挂载 K2 资费规则库；结束前存储 node_name=fee |
-| 上线审批 | `wf_sub_06` | wf_sub_06_上线审批.json（11节点/10边） | **req_id 单入参；串行自查 5 类环节结果（config/spec/fee/test/需求摘要）→ LLM 生成 7 章节报告 → 存储 node_name=report → 审批推送**；审批推送由后端硬校验 execution_id 四环节结果 |
+| 上线审批 | `wf_sub_06` | wf_sub_06_上线审批.json（11节点/10边） | **req_id 单入参；串行自查 5 类环节结果（config/spec/fee/test/需求摘要）→ LLM 生成 7 章节报告 → 存储 node_name=report → 审批推送**；审批推送由后端硬校验 req_id 四环节结果 |
 | 监控运维 | `wf_sub_07` | wf_sub_07_监控运维.json | 配置定时触发（每日，平台定时任务）；异常判定阈值 error_count>0 或 fee_error_rate>0.1；LLM 消息查询默认直调工具10/11，此子流兜底 |
 | 审批进度查询 | `wf_sub_08` | wf_sub_08_审批进度查询.json | 轻量子工作流；LLM 消息查询默认直调工具13，此子流兜底 |
 | （归档）主工作流 | `wf_cpcp_main` | wf_cpcp_main_产销品加载主流程.json | **不导入、不发布**（V1.7 弃用归档） |
@@ -119,7 +119,7 @@
 
 **阶段D 智能体与验收（对应主方案阶段5~6）**
 - [ ] 智能体装配 12 项逐项勾选（重点：工作流仅挂 8 个子流、提示词含意图映射表）
-- [ ] **确认续跑联调专项：需求分析→输出方案→回复"确认执行"→验证 LLM 写入 CONFIRMED 标记（node_name=CONFIRMED，req_id=plan_id）后串行直调子流，进入智能配置而非重复需求分析**
+- [ ] **确认续跑联调专项：需求分析→输出方案→回复"确认执行"→验证 LLM 写入 CONFIRMED 标记（node_name=CONFIRMED，req_id=执行方案存储键）后串行直调子流，进入智能配置而非重复需求分析**
 - [ ] **硬校验联调专项：跳过确认直调 save_product_config 返回 NOT_CONFIRMED；跳过环节直接发起审批被四环节校验拒绝**
 - [ ] 细化设计 3.5 节工作流级用例 #1~#21 全部通过（含 #17/#18 硬校验、#19~#21 十八套餐兼容）
 - [ ] 按《端到端演示剧本》完成全流程彩排（含反向分支速查表 10 项）

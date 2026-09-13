@@ -11,19 +11,10 @@
           {
             "blockID": "",
             "relName": "",
-            "name": "product_id",
-            "description": "CRM产品ID（必填）",
+            "name": "req_id",
+            "description": "执行方案存储key（必填，V1.7 统一键，回放各阶段结果用）",
             "type": "string",
             "required": true,
-            "content": ""
-          },
-          {
-            "blockID": "",
-            "relName": "",
-            "name": "execution_id",
-            "description": "执行主干批次号（回放各阶段结果用，选填）",
-            "type": "string",
-            "required": false,
             "content": ""
           }
         ],
@@ -56,7 +47,7 @@
             {
               "name": "prompt",
               "type": "string",
-              "content": "请基于以下输入数据，按标准模板汇总生成《销售品上线测试与稽核报告》：\n【配置落地结果】product_id={product_id}\n【各阶段结果】execution_id={execution_id}（节点结果存储 req_id=execution_id 回放 config/spec/fee/test 四条记录）\n报告必须包含以下章节：1.需求摘要与执行方案要点；2.配置落地结果；3.稽核结论；4.资费结论；5.测试统计与失败明细；6.受理验证结论（强制章节，逐受理场景给出通过/失败结论）；7.上线建议。只基于输入数据生成，不得新增结论。\n输出要求：仅输出报告内容（对应出参 report），不输出其他多余文字。"
+              "content": "请基于以下输入数据，按标准模板汇总生成《销售品上线测试与稽核报告》：\n【配置落地结果】product_id={product_id}\n【各阶段结果】req_id={req_id}（节点结果存储 req_id=入参 req_id 回放 config/spec/fee/test 四条记录）\n报告必须包含以下章节：1.需求摘要与执行方案要点；2.配置落地结果；3.稽核结论；4.资费结论；5.测试统计与失败明细；6.受理验证结论（强制章节，逐受理场景给出通过/失败结论）；7.上线建议。只基于输入数据生成，不得新增结论。\n输出要求：仅输出报告内容（对应出参 report），不输出其他多余文字。"
             }
           ],
           "inputParameters": [
@@ -76,17 +67,17 @@
             },
             {
               "blockID": "b2c3d4e5-0000-4000-8000-000000000301",
-              "relName": "execution_id",
-              "name": "execution_id",
-              "description": "执行批次号",
+              "relName": "req_id",
+              "name": "req_id",
+              "description": "执行方案存储key",
               "type": "ref",
               "required": true,
               "content": "",
               "nameValue": [
                 "b2c3d4e5-0000-4000-8000-000000000301",
-                "b2c3d4e5-0000-4000-8000-000000000301,execution_id"
+                "b2c3d4e5-0000-4000-8000-000000000301,req_id"
               ],
-              "currValue": "b2c3d4e5-0000-4000-8000-000000000301,execution_id"
+              "currValue": "b2c3d4e5-0000-4000-8000-000000000301,req_id"
             }
           ]
         },
@@ -127,6 +118,20 @@
         "flowJson": null,
         "authentic_info": "",
         "inputs": [
+          {
+            "blockID": "b2c3d4e5-0000-4000-8000-000000000301",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "执行方案存储key（V1.7 统一键，四环节门禁校验依据）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "b2c3d4e5-0000-4000-8000-000000000301",
+              "b2c3d4e5-0000-4000-8000-000000000301,req_id"
+            ],
+            "currValue": "b2c3d4e5-0000-4000-8000-000000000301,req_id"
+          },
           {
             "blockID": "b2c3d4e5-0000-4000-8000-000000000301",
             "relName": "product_id",
@@ -178,7 +183,7 @@
         "nodeMeta": {
           "title": "审批推送",
           "code": "submit_release_approval",
-          "description": "工具9：自研模拟审批推送；插件层校验approve_confirmed==true（未经确认返回NOT_CONFIRMED）；幂等：同product_id返回原approval_id",
+          "description": "工具9：自研模拟审批推送；后端硬校验 req_id 四环节（config/spec/fee/test）结果齐全（未走完执行主干返回NOT_CONFIRMED）+approve_confirmed==true；幂等：同product_id返回原approval_id",
           "version": "1"
         },
         "authentic_info_new": {

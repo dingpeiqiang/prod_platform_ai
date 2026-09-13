@@ -1,7 +1,7 @@
 # 产销品加载 AI 应用开发方案（Skills 封装版）
 > 平台：AI应用开发（九思大模型 · 低代码智能体平台）
 > 场景：安徽电信 CPCP 产销品域 · 数字员工（必选场景）
-> 版本：S1.1　日期：2026-09-13
+> 版本：S1.2　日期：2026-09-13
 > 方案定位：本方案是《产销品加载AI应用开发方案.md》（工作流编排版，下称"主方案"）的**替代实现路线**。业务目标、环节划分、插件清单、知识库、验收标准与主方案完全一致，差异仅在于**实现载体：以 Skills（技能包）封装替代工作流编排**。
 
 ## 版本记录
@@ -9,6 +9,7 @@
 | --- | --- | --- |
 | S1.0 | 2026-09-12 | 基于 V1.6 主方案产出 Skills 封装版：8 个业务环节封装为 6 个技能（4 个主动技能 + 2 个被动技能），执行主干四环节封装为单技能内部脚本，取消主/子工作流编排 |
 | S1.1 | 2026-09-13 | 对齐主方案 V1.7「LLM 智能调度 + 工具层硬校验」：save_product_config 增加存储 CONFIRMED 标记硬校验、submit_release_approval 增加 execution_id 四环节结果硬校验（必填入参），技能门禁表述由"脚本校验+插件层校验"统一为"技能自查 + 后端工具层硬校验"双重兜底 |
+| S1.2 | 2026-09-13 | 对齐主方案 V1.7 统一存储键：**plan_id/execution_id 双键合并为 req_id 单键**（PLAN+yyyyMMddHHmmss+3位随机数，方案批次与执行主干共用、同键覆盖写）。Skill-1 输出产物改为 req_id；Skill-2 确认标记改写为 req_id + node_name=CONFIRMED；Skill-3 单 req_id 入参自查存储、后端 save_product_config 门禁入参改 req_id（方案key由后端从 plan_json 的 req_id 键提取）；Skill-4 submit_release_approval 门禁入参改 req_id；全链路存储 key 规范统一（详见第 4 节） |
 
 ---
 
@@ -22,7 +23,7 @@
 | 环节封装 | 每个环节一个子工作流 | 每个能力域一个 Skill（技能包：提示词 + 工具集 + 脚本 + 知识引用的聚合单元） |
 | 执行主干串行 | 画布上四个环节节点串行 + 选择器分支 + 异常处置节点 | 封装进**一个技能**（`product_launch_pipeline`），技能内部由脚本保证串行、异常即停，不经画布 |
 | 确认门禁 | 选择器节点判定 `confirmed==true` | 技能内脚本前置校验 + 独立"确认解析"技能 |
-| 中断续跑 | 主流程结束节点中断 + 携参重入 + 续跑判定选择器 | 技能执行状态天然持久化（`execution_id` + 技能内记忆/存储），续跑 = 重新触发同一技能并传 `resume_action` |
+| 中断续跑 | 主流程结束节点中断 + 携参重入 + 续跑判定选择器 | 技能执行状态天然持久化（req_id + 技能内记忆/存储），续跑 = 重新触发同一技能并传 resume_action |
 | 消息查询 | 新增 wf_sub_08 子工作流或智能体直调工具 | 被动技能（trigger 触发），无流程编排 |
 | 适用倾向 | 流程刚性、可视化审计要求高的场景 | 环节复用性/灵活性要求高、希望减少画布维护成本、智能体平台 Skills 能力成熟的场景 |
 
@@ -44,10 +45,10 @@
 ```
 
 ### 1.3 设计原则（继承主方案并按 Skills 特性调整）
-1. **技能高内聚**：一个技能 = 一个业务能力域，技能内自带提示词、工具清单、脚本逻辑、知识库引用；技能间只通过**结构化产物（plan_id / execution_id / product_id / approval_id）** 传递，低耦合。
-2. **产物即状态**：所有跨技能传递的数据（执行方案 JSON、各环节结果）以「节点结果存储查询插件」为唯一持久层，key 规范与主方案一致（`PLAN*` / `EXEC{id}_STAGE{n}`），**技能无状态、产物有状态**，天然支持续跑与审计。
+1. **技能高内聚**：一个技能 = 一个业务能力域，技能内自带提示词、工具清单、脚本逻辑、知识库引用；技能间只通过**结构化产物（req_id / product_id / approval_id）** 传递，低耦合。
+2. **产物即状态**：所有跨技能传递的数据（执行方案 JSON、各环节结果）以「节点结果存储查询插件」为唯一持久层，key 规范与主方案 V1.7 一致（req_id 统一键 + node_name 区分环节），**技能无状态、产物有状态**，天然支持续跑与审计。
 3. **主干单技能化**：执行主干四环节不拆四个技能，而是封装为**一个技能内的四阶段串行脚本**——技能内代码保证"串行、不停顿、异常即停、逐环节打印"，避免智能体多轮路由带来的不确定性。这是本方案与主方案最大的结构差异。
-4. **门禁下沉到技能 + 工具层硬校验兜底**：确认门禁（confirmed）、审批门禁（approve_confirmed）不依赖画布选择器，而是在技能脚本入口自查存储（从存储读取确认标记）；同时后端写接口**不信任 LLM 传参**做硬校验（save_product_config 校验存储 CONFIRMED 标记、submit_release_approval 校验 execution_id 四环节结果），与主方案 V1.7 完全一致。
+4. **门禁下沉到技能 + 工具层硬校验兜底**：确认门禁（confirmed）、审批门禁（approve_confirmed）不依赖画布选择器，而是在技能脚本入口自查存储（从存储读取确认标记）；同时后端写接口**不信任 LLM 传参**做硬校验（save_product_config 校验存储中该 req_id 的 CONFIRMED 标记、submit_release_approval 校验 req_id 四环节结果），与主方案 V1.7 完全一致。
 5. **被动技能承接消息查询**：审批进度、监控结果查询用 trigger 触发的被动技能实现，用户"发送消息即查"，无需显式指令。
 6. **插件先行，自研模拟**：与主方案 V1.6 完全一致——13 个插件工具全部自研模拟，种子数据适配《产品信息.txt》18 个销售品；技能只是插件的"组织者"，不改变插件契约。
 
@@ -63,8 +64,8 @@
 | 触发方式 | 主动触发：用户上传需求文档 / 口述需求 / 主引导问题命中 |
 | 封装内容 | 需求分析助手提示词（主方案 6.4 全文）+ 工具 `query_similar_offer` + 节点结果存储查询插件（结果存储）+ 存量销售品知识库引用 |
 | 输入 | requirement_text（必填）/ requirement_file（选填）/ revise_opinion（选填，修改意见，续跑时传入） |
-| 执行逻辑 | ① 理解需求 → ② 提取业务要素（四类字段）→ ③ 调用 `query_similar_offer` 匹配相似产品 → ④ 字段映射 + 补全（**价格/资源类未提供填"待补充"禁止推理；其余基于相似产品 AI 补全**）→ ⑤ 生成执行方案 JSON → 节点结果存储保存（key=plan_id，修改时覆盖写）→ ⑥ 输出 Markdown 表格 |
-| 输出产物 | plan_id / plan_md（执行方案表格）/ plan_json（已存储）/ pending_fields |
+| 执行逻辑 | ① 理解需求 → ② 提取业务要素（四类字段）→ ③ 调用 `query_similar_offer` 匹配相似产品 → ④ 字段映射 + 补全（**价格/资源类未提供填"待补充"禁止推理；其余基于相似产品 AI 补全**）→ ⑤ 生成执行方案 JSON → 节点结果存储保存（key=req_id，修改时覆盖写）→ ⑥ 输出 Markdown 表格 |
+| 输出产物 | req_id（执行方案存储key，PLAN+yyyyMMddHHmmss+3位随机数）/ plan_md（执行方案表格）/ plan_json（已存储）/ pending_fields |
 | 与主方案差异 | 原 `wf_sub_01` 子工作流 → 单技能；"待补充"提示不依赖选择器节点，由技能输出模板直接列出 |
 
 ### Skill-2 确认解析与门禁（被动技能）
@@ -72,11 +73,11 @@
 | 项 | 内容 |
 | --- | --- |
 | 技能名 | `plan_confirmation_gate`（确认解析与门禁） |
-| 触发方式 | 被动触发（trigger）：用户回复含"确认执行/同意/OK"或修改意见语义时触发；**仅在存在未确认 plan_id 时激活** |
+| 触发方式 | 被动触发（trigger）：用户回复含"确认执行/同意/OK"或修改意见语义时触发；**仅在存在未确认 req_id 时激活** |
 | 封装内容 | 确认/修改/拒绝三意图解析提示词 + 节点结果存储查询插件（结果查询/写入确认标记） |
-| 输入 | 用户回复文本 + 上下文中的 plan_id |
-| 执行逻辑 | ① 解析意图：**确认** → 向存储写入 `EXEC{execution_id}_CONFIRMED=true`，随后自动触发 Skill-3；**修改** → 解析修改意见，带 revise_opinion 重新触发 Skill-1（覆盖保存后再次等待确认）；**拒绝** → 结束并提示。② 门禁兜底：plan_id 不存在或已确认过则不重复触发 |
-| 输出产物 | confirmed 标记（写入存储）/ execution_id / 触发 Skill-3 的调度指令 |
+| 输入 | 用户回复文本 + 上下文中的 req_id |
+| 执行逻辑 | ① 解析意图：**确认** → 向存储写入确认标记（req_id 同执行方案存储键、node_name=CONFIRMED），随后自动触发 Skill-3；**修改** → 解析修改意见，带 revise_opinion 重新触发 Skill-1（覆盖保存后再次等待确认）；**拒绝** → 结束并提示。② 门禁兜底：req_id 不存在或已确认过则不重复触发 |
+| 输出产物 | confirmed 标记（写入存储，同键 req_id）/ 触发 Skill-3 的调度指令 |
 | 与主方案差异 | 原"用户确认交互节点 + 确认判定选择器" → 被动技能；门禁判断从画布选择器下沉到技能脚本 |
 
 ### Skill-3 执行主干流水线（主动技能，本方案核心）
@@ -86,11 +87,11 @@
 | 技能名 | `product_launch_pipeline`（产销品加载执行主干流水线） |
 | 触发方式 | ① Skill-2 确认后自动触发；② 用户"重新执行"消息触发（携带 resume_action） |
 | 封装内容 | 四阶段串行脚本（技能内代码/函数节点）+ 工具组 `save_product_config` / `realtime_spec_audit` / `check_billing_rule` / `offer_test` / `get_test_scenes` / `get_test_progress` / `get_test_result` + 节点结果存储查询插件 + 测试报告生成提示词 |
-| 输入 | plan_id（必填）/ execution_id（选填，续跑时传入）/ resume_action（选填：retry_from_fail / 默认首跑）/ fail_node（选填） |
-| 内部四阶段（串行、异常即停） | **阶段1 智能配置**：按 plan_id 读取执行 JSON 原文 → 前置校验 CONFIRMED 标记（未确认直接拒绝执行）→ `save_product_config` 原样透传落地（**后端硬校验 CONFIRMED 标记，缺标记返回 NOT_CONFIRMED**）→ 打印阶段结果；**阶段2 实时稽核**：`realtime_spec_audit`（offer_id + config_json）同步返回 → 打印结果；**阶段3 资费校准**：`check_billing_rule` → 打印结果；**阶段4 自动测试**：`offer_test` 发起 → `get_test_scenes` → 循环 `get_test_progress`（间隔 5s、超时 30 分钟）→ `get_test_result` → 测试报告生成（**必须含受理验证结论 orderId/offerInstId**）→ 打印结果 |
-| 异常处置 | 任一阶段失败/超时 → 立即中断，输出统一异常模板（异常阶段名 + 原因 + 明细 error_list/risk_list/失败测点 + 整改建议 + 【重新执行】/【修改执行方案】引导）；各阶段结果按 `EXEC{execution_id}_STAGE{1..4}` 写入存储 |
+| 输入 | req_id（必填，执行方案存储key，V1.7 统一键）/ resume_action（选填：retry_from_fail / 默认首跑）/ fail_node（选填） |
+| 内部四阶段（串行、异常即停） | **阶段1 智能配置**：按 req_id 读取执行 JSON 原文 → 前置校验确认标记（未确认直接拒绝执行）→ `save_product_config` 原样透传落地（携带 req_id，**后端硬校验存储中该 req_id 的确认标记，缺标记返回 NOT_CONFIRMED**；方案key由后端从 plan_json 的 req_id 键提取）→ 打印阶段结果；**阶段2 实时稽核**：`realtime_spec_audit`（offer_id + config_json）同步返回 → 打印结果；**阶段3 资费校准**：`check_billing_rule` → 打印结果；**阶段4 自动测试**：`offer_test` 发起 → `get_test_scenes` → 循环 `get_test_progress`（间隔 5s、超时 30 分钟）→ `get_test_result` → 测试报告生成（**必须含受理验证结论 orderId/offerInstId**）→ 打印结果 |
+| 异常处置 | 任一阶段失败/超时 → 立即中断，输出统一异常模板（异常阶段名 + 原因 + 明细 error_list/risk_list/失败测点 + 整改建议 + 【重新执行】/【修改执行方案】引导）；各阶段结果按 req_id + node_name=stage1..stage4 写入存储 |
 | 续跑逻辑 | `retry_from_fail` 时先读存储回放已成功阶段（不重复调用写接口），从 fail_node 对应阶段继续；`revise_plan` 时交回 Skill-1 |
-| 输出产物 | product_id / offer_id / 稽核结论 / 资费结论 / 测试报告 / all_passed 标记 / execution_id |
+| 输出产物 | product_id / offer_id / 稽核结论 / 资费结论 / 测试报告 / all_passed 标记 |
 | 与主方案差异 | 原 `wf_sub_02`/环节2/环节3/`wf_sub_04` 四段画布编排 + 续跑判定选择器 + 异常处置节点 → **单技能内四阶段脚本**；串行性由代码保证而非画布连线，异常出口为技能内统一 try/catch 模板 |
 
 ### Skill-4 上线审批发起（主动技能）
@@ -100,8 +101,8 @@
 | 技能名 | `release_approval`（上线审批发起） |
 | 触发方式 | 主动触发：执行主干全部成功后智能体提示"是否发起上线审批"，用户回复"发起审批/确认上线"触发 |
 | 封装内容 | 报告汇总提示词 + 工具 `submit_release_approval` + 节点结果存储查询插件 |
-| 输入 | execution_id / product_id（必填其一） |
-| 执行逻辑 | ① 从存储回放四阶段结果（config/spec/fee/test）→ ② 大模型按标准模板汇总《销售品上线测试与稽核报告》（含需求摘要/配置落地/稽核结论/资费结论/测试统计/受理验证结论/上线建议）→ ③ 校验四环节全部成功且用户已明确确认（approve_confirmed 门禁，`submit_release_approval` 须携带 execution_id，**后端硬校验存储中该 execution_id 的 config/spec/fee/test 四条记录，缺任一返回 NOT_CONFIRMED**）→ ④ 推送审批流，输出审批单号 |
+| 输入 | req_id / product_id（必填其一） |
+| 执行逻辑 | ① 从存储回放四阶段结果（config/spec/fee/test）→ ② 大模型按标准模板汇总《销售品上线测试与稽核报告》（含需求摘要/配置落地/稽核结论/资费结论/测试统计/受理验证结论/上线建议）→ ③ 校验四环节全部成功且用户已明确确认（approve_confirmed 门禁，`submit_release_approval` 须携带 req_id，**后端硬校验存储中该 req_id 的 config/spec/fee/test 四条记录，缺任一返回 NOT_CONFIRMED**）→ ④ 推送审批流，输出审批单号 |
 | 输出产物 | approval_id / status / report |
 | 与主方案差异 | 原"成功结果详情汇总大模型节点 + 审批发起判定选择器 + `wf_sub_06`" → 单技能；"成功详情打印"由 Skill-3 完成后输出，本技能只管审批 |
 
@@ -149,7 +150,7 @@
 【技能】
 1. 需求分析（requirement_analysis）：接收需求文档或口述需求，生成《产销品加载
    执行方案》。补全规则：仅价格、资源类字段未提供填"待补充"（禁止推理）；
-   其余缺失字段基于相似产品推理补全，标记"AI补全"。输出表格 + plan_id。
+   其余缺失字段基于相似产品推理补全，标记"AI补全"。输出表格 + req_id。
 2. 方案确认（plan_confirmation_gate）：用户对执行方案回复确认/修改/拒绝时，
    解析意图：确认→写入确认标记并自动启动执行主干；修改→带修改意见重新分析；
    拒绝→结束。未确认绝不触发配置落地。
@@ -171,7 +172,7 @@
 3. 字段来源仅"原始需求/AI补全"；"待补充"仅限价格、资源两类字段。
 4. 稽核/资费/测试不通过时不得跳过环节或自行重试，须输出异常详情并引导用户选择。
 5. 上线审批须执行主干全部成功且用户明确确认后才能发起，不得自动发起（后端
-   submit_release_approval 硬校验 execution_id 四环节结果）。
+   submit_release_approval 硬校验 req_id 四环节结果）。
 6. 输出遵循结构化格式：环节（阶段）名称、执行结果、关键数据、下一步动作。
 7. 不得泄露资费、配置等敏感数据明细，仅展示摘要。
 ```
@@ -191,15 +192,15 @@
 
 ## 4. 产物与存储 key 规范（与主方案对齐）
 
-| key | 内容 | 写入方 | 读取方 |
+| key（req_id + node_name） | 内容 | 写入方 | 读取方 |
 | --- | --- | --- | --- |
-| `PLAN{yyyyMMdd}{序号}` | 执行方案 JSON（覆盖写） | Skill-1 | Skill-2 / Skill-3 |
-| `EXEC{id}_CONFIRMED` | 确认标记（true） | Skill-2 | Skill-3（门禁自查）/ save_product_config 后端硬校验 |
-| `EXEC{id}_STAGE1..4` | 各阶段执行结果 | Skill-3 | Skill-3（续跑回放）/ Skill-4（报告汇总）/ submit_release_approval 后端硬校验 |
-| `EXEC{id}_ALLPASSED` | 主干完成标记 | Skill-3 | Skill-4（审批门禁校验） |
+| `req_id` + `requirement` | 执行方案 JSON（覆盖写），req_id=PLAN+yyyyMMddHHmmss+3位随机数 | Skill-1 | Skill-2 / Skill-3 |
+| `req_id` + `CONFIRMED` | 确认标记（{"confirmed":true}） | Skill-2 | Skill-3（门禁自查）/ save_product_config 后端硬校验 |
+| `req_id` + `config/spec/fee/test`（或 stage1..4） | 各阶段执行结果 | Skill-3 | Skill-3（续跑回放）/ Skill-4（报告汇总）/ submit_release_approval 后端硬校验 |
+| `req_id` + `ALLPASSED` | 主干完成标记 | Skill-3 | Skill-4（审批门禁校验） |
 | `APPROVAL{id}` | 审批单状态 | submit_release_approval 插件 | Skill-5 |
 
-> V1.7 对齐说明：后端硬校验实际按 `req_id + node_name`（req_id=execution_id，node_name=config/spec/fee/test/CONFIRMED）查询 `NodeResultService.latestRecord`，与工作流版存储枚举一致；`EXEC{id}_STAGE{n}` 为 Skills 版自有 key 规范（两条路线并存）。
+> V1.7 对齐说明：**req_id 为全链路唯一批次标识**（执行方案、确认标记、各环节结果同键覆盖写，node_name 区分环节），后端硬校验实际按 `req_id + node_name` 查询 `NodeResultService.latestRecord`，与工作流版存储枚举完全一致；S1.1 及以前版本中的 `EXEC{id}_STAGE{n}` 等旧 key 规范已废弃。
 
 ---
 
@@ -224,7 +225,7 @@
 | 指标 | 目标 |
 | --- | --- |
 | 被动技能触发命中率（确认语义/审批进度/监控查询） | ≥98%（误路由率 ≤2%） |
-| 技能间产物传递正确率（plan_id/execution_id 全链路一致） | 100% |
+| 技能间产物传递正确率（req_id 全链路一致） | 100% |
 | 技能内串行连续性（Skill-3 四阶段一次运行完成，无跨轮中断） | 100% |
 | 门禁下沉有效性 | Skill-3 无确认标记执行率 = 0%；Skill-4 无 all_passed 推送率 = 0% |
 
@@ -238,7 +239,7 @@
 | --- | --- |
 | 平台 Skills/被动触发能力不成熟（触发不稳定、不支持技能间显式调度） | 前置做平台能力验证（阶段1 内完成 PoC）；不支持时退化为"引导话术 + 用户消息触发"，或将 Skill-3 拆回轻量工作流（混合模式） |
 | LLM 意图路由不确定性导致环节漏执行 | 执行主干收拢进 Skill-3 单技能脚本（不依赖多轮路由）；关键门禁下沉到脚本与插件层硬校验，不依赖提示词约束 |
-| 技能执行过程可视化/审计弱于工作流画布 | 各阶段结果强制写入节点结果存储（EXEC{id}_STAGE{n}），输出结构化阶段报告，用存储回放替代画布日志 |
+| 技能执行过程可视化/审计弱于工作流画布 | 各阶段结果强制写入节点结果存储（req_id + node_name=stage 环节名），输出结构化阶段报告，用存储回放替代画布日志 |
 | 技能输出话术引导依赖用户配合 | 引导问题预置【重新执行】【修改执行方案】【发起审批】【查询审批进度】【查询监控结果】标准话术 |
 
 ---
@@ -263,8 +264,8 @@
 
 | 文件 | 对应技能 | 节点数 | 说明 |
 | --- | --- | --- | --- |
-| `skill_01_需求分析与执行方案.json` | Skill-1（主动） | 8 | 需求理解→相似产品→字段映射与AI补全→待补充判断→保存执行方案（plan_id） |
-| `skill_02_确认解析与门禁.json` | Skill-2（被动） | 6 | 确认/修改/拒绝意图解析；确认→写 EXEC 确认标记（Skill-3 硬校验） |
+| `skill_01_需求分析与执行方案.json` | Skill-1（主动） | 9 | 需求理解→相似产品→字段映射与AI补全（单出参 plan_output）→004a 方案输出拆分代码节点→待补充判断→保存执行方案（req_id） |
+| `skill_02_确认解析与门禁.json` | Skill-2（被动） | 6 | 确认/修改/拒绝意图解析；确认→写确认标记（req_id 同执行方案存储键、node_name=CONFIRMED，Skill-3 硬校验） |
 | `skill_03_执行主干流水线.json` | Skill-3（主动，核心） | 22 | 读取执行JSON→四阶段自动串行（配置落地→实时稽核→资费校准→自动测试含受理验证）→每阶段判定打印→统一异常出口 |
 | `skill_04_上线审批发起.json` | Skill-4（主动） | 4 | 报告汇总（强制含受理验证结论）→submit_release_approval 推送 |
 | `skill_05_审批进度查询.json` | Skill-5（被动） | 4 | query_approval_status→状态摘要归纳 |

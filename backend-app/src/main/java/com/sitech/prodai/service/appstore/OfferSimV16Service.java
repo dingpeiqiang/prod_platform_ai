@@ -133,8 +133,8 @@ public class OfferSimV16Service {
     /* ================= 接口3：配置落地 save_product_config ================= */
 
     public synchronized Map<String, Object> saveProductConfig(Map<String, Object> req) {
-        if (MapOps.empty(req.get("plan_id"))) {
-            return paramMissing("plan_id 必填");
+        if (MapOps.empty(req.get("req_id"))) {
+            return paramMissing("req_id 必填");
         }
         if (MapOps.empty(req.get("plan_json"))) {
             return paramMissing("plan_json 必填");
@@ -145,15 +145,16 @@ public class OfferSimV16Service {
             body.put("save_result", Map.of("reason", "confirmed 非 true，拒绝写入"));
             return body;
         }
-        // LLM智能调度硬门禁①：confirmed=true 还须存储中存在该 plan_id 的确认标记（CONFIRMED），
-        // 防止智能体跳过"用户确认→写确认标记"步骤直接调落地（不信任 LLM 传参）
-        String planIdForGate = MapOps.str(req.get("plan_id")).trim();
-        Map<String, Object> confirmRec = nodeResult.latestRecord(planIdForGate, "CONFIRMED");
+        // LLM智能调度硬门禁①：confirmed=true 还须存储中存在该 req_id 的确认标记（CONFIRMED），
+        // 防止智能体跳过"用户确认→写确认标记"步骤直接调落地（不信任 LLM 传参）。
+        // V1.7 统一键：plan_id/execution_id 双键合并为 req_id 单键，执行方案/确认标记/环节结果同键覆盖
+        String reqIdForGate = MapOps.str(req.get("req_id")).trim();
+        Map<String, Object> confirmRec = nodeResult.latestRecord(reqIdForGate, "CONFIRMED");
         if (confirmRec == null) {
             Map<String, Object> body = ok();
             body.put("status", "NOT_CONFIRMED");
             body.put("save_result", Map.of("reason",
-                    "存储中无 plan_id=" + planIdForGate + " 的确认标记（node_name=CONFIRMED），请先回复【确认执行】"));
+                    "存储中无 req_id=" + reqIdForGate + " 的确认标记（node_name=CONFIRMED），请先回复【确认执行】"));
             return body;
         }
         String planJson = MapOps.str(req.get("plan_json"));
@@ -166,7 +167,8 @@ public class OfferSimV16Service {
             return codeFail("5001", "plan_json 非法 JSON");
         }
 
-        String planId = MapOps.str(req.get("plan_id")).trim();
+        // 方案key从 plan_json 的 req_id 键提取（统一键后 plan_id 不再独立传参）
+        String planId = firstNonEmptyText(plan.get("req_id"), reqIdForGate);
         String offerId = firstNonEmptyText(plan.get("offer_id"), plan.get("similarOfferId"),
                 pickSeedOfferId(planId));
         Map<String, Object> seedOffer = seed.findOffer(offerId);
@@ -373,18 +375,19 @@ public class OfferSimV16Service {
             body.put("status", "NOT_CONFIRMED");
             return body;
         }
-        // LLM智能调度硬门禁②：approve_confirmed=true 还须存储中存在该 execution_id 的
+        // LLM智能调度硬门禁②：approve_confirmed=true 还须存储中存在该 req_id 的
         // 四环节结果（config/spec/fee/test）且全部 status=ok，防止未走完执行主干直接发起审批
-        String executionId = MapOps.str(req.get("execution_id")).trim();
-        if (executionId.isEmpty()) {
-            return camelFail("PARAM_MISSING", "execution_id 必填（四环节结果门禁校验依据）");
+        // （V1.7 统一键：原 execution_id 参数合并为 req_id 单键）
+        String reqId = MapOps.str(req.get("req_id")).trim();
+        if (reqId.isEmpty()) {
+            return camelFail("PARAM_MISSING", "req_id 必填（四环节结果门禁校验依据）");
         }
         for (String stage : List.of("config", "spec", "fee", "test")) {
-            Map<String, Object> rec = nodeResult.latestRecord(executionId, stage);
+            Map<String, Object> rec = nodeResult.latestRecord(reqId, stage);
             if (rec == null) {
                 Map<String, Object> body = camelOk();
                 body.put("status", "NOT_CONFIRMED");
-                body.put("reason", "执行主干未全部完成：缺少 " + stage + " 环节结果（req_id=" + executionId + "）");
+                body.put("reason", "执行主干未全部完成：缺少 " + stage + " 环节结果（req_id=" + reqId + "）");
                 return body;
             }
         }
@@ -522,7 +525,7 @@ public class OfferSimV16Service {
         String resultJson = MapOps.str(req.get("result_json"));
         String status = MapOps.str(req.get("status"));
         if (key.isEmpty() || !validKey(key)) {
-            return legacyFail(5002, "invalid key format: " + key + "（须为 plan_id 或 EXEC{execution_id}_STAGE{n}）");
+            return legacyFail(5002, "invalid key format: " + key + "（须为 req_id（PLAN…）或 EXEC{...}_STAGE{n}）");
         }
         return nodeResultDelegate().saveV16(key, resultJson, status);
     }
@@ -532,7 +535,7 @@ public class OfferSimV16Service {
     public Map<String, Object> queryNodeResult(Map<String, Object> params) {
         String key = MapOps.str(params.get("key")).trim();
         if (key.isEmpty() || !validKey(key)) {
-            return legacyFail(5002, "invalid key format: " + key + "（须为 plan_id 或 EXEC{execution_id}_STAGE{n}）");
+            return legacyFail(5002, "invalid key format: " + key + "（须为 req_id（PLAN…）或 EXEC{...}_STAGE{n}）");
         }
         return nodeResultDelegate().queryV16(key);
     }
@@ -584,8 +587,8 @@ public class OfferSimV16Service {
     }
 
     private boolean validKey(String key) {
-        // EXEC{execution_id}_STAGE{n}：execution_id 自身以 EXE 开头，整体形如 EXECEXE..._STAGE1；
-        // 演示/工作流常直接写 EXE+时间戳+_STAGE{n}，两种前缀均放行
+        // V1.7 统一键：req_id（PLAN+时间戳+随机数），执行方案与执行主干共用；
+        // 兼容历史 EXE 前缀键（EXE{...}_STAGE{n}）
         if (key.matches("EXE\\w*_STAGE\\d+")) {
             return true;
         }

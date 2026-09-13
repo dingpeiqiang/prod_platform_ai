@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-智能配置",
-  "flowRemark": "子工作流2：智能配置（配置落地）。节点结果查询读取执行方案JSON→save_product_config原样透传落地，中间无大模型节点；内部二次校验confirmed；结束前存储 node_name=config（req_id=execution_id，主流程删除后环节存储下沉子工作流）。",
+  "flowRemark": "子工作流2：智能配置（配置落地）。单入参 req_id 自查链路：节点结果查询按 req_id+requirement 读取执行方案JSON→save_product_config 原样透传落地（req_id 与存储键同一，方案key由后端从 plan_json 提取），中间无大模型节点；内部二次校验confirmed；结束前存储 node_name=config（req_id 同入参，主流程删除后环节存储下沉子工作流）。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -11,17 +11,8 @@
           {
             "blockID": "",
             "relName": "",
-            "name": "plan_id",
-            "description": "已确认的执行方案存储key",
-            "type": "string",
-            "required": true,
-            "content": ""
-          },
-          {
-            "blockID": "",
-            "relName": "",
-            "name": "execution_id",
-            "description": "执行主干批次号（EXE+yyyyMMddHHmmss+3位随机数，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史 execution_id）",
+            "name": "req_id",
+            "description": "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）",
             "type": "string",
             "required": true,
             "content": ""
@@ -77,17 +68,17 @@
         "inputs": [
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
-            "relName": "plan_id",
+            "relName": "req_id",
             "name": "req_id",
-            "description": "需求唯一标识=plan_id",
+            "description": "存储键（=开始节点 req_id）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000101",
-              "a1b2c3d4-0000-4000-8000-000000000101,plan_id"
+              "a1b2c3d4-0000-4000-8000-000000000101,req_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000101,plan_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000101,req_id"
           },
           {
             "blockID": "",
@@ -112,7 +103,7 @@
         "nodeMeta": {
           "title": "读取执行方案",
           "code": "query_node_result",
-          "description": "节点结果查询（复用）：req_id=plan_id，node_name=requirement 取回执行方案JSON原文（list[0].result_json）",
+          "description": "节点结果查询（复用）：req_id=开始节点 req_id，node_name=requirement 取回执行方案JSON原文（list[0].result_json，内含 req_id/fields/...）",
           "version": "1"
         },
         "authentic_info_new": {
@@ -169,17 +160,17 @@
         "inputs": [
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
-            "relName": "plan_id",
-            "name": "plan_id",
-            "description": "执行方案key",
+            "relName": "req_id",
+            "name": "req_id",
+            "description": "执行批次号（=开始节点 req_id，同时为确认标记/执行方案存储键）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000101",
-              "a1b2c3d4-0000-4000-8000-000000000101,plan_id"
+              "a1b2c3d4-0000-4000-8000-000000000101,req_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000101,plan_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000101,req_id"
           },
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000102",
@@ -199,7 +190,7 @@
             "blockID": "",
             "relName": "",
             "name": "confirmed",
-            "description": "用户确认标志true（主流程确认门禁已保证）",
+            "description": "用户确认标志true（确认门禁已保证）",
             "type": "string",
             "required": true,
             "content": "true"
@@ -218,7 +209,7 @@
         "nodeMeta": {
           "title": "配置落地",
           "code": "save_product_config",
-          "description": "工具7：直读执行方案JSON原样透传落地（节点2→节点3之间禁止插入大模型/改写节点）；内部二次校验confirmed",
+          "description": "工具7：直读执行方案JSON原样透传落地（节点2→节点3之间禁止插入大模型/改写节点）；req_id 与 plan_json 均引用自查结果，方案key由后端从 plan_json 的 req_id 键提取；内部二次校验confirmed",
           "version": "1"
         },
         "authentic_info_new": {
@@ -268,17 +259,17 @@
         "inputs": [
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000101",
-            "relName": "execution_id",
+            "relName": "req_id",
             "name": "req_id",
-            "description": "执行批次标识=execution_id（EXE+yyyyMMddHHmmss+3位随机数）",
+            "description": "执行批次标识（=开始节点 req_id）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000101",
-              "a1b2c3d4-0000-4000-8000-000000000101,execution_id"
+              "a1b2c3d4-0000-4000-8000-000000000101,req_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000101,execution_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000101,req_id"
           },
           {
             "blockID": "",
@@ -317,7 +308,7 @@
         "nodeMeta": {
           "title": "环节结果存储",
           "code": "save_node_result",
-          "description": "环节结果存储（复用）：req_id=execution_id，node_name=config（智能配置），result_json=环节落地结果；主流程删除后存储下沉子工作流，供 wf_sub_06 审批门禁四环节自查",
+          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=config（智能配置），result_json=环节落地结果；主流程删除后存储下沉子工作流，供 wf_sub_06 审批门禁四环节自查",
           "version": "1"
         },
         "authentic_info_new": {

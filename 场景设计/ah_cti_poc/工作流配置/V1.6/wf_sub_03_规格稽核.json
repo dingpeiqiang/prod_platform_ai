@@ -1,6 +1,6 @@
 {
   "flowName": "产销品-规格稽核",
-  "flowRemark": "子工作流3：规格稽核（实时）。realtime_spec_audit同步返回→整改建议生成（温度0.2）；结束前存储 node_name=spec（req_id=execution_id，主流程删除后环节存储下沉子工作流）。",
+  "flowRemark": "子工作流3：规格稽核（实时）。单入参 req_id 自查链路：realtime_spec_audit同步返回→整改建议生成（温度0.2）；结束前存储 node_name=spec（req_id=入参，主流程删除后环节存储下沉子工作流）。",
   "flowIco": "workflowIcon",
   "workFlowSchema": null,
   "workFlowSchemaJSON": {
@@ -11,26 +11,8 @@
           {
             "blockID": "",
             "relName": "",
-            "name": "offer_id",
-            "description": "配置落地返回的销售品ID",
-            "type": "string",
-            "required": true,
-            "content": ""
-          },
-          {
-            "blockID": "",
-            "relName": "",
-            "name": "config_json",
-            "description": "落地配置JSON原文",
-            "type": "string",
-            "required": true,
-            "content": ""
-          },
-          {
-            "blockID": "",
-            "relName": "",
-            "name": "execution_id",
-            "description": "执行主干批次号（EXE+yyyyMMddHHmmss+3位随机数）",
+            "name": "req_id",
+            "description": "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）",
             "type": "string",
             "required": true,
             "content": ""
@@ -279,17 +261,17 @@
         "inputs": [
           {
             "blockID": "a1b2c3d4-0000-4000-8000-000000000201",
-            "relName": "execution_id",
+            "relName": "req_id",
             "name": "req_id",
-            "description": "执行批次标识=execution_id（EXE+yyyyMMddHHmmss+3位随机数）",
+            "description": "执行批次标识（=开始节点 req_id）",
             "type": "ref",
             "required": true,
             "content": "",
             "nameValue": [
               "a1b2c3d4-0000-4000-8000-000000000201",
-              "a1b2c3d4-0000-4000-8000-000000000201,execution_id"
+              "a1b2c3d4-0000-4000-8000-000000000201,req_id"
             ],
-            "currValue": "a1b2c3d4-0000-4000-8000-000000000201,execution_id"
+            "currValue": "a1b2c3d4-0000-4000-8000-000000000201,req_id"
           },
           {
             "blockID": "",
@@ -328,7 +310,7 @@
         "nodeMeta": {
           "title": "环节结果存储",
           "code": "save_node_result",
-          "description": "环节结果存储（复用）：req_id=execution_id，node_name=spec（规格稽核），result_json=稽核总结；主流程删除后存储下沉子工作流，供 wf_sub_06 审批门禁四环节自查",
+          "description": "环节结果存储（复用）：req_id=入参 req_id，node_name=spec（规格稽核），result_json=稽核总结；主流程删除后存储下沉子工作流，供 wf_sub_06 审批门禁四环节自查",
           "version": "1"
         },
         "authentic_info_new": {

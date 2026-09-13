@@ -2,9 +2,10 @@
 # 生成产销品加载AI应用 V1.7 工作流导出JSON（8子工作流，主工作流已删除）
 # V1.7 LLM智能调度模式：智能体按【意图→子工作流智能调度映射表】直调 wf_sub_01~08，
 # 主流程 wf_cpcp_main 固定编排弃用并删除；四环节结果存储下沉各子工作流
-# （wf_sub_02~05 结束前 save_node_result，req_id=execution_id，node_name=config/spec/fee/test），
-# 供 wf_sub_06 审批推送的 execution_id 四环节门禁自查；
-# ID 规范：plan_id=PLAN+yyyyMMddHHmmss+3位随机数，execution_id=EXE+yyyyMMddHHmmss+3位随机数
+# （wf_sub_02~05 结束前 save_node_result，req_id=入参req_id，node_name=config/spec/fee/test），
+# 供 wf_sub_06 审批推送的四环节门禁自查；
+# ID 规范（统一键）：全链路唯一批次标识=req_id（PLAN+yyyyMMddHHmmss+3位随机数，执行方案与
+# 执行主干共用同一 req_id，原 plan_id/execution_id 双键合并为 req_id 单键，同键覆盖写）
 import json, os, io, uuid
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -260,7 +261,7 @@ CODE_004A = (
     "        \"plan_json\": plan_json,\n"
     "        \"plan_md\": str(obj.get('plan_md') or ''),\n"
     "        \"pending_fields\": str(pf),\n"
-    "        \"plan_id\": str(obj.get('plan_id') or '')\n"
+    "        \"req_id\": str(obj.get('req_id') or '')\n"
     "    }\n"
     "    return ret"
 )
@@ -385,8 +386,7 @@ s1.append(start_node(1, [
     inp("requirement_file", "需求文档地址（可选）", required=False),
 ]))
 s1.append(llm_node(2, "需求理解与要素拆解",
-    "你是产销品加载需求分析助手。按6步分析：理解需求→提取并拆解业务要素（基础信息/资源配置/营销资源/销售规则四类）→识别信息完整性（字段三态：原始需求/AI补全/待补充）。需求原文：{requirement_text}\n"
-    "要素拆解字段口径（四类18字段，与执行方案生成保持一致）：\n"
+    "你是产销品加载需求分析助手。按6步分析：理解需求→提取并拆解业务要素（基础信息/资源配置/营销资源/销售规则四类）→识别信息完整性（字段三态：原始需求/AI补全/待补充）。需求原文：{requirement_text}\n"    "要素拆解字段口径（四类18字段，与执行方案生成保持一致）：\n"
     "A.基础信息：产品名称/产品属性（基础/可选/增值）/产品编码/生效日期/退订规则\n"
     "B.资源配置：流量资源/语音资源/短信资源\n"
     "C.营销资源：套餐固定费/收费方式（按月/按量/一次性）/优惠条件/优惠期\n"
@@ -425,21 +425,21 @@ s1.append(llm_node(4, "字段映射与补全",
     "\n"
     "【输出要求（单一出参 plan_output）】\n"
     "按以下格式输出，第一行原样输出标签 plan_output:，随后紧跟一个JSON对象（以{开头、}结尾），除该标签行外不得输出任何其他文字、代码块或说明：\n"
-    "plan_output: {\"plan_json\":..., \"plan_md\":..., \"pending_fields\":..., \"plan_id\":...}\n"
+    "plan_output: {\"plan_json\":..., \"plan_md\":..., \"pending_fields\":..., \"req_id\":...}\n"
     "该JSON对象固定包含以下4个键：\n"
-    "1. plan_json：执行方案JSON对象，含 plan_id/fields/similar_offers/pending_fields 四个键；fields数组必须包含上述18个字段，每项形如{\"field\":\"字段名称\",\"value\":\"字段值\",\"source\":\"原始需求或AI补全\"}，待补充字段value填\"待补充\"；\n"
+    "1. plan_json：执行方案JSON对象，含 req_id/fields/similar_offers/pending_fields 四个键；fields数组必须包含上述18个字段，每项形如{\"field\":\"字段名称\",\"value\":\"字段值\",\"source\":\"原始需求或AI补全\"}，待补充字段value填\"待补充\"；\n"
     "2. plan_md：执行方案Markdown表格字符串，以|字段分类|开头，固定4列：字段分类/字段名称/字段值/来源，共18行数据行（与fields一一对应），同分类连续行按规范合并单元格（首行填分类，后续行留空）；\n"
     "3. pending_fields：待补充字段名称数组（如[\"流量资源\",\"套餐固定费\"]），无待补充时为空数组[]；\n"
-    "4. plan_id：存储key字符串（格式 PLAN+yyyyMMddHHmmss+3位随机数，如PLAN20260913143025087，**必须取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史 plan_id**），修改场景沿用原值覆盖写。\n"
+    "4. req_id：存储key字符串（格式 PLAN+yyyyMMddHHmmss+3位随机数，如PLAN20260913143025087，**必须取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史 req_id**），修改场景沿用原值覆盖写。\n"
     "注意：Markdown表格内的换行使用\\n转义，确保整个输出是合法JSON。",
     [inp("elements_json", "引用节点2要素JSON", ref_block=nid(2), ref_rel="elements_json"),
      inp("similarOfferList", "引用节点3相似产品列表", ref_block=nid(3), ref_rel="similarOfferList")],
-    [out("plan_output", "执行方案总输出JSON字符串，含 plan_json/plan_md/pending_fields/plan_id 四个键")]))
-# 004a 方案输出拆分：LLM节点4单出参 plan_output → 拆分为 plan_json/plan_md/pending_fields/plan_id 四出参
+    [out("plan_output", "执行方案总输出JSON字符串，含 plan_json/plan_md/pending_fields/req_id 四个键")]))
+# 004a 方案输出拆分：LLM节点4单出参 plan_output → 拆分为 plan_json/plan_md/pending_fields/req_id 四出参
 s1.append(code_node(41, "方案输出拆分", CODE_004A,
     [inp("plan_output", "引用节点4总输出", ref_block=nid(4), ref_rel="plan_output")],
     [code_out("plan_json", 41), code_out("plan_md", 41),
-     code_out("pending_fields", 41), code_out("plan_id", 41)],
+     code_out("pending_fields", 41), code_out("req_id", 41)],
     pos=(1455, 300)))
 s1.append(selector_node2(5, "待补充项判断",
     [dep_node(41, "方案输出拆分", ["pending_fields"])],
@@ -448,22 +448,22 @@ s1.append(selector_node2(5, "待补充项判断",
     #       port=0 兜底分支（pending_fields 为空）→ 直接结束提示，不保存（禁止进入智能配置）
     [(-1, [cond_item(cond_ref(41, "pending_fields", "方案输出拆分"), 10, cond_str(""))])]))
 s1.append(plugin_node(6, "保存执行方案", "save_node_result",
-    "节点结果存储（复用）：req_id=plan_id，node_name=requirement（执行方案环节），result_json=plan_json；同键覆盖",
+    "节点结果存储（复用）：req_id=LLM生成的方案批次号 req_id，node_name=requirement（执行方案环节），result_json=plan_json；同键覆盖",
     BASE_URL + "/api/v1/appstore/result/save",
-    [inp("req_id", "需求唯一标识=plan_id（PLAN+yyyyMMddHHmmss+3位随机数）", ref_block=nid(41), ref_rel="plan_id"),
+    [inp("req_id", "方案批次标识（=节点41拆分出参 req_id，PLAN+yyyyMMddHHmmss+3位随机数）", ref_block=nid(41), ref_rel="req_id"),
      inp("node_name", "环节名=requirement（执行方案）", content="requirement"),
      inp("result_json", "本环节结果JSON=plan_json", ref_block=nid(41), ref_rel="plan_json"),
      inp("status", "本环节状态=ok", content="ok")],
     [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")]))
 s1.append(end_node(7, "结束(有待补充项)",
-    [inp("plan_id", "执行方案存储key", ref_block=nid(41), ref_rel="plan_id"),
+    [inp("req_id", "执行方案存储key", ref_block=nid(41), ref_rel="req_id"),
      inp("plan_md", "执行方案表格", ref_block=nid(41), ref_rel="plan_md"),
      inp("pending_fields", "待补充字段", ref_block=nid(41), ref_rel="pending_fields")],
-    "《产销品加载执行方案》已生成（plan_id：{plan_id}）\n\n{plan_md}\n\n【待补充字段】{pending_fields}\n以上费用、资源类字段需求中未提取到，需由您补充后才能执行：\n- 请直接补充字段值，将更新执行方案并再次确认；\n- 如需调整其他字段：请直接说明修改意见（其余字段已按相似产品补全）。"))
+    "《产销品加载执行方案》已生成（req_id：{req_id}）\n\n{plan_md}\n\n【待补充字段】{pending_fields}\n以上费用、资源类字段需求中未提取到，需由您补充后才能执行：\n- 请直接补充字段值，将更新执行方案并再次确认；\n- 如需调整其他字段：请直接说明修改意见（其余字段已按相似产品补全）。"))
 s1.append(end_node(8, "结束(无待补充项)",
-    [inp("plan_id", "执行方案存储key", ref_block=nid(41), ref_rel="plan_id"),
+    [inp("req_id", "执行方案存储key", ref_block=nid(41), ref_rel="req_id"),
      inp("plan_md", "执行方案表格", ref_block=nid(41), ref_rel="plan_md")],
-    "《产销品加载执行方案》已生成并保存（plan_id：{plan_id}）\n\n{plan_md}\n\n【无待补充字段】全部缺失字段已按最高相似度产品 AI 补全，来源已逐字段标注。\n请核对以上执行方案：\n- 回复【确认执行】：将自动串行执行 智能配置→稽核→资费校准→自动测试 四个环节（每环节执行后打印结果，仅异常时中断）；\n- 如需调整：请直接说明修改意见。"))
+    "《产销品加载执行方案》已生成并保存（req_id：{req_id}）\n\n{plan_md}\n\n【无待补充字段】全部缺失字段已按最高相似度产品 AI 补全，来源已逐字段标注。\n请核对以上执行方案：\n- 回复【确认执行】：将自动串行执行 智能配置→稽核→资费校准→自动测试 四个环节（每环节执行后打印结果，仅异常时中断）；\n- 如需调整：请直接说明修改意见。"))
 e1 = [edge(1,2), edge(2,3), edge(3,4), edge(4,41), edge(41,5),
       edge(5,6,0), edge(5,7,-1), edge(6,8)]
 files["wf_sub_01_需求分析.json"] = workflow(
@@ -474,30 +474,29 @@ files["wf_sub_01_需求分析.json"] = workflow(
 # ============================================================
 s2 = []
 s2.append(start_node(101, [
-    inp("plan_id", "已确认的执行方案存储key", required=True),
-    inp("execution_id", "执行主干批次号（EXE+yyyyMMddHHmmss+3位随机数，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史 execution_id）", required=True)]))
+    inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）", required=True)]))
 s2.append(plugin_node(102, "读取执行方案", "query_node_result",
-    "节点结果查询（复用）：req_id=plan_id，node_name=requirement 取回执行方案JSON原文（list[0].result_json）",
+    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=requirement 取回执行方案JSON原文（list[0].result_json，内含 req_id/fields/...）",
     BASE_URL + "/api/v1/appstore/result/query",
-    [inp("req_id", "需求唯一标识=plan_id", ref_block=nid(101), ref_rel="plan_id"),
+    [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(101), ref_rel="req_id"),
      inp("node_name", "环节名=requirement", content="requirement"),
      inp("latest_only", "1=只返回最新一条（默认）", content="1")],
     [("code", "0成功", "string"), ("msg", "状态描述", "string"),
      ("total", "命中记录数", "string"), ("list", "记录数组JSON（取[0].result_json为执行方案原文）", "string")],
     method="get"))
 s2.append(plugin_node(103, "配置落地", "save_product_config",
-    "工具7：直读执行方案JSON原样透传落地（节点2→节点3之间禁止插入大模型/改写节点）；内部二次校验confirmed",
+    "工具7：直读执行方案JSON原样透传落地（节点2→节点3之间禁止插入大模型/改写节点）；req_id 与 plan_json 均引用自查结果，方案key由后端从 plan_json 的 req_id 键提取；内部二次校验confirmed",
     BASE_URL + "/api/v1/appstore/product/config/save",
-    [inp("plan_id", "执行方案key", ref_block=nid(101), ref_rel="plan_id"),
+    [inp("req_id", "执行批次号（=开始节点 req_id，同时为确认标记/执行方案存储键）", ref_block=nid(101), ref_rel="req_id"),
      inp("plan_json", "执行方案JSON原文（节点2查询出参list[0].result_json原样透传）", ref_block=nid(102), ref_rel="list"),
-     inp("confirmed", "用户确认标志true（主流程确认门禁已保证）", content="true"),
+     inp("confirmed", "用户确认标志true（确认门禁已保证）", content="true"),
      inp("operator", "操作人（默认system）", content="system")],
     [("product_id", "CRM产品ID", "string"), ("offer_id", "销售品ID", "string"),
      ("save_result", "四类字段写入结果", "string"), ("status", "SUCCESS/PARTIAL/FAIL/NOT_CONFIRMED", "string")]))
 s2.append(plugin_node(105, "环节结果存储", "save_node_result",
-    "环节结果存储（复用）：req_id=execution_id，node_name=config（智能配置），result_json=环节落地结果；主流程删除后存储下沉子工作流，供 wf_sub_06 审批门禁四环节自查",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=config（智能配置），result_json=环节落地结果；主流程删除后存储下沉子工作流，供 wf_sub_06 审批门禁四环节自查",
     BASE_URL + "/api/v1/appstore/result/save",
-    [inp("req_id", "执行批次标识=execution_id（EXE+yyyyMMddHHmmss+3位随机数）", ref_block=nid(101), ref_rel="execution_id"),
+    [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(101), ref_rel="req_id"),
      inp("node_name", "环节名=config（智能配置）", content="config"),
      inp("result_json", "环节结果JSON", ref_block=nid(103), ref_rel="save_result"),
      inp("status", "本环节状态=ok", content="ok")],
@@ -509,7 +508,7 @@ s2.append(end_node(104, "结束(配置落地完成)",
      inp("status", "落地状态", ref_block=nid(103), ref_rel="status")],
     "智能配置完成：product_id={product_id}，offer_id={offer_id}\n四类字段写入结果：{save_result}\n状态：{status}"))
 files["wf_sub_02_智能配置.json"] = workflow(
-    "产销品-智能配置", "子工作流2：智能配置（配置落地）。节点结果查询读取执行方案JSON→save_product_config原样透传落地，中间无大模型节点；内部二次校验confirmed；结束前存储 node_name=config（req_id=execution_id，主流程删除后环节存储下沉子工作流）。", "wf_sub_02", s2,
+    "产销品-智能配置", "子工作流2：智能配置（配置落地）。单入参 req_id 自查链路：节点结果查询按 req_id+requirement 读取执行方案JSON→save_product_config 原样透传落地（req_id 与存储键同一，方案key由后端从 plan_json 提取），中间无大模型节点；内部二次校验confirmed；结束前存储 node_name=config（req_id 同入参，主流程删除后环节存储下沉子工作流）。", "wf_sub_02", s2,
     [edge(101,102), edge(102,103), edge(103,105), edge(105,104)])
 
 # ============================================================
@@ -517,9 +516,7 @@ files["wf_sub_02_智能配置.json"] = workflow(
 # ============================================================
 s3 = []
 s3.append(start_node(201, [
-    inp("offer_id", "配置落地返回的销售品ID", required=True),
-    inp("config_json", "落地配置JSON原文", required=True),
-    inp("execution_id", "执行主干批次号（EXE+yyyyMMddHHmmss+3位随机数）", required=True),
+    inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）", required=True),
 ]))
 s3.append(plugin_node(202, "实时稽核", "realtime_spec_audit",
     "工具2：自研模拟实时稽核，同步返回（无文件上传/无轮询）",
@@ -536,9 +533,9 @@ s3.append(llm_node(203, "整改建议生成",
      inp("audit_summary", "引用节点2稽核总结", ref_block=nid(202), ref_rel="audit_summary")],
     [out("audit_suggest", "整改建议清单")]))
 s3.append(plugin_node(205, "环节结果存储", "save_node_result",
-    "环节结果存储（复用）：req_id=execution_id，node_name=spec（规格稽核），result_json=稽核总结；主流程删除后存储下沉子工作流，供 wf_sub_06 审批门禁四环节自查",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=spec（规格稽核），result_json=稽核总结；主流程删除后存储下沉子工作流，供 wf_sub_06 审批门禁四环节自查",
     BASE_URL + "/api/v1/appstore/result/save",
-    [inp("req_id", "执行批次标识=execution_id（EXE+yyyyMMddHHmmss+3位随机数）", ref_block=nid(201), ref_rel="execution_id"),
+    [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(201), ref_rel="req_id"),
      inp("node_name", "环节名=spec（规格稽核）", content="spec"),
      inp("result_json", "环节结果JSON=稽核总结", ref_block=nid(202), ref_rel="audit_summary"),
      inp("status", "本环节状态=ok", content="ok")],
@@ -549,7 +546,7 @@ s3.append(end_node(204, "结束(稽核完成)",
      inp("audit_suggest", "整改建议", ref_block=nid(203), ref_rel="audit_suggest")],
     "配置规格稽核完成：pass={pass}\n{audit_suggest}"))
 files["wf_sub_03_规格稽核.json"] = workflow(
-    "产销品-规格稽核", "子工作流3：规格稽核（实时）。realtime_spec_audit同步返回→整改建议生成（温度0.2）；结束前存储 node_name=spec（req_id=execution_id，主流程删除后环节存储下沉子工作流）。", "wf_sub_03", s3,
+    "产销品-规格稽核", "子工作流3：规格稽核（实时）。单入参 req_id 自查链路：realtime_spec_audit同步返回→整改建议生成（温度0.2）；结束前存储 node_name=spec（req_id=入参，主流程删除后环节存储下沉子工作流）。", "wf_sub_03", s3,
     [edge(201,202), edge(202,203), edge(203,205), edge(205,204)])
 
 # ============================================================
@@ -557,8 +554,7 @@ files["wf_sub_03_规格稽核.json"] = workflow(
 # ============================================================
 s4 = []
 s4.append(start_node(301, [
-    inp("offer_id", "被测销售品ID", required=True),
-    inp("execution_id", "执行主干批次号（EXE+yyyyMMddHHmmss+3位随机数）", required=True),
+    inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）", required=True),
 ]))
 s4.append(plugin_node(302, "发起测试", "offer_test",
     "工具3：自研模拟测试发起，返回模拟测试流水globalId",
@@ -594,9 +590,9 @@ s4.append(llm_node(306, "测试报告生成",
      inp("offerInstId", "销售品实例ID", ref_block=nid(305), ref_rel="offerInstId")],
     [out("test_report", "测试报告（含受理验证结论）"), out("test_passed", "通过/失败")]))
 s4.append(plugin_node(308, "环节结果存储", "save_node_result",
-    "环节结果存储（复用）：req_id=execution_id，node_name=test（自动测试），result_json=测试报告；主流程删除后存储下沉子工作流，供 wf_sub_06 审批门禁四环节自查",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=test（自动测试），result_json=测试报告；主流程删除后存储下沉子工作流，供 wf_sub_06 审批门禁四环节自查",
     BASE_URL + "/api/v1/appstore/result/save",
-    [inp("req_id", "执行批次标识=execution_id（EXE+yyyyMMddHHmmss+3位随机数）", ref_block=nid(301), ref_rel="execution_id"),
+    [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(301), ref_rel="req_id"),
      inp("node_name", "环节名=test（自动测试）", content="test"),
      inp("result_json", "环节结果JSON=测试报告", ref_block=nid(306), ref_rel="test_report"),
      inp("status", "本环节状态=ok", content="ok")],
@@ -607,7 +603,7 @@ s4.append(end_node(307, "结束(测试完成)",
      inp("globalId", "测试流水号", ref_block=nid(302), ref_rel="globalId")],
     "销售品自动测试完成（含受理验证）：\n{test_report}"))
 files["wf_sub_04_自动测试.json"] = workflow(
-    "产销品-自动测试", "子工作流4：自动测试（含受理验证）。offer_test发起→get_test_scenes→循环get_test_progress（5s/30min）→get_test_result→测试报告生成（强制含受理验证结论orderId/offerInstId）；结束前存储 node_name=test（req_id=execution_id，主流程删除后环节存储下沉子工作流）。", "wf_sub_04", s4,
+    "产销品-自动测试", "子工作流4：自动测试（含受理验证）。单入参 req_id 自查链路：offer_test发起→get_test_scenes→循环get_test_progress（5s/30min）→get_test_result→测试报告生成（强制含受理验证结论orderId/offerInstId）；结束前存储 node_name=test（req_id=入参，主流程删除后环节存储下沉子工作流）。", "wf_sub_04", s4,
     [edge(301,302), edge(302,303), edge(303,304), edge(304,305), edge(305,306), edge(306,308), edge(308,307)])
 
 # ============================================================
@@ -615,8 +611,7 @@ files["wf_sub_04_自动测试.json"] = workflow(
 # ============================================================
 s5 = []
 s5.append(start_node(401, [
-    inp("config_json", "落地配置JSON原文", required=True),
-    inp("execution_id", "执行主干批次号（EXE+yyyyMMddHHmmss+3位随机数）", required=True),
+    inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）", required=True),
 ]))
 s5.append(plugin_node(402, "计费校验", "check_billing_rule",
     "工具8：自研模拟计费规则校验（内置叠加/互斥/负资费规则，适配18销售品资费结构）",
@@ -630,9 +625,9 @@ s5.append(llm_node(403, "风险解读",
     [inp("risk_list", "引用节点2风险清单", ref_block=nid(402), ref_rel="risk_list")],
     [out("risk_summary", "风险解读")]))
 s5.append(plugin_node(405, "环节结果存储", "save_node_result",
-    "环节结果存储（复用）：req_id=execution_id，node_name=fee（资费校准），result_json=风险解读；主流程删除后存储下沉子工作流，供 wf_sub_06 审批门禁四环节自查",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=fee（资费校准），result_json=风险解读；主流程删除后存储下沉子工作流，供 wf_sub_06 审批门禁四环节自查",
     BASE_URL + "/api/v1/appstore/result/save",
-    [inp("req_id", "执行批次标识=execution_id（EXE+yyyyMMddHHmmss+3位随机数）", ref_block=nid(401), ref_rel="execution_id"),
+    [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(401), ref_rel="req_id"),
      inp("node_name", "环节名=fee（资费校准）", content="fee"),
      inp("result_json", "环节结果JSON=风险解读", ref_block=nid(403), ref_rel="risk_summary"),
      inp("status", "本环节状态=ok", content="ok")],
@@ -643,7 +638,7 @@ s5.append(end_node(404, "结束(资费校准完成)",
      inp("risk_summary", "风险解读", ref_block=nid(403), ref_rel="risk_summary")],
     "资费校准完成：pass={pass}\n{risk_summary}"))
 files["wf_sub_05_资费校准.json"] = workflow(
-    "产销品-资费校准", "子工作流5：资费校准。check_billing_rule（自研模拟，check_scene=all）→风险解读（温度0.2，引用资费规则库知识）；结束前存储 node_name=fee（req_id=execution_id，主流程删除后环节存储下沉子工作流）。", "wf_sub_05", s5,
+    "产销品-资费校准", "子工作流5：资费校准。单入参 req_id 自查链路：check_billing_rule（自研模拟，check_scene=all）→风险解读（温度0.2，引用资费规则库知识）；结束前存储 node_name=fee（req_id=入参，主流程删除后环节存储下沉子工作流）。", "wf_sub_05", s5,
     [edge(401,402), edge(402,403), edge(403,405), edge(405,404)])
 
 # ============================================================
@@ -651,16 +646,14 @@ files["wf_sub_05_资费校准.json"] = workflow(
 # ============================================================
 s6 = []
 s6.append(start_node(501, [
-    inp("product_id", "CRM产品ID", required=True),
-    inp("report", "上线报告（执行主干四环节完成后汇总生成）", required=True),
-    inp("execution_id", "执行主干批次号（EXE+yyyyMMddHHmmss+3位随机数，四环节结果门禁校验依据）", required=True),
+    inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，四环节结果门禁校验依据，取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史值）", required=True),
 ]))
 s6.append(plugin_node(502, "审批推送", "submit_release_approval",
-    "工具9：自研模拟审批推送；插件层硬门禁：approve_confirmed==true 且存储中存在该 execution_id 的四环节结果（config/spec/fee/test）；幂等：同product_id返回原approval_id",
+    "工具9：自研模拟审批推送；插件层硬门禁：approve_confirmed==true 且存储中存在该 req_id 的四环节结果（config/spec/fee/test）；幂等：同product_id返回原approval_id",
     BASE_URL + "/api/v1/appstore/approval/submit",
-    [inp("product_id", "CRM产品ID", ref_block=nid(501), ref_rel="product_id"),
-     inp("report_url", "上线报告", ref_block=nid(501), ref_rel="report"),
-     inp("execution_id", "执行主干批次号（四环节结果门禁校验依据）", ref_block=nid(501), ref_rel="execution_id"),
+    [inp("product_id", "CRM产品ID（后端从config环节结果回读）", content=""),
+     inp("report_url", "上线报告（LLM生成后传入，或空由后端从report环节结果回读）", content=""),
+     inp("req_id", "执行批次号（四环节结果门禁校验依据，=开始节点 req_id）", ref_block=nid(501), ref_rel="req_id"),
      inp("approve_confirmed", "审批发起确认标志true", content="true"),
      inp("approval_flow", "审批流默认standard", content="standard")],
     [("approval_id", "审批单号", "string"), ("status", "提交状态", "string")]))
@@ -669,7 +662,7 @@ s6.append(end_node(503, "结束(审批已推送)",
      inp("status", "提交状态", ref_block=nid(502), ref_rel="status")],
     "上线审批已推送：approval_id={approval_id}，status={status}\n可随时发送\"查询审批进度\"消息查询审批状态。"))
 files["wf_sub_06_上线审批.json"] = workflow(
-    "产销品-上线审批", "子工作流6：上线审批。submit_release_approval（自研模拟，插件层硬门禁：approve_confirmed=true+execution_id四环节结果config/spec/fee/test齐全，缺失返回NOT_CONFIRMED；幂等）。", "wf_sub_06", s6,
+    "产销品-上线审批", "子工作流6：上线审批。单入参 req_id：submit_release_approval（自研模拟，插件层硬门禁：approve_confirmed=true+req_id四环节结果config/spec/fee/test齐全，缺失返回NOT_CONFIRMED；幂等）。", "wf_sub_06", s6,
     [edge(501,502), edge(502,503)])
 
 # ============================================================

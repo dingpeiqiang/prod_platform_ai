@@ -1,7 +1,7 @@
 # 自研插件工具契约（模拟结果输出，种子数据=《产品信息.txt》18个销售品）
 
 > 基地址：http://10.86.13.201:31281 ；全部工具契约与《自研插件集V1.6》一致（V1.7 增加工具层硬校验），替换真实实现时契约不变。
-> 能力1~4 需存储类工具：req_id 规范——执行方案=plan_id（PLAN+yyyyMMddHHmmss+3位随机数，每次生成取当前真实时刻，禁止沿用示例值/历史值）；执行主干=execution_id（EXE+yyyyMMddHHmmss+3位随机数）；node_name 取值：requirement(执行方案)/CONFIRMED(确认标记)/config(智能配置)/spec(稽核)/fee(资费)/test(测试)/report(上线报告)。
+> 能力1~4 需存储类工具：req_id 规范（V1.7 统一键）——执行方案与执行主干共用单键 req_id（PLAN+yyyyMMddHHmmss+3位随机数，每次生成取当前真实时刻，禁止沿用示例值/历史值，修改执行方案场景沿用原值覆盖写）；node_name 取值：requirement(执行方案)/CONFIRMED(确认标记)/config(智能配置)/spec(稽核)/fee(资费)/test(测试)/report(上线报告)。
 > V1.7 硬校验约定：写接口（save_product_config / submit_release_approval）不信任 LLM 传参，以节点结果存储为准做门禁校验——配置落地须先有 CONFIRMED 标记，审批推送须先有四环节结果。
 
 ## query_similar_offer
@@ -30,7 +30,7 @@
 
 ## save_product_config
 - 接口：POST http://10.86.13.201:31281/api/v1/appstore/product/config/save
-- 说明：配置落地：plan_id/plan_json(必填,存储JSON原文原样透传)/confirmed(必填,true)/operator → product_id/offer_id/save_result/status(SUCCESS/PARTIAL/FAIL/NOT_CONFIRMED)；双重门禁：confirmed=true 且存储中须存在 plan_id 的 CONFIRMED 确认标记（node_name=CONFIRMED），缺标记返回 NOT_CONFIRMED；同 plan_json 幂等
+- 说明：配置落地：req_id(必填,执行方案存储key,统一键)/plan_json(必填,存储JSON原文原样透传)/confirmed(必填,true)/operator → product_id/offer_id/save_result/status(SUCCESS/PARTIAL/FAIL/NOT_CONFIRMED)；后端硬门禁：confirmed=true 且存储中须存在 req_id 的 CONFIRMED 确认标记（node_name=CONFIRMED），缺标记返回 NOT_CONFIRMED；方案key由后端从 plan_json 的 req_id 键提取；同 plan_json 幂等
 
 ## check_billing_rule
 - 接口：POST http://10.86.13.201:31281/api/v1/appstore/billing/rules/verify
@@ -38,7 +38,7 @@
 
 ## submit_release_approval
 - 接口：POST http://10.86.13.201:31281/api/v1/appstore/approval/submit
-- 说明：上线审批推送：product_id/report_url/execution_id(必填),approve_confirmed(必填,true),approval_flow(standard/urgent) → approval_id/status；双重门禁：approve_confirmed=true 且存储中须存在 execution_id 的四环节结果（config/spec/fee/test 全部 status=ok），缺任一返回 NOT_CONFIRMED（附缺失环节 reason）；同 product_id 幂等
+- 说明：上线审批推送：req_id(必填,统一键,四环节门禁校验依据)/product_id/report_url(必填),approve_confirmed(必填,true),approval_flow(standard/urgent) → approval_id/status；后端硬门禁：approve_confirmed=true 且存储中须存在 req_id 的四环节结果（config/spec/fee/test 全部 status=ok），缺任一返回 NOT_CONFIRMED（附缺失环节 reason）；同 product_id 幂等
 
 ## query_product_monitor
 - 接口：GET http://10.86.13.201:31281/api/v1/appstore/product/monitor
@@ -54,7 +54,7 @@
 
 ## save_node_result
 - 接口：POST http://10.86.13.201:31281/api/v1/appstore/result/save
-- 说明：节点结果存储：req_id(必填,plan_id或execution_id)/node_name(必填)/result_json(必填)/status → code/msg/record_id；同键覆盖
+- 说明：节点结果存储：req_id(必填,V1.7统一键=执行方案存储key PLAN+yyyyMMddHHmmss+3位随机数)/node_name(必填)/result_json(必填)/status → code/msg/record_id；同键覆盖
 
 ## query_node_result
 - 接口：POST http://10.86.13.201:31281/api/v1/appstore/result/query
