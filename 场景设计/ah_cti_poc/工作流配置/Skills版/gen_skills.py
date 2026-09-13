@@ -162,7 +162,8 @@ def loop_node(seq, title, desc, in_refs, outputs, pos=(650, 300)):
 
 
 CODE_004A = (
-    "import json, re\n"
+    "import json, re, random\n"
+    "from datetime import datetime\n"
     "from typing import Any, Dict\n"
     "async def main(args):\n"
     "    raw = args.params['plan_output']\n"
@@ -182,11 +183,21 @@ CODE_004A = (
     "    plan_json = obj.get('plan_json')\n"
     "    if not isinstance(plan_json, str):\n"
     "        plan_json = json.dumps(plan_json if plan_json is not None else obj, ensure_ascii=False)\n"
+    "    req_id = str(args.params.get('prev_req_id') or '').strip()\n"
+    "    if not req_id:\n"
+    "        req_id = 'PLAN' + datetime.now().strftime('%Y%m%d%H%M%S') + '%03d' % random.randint(0, 999)\n"
+    "    try:\n"
+    "        pj = json.loads(plan_json)\n"
+    "        if isinstance(pj, dict):\n"
+    "            pj['req_id'] = req_id\n"
+    "            plan_json = json.dumps(pj, ensure_ascii=False)\n"
+    "    except Exception:\n"
+    "        pass\n"
     "    ret: Output = {\n"
     "        \"plan_json\": plan_json,\n"
     "        \"plan_md\": str(obj.get('plan_md') or ''),\n"
     "        \"pending_fields\": str(pf),\n"
-    "        \"req_id\": str(obj.get('req_id') or '')\n"
+    "        \"req_id\": req_id\n"
     "    }\n"
     "    return ret"
 )
@@ -261,6 +272,7 @@ s1.append(start_node(1, [
     inp("requirement_text", "销售品需求描述文本或文档内容摘要（必填）", required=True),
     inp("requirement_file", "需求文档地址（选填）", required=False),
     inp("revise_opinion", "修改意见（修改执行方案续跑时传入，选填）", required=False),
+    inp("prev_req_id", "原执行方案存储key（修改执行方案场景传入，沿用原值覆盖写；首跑留空，req_id 由代码节点生成）", required=False),
 ]))
 s1.append(llm_node(2, "需求理解与要素拆解",
     "你是产销品加载需求分析助手。按6步分析：理解需求→提取并拆解业务要素（基础信息/资源配置/营销资源/销售规则四类）→识别信息完整性（字段三态：原始需求/AI补全/待补充）。需求原文：{requirement_text}\n修改意见（如有则覆盖分析）：{revise_opinion}\n补充规则（V1.6）：pending_fields默认为空——仅当费用（价格）或资源（流量/语音/短信）未提取到时，才将该字段填\"待补充\"并计入pending_fields（禁止推理，禁止从相似产品照搬）；其余缺失字段待相似产品返回后按最高相似度产品补全，来源标记\"AI补全\"；来源只允许\"原始需求\"或\"AI补全\"两种。\n输出要求（两个出参逐一约定，每个出参只输出自己的内容，严禁把其他出参内容并入）：\n1. elements_json：仅输出结构化要素JSON对象本身（以{开头、}结尾），包含 fields 数组与 pending_fields 数组，不得附带键名前缀或说明；\n2. need_summary：仅输出需求摘要文本本身（≤5000字符，供相似度分析调用使用）；\n3. 严格禁止输出形如\"elements_json: {...} need_summary: ...\"的拼接包；除上述两个出参各自内容外不输出任何多余文字。",
@@ -274,13 +286,14 @@ s1.append(plugin_node(3, "相似产品查询", "query_similar_offer",
     [("resultCode", "0成功/1失败", "string"), ("resultMsg", "处理结果描述", "string"),
      ("similarOfferList", "相似产品列表（similarOfferId/similarOfferName/similarityScore/similarityDesc）", "array", None)], pos=(640, 300)))
 s1.append(llm_node(4, "字段映射与补全",
-    "基于业务要素与相似产品列表，映射为实际配置字段并补全：\n要素：{elements_json}\n相似产品：{similarOfferList}\n规则：价格、资源类未提供填\"待补充\"（禁止推理）；其余缺失字段取最高相似度产品对应值，来源\"AI补全\"；来源只允许\"原始需求\"/\"AI补全\"两种。\n输出要求（单一出参 plan_output）：\n按以下格式输出，第一行原样输出标签 plan_output:，随后紧跟一个JSON对象（以{开头、}结尾），除该标签行外不得输出任何其他文字、代码块或说明：\nplan_output: {\"plan_json\":..., \"plan_md\":..., \"pending_fields\":..., \"req_id\":...}\n该JSON对象固定包含以下4个键：\n1. plan_json：执行方案JSON对象，含 req_id/fields/similar_offers/pending_fields 四个键，fields内每项含 field/value/source；\n2. plan_md：执行方案Markdown表格字符串（以|字段分类|开头，固定4列：字段分类/字段名称/字段值/来源），表格内换行使用\\n转义，确保整个输出是合法JSON；\n3. pending_fields：待补充字段名称数组，无待补充时为空数组[]；\n4. req_id：存储key字符串（格式 PLAN+yyyyMMddHHmmss+3位随机数，如 PLAN20260913143025087，**必须取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史 req_id**；仅修改执行方案场景沿用原值覆盖写）。",
+    "基于业务要素与相似产品列表，映射为实际配置字段并补全：\n要素：{elements_json}\n相似产品：{similarOfferList}\n规则：价格、资源类未提供填\"待补充\"（禁止推理）；其余缺失字段取最高相似度产品对应值，来源\"AI补全\"；来源只允许\"原始需求\"/\"AI补全\"两种。\n输出要求（单一出参 plan_output）：\n按以下格式输出，第一行原样输出标签 plan_output:，随后紧跟一个JSON对象（以{开头、}结尾），除该标签行外不得输出任何其他文字、代码块或说明：\nplan_output: {\"plan_json\":..., \"plan_md\":..., \"pending_fields\":...}\n该JSON对象固定包含以下3个键：\n1. plan_json：执行方案JSON对象，含 req_id/fields/similar_offers/pending_fields 四个键，fields内每项含 field/value/source；req_id 键留空字符串（由后续代码节点统一生成，禁止自行生成）；\n2. plan_md：执行方案Markdown表格字符串（以|字段分类|开头，固定4列：字段分类/字段名称/字段值/来源），表格内换行使用\\n转义，确保整个输出是合法JSON；\n3. pending_fields：待补充字段名称数组，无待补充时为空数组[]。",
     [inp("elements_json", "引用节点2要素JSON", ref_block=nid(2), ref_rel="elements_json"),
      inp("similarOfferList", "引用节点3相似产品列表", ref_block=nid(3), ref_rel="similarOfferList")],
-    [out("plan_output", "执行方案总输出JSON字符串，含 plan_json/plan_md/pending_fields/req_id 四个键")], pos=(905, 300)))
-# 004a 方案输出拆分：LLM节点4单出参 plan_output → 代码节点拆分为 plan_json/plan_md/pending_fields/req_id 四出参
+    [out("plan_output", "执行方案总输出JSON字符串，含 plan_json/plan_md/pending_fields 三个键")], pos=(905, 300)))
+# 004a 方案输出拆分：LLM节点4单出参 plan_output → 代码节点拆分为 plan_json/plan_md/pending_fields；req_id 由代码节点系统生成（PLAN+当前时刻+3位随机数，保证唯一），修改场景经 prev_req_id 沿用原值
 s1.append(code_node(41, "方案输出拆分", CODE_004A,
-    [inp("plan_output", "引用节点4总输出", ref_block=nid(4), ref_rel="plan_output")],
+    [inp("plan_output", "引用节点4总输出", ref_block=nid(4), ref_rel="plan_output"),
+     inp("prev_req_id", "引用开始节点 prev_req_id（修改执行方案场景沿用原存储键，首跑为空）", ref_block=nid(1), ref_rel="prev_req_id")],
     [code_out("plan_json", 41), code_out("plan_md", 41),
      code_out("pending_fields", 41), code_out("req_id", 41)],
     pos=(1170, 300)))

@@ -34,6 +34,15 @@
             "type": "string",
             "required": false,
             "content": ""
+          },
+          {
+            "blockID": "",
+            "relName": "",
+            "name": "prev_req_id",
+            "description": "原执行方案存储key（修改执行方案场景传入，沿用原值覆盖写；首跑留空，req_id 由代码节点生成）",
+            "type": "string",
+            "required": false,
+            "content": ""
           }
         ],
         "checkErr": false,
@@ -200,7 +209,7 @@
         "outputs": [
           {
             "name": "plan_output",
-            "description": "执行方案总输出JSON字符串，含 plan_json/plan_md/pending_fields/req_id 四个键",
+            "description": "执行方案总输出JSON字符串，含 plan_json/plan_md/pending_fields 三个键",
             "type": "string",
             "content": ""
           }
@@ -212,7 +221,7 @@
             {
               "name": "prompt",
               "type": "string",
-              "content": "基于业务要素与相似产品列表，映射为实际配置字段并补全：\n要素：{elements_json}\n相似产品：{similarOfferList}\n规则：价格、资源类未提供填\"待补充\"（禁止推理）；其余缺失字段取最高相似度产品对应值，来源\"AI补全\"；来源只允许\"原始需求\"/\"AI补全\"两种。\n输出要求（单一出参 plan_output）：\n按以下格式输出，第一行原样输出标签 plan_output:，随后紧跟一个JSON对象（以{开头、}结尾），除该标签行外不得输出任何其他文字、代码块或说明：\nplan_output: {\"plan_json\":..., \"plan_md\":..., \"pending_fields\":..., \"req_id\":...}\n该JSON对象固定包含以下4个键：\n1. plan_json：执行方案JSON对象，含 req_id/fields/similar_offers/pending_fields 四个键，fields内每项含 field/value/source；\n2. plan_md：执行方案Markdown表格字符串（以|字段分类|开头，固定4列：字段分类/字段名称/字段值/来源），表格内换行使用\\n转义，确保整个输出是合法JSON；\n3. pending_fields：待补充字段名称数组，无待补充时为空数组[]；\n4. req_id：存储key字符串（格式 PLAN+yyyyMMddHHmmss+3位随机数，如 PLAN20260913143025087，**必须取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史 req_id**；仅修改执行方案场景沿用原值覆盖写）。"
+              "content": "基于业务要素与相似产品列表，映射为实际配置字段并补全：\n要素：{elements_json}\n相似产品：{similarOfferList}\n规则：价格、资源类未提供填\"待补充\"（禁止推理）；其余缺失字段取最高相似度产品对应值，来源\"AI补全\"；来源只允许\"原始需求\"/\"AI补全\"两种。\n输出要求（单一出参 plan_output）：\n按以下格式输出，第一行原样输出标签 plan_output:，随后紧跟一个JSON对象（以{开头、}结尾），除该标签行外不得输出任何其他文字、代码块或说明：\nplan_output: {\"plan_json\":..., \"plan_md\":..., \"pending_fields\":...}\n该JSON对象固定包含以下3个键：\n1. plan_json：执行方案JSON对象，含 req_id/fields/similar_offers/pending_fields 四个键，fields内每项含 field/value/source；req_id 键留空字符串（由后续代码节点统一生成，禁止自行生成）；\n2. plan_md：执行方案Markdown表格字符串（以|字段分类|开头，固定4列：字段分类/字段名称/字段值/来源），表格内换行使用\\n转义，确保整个输出是合法JSON；\n3. pending_fields：待补充字段名称数组，无待补充时为空数组[]。"
             }
           ],
           "inputParameters": [
@@ -285,7 +294,7 @@
             "type": "string"
           }
         ],
-        "code": "import json, re\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['plan_output']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    m = re.search(r'\\{[\\s\\S]*\\}', raw)\n    if not m:\n        obj = {}\n    else:\n        try:\n            obj = json.loads(m.group(0))\n        except Exception:\n            obj = {}\n    pf = obj.get('pending_fields') or ''\n    if isinstance(pf, list):\n        pf = ','.join([str(x) for x in pf])\n    plan_json = obj.get('plan_json')\n    if not isinstance(plan_json, str):\n        plan_json = json.dumps(plan_json if plan_json is not None else obj, ensure_ascii=False)\n    ret: Output = {\n        \"plan_json\": plan_json,\n        \"plan_md\": str(obj.get('plan_md') or ''),\n        \"pending_fields\": str(pf),\n        \"req_id\": str(obj.get('req_id') or '')\n    }\n    return ret",
+        "code": "import json, re, random\nfrom datetime import datetime\nfrom typing import Any, Dict\nasync def main(args):\n    raw = args.params['plan_output']\n    if not isinstance(raw, str):\n        raw = json.dumps(raw, ensure_ascii=False)\n    m = re.search(r'\\{[\\s\\S]*\\}', raw)\n    if not m:\n        obj = {}\n    else:\n        try:\n            obj = json.loads(m.group(0))\n        except Exception:\n            obj = {}\n    pf = obj.get('pending_fields') or ''\n    if isinstance(pf, list):\n        pf = ','.join([str(x) for x in pf])\n    plan_json = obj.get('plan_json')\n    if not isinstance(plan_json, str):\n        plan_json = json.dumps(plan_json if plan_json is not None else obj, ensure_ascii=False)\n    req_id = str(args.params.get('prev_req_id') or '').strip()\n    if not req_id:\n        req_id = 'PLAN' + datetime.now().strftime('%Y%m%d%H%M%S') + '%03d' % random.randint(0, 999)\n    try:\n        pj = json.loads(plan_json)\n        if isinstance(pj, dict):\n            pj['req_id'] = req_id\n            plan_json = json.dumps(pj, ensure_ascii=False)\n    except Exception:\n        pass\n    ret: Output = {\n        \"plan_json\": plan_json,\n        \"plan_md\": str(obj.get('plan_md') or ''),\n        \"pending_fields\": str(pf),\n        \"req_id\": req_id\n    }\n    return ret",
         "flowJson": null,
         "inputs": [
           {
@@ -301,6 +310,20 @@
               "b2c3d4e5-0000-4000-8000-000000000004,plan_output"
             ],
             "currValue": "b2c3d4e5-0000-4000-8000-000000000004,plan_output"
+          },
+          {
+            "blockID": "b2c3d4e5-0000-4000-8000-000000000001",
+            "relName": "prev_req_id",
+            "name": "prev_req_id",
+            "description": "引用开始节点 prev_req_id（修改执行方案场景沿用原存储键，首跑为空）",
+            "type": "ref",
+            "required": true,
+            "content": "",
+            "nameValue": [
+              "b2c3d4e5-0000-4000-8000-000000000001",
+              "b2c3d4e5-0000-4000-8000-000000000001,prev_req_id"
+            ],
+            "currValue": "b2c3d4e5-0000-4000-8000-000000000001,prev_req_id"
           }
         ],
         "checkErr": false,

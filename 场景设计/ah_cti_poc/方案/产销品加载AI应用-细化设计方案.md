@@ -318,7 +318,7 @@
 | 来源 | 平台已有通用插件，直接挂载，**不自研**（V1.3 起替代原自研 save_plan_json/get_plan_json）；V1.6 起后端由 `NodeResultService`（MyBatis-Plus）落库 `pd_ai_node_results` 表持久化（H2/MySQL 双 DDL），服务重启结果不丢失 |
 | 保存（save_node_result） | POST `/api/v1/appstore/result/save`，入参 req_id/node_name/result_json/status（默认 ok）；**V1.7 环节结果存储已下沉到各子工作流内部**：wf_sub_01(req_id=入参, node_name=requirement)、wf_sub_02~05(内置存储节点, req_id=入参统一键, node_name=config/spec/fee/test)、wf_sub_06 报告存储(node_name=report) |
 | 查询（query_node_result） | **GET** `/api/v1/appstore/result/query`，入参 req_id（必填）/node_name（可选）/latest_only（默认1）；出参 code/msg/total/list（取 list[0].result_json 为结果原文）；**各子工作流开始后自查上游环节结果（submit_way=get）** |
-| key（req_id）规范 | V1.7 统一键：执行方案与执行主干共用单键 `PLAN` + yyyyMMddHHmmss + 3位随机数（如 `PLAN20260913143025087`，取当前真实时刻生成、每次不同）；同键**覆盖写** |
+| key（req_id）规范 | V1.7 统一键：执行方案与执行主干共用单键 `PLAN` + yyyyMMddHHmmss + 3位随机数（如 `PLAN20260913143025087`，由 wf_sub_01 拆分代码节点以系统时钟生成、每次唯一，LLM 不参与生成）；同键**覆盖写**；后端硬校验 PLAN 格式（5002）与唯一性冲突（5006） |
 | node_name 枚举 | requirement / config / spec / fee / test / **report**（V1.6 新增 report） |
 | value 大小 | result_json ≤64KB（超限返回 5004）；执行方案 JSON 一般 <20KB，超限时压缩仅保留 fields/similar_offers/pending_fields 三段 |
 | 读写一致性自测 | 保存后立即按 req_id+node_name 查询，比对 result_json 一致；服务重启后可查询（持久化验证） |
@@ -516,7 +516,7 @@
 | `wf_sub_07` | 监控运维 | 子工作流 | 5 | 挂载（LLM 直调工具10/11 兜底） |
 | `wf_sub_08` | 审批进度查询（V1.1 新增） | 子工作流 | 3 | 挂载（LLM 直调工具13 兜底） |
 
-> V1.6 统一模式（V1.7 更新）：wf_sub_01~06 开始节点统一为 **req_id 单入参**（描述"执行方案存储key（V1.7 统一键：PLAN+yyyyMMddHHmmss+3位随机数，方案批次与执行主干共用，同键覆盖）"），子流程内部以 query_node_result（GET，req_id=开始节点入参、node_name=环节名、latest_only=1、submit_way=get）自查所需上游结果；结束节点前由代码节点合成 result_json 并 save_node_result 落库（node_name 枚举：requirement/config/spec/fee/test/report + V1.7 新增 CONFIRMED）。主流程删除全部存储节点（含旧 0016/0016b），报告生成（LLM）也移入 wf_sub_06 内部（节点 501g）。
+> V1.6 统一模式（V1.8 更新）：wf_sub_02~06 开始节点统一为 **req_id 单入参**（描述"执行方案存储key（V1.8 统一键：PLAN+yyyyMMddHHmmss+3位随机数，方案批次与执行主干共用，同键覆盖）"），子流程内部以 query_node_result（GET，req_id=开始节点入参、node_name=环节名、latest_only=1、submit_way=get）自查所需上游结果；结束节点前由代码节点合成 result_json 并 save_node_result 落库（node_name 枚举：requirement/config/spec/fee/test/report + V1.7 新增 CONFIRMED）。**wf_sub_01 开始节点为 requirement_text/requirement_file/prev_req_id 三入参**（prev_req_id 选填：修改执行方案场景传入沿用原值覆盖写，首跑留空），req_id 由 **004a 拆分代码节点以系统时钟生成**（LLM 不参与生成，详见 3.4.1 节）。主流程删除全部存储节点（含旧 0016/0016b），报告生成（LLM）也移入 wf_sub_06 内部（节点 501g）。
 >
 > **V1.7 变更**：主流程 `wf_cpcp_main` 固定编排弃用（因平台主流程对子工作流入参注入受限，曾致"确认执行"后重复需求分析），执行主干调度职责移交智能体 LLM（见 3.3 节时序）；3.1 节主流程逐节点配置**保留作为归档参考**，不再实施。
 
@@ -810,11 +810,20 @@ LLM 按意图映射表命中【发起审批】→ 直调 wf_sub_06 上线审批�
 
 ### 3.4 关键算法与提示词细化
 
-#### 3.4.1 req_id 生成规则（V1.7 统一键）
+#### 3.4.1 req_id 生成规则（V1.7 统一键，代码节点系统生成）
 ```
-req_id = "PLAN" + yyyyMMddHHmmss + 3位随机数
-示例：PLAN20260913143025087（取当前真实时刻生成，每次不同，严禁照抄示例值）
-修改执行方案时：沿用原 req_id 覆盖写（不生成新 key）
+req_id 由 wf_sub_01 拆分代码节点（004a）以系统时钟生成，LLM 不参与生成：
+req_id = "PLAN" + datetime.now().strftime("%Y%m%d%H%M%S") + 3位随机数(%03d)
+示例：PLAN20260913143025087（系统时钟保证取真实当前时刻，每次运行必然不同）
+修改执行方案时：智能体传入 prev_req_id（原存储键），代码节点检测非空即沿用原值覆盖写（不生成新 key）
+plan_json 内的 req_id 键亦由代码节点注入（LLM 输出空字符串，禁止自行生成）
+```
+后端唯一性硬校验（NodeResultService.save，双保险）：
+```
+① 格式校验：req_id 须匹配 PLAN\d{17}（PLAN+14位时间戳+3位随机数），非法返回 5002；
+② 唯一性冲突拦截：requirement 环节同 req_id 重写且 result_json 内容不同（LLM 照抄历史
+   req_id 写入新方案）→ 拒绝并返回 5006，防止旧方案被静默覆盖；
+   修改方案场景为同内容覆盖，不受影响。
 ```
 
 #### 3.4.2 待补充字段判定逻辑（wf_sub_01 节点4 提示词内含，此处为程序化校验口径）
@@ -1045,7 +1054,7 @@ ret = {"done": False, "failed": True, "fail_reason": "测试超时（30 分钟�
 ### 6.2 存储与流水
 | 变量 | 规则 | 示例 |
 | --- | --- | --- |
-| `req_id` | `PLAN` + yyyyMMddHHmmss + 3位随机数（V1.7 统一键，取当前真实时刻生成、每次不同；修改执行方案沿用原值） | `PLAN20260913143025087` |
+| `req_id` | `PLAN` + yyyyMMddHHmmss + 3位随机数（V1.7 统一键，wf_sub_01 拆分代码节点以系统时钟生成、每次唯一；修改执行方案经 prev_req_id 沿用原值） | `PLAN20260913143025087` |
 | `globalId`（测试流水） | 接口返回原值，不得重生成 | `50202608252017364447983718` |
 | `transactionId` | yyyyMMddHHmmssSSS + 4~6位随机数 | `20260912102450123456` |
 | node_name 枚举 | requirement / config / spec / fee / test / report（V1.6 新增 report）+ CONFIRMED（V1.7 新增） | `report` |

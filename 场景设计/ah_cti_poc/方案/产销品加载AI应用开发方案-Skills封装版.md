@@ -64,8 +64,8 @@
 | 触发方式 | 主动触发：用户上传需求文档 / 口述需求 / 主引导问题命中 |
 | 封装内容 | 需求分析助手提示词（主方案 6.4 全文）+ 工具 `query_similar_offer` + 节点结果存储查询插件（结果存储）+ 存量销售品知识库引用 |
 | 输入 | requirement_text（必填）/ requirement_file（选填）/ revise_opinion（选填，修改意见，续跑时传入） |
-| 执行逻辑 | ① 理解需求 → ② 提取业务要素（四类字段）→ ③ 调用 `query_similar_offer` 匹配相似产品 → ④ 字段映射 + 补全（**价格/资源类未提供填"待补充"禁止推理；其余基于相似产品 AI 补全**）→ ⑤ 生成执行方案 JSON → 节点结果存储保存（key=req_id，修改时覆盖写）→ ⑥ 输出 Markdown 表格 |
-| 输出产物 | req_id（执行方案存储key，PLAN+yyyyMMddHHmmss+3位随机数）/ plan_md（执行方案表格）/ plan_json（已存储）/ pending_fields |
+| 执行逻辑 | ① 理解需求 → ② 提取业务要素（四类字段）→ ③ 调用 `query_similar_offer` 匹配相似产品 → ④ 字段映射 + 补全（**价格/资源类未提供填"待补充"禁止推理；其余基于相似产品 AI 补全**）→ ⑤ 生成执行方案 JSON（req_id 留空）→ ⑥ 004a 拆分代码节点以系统时钟生成 req_id 并注入 plan_json（LLM 不参与生成；修改场景经 prev_req_id 沿用原值覆盖写）→ 节点结果存储保存 → ⑦ 输出 Markdown 表格 |
+| 输出产物 | req_id（执行方案存储key，PLAN+yyyyMMddHHmmss+3位随机数，由 004a 代码节点生成）/ plan_md（执行方案表格）/ plan_json（已存储，req_id 已注入）/ pending_fields |
 | 与主方案差异 | 原 `wf_sub_01` 子工作流 → 单技能；"待补充"提示不依赖选择器节点，由技能输出模板直接列出 |
 
 ### Skill-2 确认解析与门禁（被动技能）
@@ -194,7 +194,7 @@
 
 | key（req_id + node_name） | 内容 | 写入方 | 读取方 |
 | --- | --- | --- | --- |
-| `req_id` + `requirement` | 执行方案 JSON（覆盖写），req_id=PLAN+yyyyMMddHHmmss+3位随机数 | Skill-1 | Skill-2 / Skill-3 |
+| `req_id` + `requirement` | 执行方案 JSON（覆盖写），req_id=PLAN+yyyyMMddHHmmss+3位随机数（004a 代码节点以系统时钟生成，LLM 不参与） | Skill-1 | Skill-2 / Skill-3 |
 | `req_id` + `CONFIRMED` | 确认标记（{"confirmed":true}） | Skill-2 | Skill-3（门禁自查）/ save_product_config 后端硬校验 |
 | `req_id` + `config/spec/fee/test`（或 stage1..4） | 各阶段执行结果 | Skill-3 | Skill-3（续跑回放）/ Skill-4（报告汇总）/ submit_release_approval 后端硬校验 |
 | `req_id` + `ALLPASSED` | 主干完成标记 | Skill-3 | Skill-4（审批门禁校验） |
@@ -264,7 +264,7 @@
 
 | 文件 | 对应技能 | 节点数 | 说明 |
 | --- | --- | --- | --- |
-| `skill_01_需求分析与执行方案.json` | Skill-1（主动） | 9 | 需求理解→相似产品→字段映射与AI补全（单出参 plan_output）→004a 方案输出拆分代码节点→待补充判断→保存执行方案（req_id） |
+| `skill_01_需求分析与执行方案.json` | Skill-1（主动） | 9 | 需求理解→相似产品→字段映射与AI补全（单出参 plan_output，3 键）→004a 方案输出拆分代码节点（系统时钟生成 req_id 并注入 plan_json）→待补充判断→保存执行方案（req_id） |
 | `skill_02_确认解析与门禁.json` | Skill-2（被动） | 6 | 确认/修改/拒绝意图解析；确认→写确认标记（req_id 同执行方案存储键、node_name=CONFIRMED，Skill-3 硬校验） |
 | `skill_03_执行主干流水线.json` | Skill-3（主动，核心） | 22 | 读取执行JSON→四阶段自动串行（配置落地→实时稽核→资费校准→自动测试含受理验证）→每阶段判定打印→统一异常出口 |
 | `skill_04_上线审批发起.json` | Skill-4（主动） | 4 | 报告汇总（强制含受理验证结论）→submit_release_approval 推送 |

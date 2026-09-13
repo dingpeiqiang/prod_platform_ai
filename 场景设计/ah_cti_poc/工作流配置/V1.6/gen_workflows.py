@@ -237,7 +237,8 @@ def loop_node(seq, title, desc, in_refs, outputs, pos=(650, 300)):
 
 
 CODE_004A = (
-    "import json, re\n"
+    "import json, re, random\n"
+    "from datetime import datetime\n"
     "from typing import Any, Dict\n"
     "async def main(args):\n"
     "    raw = args.params['plan_output']\n"
@@ -257,11 +258,21 @@ CODE_004A = (
     "    plan_json = obj.get('plan_json')\n"
     "    if not isinstance(plan_json, str):\n"
     "        plan_json = json.dumps(plan_json if plan_json is not None else obj, ensure_ascii=False)\n"
+    "    req_id = str(args.params.get('prev_req_id') or '').strip()\n"
+    "    if not req_id:\n"
+    "        req_id = 'PLAN' + datetime.now().strftime('%Y%m%d%H%M%S') + '%03d' % random.randint(0, 999)\n"
+    "    try:\n"
+    "        pj = json.loads(plan_json)\n"
+    "        if isinstance(pj, dict):\n"
+    "            pj['req_id'] = req_id\n"
+    "            plan_json = json.dumps(pj, ensure_ascii=False)\n"
+    "    except Exception:\n"
+    "        pass\n"
     "    ret: Output = {\n"
     "        \"plan_json\": plan_json,\n"
     "        \"plan_md\": str(obj.get('plan_md') or ''),\n"
     "        \"pending_fields\": str(pf),\n"
-    "        \"req_id\": str(obj.get('req_id') or '')\n"
+    "        \"req_id\": req_id\n"
     "    }\n"
     "    return ret"
 )
@@ -384,6 +395,7 @@ s1 = []
 s1.append(start_node(1, [
     inp("requirement_text", "销售品需求描述文本或文档内容摘要", required=True),
     inp("requirement_file", "需求文档地址（可选）", required=False),
+    inp("prev_req_id", "原执行方案存储key（修改执行方案场景传入，沿用原值覆盖写；首跑留空，req_id 由代码节点生成）", required=False),
 ]))
 s1.append(llm_node(2, "需求理解与要素拆解",
     "你是产销品加载需求分析助手。按6步分析：理解需求→提取并拆解业务要素（基础信息/资源配置/营销资源/销售规则四类）→识别信息完整性（字段三态：原始需求/AI补全/待补充）。需求原文：{requirement_text}\n"    "要素拆解字段口径（四类18字段，与执行方案生成保持一致）：\n"
@@ -425,19 +437,19 @@ s1.append(llm_node(4, "字段映射与补全",
     "\n"
     "【输出要求（单一出参 plan_output）】\n"
     "按以下格式输出，第一行原样输出标签 plan_output:，随后紧跟一个JSON对象（以{开头、}结尾），除该标签行外不得输出任何其他文字、代码块或说明：\n"
-    "plan_output: {\"plan_json\":..., \"plan_md\":..., \"pending_fields\":..., \"req_id\":...}\n"
-    "该JSON对象固定包含以下4个键：\n"
-    "1. plan_json：执行方案JSON对象，含 req_id/fields/similar_offers/pending_fields 四个键；fields数组必须包含上述18个字段，每项形如{\"field\":\"字段名称\",\"value\":\"字段值\",\"source\":\"原始需求或AI补全\"}，待补充字段value填\"待补充\"；\n"
+    "plan_output: {\"plan_json\":..., \"plan_md\":..., \"pending_fields\":...}\n"
+    "该JSON对象固定包含以下3个键：\n"
+    "1. plan_json：执行方案JSON对象，含 req_id/fields/similar_offers/pending_fields 四个键；fields数组必须包含上述18个字段，每项形如{\"field\":\"字段名称\",\"value\":\"字段值\",\"source\":\"原始需求或AI补全\"}，待补充字段value填\"待补充\"；req_id 键留空字符串（由后续代码节点统一生成，禁止自行生成）；\n"
     "2. plan_md：执行方案Markdown表格字符串，以|字段分类|开头，固定4列：字段分类/字段名称/字段值/来源，共18行数据行（与fields一一对应），同分类连续行按规范合并单元格（首行填分类，后续行留空）；\n"
     "3. pending_fields：待补充字段名称数组（如[\"流量资源\",\"套餐固定费\"]），无待补充时为空数组[]；\n"
-    "4. req_id：存储key字符串（格式 PLAN+yyyyMMddHHmmss+3位随机数，如PLAN20260913143025087，**必须取当前真实时刻生成、每次不同，严禁照抄示例值或沿用历史 req_id**），修改场景沿用原值覆盖写。\n"
     "注意：Markdown表格内的换行使用\\n转义，确保整个输出是合法JSON。",
     [inp("elements_json", "引用节点2要素JSON", ref_block=nid(2), ref_rel="elements_json"),
      inp("similarOfferList", "引用节点3相似产品列表", ref_block=nid(3), ref_rel="similarOfferList")],
-    [out("plan_output", "执行方案总输出JSON字符串，含 plan_json/plan_md/pending_fields/req_id 四个键")]))
-# 004a 方案输出拆分：LLM节点4单出参 plan_output → 拆分为 plan_json/plan_md/pending_fields/req_id 四出参
+    [out("plan_output", "执行方案总输出JSON字符串，含 plan_json/plan_md/pending_fields 三个键")]))
+# 004a 方案输出拆分：LLM节点4单出参 plan_output → 拆分为 plan_json/plan_md/pending_fields；req_id 由代码节点系统生成（PLAN+当前时刻+3位随机数，保证唯一），修改场景经 prev_req_id 沿用原值
 s1.append(code_node(41, "方案输出拆分", CODE_004A,
-    [inp("plan_output", "引用节点4总输出", ref_block=nid(4), ref_rel="plan_output")],
+    [inp("plan_output", "引用节点4总输出", ref_block=nid(4), ref_rel="plan_output"),
+     inp("prev_req_id", "引用开始节点 prev_req_id（修改执行方案场景沿用原存储键，首跑为空）", ref_block=nid(1), ref_rel="prev_req_id")],
     [code_out("plan_json", 41), code_out("plan_md", 41),
      code_out("pending_fields", 41), code_out("req_id", 41)],
     pos=(1455, 300)))
@@ -448,7 +460,7 @@ s1.append(selector_node2(5, "待补充项判断",
     #       port=0 兜底分支（pending_fields 为空）→ 直接结束提示，不保存（禁止进入智能配置）
     [(-1, [cond_item(cond_ref(41, "pending_fields", "方案输出拆分"), 10, cond_str(""))])]))
 s1.append(plugin_node(6, "保存执行方案", "save_node_result",
-    "节点结果存储（复用）：req_id=LLM生成的方案批次号 req_id，node_name=requirement（执行方案环节），result_json=plan_json；同键覆盖",
+    "节点结果存储（复用）：req_id=代码节点生成的方案批次号 req_id（取节点41拆分出参，系统时钟生成），node_name=requirement（执行方案环节），result_json=plan_json；同键覆盖",
     BASE_URL + "/api/v1/appstore/result/save",
     [inp("req_id", "方案批次标识（=节点41拆分出参 req_id，PLAN+yyyyMMddHHmmss+3位随机数）", ref_block=nid(41), ref_rel="req_id"),
      inp("node_name", "环节名=requirement（执行方案）", content="requirement"),

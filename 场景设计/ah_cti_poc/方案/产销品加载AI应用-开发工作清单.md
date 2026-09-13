@@ -74,7 +74,8 @@
 | --- | --- | --- | --- |
 | 1 | 测试轮询代码节点（wf_sub_04 节点0304，type=6 代码节点） | 代码节点（非循环节点）：asyncio.sleep(5) 间隔轮询、最多 360 次（超时 30 分钟）、连续 5 次查询失败终止转人工（保留 globalId）；退出条件 done==true 或 failed==true；**注意：type=6 代码节点 inputs 必须为平铺 list 结构（非 {loopParam, inputParameters} 嵌套）** | 0.5d |
 | 2 | NodeResultService 新增 `latestRecord(reqId, nodeName)` 公开方法（V1.7 已完成） | 按 req_id+node_name 取最新记录（返回 {result_json,status} 或 null），供 save_product_config / submit_release_approval 后端硬校验使用；后端编译验证通过（mvn compile） | 已完成 |
-| 3 | LLM 调度层配套（V1.7，提示词约定，无独立代码） | 确认标记写入（save_node_result：req_id=执行方案存储键、node_name=CONFIRMED）、串行直调子工作流入参注入、每环节结果打印、fail_node 续跑映射；全部由主方案 3.2 提示词固化（V1.7 环节结果存储已下沉到子工作流内部） | 已完成（文档） |
+| 3 | wf_sub_01/skill_01 004a 拆分代码节点改造（V1.8，req_id 唯一性保障） | req_id 由代码节点以系统时钟生成（datetime.now+3位随机数，LLM 不参与；修改场景经 prev_req_id 入参沿用原值覆盖写），并注入 plan_json 的 req_id 键；LLM 节点4 改 3 键输出（plan_json 内 req_id 留空）；后端 NodeResultService 增加 PLAN\d{17} 格式校验（非法返回 5002）与 requirement 环节同键不同内容拦截（返回 5006） | 已完成 |
+| 4 | LLM 调度层配套（V1.7，提示词约定，无独立代码） | 确认标记写入（save_node_result：req_id=执行方案存储键、node_name=CONFIRMED）、串行直调子工作流入参注入、每环节结果打印、fail_node 续跑映射；全部由主方案 3.2 提示词固化（V1.7 环节结果存储已下沉到子工作流内部） | 已完成（文档） |
 
 ---
 
