@@ -390,15 +390,15 @@ plugins.append(build_plugin(
     "自研模拟实现（V1.6）：读取执行方案JSON，将基础信息/资源配置/营销资源/销售规则四类字段写入模拟CRM销售品配置库（内存产品档案，种子数据含《产品信息.txt》18个销售品），生成 product_id/offer_id；内部二次校验 confirmed==true，未确认返回 NOT_CONFIRMED 防止绕过确认门禁；写操作不自动重试",
     "/api/v1/appstore/product/config/save", "POST",
     {
-        "plan_id": schema_param("plan_id", "string",
-            "执行方案存储key（如 PLAN20260912001）；缺失返回 PARAM_MISSING", True),
+        "req_id": schema_param("req_id", "string",
+            "执行方案存储key（V1.7 统一键，PLAN+yyyyMMddHHmmss+3位随机数，如 PLAN20260913143025087）；缺失返回 PARAM_MISSING", True),
         "plan_json": schema_param("plan_json", "string",
-            "执行方案JSON原文，必须为节点结果存储查询插件取回的JSON原文，原样透传（工作流变量引用，不提参）；禁止二次生成", True),
+            "执行方案JSON原文，必须为节点结果存储查询插件取回的JSON原文，原样透传（工作流变量引用，不提参）；禁止二次生成；方案key由后端从 plan_json 的 req_id 键提取", True),
         "confirmed": schema_param("confirmed", "string",
             "用户确认标志 true/false，由工作流从会话上下文传入；非 true 返回 NOT_CONFIRMED", True, "true"),
         "operator": schema_param("operator", "string", "操作人（从会话上下文取），可空", False),
     },
-    ["plan_id", "plan_json", "confirmed"],
+    ["req_id", "plan_json", "confirmed"],
     {
         "product_id": {"description": "CRM 产品ID", "type": "string"},
         "offer_id": {"description": "销售品ID（后续稽核/测试入参）", "type": "string"},
@@ -435,8 +435,10 @@ plugins.append(build_plugin(
     "自研模拟实现（V1.6）：汇总测试与稽核报告生成模拟审批单号 approval_id 并写入模拟审批状态库（供工具13 query_approval_status 查询）；插件层校验 approve_confirmed==true，未经确认返回 NOT_CONFIRMED；幂等：同 product_id 重复提交返回原 approval_id",
     "/api/v1/appstore/approval/submit", "POST",
     {
+        "req_id": schema_param("req_id", "string",
+            "执行方案存储key（V1.7 统一键，PLAN+yyyyMMddHHmmss+3位随机数）；后端硬校验该 req_id 的 config/spec/fee/test 四环节结果，缺失任一返回 NOT_CONFIRMED；缺失返回 PARAM_MISSING", True),
         "product_id": schema_param("product_id", "string",
-            "CRM 产品ID（save_product_config 出参）；缺失返回 PARAM_MISSING", True),
+            "CRM 产品ID（save_product_config 出参，幂等依据）；缺失返回 PARAM_MISSING", True),
         "report_url": schema_param("report_url", "string",
             "上线报告内容或链接（主流程报告汇总节点 report 输出，工作流变量引用）", True),
         "approve_confirmed": schema_param("approve_confirmed", "string",
@@ -444,7 +446,7 @@ plugins.append(build_plugin(
         "approval_flow": schema_param("approval_flow", "string",
             "审批流枚举：standard/urgent，默认 standard", False, "standard", "standard,urgent"),
     },
-    ["product_id", "report_url", "approve_confirmed"],
+    ["req_id", "product_id", "report_url", "approve_confirmed"],
     {
         "approval_id": {"description": "审批单号", "type": "string"},
         "status": {"description": "提交状态", "type": "string"},
@@ -531,11 +533,11 @@ def build_storage_plugin(tool_id, tool_name, tool_code, desc, path, method, req_
 
 plugins.append(build_storage_plugin(
     "node-result-save-0001", "节点结果存储", "save_node_result",
-    "平台复用插件：按需求单号+环节名存储工作流节点结果JSON（同键覆盖，支持重跑环节）。执行方案环节：req_id=plan_id（PLAN+yyyyMMdd+3位序号）、node_name=requirement；执行主干各环节：req_id=execution_id（EXE+yyyyMMddHHmmss+2位序号）、node_name=config/spec/fee/test",
+    "平台复用插件：按需求单号+环节名存储工作流节点结果JSON（同键覆盖，支持重跑环节）。V1.7 统一键：全链路唯一批次标识 req_id（PLAN+yyyyMMddHHmmss+3位随机数，原 plan_id/execution_id 双键合并），执行方案环节 node_name=requirement；执行主干各环节 node_name=config/spec/fee/test",
     "/api/v1/appstore/result/save", "POST",
     {
         "req_id": schema_param("req_id", "string",
-            "需求唯一标识；执行方案环节=plan_id，执行主干环节=execution_id；非法格式返回 5002", True),
+            "需求唯一标识（V1.7 统一键，PLAN+yyyyMMddHHmmss+3位随机数，全链路唯一批次标识）；非法格式返回 5002", True),
         "node_name": schema_param("node_name", "string",
             "环节名：requirement/config/spec/fee/test；为空返回 5003", True),
         "result_json": schema_param("result_json", "string",
@@ -553,11 +555,11 @@ plugins.append(build_storage_plugin(
 
 plugins.append(build_storage_plugin(
     "node-result-query-0001", "节点结果查询", "query_node_result",
-    "平台复用插件：按需求单号（+环节名可选）查询工作流节点结果JSON原文。智能配置环节按 req_id=plan_id、node_name=requirement 取回执行方案JSON（list[0].result_json）后原样透传 save_product_config（中间禁止大模型二次加工）；续跑时按 req_id=execution_id 回放已成功环节结果",
+    "平台复用插件：按需求单号（+环节名可选）查询工作流节点结果JSON原文。V1.7 统一键：智能配置环节按 req_id+node_name=requirement 取回执行方案JSON（list[0].result_json）后原样透传 save_product_config（中间禁止大模型二次加工）；续跑时按同键 req_id 回放已成功环节结果",
     "/api/v1/appstore/result/query", "GET",
     {
         "req_id": schema_param("req_id", "string",
-            "需求唯一标识；执行方案环节=plan_id，执行主干环节=execution_id；非法格式返回 5002", True),
+            "需求唯一标识（V1.7 统一键，PLAN+yyyyMMddHHmmss+3位随机数，全链路唯一批次标识）；非法格式返回 5002", True),
         "node_name": schema_param("node_name", "string",
             "环节名（可选）：requirement/config/spec/fee/test；为空返回该需求单号下全部环节最新记录", False),
         "latest_only": schema_param("latest_only", "string",
