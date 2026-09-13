@@ -175,8 +175,10 @@ public class OfferSimV16Service {
         body.put("status", failCount == 0 ? "SUCCESS" : (failCount < saveResult.size() ? "PARTIAL" : "FAIL"));
         body.put("saved_at", LocalDateTime.now().format(TS));
         // V2.4：回传完整落地配置JSON（含 offer_id 编码与 plan_json 原文），供子工作流
-        // 节点结果存储（node_name=config）整体落库，下游稽核/测试/审批门禁自查直接取用
-        body.put("product_config", config);
+        // 节点结果存储（node_name=config）整体落库，下游稽核/测试/审批门禁自查直接取用。
+        // 插件出参声明为 string，此处序列化为标准 JSON 报文字符串，避免嵌套 Map
+        // 被平台按 Java 对象 toString 输出成非 JSON 文本
+        body.put("product_config", toJson(config));
 
         savedConfigs.put(offerId, config);
         planIdempotency.put(planJson, body);
@@ -733,6 +735,14 @@ public class OfferSimV16Service {
             return objectMapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<>() {});
         } catch (Exception ex) {
             return null;
+        }
+    }
+
+    private String toJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (Exception ex) {
+            return "";
         }
     }
 
