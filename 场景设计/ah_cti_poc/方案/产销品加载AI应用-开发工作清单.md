@@ -23,7 +23,7 @@
 
 | # | 接口 | 方法/路径 | 开发内容 | 验收要点 | 工期 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | 相似度分析 `query_similar_offer` | POST /api/v1/appstore/similar/offer/query | 以 18 销售品构建相似度匹配模拟服务（关键词+资费结构加权打分），**返回相似度最高的1个产品 similarOffer（含 offerInfo 完整产品配置信息）** | 任一 18 销售品相关需求均可命中对应销售品（取 score 最高）；businessDesc>5000 字符由上游摘要，接口只校验非空 | 0.5d |
+| 1 | 相似度分析 `query_similar_offer` | POST /api/v1/appstore/similar/offer/query | 以 18 销售品构建相似度匹配模拟服务（关键词+资费结构加权打分），**返回相似度最高的1个产品 similarOffer（含 offerInfo 完整产品配置信息——toFields18 同构转换为与需求要素一致的 fields 四类18字段数组）** | 任一 18 销售品相关需求均可命中对应销售品（取 score 最高）；businessDesc>5000 字符由上游摘要，接口只校验非空 | 0.5d |
 | 2 | 实时规格稽核 `realtime_spec_audit` | POST /api/v1/appstore/audit/realtime | 规则引擎：按配置规范校验必填属性/命名/生效期/销售范围，对照《产品信息.txt》该销售品规则；**同步返回** | pass/error_list/audit_summary 结构完整；支持构造缺陷用例（互斥叠加）返回 pass=0；60s 超时返回 TIMEOUT | 1d |
 | 3 | 配置落地 `save_product_config` | POST /api/v1/appstore/product/config/save | 模拟 CRM 写入：内存产品档案（种子 18 销售品）；解析 plan_json 四类字段；**V1.7 后端硬校验：`NodeResultService.latestRecord(req_id,"CONFIRMED")` 非空才放行，方案key由后端从 plan_json 的 req_id 键提取**；幂等（同 plan_json 返回已存在 offer_id） | 无 CONFIRMED 标记返回 NOT_CONFIRMED 且无写入（LLM 跳步也写不进去）；save_result 四类分类明细；product_id/offer_id 生成规则稳定 | 1d |
 

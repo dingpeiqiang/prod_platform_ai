@@ -62,7 +62,7 @@ ARRAY_ITEM_FIELDS = {
         ("similarOfferName", "相似销售品名称"),
         ("similarityScore", "相似度评分（0~1）"),
         ("similarityDesc", "相似原因描述（命中字段/资费结构说明）"),
-        ("offerInfo", "完整产品配置信息（销售品全量规则：资费/资源/副卡/渠道/订购/退订等）"),
+        ("offerInfo", "完整产品配置信息（与需求要素同构：similarOfferId/similarOfferName/series/sub_type + fields 四类18字段数组 field/category/value）"),
     ],
     "realtime_spec_audit|error_list": [
         ("item", "问题项（对应配置字段/规则）"),
@@ -492,19 +492,19 @@ s1.append(llm_node(2, "需求理解与要素拆解",
     [inp("requirement_text", "引用开始节点 requirement_text", ref_block=nid(1), ref_rel="requirement_text")],
     [out("elements_json", "业务要素结构化JSON（18字段，未提及项value为空）"), out("need_summary", "需求要素摘要（供相似产品匹配）")]))
 s1.append(plugin_node(3, "相似产品查询", "query_similar_offer",
-    "工具1：以《产品信息.txt》全部18个销售品为相似产品库，返回相似度最高的产品（仅1个，含相似度评分与完整产品配置信息 offerInfo）",
+    "工具1：以《产品信息.txt》全部18个销售品为相似产品库，返回相似度最高的产品（仅1个，含相似度评分与完整产品配置信息 offerInfo——与需求要素同构的 fields 四类18字段数组）",
     BASE_URL + "/api/v1/appstore/similar/offer/query",
     [inp("businessDesc", "业务需求描述（引用节点2需求要素摘要，≤5000字符）", ref_block=nid(2), ref_rel="need_summary")],
     [("resultCode", "0成功/1失败", "string"), ("resultMsg", "处理结果描述", "string"),
      ("similarOffer", "相似度最高的产品（含相似度评分与完整产品配置信息 offerInfo，未命中时为空对象）", "object")]))
 s1.append(llm_node(4, "产品信息整合",
-    "你是产销品加载执行方案生成助手（环节3：产品信息整合）。任务：以节点3返回的相似产品完整产品配置信息（similarOffer.offerInfo）为基准，整合节点2要素信息中需求已提取的配置信息，输出最终产品信息（即18字段完整取值）。\n"
-    "输入：节点2要素JSON（elements_json={elements_json}）+ 节点3相似产品（similarOffer={similarOffer}，含 offerInfo 完整产品配置信息：资费/资源/副卡/渠道/订购/退订等全量规则）。\n"
+    "你是产销品加载执行方案生成助手（环节3：产品信息整合）。任务：节点3返回的相似产品完整产品配置信息（similarOffer.offerInfo.fields）与节点2要素信息（elements_json.fields）为**同一套配置结构模板规范**（同为四类18字段数组，field 名一致），逐字段执行同构键值合并，输出最终产品信息（18字段完整取值）。\n"
+    "输入：节点2要素JSON（elements_json={elements_json}）+ 节点3相似产品（similarOffer={similarOffer}，offerInfo.fields 为18字段同构数组）。\n"
     "\n"
-    "【整合规则（严格执行）】\n"
-    "1. 需求要素有值（value非空且非\"待补充\"）→ 优先采用需求要素值（source标\"原始需求\"）；\n"
-    "2. 需求要素无值 → 从 offerInfo 完整产品配置信息中取对应字段值（source标\"AI推理\"）；\n"
-    "3. 两者皆缺失 → value填空字符串\"\"（由下游字段本体推理引擎按默认值补全，source标\"AI推理\"）。\n"
+    "【同构合并规则（按 field 名逐字段对齐，严格执行）】\n"
+    "1. 需求要素字段有值（value非空且非\"待补充\"）→ 采用需求要素值（source标\"原始需求\"）；\n"
+    "2. 需求要素字段无值 → 采用 offerInfo.fields 中同名字段值（source标\"AI推理\"）；\n"
+    "3. 两侧皆缺失 → value填空字符串\"\"（由下游字段本体推理引擎按默认值补全，source标\"AI推理\"）。\n"
     "\n"
     "【特殊字段口径（V2.2）】\n"
     "- 9.套餐固定费：需求未提取到时值填\"待补充\"（价格不可推理，禁止从相似产品照搬，引擎维持待补充交用户补充）；\n"
@@ -581,7 +581,7 @@ s1.append(end_node(8, "结束(无待补充项)",
 e1 = [edge(1,2), edge(2,3), edge(3,4), edge(4,31), edge(31,41), edge(41,5),
       edge(5,6,0), edge(5,7,-1), edge(6,8)]
 files["wf_sub_01_需求分析.json"] = workflow(
-    "产销品-需求分析", "子工作流1：需求分析（执行方案生成，7环节新链路）。环节1需求理解与要素拆解（LLM仅提取要素信息，18字段未提及项value为空）→环节2相似产品查询（自研模拟，18销售品种子，入参=要素摘要，返回相似度最高的1个产品并附完整产品配置信息 offerInfo）→环节3产品信息整合（LLM以相似产品完整产品配置信息为基准整合需求已提取的配置信息，输出18字段最终产品信息，source仅原始需求/AI推理）→环节4字段本体推理（V2.2工具14 action=reason 一体推理：稽核产品配置参数，存在问题自动修正回写（枚举归一/同义词映射/格式修正）+缺失与待补充字段默认值推理补全（仅套餐固定费价格维持待补充），来源补全/修正改标\"本体推理\"）→方案输出拆分（单入参=推理后字段数组：fields直接组装、pending_fields反查value=待补充、plan_md代码重新生成四列表格）→待补充项判断（无待补充→保存执行方案→确认结束；有待补充→补充提示结束）。", "wf_sub_01", s1, e1)
+    "产销品-需求分析", "子工作流1：需求分析（执行方案生成，7环节新链路）。环节1需求理解与要素拆解（LLM仅提取要素信息，18字段未提及项value为空）→环节2相似产品查询（自研模拟，18销售品种子，入参=要素摘要，返回相似度最高的1个产品并附完整产品配置信息 offerInfo——与需求要素同构的 fields 四类18字段数组）→环节3产品信息整合（同一套配置结构模板规范，按field名逐字段同构键值合并：需求有值→原始需求，无值→offerInfo同名字段值标AI推理，皆缺失→留空由引擎补全）→环节4字段本体推理（V2.2工具14 action=reason 一体推理：稽核产品配置参数，存在问题自动修正回写（枚举归一/同义词映射/格式修正）+缺失与待补充字段默认值推理补全（仅套餐固定费价格维持待补充），来源补全/修正改标\"本体推理\"）→方案输出拆分（单入参=推理后字段数组：fields直接组装、pending_fields反查value=待补充、plan_md代码重新生成四列表格）→待补充项判断（无待补充→保存执行方案→确认结束；有待补充→补充提示结束）。", "wf_sub_01", s1, e1)
 
 # ============================================================
 # wf_sub_02 智能配置（配置落地）

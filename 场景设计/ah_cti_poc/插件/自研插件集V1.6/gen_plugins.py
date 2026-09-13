@@ -240,7 +240,7 @@ plugins = []
 # ---------------- 工具1 相似度分析 ----------------
 plugins.append(build_plugin(
     "similar-offer-0001", "相似度分析", "query_similar_offer",
-    "自研模拟实现（V1.6）：以《产品信息.txt》全部18个销售品（5G-A系列10个+权益随心选系列8个）为相似产品库，按业务需求描述返回相似度最高的产品（仅1个，含相似度评分与完整产品配置信息 offerInfo），支撑需求分析环节匹配历史产品与AI推理",
+    "自研模拟实现（V1.6）：以《产品信息.txt》全部18个销售品（5G-A系列10个+权益随心选系列8个）为相似产品库，按业务需求描述返回相似度最高的产品（仅1个，含相似度评分与完整产品配置信息 offerInfo——与需求要素解析同构的 fields 四类18字段数组，整合即同构键值合并），支撑需求分析环节匹配历史产品与AI推理",
     "/api/v1/appstore/similar/offer/query", "POST",
     {
         "businessDesc": schema_param("businessDesc", "string",
@@ -258,7 +258,25 @@ plugins.append(build_plugin(
                 "similarOfferName": {"description": "相似销售品名称", "type": "string"},
                 "similarityScore": {"description": "相似度评分（0~1）", "type": "string"},
                 "similarityDesc": {"description": "相似原因描述（命中字段/资费结构说明）", "type": "string"},
-                "offerInfo": {"description": "完整产品配置信息（销售品全量规则：资费/资源/副卡/渠道/订购/退订等，取自《产品信息.txt》种子）", "type": "object"},
+                "offerInfo": {
+                    "description": "完整产品配置信息（与需求要素解析同构：fields 四类18字段数组，field/category/value，字段名与本体注册表一致）",
+                    "type": "object",
+                    "properties": {
+                        "similarOfferId": {"description": "销售品ID", "type": "string"},
+                        "similarOfferName": {"description": "销售品名称", "type": "string"},
+                        "series": {"description": "系列（5g_a/rights）", "type": "string"},
+                        "sub_type": {"description": "子类型（套餐/权益）", "type": "string"},
+                        "fields": {
+                            "description": "四类18字段数组（与需求要素 elements_json.fields 同构，整合即同构键值合并）",
+                            "type": "array",
+                            "items": {
+                                "field": {"description": "字段名（与本体注册表18字段一致）", "type": "string"},
+                                "category": {"description": "字段分类（A基础信息/B资源配置/C营销资源/D销售规则）", "type": "string"},
+                                "value": {"description": "字段值", "type": "string"},
+                            },
+                        },
+                    },
+                },
             },
         },
     },

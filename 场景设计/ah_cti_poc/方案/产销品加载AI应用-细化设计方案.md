@@ -16,6 +16,7 @@
 | V1.6 | 2026-09-13 | 对齐主方案 V2.2（**确认门禁移除 + 子工作流取值断链修复**）：① 工具7 `save_product_config` **移除确认门禁**——删除 confirmed==true 校验与存储 CONFIRMED 标记校验（NodeResultService.existingNodes 一并删除），NOT_CONFIRMED 状态不再出现；确认与否由智能体 LLM 语义识别保证；② wf_sub_02 新增「提取执行方案原文」代码节点（query_node_result 出参 list 记录数组 → 提取 list[0].result_json 原文再传 save_product_config）；③ wf_sub_03/04/05 取值断链修复：新增 query_node_result 自查（req_id+node_name=config）+ 提取原文代码节点，offer_id/config_json 改从 config 环节结果取值；④ 3.2/3.3/3.4.3/7.2/附录 C 同步（CONFIRMED 相关表述更新为 V2.2 口径）；⑤ **待补充项判定收归引擎单一事实源**：wf_sub_01 方案输出拆分节点 004a 的 pending_fields 改为从本体推理引擎返回的推理后字段数组反查（value=待补充），不再采信节点4 LLM 自判的 pending_fields；节点4 提示词同步——pending_fields 固定输出空数组，待补充判定职责移交引擎；⑥ 字段本体推理引擎修正增强：渠道类型多选归一补同义词映射表（营业厅/门店/实体→实体渠道，APP/网厅/线上/电子→电子渠道，直销/客户经理/政企→直销渠道）；reason 修正项补 defaulted=0 统一 fixed 明细动作结构；⑦ **待补充项全部可推理 + 值不符合规则自动修正**：本体注册表补齐 18 字段默认值（生效日期→立即生效、三类资源→无、适用地区→全国、计费周期→自然月、生效日期/资源单位格式修正等），推理引擎对 value=待补充 字段一律按默认值推理补全（仅套餐固定费价格维持待补充）；correctValue 新增产品名称 K1 模板归一（"5G-A 套餐"→"5G-A单品套餐待定档位元"）、生效日期 yyyyMMdd 归一、资源类缺单位补全（60G→60GB）；工具14 导出契约描述同步 V2.2 口径；⑧ **来源标注新增"本体推理"**：引擎补全/修正后的字段 source 由"AI推理"改标"本体推理"，来源三态扩展为四种（原始需求/AI推理=LLM 节点4 标注，本体推理=引擎自动标注）；节点4 提示词与结束节点文案同步；⑨ **方案输出拆分重构为推理后单入参**：004a 删除 plan_output 入参（LLM 输出非最新值，保留会造成表格/方案与引擎结果偏差）——唯一数据源=节点31推理后 fields_json，plan_json 改由代码直接组装（req_id/fields/pending_fields 三键），plan_md 由代码基于推理后数组重新生成四列表格（字段分类合并单元格），节点4 出参精简为 fields_output（仅 fields 键），LLM 不再生成 plan_json/plan_md/pending_fields |
 | V1.7 | 2026-09-13 | 对齐主方案 V2.3（**需求分析工作流重构为 7 环节新链路 + 缺值来源口径统一「AI推理」**）：① 3.2.1 wf_sub_01 节点表按 7 环节重写（原「字段映射与AI推理」职责拆分）——节点2 改为仅提取要素（未提及项 value 填空字符串、不输出 pending_fields，出参 elements_json=固定18项+need_summary=要素摘要）；节点3 入参改 need_summary（要素摘要）；节点4 更名「产品信息整合」（匹配产品全量配置+要素部分信息→最终产品信息，三级整合取值规则，取相似度第1为基准）；环节4=节点31 本体推理不变；② 缺值来源旧口径（AI 补全）全局统一改称「AI推理」；③ 3.3 时序同步 |
 | V1.8 | 2026-09-13 | 对齐主方案 V2.4（**相似产品返回单产品+完整配置信息 + 整合/稽核口径强化**）：① 2.1 工具1 出参契约改写：similarOfferList(array) → **similarOffer(object，仅相似度最高的1个产品)** + 新增 **offerInfo 完整产品配置信息**（销售品全量规则，取自《产品信息.txt》种子），后端 OfferSeedService.matchSimilar 元素附 offerInfo、新增 matchBestSimilar；② 3.2.1 节点3 出参改 similarOffer（含 offerInfo）、节点4 整合基准改 offerInfo（需求无值字段从 offerInfo 取值）；③ 节点31 描述强化「稽核产品配置参数，存在问题自动修正回写」 |
+| V1.9 | 2026-09-13 | 对齐主方案 V2.5（**offerInfo 与需求要素统一配置结构模板规范**）：① 2.1 工具1 offerInfo 出参细化：后端 toFields18 将种子转为与需求要素解析同构的 fields 四类18字段数组（field/category/value，字段名与本体注册表一致），整合环节由跨结构语义对齐降级为**按 field 名同构键值合并**；② 3.2.1 节点4 提示词要点同步「同构合并规则」 |
 
 ## 文档定位与阅读指引
 | 章节 | 内容 | 面向读者 |
@@ -161,7 +162,7 @@
 | `similarOffer.similarOfferName` | string | 相似销售品名称 |
 | `similarOffer.similarityScore` | string | 相似度评分（0~1） |
 | `similarOffer.similarityDesc` | string | 相似原因描述 |
-| `similarOffer.offerInfo` | object | **完整产品配置信息**（销售品全量规则：资费/资源/副卡/渠道/订购/退订等，取自《产品信息.txt》种子） |
+| `similarOffer.offerInfo` | object | **完整产品配置信息（与需求要素同构）**：similarOfferId/similarOfferName/series/sub_type + fields 四类18字段数组（field/category/value，字段名与本体注册表一致），后端 toFields18 转换 |
 
 | 归纳 | 否（由 wf_sub_01 大模型节点消费，作为 AI推理依据） |
 | --- | --- |
@@ -663,8 +664,8 @@
 | --- | --- | --- | --- | --- | --- |
 | 1 | 开始 | [开始] | requirement_text(string,必填)　requirement_file(string,选填) | — | 文件地址由平台文件上传组件生成 |
 | 2 | 需求理解与要素拆解（环节1） | [LLM] | requirement_text（+文件解析文本） | elements_json（18字段，未提及项 value 为空）、need_summary（要素摘要） | 温度 0.2；**仅提取要素信息**：不做完整性判断、不输出 pending_fields，需求原文可找到（含同义改写）才填值，未提及项 value 填空字符串（后续环节负责补全） |
-| 3 | 相似产品查询（环节2） | [插件] | businessDesc=need_summary（节点2要素摘要，≤5000字符） | similarOffer（含offerInfo完整产品配置信息） | 工具1 `query_similar_offer`；基于要素信息获取最高相似度产品 |
-| 4 | 产品信息整合（环节3） | [LLM] | elements_json + similarOffer（以 offerInfo 完整产品配置信息为基准） | **fields_output（单出参，18项字段）** | 温度 0.2；**整合规则三级取值**：需求要素有值→原始需求；无值→offerInfo 取值（AI推理）；两者皆缺失→留空由引擎补全；source 仅"原始需求/AI推理"两种 |
+| 3 | 相似产品查询（环节2） | [插件] | businessDesc=need_summary（节点2要素摘要，≤5000字符） | similarOffer（offerInfo=与需求要素同构的 fields 四类18字段数组） | 工具1 `query_similar_offer`；基于要素信息获取最高相似度产品，offerInfo 由后端 toFields18 同构转换 |
+| 4 | 产品信息整合（环节3） | [LLM] | elements_json + similarOffer（offerInfo 与需求要素同构） | **fields_output（单出参，18项字段）** | 温度 0.2；**同构键值合并（按 field 名逐字段对齐）**：需求要素有值→原始需求；无值→offerInfo 同名字段（AI推理）；两者皆缺失→留空由引擎补全；source 仅"原始需求/AI推理"两种 |
 | 31 | 字段本体推理（环节4） | [插件] | fields_output（节点4整合结果） | fields_json（推理后字段数组）、fixed, violations | 工具14 `action=reason` 一体推理：**稽核产品配置参数，存在问题自动修正回写**（枚举归一/同义词映射/格式修正）+缺失与待补充字段默认值推理补全（仅套餐固定费维持待补充），补全/修正 source 改标"本体推理" |
 | 004a | 拆分方案字段 | [代码] | 节点31推理后 fields_json（**单入参，唯一数据源**） | plan_json, plan_md, pending_fields, req_id | V2.2 重构：plan_output 入参已删除（LLM 输出非最新值），全部以推理后字段数组为准——fields 直接组装 plan_json（req_id/fields/pending_fields 三键）、pending_fields 反查 value=待补充、**plan_md 由代码重新生成四列表格（与 fields_json 严格一致）**；req_id 系统生成（PLAN+时间戳+随机数） |
 | 5 | 待补充项判断 | [选择] | pending_fields | branch | `pending_fields` 为空（长度=0）→ 节点6 保存后进入确认；**非空 → 直接进入节点7（有待补充项结束），不保存执行方案、不产出 req_id**；判定数据源已收归引擎（V2.2），LLM 双重判定歧义已消除 |
