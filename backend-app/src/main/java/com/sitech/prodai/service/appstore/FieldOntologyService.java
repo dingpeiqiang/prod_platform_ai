@@ -278,10 +278,18 @@ public class FieldOntologyService {
 
     /** 枚举归一修正：把 LLM 的变体表述映射为本体枚举合法值；无法修正返回 null */
     private String correctValue(FieldSpec spec, String value) {
+        String v = value.trim();
+        // 套餐固定费归一："199元"、"199"→"199元/月"（缺单位/缺周期口径补全）
+        if ("套餐固定费".equals(spec.field)) {
+            java.util.regex.Matcher m = Pattern.compile("^(\\d+(\\.\\d+)?)元?$").matcher(v);
+            if (m.matches()) {
+                return m.group(1) + "元/月";
+            }
+            return null;
+        }
         if (spec.enums == null) {
             return null;
         }
-        String v = value.trim();
         // 收费方式归一：月付/包月→按月；按次→一次性
         if ("收费方式".equals(spec.field)) {
             if (v.contains("月付") || v.contains("包月") || v.contains("按月")) {
@@ -365,27 +373,64 @@ public class FieldOntologyService {
         return null;
     }
 
+    /**
+     * fields_json 解析：兼容三种输入形态，逐层下钻到字段数组：
+     * <ol>
+     *   <li>纯数组：[{"field":"..","value":".."}]；</li>
+     *   <li>plan_output 包裹串（V2.1 工作流节点31 实际传参形态，带任意前缀如 "plan_output: "）：
+     *       定位首个 '{' 提取 JSON 体，下钻 plan_json.fields；plan_json 缺失时兜底顶层 fields；</li>
+     *   <li>直接含 fields 键的对象：{"fields":[...]}。</li>
+     * </ol>
+     * JSON 体提取失败或无字段数组时返回空列表（不抛异常，保持引擎幂等）。
+     */
     private List<Map<String, Object>> parseFields(String fieldsJson) {
         List<Map<String, Object>> res = new ArrayList<>();
         if (fieldsJson == null || fieldsJson.isBlank()) {
             return res;
         }
+        JsonNode root = null;
         try {
-            JsonNode root = MAPPER.readTree(fieldsJson);
-            JsonNode arr = root.isArray() ? root : root.path("fields");
-            if (arr.isArray()) {
-                for (JsonNode n : arr) {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("field", n.path("field").asText(""));
-                    m.put("value", n.path("value").asText(""));
-                    m.put("source", n.path("source").asText(""));
-                    res.add(m);
-                }
-            }
+            root = MAPPER.readTree(fieldsJson);
         } catch (Exception e) {
-            log.warn("[FieldOntologyService] fields_json 解析失败: {}", e.getMessage());
+            // 非 JSON 开头（如 "plan_output: {...}"）：定位首个 '{' 提取 JSON 体重试
+            int brace = fieldsJson.indexOf('{');
+            if (brace > 0) {
+                try {
+                    root = MAPPER.readTree(fieldsJson.substring(brace));
+                } catch (Exception e2) {
+                    log.warn("[FieldOntologyService] fields_json 解析失败: {}", e2.getMessage());
+                }
+            } else {
+                log.warn("[FieldOntologyService] fields_json 解析失败: {}", e.getMessage());
+            }
+        }
+        JsonNode arr = resolveFieldsArray(root);
+        if (arr != null && arr.isArray()) {
+            for (JsonNode n : arr) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("field", n.path("field").asText(""));
+                m.put("value", n.path("value").asText(""));
+                m.put("source", n.path("source").asText(""));
+                res.add(m);
+            }
         }
         return res;
+    }
+
+    /** 下钻字段数组：纯数组 / plan_json.fields / 顶层 fields，均未命中返回 null */
+    private JsonNode resolveFieldsArray(JsonNode root) {
+        if (root == null) {
+            return null;
+        }
+        if (root.isArray()) {
+            return root;
+        }
+        JsonNode arr = root.path("plan_json").path("fields");
+        if (arr.isArray()) {
+            return arr;
+        }
+        arr = root.path("fields");
+        return arr.isArray() ? arr : null;
     }
 
     private String toJson(Object value) {
