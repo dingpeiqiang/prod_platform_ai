@@ -80,6 +80,7 @@
 - GET `/api/v1/appstore/approval/status`
 - 入参：`approval_id` 与 `product_id` 至少一个（approval_id 优先；"请提供审批单号或销售品ID，以便查询审批进度"）
 - 出参：`approval_id`、`status`(审批中/通过/驳回)、`current_node`、`approver`、`opinion`、`submit_time`、`update_time`
+- 模拟行为：审批提交 **10s** 后任一次查询自动流转为 `status=通过`、`current_node=流程结束（上架完成）`、`opinion=审核通过，同意上架`（惰性推进，查询/幂等读取时触发）
 - 查无审批单 → E21："未找到该销售品的审批单，请确认是否已发起审批"
 
 ## 工具14 字段本体推理 `ontology_reason`

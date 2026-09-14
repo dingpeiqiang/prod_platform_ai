@@ -53,6 +53,8 @@ public class OfferSimV16Service {
     private final Map<String, Map<String, Object>> approvals = new ConcurrentHashMap<>();
     /** product_id -> approval_id（幂等） */
     private final Map<String, String> approvalByProduct = new ConcurrentHashMap<>();
+    /** 模拟审批自动流转时长（毫秒）：提交后 10s 自动"通过"并上架，避免演示中审批一直停在"审批中" */
+    private static final long APPROVAL_AUTO_PASS_MS = 10_000L;
     /** 告警库：alert_id -> 告警（工具11 写入，工具10 回显） */
     private final List<Map<String, Object>> alerts = new ArrayList<>();
     /** 演示场景开关（默认全通过）：offer_id -> 注入类型集合 */
@@ -394,9 +396,11 @@ public class OfferSimV16Service {
         String productId = MapOps.str(req.get("product_id")).trim();
         String existed = approvalByProduct.get(productId);
         if (existed != null) {
+            Map<String, Object> existedApproval = approvals.get(existed);
+            advanceApproval(existedApproval);
             Map<String, Object> body = camelOk();
             body.put("approval_id", existed);
-            body.put("status", MapOps.str(approvals.get(existed).get("status")));
+            body.put("status", MapOps.str(existedApproval.get("status")));
             body.put("idempotent", "true");
             return body;
         }
@@ -414,6 +418,7 @@ public class OfferSimV16Service {
         approval.put("opinion", "");
         approval.put("submit_time", LocalDateTime.now().format(TS));
         approval.put("update_time", LocalDateTime.now().format(TS));
+        approval.put("created_at", System.currentTimeMillis());
         approvals.put(approvalId, approval);
         approvalByProduct.put(productId, approvalId);
         log.info("[OfferSimV16] 审批提交 approval_id={} product_id={}", approvalId, productId);
@@ -426,17 +431,42 @@ public class OfferSimV16Service {
 
     /* ================= 接口10：审批进度查询 query_approval_status ================= */
 
+    /**
+     * 查询前先推进模拟审批状态：提交超过 10s 的"审批中"审批单自动流转为"通过（上架完成）"。
+     * 惰性推进（查询/幂等读取时触发），无需后台定时器；演示中最多查询 2 次即可看到终态。
+     */
+    private void advanceApproval(Map<String, Object> approval) {
+        if (!"审批中".equals(MapOps.str(approval.get("status")))) {
+            return;
+        }
+        long elapsed = System.currentTimeMillis() - MapOps.toLong(approval.get("created_at"));
+        if (elapsed >= APPROVAL_AUTO_PASS_MS) {
+            approval.put("status", "通过");
+            approval.put("current_node", "流程结束（上架完成）");
+            approval.put("approver", "产品经理");
+            approval.put("opinion", "审核通过，同意上架");
+            approval.put("update_time", LocalDateTime.now().format(TS));
+            log.info("[OfferSimV16] 审批自动流转为通过 approval_id={}", approval.get("approval_id"));
+        }
+    }
+
     public Map<String, Object> approvalStatus(Map<String, Object> params) {
         String productId = MapOps.str(params.get("product_id")).trim();
-        if (productId.isEmpty()) {
-            return camelFail("PARAM_MISSING", "product_id 必填");
+        String approvalIdParam = MapOps.str(params.get("approval_id")).trim();
+        if (productId.isEmpty() && approvalIdParam.isEmpty()) {
+            return camelFail("PARAM_MISSING", "approval_id 与 product_id 至少一个必填");
         }
         Map<String, Object> approval;
-        String aid = approvalByProduct.get(productId);
-        approval = aid == null ? null : approvals.get(aid);
+        if (!approvalIdParam.isEmpty()) {
+            approval = approvals.get(approvalIdParam);
+        } else {
+            String aid = approvalByProduct.get(productId);
+            approval = aid == null ? null : approvals.get(aid);
+        }
         if (approval == null) {
             return camelFail("40404", "审批单不存在");
         }
+        advanceApproval(approval);
         Map<String, Object> body = camelOk();
         body.put("approval_id", MapOps.str(approval.get("approval_id")));
         body.put("status", MapOps.str(approval.get("status")));
