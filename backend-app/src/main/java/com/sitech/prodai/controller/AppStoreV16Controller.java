@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -171,7 +172,7 @@ public class AppStoreV16Controller {
     @PostMapping("/ontology/fields")
     public Map<String, Object> ontologyFields(@RequestBody Map<String, Object> req) {
         String action = MapOps.str(req.get("action"));
-        String fieldsJson = MapOps.str(req.get("fields_json"));
+        String fieldsJson = resolveFieldsJson(req);
         if ("reason".equals(action)) {
             return fieldOntologyService.reason(fieldsJson);
         }
@@ -188,6 +189,19 @@ public class AppStoreV16Controller {
         fail.put("code", 5101);
         fail.put("msg", "invalid action（须为 reason/validate/complete/ontology）");
         return fail;
+    }
+
+    /**
+     * 兼容两种入参形态：fields（数组，技能包 cpcp_api.py 发送形态）与 fields_json（字符串，工作流回传形态）。
+     * 数组形态统一序列化为 JSON 字符串后交由本体推理引擎处理。
+     */
+    private String resolveFieldsJson(Map<String, Object> req) {
+        Object fields = req.get("fields");
+        if (fields instanceof List<?> list && !list.isEmpty()) {
+            return toJson(fields);
+        }
+        String fieldsJson = MapOps.str(req.get("fields_json"));
+        return fieldsJson.isBlank() ? "[]" : fieldsJson;
     }
 
     /* ---------------- 工具 ---------------- */
