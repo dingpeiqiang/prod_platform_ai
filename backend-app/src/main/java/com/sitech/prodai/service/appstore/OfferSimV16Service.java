@@ -49,6 +49,8 @@ public class OfferSimV16Service {
     private final Map<String, String> productToOffer = new ConcurrentHashMap<>();
     /** product_id -> 上线脚本（V2.5 配置落地时生成 CRM/billing 落库 SQL，供下载接口回放） */
     private final Map<String, String> launchScripts = new ConcurrentHashMap<>();
+    /** globalId -> 自动化测试报告 Markdown（测试完成时归档，供下载接口回放） */
+    private final Map<String, String> testReports = new ConcurrentHashMap<>();
     /** plan_json 摘要 -> 落地响应快照（幂等） */
     private final Map<String, Map<String, Object>> planIdempotency = new ConcurrentHashMap<>();
     /** 测试任务：globalId -> 任务状态 */
@@ -312,7 +314,7 @@ public class OfferSimV16Service {
 
     /* ================= 接口7：查询测试结果 get_test_result ================= */
 
-    public Map<String, Object> testResult(Map<String, Object> req) {
+    public Map<String, Object> testResult(Map<String, Object> req, String externalBaseUrl) {
         if (MapOps.empty(req.get("globalId"))) {
             return camelFail("4002", "globalId 必填");
         }
@@ -337,6 +339,9 @@ public class OfferSimV16Service {
         String orderId = "ORD" + globalId.substring(2, 16);
         String offerInstId = "OI" + globalId.substring(2, 16);
 
+        // 归档自动化测试报告 Markdown（同 globalId 覆盖刷新），并在出参回传下载链接
+        testReports.put(globalId, buildTestReport(globalId, offer, offerId, orderId, offerInstId, sceneResults));
+
         Map<String, Object> body = camelOk();
         body.put("resultCode", "0");
         body.put("resultMsg", "测试完成，共 " + sceneResults.size() + " 个场景");
@@ -346,7 +351,115 @@ public class OfferSimV16Service {
         body.put("orderId", orderId);
         body.put("offerInstId", offerInstId);
         body.put("testScenes", sceneResults);
+        body.put("report_url", testReportUrlOf(globalId, externalBaseUrl));
         return body;
+    }
+
+    /**
+     * 下载路由的业务逻辑：按 globalId 回放归档的自动化测试报告 Markdown；
+     * 无该测试任务或报告未生成则返回 null（由控制器转 404 语义）。
+     */
+    public String testReportOf(String globalId) {
+        if (MapOps.empty(globalId)) {
+            return null;
+        }
+        return testReports.get(globalId.trim());
+    }
+
+    /** 测试报告下载 URL 拼装：externalBaseUrl 为空时退化为相对路径（与 script_url 同规则） */
+    private String testReportUrlOf(Object globalId, String externalBaseUrl) {
+        String path = "/api/v1/appstore/test/offer/report?global_id=" + MapOps.str(globalId);
+        if (MapOps.empty(externalBaseUrl)) {
+            return path;
+        }
+        String base = externalBaseUrl.trim();
+        while (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        return base + path;
+    }
+
+    /**
+     * 自动化测试报告归档（Markdown，正式版 9 章节精简版）：
+     * 数据源=测试任务出参原文（逐场景测点比对/受理凭证/统计），禁止虚构；
+     * 供对话输出报告下载链接与人工下载存档。
+     */
+    private String buildTestReport(String globalId, Map<String, Object> offer, String offerId,
+                                   String orderId, String offerInstId,
+                                   List<Map<String, Object>> sceneResults) {
+        StringBuilder sb = new StringBuilder();
+        int total = 0;
+        int success = 0;
+        int fail = 0;
+        List<String> defectLines = new ArrayList<>();
+        int defectSeq = 1;
+        for (Map<String, Object> scene : sceneResults) {
+            int sceneTotal = Integer.parseInt(MapOps.str(scene.get("testCaseCount")));
+            int sceneFail = Integer.parseInt(MapOps.str(scene.get("failTestCaseCount")));
+            total += sceneTotal;
+            fail += sceneFail;
+            success += sceneTotal - sceneFail;
+            for (Map<String, Object> point : MapOps.castListOfMaps(scene.get("testCasePointResults"))) {
+                if ("1".equals(MapOps.str(point.get("resultCode")))) {
+                    defectLines.add("| " + defectSeq++ + " | " + MapOps.str(scene.get("testSceneName"))
+                            + " | P0 | " + MapOps.str(point.get("resultMsg")) + " | "
+                            + MapOps.str(point.get("testPointNbr")) + " | "
+                            + MapOps.str(point.get("presetValue")) + " | "
+                            + MapOps.str(point.get("testValue")) + " |");
+                }
+            }
+        }
+        sb.append("# 销售品自动化测试报告 TEST-REP-").append(globalId).append("\n\n");
+        sb.append("## 一、报告概述\n");
+        sb.append("- 报告目的：销售品上线前自动化测试输出文档，通过受理验证、计费验证、客服验证三大核心维度进行全自动校验，判定是否满足上线投产质量准入标准。\n");
+        sb.append("- 测试方式：全自动智能测试（数字员工）。\n\n");
+        sb.append("## 二、基础信息\n");
+        sb.append("| 字段 | 内容 |\n| :--- | :--- |\n");
+        sb.append("| 测试任务ID | TR").append(globalId.substring(2)).append(" |\n");
+        sb.append("| 被测销售品名称 | ").append(MapOps.str(offer.get("offer_name"))).append(" |\n");
+        sb.append("| 销售品编码 | ").append(offerId).append(" |\n");
+        sb.append("| 所属业务域 | 产销品域 |\n");
+        sb.append("| 所属部门 | 产商品中心（CRM_POS） |\n");
+        sb.append("| 测试方式 | 全自动智能测试（数字员工） |\n");
+        sb.append("| 测试时间 | ").append(LocalDateTime.now().format(TS)).append(" |\n");
+        sb.append("| 测试流水号 | ").append(globalId).append(" |\n\n");
+        sb.append("## 三、测试总体结论\n");
+        sb.append("| 统计项 | 数量 |\n| :--- | :--- |\n");
+        sb.append("| 总校验用例数 | ").append(total).append(" |\n");
+        sb.append("| 通过用例 | ").append(success).append(" |\n");
+        sb.append("| 阻断用例 | ").append(fail).append(" |\n");
+        sb.append("| 通过率 | ").append(total == 0 ? "0%" : String.format(java.util.Locale.ROOT, "%.1f%%", success * 100.0 / total)).append(" |\n");
+        sb.append("| 整体上线结论 | ").append(fail == 0 ? "✅ 建议上线" : "❌ 禁止上线").append(" |\n\n");
+        sb.append("## 四、分项测试结果\n\n");
+        sb.append("### 4.1 受理验证测试结果（ACC）\n");
+        sb.append("验证销售品在 CRM 系统的客户准入、互斥依赖、订购/退订/变更能力、受理字段、限购地域、模拟受理接口可用性。\n\n");
+        sb.append("### 4.2 计费验证测试结果（BILL）\n");
+        sb.append("验证产品资费合法性、计费周期、起算规则、资源扣减、优惠叠加、账单试算、退订结算、启停计费逻辑。\n\n");
+        sb.append("### 4.3 客服验证测试结果（CUST）\n");
+        sb.append("验证客服工作台产品视图、订单查询、操作权限、资费/生效/退订话术、对外展示合规、FAQ 知识完备性。\n\n");
+        sb.append("## 五、缺陷问题明细清单\n");
+        if (defectLines.isEmpty()) {
+            sb.append("无\n\n");
+        } else {
+            sb.append("| 序号 | 所属模块 | 缺陷等级 | 问题描述 | 异常配置项 | 预期值 | 实际值 |\n");
+            sb.append("| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n");
+            for (String line : defectLines) {
+                sb.append(line).append("\n");
+            }
+            sb.append("\n");
+        }
+        sb.append("## 六、业务风险汇总\n");
+        sb.append(fail == 0 ? "未发现警告级风险。\n\n" : "存在阻断级缺陷，须修复重测后方可上线。\n\n");
+        sb.append("## 七、整改修复建议\n");
+        sb.append(fail == 0 ? "无需整改\n\n" : "针对第五章缺陷逐项修复后重新发起测试。\n\n");
+        sb.append("## 八、最终测试结论与审批建议\n");
+        sb.append(fail == 0
+                ? "✅ 建议上线：受理、计费、客服三大验证全部 P0 阻断项通过，无重大业务缺陷，可正常提交上线审批。\n\n"
+                : "❌ 禁止上线：存在 P0 阻断级缺陷，影响正常受理、计费或客服服务，必须全部修复并重测通过后方可上线。\n\n");
+        sb.append("## 九、版本说明\n");
+        sb.append("本文档为产销品域数字员工自动化测试输出报告，V1.0 版本，适用于销售品智能配置、自动测试、上线审批全流程归档使用。\n");
+        sb.append("\n【受理凭证】orderId：").append(orderId).append("，offerInstId：").append(offerInstId).append("\n");
+        return sb.toString();
     }
 
     /* ================= 接口8：计费规则校验 check_billing_rule ================= */
@@ -832,8 +945,9 @@ public class OfferSimV16Service {
     }
 
     /**
-     * V2.5 上线脚本生成：模拟 CRM/billing 落库 SQL（Oracle 语法、两段式注释分区，
-     * 风格对齐《上线脚本样例》——run@crm 定价信息段 + run@billing 优惠/累计段）。
+     * V2.5 上线脚本生成（V2.6 改模板化）：SQL 骨架抽为 classpath 模板 appstore/launch_script.sql.tpl，
+     * 本方法仅负责从落地配置/种子规则提取需求产品信息并替换 ${xxx} 占位符——
+     * 脚本结构与表结构维护只改模板，不再动 Java 代码。
      * 仅作演示产物，不真正执行落库。
      */
     private String buildLaunchScript(String productId, String offerId,
@@ -841,61 +955,45 @@ public class OfferSimV16Service {
         Map<String, Object> inFee = castMap(seedOffer == null ? null : seedOffer.get("in_fee"));
         Map<String, Object> outFee = castMap(seedOffer == null ? null : seedOffer.get("out_fee"));
         String offerName = MapOps.str(config.get("offer_name"));
-        String monthFee = MapOps.str(seedOffer == null ? config.get("in_fee") : seedOffer.get("monthly_fee"));
-        String flow = MapOps.str(inFee.get("国内通用流量"));
-        String voice = MapOps.str(inFee.get("国内语音拨打"));
-        String sms = "免费".equalsIgnoreCase(MapOps.str(inFee.get("国内语音接听"))) ? "不限" : MapOps.str(inFee.get("国内语音接听"));
-        String outFlow = MapOps.str(outFee.get("套外流量"));
-        String outVoice = MapOps.str(outFee.get("套外语音"));
-        String outSms = MapOps.str(outFee.get("套外短彩信"));
-        String goodsId = "G" + offerId;
-        String prcId = "M" + offerId.substring(offerId.length() - 3);
-        String classId = "YnE" + productId.substring(Math.max(0, productId.length() - 3));
+        String template = loadLaunchTemplate();
         String stamp = LocalDateTime.now().format(STAMP);
-        String effDate = "to_date('01-01-2050','dd-mm-yyyy')";
+        Map<String, String> vars = new LinkedHashMap<>();
+        vars.put("product_id", productId);
+        vars.put("offer_id", offerId);
+        vars.put("offer_name", offerName);
+        vars.put("generated_at", LocalDateTime.now().format(TS));
+        vars.put("stamp", stamp);
+        vars.put("goods_id", "G" + offerId);
+        vars.put("prc_id", "M" + offerId.substring(offerId.length() - 3));
+        vars.put("class_id", "YnE" + productId.substring(Math.max(0, productId.length() - 3)));
+        vars.put("month_fee", MapOps.str(seedOffer == null ? config.get("in_fee") : seedOffer.get("monthly_fee")));
+        vars.put("exp_date", "to_date('01-01-2050','dd-mm-yyyy')");
+        vars.put("release_ver", "V1.0");
+        vars.put("flow", MapOps.str(inFee.get("国内通用流量")));
+        vars.put("voice", MapOps.str(inFee.get("国内语音拨打")));
+        vars.put("sms", "免费".equalsIgnoreCase(MapOps.str(inFee.get("国内语音接听"))) ? "不限" : MapOps.str(inFee.get("国内语音接听")));
+        vars.put("out_flow", MapOps.str(outFee.get("套外流量")));
+        vars.put("out_voice", MapOps.str(outFee.get("套外语音")));
+        vars.put("out_sms", MapOps.str(outFee.get("套外短彩信")));
+        String filled = template;
+        for (Map.Entry<String, String> e : vars.entrySet()) {
+            filled = filled.replace("${" + e.getKey() + "}", e.getValue());
+        }
+        return filled;
+    }
 
-        StringBuilder sql = new StringBuilder();
-        sql.append("-- =============================================================\n");
-        sql.append("-- 销售品配置上线脚本（模拟生成）\n");
-        sql.append("-- product_id=").append(productId).append(" offer_id=").append(offerId).append("\n");
-        sql.append("-- offer_name=").append(offerName).append("\n");
-        sql.append("-- 生成时间=").append(LocalDateTime.now().format(TS)).append("\n");
-        sql.append("-- 说明：本脚本由产销品加载AI应用配置落地环节自动生成，仅作演示产物，\n");
-        sql.append("--       执行前须由人工复核；表结构对齐 CRM/billing 落库样例风格。\n");
-        sql.append("-- =============================================================\n\n");
-
-        sql.append("/*run@crm 定价基本信息PD_GOODSPRC_DICT*/\n");
-        sql.append("insert into PD_GOODSPRC_DICT (GOODS_ID, GOODS_NAME, PRC_ID, PRC_NAME, CLASS_ID, MONTH_FEE, EFF_DATE, EXP_DATE, STATE, STATE_TIME, OP_TIME)\n");
-        sql.append("select '").append(goodsId).append("', '").append(offerName).append("', '").append(prcId).append("', '")
-                .append(offerName).append("定价', '").append(classId).append("', ").append(monthFee).append(", sysdate, ")
-                .append(effDate).append(", '1', sysdate, sysdate from dual;\n");
-        sql.append("insert into PD_GOODSCLASS_REL (GOODS_ID, CLASS_ID, STATE, STATE_TIME)\n");
-        sql.append("select '").append(goodsId).append("', '").append(classId).append("', '1', sysdate from dual;\n");
-        sql.append("insert into PD_GOODSOPCODE_REL (GOODS_ID, OPCODE, STATE, STATE_TIME)\n");
-        sql.append("select '").append(goodsId).append("', '").append(productId).append("', '1', sysdate from dual;\n");
-        sql.append("insert into PD_GOODSRELEASE_DICT (GOODS_ID, RELEASE_VER, RELEASE_DESC, STATE, STATE_TIME)\n");
-        sql.append("select '").append(goodsId).append("', 'V1.0', '").append(offerName).append(" 上线发布', '1', sysdate from dual;\n\n");
-
-        sql.append("/*run@billing 优惠/累计/提醒配置*/\n");
-        sql.append("insert into FAV_INDEX (FAV_ID, FAV_NAME, FAV_TYPE, GOODS_ID, EFF_DATE, EXP_DATE, STATE, STATE_TIME)\n");
-        sql.append("select Fun_getFavType_seq, '").append(offerName).append("优惠', 'D', '").append(goodsId)
-                .append("', sysdate, ").append(effDate).append(", '1', sysdate from dual;\n");
-        sql.append("insert into CUMULATE_VALUE_CTRL (CUMULATE_ID, CUMULATE_NAME, CUMULATE_TYPE, UPPER_VALUE, EFF_DATE, EXP_DATE, STATE)\n");
-        sql.append("select distinct Fun_getFavType_seq, '").append(offerName).append("资源累计', 'F', '").append(flow).append("+").append(voice)
-                .append("+").append(sms).append("', sysdate, ").append(effDate).append(", '1' from dual;\n");
-        sql.append("insert into VOICEFAV_CFEE_PLAN (PLAN_ID, PLAN_NAME, FEE_TYPE, FEE_VALUE, GOODS_ID, EFF_DATE, EXP_DATE, STATE)\n");
-        sql.append("select Fun_getFavType_seq, '").append(offerName).append("套外资费', 'D', '").append(outFlow).append("/").append(outVoice).append("/").append(outSms)
-                .append("', '").append(goodsId).append("', sysdate, ").append(effDate).append(", '1' from dual;\n");
-        sql.append("insert into PRICING_COMBINE (COMBINE_ID, COMBINE_NAME, PLAN_ID, GOODS_ID, PRC_ID, STATE, STATE_TIME)\n");
-        sql.append("select Fun_getFavType_seq, '").append(offerName).append("组合定价', Fun_getFavType_seq, '").append(goodsId)
-                .append("', '").append(prcId).append("', '1', sysdate from dual;\n");
-        sql.append("insert into REMIND_ITEM_PROPERTY (ITEM_ID, ITEM_NAME, REMIND_TYPE, GOODS_ID, STATE, STATE_TIME)\n");
-        sql.append("select Fun_getFavType_seq, '").append(offerName).append("用量提醒', '1', '").append(goodsId).append("', '1', sysdate from dual;\n");
-        sql.append("insert into REMIND_GROUP_MEMBER (GROUP_ID, ITEM_ID, GOODS_ID, STATE, STATE_TIME)\n");
-        sql.append("select distinct Fun_getFavType_seq, Fun_getFavType_seq, '").append(goodsId).append("', '1', sysdate from dual;\n\n");
-
-        sql.append("-- 脚本结束 stamp=").append(stamp).append("\n");
-        return sql.toString();
+    /**
+     * V2.6 模板加载：classpath appstore/launch_script.sql.tpl；加载失败返回兜底错误脚本
+     * （保证下载路由不 500，且错误信息可直接定位模板问题）。
+     */
+    private String loadLaunchTemplate() {
+        try (java.io.InputStream in = new org.springframework.core.io.ClassPathResource(
+                "appstore/launch_script.sql.tpl").getInputStream()) {
+            return new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception ex) {
+            log.error("[OfferSimV16] 上线脚本模板加载失败 appstore/launch_script.sql.tpl", ex);
+            return "-- ERROR: 上线脚本模板 appstore/launch_script.sql.tpl 加载失败，请检查部署包资源完整性\n";
+        }
     }
 
     private String pickSeedOfferId(String planId) {

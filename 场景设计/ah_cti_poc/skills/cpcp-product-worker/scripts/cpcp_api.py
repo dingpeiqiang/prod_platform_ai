@@ -261,6 +261,37 @@ def cmd_download_launch_script(args):
             time.sleep(1)
 
 
+def cmd_download_test_report(args):
+    if not args.global_id:
+        _err("PARAM_MISSING", "缺少测试流水号，请先完成自动测试（环节4）并取出参 globalId")
+    save_path = args.save_path or ("test_report_%s.md" % args.global_id)
+    # 响应体为 text/markdown，不能按 JSON 解析，独立发起下载（与 download_launch_script 同模式）
+    url = BASE_URL.rstrip("/") + "/api/v1/appstore/test/offer/report?" + \
+        urllib.parse.urlencode({"global_id": args.global_id})
+    last_err = None
+    for i in range(RETRY + 1):
+        try:
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=TIMEOUT_SYNC) as resp:
+                if resp.status != 200:
+                    _err("HTTP_%d" % resp.status, "测试报告下载失败，请确认 globalId 对应测试已完成（test_result 已回传 report_url）")
+                content = resp.read()
+            with open(save_path, "wb") as f:
+                f.write(content)
+            print(json.dumps({"resultCode": "0", "resultMsg": "success",
+                              "saved_path": os.path.abspath(save_path),
+                              "file_size": len(content)}, ensure_ascii=False))
+            return
+        except urllib.error.HTTPError as e:
+            detail = e.reason or ("报告未归档" if e.code == 404 else "HTTP %d" % e.code)
+            _err("HTTP_%d" % e.code, "测试报告下载失败（%s），请确认 globalId 对应测试已完成" % detail)
+        except (urllib.error.URLError, TimeoutError, socket_timeout()) as e:
+            last_err = e
+            if i >= RETRY:
+                _err("NET_ERROR", "测试报告下载网络异常：%s" % e)
+            time.sleep(1)
+
+
 def cmd_approval_status(args):
     if not args.approval_id and not args.product_id:
         _err("PARAM_MISSING", "请提供审批单号或销售品ID，以便查询审批进度")
@@ -403,6 +434,9 @@ def main():
     s = sub.add_parser("download_launch_script")
     s.add_argument("--product-id", required=True)
     s.add_argument("--save-path", default=""); s.set_defaults(fn=cmd_download_launch_script)
+    s = sub.add_parser("download_test_report")
+    s.add_argument("--global-id", required=True)
+    s.add_argument("--save-path", default=""); s.set_defaults(fn=cmd_download_test_report)
     s = sub.add_parser("approval_status")
     s.add_argument("--approval-id", default=""); s.add_argument("--product-id", default="")
     s.set_defaults(fn=cmd_approval_status)

@@ -44,9 +44,17 @@
 ## 工具6 查询测试结果 `test_result`
 - POST `/api/v1/appstore/test/offer/result`
 - 入参：`globalId`(必填，须在 done=true 后查询)
-- 出参：`resultCode`/`resultMsg`/`testRequestId`/`testRequestName`/`offerName`/`orderId`/**`offerInstId`**(受理验证依据)/`testScenes[]`
+- 出参：`resultCode`/`resultMsg`/`testRequestId`/`testRequestName`/`offerName`/`orderId`/**`offerInstId`**(受理验证依据)/**`report_url`**(V2.7 新增，正式版《销售品自动化测试报告》下载链接，绝对 URL 可直接点击下载；头缺失时退化为相对路径 `/api/v1/appstore/test/offer/report?global_id=xxx`，此时脚本层拼接 BASE_URL 前缀)/`testScenes[]`
   - `testScenes[]`：testSceneNbr/Name/Desc、testCaseCount、successTestCaseCount、failTestCaseCount、testCasePointResults[](testPointNbr/presetValue/testValue/resultCode=0一致|1不一致/resultMsg)、objTestSceneRel(resultMsg/summaryDesc/suggestion)
 - orderId/offerInstId 为空 → 报告标注"未获取到受理凭证，需人工核实"（E14，不中断）
+- **报告归档（V2.7）**：测试完成查询结果时后端按出参原文归档正式版报告 Markdown（9 章节精简版），同 globalId 覆盖刷新；对话输出须附 report_url 下载链接行
+
+## 工具7B 测试报告下载 `download_test_report`
+- GET `/api/v1/appstore/test/offer/report`（本地代码节点，非平台插件）
+- 入参：`--global-id`(必填,"缺少测试流水号，请先完成自动测试（环节4）并取出参 globalId")、`--save-path`(选填,默认 `./test_report_<globalId>.md`)
+- 行为：下载报告响应体原样写入本地文件（二进制安全，不按 JSON 解析）
+- 出参：`resultCode`(0=成功)、`resultMsg`、`saved_path`(绝对路径)、`file_size`(字节数)
+- 错误处理：HTTP 404（报告未归档）→ `HTTP_404`，提示确认测试已完成；网络异常重试 1 次；**失败不中断执行主干**（环节4 report_url 链接行仍在，用户可手动下载）
 
 ## 工具7 配置落地 `save_product_config`
 - POST `/api/v1/appstore/product/config/save`

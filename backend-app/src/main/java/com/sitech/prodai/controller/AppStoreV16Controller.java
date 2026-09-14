@@ -123,10 +123,24 @@ public class AppStoreV16Controller {
 
     /* ================= 接口7：查询测试结果 get_test_result ================= */
 
-    @Operation(summary = "查询测试结果", description = "按 globalId 生成逐场景测点比对明细（presetValue 取自《产品信息.txt》）与受理凭证")
+    @Operation(summary = "查询测试结果", description = "按 globalId 生成逐场景测点比对明细（presetValue 取自《产品信息.txt》）与受理凭证；报告归档后出参回传 report_url 下载链接")
     @PostMapping("/test/offer/result")
-    public Map<String, Object> testResult(@RequestBody Map<String, Object> req) {
-        return sim.testResult(req);
+    public Map<String, Object> testResult(@RequestBody Map<String, Object> req,
+                                          jakarta.servlet.http.HttpServletRequest httpRequest) {
+        return sim.testResult(req, externalBaseUrl(httpRequest));
+    }
+
+    @Operation(summary = "自动化测试报告下载", description = "按 globalId 回放测试完成时归档的《销售品自动化测试报告》Markdown（text/markdown 附件下载，附件名 test_report_{globalId}.md）；无该测试任务或报告未生成返回 404")
+    @GetMapping("/test/offer/report")
+    public org.springframework.http.ResponseEntity<String> testReport(@RequestParam("global_id") String global_id) {
+        String report = sim.testReportOf(global_id);
+        if (report == null) {
+            return org.springframework.http.ResponseEntity.notFound().build();
+        }
+        return org.springframework.http.ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=test_report_" + global_id + ".md")
+                .header("Content-Type", "text/markdown; charset=utf-8")
+                .body(report);
     }
 
     /* ================= 接口8：计费规则校验 check_billing_rule ================= */

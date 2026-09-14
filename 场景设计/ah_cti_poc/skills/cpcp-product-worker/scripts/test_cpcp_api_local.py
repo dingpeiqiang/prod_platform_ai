@@ -145,8 +145,13 @@ def main():
     print("8. 裸报文契约 OK（请求体无 contractRoot 包裹，业务参数在顶层）")
     ok += 1
 
-    # 9. 出参侧兼容解包：contractRoot 包裹返回仍能解出 responseObject
-    print("9. 全部 8 项本地自测通过")
+    # 9. download_test_report 缺参校验（V2.7 报告下载：--global-id 为 argparse 必填）
+    r = run(["download_test_report"])
+    assert r.returncode == 2 and "--global-id" in r.stderr, (r.returncode, r.stderr)
+    print("9. download_test_report 缺参校验 OK")
+    ok += 1
+
+    print("全部 9 项本地自测通过")
 
 
 if __name__ == "__main__":
