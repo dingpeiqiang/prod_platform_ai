@@ -47,6 +47,8 @@ public class OfferSimV16Service {
     private final Map<String, Map<String, Object>> savedConfigs = new ConcurrentHashMap<>();
     /** product_id -> offer_id（配置落地时登记，监控/告警按 product_id 反查销售品名称与配置） */
     private final Map<String, String> productToOffer = new ConcurrentHashMap<>();
+    /** product_id -> 上线脚本（V2.5 配置落地时生成 CRM/billing 落库 SQL，供下载接口回放） */
+    private final Map<String, String> launchScripts = new ConcurrentHashMap<>();
     /** plan_json 摘要 -> 落地响应快照（幂等） */
     private final Map<String, Map<String, Object>> planIdempotency = new ConcurrentHashMap<>();
     /** 测试任务：globalId -> 任务状态 */
@@ -171,6 +173,11 @@ public class OfferSimV16Service {
         String productId = "P" + planId;
         Map<String, Object> config = buildSavedConfig(productId, offerId, plan, seedOffer);
 
+        // V2.5：按落地配置生成 CRM/billing 落库 SQL 上线脚本（模拟脚本，表结构对齐样例风格），
+        // 存入脚本档案供下载接口回放；同 productId 覆盖（重跑配置即刷新脚本）
+        String launchScript = buildLaunchScript(productId, offerId, config, seedOffer);
+        launchScripts.put(productId, launchScript);
+
         List<Map<String, Object>> saveResult = new ArrayList<>();
         saveResult.add(classifyResult("基础信息", !MapOps.empty(plan.get("offer_name")) || seedOffer != null));
         saveResult.add(classifyResult("资源配置", true));
@@ -189,6 +196,8 @@ public class OfferSimV16Service {
         // 插件出参声明为 string，此处序列化为标准 JSON 报文字符串，避免嵌套 Map
         // 被平台按 Java 对象 toString 输出成非 JSON 文本
         body.put("product_config", toJson(config));
+        // V2.5：配置上线脚本下载链接（指向本服务脚本下载路由，环节1 输出模板直接引用）
+        body.put("script_url", "/api/v1/appstore/product/config/script?product_id=" + productId);
 
         savedConfigs.put(offerId, config);
         productToOffer.put(productId, offerId);
@@ -727,6 +736,85 @@ public class OfferSimV16Service {
         item.put("result", ok ? "success" : "fail");
         item.put("reason", ok ? "" : "销售品未收录或字段缺失");
         return item;
+    }
+
+    /* ================= V2.5：配置上线脚本（CRM/billing 落库 SQL）生成与下载 ================= */
+
+    /**
+     * 下载路由的业务逻辑：按 product_id 回放脚本档案；未落地过配置则返回 null（由控制器转 404 语义）。
+     */
+    public String launchScriptOf(String productId) {
+        if (MapOps.empty(productId)) {
+            return null;
+        }
+        return launchScripts.get(productId.trim());
+    }
+
+    /**
+     * V2.5 上线脚本生成：模拟 CRM/billing 落库 SQL（Oracle 语法、两段式注释分区，
+     * 风格对齐《上线脚本样例》——run@crm 定价信息段 + run@billing 优惠/累计段）。
+     * 仅作演示产物，不真正执行落库。
+     */
+    private String buildLaunchScript(String productId, String offerId,
+                                     Map<String, Object> config, Map<String, Object> seedOffer) {
+        Map<String, Object> inFee = castMap(seedOffer == null ? null : seedOffer.get("in_fee"));
+        Map<String, Object> outFee = castMap(seedOffer == null ? null : seedOffer.get("out_fee"));
+        String offerName = MapOps.str(config.get("offer_name"));
+        String monthFee = MapOps.str(seedOffer == null ? config.get("in_fee") : seedOffer.get("monthly_fee"));
+        String flow = MapOps.str(inFee.get("国内通用流量"));
+        String voice = MapOps.str(inFee.get("国内语音拨打"));
+        String sms = "免费".equalsIgnoreCase(MapOps.str(inFee.get("国内语音接听"))) ? "不限" : MapOps.str(inFee.get("国内语音接听"));
+        String outFlow = MapOps.str(outFee.get("套外流量"));
+        String outVoice = MapOps.str(outFee.get("套外语音"));
+        String outSms = MapOps.str(outFee.get("套外短彩信"));
+        String goodsId = "G" + offerId;
+        String prcId = "M" + offerId.substring(offerId.length() - 3);
+        String classId = "YnE" + productId.substring(Math.max(0, productId.length() - 3));
+        String stamp = LocalDateTime.now().format(STAMP);
+        String effDate = "to_date('01-01-2050','dd-mm-yyyy')";
+
+        StringBuilder sql = new StringBuilder();
+        sql.append("-- =============================================================\n");
+        sql.append("-- 销售品配置上线脚本（模拟生成）\n");
+        sql.append("-- product_id=").append(productId).append(" offer_id=").append(offerId).append("\n");
+        sql.append("-- offer_name=").append(offerName).append("\n");
+        sql.append("-- 生成时间=").append(LocalDateTime.now().format(TS)).append("\n");
+        sql.append("-- 说明：本脚本由产销品加载AI应用配置落地环节自动生成，仅作演示产物，\n");
+        sql.append("--       执行前须由人工复核；表结构对齐 CRM/billing 落库样例风格。\n");
+        sql.append("-- =============================================================\n\n");
+
+        sql.append("/*run@crm 定价基本信息PD_GOODSPRC_DICT*/\n");
+        sql.append("insert into PD_GOODSPRC_DICT (GOODS_ID, GOODS_NAME, PRC_ID, PRC_NAME, CLASS_ID, MONTH_FEE, EFF_DATE, EXP_DATE, STATE, STATE_TIME, OP_TIME)\n");
+        sql.append("select '").append(goodsId).append("', '").append(offerName).append("', '").append(prcId).append("', '")
+                .append(offerName).append("定价', '").append(classId).append("', ").append(monthFee).append(", sysdate, ")
+                .append(effDate).append(", '1', sysdate, sysdate from dual;\n");
+        sql.append("insert into PD_GOODSCLASS_REL (GOODS_ID, CLASS_ID, STATE, STATE_TIME)\n");
+        sql.append("select '").append(goodsId).append("', '").append(classId).append("', '1', sysdate from dual;\n");
+        sql.append("insert into PD_GOODSOPCODE_REL (GOODS_ID, OPCODE, STATE, STATE_TIME)\n");
+        sql.append("select '").append(goodsId).append("', '").append(productId).append("', '1', sysdate from dual;\n");
+        sql.append("insert into PD_GOODSRELEASE_DICT (GOODS_ID, RELEASE_VER, RELEASE_DESC, STATE, STATE_TIME)\n");
+        sql.append("select '").append(goodsId).append("', 'V1.0', '").append(offerName).append(" 上线发布', '1', sysdate from dual;\n\n");
+
+        sql.append("/*run@billing 优惠/累计/提醒配置*/\n");
+        sql.append("insert into FAV_INDEX (FAV_ID, FAV_NAME, FAV_TYPE, GOODS_ID, EFF_DATE, EXP_DATE, STATE, STATE_TIME)\n");
+        sql.append("select Fun_getFavType_seq, '").append(offerName).append("优惠', 'D', '").append(goodsId)
+                .append("', sysdate, ").append(effDate).append(", '1', sysdate from dual;\n");
+        sql.append("insert into CUMULATE_VALUE_CTRL (CUMULATE_ID, CUMULATE_NAME, CUMULATE_TYPE, UPPER_VALUE, EFF_DATE, EXP_DATE, STATE)\n");
+        sql.append("select distinct Fun_getFavType_seq, '").append(offerName).append("资源累计', 'F', '").append(flow).append("+").append(voice)
+                .append("+").append(sms).append("', sysdate, ").append(effDate).append(", '1' from dual;\n");
+        sql.append("insert into VOICEFAV_CFEE_PLAN (PLAN_ID, PLAN_NAME, FEE_TYPE, FEE_VALUE, GOODS_ID, EFF_DATE, EXP_DATE, STATE)\n");
+        sql.append("select Fun_getFavType_seq, '").append(offerName).append("套外资费', 'D', '").append(outFlow).append("/").append(outVoice).append("/").append(outSms)
+                .append("', '").append(goodsId).append("', sysdate, ").append(effDate).append(", '1' from dual;\n");
+        sql.append("insert into PRICING_COMBINE (COMBINE_ID, COMBINE_NAME, PLAN_ID, GOODS_ID, PRC_ID, STATE, STATE_TIME)\n");
+        sql.append("select Fun_getFavType_seq, '").append(offerName).append("组合定价', Fun_getFavType_seq, '").append(goodsId)
+                .append("', '").append(prcId).append("', '1', sysdate from dual;\n");
+        sql.append("insert into REMIND_ITEM_PROPERTY (ITEM_ID, ITEM_NAME, REMIND_TYPE, GOODS_ID, STATE, STATE_TIME)\n");
+        sql.append("select Fun_getFavType_seq, '").append(offerName).append("用量提醒', '1', '").append(goodsId).append("', '1', sysdate from dual;\n");
+        sql.append("insert into REMIND_GROUP_MEMBER (GROUP_ID, ITEM_ID, GOODS_ID, STATE, STATE_TIME)\n");
+        sql.append("select distinct Fun_getFavType_seq, Fun_getFavType_seq, '").append(goodsId).append("', '1', sysdate from dual;\n\n");
+
+        sql.append("-- 脚本结束 stamp=").append(stamp).append("\n");
+        return sql.toString();
     }
 
     private String pickSeedOfferId(String planId) {

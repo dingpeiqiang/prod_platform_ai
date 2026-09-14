@@ -1,12 +1,13 @@
 # 产销品加载 AI 应用 · 细化设计方案
 > 实现方式：Skills 技能包（`cpcp-product-worker`，V1.4 版：4 份 flow 流程文档 + 17 子命令脚本）
 > 场景：安徽电信 CPCP 产销品域 · 数字员工（必选场景）
-> 版本：V2.2　日期：2026-09-14
+> 版本：V2.3　日期：2026-09-14
 > 依据文档：《产销品加载AI应用开发方案.md》（V2.9，下称"主方案"）、《Skills技能包实现方案.md》（V1.4，下称"技能包方案"）
 
 ## 版本记录
 | 版本 | 日期 | 变更说明 |
 | --- | --- | --- |
+| V2.3 | 2026-09-14 | **配置上线脚本下载链接（工具7 扩展）**：① 工具7 出参新增 `script_url`（相对路径 `/api/v1/appstore/product/config/script?product_id=Pxxx`），落地成功时后端按落地配置自动生成 CRM/billing 落库 SQL 脚本（模拟，两段式 `/*run@crm*/`+`/*run@billing*/`）并存入脚本档案；② 新增附带下载路由 GET `/api/v1/appstore/product/config/script`（text/plain，附件名 launch_Pxxx.sql，未落地 404）；③ 程序B 环节1 输出模板新增"配置上线脚本下载链接"行（script_url 逐字引用出参，缺失省略本行） |
 | V2.2 | 2026-09-14 | **字段体系全量重构同步（对齐主方案 V2.9，3 模块/9 分类/24 字段）**：① 1.3 映射总表与 3.1 映射索引同步 24 字段口径（"18 字段要素"→"24 字段要素"、"四类18字段数组"→"3 模块/9 分类 24 字段数组"、"套餐固定费"→"套餐档位"、待补充唯一项=套餐档位、产品编码默认"系统待生成"）；② 来源两态归一——"AI推理"→"AI补全"，来源枚举 {原始需求, AI补全}（原"本体推理"并入 AI补全，6.3 枚举约定同步）；③ 触发词对齐——"确认执行"→"确认配置"（3.0/3.1/3.3/3.4/3.5/E3 等同步）、"发起审批"→"上线审批"、新增"确认上线"（flow-D 支线D-3 监控运维方案，审批通过后触发）；④ 3.0/3.1 程序B 四环节→5 环节（新增受理验证，复用测试结果不新增接口）、程序C 输出改上线校验看板（5 项 ✅ 表）；⑤ 3.4 待补充判定改套餐档位唯一、提示词模板同步五列模块表格（模块/分类/字段名称/字段值/备注）与"建议处理"引导话术；⑥ 3.5 用例 #3/#4/#4b 口径同步（套餐固定费→套餐档位）；⑦ 第 2 章工具契约原样保留（接口契约零改动，仅出参 offerInfo.fields 说明同步 24 字段） |
 | V2.1 | 2026-09-14 | **全部接口去除 contractRoot 包裹，统一裸报文请求**（基于 599 元 5G 套餐实测反馈，接口路径/入出参契约零改动）：① 2.0.2 节整体改写为"请求报文约定"——tcpCont 报文头拼装表与 contractRoot 包裹结构删除，请求体直接为业务参数 JSON（置于顶层），变更原因与出参侧 `_unwrap` 兼容说明见节内注记；② 2.1/2.3 各工具"接口"行同步（contractRoot 报文/requestObject 报文 → 裸报文）；③ 2.4 自测项 #8 改为"裸报文契约"（mock 回显断言）、#13 本地自测 7→8 项、#14 为 ontology 空返回防护；④ 2.6 映射表 similar_offer/spec_audit/ontology_reason 备注同步；⑤ 附录 A 核对项同步；⑥ 工具2 spec_audit 文件传参缺陷修复（`--config-json-file` 未走 `_read_arg` 导致 PARAM_MISSING） |
 | V2.0 | 2026-09-14 | **整体实现方式从"九思平台工作流"切换为"Skills 技能包"**（对齐主方案 V2.6/Skills技能包实现方案 V1.3，业务口径与工具契约零改动）：① 1.2 总体装配视图改写为技能包结构（SKILL.md 常驻总调度 + scripts/cpcp_api.py 17 子命令 + references/ 4 份 flow 流程文档 + K1~K5 知识目录）；② 1.3 映射总表"子工作流"列改为"承载程序"（程序 A~D，wf_sub_01~08 与 A~D 的映射见技能包方案第 5 章）；③ 第 3 章改题为"Skills 流程文档细化设计"：3.0 工作流清单改为 4 份 flow 文档清单与加载机制（原 3.1 主工作流归档配置、3.2 子工作流逐节点配置不再实施，逐节点口径已完整迁移至 flow 文档——步骤编号与原节点编号对齐；本文档 3.1 保留映射索引表供验收对照）；④ 3.3 调度时序重写为"SKILL.md 意图路由→按需加载 flow→脚本执行"（意图 6 类收敛为 5 类路由，两次中断语义不变）；⑤ 3.4 关键算法口径不变（req_id/取值链/门禁/轮询/提示词模板），承载方式改述为脚本子命令（build_plan/extract_record/poll_test_progress.py 等）；⑥ 3.5 自测用例 21 条保留，表述改脚本/程序口径；⑦ 第 4 章知识库"平台挂载点"改为"flow 文档读取指令"；⑧ 第 5 章智能体装配清单改为技能包部署清单；⑨ 第 6/7 章与附录 A~D 同步改为 skill 口径（wf_sub_XX→程序 A/B/C/D）；⑩ 第 2 章 14 工具契约**原样保留**（业务口径权威），仅"调用方/归纳设置"微调为脚本调用方口径，并新增 2.6 节"工具→脚本子命令映射" |
@@ -340,11 +341,13 @@
 | `offer_id` | string | 销售品 ID（后续稽核/测试入参） |
 | `save_result` | object | 各字段分类写入结果（基础信息/资源配置/营销资源/销售规则 各自 success/fail 及原因） |
 | `status` | string | SUCCESS / PARTIAL / FAIL |
+| `script_url` | string | V2.5 新增：配置上线脚本下载链接（相对路径 `/api/v1/appstore/product/config/script?product_id=Pxxx`），环节1 输出模板引用 |
 
 | 归纳 | 否 |
 | --- | --- |
 | 超时/重试 | 60s / **不自动重试**（写操作防重复写入；失败由用户重新触发） |
 | **确认门禁（V2.2 移除）** | 原 V1.7 后端硬校验（confirmed==true + 存储中 req_id 的 CONFIRMED 标记，无标记返回 NOT_CONFIRMED）**已删除**——联调发现 LLM 跳步/漏写标记导致合法调用被误拒，确认与否改由外层智能体 LLM 语义识别保证；后端保留幂等（同 plan_json 重放返回原结果）与 plan_json 合法性校验；插件入参 confirmed 保留为兼容字段（后端仅记录不校验） |
+| **上线脚本（V2.5 新增）** | 落地成功时按落地配置自动生成 CRM/billing 落库 SQL 脚本（模拟，两段式：`/*run@crm*/` 定价信息 PD_GOODSPRC_DICT/PD_GOODSCLASS_REL/PD_GOODSOPCODE_REL/PD_GOODSRELEASE_DICT + `/*run@billing*/` 优惠/累计 FAV_INDEX/CUMULATE_VALUE_CTRL/VOICEFAV_CFEE_PLAN/PRICING_COMBINE/REMIND_ITEM_PROPERTY/REMIND_GROUP_MEMBER），存入脚本档案；附带下载路由 GET `/api/v1/appstore/product/config/script?product_id=Pxxx`（text/plain，附件名 launch_Pxxx.sql；未落地返回 404） |
 | 错误处理 | status=PARTIAL 时返回失败分类明细供用户修正；status=FAIL 终止 wf_sub_02 |
 
 #### 工具8：计费规则校验 `check_billing_rule`

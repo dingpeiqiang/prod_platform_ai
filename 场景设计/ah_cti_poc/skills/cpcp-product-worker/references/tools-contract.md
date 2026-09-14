@@ -51,8 +51,9 @@
 ## 工具7 配置落地 `save_product_config`
 - POST `/api/v1/appstore/product/config/save`
 - 入参：`req_id`(必填,"缺少执行方案key，请先完成需求分析并确认执行方案")、`plan_json`(必填,存储取回的 JSON 原文原样透传)、`operator`(选填)、`confirmed`(兼容字段，后端仅记录不校验)
-- 出参：`product_id`、`offer_id`、`save_result`(基础信息/资源配置/营销资源/销售规则 各分类 success/fail 及原因)、`status`=SUCCESS|PARTIAL|FAIL
-- 60s / **不自动重试**（写操作防重复写入）；后端保留 plan_json 合法性校验（5001）与同 plan_json 幂等；确认门禁已移除（V2.2）
+- 出参：`product_id`、`offer_id`、`save_result`(基础信息/资源配置/营销资源/销售规则 各分类 success/fail 及原因)、`status`=SUCCESS|PARTIAL|FAIL、`script_url`(V2.5 新增，配置上线脚本下载链接，相对路径 `/api/v1/appstore/product/config/script?product_id=Pxxx`)
+- 60s / **不自动重试**（写操作防重复写入）；后端保留 plan_json 合法性校验（5001）与同 plan_json 幂等；确认门禁已移除（V2.2）；落地成功时同步生成 CRM/billing 落库 SQL 脚本（模拟）
+- **附带下载路由**：GET `/api/v1/appstore/product/config/script?product_id=Pxxx` → text/plain（附件名 launch_Pxxx.sql），返回后端生成的两段式 SQL（/*run@crm*/ 定价信息段 + /*run@billing*/ 优惠/累计段）；product_id 未落地返回 404
 
 ## 工具8 计费规则校验 `billing_verify`
 - POST `/api/v1/appstore/billing/rules/verify`

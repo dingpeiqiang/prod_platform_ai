@@ -1,10 +1,11 @@
 # 产销品加载 AI 应用 · 开发工作清单
 
 > 平台：Skills 技能包（`cpcp-product-worker`）+ 后端模拟服务
-> 版本：V1.9　日期：2026-09-14
-> 依据：《产销品加载AI应用开发方案.md》V2.9（1.4 节实现方式说明）、《产销品加载AI应用-细化设计方案.md》V2.2、《skills/Skills技能包实现方案.md》V1.3
+> 版本：V1.10　日期：2026-09-14
+> 依据：《产销品加载AI应用开发方案.md》V2.9（1.4 节实现方式说明）、《产销品加载AI应用-细化设计方案.md》V2.3、《skills/Skills技能包实现方案.md》V1.3
 > 用途：需要**代码开发**的接口/服务/数据/脚本工作清单（技能包部署与自测见《平台配置清单》，本清单不含）
 >
+> V1.10 变更（2026-09-14）：**配置上线脚本下载链接**——① 接口3 save_product_config 落地成功时后端生成 CRM/billing 落库 SQL 上线脚本（模拟，两段式 /*run@crm*/+/*run@billing*/）并存脚本档案，出参新增 `script_url`；② 新增附带下载路由 GET `/api/v1/appstore/product/config/script`（text/plain，未落地 404）；③ flow-B 环节1 输出模板新增"配置上线脚本下载链接"行。
 > V1.9 变更（2026-09-14）：字段体系全量重构对齐 V3.0 口径——① 接口1 出参 offerInfo fields 由四类18字段改 3 模块/9 分类 24 字段（toFields18 重写）；② 后端 FieldOntologyService 字段注册表重构（套餐档位唯一待补充项、套餐编码默认"系统待生成"、来源两态【原始需求】/【AI补全】）；③ cpcp_api.py build_plan 改五列模块表格输出（CATEGORY_MODULE/SOURCE_LABEL 常量）；④ 工具3 确认门禁描述按 V2.2 修订（实际已移除，本版同步清理残留描述）；⑤ 触发词"确认配置/上线审批/确认上线"对齐。
 
 ---
@@ -28,7 +29,7 @@
 | --- | --- | --- | --- | --- | --- |
 | 1 | 相似度分析 `query_similar_offer` | POST /api/v1/appstore/similar/offer/query | 以 18 销售品构建相似度匹配模拟服务（关键词+资费结构加权打分），**返回相似度最高的1个产品 similarOffer（含 offerInfo 完整产品配置信息——toFields18 同构转换为与需求要素一致的 fields 3 模块/9 分类 24 字段数组，V1.9 重写）** | 任一 18 销售品相关需求均可命中对应销售品（取 score 最高）；businessDesc>5000 字符由上游摘要，接口只校验非空 | 0.5d |
 | 2 | 实时规格稽核 `realtime_spec_audit` | POST /api/v1/appstore/audit/realtime | 规则引擎：按配置规范校验必填属性/命名/生效期/销售范围，对照《产品信息.txt》该销售品规则；**同步返回** | pass/error_list/audit_summary 结构完整；支持构造缺陷用例（互斥叠加）返回 pass=0；60s 超时返回 TIMEOUT | 1d |
-| 3 | 配置落地 `save_product_config` | POST /api/v1/appstore/product/config/save | 模拟 CRM 写入：内存产品档案（种子 18 销售品）；解析 plan_json 各模块字段；**确认门禁已按 V2.2 移除**（不校验 CONFIRMED 标记，确认语义由智能体识别；保留幂等与 plan_json 合法性校验），方案key由后端从 plan_json 的 req_id 键提取；幂等（同 plan_json 返回已存在 offer_id） | 未确认不触发由智能体保证（后端无 NOT_CONFIRMED 返回）；save_result 各模块分类明细；product_id/offer_id 生成规则稳定 | 1d |
+| 3 | 配置落地 `save_product_config` | POST /api/v1/appstore/product/config/save | 模拟 CRM 写入：内存产品档案（种子 18 销售品）；解析 plan_json 各模块字段；**确认门禁已按 V2.2 移除**（不校验 CONFIRMED 标记，确认语义由智能体识别；保留幂等与 plan_json 合法性校验），方案key由后端从 plan_json 的 req_id 键提取；幂等（同 plan_json 返回已存在 offer_id）；**V2.5 落地成功时按落地配置生成 CRM/billing 落库 SQL 上线脚本（模拟，两段式 /*run@crm*/+/*run@billing*/）并存脚本档案，出参新增 `script_url` 下载链接** | 未确认不触发由智能体保证（后端无 NOT_CONFIRMED 返回）；save_result 各模块分类明细；product_id/offer_id 生成规则稳定；script_url 可下载（GET /api/v1/appstore/product/config/script?product_id=Pxxx，text/plain，未落地 404） | 1d |
 
 ### 1.2 自动测试类（含受理验证）
 
