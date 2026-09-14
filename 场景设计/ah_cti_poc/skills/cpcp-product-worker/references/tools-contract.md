@@ -47,7 +47,7 @@
 - 出参：`resultCode`/`resultMsg`/`testRequestId`/`testRequestName`/`offerName`/`orderId`/**`offerInstId`**(受理验证依据)/**`report_url`**(V2.7 新增，正式版《销售品自动化测试报告》下载链接，绝对 URL 可直接点击下载；头缺失时退化为相对路径 `/api/v1/appstore/test/offer/report?global_id=xxx`，此时脚本层拼接 BASE_URL 前缀)/`testScenes[]`
   - `testScenes[]`：testSceneNbr/Name/Desc、testCaseCount、successTestCaseCount、failTestCaseCount、testCasePointResults[](testPointNbr/presetValue/testValue/resultCode=0一致|1不一致/resultMsg)、objTestSceneRel(resultMsg/summaryDesc/suggestion)
 - orderId/offerInstId 为空 → 报告标注"未获取到受理凭证，需人工核实"（E14，不中断）
-- **报告归档（V2.7）**：测试完成查询结果时后端按出参原文归档正式版报告 Markdown（9 章节精简版），同 globalId 覆盖刷新；对话输出须附 report_url 下载链接行
+- **报告归档（V2.7）**：测试完成查询结果时后端按出参原文归档正式版报告 Markdown（完整 9 章节结构，对齐 K3测试_销售品自动化测试报告模板_V2.0.md：12 项基础信息 + 三大验证 31 条固定用例 ACC-001~012/BILL-001~010/CUST-001~009 + P0/P1/P2 分级 + 缺陷清单/风险汇总/整改建议 + 三选一整体上线结论），同 globalId 覆盖刷新；对话输出须附 report_url 下载图标行
 
 ## 工具7B 测试报告下载 `download_test_report`
 - GET `/api/v1/appstore/test/offer/report`（本地代码节点，非平台插件）
