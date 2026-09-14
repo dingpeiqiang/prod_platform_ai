@@ -44,20 +44,24 @@ def run(args):
 def main():
     ok = 0
 
-    # 1. build_plan
+    # 1. build_plan（V3.0 新 24 字段口径：模块/分类/字段名称/字段值/备注 五列表格 + 来源两态归一）
     fields = [
-        {"field": "产品名称", "category": "A基础信息", "value": "5G-A单品套餐299元", "source": "原始需求"},
-        {"field": "套餐固定费", "category": "C营销资源", "value": "待补充", "source": "本体推理"},
-        {"field": "销售品状态", "category": "D销售规则", "value": "待上线", "source": "本体推理"},
+        {"field": "套餐名称", "category": "产品属性", "value": "校园青春卡", "source": "原始需求"},
+        {"field": "套餐档位", "category": "产品属性", "value": "待补充", "source": "本体推理"},
+        {"field": "国内通用流量", "category": "套餐内基础资源", "value": "30GB", "source": "AI推理"},
+        {"field": "退订规则", "category": "变更/退订/拆机", "value": "允许退订，次月生效", "source": "AI补全"},
     ]
     r = run(["build_plan", "--fields-json", json.dumps(fields, ensure_ascii=False)])
     out = json.loads(r.stdout)
     assert out["req_id"].startswith("PLAN") and len(out["req_id"]) == 21, out["req_id"]
-    assert out["pending_fields"] == ["套餐固定费"]
-    assert "| 字段分类 | 字段名称 | 字段值 | 来源 |" in out["plan_md"]
-    assert "| C营销资源 | 套餐固定费 | 待补充 | 本体推理 |" in out["plan_md"]
+    assert out["pending_fields"] == ["套餐档位"]
+    assert "| 模块 | 分类 | 字段名称 | 字段值 | 备注 |" in out["plan_md"]
+    assert "| **基础信息** | 产品属性 | 套餐名称 | 校园青春卡 | 【原始需求】 |" in out["plan_md"]
+    assert "|  |  | 套餐档位 | 待补充 | 【AI补全】 |" in out["plan_md"]  # 来源两态归一（本体推理→AI补全）+ 同分类合并
+    assert "| **资源配置** | 套餐内基础资源 | 国内通用流量 | 30GB | 【AI补全】 |" in out["plan_md"]  # AI推理→AI补全
+    assert "| **业务规则** | 变更/退订/拆机 | 退订规则 | 允许退订，次月生效 | 【AI补全】 |" in out["plan_md"]
     plan = json.loads(out["plan_json"])
-    assert plan["req_id"] == out["req_id"] and len(plan["fields"]) == 3
+    assert plan["req_id"] == out["req_id"] and len(plan["fields"]) == 4
     print("1. build_plan OK:", out["req_id"], out["pending_fields"])
     ok += 1
 
@@ -142,7 +146,7 @@ def main():
     ok += 1
 
     # 9. 出参侧兼容解包：contractRoot 包裹返回仍能解出 responseObject
-    print("9. 全部 %d 项本地自测通过" % ok)
+    print("9. 全部 8 项本地自测通过")
 
 
 if __name__ == "__main__":

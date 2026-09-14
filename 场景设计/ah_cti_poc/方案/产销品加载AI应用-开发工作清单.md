@@ -1,9 +1,11 @@
 # 产销品加载 AI 应用 · 开发工作清单
 
 > 平台：Skills 技能包（`cpcp-product-worker`）+ 后端模拟服务
-> 版本：V1.8　日期：2026-09-14
-> 依据：《产销品加载AI应用开发方案.md》V2.6（1.4 节实现方式说明）、《产销品加载AI应用-细化设计方案.md》V2.0、《skills/Skills技能包实现方案.md》V1.3
+> 版本：V1.9　日期：2026-09-14
+> 依据：《产销品加载AI应用开发方案.md》V2.9（1.4 节实现方式说明）、《产销品加载AI应用-细化设计方案.md》V2.2、《skills/Skills技能包实现方案.md》V1.3
 > 用途：需要**代码开发**的接口/服务/数据/脚本工作清单（技能包部署与自测见《平台配置清单》，本清单不含）
+>
+> V1.9 变更（2026-09-14）：字段体系全量重构对齐 V3.0 口径——① 接口1 出参 offerInfo fields 由四类18字段改 3 模块/9 分类 24 字段（toFields18 重写）；② 后端 FieldOntologyService 字段注册表重构（套餐档位唯一待补充项、套餐编码默认"系统待生成"、来源两态【原始需求】/【AI补全】）；③ cpcp_api.py build_plan 改五列模块表格输出（CATEGORY_MODULE/SOURCE_LABEL 常量）；④ 工具3 确认门禁描述按 V2.2 修订（实际已移除，本版同步清理残留描述）；⑤ 触发词"确认配置/上线审批/确认上线"对齐。
 
 ---
 
@@ -24,9 +26,9 @@
 
 | # | 接口 | 方法/路径 | 开发内容 | 验收要点 | 工期 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | 相似度分析 `query_similar_offer` | POST /api/v1/appstore/similar/offer/query | 以 18 销售品构建相似度匹配模拟服务（关键词+资费结构加权打分），**返回相似度最高的1个产品 similarOffer（含 offerInfo 完整产品配置信息——toFields18 同构转换为与需求要素一致的 fields 四类18字段数组）** | 任一 18 销售品相关需求均可命中对应销售品（取 score 最高）；businessDesc>5000 字符由上游摘要，接口只校验非空 | 0.5d |
+| 1 | 相似度分析 `query_similar_offer` | POST /api/v1/appstore/similar/offer/query | 以 18 销售品构建相似度匹配模拟服务（关键词+资费结构加权打分），**返回相似度最高的1个产品 similarOffer（含 offerInfo 完整产品配置信息——toFields18 同构转换为与需求要素一致的 fields 3 模块/9 分类 24 字段数组，V1.9 重写）** | 任一 18 销售品相关需求均可命中对应销售品（取 score 最高）；businessDesc>5000 字符由上游摘要，接口只校验非空 | 0.5d |
 | 2 | 实时规格稽核 `realtime_spec_audit` | POST /api/v1/appstore/audit/realtime | 规则引擎：按配置规范校验必填属性/命名/生效期/销售范围，对照《产品信息.txt》该销售品规则；**同步返回** | pass/error_list/audit_summary 结构完整；支持构造缺陷用例（互斥叠加）返回 pass=0；60s 超时返回 TIMEOUT | 1d |
-| 3 | 配置落地 `save_product_config` | POST /api/v1/appstore/product/config/save | 模拟 CRM 写入：内存产品档案（种子 18 销售品）；解析 plan_json 四类字段；**V1.7 后端硬校验：`NodeResultService.latestRecord(req_id,"CONFIRMED")` 非空才放行，方案key由后端从 plan_json 的 req_id 键提取**；幂等（同 plan_json 返回已存在 offer_id） | 无 CONFIRMED 标记返回 NOT_CONFIRMED 且无写入（LLM 跳步也写不进去）；save_result 四类分类明细；product_id/offer_id 生成规则稳定 | 1d |
+| 3 | 配置落地 `save_product_config` | POST /api/v1/appstore/product/config/save | 模拟 CRM 写入：内存产品档案（种子 18 销售品）；解析 plan_json 各模块字段；**确认门禁已按 V2.2 移除**（不校验 CONFIRMED 标记，确认语义由智能体识别；保留幂等与 plan_json 合法性校验），方案key由后端从 plan_json 的 req_id 键提取；幂等（同 plan_json 返回已存在 offer_id） | 未确认不触发由智能体保证（后端无 NOT_CONFIRMED 返回）；save_result 各模块分类明细；product_id/offer_id 生成规则稳定 | 1d |
 
 ### 1.2 自动测试类（含受理验证）
 
@@ -58,11 +60,11 @@
 
 ---
 
-## 2. 模拟数据工程（V1.6 核心）
+## 2. 模拟数据工程（V1.6 核心，V1.9 字段键兼容）
 
 | # | 工作项 | 说明 | 工期 |
 | --- | --- | --- | --- |
-| 1 | 种子数据集 `seed_offers.json` | 从《产品信息.txt》结构化 18 条销售品全量规则（ID/名称/系列/套内资费/套外资费/过渡期资费/副卡/流量结转/断网授权/停机规则/计费周期与付费方式/销售渠道/订购/变更/退订拆机携出） | 1d |
+| 1 | 种子数据集 `seed_offers.json` | 从《产品信息.txt》结构化 18 条销售品全量规则（ID/名称/系列/套内资费/套外资费/过渡期资费/副卡/流量结转/断网授权/停机规则/计费周期与付费方式/销售渠道/订购/变更/退订拆机携出）；**V1.9：OfferSeedService.toFields18 重写为 24 字段同构输出（in_fee/out_fee/sub_card/sale_channels/flow_carry_over/net_cutoff_limit/validity/change_rule/transition_fee 等键映射新字段），种子 JSON 键名兼容零改动** | 1d |
 | 2 | 规则值映射表 `preset_map.json` | 18 销售品 × 10 测点（P_EFF_DATE/P_EXP_DATE/P_STATUS/P_MAIN_PROD/P_RELY_REL/P_MUTEX_REL/P_ORD_CNT/P_OFFER_NAME/P_OFFER_TYPE/P_PAY_MODE）的预期值映射，供接口7 生成 presetValue | 0.5d |
 | 3 | 演示场景开关 | 每销售品支持注入：稽核驳回用例 / 资费冲突用例 / 测试测点不一致用例 / 监控 error_count>0 用例（通过请求参数或配置文件控制，正向演示默认全通过） | 0.5d |
 | 4 | 一致性自测脚本 | 遍历 18 销售品逐一调用接口 1/2/4/7/8/11，断言返回结构与规则值一致（对应细化设计 2.4 #11/#12、3.5 #17） | 0.5d |
@@ -75,10 +77,10 @@
 
 | # | 工作项 | 说明 | 状态 |
 | --- | --- | --- | --- |
-| 1 | `scripts/cpcp_api.py` 统一 API 客户端（17 子命令） | 承接原 14 个插件工具封装层：请求侧**裸报文**（业务参数 JSON 置于顶层，V2.7 起 contractRoot/tcpCont 包裹整体移除）、出参侧 `_unwrap` 兼容解包、超时重试（同步 60s/异步 30s、save_product_config 不自动重试）、错误码归一（PARAM_MISSING/HTTP_xxx/NET_ERROR/TIMEOUT/PARSE_ERROR/ONTOLOGY_EMPTY）；含 `build_plan`（承接原 004a 拆分代码节点：req_id 系统生成 PLAN+时间戳+3位随机、plan_json 三键组装、plan_md 代码生成、pending_fields 反查）与 `extract_record`（承接原 CODE_EXTRACT_RECORD：提取 list[0].result_json，list 空报 E5）本地逻辑；节点结果存储查询直连后端（64KB 前置校验 5004）；大报文支持 `--xxx-file` 文件传参 | ✅ 已完成（编译通过、本地自测 8 项通过） |
+| 1 | `scripts/cpcp_api.py` 统一 API 客户端（17 子命令） | 承接原 14 个插件工具封装层：请求侧**裸报文**（业务参数 JSON 置于顶层，V2.7 起 contractRoot/tcpCont 包裹整体移除）、出参侧 `_unwrap` 兼容解包、超时重试（同步 60s/异步 30s、save_product_config 不自动重试）、错误码归一（PARAM_MISSING/HTTP_xxx/NET_ERROR/TIMEOUT/PARSE_ERROR/ONTOLOGY_EMPTY）；含 `build_plan`（承接原 004a 拆分代码节点：req_id 系统生成 PLAN+时间戳+3位随机、plan_json 三键组装、**plan_md 五列模块表格代码生成（模块/分类/字段名称/字段值/备注，CATEGORY_MODULE 归并+同模块/同分类合并展示，V1.9 重写）**、pending_fields 反查、SOURCE_LABEL 来源两态【原始需求】/【AI补全】）与 `extract_record`（承接原 CODE_EXTRACT_RECORD：提取 list[0].result_json，list 空报 E5）本地逻辑；节点结果存储查询直连后端（64KB 前置校验 5004）；大报文支持 `--xxx-file` 文件传参 | ✅ 已完成（编译通过、本地自测 8 项通过） |
 | 2 | `scripts/poll_test_progress.py` 测试进度轮询（承接原 wf_sub_04 代码节点 0304） | 间隔 5s、最多 360 次（超时 30 分钟）、连续 5 次查询失败终止转人工（保留 globalId）；退出码 0=done / 1=failed / 2=连续失败 / 3=超时，输出 fail_reason 供程序分支判定 | ✅ 已完成 |
 | 3 | `scripts/test_cpcp_api_local.py` 本地功能自测 | 不依赖后端 8 项断言（裸报文契约 mock 回显/出参解包归一/错误码归一/build_plan 唯一 req_id/E5/枚举缺参 64KB 前置校验） | ✅ 已完成（8 项通过） |
-| 4 | LLM 调度层配套（SKILL.md + flow 文档程序约束，无独立代码） | 意图路由 5 类、确认语义识别（V2.2：无需写 CONFIRMED 标记）、程序B 串行纪律（严禁并行/跳步/重复调用写接口）、每环节结果打印、fail_node 续跑映射（STAGE1~4→环节1~4）；全部由 SKILL.md 核心纪律 5 条与 flow-A~D 文档固化 | ✅ 已完成（文档） |
+| 4 | LLM 调度层配套（SKILL.md + flow 文档程序约束，无独立代码） | 意图路由 5 类（含单环节点播：执行稽核/资费校准/自动测试/受理验证）、确认语义识别（触发词"确认配置"，V2.2：无需写 CONFIRMED 标记）、程序B 串行纪律（严禁并行/跳步/重复调用写接口，5 环节=四环节+受理验证）、每环节结果打印（"建议处理"引导话术；✅/统计值与出参一一对应）、上线审批触发词、确认上线→监控运维方案（审批通过后）、fail_node 续跑映射（STAGE1~4→环节1~4）；全部由 SKILL.md 核心纪律 5 条与 flow-A~D 文档固化 | ✅ 已完成（文档） |
 
 ---
 
@@ -105,6 +107,7 @@
 - [ ] `test_cpcp_api_local.py` 7 项本地自测全绿（脚本层：三类报文解包/错误码归一/build_plan/extract_record/前置校验）
 - [ ] 脚本与后端契约一致：17 子命令逐一连通后端，路径/入参/出参与细化设计 2.6 节映射表逐条比对（含 PARAM_MISSING/5002/5006/5004 错误码验证）
 - [ ] 工具9 四环节门禁（工具层硬校验）：四环节结果不全调 submit_approval 一律拒绝；跳步调用均有拦截记录（工具7 确认门禁已按 V2.2 移除，仅验证幂等与 plan_json 合法性校验）
+- [ ] V1.9 字段重构验证：ontology/fields 接口返回 24 字段注册表（3 模块/9 分类）；similar_offer offerInfo 为 24 字段数组；来源仅【原始需求】/【AI补全】两态；仅套餐档位可"待补充"；套餐编码默认"系统待生成"
 - [ ] 幂等：工具7 同 plan_json、工具9 同 product_id 重复提交不产生重复记录
 - [ ] 异常注入开关：稽核驳回/资费冲突/测点不一致/监控异常 四类反向用例可复现
 - [ ] poll_test_progress.py 退出码验证：done→0 / failed→1 / 连续失败→2 / 超时→3，fail_reason 出参非空

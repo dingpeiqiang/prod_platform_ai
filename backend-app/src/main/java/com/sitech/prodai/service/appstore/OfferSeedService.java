@@ -145,45 +145,58 @@ public class OfferSeedService {
         return list.isEmpty() ? null : list.get(0);
     }
 
-    /* ---------------- 种子 → 四类18字段同构转换 ---------------- */
+    /* ---------------- 种子 → 新 24 字段同构转换（V3.0） ---------------- */
 
     /**
-     * 销售品种子全量规则 → 与需求要素解析同构的四类18字段结构（fields 数组：field/category/value）。
-     * 两侧共用同一套配置结构模板规范（字段名=本体注册表18字段），整合环节即同构键值合并。
+     * 销售品种子全量规则 → 与需求要素解析同构的新 24 字段结构（fields 数组：field/category/value）。
+     * 两侧共用同一套配置结构模板规范（字段名=本体注册表 24 字段），整合环节即同构键值合并。
+     * 字段/分类对齐《平台配置清单》输出样例：基础信息（产品属性/生命周期/销售属性）、
+     * 资源配置（套餐内基础资源/套餐内权益配置/套外资费标准）、业务规则（订购与生效/变更退订拆机/计费支付风控）。
      */
     public Map<String, Object> toFields18(Map<String, Object> offer) {
         Map<String, Object> inFee = castMap(offer.get("in_fee"));
         Map<String, Object> outFee = castMap(offer.get("out_fee"));
         Map<String, Object> subCard = castMap(offer.get("sub_card"));
         List<String> channels = castStrList(offer.get("sale_channels"));
+        int fee = parseFeeYuan(MapOps.str(offer.get("monthly_fee")));
 
         List<Map<String, Object>> fields = new ArrayList<>();
-        // A. 基础信息
-        fields.add(f("产品名称", "A.基础信息", MapOps.str(offer.get("offer_name"))));
-        fields.add(f("产品属性", "A.基础信息", "rights".equals(offer.get("series")) ? "增值" : "基础"));
-        fields.add(f("产品编码", "A.基础信息", "由智能配置生成"));
-        fields.add(f("生效日期", "A.基础信息", "立即生效"));
-        fields.add(f("退订规则", "A.基础信息", MapOps.str(offer.get("cancel_rule"))));
-        // B. 资源配置
-        fields.add(f("流量资源", "B.资源配置", textOr(inFee.get("国内通用流量"), "无")));
-        fields.add(f("语音资源", "B.资源配置", textOr(inFee.get("国内语音拨打"), "无")));
-        fields.add(f("短信资源", "B.资源配置", textOr(inFee.get("卫星权益") == null ? null : shortSmsOf(inFee), "无")));
-        // C. 营销资源
-        fields.add(f("套餐固定费", "C.营销资源", MapOps.str(offer.get("monthly_fee")).isBlank()
-                ? "待补充" : MapOps.str(offer.get("monthly_fee")) + "元/月"));
-        fields.add(f("收费方式", "C.营销资源", payModeOf(offer)));
-        fields.add(f("优惠条件", "C.营销资源", "无"));
-        fields.add(f("优惠期", "C.营销资源", "无"));
-        // D. 销售规则
-        fields.add(f("渠道类型", "D.销售规则", channels.isEmpty() ? "实体渠道、电子渠道、直销渠道" : String.join("、", channels)));
-        fields.add(f("适用地区", "D.销售规则", "全国（不含港澳台）"));
-        fields.add(f("订购限制", "D.销售规则", textOr(offer.get("order_rule"), "无")));
-        fields.add(f("副卡规则", "D.销售规则", subCard.isEmpty() ? "不允许办理副卡"
-                : (Boolean.TRUE.equals(subCard.get("允许办理"))
-                        ? "允许办理副卡；" + MapOps.str(subCard.get("共享规则"))
-                        : "不允许办理副卡")));
-        fields.add(f("计费周期", "D.销售规则", textOr(offer.get("billing_cycle"), "自然月")));
-        fields.add(f("销售品状态", "D.销售规则", "在售"));
+        // 基础信息 / 产品属性
+        fields.add(f("套餐名称", "产品属性", MapOps.str(offer.get("offer_name"))));
+        fields.add(f("套餐编码", "产品属性", "系统待生成"));
+        fields.add(f("套餐档位", "产品属性", fee > 0 ? fee + "元" : "待补充"));
+        fields.add(f("套餐属性", "产品属性", "主资费"));
+        fields.add(f("计费周期", "产品属性", textOr(offer.get("billing_cycle"), "自然月")));
+        // 基础信息 / 生命周期
+        fields.add(f("套餐有效期", "生命周期", textOr(offer.get("validity"), "长期有效")));
+        fields.add(f("到期处理方式", "生命周期", MapOps.str(offer.get("validity")).contains("续展") ? "自动续展" : "自动续订"));
+        // 基础信息 / 销售属性
+        fields.add(f("适用用户", "销售属性", orderScopeOf(offer)));
+        fields.add(f("销售渠道", "销售属性", channels.isEmpty() ? "实体渠道、电子渠道、直销渠道" : String.join("、", channels)));
+        // 资源配置 / 套餐内基础资源
+        fields.add(f("国内通用流量", "套餐内基础资源", textOr(inFee.get("国内通用流量"), "无")));
+        fields.add(f("本地语音", "套餐内基础资源", textOr(inFee.get("国内语音拨打"), "无")));
+        fields.add(f("短信", "套餐内基础资源", textOr(inFee.get("卫星权益") == null ? null : shortSmsOf(inFee), "无")));
+        // 资源配置 / 套餐内权益配置
+        fields.add(f("是否允许办理副卡", "套餐内权益配置", subCard.isEmpty() || !Boolean.TRUE.equals(subCard.get("允许办理"))
+                ? "不允许" : "允许"));
+        // 资源配置 / 套外资费标准
+        fields.add(f("套外流量-计费标准", "套外资费标准", textOr(outFee.get("套外流量"), "无")));
+        fields.add(f("套外语音-国内通话", "套外资费标准", textOr(outFee.get("套外语音"), "无")));
+        fields.add(f("套外短彩信-短/彩信", "套外资费标准", textOr(outFee.get("套外短彩信"), "无")));
+        // 业务规则 / 订购与生效
+        fields.add(f("新入网生效方式", "订购与生效", "立即生效"));
+        fields.add(f("老用户生效方式", "订购与生效", "次月1日生效"));
+        fields.add(f("过渡期资费规则", "订购与生效", textOr(offer.get("transition_fee"), "按日（当月实际天数）计扣")));
+        // 业务规则 / 变更/退订/拆机
+        fields.add(f("套餐变更范围", "变更/退订/拆机", textOr(offer.get("change_rule"), "可变更至中国电信其他在售套餐")));
+        fields.add(f("变更生效方式", "变更/退订/拆机", "次月1号生效"));
+        fields.add(f("退订规则", "变更/退订/拆机", textOr(offer.get("cancel_rule"), "允许退订，次月生效")));
+        // 业务规则 / 计费/支付/风控
+        fields.add(f("付费方式", "计费/支付/风控", "后付费"));
+        fields.add(f("支付方式", "计费/支付/风控", "账单支付"));
+        fields.add(f("流量结转规则", "计费/支付/风控", Boolean.TRUE.equals(offer.get("flow_carry_over")) ? "结转" : "不结转"));
+        fields.add(f("断网授权", "计费/支付/风控", textOr(offer.get("net_cutoff_limit"), "套外流量使用至600元时暂停上网")));
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("similarOfferId", MapOps.str(offer.get("offer_id")));
@@ -192,6 +205,15 @@ public class OfferSeedService {
         body.put("sub_type", MapOps.str(offer.get("sub_type")));
         body.put("fields", fields);
         return body;
+    }
+
+    /** 适用用户归一：需求文案口径（新老用户均可订购/仅新用户等），种子默认新老用户均可订购 */
+    private static String orderScopeOf(Map<String, Object> offer) {
+        String rule = MapOps.str(offer.get("order_rule"));
+        if (rule.contains("仅新") || rule.contains("新用户")) {
+            return "新老用户均可订购".contains(rule) || rule.isBlank() ? "新老用户均可订购" : rule;
+        }
+        return "新老用户均可订购";
     }
 
     /** 套外/其他补充资费明细（18字段外的原值保留，供整合节点参考） */
@@ -213,12 +235,6 @@ public class OfferSeedService {
         String satellite = MapOps.str(inFee.get("卫星权益"));
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d+)条").matcher(satellite);
         return m.find() ? m.group(1) + "条" : null;
-    }
-
-    /** 收费方式归一：后付费/预付费→按月（种子无按量/一次性口径） */
-    private static String payModeOf(Map<String, Object> offer) {
-        String pay = MapOps.str(offer.get("pay_mode"));
-        return pay.isBlank() ? "按月" : "按月";
     }
 
     private List<String> castStrList(Object value) {

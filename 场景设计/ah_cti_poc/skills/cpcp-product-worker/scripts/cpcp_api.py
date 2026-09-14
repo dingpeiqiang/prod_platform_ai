@@ -28,6 +28,20 @@ RETRY = 1
 
 PLAN_PREFIX = "PLAN"
 
+# 分类 → 模块归并（V3.0 新 24 字段，分类名与后端 FieldOntologyService 注册表一致）
+CATEGORY_MODULE = {
+    "产品属性": "基础信息", "生命周期": "基础信息", "销售属性": "基础信息",
+    "套餐内基础资源": "资源配置", "套餐内权益配置": "资源配置", "套外资费标准": "资源配置",
+    "订购与生效": "业务规则", "变更/退订/拆机": "业务规则", "计费/支付/风控": "业务规则",
+}
+
+# 来源标注两态归一：原始需求 / AI补全（兼容历史 AI推理/本体推理 标注）
+SOURCE_LABEL = {"原始需求": "原始需求", "AI推理": "AI补全", "本体推理": "AI补全", "AI补全": "AI补全"}
+
+
+def _module_of(category):
+    return CATEGORY_MODULE.get(category, category)
+
 
 def _now(fmt="%Y%m%d%H%M%S"):
     return datetime.now().strftime(fmt)
@@ -283,7 +297,7 @@ def cmd_extract_record(args):
 
 
 def cmd_build_plan(args):
-    """等价原 wf_sub_01 拆分代码节点 004a：req_id 系统生成 + plan_json/plan_md/pending_fields 组装。"""
+    """等价原 wf_sub_01 拆分代码节点 004a：req_id 系统生成 + plan_json/plan_md/pending_fields 组装（V3.0 五列表格）。"""
     fields_raw = _read_arg(args, "fields_json", "_json_file")
     if not fields_raw:
         _err("PARAM_MISSING", "缺少推理后字段数组 fields_json")
@@ -295,16 +309,25 @@ def cmd_build_plan(args):
         fields = fields.get("fields", [])
     if not isinstance(fields, list) or not fields:
         _err("PARAM_MISSING",
-             "推理后字段数组为空（正常应含 18 字段）；请先完成字段本体推理"
+             "推理后字段数组为空（正常应含 24 字段）；请先完成字段本体推理"
              "（ontology_reason），禁止以空字段组装执行方案")
+    for f in fields:
+        if isinstance(f, dict) and f.get("source") in SOURCE_LABEL:
+            f["source"] = SOURCE_LABEL[f["source"]]
     req_id = PLAN_PREFIX + _now() + "%03d" % random.randint(0, 999)
     pending = [f["field"] for f in fields if f.get("value") == "待补充"]
     plan_json = {"req_id": req_id, "fields": fields, "pending_fields": pending}
 
-    lines = ["| 字段分类 | 字段名称 | 字段值 | 来源 |", "| --- | --- | --- | --- |"]
+    lines = ["| 模块 | 分类 | 字段名称 | 字段值 | 备注 |", "| :--- | :--- | :--- | :--- | :--- |"]
+    last_module = last_cat = None
     for f in fields:
-        lines.append("| %s | %s | %s | %s |" % (
-            f.get("category", ""), f.get("field", ""), f.get("value", ""), f.get("source", "")))
+        category = f.get("category", "")
+        module = _module_of(category)
+        module_cell = "**%s**" % module if module != last_module else ""
+        cat_cell = category if category != last_cat else ""
+        last_module, last_cat = module, category
+        lines.append("| %s | %s | %s | %s | 【%s】 |" % (
+            module_cell, cat_cell, f.get("field", ""), f.get("value", ""), f.get("source", "")))
     plan_md = "\n".join(lines)
 
     print(json.dumps({"req_id": req_id, "plan_json": json.dumps(plan_json, ensure_ascii=False),
