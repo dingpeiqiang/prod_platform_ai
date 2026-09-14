@@ -1,126 +1,97 @@
-# 产销品加载 AI 应用 · 平台配置清单
+# 产销品加载 AI 应用 · Skills 技能包部署清单
 
-> 平台：AI应用开发（九思大模型 · 低代码智能体平台）
-> 版本：V1.8　日期：2026-09-13
-> 依据：《产销品加载AI应用开发方案.md》V2.0、《产销品加载AI应用-细化设计方案.md》V1.4
-> 用途：平台界面逐项操作与核对（与开发工作清单区分：本清单只含界面配置，不含代码开发）
-
----
-
-## 1. 插件市场录入（自研插件集 13 个 + 平台复用 2 个）
-
-插件集名称：`产销品加载插件集`；接口协议 http/https；服务地址 `http://10.86.13.201:31281`。
-导入文件：`插件\自研插件集V1.6\` 目录下各 `_export.json`（可直接导入，或按下表手工录入）。
-
-| # | 工具名 | 工具代码 | 接口路径 | 方法 | 出参归纳 | 导出文件 |
-| --- | --- | --- | --- | --- | --- | --- |
-| 1 | 相似度分析 | `query_similar_offer` | /api/v1/appstore/similar/offer/query | POST | 否 | 工具1_相似度分析_export.json |
-| 2 | 实时规格稽核 | `realtime_spec_audit` | /api/v1/appstore/audit/realtime | POST | 是 | 工具2_实时规格稽核_export.json |
-| 3 | 销售品测试发起 | `offer_test` | /api/v1/appstore/test/offer/start | POST | 否 | 工具3_销售品测试发起_export.json |
-| 4 | 查询测试场景 | `get_test_scenes` | /api/v1/appstore/test/offer/scenes | POST | 是 | 工具4_查询测试场景_export.json |
-| 5 | 查询测试进度 | `get_test_progress` | /api/v1/appstore/test/offer/progress | POST | 否 | 工具5_查询测试进度_export.json |
-| 6 | 查询测试结果 | `get_test_result` | /api/v1/appstore/test/offer/result | POST | 是 | 工具6_查询测试结果_export.json |
-| 7 | 配置落地 | `save_product_config` | /api/v1/appstore/product/config/save | POST | 否 | 工具7_配置落地_export.json |
-| 8 | 计费规则校验 | `check_billing_rule` | /api/v1/appstore/billing/rules/verify | POST | 是 | 工具8_计费规则校验_export.json |
-| 9 | 上线审批推送 | `submit_release_approval` | /api/v1/appstore/approval/submit | POST | 否 | 工具9_上线审批推送_export.json |
-| 10 | 监控查询 | `query_product_monitor` | /api/v1/appstore/product/monitor | GET | 是 | 工具10_监控查询_export.json |
-| 11 | 异常告警 | `send_alert` | /api/v1/appstore/alert/send | POST | 否 | 工具11_异常告警_export.json |
-| 13 | 审批进度查询 | `query_approval_status` | /api/v1/appstore/approval/status | GET | 是 | 工具13_审批进度查询_export.json |
-| 复用 | 节点结果存储 | `save_node_result` | /api/v1/appstore/result/save | POST | 否 | 节点结果存储_export_V1.6.json |
-| 复用 | 节点结果查询 | `query_node_result` | /api/v1/appstore/result/query | GET | 是 | 节点结果查询_export_V1.6.json |
-
-**录入核对要点：**
-- [ ] 每个必填入参"为空提示"已填写（格式：`缺少{参数中文名}，请{获取方式}`）
-- [ ] "是否提参"：上下文提取类选"是"；`config_json`/`plan_json`/`report_url` 等大报文选"否"（工作流变量引用）
-- [ ] 工具2/7/9 关键校验点（V2.2 修订）：工具2 同步返回无文件上传；工具7 **确认门禁已移除**（不再校验 confirmed 入参与存储 CONFIRMED 标记，NOT_CONFIRMED 状态不再出现，保留幂等与 plan_json 合法性校验）；工具9 校验 **req_id 四环节（config/spec/fee/test）结果齐全**（缺失即拒绝推送）
-- [ ] V1.6 口径：13 个工具全部为**自研模拟实现**（无外部 ApiID），模拟数据兼容《产品信息.txt》18 个销售品；《产销品场景部分能力接口清单.xlsx》仅作契约参考
-- [ ] 每个工具在"预览与调试"中自测通过（对应细化设计 2.4 节自测项 #1~#12）
+> 平台：Skills 技能包运行时（任意支持 Skills 协议的 Agent 运行时）+ 后端模拟服务
+> 版本：V2.0　日期：2026-09-14
+> 依据：《产销品加载AI应用开发方案.md》V2.6（1.4 节实现方式说明）、《产销品加载AI应用-细化设计方案.md》V2.0、《skills/Skills技能包实现方案.md》V1.3
+> 用途：技能包部署与后端就绪逐项核对（原 V1.8 平台界面配置清单随工作流方式废止，重写为 Skills 部署口径；部署项与细化设计第 5 章部署清单对齐）
 
 ---
 
-## 2. 工作流导入与发布（V1.7：仅 8 个子工作流，主流程弃用归档）
+## 1. 后端服务就绪（零改动，先于技能包部署）
 
-导入文件：`工作流配置\V1.6\` 目录。导入后先替换占位符再发布。
-**V1.7 变更：智能体 LLM 按意图映射表直调子工作流，`wf_cpcp_main` 主流程不再导入/发布（JSON 保留归档，作 V1.6 固定编排模式参考）。**
+后端模拟服务统一部署于 `http://10.86.13.201:31281`（可用环境变量 `CPCP_BASE_URL` 覆盖）。
 
-| 工作流 | flowId | 导入文件 | 发布前操作 |
-| --- | --- | --- | --- |
-| 需求分析 | `wf_sub_01` | wf_sub_01_需求分析.json（9节点/8边） | 检查 LLM 节点提示词（V1.7 18字段+来源判定版）与知识库检索挂载（K1+K4，top_k=3）；LLM 节点4 单出参 plan_output + 代码节点 004a 拆分；结束前存储 node_name=requirement |
-| 智能配置 | `wf_sub_02` | wf_sub_02_智能配置.json（7节点/6边） | req_id 单入参自查执行方案（query_node_result，submit_way=get）；确认"读取执行方案→配置落地"之间无大模型节点；**103 落地节点入参 req_id/plan_json/confirmed（V1.7 统一键，方案key由后端从 plan_json 的 req_id 键提取）**；结束前存储 node_name=config |
-| 规格稽核 | `wf_sub_03` | wf_sub_03_规格稽核.json（8节点/7边） | req_id 单入参自查 offer_id/config_json；确认 realtime_spec_audit 为同步插件节点；结束前存储 node_name=spec |
-| 自动测试 | `wf_sub_04` | wf_sub_04_自动测试.json（11节点/10边） | req_id 单入参自查 offer_id；**0304 轮询为 type=6 代码节点（非循环节点）：inputs 平铺 list、asyncio.sleep(5)×360 次**；结束前存储 node_name=test |
-| 资费校准 | `wf_sub_05` | wf_sub_05_资费校准.json（8节点/7边） | req_id 单入参自查 config_json；挂载 K2 资费规则库；结束前存储 node_name=fee |
-| 上线审批 | `wf_sub_06` | wf_sub_06_上线审批.json（11节点/10边） | **req_id 单入参；串行自查 5 类环节结果（config/spec/fee/test/需求摘要）→ LLM 生成 7 章节报告 → 存储 node_name=report → 审批推送**；审批推送由后端硬校验 req_id 四环节结果 |
-| 监控运维 | `wf_sub_07` | wf_sub_07_监控运维.json | 配置定时触发（每日，平台定时任务）；异常判定阈值 error_count>0 或 fee_error_rate>0.1；LLM 消息查询默认直调工具10/11，此子流兜底 |
-| 审批进度查询 | `wf_sub_08` | wf_sub_08_审批进度查询.json | 轻量子工作流；LLM 消息查询默认直调工具13，此子流兜底 |
-| （归档）主工作流 | `wf_cpcp_main` | wf_cpcp_main_产销品加载主流程.json | **不导入、不发布**（V1.7 弃用归档） |
-
-**子工作流关键链路核对（V1.7）：**
-- [ ] 各子工作流 req_id 单入参自查链路：开始(req_id) → query_node_result(GET，submit_way=get) → 代码节点提取 → 工具节点
-- [ ] 各子工作流结束前"代码节点合成 result_json + save_node_result"存储链路（node_name=config/spec/fee/test/report）
-- [ ] wf_sub_04 0304 轮询节点：type=6、inputs 平铺 list、fail_reason 出参非空
-- [ ] wf_sub_06 串行自查链式连接（501q1→q2→q3→q4→q5→501s，非星型并行）
-- [ ] 智能体直调子工作流出参可被 LLM 读取（status/pass/test_passed 等判定字段完整）
-
----
-
-## 3. 知识库配置（5 个分类）
-
-| 分类 | 名称 | 文档 | 召回挂载点 |
-| --- | --- | --- | --- |
-| K1 | 产销品业务规范库 | 产销品管理办法/配置规范/命名规则 | wf_sub_01 节点2/4；智能体对话 |
-| K2 | 资费规则库 | 资费模板手册/叠加优惠约束说明 | wf_sub_05 节点3 |
-| K3 | 测试规范库 | 测试用例设计规范/测试报告模板 | wf_sub_04 节点6 |
-| K4 | 存量销售品资料库 | 《产品信息.txt》**18 个销售品**逐条切片（5G-A 系列 10 个 + 权益随心选系列 8 个） | wf_sub_01 节点4（核心） |
-| K5 | FAQ | 产销品加载FAQ | 智能体问答 |
-
-**切片与召回参数：** 切片 512 token（K4 按章节自然边界，单片 ≤800）、重叠 50、混合检索语义权重 0.7、top_k=3（K4）/2（其他）、score 阈值 0.75、引用展示开启。
-**K4 切片命名：** 首行元信息 `[销售品ID] [销售品名称] [章节名]`；命名规范 `K4存量_产品信息900102308_V1.0`。
-- [ ] K4 确认 18 个销售品文档切片完成（对应主方案 5.1 清单）
-- [ ] 固定问答回归 3 组通过（例：查 900102308 套外资费 → 命中阶梯计费描述）
-
----
-
-## 4. 智能体装配（`cpcp_product_worker` 产销品数字员工）
-
-| # | 装配项 | 配置值 |
+| # | 就绪项 | 核对要点 |
 | --- | --- | --- |
-| 1 | 助手代码/名称 | `cpcp_product_worker` / 产销品数字员工 |
-| 2 | 功能介绍 | 主方案 3.1 文案 |
-| 3 | 提示词 | 主方案 3.2 全文（角色+技能6条+**意图→子工作流智能调度映射表**+限制；含 V1.4 待补充规则、V2.2 确认语义识别/串行直调子流/异常引导/消息查询技能；**"确认执行"→ 识别确认语义后直接串行直调 wf_sub_02→03→05→04，无需写 CONFIRMED 标记**） |
-| 4 | 插件挂载 | 第 1 节 13 个自研插件工具（复用插件由工作流节点引用，不必挂智能体；**query_node_result 须挂载智能体**，供 LLM 新会话检索最近执行方案取 req_id） |
-| 5 | 工作流挂载 | **仅挂载 `wf_sub_01~08` 八个子工作流（V1.7）**；**不挂载主流程 `wf_cpcp_main`（弃用归档）** |
-| 6 | 知识库挂载 | K1~K5 五个分类（V2.1：字段本体由后端推理引擎承载，不占知识分类） |
-| 7 | 模型配置 | 温度 0.2 / 多轮对话 20 轮 / top_p 0.5 |
-| 8 | FAQ 直接返回 | 否（需大模型归纳） |
-| 9 | 开场白 | 主方案 3.3 文案 |
-| 10 | 引导问题 | ①我要上新一个5G流量套餐，请帮我分析需求并生成执行方案 ②确认执行刚才的产销品加载方案 ③查询一下刚才那个销售品的审批进度 ④查询销售品900102308的运行监控结果 ⑤重新执行失败的环节 |
-| 11 | 答案为空提示 | "抱歉，我仅支持产销品加载相关业务，请更换问题或联系管理员。" |
-| 12 | 发布范围 | 先草稿调试，验收后"所有人可见" |
+| 1 | 14 工具模拟路由（自研模拟实现，V1.6 口径） | similar/offer/query、audit/realtime、test/offer/start|scenes|progress|result、product/config/save、rules/verify、approval/submit|status、product/monitor、alert/send、ontology/fields 共 14 条路由连通；模拟种子数据兼容《产品信息.txt》18 个销售品 |
+| 2 | 节点结果存储查询（后端通用 API） | POST `/api/v1/appstore/result/save`、GET `/api/v1/appstore/result/query`；NodeResultService（MyBatis-Plus）落库 `pd_ai_node_results` 表（H2/MySQL 双 DDL 已执行），服务重启结果不丢失 |
+| 3 | 后端硬校验（V2.2 修订） | req_id 格式校验（PLAN\d{17}，非法返回 5002）；requirement 环节同键不同内容拦截（5006）；工具7 确认门禁**已移除**（confirmed 任意值可落地，保留幂等与 plan_json 合法性校验，NOT_CONFIRMED 不再出现）；工具9 校验 req_id 四环节（config/spec/fee/test）结果齐全，缺失拒绝推送 |
+| 4 | 模拟数据工程 | 种子数据集 seed_offers.json（18 销售品全量规则）、preset_map.json（18×10 测点预期值）、演示场景开关（稽核驳回/资费冲突/测点不一致/监控异常可注入）、18 套餐一致性自测脚本全绿 |
+
+**后端连通自测（需模拟服务在线）：**
+```bash
+cd skills/cpcp-product-worker
+python scripts/cpcp_api.py similar_offer --desc "5G-A 单品套餐 月费199元 30G流量"
+python scripts/cpcp_api.py query_monitor --product-id 900102308
+python scripts/cpcp_api.py query_node_result --req-id PLAN20260913143025087
+```
+- [ ] 14 个工具对应子命令逐一连通后端（含 PARAM_MISSING / 5002 / 5006 错误码验证）
 
 ---
 
-## 5. 配置完成 Checklist（按顺序勾选）
+## 2. 技能包安装（`skills/cpcp-product-worker/`）
 
-**阶段A 插件（对应主方案阶段1~2）**
-- [ ] 13 个自研插件工具导入/录入并发布（模拟服务 10.86.13.201:31281 连通）
-- [ ] 复用插件（节点结果存储/查询）可用性确认；读写一致自测（保存→查询逐字节一致）
-- [ ] **后端工具层硬校验就绪（V2.2 修订）**：工具7 确认门禁已移除（验证 confirmed 任意值均可落地 + 幂等）；工具9 四环节结果校验验证
-- [ ] 每个必填入参"为空提示"逐项验证
+| # | 部署项 | 配置值 | 核对要点 |
+| --- | --- | --- | --- |
+| 1 | 技能包注册 | 将 `cpcp-product-worker/` 目录注册到支持 Skills 协议的 Agent 运行时（SKILL.md 为入口） | 目录结构完整：SKILL.md + scripts/（3 份）+ references/（flow-A~D 4 份 + 3 份机制文档 + K1~K5 五目录 26 份） |
+| 2 | SKILL.md | 常驻总调度（约 49 行）：角色/目录导航/意图路由表/核心纪律5条/脚本调用约定/开场白 | 确认含确认语义纪律（V2.2：无需写 CONFIRMED 标记）、串行纪律、超范围拒答话术 |
+| 3 | 流程文档 | flow-A-requirement / flow-B-execution / flow-C-approval / flow-D-query-ops | 每份 flow 文档"步骤=原节点"与细化设计 3.1 映射索引一致 |
+| 4 | 机制文档 | tools-contract.md（14 工具契约）/ exception-matrix.md（E1~E23）/ ontology-fields.md（本体注册表+枚举命名+模板三合一） | 三份文档按需加载，SKILL.md 目录导航可达 |
+| 5 | 知识库目录 | K1规范(3)/K2资费(2)/K3测试(2)/K4存量(18)/K5FAQ(1) 共 26 份 | K4 确认 18 个销售品单文件齐全（按销售品 ID 精确定位，禁止全量读取） |
+| 6 | 脚本可运行 | cpcp_api.py（17 子命令）/ poll_test_progress.py / test_cpcp_api_local.py | Python 3.8+；`python scripts/cpcp_api.py` 无报错 |
+| 7 | 环境变量 | `CPCP_BASE_URL`（默认 `http://10.86.13.201:31281`） | 指向后端模拟服务；替换真实实现仅改此值，技能包零改动 |
+| 8 | 模型纪律 | 温度 0.2（严谨输出） | 出参逐字引用不加工；仅依据出参字段（status/pass/test_passed）判成败 |
 
-**阶段B 知识库（对应主方案阶段3）**
-- [ ] 5 个分类创建；K1~K3/K5 文档上传
-- [ ] 《产品信息.txt》18 个销售品按 K4 切片方案入库；固定问答回归 3 组通过
+---
 
-**阶段C 工作流（对应主方案阶段4）**
-- [ ] 8 个子工作流导入→替换占位符→单独调试通过（req_id 自查链路 + 提取原文代码节点 + 内部存储链路逐条验证；V2.2：wf_sub_02~05 各含 query_node_result 自查+CODE_EXTRACT_RECORD 提取节点）
-- [ ] **V1.7 LLM 智能调度联调：确认执行→识别确认语义→串行直调 wf_sub_02→03→05→04（V2.2：无需写 CONFIRMED 标记）→每环节打印结果；异常中断引导；续跑映射**
-- [ ] **不挂载主流程 wf_cpcp_main（弃用归档，JSON 保留）**
+## 3. 部署后自测
 
-**阶段D 智能体与验收（对应主方案阶段5~6）**
-- [ ] 智能体装配 12 项逐项勾选（重点：工作流仅挂 8 个子流、提示词含意图映射表）
-- [ ] **确认续跑联调专项：需求分析→输出方案→回复"确认执行"→验证 LLM 识别确认语义后串行直调子流（V2.2：无需写 CONFIRMED 标记），进入智能配置而非重复需求分析**
-- [ ] **硬校验联调专项：跳过环节直接发起审批被四环节校验拒绝（工具7 确认门禁已按 V2.2 移除）**
-- [ ] 细化设计 3.5 节工作流级用例 #1~#21 全部通过（含 #17/#18 硬校验、#19~#21 十八套餐兼容）
+### 3.1 本地功能自测（不依赖后端）
+```bash
+cd skills/cpcp-product-worker
+python scripts/test_cpcp_api_local.py
+```
+- [ ] 8 项断言全部通过（裸报文契约 mock 回显断言、出参解包归一、错误码归一、build_plan 唯一 req_id、extract_record E5 分支、枚举/缺参/64KB 前置校验）
+
+### 3.2 按需加载验证
+- [ ] SKILL.md 常驻不膨胀（约 49 行）；命中意图仅加载对应单份 flow 文档；
+- [ ] K4 仅按 similarOfferId 读取单文件（禁止全量读取 18 份）；
+- [ ] 大报文（plan_json/config_json/fields/report）一律走脚本 `--xxx-file` 文件传参，不经模型上下文中转。
+
+### 3.3 意图路由联调（对齐 SKILL.md 路由表 5 类）
+- [ ] 提报/修改需求 → 加载 flow-A（程序A 步骤1~8 链路，含出口A 不保存不产出 req_id）；
+- [ ] 确认执行 / 重新执行 → 加载 flow-B（四环节串行环节1→2→3→4，每环节打印结果；V2.2：无需写 CONFIRMED 标记，确认语义由 SKILL.md 核心纪律3 识别）；
+- [ ] 发起审批 → 加载 flow-C（仅四环节全成且用户明确确认后）；
+- [ ] 查询审批进度 / 运行监控 → 加载 flow-D（轻量支线二选一，缺失参数先追问不编造）；
+- [ ] 业务问答 → 按类别直读 K1~K5；超范围 → 拒答话术。
+
+### 3.4 关键链路联调（对齐细化设计 3.5 程序级用例）
+- [ ] 正向全流程：需求分析→确认→程序B 四环节串行（不停顿）→成功详情+审批提示→审批单生成；
+- [ ] 续跑专项：稽核驳回中断→【重新执行】从失败环节续跑（已成功环节凭存储回放，不重复调用写接口）；
+- [ ] 硬校验专项：四环节不全调 `submit_approval` 被后端拒绝；
+- [ ] poll_test_progress.py：间隔 5s、最多 360 次、连续 5 次失败终止（退出码2）、超时（退出码3）；
+- [ ] 细化设计 3.5 节程序级用例 #1~#21 全部通过（含 #17 确认语义识别、#18 四环节硬校验、#19~#21 十八套餐兼容）。
+
+---
+
+## 4. 部署完成 Checklist（按顺序勾选）
+
+**阶段A 后端就绪（对应原阶段1~2，代码开发见《开发工作清单》）**
+- [ ] 14 条路由 + 节点结果存储（save/query）连通自测通过
+- [ ] 后端硬校验就绪（5002/5006/四环节门禁/幂等；工具7 确认门禁已按 V2.2 移除并验证）
+- [ ] 18 套餐一致性自测脚本全绿；presetValue 抽查（900102308/900117022）与《产品信息.txt》一致
+
+**阶段B 技能包安装（替代原阶段3~5 界面配置）**
+- [ ] 技能包目录注册完成，结构完整（第 2 节 8 项逐项核对）
+- [ ] `test_cpcp_api_local.py` 7 项自测通过
+- [ ] K4 18 个销售品单文件齐全；固定问答回归 3 组通过（例：查 900102308 套外资费 → 命中阶梯计费描述）
+
+**阶段C 联调（对应原阶段4 工作流调试，改为程序级验证）**
+- [ ] 意图路由 5 类联调通过（3.3 节逐项勾选）
+- [ ] 程序A/B/C/D 链路验证通过（对应原 8 个子工作流导入调试，映射见细化设计 3.1 节）
+- [ ] 续跑/硬校验专项通过（3.4 节）
+
+**阶段D 验收（对应原阶段5~6）**
+- [ ] 细化设计 3.5 节用例 #1~#21 全部通过
 - [ ] 按《端到端演示剧本》完成全流程彩排（含反向分支速查表 10 项）
-- [ ] 发布上线（草稿→所有人可见），工作流/插件保留可回退版本
+- [ ] 上线：技能包纳入 git 版本管理；后续替换真实实现仅改 `CPCP_BASE_URL`，SKILL.md/flow 文档/契约文档零改动

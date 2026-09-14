@@ -1,19 +1,20 @@
 # 产销品加载 AI 应用 · 开发工作清单
 
-> 平台：AI应用开发（九思大模型 · 低代码智能体平台）
-> 版本：V1.7　日期：2026-09-13
-> 依据：《产销品加载AI应用开发方案.md》V1.7（第 7 章开发实施计划）、《产销品加载AI应用-细化设计方案.md》V1.3
-> 用途：需要**代码开发**的接口/服务/数据工作清单（平台界面配置类工作见《平台配置清单》，本清单不含）
+> 平台：Skills 技能包（`cpcp-product-worker`）+ 后端模拟服务
+> 版本：V1.8　日期：2026-09-14
+> 依据：《产销品加载AI应用开发方案.md》V2.6（1.4 节实现方式说明）、《产销品加载AI应用-细化设计方案.md》V2.0、《skills/Skills技能包实现方案.md》V1.3
+> 用途：需要**代码开发**的接口/服务/数据/脚本工作清单（技能包部署与自测见《平台配置清单》，本清单不含）
 
 ---
 
-## 0. 开发范围总述（V1.6 口径）
+## 0. 开发范围总述（V1.8 Skills 版口径）
 
-- 13 个插件工具对应的 HTTP 能力接口**全部自研实现并采用模拟结果输出**，不再对接外部 ApiID；
+- 实现方式（V2.6 起基线）：**Skills 技能包**——原"平台工作流编排 + 插件市场录入"层不再开发，改为**脚本层开发**（`skills/cpcp-product-worker/scripts/`，已完成）；后端 14 条能力接口模拟实现**原样保留**（契约不变）；
+- 13 个工具对应的 HTTP 能力接口**全部自研实现并采用模拟结果输出**，不再对接外部 ApiID；
 - 模拟服务统一部署于 `http://10.86.13.201:31281`（已有 Mock 服务框架，V1.6 在其上补齐/改造 14 条路由）；
 - 模拟种子数据 = 《产品信息.txt》全部 **18 个销售品**（5G-A 系列 10 个 + 权益随心选系列 8 个），任一套餐输入均可返回与该销售品资费规则一致的结构化结果；
 - 测试预期值 `presetValue` 取自该销售品在《产品信息.txt》中的规则值；
-- 接口契约（路径/入参/出参）以《产销品场景部分能力接口清单.xlsx》为参考基线，后续替换真实实现时契约不变。
+- 接口契约（路径/入参/出参）以《产销品场景部分能力接口清单.xlsx》为参考基线，后续替换真实实现时契约不变（仅改脚本 `CPCP_BASE_URL`）。
 
 ---
 
@@ -46,14 +47,14 @@
 | 11 | 监控查询 `query_product_monitor` | GET /api/v1/appstore/product/monitor | 按 product_id+日期确定性生成指标（订单量/异常量/差错率/告警列表）；支持 error_count>0 预置演示 | date_range/metric 参数生效；告警列表与接口12 写入记录回显一致 | 0.5d |
 | 12 | 异常告警 `send_alert` | POST /api/v1/appstore/alert/send | 生成 alert_id 写入模拟告警库（供监控查询回显闭环） | alarm_level 三级枚举；content 落库 | 0.25d |
 
-### 1.4 平台复用插件对齐（改动量小）
+### 1.4 节点结果存储查询对齐（后端通用 API，改动量小）
 
-> 说明：节点结果存储/查询为平台已有通用插件（不自研），后端契约以 `/api/v1/appstore/result/save`（POST，入参 req_id/node_name/result_json/status）与 `/api/v1/appstore/result/query`（**GET**，入参 req_id/node_name/latest_only，出参 total/list）为准，契约基线见 `插件\自研插件集V1.6\节点结果*_export_V1.6.json`。**存储已落库持久化**：后端由 `NodeResultService`（MyBatis-Plus）写入 `pd_ai_node_results` 表（H2 DDL：`backend-app/src/main/resources/sql/h2/schema-h2.sql`；MySQL DDL：`sql/01_full_schema_ddl.sql` L504 起），服务重启后结果不丢失。存储寻址口径（V1.7 统一键）：全链路唯一批次标识 = req_id（PLAN+yyyyMMddHHmmss+3位随机数，原 plan_id/execution_id 双键合并）；执行方案环节 node_name=requirement，执行主干各环节 node_name=config/spec/fee/test/**report**（上线报告，wf_sub_06 存储），同键覆盖写。
+> 说明：节点结果存储/查询为后端已有通用 API（不自研），后端契约以 `/api/v1/appstore/result/save`（POST，入参 req_id/node_name/result_json/status）与 `/api/v1/appstore/result/query`（**GET**，入参 req_id/node_name/latest_only，出参 total/list）为准。**存储已落库持久化**：后端由 `NodeResultService`（MyBatis-Plus）写入 `pd_ai_node_results` 表（H2 DDL：`backend-app/src/main/resources/sql/h2/schema-h2.sql`；MySQL DDL：`sql/01_full_schema_ddl.sql` L504 起），服务重启后结果不丢失。存储寻址口径（V1.7 统一键）：全链路唯一批次标识 = req_id（PLAN+yyyyMMddHHmmss+3位随机数，原 plan_id/execution_id 双键合并）；执行方案环节 node_name=requirement，执行主干各环节 node_name=config/spec/fee/test/**report**（上线报告，程序C 存储），同键覆盖写。V1.8 起由脚本子命令 `cpcp_api.py save_node_result / query_node_result` 直连调用（封装见第 3 节 #1）。
 
 | # | 接口 | 方法/路径 | 开发内容 | 验收要点 | 工期 |
 | --- | --- | --- | --- | --- | --- |
-| 13 | 节点结果存储 `save_node_result` | POST /api/v1/appstore/result/save | 平台已有插件直接挂载；入参 req_id/node_name/result_json（status 默认 ok）；同键（req_id+node_name）覆盖；非法 req_id 返回 5002、node_name 为空返回 5003、result_json 超 64KB 返回 5004 | 工作流入参与导出 JSON 逐项一致（各子工作流结束前保存本环节结果：wf_sub_01 保存执行方案、wf_sub_02~05 保存 config/spec/fee/test、wf_sub_06 保存 report）；保存→按 req_id+node_name 查询 result_json 逐字节一致；服务重启后可查询（持久化） | 0.25d |
-| 14 | 节点结果查询 `query_node_result` | GET /api/v1/appstore/result/query | 平台已有插件直接挂载；入参 req_id（必填）/node_name（可选）/latest_only（默认1）；出参 code/msg/total/list（取 list[0].result_json 为结果原文） | 各子工作流 req_id 自查（V1.7 统一键）：req_id=开始节点入参、node_name=本环节名；非法 req_id 返回 5002；total=0 时按 E5 处理（"未找到执行方案"） | 0.25d |
+| 13 | 节点结果存储 `save_node_result` | POST /api/v1/appstore/result/save | 后端已有 API 直接复用；入参 req_id/node_name/result_json（status 默认 ok）；同键（req_id+node_name）覆盖；非法 req_id 返回 5002、node_name 为空返回 5003、result_json 超 64KB 返回 5004 | 程序入参与后端契约逐项一致（各程序步骤结束前保存本环节结果：程序A 保存执行方案、程序B 各环节保存 config/spec/fee/test、程序C 保存 report）；保存→按 req_id+node_name 查询 result_json 逐字节一致；服务重启后可查询（持久化） | 0.25d |
+| 14 | 节点结果查询 `query_node_result` | GET /api/v1/appstore/result/query | 后端已有 API 直接复用；入参 req_id（必填）/node_name（可选）/latest_only（默认1）；出参 code/msg/total/list（取 list[0].result_json 为结果原文） | 各程序环节 req_id 自查（V1.7 统一键）：req_id=程序入参、node_name=上游环节名；非法 req_id 返回 5002；total=0 时按 E5 处理（"未找到执行方案"） | 0.25d |
 
 ---
 
@@ -68,38 +69,42 @@
 
 ---
 
-## 3. 工作流与调度配套开发（代码节点/后端校验）
+## 3. 技能包脚本层开发（V1.8：替代原"工作流与调度配套开发"；已全部完成）
 
-| # | 工作项 | 说明 | 工期 |
+> 原平台工作流编排/插件录入/代码节点开发随工作流方式废止，承载方式改为**技能包脚本层**（对应原 3 类代码节点 + 插件封装层 + LLM 调度约定）。以下脚本均已实现并通过本地自测。
+
+| # | 工作项 | 说明 | 状态 |
 | --- | --- | --- | --- |
-| 1 | 测试轮询代码节点（wf_sub_04 节点0304，type=6 代码节点） | 代码节点（非循环节点）：asyncio.sleep(5) 间隔轮询、最多 360 次（超时 30 分钟）、连续 5 次查询失败终止转人工（保留 globalId）；退出条件 done==true 或 failed==true；**注意：type=6 代码节点 inputs 必须为平铺 list 结构（非 {loopParam, inputParameters} 嵌套）** | 0.5d |
-| 2 | NodeResultService 新增 `latestRecord(reqId, nodeName)` 公开方法（V1.7 已完成） | 按 req_id+node_name 取最新记录（返回 {result_json,status} 或 null），供 save_product_config / submit_release_approval 后端硬校验使用；后端编译验证通过（mvn compile） | 已完成 |
-| 3 | wf_sub_01 004a 拆分代码节点改造（V1.8，req_id 唯一性保障） | req_id 由代码节点以系统时钟生成（datetime.now+3位随机数，每次分析重新生成、LLM 不参与），并注入 plan_json 的 req_id 键；LLM 节点4 改 3 键输出（plan_json 内 req_id 留空）；后端 NodeResultService 增加 PLAN\d{17} 格式校验（非法返回 5002）与 requirement 环节同键不同内容拦截（返回 5006） | 已完成 |
-| 4 | LLM 调度层配套（V1.7，提示词约定，无独立代码） | 确认标记写入（save_node_result：req_id=执行方案存储键、node_name=CONFIRMED）、串行直调子工作流入参注入、每环节结果打印、fail_node 续跑映射；全部由主方案 3.2 提示词固化（V1.7 环节结果存储已下沉到子工作流内部） | 已完成（文档） |
+| 1 | `scripts/cpcp_api.py` 统一 API 客户端（17 子命令） | 承接原 14 个插件工具封装层：请求侧**裸报文**（业务参数 JSON 置于顶层，V2.7 起 contractRoot/tcpCont 包裹整体移除）、出参侧 `_unwrap` 兼容解包、超时重试（同步 60s/异步 30s、save_product_config 不自动重试）、错误码归一（PARAM_MISSING/HTTP_xxx/NET_ERROR/TIMEOUT/PARSE_ERROR/ONTOLOGY_EMPTY）；含 `build_plan`（承接原 004a 拆分代码节点：req_id 系统生成 PLAN+时间戳+3位随机、plan_json 三键组装、plan_md 代码生成、pending_fields 反查）与 `extract_record`（承接原 CODE_EXTRACT_RECORD：提取 list[0].result_json，list 空报 E5）本地逻辑；节点结果存储查询直连后端（64KB 前置校验 5004）；大报文支持 `--xxx-file` 文件传参 | ✅ 已完成（编译通过、本地自测 8 项通过） |
+| 2 | `scripts/poll_test_progress.py` 测试进度轮询（承接原 wf_sub_04 代码节点 0304） | 间隔 5s、最多 360 次（超时 30 分钟）、连续 5 次查询失败终止转人工（保留 globalId）；退出码 0=done / 1=failed / 2=连续失败 / 3=超时，输出 fail_reason 供程序分支判定 | ✅ 已完成 |
+| 3 | `scripts/test_cpcp_api_local.py` 本地功能自测 | 不依赖后端 8 项断言（裸报文契约 mock 回显/出参解包归一/错误码归一/build_plan 唯一 req_id/E5/枚举缺参 64KB 前置校验） | ✅ 已完成（8 项通过） |
+| 4 | LLM 调度层配套（SKILL.md + flow 文档程序约束，无独立代码） | 意图路由 5 类、确认语义识别（V2.2：无需写 CONFIRMED 标记）、程序B 串行纪律（严禁并行/跳步/重复调用写接口）、每环节结果打印、fail_node 续跑映射（STAGE1~4→环节1~4）；全部由 SKILL.md 核心纪律 5 条与 flow-A~D 文档固化 | ✅ 已完成（文档） |
 
 ---
 
-## 4. 工期汇总（与主方案第 7 章对齐）
+## 4. 工期汇总（与主方案第 7 章对齐，V1.8 Skills 版）
 
 | 阶段 | 本清单对应工作项 | 工期 |
 | --- | --- | --- |
-| 阶段1 基础搭建 | 种子数据集 #1 + 接口骨架 | 3d（含平台建项） |
-| 阶段2 插件开发 | 接口 1~14 开发与自测 + 数据工程 #2~#4 | 5d |
-| 阶段3 知识库建设 | （界面配置为主，见平台配置清单） | 3d |
-| 阶段4 工作流编排 | 本清单第 3 节 3 项 + 工作流导入调试 | 6d |
-| 阶段5 智能体集成 | （界面配置为主） | 2d |
+| 阶段1 基础搭建 | 种子数据集 #1 + 接口骨架 | 3d |
+| 阶段2 接口开发 | 接口 1~14 开发与自测 + 数据工程 #2~#4 | 5d |
+| 阶段3 知识库建设 | references/K1~K5 目录文档就位（文件复制级，见平台配置清单） | 1d |
+| 阶段4 技能包脚本层 | 本清单第 3 节 3 项脚本（已完成）+ flow-A~D 流程文档改写 | 4d |
+| 阶段5 部署与联调 | 技能包注册 + 后端连通自测 + 意图路由/链路联调（见平台配置清单 3 节） | 4d |
 | 阶段6 验证与优化 | 18 套餐一致性自测跑通 + 正反向用例 | 4d |
-| **合计** | | **约 22 个工作日**（其中代码开发约 12d） |
+| **合计** | | **约 21 个工作日**（其中代码开发约 12d，脚本层已全部完成） |
 
 ---
 
-## 5. 开发自测 Checklist
+## 5. 开发自测 Checklist（V1.8 Skills 版）
 
 - [ ] 14 条路由单元/契约测试通过（curl/Postman/JUnit，参照《产销品加载AI应用-接口说明书.md》5 节方法）
 - [ ] 18 销售品一致性自测脚本全绿（任一套餐返回结构化结果、资费规则值一致、无写死单一样例回退）
 - [ ] presetValue 抽查：900102308（5G-A）与 900117022（权益随心选）两类套餐与《产品信息.txt》逐项一致
 - [ ] 未收录销售品 ID 输入：接口 4 返回 4001，接口 1 返回空列表或明确降级提示，不返回伪造数据
-- [ ] 工具7/9 门禁（V1.7 工具层硬校验）：无 CONFIRMED 标记调工具7 一律拒绝（NOT_CONFIRMED）；四环节结果不全调工具9 一律拒绝；跳步调用均有拦截记录
+- [ ] `test_cpcp_api_local.py` 7 项本地自测全绿（脚本层：三类报文解包/错误码归一/build_plan/extract_record/前置校验）
+- [ ] 脚本与后端契约一致：17 子命令逐一连通后端，路径/入参/出参与细化设计 2.6 节映射表逐条比对（含 PARAM_MISSING/5002/5006/5004 错误码验证）
+- [ ] 工具9 四环节门禁（工具层硬校验）：四环节结果不全调 submit_approval 一律拒绝；跳步调用均有拦截记录（工具7 确认门禁已按 V2.2 移除，仅验证幂等与 plan_json 合法性校验）
 - [ ] 幂等：工具7 同 plan_json、工具9 同 product_id 重复提交不产生重复记录
 - [ ] 异常注入开关：稽核驳回/资费冲突/测点不一致/监控异常 四类反向用例可复现
-- [ ] 模拟服务与导出 JSON 契约一致（路径/入参/出参逐项比对 `插件\自研插件集V1.6\*.json`）
+- [ ] poll_test_progress.py 退出码验证：done→0 / failed→1 / 连续失败→2 / 超时→3，fail_reason 出参非空
