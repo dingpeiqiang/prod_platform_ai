@@ -62,9 +62,9 @@
 
 ## 工具9 上线审批推送 `submit_approval`
 - POST `/api/v1/appstore/approval/submit`
-- 入参：`req_id`(必填,"缺少执行方案key，请先完成执行主干")、`product_id`(必填,"缺少产品ID，请先完成配置落地")、`report_url`(必填,报告全文或链接)、`approval_flow`(选填,standard|urgent,默认standard)
-- 出参：`approval_id`、`status`
-- 30s / 重试 1 次；幂等（同 product_id 返回原 approval_id）；**后端硬校验 req_id 四环节（config/spec/fee/test）结果齐全，缺失拒绝推送**
+- 入参：`req_id`(必填,"缺少执行方案key，请先完成执行主干")、`product_id`(必填,"缺少产品ID，请先完成配置落地")、`report_url`(必填,报告全文或链接)、`approval_flow`(选填,standard|urgent,默认standard)、`approve_confirmed`(脚本内置固定 true——用户已明确回复"发起审批"后才会进入程序C，此字段为后端硬门禁依据)
+- 出参：`approval_id`、`status`(审批中/通过/驳回)；`status=NOT_CONFIRMED` 且无 approval_id → approve_confirmed 未置 true（脚本已内置，正常不应出现；出现即报缺陷）
+- 30s / 重试 1 次；幂等（同 product_id 返回原 approval_id）；**后端硬校验：approve_confirmed=true 且 req_id 四环节（config/spec/fee/test）结果齐全，缺失拒绝推送**
 
 ## 工具10 监控查询 `query_monitor`
 - GET `/api/v1/appstore/product/monitor`

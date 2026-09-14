@@ -190,7 +190,8 @@ def cmd_submit_approval(args):
         _err("PARAM_MISSING", "缺少执行方案key/产品ID/上线报告，请先完成执行主干")
     out = _http("POST", "/api/v1/appstore/approval/submit",
                 {"req_id": args.req_id, "product_id": args.product_id,
-                 "report_url": report, "approval_flow": args.approval_flow or "standard"},
+                 "report_url": report, "approval_flow": args.approval_flow or "standard",
+                 "approve_confirmed": True},
                 timeout=TIMEOUT_ASYNC)
     print(json.dumps(out, ensure_ascii=False))
 
