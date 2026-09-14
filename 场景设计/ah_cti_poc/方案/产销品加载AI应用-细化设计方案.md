@@ -1,12 +1,15 @@
 # 产销品加载 AI 应用 · 细化设计方案
-> 实现方式：Skills 技能包（`cpcp-product-worker`，V1.4 版：4 份 flow 流程文档 + 17 子命令脚本）
+> 实现方式：Skills 技能包（`cpcp-product-worker`，V1.4 版：4 份 flow 流程文档 + 18 子命令脚本）
 > 场景：安徽电信 CPCP 产销品域 · 数字员工（必选场景）
-> 版本：V2.3　日期：2026-09-14
+> 版本：V2.6　日期：2026-09-14
 > 依据文档：《产销品加载AI应用开发方案.md》（V2.9，下称"主方案"）、《Skills技能包实现方案.md》（V1.4，下称"技能包方案"）
 
 ## 版本记录
 | 版本 | 日期 | 变更说明 |
 | --- | --- | --- |
+| V2.6 | 2026-09-14 | **上线脚本真实落盘下载（工具7 出参强化 + 新增工具7A）**：① 工具7 出参 `script_url` 由相对路径改为**绝对 URL**——后端控制器按 X-Forwarded-Proto/X-Forwarded-Host/Host 头解析网关前置地址后拼装，头缺失退化为相对路径（脚本层补 BASE_URL 前缀）；幂等重放时按本次请求头重写 script_url 保证链接始终可用；② 脚本层新增 `download_launch_script` 子命令（工具7A，本地代码节点）——GET 下载路由响应体原样写本地文件（默认 `./launch_<product_id>.sql`），出参 resultCode/saved_path/file_size；③ 程序B 环节1 落地后自动下载，输出模板新增"脚本文件已下载：{{saved_path}}（{{file_size}} 字节）"行（下载失败省略该行不中断主干）；④ 1.3 映射表/2.x 工具7/3.5 环节1 同步 |
+| V2.5 | 2026-09-14 | **资费校准 8 项比对明细出参化（工具8 扩展）**：① billing_verify 出参新增 `compare_list[]`——8 项（套餐月租/流量/语音/短信赠送量/三项套外资费/商品有效期），requirement_desc 取落地配置 plan_json 字段原文、billing_desc 系统侧含折算括注（"首月按天折算"/"按天折算"/"自动续展"）、result 两态；② 环节3 输出模板改为逐行引用 compare_list（禁止模板自行拼装折算括注），表行数=出参长度；③ 1.3 映射表/3.4.7 模板②同步；④ 后端 buildFeeCompareList 实现（种子销售品资费规则 + 过渡期资费推导折算括注） |
+| V2.4 | 2026-09-14 | **受理验证归并为自动测试子集（去独立环节5）**：① 执行主干由"5 环节"改回"四环节"（智能配置→稽核→资费校准→自动测试），受理验证=环节4 测试报告内子集小节（数据源不变：orderId/offerInstId+逐受理场景，不新增接口、不设触发词）；② 1.3 映射总表/3.1 程序B 表/3.3 调度时序/3.4.5 测试报告提示词/3.4.7 模板①②③ 全量同步四环节口径；③ flow-C 上线校验看板"受理验证"行并入"自动测试（含受理验证）"；④ SKILL.md description/路由表/纪律/开场白同步（"受理验证"用户单独询问时回放环节4 小节）；⑤ 工具7 出参 script_url（V2.3）在 1.3 映射表同步展示 |
 | V2.3 | 2026-09-14 | **配置上线脚本下载链接（工具7 扩展）**：① 工具7 出参新增 `script_url`（相对路径 `/api/v1/appstore/product/config/script?product_id=Pxxx`），落地成功时后端按落地配置自动生成 CRM/billing 落库 SQL 脚本（模拟，两段式 `/*run@crm*/`+`/*run@billing*/`）并存入脚本档案；② 新增附带下载路由 GET `/api/v1/appstore/product/config/script`（text/plain，附件名 launch_Pxxx.sql，未落地 404）；③ 程序B 环节1 输出模板新增"配置上线脚本下载链接"行（script_url 逐字引用出参，缺失省略本行） |
 | V2.2 | 2026-09-14 | **字段体系全量重构同步（对齐主方案 V2.9，3 模块/9 分类/24 字段）**：① 1.3 映射总表与 3.1 映射索引同步 24 字段口径（"18 字段要素"→"24 字段要素"、"四类18字段数组"→"3 模块/9 分类 24 字段数组"、"套餐固定费"→"套餐档位"、待补充唯一项=套餐档位、产品编码默认"系统待生成"）；② 来源两态归一——"AI推理"→"AI补全"，来源枚举 {原始需求, AI补全}（原"本体推理"并入 AI补全，6.3 枚举约定同步）；③ 触发词对齐——"确认执行"→"确认配置"（3.0/3.1/3.3/3.4/3.5/E3 等同步）、"发起审批"→"上线审批"、新增"确认上线"（flow-D 支线D-3 监控运维方案，审批通过后触发）；④ 3.0/3.1 程序B 四环节→5 环节（新增受理验证，复用测试结果不新增接口）、程序C 输出改上线校验看板（5 项 ✅ 表）；⑤ 3.4 待补充判定改套餐档位唯一、提示词模板同步五列模块表格（模块/分类/字段名称/字段值/备注）与"建议处理"引导话术；⑥ 3.5 用例 #3/#4/#4b 口径同步（套餐固定费→套餐档位）；⑦ 第 2 章工具契约原样保留（接口契约零改动，仅出参 offerInfo.fields 说明同步 24 字段） |
 | V2.1 | 2026-09-14 | **全部接口去除 contractRoot 包裹，统一裸报文请求**（基于 599 元 5G 套餐实测反馈，接口路径/入出参契约零改动）：① 2.0.2 节整体改写为"请求报文约定"——tcpCont 报文头拼装表与 contractRoot 包裹结构删除，请求体直接为业务参数 JSON（置于顶层），变更原因与出参侧 `_unwrap` 兼容说明见节内注记；② 2.1/2.3 各工具"接口"行同步（contractRoot 报文/requestObject 报文 → 裸报文）；③ 2.4 自测项 #8 改为"裸报文契约"（mock 回显断言）、#13 本地自测 7→8 项、#14 为 ontology 空返回防护；④ 2.6 映射表 similar_offer/spec_audit/ontology_reason 备注同步；⑤ 附录 A 核对项同步；⑥ 工具2 spec_audit 文件传参缺陷修复（`--config-json-file` 未走 `_read_arg` 导致 PARAM_MISSING） |
@@ -62,12 +65,11 @@
 | 需求提报 | 程序A `flow-A-requirement.md` 触发 | 无（需求原文直接进入步骤1） | 产销品业务规范（引导话术） | requirement_text |
 | 需求分析 | 程序A | similar_offer、ontology_reason、build_plan、save_node_result | 业务规范 + **存量销售品资料库（K4 单文件）** | req_id / plan_md（五列模块表格）/ plan_json |
 | 用户确认 | SKILL.md 意图路由（识别确认语义后加载程序B，V2.2 起后端无确认门禁） | —（无存储写入） | — | — |
-| **执行主干自动化串行**（五环节一次跑完，中途不停顿，仅异常中断） | 程序B `flow-B-execution.md`（环节1→2→3→4→5 串行） | 见下列各环节行 | 各环节对应知识库 | 每环节结果打印；异常中断并引导重新执行/修改执行方案 |
-| 智能配置 | 程序B 环节1 | query_node_result、extract_record、save_product_config | — | product_id / offer_id / save_result |
+| **执行主干自动化串行**（四环节一次跑完，中途不停顿，仅异常中断；受理验证为自动测试子集） | 程序B `flow-B-execution.md`（环节1→2→3→4 串行） | 见下列各环节行 | 各环节对应知识库 | 每环节结果打印；异常中断并引导重新执行/修改执行方案 |
+| 智能配置 | 程序B 环节1 | query_node_result、extract_record、save_product_config、download_launch_script | — | product_id / offer_id / save_result / script_url（绝对 URL）/ 脚本文件 saved_path / file_size |
 | 配置规格稽核（实时） | 程序B 环节2 | spec_audit | 业务规范（稽核标准参照） | pass / error_list / audit_summary |
-| 资费校准 | 程序B 环节3 | billing_verify | **资费规则库（K2）** | pass / risk_list |
-| 自动测试 | 程序B 环节4 | offer_test、test_scenes、poll_test_progress.py、test_progress、test_result | **测试规范库（K3）** + 存量销售品资料库（预期值核对） | globalId / 测试报告 |
-| 受理验证 | 程序B 环节5 | 无（复用环节4 测试结果，不新增接口） | — | 受理验证结论（orderId/offerInstId + 逐受理场景结论） |
+| 资费校准 | 程序B 环节3 | billing_verify | **资费规则库（K2）** | pass / risk_list / compare_list（8 项比对明细） |
+| 自动测试（含受理验证子集） | 程序B 环节4 | offer_test、test_scenes、poll_test_progress.py、test_progress、test_result | **测试规范库（K3）** + 存量销售品资料库（预期值核对） | globalId / 测试报告（含受理验证小节：orderId/offerInstId + 逐受理场景结论） |
 | 成功结果详情与审批确认 | 程序B 末步（打印汇总后中断等待"上线审批"） | 无（汇总引用各环节输出） | — | 上线校验看板 / 用户确认后发起审批 |
 | 上线审批 | 程序C `flow-C-approval.md` | query_node_result×5（串行自查）、submit_approval | — | approval_id / status / 7 章节报告 |
 | **审批进度查询** | 程序D 支线D-1 `flow-D-query-ops.md` | approval_status | — | 审批状态 / 当前环节 / 意见 |
@@ -341,13 +343,13 @@
 | `offer_id` | string | 销售品 ID（后续稽核/测试入参） |
 | `save_result` | object | 各字段分类写入结果（基础信息/资源配置/营销资源/销售规则 各自 success/fail 及原因） |
 | `status` | string | SUCCESS / PARTIAL / FAIL |
-| `script_url` | string | V2.5 新增：配置上线脚本下载链接（相对路径 `/api/v1/appstore/product/config/script?product_id=Pxxx`），环节1 输出模板引用 |
+| `script_url` | string | V2.6 起为**绝对 URL**（后端按 X-Forwarded-Proto/Host 头解析网关前置地址后拼装，可直接下载；头缺失退化为相对路径 `/api/v1/appstore/product/config/script?product_id=Pxxx`），环节1 输出模板引用 |
 
 | 归纳 | 否 |
 | --- | --- |
 | 超时/重试 | 60s / **不自动重试**（写操作防重复写入；失败由用户重新触发） |
-| **确认门禁（V2.2 移除）** | 原 V1.7 后端硬校验（confirmed==true + 存储中 req_id 的 CONFIRMED 标记，无标记返回 NOT_CONFIRMED）**已删除**——联调发现 LLM 跳步/漏写标记导致合法调用被误拒，确认与否改由外层智能体 LLM 语义识别保证；后端保留幂等（同 plan_json 重放返回原结果）与 plan_json 合法性校验；插件入参 confirmed 保留为兼容字段（后端仅记录不校验） |
-| **上线脚本（V2.5 新增）** | 落地成功时按落地配置自动生成 CRM/billing 落库 SQL 脚本（模拟，两段式：`/*run@crm*/` 定价信息 PD_GOODSPRC_DICT/PD_GOODSCLASS_REL/PD_GOODSOPCODE_REL/PD_GOODSRELEASE_DICT + `/*run@billing*/` 优惠/累计 FAV_INDEX/CUMULATE_VALUE_CTRL/VOICEFAV_CFEE_PLAN/PRICING_COMBINE/REMIND_ITEM_PROPERTY/REMIND_GROUP_MEMBER），存入脚本档案；附带下载路由 GET `/api/v1/appstore/product/config/script?product_id=Pxxx`（text/plain，附件名 launch_Pxxx.sql；未落地返回 404） |
+| **确认门禁（V2.2 移除）** | 原 V1.7 后端硬校验（confirmed==true + 存储中 req_id 的 CONFIRMED 标记，无标记返回 NOT_CONFIRMED）**已删除**——联调发现 LLM 跳步/漏写标记导致合法调用被误拒，确认与否改由外层智能体 LLM 语义识别保证；后端保留幂等（同 plan_json 重放返回原结果，并按本次请求头重写 script_url）与 plan_json 合法性校验；插件入参 confirmed 保留为兼容字段（后端仅记录不校验） |
+| **上线脚本（V2.5 新增，V2.6 强化）** | 落地成功时按落地配置自动生成 CRM/billing 落库 SQL 脚本（模拟，两段式：`/*run@crm*/` 定价信息 PD_GOODSPRC_DICT/PD_GOODSCLASS_REL/PD_GOODSOPCODE_REL/PD_GOODSRELEASE_DICT + `/*run@billing*/` 优惠/累计 FAV_INDEX/CUMULATE_VALUE_CTRL/VOICEFAV_CFEE_PLAN/PRICING_COMBINE/REMIND_ITEM_PROPERTY/REMIND_GROUP_MEMBER），存入脚本档案；附带下载路由 GET `/api/v1/appstore/product/config/script?product_id=Pxxx`（text/plain，附件名 launch_Pxxx.sql；未落地返回 404）；V2.6 起脚本层新增 `download_launch_script` 子命令，环节1 落地后自动下载为本地文件（默认 `./launch_<product_id>.sql`，出参 saved_path/file_size） |
 | 错误处理 | status=PARTIAL 时返回失败分类明细供用户修正；status=FAIL 终止 wf_sub_02 |
 
 #### 工具8：计费规则校验 `check_billing_rule`
@@ -367,6 +369,7 @@
 | --- | --- | --- |
 | `pass` | int | 1 通过 / 0 不通过 |
 | `risk_list` | array | risk_type 风险类型 / risk_desc 风险描述 / suggest 建议 |
+| `compare_list` | array | V2.6 新增：8 项资费比对明细（环节3 比对表逐行引用）——project_name（套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期）、requirement_desc（需求侧值，取落地配置 plan_json 字段原文）、billing_desc（系统侧值，含折算括注如"29元（首月按天折算）"、"长期有效（自动续展）"）、result（一致/不一致） |
 
 | 归纳 | 是 |
 | --- | --- |
@@ -560,14 +563,14 @@
 | 节点6 保存执行方案 [存储] | 步骤7 | 运行 `cpcp_api.py save_node_result --node requirement`；**仅无待补充项时执行**；修改场景同键覆盖写 |
 | 节点7/8 双结束 | 步骤8 | 出口A（有待补充：提示补充，确认无效）/ 出口B（已保存：返回 req_id 并等待确认中断点，输出模板见 3.4.7 模板①） |
 
-**程序B `flow-B-execution.md` ← wf_sub_02→03→05→04（合并串行，用户确认后一次跑完，V2.2 扩为 5 环节=四环节+受理验证，中途不停顿，仅异常中断）**
+**程序B `flow-B-execution.md` ← wf_sub_02→03→05→04（合并串行，用户确认后一次跑完，四环节，中途不停顿，仅异常中断；受理验证为环节4 自动测试子集，不单列环节）**
 | 原子工作流（环节） | 程序步骤要点 | 关键口径（不变） |
 | --- | --- | --- |
-| wf_sub_02（环节1 智能配置） | 自查 requirement → extract_record 提取执行方案原文 → `save_product_config`（plan_json 原文原样透传，**唯一写入步骤，中间无任何模型改写**；不自动重试） | status==SUCCESS/PARTIAL 通过（按 3.4.7 模板②打印）；FAIL → E6 中断（fail_node=STAGE1_CONFIG）；存 config |
+| wf_sub_02（环节1 智能配置） | 自查 requirement → extract_record 提取执行方案原文 → `save_product_config`（plan_json 原文原样透传，**唯一写入步骤，中间无任何模型改写**；不自动重试；出参含 script_url 绝对 URL）→ `download_launch_script`（自动下载脚本为本地文件，失败不中断主干） | status==SUCCESS/PARTIAL 通过（按 3.4.7 模板②打印，含"脚本文件已下载"行）；FAIL → E6 中断（fail_node=STAGE1_CONFIG）；存 config |
 | wf_sub_03（环节2 规格稽核） | 自查 config+提取原文（取 offer_id/config_json）→ `spec_audit --audit-scene all`（同步无轮询）→ 整改建议（pass=0 时整理 error_list，不新增稽核结论） | pass==1 通过；pass==0 → E8 中断（可联动 send_alert(high)）；超时重试1次仍异常 → E7（STAGE2_AUDIT）；存 spec |
 | wf_sub_05（环节3 资费校准） | 自查 config+提取原文 → `billing_verify --check-scene all` → 风险解读（先读 K2 叠加优惠约束说明，可作解释依据但不得新增风险结论） | pass==1 通过（risk_list 为空说明）；pass==0 → E9 中断（STAGE3_FEE）；存 fee |
-| wf_sub_04（环节4 自动测试） | 自查 config+提取原文（取 offer_id）→ `offer_test`（resultCode=1 直接终止 E10）→ `test_scenes`（空场景 E11）→ `poll_test_progress.py` 轮询（间隔5s/最多360次/连续5次失败终止 E12/30分钟超时 E13）→ `test_result`（done=true 后查询）→ 内嵌模板生成测试报告（**受理验证结论强制章节**，orderId/offerInstId 为空标注人工核实 E14） | test_passed==通过 打印成功（含受理验证结论）；失败/超时中断（STAGE4_TEST）；存 test |
-| 成功结果详情汇总（原主流程节点14，并入程序B 末步） | 五环节全成后按 3.4.7 模板②打印成功详情，**中断等待用户回复"上线审批"**（衔接程序C） | 逐字引用各环节出参，不加工；模板中 ✅/统计值与出参一一对应 |
+| wf_sub_04（环节4 自动测试含受理验证子集） | 自查 config+提取原文（取 offer_id）→ `offer_test`（resultCode=1 直接终止 E10）→ `test_scenes`（空场景 E11）→ `poll_test_progress.py` 轮询（间隔5s/最多360次/连续5次失败终止 E12/30分钟超时 E13）→ `test_result`（done=true 后查询）→ 内嵌模板生成测试报告（**受理验证为报告内子集小节**，orderId/offerInstId 为空标注人工核实 E14） | test_passed==通过 打印成功（含受理验证小节）；失败/超时中断（STAGE4_TEST）；存 test |
+| 成功结果详情汇总（原主流程节点14，并入程序B 末步） | 四环节全成后按 3.4.7 模板②打印成功详情，**中断等待用户回复"上线审批"**（衔接程序C） | 逐字引用各环节出参，不加工；模板中 ✅/统计值与出参一一对应 |
 
 **程序C `flow-C-approval.md` ← wf_sub_06（11 节点）**
 | 原节点 | 程序步骤 | 说明（口径不变） |
@@ -609,15 +612,14 @@
 第二轮：
 加载 flow-B-execution.md，按程序B 串行执行（严格串行，不等用户再发消息）：
   ① 取上下文中执行方案存储键 req_id（沿用原值，不新生成）
-  ② 串行运行五环节（每环节返回后打印结果并附"建议处理"引导，环节结果由 save_node_result 落库）：
+  ② 串行运行四环节（每环节返回后打印结果并附"建议处理"引导，环节结果由 save_node_result 落库）：
     环节1 智能配置（自查 requirement→extract_record 提取执行方案原文→save_product_config 落地
          +存储 config；V2.2 起后端不校验 CONFIRMED 标记，确认语义由 SKILL.md 纪律保证）
     → 环节2 配置规格稽核（自查 config+extract_record 取 offer_id/config_json，spec_audit 同步返回，存储 spec）
     → 环节3 资费校准（自查 config+extract_record 取 config_json，billing_verify，存储 fee）
     → 环节4 自动测试（自查 config+extract_record 取 offer_id，offer_test→test_scenes→
-       poll_test_progress.py 轮询→test_result，存储 test）
-    → 环节5 受理验证（复用环节4 测试结果出具受理验证结论：orderId/offerInstId+逐受理场景比对，
-       不新增接口调用）
+       poll_test_progress.py 轮询→test_result，存储 test；输出内含受理验证小节——
+       复用测试结果出具受理验证结论：orderId/offerInstId+逐受理场景比对，不新增接口调用、不设独立环节）
 → 全部成功 → 打印上线校验看板 + 提示"是否发起上线审批" → 【中断：等待审批发起确认】
 （任一环节异常 → 立即中断：打印异常环节+原因+建议，引导【重新执行】/【修改执行方案】）
 
@@ -770,7 +772,7 @@ for i in range(max_retry):
 你是产销品自动测试报告生成助手。基于输入的测试结果数据生成《销售品自动测试报告》，
 必须包含以下章节：
 1. 测试概要：被测销售品（offerName）、测试流水（globalId）、场景总数/测点总数/通过/失败统计；
-2. 受理验证结论（强制章节，不得省略）：
+2. 受理验证结论（自动测试子集小节，不得省略）：
    - 受理凭证：orderId={{orderId}}，offerInstId={{offerInstId}}；
      若为空，写明"未获取到受理凭证，需人工核实"；
    - 逐受理场景结论：按场景（套餐新装 S_O_TC / 副卡加装 S_ADD_CARD / 套餐退订 S_U_TC）
@@ -808,7 +810,7 @@ for i in range(max_retry):
 【若存在待补充字段】执行方案暂未保存、暂不能执行（回复【确认配置】无效）：
 - 请直接补充套餐档位字段值，将更新执行方案并再次确认；
 【若待补充字段为空（req_id 已生成）】已识别并生成《××》销售品需求单，已保存（req_id：{{req_id}}），请核对：
-- 回复【确认配置】：将自动串行执行 智能配置→配置规格稽核→资费校准→自动测试→受理验证 五个环节
+- 回复【确认配置】：将自动串行执行 智能配置→配置规格稽核→资费校准→自动测试（含受理验证子集） 四个环节
   （每环节执行后向您打印结果，仅异常时中断）；
 - 如需调整：请直接说明修改意见（仅套餐档位须由您补充，其余字段已按相似产品补全）。
 - 建议处理：可输入"确认配置"进入【智能配置】。
@@ -820,24 +822,22 @@ for i in range(max_retry):
 - 关键数据：{该环节关键输出（✅/统计值与出参一一对应，出参没有的数据省略该行）}
   环节1：product_id / offer_id / 各模块字段写入结果（save_result）
   环节2：稽核通过 + audit_summary
-  环节3：资费校准通过 + risk_list 为空说明
-  环节4：场景数/测点数统计 + 测试结论
-  环节5：受理验证结论（orderId/offerInstId + 逐受理场景结论）
-- 已自动进入下一环节……（环节5 时改为"- 执行主干全部完成"）
+  环节3：资费校准通过 + 8 项比对表（compare_list 全部一致） + risk_list 为空说明
+  环节4：场景数/测点数统计 + 测试结论 + 受理验证小节（orderId/offerInstId + 逐受理场景结论）
+- 已自动进入下一环节……（环节4 时改为"- 执行主干全部完成"）
 - 建议处理：可输入"××"进入【××】。
 ```
 > 实现：执行类环节结果直接引用脚本出参拼装（不经过模型加工）；模型仅做格式化时提示词注明"逐字引用输入数据，不新增内容"。
 
 **模板③ 成功结果详情汇总（程序B 末步，承接原节点14/3.1.3；程序C 输出=上线校验看板+7 章节报告，见 flow-C 步骤3）**
 ```
-执行主干五个环节全部成功，请按以下模板输出（逐字引用输入数据，不新增结论）：
+执行主干四个环节全部成功，请按以下模板输出（逐字引用输入数据，不新增结论）：
 
-【执行主干全部完成】✅ 共5个环节执行成功：
+【执行主干全部完成】✅ 共4个环节执行成功：
 1. 智能配置：product_id={...}，offer_id={...}，各模块字段全部写入成功；
 2. 配置规格稽核：通过，{audit_summary}；
 3. 资费校准：通过，未发现叠加/互斥冲突；
-4. 自动测试：场景 N 个、测点 M 个全部一致；
-5. 受理验证：orderId={...}，offerInstId={...}，各受理场景均通过。
+4. 自动测试：场景 N 个、测点 M 个全部一致；受理验证（测试子集）：orderId={...}，offerInstId={...}，各受理场景均通过。
 
 是否发起上线审批？回复【上线审批】将汇总以上结果提交审批流；回复【暂不】可稍后发送"上线审批"继续。
 ```

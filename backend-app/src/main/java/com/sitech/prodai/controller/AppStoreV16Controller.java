@@ -59,11 +59,12 @@ public class AppStoreV16Controller {
 
     @Operation(summary = "配置落地", description = "解析执行方案JSON四类字段写入模拟CRM配置库；内部二次校验 confirmed==true 与存储 CONFIRMED 标记门禁；同 plan_json 幂等")
     @PostMapping("/product/config/save")
-    public Map<String, Object> saveProductConfig(@RequestBody Map<String, Object> req) {
-        return sim.saveProductConfig(req);
+    public Map<String, Object> saveProductConfig(@RequestBody Map<String, Object> req,
+                                                 jakarta.servlet.http.HttpServletRequest httpRequest) {
+        return sim.saveProductConfig(req, externalBaseUrl(httpRequest));
     }
 
-    @Operation(summary = "配置上线脚本下载", description = "V2.5：按 product_id 回放配置落地环节生成的 CRM/billing 落库 SQL 脚本（text/plain 下载）；未落地产品返回 404")
+    @Operation(summary = "配置上线脚本下载", description = "V2.5：按 product_id 回放配置落地环节生成的 CRM/billing 落库 SQL 脚本（text/plain 附件下载，附件名 launch_{product_id}.sql）；未落地产品返回 404")
     @GetMapping("/product/config/script")
     public org.springframework.http.ResponseEntity<String> launchScript(@RequestParam("product_id") String product_id) {
         String script = sim.launchScriptOf(product_id);
@@ -74,6 +75,26 @@ public class AppStoreV16Controller {
                 .header("Content-Disposition", "attachment; filename=launch_" + product_id + ".sql")
                 .header("Content-Type", "text/plain; charset=utf-8")
                 .body(script);
+    }
+
+    /**
+     * V2.6 外部可下载基址：优先取反向代理透传头（X-Forwarded-Proto/X-Forwarded-Host），
+     * 依次回退 Host 头、请求自身 scheme+host；结果形如 http://10.86.13.201:31281（无尾斜杠）。
+     */
+    private String externalBaseUrl(jakarta.servlet.http.HttpServletRequest request) {
+        String proto = request.getHeader("X-Forwarded-Proto");
+        String host = firstNonBlank(request.getHeader("X-Forwarded-Host"), request.getHeader("Host"));
+        if (host != null && !host.isBlank()) {
+            return (proto == null || proto.isBlank() ? request.getScheme() : proto.trim()) + "://" + host.trim();
+        }
+        return request.getScheme() + "://" + request.getServerName() + ":" + request.getServerPort();
+    }
+
+    private String firstNonBlank(String a, String b) {
+        if (a != null && !a.isBlank()) {
+            return a;
+        }
+        return b;
     }
 
     /* ================= 接口4：测试发起 offer_test ================= */

@@ -1,6 +1,6 @@
 # 工具契约参考（自原细化设计 2.1/2.2/2.3 迁移）
 
-> 14 个工具的完整入出参契约。脚本 `skills/cpcp-product-worker/scripts/cpcp_api.py` 子命令与本契约一一对应；
+> 工具契约完整清单。脚本 `skills/cpcp-product-worker/scripts/cpcp_api.py` 子命令与本契约一一对应（含本地代码节点类子命令）；
 > 接口契约基线：《产销品场景部分能力接口清单.xlsx》；模拟服务基址：`http://10.86.13.201:31281`（环境变量 `CPCP_BASE_URL` 可覆盖）。
 > 请求体统一为**裸报文**（业务参数 JSON 直接置于顶层，V2.7 起不再使用 contractRoot/tcpCont 包裹）；出参若为 contractRoot/resultObject 包裹格式，脚本 `_unwrap` 自动解包。
 
@@ -51,15 +51,22 @@
 ## 工具7 配置落地 `save_product_config`
 - POST `/api/v1/appstore/product/config/save`
 - 入参：`req_id`(必填,"缺少执行方案key，请先完成需求分析并确认执行方案")、`plan_json`(必填,存储取回的 JSON 原文原样透传)、`operator`(选填)、`confirmed`(兼容字段，后端仅记录不校验)
-- 出参：`product_id`、`offer_id`、`save_result`(基础信息/资源配置/营销资源/销售规则 各分类 success/fail 及原因)、`status`=SUCCESS|PARTIAL|FAIL、`script_url`(V2.5 新增，配置上线脚本下载链接，相对路径 `/api/v1/appstore/product/config/script?product_id=Pxxx`)
-- 60s / **不自动重试**（写操作防重复写入）；后端保留 plan_json 合法性校验（5001）与同 plan_json 幂等；确认门禁已移除（V2.2）；落地成功时同步生成 CRM/billing 落库 SQL 脚本（模拟）
+- 出参：`product_id`、`offer_id`、`save_result`(基础信息/资源配置/营销资源/销售规则 各分类 success/fail 及原因)、`status`=SUCCESS|PARTIAL|FAIL、`script_url`(V2.6 起为**绝对 URL**，后端按 X-Forwarded-Proto/Host 头解析网关前置地址后拼装，可直接点击下载；头缺失时退化为相对路径 `/api/v1/appstore/product/config/script?product_id=Pxxx`，此时脚本层拼接 BASE_URL 前缀)
+- 60s / **不自动重试**（写操作防重复写入）；后端保留 plan_json 合法性校验（5001）与同 plan_json 幂等（重放时按本次请求头重写 script_url，保证链接始终可用）；确认门禁已移除（V2.2）；落地成功时同步生成 CRM/billing 落库 SQL 脚本（模拟）
 - **附带下载路由**：GET `/api/v1/appstore/product/config/script?product_id=Pxxx` → text/plain（附件名 launch_Pxxx.sql），返回后端生成的两段式 SQL（/*run@crm*/ 定价信息段 + /*run@billing*/ 优惠/累计段）；product_id 未落地返回 404
+
+## 工具7A 脚本文件下载 `download_launch_script`
+- GET `/api/v1/appstore/product/config/script`（本地代码节点，非平台插件）
+- 入参：`--product-id`(必填,"缺少产品ID，请先完成配置落地并取出参 product_id")、`--save-path`(选填,默认 `./launch_<product_id>.sql`)
+- 行为：下载脚本响应体原样写入本地文件（二进制安全，不按 JSON 解析）
+- 出参：`resultCode`(0=成功)、`resultMsg`、`saved_path`(绝对路径)、`file_size`(字节数)
+- 错误处理：HTTP 404（product_id 未落地）→ `HTTP_404`，提示确认已落地；网络异常重试 1 次；**失败不中断执行主干**（环节1 链接行仍在，用户可手动下载）
 
 ## 工具8 计费规则校验 `billing_verify`
 - POST `/api/v1/appstore/billing/rules/verify`
 - 入参：`config_json`(必填)、`check_scene`(选填,fee/overlay/superposition/all,默认all)
-- 出参：`pass`(1/0)、`risk_list[]`(risk_type/risk_desc/suggest)
-- 60s / 重试 1 次；pass=0 → E9 资费驳回分支
+- 出参：`pass`(1/0)、`risk_list[]`(risk_type/risk_desc/suggest)、`compare_list[]`(V2.6 新增，8 项资费比对明细：project_name=套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期、requirement_desc=需求侧值（取落地配置 plan_json 字段原文）、billing_desc=系统侧值（含折算括注如"29元（首月按天折算）"、"长期有效（自动续展）"）、result=一致/不一致)
+- 60s / 重试 1 次；pass=0 → E9 资费驳回分支；环节3 比对表逐行引用 compare_list（禁止模板自行拼装）
 
 ## 工具9 上线审批推送 `submit_approval`
 - POST `/api/v1/appstore/approval/submit`

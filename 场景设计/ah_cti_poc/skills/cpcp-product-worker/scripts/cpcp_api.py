@@ -230,6 +230,37 @@ def cmd_send_alert(args):
     print(json.dumps(out, ensure_ascii=False))
 
 
+def cmd_download_launch_script(args):
+    if not args.product_id:
+        _err("PARAM_MISSING", "缺少产品ID，请先完成配置落地并取出参 product_id")
+    save_path = args.save_path or ("launch_%s.sql" % args.product_id)
+    # 复用 _http 会把响应体按 JSON 解析，脚本为 text/plain，这里独立发起下载
+    url = BASE_URL.rstrip("/") + "/api/v1/appstore/product/config/script?" + \
+        urllib.parse.urlencode({"product_id": args.product_id})
+    last_err = None
+    for i in range(RETRY + 1):
+        try:
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=TIMEOUT_SYNC) as resp:
+                if resp.status != 200:
+                    _err("HTTP_%d" % resp.status, "脚本下载失败，请确认 product_id 已完成配置落地")
+                content = resp.read()
+            with open(save_path, "wb") as f:
+                f.write(content)
+            print(json.dumps({"resultCode": "0", "resultMsg": "success",
+                              "saved_path": os.path.abspath(save_path),
+                              "file_size": len(content)}, ensure_ascii=False))
+            return
+        except urllib.error.HTTPError as e:
+            detail = e.reason or ("未落地" if e.code == 404 else "HTTP %d" % e.code)
+            _err("HTTP_%d" % e.code, "脚本下载失败（%s），请确认 product_id 已完成配置落地" % detail)
+        except (urllib.error.URLError, TimeoutError, socket_timeout()) as e:
+            last_err = e
+            if i >= RETRY:
+                _err("NET_ERROR", "脚本下载网络异常：%s" % e)
+            time.sleep(1)
+
+
 def cmd_approval_status(args):
     if not args.approval_id and not args.product_id:
         _err("PARAM_MISSING", "请提供审批单号或销售品ID，以便查询审批进度")
@@ -369,6 +400,9 @@ def main():
     s = sub.add_parser("send_alert")
     s.add_argument("--product-id", required=True); s.add_argument("--alarm-level", required=True)
     s.add_argument("--content", required=True); s.set_defaults(fn=cmd_send_alert)
+    s = sub.add_parser("download_launch_script")
+    s.add_argument("--product-id", required=True)
+    s.add_argument("--save-path", default=""); s.set_defaults(fn=cmd_download_launch_script)
     s = sub.add_parser("approval_status")
     s.add_argument("--approval-id", default=""); s.add_argument("--product-id", default="")
     s.set_defaults(fn=cmd_approval_status)

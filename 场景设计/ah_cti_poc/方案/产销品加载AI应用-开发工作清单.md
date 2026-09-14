@@ -2,10 +2,10 @@
 
 > 平台：Skills 技能包（`cpcp-product-worker`）+ 后端模拟服务
 > 版本：V1.10　日期：2026-09-14
-> 依据：《产销品加载AI应用开发方案.md》V2.9（1.4 节实现方式说明）、《产销品加载AI应用-细化设计方案.md》V2.3、《skills/Skills技能包实现方案.md》V1.3
+> 依据：《产销品加载AI应用开发方案.md》V3.0（1.4 节实现方式说明）、《产销品加载AI应用-细化设计方案.md》V2.4、《skills/Skills技能包实现方案.md》V1.3
 > 用途：需要**代码开发**的接口/服务/数据/脚本工作清单（技能包部署与自测见《平台配置清单》，本清单不含）
 >
-> V1.10 变更（2026-09-14）：**配置上线脚本下载链接**——① 接口3 save_product_config 落地成功时后端生成 CRM/billing 落库 SQL 上线脚本（模拟，两段式 /*run@crm*/+/*run@billing*/）并存脚本档案，出参新增 `script_url`；② 新增附带下载路由 GET `/api/v1/appstore/product/config/script`（text/plain，未落地 404）；③ flow-B 环节1 输出模板新增"配置上线脚本下载链接"行。
+> V1.10 变更（2026-09-14）：**配置上线脚本下载链接 + 受理验证归并为自动测试子集**——① 接口3 save_product_config 落地成功时后端生成 CRM/billing 落库 SQL 上线脚本（模拟，两段式 /*run@crm*/+/*run@billing*/）并存脚本档案，出参新增 `script_url`；② 新增附带下载路由 GET `/api/v1/appstore/product/config/script`（text/plain，未落地 404）；③ flow-B 环节1 输出模板新增"配置上线脚本下载链接"行；④ 执行主干改回四环节（智能配置→稽核→资费校准→自动测试），受理验证=环节4 测试报告内子集小节，不设独立环节5 与触发词；flow-C 看板"受理验证"行并入"自动测试（含受理验证）"（4 项 ✅）。
 > V1.9 变更（2026-09-14）：字段体系全量重构对齐 V3.0 口径——① 接口1 出参 offerInfo fields 由四类18字段改 3 模块/9 分类 24 字段（toFields18 重写）；② 后端 FieldOntologyService 字段注册表重构（套餐档位唯一待补充项、套餐编码默认"系统待生成"、来源两态【原始需求】/【AI补全】）；③ cpcp_api.py build_plan 改五列模块表格输出（CATEGORY_MODULE/SOURCE_LABEL 常量）；④ 工具3 确认门禁描述按 V2.2 修订（实际已移除，本版同步清理残留描述）；⑤ 触发词"确认配置/上线审批/确认上线"对齐。
 
 ---
@@ -81,7 +81,7 @@
 | 1 | `scripts/cpcp_api.py` 统一 API 客户端（17 子命令） | 承接原 14 个插件工具封装层：请求侧**裸报文**（业务参数 JSON 置于顶层，V2.7 起 contractRoot/tcpCont 包裹整体移除）、出参侧 `_unwrap` 兼容解包、超时重试（同步 60s/异步 30s、save_product_config 不自动重试）、错误码归一（PARAM_MISSING/HTTP_xxx/NET_ERROR/TIMEOUT/PARSE_ERROR/ONTOLOGY_EMPTY）；含 `build_plan`（承接原 004a 拆分代码节点：req_id 系统生成 PLAN+时间戳+3位随机、plan_json 三键组装、**plan_md 五列模块表格代码生成（模块/分类/字段名称/字段值/备注，CATEGORY_MODULE 归并+同模块/同分类合并展示，V1.9 重写）**、pending_fields 反查、SOURCE_LABEL 来源两态【原始需求】/【AI补全】）与 `extract_record`（承接原 CODE_EXTRACT_RECORD：提取 list[0].result_json，list 空报 E5）本地逻辑；节点结果存储查询直连后端（64KB 前置校验 5004）；大报文支持 `--xxx-file` 文件传参 | ✅ 已完成（编译通过、本地自测 8 项通过） |
 | 2 | `scripts/poll_test_progress.py` 测试进度轮询（承接原 wf_sub_04 代码节点 0304） | 间隔 5s、最多 360 次（超时 30 分钟）、连续 5 次查询失败终止转人工（保留 globalId）；退出码 0=done / 1=failed / 2=连续失败 / 3=超时，输出 fail_reason 供程序分支判定 | ✅ 已完成 |
 | 3 | `scripts/test_cpcp_api_local.py` 本地功能自测 | 不依赖后端 8 项断言（裸报文契约 mock 回显/出参解包归一/错误码归一/build_plan 唯一 req_id/E5/枚举缺参 64KB 前置校验） | ✅ 已完成（8 项通过） |
-| 4 | LLM 调度层配套（SKILL.md + flow 文档程序约束，无独立代码） | 意图路由 5 类（含单环节点播：执行稽核/资费校准/自动测试/受理验证）、确认语义识别（触发词"确认配置"，V2.2：无需写 CONFIRMED 标记）、程序B 串行纪律（严禁并行/跳步/重复调用写接口，5 环节=四环节+受理验证）、每环节结果打印（"建议处理"引导话术；✅/统计值与出参一一对应）、上线审批触发词、确认上线→监控运维方案（审批通过后）、fail_node 续跑映射（STAGE1~4→环节1~4）；全部由 SKILL.md 核心纪律 5 条与 flow-A~D 文档固化 | ✅ 已完成（文档） |
+| 4 | LLM 调度层配套（SKILL.md + flow 文档程序约束，无独立代码） | 意图路由 5 类（含单环节点播：执行稽核/资费校准/自动测试；受理验证为自动测试子集，单独询问时回放环节4 小节）、确认语义识别（触发词"确认配置"，V2.2：无需写 CONFIRMED 标记）、程序B 串行纪律（严禁并行/跳步/重复调用写接口，四环节，受理验证不单列）、每环节结果打印（"建议处理"引导话术；✅/统计值与出参一一对应）、上线审批触发词、确认上线→监控运维方案（审批通过后）、fail_node 续跑映射（STAGE1~4→环节1~4）；全部由 SKILL.md 核心纪律 5 条与 flow-A~D 文档固化 | ✅ 已完成（文档） |
 
 ---
 

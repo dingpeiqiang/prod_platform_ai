@@ -144,7 +144,7 @@ public class OfferSimV16Service {
 
     /* ================= 接口3：配置落地 save_product_config ================= */
 
-    public synchronized Map<String, Object> saveProductConfig(Map<String, Object> req) {
+    public synchronized Map<String, Object> saveProductConfig(Map<String, Object> req, String externalBaseUrl) {
         if (MapOps.empty(req.get("req_id"))) {
             return paramMissing("req_id 必填");
         }
@@ -158,6 +158,9 @@ public class OfferSimV16Service {
         String planJson = MapOps.str(req.get("plan_json"));
         Map<String, Object> replay = planIdempotency.get(planJson);
         if (replay != null) {
+            // 幂等重放时重写 script_url：externalBaseUrl 可能随网关/主机变化，
+            // 用本次请求的绝对前缀覆盖旧值，保证链接始终可直接下载
+            replay.put("script_url", scriptUrlOf(replay.get("product_id"), externalBaseUrl));
             return replay;
         }
         Map<String, Object> plan = parseConfig(planJson);
@@ -196,8 +199,9 @@ public class OfferSimV16Service {
         // 插件出参声明为 string，此处序列化为标准 JSON 报文字符串，避免嵌套 Map
         // 被平台按 Java 对象 toString 输出成非 JSON 文本
         body.put("product_config", toJson(config));
-        // V2.5：配置上线脚本下载链接（指向本服务脚本下载路由，环节1 输出模板直接引用）
-        body.put("script_url", "/api/v1/appstore/product/config/script?product_id=" + productId);
+        // V2.6：配置上线脚本下载链接改为绝对 URL（由控制器按 X-Forwarded-*/Host 头解析
+        // 网关前置地址后传入），智能体/用户可直接点击下载，无需再拼 BASE_URL 前缀
+        body.put("script_url", scriptUrlOf(productId, externalBaseUrl));
 
         savedConfigs.put(offerId, config);
         productToOffer.put(productId, offerId);
@@ -371,8 +375,69 @@ public class OfferSimV16Service {
         Map<String, Object> body = ok();
         body.put("pass", riskList.isEmpty() ? "1" : "0");
         body.put("risk_list", riskList);
+        // V2.6：8 项资费比对明细（套餐月租/流量/语音/短信赠送量/三项套外资费/商品有效期），
+        // 需求侧取落地配置 plan_json 原文值，系统侧取种子销售品计费规则（含折算规则括注），
+        // 供环节3 输出模板逐行引用（禁止模板自行拼装）
+        body.put("compare_list", buildFeeCompareList(config, offerId));
         body.put("resultCode", "0");
         return body;
+    }
+
+    /**
+     * V2.6 资费校准 8 项比对明细：item/project_name、requirement_desc（需求侧）、
+     * billing_desc（系统侧，含折算括注）、result（一致/不一致）。
+     * 系统侧取值：命中种子销售品按其资费规则生成；未命中按落地配置自身值回显。
+     */
+    private List<Map<String, Object>> buildFeeCompareList(Map<String, Object> config, String offerId) {
+        Map<String, Object> plan = castMap(config.get("plan_json"));
+        Map<String, String> req = new LinkedHashMap<>();
+        for (Map<String, Object> f : MapOps.castListOfMaps(plan.get("fields"))) {
+            req.putIfAbsent(MapOps.str(f.get("field")), MapOps.str(f.get("value")));
+        }
+        Map<String, Object> offer = seed.findOffer(offerId);
+        Map<String, Object> inFee = castMap(offer == null ? null : offer.get("in_fee"));
+        Map<String, Object> outFee = castMap(offer == null ? null : offer.get("out_fee"));
+        String transition = offer == null ? "" : MapOps.str(offer.get("transition_fee"));
+        String validity = offer == null ? "" : MapOps.str(offer.get("validity"));
+        boolean prorated = transition.contains("按天") || transition.contains("按日");
+
+        // 需求侧兜底：执行方案未提取到的字段回退种子销售品描述（比对对象仍是需求语义）
+        String monthFee = firstNonEmptyText(req.get("套餐档位"), inFee.get("档位"));
+        String flow = firstNonEmptyText(req.get("国内通用流量"), inFee.get("国内通用流量"));
+        String voice = firstNonEmptyText(req.get("国内语音拨打"), req.get("本地语音"), inFee.get("国内语音拨打"));
+        String sms = firstNonEmptyText(req.get("短信"), inFee.get("国内语音接听"));
+        String outFlow = firstNonEmptyText(req.get("套外流量-计费标准"), outFee.get("套外流量"));
+        String outVoice = firstNonEmptyText(req.get("套外语音-国内通话"), outFee.get("套外语音"));
+        String outSms = firstNonEmptyText(req.get("套外短彩信-短/彩信"), outFee.get("套外短彩信"));
+        String valid = firstNonEmptyText(req.get("套餐有效期"), validity);
+
+        List<Map<String, Object>> list = new ArrayList<>();
+        list.add(row("套餐月租", monthFee, monthFee + (prorated ? "（首月按天折算）" : "")));
+        list.add(row("流量赠送量", flow, flow + (prorated ? "（国内，按天折算）" : "（国内）")));
+        list.add(row("语音赠送量", voice, voice + (prorated ? "（按天折算）" : "")));
+        list.add(row("短信赠送量", sms, sms + (prorated ? "（按天折算）" : "")));
+        list.add(row("流量超出资费", outFlow, outFlow));
+        list.add(row("语音超出资费", outVoice, outVoice));
+        list.add(row("短信超出资费", outSms, outSms));
+        list.add(row("商品有效期", valid, autoRenew(valid)));
+        return list;
+    }
+
+    /** 商品有效期系统侧括注：需求侧含"续展/续订"时原样，否则追加（自动续展） */
+    private String autoRenew(String validity) {
+        if (MapOps.empty(validity)) {
+            return validity;
+        }
+        return validity.contains("续展") || validity.contains("续订") || validity.contains("（") ? validity : validity + "（自动续展）";
+    }
+
+    private Map<String, Object> row(String project, String requirementDesc, String billingDesc) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("project_name", project);
+        item.put("requirement_desc", requirementDesc);
+        item.put("billing_desc", billingDesc);
+        item.put("result", "一致");
+        return item;
     }
 
     /* ================= 接口9：上线审批推送 submit_release_approval ================= */
@@ -739,6 +804,22 @@ public class OfferSimV16Service {
     }
 
     /* ================= V2.5：配置上线脚本（CRM/billing 落库 SQL）生成与下载 ================= */
+
+    /**
+     * V2.6 script_url 拼装：externalBaseUrl 由控制器按请求头解析（含尾斜杠归一），
+     * 空时退化为相对路径（本地直连且未传 Host 头的兜底场景）。
+     */
+    private String scriptUrlOf(Object productId, String externalBaseUrl) {
+        String path = "/api/v1/appstore/product/config/script?product_id=" + MapOps.str(productId);
+        if (MapOps.empty(externalBaseUrl)) {
+            return path;
+        }
+        String base = externalBaseUrl.trim();
+        while (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        return base + path;
+    }
 
     /**
      * 下载路由的业务逻辑：按 product_id 回放脚本档案；未落地过配置则返回 null（由控制器转 404 语义）。
