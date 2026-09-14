@@ -1235,6 +1235,356 @@ files["wf_sub_08_审批进度查询.json"] = workflow(
     "产销品-审批进度查询", "子工作流8：审批进度查询（V2.4 调整：仅按产品查询）。按 product_id 查最新审批单：query_approval_status（自研模拟）→状态摘要归纳（温度0.2）。轻量查询子工作流，智能体可直调工具13替代。", "wf_sub_08", s8,
     [edge(701,702), edge(702,703), edge(703,704)])
 
+# ============================================================
+# 产销品-组合智能配置-自动化测试（主流程导出，V2.4 优化）
+#   开始(req_id) → 智能配置 → 规格稽核 → 自动测试 → 资费校准 →
+#   执行结果汇总（type=6 代码节点：解析各子工作流 content 提取各环节结论，
+#   结构化输出 summary_md/summary_json/all_pass）→
+#   条件分支（all_pass="1" 否则分支=存在异常；port=0 兜底=全部通过）→
+#   两分支各自报告生成（LLM，结构化展示每个环节执行结果）→
+#   正常分支提示用户发起上线审批，异常分支提示整改后重试
+# ============================================================
+CODE_COMBO_SUMMARY = (
+    "import json, re\n"
+    "from typing import Any, Dict\n"
+    "\n"
+    "async def main(args):\n"
+    "    p = args.params\n"
+    "    config_text = str(p.get('config_content') or '')\n"
+    "    spec_text = str(p.get('spec_content') or '')\n"
+    "    test_text = str(p.get('test_content') or '')\n"
+    "    fee_text = str(p.get('fee_content') or '')\n"
+    "    # 环节1 智能配置：content 含 product_id=、offer_id=、状态：SUCCESS/PARTIAL/FAIL\n"
+    "    product_id = ''\n"
+    "    offer_id = ''\n"
+    "    config_status = 'UNKNOWN'\n"
+    "    m = re.search(r'product_id[=：:]\\s*([A-Za-z0-9\\-]+)', config_text)\n"
+    "    if m:\n"
+    "        product_id = m.group(1)\n"
+    "    m = re.search(r'offer_id[=：:]\\s*([A-Za-z0-9\\-]+)', config_text)\n"
+    "    if m:\n"
+    "        offer_id = m.group(1)\n"
+    "    m = re.search(r'状态[=：:]\\s*(SUCCESS|PARTIAL|FAIL)', config_text)\n"
+    "    if m:\n"
+    "        config_status = m.group(1)\n"
+    "    config_pass = '1' if config_status in ('SUCCESS', 'PARTIAL') and product_id else '0'\n"
+    "    # 环节2 规格稽核：content 含 pass=1/0\n"
+    "    spec_pass = '0'\n"
+    "    m = re.search(r'pass[=：:]\\s*([01])', spec_text)\n"
+    "    if m:\n"
+    "        spec_pass = m.group(1)\n"
+    "    # 环节3 自动测试：content 为完整测试报告，取'总体结论'章节后的 通过/失败\n"
+    "    test_pass = '0'\n"
+    "    tail = test_text.split('总体结论')[-1] if '总体结论' in test_text else test_text\n"
+    "    if '失败' not in tail and ('通过' in tail or test_text.strip()):\n"
+    "        test_pass = '1'\n"
+    "    # 环节4 资费校准：content 含 pass=1/0\n"
+    "    fee_pass = '0'\n"
+    "    m = re.search(r'pass[=：:]\\s*([01])', fee_text)\n"
+    "    if m:\n"
+    "        fee_pass = m.group(1)\n"
+    "    all_pass = '1' if (config_pass == '1' and spec_pass == '1' and test_pass == '1' and fee_pass == '1') else '0'\n"
+    "    # 各环节结论标记：✅通过 / ❌未通过 / ⚠️部分成功\n"
+    "    def mark(v):\n"
+    "        return '✅ 通过' if v == '1' else '❌ 未通过'\n"
+    "    config_mark = ('⚠️ 部分成功' if config_status == 'PARTIAL' else mark(config_pass))\n"
+    "    status_cn = {'SUCCESS': '成功', 'PARTIAL': '部分成功', 'FAIL': '失败'}.get(config_status, '未知')\n"
+    "    summary_md = '\\n'.join([\n"
+    "        '| 环节 | 结论 | 关键结果 |',\n"
+    "        '| --- | --- | --- |',\n"
+    "        '| 智能配置 | ' + config_mark + ' | product_id=' + (product_id or '-') + '，offer_id=' + (offer_id or '-') + '，落地状态=' + status_cn + ' |',\n"
+    "        '| 规格稽核 | ' + mark(spec_pass) + ' | ' + (spec_text.replace(chr(10), ' ').strip()[:120] or '-') + ' |',\n"
+    "        '| 自动测试 | ' + mark(test_pass) + ' | ' + (test_text.replace(chr(10), ' ').strip()[:120] or '-') + ' |',\n"
+    "        '| 资费校准 | ' + mark(fee_pass) + ' | ' + (fee_text.replace(chr(10), ' ').strip()[:120] or '-') + ' |',\n"
+    "    ])\n"
+    "    summary_json = json.dumps({\n"
+    "        'product_id': product_id, 'offer_id': offer_id,\n"
+    "        'config_status': config_status, 'config_pass': config_pass,\n"
+    "        'spec_pass': spec_pass, 'test_pass': test_pass, 'fee_pass': fee_pass,\n"
+    "        'all_pass': all_pass == '1',\n"
+    "    }, ensure_ascii=False)\n"
+    "    ret: Output = {\n"
+    "        \"summary_md\": summary_md,\n"
+    "        \"summary_json\": summary_json,\n"
+    "        \"product_id\": product_id,\n"
+    "        \"offer_id\": offer_id,\n"
+    "        \"all_pass\": all_pass\n"
+    "    }\n"
+    "    return ret"
+)
+
+COMBO_REPORT_PROMPT = (
+    "# 角色\n"
+    "\n"
+    "你是产销品加载执行结果汇总助手。智能配置、规格稽核、自动测试、资费校准四个环节已串行执行完毕，请基于系统提供的各环节执行结果，向用户输出结构化的执行结果汇总。\n"
+    "\n"
+    "# 各环节执行结果\n"
+    "结构化汇总表（summary_md）：\n"
+    "{summary_md}\n"
+    "\n"
+    "结构化汇总JSON（summary_json）：\n"
+    "{summary_json}\n"
+    "\n"
+    "各环节执行结果原文：\n"
+    "智能配置：{config_content}\n"
+    "规格稽核：{spec_content}\n"
+    "自动测试：{test_content}\n"
+    "资费校准：{fee_content}\n"
+    "\n"
+    "# 处理要求\n"
+    "1. 按环节逐一展示执行结果：每个环节给出结论（✅ 通过 / ⚠️ 部分成功 / ❌ 未通过）与关键结果说明，数据以系统提供的为准，不得凭空创造。\n"
+    "2. 智能配置环节展示产品标识（product_id/offer_id）与落地状态；规格稽核与资费校准环节展示问题明细或风险清单要点；自动测试环节展示受理验证结论（orderId/offerInstId）与场景通过情况。\n"
+    "3. 输出末尾固定给出下一步指引：全部通过时提示用户可发起上线审批（说明将按产品发起审批推送）；存在异常时逐条列出需整改项，并提示用户整改后重新执行。\n"
+    "\n"
+    "# 固定输出格式\n"
+    "# 【产销品加载执行结果汇总】\n"
+    "\n"
+    "**整体结论：全部通过（可发起上线审批）/ 存在异常（需整改）**\n"
+    "\n"
+    "## 各环节执行结果\n"
+    "\n"
+    "（按环节逐一列出：结论标记+关键结果，使用表格或分节呈现）\n"
+    "\n"
+    "## 下一步指引\n"
+    "\n"
+    "> （全部通过：提示用户发起上线审批；存在异常：逐条列出整改项并提示重新执行）"
+)
+
+sc = []
+sc.append(start_node(901, [
+    inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键）", required=True),
+]))
+# 四环节子工作流串行：智能配置(902)→规格稽核(903)→自动测试(904)→资费校准(905)
+def combo_subflow(seq, title, wf_id, node_seq_hint):
+    return {
+        "outputs": [{"name": "content", "type": "string", "content": "", "description": "子工作流结束节点输出"}],
+        "flowJson": None,
+        "inputs": [inp("req_id", "执行主干批次号（与执行方案存储同键）", ref_block=nid(901), ref_rel="req_id")],
+        "checkErr": False, "history": False,
+        "nodeMeta": {"workFlowId": wf_id, "description": title + "（单入参 req_id 自查链路，环节存储下沉子工作流）", "title": title, "version": "1.0"},
+        "position": {"x": 0, "y": 0},
+        "id": nid(seq), "dependencyData": [], "type": 13
+    }
+sc.append(combo_subflow(902, "智能配置", "wf_sub_02", 102))
+sc.append(combo_subflow(903, "规格稽核", "wf_sub_03", 201))
+sc.append(combo_subflow(904, "自动测试", "wf_sub_04", 301))
+sc.append(combo_subflow(905, "资费校准", "wf_sub_05", 401))
+sc.append(code_node(906, "执行结果汇总", CODE_COMBO_SUMMARY,
+    [inp("config_content", "智能配置环节输出", ref_block=nid(902), ref_rel="content"),
+     inp("spec_content", "规格稽核环节输出", ref_block=nid(903), ref_rel="content"),
+     inp("test_content", "自动测试环节输出", ref_block=nid(904), ref_rel="content"),
+     inp("fee_content", "资费校准环节输出", ref_block=nid(905), ref_rel="content")],
+    [code_out("summary_md", 906), code_out("summary_json", 906),
+     code_out("product_id", 906), code_out("offer_id", 906), code_out("all_pass", 906)],
+    pos=(1830, 300)))
+sc.append(selector_node2(907, "整体结论判断",
+    [dep_node(906, "执行结果汇总", ["all_pass"])],
+    # 平台约定：条件定义在 port=-1（否则分支）；port=0 由平台自动路由
+    # 语义：all_pass 不等于"1"（存在异常）→ port=-1 异常分支；port=0 兜底（全部通过）→ 提示发起上线审批
+    [(-1, [cond_item(cond_ref(906, "all_pass", "执行结果汇总"), 2, cond_str("1"))])]))
+sc.append(llm_node(908, "执行结果报告(全部通过)",
+    COMBO_REPORT_PROMPT + "\n\n补充说明：本批次四环节全部通过（all_pass=1），整体结论固定为\"全部通过（可发起上线审批）\"；下一步指引固定为提示用户发起上线审批，并说明发起审批时将引用 req_id 对应的执行方案与四环节结果。",
+    [inp("summary_md", "结构化汇总表", ref_block=nid(906), ref_rel="summary_md"),
+     inp("summary_json", "结构化汇总JSON", ref_block=nid(906), ref_rel="summary_json"),
+     inp("config_content", "智能配置环节输出", ref_block=nid(902), ref_rel="content"),
+     inp("spec_content", "规格稽核环节输出", ref_block=nid(903), ref_rel="content"),
+     inp("test_content", "自动测试环节输出", ref_block=nid(904), ref_rel="content"),
+     inp("fee_content", "资费校准环节输出", ref_block=nid(905), ref_rel="content")],
+    [out("combo_report", "执行结果汇总报告")], pos=(2550, 160)))
+sc.append(llm_node(909, "执行结果报告(存在异常)",
+    COMBO_REPORT_PROMPT + "\n\n补充说明：本批次存在未通过环节（all_pass=0），整体结论固定为\"存在异常（需整改）\"；逐条列出未通过环节的问题明细或风险要点，下一步指引固定为提示用户整改后重新执行对应环节。",
+    [inp("summary_md", "结构化汇总表", ref_block=nid(906), ref_rel="summary_md"),
+     inp("summary_json", "结构化汇总JSON", ref_block=nid(906), ref_rel="summary_json"),
+     inp("config_content", "智能配置环节输出", ref_block=nid(902), ref_rel="content"),
+     inp("spec_content", "规格稽核环节输出", ref_block=nid(903), ref_rel="content"),
+     inp("test_content", "自动测试环节输出", ref_block=nid(904), ref_rel="content"),
+     inp("fee_content", "资费校准环节输出", ref_block=nid(905), ref_rel="content")],
+    [out("combo_report", "执行结果汇总报告")], pos=(2550, 460)))
+sc.append(end_node(910, "结束(全部通过-提示发起审批)",
+    [inp("combo_report", "执行结果汇总报告", ref_block=nid(908), ref_rel="combo_report"),
+     inp("req_id", "执行主干批次号", ref_block=nid(901), ref_rel="req_id")],
+    "四环节（智能配置→规格稽核→自动测试→资费校准）已全部执行完成（req_id：{req_id}），结果如下：\n\n{combo_report}\n\n【下一步】各环节均无异常，您可以直接发起上线审批。"))
+sc.append(end_node(911, "结束(存在异常-提示整改)",
+    [inp("combo_report", "执行结果汇总报告", ref_block=nid(909), ref_rel="combo_report"),
+     inp("req_id", "执行主干批次号", ref_block=nid(901), ref_rel="req_id")],
+    "四环节（智能配置→规格稽核→自动测试→资费校准）执行完成（req_id：{req_id}），但存在未通过环节，结果如下：\n\n{combo_report}\n\n【下一步】请按上述整改项完成处理后重新执行。"))
+files["产销品-组合智能配置-自动化测试_export.json"] = workflow(
+    "产销品-智能配置-自动化测试", "组合主流程（V2.4 优化：结构化汇总+审批指引）：智能配置→规格稽核→自动测试→资费校准四环节串行（单入参 req_id 贯穿，环节存储下沉子工作流）→执行结果汇总（代码节点解析各环节输出：product_id/offer_id/落地状态/稽核结论/测试结论/资费结论，结构化输出汇总表 summary_md+汇总JSON summary_json+整体结论 all_pass）→整体结论判断（存在异常走 port=-1 分支；port=0 兜底全部通过）→两分支各自 LLM 报告生成（按固定模板结构化展示每个环节执行结果）→结束输出报告：全部通过提示用户发起上线审批，存在异常逐条列出整改项并提示重新执行。", "wf_combo_exec", sc,
+    [edge(901,902), edge(902,903), edge(903,904), edge(904,905), edge(905,906),
+     edge(906,907), edge(907,908,0), edge(907,909,-1), edge(908,910), edge(909,911)])
+
+# ============================================================
+# 产销品-智能配置-稽核-测试-资费校准（合并独立工作流，V2.5）
+#   将 wf_sub_02/03/04/05 四个子工作流节点内联展开为单一独立工作流，
+#   去掉各环节的"query_node_result 自查链路"（环节间直接以节点出参传值），
+#   环节存储保留（config/spec/fee/test 四环节仍按 req_id+node_name 存储）：
+#
+#   开始(req_id)
+#     → [智能配置] 106提取执行方案原文(直接用 req_id 起点入参校验) 
+#       1102读取执行方案(query_node_result requirement) → 1106提取原文
+#       → 1103配置落地(save_product_config) → 1105存储config
+#     → [规格稽核] 1202实时稽核(offer_id←1103, config_json←1103.product_config)
+#       → 1203整改建议 → 1205存储spec
+#     → [自动测试] 1302发起测试(offerId←1103.offer_id) → 1303查询场景
+#       → 1304轮询进度 → 1305查询结果 → 1306测试报告 → 1308存储test
+#     → [资费校准] 1402计费校验(config_json←1103.product_config)
+#       → 1403风险解读 → 1405存储fee
+#     → 1404结束(输出四环节结果汇总)
+# ============================================================
+MERGED_END_CONTENT = (
+    "四环节（智能配置→规格稽核→自动测试→资费校准）已串行执行完成（req_id：{req_id}）：\n\n"
+    "【智能配置】product_id={product_id}，offer_id={offer_id}，落地状态={status}\n"
+    "{save_result}\n\n"
+    "【规格稽核】pass={spec_pass}\n{audit_suggest}\n\n"
+    "【自动测试】总体结论：{test_passed}（globalId：{global_id}）\n{test_report}\n\n"
+    "【资费校准】pass={fee_pass}\n{risk_summary}\n\n"
+    "【下一步】若四环节均无异常，您可以直接发起上线审批；如存在异常，请按上述整改建议/风险提示处理后重新执行。"
+)
+
+sm = []
+sm.append(start_node(1101, [
+    inp("req_id", "执行主干批次号（PLAN+yyyyMMddHHmmss+3位随机数，与执行方案存储同键）", required=True),
+]))
+# ---------- 环节1 智能配置 ----------
+sm.append(plugin_node(1102, "读取执行方案", "query_node_result",
+    "节点结果查询（复用）：req_id=开始节点 req_id，node_name=requirement 取回执行方案记录数组",
+    BASE_URL + "/api/v1/appstore/result/query",
+    [inp("req_id", "存储键（=开始节点 req_id）", ref_block=nid(1101), ref_rel="req_id"),
+     inp("node_name", "环节名=requirement", content="requirement"),
+     inp("latest_only", "1=只返回最新一条（默认）", content="1")],
+    [("code", "0成功", "string"), ("msg", "状态描述", "string"),
+     ("total", "命中记录数", "string"), ("list", "记录数组JSON（取[0].result_json为执行方案原文）", "string")],
+    method="get"))
+sm.append(code_node(1106, "提取执行方案原文", CODE_EXTRACT_RECORD,
+    [inp("query_list", "引用节点1102查询出参 list（记录数组JSON）", ref_block=nid(1102), ref_rel="list")],
+    [code_out("record_json", 1106), code_out("offer_id", 1106)],
+    pos=(375, 300)))
+sm.append(plugin_node(1103, "配置落地", "save_product_config",
+    "工具7：执行方案JSON原文透传落地（节点1106已从查询记录中提取 result_json 原文）；方案key由后端从 plan_json 的 req_id 键提取",
+    BASE_URL + "/api/v1/appstore/product/config/save",
+    [inp("req_id", "执行批次号（=开始节点 req_id，与执行方案存储键同一）", ref_block=nid(1101), ref_rel="req_id"),
+     inp("plan_json", "执行方案JSON原文（节点1106提取的 result_json）", ref_block=nid(1106), ref_rel="record_json"),
+     inp("confirmed", "用户确认标志true（V2.2起后端不校验，仅记录）", content="true"),
+     inp("operator", "操作人（默认system）", content="system")],
+    [("product_id", "CRM产品ID", "string"), ("offer_id", "销售品ID", "string"),
+     ("save_result", "四类字段写入结果", "string"), ("status", "SUCCESS/PARTIAL/FAIL", "string"),
+     ("product_config", "完整落地配置JSON（含product_id/offer_id/offer_name等与plan_json原文）", "string")]))
+sm.append(plugin_node(1105, "存储config环节结果", "save_node_result",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=config（智能配置），result_json=完整落地配置JSON（含offer_id编码）",
+    BASE_URL + "/api/v1/appstore/result/save",
+    [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(1101), ref_rel="req_id"),
+     inp("node_name", "环节名=config（智能配置）", content="config"),
+     inp("result_json", "环节结果JSON=完整落地配置JSON（节点1103出参 product_config）", ref_block=nid(1103), ref_rel="product_config"),
+     inp("status", "本环节状态=ok", content="ok")],
+    [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")]))
+# ---------- 环节2 规格稽核（offer_id/config_json 直连节点1103出参，免自查） ----------
+sm.append(plugin_node(1202, "实时稽核", "realtime_spec_audit",
+    "工具2：自研模拟实时稽核，同步返回；offer_id/config_json 直连智能配置环节落地结果（节点1103出参 offer_id/product_config）",
+    BASE_URL + "/api/v1/appstore/audit/realtime",
+    [inp("offer_id", "销售品ID（节点1103出参）", ref_block=nid(1103), ref_rel="offer_id"),
+     inp("config_json", "落地配置JSON（节点1103出参 product_config）", ref_block=nid(1103), ref_rel="product_config"),
+     inp("audit_scene", "稽核场景默认all", content="all")],
+    [("pass", "1通过/0不通过", "string"), ("error_list", "问题明细", "array"),
+     ("audit_summary", "稽核总结", "string"), ("resultCode", "0成功/NET_ERROR/TIMEOUT", "string")]))
+sm.append(llm_node(1203, "整改建议生成",
+    "将稽核问题明细整理为可执行的整改建议清单（error_list={error_list}，audit_summary={audit_summary}），按严重级别排序；pass=1 时输出\"稽核通过\"。不新增稽核结论。\n"
+    "输出要求：仅输出整改建议清单内容（对应出参 audit_suggest），不输出其他多余文字。",
+    [inp("error_list", "引用节点1202问题明细", ref_block=nid(1202), ref_rel="error_list"),
+     inp("audit_summary", "引用节点1202稽核总结", ref_block=nid(1202), ref_rel="audit_summary")],
+    [out("audit_suggest", "整改建议清单")]))
+sm.append(plugin_node(1205, "存储spec环节结果", "save_node_result",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=spec（规格稽核），result_json=稽核总结",
+    BASE_URL + "/api/v1/appstore/result/save",
+    [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(1101), ref_rel="req_id"),
+     inp("node_name", "环节名=spec（规格稽核）", content="spec"),
+     inp("result_json", "环节结果JSON=稽核总结（节点1202出参 audit_summary）", ref_block=nid(1202), ref_rel="audit_summary"),
+     inp("status", "本环节状态=ok", content="ok")],
+    [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")]))
+# ---------- 环节3 自动测试（offerId 直连节点1103出参） ----------
+sm.append(plugin_node(1302, "发起测试", "offer_test",
+    "工具3：自研模拟测试发起，返回模拟测试流水globalId；offerId 直连智能配置环节落地结果（节点1103出参 offer_id）",
+    BASE_URL + "/api/v1/appstore/test/offer/start",
+    [inp("offerId", "销售品ID（节点1103出参 offer_id）", ref_block=nid(1103), ref_rel="offer_id")],
+    [("resultCode", "0成功/1失败", "string"), ("resultMsg", "处理结果描述", "string"),
+     ("globalId", "测试流水号", "string")]))
+sm.append(plugin_node(1303, "查询测试场景", "get_test_scenes",
+    "工具4：查询受理验证覆盖范围（套餐新装/副卡加装/套餐退订）",
+    BASE_URL + "/api/v1/appstore/test/offer/scenes",
+    [inp("globalId", "测试流水号（节点1302出参）", ref_block=nid(1302), ref_rel="globalId")],
+    [("resultCode", "0成功/1失败", "string"), ("testScenes", "场景列表", "array")]))
+sm.append(code_node(1304, "轮询测试进度", CODE_POLL_PROGRESS,
+    [inp("globalId", "测试流水号（节点1302出参）", ref_block=nid(1302), ref_rel="globalId")],
+    [code_out("done", 1304), code_out("failed", 1304),
+     code_out("failIndex", 1304), code_out("fail_reason", 1304)],
+    pos=(1815, 300)))
+sm.append(plugin_node(1305, "查询测试结果", "get_test_result",
+    "工具6：done=true后调用一次；presetValue取自《产品信息.txt》该销售品规则值；返回受理凭证orderId/offerInstId",
+    BASE_URL + "/api/v1/appstore/test/offer/result",
+    [inp("globalId", "测试流水号", ref_block=nid(1302), ref_rel="globalId")],
+    [("resultCode", "0成功/1失败", "string"), ("resultMsg", "处理结果描述", "string"),
+     ("testRequestId", "测试请求ID", "string"), ("testRequestName", "测试请求名称", "string"),
+     ("offerName", "被测销售品名称", "string"), ("orderId", "受理订单号", "string"),
+     ("offerInstId", "销售品实例ID", "string"), ("testScenes", "逐场景结果含测点明细", "array")]))
+sm.append(llm_node(1306, "测试报告生成",
+    "你是产销品自动测试报告生成助手。基于逐场景测试结果（testScenes={testScenes}）生成《销售品自动测试报告》，必须包含：1.测试概要（offerName/globalId/场景与测点统计）；2.受理验证结论（强制章节：orderId={orderId}、offerInstId={offerInstId}，为空则写明\"未获取到受理凭证，需人工核实\"；逐受理场景 S_O_TC/S_ADD_CARD/S_U_TC 给出通过/失败结论）；3.逐场景明细（仅展开resultCode=1不一致测点）；4.AI总结与建议（引用objTestSceneRel）；5.总体结论。\n"
+    "输出要求（两个出参逐一约定）：\n"
+    "1. test_report：完整测试报告文本（含上述5个章节，受理验证结论为强制章节）；\n"
+    "2. test_passed：总体结论，取值\"通过\"或\"失败\"（仅输出这两个词之一）；\n"
+    "3. 只基于输入数据生成，不得虚构测点或结论。",
+    [inp("testScenes", "引用节点1305逐场景结果", ref_block=nid(1305), ref_rel="testScenes"),
+     inp("orderId", "受理订单号", ref_block=nid(1305), ref_rel="orderId"),
+     inp("offerInstId", "销售品实例ID", ref_block=nid(1305), ref_rel="offerInstId")],
+    [out("test_report", "测试报告（含受理验证结论）"), out("test_passed", "通过/失败")]))
+sm.append(plugin_node(1308, "存储test环节结果", "save_node_result",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=test（自动测试），result_json=测试报告",
+    BASE_URL + "/api/v1/appstore/result/save",
+    [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(1101), ref_rel="req_id"),
+     inp("node_name", "环节名=test（自动测试）", content="test"),
+     inp("result_json", "环节结果JSON=测试报告（节点1306出参 test_report）", ref_block=nid(1306), ref_rel="test_report"),
+     inp("status", "本环节状态=ok", content="ok")],
+    [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")]))
+# ---------- 环节4 资费校准（config_json 直连节点1103出参） ----------
+sm.append(plugin_node(1402, "计费校验", "check_billing_rule",
+    "工具8：自研模拟计费规则校验（内置叠加/互斥/负资费规则，适配18销售品资费结构）；config_json 直连智能配置环节落地结果（节点1103出参 product_config）",
+    BASE_URL + "/api/v1/appstore/billing/rules/verify",
+    [inp("config_json", "落地配置JSON（节点1103出参 product_config）", ref_block=nid(1103), ref_rel="product_config"),
+     inp("check_scene", "校验场景默认all", content="all")],
+    [("pass", "1通过/0不通过", "string"), ("risk_list", "风险清单", "array")]))
+sm.append(llm_node(1403, "风险解读",
+    "将资费风险清单（risk_list={risk_list}）翻译为业务语言，说明每条风险的影响与建议；risk_list 为空时输出\"资费校准通过，未发现叠加/互斥冲突\"。可引用资费规则库知识作为解释依据，但不得新增风险结论。\n"
+    "输出要求：仅输出风险解读内容（对应出参 risk_summary），不输出其他多余文字。",
+    [inp("risk_list", "引用节点1402风险清单", ref_block=nid(1402), ref_rel="risk_list")],
+    [out("risk_summary", "风险解读")]))
+sm.append(plugin_node(1405, "存储fee环节结果", "save_node_result",
+    "环节结果存储（复用）：req_id=入参 req_id，node_name=fee（资费校准），result_json=风险解读",
+    BASE_URL + "/api/v1/appstore/result/save",
+    [inp("req_id", "执行批次标识（=开始节点 req_id）", ref_block=nid(1101), ref_rel="req_id"),
+     inp("node_name", "环节名=fee（资费校准）", content="fee"),
+     inp("result_json", "环节结果JSON=风险解读（节点1403出参 risk_summary）", ref_block=nid(1403), ref_rel="risk_summary"),
+     inp("status", "本环节状态=ok", content="ok")],
+    [("code", "0成功", "string"), ("msg", "状态描述", "string"), ("record_id", "存储记录ID", "string")]))
+# ---------- 汇总结束（四环节结果直连各环节节点出参） ----------
+sm.append(end_node(1404, "结束(四环节执行完成)",
+    [inp("req_id", "执行主干批次号", ref_block=nid(1101), ref_rel="req_id"),
+     inp("product_id", "CRM产品ID", ref_block=nid(1103), ref_rel="product_id"),
+     inp("offer_id", "销售品ID", ref_block=nid(1103), ref_rel="offer_id"),
+     inp("save_result", "四类字段写入结果", ref_block=nid(1103), ref_rel="save_result"),
+     inp("status", "落地状态", ref_block=nid(1103), ref_rel="status"),
+     inp("spec_pass", "稽核结论", ref_block=nid(1202), ref_rel="pass"),
+     inp("audit_suggest", "整改建议", ref_block=nid(1203), ref_rel="audit_suggest"),
+     inp("test_passed", "测试总体结论", ref_block=nid(1306), ref_rel="test_passed"),
+     inp("test_report", "测试报告", ref_block=nid(1306), ref_rel="test_report"),
+     inp("global_id", "测试流水号", ref_block=nid(1302), ref_rel="globalId"),
+     inp("fee_pass", "校验结论", ref_block=nid(1402), ref_rel="pass"),
+     inp("risk_summary", "风险解读", ref_block=nid(1403), ref_rel="risk_summary")],
+    MERGED_END_CONTENT))
+files["产销品-智能配置-稽核-测试-资费校准_合并_export.json"] = workflow(
+    "产销品-智能配置-稽核-测试-资费校准（合并）", "合并独立工作流（V2.5：wf_sub_02/03/04/05 四环节内联展开）：智能配置（读取执行方案→提取原文→配置落地→存储config）→规格稽核（实时稽核[直连落地出参]→整改建议→存储spec）→自动测试（发起测试→查询场景→轮询进度→查询结果→测试报告→存储test）→资费校准（计费校验[直连落地出参]→风险解读→存储fee）→汇总结束（四环节结果直连各节点出参结构化输出，无异常提示发起上线审批）。环节间以节点出参直接传值，去掉子工作流自查查询链路；环节存储保留（req_id+node_name=config/spec/fee/test，供上线审批门禁自查）。", "wf_merged_exec", sm,
+    [edge(1101,1102), edge(1102,1106), edge(1106,1103), edge(1103,1105),
+     edge(1105,1202), edge(1202,1203), edge(1203,1205), edge(1205,1302),
+     edge(1302,1303), edge(1303,1304), edge(1304,1305), edge(1305,1306),
+     edge(1306,1308), edge(1308,1402), edge(1402,1403), edge(1403,1405), edge(1405,1404)])
+
 
 for fn, data in files.items():
     data = apply_layout(data)
