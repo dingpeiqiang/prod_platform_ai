@@ -54,10 +54,14 @@ def main():
             continue
         consecutive_fail = 0
 
-        if resp.get("done") is True:
+        # 后端出参均为字符串（"true"/"false"），须按真值解析而非严格 is True
+        done_flag = str(resp.get("done")).lower() == "true"
+        failed_flag = str(resp.get("failed")).lower() == "true"
+
+        if done_flag:
             print(json.dumps({"done": True, "failed": False}, ensure_ascii=False))
             return
-        if resp.get("failed") is True:
+        if failed_flag:
             print(json.dumps({"done": False, "failed": True, "failIndex": resp.get("failIndex", -1),
                               "fail_reason": "测试失败/中止，仍取完整结果供报告定位失败原因"},
                              ensure_ascii=False))
