@@ -45,6 +45,8 @@ public class OfferSimV16Service {
 
     /** 配置落地档案：offer_id -> 落地配置（工具7 写入，工具2/8 读取） */
     private final Map<String, Map<String, Object>> savedConfigs = new ConcurrentHashMap<>();
+    /** product_id -> offer_id（配置落地时登记，监控/告警按 product_id 反查销售品名称与配置） */
+    private final Map<String, String> productToOffer = new ConcurrentHashMap<>();
     /** plan_json 摘要 -> 落地响应快照（幂等） */
     private final Map<String, Map<String, Object>> planIdempotency = new ConcurrentHashMap<>();
     /** 测试任务：globalId -> 任务状态 */
@@ -189,6 +191,7 @@ public class OfferSimV16Service {
         body.put("product_config", toJson(config));
 
         savedConfigs.put(offerId, config);
+        productToOffer.put(productId, offerId);
         planIdempotency.put(planJson, body);
         log.info("[OfferSimV16] 配置落地 product_id={} offer_id={} status={}", productId, offerId, body.get("status"));
         return body;
@@ -501,7 +504,9 @@ public class OfferSimV16Service {
 
         Map<String, Object> body = camelOk();
         // V2.4：补充产品名称与趋势字段，供 wf_sub_07 运营报告 LLM 节点按固定模板输出
-        Map<String, Object> offer = seed.findOffer(productId);
+        // V2.8：product_id（P+req_id 形态）优先按配置落地档案反查销售品（监控新上线产品时
+        // product_id 不是 9 位存量销售品 ID，直接 findOffer 查无 → offer_name 为空）
+        Map<String, Object> offer = resolveOfferByProduct(productId);
         String offerName = offer == null ? "" : MapOps.str(offer.get("offer_name"));
         body.put("offer_name", offerName);
         body.put("order_count", String.valueOf(orderCount));
@@ -728,6 +733,19 @@ public class OfferSimV16Service {
         List<Map<String, Object>> all = seed.listOffers();
         int idx = Math.abs(planId.hashCode()) % all.size();
         return MapOps.str(all.get(idx).get("offer_id"));
+    }
+
+    /** 监控/告警场景销售品解析：product_id 若为落地档案登记的新产品则反查其 offer_id，否则按原 ID 直查存量库 */
+    private Map<String, Object> resolveOfferByProduct(String productId) {
+        String mappedOfferId = productToOffer.get(productId);
+        Map<String, Object> offer = seed.findOffer(mappedOfferId != null ? mappedOfferId : productId);
+        if (offer != null) {
+            return offer;
+        }
+        // 兜底：落地档案中直接按 product_id 找配置（含 offer_name）
+        return savedConfigs.values().stream()
+                .filter(c -> productId.equals(MapOps.str(c.get("product_id"))))
+                .findFirst().orElse(null);
     }
 
     private String firstNonEmptyText(Object... values) {

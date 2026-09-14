@@ -2,6 +2,13 @@
 
 > 合并对应原子工作流 wf_sub_07（监控运维）与 wf_sub_08（审批进度查询）。两条轻量支线，按用户意图二选一执行；运维问答依据：`references/K5FAQ/`。
 
+## 意图判别（D-1 / D-2 分流）
+| 用户表述 | 支线 |
+| --- | --- |
+| 查询审批进度/审批单状态/审批到哪了/审批结果/审批意见 | D-1 |
+| 查询监控/查询运营/查询运行监控/运营情况/销售品运行情况/上线后表现 | D-2 |
+| 表述含两诉求（如"查一下审批和运营情况"） | 先 D-1 后 D-2，一次回复中两段输出 |
+
 ## 支线D-1：审批进度查询（wf_sub_08）
 
 ### 触发条件
@@ -11,6 +18,7 @@
 - `approval_id`（与 product_id 至少一个，approval_id 优先）；
 - `product_id`：销售品 ID（缺失 approval_id 时按其查最新审批单）；
 - 两者皆缺 → 不发起调用，先追问："请提供审批单号或销售品ID，以便查询审批进度。"
+- **会话上下文取参**：会话中已明确出现过的 approval_id/product_id（本会话执行主干或审批环节的产出值）可直接使用，不属于"编造/历史兜底"；仅当会话内从未出现过且用户未提供时才追问。
 
 ### 执行程序
 ```bash
@@ -32,11 +40,12 @@ python scripts/cpcp_api.py approval_status --approval-id "<approval_id，可省�
 ## 支线D-2：运行监控与告警（wf_sub_07）
 
 ### 触发条件
-- 用户消息："查询监控/查询运行监控/销售品运行情况"等；
+- 用户消息："查询监控/查询运营/查询运行监控/销售品运行情况"等；
 - 定期巡检（由外部调度按日触发时同样加载本程序）。
 
 ### 前置检查
-- `product_id`（必填）：销售品 ID。缺失时不发起调用，先追问："请提供要查询的销售品ID。"（禁止编造或使用历史值兜底）；
+- `product_id`（必填）：销售品 ID（存量 9 位 ID 或配置落地返回的 `P+req_id` 形态产品 ID）；
+- **会话上下文取参**：会话中执行主干环节1 返回的 product_id 可直接使用；会话内从未出现过且用户未提供时 → 不发起调用，先追问："请提供要查询的销售品ID。"（禁止凭空编造）；
 - `date_range`（选填，默认最近1天，如 `2026-09-11~2026-09-12`）；
 - `metric`（选填，默认 all；枚举 order/error/fee/all）。
 
@@ -45,7 +54,8 @@ python scripts/cpcp_api.py approval_status --approval-id "<approval_id，可省�
 ```bash
 python scripts/cpcp_api.py query_monitor --product-id "<product_id>" --date-range "<date_range，可省略>" --metric all
 ```
-   - 接口失败 → 按异常矩阵 E17 处理："监控查询失败"，终止本轮。
+   - 接口失败 → 按异常矩阵 E17 处理："监控查询失败"，终止本轮；
+   - `offer_name` 为空时照实输出"产品名称：未登记"，禁止编造名称。
 2. **异常判定**（原节点3，程序 if 判定）：
    - `error_count > 0` 或 `fee_error_rate > 0.1` → 推送告警；
    - 否则 → 直接输出正常摘要。
@@ -57,14 +67,15 @@ python scripts/cpcp_api.py send_alert --product-id "<product_id>" --alarm-level 
 4. **输出摘要**：
 ```
 【销售品运行监控】{{product_id}}（{{date_range}}）
-- 订单量：{{order_count}}　异常量：{{error_count}}　计费差错率：{{fee_error_rate}}
+- 产品名称：{{offer_name，为空显示"未登记"}}
+- 订单量：{{order_count}}（{{order_trend}}）　异常量：{{error_count}}（{{error_trend}}）　计费差错率：{{fee_error_rate}}（{{fee_trend}}）
 - 告警列表：{{alarm_list 摘要，为空显示"无"}}
 {{异常时附加：已推送告警，告警单号 {{alert_id}}}}
 ```
 
 ### 禁止事项
-- 缺 product_id 时禁止编造或使用历史值兜底调用；
+- 缺 product_id 且会话内无产出值时禁止调用（先追问）；
 - 禁止瞒报异常（error_count>0 必须推送告警并明示）。
 
 ## 通用禁止事项
-- 缺失必填参数时先追问，禁止编造后直接调用。
+- 会话内从未出现且用户未提供的必填参数先追问，禁止编造后直接调用。
