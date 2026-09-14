@@ -55,8 +55,10 @@ python scripts/cpcp_api.py billing_verify --config-json "<环节1 配置原文>"
 python scripts/cpcp_api.py offer_test --offer-id "<offerId>"          # resultCode==0 且 globalId 非空→继续；否则 E10
 # ② 场景（记录受理验证覆盖范围 S_O_TC/S_ADD_CARD/S_U_TC；空 → E11 中断）
 python scripts/cpcp_api.py test_scenes --global-id "<globalId>"
-# ③ 轮询（间隔5s/最多360次/连续5次查询失败终止）
+# ③ 轮询（前台运行，禁止后台执行；模拟服务测试时长约 20s，前台 60s 超时足够）
+# 若运行环境禁止长驻前台命令，改用单次查询循环：手动重复执行下方第 2 条命令直至 done=true
 python scripts/poll_test_progress.py --global-id "<globalId>"          # done=true→④；failed=true→仍取结果定位原因；连续失败→E12；30分钟超时→E13（保留 globalId）
+python scripts/cpcp_api.py test_progress --global-id "<globalId>"     # 备用：单次查询，done 字段为字符串 "true"/"false"
 # ④ 结果（须 done=true 后查询）
 python scripts/cpcp_api.py test_result --global-id "<globalId>"
 ```

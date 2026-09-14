@@ -34,9 +34,10 @@ public class OfferSimV16Service {
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
     private static final long AUDIT_TIMEOUT_MS = 60_000L;
-    private static final long PROGRESS_TOTAL_MS = 75_000L;
-    private static final long PROGRESS_MIN_MS = 60_000L;
-    private static final long PROGRESS_MAX_MS = 90_000L;
+    // 模拟测试时长（毫秒）：默认 20s；演示需要更长时可调大。原 75s 为拟真演示档，实测智能体轮询等待体验差。
+    private static final long PROGRESS_TOTAL_MS = 20_000L;
+    private static final long PROGRESS_MIN_MS = 15_000L;
+    private static final long PROGRESS_MAX_MS = 30_000L;
 
     private final ObjectMapper objectMapper;
     private final OfferSeedService seed;
