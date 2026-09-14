@@ -269,6 +269,9 @@ public class OfferSimV16Service {
         long duration = MapOps.toLong(task.get("duration_ms"));
 
         boolean done = elapsed >= duration;
+        if (done) {
+            task.put("done", true);
+        }
         boolean failed = injectTaskFailed(task);
         int finished = done ? scenes.size() : (int) Math.min(scenes.size(),
                 Math.max(0, elapsed * scenes.size() / duration));

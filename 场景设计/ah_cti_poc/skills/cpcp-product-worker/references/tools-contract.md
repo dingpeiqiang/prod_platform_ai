@@ -55,7 +55,7 @@
 - 60s / **不自动重试**（写操作防重复写入）；后端保留 plan_json 合法性校验（5001）与同 plan_json 幂等；确认门禁已移除（V2.2）
 
 ## 工具8 计费规则校验 `billing_verify`
-- POST `/api/v1/appstore/rules/verify`
+- POST `/api/v1/appstore/billing/rules/verify`
 - 入参：`config_json`(必填)、`check_scene`(选填,fee/overlay/superposition/all,默认all)
 - 出参：`pass`(1/0)、`risk_list[]`(risk_type/risk_desc/suggest)
 - 60s / 重试 1 次；pass=0 → E9 资费驳回分支

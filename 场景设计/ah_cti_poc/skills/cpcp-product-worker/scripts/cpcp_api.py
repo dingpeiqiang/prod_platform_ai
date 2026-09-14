@@ -179,7 +179,7 @@ def cmd_billing_verify(args):
     config_json = _read_arg(args, "config_json", "_json_file")
     if not config_json:
         _err("PARAM_MISSING", "缺少落地配置JSON，请先完成配置落地")
-    out = _http("POST", "/api/v1/appstore/rules/verify",
+    out = _http("POST", "/api/v1/appstore/billing/rules/verify",
                 {"config_json": config_json, "check_scene": args.check_scene or "all"})
     print(json.dumps(out, ensure_ascii=False))
 

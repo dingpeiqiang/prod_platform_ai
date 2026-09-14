@@ -348,7 +348,7 @@
 #### 工具8：计费规则校验 `check_billing_rule`
 | 项 | 配置 |
 | --- | --- |
-| 接口 | POST `https://{billing-check}/api/v1/appstore/rules/verify` |
+| 接口 | POST `https://{billing-check}/api/v1/appstore/billing/rules/verify` |
 | 实现方式 | **自研模拟实现（V1.6）**：按《产品信息.txt》该销售品的资费/叠加/互斥规则校验配置 JSON，输出模拟风险清单（默认通过，可构造冲突用例）；契约保持不变 |
 | 工具描述 | 校验套餐计费逻辑、优惠叠加规则，输出资费风险清单 |
 | 调用方 | 程序B 环节3（自查 config 取 config_json 后运行 `cpcp_api.py billing_verify`） |
@@ -504,7 +504,7 @@
 | `test_progress` | 工具5 get_test_progress | POST /api/v1/appstore/test/offer/progress | 单次不重试，轮询由 poll 脚本控制 |
 | `test_result` | 工具6 get_test_result | POST /api/v1/appstore/test/offer/result | done=true 后查询 |
 | `save_product_config` | 工具7 | POST /api/v1/appstore/product/config/save | **不自动重试**防重复写入；确认门禁已按 V2.2 移除，confirmed 为兼容字段仅记录 |
-| `billing_verify` | 工具8 check_billing_rule | POST /api/v1/appstore/rules/verify | — |
+| `billing_verify` | 工具8 check_billing_rule | POST /api/v1/appstore/billing/rules/verify | — |
 | `submit_approval` | 工具9 submit_release_approval | POST /api/v1/appstore/approval/submit | 后端四环节硬校验；幂等 |
 | `query_monitor` | 工具10 query_product_monitor | GET /api/v1/appstore/product/monitor | — |
 | `send_alert` | 工具11 send_alert | POST /api/v1/appstore/alert/send | 枚举校验 high/middle/low |

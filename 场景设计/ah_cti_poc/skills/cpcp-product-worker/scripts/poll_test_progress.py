@@ -10,6 +10,7 @@
 """
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -20,10 +21,11 @@ SCRIPT_DIR = __file__
 def query_progress(global_id):
     """调用 cpcp_api.py test_progress 单次查询，返回出参 dict 或 None（查询失败）。"""
     try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
         r = subprocess.run(
-            [sys.executable, "cpcp_api.py", "test_progress", "--global-id", global_id],
+            [sys.executable, os.path.join(script_dir, "cpcp_api.py"), "test_progress", "--global-id", global_id],
             capture_output=True, text=True, timeout=40,
-            cwd=None,
+            cwd=script_dir,
         )
         return json.loads(r.stdout)
     except Exception:

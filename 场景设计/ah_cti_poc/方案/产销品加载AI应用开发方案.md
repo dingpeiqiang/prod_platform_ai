@@ -362,7 +362,7 @@
 **工具8：计费规则校验 `check_billing_rule`**
 | 项 | 内容 |
 | --- | --- |
-| 接口 | POST `https://{billing-check}/api/v1/appstore/rules/verify` |
+| 接口 | POST `https://{billing-check}/api/v1/appstore/billing/rules/verify` |
 | 入参 | `config_json`(string,必填,落地配置JSON) `check_scene`(string,枚举: fee/overlay/superposition/all) |
 | 出参 | `pass`(int: 1/0) `risk_list`(array: risk_type, risk_desc, suggest) |
 
