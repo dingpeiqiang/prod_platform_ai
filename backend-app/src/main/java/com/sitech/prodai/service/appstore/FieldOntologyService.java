@@ -52,7 +52,7 @@ public class FieldOntologyService {
                 "9位数字或\"系统待生成\"（引擎不做补全，由智能配置环节落地后生成）",
                 "系统待生成", false);
         spec("套餐档位", "产品属性", null, Pattern.compile("^\\d+(\\.\\d+)?元$|^待补充$"),
-                "金额（元），须与套餐固定费一致，如 29元", "待补充", false);
+                "金额（元），须与月费/月租一致，如 29元", "待补充", false);
         spec("套餐属性", "产品属性", Arrays.asList("主资费", "可选包", "增值包"), null,
                 "枚举：主资费/可选包/增值包", "主资费", false);
         spec("计费周期", "产品属性", Arrays.asList("自然月"), null,
@@ -172,7 +172,7 @@ public class FieldOntologyService {
     /**
      * 接口二：字段本体推理 complete——缺失字段按本体默认值推理补全。
      * 入参 fields_json 同上；对 value 为空且 default_value 非空的字段补默认值（source=AI补全）；
-     * V2.2：待补充项（value=待补充）同样按默认值推理补全，仅套餐固定费维持"待补充"。
+     * V2.2：待补充项（value=待补充）同样按默认值推理补全，仅价格类（套餐档位）维持"待补充"。
      * 出参 completed 数组（field/value/defaulted/reason），fields_json 为补全后的完整数组。
      */
     public Map<String, Object> complete(String fieldsJson) {
@@ -220,10 +220,11 @@ public class FieldOntologyService {
      * 接口四（V2.1 一体推理）：reason = validate + 修正 + complete，闭环动作。
      * 逐字段执行：
      * <ol>
-     *   <li>value 为空或"待补充" → 默认值推理补全（V2.2：待补充项全部可推理，仅套餐固定费例外——
+     *   <li>value 为空或"待补充" → 默认值推理补全（V2.2：待补充项全部可推理，仅价格类（套餐档位）例外——
      *       价格必须由用户确认，维持"待补充"交待补充流程）；</li>
-     *   <li>value 非空 → 本体校验；非法值直接按本体规则**修正回写**（枚举归一：月付/包月→按月、
-     *       渠道类型同义词映射、套餐固定费单位补全、产品名称模板修正等；
+     *   <li>value 非空 → 本体校验；非法值直接按本体规则**修正回写**（枚举归一：月付/包月→后付费、
+     *       渠道类型同义词映射、套餐档位金额归一（312元/月→312元）、资源缺单位补全、
+     *       套餐名称去首尾空白（口语名保留）等；
      *       无法修正的保留原值并记入 violations）；</li>
      *   <li>修正回写后 source 统一标"AI补全"（原值非"原始需求"时）。</li>
      * </ol>
@@ -329,7 +330,7 @@ public class FieldOntologyService {
     /** 枚举归一修正：把 LLM 的变体表述映射为本体枚举合法值；无法修正返回 null */
     private String correctValue(FieldSpec spec, String value) {
         String v = value.trim();
-        // 套餐固定费归一："199元"、"199"→"199元/月"（缺单位/缺周期口径补全）
+        // 套餐档位金额归一："312元"、"312"、"312元/月"→"312元"（金额统一为"数值+元"，周期口径由计费周期字段承载）
         if ("套餐档位".equals(spec.field)) {
             java.util.regex.Matcher m = Pattern.compile("^(\\d+(\\.\\d+)?)元?(?:/月|每月|/月租)?$").matcher(v);
             if (m.matches()) {

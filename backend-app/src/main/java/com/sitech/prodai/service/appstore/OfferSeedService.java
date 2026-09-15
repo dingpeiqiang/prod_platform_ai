@@ -129,7 +129,7 @@ public class OfferSeedService {
             item.put("similarOfferName", MapOps.str(offer.get("offer_name")));
             item.put("similarityScore", String.format(Locale.ROOT, "%.2f", score));
             item.put("similarityDesc", descOf(offer));
-            item.put("offerInfo", toFields18(offer));
+            item.put("offerInfo", toFields24(offer));
             result.add(item);
         }
         result.sort((a, b) -> Double.compare(
@@ -153,7 +153,7 @@ public class OfferSeedService {
      * 字段/分类对齐《平台配置清单》输出样例：基础信息（产品属性/生命周期/销售属性）、
      * 资源配置（套餐内基础资源/套餐内权益配置/套外资费标准）、业务规则（订购与生效/变更退订拆机/计费支付风控）。
      */
-    public Map<String, Object> toFields18(Map<String, Object> offer) {
+    public Map<String, Object> toFields24(Map<String, Object> offer) {
         Map<String, Object> inFee = castMap(offer.get("in_fee"));
         Map<String, Object> outFee = castMap(offer.get("out_fee"));
         Map<String, Object> subCard = castMap(offer.get("sub_card"));
