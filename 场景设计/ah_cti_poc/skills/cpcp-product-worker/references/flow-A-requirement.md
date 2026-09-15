@@ -111,4 +111,6 @@ python scripts/cpcp_api.py save_node_result --req-id "<req_id>" --node requireme
 - 套餐编码不补全：需求未提供时值填"系统待生成"（不计入 pending_fields）；
 - 出口A 场景禁止保存执行方案或产出 req_id；
 - 禁止把修饰语混入资源字段值（"30GB（可结转）"→ value 只填"30GB"，结转规则入"流量结转规则"字段）；
-- 禁止未读 ontology-fields.md 同义词表就直接提取（先读后提）。
+- 禁止未读 ontology-fields.md 同义词表就直接提取（先读后提）；
+- **禁止中途截断输出**：步骤1~7 任一环节完成后必须继续执行至步骤8 出口模板输出；步骤7 保存成功后必须立即输出出口B 完整文案（含 plan_md 表格与 req_id），禁止仅输出内部推理/中间状态就结束回复（防"没看到结果"复发）；
+- Windows 中文路径环境：脚本调用一律使用绝对路径直调（`python -X utf8 "<绝对路径>\cpcp_api.py" ...`），禁止 `cd <中文路径> && python` 组合命令（GBK 控制台会乱码报错）。

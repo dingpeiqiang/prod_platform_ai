@@ -28,6 +28,22 @@ RETRY = 1
 
 PLAN_PREFIX = "PLAN"
 
+
+def _force_utf8_stdio():
+    """Windows GBK 控制台编码自愈：中文路径/中文报文场景下 stdout/stderr
+    默认 GBK 编码会触发 UnicodeEncodeError（静默丢输出）。
+    强制重绑为 UTF-8（errors=replace 兜底），保证出参 JSON 永远可打印。"""
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        if stream is not None and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except (ValueError, OSError):
+                pass
+
+
+_force_utf8_stdio()
+
 # 分类 → 模块归并（V3.0 新 24 字段，分类名与后端 FieldOntologyService 注册表一致）
 CATEGORY_MODULE = {
     "产品属性": "基础信息", "生命周期": "基础信息", "销售属性": "基础信息",
@@ -48,7 +64,12 @@ def _now(fmt="%Y%m%d%H%M%S"):
 
 
 def _err(code, msg):
-    print(json.dumps({"resultCode": code, "resultMsg": msg}, ensure_ascii=False))
+    # 错误信息 ASCII 安全降级：即使编码自愈失败也不让错误输出本身抛异常
+    try:
+        print(json.dumps({"resultCode": code, "resultMsg": msg}, ensure_ascii=False))
+    except UnicodeEncodeError:
+        safe = msg.encode("ascii", "replace").decode("ascii")
+        print(json.dumps({"resultCode": code, "resultMsg": safe}, ensure_ascii=True))
     sys.exit(2)
 
 
@@ -399,6 +420,7 @@ def cmd_build_plan(args):
 # ---------------- CLI ----------------
 
 def main():
+    _force_utf8_stdio()
     p = argparse.ArgumentParser(description="产销品数字员工统一 API 客户端")
     sub = p.add_subparsers(dest="cmd", required=True)
 

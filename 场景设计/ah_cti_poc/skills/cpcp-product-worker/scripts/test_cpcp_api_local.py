@@ -151,7 +151,26 @@ def main():
     print("9. download_test_report 缺参校验 OK")
     ok += 1
 
-    print("全部 9 项本地自测通过")
+    # 10. GBK 控制台编码自愈（不带 -X utf8、模拟 Windows GBK stdout 运行，
+    #     中文出参/错误信息不得触发 UnicodeEncodeError 静默丢输出）
+    r_gbk = subprocess.run(
+        [PY, os.path.join(HERE, "cpcp_api.py"), "build_plan",
+         "--fields-json", json.dumps(fields, ensure_ascii=False)],
+        capture_output=True, text=True, encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "gbk"})
+    out_gbk = json.loads(r_gbk.stdout)
+    assert out_gbk["req_id"].startswith("PLAN") and out_gbk["pending_fields"] == ["套餐档位"]
+    r_gbk_err = subprocess.run(
+        [PY, os.path.join(HERE, "cpcp_api.py"), "send_alert",
+         "--product-id", "900102308", "--alarm-level", "bad", "--content", "中文告警内容测试"],
+        capture_output=True, text=True, encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "gbk"})
+    err_gbk = json.loads(r_gbk_err.stdout)
+    assert r_gbk_err.returncode == 2 and "枚举非法" in err_gbk["resultMsg"]
+    print("10. GBK 控制台编码自愈 OK（中文出参与错误信息均完整输出）")
+    ok += 1
+
+    print("全部 %d 项本地自测通过" % ok)
 
 
 if __name__ == "__main__":
