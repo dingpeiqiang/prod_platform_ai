@@ -24,7 +24,8 @@ from datetime import datetime
 BASE_URL = os.environ.get("CPCP_BASE_URL", "http://10.86.13.201:31281")
 TIMEOUT_SYNC = 60
 TIMEOUT_ASYNC = 30
-RETRY = 1
+# 传输层重试次数（不含首次）：RETRY=2 → 共尝试 3 次，仍失败则判定为 E29 网络异常（终止询问）
+RETRY = 2
 
 PLAN_PREFIX = "PLAN"
 

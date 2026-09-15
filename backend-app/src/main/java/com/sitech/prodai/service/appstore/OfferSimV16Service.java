@@ -45,6 +45,8 @@ public class OfferSimV16Service {
 
     /** 配置落地档案：offer_id -> 落地配置（工具7 写入，工具2/8 读取） */
     private final Map<String, Map<String, Object>> savedConfigs = new ConcurrentHashMap<>();
+    /** 新增销售品独立档案：offer_id -> 从 plan_json 构造的产品档案（与种子同构；新增链路不复用存量编码） */
+    private final Map<String, Map<String, Object>> newProductArchive = new ConcurrentHashMap<>();
     /** product_id -> offer_id（配置落地时登记，监控/告警按 product_id 反查销售品名称与配置） */
     private final Map<String, String> productToOffer = new ConcurrentHashMap<>();
     /** product_id -> 上线脚本（V2.5 配置落地时生成 CRM/billing 落库 SQL，供下载接口回放） */
@@ -112,7 +114,7 @@ public class OfferSimV16Service {
             return codeFail("5001", "config_json 缺失或非法 JSON");
         }
         String offerId = MapOps.str(req.get("offer_id")).trim();
-        Map<String, Object> offer = seed.findOffer(offerId);
+        Map<String, Object> offer = resolveOffer(offerId);
         if (offer == null) {
             return codeFail("5001", "销售品未收录: " + offerId);
         }
@@ -138,7 +140,7 @@ public class OfferSimV16Service {
         body.put("pass", errorList.isEmpty() ? "1" : "0");
         body.put("error_list", errorList);
         body.put("audit_summary", errorList.isEmpty()
-                ? "稽核通过：配置符合《产品信息.txt》销售品 " + MapOps.str(offer.get("offer_name")) + " 规则"
+                ? "稽核通过：配置符合本次落地销售品 " + MapOps.str(offer.get("offer_name")) + " 规则"
                 : "稽核驳回：存在 " + errorList.size() + " 项阻断问题，请整改后重试");
         body.put("resultCode", "0");
         return body;
@@ -170,11 +172,20 @@ public class OfferSimV16Service {
             return codeFail("5001", "plan_json 非法 JSON");
         }
 
-        // 方案key从 plan_json 的 req_id 键提取（统一键后 plan_id 不再独立传参）
+        // 方案key从 plan_json 的 req_id 键提取（统一键后 plan_id 不再独立传参）。
+        // 新增产品链路：plan 无 offer_id/similarOfferId 溯源键时生成全新 offer_id（不复用存量编码）；
+        // plan 带存量 offer_id 视为存量品重配，仍走原 ID。
+        boolean existingReconfigure = MapOps.str(plan.get("offer_id")).isBlank()
+                && MapOps.str(plan.get("similarOfferId")).isBlank();
         String planId = firstNonEmptyText(plan.get("req_id"), reqIdForGate);
         String offerId = firstNonEmptyText(plan.get("offer_id"), plan.get("similarOfferId"),
-                pickSeedOfferId(planId));
-        Map<String, Object> seedOffer = seed.findOffer(offerId);
+                generateNewOfferId(planId));
+        // 新增产品：从 plan_json 构造独立档案入库存档（与种子同构，业务值全部来自需求，不从种子覆盖）
+        if (existingReconfigure) {
+            newProductArchive.put(offerId, buildOfferProfile(plan, offerId));
+        }
+        Map<String, Object> profile = newProductArchive.get(offerId);
+        Map<String, Object> seedOffer = profile != null ? profile : seed.findOffer(offerId);
         String productId = "P" + planId;
         Map<String, Object> config = buildSavedConfig(productId, offerId, plan, seedOffer);
 
@@ -187,7 +198,7 @@ public class OfferSimV16Service {
         saveResult.add(classifyResult("基础信息", !MapOps.empty(plan.get("offer_name")) || seedOffer != null));
         saveResult.add(classifyResult("资源配置", true));
         saveResult.add(classifyResult("营销资源", true));
-        saveResult.add(classifyResult("销售规则", seedOffer != null));
+        saveResult.add(classifyResult("销售规则", existingReconfigure || seedOffer != null));
         long failCount = saveResult.stream().filter(r -> !"success".equals(r.get("result"))).count();
 
         Map<String, Object> body = ok();
@@ -219,7 +230,7 @@ public class OfferSimV16Service {
             return camelFail("4002", "offerId 必填");
         }
         String offerId = MapOps.str(req.get("offerId")).trim();
-        Map<String, Object> offer = seed.findOffer(offerId);
+        Map<String, Object> offer = resolveOffer(offerId);
         if (offer == null) {
             return camelFail("4001", "销售品未收录: " + offerId);
         }
@@ -262,7 +273,7 @@ public class OfferSimV16Service {
         if (task == null) {
             return camelFail("4002", "globalId 查无对应测试任务");
         }
-        Map<String, Object> offer = seed.findOffer(MapOps.str(task.get("offer_id")));
+        Map<String, Object> offer = resolveOffer(MapOps.str(task.get("offer_id")));
         List<Map<String, Object>> scenes = new ArrayList<>();
         int sort = 1;
         for (String nbr : castStrList(task.get("scene_nbrs"))) {
@@ -326,9 +337,13 @@ public class OfferSimV16Service {
         if (!Boolean.TRUE.equals(task.get("done"))) {
             return camelFail("4003", "测试未完成（done!=true），请先轮询接口6");
         }
-        Map<String, Object> offer = seed.findOffer(MapOps.str(task.get("offer_id")));
+        Map<String, Object> offer = resolveOffer(MapOps.str(task.get("offer_id")));
         String offerId = MapOps.str(task.get("offer_id"));
+        // 预期值取 preset_map；新增销售品（preset_map 未收录）从落地档案按 10 测点自动生成
         Map<String, Object> presets = seed.presetsOf(offerId);
+        if (presets == null || presets.isEmpty()) {
+            presets = offer == null ? presets : buildPresetsFromPlan(offer);
+        }
         java.util.Set<String> mismatchPoints = pointMismatchInjection.getOrDefault(offerId, java.util.Set.of());
 
         List<Map<String, Object>> sceneResults = new ArrayList<>();
@@ -489,11 +504,11 @@ public class OfferSimV16Service {
         sb.append("| 测试流水号 | ").append(globalId).append(" |\n\n");
     }
 
-    /** 产品类型映射：种子 series/sub_type → 主套餐/流量包/增值业务（口径同模板） */
+    /** 产品类型映射：种子/新档案 series/sub_type → 主套餐/流量包/增值业务（口径同模板） */
     private String productTypeOf(Map<String, Object> offer) {
         return switch (MapOps.str(offer.get("series"))) {
             case "rights" -> "增值业务";
-            case "5g_a" -> "主套餐";
+            case "5g_a", "new" -> "主套餐";
             default -> MapOps.str(offer.get("sub_type")).isBlank() ? "主套餐" : MapOps.str(offer.get("sub_type"));
         };
     }
@@ -656,7 +671,7 @@ public class OfferSimV16Service {
         for (Map<String, Object> f : MapOps.castListOfMaps(plan.get("fields"))) {
             req.putIfAbsent(MapOps.str(f.get("field")), MapOps.str(f.get("value")));
         }
-        Map<String, Object> offer = seed.findOffer(offerId);
+        Map<String, Object> offer = resolveOffer(offerId);
         Map<String, Object> inFee = castMap(offer == null ? null : offer.get("in_fee"));
         Map<String, Object> outFee = castMap(offer == null ? null : offer.get("out_fee"));
         String transition = offer == null ? "" : MapOps.str(offer.get("transition_fee"));
@@ -1042,17 +1057,21 @@ public class OfferSimV16Service {
         return fee instanceof Number n && n.doubleValue() < 0;
     }
 
+    /**
+     * 落地配置组装：offer 传入统一解析后的销售品档案（新增品=plan 构造的独立档案，
+     * 存量品=种子记录），in_fee/out_fee/销售规则全部取自该档案，业务值不再被种子覆盖。
+     */
     private Map<String, Object> buildSavedConfig(String productId, String offerId,
-                                                 Map<String, Object> plan, Map<String, Object> seedOffer) {
+                                                 Map<String, Object> plan, Map<String, Object> offer) {
         Map<String, Object> config = new LinkedHashMap<>();
         config.put("product_id", productId);
         config.put("offer_id", offerId);
         config.put("offer_name", firstNonEmptyText(plan.get("offer_name"),
-                seedOffer == null ? "" : MapOps.str(seedOffer.get("offer_name"))));
-        config.put("in_fee", seedOffer == null ? plan.get("in_fee") : seedOffer.get("in_fee"));
-        config.put("out_fee", seedOffer == null ? plan.get("out_fee") : seedOffer.get("out_fee"));
-        config.put("order_rule", seedOffer == null ? "" : seedOffer.get("order_rule"));
-        config.put("cancel_rule", seedOffer == null ? "" : seedOffer.get("cancel_rule"));
+                offer == null ? "" : MapOps.str(offer.get("offer_name"))));
+        config.put("in_fee", offer == null ? plan.get("in_fee") : offer.get("in_fee"));
+        config.put("out_fee", offer == null ? plan.get("out_fee") : offer.get("out_fee"));
+        config.put("order_rule", offer == null ? "" : offer.get("order_rule"));
+        config.put("cancel_rule", offer == null ? "" : offer.get("cancel_rule"));
         config.put("plan_json", plan);
         return config;
     }
@@ -1100,9 +1119,10 @@ public class OfferSimV16Service {
      * 仅作演示产物，不真正执行落库。
      */
     private String buildLaunchScript(String productId, String offerId,
-                                     Map<String, Object> config, Map<String, Object> seedOffer) {
-        Map<String, Object> inFee = castMap(seedOffer == null ? null : seedOffer.get("in_fee"));
-        Map<String, Object> outFee = castMap(seedOffer == null ? null : seedOffer.get("out_fee"));
+                                     Map<String, Object> config, Map<String, Object> offer) {
+        // offer 为统一解析后的销售品档案（新增品=plan 构造的独立档案），为空时回退落地配置自身
+        Map<String, Object> inFee = castMap(offer == null ? config.get("in_fee") : offer.get("in_fee"));
+        Map<String, Object> outFee = castMap(offer == null ? config.get("out_fee") : offer.get("out_fee"));
         String offerName = MapOps.str(config.get("offer_name"));
         String template = loadLaunchTemplate();
         String stamp = LocalDateTime.now().format(STAMP);
@@ -1115,7 +1135,7 @@ public class OfferSimV16Service {
         vars.put("goods_id", "G" + offerId);
         vars.put("prc_id", "M" + offerId.substring(offerId.length() - 3));
         vars.put("class_id", "YnE" + productId.substring(Math.max(0, productId.length() - 3)));
-        vars.put("month_fee", MapOps.str(seedOffer == null ? config.get("in_fee") : seedOffer.get("monthly_fee")));
+        vars.put("month_fee", MapOps.str(offer == null ? config.get("in_fee") : offer.get("monthly_fee")));
         vars.put("exp_date", "to_date('01-01-2050','dd-mm-yyyy')");
         vars.put("release_ver", "V1.0");
         vars.put("flow", MapOps.str(inFee.get("国内通用流量")));
@@ -1145,16 +1165,132 @@ public class OfferSimV16Service {
         }
     }
 
-    private String pickSeedOfferId(String planId) {
-        List<Map<String, Object>> all = seed.listOffers();
-        int idx = Math.abs(planId.hashCode()) % all.size();
-        return MapOps.str(all.get(idx).get("offer_id"));
+    /**
+     * 新增销售品 offer_id 生成（不复用存量编码）：9 + req_id 末 8 位数字，
+     * 与存量 18 个 9 位 ID 冲突时追加校准位直至不重复；同 req_id 幂等（同 plan_json 幂等已保证）。
+     */
+    private String generateNewOfferId(String planId) {
+        String digits = planId.replaceAll("\\D", "");
+        String tail = digits.length() >= 8 ? digits.substring(digits.length() - 8)
+                : String.format("%08d", Math.abs(planId.hashCode()) % 100_000_000);
+        String candidate = "9" + tail;
+        while (seed.exists(candidate)) {
+            candidate = "9" + String.format("%08d", (Integer.parseInt(tail) + 1) % 100_000_000);
+        }
+        return candidate;
+    }
+
+    /**
+     * 销售品档案统一解析：新增品独立档案优先，未命中再查存量种子库（存量链路行为不变）。
+     */
+    private Map<String, Object> resolveOffer(String offerId) {
+        Map<String, Object> profile = offerId == null ? null : newProductArchive.get(offerId.trim());
+        return profile != null ? profile : seed.findOffer(offerId);
+    }
+
+    /** plan.fields 值提取：按字段名取首个非空 value（键名对齐本体注册表 24 字段） */
+    private String fieldOf(Map<String, Object> plan, String... names) {
+        Map<String, String> req = new LinkedHashMap<>();
+        for (Map<String, Object> f : MapOps.castListOfMaps(plan.get("fields"))) {
+            req.putIfAbsent(MapOps.str(f.get("field")), MapOps.str(f.get("value")));
+        }
+        for (String name : names) {
+            String v = req.get(name);
+            if (v != null && !v.isBlank() && !"待补充".equals(v)) {
+                return v;
+            }
+        }
+        return "";
+    }
+
+    /**
+     * 新增销售品档案构造（与种子记录同构）：业务值全部来自 plan_json（需求分析生成的完整落地报文），
+     * 缺省按本体注册表默认口径补全；禁止回退种子数据。
+     */
+    private Map<String, Object> buildOfferProfile(Map<String, Object> plan, String offerId) {
+        String name = firstNonEmptyText(fieldOf(plan, "套餐名称"), "新增销售品" + offerId);
+        String tier = fieldOf(plan, "套餐档位");
+        double monthlyFee = parseFeeYuanOf(tier);
+        Map<String, Object> inFee = new LinkedHashMap<>();
+        inFee.put("档位", tier.isBlank() ? "" : tier + "/月");
+        inFee.put("计费周期", firstNonEmptyText(fieldOf(plan, "计费周期"), "自然月"));
+        inFee.put("国内通用流量", firstNonEmptyText(fieldOf(plan, "国内通用流量"), "无"));
+        inFee.put("国内语音拨打", firstNonEmptyText(fieldOf(plan, "本地语音"), "无"));
+        inFee.put("短信", firstNonEmptyText(fieldOf(plan, "短信"), "无"));
+        Map<String, Object> outFee = new LinkedHashMap<>();
+        outFee.put("套外流量", firstNonEmptyText(fieldOf(plan, "套外流量-计费标准"), "无"));
+        outFee.put("套外语音", firstNonEmptyText(fieldOf(plan, "套外语音-国内通话"), "无"));
+        outFee.put("套外短彩信", firstNonEmptyText(fieldOf(plan, "套外短彩信-短/彩信"), "无"));
+        boolean allowSubCard = "允许".equals(fieldOf(plan, "是否允许办理副卡"));
+        Map<String, Object> subCard = new LinkedHashMap<>();
+        subCard.put("允许办理", allowSubCard);
+        subCard.put("共享规则", allowSubCard ? "副卡共享套餐内资源" : "包内资源限订购手机号使用");
+
+        Map<String, Object> offer = new LinkedHashMap<>();
+        offer.put("offer_id", offerId);
+        offer.put("offer_name", name);
+        offer.put("series", "new");
+        offer.put("sub_type", firstNonEmptyText(fieldOf(plan, "套餐属性"), "主资费"));
+        offer.put("monthly_fee", monthlyFee);
+        offer.put("in_fee", inFee);
+        offer.put("out_fee", outFee);
+        String eff = firstNonEmptyText(fieldOf(plan, "新入网生效方式"), "立即生效");
+        offer.put("transition_fee", firstNonEmptyText(fieldOf(plan, "过渡期资费规则"), "按日（当月实际天数）计扣"));
+        offer.put("order_rule", firstNonEmptyText(fieldOf(plan, "适用用户"), "新老用户均可订购")
+                + "；新用户" + eff);
+        offer.put("change_rule", firstNonEmptyText(fieldOf(plan, "套餐变更范围"), "可变更至中国电信其他在售套餐"));
+        offer.put("cancel_rule", firstNonEmptyText(fieldOf(plan, "退订规则"), "允许退订，次月生效"));
+        offer.put("validity", firstNonEmptyText(fieldOf(plan, "套餐有效期"), "长期有效"));
+        offer.put("allow_sub_card", allowSubCard);
+        offer.put("sub_card", subCard);
+        offer.put("flow_carry_over", "结转".equals(fieldOf(plan, "流量结转规则")));
+        offer.put("billing_cycle", inFee.get("计费周期"));
+        offer.put("pay_mode", firstNonEmptyText(fieldOf(plan, "付费方式"), "后付费"));
+        offer.put("pay_channel", firstNonEmptyText(fieldOf(plan, "支付方式"), "账单支付"));
+        offer.put("sale_channels", List.of("实体渠道", "电子渠道", "直销渠道"));
+        offer.put("net_cutoff_limit", firstNonEmptyText(fieldOf(plan, "断网授权"),
+                "套外流量使用至600元时暂停上网"));
+        return offer;
+    }
+
+    /** 套餐档位金额解析："312元"/"312元/月" → 312.0；解析失败返回 0.0（不虚构价格） */
+    private double parseFeeYuanOf(String tier) {
+        if (tier == null || tier.isBlank()) {
+            return 0.0;
+        }
+        try {
+            return Double.parseDouble(tier.replaceAll("[^0-9.]", ""));
+        } catch (NumberFormatException ex) {
+            return 0.0;
+        }
+    }
+
+    /**
+     * 新增销售品测试预期值（presetValue）生成：从 plan_json（经落地档案兜底）按 10 个测点
+     * 逐项生成，模拟测试自产自销比对；preset_map 未收录的新 offer_id 走本方法兜底。
+     */
+    private Map<String, Object> buildPresetsFromPlan(Map<String, Object> offer) {
+        Map<String, Object> presets = new LinkedHashMap<>();
+        String validity = MapOps.str(offer.get("validity"));
+        presets.put("P_EFF_DATE", firstNonEmptyText(MapOps.str(offer.get("order_rule")),
+                "新入网立即生效；老用户次月1日生效"));
+        presets.put("P_EXP_DATE", validity.contains("长期") ? "长期有效" : "套餐有效期" + validity);
+        presets.put("P_STATUS", "生效");
+        presets.put("P_MAIN_PROD", MapOps.str(offer.get("offer_name")) + "（主产品，单产品构成）");
+        presets.put("P_RELY_REL", "无前项依赖");
+        presets.put("P_MUTEX_REL", "无互斥限制");
+        presets.put("P_ORD_CNT", "同一用户累计订购1次");
+        presets.put("P_OFFER_NAME", MapOps.str(offer.get("offer_name")));
+        presets.put("P_OFFER_TYPE", MapOps.str(offer.get("offer_name")) + "（新增销售品类）");
+        presets.put("P_PAY_MODE", firstNonEmptyText(MapOps.str(offer.get("pay_mode")), "后付费") + "、"
+                + firstNonEmptyText(MapOps.str(offer.get("pay_channel")), "账单支付"));
+        return presets;
     }
 
     /** 监控/告警场景销售品解析：product_id 若为落地档案登记的新产品则反查其 offer_id，否则按原 ID 直查存量库 */
     private Map<String, Object> resolveOfferByProduct(String productId) {
         String mappedOfferId = productToOffer.get(productId);
-        Map<String, Object> offer = seed.findOffer(mappedOfferId != null ? mappedOfferId : productId);
+        Map<String, Object> offer = resolveOffer(mappedOfferId != null ? mappedOfferId : productId);
         if (offer != null) {
             return offer;
         }

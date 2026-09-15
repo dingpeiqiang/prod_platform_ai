@@ -2,6 +2,13 @@
 
 > 对应原子工作流 wf_sub_02→03→05→04。用户确认配置后**一次跑完四个环节（智能配置→配置规格稽核→资费校准→自动测试），中途不停顿**；仅环节失败时中断。**受理验证是自动测试的子集**（测试平台自动执行受理类场景即完成受理验证，数据源=环节4 测试结果，不新增接口调用、不设独立环节）。各环节共用 req_id；每环节成功后存储（node_name=config/spec/fee/test）并立即打印结果。
 
+## 术语速查（参数取值唯一依据，禁止临场重新推理）
+| 术语 | 定义 | 生成环节 | 使用环节 |
+| --- | --- | --- | --- |
+| **环节1 配置原文** | requirement 存储 `list[0].result_json` 中的 plan_json **原文**（含 req_id/fields/pending_fields），全程原样透传、禁止任何加工 | 程序A | 环节1（--plan-json）、环节2/3（--config-json） |
+| **环节1 出参** | save_product_config 的完整出参 JSON（含 product_id/offer_id/save_result/status/script_url） | 环节1 | 各环节存储（result_json=原文）、环节2 取 offer_id |
+| **会话工件** | 环节1 成功后落盘的两个工作区文件：`plan_json_<req_id>.json`（配置原文）与 `config_result_<req_id>.json`（环节1 出参原文），大报文一律经 `--xxx-file` 引用，禁止内联 | 环节1 | 环节1 存储、环节2/3 调用与存储、续跑回放 |
+
 ## 触发条件
 - 用户对执行方案回复确认类语句（**确认配置**/确认执行/同意/可以/执行吧等）；
 - 或【重新执行】：按 fail_node 从失败环节续跑（STAGE1_CONFIG→环节1、STAGE2_AUDIT→环节2、STAGE3_FEE→环节3、STAGE4_TEST→环节4），已成功环节凭存储记录回放、**不重复调用写接口**。
@@ -12,28 +19,36 @@
 
 ## 通用步骤模式（四环节共用，先读一遍）
 1. **自查上游**：`python scripts/cpcp_api.py query_node_result --req-id "<req_id>" --node <上游node>`，取 `list[0].result_json` 原文（可先用 `extract_record` 子命令提取）；total==0 → E5 中断；
-2. **调用本环节接口**（见下）；
+2. **调用本环节接口**（见下；大报文参数一律 `--xxx-file` 引用会话工件，见术语速查）；
 3. **判定**：仅依据出参字段（各环节判定字段见下），失败/异常 → 按 `references/exception-matrix.md` 中断并引导【重新执行】/【修改执行方案】；
-4. **存储**：`python scripts/cpcp_api.py save_node_result --req-id "<req_id>" --node <本环节名> --result-json "<结果JSON>"`（失败/超时场景也存储，供报告定位与续跑判定）；
+4. **存储**：将本环节出参**原文**写入工作区工件 `result_<node>_<req_id>.json`，再执行 `python scripts/cpcp_api.py save_node_result --req-id "<req_id>" --node <本环节名> --result-json-file "<工件路径>"`（失败/超时场景也存储，供报告定位与续跑判定）；
 5. **打印**（按各环节模板输出，数据逐字引用出参，不加工）。
+
+### 会话工件约定（SKILL.md 纪律8 落地）
+- 落盘时机与命名（工作区=当前会话可写目录）：
+  - 环节1 落地成功后：`plan_json_<req_id>.json` ← requirement.result_json 中 plan_json 原文；`config_result_<req_id>.json` ← save_product_config 完整出参；
+  - 其余环节：`result_<node>_<req_id>.json` ← 本环节出参原文（存储前落盘，存档与命令传参共用同一文件）；
+- 禁止在命令行内联 >1KB 的 JSON 报文；禁止对出参"精简/重排/再包装"后存储（result_json 恒为出参原文）；
 
 ## 输出结构总纪律（四环节统一，防输出结构混乱）
 - 每个环节输出**必须以统一环节标题头开头**，格式固定为：`【环节N/4·环节名】✅ 执行成功` 或 `【环节N/4·环节名】❌ 执行失败`（N=1智能配置/2配置规格稽核/3资费校准/4销售品自动测试），标题头下空一行再输出环节详情；
+- **标题头形态封闭（仅两种，禁止自造）**：全流程任何场景下环节标题头只允许"✅ 执行成功"与"❌ 执行失败"两种形态。环节失败/异常中断（E6~E13/E20/E26 等）时标题头**一律用 `❌ 执行失败`**，禁止输出"执行中断/执行异常/部分成功"等自造第三形态；中断详情放正文【异常】块，不写进标题头；
 - 环节与环节之间用 `---` 分隔线隔开，确保各环节结果在视觉上独立成块、一眼可辨；
 - 串行执行时各环节结果**逐环节即时输出**（环节1 输出完接分隔线再输出环节2，以此类推），禁止把四个环节结果揉成一段连续文字；
-- 末尾统一输出【执行主干全部完成】汇总块（见文末模板）。
+- 末尾统一输出【执行主干全部完成】汇总块（见文末模板）；**任一环节失败/中断时改输出【异常】统一模板（见文末），禁止输出任何形式的汇总表格**（汇总表仅在四环节全部成功后输出，异常中断时表格中会夹带未经完整校验的"通过"判定语境，属模板误用）。
 
 ## 环节1：销售品智能配置（唯一生产写入步骤）
 ```bash
-# 自查 requirement → 提取执行方案原文
+# 自查 requirement → 提取执行方案原文（plan_json，见术语速查"环节1 配置原文"）
 python scripts/cpcp_api.py query_node_result --req-id "<req_id>" --node requirement
-# 落地（plan_json=原文原样透传，禁止任何加工/改写）
-python scripts/cpcp_api.py save_product_config --req-id "<req_id>" --plan-json "<原文>" --operator "<操作人，可空>"
-# 下载上线脚本文件（product_id 取上一步出参；保存路径默认 ./launch_<product_id>.sql）
-python scripts/cpcp_api.py download_launch_script --product-id "<product_id>"
+# 落地（plan_json=原文原样透传，禁止任何加工/改写；大报文走 --plan-json-file 引用会话工件）
+python scripts/cpcp_api.py save_product_config --req-id "<req_id>" --plan-json-file "<plan_json_<req_id>.json>" --operator "<操作人，可空>"
+# 下载上线脚本文件（product_id 取上一步出参；--save-path 必须显式指定为会话可写目录绝对路径，
+# 默认 ./ 为脚本所在只读目录，预先规避 E28 路径不可写）
+python scripts/cpcp_api.py download_launch_script --product-id "<product_id>" --save-path "<工作区绝对路径>\launch_<product_id>.sql"
 ```
 - 判定：status==SUCCESS 或 PARTIAL → 通过；FAIL → E6 中断（打印失败分类明细）；
-- 存储 node=config；**失败不自动重试**（写操作防重复写入）；
+- 存储 node=config（result_json=save_product_config 出参原文，经 `--result-json-file` 引用 `config_result_<req_id>.json` 工件）；**失败不自动重试**（写操作防重复写入）；
 - **输出模板（逐字引用出参）**：
 ```
 【环节1/4·智能配置】✅ 执行成功
@@ -55,10 +70,11 @@ python scripts/cpcp_api.py download_launch_script --product-id "<product_id>"
 
 ## 环节2：配置规格稽核（实时，无轮询）
 ```bash
-python scripts/cpcp_api.py spec_audit --offer-id "<环节1 offer_id>" --config-json "<环节1 配置原文>" --audit-scene all
+# config_json=环节1 配置原文（= plan_json 原文，直接复用环节1 的 plan_json_<req_id>.json 工件，禁止重新组装）
+python scripts/cpcp_api.py spec_audit --offer-id "<环节1 offer_id>" --config-json-file "<plan_json_<req_id>.json>" --audit-scene all
 ```
 - 判定：pass==1 → 通过；pass==0 → E8 中断（打印 error_list 明细 + 整改建议，可联动 send_alert(high)）；
-- resultCode 非 0（NET_ERROR/TIMEOUT）→ 重试 1 次仍异常 → E7 中断；
+- resultCode 非 0（NET_ERROR/TIMEOUT）→ 脚本已内置传输层重试（共尝试 3 次），仍异常 → 按 E7/E29 终止并询问用户（禁止智能体自行叠加重试）；
 - 存储 node=spec；
 - **输出模板（✅ 清单七项为固定检查项，通过时逐项输出 ✅；禁止虚构 ✅）**：
 ```
@@ -84,13 +100,15 @@ python scripts/cpcp_api.py spec_audit --offer-id "<环节1 offer_id>" --config-j
 
 ## 环节3：资费校准（8 项比对）
 ```bash
-python scripts/cpcp_api.py billing_verify --config-json "<环节1 配置原文>" --check-scene all
+# config_json=环节1 配置原文（复用同一 plan_json_<req_id>.json 工件，与环节2 完全一致，禁止换源）
+python scripts/cpcp_api.py billing_verify --config-json-file "<plan_json_<req_id>.json>" --check-scene all
 ```
 - 判定：pass==1 → 通过（risk_list 为空说明）；pass==0 → E9 中断（打印风险清单 + 引导修改执行方案）；
 - 风险解读（回放/查询场景）：先读 `references/K2资费/K2资费_叠加优惠约束说明_V1.0.md` 作为解释依据，**不得新增风险结论或修改风险等级**；
 - 存储 node=fee；
 - **比对表固定 8 项，逐行引用出参 `compare_list[]`（project_name/requirement_desc/billing_desc/result 四键一一对应）**：套餐月租/流量赠送量/语音赠送量/短信赠送量/流量超出资费/语音超出资费/短信超出资费/商品有效期；
 - **空值行省略规则**：某比对项 requirement_desc 与 billing_desc **同时为空/空串**（该销售品不涉及此资费项，如无套内语音的流量单品）→ **该行整体省略，不输出**，禁止输出"（空）/空/—"占位行；仅一侧有值另一侧为空 → 该行照常输出（这本身是不一致信号，交由 result 字段判定）；禁止编造系统侧值、禁止在模板里自行拼装折算括注；
+- **desc 系统性为空处置（E27）**：compare_list 中**两侧皆空的行数 ≥ 总数一半**时，视为系统侧未返回比对明细（非本销售品业务性不涉及），按异常矩阵 E27 处置——比对表照常输出有值行，但校准结论行改为引用 E27 固定文案（不中断主干、不改 pass 判定），禁止逐行现场推理空值含义、禁止输出"（空）"占位行；
 - **输出模板**：
 ```
 【环节3/4·资费校准】✅ 执行成功
@@ -116,16 +134,52 @@ python scripts/cpcp_api.py billing_verify --config-json "<环节1 配置原文>"
 python scripts/cpcp_api.py offer_test --offer-id "<offerId>"          # resultCode==0 且 globalId 非空→继续；否则 E10
 # ② 场景（记录受理验证覆盖范围 S_O_TC/S_ADD_CARD/S_U_TC；空 → E11 中断）
 python scripts/cpcp_api.py test_scenes --global-id "<globalId>"
-# ③ 轮询（前台运行，禁止后台执行；模拟服务测试时长约 20s，前台 60s 超时足够）
-# 若运行环境禁止长驻前台命令，改用单次查询循环：手动重复执行下方第 2 条命令直至 done=true
-python scripts/poll_test_progress.py --global-id "<globalId>"          # done=true→④；failed=true→仍取结果定位原因；连续失败→E12；30分钟超时→E13（保留 globalId）
-python scripts/cpcp_api.py test_progress --global-id "<globalId>"     # 备用：单次查询，done 字段为字符串 "true"/"false"
+# ③ 轮询（默认模式：test_progress 单次查询循环，环境无差别；不默认依赖长驻前台命令）
+# 循环规则：每 5s 执行一次下条命令，直至 done=true（继续④）/ failed=true（仍取结果定位原因）/
+# 连续 2 次查询失败 → E12（阈值已收紧）；累计 30 分钟未 done → E13（保留 globalId）
+python scripts/cpcp_api.py test_progress --global-id "<globalId>"     # done 字段为字符串 "true"/"false"
+# ③ 可选优化：运行环境支持长驻前台命令时可用 poll_test_progress.py 替代上述循环
+# （间隔 5s，逻辑等价；必须显式传 --max-consecutive-fail 2 对齐 E12 收紧后的阈值）
+python scripts/poll_test_progress.py --global-id "<globalId>" --max-consecutive-fail 2
 # ④ 结果（须 done=true 后查询）
 python scripts/cpcp_api.py test_result --global-id "<globalId>"
+# ⑤ 报告文件下载（--save-path 显式指定会话可写目录绝对路径，规避 E28；见报告下载纪律）
+python scripts/cpcp_api.py download_test_report --global-id "<globalId>" --save-path "<工作区绝对路径>\test_report_<globalId>.md"
 ```
 - 判定：test_passed==通过（全部场景全部测点 resultCode==0 且受理凭证非空）→ 通过；否则 E14/E15 中断；
+- **环节4 内部执行顺序（编号步骤伪代码，必须严格按序执行，禁止提前校验/跳序）**：
+```
+① 发起测试 offer_test            # 取 globalId
+② 查询场景 test_scenes           # 仅记录场景清单（是否含 S_ADD_CARD 留待⑥核对），此时禁止做覆盖核对推理
+③ 轮询进度（5s 循环直至 done）    # 等待期间静默（见 SKILL.md 纪律7），禁止输出推理文本
+④ 查询结果 test_result           # done=true 后执行
+⑤ 被测一致性预校验（E26）         # 输出前第一道校验；不一致 → 立即中断输出（走下方 E26 中断模板），⑤之后所有步骤全部不执行
+⑥ 场景覆盖核对                   # 仅在 ⑤ 通过后执行（依据 K3 用例设计规范第5章）
+⑦ 报告下载                       # download_test_report
+⑧ 存储 node=test                 # result_<node>_<req_id>.json 工件 → save_node_result（E26 中断时也存储，供排查续跑）
+⑨ 输出                           # 按模板输出；⑦⑧ 在 ⑤⑥ 通过前后均执行（报告供排查、存储供续跑），但通过性明细输出仅限 ⑤⑥ 均通过时
+```
+- **E26 中断输出模板（触发 ⑤ 不一致时，正文仅此三部分，禁止输出其他任何内容）**：
+```
+【环节4/4·销售品自动测试（含受理验证）】❌ 执行失败
+
+- [📄 测试报告下载]({{test_result 出参 report_url}})（报告仅供排查参考，不代表被测配置结论）
+
+【异常】环节：销售品自动测试（被测一致性预校验）
+原因：测试平台返回的测试数据（{{出参 offerName 逐字}}）与被测配置（{{plan_json 套餐名称 逐字}}）不一致，可能产生假阳性结论。
+建议：请联系管理员核查测试平台数据匹配（offerId 映射/种子数据）。
+请选择下一步：
+① 回复【重新执行】：核查后从失败环节续跑（已成功环节不重复执行）
+② 回复【继续】：确认被测数据无误后强制输出（整体结论按场景覆盖核对结果从严判定）
+```
+- **E26 中断输出铁律**：
+  1. **禁止输出任何通过性明细**：用例统计（含"10/10 通过"之类聚合数）、测试场景结果表、三大验证分项（ACC/BILL/CUST）、受理凭证、上线结论——数据源已被判定为非被测配置的种子数据，输出即为假阳性传播；
+  2. **禁止输出汇总表格**（含【执行主干中断】等自造变体；异常中断一律走【异常】统一模板，不输出任何表格）；
+  3. report_url 下载图标行保留（报告供排查）；存储照常执行（供续跑判定）；
+  4. offerName/套餐名称须**逐字引用**出参与 plan_json 原文，禁止转述；
+- **被测一致性预校验（编号步骤⑤，输出前第一道校验，先于场景覆盖核对）**：test_result 出参 `offerName`/`offerId`（或 testRequestId 关联出参）与环节1 出参 offer_id 及 plan_json 套餐名称核对——**不一致 → E26 中断**（测试平台返回了非被测配置的种子数据，继续输出会产生假阳性结论），立即按上方"E26 中断输出模板"输出并停止后续步骤，不得基于不一致数据降级结论后照常输出；
 - 存储 node=test；
-- **场景覆盖核对（输出前必须执行，依据 K3 用例设计规范第5章）**：
+- **场景覆盖核对（编号步骤⑥，仅在 E26 预校验通过后执行，依据 K3 用例设计规范第5章）**：
   1. 对照执行方案 plan_json"是否允许办理副卡"字段——值为"允许" → 出参 testScenes **必须包含 S_ADD_CARD**，缺失 → 按场景覆盖缺陷处置：在输出中标注 ⚠️"应覆盖场景 S_ADD_CARD（副卡加装）未执行（依据 K3 用例设计规范第5章：允许副卡的销售品须覆盖 S_O_TC+S_ADD_CARD+S_U_TC）"，并引导回复【修改执行方案】或联系管理员核查测试平台场景匹配（不直接判测试失败，但整体结论不得为"✅ 建议上线"，降级为"⚠️ 评估风险后上线"）；
   2. 值为"不允许" → S_ADD_CARD 非必选，出参无该场景属正常，不得标注异常；
   3. S_O_TC 与 S_U_TC 为所有销售品必选场景，出参缺失任一 → 按 E11 同等处置中断；
@@ -206,6 +260,8 @@ python scripts/cpcp_api.py test_result --global-id "<globalId>"
 ```
 
 ## 异常中断输出（任一环节失败时，统一模板）
+> 本模板为异常中断场景的**唯一**输出形态：环节标题头用 `❌ 执行失败`，正文接【异常】块；**禁止输出汇总表格、禁止输出失败环节的通过性明细、禁止自造【执行主干中断】等变体标题**（已成功环节的回放说明可并入【异常】块的"明细"行，文字形式即可）。
+
 ```
 【异常】环节：{异常环节名称}
 原因：{引用接口返回原文 resultCode/resultMsg，不得臆测}
@@ -220,8 +276,12 @@ python scripts/cpcp_api.py test_result --global-id "<globalId>"
 - 环节1 落地前禁止用大模型重写/优化 plan_json（"分析结果 = 配置结果"）；禁止自动重试写操作；
 - 各环节禁止凭语义猜测结论（仅依据 status/pass/test_passed/测点 resultCode 字段）；
 - 输出模板中的 ✅/用例数/比对结果必须逐字对应出参，禁止补 ✅ 凑数、禁止虚构"配置耗时"等出参不存在的数据（无则省略该行）；
+- **禁止自行聚合跨场景统计值**：用例数只能逐场景引用 testScenes[].testCaseCount/successTestCaseCount/failTestCaseCount；"用例总数"必须注明"（各场景合计）"且等于各场景 testCaseCount 之和、逐一可核对；出参无对应字段的全局统计值（如"10/10 通过"）禁止出现；
+- **E26 中断禁止输出通过性明细与汇总表格**（见环节4"E26 中断输出铁律"）；异常中断的环节标题头一律 `❌ 执行失败`，禁止自造"执行中断/执行异常"形态；
 - **禁止省略环节标题头**：四环节输出一律以【环节N/4·环节名】开头，禁止无标题头的裸段落输出（防环节结果混成一团无法辨认）；
 - **资费比对表禁止输出空值行**：requirement_desc 与 billing_desc 均为空的比对项直接省略该行，禁止输出"（空）"占位行；
 - **场景覆盖核对禁止跳过**：允许副卡的销售品出参缺 S_ADD_CARD 时禁止输出"✅ 建议上线"（须降级"⚠️ 评估风险后上线"并标注覆盖缺陷）；
+- **被测一致性预校验（E26）禁止跳过**：出参 offerName/offerId 与环节1 不一致时禁止照常输出环节结果或降级结论（须中断引导核查测试平台）；
 - 禁止跳过自查直接编造 offer_id/config_json；续跑时已存在成功存储记录（本环节 node_name）→ 直接回放结果，禁止重复调用写接口；
+- **禁止内联大报文**：>1KB 的 JSON 一律走 `--xxx-file` 会话工件，禁止手工搬运/精简出参（SKILL.md 纪律8）；
 - 环节4 禁止在 done!=true 时查询结果，禁止省略受理验证结论章节；禁止在存在 P0 ❌ 时输出"建议上线"结论（判定规则见 K3 用例设计规范 V2.0 第6章）。

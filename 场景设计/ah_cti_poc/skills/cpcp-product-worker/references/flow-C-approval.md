@@ -60,7 +60,7 @@ python scripts/cpcp_api.py save_node_result --req-id "<req_id>" --node report --
 python scripts/cpcp_api.py submit_approval --req-id "<req_id>" --product-id "<product_id>" --report-url "<report>" --approval-flow standard
 ```
 - 后端硬校验：approve_confirmed（脚本内置 true，以"用户明确回复上线审批"为前提）+ req_id 四环节（config/spec/fee/test）结果齐全才放行，缺失即拒绝（跳步无法推送）；
-- 判定：返回 approval_id → 步骤6；`status=NOT_CONFIRMED` 且无 approval_id → 按 E16 中断（不应出现，出现即脚本/文档缺陷）；推送失败 → 重试 1 次后按 E16 中断（幂等：同 product_id 重复提交返回原 approval_id）。
+- 判定：返回 approval_id → 步骤6；`status=NOT_CONFIRMED` 且无 approval_id → 按 E16 中断（不应出现，出现即脚本/文档缺陷）；推送失败（含网络异常）→ 传输层重试由脚本内置（共尝试 3 次），耗尽后按 E16/E29 **直接中断询问**（禁止智能体自行叠加业务重试；幂等：同 product_id 重复提交返回原 approval_id）。
 
 ### 步骤6：输出
 ```

@@ -55,7 +55,7 @@ python scripts/cpcp_api.py approval_status --approval-id "<approval_id，可省�
 ```bash
 python scripts/cpcp_api.py query_monitor --product-id "<product_id>" --date-range "<date_range，可省略>" --metric all
 ```
-   - 接口失败 → 按异常矩阵 E17 处理："监控查询失败"，终止本轮；
+   - 接口失败 → 按异常矩阵 E17 处理（传输层重试由脚本内置共尝试 3 次，仍失败即 E29 终止询问）："监控查询失败"，终止本轮；
    - `offer_name` 为空时照实输出"产品名称：未登记"，禁止编造名称。
 2. **异常判定**（原节点3，程序 if 判定）：
    - `error_count > 0` 或 `fee_error_rate > 0.1` → 推送告警；

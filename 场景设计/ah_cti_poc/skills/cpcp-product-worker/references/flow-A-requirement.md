@@ -32,7 +32,7 @@
 python scripts/cpcp_api.py similar_offer --desc "<need_summary>"
 ```
 - resultCode=="0" 且 similarOffer 非空（含 offerInfo） → 取 `similarOffer.offerInfo`（同构 fields 24 字段数组）；
-- **resultCode=="0" 但 similarOffer 为空对象/缺 offerInfo（未命中）**、或 resultCode=="1"、或 resultCode 为其他任意值（如 PARAM_MISSING/HTTP_xxx/NET_ERROR/TIMEOUT，须原样引用 resultMsg 供日志定位，禁止臆造原因）、或脚本报错 → 走"无相似产品"分支：仅依据需求要素 + 引擎默认值补全（可读 K4 单文件辅助），**不中断**（E1）。
+- **其余任何情形（相似服务失败/未命中/脚本报错）一律按 E1 中断询问用户**： resultCode=="0" 但 similarOffer 为空对象/缺 offerInfo（未命中）、或 resultCode=="1"、或 resultCode 为其他任意值（如 PARAM_MISSING/HTTP_xxx/NET_ERROR/TIMEOUT，须原样引用 resultMsg 供日志定位，禁止臆造原因）、或脚本报错 → **终止流程并询问**："相似产品服务暂不可用/未命中，回复【继续】跳过相似产品仅用知识库 K4 补全，或回复【修改需求】调整后重提"；禁止自动降级继续。
 
 ### 步骤3：同构键值合并
 将 elements_json 与 offerInfo 按 field 名逐字段对齐：
@@ -51,7 +51,7 @@ python scripts/cpcp_api.py ontology_reason --fields-json "<fields_output>"
 ```
 - action=reason 一体推理：本体校验 + 非法值修正回写 + 缺失/待补充字段默认值补全（**仅套餐档位等价格字段维持"待补充"**）；
 - 引擎补全/修正的字段 source 自动改标"AI补全"（脚本 build_plan 输出时统一归一为【AI补全】）；
-- **空返回防护（脚本内置）**：出参 fields_json 为空数组/空串时脚本报 `ONTOLOGY_EMPTY`（exit 2）——此时禁止跳过本步骤或用合并前字段直接组装方案，按异常处置：重试 1 次，仍为空则中断提示"字段本体推理引擎返回空结果，请检查后端 FieldOntologyService"；
+- **空返回防护（脚本内置）**：出参 fields_json 为空数组/空串时脚本报 `ONTOLOGY_EMPTY`（exit 2）——此时禁止跳过本步骤或用合并前字段直接组装方案，按 E2b 异常处置：**首次空返回即中断询问**，提示"字段本体推理引擎返回空结果，请检查后端 FieldOntologyService；排查后回复【重新生成】"（禁止自动重试）；
 - **violations 处置**：出参 violations 非空时逐条核对——
   - 仅"套餐名称"命名格式类 violation：不中断，但**步骤8 输出必须附 violations 原文**，提示用户确认命名（用户确认后按"修改需求"重新走程序A）；
   - 其余字段 violation：按异常中断，引导修改需求；
