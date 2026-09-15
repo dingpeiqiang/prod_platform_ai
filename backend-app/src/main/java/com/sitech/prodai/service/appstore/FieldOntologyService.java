@@ -239,6 +239,7 @@ public class FieldOntologyService {
             String field = str(f.get("field"));
             String value = str(f.get("value"));
             String source = str(f.get("source"));
+            String remark = str(f.get("remark"));
             FieldSpec spec = SPECS.get(field);
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("field", field);
@@ -246,6 +247,19 @@ public class FieldOntologyService {
             item.put("source", source);
             if (spec == null) {
                 out.add(item); // 未注册字段透传
+                continue;
+            }
+            // ⓪ V2.9 语义备注消歧：值非空且备注含"非"语义归属说明（如"发布时间，非生效方式"）
+            //    → 本字段不参与本体校验/修正，保留原值并在 fixed 中留痕，交上游决定是否另立字段
+            if (!remark.isEmpty() && isExclusionRemark(remark) && !value.isEmpty()) {
+                Map<String, Object> c = new LinkedHashMap<>();
+                c.put("field", field);
+                c.put("value", value);
+                c.put("defaulted", "0");
+                c.put("action", "remark_excluded");
+                c.put("reason", "用户备注\"" + remark + "\"表明该值非本字段语义，已跳过本体校验（值原样保留，不生成 violation）");
+                fixed.add(c);
+                out.add(item);
                 continue;
             }
             // ① 缺失/待补充 → 默认值推理补全（V3.0：待补充项全部可推理，价格类除外——价格必须由用户确认）
@@ -514,6 +528,11 @@ public class FieldOntologyService {
                 m.put("field", n.path("field").asText(""));
                 m.put("value", n.path("value").asText(""));
                 m.put("source", n.path("source").asText(""));
+                // V2.9：用户语义备注透传（如"11月1日生效=商品发布时间，非生效方式"），供 reason 消歧
+                JsonNode remark = n.path("remark");
+                if (!remark.isMissingNode() && !remark.isNull()) {
+                    m.put("remark", remark.asText(""));
+                }
                 res.add(m);
             }
         }
@@ -542,6 +561,14 @@ public class FieldOntologyService {
         } catch (Exception e) {
             return "[]";
         }
+    }
+
+    /**
+     * V2.9 排他性备注识别：备注中出现"非/不属于/不是"紧跟语义归属说明时，
+     * 视为用户对该字段值的语义排除声明（值不属于本字段口径），跳过本体校验。
+     */
+    private boolean isExclusionRemark(String remark) {
+        return remark.matches(".*(非|不属于|不是)[^，。;；]{0,20}(时间|字段|口径|方式|语义|范畴).*");
     }
 
     private static String str(Object value) {

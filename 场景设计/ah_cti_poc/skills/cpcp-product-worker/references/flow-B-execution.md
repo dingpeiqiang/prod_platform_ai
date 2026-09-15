@@ -140,13 +140,13 @@ python scripts/cpcp_api.py billing_verify --config-json-file "<plan_json_<req_id
 python scripts/cpcp_api.py offer_test --offer-id "<offerId>"          # resultCode==0 且 globalId 非空→继续；否则 E10
 # ② 场景（记录受理验证覆盖范围 S_O_TC/S_ADD_CARD/S_U_TC；空 → E11 中断）
 python scripts/cpcp_api.py test_scenes --global-id "<globalId>"
-# ③ 轮询（默认模式：test_progress 单次查询循环，环境无差别；不默认依赖长驻前台命令）
-# 循环规则：每 5s 执行一次下条命令，直至 done=true（继续④）/ failed=true（仍取结果定位原因）/
-# 连续 2 次查询失败 → E12（阈值已收紧）；累计 30 分钟未 done → E13（保留 globalId）
-python scripts/cpcp_api.py test_progress --global-id "<globalId>"     # done 字段为字符串 "true"/"false"
-# ③ 可选优化：运行环境支持长驻前台命令时可用 poll_test_progress.py 替代上述循环
-# （间隔 5s，逻辑等价；必须显式传 --max-consecutive-fail 2 对齐 E12 收紧后的阈值）
+# ③ 轮询进度（首选：poll_test_progress.py 长驻命令，一条命令完成循环，规避智能体 shell 拼接语法差异）
+# 必须显式传 --max-consecutive-fail 2（E12 阈值收紧口径，脚本默认值已为 2，显式传入防漂移）
 python scripts/poll_test_progress.py --global-id "<globalId>" --max-consecutive-fail 2
+# ③ 备选（仅长驻命令不可用时）：test_progress 单次查询 + 会话原生等待原语循环（PowerShell 用 Start-Sleep，
+#    禁用 cmd 风格 timeout/& 组合；bash 用 sleep；每 5s 一次直至 done=true/failed=true）
+#    连续 2 次查询失败 → E12（阈值已收紧）；累计 30 分钟未 done → E13（保留 globalId）
+#    等待期间静默（见 SKILL.md 纪律7），禁止输出推理文本
 # ④ 结果（须 done=true 后查询）
 python scripts/cpcp_api.py test_result --global-id "<globalId>"
 # ⑤ 报告文件下载（--save-path 显式指定会话可写目录绝对路径，规避 E28；见报告下载纪律）
@@ -161,6 +161,10 @@ python scripts/cpcp_api.py download_test_report --global-id "<globalId>" --save-
 ④ 查询结果 test_result           # done=true 后执行
 ⑤ 被测一致性预校验（E26）         # 输出前第一道校验；不一致 → 立即中断输出（走下方 E26 中断模板），⑤之后所有步骤全部不执行
 ⑥ 场景覆盖核对                   # 仅在 ⑤ 通过后执行（依据 K3 用例设计规范第5章）
+⑥' 31条固定用例确定性映射          # 仅在 ⑤ 通过后执行，与 ⑥ 同步、在 ⑦ 前：
+#   python scripts/cpcp_api.py map_fixed_cases --test-result-file "<result_test工件>" --spec-result-file "<result_spec工件>" --fee-result-file "<result_fee工件>"
+#   出参 cases[] 为用例级结论唯一数据源（模型逐行引用，禁止自行按语义映射用例ID；
+#   "本销售品未覆盖"由脚本输出，禁止改判 ✅/❌）；overallConclusion 为整体上线结论唯一依据
 ⑦ 报告下载                       # download_test_report
 ⑧ 存储 node=test                 # result_<node>_<req_id>.json 工件 → save_node_result（E26 中断时也存储，供排查续跑）
 ⑨ 输出                           # 按模板输出；⑦⑧ 在 ⑤⑥ 通过前后均执行（报告供排查、存储供续跑），但通过性明细输出仅限 ⑤⑥ 均通过时
@@ -204,29 +208,29 @@ python scripts/cpcp_api.py download_test_report --global-id "<globalId>" --save-
 | :--- | :--- | :--- |
 | {{场景名（逐字引用出参 testScenes，下同）}} | {{用例数}} | ✅/❌ |
 
-**三大验证分项（对齐正式版报告第四章 31 条固定用例，逐条判定）：**
+**三大验证分项（数据源=步骤⑥' map_fixed_cases 出参 cases[]，逐行引用、禁止语义改判）：**
 
 **4.1 受理验证（ACC-001~012，P0×9/P1×3）：**
 | 用例ID | 用例名称 | 等级 | 结果 |
 | :--- | :--- | :--- | :--- |
-| {{ACC-001~012 逐行，结果=对应出参映射判定 ✅/❌/本销售品未覆盖}} |
+| {{ACC-001~012 逐行，结果=map_fixed_cases 出参 cases[].result 原值（✅/❌/本销售品未覆盖）}} |
 
 **4.2 计费验证（BILL-001~010，P0×6/P1×4）：**
 | 用例ID | 用例名称 | 等级 | 结果 |
 | :--- | :--- | :--- | :--- |
-| {{BILL-001~010 逐行，数据源=环节3 compare_list/risk_list + 测点比对}} |
+| {{BILL-001~010 逐行，结果=map_fixed_cases 出参 cases[].result 原值}} |
 
 **4.3 客服验证（CUST-001~009，P0×4/P1×5）：**
 | 用例ID | 用例名称 | 等级 | 结果 |
 | :--- | :--- | :--- | :--- |
-| {{CUST-001~009 逐行，数据源=spec_audit error_list + 出参可核验项}} |
+| {{CUST-001~009 逐行，结果=map_fixed_cases 出参 cases[].result 原值}} |
 
-**三大验证结论：**
-- 受理验证（ACC）：{{P0 用例全部 ✅ → "通过"；否则列 ❌ 用例明细}}；
-- 计费验证（BILL）：{{compare_list 全部一致且 risk_list 为空 → "通过"；否则列 ❌/风险明细}}；
-- 客服验证（CUST）：{{出参可核验项全部 ✅ → "通过"；未覆盖项标注"本销售品未覆盖"}}。
+**三大验证结论（数据源=map_fixed_cases 出参 dimensionSummary，fail==0 → "通过"）：**
+- 受理验证（ACC）：{{ACC fail==0 → "通过"；否则列 ❌ 用例明细}}；
+- 计费验证（BILL）：{{BILL fail==0 且 risk_list 为空 → "通过"；否则列 ❌/风险明细}}；
+- 客服验证（CUST）：{{CUST fail==0 → "通过"；未覆盖项标注"本销售品未覆盖"}}。
 
-**整体上线结论：** ✅ 建议上线 / ⚠️ 评估风险后上线 / ❌ 禁止上线（判定规则=K3 用例设计规范第6章：P0 全过→建议上线；P0 全过但 P1 ❌ 或 risk_list 非空→评估风险后上线；任一 P0 ❌→禁止上线）。
+**整体上线结论：** {{map_fixed_cases 出参 overallConclusion 原值（脚本内置 K3 第6章分级规则，禁止模型改判）。E26 中断后用户回复【继续】强制输出的场景，按场景覆盖核对结果对脚本结论从严修正：整体结论降为"⚠️ 评估风险后上线"并在结论后标注"（被测一致性经人工确认，结论从严）"}}。
 
 **受理验证：**
 - 受理凭证：orderId：{{orderId}}，offerInstId：{{offerInstId}}（出参为空时写"未获取到受理凭证，需人工核实"）；

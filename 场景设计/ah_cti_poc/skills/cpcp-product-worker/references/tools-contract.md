@@ -48,6 +48,7 @@
 - 出参：`resultCode`/`resultMsg`/`testRequestId`/`testRequestName`/`offerName`/**`orderId`**/**`offerInstId`**(受理验证依据)/**`report_url`**(V2.7 新增，正式版《销售品自动化测试报告》下载链接，绝对 URL 可直接点击下载；头缺失时退化为相对路径 `/api/v1/appstore/test/offer/report?global_id=xxx`，此时脚本层拼接 BASE_URL 前缀)/`testScenes[]`
   - `offerName` 同时用作**被测一致性预校验（E26）**依据：与环节1 出参 offer_id 对应的被测配置套餐名称核对，不一致 → 主干中断（见 flow-B 环节4）；
   - `testScenes[]`：testSceneNbr/Name/Desc、testCaseCount、successTestCaseCount、failTestCaseCount、testCasePointResults[](testPointNbr/presetValue/testValue/resultCode=0一致|1不一致/resultMsg)、objTestSceneRel(resultMsg/summaryDesc/suggestion)
+  - **`testCases[]`（V2.9 新增）**：31 条固定用例逐条结论（caseId/caseName/level/result），后端按 K3 规范第4章判定依据确定性生成，是 `map_fixed_cases` 的首选数据源（脚本存在该出参时原样透出，不再本地映射）；result 取值 ✅/❌/本销售品未覆盖
 - orderId/offerInstId 为空 → 报告标注"未获取到受理凭证，需人工核实"（E14，不中断）
 - **报告归档（V2.7）**：测试完成查询结果时后端按出参原文归档正式版报告 Markdown（完整 9 章节结构，对齐 K3测试_销售品自动化测试报告模板_V2.0.md：12 项基础信息 + 三大验证 31 条固定用例 ACC-001~012/BILL-001~010/CUST-001~009 + P0/P1/P2 分级 + 缺陷清单/风险汇总/整改建议 + 三选一整体上线结论），同 globalId 覆盖刷新；对话输出须附 report_url 下载图标行
 
@@ -103,8 +104,8 @@
 
 ## 工具14 字段本体推理 `ontology_reason`
 - POST `/api/v1/appstore/ontology/fields`（action=reason 一体推理）
-- 入参：`action`=reason、`fields`(18 项字段数组 JSON)
-- 出参：推理后 `fields_json`（含修正回写与默认值补全，source 改标"本体推理"）、`fixed[]`(修正明细，defaulted=0 时为 fixed 动作结构)、`violations[]`
+- 入参：`action`=reason、`fields`(18 项字段数组 JSON；**V2.9 起字段项可附 `remark` 键**=用户语义澄清原话，如"11月1日生效=商品发布时间，非生效方式字段")
+- 出参：推理后 `fields_json`（含修正回写与默认值补全，source 改标"本体推理"）、`fixed[]`(修正明细，defaulted=0 时为 fixed 动作结构)、`violations[]`；**V2.9 新增**：字段带排他性备注（含"非/不属于/不是…时间/字段/口径/方式/语义/范畴"）时引擎跳过该字段校验（fixed 记 `action=remark_excluded`，不生成 violation），且脚本自动从 fields_json 剔除该字段并在出参 `remark_excluded_fields` 列出字段名——被剔除值不进入执行方案
 - 修正能力：枚举归一（月付/包月→按月）、渠道同义词映射（营业厅/门店/实体→实体渠道；APP/网厅/线上/电子→电子渠道；直销/客户经理/政企→直销渠道）、产品名称 K1 模板归一（"5G-A 套餐"→"5G-A单品套餐待定档位元"）、生效日期 yyyyMMdd→yyyy-MM-dd、资源缺单位补全（60G→60GB）、套餐固定费缺周期补全（199元→199元/月）
 - 默认值补全：生效日期→立即生效、三类资源→无、适用地区→全国、计费周期→自然月、副卡规则→不允许办理副卡、退订规则→默认口径、销售品状态→待上线；**仅套餐固定费维持"待补充"**
 

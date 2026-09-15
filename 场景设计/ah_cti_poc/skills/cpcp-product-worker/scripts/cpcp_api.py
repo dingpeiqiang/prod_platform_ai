@@ -162,6 +162,14 @@ def cmd_ontology_reason(args):
         _err("ONTOLOGY_EMPTY",
              "字段本体推理引擎返回空结果（fields_json 为空），无法作为方案唯一数据源；"
              "请检查后端 FieldOntologyService 实现或重试；禁止跳过本步骤直接组装方案")
+    # V2.9：remark_excluded 项从 fields_json 中剔除（该值已被用户备注声明非本字段语义，
+    # 不应进入执行方案；剔除后由上游决定是否另立字段/仅入 need_summary）
+    cleaned = [f for f in reason_fields
+               if not any(x.get("field") == f.get("field") and x.get("action") == "remark_excluded"
+                          for x in (data.get("fixed") or []) if isinstance(x, dict))]
+    if len(cleaned) != len(reason_fields):
+        data["fields_json"] = json.dumps(cleaned, ensure_ascii=False)
+        data["remark_excluded_fields"] = [f.get("field") for f in reason_fields if f not in cleaned]
     print(json.dumps(out, ensure_ascii=False))
 
 
@@ -351,6 +359,178 @@ def cmd_query_node_result(args):
 
 # ---------------- 本地代码节点逻辑 ----------------
 
+# K3 用例设计规范 V2.0 第4章：三大验证 31 条固定用例判定依据（出参映射），脚本化消除模型语义推断
+# 测点/场景/比对数据的取值来源：test_result（tr）/ spec_audit（sp）/ billing_verify（fee）出参
+def _scene_of(tr, nbr):
+    for s in (tr.get("testScenes") or []):
+        if s.get("testSceneNbr") == nbr:
+            return s
+    return None
+
+
+def _point_ok(tr, nbr, point_nbr):
+    scene = _scene_of(tr, nbr)
+    if not scene:
+        return None
+    for p in (scene.get("testCasePointResults") or []):
+        if p.get("testPointNbr") == point_nbr:
+            return p.get("resultCode") == "0"
+    return None
+
+
+def _scene_pass(tr, nbr):
+    scene = _scene_of(tr, nbr)
+    if not scene:
+        return None
+    return scene.get("successTestCaseCount") == scene.get("testCaseCount")
+
+
+def _compare_ok(fee, project):
+    for c in (fee.get("compare_list") or []):
+        if c.get("project_name") == project:
+            return c.get("result") == "一致"
+    return None
+
+
+FIXED_CASES = [
+    # (用例ID, 用例名称, 等级, 维度, 判定函数(tr, sp, fee) -> True/False/None(未覆盖))
+    ("ACC-001", "销售品基础准入规则校验", "P0", "ACC", lambda tr, sp, fee: _scene_pass(tr, "S_O_TC")),
+    ("ACC-002", "产品互斥规则校验", "P0", "ACC", lambda tr, sp, fee: _point_ok(tr, "S_O_TC", "P_MUTEX_REL")),
+    ("ACC-003", "产品依赖规则校验", "P0", "ACC", lambda tr, sp, fee: _point_ok(tr, "S_O_TC", "P_RELY_REL")),
+    ("ACC-004", "订购操作能力校验", "P0", "ACC", lambda tr, sp, fee: (
+        (lambda a, b: True if (a and b) else (False if (a is False or b is False) else None))(
+            _scene_pass(tr, "S_O_TC"), _point_ok(tr, "S_O_TC", "P_STATUS")))),
+    ("ACC-005", "变更操作能力校验", "P1", "ACC", lambda tr, sp, fee: None),
+    ("ACC-006", "退订操作能力校验", "P0", "ACC", lambda tr, sp, fee: _scene_pass(tr, "S_U_TC")),
+    ("ACC-007", "受理表单必填字段完整性", "P0", "ACC", lambda tr, sp, fee: (
+        None if None in (_point_ok(tr, "S_O_TC", "P_OFFER_NAME"), _point_ok(tr, "S_O_TC", "P_OFFER_TYPE"),
+                         _point_ok(tr, "S_O_TC", "P_PAY_MODE"))
+        else all((_point_ok(tr, "S_O_TC", p) for p in ("P_OFFER_NAME", "P_OFFER_TYPE", "P_PAY_MODE"))))),
+    ("ACC-008", "限购数量规则校验", "P1", "ACC", lambda tr, sp, fee: _point_ok(tr, "S_O_TC", "P_ORD_CNT")),
+    ("ACC-009", "地域受理范围校验", "P1", "ACC", lambda tr, sp, fee: None),
+    ("ACC-010", "受理时段生效校验", "P1", "ACC", lambda tr, sp, fee: _point_ok(tr, "S_O_TC", "P_EFF_DATE")),
+    ("ACC-011", "模拟订购接口预测试", "P0", "ACC", lambda tr, sp, fee: (
+        True if tr.get("orderId") and tr.get("offerInstId") else
+        (None if not any((tr.get("testScenes") or [])) else False))),
+    ("ACC-012", "模拟退订接口预测试", "P0", "ACC", lambda tr, sp, fee: (
+        (lambda a, b: True if (a and b) else (False if (a is False or b is False) else None))(
+            _scene_pass(tr, "S_U_TC"), _point_ok(tr, "S_U_TC", "P_STATUS")))),
+    ("BILL-001", "基础资费金额合法性校验", "P0", "BILL", lambda tr, sp, fee: _compare_ok(fee, "套餐月租")),
+    ("BILL-002", "计费周期类型校验", "P0", "BILL", lambda tr, sp, fee: (
+        None if fee is None or not fee.get("compare_list") or not tr.get("plan_billing_cycle")
+        else tr.get("plan_billing_cycle") == "自然月")),
+    ("BILL-003", "计费起算时间规则校验", "P0", "BILL", lambda tr, sp, fee: (
+        None if fee is None or not fee.get("compare_list") else all(
+            c.get("result") == "一致" for c in fee["compare_list"] if c.get("project_name") == "套餐月租"))),
+    ("BILL-004", "资源扣减规则校验", "P0", "BILL", lambda tr, sp, fee: (
+        None if fee is None or not fee.get("compare_list") else (lambda rs: None if None in rs else all(rs))(
+            [_compare_ok(fee, p) for p in ("流量赠送量", "语音赠送量", "短信赠送量")]))),
+    ("BILL-005", "阶梯/按量批价规则校验", "P1", "BILL", lambda tr, sp, fee: (
+        None if fee is None or not fee.get("compare_list") else (lambda rs: None if None in rs else all(rs))(
+            [_compare_ok(fee, p) for p in ("流量超出资费", "语音超出资费", "短信超出资费")]))),
+    ("BILL-006", "优惠叠加/捆绑减免校验", "P1", "BILL", lambda tr, sp, fee: (
+        None if fee is None or "risk_list" not in fee else not fee.get("risk_list"))),
+    ("BILL-007", "账单展示项配置校验", "P1", "BILL", lambda tr, sp, fee: None),
+    ("BILL-008", "模拟订购账单试算", "P0", "BILL", lambda tr, sp, fee: None),
+    ("BILL-009", "退订费用结算试算", "P1", "BILL", lambda tr, sp, fee: None),
+    ("BILL-010", "资费生效失效联动校验", "P0", "BILL", lambda tr, sp, fee: (
+        None if None in (_point_ok(tr, "S_O_TC", "P_EFF_DATE"), _point_ok(tr, "S_O_TC", "P_EXP_DATE"))
+        else (_point_ok(tr, "S_O_TC", "P_EFF_DATE") and _point_ok(tr, "S_O_TC", "P_EXP_DATE")))),
+    ("CUST-001", "客服产品基础视图完整性", "P0", "CUST", lambda tr, sp, fee: (
+        None if None in (_point_ok(tr, "S_O_TC", "P_OFFER_NAME"), _point_ok(tr, "S_O_TC", "P_OFFER_TYPE"))
+        else (_point_ok(tr, "S_O_TC", "P_OFFER_NAME") and _point_ok(tr, "S_O_TC", "P_OFFER_TYPE")))),
+    ("CUST-002", "客户订单查询能力校验", "P0", "CUST", lambda tr, sp, fee: (
+        True if tr.get("offerInstId") else
+        (None if not any((tr.get("testScenes") or [])) else False))),
+    ("CUST-003", "客服侧产品操作权限校验", "P1", "CUST", lambda tr, sp, fee: None),
+    ("CUST-004", "产品资费对外说明话术校验", "P0", "CUST", lambda tr, sp, fee: (
+        None if fee is None or not fee.get("compare_list") else (lambda rs: None if None in rs else all(rs))(
+            [c.get("result") == "一致" for c in fee["compare_list"]]))),
+    ("CUST-005", "产品生效失效规则话术校验", "P1", "CUST", lambda tr, sp, fee: (
+        None if None in (_point_ok(tr, "S_O_TC", "P_EFF_DATE"), _point_ok(tr, "S_O_TC", "P_EXP_DATE"))
+        else (_point_ok(tr, "S_O_TC", "P_EFF_DATE") and _point_ok(tr, "S_O_TC", "P_EXP_DATE")))),
+    ("CUST-006", "产品退订规则话术校验", "P1", "CUST", lambda tr, sp, fee: _scene_pass(tr, "S_U_TC")),
+    ("CUST-007", "产品限制规则话术校验", "P1", "CUST", lambda tr, sp, fee: (
+        None if None in (_point_ok(tr, "S_O_TC", "P_MUTEX_REL"), _point_ok(tr, "S_O_TC", "P_RELY_REL"),
+                         _point_ok(tr, "S_O_TC", "P_ORD_CNT"))
+        else all((_point_ok(tr, "S_O_TC", p) for p in ("P_MUTEX_REL", "P_RELY_REL", "P_ORD_CNT"))))),
+    ("CUST-008", "对外展示信息合规校验", "P0", "CUST", lambda tr, sp, fee: (
+        None if sp is None or "error_list" not in sp else not sp.get("error_list"))),
+    ("CUST-009", "客服常见问题FAQ完备性", "P1", "CUST", lambda tr, sp, fee: None),
+]
+
+
+def cmd_map_fixed_cases(args):
+    """31 条固定用例逐条映射（K3 规范第4章判定依据），输出用例级结论供环节4 直接引用。
+    V2.9：test_result 出参已含后端确定性生成的 testCases[]（31 条用例级结论），
+    存在时优先逐字引用，脚本侧判定仅作兼容回退（旧版后端无 testCases 时）。"""
+    tr_raw = _read_arg(args, "test_result", "_file")
+    sp_raw = _read_arg(args, "spec_result", "_file")
+    fee_raw = _read_arg(args, "fee_result", "_file")
+    if not tr_raw:
+        _err("PARAM_MISSING", "缺少 test_result 出参 JSON（--test-result / --test-result-file）")
+    try:
+        tr = json.loads(tr_raw)
+    except json.JSONDecodeError:
+        _err("PARSE_ERROR", "test_result 出参不是合法 JSON")
+    sp = None
+    if sp_raw:
+        try:
+            sp = json.loads(sp_raw)
+        except json.JSONDecodeError:
+            _err("PARSE_ERROR", "spec_audit 出参不是合法 JSON")
+    fee = None
+    if fee_raw:
+        try:
+            fee = json.loads(fee_raw)
+        except json.JSONDecodeError:
+            _err("PARSE_ERROR", "billing_verify 出参不是合法 JSON")
+    # 优先：后端 testCases[] 原样透出（后端为用例级结论唯一事实源）
+    server_cases = tr.get("testCases")
+    if isinstance(server_cases, list) and server_cases:
+        rows = [{"caseId": c.get("caseId"), "caseName": c.get("caseName"),
+                 "level": c.get("level"), "dimension": str(c.get("caseId", "")).split("-")[0],
+                 "result": c.get("result")} for c in server_cases]
+        counts = {"ACC": [0, 0], "BILL": [0, 0], "CUST": [0, 0]}
+        for r in rows:
+            dim = r["dimension"]
+            if dim in counts and r["result"] in ("✅", "❌"):
+                counts[dim][0 if r["result"] == "✅" else 1] += 1
+        conclusion = tr.get("overallConclusion") or _conclude(rows, fee)
+        print(json.dumps({"resultCode": "0", "resultMsg": "success（数据源=后端 testCases 出参）",
+                          "cases": rows,
+                          "dimensionSummary": {d: {"pass": v[0], "fail": v[1]} for d, v in counts.items()},
+                          "overallConclusion": conclusion}, ensure_ascii=False))
+        return
+    # 兼容回退：本地映射（旧版后端出参无 testCases）
+    rows, counts = [], {"ACC": [0, 0], "BILL": [0, 0], "CUST": [0, 0]}
+    for case_id, name, level, dim, judge in FIXED_CASES:
+        verdict = judge(tr, sp, fee)
+        if verdict is True:
+            result = "✅"
+        elif verdict is False:
+            result = "❌"
+        else:
+            result = "本销售品未覆盖"
+        if result in ("✅", "❌"):
+            counts[dim][0 if result == "✅" else 1] += 1
+        rows.append({"caseId": case_id, "caseName": name, "level": level, "dimension": dim, "result": result})
+    # 整体上线结论（K3 规范第6章，判定唯一依据=本脚本映射结果）
+    print(json.dumps({"resultCode": "0", "resultMsg": "success", "cases": rows,
+                      "dimensionSummary": {d: {"pass": v[0], "fail": v[1]} for d, v in counts.items()},
+                      "overallConclusion": _conclude(rows, fee)}, ensure_ascii=False))
+
+
+def _conclude(rows, fee):
+    p0_fail = any(r["level"] == "P0" and r["result"] == "❌" for r in rows)
+    p1_fail = any(r["level"] == "P1" and r["result"] == "❌" for r in rows)
+    risk_nonempty = bool(fee and fee.get("risk_list"))
+    if p0_fail:
+        return "❌ 禁止上线"
+    if p1_fail or risk_nonempty:
+        return "⚠️ 评估风险后上线"
+    return "✅ 建议上线"
+
 def _unwrap(out):
     """兼容 contractRoot 包裹 / requestObject 包裹 / 裸报文三种返回。"""
     if isinstance(out, dict):
@@ -476,6 +656,11 @@ def main():
     s = sub.add_parser("build_plan")
     s.add_argument("--fields-json"); s.add_argument("--fields-json-file")
     s.set_defaults(fn=cmd_build_plan)
+    s = sub.add_parser("map_fixed_cases")
+    s.add_argument("--test-result"); s.add_argument("--test-result-file")
+    s.add_argument("--spec-result"); s.add_argument("--spec-result-file")
+    s.add_argument("--fee-result"); s.add_argument("--fee-result-file")
+    s.set_defaults(fn=cmd_map_fixed_cases)
 
     args = p.parse_args()
     args.fn(args)

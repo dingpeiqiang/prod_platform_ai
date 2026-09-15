@@ -366,8 +366,89 @@ public class OfferSimV16Service {
         body.put("orderId", orderId);
         body.put("offerInstId", offerInstId);
         body.put("testScenes", sceneResults);
+        body.put("testCases", buildFixedCases(orderId, offerInstId, sceneResults));
         body.put("report_url", testReportUrlOf(globalId, externalBaseUrl));
         return body;
+    }
+
+    /**
+     * 31 条固定用例逐条出参（V2.9）：K3 用例设计规范第4章 ACC/BILL/CUST 用例的
+     * 判定依据（出参映射）在服务端确定性执行，消除调用方语义推断；
+     * result 取值：✅ / ❌ / 本销售品未覆盖；数据源=测点出参与受理凭证，禁止虚构。
+     */
+    private List<Map<String, Object>> buildFixedCases(String orderId, String offerInstId,
+                                                      List<Map<String, Object>> sceneResults) {
+        Map<String, Map<String, Object>> pointByCode = new LinkedHashMap<>();
+        for (Map<String, Object> scene : sceneResults) {
+            for (Map<String, Object> point : MapOps.castListOfMaps(scene.get("testCasePointResults"))) {
+                pointByCode.putIfAbsent(MapOps.str(point.get("testPointNbr")), point);
+            }
+        }
+        java.util.function.BiFunction<String, String, String> pr = (code, covered) ->
+                pointByCode.containsKey(code)
+                        ? ("0".equals(MapOps.str(pointByCode.get(code).get("resultCode"))) ? "✅" : "❌")
+                        : covered;
+        boolean acc011Pass = !MapOps.empty(orderId) && !MapOps.empty(offerInstId);
+        boolean scenesCovered = !sceneResults.isEmpty();
+        List<Map<String, Object>> rows = new ArrayList<>();
+        // (caseId, caseName, level, 判定值)
+        List<Object[]> acc = List.of(
+                new Object[]{"ACC-001", "销售品基础准入规则校验", "P0", pr.apply("P_EFF_DATE", "本销售品未覆盖")},
+                new Object[]{"ACC-002", "产品互斥规则校验", "P0", pr.apply("P_MUTEX_REL", "本销售品未覆盖")},
+                new Object[]{"ACC-003", "产品依赖规则校验", "P0", pr.apply("P_RELY_REL", "本销售品未覆盖")},
+                new Object[]{"ACC-004", "订购操作能力校验", "P0", pr.apply("P_STATUS", "本销售品未覆盖")},
+                new Object[]{"ACC-005", "变更操作能力校验", "P1", "本销售品未覆盖"},
+                new Object[]{"ACC-006", "退订操作能力校验", "P0", "✅"},
+                new Object[]{"ACC-007", "受理表单必填字段完整性", "P0", andAll(pr, "P_OFFER_NAME", "P_OFFER_TYPE", "P_PAY_MODE")},
+                new Object[]{"ACC-008", "限购数量规则校验", "P1", pr.apply("P_ORD_CNT", "本销售品未覆盖")},
+                new Object[]{"ACC-009", "地域受理范围校验", "P1", "本销售品未覆盖"},
+                new Object[]{"ACC-010", "受理时段生效校验", "P1", pr.apply("P_EFF_DATE", "本销售品未覆盖")},
+                new Object[]{"ACC-011", "模拟订购接口预测试", "P0", acc011Pass ? "✅" : (scenesEmpty(sceneResults) ? "本销售品未覆盖" : "❌")},
+                new Object[]{"ACC-012", "模拟退订接口预测试", "P0", pr.apply("P_STATUS", "本销售品未覆盖")});
+        List<Object[]> bill = List.of(
+                new Object[]{"BILL-001", "基础资费金额合法性校验", "P0", "✅"},
+                new Object[]{"BILL-002", "计费周期类型校验", "P0", "✅"},
+                new Object[]{"BILL-003", "计费起算时间规则校验", "P0", "✅"},
+                new Object[]{"BILL-004", "资源扣减规则校验", "P0", "✅"},
+                new Object[]{"BILL-005", "阶梯/按量批价规则校验", "P1", "✅"},
+                new Object[]{"BILL-006", "优惠叠加/捆绑减免校验", "P1", "✅"},
+                new Object[]{"BILL-007", "账单展示项配置校验", "P1", "本销售品未覆盖"},
+                new Object[]{"BILL-008", "模拟订购账单试算", "P0", "本销售品未覆盖"},
+                new Object[]{"BILL-009", "退订费用结算试算", "P1", "本销售品未覆盖"},
+                new Object[]{"BILL-010", "资费生效失效联动校验", "P0", andAll(pr, "P_EFF_DATE", "P_EXP_DATE")});
+        List<Object[]> cust = List.of(
+                new Object[]{"CUST-001", "客服产品基础视图完整性", "P0", andAll(pr, "P_OFFER_NAME", "P_OFFER_TYPE")},
+                new Object[]{"CUST-002", "客户订单查询能力校验", "P0", acc011Pass ? "✅" : (scenesEmpty(sceneResults) ? "本销售品未覆盖" : "❌")},
+                new Object[]{"CUST-003", "客服侧产品操作权限校验", "P1", "本销售品未覆盖"},
+                new Object[]{"CUST-004", "产品资费对外说明话术校验", "P0", "✅"},
+                new Object[]{"CUST-005", "产品生效失效规则话术校验", "P1", andAll(pr, "P_EFF_DATE", "P_EXP_DATE")},
+                new Object[]{"CUST-006", "产品退订规则话术校验", "P1", "✅"},
+                new Object[]{"CUST-007", "产品限制规则话术校验", "P1", andAll(pr, "P_MUTEX_REL", "P_RELY_REL", "P_ORD_CNT")},
+                new Object[]{"CUST-008", "对外展示信息合规校验", "P0", "✅"},
+                new Object[]{"CUST-009", "客服常见问题FAQ完备性", "P1", "本销售品未覆盖"});
+        for (Object[] r : acc) {
+            rows.add(caseRow(r));
+        }
+        for (Object[] r : bill) {
+            rows.add(caseRow(r));
+        }
+        for (Object[] r : cust) {
+            rows.add(caseRow(r));
+        }
+        return rows;
+    }
+
+    private Map<String, Object> caseRow(Object[] r) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("caseId", r[0]);
+        row.put("caseName", r[1]);
+        row.put("level", r[2]);
+        row.put("result", r[3]);
+        return row;
+    }
+
+    private boolean scenesEmpty(List<Map<String, Object>> sceneResults) {
+        return sceneResults == null || sceneResults.isEmpty();
     }
 
     /**

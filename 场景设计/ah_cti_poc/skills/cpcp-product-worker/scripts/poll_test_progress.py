@@ -37,7 +37,7 @@ def main():
     p.add_argument("--global-id", required=True)
     p.add_argument("--interval", type=int, default=5)
     p.add_argument("--max-retry", type=int, default=360)
-    p.add_argument("--max-consecutive-fail", type=int, default=5)
+    p.add_argument("--max-consecutive-fail", type=int, default=2)
     args = p.parse_args()
 
     consecutive_fail = 0
