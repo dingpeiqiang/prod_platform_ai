@@ -32,7 +32,7 @@
 python scripts/cpcp_api.py similar_offer --desc "<need_summary>"
 ```
 - resultCode=="0" 且 similarOffer 非空（含 offerInfo） → 取 `similarOffer.offerInfo`（同构 fields 24 字段数组）；
-- **resultCode=="0" 但 similarOffer 为空对象/缺 offerInfo（未命中）**、或 resultCode=="1"、或脚本报错 → 走"无相似产品"分支：仅依据需求要素 + 引擎默认值补全（可读 K4 单文件辅助），**不中断**（E1）。
+- **resultCode=="0" 但 similarOffer 为空对象/缺 offerInfo（未命中）**、或 resultCode=="1"、或 resultCode 为其他任意值（如 PARAM_MISSING/HTTP_xxx/NET_ERROR/TIMEOUT，须原样引用 resultMsg 供日志定位，禁止臆造原因）、或脚本报错 → 走"无相似产品"分支：仅依据需求要素 + 引擎默认值补全（可读 K4 单文件辅助），**不中断**（E1）。
 
 ### 步骤3：同构键值合并
 将 elements_json 与 offerInfo 按 field 名逐字段对齐：
