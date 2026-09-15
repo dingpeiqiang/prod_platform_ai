@@ -185,7 +185,7 @@ requirement 环节同键不同内容拦截（返回 5006，防旧方案被静默
 | --- | --- | --- |
 | 小写下划线 | 程序步骤变量/脚本参数名/JSON 键 | `requirement_text`、`req_id`（统一键）、`plan_json`、`pending_fields`、`resume_action`、`fail_node`、`approve_confirmed` |
 | 驼峰 | 接口原始出参字段（与接口清单保持一致；特例 `offerId` 保持 camelCase） | `globalId`、`offerId`、`testScenes`、`orderId`、`offerInstId` |
-| 环节产出引用 | 上一环节出参作为下一环节入参 | 环节1 `offer_id` → 环节2 `--offer-id` |
+| 环节产出引用 | 上一环节出参作为下一环节入参 | 环节1 `offer_id` → 环节2 `--offer-id`（环节1 起该值须在后续环节输出中**显性回显**，见 flow-B"offer_id 显性回显纪律"） |
 
 ## 2. 存储与流水
 | 变量 | 规则 | 示例 |

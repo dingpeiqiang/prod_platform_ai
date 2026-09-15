@@ -56,21 +56,25 @@ python scripts/cpcp_api.py download_launch_script --product-id "<product_id>" --
 已根据《{{套餐名称}}加载方案》完成销售品智能配置。
 
 **配置状态：成功**
-- 配置单号：{{config_id，取环节出参 product_id/offer_id 或后端配置单号}}
+- 销售品ID（offer_id）：{{offer_id，取环节出参 offer_id，逐字引用}}
+- 产品ID（product_id）：{{product_id，取环节出参 product_id，逐字引用}}
 - 配置字段：{{fields 写入项数}}项
 - [📄 配置脚本下载]({{script_url}})（点击图标下载，出参缺失时省略本行）
 - 脚本文件已下载：{{download_launch_script 出参 saved_path}}（{{出参 file_size}} 字节）
+```
+- **offer_id 显性回显纪律（V2.8 新增）**：环节1 落地成功后，出参 `offer_id`（本次配置生成的新销售品 ID）必须在环节1 输出中以独立行**显性展示**（模板"销售品ID（offer_id）"行，逐字引用出参原文，禁止省略、禁止合并进"配置单号"等模糊表述）；该值同时是环节2 `--offer-id` 与环节4 `--offer-id` 的唯一入参来源，环节2/4 的调用命令行中须与环节1 回显值一致；后续所有环节结果与【执行主干全部完成】汇总块的关键数据列均须显性携带该 offer_id，保证用户在任一环节结果中都能看到本次落地生成的新销售品 ID（出参缺失 offer_id 时该行省略，按 E6 处置——落地成功却无 offer_id 属后端缺陷，须在输出中明示）；
 
 ---
 ```
 - script_url 引用纪律：链接逐字引用出参 `script_url` 原文（后端已返回绝对 URL，直接引用即可；若为相对路径则拼接 BASE_URL 前缀），禁止自行构造或改写参数；**对话输出禁止裸露 URL，统一渲染为 Markdown 下载图标 `[📄 配置脚本下载](script_url)`**；脚本内容为后端生成的 CRM/billing 落库 SQL（模拟），仅在用户要求查看时按下载文件内容原文回显，禁止转述加工；
 - 脚本文件下载纪律：download_launch_script 出参 `resultCode=="0"` 时按模板输出"脚本文件已下载"行；非 0（未落地 404/网络异常）时**省略该行、不中断主干**（下载图标行仍在，用户可手动下载）；禁止虚构 saved_path/file_size；
 - **建议处理引导行（固定输出）**：`**建议处理：可输入"查看稽核"或等待自动进入【配置规格稽核】。**`（串行连续执行时用户无需操作，该行照常输出）；
-- PARTIAL 时改为：`**配置状态：部分成功**`，附失败分类明细，结尾改为"请根据失败明细说明修改意见，或回复【重新执行】。"（不显示下一环节引导）。
+- PARTIAL 时改为：`**配置状态：部分成功**`，附失败分类明细（此时同样须显性展示 offer_id/product_id 行），结尾改为"请根据失败明细说明修改意见，或回复【重新执行】。"（不显示下一环节引导）。
 
 ## 环节2：配置规格稽核（实时，无轮询）
 ```bash
 # config_json=环节1 配置原文（= plan_json 原文，直接复用环节1 的 plan_json_<req_id>.json 工件，禁止重新组装）
+# offer_id=环节1 出参 offer_id（=环节1 输出中显性回显的"销售品ID（offer_id）"，禁止重新推理或编造）
 python scripts/cpcp_api.py spec_audit --offer-id "<环节1 offer_id>" --config-json-file "<plan_json_<req_id>.json>" --audit-scene all
 ```
 - 判定：pass==1 → 通过；pass==0 → E8 中断（打印 error_list 明细 + 整改建议，可联动 send_alert(high)）；
@@ -80,6 +84,7 @@ python scripts/cpcp_api.py spec_audit --offer-id "<环节1 offer_id>" --config-j
 ```
 【环节2/4·配置规格稽核】✅ 执行成功
 
+> **稽核对象：销售品ID（offer_id）{{环节1 offer_id，逐字引用}}**
 > **稽核结果：通过**
 > - 基础信息完整性：✅
 > - 资源配置完整性：✅
@@ -94,6 +99,7 @@ python scripts/cpcp_api.py spec_audit --offer-id "<环节1 offer_id>" --config-j
 ---
 ```
 - 七项检查项与出参 error_list 分类一一对应：仅当出参 error_list 为空（或该分类无告警项）时输出 ✅；某分类存在告警 → 该项改标 ❌ 并在该行下附 error_list 对应明细（item/desc/suggest 逐字引用）；
+- **稽核对象行（offer_id 显性回显）**：环节2 输出首行固定为"稽核对象：销售品ID（offer_id）{{环节1 offer_id}}"，值逐字引用环节1 出参 offer_id（与环节1 回显值一致），禁止省略该行（offer_id 显性回显纪律，V2.8）；
 - pass==0 时整体结论改为"**稽核结果：不通过**"，仅列出 ❌ 项及明细，未告警项不输出，结尾按 E8 引导【重新执行】/【修改执行方案】（不显示下一环节引导）；
 - 禁止补 ✅ 凑数：七项清单与出参告警分类核对后方可输出，出参结构不含分类信息时以 error_list 为空=全通过处理；
 - **建议处理引导行（固定输出）**：`**建议处理：可输入"资费校准"或等待自动进入【资费校准】。**`（串行连续执行时用户无需操作，该行照常输出）。
@@ -190,6 +196,8 @@ python scripts/cpcp_api.py download_test_report --global-id "<globalId>" --save-
 
 已根据销售品配置自动生成并执行测试用例 **{{用例总数（各场景 testCaseCount 合计，逐字引用出参统计）}}条**。
 
+**被测销售品：** 销售品ID（offer_id）{{环节1 offer_id，逐字引用}}（{{test_result 出参 offerName 逐字}}）
+
 **测试结果：**
 
 | 测试类型 | 用例数 | 结果 |
@@ -234,6 +242,7 @@ python scripts/cpcp_api.py download_test_report --global-id "<globalId>" --save-
 ---
 ```
 - 上表场景行以 `test_result` 出参 `testScenes` 返回的场景清单为准逐行输出（场景名逐字引用，出参未返回的场景行不输出、出参多出的场景行照列，禁止按模板凑行）；
+- **被测销售品行（offer_id 显性回显）**：环节4 输出中"被测销售品"行固定展示 offer_id（逐字引用环节1 出参 offer_id，与环节2 回显值一致）与出参 offerName，禁止省略（offer_id 显性回显纪律，V2.8；E26 预校验通过后才输出本行，E26 中断场景不输出任何通过性明细）；
 - **报告下载纪律（V2.7）**：test_result 出参 `report_url` 引用纪律与环节1 script_url 一致——链接逐字引用出参原文（后端已返回绝对 URL，直接引用即可；若为相对路径则拼接 BASE_URL 前缀），禁止自行构造或改写参数；**对话输出禁止裸露 URL，统一渲染为 Markdown 下载图标 `[📄 测试报告下载](report_url)`**；报告文件下载：`python scripts/cpcp_api.py download_test_report --global-id "<globalId>"`，出参 `resultCode=="0"` 时按模板输出"报告文件已下载"行；非 0（报告未归档 404/网络异常）时**省略该行、不中断主干**（下载图标行仍在，用户可手动下载）；禁止虚构 saved_path/file_size；
 - **三大验证结论必须与 K3 用例设计规范 V2.0 的 31 条固定用例判定映射一致**（ACC-001~012 / BILL-001~010 / CUST-001~009，等级 P0/P1/P2），禁止凭语义猜测、禁止补 ✅ 凑数；无对应出参项的用例标"本销售品未覆盖"（不判 ❌、不计入阻断）；
 - **整体上线结论三选一**，判定唯一依据=出参（测点 resultCode / 场景 failTestCaseCount / risk_list / 受理凭证），禁止在"任一 P0 ❌"时输出"建议上线"；
@@ -250,10 +259,10 @@ python scripts/cpcp_api.py download_test_report --global-id "<globalId>" --save-
 
 | 环节 | 执行结果 | 关键数据 |
 | :--- | :--- | :--- |
-| 【环节1/4·智能配置】 | ✅ 成功 | product_id={...}，offer_id={...}，{{fields 写入项数}}项字段全部写入成功 |
-| 【环节2/4·配置规格稽核】 | ✅ 通过 | 七项检查全部 ✅，未发现任何异常 |
+| 【环节1/4·智能配置】 | ✅ 成功 | 销售品ID（offer_id）={...}（本次落地新生成，逐字引用环节1 出参），product_id={...}，{{fields 写入项数}}项字段全部写入成功 |
+| 【环节2/4·配置规格稽核】 | ✅ 通过 | 稽核对象 offer_id={...}（与环节1 一致），七项检查全部 ✅，未发现任何异常 |
 | 【环节3/4·资费校准】 | ✅ 通过 | {{比对一致项数}}项比对全部一致，未发现叠加/互斥冲突 |
-| 【环节4/4·销售品自动测试】 | ✅ 通过 | {{用例总数}}条用例通过率{{通过率}}；受理/计费/客服三大验证{{全部通过/存在 ❌ 项}}；受理凭证 orderId={...}，offerInstId={...}；整体结论{{建议上线/评估风险后上线/禁止上线}} |
+| 【环节4/4·销售品自动测试】 | ✅ 通过 | 被测 offer_id={...}（与环节1 一致），{{用例总数}}条用例通过率{{通过率}}；受理/计费/客服三大验证{{全部通过/存在 ❌ 项}}；受理凭证 orderId={...}，offerInstId={...}；整体结论{{建议上线/评估风险后上线/禁止上线}} |
 
 测试报告：[📄 测试报告下载]({{report_url}})
 是否发起上线审批？可输入"上线审批"提交审批流；回复【暂不】可稍后发送"上线审批"继续。

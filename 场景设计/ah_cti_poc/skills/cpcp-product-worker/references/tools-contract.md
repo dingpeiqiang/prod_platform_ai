@@ -61,7 +61,7 @@
 ## 工具7 配置落地 `save_product_config`
 - POST `/api/v1/appstore/product/config/save`
 - 入参：`req_id`(必填,"缺少执行方案key，请先完成需求分析并确认执行方案")、`plan_json`(必填,存储取回的 JSON 原文原样透传)、`operator`(选填)、`confirmed`(兼容字段，后端仅记录不校验)
-- 出参：`product_id`、`offer_id`、`save_result`(基础信息/资源配置/营销资源/销售规则 各分类 success/fail 及原因)、`status`=SUCCESS|PARTIAL|FAIL、`script_url`(V2.6 起为**绝对 URL**，后端按 X-Forwarded-Proto/Host 头解析网关前置地址后拼装，可直接点击下载；头缺失时退化为相对路径 `/api/v1/appstore/product/config/script?product_id=Pxxx`，此时脚本层拼接 BASE_URL 前缀)
+- 出参：`product_id`、`offer_id`（**本次配置落地生成/分配的销售品 ID，V2.8 起必须在环节1 输出中显性回显**（flow-B 环节1"offer_id 显性回显纪律"），并作为环节2/环节4 `--offer-id` 与程序C 汇总的唯一入参来源，禁止省略回显或语义转述）、`save_result`(基础信息/资源配置/营销资源/销售规则 各分类 success/fail 及原因)、`status`=SUCCESS|PARTIAL|FAIL、`script_url`(V2.6 起为**绝对 URL**，后端按 X-Forwarded-Proto/Host 头解析网关前置地址后拼装，可直接点击下载；头缺失时退化为相对路径 `/api/v1/appstore/product/config/script?product_id=Pxxx`，此时脚本层拼接 BASE_URL 前缀)
 - 60s / **不自动重试**（写操作防重复写入）；后端保留 plan_json 合法性校验（5001）与同 plan_json 幂等（重放时按本次请求头重写 script_url，保证链接始终可用）；确认门禁已移除（V2.2）；落地成功时同步生成 CRM/billing 落库 SQL 脚本（模拟）
 - **附带下载路由**：GET `/api/v1/appstore/product/config/script?product_id=Pxxx` → text/plain（附件名 launch_Pxxx.sql），返回后端生成的两段式 SQL（/*run@crm*/ 定价信息段 + /*run@billing*/ 优惠/累计段）；product_id 未落地返回 404
 

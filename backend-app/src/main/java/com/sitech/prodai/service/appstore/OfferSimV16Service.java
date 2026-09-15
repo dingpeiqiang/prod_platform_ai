@@ -664,12 +664,30 @@ public class OfferSimV16Service {
      * V2.6 资费校准 8 项比对明细：item/project_name、requirement_desc（需求侧）、
      * billing_desc（系统侧，含折算括注）、result（一致/不一致）。
      * 系统侧取值：命中种子销售品按其资费规则生成；未命中按落地配置自身值回显。
+     * V2.7 兼容两种 config_json 形态：环节1 出参（含 plan_json/offer_id 键）与
+     * plan_json 原文直传（{req_id, fields, pending_fields}，flow-B 环节3 约定形态）——
+     * 顶层无 plan_json 键时按 plan_json 原文自身解析 fields，并从 fields 内提取
+     * offer_id/similarOfferId 溯源键回查档案，避免两侧全空退化（E27 假阳性根因）。
      */
     private List<Map<String, Object>> buildFeeCompareList(Map<String, Object> config, String offerId) {
         Map<String, Object> plan = castMap(config.get("plan_json"));
+        String resolvedOfferId = offerId;
+        if (plan.isEmpty()) {
+            // config_json=plan_json 原文直传：顶层即 plan 本体
+            plan = config;
+            resolvedOfferId = firstNonEmptyText(offerId,
+                    config.get("offer_id"), config.get("similarOfferId"),
+                    config.get("相似产品ID"), plan.get("offer_id"), plan.get("similarOfferId"));
+        }
         Map<String, String> req = new LinkedHashMap<>();
         for (Map<String, Object> f : MapOps.castListOfMaps(plan.get("fields"))) {
-            req.putIfAbsent(MapOps.str(f.get("field")), MapOps.str(f.get("value")));
+            String value = blankIfPlaceholder(MapOps.str(f.get("value")));
+            if (!value.isEmpty()) {
+                req.putIfAbsent(MapOps.str(f.get("field")), value);
+            }
+        }
+        if (resolvedOfferId != null && !resolvedOfferId.isBlank() && !resolvedOfferId.equals(offerId)) {
+            offerId = resolvedOfferId;
         }
         Map<String, Object> offer = resolveOffer(offerId);
         Map<String, Object> inFee = castMap(offer == null ? null : offer.get("in_fee"));
@@ -678,15 +696,16 @@ public class OfferSimV16Service {
         String validity = offer == null ? "" : MapOps.str(offer.get("validity"));
         boolean prorated = transition.contains("按天") || transition.contains("按日");
 
-        // 需求侧兜底：执行方案未提取到的字段回退种子销售品描述（比对对象仍是需求语义）
-        String monthFee = firstNonEmptyText(req.get("套餐档位"), inFee.get("档位"));
-        String flow = firstNonEmptyText(req.get("国内通用流量"), inFee.get("国内通用流量"));
-        String voice = firstNonEmptyText(req.get("国内语音拨打"), req.get("本地语音"), inFee.get("国内语音拨打"));
-        String sms = firstNonEmptyText(req.get("短信"), inFee.get("国内语音接听"));
-        String outFlow = firstNonEmptyText(req.get("套外流量-计费标准"), outFee.get("套外流量"));
-        String outVoice = firstNonEmptyText(req.get("套外语音-国内通话"), outFee.get("套外语音"));
-        String outSms = firstNonEmptyText(req.get("套外短彩信-短/彩信"), outFee.get("套外短彩信"));
-        String valid = firstNonEmptyText(req.get("套餐有效期"), validity);
+        // 需求侧兜底：执行方案未提取到的字段回退种子销售品描述（比对对象仍是需求语义）；
+        // "无"为本体默认占位值，非真实资费，视同空值处理（防占位值污染比对结果）
+        String monthFee = firstNonEmptyText(req.get("套餐档位"), blankIfPlaceholder(inFee.get("档位")));
+        String flow = firstNonEmptyText(req.get("国内通用流量"), blankIfPlaceholder(inFee.get("国内通用流量")));
+        String voice = firstNonEmptyText(req.get("国内语音拨打"), req.get("本地语音"), blankIfPlaceholder(inFee.get("国内语音拨打")));
+        String sms = firstNonEmptyText(req.get("短信"), blankIfPlaceholder(inFee.get("国内语音接听")));
+        String outFlow = firstNonEmptyText(req.get("套外流量-计费标准"), blankIfPlaceholder(outFee.get("套外流量")));
+        String outVoice = firstNonEmptyText(req.get("套外语音-国内通话"), blankIfPlaceholder(outFee.get("套外语音")));
+        String outSms = firstNonEmptyText(req.get("套外短彩信-短/彩信"), blankIfPlaceholder(outFee.get("套外短彩信")));
+        String valid = firstNonEmptyText(req.get("套餐有效期"), blankIfPlaceholder(validity));
 
         List<Map<String, Object>> list = new ArrayList<>();
         list.add(row("套餐月租", monthFee, monthFee + (prorated ? "（首月按天折算）" : "")));
@@ -698,6 +717,12 @@ public class OfferSimV16Service {
         list.add(row("短信超出资费", outSms, outSms));
         list.add(row("商品有效期", valid, autoRenew(valid)));
         return list;
+    }
+
+    /** 本体占位值归一："无/待补充/系统待生成"视同空值，其余原样返回（plan.fields 与档案侧共用） */
+    private String blankIfPlaceholder(Object value) {
+        String v = MapOps.str(value).trim();
+        return (v.isEmpty() || "无".equals(v) || "待补充".equals(v) || "系统待生成".equals(v)) ? "" : v;
     }
 
     /** 商品有效期系统侧括注：需求侧含"续展/续订"时原样，否则追加（自动续展） */
